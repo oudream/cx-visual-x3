@@ -11,3 +11,9 @@ This repository uses the approved CxVisual F/M/P architecture and engineering st
 - Respect the immediate user's task scope; the skill reference is not permission to perform unrelated edits.
 
 See `.agents/skills/cxvisual-engineering/SKILL.md` for the task-specific process.
+
+## Start every CxVisual development session here
+
+- Read [DOCS/00_CxVisual_协同开发入口与七仓复用基线.md](DOCS/00_CxVisual_协同开发入口与七仓复用基线.md) first. It maps the seven code repositories, distinguishes production-proven external systems from the new x3 preview, and gives the per-project chat/development workflow.
+- The canonical new platform is `cx-visual-x3`; `cx-visual-x2` is the previous CxVisual. The other five existing codebases are production-experienced assets: `cx-vision-x2` (CT/online and offline X-Ray), `gcl3` (distributed ICS), `ccxx` (cross-platform C++), `device_communicator` (IoT), `cx-cct-x3` (CT/3D). Reuse after inspecting real code and compatibility; do not blindly rewrite mature subsystems.
+- Before claiming a status, record branch/commit and distinguish specification, source declaration, actual compilation/tests, and historical production evidence.
