@@ -13,7 +13,13 @@ namespace CxVisual.Tests.ArchitectureSmoke
         {
             try
             {
+                if (args != null && args.Length > 0 && args[0] == "--config-wpf")
+                {
+                    ConfigWpfL1Tests.Run();
+                    return 0;
+                }
                 UiIndependentAssemblies();
+                ConfigProfessionalL1Tests.Run();
                 ConfigL1Tests.Run();
                 HierarchyTransactionPersistence();
                 UndoRedo();

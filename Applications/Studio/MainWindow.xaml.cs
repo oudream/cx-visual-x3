@@ -2,6 +2,9 @@ using System;
 using System.IO;
 using System.Windows;
 using CxVisual.Mechanism.Core;
+using CxVisual.Professional.Automation;
+using CxVisual.Professional.Vision;
+using CxVisual.Professional.CT3D;
 using CxVisual.Mechanism.Presentation.Wpf;
 
 namespace CxVisual.Studio
@@ -27,13 +30,45 @@ namespace CxVisual.Studio
         {
             try
             {
-                // 演示配置存放用户可写目录；不会写入版本化的App-Vx.y程序目录。
+                // 样例配置存放用户可写目录；不涉及真实设备连接、标定或安全联锁。
                 string root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "CxVisual", "Configs");
+                    "CxVisual", "Configs", "Samples");
                 CxConfigManager manager = new CxConfigManager(root);
-                manager.Register<StudioDemoConfig>("Studio.Demo");
-                manager.Initialize();
-                CxConfigEditorDialog.Edit<StudioDemoConfig>(this, manager, "Studio.Demo");
+                int selected = ConfigDemoKind.SelectedIndex;
+                bool saved;
+                if (selected == 1)
+                {
+                    manager.Register<CxAutomationDeviceOptions>("Samples.Automation.Device01",
+                        validator: CxAutomationDeviceOptions.Validate);
+                    manager.Initialize();
+                    saved = CxConfigEditorDialog.Edit<CxAutomationDeviceOptions>(
+                        this, manager, "Samples.Automation.Device01");
+                }
+                else if (selected == 2)
+                {
+                    manager.Register<CxVisionInspectionOptions>("Samples.Vision.Inspection",
+                        validator: CxVisionInspectionOptions.Validate);
+                    manager.Initialize();
+                    saved = CxConfigEditorDialog.Edit<CxVisionInspectionOptions>(
+                        this, manager, "Samples.Vision.Inspection");
+                }
+                else if (selected == 3)
+                {
+                    manager.Register<CxCtReconstructionOptions>("Samples.CT3D.Reconstruction",
+                        validator: CxCtReconstructionOptions.Validate);
+                    manager.Initialize();
+                    saved = CxConfigEditorDialog.Edit<CxCtReconstructionOptions>(
+                        this, manager, "Samples.CT3D.Reconstruction");
+                }
+                else
+                {
+                    manager.Register<StudioDemoConfig>("Studio.Demo");
+                    manager.Initialize();
+                    saved = CxConfigEditorDialog.Edit<StudioDemoConfig>(this, manager, "Studio.Demo");
+                }
+                if (saved)
+                    MessageBox.Show(this, "已通过统一L1服务验证并保存示例配置。\n目录：" + root,
+                        "配置已保存", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             catch (Exception ex)
             {
