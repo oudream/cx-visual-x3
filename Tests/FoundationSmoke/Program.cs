@@ -23,11 +23,12 @@ namespace CxVisual.Tests.FoundationSmoke
                 try { CxNumericGuard.RequireFinite(double.NaN, "value");
                     throw new InvalidOperationException("NaN check was not enforced"); }
                 catch (ArgumentOutOfRangeException) { }
-                CxMemoryLogSink logs = new CxMemoryLogSink();
-                logs.Write(new CxLogRecord("Foundation", "Smoke", "Checked"));
+                FLDMemoryLogSink logs = new FLDMemoryLogSink();
+                logs.Write(new FLDLogRecord("Foundation", "Smoke", "Checked"));
                 if (logs.Count != 1 || logs.Get(0).Category != "Foundation")
                     throw new InvalidOperationException("Logger category lost");
-                Console.WriteLine("PASS Foundation: Identity, Geometry, Transform, Numeric guards");
+                LoggingAndMonitoringTests.Run();
+                Console.WriteLine("PASS Foundation: Identity, Geometry, Logging, Rolling, Monitoring");
                 return 0;
             }
             catch (Exception ex) { Console.Error.WriteLine("FAIL Foundation: " + ex); return 1; }

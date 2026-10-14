@@ -15,13 +15,13 @@ namespace CxVisual.Studio
         private Guid? _selected;
         private string _status;
         private readonly string _defaultPath;
-        private readonly CxFileLogSink _logger;
+        private readonly FLDFileLogSink _logger;
         public event PropertyChangedEventHandler PropertyChanged;
         public event EventHandler SceneChanged;
         public StudioViewModel()
         {
             _defaultPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Data", "demo-project.xml");
-            _logger = new CxFileLogSink(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Logs", "studio.log"));
+            _logger = new FLDFileLogSink(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Logs", "studio.log"));
             NewCommand = new RelayCommand(CreateNew);
             AddCommand = new RelayCommand(Add);
             MoveCommand = new RelayCommand(MoveSelected, () => _selected.HasValue);
@@ -68,7 +68,7 @@ namespace CxVisual.Studio
         {
             _editor = new CxVisualEditor(new CxEngineeringSession(CxDocumentFactory.CreateSample()));
             _selected = null;
-            _logger.Write(new CxLogRecord("Engineering", "CreateProject", "New example project"));
+            _logger.Write(new FLDLogRecord("Engineering", "CreateProject", "New example project"));
             Status = "已建立示例工程；使用鼠标选中/拖动矩形，或点击上方命令。";
             NotifyScene();
         }
@@ -88,7 +88,7 @@ namespace CxVisual.Studio
             try
             {
                 CxCommitResult result = callback();
-                _logger.Write(new CxLogRecord("Visual", result.Success ? "Committed" : result.ErrorCode, result.Message));
+                _logger.Write(new FLDLogRecord("Visual", result.Success ? "Committed" : result.ErrorCode, result.Message));
                 Status = result.Success ? "操作成功 | Revision " + result.Revision : result.ErrorCode + ": " + result.Message;
                 NotifyScene();
             }

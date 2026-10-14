@@ -1,0 +1,52 @@
+<Window x:Class="CxVisual.Tests.FoundationWpf.MainWindow"
+  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+  xmlns:views="clr-namespace:CxVisual.Mechanism.Presentation.Wpf;assembly=CxVisual.Mechanism.Presentation.Wpf"
+  Title="CxVisual Foundation · WPF人工与压力测试" Width="1050" Height="690" MinWidth="750" MinHeight="480"
+  Closing="WindowClosing">
+  <DockPanel Margin="10">
+    <Border DockPanel.Dock="Bottom" BorderThickness="1,0,0,0" BorderBrush="LightGray" Padding="5">
+      <TextBlock x:Name="StatusText" Text="测试程序初始化中"/>
+    </Border>
+    <TabControl>
+      <TabItem Header="日志 / 专有文件">
+        <DockPanel Margin="5">
+          <WrapPanel DockPanel.Dock="Top" Margin="3">
+            <TextBlock Text="模块 " VerticalAlignment="Center"/>
+            <TextBox x:Name="ModuleText" Text="F16.Logging" Width="115" Margin="2"/>
+            <TextBlock Text="专有名称 " VerticalAlignment="Center" Margin="10,0,0,0"/>
+            <TextBox x:Name="DedicatedText" Text="PLC01" Width="105" Margin="2"/>
+            <Button Content="普通日志" Click="WriteInfo" Margin="8,2" Padding="9,4"/>
+            <Button Content="专有日志" Click="WriteDedicated" Margin="4,2" Padding="9,4"/>
+            <Button Content="同步MES" Click="WriteSynchronousMes" Margin="4,2" Padding="9,4"/>
+            <Button Content="同步Panda" Click="WriteSynchronousPanda" Margin="4,2" Padding="9,4"/>
+            <Button Content="重要事件" Click="WriteImportant" Margin="4,2" Padding="9,4"/>
+            <Button Content="Flush" Click="FlushLogs" Margin="4,2" Padding="9,4"/>
+          </WrapPanel>
+          <views:LogViewerControl x:Name="Viewer"/>
+        </DockPanel>
+      </TabItem>
+      <TabItem Header="系统 / 进程监控">
+        <DockPanel Margin="5">
+          <StackPanel DockPanel.Dock="Top" Orientation="Horizontal">
+            <Button Content="立即采样" Click="SampleOnce" Padding="10,4" Margin="4"/>
+            <TextBlock Text="每秒自动采样；CPU首次采样显示等待" VerticalAlignment="Center"/>
+          </StackPanel>
+          <views:SystemMonitorControl x:Name="MonitorView"/>
+        </DockPanel>
+      </TabItem>
+      <TabItem Header="压力与异常测试">
+        <StackPanel Margin="18">
+          <TextBlock Text="在后台批量写入，UI保持可交互；丢弃量会显示在底部。" FontSize="15" Margin="0,0,0,12"/>
+          <StackPanel Orientation="Horizontal">
+            <Button Content="写入1,000条" Click="Stress1000" Margin="0,0,8,0" Padding="12,6"/>
+            <Button Content="写入10,000条" Click="Stress10000" Margin="0,0,8,0" Padding="12,6"/>
+            <Button Content="写入错误专有名称" Click="TestInvalidName" Padding="12,6"/>
+          </StackPanel>
+          <TextBlock x:Name="StressResult" Text="未开始" Margin="0,12" TextWrapping="Wrap"/>
+          <TextBlock Text="测试日志写入用户临时目录，不会写入生产AppData、执行设备动作或修改其他工程。" TextWrapping="Wrap"/>
+        </StackPanel>
+      </TabItem>
+    </TabControl>
+  </DockPanel>
+</Window>

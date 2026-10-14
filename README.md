@@ -1,6 +1,6 @@
 # CxVisual.Unified — unified solution and executable samples V1.0-preview
 
-**Architecture:** Foundation (8) → Mechanism (9) → Professional Domain (6) → Applications (2), with Intelligence (1) and Tests (2): **28 traditional C# projects**.
+**Architecture:** Foundation (8) → Mechanism (9) → Professional Domain (6) → Applications (2), with Intelligence (1) and Tests (3): **29 traditional C# projects** (28 original projects plus a WPF test harness).
 
 **Target platform:** Windows x64 / Visual Studio 2019 or 2022 / .NET Framework 4.8 Developer Pack, MSBuild 15+.
 **UI:** WPF and MVVM, no WinForms, no VTK dependency in this sample. `Project/Page/Content/Symbol/Group/Element` lives in `CxVisual.Mechanism.Core`, not Foundation. **Only the specified sample projects contain production-like demonstration behavior.** Other projects are deliberately assembly-only stubs, not invented functionality.
@@ -26,14 +26,14 @@ A manual graphical acceptance procedure is in `Examples/WPF/README.md`. The CLI 
 
 ```text
 CxVisual.Unified/
-├── CxVisual.Unified.sln            # all 28 projects
+├── CxVisual.Unified.sln            # all 29 projects
 ├── CxVisual.Foundation.sln         # 8 foundation projects + 1 test
 ├── Foundation/                     # 8 projects
 ├── Mechanism/                      # 9 projects incl. WPF adapter
 ├── Professional/                   # 6 domain workbench projects
 ├── Applications/                   # Studio (WPF) / Runtime.Host (CLI)
 ├── Intelligence/                   # 1 project
-├── Tests/                          # FoundationSmoke / ArchitectureSmoke
+├── Tests/                          # FoundationSmoke / ArchitectureSmoke / FoundationWpf
 ├── DOCS/                           # decisions / testing / migration / catalog
 ├── DLL/x64/                        # actual manually staged runtime binaries only
 ├── Examples/{CLI,WPF,Cases}/       # demos + test fixtures
@@ -53,6 +53,7 @@ CxVisual.Unified/
 - `CxVisual.Runtime.Host`: CLI demo/save/load executable.
 - `CxVisual.Studio`: interactive WPF application, command toolbar and project state panel.
 - `CxVisual.Tests.FoundationSmoke` and `CxVisual.Tests.ArchitectureSmoke`: independent CLI tests, exit 0/1.
+- `CxVisual.Tests.FoundationWpf`: standalone WPF test harness for F16 logging and F19 monitoring; requires manual GUI acceptance.
 
 Remaining **18 projects** have real `.csproj` and assembly metadata only. This is intentional; they are not yet implemented or tested domain capabilities.
 
@@ -64,3 +65,25 @@ Only structural checks were executed in the current Linux environment; Windows .
 
 ## V1.1 补充
 磁盘目录已缩短为Foundation/Core等，项目和程序集名称保留CxVisual前缀。详见 DOCS/DirectoryLayout_V1.1.md。现已存在 `.agents/skills/cxvisual-engineering/SKILL.md` 及其规范引用；以仓内最新规范、实际源码和测试结果为准，Skill快照不是已实现证明。
+
+## F16/F19基础能力本轮补充
+
+- `Foundation.Infrastructure`：统一日志记录、`FLDLogService`有界队列、专有文件简单日志、重要事件、UTC滚动日志和保留策略；`FCRSystemMonitor`系统与进程指标。
+- `Mechanism.Presentation.Wpf`：可复用 `LogViewerControl` 与 `SystemMonitorControl`；不把WPF依赖带入Foundation。
+- `Tests/FoundationWpf`：独立窗口，三页签，日志操作、监控、压力/异常；只写入系统临时目录。
+- CLI验收 `CxVisual.Tests.FoundationSmoke.exe` 扩充F16/F19正常与异常测试；GUI人工验收：`Build\BUILD.cmd -ShowGUI`，或手动启动 `Output\Debug\x64\CxVisual.Tests.FoundationWpf.exe`。
+
+**验证边界：** 此实现基于源码审阅与结构检查；只有Windows VS2022/MSBuild17 + .NET Framework 4.8环境执行成功后，才能写“编译/自动测试/WPF运行通过”。见 `DOCS/Implementation/Foundation_F16F19_Milestone.md`。
+
+
+## F16命名修订与实时日志（V6.4对齐）
+公开日志基础类型：`FLDLogHelper`（静态便捷入口）、`FLDLogLevel`、`FLDLogRecord`、`FLDLogScope`、`FLDLogEventHandler`；状态服务：`FLDLogService`及`FLDDedicatedLogger`等为运行实现候选，已统一FLD前缀。原`Cx...`开发预览名不作为正式API。
+示例：`FLDLogHelper.Initialize(logRoot);` → `FLDLogHelper.Info("启动");` / `FLDLogHelper.ForModule("CT3D.Recon").Information("完成");` / `FLDLogHelper.ForDedicated("M13", "PLC01").Warning("超时");` → `FLDLogHelper.Stop();`。
+`FLDLogHelper.LogEvent`推送实时记录，WPF直接订阅`FLDLogService.RecordReceived`，后台线程回调应Dispatcher切换。
+按`CallerFilePath`+规则匹配自动补模块，显式module优先，保留`CallerMemberName`。F19原规范只有FCR并发对象；本次`FCRSystemMonitor`等属于**待补录候选**，不能说已在V6.4表中定案。
+
+## F16同步专有日志（与普通实时订阅独立）
+
+新增`FLDEventLogHelper`/`FLDImportantEventLog`同步文件接口，支持MES/Panda/PLC等分类、自定义类别、按本地日期独立文件、流Flush、类别级门限和只清理当前类别历史文件；默认不进入`FLDLogHelper`异步队列，也不触发`LogEvent`，详见`DOCS/Implementation/F16_SynchronousDedicatedFileLogging_V1.md`。
+
+CLI自动测试已登记在`FoundationSmoke/SynchronousLogTests.cs`；FoundationWpf提供同步MES/Panda测试按钮。当前尚未有Windows MSBuild/.NET Framework 4.8实编译及动态验收记录，请不要将源码静态检查误认为已通过运行测试。

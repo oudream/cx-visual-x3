@@ -5,9 +5,9 @@ using System.IO;
 using System.Text;
 namespace CxVisual.Foundation.Infrastructure
 {
-    public interface ICxLogSink
+    public interface IFLDLogSink
     {
-        void Write(CxLogRecord record);
+        void Write(FLDLogRecord record);
     }
     /// <summary>单实例分类日志Sink，无全局单例；外部持有生命周期。</summary>
 }

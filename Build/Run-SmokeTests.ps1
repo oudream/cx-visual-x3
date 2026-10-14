@@ -20,5 +20,9 @@ if ($ShowGUI) {
     if (-not (Test-Path $studio)) { throw 'Missing Studio app' }
     Start-Process -FilePath $studio
     Write-Host 'GUI started. Manual actions: Add / Drag / Undo / Redo / Save / Load.'
+    $foundationWpf = Join-Path $out 'CxVisual.Tests.FoundationWpf.exe'
+    if (-not (Test-Path $foundationWpf)) { throw 'Missing FoundationWpf test app' }
+    Start-Process -FilePath $foundationWpf
+    Write-Host 'FoundationWpf started. Manually exercise Logging/System/Stress tabs.'
 }
 Write-Host 'CLI + unit smoke tests passed.'
