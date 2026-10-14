@@ -1,6 +1,6 @@
 # CxVisual.Unified — unified solution and executable samples V1.0-preview
 
-**Architecture:** Foundation (8) → Mechanism (9) → Professional Domain (6) → Applications (2), with Intelligence (1) and Tests (2): **28 traditional C# projects**.
+**Architecture:** Foundation (8) → Mechanism (9) → Professional Domain (6) → Applications (2), with Intelligence (1) and Tests (3): **29 traditional C# projects** (28 core projects plus one WPF test harness).
 
 **Target platform:** Windows x64 / Visual Studio 2019 or 2022 / .NET Framework 4.8 Developer Pack, MSBuild 15+.
 **UI:** WPF and MVVM, no WinForms, no VTK dependency in this sample. `Project/Page/Content/Symbol/Group/Element` lives in `CxVisual.Mechanism.Core`, not Foundation. **Only the specified sample projects contain production-like demonstration behavior.** Other projects are deliberately assembly-only stubs, not invented functionality.
@@ -19,14 +19,14 @@ A manual graphical acceptance procedure is in `Examples/WPF/README.md`. The CLI 
 
 ```text
 CxVisual.Unified/
-├── CxVisual.Unified.sln            # all 28 projects
+├── CxVisual.Unified.sln            # all 29 projects
 ├── CxVisual.Foundation.sln         # 8 foundation projects + 1 test
 ├── Foundation/                     # 8 projects
 ├── Mechanism/                      # 9 projects incl. WPF adapter
 ├── Professional/                   # 6 domain workbench projects
 ├── Applications/                   # Studio (WPF) / Runtime.Host (CLI)
 ├── Intelligence/                   # 1 project
-├── Tests/                          # FoundationSmoke / ArchitectureSmoke
+├── Tests/                          # FoundationSmoke / ArchitectureSmoke / FoundationWpf
 ├── DOCS/                           # decisions / testing / migration / catalog
 ├── DLL/x64/                        # actual manually staged runtime binaries only
 ├── Examples/{CLI,WPF,Cases}/       # demos + test fixtures
@@ -46,6 +46,7 @@ CxVisual.Unified/
 - `CxVisual.Runtime.Host`: CLI demo/save/load executable.
 - `CxVisual.Studio`: interactive WPF application, command toolbar and project state panel.
 - `CxVisual.Tests.FoundationSmoke` and `CxVisual.Tests.ArchitectureSmoke`: independent CLI tests, exit 0/1.
+- `CxVisual.Tests.FoundationWpf`: standalone WPF test harness (logging, system/process sampling, load tests), run manually.
 
 Remaining **18 projects** have real `.csproj` and assembly metadata only. This is intentional; they are not yet implemented or tested domain capabilities.
 
@@ -57,3 +58,12 @@ Only structural checks were executed in the current Linux environment; Windows .
 
 ## V1.1 补充
 磁盘目录已缩短为Foundation/Core等，项目和程序集名称保留CxVisual前缀。详见 DOCS/DirectoryLayout_V1.1.md。`.agents/`已预留，但Codex Skill V1.0 R2因原始文件不可读取暂未导入。
+
+## F16/F19基础能力本轮补充
+
+- `Foundation.Infrastructure`：统一日志记录、`CxLogHub`有界队列、专有文件简单日志、重要事件、UTC滚动日志和保留策略；`CxSystemMonitor`系统与进程指标。
+- `Mechanism.Presentation.Wpf`：可复用 `LogViewerControl` 与 `SystemMonitorControl`；不把WPF依赖带入Foundation。
+- `Tests/FoundationWpf`：独立窗口，三页签，日志操作、监控、压力/异常；只写入系统临时目录。
+- CLI验收 `CxVisual.Tests.FoundationSmoke.exe` 扩充F16/F19正常与异常测试；GUI人工验收：`Build\BUILD.cmd -ShowGUI`，或手动启动 `Output\Debug\x64\CxVisual.Tests.FoundationWpf.exe`。
+
+**验证边界：** 此实现基于源码审阅与结构检查；只有Windows VS2022/MSBuild17 + .NET Framework 4.8环境执行成功后，才能写“编译/自动测试/WPF运行通过”。见 `DOCS/Implementation/Foundation_F16F19_Milestone.md`。

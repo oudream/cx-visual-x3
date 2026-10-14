@@ -41,6 +41,8 @@
 | Tests | `Tests/ArchitectureSmoke` | `CxVisual.Tests.ArchitectureSmoke.csproj` | `CxVisual.Tests.ArchitectureSmoke` |
 | Tests | `Tests/FoundationSmoke` | `CxVisual.Tests.FoundationSmoke.csproj` | `CxVisual.Tests.FoundationSmoke` |
 
+| Tests | `Tests/FoundationWpf` | `CxVisual.Tests.FoundationWpf.csproj` | `CxVisual.Tests.FoundationWpf` |
+
 ## 验证
 
 - Linux 环境：XML、XAML解析、项目引用、SLN映射、GUID及依赖无环的静态验证。

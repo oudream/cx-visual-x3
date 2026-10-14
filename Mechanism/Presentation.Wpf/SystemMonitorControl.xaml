@@ -1,0 +1,29 @@
+<UserControl x:Class="CxVisual.Mechanism.Presentation.Wpf.SystemMonitorControl"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    MinWidth="500" MinHeight="280">
+  <Grid Margin="10">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+    </Grid.RowDefinitions>
+    <UniformGrid Columns="4" Margin="0,0,0,10">
+      <StackPanel><TextBlock Text="CPU"/><TextBlock x:Name="CpuText" FontWeight="Bold" FontSize="19" Text="采样中"/></StackPanel>
+      <StackPanel><TextBlock Text="可用内存"/><TextBlock x:Name="MemoryText" FontWeight="Bold" FontSize="19" Text="采样中"/></StackPanel>
+      <StackPanel><TextBlock Text="磁盘可用"/><TextBlock x:Name="DiskText" FontWeight="Bold" FontSize="19" Text="采样中"/></StackPanel>
+      <StackPanel><TextBlock Text="在线网卡"/><TextBlock x:Name="NetworkText" FontWeight="Bold" FontSize="19" Text="采样中"/></StackPanel>
+    </UniformGrid>
+    <TextBlock Grid.Row="1" x:Name="StatusText" Text="等候采样..." Margin="0,0,0,5"/>
+    <DataGrid Grid.Row="2" x:Name="ProcessTable" AutoGenerateColumns="False"
+        IsReadOnly="True" CanUserAddRows="False" EnableRowVirtualization="True">
+      <DataGrid.Columns>
+        <DataGridTextColumn Header="PID" Width="70" Binding="{Binding Id}"/>
+        <DataGridTextColumn Header="进程" Width="*" Binding="{Binding Name}"/>
+        <DataGridTextColumn Header="CPU%" Width="85" Binding="{Binding CpuPercent, StringFormat=F1}"/>
+        <DataGridTextColumn Header="内存Bytes" Width="120" Binding="{Binding WorkingSetBytes}"/>
+        <DataGridTextColumn Header="线程" Width="70" Binding="{Binding ThreadCount}"/>
+        <DataGridTextColumn Header="句柄" Width="70" Binding="{Binding HandleCount}"/>
+      </DataGrid.Columns>
+    </DataGrid>
+  </Grid>
+</UserControl>
