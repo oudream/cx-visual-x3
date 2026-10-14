@@ -1,40 +1,52 @@
 using System;
-using System.Collections.Generic;
-using System.Globalization;
 using System.IO;
 using System.Text;
+
 namespace CxVisual.Foundation.Infrastructure
 {
+    /// <summary>线程安全的同步文件Sink。轮转、保留、异步写入属于后续独立验收范围。</summary>
     public sealed class CxFileLogSink : ICxLogSink, IDisposable
     {
         private readonly object _gate = new object();
         private readonly StreamWriter _writer;
+        private readonly bool _structured;
         private bool _disposed;
-        public CxFileLogSink(string path)
+
+        public CxFileLogSink(string path) : this(path, false) { }
+
+        public CxFileLogSink(string path, bool structured)
         {
+            if (string.IsNullOrWhiteSpace(path))
+                throw new ArgumentException("Log file path must not be empty.", "path");
             string full = Path.GetFullPath(path);
             string dir = Path.GetDirectoryName(full);
-            if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
-            _writer = new StreamWriter(new FileStream(full, FileMode.Append, FileAccess.Write, FileShare.Read),
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                Directory.CreateDirectory(dir);
+            _writer = new StreamWriter(
+                new FileStream(full, FileMode.Append, FileAccess.Write, FileShare.Read),
                 new UTF8Encoding(false));
             _writer.AutoFlush = true;
+            _structured = structured;
         }
+
         public void Write(CxLogRecord record)
         {
             if (record == null) throw new ArgumentNullException("record");
             lock (_gate)
             {
                 if (_disposed) throw new ObjectDisposedException("CxFileLogSink");
-                _writer.WriteLine(record.ToString());
+                _writer.WriteLine(_structured ? record.ToStructuredString() : record.ToString());
             }
         }
+
         public void Dispose()
         {
             lock (_gate)
             {
-                if (!_disposed) { _writer.Dispose(); _disposed = true; }
+                if (_disposed) return;
+                _writer.Dispose();
+                _disposed = true;
             }
         }
     }
-    /// <summary>可独立测试的分类日志内存Sink，不依赖Studio或Runtime。</summary>
 }
