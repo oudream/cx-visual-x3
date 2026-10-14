@@ -5,12 +5,12 @@ using System.IO;
 using System.Text;
 namespace CxVisual.Foundation.Infrastructure
 {
-    public sealed class CxFileLogSink : ICxLogSink, IDisposable
+    public sealed class FLDFileLogSink : IFLDLogSink, IDisposable
     {
         private readonly object _gate = new object();
         private readonly StreamWriter _writer;
         private bool _disposed;
-        public CxFileLogSink(string path)
+        public FLDFileLogSink(string path)
         {
             string full = Path.GetFullPath(path);
             string dir = Path.GetDirectoryName(full);
@@ -19,12 +19,12 @@ namespace CxVisual.Foundation.Infrastructure
                 new UTF8Encoding(false));
             _writer.AutoFlush = true;
         }
-        public void Write(CxLogRecord record)
+        public void Write(FLDLogRecord record)
         {
             if (record == null) throw new ArgumentNullException("record");
             lock (_gate)
             {
-                if (_disposed) throw new ObjectDisposedException("CxFileLogSink");
+                if (_disposed) throw new ObjectDisposedException("FLDFileLogSink");
                 _writer.WriteLine(record.ToString());
             }
         }
