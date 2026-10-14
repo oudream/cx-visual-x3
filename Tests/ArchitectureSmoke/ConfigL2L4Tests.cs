@@ -1,7 +1,10 @@
 using System;
 using System.IO;
+using System.Diagnostics;
 using System.Linq;
 using CxVisual.Mechanism.Core;
+using CxVisual.Mechanism.Runtime;
+using CxVisual.Mechanism.Lifecycle;
 using CxVisual.Professional.Vision;
 
 namespace CxVisual.Tests.ArchitectureSmoke
@@ -158,6 +161,10 @@ namespace CxVisual.Tests.ArchitectureSmoke
             CxConfigPublishReport r1 = CxConfigPublisher.Publish(first.Path, a, b);
             Check(r1.Success && a.ActiveReleaseId == "release-001" && b.ActiveReleaseId == "release-001",
                 "Release 001 was not staged and activated on two targets");
+            Check(RuntimeCli("config-status", Path.Combine(root, "runtimeA")).Contains("release-001"),
+                "Runtime.Host separate process did not discover active release");
+            Check(RuntimeCli("config-check", Path.Combine(root, "runtimeA"), "Vision.Live", "0")
+                .Contains("Revision=0"), "Runtime.Host separate process failed to read revision");
 
             m.UpdateAndSave<CxVisionInspectionOptions>("Vision.Live", x => x.GrayThreshold = 2200);
             CxConfigReleasePackage second = CxConfigReleaseBuilder.Build(m, new[] { "Vision.Live" },
@@ -170,7 +177,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(a.ActiveReleaseId == "release-001" &&
                 a.ReadActiveConfigJson("Vision.Live").Contains("1800"), "Rollback to previous package failed");
 
-            string tamperFile = Path.Combine(second.Path, "Vision.Live.json");
+            string tamperFile = Path.Combine(second.Path, "payload", "Vision.Live.json");
             File.AppendAllText(tamperFile, "altered");
             Expect<InvalidDataException>(() => b.Stage(second.Path), "Tampered release accepted");
             Check(b.ActiveReleaseId == "release-002", "Invalid stage damaged active release");
@@ -178,6 +185,35 @@ namespace CxVisual.Tests.ArchitectureSmoke
             CxConfigReleaseReceiver bad = new CxConfigReleaseReceiver(Path.Combine(root, "runtimeC"));
             CxConfigPublishReport fail = CxConfigPublisher.Publish(second.Path, a, bad);
             Check(!fail.Success && a.ActiveReleaseId == "release-001", "Failed publish changed previous active version");
+        }
+
+
+        private static string RuntimeCli(params string[] arguments)
+        {
+            string exe = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "CxVisual.Runtime.Host.exe");
+            if (!File.Exists(exe)) throw new FileNotFoundException("Runtime.Host is required for L4 process-level test", exe);
+            ProcessStartInfo start = new ProcessStartInfo
+            {
+                FileName = exe,
+                Arguments = string.Join(" ", arguments.Select(x => "\"" + x.Replace("\"", "") + "\"")),
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            using (Process process = Process.Start(start))
+            {
+                if (!process.WaitForExit(10000))
+                {
+                    process.Kill();
+                    throw new TimeoutException("Runtime.Host CLI did not exit");
+                }
+                string output = process.StandardOutput.ReadToEnd();
+                string error = process.StandardError.ReadToEnd();
+                if (process.ExitCode != 0)
+                    throw new InvalidOperationException("Runtime.Host CLI failed: " + error + " " + output);
+                return output;
+            }
         }
 
         private static void Expect<T>(Action action, string why) where T : Exception

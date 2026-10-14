@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using CxVisual.Mechanism.Core;
+using CxVisual.Mechanism.Lifecycle;
 using CxVisual.Mechanism.Visual;
 using CxVisual.Foundation.Infrastructure;
 

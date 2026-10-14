@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Windows;
 using CxVisual.Mechanism.Core;
+using CxVisual.Mechanism.Lifecycle;
 using CxVisual.Professional.Automation;
 using CxVisual.Professional.Vision;
 using CxVisual.Professional.CT3D;

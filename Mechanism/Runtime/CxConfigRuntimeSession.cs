@@ -2,8 +2,9 @@ using System;
 using System.IO;
 using System.Threading;
 using CxVisual.Foundation.Data;
+using CxVisual.Mechanism.Core;
 
-namespace CxVisual.Mechanism.Core
+namespace CxVisual.Mechanism.Runtime
 {
     public enum CxConfigApplyPolicy
     {

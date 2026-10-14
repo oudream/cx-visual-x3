@@ -5,8 +5,9 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using CxVisual.Foundation.Data;
+using CxVisual.Mechanism.Core;
 
-namespace CxVisual.Mechanism.Core
+namespace CxVisual.Mechanism.Lifecycle
 {
     public sealed class CxConfigReleaseItem
     {
@@ -44,10 +45,10 @@ namespace CxVisual.Mechanism.Core
                     throw new ArgumentException("Unsafe identifier: " + id);
         }
 
-        internal static string Hash(string value)
+        internal static string Hash(byte[] bytes)
         {
             using (SHA256 sha = SHA256.Create())
-                return BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(value)))
+                return BitConverter.ToString(sha.ComputeHash(bytes))
                     .Replace("-", "").ToLowerInvariant();
         }
 
@@ -77,12 +78,15 @@ namespace CxVisual.Mechanism.Core
                 {
                     string json = manager.ExportSavedJson(id);
                     CxConfigDocumentHeader hdr = CxConfigJsonFile.ReadHeader(json);
-                    string name = id + ".json";
-                    File.WriteAllText(System.IO.Path.Combine(temp, name), json, Encoding.UTF8);
+                    string name = "payload/" + id + ".json";
+                    string targetFile = System.IO.Path.Combine(temp, "payload", id + ".json");
+                    Directory.CreateDirectory(System.IO.Path.GetDirectoryName(targetFile));
+                    byte[] data = new UTF8Encoding(false).GetBytes(json);
+                    File.WriteAllBytes(targetFile, data);
                     manifest.Items.Add(new CxConfigReleaseItem
                     {
                         Id = id, FileName = name, SchemaVersion = hdr.SchemaVersion,
-                        Revision = hdr.Revision, Sha256 = Hash(json)
+                        Revision = hdr.Revision, Sha256 = Hash(data)
                     });
                 }
                 File.WriteAllText(System.IO.Path.Combine(temp, "manifest.json"),
@@ -117,13 +121,16 @@ namespace CxVisual.Mechanism.Core
             {
                 if (item == null) throw new InvalidDataException("Null release item");
                 ValidateId(item.Id);
-                if (item.FileName != item.Id + ".json" || item.SchemaVersion < 1 || item.Revision < 0)
+                if (item.FileName != "payload/" + item.Id + ".json" || item.SchemaVersion < 1 || item.Revision < 0)
                     throw new InvalidDataException("Invalid release item");
                 string file = System.IO.Path.Combine(packagePath, item.FileName);
                 if (!File.Exists(file)) throw new InvalidDataException("Missing configuration payload " + item.FileName);
-                string json = File.ReadAllText(file, Encoding.UTF8);
-                if (!string.Equals(Hash(json), item.Sha256, StringComparison.Ordinal))
+                byte[] bytes = File.ReadAllBytes(file);
+                if (!string.Equals(Hash(bytes), item.Sha256, StringComparison.Ordinal))
                     throw new InvalidDataException("CONFIG_PACKAGE_HASH_MISMATCH: " + item.Id);
+                string json;
+                try { json = new UTF8Encoding(false, true).GetString(bytes); }
+                catch (DecoderFallbackException ex) { throw new InvalidDataException("Invalid UTF-8 payload", ex); }
                 CxConfigDocumentHeader hdr = CxConfigJsonFile.ReadHeader(json);
                 if (hdr.Id != item.Id || hdr.SchemaVersion != item.SchemaVersion || hdr.Revision != item.Revision)
                     throw new InvalidDataException("CONFIG_PACKAGE_HEADER_MISMATCH: " + item.Id);
@@ -182,8 +189,11 @@ namespace CxVisual.Mechanism.Core
                 {
                     Directory.CreateDirectory(temp);
                     foreach (CxConfigReleaseItem item in manifest.Items)
-                        File.Copy(System.IO.Path.Combine(packagePath, item.FileName),
-                            System.IO.Path.Combine(temp, item.FileName));
+                    {
+                        string targetFile = System.IO.Path.Combine(temp, item.FileName);
+                        Directory.CreateDirectory(System.IO.Path.GetDirectoryName(targetFile));
+                        File.Copy(System.IO.Path.Combine(packagePath, item.FileName), targetFile);
+                    }
                     File.Copy(System.IO.Path.Combine(packagePath, "manifest.json"),
                         System.IO.Path.Combine(temp, "manifest.json"));
                     CxConfigReleaseBuilder.Verify(temp);
@@ -205,13 +215,16 @@ namespace CxVisual.Mechanism.Core
             lock (_gate)
             {
                 CxConfigReleaseBuilder.Verify(System.IO.Path.Combine(Releases, releaseId));
-                CxConfigActivePointer old = ReadPointer();
-                if (old.ActiveId == releaseId) return;
-                WritePointer(new CxConfigActivePointer
+                using (FileStream gate = OpenPointerGate())
                 {
-                    ActiveId = releaseId, PreviousId = old.ActiveId,
-                    Revision = checked(old.Revision + 1), ChangedUtc = DateTime.UtcNow
-                });
+                    CxConfigActivePointer old = ReadPointer();
+                    if (old.ActiveId == releaseId) return;
+                    WritePointer(new CxConfigActivePointer
+                    {
+                        ActiveId = releaseId, PreviousId = old.ActiveId,
+                        Revision = checked(old.Revision + 1), ChangedUtc = DateTime.UtcNow
+                    });
+                }
             }
         }
 
@@ -219,15 +232,18 @@ namespace CxVisual.Mechanism.Core
         {
             lock (_gate)
             {
-                CxConfigActivePointer old = ReadPointer();
-                if (old.ActiveId == null) return;
-                if (old.PreviousId != null)
-                    CxConfigReleaseBuilder.Verify(System.IO.Path.Combine(Releases, old.PreviousId));
-                WritePointer(new CxConfigActivePointer
+                using (FileStream gate = OpenPointerGate())
                 {
-                    ActiveId = old.PreviousId, PreviousId = old.ActiveId,
-                    Revision = checked(old.Revision + 1), ChangedUtc = DateTime.UtcNow
-                });
+                    CxConfigActivePointer old = ReadPointer();
+                    if (old.ActiveId == null) return;
+                    if (old.PreviousId != null)
+                        CxConfigReleaseBuilder.Verify(System.IO.Path.Combine(Releases, old.PreviousId));
+                    WritePointer(new CxConfigActivePointer
+                    {
+                        ActiveId = old.PreviousId, PreviousId = old.ActiveId,
+                        Revision = checked(old.Revision + 1), ChangedUtc = DateTime.UtcNow
+                    });
+                }
             }
         }
 
@@ -242,32 +258,41 @@ namespace CxVisual.Mechanism.Core
                 CxConfigReleaseManifest manifest = CxConfigReleaseBuilder.Verify(directory);
                 if (!manifest.Items.Any(x => x.Id == configId))
                     throw new KeyNotFoundException("Release does not contain " + configId);
-                return File.ReadAllText(System.IO.Path.Combine(directory, configId + ".json"), Encoding.UTF8);
+                CxConfigReleaseItem item = manifest.Items.First(x => x.Id == configId);
+                return File.ReadAllText(System.IO.Path.Combine(directory, item.FileName), Encoding.UTF8);
             }
         }
 
         private CxConfigActivePointer ReadPointer()
         {
             if (!File.Exists(PointerFile)) return new CxConfigActivePointer();
-            try { return (CxConfigActivePointer)CxConfigJsonFile.Deserialize(
-                File.ReadAllText(PointerFile, Encoding.UTF8), typeof(CxConfigActivePointer)); }
+            try
+            {
+                CxConfigActivePointer p = (CxConfigActivePointer)CxConfigJsonFile.Deserialize(
+                    File.ReadAllText(PointerFile, Encoding.UTF8), typeof(CxConfigActivePointer));
+                if (p == null || p.Revision < 0) throw new InvalidDataException("Invalid active pointer");
+                if (p.ActiveId != null) CxConfigReleaseBuilder.ValidateId(p.ActiveId);
+                if (p.PreviousId != null) CxConfigReleaseBuilder.ValidateId(p.PreviousId);
+                return p;
+            }
             catch (Exception ex) { throw new InvalidDataException("Invalid active release pointer", ex); }
+        }
+
+        private FileStream OpenPointerGate()
+        {
+            return new FileStream(PointerFile + ".lock", FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
         }
 
         private void WritePointer(CxConfigActivePointer value)
         {
             string temp = PointerFile + ".tmp";
-            using (FileStream gate = new FileStream(PointerFile + ".lock",
-                FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None))
+            try
             {
-                try
-                {
-                    File.WriteAllText(temp, CxConfigJsonFile.Serialize(value), Encoding.UTF8);
-                    if (File.Exists(PointerFile)) File.Replace(temp, PointerFile, PointerFile + ".bak");
-                    else File.Move(temp, PointerFile);
-                }
-                finally { if (File.Exists(temp)) File.Delete(temp); }
+                File.WriteAllText(temp, CxConfigJsonFile.Serialize(value), Encoding.UTF8);
+                if (File.Exists(PointerFile)) File.Replace(temp, PointerFile, PointerFile + ".bak");
+                else File.Move(temp, PointerFile);
             }
+            finally { if (File.Exists(temp)) File.Delete(temp); }
         }
     }
 

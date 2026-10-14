@@ -29,6 +29,8 @@
                     <ComboBoxItem Content="CT3D重建"/>
                 </ComboBox>
                 <Button Click="OnConfigDemo" Content="编辑所选配置 (L1)"/>
+                <Button Click="OnPublishConfigDemo" Content="发布示例配置 (L4)"/>
+                <Button Click="OnRollbackConfigDemo" Content="回滚发布"/>
             </WrapPanel>
         </Border>
         <Border DockPanel.Dock="Bottom" Background="#E7EDF6" BorderThickness="0,1,0,0" BorderBrush="#D2DCE9" Padding="15,9">
