@@ -1,0 +1,32 @@
+<UserControl x:Class="CxVisual.Mechanism.Presentation.Wpf.LogViewerControl"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    MinWidth="500" MinHeight="280">
+  <Grid Margin="8">
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+    <StackPanel Orientation="Horizontal" Margin="0,0,0,7">
+      <TextBlock Text="级别" VerticalAlignment="Center" Margin="0,0,6,0"/>
+      <ComboBox x:Name="LevelFilter" Width="110" SelectedIndex="0"
+          SelectionChanged="FilterChanged" Margin="0,0,12,0">
+        <ComboBoxItem Content="全部"/><ComboBoxItem Content="Debug"/>
+        <ComboBoxItem Content="Information"/><ComboBoxItem Content="Warning"/>
+        <ComboBoxItem Content="Error"/><ComboBoxItem Content="Critical"/>
+      </ComboBox>
+      <TextBlock Text="筛选" VerticalAlignment="Center" Margin="0,0,6,0"/>
+      <TextBox x:Name="SearchText" Width="210" TextChanged="FilterTextChanged" Margin="0,0,12,0"/>
+      <CheckBox x:Name="Paused" Content="暂停滚动" VerticalAlignment="Center"/>
+      <Button Content="清空视图" Click="ClearClicked" Margin="12,0,0,0" Padding="7,3"/>
+    </StackPanel>
+    <DataGrid x:Name="LogTable" Grid.Row="1" IsReadOnly="True"
+        AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column"
+        EnableRowVirtualization="True" SelectionMode="Single">
+      <DataGrid.Columns>
+        <DataGridTextColumn Header="UTC时间" Width="142" Binding="{Binding TimeUtc, StringFormat=HH:mm:ss.fff}"/>
+        <DataGridTextColumn Header="等级" Width="98" Binding="{Binding Level}"/>
+        <DataGridTextColumn Header="模块" Width="155" Binding="{Binding ModuleId}"/>
+        <DataGridTextColumn Header="专有日志" Width="120" Binding="{Binding DedicatedName}"/>
+        <DataGridTextColumn Header="内容" Width="*" Binding="{Binding Message}"/>
+      </DataGrid.Columns>
+    </DataGrid>
+  </Grid>
+</UserControl>

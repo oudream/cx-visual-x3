@@ -44,8 +44,8 @@ namespace CxVisual.Runtime.Host
             CxProjectDocument document = CxDocumentFactory.CreateSample();
             CxVisualEditor visual = new CxVisualEditor(new CxEngineeringSession(document));
             Console.WriteLine("CxVisual unified engineering demo — no external device or driver");
-            using (CxFileLogSink logger = new CxFileLogSink(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Logs", "runtime-host.log")))
-                logger.Write(new CxLogRecord("RuntimeHost", "Demo", "Engineering demo started"));
+            using (FLDFileLogSink logger = new FLDFileLogSink(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Logs", "runtime-host.log")))
+                logger.Write(new FLDLogRecord("RuntimeHost", "Demo", "Engineering demo started"));
             Show(visual.Scene);
             CxCommitResult added = visual.AddRectangle("ROI", 450, 65, 95, 95);
             if (!added.Success) throw new InvalidOperationException(added.ErrorCode);
