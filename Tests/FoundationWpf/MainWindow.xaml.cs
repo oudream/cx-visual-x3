@@ -24,6 +24,7 @@ namespace CxVisual.Tests.FoundationWpf
                 _monitor = new FCRSystemMonitor(1000, current.ProcessName);
             FLDLogHelper.Attach(_log);
             FLDLogHelper.RegisterModuleRule("MainWindow", "Foundation.WpfTest");
+            FLDEventLogHelper.Init(Path.Combine(_testRoot, "Synchronous"));
             Viewer.Attach(_log);
             MonitorView.Attach(_monitor);
             _monitor.SamplingFailed += MonitorFailed;
@@ -45,6 +46,30 @@ namespace CxVisual.Tests.FoundationWpf
                 StatusText.Text = "专有文件：" + DedicatedText.Text;
             }
             catch (Exception ex) { StatusText.Text = "参数错误：" + ex.Message; }
+        }
+
+        private void WriteSynchronousMes(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                FLDEventLogHelper.Information(FLDLOG_TYPE.Mes, "ManualTest",
+                    "FoundationWpf", "MES直接同步写入");
+                StatusText.Text = "同步MES已Flush到独立文件（不推送LogViewer）：" +
+                    Path.Combine(_testRoot, "Synchronous");
+            }
+            catch (Exception ex) { StatusText.Text = "同步MES失败：" + ex.Message; }
+        }
+
+        private void WriteSynchronousPanda(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                FLDEventLogHelper.Error(FLDLOG_TYPE.Panda, "ManualTest",
+                    "FoundationWpf", "Panda直接同步写入");
+                StatusText.Text = "同步Panda已Flush到独立文件（不推送LogViewer）：" +
+                    Path.Combine(_testRoot, "Synchronous");
+            }
+            catch (Exception ex) { StatusText.Text = "同步Panda失败：" + ex.Message; }
         }
 
         private void WriteImportant(object sender, RoutedEventArgs e)
@@ -120,6 +145,7 @@ namespace CxVisual.Tests.FoundationWpf
             _monitor.Dispose();
             try { _log.Flush(15000); }
             catch (Exception ex) { StatusText.Text = "日志Flush失败：" + ex.Message; }
+            FLDEventLogHelper.Release();
             FLDLogHelper.Stop();
             _log.Dispose();
         }

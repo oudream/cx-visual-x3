@@ -14,6 +14,6 @@
     <Reference Include="System.Core"/>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Properties\AssemblyInfo.cs"/><Compile Include="FLDFileLogSink.cs"/><Compile Include="FLDLogRecord.cs"/><Compile Include="FLDMemoryLogSink.cs"/><Compile Include="IFLDLogSink.cs"/><Compile Include="FLDLogLevel.cs"/><Compile Include="FLDRollingFileLogSink.cs"/><Compile Include="FLDLogService.cs"/><Compile Include="FCRProcessSnapshot.cs"/><Compile Include="FCRSystemSnapshot.cs"/><Compile Include="FCRSystemMonitor.cs"/><Compile Include="FLDLogHelper.cs"/><Compile Include="FLDLogScope.cs"/></ItemGroup>
+    <Compile Include="Properties\AssemblyInfo.cs"/><Compile Include="FLDFileLogSink.cs"/><Compile Include="FLDLogRecord.cs"/><Compile Include="FLDMemoryLogSink.cs"/><Compile Include="IFLDLogSink.cs"/><Compile Include="FLDLogLevel.cs"/><Compile Include="FLDRollingFileLogSink.cs"/><Compile Include="FLDLogService.cs"/><Compile Include="FCRProcessSnapshot.cs"/><Compile Include="FCRSystemSnapshot.cs"/><Compile Include="FCRSystemMonitor.cs"/><Compile Include="FLDLogHelper.cs"/><Compile Include="FLDLogScope.cs"/><Compile Include="FLDLOG_TYPE.cs"/><Compile Include="FLDImportantEventLogEntry.cs"/><Compile Include="FLDImportantEventLog.cs"/><Compile Include="FLDEventLogHelper.cs"/></ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets"/>
 </Project>

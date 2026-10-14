@@ -18,6 +18,8 @@
             <TextBox x:Name="DedicatedText" Text="PLC01" Width="105" Margin="2"/>
             <Button Content="普通日志" Click="WriteInfo" Margin="8,2" Padding="9,4"/>
             <Button Content="专有日志" Click="WriteDedicated" Margin="4,2" Padding="9,4"/>
+            <Button Content="同步MES" Click="WriteSynchronousMes" Margin="4,2" Padding="9,4"/>
+            <Button Content="同步Panda" Click="WriteSynchronousPanda" Margin="4,2" Padding="9,4"/>
             <Button Content="重要事件" Click="WriteImportant" Margin="4,2" Padding="9,4"/>
             <Button Content="Flush" Click="FlushLogs" Margin="4,2" Padding="9,4"/>
           </WrapPanel>

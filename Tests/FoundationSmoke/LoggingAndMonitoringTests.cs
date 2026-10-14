@@ -17,6 +17,7 @@ namespace CxVisual.Tests.FoundationSmoke
             {
                 TestLogging(root);
                 TestConvenientApi(Path.Combine(root, "Convenient"));
+                SynchronousLogTests.Run(Path.Combine(root, "SynchronousLog"));
                 TestMonitoring();
             }
             finally

@@ -1,9 +1,16 @@
 # CxVisual.Unified — unified solution and executable samples V1.0-preview
 
-**Architecture:** Foundation (8) → Mechanism (9) → Professional Domain (6) → Applications (2), with Intelligence (1) and Tests (3): **29 traditional C# projects** (28 core projects plus one WPF test harness).
+**Architecture:** Foundation (8) → Mechanism (9) → Professional Domain (6) → Applications (2), with Intelligence (1) and Tests (3): **29 traditional C# projects** (28 original projects plus a WPF test harness).
 
 **Target platform:** Windows x64 / Visual Studio 2019 or 2022 / .NET Framework 4.8 Developer Pack, MSBuild 15+.
 **UI:** WPF and MVVM, no WinForms, no VTK dependency in this sample. `Project/Page/Content/Symbol/Group/Element` lives in `CxVisual.Mechanism.Core`, not Foundation. **Only the specified sample projects contain production-like demonstration behavior.** Other projects are deliberately assembly-only stubs, not invented functionality.
+
+## 文档入口与历史代码资产
+
+- **协同开发主入口**：[DOCS/00_CxVisual_协同开发入口与七仓复用基线.md](DOCS/00_CxVisual_协同开发入口与七仓复用基线.md)；工程规则见 [AGENTS.md](AGENTS.md)，Codex任务规范见 [.agents/skills/cxvisual-engineering/SKILL.md](.agents/skills/cxvisual-engineering/SKILL.md)。
+- **七仓技术资产档案（按任务选择阅读，不要求每次通读）**：[01_ccxx.md](DOCS/Codebases/01_ccxx.md)（C/C++基础库）、[02_device_communicator.md](DOCS/Codebases/02_device_communicator.md)（IoT设备模型、点表、通信、监控）、[03_gcl3.md](DOCS/Codebases/03_gcl3.md)（ICS/SCADA、终端、实时数据与Bus）。
+- **重要边界**：这些档案包含源代码事实、历史工程经验及**可修正设计提案**，不是新CxVisual已实现/已批准的类型或测试结果；以现行DOCS规格、真实源码与经验证结果裁决。
+- **入口同步规则**：新增、重命名或实质更新`DOCS/Codebases/`档案时，检查并按需同步本README、`AGENTS.md`和`DOCS/00_`导航；只保留一个专项主文档，避免重复事实源。
 
 ## Build and verify on Windows
 
@@ -46,18 +53,18 @@ CxVisual.Unified/
 - `CxVisual.Runtime.Host`: CLI demo/save/load executable.
 - `CxVisual.Studio`: interactive WPF application, command toolbar and project state panel.
 - `CxVisual.Tests.FoundationSmoke` and `CxVisual.Tests.ArchitectureSmoke`: independent CLI tests, exit 0/1.
-- `CxVisual.Tests.FoundationWpf`: standalone WPF test harness (logging, system/process sampling, load tests), run manually.
+- `CxVisual.Tests.FoundationWpf`: standalone WPF test harness for F16 logging and F19 monitoring; requires manual GUI acceptance.
 
 Remaining **18 projects** have real `.csproj` and assembly metadata only. This is intentional; they are not yet implemented or tested domain capabilities.
 
 ## Spec/source status
 
-The separate document **《CxVisual 统一工程、项目、代码与资源规范 V1.0》 was not accessible as a file** at creation time. This preview follows the most recently approved design decisions recoverable from prior discussions, not a claimed pixel/paragraph exact reproduction. See `DOCS/ComplianceMatrix.md`.
+The V1.0 preview was originally created before a fully verified specification-based implementation. The repository now contains `DOCS/CxVisual_统一工程项目代码与资源规范_V1.0.md`; use its current contents and `DOCS/ComplianceMatrix.md` when reviewing spec-to-code differences. The existence of the specification does **not** imply that the preview implements all planned capabilities.
 
 Only structural checks were executed in the current Linux environment; Windows .NET Framework/MSBuild/WPF execution has **not** yet occurred. See `DOCS/Testing/VerificationReport.md`.
 
 ## V1.1 补充
-磁盘目录已缩短为Foundation/Core等，项目和程序集名称保留CxVisual前缀。详见 DOCS/DirectoryLayout_V1.1.md。`.agents/`已预留，但Codex Skill V1.0 R2因原始文件不可读取暂未导入。
+磁盘目录已缩短为Foundation/Core等，项目和程序集名称保留CxVisual前缀。详见 DOCS/DirectoryLayout_V1.1.md。现已存在 `.agents/skills/cxvisual-engineering/SKILL.md` 及其规范引用；以仓内最新规范、实际源码和测试结果为准，Skill快照不是已实现证明。
 
 ## F16/F19基础能力本轮补充
 
@@ -74,3 +81,9 @@ Only structural checks were executed in the current Linux environment; Windows .
 示例：`FLDLogHelper.Initialize(logRoot);` → `FLDLogHelper.Info("启动");` / `FLDLogHelper.ForModule("CT3D.Recon").Information("完成");` / `FLDLogHelper.ForDedicated("M13", "PLC01").Warning("超时");` → `FLDLogHelper.Stop();`。
 `FLDLogHelper.LogEvent`推送实时记录，WPF直接订阅`FLDLogService.RecordReceived`，后台线程回调应Dispatcher切换。
 按`CallerFilePath`+规则匹配自动补模块，显式module优先，保留`CallerMemberName`。F19原规范只有FCR并发对象；本次`FCRSystemMonitor`等属于**待补录候选**，不能说已在V6.4表中定案。
+
+## F16同步专有日志（与普通实时订阅独立）
+
+新增`FLDEventLogHelper`/`FLDImportantEventLog`同步文件接口，支持MES/Panda/PLC等分类、自定义类别、按本地日期独立文件、流Flush、类别级门限和只清理当前类别历史文件；默认不进入`FLDLogHelper`异步队列，也不触发`LogEvent`，详见`DOCS/Implementation/F16_SynchronousDedicatedFileLogging_V1.md`。
+
+CLI自动测试已登记在`FoundationSmoke/SynchronousLogTests.cs`；FoundationWpf提供同步MES/Panda测试按钮。当前尚未有Windows MSBuild/.NET Framework 4.8实编译及动态验收记录，请不要将源码静态检查误认为已通过运行测试。
