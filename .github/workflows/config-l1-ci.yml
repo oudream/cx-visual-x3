@@ -28,6 +28,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Runtime save failed" }
           & .\Output\Release\x64\CxVisual.Runtime.Host.exe load .\Output\Release\x64\Data\config-l1-smoke.xml
           if ($LASTEXITCODE -ne 0) { throw "Runtime reload failed" }
+      - name: Test generated WPF editors with real STA interactions
+        shell: pwsh
+        run: |
+          & .\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe --config-wpf
+          if ($LASTEXITCODE -ne 0) { throw "Config WPF UI interaction test failed" }
       - name: Full shared smoke diagnostics (F16 under concurrent development)
         shell: pwsh
         continue-on-error: true

@@ -17,6 +17,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf
     {
         public static bool Edit<T>(Window owner, CxConfigManager manager, string id) where T : class
         {
+            return CreateWindow<T>(owner, manager, id).ShowDialog() == true;
+        }
+
+        /// <summary>生成可独立检查和自动化测试的配置编辑窗口，Edit仍为便利入口。</summary>
+        public static Window CreateWindow<T>(Window owner, CxConfigManager manager, string id) where T : class
+        {
             if (manager == null) throw new ArgumentNullException("manager");
             T draft = manager.Get<T>(id);
             long revision = manager.GetRevision(id);
@@ -53,14 +59,15 @@ namespace CxVisual.Mechanism.Presentation.Wpf
 
             TextBlock error = new TextBlock
             {
+                Name = "ConfigL1_Error",
                 Foreground = Brushes.Firebrick,
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 8)
             };
             actions.Children.Add(error);
             StackPanel buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
-            Button save = new Button { Content = "验证并保存", Width = 112, Margin = new Thickness(0, 0, 8, 0), Padding = new Thickness(8) };
-            Button cancel = new Button { Content = "取消", Width = 80, Padding = new Thickness(8) };
+            Button save = new Button { Name = "ConfigL1_Save", Content = "验证并保存", Width = 112, Margin = new Thickness(0, 0, 8, 0), Padding = new Thickness(8) };
+            Button cancel = new Button { Name = "ConfigL1_Cancel", Content = "取消", Width = 80, Padding = new Thickness(8) };
             buttons.Children.Add(save);
             buttons.Children.Add(cancel);
             actions.Children.Add(buttons);
@@ -127,6 +134,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                         Foreground = Brushes.Gray, TextWrapping = TextWrapping.Wrap
                     };
                 }
+                control.Tag = property.Name;
                 Grid.SetColumn(control, 1);
                 line.Children.Add(control);
                 fields.Children.Add(line);
@@ -169,7 +177,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 }
                 catch (Exception ex) { error.Text = "保存失败，已保留原有效版本：" + ex.Message; }
             };
-            return window.ShowDialog() == true;
+            return window;
         }
 
         private static bool IsNumber(Type type)

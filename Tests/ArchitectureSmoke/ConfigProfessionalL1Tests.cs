@@ -66,8 +66,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 x => x.ReconnectDelayMs = 100), "Unsafe reconnect pace accepted");
 
             ExpectArgument(() => m.Update<CxVisionInspectionOptions>("Vision.Inspection",
-                x => { x.PixelDepth = CxVisionPixelDepth.Bits8; x.GrayThreshold = 256; }),
-                "8-bit threshold accepted 256");
+                x => { x.PixelDepth = CxVisionPixelDepth.Bits8; x.GrayThreshold = 256; }), "8-bit threshold accepted 256");
             ExpectArgument(() => m.Update<CxVisionInspectionOptions>("Vision.Inspection",
                 x => x.MinDefectArea = x.MaxDefectArea + 1), "Inverted defect area accepted");
             ExpectArgument(() => m.Update<CxVisionInspectionOptions>("Vision.Inspection",
