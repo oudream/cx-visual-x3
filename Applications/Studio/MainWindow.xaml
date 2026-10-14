@@ -21,6 +21,7 @@
                 <Button Command="{Binding RedoCommand}" Content="重做"/>
                 <Button Command="{Binding SaveCommand}" Content="保存XML"/>
                 <Button Command="{Binding LoadCommand}" Content="加载XML"/>
+                <Button Click="OnConfigDemo" Content="配置编辑 (L1)"/>
             </WrapPanel>
         </Border>
         <Border DockPanel.Dock="Bottom" Background="#E7EDF6" BorderThickness="0,1,0,0" BorderBrush="#D2DCE9" Padding="15,9">

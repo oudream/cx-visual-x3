@@ -8,7 +8,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
     /// <summary>配置L1行为合同：先于实现写入；后续不允许用空壳让测试通过。</summary>
     internal static class ConfigL1Tests
     {
-        private sealed class DetectionOptions
+        public sealed class DetectionOptions
         {
             [CxConfigItem("阈值", Min = 0, Max = 4095, Category = "检测")]
             public int Threshold { get; set; } = 100;
@@ -20,7 +20,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             public bool Enabled { get; set; } = true;
         }
 
-        private sealed class NetworkOptions
+        public sealed class NetworkOptions
         {
             [CxConfigItem("端口", Min = 1, Max = 65535)]
             public int Port { get; set; } = 5000;

@@ -1,0 +1,16 @@
+name: CxVisual L1 Windows Build and Smoke
+on:
+  push:
+    branches:
+      - master
+      - 'feat/config-l1-*'
+  pull_request:
+jobs:
+  build-and-tests:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - name: Build solution and run all smoke tests
+        shell: pwsh
+        run: .\Build\BuildAndTest.ps1 -Configuration Release
