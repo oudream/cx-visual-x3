@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using CxVisual.Foundation.Core;
 using CxVisual.Foundation.Geometry;
 using CxVisual.Mechanism.Core;
 namespace CxVisual.Mechanism.Visual
