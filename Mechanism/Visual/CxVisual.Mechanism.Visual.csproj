@@ -1,0 +1,23 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003" ToolsVersion="15.0" DefaultTargets="Build">
+  <Import Project="..\..\Build\CxVisual.Build.props"/>
+  <PropertyGroup>
+    <ProjectGuid>{A6C1F1D1-2E3F-54AF-8E35-1A1EBA6B9CB3}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <RootNamespace>CxVisual.Mechanism.Visual</RootNamespace>
+    <AssemblyName>CxVisual.Mechanism.Visual</AssemblyName>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System"/>
+    <Reference Include="System.Core"/>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Properties\AssemblyInfo.cs"/><Compile Include="CxSceneItem.cs"/><Compile Include="CxSceneProjection.cs"/><Compile Include="CxVisualEditor.cs"/></ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\Foundation\Geometry\CxVisual.Foundation.Geometry.csproj"><Project>{B6570EF1-8979-50D9-AF3A-3BD5450A0A23}</Project><Name>CxVisual.Foundation.Geometry</Name></ProjectReference>
+    <ProjectReference Include="..\..\Mechanism\Core\CxVisual.Mechanism.Core.csproj"><Project>{0822C861-81CD-5615-9428-D7AD3CC83AF1}</Project><Name>CxVisual.Mechanism.Core</Name></ProjectReference>
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets"/>
+</Project>

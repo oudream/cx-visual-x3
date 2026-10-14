@@ -1,0 +1,53 @@
+<Window x:Class="CxVisual.Studio.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:scene="clr-namespace:CxVisual.Mechanism.Presentation.Wpf;assembly=CxVisual.Mechanism.Presentation.Wpf"
+        Title="CxVisual Unified — Engineering / Visual Sample" Width="1100" Height="720"
+        MinWidth="850" MinHeight="560" WindowStartupLocation="CenterScreen"
+        Background="{StaticResource StudioBackgroundBrush}" FontFamily="Segoe UI">
+    <DockPanel LastChildFill="True">
+        <Border DockPanel.Dock="Top" Background="#182D4B" Padding="18,14">
+            <StackPanel>
+                <TextBlock Text="CxVisual Unified Studio" Foreground="White" FontSize="23" FontWeight="SemiBold"/>
+                <TextBlock Text="工程真源 → Visual编辑命令 → WPF输入/绘制；点击选择，拖动矩形，支持撤销重做" Foreground="#AEC7E9" FontSize="12" Margin="0,3,0,0" />
+            </StackPanel>
+        </Border>
+        <Border DockPanel.Dock="Top" Background="White" Padding="10" BorderBrush="#CFD8E6" BorderThickness="0,0,0,1">
+            <WrapPanel VerticalAlignment="Center">
+                <Button Command="{Binding NewCommand}" Content="新建工程"/>
+                <Button Command="{Binding AddCommand}" Content="添加矩形"/>
+                <Button Command="{Binding MoveCommand}" Content="右移20"/>
+                <Button Command="{Binding UndoCommand}" Content="撤销"/>
+                <Button Command="{Binding RedoCommand}" Content="重做"/>
+                <Button Command="{Binding SaveCommand}" Content="保存XML"/>
+                <Button Command="{Binding LoadCommand}" Content="加载XML"/>
+            </WrapPanel>
+        </Border>
+        <Border DockPanel.Dock="Bottom" Background="#E7EDF6" BorderThickness="0,1,0,0" BorderBrush="#D2DCE9" Padding="15,9">
+            <TextBlock Text="{Binding Status}" TextWrapping="Wrap" FontSize="12" Foreground="#193B63" />
+        </Border>
+        <Grid Margin="13">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="260"/></Grid.ColumnDefinitions>
+            <Border Grid.Column="0" CornerRadius="8" Background="White" BorderBrush="#D5DEEA" BorderThickness="1" ClipToBounds="True">
+                <scene:SceneView x:Name="SceneHost" Focusable="True"/>
+            </Border>
+            <Border Grid.Column="1" Margin="12,0,0,0" CornerRadius="8" Background="White" BorderBrush="#D5DEEA" BorderThickness="1" Padding="16">
+                <StackPanel>
+                    <TextBlock Text="工程与编辑状态" FontWeight="SemiBold" FontSize="17" Foreground="#123660" Margin="0,0,0,15"/>
+                    <TextBlock Text="Project / Page / Content" Foreground="#64748B" FontSize="11" />
+                    <TextBlock Text="Symbol / Group / Element" Foreground="#64748B" FontSize="11" Margin="0,0,0,18"/>
+                    <TextBlock Text="版本（Revision）" FontWeight="SemiBold"/>
+                    <TextBlock Text="{Binding Revision}" Margin="0,4,0,15" FontSize="20" Foreground="#1D5DA8"/>
+                    <TextBlock Text="图元数量" FontWeight="SemiBold"/>
+                    <TextBlock Text="{Binding ElementCount}" Margin="0,4,0,15" FontSize="20" Foreground="#1D5DA8"/>
+                    <TextBlock Text="选中节点" FontWeight="SemiBold"/>
+                    <TextBlock Text="{Binding SelectedName}" TextWrapping="Wrap" Margin="0,5,0,15" Foreground="#1D5DA8"/>
+                    <Separator Margin="0,0,0,14"/>
+                    <TextBlock Text="本版验收路径" FontWeight="SemiBold"/>
+                    <TextBlock Text="① 添加图元 → Core原子提交&#10;② 拖动/右移 → Revision递增&#10;③ Undo/Redo → 逆变更提交&#10;④ 保存/加载 → 工程树持久化" TextWrapping="Wrap" FontSize="12" LineHeight="24" Margin="0,8,0,0"/>
+                    <TextBlock Text="注：这是架构样例，不包含专业运动控制、工业检测或设备驱动。" TextWrapping="Wrap" Foreground="#B45309" Margin="0,25,0,0" FontSize="12"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </DockPanel>
+</Window>

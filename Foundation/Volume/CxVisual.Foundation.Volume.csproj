@@ -1,0 +1,19 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003" ToolsVersion="15.0" DefaultTargets="Build">
+  <Import Project="..\..\Build\CxVisual.Build.props"/>
+  <PropertyGroup>
+    <ProjectGuid>{32E6A935-9FE6-54BA-A56D-16E7F7658F02}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <RootNamespace>CxVisual.Foundation.Volume</RootNamespace>
+    <AssemblyName>CxVisual.Foundation.Volume</AssemblyName>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System"/>
+    <Reference Include="System.Core"/>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Properties\AssemblyInfo.cs"/></ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets"/>
+</Project>

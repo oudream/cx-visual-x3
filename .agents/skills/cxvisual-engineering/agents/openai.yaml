@@ -1,0 +1,4 @@
+interface:
+  display_name: "CxVisual 工程规范"
+  short_description: "按 CxVisual V1.0 规范开展项目和代码工作"
+  default_prompt: "使用 $cxvisual-engineering 按现行 CxVisual 工程规范完成当前任务，并列出真实构建/测试结果与待验证事项。"

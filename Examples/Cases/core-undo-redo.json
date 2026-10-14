@@ -1,0 +1,8 @@
+{
+  "caseId": "CX-FMP-M01-M37-001",
+  "name": "Definition mutation with Visual history",
+  "precondition": "One Project/Page/Content/Symbol/Group with two Elements",
+  "operations": ["Add", "Move", "Undo", "Undo", "Redo", "Redo"],
+  "assertions": ["Revision monotonic", "Undo recovers geometry", "Visual projection equals Core truth", "No second persisted Graph tree"],
+  "execution": "CxVisual.Tests.ArchitectureSmoke.exe"
+}

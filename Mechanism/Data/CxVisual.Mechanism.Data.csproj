@@ -1,0 +1,19 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003" ToolsVersion="15.0" DefaultTargets="Build">
+  <Import Project="..\..\Build\CxVisual.Build.props"/>
+  <PropertyGroup>
+    <ProjectGuid>{6857DA00-7E17-5593-B8DC-C85EEA772140}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <RootNamespace>CxVisual.Mechanism.Data</RootNamespace>
+    <AssemblyName>CxVisual.Mechanism.Data</AssemblyName>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System"/>
+    <Reference Include="System.Core"/>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Properties\AssemblyInfo.cs"/></ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets"/>
+</Project>

@@ -1,0 +1,5 @@
+{
+  "schemaVersion": 1,
+  "canvasGridSize": 25,
+  "purpose": "Demo business settings; distinct from App.config/runtime binding policy"
+}

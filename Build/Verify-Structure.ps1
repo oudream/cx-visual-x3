@@ -1,0 +1,42 @@
+$ErrorActionPreference = 'Stop'
+$root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$groups = @('Foundation','Mechanism','Professional','Applications','Intelligence','Tests')
+$projects = @(Get-ChildItem -Path $root -Recurse -Filter 'CxVisual*.csproj' -File | Where-Object { $_.FullName -notmatch '[\\/](Legacy|Output)[\\/]' })
+if ($projects.Count -ne 28) { throw "Expected 28 projects, got $($projects.Count)" }
+foreach ($project in $projects) {
+    $relativeDirectory = $project.DirectoryName.Substring($root.Length).TrimStart('\','/')
+    $segments = $relativeDirectory -split '[\\/]'
+    if ($segments.Count -ne 2 -or $groups -notcontains $segments[0] -or $segments[1].StartsWith('CxVisual.')) {
+        throw "Project directory convention broken: $relativeDirectory"
+    }
+    [xml]$xml = Get-Content -LiteralPath $project.FullName -Raw
+    if ($xml.Project.PropertyGroup.TargetFrameworkVersion -notcontains 'v4.8') { throw "Not NET48: $($project.Name)" }
+    $assemblyName = @($xml.Project.PropertyGroup | ForEach-Object { $_.AssemblyName } | Where-Object { $_ })[0]
+    if ($assemblyName -ne $project.BaseName) { throw "Assembly mismatch: $($project.FullName)" }
+    foreach ($group in @($xml.Project.ItemGroup)) {
+        foreach ($compile in @($group.Compile)) {
+            if ($null -ne $compile -and $compile.Include -and -not (Test-Path -LiteralPath (Join-Path $project.DirectoryName $compile.Include))) {
+                throw "Missing Compile $($compile.Include) in $($project.FullName)"
+            }
+        }
+        foreach ($reference in @($group.ProjectReference)) {
+            if ($null -ne $reference -and $reference.Include -and -not (Test-Path -LiteralPath (Join-Path $project.DirectoryName $reference.Include))) {
+                throw "Broken ProjectReference $($reference.Include) in $($project.FullName)"
+            }
+        }
+    }
+}
+foreach ($slnName in @('CxVisual.Unified.sln','CxVisual.Foundation.sln')) {
+    $slnPath = Join-Path $root $slnName
+    $content = Get-Content -LiteralPath $slnPath
+    foreach ($line in $content) {
+        if ($line -match '^Project\("\{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC\}"\).*?, "(?<path>[^\"]+\.csproj)",') {
+            if (-not (Test-Path -LiteralPath (Join-Path $root $Matches['path']))) { throw "Broken solution project $($Matches['path'])" }
+        }
+    }
+}
+if (-not (Test-Path -LiteralPath (Join-Path $root '.agents'))) { throw '.agents folder missing' }
+if (Test-Path -LiteralPath (Join-Path $root '.agents/IMPORT_R2_REQUIRED.md')) {
+    Write-Warning 'Codex Skill V1.0 R2 original content has not been imported. Run Build/Import-CodexSkill-R2.ps1 when you have the ZIP.'
+}
+Write-Host 'PASS: 28 projects, short directory names, NET48, project references and solution paths.'

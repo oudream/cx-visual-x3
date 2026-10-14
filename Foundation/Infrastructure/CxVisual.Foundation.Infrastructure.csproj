@@ -1,0 +1,19 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003" ToolsVersion="15.0" DefaultTargets="Build">
+  <Import Project="..\..\Build\CxVisual.Build.props"/>
+  <PropertyGroup>
+    <ProjectGuid>{1626A969-FF77-560F-AA00-53D010AD01B3}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <RootNamespace>CxVisual.Foundation.Infrastructure</RootNamespace>
+    <AssemblyName>CxVisual.Foundation.Infrastructure</AssemblyName>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System"/>
+    <Reference Include="System.Core"/>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Properties\AssemblyInfo.cs"/><Compile Include="CxFileLogSink.cs"/><Compile Include="CxLogRecord.cs"/><Compile Include="CxMemoryLogSink.cs"/><Compile Include="ICxLogSink.cs"/></ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets"/>
+</Project>
