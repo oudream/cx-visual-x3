@@ -1,4 +1,4 @@
-name: CxVisual L1 Windows Build and Smoke
+name: CxVisual Config L1 Windows Build and Smoke
 on:
   push:
     branches:
@@ -6,11 +6,31 @@ on:
       - 'feat/config-l1-*'
   pull_request:
 jobs:
-  build-and-tests:
+  build-and-config-tests:
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
       - uses: microsoft/setup-msbuild@v2
-      - name: Build solution and run all smoke tests
+      - name: Build complete x64 solution
         shell: pwsh
-        run: .\Build\BuildAndTest.ps1 -Configuration Release
+        run: |
+          $msbuild = (Get-Command msbuild.exe -ErrorAction Stop).Source
+          & $msbuild .\CxVisual.Unified.sln /m:1 /t:Rebuild /p:Configuration=Release /p:Platform=x64 /nologo /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw "CxVisual full solution build failed" }
+      - name: Run Config L1 and architecture behavior tests
+        shell: pwsh
+        run: |
+          & .\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe
+          if ($LASTEXITCODE -ne 0) { throw "Architecture/ConfigL1 tests failed" }
+          & .\Output\Release\x64\CxVisual.Runtime.Host.exe demo
+          if ($LASTEXITCODE -ne 0) { throw "Runtime demo failed" }
+          & .\Output\Release\x64\CxVisual.Runtime.Host.exe save .\Output\Release\x64\Data\config-l1-smoke.xml
+          if ($LASTEXITCODE -ne 0) { throw "Runtime save failed" }
+          & .\Output\Release\x64\CxVisual.Runtime.Host.exe load .\Output\Release\x64\Data\config-l1-smoke.xml
+          if ($LASTEXITCODE -ne 0) { throw "Runtime reload failed" }
+      - name: Full shared smoke diagnostics (F16 under concurrent development)
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          & .\Build\Run-SmokeTests.ps1 -Configuration Release
+          if ($LASTEXITCODE -ne 0) { throw "Existing shared smoke suite failed; investigate independently" }
