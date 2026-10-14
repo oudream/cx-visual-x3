@@ -10,24 +10,25 @@ namespace CxVisual.Foundation.Infrastructure
     /// 主机级日志实例：公共日志 + 可选专有日志 + 重要事件；
     /// 有界队列与可等待Drain；不使用进程全局可变单例。
     /// </summary>
-    public sealed class CxLogHub : IDisposable
+    public sealed class FLDLogService : IDisposable
     {
         private readonly BlockingCollection<object> _queue;
         private readonly Thread _worker;
         private readonly object _sinkGate = new object();
-        private readonly CxRollingFileLogSink _common;
-        private readonly CxRollingFileLogSink _important;
-        private readonly Dictionary<string, CxRollingFileLogSink> _dedicated
-            = new Dictionary<string, CxRollingFileLogSink>(StringComparer.OrdinalIgnoreCase);
+        private readonly FLDRollingFileLogSink _common;
+        private readonly FLDRollingFileLogSink _important;
+        private readonly Dictionary<string, FLDRollingFileLogSink> _dedicated
+            = new Dictionary<string, FLDRollingFileLogSink>(StringComparer.OrdinalIgnoreCase);
         private readonly string _root;
         private readonly int _historyLimit;
-        private readonly Queue<CxLogRecord> _history = new Queue<CxLogRecord>();
+        private readonly Queue<FLDLogRecord> _history = new Queue<FLDLogRecord>();
         private long _dropped;
+        private int _minimumLevel = (int)FLDLogLevel.Debug;
         private Exception _lastFailure;
         private volatile bool _disposed;
         private readonly int _maxDedicatedSinks;
 
-        public CxLogHub(string logRoot, int queueCapacity = 2048, int historyLimit = 500,
+        public FLDLogService(string logRoot, int queueCapacity = 2048, int historyLimit = 500,
             int maxDedicatedSinks = 32)
         {
             if (string.IsNullOrWhiteSpace(logRoot)) throw new ArgumentException("Missing log root.", "logRoot");
@@ -37,54 +38,66 @@ namespace CxVisual.Foundation.Infrastructure
             _root = Path.GetFullPath(logRoot);
             _historyLimit = historyLimit;
             _maxDedicatedSinks = maxDedicatedSinks;
-            _common = new CxRollingFileLogSink(Path.Combine(_root, "Common"), "runtime", 8 * 1024 * 1024, 7);
-            _important = new CxRollingFileLogSink(Path.Combine(_root, "Important"), "important", 8 * 1024 * 1024, 70);
+            _common = new FLDRollingFileLogSink(Path.Combine(_root, "Common"), "runtime", 8 * 1024 * 1024, 7);
+            _important = new FLDRollingFileLogSink(Path.Combine(_root, "Important"), "important", 8 * 1024 * 1024, 70);
             _queue = new BlockingCollection<object>(queueCapacity);
             _worker = new Thread(ProcessQueue) { IsBackground = true, Name = "CxVisual.LogWriter" };
             _worker.Start();
         }
 
-        public event Action<CxLogRecord> RecordReceived;
+        public event Action<FLDLogRecord> RecordReceived;
+
+        public FLDLogLevel MinimumLevel
+        {
+            get { return (FLDLogLevel)Volatile.Read(ref _minimumLevel); }
+            set
+            {
+                if (!Enum.IsDefined(typeof(FLDLogLevel), value))
+                    throw new ArgumentOutOfRangeException("value");
+                Interlocked.Exchange(ref _minimumLevel, (int)value);
+            }
+        }
         public long DroppedCount { get { return Interlocked.Read(ref _dropped); } }
         public Exception LastFailure { get { lock (_sinkGate) { return _lastFailure; } } }
 
         /// <summary>写入记录。队列满返回false且统计丢弃；Critical/Important多等待2秒。</summary>
-        public bool Write(CxLogRecord record)
+        public bool Write(FLDLogRecord record)
         {
             if (record == null) throw new ArgumentNullException("record");
             if (!string.IsNullOrEmpty(record.DedicatedName))
-                CxRollingFileLogSink.ValidateName(record.DedicatedName);
-            if (_disposed) throw new ObjectDisposedException("CxLogHub");
-            bool critical = record.IsImportant || record.Level == CxLogLevel.Critical;
+                FLDRollingFileLogSink.ValidateName(record.DedicatedName);
+            if (_disposed) throw new ObjectDisposedException("FLDLogService");
+            bool critical = record.IsImportant || record.Level == FLDLogLevel.Critical;
             try
             {
                 if (_queue.TryAdd(record, critical ? 2000 : 0)) return true;
             }
             catch (InvalidOperationException)
             {
-                if (_disposed) throw new ObjectDisposedException("CxLogHub");
+                if (_disposed) throw new ObjectDisposedException("FLDLogService");
             }
             Interlocked.Increment(ref _dropped);
             return false;
         }
 
-        public bool Log(CxLogLevel level, string module, string message,
+        public bool Log(FLDLogLevel level, string module, string message,
             string dedicatedName = null, string action = null, bool important = false,
             string correlationId = null, Exception exception = null)
         {
-            return Write(new CxLogRecord(level, module, action, message,
+            if (level < MinimumLevel) return true; // 被级别策略过滤，不计为队列丢弃。
+            return Write(new FLDLogRecord(level, module, action, message,
                 dedicatedName, correlationId, important, exception));
         }
 
         /// <summary>获取小型专有日志入口，调用者无需创建或管理文件Writer。</summary>
-        public CxDedicatedLogger ForDedicated(string module, string dedicatedName)
+        public FLDDedicatedLogger ForDedicated(string module, string dedicatedName)
         {
-            CxRollingFileLogSink.ValidateName(dedicatedName);
-            if (_disposed) throw new ObjectDisposedException("CxLogHub");
-            return new CxDedicatedLogger(this, module, dedicatedName);
+            FLDRollingFileLogSink.ValidateName(dedicatedName);
+            if (_disposed) throw new ObjectDisposedException("FLDLogService");
+            return new FLDDedicatedLogger(this, module, dedicatedName);
         }
 
-        public CxLogRecord[] Snapshot()
+        public FLDLogRecord[] Snapshot()
         {
             lock (_sinkGate) return _history.ToArray();
         }
@@ -94,7 +107,7 @@ namespace CxVisual.Foundation.Infrastructure
         {
             if (Thread.CurrentThread == _worker)
                 throw new InvalidOperationException("Flush from log writer is not allowed.");
-            if (_disposed) throw new ObjectDisposedException("CxLogHub");
+            if (_disposed) throw new ObjectDisposedException("FLDLogService");
             using (ManualResetEventSlim done = new ManualResetEventSlim(false))
             {
                 Barrier barrier = new Barrier(done);
@@ -113,7 +126,7 @@ namespace CxVisual.Foundation.Infrastructure
             {
                 Barrier barrier = work as Barrier;
                 if (barrier != null) { barrier.Signal(); continue; }
-                CxLogRecord record = (CxLogRecord)work;
+                FLDLogRecord record = (FLDLogRecord)work;
                 try
                 {
                     lock (_sinkGate)
@@ -122,12 +135,12 @@ namespace CxVisual.Foundation.Infrastructure
                         if (record.IsImportant) _important.Write(record);
                         if (record.DedicatedName.Length != 0)
                         {
-                            CxRollingFileLogSink sink;
+                            FLDRollingFileLogSink sink;
                             if (!_dedicated.TryGetValue(record.DedicatedName, out sink))
                             {
                                 if (_dedicated.Count >= _maxDedicatedSinks)
                                     throw new InvalidOperationException("Dedicated log sink limit exceeded.");
-                                sink = new CxRollingFileLogSink(
+                                sink = new FLDRollingFileLogSink(
                                     Path.Combine(_root, "Dedicated"),
                                     record.DedicatedName, 8 * 1024 * 1024, 7);
                                 _dedicated.Add(record.DedicatedName, sink);
@@ -142,11 +155,11 @@ namespace CxVisual.Foundation.Infrastructure
                 {
                     lock (_sinkGate) _lastFailure = ex; // 不从日志异常再次递归写日志。
                 }
-                Action<CxLogRecord> handlers = RecordReceived;
+                Action<FLDLogRecord> handlers = RecordReceived;
                 if (handlers == null) continue;
                 foreach (Delegate item in handlers.GetInvocationList())
                 {
-                    try { ((Action<CxLogRecord>)item)(record); }
+                    try { ((Action<FLDLogRecord>)item)(record); }
                     catch (Exception ex) { lock (_sinkGate) _lastFailure = ex; }
                 }
             }
@@ -165,7 +178,7 @@ namespace CxVisual.Foundation.Infrastructure
             {
                 _common.Dispose();
                 _important.Dispose();
-                foreach (CxRollingFileLogSink sink in _dedicated.Values) sink.Dispose();
+                foreach (FLDRollingFileLogSink sink in _dedicated.Values) sink.Dispose();
                 _dedicated.Clear();
             }
             _queue.Dispose();
@@ -179,24 +192,24 @@ namespace CxVisual.Foundation.Infrastructure
         }
     }
 
-    public sealed class CxDedicatedLogger
+    public sealed class FLDDedicatedLogger
     {
-        private readonly CxLogHub _hub;
+        private readonly FLDLogService _hub;
         private readonly string _module;
         private readonly string _name;
-        internal CxDedicatedLogger(CxLogHub hub, string module, string name)
+        internal FLDDedicatedLogger(FLDLogService hub, string module, string name)
         {
             _hub = hub;
             _module = module;
             _name = name;
         }
 
-        public bool Debug(string message) { return _hub.Log(CxLogLevel.Debug, _module, message, _name); }
-        public bool Information(string message) { return _hub.Log(CxLogLevel.Information, _module, message, _name); }
-        public bool Warning(string message) { return _hub.Log(CxLogLevel.Warning, _module, message, _name); }
+        public bool Debug(string message) { return _hub.Log(FLDLogLevel.Debug, _module, message, _name); }
+        public bool Information(string message) { return _hub.Log(FLDLogLevel.Information, _module, message, _name); }
+        public bool Warning(string message) { return _hub.Log(FLDLogLevel.Warning, _module, message, _name); }
         public bool Error(string message, Exception error = null)
         {
-            return _hub.Log(CxLogLevel.Error, _module, message, _name, exception: error);
+            return _hub.Log(FLDLogLevel.Error, _module, message, _name, exception: error);
         }
     }
 }

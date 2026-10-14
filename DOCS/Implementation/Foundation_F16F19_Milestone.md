@@ -2,15 +2,15 @@
 
 ## 实施范围与唯一Owner
 
-- F16: `Foundation/Infrastructure`；统一 `CxLogRecord`，有界异步 `CxLogHub`、简洁 `CxDedicatedLogger`、`CxRollingFileLogSink`。
-- F19: `Foundation/Infrastructure`；`CxSystemMonitor`、`CxSystemSnapshot`、`CxProcessSnapshot`。CPU使用两次采样差分，权限不足的指标以null/Warning展示。
+- F16: `Foundation/Infrastructure`；统一 `FLDLogRecord`，有界异步 `FLDLogService`、简洁 `FLDDedicatedLogger`、`FLDRollingFileLogSink`。
+- F19: `Foundation/Infrastructure`；`FCRSystemMonitor`、`FCRSystemSnapshot`、`FCRProcessSnapshot`。CPU使用两次采样差分，权限不足的指标以null/Warning展示。
 - WPF: `Mechanism/Presentation.Wpf`只承载 `LogViewerControl`、`SystemMonitorControl`，不在Foundation引用WPF。
 - 测试：`Tests/FoundationSmoke`自动CLI断言、`Tests/FoundationWpf`独立WPF人工/压力测试。项目数从28到29，唯增测试项目，不修改F/M/P 135子方面。
 - 配置仍归 `Foundation/Data`，本次不迁入INI/JSON/YAML格式服务。也不迁入设备通信或系统守护/自动重启功能。
 
 ## 专有日志（最小可用方案）
 
-`CxLogHub.ForDedicated("M13", "PLC01").Warning("timeout")`。
+`FLDLogService.ForDedicated("M13", "PLC01").Warning("timeout")`。
 - 同一条记录先写入公共 `Common/runtime-YYYYMMDD-NNN.log`，有专有名称再追加 `Dedicated/PLC01-YYYYMMDD-NNN.log`；`IsImportant`额外写入 `Important/important-YYYYMMDD-NNN.log`。
 - 仅允许ASCII字母数字、点、下划线和短横线作为专有名称，防止路径遍历/意外文件覆盖。
 - 最大文件8 MiB，Common/Dedicated 7日保留，Important 70日示例值（工业现场需按制度配置，不能默认代表审计合规）；清理严格匹配本日志名称+日期+分卷，拒绝碰触其它日志。
@@ -42,6 +42,13 @@ Linux工具环境没有Windows MSBuild/WPF，不应对这些项标记“PASS”�
 
 ## 本次与旧版相容原则
 
-- 保留旧 `CxLogRecord(string,string,string)` 和 `ICxLogSink`、`CxFileLogSink`、`CxMemoryLogSink`；不修改应用的已有调用入口。
+- 保留旧 `FLDLogRecord(string,string,string)` 和 `IFLDLogSink`、`FLDFileLogSink`、`FLDMemoryLogSink`；不修改应用的已有调用入口。
 - 不复制旧 `ImportantEventLog` 的未释放Writer跨日切换、删除公共目录中无关文件、吞掉异常等问题。
 - 不把上一版PR #1直接合并进master；本次从独立基线用一个功能提交构成审阅变更，避免按单文件多Commit。
+
+
+## F16命名修订与实时日志（V6.4对齐）
+公开日志基础类型：`FLDLogHelper`（静态便捷入口）、`FLDLogLevel`、`FLDLogRecord`、`FLDLogScope`、`FLDLogEventHandler`；状态服务：`FLDLogService`及`FLDDedicatedLogger`等为运行实现候选，已统一FLD前缀。原`Cx...`开发预览名不作为正式API。
+示例：`FLDLogHelper.Initialize(logRoot);` → `FLDLogHelper.Info("启动");` / `FLDLogHelper.ForModule("CT3D.Recon").Information("完成");` / `FLDLogHelper.ForDedicated("M13", "PLC01").Warning("超时");` → `FLDLogHelper.Stop();`。
+`FLDLogHelper.LogEvent`推送实时记录，WPF直接订阅`FLDLogService.RecordReceived`，后台线程回调应Dispatcher切换。
+按`CallerFilePath`+规则匹配自动补模块，显式module优先，保留`CallerMemberName`。F19原规范只有FCR并发对象；本次`FCRSystemMonitor`等属于**待补录候选**，不能说已在V6.4表中定案。

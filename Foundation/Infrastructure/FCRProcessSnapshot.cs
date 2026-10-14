@@ -3,9 +3,9 @@ using System;
 namespace CxVisual.Foundation.Infrastructure
 {
     /// <summary>不可变的进程观测值，采样失败时相应数据使用null而不是假设为零。</summary>
-    public sealed class CxProcessSnapshot
+    public sealed class FCRProcessSnapshot
     {
-        public CxProcessSnapshot(int id, string name, long? startedUtcTicks, double? cpuPercent,
+        public FCRProcessSnapshot(int id, string name, long? startedUtcTicks, double? cpuPercent,
             long workingSetBytes, int threadCount, int? handleCount)
         {
             Id = id;

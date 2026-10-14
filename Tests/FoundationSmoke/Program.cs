@@ -23,8 +23,8 @@ namespace CxVisual.Tests.FoundationSmoke
                 try { CxNumericGuard.RequireFinite(double.NaN, "value");
                     throw new InvalidOperationException("NaN check was not enforced"); }
                 catch (ArgumentOutOfRangeException) { }
-                CxMemoryLogSink logs = new CxMemoryLogSink();
-                logs.Write(new CxLogRecord("Foundation", "Smoke", "Checked"));
+                FLDMemoryLogSink logs = new FLDMemoryLogSink();
+                logs.Write(new FLDLogRecord("Foundation", "Smoke", "Checked"));
                 if (logs.Count != 1 || logs.Get(0).Category != "Foundation")
                     throw new InvalidOperationException("Logger category lost");
                 LoggingAndMonitoringTests.Run();

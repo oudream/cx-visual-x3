@@ -11,9 +11,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf
     /// <summary>只呈现公共日志的WPF控件，不拥有日志文件或工程对象。</summary>
     public partial class LogViewerControl : UserControl
     {
-        private readonly ObservableCollection<CxLogRecord> _items
-            = new ObservableCollection<CxLogRecord>();
-        private CxLogHub _hub;
+        private readonly ObservableCollection<FLDLogRecord> _items
+            = new ObservableCollection<FLDLogRecord>();
+        private FLDLogService _hub;
         private ICollectionView _view;
         private const int VisibleLimit = 2000;
 
@@ -26,7 +26,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             Unloaded += (sender, args) => Detach();
         }
 
-        public void Attach(CxLogHub hub)
+        public void Attach(FLDLogService hub)
         {
             if (hub == null) throw new ArgumentNullException("hub");
             if (!Dispatcher.CheckAccess())
@@ -34,7 +34,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             Detach();
             _hub = hub;
             _items.Clear();
-            foreach (CxLogRecord item in hub.Snapshot()) _items.Add(item);
+            foreach (FLDLogRecord item in hub.Snapshot()) _items.Add(item);
             _hub.RecordReceived += Received;
             _view.Refresh();
         }
@@ -45,7 +45,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             _hub = null;
         }
 
-        private void Received(CxLogRecord record)
+        private void Received(FLDLogRecord record)
         {
             if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished) return;
             Dispatcher.BeginInvoke(new Action(() =>
@@ -60,7 +60,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
 
         private bool Accept(object item)
         {
-            CxLogRecord log = item as CxLogRecord;
+            FLDLogRecord log = item as FLDLogRecord;
             if (log == null) return false;
             int level = LevelFilter == null ? 0 : LevelFilter.SelectedIndex;
             if (level > 0 && (int)log.Level != level - 1) return false;

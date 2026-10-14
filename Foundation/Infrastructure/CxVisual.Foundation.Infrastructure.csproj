@@ -14,6 +14,6 @@
     <Reference Include="System.Core"/>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Properties\AssemblyInfo.cs"/><Compile Include="CxFileLogSink.cs"/><Compile Include="CxLogRecord.cs"/><Compile Include="CxMemoryLogSink.cs"/><Compile Include="ICxLogSink.cs"/><Compile Include="CxLogLevel.cs"/><Compile Include="CxRollingFileLogSink.cs"/><Compile Include="CxLogHub.cs"/><Compile Include="CxProcessSnapshot.cs"/><Compile Include="CxSystemSnapshot.cs"/><Compile Include="CxSystemMonitor.cs"/></ItemGroup>
+    <Compile Include="Properties\AssemblyInfo.cs"/><Compile Include="FLDFileLogSink.cs"/><Compile Include="FLDLogRecord.cs"/><Compile Include="FLDMemoryLogSink.cs"/><Compile Include="IFLDLogSink.cs"/><Compile Include="FLDLogLevel.cs"/><Compile Include="FLDRollingFileLogSink.cs"/><Compile Include="FLDLogService.cs"/><Compile Include="FCRProcessSnapshot.cs"/><Compile Include="FCRSystemSnapshot.cs"/><Compile Include="FCRSystemMonitor.cs"/><Compile Include="FLDLogHelper.cs"/><Compile Include="FLDLogScope.cs"/></ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets"/>
 </Project>

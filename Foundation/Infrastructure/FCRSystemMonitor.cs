@@ -13,7 +13,7 @@ namespace CxVisual.Foundation.Infrastructure
     /// 基础系统和进程采样。仅提供状态，不负责进程重启、工业安全和运行调度。
     /// Windows x64/.NET Framework 4.8，CPU百分比需要两次采样间隔。
     /// </summary>
-    public sealed class CxSystemMonitor : IDisposable
+    public sealed class FCRSystemMonitor : IDisposable
     {
         private readonly object _gate = new object();
         private readonly AutoResetEvent _stopSignal = new AutoResetEvent(false);
@@ -27,18 +27,18 @@ namespace CxVisual.Foundation.Infrastructure
         private long _lastIdle, _lastKernel, _lastUser;
         private bool _haveCpu;
         private DateTime _lastProcessSample;
-        private CxSystemSnapshot _latest;
+        private FCRSystemSnapshot _latest;
 
-        public CxSystemMonitor(int intervalMilliseconds = 1000, params string[] processNames)
+        public FCRSystemMonitor(int intervalMilliseconds = 1000, params string[] processNames)
         {
             if (intervalMilliseconds < 200) throw new ArgumentOutOfRangeException("intervalMilliseconds");
             _intervalMs = intervalMilliseconds;
             _processNames = processNames ?? new string[0];
         }
 
-        public event Action<CxSystemSnapshot> Sampled;
+        public event Action<FCRSystemSnapshot> Sampled;
         public event Action<Exception> SamplingFailed;
-        public CxSystemSnapshot Latest { get { lock (_gate) { return _latest; } } }
+        public FCRSystemSnapshot Latest { get { lock (_gate) { return _latest; } } }
 
         public void Start()
         {
@@ -79,11 +79,11 @@ namespace CxVisual.Foundation.Infrastructure
                 lock (_gate) { if (_stop) break; }
                 try
                 {
-                    CxSystemSnapshot snapshot = SampleNow();
-                    Action<CxSystemSnapshot> handlers = Sampled;
+                    FCRSystemSnapshot snapshot = SampleNow();
+                    Action<FCRSystemSnapshot> handlers = Sampled;
                     if (handlers != null)
                         foreach (Delegate del in handlers.GetInvocationList())
-                            try { ((Action<CxSystemSnapshot>)del)(snapshot); }
+                            try { ((Action<FCRSystemSnapshot>)del)(snapshot); }
                             catch (Exception ex) { RaiseFailed(ex); }
                 }
                 catch (Exception ex) { RaiseFailed(ex); }
@@ -99,7 +99,7 @@ namespace CxVisual.Foundation.Infrastructure
                 try { ((Action<Exception>)callback)(exception); } catch { /* 采集服务没有日志递归 */ }
         }
 
-        public CxSystemSnapshot SampleNow()
+        public FCRSystemSnapshot SampleNow()
         {
             lock (_gate)
             {
@@ -141,8 +141,8 @@ namespace CxVisual.Foundation.Infrastructure
                 }
                 catch (Exception ex) { warning += "Network: " + ex.GetType().Name + ". "; }
 
-                List<CxProcessSnapshot> processes = SampleProcesses(now, ref warning);
-                _latest = new CxSystemSnapshot(now, Environment.MachineName,
+                List<FCRProcessSnapshot> processes = SampleProcesses(now, ref warning);
+                _latest = new FCRSystemSnapshot(now, Environment.MachineName,
                     Environment.OSVersion.VersionString, Environment.ProcessorCount,
                     cpu, total, available, diskTotal, diskFree, activeNics, processes, warning);
                 return _latest;
@@ -165,9 +165,9 @@ namespace CxVisual.Foundation.Infrastructure
             return result;
         }
 
-        private List<CxProcessSnapshot> SampleProcesses(DateTime now, ref string warning)
+        private List<FCRProcessSnapshot> SampleProcesses(DateTime now, ref string warning)
         {
-            List<CxProcessSnapshot> result = new List<CxProcessSnapshot>();
+            List<FCRProcessSnapshot> result = new List<FCRProcessSnapshot>();
             Dictionary<string, CpuHistory> newHistory
                 = new Dictionary<string, CpuHistory>(StringComparer.Ordinal);
             double elapsed = _lastProcessSample == default(DateTime)
@@ -203,7 +203,7 @@ namespace CxVisual.Foundation.Infrastructure
                         newHistory[identity] = new CpuHistory(cpuMs);
                         int? handles = null;
                         try { handles = p.HandleCount; } catch { }
-                        result.Add(new CxProcessSnapshot(p.Id, name, started, cpuPct,
+                        result.Add(new FCRProcessSnapshot(p.Id, name, started, cpuPct,
                             p.WorkingSet64, p.Threads.Count, handles));
                     }
                     catch (Exception ex) { warning += "Process " + p.Id + ": " + ex.GetType().Name + ". "; }
@@ -226,7 +226,7 @@ namespace CxVisual.Foundation.Infrastructure
 
         private void ThrowIfDisposed()
         {
-            if (_disposed) throw new ObjectDisposedException("CxSystemMonitor");
+            if (_disposed) throw new ObjectDisposedException("FCRSystemMonitor");
         }
 
         private sealed class CpuHistory

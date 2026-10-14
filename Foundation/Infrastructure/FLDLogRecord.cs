@@ -4,17 +4,17 @@ using System.Globalization;
 namespace CxVisual.Foundation.Infrastructure
 {
     /// <summary>不可变的结构化日志记录，兼容既有三参数构造。</summary>
-    public sealed class CxLogRecord
+    public sealed class FLDLogRecord
     {
-        public CxLogRecord(string category, string action, string message)
-            : this(CxLogLevel.Information, category, action, message, null, null, false, null)
+        public FLDLogRecord(string category, string action, string message)
+            : this(FLDLogLevel.Information, category, action, message, null, null, false, null)
         {
         }
 
-        public CxLogRecord(CxLogLevel level, string moduleId, string action, string message,
+        public FLDLogRecord(FLDLogLevel level, string moduleId, string action, string message,
             string dedicatedName, string correlationId, bool important, Exception exception)
         {
-            if (!Enum.IsDefined(typeof(CxLogLevel), level))
+            if (!Enum.IsDefined(typeof(FLDLogLevel), level))
                 throw new ArgumentOutOfRangeException("level");
             TimeUtc = DateTime.UtcNow;
             Level = level;
@@ -32,7 +32,7 @@ namespace CxVisual.Foundation.Infrastructure
         }
 
         public DateTime TimeUtc { get; private set; }
-        public CxLogLevel Level { get; private set; }
+        public FLDLogLevel Level { get; private set; }
         public string Category { get; private set; }
         public string ModuleId { get; private set; }
         public string Action { get; private set; }

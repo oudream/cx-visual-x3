@@ -10,8 +10,8 @@ namespace CxVisual.Tests.FoundationWpf
 {
     public partial class MainWindow : Window
     {
-        private readonly CxLogHub _log;
-        private readonly CxSystemMonitor _monitor;
+        private readonly FLDLogService _log;
+        private readonly FCRSystemMonitor _monitor;
         private readonly string _testRoot;
 
         public MainWindow()
@@ -19,9 +19,11 @@ namespace CxVisual.Tests.FoundationWpf
             InitializeComponent();
             _testRoot = Path.Combine(Path.GetTempPath(), "CxVisual-FoundationWpf",
                 DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N"));
-            _log = new CxLogHub(Path.Combine(_testRoot, "Logs"), 4096, 1500);
+            _log = new FLDLogService(Path.Combine(_testRoot, "Logs"), 4096, 1500);
             using (Process current = Process.GetCurrentProcess())
-                _monitor = new CxSystemMonitor(1000, current.ProcessName);
+                _monitor = new FCRSystemMonitor(1000, current.ProcessName);
+            FLDLogHelper.Attach(_log);
+            FLDLogHelper.RegisterModuleRule("MainWindow", "Foundation.WpfTest");
             Viewer.Attach(_log);
             MonitorView.Attach(_monitor);
             _monitor.SamplingFailed += MonitorFailed;
@@ -31,14 +33,14 @@ namespace CxVisual.Tests.FoundationWpf
 
         private void WriteInfo(object sender, RoutedEventArgs e)
         {
-            _log.Log(CxLogLevel.Information, ModuleText.Text, "普通日志测试");
+            FLDLogHelper.Info("普通日志测试", module: ModuleText.Text);
         }
 
         private void WriteDedicated(object sender, RoutedEventArgs e)
         {
             try
             {
-                _log.ForDedicated(ModuleText.Text, DedicatedText.Text)
+                FLDLogHelper.ForDedicated(ModuleText.Text, DedicatedText.Text)
                     .Information("专有文件日志测试，Channel/ThirdParty可按需要创建");
                 StatusText.Text = "专有文件：" + DedicatedText.Text;
             }
@@ -47,7 +49,7 @@ namespace CxVisual.Tests.FoundationWpf
 
         private void WriteImportant(object sender, RoutedEventArgs e)
         {
-            _log.Log(CxLogLevel.Critical, ModuleText.Text, "重要事件测试",
+            _log.Log(FLDLogLevel.Critical, ModuleText.Text, "重要事件测试",
                 DedicatedText.Text, "ImportantEvent", true);
         }
 
@@ -81,7 +83,7 @@ namespace CxVisual.Tests.FoundationWpf
                 {
                     int accepted = 0;
                     for (int i = 0; i < count; ++i)
-                        if (_log.Log(CxLogLevel.Debug, "F16.Stress", "stress " + i.ToString(),
+                        if (_log.Log(FLDLogLevel.Debug, "F16.Stress", "stress " + i.ToString(),
                             "Performance")) ++accepted;
                     _log.Flush(60000);
                     return accepted;
@@ -118,6 +120,7 @@ namespace CxVisual.Tests.FoundationWpf
             _monitor.Dispose();
             try { _log.Flush(15000); }
             catch (Exception ex) { StatusText.Text = "日志Flush失败：" + ex.Message; }
+            FLDLogHelper.Stop();
             _log.Dispose();
         }
     }

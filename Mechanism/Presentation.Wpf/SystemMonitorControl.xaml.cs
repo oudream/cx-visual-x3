@@ -8,7 +8,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
     /// <summary>系统和进程指标呈现；采样和资源所有权保留在F19。</summary>
     public partial class SystemMonitorControl : UserControl
     {
-        private CxSystemMonitor _monitor;
+        private FCRSystemMonitor _monitor;
 
         public SystemMonitorControl()
         {
@@ -16,7 +16,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             Unloaded += (sender, args) => Detach();
         }
 
-        public void Attach(CxSystemMonitor monitor)
+        public void Attach(FCRSystemMonitor monitor)
         {
             if (monitor == null) throw new ArgumentNullException("monitor");
             if (!Dispatcher.CheckAccess())
@@ -33,7 +33,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             _monitor = null;
         }
 
-        private void UpdateFromWorker(CxSystemSnapshot snapshot)
+        private void UpdateFromWorker(FCRSystemSnapshot snapshot)
         {
             if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished) return;
             Dispatcher.BeginInvoke(new Action(() =>
@@ -42,7 +42,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             }));
         }
 
-        private void Show(CxSystemSnapshot snapshot)
+        private void Show(FCRSystemSnapshot snapshot)
         {
             CpuText.Text = snapshot.TotalCpuPercent.HasValue
                 ? snapshot.TotalCpuPercent.Value.ToString("F1", CultureInfo.InvariantCulture) + "%"

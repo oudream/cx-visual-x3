@@ -9,7 +9,7 @@ namespace CxVisual.Foundation.Infrastructure
     /// 同步滚动文件Sink：UTC日期、文件大小分卷、独立保留策略。
     /// 严格只清理当前名字前缀的文件，不扫描删除其它专有或公共日志。
     /// </summary>
-    public sealed class CxRollingFileLogSink : ICxLogSink, IDisposable
+    public sealed class FLDRollingFileLogSink : IFLDLogSink, IDisposable
     {
         private readonly object _gate = new object();
         private readonly string _directory;
@@ -22,7 +22,7 @@ namespace CxVisual.Foundation.Infrastructure
         private int _part;
         private bool _disposed;
 
-        public CxRollingFileLogSink(string directory, string name, long maxBytes, int retentionDays)
+        public FLDRollingFileLogSink(string directory, string name, long maxBytes, int retentionDays)
         {
             if (string.IsNullOrWhiteSpace(directory))
                 throw new ArgumentException("Directory is required.", "directory");
@@ -45,12 +45,12 @@ namespace CxVisual.Foundation.Infrastructure
                     throw new ArgumentException("Log names may use only ASCII letters, digits, '.', '_' and '-'.", "name");
         }
 
-        public void Write(CxLogRecord record)
+        public void Write(FLDLogRecord record)
         {
             if (record == null) throw new ArgumentNullException("record");
             lock (_gate)
             {
-                if (_disposed) throw new ObjectDisposedException("CxRollingFileLogSink");
+                if (_disposed) throw new ObjectDisposedException("FLDRollingFileLogSink");
                 EnsureFile(record.TimeUtc);
                 string line = record.ToStructuredString();
                 long required = Encoding.UTF8.GetByteCount(line) + 2;

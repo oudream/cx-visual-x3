@@ -61,9 +61,16 @@ Only structural checks were executed in the current Linux environment; Windows .
 
 ## F16/F19基础能力本轮补充
 
-- `Foundation.Infrastructure`：统一日志记录、`CxLogHub`有界队列、专有文件简单日志、重要事件、UTC滚动日志和保留策略；`CxSystemMonitor`系统与进程指标。
+- `Foundation.Infrastructure`：统一日志记录、`FLDLogService`有界队列、专有文件简单日志、重要事件、UTC滚动日志和保留策略；`FCRSystemMonitor`系统与进程指标。
 - `Mechanism.Presentation.Wpf`：可复用 `LogViewerControl` 与 `SystemMonitorControl`；不把WPF依赖带入Foundation。
 - `Tests/FoundationWpf`：独立窗口，三页签，日志操作、监控、压力/异常；只写入系统临时目录。
 - CLI验收 `CxVisual.Tests.FoundationSmoke.exe` 扩充F16/F19正常与异常测试；GUI人工验收：`Build\BUILD.cmd -ShowGUI`，或手动启动 `Output\Debug\x64\CxVisual.Tests.FoundationWpf.exe`。
 
 **验证边界：** 此实现基于源码审阅与结构检查；只有Windows VS2022/MSBuild17 + .NET Framework 4.8环境执行成功后，才能写“编译/自动测试/WPF运行通过”。见 `DOCS/Implementation/Foundation_F16F19_Milestone.md`。
+
+
+## F16命名修订与实时日志（V6.4对齐）
+公开日志基础类型：`FLDLogHelper`（静态便捷入口）、`FLDLogLevel`、`FLDLogRecord`、`FLDLogScope`、`FLDLogEventHandler`；状态服务：`FLDLogService`及`FLDDedicatedLogger`等为运行实现候选，已统一FLD前缀。原`Cx...`开发预览名不作为正式API。
+示例：`FLDLogHelper.Initialize(logRoot);` → `FLDLogHelper.Info("启动");` / `FLDLogHelper.ForModule("CT3D.Recon").Information("完成");` / `FLDLogHelper.ForDedicated("M13", "PLC01").Warning("超时");` → `FLDLogHelper.Stop();`。
+`FLDLogHelper.LogEvent`推送实时记录，WPF直接订阅`FLDLogService.RecordReceived`，后台线程回调应Dispatcher切换。
+按`CallerFilePath`+规则匹配自动补模块，显式module优先，保留`CallerMemberName`。F19原规范只有FCR并发对象；本次`FCRSystemMonitor`等属于**待补录候选**，不能说已在V6.4表中定案。

@@ -4,12 +4,12 @@ using System.Collections.Generic;
 namespace CxVisual.Foundation.Infrastructure
 {
     /// <summary>系统采样快照，不依赖UI、设备和Runtime。</summary>
-    public sealed class CxSystemSnapshot
+    public sealed class FCRSystemSnapshot
     {
-        public CxSystemSnapshot(DateTime timeUtc, string machine, string operatingSystem,
+        public FCRSystemSnapshot(DateTime timeUtc, string machine, string operatingSystem,
             int logicalProcessors, double? totalCpuPercent, ulong? memoryTotalBytes,
             ulong? memoryAvailableBytes, long diskTotalBytes, long diskAvailableBytes,
-            int activeNetworkInterfaces, IList<CxProcessSnapshot> processes, string warning)
+            int activeNetworkInterfaces, IList<FCRProcessSnapshot> processes, string warning)
         {
             TimeUtc = timeUtc;
             Machine = machine;
@@ -21,8 +21,8 @@ namespace CxVisual.Foundation.Infrastructure
             DiskTotalBytes = diskTotalBytes;
             DiskAvailableBytes = diskAvailableBytes;
             ActiveNetworkInterfaces = activeNetworkInterfaces;
-            Processes = new System.Collections.ObjectModel.ReadOnlyCollection<CxProcessSnapshot>(
-                new List<CxProcessSnapshot>(processes));
+            Processes = new System.Collections.ObjectModel.ReadOnlyCollection<FCRProcessSnapshot>(
+                new List<FCRProcessSnapshot>(processes));
             Warning = warning ?? string.Empty;
         }
         public DateTime TimeUtc { get; private set; }
@@ -35,7 +35,7 @@ namespace CxVisual.Foundation.Infrastructure
         public long DiskTotalBytes { get; private set; }
         public long DiskAvailableBytes { get; private set; }
         public int ActiveNetworkInterfaces { get; private set; }
-        public IList<CxProcessSnapshot> Processes { get; private set; }
+        public IList<FCRProcessSnapshot> Processes { get; private set; }
         public string Warning { get; private set; }
     }
 }
