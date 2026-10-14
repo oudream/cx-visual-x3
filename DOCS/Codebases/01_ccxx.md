@@ -130,6 +130,16 @@ README明确说明：Channel可开独立线程进行收发/监听，接收数据
 
 **每轮输出**：原文件及签名 → 新CxVisual目标项目/Owner → 复用方式（直接/Native封装/Adapter/重构/仅参考）→ 与旧代码的兼容性 → 编译/测试/异常证据 → 待定问题。新分支/commit变更时先重新核查相应源码。
 
+## 专项深度审计（2026-10-14）
+以下四份是以 ccxx master 固定 commit `26cecfb02e861ce6b821b33350493bac4793e997` 的 **.cpp实际调用链** 为基础的可执行技术档案，不是单纯列类名：
+
+1. [事件循环与通信](ccxx/01_事件循环与通信.md) — CxApplication、CxChannel、CxTimer；线程/队列/事件路线；异常退出与Channel订阅风险；测试矩阵。
+2. [元数据与配置](ccxx/02_元数据与配置.md) — CxIGet/SetSkv、Skver Profile、CxDescribe Project/Catalog/Unit；加载失败语义、格式兼容、唯一工程Owner。
+3. [工业信息与日志](ccxx/03_工业信息与日志.md) — Interinfo/Log各自责任、观察者与过滤、异步缓冲、文件轮换风险及Foundation.Infrastructure增量升级。
+4. [线程进程与共享内存](ccxx/04_线程进程与共享内存.md) — Thread/Process/ProcMutex/ShareMemory；不同平台分支；源码可见高风险与跨语言ABI测试。
+
+> **执行规则**：需要使用上述机制时先读对应专项审计，再实时复核目标仓当前源码与测试。专项中的Owner和接口都是候选建议，不代替最新批准的四大规格；没有运行验证的风险只记录为静态审计结论。严格保护多年生产系统，不直接按清单修改ccxx。
+
 ## 8. 建议的下一步（无需现在修改生产代码）
 
 - **P0 通信主链路**：以 `CxApplication + CxChannelBase + CxChannelTcpclient/Udp/Serial` 做详尽事件与生命周期图、对照Mechanism.Connectivity，验证关闭、重连、回调及对象释放。
