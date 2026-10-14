@@ -36,6 +36,7 @@ namespace CxVisual.Mechanism.Core
             public Func<object, object> Clone;
             public Func<object, string> Validate;
             public Func<Loaded> Load;
+            public Func<int, string, object> Migrate;
             public Action<object, long, long> Save;
             public object Data;
             public long Revision, PersistedRevision;
@@ -73,7 +74,7 @@ namespace CxVisual.Mechanism.Core
         }
 
         public void Register<T>(string id, bool requireExisting = false, int schemaVersion = 1,
-            Func<T, string> validator = null) where T : class
+            Func<T, string> validator = null, Func<int, string, T> migrate = null) where T : class
         {
             ValidateId(id);
             if (schemaVersion < 1) throw new ArgumentOutOfRangeException("schemaVersion");
@@ -83,6 +84,7 @@ namespace CxVisual.Mechanism.Core
                 Id = id, Path = path, Type = typeof(T),
                 SchemaVersion = schemaVersion, RequireExisting = requireExisting,
                 Default = () => Activator.CreateInstance(typeof(T), true),
+                Migrate = migrate == null ? null : new Func<int, string, object>((version, json) => migrate(version, json)),
                 Clone = value => CxConfigJsonFile.Clone((T)value),
                 Validate = value =>
                 {
@@ -132,11 +134,23 @@ namespace CxVisual.Mechanism.Core
                     {
                         if (doc.Id != e.Id) throw new InvalidDataException("Config identity mismatch: " + e.Id);
                         if (doc.SchemaVersion != e.SchemaVersion)
-                            throw new InvalidDataException("Unsupported schema " + doc.SchemaVersion + " for " + e.Id +
-                                ", expected " + e.SchemaVersion + "; explicit migration required");
-                        Validate(e, doc.Data);
-                        e.Data = e.Clone(doc.Data);
-                        e.Revision = e.PersistedRevision = doc.Revision;
+                        {
+                            if (doc.SchemaVersion > e.SchemaVersion || e.Migrate == null)
+                                throw new InvalidDataException("Unsupported schema " + doc.SchemaVersion + " for " + e.Id +
+                                    ", expected " + e.SchemaVersion + "; explicit migration required");
+                            object migrated = e.Migrate(doc.SchemaVersion, File.ReadAllText(e.Path));
+                            Validate(e, migrated);
+                            long next = checked(doc.Revision + 1);
+                            e.Save(migrated, next, doc.Revision);
+                            e.Data = e.Clone(migrated);
+                            e.Revision = e.PersistedRevision = next;
+                        }
+                        else
+                        {
+                            Validate(e, doc.Data);
+                            e.Data = e.Clone(doc.Data);
+                            e.Revision = e.PersistedRevision = doc.Revision;
+                        }
                     }
                 }
                 _initialized = true;
@@ -229,6 +243,42 @@ namespace CxVisual.Mechanism.Core
                 if (e.Revision == e.PersistedRevision) return;
                 e.Save(e.Data, e.Revision, e.PersistedRevision);
                 e.PersistedRevision = e.Revision;
+            }
+        }
+
+
+        /// <summary>L2：将上一份.bak在当前版本之后作为新Revision恢复，不回拨Revision。</summary>
+        public void RestoreBackup<T>(string id) where T : class
+        {
+            Entry e;
+            lock (_gate) { e = Resolve<T>(id); }
+            string backupPath = e.Path + ".bak";
+            CxConfigFileDocument<T> backup = CxConfigJsonFile.Read<T>(backupPath);
+            if (backup == null) throw new FileNotFoundException("No configuration backup exists", backupPath);
+            if (backup.Id != id || backup.SchemaVersion != e.SchemaVersion)
+                throw new InvalidDataException("Backup identity or schema does not match " + id);
+            Validate(e, backup.Data);
+            T replacement = CxConfigJsonFile.Clone(backup.Data);
+            UpdateAndSave<T>(id, draft =>
+            {
+                foreach (CxConfigProperty property in CxConfigDescription.Describe<T>())
+                    property.Property.SetValue(draft, property.Property.GetValue(replacement, null), null);
+            });
+        }
+
+        /// <summary>L4：只允许已持久化且磁盘Revision仍一致的配置进入发布包。</summary>
+        public string ExportSavedJson(string id)
+        {
+            lock (_gate)
+            {
+                Entry e = Resolve(id);
+                if (e.Revision != e.PersistedRevision)
+                    throw new InvalidOperationException("Unsaved configuration cannot be published: " + id);
+                string json = File.ReadAllText(e.Path);
+                CxConfigDocumentHeader hdr = CxConfigJsonFile.ReadHeader(json);
+                if (hdr.Id != id || hdr.SchemaVersion != e.SchemaVersion || hdr.Revision != e.Revision)
+                    throw new InvalidOperationException("Configuration disk revision changed: " + id);
+                return json;
             }
         }
 

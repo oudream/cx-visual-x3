@@ -13,6 +13,14 @@ namespace CxVisual.Foundation.Data
         public T Data { get; set; }
     }
 
+    /// <summary>用于校验发布配置身份、Schema及版本，不需要了解专业T类型。</summary>
+    public sealed class CxConfigDocumentHeader
+    {
+        public string Id { get; set; }
+        public int SchemaVersion { get; set; }
+        public long Revision { get; set; }
+    }
+
     /// <summary>F15配置的JSON载体。安全保存由同目录临时文件、跨进程排他锁及File.Replace组成。</summary>
     public static class CxConfigJsonFile
     {
@@ -31,6 +39,28 @@ namespace CxVisual.Foundation.Data
         public static string Serialize<T>(T value)
         {
             return Serializer().Serialize(value);
+        }
+
+
+        public static object Deserialize(string json, Type type)
+        {
+            if (type == null) throw new ArgumentNullException("type");
+            return Serializer().Deserialize(json, type);
+        }
+
+        public static CxConfigDocumentHeader ReadHeader(string json)
+        {
+            if (string.IsNullOrWhiteSpace(json)) throw new InvalidDataException("Empty configuration JSON");
+            try
+            {
+                CxConfigDocumentHeader result = Serializer().Deserialize<CxConfigDocumentHeader>(json);
+                if (result == null || string.IsNullOrWhiteSpace(result.Id) ||
+                    result.SchemaVersion < 1 || result.Revision < 0)
+                    throw new InvalidDataException("Invalid configuration header");
+                return result;
+            }
+            catch (InvalidDataException) { throw; }
+            catch (Exception ex) { throw new InvalidDataException("Invalid configuration JSON", ex); }
         }
 
         public static CxConfigFileDocument<T> Read<T>(string path)
