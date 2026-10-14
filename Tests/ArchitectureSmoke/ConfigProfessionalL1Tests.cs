@@ -66,15 +66,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 x => x.ReconnectDelayMs = 100), "Unsafe reconnect pace accepted");
 
             ExpectArgument(() => m.Update<CxVisionInspectionOptions>("Vision.Inspection",
-                x => x.GrayThreshold = 256), "8-bit threshold accepted 256", x =>
-                {
-                    x.PixelDepth = CxVisionPixelDepth.Bits8;
-                    x.GrayThreshold = 256;
-                });
+                x => { x.PixelDepth = CxVisionPixelDepth.Bits8; x.GrayThreshold = 256; }),
+                "8-bit threshold accepted 256");
             ExpectArgument(() => m.Update<CxVisionInspectionOptions>("Vision.Inspection",
                 x => x.MinDefectArea = x.MaxDefectArea + 1), "Inverted defect area accepted");
             ExpectArgument(() => m.Update<CxVisionInspectionOptions>("Vision.Inspection",
-                x => x.AiModelName = " "), "Missing AI model accepted", x => { x.UseAi = true; x.AiModelName = ""; });
+                x => { x.UseAi = true; x.AiModelName = ""; }), "Missing AI model accepted");
 
             ExpectArgument(() => m.Update<CxCtReconstructionOptions>("CT3D.Reconstruction",
                 x => x.FddMm = x.FodMm), "CT geometry FDD <= FOD accepted");
@@ -126,7 +123,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                   "Multi-device isolation failed after reload");
         }
 
-        private static void ExpectArgument(Action action, string message, Action<CxVisionInspectionOptions> corrective = null)
+        private static void ExpectArgument(Action action, string message)
         {
             try { action(); }
             catch (ArgumentException) { return; }
