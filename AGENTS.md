@@ -12,6 +12,12 @@ This repository uses the approved CxVisual F/M/P architecture and engineering st
 
 See `.agents/skills/cxvisual-engineering/SKILL.md` for the task-specific process.
 
+## Historical codebase dossiers and entry maintenance
+
+- Source audit navigation: [01_ccxx.md](DOCS/Codebases/01_ccxx.md) (cross-platform C++ foundations), [02_device_communicator.md](DOCS/Codebases/02_device_communicator.md) (IoT model, point sheets, protocol sessions and monitoring), [03_gcl3.md](DOCS/Codebases/03_gcl3.md) (distributed ICS/SCADA). Select the dossier relevant to the active task; inspect real source and version before reuse. Do not treat dossier proposals as approved architecture, implemented APIs, or tests.
+- When creating, renaming, moving or materially updating a `DOCS/Codebases/` dossier, **in the same task/commit** check and update navigation in `README.md`, this `AGENTS.md`, and `DOCS/00_CxVisual_协同开发入口与七仓复用基线.md` as needed. Validate that links resolve; avoid unnecessary edits when an existing link and description remain accurate.
+- Keep `DOCS/00_CxVisual_协同开发入口与七仓复用基线.md` as the full navigation and evidence-status entry, rather than duplicating technical specifications in AGENTS or README.
+
 ## Start every CxVisual development session here
 
 - Read [DOCS/00_CxVisual_协同开发入口与七仓复用基线.md](DOCS/00_CxVisual_协同开发入口与七仓复用基线.md) first. It maps the seven code repositories, distinguishes production-proven external systems from the new x3 preview, and gives the per-project chat/development workflow.
