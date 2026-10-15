@@ -96,7 +96,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             });
             MRKFlowResult result = Await(engine.StartFlow(plan).Completion);
             Check(result.State == MRKFlowState.Failed && visited == 0
-                && result.StepStates["next"] == MRKStepState.Failed,
+                && result.StepStates["next"] == MRKStepState.Skipped,
                 "dependent work advanced after failed dependency");
             Await(engine.StopAsync());
         }

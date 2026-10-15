@@ -10,7 +10,7 @@ using CxVisual.Foundation.Infrastructure.Concurrency;
 namespace CxVisual.Mechanism.Runtime.Execution
 {
     public enum MRKFlowState { Running, Completed, Failed, Cancelled }
-    public enum MRKStepState { WaitingDependencies, Scheduled, Completed, Failed, Cancelled, Queued, Running, Waiting, Paused, WaitingResources, WaitingGroup }
+    public enum MRKStepState { WaitingDependencies, Scheduled, Completed, Failed, Cancelled, Queued, Running, Waiting, Paused, WaitingResources, WaitingGroup, Skipped }
 
     /// <summary>同一次流程的局部快照；不对外暴露可写的全局数据字典。</summary>
     public sealed class MRKExecutionContext
@@ -452,12 +452,19 @@ namespace CxVisual.Mechanism.Runtime.Execution
         private async Task<object> RunStepAsync(MRKExecutionStep step, MRKExecutionContext context,
             CancellationToken cancellation, Func<string, Task<object>> schedule, MRKExecutionDebugController control)
         {
-            context.SetState(step.Id, MRKStepState.WaitingDependencies);
+            context.SetState(step.Id, MRKStepState.WaitingDependencies,
+                string.Join(",", step.Dependencies));
+            bool dependencyFailed = false;
             try
             {
                 List<Task<object>> dependencies = new List<Task<object>>();
                 foreach (string id in step.Dependencies) dependencies.Add(schedule(id));
-                await Task.WhenAll(dependencies).ConfigureAwait(false);
+                try { await Task.WhenAll(dependencies).ConfigureAwait(false); }
+                catch
+                {
+                    dependencyFailed = !cancellation.IsCancellationRequested;
+                    throw;
+                }
                 cancellation.ThrowIfCancellationRequested();
                 if (control != null)
                 {
@@ -510,12 +517,16 @@ namespace CxVisual.Mechanism.Runtime.Execution
             }
             catch (OperationCanceledException)
             {
-                context.SetState(step.Id, MRKStepState.Cancelled);
+                context.SetState(step.Id,
+                    dependencyFailed ? MRKStepState.Skipped : MRKStepState.Cancelled,
+                    dependencyFailed ? "依赖未成功" : "取消已确认");
                 throw;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                context.SetState(step.Id, MRKStepState.Failed);
+                context.SetState(step.Id,
+                    dependencyFailed ? MRKStepState.Skipped : MRKStepState.Failed,
+                    dependencyFailed ? "依赖未成功" : ex.GetType().Name);
                 throw;
             }
         }
