@@ -199,6 +199,36 @@ namespace CxVisual.TestCenter.Cases
                 context.AssertTrue(true, "释放后可获取", true, true);
         }
 
+        [TCTTest("TCT.WORKER.001", "真实子进程执行与身份校验", TCTTestAspect.Foundation, "TestFramework")]
+        public static void WorkerIdentity(TCTTestContext context)
+        {
+            ITCTTestCase inner = TCTRegistration.CreateCatalog().Cases.First(
+                t => t.Descriptor.Id == "TCT.CORE.001");
+            TCTTestAttempt attempt = new TCTTestAttempt(Guid.NewGuid().ToString("N"),
+                inner.Descriptor.Id, 4, context.Seed);
+            TCTTestCaseResult outcome = new TCTTestHostController().RunIsolatedAsync(
+                inner, TimeSpan.FromSeconds(20), context.Seed,
+                context.CancellationToken, attempt).GetAwaiter().GetResult();
+            context.AssertEqual(TCTTestStatus.Passed, outcome.Status, "真实Worker执行");
+            context.AssertEqual(attempt.RunId, outcome.RunId, "RunId不能串用");
+            context.AssertEqual(attempt.AttemptId, outcome.AttemptId, "AttemptId不能串用");
+            context.AssertTrue(outcome.Assertions.Count > 0, "来自Worker的真实断言", true, true);
+        }
+
+        [TCTTest("TCT.WORKER.002", "超时必须结束Worker且不得标绿", TCTTestAspect.Foundation, "TestFramework")]
+        public static void WorkerTimeout(TCTTestContext context)
+        {
+            ITCTTestCase inner = TCTRegistration.CreateCatalog().Cases.First(
+                t => t.Descriptor.Id == "TCT.CORE.001");
+            TCTTestAttempt attempt = new TCTTestAttempt(Guid.NewGuid().ToString("N"),
+                inner.Descriptor.Id, 0, context.Seed);
+            TCTTestCaseResult outcome = new TCTTestHostController().RunIsolatedAsync(
+                inner, TimeSpan.FromMilliseconds(1), context.Seed,
+                context.CancellationToken, attempt).GetAwaiter().GetResult();
+            context.AssertEqual(TCTTestStatus.TimedOut, outcome.Status, "截止时间必须真实超时");
+            context.AssertTrue(!string.IsNullOrWhiteSpace(outcome.Error), "保留超时原因", true, true);
+        }
+
         private sealed class TCTProbeCase : ITCTTestCase, ITCTTestLifecycle
         {
             private readonly bool _fail;
