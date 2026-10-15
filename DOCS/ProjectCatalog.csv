@@ -28,3 +28,4 @@ Intelligence,CxVisual.Intelligence,—,Assembly-only skeleton,
 Tests,CxVisual.Tests.FoundationSmoke,—,Implemented sample,"CxVisual.Foundation.Geometry, CxVisual.Foundation.Core, CxVisual.Foundation.Infrastructure"
 Tests,CxVisual.Tests.ArchitectureSmoke,—,Implemented sample,"CxVisual.Mechanism.Visual, CxVisual.Mechanism.Core, CxVisual.Foundation.Geometry, CxVisual.Foundation.Core"
 Tests,CxVisual.Tests.FoundationWpf,—,WPF manual test harness,"CxVisual.Foundation.Infrastructure, CxVisual.Mechanism.Presentation.Wpf"
+Tests,CxVisual.TestCenter,—,WPF TestCenter with 7 real tests,"CxVisual.Foundation.Geometry, CxVisual.Mechanism.Core"
