@@ -71,7 +71,9 @@ namespace CxVisual.Professional.Vision
 
         internal CxVisionThresholdPipeline(CxVisionInspectionOptions config)
         {
-            string problem = CxVisionInspectionOptions.Validate(config);
+            if (config == null) throw new ArgumentNullException("config");
+            string problem = MPMConfigDescription.Validate(config);
+            if (string.IsNullOrWhiteSpace(problem)) problem = CxVisionInspectionOptions.Validate(config);
             if (!string.IsNullOrWhiteSpace(problem)) throw new ArgumentException(problem, "config");
             if (config.UseAi)
                 throw new NotSupportedException("AI execution is not installed in this CPU threshold provider");
@@ -156,6 +158,13 @@ namespace CxVisual.Professional.Vision
         internal CxVisionThresholdConfigApplier(CxVisionInspectionOptions current)
         {
             _active = new CxVisionThresholdPipeline(current);
+        }
+
+        /// <summary>启动前可将提供者与MRK一次捕获的Active快照对齐，避免并发加载间隙。</summary>
+        internal void ResetActive(CxVisionInspectionOptions active)
+        {
+            CxVisionThresholdPipeline pipeline = new CxVisionThresholdPipeline(active);
+            lock (_gate) { _active = pipeline; _prepared = null; }
         }
 
         public string Prepare(CxVisionInspectionOptions oldConfig, CxVisionInspectionOptions proposedConfig)
@@ -247,6 +256,9 @@ namespace CxVisual.Professional.Vision
             _applier = new CxVisionThresholdConfigApplier(initial.Value);
             _session = new MRKConfigRuntimeSession<CxVisionInspectionOptions>(
                 manager, configId, CxVisionInspectionOptions.Validate, _applier);
+            // ConfigManager可在两次快照间被另一线程提交；以MRK实际Active快照为唯一权威。
+            if (initial.Revision != _session.ActiveRevision)
+                _applier.ResetActive(_session.CaptureActive());
             // Do not claim hardware acknowledgement: only CPU software pipeline has been initialized.
         }
 
