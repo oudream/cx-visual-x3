@@ -14,6 +14,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             T17_CorrelatedReplyAndTimeout();
             T18_ImmutablePlanAcrossRuns();
             T20_UnrelatedOrLateReplyCannotCompleteOtherRequest();
+            T14_FirstSuccessRequestsCancelAndTracksRemaining();
         }
         private static void Check(bool ok, string message)
         { if (!ok) throw new InvalidOperationException("Runtime协作测试: " + message); }
@@ -139,5 +140,34 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "A应答不一致");
             }
         }
+        private static void T14_FirstSuccessRequestsCancelAndTracksRemaining()
+        {
+            CxVisual.Foundation.Infrastructure.Concurrency.FCRWorker worker =
+                new CxVisual.Foundation.Infrastructure.Concurrency.FCRWorker(
+                    new CxVisual.Foundation.Infrastructure.Concurrency.FCRWorkerOptions(2, 3));
+            TaskCompletionSource<bool> entered =
+                new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            CxVisual.Foundation.Infrastructure.Concurrency.FCRWorkHandle<int> never =
+                worker.Submit<int>(async ct =>
+                {
+                    entered.TrySetResult(true);
+                    await Task.Delay(Timeout.Infinite, ct).ConfigureAwait(false);
+                    return 1;
+                }, "ai");
+            Await(entered.Task);
+            CxVisual.Foundation.Infrastructure.Concurrency.FCRWorkHandle<int> fast =
+                worker.Submit<int>(ct => Task.FromResult(99), "cpu");
+            MRKJoinResult<int> joined = Await(MRKWorkJoin.FirstSuccessfulAsync(new[] { never, fast }));
+            Check(joined.Succeeded && joined.Winner.Id == fast.Id &&
+                joined.WinningResult.Value == 99, "首个成功结果归并错误");
+            CxVisual.Foundation.Infrastructure.Concurrency.FCRWorkResult<int>[] all =
+                Await(joined.AllSettled);
+            Check(all.Length == 2 &&
+                all[0].State == CxVisual.Foundation.Infrastructure.Concurrency.FCRWorkState.Cancelled &&
+                all[1].State == CxVisual.Foundation.Infrastructure.Concurrency.FCRWorkState.Completed,
+                "余下分支未协作取消及安全结束");
+            Await(worker.StopAsync());
+        }
+
     }
 }
