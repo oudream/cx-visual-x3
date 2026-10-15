@@ -133,6 +133,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
             CancellationToken cancellation = default(CancellationToken));
         MRKFlowHandle StartFlow(MRKExecutionPlan plan, IDictionary<string, object> inputs = null,
             CancellationToken cancellation = default(CancellationToken));
+        MRKFlowHandle StartFromSlot(MRKExecutionPlanSlot slot, IDictionary<string, object> inputs = null,
+            CancellationToken cancellation = default(CancellationToken));
         FCRWorkerSnapshot GetSnapshot();
         Task StopAsync(bool cancelPending = false);
     }
@@ -152,6 +154,29 @@ namespace CxVisual.Mechanism.Runtime.Execution
         { return _worker.Submit(action, serialKey, droppable, cancellation); }
         public FCRWorkerSnapshot GetSnapshot() { return _worker.GetSnapshot(); }
         public Task StopAsync(bool cancelPending = false) { return _worker.StopAsync(cancelPending); }
+
+        /// <summary>每个Flow固定本次Plan；流结束后才释放旧版本的运行引用。</summary>
+        public MRKFlowHandle StartFromSlot(MRKExecutionPlanSlot slot,
+            IDictionary<string, object> inputs = null,
+            CancellationToken cancellation = default(CancellationToken))
+        {
+            if (slot == null) throw new ArgumentNullException("slot");
+            MRKExecutionPlanLease lease = slot.Capture();
+            try
+            {
+                MRKFlowHandle flow = StartFlow(lease.Plan, inputs, cancellation);
+                Task cleanup = flow.Completion.ContinueWith(
+                    completed => lease.Dispose(),
+                    CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously,
+                    TaskScheduler.Default);
+                return flow;
+            }
+            catch
+            {
+                lease.Dispose();
+                throw;
+            }
+        }
 
         public MRKFlowHandle StartFlow(MRKExecutionPlan plan, IDictionary<string, object> inputs = null,
             CancellationToken cancellation = default(CancellationToken))

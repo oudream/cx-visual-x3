@@ -13,6 +13,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             T12_UnknownOperationLateConfirmationAndIdempotency();
             T17_CorrelatedReplyAndTimeout();
             T18_ImmutablePlanAcrossRuns();
+            T18_StagedPlanSwitchDoesNotMutateRunningFlow();
             T20_UnrelatedOrLateReplyCannotCompleteOtherRequest();
             T14_FirstSuccessRequestsCancelAndTracksRemaining();
         }
@@ -167,6 +168,48 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 all[1].State == CxVisual.Foundation.Infrastructure.Concurrency.FCRWorkState.Completed,
                 "余下分支未协作取消及安全结束");
             Await(worker.StopAsync());
+        }
+
+        private static void T18_StagedPlanSwitchDoesNotMutateRunningFlow()
+        {
+            TaskCompletionSource<bool> entered =
+                new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<bool> gate =
+                new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            MRKExecutionPlan oldPlan = new MRKExecutionPlan("old", new[]
+            {
+                new MRKExecutionStep("value", new string[0], async (c, ct) =>
+                {
+                    entered.TrySetResult(true);
+                    await gate.Task.ConfigureAwait(false);
+                    return (object)10;
+                })
+            });
+            MRKExecutionPlan newPlan = new MRKExecutionPlan("new", new[]
+            {
+                new MRKExecutionStep("value", new string[0],
+                    (c, ct) => Task.FromResult((object)20))
+            });
+            MRKExecutionPlanSlot slot = new MRKExecutionPlanSlot(oldPlan, 1);
+            MRKExecutionEngine engine = new MRKExecutionEngine(
+                new CxVisual.Foundation.Infrastructure.Concurrency.FCRWorkerOptions(2, 4));
+            MRKFlowHandle running = engine.StartFromSlot(slot);
+            Await(entered.Task);
+            slot.StageValidated(newPlan, 2);
+            Check(!slot.TryActivatePending() && slot.ActiveRevision == 1 &&
+                slot.PendingRevision == 2 && slot.RunningFlows == 1,
+                "运行中的旧计划不允许部分切换");
+            gate.TrySetResult(true);
+            MRKFlowResult prior = Await(running.Completion);
+            Check((int)prior.Results["value"] == 10 && prior.State == MRKFlowState.Completed,
+                "运行中任务被新计划污染");
+            Check(SpinWait.SpinUntil(() => slot.RunningFlows == 0, 3000),
+                "旧计划运行引用未释放");
+            Check(slot.TryActivatePending() && slot.ActiveRevision == 2 &&
+                !slot.PendingRevision.HasValue, "空闲时无法切换已验证计划");
+            MRKFlowResult next = Await(engine.StartFromSlot(slot).Completion);
+            Check((int)next.Results["value"] == 20, "新执行没有使用新计划");
+            Await(engine.StopAsync());
         }
 
     }
