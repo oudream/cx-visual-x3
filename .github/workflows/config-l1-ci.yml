@@ -28,6 +28,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Architecture/ConfigL1 tests failed" }
           & .\Output\Release\x64\CxVisual.Runtime.Host.exe demo
           if ($LASTEXITCODE -ne 0) { throw "Runtime demo failed" }
+
+          $visionOutput = & .\Output\Release\x64\CxVisual.Runtime.Host.exe vision-demo
+          if ($LASTEXITCODE -ne 0) { throw "Vision real CPU demo failed" }
+          $visionText = $visionOutput -join "`n
+          if ($visionText -notmatch 'VisionDemo Revision=1 Defects=1' -or
+              $visionText -notmatch 'VisionDemo Revision=2 Defects=0' -or
+              $visionText -notmatch 'VisionDemo PASS') { throw "Vision demo output mismatch: $visionText" }
           & .\Output\Release\x64\CxVisual.Runtime.Host.exe save .\Output\Release\x64\Data\config-l1-smoke.xml
           if ($LASTEXITCODE -ne 0) { throw "Runtime save failed" }
           & .\Output\Release\x64\CxVisual.Runtime.Host.exe load .\Output\Release\x64\Data\config-l1-smoke.xml
