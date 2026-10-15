@@ -68,7 +68,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Path.Combine(forged, "payload", "Vision.Inspection.json"));
             string manifest = File.ReadAllText(Path.Combine(pkg.Path, "manifest.json"));
             File.WriteAllText(Path.Combine(forged, "manifest.json"),
-                manifest.Replace("2026-", "2021-")); // 同一ReleaseId，变更发布元数据，不改变配置的SHA
+                manifest.Replace("\"CreatedUtc\":", "\"ReportedUtc\":")); // 同一ReleaseId，变更发布元数据，不改变配置的SHA
             // 若时间字段因运行年不同没有匹配，则拒绝这个测试而非偶然通过。
             Check(File.ReadAllText(Path.Combine(forged, "manifest.json")) != manifest, "Manifest alteration did not change bytes");
             Expect<InvalidDataException>(() => target.Stage(forged), "Same ReleaseId accepted different manifest");

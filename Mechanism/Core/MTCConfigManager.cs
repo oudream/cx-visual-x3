@@ -83,6 +83,21 @@ namespace CxVisual.Mechanism.Core
             _directory = Path.GetFullPath(directory);
         }
 
+        /// <summary>最常用L1配置：一个强类型配置，单次调用完成注册、默认初始化或重载。</summary>
+        public static MTCConfigManager Create<T>(string directory, FCMConfigKey key,
+            Func<T, string> validator = null, bool requireExisting = false) where T : class
+        {
+            MTCConfigManager manager = new MTCConfigManager(directory);
+            manager.Register<T>(key.Id, requireExisting: requireExisting, validator: validator);
+            manager.Initialize();
+            return manager;
+        }
+
+        public T Get<T>(FCMConfigKey key) where T : class
+        {
+            return Get<T>(key.Id);
+        }
+
         public void Register<T>(string id, bool requireExisting = false, int schemaVersion = 1,
             Func<T, string> validator = null, Func<int, string, T> migrate = null) where T : class
         {

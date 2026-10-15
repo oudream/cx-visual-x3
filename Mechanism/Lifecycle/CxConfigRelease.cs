@@ -179,9 +179,9 @@ namespace CxVisual.Mechanism.Lifecycle
                 if (Directory.Exists(dest))
                 {
                     MVDConfigReleaseManifest existing = MVDConfigReleaseBuilder.Verify(dest);
-                    if (FCMConfigJsonFile.Serialize(existing.Items.Select(x => x.Sha256).ToArray()) !=
-                        FCMConfigJsonFile.Serialize(manifest.Items.Select(x => x.Sha256).ToArray()))
-                        throw new InvalidDataException("Immutable release ID has different payload");
+                    if (!File.ReadAllBytes(System.IO.Path.Combine(dest, "manifest.json"))
+                        .SequenceEqual(File.ReadAllBytes(System.IO.Path.Combine(packagePath, "manifest.json"))))
+                        throw new InvalidDataException("Immutable release ID has a different manifest");
                     return manifest.ReleaseId;
                 }
                 string temp = dest + ".staging-" + Guid.NewGuid().ToString("N");

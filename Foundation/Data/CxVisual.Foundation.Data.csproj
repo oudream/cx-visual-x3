@@ -14,6 +14,6 @@
     <Reference Include="System.Core"/><Reference Include="System.Web.Extensions"/>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Properties\AssemblyInfo.cs"/><Compile Include="FCMConfigJsonFile.cs"/></ItemGroup>
+    <Compile Include="Properties\AssemblyInfo.cs"/><Compile Include="FCMConfigJsonFile.cs"/><Compile Include="FCMConfigKey.cs"/></ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets"/>
 </Project>
