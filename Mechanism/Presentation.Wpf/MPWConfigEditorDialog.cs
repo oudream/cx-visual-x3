@@ -6,6 +6,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using CxVisual.Mechanism.Core;
+using CxVisual.Foundation.Data;
 
 namespace CxVisual.Mechanism.Presentation.Wpf
 {
@@ -128,10 +129,17 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 }
                 else
                 {
-                    control = new TextBlock
+                    // 对象/列表/字典统一生成可编辑JSON文本，供开发者快速调试；
+                    // 仍由通用Manager进行类型转换、专业校验、乐观并发提交。
+                    control = new TextBox
                     {
-                        Text = "(复杂类型请使用专业编辑器)",
-                        Foreground = Brushes.Gray, TextWrapping = TextWrapping.Wrap
+                        Text = old == null ? "null" : FCMConfigJsonFile.Serialize(old),
+                        TextWrapping = TextWrapping.Wrap,
+                        AcceptsReturn = true,
+                        MinHeight = 80,
+                        VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                        Padding = new Thickness(5),
+                        ToolTip = "复杂配置JSON编辑；不符合类型或业务规则的内容不会保存"
                     };
                 }
                 control.Tag = property.Name;
@@ -162,6 +170,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                             if (type == typeof(string)) value = input;
                             else if (string.IsNullOrWhiteSpace(input) && Nullable.GetUnderlyingType(property.PropertyType) != null)
                                 value = null;
+                            else if (!IsNumber(type))
+                                value = FCMConfigJsonFile.Deserialize(input, property.PropertyType);
                             else value = Convert.ChangeType(input, type, CultureInfo.CurrentCulture);
                         }
                         else continue; // 不支持的复杂属性原样保留
