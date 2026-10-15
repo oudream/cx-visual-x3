@@ -14,6 +14,7 @@ namespace CxVisual.Tests.FoundationSmoke
                 {
                     FCRWorkerTests.Run();
                 FCRSharedLeaseTests.Run();
+                FCRSchedulingTests.Run();
                     Console.WriteLine("PASS F19 concurrency tests");
                     return 0;
                 }
@@ -37,6 +38,7 @@ namespace CxVisual.Tests.FoundationSmoke
                 LoggingAndMonitoringTests.Run();
                 FCRWorkerTests.Run();
                 FCRSharedLeaseTests.Run();
+                FCRSchedulingTests.Run();
                 Console.WriteLine("PASS Foundation: Identity, Geometry, Logging, Rolling, Monitoring");
                 return 0;
             }
