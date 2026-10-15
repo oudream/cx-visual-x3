@@ -2,10 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using CxVisual.Mechanism.Core;
-using CxVisual.Mechanism.Runtime;
-using CxVisual.Foundation.Data;
+using CxVisual.Foundation.Data.Configuration;
+using CxVisual.Mechanism.Data.Configuration;
 using CxVisual.Professional.Vision;
-using CxVisual.Mechanism.Lifecycle;
 using CxVisual.Mechanism.Visual;
 using CxVisual.Foundation.Infrastructure;
 
@@ -29,68 +28,25 @@ namespace CxVisual.Runtime.Host
                 if (verb == "vision-demo" && args.Length == 1) return VisionDemo();
                 if (verb == "vision-inspect" && args.Length == 7)
                 {
-                    // 单次离线RAW检测。使用真实像素计算；不是相机采集、AI推理或硬件ACK。
-                    string directory = args[1];
-                    string id = args[2];
+                    // Real pixel processing, with V1.4 configuration pinned for this inspection.
                     int width = int.Parse(args[4], System.Globalization.CultureInfo.InvariantCulture);
                     int height = int.Parse(args[5], System.Globalization.CultureInfo.InvariantCulture);
                     int bits = int.Parse(args[6], System.Globalization.CultureInfo.InvariantCulture);
                     if (bits != 8 && bits != 16)
-                        throw new ArgumentException("RAW pixel bit depth must be 8 or 16");
-                    MTCConfigManager config = new MTCConfigManager(directory);
-                    config.Register<CxVisionInspectionOptions>(id, requireExisting: true,
-                        validator: CxVisionInspectionOptions.Validate);
-                    config.Initialize();
-                    CxVisionInspectionRuntime runtime = new CxVisionInspectionRuntime(config, id);
-                    CxVisionGrayFrame frame = CxVisionRawFrameReader.Read(
-                        args[3], width, height, (CxVisionPixelDepth)bits);
+                        throw new ArgumentException("RAW bit depth must be 8 or 16");
+                    MHSConfigService service = new MHSConfigService(args[1]);
+                    MHSConfigSection<CxVisionInspectionOptions> config = service.ForMachine(args[2])
+                        .Open<CxVisionInspectionOptions>();
+                    CxVisionInspectionRuntime runtime = new CxVisionInspectionRuntime(config);
+                    CxVisionGrayFrame frame = CxVisionRawFrameReader.Read(args[3], width, height,
+                        (CxVisionPixelDepth)bits);
                     using (CxVisionInspectionTask task = runtime.BeginInspection())
                     {
                         CxVisionInspectionResult result = task.Inspect(frame);
-                        Console.WriteLine("Vision CPU-Threshold-4 ConfigId=" + id +
+                        Console.WriteLine("Vision CPU-Threshold-4 ConfigId=" + args[2] +
                             " Revision=" + result.ConfigRevision + " Defects=" + result.Regions.Count +
-                            " ThresholdPixels=" + result.ThresholdPixelCount +
-                            " Passed=" + result.Passed);
+                            " ThresholdPixels=" + result.ThresholdPixelCount + " Passed=" + result.Passed);
                     }
-                    return 0;
-                }
-                // 版本化配置的独立Runtime进程入口（仅本机可信命令行，不提供网络写入接口）。
-                if (verb == "config-status" && args.Length == 2)
-                {
-                    MVDConfigReleaseReceiver receiver = new MVDConfigReleaseReceiver(args[1]);
-                    Console.WriteLine("ActiveReleaseId=" + (receiver.ActiveReleaseId ?? "(none)"));
-                    return 0;
-                }
-                if (verb == "config-check" && args.Length == 4)
-                {
-                    MVDConfigReleaseReceiver receiver = new MVDConfigReleaseReceiver(args[1]);
-                    string json = receiver.ReadActiveConfigJson(args[2]);
-                    CxVisual.Foundation.Data.FCMConfigDocumentHeader hdr =
-                        CxVisual.Foundation.Data.FCMConfigJsonFile.ReadHeader(json);
-                    long expected = long.Parse(args[3], System.Globalization.CultureInfo.InvariantCulture);
-                    if (hdr.Revision != expected)
-                        throw new InvalidDataException("Expected revision " + expected +
-                            ", active revision is " + hdr.Revision);
-                    Console.WriteLine("ActiveReleaseId=" + receiver.ActiveReleaseId +
-                        " ConfigId=" + hdr.Id + " Revision=" + hdr.Revision);
-                    return 0;
-                }
-                if (verb == "config-stage" && args.Length == 3)
-                {
-                    Console.WriteLine("Staged=" + new MVDConfigReleaseReceiver(args[1]).Stage(args[2]));
-                    return 0;
-                }
-                if (verb == "config-activate" && args.Length == 3)
-                {
-                    new MVDConfigReleaseReceiver(args[1]).Activate(args[2]);
-                    Console.WriteLine("Activated=" + args[2]);
-                    return 0;
-                }
-                if (verb == "config-rollback" && args.Length == 2)
-                {
-                    MVDConfigReleaseReceiver receiver = new MVDConfigReleaseReceiver(args[1]);
-                    receiver.Rollback();
-                    Console.WriteLine("RolledBackTo=" + (receiver.ActiveReleaseId ?? "(none)"));
                     return 0;
                 }
                 if (verb == "load" && args.Length == 2)
@@ -100,7 +56,7 @@ namespace CxVisual.Runtime.Host
                     Show(CxSceneProjection.Project(document));
                     return 0;
                 }
-                Console.WriteLine("Usage: CxVisual.Runtime.Host.exe [demo | vision-demo | save <file.xml> | load <file.xml> | config-status <root> | config-check <root> <id> <revision> | config-stage <root> <package> | config-activate <root> <releaseId> | config-rollback <root> | vision-inspect <configDir> <configId> <rawFile> <width> <height> <8|16>]");
+                Console.WriteLine("Usage: CxVisual.Runtime.Host.exe [demo | vision-demo | save <file.xml> | load <file.xml> | vision-inspect <configRoot> <machineId> <rawFile> <width> <height> <8|16>]");
                 return 2;
             }
             catch (Exception ex)
@@ -113,46 +69,55 @@ namespace CxVisual.Runtime.Host
         /// <summary>开发者无需机台/SDK的一键Vision闭环；使用真实像素算法及持久化参数。</summary>
         private static int VisionDemo()
         {
-            string root = Path.Combine(Path.GetTempPath(), "cxvision-demo-" + Guid.NewGuid().ToString("N"));
-            Directory.CreateDirectory(root);
+            string root = Path.Combine(Path.GetTempPath(), "cxvision-v14-" + Guid.NewGuid().ToString("N"));
             try
             {
-                FCMConfigKey key = new FCMConfigKey("Vision", "Demo");
-                MTCConfigManager manager = MTCConfigManager.Create<CxVisionInspectionOptions>(
-                    root, key, CxVisionInspectionOptions.Validate);
-                manager.UpdateAndSave<CxVisionInspectionOptions>(key.Id, x =>
+                MHSConfigService service = new MHSConfigService(root);
+                MHSConfigSection<CxVisionInspectionOptions> config =
+                    service.ForMachine("VisionDemo").Open<CxVisionInspectionOptions>();
+                using (MHSConfigEdit<CxVisionInspectionOptions> edit = config.BeginEdit("8位检测测试"))
                 {
-                    x.PixelDepth = CxVisionPixelDepth.Bits8;
-                    x.GrayThreshold = 200;
-                    x.MinDefectArea = 2;
-                    x.MaxDefectArea = 100;
-                });
-                CxVisionInspectionRuntime runtime = new CxVisionInspectionRuntime(manager, key.Id);
+                    edit.WorkingCopy.PixelDepth = CxVisionPixelDepth.Bits8;
+                    edit.WorkingCopy.GrayThreshold = 200;
+                    edit.WorkingCopy.MinDefectArea = 2;
+                    edit.WorkingCopy.MaxDefectArea = 100;
+                    MHSConfigCommitResult commit = edit.CommitAsync(System.Threading.CancellationToken.None)
+                        .GetAwaiter().GetResult();
+                    if (!commit.Success) throw new InvalidOperationException("Vision config: " + commit.ErrorCode);
+                }
+                config.ApplyPendingAtTaskBoundary();
+                CxVisionInspectionRuntime runtime = new CxVisionInspectionRuntime(config);
                 CxVisionGrayFrame frame = new CxVisionGrayFrame(5, 3, CxVisionPixelDepth.Bits8,
-                    new ushort[] { 210,210,0,0,0, 210,0,0,0,0, 0,0,0,0,250 });
+                    new ushort[] { 210, 210, 0, 0, 0, 210, 0, 0, 0, 0, 0, 0, 0, 0, 250 });
                 using (CxVisionInspectionTask current = runtime.BeginInspection())
                 {
                     CxVisionInspectionResult result = current.Inspect(frame);
                     Console.WriteLine("VisionDemo Revision=" + result.ConfigRevision +
                         " Defects=" + result.Regions.Count + " ThresholdPixels=" + result.ThresholdPixelCount);
-                    manager.UpdateAndSave<CxVisionInspectionOptions>(key.Id, x => x.GrayThreshold = 230);
-                    if (!runtime.RequestApply(MRKConfigApplyPolicy.NextTask))
-                        throw new InvalidOperationException("VisionDemo failed staging: " + runtime.LastError);
+                    if (result.Regions.Count != 1) throw new InvalidOperationException("Expected one connected defect");
+                    using (MHSConfigEdit<CxVisionInspectionOptions> edit = config.BeginEdit("下一任务阈值"))
+                    {
+                        edit.WorkingCopy.GrayThreshold = 230;
+                        MHSConfigCommitResult commit = edit.CommitAsync(System.Threading.CancellationToken.None)
+                            .GetAwaiter().GetResult();
+                        if (!commit.Success) throw new InvalidOperationException("Vision commit: " + commit.ErrorCode);
+                    }
+                    if (!runtime.RequestApply(FCMConfigApplyPolicy.NextTask))
+                        throw new InvalidOperationException("NextTask staging failed");
                     if (current.Inspect(frame).Regions.Count != 1)
-                        throw new InvalidOperationException("VisionDemo changed an in-flight inspection");
+                        throw new InvalidOperationException("In-flight detection changed parameters");
                 }
                 using (CxVisionInspectionTask next = runtime.BeginInspection())
                 {
                     CxVisionInspectionResult result = next.Inspect(frame);
                     Console.WriteLine("VisionDemo Revision=" + result.ConfigRevision +
                         " Defects=" + result.Regions.Count + " ThresholdPixels=" + result.ThresholdPixelCount);
-                    if (result.ConfigRevision != 2 || result.Regions.Count != 0)
-                        throw new InvalidOperationException("VisionDemo runtime did not activate the next version");
+                    if (result.Regions.Count != 0) throw new InvalidOperationException("NextTask was not applied");
                 }
-                Console.WriteLine("VisionDemo PASS CPU threshold pipeline; no camera, AI inference or hardware ACK");
+                Console.WriteLine("VisionDemo PASS CPU threshold pipeline; no camera or hardware ACK");
                 return 0;
             }
-            finally { try { Directory.Delete(root, true); } catch (IOException) { } }
+            finally { try { if (Directory.Exists(root)) Directory.Delete(root, true); } catch (IOException) { } }
         }
 
         private static int Demo()

@@ -11,7 +11,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="System"/>
-    <Reference Include="System.Core"/>
+    <Reference Include="System.Core"/><Reference Include="System.ComponentModel.DataAnnotations"/>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Properties\AssemblyInfo.cs"/><Compile Include="CxVisionInspectionOptions.cs"/><Compile Include="CxVisionInspectionRuntime.cs"/></ItemGroup>

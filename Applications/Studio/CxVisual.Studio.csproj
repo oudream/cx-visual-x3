@@ -23,6 +23,7 @@
     <Page Include="MainWindow.xaml"><Generator>MSBuild:Compile</Generator><SubType>Designer</SubType></Page>
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\Foundation\Data\CxVisual.Foundation.Data.csproj"><Project>{C85B49CA-155F-5E79-8932-B56BC7B178CD}</Project><Name>CxVisual.Foundation.Data</Name></ProjectReference>
     <ProjectReference Include="..\..\Professional\Automation\CxVisual.Professional.Automation.csproj"><Project>{02494452-8A8C-593B-8B49-A58D05218D88}</Project><Name>CxVisual.Professional.Automation</Name></ProjectReference>
     <ProjectReference Include="..\..\Professional\Vision\CxVisual.Professional.Vision.csproj"><Project>{828ED8C8-D754-54EB-9934-E27843EAF22D}</Project><Name>CxVisual.Professional.Vision</Name></ProjectReference>
     <ProjectReference Include="..\..\Professional\CT3D\CxVisual.Professional.CT3D.csproj"><Project>{812C9CE6-98F0-554F-AC07-8AA3155C0065}</Project><Name>CxVisual.Professional.CT3D</Name></ProjectReference>
