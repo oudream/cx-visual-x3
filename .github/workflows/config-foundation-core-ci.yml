@@ -1,0 +1,25 @@
+name: 配置公共底座独立编译与验收
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+jobs:
+  configuration-foundation:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - name: 仅编译基础和机制两个配置项目及独立测试
+        shell: pwsh
+        run: |
+          $msbuild = (Get-Command msbuild.exe -ErrorAction Stop).Source
+          & $msbuild .\Tests\ConfigFoundationSmoke\CxVisual.Tests.ConfigFoundationSmoke.csproj /m:1 /t:Rebuild /p:Configuration=Release /p:Platform=x64 /nologo /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw "两个配置项目编译失败" }
+      - name: 执行基础配置场景和完整回归
+        shell: pwsh
+        run: |
+          & .\Output\Release\x64\CxVisual.Tests.ConfigFoundationSmoke.exe
+          if ($LASTEXITCODE -ne 0) { throw "配置核心回归测试失败" }
