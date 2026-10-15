@@ -29,8 +29,8 @@ msbuild.exe .\CxVisual.Unified.sln /t:Rebuild /m:1 /p:Configuration=Release /p:P
 |---|---|---|---|
 | R1 软件开发 | 提交带类型结果、按Key串行、背压、取消/超时不误判 | F19五项测试 | 跨进程Async、更多执行策略 |
 | R2 专业Provider | 使用普通Task方法，异常不吞、可跨代码/流程复用 | ErrorIsObservable、DirectSdkAndFlowShareTheWorker | 能力Schema注册、Provider生命周期 |
-| R3 工程编排 | 顺序依赖、并行工作、All汇合 | ParallelJoinAndResultContext | Studio可视画布、循环、子流程、Any/FirstSuccess |
-| R4 工程调试 | 任务状态、工作统计、Flow/Step快照 | KeyedSerialAndAsyncWaiting、ParallelJoinAndResultContext | 单步断点、Trace关联、实时节点高亮 |
+| R3 工程编排 | 顺序依赖、条件、并行和汇合 | DAG、Condition、InlineSubflow、All/Any/FirstSuccess | Studio可视画布、活动图编译、动态子流程和高级Join |
+| R4 工程调试 | 任务、节点、Flow及等待事实 | Flow/Step快照、WorkId、headless断点/单步、有限Trace | 正式Studio交互、权限隔离、持久Trace与远程订阅 |
 | R5 运行操作 | 超时不等于硬件停止，失败不得继续后续节点 | TimeoutDoesNotStopUnderlyingWork、FailedStepDoesNotAdvanceDependent | 真实命令结果未确认/联锁/安全停止 |
 | R6 平台维护 | 少对象、单一执行引擎、项目引用不反向 | 全解决方案Windows编译及两组自动测试 | 压力、race、长时间、现场部署 |
 
