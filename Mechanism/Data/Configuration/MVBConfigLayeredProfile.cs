@@ -92,6 +92,19 @@ namespace CxVisual.Mechanism.Data.Configuration
         { return FCMJsonValueCodec.Deserialize<T>(FCMJsonValueCodec.Serialize(model)); }
     }
 
+    /// <summary>最终有效值的一次变化；不会把未生效的保存值冒充生效通知。</summary>
+    public sealed class MVBConfigLayerChange<V>
+    {
+        public V OldValue { get; internal set; }
+        public V NewValue { get; internal set; }
+        public bool HasDefaultValue { get; internal set; }
+        public V DefaultValue { get; internal set; }
+        public string OldSource { get; internal set; }
+        public string NewSource { get; internal set; }
+        public IDictionary<string, string> OldVersions { get; internal set; }
+        public IDictionary<string, string> NewVersions { get; internal set; }
+    }
+
     /// <summary>
     /// 基于已有 MHSConfigSection 存储/事务的多层显式覆盖。层级保存与生效严格分离。
     /// 一次 ResolveEffective 固定各层有效版本，跨层原子生效仍需 Runtime 专用协调。
@@ -120,6 +133,81 @@ namespace CxVisual.Mechanism.Data.Configuration
             }).ToList();
         }
         public MHSConfigSection<MVBConfigLayerOverrides> GetLayer(string name) { return Find(name).Store; }
+        /// <summary>订阅全部来源层的最终有效参数变化，用户不必重复监听每一层。</summary>
+        public IDisposable Subscribe<V>(Expression<Func<T, V>> selector, Action<MVBConfigLayerChange<V>> observer)
+        {
+            if (selector == null) throw new ArgumentNullException("selector");
+            if (observer == null) throw new ArgumentNullException("observer");
+            return new LayerSubscription<V>(this, selector, observer);
+        }
+
+        private sealed class LayerSubscription<V> : IDisposable
+        {
+            private readonly object _gate = new object();
+            private readonly MVBConfigLayeredProfile<T> _profile;
+            private readonly Expression<Func<T, V>> _selector;
+            private readonly Action<MVBConfigLayerChange<V>> _observer;
+            private readonly List<IDisposable> _listeners = new List<IDisposable>();
+            private MVBConfigResolved<T> _last;
+            private bool _disposed;
+            internal LayerSubscription(MVBConfigLayeredProfile<T> profile,
+                Expression<Func<T, V>> selector, Action<MVBConfigLayerChange<V>> observer)
+            {
+                _profile = profile; _selector = selector; _observer = observer;
+                _last = profile.ResolveEffective();
+                try
+                {
+                    foreach (Layer layer in profile._layers)
+                        _listeners.Add(layer.Store.SubscribeAll(FCMConfigChangeStage.Effective, change => Changed()));
+                    Changed(); // close startup race between initial capture and event subscriptions
+                }
+                catch { Dispose(); throw; }
+            }
+            private void Changed()
+            {
+                MVBConfigLayerChange<V> output = null;
+                lock (_gate)
+                {
+                    if (_disposed) return;
+                    MVBConfigResolved<T> next = _profile.ResolveEffective();
+                    MVBConfigLayerValueInfo<V> oldValue = _last.Explain(_selector);
+                    MVBConfigLayerValueInfo<V> newValue = next.Explain(_selector);
+                    if (oldValue.HasValue != newValue.HasValue ||
+                        FCMJsonValueCodec.Serialize(oldValue.Value) != FCMJsonValueCodec.Serialize(newValue.Value) ||
+                        oldValue.EffectiveSource != newValue.EffectiveSource)
+                    {
+                        V originalDefault = default(V);
+                        bool hasDefault = true;
+                        try { originalDefault = _selector.Compile()(new T()); }
+                        catch (KeyNotFoundException) { hasDefault = false; }
+                        catch (NullReferenceException) { hasDefault = false; }
+                        output = new MVBConfigLayerChange<V>
+                        {
+                            OldValue = oldValue.Value, NewValue = newValue.Value,
+                            OldSource = oldValue.EffectiveSource, NewSource = newValue.EffectiveSource,
+                            OldVersions = _last.Versions, NewVersions = next.Versions,
+                            HasDefaultValue = hasDefault,
+                            DefaultValue = hasDefault ? FCMJsonValueCodec.Deserialize<V>(
+                                FCMJsonValueCodec.Serialize(originalDefault)) : default(V)
+                        };
+                    }
+                    _last = next;
+                }
+                // User callbacks are always outside the internal subscription lock.
+                if (output != null) _observer(output);
+            }
+            public void Dispose()
+            {
+                lock (_gate)
+                {
+                    if (_disposed) return;
+                    _disposed = true;
+                    foreach (IDisposable listener in _listeners) listener.Dispose();
+                    _listeners.Clear();
+                }
+            }
+        }
+
 
         public async Task<MHSConfigCommitResult> SetOverrideAsync<V>(string layerName,
             Expression<Func<T, V>> selector, V value, CancellationToken token)

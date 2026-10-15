@@ -247,6 +247,43 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Verify(reopened.ResolveEffective().Value(x => x.ExposureMs) == 100 &&
                 reopened.ResolveEffective().Value(x => x.Detectors["D1"].Gain) == 7,
                 "persisted layers and effective markers survive process reopen");
+            int effectiveNotifications = 0;
+            using (IDisposable subscription = profile.Subscribe(x => x.ExposureMs, change =>
+            {
+                effectiveNotifications++;
+                if (effectiveNotifications == 1)
+                    Verify(change.OldValue == 100 && change.NewValue == 140 &&
+                        change.HasDefaultValue && change.DefaultValue == 80 &&
+                        change.OldSource == "模板" && change.NewSource == "机台" &&
+                        change.NewVersions.ContainsKey("机台"), "old/new/default/source on effective change");
+                else if (effectiveNotifications == 2)
+                    Verify(change.OldValue == 140 && change.NewValue == 120 &&
+                        change.NewSource == "模板", "source fallback when high-priority override removed");
+            }))
+            {
+                Verify(profile.SetOverrideAsync("机台", x => x.ExposureMs, 140,
+                    CancellationToken.None).GetAwaiter().GetResult().Success,
+                    "stage machine change for notification");
+                Verify(effectiveNotifications == 0, "saved stage must not raise effective event");
+                Verify(profile.GetLayer("机台").ApplyPendingAtTaskBoundary(), "apply machine update");
+                Verify(effectiveNotifications == 1, "one effective event expected");
+
+                Verify(profile.SetOverrideAsync("模板", x => x.ExposureMs, 120,
+                    CancellationToken.None).GetAwaiter().GetResult().Success,
+                    "stage lower-priority change");
+                Verify(profile.GetLayer("模板").ApplyPendingAtTaskBoundary(), "apply lower-priority change");
+                Verify(effectiveNotifications == 1,
+                    "shadowed low-priority change must not raise duplicate effective event");
+                Verify(profile.RemoveOverrideAsync("机台", x => x.ExposureMs,
+                    CancellationToken.None).GetAwaiter().GetResult().Success,
+                    "remove high-priority override");
+                Verify(profile.GetLayer("机台").ApplyPendingAtTaskBoundary(), "apply removal");
+                Verify(effectiveNotifications == 2, "one event on inherited fallback");
+            }
+            Verify(profile.SetOverrideAsync("机台", x => x.ExposureMs, 160,
+                CancellationToken.None).GetAwaiter().GetResult().Success, "write after unsubscribe");
+            profile.GetLayer("机台").ApplyPendingAtTaskBoundary();
+            Verify(effectiveNotifications == 2, "disposed subscription must not be called");
             Expect<ArgumentException>(() => new MVBConfigLayeredProfile<V13ConfigSample>(
                 service, specs[0], specs[0]), "duplicate layer must be rejected");
             Console.WriteLine("PASS V1.3 explicit sparse five-layer scope, source vector and fallback");
