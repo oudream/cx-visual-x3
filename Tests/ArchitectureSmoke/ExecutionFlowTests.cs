@@ -124,12 +124,17 @@ namespace CxVisual.Tests.ArchitectureSmoke
             MRKExecutionPlan plan = new MRKExecutionPlan("single", new[]
             {
                 new MRKExecutionStep("step", new string[0], (c, ct) =>
-                    Task.FromResult((object)6), "shared")
+                    Task.FromResult((object)6), "shared"),
+                new MRKExecutionStep("null-value", new string[0], (c, ct) =>
+                    Task.FromResult((object)null), "other")
             });
             MRKFlowHandle flow = engine.StartFlow(plan);
+            MRKFlowResult result = Await(flow.Completion);
+            object nullValue = new object();
             Check(Await(direct.Completion).Value == 5
-                && (int)Await(flow.Completion).Results["step"] == 6,
-                "SDK and orchestration produced different result semantics");
+                && (int)result.Results["step"] == 6 && result.Results["null-value"] == null
+                && flow.Context.TryGetResult("null-value", out nullValue) && nullValue == null,
+                "SDK, flow or null result semantics incorrect");
             Await(engine.StopAsync());
         }
     }

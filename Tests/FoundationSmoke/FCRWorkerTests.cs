@@ -73,6 +73,8 @@ namespace CxVisual.Tests.FoundationSmoke
             FCRWorkHandle<int> rejected = worker.Submit<int>(ct => Task.FromResult(13), "lane");
             Check(Await(rejected.Completion).State == FCRWorkState.Rejected,
                 "queue full must reject non-droppable request");
+            Check(fresh.Accepted && old.Accepted && !rejected.Accepted,
+                "admission result must not be inferred from eventual completion");
             FCRWorkerSnapshot snap = worker.GetSnapshot();
             Check(snap.Pending == 1 && snap.Active == 1 && snap.Dropped == 1 && snap.Rejected == 1,
                 "queue counters wrong");
@@ -91,7 +93,9 @@ namespace CxVisual.Tests.FoundationSmoke
             Await(entered.Task);
             FCRWorkHandle<int> queued = worker.Submit<int>(ct => Task.FromResult(2), "a");
             Check(queued.RequestCancel(), "queued cancel not accepted");
-            Check(Await(queued.Completion).State == FCRWorkState.Cancelled, "queued cancel not final");
+            FCRWorkResult<int> cancelled = Await(queued.Completion);
+            Check(cancelled.State == FCRWorkState.Cancelled && cancelled.CancellationRequested,
+                "queued cancellation not confirmed");
             Task stop = worker.StopAsync();
             Check(!stop.IsCompleted, "drain must wait for running task");
             Check(Await(worker.Submit<int>(ct => Task.FromResult(99)).Completion).State

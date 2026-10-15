@@ -28,7 +28,7 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
     public sealed class FCRWorkResult<T>
     {
         internal FCRWorkResult(FCRWorkState state, T value, Exception error, bool cancelRequested)
-        { State = state; Value = value; Error = error; CancellationRequested = cancelRequested; }
+        { State = state; Value = value; Error = error; CancellationRequested = cancelRequested || state == FCRWorkState.Cancelled; }
         public FCRWorkState State { get; private set; }
         public T Value { get; private set; }
         public Exception Error { get; private set; }
@@ -55,6 +55,8 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
         public Guid Id { get; private set; }
         public string Key { get; private set; }
         public Task<FCRWorkResult<T>> Completion { get; private set; }
+        /// <summary>本次工作是否被Worker接受排队或执行，Rejected/预取消为false。</summary>
+        public bool Accepted { get; internal set; }
         public FCRWorkState State { get { return _readState(); } }
         /// <summary>请求协作取消；仅排队任务能够立即确认取消，运行中的工作需自己响应Token。</summary>
         public bool RequestCancel() { return _cancel(); }

@@ -31,7 +31,11 @@ namespace CxVisual.Mechanism.Runtime.Execution
         public string PlanId { get; private set; }
         public IDictionary<string, object> Inputs { get { return _inputs; } }
         public bool TryGetResult(string stepId, out object result)
-        { return _results.TryGetValue(stepId, out result); }
+        {
+            bool found = _results.TryGetValue(stepId, out result);
+            if (result is NullResult) result = null;
+            return found;
+        }
         internal void SetResult(string stepId, object result)
         { _results[stepId] = result ?? NullResult.Instance; }
         internal void SetState(string stepId, MRKStepState state) { _states[stepId] = state; }

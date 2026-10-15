@@ -138,6 +138,7 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
                     }
                 }
                 _pending.AddLast(job);
+                job.Handle.Accepted = true;
                 launch.AddRange(PumpLocked());
             }
             LaunchInstance(launch);
