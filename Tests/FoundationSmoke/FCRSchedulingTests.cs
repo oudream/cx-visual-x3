@@ -12,6 +12,7 @@ namespace CxVisual.Tests.FoundationSmoke
             GateBroadcastAndCancellation();
             PeriodicNeverReentersAndStops();
             PeriodicFailureIsVisible();
+            ImmediateCallbackNeverBlocksConstructor();
         }
         private static T Await<T>(Task<T> work)
         {
@@ -78,6 +79,24 @@ namespace CxVisual.Tests.FoundationSmoke
             try { Await(job.Completion); }
             catch (InvalidOperationException ex) { failed = ex.Message == "故障可见"; }
             Check(failed, "周期任务故障被吞掉");
+        }        private static void ImmediateCallbackNeverBlocksConstructor()
+        {
+            using (ManualResetEventSlim release = new ManualResetEventSlim(false))
+            using (ManualResetEventSlim entered = new ManualResetEventSlim(false))
+            {
+                FCRPeriodicJob job = new FCRPeriodicJob(TimeSpan.FromSeconds(10),
+                    token =>
+                    {
+                        entered.Set();
+                        release.Wait(2000, token);
+                        return Task.FromResult(true);
+                    }, true);
+                // 如果构造过程同步执行上述委托，此处就会在回调释放前阻塞。
+                Check(entered.Wait(2000), "periodic callback never began");
+                release.Set();
+                Await(job.StopAsync());
+            }
         }
+
     }
 }

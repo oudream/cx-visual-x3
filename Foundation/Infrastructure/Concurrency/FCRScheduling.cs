@@ -72,7 +72,8 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
             if (callback == null) throw new ArgumentNullException("callback");
             Interval = interval;
             _cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
-            _completion = ExecuteAsync(callback, runImmediately, _cancellation.Token);
+            // 同步回调可能包含阻塞代码；构造周期任务不得直接阻塞UI/调度调用者。
+            _completion = Task.Run(() => ExecuteAsync(callback, runImmediately, _cancellation.Token));
         }
         public TimeSpan Interval { get; private set; }
         public long Executions { get { return Interlocked.Read(ref _executions); } }
