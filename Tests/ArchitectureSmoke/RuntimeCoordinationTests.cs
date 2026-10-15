@@ -19,7 +19,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
         { if (!ok) throw new InvalidOperationException("Runtime协作测试: " + message); }
         private static T Await<T>(Task<T> task)
         {
-            if (!task.Wait(TimeSpan.FromSeconds(8)))
+            Task winner = Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(8))).GetAwaiter().GetResult();
+            if (!object.ReferenceEquals(winner, task))
                 throw new TimeoutException("Runtime协作测试等待超时");
             return task.GetAwaiter().GetResult();
         }
