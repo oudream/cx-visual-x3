@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using CxVisual.Mechanism.Core;
+using CxVisual.Mechanism.Lifecycle;
 using CxVisual.Mechanism.Visual;
 using CxVisual.Foundation.Infrastructure;
 
@@ -22,6 +23,45 @@ namespace CxVisual.Runtime.Host
                     Console.WriteLine("Saved " + Path.GetFullPath(args[1]));
                     return 0;
                 }
+                // 版本化配置的独立Runtime进程入口（仅本机可信命令行，不提供网络写入接口）。
+                if (verb == "config-status" && args.Length == 2)
+                {
+                    CxConfigReleaseReceiver receiver = new CxConfigReleaseReceiver(args[1]);
+                    Console.WriteLine("ActiveReleaseId=" + (receiver.ActiveReleaseId ?? "(none)"));
+                    return 0;
+                }
+                if (verb == "config-check" && args.Length == 4)
+                {
+                    CxConfigReleaseReceiver receiver = new CxConfigReleaseReceiver(args[1]);
+                    string json = receiver.ReadActiveConfigJson(args[2]);
+                    CxVisual.Foundation.Data.CxConfigDocumentHeader hdr =
+                        CxVisual.Foundation.Data.CxConfigJsonFile.ReadHeader(json);
+                    long expected = long.Parse(args[3], System.Globalization.CultureInfo.InvariantCulture);
+                    if (hdr.Revision != expected)
+                        throw new InvalidDataException("Expected revision " + expected +
+                            ", active revision is " + hdr.Revision);
+                    Console.WriteLine("ActiveReleaseId=" + receiver.ActiveReleaseId +
+                        " ConfigId=" + hdr.Id + " Revision=" + hdr.Revision);
+                    return 0;
+                }
+                if (verb == "config-stage" && args.Length == 3)
+                {
+                    Console.WriteLine("Staged=" + new CxConfigReleaseReceiver(args[1]).Stage(args[2]));
+                    return 0;
+                }
+                if (verb == "config-activate" && args.Length == 3)
+                {
+                    new CxConfigReleaseReceiver(args[1]).Activate(args[2]);
+                    Console.WriteLine("Activated=" + args[2]);
+                    return 0;
+                }
+                if (verb == "config-rollback" && args.Length == 2)
+                {
+                    CxConfigReleaseReceiver receiver = new CxConfigReleaseReceiver(args[1]);
+                    receiver.Rollback();
+                    Console.WriteLine("RolledBackTo=" + (receiver.ActiveReleaseId ?? "(none)"));
+                    return 0;
+                }
                 if (verb == "load" && args.Length == 2)
                 {
                     CxProjectDocument document = CxDocumentSerializer.Load(args[1]);
@@ -29,7 +69,7 @@ namespace CxVisual.Runtime.Host
                     Show(CxSceneProjection.Project(document));
                     return 0;
                 }
-                Console.WriteLine("Usage: CxVisual.Runtime.Host.exe [demo | save <file.xml> | load <file.xml>]");
+                Console.WriteLine("Usage: CxVisual.Runtime.Host.exe [demo | save <file.xml> | load <file.xml> | config-status <root> | config-check <root> <id> <revision> | config-stage <root> <package> | config-activate <root> <releaseId> | config-rollback <root>]");
                 return 2;
             }
             catch (Exception ex)

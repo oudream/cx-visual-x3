@@ -4,6 +4,7 @@ on:
     branches:
       - master
       - 'feat/config-l1-*'
+      - 'feat/config-l2-l4-*'
   pull_request:
 jobs:
   build-and-config-tests:
