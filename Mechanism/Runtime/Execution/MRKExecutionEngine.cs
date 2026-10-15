@@ -506,6 +506,26 @@ namespace CxVisual.Mechanism.Runtime.Execution
                     throw;
                 }
                 cancellation.ThrowIfCancellationRequested();
+                if (!step.AllowSkippedDependencies)
+                {
+                    IDictionary<string, MRKStepState> states = context.StatesSnapshot();
+                    foreach (string dependency in step.Dependencies)
+                    {
+                        MRKStepState previous;
+                        if (states.TryGetValue(dependency, out previous) &&
+                            previous == MRKStepState.Skipped)
+                        {
+                            context.SetState(step.Id, MRKStepState.Skipped,
+                                "前置分支跳过：" + dependency);
+                            return null;
+                        }
+                    }
+                }
+                if (step.Condition != null && !step.Condition(context))
+                {
+                    context.SetState(step.Id, MRKStepState.Skipped, "条件为false");
+                    return null;
+                }
                 if (control != null)
                 {
                     Task checkpoint = control.WaitBeforeAsync(step.Id, cancellation);

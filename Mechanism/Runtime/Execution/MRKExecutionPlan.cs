@@ -19,7 +19,9 @@ namespace CxVisual.Mechanism.Runtime.Execution
             IEnumerable<string> requiredResources = null,
             Func<MRKExecutionContext, CancellationToken, Task> compensateAsync = null,
             string executionGroup = null,
-            IEnumerable<MRKExecutionInput> inputs = null, MRKExecutionOutput output = null)
+            IEnumerable<MRKExecutionInput> inputs = null, MRKExecutionOutput output = null,
+            Func<MRKExecutionContext, bool> condition = null,
+            bool allowSkippedDependencies = false)
         {
             if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("Step ID required", "id");
             if (executeAsync == null) throw new ArgumentNullException("executeAsync");
@@ -30,6 +32,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
             CompensateAsync = compensateAsync;
             ExecutionGroup = executionGroup;
             Output = output;
+            Condition = condition;
+            AllowSkippedDependencies = allowSkippedDependencies;
             Inputs = new List<MRKExecutionInput>(inputs ?? new MRKExecutionInput[0]).AsReadOnly();
             List<string> resources = new List<string>();
             if (requiredResources != null)
@@ -49,6 +53,9 @@ namespace CxVisual.Mechanism.Runtime.Execution
         public string ExecutionGroup { get; private set; }
         public IList<MRKExecutionInput> Inputs { get; private set; }
         public MRKExecutionOutput Output { get; private set; }
+        /// <summary>编排节点是否运行；无副作用的Guard应在资源申请前判定。</summary>
+        public Func<MRKExecutionContext, bool> Condition { get; private set; }
+        public bool AllowSkippedDependencies { get; private set; }
         public MRKExecutionPolicy Policy { get; private set; }
         /// <summary>显式声明的可安全调用补偿动作；绝不会在失败后默认执行。</summary>
         public Func<MRKExecutionContext, CancellationToken, Task> CompensateAsync { get; private set; }
@@ -126,7 +133,10 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 list.Add(new MRKExecutionStep(scope + local.Id, depends,
                     (context, token) => local.ExecuteAsync(context.ForSubflow(scope), token),
                     local.SerialKey, local.Policy, local.RequiredResources, compensation,
-                    local.ExecutionGroup, bindings, local.Output));
+                    local.ExecutionGroup, bindings, local.Output,
+                    local.Condition == null ? (Func<MRKExecutionContext, bool>)null
+                        : context => local.Condition(context.ForSubflow(scope)),
+                    local.AllowSkippedDependencies));
             }
             return list.AsReadOnly();
         }

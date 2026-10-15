@@ -17,6 +17,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             CancellationIsCooperative();
             DirectSdkAndFlowShareTheWorker();
             InlineSubflowSingleWorker();
+            ConditionalBranchAndExplicitJoin();
         }
         private static void Check(bool ok, string message)
         { if (!ok) throw new InvalidOperationException("Runtime Execution: " + message); }
@@ -186,6 +187,54 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 (int)result.Results["ct.compute"] == 30, "single-worker nested flow failed");
             Await(engine.StopAsync());
         }
+
+        private static void ConditionalBranchAndExplicitJoin()
+        {
+            int leftRuns = 0, rightRuns = 0, joinRuns = 0;
+            MRKExecutionPlan plan = new MRKExecutionPlan("condition-join", new[]
+            {
+                new MRKExecutionStep("predicate", new string[0], (c,ct) =>
+                    Task.FromResult((object)true),
+                    output: new MRKExecutionOutput(typeof(bool))),
+                new MRKExecutionStep("left", new []{"predicate"}, (c,ct) =>
+                {
+                    Interlocked.Increment(ref leftRuns);
+                    return Task.FromResult((object)11);
+                }, condition: ctx =>
+                {
+                    object value;
+                    return ctx.TryGetResult("predicate", out value) && (bool)value;
+                }),
+                new MRKExecutionStep("right", new []{"predicate"}, (c,ct) =>
+                {
+                    Interlocked.Increment(ref rightRuns);
+                    return Task.FromResult((object)22);
+                }, condition: ctx =>
+                {
+                    object value;
+                    return ctx.TryGetResult("predicate", out value) && !(bool)value;
+                }),
+                new MRKExecutionStep("afterRight", new []{"right"}, (c,ct) =>
+                    Task.FromResult((object)23)),
+                new MRKExecutionStep("join", new []{"left", "afterRight"}, (c,ct) =>
+                {
+                    Interlocked.Increment(ref joinRuns);
+                    object result;
+                    Check(ctxHas(c,"left",out result) && (int)result == 11,
+                        "selected branch result missing");
+                    return Task.FromResult((object)result);
+                }, allowSkippedDependencies:true)
+            });
+            IMRKExecutionEngine engine = new MRKExecutionEngine(new FCRWorkerOptions(3,7));
+            MRKFlowResult result = Await(engine.StartFlow(plan).Completion);
+            Check(result.State == MRKFlowState.Completed && leftRuns == 1 && rightRuns == 0 &&
+                joinRuns == 1 && result.StepStates["right"] == MRKStepState.Skipped &&
+                result.StepStates["afterRight"] == MRKStepState.Skipped &&
+                result.StepStates["join"] == MRKStepState.Completed, "branch graph semantics incorrect");
+            Await(engine.StopAsync());
+        }
+        private static bool ctxHas(MRKExecutionContext context, string id, out object value)
+        { return context.TryGetResult(id, out value); }
 
     }
 }
