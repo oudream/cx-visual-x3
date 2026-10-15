@@ -144,7 +144,13 @@ namespace CxVisual.Mechanism.Runtime
                     throw new InvalidOperationException("CONFIG_RUNTIME_FAULTED_NEEDS_MANUAL_RECOVERY");
                 if (_runningTasks == 0 && _pending != null &&
                     _pendingPolicy == MRKConfigApplyPolicy.NextTask)
+                {
                     ActivatePendingLocked();
+                    // Prepare/Apply/Verify及补偿均在此任务门槛内完成；
+                    // 如果补偿失败，绝不允许新任务使用不确定的专业状态。
+                    if (_isFaulted)
+                        throw new InvalidOperationException("CONFIG_RUNTIME_FAULTED_NEEDS_MANUAL_RECOVERY");
+                }
                 _runningTasks++;
                 return new MRKConfigTaskSnapshot<T>(FCMConfigJsonFile.Clone(_active),
                     _activeRevision, EndTask);
