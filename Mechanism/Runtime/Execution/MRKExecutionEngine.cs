@@ -166,10 +166,12 @@ namespace CxVisual.Mechanism.Runtime.Execution
     {
         internal MRKFlowResult(MRKFlowState state, MRKExecutionContext context, Exception error)
         { State = state; FlowId = context.FlowId; Metadata = context.Metadata; Error = error;
+          CompletedUtc = DateTime.UtcNow;
           Results = context.ResultsSnapshot(); StepStates = context.StatesSnapshot(); }
         public MRKFlowState State { get; private set; }
         public Guid FlowId { get; private set; }
         public MRKFlowMetadata Metadata { get; private set; }
+        public DateTime CompletedUtc { get; private set; }
         public Exception Error { get; private set; }
         public IDictionary<string, object> Results { get; private set; }
         public IDictionary<string, MRKStepState> StepStates { get; private set; }
@@ -212,7 +214,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
             }
             return new MRKFlowSnapshot(FlowId, Context.PlanId, Context.Metadata, state,
                 Volatile.Read(ref _cancelRequested) != 0, _createdUtc,
-                done != null && done.IsCompleted ? (DateTime?)DateTime.UtcNow : null,
+                done != null && done.Status == TaskStatus.RanToCompletion
+                    ? (DateTime?)done.Result.CompletedUtc : null,
                 steps.Count, completed, waiting, failed, skipped);
         }
 

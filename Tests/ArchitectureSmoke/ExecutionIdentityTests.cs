@@ -88,8 +88,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(handle.GetSnapshot().CancelRequested,
                 "requested cancellation not observable");
             MRKFlowResult result = Await(handle.Completion);
+            MRKFlowSnapshot finalSnapshot = handle.GetSnapshot();
             Check(result.State == MRKFlowState.Cancelled &&
-                handle.GetSnapshot().State == MRKFlowState.Cancelled,
+                finalSnapshot.State == MRKFlowState.Cancelled &&
+                finalSnapshot.EndedUtc.HasValue &&
+                finalSnapshot.EndedUtc.Value == result.CompletedUtc &&
+                handle.GetSnapshot().EndedUtc.Value == finalSnapshot.EndedUtc.Value,
                 "request and confirmed termination conflated");
             Task stop = engine.StopAsync();
             if (!object.ReferenceEquals(Task.WhenAny(stop,Task.Delay(7000)).GetAwaiter().GetResult(),
