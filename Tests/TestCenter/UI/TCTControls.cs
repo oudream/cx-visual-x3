@@ -99,12 +99,19 @@ namespace CxVisual.TestCenter.UI
             TCTTestCaseDescriptor d = result.Descriptor;
             _metadata.Text = "Test ID: " + d.Id + "\n状态: " + result.Status +
                 "\n耗时: " + result.Elapsed.TotalMilliseconds.ToString("F2") +
-                " ms\n方面: " + d.Aspect + "\n组: " + d.Group +
+                " ms\nRunId: " + result.RunId + "\nAttemptId: " + result.AttemptId +
+                "\n方面: " + d.Aspect + "\n组: " + d.Group +
                 "\n能力方面: " + d.CapabilityAreaId +
                 "\n能力: " + d.CapabilityId + "\n对象: " + d.ObjectId +
-                "\n断言: " + result.Assertions.Count + " 项";
+                "\n断言: " + result.Assertions.Count + " 项" +
+                "\n诊断: " + result.Diagnostics.Count + " 项" +
+                "\n产物: " + result.Artifacts.Count + " 项";
             _assertions.ItemsSource = result.Assertions;
-            _error.Text = string.IsNullOrEmpty(result.Error) ? "无异常" : result.Error;
+            _error.Text = (string.IsNullOrEmpty(result.Error) ? "无异常" : result.Error) +
+                string.Join("", result.Diagnostics.Select(d =>
+                    "\n[" + d.Severity + "] " + d.Code + " @" + d.Stage + ": " + d.Message)) +
+                string.Join("", result.Artifacts.Select(a =>
+                    "\n[Artifact] " + a.RelativePath + " SHA256=" + a.Sha256));
         }
     }
 
@@ -119,6 +126,7 @@ namespace CxVisual.TestCenter.UI
         {
             _grid.Columns.Add(new DataGridTextColumn { Header = "ID", Binding = new Binding("Descriptor.Id"), Width = new DataGridLength(165) });
             _grid.Columns.Add(new DataGridTextColumn { Header = "测试用例", Binding = new Binding("Descriptor.Name"), Width = new DataGridLength(2, DataGridLengthUnitType.Star) });
+            _grid.Columns.Add(new DataGridTextColumn { Header = "Attempt", Binding = new Binding("AttemptId"), Width = new DataGridLength(125) });
             _grid.Columns.Add(new DataGridTextColumn { Header = "结果", Binding = new Binding("Status"), Width = new DataGridLength(95) });
             _grid.Columns.Add(new DataGridTextColumn { Header = "毫秒", Binding = new Binding("Elapsed.TotalMilliseconds") { StringFormat = "F2" }, Width = new DataGridLength(90) });
             _grid.Columns.Add(new DataGridTextColumn { Header = "诊断", Binding = new Binding("Error"), Width = new DataGridLength(2, DataGridLengthUnitType.Star) });

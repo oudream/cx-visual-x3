@@ -87,7 +87,7 @@ namespace CxVisual.TestCenter.UI
                     result => Dispatcher.Invoke(() => {
                         Results.Add(result); ShowResult(result);
                     }));
-                StatusText.Text = "Completed · " + _lastRun.Total + "执行；" +
+                StatusText.Text = "Run " + _lastRun.RunId + " · " + _lastRun.Total + "执行；" +
                     _lastRun.Passed + "通过；" + _lastRun.Failed + "失败/错误；" +
                     _lastRun.Cancelled + "取消；" + _lastRun.Unsupported + "未覆盖";
             }
