@@ -16,6 +16,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             T18_StagedPlanSwitchDoesNotMutateRunningFlow();
             T20_UnrelatedOrLateReplyCannotCompleteOtherRequest();
             T14_FirstSuccessRequestsCancelAndTracksRemaining();
+            AnyReturnsFailedWinnerWithoutKillingOtherBranch();
             T19_UnknownPhysicalOperationDoesNotReleaseSoftwareLease();
         }
         private static void Check(bool ok, string message)
@@ -235,6 +236,39 @@ namespace CxVisual.Tests.ArchitectureSmoke
             exposure.Dispose();
             using (MRKResourceLease next = leases.TryAcquire("XRay.Source", "RuntimeNext"))
                 Check(next != null, "resource lease not released after explicit action");
+        }
+
+        private static void AnyReturnsFailedWinnerWithoutKillingOtherBranch()
+        {
+            CxVisual.Foundation.Infrastructure.Concurrency.FCRWorker worker =
+                new CxVisual.Foundation.Infrastructure.Concurrency.FCRWorker(
+                    new CxVisual.Foundation.Infrastructure.Concurrency.FCRWorkerOptions(2, 2));
+            TaskCompletionSource<bool> entered =
+                new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<bool> release =
+                new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            CxVisual.Foundation.Infrastructure.Concurrency.FCRWorkHandle<int> pending =
+                worker.Submit<int>(async ct =>
+                {
+                    entered.TrySetResult(true);
+                    await release.Task.ConfigureAwait(false);
+                    return 10;
+                });
+            Await(entered.Task);
+            CxVisual.Foundation.Infrastructure.Concurrency.FCRWorkHandle<int> failed =
+                worker.Submit<int>(ct =>
+                { throw new InvalidOperationException("本分支失败"); });
+            MRKJoinResult<int> first = Await(MRKWorkJoin.FirstCompletedAsync(
+                new[] { pending, failed }));
+            Check(first.Winner.Id == failed.Id && !first.Succeeded &&
+                !pending.Completion.IsCompleted, "Any把失败改成成功或提前取消其他分支");
+            release.TrySetResult(true);
+            CxVisual.Foundation.Infrastructure.Concurrency.FCRWorkResult<int>[] outcomes =
+                Await(first.AllSettled);
+            Check(outcomes.Length == 2 && outcomes[0].Succeeded &&
+                outcomes[1].State == CxVisual.Foundation.Infrastructure.Concurrency.FCRWorkState.Failed,
+                "Any的余下结果没有完整结算");
+            Await(worker.StopAsync());
         }
 
     }

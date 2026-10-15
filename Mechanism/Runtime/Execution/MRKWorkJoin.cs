@@ -24,6 +24,33 @@ namespace CxVisual.Mechanism.Runtime.Execution
     /// <summary>已通过统一Worker提交的分支之间进行归并，不再启动第二套调度器。</summary>
     public static class MRKWorkJoin
     {
+        /// <summary>
+        /// Any：第一个完成的分支即返回，允许返回失败结果；与FirstSuccessful语义不同。
+        /// 剩余分支的生命周期通过AllSettled显式结算，不能提前回收共享数据。
+        /// </summary>
+        public static async Task<MRKJoinResult<T>> FirstCompletedAsync<T>(
+            IEnumerable<FCRWorkHandle<T>> source, bool requestCancelRemaining = false)
+        {
+            if (source == null) throw new ArgumentNullException("source");
+            List<FCRWorkHandle<T>> handles = source.ToList();
+            if (handles.Count == 0 || handles.Any(x => x == null))
+                throw new ArgumentException("必须提供有效的执行分支", "source");
+            if (handles.Select(x => x.Id).Distinct().Count() != handles.Count)
+                throw new ArgumentException("执行分支不可重复", "source");
+
+            Task<FCRWorkResult<T>[]> allSettled =
+                Task.WhenAll(handles.Select(x => x.Completion));
+            Task<FCRWorkResult<T>> first = await Task.WhenAny(
+                handles.Select(x => x.Completion)).ConfigureAwait(false);
+            FCRWorkHandle<T> winner = handles.Find(x =>
+                object.ReferenceEquals(x.Completion, first));
+            FCRWorkResult<T> result = await first.ConfigureAwait(false);
+            if (requestCancelRemaining)
+                foreach (FCRWorkHandle<T> handle in handles)
+                    if (!object.ReferenceEquals(handle, winner)) handle.RequestCancel();
+            return new MRKJoinResult<T>(winner, result, allSettled);
+        }
+
         public static async Task<MRKJoinResult<T>> FirstSuccessfulAsync<T>(
             IEnumerable<FCRWorkHandle<T>> source, bool requestCancelRemaining = true)
         {
