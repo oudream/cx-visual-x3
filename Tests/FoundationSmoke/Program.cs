@@ -10,6 +10,12 @@ namespace CxVisual.Tests.FoundationSmoke
         {
             try
             {
+                if (args != null && args.Length > 0 && args[0] == "--concurrency")
+                {
+                    FCRWorkerTests.Run();
+                    Console.WriteLine("PASS F19 concurrency tests");
+                    return 0;
+                }
                 CxStableId id = CxStableId.NewId();
                 if (id.Value == Guid.Empty || !id.Equals(new CxStableId(id.Value)))
                     throw new InvalidOperationException("Identity value semantics failed");
@@ -28,6 +34,7 @@ namespace CxVisual.Tests.FoundationSmoke
                 if (logs.Count != 1 || logs.Get(0).Category != "Foundation")
                     throw new InvalidOperationException("Logger category lost");
                 LoggingAndMonitoringTests.Run();
+                FCRWorkerTests.Run();
                 Console.WriteLine("PASS Foundation: Identity, Geometry, Logging, Rolling, Monitoring");
                 return 0;
             }
