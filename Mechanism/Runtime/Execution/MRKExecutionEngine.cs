@@ -19,6 +19,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
             new ConcurrentDictionary<string, object>(StringComparer.Ordinal);
         private readonly ConcurrentDictionary<string, FCRWorkHandle<object>> _handles =
             new ConcurrentDictionary<string, FCRWorkHandle<object>>(StringComparer.Ordinal);
+        private readonly ConcurrentDictionary<string, MRKStepObservation> _observations =
+            new ConcurrentDictionary<string, MRKStepObservation>(StringComparer.Ordinal);
         private readonly ConcurrentDictionary<string, MRKStepState> _states =
             new ConcurrentDictionary<string, MRKStepState>(StringComparer.Ordinal);
         private readonly ReadOnlyDictionary<string, object> _inputs;
@@ -26,10 +28,12 @@ namespace CxVisual.Mechanism.Runtime.Execution
         private readonly MRKExecutionTrace _trace;
         private readonly IDictionary<string, object> _boundInputs;
         private readonly ConcurrentQueue<string> _completedOrder = new ConcurrentQueue<string>();
-        internal MRKExecutionContext(string planId, IDictionary<string, object> inputs)
+        internal MRKExecutionContext(string planId, IDictionary<string, object> inputs,
+            MRKFlowMetadata metadata = null)
         {
             FlowId = Guid.NewGuid();
             PlanId = planId;
+            Metadata = metadata ?? new MRKFlowMetadata();
             _scopePrefix = string.Empty;
             _trace = new MRKExecutionTrace();
             _boundInputs = new ReadOnlyDictionary<string, object>(new Dictionary<string, object>());
@@ -40,8 +44,10 @@ namespace CxVisual.Mechanism.Runtime.Execution
         {
             FlowId = parent.FlowId;
             PlanId = parent.PlanId;
+            Metadata = parent.Metadata;
             _results = parent._results;
             _states = parent._states;
+            _observations = parent._observations;
             _handles = parent._handles;
             _inputs = parent._inputs;
             _scopePrefix = parent._scopePrefix + prefix;
@@ -74,6 +80,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
         }
         public Guid FlowId { get; private set; }
         public string PlanId { get; private set; }
+        public MRKFlowMetadata Metadata { get; private set; }
         public MRKExecutionTrace Trace { get { return _trace; } }
         public IDictionary<string, object> Inputs { get { return _inputs; } }
         public bool TryGetResult(string stepId, out object result)
@@ -84,10 +91,15 @@ namespace CxVisual.Mechanism.Runtime.Execution
         }
         internal void SetResult(string stepId, object result)
         { _results[_scopePrefix + stepId] = result ?? NullResult.Instance; }
-        internal void SetState(string stepId, MRKStepState state)
+        internal void SetState(string stepId, MRKStepState state, string reason = null)
         {
             string qualified = _scopePrefix + stepId;
             _states[qualified] = state;
+            FCRWorkHandle<object> handle;
+            Guid? workId = _handles.TryGetValue(qualified, out handle)
+                ? (Guid?)handle.Id : null;
+            _observations[qualified] = new MRKStepObservation(qualified, state, workId,
+                reason ?? string.Empty, DateTime.UtcNow);
             if (state == MRKStepState.Completed) _completedOrder.Enqueue(qualified);
             _trace.Record(qualified, state);
         }
@@ -101,7 +113,32 @@ namespace CxVisual.Mechanism.Runtime.Execution
         internal string[] CompletedOrderSnapshot()
         { return _completedOrder.ToArray(); }
         internal void TrackWork(string stepId, FCRWorkHandle<object> handle)
-        { _handles[_scopePrefix + stepId] = handle; }
+        {
+            string id = _scopePrefix + stepId;
+            _handles[id] = handle;
+            MRKStepObservation current;
+            if (_observations.TryGetValue(id, out current))
+                _observations[id] = new MRKStepObservation(id, current.State, handle.Id,
+                    current.Reason, current.ChangedUtc);
+        }
+        public IDictionary<string, MRKStepObservation> ObservationsSnapshot()
+        {
+            IDictionary<string, MRKStepState> current = StatesSnapshot();
+            Dictionary<string, MRKStepObservation> output =
+                new Dictionary<string, MRKStepObservation>(StringComparer.Ordinal);
+            foreach (KeyValuePair<string, MRKStepState> pair in current)
+            {
+                MRKStepObservation known;
+                _observations.TryGetValue(pair.Key, out known);
+                FCRWorkHandle<object> handle;
+                Guid? workId = _handles.TryGetValue(pair.Key, out handle)
+                    ? (Guid?)handle.Id : known == null ? (Guid?)null : known.WorkId;
+                output.Add(pair.Key, new MRKStepObservation(pair.Key, pair.Value, workId,
+                    known == null ? string.Empty : known.Reason,
+                    known == null ? DateTime.UtcNow : known.ChangedUtc));
+            }
+            return new ReadOnlyDictionary<string, MRKStepObservation>(output);
+        }
         /// <summary>快照可辨排队、正在执行与真正异步等待，不仅是节点已调度。</summary>
         public IDictionary<string, MRKStepState> StatesSnapshot()
         {
@@ -128,10 +165,11 @@ namespace CxVisual.Mechanism.Runtime.Execution
     public sealed class MRKFlowResult
     {
         internal MRKFlowResult(MRKFlowState state, MRKExecutionContext context, Exception error)
-        { State = state; FlowId = context.FlowId; Error = error;
+        { State = state; FlowId = context.FlowId; Metadata = context.Metadata; Error = error;
           Results = context.ResultsSnapshot(); StepStates = context.StatesSnapshot(); }
         public MRKFlowState State { get; private set; }
         public Guid FlowId { get; private set; }
+        public MRKFlowMetadata Metadata { get; private set; }
         public Exception Error { get; private set; }
         public IDictionary<string, object> Results { get; private set; }
         public IDictionary<string, MRKStepState> StepStates { get; private set; }
@@ -146,6 +184,15 @@ namespace CxVisual.Mechanism.Runtime.Execution
         { Context = context; _cancellation = cancellation; }
         public MRKExecutionContext Context { get; private set; }
         public Guid FlowId { get { return Context.FlowId; } }
+        public MRKFlowState State
+        {
+            get
+            {
+                Task<MRKFlowResult> completion = _completion;
+                return completion != null && completion.Status == TaskStatus.RanToCompletion
+                    ? completion.Result.State : MRKFlowState.Running;
+            }
+        }
         public Task<MRKFlowResult> Completion { get { return _completion; } }
         internal CancellationToken Token { get { return _cancellation.Token; } }
         internal void SetCompletion(Task<MRKFlowResult> completion) { _completion = completion; }
@@ -168,6 +215,9 @@ namespace CxVisual.Mechanism.Runtime.Execution
         MRKFlowHandle StartFlow(MRKExecutionPlan plan, IDictionary<string, object> inputs = null,
             CancellationToken cancellation = default(CancellationToken));
         MRKFlowHandle StartFlowWithControl(MRKExecutionPlan plan, MRKExecutionDebugController control,
+            IDictionary<string, object> inputs = null,
+            CancellationToken cancellation = default(CancellationToken));
+        MRKFlowHandle StartFlowWithMetadata(MRKExecutionPlan plan, MRKFlowMetadata metadata,
             IDictionary<string, object> inputs = null,
             CancellationToken cancellation = default(CancellationToken));
         MRKFlowHandle StartFromSlot(MRKExecutionPlanSlot slot, IDictionary<string, object> inputs = null,
@@ -325,11 +375,21 @@ namespace CxVisual.Mechanism.Runtime.Execution
 
         public MRKFlowHandle StartFlow(MRKExecutionPlan plan, IDictionary<string, object> inputs = null,
             CancellationToken cancellation = default(CancellationToken))
-        { return StartFlowWithControl(plan, null, inputs, cancellation); }
+        { return StartFlowCore(plan, null, null, inputs, cancellation); }
+
+        public MRKFlowHandle StartFlowWithMetadata(MRKExecutionPlan plan,
+            MRKFlowMetadata metadata, IDictionary<string, object> inputs = null,
+            CancellationToken cancellation = default(CancellationToken))
+        { return StartFlowCore(plan, null, metadata, inputs, cancellation); }
 
         public MRKFlowHandle StartFlowWithControl(MRKExecutionPlan plan,
             MRKExecutionDebugController control, IDictionary<string, object> inputs = null,
             CancellationToken cancellation = default(CancellationToken))
+        { return StartFlowCore(plan, control, null, inputs, cancellation); }
+
+        private MRKFlowHandle StartFlowCore(MRKExecutionPlan plan,
+            MRKExecutionDebugController control, MRKFlowMetadata metadata,
+            IDictionary<string, object> inputs, CancellationToken cancellation)
         {
             if (plan == null) throw new ArgumentNullException("plan");
             MRKExecutionPortBinder.VerifyFlowInputs(plan, inputs);
@@ -341,7 +401,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
             lock (_lifecycleGate)
             {
                 if (_stopping) throw new InvalidOperationException("运行引擎已经停止接收新流程");
-                MRKExecutionContext context = new MRKExecutionContext(plan.Id, inputs);
+                MRKExecutionContext context = new MRKExecutionContext(plan.Id, inputs, metadata);
                 CancellationTokenSource linked =
                     CancellationTokenSource.CreateLinkedTokenSource(cancellation);
                 MRKFlowHandle handle = new MRKFlowHandle(context, linked);
@@ -402,7 +462,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 if (control != null)
                 {
                     Task checkpoint = control.WaitBeforeAsync(step.Id, cancellation);
-                    if (!checkpoint.IsCompleted) context.SetState(step.Id, MRKStepState.Paused);
+                    if (!checkpoint.IsCompleted) context.SetState(step.Id, MRKStepState.Paused, "breakpoint");
                     await checkpoint.ConfigureAwait(false);
                 }
                 // 在占用Worker槽位之前等资源，避免等锁的节点堵住真正持锁的执行任务。
@@ -412,12 +472,13 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 {
                     if (!string.IsNullOrWhiteSpace(step.ExecutionGroup))
                     {
-                        context.SetState(step.Id, MRKStepState.WaitingGroup);
+                        context.SetState(step.Id, MRKStepState.WaitingGroup, step.ExecutionGroup);
                         groupLease = await _groups.AcquireAsync(step.ExecutionGroup, cancellation)
                             .ConfigureAwait(false);
                     }
                     if (step.RequiredResources.Count > 0)
-                        context.SetState(step.Id, MRKStepState.WaitingResources);
+                        context.SetState(step.Id, MRKStepState.WaitingResources,
+                            string.Join(",", step.RequiredResources));
                     foreach (string resourceId in step.RequiredResources)
                         leases.Add(await _resources.AcquireAsync(resourceId,
                             context.FlowId.ToString("N") + ":" + step.Id, cancellation)

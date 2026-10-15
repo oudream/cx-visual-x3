@@ -26,6 +26,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 ExecutionCompensationTests.Run();
                 ExecutionGroupTests.Run();
                 ExecutionPortTests.Run();
+                ExecutionIdentityTests.Run();
                 RuntimeCoordinationTests.Run();
                 ConfigurationIntegrationTests.RunAll();
                 ConfigV13ExtensionTests.Run();
