@@ -11,6 +11,24 @@ namespace CxVisual.Mechanism.Runtime
         Immediate = 0, NextTask = 1, RestartSession = 2, RestartHost = 3
     }
 
+    /// <summary>专业设备应用契约。null错误表示成功；没有Provider时仅更新软件快照，不能视为硬件确认。</summary>
+    public interface IMRKConfigApplier<T> where T : class
+    {
+        string Prepare(T oldConfig, T proposedConfig);
+        string Apply(T oldConfig, T proposedConfig);
+        string Verify(T oldConfig, T proposedConfig);
+        void Rollback(T oldConfig);
+    }
+
+    public enum MRKConfigApplyStatus
+    {
+        SoftwareOnly = 0,
+        Pending = 1,
+        VerifiedByProvider = 2,
+        Failed = 3,
+        Faulted = 4
+    }
+
     /// <summary>本次任务持有稳定配置及版本，释放任务时允许NextTask配置安全切换。</summary>
     public sealed class MRKConfigTaskSnapshot<T> : IDisposable where T : class
     {
@@ -36,6 +54,8 @@ namespace CxVisual.Mechanism.Runtime
         private readonly MTCConfigManager _manager;
         private readonly string _id;
         private readonly Func<T, string> _applyValidator;
+        private readonly IMRKConfigApplier<T> _applier;
+        private bool _isFaulted;
         private T _active;
         private long _activeRevision;
         private T _pending;
@@ -43,13 +63,18 @@ namespace CxVisual.Mechanism.Runtime
         private MRKConfigApplyPolicy _pendingPolicy;
         private int _runningTasks;
         public string LastError { get; private set; }
+        public MRKConfigApplyStatus LastApplyStatus { get; private set; }
+        public bool IsFaulted { get { lock (_gate) return _isFaulted; } }
 
-        public MRKConfigRuntimeSession(MTCConfigManager manager, string id, Func<T, string> applyValidator = null)
+        public MRKConfigRuntimeSession(MTCConfigManager manager, string id, Func<T, string> applyValidator = null,
+            IMRKConfigApplier<T> applier = null)
         {
             if (manager == null) throw new ArgumentNullException("manager");
             _manager = manager;
             _id = id;
             _applyValidator = applyValidator;
+            _applier = applier;
+            LastApplyStatus = MRKConfigApplyStatus.SoftwareOnly;
             MTCConfigSnapshot<T> initial = manager.GetSnapshot<T>(id);
             if (!initial.Saved)
                 throw new InvalidOperationException("Runtime cannot activate an unsaved configuration");
@@ -90,12 +115,23 @@ namespace CxVisual.Mechanism.Runtime
             }
             lock (_gate)
             {
+                if (_isFaulted)
+                {
+                    LastError = "CONFIG_RUNTIME_FAULTED_NEEDS_MANUAL_RECOVERY";
+                    return false;
+                }
+                if (policy == MRKConfigApplyPolicy.Immediate && _runningTasks > 0)
+                {
+                    LastError = "CONFIG_IMMEDIATE_REQUIRES_IDLE";
+                    return false;
+                }
                 LastError = null;
                 _pending = candidate;
                 _pendingRevision = version;
                 _pendingPolicy = policy;
+                LastApplyStatus = MRKConfigApplyStatus.Pending;
                 if (policy == MRKConfigApplyPolicy.Immediate)
-                    ActivatePendingLocked();
+                    return ActivatePendingLocked();
                 return true;
             }
         }
@@ -104,6 +140,8 @@ namespace CxVisual.Mechanism.Runtime
         {
             lock (_gate)
             {
+                if (_isFaulted)
+                    throw new InvalidOperationException("CONFIG_RUNTIME_FAULTED_NEEDS_MANUAL_RECOVERY");
                 if (_runningTasks == 0 && _pending != null &&
                     _pendingPolicy == MRKConfigApplyPolicy.NextTask)
                     ActivatePendingLocked();
@@ -129,8 +167,7 @@ namespace CxVisual.Mechanism.Runtime
                 if (_runningTasks > 0 || _pending == null ||
                     _pendingPolicy != MRKConfigApplyPolicy.RestartSession)
                     return false;
-                ActivatePendingLocked();
-                return true;
+                return ActivatePendingLocked();
             }
         }
         public bool OnHostRestarted()
@@ -140,16 +177,57 @@ namespace CxVisual.Mechanism.Runtime
                 if (_runningTasks > 0 || _pending == null ||
                     _pendingPolicy != MRKConfigApplyPolicy.RestartHost)
                     return false;
-                ActivatePendingLocked();
-                return true;
+                return ActivatePendingLocked();
             }
         }
-        private void ActivatePendingLocked()
+
+        /// <summary>无专业Applier时仅软件生效；专业确认失败则补偿并保持旧ActiveRevision。</summary>
+        private bool ActivatePendingLocked()
         {
-            _active = FCMConfigJsonFile.Clone(_pending);
+            if (_pending == null || _isFaulted) return false;
+            T previous = FCMConfigJsonFile.Clone(_active);
+            T proposed = FCMConfigJsonFile.Clone(_pending);
+            if (_applier != null)
+            {
+                bool beganApply = false;
+                try
+                {
+                    string error = _applier.Prepare(FCMConfigJsonFile.Clone(previous),
+                        FCMConfigJsonFile.Clone(proposed));
+                    if (!string.IsNullOrWhiteSpace(error)) throw new InvalidOperationException("PREPARE: " + error);
+                    beganApply = true;
+                    error = _applier.Apply(FCMConfigJsonFile.Clone(previous), FCMConfigJsonFile.Clone(proposed));
+                    if (!string.IsNullOrWhiteSpace(error)) throw new InvalidOperationException("APPLY: " + error);
+                    error = _applier.Verify(FCMConfigJsonFile.Clone(previous), FCMConfigJsonFile.Clone(proposed));
+                    if (!string.IsNullOrWhiteSpace(error)) throw new InvalidOperationException("VERIFY: " + error);
+                }
+                catch (Exception ex)
+                {
+                    LastError = ex.Message;
+                    LastApplyStatus = MRKConfigApplyStatus.Failed;
+                    if (beganApply)
+                    {
+                        try { _applier.Rollback(FCMConfigJsonFile.Clone(previous)); }
+                        catch (Exception rollbackError)
+                        {
+                            LastError += " | ROLLBACK_FAILED: " + rollbackError.Message;
+                            _isFaulted = true;
+                            LastApplyStatus = MRKConfigApplyStatus.Faulted;
+                        }
+                    }
+                    _pending = null;
+                    _pendingRevision = 0;
+                    return false;
+                }
+            }
+            _active = proposed;
             _activeRevision = _pendingRevision;
             _pending = null;
             _pendingRevision = 0;
+            LastApplyStatus = _applier == null
+                ? MRKConfigApplyStatus.SoftwareOnly : MRKConfigApplyStatus.VerifiedByProvider;
+            LastError = null;
+            return true;
         }
     }
 
