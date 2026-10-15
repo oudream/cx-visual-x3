@@ -15,6 +15,7 @@ namespace CxVisual.Tests.FoundationSmoke
             TimeoutDoesNotStopUnderlyingWork();
             ErrorIsObservable();
             DeveloperConvenienceAndKeyedStress();
+            PriorityDoesNotBreakPerKeyFIFO();
         }
         private static void Check(bool ok, string message)
         { if (!ok) throw new InvalidOperationException("F19 " + message); }
@@ -165,6 +166,33 @@ namespace CxVisual.Tests.FoundationSmoke
                 for (int n = 0; n < 50; n++)
                     Check(observed[lane][n] == n, "keyed FIFO order violated");
             }
+            Await(worker.StopAsync());
+        }
+
+        private static void PriorityDoesNotBreakPerKeyFIFO()
+        {
+            FCRWorker worker = new FCRWorker(new FCRWorkerOptions(1, 5));
+            TaskCompletionSource<bool> entered = Gate(), release = Gate();
+            FCRWorkHandle<int> blocking = worker.Submit<int>(async ct =>
+            {
+                entered.TrySetResult(true);
+                await release.Task.ConfigureAwait(false);
+                return 0;
+            }, "block");
+            Await(entered.Task);
+            System.Collections.Generic.List<string> order = new System.Collections.Generic.List<string>();
+            FCRWorkHandle<int> low = worker.Submit<int>(ct =>
+            { order.Add("low"); return Task.FromResult(1); }, "line-a", priority: -1);
+            FCRWorkHandle<int> sameKeyHigher = worker.Submit<int>(ct =>
+            { order.Add("same-key"); return Task.FromResult(2); }, "line-a", priority: 100);
+            FCRWorkHandle<int> high = worker.Submit<int>(ct =>
+            { order.Add("high"); return Task.FromResult(3); }, "line-b", priority: 50);
+            release.TrySetResult(true);
+            Await(blocking.Completion);
+            Await(Task.WhenAll(low.Completion, sameKeyHigher.Completion, high.Completion));
+            Check(order.Count == 3 && order[0] == "high" &&
+                order[1] == "low" && order[2] == "same-key",
+                "priority broke FIFO in same key or other-key priority");
             Await(worker.StopAsync());
         }
 

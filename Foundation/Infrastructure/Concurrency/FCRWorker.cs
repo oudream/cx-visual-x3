@@ -16,12 +16,14 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
             internal readonly Guid Id = Guid.NewGuid();
             internal readonly string Key;
             internal readonly bool Droppable;
+            internal readonly int Priority;
             internal readonly CancellationTokenSource Source;
             internal int State = (int)FCRWorkState.Queued;
-            protected Job(string key, bool droppable, CancellationToken cancellation)
+            protected Job(string key, bool droppable, int priority, CancellationToken cancellation)
             {
                 Key = key ?? Id.ToString("N");
                 Droppable = droppable;
+                Priority = priority;
                 Source = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
             }
             internal abstract Task InvokeAsync();
@@ -35,8 +37,8 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
                 new TaskCompletionSource<FCRWorkResult<T>>(TaskCreationOptions.RunContinuationsAsynchronously);
             internal readonly FCRWorkHandle<T> Handle;
             internal Job(FCRWorker owner, string key, bool droppable,
-                CancellationToken cancellation, Func<CancellationToken, Task<T>> action)
-                : base(key, droppable, cancellation)
+                int priority, CancellationToken cancellation, Func<CancellationToken, Task<T>> action)
+                : base(key, droppable, priority, cancellation)
             {
                 _action = action;
                 Handle = new FCRWorkHandle<T>(Id, Key, _completion.Task,
@@ -87,7 +89,8 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
 
         /// <summary>便捷提交同步业务函数；执行在线程池Worker上，异常仍可从Handle结果查看。</summary>
         public FCRWorkHandle<bool> Post(Action action, string key = null,
-            bool droppable = false, CancellationToken cancellation = default(CancellationToken))
+            bool droppable = false, CancellationToken cancellation = default(CancellationToken),
+            int priority = 0)
         {
             if (action == null) throw new ArgumentNullException("action");
             return Submit<bool>(token =>
@@ -95,18 +98,19 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
                 token.ThrowIfCancellationRequested();
                 action();
                 return Task.FromResult(true);
-            }, key, droppable, cancellation);
+            }, key, droppable, cancellation, priority);
         }
 
         public FCRWorkHandle<T> Invoke<T>(Func<T> action, string key = null,
-            bool droppable = false, CancellationToken cancellation = default(CancellationToken))
+            bool droppable = false, CancellationToken cancellation = default(CancellationToken),
+            int priority = 0)
         {
             if (action == null) throw new ArgumentNullException("action");
             return Submit<T>(token =>
             {
                 token.ThrowIfCancellationRequested();
                 return Task.FromResult(action());
-            }, key, droppable, cancellation);
+            }, key, droppable, cancellation, priority);
         }
 
         public FCRWorkerSnapshot GetSnapshot()
@@ -116,11 +120,13 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
                     _rejected, _dropped, _stopping);
         }
 
+        /// <summary>高Priority先执行不同Key的待执行工作；同Key始终维持原提交顺序。</summary>
         public FCRWorkHandle<T> Submit<T>(Func<CancellationToken, Task<T>> action,
-            string key = null, bool droppable = false, CancellationToken cancellation = default(CancellationToken))
+            string key = null, bool droppable = false,
+            CancellationToken cancellation = default(CancellationToken), int priority = 0)
         {
             if (action == null) throw new ArgumentNullException("action");
-            Job<T> job = new Job<T>(this, key, droppable, cancellation, action);
+            Job<T> job = new Job<T>(this, key, droppable, priority, cancellation, action);
             List<Job> launch;
             lock (_gate)
             {
@@ -184,9 +190,17 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
             List<Job> launch = new List<Job>();
             while (_active < _options.MaxConcurrency)
             {
-                LinkedListNode<Job> eligible = _pending.First;
-                while (eligible != null && _activeKeys.Contains(eligible.Value.Key))
-                    eligible = eligible.Next;
+                LinkedListNode<Job> eligible = null;
+                HashSet<string> observedKeys = new HashSet<string>(StringComparer.Ordinal);
+                for (LinkedListNode<Job> candidate = _pending.First;
+                     candidate != null; candidate = candidate.Next)
+                {
+                    // 此轮一个Key只能选最早提交的未完成工作，防止高优先级超车同Key任务。
+                    if (!observedKeys.Add(candidate.Value.Key)) continue;
+                    if (_activeKeys.Contains(candidate.Value.Key)) continue;
+                    if (eligible == null || candidate.Value.Priority > eligible.Value.Priority)
+                        eligible = candidate;
+                }
                 if (eligible == null) break;
                 Job job = eligible.Value;
                 _pending.Remove(eligible);
