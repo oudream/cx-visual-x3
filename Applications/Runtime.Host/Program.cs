@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using CxVisual.Mechanism.Core;
+using CxVisual.Mechanism.Runtime;
+using CxVisual.Foundation.Data;
 using CxVisual.Professional.Vision;
 using CxVisual.Mechanism.Lifecycle;
 using CxVisual.Mechanism.Visual;
@@ -24,6 +26,7 @@ namespace CxVisual.Runtime.Host
                     Console.WriteLine("Saved " + Path.GetFullPath(args[1]));
                     return 0;
                 }
+                if (verb == "vision-demo" && args.Length == 1) return VisionDemo();
                 if (verb == "vision-inspect" && args.Length == 7)
                 {
                     // 单次离线RAW检测。使用真实像素计算；不是相机采集、AI推理或硬件ACK。
@@ -97,7 +100,7 @@ namespace CxVisual.Runtime.Host
                     Show(CxSceneProjection.Project(document));
                     return 0;
                 }
-                Console.WriteLine("Usage: CxVisual.Runtime.Host.exe [demo | save <file.xml> | load <file.xml> | config-status <root> | config-check <root> <id> <revision> | config-stage <root> <package> | config-activate <root> <releaseId> | config-rollback <root> | vision-inspect <configDir> <configId> <rawFile> <width> <height> <8|16>]");
+                Console.WriteLine("Usage: CxVisual.Runtime.Host.exe [demo | vision-demo | save <file.xml> | load <file.xml> | config-status <root> | config-check <root> <id> <revision> | config-stage <root> <package> | config-activate <root> <releaseId> | config-rollback <root> | vision-inspect <configDir> <configId> <rawFile> <width> <height> <8|16>]");
                 return 2;
             }
             catch (Exception ex)
@@ -105,6 +108,51 @@ namespace CxVisual.Runtime.Host
                 Console.Error.WriteLine("ERROR: " + ex.Message);
                 return 1;
             }
+        }
+
+        /// <summary>开发者无需机台/SDK的一键Vision闭环；使用真实像素算法及持久化参数。</summary>
+        private static int VisionDemo()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "cxvision-demo-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(root);
+            try
+            {
+                FCMConfigKey key = new FCMConfigKey("Vision", "Demo");
+                MTCConfigManager manager = MTCConfigManager.Create<CxVisionInspectionOptions>(
+                    root, key, CxVisionInspectionOptions.Validate);
+                manager.UpdateAndSave<CxVisionInspectionOptions>(key.Id, x =>
+                {
+                    x.PixelDepth = CxVisionPixelDepth.Bits8;
+                    x.GrayThreshold = 200;
+                    x.MinDefectArea = 2;
+                    x.MaxDefectArea = 100;
+                });
+                CxVisionInspectionRuntime runtime = new CxVisionInspectionRuntime(manager, key.Id);
+                CxVisionGrayFrame frame = new CxVisionGrayFrame(5, 3, CxVisionPixelDepth.Bits8,
+                    new ushort[] { 210,210,0,0,0, 210,0,0,0,0, 0,0,0,0,250 });
+                using (CxVisionInspectionTask current = runtime.BeginInspection())
+                {
+                    CxVisionInspectionResult result = current.Inspect(frame);
+                    Console.WriteLine("VisionDemo Revision=" + result.ConfigRevision +
+                        " Defects=" + result.Regions.Count + " ThresholdPixels=" + result.ThresholdPixelCount);
+                    manager.UpdateAndSave<CxVisionInspectionOptions>(key.Id, x => x.GrayThreshold = 230);
+                    if (!runtime.RequestApply(MRKConfigApplyPolicy.NextTask))
+                        throw new InvalidOperationException("VisionDemo failed staging: " + runtime.LastError);
+                    if (current.Inspect(frame).Regions.Count != 1)
+                        throw new InvalidOperationException("VisionDemo changed an in-flight inspection");
+                }
+                using (CxVisionInspectionTask next = runtime.BeginInspection())
+                {
+                    CxVisionInspectionResult result = next.Inspect(frame);
+                    Console.WriteLine("VisionDemo Revision=" + result.ConfigRevision +
+                        " Defects=" + result.Regions.Count + " ThresholdPixels=" + result.ThresholdPixelCount);
+                    if (result.ConfigRevision != 2 || result.Regions.Count != 0)
+                        throw new InvalidOperationException("VisionDemo runtime did not activate the next version");
+                }
+                Console.WriteLine("VisionDemo PASS CPU threshold pipeline; no camera, AI inference or hardware ACK");
+                return 0;
+            }
+            finally { try { Directory.Delete(root, true); } catch (IOException) { } }
         }
 
         private static int Demo()
