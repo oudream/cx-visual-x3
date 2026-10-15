@@ -16,6 +16,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             CancellationUnblocksPausedFlow();
             BoundedTraceDropsOldest();
             StopDrainsOrCancelsEntireFlow();
+            ResourcesAreDeclarativeAndDoNotBlockWorker();
         }
         private static void Check(bool ok, string msg)
         { if (!ok) throw new InvalidOperationException("运行控制测试：" + msg); }
@@ -176,6 +177,43 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 "stop with cancellation did not settle flow");
         }
 
+        private static void ResourcesAreDeclarativeAndDoNotBlockWorker()
+        {
+            TaskCompletionSource<bool> entered = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<bool> release = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            int secondStarted = 0;
+            MRKExecutionPlan plan = new MRKExecutionPlan("resources", new[]
+            {
+                new MRKExecutionStep("first", new string[0], async (ctx, ct) =>
+                {
+                    entered.TrySetResult(true);
+                    await release.Task.ConfigureAwait(false);
+                    return (object)1;
+                }, requiredResources: new[] { "device2", "device1" }),
+                new MRKExecutionStep("second", new string[0], (ctx, ct) =>
+                {
+                    Interlocked.Increment(ref secondStarted);
+                    return Task.FromResult((object)2);
+                }, requiredResources: new[] { "device1", "device2" }),
+                new MRKExecutionStep("unrelated", new string[0], (ctx, ct) =>
+                    Task.FromResult((object)3))
+            });
+            MRKExecutionEngine engine = new MRKExecutionEngine(new FCRWorkerOptions(2, 4));
+            MRKFlowHandle flow = engine.StartFlow(plan);
+            Await(entered.Task);
+            Check(Until(() => flow.Context.StatesSnapshot()["second"] ==
+                MRKStepState.WaitingResources), "resource wait not observable");
+            Check(secondStarted == 0 && engine.GetSnapshot().Active <= 2,
+                "second device job ran while resource held");
+            release.TrySetResult(true);
+            MRKFlowResult result = Await(flow.Completion);
+            Check(result.State == MRKFlowState.Completed &&
+                secondStarted == 1 && (int)result.Results["unrelated"] == 3,
+                "resource acquisition/release did not complete");
+            Await(engine.StopAsync());
+        }
 
     }
 }
