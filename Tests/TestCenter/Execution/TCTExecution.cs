@@ -7,6 +7,8 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CxVisual.TestCenter.Core;
+using CxVisual.TestCenter.Models;
+using CxVisual.TestCenter.Fixtures;
 
 namespace CxVisual.TestCenter.Execution
 {
@@ -14,7 +16,7 @@ namespace CxVisual.TestCenter.Execution
     public sealed class TCTTestHostController
     {
         public async Task<TCTTestCaseResult> RunIsolatedAsync(ITCTTestCase test,
-            TimeSpan timeout, int seed, CancellationToken cancellationToken)
+            TimeSpan timeout, int seed, CancellationToken cancellationToken, TCTTestAttempt attempt = null)
         {
             if (test == null) throw new ArgumentNullException("test");
             string directory = Path.Combine(Path.GetTempPath(), "CxVisual-TCT",
@@ -28,7 +30,9 @@ namespace CxVisual.TestCenter.Execution
                 string executable = Process.GetCurrentProcess().MainModule.FileName;
                 ProcessStartInfo start = new ProcessStartInfo(executable);
                 start.Arguments = "--worker " + Quote(test.Descriptor.Id) + " " +
-                    Quote(resultFile) + " " + seed.ToString(CultureInfo.InvariantCulture);
+                    Quote(resultFile) + " " + seed.ToString(CultureInfo.InvariantCulture) +
+                    (attempt == null ? "" : " " + Quote(attempt.RunId) + " " + Quote(attempt.AttemptId) +
+                    " " + attempt.Iteration.ToString(CultureInfo.InvariantCulture));
                 start.UseShellExecute = false;
                 start.CreateNoWindow = true;
                 start.WindowStyle = ProcessWindowStyle.Hidden;
@@ -37,36 +41,43 @@ namespace CxVisual.TestCenter.Execution
                 {
                     if (child == null) throw new InvalidOperationException("Cannot start TCT worker process");
                     Task exited = Task.Run(() => child.WaitForExit());
-                    Task deadline = Task.Delay(timeout);
-                    Task cancelled = Task.Delay(Timeout.Infinite, cancellationToken);
-                    Task first = await Task.WhenAny(exited, deadline, cancelled).ConfigureAwait(false);
-                    if (first != exited)
+                    using (CancellationTokenSource waits = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
                     {
-                        TryKill(child);
-                        await exited.ConfigureAwait(false);
-                        return Failure(test.Descriptor, first == cancelled ?
-                            TCTTestStatus.Cancelled : TCTTestStatus.TimedOut, watch.Elapsed,
-                            first == cancelled ? "Run cancelled; worker terminated" :
-                                "Child process timeout (" + timeout + "); worker terminated");
+                        Task deadline = Task.Delay(timeout, waits.Token);
+                        Task cancelled = Task.Delay(Timeout.Infinite, waits.Token);
+                        Task first = await Task.WhenAny(exited, deadline, cancelled).ConfigureAwait(false);
+                        if (first != exited)
+                        {
+                            bool killed = TryKill(child);
+                            Task grace = Task.Delay(TimeSpan.FromSeconds(5));
+                            Task stopped = await Task.WhenAny(exited, grace).ConfigureAwait(false);
+                            if (stopped != exited || !child.HasExited)
+                                return Failure(test.Descriptor, TCTTestStatus.Error, watch.Elapsed,
+                                    "Worker did not exit after attempted termination; check orphan process", attempt);
+                            return Failure(test.Descriptor, first == cancelled ?
+                                TCTTestStatus.Cancelled : TCTTestStatus.TimedOut, watch.Elapsed,
+                                first == cancelled ? "Run cancelled; worker exited" :
+                                    "Worker exceeded deadline and exited after terminate", attempt);
+                        }
+                        waits.Cancel();
                     }
-                    cancellationToken.ThrowIfCancellationRequested();
                     if (!File.Exists(resultFile))
                         return Failure(test.Descriptor, TCTTestStatus.Error, watch.Elapsed,
-                            "Worker exited " + child.ExitCode + " without result file");
-                    TCTTestCaseResult result = TCTWireCodec.Read(resultFile, test.Descriptor);
+                            "Worker exited " + child.ExitCode + " without result file", attempt);
+                    TCTTestCaseResult result = TCTWireCodec.Read(resultFile, test.Descriptor, attempt);
                     if (child.ExitCode != 0 && result.Status == TCTTestStatus.Passed)
                         return Failure(test.Descriptor, TCTTestStatus.Error, watch.Elapsed,
-                            "Worker exited unexpectedly (" + child.ExitCode + ")");
+                            "Worker exited unexpectedly (" + child.ExitCode + ")", attempt);
                     return result;
                 }
             }
             catch (OperationCanceledException)
             {
-                return Failure(test.Descriptor, TCTTestStatus.Cancelled, watch.Elapsed, "Run cancelled");
+                return Failure(test.Descriptor, TCTTestStatus.Cancelled, watch.Elapsed, "Run cancelled", attempt);
             }
             catch (Exception ex)
             {
-                return Failure(test.Descriptor, TCTTestStatus.Error, watch.Elapsed, ex.ToString());
+                return Failure(test.Descriptor, TCTTestStatus.Error, watch.Elapsed, ex.ToString(), attempt);
             }
             finally
             {
@@ -79,25 +90,24 @@ namespace CxVisual.TestCenter.Execution
         }
 
         private static string Quote(string value) { return "\"" + value.Replace("\"", "\\\"") + "\""; }
-        private static void TryKill(Process process)
+        private static bool TryKill(Process process)
         {
-            try { if (!process.HasExited) process.Kill(); }
-            catch (InvalidOperationException) { }
-            catch (System.ComponentModel.Win32Exception) { }
+            try { if (!process.HasExited) process.Kill(); return true; }
+            catch (InvalidOperationException) { return process.HasExited; }
+            catch (System.ComponentModel.Win32Exception) { return false; }
         }
         internal static TCTTestCaseResult Failure(TCTTestCaseDescriptor descriptor,
-            TCTTestStatus status, TimeSpan elapsed, string error)
+            TCTTestStatus status, TimeSpan elapsed, string error, TCTTestAttempt attempt = null)
         {
             return TCTTestCaseResult.FromTransport(descriptor, status, elapsed, error,
-                new List<TCTAssertionResult>(), new List<TCTTestObservation>());
+                new List<TCTAssertionResult>(), new List<TCTTestObservation>(), attempt);
         }
     }
 
     public sealed class TCTTestExecutionCoordinator
     {
         private readonly TCTTestHostController _host = new TCTTestHostController();
-
-        // 限制并发Worker数，保留用例结果原顺序；观察回调可能并发发生，UI负责Dispatcher封送。
+        private readonly TCTResourceGate _resources = new TCTResourceGate();
         public async Task<TCTTestRunSummary> RunAsync(TCTTestCatalog catalog, TCTTestRunRequest request,
             CancellationToken cancellationToken, Action<TCTTestCaseResult> onResult)
         {
@@ -106,36 +116,85 @@ namespace CxVisual.TestCenter.Execution
             request.Validate();
             IList<ITCTTestCase> tests = catalog.Select(request);
             int count = checked(tests.Count * request.Repeat);
-            if (count == 0) return new TCTTestRunSummary(new List<TCTTestCaseResult>());
-            TCTTestCaseResult[] results = new TCTTestCaseResult[count];
-            int next = -1;
-            int workers = Math.Min(count, request.MaxConcurrency);
-            List<Task> tasks = new List<Task>();
-            for (int w = 0; w < workers; w++)
+            TCTTestRunSession session = new TCTTestRunSession(request.RunId, request.Profile);
+            session.Start();
+            if (count == 0)
             {
-                tasks.Add(Task.Run(async () =>
-                {
-                    while (!cancellationToken.IsCancellationRequested)
-                    {
-                        int index = Interlocked.Increment(ref next);
-                        if (index >= count) break;
-                        ITCTTestCase test = tests[index % tests.Count];
-                        int seed = unchecked(request.Seed + index / tests.Count);
-                        TCTTestCaseResult result;
-                        if (request.Isolation == TCTTestIsolation.ChildProcess)
-                            result = await _host.RunIsolatedAsync(test, request.Timeout, seed,
-                                cancellationToken).ConfigureAwait(false);
-                        else
-                            // InProcess为可信测试的调试模式；无法强杀死锁线程。
-                            result = await TCTTestRunner.RunOneAsync(test, cancellationToken, seed)
-                                .ConfigureAwait(false);
-                        results[index] = result;
-                        if (onResult != null) onResult(result);
-                    }
-                }, CancellationToken.None));
+                session.Finish(false);
+                return new TCTTestRunSummary(new List<TCTTestCaseResult>(), session.RunId, session.Evidence);
             }
-            await Task.WhenAll(tasks).ConfigureAwait(false);
-            return new TCTTestRunSummary(results.Where(x => x != null).ToList());
+
+            TCTTestCaseResult[] results = new TCTTestCaseResult[count];
+            TCTTestArtifactStore artifactStore = new TCTTestArtifactStore(
+                TCTTestArtifactStore.RunRoot(request.RunId));
+            int next = -1;
+            int stop = 0;
+            int workers = request.FailFast ? 1 : Math.Min(count, request.MaxConcurrency);
+            List<Task> tasks = new List<Task>();
+            try
+            {
+                for (int w = 0; w < workers; w++)
+                {
+                    tasks.Add(Task.Run(async () =>
+                    {
+                        while (!cancellationToken.IsCancellationRequested && Volatile.Read(ref stop) == 0)
+                        {
+                            int index = Interlocked.Increment(ref next);
+                            if (index >= count) break;
+                            ITCTTestCase test = tests[index % tests.Count];
+                            int iteration = index / tests.Count;
+                            int seed = unchecked(request.Seed + iteration);
+                            TCTTestAttempt attempt = new TCTTestAttempt(request.RunId, test.Descriptor.Id,
+                                iteration, seed);
+                            TCTTestCaseResult result;
+                            try
+                            {
+                                using (IDisposable lease = await _resources.AcquireAsync(
+                                    test.Descriptor.ExclusiveResourceKeys, cancellationToken).ConfigureAwait(false))
+                                {
+                                    if (request.Isolation == TCTTestIsolation.ChildProcess)
+                                        result = await _host.RunIsolatedAsync(test, request.Timeout, seed,
+                                            cancellationToken, attempt).ConfigureAwait(false);
+                                    else
+                                        // InProcess is for trusted debugging; cannot terminate a hung thread.
+                                        result = await TCTTestRunner.RunOneAsync(test, cancellationToken,
+                                            seed, attempt, artifactStore).ConfigureAwait(false);
+                                }
+                            }
+                            catch (OperationCanceledException)
+                            {
+                                result = TCTTestHostController.Failure(test.Descriptor,
+                                    TCTTestStatus.Cancelled, TimeSpan.Zero, "Cancelled while waiting for exclusive resource", attempt);
+                            }
+                            results[index] = result;
+                            if (onResult != null) onResult(result);
+                            if (request.FailFast && result.Status != TCTTestStatus.Passed)
+                                Interlocked.Exchange(ref stop, 1);
+                        }
+                    }, CancellationToken.None));
+                }
+                await Task.WhenAll(tasks).ConfigureAwait(false);
+                if (cancellationToken.IsCancellationRequested) session.RequestCancel();
+                // Selection identity and unstarted attempts remain visible; no silent loss on fail-fast/cancel.
+                for (int index = 0; index < count; index++)
+                {
+                    if (results[index] != null) continue;
+                    ITCTTestCase test = tests[index % tests.Count];
+                    TCTTestAttempt attempt = new TCTTestAttempt(request.RunId, test.Descriptor.Id,
+                        index / tests.Count, unchecked(request.Seed + index / tests.Count));
+                    string reason = cancellationToken.IsCancellationRequested ?
+                        "Not started due to Run cancellation" : "Not started because FailFast stopped scheduling";
+                    results[index] = TCTTestHostController.Failure(test.Descriptor,
+                        TCTTestStatus.Skipped, TimeSpan.Zero, reason, attempt);
+                }
+                session.Finish(false);
+                return new TCTTestRunSummary(results, session.RunId, session.Evidence);
+            }
+            catch
+            {
+                session.Finish(true);
+                throw;
+            }
         }
     }
 
@@ -166,7 +225,24 @@ namespace CxVisual.TestCenter.Execution
                 new System.Xml.Linq.XAttribute("id", result.Descriptor.Id),
                 new System.Xml.Linq.XAttribute("status", result.Status.ToString()),
                 new System.Xml.Linq.XAttribute("ticks", result.Elapsed.Ticks),
+                new System.Xml.Linq.XAttribute("runId", result.RunId),
+                new System.Xml.Linq.XAttribute("attemptId", result.AttemptId),
+                new System.Xml.Linq.XAttribute("iteration", result.Attempt == null ? 0 : result.Attempt.Iteration),
+                new System.Xml.Linq.XAttribute("seed", result.Attempt == null ? 0 : result.Attempt.Seed),
                 new System.Xml.Linq.XElement("Error", result.Error),
+                new System.Xml.Linq.XElement("Artifacts", result.Artifacts.Select(a =>
+                    new System.Xml.Linq.XElement("Artifact",
+                        new System.Xml.Linq.XAttribute("path", a.RelativePath),
+                        new System.Xml.Linq.XAttribute("mime", a.Mime),
+                        new System.Xml.Linq.XAttribute("hash", a.Sha256),
+                        new System.Xml.Linq.XAttribute("bytes", a.ByteSize),
+                        new System.Xml.Linq.XAttribute("attemptId", a.AttemptId)))),
+                new System.Xml.Linq.XElement("Diagnostics", result.Diagnostics.Select(d =>
+                    new System.Xml.Linq.XElement("Diagnostic",
+                        new System.Xml.Linq.XAttribute("code", d.Code),
+                        new System.Xml.Linq.XAttribute("severity", d.Severity),
+                        new System.Xml.Linq.XAttribute("stage", d.Stage),
+                        d.Message))),
                 new System.Xml.Linq.XElement("Assertions", result.Assertions.Select(a =>
                     new System.Xml.Linq.XElement("Assertion",
                         new System.Xml.Linq.XAttribute("name", a.Name),
@@ -184,12 +260,22 @@ namespace CxVisual.TestCenter.Execution
             if (File.Exists(file)) File.Delete(file);
             File.Move(temp, file);
         }
-        public static TCTTestCaseResult Read(string file, TCTTestCaseDescriptor descriptor)
+        public static TCTTestCaseResult Read(string file, TCTTestCaseDescriptor descriptor, TCTTestAttempt expectedAttempt = null)
         {
             System.Xml.Linq.XElement root = System.Xml.Linq.XDocument.Load(file).Root;
             if (root == null || (string)root.Attribute("schema") != "1" ||
                 (string)root.Attribute("id") != descriptor.Id)
                 throw new InvalidDataException("Worker result schema/id mismatch");
+            if (expectedAttempt != null &&
+                ((string)root.Attribute("runId") != expectedAttempt.RunId ||
+                 (string)root.Attribute("attemptId") != expectedAttempt.AttemptId ||
+                 (int)root.Attribute("iteration") != expectedAttempt.Iteration ||
+                 (int)root.Attribute("seed") != expectedAttempt.Seed))
+                throw new InvalidDataException("Worker result Run/Attempt identity mismatch");
+            TCTTestAttempt attempt = expectedAttempt ??
+                new TCTTestAttempt((string)root.Attribute("runId"), descriptor.Id,
+                    (int)root.Attribute("iteration"), (int)root.Attribute("seed"),
+                    (string)root.Attribute("attemptId"));
             TCTTestStatus status;
             if (!Enum.TryParse((string)root.Attribute("status"), out status))
                 throw new InvalidDataException("Worker result status invalid");
@@ -201,8 +287,21 @@ namespace CxVisual.TestCenter.Execution
             List<TCTTestObservation> observations = root.Element("Observations").Elements("Observation")
                 .Select(x => new TCTTestObservation((string)x.Attribute("kind"),
                     (string)x.Attribute("title"), x.Value, (string)x.Attribute("origin"))).ToList();
+            List<TCTArtifactRef> artifacts = root.Element("Artifacts") == null ?
+                new List<TCTArtifactRef>() : root.Element("Artifacts").Elements("Artifact")
+                .Select(a => new TCTArtifactRef((string)a.Attribute("path"), (string)a.Attribute("mime"),
+                    (string)a.Attribute("hash"), (long)a.Attribute("bytes"),
+                    (string)a.Attribute("attemptId"))).ToList();
+            if (artifacts.Any(a => a.AttemptId != attempt.AttemptId))
+                throw new InvalidDataException("Artifact attempt identity mismatch");
+            List<TCTTestDiagnostic> diagnostics = root.Element("Diagnostics") == null ?
+                new List<TCTTestDiagnostic>() : root.Element("Diagnostics").Elements("Diagnostic")
+                .Select(d => new TCTTestDiagnostic((string)d.Attribute("code"),
+                    (TCTTestDiagnosticSeverity)Enum.Parse(typeof(TCTTestDiagnosticSeverity),
+                    (string)d.Attribute("severity")), (string)d.Attribute("stage"),
+                    d.Value, attempt.AttemptId)).ToList();
             return TCTTestCaseResult.FromTransport(descriptor, status, new TimeSpan(ticks),
-                (string)root.Element("Error"), assertions, observations);
+                (string)root.Element("Error"), assertions, observations, attempt, artifacts, diagnostics);
         }
     }
 }

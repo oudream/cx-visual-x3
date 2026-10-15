@@ -205,6 +205,8 @@ namespace CxVisual.TestCenter.UI
             _empty.Text = result.Status + " · " + result.Descriptor.Name +
                 "\n观察数：" + result.Observations.Count +
                 "\n断言数：" + result.Assertions.Count +
+                "\n诊断数：" + result.Diagnostics.Count +
+                "\n产物数：" + result.Artifacts.Count +
                 "\n\n没有专业观察时不生成演示数据。";
             foreach (ITCTTestViewer viewer in _viewers)
             {

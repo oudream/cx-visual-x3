@@ -25,6 +25,12 @@
     <Compile Include="App.xaml.cs" />
     <Compile Include="MainWindow.xaml.cs" />
     <Compile Include="Core\TCTTesting.cs" />
+    <Compile Include="Models\TCTModels.cs" />
+    <Compile Include="Fixtures\TCTArtifacts.cs" />
+    <Compile Include="Execution\TCTLifecycle.cs" />
+    <Compile Include="Diagnostics\TCTObserverHub.cs" />
+    <Compile Include="Reports\TCTTestResultRepository.cs" />
+    <Compile Include="Cases\TCTFrameworkExtendedCases.cs" />
     <Compile Include="Execution\TCTExecution.cs" />
     <Compile Include="Discovery\TCTDiscovery.cs" />
     <Compile Include="Discovery\TCTAttributeTests.cs" />

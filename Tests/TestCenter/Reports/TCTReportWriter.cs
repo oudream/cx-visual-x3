@@ -16,26 +16,37 @@ namespace CxVisual.TestCenter.Reports
         {
             WriteAtomic(path, string.Join(Environment.NewLine, new[] {
                 "CxVisual.TestCenter " + DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture),
+                "RunId=" + summary.RunId + " Commit=" + summary.Evidence.Commit +
+                " OS=" + summary.Evidence.OS + " ProcessBits=" + summary.Evidence.ProcessBits,
                 "Total=" + summary.Total + " Passed=" + summary.Passed +
                 " Failed=" + summary.Failed + " Cancelled=" + summary.Cancelled +
                 " Unsupported=" + summary.Unsupported
             }.Concat(summary.Results.SelectMany(r =>
-                new[] { r.Status + " | " + r.Descriptor.Id + " | " + r.Descriptor.Name +
+                new[] { r.Status + " | " + r.Descriptor.Id + " | " + r.Descriptor.Name + " | Attempt=" + r.AttemptId +
                         " | " + r.Elapsed.TotalMilliseconds.ToString("F3", CultureInfo.InvariantCulture) + "ms",
                         r.Error.Length > 0 ? r.Error : "" }.Concat(
                 r.Assertions.Select(a => "  " + (a.Passed ? "PASS" : "FAIL") + " " + a.Name +
-                        " expected=" + a.Expected + " actual=" + a.Actual))))) + Environment.NewLine);
+                        " expected=" + a.Expected + " actual=" + a.Actual)
+                        .Concat(r.Diagnostics.Select(d => "  ["+d.Severity+"] "+d.Code+" "+d.Message))
+                        .Concat(r.Artifacts.Select(a => "  ARTIFACT "+a.RelativePath+" SHA256="+a.Sha256)) )))) + Environment.NewLine);
         }
         public static void WriteJson(string path, TCTTestRunSummary summary)
         {
             JavaScriptSerializer serializer = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
             object data = new {
-                schemaVersion = 1, generatedUtc = DateTime.UtcNow.ToString("o"),
+                schemaVersion = 2, generatedUtc = DateTime.UtcNow.ToString("o"),
+                runId = summary.RunId,
+                environment = new { summary.Evidence.Commit, summary.Evidence.Repository,
+                    summary.Evidence.OS, summary.Evidence.Framework, summary.Evidence.ProcessBits,
+                    summary.Evidence.Configuration, summary.Evidence.AssemblyVersion },
                 total = summary.Total, passed = summary.Passed, failed = summary.Failed,
                 cancelled = summary.Cancelled, unsupported = summary.Unsupported,
                 success = summary.Success,
                 cases = summary.Results.Select(r => new {
                     id = r.Descriptor.Id, name = r.Descriptor.Name,
+                    runId = r.RunId, attemptId = r.AttemptId,
+                    iteration = r.Attempt == null ? 0 : r.Attempt.Iteration,
+                    seed = r.Attempt == null ? 0 : r.Attempt.Seed,
                     aspect = r.Descriptor.Aspect.ToString(), group = r.Descriptor.Group,
                     capabilityAreaId = r.Descriptor.CapabilityAreaId,
                     capabilityId = r.Descriptor.CapabilityId, objectId = r.Descriptor.ObjectId,
@@ -45,6 +56,13 @@ namespace CxVisual.TestCenter.Reports
                     }).ToArray(),
                     observations = r.Observations.Select(o => new {
                         o.Kind, o.Title, o.Details, o.Origin
+                    }).ToArray(),
+                    artifacts = r.Artifacts.Select(a => new {
+                        a.RelativePath, a.Mime, a.Sha256, a.ByteSize, a.AttemptId
+                    }).ToArray(),
+                    diagnostics = r.Diagnostics.Select(d => new {
+                        d.Code, Severity = d.Severity.ToString(), d.Stage, d.Message,
+                        d.AttemptId, d.TimestampUtc
                     }).ToArray()
                 }).ToArray()
             };
@@ -54,6 +72,8 @@ namespace CxVisual.TestCenter.Reports
         {
             XElement suite = new XElement("testsuite",
                 new XAttribute("name", "CxVisual.TestCenter"),
+                new XAttribute("runId", summary.RunId),
+                new XAttribute("commit", summary.Evidence.Commit),
                 new XAttribute("tests", summary.Total),
                 new XAttribute("failures", summary.Results.Count(r => r.Status == TCTTestStatus.Failed)),
                 new XAttribute("errors", summary.Results.Count(r => r.Status == TCTTestStatus.Error || r.Status == TCTTestStatus.TimedOut)),
@@ -64,6 +84,8 @@ namespace CxVisual.TestCenter.Reports
                     XElement test = new XElement("testcase",
                         new XAttribute("classname", r.Descriptor.Aspect + "." + r.Descriptor.Group),
                         new XAttribute("name", r.Descriptor.Id),
+                        new XAttribute("attemptId", r.AttemptId),
+                        new XAttribute("iteration", r.Attempt == null ? 0 : r.Attempt.Iteration),
                         new XAttribute("time", r.Elapsed.TotalSeconds.ToString("F6", CultureInfo.InvariantCulture)));
                     if (r.Status == TCTTestStatus.Failed)
                         test.Add(new XElement("failure", new XAttribute("message", "Assertion failed"), r.Error));

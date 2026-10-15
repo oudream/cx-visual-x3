@@ -20,6 +20,7 @@ namespace CxVisual.TestCenter.Discovery
         public string CapabilityAreaId { get; set; }
         public string CapabilityId { get; set; }
         public string ObjectId { get; set; }
+        public TCTTestKind Kind { get; set; }
     }
 
     // 适配“静态方法+测试属性”这一框架形式；NUnit/MSTest须通过独立适配器接入，
@@ -61,7 +62,7 @@ namespace CxVisual.TestCenter.Discovery
             _method = method;
             Descriptor = new TCTTestCaseDescriptor(attribute.Id, attribute.Name,
                 attribute.Aspect, attribute.Group, attribute.CapabilityAreaId,
-                attribute.CapabilityId, attribute.ObjectId);
+                attribute.CapabilityId, attribute.ObjectId, attribute.Kind);
         }
         public TCTTestCaseDescriptor Descriptor { get; private set; }
         public void Execute(TCTTestContext context)
