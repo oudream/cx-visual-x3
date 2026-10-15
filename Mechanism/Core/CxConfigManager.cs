@@ -13,6 +13,15 @@ namespace CxVisual.Mechanism.Core
         public DateTime ChangedUtc { get; internal set; }
     }
 
+    /// <summary>一次锁内捕获的配置值与版本；Value为调用者独享的可编辑克隆，不是内部运行引用。</summary>
+    public sealed class CxConfigSnapshot<T> where T : class
+    {
+        public string Id { get; internal set; }
+        public T Value { get; internal set; }
+        public long Revision { get; internal set; }
+        public bool Saved { get; internal set; }
+    }
+
     /// <summary>
     /// M04/M07 L1统一配置入口。写入采用乐观并发、不可变快照语义，通知在锁外执行。
     /// Update只提交内存版本；UpdateAndSave在磁盘成功后才发布内存版本。
@@ -25,6 +34,7 @@ namespace CxVisual.Mechanism.Core
             public long Revision;
             public int SchemaVersion;
             public string Id;
+            public string RawJson;
         }
         private sealed class Entry
         {
@@ -93,9 +103,15 @@ namespace CxVisual.Mechanism.Core
                 },
                 Load = () =>
                 {
-                    CxConfigFileDocument<T> doc = CxConfigJsonFile.Read<T>(path);
-                    return doc == null ? null : new Loaded
-                    { Data = doc.Data, Id = doc.Id, Revision = doc.Revision, SchemaVersion = doc.SchemaVersion };
+                    if (!File.Exists(path)) return null;
+                    string raw = File.ReadAllText(path);
+                    CxConfigDocumentHeader header = CxConfigJsonFile.ReadHeader(raw);
+                    if (header.SchemaVersion != schemaVersion)
+                        return new Loaded { Id = header.Id, Revision = header.Revision,
+                            SchemaVersion = header.SchemaVersion, RawJson = raw };
+                    CxConfigFileDocument<T> doc = CxConfigJsonFile.ParseDocument<T>(raw, path);
+                    return new Loaded { Data = doc.Data, Id = doc.Id,
+                        Revision = doc.Revision, SchemaVersion = doc.SchemaVersion, RawJson = raw };
                 },
                 Save = (value, revision, expected) => CxConfigJsonFile.Save(path,
                     new CxConfigFileDocument<T>
@@ -138,7 +154,7 @@ namespace CxVisual.Mechanism.Core
                             if (doc.SchemaVersion > e.SchemaVersion || e.Migrate == null)
                                 throw new InvalidDataException("Unsupported schema " + doc.SchemaVersion + " for " + e.Id +
                                     ", expected " + e.SchemaVersion + "; explicit migration required");
-                            object migrated = e.Migrate(doc.SchemaVersion, File.ReadAllText(e.Path));
+                            object migrated = e.Migrate(doc.SchemaVersion, doc.RawJson);
                             Validate(e, migrated);
                             long next = checked(doc.Revision + 1);
                             e.Save(migrated, next, doc.Revision);
@@ -159,10 +175,20 @@ namespace CxVisual.Mechanism.Core
 
         public T Get<T>(string id) where T : class
         {
+            return GetSnapshot<T>(id).Value;
+        }
+
+        /// <summary>同时获取Value/Revision/Saved，避免跨线程两次查询导致撕裂快照。</summary>
+        public CxConfigSnapshot<T> GetSnapshot<T>(string id) where T : class
+        {
             lock (_gate)
             {
                 Entry e = Resolve<T>(id);
-                return (T)e.Clone(e.Data);
+                return new CxConfigSnapshot<T>
+                {
+                    Id = id, Value = (T)e.Clone(e.Data),
+                    Revision = e.Revision, Saved = e.Revision == e.PersistedRevision
+                };
             }
         }
 
