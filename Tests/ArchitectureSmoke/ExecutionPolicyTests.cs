@@ -22,6 +22,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
             if (!object.ReferenceEquals(winner, task)) throw new TimeoutException("运行策略等待超时");
             return task.GetAwaiter().GetResult();
         }
+        private static void Await(Task task)
+        {
+            Task winner = Task.WhenAny(task, Task.Delay(6000)).GetAwaiter().GetResult();
+            if (!object.ReferenceEquals(winner, task)) throw new TimeoutException("运行策略等待超时");
+            task.GetAwaiter().GetResult();
+        }
         private static void RetryRequiresExplicitIdempotency()
         {
             bool invalid = false;
