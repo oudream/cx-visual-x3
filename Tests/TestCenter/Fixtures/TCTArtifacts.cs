@@ -34,7 +34,8 @@ namespace CxVisual.TestCenter.Fixtures
                 try
                 {
                     File.WriteAllBytes(temp, bytes);
-                    if (!File.Exists(path)) File.Move(temp, path);
+                    try { if (!File.Exists(path)) File.Move(temp, path); }
+                    catch (IOException) { if (!File.Exists(path)) throw; }
                 }
                 finally { if (File.Exists(temp)) File.Delete(temp); }
             }
