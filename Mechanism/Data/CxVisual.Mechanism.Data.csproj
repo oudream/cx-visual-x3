@@ -14,6 +14,9 @@
     <Reference Include="System.Core"/>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Properties\AssemblyInfo.cs"/></ItemGroup>
+    <Compile Include="Properties\AssemblyInfo.cs"/><Compile Include="Configuration\MPMConfigDescription.cs"/><Compile Include="Configuration\MPMConfigLayeredProfile.cs"/><Compile Include="Configuration\MTCConfigManager.cs"/><Compile Include="Configuration\MVDConfigRelease.cs"/><Compile Include="Configuration\MRKConfigRuntimeSession.cs"/></ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\Foundation\Data\CxVisual.Foundation.Data.csproj"><Project>{C85B49CA-155F-5E79-8932-B56BC7B178CD}</Project><Name>CxVisual.Foundation.Data</Name></ProjectReference>
+  </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets"/>
 </Project>
