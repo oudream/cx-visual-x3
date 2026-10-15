@@ -24,7 +24,7 @@ jobs:
       - name: Run F19 concurrency and foundation behavior tests
         shell: pwsh
         run: |
-          & .\Output\Release\x64\CxVisual.Tests.FoundationSmoke.exe
+          & .\Output\Release\x64\CxVisual.Tests.FoundationSmoke.exe --concurrency
           if ($LASTEXITCODE -ne 0) { throw "Foundation/F19 worker tests failed" }
       - name: Run Config L1 and architecture behavior tests
         shell: pwsh
