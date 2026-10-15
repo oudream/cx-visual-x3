@@ -354,12 +354,22 @@ namespace CxVisual.Mechanism.Runtime.Execution
         public MRKFlowHandle StartFromSlot(MRKExecutionPlanSlot slot,
             IDictionary<string, object> inputs = null,
             CancellationToken cancellation = default(CancellationToken))
+        { return StartFromSlotWithMetadata(slot, null, inputs, cancellation); }
+
+        public MRKFlowHandle StartFromSlotWithMetadata(MRKExecutionPlanSlot slot,
+            MRKFlowMetadata metadata, IDictionary<string, object> inputs = null,
+            CancellationToken cancellation = default(CancellationToken))
         {
             if (slot == null) throw new ArgumentNullException("slot");
             MRKExecutionPlanLease lease = slot.Capture();
             try
             {
-                MRKFlowHandle flow = StartFlow(lease.Plan, inputs, cancellation);
+                MRKFlowMetadata resolved = new MRKFlowMetadata(lease.Revision,
+                    metadata == null ? null : metadata.BusinessKey,
+                    metadata == null ? null : metadata.CorrelationId,
+                    metadata == null ? null : metadata.SessionId,
+                    metadata == null ? null : metadata.ParentFlowId);
+                MRKFlowHandle flow = StartFlowWithMetadata(lease.Plan, resolved, inputs, cancellation);
                 Task cleanup = flow.Completion.ContinueWith(
                     completed => lease.Dispose(),
                     CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously,
