@@ -36,9 +36,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
             finally { Directory.Delete(root, true); }
         }
 
-        private static CxConfigManager Setup(string root)
+        private static MTCConfigManager Setup(string root)
         {
-            CxConfigManager manager = new CxConfigManager(root);
+            MTCConfigManager manager = new MTCConfigManager(root);
             manager.Register<CxVisionInspectionOptions>("Vision.Live", validator: CxVisionInspectionOptions.Validate);
             manager.Initialize();
             return manager;
@@ -47,19 +47,19 @@ namespace CxVisual.Tests.ArchitectureSmoke
         private static void LayerInheritanceAndSourceTrace(string root)
         {
             string folder = Path.Combine(root, "layers");
-            CxConfigManager m = new CxConfigManager(folder);
-            CxConfigLayeredProfile<CxVisionInspectionOptions> profile =
-                CxConfigLayeredProfile<CxVisionInspectionOptions>.Register(
+            MTCConfigManager m = new MTCConfigManager(folder);
+            MPMConfigLayeredProfile<CxVisionInspectionOptions> profile =
+                MPMConfigLayeredProfile<CxVisionInspectionOptions>.Register(
                     m, "Vision.Default", CxVisionInspectionOptions.Validate,
-                    new CxConfigLayerSpec("Vision.Template", 10),
-                    new CxConfigLayerSpec("Vision.Machine", 20),
-                    new CxConfigLayerSpec("Vision.Recipe", 30));
+                    new MPMConfigLayerSpec("Vision.Template", 10),
+                    new MPMConfigLayerSpec("Vision.Machine", 20),
+                    new MPMConfigLayerSpec("Vision.Recipe", 30));
             m.Initialize();
             profile.UpdateLayer("Vision.Template", x => x.GrayThreshold = 1500);
             profile.SetTemplate("Vision.Machine", "Vision.Template");
             profile.UpdateLayer("Vision.Machine", x => x.GrayThreshold = 1700);
             profile.UpdateLayer("Vision.Recipe", x => x.MinDefectArea = 60);
-            CxResolvedConfig<CxVisionInspectionOptions> cfg = profile.Resolve();
+            MPMResolvedConfig<CxVisionInspectionOptions> cfg = profile.Resolve();
             Check(cfg.Value.GrayThreshold == 1700 && cfg.Value.MinDefectArea == 60, "Layers did not apply");
             Check(cfg.Origins["GrayThreshold"] == "Vision.Machine" &&
                   cfg.Origins["MinDefectArea"] == "Vision.Recipe", "Origin trail missing");
@@ -67,13 +67,13 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 "Template cycle accepted");
             profile.ClearProperty("Vision.Machine", "GrayThreshold");
             Check(profile.Resolve().Value.GrayThreshold == 1500, "Layer clear failed to fall back to template");
-            CxConfigManager reloaded = new CxConfigManager(folder);
-            CxConfigLayeredProfile<CxVisionInspectionOptions> reopened =
-                CxConfigLayeredProfile<CxVisionInspectionOptions>.Register(
+            MTCConfigManager reloaded = new MTCConfigManager(folder);
+            MPMConfigLayeredProfile<CxVisionInspectionOptions> reopened =
+                MPMConfigLayeredProfile<CxVisionInspectionOptions>.Register(
                     reloaded, "Vision.Default", CxVisionInspectionOptions.Validate,
-                    new CxConfigLayerSpec("Vision.Template", 10),
-                    new CxConfigLayerSpec("Vision.Machine", 20),
-                    new CxConfigLayerSpec("Vision.Recipe", 30));
+                    new MPMConfigLayerSpec("Vision.Template", 10),
+                    new MPMConfigLayerSpec("Vision.Machine", 20),
+                    new MPMConfigLayerSpec("Vision.Recipe", 30));
             reloaded.Initialize();
             Check(reopened.Resolve().Value.MinDefectArea == 60 &&
                   reopened.Resolve().Value.GrayThreshold == 1500, "Layer/template reload failed");
@@ -87,13 +87,13 @@ namespace CxVisual.Tests.ArchitectureSmoke
         private static void ShadowedLayerEditAndUnmask(string root)
         {
             string directory = Path.Combine(root, "shadowed-layer");
-            CxConfigManager m = new CxConfigManager(directory);
-            CxConfigLayeredProfile<CxVisionInspectionOptions> profile =
-                CxConfigLayeredProfile<CxVisionInspectionOptions>.Register(
+            MTCConfigManager m = new MTCConfigManager(directory);
+            MPMConfigLayeredProfile<CxVisionInspectionOptions> profile =
+                MPMConfigLayeredProfile<CxVisionInspectionOptions>.Register(
                     m, "Vision.Base", CxVisionInspectionOptions.Validate,
-                    new CxConfigLayerSpec("Vision.Template", 10),
-                    new CxConfigLayerSpec("Vision.Machine", 20),
-                    new CxConfigLayerSpec("Vision.Recipe", 30));
+                    new MPMConfigLayerSpec("Vision.Template", 10),
+                    new MPMConfigLayerSpec("Vision.Machine", 20),
+                    new MPMConfigLayerSpec("Vision.Recipe", 30));
             m.Initialize();
             profile.UpdateLayer("Vision.Template", x => x.GrayThreshold = 1500);
             profile.UpdateLayer("Vision.Machine", x => x.GrayThreshold = 1700);
@@ -103,13 +103,13 @@ namespace CxVisual.Tests.ArchitectureSmoke
             profile.ClearProperty("Vision.Recipe", "GrayThreshold");
             Check(profile.Resolve().Value.GrayThreshold == 1800,
                 "Editing masked Machine layer was silently lost");
-            CxConfigManager reopened = new CxConfigManager(directory);
-            CxConfigLayeredProfile<CxVisionInspectionOptions> again =
-                CxConfigLayeredProfile<CxVisionInspectionOptions>.Register(
+            MTCConfigManager reopened = new MTCConfigManager(directory);
+            MPMConfigLayeredProfile<CxVisionInspectionOptions> again =
+                MPMConfigLayeredProfile<CxVisionInspectionOptions>.Register(
                     reopened, "Vision.Base", CxVisionInspectionOptions.Validate,
-                    new CxConfigLayerSpec("Vision.Template", 10),
-                    new CxConfigLayerSpec("Vision.Machine", 20),
-                    new CxConfigLayerSpec("Vision.Recipe", 30));
+                    new MPMConfigLayerSpec("Vision.Template", 10),
+                    new MPMConfigLayerSpec("Vision.Machine", 20),
+                    new MPMConfigLayerSpec("Vision.Recipe", 30));
             reopened.Initialize();
             Check(again.Resolve().Value.GrayThreshold == 1800,
                 "Masked layer edit did not persist through reload");
@@ -118,7 +118,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         /// <summary>旧Schema字段形态与新类型不兼容时，迁移回调必须在新类型反序列化前调用。</summary>
         public sealed class CameraVersionTwo
         {
-            [CxConfigItem("曝光", Min = 1, Max = 100000)]
+            [MPMConfigItem("曝光", Min = 1, Max = 100000)]
             public int ExposureMs { get; set; } = 50;
         }
 
@@ -131,7 +131,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 + "\"Data\":{\"ExposureMs\":[120],\"ObsoleteControl\":{\"Mode\":\"old\"}}}";
             File.WriteAllText(path, raw);
             int invoked = 0;
-            CxConfigManager next = new CxConfigManager(folder);
+            MTCConfigManager next = new MTCConfigManager(folder);
             next.Register<CameraVersionTwo>("Camera.Sensor01", schemaVersion: 2,
                 migrate: (from, json) =>
                 {
@@ -151,7 +151,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         /// <summary>revision和value应来自同一次锁内捕获，而不是分别GetRevision/Get。</summary>
         private static void AtomicConfigSnapshotConsistency(string root)
         {
-            CxConfigManager manager = Setup(Path.Combine(root, "snapshot"));
+            MTCConfigManager manager = Setup(Path.Combine(root, "snapshot"));
             Exception failure = null;
             System.Threading.Thread writer = new System.Threading.Thread(() =>
             {
@@ -169,7 +169,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             writer.Start();
             for (int i = 0; i < 1000; ++i)
             {
-                CxConfigSnapshot<CxVisionInspectionOptions> snapshot =
+                MTCConfigSnapshot<CxVisionInspectionOptions> snapshot =
                     manager.GetSnapshot<CxVisionInspectionOptions>("Vision.Live");
                 Check(snapshot.Value.GrayThreshold == 1800 + snapshot.Revision,
                     "Snapshot value and revision were captured at different times");
@@ -184,21 +184,21 @@ namespace CxVisual.Tests.ArchitectureSmoke
         private static void RestoreBackupAndMigration(string root)
         {
             string folder = Path.Combine(root, "restore");
-            CxConfigManager m = Setup(folder);
+            MTCConfigManager m = Setup(folder);
             m.UpdateAndSave<CxVisionInspectionOptions>("Vision.Live", x => x.GrayThreshold = 1000);
             m.UpdateAndSave<CxVisionInspectionOptions>("Vision.Live", x => x.GrayThreshold = 2000);
             m.RestoreBackup<CxVisionInspectionOptions>("Vision.Live");
             Check(m.Get<CxVisionInspectionOptions>("Vision.Live").GrayThreshold == 1000 &&
                 m.GetRevision("Vision.Live") == 3, "Restore must commit a new monotonic revision");
-            CxConfigManager reloaded = Setup(folder);
+            MTCConfigManager reloaded = Setup(folder);
             Check(reloaded.Get<CxVisionInspectionOptions>("Vision.Live").GrayThreshold == 1000,
                 "Recovered version not persisted");
 
             string migrateDir = Path.Combine(root, "migration");
-            CxConfigManager old = new CxConfigManager(migrateDir);
+            MTCConfigManager old = new MTCConfigManager(migrateDir);
             old.Register<CxVisionInspectionOptions>("Vision.Legacy", schemaVersion: 1);
             old.Initialize();
-            CxConfigManager upgraded = new CxConfigManager(migrateDir);
+            MTCConfigManager upgraded = new MTCConfigManager(migrateDir);
             upgraded.Register<CxVisionInspectionOptions>("Vision.Legacy", schemaVersion: 2,
                 migrate: (schema, raw) =>
                 {
@@ -214,27 +214,27 @@ namespace CxVisual.Tests.ArchitectureSmoke
 
         private static void TaskBoundariesAndSafeApplication(string root)
         {
-            CxConfigManager m = Setup(Path.Combine(root, "runtime"));
-            CxConfigRuntimeSession<CxVisionInspectionOptions> run =
-                new CxConfigRuntimeSession<CxVisionInspectionOptions>(m, "Vision.Live",
+            MTCConfigManager m = Setup(Path.Combine(root, "runtime"));
+            MRKConfigRuntimeSession<CxVisionInspectionOptions> run =
+                new MRKConfigRuntimeSession<CxVisionInspectionOptions>(m, "Vision.Live",
                     cfg => cfg.MinDefectArea > 300 ? "Equipment busy" : null);
-            CxConfigTaskSnapshot<CxVisionInspectionOptions> first = run.BeginTask();
+            MRKConfigTaskSnapshot<CxVisionInspectionOptions> first = run.BeginTask();
             Check(first.Value.GrayThreshold == 1800 && first.Revision == 0, "Task did not freeze initial version");
             m.UpdateAndSave<CxVisionInspectionOptions>("Vision.Live", x => x.GrayThreshold = 2200);
-            Check(run.RequestApply(CxConfigApplyPolicy.NextTask), "Valid config rejected");
+            Check(run.RequestApply(MRKConfigApplyPolicy.NextTask), "Valid config rejected");
             Check(run.ActiveRevision == 0, "Pending config applied mid-task");
-            CxConfigTaskSnapshot<CxVisionInspectionOptions> second = run.BeginTask();
+            MRKConfigTaskSnapshot<CxVisionInspectionOptions> second = run.BeginTask();
             Check(second.Revision == 0 && first.Value.GrayThreshold == 1800, "Active task changed unexpectedly");
             second.Dispose();
             first.Dispose();
-            using (CxConfigTaskSnapshot<CxVisionInspectionOptions> third = run.BeginTask())
+            using (MRKConfigTaskSnapshot<CxVisionInspectionOptions> third = run.BeginTask())
                 Check(third.Revision == 1 && third.Value.GrayThreshold == 2200,
                     "NextTask boundary did not apply prepared config");
             m.UpdateAndSave<CxVisionInspectionOptions>("Vision.Live", x => x.MinDefectArea = 500);
-            Check(!run.RequestApply(CxConfigApplyPolicy.Immediate) && run.ActiveRevision == 1,
+            Check(!run.RequestApply(MRKConfigApplyPolicy.Immediate) && run.ActiveRevision == 1,
                 "Failed professional apply should retain active revision");
             m.UpdateAndSave<CxVisionInspectionOptions>("Vision.Live", x => x.MinDefectArea = 20);
-            Check(run.RequestApply(CxConfigApplyPolicy.RestartSession), "RestartSession request failed");
+            Check(run.RequestApply(MRKConfigApplyPolicy.RestartSession), "RestartSession request failed");
             Check(run.ActiveRevision == 1, "RestartSession policy applied too soon");
             Check(run.OnSessionRestarted() && run.ActiveRevision == m.GetRevision("Vision.Live"),
                 "RestartSession apply failed");
@@ -242,11 +242,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
 
         private static void AtomicRuntimeValuesAreConsistent()
         {
-            CxConfigAtomicSlot<ParamPair> p = new CxConfigAtomicSlot<ParamPair>(new ParamPair { A = 1, B = 2 }, 0);
+            MRKConfigAtomicSlot<ParamPair> p = new MRKConfigAtomicSlot<ParamPair>(new ParamPair { A = 1, B = 2 }, 0);
             for (int i = 1; i < 10000; ++i)
             {
                 p.Publish(new ParamPair { A = i, B = i * 2 }, i);
-                CxConfigAtomicSnapshot<ParamPair> snapshot = p.Read();
+                MRKConfigAtomicSnapshot<ParamPair> snapshot = p.Read();
                 Check(snapshot.Revision == snapshot.Value.A && snapshot.Value.B == snapshot.Value.A * 2,
                     "Atomic multi-field snapshot torn");
             }
@@ -255,12 +255,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
         private static void ReleaseDistributionAndRollback(string root)
         {
             string confRoot = Path.Combine(root, "release-config");
-            CxConfigManager m = Setup(confRoot);
-            CxConfigReleasePackage first = CxConfigReleaseBuilder.Build(m, new[] { "Vision.Live" },
+            MTCConfigManager m = Setup(confRoot);
+            MVDConfigReleasePackage first = MVDConfigReleaseBuilder.Build(m, new[] { "Vision.Live" },
                 Path.Combine(root, "packages"), "release-001");
-            CxConfigReleaseReceiver a = new CxConfigReleaseReceiver(Path.Combine(root, "runtimeA"));
-            CxConfigReleaseReceiver b = new CxConfigReleaseReceiver(Path.Combine(root, "runtimeB"));
-            CxConfigPublishReport r1 = CxConfigPublisher.Publish(first.Path, a, b);
+            MVDConfigReleaseReceiver a = new MVDConfigReleaseReceiver(Path.Combine(root, "runtimeA"));
+            MVDConfigReleaseReceiver b = new MVDConfigReleaseReceiver(Path.Combine(root, "runtimeB"));
+            MVDConfigPublishReport r1 = MVDConfigPublisher.Publish(first.Path, a, b);
             Check(r1.Success && a.ActiveReleaseId == "release-001" && b.ActiveReleaseId == "release-001",
                 "Release 001 was not staged and activated on two targets");
             Check(RuntimeCli("config-status", Path.Combine(root, "runtimeA")).Contains("release-001"),
@@ -269,9 +269,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 .Contains("Revision=0"), "Runtime.Host separate process failed to read revision");
 
             m.UpdateAndSave<CxVisionInspectionOptions>("Vision.Live", x => x.GrayThreshold = 2200);
-            CxConfigReleasePackage second = CxConfigReleaseBuilder.Build(m, new[] { "Vision.Live" },
+            MVDConfigReleasePackage second = MVDConfigReleaseBuilder.Build(m, new[] { "Vision.Live" },
                 Path.Combine(root, "packages"), "release-002");
-            CxConfigPublishReport r2 = CxConfigPublisher.Publish(second.Path, a, b);
+            MVDConfigPublishReport r2 = MVDConfigPublisher.Publish(second.Path, a, b);
             Check(r2.Success && a.ActiveReleaseId == "release-002", "Release 002 activation failed");
             Check(a.ReadActiveConfigJson("Vision.Live").Contains("2200"),
                 "Activated Runtime package does not contain new configuration");
@@ -284,8 +284,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Expect<InvalidDataException>(() => b.Stage(second.Path), "Tampered release accepted");
             Check(b.ActiveReleaseId == "release-002", "Invalid stage damaged active release");
 
-            CxConfigReleaseReceiver bad = new CxConfigReleaseReceiver(Path.Combine(root, "runtimeC"));
-            CxConfigPublishReport fail = CxConfigPublisher.Publish(second.Path, a, bad);
+            MVDConfigReleaseReceiver bad = new MVDConfigReleaseReceiver(Path.Combine(root, "runtimeC"));
+            MVDConfigPublishReport fail = MVDConfigPublisher.Publish(second.Path, a, bad);
             Check(!fail.Success && a.ActiveReleaseId == "release-001", "Failed publish changed previous active version");
         }
 

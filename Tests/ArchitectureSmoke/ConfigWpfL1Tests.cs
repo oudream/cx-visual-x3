@@ -42,25 +42,25 @@ namespace CxVisual.Tests.ArchitectureSmoke
 
         private static void Exercise(string root)
         {
-            CxConfigManager m = new CxConfigManager(root);
+            MTCConfigManager m = new MTCConfigManager(root);
             m.Register<CxAutomationDeviceOptions>("Automation.Sample", validator: CxAutomationDeviceOptions.Validate);
             m.Register<CxVisionInspectionOptions>("Vision.Sample", validator: CxVisionInspectionOptions.Validate);
             m.Register<CxCtReconstructionOptions>("CT3D.Sample", validator: CxCtReconstructionOptions.Validate);
             m.Initialize();
 
-            Window automation = CxConfigEditorDialog.CreateWindow<CxAutomationDeviceOptions>(null, m, "Automation.Sample");
+            Window automation = MPWConfigEditorDialog.CreateWindow<CxAutomationDeviceOptions>(null, m, "Automation.Sample");
             Check(FindTagged<TextBox>(automation, "ControllerHost") != null &&
                   FindTagged<TextBox>(automation, "ControllerPort") != null &&
                   FindTagged<CheckBox>(automation, "AutoReconnect") != null, "Automation UI generation failed");
             automation.Close();
 
-            Window ct = CxConfigEditorDialog.CreateWindow<CxCtReconstructionOptions>(null, m, "CT3D.Sample");
+            Window ct = MPWConfigEditorDialog.CreateWindow<CxCtReconstructionOptions>(null, m, "CT3D.Sample");
             Check(FindTagged<ComboBox>(ct, "ReconstructionMode") != null &&
                   FindTagged<TextBox>(ct, "FodMm") != null &&
                   FindTagged<TextBox>(ct, "FddMm") != null, "CT3D UI generation failed");
             ct.Close();
 
-            Window bad = CxConfigEditorDialog.CreateWindow<CxVisionInspectionOptions>(null, m, "Vision.Sample");
+            Window bad = MPWConfigEditorDialog.CreateWindow<CxVisionInspectionOptions>(null, m, "Vision.Sample");
             bool badAccepted = Modal(bad, w =>
             {
                 ComboBox depth = FindTagged<ComboBox>(w, "PixelDepth");
@@ -78,7 +78,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             });
             Check(!badAccepted && m.GetRevision("Vision.Sample") == 0, "Invalid WPF edit changed valid version");
 
-            Window good = CxConfigEditorDialog.CreateWindow<CxVisionInspectionOptions>(null, m, "Vision.Sample");
+            Window good = MPWConfigEditorDialog.CreateWindow<CxVisionInspectionOptions>(null, m, "Vision.Sample");
             bool accepted = Modal(good, w =>
             {
                 FindTagged<ComboBox>(w, "PixelDepth").SelectedItem = CxVisionPixelDepth.Bits8;
@@ -89,7 +89,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 save.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent, save));
             });
             Check(accepted, "Valid WPF draft was not saved");
-            CxConfigManager other = new CxConfigManager(root);
+            MTCConfigManager other = new MTCConfigManager(root);
             other.Register<CxVisionInspectionOptions>("Vision.Sample", validator: CxVisionInspectionOptions.Validate);
             other.Initialize();
             CxVisionInspectionOptions v = other.Get<CxVisionInspectionOptions>("Vision.Sample");

@@ -26,9 +26,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
             finally { Directory.Delete(root, true); }
         }
 
-        private static CxConfigManager Make(string directory)
+        private static MTCConfigManager Make(string directory)
         {
-            CxConfigManager m = new CxConfigManager(directory);
+            MTCConfigManager m = new MTCConfigManager(directory);
             m.Register<CxAutomationDeviceOptions>("Automation.Device01", validator: CxAutomationDeviceOptions.Validate);
             m.Register<CxAutomationDeviceOptions>("Automation.Device02", validator: CxAutomationDeviceOptions.Validate);
             m.Register<CxVisionInspectionOptions>("Vision.Inspection", validator: CxVisionInspectionOptions.Validate);
@@ -40,14 +40,14 @@ namespace CxVisual.Tests.ArchitectureSmoke
         private static void ThreeProfessionalTypesShareOneManager(string root)
         {
             string path = Path.Combine(root, "all");
-            CxConfigManager m = Make(path);
+            MTCConfigManager m = Make(path);
             Check(m.Get<CxAutomationDeviceOptions>("Automation.Device01").ControllerPort == 502, "Automation default");
             Check(m.Get<CxVisionInspectionOptions>("Vision.Inspection").PixelDepth == CxVisionPixelDepth.Bits16, "Vision enum default");
             Check(m.Get<CxCtReconstructionOptions>("CT3D.Reconstruction").ReconstructionMode == CxCtReconstructionMode.Fdk, "CT3D default");
             m.UpdateAndSave<CxAutomationDeviceOptions>("Automation.Device01", x => x.ControllerPort = 1502);
             m.UpdateAndSave<CxVisionInspectionOptions>("Vision.Inspection", x => x.GrayThreshold = 3000);
             m.UpdateAndSave<CxCtReconstructionOptions>("CT3D.Reconstruction", x => x.GpuIndex = 1);
-            CxConfigManager reloaded = Make(path);
+            MTCConfigManager reloaded = Make(path);
             Check(reloaded.Get<CxAutomationDeviceOptions>("Automation.Device01").ControllerPort == 1502, "Automation reload");
             Check(reloaded.Get<CxVisionInspectionOptions>("Vision.Inspection").GrayThreshold == 3000, "Vision reload");
             Check(reloaded.Get<CxCtReconstructionOptions>("CT3D.Reconstruction").GpuIndex == 1, "CT3D reload");
@@ -57,7 +57,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
 
         private static void CrossFieldRulesRejectUnsafeOrInconsistentParameters(string root)
         {
-            CxConfigManager m = Make(Path.Combine(root, "cross"));
+            MTCConfigManager m = Make(Path.Combine(root, "cross"));
             ExpectArgument(() => m.Update<CxAutomationDeviceOptions>("Automation.Device01",
                 x => x.ControllerHost = " "), "Blank controller host accepted");
             ExpectArgument(() => m.Update<CxAutomationDeviceOptions>("Automation.Device01",
@@ -82,8 +82,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
 
         private static void EnumAndMetadataFlowToEditor(string root)
         {
-            CxConfigProperty[] vision = CxConfigDescription.Describe<CxVisionInspectionOptions>();
-            CxConfigProperty[] ct = CxConfigDescription.Describe<CxCtReconstructionOptions>();
+            MPMConfigProperty[] vision = MPMConfigDescription.Describe<CxVisionInspectionOptions>();
+            MPMConfigProperty[] ct = MPMConfigDescription.Describe<CxCtReconstructionOptions>();
             Check(Array.Exists(vision, x => x.Name == "GrayThreshold" && x.Maximum == 65535 && x.Unit == "Gray"),
                 "Vision precision/unit metadata lost");
             Check(Array.Exists(vision, x => x.Name == "PixelDepth" && x.PropertyType == typeof(CxVisionPixelDepth)),
@@ -94,7 +94,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
 
         private static void NoOpAndObserverFailureAreSafe(string root)
         {
-            CxConfigManager m = Make(Path.Combine(root, "notifications"));
+            MTCConfigManager m = Make(Path.Combine(root, "notifications"));
             int observed = 0, failures = 0;
             m.NotificationFailed += (id, error) => failures++;
             using (m.Subscribe<CxVisionInspectionOptions>("Vision.Inspection", (x, c) =>
@@ -112,11 +112,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
         private static void MultiMachineIsolationAndReopen(string root)
         {
             string directory = Path.Combine(root, "multimachine");
-            CxConfigManager m = Make(directory);
+            MTCConfigManager m = Make(directory);
             m.UpdateAndSave<CxAutomationDeviceOptions>("Automation.Device02", x => x.StationId = 7);
             Check(m.Get<CxAutomationDeviceOptions>("Automation.Device01").StationId == 1,
                 "Device02 edit leaked to Device01");
-            CxConfigManager reloaded = Make(directory);
+            MTCConfigManager reloaded = Make(directory);
             Check(reloaded.Get<CxAutomationDeviceOptions>("Automation.Device01").StationId == 1 &&
                   reloaded.Get<CxAutomationDeviceOptions>("Automation.Device02").StationId == 7,
                   "Multi-device isolation failed after reload");
