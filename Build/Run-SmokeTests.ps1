@@ -15,7 +15,18 @@ Invoke-Sample 'CxVisual.Runtime.Host.exe' @('demo')
 $path = Join-Path $out 'Data\ci-smoke.xml'
 Invoke-Sample 'CxVisual.Runtime.Host.exe' @('save', $path)
 Invoke-Sample 'CxVisual.Runtime.Host.exe' @('load', $path)
+# WPF WinExe: use Start-Process -Wait and its ExitCode; do not rely on PowerShell's LASTEXITCODE.
+$testCenter = Join-Path $out 'CxVisual.TestCenter.exe'
+$testReport = Join-Path $out 'Data\\testcenter-smoke.txt'
+New-Item -ItemType Directory -Force (Split-Path $testReport) | Out-Null
+if (-not (Test-Path $testCenter)) { throw "Missing $testCenter — build solution first" }
+$testCenterProcess = Start-Process -FilePath $testCenter -WorkingDirectory $root -ArgumentList @('--run','--report',("`"" + $testReport + "`"")) -PassThru -Wait
+if ($testCenterProcess.ExitCode -ne 0) { throw "TestCenter failed (exit $($testCenterProcess.ExitCode)); report: $testReport" }
+if (-not (Test-Path $testReport)) { throw "TestCenter did not write report: $testReport" }
+Write-Host "PASS TestCenter: $testReport"
 if ($ShowGUI) {
+    Start-Process -FilePath $testCenter
+    Write-Host 'TestCenter GUI started. Manual checks: Explorer / Run / Assertions / Inspector.'
     $studio = Join-Path $out 'CxVisual.Studio.exe'
     if (-not (Test-Path $studio)) { throw 'Missing Studio app' }
     Start-Process -FilePath $studio
