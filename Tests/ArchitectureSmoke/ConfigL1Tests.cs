@@ -10,19 +10,19 @@ namespace CxVisual.Tests.ArchitectureSmoke
     {
         public sealed class DetectionOptions
         {
-            [CxConfigItem("阈值", Min = 0, Max = 4095, Category = "检测")]
+            [MPMConfigItem("阈值", Min = 0, Max = 4095, Category = "检测")]
             public int Threshold { get; set; } = 100;
 
-            [CxConfigItem("检测名称", Required = true, Category = "检测")]
+            [MPMConfigItem("检测名称", Required = true, Category = "检测")]
             public string Name { get; set; } = "demo";
 
-            [CxConfigItem("启用")]
+            [MPMConfigItem("启用")]
             public bool Enabled { get; set; } = true;
         }
 
         public sealed class NetworkOptions
         {
-            [CxConfigItem("端口", Min = 1, Max = 65535)]
+            [MPMConfigItem("端口", Min = 1, Max = 65535)]
             public int Port { get; set; } = 5000;
             public string Host { get; set; } = "127.0.0.1";
         }
@@ -52,13 +52,13 @@ namespace CxVisual.Tests.ArchitectureSmoke
         private static void DefaultAndReload(string root)
         {
             string directory = Path.Combine(root, "default");
-            CxConfigManager manager = new CxConfigManager(directory);
+            MTCConfigManager manager = new MTCConfigManager(directory);
             manager.Register<DetectionOptions>("Vision.Detect");
             manager.Initialize();
             Check(File.Exists(Path.Combine(directory, "Vision.Detect.json")), "No generated default JSON");
             Check(manager.Get<DetectionOptions>("Vision.Detect").Threshold == 100, "Invalid default");
             manager.UpdateAndSave<DetectionOptions>("Vision.Detect", x => x.Threshold = 300);
-            CxConfigManager reloaded = new CxConfigManager(directory);
+            MTCConfigManager reloaded = new MTCConfigManager(directory);
             reloaded.Register<DetectionOptions>("Vision.Detect");
             reloaded.Initialize();
             Check(reloaded.Get<DetectionOptions>("Vision.Detect").Threshold == 300, "Persisted value missing");
@@ -67,7 +67,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
 
         private static void ReadIsolationAndEditValidation(string root)
         {
-            CxConfigManager m = Ready(root, "isolated");
+            MTCConfigManager m = Ready(root, "isolated");
             DetectionOptions copy = m.Get<DetectionOptions>("Vision.Detect");
             copy.Threshold = 4000;
             Check(m.Get<DetectionOptions>("Vision.Detect").Threshold == 100, "Get leaked mutable reference");
@@ -81,7 +81,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         private static void RevisionConflictAndIndependentInstances(string root)
         {
             string directory = Path.Combine(root, "instances");
-            CxConfigManager m = new CxConfigManager(directory);
+            MTCConfigManager m = new MTCConfigManager(directory);
             m.Register<DetectionOptions>("Detector.A");
             m.Register<DetectionOptions>("Detector.B");
             m.Initialize();
@@ -93,7 +93,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
 
         private static void NotificationAndUnsubscribe(string root)
         {
-            CxConfigManager m = Ready(root, "notify");
+            MTCConfigManager m = Ready(root, "notify");
             int seen = 0;
             int lastThreshold = 0;
             IDisposable subscription = m.Subscribe<DetectionOptions>("Vision.Detect", (value, change) =>
@@ -113,15 +113,15 @@ namespace CxVisual.Tests.ArchitectureSmoke
         private static void PersistedVsUnsaved(string root)
         {
             string directory = Path.Combine(root, "dirty");
-            CxConfigManager m = Ready(root, "dirty");
+            MTCConfigManager m = Ready(root, "dirty");
             m.Update<DetectionOptions>("Vision.Detect", x => x.Threshold = 777);
-            CxConfigManager other = new CxConfigManager(directory);
+            MTCConfigManager other = new MTCConfigManager(directory);
             other.Register<DetectionOptions>("Vision.Detect");
             other.Initialize();
             Check(other.Get<DetectionOptions>("Vision.Detect").Threshold == 100, "Uncommitted data reached disk");
             m.Save("Vision.Detect");
             Check(!m.IsDirty("Vision.Detect"), "Save did not clear dirty");
-            CxConfigManager after = new CxConfigManager(directory);
+            MTCConfigManager after = new MTCConfigManager(directory);
             after.Register<DetectionOptions>("Vision.Detect");
             after.Initialize();
             Check(after.Get<DetectionOptions>("Vision.Detect").Threshold == 777, "Explicit Save failed");
@@ -129,7 +129,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
 
         private static void CrossFieldValidation(string root)
         {
-            CxConfigManager m = new CxConfigManager(Path.Combine(root, "cross"));
+            MTCConfigManager m = new MTCConfigManager(Path.Combine(root, "cross"));
             m.Register<NetworkOptions>("Network", validator: x => x.Host == "127.0.0.1" && x.Port == 80
                 ? "Port 80 on local host is prohibited by this test rule" : null);
             m.Initialize();
@@ -141,15 +141,15 @@ namespace CxVisual.Tests.ArchitectureSmoke
         private static void CorruptOrUnknownSchemaDoesNotOverwrite(string root)
         {
             string directory = Path.Combine(root, "corrupt");
-            CxConfigManager m = Ready(root, "corrupt");
+            MTCConfigManager m = Ready(root, "corrupt");
             string file = Path.Combine(directory, "Vision.Detect.json");
             File.WriteAllText(file, "{invalid-json");
-            CxConfigManager next = new CxConfigManager(directory);
+            MTCConfigManager next = new MTCConfigManager(directory);
             next.Register<DetectionOptions>("Vision.Detect");
             Expect<Exception>(() => next.Initialize(), "Malformed file silently reset");
             Check(File.ReadAllText(file) == "{invalid-json", "Malformed file was overwritten");
             File.WriteAllText(file, "{\"Id\":\"Vision.Detect\",\"SchemaVersion\":999,\"Revision\":0,\"Data\":{\"Threshold\":10,\"Name\":\"x\",\"Enabled\":true}}");
-            CxConfigManager future = new CxConfigManager(directory);
+            MTCConfigManager future = new MTCConfigManager(directory);
             future.Register<DetectionOptions>("Vision.Detect");
             Expect<InvalidDataException>(() => future.Initialize(), "Future schema accepted");
             Check(File.ReadAllText(file).Contains("999"), "Unknown schema rewritten");
@@ -158,7 +158,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         private static void SaveFailureDoesNotPublish(string root)
         {
             string directory = Path.Combine(root, "failure");
-            CxConfigManager m = Ready(root, "failure");
+            MTCConfigManager m = Ready(root, "failure");
             string file = Path.Combine(directory, "Vision.Detect.json");
             string before = File.ReadAllText(file);
             string temp = file + ".tmp";
@@ -178,8 +178,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
         private static void ExternalConcurrentWriterConflict(string root)
         {
             string directory = Path.Combine(root, "concurrent");
-            CxConfigManager a = Ready(root, "concurrent");
-            CxConfigManager b = new CxConfigManager(directory);
+            MTCConfigManager a = Ready(root, "concurrent");
+            MTCConfigManager b = new MTCConfigManager(directory);
             b.Register<DetectionOptions>("Vision.Detect");
             b.Initialize();
             a.UpdateAndSave<DetectionOptions>("Vision.Detect", x => x.Threshold = 777);
@@ -190,16 +190,16 @@ namespace CxVisual.Tests.ArchitectureSmoke
 
         private static void MissingRequiredFileFails(string root)
         {
-            CxConfigManager m = new CxConfigManager(Path.Combine(root, "required"));
+            MTCConfigManager m = new MTCConfigManager(Path.Combine(root, "required"));
             m.Register<DetectionOptions>("Machine.Safety", requireExisting: true);
             Expect<FileNotFoundException>(() => m.Initialize(), "Critical configuration silently defaulted");
         }
 
         private static void MetadataForEditor()
         {
-            CxConfigProperty[] properties = CxConfigDescription.Describe<DetectionOptions>();
+            MPMConfigProperty[] properties = MPMConfigDescription.Describe<DetectionOptions>();
             bool found = false;
-            foreach (CxConfigProperty p in properties)
+            foreach (MPMConfigProperty p in properties)
                 if (p.Name == "Threshold")
                 {
                     found = true;
@@ -209,9 +209,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(found, "Config editor did not discover property");
         }
 
-        private static CxConfigManager Ready(string root, string folder)
+        private static MTCConfigManager Ready(string root, string folder)
         {
-            CxConfigManager manager = new CxConfigManager(Path.Combine(root, folder));
+            MTCConfigManager manager = new MTCConfigManager(Path.Combine(root, folder));
             manager.Register<DetectionOptions>("Vision.Detect");
             manager.Initialize();
             return manager;

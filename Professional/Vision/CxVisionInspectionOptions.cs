@@ -8,22 +8,22 @@ namespace CxVisual.Professional.Vision
     /// <summary>Vision缺陷检测配置样例（P30～P42），所有参数均是非设备实时数据。</summary>
     public sealed class CxVisionInspectionOptions
     {
-        [CxConfigItem("像素位深", Category = "图像")]
+        [MPMConfigItem("像素位深", Category = "图像")]
         public CxVisionPixelDepth PixelDepth { get; set; } = CxVisionPixelDepth.Bits16;
 
-        [CxConfigItem("灰度阈值", Category = "图像", Unit = "Gray", Min = 0, Max = 65535)]
+        [MPMConfigItem("灰度阈值", Category = "图像", Unit = "Gray", Min = 0, Max = 65535)]
         public int GrayThreshold { get; set; } = 1800;
 
-        [CxConfigItem("最小缺陷面积", Category = "检测", Unit = "px²", Min = 1, Max = 10000000)]
+        [MPMConfigItem("最小缺陷面积", Category = "检测", Unit = "px²", Min = 1, Max = 10000000)]
         public double MinDefectArea { get; set; } = 10;
 
-        [CxConfigItem("最大缺陷面积", Category = "检测", Unit = "px²", Min = 1, Max = 10000000)]
+        [MPMConfigItem("最大缺陷面积", Category = "检测", Unit = "px²", Min = 1, Max = 10000000)]
         public double MaxDefectArea { get; set; } = 100000;
 
-        [CxConfigItem("启用AI检测", Category = "AI")]
+        [MPMConfigItem("启用AI检测", Category = "AI")]
         public bool UseAi { get; set; } = false;
 
-        [CxConfigItem("AI模型名称", Category = "AI")]
+        [MPMConfigItem("AI模型名称", Category = "AI")]
         public string AiModelName { get; set; } = "";
 
         public static string Validate(CxVisionInspectionOptions value)

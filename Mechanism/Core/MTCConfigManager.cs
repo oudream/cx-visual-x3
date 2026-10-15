@@ -5,7 +5,7 @@ using CxVisual.Foundation.Data;
 
 namespace CxVisual.Mechanism.Core
 {
-    public sealed class CxConfigChange
+    public sealed class MTCConfigChange
     {
         public string Id { get; internal set; }
         public long Revision { get; internal set; }
@@ -14,7 +14,7 @@ namespace CxVisual.Mechanism.Core
     }
 
     /// <summary>一次锁内捕获的配置值与版本；Value为调用者独享的可编辑克隆，不是内部运行引用。</summary>
-    public sealed class CxConfigSnapshot<T> where T : class
+    public sealed class MTCConfigSnapshot<T> where T : class
     {
         public string Id { get; internal set; }
         public T Value { get; internal set; }
@@ -26,7 +26,7 @@ namespace CxVisual.Mechanism.Core
     /// M04/M07 L1统一配置入口。写入采用乐观并发、不可变快照语义，通知在锁外执行。
     /// Update只提交内存版本；UpdateAndSave在磁盘成功后才发布内存版本。
     /// </summary>
-    public sealed class CxConfigManager
+    public sealed class MTCConfigManager
     {
         private sealed class Loaded
         {
@@ -50,16 +50,16 @@ namespace CxVisual.Mechanism.Core
             public Action<object, long, long> Save;
             public object Data;
             public long Revision, PersistedRevision;
-            public List<Action<object, CxConfigChange>> Listeners = new List<Action<object, CxConfigChange>>();
+            public List<Action<object, MTCConfigChange>> Listeners = new List<Action<object, MTCConfigChange>>();
         }
 
         private sealed class Subscription : IDisposable
         {
-            private readonly CxConfigManager _manager;
+            private readonly MTCConfigManager _manager;
             private readonly Entry _entry;
-            private readonly Action<object, CxConfigChange> _listener;
+            private readonly Action<object, MTCConfigChange> _listener;
             private bool _disposed;
-            public Subscription(CxConfigManager manager, Entry entry, Action<object, CxConfigChange> listener)
+            public Subscription(MTCConfigManager manager, Entry entry, Action<object, MTCConfigChange> listener)
             { _manager = manager; _entry = entry; _listener = listener; }
             public void Dispose()
             {
@@ -77,10 +77,25 @@ namespace CxVisual.Mechanism.Core
         private readonly string _directory;
         private bool _initialized;
         public event Action<string, Exception> NotificationFailed;
-        public CxConfigManager(string directory)
+        public MTCConfigManager(string directory)
         {
             if (string.IsNullOrWhiteSpace(directory)) throw new ArgumentException("Configuration root required", "directory");
             _directory = Path.GetFullPath(directory);
+        }
+
+        /// <summary>最常用L1配置：一个强类型配置，单次调用完成注册、默认初始化或重载。</summary>
+        public static MTCConfigManager Create<T>(string directory, FCMConfigKey key,
+            Func<T, string> validator = null, bool requireExisting = false) where T : class
+        {
+            MTCConfigManager manager = new MTCConfigManager(directory);
+            manager.Register<T>(key.Id, requireExisting: requireExisting, validator: validator);
+            manager.Initialize();
+            return manager;
+        }
+
+        public T Get<T>(FCMConfigKey key) where T : class
+        {
+            return Get<T>(key.Id);
         }
 
         public void Register<T>(string id, bool requireExisting = false, int schemaVersion = 1,
@@ -95,26 +110,26 @@ namespace CxVisual.Mechanism.Core
                 SchemaVersion = schemaVersion, RequireExisting = requireExisting,
                 Default = () => Activator.CreateInstance(typeof(T), true),
                 Migrate = migrate == null ? null : new Func<int, string, object>((version, json) => migrate(version, json)),
-                Clone = value => CxConfigJsonFile.Clone((T)value),
+                Clone = value => FCMConfigJsonFile.Clone((T)value),
                 Validate = value =>
                 {
-                    string error = CxConfigDescription.Validate((T)value);
+                    string error = MPMConfigDescription.Validate((T)value);
                     return error ?? (validator == null ? null : validator((T)value));
                 },
                 Load = () =>
                 {
                     if (!File.Exists(path)) return null;
                     string raw = File.ReadAllText(path);
-                    CxConfigDocumentHeader header = CxConfigJsonFile.ReadHeader(raw);
+                    FCMConfigDocumentHeader header = FCMConfigJsonFile.ReadHeader(raw);
                     if (header.SchemaVersion != schemaVersion)
                         return new Loaded { Id = header.Id, Revision = header.Revision,
                             SchemaVersion = header.SchemaVersion, RawJson = raw };
-                    CxConfigFileDocument<T> doc = CxConfigJsonFile.ParseDocument<T>(raw, path);
+                    FCMConfigFileDocument<T> doc = FCMConfigJsonFile.ParseDocument<T>(raw, path);
                     return new Loaded { Data = doc.Data, Id = doc.Id,
                         Revision = doc.Revision, SchemaVersion = doc.SchemaVersion, RawJson = raw };
                 },
-                Save = (value, revision, expected) => CxConfigJsonFile.Save(path,
-                    new CxConfigFileDocument<T>
+                Save = (value, revision, expected) => FCMConfigJsonFile.Save(path,
+                    new FCMConfigFileDocument<T>
                     {
                         Id = id, SchemaVersion = schemaVersion,
                         Revision = revision, Data = (T)value
@@ -179,12 +194,12 @@ namespace CxVisual.Mechanism.Core
         }
 
         /// <summary>同时获取Value/Revision/Saved，避免跨线程两次查询导致撕裂快照。</summary>
-        public CxConfigSnapshot<T> GetSnapshot<T>(string id) where T : class
+        public MTCConfigSnapshot<T> GetSnapshot<T>(string id) where T : class
         {
             lock (_gate)
             {
                 Entry e = Resolve<T>(id);
-                return new CxConfigSnapshot<T>
+                return new MTCConfigSnapshot<T>
                 {
                     Id = id, Value = (T)e.Clone(e.Data),
                     Revision = e.Revision, Saved = e.Revision == e.PersistedRevision
@@ -227,26 +242,26 @@ namespace CxVisual.Mechanism.Core
             }
             edit(draft);
             Validate(e, draft);
-            Action<object, CxConfigChange>[] listeners;
-            CxConfigChange change;
+            Action<object, MTCConfigChange>[] listeners;
+            MTCConfigChange change;
             lock (_gate)
             {
                 if (e.Revision != baseRevision)
                     throw new InvalidOperationException("CONFIG_REVISION_CONFLICT: " + id);
                 // 无变更时不产生新的版本或重复通知。
-                if (CxConfigJsonFile.Serialize(e.Data) == CxConfigJsonFile.Serialize(draft)) return;
+                if (FCMConfigJsonFile.Serialize(e.Data) == FCMConfigJsonFile.Serialize(draft)) return;
                 long nextRevision = checked(e.Revision + 1);
                 if (saveNow) e.Save(draft, nextRevision, e.PersistedRevision);
                 e.Data = e.Clone(draft);
                 e.Revision = nextRevision;
                 if (saveNow) e.PersistedRevision = nextRevision;
                 listeners = e.Listeners.ToArray();
-                change = new CxConfigChange
+                change = new MTCConfigChange
                 {
                     Id = id, Revision = nextRevision, Saved = saveNow, ChangedUtc = DateTime.UtcNow
                 };
             }
-            foreach (Action<object, CxConfigChange> callback in listeners)
+            foreach (Action<object, MTCConfigChange> callback in listeners)
             {
                 try { callback(e.Clone(draft), change); }
                 catch (Exception ex)
@@ -279,15 +294,15 @@ namespace CxVisual.Mechanism.Core
             Entry e;
             lock (_gate) { e = Resolve<T>(id); }
             string backupPath = e.Path + ".bak";
-            CxConfigFileDocument<T> backup = CxConfigJsonFile.Read<T>(backupPath);
+            FCMConfigFileDocument<T> backup = FCMConfigJsonFile.Read<T>(backupPath);
             if (backup == null) throw new FileNotFoundException("No configuration backup exists", backupPath);
             if (backup.Id != id || backup.SchemaVersion != e.SchemaVersion)
                 throw new InvalidDataException("Backup identity or schema does not match " + id);
             Validate(e, backup.Data);
-            T replacement = CxConfigJsonFile.Clone(backup.Data);
+            T replacement = FCMConfigJsonFile.Clone(backup.Data);
             UpdateAndSave<T>(id, draft =>
             {
-                foreach (CxConfigProperty property in CxConfigDescription.Describe<T>())
+                foreach (MPMConfigProperty property in MPMConfigDescription.Describe<T>())
                     property.Property.SetValue(draft, property.Property.GetValue(replacement, null), null);
             });
         }
@@ -301,29 +316,29 @@ namespace CxVisual.Mechanism.Core
                 if (e.Revision != e.PersistedRevision)
                     throw new InvalidOperationException("Unsaved configuration cannot be published: " + id);
                 string json = File.ReadAllText(e.Path);
-                CxConfigDocumentHeader hdr = CxConfigJsonFile.ReadHeader(json);
+                FCMConfigDocumentHeader hdr = FCMConfigJsonFile.ReadHeader(json);
                 if (hdr.Id != id || hdr.SchemaVersion != e.SchemaVersion || hdr.Revision != e.Revision)
                     throw new InvalidOperationException("Configuration disk revision changed: " + id);
                 return json;
             }
         }
 
-        public IDisposable Subscribe<T>(string id, Action<T, CxConfigChange> observer) where T : class
+        public IDisposable Subscribe<T>(string id, Action<T, MTCConfigChange> observer) where T : class
         {
             if (observer == null) throw new ArgumentNullException("observer");
             lock (_gate)
             {
                 Entry e = Resolve<T>(id);
-                Action<object, CxConfigChange> listener = (value, change) => observer((T)value, change);
+                Action<object, MTCConfigChange> listener = (value, change) => observer((T)value, change);
                 e.Listeners.Add(listener);
                 return new Subscription(this, e, listener);
             }
         }
 
-        public CxConfigProperty[] Describe<T>(string id) where T : class
+        public MPMConfigProperty[] Describe<T>(string id) where T : class
         {
             lock (_gate) Resolve<T>(id);
-            return CxConfigDescription.Describe<T>();
+            return MPMConfigDescription.Describe<T>();
         }
 
         private Entry Resolve(string id)

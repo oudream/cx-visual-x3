@@ -9,7 +9,7 @@ using CxVisual.Mechanism.Core;
 
 namespace CxVisual.Mechanism.Lifecycle
 {
-    public sealed class CxConfigReleaseItem
+    public sealed class MVDConfigReleaseItem
     {
         public string Id { get; set; }
         public string FileName { get; set; }
@@ -18,22 +18,22 @@ namespace CxVisual.Mechanism.Lifecycle
         public string Sha256 { get; set; }
     }
 
-    public sealed class CxConfigReleaseManifest
+    public sealed class MVDConfigReleaseManifest
     {
         public int ManifestVersion { get; set; } = 1;
         public string ReleaseId { get; set; }
         public DateTime CreatedUtc { get; set; }
-        public List<CxConfigReleaseItem> Items { get; set; } = new List<CxConfigReleaseItem>();
+        public List<MVDConfigReleaseItem> Items { get; set; } = new List<MVDConfigReleaseItem>();
     }
 
-    public sealed class CxConfigReleasePackage
+    public sealed class MVDConfigReleasePackage
     {
         public string Path { get; internal set; }
-        public CxConfigReleaseManifest Manifest { get; internal set; }
+        public MVDConfigReleaseManifest Manifest { get; internal set; }
     }
 
     /// <summary>版本化不可变发布包。SHA256用于偶然损坏检测，不替代可信签名/授权。</summary>
-    public static class CxConfigReleaseBuilder
+    public static class MVDConfigReleaseBuilder
     {
         internal static void ValidateId(string id)
         {
@@ -52,7 +52,7 @@ namespace CxVisual.Mechanism.Lifecycle
                     .Replace("-", "").ToLowerInvariant();
         }
 
-        public static CxConfigReleasePackage Build(CxConfigManager manager,
+        public static MVDConfigReleasePackage Build(MTCConfigManager manager,
             IEnumerable<string> configIds, string releaseRoot, string releaseId)
         {
             if (manager == null) throw new ArgumentNullException("manager");
@@ -67,7 +67,7 @@ namespace CxVisual.Mechanism.Lifecycle
             string destination = System.IO.Path.Combine(root, releaseId);
             if (Directory.Exists(destination)) throw new IOException("Release ID already exists and is immutable: " + releaseId);
             string temp = destination + ".building-" + Guid.NewGuid().ToString("N");
-            CxConfigReleaseManifest manifest = new CxConfigReleaseManifest
+            MVDConfigReleaseManifest manifest = new MVDConfigReleaseManifest
             {
                 ReleaseId = releaseId, CreatedUtc = DateTime.UtcNow
             };
@@ -77,22 +77,22 @@ namespace CxVisual.Mechanism.Lifecycle
                 foreach (string id in ids)
                 {
                     string json = manager.ExportSavedJson(id);
-                    CxConfigDocumentHeader hdr = CxConfigJsonFile.ReadHeader(json);
+                    FCMConfigDocumentHeader hdr = FCMConfigJsonFile.ReadHeader(json);
                     string name = "payload/" + id + ".json";
                     string targetFile = System.IO.Path.Combine(temp, "payload", id + ".json");
                     Directory.CreateDirectory(System.IO.Path.GetDirectoryName(targetFile));
                     byte[] data = new UTF8Encoding(false).GetBytes(json);
                     File.WriteAllBytes(targetFile, data);
-                    manifest.Items.Add(new CxConfigReleaseItem
+                    manifest.Items.Add(new MVDConfigReleaseItem
                     {
                         Id = id, FileName = name, SchemaVersion = hdr.SchemaVersion,
                         Revision = hdr.Revision, Sha256 = Hash(data)
                     });
                 }
                 File.WriteAllText(System.IO.Path.Combine(temp, "manifest.json"),
-                    CxConfigJsonFile.Serialize(manifest), Encoding.UTF8);
+                    FCMConfigJsonFile.Serialize(manifest), Encoding.UTF8);
                 Directory.Move(temp, destination);
-                return new CxConfigReleasePackage { Path = destination, Manifest = manifest };
+                return new MVDConfigReleasePackage { Path = destination, Manifest = manifest };
             }
             finally
             {
@@ -102,14 +102,14 @@ namespace CxVisual.Mechanism.Lifecycle
             }
         }
 
-        public static CxConfigReleaseManifest Verify(string packagePath)
+        public static MVDConfigReleaseManifest Verify(string packagePath)
         {
             if (string.IsNullOrWhiteSpace(packagePath)) throw new ArgumentException("Package path required");
             string manifestPath = System.IO.Path.Combine(packagePath, "manifest.json");
             if (!File.Exists(manifestPath)) throw new InvalidDataException("Missing release manifest");
-            CxConfigReleaseManifest manifest;
-            try { manifest = (CxConfigReleaseManifest)CxConfigJsonFile.Deserialize(
-                File.ReadAllText(manifestPath, Encoding.UTF8), typeof(CxConfigReleaseManifest)); }
+            MVDConfigReleaseManifest manifest;
+            try { manifest = (MVDConfigReleaseManifest)FCMConfigJsonFile.Deserialize(
+                File.ReadAllText(manifestPath, Encoding.UTF8), typeof(MVDConfigReleaseManifest)); }
             catch (Exception ex) { throw new InvalidDataException("Invalid release manifest", ex); }
             if (manifest == null || manifest.ManifestVersion != 1 ||
                 manifest.Items == null || manifest.Items.Count == 0)
@@ -117,7 +117,7 @@ namespace CxVisual.Mechanism.Lifecycle
             ValidateId(manifest.ReleaseId);
             if (manifest.Items.Select(x => x.Id).Distinct(StringComparer.Ordinal).Count() != manifest.Items.Count)
                 throw new InvalidDataException("Duplicate configuration IDs");
-            foreach (CxConfigReleaseItem item in manifest.Items)
+            foreach (MVDConfigReleaseItem item in manifest.Items)
             {
                 if (item == null) throw new InvalidDataException("Null release item");
                 ValidateId(item.Id);
@@ -131,7 +131,7 @@ namespace CxVisual.Mechanism.Lifecycle
                 string json;
                 try { json = new UTF8Encoding(false, true).GetString(bytes); }
                 catch (DecoderFallbackException ex) { throw new InvalidDataException("Invalid UTF-8 payload", ex); }
-                CxConfigDocumentHeader hdr = CxConfigJsonFile.ReadHeader(json);
+                FCMConfigDocumentHeader hdr = FCMConfigJsonFile.ReadHeader(json);
                 if (hdr.Id != item.Id || hdr.SchemaVersion != item.SchemaVersion || hdr.Revision != item.Revision)
                     throw new InvalidDataException("CONFIG_PACKAGE_HEADER_MISMATCH: " + item.Id);
             }
@@ -139,7 +139,7 @@ namespace CxVisual.Mechanism.Lifecycle
         }
     }
 
-    public sealed class CxConfigActivePointer
+    public sealed class MVDConfigActivePointer
     {
         public string ActiveId { get; set; }
         public string PreviousId { get; set; }
@@ -151,11 +151,11 @@ namespace CxVisual.Mechanism.Lifecycle
     /// L4文件/IPC边界的Runtime接收端：Stage → 校验 → Activate → Rollback。
     /// 多进程可经共享目录协作；跨机器网络传输由后续适配器负责。
     /// </summary>
-    public sealed class CxConfigReleaseReceiver
+    public sealed class MVDConfigReleaseReceiver
     {
         private readonly object _gate = new object();
         private readonly string _root;
-        public CxConfigReleaseReceiver(string root)
+        public MVDConfigReleaseReceiver(string root)
         {
             if (string.IsNullOrWhiteSpace(root)) throw new ArgumentException("Runtime directory required");
             _root = System.IO.Path.GetFullPath(root);
@@ -172,23 +172,23 @@ namespace CxVisual.Mechanism.Lifecycle
 
         public string Stage(string packagePath)
         {
-            CxConfigReleaseManifest manifest = CxConfigReleaseBuilder.Verify(packagePath);
+            MVDConfigReleaseManifest manifest = MVDConfigReleaseBuilder.Verify(packagePath);
             lock (_gate)
             {
                 string dest = System.IO.Path.Combine(Releases, manifest.ReleaseId);
                 if (Directory.Exists(dest))
                 {
-                    CxConfigReleaseManifest existing = CxConfigReleaseBuilder.Verify(dest);
-                    if (CxConfigJsonFile.Serialize(existing.Items.Select(x => x.Sha256).ToArray()) !=
-                        CxConfigJsonFile.Serialize(manifest.Items.Select(x => x.Sha256).ToArray()))
-                        throw new InvalidDataException("Immutable release ID has different payload");
+                    MVDConfigReleaseManifest existing = MVDConfigReleaseBuilder.Verify(dest);
+                    if (!File.ReadAllBytes(System.IO.Path.Combine(dest, "manifest.json"))
+                        .SequenceEqual(File.ReadAllBytes(System.IO.Path.Combine(packagePath, "manifest.json"))))
+                        throw new InvalidDataException("Immutable release ID has a different manifest");
                     return manifest.ReleaseId;
                 }
                 string temp = dest + ".staging-" + Guid.NewGuid().ToString("N");
                 try
                 {
                     Directory.CreateDirectory(temp);
-                    foreach (CxConfigReleaseItem item in manifest.Items)
+                    foreach (MVDConfigReleaseItem item in manifest.Items)
                     {
                         string targetFile = System.IO.Path.Combine(temp, item.FileName);
                         Directory.CreateDirectory(System.IO.Path.GetDirectoryName(targetFile));
@@ -196,7 +196,7 @@ namespace CxVisual.Mechanism.Lifecycle
                     }
                     File.Copy(System.IO.Path.Combine(packagePath, "manifest.json"),
                         System.IO.Path.Combine(temp, "manifest.json"));
-                    CxConfigReleaseBuilder.Verify(temp);
+                    MVDConfigReleaseBuilder.Verify(temp);
                     Directory.Move(temp, dest);
                     return manifest.ReleaseId;
                 }
@@ -211,15 +211,15 @@ namespace CxVisual.Mechanism.Lifecycle
 
         public void Activate(string releaseId)
         {
-            CxConfigReleaseBuilder.ValidateId(releaseId);
+            MVDConfigReleaseBuilder.ValidateId(releaseId);
             lock (_gate)
             {
-                CxConfigReleaseBuilder.Verify(System.IO.Path.Combine(Releases, releaseId));
+                MVDConfigReleaseBuilder.Verify(System.IO.Path.Combine(Releases, releaseId));
                 using (FileStream gate = OpenPointerGate())
                 {
-                    CxConfigActivePointer old = ReadPointer();
+                    MVDConfigActivePointer old = ReadPointer();
                     if (old.ActiveId == releaseId) return;
-                    WritePointer(new CxConfigActivePointer
+                    WritePointer(new MVDConfigActivePointer
                     {
                         ActiveId = releaseId, PreviousId = old.ActiveId,
                         Revision = checked(old.Revision + 1), ChangedUtc = DateTime.UtcNow
@@ -234,11 +234,11 @@ namespace CxVisual.Mechanism.Lifecycle
             {
                 using (FileStream gate = OpenPointerGate())
                 {
-                    CxConfigActivePointer old = ReadPointer();
+                    MVDConfigActivePointer old = ReadPointer();
                     if (old.ActiveId == null) return;
                     if (old.PreviousId != null)
-                        CxConfigReleaseBuilder.Verify(System.IO.Path.Combine(Releases, old.PreviousId));
-                    WritePointer(new CxConfigActivePointer
+                        MVDConfigReleaseBuilder.Verify(System.IO.Path.Combine(Releases, old.PreviousId));
+                    WritePointer(new MVDConfigActivePointer
                     {
                         ActiveId = old.PreviousId, PreviousId = old.ActiveId,
                         Revision = checked(old.Revision + 1), ChangedUtc = DateTime.UtcNow
@@ -249,30 +249,30 @@ namespace CxVisual.Mechanism.Lifecycle
 
         public string ReadActiveConfigJson(string configId)
         {
-            CxConfigReleaseBuilder.ValidateId(configId);
+            MVDConfigReleaseBuilder.ValidateId(configId);
             lock (_gate)
             {
                 string id = ReadPointer().ActiveId;
                 if (id == null) throw new InvalidOperationException("No active release");
                 string directory = System.IO.Path.Combine(Releases, id);
-                CxConfigReleaseManifest manifest = CxConfigReleaseBuilder.Verify(directory);
+                MVDConfigReleaseManifest manifest = MVDConfigReleaseBuilder.Verify(directory);
                 if (!manifest.Items.Any(x => x.Id == configId))
                     throw new KeyNotFoundException("Release does not contain " + configId);
-                CxConfigReleaseItem item = manifest.Items.First(x => x.Id == configId);
+                MVDConfigReleaseItem item = manifest.Items.First(x => x.Id == configId);
                 return File.ReadAllText(System.IO.Path.Combine(directory, item.FileName), Encoding.UTF8);
             }
         }
 
-        private CxConfigActivePointer ReadPointer()
+        private MVDConfigActivePointer ReadPointer()
         {
-            if (!File.Exists(PointerFile)) return new CxConfigActivePointer();
+            if (!File.Exists(PointerFile)) return new MVDConfigActivePointer();
             try
             {
-                CxConfigActivePointer p = (CxConfigActivePointer)CxConfigJsonFile.Deserialize(
-                    File.ReadAllText(PointerFile, Encoding.UTF8), typeof(CxConfigActivePointer));
+                MVDConfigActivePointer p = (MVDConfigActivePointer)FCMConfigJsonFile.Deserialize(
+                    File.ReadAllText(PointerFile, Encoding.UTF8), typeof(MVDConfigActivePointer));
                 if (p == null || p.Revision < 0) throw new InvalidDataException("Invalid active pointer");
-                if (p.ActiveId != null) CxConfigReleaseBuilder.ValidateId(p.ActiveId);
-                if (p.PreviousId != null) CxConfigReleaseBuilder.ValidateId(p.PreviousId);
+                if (p.ActiveId != null) MVDConfigReleaseBuilder.ValidateId(p.ActiveId);
+                if (p.PreviousId != null) MVDConfigReleaseBuilder.ValidateId(p.PreviousId);
                 return p;
             }
             catch (Exception ex) { throw new InvalidDataException("Invalid active release pointer", ex); }
@@ -283,12 +283,12 @@ namespace CxVisual.Mechanism.Lifecycle
             return new FileStream(PointerFile + ".lock", FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
         }
 
-        private void WritePointer(CxConfigActivePointer value)
+        private void WritePointer(MVDConfigActivePointer value)
         {
             string temp = PointerFile + ".tmp";
             try
             {
-                File.WriteAllText(temp, CxConfigJsonFile.Serialize(value), Encoding.UTF8);
+                File.WriteAllText(temp, FCMConfigJsonFile.Serialize(value), Encoding.UTF8);
                 if (File.Exists(PointerFile)) File.Replace(temp, PointerFile, PointerFile + ".bak");
                 else File.Move(temp, PointerFile);
             }
@@ -296,7 +296,7 @@ namespace CxVisual.Mechanism.Lifecycle
         }
     }
 
-    public sealed class CxConfigPublishReport
+    public sealed class MVDConfigPublishReport
     {
         public bool Success { get; internal set; }
         public string Error { get; internal set; }
@@ -305,27 +305,27 @@ namespace CxVisual.Mechanism.Lifecycle
         public int RolledBackCount { get; internal set; }
     }
 
-    public static class CxConfigPublisher
+    public static class MVDConfigPublisher
     {
         /// <summary>
         /// 先全部Stage，再依次激活。激活失败时尽力回滚已切换目标；
         /// 不承诺跨机器分布式原子事务。失败报告必须交给操作员。
         /// </summary>
-        public static CxConfigPublishReport Publish(string packagePath, params CxConfigReleaseReceiver[] targets)
+        public static MVDConfigPublishReport Publish(string packagePath, params MVDConfigReleaseReceiver[] targets)
         {
             if (targets == null || targets.Length == 0) throw new ArgumentException("At least one target required");
-            CxConfigPublishReport report = new CxConfigPublishReport();
-            List<CxConfigReleaseReceiver> activated = new List<CxConfigReleaseReceiver>();
+            MVDConfigPublishReport report = new MVDConfigPublishReport();
+            List<MVDConfigReleaseReceiver> activated = new List<MVDConfigReleaseReceiver>();
             try
             {
-                CxConfigReleaseManifest manifest = CxConfigReleaseBuilder.Verify(packagePath);
-                foreach (CxConfigReleaseReceiver target in targets)
+                MVDConfigReleaseManifest manifest = MVDConfigReleaseBuilder.Verify(packagePath);
+                foreach (MVDConfigReleaseReceiver target in targets)
                 {
                     if (target == null) throw new ArgumentNullException("targets");
                     target.Stage(packagePath);
                     report.StagedCount++;
                 }
-                foreach (CxConfigReleaseReceiver target in targets)
+                foreach (MVDConfigReleaseReceiver target in targets)
                 {
                     target.Activate(manifest.ReleaseId);
                     activated.Add(target);
