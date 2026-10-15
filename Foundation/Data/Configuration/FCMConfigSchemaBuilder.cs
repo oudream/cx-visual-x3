@@ -107,21 +107,47 @@ namespace CxVisual.Foundation.Data.Configuration
             Walk(value, typeof(T), new FCMConfigValidationContext(schema.SectionId, scope, ""), report, stack, 0);
             return report;
         }
+        /// <summary>异步校验异常转为报告；取消仍向调用者传播；禁止任何校验器修改候选配置。</summary>
         public static async Task<FCMConfigValidationReport> ValidateAsync<T>(T value, string scope, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            FCMConfigValidationReport report = Validate(value, scope);
+            string original = FCMJsonValueCodec.Serialize(value);
+            FCMConfigValidationReport report = new FCMConfigValidationReport();
+            try { report.AddRange(Validate(value, scope).Issues); }
+            catch (Exception ex)
+            {
+                report.Add(FCMConfigIssue.Error("", "VALIDATION_EXCEPTION", ex.Message));
+            }
             Type interfaceType = typeof(IFCMAsyncConfigValidator<>).MakeGenericType(typeof(T));
             foreach (FCMConfigValidatorAttribute attr in typeof(T).GetCustomAttributes(typeof(FCMConfigValidatorAttribute), false))
             {
                 if (!interfaceType.IsAssignableFrom(attr.ValidatorType)) continue;
                 cancellationToken.ThrowIfCancellationRequested();
-                object validator = Activator.CreateInstance(attr.ValidatorType);
-                MethodInfo method = interfaceType.GetMethod("ValidateAsync");
-                Task<IEnumerable<FCMConfigIssue>> task = (Task<IEnumerable<FCMConfigIssue>>)method.Invoke(validator,
-                    new object[] { value, new FCMConfigValidationContext(FCMConfigSchemaBuilder.Describe<T>().SectionId, scope, ""), cancellationToken });
-                report.AddRange(await task.ConfigureAwait(false));
+                try
+                {
+                    object validator = Activator.CreateInstance(attr.ValidatorType);
+                    MethodInfo method = interfaceType.GetMethod("ValidateAsync");
+                    Task<IEnumerable<FCMConfigIssue>> task = (Task<IEnumerable<FCMConfigIssue>>)method.Invoke(validator,
+                        new object[] { value, new FCMConfigValidationContext(FCMConfigSchemaBuilder.Describe<T>().SectionId, scope, ""), cancellationToken });
+                    if (task == null) throw new InvalidOperationException("Async config validator returned a null Task");
+                    IEnumerable<FCMConfigIssue> issues = await task.ConfigureAwait(false);
+                    report.AddRange(issues);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    Exception cause = ex is TargetInvocationException && ex.InnerException != null
+                        ? ex.InnerException : ex;
+                    report.Add(FCMConfigIssue.Error("", "ASYNC_VALIDATOR_EXCEPTION", cause.Message));
+                }
             }
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!string.Equals(original, FCMJsonValueCodec.Serialize(value), StringComparison.Ordinal))
+                report.Add(FCMConfigIssue.Error("", "VALIDATOR_MUTATED_CONFIG",
+                    "Config validator changed the candidate. Validators must be side-effect free."));
             return report;
         }
         private static void Walk(object value, Type type, FCMConfigValidationContext context,

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using CxVisual.Foundation.Data.Configuration;
 using CxVisual.Mechanism.Data.Configuration;
 
@@ -20,6 +21,27 @@ namespace CxVisual.Tests.ArchitectureSmoke
     public sealed class V13DetectorSample
     {
         public int Gain { get; set; } = 1;
+    }
+
+    [FCMConfigSection("Tests.V13AsyncValidation")]
+    [FCMConfigValidator(typeof(V13AsyncConfigRules))]
+    public sealed class V13AsyncConfig
+    {
+        public int Mode { get; set; }
+        public int Count { get; set; } = 2;
+    }
+    public sealed class V13AsyncConfigRules : IFCMAsyncConfigValidator<V13AsyncConfig>
+    {
+        public Task<IEnumerable<FCMConfigIssue>> ValidateAsync(V13AsyncConfig value,
+            FCMConfigValidationContext context, CancellationToken cancellationToken)
+        {
+            if (value.Mode == 2) throw new InvalidOperationException("模拟专业校验器故障");
+            if (value.Mode == 3) value.Count = 999;
+            IEnumerable<FCMConfigIssue> issues = value.Mode == 1
+                ? new[] { FCMConfigIssue.Error("Mode", "ASYNC_DOMAIN_REJECTED", "模拟设备检查不通过") }
+                : new FCMConfigIssue[0];
+            return Task.FromResult(issues);
+        }
     }
 
     internal static class ConfigV13ExtensionTests
@@ -106,9 +128,46 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Verify(cfg.ListSavedVersions().Count >= 4, "all saved versions retained");
                 Verify(other.Value(x => x.ExposureMs) == 80, "machine scope independence");
                 Expect<ArgumentException>(() => cfg.AtSavedVersionView("v9999"), "unknown history forbidden");
-                Console.WriteLine("PASS V1.3 config registry, value state, history view and restore");
+                AsyncValidationRegressions(root);
+                Console.WriteLine("PASS V1.3 config registry, value state, history view, restore and async validation");
             }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+        }
+
+        private static void AsyncValidationRegressions(string root)
+        {
+            V13AsyncConfig allowed = new V13AsyncConfig { Mode = 0 };
+            Verify(FCMConfigValidationEngine.ValidateAsync(allowed, "test", CancellationToken.None)
+                .GetAwaiter().GetResult().IsValid, "async valid model");
+            V13AsyncConfig rejected = new V13AsyncConfig { Mode = 1 };
+            FCMConfigValidationReport refusal = FCMConfigValidationEngine.ValidateAsync(
+                rejected, "test", CancellationToken.None).GetAwaiter().GetResult();
+            Verify(!refusal.IsValid && refusal.Issues.Any(x => x.Code == "ASYNC_DOMAIN_REJECTED"),
+                "async domain validation issue");
+            V13AsyncConfig broken = new V13AsyncConfig { Mode = 2 };
+            FCMConfigValidationReport exception = FCMConfigValidationEngine.ValidateAsync(
+                broken, "test", CancellationToken.None).GetAwaiter().GetResult();
+            Verify(!exception.IsValid && exception.Issues.Any(x => x.Code == "ASYNC_VALIDATOR_EXCEPTION"),
+                "async validator exception becomes report");
+            V13AsyncConfig changed = new V13AsyncConfig { Mode = 3 };
+            FCMConfigValidationReport mutation = FCMConfigValidationEngine.ValidateAsync(
+                changed, "test", CancellationToken.None).GetAwaiter().GetResult();
+            Verify(!mutation.IsValid && mutation.Issues.Any(x => x.Code == "VALIDATOR_MUTATED_CONFIG"),
+                "validator side effects rejected");
+            CancellationTokenSource cancel = new CancellationTokenSource();
+            cancel.Cancel();
+            Expect<OperationCanceledException>(() => FCMConfigValidationEngine.ValidateAsync(
+                allowed, "test", cancel.Token).GetAwaiter().GetResult(), "cancel must propagate");
+            MHSConfigService service = new MHSConfigService(Path.Combine(root, "async"));
+            MHSConfigSection<V13AsyncConfig> config = service.ForProject("project-a").Open<V13AsyncConfig>();
+            string version = config.SavedVersion;
+            using (MHSConfigEdit<V13AsyncConfig> edit = config.BeginEdit("专业异步校验异常"))
+            {
+                edit.WorkingCopy.Mode = 2;
+                MHSConfigCommitResult invalid = edit.CommitAsync(CancellationToken.None).GetAwaiter().GetResult();
+                Verify(!invalid.Success && invalid.ErrorCode == "CONFIG_VALIDATION" &&
+                    config.SavedVersion == version, "invalid async validation never commits");
+            }
         }
 
         private static void Verify(bool condition, string reason)
