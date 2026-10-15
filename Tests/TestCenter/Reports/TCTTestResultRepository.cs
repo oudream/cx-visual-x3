@@ -73,7 +73,7 @@ namespace CxVisual.TestCenter.Reports
                 throw new InvalidDataException("History format version not supported");
             if ((string)doc["runId"] != runId) throw new InvalidDataException("History RunId mismatch");
             Dictionary<string, object> environment = (Dictionary<string, object>)doc["environment"];
-            object[] cases = (object[])doc["cases"];
+            System.Collections.IEnumerable cases = (System.Collections.IEnumerable)doc["cases"];
             Dictionary<string, string> values = new Dictionary<string, string>(StringComparer.Ordinal);
             foreach (object entry in cases)
             {
