@@ -31,7 +31,7 @@ jobs:
 
           $visionOutput = & .\Output\Release\x64\CxVisual.Runtime.Host.exe vision-demo
           if ($LASTEXITCODE -ne 0) { throw "Vision real CPU demo failed" }
-          $visionText = $visionOutput -join "`n
+          $visionText = $visionOutput -join '|'
           if ($visionText -notmatch 'VisionDemo Revision=1 Defects=1' -or
               $visionText -notmatch 'VisionDemo Revision=2 Defects=0' -or
               $visionText -notmatch 'VisionDemo PASS') { throw "Vision demo output mismatch: $visionText" }
