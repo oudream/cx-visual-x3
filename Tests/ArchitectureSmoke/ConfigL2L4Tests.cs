@@ -24,6 +24,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
             try
             {
                 LayerInheritanceAndSourceTrace(root);
+                ShadowedLayerEditAndUnmask(root);
+                LegacyIncompatibleSchemaMigration(root);
+                AtomicConfigSnapshotConsistency(root);
                 RestoreBackupAndMigration(root);
                 TaskBoundariesAndSafeApplication(root);
                 AtomicRuntimeValuesAreConsistent();
@@ -77,6 +80,105 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Expect<ArgumentException>(() => reopened.UpdateLayer("Vision.Recipe",
                 x => { x.PixelDepth = CxVisionPixelDepth.Bits8; x.GrayThreshold = 300; }),
                 "Effective schema/cross-field validation skipped");
+        }
+
+
+        /// <summary>低优先级字段被覆盖时，编辑该层相同有效值仍必须保存该层意图。</summary>
+        private static void ShadowedLayerEditAndUnmask(string root)
+        {
+            string directory = Path.Combine(root, "shadowed-layer");
+            CxConfigManager m = new CxConfigManager(directory);
+            CxConfigLayeredProfile<CxVisionInspectionOptions> profile =
+                CxConfigLayeredProfile<CxVisionInspectionOptions>.Register(
+                    m, "Vision.Base", CxVisionInspectionOptions.Validate,
+                    new CxConfigLayerSpec("Vision.Template", 10),
+                    new CxConfigLayerSpec("Vision.Machine", 20),
+                    new CxConfigLayerSpec("Vision.Recipe", 30));
+            m.Initialize();
+            profile.UpdateLayer("Vision.Template", x => x.GrayThreshold = 1500);
+            profile.UpdateLayer("Vision.Machine", x => x.GrayThreshold = 1700);
+            profile.UpdateLayer("Vision.Recipe", x => x.GrayThreshold = 1800);
+            Check(profile.Resolve().Value.GrayThreshold == 1800, "Recipe must take precedence");
+            profile.UpdateLayer("Vision.Machine", x => x.GrayThreshold = 1800);
+            profile.ClearProperty("Vision.Recipe", "GrayThreshold");
+            Check(profile.Resolve().Value.GrayThreshold == 1800,
+                "Editing masked Machine layer was silently lost");
+            CxConfigManager reopened = new CxConfigManager(directory);
+            CxConfigLayeredProfile<CxVisionInspectionOptions> again =
+                CxConfigLayeredProfile<CxVisionInspectionOptions>.Register(
+                    reopened, "Vision.Base", CxVisionInspectionOptions.Validate,
+                    new CxConfigLayerSpec("Vision.Template", 10),
+                    new CxConfigLayerSpec("Vision.Machine", 20),
+                    new CxConfigLayerSpec("Vision.Recipe", 30));
+            reopened.Initialize();
+            Check(again.Resolve().Value.GrayThreshold == 1800,
+                "Masked layer edit did not persist through reload");
+        }
+
+        /// <summary>旧Schema字段形态与新类型不兼容时，迁移回调必须在新类型反序列化前调用。</summary>
+        public sealed class CameraVersionTwo
+        {
+            [CxConfigItem("曝光", Min = 1, Max = 100000)]
+            public int ExposureMs { get; set; } = 50;
+        }
+
+        private static void LegacyIncompatibleSchemaMigration(string root)
+        {
+            string folder = Path.Combine(root, "incompatible-legacy");
+            Directory.CreateDirectory(folder);
+            string path = Path.Combine(folder, "Camera.Sensor01.json");
+            string raw = "{\"Id\":\"Camera.Sensor01\",\"SchemaVersion\":1,\"Revision\":4,"
+                + "\"Data\":{\"ExposureMs\":[120],\"ObsoleteControl\":{\"Mode\":\"old\"}}}";
+            File.WriteAllText(path, raw);
+            int invoked = 0;
+            CxConfigManager next = new CxConfigManager(folder);
+            next.Register<CameraVersionTwo>("Camera.Sensor01", schemaVersion: 2,
+                migrate: (from, json) =>
+                {
+                    invoked++;
+                    Check(from == 1 && json.Contains("\"ExposureMs\":[120]"),
+                        "Migrator did not receive original incompatible JSON");
+                    return new CameraVersionTwo { ExposureMs = 120 };
+                });
+            next.Initialize();
+            Check(invoked == 1 && next.Get<CameraVersionTwo>("Camera.Sensor01").ExposureMs == 120,
+                "Breaking schema migration did not run");
+            Check(next.GetRevision("Camera.Sensor01") == 5, "Migration revision not monotonic");
+            Check(File.ReadAllText(path + ".bak").Contains("\"SchemaVersion\":1"),
+                "Migration must preserve exact old JSON in backup");
+        }
+
+        /// <summary>revision和value应来自同一次锁内捕获，而不是分别GetRevision/Get。</summary>
+        private static void AtomicConfigSnapshotConsistency(string root)
+        {
+            CxConfigManager manager = Setup(Path.Combine(root, "snapshot"));
+            Exception failure = null;
+            System.Threading.Thread writer = new System.Threading.Thread(() =>
+            {
+                try
+                {
+                    for (int i = 1; i <= 150; ++i)
+                    {
+                        int copy = i;
+                        manager.Update<CxVisionInspectionOptions>("Vision.Live",
+                            x => x.GrayThreshold = 1800 + copy);
+                    }
+                }
+                catch (Exception ex) { failure = ex; }
+            });
+            writer.Start();
+            for (int i = 0; i < 1000; ++i)
+            {
+                CxConfigSnapshot<CxVisionInspectionOptions> snapshot =
+                    manager.GetSnapshot<CxVisionInspectionOptions>("Vision.Live");
+                Check(snapshot.Value.GrayThreshold == 1800 + snapshot.Revision,
+                    "Snapshot value and revision were captured at different times");
+                snapshot.Value.GrayThreshold = 10;
+                Check(manager.Get<CxVisionInspectionOptions>("Vision.Live").GrayThreshold != 10,
+                    "Snapshot can mutate managed state");
+            }
+            writer.Join();
+            if (failure != null) throw new InvalidOperationException("Snapshot writer failed", failure);
         }
 
         private static void RestoreBackupAndMigration(string root)

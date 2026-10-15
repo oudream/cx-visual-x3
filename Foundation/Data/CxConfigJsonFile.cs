@@ -68,18 +68,24 @@ namespace CxVisual.Foundation.Data
             if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException("Missing path", "path");
             if (!File.Exists(path)) return null;
             string json = File.ReadAllText(path);
+            return ParseDocument<T>(json, path);
+        }
+
+        /// <summary>解析已经读取的原始JSON，避免Schema判定前先强制反序列化为新版T。</summary>
+        public static CxConfigFileDocument<T> ParseDocument<T>(string json, string source)
+        {
             try
             {
                 CxConfigFileDocument<T> doc = Serializer().Deserialize<CxConfigFileDocument<T>>(json);
                 if (doc == null || doc.Data == null || doc.Revision < 0 || doc.SchemaVersion <= 0 ||
                     string.IsNullOrWhiteSpace(doc.Id))
-                    throw new InvalidDataException("Invalid config document: " + path);
+                    throw new InvalidDataException("Invalid config document: " + source);
                 return doc;
             }
             catch (InvalidDataException) { throw; }
             catch (Exception ex)
             {
-                throw new InvalidDataException("Cannot read configuration; original file was not modified: " + path, ex);
+                throw new InvalidDataException("Cannot read configuration; original file was not modified: " + source, ex);
             }
         }
 
@@ -98,7 +104,8 @@ namespace CxVisual.Foundation.Data
             using (FileStream gate = new FileStream(full + ".lock", FileMode.OpenOrCreate,
                 FileAccess.ReadWrite, FileShare.None))
             {
-                CxConfigFileDocument<T> existing = Read<T>(full);
+                CxConfigDocumentHeader existing = File.Exists(full)
+                    ? ReadHeader(File.ReadAllText(full)) : null;
                 long actual = existing == null ? -1 : existing.Revision;
                 if (actual != expectedRevision)
                     throw new InvalidOperationException("CONFIG_DISK_CONFLICT: " + document.Id +

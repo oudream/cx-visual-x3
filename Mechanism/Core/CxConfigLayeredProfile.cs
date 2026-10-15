@@ -75,7 +75,9 @@ namespace CxVisual.Mechanism.Core
 
         public CxResolvedConfig<T> Resolve()
         {
-            return ResolveWith(null, null);
+            CxResolvedConfig<T> result = ResolveWith(null, null);
+            ValidateResolved(result);
+            return result;
         }
 
         public void SetTemplate(string layerId, string templateId)
@@ -94,7 +96,9 @@ namespace CxVisual.Mechanism.Core
         {
             RequireLayer(layerId);
             if (change == null) throw new ArgumentNullException("change");
-            T before = Resolve().Value;
+            // 编辑目标层的独立有效值，不能按最高优先级的最终值计算差异。
+            // 否则低优先级字段被后续层遮蔽时，编辑可能悄然丢失。
+            T before = ResolveWith(null, null, layerId).Value;
             T draft = CxConfigJsonFile.Clone(before);
             change(draft);
             CxConfigLayerOverrides overrideNow = _manager.Get<CxConfigLayerOverrides>(layerId);
@@ -128,7 +132,8 @@ namespace CxVisual.Mechanism.Core
                 x => x.Values.Remove(propertyName), revision);
         }
 
-        private CxResolvedConfig<T> ResolveWith(string substituteId, CxConfigLayerOverrides substitute)
+        private CxResolvedConfig<T> ResolveWith(string substituteId, CxConfigLayerOverrides substitute,
+            string stopAfterLayerId = null)
         {
             T result = _manager.Get<T>(_baseId);
             Dictionary<string, string> origins = _properties.Keys
@@ -136,8 +141,11 @@ namespace CxVisual.Mechanism.Core
             Dictionary<string, long> versions = new Dictionary<string, long>(StringComparer.Ordinal);
             versions.Add(_baseId, _manager.GetRevision(_baseId));
             foreach (CxConfigLayerSpec layer in _layers)
+            {
                 ApplyLayer(layer.Id, result, origins, versions, new HashSet<string>(StringComparer.Ordinal),
                     substituteId, substitute);
+                if (layer.Id == stopAfterLayerId) break;
+            }
             return new CxResolvedConfig<T>
             {
                 Value = result, Origins = origins, SourceRevisions = versions

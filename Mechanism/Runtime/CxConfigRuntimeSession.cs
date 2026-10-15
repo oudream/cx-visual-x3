@@ -50,10 +50,11 @@ namespace CxVisual.Mechanism.Runtime
             _manager = manager;
             _id = id;
             _applyValidator = applyValidator;
-            if (_manager.IsDirty(id))
+            CxConfigSnapshot<T> initial = manager.GetSnapshot<T>(id);
+            if (!initial.Saved)
                 throw new InvalidOperationException("Runtime cannot activate an unsaved configuration");
-            _active = manager.Get<T>(id);
-            _activeRevision = manager.GetRevision(id);
+            _active = initial.Value;
+            _activeRevision = initial.Revision;
         }
 
         public long ActiveRevision
@@ -73,28 +74,14 @@ namespace CxVisual.Mechanism.Runtime
         /// <summary>捕获并校验指定策略的下一版本；不把文件保存错误等同于运行应用成功。</summary>
         public bool RequestApply(CxConfigApplyPolicy policy)
         {
-            T candidate = null;
-            long version = -1;
-            for (int attempt = 0; attempt < 3; ++attempt)
+            CxConfigSnapshot<T> snapshot = _manager.GetSnapshot<T>(_id);
+            if (!snapshot.Saved)
             {
-                if (_manager.IsDirty(_id))
-                {
-                    lock (_gate) LastError = "CONFIG_UNSAVED";
-                    return false;
-                }
-                long oldVersion = _manager.GetRevision(_id);
-                T snapshot = _manager.Get<T>(_id);
-                long newerVersion = _manager.GetRevision(_id);
-                if (oldVersion != newerVersion) continue;
-                candidate = snapshot;
-                version = newerVersion;
-                break;
-            }
-            if (candidate == null)
-            {
-                lock (_gate) LastError = "CONFIG_CONCURRENT_UPDATE";
+                lock (_gate) LastError = "CONFIG_UNSAVED";
                 return false;
             }
+            T candidate = snapshot.Value;
+            long version = snapshot.Revision;
             string err = _applyValidator == null ? null : _applyValidator(candidate);
             if (!string.IsNullOrWhiteSpace(err))
             {
