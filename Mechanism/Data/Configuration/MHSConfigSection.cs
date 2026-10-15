@@ -76,7 +76,7 @@ namespace CxVisual.Mechanism.Data.Configuration
             T candidate = FCMJsonValueCodec.Deserialize<T>(FCMJsonValueCodec.Serialize(WorkingCopy));
             FCMConfigValidationReport report = await FCMConfigValidationEngine.ValidateAsync(candidate,
                 _section.ScopeId, cancellationToken).ConfigureAwait(false);
-            return _section.Commit(candidate, _baseRevision, cancellationToken, report);
+            return _section.Commit(candidate, _baseRevision, cancellationToken, report, Reason);
         }
         public void Dispose() { _section = null; WorkingCopy = default(T); }
     }
@@ -183,7 +183,7 @@ namespace CxVisual.Mechanism.Data.Configuration
             lock (_gate) revision = _savedRev;
             FCMConfigValidationReport report = await FCMConfigValidationEngine.ValidateAsync(value, _scope, token)
                 .ConfigureAwait(false);
-            return Commit(value, revision, token, report);
+            return Commit(value, revision, token, report, "导入离线配置包");
         }
 
         public T AtSavedVersion(string name)
@@ -217,11 +217,14 @@ namespace CxVisual.Mechanism.Data.Configuration
             }
             FCMConfigValidationReport report = await FCMConfigValidationEngine.ValidateAsync(
                 candidate, _scope, cancellationToken).ConfigureAwait(false);
-            return Commit(candidate, baseline, cancellationToken, report);
+            return Commit(candidate, baseline, cancellationToken, report, "历史恢复：" + reason);
         }
 
         public IList<string> ListSavedVersions()
         { lock (_gate) return _store.CommittedHistory(_savedRev).Select(MHSConfigStorage.Name).ToArray(); }
+        /// <summary>只返回当前已提交历史链中的审计记录，未提交的中断文件不进入结果。</summary>
+        public IList<MHSConfigAuditEntry> ListAudit()
+        { lock (_gate) return _store.ListAudit(_savedRev); }
         public FCMConfigValueInfo<TValue> Explain<TValue>(Expression<Func<T, TValue>> accessor)
         {
             if (accessor == null) throw new ArgumentNullException("accessor");
@@ -286,7 +289,7 @@ namespace CxVisual.Mechanism.Data.Configuration
             }
         }
         internal MHSConfigCommitResult Commit(T candidate, int baseRevision, CancellationToken cancellationToken,
-            FCMConfigValidationReport validation)
+            FCMConfigValidationReport validation, string reason)
         {
             T oldSaved = default(T), oldEffective = default(T), savedNow = default(T);
             int newVersion = 0, oldEffectiveVersion = 0;
@@ -312,7 +315,17 @@ namespace CxVisual.Mechanism.Data.Configuration
                 oldEffectiveVersion = _effectiveRev;
                 immediate = GetApplyPolicy(oldSaved, candidate, typeof(T)) == FCMConfigApplyPolicy.Immediate;
                 cancellationToken.ThrowIfCancellationRequested();
-                try { newVersion = _store.Commit(_savedJson, patched); }
+                try
+                {
+                    MHSConfigAuditEntry entry = new MHSConfigAuditEntry
+                    {
+                        Scope = _scope,
+                        Reason = string.IsNullOrWhiteSpace(reason) ? "修改配置" : reason,
+                        RecordedAtUtc = DateTimeOffset.UtcNow,
+                        ChangedPaths = FCMConfigDiffUtil.Diff(_saved, candidate).ToList()
+                    };
+                    newVersion = _store.Commit(_savedJson, patched, entry);
+                }
                 catch (InvalidOperationException ex) when (ex.Message.StartsWith("CONFIG_WRITE_CONFLICT", StringComparison.Ordinal))
                 { return new MHSConfigCommitResult { Success = false, ErrorCode = "CONFIG_WRITE_CONFLICT", Validation = validation }; }
                 _savedRev = newVersion; _savedJson = patched; _saved = roundtrip;

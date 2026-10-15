@@ -166,6 +166,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 LayeredProfileRegressions(root);
                 ConfigurationFoundationRegressions(root);
                 ReferenceContractsRegressions(root);
+                AuditRegressions(root);
                 Console.WriteLine("PASS V1.3 config registry, value state, history view, restore and async validation");
             }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
@@ -447,6 +448,37 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Verify(FCMConfigCatalog.Search<V13ResourceReferenceConfig>("数据句柄").Count == 1,
                 "referenced data is visible in schema without loading large object");
             Console.WriteLine("PASS typed secret/resource/data references");
+        }
+
+        private static void AuditRegressions(string root)
+        {
+            MHSConfigService service = new MHSConfigService(Path.Combine(root, "audit"));
+            MHSConfigSection<V13ConfigSample> section = service.ForMachine("AUDIT-01").Open<V13ConfigSample>();
+            string initial = section.SavedVersion;
+            Verify(section.SetValueAsync(x => x.ExposureMs, 140, "审查曝光调整",
+                CancellationToken.None).GetAwaiter().GetResult().Success, "audited edit");
+            IList<MHSConfigAuditEntry> entries = section.ListAudit();
+            Verify(entries.Count == 1 && entries[0].Revision == section.SavedVersion &&
+                entries[0].Reason == "审查曝光调整" &&
+                entries[0].ChangedPaths.Contains("ExposureMs") &&
+                entries[0].JsonSha256 == section.ExportPackage().Sha256,
+                "audited reason, changed paths, revision and body hash");
+            Verify(section.RestoreSavedVersionAsync(initial, "恢复工厂默认",
+                CancellationToken.None).GetAwaiter().GetResult().Success, "restore is audited");
+            entries = section.ListAudit();
+            Verify(entries.Count == 2 &&
+                entries[1].Reason.Contains("恢复工厂默认") &&
+                entries[1].Revision == section.SavedVersion &&
+                section.AtSavedVersion(entries[0].Revision).ExposureMs == 140,
+                "restore forms a new revision without modifying earlier history");
+
+            // Tampered audit evidence is reported, not silently accepted.
+            string[] auditFiles = Directory.GetFiles(Path.Combine(root, "audit"),
+                "*.audit.json", SearchOption.AllDirectories);
+            Verify(auditFiles.Length == 2, "two immutable audit files");
+            File.WriteAllText(auditFiles[0], "{\"Revision\":\"v1\",\"JsonSha256\":\"tampered\"}");
+            Expect<InvalidOperationException>(() => section.ListAudit(), "tampered audit must be rejected");
+            Console.WriteLine("PASS configuration audit chain and integrity verification");
         }
 
         private static void Verify(bool condition, string reason)

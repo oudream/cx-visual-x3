@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using CxVisual.Foundation.Data.Configuration;
 
 namespace CxVisual.Mechanism.Data.Configuration
 {
@@ -28,6 +29,7 @@ namespace CxVisual.Mechanism.Data.Configuration
         }
         private string RevisionFile(int revision) { return Path.Combine(_history, "r" + revision.ToString("D8", CultureInfo.InvariantCulture) + ".json"); }
         private string ParentFile(int revision) { return Path.Combine(_history, "r" + revision.ToString("D8", CultureInfo.InvariantCulture) + ".parent"); }
+        private string AuditFile(int revision) { return Path.Combine(_history, "r" + revision.ToString("D8", CultureInfo.InvariantCulture) + ".audit.json"); }
         public static string Name(int revision) { return "v" + revision.ToString(CultureInfo.InvariantCulture); }
         public static int ParseName(string name)
         {
@@ -65,7 +67,7 @@ namespace CxVisual.Mechanism.Data.Configuration
             if (!HasCurrent) AtomicReplace(_current, defaults);
             return IdentifyCurrent(ReadCurrent());
         }
-        public int Commit(string expectedCurrent, string newJson)
+        public int Commit(string expectedCurrent, string newJson, MHSConfigAuditEntry audit)
         {
             // Cross-process exclusive lock for the compare-and-swap + atomic file replace.
             // A live second writer fails visibly instead of corrupting a revision sequence.
@@ -76,11 +78,32 @@ namespace CxVisual.Mechanism.Data.Configuration
                     throw new InvalidOperationException("CONFIG_WRITE_CONFLICT: file changed outside this configuration session");
                 int version = ListVersions().DefaultIfEmpty(0).Max() + 1;
                 int previous = IdentifyCurrent(expectedCurrent);
+                if (audit == null) throw new ArgumentNullException("audit");
+                audit.Revision = Name(version);
+                audit.JsonSha256 = MHSConfigPackage.Hash(newJson);
                 SaveVersion(version, newJson);
+                AtomicReplace(AuditFile(version), FCMJsonValueCodec.Serialize(audit));
                 AtomicReplace(ParentFile(version), previous.ToString(CultureInfo.InvariantCulture));
                 AtomicReplace(_current, newJson);
                 return version;
             }
+        }
+        public IList<MHSConfigAuditEntry> ListAudit(int currentRevision)
+        {
+            List<MHSConfigAuditEntry> found = new List<MHSConfigAuditEntry>();
+            foreach (int revision in CommittedHistory(currentRevision))
+            {
+                string file = AuditFile(revision);
+                if (!File.Exists(file)) continue;
+                MHSConfigAuditEntry item = FCMJsonValueCodec.Deserialize<MHSConfigAuditEntry>(
+                    File.ReadAllText(file, Utf8));
+                if (item == null || item.Revision != Name(revision) ||
+                    !string.Equals(item.JsonSha256, MHSConfigPackage.Hash(ReadVersion(revision)),
+                        StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException("CONFIG_AUDIT_INTEGRITY_FAILURE: " + Name(revision));
+                found.Add(item);
+            }
+            return found.AsReadOnly();
         }
         public int PreviousCommitted(int revision)
         {
