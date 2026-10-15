@@ -61,9 +61,9 @@
 
 ### 运行体系：测试驱动架构与首个代码闭环
 
-- **[统一执行体系TDD矩阵（持续更新V0.3）](Testing/UnifiedExecution_TDD_Matrix_V0.1.md)**：从R1～R6、E01～E18倒推出T01～T20的测试用例、首批F19/Runtime实际类与接口、已覆盖和未覆盖项。首批T01～T10及后续资源租约、请求关联、分支归并、子流程、软件Plan版本等测试接入既有FoundationSmoke/ArchitectureSmoke；Windows CI编译及通过状态以对应提交的实际日志为准。未完成的资源租约、子流程、发布、跨进程、实机安全等明确保留为后续测试，不把设计稿当作已运行实现。
+- **[统一执行体系TDD矩阵（持续更新V0.4）](Testing/UnifiedExecution_TDD_Matrix_V0.1.md)**：从R1～R6、E01～E18倒推出T01～T20的测试用例、首批F19/Runtime实际类与接口、已覆盖和未覆盖项。首批T01～T10及后续资源租约、请求关联、分支归并、子流程、软件Plan版本等测试接入既有FoundationSmoke/ArchitectureSmoke；Windows CI编译及通过状态以对应提交的实际日志为准。未完成的资源租约、子流程、发布、跨进程、实机安全等明确保留为后续测试，不把设计稿当作已运行实现。
 
-- **[统一运行内核实现与验收 V0.3](Testing/CxVisual_统一运行体系内核_实现与验收_V0.3.md)**：只围绕F19 Concurrency及Runtime.Execution，完整列出当前可执行基础API、事件与定时触发、条件/循环、调试暂停、优先级、资源等待、数据租约、停止排空和测试入口；明确尚未交付的跨进程、持久恢复及实机安全。
+- **[统一运行内核实现与验收 V0.4](Testing/CxVisual_统一运行体系内核_实现与验收_V0.3.md)**：只围绕F19 Concurrency及Runtime.Execution，完整列出当前可执行基础API、事件与定时触发、条件/循环、调试暂停、优先级、资源等待、数据租约、停止排空和测试入口；明确尚未交付的跨进程、持久恢复及实机安全。
 
 ## 3. 新平台总边界（恢复上下文用）
 

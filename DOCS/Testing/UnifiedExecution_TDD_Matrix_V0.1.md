@@ -1,4 +1,4 @@
-# CxVisual 统一运行体系：从六角色期望倒推测试与最小实现（TDD V0.3，原路径持续更新）
+# CxVisual 统一运行体系：从六角色期望倒推测试与最小实现（TDD V0.4，原路径持续更新）
 
 > **性质**：实现/测试事实 + 继续深化的验收清单。需求来源：[统一运行体系综合讨论稿](../Architecture/CxVisual_统一运行体系_六角色期望与并发异步编排执行_综合设计讨论稿_V0.1.md)。  
 > **范围**：现有 \`Foundation/Infrastructure/Concurrency/\`（F19）+ \`Mechanism/Runtime/Execution/\`（执行引擎），在现有FoundationSmoke/ArchitectureSmoke测试工程扩展。不新增项目、第二套编排模型或独立进程。  
@@ -103,7 +103,7 @@ await engine.StopAsync();
 | E08 等待归并 | **基础实现** | DAG All、FirstSuccessful、取消剩余分支、AllSettled | 动态分支补偿及外部可靠归并 |
 | E09 超时取消 | **部分** | F19超时不误杀、取消协作、Correlation、Operation Unknown/late confirm | 外部操作持久化及硬件停止确认 |
 | E10 资源互斥 | **进程内实现** | RequiredResources声明式仲裁、固定资源顺序、Worker外异步等锁、Lease自动释放 | 跨进程设备Owner与物理联锁 |
-| E11 异常恢复 | **部分** | 原异常、失败阻断、仅显式幂等任务的有限重试/退避/协作超时 | 业务补偿与持久故障恢复 |
+| E11 异常恢复 | **进程内基础实现** | 原异常、失败阻断、幂等有限重试、协作超时、完成步骤逆序显式补偿及失败报告 | 持久任务恢复、设备状态核验与人工安全授权 |
 | E12 生命周期 | **部分** | Worker及Runtime统一停止接单、Flow排空/请求取消、Plan旧版本固定 | 故障恢复及Host进程接管 |
 | E13 可观察 | **基础headless** | Flow/Worker状态、Queued/Waiting/Paused/WaitingResources、有限Trace | Studio调试面板、持久追踪和授权 |
 | E14 子流程 | **基础内联实现** | InlineSubflow编译展开、相对作用域、单Worker CT流程无死锁 | ContentRef实数据绑定、子流程动态递归与循环/参数类型 |
@@ -194,4 +194,14 @@ G0/G1通过不能代替G2/G3/G4。CI工作流故障时应分清本次新增测�
 - **明确尚未交付**：真正的Studio运行可视调试UI、跨进程Runtime高可靠投递、外部硬件安全联锁、Data堆栈的统一工程接入、动态插件编译/正式发布，不能以当前纯基础测试证明它们已实现。
 
 最新源码与Windows CI状态以实时GitHub主分支为准，**不要把文档写成已经验收所有工业系统**。
+
+
+## 10. 显式补偿功能与TDD（持续完善）
+
+本轮将失败处理从“可观察Failed”继续推进至**显式申请、有序结算、只补偿真正完成的节点**。核心在\`Mechanism/Runtime/Execution/MRKExecutionCompensation.cs\`及原有Step/Engine中，测试在\`Tests/ArchitectureSmoke/ExecutionCompensationTests.cs\`。
+
+- T21：A→B成功、C失败，默认不会自动执行回滚；显式CompensateAsync后执行B→A逆序补偿。
+- T22：同一Flow二次CompensateAsync拒绝，防止外部副作用重复。
+- T23：B补偿失败时，A的合法补偿继续，且MRKCompensationReport保存逐项异常。
+- 明确限制：仍是本进程内运行补偿基础，不应把补偿“运行过”误认为外部设备完成安全恢复；生产控制需独立权限、联锁及设备反馈判定。
 

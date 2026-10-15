@@ -1,4 +1,4 @@
-# CxVisual统一运行体系内核：实现、协作语义与测试驱动验收 V0.3
+# CxVisual统一运行体系内核：实现、协作语义与测试驱动验收 V0.4（沿用V0.3文件路径）
 
 > 2026-10-15。**当前阶段优先把Foundation/Mechanism运行内核独立实现到可编译、可使用、可验证，不等待业务或专业接入，也不以迁移旧项目作为本阶段前置条件。** 本文记录真实C#代码和纯基础行为测试。  
 > 设计前提来自[六角色综合需求](../Architecture/CxVisual_统一运行体系_六角色期望与并发异步编排执行_综合设计讨论稿_V0.1.md)；滚动验收见[统一TDD矩阵](UnifiedExecution_TDD_Matrix_V0.1.md)。**本文不是宣称所有E01～E18、生产设备安全、跨进程可靠执行均已交付。**
@@ -47,6 +47,7 @@
 | \`MRKWorkJoin.cs\` | MRKWorkJoin.FirstSuccessfulAsync、MRKJoinResult.AllSettled | FirstSuccess归并；可请求取消未胜出分支；结果先返回但剩余工作生命周期仍可等待 |
 | \`MRKExecutionPlanSlot.cs\` | MRKExecutionPlanSlot、MRKExecutionPlanLease | 单Host内存Plan版本固定、候选暂存和无在途时切换；不是跨进程正式发布 |
 | \`MRKExecutionTrigger.cs\` | MRKExecutionTrigger.TryTrigger/StartPeriodic/StopAsync | 同一Plan支持事件调用和定期启动，在途容量限制、超额明确拒绝、停止排空 |
+| \`MRKExecutionCompensation.cs\` | MRKCompensationReport、ExecutionEngine.CompensateAsync、Step.CompensateAsync | 仅在失败流程全分支结束后，由调用者显式执行逆序补偿；逐项保存失败原因，无默认设备回滚 |
 
 ### 03.1 一次流程的标准路径
 
@@ -81,7 +82,15 @@ Studio/代码/Trigger
 - **数据**：Flow的输入与各步骤结果是独立作用域；目前并非完整的数据堆/栈、版本化数据集与跨进程大对象生命周期机制，后续统一数据体系仍需连接。
 - **资源**：节点声明RequiredResources，无需用户显式手写Lock；在Worker提交前异步获取，避免堵住运行槽；资源租约仅具有进程内软件语义。
 
-### 03.3 运行调试与诊断
+### 03.3 失败流程的受控补偿
+
+- \`MRKExecutionStep.CompensateAsync\`是**明确的可选委托**；缺省没有补偿，不会自动重发运动、曝光、PLC写指令或其他可能产生外部副作用的操作。
+- \`MRKExecutionEngine.CompensateAsync(plan, flow)\`只允许在原Flow全部分支结算且结果非Completed时调用；同一Flow只能启动一次补偿，禁止重复执行副作用。
+- 补偿按照**已完成节点的实际完成顺序逆向遍历**，而非仅按声明顺序；未成功完成的节点没有自动补偿。
+- 补偿回调仍使用同一F19 Worker、原节点串行Key和RequiredResources，结果与原流程诊断分开。
+- 某个补偿失败时继续记录其他已声明补偿，并返回\`MRKCompensationReport.Failures\`。取消可以中止尚未开始的补偿；**不承诺恢复外部设备真实状态**，需要Provider/现场授权与确认。
+
+### 03.4 运行调试与诊断
 
 - Trace存Step状态变化和UTC时间及递增序号，不保存图像/密钥；
 - 队列深度、运行中数量、拒绝/淘汰统计可通过F19查询；
@@ -111,6 +120,7 @@ Studio/代码/Trigger
 - \`Tests/ArchitectureSmoke/ExecutionControlTests.cs\`
 - \`Tests/ArchitectureSmoke/ExecutionPolicyTests.cs\`
 - \`Tests/ArchitectureSmoke/ExecutionTriggerTests.cs\`
+- \`Tests/ArchitectureSmoke/ExecutionCompensationTests.cs\`
 
 ### 04.1 Windows CI命令与门禁
 
@@ -130,7 +140,7 @@ Windows Workflow：[\`config-l1-ci.yml\`](../../.github/workflows/config-l1-ci.y
 | 内存流程编排执行 | 已有真实代码和自动测试；DAG、条件、有限循环、子流程内联、归并 |
 | 数据与资源生命周期 | 本进程内引用票据和资源互斥已测试；大对象分布式Owner/数据栈未集成 |
 | 运行控制及观测 | headless暂停/单步/断点、状态快照和有限Trace已测试；Studio UI未接 |
-| 执行恢复/容错 | 幂等重试、协作超时和未知外部操作语义具备基础；故障恢复调度与持久操作日志未交付 |
+| 执行恢复/容错 | 幂等重试、协作超时、未知外部操作跟踪以及**显式失败逆序补偿**可在进程内使用；持久化恢复与设备实际状态回滚未交付 |
 | 事件触发/定时 | Manual/Periodic Trigger和在途上限已测试；事件Bus及持久投递属独立机制 |
 | 计划切换 | 内存版本固定/软件空闲切换已测试；工程编译发布、设备安全点、跨进程一致性未交付 |
 
