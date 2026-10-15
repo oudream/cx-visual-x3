@@ -229,6 +229,40 @@ namespace CxVisual.TestCenter.Cases
             context.AssertTrue(!string.IsNullOrWhiteSpace(outcome.Error), "保留超时原因", true, true);
         }
 
+        [TCTTest("TCT.RUN.006", "RunProfile分类与独占资源声明", TCTTestAspect.Foundation, "TestFramework")]
+        public static void Profiles(TCTTestContext context)
+        {
+            TCTTestCatalog catalog = new TCTTestCatalog();
+            catalog.Register(new TCTProfileCase("TCT.INNER.UNIT", TCTTestKind.Unit));
+            catalog.Register(new TCTProfileCase("TCT.INNER.BENCH", TCTTestKind.Benchmark));
+            catalog.Register(new TCTProfileCase("TCT.INNER.STRESS", TCTTestKind.Stress));
+            context.AssertEqual(1, catalog.Select(new TCTTestRunRequest {
+                Profile = TCTTestRunProfile.Smoke }).Count, "Smoke只含Unit");
+            context.AssertEqual(1, catalog.Select(new TCTTestRunRequest {
+                Profile = TCTTestRunProfile.Benchmark }).Count, "Benchmark独立");
+            context.AssertEqual(1, catalog.Select(new TCTTestRunRequest {
+                Profile = TCTTestRunProfile.Stress }).Count, "Stress独立");
+            context.AssertEqual(3, catalog.Select(new TCTTestRunRequest {
+                Profile = TCTTestRunProfile.Dev }).Count, "Dev全部");
+            TCTTestCaseDescriptor descriptor = new TCTTestCaseDescriptor(
+                "TCT.INNER.GPU", "GPU", TCTTestAspect.Foundation, "TestFramework",
+                "Unmapped", "Unmapped", "TCT", TCTTestKind.Unit,
+                new[] { "GPU0", "Device:Virtual" }, new[] { "Simulation", "GPU" });
+            context.AssertEqual(3, descriptor.ExclusiveResourceKeys.Count, "含TestID及两个资源键");
+            context.AssertEqual(2, descriptor.Tags.Count, "标签保留");
+        }
+
+        private sealed class TCTProfileCase : ITCTTestCase
+        {
+            public TCTProfileCase(string id, TCTTestKind kind)
+            {
+                Descriptor = new TCTTestCaseDescriptor(id, id, TCTTestAspect.Foundation,
+                    "TestFramework", "Unmapped", "Unmapped", "TCT", kind);
+            }
+            public TCTTestCaseDescriptor Descriptor { get; private set; }
+            public void Execute(TCTTestContext context) { context.AssertEqual(1, 1, "real"); }
+        }
+
         private sealed class TCTProbeCase : ITCTTestCase, ITCTTestLifecycle
         {
             private readonly bool _fail;
