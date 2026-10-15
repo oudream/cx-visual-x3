@@ -1,20 +1,25 @@
-using CxVisual.Mechanism.Core;
+using CxVisual.Foundation.Data.Configuration;
+using System.ComponentModel.DataAnnotations;
+using System.Collections.Generic;
 
 namespace CxVisual.Studio
 {
     /// <summary>展示零样板强类型配置、默认初始化、通用属性编辑器和安全持久化。</summary>
+    [FCMConfigSection("Studio.Demo")]
     public sealed class StudioDemoConfig
     {
-        [MPMConfigItem("网格间距", Category = "画布", Description = "演示编辑器自动创建数值控件", Min = 5, Max = 200)]
+        [FCMConfigItem("网格间距")]
+        [Range(5, 200)]
         public int CanvasGridSize { get; set; } = 25;
 
-        [MPMConfigItem("显示网格", Category = "画布")]
+        [FCMConfigItem("显示网格")]
         public bool ShowGrid { get; set; } = true;
 
-        [MPMConfigItem("编辑器标题", Category = "界面", Required = true)]
+        [FCMConfigItem("编辑器标题")]
+        [Required]
         public string EditorTitle { get; set; } = "CxVisual Studio";
 
-        [MPMConfigItem("自动备份", Category = "行为")]
+        [FCMConfigItem("自动备份")]
         public bool AutoBackup { get; set; } = true;
     }
 }

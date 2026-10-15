@@ -2,7 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using CxVisual.Mechanism.Core;
-using CxVisual.Mechanism.Runtime;
+using CxVisual.Foundation.Data.Configuration;
+using CxVisual.Mechanism.Data.Configuration;
 
 namespace CxVisual.Professional.Vision
 {
@@ -72,8 +73,9 @@ namespace CxVisual.Professional.Vision
         internal CxVisionThresholdPipeline(CxVisionInspectionOptions config)
         {
             if (config == null) throw new ArgumentNullException("config");
-            string problem = MPMConfigDescription.Validate(config);
-            if (string.IsNullOrWhiteSpace(problem)) problem = CxVisionInspectionOptions.Validate(config);
+            string problem = CxVisionInspectionOptions.Validate(config);
+            if (string.IsNullOrWhiteSpace(problem) && !FCMConfigValidationEngine.Validate(config, "vision:runtime").IsValid)
+                problem = "Vision configuration failed schema validation";
             if (!string.IsNullOrWhiteSpace(problem)) throw new ArgumentException(problem, "config");
             if (config.UseAi)
                 throw new NotSupportedException("AI execution is not installed in this CPU threshold provider");
@@ -149,132 +151,77 @@ namespace CxVisual.Professional.Vision
         }
     }
 
-    /// <summary>专业运行引擎的真实配置提供者，不与文件IO/Studio耦合。</summary>
-    internal sealed class CxVisionThresholdConfigApplier : IMRKConfigApplier<CxVisionInspectionOptions>
-    {
-        private readonly object _gate = new object();
-        private CxVisionThresholdPipeline _active;
-        private CxVisionThresholdPipeline _prepared;
-        internal CxVisionThresholdConfigApplier(CxVisionInspectionOptions current)
-        {
-            _active = new CxVisionThresholdPipeline(current);
-        }
-
-        /// <summary>启动前可将提供者与MRK一次捕获的Active快照对齐，避免并发加载间隙。</summary>
-        internal void ResetActive(CxVisionInspectionOptions active)
-        {
-            CxVisionThresholdPipeline pipeline = new CxVisionThresholdPipeline(active);
-            lock (_gate) { _active = pipeline; _prepared = null; }
-        }
-
-        public string Prepare(CxVisionInspectionOptions oldConfig, CxVisionInspectionOptions proposedConfig)
-        {
-            try
-            {
-                CxVisionThresholdPipeline pipeline = new CxVisionThresholdPipeline(proposedConfig);
-                lock (_gate) _prepared = pipeline;
-                return null;
-            }
-            catch (Exception ex)
-            {
-                lock (_gate) _prepared = null;
-                return ex.Message;
-            }
-        }
-        public string Apply(CxVisionInspectionOptions oldConfig, CxVisionInspectionOptions proposedConfig)
-        {
-            lock (_gate)
-            {
-                if (_prepared == null) return "No prepared CPU pipeline";
-                _active = _prepared;
-                return null;
-            }
-        }
-        public string Verify(CxVisionInspectionOptions oldConfig, CxVisionInspectionOptions proposedConfig)
-        {
-            lock (_gate)
-                return _prepared != null && object.ReferenceEquals(_active, _prepared) &&
-                    _active.Matches(proposedConfig) ? null : "CPU pipeline verification failed";
-        }
-        public void Rollback(CxVisionInspectionOptions oldConfig)
-        {
-            CxVisionThresholdPipeline restored = new CxVisionThresholdPipeline(oldConfig);
-            lock (_gate)
-            {
-                _active = restored;
-                _prepared = null;
-            }
-        }
-        internal CxVisionThresholdPipeline CaptureActive()
-        {
-            lock (_gate) return _active;
-        }
-    }
-
-    /// <summary>单任务固定引擎+Revision快照，可并发处理多张帧，不随配置编辑而改变。</summary>
+    /// <summary>每项检测任务保持自己的配置快照与算法实例；V1.4 软件配置不代表硬件确认。</summary>
     public sealed class CxVisionInspectionTask : IDisposable
     {
-        private MRKConfigTaskSnapshot<CxVisionInspectionOptions> _task;
+        private MHSConfigSnapshot<CxVisionInspectionOptions> _snapshot;
+        private Action _onDispose;
         private readonly CxVisionThresholdPipeline _pipeline;
-        internal CxVisionInspectionTask(MRKConfigTaskSnapshot<CxVisionInspectionOptions> task,
-            CxVisionThresholdPipeline pipeline)
-        {
-            _task = task;
-            _pipeline = pipeline;
-        }
+        internal CxVisionInspectionTask(MHSConfigSnapshot<CxVisionInspectionOptions> snapshot,
+            CxVisionThresholdPipeline pipeline, Action onDispose)
+        { _snapshot = snapshot; _pipeline = pipeline; _onDispose = onDispose; }
         public long ConfigRevision
         {
             get
             {
-                if (_task == null) throw new ObjectDisposedException("CxVisionInspectionTask");
-                return _task.Revision;
+                if (_snapshot == null) throw new ObjectDisposedException("CxVisionInspectionTask");
+                return long.Parse(_snapshot.Version.Substring(1), System.Globalization.CultureInfo.InvariantCulture);
             }
         }
         public CxVisionInspectionResult Inspect(CxVisionGrayFrame frame)
         {
-            if (_task == null) throw new ObjectDisposedException("CxVisionInspectionTask");
-            return _pipeline.Inspect(frame, _task.Revision);
+            if (_snapshot == null) throw new ObjectDisposedException("CxVisionInspectionTask");
+            return _pipeline.Inspect(frame, ConfigRevision);
         }
         public void Dispose()
         {
-            MRKConfigTaskSnapshot<CxVisionInspectionOptions> current =
-                System.Threading.Interlocked.Exchange(ref _task, null);
-            if (current != null) current.Dispose();
+            MHSConfigSnapshot<CxVisionInspectionOptions> ticket = System.Threading.Interlocked.Exchange(ref _snapshot, null);
+            if (ticket != null) ticket.Dispose();
+            Action release = System.Threading.Interlocked.Exchange(ref _onDispose, null);
+            if (release != null) release();
         }
     }
 
-    /// <summary>Vision真实配置运行链：公共MTC/MRK持有版本与任务边界，专业只实现像素处理和配置应用。</summary>
+    /// <summary>以V1.4配置服务为唯一真源；任务边界内切换，新任务生成新CPU检测实例。</summary>
     public sealed class CxVisionInspectionRuntime
     {
-        private readonly MRKConfigRuntimeSession<CxVisionInspectionOptions> _session;
-        private readonly CxVisionThresholdConfigApplier _applier;
-        public CxVisionInspectionRuntime(MTCConfigManager manager, string configId)
+        private readonly object _gate = new object();
+        private readonly MHSConfigSection<CxVisionInspectionOptions> _config;
+        private int _running;
+        public CxVisionInspectionRuntime(MHSConfigSection<CxVisionInspectionOptions> configuration)
         {
-            if (manager == null) throw new ArgumentNullException("manager");
-            MTCConfigSnapshot<CxVisionInspectionOptions> initial = manager.GetSnapshot<CxVisionInspectionOptions>(configId);
-            if (!initial.Saved) throw new InvalidOperationException("The running Vision configuration must be saved");
-            _applier = new CxVisionThresholdConfigApplier(initial.Value);
-            _session = new MRKConfigRuntimeSession<CxVisionInspectionOptions>(
-                manager, configId, CxVisionInspectionOptions.Validate, _applier);
-            // ConfigManager可在两次快照间被另一线程提交；以MRK实际Active快照为唯一权威。
-            if (initial.Revision != _session.ActiveRevision)
-                _applier.ResetActive(_session.CaptureActive());
-            // Do not claim hardware acknowledgement: only CPU software pipeline has been initialized.
+            _config = configuration ?? throw new ArgumentNullException("configuration");
+            // The actual CPU pipeline validates unsupported AI modes before any task can run.
+            new CxVisionThresholdPipeline(_config.Get());
         }
-
-        public long ActiveRevision { get { return _session.ActiveRevision; } }
-        public long? PendingRevision { get { return _session.PendingRevision; } }
-        public MRKConfigApplyStatus ApplyStatus { get { return _session.LastApplyStatus; } }
-        public string LastError { get { return _session.LastError; } }
-        public bool IsFaulted { get { return _session.IsFaulted; } }
-
-        public bool RequestApply(MRKConfigApplyPolicy policy) { return _session.RequestApply(policy); }
-
+        public long ActiveRevision { get { return ParseRevision(_config.EffectiveVersion); } }
+        public long? PendingRevision { get { return _config.HasPendingApply ? (long?)ParseRevision(_config.SavedVersion) : null; } }
+        private static long ParseRevision(string version)
+        { return long.Parse(version.Substring(1), System.Globalization.CultureInfo.InvariantCulture); }
+        public bool RequestApply(FCMConfigApplyPolicy policy)
+        {
+            // For NextTask the committed candidate is already staged by the config store.
+            // Applying to a CPU pipeline happens only at the BeginInspection boundary.
+            return policy == FCMConfigApplyPolicy.NextTask && _config.HasPendingApply;
+        }
         public CxVisionInspectionTask BeginInspection()
         {
-            MRKConfigTaskSnapshot<CxVisionInspectionOptions> ticket = _session.BeginTask();
-            try { return new CxVisionInspectionTask(ticket, _applier.CaptureActive()); }
-            catch { ticket.Dispose(); throw; }
+            lock (_gate)
+            {
+                if (_running == 0) _config.ApplyPendingAtTaskBoundary();
+                MHSConfigSnapshot<CxVisionInspectionOptions> snapshot =
+                    _config.CaptureForTask("vision-" + Guid.NewGuid().ToString("N"));
+                try
+                {
+                    CxVisionThresholdPipeline pipeline = new CxVisionThresholdPipeline(snapshot.Value(x => x));
+                    _running++;
+                    return new CxVisionInspectionTask(snapshot, pipeline, () =>
+                    {
+                        lock (_gate) { _running--; }
+                    });
+                }
+                catch { snapshot.Dispose(); throw; }
+            }
         }
     }
 

@@ -1,33 +1,42 @@
 using System;
-using CxVisual.Mechanism.Core;
+using CxVisual.Foundation.Data.Configuration;
+using System.ComponentModel.DataAnnotations;
+using System.Collections.Generic;
 
 namespace CxVisual.Professional.CT3D
 {
     public enum CxCtReconstructionMode { Fdk = 0, Sart = 1 }
 
     /// <summary>CT3D重建参数样例（P43～P53），不替代机台标定及采图硬件安全配置。</summary>
+    [FCMConfigSection("CT3D.Reconstruction")]
+    [FCMConfigValidator(typeof(CxCtReconstructionOptionsRules))]
     public sealed class CxCtReconstructionOptions
     {
-        [MPMConfigItem("重建算法", Category = "重建")]
+        [FCMConfigItem("重建算法")]
         public CxCtReconstructionMode ReconstructionMode { get; set; } = CxCtReconstructionMode.Fdk;
 
-        [MPMConfigItem("投影数量", Category = "采集数据", Min = 1, Max = 100000)]
+        [FCMConfigItem("投影数量")]
+        [Range(1, 100000)]
         public int ProjectionCount { get; set; } = 720;
 
-        [MPMConfigItem("物源距FOD", Category = "几何", Unit = "mm", Min = 1, Max = 5000)]
+        [FCMConfigItem("物源距FOD", Unit = "mm")]
+        [Range(1, 5000)]
         public double FodMm { get; set; } = 200;
 
-        [MPMConfigItem("物检距FDD", Category = "几何", Unit = "mm", Min = 1, Max = 10000)]
+        [FCMConfigItem("物检距FDD", Unit = "mm")]
+        [Range(1, 10000)]
         public double FddMm { get; set; } = 700;
 
-        [MPMConfigItem("探测器像素尺寸", Category = "几何", Unit = "μm", Min = 1, Max = 2000)]
+        [FCMConfigItem("探测器像素尺寸", Unit = "μm")]
+        [Range(1, 2000)]
         public double DetectorPixelSizeUm { get; set; } = 100;
 
-        [MPMConfigItem("GPU序号", Category = "计算", Min = 0, Max = 31)]
+        [FCMConfigItem("GPU序号")]
+        [Range(0, 31)]
         public int GpuIndex { get; set; } = 0;
 
-        [MPMConfigItem("迭代次数", Category = "计算", Min = 1, Max = 2000,
-            Description = "迭代重建时使用；FDK模式下不使用本参数")]
+        [FCMConfigItem("迭代次数")]
+        [Range(1, 2000)]
         public int Iterations { get; set; } = 40;
 
         public static string Validate(CxCtReconstructionOptions value)
@@ -38,6 +47,14 @@ namespace CxVisual.Professional.CT3D
             if (value.FddMm <= value.FodMm)
                 return "FDD必须大于FOD，否则几何放大比无效";
             return null;
+        }
+    }
+    public sealed class CxCtReconstructionOptionsRules : IFCMConfigValidator<CxCtReconstructionOptions>
+    {
+        public IEnumerable<FCMConfigIssue> Validate(CxCtReconstructionOptions value, FCMConfigValidationContext ctx)
+        {
+            string error = CxCtReconstructionOptions.Validate(value);
+            if (!string.IsNullOrWhiteSpace(error)) yield return FCMConfigIssue.Error(ctx.Path, "DOMAIN_CONFIG", error);
         }
     }
 }

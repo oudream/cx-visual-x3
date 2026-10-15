@@ -19,12 +19,13 @@
     <Reference Include="System.Xaml"/>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Properties\AssemblyInfo.cs"/><Compile Include="MPWConfigEditorDialog.cs"/><Compile Include="CxMoveEventArgs.cs"/><Compile Include="CxNodeEventArgs.cs"/><Compile Include="SceneView.cs"/><Compile Include="LogViewerControl.xaml.cs"/><Compile Include="SystemMonitorControl.xaml.cs"/></ItemGroup>
+    <Compile Include="Properties\AssemblyInfo.cs"/><Compile Include="MPWConfigEditorDialogV14.cs"/><Compile Include="CxMoveEventArgs.cs"/><Compile Include="CxNodeEventArgs.cs"/><Compile Include="SceneView.cs"/><Compile Include="LogViewerControl.xaml.cs"/><Compile Include="SystemMonitorControl.xaml.cs"/></ItemGroup>
   <ItemGroup>
     <Page Include="LogViewerControl.xaml"><Generator>MSBuild:Compile</Generator><SubType>Designer</SubType></Page>
     <Page Include="SystemMonitorControl.xaml"><Generator>MSBuild:Compile</Generator><SubType>Designer</SubType></Page>
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\Mechanism\Data\CxVisual.Mechanism.Data.csproj"><Project>{6857DA00-7E17-5593-B8DC-C85EEA772140}</Project><Name>CxVisual.Mechanism.Data</Name></ProjectReference>
     <ProjectReference Include="..\..\Foundation\Data\CxVisual.Foundation.Data.csproj"><Project>{C85B49CA-155F-5E79-8932-B56BC7B178CD}</Project><Name>CxVisual.Foundation.Data</Name></ProjectReference>
     <ProjectReference Include="..\..\Mechanism\Core\CxVisual.Mechanism.Core.csproj"><Project>{0822C861-81CD-5615-9428-D7AD3CC83AF1}</Project><Name>CxVisual.Mechanism.Core</Name></ProjectReference>
     <ProjectReference Include="..\..\Mechanism\Visual\CxVisual.Mechanism.Visual.csproj"><Project>{A6C1F1D1-2E3F-54AF-8E35-1A1EBA6B9CB3}</Project><Name>CxVisual.Mechanism.Visual</Name></ProjectReference>

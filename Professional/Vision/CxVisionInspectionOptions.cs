@@ -1,29 +1,36 @@
 using System;
-using CxVisual.Mechanism.Core;
+using CxVisual.Foundation.Data.Configuration;
+using System.ComponentModel.DataAnnotations;
+using System.Collections.Generic;
 
 namespace CxVisual.Professional.Vision
 {
     public enum CxVisionPixelDepth { Bits8 = 8, Bits16 = 16 }
 
     /// <summary>Vision缺陷检测配置样例（P30～P42），所有参数均是非设备实时数据。</summary>
+    [FCMConfigSection("Vision.Inspection")]
+    [FCMConfigValidator(typeof(CxVisionInspectionOptionsRules))]
     public sealed class CxVisionInspectionOptions
     {
-        [MPMConfigItem("像素位深", Category = "图像")]
+        [FCMConfigItem("像素位深")]
         public CxVisionPixelDepth PixelDepth { get; set; } = CxVisionPixelDepth.Bits16;
 
-        [MPMConfigItem("灰度阈值", Category = "图像", Unit = "Gray", Min = 0, Max = 65535)]
+        [FCMConfigItem("灰度阈值", Unit = "Gray", ApplyPolicy = FCMConfigApplyPolicy.NextTask)]
+        [Range(0, 65535)]
         public int GrayThreshold { get; set; } = 1800;
 
-        [MPMConfigItem("最小缺陷面积", Category = "检测", Unit = "px²", Min = 1, Max = 10000000)]
+        [FCMConfigItem("最小缺陷面积", Unit = "px²")]
+        [Range(1, 10000000)]
         public double MinDefectArea { get; set; } = 10;
 
-        [MPMConfigItem("最大缺陷面积", Category = "检测", Unit = "px²", Min = 1, Max = 10000000)]
+        [FCMConfigItem("最大缺陷面积", Unit = "px²")]
+        [Range(1, 10000000)]
         public double MaxDefectArea { get; set; } = 100000;
 
-        [MPMConfigItem("启用AI检测", Category = "AI")]
+        [FCMConfigItem("启用AI检测")]
         public bool UseAi { get; set; } = false;
 
-        [MPMConfigItem("AI模型名称", Category = "AI")]
+        [FCMConfigItem("AI模型名称")]
         public string AiModelName { get; set; } = "";
 
         public static string Validate(CxVisionInspectionOptions value)
@@ -38,6 +45,14 @@ namespace CxVisual.Professional.Vision
             if (value.UseAi && string.IsNullOrWhiteSpace(value.AiModelName))
                 return "启用AI检测时必须指定模型名称";
             return null;
+        }
+    }
+    public sealed class CxVisionInspectionOptionsRules : IFCMConfigValidator<CxVisionInspectionOptions>
+    {
+        public IEnumerable<FCMConfigIssue> Validate(CxVisionInspectionOptions value, FCMConfigValidationContext ctx)
+        {
+            string error = CxVisionInspectionOptions.Validate(value);
+            if (!string.IsNullOrWhiteSpace(error)) yield return FCMConfigIssue.Error(ctx.Path, "DOMAIN_CONFIG", error);
         }
     }
 }
