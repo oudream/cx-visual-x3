@@ -13,20 +13,20 @@ namespace CxVisual.Mechanism.Presentation.Wpf
     /// L1公共WPF配置编辑器：从M04元数据自动创建布尔、枚举、数值和文本控件。
     /// 仅修改草案；按保存时预期Revision受控提交并持久化。复杂列表/自定义对象可由专业编辑器扩展。
     /// </summary>
-    public static class CxConfigEditorDialog
+    public static class MPWConfigEditorDialog
     {
-        public static bool Edit<T>(Window owner, CxConfigManager manager, string id) where T : class
+        public static bool Edit<T>(Window owner, MTCConfigManager manager, string id) where T : class
         {
             return CreateWindow<T>(owner, manager, id).ShowDialog() == true;
         }
 
         /// <summary>生成可独立检查和自动化测试的配置编辑窗口，Edit仍为便利入口。</summary>
-        public static Window CreateWindow<T>(Window owner, CxConfigManager manager, string id) where T : class
+        public static Window CreateWindow<T>(Window owner, MTCConfigManager manager, string id) where T : class
         {
             if (manager == null) throw new ArgumentNullException("manager");
             T draft = manager.Get<T>(id);
             long revision = manager.GetRevision(id);
-            CxConfigProperty[] descriptors = manager.Describe<T>(id);
+            MPMConfigProperty[] descriptors = manager.Describe<T>(id);
             Window window = new Window
             {
                 Title = "配置编辑 · " + id,
@@ -78,9 +78,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             scroll.Content = fields;
             layout.Children.Add(scroll);
 
-            Dictionary<CxConfigProperty, FrameworkElement> inputs = new Dictionary<CxConfigProperty, FrameworkElement>();
+            Dictionary<MPMConfigProperty, FrameworkElement> inputs = new Dictionary<MPMConfigProperty, FrameworkElement>();
             string lastCategory = null;
-            foreach (CxConfigProperty property in descriptors)
+            foreach (MPMConfigProperty property in descriptors)
             {
                 if (property.Category != lastCategory)
                 {
@@ -145,7 +145,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             {
                 try
                 {
-                    foreach (KeyValuePair<CxConfigProperty, FrameworkElement> item in inputs)
+                    foreach (KeyValuePair<MPMConfigProperty, FrameworkElement> item in inputs)
                     {
                         PropertyInfo property = item.Key.Property;
                         FrameworkElement control = item.Value;
@@ -169,7 +169,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                     }
                     manager.UpdateAndSave<T>(id, updated =>
                     {
-                        foreach (CxConfigProperty property in descriptors)
+                        foreach (MPMConfigProperty property in descriptors)
                             property.Property.SetValue(updated, property.Property.GetValue(draft, null), null);
                     }, revision);
                     window.DialogResult = true;
