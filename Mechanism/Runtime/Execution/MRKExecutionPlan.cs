@@ -104,11 +104,13 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 foreach (string id in current.Dependencies) depends.Add(scope + id);
                 if (current.Dependencies.Count == 0) depends.AddRange(entry);
                 MRKExecutionStep local = current;
+                Func<MRKExecutionContext, CancellationToken, Task> compensation = null;
+                if (local.CompensateAsync != null)
+                    compensation = (context, token) =>
+                        local.CompensateAsync(context.ForSubflow(scope), token);
                 list.Add(new MRKExecutionStep(scope + local.Id, depends,
                     (context, token) => local.ExecuteAsync(context.ForSubflow(scope), token),
-                    local.SerialKey, local.Policy, local.RequiredResources,
-                    local.CompensateAsync == null ? null :
-                    (context, token) => local.CompensateAsync(context.ForSubflow(scope), token)));
+                    local.SerialKey, local.Policy, local.RequiredResources, compensation));
             }
             return list.AsReadOnly();
         }
