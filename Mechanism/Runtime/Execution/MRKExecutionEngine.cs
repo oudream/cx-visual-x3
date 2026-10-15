@@ -10,7 +10,7 @@ using CxVisual.Foundation.Infrastructure.Concurrency;
 namespace CxVisual.Mechanism.Runtime.Execution
 {
     public enum MRKFlowState { Running, Completed, Failed, Cancelled }
-    public enum MRKStepState { WaitingDependencies, Scheduled, Completed, Failed, Cancelled, Queued, Running, Waiting }
+    public enum MRKStepState { WaitingDependencies, Scheduled, Completed, Failed, Cancelled, Queued, Running, Waiting, Paused }
 
     /// <summary>同一次流程的局部快照；不对外暴露可写的全局数据字典。</summary>
     public sealed class MRKExecutionContext
@@ -23,11 +23,13 @@ namespace CxVisual.Mechanism.Runtime.Execution
             new ConcurrentDictionary<string, MRKStepState>(StringComparer.Ordinal);
         private readonly ReadOnlyDictionary<string, object> _inputs;
         private readonly string _scopePrefix;
+        private readonly MRKExecutionTrace _trace;
         internal MRKExecutionContext(string planId, IDictionary<string, object> inputs)
         {
             FlowId = Guid.NewGuid();
             PlanId = planId;
             _scopePrefix = string.Empty;
+            _trace = new MRKExecutionTrace();
             _inputs = new ReadOnlyDictionary<string, object>(new Dictionary<string, object>(
                 inputs ?? new Dictionary<string, object>(), StringComparer.Ordinal));
         }
@@ -40,6 +42,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
             _handles = parent._handles;
             _inputs = parent._inputs;
             _scopePrefix = parent._scopePrefix + prefix;
+            _trace = parent._trace;
         }
         internal MRKExecutionContext ForSubflow(string prefix)
         { return new MRKExecutionContext(this, prefix); }
@@ -52,6 +55,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
         }
         public Guid FlowId { get; private set; }
         public string PlanId { get; private set; }
+        public MRKExecutionTrace Trace { get { return _trace; } }
         public IDictionary<string, object> Inputs { get { return _inputs; } }
         public bool TryGetResult(string stepId, out object result)
         {
@@ -61,7 +65,12 @@ namespace CxVisual.Mechanism.Runtime.Execution
         }
         internal void SetResult(string stepId, object result)
         { _results[_scopePrefix + stepId] = result ?? NullResult.Instance; }
-        internal void SetState(string stepId, MRKStepState state) { _states[_scopePrefix + stepId] = state; }
+        internal void SetState(string stepId, MRKStepState state)
+        {
+            string qualified = _scopePrefix + stepId;
+            _states[qualified] = state;
+            _trace.Record(qualified, state);
+        }
         public IDictionary<string, object> ResultsSnapshot()
         {
             Dictionary<string, object> snapshot = new Dictionary<string, object>(StringComparer.Ordinal);
@@ -133,6 +142,9 @@ namespace CxVisual.Mechanism.Runtime.Execution
             CancellationToken cancellation = default(CancellationToken));
         MRKFlowHandle StartFlow(MRKExecutionPlan plan, IDictionary<string, object> inputs = null,
             CancellationToken cancellation = default(CancellationToken));
+        MRKFlowHandle StartFlowWithControl(MRKExecutionPlan plan, MRKExecutionDebugController control,
+            IDictionary<string, object> inputs = null,
+            CancellationToken cancellation = default(CancellationToken));
         MRKFlowHandle StartFromSlot(MRKExecutionPlanSlot slot, IDictionary<string, object> inputs = null,
             CancellationToken cancellation = default(CancellationToken));
         FCRWorkerSnapshot GetSnapshot();
@@ -180,16 +192,21 @@ namespace CxVisual.Mechanism.Runtime.Execution
 
         public MRKFlowHandle StartFlow(MRKExecutionPlan plan, IDictionary<string, object> inputs = null,
             CancellationToken cancellation = default(CancellationToken))
+        { return StartFlowWithControl(plan, null, inputs, cancellation); }
+
+        public MRKFlowHandle StartFlowWithControl(MRKExecutionPlan plan,
+            MRKExecutionDebugController control, IDictionary<string, object> inputs = null,
+            CancellationToken cancellation = default(CancellationToken))
         {
             if (plan == null) throw new ArgumentNullException("plan");
             MRKExecutionContext context = new MRKExecutionContext(plan.Id, inputs);
             CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
             MRKFlowHandle handle = new MRKFlowHandle(context, linked);
-            handle.SetCompletion(RunFlowAsync(plan, handle));
+            handle.SetCompletion(RunFlowAsync(plan, handle, control));
             return handle;
         }
 
-        private async Task<MRKFlowResult> RunFlowAsync(MRKExecutionPlan plan, MRKFlowHandle flow)
+        private async Task<MRKFlowResult> RunFlowAsync(MRKExecutionPlan plan, MRKFlowHandle flow, MRKExecutionDebugController control)
         {
             MRKExecutionContext context = flow.Context;
             Dictionary<string, Task<object>> tasks =
@@ -199,7 +216,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
             {
                 Task<object> existing;
                 if (tasks.TryGetValue(id, out existing)) return existing;
-                Task<object> task = RunStepAsync(plan.GetStep(id), context, flow.Token, schedule);
+                Task<object> task = RunStepAsync(plan.GetStep(id), context, flow.Token, schedule, control);
                 tasks.Add(id, task);
                 return task;
             };
@@ -222,7 +239,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
         }
 
         private async Task<object> RunStepAsync(MRKExecutionStep step, MRKExecutionContext context,
-            CancellationToken cancellation, Func<string, Task<object>> schedule)
+            CancellationToken cancellation, Func<string, Task<object>> schedule, MRKExecutionDebugController control)
         {
             context.SetState(step.Id, MRKStepState.WaitingDependencies);
             try
@@ -231,6 +248,11 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 foreach (string id in step.Dependencies) dependencies.Add(schedule(id));
                 await Task.WhenAll(dependencies).ConfigureAwait(false);
                 cancellation.ThrowIfCancellationRequested();
+                if (control != null)
+                {
+                    context.SetState(step.Id, MRKStepState.Paused);
+                    await control.WaitBeforeAsync(step.Id, cancellation).ConfigureAwait(false);
+                }
                 FCRWorkHandle<object> work = _worker.Submit<object>(
                     ct => step.ExecuteAsync(context, ct), step.SerialKey, false, cancellation);
                 context.SetState(step.Id, MRKStepState.Scheduled);
