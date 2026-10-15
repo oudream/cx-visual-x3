@@ -16,7 +16,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
         public MRKExecutionStep(string id, IEnumerable<string> dependencies,
             Func<MRKExecutionContext, CancellationToken, Task<object>> executeAsync,
             string serialKey = null, MRKExecutionPolicy policy = null,
-            IEnumerable<string> requiredResources = null)
+            IEnumerable<string> requiredResources = null,
+            Func<MRKExecutionContext, CancellationToken, Task> compensateAsync = null)
         {
             if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("Step ID required", "id");
             if (executeAsync == null) throw new ArgumentNullException("executeAsync");
@@ -24,6 +25,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
             ExecuteAsync = executeAsync;
             SerialKey = serialKey;
             Policy = policy;
+            CompensateAsync = compensateAsync;
             List<string> resources = new List<string>();
             if (requiredResources != null)
                 foreach (string resource in requiredResources)
@@ -40,6 +42,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
         public string Id { get; private set; }
         public string SerialKey { get; private set; }
         public MRKExecutionPolicy Policy { get; private set; }
+        /// <summary>显式声明的可安全调用补偿动作；绝不会在失败后默认执行。</summary>
+        public Func<MRKExecutionContext, CancellationToken, Task> CompensateAsync { get; private set; }
         public IList<string> RequiredResources { get; private set; }
         public IList<string> Dependencies { get { return _dependencies; } }
         public Func<MRKExecutionContext, CancellationToken, Task<object>> ExecuteAsync { get; private set; }
@@ -102,7 +106,9 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 MRKExecutionStep local = current;
                 list.Add(new MRKExecutionStep(scope + local.Id, depends,
                     (context, token) => local.ExecuteAsync(context.ForSubflow(scope), token),
-                    local.SerialKey, local.Policy, local.RequiredResources));
+                    local.SerialKey, local.Policy, local.RequiredResources,
+                    local.CompensateAsync == null ? null :
+                    (context, token) => local.CompensateAsync(context.ForSubflow(scope), token)));
             }
             return list.AsReadOnly();
         }

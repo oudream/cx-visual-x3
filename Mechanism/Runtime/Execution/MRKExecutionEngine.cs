@@ -24,6 +24,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
         private readonly ReadOnlyDictionary<string, object> _inputs;
         private readonly string _scopePrefix;
         private readonly MRKExecutionTrace _trace;
+        private readonly ConcurrentQueue<string> _completedOrder = new ConcurrentQueue<string>();
         internal MRKExecutionContext(string planId, IDictionary<string, object> inputs)
         {
             FlowId = Guid.NewGuid();
@@ -43,6 +44,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
             _inputs = parent._inputs;
             _scopePrefix = parent._scopePrefix + prefix;
             _trace = parent._trace;
+            _completedOrder = parent._completedOrder;
         }
         internal MRKExecutionContext ForSubflow(string prefix)
         { return new MRKExecutionContext(this, prefix); }
@@ -69,6 +71,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
         {
             string qualified = _scopePrefix + stepId;
             _states[qualified] = state;
+            if (state == MRKStepState.Completed) _completedOrder.Enqueue(qualified);
             _trace.Record(qualified, state);
         }
         public IDictionary<string, object> ResultsSnapshot()
@@ -78,6 +81,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 snapshot.Add(item.Key, item.Value is NullResult ? null : item.Value);
             return new ReadOnlyDictionary<string, object>(snapshot);
         }
+        internal string[] CompletedOrderSnapshot()
+        { return _completedOrder.ToArray(); }
         internal void TrackWork(string stepId, FCRWorkHandle<object> handle)
         { _handles[_scopePrefix + stepId] = handle; }
         /// <summary>快照可辨排队、正在执行与真正异步等待，不仅是节点已调度。</summary>
@@ -118,6 +123,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
     public sealed class MRKFlowHandle
     {
         private readonly CancellationTokenSource _cancellation;
+        private int _compensationStarted;
         private Task<MRKFlowResult> _completion;
         internal MRKFlowHandle(MRKExecutionContext context, CancellationTokenSource cancellation)
         { Context = context; _cancellation = cancellation; }
@@ -132,6 +138,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
             try { _cancellation.Cancel(); return true; }
             catch (ObjectDisposedException) { return false; }
         }
+        internal bool TryStartCompensation()
+        { return Interlocked.CompareExchange(ref _compensationStarted, 1, 0) == 0; }
         internal void Close() { _cancellation.Dispose(); }
     }
 
@@ -149,6 +157,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
             CancellationToken cancellation = default(CancellationToken));
         FCRWorkerSnapshot GetSnapshot();
         Task StopAsync(bool cancelPending = false);
+        Task<MRKCompensationReport> CompensateAsync(MRKExecutionPlan plan, MRKFlowHandle flow,
+            CancellationToken cancellation = default(CancellationToken));
     }
 
     /// <summary>
@@ -182,6 +192,65 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 return _worker.Submit(action, serialKey, droppable, cancellation);
             }
         }
+        /// <summary>
+        /// 仅供操作方显式调用：失败流程所有任务完成后，按实际完成逆序补偿。
+        /// 自动补偿可能改变真实设备状态，故默认不启用；对外部命令需专业确认后再授权。
+        /// </summary>
+        public async Task<MRKCompensationReport> CompensateAsync(
+            MRKExecutionPlan plan, MRKFlowHandle flow,
+            CancellationToken cancellation = default(CancellationToken))
+        {
+            if (plan == null) throw new ArgumentNullException("plan");
+            if (flow == null) throw new ArgumentNullException("flow");
+            if (!string.Equals(plan.Id, flow.Context.PlanId, StringComparison.Ordinal))
+                throw new InvalidOperationException("补偿计划与当前Flow不匹配");
+            if (!flow.Completion.IsCompleted)
+                throw new InvalidOperationException("所有分支结算前禁止补偿");
+            MRKFlowResult terminal = await flow.Completion.ConfigureAwait(false);
+            if (terminal.State == MRKFlowState.Completed)
+                throw new InvalidOperationException("成功流程不允许直接补偿");
+            if (!flow.TryStartCompensation())
+                throw new InvalidOperationException("同一流程不能重复启动补偿");
+
+            List<string> succeeded = new List<string>();
+            Dictionary<string, Exception> failed =
+                new Dictionary<string, Exception>(StringComparer.Ordinal);
+            string[] completed = flow.Context.CompletedOrderSnapshot();
+            for (int index = completed.Length - 1; index >= 0; index--)
+            {
+                cancellation.ThrowIfCancellationRequested();
+                string stepId = completed[index];
+                MRKExecutionStep step = plan.GetStep(stepId);
+                if (step.CompensateAsync == null) continue;
+                List<MRKResourceLease> leases = new List<MRKResourceLease>();
+                try
+                {
+                    foreach (string resourceId in step.RequiredResources)
+                        leases.Add(await _resources.AcquireAsync(resourceId,
+                            flow.FlowId.ToString("N") + ":rollback:" + stepId, cancellation)
+                            .ConfigureAwait(false));
+                    FCRWorkHandle<bool> job = Submit<bool>(async token =>
+                    {
+                        await step.CompensateAsync(flow.Context, token).ConfigureAwait(false);
+                        return true;
+                    }, step.SerialKey, false, cancellation);
+                    FCRWorkResult<bool> outcome = await job.Completion.ConfigureAwait(false);
+                    if (!outcome.Succeeded)
+                        throw new InvalidOperationException(
+                            "节点补偿未成功：" + stepId, outcome.Error);
+                    succeeded.Add(stepId);
+                }
+                catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+                { throw; }
+                catch (Exception ex) { failed[stepId] = ex; }
+                finally
+                {
+                    for (int j = leases.Count - 1; j >= 0; j--) leases[j].Dispose();
+                }
+            }
+            return new MRKCompensationReport(succeeded, failed);
+        }
+
         public FCRWorkerSnapshot GetSnapshot() { return _worker.GetSnapshot(); }
 
         /// <summary>停止接单，等待所有流程结算；cancelPending=true时请求协作取消并清空待执行工作。</summary>
