@@ -13,6 +13,7 @@ namespace CxVisual.Tests.FoundationSmoke
                 if (args != null && args.Length > 0 && args[0] == "--concurrency")
                 {
                     FCRWorkerTests.Run();
+                FCRSharedLeaseTests.Run();
                     Console.WriteLine("PASS F19 concurrency tests");
                     return 0;
                 }
@@ -35,6 +36,7 @@ namespace CxVisual.Tests.FoundationSmoke
                     throw new InvalidOperationException("Logger category lost");
                 LoggingAndMonitoringTests.Run();
                 FCRWorkerTests.Run();
+                FCRSharedLeaseTests.Run();
                 Console.WriteLine("PASS Foundation: Identity, Geometry, Logging, Rolling, Monitoring");
                 return 0;
             }
