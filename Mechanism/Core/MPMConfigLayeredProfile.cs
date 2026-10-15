@@ -135,15 +135,19 @@ namespace CxVisual.Mechanism.Core
         private MPMResolvedConfig<T> ResolveWith(string substituteId, MPMConfigLayerOverrides substitute,
             string stopAfterLayerId = null)
         {
-            T result = _manager.Get<T>(_baseId);
+            MTCConfigSnapshot<T> baseSnapshot = _manager.GetSnapshot<T>(_baseId);
+            T result = baseSnapshot.Value;
             Dictionary<string, string> origins = _properties.Keys
                 .ToDictionary(x => x, x => _baseId, StringComparer.Ordinal);
             Dictionary<string, long> versions = new Dictionary<string, long>(StringComparer.Ordinal);
-            versions.Add(_baseId, _manager.GetRevision(_baseId));
+            versions.Add(_baseId, baseSnapshot.Revision);
+            // 同一模板在一轮解析中只采样一次，避免值来自vN而记录成vN+1。
+            Dictionary<string, MTCConfigSnapshot<MPMConfigLayerOverrides>> sampled =
+                new Dictionary<string, MTCConfigSnapshot<MPMConfigLayerOverrides>>(StringComparer.Ordinal);
             foreach (MPMConfigLayerSpec layer in _layers)
             {
                 ApplyLayer(layer.Id, result, origins, versions, new HashSet<string>(StringComparer.Ordinal),
-                    substituteId, substitute);
+                    substituteId, substitute, sampled);
                 if (layer.Id == stopAfterLayerId) break;
             }
             return new MPMResolvedConfig<T>
@@ -154,15 +158,22 @@ namespace CxVisual.Mechanism.Core
 
         private void ApplyLayer(string id, T value, Dictionary<string, string> origins,
             Dictionary<string, long> versions, HashSet<string> visiting,
-            string substituteId, MPMConfigLayerOverrides substitute)
+            string substituteId, MPMConfigLayerOverrides substitute,
+            Dictionary<string, MTCConfigSnapshot<MPMConfigLayerOverrides>> sampled)
         {
             RequireLayer(id);
             if (!visiting.Add(id)) throw new InvalidOperationException("CONFIG_TEMPLATE_CYCLE: " + id);
-            MPMConfigLayerOverrides layer = id == substituteId ? substitute : _manager.Get<MPMConfigLayerOverrides>(id);
+            MTCConfigSnapshot<MPMConfigLayerOverrides> snapshot;
+            if (!sampled.TryGetValue(id, out snapshot))
+            {
+                snapshot = _manager.GetSnapshot<MPMConfigLayerOverrides>(id);
+                sampled.Add(id, snapshot);
+            }
+            MPMConfigLayerOverrides layer = id == substituteId ? substitute : snapshot.Value;
             if (layer == null) throw new InvalidDataException("Missing template " + id);
-            versions[id] = _manager.GetRevision(id);
+            versions[id] = snapshot.Revision;
             if (!string.IsNullOrWhiteSpace(layer.TemplateId))
-                ApplyLayer(layer.TemplateId, value, origins, versions, visiting, substituteId, substitute);
+                ApplyLayer(layer.TemplateId, value, origins, versions, visiting, substituteId, substitute, sampled);
             if (layer.Values != null)
                 foreach (KeyValuePair<string, string> pair in layer.Values)
                 {
