@@ -20,6 +20,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 }
                 UiIndependentAssemblies();
                 ExecutionFlowTests.Run();
+                RuntimeCoordinationTests.Run();
                 ConfigurationIntegrationTests.RunAll();
                 HierarchyTransactionPersistence();
                 UndoRedo();
