@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -15,12 +16,31 @@ namespace CxVisual.Tests.ArchitectureSmoke
         [FCMConfigItem("曝光", ApplyPolicy = FCMConfigApplyPolicy.NextTask)]
         public int ExposureMs { get; set; } = 80;
         public string Note { get; set; } = "factory";
+        [FCMConfigItem("采图配置", MemberId = "acquisition", Category = "采集",
+            Description = "通用基础配置嵌套元数据")]
+        public V13AcquisitionConfig Acquisition { get; set; } = new V13AcquisitionConfig();
         public Dictionary<string, V13DetectorSample> Detectors { get; set; } =
             new Dictionary<string, V13DetectorSample>();
     }
     public sealed class V13DetectorSample
     {
         public int Gain { get; set; } = 1;
+    }
+    public sealed class V13AcquisitionConfig
+    {
+        [FCMConfigItem("曝光组", MemberId = "exposure-group", Order = 10)]
+        public V13ExposureGroup Group { get; set; } = new V13ExposureGroup();
+    }
+    public sealed class V13ExposureGroup
+    {
+        [FCMConfigItem("采集超时", MemberId = "timeout-ms", Order = 20, Unit = "ms")]
+        [Range(1, 2000)]
+        public int TimeoutMs { get; set; } = 300;
+
+        [FCMConfigItem("采集标识", MemberId = "capture-key", Order = 30)]
+        [Required]
+        [RegularExpression(@"^CAP-[0-9]{3}$")]
+        public string CaptureKey { get; set; } = "CAP-001";
     }
 
     [FCMConfigSection("Tests.V13AsyncValidation")]
@@ -130,6 +150,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Expect<ArgumentException>(() => cfg.AtSavedVersionView("v9999"), "unknown history forbidden");
                 AsyncValidationRegressions(root);
                 LayeredProfileRegressions(root);
+                ConfigurationFoundationRegressions(root);
                 Console.WriteLine("PASS V1.3 config registry, value state, history view, restore and async validation");
             }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
@@ -226,13 +247,21 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Verify(resolved.Value(x => x.Detectors["D1"].Gain) == 7,
                 "resolved snapshot isolated from caller mutation");
 
-            Verify(profile.SetOverrideAsync("机台", x => x.ExposureMs, 220, CancellationToken.None)
-                .GetAwaiter().GetResult().Success, "stage next machine value");
-            Verify(profile.ResolveEffective().Value(x => x.ExposureMs) == 180,
-                "pending overrides must not affect resolved effective value");
-            Verify(profile.GetLayer("机台").ApplyPendingAtTaskBoundary(), "task boundary activates machine layer");
-            Verify(profile.ResolveEffective().Value(x => x.ExposureMs) == 220,
-                "new effective version selected");
+            using (MVBConfigTaskSnapshot<V13ConfigSample> pinned = profile.CaptureForTask("scan-001"))
+            {
+                Verify(pinned.Value(x => x.ExposureMs) == 180 &&
+                    pinned.Versions.Count == 5, "group task captures one version vector");
+                Verify(profile.SetOverrideAsync("机台", x => x.ExposureMs, 220, CancellationToken.None)
+                    .GetAwaiter().GetResult().Success, "stage next machine value");
+                Verify(profile.ResolveEffective().Value(x => x.ExposureMs) == 180,
+                    "pending overrides must not affect resolved effective value");
+                Verify(profile.GetLayer("机台").ApplyPendingAtTaskBoundary(),
+                    "task boundary activates machine layer");
+                Verify(profile.ResolveEffective().Value(x => x.ExposureMs) == 220,
+                    "new effective version selected");
+                Verify(pinned.Value(x => x.ExposureMs) == 180,
+                    "existing task retains captured version after activation");
+            }
 
             Verify(profile.RemoveOverrideAsync("机台", x => x.ExposureMs, CancellationToken.None)
                 .GetAwaiter().GetResult().Success, "remove explicit override");
@@ -287,6 +316,97 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Expect<ArgumentException>(() => new MVBConfigLayeredProfile<V13ConfigSample>(
                 service, specs[0], specs[0]), "duplicate layer must be rejected");
             Console.WriteLine("PASS V1.3 explicit sparse five-layer scope, source vector and fallback");
+        }
+
+        private static void ConfigurationFoundationRegressions(string root)
+        {
+            IList<FCMConfigFieldInfo> fields = FCMConfigCatalog.Describe<V13ConfigSample>();
+            FCMConfigFieldInfo timeout = fields.Single(x => x.Path == "Acquisition.Group.TimeoutMs");
+            Verify(timeout.MemberId == "acquisition.exposure-group.timeout-ms" &&
+                timeout.DefaultJson == "300" && timeout.Range.Contains("2000") &&
+                timeout.Unit == "ms", "nested metadata, stable IDs, defaults and range");
+            Verify(FCMConfigCatalog.Search<V13ConfigSample>("超时").Any(x =>
+                x.Path == "Acquisition.Group.TimeoutMs"), "catalog search");
+            Verify(FCMConfigCatalog.ExportMarkdown<V13ConfigSample>().Contains("Acquisition.Group.CaptureKey"),
+                "automatic configuration documentation");
+            Verify(fields.Single(x => x.Path == "Acquisition.Group.CaptureKey").Required &&
+                fields.Single(x => x.Path == "Acquisition.Group.CaptureKey").Regex != null,
+                "required and regex metadata");
+
+            MHSConfigService svc = new MHSConfigService(Path.Combine(root, "foundation-complete"));
+            MHSConfigSection<V13ConfigSample> section = svc.ForMachine("SRC").Open<V13ConfigSample>();
+            string initialVersion = section.SavedVersion;
+            MHSConfigCommitResult set = section.SetValueAsync(x => x.ExposureMs, 130,
+                "单字段调整", CancellationToken.None).GetAwaiter().GetResult();
+            Verify(set.Success && section.GetLatestSaved().ExposureMs == 130 &&
+                section.Value(x => x.ExposureMs) == 80, "single field uses transaction and pending apply");
+            MHSConfigApplyResult notReady = section.TryApplyPendingAtBoundary(
+                FCMConfigApplyPolicy.NextFrame, null);
+            Verify(!notReady.Applied && notReady.Status == "BOUNDARY_NOT_REACHED",
+                "early boundary denied");
+
+            MHSConfigApplyResult denied = section.TryApplyPendingAtBoundary(
+                FCMConfigApplyPolicy.NextTask,
+                review => MHSConfigApplyDecision.Deny("INTERLOCK", "测试模拟禁止生效"));
+            Verify(!denied.Applied && denied.Status == "INTERLOCK" &&
+                section.EffectiveVersion == initialVersion && section.HasPendingApply,
+                "guard refusal keeps active version unchanged");
+            MHSConfigApplyResult guardError = section.TryApplyPendingAtBoundary(
+                FCMConfigApplyPolicy.NextTask, review => { throw new InvalidOperationException("模拟审查异常"); });
+            Verify(!guardError.Applied && guardError.Status == "GUARD_ERROR" && section.HasPendingApply,
+                "guard exception is isolated and pending remains");
+            MHSConfigApplyResult applied = section.TryApplyPendingAtBoundary(
+                FCMConfigApplyPolicy.NextTask, review =>
+                {
+                    Verify(review.Candidate.ExposureMs == 130 && review.Current.ExposureMs == 80 &&
+                        review.RequiredBoundary == FCMConfigApplyPolicy.NextTask &&
+                        review.ChangedPaths.Contains("ExposureMs"), "guard receives diff and isolated candidate");
+                    review.Candidate.ExposureMs = 999;
+                    return MHSConfigApplyDecision.Allow();
+                });
+            Verify(applied.Applied && applied.Status == "APPLIED" &&
+                section.Value(x => x.ExposureMs) == 130, "approved apply ignores guard mutation");
+
+            using (MHSConfigEdit<V13ConfigSample> edit = section.BeginEdit("异步预览"))
+            {
+                edit.WorkingCopy.Acquisition.Group.CaptureKey = "INVALID";
+                MHSConfigPreview invalid = edit.PreviewAsync(CancellationToken.None).GetAwaiter().GetResult();
+                Verify(!invalid.Validation.IsValid && invalid.CandidateJson == null,
+                    "async preview uses complete validator pipeline");
+                edit.WorkingCopy.Acquisition.Group.CaptureKey = "CAP-002";
+                MHSConfigPreview valid = edit.PreviewAsync(CancellationToken.None).GetAwaiter().GetResult();
+                Verify(valid.Validation.IsValid && valid.HasChanges &&
+                    valid.ChangedPaths.Contains("Acquisition.Group.CaptureKey"), "async preview diff");
+                Verify(edit.CommitAsync(CancellationToken.None).GetAwaiter().GetResult().Success,
+                    "previewed config persisted");
+            }
+            MHSConfigPackage bundle = section.ExportPackage();
+            Verify(bundle.Verify() && bundle.SectionId == "Tests.V13Extension" &&
+                bundle.SourceRevision == section.SavedVersion, "portable package identity/hash");
+            MHSConfigSection<V13ConfigSample> target = svc.ForMachine("DST").Open<V13ConfigSample>();
+            string oldTarget = target.SavedVersion;
+            MHSConfigPackage broken = new MHSConfigPackage
+            {
+                SectionId = bundle.SectionId, SchemaVersion = bundle.SchemaVersion,
+                Json = bundle.Json + " ", Sha256 = bundle.Sha256
+            };
+            Verify(!target.ImportPackageAsync(broken, CancellationToken.None).GetAwaiter().GetResult().Success
+                && target.SavedVersion == oldTarget, "tampered package rejected without writes");
+            broken.Json = bundle.Json;
+            broken.Sha256 = bundle.Sha256;
+            broken.SectionId = "Other.Schema";
+            Verify(target.ImportPackageAsync(broken, CancellationToken.None).GetAwaiter().GetResult().ErrorCode ==
+                "CONFIG_PACKAGE_SCHEMA_MISMATCH", "schema mismatch rejected");
+            MHSConfigCommitResult imported = target.ImportPackageAsync(bundle, CancellationToken.None)
+                .GetAwaiter().GetResult();
+            Verify(imported.Success && target.GetLatestSaved().ExposureMs == 130 &&
+                target.GetLatestSaved().Acquisition.Group.CaptureKey == "CAP-002",
+                "valid package imports through existing validation/commit");
+            Verify(target.Value(x => x.ExposureMs) == 80 && target.HasPendingApply,
+                "import never pretends device settings are effective");
+            Verify(target.ApplyPendingAtTaskBoundary() && target.Value(x => x.ExposureMs) == 130,
+                "import activates only at correct boundary");
+            Console.WriteLine("PASS configuration catalog, apply guards, async preview and package");
         }
 
         private static void Verify(bool condition, string reason)

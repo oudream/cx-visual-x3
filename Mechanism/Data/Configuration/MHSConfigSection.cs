@@ -57,6 +57,16 @@ namespace CxVisual.Mechanism.Data.Configuration
             if (_section == null) throw new ObjectDisposedException("MHSConfigEdit");
             return _section.Preview(WorkingCopy, _baseRevision);
         }
+        /// <summary>异步预览会固定草稿并执行与 Commit 相同的同步/异步校验规则。</summary>
+        public async Task<MHSConfigPreview> PreviewAsync(CancellationToken cancellationToken)
+        {
+            if (_section == null) throw new ObjectDisposedException("MHSConfigEdit");
+            cancellationToken.ThrowIfCancellationRequested();
+            T candidate = FCMJsonValueCodec.Deserialize<T>(FCMJsonValueCodec.Serialize(WorkingCopy));
+            FCMConfigValidationReport report = await FCMConfigValidationEngine.ValidateAsync(
+                candidate, _section.ScopeId, cancellationToken).ConfigureAwait(false);
+            return _section.PreviewValidated(candidate, _baseRevision, report);
+        }
         public async Task<MHSConfigCommitResult> CommitAsync(CancellationToken cancellationToken)
         {
             if (_section == null) throw new ObjectDisposedException("MHSConfigEdit");
@@ -127,6 +137,55 @@ namespace CxVisual.Mechanism.Data.Configuration
         }
         public MHSConfigEdit<T> BeginEdit(string reason)
         { lock (_gate) return new MHSConfigEdit<T>(this, Clone(_saved), _savedRev, reason); }
+        /// <summary>开发者单字段修改；仍经过相同校验、版本及持久化事务，不绕过安全检查。</summary>
+        public async Task<MHSConfigCommitResult> SetValueAsync<V>(
+            Expression<Func<T, V>> selector, V value, string reason, CancellationToken token)
+        {
+            if (selector == null) throw new ArgumentNullException("selector");
+            using (MHSConfigEdit<T> edit = BeginEdit(reason))
+            {
+                MVBConfigLayerPath.Apply(edit.WorkingCopy, FCMConfigPathUtil.FromExpression(selector),
+                    FCMJsonValueCodec.Serialize(value));
+                return await edit.CommitAsync(token).ConfigureAwait(false);
+            }
+        }
+
+        /// <summary>导出当前已保存配置；只创建含哈希的离线传输包，不执行网络发布。</summary>
+        public MHSConfigPackage ExportPackage()
+        {
+            lock (_gate)
+            {
+                return new MHSConfigPackage
+                {
+                    SectionId = _schema.SectionId, SchemaVersion = _schema.SchemaVersion,
+                    SourceScope = _scope, SourceRevision = MHSConfigStorage.Name(_savedRev),
+                    CreatedAtUtc = DateTimeOffset.UtcNow, Json = _savedJson,
+                    Sha256 = MHSConfigPackage.Hash(_savedJson)
+                };
+            }
+        }
+
+        /// <summary>校验包的身份/版本/哈希/业务规则，通过当前事务导入而不是覆盖文件。</summary>
+        public async Task<MHSConfigCommitResult> ImportPackageAsync(MHSConfigPackage package,
+            CancellationToken token)
+        {
+            if (package == null) throw new ArgumentNullException("package");
+            if (package.SectionId != _schema.SectionId || package.SchemaVersion != _schema.SchemaVersion)
+                return new MHSConfigCommitResult { Success = false, ErrorCode = "CONFIG_PACKAGE_SCHEMA_MISMATCH" };
+            if (!package.Verify())
+                return new MHSConfigCommitResult { Success = false, ErrorCode = "CONFIG_PACKAGE_HASH_MISMATCH" };
+            token.ThrowIfCancellationRequested();
+            T value;
+            try { value = FCMJsonValueCodec.Deserialize<T>(package.Json); }
+            catch (Exception)
+            { return new MHSConfigCommitResult { Success = false, ErrorCode = "CONFIG_PACKAGE_INVALID_JSON" }; }
+            int revision;
+            lock (_gate) revision = _savedRev;
+            FCMConfigValidationReport report = await FCMConfigValidationEngine.ValidateAsync(value, _scope, token)
+                .ConfigureAwait(false);
+            return Commit(value, revision, token, report);
+        }
+
         public T AtSavedVersion(string name)
         {
             lock (_gate)
@@ -213,10 +272,12 @@ namespace CxVisual.Mechanism.Data.Configuration
         public IDisposable SubscribeAll(FCMConfigChangeStage stage, Action<FCMConfigChange<T>> callback)
         { return Subscribe(x => x, stage, callback); }
         internal MHSConfigPreview Preview(T proposed, int baseRevision)
+        { return PreviewValidated(proposed, baseRevision, FCMConfigValidationEngine.Validate(proposed, _scope)); }
+
+        internal MHSConfigPreview PreviewValidated(T proposed, int baseRevision, FCMConfigValidationReport validation)
         {
             lock (_gate)
             {
-                FCMConfigValidationReport validation = FCMConfigValidationEngine.Validate(proposed, _scope);
                 return new MHSConfigPreview { BaseVersion = MHSConfigStorage.Name(baseRevision), Validation = validation,
                     HasChanges = FCMJsonValueCodec.Serialize(proposed) != FCMJsonValueCodec.Serialize(_saved),
                     CandidateJson = validation.IsValid ? FCMOrderedJsonDocument.Patch(_savedJson, _saved, proposed) : null,

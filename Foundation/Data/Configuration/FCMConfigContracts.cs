@@ -30,6 +30,8 @@ namespace CxVisual.Foundation.Data.Configuration
         public string AliasFrom { get; set; }
         public int SinceSchemaVersion { get; set; }
         public string Unit { get; set; }
+        public string Category { get; set; }
+        public string Description { get; set; }
         public FCMConfigApplyPolicy ApplyPolicy { get; set; }
     }
 

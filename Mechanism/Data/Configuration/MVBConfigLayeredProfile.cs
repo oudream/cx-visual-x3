@@ -105,6 +105,31 @@ namespace CxVisual.Mechanism.Data.Configuration
         public IDictionary<string, string> NewVersions { get; internal set; }
     }
 
+    /// <summary>一次任务固定整组有效配置与每层版本，后续保存和生效不会影响当前任务。</summary>
+    public sealed class MVBConfigTaskSnapshot<T> : IDisposable where T : new()
+    {
+        private MVBConfigResolved<T> _fixed;
+        internal MVBConfigTaskSnapshot(string taskId, MVBConfigResolved<T> result)
+        { TaskId = taskId; _fixed = result; }
+        public string TaskId { get; private set; }
+        public IDictionary<string, string> Versions { get { return Active.Versions; } }
+        public T Get() { return Active.Get(); }
+        public V Value<V>(Expression<Func<T, V>> selector) { return Active.Value(selector); }
+        public V Section<V>(Expression<Func<T, V>> selector) { return Active.Section(selector); }
+        public MVBConfigLayerValueInfo<V> Explain<V>(Expression<Func<T, V>> selector)
+        { return Active.Explain(selector); }
+        private MVBConfigResolved<T> Active
+        {
+            get
+            {
+                MVBConfigResolved<T> value = _fixed;
+                if (value == null) throw new ObjectDisposedException("MVBConfigTaskSnapshot");
+                return value;
+            }
+        }
+        public void Dispose() { System.Threading.Interlocked.Exchange(ref _fixed, null); }
+    }
+
     /// <summary>
     /// 基于已有 MHSConfigSection 存储/事务的多层显式覆盖。层级保存与生效严格分离。
     /// 一次 ResolveEffective 固定各层有效版本，跨层原子生效仍需 Runtime 专用协调。
@@ -133,6 +158,13 @@ namespace CxVisual.Mechanism.Data.Configuration
             }).ToList();
         }
         public MHSConfigSection<MVBConfigLayerOverrides> GetLayer(string name) { return Find(name).Store; }
+        /// <summary>用于长时间采图、重建、检测任务的配置版本隔离。</summary>
+        public MVBConfigTaskSnapshot<T> CaptureForTask(string taskId)
+        {
+            if (string.IsNullOrWhiteSpace(taskId)) throw new ArgumentException("TaskId required", "taskId");
+            return new MVBConfigTaskSnapshot<T>(taskId, ResolveEffective());
+        }
+
         /// <summary>订阅全部来源层的最终有效参数变化，用户不必重复监听每一层。</summary>
         public IDisposable Subscribe<V>(Expression<Func<T, V>> selector, Action<MVBConfigLayerChange<V>> observer)
         {
