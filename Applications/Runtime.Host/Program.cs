@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using CxVisual.Mechanism.Core;
+using CxVisual.Professional.Vision;
 using CxVisual.Mechanism.Lifecycle;
 using CxVisual.Mechanism.Visual;
 using CxVisual.Foundation.Infrastructure;
@@ -21,6 +22,33 @@ namespace CxVisual.Runtime.Host
                     CxProjectDocument document = CxDocumentFactory.CreateSample();
                     CxDocumentSerializer.Save(document, args[1]);
                     Console.WriteLine("Saved " + Path.GetFullPath(args[1]));
+                    return 0;
+                }
+                if (verb == "vision-inspect" && args.Length == 7)
+                {
+                    // 单次离线RAW检测。使用真实像素计算；不是相机采集、AI推理或硬件ACK。
+                    string directory = args[1];
+                    string id = args[2];
+                    int width = int.Parse(args[4], System.Globalization.CultureInfo.InvariantCulture);
+                    int height = int.Parse(args[5], System.Globalization.CultureInfo.InvariantCulture);
+                    int bits = int.Parse(args[6], System.Globalization.CultureInfo.InvariantCulture);
+                    if (bits != 8 && bits != 16)
+                        throw new ArgumentException("RAW pixel bit depth must be 8 or 16");
+                    MTCConfigManager config = new MTCConfigManager(directory);
+                    config.Register<CxVisionInspectionOptions>(id, requireExisting: true,
+                        validator: CxVisionInspectionOptions.Validate);
+                    config.Initialize();
+                    CxVisionInspectionRuntime runtime = new CxVisionInspectionRuntime(config, id);
+                    CxVisionGrayFrame frame = CxVisionRawFrameReader.Read(
+                        args[3], width, height, (CxVisionPixelDepth)bits);
+                    using (CxVisionInspectionTask task = runtime.BeginInspection())
+                    {
+                        CxVisionInspectionResult result = task.Inspect(frame);
+                        Console.WriteLine("Vision CPU-Threshold-4 ConfigId=" + id +
+                            " Revision=" + result.ConfigRevision + " Defects=" + result.Regions.Count +
+                            " ThresholdPixels=" + result.ThresholdPixelCount +
+                            " Passed=" + result.Passed);
+                    }
                     return 0;
                 }
                 // 版本化配置的独立Runtime进程入口（仅本机可信命令行，不提供网络写入接口）。
@@ -69,7 +97,7 @@ namespace CxVisual.Runtime.Host
                     Show(CxSceneProjection.Project(document));
                     return 0;
                 }
-                Console.WriteLine("Usage: CxVisual.Runtime.Host.exe [demo | save <file.xml> | load <file.xml> | config-status <root> | config-check <root> <id> <revision> | config-stage <root> <package> | config-activate <root> <releaseId> | config-rollback <root>]");
+                Console.WriteLine("Usage: CxVisual.Runtime.Host.exe [demo | save <file.xml> | load <file.xml> | config-status <root> | config-check <root> <id> <revision> | config-stage <root> <package> | config-activate <root> <releaseId> | config-rollback <root> | vision-inspect <configDir> <configId> <rawFile> <width> <height> <8|16>]");
                 return 2;
             }
             catch (Exception ex)
