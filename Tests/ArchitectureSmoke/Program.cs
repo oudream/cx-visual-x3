@@ -22,6 +22,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 ConfigProfessionalL1Tests.Run();
                 ConfigL2L4Tests.Run();
                 ConfigV64Cases.Run();
+                VisionLiveConfigTests.Run();
                 ConfigL1Tests.Run();
                 HierarchyTransactionPersistence();
                 UndoRedo();

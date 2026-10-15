@@ -7,6 +7,7 @@ on:
       - 'feat/config-l2-l4-*'
       - 'fix/config-v1-1-*'
       - 'feat/config-prefix-*'
+      - 'feat/vision-config-*'
   pull_request:
 jobs:
   build-and-config-tests:
