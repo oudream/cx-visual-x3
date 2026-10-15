@@ -17,7 +17,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
             Func<MRKExecutionContext, CancellationToken, Task<object>> executeAsync,
             string serialKey = null, MRKExecutionPolicy policy = null,
             IEnumerable<string> requiredResources = null,
-            Func<MRKExecutionContext, CancellationToken, Task> compensateAsync = null)
+            Func<MRKExecutionContext, CancellationToken, Task> compensateAsync = null,
+            string executionGroup = null)
         {
             if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("Step ID required", "id");
             if (executeAsync == null) throw new ArgumentNullException("executeAsync");
@@ -26,6 +27,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
             SerialKey = serialKey;
             Policy = policy;
             CompensateAsync = compensateAsync;
+            ExecutionGroup = executionGroup;
             List<string> resources = new List<string>();
             if (requiredResources != null)
                 foreach (string resource in requiredResources)
@@ -41,6 +43,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
         }
         public string Id { get; private set; }
         public string SerialKey { get; private set; }
+        public string ExecutionGroup { get; private set; }
         public MRKExecutionPolicy Policy { get; private set; }
         /// <summary>显式声明的可安全调用补偿动作；绝不会在失败后默认执行。</summary>
         public Func<MRKExecutionContext, CancellationToken, Task> CompensateAsync { get; private set; }
@@ -110,7 +113,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
                         local.CompensateAsync(context.ForSubflow(scope), token);
                 list.Add(new MRKExecutionStep(scope + local.Id, depends,
                     (context, token) => local.ExecuteAsync(context.ForSubflow(scope), token),
-                    local.SerialKey, local.Policy, local.RequiredResources, compensation));
+                    local.SerialKey, local.Policy, local.RequiredResources, compensation,
+                    local.ExecutionGroup));
             }
             return list.AsReadOnly();
         }

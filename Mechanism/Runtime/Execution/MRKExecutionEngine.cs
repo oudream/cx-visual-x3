@@ -10,7 +10,7 @@ using CxVisual.Foundation.Infrastructure.Concurrency;
 namespace CxVisual.Mechanism.Runtime.Execution
 {
     public enum MRKFlowState { Running, Completed, Failed, Cancelled }
-    public enum MRKStepState { WaitingDependencies, Scheduled, Completed, Failed, Cancelled, Queued, Running, Waiting, Paused, WaitingResources }
+    public enum MRKStepState { WaitingDependencies, Scheduled, Completed, Failed, Cancelled, Queued, Running, Waiting, Paused, WaitingResources, WaitingGroup }
 
     /// <summary>同一次流程的局部快照；不对外暴露可写的全局数据字典。</summary>
     public sealed class MRKExecutionContext
@@ -169,6 +169,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
     {
         private readonly FCRWorker _worker;
         private readonly MRKResourceLeaseCoordinator _resources;
+        private readonly MRKExecutionGroups _groups;
         private readonly object _lifecycleGate = new object();
         private readonly Dictionary<Guid, MRKFlowHandle> _activeFlows =
             new Dictionary<Guid, MRKFlowHandle>();
@@ -177,11 +178,14 @@ namespace CxVisual.Mechanism.Runtime.Execution
         public int ActiveFlowCount
         { get { lock (_lifecycleGate) return _activeFlows.Count; } }
         public MRKExecutionEngine(FCRWorkerOptions options,
-            MRKResourceLeaseCoordinator coordinator = null)
+            MRKResourceLeaseCoordinator coordinator = null,
+            IEnumerable<MRKExecutionGroupDefinition> groups = null)
         {
             _worker = new FCRWorker(options);
             _resources = coordinator ?? new MRKResourceLeaseCoordinator();
+            _groups = new MRKExecutionGroups(groups);
         }
+        public IList<MRKExecutionGroupSnapshot> GroupSnapshot() { return _groups.Snapshot(); }
         public FCRWorkHandle<T> Submit<T>(Func<CancellationToken, Task<T>> action,
             string serialKey = null, bool droppable = false,
             CancellationToken cancellation = default(CancellationToken))
@@ -311,6 +315,11 @@ namespace CxVisual.Mechanism.Runtime.Execution
             CancellationToken cancellation = default(CancellationToken))
         {
             if (plan == null) throw new ArgumentNullException("plan");
+            foreach (MRKExecutionStep candidate in plan.Steps)
+                if (!string.IsNullOrEmpty(candidate.ExecutionGroup) &&
+                    !_groups.Contains(candidate.ExecutionGroup))
+                    throw new ArgumentException("流程引用了未配置执行组：" + candidate.ExecutionGroup,
+                        "plan");
             lock (_lifecycleGate)
             {
                 if (_stopping) throw new InvalidOperationException("运行引擎已经停止接收新流程");
@@ -380,8 +389,15 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 }
                 // 在占用Worker槽位之前等资源，避免等锁的节点堵住真正持锁的执行任务。
                 List<MRKResourceLease> leases = new List<MRKResourceLease>();
+                MRKExecutionGroupLease groupLease = null;
                 try
                 {
+                    if (!string.IsNullOrWhiteSpace(step.ExecutionGroup))
+                    {
+                        context.SetState(step.Id, MRKStepState.WaitingGroup);
+                        groupLease = await _groups.AcquireAsync(step.ExecutionGroup, cancellation)
+                            .ConfigureAwait(false);
+                    }
                     if (step.RequiredResources.Count > 0)
                         context.SetState(step.Id, MRKStepState.WaitingResources);
                     foreach (string resourceId in step.RequiredResources)
@@ -407,6 +423,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 finally
                 {
                     for (int i = leases.Count - 1; i >= 0; i--) leases[i].Dispose();
+                    if (groupLease != null) groupLease.Dispose();
                 }
             }
             catch (OperationCanceledException)
