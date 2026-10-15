@@ -51,7 +51,9 @@ namespace CxVisual.TestCenter.Core
     public sealed class TCTTestCaseDescriptor
     {
         public TCTTestCaseDescriptor(string id, string name, TCTTestAspect aspect, string group,
-            string capabilityAreaId, string capabilityId, string objectId)
+            string capabilityAreaId, string capabilityId, string objectId,
+            TCTTestKind kind = TCTTestKind.Unit, IEnumerable<string> exclusiveResources = null,
+            IEnumerable<string> tags = null)
         {
             if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(name))
                 throw new ArgumentException("TestId and Name are required");
@@ -59,8 +61,18 @@ namespace CxVisual.TestCenter.Core
             Group = group ?? string.Empty;
             CapabilityAreaId = capabilityAreaId ?? "Unmapped";
             CapabilityId = capabilityId ?? "Unmapped";
-            ObjectId = objectId ?? "Unmapped";
-            ExclusiveResourceKeys = new ReadOnlyCollection<string>(new List<string> { "Test:" + id });
+            ObjectId = objectId ?? "Unmapped"; Kind = kind;
+            List<string> keys = new List<string> { "Test:" + id };
+            if (exclusiveResources != null)
+                foreach (string key in exclusiveResources)
+                {
+                    if (string.IsNullOrWhiteSpace(key)) throw new ArgumentException("Blank resource key");
+                    if (!keys.Contains(key)) keys.Add(key);
+                }
+            ExclusiveResourceKeys = new ReadOnlyCollection<string>(keys);
+            Tags = new ReadOnlyCollection<string>(tags == null ? new List<string>() :
+                tags.Where(tag => !string.IsNullOrWhiteSpace(tag))
+                    .Distinct(StringComparer.Ordinal).ToList());
         }
         public string Id { get; private set; }
         public string Name { get; private set; }
@@ -69,6 +81,8 @@ namespace CxVisual.TestCenter.Core
         public string CapabilityAreaId { get; private set; }
         public string CapabilityId { get; private set; }
         public string ObjectId { get; private set; }
+        public TCTTestKind Kind { get; private set; }
+        public IList<string> Tags { get; private set; }
         public IList<string> ExclusiveResourceKeys { get; private set; }
     }
 
@@ -306,6 +320,20 @@ namespace CxVisual.TestCenter.Core
         public bool Success { get { return Total > 0 && Passed == Total; } }
     }
 
+    public static class TCTTestProfilePolicy
+    {
+        public static bool Allows(TCTTestRunProfile profile, TCTTestKind kind)
+        {
+            if (profile == TCTTestRunProfile.Dev) return true;
+            if (profile == TCTTestRunProfile.Benchmark) return kind == TCTTestKind.Benchmark;
+            if (profile == TCTTestRunProfile.Stress) return kind == TCTTestKind.Stress;
+            if (profile == TCTTestRunProfile.Smoke) return kind == TCTTestKind.Unit;
+            // Regression & CI omit expensive Stress/Benchmark until explicitly requested.
+            return kind == TCTTestKind.Unit || kind == TCTTestKind.Integration ||
+                kind == TCTTestKind.Regression;
+        }
+    }
+
     public sealed class TCTTestCatalog
     {
         private readonly List<ITCTTestCase> _cases = new List<ITCTTestCase>();
@@ -327,6 +355,7 @@ namespace CxVisual.TestCenter.Core
             request.Validate();
             return _cases.Where(c =>
                 (request.SelectedIds.Count == 0 || request.SelectedIds.Contains(c.Descriptor.Id)) &&
+                TCTTestProfilePolicy.Allows(request.Profile, c.Descriptor.Kind) &&
                 (string.IsNullOrEmpty(request.Filter) || c.Descriptor.Id.IndexOf(request.Filter, StringComparison.OrdinalIgnoreCase) >= 0 ||
                  c.Descriptor.Name.IndexOf(request.Filter, StringComparison.OrdinalIgnoreCase) >= 0 ||
                  c.Descriptor.Group.IndexOf(request.Filter, StringComparison.OrdinalIgnoreCase) >= 0 ||
