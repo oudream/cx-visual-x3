@@ -108,8 +108,8 @@ namespace CxVisual.TestCenter.UI
                 "\n产物: " + result.Artifacts.Count + " 项";
             _assertions.ItemsSource = result.Assertions;
             _error.Text = (string.IsNullOrEmpty(result.Error) ? "无异常" : result.Error) +
-                string.Join("", result.Diagnostics.Select(d =>
-                    "\n[" + d.Severity + "] " + d.Code + " @" + d.Stage + ": " + d.Message)) +
+                string.Join("", result.Diagnostics.Select(diag =>
+                    "\n[" + diag.Severity + "] " + diag.Code + " @" + diag.Stage + ": " + diag.Message)) +
                 string.Join("", result.Artifacts.Select(a =>
                     "\n[Artifact] " + a.RelativePath + " SHA256=" + a.Sha256));
         }
