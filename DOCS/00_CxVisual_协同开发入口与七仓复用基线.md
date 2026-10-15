@@ -59,6 +59,10 @@
 - **[统一运行体系综合设计讨论稿 V0.1](Architecture/CxVisual_统一运行体系_六角色期望与并发异步编排执行_综合设计讨论稿_V0.1.md)**：整合R1～R6六类用户对代码SDK、专业Provider、编排、调试、操作和维护的期望；E01～E18需求、统一任务/流程/上下文/执行组模型、非阻塞异步、队列/背压、归并/资源/生命周期、三进程与Vision/IoT/CT/AI验收。**目前属于可修正的设计讨论稿，不是正式Owner/API定案，更不是运行代码已实现证明。**
 - 当前收敛的实现维护方向是：Foundation.Infrastructure / Concurrency（F19）与 Mechanism.Runtime / Execution（统一执行引擎）两个集中目录；其他Orchestration/Data/Connectivity/Professional仍保有本职契约和定义，不能因此产生第二套执行器。
 
+### 运行体系：测试驱动架构与首个代码闭环
+
+- **[统一执行体系TDD矩阵 V0.1](Testing/UnifiedExecution_TDD_Matrix_V0.1.md)**：从R1～R6、E01～E18倒推出T01～T20的测试用例、首批F19/Runtime实际类与接口、已覆盖和未覆盖项。首批T01～T10接入现有FoundationSmoke/ArchitectureSmoke；Windows CI编译及通过状态以对应提交的实际日志为准。未完成的资源租约、子流程、发布、跨进程、实机安全等明确保留为后续测试，不把设计稿当作已运行实现。
+
 ## 3. 新平台总边界（恢复上下文用）
 
 - 顶层架构：**Foundation / Mechanism / Professional Domain**；当前目标是 **22 + 40 + 73 = 135 个子方面**。

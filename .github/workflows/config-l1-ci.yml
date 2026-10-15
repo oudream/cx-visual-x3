@@ -21,6 +21,11 @@ jobs:
           $msbuild = (Get-Command msbuild.exe -ErrorAction Stop).Source
           & $msbuild .\CxVisual.Unified.sln /m:1 /t:Rebuild /p:Configuration=Release /p:Platform=x64 /nologo /v:minimal
           if ($LASTEXITCODE -ne 0) { throw "CxVisual full solution build failed" }
+      - name: Run F19 concurrency and foundation behavior tests
+        shell: pwsh
+        run: |
+          & .\Output\Release\x64\CxVisual.Tests.FoundationSmoke.exe --concurrency
+          if ($LASTEXITCODE -ne 0) { throw "Foundation/F19 worker tests failed" }
       - name: Run Config L1 and architecture behavior tests
         shell: pwsh
         run: |
