@@ -19,6 +19,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             {
                 PixelConnectivityAndTaskBoundary(root);
                 UnsupportedAiAndFailedApplyPreserveRunningRevision(root);
+                FailedNextTaskRollbackCannotStartInspection(root);
                 SixteenBitImageAndInvalidFrames(root);
                 DiskReloadAndSeparateRuntimeProcess(root);
                 Console.WriteLine("PASS Vision live config: real 4-neighbor threshold regions, stable in-flight task, NextTask, rejected AI, 8/16-bit, reload and separate Runtime.Host CLI");
@@ -113,6 +114,38 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(runtime.RequestApply(MRKConfigApplyPolicy.Immediate) &&
                 runtime.ActiveRevision == 3 && runtime.ApplyStatus == MRKConfigApplyStatus.VerifiedByProvider,
                 "CPU provider could not recover after rejected AI config");
+        }
+
+        /// <summary>当NextTask应用失败且回滚也失败时，不能悄然继续处理下一张图像。</summary>
+        private static void FailedNextTaskRollbackCannotStartInspection(string root)
+        {
+            string id = "Vision.Faulted";
+            MTCConfigManager manager = Setup(Path.Combine(root, "next-task-failure"), id,
+                CxVisionPixelDepth.Bits8, 200, 2);
+            MRKConfigRuntimeSession<CxVisionInspectionOptions> runtime =
+                new MRKConfigRuntimeSession<CxVisionInspectionOptions>(
+                    manager, id, applier: new FaultingNextTaskApplier());
+            manager.UpdateAndSave<CxVisionInspectionOptions>(id, x => x.GrayThreshold = 230);
+            Check(runtime.RequestApply(MRKConfigApplyPolicy.NextTask), "NextTask request rejected");
+            Expect<InvalidOperationException>(() =>
+            {
+                using (MRKConfigTaskSnapshot<CxVisionInspectionOptions> task = runtime.BeginTask())
+                {
+                    // 应绝不能到达这里。
+                }
+            }, "Faulted NextTask improperly started a new inspection");
+            Check(runtime.IsFaulted && runtime.ActiveRevision == 1 &&
+                runtime.LastApplyStatus == MRKConfigApplyStatus.Faulted,
+                "Failed rollback must prevent a new task and preserve committed revision");
+        }
+
+        private sealed class FaultingNextTaskApplier : IMRKConfigApplier<CxVisionInspectionOptions>
+        {
+            public string Prepare(CxVisionInspectionOptions previous, CxVisionInspectionOptions next) { return null; }
+            public string Apply(CxVisionInspectionOptions previous, CxVisionInspectionOptions next) { return null; }
+            public string Verify(CxVisionInspectionOptions previous, CxVisionInspectionOptions next) { return "simulated failure"; }
+            public void Rollback(CxVisionInspectionOptions previous)
+            { throw new InvalidOperationException("simulated rollback failure"); }
         }
 
         private static void SixteenBitImageAndInvalidFrames(string root)
