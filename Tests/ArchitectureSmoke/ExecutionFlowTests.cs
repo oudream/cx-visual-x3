@@ -16,6 +16,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             FailedStepDoesNotAdvanceDependent();
             CancellationIsCooperative();
             DirectSdkAndFlowShareTheWorker();
+            InlineSubflowSingleWorker();
         }
         private static void Check(bool ok, string message)
         { if (!ok) throw new InvalidOperationException("Runtime Execution: " + message); }
@@ -137,5 +138,50 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 "SDK, flow or null result semantics incorrect");
             Await(engine.StopAsync());
         }
+        private static void InlineSubflowSingleWorker()
+        {
+            MRKExecutionPlan child = new MRKExecutionPlan("CT.Reconstruct", new[]
+            {
+                Step("load", new string[0], (c, ct) => Task.FromResult((object)10)),
+                Step("compute", new[] { "load" }, (c, ct) =>
+                {
+                    object value;
+                    Check(c.TryGetResult("load", out value) && (int)value == 10,
+                        "child-relative result not visible");
+                    return Task.FromResult((object)30);
+                })
+            });
+            MRKExecutionPlan grandchild = new MRKExecutionPlan("CT.Post", new[]
+            {
+                Step("filter", new string[0], (c, ct) =>
+                {
+                    object value;
+                    Check(c.TryGetAbsoluteResult("ct.compute", out value) && (int)value == 30,
+                        "explicit cross-subflow result not visible");
+                    return Task.FromResult((object)40);
+                })
+            });
+            List<MRKExecutionStep> steps = new List<MRKExecutionStep>();
+            steps.Add(Step("capture", new string[0],
+                (c, ct) => Task.FromResult((object)1)));
+            steps.AddRange(MRKExecutionPlan.InlineSubflow("ct", child, new[] { "capture" }));
+            steps.AddRange(MRKExecutionPlan.InlineSubflow("post", grandchild,
+                new[] { "ct.compute" }));
+            steps.Add(Step("publish", new[] { "post.filter" }, (c, ct) =>
+            {
+                object value;
+                Check(c.TryGetResult("post.filter", out value) && (int)value == 40,
+                    "parent result missing");
+                return Task.FromResult((object)"OK");
+            }));
+            IMRKExecutionEngine engine = new MRKExecutionEngine(new FCRWorkerOptions(1, 8));
+            MRKFlowResult result = Await(engine.StartFlow(
+                new MRKExecutionPlan("CT-Top", steps)).Completion);
+            Check(result.State == MRKFlowState.Completed &&
+                (string)result.Results["publish"] == "OK" &&
+                (int)result.Results["ct.compute"] == 30, "single-worker nested flow failed");
+            Await(engine.StopAsync());
+        }
+
     }
 }

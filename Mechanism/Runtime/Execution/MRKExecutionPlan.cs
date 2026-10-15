@@ -71,6 +71,28 @@ namespace CxVisual.Mechanism.Runtime.Execution
             foreach (string dep in _byId[id].Dependencies) Visit(dep, marks);
             marks[id] = 2;
         }
+        /// <summary>子流程在编译期展开：复用现有Worker，不把每次子流程变成独立的线程池。</summary>
+        public static IList<MRKExecutionStep> InlineSubflow(
+            string prefix, MRKExecutionPlan child, IEnumerable<string> entryDependencies)
+        {
+            if (string.IsNullOrWhiteSpace(prefix)) throw new ArgumentException("前缀不能为空", "prefix");
+            if (child == null) throw new ArgumentNullException("child");
+            string scope = prefix + ".";
+            List<string> entry = new List<string>(entryDependencies ?? new string[0]);
+            List<MRKExecutionStep> list = new List<MRKExecutionStep>();
+            foreach (MRKExecutionStep current in child.Steps)
+            {
+                List<string> depends = new List<string>();
+                foreach (string id in current.Dependencies) depends.Add(scope + id);
+                if (current.Dependencies.Count == 0) depends.AddRange(entry);
+                MRKExecutionStep local = current;
+                list.Add(new MRKExecutionStep(scope + local.Id, depends,
+                    (context, token) => local.ExecuteAsync(context.ForSubflow(scope), token),
+                    local.SerialKey));
+            }
+            return list.AsReadOnly();
+        }
+
         public string Id { get; private set; }
         public IList<MRKExecutionStep> Steps { get { return _steps; } }
         public MRKExecutionStep GetStep(string id) { return _byId[id]; }

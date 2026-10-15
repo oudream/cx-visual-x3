@@ -20,25 +20,45 @@ namespace CxVisual.Mechanism.Runtime.Execution
         private readonly ConcurrentDictionary<string, MRKStepState> _states =
             new ConcurrentDictionary<string, MRKStepState>(StringComparer.Ordinal);
         private readonly ReadOnlyDictionary<string, object> _inputs;
+        private readonly string _scopePrefix;
         internal MRKExecutionContext(string planId, IDictionary<string, object> inputs)
         {
             FlowId = Guid.NewGuid();
             PlanId = planId;
+            _scopePrefix = string.Empty;
             _inputs = new ReadOnlyDictionary<string, object>(new Dictionary<string, object>(
                 inputs ?? new Dictionary<string, object>(), StringComparer.Ordinal));
+        }
+        private MRKExecutionContext(MRKExecutionContext parent, string prefix)
+        {
+            FlowId = parent.FlowId;
+            PlanId = parent.PlanId;
+            _results = parent._results;
+            _states = parent._states;
+            _inputs = parent._inputs;
+            _scopePrefix = parent._scopePrefix + prefix;
+        }
+        internal MRKExecutionContext ForSubflow(string prefix)
+        { return new MRKExecutionContext(this, prefix); }
+        /// <summary>跨子流程结果必须显式使用完整路径，防止名字碰撞。</summary>
+        public bool TryGetAbsoluteResult(string absoluteStepId, out object result)
+        {
+            bool found = _results.TryGetValue(absoluteStepId, out result);
+            if (result is NullResult) result = null;
+            return found;
         }
         public Guid FlowId { get; private set; }
         public string PlanId { get; private set; }
         public IDictionary<string, object> Inputs { get { return _inputs; } }
         public bool TryGetResult(string stepId, out object result)
         {
-            bool found = _results.TryGetValue(stepId, out result);
+            bool found = _results.TryGetValue(_scopePrefix + stepId, out result);
             if (result is NullResult) result = null;
             return found;
         }
         internal void SetResult(string stepId, object result)
-        { _results[stepId] = result ?? NullResult.Instance; }
-        internal void SetState(string stepId, MRKStepState state) { _states[stepId] = state; }
+        { _results[_scopePrefix + stepId] = result ?? NullResult.Instance; }
+        internal void SetState(string stepId, MRKStepState state) { _states[_scopePrefix + stepId] = state; }
         public IDictionary<string, object> ResultsSnapshot()
         {
             Dictionary<string, object> snapshot = new Dictionary<string, object>(StringComparer.Ordinal);
