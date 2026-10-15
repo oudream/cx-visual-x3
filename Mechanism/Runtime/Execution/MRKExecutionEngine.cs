@@ -158,14 +158,52 @@ namespace CxVisual.Mechanism.Runtime.Execution
     public sealed class MRKExecutionEngine : IMRKExecutionEngine
     {
         private readonly FCRWorker _worker;
+        private readonly object _lifecycleGate = new object();
+        private readonly Dictionary<Guid, MRKFlowHandle> _activeFlows =
+            new Dictionary<Guid, MRKFlowHandle>();
+        private bool _stopping;
+        private Task _stopTask;
+        public int ActiveFlowCount
+        { get { lock (_lifecycleGate) return _activeFlows.Count; } }
         public MRKExecutionEngine(FCRWorkerOptions options)
         { _worker = new FCRWorker(options); }
         public FCRWorkHandle<T> Submit<T>(Func<CancellationToken, Task<T>> action,
             string serialKey = null, bool droppable = false,
             CancellationToken cancellation = default(CancellationToken))
-        { return _worker.Submit(action, serialKey, droppable, cancellation); }
+        {
+            lock (_lifecycleGate)
+            {
+                if (_stopping) throw new InvalidOperationException("运行引擎正在停止，不能提交新工作");
+                return _worker.Submit(action, serialKey, droppable, cancellation);
+            }
+        }
         public FCRWorkerSnapshot GetSnapshot() { return _worker.GetSnapshot(); }
-        public Task StopAsync(bool cancelPending = false) { return _worker.StopAsync(cancelPending); }
+
+        /// <summary>停止接单，等待所有流程结算；cancelPending=true时请求协作取消并清空待执行工作。</summary>
+        public Task StopAsync(bool cancelPending = false)
+        {
+            MRKFlowHandle[] flows;
+            lock (_lifecycleGate)
+            {
+                _stopping = true;
+                flows = _activeFlows.Values.ToArray();
+                if (_stopTask == null) _stopTask = DrainAndStopAsync(flows, cancelPending);
+            }
+            if (cancelPending)
+            {
+                foreach (MRKFlowHandle flow in flows) flow.RequestCancel();
+                Task ignored = _worker.StopAsync(true);
+            }
+            return _stopTask;
+        }
+        private async Task DrainAndStopAsync(MRKFlowHandle[] flows, bool cancelPending)
+        {
+            if (cancelPending)
+                foreach (MRKFlowHandle flow in flows) flow.RequestCancel();
+            if (cancelPending) { Task cancellation = _worker.StopAsync(true); }
+            await Task.WhenAll(flows.Select(x => (Task)x.Completion)).ConfigureAwait(false);
+            await _worker.StopAsync(false).ConfigureAwait(false);
+        }
 
         /// <summary>每个Flow固定本次Plan；流结束后才释放旧版本的运行引用。</summary>
         public MRKFlowHandle StartFromSlot(MRKExecutionPlanSlot slot,
@@ -199,11 +237,23 @@ namespace CxVisual.Mechanism.Runtime.Execution
             CancellationToken cancellation = default(CancellationToken))
         {
             if (plan == null) throw new ArgumentNullException("plan");
-            MRKExecutionContext context = new MRKExecutionContext(plan.Id, inputs);
-            CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
-            MRKFlowHandle handle = new MRKFlowHandle(context, linked);
-            handle.SetCompletion(RunFlowAsync(plan, handle, control));
-            return handle;
+            lock (_lifecycleGate)
+            {
+                if (_stopping) throw new InvalidOperationException("运行引擎已经停止接收新流程");
+                MRKExecutionContext context = new MRKExecutionContext(plan.Id, inputs);
+                CancellationTokenSource linked =
+                    CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+                MRKFlowHandle handle = new MRKFlowHandle(context, linked);
+                handle.SetCompletion(RunFlowAsync(plan, handle, control));
+                _activeFlows.Add(handle.FlowId, handle);
+                Task removal = handle.Completion.ContinueWith(
+                    completed =>
+                    {
+                        lock (_lifecycleGate) _activeFlows.Remove(handle.FlowId);
+                    }, CancellationToken.None,
+                    TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+                return handle;
+            }
         }
 
         private async Task<MRKFlowResult> RunFlowAsync(MRKExecutionPlan plan, MRKFlowHandle flow, MRKExecutionDebugController control)
@@ -250,8 +300,9 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 cancellation.ThrowIfCancellationRequested();
                 if (control != null)
                 {
-                    context.SetState(step.Id, MRKStepState.Paused);
-                    await control.WaitBeforeAsync(step.Id, cancellation).ConfigureAwait(false);
+                    Task checkpoint = control.WaitBeforeAsync(step.Id, cancellation);
+                    if (!checkpoint.IsCompleted) context.SetState(step.Id, MRKStepState.Paused);
+                    await checkpoint.ConfigureAwait(false);
                 }
                 FCRWorkHandle<object> work = _worker.Submit<object>(
                     ct => step.ExecuteAsync(context, ct), step.SerialKey, false, cancellation);

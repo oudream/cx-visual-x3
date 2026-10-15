@@ -15,6 +15,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             DebugBreakpointStepAndResume();
             CancellationUnblocksPausedFlow();
             BoundedTraceDropsOldest();
+            StopDrainsOrCancelsEntireFlow();
         }
         private static void Check(bool ok, string msg)
         { if (!ok) throw new InvalidOperationException("运行控制测试：" + msg); }
@@ -126,6 +127,55 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 records[records.Count - 1].State == MRKStepState.Completed,
                 "missing terminal trace");
             Await(engine.StopAsync());
+        }        private static void StopDrainsOrCancelsEntireFlow()
+        {
+            TaskCompletionSource<bool> entered = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<bool> proceed = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            MRKExecutionPlan plan = new MRKExecutionPlan("lifecycle", new[]
+            {
+                new MRKExecutionStep("slow", new string[0], async (ctx, token) =>
+                {
+                    entered.TrySetResult(true);
+                    await proceed.Task.ConfigureAwait(false);
+                    return (object)1;
+                })
+            });
+            MRKExecutionEngine engine = new MRKExecutionEngine(new FCRWorkerOptions(1, 3));
+            MRKFlowHandle flow = engine.StartFlow(plan);
+            Await(entered.Task);
+            Check(engine.ActiveFlowCount == 1, "running flow not registered");
+            Task stopping = engine.StopAsync();
+            Check(!stopping.IsCompleted, "drain stopped before flow completed");
+            bool rejected = false;
+            try { engine.StartFlow(plan); }
+            catch (InvalidOperationException) { rejected = true; }
+            Check(rejected, "engine accepted flow during shutdown");
+            proceed.TrySetResult(true);
+            Check(Await(flow.Completion).State == MRKFlowState.Completed, "drain interrupted flow");
+            Await(stopping);
+            Check(engine.ActiveFlowCount == 0, "completed flow retained");
+
+            TaskCompletionSource<bool> started = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            MRKExecutionPlan cancelPlan = new MRKExecutionPlan("cancel", new[]
+            {
+                new MRKExecutionStep("await", new string[0], async (ctx, token) =>
+                {
+                    started.TrySetResult(true);
+                    await Task.Delay(Timeout.Infinite, token).ConfigureAwait(false);
+                    return (object)0;
+                })
+            });
+            MRKExecutionEngine second = new MRKExecutionEngine(new FCRWorkerOptions(1, 2));
+            MRKFlowHandle current = second.StartFlow(cancelPlan);
+            Await(started.Task);
+            Await(second.StopAsync(true));
+            Check(Await(current.Completion).State == MRKFlowState.Cancelled,
+                "stop with cancellation did not settle flow");
         }
+
+
     }
 }
