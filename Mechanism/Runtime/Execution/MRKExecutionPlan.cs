@@ -18,7 +18,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
             string serialKey = null, MRKExecutionPolicy policy = null,
             IEnumerable<string> requiredResources = null,
             Func<MRKExecutionContext, CancellationToken, Task> compensateAsync = null,
-            string executionGroup = null)
+            string executionGroup = null,
+            IEnumerable<MRKExecutionInput> inputs = null, MRKExecutionOutput output = null)
         {
             if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("Step ID required", "id");
             if (executeAsync == null) throw new ArgumentNullException("executeAsync");
@@ -28,6 +29,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
             Policy = policy;
             CompensateAsync = compensateAsync;
             ExecutionGroup = executionGroup;
+            Output = output;
+            Inputs = new List<MRKExecutionInput>(inputs ?? new MRKExecutionInput[0]).AsReadOnly();
             List<string> resources = new List<string>();
             if (requiredResources != null)
                 foreach (string resource in requiredResources)
@@ -44,6 +47,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
         public string Id { get; private set; }
         public string SerialKey { get; private set; }
         public string ExecutionGroup { get; private set; }
+        public IList<MRKExecutionInput> Inputs { get; private set; }
+        public MRKExecutionOutput Output { get; private set; }
         public MRKExecutionPolicy Policy { get; private set; }
         /// <summary>显式声明的可安全调用补偿动作；绝不会在失败后默认执行。</summary>
         public Func<MRKExecutionContext, CancellationToken, Task> CompensateAsync { get; private set; }
@@ -76,6 +81,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 foreach (string dependency in step.Dependencies)
                     if (dependency == null || !_byId.ContainsKey(dependency))
                         throw new ArgumentException("Unknown dependency on " + step.Id, "steps");
+            foreach (MRKExecutionStep step in list)
+                MRKExecutionPortBinder.VerifyPlanStep(step, _byId);
             Dictionary<string, int> marks = new Dictionary<string, int>(StringComparer.Ordinal);
             foreach (MRKExecutionStep step in list) Visit(step.Id, marks);
             _steps = list.AsReadOnly();
@@ -111,10 +118,15 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 if (local.CompensateAsync != null)
                     compensation = (context, token) =>
                         local.CompensateAsync(context.ForSubflow(scope), token);
+                List<MRKExecutionInput> bindings = new List<MRKExecutionInput>();
+                foreach (MRKExecutionInput input in local.Inputs)
+                    bindings.Add(input.Source == MRKInputSource.StepResult ?
+                        new MRKExecutionInput(input.Name, input.Source,
+                            scope + input.SourceName, input.ValueType, input.Required) : input);
                 list.Add(new MRKExecutionStep(scope + local.Id, depends,
                     (context, token) => local.ExecuteAsync(context.ForSubflow(scope), token),
                     local.SerialKey, local.Policy, local.RequiredResources, compensation,
-                    local.ExecutionGroup));
+                    local.ExecutionGroup, bindings, local.Output));
             }
             return list.AsReadOnly();
         }

@@ -24,6 +24,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
         private readonly ReadOnlyDictionary<string, object> _inputs;
         private readonly string _scopePrefix;
         private readonly MRKExecutionTrace _trace;
+        private readonly IDictionary<string, object> _boundInputs;
         private readonly ConcurrentQueue<string> _completedOrder = new ConcurrentQueue<string>();
         internal MRKExecutionContext(string planId, IDictionary<string, object> inputs)
         {
@@ -31,6 +32,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
             PlanId = planId;
             _scopePrefix = string.Empty;
             _trace = new MRKExecutionTrace();
+            _boundInputs = new ReadOnlyDictionary<string, object>(new Dictionary<string, object>());
             _inputs = new ReadOnlyDictionary<string, object>(new Dictionary<string, object>(
                 inputs ?? new Dictionary<string, object>(), StringComparer.Ordinal));
         }
@@ -44,10 +46,25 @@ namespace CxVisual.Mechanism.Runtime.Execution
             _inputs = parent._inputs;
             _scopePrefix = parent._scopePrefix + prefix;
             _trace = parent._trace;
+            _boundInputs = parent._boundInputs;
             _completedOrder = parent._completedOrder;
         }
         internal MRKExecutionContext ForSubflow(string prefix)
         { return new MRKExecutionContext(this, prefix); }
+        private MRKExecutionContext(MRKExecutionContext parent, IDictionary<string, object> ports)
+            : this(parent, string.Empty)
+        { _boundInputs = ports; }
+        internal MRKExecutionContext WithBoundInputs(IDictionary<string, object> ports)
+        { return new MRKExecutionContext(this, ports); }
+        public IDictionary<string, object> BoundInputs { get { return _boundInputs; } }
+        public bool TryGetBoundInput<T>(string name, out T value)
+        {
+            object data;
+            if (_boundInputs.TryGetValue(name, out data) && data is T)
+            { value = (T)data; return true; }
+            value = default(T);
+            return false;
+        }
         /// <summary>跨子流程结果必须显式使用完整路径，防止名字碰撞。</summary>
         public bool TryGetAbsoluteResult(string absoluteStepId, out object result)
         {
@@ -315,6 +332,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
             CancellationToken cancellation = default(CancellationToken))
         {
             if (plan == null) throw new ArgumentNullException("plan");
+            MRKExecutionPortBinder.VerifyFlowInputs(plan, inputs);
             foreach (MRKExecutionStep candidate in plan.Steps)
                 if (!string.IsNullOrEmpty(candidate.ExecutionGroup) &&
                     !_groups.Contains(candidate.ExecutionGroup))
@@ -405,9 +423,11 @@ namespace CxVisual.Mechanism.Runtime.Execution
                             context.FlowId.ToString("N") + ":" + step.Id, cancellation)
                             .ConfigureAwait(false));
 
+                    MRKExecutionContext nodeContext = context.WithBoundInputs(
+                        MRKExecutionPortBinder.Bind(step, context));
                     FCRWorkHandle<object> work = _worker.Submit<object>(
-                        ct => step.Policy == null ? step.ExecuteAsync(context, ct) :
-                            step.Policy.ExecuteAsync(context, step.ExecuteAsync, ct),
+                        ct => step.Policy == null ? step.ExecuteAsync(nodeContext, ct) :
+                            step.Policy.ExecuteAsync(nodeContext, step.ExecuteAsync, ct),
                         step.SerialKey, false, cancellation);
                     context.SetState(step.Id, MRKStepState.Scheduled);
                     context.TrackWork(step.Id, work);
@@ -416,6 +436,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
                         throw new OperationCanceledException("Work cancelled", cancellation);
                     if (!result.Succeeded)
                         throw new InvalidOperationException("STEP_" + step.Id + "_" + result.State, result.Error);
+                    MRKExecutionPortBinder.VerifyOutput(step, result.Value);
                     context.SetResult(step.Id, result.Value);
                     context.SetState(step.Id, MRKStepState.Completed);
                     return result.Value;
