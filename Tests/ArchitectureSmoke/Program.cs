@@ -19,6 +19,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     return 0;
                 }
                 UiIndependentAssemblies();
+                ExecutionFlowTests.Run();
                 ConfigProfessionalL1Tests.Run();
                 ConfigL2L4Tests.Run();
                 ConfigV64Cases.Run();
