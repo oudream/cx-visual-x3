@@ -178,6 +178,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
     public sealed class MRKFlowHandle
     {
         private readonly CancellationTokenSource _cancellation;
+        private readonly DateTime _createdUtc = DateTime.UtcNow;
+        private int _cancelRequested;
         private int _compensationStarted;
         private Task<MRKFlowResult> _completion;
         internal MRKFlowHandle(MRKExecutionContext context, CancellationTokenSource cancellation)
@@ -194,12 +196,37 @@ namespace CxVisual.Mechanism.Runtime.Execution
             }
         }
         public Task<MRKFlowResult> Completion { get { return _completion; } }
+        public MRKFlowSnapshot GetSnapshot()
+        {
+            Task<MRKFlowResult> done = _completion;
+            MRKFlowState state = done != null && done.Status == TaskStatus.RanToCompletion
+                ? done.Result.State : MRKFlowState.Running;
+            IDictionary<string, MRKStepState> steps = Context.StatesSnapshot();
+            int completed=0, waiting=0, failed=0, skipped=0;
+            foreach (MRKStepState status in steps.Values)
+            {
+                if (status == MRKStepState.Completed) completed++;
+                else if (status == MRKStepState.Failed) failed++;
+                else if (status == MRKStepState.Skipped) skipped++;
+                else if (status != MRKStepState.Cancelled) waiting++;
+            }
+            return new MRKFlowSnapshot(FlowId, Context.PlanId, Context.Metadata, state,
+                Volatile.Read(ref _cancelRequested) != 0, _createdUtc,
+                done != null && done.IsCompleted ? (DateTime?)DateTime.UtcNow : null,
+                steps.Count, completed, waiting, failed, skipped);
+        }
+
         internal CancellationToken Token { get { return _cancellation.Token; } }
         internal void SetCompletion(Task<MRKFlowResult> completion) { _completion = completion; }
         public bool RequestCancel()
         {
             if (_completion != null && _completion.IsCompleted) return false;
-            try { _cancellation.Cancel(); return true; }
+            try
+            {
+                Interlocked.Exchange(ref _cancelRequested, 1);
+                _cancellation.Cancel();
+                return true;
+            }
             catch (ObjectDisposedException) { return false; }
         }
         internal bool TryStartCompensation()

@@ -8,7 +8,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
 {
     internal static class ExecutionIdentityTests
     {
-        internal static void Run() { MetadataFollowsFlowAndSnapshotsIdentifyWaitingWork(); }
+        internal static void Run() { MetadataFollowsFlowAndSnapshotsIdentifyWaitingWork(); AggregateFlowProgressAndCancellationRequest(); }
         private static void Check(bool yes, string text)
         { if (!yes) throw new InvalidOperationException("身份快照：" + text); }
         private static T Await<T>(Task<T> task)
@@ -58,5 +58,44 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 .GetAwaiter().GetResult(), complete)) throw new TimeoutException("identity stop hang");
             complete.GetAwaiter().GetResult();
         }
+        private static void AggregateFlowProgressAndCancellationRequest()
+        {
+            TaskCompletionSource<bool> entered = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            MRKExecutionPlan plan = new MRKExecutionPlan("monitor", new[]
+            {
+                new MRKExecutionStep("start", new string[0],
+                    (ctx, ct) => Task.FromResult((object)1)),
+                new MRKExecutionStep("await", new []{"start"}, async (ctx,ct) =>
+                {
+                    entered.TrySetResult(true);
+                    await Task.Delay(Timeout.Infinite,ct).ConfigureAwait(false);
+                    return (object)2;
+                }),
+                new MRKExecutionStep("end", new []{"await"},
+                    (ctx,ct) => Task.FromResult((object)3))
+            });
+            MRKExecutionEngine engine = new MRKExecutionEngine(new FCRWorkerOptions(1,4));
+            MRKFlowHandle handle = engine.StartFlowWithMetadata(plan,
+                new MRKFlowMetadata(3,"sn01","req99","host"));
+            Await(entered.Task);
+            MRKFlowSnapshot snapshot = handle.GetSnapshot();
+            Check(snapshot.FlowId == handle.FlowId && snapshot.Metadata.PlanRevision == 3 &&
+                snapshot.TotalSteps == 3 && snapshot.CompletedSteps == 1 &&
+                snapshot.WaitingSteps >= 1 && snapshot.EndedUtc == null,
+                "Flow progress count or metadata wrong");
+            handle.RequestCancel();
+            Check(handle.GetSnapshot().CancelRequested,
+                "requested cancellation not observable");
+            MRKFlowResult result = Await(handle.Completion);
+            Check(result.State == MRKFlowState.Cancelled &&
+                handle.GetSnapshot().State == MRKFlowState.Cancelled,
+                "request and confirmed termination conflated");
+            Task stop = engine.StopAsync();
+            if (!object.ReferenceEquals(Task.WhenAny(stop,Task.Delay(7000)).GetAwaiter().GetResult(),
+                stop)) throw new TimeoutException("flow monitor stop");
+            stop.GetAwaiter().GetResult();
+        }
+
     }
 }

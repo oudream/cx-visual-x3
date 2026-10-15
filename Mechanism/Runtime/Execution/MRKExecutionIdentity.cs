@@ -36,4 +36,31 @@ namespace CxVisual.Mechanism.Runtime.Execution
         public string Reason { get; private set; }
         public DateTime ChangedUtc { get; private set; }
     }
+    /// <summary>一次Flow的进展视图：取消请求与终态分离；汇总状态不等于设备安全确认。</summary>
+    public sealed class MRKFlowSnapshot
+    {
+        internal MRKFlowSnapshot(Guid id, string planId, MRKFlowMetadata metadata,
+            MRKFlowState state, bool cancelRequested, DateTime createdUtc,
+            DateTime? endedUtc, int total, int completed, int waiting,
+            int failed, int skipped)
+        {
+            FlowId=id;PlanId=planId;Metadata=metadata;State=state;
+            CancelRequested=cancelRequested;CreatedUtc=createdUtc;EndedUtc=endedUtc;
+            TotalSteps=total;CompletedSteps=completed;WaitingSteps=waiting;
+            FailedSteps=failed;SkippedSteps=skipped;
+        }
+        public Guid FlowId {get;private set;}
+        public string PlanId {get;private set;}
+        public MRKFlowMetadata Metadata {get;private set;}
+        public MRKFlowState State {get;private set;}
+        public bool CancelRequested {get;private set;}
+        public DateTime CreatedUtc {get;private set;}
+        public DateTime? EndedUtc {get;private set;}
+        public int TotalSteps {get;private set;}
+        public int CompletedSteps {get;private set;}
+        public int WaitingSteps {get;private set;}
+        public int FailedSteps {get;private set;}
+        public int SkippedSteps {get;private set;}
+    }
+
 }
