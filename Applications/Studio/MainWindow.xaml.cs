@@ -36,10 +36,10 @@ namespace CxVisual.Studio
         }
 
         /// <summary>所有专业只声明强类型配置及Validator；加载、保存与发布仍只使用统一管理器。</summary>
-        private CxConfigManager CreateSelectedConfig(out string configId)
+        private MTCConfigManager CreateSelectedConfig(out string configId)
         {
             string root = Path.Combine(GetDemoDataRoot(), "Configs", "Samples");
-            CxConfigManager manager = new CxConfigManager(root);
+            MTCConfigManager manager = new MTCConfigManager(root);
             switch (ConfigDemoKind.SelectedIndex)
             {
                 case 1:
@@ -71,21 +71,21 @@ namespace CxVisual.Studio
             try
             {
                 string id;
-                CxConfigManager manager = CreateSelectedConfig(out id);
+                MTCConfigManager manager = CreateSelectedConfig(out id);
                 bool saved;
                 switch (ConfigDemoKind.SelectedIndex)
                 {
                     case 1:
-                        saved = CxConfigEditorDialog.Edit<CxAutomationDeviceOptions>(this, manager, id);
+                        saved = MPWConfigEditorDialog.Edit<CxAutomationDeviceOptions>(this, manager, id);
                         break;
                     case 2:
-                        saved = CxConfigEditorDialog.Edit<CxVisionInspectionOptions>(this, manager, id);
+                        saved = MPWConfigEditorDialog.Edit<CxVisionInspectionOptions>(this, manager, id);
                         break;
                     case 3:
-                        saved = CxConfigEditorDialog.Edit<CxCtReconstructionOptions>(this, manager, id);
+                        saved = MPWConfigEditorDialog.Edit<CxCtReconstructionOptions>(this, manager, id);
                         break;
                     default:
-                        saved = CxConfigEditorDialog.Edit<StudioDemoConfig>(this, manager, id);
+                        saved = MPWConfigEditorDialog.Edit<StudioDemoConfig>(this, manager, id);
                         break;
                 }
                 if (saved)
@@ -103,15 +103,15 @@ namespace CxVisual.Studio
             try
             {
                 string id;
-                CxConfigManager manager = CreateSelectedConfig(out id);
+                MTCConfigManager manager = CreateSelectedConfig(out id);
                 string root = GetDemoDataRoot();
                 string releaseId = "demo-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fff") +
                     "-" + Guid.NewGuid().ToString("N").Substring(0, 6);
-                CxConfigReleasePackage package = CxConfigReleaseBuilder.Build(manager, new[] { id },
+                MVDConfigReleasePackage package = MVDConfigReleaseBuilder.Build(manager, new[] { id },
                     Path.Combine(root, "ReleasePackages", "Samples"), releaseId);
-                CxConfigReleaseReceiver receiver = new CxConfigReleaseReceiver(
+                MVDConfigReleaseReceiver receiver = new MVDConfigReleaseReceiver(
                     Path.Combine(root, "Runtime", "Samples"));
-                CxConfigPublishReport report = CxConfigPublisher.Publish(package.Path, receiver);
+                MVDConfigPublishReport report = MVDConfigPublisher.Publish(package.Path, receiver);
                 if (!report.Success) throw new InvalidOperationException(report.Error);
                 MessageBox.Show(this, "发布并激活本地运行快照成功。\n配置：" + id +
                     "\n版本：" + manager.GetRevision(id) + "\n发布：" + receiver.ActiveReleaseId +
@@ -128,7 +128,7 @@ namespace CxVisual.Studio
         {
             try
             {
-                CxConfigReleaseReceiver receiver = new CxConfigReleaseReceiver(
+                MVDConfigReleaseReceiver receiver = new MVDConfigReleaseReceiver(
                     Path.Combine(GetDemoDataRoot(), "Runtime", "Samples"));
                 receiver.Rollback();
                 MessageBox.Show(this, "当前本地运行发布版本：" +
