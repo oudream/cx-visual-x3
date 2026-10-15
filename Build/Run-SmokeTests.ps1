@@ -4,7 +4,7 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $out = Join-Path $root ('Output\' + $Configuration + '\x64')
 function Invoke-Sample([string]$file, [string[]]$arguments = @()) {
     $exe = Join-Path $out $file
-    if (-not (Test-Path $exe)) { throw "Missing $exe — build solution first" }
+    if (-not (Test-Path $exe)) { throw "Missing $exe - build solution first" }
     Write-Host "RUN $file $($arguments -join ' ')"
     & $exe @arguments
     if ($LASTEXITCODE -ne 0) { throw "$file exit code $LASTEXITCODE" }
