@@ -12,6 +12,8 @@
 - **重要边界**：这些档案包含源代码事实、历史工程经验及**可修正设计提案**，不是新CxVisual已实现/已批准的类型或测试结果；以现行DOCS规格、真实源码与经验证结果裁决。
 - **入口同步规则**：新增、重命名或实质更新`DOCS/Codebases/`档案时，检查并按需同步本README、`AGENTS.md`和`DOCS/00_`导航；只保留一个专项主文档，避免重复事实源。
 
+- **统一运行体系综合讨论**：[六角色期望、并发异步与可视化编排执行 V0.1](DOCS/Architecture/CxVisual_统一运行体系_六角色期望与并发异步编排执行_综合设计讨论稿_V0.1.md)。这是阶段性共识和功能需求，不是已批准API或已实现引擎；两处集中实现方向为 F19 Concurrency 与 Runtime Execution。
+
 ## Build and verify on Windows
 
 1. Open `CxVisual.Unified.sln` in Visual Studio, select **Debug | x64**, **Rebuild Solution**.

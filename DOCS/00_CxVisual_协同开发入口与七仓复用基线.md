@@ -54,6 +54,11 @@
 
 三份文档采用不同的研究重点，**均以事实与建议分离为原则**：源码事实/历史经验/设计提案/真实测试不得混同。按任务阅读相关档案，不要求每次全量读完；后续新增其他代码资产档案，应在此索引补入。
 
+### 运行体系专项讨论稿（六角色期望 → 统一能力 → 执行模型）
+
+- **[统一运行体系综合设计讨论稿 V0.1](Architecture/CxVisual_统一运行体系_六角色期望与并发异步编排执行_综合设计讨论稿_V0.1.md)**：整合R1～R6六类用户对代码SDK、专业Provider、编排、调试、操作和维护的期望；E01～E18需求、统一任务/流程/上下文/执行组模型、非阻塞异步、队列/背压、归并/资源/生命周期、三进程与Vision/IoT/CT/AI验收。**目前属于可修正的设计讨论稿，不是正式Owner/API定案，更不是运行代码已实现证明。**
+- 当前收敛的实现维护方向是：Foundation.Infrastructure / Concurrency（F19）与 Mechanism.Runtime / Execution（统一执行引擎）两个集中目录；其他Orchestration/Data/Connectivity/Professional仍保有本职契约和定义，不能因此产生第二套执行器。
+
 ## 3. 新平台总边界（恢复上下文用）
 
 - 顶层架构：**Foundation / Mechanism / Professional Domain**；当前目标是 **22 + 40 + 73 = 135 个子方面**。
