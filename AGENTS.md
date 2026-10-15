@@ -22,6 +22,14 @@ See `.agents/skills/cxvisual-engineering/SKILL.md` for the task-specific process
 
 - For F19/Runtime execution implementation, consult [Unified execution TDD matrix V0.1](DOCS/Testing/UnifiedExecution_TDD_Matrix_V0.1.md). Keep the existing F19 and Runtime.Execution project ownership; do not mark unimplemented resource leases, live hardware confirmation, subflows, plan publishing or debug UI as tested. Run the Windows x64 build, mandatory `FoundationSmoke --concurrency`, and ArchitectureSmoke before claiming success.
 
+## 提交与合并规范（ChatGPT、Codex及人工协作均适用）
+
+- **所有新Git提交说明必须使用中文**：标题采用简洁中文概述实际变化，必要时正文以中文说明影响范围、测试结果、兼容性与未验证项；不再默认使用英文 `feat/fix/refactor/docs` 形式的标题。
+- **完成代码任务后应合入 `master`**（用户明确指定其他目标分支、仓库保护或集成检查失败的情况除外）；不得将“开发分支已提交”误报为“主分支已合入”。合入后重新确认 `master` 的HEAD、必要文件、CI状态。
+- **提交要少、主题要集中、便于审阅**：允许开发分支迭代，合入 `master` 前在不破坏协作者历史的前提下压缩成少量清晰提交；不要无意义地频繁提交中间产物。
+- **禁止为修改旧英文提交说明而强制改写已共享的 `master` 历史**；确有历史整理需求时应先评估对协作的影响并明确征得同意。
+- **提交信息不得冒充验证**：只有实际跑过且有日志的编译、测试、设备验证才能写为“通过”；设计与待测试内容应如实注明。
+
 ## Start every CxVisual development session here
 
 - Read [DOCS/00_CxVisual_协同开发入口与七仓复用基线.md](DOCS/00_CxVisual_协同开发入口与七仓复用基线.md) first. It maps the seven code repositories, distinguishes production-proven external systems from the new x3 preview, and gives the per-project chat/development workflow.
