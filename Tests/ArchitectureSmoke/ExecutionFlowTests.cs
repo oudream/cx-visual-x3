@@ -38,7 +38,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         private static void ParallelJoinAndResultContext()
         {
             IMRKExecutionEngine engine = new MRKExecutionEngine(new FCRWorkerOptions(3, 8));
-            TaskCompletionSource<bool> aiGate = Gate(), cpuDone = Gate();
+            TaskCompletionSource<bool> aiGate = Gate(), cpuDone = Gate(), aiEntered = Gate();
             int joined = 0;
             MRKExecutionPlan plan = new MRKExecutionPlan("Vision-Plan-V1", new[]
             {
@@ -46,7 +46,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Step("cpu", new[] { "capture" }, (c, ct) =>
                 { cpuDone.TrySetResult(true); return Task.FromResult((object)7); }),
                 Step("ai", new[] { "capture" }, async (c, ct) =>
-                { await aiGate.Task.ConfigureAwait(false); return (object)11; }),
+                { aiEntered.TrySetResult(true); await aiGate.Task.ConfigureAwait(false); return (object)11; }),
                 Step("join", new[] { "cpu", "ai" }, (c, ct) =>
                 {
                     Interlocked.Increment(ref joined);
@@ -58,6 +58,10 @@ namespace CxVisual.Tests.ArchitectureSmoke
             });
             MRKFlowHandle flow = engine.StartFlow(plan, new Dictionary<string, object> { { "LineId", "Line1" } });
             Await(cpuDone.Task);
+            Await(aiEntered.Task);
+            Check(SpinWait.SpinUntil(() =>
+                flow.Context.StatesSnapshot()["ai"] == MRKStepState.Waiting, 3000),
+                "async running step not observable as Waiting");
             Check(joined == 0 && !flow.Completion.IsCompleted, "join ran ahead of AI dependency");
             Check(flow.Context.Inputs["LineId"].Equals("Line1"), "input lost");
             aiGate.TrySetResult(true);

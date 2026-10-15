@@ -10,13 +10,15 @@ using CxVisual.Foundation.Infrastructure.Concurrency;
 namespace CxVisual.Mechanism.Runtime.Execution
 {
     public enum MRKFlowState { Running, Completed, Failed, Cancelled }
-    public enum MRKStepState { WaitingDependencies, Scheduled, Completed, Failed, Cancelled }
+    public enum MRKStepState { WaitingDependencies, Scheduled, Completed, Failed, Cancelled, Queued, Running, Waiting }
 
     /// <summary>同一次流程的局部快照；不对外暴露可写的全局数据字典。</summary>
     public sealed class MRKExecutionContext
     {
         private readonly ConcurrentDictionary<string, object> _results =
             new ConcurrentDictionary<string, object>(StringComparer.Ordinal);
+        private readonly ConcurrentDictionary<string, FCRWorkHandle<object>> _handles =
+            new ConcurrentDictionary<string, FCRWorkHandle<object>>(StringComparer.Ordinal);
         private readonly ConcurrentDictionary<string, MRKStepState> _states =
             new ConcurrentDictionary<string, MRKStepState>(StringComparer.Ordinal);
         private readonly ReadOnlyDictionary<string, object> _inputs;
@@ -35,6 +37,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
             PlanId = parent.PlanId;
             _results = parent._results;
             _states = parent._states;
+            _handles = parent._handles;
             _inputs = parent._inputs;
             _scopePrefix = parent._scopePrefix + prefix;
         }
@@ -66,9 +69,25 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 snapshot.Add(item.Key, item.Value is NullResult ? null : item.Value);
             return new ReadOnlyDictionary<string, object>(snapshot);
         }
+        internal void TrackWork(string stepId, FCRWorkHandle<object> handle)
+        { _handles[_scopePrefix + stepId] = handle; }
+        /// <summary>快照可辨排队、正在执行与真正异步等待，不仅是节点已调度。</summary>
         public IDictionary<string, MRKStepState> StatesSnapshot()
-        { return new ReadOnlyDictionary<string, MRKStepState>(
-            new Dictionary<string, MRKStepState>(_states, StringComparer.Ordinal)); }
+        {
+            Dictionary<string, MRKStepState> states =
+                new Dictionary<string, MRKStepState>(_states, StringComparer.Ordinal);
+            foreach (KeyValuePair<string, FCRWorkHandle<object>> pair in _handles)
+            {
+                MRKStepState present;
+                if (!states.TryGetValue(pair.Key, out present) ||
+                    present != MRKStepState.Scheduled) continue;
+                FCRWorkState workState = pair.Value.State;
+                if (workState == FCRWorkState.Queued) states[pair.Key] = MRKStepState.Queued;
+                else if (workState == FCRWorkState.Running) states[pair.Key] = MRKStepState.Running;
+                else if (workState == FCRWorkState.Waiting) states[pair.Key] = MRKStepState.Waiting;
+            }
+            return new ReadOnlyDictionary<string, MRKStepState>(states);
+        }
         private sealed class NullResult
         {
             internal static readonly NullResult Instance = new NullResult();
@@ -190,6 +209,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 FCRWorkHandle<object> work = _worker.Submit<object>(
                     ct => step.ExecuteAsync(context, ct), step.SerialKey, false, cancellation);
                 context.SetState(step.Id, MRKStepState.Scheduled);
+                context.TrackWork(step.Id, work);
                 FCRWorkResult<object> result = await work.Completion.ConfigureAwait(false);
                 if (result.State == FCRWorkState.Cancelled)
                     throw new OperationCanceledException("Work cancelled", cancellation);
