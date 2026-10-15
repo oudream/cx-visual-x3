@@ -64,6 +64,20 @@ namespace CxVisual.Tests.ArchitectureSmoke
         }
     }
 
+    [FCMConfigSection("Tests.ResourceReferences")]
+    public sealed class V13ResourceReferenceConfig
+    {
+        [FCMConfigItem("设备密钥引用")]
+        public FCMConfigSecretRef Credential { get; set; } =
+            new FCMConfigSecretRef("vault:detector-access");
+        [FCMConfigItem("体积数据句柄")]
+        public FCMConfigDataHandle Volume { get; set; } =
+            new FCMConfigDataHandle { ProviderId = "shm", ResourceId = "ct-volume-01", Version = "v4" };
+        [FCMConfigItem("标定资源")]
+        public FCMConfigResourceRef Calibration { get; set; } =
+            new FCMConfigResourceRef { ResourceType = "calibration", ResourceId = "cal-01" };
+    }
+
     internal static class ConfigV13ExtensionTests
     {
         public static void Run()
@@ -151,6 +165,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 AsyncValidationRegressions(root);
                 LayeredProfileRegressions(root);
                 ConfigurationFoundationRegressions(root);
+                ReferenceContractsRegressions(root);
                 Console.WriteLine("PASS V1.3 config registry, value state, history view, restore and async validation");
             }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
@@ -407,6 +422,31 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Verify(target.ApplyPendingAtTaskBoundary() && target.Value(x => x.ExposureMs) == 130,
                 "import activates only at correct boundary");
             Console.WriteLine("PASS configuration catalog, apply guards, async preview and package");
+        }
+
+        private static void ReferenceContractsRegressions(string root)
+        {
+            V13ResourceReferenceConfig config = new V13ResourceReferenceConfig();
+            string json = FCMJsonValueCodec.Serialize(config);
+            Verify(json.Contains("vault:detector-access") && json.Contains("ct-volume-01") &&
+                !json.Contains("private-key-material") && !json.Contains("ACTUAL_SECRET"),
+                "only references, never secrets or large binary");
+            V13ResourceReferenceConfig copy = FCMJsonValueCodec.Deserialize<V13ResourceReferenceConfig>(json);
+            Verify(copy.Credential.Reference == "vault:detector-access" &&
+                copy.Credential.ToString() == "[SecretRef]" &&
+                copy.Volume.ProviderId == "shm" && copy.Volume.Version == "v4" &&
+                copy.Calibration.ResourceId == "cal-01",
+                "typed references round trip without loading resource content");
+            Expect<ArgumentException>(() => new FCMConfigSecretRef("not allowed spaces"),
+                "malformed secret identity rejected");
+            MHSConfigService service = new MHSConfigService(Path.Combine(root, "reference"));
+            MHSConfigSection<V13ResourceReferenceConfig> section =
+                service.ForProject("CT-Project").Open<V13ResourceReferenceConfig>();
+            Verify(section.Get().Credential.Reference == "vault:detector-access",
+                "config supports converter-backed secret identity");
+            Verify(FCMConfigCatalog.Search<V13ResourceReferenceConfig>("数据句柄").Count == 1,
+                "referenced data is visible in schema without loading large object");
+            Console.WriteLine("PASS typed secret/resource/data references");
         }
 
         private static void Verify(bool condition, string reason)
