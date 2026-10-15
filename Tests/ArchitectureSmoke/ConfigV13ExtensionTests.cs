@@ -129,6 +129,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Verify(other.Value(x => x.ExposureMs) == 80, "machine scope independence");
                 Expect<ArgumentException>(() => cfg.AtSavedVersionView("v9999"), "unknown history forbidden");
                 AsyncValidationRegressions(root);
+                LayeredProfileRegressions(root);
                 Console.WriteLine("PASS V1.3 config registry, value state, history view, restore and async validation");
             }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
@@ -168,6 +169,87 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Verify(!invalid.Success && invalid.ErrorCode == "CONFIG_VALIDATION" &&
                     config.SavedVersion == version, "invalid async validation never commits");
             }
+        }
+
+        private static void LayeredProfileRegressions(string root)
+        {
+            string folder = Path.Combine(root, "layers");
+            MHSConfigService service = new MHSConfigService(folder);
+            MVBConfigLayerSpec[] specs = new[]
+            {
+                new MVBConfigLayerSpec("模板", "template", "T-01", 10),
+                new MVBConfigLayerSpec("工程", "project", "P-01", 20),
+                new MVBConfigLayerSpec("机台", "machine", "M-01", 30),
+                new MVBConfigLayerSpec("产品", "product", "R-01", 40),
+                new MVBConfigLayerSpec("运行覆盖", "runtime", "Runtime-01", 50)
+            };
+            MVBConfigLayeredProfile<V13ConfigSample> profile =
+                new MVBConfigLayeredProfile<V13ConfigSample>(service, specs);
+            Verify(profile.ResolveEffective().Value(x => x.ExposureMs) == 80,
+                "no overrides means POCO default");
+            Verify(profile.SetOverrideAsync("模板", x => x.ExposureMs, 100, CancellationToken.None)
+                .GetAwaiter().GetResult().Success, "template exposure override");
+            Verify(profile.SetOverrideAsync("模板", x => x.Detectors["D1"],
+                new V13DetectorSample { Gain = 2 }, CancellationToken.None)
+                .GetAwaiter().GetResult().Success, "template adds detector");
+            Verify(profile.SetOverrideAsync("工程", x => x.Note, "project", CancellationToken.None)
+                .GetAwaiter().GetResult().Success, "project note");
+            Verify(profile.SetOverrideAsync("机台", x => x.ExposureMs, 180, CancellationToken.None)
+                .GetAwaiter().GetResult().Success, "machine override exposure");
+            Verify(profile.SetOverrideAsync("机台", x => x.Detectors["D1"].Gain, 7,
+                CancellationToken.None).GetAwaiter().GetResult().Success, "machine overrides nested dictionary member");
+            Verify(profile.SetOverrideAsync("产品", x => x.Note, "product", CancellationToken.None)
+                .GetAwaiter().GetResult().Success, "product overrides project note");
+            Verify(profile.SetOverrideAsync("运行覆盖", x => x.Note, "runtime", CancellationToken.None)
+                .GetAwaiter().GetResult().Success, "runtime overrides product note");
+
+            // Saved versions are not effective before the declared task boundary.
+            Verify(profile.ResolveEffective().Value(x => x.ExposureMs) == 80,
+                "saved layers cannot leak into current effective values");
+            foreach (MVBConfigLayerSpec spec in specs)
+                profile.GetLayer(spec.Name).ApplyPendingAtTaskBoundary();
+            MVBConfigResolved<V13ConfigSample> resolved = profile.ResolveEffective();
+            Verify(resolved.Value(x => x.ExposureMs) == 180 &&
+                resolved.Value(x => x.Detectors["D1"].Gain) == 7 &&
+                resolved.Value(x => x.Note) == "runtime", "five-layer resolution");
+            Verify(resolved.Versions.Count == 5 && resolved.Versions["机台"].StartsWith("v"),
+                "per-layer committed effective version vector");
+            MVBConfigLayerValueInfo<int> source = resolved.Explain(x => x.ExposureMs);
+            Verify(source.EffectiveSource == "机台" && source.SourceChain.Count == 2 &&
+                source.SourceChain[0].Name == "模板", "field-level provenance chain");
+            Verify(resolved.Explain(x => x.Detectors["D1"].Gain).EffectiveSource == "机台",
+                "deep dictionary path provenance");
+            Verify(resolved.Explain(x => x.Detectors["D2"].Gain).HasValue == false,
+                "unavailable dynamic item has no value");
+            V13ConfigSample loose = resolved.Get();
+            loose.Detectors["D1"].Gain = 1000;
+            Verify(resolved.Value(x => x.Detectors["D1"].Gain) == 7,
+                "resolved snapshot isolated from caller mutation");
+
+            Verify(profile.SetOverrideAsync("机台", x => x.ExposureMs, 220, CancellationToken.None)
+                .GetAwaiter().GetResult().Success, "stage next machine value");
+            Verify(profile.ResolveEffective().Value(x => x.ExposureMs) == 180,
+                "pending overrides must not affect resolved effective value");
+            Verify(profile.GetLayer("机台").ApplyPendingAtTaskBoundary(), "task boundary activates machine layer");
+            Verify(profile.ResolveEffective().Value(x => x.ExposureMs) == 220,
+                "new effective version selected");
+
+            Verify(profile.RemoveOverrideAsync("机台", x => x.ExposureMs, CancellationToken.None)
+                .GetAwaiter().GetResult().Success, "remove explicit override");
+            Verify(profile.ResolveEffective().Value(x => x.ExposureMs) == 220, "remove pending until task");
+            Verify(profile.GetLayer("机台").ApplyPendingAtTaskBoundary(), "remove takes effect");
+            Verify(profile.ResolveEffective().Value(x => x.ExposureMs) == 100 &&
+                profile.ResolveEffective().Explain(x => x.ExposureMs).EffectiveSource == "模板",
+                "removal falls back to template instead of schema default");
+
+            MVBConfigLayeredProfile<V13ConfigSample> reopened =
+                new MVBConfigLayeredProfile<V13ConfigSample>(new MHSConfigService(folder), specs);
+            Verify(reopened.ResolveEffective().Value(x => x.ExposureMs) == 100 &&
+                reopened.ResolveEffective().Value(x => x.Detectors["D1"].Gain) == 7,
+                "persisted layers and effective markers survive process reopen");
+            Expect<ArgumentException>(() => new MVBConfigLayeredProfile<V13ConfigSample>(
+                service, specs[0], specs[0]), "duplicate layer must be rejected");
+            Console.WriteLine("PASS V1.3 explicit sparse five-layer scope, source vector and fallback");
         }
 
         private static void Verify(bool condition, string reason)

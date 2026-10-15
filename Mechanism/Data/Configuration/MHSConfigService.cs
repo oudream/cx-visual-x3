@@ -25,6 +25,13 @@ namespace CxVisual.Mechanism.Data.Configuration
         { return new MVBConfigScopeResolver(this, "machine", machineId); }
         public MVBConfigScopeResolver ForProject(string projectId)
         { return new MVBConfigScopeResolver(this, "project", projectId); }
+        /// <summary>供显式多层配置使用；按范围类型与身份隔离原有配置存储。</summary>
+        public MVBConfigScopeResolver ForScope(string scopeKind, string scopeId)
+        {
+            if (string.IsNullOrWhiteSpace(scopeKind) || scopeKind.Any(c => !char.IsLetterOrDigit(c) && c != '-'))
+                throw new ArgumentException("Invalid scope kind", "scopeKind");
+            return new MVBConfigScopeResolver(this, scopeKind, scopeId);
+        }
 
         /// <summary>插件程序集配置发现：先全部校验，再原子注册。</summary>
         public int RegisterAssembly(Assembly assembly)
