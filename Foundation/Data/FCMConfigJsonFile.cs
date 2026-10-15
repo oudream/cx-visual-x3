@@ -5,7 +5,7 @@ using System.Web.Script.Serialization;
 namespace CxVisual.Foundation.Data
 {
     /// <summary>版本化配置文档。Id是逻辑身份；Revision是每个配置实例的乐观并发版本。</summary>
-    public sealed class CxConfigFileDocument<T>
+    public sealed class FCMConfigFileDocument<T>
     {
         public string Id { get; set; }
         public int SchemaVersion { get; set; }
@@ -14,7 +14,7 @@ namespace CxVisual.Foundation.Data
     }
 
     /// <summary>用于校验发布配置身份、Schema及版本，不需要了解专业T类型。</summary>
-    public sealed class CxConfigDocumentHeader
+    public sealed class FCMConfigDocumentHeader
     {
         public string Id { get; set; }
         public int SchemaVersion { get; set; }
@@ -22,7 +22,7 @@ namespace CxVisual.Foundation.Data
     }
 
     /// <summary>F15配置的JSON载体。安全保存由同目录临时文件、跨进程排他锁及File.Replace组成。</summary>
-    public static class CxConfigJsonFile
+    public static class FCMConfigJsonFile
     {
         private static JavaScriptSerializer Serializer()
         {
@@ -48,12 +48,12 @@ namespace CxVisual.Foundation.Data
             return Serializer().Deserialize(json, type);
         }
 
-        public static CxConfigDocumentHeader ReadHeader(string json)
+        public static FCMConfigDocumentHeader ReadHeader(string json)
         {
             if (string.IsNullOrWhiteSpace(json)) throw new InvalidDataException("Empty configuration JSON");
             try
             {
-                CxConfigDocumentHeader result = Serializer().Deserialize<CxConfigDocumentHeader>(json);
+                FCMConfigDocumentHeader result = Serializer().Deserialize<FCMConfigDocumentHeader>(json);
                 if (result == null || string.IsNullOrWhiteSpace(result.Id) ||
                     result.SchemaVersion < 1 || result.Revision < 0)
                     throw new InvalidDataException("Invalid configuration header");
@@ -63,7 +63,7 @@ namespace CxVisual.Foundation.Data
             catch (Exception ex) { throw new InvalidDataException("Invalid configuration JSON", ex); }
         }
 
-        public static CxConfigFileDocument<T> Read<T>(string path)
+        public static FCMConfigFileDocument<T> Read<T>(string path)
         {
             if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException("Missing path", "path");
             if (!File.Exists(path)) return null;
@@ -72,11 +72,11 @@ namespace CxVisual.Foundation.Data
         }
 
         /// <summary>解析已经读取的原始JSON，避免Schema判定前先强制反序列化为新版T。</summary>
-        public static CxConfigFileDocument<T> ParseDocument<T>(string json, string source)
+        public static FCMConfigFileDocument<T> ParseDocument<T>(string json, string source)
         {
             try
             {
-                CxConfigFileDocument<T> doc = Serializer().Deserialize<CxConfigFileDocument<T>>(json);
+                FCMConfigFileDocument<T> doc = Serializer().Deserialize<FCMConfigFileDocument<T>>(json);
                 if (doc == null || doc.Data == null || doc.Revision < 0 || doc.SchemaVersion <= 0 ||
                     string.IsNullOrWhiteSpace(doc.Id))
                     throw new InvalidDataException("Invalid config document: " + source);
@@ -93,7 +93,7 @@ namespace CxVisual.Foundation.Data
         /// 仅在磁盘版本符合expectedRevision时保存。首写用-1；遇锁/磁盘错误抛出异常且不删除现有目标。
         /// 不承诺多个独立配置文件的跨文件原子事务。
         /// </summary>
-        public static void Save<T>(string path, CxConfigFileDocument<T> document, long expectedRevision)
+        public static void Save<T>(string path, FCMConfigFileDocument<T> document, long expectedRevision)
         {
             if (document == null || document.Data == null) throw new ArgumentNullException("document");
             if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException("Missing path", "path");
@@ -104,7 +104,7 @@ namespace CxVisual.Foundation.Data
             using (FileStream gate = new FileStream(full + ".lock", FileMode.OpenOrCreate,
                 FileAccess.ReadWrite, FileShare.None))
             {
-                CxConfigDocumentHeader existing = File.Exists(full)
+                FCMConfigDocumentHeader existing = File.Exists(full)
                     ? ReadHeader(File.ReadAllText(full)) : null;
                 long actual = existing == null ? -1 : existing.Revision;
                 if (actual != expectedRevision)

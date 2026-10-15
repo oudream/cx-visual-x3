@@ -9,9 +9,9 @@ namespace CxVisual.Mechanism.Core
 {
     /// <summary>M04：普通强类型C#配置属性的可选展示与校验描述；不绑定WPF。</summary>
     [AttributeUsage(AttributeTargets.Property)]
-    public sealed class CxConfigItemAttribute : Attribute
+    public sealed class MPMConfigItemAttribute : Attribute
     {
-        public CxConfigItemAttribute(string title) { Title = title; }
+        public MPMConfigItemAttribute(string title) { Title = title; }
         public string Title { get; private set; }
         public string Category { get; set; }
         public string Description { get; set; }
@@ -22,7 +22,7 @@ namespace CxVisual.Mechanism.Core
     }
 
     /// <summary>配置属性元数据。PropertyInfo供公共编辑器/校验器使用，非持久化DTO。</summary>
-    public sealed class CxConfigProperty
+    public sealed class MPMConfigProperty
     {
         public string Name { get; internal set; }
         public string Title { get; internal set; }
@@ -36,13 +36,13 @@ namespace CxVisual.Mechanism.Core
         public PropertyInfo Property { get; internal set; }
     }
 
-    public static class CxConfigDescription
+    public static class MPMConfigDescription
     {
-        public static CxConfigProperty[] Describe<T>() { return Describe(typeof(T)); }
-        public static CxConfigProperty[] Describe(Type type)
+        public static MPMConfigProperty[] Describe<T>() { return Describe(typeof(T)); }
+        public static MPMConfigProperty[] Describe(Type type)
         {
             if (type == null) throw new ArgumentNullException("type");
-            List<CxConfigProperty> values = new List<CxConfigProperty>();
+            List<MPMConfigProperty> values = new List<MPMConfigProperty>();
             foreach (PropertyInfo property in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
             {
                 if (!property.CanRead || !property.CanWrite ||
@@ -51,8 +51,8 @@ namespace CxVisual.Mechanism.Core
                     continue;
                 BrowsableAttribute browsable = property.GetCustomAttribute<BrowsableAttribute>();
                 if (browsable != null && !browsable.Browsable) continue;
-                CxConfigItemAttribute a = property.GetCustomAttribute<CxConfigItemAttribute>();
-                values.Add(new CxConfigProperty
+                MPMConfigItemAttribute a = property.GetCustomAttribute<MPMConfigItemAttribute>();
+                values.Add(new MPMConfigProperty
                 {
                     Name = property.Name,
                     Title = a != null && !string.IsNullOrEmpty(a.Title) ? a.Title : property.Name,
@@ -73,7 +73,7 @@ namespace CxVisual.Mechanism.Core
         public static string Validate<T>(T value)
         {
             if (value == null) return "Configuration is null";
-            foreach (CxConfigProperty property in Describe(typeof(T)))
+            foreach (MPMConfigProperty property in Describe(typeof(T)))
             {
                 object v = property.Property.GetValue(value, null);
                 if (property.Required && (v == null || (v is string && string.IsNullOrWhiteSpace((string)v))))
