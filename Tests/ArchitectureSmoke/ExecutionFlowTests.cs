@@ -49,7 +49,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Step("join", new[] { "cpu", "ai" }, (c, ct) =>
                 {
                     Interlocked.Increment(ref joined);
-                    object x, y;
+                    object x = null, y = null;
                     Check(c.TryGetResult("cpu", out x) && c.TryGetResult("ai", out y),
                         "join observed missing branch data");
                     return Task.FromResult((object)((int)x + (int)y));

@@ -137,7 +137,10 @@ namespace CxVisual.Mechanism.Runtime.Execution
             };
             try
             {
-                foreach (MRKExecutionStep step in plan.Steps) schedule(step.Id);
+                foreach (MRKExecutionStep step in plan.Steps)
+                {
+                    Task<object> scheduled = schedule(step.Id);
+                }
                 await Task.WhenAll(tasks.Values.ToArray()).ConfigureAwait(false);
                 return new MRKFlowResult(MRKFlowState.Completed, context, null);
             }
