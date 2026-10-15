@@ -13,6 +13,7 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
             internal Holder(T data, Action<T> release) { Data = data; Release = release; }
         }
         private Holder _holder;
+        private readonly object _ticketLock = new object();
         public FCRSharedLease(T data, Action<T> release)
         {
             if (data == null) throw new ArgumentNullException("data");
@@ -23,27 +24,38 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
         {
             get
             {
-                Holder holder = Volatile.Read(ref _holder);
-                if (holder == null) throw new ObjectDisposedException("FCRSharedLease");
-                return holder.Data;
+                lock (_ticketLock)
+                {
+                    Holder holder = _holder;
+                    if (holder == null) throw new ObjectDisposedException("FCRSharedLease");
+                    return holder.Data;
+                }
             }
         }
         public FCRSharedLease<T> Retain()
         {
-            Holder holder = Volatile.Read(ref _holder);
-            if (holder == null) throw new ObjectDisposedException("FCRSharedLease");
-            while (true)
+            lock (_ticketLock)
             {
-                int count = Volatile.Read(ref holder.Count);
-                if (count <= 0) throw new ObjectDisposedException("FCRSharedLease");
-                if (count == int.MaxValue) throw new InvalidOperationException("引用计数溢出");
-                if (Interlocked.CompareExchange(ref holder.Count, count + 1, count) == count)
-                    return new FCRSharedLease<T>(holder);
+                Holder holder = _holder;
+                if (holder == null) throw new ObjectDisposedException("FCRSharedLease");
+                while (true)
+                {
+                    int count = Volatile.Read(ref holder.Count);
+                    if (count <= 0) throw new ObjectDisposedException("FCRSharedLease");
+                    if (count == int.MaxValue) throw new InvalidOperationException("引用计数溢出");
+                    if (Interlocked.CompareExchange(ref holder.Count, count + 1, count) == count)
+                        return new FCRSharedLease<T>(holder);
+                }
             }
         }
         public void Dispose()
         {
-            Holder holder = Interlocked.Exchange(ref _holder, null);
+            Holder holder;
+            lock (_ticketLock)
+            {
+                holder = _holder;
+                _holder = null;
+            }
             if (holder == null) return;
             if (Interlocked.Decrement(ref holder.Count) == 0 && holder.Release != null)
                 holder.Release(holder.Data);

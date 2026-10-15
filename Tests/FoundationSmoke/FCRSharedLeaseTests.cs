@@ -27,6 +27,20 @@ namespace CxVisual.Tests.FoundationSmoke
             bool invalid = false;
             try { right.Retain(); } catch (ObjectDisposedException) { invalid = true; }
             if (!invalid) throw new InvalidOperationException("已释放票据仍可引用");
+            // 同一票据重复释放，最后持有者只能调用一次回收。
+            int releasedParallel = 0;
+            FCRSharedLease<byte[]> shared = new FCRSharedLease<byte[]>(
+                new byte[16], value => Interlocked.Increment(ref releasedParallel));
+            Task[] closers = new Task[16];
+            for (int i = 0; i < closers.Length; i++)
+                closers[i] = Task.Run(() => shared.Dispose());
+            Task allClosers = Task.WhenAll(closers);
+            if (!object.ReferenceEquals(Task.WhenAny(allClosers, Task.Delay(8000)).GetAwaiter().GetResult(),
+                allClosers)) throw new TimeoutException("并行释放票据超时");
+            allClosers.GetAwaiter().GetResult();
+            if (releasedParallel != 1)
+                throw new InvalidOperationException("并发Dispose未保证恰好一次释放");
+
         }
     }
 }
