@@ -1,170 +1,340 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
+using System.Linq;
+using System.Linq.Expressions;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using CxVisual.Foundation.Data.Configuration;
 
-namespace CxVisual.Foundation.Data.Configuration
+namespace CxVisual.Mechanism.Data.Configuration
 {
-    public enum FCMConfigApplyPolicy { Immediate, NextFrame, NextTask, Reconnect, Restart }
-    public enum FCMConfigChangeStage { Committed, Effective }
-    public enum FCMConfigIssueSeverity { Warning, Error }
-
-    [AttributeUsage(AttributeTargets.Class, Inherited = false)]
-    public sealed class FCMConfigSectionAttribute : Attribute
+    public sealed class MHSConfigPreview
     {
-        public FCMConfigSectionAttribute(string sectionId) { SectionId = sectionId; SchemaVersion = 1; }
-        public string SectionId { get; private set; }
-        public int SchemaVersion { get; set; }
+        public bool HasChanges { get; internal set; }
+        public FCMConfigValidationReport Validation { get; internal set; }
+        public string BaseVersion { get; internal set; }
+        public string CandidateJson { get; internal set; }
+        public IList<string> ChangedPaths { get; internal set; }
     }
-
-    [AttributeUsage(AttributeTargets.Property, Inherited = true)]
-    public sealed class FCMConfigItemAttribute : Attribute
+    public sealed class MHSConfigCommitResult
     {
-        public FCMConfigItemAttribute(string label) { Label = label; ApplyPolicy = FCMConfigApplyPolicy.Immediate; }
-        public string Label { get; private set; }
-        public string MemberId { get; set; }
-        public int Order { get; set; }
-        public string BeforeId { get; set; }
-        public string AfterId { get; set; }
-        public string AliasFrom { get; set; }
-        public int SinceSchemaVersion { get; set; }
-        public string Unit { get; set; }
-        public FCMConfigApplyPolicy ApplyPolicy { get; set; }
+        public bool Success { get; internal set; }
+        public string Revision { get; internal set; }
+        public bool PendingApply { get; internal set; }
+        public FCMConfigValidationReport Validation { get; internal set; }
+        public string ErrorCode { get; internal set; }
     }
-
-    [AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
-    public sealed class FCMConfigValidatorAttribute : Attribute
+    public sealed class MHSConfigSnapshot<T> : IDisposable
     {
-        public FCMConfigValidatorAttribute(Type validatorType) { ValidatorType = validatorType; }
-        public Type ValidatorType { get; private set; }
-    }
-
-    [AttributeUsage(AttributeTargets.Property, AllowMultiple = true)]
-    public sealed class FCMConfigCustomValidatorAttribute : Attribute
-    {
-        public FCMConfigCustomValidatorAttribute(Type owner, string methodName)
-        { Owner = owner; MethodName = methodName; }
-        public Type Owner { get; private set; }
-        public string MethodName { get; private set; }
-    }
-
-    [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct, Inherited = false)]
-    public sealed class FCMConfigConverterAttribute : Attribute
-    {
-        public FCMConfigConverterAttribute(Type converterType) { ConverterType = converterType; }
-        public Type ConverterType { get; private set; }
-    }
-    public interface IFCMConfigValueConverter<T>
-    {
-        string Write(T value);
-        T Read(string json);
-    }
-
-    public sealed class FCMConfigIssue
-    {
-        public FCMConfigIssue(string path, string code, string message, FCMConfigIssueSeverity severity)
-        { Path = path; Code = code; Message = message; Severity = severity; }
-        public string Path { get; private set; }
-        public string Code { get; private set; }
-        public string Message { get; private set; }
-        public FCMConfigIssueSeverity Severity { get; private set; }
-        public static FCMConfigIssue Error(string path, string code, string message)
-        { return new FCMConfigIssue(path, code, message, FCMConfigIssueSeverity.Error); }
-        public static FCMConfigIssue Warning(string path, string code, string message)
-        { return new FCMConfigIssue(path, code, message, FCMConfigIssueSeverity.Warning); }
-    }
-
-    public sealed class FCMConfigValidationContext
-    {
-        public FCMConfigValidationContext(string sectionId, string scope, string path)
-        { SectionId = sectionId; Scope = scope; Path = path; }
-        public string SectionId { get; private set; }
-        public string Scope { get; private set; }
-        public string Path { get; private set; }
-        public FCMConfigValidationContext At(string path)
-        { return new FCMConfigValidationContext(SectionId, Scope, path); }
-    }
-
-    public sealed class FCMConfigValidationReport
-    {
-        private readonly List<FCMConfigIssue> _issues = new List<FCMConfigIssue>();
-        public IList<FCMConfigIssue> Issues { get { return _issues.AsReadOnly(); } }
-        public bool IsValid
+        private T _data;
+        internal MHSConfigSnapshot(T data, string version) { _data = data; Version = version; }
+        public string Version { get; private set; }
+        public TValue Value<TValue>(Expression<Func<T, TValue>> accessor)
         {
-            get
+            if (_data == null) throw new ObjectDisposedException("MHSConfigSnapshot");
+            return FCMJsonValueCodec.Deserialize<TValue>(FCMJsonValueCodec.Serialize(accessor.Compile()(_data)));
+        }
+        public T Get()
+        {
+            if (_data == null) throw new ObjectDisposedException("MHSConfigSnapshot");
+            return FCMJsonValueCodec.Deserialize<T>(FCMJsonValueCodec.Serialize(_data));
+        }
+        public TPart Section<TPart>(Expression<Func<T, TPart>> accessor) { return Value(accessor); }
+        public void Dispose() { _data = default(T); }
+    }
+    public sealed class MHSConfigEdit<T> : IDisposable where T : new()
+    {
+        private MHSConfigSection<T> _section;
+        private readonly int _baseRevision;
+        public T WorkingCopy { get; private set; }
+        public string Reason { get; private set; }
+        internal MHSConfigEdit(MHSConfigSection<T> section, T model, int revision, string reason)
+        { _section = section; WorkingCopy = model; _baseRevision = revision; Reason = reason; }
+        public MHSConfigPreview Preview()
+        {
+            if (_section == null) throw new ObjectDisposedException("MHSConfigEdit");
+            return _section.Preview(WorkingCopy, _baseRevision);
+        }
+        public async Task<MHSConfigCommitResult> CommitAsync(CancellationToken cancellationToken)
+        {
+            if (_section == null) throw new ObjectDisposedException("MHSConfigEdit");
+            cancellationToken.ThrowIfCancellationRequested();
+            // Freeze the candidate before asynchronous validation, preventing the UI thread
+            // from modifying values after they have already been validated.
+            T candidate = FCMJsonValueCodec.Deserialize<T>(FCMJsonValueCodec.Serialize(WorkingCopy));
+            FCMConfigValidationReport report = await FCMConfigValidationEngine.ValidateAsync(candidate,
+                _section.ScopeId, cancellationToken).ConfigureAwait(false);
+            return _section.Commit(candidate, _baseRevision, cancellationToken, report);
+        }
+        public void Dispose() { _section = null; WorkingCopy = default(T); }
+    }
+
+    public sealed class MHSConfigSection<T> where T : new()
+    {
+        private readonly object _gate = new object();
+        private readonly MHSConfigStorage _store;
+        private readonly FCMConfigSchema _schema;
+        private readonly string _scope;
+        private readonly MNMConfigChangePublisher<T> _publisher = new MNMConfigChangePublisher<T>();
+        private string _savedJson;
+        private T _saved;
+        private int _savedRev;
+        private T _effective;
+        private int _effectiveRev;
+        private T _previousEffective;
+        private bool _hasPreviousEffective;
+
+        internal MHSConfigSection(string directory, FCMConfigSchema schema, string scope)
+        {
+            _schema = schema;
+            _scope = scope;
+            _store = new MHSConfigStorage(directory);
+            _savedRev = _store.Initialize(FCMJsonValueCodec.Serialize(new T()));
+            _savedJson = _store.ReadCurrent();
+            _saved = FCMJsonValueCodec.Deserialize<T>(_savedJson);
+            _effectiveRev = _store.ReadEffectiveOr(_savedRev);
+            _store.SetEffective(_effectiveRev); // Establish durable effective marker before any later commit.
+            _effective = FCMJsonValueCodec.Deserialize<T>(_store.ReadVersion(_effectiveRev));
+            int previous = _store.PreviousEffectiveRevision;
+            if (previous > 0)
             {
-                foreach (FCMConfigIssue issue in _issues)
-                    if (issue.Severity == FCMConfigIssueSeverity.Error) return false;
-                return true;
+                _previousEffective = FCMJsonValueCodec.Deserialize<T>(_store.ReadVersion(previous));
+                _hasPreviousEffective = true;
             }
         }
-        public void Add(FCMConfigIssue issue) { if (issue != null) _issues.Add(issue); }
-        public void AddRange(IEnumerable<FCMConfigIssue> issues)
-        { if (issues != null) foreach (FCMConfigIssue issue in issues) Add(issue); }
-    }
+        internal string ScopeId { get { return _scope; } }
+        public string SavedVersion { get { lock (_gate) return MHSConfigStorage.Name(_savedRev); } }
+        public string EffectiveVersion { get { lock (_gate) return MHSConfigStorage.Name(_effectiveRev); } }
+        public bool HasPendingApply { get { lock (_gate) return _savedRev != _effectiveRev; } }
+        public T Get() { lock (_gate) return Clone(_effective); }
+        public T GetLatestSaved() { lock (_gate) return Clone(_saved); }
+        public TPart Section<TPart>(Expression<Func<T, TPart>> accessor) { return Value(accessor); }
+        public TValue Value<TValue>(Expression<Func<T, TValue>> accessor)
+        { lock (_gate) return CloneValue(accessor.Compile()(_effective)); }
+        public FCMConfigValidationReport ValidateEffective()
+        { lock (_gate) return FCMConfigValidationEngine.Validate(_effective, _scope); }
+        public MHSConfigSnapshot<T> CaptureForTask(string taskId)
+        {
+            if (string.IsNullOrWhiteSpace(taskId)) throw new ArgumentException("Missing taskId");
+            lock (_gate)
+            {
+                FCMConfigValidationReport report = FCMConfigValidationEngine.Validate(_effective, _scope);
+                if (!report.IsValid) throw new InvalidOperationException("CONFIG_EFFECTIVE_INVALID: cannot start task");
+                return new MHSConfigSnapshot<T>(Clone(_effective), MHSConfigStorage.Name(_effectiveRev));
+            }
+        }
+        public MHSConfigEdit<T> BeginEdit(string reason)
+        { lock (_gate) return new MHSConfigEdit<T>(this, Clone(_saved), _savedRev, reason); }
+        public T AtSavedVersion(string name)
+        {
+            lock (_gate)
+            {
+                int revision = MHSConfigStorage.ParseName(name);
+                if (!_store.CommittedHistory(_savedRev).Contains(revision))
+                    throw new ArgumentException("Not a committed ancestor of the current config: " + name);
+                return FCMJsonValueCodec.Deserialize<T>(_store.ReadVersion(revision));
+            }
+        }
+        /// <summary>读取已提交历史版本，返回与当前配置隔离的只读快照。</summary>
+        public MHSConfigSnapshot<T> AtSavedVersionView(string name)
+        {
+            lock (_gate) return new MHSConfigSnapshot<T>(AtSavedVersion(name), name);
+        }
 
-    public interface IFCMConfigValidator<T>
-    {
-        IEnumerable<FCMConfigIssue> Validate(T value, FCMConfigValidationContext context);
-    }
-    public interface IFCMAsyncConfigValidator<T>
-    {
-        Task<IEnumerable<FCMConfigIssue>> ValidateAsync(T value, FCMConfigValidationContext context, CancellationToken cancellationToken);
-    }
+        /// <summary>指定历史版本恢复为新的保存修订；不会修改原始历史。</summary>
+        public async Task<MHSConfigCommitResult> RestoreSavedVersionAsync(string name, string reason,
+            CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrWhiteSpace(reason)) throw new ArgumentException("Restore reason required", "reason");
+            cancellationToken.ThrowIfCancellationRequested();
+            T candidate;
+            int baseline;
+            lock (_gate)
+            {
+                candidate = AtSavedVersion(name);
+                baseline = _savedRev;
+            }
+            FCMConfigValidationReport report = await FCMConfigValidationEngine.ValidateAsync(
+                candidate, _scope, cancellationToken).ConfigureAwait(false);
+            return Commit(candidate, baseline, cancellationToken, report);
+        }
 
-    public sealed class FCMConfigMemberDescriptor
-    {
-        public string Name { get; internal set; }
-        public string MemberId { get; internal set; }
-        public string Label { get; internal set; }
-        public Type MemberType { get; internal set; }
-        public int Order { get; internal set; }
-        public string BeforeId { get; internal set; }
-        public string AfterId { get; internal set; }
-        public string AliasFrom { get; internal set; }
-        public int SinceSchemaVersion { get; internal set; }
-        public string Unit { get; internal set; }
-        public FCMConfigApplyPolicy ApplyPolicy { get; internal set; }
-        public System.Reflection.PropertyInfo Property { get; internal set; }
-    }
-
-    public sealed class FCMConfigSchema
-    {
-        internal FCMConfigSchema(Type type, string sectionId, int schemaVersion, IList<FCMConfigMemberDescriptor> members)
-        { ModelType = type; SectionId = sectionId; SchemaVersion = schemaVersion; Members = new List<FCMConfigMemberDescriptor>(members).AsReadOnly(); }
-        public Type ModelType { get; private set; }
-        public string SectionId { get; private set; }
-        public int SchemaVersion { get; private set; }
-        public IList<FCMConfigMemberDescriptor> Members { get; private set; }
-    }
-
-    public sealed class FCMConfigValueInfo<T>
-    {
-        public bool HasDefaultValue { get; set; }
-        public T DefaultValue { get; set; }
-        public bool HasPreviousSaved { get; set; }
-        public T PreviousSavedValue { get; set; }
-        public bool HasPreviousEffective { get; set; }
-        public T PreviousEffectiveValue { get; set; }
-        public T LatestSavedValue { get; set; }
-        public T EffectiveValue { get; set; }
-        public string SavedVersion { get; set; }
-        public string EffectiveVersion { get; set; }
-        public string EffectiveSource { get; set; }
-        public bool IsPending { get; set; }
-    }
-
-    public sealed class FCMConfigChange<T>
-    {
-        public FCMConfigChangeStage Stage { get; set; }
-        public string Path { get; set; }
-        public T OldValue { get; set; }
-        public T NewValue { get; set; }
-        public bool HasDefaultValue { get; set; }
-        public T DefaultValue { get; set; }
-        public string Version { get; set; }
-        public string TransactionId { get; set; }
-        public IList<string> ChangedPaths { get; set; }
+        public IList<string> ListSavedVersions()
+        { lock (_gate) return _store.CommittedHistory(_savedRev).Select(MHSConfigStorage.Name).ToArray(); }
+        public FCMConfigValueInfo<TValue> Explain<TValue>(Expression<Func<T, TValue>> accessor)
+        {
+            if (accessor == null) throw new ArgumentNullException("accessor");
+            Func<T, TValue> getter = accessor.Compile();
+            lock (_gate)
+            {
+                Tuple<bool, TValue> defaults = TryValue(new T(), getter);
+                Tuple<bool, TValue> saved = TryValue(_saved, getter);
+                Tuple<bool, TValue> effective = TryValue(_effective, getter);
+                int previousRevision = _store.PreviousCommitted(_savedRev);
+                Tuple<bool, TValue> previousSaved = previousRevision > 0
+                    ? TryValue(FCMJsonValueCodec.Deserialize<T>(_store.ReadVersion(previousRevision)), getter)
+                    : Tuple.Create(false, default(TValue));
+                Tuple<bool, TValue> previousEffective = _hasPreviousEffective
+                    ? TryValue(_previousEffective, getter) : Tuple.Create(false, default(TValue));
+                return new FCMConfigValueInfo<TValue>
+                {
+                    HasDefaultValue = defaults.Item1, DefaultValue = defaults.Item2,
+                    HasLatestSavedValue = saved.Item1, LatestSavedValue = saved.Item2,
+                    LatestSavedIsExplicitNull = saved.Item1 && object.ReferenceEquals(saved.Item2, null),
+                    HasEffectiveValue = effective.Item1, EffectiveValue = effective.Item2,
+                    EffectiveIsExplicitNull = effective.Item1 && object.ReferenceEquals(effective.Item2, null),
+                    HasPreviousSaved = previousSaved.Item1, PreviousSavedValue = previousSaved.Item2,
+                    PreviousSavedIsExplicitNull = previousSaved.Item1 && object.ReferenceEquals(previousSaved.Item2, null),
+                    HasPreviousEffective = previousEffective.Item1, PreviousEffectiveValue = previousEffective.Item2,
+                    PreviousEffectiveIsExplicitNull = previousEffective.Item1 && object.ReferenceEquals(previousEffective.Item2, null),
+                    SavedVersion = MHSConfigStorage.Name(_savedRev),
+                    EffectiveVersion = MHSConfigStorage.Name(_effectiveRev),
+                    IsPending = _savedRev != _effectiveRev,
+                    EffectiveSource = _scope
+                };
+            }
+        }
+        private static Tuple<bool, TValue> TryValue<TValue>(T source, Func<T, TValue> accessor)
+        {
+            try { return Tuple.Create(true, CloneValue(accessor(source))); }
+            catch (KeyNotFoundException) { return Tuple.Create(false, default(TValue)); }
+            catch (IndexOutOfRangeException) { return Tuple.Create(false, default(TValue)); }
+            catch (ArgumentOutOfRangeException) { return Tuple.Create(false, default(TValue)); }
+            catch (NullReferenceException) { return Tuple.Create(false, default(TValue)); }
+        }
+        public IDisposable Subscribe<TValue>(Expression<Func<T, TValue>> accessor,
+            FCMConfigChangeStage stage, Action<FCMConfigChange<TValue>> callback)
+        { return _publisher.Subscribe(FCMConfigPathUtil.FromExpression(accessor), accessor.Compile(), new T(), stage, callback); }
+        public IDisposable SubscribeSection<TPart>(Expression<Func<T, TPart>> accessor,
+            FCMConfigChangeStage stage, Action<FCMConfigChange<TPart>> callback)
+        { return Subscribe(accessor, stage, callback); }
+        public IDisposable SubscribeAll(FCMConfigChangeStage stage, Action<FCMConfigChange<T>> callback)
+        { return Subscribe(x => x, stage, callback); }
+        internal MHSConfigPreview Preview(T proposed, int baseRevision)
+        {
+            lock (_gate)
+            {
+                FCMConfigValidationReport validation = FCMConfigValidationEngine.Validate(proposed, _scope);
+                return new MHSConfigPreview { BaseVersion = MHSConfigStorage.Name(baseRevision), Validation = validation,
+                    HasChanges = FCMJsonValueCodec.Serialize(proposed) != FCMJsonValueCodec.Serialize(_saved),
+                    CandidateJson = validation.IsValid ? FCMOrderedJsonDocument.Patch(_savedJson, _saved, proposed) : null,
+                    ChangedPaths = FCMConfigDiffUtil.Diff(_saved, proposed)
+                };
+            }
+        }
+        internal MHSConfigCommitResult Commit(T candidate, int baseRevision, CancellationToken cancellationToken,
+            FCMConfigValidationReport validation)
+        {
+            T oldSaved = default(T), oldEffective = default(T), savedNow = default(T);
+            int newVersion = 0, oldEffectiveVersion = 0;
+            bool immediate = false;
+            string transactionId = Guid.NewGuid().ToString("N");
+            MHSConfigCommitResult result;
+            lock (_gate)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (baseRevision != _savedRev)
+                    return new MHSConfigCommitResult { Success = false, ErrorCode = "CONFIG_REVISION_CONFLICT" };
+                if (!validation.IsValid) return new MHSConfigCommitResult { Success = false, ErrorCode = "CONFIG_VALIDATION", Validation = validation };
+                string patched = FCMOrderedJsonDocument.Patch(_savedJson, _saved, candidate);
+                if (patched == _savedJson)
+                    return new MHSConfigCommitResult { Success = true, Revision = SavedVersion, Validation = validation,
+                        PendingApply = _savedRev != _effectiveRev };
+                // Round-trip verified BEFORE touching the current file.
+                T roundtrip = FCMJsonValueCodec.Deserialize<T>(patched);
+                if (FCMJsonValueCodec.Serialize(roundtrip) != FCMJsonValueCodec.Serialize(candidate))
+                    throw new InvalidOperationException("CONFIG_ROUNDTRIP_MISMATCH");
+                oldSaved = Clone(_saved);
+                oldEffective = Clone(_effective);
+                oldEffectiveVersion = _effectiveRev;
+                immediate = GetApplyPolicy(oldSaved, candidate, typeof(T)) == FCMConfigApplyPolicy.Immediate;
+                cancellationToken.ThrowIfCancellationRequested();
+                try { newVersion = _store.Commit(_savedJson, patched); }
+                catch (InvalidOperationException ex) when (ex.Message.StartsWith("CONFIG_WRITE_CONFLICT", StringComparison.Ordinal))
+                { return new MHSConfigCommitResult { Success = false, ErrorCode = "CONFIG_WRITE_CONFLICT", Validation = validation }; }
+                _savedRev = newVersion; _savedJson = patched; _saved = roundtrip;
+                savedNow = Clone(_saved);
+                if (immediate && _effectiveRev == oldEffectiveVersion && oldEffectiveVersion == baseRevision)
+                {
+                    _store.SetEffective(_savedRev);
+                    _previousEffective = oldEffective;
+                    _hasPreviousEffective = true;
+                    _effective = Clone(_saved);
+                    _effectiveRev = _savedRev;
+                }
+                else immediate = false;
+                result = new MHSConfigCommitResult { Success = true, Revision = MHSConfigStorage.Name(_savedRev),
+                    PendingApply = _savedRev != _effectiveRev, Validation = validation };
+            }
+            _publisher.Publish(oldSaved, savedNow, newVersion, transactionId, FCMConfigChangeStage.Committed,
+                FCMConfigDiffUtil.Diff(oldSaved, savedNow));
+            if (immediate) _publisher.Publish(oldEffective, savedNow, newVersion, transactionId, FCMConfigChangeStage.Effective,
+                FCMConfigDiffUtil.Diff(oldEffective, savedNow));
+            return result;
+        }
+        public bool ApplyPendingAtFrameBoundary() { return TryApplyAtBoundary(FCMConfigApplyPolicy.NextFrame); }
+        public bool ApplyPendingAtTaskBoundary() { return TryApplyAtBoundary(FCMConfigApplyPolicy.NextTask); }
+        public bool ApplyPendingAtReconnect() { return TryApplyAtBoundary(FCMConfigApplyPolicy.Reconnect); }
+        public bool ApplyPendingAtRestart() { return TryApplyAtBoundary(FCMConfigApplyPolicy.Restart); }
+        private bool TryApplyAtBoundary(FCMConfigApplyPolicy boundary)
+        {
+            T oldValue, newValue; int revision;
+            lock (_gate)
+            {
+                if (_effectiveRev == _savedRev) return false;
+                FCMConfigApplyPolicy required = GetApplyPolicy(_effective, _saved, typeof(T));
+                if (required > boundary) return false;
+                oldValue = Clone(_effective);
+                _store.SetEffective(_savedRev);
+                _previousEffective = oldValue;
+                _hasPreviousEffective = true;
+                _effective = Clone(_saved);
+                _effectiveRev = _savedRev;
+                newValue = Clone(_effective);
+                revision = _effectiveRev;
+            }
+            _publisher.Publish(oldValue, newValue, revision, Guid.NewGuid().ToString("N"), FCMConfigChangeStage.Effective,
+                FCMConfigDiffUtil.Diff(oldValue, newValue));
+            return true;
+        }
+        private static FCMConfigApplyPolicy GetApplyPolicy(object before, object after, Type type)
+        {
+            if (before == null || after == null) return FCMConfigApplyPolicy.NextTask;
+            if (FCMConfigSchemaBuilder.IsScalar(type)) return FCMConfigApplyPolicy.Immediate;
+            IDictionary d1 = before as IDictionary, d2 = after as IDictionary;
+            if (d1 != null && d2 != null)
+            {
+                FCMConfigApplyPolicy required = FCMConfigApplyPolicy.Immediate;
+                foreach (DictionaryEntry v in d2)
+                {
+                    if (!d1.Contains(v.Key)) return FCMConfigApplyPolicy.NextTask;
+                    FCMConfigApplyPolicy item = GetApplyPolicy(d1[v.Key], v.Value,
+                        v.Value == null ? typeof(object) : v.Value.GetType());
+                    if (item > required) required = item;
+                }
+                if (d1.Count != d2.Count && required < FCMConfigApplyPolicy.NextTask)
+                    return FCMConfigApplyPolicy.NextTask;
+                return required;
+            }
+            FCMConfigApplyPolicy result = FCMConfigApplyPolicy.Immediate;
+            foreach (FCMConfigMemberDescriptor member in FCMConfigSchemaBuilder.Members(type))
+            {
+                object a = member.Property.GetValue(before, null), b = member.Property.GetValue(after, null);
+                if (FCMJsonValueCodec.Serialize(a) == FCMJsonValueCodec.Serialize(b)) continue;
+                if (member.ApplyPolicy > result) result = member.ApplyPolicy;
+                if (a != null && b != null && !FCMConfigSchemaBuilder.IsScalar(member.MemberType) &&
+                    !(a is IEnumerable && !(a is IDictionary)))
+                {
+                    FCMConfigApplyPolicy child = GetApplyPolicy(a, b, member.MemberType);
+                    if (child > result) result = child;
+                }
+            }
+            return result;
+        }
+        private static T Clone(T model) { return FCMJsonValueCodec.Deserialize<T>(FCMJsonValueCodec.Serialize(model)); }
+        private static TValue CloneValue<TValue>(TValue value)
+        { return FCMJsonValueCodec.Deserialize<TValue>(FCMJsonValueCodec.Serialize(value)); }
     }
 }

@@ -22,6 +22,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 ExecutionFlowTests.Run();
                 RuntimeCoordinationTests.Run();
                 ConfigurationIntegrationTests.RunAll();
+                ConfigV13ExtensionTests.Run();
                 HierarchyTransactionPersistence();
                 UndoRedo();
                 RejectedCommand();

@@ -26,33 +26,89 @@ namespace CxVisual.Mechanism.Data.Configuration
         public MVBConfigScopeResolver ForProject(string projectId)
         { return new MVBConfigScopeResolver(this, "project", projectId); }
 
+        /// <summary>插件程序集配置发现：先全部校验，再原子注册。</summary>
         public int RegisterAssembly(Assembly assembly)
         {
             if (assembly == null) throw new ArgumentNullException("assembly");
-            Type[] types = assembly.GetTypes();
-            int registered = 0;
+            Type[] types = assembly.GetTypes()
+                .Where(t => t.IsClass && !t.IsAbstract &&
+                    t.GetCustomAttributes(typeof(FCMConfigSectionAttribute), false).Length > 0)
+                .OrderBy(t => t.FullName, StringComparer.Ordinal).ToArray();
+            Dictionary<string, Type> candidates = new Dictionary<string, Type>(StringComparer.Ordinal);
+            foreach (Type type in types)
+            {
+                FCMConfigSchema schema = FCMConfigSchemaBuilder.Describe(type);
+                Type existing;
+                if (candidates.TryGetValue(schema.SectionId, out existing) && existing != type)
+                    throw new InvalidOperationException("Duplicate SectionId in assembly: " + schema.SectionId);
+                candidates[schema.SectionId] = type;
+            }
             lock (_gate)
             {
-                foreach (Type type in types)
+                foreach (KeyValuePair<string, Type> candidate in candidates)
                 {
-                    if (type.IsAbstract || type.GetCustomAttributes(typeof(FCMConfigSectionAttribute), false).Length == 0) continue;
-                    FCMConfigSchema schema = FCMConfigSchemaBuilder.Describe(type);
-                    foreach (Type existing in _registered)
+                    Type registered = _registered.FirstOrDefault(t =>
+                        FCMConfigSchemaBuilder.Describe(t).SectionId == candidate.Key);
+                    if (registered != null && registered != candidate.Value)
+                        throw new InvalidOperationException("Duplicate SectionId: " + candidate.Key);
+                    foreach (KeyValuePair<string, object> active in _states)
                     {
-                        if (existing != type && FCMConfigSchemaBuilder.Describe(existing).SectionId == schema.SectionId)
-                            throw new InvalidOperationException("Duplicate SectionId: " + schema.SectionId);
+                        if (!active.Key.EndsWith(":" + candidate.Key, StringComparison.Ordinal)) continue;
+                        if (active.Value.GetType().GetGenericArguments()[0] != candidate.Value)
+                            throw new InvalidOperationException("Active section conflicts: " + candidate.Key);
                     }
-                    if (_registered.Add(type)) registered++;
                 }
+                int count = 0;
+                foreach (Type type in types)
+                    if (_registered.Add(type)) count++;
+                return count;
             }
-            return registered;
         }
+
+        /// <summary>注册表快照，供 Studio 查询、定位及自动文档生成。</summary>
+        public IList<FCMConfigSchema> GetRegisteredSections()
+        {
+            lock (_gate)
+                return _registered.Select(FCMConfigSchemaBuilder.Describe)
+                    .OrderBy(s => s.SectionId, StringComparer.Ordinal).ToArray();
+        }
+
+        public FCMConfigSchema FindRegisteredSection(string sectionId)
+        {
+            if (string.IsNullOrWhiteSpace(sectionId)) throw new ArgumentException("Missing SectionId", "sectionId");
+            lock (_gate)
+                return _registered.Select(FCMConfigSchemaBuilder.Describe)
+                    .FirstOrDefault(s => s.SectionId == sectionId);
+        }
+
+        /// <summary>已有活跃配置实例时拒绝卸载，避免悬空类型和失效缓存。</summary>
+        public int UnregisterAssembly(Assembly assembly)
+        {
+            if (assembly == null) throw new ArgumentNullException("assembly");
+            lock (_gate)
+            {
+                Type[] matched = _registered.Where(t => t.Assembly == assembly).ToArray();
+                foreach (Type type in matched)
+                {
+                    string sectionId = FCMConfigSchemaBuilder.Describe(type).SectionId;
+                    if (_states.Keys.Any(k => k.EndsWith(":" + sectionId, StringComparison.Ordinal)))
+                        throw new InvalidOperationException("CONFIG_REGISTRY_SECTION_IN_USE: " + sectionId);
+                }
+                foreach (Type type in matched) _registered.Remove(type);
+                return matched.Length;
+            }
+        }
+
         internal MHSConfigSection<T> Open<T>(string scopeKind, string scopeId) where T : new()
         {
             FCMConfigSchema schema = FCMConfigSchemaBuilder.Describe<T>();
             string key = scopeKind + ":" + scopeId + ":" + schema.SectionId;
             lock (_gate)
             {
+                Type registered = _registered.FirstOrDefault(t =>
+                    FCMConfigSchemaBuilder.Describe(t).SectionId == schema.SectionId);
+                if (registered != null && registered != typeof(T))
+                    throw new InvalidOperationException("CONFIG_REGISTRY_TYPE_CONFLICT: " + schema.SectionId);
                 object item;
                 if (!_states.TryGetValue(key, out item))
                 {
