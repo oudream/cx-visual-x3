@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Windows;
@@ -17,6 +18,25 @@ namespace CxVisual.Tests.ArchitectureSmoke
     /// <summary>Windows STA真实创建WPF编辑窗口并模拟保存点击；不会连接工业设备。</summary>
     internal static class ConfigWpfL1Tests
     {
+        public sealed class NestedOptions
+        {
+            public int Count { get; set; } = 2;
+            public bool Enabled { get; set; } = true;
+        }
+
+        public sealed class ComplexOptions
+        {
+            [MPMConfigItem("阈值映射", Category = "高级")]
+            public Dictionary<string, double> Thresholds { get; set; } =
+                new Dictionary<string, double> { { "P1", 10 } };
+
+            [MPMConfigItem("子对象", Category = "高级")]
+            public NestedOptions Tuning { get; set; } = new NestedOptions();
+
+            [MPMConfigItem("任务顺序", Category = "高级")]
+            public List<string> Tasks { get; set; } = new List<string> { "Capture", "Detect" };
+        }
+
         internal static void Run()
         {
             string root = Path.Combine(Path.GetTempPath(), "CxVisual-ConfigWpf-" + Guid.NewGuid().ToString("N"));
@@ -35,7 +55,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             try
             {
                 if (failure != null) throw new InvalidOperationException("Config WPF interaction failed", failure);
-                Console.WriteLine("PASS ConfigL1 WPF: auto-generated Automation/Vision/CT3D editors, reject invalid input, save and reload valid input");
+                Console.WriteLine("PASS ConfigL1 WPF: auto-generated Automation/Vision/CT3D editors, reject invalid input, save and reload primitive/object/list/dictionary values");
             }
             finally { Directory.Delete(root, true); }
         }
@@ -46,6 +66,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             m.Register<CxAutomationDeviceOptions>("Automation.Sample", validator: CxAutomationDeviceOptions.Validate);
             m.Register<CxVisionInspectionOptions>("Vision.Sample", validator: CxVisionInspectionOptions.Validate);
             m.Register<CxCtReconstructionOptions>("CT3D.Sample", validator: CxCtReconstructionOptions.Validate);
+            m.Register<ComplexOptions>("Complex.Sample");
             m.Initialize();
 
             Window automation = MPWConfigEditorDialog.CreateWindow<CxAutomationDeviceOptions>(null, m, "Automation.Sample");
@@ -95,6 +116,41 @@ namespace CxVisual.Tests.ArchitectureSmoke
             CxVisionInspectionOptions v = other.Get<CxVisionInspectionOptions>("Vision.Sample");
             Check(v.PixelDepth == CxVisionPixelDepth.Bits8 && v.GrayThreshold == 200 &&
                   v.UseAi && v.AiModelName == "sample-model", "WPF saved values failed to roundtrip");
+
+            Window malformed = MPWConfigEditorDialog.CreateWindow<ComplexOptions>(null, m, "Complex.Sample");
+            bool malformedAccepted = Modal(malformed, w =>
+            {
+                TextBox mapping = FindTagged<TextBox>(w, "Thresholds");
+                Check(mapping != null, "Dictionary must have a generated editable control");
+                mapping.Text = "{bad-json";
+                Button save = FindNamed<Button>(w, "ConfigL1_Save");
+                save.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent, save));
+                Check(!string.IsNullOrWhiteSpace(FindNamed<TextBlock>(w, "ConfigL1_Error").Text),
+                    "Malformed nested JSON was not rejected with an explanation");
+                w.Close();
+            });
+            Check(!malformedAccepted && m.GetRevision("Complex.Sample") == 0,
+                "Invalid nested JSON committed a version");
+
+            Window complex = MPWConfigEditorDialog.CreateWindow<ComplexOptions>(null, m, "Complex.Sample");
+            bool complexAccepted = Modal(complex, w =>
+            {
+                FindTagged<TextBox>(w, "Thresholds").Text = "{\"P1\":12.5,\"P2\":20}";
+                FindTagged<TextBox>(w, "Tuning").Text = "{\"Count\":7,\"Enabled\":false}";
+                FindTagged<TextBox>(w, "Tasks").Text = "[\"Capture\",\"Reconstruct\",\"Inspect\"]";
+                Button save = FindNamed<Button>(w, "ConfigL1_Save");
+                save.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent, save));
+            });
+            Check(complexAccepted, "Automatic complex-type editor did not save valid JSON");
+            MTCConfigManager roundTrip = new MTCConfigManager(root);
+            roundTrip.Register<ComplexOptions>("Complex.Sample");
+            roundTrip.Initialize();
+            ComplexOptions dto = roundTrip.Get<ComplexOptions>("Complex.Sample");
+            Check(dto.Thresholds["P1"] == 12.5 && dto.Thresholds["P2"] == 20 &&
+                  dto.Tuning.Count == 7 && !dto.Tuning.Enabled &&
+                  dto.Tasks.Count == 3 && dto.Tasks[2] == "Inspect",
+                  "Complex dictionary/list/object data was not persisted correctly");
+
         }
 
         private static bool Modal(Window window, Action<Window> exercise)
