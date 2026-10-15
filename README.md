@@ -1,6 +1,6 @@
 # CxVisual.Unified — unified solution and executable samples V1.0-preview
 
-**Architecture:** Foundation (8) → Mechanism (9) → Professional Domain (6) → Applications (2), with Intelligence (1) and Tests (3): **29 traditional C# projects** (28 original projects plus a WPF test harness).
+**Architecture:** Foundation (8) → Mechanism (9) → Professional Domain (6) → Applications (2), with Intelligence (1) and Tests (4): **30 traditional C# projects** (28 original projects plus FoundationWpf and TestCenter).
 
 **Target platform:** Windows x64 / Visual Studio 2019 or 2022 / .NET Framework 4.8 Developer Pack, MSBuild 15+.
 **UI:** WPF and MVVM, no WinForms, no VTK dependency in this sample. `Project/Page/Content/Symbol/Group/Element` lives in `CxVisual.Mechanism.Core`, not Foundation. **Only the specified sample projects contain production-like demonstration behavior.** Other projects are deliberately assembly-only stubs, not invented functionality.
@@ -28,14 +28,14 @@ A manual graphical acceptance procedure is in `Examples/WPF/README.md`. The CLI 
 
 ```text
 CxVisual.Unified/
-├── CxVisual.Unified.sln            # all 29 projects
+├── CxVisual.Unified.sln            # all 30 projects
 ├── CxVisual.Foundation.sln         # 8 foundation projects + 1 test
 ├── Foundation/                     # 8 projects
 ├── Mechanism/                      # 9 projects incl. WPF adapter
 ├── Professional/                   # 6 domain workbench projects
 ├── Applications/                   # Studio (WPF) / Runtime.Host (CLI)
 ├── Intelligence/                   # 1 project
-├── Tests/                          # FoundationSmoke / ArchitectureSmoke / FoundationWpf
+├── Tests/                          # FoundationSmoke / ArchitectureSmoke / FoundationWpf / CxVisual.TestCenter
 ├── DOCS/                           # decisions / testing / migration / catalog
 ├── DLL/x64/                        # actual manually staged runtime binaries only
 ├── Examples/{CLI,WPF,Cases}/       # demos + test fixtures
@@ -89,3 +89,12 @@ Only structural checks were executed in the current Linux environment; Windows .
 新增`FLDEventLogHelper`/`FLDImportantEventLog`同步文件接口，支持MES/Panda/PLC等分类、自定义类别、按本地日期独立文件、流Flush、类别级门限和只清理当前类别历史文件；默认不进入`FLDLogHelper`异步队列，也不触发`LogEvent`，详见`DOCS/Implementation/F16_SynchronousDedicatedFileLogging_V1.md`。
 
 CLI自动测试已登记在`FoundationSmoke/SynchronousLogTests.cs`；FoundationWpf提供同步MES/Panda测试按钮。当前尚未有Windows MSBuild/.NET Framework 4.8实编译及动态验收记录，请不要将源码静态检查误认为已通过运行测试。
+
+## TestCenter (TCT) first milestone
+
+- `Tests/CxVisual.TestCenter`: one WPF/.NET Framework 4.8 test application, **not a seventh Workbench**.
+- Actual production-API tests: three Geometry cases and four Mechanism.Core cases (ownership, atomic rollback, XML roundtrip, revision conflict).
+- Test-specific types use `TCT` / `ITCT` names; runner/result/assertion/observation are confined to Tests.
+- Interactive launch: `Output/Debug/x64/CxVisual.TestCenter.exe`. Headless smoke: `CxVisual.TestCenter.exe --run --report report.txt` with process exit code.
+- Class specification and pending viewer/runtime/child-process acceptance: [TestCenter class baseline](DOCS/Testing/CxVisual_TestCenter_类规格与验收_V1.0.md).
+- Graph, Channel/Protocol and Runtime real observation adapters are **not yet connected**; no fake green test results. Real Windows build / WPF interactive acceptance still required.
