@@ -61,7 +61,7 @@
 
 ### 运行体系：测试驱动架构与首个代码闭环
 
-- **[统一执行体系TDD矩阵 V0.1](Testing/UnifiedExecution_TDD_Matrix_V0.1.md)**：从R1～R6、E01～E18倒推出T01～T20的测试用例、首批F19/Runtime实际类与接口、已覆盖和未覆盖项。首批T01～T10接入现有FoundationSmoke/ArchitectureSmoke；Windows CI编译及通过状态以对应提交的实际日志为准。未完成的资源租约、子流程、发布、跨进程、实机安全等明确保留为后续测试，不把设计稿当作已运行实现。
+- **[统一执行体系TDD矩阵（持续更新V0.2）](Testing/UnifiedExecution_TDD_Matrix_V0.1.md)**：从R1～R6、E01～E18倒推出T01～T20的测试用例、首批F19/Runtime实际类与接口、已覆盖和未覆盖项。首批T01～T10及后续资源租约、请求关联、分支归并、子流程、软件Plan版本等测试接入既有FoundationSmoke/ArchitectureSmoke；Windows CI编译及通过状态以对应提交的实际日志为准。未完成的资源租约、子流程、发布、跨进程、实机安全等明确保留为后续测试，不把设计稿当作已运行实现。
 
 ## 3. 新平台总边界（恢复上下文用）
 

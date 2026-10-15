@@ -1,4 +1,4 @@
-# CxVisual 统一运行体系：从六角色期望倒推测试与最小实现（TDD V0.1）
+# CxVisual 统一运行体系：从六角色期望倒推测试与最小实现（TDD V0.2，原路径持续更新）
 
 > **性质**：实现/测试事实 + 继续深化的验收清单。需求来源：[统一运行体系综合讨论稿](../Architecture/CxVisual_统一运行体系_六角色期望与并发异步编排执行_综合设计讨论稿_V0.1.md)。  
 > **范围**：现有 \`Foundation/Infrastructure/Concurrency/\`（F19）+ \`Mechanism/Runtime/Execution/\`（执行引擎），在现有FoundationSmoke/ArchitectureSmoke测试工程扩展。不新增项目、第二套编排模型或独立进程。  
@@ -9,7 +9,7 @@
 
 从六角色期望倒推：R1软件开发者提交/等待/取消；R2专业Provider仅实现\`Func<CancellationToken,Task<T>>\`；R3工程编排用户的基本DAG连线与All汇合；R4调试人员查看Work/Flow状态；R5操作员观察明确的失败/超时事实；R6平台开发者保持两个源码集中目录、没有框架复制。
 
-**先红后绿的测试驱动目标**（实际验收入口如下），核心是10个独立功能测试方法，纳入既有Windows CI必过门禁；\`Tests/FoundationSmoke/Program.cs --concurrency\`单独运行F19测试，不依赖其他仍有已知资源竞争风险的F16同步日志测试；ArchitectureSmoke仍整体执行。
+**测试场景驱动架构**（实际验收入口如下）：从首批10项扩展到20项以上可执行方法；场景代码与对应实现一同迭代，严格以Windows CI日志为准，未记录的红灯阶段不能声称已跑过；\`Tests/FoundationSmoke/Program.cs --concurrency\`单独运行F19测试，不依赖其他仍有已知资源竞争风险的F16同步日志测试；ArchitectureSmoke仍整体执行。
 
 ### 00.1 可执行命令
 
@@ -89,30 +89,30 @@ await engine.StopAsync();
 
 测试使用TaskCompletionSource作显式时序门，避免靠Thread.Sleep“碰巧通过”；每项异步等待有8秒测试超时保护。T04的短计时仅用于验证等待超时语义，不用来证明毫秒级工业时序。
 
-## 04. E01～E18需求覆盖矩阵（不可高估完成率）
+## 04. E01～E18需求覆盖矩阵（2026-10-15滚动复核）
 
-| ID | 本次状态 | 已覆盖或待补内容 |
-|---|---|---|
-| E01 提交 | **基础已覆盖** | 类型化Handle/接纳状态；尚无跨进程发布 |
-| E02 顺序 | **基础已覆盖** | DAG依赖；暂无条件/循环语义 |
-| E03 并发 | **基础已覆盖** | 并发上限/分支；无线程亲和 |
-| E04 异步 | **基础已覆盖** | Task非阻塞等待；IO协议属于M14 |
-| E05 执行组 | **部分** | 同Key串行、不同Key并发；无WholeFlow/Stage选择器 |
-| E06 背压 | **部分** | 数量容量、拒绝、可丢旧项；无字节预算及动态优先级 |
-| E07 数据交接 | **部分** | Flow输入快照和按步结果；未实现大图像跨线程所有权/租约 |
-| E08 汇合 | **部分** | All依赖完成；Any/FirstSuccess、剩余分支清理待设计 |
-| E09 超时/取消 | **部分** | 本地等待超时不误杀、Token协作取消；无外部命令结果确认 |
-| E10 互斥资源 | **未实现** | Runtime设备租约、专属资源安全仲裁 |
-| E11 异常恢复 | **部分** | 可观察失败，依赖节点不执行；重试/补偿/人工恢复待设计 |
-| E12 生命周期 | **部分** | Worker安全停止接单、排空/清理队列；Runtime计划切换未做 |
-| E13 可观察 | **部分** | Work状态、Worker队列计数、Step/Flow快照；缺Trace/调试UI |
-| E14 子流程 | **未实现** | 嵌套、参数绑定、生命周期 |
-| E15 事件定时 | **未实现** | 设备事件/Timer驱动等待、周期执行 |
-| E16 调试重放 | **未实现** | 断点、单步、数据录制、可控重放 |
-| E17 发布计划 | **未实现** | 当前仅有内存DAG校验；Draft→Publish及安全切换仍归独立生命周期机制 |
-| E18 策略扩展 | **未实现** | Dedicated/Shared/External策略、设备SDK亲和性 |
+| ID | 当前状态 | 本次已落实 | 仍未完成/不得宣称 |
+|---|---|---|---|
+| E01 任务提交 | **基础实现** | FCRWorker.Submit、Post、Invoke、Accepted、结果票据 | 分布式持久任务/跨进程提交 |
+| E02 顺序执行 | **基础实现** | DAG依赖、失败阻断、按Key FIFO | 条件/循环/动态活动图 |
+| E03 并发并行 | **基础实现** | MaxConcurrency、跨Key并行、200任务四产线顺序测试 | 真实硬实时与全局资源预算 |
+| E04 非阻塞异步 | **基础实现** | Task等待不占Worker线程，逻辑串行槽继续持有 | 真实PLC/IoT协议收发及设备时序 |
+| E05 执行组 | **部分** | KeyedSerial与跨Key并行 | 整流程/阶段/资源作用域自动映射 |
+| E06 背压 | **部分** | 有界待执行队列、Rejected、Droppable老项淘汰 | 字节预算、自动失败上报、优先级 |
+| E07 数据交接 | **部分** | 流程上下文/相对结果名、FCRSharedLease引用计数 | 深层输入不可变、大图像跨进程零拷贝 |
+| E08 等待归并 | **部分** | DAG All、FirstSuccessful、可请求取消剩余分支、AllSettled | 通用Any、分支补偿、迟到结果与专业历史归档 |
+| E09 超时取消 | **部分** | F19超时不误杀、取消协作、Correlation、Operation Unknown/late confirm | 外部操作持久化及硬件停止确认 |
+| E10 资源互斥 | **进程内基础实现** | MRKResourceLeaseCoordinator独占/取消/释放 | 跨进程权威仲裁、硬件联锁及权限 |
+| E11 异常恢复 | **部分** | 原异常、失败状态、下游阻断 | 幂等重试、补偿、人工恢复 |
+| E12 生命周期 | **部分** | Worker停止接单/排空；MRKExecutionPlanSlot旧运行版本锁定 | 进程故障恢复、硬件Session完整生命周期 |
+| E13 可观察 | **部分** | Work/Flow快照、真实Queued/Running/Waiting映射、租约与Operation状态 | Studio可视调试、持续Trace/日志关联 |
+| E14 子流程 | **基础内联实现** | InlineSubflow编译展开、相对作用域、单Worker CT流程无死锁 | ContentRef实数据绑定、子流程动态递归与循环/参数类型 |
+| E15 事件定时 | **部分** | MRKCorrelationWaiter先订阅再应答、超时/迟到去关联 | 周期任务防重入、M31/M36实际事件契约 |
+| E16 调试重放 | **未实现** | 仅底层快照基础 | 断点、单步、历史数据录制、安全重放 |
+| E17 发布计划 | **运行侧部分** | MRKExecutionPlanSlot候选暂存、运行引用固定、空闲原子切换 | M29/M39正式编译发布、跨进程协调、设备安全点 |
+| E18 执行策略 | **未实现** | 仅共享Worker与Key约束 | 专用线程/CPU亲和、优先级/异构调度 |
 
-**注意：** “基础已覆盖”仅意味着当前表列出的基本行为测试有代码，且CI成功时可证明这些用例通过；不能推断长期稳定/现场正确。
+**状态口径**：“基础实现/部分”仅在真实CI运行通过对应行为用例后成立；所有PLC、X-Ray、CT等在本轮都是模拟委托测试，未进行真实硬件安全验收。
 
 ## 05. 按测试驱动继续反推后续最少接口（目前仅设计候选，不创建空类）
 
@@ -129,15 +129,15 @@ await engine.StopAsync();
 | CT停止时没有安全确认不能释放设备租约 | T19 StopRequested≠SafeStopped，设备专业Interlock负责最终确认 | ExternalOperationStatus/ResourceLease |
 | AI服务掉线时流程不误完成、不重复推理 | T20 CorrelationId、幂等/重试策略与未知结果明确 | ProviderInvocation/DeliveryPolicy |
 
-这些是**下一轮TDD要先写出的失败用例**，不是当前已提交的可运行测试，也不要求新建10个独立Manager。真实接口应放回M09/M12/M14/M15/M26/M28/M29/M30/M31/M36等唯一Owner内；**执行实现仍主要收敛在两个目录**，不做跨项目反向依赖。
+其中T11、T12、T14、T16（内联子流程）、T17（请求关联）、T18（软件Plan切换）、T19（模拟资源保持）、T20（进程内关联去重）已提交对应可执行测试；T13仅覆盖可淘汰工作状态与共享数据租约，尚未自动写入Vision业务失败记录；T15仍未实现。未来G3/G4仍需额外测试，也不要求新建10个独立Manager。真实接口应放回M09/M12/M14/M15/M26/M28/M29/M30/M31/M36等唯一Owner内；**执行实现仍主要收敛在两个目录**，不做跨项目反向依赖。
 
 ## 06. 构建、性能和安全验收门槛
 
 ### 06.1 自动化测试层级
 
 - **G0编译与结构**：.NET48传统csproj显式Compile Include；引用仅Runtime→F19；no-WPF Foundation/Runtime；无新的常驻进程或Graph树。
-- **G1基础行为**：T01～T10必须实际运行通过；CI保持Foundation/F19和Architecture两道独立失败门禁。
-- **G2压力/竞态**：高并发随机Key、百万级提交压测（内存和时延预算经实测制定）、重复取消/Stop竞争、队列饱和和丢弃通知、长时间资源检查。
+- **G1基础行为**：T01～T12及已落地的T14、T16～T20对应基础测试必须实际运行通过；CI保持Foundation/F19和Architecture两道独立失败门禁。
+- **G2压力/竞态**：已覆盖200项四产线顺序压力测试；未来另需高并发随机Key、百万级提交压测（内存和时延预算经实测制定）、重复取消/Stop竞争、队列饱和和丢弃通知、长时间资源检查。
 - **G3专业模拟**：Vision双产线真实积压业务报告、IoT协议会话异步应答、AI跨进程超时及迟到。
 - **G4实机/现场**：PLC/运控/X-Ray联锁、紧急停止、设备安全状态及数据/历史正确性。
 
@@ -145,9 +145,9 @@ G0/G1通过不能代替G2/G3/G4。CI工作流故障时应分清本次新增测�
 
 ### 06.2 源码与工程依赖
 
-- \`Foundation/Infrastructure/CxVisual.Foundation.Infrastructure.csproj\` 显式纳入两个F19源文件。
-- \`Mechanism/Runtime/CxVisual.Mechanism.Runtime.csproj\` 显式纳入两个Execution文件，并新增**单向** \`Foundation.Infrastructure\` 项目引用。
-- FoundationSmoke新增FCRWorkerTests，ArchitectureSmoke新增ExecutionFlowTests（已有项目，无新csproj）。
+- \`Foundation/Infrastructure/CxVisual.Foundation.Infrastructure.csproj\` 显式纳入FCRWorker、FCRWorkContracts、FCRSharedLease等F19源文件。
+- \`Mechanism/Runtime/CxVisual.Mechanism.Runtime.csproj\` 显式纳入执行计划、引擎、协作/租约、Join与PlanSlot等Execution文件，并新增**单向** \`Foundation.Infrastructure\` 项目引用。
+- FoundationSmoke包含FCRWorkerTests与FCRSharedLeaseTests，ArchitectureSmoke包含ExecutionFlowTests与RuntimeCoordinationTests（已有项目，无新csproj）。
 - Windows工作流将\`FoundationSmoke.exe --concurrency\`作为必须成功的测试；旧F16日志全量Smoke继续作为单独诊断。
 - 不更动Professional、Orchestration、Studio的代码接口与运行路径；将来通过明确能力适配接入。
 
@@ -158,3 +158,26 @@ G0/G1通过不能代替G2/G3/G4。CI工作流故障时应分清本次新增测�
 3. 当实现新增执行类/API时继续审V6.4候选与旧V7.8完整签名；如发现冲突先迁移/统一Owner。
 4. 真实编排、跨进程、安全联锁不做假通过；测试、现场条件与失败原因应可复查。
 5. 更新本档案路径或状态后同步检查\`README.md\`、\`AGENTS.md\`、\`DOCS/00\`入口。尽量一项功能对应少数小文件和一次可审查提交。
+
+
+## 08. 本轮新增运行代码与测试核查清单（2026-10-15）
+
+在既有两个源码目录下实现，均已登记旧式csproj的显式Compile Include：
+
+| 文件 | 对外核心能力 | 对应测试与证据 |
+|---|---|---|
+| \`Foundation/Infrastructure/Concurrency/FCRWorker.cs\` | 异步有界Worker、KeyedSerial、Post/Invoke便捷入口、Stop/Cancel/Overflow | FCRWorkerTests：顺序/等待/超时/丢弃/异常/200任务四产线 |
+| \`Foundation/Infrastructure/Concurrency/FCRSharedLease.cs\` | 图像/体数据引用计数，最后一份票据释放回调一次 | FCRSharedLeaseTests：多分支并发释放 |
+| \`Mechanism/Runtime/Execution/MRKExecutionEngine.cs\` | 单一执行引擎、分支调度、状态快照、StartFromSlot | ExecutionFlowTests和RuntimeCoordinationTests |
+| \`Mechanism/Runtime/Execution/MRKExecutionPlan.cs\` | 静态DAG校验、子流程内联展开及相对作用域 | CT单Worker嵌套流程 |
+| \`Mechanism/Runtime/Execution/MRKRuntimeCoordination.cs\` | 进程内资源独占、Operation Unknown/late confirm、请求应答关联 | T11/T12/T17/T19/T20 |
+| \`Mechanism/Runtime/Execution/MRKWorkJoin.cs\` | FirstSuccessful及剩余分支的AllSettled | T14 |
+| \`Mechanism/Runtime/Execution/MRKExecutionPlanSlot.cs\` | 运行中锁定旧Plan版本、暂存/空闲切换新Plan | T18 |
+
+**显式限制**：MRKResourceLeaseCoordinator仅保护同一Runtime进程内的逻辑资源，不是分布式锁或物理安全联锁；MRKExecutionPlanSlot不是M39正式发布平台；MRKCorrelationWaiter不是可靠网络消息投递；InlineSubflow只是运行计划层展开，不取代现有CxNode工程结构和Orchestration定义。
+
+**主仓Git工作方式**：用户明确要求未发布阶段只在\`master\`开发、中文提交；已写入\`AGENTS.md\`和协同入口。由于存在同时进行的配置模块开发，每笔修改使用最新主分支HEAD作为父提交和预期引用，避免覆盖其他模块。
+
+**Windows CI入口**：[\`.github/workflows/config-l1-ci.yml\`](../../.github/workflows/config-l1-ci.yml)，检查完整Release/x64解决方案编译、独立F19并发测试、ArchitectureSmoke与WPF基础交互。最终验证请以当前主分支HEAD对应Actions绿色结论为准，不能把历史某次绿色结果引用为以后所有提交的证明。
+
+**尚待下一轮真实TDD**：T13业务失败持久化、T15只读Studio权限与模拟Provider隔离、T16子流程类型/动态引用、T17周期不重入、T18跨进程安全发布/回滚、T19真实PLC/运动/X-Ray联锁、T20进程重启持久幂等/跨网络可靠交付。无实机时不能声称这些已验收。
