@@ -2,7 +2,7 @@ name: TestCenter Windows .NET48
 on:
   workflow_dispatch:
   push:
-    branches: [master, feature/testcenter-contracts-evidence-v4]
+    branches: [master, feature/testcenter-platform-real-cases-v4]
     paths:
       - 'Tests/TestCenter/**'
       - 'Foundation/**'
