@@ -16,6 +16,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             T18_StagedPlanSwitchDoesNotMutateRunningFlow();
             T20_UnrelatedOrLateReplyCannotCompleteOtherRequest();
             T14_FirstSuccessRequestsCancelAndTracksRemaining();
+            T19_UnknownPhysicalOperationDoesNotReleaseSoftwareLease();
         }
         private static void Check(bool ok, string message)
         { if (!ok) throw new InvalidOperationException("Runtime协作测试: " + message); }
@@ -210,6 +211,30 @@ namespace CxVisual.Tests.ArchitectureSmoke
             MRKFlowResult next = Await(engine.StartFromSlot(slot).Completion);
             Check((int)next.Results["value"] == 20, "新执行没有使用新计划");
             Await(engine.StopAsync());
+        }
+
+        private static void T19_UnknownPhysicalOperationDoesNotReleaseSoftwareLease()
+        {
+            MRKResourceLeaseCoordinator leases = new MRKResourceLeaseCoordinator();
+            MRKExternalOperationTracker tracker = new MRKExternalOperationTracker();
+            MRKResourceLease exposure = leases.TryAcquire("XRay.Source", "Runtime.Host");
+            Check(exposure != null, "exposure lease not acquired");
+            bool created;
+            MRKExternalOperation request = tracker.Register(
+                Guid.NewGuid(), "scan-001", out created);
+            Check(created, "scan operation duplicate");
+            MRKExternalOperationObservation observation =
+                Await(request.ObserveAsync(TimeSpan.FromMilliseconds(20)));
+            Check(observation.TimedOut && request.State == MRKExternalOperationState.Unknown,
+                "no unknown state for unconfirmed physical action");
+            Check(leases.TryAcquire("XRay.Source", "Studio") == null,
+                "local timeout released physical resource ownership unsafely");
+            Check(request.Confirm(), "provider cannot explicitly confirm");
+            Check(leases.TryAcquire("XRay.Source", "Studio") == null,
+                "operation confirmation alone should not auto-reassign lease");
+            exposure.Dispose();
+            using (MRKResourceLease next = leases.TryAcquire("XRay.Source", "RuntimeNext"))
+                Check(next != null, "resource lease not released after explicit action");
         }
 
     }

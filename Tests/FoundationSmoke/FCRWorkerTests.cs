@@ -14,6 +14,7 @@ namespace CxVisual.Tests.FoundationSmoke
             CancellationAndGracefulStop();
             TimeoutDoesNotStopUnderlyingWork();
             ErrorIsObservable();
+            DeveloperConvenienceAndKeyedStress();
         }
         private static void Check(bool ok, string message)
         { if (!ok) throw new InvalidOperationException("F19 " + message); }
@@ -131,5 +132,41 @@ namespace CxVisual.Tests.FoundationSmoke
                 "worker exception swallowed");
             Await(worker.StopAsync());
         }
+        private static void DeveloperConvenienceAndKeyedStress()
+        {
+            FCRWorker worker = new FCRWorker(new FCRWorkerOptions(4, 400));
+            int posts = 0;
+            FCRWorkHandle<bool> posted = worker.Post(() => Interlocked.Increment(ref posts));
+            FCRWorkHandle<int> calculated = worker.Invoke(() => 6 * 7);
+            Check(Await(posted.Completion).Succeeded && posts == 1 &&
+                Await(calculated.Completion).Value == 42, "developer convenience APIs failed");
+
+            System.Collections.Generic.List<int>[] observed =
+                new System.Collections.Generic.List<int>[4];
+            for (int key = 0; key < observed.Length; key++)
+                observed[key] = new System.Collections.Generic.List<int>();
+            System.Collections.Generic.List<FCRWorkHandle<int>> handles =
+                new System.Collections.Generic.List<FCRWorkHandle<int>>();
+            for (int i = 0; i < 200; i++)
+            {
+                int seq = i / 4, lane = i % 4;
+                handles.Add(worker.Submit<int>(async token =>
+                {
+                    await Task.Yield();
+                    observed[lane].Add(seq); // 每Key应独立串行，无需锁。
+                    return seq;
+                }, "Line" + lane.ToString()));
+            }
+            foreach (FCRWorkHandle<int> handle in handles)
+                Check(Await(handle.Completion).Succeeded, "keyed stress lost work");
+            for (int lane = 0; lane < 4; lane++)
+            {
+                Check(observed[lane].Count == 50, "unexpected lane work count");
+                for (int n = 0; n < 50; n++)
+                    Check(observed[lane][n] == n, "keyed FIFO order violated");
+            }
+            Await(worker.StopAsync());
+        }
+
     }
 }

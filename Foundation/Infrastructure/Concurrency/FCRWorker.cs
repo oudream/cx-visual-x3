@@ -85,6 +85,30 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
         public FCRWorker(FCRWorkerOptions options)
         { _options = options ?? throw new ArgumentNullException("options"); }
 
+        /// <summary>便捷提交同步业务函数；执行在线程池Worker上，异常仍可从Handle结果查看。</summary>
+        public FCRWorkHandle<bool> Post(Action action, string key = null,
+            bool droppable = false, CancellationToken cancellation = default(CancellationToken))
+        {
+            if (action == null) throw new ArgumentNullException("action");
+            return Submit<bool>(token =>
+            {
+                token.ThrowIfCancellationRequested();
+                action();
+                return Task.FromResult(true);
+            }, key, droppable, cancellation);
+        }
+
+        public FCRWorkHandle<T> Invoke<T>(Func<T> action, string key = null,
+            bool droppable = false, CancellationToken cancellation = default(CancellationToken))
+        {
+            if (action == null) throw new ArgumentNullException("action");
+            return Submit<T>(token =>
+            {
+                token.ThrowIfCancellationRequested();
+                return Task.FromResult(action());
+            }, key, droppable, cancellation);
+        }
+
         public FCRWorkerSnapshot GetSnapshot()
         {
             lock (_gate)
