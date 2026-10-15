@@ -20,6 +20,8 @@ See `.agents/skills/cxvisual-engineering/SKILL.md` for the task-specific process
 
 - For concurrency, asynchronous IO, execution groups, workflow scheduling or runtime debugging discussions, consult [CxVisual unified execution-system discussion V0.1](DOCS/Architecture/CxVisual_统一运行体系_六角色期望与并发异步编排执行_综合设计讨论稿_V0.1.md). It records R1-R6 user goals, E01-E18 candidate requirements and a two-directory implementation direction; **it is not an approved API or implementation status**. Keep any future code changes scoped and source-audited.
 
+- For F19/Runtime execution implementation, consult [Unified execution TDD matrix V0.1](DOCS/Testing/UnifiedExecution_TDD_Matrix_V0.1.md). Keep the existing F19 and Runtime.Execution project ownership; do not mark unimplemented resource leases, live hardware confirmation, subflows, plan publishing or debug UI as tested. Run the Windows x64 build, mandatory `FoundationSmoke --concurrency`, and ArchitectureSmoke before claiming success.
+
 ## Start every CxVisual development session here
 
 - Read [DOCS/00_CxVisual_协同开发入口与七仓复用基线.md](DOCS/00_CxVisual_协同开发入口与七仓复用基线.md) first. It maps the seven code repositories, distinguishes production-proven external systems from the new x3 preview, and gives the per-project chat/development workflow.
