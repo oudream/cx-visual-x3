@@ -15,18 +15,20 @@ namespace CxVisual.Mechanism.Runtime.Execution
         private readonly ReadOnlyCollection<string> _dependencies;
         public MRKExecutionStep(string id, IEnumerable<string> dependencies,
             Func<MRKExecutionContext, CancellationToken, Task<object>> executeAsync,
-            string serialKey = null)
+            string serialKey = null, MRKExecutionPolicy policy = null)
         {
             if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("Step ID required", "id");
             if (executeAsync == null) throw new ArgumentNullException("executeAsync");
             Id = id;
             ExecuteAsync = executeAsync;
             SerialKey = serialKey;
+            Policy = policy;
             List<string> list = new List<string>(dependencies ?? new string[0]);
             _dependencies = list.AsReadOnly();
         }
         public string Id { get; private set; }
         public string SerialKey { get; private set; }
+        public MRKExecutionPolicy Policy { get; private set; }
         public IList<string> Dependencies { get { return _dependencies; } }
         public Func<MRKExecutionContext, CancellationToken, Task<object>> ExecuteAsync { get; private set; }
     }
@@ -88,7 +90,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 MRKExecutionStep local = current;
                 list.Add(new MRKExecutionStep(scope + local.Id, depends,
                     (context, token) => local.ExecuteAsync(context.ForSubflow(scope), token),
-                    local.SerialKey));
+                    local.SerialKey, local.Policy));
             }
             return list.AsReadOnly();
         }

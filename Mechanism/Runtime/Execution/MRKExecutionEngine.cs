@@ -305,7 +305,9 @@ namespace CxVisual.Mechanism.Runtime.Execution
                     await checkpoint.ConfigureAwait(false);
                 }
                 FCRWorkHandle<object> work = _worker.Submit<object>(
-                    ct => step.ExecuteAsync(context, ct), step.SerialKey, false, cancellation);
+                    ct => step.Policy == null ? step.ExecuteAsync(context, ct) :
+                        step.Policy.ExecuteAsync(context, step.ExecuteAsync, ct),
+                    step.SerialKey, false, cancellation);
                 context.SetState(step.Id, MRKStepState.Scheduled);
                 context.TrackWork(step.Id, work);
                 FCRWorkResult<object> result = await work.Completion.ConfigureAwait(false);
