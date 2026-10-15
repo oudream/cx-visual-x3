@@ -18,13 +18,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: microsoft/setup-msbuild@v2
-      - name: Structure and dependencies
+      - name: Verify project structure
         shell: powershell
-        run: .\\Build\\Verify-Structure.ps1
-      - name: Rebuild solution and run real regression tests
+        run: ./Build/Verify-Structure.ps1
+      - name: Build all solution projects
         shell: powershell
-        run: .\\Build\\BuildAndTest.ps1 -Configuration Debug
-      - name: Archive build and test evidence
+        run: |
+          New-Item -ItemType Directory -Force 'Output/Debug/x64' | Out-Null
+          & msbuild 'CxVisual.Unified.sln' /m:1 /t:Rebuild /p:Configuration=Debug /p:Platform=x64 /nologo /v:minimal "/flp:logfile=Output/Debug/x64/Build.log;verbosity=normal"
+          if ($LASTEXITCODE -ne 0) { throw "MSBuild failed: $LASTEXITCODE" }
+      - name: Run TestCenter in isolated workers
+        shell: powershell
+        run: |
+          $exe = (Resolve-Path 'Output/Debug/x64/CxVisual.TestCenter.exe').Path
+          $report = Join-Path (Get-Location) 'Output/Debug/x64/TestCenter.junit.xml'
+          $process = Start-Process -FilePath $exe -WorkingDirectory (Get-Location).Path -ArgumentList @('--run','--report',('"' + $report + '"'),'--format','junit','--isolate') -Wait -PassThru
+          if (-not (Test-Path $report)) { throw 'TestCenter did not produce JUnit report' }
+          [xml]$junit = Get-Content -LiteralPath $report -Raw
+          Write-Host "TestCenter count: $($junit.testsuite.tests); failures: $($junit.testsuite.failures); errors: $($junit.testsuite.errors); skipped: $($junit.testsuite.skipped)"
+          if ($process.ExitCode -ne 0) { throw "TestCenter failed with exit code $($process.ExitCode)" }
+      - name: Save Build and TestCenter evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
