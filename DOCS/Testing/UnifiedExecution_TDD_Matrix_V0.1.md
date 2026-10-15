@@ -1,4 +1,4 @@
-# CxVisual 统一运行体系：从六角色期望倒推测试与最小实现（TDD V0.2，原路径持续更新）
+# CxVisual 统一运行体系：从六角色期望倒推测试与最小实现（TDD V0.3，原路径持续更新）
 
 > **性质**：实现/测试事实 + 继续深化的验收清单。需求来源：[统一运行体系综合讨论稿](../Architecture/CxVisual_统一运行体系_六角色期望与并发异步编排执行_综合设计讨论稿_V0.1.md)。  
 > **范围**：现有 \`Foundation/Infrastructure/Concurrency/\`（F19）+ \`Mechanism/Runtime/Execution/\`（执行引擎），在现有FoundationSmoke/ArchitectureSmoke测试工程扩展。不新增项目、第二套编排模型或独立进程。  
@@ -94,23 +94,23 @@ await engine.StopAsync();
 | ID | 当前状态 | 本次已落实 | 仍未完成/不得宣称 |
 |---|---|---|---|
 | E01 任务提交 | **基础实现** | FCRWorker.Submit、Post、Invoke、Accepted、结果票据 | 分布式持久任务/跨进程提交 |
-| E02 顺序执行 | **基础实现** | DAG依赖、失败阻断、按Key FIFO | 条件/循环/动态活动图 |
-| E03 并发并行 | **基础实现** | MaxConcurrency、跨Key并行、200任务四产线顺序测试 | 真实硬实时与全局资源预算 |
+| E02 顺序执行 | **基础实现** | DAG/条件分支/有限循环与失败阻断 | 动态活动图编译与复杂循环状态恢复 |
+| E03 并发并行 | **基础实现** | MaxConcurrency、跨Key并行/优先级、200任务四产线FIFO | 专有线程亲和与全局资源预算 |
 | E04 非阻塞异步 | **基础实现** | Task等待不占Worker线程，逻辑串行槽继续持有 | 真实PLC/IoT协议收发及设备时序 |
 | E05 执行组 | **部分** | KeyedSerial与跨Key并行 | 整流程/阶段/资源作用域自动映射 |
 | E06 背压 | **部分** | 有界待执行队列、Rejected、Droppable老项淘汰 | 字节预算、自动失败上报、优先级 |
 | E07 数据交接 | **部分** | 流程上下文/相对结果名、FCRSharedLease引用计数 | 深层输入不可变、大图像跨进程零拷贝 |
-| E08 等待归并 | **部分** | DAG All、FirstSuccessful、可请求取消剩余分支、AllSettled | 通用Any、分支补偿、迟到结果与专业历史归档 |
+| E08 等待归并 | **基础实现** | DAG All、FirstSuccessful、取消剩余分支、AllSettled | 动态分支补偿及外部可靠归并 |
 | E09 超时取消 | **部分** | F19超时不误杀、取消协作、Correlation、Operation Unknown/late confirm | 外部操作持久化及硬件停止确认 |
-| E10 资源互斥 | **进程内基础实现** | MRKResourceLeaseCoordinator独占/取消/释放 | 跨进程权威仲裁、硬件联锁及权限 |
-| E11 异常恢复 | **部分** | 原异常、失败状态、下游阻断 | 幂等重试、补偿、人工恢复 |
-| E12 生命周期 | **部分** | Worker停止接单/排空；MRKExecutionPlanSlot旧运行版本锁定 | 进程故障恢复、硬件Session完整生命周期 |
-| E13 可观察 | **部分** | Work/Flow快照、真实Queued/Running/Waiting映射、租约与Operation状态 | Studio可视调试、持续Trace/日志关联 |
+| E10 资源互斥 | **进程内实现** | RequiredResources声明式仲裁、固定资源顺序、Worker外异步等锁、Lease自动释放 | 跨进程设备Owner与物理联锁 |
+| E11 异常恢复 | **部分** | 原异常、失败阻断、仅显式幂等任务的有限重试/退避/协作超时 | 业务补偿与持久故障恢复 |
+| E12 生命周期 | **部分** | Worker及Runtime统一停止接单、Flow排空/请求取消、Plan旧版本固定 | 故障恢复及Host进程接管 |
+| E13 可观察 | **基础headless** | Flow/Worker状态、Queued/Waiting/Paused/WaitingResources、有限Trace | Studio调试面板、持久追踪和授权 |
 | E14 子流程 | **基础内联实现** | InlineSubflow编译展开、相对作用域、单Worker CT流程无死锁 | ContentRef实数据绑定、子流程动态递归与循环/参数类型 |
-| E15 事件定时 | **部分** | MRKCorrelationWaiter先订阅再应答、超时/迟到去关联 | 周期任务防重入、M31/M36实际事件契约 |
-| E16 调试重放 | **未实现** | 仅底层快照基础 | 断点、单步、历史数据录制、安全重放 |
+| E15 事件定时 | **基础实现** | FCRAsyncGate/PeriodicJob、MRKExecutionTrigger、在途上限与拒绝计数 | 工业事件Bus、定时精度/持久订阅 |
+| E16 调试重放 | **调试基础实现** | 断点、暂停、StepOnce、Resume与取消，状态轨迹 | 历史数据录制/安全重放/WPF面板 |
 | E17 发布计划 | **运行侧部分** | MRKExecutionPlanSlot候选暂存、运行引用固定、空闲原子切换 | M29/M39正式编译发布、跨进程协调、设备安全点 |
-| E18 执行策略 | **未实现** | 仅共享Worker与Key约束 | 专用线程/CPU亲和、优先级/异构调度 |
+| E18 执行策略 | **部分** | 共享Worker、KeyedSerial、MaxConcurrency、Priority、StepPolicy | DedicatedThread、GPU/CPU亲和及外部执行位置 |
 
 **状态口径**：“基础实现/部分”仅在真实CI运行通过对应行为用例后成立；所有PLC、X-Ray、CT等在本轮都是模拟委托测试，未进行真实硬件安全验收。
 
@@ -181,3 +181,17 @@ G0/G1通过不能代替G2/G3/G4。CI工作流故障时应分清本次新增测�
 **Windows CI入口**：[\`.github/workflows/config-l1-ci.yml\`](../../.github/workflows/config-l1-ci.yml)，检查完整Release/x64解决方案编译、独立F19并发测试、ArchitectureSmoke与WPF基础交互。最终验证请以当前主分支HEAD对应Actions绿色结论为准，不能把历史某次绿色结果引用为以后所有提交的证明。
 
 **尚待下一轮真实TDD**：T13业务失败持久化、T15只读Studio权限与模拟Provider隔离、T16子流程类型/动态引用、T17周期不重入、T18跨进程安全发布/回滚、T19真实PLC/运动/X-Ray联锁、T20进程重启持久幂等/跨网络可靠交付。无实机时不能声称这些已验收。
+
+## 09. 运行内核补全批次（详见专项验收文档V0.3）
+
+本轮不等待专业接入，集中完成基础体系内的周期/事件触发、条件循环、优先级、幂等重试、协作超时、声明式资源仲裁、headless暂停/单步和执行Trace、Runtime停止排空、图像引用票据竞态保护。
+
+- **详细实现、源码清单与测试口径**：[CxVisual统一运行体系内核V0.3](CxVisual_统一运行体系内核_实现与验收_V0.3.md)。
+- **F19新增**：\`FCRScheduling.cs\`中的\`FCRAsyncGate\`和\`FCRPeriodicJob\`；Worker增加跨Key优先级（同Key仍严格FIFO）；共享票据完善Retain/Dispose同步。
+- **Runtime新增**：\`MRKExecutionControls.cs\`（Condition/Loop、调试控制、Trace）、\`MRKExecutionPolicy.cs\`（显式幂等重试/超时）、\`MRKExecutionTrigger.cs\`（手动/周期触发与在途上限）；ExecutionStep增加\`RequiredResources\`并在Worker外部异步申请。
+- **Runtime完善**：ExecutionEngine跟踪活动Flow，支持排空/协作取消Stop；节点状态包含Paused和WaitingResources；所有运行操作共享F19并发基础。
+- **测试扩展**：FoundationSmoke增加FCRSchedulingTests、优先级调度测试及共享数据竞态；ArchitectureSmoke增加ExecutionControlTests、ExecutionPolicyTests、ExecutionTriggerTests及资源/停止交叉测试。
+- **明确尚未交付**：真正的Studio运行可视调试UI、跨进程Runtime高可靠投递、外部硬件安全联锁、Data堆栈的统一工程接入、动态插件编译/正式发布，不能以当前纯基础测试证明它们已实现。
+
+最新源码与Windows CI状态以实时GitHub主分支为准，**不要把文档写成已经验收所有工业系统**。
+
