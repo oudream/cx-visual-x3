@@ -26,3 +26,12 @@ if ($ShowGUI) {
     Write-Host 'FoundationWpf started. Manually exercise Logging/System/Stress tabs.'
 }
 Write-Host 'CLI + unit smoke tests passed.'
+
+# TCT: run real Foundation/Mechanism + framework-contract tests in isolated workers.
+$testCenter = Join-Path $out 'CxVisual.TestCenter.exe'
+if (-not (Test-Path $testCenter)) { throw "Missing $testCenter; build CxVisual.Unified.sln first" }
+$report = Join-Path $out 'TestCenter.junit.xml'
+$worker = Start-Process -FilePath $testCenter -WorkingDirectory $root -ArgumentList @('--run','--report',('"' + $report + '"'),'--format','junit','--isolate') -PassThru -Wait
+if ($worker.ExitCode -ne 0) { throw "TestCenter failed: $($worker.ExitCode); inspect $report" }
+if (-not (Test-Path $report)) { throw "TestCenter did not write JUnit report" }
+Write-Host "PASS TestCenter: $report"

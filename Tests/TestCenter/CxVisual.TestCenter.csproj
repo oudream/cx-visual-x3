@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003" ToolsVersion="15.0" DefaultTargets="Build">
+  <Import Project="..\..\Build\CxVisual.Build.props" />
+  <PropertyGroup>
+    <ProjectGuid>{AD974EFE-DC8D-43DE-A6DB-19FB6EF44211}</ProjectGuid>
+    <OutputType>WinExe</OutputType>
+    <RootNamespace>CxVisual.TestCenter</RootNamespace>
+    <AssemblyName>CxVisual.TestCenter</AssemblyName>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <ProjectTypeGuids>{60DC8134-EBA5-43B8-BCC9-BB4BC16C2548};{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}</ProjectTypeGuids>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Xml" />
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="System.Web.Extensions" />
+    <Reference Include="PresentationCore" />
+    <Reference Include="PresentationFramework" />
+    <Reference Include="WindowsBase" />
+    <Reference Include="System.Xaml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="App.xaml.cs" />
+    <Compile Include="MainWindow.xaml.cs" />
+    <Compile Include="Core\TCTTesting.cs" />
+    <Compile Include="Execution\TCTExecution.cs" />
+    <Compile Include="Discovery\TCTDiscovery.cs" />
+    <Compile Include="Discovery\TCTAttributeTests.cs" />
+    <Compile Include="Fixtures\TCTFixtures.cs" />
+    <Compile Include="Reports\TCTReportWriter.cs" />
+    <Compile Include="UI\TCTControls.cs" />
+    <Compile Include="UI\TCTTestViews.cs" />
+    <Compile Include="Cases\TCTFrameworkCases.cs" />
+    <Compile Include="Cases\TCTRealCases.cs" />
+    <ApplicationDefinition Include="App.xaml">
+      <Generator>MSBuild:Compile</Generator><SubType>Designer</SubType>
+    </ApplicationDefinition>
+    <Page Include="MainWindow.xaml">
+      <Generator>MSBuild:Compile</Generator><SubType>Designer</SubType>
+    </Page>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\Foundation\Geometry\CxVisual.Foundation.Geometry.csproj">
+      <Project>{B6570EF1-8979-50D9-AF3A-3BD5450A0A23}</Project><Name>CxVisual.Foundation.Geometry</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\..\Mechanism\Core\CxVisual.Mechanism.Core.csproj">
+      <Project>{0822C861-81CD-5615-9428-D7AD3CC83AF1}</Project><Name>CxVisual.Mechanism.Core</Name>
+    </ProjectReference>
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets"/>
+</Project>

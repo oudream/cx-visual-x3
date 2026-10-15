@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $groups = @('Foundation','Mechanism','Professional','Applications','Intelligence','Tests')
 $projects = @(Get-ChildItem -Path $root -Recurse -Filter 'CxVisual*.csproj' -File | Where-Object { $_.FullName -notmatch '[\\/](Legacy|Output)[\\/]' })
-if ($projects.Count -ne 28) { throw "Expected 28 projects, got $($projects.Count)" }
+if ($projects.Count -ne 31) { throw "Expected 31 projects, got $($projects.Count)" }
 foreach ($project in $projects) {
     $relativeDirectory = $project.DirectoryName.Substring($root.Length).TrimStart('\','/')
     $segments = $relativeDirectory -split '[\\/]'
@@ -39,4 +39,4 @@ if (-not (Test-Path -LiteralPath (Join-Path $root '.agents'))) { throw '.agents 
 if (Test-Path -LiteralPath (Join-Path $root '.agents/IMPORT_R2_REQUIRED.md')) {
     Write-Warning 'Codex Skill V1.0 R2 original content has not been imported. Run Build/Import-CodexSkill-R2.ps1 when you have the ZIP.'
 }
-Write-Host 'PASS: 28 projects, short directory names, NET48, project references and solution paths.'
+Write-Host 'PASS: 31 projects, short directory names, NET48, project references and solution paths.'

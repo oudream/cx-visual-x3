@@ -1,0 +1,35 @@
+name: TestCenter Windows .NET48
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'Tests/TestCenter/**'
+      - 'Foundation/**'
+      - 'Mechanism/**'
+      - 'CxVisual.Unified.sln'
+      - 'Build/**'
+      - '.github/workflows/testcenter-windows.yml'
+
+jobs:
+  windows-testcenter:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - name: Structure and dependencies
+        shell: powershell
+        run: .\\Build\\Verify-Structure.ps1
+      - name: Rebuild solution and run real regression tests
+        shell: powershell
+        run: .\\Build\\BuildAndTest.ps1 -Configuration Debug
+      - name: Archive build and test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cxvisual-testcenter-evidence
+          path: |
+            Output/Debug/x64/Build.log
+            Output/Debug/x64/TestCenter.junit.xml
+          if-no-files-found: warn
