@@ -219,10 +219,10 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 new MRKExecutionStep("join", new []{"left", "afterRight"}, (c,ct) =>
                 {
                     Interlocked.Increment(ref joinRuns);
-                    object result;
-                    Check(ctxHas(c,"left",out result) && (int)result == 11,
+                    object branchValue;
+                    Check(ctxHas(c,"left",out branchValue) && (int)branchValue == 11,
                         "selected branch result missing");
-                    return Task.FromResult((object)result);
+                    return Task.FromResult(branchValue);
                 }, allowSkippedDependencies:true)
             });
             IMRKExecutionEngine engine = new MRKExecutionEngine(new FCRWorkerOptions(3,7));
