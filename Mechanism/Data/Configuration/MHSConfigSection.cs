@@ -335,30 +335,92 @@ namespace CxVisual.Mechanism.Data.Configuration
                 FCMConfigDiffUtil.Diff(oldEffective, savedNow));
             return result;
         }
-        public bool ApplyPendingAtFrameBoundary() { return TryApplyAtBoundary(FCMConfigApplyPolicy.NextFrame); }
-        public bool ApplyPendingAtTaskBoundary() { return TryApplyAtBoundary(FCMConfigApplyPolicy.NextTask); }
-        public bool ApplyPendingAtReconnect() { return TryApplyAtBoundary(FCMConfigApplyPolicy.Reconnect); }
-        public bool ApplyPendingAtRestart() { return TryApplyAtBoundary(FCMConfigApplyPolicy.Restart); }
-        private bool TryApplyAtBoundary(FCMConfigApplyPolicy boundary)
+        public bool ApplyPendingAtFrameBoundary()
+        { return TryApplyPendingAtBoundary(FCMConfigApplyPolicy.NextFrame, null).Applied; }
+        public bool ApplyPendingAtTaskBoundary()
+        { return TryApplyPendingAtBoundary(FCMConfigApplyPolicy.NextTask, null).Applied; }
+        public bool ApplyPendingAtReconnect()
+        { return TryApplyPendingAtBoundary(FCMConfigApplyPolicy.Reconnect, null).Applied; }
+        public bool ApplyPendingAtRestart()
+        { return TryApplyPendingAtBoundary(FCMConfigApplyPolicy.Restart, null).Applied; }
+
+        /// <summary>
+        /// 生效检查与提交分离。审查器在锁外运行，返回拒绝原因；同一版本发生变化则拒绝，
+        /// 而不是错误地将刚才审查的版本用于当前已变化的配置。
+        /// </summary>
+        public MHSConfigApplyResult TryApplyPendingAtBoundary(FCMConfigApplyPolicy boundary,
+            Func<MHSConfigApplyReview<T>, MHSConfigApplyDecision> approval)
         {
-            T oldValue, newValue; int revision;
+            T proposed, current;
+            int proposedRevision, activeRevision;
+            FCMConfigApplyPolicy required;
+            IList<string> changed;
             lock (_gate)
             {
-                if (_effectiveRev == _savedRev) return false;
-                FCMConfigApplyPolicy required = GetApplyPolicy(_effective, _saved, typeof(T));
-                if (required > boundary) return false;
+                if (_savedRev == _effectiveRev)
+                    return new MHSConfigApplyResult { Applied = false, Status = "NOT_PENDING",
+                        SavedVersion = SavedVersion, EffectiveVersion = EffectiveVersion };
+                required = GetApplyPolicy(_effective, _saved, typeof(T));
+                if (required > boundary)
+                    return new MHSConfigApplyResult { Applied = false, Status = "BOUNDARY_NOT_REACHED",
+                        SavedVersion = SavedVersion, EffectiveVersion = EffectiveVersion,
+                        RequiredBoundary = required };
+                proposed = Clone(_saved);
+                current = Clone(_effective);
+                proposedRevision = _savedRev;
+                activeRevision = _effectiveRev;
+                changed = FCMConfigDiffUtil.Diff(current, proposed);
+            }
+            FCMConfigValidationReport validation = FCMConfigValidationEngine.Validate(proposed, _scope);
+            if (!validation.IsValid)
+                return new MHSConfigApplyResult { Applied = false, Status = "CONFIG_INVALID",
+                    Reason = string.Join("; ", validation.Issues
+                        .Where(x => x.Severity == FCMConfigIssueSeverity.Error).Select(x => x.Path + ": " + x.Message)),
+                    SavedVersion = MHSConfigStorage.Name(proposedRevision),
+                    EffectiveVersion = MHSConfigStorage.Name(activeRevision), RequiredBoundary = required };
+            if (approval != null)
+            {
+                MHSConfigApplyDecision decision;
+                try
+                {
+                    decision = approval(new MHSConfigApplyReview<T>(
+                        Clone(proposed), Clone(current), MHSConfigStorage.Name(proposedRevision),
+                        MHSConfigStorage.Name(activeRevision), required, changed));
+                    if (decision == null) throw new InvalidOperationException("Apply guard returned null.");
+                }
+                catch (Exception ex)
+                {
+                    return new MHSConfigApplyResult { Applied = false, Status = "GUARD_ERROR",
+                        Reason = ex.Message, SavedVersion = MHSConfigStorage.Name(proposedRevision),
+                        EffectiveVersion = MHSConfigStorage.Name(activeRevision), RequiredBoundary = required };
+                }
+                if (!decision.Approved)
+                    return new MHSConfigApplyResult { Applied = false, Status = decision.Code, Reason = decision.Reason,
+                        SavedVersion = MHSConfigStorage.Name(proposedRevision),
+                        EffectiveVersion = MHSConfigStorage.Name(activeRevision), RequiredBoundary = required };
+            }
+            T oldValue, newValue;
+            int revision;
+            lock (_gate)
+            {
+                if (proposedRevision != _savedRev || activeRevision != _effectiveRev)
+                    return new MHSConfigApplyResult { Applied = false, Status = "APPLY_VERSION_CONFLICT",
+                        SavedVersion = SavedVersion, EffectiveVersion = EffectiveVersion, RequiredBoundary = required };
                 oldValue = Clone(_effective);
+                // SetEffective is durable and must succeed before changing the in-memory snapshot.
                 _store.SetEffective(_savedRev);
                 _previousEffective = oldValue;
                 _hasPreviousEffective = true;
                 _effective = Clone(_saved);
                 _effectiveRev = _savedRev;
-                newValue = Clone(_effective);
                 revision = _effectiveRev;
+                newValue = Clone(_effective);
             }
-            _publisher.Publish(oldValue, newValue, revision, Guid.NewGuid().ToString("N"), FCMConfigChangeStage.Effective,
-                FCMConfigDiffUtil.Diff(oldValue, newValue));
-            return true;
+            _publisher.Publish(oldValue, newValue, revision, Guid.NewGuid().ToString("N"),
+                FCMConfigChangeStage.Effective, FCMConfigDiffUtil.Diff(oldValue, newValue));
+            return new MHSConfigApplyResult { Applied = true, Status = "APPLIED",
+                SavedVersion = MHSConfigStorage.Name(revision),
+                EffectiveVersion = MHSConfigStorage.Name(revision), RequiredBoundary = required };
         }
         private static FCMConfigApplyPolicy GetApplyPolicy(object before, object after, Type type)
         {
