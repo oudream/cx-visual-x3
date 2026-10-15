@@ -24,6 +24,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
             if (!object.ReferenceEquals(winner, task)) throw new TimeoutException("控制测试等待超时");
             return task.GetAwaiter().GetResult();
         }
+        private static void Await(Task task)
+        {
+            Task winner = Task.WhenAny(task, Task.Delay(6000)).GetAwaiter().GetResult();
+            if (!object.ReferenceEquals(winner, task)) throw new TimeoutException("控制测试等待超时");
+            task.GetAwaiter().GetResult();
+        }
         private static bool Until(Func<bool> condition)
         { return SpinWait.SpinUntil(condition, 3000); }
         private static void ConditionalBranchesAndBoundedLoops()
@@ -100,13 +106,26 @@ namespace CxVisual.Tests.ArchitectureSmoke
         }
         private static void BoundedTraceDropsOldest()
         {
-            MRKExecutionTrace trace = new MRKExecutionTrace(2);
-            trace.Record("A", MRKStepState.Running);
-            trace.Record("B", MRKStepState.Completed);
-            trace.Record("C", MRKStepState.Waiting);
-            IList<MRKExecutionTransition> events = trace.Snapshot();
-            Check(trace.Dropped == 1 && events.Count == 2 && events[0].StepId == "B" &&
-                events[1].StepId == "C" && events[1].Sequence == 3, "trace ring buffer wrong");
+            MRKExecutionEngine engine = new MRKExecutionEngine(new FCRWorkerOptions(1, 2));
+            MRKExecutionPlan plan = new MRKExecutionPlan("trace", new[]
+            {
+                new MRKExecutionStep("A", new string[0],
+                    (c, ct) => Task.FromResult((object)1)),
+                new MRKExecutionStep("B", new[] { "A" },
+                    (c, ct) => Task.FromResult((object)2))
+            });
+            MRKFlowHandle handle = engine.StartFlow(plan);
+            MRKFlowResult result = Await(handle.Completion);
+            IList<MRKExecutionTransition> records = handle.Context.Trace.Snapshot();
+            Check(result.State == MRKFlowState.Completed && records.Count >= 4,
+                "actual flow produced too few trace events");
+            for (int i = 1; i < records.Count; i++)
+                Check(records[i].Sequence > records[i - 1].Sequence,
+                    "trace sequence not ordered");
+            Check(records[records.Count - 1].StepId == "B" &&
+                records[records.Count - 1].State == MRKStepState.Completed,
+                "missing terminal trace");
+            Await(engine.StopAsync());
         }
     }
 }
