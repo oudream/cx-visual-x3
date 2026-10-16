@@ -1,4 +1,4 @@
-# CxVisual统一运行体系内核：实现、协作语义与测试驱动验收 V0.4（沿用V0.3文件路径）
+# CxVisual统一运行体系内核：实现、协作语义与测试驱动验收 V0.6（沿用V0.3文件路径）
 
 > 2026-10-15。**当前阶段优先把Foundation/Mechanism运行内核独立实现到可编译、可使用、可验证，不等待业务或专业接入，也不以迁移旧项目作为本阶段前置条件。** 本文记录真实C#代码和纯基础行为测试。  
 > 设计前提来自[六角色综合需求](../Architecture/CxVisual_统一运行体系_六角色期望与并发异步编排执行_综合设计讨论稿_V0.1.md)；滚动验收见[统一TDD矩阵](UnifiedExecution_TDD_Matrix_V0.1.md)。**本文不是宣称所有E01～E18、生产设备安全、跨进程可靠执行均已交付。**
@@ -161,3 +161,13 @@ Windows Workflow：[\`config-l1-ci.yml\`](../../.github/workflows/config-l1-ci.y
 项目未发布阶段直接在\`master\`开发，新增提交统一用中文，少而清晰；当前不需要为本任务开分支。不要引入新项目或平行的Workflow Engine；修改代码时优先补可复现失败测试、在既有两处目录实现、让Windows CI门禁真实通过。设计稿可以更新，但不得要求先做专业迁移才完善运行内核。
 
 版本与状态应以本文件、实际GitHub源码及对应HEAD CI为准；与旧V7.8或另几仓的映射是后续可做的事情，不能取代独立基础运行体系的测试与实现。
+
+## 09. V0.6增构：计划编译、数据生命周期、持久审计与执行位置
+
+在原有Concurency+Runtime的执行核心之外，数据使用既定两个Owner：`Foundation.Data/Execution/`只含公共IFDEExecutionDataScope；`Mechanism.Data/Execution/`实现父子隔离、一次写入、拥有引用与生命周期。Runtime只通过Foundation接口消费数据，不反向依赖Mechanism.Data实现。
+
+Runtime新增`MRKExecutionCompiler.cs`将能力ID与依赖、端口绑定等瞬时声明转换成经过图校验的`MRKExecutionPlan`；真正业务委托由`IMRKCapabilityResolver`解析，不复制专业能力。新增`MRKExecutionJournal.cs`提供单写者文件Journal，记录Flow与节点事实，未知外部操作只产生人工/Provider核对判定。F19增加待执行数据字节预算及专用STA/MTA同步SDK线程，Runtime同一Worker可把SDK调用派送至专用线程。
+
+独立测试：`ExecutionCompilerTests`、`ExecutionDataScopeTests`、`ExecutionJournalTests`、`ExecutionPlacementTests`、`FCRDedicatedExecutorTests`，以及`FCRWorkerTests`中新增的预计字节预算和1800任务取消/停止交叉测试。
+
+详细R1～R6体验与T24～T38覆盖/缺口以[六角色差距审计V0.6](../Architecture/CxVisual_统一运行体系_六角色差距审计与内核增构_V0.5.md)为准。**上述是独立内核的代码与基础验证，不是完整的跨进程可靠恢复、正式发布、Studio UI或硬件安全验收。**

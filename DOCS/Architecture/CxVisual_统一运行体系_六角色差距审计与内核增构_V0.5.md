@@ -1,10 +1,10 @@
-# CxVisual统一运行体系：六角色需求逐项审计、内核增构与剩余架构契约 V0.5
+# CxVisual统一运行体系：六角色需求逐项审计、内核增构与剩余架构契约 V0.6（沿用V0.5路径）
 
 > **2026-10-16，工作版；设计仍可调整。**
 > 需求原始依据：[《统一运行体系·六角色期望与并发异步编排执行·综合设计讨论稿V0.1》](CxVisual_统一运行体系_六角色期望与并发异步编排执行_综合设计讨论稿_V0.1.md)。
 > 已实施代码：\`Foundation/Infrastructure/Concurrency/\`与\`Mechanism/Runtime/Execution/\`；测试在现有FoundationSmoke/ArchitectureSmoke工程。**此文件将原文需求、已经实现并由CI验证的代码，以及尚未实现的架构提案明确分开。**
 >
-> **本阶段主张**：优先独立做完整、可测试的通用运行内核，不等待旧V7.8迁移，不要求Vision/IoT/CT/AI业务接入验证。保留28项目体系，执行主体集中在两个既有目录，不创建第二套Worker、并行Graph或新常驻进程。
+> **本阶段主张**：优先独立做完整、可测试的通用运行内核，不等待旧V7.8迁移，不要求Vision/IoT/CT/AI业务接入验证。不因运行体系新增工程；并发执行主体仍集中在两个既有目录，数据遵守Foundation.Data与Mechanism.Data归属，不创建第二套Worker、并行Graph或新常驻进程。
 > **验收口径**：每次提交需由对应GitHub Windows x64 CI成功证实；不能将源码存在、讨论稿和测试通过当成同一种证据。
 
 ## 01. 原文的结构与不可偏离的边界
@@ -149,3 +149,82 @@
 - 在既有Foundation.Infrastructure/Concurrency和Mechanism.Runtime/Execution增构，类名/API可调整；不要为了兼容V7.8而牺牲运行核心正确性。
 - 不让任何真实硬件动作依赖软件Lease作为唯一安全措施；即使模拟设备测试通过，也不把“请求停止”记成“设备已安全停止”。
 - 文档是可迭代需求/设计审核，不是一次讨论后冻结。每次重大修改同步检查README、AGENTS、DOCS/00三个入口。
+
+
+## 08. 运行体系V0.6：从六角色缺口直接反推的实现（2026-10-16）
+
+本节是**V0.5增量实现记录**，保留上面原始差距与测试假设便于审查。正式源代码均保存在现有csproj并由Windows x64 CI验证；历史表中“待实现”的T项，以下仅标记**确有测试的部分能力**，不因单一API就称完整。
+
+### 08.1 面向R1～R6，直接调用方式与维护Owner
+
+| 角色 | 本轮新增的直接可用入口 | 已通过的基础语义 | 仍需完成 |
+|---|---|---|---|
+| R1代码开发者 | \`FCRWorkerOptions(..., pendingByteBudget:...)\`，Submit(...,estimatedBytes:...）；FCRDedicatedExecutor.InvokeAsync | 有界待执行图像字节估算；SDK同步函数固定物理线程；队列取消/停止 | 等待式背压、超时策略协调、资源权属统一 |
+| R2能力开发者 | \`IMRKCapabilityResolver\`、\`MRKResolvedCapability\`、\`MRKStepCompileRequest\` | 一份实际能力委托被代码或编译Plan复用；能力缺失错误定位、同一SDK线程实现 | 与M04/M15真实能力注册表联动、Schema版本与权限 |
+| R3编排工程师 | \`MRKExecutionPlanCompiler.Compile\`、原有条件/循环/子流程/类型端口 | 稳定生成Plan；聚合重复ID、未知能力、断依赖、环路；不部分执行 | 工程树到请求的编译适配、动态活动/时序图、子流程参数/返回端口 |
+| R4调试工程师 | \`IMRKExecutionJournal\`、\`MRKFileExecutionJournal.ReadAll\`、\`MRKJournalRecovery.Evaluate\` | Flow/Step事实可落盘，记录序列/校验，读取与保守判定 | Trace增量订阅、跨进程观察、完整断点/模拟重放 |
+| R5运行操作员 | \`MRKRecoveryDisposition.RequiresReconciliation\`、Session/Flow快照 | 外部Operation.Unknown或中断流程不自动重新执行；运行请求与设备确认分开 | 正式主机授权、安全点、硬件实际停止反馈 |
+| R6平台维护者 | 两处执行目录＋Data两个原Owner、现有Smoke测试 | 不新增执行器、可构建、1800任务停止/取消交叉测试、Journal断帧验证 | 真正长稳/百万压测、Journal滚动归档、健康告警与分布式状态恢复 |
+
+### 08.2 实现清单与可核对源码
+
+**计划编译：** \`Mechanism/Runtime/Execution/MRKExecutionCompiler.cs\`
+
+- 编排侧提供瞬时节点声明，不另存工程权威树；
+- \`IMRKCapabilityResolver\`将CapabilityId解析为真实委托与输出类型；
+- \`MRKExecutionPlanCompiler\`验证缺失、重复、环路、类型来源并生成稳定排序计划；
+- Compile失败返回诊断列表与null Plan；不会开始任何流程；
+- 测试：\`ExecutionCompilerTests.cs\`。
+
+**执行数据作用域：** \`Foundation/Data/Execution/FDEExecutionDataContracts.cs\` + \`Mechanism/Data/Execution/MDEExecutionDataScope.cs\`
+
+- 接口属于基础Data；父子作用域、只写一次、引用可见、资源拥有与逆序释放由机制Data实现；
+- Runtime的\`StartFlowWithData\`**依赖Foundation.Data接口，不静态依赖Mechanism.Data程序集**；Flow创建独立作用域，节点创建局部作用域，结束结算后回收；
+- 父级在子作用域存活时禁止释放；释放回调即使抛错也继续释放其他项并聚合异常；
+- 对象内部深层不可变性仍由数据拥有者负责，大型Buffer应传入受控引用，不把字典快照当深拷贝；
+- 测试：\`ExecutionDataScopeTests.cs\`。
+
+**运行Journal与恢复判定：** \`Mechanism/Runtime/Execution/MRKExecutionJournal.cs\`
+
+- \`MRKFileExecutionJournal\`：本地单写者、带长度/校验/单调序号的二进制帧，每条同步Flush；
+- 断电造成的**截断尾帧**可修剪恢复，完整帧校验坏不能被静默忽略；
+- Engine可选注入Journal，记录FlowStarted、StepTransition、FlowFinished，包含PlanRevision和CorrelationId，默认不写图像、密码和业务负载；
+- 起始Journal写入失败将拒绝启动委托，避免不受追踪的副作用；
+- \`MRKJournalRecovery.Evaluate\`仅做**保守裁决**：Flow没终态或外部操作未知必须先核对，不提供“自动重发设备指令”伪实现；
+- 测试：\`ExecutionJournalTests.cs\`。
+
+**字节背压：** \`Foundation/Infrastructure/Concurrency/FCRWorkContracts.cs\`和\`FCRWorker.cs\`
+
+- \`QueueCapacity\`与\`PendingByteBudget\`分开，任务\`estimatedBytes\`需由提交方明确提供；没声明估算值的任务无法被系统猜测真实内存；
+- 拒绝、可淘汰工作替换、待执行取消、Stop均维护字节计数；只统计Pending，不是运行中GPU内存占用；
+- 测试：\`FCRWorkerTests.ByteBudgetAndOverflowAccounting\`与三轮共1800任务交叉停止/取消压力。
+
+**专用同步SDK执行位置：** \`Foundation/Infrastructure/Concurrency/FCRDedicatedExecutor.cs\` + Runtime ExecutionStep
+
+- 每个专用Executor拥有独立同步线程和有限排队；可声明STA/MTA；
+- 运行节点可选提供DedicatedExecutorId+SynchronousSdk，Runtime经同一Worker提交Task并持有WorkId、错误与状态；
+- 编译器可传递该能力声明；Plan启动前验证专用Executor已配置；
+- 停止不会Thread.Abort，同步SDK回调不得在专用线程上等待自己；**async/await的续体不保证仍在专用线程**；
+- 测试：\`FCRDedicatedExecutorTests.cs\`及\`ExecutionPlacementTests.cs\`。
+
+### 08.3 对照T24～T38：实测进展与剩余核心事项
+
+| 用例 | 本轮可确认的进展 | 不可省略的未完成部分 |
+|---|---|---|
+| T24 | 任务数及显式估算的Pending字节预算、拒绝、Drop/Cancel/Stop释放 | 生产者可取消的异步等待背压、严格全流程数据内存预算 |
+| T25 | 同Key FIFO与跨Key Priority继续回归 | 高优先级连续注入下的公平性/不饥饿 |
+| T26 | ExecutionGroup配额/资源租约/专用同步执行位置 | WholeFlow、Stage串行策略统一编译 |
+| T27 | 基础Data作用域与机制Data隔离/释放、Runtime实接入 | 全量DataSpace堆栈/引用列表Map/订阅、跨进程Buffer Owner |
+| T28 | Capability解析与稳定Plan编译、聚合诊断 | Orchestration/CxNode完整定义到编译请求的统一适配 |
+| T29 | Guard、Skipped、条件汇合、限定循环 | 真正可视活动图复杂控制流与循环跨节点状态 |
+| T30 | 对未闭合Flow/Unknown外部操作严格判定禁止自动重播 | Checkpoint、可证明安全的幂等断点恢复/启动核对 |
+| T31 | 磁盘Journal帧、顺序校验、断尾修复、引擎事件贯通 | 跨进程Journal Owner、外部操作自动关联、Compaction、索引和重启恢复 |
+| T32 | 进程内租约约束仍保留 | Observe/Debug/Control正式授权与Host隔离 |
+| T33 | PlanSlot运行中固定版本、软件空闲原子切换 | 安全授权发布、跨进程发布、失败回滚与真正硬件安全点 |
+| T34 | 既有应答Correlation机制有基础测试 | 跨进程可靠投递、事件/命令的持久关联 |
+| T35 | STA/MTA专用同步SDK线程、有限队列、Runtime统一Work跟踪 | CPU/GPU物理调度、带线程亲和SDK的真实驱动实测 |
+| T36 | Flow/Work/Step快照、有限Trace和可读Journal | 50并行Flow端到端远程观察与Studio高亮 |
+| T37 | FCRSharedLease、子作用域拥有资源、并发释放测试 | 跨进程/跨GPU buffer引用，长时异常压力 |
+| T38 | 三轮1800任务取消/关闭/预算清零测试 | 百万任务、长稳、随机资源时序及内存泄漏评估 |
+
+**验收关键**：本轮不因没有专业接入而停止基础运行体系开发；也不通过制造接口空壳来把“未实现”伪装成“完整”。Data、M29、M35、M39等原本的机制Owner应在其范围内继续完成，Runtime负责使用它们，不复制第二套权威管理器。

@@ -20,7 +20,7 @@ See `.agents/skills/cxvisual-engineering/SKILL.md` for the task-specific process
 
 - For concurrency, asynchronous IO, execution groups, workflow scheduling or runtime debugging discussions, consult [CxVisual unified execution-system discussion V0.1](DOCS/Architecture/CxVisual_统一运行体系_六角色期望与并发异步编排执行_综合设计讨论稿_V0.1.md). It records R1-R6 user goals, E01-E18 candidate requirements and a two-directory implementation direction; **it is not an approved API or implementation status**. Keep any future code changes scoped and source-audited.
 
-- For F19/Runtime execution implementation, consult [Unified execution TDD matrix (updated V0.5)](DOCS/Testing/UnifiedExecution_TDD_Matrix_V0.1.md). Keep the existing F19 and Runtime.Execution project ownership; process-local resource leases, known-plan inlined subflows and in-memory plan slots have executable tests; do not mistake these for cross-process ownership, dynamic subflow compilation, authorized production publishing, hardware safety confirmation or Studio WPF debug UI. Run the Windows x64 build, mandatory `FoundationSmoke --concurrency`, and ArchitectureSmoke before claiming success.
+- For F19/Runtime execution implementation, consult [Unified execution TDD matrix (updated V0.6)](DOCS/Testing/UnifiedExecution_TDD_Matrix_V0.1.md). Keep the existing F19 and Runtime.Execution project ownership; process-local resource leases, known-plan inlined subflows and in-memory plan slots have executable tests; do not mistake these for cross-process ownership, dynamic subflow compilation, authorized production publishing, hardware safety confirmation or Studio WPF debug UI. Run the Windows x64 build, mandatory `FoundationSmoke --concurrency`, and ArchitectureSmoke before claiming success.
 
 ## 提交与合并规范（ChatGPT、Codex及人工协作均适用）
 
@@ -32,7 +32,7 @@ See `.agents/skills/cxvisual-engineering/SKILL.md` for the task-specific process
 
 - For current headless runtime execution source, consult [Runtime Core Implementation and Acceptance V0.3](DOCS/Testing/CxVisual_统一运行体系内核_实现与验收_V0.3.md). Finish reusable F19/Runtime behavior and tests before professional integration, while keeping hardware safety and cross-process features honestly unverified.
 
-- For six-role E01-E18 gap analysis, new execution groups/ports/flow identity/session and outstanding T24-T38 cases, use [Execution architecture gap audit V0.5](DOCS/Architecture/CxVisual_统一运行体系_六角色差距审计与内核增构_V0.5.md). Do not claim full production readiness from headless smoke tests.
+- For six-role E01-E18 gap analysis, new execution groups/ports/flow identity/session and outstanding T24-T38 cases, use [Execution architecture gap audit V0.6](DOCS/Architecture/CxVisual_统一运行体系_六角色差距审计与内核增构_V0.5.md). Newly implemented compiler/data-scopes/journal/dedicated SDK executor are tested in existing projects; they are NOT evidence for full orchestration translation, crash-safe workflow replay, approved publishing, cross-process ownership or physical interlocks. Do not claim full production readiness from headless smoke tests.
 
 ## Start every CxVisual development session here
 
