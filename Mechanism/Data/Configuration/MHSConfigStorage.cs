@@ -60,12 +60,26 @@ namespace CxVisual.Mechanism.Data.Configuration
         }
         public int IdentifyCurrent(string json)
         {
-            foreach (int version in ListVersions().Reverse())
-                if (string.Equals(ReadVersion(version), json, StringComparison.Ordinal)) return version;
-            // Crash after replacing current, before metadata: preserve recovered body as new revision.
-            int next = ListVersions().DefaultIfEmpty(0).Max() + 1;
-            SaveVersion(next, json);
-            return next;
+            IList<int> versions = ListVersions();
+            if (versions.Count == 0)
+            {
+                // A first initialization has no history. Later unmatched current.json
+                // is untrusted external modification and MUST NOT create a new root.
+                SaveVersion(1, json);
+                return 1;
+            }
+            foreach (int version in versions.Reverse())
+            {
+                if (!string.Equals(ReadVersion(version), json, StringComparison.Ordinal)) continue;
+                // An interrupted write may leave an orphan revision with exactly the
+                // same bytes as the current committed body. It is not a new ancestor.
+                if (File.Exists(ParentFile(version)) && File.Exists(AuditFile(version)))
+                    return version;
+                if (version == versions[0] && !File.Exists(ParentFile(version)) &&
+                    !File.Exists(AuditFile(version)))
+                    return version;
+            }
+            throw new InvalidOperationException("CONFIG_CURRENT_VERSION_UNRECOGNIZED");
         }
         /// <summary>Fail closed when persisted data has no matching schema identity.
         /// A legacy unversioned document requires an explicit reviewed migration.</summary>
