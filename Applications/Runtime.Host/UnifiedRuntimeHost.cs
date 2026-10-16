@@ -38,6 +38,33 @@ namespace CxVisual.Runtime.Host
         }
     }
 
+    /// <summary>Host演练用的瞬时编排Catalog；非工程持久定义的替代品。</summary>
+    internal sealed class MRHSimulationCatalog : IMRKFlowCompileCatalog
+    {
+        public bool TryGet(string id, out MRKFlowCompileDefinition definition)
+        {
+            if (id == "host-simulation")
+            {
+                definition = new MRKFlowCompileDefinition(id, new[]
+                {
+                    new MRKStepCompileRequest("process",null,subflowId:"calculate-pipeline")
+                });
+                return true;
+            }
+            if (id == "calculate-pipeline")
+            {
+                definition = new MRKFlowCompileDefinition(id, new[]
+                {
+                    new MRKStepCompileRequest("prepare","Prepare"),
+                    new MRKStepCompileRequest("calculate","Calculate",new[]{"prepare"})
+                });
+                return true;
+            }
+            definition = null;
+            return false;
+        }
+    }
+
     internal sealed class MRHSimulationPublishPolicy : IMRKPlanPublicationPolicy
     {
         public bool Authorize(string principal, MRKPlanPublishAction action,
@@ -102,13 +129,9 @@ namespace CxVisual.Runtime.Host
                 MRKExecutionPlanPublisher publisher =
                     new MRKExecutionPlanPublisher(slot, baseline, 1,
                         new MRHSimulationPublishPolicy());
-                MRKPlanPublicationReceipt receipt = publisher.CompileAndStage(
-                    "local-simulation", "host-simulation", new[]
-                    {
-                        new MRKStepCompileRequest("prepare", "Prepare"),
-                        new MRKStepCompileRequest("calculate", "Calculate",
-                            new[] { "prepare" })
-                    }, new MRHSimulationResolver(), 2);
+                MRKPlanPublicationReceipt receipt = publisher.CompileAndStageOrchestration(
+                    "local-simulation", "host-simulation",
+                    new MRHSimulationCatalog(), new MRHSimulationResolver(), 2);
                 if (!receipt.Accepted || !publisher.TryActivate("local-simulation"))
                     throw new InvalidOperationException("Host模拟计划发布未通过安全验证");
                 MRKExecutionEngine engine =
@@ -156,7 +179,7 @@ namespace CxVisual.Runtime.Host
                 Console.WriteLine("Flow=" + result.FlowId + " PlanRevision=" +
                     result.Metadata.PlanRevision + " State=" + result.State);
                 if (result.State != MRKFlowState.Completed ||
-                    (int)result.Results["calculate"] != 5)
+                    (int)result.Results["process.calculate"] != 5)
                     return 1;
                 Console.WriteLine("RuntimeHost PASS compiled plan / session / journal");
                 return 0;
