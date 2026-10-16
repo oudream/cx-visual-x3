@@ -2,11 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using CxVisual.Foundation.Data.Execution;
-using CxVisual.Mechanism.Data.Execution;
 
 namespace CxVisual.Mechanism.Data.RuntimeData
 {
-    /// <summary>节点数据访问门面。Output只暂存，必须由运行宿主确认成功后提交。</summary>
+    /// <summary>业务节点的统一数据入口；提交、取消由运行宿主负责。</summary>
     public interface IMDSDataContext
     {
         T Get<T>(string name);
@@ -17,53 +16,63 @@ namespace CxVisual.Mechanism.Data.RuntimeData
     }
 
     /// <summary>
-    /// 复用现有执行Scope而非再创建平行Scope。
-    /// 本阶段Commit返回整体不可变输出视图，不隐式发布到父Scope。
-    /// 后续由MRK运行引擎适配原子端口交接。
+    /// 复用既有Scope。本类型不另建Scope或流程执行器。
+    /// 托管帧的Get只允许本地数据与显式映射的输入，不继承父Scope隐式Local。
     /// </summary>
     public sealed class MDSDataContext : IMDSDataContext
     {
         private readonly object _gate = new object();
         private readonly IFDEExecutionDataScope _scope;
+        private readonly IDictionary<string, object> _inputs;
+        private readonly IDictionary<string, Type> _outputs;
+        private readonly Action<IDictionary<string, object>> _publish;
         private readonly Dictionary<string, object> _pending =
             new Dictionary<string, object>(StringComparer.Ordinal);
         private bool _finished;
 
+        /// <summary>向后兼容独立使用，未显式声明输出时只做本地输出快照。</summary>
         public MDSDataContext(IFDEExecutionDataScope scope)
+            : this(scope, null, null, null) { }
+
+        internal MDSDataContext(IFDEExecutionDataScope scope,
+            IDictionary<string, object> inputs, IDictionary<string, Type> outputs,
+            Action<IDictionary<string, object>> publish)
         {
             if (scope == null) throw new ArgumentNullException("scope");
             _scope = scope;
+            _inputs = inputs == null ? null : MDSDataSafety.Snapshot(inputs);
+            if (outputs != null)
+            {
+                Dictionary<string, Type> declared = new Dictionary<string, Type>(StringComparer.Ordinal);
+                foreach (KeyValuePair<string, Type> item in outputs)
+                {
+                    CheckName(item.Key);
+                    if (item.Value == null || item.Value == typeof(void))
+                        throw new ArgumentException("输出类型无效：" + item.Key, "outputs");
+                    declared.Add(item.Key, item.Value);
+                }
+                _outputs = new ReadOnlyDictionary<string, Type>(declared);
+            }
+            _publish = publish;
         }
 
         private void EnsureActive()
         {
             if (_scope.IsClosed) throw new ObjectDisposedException("MDSDataContext");
-            if (_finished) throw new InvalidOperationException("当前执行上下文已结算");
+            if (_finished) throw new InvalidOperationException("当前执行上下文已经结算");
         }
-
         private static void CheckName(string name)
         {
             if (string.IsNullOrWhiteSpace(name))
                 throw new ArgumentException("数据名称不能为空", "name");
         }
 
-        private static object SafeValue(object value)
-        {
-            if (value == null) return null;
-            Type t = value.GetType();
-            if (t == typeof(byte[])) return ((byte[])value).Clone();
-            if (t.IsPrimitive || t.IsEnum || t == typeof(string) ||
-                t == typeof(decimal) || t == typeof(Guid) ||
-                t == typeof(DateTime) || t == typeof(DateTimeOffset) ||
-                t == typeof(TimeSpan)) return value;
-            throw new NotSupportedException("尚未注册安全的数据值适配：" + t.FullName);
-        }
-
         public T Get<T>(string name)
         {
-            T result;
-            if (!TryGet(name, out result)) throw new KeyNotFoundException("找不到数据：" + name);
-            return result;
+            T value;
+            if (!TryGet<T>(name, out value))
+                throw new KeyNotFoundException("找不到已映射的数据：" + name);
+            return value;
         }
 
         public bool TryGet<T>(string name, out T value)
@@ -72,14 +81,26 @@ namespace CxVisual.Mechanism.Data.RuntimeData
             lock (_gate)
             {
                 EnsureActive();
-                T found;
-                if (!_scope.TryRead(name, out found))
+                if (_inputs == null)
                 {
-                    value = default(T);
-                    return false;
+                    T legacy;
+                    if (!_scope.TryRead(name, out legacy))
+                    { value = default(T); return false; }
+                    value = (T)MDSDataSafety.Capture(legacy);
+                    return true;
                 }
-                object safe = SafeValue(found);
-                value = (T)safe;
+                // 严格边界：只看本地及显式输入，绝不依赖父级自动继承。
+                IDictionary<string, object> local = _scope.SnapshotLocal();
+                object found;
+                if (!local.TryGetValue(name, out found) &&
+                    !_inputs.TryGetValue(name, out found))
+                { value = default(T); return false; }
+                if (found != null && !(found is T))
+                    throw new InvalidCastException("数据类型不匹配：" + name);
+                if (found == null && typeof(T).IsValueType &&
+                    Nullable.GetUnderlyingType(typeof(T)) == null)
+                    throw new InvalidCastException("null不能转换为非空值类型：" + name);
+                value = (T)MDSDataSafety.Capture(found);
                 return true;
             }
         }
@@ -90,7 +111,9 @@ namespace CxVisual.Mechanism.Data.RuntimeData
             lock (_gate)
             {
                 EnsureActive();
-                _scope.Put(name, (T)SafeValue(value));
+                if (_inputs != null && _inputs.ContainsKey(name))
+                    throw new InvalidOperationException("只读输入不能被同名Local覆盖：" + name);
+                _scope.Put(name, (T)MDSDataSafety.Capture(value));
             }
         }
 
@@ -100,9 +123,20 @@ namespace CxVisual.Mechanism.Data.RuntimeData
             lock (_gate)
             {
                 EnsureActive();
+                Type expected;
+                if (_outputs != null)
+                {
+                    if (!_outputs.TryGetValue(name, out expected))
+                        throw new InvalidOperationException("未声明的输出端口：" + name);
+                    if (value != null && !expected.IsInstanceOfType(value))
+                        throw new InvalidCastException("输出类型不符合端口契约：" + name);
+                    if (value == null && expected.IsValueType &&
+                        Nullable.GetUnderlyingType(expected) == null)
+                        throw new InvalidCastException("非空输出不能返回null：" + name);
+                }
                 if (_pending.ContainsKey(name))
-                    throw new InvalidOperationException("重复返回输出：" + name);
-                _pending.Add(name, SafeValue(value));
+                    throw new InvalidOperationException("输出不能重复Return：" + name);
+                _pending.Add(name, MDSDataSafety.Capture(value));
             }
         }
 
@@ -111,28 +145,26 @@ namespace CxVisual.Mechanism.Data.RuntimeData
             lock (_gate)
             {
                 EnsureActive();
-                return Snapshot();
+                return MDSDataSafety.Snapshot(_pending);
             }
         }
 
-        private IDictionary<string, object> Snapshot()
-        {
-            Dictionary<string, object> copy = new Dictionary<string, object>(StringComparer.Ordinal);
-            foreach (KeyValuePair<string, object> item in _pending)
-                copy.Add(item.Key, SafeValue(item.Value));
-            return new ReadOnlyDictionary<string, object>(copy);
-        }
-
-        /// <summary>仅由运行宿主在成功与端口验证后调用；结果整体快照发布。</summary>
         public IDictionary<string, object> CommitOutputs()
         {
             lock (_gate)
             {
                 EnsureActive();
-                IDictionary<string, object> result = Snapshot();
+                if (_outputs != null)
+                    foreach (string name in _outputs.Keys)
+                        if (!_pending.ContainsKey(name))
+                            throw new InvalidOperationException("必要输出尚未返回：" + name);
+                IDictionary<string, object> ready = MDSDataSafety.Snapshot(_pending);
+                // 先将完整快照交付到Flow级DataStack，再使当前帧结算。
+                // 失败则原Pending保持原状，不向任何消费者暴露部分输出。
+                if (_publish != null) _publish(ready);
                 _finished = true;
                 _pending.Clear();
-                return result;
+                return MDSDataSafety.Snapshot(ready);
             }
         }
 
