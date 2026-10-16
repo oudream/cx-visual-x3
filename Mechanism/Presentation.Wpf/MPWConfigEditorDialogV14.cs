@@ -126,7 +126,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         {
             if (_disposed || _working) return;
             try { _issues.Text = ""; action(); RefreshAll(); }
-            catch (Exception ex) { ShowError(ex); }
+            catch (Exception ex) { ShowError(ex); RefreshAll(); }
         }
         private void ShowError(Exception ex)
         {
@@ -178,6 +178,18 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 return;
             }
             Type actual = Nullable.GetUnderlyingType(type) ?? type;
+            Func<string, Action<string>, FrameworkElement> complexEditor;
+            if (!IsScalar(type) && _custom.TryGetValue(path, out complexEditor))
+            {
+                StackPanel customPanel = new StackPanel { Margin = new Thickness(5) };
+                customPanel.Children.Add(new TextBlock { Text = label + " · 专业编辑器",
+                    FontWeight = FontWeights.SemiBold, Margin = new Thickness(3, 4, 3, 5) });
+                customPanel.Children.Add(complexEditor(FCMJsonValueCodec.Serialize(value),
+                    json => Execute(() => _editor.SetPathJson(path, json))));
+                host.Children.Add(customPanel);
+                _count++;
+                return;
+            }
             if (IsScalar(type))
             {
                 StackPanel line = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(4, 5, 4, 5) };
@@ -231,8 +243,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             host.Children.Add(expander);
             if (value == null)
             {
-                inner.Children.Add(new TextBlock { Text = "null：请先初始化上层对象。",
+                inner.Children.Add(new TextBlock { Text = "该节点目前为 null，可显式初始化。",
                     Foreground = Brushes.Gray });
+                inner.Children.Add(MakeButton("初始化节点", () =>
+                    Execute(() => _editor.SetPathJson(path, DefaultJson(actual)))));
                 return;
             }
             if (actual.IsArray || (actual.IsGenericType &&
