@@ -15,6 +15,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             ParentChildIsolationAndSingleAssignment();
             RootCannotCloseBeforeDescendants();
             OwnedDataReleasedOnceInReverseOrder();
+            FlowAndStepScopesAreConnectedAndClosed();
         }
         private static void Check(bool ok, string msg)
         { if (!ok) throw new InvalidOperationException("运行数据作用域：" + msg); }
@@ -65,6 +66,51 @@ namespace CxVisual.Tests.ArchitectureSmoke
             bool refused = false;
             try { scope.Put("late", 1); } catch (ObjectDisposedException) { refused = true; }
             Check(refused, "关闭后仍可发布数据");
+        }        private static void FlowAndStepScopesAreConnectedAndClosed()
+        {
+            int released = 0;
+            MDEExecutionDataScope root = MDEExecutionDataScope.CreateRoot("host");
+            root.Put("BatchId", "B007");
+            MRKExecutionPlan plan = new MRKExecutionPlan("scoped", new[]
+            {
+                new MRKExecutionStep("left", new string[0], (ctx,ct) =>
+                {
+                    string batch;
+                    Check(ctx.DataScope != null &&
+                        ctx.DataScope.TryRead("BatchId", out batch) && batch == "B007",
+                        "Flow未继承统一数据作用域");
+                    ctx.DataScope.PutOwned("image", new byte[32], value =>
+                        Interlocked.Increment(ref released));
+                    return Task.FromResult((object)1);
+                }),
+                new MRKExecutionStep("right", new string[0], (ctx,ct) =>
+                {
+                    byte[] image;
+                    Check(!ctx.DataScope.TryRead("image", out image),
+                        "并行节点泄漏另一个节点的局部数据");
+                    return Task.FromResult((object)2);
+                })
+            });
+            MRKExecutionEngine engine = new MRKExecutionEngine(new FCRWorkerOptions(2,4));
+            MRKFlowResult result = Wait(engine.StartFlowWithData(plan, root).Completion);
+            Check(result.State == MRKFlowState.Completed && released == 1,
+                "Flow结束前资源未安全释放");
+            root.Dispose();
+            Check(root.IsClosed && released == 1, "关闭后的根作用域仍持有子资源");
+            Wait(engine.StopAsync());
         }
+        private static T Wait<T>(Task<T> task)
+        {
+            Task first = Task.WhenAny(task, Task.Delay(6000)).GetAwaiter().GetResult();
+            if (!object.ReferenceEquals(first,task)) throw new TimeoutException("数据作用域运行测试超时");
+            return task.GetAwaiter().GetResult();
+        }
+        private static void Wait(Task task)
+        {
+            Task first = Task.WhenAny(task, Task.Delay(6000)).GetAwaiter().GetResult();
+            if (!object.ReferenceEquals(first,task)) throw new TimeoutException("数据作用域运行测试超时");
+            task.GetAwaiter().GetResult();
+        }
+
     }
 }

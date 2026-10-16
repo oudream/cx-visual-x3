@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CxVisual.Foundation.Infrastructure.Concurrency;
+using CxVisual.Foundation.Data.Execution;
 
 namespace CxVisual.Mechanism.Runtime.Execution
 {
@@ -27,14 +28,16 @@ namespace CxVisual.Mechanism.Runtime.Execution
         private readonly string _scopePrefix;
         private readonly MRKExecutionTrace _trace;
         private readonly IDictionary<string, object> _boundInputs;
+        private readonly IFDEExecutionDataScope _dataScope;
         private readonly ConcurrentQueue<string> _completedOrder = new ConcurrentQueue<string>();
         internal MRKExecutionContext(string planId, IDictionary<string, object> inputs,
-            MRKFlowMetadata metadata = null)
+            MRKFlowMetadata metadata = null, IFDEExecutionDataScope dataSpace = null)
         {
             FlowId = Guid.NewGuid();
             PlanId = planId;
             Metadata = metadata ?? new MRKFlowMetadata();
             _scopePrefix = string.Empty;
+            _dataScope = dataSpace == null ? null : dataSpace.CreateChild("flow-" + FlowId.ToString("N"));
             _trace = new MRKExecutionTrace();
             _boundInputs = new ReadOnlyDictionary<string, object>(new Dictionary<string, object>());
             _inputs = new ReadOnlyDictionary<string, object>(new Dictionary<string, object>(
@@ -52,6 +55,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
             _inputs = parent._inputs;
             _scopePrefix = parent._scopePrefix + prefix;
             _trace = parent._trace;
+            _dataScope = parent._dataScope;
             _boundInputs = parent._boundInputs;
             _completedOrder = parent._completedOrder;
         }
@@ -62,6 +66,15 @@ namespace CxVisual.Mechanism.Runtime.Execution
         { _boundInputs = ports; }
         internal MRKExecutionContext WithBoundInputs(IDictionary<string, object> ports)
         { return new MRKExecutionContext(this, ports); }
+        private MRKExecutionContext(MRKExecutionContext parent, IFDEExecutionDataScope scope)
+            : this(parent, string.Empty)
+        { _dataScope = scope; }
+        internal MRKExecutionContext WithDataScope(IFDEExecutionDataScope scope)
+        { return new MRKExecutionContext(this, scope); }
+        public IFDEExecutionDataScope DataScope { get { return _dataScope; } }
+        internal void CloseFlowDataScope()
+        { if (_dataScope != null) _dataScope.Dispose(); }
+
         public IDictionary<string, object> BoundInputs { get { return _boundInputs; } }
         public bool TryGetBoundInput<T>(string name, out T value)
         {
@@ -250,6 +263,9 @@ namespace CxVisual.Mechanism.Runtime.Execution
         MRKFlowHandle StartFlowWithMetadata(MRKExecutionPlan plan, MRKFlowMetadata metadata,
             IDictionary<string, object> inputs = null,
             CancellationToken cancellation = default(CancellationToken));
+        MRKFlowHandle StartFlowWithData(MRKExecutionPlan plan, IFDEExecutionDataScope dataSpace,
+            IDictionary<string, object> inputs = null,
+            CancellationToken cancellation = default(CancellationToken));
         MRKFlowHandle StartFromSlot(MRKExecutionPlanSlot slot, IDictionary<string, object> inputs = null,
             CancellationToken cancellation = default(CancellationToken));
         FCRWorkerSnapshot GetSnapshot();
@@ -415,21 +431,30 @@ namespace CxVisual.Mechanism.Runtime.Execution
 
         public MRKFlowHandle StartFlow(MRKExecutionPlan plan, IDictionary<string, object> inputs = null,
             CancellationToken cancellation = default(CancellationToken))
-        { return StartFlowCore(plan, null, null, inputs, cancellation); }
+        { return StartFlowCore(plan, null, null, inputs, cancellation, null); }
 
         public MRKFlowHandle StartFlowWithMetadata(MRKExecutionPlan plan,
             MRKFlowMetadata metadata, IDictionary<string, object> inputs = null,
             CancellationToken cancellation = default(CancellationToken))
-        { return StartFlowCore(plan, null, metadata, inputs, cancellation); }
+        { return StartFlowCore(plan, null, metadata, inputs, cancellation, null); }
 
         public MRKFlowHandle StartFlowWithControl(MRKExecutionPlan plan,
             MRKExecutionDebugController control, IDictionary<string, object> inputs = null,
             CancellationToken cancellation = default(CancellationToken))
-        { return StartFlowCore(plan, control, null, inputs, cancellation); }
+        { return StartFlowCore(plan, control, null, inputs, cancellation, null); }
+        /// <summary>运行体系借用M09数据空间；Flow与各节点创建生命周期受控的子作用域。</summary>
+        public MRKFlowHandle StartFlowWithData(MRKExecutionPlan plan,
+            IFDEExecutionDataScope dataSpace, IDictionary<string, object> inputs = null,
+            CancellationToken cancellation = default(CancellationToken))
+        {
+            if (dataSpace == null) throw new ArgumentNullException("dataSpace");
+            return StartFlowCore(plan, null, null, inputs, cancellation, dataSpace);
+        }
 
         private MRKFlowHandle StartFlowCore(MRKExecutionPlan plan,
             MRKExecutionDebugController control, MRKFlowMetadata metadata,
-            IDictionary<string, object> inputs, CancellationToken cancellation)
+            IDictionary<string, object> inputs, CancellationToken cancellation,
+            IFDEExecutionDataScope dataSpace)
         {
             if (plan == null) throw new ArgumentNullException("plan");
             MRKExecutionPortBinder.VerifyFlowInputs(plan, inputs);
@@ -441,7 +466,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
             lock (_lifecycleGate)
             {
                 if (_stopping) throw new InvalidOperationException("运行引擎已经停止接收新流程");
-                MRKExecutionContext context = new MRKExecutionContext(plan.Id, inputs, metadata);
+                MRKExecutionContext context = new MRKExecutionContext(plan.Id, inputs, metadata, dataSpace);
                 CancellationTokenSource linked =
                     CancellationTokenSource.CreateLinkedTokenSource(cancellation);
                 MRKFlowHandle handle = new MRKFlowHandle(context, linked);
@@ -486,7 +511,11 @@ namespace CxVisual.Mechanism.Runtime.Execution
                     ? MRKFlowState.Cancelled : MRKFlowState.Failed;
                 return new MRKFlowResult(state, context, ex);
             }
-            finally { flow.Close(); }
+            finally
+            {
+                try { context.CloseFlowDataScope(); }
+                finally { flow.Close(); }
+            }
         }
 
         private async Task<object> RunStepAsync(MRKExecutionStep step, MRKExecutionContext context,
@@ -535,6 +564,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 // 在占用Worker槽位之前等资源，避免等锁的节点堵住真正持锁的执行任务。
                 List<MRKResourceLease> leases = new List<MRKResourceLease>();
                 MRKExecutionGroupLease groupLease = null;
+                IFDEExecutionDataScope localData = null;
                 try
                 {
                     if (!string.IsNullOrWhiteSpace(step.ExecutionGroup))
@@ -553,6 +583,11 @@ namespace CxVisual.Mechanism.Runtime.Execution
 
                     MRKExecutionContext nodeContext = context.WithBoundInputs(
                         MRKExecutionPortBinder.Bind(step, context));
+                    if (context.DataScope != null)
+                    {
+                        localData = context.DataScope.CreateChild(step.Id);
+                        nodeContext = nodeContext.WithDataScope(localData);
+                    }
                     FCRWorkHandle<object> work = _worker.Submit<object>(
                         ct => step.Policy == null ? step.ExecuteAsync(nodeContext, ct) :
                             step.Policy.ExecuteAsync(nodeContext, step.ExecuteAsync, ct),
@@ -571,8 +606,12 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 }
                 finally
                 {
-                    for (int i = leases.Count - 1; i >= 0; i--) leases[i].Dispose();
-                    if (groupLease != null) groupLease.Dispose();
+                    try { if (localData != null) localData.Dispose(); }
+                    finally
+                    {
+                        for (int i = leases.Count - 1; i >= 0; i--) leases[i].Dispose();
+                        if (groupLease != null) groupLease.Dispose();
+                    }
                 }
             }
             catch (OperationCanceledException)
