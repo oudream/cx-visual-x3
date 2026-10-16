@@ -46,6 +46,7 @@
     <Compile Include="Cases\TCTExecutionDataCases.cs" />
     <Compile Include="Cases\TCTAdversarialCases.cs" />
     <Compile Include="Cases\TCTRuntimeReliabilityCases.cs" />
+    <Compile Include="NUnitIntegration\TCTNUnitEngineProbe.cs" />
     <ApplicationDefinition Include="App.xaml">
       <Generator>MSBuild:Compile</Generator><SubType>Designer</SubType>
     </ApplicationDefinition>
@@ -75,6 +76,11 @@
     <ProjectReference Include="..\..\Mechanism\Data\CxVisual.Mechanism.Data.csproj">
       <Project>{6857DA00-7E17-5593-B8DC-C85EEA772140}</Project><Name>CxVisual.Mechanism.Data</Name>
     </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="NUnit" Version="4.4.0" />
+    <PackageReference Include="NUnit.Engine.Api" Version="3.22.0" />
+    <PackageReference Include="NUnit.Engine" Version="3.22.0" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets"/>
 </Project>

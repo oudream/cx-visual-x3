@@ -10,6 +10,7 @@ using CxVisual.TestCenter.Execution;
 using CxVisual.TestCenter.Reports;
 using CxVisual.TestCenter.Models;
 using CxVisual.TestCenter.Fixtures;
+using CxVisual.TestCenter.NUnitIntegration;
 
 namespace CxVisual.TestCenter.UI
 {
@@ -31,7 +32,14 @@ namespace CxVisual.TestCenter.UI
             {
                 TCTTestCatalog catalog = TCTRegistration.CreateCatalog();
                 string command = e.Args[0].ToLowerInvariant();
-                if (command == "--worker")
+                if (command == "--nunit-probe")
+                {
+                    if (e.Args.Length < 2 || e.Args.Length > 3 ||
+                        (e.Args.Length == 3 && e.Args[2] != "--negative"))
+                        throw new ArgumentException("--nunit-probe <result.xml> [--negative]");
+                    exit = TCTNUnitEngineProbe.Execute(e.Args[1], e.Args.Length == 3);
+                }
+                else if (command == "--worker")
                 {
                     if (e.Args.Length != 4 && e.Args.Length != 7) throw new ArgumentException("--worker <id> <result-file> <seed> [runId attemptId iteration]");
                     ITCTTestCase test = catalog.Cases.SingleOrDefault(x => x.Descriptor.Id == e.Args[1]);

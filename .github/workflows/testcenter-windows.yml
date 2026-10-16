@@ -24,12 +24,39 @@ jobs:
       - name: Verify layer ownership and project DAG
         shell: powershell
         run: ./Build/Verify-OwnerDependencies.ps1
+      - name: Restore pinned NUnit packages
+        shell: powershell
+        run: |
+          & msbuild 'Tests/TestCenter/CxVisual.TestCenter.csproj' /t:Restore /p:Configuration=Debug /p:Platform=x64 /nologo /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw "NuGet PackageReference restore failed" }
       - name: Build all solution projects
         shell: powershell
         run: |
           New-Item -ItemType Directory -Force 'Output/Debug/x64' | Out-Null
           & msbuild 'CxVisual.Unified.sln' /m:1 /t:Rebuild /p:Configuration=Debug /p:Platform=x64 /nologo /v:minimal "/flp:logfile=Output/Debug/x64/Build.log;verbosity=normal"
           if ($LASTEXITCODE -ne 0) { throw "MSBuild failed: $LASTEXITCODE" }
+      - name: NUnit Engine real assembly discovery and execution
+        shell: powershell
+        run: |
+          $exe = (Resolve-Path 'Output/Debug/x64/CxVisual.TestCenter.exe').Path
+          $output = Join-Path (Get-Location) 'Output/Debug/x64'
+          foreach ($negative in @($false, $true)) {
+              $name = if ($negative) { 'NUnitProbe.negative.xml' } else { 'NUnitProbe.positive.xml' }
+              $report = Join-Path $output $name
+              $args = @('--nunit-probe', ('"' + $report + '"'))
+              if ($negative) { $args += '--negative' }
+              $p = Start-Process -FilePath $exe -WorkingDirectory (Get-Location).Path -ArgumentList $args -Wait -PassThru
+              if ($p.ExitCode -ne 0) { throw "NUnit Engine PoC failed, negative=$negative, code=$($p.ExitCode)" }
+              if (-not (Test-Path $report)) { throw "NUnit PoC report missing: $report" }
+              [xml]$xml = Get-Content -LiteralPath $report -Raw
+              $cases = @($xml.SelectNodes('//test-case'))
+              $failures = @($cases | Where-Object { $_.GetAttribute('result') -eq 'Failed' }).Count
+              $expected = if ($negative) { 1 } else { 0 }
+              if ($cases.Count -ne 5 -or $failures -ne $expected) {
+                  throw "NUnit Engine inaccurate case mapping: $name"
+              }
+              Write-Host "PASS NUnit Engine probe: $name; cases=$($cases.Count); failures=$failures"
+          }
       - name: Run TestCenter in isolated workers
         shell: powershell
         run: |
@@ -106,6 +133,8 @@ jobs:
           path: |
             Output/Debug/x64/Build.log
             Output/Debug/x64/DependencyAudit.csv
+            Output/Debug/x64/NUnitProbe.positive.xml
+            Output/Debug/x64/NUnitProbe.negative.xml
             Output/Debug/x64/TestCenter.junit.xml
             Output/Debug/x64/TestCenter.parallel.junit.xml
             Output/Debug/x64/TestCenter.empty.junit.xml
