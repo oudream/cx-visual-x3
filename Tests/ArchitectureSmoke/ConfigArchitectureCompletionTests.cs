@@ -61,9 +61,131 @@ namespace CxVisual.Tests.ArchitectureSmoke
         public static void Run()
         {
             string root = Path.Combine(Path.GetTempPath(), "CxVisual-Config-Atomic-" + Guid.NewGuid().ToString("N"));
-            try { VerifyAtomicGroup(root); VerifyDurableEvents(root); VerifySecurity(root); VerifyReferences(root); VerifyEffectiveJournal(root); VerifyLiveReplay(root); VerifyRichTypes(root); VerifyAtomicLayers(root); VerifyDeveloperErgonomics(root); }
+            try { VerifyAtomicGroup(root); VerifyDurableEvents(root); VerifySecurity(root); VerifyReferences(root); VerifyEffectiveJournal(root); VerifyLiveReplay(root); VerifyRichTypes(root); VerifyAtomicLayers(root); VerifyDeveloperErgonomics(root); VerifyPhaseAContracts(root); }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
             Console.WriteLine("PASS atomic multi-model configuration transaction, validation and snapshots");
+        }
+
+        private static void VerifyPhaseAContracts(string root)
+        {
+            // Schema identity is stored separately; unknown/legacy data must not be silently
+            // deserialized using an unrelated CLR schema or implicitly reinitialized.
+            string schemaRoot = Path.Combine(root, "phase-a-schema");
+            MHSConfigSection<V13ConfigSample> original = new MHSConfigService(schemaRoot)
+                .ForMachine("A").Open<V13ConfigSample>();
+            string contractFile = Directory.GetFiles(schemaRoot, "schema.contract",
+                SearchOption.AllDirectories).Single();
+            string contract = File.ReadAllText(contractFile);
+            File.WriteAllText(contractFile, "altered-schema");
+            Expect<InvalidOperationException>(() => new MHSConfigService(schemaRoot)
+                .ForMachine("A").Open<V13ConfigSample>(), "schema fingerprint mismatch rejects open");
+            File.WriteAllText(contractFile, contract);
+            Check(new MHSConfigService(schemaRoot).ForMachine("A")
+                .Open<V13ConfigSample>().Value(x => x.ExposureMs) == 80,
+                "unchanged schema reopens");
+            File.Delete(contractFile);
+            Expect<InvalidOperationException>(() => new MHSConfigService(schemaRoot)
+                .ForMachine("A").Open<V13ConfigSample>(), "legacy unversioned data refuses guessing");
+            File.WriteAllText(contractFile, contract);
+
+            // Two independent service instances loaded the SAME saved pending revision.
+            // Exactly one durable Apply is allowed, and only it publishes a change.
+            string casRoot = Path.Combine(root, "phase-a-cas");
+            var first = new MHSConfigService(casRoot).ForMachine("Shared").Open<V13ConfigSample>();
+            Check(first.UpdateAsync(x => x.ExposureMs = 112, "prepare",
+                CancellationToken.None).GetAwaiter().GetResult().Success, "CAS prepare");
+            var stale = new MHSConfigService(casRoot).ForMachine("Shared").Open<V13ConfigSample>();
+            int wrongEvents = 0;
+            using (var watch = stale.Watch(x => x.ExposureMs,
+                x => System.Threading.Interlocked.Increment(ref wrongEvents)))
+            {
+                Check(first.ApplyPendingAtTaskBoundary(), "first writer applies");
+                MHSConfigApplyResult rejected = stale.TryApplyPendingAtBoundary(
+                    FCMConfigApplyPolicy.NextTask, null);
+                Check(!rejected.Applied && rejected.Status == "APPLY_VERSION_CONFLICT" &&
+                    wrongEvents == 0, "stale writer must not move pointer or notify");
+            }
+            var disk = new MHSConfigService(casRoot).ForMachine("Shared").Open<V13ConfigSample>();
+            Check(disk.EffectiveVersion == disk.SavedVersion &&
+                disk.Value(x => x.ExposureMs) == 112 &&
+                disk.ReadEffectiveAfter(null, 10).Count == 1,
+                "reopen sees exactly one durable effective record");
+
+            string atomicRoot = Path.Combine(root, "phase-a-atomic");
+            var baseLayer = new MVBConfigLayerSpec("Base", "template", "T", 10);
+            var machine = new MVBConfigLayerSpec("Machine", "machine", "M", 20);
+            var firstOrder = new[] { baseLayer, machine };
+            var secondOrder = new[] {
+                new MVBConfigLayerSpec("Base", "template", "T", 30),
+                new MVBConfigLayerSpec("Machine", "machine", "M", 20) };
+            var service = new MHSConfigService(atomicRoot);
+            var profile = new MVBConfigAtomicLayerProfile<V13ConfigSample>(
+                service, "Line-1", firstOrder);
+            Check(profile.UpdateAsync(edit => {
+                edit.Set("Base", x => x.ExposureMs, 85);
+                edit.Set("Machine", x => x.ExposureMs, 125);
+            }, "two levels", CancellationToken.None).GetAwaiter().GetResult().Success &&
+                profile.TryApplyPendingAtBoundary(FCMConfigApplyPolicy.NextTask, null).Applied,
+                "atomic profile stores values and its definition in one revision");
+            using (var pinned = profile.CaptureForTask("Scan-1"))
+            {
+                Check(pinned.Value(x => x.ExposureMs) == 125, "original task pinned");
+                Check(new MVBConfigAtomicLayerProfile<V13ConfigSample>(
+                    new MHSConfigService(atomicRoot), "Line-1", firstOrder)
+                    .ResolveEffective().Value(x => x.ExposureMs) == 125,
+                    "restart with exact definition succeeds");
+                Expect<InvalidOperationException>(() =>
+                    new MVBConfigAtomicLayerProfile<V13ConfigSample>(
+                        new MHSConfigService(atomicRoot), "Line-1", secondOrder),
+                    "priority drift refuses implicit reinterpretation");
+                string beforeUpgrade = profile.SavedVersion;
+                MHSConfigCommitResult invalid = profile.UpgradeDefinitionAsync(
+                    new[] { baseLayer }, null, "unreviewed loss",
+                    CancellationToken.None).GetAwaiter().GetResult();
+                Check(!invalid.Success && beforeUpgrade == profile.SavedVersion,
+                    "removing a layer with explicit values cannot discard it silently");
+                MHSConfigCommitResult upgraded = profile.UpgradeDefinitionAsync(
+                    secondOrder, null, "approved priority change",
+                    CancellationToken.None).GetAwaiter().GetResult();
+                Check(upgraded.Success && profile.SavedVersion != beforeUpgrade,
+                    "reviewed definition upgrade creates a new saved revision");
+                var changedProfile = new MVBConfigAtomicLayerProfile<V13ConfigSample>(
+                    service, "Line-1", secondOrder);
+                Check(changedProfile.TryApplyPendingAtBoundary(
+                    FCMConfigApplyPolicy.NextTask, null).Applied &&
+                    changedProfile.ResolveEffective().Value(x => x.ExposureMs) == 85 &&
+                    pinned.Value(x => x.ExposureMs) == 125,
+                    "new priority active only after Apply; old CT snapshot stays frozen");
+                Expect<InvalidOperationException>(() => profile.ResolveSaved(),
+                    "old profile instance cannot reinterpret an upgraded revision");
+            }
+
+            string layeredRoot = Path.Combine(root, "phase-a-independent");
+            var layerService = new MHSConfigService(layeredRoot);
+            var layers = new MVBConfigLayeredProfile<V13ConfigSample>(
+                layerService, "Process-A", firstOrder);
+            Check(layers.SetOverrideAsync("Machine", x => x.ExposureMs, 133,
+                CancellationToken.None).GetAwaiter().GetResult().Success,
+                "independent layer update works with persisted definition");
+            Check(layers.GetLayer("Machine").ApplyPendingAtTaskBoundary(),
+                "independent layer effective transition");
+            using (var task = layers.CaptureForTask("Job-1"))
+            {
+                Expect<InvalidOperationException>(() =>
+                    new MVBConfigLayeredProfile<V13ConfigSample>(
+                        new MHSConfigService(layeredRoot), "Process-A", secondOrder),
+                    "independent layer definition drift rejected");
+                Check(layers.UpgradeDefinitionAsync(secondOrder, "approved metadata revision",
+                    CancellationToken.None).GetAwaiter().GetResult().Success,
+                    "independent definition has explicit single-record upgrade");
+                Expect<InvalidOperationException>(() => layers.ResolveEffective(),
+                    "stale independent profile refuses reinterpretation");
+                var upgradedLayers = new MVBConfigLayeredProfile<V13ConfigSample>(
+                    new MHSConfigService(layeredRoot), "Process-A", secondOrder);
+                Check(upgradedLayers.ResolveEffective().Value(x => x.ExposureMs) == 133 &&
+                    task.Value(x => x.ExposureMs) == 133, "independent previous task remains pinned");
+            }
+            Console.WriteLine("PASS config phase A: schema CAS, atomic/independent layer contracts, upgrades");
         }
 
         private static void VerifyAtomicGroup(string root)
