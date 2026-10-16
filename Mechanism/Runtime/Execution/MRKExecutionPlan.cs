@@ -24,7 +24,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
             bool allowSkippedDependencies = false,
             string dedicatedExecutorId = null,
             Func<MRKExecutionContext, CancellationToken, object> synchronousSdk = null,
-            int priority = 0, long estimatedPendingBytes = 0)
+            int priority = 0, long estimatedPendingBytes = 0,
+            IDictionary<string, Type> dataOutputs = null)
         {
             if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("Step ID required", "id");
             if (executeAsync == null) throw new ArgumentNullException("executeAsync");
@@ -44,6 +45,16 @@ namespace CxVisual.Mechanism.Runtime.Execution
             DedicatedExecutorId = dedicatedExecutorId;
             SynchronousSdk = synchronousSdk;
             Inputs = new List<MRKExecutionInput>(inputs ?? new MRKExecutionInput[0]).AsReadOnly();
+            Dictionary<string, Type> declaredData = new Dictionary<string, Type>(StringComparer.Ordinal);
+            if (dataOutputs != null)
+                foreach (KeyValuePair<string, Type> entry in dataOutputs)
+                {
+                    if (string.IsNullOrWhiteSpace(entry.Key) || entry.Value == null ||
+                        entry.Value == typeof(void))
+                        throw new ArgumentException("具名输出契约无效", "dataOutputs");
+                    declaredData.Add(entry.Key, entry.Value);
+                }
+            DataOutputs = new ReadOnlyDictionary<string, Type>(declaredData);
             List<string> resources = new List<string>();
             if (requiredResources != null)
                 foreach (string resource in requiredResources)
@@ -64,6 +75,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
         public string ExecutionGroup { get; private set; }
         public IList<MRKExecutionInput> Inputs { get; private set; }
         public MRKExecutionOutput Output { get; private set; }
+        /// <summary>同一MRK节点的具名数据输出契约；Data项目负责实际数据所有权。</summary>
+        public IDictionary<string, Type> DataOutputs { get; private set; }
         /// <summary>编排节点是否运行；无副作用的Guard应在资源申请前判定。</summary>
         public Func<MRKExecutionContext, bool> Condition { get; private set; }
         public bool AllowSkippedDependencies { get; private set; }
@@ -141,7 +154,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
                         local.CompensateAsync(context.ForSubflow(scope), token);
                 List<MRKExecutionInput> bindings = new List<MRKExecutionInput>();
                 foreach (MRKExecutionInput input in local.Inputs)
-                    bindings.Add(input.Source == MRKInputSource.StepResult ?
+                    bindings.Add(input.Source == MRKInputSource.StepResult ||
+                        input.Source == MRKInputSource.StepOutput ?
                         new MRKExecutionInput(input.Name, input.Source,
                             scope + input.SourceName, input.ValueType, input.Required) : input);
                 list.Add(new MRKExecutionStep(scope + local.Id, depends,
@@ -154,7 +168,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
                     local.SynchronousSdk == null ?
                         (Func<MRKExecutionContext, CancellationToken, object>)null :
                         (context, token) => local.SynchronousSdk(context.ForSubflow(scope), token),
-                    local.Priority, local.EstimatedPendingBytes));
+                    local.Priority, local.EstimatedPendingBytes, local.DataOutputs));
             }
             return list.AsReadOnly();
         }
