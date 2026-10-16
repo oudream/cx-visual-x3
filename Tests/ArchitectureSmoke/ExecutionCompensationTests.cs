@@ -17,6 +17,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
             SamePlanNameCannotSubstituteOriginalVersion();
             AnotherEngineCannotTakeOverCompensation();
             CompensationPortsRemainAvailableAfterDataScopeDisposal();
+            StopWaitsForAdmittedMultiStepCompensation();
+            StopRejectsNewCompensationBeforeClaimingEligibility();
         }
         private static T Await<T>(Task<T> task)
         {
@@ -200,6 +202,75 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 root.Dispose();
             }
             Check(root.IsClosed && released == 1, "补偿后Host数据作用域仍被Flow持有");
+        }
+
+
+        private static void StopWaitsForAdmittedMultiStepCompensation()
+        {
+            TaskCompletionSource<bool> entered=new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<bool> release=new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            int a=0, b=0;
+            MRKExecutionPlan plan=new MRKExecutionPlan("comp-stop",new[]{
+                new MRKExecutionStep("A",new string[0],(c,t)=>Task.FromResult((object)1),
+                    compensateAsync:(c,t)=>{Interlocked.Increment(ref a);
+                        return Task.FromResult(true);}),
+                new MRKExecutionStep("B",new[]{"A"},(c,t)=>Task.FromResult((object)2),
+                    compensateAsync:async(c,t)=>{
+                        entered.TrySetResult(true);
+                        await release.Task.ConfigureAwait(false);
+                        Interlocked.Increment(ref b);
+                    }),
+                new MRKExecutionStep("C",new[]{"B"},(c,t)=>{
+                    throw new InvalidOperationException("expected");
+                })
+            });
+            MRKExecutionEngine engine=new MRKExecutionEngine(new FCRWorkerOptions(1,5));
+            MRKFlowHandle flow=engine.StartFlow(plan);
+            Check(Await(flow.Completion).State==MRKFlowState.Failed,"触发Flow未失败");
+            Task<MRKCompensationReport> compensate=engine.CompensateAsync(plan,flow);
+            try
+            {
+                Await(entered.Task);
+                Task stop=engine.StopAsync(false);
+                Check(!stop.IsCompleted,"Stop提前于补偿结算返回");
+                release.TrySetResult(true);
+                MRKCompensationReport result=Await(compensate);
+                Await(stop);
+                Check(result.Succeeded && a==1 && b==1 &&
+                    result.SucceededSteps[0]=="B" && result.SucceededSteps[1]=="A",
+                    "Stop使后续补偿步骤被错误拒绝或未按顺序执行");
+            }
+            finally
+            {
+                release.TrySetResult(true);
+                Await(engine.StopAsync(true));
+            }
+        }
+
+        private static void StopRejectsNewCompensationBeforeClaimingEligibility()
+        {
+            int callbacks=0;
+            MRKExecutionPlan plan=new MRKExecutionPlan("comp-stopped",new[]{
+                new MRKExecutionStep("good",new string[0],
+                    (c,t)=>Task.FromResult((object)1),
+                    compensateAsync:(c,t)=>{Interlocked.Increment(ref callbacks);
+                        return Task.FromResult(true);}),
+                new MRKExecutionStep("bad",new[]{"good"},(c,t)=>{
+                    throw new InvalidOperationException("expected");
+                })
+            });
+            MRKExecutionEngine engine=new MRKExecutionEngine(new FCRWorkerOptions(1,3));
+            MRKFlowHandle flow=engine.StartFlow(plan);
+            Check(Await(flow.Completion).State==MRKFlowState.Failed,"准备Flow未失败");
+            Await(engine.StopAsync());
+            bool rejected=false;
+            try { Await(engine.CompensateAsync(plan,flow)); }
+            catch(InvalidOperationException ex)
+            { rejected=ex.Message.Contains("正在停止"); }
+            Check(rejected && callbacks==0,
+                "停止后启动了补偿或误消耗原Plan的恢复责任");
         }
 
         private static void Await(Task task)

@@ -306,6 +306,9 @@ namespace CxVisual.Mechanism.Runtime.Execution
         private readonly Dictionary<Guid, MRKFlowHandle> _activeFlows =
             new Dictionary<Guid, MRKFlowHandle>();
         private bool _stopping;
+        private bool _stopCancelPending;
+        private readonly Dictionary<Guid, TaskCompletionSource<bool>> _activeCompensations =
+            new Dictionary<Guid, TaskCompletionSource<bool>>();
         private Task _stopTask;
         public int ActiveFlowCount
         { get { lock (_lifecycleGate) return _activeFlows.Count; } }
@@ -362,9 +365,18 @@ namespace CxVisual.Mechanism.Runtime.Execution
             MRKFlowResult terminal = await flow.Completion.ConfigureAwait(false);
             if (terminal.State == MRKFlowState.Completed)
                 throw new InvalidOperationException("成功流程不允许直接补偿");
-            if (!flow.TryStartCompensation())
-                throw new InvalidOperationException("同一流程不能重复启动补偿");
-
+            TaskCompletionSource<bool> compensationFinished = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            lock (_lifecycleGate)
+            {
+                if (_stopping)
+                    throw new InvalidOperationException("引擎正在停止，禁止开始补偿且不消耗补偿资格");
+                if (!flow.TryStartCompensation())
+                    throw new InvalidOperationException("同一流程不能重复启动补偿");
+                _activeCompensations.Add(flow.FlowId, compensationFinished);
+            }
+            try
+            {
             List<string> succeeded = new List<string>();
             Dictionary<string, Exception> failed =
                 new Dictionary<string, Exception>(StringComparer.Ordinal);
@@ -387,7 +399,9 @@ namespace CxVisual.Mechanism.Runtime.Execution
                         leases.Add(await _resources.AcquireAsync(resourceId,
                             flow.FlowId.ToString("N") + ":rollback:" + stepId, cancellation)
                             .ConfigureAwait(false));
-                    FCRWorkHandle<bool> job = Submit<bool>(async token =>
+                    // 已经获准的补偿必须能在Stop的排空阶段提交后续步骤。
+                    // DrainAndStop会等待本次补偿完成，才真正停止底层Worker。
+                    FCRWorkHandle<bool> job = _worker.Submit<bool>(async token =>
                     {
                         await step.CompensateAsync(compensationContext, token).ConfigureAwait(false);
                         return true;
@@ -407,34 +421,47 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 }
             }
             return new MRKCompensationReport(succeeded, failed);
+            }
+            finally
+            {
+                compensationFinished.TrySetResult(true);
+                lock (_lifecycleGate) _activeCompensations.Remove(flow.FlowId);
+            }
         }
 
         public FCRWorkerSnapshot GetSnapshot() { return _worker.GetSnapshot(); }
 
-        /// <summary>停止接单，等待所有流程结算；cancelPending=true时请求协作取消并清空待执行工作。</summary>
+        /// <summary>停止接单；已获准的补偿完成前不得关闭底层Worker。</summary>
         public Task StopAsync(bool cancelPending = false)
         {
             MRKFlowHandle[] flows;
+            Task stop;
             lock (_lifecycleGate)
             {
                 _stopping = true;
+                if (cancelPending) _stopCancelPending = true;
                 flows = _activeFlows.Values.ToArray();
-                if (_stopTask == null) _stopTask = DrainAndStopAsync(flows, cancelPending);
+                if (_stopTask == null)
+                {
+                    Task[] compensationTasks = _activeCompensations.Values
+                        .Select(x => (Task)x.Task).ToArray();
+                    _stopTask = DrainAndStopAsync(flows, compensationTasks);
+                }
+                stop = _stopTask;
             }
             if (cancelPending)
-            {
                 foreach (MRKFlowHandle flow in flows) flow.RequestCancel();
-                Task ignored = _worker.StopAsync(true);
-            }
-            return _stopTask;
+            return stop;
         }
-        private async Task DrainAndStopAsync(MRKFlowHandle[] flows, bool cancelPending)
+        private async Task DrainAndStopAsync(MRKFlowHandle[] flows,
+            Task[] compensations)
         {
-            if (cancelPending)
-                foreach (MRKFlowHandle flow in flows) flow.RequestCancel();
-            if (cancelPending) { Task cancellation = _worker.StopAsync(true); }
-            await Task.WhenAll(flows.Select(x => (Task)x.Completion)).ConfigureAwait(false);
-            await _worker.StopAsync(false).ConfigureAwait(false);
+            Task[] pending = flows.Select(x => (Task)x.Completion)
+                .Concat(compensations).ToArray();
+            await Task.WhenAll(pending).ConfigureAwait(false);
+            bool cancelPending;
+            lock (_lifecycleGate) cancelPending = _stopCancelPending;
+            await _worker.StopAsync(cancelPending).ConfigureAwait(false);
         }
 
         /// <summary>每个Flow固定本次Plan；流结束后才释放旧版本的运行引用。</summary>
