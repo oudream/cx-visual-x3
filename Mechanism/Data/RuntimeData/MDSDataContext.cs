@@ -13,6 +13,10 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         void Set<T>(string name, T value);
         void Return<T>(string name, T value);
         IDictionary<string, object> InspectPendingOutputs();
+        void MoveToHeap(string localName, string heapName = null, bool replace = false);
+        void CopyToHeap(string localName, string heapName = null, bool replace = false);
+        void MoveFromHeap(string heapName, string localName = null, bool replace = false);
+        void CopyFromHeap(string heapName, string localName = null, bool replace = false);
     }
 
     /// <summary>
@@ -23,6 +27,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
     {
         private readonly object _gate = new object();
         private readonly IFDEExecutionDataScope _scope;
+        private readonly MDSDataHeap _heap;
         private readonly IDictionary<string, object> _inputs;
         private readonly IDictionary<string, Type> _outputs;
         private readonly Action<IDictionary<string, object>> _publish;
@@ -32,14 +37,15 @@ namespace CxVisual.Mechanism.Data.RuntimeData
 
         /// <summary>向后兼容独立使用，未显式声明输出时只做本地输出快照。</summary>
         public MDSDataContext(IFDEExecutionDataScope scope)
-            : this(scope, null, null, null) { }
+            : this(scope, null, null, null, null) { }
 
         internal MDSDataContext(IFDEExecutionDataScope scope,
             IDictionary<string, object> inputs, IDictionary<string, Type> outputs,
-            Action<IDictionary<string, object>> publish)
+            Action<IDictionary<string, object>> publish, MDSDataHeap heap)
         {
             if (scope == null) throw new ArgumentNullException("scope");
             _scope = scope;
+            _heap = heap;
             _inputs = inputs == null ? null : MDSDataSafety.Snapshot(inputs);
             if (outputs != null)
             {
@@ -165,6 +171,36 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 _finished = true;
                 _pending.Clear();
                 return MDSDataSafety.Snapshot(ready);
+            }
+        }
+
+        /// <summary>
+        /// 显式移动/复制Local与FlowHeap的数据。Heap变化是即时副作用，
+        /// 不与Return的暂存输出混为一谈；调用方要避免在可能失败的业务节点里
+        /// 将暂时数据作为已完成的生产结果写入共享堆。
+        /// </summary>
+        public void MoveToHeap(string localName, string heapName = null, bool replace = false)
+        { Transfer(localName, heapName ?? localName, true, true, replace); }
+
+        public void CopyToHeap(string localName, string heapName = null, bool replace = false)
+        { Transfer(localName, heapName ?? localName, true, false, replace); }
+
+        public void MoveFromHeap(string heapName, string localName = null, bool replace = false)
+        { Transfer(heapName, localName ?? heapName, false, true, replace); }
+
+        public void CopyFromHeap(string heapName, string localName = null, bool replace = false)
+        { Transfer(heapName, localName ?? heapName, false, false, replace); }
+
+        private void Transfer(string from, string to, bool toHeap, bool move, bool replace)
+        {
+            CheckName(from);
+            CheckName(to);
+            lock (_gate)
+            {
+                EnsureActive();
+                if (!toHeap && _inputs != null && _inputs.ContainsKey(to))
+                    throw new InvalidOperationException("不能移动或复制到只读Input槽：" + to);
+                MDSDataTransfer.Apply(_scope, _heap, from, to, toHeap, move, replace);
             }
         }
 
