@@ -164,7 +164,8 @@ namespace CxVisual.Mechanism.Data.Configuration
                 throw new ArgumentException("Duplicate layer name, priority or scope");
             string modelSectionId = FCMConfigSchemaBuilder.Describe<T>().SectionId;
             _layers = specs.OrderBy(x => x.Priority).Select(x => new Layer {
-                Spec = x, Store = service.ForScope(x.Kind, x.Id + "|" + modelSectionId)
+                Spec = x, Store = service.ForScope(x.Kind,
+                    new FCMConfigIdentity(modelSectionId, x.Kind, x.Id).CanonicalKey)
                     .Open<MVBConfigLayerOverrides>()
             }).ToList();
         }

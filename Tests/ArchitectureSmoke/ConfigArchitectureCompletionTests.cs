@@ -461,6 +461,10 @@ namespace CxVisual.Tests.ArchitectureSmoke
             MVBConfigAtomicLayerProfile<V13ConfigSample> profile =
                 new MVBConfigAtomicLayerProfile<V13ConfigSample>(
                     new MHSConfigService(folder), "Machine-A", specs);
+            Expect<ArgumentException>(() =>
+                new MVBConfigAtomicLayerProfile<V13ConfigSample>(
+                    new MHSConfigService(folder), " ", specs),
+                "blank composite profile identity rejected");
             string initial = profile.SavedVersion;
             using (MVBConfigAtomicLayerEdit<V13ConfigSample> edit = profile.BeginEdit("五层参数一次提交"))
             {

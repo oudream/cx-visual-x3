@@ -95,10 +95,14 @@ namespace CxVisual.Mechanism.Data.Configuration
             if (layers.Select(x => x.Name).Distinct(StringComparer.Ordinal).Count() != layers.Length ||
                 layers.Select(x => x.Priority).Distinct().Count() != layers.Length)
                 throw new ArgumentException("Layer names and priorities must be unique");
-            FCMConfigSchemaBuilder.Describe<T>();
+            if (string.IsNullOrWhiteSpace(profileId))
+                throw new ArgumentException("ProfileId required", "profileId");
+            string modelSectionId = FCMConfigSchemaBuilder.Describe<T>().SectionId;
             _layers = Array.AsReadOnly(layers.OrderBy(x => x.Priority).ToArray());
-            _group = service.OpenAtomicGroup("atomic-layer:" +
-                FCMConfigSchemaBuilder.Describe<T>().SectionId + ":" + profileId);
+            // Length-prefixed identity prevents ambiguous group names across Section IDs.
+            string groupId = modelSectionId.Length + ":" + modelSectionId +
+                profileId.Length + ":" + profileId;
+            _group = service.OpenAtomicGroup("atomic-layer:" + groupId);
             foreach (MVBConfigLayerSpec layer in _layers)
                 _group.Register<MVBConfigLayerOverrides>(layer.Name);
             _group.Seal();
