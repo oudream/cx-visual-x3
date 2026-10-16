@@ -123,10 +123,10 @@ namespace CxVisual.Runtime.Host
             catch { journal.Dispose(); throw; }
         }
 
-        internal MRKFlowHandle Start()
+        internal MRKRuntimeFlowTicket Start()
         {
             if (_stopped) throw new InvalidOperationException("Host已停止");
-            MRKFlowHandle flow = _access.TryStart("local-simulation",
+            MRKRuntimeFlowTicket flow = _access.TryStart("local-simulation",
                 correlationId: Guid.NewGuid().ToString("N"));
             if (flow == null) throw new InvalidOperationException("Session拒绝新Flow");
             return flow;
@@ -150,7 +150,7 @@ namespace CxVisual.Runtime.Host
         {
             using (MRHUnifiedRuntimeHost host = Open(journalPath))
             {
-                MRKFlowHandle flow = host.Start();
+                MRKRuntimeFlowTicket flow = host.Start();
                 MRKFlowResult result = flow.Completion.GetAwaiter().GetResult();
                 host.StopAsync().GetAwaiter().GetResult();
                 Console.WriteLine("Flow=" + result.FlowId + " PlanRevision=" +
@@ -204,7 +204,7 @@ namespace CxVisual.Runtime.Host
                     if (command == "stop") break;
                     if (command == "run")
                     {
-                        MRKFlowHandle flow = host.Start();
+                        MRKRuntimeFlowTicket flow = host.Start();
                         Console.WriteLine("Accepted Flow=" + flow.FlowId);
                     }
                     else if (command == "status")

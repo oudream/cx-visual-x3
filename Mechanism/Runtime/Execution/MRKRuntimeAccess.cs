@@ -17,6 +17,20 @@ namespace CxVisual.Mechanism.Runtime.Execution
     }
 
     /// <summary>
+    /// 不可取消的运行票据：仅公开观察与最终完成结果，保留真实Handle给受控网关。
+    /// 启动权限不自动赋予取消/补偿权限，不能将原始MRKFlowHandle交给外部调用方。
+    /// </summary>
+    public sealed class MRKRuntimeFlowTicket
+    {
+        internal MRKRuntimeFlowTicket(MRKFlowHandle handle)
+        { Handle = handle ?? throw new ArgumentNullException("handle"); }
+        internal MRKFlowHandle Handle { get; private set; }
+        public Guid FlowId { get { return Handle.FlowId; } }
+        public Task<MRKFlowResult> Completion { get { return Handle.Completion; } }
+        public MRKFlowSnapshot GetSnapshot() { return Handle.GetSnapshot(); }
+    }
+
+    /// <summary>
     /// RuntimeSession的受控对外入口；只读操作不持有执行/调试权。
     /// Host不得向不受信任的UI/网络直接暴露底层Engine及Session引用。
     /// </summary>
@@ -45,36 +59,40 @@ namespace CxVisual.Mechanism.Runtime.Execution
             Demand(principal, MRKRuntimeAccessAction.Observe);
             return _session.Snapshot();
         }
-        public MRKFlowHandle TryStart(string principal,
+        public MRKRuntimeFlowTicket TryStart(string principal,
             IDictionary<string, object> inputs = null,
             string businessKey = null, string correlationId = null,
             CancellationToken cancellation = default(CancellationToken))
         {
             Demand(principal, MRKRuntimeAccessAction.Start);
-            return _session.TryStartFlow(inputs,businessKey,correlationId,cancellation);
+            MRKFlowHandle flow = _session.TryStartFlow(inputs,businessKey,correlationId,cancellation);
+            return flow == null ? null : new MRKRuntimeFlowTicket(flow);
         }
-        public MRKFlowHandle TryStartDebug(string principal,
+        public MRKRuntimeFlowTicket TryStartDebug(string principal,
             MRKExecutionDebugController controller,
             IDictionary<string, object> inputs = null,
             CancellationToken cancellation = default(CancellationToken))
         {
             Demand(principal, MRKRuntimeAccessAction.Debug);
-            return _session.TryStartFlowWithControl(controller,inputs,cancellation:cancellation);
+            MRKFlowHandle flow = _session.TryStartFlowWithControl(controller,inputs,
+                cancellation:cancellation);
+            return flow == null ? null : new MRKRuntimeFlowTicket(flow);
         }
-        private void CheckFlow(MRKFlowHandle flow)
+        private MRKFlowHandle CheckFlow(MRKRuntimeFlowTicket ticket)
         {
-            if (flow == null) throw new ArgumentNullException("flow");
+            if (ticket == null) throw new ArgumentNullException("ticket");
+            MRKFlowHandle flow = ticket.Handle;
             if (!flow.IsOwnedBy(_engine) ||
                 !string.Equals(flow.Context.Metadata.SessionId, _session.Id,
                     StringComparison.Ordinal))
                 throw new InvalidOperationException(
                     "Flow不属于当前Session及运行Engine，禁止越权控制");
+            return flow;
         }
-        public bool RequestCancel(string principal, MRKFlowHandle flow)
+        public bool RequestCancel(string principal, MRKRuntimeFlowTicket ticket)
         {
             Demand(principal, MRKRuntimeAccessAction.Cancel);
-            CheckFlow(flow);
-            return flow.RequestCancel();
+            return CheckFlow(ticket).RequestCancel();
         }
         public Task StopSessionAsync(string principal, bool cancel = false)
         {
@@ -82,12 +100,11 @@ namespace CxVisual.Mechanism.Runtime.Execution
             return _session.StopAsync(cancel);
         }
         public Task<MRKCompensationReport> CompensateAsync(string principal,
-            MRKExecutionPlan plan, MRKFlowHandle flow,
+            MRKExecutionPlan plan, MRKRuntimeFlowTicket ticket,
             CancellationToken cancellation = default(CancellationToken))
         {
             Demand(principal, MRKRuntimeAccessAction.Compensate);
-            CheckFlow(flow);
-            return _engine.CompensateAsync(plan,flow,cancellation);
+            return _engine.CompensateAsync(plan,CheckFlow(ticket),cancellation);
         }
     }
 }

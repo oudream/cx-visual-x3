@@ -114,7 +114,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 catch(UnauthorizedAccessException){denied=true;}
                 if(!denied || session.Snapshot().ActiveFlows!=0)
                     throw new InvalidOperationException("只读主体启动了Flow");
-                MRKFlowResult ordinary=Wait(access.TryStart("operator").Completion);
+                MRKRuntimeFlowTicket ordinaryTicket=access.TryStart("operator");
+                if (typeof(MRKRuntimeFlowTicket).GetMethod("RequestCancel") != null ||
+                    typeof(MRKRuntimeFlowTicket).GetProperty("Context") != null)
+                    throw new InvalidOperationException(
+                        "仅有Start权限却通过票据获得了裸Handle或取消能力");
+                MRKFlowResult ordinary=Wait(ordinaryTicket.Completion);
                 if(ordinary.State!=MRKFlowState.Completed ||
                     ordinary.Metadata.PlanRevision!=7)
                     throw new InvalidOperationException("授权操作员执行失败");
@@ -123,7 +128,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 catch(UnauthorizedAccessException){denied=true;}
                 if(!denied)throw new InvalidOperationException("操作员越权调试");
                 debug.Pause();
-                MRKFlowHandle controlled=access.TryStartDebug("debugger",debug);
+                MRKRuntimeFlowTicket controlled=access.TryStartDebug("debugger",debug);
                 if(!SpinWait.SpinUntil(()=>debug.WaitingCount>0,3000))
                     throw new InvalidOperationException("授权调试入口没有到达暂停点");
                 denied=false;
@@ -131,6 +136,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 catch(UnauthorizedAccessException){denied=true;}
                 if(!denied || controlled.GetSnapshot().CancelRequested)
                     throw new InvalidOperationException("只读主体取消了调试Flow");
+                denied=false;
+                try {access.RequestCancel("debugger",controlled);}
+                catch(UnauthorizedAccessException){denied=true;}
+                if(!denied || controlled.GetSnapshot().CancelRequested)
+                    throw new InvalidOperationException("调试权限绕过了取消权限检查");
                 debug.Resume();
                 if(Wait(controlled.Completion).State!=MRKFlowState.Completed)
                     throw new InvalidOperationException("授权调试恢复失败");
