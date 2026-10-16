@@ -72,10 +72,12 @@ namespace CxVisual.Mechanism.Runtime.Execution
             MRKFlowHandle[] active;
             lock(_gate)
             {
-                if(_stopTask!=null)return _stopTask;
-                _state=MRKRuntimeSessionState.Stopping;
-                active=new List<MRKFlowHandle>(_flows.Values).ToArray();
-                _stopTask=DrainAsync(active);
+                if (_stopTask == null)
+                {
+                    _state = MRKRuntimeSessionState.Stopping;
+                    _stopTask = DrainAsync(new List<MRKFlowHandle>(_flows.Values).ToArray());
+                }
+                active = new List<MRKFlowHandle>(_flows.Values).ToArray();
             }
             if(cancel)foreach(MRKFlowHandle flow in active)flow.RequestCancel();
             return _stopTask;

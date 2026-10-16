@@ -43,6 +43,35 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 two.Snapshot().State!=MRKRuntimeSessionState.Ready)
                 throw new InvalidOperationException("会话状态与计划版本不一致");
             Wait(two.StopAsync());Wait(engine.StopAsync());
+            CancelEscalatesAnExistingDrain();
+        }
+        private static void CancelEscalatesAnExistingDrain()
+        {
+            TaskCompletionSource<bool> entered = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            MRKExecutionPlan plan = new MRKExecutionPlan("upgrade", new[]{
+                new MRKExecutionStep("await",new string[0],async(c,t)=>{
+                    entered.TrySetResult(true);
+                    await Task.Delay(Timeout.Infinite,t).ConfigureAwait(false);
+                    return (object)0;
+                })
+            });
+            MRKExecutionEngine engine=new MRKExecutionEngine(new FCRWorkerOptions(1,3));
+            MRKRuntimeSession session=new MRKRuntimeSession("upgrade",engine,
+                new MRKExecutionPlanSlot(plan,1));
+            session.Start();
+            MRKFlowHandle flow=session.TryStartFlow();
+            Wait(entered.Task);
+            Task graceful=session.StopAsync(false);
+            if(graceful.IsCompleted)throw new InvalidOperationException("升级前Drain提前完成");
+            Task upgraded=session.StopAsync(true);
+            if(!object.ReferenceEquals(graceful,upgraded))
+                throw new InvalidOperationException("重复停止返回了不同任务");
+            Wait(upgraded);
+            if(Wait(flow.Completion).State!=MRKFlowState.Cancelled ||
+               session.Snapshot().State!=MRKRuntimeSessionState.Stopped)
+                throw new InvalidOperationException("停止升级没有取消在途Flow");
+            Wait(engine.StopAsync());
         }
         private static T Wait<T>(Task<T> task)
         {
