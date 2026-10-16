@@ -61,7 +61,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         public static void Run()
         {
             string root = Path.Combine(Path.GetTempPath(), "CxVisual-Config-Atomic-" + Guid.NewGuid().ToString("N"));
-            try { VerifyAtomicGroup(root); VerifyDurableEvents(root); VerifySecurity(root); VerifyReferences(root); VerifyEffectiveJournal(root); VerifyLiveReplay(root); VerifyRichTypes(root); VerifyAtomicLayers(root); VerifyDeveloperErgonomics(root); VerifyPhaseAContracts(root); VerifyPhaseASecurity(root); }
+            try { VerifyAtomicGroup(root); VerifyDurableEvents(root); VerifySecurity(root); VerifyReferences(root); VerifyEffectiveJournal(root); VerifyLiveReplay(root); VerifyRichTypes(root); VerifyAtomicLayers(root); VerifyDeveloperErgonomics(root); VerifyPhaseAContracts(root); VerifyPhaseASecurity(root); VerifyPhaseAFaults(root); }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
             Console.WriteLine("PASS atomic multi-model configuration transaction, validation and snapshots");
         }
@@ -261,6 +261,73 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 rejectedValidation.Issues.All(x => !x.Message.Contains("模拟专业校验器故障")),
                 "validator exception details are not exposed as public error text");
             Console.WriteLine("PASS config phase A: revoked permissions and sensitive error redaction");
+        }
+
+        private static void VerifyPhaseAFaults(string root)
+        {
+            string folder = Path.Combine(root, "phase-a-disk-fault");
+            var config = new MHSConfigService(folder).ForMachine("M").Open<V13ConfigSample>();
+            string lockFile = Directory.GetFiles(folder, "write.lock",
+                SearchOption.AllDirectories).Single();
+            string savedBefore = config.SavedVersion;
+            using (var blocker = new FileStream(lockFile,
+                FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None))
+            {
+                MHSConfigCommitResult refused = config.UpdateAsync(
+                    x => x.ExposureMs = 131, "simulate write failure",
+                    CancellationToken.None).GetAwaiter().GetResult();
+                Check(!refused.Success && refused.ErrorCode == "CONFIG_STORAGE_ERROR" &&
+                    config.SavedVersion == savedBefore &&
+                    config.EffectiveVersion == savedBefore,
+                    "write-lock fault returns stable error without changing any revision");
+            }
+            int effectiveNotifications = 0;
+            using (var watch = config.Watch(x => x.ExposureMs,
+                x => Interlocked.Increment(ref effectiveNotifications)))
+            {
+                Check(config.UpdateAsync(x => x.ExposureMs = 131,
+                    "write after recovery", CancellationToken.None).GetAwaiter().GetResult().Success,
+                    "file becomes writable again");
+                using (var blocker = new FileStream(lockFile,
+                    FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None))
+                {
+                    MHSConfigApplyResult refused = config.TryApplyPendingAtBoundary(
+                        FCMConfigApplyPolicy.NextTask, null);
+                    Check(!refused.Applied && refused.Status == "APPLY_STORAGE_ERROR" &&
+                        config.EffectiveVersion == savedBefore && effectiveNotifications == 0,
+                        "apply storage failure never moves effective revision or notifies");
+                }
+                Check(config.ApplyPendingAtTaskBoundary() && effectiveNotifications == 1,
+                    "retry applies exactly once after releasing storage fault");
+            }
+            string markerFile = Directory.GetFiles(folder, "effective.txt",
+                SearchOption.AllDirectories).Single();
+            string activeMarker = File.ReadAllText(markerFile);
+            File.Delete(markerFile);
+            Expect<InvalidOperationException>(() => new MHSConfigService(folder)
+                .ForMachine("M").Open<V13ConfigSample>(),
+                "missing durable marker cannot silently activate the latest saved revision");
+            File.WriteAllText(markerFile, activeMarker);
+            Check(new MHSConfigService(folder).ForMachine("M")
+                .Open<V13ConfigSample>().Value(x => x.ExposureMs) == 131,
+                "marker restoration reopens previous effective value");
+
+            // Crash after an immutable revision is written but before current.json
+            // is atomically advanced: orphan history is never treated as committed.
+            string history = Directory.GetFiles(folder, "r00000002.json",
+                SearchOption.AllDirectories).Single();
+            string orphan = Path.Combine(Path.GetDirectoryName(history), "r00000003.json");
+            File.WriteAllText(orphan, File.ReadAllText(history));
+            Check(config.UpdateAsync(x => x.ExposureMs = 135, "after interrupted commit",
+                CancellationToken.None).GetAwaiter().GetResult().Success &&
+                config.SavedVersion == "v4" &&
+                config.ReadCommittedAfter(null, 20).Count == 2,
+                "orphaned physical revision is skipped by the committed parent chain");
+            var recovered = new MHSConfigService(folder).ForMachine("M").Open<V13ConfigSample>();
+            Check(recovered.HasPendingApply && recovered.Value(x => x.ExposureMs) == 131 &&
+                recovered.GetLatestSaved().ExposureMs == 135,
+                "restart after orphan retains last approved effective version");
+            Console.WriteLine("PASS config phase A: filesystem fault, journal orphan, marker recovery");
         }
 
         private static void VerifyAtomicGroup(string root)
