@@ -17,6 +17,19 @@ namespace CxVisual.Tests.ArchitectureSmoke
         public string SecretRef { get; set; } = "vault:test-key";
     }
 
+    [FCMConfigSection("Tests.SecretCollection")]
+    public sealed class ConfigSensitiveCollectionSample
+    {
+        public System.Collections.Generic.Dictionary<string, ConfigSensitiveItem> Credentials { get; set; } =
+            new System.Collections.Generic.Dictionary<string, ConfigSensitiveItem>
+            { { "source", new ConfigSensitiveItem() } };
+    }
+    public sealed class ConfigSensitiveItem
+    {
+        [FCMConfigSensitive]
+        public string Password { get; set; } = "secret-in-nested-list";
+    }
+
     internal sealed class ConfigTestResourceProvider : IFCMConfigResourceReferenceProvider
     {
         public string ResourceType { get { return "calibration"; } }
@@ -172,6 +185,15 @@ namespace CxVisual.Tests.ArchitectureSmoke
             FCMConfigPrincipal reader = new FCMConfigPrincipal("reader-01", new[] { "viewer" });
             FCMConfigPrincipal operatorUser = new FCMConfigPrincipal("operator-01", new[] { "operator" });
             policy.Grant("viewer", FCMConfigAccessAction.Read, id.SectionId, id.ScopeKind, id.ScopeId);
+            FCMConfigIdentity nestedId = new FCMConfigIdentity(
+                "Tests.SecretCollection", "machine", "Nested-01");
+            policy.Grant("viewer", FCMConfigAccessAction.Read,
+                nestedId.SectionId, nestedId.ScopeKind, nestedId.ScopeId);
+            Check(FCMConfigSensitivity.ContainsSensitive(typeof(ConfigSensitiveCollectionSample)),
+                "nested collection sensitive attributes must be discovered recursively");
+            Expect<UnauthorizedAccessException>(() =>
+                service.Authorize(reader, policy).Open<ConfigSensitiveCollectionSample>(nestedId),
+                "reader is denied complete document with sensitive child inside dictionary");
             policy.Grant("operator", FCMConfigAccessAction.Read, id.SectionId, id.ScopeKind, id.ScopeId);
             policy.Grant("operator", FCMConfigAccessAction.ReadSensitive, id.SectionId, id.ScopeKind, id.ScopeId);
             policy.Grant("operator", FCMConfigAccessAction.Edit, id.SectionId, id.ScopeKind, id.ScopeId);

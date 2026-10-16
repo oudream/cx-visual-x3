@@ -131,8 +131,16 @@ namespace CxVisual.Foundation.Data.Configuration
         }
         private static bool Walk(Type type, HashSet<Type> seen)
         {
-            if (type == null || FCMConfigSchemaBuilder.IsScalar(type) ||
-                !seen.Add(type)) return false;
+            if (type == null || FCMConfigSchemaBuilder.IsScalar(type)) return false;
+            if (type.IsArray) return Walk(type.GetElementType(), seen);
+            if (type.IsGenericType &&
+                typeof(System.Collections.IEnumerable).IsAssignableFrom(type))
+            {
+                foreach (Type argument in type.GetGenericArguments())
+                    if (Walk(argument, seen)) return true;
+                return false;
+            }
+            if (!seen.Add(type)) return false;
             try
             {
                 foreach (System.Reflection.PropertyInfo p in type.GetProperties(
