@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using CxVisual.Foundation.Infrastructure.Concurrency;
 using CxVisual.Foundation.Data.Execution;
 using CxVisual.Mechanism.Data.RuntimeData;
+using CxVisual.Foundation.Data.Types;
 
 namespace CxVisual.Mechanism.Runtime.Execution
 {
@@ -218,16 +219,40 @@ namespace CxVisual.Mechanism.Runtime.Execution
 
     public sealed class MRKFlowResult
     {
-        internal MRKFlowResult(MRKFlowState state, MRKExecutionContext context, Exception error)
-        { State = state; FlowId = context.FlowId; Metadata = context.Metadata; Error = error;
-          CompletedUtc = DateTime.UtcNow;
-          Results = context.ResultsSnapshot(); StepStates = context.StatesSnapshot(); }
+        internal MRKFlowResult(MRKFlowState state, MRKExecutionContext context, Exception error,
+            IDictionary<string, object> committedOutputs = null)
+        {
+            State = state; FlowId = context.FlowId; Metadata = context.Metadata; Error = error;
+            CompletedUtc = DateTime.UtcNow;
+            Results = context.ResultsSnapshot(); StepStates = context.StatesSnapshot();
+            Dictionary<string, object> safe = new Dictionary<string, object>(StringComparer.Ordinal);
+            if (state == MRKFlowState.Completed && committedOutputs != null)
+                foreach (KeyValuePair<string, object> item in committedOutputs)
+                    safe.Add(item.Key, FDTDataValueSafety.Capture(item.Value));
+            CommittedOutputs = new ReadOnlyDictionary<string, object>(safe);
+        }
         public MRKFlowState State { get; private set; }
         public Guid FlowId { get; private set; }
         public MRKFlowMetadata Metadata { get; private set; }
         public DateTime CompletedUtc { get; private set; }
         public Exception Error { get; private set; }
         public IDictionary<string, object> Results { get; private set; }
+        /// <summary>完整Flow成功才产生的最终导出；与节点Results快照不是同一语义。</summary>
+        public IDictionary<string, object> CommittedOutputs { get; private set; }
+        public T GetCommittedOutput<T>(string name)
+        {
+            if (State != MRKFlowState.Completed)
+                throw new InvalidOperationException("流程未成功，不能访问未提交输出");
+            object value;
+            if (!CommittedOutputs.TryGetValue(name, out value))
+                throw new KeyNotFoundException("流程输出未声明或未提交：" + name);
+            if (value != null && !(value is T))
+                throw new InvalidCastException("流程导出类型不匹配：" + name);
+            if (value == null && typeof(T).IsValueType &&
+                Nullable.GetUnderlyingType(typeof(T)) == null)
+                throw new InvalidCastException("非空值类型不能读取null：" + name);
+            return (T)FDTDataValueSafety.Capture(value);
+        }
         public IDictionary<string, MRKStepState> StepStates { get; private set; }
     }
 
@@ -638,6 +663,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
             };
             MRKFlowState finalState = MRKFlowState.Completed;
             Exception finalError = null;
+            IDictionary<string, object> committedFlowOutputs = null;
             try
             {
                 foreach (MRKExecutionStep step in plan.Steps)
@@ -645,6 +671,17 @@ namespace CxVisual.Mechanism.Runtime.Execution
                     Task<object> scheduled = schedule(step.Id);
                 }
                 await Task.WhenAll(tasks.Values.ToArray()).ConfigureAwait(false);
+                flow.Token.ThrowIfCancellationRequested();
+                Dictionary<string, object> exports =
+                    new Dictionary<string, object>(StringComparer.Ordinal);
+                foreach (KeyValuePair<string, string> item in plan.DataExports)
+                {
+                    object value;
+                    if (!context.TryGetCommittedData(item.Value, out value))
+                        throw new InvalidOperationException("必要流程导出未提交：" + item.Value);
+                    exports.Add(item.Key, FDTDataValueSafety.Capture(value));
+                }
+                committedFlowOutputs = new ReadOnlyDictionary<string, object>(exports);
             }
             catch (Exception ex)
             {
@@ -678,7 +715,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
                         new AggregateException("流程执行和Journal最终写入同时失败", finalError, ex);
                 }
             }
-            return new MRKFlowResult(finalState, context, finalError);
+            return new MRKFlowResult(finalState, context, finalError,
+                finalState == MRKFlowState.Completed ? committedFlowOutputs : null);
         }
 
         private async Task<object> RunStepAsync(MRKExecutionStep step, MRKExecutionContext context,
