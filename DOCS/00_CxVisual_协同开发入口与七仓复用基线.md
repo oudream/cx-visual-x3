@@ -132,3 +132,5 @@
 - 实现 Owner 仅为 `Foundation/Data/Configuration` 与 `Mechanism/Data/Configuration`；WPF 仅承载编辑显示，不产生第二配置真源。
 
 - [V2.4 阶段 A 实施与验收矩阵](Implementation/CxVisual_统一配置体系_V2.4_阶段A实施与验收矩阵.md)：按实际提交与测试追踪，不将 UI/实机/远端能力虚报已完成。
+
+- [统一配置 V2.4 阶段 B 实现与验收](Implementation/CxVisual_统一配置体系_V2.4_阶段B开发者API与动态编辑验收矩阵.md)：类型安全原子组、动态集合操作与条目、真实 CI 证据、阶段 C/D 限制。
