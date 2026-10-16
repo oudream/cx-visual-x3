@@ -127,6 +127,27 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 finally { foreach (var watch in subscriptions) watch.Dispose(); }
                 Console.WriteLine("CONFIG_D_CHECK subscribers=" + subs +
                     " notifications=" + hits + " status=PASS");
+                var slowConfig = service.ForMachine("D-SlowConsumer").Open<V13ConfigSample>();
+                int slowHits = 0, healthyHits = 0;
+                Stopwatch callbackWall = Stopwatch.StartNew();
+                using (slowConfig.Watch(x => x.ExposureMs, ev => {
+                    Thread.Sleep(8);
+                    Interlocked.Increment(ref slowHits);
+                }))
+                using (slowConfig.Watch(x => x.ExposureMs, ev =>
+                    { throw new InvalidOperationException("模拟订阅者失败"); }))
+                using (slowConfig.Watch(x => x.ExposureMs, ev => Interlocked.Increment(ref healthyHits)))
+                {
+                    Require(slowConfig.UpdateAsync(x => x.ExposureMs = 170, "D-slow-subscriber",
+                        CancellationToken.None).GetAwaiter().GetResult().Success,
+                        "subscriber failure preparation");
+                    Require(slowConfig.ApplyPendingAtTaskBoundary() &&
+                        slowHits == 1 && healthyHits == 1,
+                        "slow/throwing subscriber cannot corrupt apply or block healthy subscriber");
+                }
+                callbackWall.Stop();
+                Console.WriteLine("CONFIG_D_CHECK slowAndFailingSubscribers=PASS latencyMs=" +
+                    callbackWall.ElapsedMilliseconds + " synchronousBackpressure=true");
 
                 int entries = full ? 10000 : 1000;
                 var large = service.ForMachine("D-Collections").Open<ConfigDynamicCollections>();
