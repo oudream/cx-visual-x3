@@ -52,11 +52,12 @@ namespace CxVisual.Studio
                     case 1: saved = EditConfig<CxAutomationDeviceOptions>(); break;
                     case 2: saved = EditConfig<CxVisionInspectionOptions>(); break;
                     case 3: saved = EditConfig<CxCtReconstructionOptions>(); break;
+                    case 4: saved = EditConfig<StudioRichConfig>(); break;
                     default: saved = EditConfig<StudioDemoConfig>(); break;
                 }
                 if (saved) MessageBox.Show(this,
-                    "V1.4 配置保存成功。当前运行任务生效时间由配置策略控制。",
-                    "配置 V1.4", MessageBoxButton.OK, MessageBoxImage.Information);
+                    "配置已保存。生效版本可在配置编辑器中查看并按适当边界生效。",
+                    "配置 V2.4", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             catch (Exception ex)
             {
@@ -67,15 +68,74 @@ namespace CxVisual.Studio
         // Legacy L4 release APIs have been deleted; do not pretend publishing is implemented by L1 storage.
         private void OnPublishConfigDemo(object sender, RoutedEventArgs e)
         {
-            MessageBox.Show(this, "V1.4 的跨机台发布尚未集成。请使用已保存配置及运行边界，不执行旧版 L4 演示。",
+            MessageBox.Show(this, "跨机台发布仍属于后续范围；本窗口只处理当前配置服务和生效边界。",
                 "发布尚未接入", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         private void OnRollbackConfigDemo(object sender, RoutedEventArgs e)
         {
-            MessageBox.Show(this, "V1.4 支持历史读取；受控回滚流程尚未接入 Studio，不能用旧演示替代。",
+            MessageBox.Show(this, "请点击“编辑所选配置”，在“版本、历史与诊断”内选择旧版本并恢复为新的 Saved 修订。",
                 "回滚尚未接入", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
+
+        private static MVBConfigLayerSpec[] DemoLayers()
+        {
+            return new[] {
+                new MVBConfigLayerSpec("Template", "template", "Standard", 10),
+                new MVBConfigLayerSpec("Machine", "machine", "StudioDemo", 20),
+                new MVBConfigLayerSpec("Product", "product", "XRaySample", 30),
+                new MVBConfigLayerSpec("Override", "runtime", "DebugSession", 40)
+            };
+        }
+        private void OnAtomicLayerDemo(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var service = new MHSConfigService(Path.Combine(GetDemoDataRoot(), "Configs", "V24", "Layered"));
+                var profile = new MVBConfigAtomicLayerProfile<StudioRichConfig>(
+                    service, "StudioAtomicRecipe", DemoLayers());
+                MPWConfigLayerDialog.Show(this, profile);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "无法打开原子层级配置：" + ex.GetType().Name,
+                    "配置 V2.4", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+        private void OnIndependentLayerDemo(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var service = new MHSConfigService(Path.Combine(GetDemoDataRoot(), "Configs", "V24", "Layered"));
+                var profile = new MVBConfigLayeredProfile<StudioRichConfig>(
+                    service, "StudioIndependentRecipe", DemoLayers());
+                MPWConfigLayerDialog.Show(this, profile);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "无法打开独立层级配置：" + ex.GetType().Name,
+                    "配置 V2.4", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+        private void OnEmbeddedConfigDemo(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var service = new MHSConfigService(Path.Combine(GetDemoDataRoot(), "Configs", "V24", "Embedded"));
+                var section = service.ForMachine("StudioEmbedded").Open<StudioRichConfig>();
+                var editor = new MPWConfigEditorControl<StudioRichConfig>(section);
+                Window host = new Window { Owner = this, Title = "配置编辑器 · 可嵌入宿主",
+                    Width = 1000, Height = 750, Content = editor,
+                    WindowStartupLocation = WindowStartupLocation.CenterOwner };
+                host.Closed += (s, args) => editor.Dispose();
+                host.Show();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "配置嵌入演示未启动：" + ex.GetType().Name,
+                    "配置 V2.4", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
         protected override void OnClosed(System.EventArgs e)
         {
             _viewModel.Dispose();

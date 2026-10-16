@@ -27,8 +27,12 @@
                     <ComboBoxItem Content="Automation设备"/>
                     <ComboBoxItem Content="Vision检测"/>
                     <ComboBoxItem Content="CT3D重建"/>
+                    <ComboBoxItem Content="复杂配置与集合"/>
                 </ComboBox>
-                <Button Click="OnConfigDemo" Content="编辑所选配置 (L1)"/>
+                <Button Click="OnConfigDemo" Content="配置编辑 V2.4"/>
+                <Button Click="OnEmbeddedConfigDemo" Content="嵌入式编辑"/>
+                <Button Click="OnAtomicLayerDemo" Content="原子层配置"/>
+                <Button Click="OnIndependentLayerDemo" Content="独立层配置"/>
                 <Button Click="OnPublishConfigDemo" Content="发布示例配置 (L4)"/>
                 <Button Click="OnRollbackConfigDemo" Content="回滚发布"/>
             </WrapPanel>
