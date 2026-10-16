@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -26,6 +27,47 @@ namespace CxVisual.Mechanism.Data.Configuration
         public bool HasDraftValue { get; private set; }
         public bool HasSavedValue { get; private set; }
         public bool IsModified { get; private set; }
+        public IList<FCMConfigIssue> Issues { get; private set; }
+    }
+
+    /// <summary>
+    /// One live collection entry; a set has no positional path (ItemPath is null)
+    /// and is identified only by its value JSON. No runtime data is owned here.
+    /// </summary>
+    public sealed class MHSConfigCollectionItem
+    {
+        internal MHSConfigCollectionItem(string collectionPath, string itemPath,
+            FCMConfigTypeKind kind, Type itemType, string keyJson, int? index,
+            string draft, string saved, string effective, bool sensitive,
+            IList<FCMConfigIssue> issues)
+        {
+            CollectionPath = collectionPath; ItemPath = itemPath;
+            CollectionKind = kind; ItemType = itemType; KeyJson = keyJson; Index = index;
+            DraftJson = draft; SavedJson = saved; EffectiveJson = effective;
+            HasDraft = draft != null; HasSaved = saved != null;
+            HasEffective = effective != null;
+            IsModified = HasDraft != HasSaved ||
+                !string.Equals(draft, saved, StringComparison.Ordinal);
+            IsSensitive = sensitive;
+            Issues = new List<FCMConfigIssue>(issues).AsReadOnly();
+        }
+        public string CollectionPath { get; private set; }
+        /// <summary>Null for HashSet: sets are not indexable.</summary>
+        public string ItemPath { get; private set; }
+        public FCMConfigTypeKind CollectionKind { get; private set; }
+        public Type ItemType { get; private set; }
+        /// <summary>JSON string key for maps, serialized value for sets; null for lists.</summary>
+        public string KeyJson { get; private set; }
+        public int? Index { get; private set; }
+        public string DraftJson { get; private set; }
+        public string SavedJson { get; private set; }
+        public string EffectiveJson { get; private set; }
+        public bool HasDraft { get; private set; }
+        public bool HasSaved { get; private set; }
+        public bool HasEffective { get; private set; }
+        public bool IsModified { get; private set; }
+        public bool IsSensitive { get; private set; }
+        public bool CanReorder { get { return CollectionKind == FCMConfigTypeKind.List; } }
         public IList<FCMConfigIssue> Issues { get; private set; }
     }
 
@@ -223,6 +265,133 @@ namespace CxVisual.Mechanism.Data.Configuration
             }
             return fields.AsReadOnly();
         }
+        /// <summary>
+        /// Dynamic entries are the UNION of draft/saved/effective keys and indices.
+        /// Thus deleted entries remain visible as removed in a visual diff.
+        /// Lists have indices, dictionaries have serialized string keys, sets are
+        /// value-addressed and cannot be reordered by an imaginary index.
+        /// </summary>
+        public IList<MHSConfigCollectionItem> DescribeCollectionItems()
+        {
+            EnsureOpen();
+            T draft = Clone(_edit.WorkingCopy);
+            T saved = _section.GetLatestSaved();
+            T effective = _section.Get();
+            FCMConfigValidationReport validation = _edit.Preview().Validation;
+            List<MHSConfigCollectionItem> items = new List<MHSConfigCollectionItem>();
+            VisitCollection(typeof(T), draft, saved, effective, "", false,
+                validation.Issues, items, 0);
+            return items.AsReadOnly();
+        }
+        private static void VisitCollection(Type type, object draft, object saved,
+            object effective, string path, bool sensitive, IList<FCMConfigIssue> issues,
+            List<MHSConfigCollectionItem> items, int depth)
+        {
+            if (depth > 32 || items.Count > 10000)
+                throw new InvalidOperationException("CONFIG_EDITOR_DYNAMIC_NODE_LIMIT");
+            type = Nullable.GetUnderlyingType(type) ?? type;
+            if (FCMConfigSchemaBuilder.IsScalar(type)) return;
+            if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Dictionary<,>))
+            {
+                Type itemType = type.GetGenericArguments()[1];
+                IDictionary d = draft as IDictionary, s = saved as IDictionary, e = effective as IDictionary;
+                HashSet<string> keys = new HashSet<string>(StringComparer.Ordinal);
+                foreach (IDictionary map in new[] { d, s, e })
+                    if (map != null) foreach (DictionaryEntry item in map) keys.Add((string)item.Key);
+                foreach (string key in keys.OrderBy(x => x, StringComparer.Ordinal))
+                {
+                    string child = path + "[" + FCMJsonValueCodec.Quote(key) + "]";
+                    AddItem(items, path, child, FCMConfigTypeKind.Map, itemType,
+                        FCMJsonValueCodec.Quote(key), null, d != null && d.Contains(key) ? d[key] : null,
+                        s != null && s.Contains(key) ? s[key] : null,
+                        e != null && e.Contains(key) ? e[key] : null,
+                        d != null && d.Contains(key), s != null && s.Contains(key),
+                        e != null && e.Contains(key), sensitive, issues);
+                    VisitCollection(itemType, d != null && d.Contains(key) ? d[key] : null,
+                        s != null && s.Contains(key) ? s[key] : null,
+                        e != null && e.Contains(key) ? e[key] : null,
+                        child, sensitive, issues, items, depth + 1);
+                }
+                return;
+            }
+            if (type.IsArray || (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(List<>)))
+            {
+                Type element = type.IsArray ? type.GetElementType() : type.GetGenericArguments()[0];
+                FCMConfigTypeKind kind = type.IsArray ? FCMConfigTypeKind.Array : FCMConfigTypeKind.List;
+                IList d = draft as IList, s = saved as IList, e = effective as IList;
+                int count = Math.Max(d == null ? 0 : d.Count,
+                    Math.Max(s == null ? 0 : s.Count, e == null ? 0 : e.Count));
+                for (int i = 0; i < count; ++i)
+                {
+                    string child = path + "[" + i.ToString(System.Globalization.CultureInfo.InvariantCulture) + "]";
+                    bool hd = d != null && i < d.Count, hs = s != null && i < s.Count,
+                        he = e != null && i < e.Count;
+                    object dv = hd ? d[i] : null, sv = hs ? s[i] : null, ev = he ? e[i] : null;
+                    AddItem(items, path, child, kind, element, null, i,
+                        dv, sv, ev, hd, hs, he, sensitive, issues);
+                    VisitCollection(element, dv, sv, ev, child, sensitive, issues, items, depth + 1);
+                }
+                return;
+            }
+            if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(HashSet<>))
+            {
+                Type element = type.GetGenericArguments()[0];
+                Dictionary<string, object>[] sets = new[] { draft, saved, effective }
+                    .Select(x => SetValues(x)).ToArray();
+                foreach (string key in sets.SelectMany(x => x.Keys).Distinct(StringComparer.Ordinal)
+                    .OrderBy(x => x, StringComparer.Ordinal))
+                {
+                    // ItemPath is deliberately null: HashSet does not have indices.
+                    AddItem(items, path, null, FCMConfigTypeKind.Set, element, key, null,
+                        sets[0].ContainsKey(key) ? sets[0][key] : null,
+                        sets[1].ContainsKey(key) ? sets[1][key] : null,
+                        sets[2].ContainsKey(key) ? sets[2][key] : null,
+                        sets[0].ContainsKey(key), sets[1].ContainsKey(key),
+                        sets[2].ContainsKey(key), sensitive, issues);
+                }
+                return;
+            }
+            foreach (FCMConfigMemberDescriptor member in FCMConfigSchemaBuilder.Members(type))
+            {
+                string child = path.Length == 0 ? member.Name : path + "." + member.Name;
+                bool protectedChild = sensitive || member.Property.IsDefined(
+                    typeof(FCMConfigSensitiveAttribute), true) ||
+                    FCMConfigSensitivity.ContainsSensitive(member.MemberType);
+                VisitCollection(member.MemberType,
+                    draft == null ? null : member.Property.GetValue(draft, null),
+                    saved == null ? null : member.Property.GetValue(saved, null),
+                    effective == null ? null : member.Property.GetValue(effective, null),
+                    child, protectedChild, issues, items, depth + 1);
+            }
+        }
+        private static Dictionary<string, object> SetValues(object value)
+        {
+            Dictionary<string, object> values = new Dictionary<string, object>(StringComparer.Ordinal);
+            IEnumerable items = value as IEnumerable;
+            if (items != null)
+                foreach (object item in items)
+                    values[FCMJsonValueCodec.Serialize(item)] = item;
+            return values;
+        }
+        private static void AddItem(List<MHSConfigCollectionItem> result, string parent,
+            string itemPath, FCMConfigTypeKind kind, Type type, string key, int? index,
+            object draft, object saved, object effective, bool hasDraft,
+            bool hasSaved, bool hasEffective, bool sensitive, IList<FCMConfigIssue> issues)
+        {
+            if (result.Count >= 10000)
+                throw new InvalidOperationException("CONFIG_EDITOR_DYNAMIC_NODE_LIMIT");
+            string prefix = itemPath ?? parent;
+            IList<FCMConfigIssue> matched = issues.Where(x =>
+                x.Path == prefix || (itemPath != null &&
+                (x.Path.StartsWith(prefix + ".", StringComparison.Ordinal) ||
+                 x.Path.StartsWith(prefix + "[", StringComparison.Ordinal)))).ToList();
+            result.Add(new MHSConfigCollectionItem(parent, itemPath, kind, type, key, index,
+                hasDraft ? FCMJsonValueCodec.Serialize(draft) : null,
+                hasSaved ? FCMJsonValueCodec.Serialize(saved) : null,
+                hasEffective ? FCMJsonValueCodec.Serialize(effective) : null,
+                sensitive, matched));
+        }
+
         public async Task<MHSConfigCommitResult> CommitAsync(CancellationToken token)
         {
             EnsureOpen();
