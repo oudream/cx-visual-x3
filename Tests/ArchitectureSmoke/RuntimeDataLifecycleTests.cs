@@ -21,6 +21,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
             CancelledStepMustNotPublish();
             RetryMustDiscardFailedAttemptData();
             InlineSubflowOutputIsMapped();
+            MultiStepSubflowCommitBarrier();
+            ThreeLevelSubflowCommit();
             ExplicitInputCannotInheritParent();
         }
 
@@ -348,6 +350,89 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 MRKFlowResult result = Wait(engine.StartFlow(new MRKExecutionPlan("parent", steps)).Completion);
                 Check(result.State == MRKFlowState.Completed &&
                     (int)result.Results["consume"] == 87, "内联子流程输出映射失效");
+            }
+            finally { Wait(engine.StopAsync()); }
+        }
+
+        private static void MultiStepSubflowCommitBarrier()
+        {
+            MRKExecutionStep produce = new MRKExecutionStep("produce", new string[0],
+                (ctx,ct) =>
+                {
+                    ctx.Data.Return("Area", 10);
+                    return Task.FromResult((object)1);
+                }, dataOutputs: Outputs(
+                    new KeyValuePair<string, Type>("Area", typeof(int))));
+            MRKExecutionStep fail = new MRKExecutionStep("fail", new[] {"produce"},
+                (ctx,ct) => { throw new InvalidOperationException("子流程第二节点失败"); });
+            MRKExecutionPlan child = new MRKExecutionPlan("sub", new[] {produce, fail},
+                new Dictionary<string, string> {{"Area", "produce.Area"}});
+            List<MRKExecutionStep> steps = new List<MRKExecutionStep>(
+                MRKExecutionPlan.InlineSubflow("sub", child, null));
+            int parentRead = 0;
+            steps.Add(new MRKExecutionStep("parentRead", new[] {"sub.__commit"},
+                (ctx,ct) =>
+                {
+                    Interlocked.Increment(ref parentRead);
+                    return Task.FromResult((object)ctx.Data.Get<int>("Area"));
+                }, inputs: new[] {
+                    new MRKExecutionInput("Area", MRKInputSource.StepOutput,
+                        "sub.__commit.Area", typeof(int))
+                }));
+            MRKExecutionPlan parent = new MRKExecutionPlan("parent", steps);
+            MRKExecutionEngine engine = new MRKExecutionEngine(new FCRWorkerOptions(3, 5));
+            try
+            {
+                MRKFlowResult result = Wait(engine.StartFlow(parent).Completion);
+                Check(result.State == MRKFlowState.Failed && parentRead == 0,
+                    "子流程失败却发布了部分已暂存的导出");
+            }
+            finally { Wait(engine.StopAsync()); }
+            bool boundaryDenied = false;
+            try
+            {
+                List<MRKExecutionStep> invalid = new List<MRKExecutionStep>(
+                    MRKExecutionPlan.InlineSubflow("bad", child, null));
+                invalid.Add(new MRKExecutionStep("escape", new[] {"bad.produce"},
+                    (ctx,ct) => Task.FromResult((object)1),
+                    inputs: new [] {
+                        new MRKExecutionInput("Area", MRKInputSource.StepOutput,
+                            "bad.produce.Area", typeof(int))
+                    }));
+                new MRKExecutionPlan("invalid", invalid);
+            }
+            catch (ArgumentException) { boundaryDenied = true; }
+            Check(boundaryDenied, "外部绕过子流程屏障直接读取内部输出未被拒绝");
+        }
+
+        private static void ThreeLevelSubflowCommit()
+        {
+            MRKExecutionPlan leaf = new MRKExecutionPlan("leaf", new[] {
+                new MRKExecutionStep("calculate", new string[0], (ctx,ct) =>
+                {
+                    ctx.Data.Return("Value", 71);
+                    return Task.FromResult((object)1);
+                }, dataOutputs: Outputs(
+                    new KeyValuePair<string, Type>("Value", typeof(int))))
+            }, new Dictionary<string, string> {{"Value", "calculate.Value"}});
+            MRKExecutionPlan middle = new MRKExecutionPlan("middle",
+                MRKExecutionPlan.InlineSubflow("leaf", leaf, null),
+                new Dictionary<string, string> {{"Result", "leaf.__commit.Value"}});
+            List<MRKExecutionStep> steps = new List<MRKExecutionStep>(
+                MRKExecutionPlan.InlineSubflow("middle", middle, null));
+            steps.Add(new MRKExecutionStep("final", new [] {"middle.__commit"},
+                (ctx,ct) => Task.FromResult((object)(ctx.Data.Get<int>("Value") + 1)),
+                inputs: new [] {
+                    new MRKExecutionInput("Value", MRKInputSource.StepOutput,
+                        "middle.__commit.Result", typeof(int))
+                }, output: new MRKExecutionOutput(typeof(int))));
+            MRKExecutionEngine engine = new MRKExecutionEngine(new FCRWorkerOptions(3, 5));
+            try
+            {
+                MRKFlowResult result = Wait(engine.StartFlow(new MRKExecutionPlan("root", steps)).Completion);
+                Check(result.State == MRKFlowState.Completed &&
+                    (int)result.Results["final"] == 72,
+                    "三层子流程输出没有逐层提交");
             }
             finally { Wait(engine.StopAsync()); }
         }
