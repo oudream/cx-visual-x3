@@ -111,6 +111,16 @@ namespace CxVisual.Mechanism.Data.Configuration
         public string SavedVersion { get { return _group.SavedVersion; } }
         public string EffectiveVersion { get { return _group.EffectiveVersion; } }
         public bool HasPendingApply { get { return _group.HasPendingApply; } }
+        public async Task<MHSConfigCommitResult> UpdateAsync(Action<MVBConfigAtomicLayerEdit<T>> change,
+            string reason, CancellationToken token)
+        {
+            if (change == null) throw new ArgumentNullException("change");
+            using (MVBConfigAtomicLayerEdit<T> edit = BeginEdit(reason))
+            {
+                change(edit);
+                return await edit.CommitAsync(token).ConfigureAwait(false);
+            }
+        }
         public MVBConfigAtomicLayerEdit<T> BeginEdit(string reason)
         {
             return new MVBConfigAtomicLayerEdit<T>(_group.BeginEdit(reason),

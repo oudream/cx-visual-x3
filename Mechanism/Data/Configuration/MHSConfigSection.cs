@@ -28,7 +28,7 @@ namespace CxVisual.Mechanism.Data.Configuration
         public FCMConfigValidationReport Validation { get; internal set; }
         public string ErrorCode { get; internal set; }
     }
-    public sealed class MHSConfigSnapshot<T> : IFCMConfigView<T>, IDisposable
+    public sealed class MHSConfigSnapshot<T> : IFCMConfigView<T>, IDisposable where T : new()
     {
         private T _data;
         internal MHSConfigSnapshot(T data, string version) { _data = data; Version = version; }
@@ -36,7 +36,17 @@ namespace CxVisual.Mechanism.Data.Configuration
         public TValue Value<TValue>(Expression<Func<T, TValue>> accessor)
         {
             if (_data == null) throw new ObjectDisposedException("MHSConfigSnapshot");
-            return FCMJsonValueCodec.Deserialize<TValue>(FCMJsonValueCodec.Serialize(accessor.Compile()(_data)));
+            return MHSConfigSection<T>.DetachValue(accessor.Compile()(_data));
+        }
+        public Func<V> PrepareValue<V>(Expression<Func<T, V>> selector)
+        {
+            if (selector == null) throw new ArgumentNullException("selector");
+            Func<T, V> getter = selector.Compile();
+            return () =>
+            {
+                if (_data == null) throw new ObjectDisposedException("MHSConfigSnapshot");
+                return MHSConfigSection<T>.DetachValue(getter(_data));
+            };
         }
         public T Get()
         {
@@ -157,7 +167,18 @@ namespace CxVisual.Mechanism.Data.Configuration
         public T GetLatestSaved() { lock (_gate) return Clone(_saved); }
         public TPart Section<TPart>(Expression<Func<T, TPart>> accessor) { return Value(accessor); }
         public TValue Value<TValue>(Expression<Func<T, TValue>> accessor)
-        { lock (_gate) return CloneValue(accessor.Compile()(_effective)); }
+        {
+            if (accessor == null) throw new ArgumentNullException("accessor");
+            Func<T, TValue> getter = accessor.Compile();
+            lock (_gate) return DetachValue(getter(_effective));
+        }
+        /// <summary>编译一次表达式后，每次读取当前有效版本，标量无需 JSON 深拷贝。</summary>
+        public Func<TValue> PrepareValue<TValue>(Expression<Func<T, TValue>> selector)
+        {
+            if (selector == null) throw new ArgumentNullException("selector");
+            Func<T, TValue> getter = selector.Compile();
+            return () => { lock (_gate) return DetachValue(getter(_effective)); };
+        }
         public FCMConfigValidationReport ValidateEffective()
         { lock (_gate) return FCMConfigValidationEngine.Validate(_effective, _scope); }
         /// <summary>一次性诊断，保存/生效/待生效/审计使用同一把实例锁。</summary>
@@ -350,15 +371,15 @@ namespace CxVisual.Mechanism.Data.Configuration
         {
             FCMConfigValueInfo<TValue> info = Explain(accessor);
             if (!info.HasEffectiveValue) return FCMConfigValueState<TValue>.Missing();
-            bool generatedDefault;
-            lock (_gate) generatedDefault = _effectiveRev == 1;
-            return FCMConfigValueState<TValue>.Of(info.EffectiveValue, info.EffectiveSource, generatedDefault);
+            return FCMConfigValueState<TValue>.Of(info.EffectiveValue, info.EffectiveSource,
+                string.Equals(info.EffectiveSource, "Default", StringComparison.Ordinal));
         }
 
         public FCMConfigValueInfo<TValue> Explain<TValue>(Expression<Func<T, TValue>> accessor)
         {
             if (accessor == null) throw new ArgumentNullException("accessor");
             Func<T, TValue> getter = accessor.Compile();
+            string fieldPath = FCMConfigPathUtil.FromExpression(accessor);
             lock (_gate)
             {
                 Tuple<bool, TValue> defaults = TryValue(new T(), getter);
@@ -384,9 +405,36 @@ namespace CxVisual.Mechanism.Data.Configuration
                     SavedVersion = MHSConfigStorage.Name(_savedRev),
                     EffectiveVersion = MHSConfigStorage.Name(_effectiveRev),
                     IsPending = _savedRev != _effectiveRev,
-                    EffectiveSource = _scope
+                    EffectiveSource = WasFieldExplicitlySet(fieldPath, _effectiveRev) ? _scope : "Default"
                 };
             }
+        }
+        private bool WasFieldExplicitlySet(string path, int effectiveRevision)
+        {
+            if (string.IsNullOrWhiteSpace(path)) return effectiveRevision > 1;
+            foreach (MHSConfigAuditEntry audit in _store.ListAudit(effectiveRevision))
+            {
+                if (audit.ChangedPaths == null) continue;
+                foreach (string touched in audit.ChangedPaths)
+                {
+                    if (touched == path ||
+                        touched.StartsWith(path + ".", StringComparison.Ordinal) ||
+                        touched.StartsWith(path + "[", StringComparison.Ordinal) ||
+                        path.StartsWith(touched + ".", StringComparison.Ordinal) ||
+                        path.StartsWith(touched + "[", StringComparison.Ordinal))
+                        return true;
+                }
+            }
+            return false;
+        }
+        internal static TValue DetachValue<TValue>(TValue value)
+        {
+            if (object.ReferenceEquals(value, null)) return value;
+            Type type = typeof(TValue);
+            if (FCMConfigSchemaBuilder.IsScalar(type) &&
+                !Attribute.IsDefined(type, typeof(FCMConfigConverterAttribute)))
+                return value;
+            return FCMJsonValueCodec.Deserialize<TValue>(FCMJsonValueCodec.Serialize(value));
         }
         private static Tuple<bool, TValue> TryValue<TValue>(T source, Func<T, TValue> accessor)
         {

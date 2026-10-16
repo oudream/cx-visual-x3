@@ -22,6 +22,7 @@
       <Link>ConfigV13ExtensionTests.cs</Link>
     </Compile>
       <Compile Include="..\ArchitectureSmoke\ConfigArchitectureCompletionTests.cs"><Link>ConfigArchitectureCompletionTests.cs</Link></Compile>
+    <Compile Include="..\ArchitectureSmoke\ConfigDeveloperExperienceTests.cs"><Link>ConfigDeveloperExperienceTests.cs</Link></Compile>
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\Foundation\Data\CxVisual.Foundation.Data.csproj">

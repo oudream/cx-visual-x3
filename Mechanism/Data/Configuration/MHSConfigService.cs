@@ -44,6 +44,14 @@ namespace CxVisual.Mechanism.Data.Configuration
             if (string.IsNullOrWhiteSpace(groupId)) throw new ArgumentException("GroupId required", "groupId");
             return new MHSConfigAtomicGroup(ForScope("config-group", groupId).Open<MHSConfigGroupDocument>());
         }
+        public MHSConfigAtomicGroup OpenAtomicGroup(string groupId, Action<MHSConfigAtomicGroup> declare)
+        {
+            if (declare == null) throw new ArgumentNullException("declare");
+            MHSConfigAtomicGroup result = OpenAtomicGroup(groupId);
+            declare(result);
+            result.Seal();
+            return result;
+        }
 
         public MHSConfigSection<T> Open<T>(FCMConfigIdentity identity) where T : new()
         {

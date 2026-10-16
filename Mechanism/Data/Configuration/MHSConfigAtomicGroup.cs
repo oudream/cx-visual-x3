@@ -236,6 +236,16 @@ namespace CxVisual.Mechanism.Data.Configuration
                 _sealed = true;
             }
         }
+        public async Task<MHSConfigCommitResult> UpdateAsync(Action<MHSConfigAtomicEdit> change,
+            string reason, CancellationToken token)
+        {
+            if (change == null) throw new ArgumentNullException("change");
+            using (MHSConfigAtomicEdit edit = BeginEdit(reason))
+            {
+                change(edit);
+                return await edit.CommitAsync(token).ConfigureAwait(false);
+            }
+        }
         public MHSConfigAtomicEdit BeginEdit(string reason)
         {
             lock (_gate)

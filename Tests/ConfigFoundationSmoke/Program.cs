@@ -12,6 +12,7 @@ namespace CxVisual.Tests.ConfigFoundationSmoke
                 int checks = ConfigurationIntegrationTests.RunAll();
                 ConfigV13ExtensionTests.Run();
                 ConfigArchitectureCompletionTests.Run();
+                ConfigDeveloperExperienceTests.Run();
                 Console.WriteLine("PASS 统一配置底座独立验收; 基础断言数=" + checks);
                 return 0;
             }
