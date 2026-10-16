@@ -44,6 +44,7 @@
     <Compile Include="Cases\TCTPlatformRealCases.cs" />
     <Compile Include="Cases\TCTMechanismActualCases.cs" />
     <Compile Include="Cases\TCTExecutionDataCases.cs" />
+    <Compile Include="Cases\TCTAdversarialCases.cs" />
     <ApplicationDefinition Include="App.xaml">
       <Generator>MSBuild:Compile</Generator><SubType>Designer</SubType>
     </ApplicationDefinition>
