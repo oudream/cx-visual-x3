@@ -5,7 +5,7 @@ using System.Collections.ObjectModel;
 namespace CxVisual.Mechanism.Runtime.Execution
 {
     /// <summary>只描述执行计划内节点端口契约；不是M04的第二套全局Schema注册表。</summary>
-    public enum MRKInputSource { FlowInput, StepResult }
+    public enum MRKInputSource { FlowInput, StepResult, StepOutput }
 
     public sealed class MRKExecutionInput
     {
@@ -58,14 +58,37 @@ namespace CxVisual.Mechanism.Runtime.Execution
             {
                 if (!names.Add(input.Name))
                     throw new ArgumentException("节点 " + step.Id + " 重复输入端口：" + input.Name);
-                if (input.Source != MRKInputSource.StepResult) continue;
-                if (!catalog.ContainsKey(input.SourceName))
-                    throw new ArgumentException("输入端口依赖未知节点：" + input.SourceName);
-                if (!step.Dependencies.Contains(input.SourceName))
-                    throw new ArgumentException("输入端口来源必须声明为直接依赖：" + input.SourceName);
-                MRKExecutionOutput producer = catalog[input.SourceName].Output;
-                if (producer != null && !input.ValueType.IsAssignableFrom(producer.ValueType))
-                    throw new ArgumentException("端口类型不匹配：" + step.Id + "." + input.Name);
+                if (input.Source == MRKInputSource.FlowInput) continue;
+                string producer = input.SourceName;
+                string outputName = null;
+                if (input.Source == MRKInputSource.StepOutput)
+                {
+                    int separator = producer.LastIndexOf('.');
+                    if (separator < 1 || separator == producer.Length - 1)
+                        throw new ArgumentException("具名数据输出来源必须为节点ID.输出名");
+                    outputName = producer.Substring(separator + 1);
+                    producer = producer.Substring(0, separator);
+                }
+                else if (input.Source != MRKInputSource.StepResult)
+                    throw new ArgumentException("未知输入来源类型");
+                if (!catalog.ContainsKey(producer))
+                    throw new ArgumentException("输入端口依赖未知节点：" + producer);
+                if (!step.Dependencies.Contains(producer))
+                    throw new ArgumentException("输入端口来源必须声明为直接依赖：" + producer);
+                if (outputName == null)
+                {
+                    MRKExecutionOutput result = catalog[producer].Output;
+                    if (result != null && !input.ValueType.IsAssignableFrom(result.ValueType))
+                        throw new ArgumentException("端口类型不匹配：" + step.Id + "." + input.Name);
+                }
+                else
+                {
+                    Type published;
+                    if (!catalog[producer].DataOutputs.TryGetValue(outputName, out published))
+                        throw new ArgumentException("数据输出未声明：" + producer + "." + outputName);
+                    if (!input.ValueType.IsAssignableFrom(published))
+                        throw new ArgumentException("具名数据输出类型不匹配：" + step.Id + "." + input.Name);
+                }
             }
         }
 
@@ -94,9 +117,13 @@ namespace CxVisual.Mechanism.Runtime.Execution
             foreach (MRKExecutionInput input in step.Inputs)
             {
                 object value;
-                bool found = input.Source == MRKInputSource.FlowInput
-                    ? context.Inputs.TryGetValue(input.SourceName, out value)
-                    : context.TryGetAbsoluteResult(input.SourceName, out value);
+                bool found;
+                if (input.Source == MRKInputSource.FlowInput)
+                    found = context.Inputs.TryGetValue(input.SourceName, out value);
+                else if (input.Source == MRKInputSource.StepOutput)
+                    found = context.TryGetCommittedData(input.SourceName, out value);
+                else
+                    found = context.TryGetAbsoluteResult(input.SourceName, out value);
                 if (!found)
                 {
                     if (input.Required)
@@ -104,7 +131,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
                     continue;
                 }
                 VerifyValue(step.Id, input.Name, value, input.ValueType, input.Required);
-                values.Add(input.Name, value);
+                // 对遗留StepResult/FlowInput的可写数组也做防御复制，避免扇出修改原值。
+                values.Add(input.Name, value is byte[] ? ((byte[])value).Clone() : value);
             }
             return new ReadOnlyDictionary<string, object>(values);
         }
