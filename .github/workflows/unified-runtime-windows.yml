@@ -1,0 +1,60 @@
+name: CxVisual Unified Runtime Windows TDD
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'Foundation/Infrastructure/Concurrency/**'
+      - 'Foundation/Data/Execution/**'
+      - 'Mechanism/Runtime/Execution/**'
+      - 'Mechanism/Data/Execution/**'
+      - 'Applications/Runtime.Host/**'
+      - 'Tests/FoundationSmoke/**'
+      - 'Tests/ArchitectureSmoke/**'
+      - '.github/workflows/unified-runtime-windows.yml'
+jobs:
+  runtime-end-to-end:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - name: Restore real .NET Framework 4.8 test packages
+        shell: pwsh
+        run: |
+          $msbuild = (Get-Command msbuild.exe -ErrorAction Stop).Source
+          & $msbuild .\Tests\TestCenter\CxVisual.TestCenter.csproj /t:Restore /p:Configuration=Release /p:Platform=x64 /nologo /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw "TestCenter NUnit package restore failed" }
+      - name: Rebuild entire solution on Windows x64
+        shell: pwsh
+        run: |
+          $msbuild = (Get-Command msbuild.exe -ErrorAction Stop).Source
+          & $msbuild .\CxVisual.Unified.sln /m:1 /t:Rebuild /p:Configuration=Release /p:Platform=x64 /nologo /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw "Full Windows .NET48 rebuild failed" }
+      - name: Execute real concurrency and orchestration tests
+        shell: pwsh
+        run: |
+          & .\Output\Release\x64\CxVisual.Tests.FoundationSmoke.exe --concurrency
+          if ($LASTEXITCODE -ne 0) { throw "F19 concurrency tests failed" }
+          & .\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe
+          if ($LASTEXITCODE -ne 0) { throw "Unified Execution architecture tests failed" }
+      - name: Execute compiled subflow, authorized publication and durable host recovery
+        shell: pwsh
+        run: |
+          $journal = Join-Path $env:RUNNER_TEMP ("CxRuntime-TDD-" + [guid]::NewGuid().ToString("N") + ".journal")
+          $exe = '.\Output\Release\x64\CxVisual.Runtime.Host.exe'
+          & $exe runtime-run $journal
+          if ($LASTEXITCODE -ne 0) { throw "Runtime first execution failed" }
+          & $exe runtime-recover $journal
+          if ($LASTEXITCODE -ne 0) { throw "Runtime Journal recovery scan failed" }
+          & $exe runtime-run $journal
+          if ($LASTEXITCODE -ne 0) { throw "Runtime safe restart failed" }
+          $out = @('run','status','stop') | & $exe runtime-serve $journal
+          $message = $out -join '|'
+          if ($LASTEXITCODE -ne 0 -or $message -notmatch 'Accepted Flow=' -or
+              $message -notmatch 'Host=Ready' -or $message -notmatch 'RuntimeHost stopped cleanly') {
+              throw "Runtime interactive run, observe and stop failed: $message"
+          }
+          & $exe runtime-recover $journal
+          if ($LASTEXITCODE -ne 0) { throw "Runtime safe post-stop recovery scan failed" }
+          Write-Host "PASS Runtime: compile, publish, flow, journal, restart, observe and drain"
