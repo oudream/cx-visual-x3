@@ -14,11 +14,11 @@
 
 - **统一运行体系综合讨论**：[六角色期望、并发异步与可视化编排执行 V0.1](DOCS/Architecture/CxVisual_统一运行体系_六角色期望与并发异步编排执行_综合设计讨论稿_V0.1.md)。这是阶段性共识和功能需求，不是已批准API或已实现引擎；两处集中实现方向为 F19 Concurrency 与 Runtime Execution。
 
-- **执行体系TDD（持续更新至V0.6）**：[UnifiedExecution_TDD_Matrix_V0.1.md](DOCS/Testing/UnifiedExecution_TDD_Matrix_V0.1.md)；F19有界Keyed Worker、Runtime轻量DAG执行引擎，按G0～G4区分已实现/待验收。
+- **执行体系TDD（持续更新至V0.6.1）**：[UnifiedExecution_TDD_Matrix_V0.1.md](DOCS/Testing/UnifiedExecution_TDD_Matrix_V0.1.md)；F19有界Keyed Worker、Runtime轻量DAG执行引擎，按G0～G4区分已实现/待验收。
 
-- **统一运行内核V0.6已实现能力与验证边界**：[内核实现与验收说明](DOCS/Testing/CxVisual_统一运行体系内核_实现与验收_V0.3.md)（条件循环、事件/定时触发、断点单步、资源仲裁、执行策略、有限Trace及代码测试；不表示跨进程或实机验收）。
+- **统一运行内核V0.6.1已实现能力与验证边界**：[内核实现与验收说明](DOCS/Testing/CxVisual_统一运行体系内核_实现与验收_V0.3.md)（条件循环、事件/定时触发、断点单步、资源仲裁、执行策略、有限Trace及代码测试；不表示跨进程或实机验收）。
 
-- **六角色差距审计与运行内核V0.6**：[逐项需求、新增执行概念、未闭合契约及下一轮测试](DOCS/Architecture/CxVisual_统一运行体系_六角色差距审计与内核增构_V0.5.md)。实际新增ExecutionGroup、端口绑定、Flow身份/Session、条件Join、计划编译、作用域数据、Journal、预计字节背压与专用SDK线程；保留正式发布、持久恢复、跨进程和授权差距。
+- **六角色差距审计与运行内核V0.6.1**：[逐项需求、新增执行概念、未闭合契约及下一轮测试](DOCS/Architecture/CxVisual_统一运行体系_六角色差距审计与内核增构_V0.5.md)。实际新增ExecutionGroup、端口绑定、Flow身份/Session、条件Join、计划编译、作用域数据、Journal、预计字节背压与专用SDK线程；保留正式发布、持久恢复、跨进程和授权差距。
 
 ## Build and verify on Windows
 

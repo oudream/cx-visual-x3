@@ -1,4 +1,4 @@
-# CxVisual 统一运行体系：从六角色期望倒推测试与最小实现（TDD V0.6，原路径持续更新）
+# CxVisual 统一运行体系：从六角色期望倒推测试与最小实现（TDD V0.6.1，原路径持续更新）
 
 > **性质**：实现/测试事实 + 继续深化的验收清单。需求来源：[统一运行体系综合讨论稿](../Architecture/CxVisual_统一运行体系_六角色期望与并发异步编排执行_综合设计讨论稿_V0.1.md)。  
 > **范围**：现有 \`Foundation/Infrastructure/Concurrency/\`（F19）+ \`Mechanism/Runtime/Execution/\`（执行引擎），在现有FoundationSmoke/ArchitectureSmoke测试工程扩展。不新增项目、第二套编排模型或独立进程。  
@@ -222,3 +222,10 @@ G0/G1通过不能代替G2/G3/G4。CI工作流故障时应分清本次新增测�
 - **可靠性**：`MRKFileExecutionJournal`、`MRKJournalRecovery`、真实节点事件落盘，`ExecutionJournalTests`；崩溃恢复仅保守核对，不能自动重播未确认外部操作。
 - **并发/资源**：F19预计字节待执行预算、专用同步SDK线程、Runtime映射、三轮共1800提交与停机交叉测试；专用线程不承诺async续体亲和，尚无GPU/CPU物理调度。
 - **证据规则**：以上仅以各自对应commit的Windows Actions编译和基础自动测试成功为G0/G1证据；不等价于生产实机和跨进程交付。
+
+## 13. V0.6.1最后一轮正确性修补
+
+- **Journal中途失效**：Engine返回`MRKFlowResult.Failed`并暴露异常，不能让流程在任务已完成时伪装为持续Running；日志异常同时意味着持久事实可能不完整，恢复端必须核对。
+- **预算预检**：新任务预估大小已经超过整个Pending预算时，无论队列中是否有Droppable项，必须直接拒绝，不产生误淘汰。
+- **增量Trace**：`MRKExecutionTrace.ReadSince`通过`NextCursor/LostCount/HasGap`报告历史窗口覆盖；监视端必须在HasGap时重新获取完整快照。
+- **证据**：分别由`ExecutionJournalTests`、`FCRWorkerTests`、`ExecutionControlTests`执行；后续源码修改是否仍通过，以对应master HEAD的Windows CI为准。

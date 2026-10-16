@@ -1,4 +1,4 @@
-# CxVisual统一运行体系：六角色需求逐项审计、内核增构与剩余架构契约 V0.6（沿用V0.5路径）
+# CxVisual统一运行体系：六角色需求逐项审计、内核增构与剩余架构契约 V0.6.1（沿用V0.5路径）
 
 > **2026-10-16，工作版；设计仍可调整。**
 > 需求原始依据：[《统一运行体系·六角色期望与并发异步编排执行·综合设计讨论稿V0.1》](CxVisual_统一运行体系_六角色期望与并发异步编排执行_综合设计讨论稿_V0.1.md)。
@@ -228,3 +228,10 @@
 | T38 | 三轮1800任务取消/关闭/预算清零测试 | 百万任务、长稳、随机资源时序及内存泄漏评估 |
 
 **验收关键**：本轮不因没有专业接入而停止基础运行体系开发；也不通过制造接口空壳来把“未实现”伪装成“完整”。Data、M29、M35、M39等原本的机制Owner应在其范围内继续完成，Runtime负责使用它们，不复制第二套权威管理器。
+
+### 08.4 V0.6.1并发故障边界与增量观察
+
+- `MRKExecutionEngine.RunFlowAsync`：中途审计失效不允许让用户看到始终Running的流程；完成Journal持久写入失败须使Flow以明确Failed/Exception结算。Flow开始日志写入失败时，不启动任何副作用委托。
+- `FCRWorker.Submit`：单个待执行任务超过整个`PendingByteBudget`时，必须直接Rejected；不得先淘汰其他被允许Drop的旧任务，再发现新任务永远无法满足配额。
+- `MRKExecutionTrace.ReadSince(cursor)`：有界轨迹支持递增游标、`LostCount`与`HasGap`；监视端若错过环形窗口，须重新读取`StatesSnapshot`而不能假设事件流连续。
+- 自动测试：`ExecutionJournalTests.MidFlowJournalFailureIsTypedFailure`、`FCRWorkerTests.ByteBudgetAndOverflowAccounting`、`ExecutionControlTests.TraceCursorDetectsLostTransitions`。此增构只完成headless内存/文件观察基础，远程订阅、审计权限和持久Trace压缩仍未实现。

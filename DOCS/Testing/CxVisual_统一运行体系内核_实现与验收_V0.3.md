@@ -1,4 +1,4 @@
-# CxVisual统一运行体系内核：实现、协作语义与测试驱动验收 V0.6（沿用V0.3文件路径）
+# CxVisual统一运行体系内核：实现、协作语义与测试驱动验收 V0.6.1（沿用V0.3文件路径）
 
 > 2026-10-15。**当前阶段优先把Foundation/Mechanism运行内核独立实现到可编译、可使用、可验证，不等待业务或专业接入，也不以迁移旧项目作为本阶段前置条件。** 本文记录真实C#代码和纯基础行为测试。  
 > 设计前提来自[六角色综合需求](../Architecture/CxVisual_统一运行体系_六角色期望与并发异步编排执行_综合设计讨论稿_V0.1.md)；滚动验收见[统一TDD矩阵](UnifiedExecution_TDD_Matrix_V0.1.md)。**本文不是宣称所有E01～E18、生产设备安全、跨进程可靠执行均已交付。**
@@ -171,3 +171,7 @@ Runtime新增`MRKExecutionCompiler.cs`将能力ID与依赖、端口绑定等瞬�
 独立测试：`ExecutionCompilerTests`、`ExecutionDataScopeTests`、`ExecutionJournalTests`、`ExecutionPlacementTests`、`FCRDedicatedExecutorTests`，以及`FCRWorkerTests`中新增的预计字节预算和1800任务取消/停止交叉测试。
 
 详细R1～R6体验与T24～T38覆盖/缺口以[六角色差距审计V0.6](../Architecture/CxVisual_统一运行体系_六角色差距审计与内核增构_V0.5.md)为准。**上述是独立内核的代码与基础验证，不是完整的跨进程可靠恢复、正式发布、Studio UI或硬件安全验收。**
+
+## 10. V0.6.1可靠性测试与观察契约
+
+Journal运行中故障强制明确Failed终态，任务超预算无损拒绝其他已接纳项，Trace新增游标式`ReadSince`（缺口检测与重同步）。所有新增代码仍位于原Owner项目和既定执行目录，无新工程、无第二Flow引擎。远程Studio/实际设备确认仍属于更高等级验收。
