@@ -15,6 +15,8 @@ namespace CxVisual.Mechanism.Data.Configuration
     public sealed class MHSConfigGroupDocument
     {
         [FCMConfigItem("配置成员", ApplyPolicy = FCMConfigApplyPolicy.NextTask)]
+        [FCMConfigItem("层级档案定义", ApplyPolicy = FCMConfigApplyPolicy.NextTask)]
+        public string ProfileDefinition { get; set; }
         public Dictionary<string, MHSConfigGroupEntry> Members { get; set; } =
             new Dictionary<string, MHSConfigGroupEntry>(StringComparer.Ordinal);
     }
@@ -97,6 +99,12 @@ namespace CxVisual.Mechanism.Data.Configuration
                 SchemaVersion = registration.Schema.SchemaVersion,
                 Json = json
             };
+        }
+        internal void SetProfileDefinition(string definition)
+        {
+            EnsureOpen();
+            if (string.IsNullOrWhiteSpace(definition)) throw new ArgumentException("Definition required");
+            _inner.WorkingCopy.ProfileDefinition = definition;
         }
         public void Remove(string key)
         {
@@ -199,6 +207,10 @@ namespace CxVisual.Mechanism.Data.Configuration
         public string EffectiveVersion { get { return _section.EffectiveVersion; } }
         public bool HasPendingApply { get { return _section.HasPendingApply; } }
         public FCMConfigRevision Revision { get { return _section.Revision; } }
+        internal string SavedProfileDefinition { get { return _section.GetLatestSaved().ProfileDefinition; } }
+        internal string EffectiveProfileDefinition { get { return _section.Get().ProfileDefinition; } }
+        internal int SavedMemberCount { get { return _section.GetLatestSaved().Members.Count; } }
+        internal int EffectiveMemberCount { get { return _section.Get().Members.Count; } }
 
         public void Register<T>(string key) where T : new()
         {

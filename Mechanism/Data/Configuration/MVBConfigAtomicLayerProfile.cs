@@ -15,9 +15,11 @@ namespace CxVisual.Mechanism.Data.Configuration
         private readonly IList<MVBConfigLayerSpec> _layers;
         private readonly FCMConfigIdentity _groupIdentity;
         private readonly string _version;
+        private readonly string _definition;
         internal MVBConfigAtomicLayerEdit(MHSConfigAtomicEdit edit, IList<MVBConfigLayerSpec> layers,
-            FCMConfigIdentity groupIdentity, string version)
-        { _edit = edit; _layers = layers; _groupIdentity = groupIdentity; _version = version; }
+            FCMConfigIdentity groupIdentity, string version, string definition)
+        { _edit = edit; _layers = layers; _groupIdentity = groupIdentity;
+          _version = version; _definition = definition; }
 
         public void Set<V>(string layerName, Expression<Func<T, V>> selector, V value)
         {
@@ -61,6 +63,7 @@ namespace CxVisual.Mechanism.Data.Configuration
             if (!report.IsValid)
                 return new MHSConfigCommitResult { Success = false,
                     ErrorCode = "CONFIG_ATOMIC_LAYER_VALIDATION", Validation = report };
+            _edit.SetProfileDefinition(_definition);
             return await _edit.CommitAsync(token).ConfigureAwait(false);
         }
         private MVBConfigLayerOverrides Layer(string name)
@@ -86,6 +89,7 @@ namespace CxVisual.Mechanism.Data.Configuration
     {
         private readonly MHSConfigAtomicGroup _group;
         private readonly IList<MVBConfigLayerSpec> _layers;
+        private readonly string _definition;
         public MVBConfigAtomicLayerProfile(MHSConfigService service, string profileId,
             params MVBConfigLayerSpec[] layers)
         {
@@ -93,12 +97,14 @@ namespace CxVisual.Mechanism.Data.Configuration
             if (layers == null || layers.Length == 0 || layers.Any(x => x == null))
                 throw new ArgumentException("At least one source layer required", "layers");
             if (layers.Select(x => x.Name).Distinct(StringComparer.Ordinal).Count() != layers.Length ||
-                layers.Select(x => x.Priority).Distinct().Count() != layers.Length)
+                layers.Select(x => x.Priority).Distinct().Count() != layers.Length ||
+                layers.Select(x => x.Kind + "\0" + x.Id).Distinct(StringComparer.Ordinal).Count() != layers.Length)
                 throw new ArgumentException("Layer names and priorities must be unique");
             if (string.IsNullOrWhiteSpace(profileId))
                 throw new ArgumentException("ProfileId required", "profileId");
             string modelSectionId = FCMConfigSchemaBuilder.Describe<T>().SectionId;
             _layers = Array.AsReadOnly(layers.OrderBy(x => x.Priority).ToArray());
+            _definition = Contract(profileId, _layers);
             // Length-prefixed identity prevents ambiguous group names across Section IDs.
             string groupId = modelSectionId.Length + ":" + modelSectionId +
                 profileId.Length + ":" + profileId;
@@ -106,7 +112,30 @@ namespace CxVisual.Mechanism.Data.Configuration
             foreach (MVBConfigLayerSpec layer in _layers)
                 _group.Register<MVBConfigLayerOverrides>(layer.Name);
             _group.Seal();
+            RequireSavedDefinition();
         }
+        private static string Part(string value)
+        { return value.Length.ToString(System.Globalization.CultureInfo.InvariantCulture) + ":" + value; }
+        internal static string Contract(string profileId, IEnumerable<MVBConfigLayerSpec> layers)
+        {
+            FCMConfigSchema schema = FCMConfigSchemaBuilder.Describe<T>();
+            return "v1" + Part(schema.SectionId) + Part(profileId) +
+                Part(schema.SchemaVersion.ToString(System.Globalization.CultureInfo.InvariantCulture)) +
+                string.Concat(layers.OrderBy(x => x.Priority).Select(x => Part(x.Name) +
+                    Part(x.Kind) + Part(x.Id) +
+                    Part(x.Priority.ToString(System.Globalization.CultureInfo.InvariantCulture))));
+        }
+        private void AssertDefinition(string stored, int memberCount)
+        {
+            if (stored == null && memberCount == 0) return; // fresh empty profile
+            if (stored == null) throw new InvalidOperationException("CONFIG_LAYER_DEFINITION_UNVERSIONED");
+            if (!string.Equals(stored, _definition, StringComparison.Ordinal))
+                throw new InvalidOperationException("CONFIG_LAYER_DEFINITION_MISMATCH");
+        }
+        private void RequireSavedDefinition()
+        { AssertDefinition(_group.SavedProfileDefinition, _group.SavedMemberCount); }
+        private void RequireEffectiveDefinition()
+        { AssertDefinition(_group.EffectiveProfileDefinition, _group.EffectiveMemberCount); }
         public FCMConfigIdentity Identity { get { return _group.Identity; } }
         public string SavedVersion { get { return _group.SavedVersion; } }
         public string EffectiveVersion { get { return _group.EffectiveVersion; } }
@@ -123,8 +152,9 @@ namespace CxVisual.Mechanism.Data.Configuration
         }
         public MVBConfigAtomicLayerEdit<T> BeginEdit(string reason)
         {
+            RequireSavedDefinition();
             return new MVBConfigAtomicLayerEdit<T>(_group.BeginEdit(reason),
-                _layers, _group.Identity, _group.SavedVersion);
+                _layers, _group.Identity, _group.SavedVersion, _definition);
         }
         public async Task<MHSConfigCommitResult> SetOverrideAsync<V>(string layer,
             Expression<Func<T, V>> selector, V value, CancellationToken token)
@@ -137,12 +167,14 @@ namespace CxVisual.Mechanism.Data.Configuration
         }
         public MVBConfigResolved<T> ResolveEffective()
         {
+            RequireEffectiveDefinition();
             using (MHSConfigGroupSnapshot snapshot = _group.CaptureForTask("atomic-layer-resolve"))
                 return Compose(_layers, name => snapshot.Get<MVBConfigLayerOverrides>(name),
                     snapshot.Version, _group.Identity);
         }
         public MVBConfigResolved<T> ResolveSaved()
         {
+            RequireSavedDefinition();
             using (MHSConfigGroupSnapshot snapshot = _group.CaptureSaved())
                 return Compose(_layers, name => snapshot.Get<MVBConfigLayerOverrides>(name),
                     snapshot.Version, _group.Identity);
@@ -154,7 +186,7 @@ namespace CxVisual.Mechanism.Data.Configuration
         }
         public MHSConfigApplyResult TryApplyPendingAtBoundary(FCMConfigApplyPolicy boundary,
             Func<MHSConfigApplyReview<MHSConfigGroupDocument>, MHSConfigApplyDecision> approval)
-        { return _group.TryApplyPendingAtBoundary(boundary, approval); }
+        { RequireSavedDefinition(); return _group.TryApplyPendingAtBoundary(boundary, approval); }
         public MHSConfigStatus GetStatus() { return _group.GetStatus(); }
 
         internal static MVBConfigResolved<T> Compose(IList<MVBConfigLayerSpec> layers,
