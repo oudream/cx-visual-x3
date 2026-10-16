@@ -30,8 +30,13 @@ namespace CxVisual.TestCenter.UI
             int exit = 2;
             try
             {
-                TCTTestCatalog catalog = TCTRegistration.CreateCatalog();
                 string command = e.Args[0].ToLowerInvariant();
+                // The default run discovers both frameworks. A native Worker must not load
+                // NUnit Engine for all ordinary TCT cases; only NUnit attempts need it.
+                bool requiresNUnit = command == "--run" ||
+                    (command == "--worker" && e.Args.Length > 1 &&
+                     e.Args[1].StartsWith("NUNIT.", StringComparison.Ordinal));
+                TCTTestCatalog catalog = TCTRegistration.CreateCatalog(requiresNUnit);
                 if (command == "--nunit-probe")
                 {
                     if (e.Args.Length < 2 || e.Args.Length > 3 ||

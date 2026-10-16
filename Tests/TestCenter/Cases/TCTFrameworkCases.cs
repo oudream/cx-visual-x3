@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading;
 using CxVisual.TestCenter.Core;
 using CxVisual.TestCenter.Discovery;
+using CxVisual.TestCenter.NUnitIntegration;
 using CxVisual.TestCenter.Execution;
 using CxVisual.TestCenter.Fixtures;
 using CxVisual.TestCenter.Reports;
@@ -157,13 +158,19 @@ namespace CxVisual.TestCenter.Cases
 
     public static class TCTRegistration
     {
-        public static TCTTestCatalog CreateCatalog()
+        public static TCTTestCatalog CreateCatalog(bool includeNUnit = false)
         {
             TCTTestCatalog catalog = new TCTTestCatalog();
             TCTRealCases.Register(catalog);
             TCTAttributeFrameworkAdapter attributes =
                 new TCTAttributeFrameworkAdapter(typeof(TCTFrameworkCases).Assembly);
             foreach (ITCTTestCase test in attributes.Discover()) catalog.Register(test);
+            if (includeNUnit)
+            {
+                TCTNUnitFrameworkAdapter nunit = new TCTNUnitFrameworkAdapter(
+                    typeof(TCTFrameworkCases).Assembly.Location);
+                foreach (ITCTTestCase test in nunit.Discover()) catalog.Register(test);
+            }
             return catalog;
         }
     }

@@ -14,7 +14,7 @@ namespace CxVisual.TestCenter.UI
 {
     public partial class TCTMainWindow : Window
     {
-        private readonly TCTTestCatalog _catalog = TCTRegistration.CreateCatalog();
+        private readonly TCTTestCatalog _catalog = TCTRegistration.CreateCatalog(includeNUnit: true);
         private readonly TCTTestExecutionCoordinator _coordinator = new TCTTestExecutionCoordinator();
         private readonly TCTTestRibbonController _ribbon = new TCTTestRibbonController();
         private CancellationTokenSource _cancel;

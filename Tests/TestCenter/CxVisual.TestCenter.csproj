@@ -47,6 +47,7 @@
     <Compile Include="Cases\TCTAdversarialCases.cs" />
     <Compile Include="Cases\TCTRuntimeReliabilityCases.cs" />
     <Compile Include="NUnitIntegration\TCTNUnitEngineProbe.cs" />
+    <Compile Include="NUnitIntegration\TCTNUnitFrameworkAdapter.cs" />
     <ApplicationDefinition Include="App.xaml">
       <Generator>MSBuild:Compile</Generator><SubType>Designer</SubType>
     </ApplicationDefinition>

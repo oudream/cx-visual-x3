@@ -90,6 +90,33 @@ jobs:
           if (@($junit.testsuite.testcase).Count -ne [int]$junit.testsuite.tests) {
               throw 'JUnit test count differs from actual testcase count'
           }
+          $nunitCases = @($junit.testsuite.testcase | Where-Object {
+              $_.GetAttribute('name').StartsWith('NUNIT.')
+          })
+          if ($nunitCases.Count -ne 5) {
+              throw "Unified TestCenter Catalog must contain 5 NUnit cases; got $($nunitCases.Count)"
+          }
+          Write-Host 'PASS: NUnit cases run through unified TCT Worker and JUnit'
+      - name: Verify native NUnit failure propagates through TCT Worker
+        shell: powershell
+        run: |
+          $exe = (Resolve-Path 'Output/Debug/x64/CxVisual.TestCenter.exe').Path
+          $report = Join-Path (Get-Location) 'Output/Debug/x64/TestCenter.nunit-failure.junit.xml'
+          $testId = 'NUNIT.CxVisual.TestCenter.NUnitIntegration.TCTNUnitProbeFixture.NegativeControl'
+          $env:TCT_NUNIT_EXPECT_NEGATIVE = '1'
+          try {
+              $p = Start-Process -FilePath $exe -WorkingDirectory (Get-Location).Path -ArgumentList @('--run','--id',('"' + $testId + '"'),'--report',('"' + $report + '"'),'--format','junit','--isolate') -Wait -PassThru
+          } finally { Remove-Item Env:TCT_NUNIT_EXPECT_NEGATIVE -ErrorAction SilentlyContinue }
+          if ($p.ExitCode -ne 1) { throw "NUnit negative case should produce TCT failure exit 1; got $($p.ExitCode)" }
+          if (-not (Test-Path $report)) { throw 'NUnit/TCT negative evidence missing' }
+          [xml]$junit = Get-Content -LiteralPath $report -Raw
+          if ([int]$junit.testsuite.tests -ne 1 -or [int]$junit.testsuite.failures -ne 1) {
+              throw 'NUnit failure did not map to exactly one TCT failed case'
+          }
+          if (-not ((Get-Content -LiteralPath $report -Raw).Contains('TCT_NUNIT_NEGATIVE_CONTROL'))) {
+              throw 'Original NUnit failure message lost in TCT result'
+          }
+          Write-Host 'PASS: intentional native NUnit assertion failure remains Failed in TCT JUnit'
       - name: Parallel repeat and history regression
         shell: powershell
         run: |
@@ -154,6 +181,7 @@ jobs:
             Output/Debug/x64/NUnitProbe.negative.xml
             Output/Debug/x64/TestCenter.junit.xml
             Output/Debug/x64/TestCenter.parallel.junit.xml
+            Output/Debug/x64/TestCenter.nunit-failure.junit.xml
             Output/Debug/x64/TestCenter.empty.junit.xml
             Output/Debug/x64/TestCenterHistory/**/summary.json
           if-no-files-found: warn

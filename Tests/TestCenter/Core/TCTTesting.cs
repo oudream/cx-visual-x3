@@ -43,6 +43,14 @@ namespace CxVisual.TestCenter.Core
         string Id { get; }
         IEnumerable<ITCTTestCase> Discover();
     }
+    // Allows a supported external test framework to deliver its native verdict unchanged.
+    // Ordinary TCT test cases still use the existing Runner and Context assertions.
+    public interface ITCTExternalResultTestCase : ITCTTestCase
+    {
+        TCTTestCaseResult ExecuteExternal(TCTTestAttempt attempt, CancellationToken cancellation,
+            TCTTestArtifactStore artifacts);
+    }
+
     public interface ITCTTestResultSink
     {
         void OnResult(TCTTestCaseResult result);
@@ -384,6 +392,36 @@ namespace CxVisual.TestCenter.Core
             TCTTestAttempt attempt = null, TCTTestArtifactStore store = null)
         {
             if (test == null) throw new ArgumentNullException("test");
+            ITCTExternalResultTestCase external = test as ITCTExternalResultTestCase;
+            if (external != null)
+            {
+                return Task.Run(() =>
+                {
+                    Stopwatch watch = Stopwatch.StartNew();
+                    try
+                    {
+                        token.ThrowIfCancellationRequested();
+                        TCTTestCaseResult outcome = external.ExecuteExternal(attempt, token, store);
+                        if (outcome == null || outcome.Descriptor.Id != test.Descriptor.Id ||
+                            (attempt != null && outcome.AttemptId != attempt.AttemptId))
+                            throw new InvalidOperationException("External framework returned an invalid attempt");
+                        return outcome;
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        return TCTTestCaseResult.FromTransport(test.Descriptor,
+                            TCTTestStatus.Cancelled, watch.Elapsed, "External test cancelled",
+                            new List<TCTAssertionResult>(), new List<TCTTestObservation>(), attempt);
+                    }
+                    catch (Exception ex)
+                    {
+                        return TCTTestCaseResult.FromTransport(test.Descriptor,
+                            TCTTestStatus.Error, watch.Elapsed, ex.ToString(),
+                            new List<TCTAssertionResult>(), new List<TCTTestObservation>(), attempt);
+                    }
+                    finally { watch.Stop(); }
+                }, CancellationToken.None);
+            }
             return Task.Run(() =>
             {
                 TCTTestContext context = new TCTTestContext(token, seed, attempt, store);
