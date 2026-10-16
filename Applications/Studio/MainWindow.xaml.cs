@@ -117,6 +117,24 @@ namespace CxVisual.Studio
                     "配置 V2.4", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
+        private void OnMultiModelConfigDemo(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var service = new MHSConfigService(Path.Combine(GetDemoDataRoot(),
+                    "Configs", "V24", "AtomicGroups"));
+                MHSConfigAtomicGroup group = service.OpenAtomicGroup("Studio.UnifiedModels");
+                group.Register<StudioDemoConfig>("Workspace");
+                group.Register<StudioRichConfig>("Process");
+                group.Seal();
+                MPWConfigAtomicGroupDialog.Show(this, group);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "多模型原子配置编辑器未启动：" + ex.GetType().Name,
+                    "配置 V2.4", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
         private void OnEmbeddedConfigDemo(object sender, RoutedEventArgs e)
         {
             try
