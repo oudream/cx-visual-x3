@@ -169,7 +169,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "恢复模板覆盖", CancellationToken.None).GetAwaiter().GetResult().Success &&
                     profile.TryApplyPendingAtBoundary(FCMConfigApplyPolicy.NextTask, null).Applied,
                     "layer removal uses same transactional update");
-                Check(scan.Value(x => x.ExposureMs) == 155 &&
+                Func<int> pinned = scan.PrepareValue(x => x.ExposureMs);
+                Check(pinned() == 155 &&
                     profile.ResolveEffective().Value(x => x.ExposureMs) == 100,
                     "pinned task and future recipe do not mix layers");
             }
@@ -194,6 +195,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
             MHSConfigAuthorizedSection<ConfigSensitiveCollectionSample> auditor =
                 service.Authorize(new FCMConfigPrincipal("auditor", new[] { "auditor" }), policy)
                     .Open<ConfigSensitiveCollectionSample>(id);
+            Expect<UnauthorizedAccessException>(() =>
+                auditor.PrepareValue(x => x.Credentials),
+                "prepared sensitive reads cannot bypass field permission"); 
             Expect<UnauthorizedAccessException>(() => auditor.GetStatus(),
                 "Audit alone cannot leak raw pending OldJson/NewJson");
             Expect<UnauthorizedAccessException>(() => auditor.ReadCommittedAfter(null, 5),

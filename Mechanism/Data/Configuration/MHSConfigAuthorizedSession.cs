@@ -68,6 +68,19 @@ namespace CxVisual.Mechanism.Data.Configuration
             _session.RequireReadable<T>(Identity, path);
             return _source.Value(selector);
         }
+        /// <summary>授权高频读取：表达式仅编译一次，但每次读仍重新检查字段权限。</summary>
+        public Func<V> PrepareValue<V>(Expression<Func<T, V>> expression)
+        {
+            if (expression == null) throw new ArgumentNullException("expression");
+            string path = FCMConfigPathUtil.FromExpression(expression);
+            _session.RequireReadable<T>(Identity, path);
+            Func<V> prepared = _source.PrepareValue(expression);
+            return () =>
+            {
+                _session.RequireReadable<T>(Identity, path);
+                return prepared();
+            };
+        }
         public MHSConfigAuthorizedEdit<T> BeginEdit(string reason)
         {
             Demand(FCMConfigAccessAction.Edit, null);

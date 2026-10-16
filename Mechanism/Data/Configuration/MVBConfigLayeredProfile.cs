@@ -70,6 +70,13 @@ namespace CxVisual.Mechanism.Data.Configuration
         public V Value<V>(Expression<Func<T, V>> selector)
         { return FCMJsonValueCodec.Deserialize<V>(FCMJsonValueCodec.Serialize(selector.Compile()(_model))); }
         public V Section<V>(Expression<Func<T, V>> selector) { return Value(selector); }
+        /// <summary>只读已解析模型：预编译表达式，复杂对象仍返回隔离副本。</summary>
+        public Func<V> PrepareValue<V>(Expression<Func<T, V>> selector)
+        {
+            if (selector == null) throw new ArgumentNullException("selector");
+            Func<T, V> getter = selector.Compile();
+            return () => MHSConfigSection<T>.DetachValue(getter(_model));
+        }
         public MVBConfigLayerValueInfo<V> Explain<V>(Expression<Func<T, V>> selector)
         {
             if (selector == null) throw new ArgumentNullException("selector");
@@ -127,8 +134,23 @@ namespace CxVisual.Mechanism.Data.Configuration
         public T Get() { return Active.Get(); }
         public V Value<V>(Expression<Func<T, V>> selector) { return Active.Value(selector); }
         public V Section<V>(Expression<Func<T, V>> selector) { return Active.Section(selector); }
+        /// <summary>任务结束 Dispose 后，读取也随之失效。</summary>
+        public Func<V> PrepareValue<V>(Expression<Func<T, V>> selector)
+        {
+            if (selector == null) throw new ArgumentNullException("selector");
+            return ActivePrepare(selector);
+        }
         public MVBConfigLayerValueInfo<V> Explain<V>(Expression<Func<T, V>> selector)
         { return Active.Explain(selector); }
+        private Func<V> ActivePrepare<V>(Expression<Func<T, V>> selector)
+        {
+            Func<V> compiled = Active.PrepareValue(selector);
+            return () =>
+            {
+                MVBConfigResolved<T> active = Active;
+                return compiled();
+            };
+        }
         private MVBConfigResolved<T> Active
         {
             get
