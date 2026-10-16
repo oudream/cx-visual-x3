@@ -19,6 +19,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             StackFrameCommitAndAbort();
             HeapStackMoveCopyConflictAndOwnedRejection();
             MultiOutputFanoutAndTypeIsolation();
+            ConcurrentFlowsNeverShareDataStack();
             MissingOutputMustAbortEverything();
             CancelledStepMustNotPublish();
             RetryMustDiscardFailedAttemptData();
@@ -150,7 +151,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         "PendingOutput提前发布");
                     bool incomplete = false;
                     try { frame.CommitOutputs(); }
-                    catch (InvalidOperationException) { incomplete = true; }
+                    catch (MDSDataException ex)
+                    { incomplete = ex.Code == MDSDataErrorCode.OutputMissing; }
                     Check(incomplete && !stack.TryReadOutput("first", "Result", out pending),
                         "缺少输出时错误地部分提交");
                     frame.Data.Return("Score", 3);
@@ -235,6 +237,40 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 MRKFlowResult result = Wait(engine.StartFlow(plan).Completion);
                 Check(result.State == MRKFlowState.Completed && left == 42 && right == 42,
                     "并行只读扇出没有完成");
+            }
+            finally { Wait(engine.StopAsync()); }
+        }
+
+        private static void ConcurrentFlowsNeverShareDataStack()
+        {
+            MRKExecutionPlan plan = new MRKExecutionPlan("parallel-runs", new[]
+            {
+                new MRKExecutionStep("step", new string[0], (ctx,ct) =>
+                {
+                    int number = ctx.Data.Get<int>("Input");
+                    ctx.Data.Set("Local", number);
+                    ctx.Data.Return("Output", ctx.Data.Get<int>("Local"));
+                    return Task.FromResult((object)number);
+                }, inputs: new [] {
+                    new MRKExecutionInput("Input", MRKInputSource.FlowInput,
+                        "External", typeof(int))
+                }, output: new MRKExecutionOutput(typeof(int)),
+                dataOutputs: Outputs(new KeyValuePair<string, Type>("Output", typeof(int))))
+            }, new Dictionary<string, string> {{"Answer", "step.Output"}});
+            MRKExecutionEngine engine = new MRKExecutionEngine(new FCRWorkerOptions(3, 5));
+            try
+            {
+                MRKFlowHandle first = engine.StartFlow(plan,
+                    new Dictionary<string, object> {{"External", 101}});
+                MRKFlowHandle second = engine.StartFlow(plan,
+                    new Dictionary<string, object> {{"External", 202}});
+                MRKFlowResult a = Wait(first.Completion);
+                MRKFlowResult b = Wait(second.Completion);
+                Check(a.FlowId != b.FlowId && a.State == MRKFlowState.Completed &&
+                    b.State == MRKFlowState.Completed &&
+                    a.GetCommittedOutput<int>("Answer") == 101 &&
+                    b.GetCommittedOutput<int>("Answer") == 202,
+                    "并发运行实例之间发生数据串值");
             }
             finally { Wait(engine.StopAsync()); }
         }
