@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -10,18 +11,24 @@ using CxVisual.Mechanism.Data.Configuration;
 
 namespace CxVisual.Tests.ArchitectureSmoke
 {
+    public sealed class ConfigDynamicNode
+    {
+        [Range(1, 10)]
+        public int Gain { get; set; } = 1;
+    }
+
     [FCMConfigSection("Tests.ConfigDynamicCollections")]
     public sealed class ConfigDynamicCollections
     {
         [FCMConfigItem("探测器动态键", ApplyPolicy = FCMConfigApplyPolicy.NextTask)]
-        public Dictionary<string, V13DetectorSample> Detectors { get; set; } =
-            new Dictionary<string, V13DetectorSample>();
+        public Dictionary<string, ConfigDynamicNode> Detectors { get; set; } =
+            new Dictionary<string, ConfigDynamicNode>();
         [FCMConfigItem("工艺段列表", ApplyPolicy = FCMConfigApplyPolicy.NextTask)]
-        public List<V13DetectorSample> Segments { get; set; } = new List<V13DetectorSample>();
+        public List<ConfigDynamicNode> Segments { get; set; } = new List<ConfigDynamicNode>();
         [FCMConfigItem("工艺标签", ApplyPolicy = FCMConfigApplyPolicy.NextTask)]
         public HashSet<string> Tags { get; set; } = new HashSet<string>();
-        public Dictionary<string, List<V13DetectorSample>> Groups { get; set; } =
-            new Dictionary<string, List<V13DetectorSample>>();
+        public Dictionary<string, List<ConfigDynamicNode>> Groups { get; set; } =
+            new Dictionary<string, List<ConfigDynamicNode>>();
     }
 
     /// <summary>
@@ -246,19 +253,19 @@ namespace CxVisual.Tests.ArchitectureSmoke
             using (MHSConfigEditorModel<ConfigDynamicCollections> editor =
                 new MHSConfigEditorModel<ConfigDynamicCollections>(section, "动态集合联合编辑"))
             {
-                editor.AddKey(x => x.Detectors, key, new V13DetectorSample { Gain = 3 });
+                editor.AddKey(x => x.Detectors, key, new ConfigDynamicNode { Gain = 3 });
                 editor.SetValue(x => x.Detectors[key].Gain, 9);
-                editor.AddKey(x => x.Detectors, "temp", new V13DetectorSample());
+                editor.AddKey(x => x.Detectors, "temp", new ConfigDynamicNode());
                 editor.RenameKey(x => x.Detectors, "temp", "renamed");
                 editor.RemoveKey(x => x.Detectors, "renamed");
-                editor.InsertItem(x => x.Segments, 0, new V13DetectorSample { Gain = 1 });
-                editor.InsertItem(x => x.Segments, 1, new V13DetectorSample { Gain = 2 });
-                editor.InsertItem(x => x.Segments, 2, new V13DetectorSample { Gain = 3 });
+                editor.InsertItem(x => x.Segments, 0, new ConfigDynamicNode { Gain = 1 });
+                editor.InsertItem(x => x.Segments, 1, new ConfigDynamicNode { Gain = 2 });
+                editor.InsertItem(x => x.Segments, 2, new ConfigDynamicNode { Gain = 3 });
                 editor.MoveItem(x => x.Segments, 0, 2);
                 editor.RemoveItemAt(x => x.Segments, 1);
-                editor.AddKey(x => x.Groups, "scan.01", new List<V13DetectorSample>());
+                editor.AddKey(x => x.Groups, "scan.01", new List<ConfigDynamicNode>());
                 editor.InsertItem(x => x.Groups["scan.01"], 0,
-                    new V13DetectorSample { Gain = 7 });
+                    new ConfigDynamicNode { Gain = 7 });
                 editor.AddSetItem(x => x.Tags, "A");
                 editor.AddSetItem(x => x.Tags, "A");
                 editor.AddSetItem(x => x.Tags, "B");
@@ -279,11 +286,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         x.CollectionPath == "Tags" && x.ItemPath == null && !x.CanReorder &&
                         x.HasDraft && !x.HasSaved) &&
                     dynamicItems.Any(x => x.CollectionPath == "Groups[\"scan.01\"]" &&
-                        x.Index == 0 && x.ItemType == typeof(V13DetectorSample)),
+                        x.Index == 0 && x.ItemType == typeof(ConfigDynamicNode)),
                     "dynamic field tree exposes maps, nested lists, sets and draft/saved provenance");
                 string before = FCMJsonValueCodec.Serialize(editor.Draft);
                 Expect<ArgumentException>(() => editor.AddKey(x => x.Detectors, key,
-                    new V13DetectorSample()), "duplicate dictionary key refused");
+                    new ConfigDynamicNode()), "duplicate dictionary key refused");
                 Expect<KeyNotFoundException>(() => editor.RenameKey(
                     x => x.Detectors, "missing", "other"), "missing dictionary key refused");
                 Expect<ArgumentOutOfRangeException>(() =>
@@ -303,6 +310,23 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(section.ApplyPendingAtTaskBoundary() &&
                 section.Value(x => x.Detectors)[key].Gain == 9,
                 "deep collections become effective only after approval");
+            using (MHSConfigEditorModel<ConfigDynamicCollections> invalid =
+                new MHSConfigEditorModel<ConfigDynamicCollections>(section, "非法深层参数"))
+            {
+                invalid.SetValue(x => x.Detectors[key].Gain, 99);
+                MHSConfigPreview validation = invalid.Preview();
+                Check(!validation.Validation.IsValid &&
+                    validation.Validation.Issues.Any(x => x.Path.Contains("Detectors[") &&
+                        x.Path.EndsWith(".Gain", StringComparison.Ordinal)),
+                    "nested dictionary validator returns a dynamic key path");
+                Check(invalid.DescribeCollectionItems().Any(x =>
+                    x.CollectionPath == "Detectors" && x.Issues.Any()),
+                    "dynamic node reports nested validation errors for the UI");
+                MHSConfigCommitResult refused = invalid.CommitAsync(CancellationToken.None)
+                    .GetAwaiter().GetResult();
+                Check(!refused.Success && section.GetLatestSaved().Detectors[key].Gain == 9,
+                    "invalid dynamic nested field never commits");
+            }
             ConfigDynamicCollections restarted = new MHSConfigService(folder)
                 .ForMachine("Line-B").Open<ConfigDynamicCollections>().Get();
             Check(restarted.Segments.Select(x => x.Gain).SequenceEqual(new[] { 2, 1 }) &&
