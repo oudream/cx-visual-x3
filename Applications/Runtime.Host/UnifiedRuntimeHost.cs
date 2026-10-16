@@ -86,11 +86,11 @@ namespace CxVisual.Runtime.Host
             try
             {
                 IList<MRKJournalRecord> history = journal.ReadAll();
-                foreach (Guid flowId in history.Select(x => x.FlowId).Distinct())
-                    if (MRKJournalRecovery.Evaluate(flowId, history).Disposition !=
-                        MRKRecoveryDisposition.Closed)
+                foreach (MRKRecoveryDecision decision in
+                    MRKJournalRecovery.EvaluateAll(history))
+                    if (decision.Disposition != MRKRecoveryDisposition.Closed)
                         throw new InvalidOperationException(
-                            "宿主启动隔离：上次Flow未安全结案 " + flowId +
+                            "宿主启动隔离：上次Flow未安全结案 " + decision.FlowId +
                             "，禁止自动重放和新任务接管");
                 MRKExecutionPlan baseline = new MRKExecutionPlan("host-bootstrap", new[]
                 {
@@ -174,11 +174,11 @@ namespace CxVisual.Runtime.Host
             {
                 IList<MRKJournalRecord> records = journal.ReadAll();
                 int unresolved = 0;
-                foreach (Guid id in records.Select(x => x.FlowId).Distinct())
+                foreach (MRKRecoveryDecision decision in
+                    MRKJournalRecovery.EvaluateAll(records))
                 {
-                    MRKRecoveryDecision decision = MRKJournalRecovery.Evaluate(id, records);
-                    Console.WriteLine("Flow=" + id + " Recovery=" + decision.Disposition +
-                        " Reason=" + decision.Reason);
+                    Console.WriteLine("Flow=" + decision.FlowId + " Recovery=" +
+                        decision.Disposition + " Reason=" + decision.Reason);
                     if (decision.Disposition != MRKRecoveryDisposition.Closed) unresolved++;
                 }
                 if (unresolved != 0)

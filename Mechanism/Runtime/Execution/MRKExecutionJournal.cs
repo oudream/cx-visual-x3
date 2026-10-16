@@ -114,6 +114,21 @@ namespace CxVisual.Mechanism.Runtime.Execution
                     "没有Flow终态，不能自动重新执行");
             return new MRKRecoveryDecision(flowId, MRKRecoveryDisposition.Closed, "运行已结算");
         }
+        /// <summary>Host启动前统一扫描所有Flow；任一未结案均不得默认为安全恢复。</summary>
+        public static IList<MRKRecoveryDecision> EvaluateAll(
+            IEnumerable<MRKJournalRecord> history)
+        {
+            if (history == null) throw new ArgumentNullException("history");
+            List<MRKJournalRecord> records = new List<MRKJournalRecord>(history);
+            HashSet<Guid> seen = new HashSet<Guid>();
+            List<MRKRecoveryDecision> decisions = new List<MRKRecoveryDecision>();
+            foreach (MRKJournalRecord record in records)
+            {
+                if (record == null || !seen.Add(record.FlowId)) continue;
+                decisions.Add(Evaluate(record.FlowId, records));
+            }
+            return new ReadOnlyCollection<MRKRecoveryDecision>(decisions);
+        }
         private static bool SameExternalOperation(MRKJournalRecord first, MRKJournalRecord second)
         {
             return first.OperationId == second.OperationId &&

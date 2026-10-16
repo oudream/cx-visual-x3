@@ -17,6 +17,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             JournalAdmissionFailureIsFailClosed();
             MidFlowJournalFailureIsTypedFailure();
             RepeatedFlowIdentityAndUnboundTimeoutRequireReconciliation();
+            AllFlowRecoveryInventoryFailsClosed();
         }
         private static void Check(bool value, string msg)
         { if (!value) throw new InvalidOperationException("运行Journal：" + msg); }
@@ -41,6 +42,27 @@ namespace CxVisual.Tests.ArchitectureSmoke
             };
             Check(MRKJournalRecovery.Evaluate(id, records).Disposition ==
                 MRKRecoveryDisposition.RequiresReconciliation, "未关联OperationId的超时被误认安全");
+        }
+        private static void AllFlowRecoveryInventoryFailsClosed()
+        {
+            Guid good=Guid.NewGuid(), running=Guid.NewGuid(), orphan=Guid.NewGuid();
+            MRKJournalRecord[] records={
+                new MRKJournalRecord(MRKJournalKind.FlowStarted,good,"plan",1,"","Running"),
+                new MRKJournalRecord(MRKJournalKind.FlowFinished,good,"plan",1,"","Completed"),
+                new MRKJournalRecord(MRKJournalKind.FlowStarted,running,"plan",1,"","Running"),
+                new MRKJournalRecord(MRKJournalKind.FlowFinished,orphan,"plan",1,"","Completed")
+            };
+            IList<MRKRecoveryDecision> decisions=MRKJournalRecovery.EvaluateAll(records);
+            Check(decisions.Count==3 &&
+                decisions[0].FlowId==good &&
+                decisions[0].Disposition==MRKRecoveryDisposition.Closed &&
+                decisions[1].FlowId==running &&
+                decisions[1].Disposition==MRKRecoveryDisposition.RequiresReconciliation &&
+                decisions[2].FlowId==orphan &&
+                decisions[2].Disposition==MRKRecoveryDisposition.RequiresReconciliation,
+                "Host扫描未区分安全Flow、未终结Flow和孤儿终态");
+            Check(MRKJournalRecovery.EvaluateAll(new MRKJournalRecord[0]).Count==0,
+                "空日志不应伪造已运行Flow");
         }
         private static void ReopenAndConservativeRecovery()
         {
