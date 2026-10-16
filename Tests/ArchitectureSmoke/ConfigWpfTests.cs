@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Runtime.ExceptionServices;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Threading;
@@ -238,7 +239,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             }
             try
             {
-                if (failure != null) throw failure;
+                if (failure != null) ExceptionDispatchInfo.Capture(failure).Throw();
                 Console.WriteLine("PASS Config WPF STA editor, custom field and two layer presentation modes");
                 return 0;
             }

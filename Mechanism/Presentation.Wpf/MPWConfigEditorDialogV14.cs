@@ -395,8 +395,14 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 host.Children.Add(add);
                 IDictionary dict = (IDictionary)value;
                 int shown = Math.Min(dict.Count, VisibleCount(path));
-                foreach (DictionaryEntry entry in dict.Cast<DictionaryEntry>().Take(shown))
+                IDictionaryEnumerator cursor = dict.GetEnumerator();
+                int rendered = 0;
+                while (rendered < shown && cursor.MoveNext())
                 {
+                    // IDictionary.GetEnumerator yields DictionaryEntry. Enumerable.Cast
+                    // may instead enumerate generic KeyValuePair and throw InvalidCast.
+                    DictionaryEntry entry = cursor.Entry;
+                    rendered++;
                     string key = (string)entry.Key, child = path + "[" + FCMJsonValueCodec.Serialize(key) + "]";
                     StackPanel actions = new StackPanel { Orientation = Orientation.Horizontal };
                     TextBox rename = new TextBox { Text = key, Width = 160, Margin = new Thickness(3) };
