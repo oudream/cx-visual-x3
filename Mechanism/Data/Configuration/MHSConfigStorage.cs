@@ -17,6 +17,7 @@ namespace CxVisual.Mechanism.Data.Configuration
         private readonly string _history;
         private readonly string _effective;
         private readonly string _previousEffective;
+        private readonly string _effectiveJournalOrigin;
         private static readonly UTF8Encoding Utf8 = new UTF8Encoding(false, true);
         public MHSConfigStorage(string folder)
         {
@@ -25,6 +26,7 @@ namespace CxVisual.Mechanism.Data.Configuration
             _history = Path.Combine(folder, "history");
             _effective = Path.Combine(folder, "effective.txt");
             _previousEffective = Path.Combine(folder, "previous-effective.txt");
+            _effectiveJournalOrigin = Path.Combine(folder, "effective-journal-origin.txt");
             Directory.CreateDirectory(_history);
         }
         private string RevisionFile(int revision) { return Path.Combine(_history, "r" + revision.ToString("D8", CultureInfo.InvariantCulture) + ".json"); }
@@ -172,6 +174,10 @@ namespace CxVisual.Mechanism.Data.Configuration
                         throw new InvalidOperationException("CONFIG_EFFECTIVE_REVISION_ORDER");
                     if (transactionId != null)
                     {
+                        // Anchor the first journal transition before moving the effective pointer.
+                        // If a crash occurs here the current effective marker is unchanged and valid.
+                        if (!File.Exists(_effectiveJournalOrigin))
+                            AtomicReplace(_effectiveJournalOrigin, oldRevision.ToString(CultureInfo.InvariantCulture));
                         MHSConfigEffectiveRecord evidence = new MHSConfigEffectiveRecord
                         {
                             Revision = Name(revision), PreviousVersion = Name(oldRevision),
@@ -192,10 +198,19 @@ namespace CxVisual.Mechanism.Data.Configuration
         {
             List<MHSConfigEffectiveRecord> reversed = new List<MHSConfigEffectiveRecord>();
             int revision = effectiveRevision;
-            while (revision > 0)
+            int origin = effectiveRevision;
+            if (File.Exists(_effectiveJournalOrigin))
+            {
+                if (!int.TryParse(File.ReadAllText(_effectiveJournalOrigin, Utf8).Trim(),
+                    NumberStyles.None, CultureInfo.InvariantCulture, out origin) ||
+                    origin < 1 || origin > effectiveRevision)
+                    throw new InvalidOperationException("CONFIG_EFFECTIVE_JOURNAL_ORIGIN_INVALID");
+            }
+            while (revision > origin)
             {
                 string path = EffectiveEventFile(revision);
-                if (!File.Exists(path)) break; // Legacy/initial effective version is the chain root.
+                if (!File.Exists(path))
+                    throw new InvalidOperationException("CONFIG_EFFECTIVE_JOURNAL_MISSING: " + Name(revision));
                 MHSConfigEffectiveRecord record =
                     FCMJsonValueCodec.Deserialize<MHSConfigEffectiveRecord>(File.ReadAllText(path, Utf8));
                 if (record == null || record.Revision != Name(revision) ||

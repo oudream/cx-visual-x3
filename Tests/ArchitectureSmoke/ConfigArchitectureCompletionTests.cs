@@ -331,6 +331,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
             File.WriteAllText(events.OrderBy(x => x, StringComparer.Ordinal).Last(), "{\"Revision\":\"v9999\"}");
             Expect<InvalidOperationException>(() => reopened.ReadEffectiveAfter(null, 10),
                 "tampered effective chain must be detected");
+            File.Delete(events.OrderBy(x => x, StringComparer.Ordinal).Last());
+            Expect<InvalidOperationException>(() => reopened.ReadEffectiveAfter(null, 10),
+                "missing event after journal origin must be detected, not treated as pre-journal history");
+            Check(File.Exists(Directory.GetFiles(path, "effective-journal-origin.txt",
+                SearchOption.AllDirectories).Single()), "journal origin remains durable");
         }
 
         private static void VerifyLiveReplay(string root)
