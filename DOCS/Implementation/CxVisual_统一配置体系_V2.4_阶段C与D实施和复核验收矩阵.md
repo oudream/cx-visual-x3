@@ -66,10 +66,14 @@ Windows .NET Framework 4.8 Release / x64；两个入口均复用 Tests/ConfigFou
 - SHA 8edc4dbdf4ab8620fee41df6de3241baa914e011：完整 Build/Smoke https://github.com/oudream/cx-visual-x3/actions/runs/38925307159 与独立配置 https://github.com/oudream/cx-visual-x3/actions/runs/38925307117 及 TestCenter https://github.com/oudream/cx-visual-x3/actions/runs/38925307071：Success。
 - SHA 84e25b624f950a9dbd9fc6ffdfa43993dab8f114：包含字典分页问题修复与 STA 堆栈保留，完整 Build/Smoke https://github.com/oudream/cx-visual-x3/actions/runs/38926229771、独立配置 https://github.com/oudream/cx-visual-x3/actions/runs/38926230019：Success。
 - SHA 187af780fab82da63d557fef9820621758a2ec6c：STA 真实撤销/重做按钮、字典分页“加载更多”按钮均通过；完整 Build/Smoke https://github.com/oudream/cx-visual-x3/actions/runs/38927385221（包含 PASS Config WPF STA），独立配置 https://github.com/oudream/cx-visual-x3/actions/runs/38927385242：Success。
-- 完整规模 D 运行：https://github.com/oudream/cx-visual-x3/actions/runs/38925125043 。新增异常/慢订阅后再次运行：https://github.com/oudream/cx-visual-x3/actions/runs/38925861468 。**应以后续真实工作流最终状态为准，未 Success 不标为完成。**
+- 完整规模 D 成功证据：SHA 95453afc4bc7dd779177d9649810c0aad94ac7dd，https://github.com/oudream/cx-visual-x3/actions/runs/38927976388：Success。10k 字典保存/应用/重启 38.193 秒，10k 单键修订 20.516 秒，1000 修订持久回放 39.562 秒；1000 订阅者收齐 1000 条通知，1/4/16 并发全部通过。
+- 第二次完全相同规模 D 成功证据：SHA c848157e4a57d729853e16d1dab510040ff53d59，https://github.com/oudream/cx-visual-x3/actions/runs/38928532107：Success。10k 字典检查 41.663 秒，10k 单键修订 22.185 秒，1000 修订回放 32.012 秒；1000 订阅者与并发/慢异常消费者均通过。此 SHA 的独立配置 https://github.com/oudream/cx-visual-x3/actions/runs/38928532027、完整解决方案 https://github.com/oudream/cx-visual-x3/actions/runs/38928532010、TestCenter https://github.com/oudream/cx-visual-x3/actions/runs/38928532020、Runtime TDD https://github.com/oudream/cx-visual-x3/actions/runs/38928532018：全部 Success。
+- 大规模调优代码：FCMOrderedJsonDocument.PatchNode 对空字典批量新增直接生成一致 JSON；已有字典跳过未改变键的全文解析；FCMConfigSchemaBuilder.Members 对成员描述进行线程安全只读缓存。均经过以上同规模业务行为回归。
+- 性能事实与风险：10000 项单键配置仍需要约 20—22 秒，**不可声称大型配置交互已达到生产实时目标**。缓存优化有利于部分小对象路径，但两个不同 Windows CI runner 的规模用时没有证明整体吞吐明显提高；必须按真实工业机台负载、硬件和目标预算决定进一步优化与门槛。
+- 旧大字典优化前压测 https://github.com/oudream/cx-visual-x3/actions/runs/38925125043 和 https://github.com/oudream/cx-visual-x3/actions/runs/38925861468 作为性能问题追踪保留，以其各自最终 conclusion 为准，不能替代新版本成功证据。
 - 其后任何提交（包括本矩阵入库）需按该最后 SHA 再核实独立配置和完整构建。先前 SHA 的绿灯不能直接当作新 SHA 绿灯。
 
-G6 自动部分、G7 软件压测以实际对应 SHA 执行结果决定。G6 手工图形操作、24 小时以上持续运行、物理断电和生产安全验证尚待合适环境/真实工位。原 V2.4 需求、既有四类开发案例与阶段 A/B 的故障测试均不得删除。
+G6 的自动 STA/CI 部分已验证；G7 的完整规模**软件正确性与性能实测工作流**已通过两轮。性能是否满足生产时序 SLA 尚无审批门槛，不能只因计时程序成功就宣布性能达标。G6 手工图形操作、24 小时以上持续运行、物理断电和生产安全验证尚待合适环境/真实工位。原 V2.4 需求、既有四类开发案例与阶段 A/B 的故障测试均不得删除。
 
 ## 五、最终复核清单
 
@@ -77,7 +81,7 @@ G6 自动部分、G7 软件压测以实际对应 SHA 执行结果决定。G6 手
 - [x] 验证 .NET Framework 4.8 Windows 构建；失败后保留原有测试而非跳过。
 - [x] C 的保存、生效、历史、授权和多模型同组事务有 STA 正反向用例。
 - [x] D 有性能分位数、GC、并发、订阅、规模集合与历史正确性断言。
-- [ ] 最后一笔 master HEAD 逐项 Windows CI 和独立完整规模 D 的最终状态须复核。
+- [x] 核实 SHA c848157e4a57d729853e16d1dab510040ff53d59 的配置独立、完整解决方案、TestCenter 与 D 完整规模均 Success；本矩阵的后续文档提交需要再核实对应 CI。
 - [ ] 完整 UI 人工体验、真机长时运行、断电恢复与目标 SLA 审批尚待执行。
 
 **源码完备与“工业生产全面验收”不是同一件事。未达到的证据门禁应继续呈现为未验证。**
