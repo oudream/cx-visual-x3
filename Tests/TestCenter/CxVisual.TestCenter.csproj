@@ -40,6 +40,7 @@
     <Compile Include="Fixtures\TCTFixtures.cs" />
     <Compile Include="Reports\TCTReportWriter.cs" />
     <Compile Include="UI\TCTControls.cs" />
+    <Compile Include="UI\TCTTestTimelineControl.cs" />
     <Compile Include="UI\TCTTestViews.cs" />
     <Compile Include="NUnitIntegration\TCTNUnitEngineProbe.cs" />
     <Compile Include="NUnitIntegration\TCTNUnitFrameworkAdapter.cs" />

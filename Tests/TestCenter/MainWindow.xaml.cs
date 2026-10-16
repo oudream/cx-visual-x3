@@ -8,6 +8,7 @@ using CxVisual.TestCenter.Cases;
 using CxVisual.TestCenter.Core;
 using CxVisual.TestCenter.Execution;
 using CxVisual.TestCenter.Reports;
+using CxVisual.TestCenter.Models;
 using Microsoft.Win32;
 
 namespace CxVisual.TestCenter.UI
@@ -26,7 +27,8 @@ namespace CxVisual.TestCenter.UI
             Explorer.Bind(_catalog);
             Explorer.TestSelected += OnTestSelected;
             Results.ResultSelected += OnResultSelected;
-            RibbonTray.ToolBars.Add(_ribbon.Build(OnRunAll, OnRunSelected, OnCancel, OnExport));
+            RibbonTray.ToolBars.Add(_ribbon.Build(OnRunAll, OnRunSelected, OnCancel, OnExport,
+                OnRerunFailed, OnCopyTestId));
             _ribbon.SetContext(null);
             StatusText.Text = "Ready · " + _catalog.Cases.Count +
                 " 个真实测试用例。默认独立进程隔离；Graph/Channel/Runtime未接入的类型不会伪装通过。";
@@ -53,6 +55,23 @@ namespace CxVisual.TestCenter.UI
             DocumentHost.ShowResult(result);
         }
 
+        private async void OnRerunFailed()
+        {
+            if (_lastRun == null) return;
+            string[] failures = _lastRun.Results.Where(r => r.Status != TCTTestStatus.Passed)
+                .Select(r => r.Descriptor.Id).Distinct().ToArray();
+            if (failures.Length == 0)
+            {
+                MessageBox.Show(this, "没有需要重跑的失败或未完成用例。", "TestCenter");
+                return;
+            }
+            await RunAsync(false, failures);
+        }
+        private void OnCopyTestId()
+        {
+            if (Explorer.SelectedTest != null)
+                Clipboard.SetText(Explorer.SelectedTest.Descriptor.Id);
+        }
         private async void OnRunAll()
         {
             await RunAsync(false);
@@ -67,7 +86,7 @@ namespace CxVisual.TestCenter.UI
             await RunAsync(true);
         }
 
-        private async Task RunAsync(bool selectedOnly)
+        private async Task RunAsync(bool selectedOnly, string[] explicitIds = null)
         {
             if (_cancel != null) return;
             TCTTestRunRequest request = new TCTTestRunRequest
@@ -76,8 +95,9 @@ namespace CxVisual.TestCenter.UI
                 Timeout = TimeSpan.FromSeconds(30)
             };
             if (selectedOnly) request.SelectedIds.Add(Explorer.SelectedTest.Descriptor.Id);
+            if (explicitIds != null) foreach (string id in explicitIds) request.SelectedIds.Add(id);
             _lastRun = null;
-            Results.Clear(); DocumentHost.Clear();
+            Results.Clear(); DocumentHost.Clear(); Timeline.Clear();
             _cancel = new CancellationTokenSource();
             _ribbon.SetRunning(true);
             StatusText.Text = "Running · 独立TestCenter Worker执行真实测试...";
@@ -86,7 +106,8 @@ namespace CxVisual.TestCenter.UI
                 _lastRun = await _coordinator.RunAsync(_catalog, request, _cancel.Token,
                     result => Dispatcher.Invoke(() => {
                         Results.Add(result); ShowResult(result);
-                    }));
+                    }),
+                    evt => Dispatcher.BeginInvoke(new Action(() => Timeline.AddEvent(evt))));
                 StatusText.Text = "Run " + _lastRun.RunId + " · " + _lastRun.Total + "执行；" +
                     _lastRun.Passed + "通过；" + _lastRun.Failed + "失败/错误；" +
                     _lastRun.Cancelled + "取消；" + _lastRun.Unsupported + "未覆盖";

@@ -38,9 +38,14 @@
     <ui:TCTTestInspectorControl x:Name="Inspector"/>
    </GroupBox>
   </Grid>
-  <GroupBox Grid.Row="3" Margin="7,0,7,7" Header="测试结果 / Output" Background="White">
-   <ui:TCTTestResultsControl x:Name="Results"/>
-  </GroupBox>
+  <TabControl Grid.Row="3" Margin="7,0,7,7" Background="White">
+   <TabItem Header="Results · 真实测试结果">
+    <ui:TCTTestResultsControl x:Name="Results"/>
+   </TabItem>
+   <TabItem Header="Timeline · Worker实时事件">
+    <ui:TCTTestTimelineControl x:Name="Timeline"/>
+   </TabItem>
+  </TabControl>
   <Border Grid.Row="4" Background="#17365D" Padding="10,5">
    <TextBlock x:Name="StatusText" Foreground="White" Text="Ready"/>
   </Border>

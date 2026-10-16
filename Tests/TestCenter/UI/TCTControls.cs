@@ -67,6 +67,13 @@ namespace CxVisual.TestCenter.UI
             TextWrapping = TextWrapping.Wrap, LineHeight = 24 };
         private readonly DataGrid _assertions = new DataGrid { IsReadOnly = true, AutoGenerateColumns = false,
             CanUserAddRows = false, Margin = new Thickness(3) };
+        private readonly TextBlock _source = new TextBlock { Margin = new Thickness(12),
+            TextWrapping = TextWrapping.Wrap, FontFamily = new FontFamily("Consolas") };
+        private readonly DataGrid _artifacts = new DataGrid { IsReadOnly = true,
+            AutoGenerateColumns = true, CanUserAddRows = false };
+        private TCTTestSourceLocation _currentSource;
+        private readonly Button _openSource = new Button {
+            Content = "跳转源码（若本机存在）", Margin = new Thickness(8), Padding = new Thickness(8, 4, 8, 4) };
         private readonly TextBlock _error = new TextBlock { Margin = new Thickness(12),
             FontFamily = new FontFamily("Consolas"), TextWrapping = TextWrapping.Wrap };
         public TCTTestInspectorControl()
@@ -79,11 +86,35 @@ namespace CxVisual.TestCenter.UI
             tabs.Items.Add(new TabItem { Header = "属性", Content = new ScrollViewer { Content = _metadata } });
             tabs.Items.Add(new TabItem { Header = "断言", Content = _assertions });
             tabs.Items.Add(new TabItem { Header = "异常/Trace", Content = new ScrollViewer { Content = _error } });
+            DockPanel sourcePanel = new DockPanel();
+            DockPanel.SetDock(_openSource, Dock.Top);
+            sourcePanel.Children.Add(_openSource);
+            sourcePanel.Children.Add(new ScrollViewer { Content = _source });
+            _openSource.IsEnabled = false;
+            _openSource.Click += (s, e) =>
+            {
+                if (_currentSource == null || !System.IO.File.Exists(_currentSource.File)) return;
+                try
+                {
+                    System.Diagnostics.Process.Start("code",
+                        "--goto \"" + _currentSource.File + ":" + _currentSource.Line + "\"");
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show("无法自动打开编辑器，源码位置：" + _currentSource.File +
+                        ":" + _currentSource.Line + "\n" + ex.Message, "TestCenter源码定位");
+                }
+            };
+            tabs.Items.Add(new TabItem { Header = "源码定位", Content = sourcePanel });
+            tabs.Items.Add(new TabItem { Header = "证据产物", Content = _artifacts });
             Content = tabs;
         }
         public void ShowCase(ITCTTestCase test)
         {
             _assertions.ItemsSource = null;
+            _artifacts.ItemsSource = null;
+            _currentSource = null; _openSource.IsEnabled = false;
+            _source.Text = "尚无PDB源码位置；绝不猜测源码行号。";
             _error.Text = "未运行";
             if (test == null) { _metadata.Text = "请选择测试用例"; return; }
             TCTTestCaseDescriptor d = test.Descriptor;
@@ -107,6 +138,16 @@ namespace CxVisual.TestCenter.UI
                 "\n诊断: " + result.Diagnostics.Count + " 项" +
                 "\n产物: " + result.Artifacts.Count + " 项";
             _assertions.ItemsSource = result.Assertions;
+            _artifacts.ItemsSource = result.Artifacts;
+            _currentSource = result.SourceLocation;
+            _openSource.IsEnabled = _currentSource != null &&
+                System.IO.File.Exists(_currentSource.File);
+            _source.Text = _currentSource == null ?
+                "该结果未包含可证实的PDB源文件与行号。可查看原始堆栈与诊断。" :
+                "真实来源: " + _currentSource.Method +
+                "\n文件: " + _currentSource.File + "\n行号: " + _currentSource.Line +
+                (_openSource.IsEnabled ? "\n点击按钮跳转到VS Code" :
+                    "\n源码不在本机，无法自动打开；不会跳到错误位置。");
             _error.Text = (string.IsNullOrEmpty(result.Error) ? "无异常" : result.Error) +
                 string.Join("", result.Diagnostics.Select(diag =>
                     "\n[" + diag.Severity + "] " + diag.Code + " @" + diag.Stage + ": " + diag.Message)) +
@@ -152,9 +193,12 @@ namespace CxVisual.TestCenter.UI
         public Button RunSelected { get; private set; }
         public Button Cancel { get; private set; }
         public Button Export { get; private set; }
+        public Button RerunFailed { get; private set; }
+        public Button CopyTestId { get; private set; }
         private readonly TextBlock _context = new TextBlock { VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(12, 0, 0, 0), Foreground = Brushes.SteelBlue };
-        public ToolBar Build(Action runAll, Action runSelected, Action cancel, Action export)
+        public ToolBar Build(Action runAll, Action runSelected, Action cancel, Action export,
+            Action rerunFailed = null, Action copyTestId = null)
         {
             ToolBar ribbon = new ToolBar { Background = Brushes.AliceBlue };
             RunAll = Create("▶ 运行全部", runAll);
@@ -162,11 +206,24 @@ namespace CxVisual.TestCenter.UI
             Cancel = Create("■ 取消", cancel); Cancel.IsEnabled = false;
             Export = Create("导出报告", export);
             ribbon.Items.Add(RunAll); ribbon.Items.Add(RunSelected);
-            ribbon.Items.Add(Cancel); ribbon.Items.Add(Export); ribbon.Items.Add(_context);
+            ribbon.Items.Add(Cancel); ribbon.Items.Add(Export);
+            if (rerunFailed != null)
+            {
+                RerunFailed = Create("↻ 重跑未通过", rerunFailed);
+                ribbon.Items.Add(RerunFailed);
+            }
+            if (copyTestId != null)
+            {
+                CopyTestId = Create("复制TestId", copyTestId);
+                CopyTestId.IsEnabled = false;
+                ribbon.Items.Add(CopyTestId);
+            }
+            ribbon.Items.Add(_context);
             return ribbon;
         }
         public void SetContext(ITCTTestCase test)
         {
+            if (CopyTestId != null) CopyTestId.IsEnabled = test != null;
             _context.Text = test == null ? "Foundation / Mechanism" :
                 test.Descriptor.Aspect + "  ›  " + test.Descriptor.Group;
         }
@@ -174,6 +231,7 @@ namespace CxVisual.TestCenter.UI
         {
             RunAll.IsEnabled = !running; RunSelected.IsEnabled = !running;
             Cancel.IsEnabled = running; Export.IsEnabled = !running;
+            if (RerunFailed != null) RerunFailed.IsEnabled = !running;
         }
         private static Button Create(string text, Action action)
         {
