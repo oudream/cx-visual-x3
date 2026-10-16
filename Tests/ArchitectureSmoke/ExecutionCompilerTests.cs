@@ -37,6 +37,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             AuthorizedPublishingAndSafeRollback();
             NestedOrchestrationRunsAndSkipsCorrectly();
             NestedOrchestrationUsesAuthorizedPublisher();
+            SubflowModifiersAreNotSilentlyIgnored();
         }
         private static void Check(bool ok, string msg)
         { if (!ok) throw new InvalidOperationException("计划编译：" + msg); }
@@ -286,6 +287,30 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "多级编排发布后未由唯一Runtime Engine执行");
             }
             finally { Wait(engine.StopAsync()); }
+        }
+
+        private static void SubflowModifiersAreNotSilentlyIgnored()
+        {
+            MRKExecutionOrchestrationCompiler compiler =
+                new MRKExecutionOrchestrationCompiler();
+            Resolver resolver = new Resolver((c,t) => Task.FromResult((object)7));
+            FlowCatalog bad = new FlowCatalog();
+            bad.Add("leaf",new MRKStepCompileRequest("task","Calculate"));
+            bad.Add("root",new MRKStepCompileRequest("call",null,
+                serialKey:"machine",priority:10,
+                estimatedPendingBytes:100,subflowId:"leaf"));
+            MRKCompileResult rejected = compiler.Compile("root",bad,resolver);
+            Check(!rejected.Succeeded && rejected.Plan==null &&
+                rejected.Diagnostics.Any(x=>x.Code=="UNSUPPORTED_SUBFLOW_BINDING"),
+                "编排子流程调用的调度策略被无提示忽略");
+            FlowCatalog stable = new FlowCatalog();
+            stable.Add("leaf",new MRKStepCompileRequest("task","Calculate"));
+            stable.Add("root",
+                new MRKStepCompileRequest("z",null,subflowId:"leaf"),
+                new MRKStepCompileRequest("a",null,subflowId:"leaf"));
+            MRKCompileResult compiled = compiler.Compile("root",stable,resolver);
+            Check(compiled.Succeeded && compiled.Plan.Steps[0].Id=="a$entry",
+                "同一编排的编译执行顺序取决于源枚举次序");
         }
 
         private static void Wait(Task task)

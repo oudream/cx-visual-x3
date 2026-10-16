@@ -73,7 +73,9 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 if (!catalog.TryGet(id, out definition) || definition == null)
                     throw new ArgumentException("找不到子流程定义：" + id);
                 List<MRKExecutionStep> steps = new List<MRKExecutionStep>();
-                foreach (MRKStepCompileRequest request in definition.Steps)
+                // 不依赖工程序列化/字典的输入顺序，稳定编译ID对应的计划结构。
+                foreach (MRKStepCompileRequest request in definition.Steps
+                    .OrderBy(x => x == null ? string.Empty : x.Id, StringComparer.Ordinal))
                 {
                     if (request == null)
                     {
@@ -91,11 +93,16 @@ namespace CxVisual.Mechanism.Runtime.Execution
                             request.Inputs.Count != 0 ||
                             request.ExecutionGroup != null ||
                             request.RequiredResources.Count != 0 ||
-                            request.DedicatedExecutorId != null)
+                            request.DedicatedExecutorId != null ||
+                            !string.IsNullOrWhiteSpace(request.SerialKey) ||
+                            request.Policy != null ||
+                            request.Priority != 0 ||
+                            request.EstimatedPendingBytes != 0 ||
+                            request.AllowSkippedDependencies)
                         {
                             diagnostics.Add(new MRKCompileDiagnostic(request.Id,
                                 "UNSUPPORTED_SUBFLOW_BINDING",
-                                "子流程不能隐式映射能力、资源或数据；须明确边界适配"));
+                                "子流程调用的能力、串行、策略、优先级、资源和数据绑定不能静默忽略；须明确边界适配"));
                             continue;
                         }
                         List<MRKExecutionStep> nested=Expand(request.SubflowId,
