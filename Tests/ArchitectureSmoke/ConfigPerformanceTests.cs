@@ -167,6 +167,22 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     .ForMachine("D-Collections").Open<ConfigDynamicCollections>();
                 Require(reopened.Value(x => x.Detectors).Count == entries,
                     "large dictionary survives restart and retained count");
+                // The second change touches exactly one key in an existing huge map.
+                // Unmodified keys must retain their values and the revision must remain durable.
+                Stopwatch patchWall = Stopwatch.StartNew();
+                Require(large.UpdateAsync(x => x.Detectors["detector-00001"].Gain = 7,
+                    "D-one-key-patch", CancellationToken.None).GetAwaiter().GetResult().Success,
+                    "large dictionary one-key edit commits");
+                Require(large.ApplyPendingAtTaskBoundary(), "one-key patch effective");
+                var afterPatch = new MHSConfigService(Path.Combine(root, "data"))
+                    .ForMachine("D-Collections").Open<ConfigDynamicCollections>();
+                Require(afterPatch.Value(x => x.Detectors).Count == entries &&
+                    afterPatch.Value(x => x.Detectors)["detector-00001"].Gain == 7 &&
+                    afterPatch.Value(x => x.Detectors)["detector-00002"].Gain == 3,
+                    "single-key patch keeps all other entries and survives restart");
+                patchWall.Stop();
+                Console.WriteLine("CONFIG_D_CHECK dictionaryOneKeyPatchEntries=" + entries +
+                    " patchMs=" + patchWall.ElapsedMilliseconds + " status=PASS");
                 collectionWatch.Stop();
                 Console.WriteLine("CONFIG_D_CHECK dictionaryEntries=" + entries +
                     " roundtripMs=" + collectionWatch.ElapsedMilliseconds + " status=PASS");

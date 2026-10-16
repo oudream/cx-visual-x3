@@ -28,6 +28,11 @@ namespace CxVisual.Foundation.Data.Configuration
             IDictionary oldDict = oldValue as IDictionary;
             if (newDict != null && oldDict != null)
             {
+                // No old entries exist to preserve. Serializing the whole new map is
+                // equivalent to inserting each new key in enumeration order, without
+                // reparsing an ever-growing JSON object O(N^2) times.
+                if (oldDict.Count == 0 && node.Properties.Count == 0)
+                    return FCMJsonValueCodec.Serialize(newValue);
                 // For a dictionary, its keys are dynamic and ARE part of the user's editable model.
                 // Remove explicitly deleted keys; retain untouched keys and preserve their textual spans.
                 foreach (DictionaryEntry oldEntry in oldDict)
@@ -41,17 +46,21 @@ namespace CxVisual.Foundation.Data.Configuration
                 {
                     string key = entry.Key as string;
                     if (key == null) throw new NotSupportedException("Dictionary keys must be strings");
+                    // Most keys in a large persistent map are unchanged. Never reparse
+                    // the entire document for these keys (also preserves their raw text).
+                    bool wasPresent = oldDict.Contains(key);
+                    object previous = wasPresent ? oldDict[key] : null;
+                    string encoded = FCMJsonValueCodec.Serialize(entry.Value);
+                    if (wasPresent && string.Equals(
+                        FCMJsonValueCodec.Serialize(previous), encoded, StringComparison.Ordinal))
+                        continue;
                     FCMJsonNode parsed = FCMJsonReader.Parse(json);
                     FCMJsonProperty prop = parsed.Property(key);
                     if (prop == null)
-                        json = Insert(json, parsed, key, FCMJsonValueCodec.Serialize(entry.Value), null, null, 0, null);
+                        json = Insert(json, parsed, key, encoded, null, null, 0, null);
                     else
-                    {
-                        object previous = oldDict.Contains(key) ? oldDict[key] : null;
-                        if (previous == null || entry.Value == null || FCMJsonValueCodec.Serialize(previous) != FCMJsonValueCodec.Serialize(entry.Value))
-                            json = PatchChild(json, prop.Value, previous, entry.Value,
-                                entry.Value == null ? typeof(object) : entry.Value.GetType(), depth + 1);
-                    }
+                        json = PatchChild(json, prop.Value, previous, entry.Value,
+                            entry.Value == null ? typeof(object) : entry.Value.GetType(), depth + 1);
                 }
                 return json;
             }
