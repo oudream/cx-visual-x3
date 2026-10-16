@@ -17,6 +17,7 @@ namespace CxVisual.Tests.FoundationSmoke
             DeveloperConvenienceAndKeyedStress();
             PriorityDoesNotBreakPerKeyFIFO();
             ByteBudgetAndOverflowAccounting();
+            RandomizedCancellationAndStopStress();
         }
         private static void Check(bool ok, string message)
         { if (!ok) throw new InvalidOperationException("F19 " + message); }
@@ -240,6 +241,59 @@ namespace CxVisual.Tests.FoundationSmoke
             Check(second.GetSnapshot().PendingBytes == 0, "stop(cancel) leaked byte accounting");
             gate.TrySetResult(true);
             Await(closing);
+        }
+
+        private static void RandomizedCancellationAndStopStress()
+        {
+            for (int round = 0; round < 3; round++)
+            {
+                FCRWorker worker = new FCRWorker(new FCRWorkerOptions(6, 70,
+                    FCROverflowPolicy.DropOldestDroppable, pendingByteBudget:8000));
+                TaskCompletionSource<bool> ready = Gate(), release = Gate();
+                System.Collections.Generic.List<FCRWorkHandle<int>> all =
+                    new System.Collections.Generic.List<FCRWorkHandle<int>>();
+                for (int j = 0; j < 6; j++)
+                {
+                    all.Add(worker.Submit<int>(async ct =>
+                    {
+                        ready.TrySetResult(true);
+                        await release.Task.ConfigureAwait(false);
+                        return 1;
+                    }, "running-" + j));
+                }
+                Await(ready.Task);
+                for (int i = 0; i < 600; i++)
+                {
+                    int iteration = i;
+                    FCRWorkHandle<int> item = worker.Submit<int>(async ct =>
+                    {
+                        await Task.Delay(iteration % 3, ct).ConfigureAwait(false);
+                        return iteration;
+                    }, "lane-" + (i % 12), droppable:(i % 3 == 0),
+                       estimatedBytes:100 + i % 50);
+                    all.Add(item);
+                    if (i % 5 == 0) item.RequestCancel();
+                    FCRWorkerSnapshot mid = worker.GetSnapshot();
+                    Check(mid.Pending >= 0 && mid.Pending <= 70 &&
+                        mid.PendingBytes >= 0 && mid.PendingBytes <= 8000,
+                        "byte/count budget exceeded during cancel and overflow race");
+                }
+                Task closing = worker.StopAsync(true);
+                release.TrySetResult(true);
+                Await(closing);
+                foreach (FCRWorkHandle<int> item in all)
+                {
+                    FCRWorkResult<int> outcome = Await(item.Completion);
+                    Check(outcome.State == FCRWorkState.Completed ||
+                        outcome.State == FCRWorkState.Cancelled ||
+                        outcome.State == FCRWorkState.Dropped ||
+                        outcome.State == FCRWorkState.Rejected,
+                        "work ended in nonterminal state after shutdown");
+                }
+                FCRWorkerSnapshot end = worker.GetSnapshot();
+                Check(end.Active == 0 && end.Pending == 0 && end.PendingBytes == 0 &&
+                    end.Stopping, "stop/cancel left live work or reserved memory bytes");
+            }
         }
 
     }

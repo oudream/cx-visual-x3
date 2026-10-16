@@ -16,6 +16,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             RootCannotCloseBeforeDescendants();
             OwnedDataReleasedOnceInReverseOrder();
             FlowAndStepScopesAreConnectedAndClosed();
+            CleanupFailureStillReleasesOtherOwnedObjects();
         }
         private static void Check(bool ok, string msg)
         { if (!ok) throw new InvalidOperationException("运行数据作用域：" + msg); }
@@ -110,6 +111,23 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Task first = Task.WhenAny(task, Task.Delay(6000)).GetAwaiter().GetResult();
             if (!object.ReferenceEquals(first,task)) throw new TimeoutException("数据作用域运行测试超时");
             task.GetAwaiter().GetResult();
+        }
+
+        private static void CleanupFailureStillReleasesOtherOwnedObjects()
+        {
+            int released = 0;
+            MDEExecutionDataScope root = MDEExecutionDataScope.CreateRoot("exceptions");
+            IFDEExecutionDataScope child = root.CreateChild("fault");
+            child.PutOwned("first", new byte[1], item => Interlocked.Increment(ref released));
+            child.PutOwned("second", new byte[2], item =>
+                { Interlocked.Increment(ref released); throw new InvalidOperationException("release fail"); });
+            bool failed = false;
+            try { child.Dispose(); }
+            catch (AggregateException) { failed = true; }
+            Check(failed && released == 2 && child.IsClosed,
+                "cleanup exception must aggregate after all releases");
+            root.Dispose();
+            Check(root.IsClosed, "child cleanup error leaked parent scope reference");
         }
 
     }
