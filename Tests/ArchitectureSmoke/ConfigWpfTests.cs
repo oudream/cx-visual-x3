@@ -1,6 +1,8 @@
 using System;
 using System.IO;
 using System.Threading;
+using System.Threading.Tasks;
+using System.Windows.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using CxVisual.Foundation.Data.Configuration;
@@ -15,6 +17,16 @@ namespace CxVisual.Tests.ArchitectureSmoke
     /// </summary>
     internal static class ConfigWpfTests
     {
+        private static V AwaitOnSta<V>(Task<V> task)
+        {
+            if (task.IsCompleted) return task.GetAwaiter().GetResult();
+            Dispatcher dispatcher = Dispatcher.CurrentDispatcher;
+            var frame = new DispatcherFrame();
+            task.ContinueWith(_ => dispatcher.BeginInvoke(new Action(() => frame.Continue = false)),
+                TaskScheduler.Default);
+            Dispatcher.PushFrame(frame);
+            return task.GetAwaiter().GetResult();
+        }
         public static int Run()
         {
             string root = Path.Combine(Path.GetTempPath(), "CxConfig-Wpf-" + Guid.NewGuid().ToString("N"));
@@ -23,6 +35,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
             {
                 try
                 {
+                    SynchronizationContext.SetSynchronizationContext(
+                        new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
                     MHSConfigService service = new MHSConfigService(root);
                     MHSConfigSection<V13ConfigSample> section =
                         service.ForMachine("WPF").Open<V13ConfigSample>();
@@ -44,6 +58,27 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     }
                     if (section.GetLatestSaved().ExposureMs != 80)
                         throw new InvalidOperationException("CONFIG_WPF_DISCARDED_DRAFT_WROTE_TO_DISK");
+                    var savedConfig = service.ForMachine("WPF-EndToEnd").Open<V13ConfigSample>();
+                    using (var endToEnd = new MPWConfigEditorControl<V13ConfigSample>(savedConfig))
+                    {
+                        Action<string> setExposure = null;
+                        endToEnd.RegisterEditor("ExposureMs", (json, setter) =>
+                        {
+                            setExposure = setter;
+                            return new TextBox { Text = json };
+                        });
+                        setExposure("128");
+                        MHSConfigCommitResult written = AwaitOnSta(endToEnd.SaveDraftAsync(CancellationToken.None));
+                        if (!written.Success || savedConfig.GetLatestSaved().ExposureMs != 128 ||
+                            savedConfig.Value(x => x.ExposureMs) != 80)
+                            throw new InvalidOperationException("CONFIG_WPF_SAVE_DID_NOT_SEPARATE_EFFECTIVE");
+                        var applied = endToEnd.ApplySaved(FCMConfigApplyPolicy.NextTask);
+                        if (!applied.Applied || savedConfig.Value(x => x.ExposureMs) != 128)
+                            throw new InvalidOperationException("CONFIG_WPF_APPLY_FAILED");
+                    }
+                    if (new MHSConfigService(root).ForMachine("WPF-EndToEnd")
+                        .Open<V13ConfigSample>().Value(x => x.ExposureMs) != 128)
+                        throw new InvalidOperationException("CONFIG_WPF_REOPEN_MISMATCH");
                     using (var complex = new MPWConfigEditorControl<V13ConfigSample>(section))
                     {
                         Action<string> editComplex = null;
@@ -87,6 +122,14 @@ namespace CxVisual.Tests.ArchitectureSmoke
                             throw new InvalidOperationException("CONFIG_WPF_PERMISSION_REVOCATION_IGNORED");
                     }
 
+                    var group = service.OpenAtomicGroup("WPF-Group");
+                    group.Register<V13ConfigSample>("Scan");
+                    group.Register<V13AsyncConfig>("Reconstruction");
+                    group.Seal();
+                    var groupUi = new MPWConfigAtomicGroupControl(group);
+                    if (groupUi.MemberCount != 2 || groupUi.Content == null ||
+                        groupUi.PendingFields != 0)
+                        throw new InvalidOperationException("CONFIG_WPF_GROUP_EDITOR_MISSING");
                     var layers = new[] {
                         new MVBConfigLayerSpec("Template", "template", "WPF-Base", 10),
                         new MVBConfigLayerSpec("Machine", "machine", "WPF", 20)
