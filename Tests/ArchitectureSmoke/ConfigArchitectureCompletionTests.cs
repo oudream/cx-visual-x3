@@ -61,7 +61,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         public static void Run()
         {
             string root = Path.Combine(Path.GetTempPath(), "CxVisual-Config-Atomic-" + Guid.NewGuid().ToString("N"));
-            try { VerifyAtomicGroup(root); VerifyDurableEvents(root); VerifySecurity(root); VerifyReferences(root); VerifyEffectiveJournal(root); VerifyLiveReplay(root); VerifyRichTypes(root); VerifyAtomicLayers(root); VerifyDeveloperErgonomics(root); VerifyPhaseAContracts(root); }
+            try { VerifyAtomicGroup(root); VerifyDurableEvents(root); VerifySecurity(root); VerifyReferences(root); VerifyEffectiveJournal(root); VerifyLiveReplay(root); VerifyRichTypes(root); VerifyAtomicLayers(root); VerifyDeveloperErgonomics(root); VerifyPhaseAContracts(root); VerifyPhaseASecurity(root); }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
             Console.WriteLine("PASS atomic multi-model configuration transaction, validation and snapshots");
         }
@@ -186,6 +186,81 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     task.Value(x => x.ExposureMs) == 133, "independent previous task remains pinned");
             }
             Console.WriteLine("PASS config phase A: schema CAS, atomic/independent layer contracts, upgrades");
+        }
+
+        private static void VerifyPhaseASecurity(string root)
+        {
+            string path = Path.Combine(root, "phase-a-security");
+            var service = new MHSConfigService(path);
+            var config = service.ForMachine("Sensitive").Open<ConfigSecureSample>();
+            FCMConfigIdentity identity = config.Identity;
+            FCMConfigRolePolicy policy = new FCMConfigRolePolicy();
+            foreach (FCMConfigAccessAction permission in new[] {
+                FCMConfigAccessAction.Read, FCMConfigAccessAction.Apply,
+                FCMConfigAccessAction.Import, FCMConfigAccessAction.Restore,
+                FCMConfigAccessAction.Edit, FCMConfigAccessAction.Commit,
+                FCMConfigAccessAction.Subscribe
+            })
+                policy.Grant("operator", permission, identity.SectionId,
+                    identity.ScopeKind, identity.ScopeId);
+            var operatorView = service.Authorize(new FCMConfigPrincipal("op",
+                new[] { "operator" }), policy).Open<ConfigSecureSample>(identity);
+
+            config.ConfigureApplyGuard(review =>
+                MHSConfigApplyDecision.Deny("GUARD_" + review.Candidate.SecretRef,
+                    "secret value: " + review.Candidate.SecretRef));
+            Check(config.UpdateAsync(x => x.Level = 25, "pending",
+                CancellationToken.None).GetAwaiter().GetResult().Success &&
+                config.HasPendingApply, "guard leaves changed configuration pending");
+            MHSConfigApplyResult redacted =
+                operatorView.TryApplyPendingAtBoundary(FCMConfigApplyPolicy.NextTask);
+            Check(!redacted.Applied && redacted.Status == "CONFIG_APPLY_REJECTED" &&
+                !redacted.Reason.Contains("vault:test-key"),
+                "Apply-only role cannot read custom guard secret code or reason");
+            Expect<UnauthorizedAccessException>(() =>
+                operatorView.ImportPackageAsync(config.ExportPackage(),
+                    CancellationToken.None).GetAwaiter().GetResult(),
+                "Import/Commit without ReadSensitive cannot get secret-bearing validation result");
+            Expect<UnauthorizedAccessException>(() =>
+                operatorView.RestoreSavedVersionAsync(config.SavedVersion, "restore",
+                    CancellationToken.None).GetAwaiter().GetResult(),
+                "Restore/Commit cannot expose sensitive validation/diff");
+
+            policy.Grant("operator", FCMConfigAccessAction.ReadSensitive,
+                identity.SectionId, identity.ScopeKind, identity.ScopeId);
+            using (var edit = operatorView.BeginEdit("permission change"))
+            {
+                edit.WorkingCopy.Level = 29;
+                policy.Revoke("operator", FCMConfigAccessAction.Edit,
+                    identity.SectionId, identity.ScopeKind, identity.ScopeId);
+                Expect<UnauthorizedAccessException>(() =>
+                    edit.CommitAsync(CancellationToken.None).GetAwaiter().GetResult(),
+                    "Edit must be rechecked on commit after role revocation");
+                Expect<UnauthorizedAccessException>(() =>
+                    edit.PreviewAsync(CancellationToken.None).GetAwaiter().GetResult(),
+                    "Edit must be rechecked on preview");
+            }
+            policy.Grant("operator", FCMConfigAccessAction.Edit,
+                identity.SectionId, identity.ScopeKind, identity.ScopeId);
+            using (var edit = operatorView.BeginEdit("sensitive revoke"))
+            {
+                edit.WorkingCopy.Level = 34;
+                policy.Revoke("operator", FCMConfigAccessAction.ReadSensitive,
+                    identity.SectionId, identity.ScopeKind, identity.ScopeId);
+                Expect<UnauthorizedAccessException>(() =>
+                    edit.CommitAsync(CancellationToken.None).GetAwaiter().GetResult(),
+                    "ReadSensitive must be rechecked when committing a whole-model draft");
+            }
+            Check(config.GetLatestSaved().Level == 25,
+                "rejected privileged writes never modify saved state");
+
+            var rejectedValidation = FCMConfigValidationEngine.ValidateAsync(
+                new V13AsyncConfig { Mode = 2 }, "machine",
+                CancellationToken.None).GetAwaiter().GetResult();
+            Check(!rejectedValidation.IsValid &&
+                rejectedValidation.Issues.All(x => !x.Message.Contains("模拟专业校验器故障")),
+                "validator exception details are not exposed as public error text");
+            Console.WriteLine("PASS config phase A: revoked permissions and sensitive error redaction");
         }
 
         private static void VerifyAtomicGroup(string root)
