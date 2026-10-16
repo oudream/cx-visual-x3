@@ -32,7 +32,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         public static void Run()
         {
             string root = Path.Combine(Path.GetTempPath(), "CxVisual-Config-Atomic-" + Guid.NewGuid().ToString("N"));
-            try { VerifyAtomicGroup(root); VerifyDurableEvents(root); VerifySecurity(root); VerifyReferences(root); }
+            try { VerifyAtomicGroup(root); VerifyDurableEvents(root); VerifySecurity(root); VerifyReferences(root); VerifyEffectiveJournal(root); }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
             Console.WriteLine("PASS atomic multi-model configuration transaction, validation and snapshots");
         }
@@ -267,6 +267,48 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(references.ValidateResource(new FCMConfigResourceRef {
                 ResourceType = "calibration", ResourceId = "cal-unknown" }).Code ==
                 "CONFIG_RESOURCE_NOT_FOUND", "missing resource actionable without loading content");
+        }
+
+        private static void VerifyEffectiveJournal(string root)
+        {
+            string path = Path.Combine(root, "effective-journal");
+            MHSConfigService service = new MHSConfigService(path);
+            MHSConfigSection<V13ConfigSample> config =
+                service.ForMachine("Machine-01").Open<V13ConfigSample>();
+            Check(config.ReadEffectiveAfter(null, 20).Count == 0,
+                "factory initial marker is not a false effective transition");
+            Check(config.SetValueAsync(x => x.ExposureMs, 111, "新候选参数",
+                CancellationToken.None).GetAwaiter().GetResult().Success,
+                "save staged config");
+            Check(config.ReadEffectiveAfter(null, 20).Count == 0,
+                "saved-but-pending version must not have effective event");
+            Check(config.ApplyPendingAtTaskBoundary(), "apply first version");
+            MHSConfigEffectiveRecord first = config.ReadEffectiveAfter(null, 10).Single();
+            Check(first.Revision == config.EffectiveVersion && first.PreviousVersion == "v1" &&
+                !string.IsNullOrEmpty(first.TransactionId) &&
+                first.ChangedPaths.Contains("ExposureMs"),
+                "effective journal stores transition identity, previous version and changed paths");
+            Check(config.SetValueAsync(x => x.ExposureMs, 122, "第二个候选版本",
+                CancellationToken.None).GetAwaiter().GetResult().Success &&
+                config.ReadEffectiveAfter(first.Revision, 10).Count == 0,
+                "later committed revision remains outside effective history until applied");
+            Check(config.ApplyPendingAtTaskBoundary(), "apply second version");
+            MHSConfigEffectiveRecord second = config.ReadEffectiveAfter(first.Revision, 10).Single();
+            Check(second.PreviousVersion == first.Revision && second.Revision == config.EffectiveVersion &&
+                second.BodySha256 == config.ExportPackage().Sha256,
+                "effective journal follows correct persisted predecessor chain");
+
+            MHSConfigService reopenedService = new MHSConfigService(path);
+            MHSConfigSection<V13ConfigSample> reopened =
+                reopenedService.ForMachine("Machine-01").Open<V13ConfigSample>();
+            Check(reopened.ReadEffectiveAfter(null, 10).Count == 2 &&
+                reopened.ReadEffectiveAfter(first.Revision, 10).Single().Revision == second.Revision,
+                "effective event cursor survives restart and replay follows committed marker");
+            string[] events = Directory.GetFiles(path, "*.effective.json", SearchOption.AllDirectories);
+            Check(events.Length == 2, "one effective evidence per activation");
+            File.WriteAllText(events.OrderBy(x => x, StringComparer.Ordinal).Last(), "{\"Revision\":\"v9999\"}");
+            Expect<InvalidOperationException>(() => reopened.ReadEffectiveAfter(null, 10),
+                "tampered effective chain must be detected");
         }
 
         private static void Check(bool condition, string message)

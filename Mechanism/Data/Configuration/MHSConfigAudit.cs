@@ -22,6 +22,17 @@ namespace CxVisual.Mechanism.Data.Configuration
         public IList<string> ChangedPaths { get; internal set; }
     }
 
+    /// <summary>可靠的单实例生效转换证据，与生效标记形成可追溯版本链。</summary>
+    public sealed class MHSConfigEffectiveRecord
+    {
+        public string Revision { get; set; }
+        public string PreviousVersion { get; set; }
+        public string TransactionId { get; set; }
+        public DateTimeOffset RecordedAtUtc { get; set; }
+        public string BodySha256 { get; set; }
+        public List<string> ChangedPaths { get; set; } = new List<string>();
+    }
+
     public sealed class MHSConfigAuditEntry
     {
         public string Revision { get; set; }

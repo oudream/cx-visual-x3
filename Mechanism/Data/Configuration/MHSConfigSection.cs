@@ -279,6 +279,24 @@ namespace CxVisual.Mechanism.Data.Configuration
         /// <summary>只返回当前已提交历史链中的审计记录，未提交的中断文件不进入结果。</summary>
         public IList<MHSConfigAuditEntry> ListAudit()
         { lock (_gate) return _store.ListAudit(_savedRev); }
+
+        /// <summary>
+        /// 可重放已确认的有效版本转换。提交但未生效的版本绝不会出现在结果中。
+        /// 基于生效标记和前驱链过滤崩溃产生的孤立记录。
+        /// </summary>
+        public IList<MHSConfigEffectiveRecord> ReadEffectiveAfter(string afterCursor, int maxCount)
+        {
+            if (maxCount < 1 || maxCount > 10000) throw new ArgumentOutOfRangeException("maxCount");
+            int after = afterCursor == null ? 0 : MHSConfigStorage.ParseName(afterCursor);
+            lock (_gate)
+            {
+                if (after > _effectiveRev) throw new ArgumentException("Cursor is ahead of effective version");
+                return _store.ReadEffectiveHistory(_effectiveRev)
+                    .Where(x => MHSConfigStorage.ParseName(x.Revision) > after)
+                    .Take(maxCount).ToArray();
+            }
+        }
+
         /// <summary>
         /// 基于每次持久 Commit 的不可变审计文件实现可重放提交事件。
         /// Null 游标表示从第一条事件读取；重启后同一游标无重复且顺序不变。
@@ -518,6 +536,7 @@ namespace CxVisual.Mechanism.Data.Configuration
             }
             T oldValue, newValue;
             int revision;
+            string effectiveTransactionId;
             lock (_gate)
             {
                 if (proposedRevision != _savedRev || activeRevision != _effectiveRev)
@@ -525,7 +544,9 @@ namespace CxVisual.Mechanism.Data.Configuration
                         SavedVersion = SavedVersion, EffectiveVersion = EffectiveVersion, RequiredBoundary = required };
                 oldValue = Clone(_effective);
                 // SetEffective is durable and must succeed before changing the in-memory snapshot.
-                _store.SetEffective(_savedRev);
+                effectiveTransactionId = originalTransactionId ?? Guid.NewGuid().ToString("N");
+                _store.SetEffective(_savedRev, effectiveTransactionId,
+                    FCMConfigDiffUtil.Diff(oldValue, _saved));
                 _previousEffective = oldValue;
                 _hasPreviousEffective = true;
                 _effective = Clone(_saved);
@@ -533,8 +554,7 @@ namespace CxVisual.Mechanism.Data.Configuration
                 revision = _effectiveRev;
                 newValue = Clone(_effective);
             }
-            _publisher.Publish(oldValue, newValue, revision,
-                originalTransactionId ?? Guid.NewGuid().ToString("N"),
+            _publisher.Publish(oldValue, newValue, revision, effectiveTransactionId,
                 FCMConfigChangeStage.Effective, FCMConfigDiffUtil.Diff(oldValue, newValue));
             return new MHSConfigApplyResult { Applied = true, Status = "APPLIED",
                 SavedVersion = MHSConfigStorage.Name(revision),

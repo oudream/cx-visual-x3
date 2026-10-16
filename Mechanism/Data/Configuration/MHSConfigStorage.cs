@@ -30,6 +30,7 @@ namespace CxVisual.Mechanism.Data.Configuration
         private string RevisionFile(int revision) { return Path.Combine(_history, "r" + revision.ToString("D8", CultureInfo.InvariantCulture) + ".json"); }
         private string ParentFile(int revision) { return Path.Combine(_history, "r" + revision.ToString("D8", CultureInfo.InvariantCulture) + ".parent"); }
         private string AuditFile(int revision) { return Path.Combine(_history, "r" + revision.ToString("D8", CultureInfo.InvariantCulture) + ".audit.json"); }
+        private string EffectiveEventFile(int revision) { return Path.Combine(_history, "r" + revision.ToString("D8", CultureInfo.InvariantCulture) + ".effective.json"); }
         public static string Name(int revision) { return "v" + revision.ToString(CultureInfo.InvariantCulture); }
         public static int ParseName(string name)
         {
@@ -154,15 +155,64 @@ namespace CxVisual.Mechanism.Data.Configuration
             }
         }
         public void SetEffective(int revision)
+        { SetEffective(revision, null, null); }
+
+        /// <summary>生效记录先持久化，指针最后移动。崩溃产生的孤立记录不会出现在有效版本链。</summary>
+        public void SetEffective(int revision, string transactionId, IList<string> changedPaths)
         {
             if (!File.Exists(RevisionFile(revision))) throw new FileNotFoundException("Missing effective revision");
             if (File.Exists(_effective))
             {
-                string old = File.ReadAllText(_effective, Utf8).Trim();
-                if (old != revision.ToString(CultureInfo.InvariantCulture)) AtomicReplace(_previousEffective, old);
+                string previous = File.ReadAllText(_effective, Utf8).Trim();
+                if (previous != revision.ToString(CultureInfo.InvariantCulture))
+                {
+                    int oldRevision;
+                    if (!int.TryParse(previous, NumberStyles.None, CultureInfo.InvariantCulture,
+                        out oldRevision) || oldRevision < 1 || oldRevision >= revision)
+                        throw new InvalidOperationException("CONFIG_EFFECTIVE_REVISION_ORDER");
+                    if (transactionId != null)
+                    {
+                        MHSConfigEffectiveRecord evidence = new MHSConfigEffectiveRecord
+                        {
+                            Revision = Name(revision), PreviousVersion = Name(oldRevision),
+                            TransactionId = transactionId, RecordedAtUtc = DateTimeOffset.UtcNow,
+                            BodySha256 = MHSConfigPackage.Hash(ReadVersion(revision)),
+                            ChangedPaths = new List<string>(changedPaths ?? new List<string>())
+                        };
+                        AtomicReplace(EffectiveEventFile(revision), FCMJsonValueCodec.Serialize(evidence));
+                    }
+                    AtomicReplace(_previousEffective, previous);
+                }
             }
             AtomicReplace(_effective, revision.ToString(CultureInfo.InvariantCulture));
         }
+
+        /// <summary>只能沿当前有效版本的前驱链重放；孤立的崩溃记录不属于生效事件。</summary>
+        public IList<MHSConfigEffectiveRecord> ReadEffectiveHistory(int effectiveRevision)
+        {
+            List<MHSConfigEffectiveRecord> reversed = new List<MHSConfigEffectiveRecord>();
+            int revision = effectiveRevision;
+            while (revision > 0)
+            {
+                string path = EffectiveEventFile(revision);
+                if (!File.Exists(path)) break; // Legacy/initial effective version is the chain root.
+                MHSConfigEffectiveRecord record =
+                    FCMJsonValueCodec.Deserialize<MHSConfigEffectiveRecord>(File.ReadAllText(path, Utf8));
+                if (record == null || record.Revision != Name(revision) ||
+                    record.TransactionId == null ||
+                    !string.Equals(record.BodySha256, MHSConfigPackage.Hash(ReadVersion(revision)),
+                        StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException("CONFIG_EFFECTIVE_JOURNAL_INTEGRITY: " + Name(revision));
+                int previous = ParseName(record.PreviousVersion);
+                if (previous >= revision) throw new InvalidOperationException("CONFIG_EFFECTIVE_JOURNAL_CYCLE");
+                reversed.Add(record);
+                revision = previous;
+                if (reversed.Count > 1000000) throw new InvalidOperationException("CONFIG_EFFECTIVE_HISTORY_TOO_DEEP");
+            }
+            reversed.Reverse();
+            return reversed.AsReadOnly();
+        }
+
         private void SaveVersion(int version, string json)
         {
             string filename = RevisionFile(version);
