@@ -120,7 +120,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
             {
                 EnsureActive();
                 if (_inputs != null && _inputs.ContainsKey(name))
-                    throw new InvalidOperationException("只读输入不能被同名Local覆盖：" + name);
+                    throw new MDSDataException(MDSDataErrorCode.InputReadOnly, "只读输入不能被同名Local覆盖：" + name, name);
                 _scope.Put(name, (T)MDSDataSafety.Capture(value));
             }
         }
@@ -135,7 +135,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 if (_outputs != null)
                 {
                     if (!_outputs.TryGetValue(name, out expected))
-                        throw new InvalidOperationException("未声明的输出端口：" + name);
+                        throw new MDSDataException(MDSDataErrorCode.OutputNotDeclared, "未声明的输出端口：" + name, name);
                     if (value != null && !expected.IsInstanceOfType(value))
                         throw new InvalidCastException("输出类型不符合端口契约：" + name);
                     if (value == null && expected.IsValueType &&
@@ -143,7 +143,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                         throw new InvalidCastException("非空输出不能返回null：" + name);
                 }
                 if (_pending.ContainsKey(name))
-                    throw new InvalidOperationException("输出不能重复Return：" + name);
+                    throw new MDSDataException(MDSDataErrorCode.OutputConflict, "输出不能重复Return：" + name, name);
                 _pending.Add(name, MDSDataSafety.Capture(value));
             }
         }
@@ -165,7 +165,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 if (_outputs != null)
                     foreach (string name in _outputs.Keys)
                         if (!_pending.ContainsKey(name))
-                            throw new InvalidOperationException("必要输出尚未返回：" + name);
+                            throw new MDSDataException(MDSDataErrorCode.OutputMissing, "必要输出尚未返回：" + name, name);
                 IDictionary<string, object> ready = MDSDataSafety.Snapshot(_pending);
                 // 先将完整快照交付到Flow级DataStack，再使当前帧结算。
                 // 失败则原Pending保持原状，不向任何消费者暴露部分输出。
