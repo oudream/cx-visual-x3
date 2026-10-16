@@ -25,7 +25,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
             string dedicatedExecutorId = null,
             Func<MRKExecutionContext, CancellationToken, object> synchronousSdk = null,
             int priority = 0, long estimatedPendingBytes = 0,
-            IDictionary<string, Type> dataOutputs = null, bool enableDataContext = false)
+            IDictionary<string, Type> dataOutputs = null, bool enableDataContext = false,
+            string subflowAccessGroup = null)
         {
             if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("Step ID required", "id");
             if (executeAsync == null) throw new ArgumentNullException("executeAsync");
@@ -56,6 +57,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 }
             DataOutputs = new ReadOnlyDictionary<string, Type>(declaredData);
             EnableDataContext = enableDataContext || declaredData.Count != 0;
+            SubflowAccessGroup = subflowAccessGroup;
             List<string> resources = new List<string>();
             if (requiredResources != null)
                 foreach (string resource in requiredResources)
@@ -79,6 +81,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
         /// <summary>同一MRK节点的具名数据输出契约；Data项目负责实际数据所有权。</summary>
         public IDictionary<string, Type> DataOutputs { get; private set; }
         public bool EnableDataContext { get; private set; }
+        /// <summary>子流程内部访问边界；由InlineSubflow产生，不创建第二棵工程树。</summary>
+        public string SubflowAccessGroup { get; private set; }
         /// <summary>编排节点是否运行；无副作用的Guard应在资源申请前判定。</summary>
         public Func<MRKExecutionContext, bool> Condition { get; private set; }
         public bool AllowSkippedDependencies { get; private set; }
@@ -98,7 +102,10 @@ namespace CxVisual.Mechanism.Runtime.Execution
     {
         private readonly Dictionary<string, MRKExecutionStep> _byId;
         private readonly ReadOnlyCollection<MRKExecutionStep> _steps;
-        public MRKExecutionPlan(string id, IEnumerable<MRKExecutionStep> steps)
+        public IDictionary<string, string> DataExports { get; private set; }
+        public IDictionary<string, Type> DataExportTypes { get; private set; }
+        public MRKExecutionPlan(string id, IEnumerable<MRKExecutionStep> steps,
+            IDictionary<string, string> dataExports = null)
         {
             if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("Plan ID required", "id");
             if (steps == null) throw new ArgumentNullException("steps");
@@ -121,6 +128,29 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 MRKExecutionPortBinder.VerifyPlanStep(step, _byId);
             Dictionary<string, int> marks = new Dictionary<string, int>(StringComparer.Ordinal);
             foreach (MRKExecutionStep step in list) Visit(step.Id, marks);
+            Dictionary<string, string> exports = new Dictionary<string, string>(StringComparer.Ordinal);
+            Dictionary<string, Type> exportTypes = new Dictionary<string, Type>(StringComparer.Ordinal);
+            if (dataExports != null)
+                foreach (KeyValuePair<string, string> item in dataExports)
+                {
+                    if (string.IsNullOrWhiteSpace(item.Key) ||
+                        string.IsNullOrWhiteSpace(item.Value))
+                        throw new ArgumentException("子流程导出映射不能为空", "dataExports");
+                    int lastDot = item.Value.LastIndexOf('.');
+                    if (lastDot < 1 || lastDot == item.Value.Length - 1)
+                        throw new ArgumentException("子流程导出来源须为节点ID.输出名");
+                    string producer = item.Value.Substring(0, lastDot);
+                    string slot = item.Value.Substring(lastDot + 1);
+                    MRKExecutionStep source;
+                    Type valueType;
+                    if (!_byId.TryGetValue(producer, out source) ||
+                        !source.DataOutputs.TryGetValue(slot, out valueType))
+                        throw new ArgumentException("子流程导出未声明的具名输出：" + item.Value);
+                    exports.Add(item.Key, item.Value);
+                    exportTypes.Add(item.Key, valueType);
+                }
+            DataExports = new ReadOnlyDictionary<string, string>(exports);
+            DataExportTypes = new ReadOnlyDictionary<string, Type>(exportTypes);
             _steps = list.AsReadOnly();
         }
         private void Visit(string id, Dictionary<string, int> marks)
@@ -160,6 +190,9 @@ namespace CxVisual.Mechanism.Runtime.Execution
                         input.Source == MRKInputSource.StepOutput ?
                         new MRKExecutionInput(input.Name, input.Source,
                             scope + input.SourceName, input.ValueType, input.Required) : input);
+                string accessGroup = local.SubflowAccessGroup == null
+                    ? (child.DataExports.Count == 0 ? null : prefix)
+                    : scope + local.SubflowAccessGroup;
                 list.Add(new MRKExecutionStep(scope + local.Id, depends,
                     (context, token) => local.ExecuteAsync(context.ForSubflow(scope), token),
                     local.SerialKey, local.Policy, local.RequiredResources, compensation,
@@ -170,7 +203,29 @@ namespace CxVisual.Mechanism.Runtime.Execution
                     local.SynchronousSdk == null ?
                         (Func<MRKExecutionContext, CancellationToken, object>)null :
                         (context, token) => local.SynchronousSdk(context.ForSubflow(scope), token),
-                    local.Priority, local.EstimatedPendingBytes, local.DataOutputs, local.EnableDataContext));
+                    local.Priority, local.EstimatedPendingBytes, local.DataOutputs,
+                    local.EnableDataContext, accessGroup));
+            }
+            if (child.DataExports.Count != 0)
+            {
+                if (child._byId.ContainsKey("__commit"))
+                    throw new ArgumentException("子流程导出使用保留节点名__commit");
+                List<string> complete = new List<string>();
+                foreach (MRKExecutionStep step in child.Steps)
+                    complete.Add(scope + step.Id);
+                List<MRKExecutionInput> exportInputs = new List<MRKExecutionInput>();
+                foreach (KeyValuePair<string, string> item in child.DataExports)
+                    exportInputs.Add(new MRKExecutionInput(item.Key, MRKInputSource.StepOutput,
+                        scope + item.Value, child.DataExportTypes[item.Key]));
+                list.Add(new MRKExecutionStep(scope + "__commit", complete,
+                    (context, token) =>
+                    {
+                        token.ThrowIfCancellationRequested();
+                        foreach (KeyValuePair<string, object> item in context.BoundInputs)
+                            context.Data.Return(item.Key, item.Value);
+                        return Task.FromResult((object)true);
+                    }, inputs: exportInputs, dataOutputs: child.DataExportTypes,
+                    enableDataContext: true));
             }
             return list.AsReadOnly();
         }
