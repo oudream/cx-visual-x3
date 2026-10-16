@@ -12,7 +12,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         public static void Run()
         {
             string root = Path.Combine(Path.GetTempPath(), "CxVisual-Config-Atomic-" + Guid.NewGuid().ToString("N"));
-            try { VerifyAtomicGroup(root); }
+            try { VerifyAtomicGroup(root); VerifyDurableEvents(root); }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
             Console.WriteLine("PASS atomic multi-model configuration transaction, validation and snapshots");
         }
@@ -108,6 +108,42 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Expect<InvalidOperationException>(() => loaded.Register<V13ConfigSample>("extra"),
                 "sealed registry refuses silent schema change");
         }
+        private static void VerifyDurableEvents(string root)
+        {
+            string folder = Path.Combine(root, "journal");
+            MHSConfigService service = new MHSConfigService(folder);
+            MHSConfigSection<V13ConfigSample> config =
+                service.ForProject("Persistent.Events").Open<V13ConfigSample>();
+            Check(config.ReadCommittedAfter(null, 20).Count == 0,
+                "initial factory defaults are not invented committed events");
+            Check(config.SetValueAsync(x => x.ExposureMs, 101, "第一次修改",
+                CancellationToken.None).GetAwaiter().GetResult().Success, "first audited commit");
+            Check(config.SetValueAsync(x => x.ExposureMs, 102, "第二次修改",
+                CancellationToken.None).GetAwaiter().GetResult().Success, "second audited commit");
+            MHSConfigCommittedRecord first = config.ReadCommittedAfter(null, 1).Single();
+            MHSConfigCommittedRecord second = config.ReadCommittedAfter(first.Cursor, 1).Single();
+            Check(first.Sequence < second.Sequence && first.Reason == "第一次修改" &&
+                second.Reason == "第二次修改" && first.TransactionId != null &&
+                second.TransactionId != null && first.TransactionId != second.TransactionId &&
+                second.ChangedPaths.Contains("ExposureMs") &&
+                second.BodySha256 == config.ExportPackage().Sha256,
+                "persistent event cursor, reason, transaction id and body integrity");
+            Check(config.ReadCommittedAfter(second.Cursor, 10).Count == 0,
+                "reading at newest cursor never duplicates old records");
+            MHSConfigService restarted = new MHSConfigService(folder);
+            MHSConfigSection<V13ConfigSample> reopened =
+                restarted.ForProject("Persistent.Events").Open<V13ConfigSample>();
+            Check(reopened.ReadCommittedAfter(first.Cursor, 10).Single().Cursor == second.Cursor,
+                "durable replay cursor works after process restart");
+            Expect<ArgumentOutOfRangeException>(() => reopened.ReadCommittedAfter(null, 0),
+                "bounded journal read protects against unlimited allocation");
+            string history = Directory.GetFiles(folder, "*.audit.json", SearchOption.AllDirectories)
+                .OrderBy(x => x, StringComparer.Ordinal).Last();
+            File.Delete(history);
+            Expect<InvalidOperationException>(() => reopened.ReadCommittedAfter(null, 20),
+                "missing persisted audit evidence must be reported instead of silently skipping an event");
+        }
+
         private static void Check(bool condition, string message)
         { if (!condition) throw new InvalidOperationException("CONFIG_COMPLETION: " + message); }
         private static void Expect<T>(Action action, string message) where T : Exception

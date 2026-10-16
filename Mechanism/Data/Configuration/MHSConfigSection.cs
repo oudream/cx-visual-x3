@@ -275,6 +275,37 @@ namespace CxVisual.Mechanism.Data.Configuration
         /// <summary>只返回当前已提交历史链中的审计记录，未提交的中断文件不进入结果。</summary>
         public IList<MHSConfigAuditEntry> ListAudit()
         { lock (_gate) return _store.ListAudit(_savedRev); }
+        /// <summary>
+        /// 基于每次持久 Commit 的不可变审计文件实现可重放提交事件。
+        /// Null 游标表示从第一条事件读取；重启后同一游标无重复且顺序不变。
+        /// 当前仅承诺 Committed；Effective 状态转换还没有持久独立 Journal。
+        /// </summary>
+        public IList<MHSConfigCommittedRecord> ReadCommittedAfter(string afterCursor, int maxCount)
+        {
+            if (maxCount < 1 || maxCount > 10000) throw new ArgumentOutOfRangeException("maxCount");
+            int after = afterCursor == null ? 0 : MHSConfigStorage.ParseName(afterCursor);
+            lock (_gate)
+            {
+                if (after > _savedRev) throw new ArgumentException("Cursor is ahead of current revision");
+                List<MHSConfigCommittedRecord> records = new List<MHSConfigCommittedRecord>();
+                foreach (MHSConfigAuditEntry entry in _store.ListAudit(_savedRev))
+                {
+                    int revision = MHSConfigStorage.ParseName(entry.Revision);
+                    if (revision <= after) continue;
+                    records.Add(new MHSConfigCommittedRecord
+                    {
+                        Identity = Identity, Cursor = entry.Revision, Sequence = revision,
+                        Revision = entry.Revision, TransactionId = entry.TransactionId,
+                        Reason = entry.Reason, RecordedAtUtc = entry.RecordedAtUtc,
+                        BodySha256 = entry.JsonSha256,
+                        ChangedPaths = new List<string>(entry.ChangedPaths ?? new List<string>()).AsReadOnly()
+                    });
+                    if (records.Count == maxCount) break;
+                }
+                return records.AsReadOnly();
+            }
+        }
+
         /// <summary>严格区分缺失、显式 null、初始化默认与用户保存的值。</summary>
         public FCMConfigValueState<TValue> ExplainState<TValue>(Expression<Func<T, TValue>> accessor)
         {
@@ -382,6 +413,7 @@ namespace CxVisual.Mechanism.Data.Configuration
                     MHSConfigAuditEntry entry = new MHSConfigAuditEntry
                     {
                         Scope = _scope,
+                        TransactionId = transactionId,
                         Reason = string.IsNullOrWhiteSpace(reason) ? "修改配置" : reason,
                         RecordedAtUtc = DateTimeOffset.UtcNow,
                         ChangedPaths = FCMConfigDiffUtil.Diff(_saved, candidate).ToList()

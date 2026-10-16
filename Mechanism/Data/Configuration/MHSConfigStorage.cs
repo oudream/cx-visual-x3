@@ -94,7 +94,13 @@ namespace CxVisual.Mechanism.Data.Configuration
             foreach (int revision in CommittedHistory(currentRevision))
             {
                 string file = AuditFile(revision);
-                if (!File.Exists(file)) continue;
+                if (!File.Exists(file))
+                {
+                    // Initialization/recovery revisions have no audit; committed child revisions must.
+                    if (File.Exists(ParentFile(revision)))
+                        throw new InvalidOperationException("CONFIG_AUDIT_MISSING: " + Name(revision));
+                    continue;
+                }
                 MHSConfigAuditEntry item = FCMJsonValueCodec.Deserialize<MHSConfigAuditEntry>(
                     File.ReadAllText(file, Utf8));
                 if (item == null || item.Revision != Name(revision) ||
