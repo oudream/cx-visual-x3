@@ -38,6 +38,7 @@
     <Compile Include="Discovery\TCTDiscovery.cs" />
     <Compile Include="Discovery\TCTAttributeTests.cs" />
     <Compile Include="Fixtures\TCTFixtures.cs" />
+    <Compile Include="Fixtures\TCTGoldenService.cs" />
     <Compile Include="Reports\TCTReportWriter.cs" />
     <Compile Include="UI\TCTControls.cs" />
     <Compile Include="UI\TCTTestTimelineControl.cs" />
