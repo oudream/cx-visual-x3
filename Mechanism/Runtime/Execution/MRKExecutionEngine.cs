@@ -682,7 +682,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
                             step.Policy.ExecuteAsync(nodeContext, operation, ct,
                                 () => context.SetState(step.Id, MRKStepState.ResultUnknown,
                                     "策略超时但原操作尚未结算，资源继续占用")),
-                        step.SerialKey, false, cancellation);
+                        step.SerialKey, false, cancellation,
+                        step.Priority, step.EstimatedPendingBytes);
                     context.SetState(step.Id, MRKStepState.Scheduled);
                     context.TrackWork(step.Id, work);
                     FCRWorkResult<object> result = await work.Completion.ConfigureAwait(false);

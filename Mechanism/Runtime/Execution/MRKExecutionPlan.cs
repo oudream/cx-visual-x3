@@ -23,11 +23,14 @@ namespace CxVisual.Mechanism.Runtime.Execution
             Func<MRKExecutionContext, bool> condition = null,
             bool allowSkippedDependencies = false,
             string dedicatedExecutorId = null,
-            Func<MRKExecutionContext, CancellationToken, object> synchronousSdk = null)
+            Func<MRKExecutionContext, CancellationToken, object> synchronousSdk = null,
+            int priority = 0, long estimatedPendingBytes = 0)
         {
             if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("Step ID required", "id");
             if (executeAsync == null) throw new ArgumentNullException("executeAsync");
-            Id = id;
+            if (estimatedPendingBytes < 0)
+                throw new ArgumentOutOfRangeException("estimatedPendingBytes");
+            Id = id; Priority = priority; EstimatedPendingBytes = estimatedPendingBytes;
             ExecuteAsync = executeAsync;
             SerialKey = serialKey;
             Policy = policy;
@@ -56,6 +59,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
         }
         public string Id { get; private set; }
         public string SerialKey { get; private set; }
+        public int Priority { get; private set; }
+        public long EstimatedPendingBytes { get; private set; }
         public string ExecutionGroup { get; private set; }
         public IList<MRKExecutionInput> Inputs { get; private set; }
         public MRKExecutionOutput Output { get; private set; }
@@ -148,7 +153,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
                     local.AllowSkippedDependencies, local.DedicatedExecutorId,
                     local.SynchronousSdk == null ?
                         (Func<MRKExecutionContext, CancellationToken, object>)null :
-                        (context, token) => local.SynchronousSdk(context.ForSubflow(scope), token)));
+                        (context, token) => local.SynchronousSdk(context.ForSubflow(scope), token),
+                    local.Priority, local.EstimatedPendingBytes));
             }
             return list.AsReadOnly();
         }

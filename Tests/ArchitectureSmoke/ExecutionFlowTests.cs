@@ -18,6 +18,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             DirectSdkAndFlowShareTheWorker();
             InlineSubflowSingleWorker();
             ConditionalBranchAndExplicitJoin();
+            WorkerPriorityAndPendingBudgetPropagateFromStep();
         }
         private static void Check(bool ok, string message)
         { if (!ok) throw new InvalidOperationException("Runtime Execution: " + message); }
@@ -36,6 +37,47 @@ namespace CxVisual.Tests.ArchitectureSmoke
         private static MRKExecutionStep Step(string id, string[] deps,
             Func<MRKExecutionContext, CancellationToken, Task<object>> task)
         { return new MRKExecutionStep(id, deps, task); }
+        private static void WorkerPriorityAndPendingBudgetPropagateFromStep()
+        {
+            TaskCompletionSource<bool> entered=Gate(), release=Gate();
+            List<string> order=new List<string>();
+            MRKExecutionPlan plan=new MRKExecutionPlan("priority",new[]{
+                new MRKExecutionStep("gate",new string[0],async(c,t)=>{
+                    entered.TrySetResult(true);
+                    await release.Task.ConfigureAwait(false);
+                    return (object)0;
+                }),
+                new MRKExecutionStep("low",new string[0],(c,t)=>{
+                    lock(order)order.Add("low");
+                    return Task.FromResult((object)1);
+                },priority:-5,estimatedPendingBytes:3),
+                new MRKExecutionStep("high",new string[0],(c,t)=>{
+                    lock(order)order.Add("high");
+                    return Task.FromResult((object)2);
+                },priority:5,estimatedPendingBytes:3)
+            });
+            MRKExecutionEngine engine=new MRKExecutionEngine(new FCRWorkerOptions(
+                1,4,pendingByteBudget:8));
+            try
+            {
+                MRKFlowHandle flow=engine.StartFlow(plan);
+                Await(entered.Task);
+                Check(SpinWait.SpinUntil(()=>engine.GetSnapshot().Pending==2,3000),
+                    "两项工作未进入同一个有界Worker队列");
+                Check(engine.GetSnapshot().PendingBytes==6,
+                    "节点预计字节数未进入Worker预算");
+                release.TrySetResult(true);
+                Check(Await(flow.Completion).State==MRKFlowState.Completed &&
+                    order.Count==2 && order[0]=="high" && order[1]=="low",
+                    "节点Priority没有贯通Worker");
+            }
+            finally
+            {
+                release.TrySetResult(true);
+                Await(engine.StopAsync(true));
+            }
+        }
+
         private static void ParallelJoinAndResultContext()
         {
             IMRKExecutionEngine engine = new MRKExecutionEngine(new FCRWorkerOptions(3, 8));

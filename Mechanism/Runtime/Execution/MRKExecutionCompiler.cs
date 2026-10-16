@@ -43,12 +43,16 @@ namespace CxVisual.Mechanism.Runtime.Execution
             string executionGroup = null, MRKExecutionPolicy policy = null,
             IEnumerable<string> requiredResources = null,
             Func<MRKExecutionContext, bool> condition = null,
-            bool allowSkippedDependencies = false, string dedicatedExecutorId = null)
+            bool allowSkippedDependencies = false, string dedicatedExecutorId = null,
+            int priority = 0, long estimatedPendingBytes = 0)
         {
             Id = id; CapabilityId = capabilityId; SerialKey = serialKey;
             ExecutionGroup = executionGroup; Policy = policy; Condition = condition;
             AllowSkippedDependencies = allowSkippedDependencies;
             DedicatedExecutorId = dedicatedExecutorId;
+            if (estimatedPendingBytes < 0)
+                throw new ArgumentOutOfRangeException("estimatedPendingBytes");
+            Priority = priority; EstimatedPendingBytes = estimatedPendingBytes;
             Dependencies = new ReadOnlyCollection<string>(new List<string>(dependencies ?? new string[0]));
             Inputs = new ReadOnlyCollection<MRKExecutionInput>(
                 new List<MRKExecutionInput>(inputs ?? new MRKExecutionInput[0]));
@@ -66,6 +70,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
         public Func<MRKExecutionContext, bool> Condition { get; private set; }
         public bool AllowSkippedDependencies { get; private set; }
         public string DedicatedExecutorId { get; private set; }
+        public int Priority { get; private set; }
+        public long EstimatedPendingBytes { get; private set; }
     }
 
     public sealed class MRKCompileDiagnostic
@@ -140,7 +146,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
                         item.RequiredResources, capability.CompensateAsync,
                         item.ExecutionGroup, item.Inputs, capability.Output,
                         item.Condition, item.AllowSkippedDependencies, item.DedicatedExecutorId,
-                        capability.SynchronousSdk));
+                        capability.SynchronousSdk,
+                        item.Priority, item.EstimatedPendingBytes));
                 }
                 catch (Exception ex) when (ex is ArgumentException || ex is InvalidOperationException)
                 {
