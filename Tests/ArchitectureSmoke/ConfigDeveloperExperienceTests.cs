@@ -117,37 +117,45 @@ namespace CxVisual.Tests.ArchitectureSmoke
         private static void CtLongTask(string root)
         {
             MHSConfigService service = new MHSConfigService(Path.Combine(root, "ct"));
-            MHSConfigAtomicGroup group = service.OpenAtomicGroup("CT.ScanAndRebuild", members =>
-            {
-                members.Register<V13ConfigSample>("Scan");
-                members.Register<V13AsyncConfig>("Reconstruction");
-            });
+            MHSConfigAtomicGroup group = service.OpenAtomicGroup("CT.ScanAndRebuild");
+            MHSConfigGroupMember<V13ConfigSample> scanMember =
+                group.Register<V13ConfigSample>("Scan");
+            MHSConfigGroupMember<V13AsyncConfig> rebuildMember =
+                group.Register<V13AsyncConfig>("Reconstruction");
+            group.Seal();
+            MHSConfigAtomicGroup unrelated = service.OpenAtomicGroup("CT.Unrelated");
+            MHSConfigGroupMember<V13ConfigSample> foreign =
+                unrelated.Register<V13ConfigSample>("Scan");
+            unrelated.Seal();
+            using (MHSConfigAtomicEdit invalid = group.BeginEdit("foreign handle"))
+                Expect<InvalidOperationException>(() => invalid.Get(foreign),
+                    "group member handle is tied to one physical group");
             Check(group.UpdateAsync(edit =>
             {
-                V13ConfigSample scan = edit.Get<V13ConfigSample>("Scan");
+                V13ConfigSample scan = edit.Get(scanMember);
                 scan.ExposureMs = 135;
-                edit.Set("Scan", scan);
-                V13AsyncConfig rebuild = edit.Get<V13AsyncConfig>("Reconstruction");
+                edit.Set(scanMember, scan);
+                V13AsyncConfig rebuild = edit.Get(rebuildMember);
                 rebuild.Count = 4;
-                edit.Set("Reconstruction", rebuild);
+                edit.Set(rebuildMember, rebuild);
             }, "扫描与重建联合配置", CancellationToken.None).GetAwaiter().GetResult().Success,
                 "atomic group declaration + one transaction");
             Check(group.TryApplyPendingAtBoundary(FCMConfigApplyPolicy.NextTask, null).Applied,
                 "CT group single effective version");
             using (MHSConfigGroupSnapshot fixedScan = group.CaptureForTask("CT-Scan-01"))
             {
-                Check(fixedScan.Get<V13ConfigSample>("Scan").ExposureMs == 135 &&
-                    fixedScan.Get<V13AsyncConfig>("Reconstruction").Count == 4,
+                Check(fixedScan.Get(scanMember).ExposureMs == 135 &&
+                    fixedScan.Get(rebuildMember).Count == 4,
                     "CT acquisition and reconstruction share exactly one version");
                 Check(group.UpdateAsync(edit =>
                 {
-                    V13AsyncConfig rebuild = edit.Get<V13AsyncConfig>("Reconstruction");
+                    V13AsyncConfig rebuild = edit.Get(rebuildMember);
                     rebuild.Count = 8;
-                    edit.Set("Reconstruction", rebuild);
+                    edit.Set(rebuildMember, rebuild);
                 }, "后续重建方案", CancellationToken.None).GetAwaiter().GetResult().Success,
                     "second transaction is isolated from running scan");
                 Check(group.TryApplyPendingAtBoundary(FCMConfigApplyPolicy.NextTask, null).Applied &&
-                    fixedScan.Get<V13AsyncConfig>("Reconstruction").Count == 4,
+                    fixedScan.Get(rebuildMember).Count == 4,
                     "long-running task keeps original revision despite later apply");
             }
         }

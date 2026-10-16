@@ -36,12 +36,21 @@ namespace CxVisual.Mechanism.Data.Configuration
         public Func<string, string, CancellationToken, Task<FCMConfigValidationReport>> ValidateAsync;
     }
 
+    /// <summary>Bound, typed member key. Handles from another atomic group are rejected.</summary>
+    public sealed class MHSConfigGroupMember<T> where T : new()
+    {
+        internal MHSConfigGroupMember(string owner, string key) { Owner = owner; Key = key; }
+        internal string Owner { get; private set; }
+        public string Key { get; private set; }
+    }
+
     /// <summary>一个持久修订的多个成员；对外提供隔离的强类型读取。</summary>
     public sealed class MHSConfigGroupSnapshot : IDisposable
     {
         private MHSConfigGroupDocument _document;
-        internal MHSConfigGroupSnapshot(string revision, MHSConfigGroupDocument document)
-        { Version = revision; _document = Copy(document); }
+        private readonly string _owner;
+        internal MHSConfigGroupSnapshot(string owner, string revision, MHSConfigGroupDocument document)
+        { _owner = owner; Version = revision; _document = Copy(document); }
         public string Version { get; private set; }
         public IList<string> MemberKeys
         {
@@ -57,6 +66,13 @@ namespace CxVisual.Mechanism.Data.Configuration
             if (entry.SectionId != schema.SectionId || entry.SchemaVersion != schema.SchemaVersion)
                 throw new InvalidOperationException("CONFIG_GROUP_MEMBER_SCHEMA_MISMATCH: " + key);
             return FCMJsonValueCodec.Deserialize<T>(entry.Json);
+        }
+        public T Get<T>(MHSConfigGroupMember<T> member) where T : new()
+        {
+            if (member == null) throw new ArgumentNullException("member");
+            if (!string.Equals(member.Owner, _owner, StringComparison.Ordinal))
+                throw new InvalidOperationException("CONFIG_GROUP_FOREIGN_MEMBER");
+            return Get<T>(member.Key);
         }
         private MHSConfigGroupDocument Active
         {
@@ -79,9 +95,23 @@ namespace CxVisual.Mechanism.Data.Configuration
         private MHSConfigEdit<MHSConfigGroupDocument> _inner;
         private readonly IList<MHSConfigGroupRegistration> _registered;
         private readonly string _scope;
+        private readonly string _owner;
         internal MHSConfigAtomicEdit(MHSConfigEdit<MHSConfigGroupDocument> edit,
-            IList<MHSConfigGroupRegistration> registered, string scope)
-        { _inner = edit; _registered = registered; _scope = scope; }
+            IList<MHSConfigGroupRegistration> registered, string scope, string owner)
+        { _inner = edit; _registered = registered; _scope = scope; _owner = owner; }
+        private string MemberKey<T>(MHSConfigGroupMember<T> member) where T : new()
+        {
+            if (member == null) throw new ArgumentNullException("member");
+            if (!string.Equals(member.Owner, _owner, StringComparison.Ordinal))
+                throw new InvalidOperationException("CONFIG_GROUP_FOREIGN_MEMBER");
+            return member.Key;
+        }
+        public void Set<T>(MHSConfigGroupMember<T> member, T value) where T : new()
+        { Set(MemberKey(member), value); }
+        public T Get<T>(MHSConfigGroupMember<T> member) where T : new()
+        { return Get<T>(MemberKey(member)); }
+        public void Remove<T>(MHSConfigGroupMember<T> member) where T : new()
+        { Remove(MemberKey(member)); }
 
         public void Set<T>(string key, T value) where T : new()
         {
@@ -212,7 +242,7 @@ namespace CxVisual.Mechanism.Data.Configuration
         internal int SavedMemberCount { get { return _section.GetLatestSaved().Members.Count; } }
         internal int EffectiveMemberCount { get { return _section.Get().Members.Count; } }
 
-        public void Register<T>(string key) where T : new()
+        public MHSConfigGroupMember<T> Register<T>(string key) where T : new()
         {
             if (string.IsNullOrWhiteSpace(key)) throw new ArgumentException("Member key required", "key");
             FCMConfigSchema schema = FCMConfigSchemaBuilder.Describe<T>();
@@ -230,6 +260,7 @@ namespace CxVisual.Mechanism.Data.Configuration
                             .ConfigureAwait(false);
                     }
                 });
+                return new MHSConfigGroupMember<T>(_section.Identity.CanonicalKey, key);
             }
         }
         public void Seal()
@@ -265,19 +296,19 @@ namespace CxVisual.Mechanism.Data.Configuration
                 RequireSealed();
                 return new MHSConfigAtomicEdit(_section.BeginEdit(reason),
                     _members.Values.OrderBy(x => x.Key, StringComparer.Ordinal).ToArray(),
-                    _section.ScopeId);
+                    _section.ScopeId, Identity.CanonicalKey);
             }
         }
         public MHSConfigGroupSnapshot CaptureForTask(string taskId)
         {
             lock (_gate) RequireSealed();
             using (MHSConfigSnapshot<MHSConfigGroupDocument> snapshot = _section.CaptureForTask(taskId))
-                return new MHSConfigGroupSnapshot(snapshot.Version, snapshot.Get());
+                return new MHSConfigGroupSnapshot(Identity.CanonicalKey, snapshot.Version, snapshot.Get());
         }
         public MHSConfigGroupSnapshot CaptureSaved()
         {
             lock (_gate) RequireSealed();
-            return new MHSConfigGroupSnapshot(_section.SavedVersion, _section.GetLatestSaved());
+            return new MHSConfigGroupSnapshot(Identity.CanonicalKey, _section.SavedVersion, _section.GetLatestSaved());
         }
         public MHSConfigApplyResult TryApplyPendingAtBoundary(FCMConfigApplyPolicy boundary,
             Func<MHSConfigApplyReview<MHSConfigGroupDocument>, MHSConfigApplyDecision> approval)
