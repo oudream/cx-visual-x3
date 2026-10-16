@@ -251,6 +251,15 @@ namespace CxVisual.Tests.ArchitectureSmoke
 
         private static void DynamicCollectionEditing(string root)
         {
+            Expect<NotSupportedException>(() => FCMJsonValueCodec.Serialize(
+                new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { { "A", 1 } }),
+                "case-insensitive map comparer cannot silently change after restart");
+            Expect<NotSupportedException>(() => FCMJsonValueCodec.Serialize(
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "A" }),
+                "case-insensitive set comparer cannot silently change after restart");
+            Check(FCMJsonValueCodec.Serialize(new HashSet<string>(StringComparer.Ordinal)
+                { "A", "B" }).Contains("A"),
+                "explicit ordinal comparer retains standard string membership");
             string folder = Path.Combine(root, "typed-editor");
             MHSConfigSection<ConfigDynamicCollections> section =
                 new MHSConfigService(folder).ForMachine("Line-B").Open<ConfigDynamicCollections>();

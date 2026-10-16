@@ -243,11 +243,28 @@ namespace CxVisual.Foundation.Data.Configuration
             }
             return instance;
         }
+        private static void RequireSerializableComparer(object value, Type type)
+        {
+            if (!type.IsGenericType) return;
+            Type generic = type.GetGenericTypeDefinition();
+            if (generic != typeof(Dictionary<,>) && generic != typeof(HashSet<>)) return;
+            Type keyType = type.GetGenericArguments()[0];
+            object actual = type.GetProperty("Comparer").GetValue(value, null);
+            object standard = typeof(EqualityComparer<>).MakeGenericType(keyType)
+                .GetProperty("Default").GetValue(null, null);
+            if (!object.Equals(actual, standard) &&
+                !(keyType == typeof(string) && object.Equals(actual, StringComparer.Ordinal)))
+                throw new NotSupportedException("CONFIG_COLLECTION_COMPARER_NOT_PERSISTED");
+        }
         private static string SerializeValue(object value, int depth)
         {
             if (depth > 64) throw new NotSupportedException("Config nesting exceeds 64 levels");
             if (value == null) return "null";
             Type t = value.GetType();
+            // JSON arrays/maps carry values, not CLR comparer identities.
+            // Fail closed on unsupported custom equality semantics rather than
+            // silently changing key uniqueness or set membership on restart.
+            RequireSerializableComparer(value, t);
             FCMConfigConverterAttribute converter = (FCMConfigConverterAttribute)Attribute.GetCustomAttribute(t, typeof(FCMConfigConverterAttribute));
             if (converter != null)
             {

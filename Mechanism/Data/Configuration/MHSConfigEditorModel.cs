@@ -226,14 +226,16 @@ namespace CxVisual.Mechanism.Data.Configuration
         private static void RequireDefaultComparer<V>(Dictionary<string, V> value)
         {
             if (value == null) throw new InvalidOperationException("CONFIG_EDITOR_NULL_COLLECTION");
-            if (!value.Comparer.Equals(EqualityComparer<string>.Default))
-                throw new NotSupportedException("CONFIG_EDITOR_CUSTOM_COMPARER_UNSUPPORTED");
+            if (!value.Comparer.Equals(EqualityComparer<string>.Default) &&
+                !value.Comparer.Equals(StringComparer.Ordinal))
+                throw new NotSupportedException("CONFIG_COLLECTION_COMPARER_NOT_PERSISTED");
         }
         private static void RequireDefaultComparer<V>(HashSet<V> value)
         {
             if (value == null) throw new InvalidOperationException("CONFIG_EDITOR_NULL_COLLECTION");
-            if (!value.Comparer.Equals(EqualityComparer<V>.Default))
-                throw new NotSupportedException("CONFIG_EDITOR_CUSTOM_COMPARER_UNSUPPORTED");
+            if (!value.Comparer.Equals(EqualityComparer<V>.Default) &&
+                !(typeof(V) == typeof(string) && value.Comparer.Equals(StringComparer.Ordinal)))
+                throw new NotSupportedException("CONFIG_COLLECTION_COMPARER_NOT_PERSISTED");
         }
 
         public bool Undo()
