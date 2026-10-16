@@ -11,15 +11,15 @@ namespace CxVisual.Mechanism.Data.Execution
     /// </summary>
     public sealed class MDEExecutionDataScope : IFDEExecutionDataScope
     {
-        private sealed class Entry
+        private sealed class MDEExecutionDataEntry
         {
             internal readonly object Value;
             internal readonly Action Release;
-            internal Entry(object value, Action release) { Value = value; Release = release; }
+            internal MDEExecutionDataEntry(object value, Action release) { Value = value; Release = release; }
         }
         private readonly object _gate = new object();
-        private readonly Dictionary<string, Entry> _local =
-            new Dictionary<string, Entry>(StringComparer.Ordinal);
+        private readonly Dictionary<string, MDEExecutionDataEntry> _local =
+            new Dictionary<string, MDEExecutionDataEntry>(StringComparer.Ordinal);
         private readonly List<string> _insertionOrder = new List<string>();
         private readonly MDEExecutionDataScope _parent;
         private int _liveChildren;
@@ -60,14 +60,14 @@ namespace CxVisual.Mechanism.Data.Execution
                 EnsureOpen();
                 if (_local.ContainsKey(name))
                     throw new InvalidOperationException("同一作用域禁止覆盖已公布数据：" + name);
-                _local.Add(name, new Entry(value, release));
+                _local.Add(name, new MDEExecutionDataEntry(value, release));
                 _insertionOrder.Add(name);
             }
         }
         public bool TryRead<T>(string name, out T value)
         {
             if (string.IsNullOrWhiteSpace(name)) throw new ArgumentException("数据名称不能为空", "name");
-            Entry entry;
+            MDEExecutionDataEntry entry;
             lock (_gate)
             {
                 EnsureOpen();
@@ -97,7 +97,7 @@ namespace CxVisual.Mechanism.Data.Execution
                 EnsureOpen();
                 Dictionary<string, object> copy =
                     new Dictionary<string, object>(StringComparer.Ordinal);
-                foreach (KeyValuePair<string, Entry> item in _local)
+                foreach (KeyValuePair<string, MDEExecutionDataEntry> item in _local)
                     copy.Add(item.Key, item.Value.Value);
                 return new ReadOnlyDictionary<string, object>(copy);
             }
@@ -111,7 +111,7 @@ namespace CxVisual.Mechanism.Data.Execution
             lock (_gate)
             {
                 EnsureOpen();
-                Entry entry;
+                MDEExecutionDataEntry entry;
                 if (!_local.TryGetValue(name, out entry))
                     throw new KeyNotFoundException("局部数据不存在：" + name);
                 if (entry.Release != null)
@@ -127,16 +127,16 @@ namespace CxVisual.Mechanism.Data.Execution
             lock (_gate)
             {
                 EnsureOpen();
-                Entry old;
+                MDEExecutionDataEntry old;
                 if (_local.TryGetValue(name, out old))
                 {
                     if (!replace) throw new InvalidOperationException("目标名称已存在：" + name);
                     if (old.Release != null || _liveChildren != 0)
                         throw new InvalidOperationException("目标正被占用或带有释放回调：" + name);
-                    _local[name] = new Entry(value, null);
+                    _local[name] = new MDEExecutionDataEntry(value, null);
                     return;
                 }
-                _local.Add(name, new Entry(value, null));
+                _local.Add(name, new MDEExecutionDataEntry(value, null));
                 _insertionOrder.Add(name);
             }
         }
@@ -146,7 +146,7 @@ namespace CxVisual.Mechanism.Data.Execution
             lock (_gate)
             {
                 EnsureOpen();
-                Entry entry;
+                MDEExecutionDataEntry entry;
                 if (!_local.TryGetValue(name, out entry))
                     throw new KeyNotFoundException("局部数据不存在：" + name);
                 if (entry.Release != null || _liveChildren != 0)
@@ -159,7 +159,7 @@ namespace CxVisual.Mechanism.Data.Execution
             lock (_gate)
             {
                 EnsureOpen();
-                Entry existing;
+                MDEExecutionDataEntry existing;
                 if (!_local.TryGetValue(name, out existing))
                     throw new KeyNotFoundException("局部数据不存在：" + name);
                 if (existing.Release != null || _liveChildren != 0)
