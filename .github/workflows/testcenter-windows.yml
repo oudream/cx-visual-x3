@@ -29,6 +29,25 @@ jobs:
         run: |
           & msbuild 'Tests/TestCenter/CxVisual.TestCenter.csproj' /t:Restore /p:Configuration=Debug /p:Platform=x64 /nologo /v:minimal
           if ($LASTEXITCODE -ne 0) { throw "NuGet PackageReference restore failed" }
+      - name: Verify new test source requires no project edit
+        shell: powershell
+        run: |
+          @'
+          using CxVisual.TestCenter.Core;
+          using CxVisual.TestCenter.Discovery;
+          namespace CxVisual.TestCenter.Cases
+          {
+              public static class TCTAutodiscoveredCases
+              {
+                  [TCTTest("TCT.AUTO.001", "Dynamic source auto discovery", TCTTestAspect.Foundation, "Development")]
+                  public static void Check(TCTTestContext test)
+                  {
+                      test.AssertEqual(42, 6 * 7, "Compile wildcard and discover");
+                  }
+              }
+          }
+          '@ | Set-Content -LiteralPath 'Tests/TestCenter/Cases/TCTAutodiscoveredCases.generated.cs' -Encoding UTF8
+          Write-Host 'Created .cs source after checkout; project file unchanged'
       - name: Build all solution projects
         shell: powershell
         run: |
@@ -96,6 +115,10 @@ jobs:
           if ($nunitCases.Count -ne 5) {
               throw "Unified TestCenter Catalog must contain 5 NUnit cases; got $($nunitCases.Count)"
           }
+          if (@($junit.testsuite.testcase | Where-Object {
+              $_.GetAttribute('name') -eq 'TCT.AUTO.001'
+          }).Count -ne 1) { throw 'New source not discovered without csproj edits' }
+          Write-Host 'PASS: new source compiled and discovered automatically'
           Write-Host 'PASS: NUnit cases run through unified TCT Worker and JUnit'
       - name: Verify native NUnit failure propagates through TCT Worker
         shell: powershell
@@ -117,6 +140,28 @@ jobs:
               throw 'Original NUnit failure message lost in TCT result'
           }
           Write-Host 'PASS: intentional native NUnit assertion failure remains Failed in TCT JUnit'
+      - name: Verify NUnit skipped, inconclusive and error status mapping
+        shell: powershell
+        run: |
+          $exe = (Resolve-Path 'Output/Debug/x64/CxVisual.TestCenter.exe').Path
+          $testId = 'NUNIT.CxVisual.TestCenter.NUnitIntegration.TCTNUnitProbeFixture.NegativeControl'
+          foreach ($scenario in @('ignored','inconclusive','error')) {
+              $report = Join-Path (Get-Location) ("Output/Debug/x64/NUnitState." + $scenario + ".xml")
+              $env:TCT_NUNIT_EXPECT_NEGATIVE = $scenario
+              try {
+                  $p = Start-Process -FilePath $exe -WorkingDirectory (Get-Location).Path -ArgumentList @('--run','--id',('"' + $testId + '"'),'--report',('"' + $report + '"'),'--format','junit','--isolate') -Wait -PassThru
+              } finally { Remove-Item Env:TCT_NUNIT_EXPECT_NEGATIVE -ErrorAction SilentlyContinue }
+              if ($p.ExitCode -ne 1) { throw "NUnit $scenario exit=$($p.ExitCode), expected 1" }
+              [xml]$xml = Get-Content -LiteralPath $report -Raw
+              $case = @($xml.testsuite.testcase)[0]
+              if ([int]$xml.testsuite.tests -ne 1) { throw "Incorrect $scenario test count" }
+              if ($scenario -eq 'error') {
+                  if ([int]$xml.testsuite.errors -ne 1) { throw "NUnit error wrongly classified" }
+              } elseif ([int]$xml.testsuite.skipped -ne 1) {
+                  throw "NUnit $scenario must not appear passed"
+              }
+              Write-Host "PASS native NUnit state $scenario => TCT nonpassing"
+          }
       - name: Parallel repeat and history regression
         shell: powershell
         run: |
@@ -182,6 +227,7 @@ jobs:
             Output/Debug/x64/TestCenter.junit.xml
             Output/Debug/x64/TestCenter.parallel.junit.xml
             Output/Debug/x64/TestCenter.nunit-failure.junit.xml
+            Output/Debug/x64/NUnitState.*.xml
             Output/Debug/x64/TestCenter.empty.junit.xml
             Output/Debug/x64/TestCenterHistory/**/summary.json
           if-no-files-found: warn

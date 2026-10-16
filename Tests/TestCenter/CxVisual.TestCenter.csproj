@@ -27,11 +27,12 @@
     <Compile Include="MainWindow.xaml.cs" />
     <Compile Include="Core\TCTTesting.cs" />
     <Compile Include="Models\TCTModels.cs" />
+    <Compile Include="Models\TCTTestSourceLocation.cs" />
     <Compile Include="Fixtures\TCTArtifacts.cs" />
     <Compile Include="Execution\TCTLifecycle.cs" />
     <Compile Include="Diagnostics\TCTObserverHub.cs" />
     <Compile Include="Reports\TCTTestResultRepository.cs" />
-    <Compile Include="Cases\TCTFrameworkExtendedCases.cs" />
+    <Compile Include="Cases\**\*.cs" />
     <Compile Include="Execution\TCTExecution.cs" />
     <Compile Include="Discovery\TCTDiscovery.cs" />
     <Compile Include="Discovery\TCTAttributeTests.cs" />
@@ -39,13 +40,6 @@
     <Compile Include="Reports\TCTReportWriter.cs" />
     <Compile Include="UI\TCTControls.cs" />
     <Compile Include="UI\TCTTestViews.cs" />
-    <Compile Include="Cases\TCTFrameworkCases.cs" />
-    <Compile Include="Cases\TCTRealCases.cs" />
-    <Compile Include="Cases\TCTPlatformRealCases.cs" />
-    <Compile Include="Cases\TCTMechanismActualCases.cs" />
-    <Compile Include="Cases\TCTExecutionDataCases.cs" />
-    <Compile Include="Cases\TCTAdversarialCases.cs" />
-    <Compile Include="Cases\TCTRuntimeReliabilityCases.cs" />
     <Compile Include="NUnitIntegration\TCTNUnitEngineProbe.cs" />
     <Compile Include="NUnitIntegration\TCTNUnitFrameworkAdapter.cs" />
     <ApplicationDefinition Include="App.xaml">

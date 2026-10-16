@@ -291,6 +291,10 @@ namespace CxVisual.TestCenter.Core
         public TCTTestStatus Status { get; private set; }
         public TimeSpan Elapsed { get; private set; }
         public string Error { get; private set; }
+        public TCTTestSourceLocation SourceLocation
+        {
+            get { return TCTTestSourceLocator.TryParse(Error); }
+        }
         public IList<TCTAssertionResult> Assertions { get; private set; }
         public IList<TCTTestObservation> Observations { get; private set; }
         public IList<TCTArtifactRef> Artifacts { get; private set; }
@@ -363,7 +367,7 @@ namespace CxVisual.TestCenter.Core
             request.Validate();
             return _cases.Where(c =>
                 (request.SelectedIds.Count == 0 || request.SelectedIds.Contains(c.Descriptor.Id)) &&
-                TCTTestProfilePolicy.Allows(request.Profile, c.Descriptor.Kind) &&
+                (request.SelectedIds.Count > 0 || TCTTestProfilePolicy.Allows(request.Profile, c.Descriptor.Kind)) &&
                 (string.IsNullOrEmpty(request.Filter) || c.Descriptor.Id.IndexOf(request.Filter, StringComparison.OrdinalIgnoreCase) >= 0 ||
                  c.Descriptor.Name.IndexOf(request.Filter, StringComparison.OrdinalIgnoreCase) >= 0 ||
                  c.Descriptor.Group.IndexOf(request.Filter, StringComparison.OrdinalIgnoreCase) >= 0 ||

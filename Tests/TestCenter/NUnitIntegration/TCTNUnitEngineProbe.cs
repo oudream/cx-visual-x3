@@ -114,8 +114,11 @@ namespace CxVisual.TestCenter.NUnitIntegration
         [Test]
         public void NegativeControl()
         {
-            if (Environment.GetEnvironmentVariable("TCT_NUNIT_EXPECT_NEGATIVE") == "1")
-                Assert.Fail("TCT_NUNIT_NEGATIVE_CONTROL");
+            string control = Environment.GetEnvironmentVariable("TCT_NUNIT_EXPECT_NEGATIVE");
+            if (control == "1") Assert.Fail("TCT_NUNIT_NEGATIVE_CONTROL");
+            if (control == "ignored") Assert.Ignore("TCT_NUNIT_IGNORED_CONTROL");
+            if (control == "inconclusive") Assert.Inconclusive("TCT_NUNIT_INCONCLUSIVE_CONTROL");
+            if (control == "error") throw new InvalidOperationException("TCT_NUNIT_ERROR_CONTROL");
             Assert.That(true, Is.True);
         }
     }

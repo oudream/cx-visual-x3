@@ -15,8 +15,14 @@ foreach ($project in $projects) {
     if ($assemblyName -ne $project.BaseName) { throw "Assembly mismatch: $($project.FullName)" }
     foreach ($group in @($xml.Project.ItemGroup)) {
         foreach ($compile in @($group.Compile)) {
-            if ($null -ne $compile -and $compile.Include -and -not (Test-Path -LiteralPath (Join-Path $project.DirectoryName $compile.Include))) {
-                throw "Missing Compile $($compile.Include) in $($project.FullName)"
+            if ($null -ne $compile -and $compile.Include) {
+                $include = [string]$compile.Include
+                if ($include.Contains('*') -or $include.Contains('?')) {
+                    $matches = @(Get-ChildItem -Path (Join-Path $project.DirectoryName $include) -File -ErrorAction SilentlyContinue)
+                    if ($matches.Count -eq 0) { throw "No source files match Compile wildcard $include in $($project.FullName)" }
+                } elseif (-not (Test-Path -LiteralPath (Join-Path $project.DirectoryName $include))) {
+                    throw "Missing Compile $include in $($project.FullName)"
+                }
             }
         }
         foreach ($reference in @($group.ProjectReference)) {

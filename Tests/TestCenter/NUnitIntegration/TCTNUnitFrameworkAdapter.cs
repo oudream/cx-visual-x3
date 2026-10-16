@@ -94,18 +94,7 @@ namespace CxVisual.TestCenter.NUnitIntegration
             int nativeAssertCount;
             if (!int.TryParse(TCTNUnitBridge.Read(node, "asserts"), NumberStyles.Integer,
                 CultureInfo.InvariantCulture, out nativeAssertCount)) nativeAssertCount = 0;
-            TCTTestStatus mapped;
-            switch (outcome)
-            {
-                case "Passed": mapped = nativeAssertCount > 0 ? TCTTestStatus.Passed : TCTTestStatus.Inconclusive; break;
-                case "Failed":
-                    mapped = label == "Error" || label == "Invalid" ? TCTTestStatus.Error :
-                        label == "Cancelled" ? TCTTestStatus.Cancelled : TCTTestStatus.Failed;
-                    break;
-                case "Skipped": mapped = TCTTestStatus.Skipped; break;
-                case "Inconclusive": mapped = TCTTestStatus.Inconclusive; break;
-                default: mapped = TCTTestStatus.Error; break;
-            }
+            TCTTestStatus mapped = TCTNUnitBridge.MapStatus(outcome, label, nativeAssertCount);
             string error = failure + (string.IsNullOrWhiteSpace(stack) ? "" : Environment.NewLine + stack);
             if (mapped != TCTTestStatus.Passed && string.IsNullOrWhiteSpace(error))
                 error = "NUnit outcome=" + outcome + "; label=" + label + "; asserts=" + nativeAssertCount;
@@ -134,6 +123,16 @@ namespace CxVisual.TestCenter.NUnitIntegration
 
     public static class TCTNUnitBridge
     {
+        public static TCTTestStatus MapStatus(string result, string label, int nativeAsserts)
+        {
+            if (result == "Passed") return nativeAsserts > 0 ? TCTTestStatus.Passed : TCTTestStatus.Inconclusive;
+            if (result == "Inconclusive" || label == "Inconclusive") return TCTTestStatus.Inconclusive;
+            if (result == "Skipped") return TCTTestStatus.Skipped;
+            if (label == "Cancelled") return TCTTestStatus.Cancelled;
+            if (result == "Failed") return label == "Error" || label == "Invalid" ?
+                TCTTestStatus.Error : TCTTestStatus.Failed;
+            return TCTTestStatus.Error; // unexpected engine payloads fail closed
+        }
         public static TestPackage CreatePackage(string assemblyPath)
         {
             TestPackage package = new TestPackage(assemblyPath);
