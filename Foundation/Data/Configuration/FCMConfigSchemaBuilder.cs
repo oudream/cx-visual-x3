@@ -170,7 +170,7 @@ namespace CxVisual.Foundation.Data.Configuration
                         if (!(entry.Key is string)) { result.Add(FCMConfigIssue.Error(context.Path, "MAP_KEY_TYPE", "Only string dictionary keys are supported.")); continue; }
                         string key = Convert.ToString(entry.Key, CultureInfo.InvariantCulture);
                         Walk(entry.Value, entry.Value == null ? typeof(object) : entry.Value.GetType(),
-                            context.At(context.Path + "[\"" + key.Replace("\"", "\\\"") + "\"]"), result, stack, depth + 1);
+                            context.At(context.Path + "[" + FCMJsonValueCodec.Serialize(key) + "]"), result, stack, depth + 1);
                     }
                     return;
                 }
