@@ -81,11 +81,16 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 else if (record.Kind != MRKJournalKind.ExternalConfirmed &&
                          (planId != record.PlanId || revision != record.Revision))
                     ambiguousIdentity = true;
+                // FlowStarted必须是该Flow第一条合法事实，终态只允许出现一次。
+                // FlowFinished之后仅允许外部操作的迟到确认，严禁静默接收新的执行事实。
                 if (record.Kind == MRKJournalKind.FlowStarted)
                 {
                     starts++;
-                    if (finished) ambiguousIdentity = true;
+                    if (starts != 1 || finished) ambiguousIdentity = true;
                 }
+                else if (starts == 0) ambiguousIdentity = true;
+                if (finished && record.Kind != MRKJournalKind.ExternalConfirmed)
+                    ambiguousIdentity = true;
                 if (record.Kind == MRKJournalKind.FlowFinished) finished = true;
                 if (record.Kind == MRKJournalKind.StepTransition &&
                     record.State == MRKStepState.ResultUnknown.ToString())
@@ -119,14 +124,25 @@ namespace CxVisual.Mechanism.Runtime.Execution
             IEnumerable<MRKJournalRecord> history)
         {
             if (history == null) throw new ArgumentNullException("history");
-            List<MRKJournalRecord> records = new List<MRKJournalRecord>(history);
-            HashSet<Guid> seen = new HashSet<Guid>();
-            List<MRKRecoveryDecision> decisions = new List<MRKRecoveryDecision>();
-            foreach (MRKJournalRecord record in records)
+            // 每条日志仅分组一次，避免Host启动扫描大量Flow时逐Flow重读整个文件。
+            Dictionary<Guid, List<MRKJournalRecord>> flows =
+                new Dictionary<Guid, List<MRKJournalRecord>>();
+            List<Guid> order = new List<Guid>();
+            foreach (MRKJournalRecord record in history)
             {
-                if (record == null || !seen.Add(record.FlowId)) continue;
-                decisions.Add(Evaluate(record.FlowId, records));
+                if (record == null) continue;
+                List<MRKJournalRecord> group;
+                if (!flows.TryGetValue(record.FlowId, out group))
+                {
+                    group = new List<MRKJournalRecord>();
+                    flows.Add(record.FlowId, group);
+                    order.Add(record.FlowId);
+                }
+                group.Add(record);
             }
+            List<MRKRecoveryDecision> decisions = new List<MRKRecoveryDecision>();
+            foreach (Guid id in order)
+                decisions.Add(Evaluate(id, flows[id]));
             return new ReadOnlyCollection<MRKRecoveryDecision>(decisions);
         }
         private static bool SameExternalOperation(MRKJournalRecord first, MRKJournalRecord second)

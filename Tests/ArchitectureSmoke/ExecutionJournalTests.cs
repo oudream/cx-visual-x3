@@ -18,6 +18,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
             MidFlowJournalFailureIsTypedFailure();
             RepeatedFlowIdentityAndUnboundTimeoutRequireReconciliation();
             AllFlowRecoveryInventoryFailsClosed();
+            TerminalSequenceMustBeCausalAndOrdered();
+            BulkRecoveryInventoryMaintainsAllIdentities();
         }
         private static void Check(bool value, string msg)
         { if (!value) throw new InvalidOperationException("运行Journal：" + msg); }
@@ -63,6 +65,57 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 "Host扫描未区分安全Flow、未终结Flow和孤儿终态");
             Check(MRKJournalRecovery.EvaluateAll(new MRKJournalRecord[0]).Count==0,
                 "空日志不应伪造已运行Flow");
+        }
+
+        private static void TerminalSequenceMustBeCausalAndOrdered()
+        {
+            Guid id = Guid.NewGuid(), external = Guid.NewGuid();
+            MRKJournalRecord start = new MRKJournalRecord(
+                MRKJournalKind.FlowStarted,id,"P",8,"","Running");
+            MRKJournalRecord finish = new MRKJournalRecord(
+                MRKJournalKind.FlowFinished,id,"P",8,"","Completed");
+            MRKJournalRecord transition = new MRKJournalRecord(
+                MRKJournalKind.StepTransition,id,"P",8,"io","Running");
+            Check(MRKJournalRecovery.Evaluate(id,new[]{finish,start}).Disposition ==
+                MRKRecoveryDisposition.RequiresReconciliation,
+                "FlowFinished早于FlowStarted被误认为安全完成");
+            Check(MRKJournalRecovery.Evaluate(id,new[]{start,finish,finish}).Disposition ==
+                MRKRecoveryDisposition.RequiresReconciliation,
+                "重复FlowFinished未被拒绝");
+            Check(MRKJournalRecovery.Evaluate(id,new[]{start,finish,transition}).Disposition ==
+                MRKRecoveryDisposition.RequiresReconciliation,
+                "Flow结束后仍有执行状态变化被忽略");
+            Check(MRKJournalRecovery.Evaluate(id,new[]{transition,start,finish}).Disposition ==
+                MRKRecoveryDisposition.RequiresReconciliation,
+                "运行事实发生在FlowStarted前却判安全");
+            MRKJournalRecord unknown = new MRKJournalRecord(
+                MRKJournalKind.ExternalUnknown,id,"P",8,"io","Unknown",operationId:external);
+            MRKJournalRecord confirmed = new MRKJournalRecord(
+                MRKJournalKind.ExternalConfirmed,id,"P",8,"io","Confirmed",operationId:external);
+            Check(MRKJournalRecovery.Evaluate(id,new[]{start,unknown,finish,confirmed}).Disposition ==
+                MRKRecoveryDisposition.Closed,
+                "FlowFinished后合法的迟到外部Operation确认被错误拒绝");
+            Check(MRKJournalRecovery.Evaluate(id,new[]{start,finish,unknown,confirmed}).Disposition ==
+                MRKRecoveryDisposition.RequiresReconciliation,
+                "Flow结束以后又启动未知外部操作仍被判安全");
+        }
+        private static void BulkRecoveryInventoryMaintainsAllIdentities()
+        {
+            List<MRKJournalRecord> log = new List<MRKJournalRecord>();
+            const int count = 512;
+            for (int i = 0; i < count; i++)
+            {
+                Guid id = Guid.NewGuid();
+                log.Add(new MRKJournalRecord(MRKJournalKind.FlowStarted,id,"batch",1,"","Running"));
+                if (i % 3 == 0)
+                    log.Add(new MRKJournalRecord(MRKJournalKind.FlowFinished,id,"batch",1,"","Completed"));
+            }
+            IList<MRKRecoveryDecision> result = MRKJournalRecovery.EvaluateAll(log);
+            Check(result.Count == count, "大量Flow恢复索引丢失身份");
+            for (int i = 0; i < count; i++)
+                Check(result[i].Disposition == (i % 3 == 0
+                    ? MRKRecoveryDisposition.Closed : MRKRecoveryDisposition.RequiresReconciliation),
+                    "大量Flow扫描顺序或恢复状态错误：" + i);
         }
         private static void ReopenAndConservativeRecovery()
         {
