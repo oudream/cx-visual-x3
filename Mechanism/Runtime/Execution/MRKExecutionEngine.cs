@@ -792,7 +792,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
                     if (useManagedData || context.DataScope != null)
                     {
                         localData = context.DataStack.RootScope.CreateChild(step.Id);
-                        nodeContext = nodeContext.WithDataScope(localData);
+                        // 新Data入口不可通过旧DataScope越权读取父级Local或拿到可写别名。
+                        nodeContext = nodeContext.WithDataScope(useManagedData ? null : localData);
                     }
                     if (useManagedData)
                     {
