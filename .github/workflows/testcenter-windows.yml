@@ -40,6 +40,13 @@ jobs:
           [xml]$junit = Get-Content -LiteralPath $report -Raw
           Write-Host "TestCenter count: $($junit.testsuite.tests); failures: $($junit.testsuite.failures); errors: $($junit.testsuite.errors); skipped: $($junit.testsuite.skipped)"
           if ($process.ExitCode -ne 0) { throw "TestCenter failed with exit code $($process.ExitCode)" }
+          if ([int]$junit.testsuite.tests -lt 1 -or [int]$junit.testsuite.failures -ne 0 -or
+              [int]$junit.testsuite.errors -ne 0 -or [int]$junit.testsuite.skipped -ne 0) {
+              throw 'Isolation JUnit includes no tests or non-passing tests'
+          }
+          if (@($junit.testsuite.testcase).Count -ne [int]$junit.testsuite.tests) {
+              throw 'JUnit test count differs from actual testcase count'
+          }
       - name: Parallel repeat and history regression
         shell: powershell
         run: |
@@ -51,12 +58,46 @@ jobs:
           if ($p.ExitCode -ne 0) { throw "Parallel TestCenter returned $($p.ExitCode)" }
           if (-not (Test-Path $report)) { throw "Parallel report missing" }
           [xml]$junit = Get-Content -LiteralPath $report -Raw
-          if ([int]$junit.testsuite.tests -lt 90 -or [int]$junit.testsuite.failures -ne 0 -or [int]$junit.testsuite.errors -ne 0 -or [int]$junit.testsuite.skipped -ne 0) {
-              throw "Parallel JUnit results not complete/passing"
+          [xml]$baseline = Get-Content -LiteralPath (Join-Path $out 'TestCenter.junit.xml') -Raw
+          $expected = [int]$baseline.testsuite.tests * 3
+          if ([int]$junit.testsuite.tests -ne $expected -or [int]$junit.testsuite.failures -ne 0 -or
+              [int]$junit.testsuite.errors -ne 0 -or [int]$junit.testsuite.skipped -ne 0) {
+              throw "Parallel expected $expected successful attempts; received $($junit.testsuite.tests)"
+          }
+          $cases = @($junit.testsuite.testcase)
+          if ($cases.Count -ne $expected) { throw 'JUnit attempt nodes are missing' }
+          $attemptIds = @($cases | ForEach-Object { [string]$_.GetAttribute('attemptId') })
+          if (@($attemptIds | Where-Object { [string]::IsNullOrWhiteSpace($_) }).Count -gt 0) {
+              throw 'An attempt has an empty AttemptId'
+          }
+          if (@($attemptIds | Select-Object -Unique).Count -ne $expected) {
+              throw 'AttemptIds collide across repeated or concurrent tests'
+          }
+          $runId = [string]$junit.testsuite.runId
+          if ([string]::IsNullOrWhiteSpace($runId)) { throw 'RunId not recorded in JUnit suite' }
+          $names = @($baseline.testsuite.testcase | ForEach-Object { [string]$_.GetAttribute('name') } |
+              Sort-Object -Unique)
+          foreach ($name in $names) {
+              $observed = @($cases | Where-Object { [string]$_.GetAttribute('name') -eq $name })
+              if ($observed.Count -ne 3 -or
+                  @($observed | ForEach-Object { [string]$_.GetAttribute('iteration') } | Sort-Object -Unique).Count -ne 3) {
+                  throw "Test $name is not repeated exactly three times"
+              }
           }
           $historyFiles = @(Get-ChildItem -LiteralPath $history -Recurse -Filter 'summary.json')
           if ($historyFiles.Count -ne 1) { throw "History was not archived exactly once" }
           Write-Host "PASS parallel attempts: $($junit.testsuite.tests), history JSON: $($historyFiles[0].FullName)"
+      - name: Verify empty selection fails closed
+        shell: powershell
+        run: |
+          $exe = (Resolve-Path 'Output/Debug/x64/CxVisual.TestCenter.exe').Path
+          $report = Join-Path (Get-Location) 'Output/Debug/x64/TestCenter.empty.junit.xml'
+          $p = Start-Process -FilePath $exe -WorkingDirectory (Get-Location).Path -ArgumentList @('--run','--filter','__TCT_NONEXISTENT_CASE__','--report',('"' + $report + '"'),'--format','junit','--isolate') -Wait -PassThru
+          if ($p.ExitCode -ne 1) { throw "Empty selection returned $($p.ExitCode), expected failure code 1" }
+          if (-not (Test-Path $report)) { throw 'Empty selection did not produce evidence' }
+          [xml]$junit = Get-Content -LiteralPath $report -Raw
+          if ([int]$junit.testsuite.tests -ne 0) { throw 'Empty selection was not actually empty' }
+          Write-Host 'PASS: empty selection fails closed and remains inspectable'
       - name: Save Build and TestCenter evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -67,5 +108,6 @@ jobs:
             Output/Debug/x64/DependencyAudit.csv
             Output/Debug/x64/TestCenter.junit.xml
             Output/Debug/x64/TestCenter.parallel.junit.xml
+            Output/Debug/x64/TestCenter.empty.junit.xml
             Output/Debug/x64/TestCenterHistory/**/summary.json
           if-no-files-found: warn
