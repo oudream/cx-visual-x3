@@ -25,7 +25,7 @@
 | U02 | 嵌套与字典动态键 | 层级递归、键编辑、250 项分页；阶段 B Path 测试 | 六层深嵌入实际窗口体验 |
 | U03 | List/Set/Nullable | WPF 控件和原 EditorModel 命令；阶段 B 集合正反向测试 | 鼠标/键盘连续排序与空值手工验收 |
 | U04 | Range、Regex、异步校验 | 配置引擎真实校验；WPF STA 失败不改 Saved | 取消/等待交互与错误提示 |
-| U05 | Undo/Redo | WPF 撤销/重做调用唯一 EditorModel；机制事务测试 | 连续 WPF 控件手动测试 |
+| U05 | Undo/Redo | WPF 撤销/重做调用唯一 EditorModel；STA 已实际触发 Button.Click 验证草稿还原/重做 | 长序列操作的人机交互与禁用态审核 |
 | U06 | Saved/Effective | STA 真实 Save→Effective 不变→Apply→重启 | 设备 Readback 不适用此阶段 |
 | U07 | Guard | STA Guard Deny 后仍 Pending、Effective 不变 | 实际设备安全联锁另行验收 |
 | U08 | 历史 | 恢复旧修订作为新 Saved，STA 断言版本与值 | 确认对话框的人机操作 |
@@ -65,6 +65,7 @@ Windows .NET Framework 4.8 Release / x64；两个入口均复用 Tests/ConfigFou
 
 - SHA 8edc4dbdf4ab8620fee41df6de3241baa914e011：完整 Build/Smoke https://github.com/oudream/cx-visual-x3/actions/runs/38925307159 与独立配置 https://github.com/oudream/cx-visual-x3/actions/runs/38925307117 及 TestCenter https://github.com/oudream/cx-visual-x3/actions/runs/38925307071：Success。
 - SHA 84e25b624f950a9dbd9fc6ffdfa43993dab8f114：包含字典分页问题修复与 STA 堆栈保留，完整 Build/Smoke https://github.com/oudream/cx-visual-x3/actions/runs/38926229771、独立配置 https://github.com/oudream/cx-visual-x3/actions/runs/38926230019：Success。
+- SHA 187af780fab82da63d557fef9820621758a2ec6c：STA 真实撤销/重做按钮、字典分页“加载更多”按钮均通过；完整 Build/Smoke https://github.com/oudream/cx-visual-x3/actions/runs/38927385221（包含 PASS Config WPF STA），独立配置 https://github.com/oudream/cx-visual-x3/actions/runs/38927385242：Success。
 - 完整规模 D 运行：https://github.com/oudream/cx-visual-x3/actions/runs/38925125043 。新增异常/慢订阅后再次运行：https://github.com/oudream/cx-visual-x3/actions/runs/38925861468 。**应以后续真实工作流最终状态为准，未 Success 不标为完成。**
 - 其后任何提交（包括本矩阵入库）需按该最后 SHA 再核实独立配置和完整构建。先前 SHA 的绿灯不能直接当作新 SHA 绿灯。
 
