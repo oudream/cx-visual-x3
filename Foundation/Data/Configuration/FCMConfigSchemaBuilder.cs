@@ -217,7 +217,7 @@ namespace CxVisual.Foundation.Data.Configuration
                             FCMConfigIssue issue = method.Invoke(null, new object[] { v, context.At(path) }) as FCMConfigIssue;
                             result.Add(issue);
                         }
-                        catch (Exception ex) { result.Add(FCMConfigIssue.Error(path, "CUSTOM_VALIDATOR_EXCEPTION", ex.InnerException == null ? ex.Message : ex.InnerException.Message)); }
+                        catch (Exception ex) { result.Add(FCMConfigIssue.Error(path, "CUSTOM_VALIDATOR_EXCEPTION", "配置自定义验证规则执行失败")); }
                     }
                     Walk(v, member.MemberType, context.At(path), result, stack, depth + 1);
                 }
@@ -237,7 +237,7 @@ namespace CxVisual.Foundation.Data.Configuration
                         IEnumerable<FCMConfigIssue> issues = (IEnumerable<FCMConfigIssue>)method.Invoke(validator, new object[] { value, context });
                         result.AddRange(issues);
                     }
-                    catch (Exception ex) { result.Add(FCMConfigIssue.Error(context.Path, "OBJECT_VALIDATOR_EXCEPTION", ex.InnerException == null ? ex.Message : ex.InnerException.Message)); }
+                    catch (Exception ex) { result.Add(FCMConfigIssue.Error(context.Path, "OBJECT_VALIDATOR_EXCEPTION", "配置自定义验证规则执行失败")); }
                 }
             }
             finally { stack.Pop(); }

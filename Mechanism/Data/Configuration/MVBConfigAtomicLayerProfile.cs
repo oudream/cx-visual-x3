@@ -177,7 +177,7 @@ namespace CxVisual.Mechanism.Data.Configuration
                 foreach (string oldName in oldNames.Where(x => !newNames.Contains(x)))
                 {
                     MVBConfigLayerOverrides removed = edit.Get<MVBConfigLayerOverrides>(oldName);
-                    string newName;
+                    string newName = null;
                     bool mapped = movedLayers != null &&
                         movedLayers.TryGetValue(oldName, out newName) && newNames.Contains(newName);
                     if (removed.Values.Count > 0 && !mapped)
