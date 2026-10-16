@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CxVisual.Foundation.Data.Execution;
 using CxVisual.Mechanism.Data.Execution;
+using CxVisual.Mechanism.Data.RuntimeData;
 using CxVisual.Foundation.Infrastructure.Concurrency;
 using CxVisual.Mechanism.Runtime.Execution;
 
@@ -12,11 +13,41 @@ namespace CxVisual.Tests.ArchitectureSmoke
     {
         internal static void Run()
         {
+            HeapMoveCopyAndIsolation();
             ParentChildIsolationAndSingleAssignment();
             RootCannotCloseBeforeDescendants();
             OwnedDataReleasedOnceInReverseOrder();
             FlowAndStepScopesAreConnectedAndClosed();
             CleanupFailureStillReleasesOtherOwnedObjects();
+        }
+
+        private static void HeapMoveCopyAndIsolation()
+        {
+            MDSDataHeap a = new MDSDataHeap();
+            MDSDataHeap b = new MDSDataHeap();
+            byte[] original = new byte[] { 1, 2, 3 };
+            a.Set("Image", original);
+            original[0] = 99;
+            Check(a.Get<byte[]>("Image")[0] == 1, "Set暴露原数组写入别名");
+            byte[] view = a.Get<byte[]>("Image");
+            view[1] = 99;
+            Check(a.Get<byte[]>("Image")[1] == 2, "Get暴露可写底层数据");
+            a.CopyTo("Image", b, "Backup");
+            byte[] backup = b.Get<byte[]>("Backup");
+            backup[0] = 88;
+            Check(a.Get<byte[]>("Image")[0] == 1, "Copy并非独立数据");
+            b.Set("Busy", 123);
+            bool conflict = false;
+            try { a.MoveTo("Image", b, "Busy"); }
+            catch (InvalidOperationException) { conflict = true; }
+            Check(conflict && a.Count == 1, "Move冲突时源数据丢失");
+            a.MoveTo("Image", b, "Moved");
+            Check(a.Count == 0 && b.Get<byte[]>("Moved")[0] == 1, "Move交接失败");
+            Check(b.Search("B").Count == 2, "搜索前缀不正确");
+            bool rejected = false;
+            try { b.Set("Unsafe", new System.Collections.Generic.List<int> { 1 }); }
+            catch (NotSupportedException) { rejected = true; }
+            Check(rejected, "未知可变对象被不安全共享");
         }
         private static void Check(bool ok, string msg)
         { if (!ok) throw new InvalidOperationException("运行数据作用域：" + msg); }
