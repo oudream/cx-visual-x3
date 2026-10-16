@@ -19,6 +19,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             MultiOutputFanoutAndTypeIsolation();
             MissingOutputMustAbortEverything();
             CancelledStepMustNotPublish();
+            RetryMustDiscardFailedAttemptData();
             InlineSubflowOutputIsMapped();
             ExplicitInputCannotInheritParent();
         }
@@ -284,6 +285,41 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "取消后仍发布了已暂存输出");
             }
             finally { finish.TrySetResult(true); Wait(engine.StopAsync()); }
+        }
+
+        private static void RetryMustDiscardFailedAttemptData()
+        {
+            int attempts = 0;
+            MRKExecutionPlan plan = new MRKExecutionPlan("retry", new[]
+            {
+                new MRKExecutionStep("work", new string[0], (ctx,ct) =>
+                {
+                    int attempt = Interlocked.Increment(ref attempts);
+                    ctx.Data.Set("Local", attempt);
+                    ctx.Data.Return("Result", attempt);
+                    if (attempt == 1) throw new InvalidOperationException("人工注入短暂故障");
+                    return Task.FromResult((object)ctx.Data.Get<int>("Local"));
+                }, policy: new MRKExecutionPolicy(maxAttempts: 2, idempotent: true),
+                   output: new MRKExecutionOutput(typeof(int)),
+                   dataOutputs: Outputs(
+                       new KeyValuePair<string, Type>("Result", typeof(int)))),
+                new MRKExecutionStep("read", new [] {"work"}, (ctx,ct) =>
+                {
+                    return Task.FromResult((object)ctx.Data.Get<int>("Mapped"));
+                }, inputs: new [] {
+                    new MRKExecutionInput("Mapped", MRKInputSource.StepOutput,
+                        "work.Result", typeof(int))
+                }, output: new MRKExecutionOutput(typeof(int)))
+            });
+            MRKExecutionEngine engine = new MRKExecutionEngine(new FCRWorkerOptions(2, 4));
+            try
+            {
+                MRKFlowResult result = Wait(engine.StartFlow(plan).Completion);
+                Check(result.State == MRKFlowState.Completed && attempts == 2 &&
+                    (int)result.Results["read"] == 2,
+                    "失败尝试的局部数据或输出污染了成功重试");
+            }
+            finally { Wait(engine.StopAsync()); }
         }
 
         private static void InlineSubflowOutputIsMapped()
