@@ -10,6 +10,18 @@ using CxVisual.Mechanism.Data.Configuration;
 
 namespace CxVisual.Tests.ArchitectureSmoke
 {
+    [FCMConfigSection("Tests.ConfigDynamicCollections")]
+    public sealed class ConfigDynamicCollections
+    {
+        [FCMConfigItem("探测器动态键", ApplyPolicy = FCMConfigApplyPolicy.NextTask)]
+        public Dictionary<string, V13DetectorSample> Detectors { get; set; } =
+            new Dictionary<string, V13DetectorSample>();
+        [FCMConfigItem("工艺段列表", ApplyPolicy = FCMConfigApplyPolicy.NextTask)]
+        public List<V13DetectorSample> Segments { get; set; } = new List<V13DetectorSample>();
+        [FCMConfigItem("工艺标签", ApplyPolicy = FCMConfigApplyPolicy.NextTask)]
+        public HashSet<string> Tags { get; set; } = new HashSet<string>();
+    }
+
     /// <summary>
     /// 四个可运行开发者案例，专门验证 API 工作量/副作用/并发，而非只构造一个“看似可用”类。
     /// 示例均复用 V1.3 模型与真实文件存储。
@@ -27,6 +39,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 AtomicProductRecipe(root);
                 SecurityAndCatalog(root);
                 PreparedReadAndConcurrency(root);
+                DynamicCollectionEditing(root);
                 Console.WriteLine("PASS config developer experience: basic/XRay/CT/recipe/security/performance");
             }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
@@ -212,6 +225,63 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 id.SectionId, id.ScopeKind, id.ScopeId);
             Expect<UnauthorizedAccessException>(() => prepared(),
                 "authorization is checked again on every prepared read");
+        }
+
+        private static void DynamicCollectionEditing(string root)
+        {
+            string folder = Path.Combine(root, "typed-editor");
+            MHSConfigSection<ConfigDynamicCollections> section =
+                new MHSConfigService(folder).ForMachine("Line-B").Open<ConfigDynamicCollections>();
+            string key = "D.\"X]\\02";
+            using (MHSConfigEditorModel<ConfigDynamicCollections> editor =
+                new MHSConfigEditorModel<ConfigDynamicCollections>(section, "动态集合联合编辑"))
+            {
+                editor.AddKey(x => x.Detectors, key, new V13DetectorSample { Gain = 3 });
+                editor.SetValue(x => x.Detectors[key].Gain, 9);
+                editor.AddKey(x => x.Detectors, "temp", new V13DetectorSample());
+                editor.RenameKey(x => x.Detectors, "temp", "renamed");
+                editor.RemoveKey(x => x.Detectors, "renamed");
+                editor.InsertItem(x => x.Segments, 0, new V13DetectorSample { Gain = 1 });
+                editor.InsertItem(x => x.Segments, 1, new V13DetectorSample { Gain = 2 });
+                editor.InsertItem(x => x.Segments, 2, new V13DetectorSample { Gain = 3 });
+                editor.MoveItem(x => x.Segments, 0, 2);
+                editor.RemoveItemAt(x => x.Segments, 1);
+                editor.AddSetItem(x => x.Tags, "A");
+                editor.AddSetItem(x => x.Tags, "A");
+                editor.AddSetItem(x => x.Tags, "B");
+                editor.RemoveSetItem(x => x.Tags, "B");
+                Check(editor.Draft.Detectors[key].Gain == 9 &&
+                    editor.Draft.Segments[0].Gain == 2 &&
+                    editor.Draft.Segments[1].Gain == 1 &&
+                    editor.Draft.Tags.SetEquals(new[] { "A" }),
+                    "typed dictionary/list/set commands build a deep draft");
+                string before = FCMJsonValueCodec.Serialize(editor.Draft);
+                Expect<ArgumentException>(() => editor.AddKey(x => x.Detectors, key,
+                    new V13DetectorSample()), "duplicate dictionary key refused");
+                Expect<KeyNotFoundException>(() => editor.RenameKey(
+                    x => x.Detectors, "missing", "other"), "missing dictionary key refused");
+                Expect<ArgumentOutOfRangeException>(() =>
+                    editor.MoveItem(x => x.Segments, 0, 5), "bad list index refused");
+                Check(FCMJsonValueCodec.Serialize(editor.Draft) == before,
+                    "failed edits never mutate draft or undo history");
+                Check(editor.CanUndo && editor.Undo() && editor.Redo() &&
+                    FCMJsonValueCodec.Serialize(editor.Draft) == before,
+                    "complex collection edits share existing undo redo");
+                Check(editor.Preview().Validation.IsValid &&
+                    editor.CommitAsync(CancellationToken.None).GetAwaiter().GetResult().Success,
+                    "deep collection commit uses existing validation and CAS");
+            }
+            Check(section.GetLatestSaved().Detectors[key].Gain == 9 &&
+                section.Value(x => x.Detectors).Count == 0,
+                "Saved and Effective remain separate");
+            Check(section.ApplyPendingAtTaskBoundary() &&
+                section.Value(x => x.Detectors)[key].Gain == 9,
+                "deep collections become effective only after approval");
+            ConfigDynamicCollections restarted = new MHSConfigService(folder)
+                .ForMachine("Line-B").Open<ConfigDynamicCollections>().Get();
+            Check(restarted.Segments.Select(x => x.Gain).SequenceEqual(new[] { 2, 1 }) &&
+                restarted.Tags.SetEquals(new[] { "A" }) && restarted.Detectors.ContainsKey(key),
+                "restart preserves escaped key, list ordering and set");
         }
 
         private static void PreparedReadAndConcurrency(string root)
