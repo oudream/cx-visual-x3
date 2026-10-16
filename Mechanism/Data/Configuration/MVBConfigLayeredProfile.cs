@@ -51,18 +51,21 @@ namespace CxVisual.Mechanism.Data.Configuration
         public IList<MVBConfigLayerOrigin> SourceChain { get; internal set; }
     }
 
-    public sealed class MVBConfigResolved<T> where T : new()
+    public sealed class MVBConfigResolved<T> : IFCMConfigView<T> where T : new()
     {
         private readonly T _model;
         private readonly IList<MVBConfigLayerOrigin> _origins;
-        internal MVBConfigResolved(T model, IList<MVBConfigLayerOrigin> origins, IDictionary<string, string> versions)
+        internal MVBConfigResolved(T model, IList<MVBConfigLayerOrigin> origins, IDictionary<string, string> versions,
+            FCMConfigRevisionVector revisionVector)
         {
             _model = Clone(model);
+            RevisionVector = revisionVector ?? throw new ArgumentNullException("revisionVector");
             _origins = new List<MVBConfigLayerOrigin>(origins).AsReadOnly();
             Versions = new System.Collections.ObjectModel.ReadOnlyDictionary<string, string>(
                 new Dictionary<string, string>(versions, StringComparer.Ordinal));
         }
         public IDictionary<string, string> Versions { get; private set; }
+        public FCMConfigRevisionVector RevisionVector { get; private set; }
         public T Get() { return Clone(_model); }
         public V Value<V>(Expression<Func<T, V>> selector)
         { return FCMJsonValueCodec.Deserialize<V>(FCMJsonValueCodec.Serialize(selector.Compile()(_model))); }
@@ -88,6 +91,13 @@ namespace CxVisual.Mechanism.Data.Configuration
                 SourceChain = chain.AsReadOnly()
             };
         }
+        public FCMConfigValueState<V> ExplainState<V>(Expression<Func<T, V>> selector)
+        {
+            MVBConfigLayerValueInfo<V> info = Explain(selector);
+            if (!info.HasValue) return FCMConfigValueState<V>.Missing();
+            return FCMConfigValueState<V>.Of(info.Value, info.EffectiveSource,
+                string.Equals(info.EffectiveSource, "Default", StringComparison.Ordinal));
+        }
         private static T Clone(T model)
         { return FCMJsonValueCodec.Deserialize<T>(FCMJsonValueCodec.Serialize(model)); }
     }
@@ -106,13 +116,14 @@ namespace CxVisual.Mechanism.Data.Configuration
     }
 
     /// <summary>一次任务固定整组有效配置与每层版本，后续保存和生效不会影响当前任务。</summary>
-    public sealed class MVBConfigTaskSnapshot<T> : IDisposable where T : new()
+    public sealed class MVBConfigTaskSnapshot<T> : IFCMConfigView<T>, IDisposable where T : new()
     {
         private MVBConfigResolved<T> _fixed;
         internal MVBConfigTaskSnapshot(string taskId, MVBConfigResolved<T> result)
         { TaskId = taskId; _fixed = result; }
         public string TaskId { get; private set; }
         public IDictionary<string, string> Versions { get { return Active.Versions; } }
+        public FCMConfigRevisionVector RevisionVector { get { return Active.RevisionVector; } }
         public T Get() { return Active.Get(); }
         public V Value<V>(Expression<Func<T, V>> selector) { return Active.Value(selector); }
         public V Section<V>(Expression<Func<T, V>> selector) { return Active.Section(selector); }
@@ -283,9 +294,11 @@ namespace CxVisual.Mechanism.Data.Configuration
                 T model = new T();
                 List<MVBConfigLayerOrigin> origins = new List<MVBConfigLayerOrigin>();
                 Dictionary<string, string> versions = new Dictionary<string, string>(StringComparer.Ordinal);
+                List<FCMConfigRevision> revisions = new List<FCMConfigRevision>();
                 foreach (Tuple<Layer, string, Dictionary<string, string>> layer in snapshots)
                 {
                     versions.Add(layer.Item1.Spec.Name, layer.Item2);
+                    revisions.Add(new FCMConfigRevision(layer.Item1.Store.Identity, layer.Item2, layer.Item2, 1));
                     foreach (KeyValuePair<string, string> item in layer.Item3
                         .OrderBy(x => MVBConfigLayerPath.Depth(x.Key)).ThenBy(x => x.Key, StringComparer.Ordinal))
                     {
@@ -299,7 +312,7 @@ namespace CxVisual.Mechanism.Data.Configuration
                         string.Join("; ", report.Issues.Where(x => x.Severity == FCMConfigIssueSeverity.Error)
                             .Select(x => x.Path + ":" + x.Message)));
                 if (snapshots.Any(x => x.Item1.Store.EffectiveVersion != x.Item2)) continue;
-                return new MVBConfigResolved<T>(model, origins, versions);
+                return new MVBConfigResolved<T>(model, origins, versions, new FCMConfigRevisionVector(revisions));
             }
             throw new InvalidOperationException("CONFIG_LAYER_VERSION_CONFLICT: source versions changed during resolution");
         }
@@ -313,6 +326,23 @@ namespace CxVisual.Mechanism.Data.Configuration
 
     internal static class MVBConfigLayerPath
     {
+        /// <summary>提取单路径 JSON。不存在返回 false，显式 null 返回 true + "null"。</summary>
+        internal static bool TryReadJson(object model, string path, out string json)
+        {
+            json = null;
+            try
+            {
+                object current = model;
+                foreach (object key in Split(path))
+                    current = Read(current, key);
+                json = FCMJsonValueCodec.Serialize(current);
+                return true;
+            }
+            catch (KeyNotFoundException) { return false; }
+            catch (IndexOutOfRangeException) { return false; }
+            catch (ArgumentOutOfRangeException) { return false; }
+            catch (NullReferenceException) { return false; }
+        }
         internal static bool IsAncestor(string ancestor, string path)
         {
             return ancestor == path || (path.StartsWith(ancestor, StringComparison.Ordinal) &&

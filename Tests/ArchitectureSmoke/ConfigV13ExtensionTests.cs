@@ -78,6 +78,13 @@ namespace CxVisual.Tests.ArchitectureSmoke
             new FCMConfigResourceRef { ResourceType = "calibration", ResourceId = "cal-01" };
     }
 
+    [FCMConfigSection("Tests.ArchitectureImmediate")]
+    public sealed class ConfigImmediateContract
+    {
+        [FCMConfigItem("立即参数", ApplyPolicy = FCMConfigApplyPolicy.Immediate)]
+        public int Threshold { get; set; } = 10;
+    }
+
     internal static class ConfigV13ExtensionTests
     {
         public static void Run()
@@ -167,6 +174,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 ConfigurationFoundationRegressions(root);
                 ReferenceContractsRegressions(root);
                 AuditRegressions(root);
+                ArchitectureClosureRegressions(root);
                 Console.WriteLine("PASS V1.3 config registry, value state, history view, restore and async validation");
             }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
@@ -479,6 +487,111 @@ namespace CxVisual.Tests.ArchitectureSmoke
             File.WriteAllText(auditFiles[0], "{\"Revision\":\"v1\",\"JsonSha256\":\"tampered\"}");
             Expect<InvalidOperationException>(() => section.ListAudit(), "tampered audit must be rejected");
             Console.WriteLine("PASS configuration audit chain and integrity verification");
+        }
+
+        private static void ArchitectureClosureRegressions(string root)
+        {
+            FCMConfigIdentity one = new FCMConfigIdentity("Model.A", "machine", "A:B");
+            FCMConfigIdentity two = new FCMConfigIdentity("Model.A", "machine:A", "B");
+            Verify(!one.Equals(two) && one.CanonicalKey != two.CanonicalKey,
+                "scope delimiter collisions must be impossible");
+            Verify(new FCMConfigIdentity("Model.A", "machine", "A:B").Equals(one),
+                "identity structural equality");
+            FCMConfigRevision r1 = new FCMConfigRevision(one, "v3", "v2", 1);
+            FCMConfigRevision r2 = new FCMConfigRevision(two, "v5", "v5", 1);
+            FCMConfigRevisionVector vector = new FCMConfigRevisionVector(new[] { r2, r1 });
+            FCMConfigRevisionVector swapped = new FCMConfigRevisionVector(new[] { r1, r2 });
+            Verify(vector.Equals(swapped) && vector.Fingerprint == swapped.Fingerprint &&
+                vector.HasPending && vector.Entries.Count == 2, "version vector stable and ordered");
+            Expect<ArgumentException>(() => new FCMConfigRevisionVector(new[] { r1, r1 }),
+                "duplicate instance in revision vector rejected");
+            Verify(!FCMConfigValueState<int>.Missing().HasValue &&
+                FCMConfigValueState<int>.Missing().Presence == FCMConfigValuePresence.Missing &&
+                FCMConfigValueState<string>.Of(null, "Machine", false).Presence ==
+                    FCMConfigValuePresence.ExplicitNull &&
+                FCMConfigValueState<int>.Of(80, "Default", true).Presence ==
+                    FCMConfigValuePresence.Defaulted &&
+                FCMConfigValueState<int>.Invalid("Validation").Presence ==
+                    FCMConfigValuePresence.Invalid, "complete presence state contract");
+
+            FCMConfigDependencyGraph dependencies = new FCMConfigDependencyGraph();
+            dependencies.Register("Exposure", "Gain");
+            dependencies.Register("Gain", "Calibration");
+            Verify(dependencies.TopologicalOrder().IndexOf("Calibration") <
+                dependencies.TopologicalOrder().IndexOf("Exposure"), "topological order");
+            Verify(dependencies.AffectedBy("Calibration").SequenceEqual(new[] { "Gain", "Exposure" }),
+                "dependent fields in dependency order");
+            Expect<InvalidOperationException>(() => dependencies.Register("Calibration", "Exposure"),
+                "dependency cycle rejects graph change");
+            Verify(dependencies.TopologicalOrder().Count == 3, "cycle rejection keeps last valid graph");
+
+            MHSConfigService service = new MHSConfigService(Path.Combine(root, "architecture-closure"));
+            FCMConfigIdentity id = new FCMConfigIdentity("Tests.ArchitectureImmediate", "machine", "M:01");
+            MHSConfigSection<ConfigImmediateContract> cfg = service.Open<ConfigImmediateContract>(id);
+            Verify(cfg.Identity.Equals(id) && cfg.Revision.Identity.Equals(id) &&
+                cfg.Revision.Effective == "v1" && cfg.Revision.Saved == "v1",
+                "open by typed identity with revision descriptor");
+            bool permitted = false;
+            cfg.ConfigureApplyGuard(review => permitted
+                ? MHSConfigApplyDecision.Allow()
+                : MHSConfigApplyDecision.Deny("GUARD_LOCK", "生效需要受控许可"));
+            using (MHSConfigEdit<ConfigImmediateContract> edit = cfg.BeginEdit("整体验证一次修改"))
+            {
+                edit.WorkingCopy.Threshold = 20;
+                MHSConfigPreview preview = edit.Preview();
+                Verify(preview.Validation.IsValid && preview.ChangeSet.Fields.Count == 1 &&
+                    preview.ChangeSet.Fields[0].Path == "Threshold" &&
+                    preview.ChangeSet.Fields[0].OldJson == "10" &&
+                    preview.ChangeSet.Fields[0].NewJson == "20" &&
+                    preview.ChangeSet.Identity.Equals(id), "structured precommit changeset");
+                MHSConfigCommitResult committed = edit.CommitAsync(CancellationToken.None)
+                    .GetAwaiter().GetResult();
+                Verify(committed.Success && committed.PendingApply &&
+                    committed.ChangeSet.Fields.Count == 1 &&
+                    cfg.Get().Threshold == 10 && cfg.GetLatestSaved().Threshold == 20,
+                    "immediate commit must not bypass mandatory guard");
+            }
+            MHSConfigApplyResult denied = cfg.TryApplyPendingAtBoundary(FCMConfigApplyPolicy.Immediate,
+                review => MHSConfigApplyDecision.Allow());
+            Verify(!denied.Applied && denied.Status == "GUARD_LOCK" && cfg.HasPendingApply,
+                "optional caller guard cannot bypass mandatory guard");
+            permitted = true;
+            MHSConfigApplyResult accepted = cfg.TryApplyPendingAtBoundary(FCMConfigApplyPolicy.Immediate, null);
+            Verify(accepted.Applied && cfg.Get().Threshold == 20 && !cfg.HasPendingApply,
+                "guard approved immediate activation through same state machine");
+            using (MHSConfigEdit<ConfigImmediateContract> edit = cfg.BeginEdit("下次立即生效"))
+            {
+                edit.WorkingCopy.Threshold = 25;
+                Verify(edit.CommitAsync(CancellationToken.None).GetAwaiter().GetResult().Success &&
+                    cfg.Value(x => x.Threshold) == 25 && !cfg.HasPendingApply,
+                    "immediate mode remains ergonomic once approved");
+            }
+            Verify(cfg.ExplainState(x => x.Threshold).Presence == FCMConfigValuePresence.Present &&
+                cfg.ExplainState(x => x.Threshold).Value == 25, "typed effective state");
+            using (MHSConfigSnapshot<ConfigImmediateContract> pinned = cfg.CaptureForTask("scan-architecture"))
+            {
+                IFCMConfigView<ConfigImmediateContract> view = pinned;
+                Verify(view.Value(x => x.Threshold) == 25, "unified read contract");
+            }
+            Verify(service.Open<ConfigImmediateContract>(id) == cfg, "typed identity same cached instance");
+
+            MVBConfigLayerSpec[] specs = new[]
+            {
+                new MVBConfigLayerSpec("Template", "template", "T", 10),
+                new MVBConfigLayerSpec("Machine", "machine", "M", 20)
+            };
+            MVBConfigLayeredProfile<V13ConfigSample> layers =
+                new MVBConfigLayeredProfile<V13ConfigSample>(service, specs);
+            MVBConfigResolved<V13ConfigSample> resolved = layers.ResolveEffective();
+            Verify(resolved.RevisionVector.Entries.Count == 2 &&
+                resolved.RevisionVector.Fingerprint.Length == 64 &&
+                resolved.ExplainState(x => x.ExposureMs).Presence == FCMConfigValuePresence.Defaulted &&
+                !resolved.ExplainState(x => x.Detectors["unknown"].Gain).HasValue,
+                "composite revision identity and default/missing effective state");
+            using (MVBConfigTaskSnapshot<V13ConfigSample> task = layers.CaptureForTask("scan-composite"))
+                Verify(task.RevisionVector.Equals(resolved.RevisionVector),
+                    "task pinned revision vector matches resolved snapshot");
+            Console.WriteLine("PASS P0 identity, value state, dependency, ChangeSet, unified apply & revision vector");
         }
 
         private static void Verify(bool condition, string reason)

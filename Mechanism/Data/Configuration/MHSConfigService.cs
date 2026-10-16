@@ -9,6 +9,12 @@ using CxVisual.Foundation.Data.Configuration;
 
 namespace CxVisual.Mechanism.Data.Configuration
 {
+    internal interface IMHSConfigInstance
+    {
+        FCMConfigIdentity Identity { get; }
+        Type ConfigType { get; }
+    }
+
     public sealed class MHSConfigService
     {
         private readonly string _root;
@@ -25,6 +31,13 @@ namespace CxVisual.Mechanism.Data.Configuration
         { return new MVBConfigScopeResolver(this, "machine", machineId); }
         public MVBConfigScopeResolver ForProject(string projectId)
         { return new MVBConfigScopeResolver(this, "project", projectId); }
+        public MHSConfigSection<T> Open<T>(FCMConfigIdentity identity) where T : new()
+        {
+            if (identity == null) throw new ArgumentNullException("identity");
+            if (identity.SectionId != FCMConfigSchemaBuilder.Describe<T>().SectionId)
+                throw new InvalidOperationException("CONFIG_IDENTITY_SECTION_MISMATCH");
+            return Open<T>(identity.ScopeKind, identity.ScopeId);
+        }
         /// <summary>供显式多层配置使用；按范围类型与身份隔离原有配置存储。</summary>
         public MVBConfigScopeResolver ForScope(string scopeKind, string scopeId)
         {
@@ -58,10 +71,9 @@ namespace CxVisual.Mechanism.Data.Configuration
                         FCMConfigSchemaBuilder.Describe(t).SectionId == candidate.Key);
                     if (registered != null && registered != candidate.Value)
                         throw new InvalidOperationException("Duplicate SectionId: " + candidate.Key);
-                    foreach (KeyValuePair<string, object> active in _states)
+                    foreach (IMHSConfigInstance active in _states.Values.Cast<IMHSConfigInstance>())
                     {
-                        if (!active.Key.EndsWith(":" + candidate.Key, StringComparison.Ordinal)) continue;
-                        if (active.Value.GetType().GetGenericArguments()[0] != candidate.Value)
+                        if (active.Identity.SectionId == candidate.Key && active.ConfigType != candidate.Value)
                             throw new InvalidOperationException("Active section conflicts: " + candidate.Key);
                     }
                 }
@@ -98,7 +110,7 @@ namespace CxVisual.Mechanism.Data.Configuration
                 foreach (Type type in matched)
                 {
                     string sectionId = FCMConfigSchemaBuilder.Describe(type).SectionId;
-                    if (_states.Keys.Any(k => k.EndsWith(":" + sectionId, StringComparison.Ordinal)))
+                    if (_states.Values.Cast<IMHSConfigInstance>().Any(x => x.Identity.SectionId == sectionId))
                         throw new InvalidOperationException("CONFIG_REGISTRY_SECTION_IN_USE: " + sectionId);
                 }
                 foreach (Type type in matched) _registered.Remove(type);
@@ -109,7 +121,8 @@ namespace CxVisual.Mechanism.Data.Configuration
         internal MHSConfigSection<T> Open<T>(string scopeKind, string scopeId) where T : new()
         {
             FCMConfigSchema schema = FCMConfigSchemaBuilder.Describe<T>();
-            string key = scopeKind + ":" + scopeId + ":" + schema.SectionId;
+            FCMConfigIdentity identity = new FCMConfigIdentity(schema.SectionId, scopeKind, scopeId);
+            string key = identity.CanonicalKey;
             lock (_gate)
             {
                 Type registered = _registered.FirstOrDefault(t =>
@@ -119,10 +132,13 @@ namespace CxVisual.Mechanism.Data.Configuration
                 object item;
                 if (!_states.TryGetValue(key, out item))
                 {
-                    string folder = Path.Combine(_root, Safe(scopeKind + "_" + scopeId), Safe(schema.SectionId));
-                    item = new MHSConfigSection<T>(folder, schema, key);
+                    string folder = Path.Combine(_root, Safe(identity.ScopeKind + ":" + identity.ScopeId), Safe(schema.SectionId));
+                    item = new MHSConfigSection<T>(folder, schema, key, identity);
                     _states.Add(key, item);
                 }
+                IMHSConfigInstance active = (IMHSConfigInstance)item;
+                if (active.ConfigType != typeof(T))
+                    throw new InvalidOperationException("CONFIG_IDENTITY_TYPE_CONFLICT: " + identity);
                 return (MHSConfigSection<T>)item;
             }
         }

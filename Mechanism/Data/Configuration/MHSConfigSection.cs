@@ -15,6 +15,7 @@ namespace CxVisual.Mechanism.Data.Configuration
         public bool HasChanges { get; internal set; }
         public FCMConfigValidationReport Validation { get; internal set; }
         public string BaseVersion { get; internal set; }
+        public FCMConfigChangeSet ChangeSet { get; internal set; }
         public string CandidateJson { get; internal set; }
         public IList<string> ChangedPaths { get; internal set; }
     }
@@ -22,11 +23,12 @@ namespace CxVisual.Mechanism.Data.Configuration
     {
         public bool Success { get; internal set; }
         public string Revision { get; internal set; }
+        public FCMConfigChangeSet ChangeSet { get; internal set; }
         public bool PendingApply { get; internal set; }
         public FCMConfigValidationReport Validation { get; internal set; }
         public string ErrorCode { get; internal set; }
     }
-    public sealed class MHSConfigSnapshot<T> : IDisposable
+    public sealed class MHSConfigSnapshot<T> : IFCMConfigView<T>, IDisposable
     {
         private T _data;
         internal MHSConfigSnapshot(T data, string version) { _data = data; Version = version; }
@@ -81,7 +83,7 @@ namespace CxVisual.Mechanism.Data.Configuration
         public void Dispose() { _section = null; WorkingCopy = default(T); }
     }
 
-    public sealed class MHSConfigSection<T> where T : new()
+    public sealed class MHSConfigSection<T> : IFCMConfigView<T>, IMHSConfigInstance where T : new()
     {
         private readonly object _gate = new object();
         private readonly MHSConfigStorage _store;
@@ -95,9 +97,13 @@ namespace CxVisual.Mechanism.Data.Configuration
         private int _effectiveRev;
         private T _previousEffective;
         private bool _hasPreviousEffective;
+        private Func<MHSConfigApplyReview<T>, MHSConfigApplyDecision> _applyGuard;
+        public FCMConfigIdentity Identity { get; private set; }
+        public Type ConfigType { get { return typeof(T); } }
 
-        internal MHSConfigSection(string directory, FCMConfigSchema schema, string scope)
+        internal MHSConfigSection(string directory, FCMConfigSchema schema, string scope, FCMConfigIdentity identity)
         {
+            Identity = identity ?? throw new ArgumentNullException("identity");
             _schema = schema;
             _scope = scope;
             _store = new MHSConfigStorage(directory);
@@ -118,6 +124,25 @@ namespace CxVisual.Mechanism.Data.Configuration
         public string SavedVersion { get { lock (_gate) return MHSConfigStorage.Name(_savedRev); } }
         public string EffectiveVersion { get { lock (_gate) return MHSConfigStorage.Name(_effectiveRev); } }
         public bool HasPendingApply { get { lock (_gate) return _savedRev != _effectiveRev; } }
+        public FCMConfigRevision Revision
+        {
+            get
+            {
+                lock (_gate)
+                    return new FCMConfigRevision(Identity, MHSConfigStorage.Name(_savedRev),
+                        MHSConfigStorage.Name(_effectiveRev), _schema.SchemaVersion);
+            }
+        }
+        /// <summary>同一实例只能设置一次公共生效许可回调，包含 Immediate 生效。</summary>
+        public void ConfigureApplyGuard(Func<MHSConfigApplyReview<T>, MHSConfigApplyDecision> guard)
+        {
+            if (guard == null) throw new ArgumentNullException("guard");
+            lock (_gate)
+            {
+                if (_applyGuard != null) throw new InvalidOperationException("CONFIG_APPLY_GUARD_ALREADY_REGISTERED");
+                _applyGuard = guard;
+            }
+        }
         public T Get() { lock (_gate) return Clone(_effective); }
         public T GetLatestSaved() { lock (_gate) return Clone(_saved); }
         public TPart Section<TPart>(Expression<Func<T, TPart>> accessor) { return Value(accessor); }
@@ -225,6 +250,16 @@ namespace CxVisual.Mechanism.Data.Configuration
         /// <summary>只返回当前已提交历史链中的审计记录，未提交的中断文件不进入结果。</summary>
         public IList<MHSConfigAuditEntry> ListAudit()
         { lock (_gate) return _store.ListAudit(_savedRev); }
+        /// <summary>严格区分缺失、显式 null、初始化默认与用户保存的值。</summary>
+        public FCMConfigValueState<TValue> ExplainState<TValue>(Expression<Func<T, TValue>> accessor)
+        {
+            FCMConfigValueInfo<TValue> info = Explain(accessor);
+            if (!info.HasEffectiveValue) return FCMConfigValueState<TValue>.Missing();
+            bool generatedDefault;
+            lock (_gate) generatedDefault = _effectiveRev == 1;
+            return FCMConfigValueState<TValue>.Of(info.EffectiveValue, info.EffectiveSource, generatedDefault);
+        }
+
         public FCMConfigValueInfo<TValue> Explain<TValue>(Expression<Func<T, TValue>> accessor)
         {
             if (accessor == null) throw new ArgumentNullException("accessor");
@@ -284,7 +319,8 @@ namespace CxVisual.Mechanism.Data.Configuration
                 return new MHSConfigPreview { BaseVersion = MHSConfigStorage.Name(baseRevision), Validation = validation,
                     HasChanges = FCMJsonValueCodec.Serialize(proposed) != FCMJsonValueCodec.Serialize(_saved),
                     CandidateJson = validation.IsValid ? FCMOrderedJsonDocument.Patch(_savedJson, _saved, proposed) : null,
-                    ChangedPaths = FCMConfigDiffUtil.Diff(_saved, proposed)
+                    ChangedPaths = FCMConfigDiffUtil.Diff(_saved, proposed),
+                    ChangeSet = BuildChangeSet(_saved, proposed, baseRevision)
                 };
             }
         }
@@ -313,7 +349,8 @@ namespace CxVisual.Mechanism.Data.Configuration
                 oldSaved = Clone(_saved);
                 oldEffective = Clone(_effective);
                 oldEffectiveVersion = _effectiveRev;
-                immediate = GetApplyPolicy(oldSaved, candidate, typeof(T)) == FCMConfigApplyPolicy.Immediate;
+                immediate = oldEffectiveVersion == baseRevision &&
+                    GetApplyPolicy(oldSaved, candidate, typeof(T)) == FCMConfigApplyPolicy.Immediate;
                 cancellationToken.ThrowIfCancellationRequested();
                 try
                 {
@@ -330,22 +367,18 @@ namespace CxVisual.Mechanism.Data.Configuration
                 { return new MHSConfigCommitResult { Success = false, ErrorCode = "CONFIG_WRITE_CONFLICT", Validation = validation }; }
                 _savedRev = newVersion; _savedJson = patched; _saved = roundtrip;
                 savedNow = Clone(_saved);
-                if (immediate && _effectiveRev == oldEffectiveVersion && oldEffectiveVersion == baseRevision)
-                {
-                    _store.SetEffective(_savedRev);
-                    _previousEffective = oldEffective;
-                    _hasPreviousEffective = true;
-                    _effective = Clone(_saved);
-                    _effectiveRev = _savedRev;
-                }
-                else immediate = false;
                 result = new MHSConfigCommitResult { Success = true, Revision = MHSConfigStorage.Name(_savedRev),
-                    PendingApply = _savedRev != _effectiveRev, Validation = validation };
+                    ChangeSet = BuildChangeSet(oldSaved, savedNow, baseRevision),
+                    PendingApply = true, Validation = validation };
             }
             _publisher.Publish(oldSaved, savedNow, newVersion, transactionId, FCMConfigChangeStage.Committed,
                 FCMConfigDiffUtil.Diff(oldSaved, savedNow));
-            if (immediate) _publisher.Publish(oldEffective, savedNow, newVersion, transactionId, FCMConfigChangeStage.Effective,
-                FCMConfigDiffUtil.Diff(oldEffective, savedNow));
+            if (immediate)
+            {
+                // Immediate is the same guarded state machine as NextTask/Restart; no shortcut can bypass approval.
+                TryApplyPendingAtBoundary(FCMConfigApplyPolicy.Immediate, null);
+            }
+            result.PendingApply = HasPendingApply;
             return result;
         }
         public bool ApplyPendingAtFrameBoundary()
@@ -368,6 +401,7 @@ namespace CxVisual.Mechanism.Data.Configuration
             int proposedRevision, activeRevision;
             FCMConfigApplyPolicy required;
             IList<string> changed;
+            Func<MHSConfigApplyReview<T>, MHSConfigApplyDecision> requiredGuard;
             lock (_gate)
             {
                 if (_savedRev == _effectiveRev)
@@ -380,6 +414,7 @@ namespace CxVisual.Mechanism.Data.Configuration
                         RequiredBoundary = required };
                 proposed = Clone(_saved);
                 current = Clone(_effective);
+                requiredGuard = _applyGuard;
                 proposedRevision = _savedRev;
                 activeRevision = _effectiveRev;
                 changed = FCMConfigDiffUtil.Diff(current, proposed);
@@ -391,12 +426,14 @@ namespace CxVisual.Mechanism.Data.Configuration
                         .Where(x => x.Severity == FCMConfigIssueSeverity.Error).Select(x => x.Path + ": " + x.Message)),
                     SavedVersion = MHSConfigStorage.Name(proposedRevision),
                     EffectiveVersion = MHSConfigStorage.Name(activeRevision), RequiredBoundary = required };
-            if (approval != null)
+            foreach (Func<MHSConfigApplyReview<T>, MHSConfigApplyDecision> check in
+                new[] { requiredGuard, approval })
             {
+                if (check == null) continue;
                 MHSConfigApplyDecision decision;
                 try
                 {
-                    decision = approval(new MHSConfigApplyReview<T>(
+                    decision = check(new MHSConfigApplyReview<T>(
                         Clone(proposed), Clone(current), MHSConfigStorage.Name(proposedRevision),
                         MHSConfigStorage.Name(activeRevision), required, changed));
                     if (decision == null) throw new InvalidOperationException("Apply guard returned null.");
@@ -435,6 +472,20 @@ namespace CxVisual.Mechanism.Data.Configuration
                 SavedVersion = MHSConfigStorage.Name(revision),
                 EffectiveVersion = MHSConfigStorage.Name(revision), RequiredBoundary = required };
         }
+        private FCMConfigChangeSet BuildChangeSet(T original, T proposed, int revision)
+        {
+            IList<string> paths = FCMConfigDiffUtil.Diff(original, proposed);
+            List<FCMConfigFieldChange> changes = new List<FCMConfigFieldChange>();
+            foreach (string path in paths)
+            {
+                string oldJson, newJson;
+                MVBConfigLayerPath.TryReadJson(original, path, out oldJson);
+                MVBConfigLayerPath.TryReadJson(proposed, path, out newJson);
+                changes.Add(new FCMConfigFieldChange(path, oldJson, newJson));
+            }
+            return new FCMConfigChangeSet(Identity, MHSConfigStorage.Name(revision), changes);
+        }
+
         private static FCMConfigApplyPolicy GetApplyPolicy(object before, object after, Type type)
         {
             if (before == null || after == null) return FCMConfigApplyPolicy.NextTask;
