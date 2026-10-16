@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CxVisual.Foundation.Infrastructure.Concurrency;
 using CxVisual.Mechanism.Runtime.Execution;
+using CxVisual.Mechanism.Data.Execution;
 
 namespace CxVisual.Tests.ArchitectureSmoke
 {
@@ -15,6 +16,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             ContinueReportingEvenWhenOneCompensationFails();
             SamePlanNameCannotSubstituteOriginalVersion();
             AnotherEngineCannotTakeOverCompensation();
+            CompensationPortsRemainAvailableAfterDataScopeDisposal();
         }
         private static T Await<T>(Task<T> task)
         {
@@ -145,6 +147,59 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Await(unrelated.StopAsync());
                 Await(owner.StopAsync());
             }
+        }
+
+
+        private static void CompensationPortsRemainAvailableAfterDataScopeDisposal()
+        {
+            int released = 0, restored = 0;
+            MDEExecutionDataScope root = MDEExecutionDataScope.CreateRoot("compensation-host");
+            MRKExecutionPlan plan = new MRKExecutionPlan("data-handoff", new[]
+            {
+                new MRKExecutionStep("A", new string[0], (ctx,ct) =>
+                {
+                    int input;
+                    Check(ctx.TryGetBoundInput<int>("batch", out input) && input == 8,
+                        "原执行输入没有正确绑定");
+                    ctx.DataScope.PutOwned("temporary", new byte[64],
+                        item => Interlocked.Increment(ref released));
+                    return Task.FromResult((object)(input + 1));
+                },
+                inputs: new [] { new MRKExecutionInput("batch", MRKInputSource.FlowInput,
+                    "BatchNumber", typeof(int)) },
+                output: new MRKExecutionOutput(typeof(int)),
+                compensateAsync: (ctx,ct) =>
+                {
+                    int batch;
+                    object originalResult;
+                    Check(ctx.DataScope == null && released == 1,
+                        "补偿仍暴露已释放的原Flow/节点数据作用域");
+                    Check(ctx.TryGetBoundInput<int>("batch", out batch) && batch == 8 &&
+                        ctx.TryGetResult("A", out originalResult) && (int)originalResult == 9,
+                        "补偿没有得到已结算的端口输入与节点结果");
+                    Interlocked.Increment(ref restored);
+                    return Task.FromResult(true);
+                }),
+                new MRKExecutionStep("B", new[] { "A" }, (ctx,ct) =>
+                { throw new InvalidOperationException("触发补偿"); })
+            });
+            MRKExecutionEngine engine = new MRKExecutionEngine(new FCRWorkerOptions(1,4));
+            try
+            {
+                MRKFlowHandle flow = engine.StartFlowWithData(plan, root,
+                    new Dictionary<string, object> { { "BatchNumber", 8 } });
+                Check(Await(flow.Completion).State == MRKFlowState.Failed && released == 1,
+                    "流程结束没有按时释放节点资源");
+                MRKCompensationReport report = Await(engine.CompensateAsync(plan,flow));
+                Check(report.Succeeded && restored == 1 && released == 1,
+                    "补偿未使用独立输入或重复释放原节点资源");
+            }
+            finally
+            {
+                Await(engine.StopAsync());
+                root.Dispose();
+            }
+            Check(root.IsClosed && released == 1, "补偿后Host数据作用域仍被Flow持有");
         }
 
         private static void Await(Task task)

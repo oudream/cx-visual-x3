@@ -378,13 +378,18 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 List<MRKResourceLease> leases = new List<MRKResourceLease>();
                 try
                 {
+                    // 原Flow与节点DataScope已按正常生命周期释放，补偿不得读取悬空作用域。
+                    // 通过原始Plan的类型化端口重新绑定已结算的Flow输入/节点结果。
+                    MRKExecutionContext compensationContext = flow.Context
+                        .WithDataScope(null)
+                        .WithBoundInputs(MRKExecutionPortBinder.Bind(step, flow.Context));
                     foreach (string resourceId in step.RequiredResources)
                         leases.Add(await _resources.AcquireAsync(resourceId,
                             flow.FlowId.ToString("N") + ":rollback:" + stepId, cancellation)
                             .ConfigureAwait(false));
                     FCRWorkHandle<bool> job = Submit<bool>(async token =>
                     {
-                        await step.CompensateAsync(flow.Context, token).ConfigureAwait(false);
+                        await step.CompensateAsync(compensationContext, token).ConfigureAwait(false);
                         return true;
                     }, step.SerialKey, false, cancellation);
                     FCRWorkResult<bool> outcome = await job.Completion.ConfigureAwait(false);

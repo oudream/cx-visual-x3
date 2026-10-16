@@ -184,3 +184,7 @@ Journal运行中故障强制明确Failed终态，任务超预算无损拒绝其�
 - CompensateAsync必须提供Flow启动时固定的**原始MRKExecutionPlan实例**，同名不同实现不可代替；拒绝错误版本不占用补偿次数。
 - 新TDD：OperationIdentityNeverCrossConfirms、LegacyExternalFactsRequireReconciliation、SamePlanNameCannotSubstituteOriginalVersion。
 - 仍未完成：补偿调用期已释放数据作用域的明确交接协议、持久Checkpoint、权限授权发布、Host级恢复和跨进程资源安全。本次仅是进程内基础安全修复；Windows构建及自动测试证据以本次提交后的master CI为准。
+
+## 2026-10-16 补偿输入隔离增量
+
+显式补偿以原始Plan和原始Engine双重归属校验为前置；补偿回调必须使用**重新绑定的类型化Flow端口输入和已结算Step结果**，不再将原Flow已经关闭的`IFDEExecutionDataScope`传入用户委托。`ExecutionCompensationTests.CompensationPortsRemainAvailableAfterDataScopeDisposal`覆盖：原节点拥有的数据在Flow结束时释放一次、补偿能读Flow输入与结果、不再接触失效的数据作用域。需要跨补偿保留的大对象仍须额外建立显式引用租约/保存副本与到期回收约定；本批没有冒充完成这项后续契约。
