@@ -30,19 +30,20 @@ namespace CxVisual.TestCenter.Cases
             {
                 string file = sandbox.PathFor("journal.bin");
                 Guid flow = Guid.NewGuid();
+                Guid operationId = Guid.NewGuid();
                 using (MRKFileExecutionJournal journal = new MRKFileExecutionJournal(file))
                 {
                     journal.Append(new MRKJournalRecord(MRKJournalKind.FlowStarted,
                         flow, "Plan-A", 3, "", "Running"));
                     journal.Append(new MRKJournalRecord(MRKJournalKind.ExternalUnknown,
-                        flow, "Plan-A", 3, "Axis", "Unknown", "operation-1"));
+                        flow, "Plan-A", 3, "Axis", "Unknown", "operation-1", operationId));
                     journal.Append(new MRKJournalRecord(MRKJournalKind.FlowFinished,
                         flow, "Plan-A", 3, "", "Completed"));
                     context.AssertEqual(MRKRecoveryDisposition.RequiresReconciliation,
                         MRKJournalRecovery.Evaluate(flow, journal.ReadAll()).Disposition,
                         "有Unknown即使Flow结束也不能自动重播");
                     journal.Append(new MRKJournalRecord(MRKJournalKind.ExternalConfirmed,
-                        flow, "Plan-A", 3, "Axis", "Confirmed", "operation-1"));
+                        flow, "Plan-A", 3, "Axis", "Confirmed", "operation-1", operationId));
                     context.AssertEqual(MRKRecoveryDisposition.Closed,
                         MRKJournalRecovery.Evaluate(flow, journal.ReadAll()).Disposition,
                         "Unknown确认后才能Closed");
@@ -55,6 +56,8 @@ namespace CxVisual.TestCenter.Cases
                         records.Select(x => x.Sequence), "Journal连续序号");
                     context.AssertEqual("operation-1", records[3].CorrelationId,
                         "关联ID与持久记录一致");
+                    context.AssertEqual(operationId, records[3].OperationId,
+                        "外部操作唯一ID与持久记录一致，不能仅使用StepId或CorrelationId");
                     context.Observe("Runtime", "MRK真实Journal",
                         string.Join(" | ", records.Select(r =>
                             "#" + r.Sequence + " " + r.Kind + " step=" + r.StepId)));
