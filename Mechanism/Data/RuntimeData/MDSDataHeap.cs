@@ -8,11 +8,11 @@ namespace CxVisual.Mechanism.Data.RuntimeData
     /// <summary>运行数据堆的第一阶段实现：容器持有值，不公开引用计数或通用Carrier。</summary>
     public sealed class MDSDataHeap : IDisposable
     {
-        private sealed class Entry
+        private sealed class MDSDataEntry
         {
             internal readonly object Value;
             internal readonly Type Type;
-            internal Entry(object value, Type type) { Value = value; Type = type; }
+            internal MDSDataEntry(object value, Type type) { Value = value; Type = type; }
         }
 
         private static long _nextOrder;
@@ -22,8 +22,8 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         internal object SyncRoot { get { return _gate; } }
         private void EnsureOpen()
         { if (_closed) throw new ObjectDisposedException("MDSDataHeap"); }
-        private readonly Dictionary<string, Entry> _values =
-            new Dictionary<string, Entry>(StringComparer.Ordinal);
+        private readonly Dictionary<string, MDSDataEntry> _values =
+            new Dictionary<string, MDSDataEntry>(StringComparer.Ordinal);
 
         private static void CheckName(string name)
         {
@@ -34,7 +34,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         private static object Freeze(object value, Type type)
         { return MDSDataSafety.Capture(value); }
 
-        private static object Read(Entry entry)
+        private static object Read(MDSDataEntry entry)
         {
             return Freeze(entry.Value, entry.Type);
         }
@@ -51,7 +51,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 EnsureOpen();
                 if (_values.ContainsKey(name))
                     throw new InvalidOperationException("数据名已存在：" + name);
-                _values.Add(name, new Entry(frozen, type));
+                _values.Add(name, new MDSDataEntry(frozen, type));
             }
         }
 
@@ -61,7 +61,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
             lock (_gate)
             {
                 EnsureOpen();
-                Entry entry;
+                MDSDataEntry entry;
                 if (!_values.TryGetValue(name, out entry))
                     throw new KeyNotFoundException("找不到数据：" + name);
                 if (entry.Value != null && !(entry.Value is T))
@@ -110,7 +110,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 EnsureOpen();
                 if (!_values.ContainsKey(name))
                     throw new KeyNotFoundException("需要覆盖的目标不存在：" + name);
-                _values[name] = new Entry(frozen, type);
+                _values[name] = new MDSDataEntry(frozen, type);
             }
         }
 
@@ -151,12 +151,12 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 {
                     EnsureOpen();
                     target.EnsureOpen();
-                    Entry source;
+                    MDSDataEntry source;
                     if (!_values.TryGetValue(sourceName, out source))
                         throw new KeyNotFoundException("找不到源数据：" + sourceName);
                     if (target._values.ContainsKey(targetName) && !replace)
                         throw new InvalidOperationException("目标数据名已存在：" + targetName);
-                    Entry output = copy ? new Entry(Freeze(source.Value, source.Type), source.Type) : source;
+                    MDSDataEntry output = copy ? new MDSDataEntry(Freeze(source.Value, source.Type), source.Type) : source;
                     target._values[targetName] = output;
                     if (!copy) _values.Remove(sourceName);
                 }
