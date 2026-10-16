@@ -2,6 +2,8 @@ using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Collections.Generic;
+using System.Linq;
 using System.Windows.Threading;
 using System.Windows;
 using System.Windows.Controls;
@@ -152,6 +154,53 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         if (after.Get<V13ConfigSample>("Scan").ExposureMs != 137 ||
                             after.Get<V13AsyncConfig>("Reconstruction").Count != 4)
                             throw new InvalidOperationException("CONFIG_WPF_GROUP_EFFECTIVE_NOT_ATOMIC");
+                    var rejected = service.ForMachine("WPF-Validation").Open<V13ConfigSample>();
+                    using (var invalid = new MPWConfigEditorControl<V13ConfigSample>(rejected))
+                    {
+                        Action<string> update = null;
+                        invalid.RegisterEditor("Acquisition.Group.TimeoutMs", (json, setter) =>
+                        {
+                            update = setter; return new TextBox { Text = json };
+                        });
+                        if (update == null) throw new InvalidOperationException("CONFIG_WPF_VALIDATOR_EDITOR");
+                        update("3000");
+                        var result = AwaitOnSta(invalid.SaveDraftAsync(CancellationToken.None));
+                        if (result.Success || rejected.GetLatestSaved().Acquisition.Group.TimeoutMs != 300)
+                            throw new InvalidOperationException("CONFIG_WPF_INVALID_FIELD_WROTE_DISK");
+                    }
+                    var guarded = service.ForMachine("WPF-Guard").Open<V13ConfigSample>();
+                    guarded.ConfigureApplyGuard(change =>
+                        MHSConfigApplyDecision.Deny("MACHINE_BUSY", "待设备安全确认"));
+                    using (var guardView = new MPWConfigEditorControl<V13ConfigSample>(guarded))
+                    {
+                        Action<string> update = null;
+                        guardView.RegisterEditor("ExposureMs", (json, setter) =>
+                        {
+                            update = setter; return new TextBox { Text = json };
+                        });
+                        update("138");
+                        if (!AwaitOnSta(guardView.SaveDraftAsync(CancellationToken.None)).Success)
+                            throw new InvalidOperationException("CONFIG_WPF_GUARD_PREPARE");
+                        var result = guardView.ApplySaved(FCMConfigApplyPolicy.NextTask);
+                        if (result.Applied || !guarded.HasPendingApply ||
+                            guarded.Value(x => x.ExposureMs) != 80)
+                            throw new InvalidOperationException("CONFIG_WPF_GUARD_FALSE_ACTIVATION");
+                    }
+                    var paged = service.ForMachine("WPF-Large").Open<ConfigDynamicCollections>();
+                    var many = new Dictionary<string, ConfigDynamicNode>();
+                    for (int i = 0; i < 250; ++i)
+                        many.Add("D" + i.ToString("D4"), new ConfigDynamicNode { Gain = 2 });
+                    if (!paged.UpdateAsync(x => x.Detectors = many, "WPF paging",
+                        CancellationToken.None).GetAwaiter().GetResult().Success ||
+                        !paged.ApplyPendingAtTaskBoundary())
+                        throw new InvalidOperationException("CONFIG_WPF_PAGING_SETUP");
+                    using (var largeUi = new MPWConfigEditorControl<ConfigDynamicCollections>(paged))
+                    {
+                        if (largeUi.VisibleEditorCount < 120 || largeUi.VisibleEditorCount > 170)
+                            throw new InvalidOperationException("CONFIG_WPF_DYNAMIC_PAGING_LIMIT");
+                        if (largeUi.Content == null)
+                            throw new InvalidOperationException("CONFIG_WPF_DYNAMIC_PAGING_RENDER");
+                    }
                     var layers = new[] {
                         new MVBConfigLayerSpec("Template", "template", "WPF-Base", 10),
                         new MVBConfigLayerSpec("Machine", "machine", "WPF", 20)
