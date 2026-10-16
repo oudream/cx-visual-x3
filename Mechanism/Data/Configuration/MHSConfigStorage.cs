@@ -84,12 +84,17 @@ namespace CxVisual.Mechanism.Data.Configuration
                     throw new InvalidOperationException("CONFIG_SCHEMA_METADATA_MISSING");
                 else
                     AtomicReplace(_schemaContract, schemaContract);
-                if (!HasCurrent) AtomicReplace(_current, defaults);
+                bool firstInitialization = !HasCurrent;
+                if (firstInitialization) AtomicReplace(_current, defaults);
                 int revision = IdentifyCurrent(ReadCurrent());
-                // Create the initial effective marker before any other writer may Commit.
-                // Reopening an existing pending configuration must never reset this marker.
+                // A missing marker on a previously initialized section is corruption,
+                // not permission to activate an unapproved saved revision.
                 if (!File.Exists(_effective))
+                {
+                    if (!firstInitialization)
+                        throw new InvalidOperationException("CONFIG_EFFECTIVE_MARKER_MISSING");
                     AtomicReplace(_effective, revision.ToString(CultureInfo.InvariantCulture));
+                }
                 return revision;
             }
         }

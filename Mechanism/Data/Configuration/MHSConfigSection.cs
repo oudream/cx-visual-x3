@@ -130,7 +130,7 @@ namespace CxVisual.Mechanism.Data.Configuration
             // Initialize establishes the marker only once under an exclusive file lease.
             _effective = FCMJsonValueCodec.Deserialize<T>(_store.ReadVersion(_effectiveRev));
             int previous = _store.PreviousEffectiveRevision;
-            if (previous > 0)
+            if (previous > 0 && previous < _effectiveRev)
             {
                 _previousEffective = FCMJsonValueCodec.Deserialize<T>(_store.ReadVersion(previous));
                 _hasPreviousEffective = true;
