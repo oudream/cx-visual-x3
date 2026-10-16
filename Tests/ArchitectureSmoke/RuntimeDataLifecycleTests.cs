@@ -15,6 +15,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         internal static void Run()
         {
             StackFrameCommitAndAbort();
+            HeapStackMoveCopyConflictAndOwnedRejection();
             MultiOutputFanoutAndTypeIsolation();
             MissingOutputMustAbortEverything();
             CancelledStepMustNotPublish();
@@ -48,6 +49,58 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Dictionary<string, Type> map = new Dictionary<string, Type>(StringComparer.Ordinal);
             foreach (KeyValuePair<string, Type> item in items) map.Add(item.Key, item.Value);
             return map;
+        }
+
+
+        private static void HeapStackMoveCopyConflictAndOwnedRejection()
+        {
+            using (MDSDataStack stack = new MDSDataStack())
+            {
+                IFDEExecutionDataScope scope = stack.RootScope.CreateChild("transfers");
+                using (MDSDataFrame frame = stack.OpenFrame("transfers", scope, null,
+                    new Dictionary<string, Type>()))
+                {
+                    frame.Data.Set("Image", new byte[] {4,5,6});
+                    frame.Data.CopyToHeap("Image", "Backup");
+                    Check(frame.Data.Get<byte[]>("Image")[0] == 4 &&
+                        stack.FlowHeap.Get<byte[]>("Backup")[0] == 4,
+                        "Stack→Heap Copy错误");
+                    frame.Data.MoveToHeap("Image", "SharedImage");
+                    byte[] missing;
+                    Check(!frame.Data.TryGet<byte[]>("Image", out missing) &&
+                        stack.FlowHeap.Get<byte[]>("SharedImage")[0] == 4,
+                        "Stack→Heap Move没有移除来源");
+                    frame.Data.CopyFromHeap("Backup", "Working");
+                    frame.Data.Get<byte[]>("Working")[0] = 88;
+                    Check(stack.FlowHeap.Get<byte[]>("Backup")[0] == 4,
+                        "Heap→Stack Copy泄漏引用");
+                    bool collision = false;
+                    try { frame.Data.MoveFromHeap("SharedImage", "Working"); }
+                    catch (InvalidOperationException) { collision = true; }
+                    Check(collision && stack.FlowHeap.Contains("SharedImage"),
+                        "同名冲突Move错误地移走来源");
+                    frame.Data.MoveFromHeap("SharedImage", "Working", replace: true);
+                    Check(!stack.FlowHeap.Contains("SharedImage") &&
+                        frame.Data.Get<byte[]>("Working")[0] == 4,
+                        "显式Replace Move没有替换目标");
+                    scope.PutOwned("SdkResource", new byte[] {1}, data => { });
+                    bool denied = false;
+                    try { frame.Data.MoveToHeap("SdkResource"); }
+                    catch (InvalidOperationException) { denied = true; }
+                    Check(denied && !stack.FlowHeap.Contains("SdkResource"),
+                        "带资源释放回调的数据被直接移动");
+                }
+                Check(stack.ActiveFrames == 0, "调用帧结束后占用没有回到零");
+            }
+            MDSDataHeap heap = new MDSDataHeap();
+            heap.Set("Existing", 1);
+            heap.Replace("Existing", 2);
+            Check(heap.Get<int>("Existing") == 2, "显式Replace失败");
+            heap.Dispose();
+            bool disposed = false;
+            try { heap.Get<int>("Existing"); }
+            catch (ObjectDisposedException) { disposed = true; }
+            Check(disposed, "已关闭Heap仍可被读取");
         }
 
         private static void StackFrameCommitAndAbort()
