@@ -202,6 +202,16 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 "Audit alone cannot leak raw pending OldJson/NewJson");
             Expect<UnauthorizedAccessException>(() => auditor.ReadCommittedAfter(null, 5),
                 "Audit without ReadSensitive cannot leak reasons or paths");
+            policy.Grant("auditor", FCMConfigAccessAction.ReadSensitive,
+                id.SectionId, id.ScopeKind, id.ScopeId);
+            Func<Dictionary<string, ConfigSensitiveItem>> prepared =
+                auditor.PrepareValue(x => x.Credentials);
+            Check(prepared()["source"].Password == "secret-in-nested-list",
+                "authorized prepared read uses detached sensitive values");
+            policy.Revoke("auditor", FCMConfigAccessAction.ReadSensitive,
+                id.SectionId, id.ScopeKind, id.ScopeId);
+            Expect<UnauthorizedAccessException>(() => prepared(),
+                "authorization is checked again on every prepared read");
         }
 
         private static void PreparedReadAndConcurrency(string root)
@@ -214,7 +224,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(live() == 80, "prepared accessor warmup");
             Stopwatch stopwatch = Stopwatch.StartNew();
             long sum = 0;
-            const int runs = 50000;
+            const int runs = 2000000; // Reduce clock-resolution noise in performance reports.
             for (int i = 0; i < runs; ++i) sum += live();
             stopwatch.Stop();
             Check(sum == runs * 80L, "prepared reader must return correct stable effective value");
