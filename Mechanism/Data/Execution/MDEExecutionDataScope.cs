@@ -141,6 +141,19 @@ namespace CxVisual.Mechanism.Data.Execution
             }
         }
 
+        internal void TransferCheckDetachable(string name)
+        {
+            lock (_gate)
+            {
+                EnsureOpen();
+                Entry entry;
+                if (!_local.TryGetValue(name, out entry))
+                    throw new KeyNotFoundException("局部数据不存在：" + name);
+                if (entry.Release != null || _liveChildren != 0)
+                    throw new InvalidOperationException("来源被子作用域占用或具有释放回调：" + name);
+            }
+        }
+
         internal void TransferDetach(string name)
         {
             lock (_gate)
