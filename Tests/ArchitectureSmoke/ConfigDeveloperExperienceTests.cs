@@ -338,6 +338,45 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 restarted.Tags.SetEquals(new[] { "A" }) && restarted.Detectors.ContainsKey(key) &&
                 restarted.Groups["scan.01"][0].Gain == 7,
                 "restart preserves escaped key, list ordering and set");
+
+            using (MHSConfigEditorModel<ConfigDynamicCollections> removal =
+                new MHSConfigEditorModel<ConfigDynamicCollections>(section, "仅在草稿移除"))
+            {
+                removal.RemoveKey(x => x.Detectors, key);
+                removal.RemoveSetItem(x => x.Tags, "A");
+                IList<MHSConfigCollectionItem> afterRemoval = removal.DescribeCollectionItems();
+                Check(afterRemoval.Any(x => x.CollectionPath == "Detectors" &&
+                    x.KeyJson == FCMJsonValueCodec.Serialize(key) &&
+                    !x.HasDraft && x.HasSaved && x.HasEffective && x.IsModified) &&
+                    afterRemoval.Any(x => x.CollectionKind == FCMConfigTypeKind.Set &&
+                    x.KeyJson == FCMJsonValueCodec.Serialize("A") &&
+                    !x.HasDraft && x.HasSaved && x.IsModified),
+                    "removed dictionary/set entries remain visible in draft/saved/effective diff");
+                Check(removal.Undo() && removal.Redo() &&
+                    removal.Draft.Detectors.Count == 0,
+                    "removed dynamic entry undo/redo is isolated from saved revision");
+            }
+            Check(section.GetLatestSaved().Detectors.ContainsKey(key),
+                "discarding edit session leaves saved values unchanged");
+            using (MHSConfigEditorModel<ConfigDynamicCollections> stale =
+                new MHSConfigEditorModel<ConfigDynamicCollections>(section, "旧草稿冲突"))
+            {
+                stale.SetValue(x => x.Detectors[key].Gain, 6);
+                Check(section.UpdateAsync(x => x.Tags.Add("external"), "另一编辑会话提交",
+                    CancellationToken.None).GetAwaiter().GetResult().Success,
+                    "new revision committed outside pending editor");
+                MHSConfigCommitResult refused = stale.CommitAsync(CancellationToken.None)
+                    .GetAwaiter().GetResult();
+                Check(!refused.Success && refused.ErrorCode == "CONFIG_REVISION_CONFLICT" &&
+                    section.GetLatestSaved().Detectors[key].Gain == 9,
+                    "outdated draft is rejected without overwriting concurrent commit");
+            }
+            MHSConfigEditorModel<ConfigDynamicCollections> disposed =
+                new MHSConfigEditorModel<ConfigDynamicCollections>(section, "生命周期检查");
+            disposed.Dispose();
+            Expect<ObjectDisposedException>(() => disposed.AddKey(
+                x => x.Detectors, "after-dispose", new ConfigDynamicNode()),
+                "all collection edits reject closed editor sessions");
         }
 
         private static void PreparedReadAndConcurrency(string root)
