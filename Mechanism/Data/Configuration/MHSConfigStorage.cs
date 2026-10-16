@@ -112,6 +112,36 @@ namespace CxVisual.Mechanism.Data.Configuration
                 return revision;
             }
         }
+        /// <summary>
+        /// Explicit offline adoption for a single unversioned JSON body.
+        /// Requires the operator-supplied SHA-256, typed validation and a raw
+        /// byte-preserving backup. Never claims to migrate existing history.
+        /// </summary>
+        public void AdoptUnversioned(string expectedHash, string schemaContract,
+            Func<string, bool> validate)
+        {
+            if (string.IsNullOrWhiteSpace(expectedHash) || string.IsNullOrWhiteSpace(schemaContract))
+                throw new ArgumentException("Schema adoption requires a known source hash");
+            if (validate == null) throw new ArgumentNullException("validate");
+            using (FileStream lease = AcquireWriteLease())
+            {
+                if (File.Exists(_schemaContract) || !HasCurrent || ListVersions().Count != 0 ||
+                    File.Exists(_effective))
+                    throw new InvalidOperationException("CONFIG_SCHEMA_ADOPTION_NOT_UNVERSIONED");
+                string current = ReadCurrent();
+                if (!string.Equals(MHSConfigPackage.Hash(current), expectedHash,
+                    StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException("CONFIG_SCHEMA_ADOPTION_HASH_MISMATCH");
+                bool valid = false;
+                try { valid = validate(current); }
+                catch (Exception) { valid = false; }
+                if (!valid) throw new InvalidOperationException("CONFIG_SCHEMA_ADOPTION_VALIDATION");
+                AtomicReplace(Path.Combine(_folder, "legacy-original-backup.json"), current);
+                SaveVersion(1, current);
+                AtomicReplace(_effective, "1");
+                AtomicReplace(_schemaContract, schemaContract);
+            }
+        }
         private FileStream AcquireWriteLease()
         {
             return new FileStream(Path.Combine(_folder, "write.lock"),

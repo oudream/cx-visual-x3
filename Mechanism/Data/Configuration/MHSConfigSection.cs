@@ -123,7 +123,7 @@ namespace CxVisual.Mechanism.Data.Configuration
             _schema = schema;
             _scope = scope;
             _store = new MHSConfigStorage(directory);
-            _savedRev = _store.Initialize(FCMJsonValueCodec.Serialize(new T()), SchemaContract());
+            _savedRev = _store.Initialize(FCMJsonValueCodec.Serialize(new T()), SchemaContract(_schema));
             _savedJson = _store.ReadCurrent();
             _saved = FCMJsonValueCodec.Deserialize<T>(_savedJson);
             _effectiveRev = _store.ReadEffectiveOr(_savedRev);
@@ -136,7 +136,7 @@ namespace CxVisual.Mechanism.Data.Configuration
                 _hasPreviousEffective = true;
             }
         }
-        private string SchemaContract()
+        internal static string SchemaContract(FCMConfigSchema schema)
         {
             // Include all exposed schema fields and their meaningful validation metadata.
             // The digest is stable for one model contract, independent of property order.
@@ -146,8 +146,8 @@ namespace CxVisual.Mechanism.Data.Configuration
                     x.Path, x.MemberId, x.DataType.FullName, x.Range ?? "",
                     x.Regex ?? "", x.Required.ToString(), x.IsSensitive.ToString(),
                     x.ApplyPolicy.ToString(), x.Unit ?? "" }));
-            string specification = _schema.SectionId + "|" +
-                _schema.SchemaVersion.ToString(System.Globalization.CultureInfo.InvariantCulture) +
+            string specification = schema.SectionId + "|" +
+                schema.SchemaVersion.ToString(System.Globalization.CultureInfo.InvariantCulture) +
                 "\n" + string.Join("\n", fields);
             return MHSConfigPackage.Hash(specification);
         }

@@ -60,6 +60,38 @@ namespace CxVisual.Mechanism.Data.Configuration
                 throw new InvalidOperationException("CONFIG_IDENTITY_SECTION_MISMATCH");
             return Open<T>(identity.ScopeKind, identity.ScopeId);
         }
+        /// <summary>
+        /// Explicit trusted offline adoption of a JSON document created before
+        /// the schema/effective journal existed. Never silently applies unknown
+        /// historical formats and never rebuilds or overwrites committed history.
+        /// The caller must verify the original file hash out of band.
+        /// </summary>
+        public void AdoptUnversionedSection<T>(FCMConfigIdentity identity,
+            string expectedSourceSha256) where T : new()
+        {
+            if (identity == null) throw new ArgumentNullException("identity");
+            FCMConfigSchema schema = FCMConfigSchemaBuilder.Describe<T>();
+            if (identity.SectionId != schema.SectionId)
+                throw new InvalidOperationException("CONFIG_IDENTITY_SECTION_MISMATCH");
+            lock (_gate)
+            {
+                if (_states.ContainsKey(identity.CanonicalKey))
+                    throw new InvalidOperationException("CONFIG_SCHEMA_ADOPTION_ACTIVE_SESSION");
+                string folder = Path.Combine(_root,
+                    Safe(identity.ScopeKind + ":" + identity.ScopeId), Safe(schema.SectionId));
+                var store = new MHSConfigStorage(folder);
+                store.AdoptUnversioned(expectedSourceSha256,
+                    MHSConfigSection<T>.SchemaContract(schema),
+                    json =>
+                    {
+                        T candidate = FCMJsonValueCodec.Deserialize<T>(json);
+                        return FCMConfigValidationEngine.ValidateAsync(candidate,
+                            identity.CanonicalKey, System.Threading.CancellationToken.None)
+                            .GetAwaiter().GetResult().IsValid;
+                    });
+            }
+        }
+
         /// <summary>供显式多层配置使用；按范围类型与身份隔离原有配置存储。</summary>
         public MVBConfigScopeResolver ForScope(string scopeKind, string scopeId)
         {

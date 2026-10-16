@@ -135,7 +135,15 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     File.Delete(revision);
                 string marker = Path.Combine(configFolder, "effective.txt");
                 if (File.Exists(marker)) File.Delete(marker);
-                // Re-open with a new service instance to simulate a new process after legacy migration.
+                File.Delete(Path.Combine(configFolder, "schema.contract"));
+                // Explicit offline adoption verifies the exact source hash, validates
+                // the typed model and writes a preserved original before opening.
+                new MHSConfigService(root).AdoptUnversionedSection<PDLTestMachineConfig>(
+                    new FCMConfigIdentity(schema.SectionId, "machine", "MCH-A"),
+                    MHSConfigPackage.Hash(legacy));
+                Check(File.Exists(Path.Combine(configFolder, "legacy-original-backup.json")),
+                    "legacy source is preserved before adopting", ref checks);
+                // Re-open with a new service instance after reviewed legacy adoption.
                 MHSConfigService service = new MHSConfigService(root);
                 MHSConfigSection<PDLTestMachineConfig> cfg = service.ForMachine("MCH-A").Open<PDLTestMachineConfig>();
                 int savedNotifications = 0, effectiveNotifications = 0;
