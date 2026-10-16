@@ -98,11 +98,11 @@ namespace CxVisual.TestCenter.Models
 
     public sealed class TCTTestEvent
     {
-        public TCTTestEvent(long sequence, string attemptId, TCTTestEventKind kind, string message)
+        public TCTTestEvent(long sequence, string attemptId, TCTTestEventKind kind, string message, DateTime? timestampUtc = null)
         {
             if (sequence <= 0) throw new ArgumentOutOfRangeException("sequence");
             Sequence = sequence; AttemptId = attemptId ?? string.Empty;
-            Kind = kind; Message = message ?? string.Empty; TimestampUtc = DateTime.UtcNow;
+            Kind = kind; Message = message ?? string.Empty; TimestampUtc = timestampUtc ?? DateTime.UtcNow;
         }
         public long Sequence { get; private set; }
         public string AttemptId { get; private set; }

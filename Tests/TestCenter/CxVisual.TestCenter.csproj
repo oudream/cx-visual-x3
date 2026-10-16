@@ -34,6 +34,7 @@
     <Compile Include="Reports\TCTTestResultRepository.cs" />
     <Compile Include="Cases\**\*.cs" />
     <Compile Include="Execution\TCTExecution.cs" />
+    <Compile Include="Execution\TCTTestEventJournal.cs" />
     <Compile Include="Discovery\TCTDiscovery.cs" />
     <Compile Include="Discovery\TCTAttributeTests.cs" />
     <Compile Include="Fixtures\TCTFixtures.cs" />

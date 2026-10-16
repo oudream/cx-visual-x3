@@ -157,10 +157,21 @@ namespace CxVisual.TestCenter.Core
         private readonly List<TCTArtifactRef> _artifacts = new List<TCTArtifactRef>();
         private readonly List<TCTTestDiagnostic> _diagnostics = new List<TCTTestDiagnostic>();
         private readonly TCTTestArtifactStore _artifactStore;
+        private readonly Action<TCTTestEvent> _onEvent;
+        private long _eventSequence;
         internal TCTTestContext(CancellationToken token, int seed = 0,
-            TCTTestAttempt attempt = null, TCTTestArtifactStore artifactStore = null)
+            TCTTestAttempt attempt = null, TCTTestArtifactStore artifactStore = null,
+            Action<TCTTestEvent> onEvent = null)
         {
             CancellationToken = token; Seed = seed; Attempt = attempt; _artifactStore = artifactStore;
+            _onEvent = onEvent;
+        }
+        internal void Publish(TCTTestEventKind kind, string message)
+        {
+            if (_onEvent == null) return;
+            if (_eventSequence >= 10000)
+                throw new InvalidOperationException("Event capacity exhausted; cannot silently discard evidence");
+            _onEvent(new TCTTestEvent(++_eventSequence, AttemptId, kind, message));
         }
         public TCTTestAttempt Attempt { get; private set; }
         public string RunId { get { return Attempt == null ? "AdHoc" : Attempt.RunId; } }
@@ -182,6 +193,7 @@ namespace CxVisual.TestCenter.Core
         public void Diagnostic(string code, TCTTestDiagnosticSeverity severity, string stage, string message)
         {
             _diagnostics.Add(new TCTTestDiagnostic(code, severity, stage, message, AttemptId));
+            Publish(TCTTestEventKind.Diagnostic, code + ": " + message);
         }
         public void ThrowIfCancelled() { CancellationToken.ThrowIfCancellationRequested(); }
         public void AssertTrue(bool condition, string name, object expected, object actual)
@@ -189,6 +201,7 @@ namespace CxVisual.TestCenter.Core
             ThrowIfCancelled();
             string e = TCTFormat.Value(expected), a = TCTFormat.Value(actual);
             _assertions.Add(new TCTAssertionResult(name, e, a, condition));
+            Publish(TCTTestEventKind.Assertion, name + " = " + (condition ? "Passed" : "Failed") + "; expected=" + e + "; actual=" + a);
             if (!condition) throw new TCTAssertionException(name, e, a);
         }
         public void AssertEqual<T>(T expected, T actual, string name)
@@ -236,6 +249,7 @@ namespace CxVisual.TestCenter.Core
         {
             ThrowIfCancelled();
             _observations.Add(new TCTTestObservation(kind, title, details, origin));
+            Publish(TCTTestEventKind.Observation, kind + ": " + title + " | " + details);
         }
     }
 
@@ -393,7 +407,8 @@ namespace CxVisual.TestCenter.Core
             return new TCTTestRunSummary(results);
         }
         public static Task<TCTTestCaseResult> RunOneAsync(ITCTTestCase test, CancellationToken token, int seed,
-            TCTTestAttempt attempt = null, TCTTestArtifactStore store = null)
+            TCTTestAttempt attempt = null, TCTTestArtifactStore store = null,
+            Action<TCTTestEvent> onEvent = null)
         {
             if (test == null) throw new ArgumentNullException("test");
             ITCTExternalResultTestCase external = test as ITCTExternalResultTestCase;
@@ -404,11 +419,17 @@ namespace CxVisual.TestCenter.Core
                     Stopwatch watch = Stopwatch.StartNew();
                     try
                     {
+                        if (onEvent != null)
+                            onEvent(new TCTTestEvent(1, attempt == null ? "AdHoc" : attempt.AttemptId,
+                                TCTTestEventKind.Started, test.Descriptor.Id));
                         token.ThrowIfCancellationRequested();
                         TCTTestCaseResult outcome = external.ExecuteExternal(attempt, token, store);
                         if (outcome == null || outcome.Descriptor.Id != test.Descriptor.Id ||
                             (attempt != null && outcome.AttemptId != attempt.AttemptId))
                             throw new InvalidOperationException("External framework returned an invalid attempt");
+                        if (onEvent != null)
+                            onEvent(new TCTTestEvent(2, attempt == null ? "AdHoc" : attempt.AttemptId,
+                                TCTTestEventKind.Completed, outcome.Status.ToString()));
                         return outcome;
                     }
                     catch (OperationCanceledException)
@@ -428,7 +449,8 @@ namespace CxVisual.TestCenter.Core
             }
             return Task.Run(() =>
             {
-                TCTTestContext context = new TCTTestContext(token, seed, attempt, store);
+                TCTTestContext context = new TCTTestContext(token, seed, attempt, store, onEvent);
+                context.Publish(TCTTestEventKind.Started, test.Descriptor.Id);
                 Stopwatch watch = Stopwatch.StartNew();
                 TCTTestStatus status = TCTTestStatus.Passed;
                 string error = string.Empty;
@@ -446,6 +468,7 @@ namespace CxVisual.TestCenter.Core
                 catch (Exception ex) { status = TCTTestStatus.Error; error = ex.ToString();
                     context.Diagnostic("TCT.EXCEPTION", TCTTestDiagnosticSeverity.Error, "Execute", ex.ToString()); }
                 finally { watch.Stop(); }
+                context.Publish(TCTTestEventKind.Completed, status.ToString());
                 return new TCTTestCaseResult(test.Descriptor, status, watch.Elapsed,
                     error, context.Assertions, context.Observations, attempt, context.Artifacts, context.Diagnostics);
             }, CancellationToken.None);

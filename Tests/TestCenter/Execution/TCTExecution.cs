@@ -16,13 +16,17 @@ namespace CxVisual.TestCenter.Execution
     public sealed class TCTTestHostController
     {
         public async Task<TCTTestCaseResult> RunIsolatedAsync(ITCTTestCase test,
-            TimeSpan timeout, int seed, CancellationToken cancellationToken, TCTTestAttempt attempt = null)
+            TimeSpan timeout, int seed, CancellationToken cancellationToken, TCTTestAttempt attempt = null,
+            Action<TCTTestEvent> onEvent = null)
         {
             if (test == null) throw new ArgumentNullException("test");
             string directory = Path.Combine(Path.GetTempPath(), "CxVisual-TCT",
                 Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(directory);
             string resultFile = Path.Combine(directory, "result.xml");
+            string eventFile = Path.Combine(directory, "events.log");
+            TCTTestEventJournal journal = new TCTTestEventJournal(eventFile);
+            int eventsRead = 0;
             Stopwatch watch = Stopwatch.StartNew();
             try
             {
@@ -32,7 +36,7 @@ namespace CxVisual.TestCenter.Execution
                 start.Arguments = "--worker " + Quote(test.Descriptor.Id) + " " +
                     Quote(resultFile) + " " + seed.ToString(CultureInfo.InvariantCulture) +
                     (attempt == null ? "" : " " + Quote(attempt.RunId) + " " + Quote(attempt.AttemptId) +
-                    " " + attempt.Iteration.ToString(CultureInfo.InvariantCulture));
+                    " " + attempt.Iteration.ToString(CultureInfo.InvariantCulture) + " " + Quote(eventFile));
                 start.UseShellExecute = false;
                 start.CreateNoWindow = true;
                 start.WindowStyle = ProcessWindowStyle.Hidden;
@@ -41,6 +45,21 @@ namespace CxVisual.TestCenter.Execution
                 {
                     if (child == null) throw new InvalidOperationException("Cannot start TCT worker process");
                     Task exited = Task.Run(() => child.WaitForExit());
+                    Task eventReader = Task.Run(async () =>
+                    {
+                        while (!exited.IsCompleted)
+                        {
+                            if (onEvent != null)
+                                foreach (TCTTestEvent ev in journal.ReadNew(
+                                    attempt == null ? "AdHoc" : attempt.AttemptId, ref eventsRead))
+                                    onEvent(ev);
+                            await Task.Delay(100).ConfigureAwait(false);
+                        }
+                        if (onEvent != null)
+                            foreach (TCTTestEvent ev in journal.ReadNew(
+                                attempt == null ? "AdHoc" : attempt.AttemptId, ref eventsRead))
+                                onEvent(ev);
+                    });
                     using (CancellationTokenSource waits = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
                     {
                         Task deadline = Task.Delay(timeout, waits.Token);
@@ -61,10 +80,22 @@ namespace CxVisual.TestCenter.Execution
                         }
                         waits.Cancel();
                     }
+                    await eventReader.ConfigureAwait(false);
                     if (!File.Exists(resultFile))
                         return Failure(test.Descriptor, TCTTestStatus.Error, watch.Elapsed,
                             "Worker exited " + child.ExitCode + " without result file", attempt);
                     TCTTestCaseResult result = TCTWireCodec.Read(resultFile, test.Descriptor, attempt);
+                    if (File.Exists(eventFile) && attempt != null)
+                    {
+                        TCTTestArtifactStore store = new TCTTestArtifactStore(
+                            TCTTestArtifactStore.RunRoot(attempt.RunId));
+                        TCTArtifactRef eventArtifact = store.Save(File.ReadAllBytes(eventFile),
+                            "application/vnd.cxvisual.test-events", attempt.AttemptId);
+                        List<TCTArtifactRef> all = result.Artifacts.Concat(new[] { eventArtifact }).ToList();
+                        result = TCTTestCaseResult.FromTransport(result.Descriptor, result.Status,
+                            result.Elapsed, result.Error, result.Assertions, result.Observations,
+                            attempt, all, result.Diagnostics);
+                    }
                     if (child.ExitCode != 0 && result.Status == TCTTestStatus.Passed)
                         return Failure(test.Descriptor, TCTTestStatus.Error, watch.Elapsed,
                             "Worker exited unexpectedly (" + child.ExitCode + ")", attempt);
@@ -109,7 +140,8 @@ namespace CxVisual.TestCenter.Execution
         private readonly TCTTestHostController _host = new TCTTestHostController();
         private readonly TCTResourceGate _resources = new TCTResourceGate();
         public async Task<TCTTestRunSummary> RunAsync(TCTTestCatalog catalog, TCTTestRunRequest request,
-            CancellationToken cancellationToken, Action<TCTTestCaseResult> onResult)
+            CancellationToken cancellationToken, Action<TCTTestCaseResult> onResult,
+            Action<TCTTestEvent> onEvent = null)
         {
             if (catalog == null) throw new ArgumentNullException("catalog");
             if (request == null) throw new ArgumentNullException("request");
@@ -154,11 +186,11 @@ namespace CxVisual.TestCenter.Execution
                                 {
                                     if (request.Isolation == TCTTestIsolation.ChildProcess)
                                         result = await _host.RunIsolatedAsync(test, request.Timeout, seed,
-                                            cancellationToken, attempt).ConfigureAwait(false);
+                                            cancellationToken, attempt, onEvent).ConfigureAwait(false);
                                     else
                                         // InProcess is for trusted debugging; cannot terminate a hung thread.
                                         result = await TCTTestRunner.RunOneAsync(test, cancellationToken,
-                                            seed, attempt, artifactStore).ConfigureAwait(false);
+                                            seed, attempt, artifactStore, onEvent).ConfigureAwait(false);
                                 }
                             }
                             catch (OperationCanceledException)

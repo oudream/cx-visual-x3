@@ -50,18 +50,20 @@ namespace CxVisual.TestCenter.UI
                 }
                 else if (command == "--worker")
                 {
-                    if (e.Args.Length != 4 && e.Args.Length != 7) throw new ArgumentException("--worker <id> <result-file> <seed> [runId attemptId iteration]");
+                    if (e.Args.Length != 4 && e.Args.Length != 7 && e.Args.Length != 8) throw new ArgumentException("--worker <id> <result-file> <seed> [runId attemptId iteration]");
                     ITCTTestCase test = catalog.Cases.SingleOrDefault(x => x.Descriptor.Id == e.Args[1]);
                     if (test == null) throw new InvalidOperationException("Unknown worker test ID");
                     int seed = int.Parse(e.Args[3], CultureInfo.InvariantCulture);
-                    TCTTestAttempt attempt = e.Args.Length == 7 ?
+                    TCTTestAttempt attempt = e.Args.Length >= 7 ?
                         new TCTTestAttempt(e.Args[4], test.Descriptor.Id,
                             int.Parse(e.Args[6], CultureInfo.InvariantCulture), seed, e.Args[5]) :
                         new TCTTestAttempt("AdHoc", test.Descriptor.Id, 0, seed);
-                    TCTTestArtifactStore store = e.Args.Length == 7 ?
+                    TCTTestArtifactStore store = e.Args.Length >= 7 ?
                         new TCTTestArtifactStore(TCTTestArtifactStore.RunRoot(attempt.RunId)) : null;
+                    TCTTestEventJournal events = e.Args.Length == 8 ? new TCTTestEventJournal(e.Args[7]) : null;
                     TCTTestCaseResult result = await TCTTestRunner.RunOneAsync(test,
-                        CancellationToken.None, seed, attempt, store);
+                        CancellationToken.None, seed, attempt, store, events == null ? null :
+                            new Action<TCTTestEvent>(events.Write));
                     TCTWireCodec.Write(e.Args[2], result);
                     exit = 0; // 结果状态在结构化文件内，不能用退出码代替断言状态。
                 }
