@@ -1,0 +1,149 @@
+CxVisual Platform Test Center
+基础方面 / 机制方面测试架构建议 V1.0
+2026-10-15
+
+定位
+====
+这是 Platform 提供的 Test Center / Studio 工具，而不是第7个 Workbench。
+使用现有 1 Platform + 6 Workbenches 产品结构，复用主界面 Shell、动态 Ribbon、DocumentHost、Property/Outline/Dock 机制。
+Foundation、Mechanism 是当前重点；以后各专业Workbench只扩展自己的测试适配器和可视化器。
+
+一、统一测试链路
+================
+能力规格（CapabilityAreaId / CapabilityId / ObjectId）
+   → TestDescriptor / TestSuite / TestCase
+   → Fixture / Input / Baseline / Seed / Environment
+   → Test Runner（Discovery / Schedule / Setup / Execute / Assert / Teardown）
+   → 独立 TestHost 进程运行真实被测程序集
+   → TestObservation（真实过程数据）+ AssertionResult + Artifact
+   → TestResult / Trace / Diff / Metrics / Report
+   → Studio Test Center 按测试场景选择 Visualizer
+
+测试界面 ≠ 测试执行引擎。即使完全关闭 Studio，也必须能以 CLI / CI 执行同一组测试并得到一致结果。
+真实机制测试不得通过手工把UI状态设为“Running / Completed”假冒Runtime执行结果。
+
+二、推荐逻辑分层
+================
+1. Test Studio/UI
+   Test Explorer、Test Document、Inspector、Assertion、Watch、Results、Timeline、Diff、Reports。
+   不直接执行业务测试，不持有真实设备/算法的底层SDK句柄。
+
+2. Test Contracts
+   TestDescriptor、ITestAdapter、TestRunRequest、TestRunResult、TestCaseResult、AssertionResult、
+   TestObservation、ArtifactRef、TestFixtureRef、BaselineRef、CorrelationId、CapabilityId/ObjectId。
+   作为跨Runner、TestHost、Studio的稳定契约。
+
+3. Test Core / Coordinator
+   Discover、Filter、Tag、Schedule、Timeout、Cancellation、Concurrency、Retry(仅Runner基础设施)、
+   Setup/Teardown、Isolation、Result Aggregation、Artifact/Report、Coverage Mapping。
+   注意业务被测代码本身的Retry不能被Runner“自动重试成PASS”掩盖。
+
+4. Test Host / Adapter
+   独立x64进程启动真实测试程序集；适配 NUnit/MSTest 等成熟测试框架，避免自研断言基础框架。
+   支持按Suite/Case进程隔离、崩溃捕获、超时终止、原生DLL加载、Native/Managed混合测试。
+   可用 Named Pipes 传结构化Observation/Control消息（本地.NET Framework 4.8环境）。
+
+5. Test Probes / Diagnostics Bridge
+   从被测Foundation/Mechanism提取几何快照、对象树、Graph快照、Port/Edge、Channel Frame、
+   ExecutionInstance / ResourceLease / Trace / Timeline 等真实结构化数据；UI只消费这些数据。
+   Probe必须可关闭、可限流，不能改变实际业务语义和结果。
+
+6. Test Visualizers
+   GeometryCanvasVisualizer、ObjectTreeVisualizer、GraphVisualizer、FrameProtocolVisualizer、
+   RuntimeInstanceVisualizer、DiffVisualizer、TimelineVisualizer。
+   根据TestDescriptor.VisualizerId/ObservationKind动态选择，而不是每个测试开发一整套独立窗体。
+
+7. Foundation / Mechanism Test Packs
+   Foundation：Math、Geometry、Coordinate、Drawing、ImageBasic、3DBasic……
+   Mechanism：Ownership/Content/Symbol、Property/Variable、Port/Connection、Graph/Compiler、
+              Execution/Runtime、Resource/Lease、Channel/Protocol、Persistence/Migration、Plugin等。
+
+三、建议项目结构（名称为建议，须服从实际Solution/项目边界）
+========================================================
+Platform/
+  CxVisual.Testing.Contracts        // DTO、Descriptor、消息/Observation契约，无WinForms依赖
+  CxVisual.Testing.Core             // Discovery、Plan、Run、Result、Assertion Adapter、Coverage
+  CxVisual.Testing.Host             // 独立exe，x64，加载测试程序集，隔离故障/超时
+  CxVisual.Testing.Diagnostics      // Probe接口、Trace/Metric/Artifact桥接
+  CxVisual.Testing.Visualization    // 场景可视化通用宿主/Presenter契约
+  CxVisual.Testing.Studio           // WinForms Test Center，复用现有Shell/Dock/Ribbon
+
+Tests/
+  CxVisual.Tests.Foundation.Geometry
+  CxVisual.Tests.Foundation.Math
+  CxVisual.Tests.Foundation.Drawing
+  CxVisual.Tests.Mechanism.Objects
+  CxVisual.Tests.Mechanism.Variable
+  CxVisual.Tests.Mechanism.Graph
+  CxVisual.Tests.Mechanism.Runtime
+  CxVisual.Tests.Mechanism.ChannelProtocol
+  CxVisual.Tests.Mechanism.Persistence
+
+可将各类Visualizer按包分项目，但第一阶段不应拆出几十个小程序集。
+依赖方向：Studio → Contracts/Core(查询接口)，Runner → Contracts/Adapters，Tests → 被测项目 + 测试框架 + Probe契约。
+被测Foundation工程不应反向依赖Test Studio；普通生产Runtime亦不应依赖测试UI。
+
+四、测试对象与能力规格的关联
+========================
+TestDescriptor（最小）建议包括：
+  TestId、DisplayName、CapabilityAreaId、CapabilityId、ObjectId列表、Tags、Category、
+  FixtureId、BaselineId、VisualizerId、IsolationMode、Timeout、Seed、Repeat、Requirements。
+
+TestRunResult（最小）建议包括：
+  RunId、CaseId、Result(Pass/Fail/Skip/Error/Timeout/Cancelled)、Start/End、Duration、
+  AssertionResults、Error/Stack、Observations、TraceRefs、ArtifactRefs、Environment、BinaryVersion、Seed。
+
+Observation统一封套建议包括：
+  RunId、TestId、CorrelationId、Timestamp、Kind、SourceObjectId、DefinitionAddress、
+  RuntimeInstanceId(可空)、Payload/ArtifactRef。
+
+Test Explorer优先按 Foundation/Mechanism → 能力方面 → Capability → 对象/测试组 → Case 组织。
+Unit、Integration、Regression、Stress、Benchmark、PropertyBased 是测试类型筛选维度，不与 Foundation/Mechanism 同层混排。
+
+五、6张界面分别怎样获得真实数据
+============================
+01 测试主页：从测试发现结果、最近Run历史与Capability覆盖映射获得数量；不能写死“568项”。
+02 Geometry：运行真实变换算法，以GeometrySnapshot绘制Input/Expected/Actual/Diff；断言浮点容差、逆变换、退化边界。
+03 Content/Symbol：从真实Definition构建Ownership树、Ref图、视觉投影；测试Clone/Serialize/Resolve/Scope、实例隔离。
+04 Graph：真实Validate→Resolve→Compile→Plan→Runtime；收集Node/Port/Connection/诊断/Trace；非法连线必须拒绝。
+05 Channel/Protocol：使用Loopback/VirtualChannel与实际Codec/Parser；帧可回放，支持粘包、半包、CRC错误、超时/重连/乱序等。
+06 Runtime：订阅真实ExecutionInstance/Scope/WaitingReason/Lease/Trace；执行并发、取消、Fault、Recovery，资源必须最终释放。
+
+六、执行模式和隔离策略
+====================
+Unit/PropertyBased：进程内Runner或独立TestHost，默认使用固定Seed和纯Fixture。
+Integration：独立TestHost，对共享资源/文件/端口使用FixtureScope进行隔离。
+Graph/Runtime：默认SIMULATE，使用Virtual Clock/Provider；用受控Fault Injection验证错误路径。
+Native/CT/VTK：x64独立进程，管理Native DLL搜索路径、内存峰值、进程Crash，不污染Studio进程。
+Benchmark/Stress：单独计划、指定硬件和预热条件；不和普通功能测试争用同一资源。
+Physical Device/HIL（未来）：显式实验环境、身份权限、互锁/急停已就绪的前提检查、设备白名单和人工授权；禁止默认批量运行。
+
+七、落地迭代顺序及验收
+====================
+M1 最小真实闭环：Contracts + Discovery/Runner/Host + Geometry真实算法 + TestResult/Assertion + CLI + 简单Studio。
+    Gate：在无UI模式执行同一测试；人工改错应FAIL；TestRun可重现且结果能保存。
+
+M2 对象/Graph闭环：Content/Symbol/Ownership/Reference、SaveLoad/Clone、Port/Connection、Compile完整诊断。
+    Gate：非法所有权、Ref缺失、Port不匹配均正确失败；Definition与Run可双向定位。
+
+M3 Channel与Runtime：真实Loopback/Codec/Frame、ExecutionInstance/ResourceLease、Fault/Retry/Cancel/Trace。
+    Gate：并发多实例、WaitingResource、Scope清理、Channel断线可重现，所有关键观察来自真实Runtime。
+
+M4 回归/性能/CI：Capability覆盖、Golden/Baseline、Timeline、Diff、Performance、测试报告/CLI返回码/CI流水线。
+    Gate：可以按CapabilityId筛选，发布前Headless Regression Gate，报告携带构建版本与Seed。
+
+八、避免的架构误区
+================
+1. 不增设第7个Workbench，测试中心是Platform工具。
+2. 不复制Foundation / Mechanism生产代码，只通过真实项目引用或Adapter调用。
+3. 不自研断言语法替代成熟测试框架；做统一断言适配和可视化即可。
+4. 不把TestCase里的Demo数据当成真实运行结果；UI效果图的所有数字只是示意。
+5. 不强求所有测试都具备可视画布：有些能力更适合表格/文本/Trace/Profiler。
+6. 不用普通Windows Graph Runtime承担ServoLoop/EtherCAT/Safety等硬实时测试责任。
+7. 不强迫TestCase全部保存为工程资源：C# Test Method是标准真源，可选资源化TestPlan/Fixture/Baseline。
+8. 不直接将“测试数量”当“能力完成度”；Capability覆盖需要映射、行为Gate和真实结果。
+
+建议首先落地：CxVisual.Foundation.Geometry + CxVisual.Mechanism.Object/Content/Symbol。
+先把真实算法、真实对象和测试Runner贯通，再扩Graph/Runtime/Channel可视化器。
+
+附：本包的6张PNG为 2560×1440 的界面设计图，模拟数据及状态仅用于展示交互和信息层级，不代表已完成真实测试。
