@@ -116,7 +116,7 @@ namespace CxVisual.Foundation.Data.Configuration
             try { report.AddRange(Validate(value, scope).Issues); }
             catch (Exception ex)
             {
-                report.Add(FCMConfigIssue.Error("", "VALIDATION_EXCEPTION", ex.Message));
+                report.Add(FCMConfigIssue.Error("", "VALIDATION_EXCEPTION", "配置验证规则执行失败，请使用受信任诊断检查规则"));
             }
             Type interfaceType = typeof(IFCMAsyncConfigValidator<>).MakeGenericType(typeof(T));
             foreach (FCMConfigValidatorAttribute attr in typeof(T).GetCustomAttributes(typeof(FCMConfigValidatorAttribute), false))

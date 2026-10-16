@@ -45,6 +45,11 @@ namespace CxVisual.Mechanism.Data.Configuration
             if (FCMConfigSensitivity.IsSensitivePath(typeof(T), path))
                 Require(identity, FCMConfigAccessAction.ReadSensitive, path);
         }
+        internal bool CanReadWholeModel<T>(FCMConfigIdentity identity)
+        {
+            try { RequireReadable<T>(identity, null); return true; }
+            catch (UnauthorizedAccessException) { return false; }
+        }
     }
 
     /// <summary>不暴露底层实例或可绕过权限的 Raw Edit；只提供按角色许可的配置 API。</summary>
@@ -104,7 +109,19 @@ namespace CxVisual.Mechanism.Data.Configuration
         public MHSConfigApplyResult TryApplyPendingAtBoundary(FCMConfigApplyPolicy boundary)
         {
             Demand(FCMConfigAccessAction.Apply, null);
-            return _source.TryApplyPendingAtBoundary(boundary, null);
+            MHSConfigApplyResult result = _source.TryApplyPendingAtBoundary(boundary, null);
+            // A domain validator/guard can produce user-controlled messages including
+            // secrets. Apply permission alone is not permission to read those messages.
+            if (!result.Applied && FCMConfigSensitivity.ContainsSensitive(typeof(T)) &&
+                !_session.CanReadWholeModel<T>(Identity))
+                return new MHSConfigApplyResult {
+                    Applied = false, Status = "CONFIG_APPLY_REJECTED",
+                    Reason = "生效未通过，详细原因需要敏感配置读取权限",
+                    SavedVersion = result.SavedVersion,
+                    EffectiveVersion = result.EffectiveVersion,
+                    RequiredBoundary = result.RequiredBoundary
+                };
+            return result;
         }
         public MHSConfigSnapshot<T> CaptureForTask(string taskId)
         {
@@ -133,6 +150,7 @@ namespace CxVisual.Mechanism.Data.Configuration
         {
             Demand(FCMConfigAccessAction.Import, null);
             Demand(FCMConfigAccessAction.Commit, null);
+            _session.RequireReadable<T>(Identity, null);
             _source.RequireExplicitApply();
             return await _source.ImportPackageAsync(package, token).ConfigureAwait(false);
         }
@@ -141,6 +159,7 @@ namespace CxVisual.Mechanism.Data.Configuration
         {
             Demand(FCMConfigAccessAction.Restore, null);
             Demand(FCMConfigAccessAction.Commit, null);
+            _session.RequireReadable<T>(Identity, null);
             _source.RequireExplicitApply();
             return await _source.RestoreSavedVersionAsync(version, reason, token).ConfigureAwait(false);
         }
@@ -192,12 +211,15 @@ namespace CxVisual.Mechanism.Data.Configuration
         {
             if (_edit == null) throw new ObjectDisposedException("MHSConfigAuthorizedEdit");
             _session.Require(_identity, FCMConfigAccessAction.Edit, null);
+            _session.RequireReadable<T>(_identity, null);
             return _edit.PreviewAsync(token);
         }
         public Task<MHSConfigCommitResult> CommitAsync(CancellationToken token)
         {
             if (_edit == null) throw new ObjectDisposedException("MHSConfigAuthorizedEdit");
+            _session.Require(_identity, FCMConfigAccessAction.Edit, null);
             _session.Require(_identity, FCMConfigAccessAction.Commit, null);
+            _session.RequireReadable<T>(_identity, null);
             return _edit.CommitAsync(token);
         }
         public void Dispose()
