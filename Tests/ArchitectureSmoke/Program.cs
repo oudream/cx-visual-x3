@@ -20,6 +20,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 }
                 UiIndependentAssemblies();
                 ExecutionFlowTests.Run();
+                ExecutionCompilerTests.Run();
                 ExecutionControlTests.Run();
                 ExecutionPolicyTests.Run();
                 ExecutionTriggerTests.Run();
