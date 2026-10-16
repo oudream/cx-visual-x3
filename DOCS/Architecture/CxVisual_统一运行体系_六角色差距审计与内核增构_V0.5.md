@@ -266,3 +266,10 @@
 5. **并发长稳**：FCRWorker外部Token取消排队工作即时摘队及返还PendingByte预算；独立调试取消断点等待者立即释放。还未完成大规模随机交错和长期运行资源曲线评估。
 
 **不得将本节表达成整个统一运行体系已全面生产验收。** 对应变更在master的独立提交中，Release/x64完整构建与TestCenter各自以对应Windows CI结论为准；不能因为单条CI成功而推断另外的测试通过。
+
+## 2026-10-16 与数据运行时并行开发的运行体系增量
+
+- **R3工程编排者**：多级编排已能经Publisher统一发布，但现行`MRKFlowCompileDefinition`仍是瞬时适配，不是工程CxNode中的逻辑Aspect权威；调用点不支持的SerialKey、Priority、Policy、EstimatedPendingBytes、资源及数据绑定不再静默丢弃，而是编译期诊断。真实多级参数/结果映射、多节点循环仍是差距。
+- **R4调试 / R5操作**：运行权限网关不再泄露带`RequestCancel()`的底层FlowHandle，而返回有限观察票据。用户身份真实性由Host外部身份服务确认，生产联锁不得使用模拟字符串策略代替。
+- **R6维护 / E11恢复**：Journal判定严禁非法事件因果顺序误判Closed，保留外部OperationId迟到确认，`EvaluateAll`大量Flow分组扫描。尚无持久Checkpoint及授权恢复执行，因此重启时遇到未结案流程仍拒绝新运行；只证明保守安全，不证明恢复生产。
+- **六角色完整目标未降低**：计划发布当前是内存Slot与策略接口，正式发布仓库、授权身份、跨进程协调和重放控制仍需开发。数据Owner并行提交M2期间，运行体系不另建数据存储和缓冲区所有权。

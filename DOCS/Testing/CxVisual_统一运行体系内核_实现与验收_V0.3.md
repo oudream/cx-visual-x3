@@ -194,3 +194,12 @@ Journal运行中故障强制明确Failed终态，任务超预算无损拒绝其�
 运行计划不能以`StageValidated`公开路径绕过生产发布策略：在受保护Slot上，只能使用Publisher进行编译验证、发布授权、阶段保存、软件安全点激活和单调版本回滚。正式Host必须注入外部权限验证和设备安全确认；用于Smoke的本地模拟批准器绝不允许直接用于生产。
 
 `CxVisual.Runtime.Host.exe runtime-run <journal>`运行无设备模拟计划、真实Flow会话与持久Journal；`runtime-recover <journal>`只扫描，并在存在未结算Flow时给出非零状态，拒绝自动重播；`runtime-serve <journal>`提供持续交互式run/status/stop入口。Windows CI验收真实运行一次、读取Journal、重启再次运行。实现并不支持完整生产服务守护、远程认证、Checkpoint数据恢复或外部设备安全接管。
+
+## 2026-10-16 四批续修：已闭合的软件运行边界
+
+1. **Journal闭合规则**：结束早于启动、重复终态、FlowFinished后的普通执行事实均触发RequiresReconciliation。为保证设备回执迟到时可以审计，FlowFinished后相同OperationId/Plan/Step/Revision的ExternalConfirmed可以解除已记录的Unknown，但不能解除无OperationId的ResultUnknown。EvaluateAll按FlowId分组，避免启动时对每个Flow重复扫描日志。
+2. **权限网关不泄露控制句柄**：`MRKRuntimeAccessGateway.TryStart/TryStartDebug`返回`MRKRuntimeFlowTicket`（FlowId、Completion、Snapshot）而不是裸MRKFlowHandle。调用Cancel/Compensate时重新授权并核对Engine与Session归属。Host只对受信任代码保存底层Engine/Session；调用方自行持有取消Token、DebugController的权利不等同于生产授权机制。
+3. **正式编排发布**：`MRKExecutionPlanPublisher.CompileAndStageOrchestration`使用同一个StageCore及受保护PlanSlot，避免多级子流程绕过Publish/SafeActivate；子流程编译顺序稳定并对不支持的调用点策略报错。
+4. **Host模拟验收**：Host用内存Catalog描述二层流程，真实经过编排编译、发布授权、Session、Flow和Journal，断电/设备未知时仍拒绝未经授权的自动重放。
+
+不能将上述闭环理解为完整的CxNode工程逻辑Aspect、循环活动图持久状态、Plan持久仓库、正式Checkpoint、跨进程恢复、硬件安全接管或者数据堆栈集成已完成。**本轮的改动没有建立第二个执行引擎或第二个DataSpace**。

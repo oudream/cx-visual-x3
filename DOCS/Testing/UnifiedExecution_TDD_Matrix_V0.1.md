@@ -279,3 +279,16 @@ G0/G1通过不能代替G2/G3/G4。CI工作流故障时应分清本次新增测�
 | Windows完整构建 | `config-l1-ci.yml`在Release全量重建前恢复TestCenter NUnit包，保留FoundationSmoke/ArchitectureSmoke/CLI真实验收 | 独立TestCenter NUnit Engine回归须按每次Git SHA查看，不从其他成功工作流推断通过 |
 
 **版本状态规则**：上述均指内存/单宿主基础实现，不代表E01～E18全覆盖。数据运行时DataSpace/Buffer是Foundation.Data与Mechanism.Data唯一Owner；Runtime不得建立平行数据管理。此文档是差距矩阵，必须结合master代码与GitHub Actions结果使用。
+
+## 2026-10-16 四批续修验收：恢复时序、权限票据、多级编排正式发布
+
+| 用例 / 入口 | 失败前可构造的风险 | 当前可执行回归 | 严格限制 |
+|---|---|---|---|
+| `TerminalSequenceMustBeCausalAndOrdered` | FlowFinished早于Started、重复终态、终态后的工作状态仍判Closed | 禁止非法记录因果时序；允许先记录Unknown后结算Flow、再迟到ExternalConfirmed | 不等于恢复了外部设备状态 |
+| `BulkRecoveryInventoryMaintainsAllIdentities` | `EvaluateAll`逐Flow遍历整个Journal，长期运行扫描可能呈平方成本 | 512个混合Flow的单次分组扫描，结果顺序与安全判定稳定 | 尚需磁盘压缩、Checkpoint与长期规模基准 |
+| `RoleBasedSessionGatewayDeniesUnauthorizedActions` | 网关虽校验Start，却把带RequestCancel的原始FlowHandle交给调用者，绕开Cancel授权 | 公开`MRKRuntimeFlowTicket`只允许观察/完成等待；Cancel/Compensate必须单独授权 | 原始Engine/Session仍是可信进程内接口；Host不可把它们直接暴露到远程/UI |
+| `NestedOrchestrationUsesAuthorizedPublisher` | 多级编排的Compile与正式Publisher/PlanSlot没有统一入口 | `CompileAndStageOrchestration`经同一Stage/Authorize/Safe Activate；旧Flow版本固定，新版本执行嵌套流程 | Catalog仍是瞬时定义，不是CxNode可编辑/保存的真实Aspect |
+| `SubflowModifiersAreNotSilentlyIgnored` | 子流程调用点的SerialKey、Policy、Priority、Byte预算等参数原本可被静默丢弃 | 先拒绝尚不支持的嵌套调用策略，稳定按节点ID排序，防止语义悄然变化 | 子流程实例级资源策略、参数/结果Schema待单独实现 |
+| Host真实CLI闭环 | Host模拟流程之前只使用普通Compile | `runtime-run`已用子流程Catalog经OrchestrationCompiler/Publisher执行，`runtime-recover`对全部Flow保守评估 | 无正式用户凭证、设备联锁、数据快照/执行断点恢复 |
+
+本节为新增的代码与可运行测试位置，**实际验收必须以每次master SHA对应的GitHub Actions结果为准**，不将尚在排队、失败或中断的工作流标记通过。运行时数据体系的DataSpace/DataStack实现归属`Foundation.Data`/`Mechanism.Data`，Runtime只消费其契约。
