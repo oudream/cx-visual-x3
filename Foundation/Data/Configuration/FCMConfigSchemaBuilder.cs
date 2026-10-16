@@ -16,6 +16,10 @@ namespace CxVisual.Foundation.Data.Configuration
     public static class FCMConfigSchemaBuilder
     {
         private static readonly ConcurrentDictionary<Type, FCMConfigSchema> Cache = new ConcurrentDictionary<Type, FCMConfigSchema>();
+        // Deep JSON codecs and validators visit the same CLR types thousands of
+        // times. Cache their immutable reflection descriptions once per Type.
+        private static readonly ConcurrentDictionary<Type, IList<FCMConfigMemberDescriptor>> MembersCache =
+            new ConcurrentDictionary<Type, IList<FCMConfigMemberDescriptor>>();
         public static FCMConfigSchema Describe<T>() { return Describe(typeof(T)); }
         public static FCMConfigSchema Describe(Type type)
         {
@@ -23,6 +27,11 @@ namespace CxVisual.Foundation.Data.Configuration
             return Cache.GetOrAdd(type, Create);
         }
         public static IList<FCMConfigMemberDescriptor> Members(Type type)
+        {
+            if (type == null) throw new ArgumentNullException("type");
+            return MembersCache.GetOrAdd(type, CreateMembers);
+        }
+        private static IList<FCMConfigMemberDescriptor> CreateMembers(Type type)
         {
             List<FCMConfigMemberDescriptor> items = new List<FCMConfigMemberDescriptor>();
             foreach (PropertyInfo property in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
@@ -41,7 +50,8 @@ namespace CxVisual.Foundation.Data.Configuration
                     Unit = item == null ? null : item.Unit
                 });
             }
-            return items.OrderBy(x => x.Order <= 0 ? int.MaxValue : x.Order).ThenBy(x => x.MemberId, StringComparer.Ordinal).ToArray();
+            return Array.AsReadOnly(items.OrderBy(x => x.Order <= 0 ? int.MaxValue : x.Order)
+                .ThenBy(x => x.MemberId, StringComparer.Ordinal).ToArray());
         }
         private static FCMConfigSchema Create(Type type)
         {

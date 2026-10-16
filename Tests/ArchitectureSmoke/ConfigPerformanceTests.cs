@@ -149,6 +149,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Console.WriteLine("CONFIG_D_CHECK slowAndFailingSubscribers=PASS latencyMs=" +
                     callbackWall.ElapsedMilliseconds + " synchronousBackpressure=true");
 
+                var memberList = FCMConfigSchemaBuilder.Members(typeof(ConfigDynamicNode));
+                Require(object.ReferenceEquals(memberList,
+                    FCMConfigSchemaBuilder.Members(typeof(ConfigDynamicNode))),
+                    "immutable type metadata reused across repeated deep codec operations");
+                Require(memberList.IsReadOnly, "cached schema fields cannot be reordered externally");
                 int entries = full ? 10000 : 1000;
                 var large = service.ForMachine("D-Collections").Open<ConfigDynamicCollections>();
                 var values = new Dictionary<string, ConfigDynamicNode>(entries);
