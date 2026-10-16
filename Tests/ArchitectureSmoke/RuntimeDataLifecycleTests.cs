@@ -24,6 +24,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             RetryMustDiscardFailedAttemptData();
             InlineSubflowOutputIsMapped();
             MultiStepSubflowCommitBarrier();
+            FlowResultExposesOnlyCommittedExports();
             ThreeLevelSubflowCommit();
             ExplicitInputCannotInheritParent();
         }
@@ -421,6 +422,59 @@ namespace CxVisual.Tests.ArchitectureSmoke
             }
             catch (ArgumentException) { boundaryDenied = true; }
             Check(boundaryDenied, "外部绕过子流程屏障直接读取内部输出未被拒绝");
+        }
+
+        private static void FlowResultExposesOnlyCommittedExports()
+        {
+            MRKExecutionPlan plan = new MRKExecutionPlan("export-success", new[]
+            {
+                new MRKExecutionStep("capture", new string[0], (ctx,ct) =>
+                {
+                    ctx.Data.Return("Image", new byte[] {3,4,5});
+                    ctx.Data.Return("Area", 12);
+                    return Task.FromResult((object)1);
+                }, dataOutputs: Outputs(
+                    new KeyValuePair<string, Type>("Image", typeof(byte[])),
+                    new KeyValuePair<string, Type>("Area", typeof(int))))
+            }, new Dictionary<string, string> {
+                {"Image", "capture.Image"}, {"Area", "capture.Area"}
+            });
+            MRKExecutionEngine engine = new MRKExecutionEngine(new FCRWorkerOptions(1, 3));
+            try
+            {
+                MRKFlowResult ok = Wait(engine.StartFlow(plan).Completion);
+                Check(ok.State == MRKFlowState.Completed &&
+                    ok.GetCommittedOutput<int>("Area") == 12 &&
+                    ok.GetCommittedOutput<byte[]>("Image")[0] == 3,
+                    "Flow成功后无法通过已提交导出取值");
+                byte[] first = ok.GetCommittedOutput<byte[]>("Image");
+                first[0] = 99;
+                Check(ok.GetCommittedOutput<byte[]>("Image")[0] == 3,
+                    "FlowResult导出暴露可写内部数组");
+            }
+            finally { Wait(engine.StopAsync()); }
+            MRKExecutionPlan fail = new MRKExecutionPlan("export-fail", new[]
+            {
+                new MRKExecutionStep("capture", new string[0], (ctx,ct) =>
+                {
+                    ctx.Data.Return("Image", new byte[] {1});
+                    throw new InvalidOperationException("未完成的任务");
+                }, dataOutputs: Outputs(
+                    new KeyValuePair<string, Type>("Image", typeof(byte[]))))
+            }, new Dictionary<string, string> {{"Image", "capture.Image"}});
+            MRKExecutionEngine bad = new MRKExecutionEngine(new FCRWorkerOptions(1, 3));
+            try
+            {
+                MRKFlowResult result = Wait(bad.StartFlow(fail).Completion);
+                Check(result.State == MRKFlowState.Failed &&
+                    result.CommittedOutputs.Count == 0,
+                    "失败Flow却暴露了完整导出");
+                bool rejected = false;
+                try { result.GetCommittedOutput<byte[]>("Image"); }
+                catch (InvalidOperationException) { rejected = true; }
+                Check(rejected, "失败Flow仍可读取未提交导出");
+            }
+            finally { Wait(bad.StopAsync()); }
         }
 
         private static void ThreeLevelSubflowCommit()
