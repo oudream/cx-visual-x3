@@ -175,7 +175,21 @@ namespace CxVisual.Mechanism.Data.Configuration
             public MHSConfigSection<MVBConfigLayerOverrides> Store;
         }
         private readonly List<Layer> _layers;
+        private readonly MHSConfigSection<MVBConfigLayerOverrides> _definitionStore;
+        private readonly string _definition;
+        private readonly string _profileId;
+        private static string LegacyId(MVBConfigLayerSpec[] specs)
+        {
+            if (specs == null || specs.Length == 0 || specs[0] == null)
+                throw new ArgumentException("Nonempty layers required");
+            // Existing constructor: choose the first physical scope as an identity anchor.
+            // For scope migrations callers should use the explicit profileId overload.
+            return specs[0].Kind + ":" + specs[0].Id;
+        }
         public MVBConfigLayeredProfile(MHSConfigService service, params MVBConfigLayerSpec[] specs)
+            : this(service, LegacyId(specs), specs) { }
+        public MVBConfigLayeredProfile(MHSConfigService service, string profileId,
+            params MVBConfigLayerSpec[] specs)
         {
             if (service == null) throw new ArgumentNullException("service");
             if (specs == null || specs.Length == 0 || specs.Any(x => x == null))
@@ -184,14 +198,89 @@ namespace CxVisual.Mechanism.Data.Configuration
                 specs.Select(x => x.Priority).Distinct().Count() != specs.Length ||
                 specs.Select(x => x.Kind + "\0" + x.Id).Distinct(StringComparer.Ordinal).Count() != specs.Length)
                 throw new ArgumentException("Duplicate layer name, priority or scope");
+            if (string.IsNullOrWhiteSpace(profileId)) throw new ArgumentException("ProfileId required");
             string modelSectionId = FCMConfigSchemaBuilder.Describe<T>().SectionId;
+            _profileId = profileId;
+            _definition = MVBConfigAtomicLayerProfile<T>.Contract(profileId, specs);
             _layers = specs.OrderBy(x => x.Priority).Select(x => new Layer {
                 Spec = x, Store = service.ForScope(x.Kind,
                     new FCMConfigIdentity(modelSectionId, x.Kind, x.Id).CanonicalKey)
                     .Open<MVBConfigLayerOverrides>()
             }).ToList();
+            string anchor = new FCMConfigIdentity(modelSectionId, "layer-contract", profileId).CanonicalKey;
+            _definitionStore = service.ForScope("layer-contract", anchor).Open<MVBConfigLayerOverrides>();
+            string stored;
+            if (!_definitionStore.GetLatestSaved().Values.TryGetValue("Definition", out stored))
+            {
+                // Existing nonempty layers without a durable definition cannot be interpreted safely.
+                if (_layers.Any(x => x.Store.ListSavedVersions().Count > 1 ||
+                    x.Store.GetLatestSaved().Values.Count != 0))
+                    throw new InvalidOperationException("CONFIG_LAYER_DEFINITION_UNVERSIONED");
+                MHSConfigCommitResult initialized = _definitionStore.UpdateAsync(
+                    x => x.Values["Definition"] = _definition, "初始化分层定义",
+                    CancellationToken.None).GetAwaiter().GetResult();
+                if (!initialized.Success) throw new InvalidOperationException(
+                    "CONFIG_LAYER_DEFINITION_WRITE_FAILED: " + initialized.ErrorCode);
+            }
+            RequireDefinition();
         }
-        public MHSConfigSection<MVBConfigLayerOverrides> GetLayer(string name) { return Find(name).Store; }
+        private void RequireDefinition()
+        {
+            string stored;
+            if (!_definitionStore.GetLatestSaved().Values.TryGetValue("Definition", out stored) ||
+                !string.Equals(stored, _definition, StringComparison.Ordinal))
+                throw new InvalidOperationException("CONFIG_LAYER_DEFINITION_MISMATCH");
+        }
+        /// <summary>
+        /// Only the definition record changes atomically: independent source files
+        /// remain independent. Scope changes with data require an atomic-layer profile.
+        /// </summary>
+        public async Task<MHSConfigCommitResult> UpgradeDefinitionAsync(
+            MVBConfigLayerSpec[] newLayers, string reason, CancellationToken token)
+        {
+            RequireDefinition();
+            token.ThrowIfCancellationRequested();
+            if (newLayers == null || newLayers.Length != _layers.Count ||
+                newLayers.Any(x => x == null) ||
+                newLayers.Select(x => x.Name).Distinct(StringComparer.Ordinal).Count() != newLayers.Length ||
+                newLayers.Select(x => x.Priority).Distinct().Count() != newLayers.Length ||
+                newLayers.Select(x => x.Kind + "\0" + x.Id).Distinct(StringComparer.Ordinal).Count() != newLayers.Length)
+                throw new ArgumentException("Invalid replacement layers");
+            HashSet<string> before = new HashSet<string>(_layers.Select(x =>
+                x.Spec.Kind + "\0" + x.Spec.Id), StringComparer.Ordinal);
+            if (!before.SetEquals(newLayers.Select(x => x.Kind + "\0" + x.Id)))
+                return new MHSConfigCommitResult { Success = false,
+                    ErrorCode = "CONFIG_LAYER_UPGRADE_REQUIRES_ATOMIC_PROFILE" };
+            T composed = new T();
+            try
+            {
+                foreach (MVBConfigLayerSpec layer in newLayers.OrderBy(x => x.Priority))
+                {
+                    Layer oldLayer = _layers.Single(x =>
+                        x.Spec.Kind == layer.Kind && x.Spec.Id == layer.Id);
+                    foreach (var value in oldLayer.Store.Get().Values.OrderBy(x =>
+                        MVBConfigLayerPath.Depth(x.Key)).ThenBy(x => x.Key, StringComparer.Ordinal))
+                        MVBConfigLayerPath.Apply(composed, value.Key, value.Value);
+                }
+            }
+            catch (Exception)
+            {
+                return new MHSConfigCommitResult { Success = false,
+                    ErrorCode = "CONFIG_LAYER_UPGRADE_INVALID" };
+            }
+            FCMConfigValidationReport validation = await FCMConfigValidationEngine.ValidateAsync(
+                composed, "layered", token).ConfigureAwait(false);
+            if (!validation.IsValid)
+                return new MHSConfigCommitResult { Success = false,
+                    ErrorCode = "CONFIG_LAYER_UPGRADE_INVALID", Validation = validation };
+            string candidate = MVBConfigAtomicLayerProfile<T>.Contract(_profileId, newLayers);
+            return await _definitionStore.UpdateAsync(
+                x => x.Values["Definition"] = candidate,
+                string.IsNullOrWhiteSpace(reason) ? "显式升级分层定义" : reason, token)
+                .ConfigureAwait(false);
+        }
+        public MHSConfigSection<MVBConfigLayerOverrides> GetLayer(string name)
+        { RequireDefinition(); return Find(name).Store; }
         /// <summary>复合诊断说明每个来源层的状态，不将跨层非原子更新伪装为成功发布。</summary>
         public MVBConfigCompositeStatus<T> GetStatus()
         {
@@ -287,6 +376,7 @@ namespace CxVisual.Mechanism.Data.Configuration
         public async Task<MHSConfigCommitResult> SetOverrideAsync<V>(string layerName,
             Expression<Func<T, V>> selector, V value, CancellationToken token)
         {
+            RequireDefinition();
             string path = FCMConfigPathUtil.FromExpression(selector);
             string json = FCMJsonValueCodec.Serialize(value);
             MVBConfigLayerPath.Validate<T>(path, json);
@@ -300,6 +390,7 @@ namespace CxVisual.Mechanism.Data.Configuration
         public async Task<MHSConfigCommitResult> RemoveOverrideAsync<V>(string layerName,
             Expression<Func<T, V>> selector, CancellationToken token)
         {
+            RequireDefinition();
             string path = FCMConfigPathUtil.FromExpression(selector);
             using (MHSConfigEdit<MVBConfigLayerOverrides> edit = Find(layerName).Store.BeginEdit("移除覆盖：" + path))
             {
@@ -310,6 +401,7 @@ namespace CxVisual.Mechanism.Data.Configuration
 
         public MVBConfigResolved<T> ResolveEffective()
         {
+            RequireDefinition();
             for (int attempt = 0; attempt < 4; ++attempt)
             {
                 List<Tuple<Layer, string, Dictionary<string, string>>> snapshots =
