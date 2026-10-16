@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using CxVisual.Foundation.Data.Execution;
+using CxVisual.Foundation.Data.Types;
 using CxVisual.Mechanism.Data.Execution;
 
 namespace CxVisual.Mechanism.Data.RuntimeData
@@ -10,16 +11,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
     internal static class MDSDataSafety
     {
         internal static object Capture(object value)
-        {
-            if (value == null) return null;
-            Type type = value.GetType();
-            if (type == typeof(byte[])) return ((byte[])value).Clone();
-            if (type.IsPrimitive || type.IsEnum ||
-                type == typeof(string) || type == typeof(decimal) ||
-                type == typeof(DateTime) || type == typeof(DateTimeOffset) ||
-                type == typeof(TimeSpan) || type == typeof(Guid)) return value;
-            throw new NotSupportedException("数据类型尚无安全拷贝或不可变协议：" + type.FullName);
-        }
+        { return FDTDataValueSafety.Capture(value); }
 
         internal static IDictionary<string, object> Snapshot(IDictionary<string, object> source)
         {
