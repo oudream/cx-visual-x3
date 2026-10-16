@@ -15,6 +15,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             DebugBreakpointStepAndResume();
             CancellationUnblocksPausedFlow();
             CancelledBreakpointsAreRemovedImmediately();
+            GlobalFlowQuotaRejectsBeforeAdmission();
             BoundedTraceDropsOldest();
             TraceCursorDetectsLostTransitions();
             StopDrainsOrCancelsEntireFlow();
@@ -113,6 +114,47 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 debug.WaitingCount==0,
                 "取消后失效的断点等待者仍滞留在调试队列");
             Await(engine.StopAsync());
+        }
+
+        private static void GlobalFlowQuotaRejectsBeforeAdmission()
+        {
+            TaskCompletionSource<bool> entered=new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<bool> release=new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            int calls=0;
+            MRKExecutionPlan plan=new MRKExecutionPlan("quota",new[]{
+                new MRKExecutionStep("work",new string[0],async(c,t)=>{
+                    Interlocked.Increment(ref calls);
+                    entered.TrySetResult(true);
+                    await release.Task.ConfigureAwait(false);
+                    return (object)1;
+                })
+            });
+            MRKExecutionEngine engine=new MRKExecutionEngine(
+                new FCRWorkerOptions(2,4),maxActiveFlows:1);
+            try
+            {
+                MRKFlowHandle first=engine.StartFlow(plan);
+                Await(entered.Task);
+                bool refused=false;
+                try { engine.StartFlow(plan); }
+                catch(MRKFlowCapacityExceededException ex) { refused=ex.Limit==1; }
+                Check(refused && engine.ActiveFlowCount==1 && calls==1,
+                    "超额Flow未在产生外部副作用前拒绝");
+                release.TrySetResult(true);
+                Check(Await(first.Completion).State==MRKFlowState.Completed,
+                    "排空原Flow失败");
+                Check(Until(()=>engine.ActiveFlowCount==0),"终态Flow未归还全局准入额度");
+                MRKFlowResult next=Await(engine.StartFlow(plan).Completion);
+                Check(next.State==MRKFlowState.Completed && calls==2,
+                    "全局Flow额度未在真实结算后重新开放");
+            }
+            finally
+            {
+                release.TrySetResult(true);
+                Await(engine.StopAsync(true));
+            }
         }
         private static void CancellationUnblocksPausedFlow()
         {

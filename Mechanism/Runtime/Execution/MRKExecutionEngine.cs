@@ -11,6 +11,12 @@ using CxVisual.Foundation.Data.Execution;
 namespace CxVisual.Mechanism.Runtime.Execution
 {
     public enum MRKFlowState { Running, Completed, Failed, Cancelled }
+    public sealed class MRKFlowCapacityExceededException : InvalidOperationException
+    {
+        public MRKFlowCapacityExceededException(int limit)
+            : base("运行引擎在途Flow容量已满：" + limit) { Limit = limit; }
+        public int Limit { get; private set; }
+    }
     public enum MRKStepState { WaitingDependencies, Scheduled, Completed, Failed, Cancelled, Queued, Running, Waiting, Paused, WaitingResources, WaitingGroup, Skipped, ResultUnknown }
 
     /// <summary>同一次流程的局部快照；不对外暴露可写的全局数据字典。</summary>
@@ -302,6 +308,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
         private readonly IMRKExecutionJournal _journal;
         private readonly Dictionary<string, FCRDedicatedExecutor> _dedicated;
         private readonly int _traceCapacity;
+        private readonly int _maxActiveFlows;
         private readonly object _lifecycleGate = new object();
         private readonly Dictionary<Guid, MRKFlowHandle> _activeFlows =
             new Dictionary<Guid, MRKFlowHandle>();
@@ -317,8 +324,10 @@ namespace CxVisual.Mechanism.Runtime.Execution
             IEnumerable<MRKExecutionGroupDefinition> groups = null,
             IMRKExecutionJournal journal = null,
             IDictionary<string, FCRDedicatedExecutor> dedicatedExecutors = null,
-            int traceCapacity = 2048)
+            int traceCapacity = 2048, int maxActiveFlows = int.MaxValue)
         {
+            if (maxActiveFlows < 1) throw new ArgumentOutOfRangeException("maxActiveFlows");
+            _maxActiveFlows = maxActiveFlows;
             _worker = new FCRWorker(options);
             _resources = coordinator ?? new MRKResourceLeaseCoordinator();
             _groups = new MRKExecutionGroups(groups);
@@ -540,6 +549,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
             lock (_lifecycleGate)
             {
                 if (_stopping) throw new InvalidOperationException("运行引擎已经停止接收新流程");
+                if (_activeFlows.Count >= _maxActiveFlows)
+                    throw new MRKFlowCapacityExceededException(_maxActiveFlows);
                 MRKExecutionContext context = new MRKExecutionContext(plan.Id,
                     inputs, metadata, dataSpace, _journal, _traceCapacity);
                 try
