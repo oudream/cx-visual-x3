@@ -79,8 +79,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
     {
         private readonly object _gate = new object();
         private readonly HashSet<string> _breakpoints = new HashSet<string>(StringComparer.Ordinal);
-        private readonly Queue<TaskCompletionSource<bool>> _waiting =
-            new Queue<TaskCompletionSource<bool>>();
+        private readonly LinkedList<TaskCompletionSource<bool>> _waiting =
+            new LinkedList<TaskCompletionSource<bool>>();
         private bool _paused;
         public bool IsPaused { get { lock (_gate) return _paused; } }
         public int WaitingCount
@@ -99,7 +99,12 @@ namespace CxVisual.Mechanism.Runtime.Execution
             lock (_gate)
             {
                 _paused = false;
-                while (_waiting.Count > 0) _waiting.Dequeue().TrySetResult(true);
+                while (_waiting.Count > 0)
+                {
+                    TaskCompletionSource<bool> next = _waiting.First.Value;
+                    _waiting.RemoveFirst();
+                    next.TrySetResult(true);
+                }
             }
         }
         public bool StepOnce()
@@ -109,7 +114,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 if (!_paused) return false;
                 while (_waiting.Count > 0)
                 {
-                    TaskCompletionSource<bool> candidate = _waiting.Dequeue();
+                    TaskCompletionSource<bool> candidate = _waiting.First.Value;
+                    _waiting.RemoveFirst();
                     if (candidate.TrySetResult(true)) return true;
                 }
                 return false;
@@ -119,24 +125,34 @@ namespace CxVisual.Mechanism.Runtime.Execution
         {
             cancellation.ThrowIfCancellationRequested();
             TaskCompletionSource<bool> pending;
+            LinkedListNode<TaskCompletionSource<bool>> node;
             lock (_gate)
             {
                 if (_breakpoints.Contains(stepId)) _paused = true;
                 if (!_paused) return Task.FromResult(true);
                 pending = new TaskCompletionSource<bool>(
                     TaskCreationOptions.RunContinuationsAsynchronously);
-                _waiting.Enqueue(pending);
+                node = _waiting.AddLast(pending);
             }
-            return AwaitAsync(pending, cancellation);
+            return AwaitAsync(pending, node, cancellation);
         }
-        private static async Task AwaitAsync(TaskCompletionSource<bool> pending,
+        private async Task AwaitAsync(TaskCompletionSource<bool> pending,
+            LinkedListNode<TaskCompletionSource<bool>> node,
             CancellationToken cancellation)
         {
-            using (CancellationTokenRegistration registration =
-                cancellation.Register(() => pending.TrySetCanceled()))
+            try
             {
-                await pending.Task.ConfigureAwait(false);
-                cancellation.ThrowIfCancellationRequested();
+                using (CancellationTokenRegistration registration =
+                    cancellation.Register(() => pending.TrySetCanceled()))
+                {
+                    await pending.Task.ConfigureAwait(false);
+                    cancellation.ThrowIfCancellationRequested();
+                }
+            }
+            finally
+            {
+                // 取消的断点等待者立即摘除，长运行调试不积累失效项。
+                lock (_gate) if (node.List != null) _waiting.Remove(node);
             }
         }
     }

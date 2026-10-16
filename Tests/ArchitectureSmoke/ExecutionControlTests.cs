@@ -14,6 +14,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             ConditionalBranchesAndBoundedLoops();
             DebugBreakpointStepAndResume();
             CancellationUnblocksPausedFlow();
+            CancelledBreakpointsAreRemovedImmediately();
             BoundedTraceDropsOldest();
             TraceCursorDetectsLostTransitions();
             StopDrainsOrCancelsEntireFlow();
@@ -88,6 +89,29 @@ namespace CxVisual.Tests.ArchitectureSmoke
             debug.Resume();
             MRKFlowResult result = Await(flow.Completion);
             Check(result.State == MRKFlowState.Completed && count == 2, "debug completion wrong");
+            Await(engine.StopAsync());
+        }
+
+        private static void CancelledBreakpointsAreRemovedImmediately()
+        {
+            MRKExecutionDebugController debug = new MRKExecutionDebugController();
+            debug.Pause();
+            List<MRKExecutionStep> steps=new List<MRKExecutionStep>();
+            for(int i=0;i<120;i++)
+            {
+                string name="paused-"+i;
+                steps.Add(new MRKExecutionStep(name,new string[0],
+                    (ctx,ct)=>Task.FromResult((object)1)));
+            }
+            MRKExecutionEngine engine=new MRKExecutionEngine(new FCRWorkerOptions(2,8));
+            MRKFlowHandle flow=engine.StartFlowWithControl(
+                new MRKExecutionPlan("cancel-paused-large",steps),debug);
+            Check(Until(()=>debug.WaitingCount==120),
+                "并发等待断点数量丢失");
+            flow.RequestCancel();
+            Check(Await(flow.Completion).State==MRKFlowState.Cancelled &&
+                debug.WaitingCount==0,
+                "取消后失效的断点等待者仍滞留在调试队列");
             Await(engine.StopAsync());
         }
         private static void CancellationUnblocksPausedFlow()
