@@ -2,7 +2,7 @@ name: TestCenter Windows .NET48
 on:
   workflow_dispatch:
   push:
-    branches: [master, feature/testcenter-platform-real-cases-v4]
+    branches: [master]
     paths:
       - 'Tests/TestCenter/**'
       - 'Foundation/**'
@@ -21,6 +21,9 @@ jobs:
       - name: Verify project structure
         shell: powershell
         run: ./Build/Verify-Structure.ps1
+      - name: Verify layer ownership and project DAG
+        shell: powershell
+        run: ./Build/Verify-OwnerDependencies.ps1
       - name: Build all solution projects
         shell: powershell
         run: |
@@ -61,6 +64,7 @@ jobs:
           name: cxvisual-testcenter-evidence
           path: |
             Output/Debug/x64/Build.log
+            Output/Debug/x64/DependencyAudit.csv
             Output/Debug/x64/TestCenter.junit.xml
             Output/Debug/x64/TestCenter.parallel.junit.xml
             Output/Debug/x64/TestCenterHistory/**/summary.json
