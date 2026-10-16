@@ -138,11 +138,27 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 File.Delete(Path.Combine(configFolder, "schema.contract"));
                 // Explicit offline adoption verifies the exact source hash, validates
                 // the typed model and writes a preserved original before opening.
+                FCMConfigIdentity importedIdentity =
+                    new FCMConfigIdentity(schema.SectionId, "machine", "MCH-A");
+                bool rejectedWrongHash = false;
+                try
+                {
+                    new MHSConfigService(root).AdoptUnversionedSection<PDLTestMachineConfig>(
+                        importedIdentity, "unverified-hash");
+                }
+                catch (InvalidOperationException ex)
+                {
+                    rejectedWrongHash = ex.Message == "CONFIG_SCHEMA_ADOPTION_HASH_MISMATCH";
+                }
+                Check(rejectedWrongHash &&
+                    !File.Exists(Path.Combine(configFolder, "legacy-original-backup.json")),
+                    "legacy import rejects bad hash without producing a false backup", ref checks);
                 new MHSConfigService(root).AdoptUnversionedSection<PDLTestMachineConfig>(
-                    new FCMConfigIdentity(schema.SectionId, "machine", "MCH-A"),
-                    MHSConfigPackage.Hash(legacy));
-                Check(File.Exists(Path.Combine(configFolder, "legacy-original-backup.json")),
-                    "legacy source is preserved before adopting", ref checks);
+                    importedIdentity, MHSConfigPackage.Hash(legacy));
+                Check(File.ReadAllText(Path.Combine(configFolder, "legacy-original-backup.json")) == legacy &&
+                    File.Exists(Path.Combine(configFolder, "schema.contract")),
+                    "explicit adoption preserves legacy source bytes before creating schema marker",
+                    ref checks);
                 // Re-open with a new service instance after reviewed legacy adoption.
                 MHSConfigService service = new MHSConfigService(root);
                 MHSConfigSection<PDLTestMachineConfig> cfg = service.ForMachine("MCH-A").Open<PDLTestMachineConfig>();
