@@ -427,12 +427,16 @@ namespace CxVisual.Mechanism.Data.Configuration
             }
             return false;
         }
+        /// <summary>闭合泛型静态字段缓存类型判定，避免高频读中的反射开销。</summary>
+        private static class ValueCopyPolicy<TValue>
+        {
+            internal static readonly bool Direct =
+                FCMConfigSchemaBuilder.IsScalar(typeof(TValue)) &&
+                !Attribute.IsDefined(typeof(TValue), typeof(FCMConfigConverterAttribute));
+        }
         internal static TValue DetachValue<TValue>(TValue value)
         {
-            if (object.ReferenceEquals(value, null)) return value;
-            Type type = typeof(TValue);
-            if (FCMConfigSchemaBuilder.IsScalar(type) &&
-                !Attribute.IsDefined(type, typeof(FCMConfigConverterAttribute)))
+            if (object.ReferenceEquals(value, null) || ValueCopyPolicy<TValue>.Direct)
                 return value;
             return FCMJsonValueCodec.Deserialize<TValue>(FCMJsonValueCodec.Serialize(value));
         }
