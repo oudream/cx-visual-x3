@@ -7,6 +7,7 @@ using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Media;
 using CxVisual.TestCenter.Core;
+using CxVisual.TestCenter.Models;
 
 namespace CxVisual.TestCenter.UI
 {
