@@ -50,7 +50,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
             {
                 EnsureOpen();
                 if (_values.ContainsKey(name))
-                    throw new InvalidOperationException("数据名已存在：" + name);
+                    throw new MDSDataException(MDSDataErrorCode.NameConflict, "数据名已存在：" + name, name);
                 _values.Add(name, new MDSDataEntry(frozen, type));
             }
         }
@@ -155,7 +155,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                     if (!_values.TryGetValue(sourceName, out source))
                         throw new KeyNotFoundException("找不到源数据：" + sourceName);
                     if (target._values.ContainsKey(targetName) && !replace)
-                        throw new InvalidOperationException("目标数据名已存在：" + targetName);
+                        throw new MDSDataException(MDSDataErrorCode.NameConflict, "目标数据名已存在：" + targetName, targetName);
                     MDSDataEntry output = copy ? new MDSDataEntry(Freeze(source.Value, source.Type), source.Type) : source;
                     target._values[targetName] = output;
                     if (!copy) _values.Remove(sourceName);
