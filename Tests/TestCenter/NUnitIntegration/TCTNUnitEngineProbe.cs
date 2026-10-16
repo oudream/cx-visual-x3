@@ -18,23 +18,34 @@ namespace CxVisual.TestCenter.NUnitIntegration
             if (string.IsNullOrWhiteSpace(reportPath))
                 throw new ArgumentException("Report path is required", "reportPath");
             // The fixture exposes one intentional negative control only when explicitly requested.
+            string traceFile = reportPath + ".trace.txt";
+            Action<string> trace = stage => File.AppendAllText(traceFile,
+                DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture) + " " + stage + Environment.NewLine);
+            trace("Start " + typeof(TCTNUnitProbeFixture).Assembly.Location);
             string previous = Environment.GetEnvironmentVariable("TCT_NUNIT_EXPECT_NEGATIVE");
             Environment.SetEnvironmentVariable("TCT_NUNIT_EXPECT_NEGATIVE", expectFailure ? "1" : "0");
             try
             {
+                trace("Before CreateInstance");
                 using (ITestEngine engine = TestEngineActivator.CreateInstance())
                 {
+                    trace("Engine created");
                     TestPackage package = new TestPackage(typeof(TCTNUnitProbeFixture).Assembly.Location);
                     package.Settings["ProcessModel"] = "InProcess";
                     package.Settings["DomainUsage"] = "None";
+                    trace("Before GetRunner");
                     using (ITestRunner runner = engine.GetRunner(package))
                     {
+                        trace("Before Explore");
                         XmlNode discovered = runner.Explore(TestFilter.Empty);
+                        trace("Explore done");
                         XmlNode[] found = discovered.SelectNodes("//test-case")
                             .Cast<XmlNode>().ToArray();
                         if (found.Length != 5)
                             throw new InvalidDataException("NUnit discovery: expected five cases, got " + found.Length);
+                        trace("Before Run");
                         XmlNode run = runner.Run(null, TestFilter.Empty);
+                        trace("Run done");
                         string parent = Path.GetDirectoryName(Path.GetFullPath(reportPath));
                         if (!Directory.Exists(parent)) Directory.CreateDirectory(parent);
                         File.WriteAllText(reportPath, run.OuterXml);
@@ -51,6 +62,7 @@ namespace CxVisual.TestCenter.NUnitIntegration
                         if (expectFailure && (Read(negative, "result") != "Failed" ||
                             !negative.InnerText.Contains("TCT_NUNIT_NEGATIVE_CONTROL")))
                             throw new InvalidDataException("NUnit intentional failure lost original assertion");
+                        trace("Verified");
                         return 0;
                     }
                 }

@@ -45,8 +45,20 @@ jobs:
               $report = Join-Path $output $name
               $args = @('--nunit-probe', ('"' + $report + '"'))
               if ($negative) { $args += '--negative' }
-              $p = Start-Process -FilePath $exe -WorkingDirectory (Get-Location).Path -ArgumentList $args -Wait -PassThru
-              if ($p.ExitCode -ne 0) { throw "NUnit Engine PoC failed, negative=$negative, code=$($p.ExitCode)" }
+              $p = Start-Process -FilePath $exe -WorkingDirectory (Get-Location).Path -ArgumentList $args -PassThru
+              try { Wait-Process -Id $p.Id -Timeout 90 -ErrorAction Stop }
+              catch {
+                  Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+                  throw "NUnit Engine PoC timed out after 90 seconds; negative=$negative"
+              }
+              $p.Refresh()
+              $trace = "$report.trace.txt"
+              if (Test-Path $trace) { Get-Content -LiteralPath $trace | ForEach-Object { Write-Host "NUnit trace: $_" } }
+              if ($p.ExitCode -ne 0) {
+                  $hostErrorFile = Join-Path ([System.IO.Path]::GetTempPath()) 'CxVisual-TestCenter-HostError.txt'
+                  if (Test-Path $hostErrorFile) { Get-Content -LiteralPath $hostErrorFile | Write-Host }
+                  throw "NUnit Engine PoC failed, negative=$negative, code=$($p.ExitCode)"
+              }
               if (-not (Test-Path $report)) { throw "NUnit PoC report missing: $report" }
               [xml]$xml = Get-Content -LiteralPath $report -Raw
               $cases = @($xml.SelectNodes('//test-case'))
@@ -133,6 +145,7 @@ jobs:
           path: |
             Output/Debug/x64/Build.log
             Output/Debug/x64/DependencyAudit.csv
+            Output/Debug/x64/NUnitProbe.*.trace.txt
             Output/Debug/x64/NUnitProbe.positive.xml
             Output/Debug/x64/NUnitProbe.negative.xml
             Output/Debug/x64/TestCenter.junit.xml
