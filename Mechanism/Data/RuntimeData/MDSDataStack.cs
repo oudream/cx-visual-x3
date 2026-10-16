@@ -39,6 +39,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         private readonly object _gate = new object();
         private readonly IFDEExecutionDataScope _root;
         private readonly bool _ownsRoot;
+        public MDSDataHeap FlowHeap { get; private set; }
         private readonly HashSet<string> _active = new HashSet<string>(StringComparer.Ordinal);
         private readonly Dictionary<string, IDictionary<string, object>> _committed =
             new Dictionary<string, IDictionary<string, object>>(StringComparer.Ordinal);
@@ -48,6 +49,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         {
             _ownsRoot = root == null;
             _root = root ?? MDEExecutionDataScope.CreateRoot("data-" + Guid.NewGuid().ToString("N"));
+            FlowHeap = new MDSDataHeap();
         }
 
         public IFDEExecutionDataScope RootScope { get { return _root; } }
@@ -142,7 +144,8 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 _closed = true;
                 _committed.Clear();
             }
-            if (_ownsRoot) _root.Dispose();
+            try { FlowHeap.Dispose(); }
+            finally { if (_ownsRoot) _root.Dispose(); }
         }
     }
 
@@ -159,7 +162,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
             _scope = scope;
             InvocationId = id;
             Data = new MDSDataContext(scope, inputs, outputs,
-                committed => owner.Publish(id, committed));
+                committed => owner.Publish(id, committed), owner.FlowHeap);
         }
         public string InvocationId { get; private set; }
         public IMDSDataContext Data { get; private set; }
@@ -184,6 +187,50 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         private void AbortWhileClosing()
         {
             ((MDSDataContext)Data).AbortOutputs();
+        }
+    }
+
+    /// <summary>
+    /// 同一进程内Heap/Stack转移；Scope锁始终先于Heap锁。
+    /// 所有普通读写也持有对应容器锁，成功转移不会向观察者暴露半成品。
+    /// 外部文件、设备句柄与Owned释放回调不参与本P0转移。
+    /// </summary>
+    internal static class MDSDataTransfer
+    {
+        internal static void Apply(IFDEExecutionDataScope dataScope, MDSDataHeap heap,
+            string from, string to, bool toHeap, bool move, bool replace)
+        {
+            if (heap == null) throw new InvalidOperationException("当前上下文没有FlowHeap");
+            MDEExecutionDataScope scope = dataScope as MDEExecutionDataScope;
+            if (scope == null)
+                throw new NotSupportedException("Move/Copy要求使用既有MDE执行作用域");
+            if (string.IsNullOrWhiteSpace(from) || string.IsNullOrWhiteSpace(to))
+                throw new ArgumentException("来源或目标名称为空");
+            lock (scope.SyncRoot)
+            {
+                lock (heap.SyncRoot)
+                {
+                    if (toHeap)
+                    {
+                        object value = scope.TransferPeek(from);
+                        if (move) scope.TransferCheckDetachable(from);
+                        // 复制准备先于目标可见性变更。
+                        object safe = MDSDataSafety.Capture(value);
+                        bool exists = heap.Contains(to);
+                        if (exists && !replace)
+                            throw new InvalidOperationException("目标Heap名称已存在：" + to);
+                        if (exists) heap.Replace(to, safe);
+                        else heap.Set(to, safe);
+                        if (move) scope.TransferDetach(from);
+                    }
+                    else
+                    {
+                        object safe = heap.Get<object>(from);
+                        scope.TransferStore(to, MDSDataSafety.Capture(safe), replace);
+                        if (move) heap.Remove(from);
+                    }
+                }
+            }
         }
     }
 }
