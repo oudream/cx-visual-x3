@@ -54,6 +54,23 @@ jobs:
           New-Item -ItemType Directory -Force 'Output/Debug/x64' | Out-Null
           & msbuild 'CxVisual.Unified.sln' /m:1 /t:Rebuild /p:Configuration=Debug /p:Platform=x64 /nologo /v:minimal "/flp:logfile=Output/Debug/x64/Build.log;verbosity=normal"
           if ($LASTEXITCODE -ne 0) { throw "MSBuild failed: $LASTEXITCODE" }
+      - name: Verify actual WPF Shell and Viewer binding
+        shell: powershell
+        run: |
+          $exe = (Resolve-Path 'Output/Debug/x64/CxVisual.TestCenter.exe').Path
+          $p = Start-Process -FilePath $exe -WorkingDirectory (Get-Location).Path -ArgumentList @('--ui-smoke') -PassThru
+          try { Wait-Process -Id $p.Id -Timeout 45 -ErrorAction Stop }
+          catch {
+              Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+              throw 'WPF Shell smoke process timed out'
+          }
+          $p.Refresh()
+          if ($p.ExitCode -ne 0) {
+              $err = Join-Path ([System.IO.Path]::GetTempPath()) 'CxVisual-TestCenter-HostError.txt'
+              if (Test-Path $err) { Get-Content -LiteralPath $err | Write-Host }
+              throw "WPF Shell smoke returned $($p.ExitCode)"
+          }
+          Write-Host 'PASS WPF Shell binds real TCT result and ordered events'
       - name: NUnit Engine real assembly discovery and execution
         shell: powershell
         run: |
@@ -162,6 +179,36 @@ jobs:
               }
               Write-Host "PASS native NUnit state $scenario => TCT nonpassing"
           }
+      - name: Verify Worker event Artifact roundtrip
+        shell: powershell
+        run: |
+          $exe = (Resolve-Path 'Output/Debug/x64/CxVisual.TestCenter.exe').Path
+          $report = Join-Path (Get-Location) 'Output/Debug/x64/TestCenter.events.json'
+          $p = Start-Process -FilePath $exe -WorkingDirectory (Get-Location).Path -ArgumentList @('--run','--id','TCT.DEV.002','--report',('"' + $report + '"'),'--format','json','--isolate') -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Event artifact test failed code=$($p.ExitCode)" }
+          $data = Get-Content -LiteralPath $report -Raw | ConvertFrom-Json
+          if ([int]$data.total -ne 1 -or $data.cases[0].status -ne 'Passed') { throw 'Unexpected event case status' }
+          $events = @($data.cases[0].artifacts | Where-Object {
+              $_.mime -eq 'application/vnd.cxvisual.test-events'
+          })
+          if ($events.Count -ne 1 -or $events[0].attemptId -ne $data.cases[0].attemptId) {
+              throw 'Cross-process event artifact missing/cross-attempt'
+          }
+          $artifact = Join-Path ([System.IO.Path]::GetTempPath()) ('CxVisual-TCT-Evidence/' + $data.runId + '/' + $events[0].RelativePath)
+          if (-not (Test-Path $artifact)) {
+              $artifact = Join-Path ([System.IO.Path]::GetTempPath()) ('CxVisual-TCT-Evidence/' + $data.runId + '/' + $events[0].relativePath)
+          }
+          if (-not (Test-Path $artifact)) { throw 'Event artifact cannot be reopened' }
+          $sha = (Get-FileHash -LiteralPath $artifact -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($sha -ne [string]$events[0].sha256) { throw 'Event artifact content hash mismatch' }
+          $lines = @(Get-Content -LiteralPath $artifact)
+          if ($lines.Count -lt 3) { throw "Only $($lines.Count) persisted events" }
+          $index = 0
+          foreach ($line in $lines) {
+              $index++
+              if (-not $line.StartsWith(($index.ToString() + '|'))) { throw 'Broken event sequence' }
+          }
+          Write-Host "PASS Worker event artifact $($lines.Count) events; SHA256 verified"
       - name: Parallel repeat and history regression
         shell: powershell
         run: |
@@ -224,6 +271,7 @@ jobs:
             Output/Debug/x64/NUnitProbe.*.trace.txt
             Output/Debug/x64/NUnitProbe.positive.xml
             Output/Debug/x64/NUnitProbe.negative.xml
+            Output/Debug/x64/TestCenter.events.json
             Output/Debug/x64/TestCenter.junit.xml
             Output/Debug/x64/TestCenter.parallel.junit.xml
             Output/Debug/x64/TestCenter.nunit-failure.junit.xml

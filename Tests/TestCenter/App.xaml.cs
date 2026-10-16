@@ -67,6 +67,33 @@ namespace CxVisual.TestCenter.UI
                     TCTWireCodec.Write(e.Args[2], result);
                     exit = 0; // 结果状态在结构化文件内，不能用退出码代替断言状态。
                 }
+                else if (command == "--ui-smoke")
+                {
+                    if (e.Args.Length != 1) throw new ArgumentException("--ui-smoke takes no arguments");
+                    // Real WPF elements, real registered test, and real TCT observations;
+                    // not a mock screenshot or substitute for user interaction testing.
+                    TCTMainWindow window = new TCTMainWindow();
+                    try
+                    {
+                        ITCTTestCase test = catalog.Cases.Single(x => x.Descriptor.Id == "TCT.CORE.001");
+                        TCTTestAttempt attempt = new TCTTestAttempt(Guid.NewGuid().ToString("N"),
+                            test.Descriptor.Id, 0, 20261016);
+                        System.Collections.Generic.List<TCTTestEvent> events =
+                            new System.Collections.Generic.List<TCTTestEvent>();
+                        TCTTestCaseResult actual = await TCTTestRunner.RunOneAsync(test,
+                            CancellationToken.None, 20261016, attempt, null, events.Add);
+                        if (actual.Status != TCTTestStatus.Passed || events.Count < 3)
+                            throw new InvalidOperationException("WPF smoke actual test/stream is not successful");
+                        window.Results.Add(actual);
+                        window.Inspector.ShowResult(actual);
+                        window.DocumentHost.ShowResult(actual);
+                        foreach (TCTTestEvent evt in events) window.Timeline.AddEvent(evt);
+                        if (window.Timeline.EventCount != events.Count)
+                            throw new InvalidOperationException("WPF Timeline did not bind real event count");
+                        exit = 0;
+                    }
+                    finally { window.Close(); }
+                }
                 else if (command == "--run")
                 {
                     TCTTestRunRequest request = new TCTTestRunRequest();
