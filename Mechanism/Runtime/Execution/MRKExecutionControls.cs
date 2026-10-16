@@ -17,6 +17,19 @@ namespace CxVisual.Mechanism.Runtime.Execution
         public DateTime TimestampUtc { get; private set; }
     }
 
+    /// <summary>
+    /// 按序号增量读取，若UI断线过久产生数据缺口，必须主动重新获取Flow状态快照。
+    /// </summary>
+    public sealed class MRKTraceBatch
+    {
+        internal MRKTraceBatch(IList<MRKExecutionTransition> changes, long cursor, long lost)
+        { Changes = changes; NextCursor = cursor; LostCount = lost; }
+        public IList<MRKExecutionTransition> Changes { get; private set; }
+        public long NextCursor { get; private set; }
+        public long LostCount { get; private set; }
+        public bool HasGap { get { return LostCount > 0; } }
+    }
+
     /// <summary>有界执行轨迹，防止长期运行的流程无限占用监控内存。</summary>
     public sealed class MRKExecutionTrace
     {
@@ -42,6 +55,20 @@ namespace CxVisual.Mechanism.Runtime.Execution
         public IList<MRKExecutionTransition> Snapshot()
         { lock (_gate) return new ReadOnlyCollection<MRKExecutionTransition>(
             new List<MRKExecutionTransition>(_items)); }
+        public MRKTraceBatch ReadSince(long lastSequence)
+        {
+            if (lastSequence < 0) throw new ArgumentOutOfRangeException("lastSequence");
+            lock (_gate)
+            {
+                long first = _items.Count == 0 ? _sequence + 1 : _items.Peek().Sequence;
+                long lost = lastSequence < first - 1 ? first - 1 - lastSequence : 0;
+                List<MRKExecutionTransition> changes = new List<MRKExecutionTransition>();
+                foreach (MRKExecutionTransition item in _items)
+                    if (item.Sequence > lastSequence) changes.Add(item);
+                return new MRKTraceBatch(
+                    new ReadOnlyCollection<MRKExecutionTransition>(changes), _sequence, lost);
+            }
+        }
     }
 
     /// <summary>

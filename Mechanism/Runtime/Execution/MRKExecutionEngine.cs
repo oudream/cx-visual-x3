@@ -33,7 +33,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
         private readonly ConcurrentQueue<string> _completedOrder = new ConcurrentQueue<string>();
         internal MRKExecutionContext(string planId, IDictionary<string, object> inputs,
             MRKFlowMetadata metadata = null, IFDEExecutionDataScope dataSpace = null,
-            IMRKExecutionJournal journal = null)
+            IMRKExecutionJournal journal = null, int traceCapacity = 2048)
         {
             FlowId = Guid.NewGuid();
             PlanId = planId;
@@ -41,7 +41,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
             _scopePrefix = string.Empty;
             _journal = journal;
             _dataScope = dataSpace == null ? null : dataSpace.CreateChild("flow-" + FlowId.ToString("N"));
-            _trace = new MRKExecutionTrace();
+            _trace = new MRKExecutionTrace(traceCapacity);
             _boundInputs = new ReadOnlyDictionary<string, object>(new Dictionary<string, object>());
             _inputs = new ReadOnlyDictionary<string, object>(new Dictionary<string, object>(
                 inputs ?? new Dictionary<string, object>(), StringComparer.Ordinal));
@@ -293,6 +293,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
         private readonly MRKExecutionGroups _groups;
         private readonly IMRKExecutionJournal _journal;
         private readonly Dictionary<string, FCRDedicatedExecutor> _dedicated;
+        private readonly int _traceCapacity;
         private readonly object _lifecycleGate = new object();
         private readonly Dictionary<Guid, MRKFlowHandle> _activeFlows =
             new Dictionary<Guid, MRKFlowHandle>();
@@ -304,11 +305,14 @@ namespace CxVisual.Mechanism.Runtime.Execution
             MRKResourceLeaseCoordinator coordinator = null,
             IEnumerable<MRKExecutionGroupDefinition> groups = null,
             IMRKExecutionJournal journal = null,
-            IDictionary<string, FCRDedicatedExecutor> dedicatedExecutors = null)
+            IDictionary<string, FCRDedicatedExecutor> dedicatedExecutors = null,
+            int traceCapacity = 2048)
         {
             _worker = new FCRWorker(options);
             _resources = coordinator ?? new MRKResourceLeaseCoordinator();
             _groups = new MRKExecutionGroups(groups);
+            if (traceCapacity < 1) throw new ArgumentOutOfRangeException("traceCapacity");
+            _traceCapacity = traceCapacity;
             _journal = journal;
             _dedicated = new Dictionary<string, FCRDedicatedExecutor>(StringComparer.Ordinal);
             if (dedicatedExecutors != null)
@@ -494,7 +498,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
             {
                 if (_stopping) throw new InvalidOperationException("运行引擎已经停止接收新流程");
                 MRKExecutionContext context = new MRKExecutionContext(plan.Id,
-                    inputs, metadata, dataSpace, _journal);
+                    inputs, metadata, dataSpace, _journal, _traceCapacity);
                 try
                 {
                     if (_journal != null)

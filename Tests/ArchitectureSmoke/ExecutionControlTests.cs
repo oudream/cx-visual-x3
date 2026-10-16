@@ -15,6 +15,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             DebugBreakpointStepAndResume();
             CancellationUnblocksPausedFlow();
             BoundedTraceDropsOldest();
+            TraceCursorDetectsLostTransitions();
             StopDrainsOrCancelsEntireFlow();
             ResourcesAreDeclarativeAndDoNotBlockWorker();
         }
@@ -212,6 +213,31 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(result.State == MRKFlowState.Completed &&
                 secondStarted == 1 && (int)result.Results["unrelated"] == 3,
                 "resource acquisition/release did not complete");
+            Await(engine.StopAsync());
+        }
+
+        private static void TraceCursorDetectsLostTransitions()
+        {
+            MRKExecutionPlan plan = new MRKExecutionPlan("tracecursor", new[]
+            {
+                new MRKExecutionStep("A", new string[0],
+                    (ctx,ct) => Task.FromResult((object)1)),
+                new MRKExecutionStep("B", new []{"A"},
+                    (ctx,ct) => Task.FromResult((object)2))
+            });
+            MRKExecutionEngine engine = new MRKExecutionEngine(
+                new FCRWorkerOptions(2,4), traceCapacity:2);
+            MRKFlowHandle flow = engine.StartFlow(plan);
+            Check(Await(flow.Completion).State == MRKFlowState.Completed,
+                "trace cursor baseline flow failed");
+            MRKTraceBatch first = flow.Context.Trace.ReadSince(0);
+            Check(first.Changes.Count == 2 && first.HasGap && first.LostCount > 0 &&
+                first.Changes[1].Sequence == first.NextCursor,
+                "trace ring buffer did not report lost records");
+            MRKTraceBatch next = flow.Context.Trace.ReadSince(first.NextCursor);
+            Check(!next.HasGap && next.Changes.Count == 0 &&
+                next.NextCursor == first.NextCursor,
+                "incremental cursor replayed old transitions");
             Await(engine.StopAsync());
         }
 
