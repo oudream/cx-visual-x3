@@ -70,6 +70,19 @@ namespace CxVisual.Mechanism.Runtime.Execution
             return new MRKPlanPublicationReceipt(revision, true, compile.Diagnostics);
         }
 
+        /// <summary>多级子流程编排同样使用唯一Publisher/PlanSlot，不建立平行发布路径。</summary>
+        public MRKPlanPublicationReceipt CompileAndStageOrchestration(string principal,
+            string rootId, IMRKFlowCompileCatalog catalog,
+            IMRKCapabilityResolver resolver, long revision)
+        {
+            MRKCompileResult compiled = new MRKExecutionOrchestrationCompiler()
+                .Compile(rootId, catalog, resolver);
+            if (!compiled.Succeeded)
+                return new MRKPlanPublicationReceipt(revision, false, compiled.Diagnostics);
+            StageCore(principal, compiled.Plan, revision, false);
+            return new MRKPlanPublicationReceipt(revision, true, compiled.Diagnostics);
+        }
+
         private void StageCore(string principal, MRKExecutionPlan plan,
             long revision, bool rollback)
         {

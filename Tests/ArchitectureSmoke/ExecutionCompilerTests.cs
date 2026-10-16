@@ -36,6 +36,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             RejectsGraphCycleBeforeAnyExecution();
             AuthorizedPublishingAndSafeRollback();
             NestedOrchestrationRunsAndSkipsCorrectly();
+            NestedOrchestrationUsesAuthorizedPublisher();
         }
         private static void Check(bool ok, string msg)
         { if (!ok) throw new InvalidOperationException("计划编译：" + msg); }
@@ -233,6 +234,56 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(!bad.Succeeded && bad.Plan==null &&
                     bad.Diagnostics.Any(x=>x.Code=="INVALID_ORCHESTRATION"),
                     "子流程循环引用未在编译期拒绝");
+            }
+            finally { Wait(engine.StopAsync()); }
+        }
+
+        private static void NestedOrchestrationUsesAuthorizedPublisher()
+        {
+            MRKExecutionPlan initial=new MRKExecutionPlan("baseline",new[]{
+                new MRKExecutionStep("old",new string[0],
+                    (c,t)=>Task.FromResult((object)1))
+            });
+            MRKExecutionPlanSlot slot=new MRKExecutionPlanSlot(initial,1,true);
+            SimulatedPublicationPolicy policy=new SimulatedPublicationPolicy();
+            policy.Safe=true;
+            MRKExecutionPlanPublisher publisher=
+                new MRKExecutionPlanPublisher(slot,initial,1,policy);
+            FlowCatalog catalog=new FlowCatalog();
+            catalog.Add("child",new MRKStepCompileRequest("action","Calculate"));
+            catalog.Add("root",new MRKStepCompileRequest("call",null,subflowId:"child"));
+            Resolver resolver=new Resolver((c,t)=>Task.FromResult((object)42));
+            MRKPlanPublicationReceipt denied=null;
+            bool unauthorized=false;
+            try
+            {
+                denied=publisher.CompileAndStageOrchestration("viewer","root",
+                    catalog,resolver,2);
+            }
+            catch(UnauthorizedAccessException){unauthorized=true;}
+            Check(unauthorized && denied==null && !publisher.PendingRevision.HasValue,
+                "未经授权的多层编排被正式发布");
+            MRKPlanPublicationReceipt staged=publisher.CompileAndStageOrchestration(
+                "release-officer","root",catalog,resolver,2);
+            Check(staged.Accepted && publisher.PendingRevision==2 &&
+                publisher.ActiveRevision==1,
+                "多层编排未复用受保护的Plan发布通道");
+            MRKExecutionEngine engine=new MRKExecutionEngine(new FCRWorkerOptions(2,6));
+            try
+            {
+                MRKFlowResult before=Wait(engine.StartFromSlot(slot).Completion);
+                Check(before.State==MRKFlowState.Completed &&
+                    before.Metadata.PlanRevision==1 && (int)before.Results["old"]==1,
+                    "Stage误替换了正在使用的正式Plan");
+                Check(SpinWait.SpinUntil(()=>slot.RunningFlows==0,2000),
+                    "旧版本Flow租约未释放");
+                Check(publisher.TryActivate("release-officer"),
+                    "多级编排没有走统一安全发布入口");
+                MRKFlowResult result=Wait(engine.StartFromSlot(slot).Completion);
+                Check(result.State==MRKFlowState.Completed &&
+                    result.Metadata.PlanRevision==2 &&
+                    (int)result.Results["call.action"]==42,
+                    "多级编排发布后未由唯一Runtime Engine执行");
             }
             finally { Wait(engine.StopAsync()); }
         }
