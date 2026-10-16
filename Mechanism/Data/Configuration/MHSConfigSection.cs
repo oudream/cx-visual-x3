@@ -123,11 +123,11 @@ namespace CxVisual.Mechanism.Data.Configuration
             _schema = schema;
             _scope = scope;
             _store = new MHSConfigStorage(directory);
-            _savedRev = _store.Initialize(FCMJsonValueCodec.Serialize(new T()));
+            _savedRev = _store.Initialize(FCMJsonValueCodec.Serialize(new T()), SchemaContract());
             _savedJson = _store.ReadCurrent();
             _saved = FCMJsonValueCodec.Deserialize<T>(_savedJson);
             _effectiveRev = _store.ReadEffectiveOr(_savedRev);
-            _store.SetEffective(_effectiveRev); // Establish durable effective marker before any later commit.
+            // Initialize establishes the marker only once under an exclusive file lease.
             _effective = FCMJsonValueCodec.Deserialize<T>(_store.ReadVersion(_effectiveRev));
             int previous = _store.PreviousEffectiveRevision;
             if (previous > 0)
@@ -135,6 +135,21 @@ namespace CxVisual.Mechanism.Data.Configuration
                 _previousEffective = FCMJsonValueCodec.Deserialize<T>(_store.ReadVersion(previous));
                 _hasPreviousEffective = true;
             }
+        }
+        private string SchemaContract()
+        {
+            // Include all exposed schema fields and their meaningful validation metadata.
+            // The digest is stable for one model contract, independent of property order.
+            var fields = FCMConfigCatalog.Describe<T>()
+                .OrderBy(x => x.Path, StringComparer.Ordinal)
+                .Select(x => string.Join("|", new[] {
+                    x.Path, x.MemberId, x.DataType.FullName, x.Range ?? "",
+                    x.Regex ?? "", x.Required.ToString(), x.IsSensitive.ToString(),
+                    x.ApplyPolicy.ToString(), x.Unit ?? "" }));
+            string specification = _schema.SectionId + "|" +
+                _schema.SchemaVersion.ToString(System.Globalization.CultureInfo.InvariantCulture) +
+                "\n" + string.Join("\n", fields);
+            return MHSConfigPackage.Hash(specification);
         }
         internal string ScopeId { get { return _scope; } }
         public string SavedVersion { get { lock (_gate) return MHSConfigStorage.Name(_savedRev); } }
@@ -624,8 +639,23 @@ namespace CxVisual.Mechanism.Data.Configuration
                 oldValue = Clone(_effective);
                 // SetEffective is durable and must succeed before changing the in-memory snapshot.
                 effectiveTransactionId = originalTransactionId ?? Guid.NewGuid().ToString("N");
-                _store.SetEffective(_savedRev, effectiveTransactionId,
-                    FCMConfigDiffUtil.Diff(oldValue, _saved));
+                bool persisted;
+                try
+                {
+                    persisted = _store.TrySetEffective(activeRevision, proposedRevision, _savedJson,
+                        effectiveTransactionId, FCMConfigDiffUtil.Diff(oldValue, _saved));
+                }
+                catch (System.IO.IOException)
+                {
+                    return new MHSConfigApplyResult { Applied = false, Status = "APPLY_STORAGE_ERROR",
+                        Reason = "配置生效存储暂时不可用",
+                        SavedVersion = SavedVersion, EffectiveVersion = EffectiveVersion,
+                        RequiredBoundary = required };
+                }
+                if (!persisted)
+                    return new MHSConfigApplyResult { Applied = false, Status = "APPLY_VERSION_CONFLICT",
+                        SavedVersion = SavedVersion, EffectiveVersion = EffectiveVersion,
+                        RequiredBoundary = required };
                 _previousEffective = oldValue;
                 _hasPreviousEffective = true;
                 _effective = Clone(_saved);

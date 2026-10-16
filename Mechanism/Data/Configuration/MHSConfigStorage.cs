@@ -14,6 +14,7 @@ namespace CxVisual.Mechanism.Data.Configuration
     {
         private readonly string _folder;
         private readonly string _current;
+        private readonly string _schemaContract;
         private readonly string _history;
         private readonly string _effective;
         private readonly string _previousEffective;
@@ -23,6 +24,7 @@ namespace CxVisual.Mechanism.Data.Configuration
         {
             _folder = folder;
             _current = Path.Combine(folder, "current.json");
+            _schemaContract = Path.Combine(folder, "schema.contract");
             _history = Path.Combine(folder, "history");
             _effective = Path.Combine(folder, "effective.txt");
             _previousEffective = Path.Combine(folder, "previous-effective.txt");
@@ -65,17 +67,42 @@ namespace CxVisual.Mechanism.Data.Configuration
             SaveVersion(next, json);
             return next;
         }
-        public int Initialize(string defaults)
+        /// <summary>Fail closed when persisted data has no matching schema identity.
+        /// A legacy unversioned document requires an explicit reviewed migration.</summary>
+        public int Initialize(string defaults, string schemaContract)
         {
-            if (!HasCurrent) AtomicReplace(_current, defaults);
-            return IdentifyCurrent(ReadCurrent());
+            if (string.IsNullOrWhiteSpace(schemaContract)) throw new ArgumentException("Schema contract required");
+            using (FileStream lease = AcquireWriteLease())
+            {
+                if (File.Exists(_schemaContract))
+                {
+                    if (!string.Equals(File.ReadAllText(_schemaContract, Utf8), schemaContract,
+                        StringComparison.Ordinal))
+                        throw new InvalidOperationException("CONFIG_SCHEMA_MISMATCH");
+                }
+                else if (HasCurrent)
+                    throw new InvalidOperationException("CONFIG_SCHEMA_METADATA_MISSING");
+                else
+                    AtomicReplace(_schemaContract, schemaContract);
+                if (!HasCurrent) AtomicReplace(_current, defaults);
+                int revision = IdentifyCurrent(ReadCurrent());
+                // Create the initial effective marker before any other writer may Commit.
+                // Reopening an existing pending configuration must never reset this marker.
+                if (!File.Exists(_effective))
+                    AtomicReplace(_effective, revision.ToString(CultureInfo.InvariantCulture));
+                return revision;
+            }
+        }
+        private FileStream AcquireWriteLease()
+        {
+            return new FileStream(Path.Combine(_folder, "write.lock"),
+                FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
         }
         public int Commit(string expectedCurrent, string newJson, MHSConfigAuditEntry audit)
         {
             // Cross-process exclusive lock for the compare-and-swap + atomic file replace.
             // A live second writer fails visibly instead of corrupting a revision sequence.
-            using (FileStream lease = new FileStream(Path.Combine(_folder, "write.lock"),
-                FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None))
+            using (FileStream lease = AcquireWriteLease())
             {
                 if (!HasCurrent || !string.Equals(ReadCurrent(), expectedCurrent, StringComparison.Ordinal))
                     throw new InvalidOperationException("CONFIG_WRITE_CONFLICT: file changed outside this configuration session");
@@ -156,11 +183,29 @@ namespace CxVisual.Mechanism.Data.Configuration
                 return n;
             }
         }
-        public void SetEffective(int revision)
-        { SetEffective(revision, null, null); }
+        /// <summary>
+        /// Saved identity and effective predecessor are compared under the same OS lease
+        /// as the durable event and pointer write; a stale session cannot claim success.
+        /// </summary>
+        public bool TrySetEffective(int expectedEffective, int expectedSaved,
+            string expectedJson, string transactionId, IList<string> changedPaths)
+        {
+            using (FileStream lease = AcquireWriteLease())
+            {
+                if (!HasCurrent || !string.Equals(ReadCurrent(), expectedJson, StringComparison.Ordinal))
+                    return false;
+                if (IdentifyCurrent(expectedJson) != expectedSaved ||
+                    ReadEffectiveOr(expectedSaved) != expectedEffective)
+                    return false;
+                if (!CommittedHistory(expectedSaved).Contains(expectedEffective))
+                    throw new InvalidOperationException("CONFIG_EFFECTIVE_ANCESTRY_MISMATCH");
+                SetEffectiveCore(expectedSaved, transactionId, changedPaths);
+                return true;
+            }
+        }
 
-        /// <summary>生效记录先持久化，指针最后移动。崩溃产生的孤立记录不会出现在有效版本链。</summary>
-        public void SetEffective(int revision, string transactionId, IList<string> changedPaths)
+        /// <summary>Journal first, pointer last; caller holds the exclusive write lease.</summary>
+        private void SetEffectiveCore(int revision, string transactionId, IList<string> changedPaths)
         {
             if (!File.Exists(RevisionFile(revision))) throw new FileNotFoundException("Missing effective revision");
             if (File.Exists(_effective))
