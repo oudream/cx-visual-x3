@@ -9,6 +9,12 @@ namespace CxVisual.Tests.ConfigFoundationSmoke
         {
             try
             {
+                if (args != null && args.Length > 0 &&
+                    (args[0] == "--config-performance-smoke" || args[0] == "--config-performance-full"))
+                {
+                    ConfigPerformanceTests.Run(args[0] == "--config-performance-full");
+                    return 0;
+                }
                 int checks = ConfigurationIntegrationTests.RunAll();
                 ConfigV13ExtensionTests.Run();
                 ConfigArchitectureCompletionTests.Run();

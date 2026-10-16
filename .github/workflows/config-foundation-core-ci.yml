@@ -18,6 +18,18 @@ jobs:
           $msbuild = (Get-Command msbuild.exe -ErrorAction Stop).Source
           & $msbuild .\Tests\ConfigFoundationSmoke\CxVisual.Tests.ConfigFoundationSmoke.csproj /m:1 /t:Rebuild /p:Configuration=Release /p:Platform=x64 /nologo /v:minimal
           if ($LASTEXITCODE -ne 0) { throw "两个配置项目编译失败" }
+      - name: 阶段D轻量并发与性能基线（不作为SLA阈值）
+        shell: pwsh
+        run: |
+          & .\Output\Release\x64\CxVisual.Tests.ConfigFoundationSmoke.exe --config-performance-smoke
+          if ($LASTEXITCODE -ne 0) { throw "配置 D 性能与数据正确性基线失败" }
+      - name: 阶段D完整规模压力（仅手工触发）
+        if: github.event_name == 'workflow_dispatch'
+        shell: pwsh
+        timeout-minutes: 40
+        run: |
+          & .\Output\Release\x64\CxVisual.Tests.ConfigFoundationSmoke.exe --config-performance-full
+          if ($LASTEXITCODE -ne 0) { throw "配置 D 完整规模压力验收失败" }
       - name: 执行基础配置场景和完整回归
         shell: pwsh
         run: |
