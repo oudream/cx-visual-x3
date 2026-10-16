@@ -102,6 +102,60 @@ namespace CxVisual.Mechanism.Data.Execution
                 return new ReadOnlyDictionary<string, object>(copy);
             }
         }
+        // 仅供Mechanism.Data的Heap/Stack受控转移使用；调用方必须持有SyncRoot。
+        // 不向一般业务暴露移除Owned数据的捷径，避免绕开Release生命周期。
+        internal object SyncRoot { get { return _gate; } }
+
+        internal object TransferPeek(string name)
+        {
+            lock (_gate)
+            {
+                EnsureOpen();
+                Entry entry;
+                if (!_local.TryGetValue(name, out entry))
+                    throw new KeyNotFoundException("局部数据不存在：" + name);
+                if (entry.Release != null)
+                    throw new InvalidOperationException("带资源释放回调的数据禁止直接转移：" + name);
+                return entry.Value;
+            }
+        }
+
+        internal void TransferStore(string name, object value, bool replace)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                throw new ArgumentException("局部数据名称不能为空", "name");
+            lock (_gate)
+            {
+                EnsureOpen();
+                Entry old;
+                if (_local.TryGetValue(name, out old))
+                {
+                    if (!replace) throw new InvalidOperationException("目标名称已存在：" + name);
+                    if (old.Release != null || _liveChildren != 0)
+                        throw new InvalidOperationException("目标正被占用或带有释放回调：" + name);
+                    _local[name] = new Entry(value, null);
+                    return;
+                }
+                _local.Add(name, new Entry(value, null));
+                _insertionOrder.Add(name);
+            }
+        }
+
+        internal void TransferDetach(string name)
+        {
+            lock (_gate)
+            {
+                EnsureOpen();
+                Entry existing;
+                if (!_local.TryGetValue(name, out existing))
+                    throw new KeyNotFoundException("局部数据不存在：" + name);
+                if (existing.Release != null || _liveChildren != 0)
+                    throw new InvalidOperationException("来源正被占用或带有释放回调：" + name);
+                _local.Remove(name);
+                _insertionOrder.Remove(name);
+            }
+        }
+
         public void Dispose()
         {
             List<Action> releases = new List<Action>();
