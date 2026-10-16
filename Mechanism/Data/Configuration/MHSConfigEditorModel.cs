@@ -74,6 +74,118 @@ namespace CxVisual.Mechanism.Data.Configuration
             if (_states.Count > _maxStates) { _states.RemoveAt(0); _position--; }
             _edit.ReplaceWorkingCopy(detached);
         }
+        /// <summary>
+        /// Strongly typed single/path assignment. Nested dictionary keys and list
+        /// indices use the existing path engine; no UI-side JSON editing is required.
+        /// Failures occur on a detached copy and never mutate undo history.
+        /// </summary>
+        public void SetValue<V>(System.Linq.Expressions.Expression<Func<T, V>> selector, V value)
+        {
+            EnsureOpen();
+            if (selector == null) throw new ArgumentNullException("selector");
+            string path = FCMConfigPathUtil.FromExpression(selector);
+            string json = FCMJsonValueCodec.Serialize(value);
+            MVBConfigLayerPath.Validate<T>(path, json);
+            Modify(x => MVBConfigLayerPath.Apply(x, path, json));
+        }
+
+        /// <summary>Dictionary keys are string-typed, as required by the common codec.</summary>
+        public void AddKey<V>(System.Linq.Expressions.Expression<Func<T, Dictionary<string, V>>> selector,
+            string key, V value)
+        {
+            if (selector == null) throw new ArgumentNullException("selector");
+            if (key == null) throw new ArgumentNullException("key");
+            Func<T, Dictionary<string, V>> read = selector.Compile();
+            RequireDefaultComparer(read(_edit.WorkingCopy));
+            Modify(x => read(x).Add(key, value));
+        }
+        public void RenameKey<V>(System.Linq.Expressions.Expression<Func<T, Dictionary<string, V>>> selector,
+            string from, string to)
+        {
+            if (selector == null) throw new ArgumentNullException("selector");
+            if (from == null || to == null) throw new ArgumentNullException(from == null ? "from" : "to");
+            Func<T, Dictionary<string, V>> read = selector.Compile();
+            RequireDefaultComparer(read(_edit.WorkingCopy));
+            Modify(x =>
+            {
+                Dictionary<string, V> dict = read(x);
+                if (!dict.ContainsKey(from)) throw new KeyNotFoundException("CONFIG_EDITOR_KEY_MISSING");
+                if (string.Equals(from, to, StringComparison.Ordinal)) return;
+                if (dict.ContainsKey(to)) throw new ArgumentException("CONFIG_EDITOR_DUPLICATE_KEY");
+                V item = dict[from];
+                dict.Remove(from);
+                dict.Add(to, item);
+            });
+        }
+        public void RemoveKey<V>(System.Linq.Expressions.Expression<Func<T, Dictionary<string, V>>> selector,
+            string key)
+        {
+            if (selector == null) throw new ArgumentNullException("selector");
+            if (key == null) throw new ArgumentNullException("key");
+            Func<T, Dictionary<string, V>> read = selector.Compile();
+            RequireDefaultComparer(read(_edit.WorkingCopy));
+            Modify(x =>
+            {
+                if (!read(x).Remove(key)) throw new KeyNotFoundException("CONFIG_EDITOR_KEY_MISSING");
+            });
+        }
+        public void InsertItem<V>(System.Linq.Expressions.Expression<Func<T, List<V>>> selector,
+            int index, V value)
+        {
+            if (selector == null) throw new ArgumentNullException("selector");
+            Func<T, List<V>> read = selector.Compile();
+            Modify(x => read(x).Insert(index, value));
+        }
+        public void RemoveItemAt<V>(System.Linq.Expressions.Expression<Func<T, List<V>>> selector, int index)
+        {
+            if (selector == null) throw new ArgumentNullException("selector");
+            Func<T, List<V>> read = selector.Compile();
+            Modify(x => read(x).RemoveAt(index));
+        }
+        /// <summary>toIndex is the FINAL position after removing the source item.</summary>
+        public void MoveItem<V>(System.Linq.Expressions.Expression<Func<T, List<V>>> selector,
+            int fromIndex, int toIndex)
+        {
+            if (selector == null) throw new ArgumentNullException("selector");
+            Func<T, List<V>> read = selector.Compile();
+            Modify(x =>
+            {
+                List<V> list = read(x);
+                if (fromIndex < 0 || fromIndex >= list.Count ||
+                    toIndex < 0 || toIndex >= list.Count) throw new ArgumentOutOfRangeException("index");
+                if (fromIndex == toIndex) return;
+                V item = list[fromIndex];
+                list.RemoveAt(fromIndex);
+                list.Insert(toIndex, item);
+            });
+        }
+        public void AddSetItem<V>(System.Linq.Expressions.Expression<Func<T, HashSet<V>>> selector, V value)
+        {
+            if (selector == null) throw new ArgumentNullException("selector");
+            Func<T, HashSet<V>> read = selector.Compile();
+            RequireDefaultComparer(read(_edit.WorkingCopy));
+            Modify(x => read(x).Add(value));
+        }
+        public void RemoveSetItem<V>(System.Linq.Expressions.Expression<Func<T, HashSet<V>>> selector, V value)
+        {
+            if (selector == null) throw new ArgumentNullException("selector");
+            Func<T, HashSet<V>> read = selector.Compile();
+            RequireDefaultComparer(read(_edit.WorkingCopy));
+            Modify(x => read(x).Remove(value));
+        }
+        private static void RequireDefaultComparer<V>(Dictionary<string, V> value)
+        {
+            if (value == null) throw new InvalidOperationException("CONFIG_EDITOR_NULL_COLLECTION");
+            if (!value.Comparer.Equals(EqualityComparer<string>.Default))
+                throw new NotSupportedException("CONFIG_EDITOR_CUSTOM_COMPARER_UNSUPPORTED");
+        }
+        private static void RequireDefaultComparer<V>(HashSet<V> value)
+        {
+            if (value == null) throw new InvalidOperationException("CONFIG_EDITOR_NULL_COLLECTION");
+            if (!value.Comparer.Equals(EqualityComparer<V>.Default))
+                throw new NotSupportedException("CONFIG_EDITOR_CUSTOM_COMPARER_UNSUPPORTED");
+        }
+
         public bool Undo()
         {
             EnsureOpen();
