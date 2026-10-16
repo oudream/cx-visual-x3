@@ -12,6 +12,7 @@ namespace CxVisual.Tests.FoundationSmoke
             KeyedSerialAndAsyncWaiting();
             QueueOverflowAndDrop();
             CancellationAndGracefulStop();
+            ExternalCancellationFreesQueuedCapacity();
             TimeoutDoesNotStopUnderlyingWork();
             ErrorIsObservable();
             DeveloperConvenienceAndKeyedStress();
@@ -107,6 +108,53 @@ namespace CxVisual.Tests.FoundationSmoke
             gate.TrySetResult(true);
             Await(stop);
             Check(Await(running.Completion).Succeeded, "graceful drain interrupted running work");
+        }
+
+
+        private static void ExternalCancellationFreesQueuedCapacity()
+        {
+            FCRWorker worker = new FCRWorker(new FCRWorkerOptions(
+                1, 1, pendingByteBudget: 32));
+            TaskCompletionSource<bool> entered = Gate(), release = Gate();
+            CancellationTokenSource queuedCancel = new CancellationTokenSource();
+            FCRWorkHandle<int> first = worker.Submit<int>(async ct =>
+            {
+                entered.TrySetResult(true);
+                await release.Task.ConfigureAwait(false);
+                return 1;
+            }, "line");
+            try
+            {
+                Await(entered.Task);
+                int unintended = 0;
+                FCRWorkHandle<int> queued = worker.Submit<int>(ct =>
+                {
+                    Interlocked.Increment(ref unintended);
+                    return Task.FromResult(2);
+                }, "line", cancellation:queuedCancel.Token, estimatedBytes:24);
+                Check(queued.Accepted && worker.GetSnapshot().Pending == 1 &&
+                    worker.GetSnapshot().PendingBytes == 24,
+                    "外部取消前没有正确预留待运行预算");
+                queuedCancel.Cancel();
+                Check(Await(queued.Completion).State == FCRWorkState.Cancelled &&
+                    worker.GetSnapshot().Pending == 0 &&
+                    worker.GetSnapshot().PendingBytes == 0 && unintended == 0,
+                    "外部Token取消未立即移除排队项/释放字节预算");
+                FCRWorkHandle<int> successor = worker.Submit<int>(
+                    ct => Task.FromResult(3), "line", estimatedBytes:30);
+                Check(successor.Accepted && worker.GetSnapshot().PendingBytes == 30,
+                    "已取消工作阻塞了后续新工作的准入");
+                release.TrySetResult(true);
+                Check(Await(first.Completion).Succeeded &&
+                    Await(successor.Completion).Value == 3,
+                    "取消后续工作时错误影响正在运行和后续任务");
+            }
+            finally
+            {
+                release.TrySetResult(true);
+                queuedCancel.Dispose();
+                Await(worker.StopAsync(true));
+            }
         }
 
         private static void TimeoutDoesNotStopUnderlyingWork()

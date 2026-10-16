@@ -191,6 +191,17 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
                 job.Handle.Accepted = true;
                 launch.AddRange(PumpLocked());
             }
+            // 外部Token取消排队工作时，立即归还队列数量与字节预算。
+            // 在锁外注册回调，防止已取消Token的同步回调重入_gate。
+            if (cancellation.CanBeCanceled)
+            {
+                CancellationTokenRegistration registration =
+                    cancellation.Register(() => RequestCancel(job));
+                // 不在完成工作/Worker锁中同步等待取消回调注销。
+                Task cleanup = job.Handle.Completion.ContinueWith(done =>
+                    registration.Dispose(), CancellationToken.None,
+                    TaskContinuationOptions.None, TaskScheduler.Default);
+            }
             LaunchInstance(launch);
             return job.Handle;
         }
