@@ -5,6 +5,7 @@ using System.Globalization;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -35,6 +36,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         private bool _saved;
         private int _count;
         private IDictionary<string, MHSConfigEditorField> _fieldStates;
+        private readonly Dictionary<string, int> _visibleCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+        private const int PageSize = 150;
         public bool WasSaved { get { return _saved; } }
         public T Draft { get { EnsureActive(); return _editor.Draft; } }
         public int VisibleEditorCount { get { return _count; } }
@@ -360,6 +363,23 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                     TextWrapping = TextWrapping.Wrap
                 });
         }
+        private int VisibleCount(string path)
+        {
+            int count;
+            return _visibleCounts.TryGetValue(path, out count) ? count : PageSize;
+        }
+        private void More(Panel host, string path, int total, int displayed)
+        {
+            if (displayed >= total) return;
+            host.Children.Add(new TextBlock {
+                Text = "已显示 " + displayed + " / " + total + " 项（分批加载，避免大型字典阻塞窗口）",
+                Foreground = Brushes.SlateGray, Margin = new Thickness(4, 4, 4, 2)
+            });
+            host.Children.Add(MakeButton("再显示 " + PageSize + " 项", () => {
+                _visibleCounts[path] = Math.Min(total, displayed + PageSize);
+                RefreshAll();
+            }));
+        }
         private void RenderCollection(Panel host, Type type, object value, string path, int depth)
         {
             Type[] args = type.IsArray ? new[] { type.GetElementType() } : type.GetGenericArguments();
@@ -373,7 +393,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 add.Children.Add(MakeButton("增加键", () => Execute(() =>
                     _editor.AddMapItem(path, newKey.Text, DefaultJson(args[1])))));
                 host.Children.Add(add);
-                foreach (DictionaryEntry entry in (IDictionary)value)
+                IDictionary dict = (IDictionary)value;
+                int shown = Math.Min(dict.Count, VisibleCount(path));
+                foreach (DictionaryEntry entry in dict.Cast<DictionaryEntry>().Take(shown))
                 {
                     string key = (string)entry.Key, child = path + "[" + FCMJsonValueCodec.Serialize(key) + "]";
                     StackPanel actions = new StackPanel { Orientation = Orientation.Horizontal };
@@ -385,6 +407,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                     host.Children.Add(actions);
                     RenderValue(host, args[1], entry.Value, child, "键: " + key, depth, false, null);
                 }
+                More(host, path, dict.Count, shown);
                 return;
             }
             if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(HashSet<>))
@@ -396,7 +419,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 add.Children.Add(MakeButton("增加元素", () => Execute(() =>
                     _editor.AddSetJson(path, ToConfigJson(input.Text, args[0])))));
                 host.Children.Add(add);
-                foreach (object item in (IEnumerable)value)
+                int total = ((IEnumerable)value).Cast<object>().Count();
+                int shown = Math.Min(total, VisibleCount(path));
+                foreach (object item in ((IEnumerable)value).Cast<object>().Take(shown))
                 {
                     string json = FCMJsonValueCodec.Serialize(item);
                     StackPanel row = new StackPanel { Orientation = Orientation.Horizontal };
@@ -406,6 +431,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                         _editor.RemoveSetJson(path, json))));
                     host.Children.Add(row);
                 }
+                More(host, path, total, shown);
                 return;
             }
             IList list = (IList)value;
@@ -413,7 +439,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             if (mutable)
                 host.Children.Add(MakeButton("追加一项", () =>
                     Execute(() => _editor.InsertListItem(path, list.Count, DefaultJson(args[0])))));
-            for (int i = 0; i < list.Count; i++)
+            int shownList = Math.Min(list.Count, VisibleCount(path));
+            for (int i = 0; i < shownList; i++)
             {
                 int index = i;
                 string child = path + "[" + i.ToString(CultureInfo.InvariantCulture) + "]";
@@ -432,6 +459,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 }
                 RenderValue(host, args[0], list[i], child, "第 " + i + " 项", depth, false, null);
             }
+            More(host, path, list.Count, shownList);
         }
         private static string Format(object value)
         { return value == null ? "" : Convert.ToString(value, CultureInfo.InvariantCulture); }
@@ -473,36 +501,52 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             catch (Exception ex) { ShowError(ex); }
             finally { _working = false; }
         }
-        private async void SaveAsync()
+        /// <summary>Testable asynchronous save; the only write remains EditorModel.CommitAsync.</summary>
+        public async Task<MHSConfigCommitResult> SaveDraftAsync(CancellationToken token)
         {
-            if (_disposed || _working) return;
+            EnsureActive();
+            if (_working) throw new InvalidOperationException("CONFIG_UI_EDIT_BUSY");
             _working = true;
             try
             {
-                MHSConfigCommitResult result = await _editor.CommitAsync(CancellationToken.None);
+                MHSConfigCommitResult result = await _editor.CommitAsync(token);
                 if (result.Success)
                 {
                     _saved = true;
                     _editor = NewEditor();
-                    _issues.Text = "已保存 " + result.Revision + "；实际生效取决于配置边界。";
                     RefreshAll();
+                    _issues.Text = "已保存 " + result.Revision + "；实际生效取决于配置边界。";
                 }
                 else
                 {
                     ShowIssues(result.Validation == null ? new FCMConfigIssue[0] : result.Validation.Issues);
                     _issues.Text = "保存失败：" + result.ErrorCode + " " + _issues.Text;
                 }
+                return result;
             }
-            catch (Exception ex) { ShowError(ex); }
             finally { _working = false; }
+        }
+        private async void SaveAsync()
+        {
+            if (_disposed || _working) return;
+            try { await SaveDraftAsync(CancellationToken.None); }
+            catch (Exception ex) { ShowError(ex); }
+        }
+        public MHSConfigApplyResult ApplySaved(FCMConfigApplyPolicy boundary)
+        {
+            EnsureActive();
+            if (_working) throw new InvalidOperationException("CONFIG_UI_EDIT_BUSY");
+            MHSConfigApplyResult result = TryApply(boundary);
+            RefreshAll();
+            _issues.Text = result.Applied ? "配置已生效: " + result.EffectiveVersion :
+                "未生效: " + result.Status + " （边界或联锁尚未满足）";
+            return result;
         }
         private void Apply()
         {
-            Execute(() => {
-                var result = TryApply((FCMConfigApplyPolicy)_boundaries.SelectedItem);
-                _issues.Text = result.Applied ? "配置已生效: " + result.EffectiveVersion :
-                    "未生效: " + result.Status + " （边界或联锁尚未满足）";
-            });
+            if (_disposed || _working) return;
+            try { ApplySaved((FCMConfigApplyPolicy)_boundaries.SelectedItem); }
+            catch (Exception ex) { ShowError(ex); }
         }
         private async void RestoreAsync()
         {
