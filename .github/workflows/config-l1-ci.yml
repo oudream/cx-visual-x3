@@ -60,6 +60,16 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Runtime Host journal recovery scan failed" }
           & .\Output\Release\x64\CxVisual.Runtime.Host.exe runtime-run $runtimeJournal
           if ($LASTEXITCODE -ne 0) { throw "Runtime Host restart after clean journal failed" }
+          # 通过标准输入驱动持续运行宿主；真实执行后确认状态与安全停机。
+          $serveOutput = @('run','status','stop') | & .\Output\Release\x64\CxVisual.Runtime.Host.exe runtime-serve $runtimeJournal
+          $serveText = $serveOutput -join '|'
+          if ($LASTEXITCODE -ne 0 -or $serveText -notmatch 'Accepted Flow=' -or
+              $serveText -notmatch 'Host=Ready' -or
+              $serveText -notmatch 'RuntimeHost stopped cleanly') {
+              throw "Runtime serve interactive acceptance failed: $serveText"
+          }
+          & .\Output\Release\x64\CxVisual.Runtime.Host.exe runtime-recover $runtimeJournal
+          if ($LASTEXITCODE -ne 0) { throw "Runtime Host post-serve journal scan failed" }
       - name: Full shared smoke diagnostics (F16 under concurrent development)
         shell: pwsh
         continue-on-error: true

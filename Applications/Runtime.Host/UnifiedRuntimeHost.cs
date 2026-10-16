@@ -97,6 +97,9 @@ namespace CxVisual.Runtime.Host
         private readonly MRKExecutionEngine _engine;
         private readonly MRKRuntimeSession _session;
         private readonly MRKRuntimeAccessGateway _access;
+        private readonly object _flowGate = new object();
+        private readonly Dictionary<Guid, MRKRuntimeFlowTicket> _tickets =
+            new Dictionary<Guid, MRKRuntimeFlowTicket>();
         private bool _stopped;
         private MRHUnifiedRuntimeHost(MRKFileExecutionJournal journal,
             MRKExecutionEngine engine, MRKRuntimeSession session,
@@ -152,10 +155,28 @@ namespace CxVisual.Runtime.Host
             MRKRuntimeFlowTicket flow = _access.TryStart("local-simulation",
                 correlationId: Guid.NewGuid().ToString("N"));
             if (flow == null) throw new InvalidOperationException("Session拒绝新Flow");
+            lock (_flowGate) _tickets.Add(flow.FlowId, flow);
+            Task cleanup = flow.Completion.ContinueWith(completed =>
+            {
+                lock (_flowGate) _tickets.Remove(flow.FlowId);
+            }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
             return flow;
         }
         internal MRKRuntimeSessionSnapshot Snapshot()
         { return _access.Observe("local-simulation"); }
+        internal IList<MRKFlowSnapshot> ActiveFlowSnapshots()
+        {
+            lock (_flowGate)
+                return _tickets.Values.Select(x => x.GetSnapshot()).ToArray();
+        }
+        internal bool TryCancel(Guid flowId)
+        {
+            MRKRuntimeFlowTicket ticket;
+            lock (_flowGate)
+                if (!_tickets.TryGetValue(flowId, out ticket)) return false;
+            return _access.RequestCancel("local-simulation", ticket);
+        }
         internal async Task StopAsync(bool cancel = false)
         {
             if (_stopped) return;
@@ -219,12 +240,17 @@ namespace CxVisual.Runtime.Host
         {
             using (MRHUnifiedRuntimeHost host = Open(journalPath))
             {
-                Console.WriteLine("RuntimeHost ready (simulation). Commands: run, status, stop");
+                Console.WriteLine("RuntimeHost ready (simulation). Commands: run, status, cancel <FlowId>, stop, stop cancel");
                 string command;
                 while ((command = Console.ReadLine()) != null)
                 {
                     command = command.Trim().ToLowerInvariant();
-                    if (command == "stop") break;
+                    if (command == "stop" || command == "stop cancel")
+                    {
+                        host.StopAsync(command == "stop cancel").GetAwaiter().GetResult();
+                        Console.WriteLine("RuntimeHost stopped cleanly");
+                        return 0;
+                    }
                     if (command == "run")
                     {
                         MRKRuntimeFlowTicket flow = host.Start();
@@ -235,6 +261,19 @@ namespace CxVisual.Runtime.Host
                         MRKRuntimeSessionSnapshot state = host.Snapshot();
                         Console.WriteLine("Host=" + state.State + " Active=" +
                             state.ActiveFlows + " PlanRevision=" + state.PlanRevision);
+                        foreach (MRKFlowSnapshot flow in host.ActiveFlowSnapshots())
+                            Console.WriteLine("Flow=" + flow.FlowId + " State=" + flow.State +
+                                " CancelRequested=" + flow.CancelRequested);
+                    }
+                    else if (command.StartsWith("cancel ", StringComparison.Ordinal))
+                    {
+                        Guid flowId;
+                        if (!Guid.TryParse(command.Substring(7).Trim(), out flowId))
+                            Console.WriteLine("Invalid FlowId");
+                        else
+                            Console.WriteLine(host.TryCancel(flowId)
+                                ? "Cancel requested for " + flowId
+                                : "Flow not active or already settled: " + flowId);
                     }
                     else Console.WriteLine("Unknown command");
                 }
