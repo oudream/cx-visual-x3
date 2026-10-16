@@ -14,9 +14,9 @@ namespace CxVisual.Mechanism.Data.Configuration
     [FCMConfigSection("Mechanism.Config.AtomicGroup")]
     public sealed class MHSConfigGroupDocument
     {
-        [FCMConfigItem("配置成员", ApplyPolicy = FCMConfigApplyPolicy.NextTask)]
         [FCMConfigItem("层级档案定义", ApplyPolicy = FCMConfigApplyPolicy.NextTask)]
         public string ProfileDefinition { get; set; }
+        [FCMConfigItem("配置成员", ApplyPolicy = FCMConfigApplyPolicy.NextTask)]
         public Dictionary<string, MHSConfigGroupEntry> Members { get; set; } =
             new Dictionary<string, MHSConfigGroupEntry>(StringComparer.Ordinal);
     }
