@@ -169,6 +169,29 @@ namespace CxVisual.Mechanism.Data.Execution
             }
         }
 
+        internal void ResetLocalForRetry()
+        {
+            List<Action> releases = new List<Action>();
+            lock (_gate)
+            {
+                EnsureOpen();
+                if (_liveChildren != 0)
+                    throw new InvalidOperationException("子作用域未结算，不能开始新尝试");
+                for (int index = _insertionOrder.Count - 1; index >= 0; index--)
+                {
+                    Action release = _local[_insertionOrder[index]].Release;
+                    if (release != null) releases.Add(release);
+                }
+                _local.Clear();
+                _insertionOrder.Clear();
+            }
+            List<Exception> errors = new List<Exception>();
+            foreach (Action release in releases)
+                try { release(); } catch (Exception ex) { errors.Add(ex); }
+            if (errors.Count != 0)
+                throw new AggregateException("重试前释放上一尝试数据失败", errors);
+        }
+
         public void Dispose()
         {
             List<Action> releases = new List<Action>();
