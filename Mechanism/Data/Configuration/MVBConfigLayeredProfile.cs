@@ -98,6 +98,16 @@ namespace CxVisual.Mechanism.Data.Configuration
                 SourceChain = chain.AsReadOnly()
             };
         }
+        public IList<MVBConfigLayerOrigin> SourceChain(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException("Path required", "path");
+            return _origins.Where(x => MVBConfigLayerPath.IsAncestor(x.Path, path)).ToList().AsReadOnly();
+        }
+        public string SourceOf(string path)
+        {
+            IList<MVBConfigLayerOrigin> chain = SourceChain(path);
+            return chain.Count == 0 ? "Default" : chain[chain.Count - 1].Name;
+        }
         public FCMConfigValueState<V> ExplainState<V>(Expression<Func<T, V>> selector)
         {
             MVBConfigLayerValueInfo<V> info = Explain(selector);
