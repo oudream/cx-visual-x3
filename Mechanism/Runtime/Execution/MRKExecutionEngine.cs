@@ -482,6 +482,20 @@ namespace CxVisual.Mechanism.Runtime.Execution
         public MRKFlowHandle StartFromSlotWithMetadata(MRKExecutionPlanSlot slot,
             MRKFlowMetadata metadata, IDictionary<string, object> inputs = null,
             CancellationToken cancellation = default(CancellationToken))
+        { return StartFromSlotCore(slot, null, metadata, inputs, cancellation); }
+
+        public MRKFlowHandle StartFromSlotWithControl(MRKExecutionPlanSlot slot,
+            MRKExecutionDebugController control, MRKFlowMetadata metadata = null,
+            IDictionary<string, object> inputs = null,
+            CancellationToken cancellation = default(CancellationToken))
+        {
+            if (control == null) throw new ArgumentNullException("control");
+            return StartFromSlotCore(slot, control, metadata, inputs, cancellation);
+        }
+
+        private MRKFlowHandle StartFromSlotCore(MRKExecutionPlanSlot slot,
+            MRKExecutionDebugController control, MRKFlowMetadata metadata,
+            IDictionary<string, object> inputs, CancellationToken cancellation)
         {
             if (slot == null) throw new ArgumentNullException("slot");
             MRKExecutionPlanLease lease = slot.Capture();
@@ -492,7 +506,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
                     metadata == null ? null : metadata.CorrelationId,
                     metadata == null ? null : metadata.SessionId,
                     metadata == null ? null : metadata.ParentFlowId);
-                MRKFlowHandle flow = StartFlowWithMetadata(lease.Plan, resolved, inputs, cancellation);
+                MRKFlowHandle flow = StartFlowCore(lease.Plan, control, resolved,
+                    inputs, cancellation, null);
                 Task cleanup = flow.Completion.ContinueWith(
                     completed => lease.Dispose(),
                     CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously,

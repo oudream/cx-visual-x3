@@ -50,14 +50,30 @@ namespace CxVisual.Mechanism.Runtime.Execution
         public MRKFlowHandle TryStartFlow(IDictionary<string,object> inputs=null,
             string businessKey=null,string correlationId=null,
             CancellationToken cancellation=default(CancellationToken))
+        { return TryStartFlowCore(null,inputs,businessKey,correlationId,cancellation); }
+
+        public MRKFlowHandle TryStartFlowWithControl(MRKExecutionDebugController control,
+            IDictionary<string,object> inputs=null,
+            string businessKey=null,string correlationId=null,
+            CancellationToken cancellation=default(CancellationToken))
+        {
+            if(control==null)throw new ArgumentNullException("control");
+            return TryStartFlowCore(control,inputs,businessKey,correlationId,cancellation);
+        }
+
+        private MRKFlowHandle TryStartFlowCore(MRKExecutionDebugController control,
+            IDictionary<string,object> inputs,string businessKey,string correlationId,
+            CancellationToken cancellation)
         {
             lock(_gate)
             {
                 if(_state!=MRKRuntimeSessionState.Ready || _flows.Count>=_capacity)
                 { _rejected++;return null; }
-                MRKFlowHandle flow=_engine.StartFromSlotWithMetadata(_slot,
-                    new MRKFlowMetadata(businessKey:businessKey,
-                        correlationId:correlationId,sessionId:Id),inputs,cancellation);
+                MRKFlowMetadata metadata=new MRKFlowMetadata(
+                    businessKey:businessKey,correlationId:correlationId,sessionId:Id);
+                MRKFlowHandle flow=control==null
+                    ? _engine.StartFromSlotWithMetadata(_slot,metadata,inputs,cancellation)
+                    : _engine.StartFromSlotWithControl(_slot,control,metadata,inputs,cancellation);
                 _flows.Add(flow.FlowId,flow);
                 Task cleanup=flow.Completion.ContinueWith(done=>
                 {lock(_gate)_flows.Remove(flow.FlowId);},

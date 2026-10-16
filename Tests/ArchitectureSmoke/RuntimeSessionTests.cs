@@ -44,6 +44,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 throw new InvalidOperationException("会话状态与计划版本不一致");
             Wait(two.StopAsync());Wait(engine.StopAsync());
             CancelEscalatesAnExistingDrain();
+            RoleBasedSessionGatewayDeniesUnauthorizedActions();
         }
         private static void CancelEscalatesAnExistingDrain()
         {
@@ -73,6 +74,81 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 throw new InvalidOperationException("停止升级没有取消在途Flow");
             Wait(engine.StopAsync());
         }
+
+        private sealed class RolePolicy : IMRKRuntimeAccessPolicy
+        {
+            public bool IsAuthorized(string principal,MRKRuntimeAccessAction action,string sessionId)
+            {
+                if(principal=="admin") return true;
+                if(principal=="viewer") return action==MRKRuntimeAccessAction.Observe;
+                if(principal=="operator")
+                    return action==MRKRuntimeAccessAction.Observe ||
+                        action==MRKRuntimeAccessAction.Start ||
+                        action==MRKRuntimeAccessAction.Cancel ||
+                        action==MRKRuntimeAccessAction.Stop;
+                if(principal=="debugger")
+                    return action==MRKRuntimeAccessAction.Observe ||
+                        action==MRKRuntimeAccessAction.Debug;
+                return false;
+            }
+        }
+        private static void RoleBasedSessionGatewayDeniesUnauthorizedActions()
+        {
+            MRKExecutionPlan plan=new MRKExecutionPlan("roles",new[]{
+                new MRKExecutionStep("run",new string[0],
+                    (c,t)=>Task.FromResult((object)11))
+            });
+            MRKExecutionEngine engine=new MRKExecutionEngine(new FCRWorkerOptions(2,4));
+            MRKRuntimeSession session=new MRKRuntimeSession("restricted",engine,
+                new MRKExecutionPlanSlot(plan,7));
+            session.Start();
+            MRKRuntimeAccessGateway access=new MRKRuntimeAccessGateway(engine,session,
+                new RolePolicy());
+            MRKExecutionDebugController debug=new MRKExecutionDebugController();
+            try
+            {
+                if(access.Observe("viewer").State!=MRKRuntimeSessionState.Ready)
+                    throw new InvalidOperationException("只读观察不可用");
+                bool denied=false;
+                try {access.TryStart("viewer");}
+                catch(UnauthorizedAccessException){denied=true;}
+                if(!denied || session.Snapshot().ActiveFlows!=0)
+                    throw new InvalidOperationException("只读主体启动了Flow");
+                MRKFlowResult ordinary=Wait(access.TryStart("operator").Completion);
+                if(ordinary.State!=MRKFlowState.Completed ||
+                    ordinary.Metadata.PlanRevision!=7)
+                    throw new InvalidOperationException("授权操作员执行失败");
+                denied=false;
+                try {access.TryStartDebug("operator",debug);}
+                catch(UnauthorizedAccessException){denied=true;}
+                if(!denied)throw new InvalidOperationException("操作员越权调试");
+                debug.Pause();
+                MRKFlowHandle controlled=access.TryStartDebug("debugger",debug);
+                if(!SpinWait.SpinUntil(()=>debug.WaitingCount>0,3000))
+                    throw new InvalidOperationException("授权调试入口没有到达暂停点");
+                denied=false;
+                try {access.RequestCancel("viewer",controlled);}
+                catch(UnauthorizedAccessException){denied=true;}
+                if(!denied || controlled.GetSnapshot().CancelRequested)
+                    throw new InvalidOperationException("只读主体取消了调试Flow");
+                debug.Resume();
+                if(Wait(controlled.Completion).State!=MRKFlowState.Completed)
+                    throw new InvalidOperationException("授权调试恢复失败");
+                denied=false;
+                try {Wait(access.StopSessionAsync("viewer"));}
+                catch(UnauthorizedAccessException){denied=true;}
+                if(!denied || session.Snapshot().State!=MRKRuntimeSessionState.Ready)
+                    throw new InvalidOperationException("只读主体停止了会话");
+                Wait(access.StopSessionAsync("operator"));
+            }
+            finally
+            {
+                debug.Resume();
+                Wait(session.StopAsync(true));
+                Wait(engine.StopAsync(true));
+            }
+        }
+
         private static T Wait<T>(Task<T> task)
         {
             Task first=Task.WhenAny(task,Task.Delay(6000)).GetAwaiter().GetResult();

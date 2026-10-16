@@ -47,6 +47,19 @@ namespace CxVisual.Runtime.Host
         { return true; } // 没有外设，仅模拟内存算法；生产Host必须替换此策略。
     }
 
+    internal sealed class MRHSimulationAccessPolicy : IMRKRuntimeAccessPolicy
+    {
+        public bool IsAuthorized(string principal, MRKRuntimeAccessAction action,
+            string sessionId)
+        {
+            return principal == "local-simulation" &&
+                (action == MRKRuntimeAccessAction.Observe ||
+                 action == MRKRuntimeAccessAction.Start ||
+                 action == MRKRuntimeAccessAction.Stop ||
+                 action == MRKRuntimeAccessAction.Cancel);
+        }
+    }
+
     /// <summary>
     /// 单进程RunHost：独占本地Journal，启动前扫描悬而未决的运行；
     /// 发现未知Flow则拒绝自动运行，交给正式恢复确认工作流。
@@ -56,10 +69,12 @@ namespace CxVisual.Runtime.Host
         private readonly MRKFileExecutionJournal _journal;
         private readonly MRKExecutionEngine _engine;
         private readonly MRKRuntimeSession _session;
+        private readonly MRKRuntimeAccessGateway _access;
         private bool _stopped;
         private MRHUnifiedRuntimeHost(MRKFileExecutionJournal journal,
-            MRKExecutionEngine engine, MRKRuntimeSession session)
-        { _journal = journal; _engine = engine; _session = session; }
+            MRKExecutionEngine engine, MRKRuntimeSession session,
+            MRKRuntimeAccessGateway access)
+        { _journal = journal; _engine = engine; _session = session; _access = access; }
 
         internal static MRHUnifiedRuntimeHost Open(string journalPath)
         {
@@ -101,7 +116,9 @@ namespace CxVisual.Runtime.Host
                 MRKRuntimeSession session =
                     new MRKRuntimeSession("host-simulation",engine,slot,maxInFlight:4);
                 session.Start();
-                return new MRHUnifiedRuntimeHost(journal,engine,session);
+                MRKRuntimeAccessGateway gateway=new MRKRuntimeAccessGateway(
+                    engine,session,new MRHSimulationAccessPolicy());
+                return new MRHUnifiedRuntimeHost(journal,engine,session,gateway);
             }
             catch { journal.Dispose(); throw; }
         }
@@ -109,17 +126,18 @@ namespace CxVisual.Runtime.Host
         internal MRKFlowHandle Start()
         {
             if (_stopped) throw new InvalidOperationException("Host已停止");
-            MRKFlowHandle flow = _session.TryStartFlow(
+            MRKFlowHandle flow = _access.TryStart("local-simulation",
                 correlationId: Guid.NewGuid().ToString("N"));
             if (flow == null) throw new InvalidOperationException("Session拒绝新Flow");
             return flow;
         }
-        internal MRKRuntimeSessionSnapshot Snapshot() { return _session.Snapshot(); }
+        internal MRKRuntimeSessionSnapshot Snapshot()
+        { return _access.Observe("local-simulation"); }
         internal async Task StopAsync(bool cancel = false)
         {
             if (_stopped) return;
             _stopped = true;
-            await _session.StopAsync(cancel).ConfigureAwait(false);
+            await _access.StopSessionAsync("local-simulation",cancel).ConfigureAwait(false);
             await _engine.StopAsync(cancel).ConfigureAwait(false);
         }
         public void Dispose()
