@@ -257,3 +257,12 @@ G0/G1通过不能代替G2/G3/G4。CI工作流故障时应分清本次新增测�
 ### ResultUnknown诊断故障禁止重试
 
 `TimeoutDiagnosticFailureCannotTriggerRetryOrEarlyRelease`：策略虽标记Idempotent和3次尝试，但超时诊断写入失败也必须等待正在运行的实际工作结算；以`TimeoutException`（`InnerException`保存诊断失败）返回，不得按普通异常重新触发具有不确定外部结果的工作。
+
+## 2026-10-16 后续四批增量交付（按对应Commit的真实Windows CI核定）
+
+- B1：`MRKRuntimeSession.StopAsync(false)`后可以重复调用`StopAsync(true)`，必须升级为真实取消，而非因已有排空任务忽略升级；测试`RuntimeSessionTests.CancelEscalatesAnExistingDrain`。
+- B1：Journal的重复FlowId、孤儿FlowFinished与无OperationId的Step.ResultUnknown保守判定为RequiresReconciliation；错误版本的ExternalConfirmed只忽略，不永久污染同Flow合法确认。已强化`ExecutionJournalTests`及`TCT.MRK.014`。
+- B2：Step/CompileRequest的Priority及EstimatedPendingBytes传递给FCRWorker，并由内联子流程保留；`ExecutionFlowTests.WorkerPriorityAndPendingBudgetPropagateFromStep`验证实际排队顺序和预计字节预算。尚未实现全局Flow预算和实际内存/GPU用量核算。
+- B3：`MRKExecutionPlanPublisher`把Compile、Authorize、Stage、安全点Activate和单调修订回滚组织成发布门面。生产保护模式的`MRKExecutionPlanSlot`拒绝公开Stage/Activate捷径；`ExecutionCompilerTests.AuthorizedPublishingAndSafeRollback`验证在途Flow旧版本、授权拒绝、受保护Slot及回滚。模拟策略**不代表真实操作者身份认证或硬件安全联锁**。
+- B4：`Applications/Runtime.Host/UnifiedRuntimeHost.cs`支持`runtime-run`、`runtime-serve`、`runtime-recover`。Run使用实际编译能力、受保护Plan发布、RuntimeSession、Flow、持久Journal；重启扫描必须拒绝未结案的Flow，不自动重放；Windows工作流验证正常执行、扫描及第二次干净重启。只执行纯模拟能力，无设备控制。
+- **仍未完成的实质内容**：CxNode/ContentRef真实可视活动图与多级动态子流程编译；整流程/阶段级策略与全局配额；Checkpoint持久化与授权再入/数据快照恢复；正式身份认证与远程Host控制/隔离接管；运行时数据体系及跨进程/硬件验收。这些不能因为上述批次通过冒称已全部成熟。

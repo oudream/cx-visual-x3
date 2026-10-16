@@ -18,6 +18,12 @@ namespace CxVisual.Runtime.Host
             {
                 string verb = args.Length == 0 ? "demo" : args[0].ToLowerInvariant();
                 if (verb == "demo") return Demo();
+                if (verb == "runtime-run" && args.Length == 2)
+                    return MRHUnifiedRuntimeHost.RunOne(args[1]);
+                if (verb == "runtime-recover" && args.Length == 2)
+                    return MRHUnifiedRuntimeHost.Recover(args[1]);
+                if (verb == "runtime-serve" && args.Length == 2)
+                    return MRHUnifiedRuntimeHost.Serve(args[1]);
                 if (verb == "save" && args.Length == 2)
                 {
                     CxProjectDocument document = CxDocumentFactory.CreateSample();
@@ -56,7 +62,7 @@ namespace CxVisual.Runtime.Host
                     Show(CxSceneProjection.Project(document));
                     return 0;
                 }
-                Console.WriteLine("Usage: CxVisual.Runtime.Host.exe [demo | vision-demo | save <file.xml> | load <file.xml> | vision-inspect <configRoot> <machineId> <rawFile> <width> <height> <8|16>]");
+                Console.WriteLine("Usage: CxVisual.Runtime.Host.exe [runtime-run <journal> | runtime-recover <journal> | runtime-serve <journal> | demo | vision-demo | save <file.xml> | load <file.xml> | vision-inspect <configRoot> <machineId> <rawFile> <width> <height> <8|16>]");
                 return 2;
             }
             catch (Exception ex)

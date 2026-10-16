@@ -47,6 +47,15 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Runtime save failed" }
           & .\Output\Release\x64\CxVisual.Runtime.Host.exe load .\Output\Release\x64\Data\config-l1-smoke.xml
           if ($LASTEXITCODE -ne 0) { throw "Runtime reload failed" }
+          # Real headless Runtime.Host acceptance: Compile/Authorize/Publish/Session/Journal/Recovery.
+          # Only simulated capabilities are used. No hardware ACK or crash-safe replay claimed.
+          $runtimeJournal = Join-Path $env:RUNNER_TEMP ("CxRuntime-" + [guid]::NewGuid().ToString("N") + ".journal")
+          & .\Output\Release\x64\CxVisual.Runtime.Host.exe runtime-run $runtimeJournal
+          if ($LASTEXITCODE -ne 0) { throw "Runtime Host execution failed" }
+          & .\Output\Release\x64\CxVisual.Runtime.Host.exe runtime-recover $runtimeJournal
+          if ($LASTEXITCODE -ne 0) { throw "Runtime Host journal recovery scan failed" }
+          & .\Output\Release\x64\CxVisual.Runtime.Host.exe runtime-run $runtimeJournal
+          if ($LASTEXITCODE -ne 0) { throw "Runtime Host restart after clean journal failed" }
       - name: Full shared smoke diagnostics (F16 under concurrent development)
         shell: pwsh
         continue-on-error: true

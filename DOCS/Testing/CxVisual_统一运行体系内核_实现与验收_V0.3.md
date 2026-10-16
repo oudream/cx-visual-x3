@@ -188,3 +188,9 @@ Journal运行中故障强制明确Failed终态，任务超预算无损拒绝其�
 ## 2026-10-16 补偿输入隔离增量
 
 显式补偿以原始Plan和原始Engine双重归属校验为前置；补偿回调必须使用**重新绑定的类型化Flow端口输入和已结算Step结果**，不再将原Flow已经关闭的`IFDEExecutionDataScope`传入用户委托。`ExecutionCompensationTests.CompensationPortsRemainAvailableAfterDataScopeDisposal`覆盖：原节点拥有的数据在Flow结束时释放一次、补偿能读Flow输入与结果、不再接触失效的数据作用域。需要跨补偿保留的大对象仍须额外建立显式引用租约/保存副本与到期回收约定；本批没有冒充完成这项后续契约。
+
+## 2026-10-16 安全发布与Host基本闭环
+
+运行计划不能以`StageValidated`公开路径绕过生产发布策略：在受保护Slot上，只能使用Publisher进行编译验证、发布授权、阶段保存、软件安全点激活和单调版本回滚。正式Host必须注入外部权限验证和设备安全确认；用于Smoke的本地模拟批准器绝不允许直接用于生产。
+
+`CxVisual.Runtime.Host.exe runtime-run <journal>`运行无设备模拟计划、真实Flow会话与持久Journal；`runtime-recover <journal>`只扫描，并在存在未结算Flow时给出非零状态，拒绝自动重播；`runtime-serve <journal>`提供持续交互式run/status/stop入口。Windows CI验收真实运行一次、读取Journal、重启再次运行。实现并不支持完整生产服务守护、远程认证、Checkpoint数据恢复或外部设备安全接管。
