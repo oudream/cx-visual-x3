@@ -7,6 +7,8 @@
 
 ## 文档入口与历史代码资产
 
+- **统一配置体系 V2.4 主规范**：[完整设计、API、自动配置界面与验收](DOCS/Implementation/CxVisual_统一配置体系_完整设计与验收_V2.4.md)；[阶段 A-D 实施计划](DOCS/Implementation/CxVisual_统一配置体系_V2.4_源码审查与分阶段实施计划.md)。基础只在 Foundation.Data / Mechanism.Data 两个项目，功能完成状态须以 CI/验收矩阵为准。
+
 - **协同开发主入口**：[DOCS/00_CxVisual_协同开发入口与七仓复用基线.md](DOCS/00_CxVisual_协同开发入口与七仓复用基线.md)；工程规则见 [AGENTS.md](AGENTS.md)，Codex任务规范见 [.agents/skills/cxvisual-engineering/SKILL.md](.agents/skills/cxvisual-engineering/SKILL.md)。
 - **七仓技术资产档案（按任务选择阅读，不要求每次通读）**：[01_ccxx.md](DOCS/Codebases/01_ccxx.md)（C/C++基础库）、[02_device_communicator.md](DOCS/Codebases/02_device_communicator.md)（IoT设备模型、点表、通信、监控）、[03_gcl3.md](DOCS/Codebases/03_gcl3.md)（ICS/SCADA、终端、实时数据与Bus）。
 - **重要边界**：这些档案包含源代码事实、历史工程经验及**可修正设计提案**，不是新CxVisual已实现/已批准的类型或测试结果；以现行DOCS规格、真实源码与经验证结果裁决。
