@@ -454,6 +454,12 @@ namespace CxVisual.Mechanism.Data.Configuration
     internal static class MVBConfigLayerPath
     {
         /// <summary>提取单路径 JSON。不存在返回 false，显式 null 返回 true + "null"。</summary>
+        internal static object ReadValue(object model, string path)
+        {
+            object current = model;
+            foreach (object segment in Split(path)) current = Read(current, segment);
+            return current;
+        }
         internal static bool TryReadJson(object model, string path, out string json)
         {
             json = null;

@@ -238,6 +238,105 @@ namespace CxVisual.Mechanism.Data.Configuration
                 throw new NotSupportedException("CONFIG_COLLECTION_COMPARER_NOT_PERSISTED");
         }
 
+        /// <summary>UI schema-driven path edit; values are validated by the original codec.</summary>
+        public void SetPathJson(string path, string json)
+        {
+            EnsureOpen();
+            if (string.IsNullOrWhiteSpace(path) || json == null) throw new ArgumentException("Path and JSON required");
+            MVBConfigLayerPath.Validate<T>(path, json);
+            Modify(x => MVBConfigLayerPath.Apply(x, path, json));
+        }
+        public string ReadDraftJson(string path)
+        {
+            EnsureOpen();
+            string result;
+            if (!MVBConfigLayerPath.TryReadJson(_edit.WorkingCopy, path, out result))
+                throw new KeyNotFoundException("CONFIG_EDITOR_PATH_MISSING");
+            return result;
+        }
+        private object Collection(T model, string path, Type generic)
+        {
+            object value = MVBConfigLayerPath.ReadValue(model, path);
+            if (value == null) throw new InvalidOperationException("CONFIG_EDITOR_NULL_COLLECTION");
+            Type type = value.GetType();
+            if (!type.IsGenericType || type.GetGenericTypeDefinition() != generic)
+                throw new InvalidOperationException("CONFIG_EDITOR_COLLECTION_TYPE");
+            return value;
+        }
+        public void AddMapItem(string path, string key, string json)
+        {
+            EnsureOpen();
+            if (key == null || json == null) throw new ArgumentNullException(key == null ? "key" : "json");
+            Modify(x => {
+                IDictionary map = (IDictionary)Collection(x, path, typeof(Dictionary<,>));
+                Type type = map.GetType();
+                if (type.GetGenericArguments()[0] != typeof(string))
+                    throw new NotSupportedException("CONFIG_EDITOR_NONSTRING_KEY");
+                object item = FCMJsonValueCodec.Deserialize(json, type.GetGenericArguments()[1]);
+                map.Add(key, item);
+            });
+        }
+        public void RenameMapItem(string path, string original, string replacement)
+        {
+            EnsureOpen();
+            if (original == null || replacement == null) throw new ArgumentNullException("key");
+            Modify(x => {
+                IDictionary map = (IDictionary)Collection(x, path, typeof(Dictionary<,>));
+                if (!map.Contains(original)) throw new KeyNotFoundException("CONFIG_EDITOR_KEY_MISSING");
+                if (map.Contains(replacement) && original != replacement)
+                    throw new ArgumentException("CONFIG_EDITOR_DUPLICATE_KEY");
+                if (original == replacement) return;
+                object value = map[original]; map.Remove(original); map.Add(replacement, value);
+            });
+        }
+        public void RemoveMapItem(string path, string key)
+        {
+            EnsureOpen();
+            Modify(x => {
+                IDictionary map = (IDictionary)Collection(x, path, typeof(Dictionary<,>));
+                if (!map.Contains(key)) throw new KeyNotFoundException("CONFIG_EDITOR_KEY_MISSING");
+                map.Remove(key);
+            });
+        }
+        public void InsertListItem(string path, int index, string json)
+        {
+            EnsureOpen();
+            if (json == null) throw new ArgumentNullException("json");
+            Modify(x => {
+                IList list = (IList)Collection(x, path, typeof(List<>));
+                object item = FCMJsonValueCodec.Deserialize(json, list.GetType().GetGenericArguments()[0]);
+                list.Insert(index, item);
+            });
+        }
+        public void RemoveListItem(string path, int index)
+        {
+            EnsureOpen();
+            Modify(x => ((IList)Collection(x, path, typeof(List<>))).RemoveAt(index));
+        }
+        public void MoveListItem(string path, int from, int to)
+        {
+            EnsureOpen();
+            Modify(x => {
+                IList list = (IList)Collection(x, path, typeof(List<>));
+                if (from < 0 || to < 0 || from >= list.Count || to >= list.Count)
+                    throw new ArgumentOutOfRangeException("index");
+                object value = list[from]; list.RemoveAt(from); list.Insert(to, value);
+            });
+        }
+        public void AddSetJson(string path, string json)
+        { EditSet(path, json, "Add"); }
+        public void RemoveSetJson(string path, string json)
+        { EditSet(path, json, "Remove"); }
+        private void EditSet(string path, string json, string operation)
+        {
+            EnsureOpen();
+            if (json == null) throw new ArgumentNullException("json");
+            Modify(x => {
+                object set = Collection(x, path, typeof(HashSet<>));
+                object value = FCMJsonValueCodec.Deserialize(json, set.GetType().GetGenericArguments()[0]);
+                set.GetType().GetMethod(operation).Invoke(set, new[] { value });
+            });
+        }
         public bool Undo()
         {
             EnsureOpen();
