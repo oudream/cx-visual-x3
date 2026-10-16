@@ -563,7 +563,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 }, output: new MRKExecutionOutput(typeof(int)), enableDataContext: true),
                 new MRKExecutionStep("legacy", new string[0], (ctx,ct) =>
                 {
-                    int inherited;
+                    int inherited = 0;
                     Check(ctx.DataScope != null &&
                         ctx.DataScope.TryRead<int>("Secret", out inherited) && inherited == 123,
                         "未迁移的旧DataScope兼容行为被破坏");
