@@ -556,17 +556,26 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     int hidden;
                     Check(!ctx.Data.TryGet<int>("Secret", out hidden),
                         "父级Local未经映射暴露给新DataContext");
-                    Check(ctx.DataScope.TryRead<int>("Secret", out hidden) && hidden == 123,
-                        "旧DataScope兼容读取行为被破坏");
+                    Check(ctx.DataScope == null,
+                        "托管DataContext节点仍然暴露旧父级可写作用域");
                     ctx.Data.Set("Local", 9);
                     return Task.FromResult((object)ctx.Data.Get<int>("Local"));
-                }, output: new MRKExecutionOutput(typeof(int)), enableDataContext: true)
+                }, output: new MRKExecutionOutput(typeof(int)), enableDataContext: true),
+                new MRKExecutionStep("legacy", new string[0], (ctx,ct) =>
+                {
+                    int inherited;
+                    Check(ctx.DataScope != null &&
+                        ctx.DataScope.TryRead<int>("Secret", out inherited) && inherited == 123,
+                        "未迁移的旧DataScope兼容行为被破坏");
+                    return Task.FromResult((object)inherited);
+                }, output: new MRKExecutionOutput(typeof(int)))
             });
             MRKExecutionEngine engine = new MRKExecutionEngine(new FCRWorkerOptions(1, 3));
             try
             {
                 MRKFlowResult result = Wait(engine.StartFlowWithData(plan, root).Completion);
-                Check(result.State == MRKFlowState.Completed && (int)result.Results["node"] == 9,
+                Check(result.State == MRKFlowState.Completed &&
+                    (int)result.Results["node"] == 9 && (int)result.Results["legacy"] == 123,
                     "新旧作用域兼容不正确");
             }
             finally { root.Dispose(); Wait(engine.StopAsync()); }
