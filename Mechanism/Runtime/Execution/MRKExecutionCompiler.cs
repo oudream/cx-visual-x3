@@ -12,14 +12,20 @@ namespace CxVisual.Mechanism.Runtime.Execution
     {
         public MRKResolvedCapability(Func<MRKExecutionContext, CancellationToken, Task<object>> executeAsync,
             MRKExecutionOutput output = null,
-            Func<MRKExecutionContext, CancellationToken, Task> compensateAsync = null)
+            Func<MRKExecutionContext, CancellationToken, Task> compensateAsync = null,
+            Func<MRKExecutionContext, CancellationToken, object> synchronousSdk = null)
         {
-            ExecuteAsync = executeAsync ?? throw new ArgumentNullException("executeAsync");
+            if (executeAsync == null && synchronousSdk == null)
+                throw new ArgumentException("能力必须提供异步或同步SDK实现");
+            ExecuteAsync = executeAsync ?? ((context, token) =>
+                Task.FromResult(synchronousSdk(context, token)));
+            SynchronousSdk = synchronousSdk;
             Output = output;
             CompensateAsync = compensateAsync;
         }
         public Func<MRKExecutionContext, CancellationToken, Task<object>> ExecuteAsync { get; private set; }
         public MRKExecutionOutput Output { get; private set; }
+        public Func<MRKExecutionContext, CancellationToken, object> SynchronousSdk { get; private set; }
         public Func<MRKExecutionContext, CancellationToken, Task> CompensateAsync { get; private set; }
     }
 
@@ -37,11 +43,12 @@ namespace CxVisual.Mechanism.Runtime.Execution
             string executionGroup = null, MRKExecutionPolicy policy = null,
             IEnumerable<string> requiredResources = null,
             Func<MRKExecutionContext, bool> condition = null,
-            bool allowSkippedDependencies = false)
+            bool allowSkippedDependencies = false, string dedicatedExecutorId = null)
         {
             Id = id; CapabilityId = capabilityId; SerialKey = serialKey;
             ExecutionGroup = executionGroup; Policy = policy; Condition = condition;
             AllowSkippedDependencies = allowSkippedDependencies;
+            DedicatedExecutorId = dedicatedExecutorId;
             Dependencies = new ReadOnlyCollection<string>(new List<string>(dependencies ?? new string[0]));
             Inputs = new ReadOnlyCollection<MRKExecutionInput>(
                 new List<MRKExecutionInput>(inputs ?? new MRKExecutionInput[0]));
@@ -58,6 +65,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
         public IList<string> RequiredResources { get; private set; }
         public Func<MRKExecutionContext, bool> Condition { get; private set; }
         public bool AllowSkippedDependencies { get; private set; }
+        public string DedicatedExecutorId { get; private set; }
     }
 
     public sealed class MRKCompileDiagnostic
@@ -131,7 +139,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
                         capability.ExecuteAsync, item.SerialKey, item.Policy,
                         item.RequiredResources, capability.CompensateAsync,
                         item.ExecutionGroup, item.Inputs, capability.Output,
-                        item.Condition, item.AllowSkippedDependencies));
+                        item.Condition, item.AllowSkippedDependencies, item.DedicatedExecutorId,
+                        capability.SynchronousSdk));
                 }
                 catch (Exception ex) when (ex is ArgumentException || ex is InvalidOperationException)
                 {

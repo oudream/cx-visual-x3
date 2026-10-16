@@ -292,6 +292,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
         private readonly MRKResourceLeaseCoordinator _resources;
         private readonly MRKExecutionGroups _groups;
         private readonly IMRKExecutionJournal _journal;
+        private readonly Dictionary<string, FCRDedicatedExecutor> _dedicated;
         private readonly object _lifecycleGate = new object();
         private readonly Dictionary<Guid, MRKFlowHandle> _activeFlows =
             new Dictionary<Guid, MRKFlowHandle>();
@@ -302,12 +303,21 @@ namespace CxVisual.Mechanism.Runtime.Execution
         public MRKExecutionEngine(FCRWorkerOptions options,
             MRKResourceLeaseCoordinator coordinator = null,
             IEnumerable<MRKExecutionGroupDefinition> groups = null,
-            IMRKExecutionJournal journal = null)
+            IMRKExecutionJournal journal = null,
+            IDictionary<string, FCRDedicatedExecutor> dedicatedExecutors = null)
         {
             _worker = new FCRWorker(options);
             _resources = coordinator ?? new MRKResourceLeaseCoordinator();
             _groups = new MRKExecutionGroups(groups);
             _journal = journal;
+            _dedicated = new Dictionary<string, FCRDedicatedExecutor>(StringComparer.Ordinal);
+            if (dedicatedExecutors != null)
+                foreach (KeyValuePair<string, FCRDedicatedExecutor> item in dedicatedExecutors)
+                {
+                    if (string.IsNullOrWhiteSpace(item.Key) || item.Value == null)
+                        throw new ArgumentException("专用执行位置配置无效", "dedicatedExecutors");
+                    _dedicated.Add(item.Key, item.Value);
+                }
         }
         public IList<MRKExecutionGroupSnapshot> GroupSnapshot() { return _groups.Snapshot(); }
         public FCRWorkHandle<T> Submit<T>(Func<CancellationToken, Task<T>> action,
@@ -470,10 +480,16 @@ namespace CxVisual.Mechanism.Runtime.Execution
             if (plan == null) throw new ArgumentNullException("plan");
             MRKExecutionPortBinder.VerifyFlowInputs(plan, inputs);
             foreach (MRKExecutionStep candidate in plan.Steps)
+            {
                 if (!string.IsNullOrEmpty(candidate.ExecutionGroup) &&
                     !_groups.Contains(candidate.ExecutionGroup))
                     throw new ArgumentException("流程引用了未配置执行组：" + candidate.ExecutionGroup,
                         "plan");
+                if (!string.IsNullOrWhiteSpace(candidate.DedicatedExecutorId) &&
+                    !_dedicated.ContainsKey(candidate.DedicatedExecutorId))
+                    throw new ArgumentException("流程引用了未配置专用执行位置：" +
+                        candidate.DedicatedExecutorId, "plan");
+            }
             lock (_lifecycleGate)
             {
                 if (_stopping) throw new InvalidOperationException("运行引擎已经停止接收新流程");
@@ -625,9 +641,15 @@ namespace CxVisual.Mechanism.Runtime.Execution
                         localData = context.DataScope.CreateChild(step.Id);
                         nodeContext = nodeContext.WithDataScope(localData);
                     }
+                    Func<MRKExecutionContext, CancellationToken, Task<object>> operation =
+                        string.IsNullOrEmpty(step.DedicatedExecutorId)
+                        ? step.ExecuteAsync
+                        : (Func<MRKExecutionContext, CancellationToken, Task<object>>)
+                            ((data, token) => _dedicated[step.DedicatedExecutorId]
+                                .InvokeAsync(inner => step.SynchronousSdk(data, inner), token));
                     FCRWorkHandle<object> work = _worker.Submit<object>(
-                        ct => step.Policy == null ? step.ExecuteAsync(nodeContext, ct) :
-                            step.Policy.ExecuteAsync(nodeContext, step.ExecuteAsync, ct),
+                        ct => step.Policy == null ? operation(nodeContext, ct) :
+                            step.Policy.ExecuteAsync(nodeContext, operation, ct),
                         step.SerialKey, false, cancellation);
                     context.SetState(step.Id, MRKStepState.Scheduled);
                     context.TrackWork(step.Id, work);

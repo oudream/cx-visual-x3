@@ -21,7 +21,9 @@ namespace CxVisual.Mechanism.Runtime.Execution
             string executionGroup = null,
             IEnumerable<MRKExecutionInput> inputs = null, MRKExecutionOutput output = null,
             Func<MRKExecutionContext, bool> condition = null,
-            bool allowSkippedDependencies = false)
+            bool allowSkippedDependencies = false,
+            string dedicatedExecutorId = null,
+            Func<MRKExecutionContext, CancellationToken, object> synchronousSdk = null)
         {
             if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("Step ID required", "id");
             if (executeAsync == null) throw new ArgumentNullException("executeAsync");
@@ -34,6 +36,10 @@ namespace CxVisual.Mechanism.Runtime.Execution
             Output = output;
             Condition = condition;
             AllowSkippedDependencies = allowSkippedDependencies;
+            if (string.IsNullOrWhiteSpace(dedicatedExecutorId) != (synchronousSdk == null))
+                throw new ArgumentException("专用线程执行必须同时声明Executor ID及同步SDK回调");
+            DedicatedExecutorId = dedicatedExecutorId;
+            SynchronousSdk = synchronousSdk;
             Inputs = new List<MRKExecutionInput>(inputs ?? new MRKExecutionInput[0]).AsReadOnly();
             List<string> resources = new List<string>();
             if (requiredResources != null)
@@ -56,6 +62,9 @@ namespace CxVisual.Mechanism.Runtime.Execution
         /// <summary>编排节点是否运行；无副作用的Guard应在资源申请前判定。</summary>
         public Func<MRKExecutionContext, bool> Condition { get; private set; }
         public bool AllowSkippedDependencies { get; private set; }
+        public string DedicatedExecutorId { get; private set; }
+        /// <summary>必须同步执行且不可在内部阻塞等待专用线程自身队列。</summary>
+        public Func<MRKExecutionContext, CancellationToken, object> SynchronousSdk { get; private set; }
         public MRKExecutionPolicy Policy { get; private set; }
         /// <summary>显式声明的可安全调用补偿动作；绝不会在失败后默认执行。</summary>
         public Func<MRKExecutionContext, CancellationToken, Task> CompensateAsync { get; private set; }
@@ -136,7 +145,9 @@ namespace CxVisual.Mechanism.Runtime.Execution
                     local.ExecutionGroup, bindings, local.Output,
                     local.Condition == null ? (Func<MRKExecutionContext, bool>)null
                         : context => local.Condition(context.ForSubflow(scope)),
-                    local.AllowSkippedDependencies));
+                    local.AllowSkippedDependencies, local.DedicatedExecutorId,
+                    local.SynchronousSdk == null ? null :
+                        (context, token) => local.SynchronousSdk(context.ForSubflow(scope), token)));
             }
             return list.AsReadOnly();
         }
