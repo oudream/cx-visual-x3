@@ -203,3 +203,9 @@ Journal运行中故障强制明确Failed终态，任务超预算无损拒绝其�
 4. **Host模拟验收**：Host用内存Catalog描述二层流程，真实经过编排编译、发布授权、Session、Flow和Journal，断电/设备未知时仍拒绝未经授权的自动重放。
 
 不能将上述闭环理解为完整的CxNode工程逻辑Aspect、循环活动图持久状态、Plan持久仓库、正式Checkpoint、跨进程恢复、硬件安全接管或者数据堆栈集成已完成。**本轮的改动没有建立第二个执行引擎或第二个DataSpace**。
+
+## 2026-10-16 长期运行安全门禁追加
+
+Host模拟CLI支持在途Flow状态查询、经受控权限网关的按Flow取消、排空停止及协作取消停止；窗口输入接口不是远程认证服务，也不保证非协作底层动作能够立即停机。Start/Debug调用方不能传入可在运行中自行触发的取消Token，主动取消必须经过Cancel权限。唯一Runtime Engine仍负责任务真实结算和资源持有。
+
+独立`CxVisual Unified Runtime Windows TDD` 工作流执行Windows全方案Release/x64重建、Foundation、Architecture及Host CLI真实运行/重启/观察。保留现有Config和TestCenter门禁独立负责其测试；数据体系所有权仍仅位于`Foundation.Data`和`Mechanism.Data`。

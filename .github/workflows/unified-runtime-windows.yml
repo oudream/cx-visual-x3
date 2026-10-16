@@ -11,6 +11,8 @@ on:
       - 'Applications/Runtime.Host/**'
       - 'Tests/FoundationSmoke/**'
       - 'Tests/ArchitectureSmoke/**'
+      - 'DOCS/Testing/UnifiedExecution_TDD_Matrix_V0.1.md'
+      - 'DOCS/Testing/CxVisual_统一运行体系内核_实现与验收_V0.3.md'
       - '.github/workflows/unified-runtime-windows.yml'
 jobs:
   runtime-end-to-end:

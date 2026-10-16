@@ -292,3 +292,11 @@ G0/G1通过不能代替G2/G3/G4。CI工作流故障时应分清本次新增测�
 | Host真实CLI闭环 | Host模拟流程之前只使用普通Compile | `runtime-run`已用子流程Catalog经OrchestrationCompiler/Publisher执行，`runtime-recover`对全部Flow保守评估 | 无正式用户凭证、设备联锁、数据快照/执行断点恢复 |
 
 本节为新增的代码与可运行测试位置，**实际验收必须以每次master SHA对应的GitHub Actions结果为准**，不将尚在排队、失败或中断的工作流标记通过。运行时数据体系的DataSpace/DataStack实现归属`Foundation.Data`/`Mechanism.Data`，Runtime只消费其契约。
+
+## 2026-10-16 安全准入与Host操作补充（最后一批）
+
+- 受控网关`TryStart/TryStartDebug`**不再接收调用方运行期CancellationToken**；仅有Start或Debug权限者不能保留Token来绕过Cancel授权。回归测试`RoleBasedSessionGatewayDeniesUnauthorizedActions`核查票据无`RequestCancel`/Context，以及受控Start接口无CancellationToken参数。
+- `runtime-serve <journal>`交互入口支持`run`、`status`（附活动Flow快照）、`cancel <FlowId>`、`stop`、`stop cancel`。取消始终通过`MRKRuntimeAccessGateway.RequestCancel`，而非裸Handle。
+- 新独立门禁`.github/workflows/unified-runtime-windows.yml`：在Windows Server 2022恢复NuGet依赖、全量Rebuild `.NET Framework 4.8 Release x64`、执行`FoundationSmoke --concurrency`、完整`ArchitectureSmoke`、Host多级编排发布/两次启动/Journal扫描与标准输入交互。原Config WPF和TestCenter工作流保持不变，不因其他模块测试失败隐藏全局红灯。
+- 首次全绿色参考：commit `ca23523f0e6946bb3863e0838e947808b3182e07` 对应独立Runtime CI `38926327538`（success）、Config L1 `38926327467`（success）、配置基础 `38926327449`（success）。后续提交必须再次查对应SHA，不能沿用历史success。
+- 明确仍缺：CxNode权威编排定义适配、子流程参数/结果Schema、结构化可恢复循环、Plan持久仓库、Checkpoint/数据快照、崩溃后的授权续运行、外部设备安全确认和远程可信凭证。单次CLI通过不等于生产级恢复。
