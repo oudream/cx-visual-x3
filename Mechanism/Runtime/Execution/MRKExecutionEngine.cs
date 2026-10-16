@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CxVisual.Foundation.Infrastructure.Concurrency;
 using CxVisual.Foundation.Data.Execution;
+using CxVisual.Mechanism.Data.RuntimeData;
 
 namespace CxVisual.Mechanism.Runtime.Execution
 {
@@ -36,6 +37,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
         private readonly IMRKExecutionJournal _journal;
         private readonly IDictionary<string, object> _boundInputs;
         private readonly IFDEExecutionDataScope _dataScope;
+        private readonly MDSDataStack _managedStack;
+        private readonly IMDSDataContext _data;
         private readonly ConcurrentQueue<string> _completedOrder = new ConcurrentQueue<string>();
         internal MRKExecutionContext(string planId, IDictionary<string, object> inputs,
             MRKFlowMetadata metadata = null, IFDEExecutionDataScope dataSpace = null,
@@ -47,6 +50,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
             _scopePrefix = string.Empty;
             _journal = journal;
             _dataScope = dataSpace == null ? null : dataSpace.CreateChild("flow-" + FlowId.ToString("N"));
+            _managedStack = new MDSDataStack(_dataScope);
             _trace = new MRKExecutionTrace(traceCapacity);
             _boundInputs = new ReadOnlyDictionary<string, object>(new Dictionary<string, object>());
             _inputs = new ReadOnlyDictionary<string, object>(new Dictionary<string, object>(
@@ -66,6 +70,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
             _trace = parent._trace;
             _journal = parent._journal;
             _dataScope = parent._dataScope;
+            _managedStack = parent._managedStack;
+            _data = parent._data;
             _boundInputs = parent._boundInputs;
             _completedOrder = parent._completedOrder;
         }
@@ -82,8 +88,25 @@ namespace CxVisual.Mechanism.Runtime.Execution
         internal MRKExecutionContext WithDataScope(IFDEExecutionDataScope scope)
         { return new MRKExecutionContext(this, scope); }
         public IFDEExecutionDataScope DataScope { get { return _dataScope; } }
+        public IMDSDataContext Data { get { return _data; } }
+        internal MDSDataStack DataStack { get { return _managedStack; } }
+        private MRKExecutionContext(MRKExecutionContext parent, IMDSDataContext data)
+            : this(parent, string.Empty) { _data = data; }
+        internal MRKExecutionContext WithDataContext(IMDSDataContext data)
+        { return new MRKExecutionContext(this, data); }
+        internal bool TryGetCommittedData(string sourceName, out object value)
+        {
+            int dot = sourceName.LastIndexOf('.');
+            if (dot < 1 || dot == sourceName.Length - 1)
+                throw new ArgumentException("具名输出必须为节点ID.输出名", "sourceName");
+            return _managedStack.TryReadOutput(sourceName.Substring(0, dot),
+                sourceName.Substring(dot + 1), out value);
+        }
         internal void CloseFlowDataScope()
-        { if (_dataScope != null) _dataScope.Dispose(); }
+        {
+            try { _managedStack.Dispose(); }
+            finally { if (_dataScope != null) _dataScope.Dispose(); }
+        }
 
         public IDictionary<string, object> BoundInputs { get { return _boundInputs; } }
         public bool TryGetBoundInput<T>(string name, out T value)
@@ -99,6 +122,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
         {
             bool found = _results.TryGetValue(absoluteStepId, out result);
             if (result is NullResult) result = null;
+            else if (result is byte[]) result = ((byte[])result).Clone();
             return found;
         }
         public Guid FlowId { get; private set; }
@@ -110,10 +134,12 @@ namespace CxVisual.Mechanism.Runtime.Execution
         {
             bool found = _results.TryGetValue(_scopePrefix + stepId, out result);
             if (result is NullResult) result = null;
+            else if (result is byte[]) result = ((byte[])result).Clone();
             return found;
         }
         internal void SetResult(string stepId, object result)
-        { _results[_scopePrefix + stepId] = result ?? NullResult.Instance; }
+        { _results[_scopePrefix + stepId] = result is byte[] ? ((byte[])result).Clone() :
+                (result ?? NullResult.Instance); }
         internal void SetState(string stepId, MRKStepState state, string reason = null)
         {
             string qualified = _scopePrefix + stepId;
@@ -134,7 +160,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
         {
             Dictionary<string, object> snapshot = new Dictionary<string, object>(StringComparer.Ordinal);
             foreach (KeyValuePair<string, object> item in _results)
-                snapshot.Add(item.Key, item.Value is NullResult ? null : item.Value);
+                snapshot.Add(item.Key, item.Value is NullResult ? null :
+                    item.Value is byte[] ? ((byte[])item.Value).Clone() : item.Value);
             return new ReadOnlyDictionary<string, object>(snapshot);
         }
         internal string[] CompletedOrderSnapshot()
@@ -701,6 +728,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 List<MRKResourceLease> leases = new List<MRKResourceLease>();
                 MRKExecutionGroupLease groupLease = null;
                 IFDEExecutionDataScope localData = null;
+                MDSDataFrame dataFrame = null;
                 try
                 {
                     if (!string.IsNullOrWhiteSpace(step.ExecutionGroup))
@@ -719,10 +747,20 @@ namespace CxVisual.Mechanism.Runtime.Execution
 
                     MRKExecutionContext nodeContext = context.WithBoundInputs(
                         MRKExecutionPortBinder.Bind(step, context));
-                    if (context.DataScope != null)
+                    // 运行数据Scope只建一次：新DataContext和原有DataScope共用同一实例。
+                    bool useManagedData = step.EnableDataContext;
+                    foreach (MRKExecutionInput input in step.Inputs)
+                        if (input.Source == MRKInputSource.StepOutput) useManagedData = true;
+                    if (useManagedData || context.DataScope != null)
                     {
-                        localData = context.DataScope.CreateChild(step.Id);
+                        localData = context.DataStack.RootScope.CreateChild(step.Id);
                         nodeContext = nodeContext.WithDataScope(localData);
+                    }
+                    if (useManagedData)
+                    {
+                        dataFrame = context.DataStack.OpenFrame(step.Id, localData,
+                            nodeContext.BoundInputs, step.DataOutputs);
+                        nodeContext = nodeContext.WithDataContext(dataFrame.Data);
                     }
                     Func<MRKExecutionContext, CancellationToken, Task<object>> operation =
                         string.IsNullOrEmpty(step.DedicatedExecutorId)
@@ -744,14 +782,21 @@ namespace CxVisual.Mechanism.Runtime.Execution
                         throw new OperationCanceledException("Work cancelled", cancellation);
                     if (!result.Succeeded)
                         throw new InvalidOperationException("STEP_" + step.Id + "_" + result.State, result.Error);
+                    cancellation.ThrowIfCancellationRequested();
                     MRKExecutionPortBinder.VerifyOutput(step, result.Value);
+                    // 所有具名Output先验证、整体发布，再让依赖任务观察节点Completed。
+                    if (dataFrame != null) dataFrame.CommitOutputs();
                     context.SetResult(step.Id, result.Value);
                     context.SetState(step.Id, MRKStepState.Completed);
                     return result.Value;
                 }
                 finally
                 {
-                    try { if (localData != null) localData.Dispose(); }
+                    try
+                    {
+                        if (dataFrame != null) dataFrame.Dispose();
+                        else if (localData != null) localData.Dispose();
+                    }
                     finally
                     {
                         for (int i = leases.Count - 1; i >= 0; i--) leases[i].Dispose();
