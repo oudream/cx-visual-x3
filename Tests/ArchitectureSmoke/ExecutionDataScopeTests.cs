@@ -14,11 +14,48 @@ namespace CxVisual.Tests.ArchitectureSmoke
         internal static void Run()
         {
             HeapMoveCopyAndIsolation();
+            DataContextStagesAndCommits();
             ParentChildIsolationAndSingleAssignment();
             RootCannotCloseBeforeDescendants();
             OwnedDataReleasedOnceInReverseOrder();
             FlowAndStepScopesAreConnectedAndClosed();
             CleanupFailureStillReleasesOtherOwnedObjects();
+        }
+
+
+        private static void DataContextStagesAndCommits()
+        {
+            using (MDEExecutionDataScope scope = MDEExecutionDataScope.CreateRoot("context"))
+            {
+                MDSDataContext context = new MDSDataContext(scope);
+                context.Set("Threshold", 120);
+                Check(context.Get<int>("Threshold") == 120, "DataContext读取失败");
+                bool rejected = false;
+                try { context.Set("Threshold", 121); }
+                catch (InvalidOperationException) { rejected = true; }
+                Check(rejected, "局部重复写入未拒绝");
+                byte[] original = new byte[] { 1, 2 };
+                context.Return("Image", original);
+                original[0] = 44;
+                byte[] pending = (byte[])context.InspectPendingOutputs()["Image"];
+                pending[1] = 55;
+                byte[] committed = (byte[])context.CommitOutputs()["Image"];
+                Check(committed[0] == 1 && committed[1] == 2, "Output暂存未防止别名修改");
+                rejected = false;
+                try { context.Return("Late", 1); }
+                catch (InvalidOperationException) { rejected = true; }
+                Check(rejected, "已提交上下文仍能Return");
+            }
+            using (MDEExecutionDataScope scope = MDEExecutionDataScope.CreateRoot("abort"))
+            {
+                MDSDataContext context = new MDSDataContext(scope);
+                context.Return("Partial", 42);
+                context.AbortOutputs();
+                bool rejected = false;
+                try { context.CommitOutputs(); }
+                catch (InvalidOperationException) { rejected = true; }
+                Check(rejected, "取消后仍然可以提交暂存输出");
+            }
         }
 
         private static void HeapMoveCopyAndIsolation()
