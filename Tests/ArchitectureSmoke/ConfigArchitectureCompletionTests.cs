@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using CxVisual.Foundation.Data.Configuration;
@@ -30,6 +31,21 @@ namespace CxVisual.Tests.ArchitectureSmoke
         public string Password { get; set; } = "secret-in-nested-list";
     }
 
+    [FCMConfigSection("Tests.RichTypes")]
+    public sealed class ConfigRichTypeSample
+    {
+        public ulong LargestUnsigned { get; set; } = ulong.MaxValue;
+        public decimal ExactDecimal { get; set; } = 123456789012345.123456789m;
+        public DateTimeOffset TimeWithOffset { get; set; } =
+            new DateTimeOffset(2026, 10, 16, 8, 5, 0, TimeSpan.FromHours(8));
+        public int? OptionalThreshold { get; set; }
+        public HashSet<string> Tags { get; set; } =
+            new HashSet<string>(new[] { "Z", "A", "M" }, StringComparer.Ordinal);
+        public Dictionary<string, List<Dictionary<string, double>>> Deep { get; set; } =
+            new Dictionary<string, List<Dictionary<string, double>>>();
+        public FCMConfigSecretRef Credential { get; set; } = new FCMConfigSecretRef("vault:sample");
+    }
+
     internal sealed class ConfigTestResourceProvider : IFCMConfigResourceReferenceProvider
     {
         public string ResourceType { get { return "calibration"; } }
@@ -45,7 +61,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         public static void Run()
         {
             string root = Path.Combine(Path.GetTempPath(), "CxVisual-Config-Atomic-" + Guid.NewGuid().ToString("N"));
-            try { VerifyAtomicGroup(root); VerifyDurableEvents(root); VerifySecurity(root); VerifyReferences(root); VerifyEffectiveJournal(root); VerifyLiveReplay(root); }
+            try { VerifyAtomicGroup(root); VerifyDurableEvents(root); VerifySecurity(root); VerifyReferences(root); VerifyEffectiveJournal(root); VerifyLiveReplay(root); VerifyRichTypes(root); }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
             Console.WriteLine("PASS atomic multi-model configuration transaction, validation and snapshots");
         }
@@ -391,6 +407,44 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(SpinWait.SpinUntil(() => Volatile.Read(ref successes) == 2 && failed.Cursor == "v3", 5000) &&
                     failed.Cursor == "v3", "replay from prior cursor after explicit resume");
             }
+        }
+
+        private static void VerifyRichTypes(string root)
+        {
+            FCMConfigTypeContract type = FCMConfigTypeCatalog.Describe<ConfigRichTypeSample>();
+            Check(type.CanRoundtrip && type.Kind == FCMConfigTypeKind.Object,
+                "nested numeric, offset, nullable, list/map/set and custom Converter contract");
+            Check(FCMConfigTypeCatalog.Describe<ConfigSecureSample>().CanRoundtrip &&
+                FCMConfigTypeCatalog.Describe(typeof(ulong)).Kind == FCMConfigTypeKind.Integer,
+                "scalar and nested type capability");
+            Check(!FCMConfigTypeCatalog.Describe(typeof(Dictionary<int, string>)).CanRoundtrip &&
+                FCMConfigTypeCatalog.Describe(typeof(Dictionary<int, string>)).Issues.Any(
+                    x => x.Code == "CONFIG_MAP_KEY"), "non-string dictionary keys rejected at design time");
+            Check(!FCMConfigTypeCatalog.Describe(typeof(int[,])).CanRoundtrip &&
+                !FCMConfigTypeCatalog.Describe(typeof(object)).CanRoundtrip &&
+                !FCMConfigTypeCatalog.Describe(typeof(IEnumerable<int>)).CanRoundtrip,
+                "array rank, unknown CLR object and abstract collection explicitly unsupported");
+            ConfigRichTypeSample original = new ConfigRichTypeSample();
+            original.Deep["D-01"] = new List<Dictionary<string, double>>
+                { new Dictionary<string, double> { { "Gain", 3.141592653589793 } } };
+            string json = FCMJsonValueCodec.Serialize(original);
+            ConfigRichTypeSample copy = FCMJsonValueCodec.Deserialize<ConfigRichTypeSample>(json);
+            Check(copy.LargestUnsigned == ulong.MaxValue &&
+                copy.ExactDecimal == original.ExactDecimal &&
+                copy.TimeWithOffset.Offset == TimeSpan.FromHours(8) &&
+                copy.TimeWithOffset == original.TimeWithOffset &&
+                !copy.OptionalThreshold.HasValue &&
+                copy.Deep["D-01"][0]["Gain"] == original.Deep["D-01"][0]["Gain"] &&
+                copy.Tags.SetEquals(original.Tags) &&
+                copy.Credential.Reference == "vault:sample",
+                "rich type value roundtrip preserves ulong, decimal, timezone, deep collection and reference");
+            ConfigRichTypeSample reordered = new ConfigRichTypeSample();
+            reordered.Tags = new HashSet<string>(new[] { "M", "Z", "A" });
+            Check(FCMJsonValueCodec.Serialize(original.Tags) == FCMJsonValueCodec.Serialize(reordered.Tags),
+                "HashSet serialization stable independent of insertion order");
+            Expect<FormatException>(() => FCMJsonValueCodec.Serialize(double.NaN),
+                "NaN must never be serialized to invalid JSON");
+            Console.WriteLine("PASS rich scalar, nested collections, exact precision and codec boundaries");
         }
 
         private static void Check(bool condition, string message)
