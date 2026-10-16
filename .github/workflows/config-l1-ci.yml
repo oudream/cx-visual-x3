@@ -19,6 +19,10 @@ jobs:
         shell: pwsh
         run: |
           $msbuild = (Get-Command msbuild.exe -ErrorAction Stop).Source
+          # Traditional .NET48 WPF uses generated markup-compile projects.
+          # Restore PackageReference dependencies (NUnit) before the full rebuild.
+          & $msbuild .\Tests\TestCenter\CxVisual.TestCenter.csproj /t:Restore /p:Configuration=Release /p:Platform=x64 /nologo /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw "TestCenter PackageReference restore failed" }
           & $msbuild .\CxVisual.Unified.sln /m:1 /t:Rebuild /p:Configuration=Release /p:Platform=x64 /nologo /v:minimal
           if ($LASTEXITCODE -ne 0) { throw "CxVisual full solution build failed" }
 
