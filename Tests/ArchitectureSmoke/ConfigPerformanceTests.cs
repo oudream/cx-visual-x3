@@ -16,7 +16,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
     /// </summary>
     internal static class ConfigPerformanceTests
     {
-        private static volatile long _checksum;
+        private static long _checksum;
         private static void Require(bool ok, string message)
         { if (!ok) throw new InvalidOperationException("CONFIG_D_FAILURE: " + message); }
 
