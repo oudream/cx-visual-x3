@@ -35,6 +35,18 @@ namespace CxVisual.Foundation.Data.Configuration
         public FCMConfigApplyPolicy ApplyPolicy { get; set; }
     }
 
+    /// <summary>声明当前属性依赖的同 Section 绝对配置路径（不是校验器执行代码）。</summary>
+    [AttributeUsage(AttributeTargets.Property, AllowMultiple = true, Inherited = true)]
+    public sealed class FCMConfigDependsOnAttribute : Attribute
+    {
+        public FCMConfigDependsOnAttribute(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException("Dependency path required", "path");
+            Path = path;
+        }
+        public string Path { get; private set; }
+    }
+
     [AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
     public sealed class FCMConfigValidatorAttribute : Attribute
     {

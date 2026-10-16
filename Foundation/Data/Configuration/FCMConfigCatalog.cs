@@ -54,6 +54,36 @@ namespace CxVisual.Foundation.Data.Configuration
             Visit(modelType, defaults, "", "", "", 0, fields, new HashSet<Type>());
             return fields.AsReadOnly();
         }
+        /// <summary>从属性声明建立可校验的依赖图，供增量校验与编辑影响分析共用。</summary>
+        public static FCMConfigDependencyGraph BuildDependencyGraph<T>() where T : new()
+        { return BuildDependencyGraph(typeof(T)); }
+        public static FCMConfigDependencyGraph BuildDependencyGraph(Type modelType)
+        {
+            IList<FCMConfigFieldInfo> fields = Describe(modelType);
+            HashSet<string> known = new HashSet<string>(fields.Select(x => x.Path), StringComparer.Ordinal);
+            FCMConfigDependencyGraph graph = new FCMConfigDependencyGraph();
+            foreach (FCMConfigFieldInfo field in fields)
+            {
+                Type owner = modelType;
+                System.Reflection.PropertyInfo property = null;
+                foreach (string member in field.Path.Split('.'))
+                {
+                    property = owner.GetProperty(member, System.Reflection.BindingFlags.Instance |
+                        System.Reflection.BindingFlags.Public);
+                    if (property == null) throw new InvalidOperationException("CONFIG_DEPENDENCY_UNKNOWN_MEMBER: " + field.Path);
+                    owner = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+                }
+                foreach (FCMConfigDependsOnAttribute attribute in property.GetCustomAttributes(
+                    typeof(FCMConfigDependsOnAttribute), true).Cast<FCMConfigDependsOnAttribute>())
+                {
+                    if (!known.Contains(attribute.Path))
+                        throw new InvalidOperationException("CONFIG_DEPENDENCY_UNKNOWN_TARGET: " + attribute.Path);
+                    graph.Register(field.Path, attribute.Path);
+                }
+            }
+            return graph;
+        }
+
         public static IList<FCMConfigFieldInfo> Search<T>(string keyword) where T : new()
         {
             IList<FCMConfigFieldInfo> all = Describe<T>();

@@ -35,6 +35,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
     {
         [FCMConfigItem("采集超时", MemberId = "timeout-ms", Order = 20, Unit = "ms")]
         [Range(1, 2000)]
+        [FCMConfigDependsOn("ExposureMs")]
         public int TimeoutMs { get; set; } = 300;
 
         [FCMConfigItem("采集标识", MemberId = "capture-key", Order = 30)]
@@ -175,6 +176,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 ReferenceContractsRegressions(root);
                 AuditRegressions(root);
                 ArchitectureClosureRegressions(root);
+                EditorModelRegressions(root);
                 Console.WriteLine("PASS V1.3 config registry, value state, history view, restore and async validation");
             }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
@@ -592,6 +594,55 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Verify(task.RevisionVector.Equals(resolved.RevisionVector),
                     "task pinned revision vector matches resolved snapshot");
             Console.WriteLine("PASS P0 identity, value state, dependency, ChangeSet, unified apply & revision vector");
+        }
+
+        private static void EditorModelRegressions(string root)
+        {
+            MHSConfigService service = new MHSConfigService(Path.Combine(root, "editor-model"));
+            MHSConfigSection<V13ConfigSample> config =
+                service.ForProject("Editor.Project").Open<V13ConfigSample>();
+            FCMConfigDependencyGraph graph = FCMConfigCatalog.BuildDependencyGraph<V13ConfigSample>();
+            Verify(graph.AffectedBy("ExposureMs").Contains("Acquisition.Group.TimeoutMs"),
+                "declarative dependency graph enables editor impact analysis");
+            using (MHSConfigEditorModel<V13ConfigSample> editor =
+                new MHSConfigEditorModel<V13ConfigSample>(config, "成组参数编辑"))
+            {
+                Verify(!editor.CanUndo && !editor.CanRedo && editor.Draft.ExposureMs == 80,
+                    "editor starts from independently cloned saved model");
+                editor.Modify(x => x.ExposureMs = 150);
+                Verify(editor.CanUndo && !editor.CanRedo && editor.Draft.ExposureMs == 150,
+                    "editing creates independent undo state");
+                editor.Modify(x => x.Acquisition.Group.CaptureKey = "INVALID");
+                MHSConfigPreview invalid = editor.PreviewAsync(CancellationToken.None)
+                    .GetAwaiter().GetResult();
+                Verify(!invalid.Validation.IsValid &&
+                    editor.DescribeFields().Single(x => x.Schema.Path == "Acquisition.Group.CaptureKey")
+                        .Issues.Count != 0,
+                    "editor model exposes validation diagnostics at precise nested field");
+                Verify(editor.Undo() && editor.Draft.Acquisition.Group.CaptureKey == "CAP-001",
+                    "undo restores prior valid draft");
+                Verify(editor.Redo() && editor.Draft.Acquisition.Group.CaptureKey == "INVALID",
+                    "redo restores invalid draft for correction");
+                Verify(editor.Undo(), "second undo");
+                editor.Modify(x => x.Acquisition.Group.CaptureKey = "CAP-123");
+                Verify(!editor.CanRedo, "new edit truncates discarded redo branch");
+                Verify(editor.AffectedBy("ExposureMs").Contains("Acquisition.Group.TimeoutMs"),
+                    "dependency impact available without Studio");
+                MHSConfigPreview ready = editor.PreviewAsync(CancellationToken.None)
+                    .GetAwaiter().GetResult();
+                Verify(ready.Validation.IsValid && ready.ChangeSet.Fields.Count == 2 &&
+                    editor.DescribeFields().Count > 4, "complete draft preview and field editor projections");
+                MHSConfigCommitResult committed = editor.CommitAsync(CancellationToken.None)
+                    .GetAwaiter().GetResult();
+                Verify(committed.Success && committed.ChangeSet.Fields.Count == 2,
+                    "editor commit reuses the single existing config transaction");
+                Expect<ObjectDisposedException>(() => { V13ConfigSample value = editor.Draft; },
+                    "committed editor does not reopen stale session");
+            }
+            Verify(config.GetLatestSaved().ExposureMs == 150 &&
+                config.GetLatestSaved().Acquisition.Group.CaptureKey == "CAP-123",
+                "editor changes persist without requiring any UI implementation");
+            Console.WriteLine("PASS CxVisual dependency-driven editor, Undo/Redo and transaction model");
         }
 
         private static void Verify(bool condition, string reason)

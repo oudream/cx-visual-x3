@@ -80,6 +80,11 @@ namespace CxVisual.Mechanism.Data.Configuration
                 _section.ScopeId, cancellationToken).ConfigureAwait(false);
             return _section.Commit(candidate, _baseRevision, cancellationToken, report, Reason);
         }
+        internal void ReplaceWorkingCopy(T value)
+        {
+            if (_section == null) throw new ObjectDisposedException("MHSConfigEdit");
+            WorkingCopy = value;
+        }
         public void Dispose() { _section = null; WorkingCopy = default(T); }
     }
 
