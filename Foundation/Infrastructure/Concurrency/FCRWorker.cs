@@ -155,6 +155,16 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
                 launch = PumpLocked();
                 if (!CanStartImmediatelyLocked(job))
                 {
+                    // 超出整个待执行预算的单项不可能通过淘汰其他任务获得接纳。
+                    // 先直接拒绝，保证已有可淘汰工作不会遭到无意义删除。
+                    if (job.EstimatedBytes > _options.PendingByteBudget)
+                    {
+                        _rejected++;
+                        job.FinishWithoutRun(FCRWorkState.Rejected);
+                        job.Source.Dispose();
+                        LaunchInstance(launch);
+                        return job.Handle;
+                    }
                     while (WouldOverflowLocked(job) &&
                         _options.OverflowPolicy == FCROverflowPolicy.DropOldestDroppable)
                     {

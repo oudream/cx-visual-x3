@@ -563,12 +563,22 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 }
                 finally { flow.Close(); }
             }
-            MRKFlowResult finalResult = new MRKFlowResult(finalState, context, finalError);
             if (_journal != null)
-                _journal.Append(new MRKJournalRecord(MRKJournalKind.FlowFinished,
-                    context.FlowId, plan.Id, context.Metadata.PlanRevision,
-                    "", finalState.ToString(), context.Metadata.CorrelationId));
-            return finalResult;
+            {
+                try
+                {
+                    _journal.Append(new MRKJournalRecord(MRKJournalKind.FlowFinished,
+                        context.FlowId, plan.Id, context.Metadata.PlanRevision,
+                        "", finalState.ToString(), context.Metadata.CorrelationId));
+                }
+                catch (Exception ex)
+                {
+                    finalState = MRKFlowState.Failed;
+                    finalError = finalError == null ? ex :
+                        new AggregateException("流程执行和Journal最终写入同时失败", finalError, ex);
+                }
+            }
+            return new MRKFlowResult(finalState, context, finalError);
         }
 
         private async Task<object> RunStepAsync(MRKExecutionStep step, MRKExecutionContext context,

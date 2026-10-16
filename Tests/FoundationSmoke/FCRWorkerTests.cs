@@ -223,8 +223,18 @@ namespace CxVisual.Tests.FoundationSmoke
             Check(Await(impossible.Completion).State == FCRWorkState.Rejected &&
                 newer.Accepted && worker.GetSnapshot().PendingBytes == 60,
                 "oversize submission should reject without evicting unrelated work");
-            Check(newer.RequestCancel() && worker.GetSnapshot().PendingBytes == 0,
+            FCRWorkHandle<int> expendable = worker.Submit<int>(
+                ct => Task.FromResult(88), "line", droppable: true, estimatedBytes:30);
+            FCRWorkHandle<int> oversize = worker.Submit<int>(
+                ct => Task.FromResult(89), "line", estimatedBytes:200);
+            Check(Await(oversize.Completion).State == FCRWorkState.Rejected &&
+                expendable.Accepted && !expendable.Completion.IsCompleted &&
+                worker.GetSnapshot().PendingBytes == 90,
+                "oversize request evicted a previously accepted droppable job");
+            Check(newer.RequestCancel() && worker.GetSnapshot().PendingBytes == 30,
                 "pending cancellation leaked reserved bytes");
+            Check(expendable.RequestCancel() && worker.GetSnapshot().PendingBytes == 0,
+                "second pending cancellation leaked reserved bytes");
             release.TrySetResult(true);
             Await(active.Completion);
             Await(worker.StopAsync());

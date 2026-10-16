@@ -12,6 +12,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             TruncatedTailIsRecoverableButCorruptionIsNot();
             RuntimeRecordsRealFlowTransitions();
             JournalAdmissionFailureIsFailClosed();
+            MidFlowJournalFailureIsTypedFailure();
         }
         private static void Check(bool value, string msg)
         { if (!value) throw new InvalidOperationException("运行Journal：" + msg); }
@@ -151,6 +152,35 @@ namespace CxVisual.Tests.ArchitectureSmoke
             if (!object.ReferenceEquals(winner,task))
                 throw new TimeoutException("Journal运行测试超时");
             task.GetAwaiter().GetResult();
+        }
+
+        private sealed class MidFlowFailingJournal : IMRKExecutionJournal
+        {
+            private int _entries;
+            public void Append(MRKJournalRecord record)
+            {
+                if (System.Threading.Interlocked.Increment(ref _entries) > 1)
+                    throw new IOException("journal unavailable after admission");
+            }
+            public IList<MRKJournalRecord> ReadAll() { return new List<MRKJournalRecord>(); }
+        }
+        private static void MidFlowJournalFailureIsTypedFailure()
+        {
+            int performed = 0;
+            MRKExecutionPlan plan = new MRKExecutionPlan("journal-fault", new[]
+            {
+                new MRKExecutionStep("write",new string[0],(ctx,ct)=>
+                { performed++; return System.Threading.Tasks.Task.FromResult((object)1); })
+            });
+            MRKExecutionEngine engine = new MRKExecutionEngine(
+                new CxVisual.Foundation.Infrastructure.Concurrency.FCRWorkerOptions(1,2),
+                journal: new MidFlowFailingJournal());
+            MRKFlowHandle flow = engine.StartFlow(plan);
+            MRKFlowResult outcome = Await(flow.Completion);
+            Check(outcome.State == MRKFlowState.Failed && outcome.Error != null &&
+                flow.GetSnapshot().State == MRKFlowState.Failed &&
+                performed == 0, "中途审计失效被吞掉或Flow永远Running");
+            Await(engine.StopAsync());
         }
 
     }
