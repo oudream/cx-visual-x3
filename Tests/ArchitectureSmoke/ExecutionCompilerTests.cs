@@ -35,6 +35,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             AggregatesBrokenNodeDiagnostics();
             RejectsGraphCycleBeforeAnyExecution();
             AuthorizedPublishingAndSafeRollback();
+            NestedOrchestrationRunsAndSkipsCorrectly();
         }
         private static void Check(bool ok, string msg)
         { if (!ok) throw new InvalidOperationException("计划编译：" + msg); }
@@ -179,6 +180,61 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 release.TrySetResult(true);
                 Wait(engine.StopAsync(true));
             }
+        }
+
+
+        private sealed class FlowCatalog : IMRKFlowCompileCatalog
+        {
+            private readonly Dictionary<string, MRKFlowCompileDefinition> _definitions =
+                new Dictionary<string, MRKFlowCompileDefinition>(StringComparer.Ordinal);
+            internal void Add(string id, params MRKStepCompileRequest[] steps)
+            { _definitions.Add(id,new MRKFlowCompileDefinition(id,steps)); }
+            public bool TryGet(string id, out MRKFlowCompileDefinition value)
+            { return _definitions.TryGetValue(id,out value); }
+        }
+
+        private static void NestedOrchestrationRunsAndSkipsCorrectly()
+        {
+            FlowCatalog definitions=new FlowCatalog();
+            definitions.Add("leaf",
+                new MRKStepCompileRequest("compute","Calculate"));
+            definitions.Add("middle",
+                new MRKStepCompileRequest("inner",null,subflowId:"leaf"),
+                new MRKStepCompileRequest("afterInner","Calculate",new[]{"inner"}));
+            definitions.Add("root",
+                new MRKStepCompileRequest("outer",null,
+                    condition:ctx=>(bool)ctx.Inputs["enabled"],subflowId:"middle"),
+                new MRKStepCompileRequest("finish","Calculate",new[]{"outer"}));
+            Resolver capabilities=new Resolver((ctx,ct)=>Task.FromResult((object)42));
+            MRKExecutionOrchestrationCompiler compiler=new MRKExecutionOrchestrationCompiler();
+            MRKCompileResult compiled=compiler.Compile("root",definitions,capabilities);
+            Check(compiled.Succeeded && compiled.Plan.Steps.Count>=7,
+                "多层子流程入口/出口没有转换为运行计划");
+            MRKExecutionEngine engine=new MRKExecutionEngine(new FCRWorkerOptions(2,16));
+            try
+            {
+                MRKFlowResult good=Wait(engine.StartFlow(compiled.Plan,
+                    new Dictionary<string,object>{{"enabled",true}}).Completion);
+                Check(good.State==MRKFlowState.Completed &&
+                    (int)good.Results["outer.inner.compute"]==42 &&
+                    (int)good.Results["outer.afterInner"]==42 &&
+                    (int)good.Results["finish"]==42,
+                    "多级子流程结果路径、依赖出口或能力调用错误");
+                MRKFlowResult skipped=Wait(engine.StartFlow(compiled.Plan,
+                    new Dictionary<string,object>{{"enabled",false}}).Completion);
+                Check(skipped.State==MRKFlowState.Completed &&
+                    skipped.StepStates["outer"]==MRKStepState.Skipped &&
+                    skipped.StepStates["outer.inner.compute"]==MRKStepState.Skipped &&
+                    skipped.StepStates["finish"]==MRKStepState.Skipped,
+                    "子流程条件false未阻断内部副作用与后继");
+                FlowCatalog cyclic=new FlowCatalog();
+                cyclic.Add("self",new MRKStepCompileRequest("again",null,subflowId:"self"));
+                MRKCompileResult bad=compiler.Compile("self",cyclic,capabilities);
+                Check(!bad.Succeeded && bad.Plan==null &&
+                    bad.Diagnostics.Any(x=>x.Code=="INVALID_ORCHESTRATION"),
+                    "子流程循环引用未在编译期拒绝");
+            }
+            finally { Wait(engine.StopAsync()); }
         }
 
         private static void Wait(Task task)

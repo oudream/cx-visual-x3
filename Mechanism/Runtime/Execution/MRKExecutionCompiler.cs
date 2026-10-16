@@ -44,9 +44,9 @@ namespace CxVisual.Mechanism.Runtime.Execution
             IEnumerable<string> requiredResources = null,
             Func<MRKExecutionContext, bool> condition = null,
             bool allowSkippedDependencies = false, string dedicatedExecutorId = null,
-            int priority = 0, long estimatedPendingBytes = 0)
+            int priority = 0, long estimatedPendingBytes = 0, string subflowId = null)
         {
-            Id = id; CapabilityId = capabilityId; SerialKey = serialKey;
+            Id = id; CapabilityId = capabilityId; SubflowId = subflowId; SerialKey = serialKey;
             ExecutionGroup = executionGroup; Policy = policy; Condition = condition;
             AllowSkippedDependencies = allowSkippedDependencies;
             DedicatedExecutorId = dedicatedExecutorId;
@@ -61,6 +61,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
         }
         public string Id { get; private set; }
         public string CapabilityId { get; private set; }
+        public string SubflowId { get; private set; }
         public IList<string> Dependencies { get; private set; }
         public IList<MRKExecutionInput> Inputs { get; private set; }
         public string SerialKey { get; private set; }
@@ -123,6 +124,12 @@ namespace CxVisual.Mechanism.Runtime.Execution
             foreach (MRKStepCompileRequest item in definitions.Where(x => x != null))
             {
                 if (string.IsNullOrWhiteSpace(item.Id)) continue;
+                if (!string.IsNullOrWhiteSpace(item.SubflowId))
+                {
+                    errors.Add(new MRKCompileDiagnostic(item.Id, "SUBFLOW_NEEDS_ORCHESTRATION",
+                        "子流程定义需要通过统一编排编译入口处理"));
+                    continue;
+                }
                 if (string.IsNullOrWhiteSpace(item.CapabilityId))
                 {
                     errors.Add(new MRKCompileDiagnostic(item.Id, "EMPTY_CAPABILITY", "能力标识不能为空"));
