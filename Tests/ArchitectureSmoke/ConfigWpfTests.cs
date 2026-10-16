@@ -20,6 +20,20 @@ namespace CxVisual.Tests.ArchitectureSmoke
     /// </summary>
     internal static class ConfigWpfTests
     {
+        private static Button FindButton(DependencyObject root, string label)
+        {
+            Button button = root as Button;
+            if (button != null && string.Equals(button.Content as string, label, StringComparison.Ordinal))
+                return button;
+            foreach (object item in LogicalTreeHelper.GetChildren(root))
+            {
+                DependencyObject child = item as DependencyObject;
+                if (child == null) continue;
+                Button found = FindButton(child, label);
+                if (found != null) return found;
+            }
+            return null;
+        }
         private static V AwaitOnSta<V>(Task<V> task)
         {
             if (task.IsCompleted) return task.GetAwaiter().GetResult();
@@ -55,6 +69,16 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         });
                         if (change == null) throw new InvalidOperationException("CONFIG_WPF_EDITOR_EXTENSION_MISSING");
                         change("145");
+                        Button undo = FindButton(control, "撤销");
+                        Button redo = FindButton(control, "重做");
+                        if (undo == null || redo == null)
+                            throw new InvalidOperationException("CONFIG_WPF_UNDO_REDO_BUTTONS_MISSING");
+                        undo.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                        if (control.Draft.ExposureMs != 80)
+                            throw new InvalidOperationException("CONFIG_WPF_UNDO_FAILED");
+                        redo.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                        if (control.Draft.ExposureMs != 145)
+                            throw new InvalidOperationException("CONFIG_WPF_REDO_FAILED");
                         if (control.Draft.ExposureMs != 145 ||
                             section.GetLatestSaved().ExposureMs != 80)
                             throw new InvalidOperationException("CONFIG_WPF_EDITOR_TRANSACTION_BYPASS");
@@ -212,6 +236,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
                             throw new InvalidOperationException("CONFIG_WPF_DYNAMIC_PAGING_LIMIT");
                         if (largeUi.Content == null)
                             throw new InvalidOperationException("CONFIG_WPF_DYNAMIC_PAGING_RENDER");
+                        Button more = FindButton(largeUi, "再显示 150 项");
+                        if (more == null)
+                            throw new InvalidOperationException("CONFIG_WPF_PAGING_BUTTON_MISSING");
+                        more.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                        if (largeUi.VisibleEditorCount < 245)
+                            throw new InvalidOperationException("CONFIG_WPF_PAGING_NOT_ADVANCED");
                     }
                     var layers = new[] {
                         new MVBConfigLayerSpec("Template", "template", "WPF-Base", 10),
