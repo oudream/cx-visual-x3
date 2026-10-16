@@ -25,7 +25,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
             string dedicatedExecutorId = null,
             Func<MRKExecutionContext, CancellationToken, object> synchronousSdk = null,
             int priority = 0, long estimatedPendingBytes = 0,
-            IDictionary<string, Type> dataOutputs = null)
+            IDictionary<string, Type> dataOutputs = null, bool enableDataContext = false)
         {
             if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("Step ID required", "id");
             if (executeAsync == null) throw new ArgumentNullException("executeAsync");
@@ -55,6 +55,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
                     declaredData.Add(entry.Key, entry.Value);
                 }
             DataOutputs = new ReadOnlyDictionary<string, Type>(declaredData);
+            EnableDataContext = enableDataContext || declaredData.Count != 0;
             List<string> resources = new List<string>();
             if (requiredResources != null)
                 foreach (string resource in requiredResources)
@@ -77,6 +78,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
         public MRKExecutionOutput Output { get; private set; }
         /// <summary>同一MRK节点的具名数据输出契约；Data项目负责实际数据所有权。</summary>
         public IDictionary<string, Type> DataOutputs { get; private set; }
+        public bool EnableDataContext { get; private set; }
         /// <summary>编排节点是否运行；无副作用的Guard应在资源申请前判定。</summary>
         public Func<MRKExecutionContext, bool> Condition { get; private set; }
         public bool AllowSkippedDependencies { get; private set; }
@@ -168,7 +170,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
                     local.SynchronousSdk == null ?
                         (Func<MRKExecutionContext, CancellationToken, object>)null :
                         (context, token) => local.SynchronousSdk(context.ForSubflow(scope), token),
-                    local.Priority, local.EstimatedPendingBytes, local.DataOutputs));
+                    local.Priority, local.EstimatedPendingBytes, local.DataOutputs, local.EnableDataContext));
             }
             return list.AsReadOnly();
         }
