@@ -77,6 +77,17 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         var applied = endToEnd.ApplySaved(FCMConfigApplyPolicy.NextTask);
                         if (!applied.Applied || savedConfig.Value(x => x.ExposureMs) != 128)
                             throw new InvalidOperationException("CONFIG_WPF_APPLY_FAILED");
+                        string oldVersion = savedConfig.SavedVersion;
+                        setExposure("148");
+                        if (!AwaitOnSta(endToEnd.SaveDraftAsync(CancellationToken.None)).Success ||
+                            savedConfig.GetLatestSaved().ExposureMs != 148)
+                            throw new InvalidOperationException("CONFIG_WPF_SECOND_SAVED");
+                        var restored = AwaitOnSta(endToEnd.RestoreAsNewSavedAsync(
+                            oldVersion, CancellationToken.None));
+                        if (!restored.Success || savedConfig.SavedVersion == oldVersion ||
+                            savedConfig.GetLatestSaved().ExposureMs != 128 ||
+                            savedConfig.Value(x => x.ExposureMs) != 128)
+                            throw new InvalidOperationException("CONFIG_WPF_HISTORY_NOT_NEW_REVISION");
                     }
                     if (new MHSConfigService(root).ForMachine("WPF-EndToEnd")
                         .Open<V13ConfigSample>().Value(x => x.ExposureMs) != 128)
