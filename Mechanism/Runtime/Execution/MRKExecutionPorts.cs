@@ -75,6 +75,12 @@ namespace CxVisual.Mechanism.Runtime.Execution
                     throw new ArgumentException("输入端口依赖未知节点：" + producer);
                 if (!step.Dependencies.Contains(producer))
                     throw new ArgumentException("输入端口来源必须声明为直接依赖：" + producer);
+                string restricted = catalog[producer].SubflowAccessGroup;
+                if (restricted != null &&
+                    step.SubflowAccessGroup != restricted &&
+                    step.Id != restricted + ".__commit")
+                    throw new ArgumentException("禁止越过子流程导出屏障直接读取内部节点：" +
+                        producer + " -> " + step.Id);
                 if (outputName == null)
                 {
                     MRKExecutionOutput result = catalog[producer].Output;
