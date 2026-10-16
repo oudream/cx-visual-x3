@@ -176,6 +176,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 ReferenceContractsRegressions(root);
                 AuditRegressions(root);
                 ArchitectureClosureRegressions(root);
+                NotificationContractRegressions(root);
                 EditorModelRegressions(root);
                 Console.WriteLine("PASS V1.3 config registry, value state, history view, restore and async validation");
             }
@@ -661,6 +662,64 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 "status reports one coherent effective revision");
 
             Console.WriteLine("PASS CxVisual dependency-driven editor, Undo/Redo and transaction model");
+        }
+
+        private static void NotificationContractRegressions(string root)
+        {
+            MHSConfigService service = new MHSConfigService(Path.Combine(root, "event-contract"));
+            MHSConfigSection<ConfigImmediateContract> cfg =
+                service.ForProject("Event-1").Open<ConfigImmediateContract>();
+            FCMConfigChange<int> saved = null, effective = null;
+            int successfulListeners = 0;
+            using (IDisposable faulty = cfg.Subscribe(x => x.Threshold,
+                FCMConfigChangeStage.Committed, msg => { throw new InvalidOperationException("模拟故障订阅者"); }))
+            using (IDisposable savedListener = cfg.Subscribe(x => x.Threshold,
+                FCMConfigChangeStage.Committed, msg => { saved = msg; successfulListeners++; }))
+            using (IDisposable effectiveListener = cfg.Subscribe(x => x.Threshold,
+                FCMConfigChangeStage.Effective, msg => { effective = msg; successfulListeners++; }))
+            {
+                MHSConfigCommitResult result = cfg.SetValueAsync(x => x.Threshold, 20,
+                    "带通知事务", CancellationToken.None).GetAwaiter().GetResult();
+                Verify(result.Success && !result.PendingApply && saved != null && effective != null &&
+                    successfulListeners == 2, "exceptional subscriber must not suppress healthy subscriptions");
+                Verify(saved.Sequence > 0 && effective.Sequence == saved.Sequence + 1 &&
+                    cfg.LastNotificationSequence == effective.Sequence &&
+                    saved.TransactionId == effective.TransactionId &&
+                    effective.TimestampUtc >= saved.TimestampUtc &&
+                    saved.TimestampUtc != default(DateTimeOffset),
+                    "ordered event sequence, UTC time and shared immediate transaction identity");
+            }
+
+            MHSConfigSection<ConfigImmediateContract> nested =
+                service.ForProject("Event-Reentrant").Open<ConfigImmediateContract>();
+            List<long> sequence = new List<long>();
+            bool reentered = false;
+            using (IDisposable first = nested.Subscribe(x => x.Threshold,
+                FCMConfigChangeStage.Committed, msg =>
+                {
+                    if (msg.NewValue == 20 && !reentered)
+                    {
+                        reentered = true;
+                        Verify(nested.SetValueAsync(x => x.Threshold, 30, "重入变更",
+                            CancellationToken.None).GetAwaiter().GetResult().Success,
+                            "reentrant commit succeeds without nested dispatch");
+                    }
+                }))
+            using (IDisposable second = nested.Subscribe(x => x.Threshold,
+                FCMConfigChangeStage.Committed, msg => sequence.Add(msg.Sequence)))
+            {
+                Verify(nested.SetValueAsync(x => x.Threshold, 20, "初次变更",
+                    CancellationToken.None).GetAwaiter().GetResult().Success, "first commit");
+                Verify(reentered && sequence.Count == 2 && sequence[0] < sequence[1],
+                    "reentrant event is queued and not dispatched before previous event completes");
+                Verify(nested.GetLatestSaved().Threshold == 30 && nested.Get().Threshold == 10 &&
+                    nested.HasPendingApply,
+                    "old immediate transaction must not falsely apply a newer reentrant commit");
+                Verify(nested.TryApplyPendingAtBoundary(FCMConfigApplyPolicy.Immediate, null).Applied &&
+                    nested.Value(x => x.Threshold) == 30,
+                    "newer candidate applies only via its own subsequent activation");
+            }
+            Console.WriteLine("PASS configuration event sequence, correlation, reentrancy and fault isolation");
         }
 
         private static void Verify(bool condition, string reason)

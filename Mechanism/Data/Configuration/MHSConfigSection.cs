@@ -129,6 +129,7 @@ namespace CxVisual.Mechanism.Data.Configuration
         public string SavedVersion { get { lock (_gate) return MHSConfigStorage.Name(_savedRev); } }
         public string EffectiveVersion { get { lock (_gate) return MHSConfigStorage.Name(_effectiveRev); } }
         public bool HasPendingApply { get { lock (_gate) return _savedRev != _effectiveRev; } }
+        public long LastNotificationSequence { get { return _publisher.LastSequence; } }
         public FCMConfigRevision Revision
         {
             get
@@ -397,10 +398,12 @@ namespace CxVisual.Mechanism.Data.Configuration
             }
             _publisher.Publish(oldSaved, savedNow, newVersion, transactionId, FCMConfigChangeStage.Committed,
                 FCMConfigDiffUtil.Diff(oldSaved, savedNow));
-            if (immediate)
+            if (immediate && SavedVersion == MHSConfigStorage.Name(newVersion) &&
+                EffectiveVersion == MHSConfigStorage.Name(baseRevision))
             {
-                // Immediate is the same guarded state machine as NextTask/Restart; no shortcut can bypass approval.
-                TryApplyPendingAtBoundary(FCMConfigApplyPolicy.Immediate, null);
+                // Only auto-apply the exact revision associated with this transaction.
+                // Reentrant callbacks may have already committed a newer candidate.
+                ApplyPendingCore(FCMConfigApplyPolicy.Immediate, null, transactionId);
             }
             result.PendingApply = HasPendingApply;
             return result;
@@ -420,6 +423,10 @@ namespace CxVisual.Mechanism.Data.Configuration
         /// </summary>
         public MHSConfigApplyResult TryApplyPendingAtBoundary(FCMConfigApplyPolicy boundary,
             Func<MHSConfigApplyReview<T>, MHSConfigApplyDecision> approval)
+        { return ApplyPendingCore(boundary, approval, null); }
+
+        private MHSConfigApplyResult ApplyPendingCore(FCMConfigApplyPolicy boundary,
+            Func<MHSConfigApplyReview<T>, MHSConfigApplyDecision> approval, string originalTransactionId)
         {
             T proposed, current;
             int proposedRevision, activeRevision;
@@ -490,7 +497,8 @@ namespace CxVisual.Mechanism.Data.Configuration
                 revision = _effectiveRev;
                 newValue = Clone(_effective);
             }
-            _publisher.Publish(oldValue, newValue, revision, Guid.NewGuid().ToString("N"),
+            _publisher.Publish(oldValue, newValue, revision,
+                originalTransactionId ?? Guid.NewGuid().ToString("N"),
                 FCMConfigChangeStage.Effective, FCMConfigDiffUtil.Diff(oldValue, newValue));
             return new MHSConfigApplyResult { Applied = true, Status = "APPLIED",
                 SavedVersion = MHSConfigStorage.Name(revision),

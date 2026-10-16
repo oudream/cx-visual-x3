@@ -185,6 +185,9 @@ namespace CxVisual.Foundation.Data.Configuration
         public T DefaultValue { get; set; }
         public string Version { get; set; }
         public string TransactionId { get; set; }
+        /// <summary>同一个发布器实例内单调递增；跨进程稳定游标另由持久 Journal 提供。</summary>
+        public long Sequence { get; set; }
+        public DateTimeOffset TimestampUtc { get; set; }
         public IList<string> ChangedPaths { get; set; }
     }
 }
