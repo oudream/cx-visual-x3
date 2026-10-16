@@ -538,6 +538,8 @@ namespace CxVisual.Mechanism.Data.Configuration
                 }
                 catch (InvalidOperationException ex) when (ex.Message.StartsWith("CONFIG_WRITE_CONFLICT", StringComparison.Ordinal))
                 { return new MHSConfigCommitResult { Success = false, ErrorCode = "CONFIG_WRITE_CONFLICT", Validation = validation }; }
+                catch (Exception ex) when (ex is System.IO.IOException || ex is UnauthorizedAccessException)
+                { return new MHSConfigCommitResult { Success = false, ErrorCode = "CONFIG_STORAGE_ERROR", Validation = validation }; }
                 _savedRev = newVersion; _savedJson = patched; _saved = roundtrip;
                 savedNow = Clone(_saved);
                 result = new MHSConfigCommitResult { Success = true, Revision = MHSConfigStorage.Name(_savedRev),
@@ -645,7 +647,7 @@ namespace CxVisual.Mechanism.Data.Configuration
                     persisted = _store.TrySetEffective(activeRevision, proposedRevision, _savedJson,
                         effectiveTransactionId, FCMConfigDiffUtil.Diff(oldValue, _saved));
                 }
-                catch (System.IO.IOException)
+                catch (Exception ex) when (ex is System.IO.IOException || ex is UnauthorizedAccessException)
                 {
                     return new MHSConfigApplyResult { Applied = false, Status = "APPLY_STORAGE_ERROR",
                         Reason = "配置生效存储暂时不可用",
