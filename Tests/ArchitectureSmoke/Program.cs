@@ -22,6 +22,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 ExecutionFlowTests.Run();
                 ExecutionCompilerTests.Run();
                 ExecutionDataScopeTests.Run();
+                ExecutionJournalTests.Run();
                 ExecutionControlTests.Run();
                 ExecutionPolicyTests.Run();
                 ExecutionTriggerTests.Run();
