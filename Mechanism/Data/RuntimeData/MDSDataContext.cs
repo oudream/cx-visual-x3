@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using CxVisual.Foundation.Data.Execution;
+using CxVisual.Mechanism.Data.Execution;
 
 namespace CxVisual.Mechanism.Data.RuntimeData
 {
@@ -34,6 +35,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         private readonly Dictionary<string, object> _pending =
             new Dictionary<string, object>(StringComparer.Ordinal);
         private bool _finished;
+        private bool _heapMutated;
 
         /// <summary>向后兼容独立使用，未显式声明输出时只做本地输出快照。</summary>
         public MDSDataContext(IFDEExecutionDataScope scope)
@@ -201,6 +203,27 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 if (!toHeap && _inputs != null && _inputs.ContainsKey(to))
                     throw new InvalidOperationException("不能移动或复制到只读Input槽：" + to);
                 MDSDataTransfer.Apply(_scope, _heap, from, to, toHeap, move, replace);
+                _heapMutated = true;
+            }
+        }
+
+        /// <summary>
+        /// 仅供运行策略在已经确认允许幂等重试时调用。
+        /// 清除上一次尝试的Local和PendingOutput，防止结果穿越重试边界。
+        /// Heap写入属于显式外部副作用，不能在这里悄悄回滚。
+        /// </summary>
+        public void PrepareRetry()
+        {
+            lock (_gate)
+            {
+                EnsureActive();
+                if (_heapMutated)
+                    throw new InvalidOperationException("本节点已修改Heap，不允许隐式幂等重试");
+                MDEExecutionDataScope data = _scope as MDEExecutionDataScope;
+                if (data == null)
+                    throw new NotSupportedException("旧自定义Scope尚不支持局部数据重试复位");
+                data.ResetLocalForRetry();
+                _pending.Clear();
             }
         }
 
