@@ -17,12 +17,22 @@ namespace CxVisual.Tests.ArchitectureSmoke
         public string SecretRef { get; set; } = "vault:test-key";
     }
 
+    internal sealed class ConfigTestResourceProvider : IFCMConfigResourceReferenceProvider
+    {
+        public string ResourceType { get { return "calibration"; } }
+        public bool Exists(string resourceId, out string reason)
+        {
+            reason = "标定资源未找到：" + resourceId;
+            return resourceId == "cal-01";
+        }
+    }
+
     internal static class ConfigArchitectureCompletionTests
     {
         public static void Run()
         {
             string root = Path.Combine(Path.GetTempPath(), "CxVisual-Config-Atomic-" + Guid.NewGuid().ToString("N"));
-            try { VerifyAtomicGroup(root); VerifyDurableEvents(root); VerifySecurity(root); }
+            try { VerifyAtomicGroup(root); VerifyDurableEvents(root); VerifySecurity(root); VerifyReferences(root); }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
             Console.WriteLine("PASS atomic multi-model configuration transaction, validation and snapshots");
         }
@@ -206,6 +216,57 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 id.SectionId, id.ScopeKind, id.ScopeId);
             Expect<UnauthorizedAccessException>(() => secured.Get(),
                 "revoked sensitive privilege is checked for every read");
+        }
+
+        private static void VerifyReferences(string root)
+        {
+            MHSConfigService service = new MHSConfigService(Path.Combine(root, "refs"));
+            MHSConfigReferenceRegistry references = new MHSConfigReferenceRegistry(service);
+            FCMConfigIdentity cameraId = new FCMConfigIdentity("Tests.V13Extension", "project", "Refs");
+            FCMConfigIdentity otherId = new FCMConfigIdentity("Tests.ArchitectureImmediate", "project", "Refs");
+            references.Register<V13ConfigSample>(cameraId);
+            references.Register<ConfigImmediateContract>(otherId);
+            FCMConfigReference exposure = new FCMConfigReference(cameraId, "ExposureMs");
+            MHSConfigReferenceValue current = references.Resolve(exposure);
+            Check(current.HasValue && current.Read<int>() == 80 &&
+                current.Presence == FCMConfigValuePresence.Defaulted &&
+                current.Version == "v1", "typed reference resolves factory default and source version");
+            MHSConfigSection<V13ConfigSample> config = service.Open<V13ConfigSample>(cameraId);
+            Check(config.SetValueAsync(x => x.ExposureMs, 135, "更新被引用参数",
+                CancellationToken.None).GetAwaiter().GetResult().Success, "referenced value saved");
+            Check(references.Resolve(exposure).Read<int>() == 80,
+                "reference resolves effective value rather than pending saved value");
+            Check(config.ApplyPendingAtTaskBoundary() &&
+                references.Resolve(exposure).Read<int>() == 135 &&
+                references.Resolve(exposure).Version == config.EffectiveVersion,
+                "reference sees newly applied value with correct version");
+            MHSConfigReferenceValue invalid = references.Resolve(new FCMConfigReference(
+                cameraId, "Detectors[\"not-present\"].Gain"));
+            Check(!invalid.HasValue && invalid.Presence == FCMConfigValuePresence.Missing &&
+                invalid.Issue.Code == "CONFIG_REFERENCE_PATH_MISSING",
+                "missing dynamic reference has actionable diagnostic");
+            MHSConfigReferenceValue optional = references.Resolve(new FCMConfigReference(
+                cameraId, "Detectors[\"not-present\"].Gain", true));
+            Check(!optional.HasValue && optional.Issue == null,
+                "optional reference can be missing without validation error");
+            MHSConfigReferenceValue unknown = references.Resolve(new FCMConfigReference(
+                new FCMConfigIdentity("Tests.V13Extension", "project", "unknown"), "ExposureMs"));
+            Check(unknown.Issue.Code == "CONFIG_REFERENCE_SOURCE_MISSING",
+                "unregistered source is not silently resolved by another scope");
+            references.RegisterDependency(cameraId, otherId);
+            Expect<InvalidOperationException>(() => references.RegisterDependency(otherId, cameraId),
+                "cross-section dependency cycle detected at registration");
+            Check(references.DependencyOrder().Count == 2, "rejected edge does not corrupt graph");
+            Check(references.ValidateResource(new FCMConfigResourceRef {
+                ResourceType = "calibration", ResourceId = "cal-01" }).Code ==
+                "CONFIG_RESOURCE_PROVIDER_MISSING", "resource provider absence explicit");
+            references.RegisterResourceProvider(new ConfigTestResourceProvider());
+            Check(references.ValidateResource(new FCMConfigResourceRef {
+                ResourceType = "calibration", ResourceId = "cal-01" }) == null,
+                "resource exists through registered provider");
+            Check(references.ValidateResource(new FCMConfigResourceRef {
+                ResourceType = "calibration", ResourceId = "cal-unknown" }).Code ==
+                "CONFIG_RESOURCE_NOT_FOUND", "missing resource actionable without loading content");
         }
 
         private static void Check(bool condition, string message)
