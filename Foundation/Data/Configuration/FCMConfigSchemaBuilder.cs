@@ -141,7 +141,7 @@ namespace CxVisual.Foundation.Data.Configuration
                 {
                     Exception cause = ex is TargetInvocationException && ex.InnerException != null
                         ? ex.InnerException : ex;
-                    report.Add(FCMConfigIssue.Error("", "ASYNC_VALIDATOR_EXCEPTION", cause.Message));
+                    report.Add(FCMConfigIssue.Error("", "ASYNC_VALIDATOR_EXCEPTION", "异步配置验证器执行失败"));
                 }
             }
             cancellationToken.ThrowIfCancellationRequested();
@@ -206,7 +206,7 @@ namespace CxVisual.Foundation.Data.Configuration
                             if (validation != ValidationResult.Success)
                                 result.Add(FCMConfigIssue.Error(path, attribute.GetType().Name, validation.ErrorMessage));
                         }
-                        catch (Exception error) { result.Add(FCMConfigIssue.Error(path, "VALIDATION_EXCEPTION", error.Message)); }
+                        catch (Exception error) { result.Add(FCMConfigIssue.Error(path, "VALIDATION_EXCEPTION", "配置数据验证失败")); }
                     }
                     foreach (FCMConfigCustomValidatorAttribute attr in member.Property.GetCustomAttributes(typeof(FCMConfigCustomValidatorAttribute), true))
                     {
