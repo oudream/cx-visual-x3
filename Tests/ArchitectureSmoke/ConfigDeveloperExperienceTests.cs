@@ -49,6 +49,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 SecurityAndCatalog(root);
                 PreparedReadAndConcurrency(root);
                 DynamicCollectionEditing(root);
+                WpfPathCommandsAndLayers(root);
                 Console.WriteLine("PASS config developer experience: basic/XRay/CT/recipe/security/performance");
             }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
@@ -386,6 +387,87 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Expect<ObjectDisposedException>(() => disposed.AddKey(
                 x => x.Detectors, "after-dispose", new ConfigDynamicNode()),
                 "all collection edits reject closed editor sessions");
+        }
+
+        private static void WpfPathCommandsAndLayers(string root)
+        {
+            var service = new MHSConfigService(Path.Combine(root, "wpf-paths"));
+            var section = service.ForMachine("WPF").Open<ConfigDynamicCollections>();
+            using (var editor = new MHSConfigEditorModel<ConfigDynamicCollections>(section, "UI路径命令"))
+            {
+                editor.AddMapItem("Detectors", "D.\"A]\\02",
+                    FCMJsonValueCodec.Serialize(new ConfigDynamicNode { Gain = 2 }));
+                editor.SetPathJson("Detectors[" + FCMJsonValueCodec.Serialize("D.\"A]\\02") + "].Gain", "9");
+                editor.RenameMapItem("Detectors", "D.\"A]\\02", "Renamed");
+                editor.AddMapItem("Groups", "CT", FCMJsonValueCodec.Serialize(
+                    new List<ConfigDynamicNode>()));
+                editor.InsertListItem("Groups[\"CT\"]", 0,
+                    FCMJsonValueCodec.Serialize(new ConfigDynamicNode { Gain = 5 }));
+                editor.InsertListItem("Segments", 0,
+                    FCMJsonValueCodec.Serialize(new ConfigDynamicNode { Gain = 1 }));
+                editor.InsertListItem("Segments", 1,
+                    FCMJsonValueCodec.Serialize(new ConfigDynamicNode { Gain = 2 }));
+                editor.MoveListItem("Segments", 0, 1);
+                editor.AddSetJson("Tags", FCMJsonValueCodec.Serialize("CT"));
+                editor.AddSetJson("Tags", FCMJsonValueCodec.Serialize("CT"));
+                editor.RemoveSetJson("Tags", FCMJsonValueCodec.Serialize("CT"));
+                editor.AddSetJson("Tags", FCMJsonValueCodec.Serialize("Valid"));
+                Check(editor.ReadDraftJson("Detectors[\"Renamed\"].Gain") == "9" &&
+                    editor.Draft.Groups["CT"][0].Gain == 5 &&
+                    editor.Draft.Segments[0].Gain == 2 &&
+                    editor.Draft.Tags.SetEquals(new[] { "Valid" }),
+                    "WPF-friendly path commands compose nested typed collections");
+                string before = FCMJsonValueCodec.Serialize(editor.Draft);
+                Expect<ArgumentException>(() => editor.AddMapItem("Detectors", "Renamed",
+                    FCMJsonValueCodec.Serialize(new ConfigDynamicNode())),
+                    "duplicate map key rejected");
+                Expect<ArgumentOutOfRangeException>(() => editor.MoveListItem(
+                    "Segments", 0, 99), "bad list move rejected");
+                Check(FCMJsonValueCodec.Serialize(editor.Draft) == before &&
+                    editor.Undo() && editor.Redo() &&
+                    FCMJsonValueCodec.Serialize(editor.Draft) == before,
+                    "failed UI actions leave Undo history intact");
+                Check(editor.CommitAsync(CancellationToken.None).GetAwaiter().GetResult().Success,
+                    "WPF path draft uses original config transaction");
+            }
+            Check(section.Value(x => x.Detectors).Count == 0 && section.HasPendingApply,
+                "dynamic path saved but not active");
+            Check(section.ApplyPendingAtTaskBoundary() &&
+                section.Value(x => x.Detectors)["Renamed"].Gain == 9,
+                "dynamic path effective follows boundary");
+
+            var specs = new[] {
+                new MVBConfigLayerSpec("Template", "template", "WPF-T", 10),
+                new MVBConfigLayerSpec("Machine", "machine", "WPF-M", 20)
+            };
+            var atomic = new MVBConfigAtomicLayerProfile<V13ConfigSample>(
+                service, "WPF-Atomic-UI", specs);
+            Check(atomic.SetOverridePathJsonAsync("Machine", "ExposureMs", "143",
+                CancellationToken.None).GetAwaiter().GetResult().Success &&
+                atomic.ResolveSaved().Value(x => x.ExposureMs) == 143,
+                "UI atomic override is saved once");
+            Check(atomic.TryApplyPendingAtBoundary(FCMConfigApplyPolicy.NextTask, null).Applied &&
+                atomic.ResolveEffective().SourceOf("ExposureMs") == "Machine",
+                "UI atomic source explanation follows effective value");
+            Check(atomic.RemoveOverridePathAsync("Machine", "ExposureMs",
+                CancellationToken.None).GetAwaiter().GetResult().Success &&
+                atomic.ResolveSaved().Value(x => x.ExposureMs) == 80,
+                "removing layer override reveals factory default");
+
+            var independent = new MVBConfigLayeredProfile<V13ConfigSample>(
+                service, "WPF-Independent-UI", new[] {
+                    new MVBConfigLayerSpec("Template", "template", "WPF-T2", 10),
+                    new MVBConfigLayerSpec("Machine", "machine", "WPF-M2", 20) });
+            Check(independent.SetOverridePathJsonAsync("Machine", "ExposureMs", "127",
+                CancellationToken.None).GetAwaiter().GetResult().Success &&
+                independent.GetLayer("Machine").ApplyPendingAtTaskBoundary() &&
+                independent.ResolveEffective().SourceOf("ExposureMs") == "Machine",
+                "independent UI layer update preserves per-file apply boundary");
+            Check(independent.RemoveOverridePathAsync("Machine", "ExposureMs",
+                CancellationToken.None).GetAwaiter().GetResult().Success &&
+                independent.GetLayer("Machine").ApplyPendingAtTaskBoundary() &&
+                independent.ResolveEffective().Value(x => x.ExposureMs) == 80,
+                "independent UI remove returns inherited default");
         }
 
         private static void PreparedReadAndConcurrency(string root)
