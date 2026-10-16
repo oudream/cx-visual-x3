@@ -114,6 +114,14 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 catch(UnauthorizedAccessException){denied=true;}
                 if(!denied || session.Snapshot().ActiveFlows!=0)
                     throw new InvalidOperationException("只读主体启动了Flow");
+                // 网关不能把调用者控制的Token保留为运行期取消捷径。
+                foreach (System.Reflection.MethodInfo method in
+                    typeof(MRKRuntimeAccessGateway).GetMethods())
+                    if (method.Name=="TryStart" || method.Name=="TryStartDebug")
+                        foreach (System.Reflection.ParameterInfo parameter in method.GetParameters())
+                            if (parameter.ParameterType==typeof(CancellationToken))
+                                throw new InvalidOperationException(
+                                    "Start/Debug调用方可绕过Cancel权限保留取消令牌");
                 MRKRuntimeFlowTicket ordinaryTicket=access.TryStart("operator");
                 if (typeof(MRKRuntimeFlowTicket).GetMethod("RequestCancel") != null ||
                     typeof(MRKRuntimeFlowTicket).GetProperty("Context") != null)

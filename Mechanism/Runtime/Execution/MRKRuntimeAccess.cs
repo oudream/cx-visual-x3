@@ -61,21 +61,21 @@ namespace CxVisual.Mechanism.Runtime.Execution
         }
         public MRKRuntimeFlowTicket TryStart(string principal,
             IDictionary<string, object> inputs = null,
-            string businessKey = null, string correlationId = null,
-            CancellationToken cancellation = default(CancellationToken))
+            string businessKey = null, string correlationId = null)
         {
             Demand(principal, MRKRuntimeAccessAction.Start);
-            MRKFlowHandle flow = _session.TryStartFlow(inputs,businessKey,correlationId,cancellation);
+            // Start权限不等于Cancel权限，不能让调用者保留运行期取消令牌。
+            MRKFlowHandle flow = _session.TryStartFlow(inputs,businessKey,correlationId,
+                CancellationToken.None);
             return flow == null ? null : new MRKRuntimeFlowTicket(flow);
         }
         public MRKRuntimeFlowTicket TryStartDebug(string principal,
             MRKExecutionDebugController controller,
-            IDictionary<string, object> inputs = null,
-            CancellationToken cancellation = default(CancellationToken))
+            IDictionary<string, object> inputs = null)
         {
             Demand(principal, MRKRuntimeAccessAction.Debug);
             MRKFlowHandle flow = _session.TryStartFlowWithControl(controller,inputs,
-                cancellation:cancellation);
+                cancellation:CancellationToken.None);
             return flow == null ? null : new MRKRuntimeFlowTicket(flow);
         }
         private MRKFlowHandle CheckFlow(MRKRuntimeFlowTicket ticket)
