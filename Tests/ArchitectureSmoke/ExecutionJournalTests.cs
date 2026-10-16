@@ -10,6 +10,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
         {
             ReopenAndConservativeRecovery();
             TruncatedTailIsRecoverableButCorruptionIsNot();
+            RuntimeRecordsRealFlowTransitions();
+            JournalAdmissionFailureIsFailClosed();
         }
         private static void Check(bool value, string msg)
         { if (!value) throw new InvalidOperationException("运行Journal：" + msg); }
@@ -79,5 +81,77 @@ namespace CxVisual.Tests.ArchitectureSmoke
             }
             finally { if (File.Exists(path)) File.Delete(path); }
         }
+        private sealed class RejectingJournal : IMRKExecutionJournal
+        {
+            public void Append(MRKJournalRecord record) { throw new IOException("磁盘写入失败"); }
+            public IList<MRKJournalRecord> ReadAll() { return new List<MRKJournalRecord>(); }
+        }
+        private static void JournalAdmissionFailureIsFailClosed()
+        {
+            int ran = 0;
+            MRKExecutionPlan plan = new MRKExecutionPlan("strict-journal", new[]
+            {
+                new MRKExecutionStep("work",new string[0],(ctx,ct)=>
+                { ran++; return System.Threading.Tasks.Task.FromResult((object)1); })
+            });
+            MRKExecutionEngine engine = new MRKExecutionEngine(
+                new CxVisual.Foundation.Infrastructure.Concurrency.FCRWorkerOptions(1,2),
+                journal:new RejectingJournal());
+            bool rejected = false;
+            try { engine.StartFlow(plan); }
+            catch (IOException) { rejected = true; }
+            Check(rejected && ran == 0 && engine.ActiveFlowCount == 0,
+                "日志写入前置失败却执行了业务委托");
+            Await(engine.StopAsync());
+        }
+        private static void RuntimeRecordsRealFlowTransitions()
+        {
+            string file = PathForTest();
+            try
+            {
+                using (MRKFileExecutionJournal journal = new MRKFileExecutionJournal(file))
+                {
+                    MRKExecutionEngine engine = new MRKExecutionEngine(
+                        new CxVisual.Foundation.Infrastructure.Concurrency.FCRWorkerOptions(1,2),
+                        journal:journal);
+                    MRKExecutionPlan plan = new MRKExecutionPlan("production", new[]
+                    {
+                        new MRKExecutionStep("step",new string[0],
+                            (ctx,ct)=>System.Threading.Tasks.Task.FromResult((object)99))
+                    });
+                    MRKFlowHandle handle = engine.StartFlowWithMetadata(plan,
+                        new MRKFlowMetadata(12,"serial","REQ-12","local"));
+                    MRKFlowResult finished = Await(handle.Completion);
+                    IList<MRKJournalRecord> history = journal.ReadAll();
+                    Check(finished.State == MRKFlowState.Completed && history.Count >= 4 &&
+                        history[0].Kind == MRKJournalKind.FlowStarted &&
+                        history[history.Count-1].Kind == MRKJournalKind.FlowFinished &&
+                        history[history.Count-1].Revision == 12 &&
+                        history[history.Count-1].CorrelationId == "REQ-12" &&
+                        MRKJournalRecovery.Evaluate(handle.FlowId,history).Disposition ==
+                            MRKRecoveryDisposition.Closed,
+                        "引擎运行事实没有写入Journal或身份丢失");
+                    Await(engine.StopAsync());
+                }
+            }
+            finally { if (File.Exists(file)) File.Delete(file); }
+        }
+        private static T Await<T>(System.Threading.Tasks.Task<T> task)
+        {
+            System.Threading.Tasks.Task winner = System.Threading.Tasks.Task.WhenAny(
+                task, System.Threading.Tasks.Task.Delay(7000)).GetAwaiter().GetResult();
+            if (!object.ReferenceEquals(winner,task))
+                throw new TimeoutException("Journal运行测试超时");
+            return task.GetAwaiter().GetResult();
+        }
+        private static void Await(System.Threading.Tasks.Task task)
+        {
+            System.Threading.Tasks.Task winner = System.Threading.Tasks.Task.WhenAny(
+                task, System.Threading.Tasks.Task.Delay(7000)).GetAwaiter().GetResult();
+            if (!object.ReferenceEquals(winner,task))
+                throw new TimeoutException("Journal运行测试超时");
+            task.GetAwaiter().GetResult();
+        }
+
     }
 }

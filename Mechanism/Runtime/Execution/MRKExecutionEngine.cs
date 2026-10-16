@@ -27,16 +27,19 @@ namespace CxVisual.Mechanism.Runtime.Execution
         private readonly ReadOnlyDictionary<string, object> _inputs;
         private readonly string _scopePrefix;
         private readonly MRKExecutionTrace _trace;
+        private readonly IMRKExecutionJournal _journal;
         private readonly IDictionary<string, object> _boundInputs;
         private readonly IFDEExecutionDataScope _dataScope;
         private readonly ConcurrentQueue<string> _completedOrder = new ConcurrentQueue<string>();
         internal MRKExecutionContext(string planId, IDictionary<string, object> inputs,
-            MRKFlowMetadata metadata = null, IFDEExecutionDataScope dataSpace = null)
+            MRKFlowMetadata metadata = null, IFDEExecutionDataScope dataSpace = null,
+            IMRKExecutionJournal journal = null)
         {
             FlowId = Guid.NewGuid();
             PlanId = planId;
             Metadata = metadata ?? new MRKFlowMetadata();
             _scopePrefix = string.Empty;
+            _journal = journal;
             _dataScope = dataSpace == null ? null : dataSpace.CreateChild("flow-" + FlowId.ToString("N"));
             _trace = new MRKExecutionTrace();
             _boundInputs = new ReadOnlyDictionary<string, object>(new Dictionary<string, object>());
@@ -55,6 +58,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
             _inputs = parent._inputs;
             _scopePrefix = parent._scopePrefix + prefix;
             _trace = parent._trace;
+            _journal = parent._journal;
             _dataScope = parent._dataScope;
             _boundInputs = parent._boundInputs;
             _completedOrder = parent._completedOrder;
@@ -115,6 +119,10 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 reason ?? string.Empty, DateTime.UtcNow);
             if (state == MRKStepState.Completed) _completedOrder.Enqueue(qualified);
             _trace.Record(qualified, state);
+            if (_journal != null)
+                _journal.Append(new MRKJournalRecord(MRKJournalKind.StepTransition,
+                    FlowId, PlanId, Metadata.PlanRevision, qualified, state.ToString(),
+                    Metadata.CorrelationId));
         }
         public IDictionary<string, object> ResultsSnapshot()
         {
@@ -283,6 +291,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
         private readonly FCRWorker _worker;
         private readonly MRKResourceLeaseCoordinator _resources;
         private readonly MRKExecutionGroups _groups;
+        private readonly IMRKExecutionJournal _journal;
         private readonly object _lifecycleGate = new object();
         private readonly Dictionary<Guid, MRKFlowHandle> _activeFlows =
             new Dictionary<Guid, MRKFlowHandle>();
@@ -292,11 +301,13 @@ namespace CxVisual.Mechanism.Runtime.Execution
         { get { lock (_lifecycleGate) return _activeFlows.Count; } }
         public MRKExecutionEngine(FCRWorkerOptions options,
             MRKResourceLeaseCoordinator coordinator = null,
-            IEnumerable<MRKExecutionGroupDefinition> groups = null)
+            IEnumerable<MRKExecutionGroupDefinition> groups = null,
+            IMRKExecutionJournal journal = null)
         {
             _worker = new FCRWorker(options);
             _resources = coordinator ?? new MRKResourceLeaseCoordinator();
             _groups = new MRKExecutionGroups(groups);
+            _journal = journal;
         }
         public IList<MRKExecutionGroupSnapshot> GroupSnapshot() { return _groups.Snapshot(); }
         public FCRWorkHandle<T> Submit<T>(Func<CancellationToken, Task<T>> action,
@@ -466,7 +477,20 @@ namespace CxVisual.Mechanism.Runtime.Execution
             lock (_lifecycleGate)
             {
                 if (_stopping) throw new InvalidOperationException("运行引擎已经停止接收新流程");
-                MRKExecutionContext context = new MRKExecutionContext(plan.Id, inputs, metadata, dataSpace);
+                MRKExecutionContext context = new MRKExecutionContext(plan.Id,
+                    inputs, metadata, dataSpace, _journal);
+                try
+                {
+                    if (_journal != null)
+                        _journal.Append(new MRKJournalRecord(MRKJournalKind.FlowStarted,
+                            context.FlowId, plan.Id, context.Metadata.PlanRevision,
+                            "", "Running", context.Metadata.CorrelationId));
+                }
+                catch
+                {
+                    context.CloseFlowDataScope();
+                    throw;
+                }
                 CancellationTokenSource linked =
                     CancellationTokenSource.CreateLinkedTokenSource(cancellation);
                 MRKFlowHandle handle = new MRKFlowHandle(context, linked);
@@ -496,6 +520,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 tasks.Add(id, task);
                 return task;
             };
+            MRKFlowState finalState = MRKFlowState.Completed;
+            Exception finalError = null;
             try
             {
                 foreach (MRKExecutionStep step in plan.Steps)
@@ -503,19 +529,30 @@ namespace CxVisual.Mechanism.Runtime.Execution
                     Task<object> scheduled = schedule(step.Id);
                 }
                 await Task.WhenAll(tasks.Values.ToArray()).ConfigureAwait(false);
-                return new MRKFlowResult(MRKFlowState.Completed, context, null);
             }
             catch (Exception ex)
             {
-                MRKFlowState state = ex is OperationCanceledException && flow.Token.IsCancellationRequested
+                finalState = ex is OperationCanceledException && flow.Token.IsCancellationRequested
                     ? MRKFlowState.Cancelled : MRKFlowState.Failed;
-                return new MRKFlowResult(state, context, ex);
+                finalError = ex;
             }
             finally
             {
                 try { context.CloseFlowDataScope(); }
+                catch (Exception ex)
+                {
+                    finalState = MRKFlowState.Failed;
+                    finalError = finalError == null ? ex :
+                        new AggregateException("流程失败且数据作用域释放失败", finalError, ex);
+                }
                 finally { flow.Close(); }
             }
+            MRKFlowResult finalResult = new MRKFlowResult(finalState, context, finalError);
+            if (_journal != null)
+                _journal.Append(new MRKJournalRecord(MRKJournalKind.FlowFinished,
+                    context.FlowId, plan.Id, context.Metadata.PlanRevision,
+                    "", finalState.ToString(), context.Metadata.CorrelationId));
+            return finalResult;
         }
 
         private async Task<object> RunStepAsync(MRKExecutionStep step, MRKExecutionContext context,
