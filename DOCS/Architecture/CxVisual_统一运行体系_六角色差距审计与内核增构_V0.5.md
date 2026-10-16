@@ -250,3 +250,9 @@
 - 进一步的代码审计发现：仅有原始Plan实例比对不足以阻止其他Engine接管同一Flow的补偿；不同Engine的资源协调器/Worker相互独立，可能绕开设备软件互斥。
 - 在原有Runtime项目的MRKFlowHandle内部固定启动它的Engine实例；CompensateAsync在任何副作用及补偿名额占用前检查归属。新增`AnotherEngineCannotTakeOverCompensation`真实回归用例。
 - 保留缺口：已释放的节点/Flow DataScope不能被补偿回调安全地直接重用；补偿输入需定义明确的持久化/租约交接与超时释放。外部Unknown资源隔离也不能用该内存归属校验替代。
+
+## 2026-10-16 非协作超时的运行中状态
+
+- E09/E10/E12/E13新回归：`MRKExecutionPolicy`在超时事实成立时公开`MRKStepState.ResultUnknown`，避免长时间非协作异步任务只有笼统Running而无法定位。该状态是运行时观察，不等于外部命令已确定结果。
+- 超时后先发协作取消请求，不论观察器/审计回调是否抛错，都要真实等待原任务结算后才释放资源；支持状态/Trace诊断。
+- 保留缺口：可授权的安全隔离接管、长期未知操作Owner转移、跨进程崩溃恢复和外部OperationId确认。Stop等待并非安全接管的替代品。

@@ -11,7 +11,7 @@ using CxVisual.Foundation.Data.Execution;
 namespace CxVisual.Mechanism.Runtime.Execution
 {
     public enum MRKFlowState { Running, Completed, Failed, Cancelled }
-    public enum MRKStepState { WaitingDependencies, Scheduled, Completed, Failed, Cancelled, Queued, Running, Waiting, Paused, WaitingResources, WaitingGroup, Skipped }
+    public enum MRKStepState { WaitingDependencies, Scheduled, Completed, Failed, Cancelled, Queued, Running, Waiting, Paused, WaitingResources, WaitingGroup, Skipped, ResultUnknown }
 
     /// <summary>同一次流程的局部快照；不对外暴露可写的全局数据字典。</summary>
     public sealed class MRKExecutionContext
@@ -679,7 +679,9 @@ namespace CxVisual.Mechanism.Runtime.Execution
                                 .InvokeAsync(inner => step.SynchronousSdk(data, inner), token));
                     FCRWorkHandle<object> work = _worker.Submit<object>(
                         ct => step.Policy == null ? operation(nodeContext, ct) :
-                            step.Policy.ExecuteAsync(nodeContext, operation, ct),
+                            step.Policy.ExecuteAsync(nodeContext, operation, ct,
+                                () => context.SetState(step.Id, MRKStepState.ResultUnknown,
+                                    "策略超时但原操作尚未结算，资源继续占用")),
                         step.SerialKey, false, cancellation);
                     context.SetState(step.Id, MRKStepState.Scheduled);
                     context.TrackWork(step.Id, work);

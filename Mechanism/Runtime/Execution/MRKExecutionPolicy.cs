@@ -37,7 +37,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
 
         public async Task<object> ExecuteAsync(MRKExecutionContext context,
             Func<MRKExecutionContext, CancellationToken, Task<object>> action,
-            CancellationToken cancellation)
+            CancellationToken cancellation, Action onTimeout = null)
         {
             if (action == null) throw new ArgumentNullException("action");
             for (int attempt = 1; attempt <= MaxAttempts; attempt++)
@@ -57,12 +57,22 @@ namespace CxVisual.Mechanism.Runtime.Execution
                                 Task.Delay(Timeout.Value)).ConfigureAwait(false);
                             if (winner != operation && !operation.IsCompleted)
                             {
-                                scoped.Cancel();
-                                // 等待真实工作完成或响应取消，防止超时后仍在运行的外部工作
-                                // 与下一个节点并发访问同一资源。
+                                // 先公开Unknown。诊断失败也不能提前释放尚未结算的资源。
+                                Exception observationFailure = null;
+                                try { if (onTimeout != null) onTimeout(); }
+                                catch (Exception ex) { observationFailure = ex; }
+                                try { scoped.Cancel(); }
+                                catch (Exception ex)
+                                {
+                                    observationFailure = observationFailure == null ? ex :
+                                        new AggregateException(observationFailure, ex);
+                                }
                                 try { await operation.ConfigureAwait(false); }
-                                catch (OperationCanceledException) { }
-                                catch (Exception) { }
+                                catch (Exception) { /* 实际结算之前仍保持原资源租约 */ }
+                                if (observationFailure != null)
+                                    throw new AggregateException(
+                                        "超时诊断或取消通知失败，底层任务已结算",
+                                        observationFailure, new TimeoutException("原操作超时"));
                                 throw new TimeoutException("节点执行超过策略超时，已等待原工作结束");
                             }
                         }

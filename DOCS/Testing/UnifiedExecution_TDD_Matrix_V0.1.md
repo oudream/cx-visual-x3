@@ -249,3 +249,7 @@ G0/G1通过不能代替G2/G3/G4。CI工作流故障时应分清本次新增测�
 
 `ExecutionCompensationTests.CompensationPortsRemainAvailableAfterDataScopeDisposal`：
 失败Flow完成并释放本地数据之后，显式补偿回调获得原Plan类型化输入的**重新绑定视图**以及已结算结果；已经关闭的`DataScope`不再暴露给补偿回调。验证`PutOwned`资源释放恰好一次，补偿能够真正执行。该测试仅使用值类型端口，不证明可变或大对象的保留所有权；后续仍需设计显式补偿数据交接租约和过期处理。
+
+### 非协作操作超时的可见性和资源租约测试
+
+`ExecutionPolicyTests.NonCooperativeTimeoutRemainsUnknownAndKeepsResources`：不响应取消的原始工作在策略超时后仍继续运行；`MRKStepState.ResultUnknown`能被Flow快照观察，原软件资源租约依然排他，下游不会启动，Stop不能提前完成；底层结算后才允许释放。诊断回调故障也必须先等待真实工作结算。尚未实现安全隔离接管、OperationId持久确认；进程停止不可强制结束不合作的外部动作。

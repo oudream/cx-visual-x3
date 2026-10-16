@@ -13,6 +13,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             RetryRequiresExplicitIdempotency();
             BoundedRetryAndFaultPropagation();
             CooperativeTimeoutDoesNotPrematurelyAdvance();
+            NonCooperativeTimeoutRemainsUnknownAndKeepsResources();
         }
         private static void Check(bool yes, string message)
         { if (!yes) throw new InvalidOperationException("运行策略：" + message); }
@@ -22,6 +23,61 @@ namespace CxVisual.Tests.ArchitectureSmoke
             if (!object.ReferenceEquals(winner, task)) throw new TimeoutException("运行策略等待超时");
             return task.GetAwaiter().GetResult();
         }
+
+        private static void NonCooperativeTimeoutRemainsUnknownAndKeepsResources()
+        {
+            TaskCompletionSource<object> finish = new TaskCompletionSource<object>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            MRKResourceLeaseCoordinator resources = new MRKResourceLeaseCoordinator();
+            MRKExecutionEngine engine = new MRKExecutionEngine(
+                new FCRWorkerOptions(2, 4), resources);
+            int advanced = 0;
+            MRKExecutionPlan plan = new MRKExecutionPlan("non-cooperative", new[]
+            {
+                new MRKExecutionStep("external", new string[0],
+                    (ctx, ct) => finish.Task,
+                    policy: new MRKExecutionPolicy(timeout: TimeSpan.FromMilliseconds(40)),
+                    requiredResources: new[] { "robot-axis" }),
+                new MRKExecutionStep("dependent", new[] { "external" },
+                    (ctx, ct) =>
+                    {
+                        Interlocked.Increment(ref advanced);
+                        return Task.FromResult((object)2);
+                    })
+            });
+            MRKFlowHandle flow = engine.StartFlow(plan);
+            Task stop = null;
+            try
+            {
+                bool unknown = false;
+                for (int i = 0; i < 200; i++)
+                {
+                    MRKStepState state;
+                    if (flow.Context.StatesSnapshot().TryGetValue("external", out state) &&
+                        state == MRKStepState.ResultUnknown)
+                    { unknown = true; break; }
+                    Thread.Sleep(10);
+                }
+                Check(unknown && flow.State == MRKFlowState.Running && advanced == 0,
+                    "非协作操作超时未暴露Unknown，或错误推进下游");
+                MRKResourceLease stranger = resources.TryAcquire("robot-axis", "other");
+                if (stranger != null) stranger.Dispose();
+                Check(stranger == null && resources.CurrentOwner("robot-axis") != null,
+                    "Unknown期间错误释放了资源并允许双重占用");
+                stop = engine.StopAsync(true);
+                Check(!stop.IsCompleted && !flow.Completion.IsCompleted,
+                    "Stop对未结算非协作工作错误宣告停止成功");
+            }
+            finally
+            {
+                finish.TrySetResult(1);
+                Await(flow.Completion);
+                Await(stop ?? engine.StopAsync());
+            }
+            Check(advanced == 0 && resources.CurrentOwner("robot-axis") == null,
+                "真实结算后下游误执行或资源没有最终释放");
+        }
+
         private static void Await(Task task)
         {
             Task winner = Task.WhenAny(task, Task.Delay(6000)).GetAwaiter().GetResult();
