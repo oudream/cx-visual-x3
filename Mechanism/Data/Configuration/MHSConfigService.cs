@@ -27,6 +27,13 @@ namespace CxVisual.Mechanism.Data.Configuration
             if (string.IsNullOrWhiteSpace(rootDirectory)) throw new ArgumentException("Missing storage root.", "rootDirectory");
             _root = Path.GetFullPath(rootDirectory);
         }
+        /// <summary>安全会话入口，非可信模块只能持有返回的会话，不能获得原始服务。</summary>
+        public MHSConfigAuthorizedSession Authorize(FCMConfigPrincipal principal, IFCMConfigAccessPolicy policy)
+        {
+            if (principal == null) throw new ArgumentNullException("principal");
+            if (policy == null) throw new ArgumentNullException("policy");
+            return new MHSConfigAuthorizedSession(this, principal, policy);
+        }
         public MVBConfigScopeResolver ForMachine(string machineId)
         { return new MVBConfigScopeResolver(this, "machine", machineId); }
         public MVBConfigScopeResolver ForProject(string projectId)

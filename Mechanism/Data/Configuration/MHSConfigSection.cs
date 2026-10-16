@@ -102,6 +102,7 @@ namespace CxVisual.Mechanism.Data.Configuration
         private int _effectiveRev;
         private T _previousEffective;
         private bool _hasPreviousEffective;
+        private bool _externalApplyOnly;
         private Func<MHSConfigApplyReview<T>, MHSConfigApplyDecision> _applyGuard;
         public FCMConfigIdentity Identity { get; private set; }
         public Type ConfigType { get { return typeof(T); } }
@@ -140,6 +141,9 @@ namespace CxVisual.Mechanism.Data.Configuration
             }
         }
         /// <summary>同一实例只能设置一次公共生效许可回调，包含 Immediate 生效。</summary>
+        internal void RequireExplicitApply()
+        { lock (_gate) _externalApplyOnly = true; }
+
         public void ConfigureApplyGuard(Func<MHSConfigApplyReview<T>, MHSConfigApplyDecision> guard)
         {
             if (guard == null) throw new ArgumentNullException("guard");
@@ -405,7 +409,7 @@ namespace CxVisual.Mechanism.Data.Configuration
                 oldSaved = Clone(_saved);
                 oldEffective = Clone(_effective);
                 oldEffectiveVersion = _effectiveRev;
-                immediate = oldEffectiveVersion == baseRevision &&
+                immediate = !_externalApplyOnly && oldEffectiveVersion == baseRevision &&
                     GetApplyPolicy(oldSaved, candidate, typeof(T)) == FCMConfigApplyPolicy.Immediate;
                 cancellationToken.ThrowIfCancellationRequested();
                 try

@@ -7,12 +7,22 @@ using CxVisual.Mechanism.Data.Configuration;
 
 namespace CxVisual.Tests.ArchitectureSmoke
 {
+    [FCMConfigSection("Tests.SecureSample")]
+    public sealed class ConfigSecureSample
+    {
+        [FCMConfigItem("普通参数")]
+        public int Level { get; set; } = 10;
+        [FCMConfigSensitive]
+        [FCMConfigItem("保密引用")]
+        public string SecretRef { get; set; } = "vault:test-key";
+    }
+
     internal static class ConfigArchitectureCompletionTests
     {
         public static void Run()
         {
             string root = Path.Combine(Path.GetTempPath(), "CxVisual-Config-Atomic-" + Guid.NewGuid().ToString("N"));
-            try { VerifyAtomicGroup(root); VerifyDurableEvents(root); }
+            try { VerifyAtomicGroup(root); VerifyDurableEvents(root); VerifySecurity(root); }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
             Console.WriteLine("PASS atomic multi-model configuration transaction, validation and snapshots");
         }
@@ -142,6 +152,60 @@ namespace CxVisual.Tests.ArchitectureSmoke
             File.Delete(history);
             Expect<InvalidOperationException>(() => reopened.ReadCommittedAfter(null, 20),
                 "missing persisted audit evidence must be reported instead of silently skipping an event");
+        }
+
+        private static void VerifySecurity(string root)
+        {
+            MHSConfigService service = new MHSConfigService(Path.Combine(root, "authorized"));
+            FCMConfigIdentity id = new FCMConfigIdentity("Tests.SecureSample", "machine", "Machine-A");
+            FCMConfigRolePolicy policy = new FCMConfigRolePolicy();
+            FCMConfigPrincipal reader = new FCMConfigPrincipal("reader-01", new[] { "viewer" });
+            FCMConfigPrincipal operatorUser = new FCMConfigPrincipal("operator-01", new[] { "operator" });
+            policy.Grant("viewer", FCMConfigAccessAction.Read, id.SectionId, id.ScopeKind, id.ScopeId);
+            policy.Grant("operator", FCMConfigAccessAction.Read, id.SectionId, id.ScopeKind, id.ScopeId);
+            policy.Grant("operator", FCMConfigAccessAction.ReadSensitive, id.SectionId, id.ScopeKind, id.ScopeId);
+            policy.Grant("operator", FCMConfigAccessAction.Edit, id.SectionId, id.ScopeKind, id.ScopeId);
+            policy.Grant("operator", FCMConfigAccessAction.Commit, id.SectionId, id.ScopeKind, id.ScopeId);
+            MHSConfigAuthorizedSession readerSession = service.Authorize(reader, policy);
+            Expect<UnauthorizedAccessException>(() => readerSession.Open<ConfigSecureSample>(id),
+                "read role cannot open entire sensitive model without ReadSensitive");
+            MHSConfigAuthorizedSection<ConfigSecureSample> secured =
+                service.Authorize(operatorUser, policy).Open<ConfigSecureSample>(id);
+            Check(secured.Get().SecretRef == "vault:test-key", "authorized sensitive read");
+            using (MHSConfigAuthorizedEdit<ConfigSecureSample> edit = secured.BeginEdit("审批前写入"))
+            {
+                edit.WorkingCopy.Level = 99;
+                policy.Revoke("operator", FCMConfigAccessAction.Commit,
+                    id.SectionId, id.ScopeKind, id.ScopeId);
+                Expect<UnauthorizedAccessException>(() =>
+                    edit.CommitAsync(CancellationToken.None).GetAwaiter().GetResult(),
+                    "revoked permission is checked again at commit time");
+                policy.Grant("operator", FCMConfigAccessAction.Commit,
+                    id.SectionId, id.ScopeKind, id.ScopeId);
+                Check(edit.CommitAsync(CancellationToken.None).GetAwaiter().GetResult().Success,
+                    "write granted again");
+            }
+            Check(secured.Value(x => x.Level) == 10 && secured.Revision.IsPending,
+                "authorized editing cannot auto-apply Immediate before Apply permission");
+            Expect<UnauthorizedAccessException>(() =>
+                secured.TryApplyPendingAtBoundary(FCMConfigApplyPolicy.Immediate),
+                "explicit apply permission is required for Immediate");
+            policy.Grant("operator", FCMConfigAccessAction.Apply,
+                id.SectionId, id.ScopeKind, id.ScopeId);
+            Check(secured.TryApplyPendingAtBoundary(FCMConfigApplyPolicy.Immediate).Applied &&
+                secured.Value(x => x.Level) == 99, "authorized explicit activation");
+            Expect<UnauthorizedAccessException>(() => secured.ExportPackage(),
+                "export denied without separate permission");
+            Expect<UnauthorizedAccessException>(() => secured.ReadCommittedAfter(null, 10),
+                "audit/replay denied without separate permission");
+            policy.Grant("operator", FCMConfigAccessAction.Audit,
+                id.SectionId, id.ScopeKind, id.ScopeId);
+            Check(secured.ReadCommittedAfter(null, 10).Count == 1,
+                "authorized audit history read");
+            policy.Revoke("operator", FCMConfigAccessAction.ReadSensitive,
+                id.SectionId, id.ScopeKind, id.ScopeId);
+            Expect<UnauthorizedAccessException>(() => secured.Get(),
+                "revoked sensitive privilege is checked for every read");
         }
 
         private static void Check(bool condition, string message)
