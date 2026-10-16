@@ -1,0 +1,172 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Linq.Expressions;
+using System.Threading;
+using System.Threading.Tasks;
+using CxVisual.Foundation.Data.Configuration;
+
+namespace CxVisual.Mechanism.Data.Configuration
+{
+    /// <summary>原子层级配置的事务草稿，可同时修改多个来源层而只提交一次。</summary>
+    public sealed class MVBConfigAtomicLayerEdit<T> : IDisposable where T : new()
+    {
+        private MHSConfigAtomicEdit _edit;
+        private readonly IList<MVBConfigLayerSpec> _layers;
+        private readonly FCMConfigIdentity _groupIdentity;
+        private readonly string _version;
+        internal MVBConfigAtomicLayerEdit(MHSConfigAtomicEdit edit, IList<MVBConfigLayerSpec> layers,
+            FCMConfigIdentity groupIdentity, string version)
+        { _edit = edit; _layers = layers; _groupIdentity = groupIdentity; _version = version; }
+
+        public void Set<V>(string layerName, Expression<Func<T, V>> selector, V value)
+        {
+            EnsureOpen();
+            string path = FCMConfigPathUtil.FromExpression(selector);
+            string json = FCMJsonValueCodec.Serialize(value);
+            MVBConfigLayerPath.Validate<T>(path, json);
+            MVBConfigLayerOverrides doc = Layer(layerName);
+            doc.Values[path] = json;
+            _edit.Set(layerName, doc);
+        }
+        public void Remove<V>(string layerName, Expression<Func<T, V>> selector)
+        {
+            EnsureOpen();
+            string path = FCMConfigPathUtil.FromExpression(selector);
+            MVBConfigLayerOverrides doc = Layer(layerName);
+            doc.Values.Remove(path);
+            _edit.Set(layerName, doc);
+        }
+        public MVBConfigResolved<T> Preview()
+        {
+            EnsureOpen();
+            return MVBConfigAtomicLayerProfile<T>.Compose(_layers,
+                name => _edit.Get<MVBConfigLayerOverrides>(name), _version, _groupIdentity);
+        }
+        public async Task<MHSConfigCommitResult> CommitAsync(CancellationToken token)
+        {
+            EnsureOpen();
+            token.ThrowIfCancellationRequested();
+            T candidate;
+            try { candidate = Preview().Get(); }
+            catch (Exception ex)
+            {
+                FCMConfigValidationReport invalid = new FCMConfigValidationReport();
+                invalid.Add(FCMConfigIssue.Error("", "CONFIG_LAYER_COMPOSE", ex.Message));
+                return new MHSConfigCommitResult { Success = false,
+                    ErrorCode = "CONFIG_ATOMIC_LAYER_VALIDATION", Validation = invalid };
+            }
+            FCMConfigValidationReport report = await FCMConfigValidationEngine.ValidateAsync(
+                candidate, "atomic-layer", token).ConfigureAwait(false);
+            if (!report.IsValid)
+                return new MHSConfigCommitResult { Success = false,
+                    ErrorCode = "CONFIG_ATOMIC_LAYER_VALIDATION", Validation = report };
+            return await _edit.CommitAsync(token).ConfigureAwait(false);
+        }
+        private MVBConfigLayerOverrides Layer(string name)
+        {
+            if (!_layers.Any(x => x.Name == name))
+                throw new KeyNotFoundException("Unknown config layer: " + name);
+            return _edit.Get<MVBConfigLayerOverrides>(name);
+        }
+        private void EnsureOpen()
+        { if (_edit == null) throw new ObjectDisposedException("MVBConfigAtomicLayerEdit"); }
+        public void Dispose()
+        {
+            MHSConfigAtomicEdit edit = Interlocked.Exchange(ref _edit, null);
+            if (edit != null) edit.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// 五层显式覆盖作为一个物理配置聚合单元持久化，保证跨层一次提交/生效/快照。
+    /// 不修改其它原本独立的 MVBConfigLayeredProfile<T>。
+    /// </summary>
+    public sealed class MVBConfigAtomicLayerProfile<T> where T : new()
+    {
+        private readonly MHSConfigAtomicGroup _group;
+        private readonly IList<MVBConfigLayerSpec> _layers;
+        public MVBConfigAtomicLayerProfile(MHSConfigService service, string profileId,
+            params MVBConfigLayerSpec[] layers)
+        {
+            if (service == null) throw new ArgumentNullException("service");
+            if (layers == null || layers.Length == 0 || layers.Any(x => x == null))
+                throw new ArgumentException("At least one source layer required", "layers");
+            if (layers.Select(x => x.Name).Distinct(StringComparer.Ordinal).Count() != layers.Length ||
+                layers.Select(x => x.Priority).Distinct().Count() != layers.Length)
+                throw new ArgumentException("Layer names and priorities must be unique");
+            FCMConfigSchemaBuilder.Describe<T>();
+            _layers = Array.AsReadOnly(layers.OrderBy(x => x.Priority).ToArray());
+            _group = service.OpenAtomicGroup("atomic-layer:" +
+                FCMConfigSchemaBuilder.Describe<T>().SectionId + ":" + profileId);
+            foreach (MVBConfigLayerSpec layer in _layers)
+                _group.Register<MVBConfigLayerOverrides>(layer.Name);
+            _group.Seal();
+        }
+        public FCMConfigIdentity Identity { get { return _group.Identity; } }
+        public string SavedVersion { get { return _group.SavedVersion; } }
+        public string EffectiveVersion { get { return _group.EffectiveVersion; } }
+        public bool HasPendingApply { get { return _group.HasPendingApply; } }
+        public MVBConfigAtomicLayerEdit<T> BeginEdit(string reason)
+        {
+            return new MVBConfigAtomicLayerEdit<T>(_group.BeginEdit(reason),
+                _layers, _group.Identity, _group.SavedVersion);
+        }
+        public async Task<MHSConfigCommitResult> SetOverrideAsync<V>(string layer,
+            Expression<Func<T, V>> selector, V value, CancellationToken token)
+        {
+            using (MVBConfigAtomicLayerEdit<T> edit = BeginEdit("修改层级参数"))
+            {
+                edit.Set(layer, selector, value);
+                return await edit.CommitAsync(token).ConfigureAwait(false);
+            }
+        }
+        public MVBConfigResolved<T> ResolveEffective()
+        {
+            using (MHSConfigGroupSnapshot snapshot = _group.CaptureForTask("atomic-layer-resolve"))
+                return Compose(_layers, name => snapshot.Get<MVBConfigLayerOverrides>(name),
+                    snapshot.Version, _group.Identity);
+        }
+        public MVBConfigResolved<T> ResolveSaved()
+        {
+            using (MHSConfigGroupSnapshot snapshot = _group.CaptureSaved())
+                return Compose(_layers, name => snapshot.Get<MVBConfigLayerOverrides>(name),
+                    snapshot.Version, _group.Identity);
+        }
+        public MVBConfigTaskSnapshot<T> CaptureForTask(string taskId)
+        {
+            if (string.IsNullOrWhiteSpace(taskId)) throw new ArgumentException("TaskId required", "taskId");
+            return new MVBConfigTaskSnapshot<T>(taskId, ResolveEffective());
+        }
+        public MHSConfigApplyResult TryApplyPendingAtBoundary(FCMConfigApplyPolicy boundary,
+            Func<MHSConfigApplyReview<MHSConfigGroupDocument>, MHSConfigApplyDecision> approval)
+        { return _group.TryApplyPendingAtBoundary(boundary, approval); }
+        public MHSConfigStatus GetStatus() { return _group.GetStatus(); }
+
+        internal static MVBConfigResolved<T> Compose(IList<MVBConfigLayerSpec> layers,
+            Func<string, MVBConfigLayerOverrides> get, string revision, FCMConfigIdentity identity)
+        {
+            T model = new T();
+            List<MVBConfigLayerOrigin> origins = new List<MVBConfigLayerOrigin>();
+            Dictionary<string, string> versions = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (MVBConfigLayerSpec layer in layers)
+            {
+                versions.Add(layer.Name, revision);
+                MVBConfigLayerOverrides overrides = get(layer.Name);
+                if (overrides == null || overrides.Values == null) continue;
+                foreach (KeyValuePair<string, string> value in overrides.Values
+                    .OrderBy(x => MVBConfigLayerPath.Depth(x.Key))
+                    .ThenBy(x => x.Key, StringComparer.Ordinal))
+                {
+                    MVBConfigLayerPath.Apply(model, value.Key, value.Value);
+                    origins.Add(new MVBConfigLayerOrigin(layer.Name, value.Key, revision));
+                }
+            }
+            FCMConfigRevisionVector vector = new FCMConfigRevisionVector(new[]
+            {
+                new FCMConfigRevision(identity, revision, revision, 1)
+            });
+            return new MVBConfigResolved<T>(model, origins, versions, vector);
+        }
+    }
+}

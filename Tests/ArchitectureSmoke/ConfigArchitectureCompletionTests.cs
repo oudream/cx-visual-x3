@@ -61,7 +61,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         public static void Run()
         {
             string root = Path.Combine(Path.GetTempPath(), "CxVisual-Config-Atomic-" + Guid.NewGuid().ToString("N"));
-            try { VerifyAtomicGroup(root); VerifyDurableEvents(root); VerifySecurity(root); VerifyReferences(root); VerifyEffectiveJournal(root); VerifyLiveReplay(root); VerifyRichTypes(root); }
+            try { VerifyAtomicGroup(root); VerifyDurableEvents(root); VerifySecurity(root); VerifyReferences(root); VerifyEffectiveJournal(root); VerifyLiveReplay(root); VerifyRichTypes(root); VerifyAtomicLayers(root); }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
             Console.WriteLine("PASS atomic multi-model configuration transaction, validation and snapshots");
         }
@@ -445,6 +445,92 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Expect<FormatException>(() => FCMJsonValueCodec.Serialize(double.NaN),
                 "NaN must never be serialized to invalid JSON");
             Console.WriteLine("PASS rich scalar, nested collections, exact precision and codec boundaries");
+        }
+
+        private static void VerifyAtomicLayers(string root)
+        {
+            string folder = Path.Combine(root, "atomic-layers");
+            MVBConfigLayerSpec[] specs = new[]
+            {
+                new MVBConfigLayerSpec("模板", "template", "T", 10),
+                new MVBConfigLayerSpec("工程", "project", "P", 20),
+                new MVBConfigLayerSpec("机台", "machine", "M", 30),
+                new MVBConfigLayerSpec("产品", "product", "R", 40),
+                new MVBConfigLayerSpec("运行覆盖", "runtime", "O", 50)
+            };
+            MVBConfigAtomicLayerProfile<V13ConfigSample> profile =
+                new MVBConfigAtomicLayerProfile<V13ConfigSample>(
+                    new MHSConfigService(folder), "Machine-A", specs);
+            string initial = profile.SavedVersion;
+            using (MVBConfigAtomicLayerEdit<V13ConfigSample> edit = profile.BeginEdit("五层参数一次提交"))
+            {
+                edit.Set("模板", x => x.ExposureMs, 100);
+                edit.Set("机台", x => x.ExposureMs, 170);
+                edit.Set("产品", x => x.Note, "Product-A");
+                edit.Set("模板", x => x.Detectors["D1"], new V13DetectorSample { Gain = 2 });
+                edit.Set("机台", x => x.Detectors["D1"].Gain, 9);
+                MVBConfigResolved<V13ConfigSample> draft = edit.Preview();
+                Check(draft.Value(x => x.ExposureMs) == 170 &&
+                    draft.Value(x => x.Detectors["D1"].Gain) == 9,
+                    "five-layer proposal resolves all changed subtrees in one draft");
+                Check(edit.CommitAsync(CancellationToken.None).GetAwaiter().GetResult().Success,
+                    "all five layers committed in one revision");
+            }
+            Check(profile.SavedVersion != initial && profile.EffectiveVersion == initial &&
+                profile.ResolveEffective().Value(x => x.ExposureMs) == 80,
+                "single revision saved while complete original effective profile remains active");
+            Check(profile.ResolveSaved().Value(x => x.ExposureMs) == 170 &&
+                profile.ResolveSaved().Value(x => x.Note) == "Product-A",
+                "saved profile contains all layer modifications atomically");
+            Check(profile.TryApplyPendingAtBoundary(FCMConfigApplyPolicy.NextTask, null).Applied,
+                "entire five-layer profile activates at one boundary");
+            using (MVBConfigTaskSnapshot<V13ConfigSample> task = profile.CaptureForTask("CT-Scan-01"))
+            {
+                Check(task.Value(x => x.ExposureMs) == 170 &&
+                    task.Value(x => x.Detectors["D1"].Gain) == 9 &&
+                    task.Explain(x => x.ExposureMs).EffectiveSource == "机台" &&
+                    task.RevisionVector.Entries.Count == 1 &&
+                    task.RevisionVector.Entries[0].Effective == profile.EffectiveVersion,
+                    "one physical revision and complete layer provenance pinned to task");
+                using (MVBConfigAtomicLayerEdit<V13ConfigSample> second =
+                    profile.BeginEdit("联合修改模板和机台"))
+                {
+                    second.Set("模板", x => x.ExposureMs, 130);
+                    second.Remove("机台", x => x.ExposureMs);
+                    Check(second.CommitAsync(CancellationToken.None).GetAwaiter().GetResult().Success,
+                        "template update and machine fallback committed in same transaction");
+                }
+                Check(profile.ResolveEffective().Value(x => x.ExposureMs) == 170 &&
+                    profile.ResolveSaved().Value(x => x.ExposureMs) == 130,
+                    "saved and effective group remain isolated");
+                Check(profile.TryApplyPendingAtBoundary(FCMConfigApplyPolicy.NextTask, null).Applied,
+                    "one atomic switch activates new fallback");
+                Check(profile.ResolveEffective().Value(x => x.ExposureMs) == 130 &&
+                    profile.ResolveEffective().Explain(x => x.ExposureMs).EffectiveSource == "模板" &&
+                    task.Value(x => x.ExposureMs) == 170,
+                    "fallback/source and pinned old scan remain consistent");
+            }
+            string beforeInvalid = profile.SavedVersion;
+            using (MVBConfigAtomicLayerEdit<V13ConfigSample> invalid =
+                profile.BeginEdit("原子校验拒绝整组"))
+            {
+                invalid.Set("工程", x => x.Acquisition.Group.CaptureKey, "INVALID");
+                invalid.Set("机台", x => x.ExposureMs, 999);
+                MHSConfigCommitResult result = invalid.CommitAsync(CancellationToken.None)
+                    .GetAwaiter().GetResult();
+                Check(!result.Success && result.ErrorCode == "CONFIG_ATOMIC_LAYER_VALIDATION" &&
+                    profile.SavedVersion == beforeInvalid &&
+                    profile.ResolveEffective().Value(x => x.ExposureMs) == 130,
+                    "invalid member rejects all five-layer candidate changes");
+            }
+            MVBConfigAtomicLayerProfile<V13ConfigSample> reopened =
+                new MVBConfigAtomicLayerProfile<V13ConfigSample>(new MHSConfigService(folder),
+                    "Machine-A", specs);
+            Check(reopened.ResolveEffective().Value(x => x.ExposureMs) == 130 &&
+                reopened.ResolveEffective().Value(x => x.Detectors["D1"].Gain) == 9 &&
+                reopened.EffectiveVersion == profile.EffectiveVersion,
+                "complete profile persists and reopens under one effective version");
+            Console.WriteLine("PASS atomic template/project/machine/product/override profile");
         }
 
         private static void Check(bool condition, string message)
