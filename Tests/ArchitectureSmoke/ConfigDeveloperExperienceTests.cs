@@ -262,8 +262,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "typed dictionary/list/set commands build a deep draft");
                 IList<MHSConfigCollectionItem> dynamicItems = editor.DescribeCollectionItems();
                 Check(dynamicItems.Any(x => x.CollectionKind == FCMConfigTypeKind.Map &&
-                    x.CollectionPath == "Detectors" && x.KeyJson == FCMJsonValueCodec.Quote(key) &&
-                    x.ItemPath == "Detectors[" + FCMJsonValueCodec.Quote(key) + "]" &&
+                    x.CollectionPath == "Detectors" && x.KeyJson == FCMJsonValueCodec.Serialize(key) &&
+                    x.ItemPath == "Detectors[" + FCMJsonValueCodec.Serialize(key) + "]" &&
                     x.HasDraft && !x.HasSaved && x.IsModified) &&
                     dynamicItems.Any(x => x.CollectionKind == FCMConfigTypeKind.List &&
                         x.CollectionPath == "Segments" && x.Index == 1 && x.CanReorder) &&

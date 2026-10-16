@@ -300,9 +300,9 @@ namespace CxVisual.Mechanism.Data.Configuration
                     if (map != null) foreach (DictionaryEntry item in map) keys.Add((string)item.Key);
                 foreach (string key in keys.OrderBy(x => x, StringComparer.Ordinal))
                 {
-                    string child = path + "[" + FCMJsonValueCodec.Quote(key) + "]";
+                    string child = path + "[" + FCMJsonValueCodec.Serialize(key) + "]";
                     AddItem(items, path, child, FCMConfigTypeKind.Map, itemType,
-                        FCMJsonValueCodec.Quote(key), null, d != null && d.Contains(key) ? d[key] : null,
+                        FCMJsonValueCodec.Serialize(key), null, d != null && d.Contains(key) ? d[key] : null,
                         s != null && s.Contains(key) ? s[key] : null,
                         e != null && e.Contains(key) ? e[key] : null,
                         d != null && d.Contains(key), s != null && s.Contains(key),
