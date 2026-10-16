@@ -15,8 +15,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             {
                 if (args != null && args.Length > 0 && args[0] == "--config-wpf")
                 {
-                    Console.WriteLine("Config V1.4 WPF manual interaction acceptance is pending; the previous L1 UI harness was removed.");
-                    return 2;
+                    return ConfigWpfTests.Run();
                 }
                 UiIndependentAssemblies();
                 ExecutionFlowTests.Run();

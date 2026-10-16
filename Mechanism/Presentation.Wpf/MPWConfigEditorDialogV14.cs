@@ -34,6 +34,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         private bool _saved;
         private int _count;
         public bool WasSaved { get { return _saved; } }
+        public T Draft { get { EnsureActive(); return _editor.Draft; } }
         public int VisibleEditorCount { get { return _count; } }
         public MPWConfigEditorControl(MHSConfigSection<T> section)
         {
@@ -124,7 +125,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         private void Execute(Action action)
         {
             if (_disposed || _working) return;
-            try { action(); _issues.Text = ""; RefreshAll(); }
+            try { _issues.Text = ""; action(); RefreshAll(); }
             catch (Exception ex) { ShowError(ex); }
         }
         private void ShowError(Exception ex)

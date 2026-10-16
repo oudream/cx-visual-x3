@@ -32,6 +32,8 @@ jobs:
         run: |
           & .\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe
           if ($LASTEXITCODE -ne 0) { throw "Architecture/ConfigL1 tests failed" }
+          & .\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe --config-wpf
+          if ($LASTEXITCODE -ne 0) { throw "Config WPF STA automation smoke failed" }
           & .\Output\Release\x64\CxVisual.Runtime.Host.exe demo
           if ($LASTEXITCODE -ne 0) { throw "Runtime demo failed" }
 
