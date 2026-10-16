@@ -227,6 +227,20 @@ namespace CxVisual.Tests.ArchitectureSmoke
             MHSConfigAuthorizedSection<ConfigSecureSample> secured =
                 service.Authorize(operatorUser, policy).Open<ConfigSecureSample>(id);
             Check(secured.Get().SecretRef == "vault:test-key", "authorized sensitive read");
+            // Read-only discovery must never alter another caller's Immediate apply semantics.
+            FCMConfigIdentity immediateId = new FCMConfigIdentity(
+                "Tests.ArchitectureImmediate", "machine", "Reader-Only");
+            MHSConfigSection<ConfigImmediateContract> direct =
+                service.Open<ConfigImmediateContract>(immediateId);
+            policy.Grant("viewer", FCMConfigAccessAction.Read,
+                immediateId.SectionId, immediateId.ScopeKind, immediateId.ScopeId);
+            MHSConfigAuthorizedSection<ConfigImmediateContract> monitoring =
+                readerSession.Open<ConfigImmediateContract>(immediateId);
+            Check(monitoring.Value(x => x.Threshold) == 10 &&
+                direct.SetValueAsync(x => x.Threshold, 12, "外部直接更新",
+                    CancellationToken.None).GetAwaiter().GetResult().Success &&
+                !direct.HasPendingApply && direct.Value(x => x.Threshold) == 12,
+                "opening a read-only authorized section must not change Immediate policy");
             using (MHSConfigAuthorizedEdit<ConfigSecureSample> edit = secured.BeginEdit("审批前写入"))
             {
                 edit.WorkingCopy.Level = 99;

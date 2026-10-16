@@ -27,9 +27,8 @@ namespace CxVisual.Mechanism.Data.Configuration
             // Opening a typed section grants no data itself. Non-sensitive fields remain
             // readable with Read permission; Get()/snapshots still require ReadSensitive.
             MHSConfigSection<T> section = _service.Open<T>(identity);
-            // This is monotonic: once an authorized session is issued, Immediate writes must
-            // await explicit Apply authorization, even when another owner uses the raw section.
-            section.RequireExplicitApply();
+            // Opening a section is a read-only discovery operation. It must not silently
+            // alter Immediate behavior of other callers using the same instance.
             return new MHSConfigAuthorizedSection<T>(section, this);
         }
         internal void Require(FCMConfigIdentity identity, FCMConfigAccessAction action, string path)
@@ -73,6 +72,8 @@ namespace CxVisual.Mechanism.Data.Configuration
         {
             Demand(FCMConfigAccessAction.Edit, null);
             _session.RequireReadable<T>(Identity, null);
+            // The safety boundary becomes mandatory only when a privileged writer starts.
+            _source.RequireExplicitApply();
             return new MHSConfigAuthorizedEdit<T>(_source.BeginEdit(reason), _session, Identity);
         }
         /// <summary>授权会话中的多字段编辑，不暴露原始 Section。</summary>
@@ -119,6 +120,7 @@ namespace CxVisual.Mechanism.Data.Configuration
         {
             Demand(FCMConfigAccessAction.Import, null);
             Demand(FCMConfigAccessAction.Commit, null);
+            _source.RequireExplicitApply();
             return await _source.ImportPackageAsync(package, token).ConfigureAwait(false);
         }
         public async Task<MHSConfigCommitResult> RestoreSavedVersionAsync(string version,
@@ -126,6 +128,7 @@ namespace CxVisual.Mechanism.Data.Configuration
         {
             Demand(FCMConfigAccessAction.Restore, null);
             Demand(FCMConfigAccessAction.Commit, null);
+            _source.RequireExplicitApply();
             return await _source.RestoreSavedVersionAsync(version, reason, token).ConfigureAwait(false);
         }
         public IDisposable Subscribe<TValue>(Expression<Func<T, TValue>> selector,
