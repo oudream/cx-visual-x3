@@ -78,7 +78,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 if (record == null || record.FlowId != flowId) continue;
                 seen = true;
                 if (planId == null) { planId = record.PlanId; revision = record.Revision; }
-                else if (planId != record.PlanId || revision != record.Revision)
+                else if (record.Kind != MRKJournalKind.ExternalConfirmed &&
+                         (planId != record.PlanId || revision != record.Revision))
                     ambiguousIdentity = true;
                 if (record.Kind == MRKJournalKind.FlowStarted)
                 {
