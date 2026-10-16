@@ -21,6 +21,23 @@ namespace CxVisual.Mechanism.Data.Configuration
         { _edit = edit; _layers = layers; _groupIdentity = groupIdentity;
           _version = version; _definition = definition; }
 
+        public void SetPathJson(string layerName, string path, string json)
+        {
+            EnsureOpen();
+            if (string.IsNullOrWhiteSpace(path) || json == null) throw new ArgumentException("Path/JSON required");
+            MVBConfigLayerPath.Validate<T>(path, json);
+            MVBConfigLayerOverrides doc = Layer(layerName);
+            doc.Values[path] = json;
+            _edit.Set(layerName, doc);
+        }
+        public void RemovePath(string layerName, string path)
+        {
+            EnsureOpen();
+            if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException("Path required");
+            MVBConfigLayerOverrides doc = Layer(layerName);
+            doc.Values.Remove(path);
+            _edit.Set(layerName, doc);
+        }
         public void Set<V>(string layerName, Expression<Func<T, V>> selector, V value)
         {
             EnsureOpen();
@@ -239,6 +256,16 @@ namespace CxVisual.Mechanism.Data.Configuration
             RequireSavedDefinition();
             return new MVBConfigAtomicLayerEdit<T>(_group.BeginEdit(reason),
                 _layers, _group.Identity, _group.SavedVersion, _definition);
+        }
+        public Task<MHSConfigCommitResult> SetOverridePathJsonAsync(
+            string layer, string path, string json, CancellationToken token)
+        {
+            return UpdateAsync(edit => edit.SetPathJson(layer, path, json), "分层配置编辑：" + path, token);
+        }
+        public Task<MHSConfigCommitResult> RemoveOverridePathAsync(
+            string layer, string path, CancellationToken token)
+        {
+            return UpdateAsync(edit => edit.RemovePath(layer, path), "移除分层覆盖：" + path, token);
         }
         public async Task<MHSConfigCommitResult> SetOverrideAsync<V>(string layer,
             Expression<Func<T, V>> selector, V value, CancellationToken token)

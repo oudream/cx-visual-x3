@@ -376,6 +376,29 @@ namespace CxVisual.Mechanism.Data.Configuration
         }
 
 
+        public async Task<MHSConfigCommitResult> SetOverridePathJsonAsync(
+            string layerName, string path, string json, CancellationToken token)
+        {
+            RequireDefinition();
+            if (string.IsNullOrWhiteSpace(path) || json == null) throw new ArgumentException("Path/JSON required");
+            MVBConfigLayerPath.Validate<T>(path, json);
+            using (MHSConfigEdit<MVBConfigLayerOverrides> edit = Find(layerName).Store.BeginEdit("分层配置编辑：" + path))
+            {
+                edit.WorkingCopy.Values[path] = json;
+                return await edit.CommitAsync(token).ConfigureAwait(false);
+            }
+        }
+        public async Task<MHSConfigCommitResult> RemoveOverridePathAsync(
+            string layerName, string path, CancellationToken token)
+        {
+            RequireDefinition();
+            if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException("Path required");
+            using (MHSConfigEdit<MVBConfigLayerOverrides> edit = Find(layerName).Store.BeginEdit("移除配置覆盖：" + path))
+            {
+                edit.WorkingCopy.Values.Remove(path);
+                return await edit.CommitAsync(token).ConfigureAwait(false);
+            }
+        }
         public async Task<MHSConfigCommitResult> SetOverrideAsync<V>(string layerName,
             Expression<Func<T, V>> selector, V value, CancellationToken token)
         {
