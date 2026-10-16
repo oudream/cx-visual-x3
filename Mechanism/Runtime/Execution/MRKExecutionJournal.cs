@@ -18,7 +18,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
     public sealed class MRKJournalRecord
     {
         public MRKJournalRecord(MRKJournalKind kind, Guid flowId, string planId,
-            long revision, string stepId, string state, string correlationId = null)
+            long revision, string stepId, string state, string correlationId = null,
+            Guid operationId = default(Guid))
         {
             if (flowId == Guid.Empty) throw new ArgumentException("Flow ID不能为空", "flowId");
             if (string.IsNullOrWhiteSpace(planId)) throw new ArgumentException("Plan ID不能为空", "planId");
@@ -28,6 +29,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
             Kind = kind; FlowId = flowId; PlanId = planId;
             Revision = revision; StepId = stepId ?? string.Empty;
             State = state ?? string.Empty; CorrelationId = correlationId ?? string.Empty;
+            OperationId = operationId;
             TimestampUtc = DateTime.UtcNow;
         }
         public long Sequence { get; internal set; }
@@ -38,6 +40,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
         public string StepId { get; private set; }
         public string State { get; private set; }
         public string CorrelationId { get; private set; }
+        /// <summary>独立外部操作身份；不能用StepId或业务CorrelationId代替。</summary>
+        public Guid OperationId { get; private set; }
         public DateTime TimestampUtc { get; internal set; }
     }
     public interface IMRKExecutionJournal
@@ -63,23 +67,43 @@ namespace CxVisual.Mechanism.Runtime.Execution
         {
             if (history == null) throw new ArgumentNullException("history");
             bool seen = false, finished = false;
-            HashSet<string> unknown = new HashSet<string>(StringComparer.Ordinal);
+            Dictionary<Guid, MRKJournalRecord> unknown = new Dictionary<Guid, MRKJournalRecord>();
+            bool legacyUnknown = false, ambiguousIdentity = false;
             foreach (MRKJournalRecord record in history)
             {
                 if (record == null || record.FlowId != flowId) continue;
                 seen = true;
                 if (record.Kind == MRKJournalKind.FlowFinished) finished = true;
-                if (record.Kind == MRKJournalKind.ExternalUnknown) unknown.Add(record.StepId);
-                if (record.Kind == MRKJournalKind.ExternalConfirmed) unknown.Remove(record.StepId);
+                if (record.Kind == MRKJournalKind.ExternalUnknown)
+                {
+                    if (record.OperationId == Guid.Empty) { legacyUnknown = true; continue; }
+                    MRKJournalRecord prior;
+                    if (unknown.TryGetValue(record.OperationId, out prior) &&
+                        !SameExternalOperation(prior, record)) ambiguousIdentity = true;
+                    unknown[record.OperationId] = record;
+                }
+                if (record.Kind == MRKJournalKind.ExternalConfirmed && record.OperationId != Guid.Empty)
+                {
+                    MRKJournalRecord pending;
+                    if (unknown.TryGetValue(record.OperationId, out pending) &&
+                        SameExternalOperation(pending, record)) unknown.Remove(record.OperationId);
+                }
             }
             if (!seen) return new MRKRecoveryDecision(flowId, MRKRecoveryDisposition.NoRecord, "没有运行记录");
-            if (unknown.Count != 0)
+            if (legacyUnknown || ambiguousIdentity || unknown.Count != 0)
                 return new MRKRecoveryDecision(flowId, MRKRecoveryDisposition.RequiresReconciliation,
                     "存在结果未确认的外部操作");
             if (!finished)
                 return new MRKRecoveryDecision(flowId, MRKRecoveryDisposition.RequiresReconciliation,
                     "没有Flow终态，不能自动重新执行");
             return new MRKRecoveryDecision(flowId, MRKRecoveryDisposition.Closed, "运行已结算");
+        }
+        private static bool SameExternalOperation(MRKJournalRecord first, MRKJournalRecord second)
+        {
+            return first.OperationId == second.OperationId &&
+                first.Revision == second.Revision &&
+                string.Equals(first.PlanId, second.PlanId, StringComparison.Ordinal) &&
+                string.Equals(first.StepId, second.StepId, StringComparison.Ordinal);
         }
     }
 
@@ -112,6 +136,9 @@ namespace CxVisual.Mechanism.Runtime.Execution
         public void Append(MRKJournalRecord record)
         {
             if (record == null) throw new ArgumentNullException("record");
+            if ((record.Kind == MRKJournalKind.ExternalUnknown ||
+                record.Kind == MRKJournalKind.ExternalConfirmed) && record.OperationId == Guid.Empty)
+                throw new ArgumentException("外部操作缺少OperationId", "record");
             lock (_gate)
             {
                 EnsureOpen();
@@ -181,7 +208,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
             using (MemoryStream buffer = new MemoryStream())
             using (BinaryWriter writer = new BinaryWriter(buffer, Encoding.UTF8, true))
             {
-                writer.Write((byte)1);
+                writer.Write((byte)2);
                 writer.Write(sequence);
                 writer.Write(record.TimestampUtc.Ticks);
                 writer.Write((int)record.Kind);
@@ -191,6 +218,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 writer.Write(record.StepId);
                 writer.Write(record.State);
                 writer.Write(record.CorrelationId);
+                writer.Write(record.OperationId.ToByteArray());
                 writer.Flush();
                 return buffer.ToArray();
             }
@@ -202,13 +230,19 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 using (MemoryStream stream = new MemoryStream(bytes))
                 using (BinaryReader reader = new BinaryReader(stream, Encoding.UTF8, true))
                 {
-                    if (reader.ReadByte() != 1) throw new InvalidDataException("Journal版本无效");
+                    byte format = reader.ReadByte();
+                    if (format != 1 && format != 2) throw new InvalidDataException("Journal版本无效");
                     long seq = reader.ReadInt64(), ticks = reader.ReadInt64();
                     MRKJournalKind kind = (MRKJournalKind)reader.ReadInt32();
                     Guid flowId = new Guid(reader.ReadBytes(16));
+                    string planId = reader.ReadString();
+                    long revision = reader.ReadInt64();
+                    string stepId = reader.ReadString();
+                    string state = reader.ReadString();
+                    string correlation = reader.ReadString();
+                    Guid operationId = format == 2 ? new Guid(reader.ReadBytes(16)) : Guid.Empty;
                     MRKJournalRecord result = new MRKJournalRecord(kind, flowId,
-                        reader.ReadString(), reader.ReadInt64(), reader.ReadString(),
-                        reader.ReadString(), reader.ReadString());
+                        planId, revision, stepId, state, correlation, operationId);
                     result.Sequence = seq;
                     result.TimestampUtc = new DateTime(ticks, DateTimeKind.Utc);
                     if (stream.Position != stream.Length)

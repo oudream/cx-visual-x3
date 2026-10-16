@@ -235,3 +235,12 @@
 - `FCRWorker.Submit`：单个待执行任务超过整个`PendingByteBudget`时，必须直接Rejected；不得先淘汰其他被允许Drop的旧任务，再发现新任务永远无法满足配额。
 - `MRKExecutionTrace.ReadSince(cursor)`：有界轨迹支持递增游标、`LostCount`与`HasGap`；监视端若错过环形窗口，须重新读取`StatesSnapshot`而不能假设事件流连续。
 - 自动测试：`ExecutionJournalTests.MidFlowJournalFailureIsTypedFailure`、`FCRWorkerTests.ByteBudgetAndOverflowAccounting`、`ExecutionControlTests.TraceCursorDetectsLostTransitions`。此增构只完成headless内存/文件观察基础，远程订阅、审计权限和持久Trace压缩仍未实现。
+
+
+## V0.6.2 外部操作身份与原计划补偿安全回归
+
+- 同一Step可能含多次外部命令，Journal恢复仅以**OperationId + PlanId + Revision + StepId**核销Unknown，业务CorrelationId不代替OperationId。
+- 新Journal v2保存OperationId，仍可读v1旧帧；缺OperationId的旧Unknown一律要求人工/Provider核对，新写入外部事实缺少OperationId直接拒绝。
+- CompensateAsync必须提供Flow启动时固定的**原始MRKExecutionPlan实例**，同名不同实现不可代替；拒绝错误版本不占用补偿次数。
+- 新TDD：OperationIdentityNeverCrossConfirms、LegacyExternalFactsRequireReconciliation、SamePlanNameCannotSubstituteOriginalVersion。
+- 仍未完成：补偿调用期已释放数据作用域的明确交接协议、持久Checkpoint、权限授权发布、Host级恢复和跨进程资源安全。本次仅是进程内基础安全修复；Windows构建及自动测试证据以本次提交后的master CI为准。

@@ -229,3 +229,12 @@ G0/G1通过不能代替G2/G3/G4。CI工作流故障时应分清本次新增测�
 - **预算预检**：新任务预估大小已经超过整个Pending预算时，无论队列中是否有Droppable项，必须直接拒绝，不产生误淘汰。
 - **增量Trace**：`MRKExecutionTrace.ReadSince`通过`NextCursor/LostCount/HasGap`报告历史窗口覆盖；监视端必须在HasGap时重新获取完整快照。
 - **证据**：分别由`ExecutionJournalTests`、`FCRWorkerTests`、`ExecutionControlTests`执行；后续源码修改是否仍通过，以对应master HEAD的Windows CI为准。
+
+
+## V0.6.2 外部操作身份与原计划补偿安全回归
+
+- 同一Step可能含多次外部命令，Journal恢复仅以**OperationId + PlanId + Revision + StepId**核销Unknown，业务CorrelationId不代替OperationId。
+- 新Journal v2保存OperationId，仍可读v1旧帧；缺OperationId的旧Unknown一律要求人工/Provider核对，新写入外部事实缺少OperationId直接拒绝。
+- CompensateAsync必须提供Flow启动时固定的**原始MRKExecutionPlan实例**，同名不同实现不可代替；拒绝错误版本不占用补偿次数。
+- 新TDD：OperationIdentityNeverCrossConfirms、LegacyExternalFactsRequireReconciliation、SamePlanNameCannotSubstituteOriginalVersion。
+- 仍未完成：补偿调用期已释放数据作用域的明确交接协议、持久Checkpoint、权限授权发布、Host级恢复和跨进程资源安全。本次仅是进程内基础安全修复；Windows构建及自动测试证据以本次提交后的master CI为准。

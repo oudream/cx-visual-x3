@@ -201,12 +201,16 @@ namespace CxVisual.Mechanism.Runtime.Execution
     public sealed class MRKFlowHandle
     {
         private readonly CancellationTokenSource _cancellation;
+        private readonly MRKExecutionPlan _originalPlan;
         private readonly DateTime _createdUtc = DateTime.UtcNow;
         private int _cancelRequested;
         private int _compensationStarted;
         private Task<MRKFlowResult> _completion;
-        internal MRKFlowHandle(MRKExecutionContext context, CancellationTokenSource cancellation)
-        { Context = context; _cancellation = cancellation; }
+        internal MRKFlowHandle(MRKExecutionContext context, CancellationTokenSource cancellation,
+            MRKExecutionPlan originalPlan)
+        { Context = context; _cancellation = cancellation; _originalPlan = originalPlan; }
+        internal bool IsOriginalPlan(MRKExecutionPlan candidate)
+        { return object.ReferenceEquals(_originalPlan, candidate); }
         public MRKExecutionContext Context { get; private set; }
         public Guid FlowId { get { return Context.FlowId; } }
         public MRKFlowState State
@@ -344,8 +348,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
         {
             if (plan == null) throw new ArgumentNullException("plan");
             if (flow == null) throw new ArgumentNullException("flow");
-            if (!string.Equals(plan.Id, flow.Context.PlanId, StringComparison.Ordinal))
-                throw new InvalidOperationException("补偿计划与当前Flow不匹配");
+            if (!flow.IsOriginalPlan(plan))
+                throw new InvalidOperationException("补偿必须使用启动Flow时固定的原始Plan实例，不能使用同名不同版本计划");
             if (!flow.Completion.IsCompleted)
                 throw new InvalidOperationException("所有分支结算前禁止补偿");
             MRKFlowResult terminal = await flow.Completion.ConfigureAwait(false);
@@ -513,7 +517,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 }
                 CancellationTokenSource linked =
                     CancellationTokenSource.CreateLinkedTokenSource(cancellation);
-                MRKFlowHandle handle = new MRKFlowHandle(context, linked);
+                MRKFlowHandle handle = new MRKFlowHandle(context, linked, plan);
                 handle.SetCompletion(RunFlowAsync(plan, handle, control));
                 _activeFlows.Add(handle.FlowId, handle);
                 Task removal = handle.Completion.ContinueWith(

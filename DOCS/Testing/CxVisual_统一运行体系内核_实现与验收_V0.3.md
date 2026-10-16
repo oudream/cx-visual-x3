@@ -175,3 +175,12 @@ Runtime新增`MRKExecutionCompiler.cs`将能力ID与依赖、端口绑定等瞬�
 ## 10. V0.6.1可靠性测试与观察契约
 
 Journal运行中故障强制明确Failed终态，任务超预算无损拒绝其他已接纳项，Trace新增游标式`ReadSince`（缺口检测与重同步）。所有新增代码仍位于原Owner项目和既定执行目录，无新工程、无第二Flow引擎。远程Studio/实际设备确认仍属于更高等级验收。
+
+
+## V0.6.2 外部操作身份与原计划补偿安全回归
+
+- 同一Step可能含多次外部命令，Journal恢复仅以**OperationId + PlanId + Revision + StepId**核销Unknown，业务CorrelationId不代替OperationId。
+- 新Journal v2保存OperationId，仍可读v1旧帧；缺OperationId的旧Unknown一律要求人工/Provider核对，新写入外部事实缺少OperationId直接拒绝。
+- CompensateAsync必须提供Flow启动时固定的**原始MRKExecutionPlan实例**，同名不同实现不可代替；拒绝错误版本不占用补偿次数。
+- 新TDD：OperationIdentityNeverCrossConfirms、LegacyExternalFactsRequireReconciliation、SamePlanNameCannotSubstituteOriginalVersion。
+- 仍未完成：补偿调用期已释放数据作用域的明确交接协议、持久Checkpoint、权限授权发布、Host级恢复和跨进程资源安全。本次仅是进程内基础安全修复；Windows构建及自动测试证据以本次提交后的master CI为准。

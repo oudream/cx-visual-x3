@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using CxVisual.Mechanism.Runtime.Execution;
 namespace CxVisual.Tests.ArchitectureSmoke
 {
@@ -9,6 +10,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
         internal static void Run()
         {
             ReopenAndConservativeRecovery();
+            OperationIdentityNeverCrossConfirms();
+            LegacyExternalFactsRequireReconciliation();
             TruncatedTailIsRecoverableButCorruptionIsNot();
             RuntimeRecordsRealFlowTransitions();
             JournalAdmissionFailureIsFailClosed();
@@ -22,6 +25,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         {
             string path = PathForTest();
             Guid id = Guid.NewGuid();
+            Guid operationId = Guid.NewGuid();
             try
             {
                 using (MRKFileExecutionJournal journal = new MRKFileExecutionJournal(path))
@@ -35,7 +39,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 using (MRKFileExecutionJournal journal = new MRKFileExecutionJournal(path))
                 {
                     journal.Append(new MRKJournalRecord(MRKJournalKind.ExternalUnknown, id,
-                        "CT", 9, "exposure", "Unknown"));
+                        "CT", 9, "exposure", "Unknown", null, operationId));
                     journal.Append(new MRKJournalRecord(MRKJournalKind.FlowFinished, id,
                         "CT", 9, "", "Failed"));
                     IList<MRKJournalRecord> history = journal.ReadAll();
@@ -45,13 +49,113 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         MRKRecoveryDisposition.RequiresReconciliation,
                         "未知设备操作被错误地认定为安全终态");
                     journal.Append(new MRKJournalRecord(MRKJournalKind.ExternalConfirmed, id,
-                        "CT", 9, "exposure", "Confirmed"));
+                        "CT", 9, "exposure", "Confirmed", null, operationId));
                     Check(MRKJournalRecovery.Evaluate(id, journal.ReadAll()).Disposition ==
                         MRKRecoveryDisposition.Closed, "已确认且完整的Flow未正常结案");
                 }
             }
             finally { if (File.Exists(path)) File.Delete(path); }
         }
+
+        private static void OperationIdentityNeverCrossConfirms()
+        {
+            Guid flow = Guid.NewGuid(), first = Guid.NewGuid(), second = Guid.NewGuid();
+            string path = PathForTest();
+            try
+            {
+                using (MRKFileExecutionJournal journal = new MRKFileExecutionJournal(path))
+                {
+                    journal.Append(new MRKJournalRecord(MRKJournalKind.FlowStarted, flow, "plan", 5, "", "Running"));
+                    journal.Append(new MRKJournalRecord(MRKJournalKind.ExternalUnknown, flow, "plan", 5,
+                        "write", "Unknown", "REQ", first));
+                    journal.Append(new MRKJournalRecord(MRKJournalKind.ExternalUnknown, flow, "plan", 5,
+                        "write", "Unknown", "REQ", second));
+                    journal.Append(new MRKJournalRecord(MRKJournalKind.FlowFinished, flow, "plan", 5, "", "Failed"));
+                    journal.Append(new MRKJournalRecord(MRKJournalKind.ExternalConfirmed, flow, "plan", 5,
+                        "write", "Confirmed", "REQ", first));
+                    journal.Append(new MRKJournalRecord(MRKJournalKind.ExternalConfirmed, flow, "plan", 6,
+                        "write", "Confirmed", "REQ", second));
+                    journal.Append(new MRKJournalRecord(MRKJournalKind.ExternalConfirmed, flow, "plan", 5,
+                        "other-step", "Confirmed", "REQ", second));
+                    Check(MRKJournalRecovery.Evaluate(flow, journal.ReadAll()).Disposition ==
+                        MRKRecoveryDisposition.RequiresReconciliation,
+                        "同Step多个操作、错版本或错步骤确认导致误结案");
+                }
+                using (MRKFileExecutionJournal journal = new MRKFileExecutionJournal(path))
+                {
+                    IList<MRKJournalRecord> history = journal.ReadAll();
+                    Check(history[1].OperationId == first && history[2].OperationId == second,
+                        "重启后OperationId未正确还原");
+                    journal.Append(new MRKJournalRecord(MRKJournalKind.ExternalConfirmed, flow, "plan", 5,
+                        "write", "Confirmed", "REQ", second));
+                    Check(MRKJournalRecovery.Evaluate(flow, journal.ReadAll()).Disposition ==
+                        MRKRecoveryDisposition.Closed, "全部操作确认后应能安全关闭");
+                    bool refused = false;
+                    try { journal.Append(new MRKJournalRecord(MRKJournalKind.ExternalUnknown,
+                        flow, "plan", 5, "write", "Unknown")); }
+                    catch (ArgumentException) { refused = true; }
+                    Check(refused, "缺少OperationId的外部事实仍可写入");
+                }
+            }
+            finally { if (File.Exists(path)) File.Delete(path); }
+        }
+
+        // 读取已有v1格式，但无OperationId的外部事实必须保守核对。
+        private static void LegacyExternalFactsRequireReconciliation()
+        {
+            Guid flow = Guid.NewGuid();
+            string path = PathForTest();
+            try
+            {
+                MRKJournalRecord[] facts = {
+                    new MRKJournalRecord(MRKJournalKind.FlowStarted, flow, "old", 3, "", "Running"),
+                    new MRKJournalRecord(MRKJournalKind.ExternalUnknown, flow, "old", 3, "write", "Unknown"),
+                    new MRKJournalRecord(MRKJournalKind.ExternalConfirmed, flow, "old", 3, "write", "Confirmed"),
+                    new MRKJournalRecord(MRKJournalKind.FlowFinished, flow, "old", 3, "", "Failed")
+                };
+                using (FileStream fs = new FileStream(path, FileMode.CreateNew, FileAccess.Write))
+                using (BinaryWriter file = new BinaryWriter(fs, Encoding.UTF8))
+                {
+                    for (int i = 0; i < facts.Length; i++)
+                    {
+                        byte[] bytes;
+                        using (MemoryStream buffer = new MemoryStream())
+                        using (BinaryWriter w = new BinaryWriter(buffer, Encoding.UTF8, true))
+                        {
+                            MRKJournalRecord r = facts[i];
+                            w.Write((byte)1);
+                            w.Write((long)(i + 1));
+                            w.Write(r.TimestampUtc.Ticks);
+                            w.Write((int)r.Kind);
+                            w.Write(r.FlowId.ToByteArray());
+                            w.Write(r.PlanId);
+                            w.Write(r.Revision);
+                            w.Write(r.StepId);
+                            w.Write(r.State);
+                            w.Write(r.CorrelationId);
+                            w.Flush();
+                            bytes = buffer.ToArray();
+                        }
+                        uint hash = 2166136261;
+                        unchecked { foreach (byte value in bytes) hash = (hash ^ value) * 16777619; }
+                        file.Write(bytes.Length);
+                        file.Write(bytes);
+                        file.Write(hash);
+                    }
+                }
+                using (MRKFileExecutionJournal journal = new MRKFileExecutionJournal(path))
+                {
+                    IList<MRKJournalRecord> restored = journal.ReadAll();
+                    Check(restored.Count == 4 && restored[1].OperationId == Guid.Empty,
+                        "旧版Journal文件未成功读取");
+                    Check(MRKJournalRecovery.Evaluate(flow, restored).Disposition ==
+                        MRKRecoveryDisposition.RequiresReconciliation,
+                        "历史同Step确认被错误视为独立Operation确认");
+                }
+            }
+            finally { if (File.Exists(path)) File.Delete(path); }
+        }
+
         private static void TruncatedTailIsRecoverableButCorruptionIsNot()
         {
             string path = PathForTest();

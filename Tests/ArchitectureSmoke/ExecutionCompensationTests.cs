@@ -13,6 +13,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         {
             ExplicitReverseCompensationAndIdempotence();
             ContinueReportingEvenWhenOneCompensationFails();
+            SamePlanNameCannotSubstituteOriginalVersion();
         }
         private static T Await<T>(Task<T> task)
         {
@@ -74,6 +75,42 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 "补偿失败被掩盖或导致其他合法补偿跳过");
             Await(engine.StopAsync());
         }
+
+        private static void SamePlanNameCannotSubstituteOriginalVersion()
+        {
+            int legitimate = 0, substituted = 0;
+            MRKExecutionPlan original = new MRKExecutionPlan("same-plan", new[]
+            {
+                new MRKExecutionStep("A", new string[0],
+                    (ctx,ct) => Task.FromResult((object)1),
+                    compensateAsync: (ctx,ct) =>
+                    { Interlocked.Increment(ref legitimate); return Task.FromResult(true); }),
+                new MRKExecutionStep("B", new[] { "A" },
+                    (ctx,ct) => { throw new InvalidOperationException("failure"); })
+            });
+            MRKExecutionPlan altered = new MRKExecutionPlan("same-plan", new[]
+            {
+                new MRKExecutionStep("A", new string[0],
+                    (ctx,ct) => Task.FromResult((object)1),
+                    compensateAsync: (ctx,ct) =>
+                    { Interlocked.Increment(ref substituted); return Task.FromResult(true); }),
+                new MRKExecutionStep("B", new[] { "A" },
+                    (ctx,ct) => { throw new InvalidOperationException("failure"); })
+            });
+            MRKExecutionEngine engine = new MRKExecutionEngine(new FCRWorkerOptions(1, 4));
+            MRKFlowHandle flow = engine.StartFlowWithMetadata(original, new MRKFlowMetadata(7));
+            Check(Await(flow.Completion).State == MRKFlowState.Failed, "失败流程未结束");
+            bool refused = false;
+            try { Await(engine.CompensateAsync(altered, flow)); }
+            catch (InvalidOperationException) { refused = true; }
+            Check(refused && substituted == 0 && legitimate == 0,
+                "同名异版计划错误接管补偿并产生副作用");
+            MRKCompensationReport report = Await(engine.CompensateAsync(original, flow));
+            Check(report.Succeeded && legitimate == 1 && substituted == 0,
+                "原始Plan的合法补偿未成功");
+            Await(engine.StopAsync());
+        }
+
         private static void Await(Task task)
         {
             Task winner = Task.WhenAny(task, Task.Delay(6000)).GetAwaiter().GetResult();
