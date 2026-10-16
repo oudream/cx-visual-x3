@@ -37,7 +37,11 @@ namespace CxVisual.TestCenter.UI
                     if (e.Args.Length < 2 || e.Args.Length > 3 ||
                         (e.Args.Length == 3 && e.Args[2] != "--negative"))
                         throw new ArgumentException("--nunit-probe <result.xml> [--negative]");
-                    exit = TCTNUnitEngineProbe.Execute(e.Args[1], e.Args.Length == 3);
+                    string probeReport = e.Args[1];
+                    bool negativeControl = e.Args.Length == 3;
+                    // NUnit async tests must not execute synchronously on the WPF STA dispatcher.
+                    exit = await System.Threading.Tasks.Task.Run(() =>
+                        TCTNUnitEngineProbe.Execute(probeReport, negativeControl));
                 }
                 else if (command == "--worker")
                 {
