@@ -20,6 +20,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
         public List<V13DetectorSample> Segments { get; set; } = new List<V13DetectorSample>();
         [FCMConfigItem("工艺标签", ApplyPolicy = FCMConfigApplyPolicy.NextTask)]
         public HashSet<string> Tags { get; set; } = new HashSet<string>();
+        public Dictionary<string, List<V13DetectorSample>> Groups { get; set; } =
+            new Dictionary<string, List<V13DetectorSample>>();
     }
 
     /// <summary>
@@ -246,6 +248,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 editor.InsertItem(x => x.Segments, 2, new V13DetectorSample { Gain = 3 });
                 editor.MoveItem(x => x.Segments, 0, 2);
                 editor.RemoveItemAt(x => x.Segments, 1);
+                editor.AddKey(x => x.Groups, "scan.01", new List<V13DetectorSample>());
+                editor.InsertItem(x => x.Groups["scan.01"], 0,
+                    new V13DetectorSample { Gain = 7 });
                 editor.AddSetItem(x => x.Tags, "A");
                 editor.AddSetItem(x => x.Tags, "A");
                 editor.AddSetItem(x => x.Tags, "B");
@@ -255,6 +260,19 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     editor.Draft.Segments[1].Gain == 1 &&
                     editor.Draft.Tags.SetEquals(new[] { "A" }),
                     "typed dictionary/list/set commands build a deep draft");
+                IList<MHSConfigCollectionItem> dynamicItems = editor.DescribeCollectionItems();
+                Check(dynamicItems.Any(x => x.CollectionKind == FCMConfigTypeKind.Map &&
+                    x.CollectionPath == "Detectors" && x.KeyJson == FCMJsonValueCodec.Quote(key) &&
+                    x.ItemPath == "Detectors[" + FCMJsonValueCodec.Quote(key) + "]" &&
+                    x.HasDraft && !x.HasSaved && x.IsModified) &&
+                    dynamicItems.Any(x => x.CollectionKind == FCMConfigTypeKind.List &&
+                        x.CollectionPath == "Segments" && x.Index == 1 && x.CanReorder) &&
+                    dynamicItems.Any(x => x.CollectionKind == FCMConfigTypeKind.Set &&
+                        x.CollectionPath == "Tags" && x.ItemPath == null && !x.CanReorder &&
+                        x.HasDraft && !x.HasSaved) &&
+                    dynamicItems.Any(x => x.CollectionPath == "Groups[\"scan.01\"]" &&
+                        x.Index == 0 && x.ItemType == typeof(V13DetectorSample)),
+                    "dynamic field tree exposes maps, nested lists, sets and draft/saved provenance");
                 string before = FCMJsonValueCodec.Serialize(editor.Draft);
                 Expect<ArgumentException>(() => editor.AddKey(x => x.Detectors, key,
                     new V13DetectorSample()), "duplicate dictionary key refused");
@@ -280,7 +298,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
             ConfigDynamicCollections restarted = new MHSConfigService(folder)
                 .ForMachine("Line-B").Open<ConfigDynamicCollections>().Get();
             Check(restarted.Segments.Select(x => x.Gain).SequenceEqual(new[] { 2, 1 }) &&
-                restarted.Tags.SetEquals(new[] { "A" }) && restarted.Detectors.ContainsKey(key),
+                restarted.Tags.SetEquals(new[] { "A" }) && restarted.Detectors.ContainsKey(key) &&
+                restarted.Groups["scan.01"][0].Gain == 7,
                 "restart preserves escaped key, list ordering and set");
         }
 
