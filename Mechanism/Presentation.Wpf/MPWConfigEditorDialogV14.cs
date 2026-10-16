@@ -21,6 +21,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
     public sealed class MPWConfigEditorControl<T> : UserControl, IDisposable where T : new()
     {
         private readonly MHSConfigSection<T> _section;
+        private readonly MHSConfigAuthorizedSection<T> _authorized;
         private MHSConfigEditorModel<T> _editor;
         private readonly StackPanel _form = new StackPanel();
         private readonly TextBlock _status = new TextBlock { TextWrapping = TextWrapping.Wrap };
@@ -39,7 +40,46 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         public MPWConfigEditorControl(MHSConfigSection<T> section)
         {
             _section = section ?? throw new ArgumentNullException("section");
-            _editor = new MHSConfigEditorModel<T>(section, "通用配置编辑");
+            _editor = NewEditor();
+            InitializeControls();
+        }
+        /// <summary>Authorized mode keeps raw Section private to the Mechanism assembly.
+        /// Every edit, status, restore and apply action is mediated by its session.</summary>
+        public MPWConfigEditorControl(MHSConfigAuthorizedSection<T> authorized)
+        {
+            _authorized = authorized ?? throw new ArgumentNullException("authorized");
+            _editor = NewEditor();
+            InitializeControls();
+        }
+        private MHSConfigEditorModel<T> NewEditor()
+        {
+            return _authorized == null ?
+                new MHSConfigEditorModel<T>(_section, "通用配置编辑") :
+                _authorized.BeginEditor("授权配置编辑");
+        }
+        private FCMConfigIdentity ModelIdentity
+        { get { return _authorized == null ? _section.Identity : _authorized.Identity; } }
+        private FCMConfigRevision ModelRevision
+        { get { return _authorized == null ? _section.Revision : _authorized.Revision; } }
+        private IList<string> Versions()
+        {
+            return _authorized == null ? _section.ListSavedVersions() : _authorized.ListSavedVersions();
+        }
+        private MHSConfigStatus Status()
+        { return _authorized == null ? _section.GetStatus() : _authorized.GetStatus(); }
+        private MHSConfigApplyResult TryApply(FCMConfigApplyPolicy boundary)
+        {
+            return _authorized == null ? _section.TryApplyPendingAtBoundary(boundary, null) :
+                _authorized.TryApplyPendingAtBoundary(boundary);
+        }
+        private System.Threading.Tasks.Task<MHSConfigCommitResult> Restore(string version)
+        {
+            return _authorized == null ?
+                _section.RestoreSavedVersionAsync(version, "Studio 历史恢复", CancellationToken.None) :
+                _authorized.RestoreSavedVersionAsync(version, "授权历史恢复", CancellationToken.None);
+        }
+        private void InitializeControls()
+        {
             foreach (FCMConfigApplyPolicy policy in Enum.GetValues(typeof(FCMConfigApplyPolicy)))
                 _boundaries.Items.Add(policy);
             _boundaries.SelectedItem = FCMConfigApplyPolicy.NextTask;
@@ -109,16 +149,34 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         {
             if (_disposed || host.Children.Count < 2) return;
             while (host.Children.Count > 2) host.Children.RemoveAt(2);
-            MHSConfigStatus status = _section.GetStatus();
-            host.Children.Add(new TextBlock { Text = "Saved: " + _section.SavedVersion +
-                "   Effective: " + _section.EffectiveVersion + "   Pending: " + _section.HasPendingApply +
-                "   Audit entries: " + status.AuditCount, TextWrapping = TextWrapping.Wrap });
-            host.Children.Add(new TextBlock { Text = "完整性: " + (status.IsHealthy ? "通过" : "需要检查") +
-                "  审计/校验问题数: " + status.IntegrityIssues.Count, Margin = new Thickness(0, 8, 0, 2) });
-            foreach (MHSConfigAuditEntry audit in _section.ListAudit().Reverse().Take(50))
-                host.Children.Add(new TextBlock { Text = audit.Revision + "  " +
-                    audit.RecordedAtUtc.ToLocalTime().ToString("g") + "  字段数: " +
-                    audit.ChangedPaths.Count, Margin = new Thickness(0, 4, 0, 0) });
+            try
+            {
+                MHSConfigStatus status = Status();
+                FCMConfigRevision revision = ModelRevision;
+                host.Children.Add(new TextBlock { Text = "Saved: " + revision.Saved +
+                    "    Effective: " + revision.Effective + "    Pending: " + revision.IsPending +
+                    "    Audit entries: " + status.AuditCount, TextWrapping = TextWrapping.Wrap });
+                host.Children.Add(new TextBlock { Text = "完整性: " + (status.IsHealthy ? "通过" : "需要检查") +
+                    "    诊断问题: " + status.IntegrityIssues.Count,
+                    Margin = new Thickness(0, 8, 0, 2) });
+                if (_authorized == null)
+                    foreach (MHSConfigAuditEntry audit in _section.ListAudit().Reverse().Take(50))
+                        host.Children.Add(new TextBlock { Text = audit.Revision + "    " +
+                            audit.RecordedAtUtc.ToLocalTime().ToString("g") +
+                            "    字段数: " + audit.ChangedPaths.Count,
+                            Margin = new Thickness(0, 4, 0, 0) });
+                else
+                    foreach (MHSConfigCommittedRecord record in _authorized.ReadCommittedAfter(null, 50))
+                        host.Children.Add(new TextBlock { Text = record.Revision + "    " +
+                            record.RecordedAtUtc.ToLocalTime().ToString("g") +
+                            "    修改字段数: " + record.ChangedPaths.Count,
+                            Margin = new Thickness(0, 4, 0, 0) });
+            }
+            catch (UnauthorizedAccessException)
+            {
+                host.Children.Add(new TextBlock { Text = "当前授权不足以读取配置审计与诊断。",
+                    Foreground = Brushes.Gray });
+            }
         }
         private void EnsureActive()
         { if (_disposed) throw new ObjectDisposedException("MPWConfigEditorControl"); }
@@ -136,20 +194,36 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         private void RefreshAll()
         {
             if (_disposed) return;
-            _status.Text = "机台/工程: " + _section.Identity.ScopeKind + "/" +
-                _section.Identity.ScopeId + "    保存版本: " + _section.SavedVersion +
-                "    生效版本: " + _section.EffectiveVersion +
-                (_section.HasPendingApply ? "    [待生效]" : "    [已同步]");
             _count = 0;
             _form.Children.Clear();
-            object data = _editor.Draft;
-            RenderObject(_form, typeof(T), data, "", 0, false);
-            string selected = _history.SelectedItem as string;
-            _history.Items.Clear();
-            foreach (string version in _section.ListSavedVersions().Reverse())
-                _history.Items.Add(version);
-            _history.SelectedItem = selected != null && _history.Items.Contains(selected)
-                ? selected : _section.SavedVersion;
+            try
+            {
+                FCMConfigRevision revision = ModelRevision;
+                FCMConfigIdentity identity = ModelIdentity;
+                _status.Text = "范围: " + identity.ScopeKind + "/" + identity.ScopeId +
+                    "    Saved: " + revision.Saved + "    Effective: " + revision.Effective +
+                    (revision.IsPending ? "    [待生效]" : "    [已同步]");
+                object data = _editor.Draft;
+                RenderObject(_form, typeof(T), data, "", 0, false);
+                string selected = _history.SelectedItem as string;
+                _history.Items.Clear();
+                try
+                {
+                    foreach (string version in Versions().Reverse()) _history.Items.Add(version);
+                    _history.SelectedItem = selected != null && _history.Items.Contains(selected)
+                        ? selected : revision.Saved;
+                }
+                catch (UnauthorizedAccessException)
+                { _history.IsEnabled = false; }
+            }
+            catch (UnauthorizedAccessException)
+            {
+                _status.Text = "当前权限无法读取或继续编辑该配置。";
+                _form.Children.Add(new TextBlock {
+                    Text = "配置内容已隐藏；请通过可信宿主申请授权。",
+                    Foreground = Brushes.Gray });
+                _history.IsEnabled = false;
+            }
         }
         private static bool IsScalar(Type type)
         {
@@ -391,7 +465,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 if (result.Success)
                 {
                     _saved = true;
-                    _editor = new MHSConfigEditorModel<T>(_section, "通用配置编辑");
+                    _editor = NewEditor();
                     _issues.Text = "已保存 " + result.Revision + "；实际生效取决于配置边界。";
                     RefreshAll();
                 }
@@ -407,8 +481,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         private void Apply()
         {
             Execute(() => {
-                var result = _section.TryApplyPendingAtBoundary(
-                    (FCMConfigApplyPolicy)_boundaries.SelectedItem, null);
+                var result = TryApply((FCMConfigApplyPolicy)_boundaries.SelectedItem);
                 _issues.Text = result.Applied ? "配置已生效: " + result.EffectiveVersion :
                     "未生效: " + result.Status + " （边界或联锁尚未满足）";
             });
@@ -423,11 +496,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             _working = true;
             try
             {
-                MHSConfigCommitResult result = await _section.RestoreSavedVersionAsync(
-                    version, "Studio 历史恢复", CancellationToken.None);
+                MHSConfigCommitResult result = await Restore(version);
                 if (!result.Success) throw new InvalidOperationException("CONFIG_RESTORE_REJECTED");
                 _editor.Dispose();
-                _editor = new MHSConfigEditorModel<T>(_section, "历史恢复后的草稿");
+                _editor = NewEditor();
                 _issues.Text = "已建立恢复修订 " + result.Revision + "，尚需检查生效边界。";
                 _saved = true;
                 RefreshAll();
@@ -446,29 +518,38 @@ namespace CxVisual.Mechanism.Presentation.Wpf
     /// <summary>Existing Studio entry retained; the same UserControl can be embedded.</summary>
     public static class MPWConfigEditorDialog
     {
+        public static bool Edit<T>(Window owner, MHSConfigAuthorizedSection<T> config) where T : new()
+        {
+            if (config == null) throw new ArgumentNullException("config");
+            using (var control = new MPWConfigEditorControl<T>(config))
+                return Open(owner, control);
+        }
         public static bool Edit<T>(Window owner, MHSConfigSection<T> config) where T : new()
         {
             if (config == null) throw new ArgumentNullException("config");
             using (var control = new MPWConfigEditorControl<T>(config))
-            {
-                Window dialog = new Window {
-                    Title = "CxVisual · " + FCMConfigSchemaBuilder.Describe<T>().SectionId,
-                    Width = 960, Height = 770, MinWidth = 650, MinHeight = 470,
-                    WindowStartupLocation = owner == null ?
-                        WindowStartupLocation.CenterScreen : WindowStartupLocation.CenterOwner
-                };
-                if (owner != null) dialog.Owner = owner;
-                DockPanel shell = new DockPanel();
-                Button close = new Button { Content = "关闭编辑器", Height = 34, Width = 120,
-                    Margin = new Thickness(10), HorizontalAlignment = HorizontalAlignment.Right };
-                close.Click += (s, e) => dialog.Close();
-                DockPanel.SetDock(close, Dock.Bottom);
-                shell.Children.Add(close);
-                shell.Children.Add(control);
-                dialog.Content = shell;
-                dialog.ShowDialog();
-                return control.WasSaved;
-            }
+                return Open(owner, control);
         }
+        private static bool Open<T>(Window owner, MPWConfigEditorControl<T> control) where T : new()
+        {
+            Window dialog = new Window {
+                Title = "CxVisual · " + FCMConfigSchemaBuilder.Describe<T>().SectionId,
+                Width = 960, Height = 770, MinWidth = 650, MinHeight = 470,
+                WindowStartupLocation = owner == null ?
+                    WindowStartupLocation.CenterScreen : WindowStartupLocation.CenterOwner
+            };
+            if (owner != null) dialog.Owner = owner;
+            DockPanel shell = new DockPanel();
+            Button close = new Button { Content = "关闭编辑器", Height = 34, Width = 120,
+                Margin = new Thickness(10), HorizontalAlignment = HorizontalAlignment.Right };
+            close.Click += (s, e) => dialog.Close();
+            DockPanel.SetDock(close, Dock.Bottom);
+            shell.Children.Add(close);
+            shell.Children.Add(control);
+            dialog.Content = shell;
+            dialog.ShowDialog();
+            return control.WasSaved;
+        }
+
     }
 }
