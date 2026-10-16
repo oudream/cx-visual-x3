@@ -18,7 +18,9 @@ foreach ($project in $projects) {
             if ($null -ne $compile -and $compile.Include) {
                 $include = [string]$compile.Include
                 if ($include.Contains('*') -or $include.Contains('?')) {
-                    $matches = @(Get-ChildItem -Path (Join-Path $project.DirectoryName $include) -File -ErrorAction SilentlyContinue)
+                    $wildcardRoot = ($include -split '[*?]')[0].TrimEnd('\','/')
+                    $sourceRoot = Join-Path $project.DirectoryName $wildcardRoot
+                    $matches = @(Get-ChildItem -LiteralPath $sourceRoot -Filter '*.cs' -Recurse -File -ErrorAction SilentlyContinue)
                     if ($matches.Count -eq 0) { throw "No source files match Compile wildcard $include in $($project.FullName)" }
                 } elseif (-not (Test-Path -LiteralPath (Join-Path $project.DirectoryName $include))) {
                     throw "Missing Compile $include in $($project.FullName)"
