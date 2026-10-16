@@ -16,6 +16,7 @@ namespace CxVisual.Tests.FoundationSmoke
             ErrorIsObservable();
             DeveloperConvenienceAndKeyedStress();
             PriorityDoesNotBreakPerKeyFIFO();
+            ByteBudgetAndOverflowAccounting();
         }
         private static void Check(bool ok, string message)
         { if (!ok) throw new InvalidOperationException("F19 " + message); }
@@ -194,6 +195,51 @@ namespace CxVisual.Tests.FoundationSmoke
                 order[1] == "low" && order[2] == "same-key",
                 "priority broke FIFO in same key or other-key priority");
             Await(worker.StopAsync());
+        }
+
+        private static void ByteBudgetAndOverflowAccounting()
+        {
+            FCRWorker worker = new FCRWorker(new FCRWorkerOptions(
+                1, 4, FCROverflowPolicy.DropOldestDroppable, pendingByteBudget:100));
+            TaskCompletionSource<bool> entered = Gate(), release = Gate();
+            FCRWorkHandle<int> active = worker.Submit<int>(async ct =>
+            {
+                entered.TrySetResult(true);
+                await release.Task.ConfigureAwait(false);
+                return 1;
+            }, "line");
+            Await(entered.Task);
+            FCRWorkHandle<int> old = worker.Submit<int>(ct => Task.FromResult(2),
+                "line", droppable:true, estimatedBytes:70);
+            Check(worker.GetSnapshot().PendingBytes == 70, "pending bytes not reserved");
+            FCRWorkHandle<int> newer = worker.Submit<int>(ct => Task.FromResult(3),
+                "line", estimatedBytes:60);
+            Check(Await(old.Completion).State == FCRWorkState.Dropped &&
+                worker.GetSnapshot().PendingBytes == 60,
+                "eviction did not free the declared byte budget");
+            FCRWorkHandle<int> impossible = worker.Submit<int>(
+                ct => Task.FromResult(4), "line", estimatedBytes:200);
+            Check(Await(impossible.Completion).State == FCRWorkState.Rejected &&
+                newer.Accepted && worker.GetSnapshot().PendingBytes == 60,
+                "oversize submission should reject without evicting unrelated work");
+            Check(newer.RequestCancel() && worker.GetSnapshot().PendingBytes == 0,
+                "pending cancellation leaked reserved bytes");
+            release.TrySetResult(true);
+            Await(active.Completion);
+            Await(worker.StopAsync());
+            Check(worker.GetSnapshot().PendingBytes == 0, "drain retained pending byte budget");
+
+            FCRWorker second = new FCRWorker(new FCRWorkerOptions(1, 3,
+                pendingByteBudget:50));
+            TaskCompletionSource<bool> gate = Gate(), ready = Gate();
+            second.Submit<int>(async ct =>
+            { ready.TrySetResult(true); await gate.Task.ConfigureAwait(false); return 1; }, "x");
+            Await(ready.Task);
+            second.Submit<int>(ct => Task.FromResult(1), "x", estimatedBytes:40);
+            Task closing = second.StopAsync(true);
+            Check(second.GetSnapshot().PendingBytes == 0, "stop(cancel) leaked byte accounting");
+            gate.TrySetResult(true);
+            Await(closing);
         }
 
     }

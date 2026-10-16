@@ -14,11 +14,15 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
         public int MaxConcurrency { get; private set; }
         public int QueueCapacity { get; private set; }
         public FCROverflowPolicy OverflowPolicy { get; private set; }
+        public long PendingByteBudget { get; private set; }
         public FCRWorkerOptions(int maxConcurrency, int queueCapacity,
-            FCROverflowPolicy overflowPolicy = FCROverflowPolicy.RejectNew)
+            FCROverflowPolicy overflowPolicy = FCROverflowPolicy.RejectNew,
+            long pendingByteBudget = long.MaxValue)
         {
             if (maxConcurrency < 1) throw new ArgumentOutOfRangeException("maxConcurrency");
             if (queueCapacity < 0) throw new ArgumentOutOfRangeException("queueCapacity");
+            if (pendingByteBudget < 0) throw new ArgumentOutOfRangeException("pendingByteBudget");
+            PendingByteBudget = pendingByteBudget;
             MaxConcurrency = maxConcurrency;
             QueueCapacity = queueCapacity;
             OverflowPolicy = overflowPolicy;
@@ -82,10 +86,13 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
     public sealed class FCRWorkerSnapshot
     {
         internal FCRWorkerSnapshot(int pending, int active, long finished,
-            long rejected, long dropped, bool stopping)
+            long rejected, long dropped, bool stopping, long pendingBytes, long byteBudget)
         { Pending = pending; Active = active; Finished = finished; Rejected = rejected;
-          Dropped = dropped; Stopping = stopping; }
+          Dropped = dropped; Stopping = stopping; PendingBytes = pendingBytes;
+          PendingByteBudget = byteBudget; }
         public int Pending { get; private set; }
+        public long PendingBytes { get; private set; }
+        public long PendingByteBudget { get; private set; }
         /// <summary>活动的逻辑工作数，包括异步等待；不等于正在运行的线程数。</summary>
         public int Active { get; private set; }
         public long Finished { get; private set; }

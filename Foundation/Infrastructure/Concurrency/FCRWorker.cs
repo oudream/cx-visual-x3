@@ -17,13 +17,16 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
             internal readonly string Key;
             internal readonly bool Droppable;
             internal readonly int Priority;
+            internal readonly long EstimatedBytes;
             internal readonly CancellationTokenSource Source;
             internal int State = (int)FCRWorkState.Queued;
-            protected Job(string key, bool droppable, int priority, CancellationToken cancellation)
+            protected Job(string key, bool droppable, int priority, long estimatedBytes,
+                CancellationToken cancellation)
             {
                 Key = key ?? Id.ToString("N");
                 Droppable = droppable;
                 Priority = priority;
+                EstimatedBytes = estimatedBytes;
                 Source = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
             }
             internal abstract Task InvokeAsync();
@@ -37,8 +40,9 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
                 new TaskCompletionSource<FCRWorkResult<T>>(TaskCreationOptions.RunContinuationsAsynchronously);
             internal readonly FCRWorkHandle<T> Handle;
             internal Job(FCRWorker owner, string key, bool droppable,
-                int priority, CancellationToken cancellation, Func<CancellationToken, Task<T>> action)
-                : base(key, droppable, priority, cancellation)
+                int priority, long estimatedBytes, CancellationToken cancellation,
+                Func<CancellationToken, Task<T>> action)
+                : base(key, droppable, priority, estimatedBytes, cancellation)
             {
                 _action = action;
                 Handle = new FCRWorkHandle<T>(Id, Key, _completion.Task,
@@ -80,7 +84,7 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
         private readonly HashSet<string> _activeKeys = new HashSet<string>(StringComparer.Ordinal);
         private readonly FCRWorkerOptions _options;
         private int _active;
-        private long _finished, _rejected, _dropped;
+        private long _finished, _rejected, _dropped, _pendingBytes;
         private bool _stopping;
         private TaskCompletionSource<bool> _stopped;
 
@@ -90,7 +94,7 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
         /// <summary>便捷提交同步业务函数；执行在线程池Worker上，异常仍可从Handle结果查看。</summary>
         public FCRWorkHandle<bool> Post(Action action, string key = null,
             bool droppable = false, CancellationToken cancellation = default(CancellationToken),
-            int priority = 0)
+            int priority = 0, long estimatedBytes = 0)
         {
             if (action == null) throw new ArgumentNullException("action");
             return Submit<bool>(token =>
@@ -98,35 +102,38 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
                 token.ThrowIfCancellationRequested();
                 action();
                 return Task.FromResult(true);
-            }, key, droppable, cancellation, priority);
+            }, key, droppable, cancellation, priority, estimatedBytes);
         }
 
         public FCRWorkHandle<T> Invoke<T>(Func<T> action, string key = null,
             bool droppable = false, CancellationToken cancellation = default(CancellationToken),
-            int priority = 0)
+            int priority = 0, long estimatedBytes = 0)
         {
             if (action == null) throw new ArgumentNullException("action");
             return Submit<T>(token =>
             {
                 token.ThrowIfCancellationRequested();
                 return Task.FromResult(action());
-            }, key, droppable, cancellation, priority);
+            }, key, droppable, cancellation, priority, estimatedBytes);
         }
 
         public FCRWorkerSnapshot GetSnapshot()
         {
             lock (_gate)
                 return new FCRWorkerSnapshot(_pending.Count, _active, _finished,
-                    _rejected, _dropped, _stopping);
+                    _rejected, _dropped, _stopping, _pendingBytes, _options.PendingByteBudget);
         }
 
         /// <summary>高Priority先执行不同Key的待执行工作；同Key始终维持原提交顺序。</summary>
         public FCRWorkHandle<T> Submit<T>(Func<CancellationToken, Task<T>> action,
             string key = null, bool droppable = false,
-            CancellationToken cancellation = default(CancellationToken), int priority = 0)
+            CancellationToken cancellation = default(CancellationToken), int priority = 0,
+            long estimatedBytes = 0)
         {
             if (action == null) throw new ArgumentNullException("action");
-            Job<T> job = new Job<T>(this, key, droppable, priority, cancellation, action);
+            if (estimatedBytes < 0) throw new ArgumentOutOfRangeException("estimatedBytes");
+            Job<T> job = new Job<T>(this, key, droppable, priority, estimatedBytes,
+                cancellation, action);
             List<Job> launch;
             lock (_gate)
             {
@@ -146,19 +153,21 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
                 }
                 // 若当前已满，先尝试启动一个不同Key的待处理工作，腾出待处理容量。
                 launch = PumpLocked();
-                if (_pending.Count >= _options.QueueCapacity && !CanStartImmediatelyLocked(job))
+                if (!CanStartImmediatelyLocked(job))
                 {
-                    Job old = FindDroppableLocked();
-                    if (_options.OverflowPolicy == FCROverflowPolicy.DropOldestDroppable
-                        && old != null)
+                    while (WouldOverflowLocked(job) &&
+                        _options.OverflowPolicy == FCROverflowPolicy.DropOldestDroppable)
                     {
+                        Job old = FindDroppableLocked();
+                        if (old == null) break;
                         _pending.Remove(old);
+                        _pendingBytes -= old.EstimatedBytes;
                         old.FinishWithoutRun(FCRWorkState.Dropped);
                         old.Source.Dispose();
                         _finished++;
                         _dropped++;
                     }
-                    else
+                    if (WouldOverflowLocked(job))
                     {
                         _rejected++;
                         job.FinishWithoutRun(FCRWorkState.Rejected);
@@ -168,6 +177,7 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
                     }
                 }
                 _pending.AddLast(job);
+                _pendingBytes = checked(_pendingBytes + job.EstimatedBytes);
                 job.Handle.Accepted = true;
                 launch.AddRange(PumpLocked());
             }
@@ -177,6 +187,11 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
 
         private bool CanStartImmediatelyLocked(Job job)
         { return _active < _options.MaxConcurrency && !_activeKeys.Contains(job.Key); }
+        private bool WouldOverflowLocked(Job job)
+        {
+            return _pending.Count >= _options.QueueCapacity ||
+                job.EstimatedBytes > _options.PendingByteBudget - _pendingBytes;
+        }
 
         private Job FindDroppableLocked()
         {
@@ -204,6 +219,7 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
                 if (eligible == null) break;
                 Job job = eligible.Value;
                 _pending.Remove(eligible);
+                _pendingBytes -= job.EstimatedBytes;
                 _active++;
                 _activeKeys.Add(job.Key);
                 Interlocked.Exchange(ref job.State, (int)FCRWorkState.Running);
@@ -252,6 +268,7 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
                 if (node != null)
                 {
                     _pending.Remove(node);
+                    _pendingBytes -= job.EstimatedBytes;
                     job.FinishWithoutRun(FCRWorkState.Cancelled);
                     _finished++;
                     launch = PumpLocked();
@@ -284,6 +301,7 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
                     {
                         Job j = _pending.First.Value;
                         _pending.RemoveFirst();
+                        _pendingBytes -= j.EstimatedBytes;
                         j.FinishWithoutRun(FCRWorkState.Cancelled);
                         _finished++;
                         cancel.Add(j);
