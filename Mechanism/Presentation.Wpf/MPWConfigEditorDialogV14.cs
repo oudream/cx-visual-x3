@@ -76,11 +76,11 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             return _authorized == null ? _section.TryApplyPendingAtBoundary(boundary, null) :
                 _authorized.TryApplyPendingAtBoundary(boundary);
         }
-        private System.Threading.Tasks.Task<MHSConfigCommitResult> Restore(string version)
+        private Task<MHSConfigCommitResult> Restore(string version, CancellationToken token)
         {
             return _authorized == null ?
-                _section.RestoreSavedVersionAsync(version, "Studio 历史恢复", CancellationToken.None) :
-                _authorized.RestoreSavedVersionAsync(version, "授权历史恢复", CancellationToken.None);
+                _section.RestoreSavedVersionAsync(version, "Studio 历史恢复", token) :
+                _authorized.RestoreSavedVersionAsync(version, "授权历史恢复", token);
         }
         private void InitializeControls()
         {
@@ -548,6 +548,32 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             try { ApplySaved((FCMConfigApplyPolicy)_boundaries.SelectedItem); }
             catch (Exception ex) { ShowError(ex); }
         }
+        /// <summary>
+        /// Restore is a NEW saved revision. UI button obtains an explicit Yes/No first;
+        /// trusted programmatic callers must confirm with their own operator.
+        /// </summary>
+        public async Task<MHSConfigCommitResult> RestoreAsNewSavedAsync(string version, CancellationToken token)
+        {
+            EnsureActive();
+            if (string.IsNullOrWhiteSpace(version)) throw new ArgumentException("Revision required");
+            if (_working) throw new InvalidOperationException("CONFIG_UI_EDIT_BUSY");
+            _working = true;
+            try
+            {
+                MHSConfigCommitResult result = await Restore(version, token);
+                if (result.Success)
+                {
+                    _editor.Dispose();
+                    _editor = NewEditor();
+                    _saved = true;
+                    RefreshAll();
+                    _issues.Text = "已建立恢复修订 " + result.Revision + "，尚需检查生效边界。";
+                }
+                else _issues.Text = "历史恢复未成功：" + result.ErrorCode;
+                return result;
+            }
+            finally { _working = false; }
+        }
         private async void RestoreAsync()
         {
             if (_disposed || _working) return;
@@ -555,19 +581,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             if (string.IsNullOrWhiteSpace(version)) return;
             if (MessageBox.Show("历史版本将恢复为新的 Saved 修订，并不会直接改变正在运行的 Effective。继续？",
                 "历史恢复", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
-            _working = true;
-            try
-            {
-                MHSConfigCommitResult result = await Restore(version);
-                if (!result.Success) throw new InvalidOperationException("CONFIG_RESTORE_REJECTED");
-                _editor.Dispose();
-                _editor = NewEditor();
-                _issues.Text = "已建立恢复修订 " + result.Revision + "，尚需检查生效边界。";
-                _saved = true;
-                RefreshAll();
-            }
+            try { await RestoreAsNewSavedAsync(version, CancellationToken.None); }
             catch (Exception ex) { ShowError(ex); }
-            finally { _working = false; }
         }
         public void Dispose()
         {
