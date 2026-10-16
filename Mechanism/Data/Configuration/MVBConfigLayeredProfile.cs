@@ -516,11 +516,15 @@ namespace CxVisual.Mechanism.Data.Configuration
         }
         internal static int Depth(string path) { return Split(path).Count; }
         internal static void Validate<T>(string path, string json)
-        { FCMJsonValueCodec.Deserialize(json, TargetType(typeof(T), Split(path))); }
+        { Validate(typeof(T), path, json); }
+        internal static void Validate(Type modelType, string path, string json)
+        { FCMJsonValueCodec.Deserialize(json, TargetType(modelType, Split(path))); }
         internal static void Apply<T>(T model, string path, string json)
+        { Apply(model, typeof(T), path, json); }
+        internal static void Apply(object model, Type modelType, string path, string json)
         {
             List<object> keys = Split(path);
-            Type target = TargetType(typeof(T), keys);
+            Type target = TargetType(modelType, keys);
             object value = FCMJsonValueCodec.Deserialize(json, target);
             object parent = model;
             for (int i = 0; i < keys.Count - 1; i++) parent = Read(parent, keys[i]);

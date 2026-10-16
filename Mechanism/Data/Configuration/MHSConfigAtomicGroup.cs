@@ -44,6 +44,16 @@ namespace CxVisual.Mechanism.Data.Configuration
         public string Key { get; private set; }
     }
 
+    /// <summary>Read-only declared member metadata for configuration workbenches.</summary>
+    public sealed class MHSConfigGroupMemberInfo
+    {
+        internal MHSConfigGroupMemberInfo(string key, Type type, string section)
+        { Key = key; ModelType = type; SectionId = section; }
+        public string Key { get; private set; }
+        public Type ModelType { get; private set; }
+        public string SectionId { get; private set; }
+    }
+
     /// <summary>一个持久修订的多个成员；对外提供隔离的强类型读取。</summary>
     public sealed class MHSConfigGroupSnapshot : IDisposable
     {
@@ -57,6 +67,12 @@ namespace CxVisual.Mechanism.Data.Configuration
             get { return new List<string>(Active.Members.Keys.OrderBy(x => x, StringComparer.Ordinal)).AsReadOnly(); }
         }
         public bool Contains(string key) { return Active.Members.ContainsKey(key); }
+        public string GetJson(string key)
+        {
+            if (string.IsNullOrWhiteSpace(key)) throw new ArgumentException("Member key required");
+            MHSConfigGroupEntry entry;
+            return Active.Members.TryGetValue(key, out entry) ? entry.Json : null;
+        }
         public T Get<T>(string key) where T : new()
         {
             if (string.IsNullOrWhiteSpace(key)) throw new ArgumentException("Member key required", "key");
@@ -152,6 +168,26 @@ namespace CxVisual.Mechanism.Data.Configuration
             EnsureOpen();
             Lookup(key);
             _inner.WorkingCopy.Members.Remove(key);
+        }
+        /// <summary>Schema-driven path editing on the existing atomic group draft.</summary>
+        public void SetMemberPathJson(string key, string path, string json)
+        {
+            EnsureOpen();
+            if (string.IsNullOrWhiteSpace(path) || json == null)
+                throw new ArgumentException("Path/JSON required");
+            MHSConfigGroupRegistration registered = Lookup(key);
+            MVBConfigLayerPath.Validate(registered.ModelType, path, json);
+            MHSConfigGroupEntry old;
+            object value = _inner.WorkingCopy.Members.TryGetValue(key, out old) ?
+                FCMJsonValueCodec.Deserialize(old.Json, registered.ModelType) :
+                Activator.CreateInstance(registered.ModelType);
+            MVBConfigLayerPath.Apply(value, registered.ModelType, path, json);
+            string candidate = FCMJsonValueCodec.Serialize(value);
+            FCMJsonValueCodec.Deserialize(candidate, registered.ModelType);
+            _inner.WorkingCopy.Members[key] = new MHSConfigGroupEntry {
+                SectionId = registered.Schema.SectionId,
+                SchemaVersion = registered.Schema.SchemaVersion, Json = candidate
+            };
         }
         public T Get<T>(string key) where T : new()
         {
@@ -272,6 +308,16 @@ namespace CxVisual.Mechanism.Data.Configuration
                     }
                 });
                 return new MHSConfigGroupMember<T>(_section.Identity.CanonicalKey, key);
+            }
+        }
+        public IList<MHSConfigGroupMemberInfo> DescribeMembers()
+        {
+            lock (_gate)
+            {
+                RequireSealed();
+                return _members.Values.OrderBy(x => x.Key, StringComparer.Ordinal)
+                    .Select(x => new MHSConfigGroupMemberInfo(x.Key, x.ModelType,
+                        x.Schema.SectionId)).ToList().AsReadOnly();
             }
         }
         public void Seal()
