@@ -90,6 +90,9 @@ namespace CxVisual.Mechanism.Data.Configuration
         private readonly MHSConfigAtomicGroup _group;
         private readonly IList<MVBConfigLayerSpec> _layers;
         private readonly string _definition;
+        private readonly MHSConfigService _service;
+        private readonly string _groupId;
+        private readonly string _profileId;
         public MVBConfigAtomicLayerProfile(MHSConfigService service, string profileId,
             params MVBConfigLayerSpec[] layers)
         {
@@ -103,12 +106,15 @@ namespace CxVisual.Mechanism.Data.Configuration
             if (string.IsNullOrWhiteSpace(profileId))
                 throw new ArgumentException("ProfileId required", "profileId");
             string modelSectionId = FCMConfigSchemaBuilder.Describe<T>().SectionId;
+            _service = service;
+            _profileId = profileId;
             _layers = Array.AsReadOnly(layers.OrderBy(x => x.Priority).ToArray());
             _definition = Contract(profileId, _layers);
             // Length-prefixed identity prevents ambiguous group names across Section IDs.
             string groupId = modelSectionId.Length + ":" + modelSectionId +
                 profileId.Length + ":" + profileId;
-            _group = service.OpenAtomicGroup("atomic-layer:" + groupId);
+            _groupId = "atomic-layer:" + groupId;
+            _group = service.OpenAtomicGroup(_groupId);
             foreach (MVBConfigLayerSpec layer in _layers)
                 _group.Register<MVBConfigLayerOverrides>(layer.Name);
             _group.Seal();
@@ -136,6 +142,82 @@ namespace CxVisual.Mechanism.Data.Configuration
         { AssertDefinition(_group.SavedProfileDefinition, _group.SavedMemberCount); }
         private void RequireEffectiveDefinition()
         { AssertDefinition(_group.EffectiveProfileDefinition, _group.EffectiveMemberCount); }
+        /// <summary>
+        /// A reviewed layer-definition change uses the SAME atomic group transaction.
+        /// Removed layers with values require a move map; no entry is silently discarded.
+        /// After committing, open a new profile with the replacement definition to apply.
+        /// Existing pinned snapshots retain their original revision.
+        /// </summary>
+        public async Task<MHSConfigCommitResult> UpgradeDefinitionAsync(
+            MVBConfigLayerSpec[] replacement, IDictionary<string, string> movedLayers,
+            string reason, CancellationToken token)
+        {
+            RequireSavedDefinition();
+            token.ThrowIfCancellationRequested();
+            if (replacement == null || replacement.Length == 0 ||
+                replacement.Any(x => x == null) ||
+                replacement.Select(x => x.Name).Distinct(StringComparer.Ordinal).Count() != replacement.Length ||
+                replacement.Select(x => x.Priority).Distinct().Count() != replacement.Length ||
+                replacement.Select(x => x.Kind + "\0" + x.Id).Distinct(StringComparer.Ordinal).Count() != replacement.Length)
+                throw new ArgumentException("Invalid replacement layer definition");
+            if (string.IsNullOrWhiteSpace(reason)) throw new ArgumentException("Upgrade reason required");
+            MVBConfigLayerSpec[] sorted = replacement.OrderBy(x => x.Priority).ToArray();
+            string next = Contract(_profileId, sorted);
+            if (string.Equals(next, _definition, StringComparison.Ordinal))
+                return new MHSConfigCommitResult { Success = true, Revision = SavedVersion,
+                    PendingApply = HasPendingApply };
+            HashSet<string> oldNames = new HashSet<string>(_layers.Select(x => x.Name), StringComparer.Ordinal);
+            HashSet<string> newNames = new HashSet<string>(sorted.Select(x => x.Name), StringComparer.Ordinal);
+            MHSConfigAtomicGroup upgrade = _service.OpenAtomicGroup(_groupId);
+            foreach (string name in oldNames.Union(newNames).OrderBy(x => x, StringComparer.Ordinal))
+                upgrade.Register<MVBConfigLayerOverrides>(name);
+            upgrade.Seal();
+            using (MHSConfigAtomicEdit edit = upgrade.BeginEdit(reason))
+            {
+                foreach (string oldName in oldNames.Where(x => !newNames.Contains(x)))
+                {
+                    MVBConfigLayerOverrides removed = edit.Get<MVBConfigLayerOverrides>(oldName);
+                    string newName;
+                    bool mapped = movedLayers != null &&
+                        movedLayers.TryGetValue(oldName, out newName) && newNames.Contains(newName);
+                    if (removed.Values.Count > 0 && !mapped)
+                        return new MHSConfigCommitResult { Success = false,
+                            ErrorCode = "CONFIG_LAYER_MIGRATION_REQUIRES_MAPPING" };
+                    if (mapped)
+                    {
+                        MVBConfigLayerOverrides target = edit.Get<MVBConfigLayerOverrides>(newName);
+                        foreach (var entry in removed.Values)
+                        {
+                            if (target.Values.ContainsKey(entry.Key))
+                                return new MHSConfigCommitResult { Success = false,
+                                    ErrorCode = "CONFIG_LAYER_MIGRATION_OVERLAP" };
+                            target.Values.Add(entry.Key, entry.Value);
+                        }
+                        edit.Set(newName, target);
+                    }
+                    edit.Remove(oldName);
+                }
+                T candidate;
+                try
+                {
+                    candidate = Compose(sorted, name => edit.Get<MVBConfigLayerOverrides>(name),
+                        SavedVersion, upgrade.Identity).Get();
+                }
+                catch (Exception)
+                {
+                    return new MHSConfigCommitResult { Success = false,
+                        ErrorCode = "CONFIG_LAYER_UPGRADE_INVALID" };
+                }
+                FCMConfigValidationReport report = await FCMConfigValidationEngine.ValidateAsync(
+                    candidate, "atomic-layer", token).ConfigureAwait(false);
+                if (!report.IsValid)
+                    return new MHSConfigCommitResult { Success = false,
+                        ErrorCode = "CONFIG_LAYER_UPGRADE_INVALID", Validation = report };
+                edit.SetProfileDefinition(next);
+                return await edit.CommitAsync(token).ConfigureAwait(false);
+            }
+        }
+
         public FCMConfigIdentity Identity { get { return _group.Identity; } }
         public string SavedVersion { get { return _group.SavedVersion; } }
         public string EffectiveVersion { get { return _group.EffectiveVersion; } }
