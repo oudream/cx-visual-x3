@@ -213,7 +213,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                     TextBox box = new TextBox { Width = 230, MinHeight = 26,
                         Text = Format(value), Padding = new Thickness(5, 3, 5, 3) };
                     box.LostFocus += (s, e) => Execute(() => _editor.SetPathJson(path,
-                        ToJson(box.Text, type)));
+                        ToConfigJson(box.Text, type)));
                     line.Children.Add(box);
                     if (Nullable.GetUnderlyingType(type) != null)
                         line.Children.Add(MakeButton("置空", () => Execute(() => _editor.SetPathJson(path, "null"))));
@@ -287,7 +287,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                     ToolTip = "输入新集合元素" };
                 add.Children.Add(input);
                 add.Children.Add(MakeButton("增加元素", () => Execute(() =>
-                    _editor.AddSetJson(path, ToJson(input.Text, args[0])))));
+                    _editor.AddSetJson(path, ToConfigJson(input.Text, args[0])))));
                 host.Children.Add(add);
                 foreach (object item in (IEnumerable)value)
                 {
@@ -335,7 +335,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             object value = Activator.CreateInstance(type);
             return FCMJsonValueCodec.Serialize(value);
         }
-        private static string ToJson(string value, Type type)
+        internal static string ToConfigJson(string value, Type type)
         {
             Type t = Nullable.GetUnderlyingType(type) ?? type;
             if (value.Length == 0 && Nullable.GetUnderlyingType(type) != null) return "null";
