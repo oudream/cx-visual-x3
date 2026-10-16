@@ -146,7 +146,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
                     local.Condition == null ? (Func<MRKExecutionContext, bool>)null
                         : context => local.Condition(context.ForSubflow(scope)),
                     local.AllowSkippedDependencies, local.DedicatedExecutorId,
-                    local.SynchronousSdk == null ? null :
+                    local.SynchronousSdk == null ?
+                        (Func<MRKExecutionContext, CancellationToken, object>)null :
                         (context, token) => local.SynchronousSdk(context.ForSubflow(scope), token)));
             }
             return list.AsReadOnly();
