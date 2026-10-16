@@ -202,15 +202,19 @@ namespace CxVisual.Mechanism.Runtime.Execution
     {
         private readonly CancellationTokenSource _cancellation;
         private readonly MRKExecutionPlan _originalPlan;
+        private readonly MRKExecutionEngine _ownerEngine;
         private readonly DateTime _createdUtc = DateTime.UtcNow;
         private int _cancelRequested;
         private int _compensationStarted;
         private Task<MRKFlowResult> _completion;
         internal MRKFlowHandle(MRKExecutionContext context, CancellationTokenSource cancellation,
-            MRKExecutionPlan originalPlan)
-        { Context = context; _cancellation = cancellation; _originalPlan = originalPlan; }
+            MRKExecutionPlan originalPlan, MRKExecutionEngine ownerEngine)
+        { Context = context; _cancellation = cancellation;
+          _originalPlan = originalPlan; _ownerEngine = ownerEngine; }
         internal bool IsOriginalPlan(MRKExecutionPlan candidate)
         { return object.ReferenceEquals(_originalPlan, candidate); }
+        internal bool IsOwnedBy(MRKExecutionEngine engine)
+        { return object.ReferenceEquals(_ownerEngine, engine); }
         public MRKExecutionContext Context { get; private set; }
         public Guid FlowId { get { return Context.FlowId; } }
         public MRKFlowState State
@@ -348,6 +352,9 @@ namespace CxVisual.Mechanism.Runtime.Execution
         {
             if (plan == null) throw new ArgumentNullException("plan");
             if (flow == null) throw new ArgumentNullException("flow");
+            // 补偿必须由启动Flow的同一个引擎执行，不能绕过原进程内资源仲裁。
+            if (!flow.IsOwnedBy(this))
+                throw new InvalidOperationException("补偿不能交给其他运行引擎，资源仲裁及任务生命周期不受保护");
             if (!flow.IsOriginalPlan(plan))
                 throw new InvalidOperationException("补偿必须使用启动Flow时固定的原始Plan实例，不能使用同名不同版本计划");
             if (!flow.Completion.IsCompleted)
@@ -517,7 +524,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 }
                 CancellationTokenSource linked =
                     CancellationTokenSource.CreateLinkedTokenSource(cancellation);
-                MRKFlowHandle handle = new MRKFlowHandle(context, linked, plan);
+                MRKFlowHandle handle = new MRKFlowHandle(context, linked, plan, this);
                 handle.SetCompletion(RunFlowAsync(plan, handle, control));
                 _activeFlows.Add(handle.FlowId, handle);
                 Task removal = handle.Completion.ContinueWith(

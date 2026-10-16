@@ -238,3 +238,9 @@ G0/G1通过不能代替G2/G3/G4。CI工作流故障时应分清本次新增测�
 - CompensateAsync必须提供Flow启动时固定的**原始MRKExecutionPlan实例**，同名不同实现不可代替；拒绝错误版本不占用补偿次数。
 - 新TDD：OperationIdentityNeverCrossConfirms、LegacyExternalFactsRequireReconciliation、SamePlanNameCannotSubstituteOriginalVersion。
 - 仍未完成：补偿调用期已释放数据作用域的明确交接协议、持久Checkpoint、权限授权发布、Host级恢复和跨进程资源安全。本次仅是进程内基础安全修复；Windows构建及自动测试证据以本次提交后的master CI为准。
+
+## 本批追加：原始Engine资源仲裁隔离
+
+- 验收用例：`ExecutionCompensationTests.AnotherEngineCannotTakeOverCompensation`（同一Plan和已失败Flow，由第二Engine调用`CompensateAsync`必须拒绝、不得执行副作用、不消耗原始Engine合法补偿名额）。
+- 契约：补偿不仅绑定执行当时的Plan**对象身份**，也绑定启动Flow的原始Engine实例。跨进程/重启后恢复必须经正式恢复授权与重新建账，不能借另一实例绕开进程内资源仲裁。
+- 与运行数据Scope相关的补偿输入生命周期、生产安全接管仍是独立待解决问题；本次测试不宣称已修复它们。

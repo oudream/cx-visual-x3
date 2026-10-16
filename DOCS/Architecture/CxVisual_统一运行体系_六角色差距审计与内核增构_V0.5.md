@@ -244,3 +244,9 @@
 - CompensateAsync必须提供Flow启动时固定的**原始MRKExecutionPlan实例**，同名不同实现不可代替；拒绝错误版本不占用补偿次数。
 - 新TDD：OperationIdentityNeverCrossConfirms、LegacyExternalFactsRequireReconciliation、SamePlanNameCannotSubstituteOriginalVersion。
 - 仍未完成：补偿调用期已释放数据作用域的明确交接协议、持久Checkpoint、权限授权发布、Host级恢复和跨进程资源安全。本次仅是进程内基础安全修复；Windows构建及自动测试证据以本次提交后的master CI为准。
+
+## 2026-10-16 追加：补偿执行归属安全
+
+- 进一步的代码审计发现：仅有原始Plan实例比对不足以阻止其他Engine接管同一Flow的补偿；不同Engine的资源协调器/Worker相互独立，可能绕开设备软件互斥。
+- 在原有Runtime项目的MRKFlowHandle内部固定启动它的Engine实例；CompensateAsync在任何副作用及补偿名额占用前检查归属。新增`AnotherEngineCannotTakeOverCompensation`真实回归用例。
+- 保留缺口：已释放的节点/Flow DataScope不能被补偿回调安全地直接重用；补偿输入需定义明确的持久化/租约交接与超时释放。外部Unknown资源隔离也不能用该内存归属校验替代。

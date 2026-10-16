@@ -14,6 +14,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             ExplicitReverseCompensationAndIdempotence();
             ContinueReportingEvenWhenOneCompensationFails();
             SamePlanNameCannotSubstituteOriginalVersion();
+            AnotherEngineCannotTakeOverCompensation();
         }
         private static T Await<T>(Task<T> task)
         {
@@ -109,6 +110,41 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(report.Succeeded && legitimate == 1 && substituted == 0,
                 "原始Plan的合法补偿未成功");
             Await(engine.StopAsync());
+        }
+
+        private static void AnotherEngineCannotTakeOverCompensation()
+        {
+            int compensated = 0;
+            MRKExecutionPlan plan = new MRKExecutionPlan("owner-isolation", new[]
+            {
+                new MRKExecutionStep("A", new string[0],
+                    (ctx, ct) => Task.FromResult((object)1),
+                    requiredResources: new[] { "robot-axis" },
+                    compensateAsync: (ctx, ct) =>
+                    { Interlocked.Increment(ref compensated); return Task.FromResult(true); }),
+                new MRKExecutionStep("B", new[] { "A" },
+                    (ctx, ct) => { throw new InvalidOperationException("业务失败"); })
+            });
+            MRKExecutionEngine owner = new MRKExecutionEngine(new FCRWorkerOptions(1, 4));
+            MRKExecutionEngine unrelated = new MRKExecutionEngine(new FCRWorkerOptions(1, 4));
+            try
+            {
+                MRKFlowHandle flow = owner.StartFlow(plan);
+                Check(Await(flow.Completion).State == MRKFlowState.Failed, "原始流程没有失败结算");
+                bool rejected = false;
+                try { Await(unrelated.CompensateAsync(plan, flow)); }
+                catch (InvalidOperationException) { rejected = true; }
+                Check(rejected && compensated == 0,
+                    "另一Engine绕过原有资源仲裁执行了补偿动作");
+                MRKCompensationReport report = Await(owner.CompensateAsync(plan, flow));
+                Check(report.Succeeded && compensated == 1,
+                    "归属校验错误消耗补偿名额或阻断了原始Engine");
+            }
+            finally
+            {
+                Await(unrelated.StopAsync());
+                Await(owner.StopAsync());
+            }
         }
 
         private static void Await(Task task)
