@@ -148,8 +148,31 @@ namespace CxVisual.Mechanism.Data.Configuration
                     x.ApplyPolicy.ToString(), x.Unit ?? "" }));
             string specification = schema.SectionId + "|" +
                 schema.SchemaVersion.ToString(System.Globalization.CultureInfo.InvariantCulture) +
-                "\n" + string.Join("\n", fields);
+                "\n" + string.Join("\n", fields) +
+                "\n" + ModelShape(typeof(T), new HashSet<Type>());
             return MHSConfigPackage.Hash(specification);
+        }
+        private static string ModelShape(Type type, HashSet<Type> recursion)
+        {
+            Type nullable = Nullable.GetUnderlyingType(type);
+            if (nullable != null)
+                return "nullable:" + ModelShape(nullable, recursion);
+            if (type.IsArray)
+                return "array:" + ModelShape(type.GetElementType(), recursion);
+            if (FCMConfigSchemaBuilder.IsScalar(type))
+                return type.FullName;
+            if (type.IsGenericType &&
+                typeof(System.Collections.IEnumerable).IsAssignableFrom(type))
+                return type.GetGenericTypeDefinition().FullName + "<" +
+                    string.Join(",", type.GetGenericArguments().Select(x => ModelShape(x, recursion))) + ">";
+            if (!recursion.Add(type)) return "recursive:" + type.FullName;
+            string members = string.Join(";", FCMConfigSchemaBuilder.Members(type)
+                .OrderBy(x => x.MemberId, StringComparer.Ordinal)
+                .Select(m => m.MemberId + ":" + m.Name + ":" + m.ApplyPolicy + ":" +
+                    m.SinceSchemaVersion + ":" + (m.AliasFrom ?? "") + ":" +
+                    (m.Unit ?? "") + ":" + ModelShape(m.MemberType, recursion)));
+            recursion.Remove(type);
+            return type.FullName + "{" + members + "}";
         }
         internal string ScopeId { get { return _scope; } }
         public string SavedVersion { get { lock (_gate) return MHSConfigStorage.Name(_savedRev); } }
