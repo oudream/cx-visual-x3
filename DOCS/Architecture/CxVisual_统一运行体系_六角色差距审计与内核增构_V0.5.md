@@ -256,3 +256,13 @@
 - E09/E10/E12/E13新回归：`MRKExecutionPolicy`在超时事实成立时公开`MRKStepState.ResultUnknown`，避免长时间非协作异步任务只有笼统Running而无法定位。该状态是运行时观察，不等于外部命令已确定结果。
 - 超时后先发协作取消请求，不论观察器/审计回调是否抛错，都要真实等待原任务结算后才释放资源；支持状态/Trace诊断。
 - 保留缺口：可授权的安全隔离接管、长期未知操作Owner转移、跨进程崩溃恢复和外部OperationId确认。Stop等待并非安全接管的替代品。
+
+## 2026-10-16 四批实践后追加核查（增量，不覆盖原定E01-E18目标）
+
+1. **生命周期与补偿**：`MRKRuntimeSession`在`Stop(false)`后可`Stop(true)`升级取消。Runtime Engine把已获准的补偿登记为Drain依赖后才停止Worker，拒绝已经Stop时启动的新补偿。明确仍未解决持久补偿步骤确认及外部未知状态的可授权隔离接管。
+2. **编排与容量**：`MRKExecutionOrchestrationCompiler`从编排Catalog递归展开调用点到唯一执行计划；保留执行端口/调度Priority与预计Byte预算，`maxActiveFlows`限制进程内在途Flow，全局内存/GPU预算仍缺失。当前不支持子流程隐式数据/资源重新绑定，不得宣称完整CxNode活动图/多节点循环完成。
+3. **发布与权限**：保护模式PlanSlot只允许经Publisher受权Stage/Activate，旧Flow保留运行修订，新修订执行回滚；`MRKRuntimeAccessGateway`在边界检查角色能力，但真实Host必须注入可信凭证验证、生产设备联锁和远程权限隔离。模拟字符串角色不可当生产安全。
+4. **Host**：已有`runtime-run`/`runtime-serve`/`runtime-recover`真实CLI，模拟能力完成Plan编译/发布/运行/Journal/干净重启。启动扫描任一未结案Flow就拒绝自动重放；持久Checkpoint、进程崩溃恢复执行/设备确认、Host服务与远程观察仍需下轮TDD。
+5. **并发长稳**：FCRWorker外部Token取消排队工作即时摘队及返还PendingByte预算；独立调试取消断点等待者立即释放。还未完成大规模随机交错和长期运行资源曲线评估。
+
+**不得将本节表达成整个统一运行体系已全面生产验收。** 对应变更在master的独立提交中，Release/x64完整构建与TestCenter各自以对应Windows CI结论为准；不能因为单条CI成功而推断另外的测试通过。

@@ -266,3 +266,16 @@ G0/G1通过不能代替G2/G3/G4。CI工作流故障时应分清本次新增测�
 - B3：`MRKExecutionPlanPublisher`把Compile、Authorize、Stage、安全点Activate和单调修订回滚组织成发布门面。生产保护模式的`MRKExecutionPlanSlot`拒绝公开Stage/Activate捷径；`ExecutionCompilerTests.AuthorizedPublishingAndSafeRollback`验证在途Flow旧版本、授权拒绝、受保护Slot及回滚。模拟策略**不代表真实操作者身份认证或硬件安全联锁**。
 - B4：`Applications/Runtime.Host/UnifiedRuntimeHost.cs`支持`runtime-run`、`runtime-serve`、`runtime-recover`。Run使用实际编译能力、受保护Plan发布、RuntimeSession、Flow、持久Journal；重启扫描必须拒绝未结案的Flow，不自动重放；Windows工作流验证正常执行、扫描及第二次干净重启。只执行纯模拟能力，无设备控制。
 - **仍未完成的实质内容**：CxNode/ContentRef真实可视活动图与多级动态子流程编译；整流程/阶段级策略与全局配额；Checkpoint持久化与授权再入/数据快照恢复；正式身份认证与远程Host控制/隔离接管；运行时数据体系及跨进程/硬件验收。这些不能因为上述批次通过冒称已全部成熟。
+
+## 2026-10-16 四批增量验收追记（具体结果以GitHub对应commit CI为准）
+
+| 主题 | 已添加的真实可执行测试/入口 | 剩余重要缺口 |
+|---|---|---|
+| Stop与补偿竞态 | `StopWaitsForAdmittedMultiStepCompensation`、`StopRejectsNewCompensationBeforeClaimingEligibility`：获准的多步逆序补偿完成前不停止Worker；停止后的新补偿拒绝且不消耗资格 | 持久补偿步骤账本、部分失败后的安全续补、长时间不协作工作安全隔离接管 |
+| 并发容量与取消 | `GlobalFlowQuotaRejectsBeforeAdmission`：`maxActiveFlows`保证准入限制；`ExternalCancellationFreesQueuedCapacity`：外部Token取消排队Work即时退队/返还PendingByte预算 | 可取消的等待式异步背压、公平性及真实执行中内存/GPU预算 |
+| 多级子流程 | `NestedOrchestrationRunsAndSkipsCorrectly`：具名多级子流程递归展开到唯一ExecutionPlan，条件入口、出口Join、递归环/超大图拒绝；无隐式数据/资源强行映射 | CxNode正式编排Aspect适配、多节点循环及跨层参数映射、持久活动图状态 |
+| 运行隔离 | `RoleBasedSessionGatewayDeniesUnauthorizedActions`：只有Host注入`IMRKRuntimeAccessPolicy`的入口可以公开给外部使用，分别要求Observe/Start/Debug/Cancel/Stop/Compensate权限 | 真实用户身份认证、跨进程授权和Production物理安全确认；不得把模拟principal视为安全证明 |
+| 持久Host恢复扫描 | `AllFlowRecoveryInventoryFailsClosed`：有已结案、在途和孤儿终态的混合Journal时分Flow判定；Runtime.Host在运行前拒绝任何未安全结案旧Flow | 完整Checkpoint、可恢复工作快照/数据快照、外部设备Owner再建账、授权续运行 |
+| Windows完整构建 | `config-l1-ci.yml`在Release全量重建前恢复TestCenter NUnit包，保留FoundationSmoke/ArchitectureSmoke/CLI真实验收 | 独立TestCenter NUnit Engine回归须按每次Git SHA查看，不从其他成功工作流推断通过 |
+
+**版本状态规则**：上述均指内存/单宿主基础实现，不代表E01～E18全覆盖。数据运行时DataSpace/Buffer是Foundation.Data与Mechanism.Data唯一Owner；Runtime不得建立平行数据管理。此文档是差距矩阵，必须结合master代码与GitHub Actions结果使用。
