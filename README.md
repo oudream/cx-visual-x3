@@ -7,6 +7,8 @@
 
 ## 文档入口与历史代码资产
 
+- **统一配置 V2.4 阶段 C/D**：[自动配置 UI、Windows 性能验收与自检查矩阵](DOCS/Implementation/CxVisual_统一配置体系_V2.4_阶段C与D实施和复核验收矩阵.md)。
+
 - **统一配置体系 V2.4 阶段 B**：[开发者 API 与动态编辑验收矩阵](DOCS/Implementation/CxVisual_统一配置体系_V2.4_阶段B开发者API与动态编辑验收矩阵.md)。
 
 - **阶段 A 的实际验收矩阵**：[V2.4 层级定义、Schema、恢复、安全改造与 CI 证据](DOCS/Implementation/CxVisual_统一配置体系_V2.4_阶段A实施与验收矩阵.md)。
