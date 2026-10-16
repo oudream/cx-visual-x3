@@ -14,11 +14,11 @@ namespace CxVisual.Foundation.Data.Configuration
     {
         internal FCMConfigFieldInfo(string path, string memberId, string title, Type type, int depth, int order,
             string unit, string category, string description, bool required, string range, string regex,
-            string defaultJson, FCMConfigApplyPolicy applyPolicy)
+            string defaultJson, FCMConfigApplyPolicy applyPolicy, bool isSensitive)
         {
             Path = path; MemberId = memberId; Title = title; DataType = type; Depth = depth;
             Order = order; Unit = unit; Category = category; Description = description;
-            Required = required; Range = range; Regex = regex; DefaultJson = defaultJson; ApplyPolicy = applyPolicy;
+            Required = required; Range = range; Regex = regex; DefaultJson = defaultJson; ApplyPolicy = applyPolicy; IsSensitive = isSensitive;
         }
         public string Path { get; private set; }
         public string MemberId { get; private set; }
@@ -35,6 +35,8 @@ namespace CxVisual.Foundation.Data.Configuration
         /// <summary>无默认值时为 null；默认值为 JSON null 时为字符串 "null"。</summary>
         public string DefaultJson { get; private set; }
         public FCMConfigApplyPolicy ApplyPolicy { get; private set; }
+        /// <summary>公开元数据中不携带敏感字段及其容器的默认值。</summary>
+        public bool IsSensitive { get; private set; }
     }
 
     /// <summary>
@@ -51,7 +53,7 @@ namespace CxVisual.Foundation.Data.Configuration
             FCMConfigSchemaBuilder.Describe(modelType);
             object defaults = Activator.CreateInstance(modelType);
             List<FCMConfigFieldInfo> fields = new List<FCMConfigFieldInfo>();
-            Visit(modelType, defaults, "", "", "", 0, fields, new HashSet<Type>());
+            Visit(modelType, defaults, "", "", "", 0, false, fields, new HashSet<Type>());
             return fields.AsReadOnly();
         }
         /// <summary>从属性声明建立可校验的依赖图，供增量校验与编辑影响分析共用。</summary>
@@ -110,7 +112,8 @@ namespace CxVisual.Foundation.Data.Configuration
                 if (!string.IsNullOrEmpty(field.Regex)) rule += " Regex:" + field.Regex;
                 text.AppendLine("| " + Safe(field.Path) + " | " + Safe(field.DataType.Name) + " | " +
                     Safe(field.Title) + " | " + Safe(field.Category) + " | " + Safe(field.Unit) + " | " +
-                    Safe(field.DefaultJson) + " | " + Safe(rule.Trim()) + " | " + field.ApplyPolicy + " |");
+                    (field.IsSensitive ? "[敏感值已隐藏]" : Safe(field.DefaultJson)) +
+                    " | " + Safe(rule.Trim()) + " | " + field.ApplyPolicy + " |");
             }
             return text.ToString();
         }
@@ -119,7 +122,7 @@ namespace CxVisual.Foundation.Data.Configuration
         private static string Safe(string value)
         { return (value ?? "").Replace("|", "\\|").Replace("\r", " ").Replace("\n", " "); }
         private static void Visit(Type type, object sample, string path, string memberId, string category,
-            int depth, IList<FCMConfigFieldInfo> result, HashSet<Type> recursion)
+            int depth, bool inheritedSensitive, IList<FCMConfigFieldInfo> result, HashSet<Type> recursion)
         {
             if (depth > 16) throw new InvalidOperationException("Configuration catalog depth exceeds 16");
             type = Nullable.GetUnderlyingType(type) ?? type;
@@ -142,17 +145,24 @@ namespace CxVisual.Foundation.Data.Configuration
                         .Cast<RegularExpressionAttribute>().FirstOrDefault();
                     FCMConfigItemAttribute metadata = property.GetCustomAttributes(typeof(FCMConfigItemAttribute), true)
                         .Cast<FCMConfigItemAttribute>().FirstOrDefault();
+                    bool directSensitive = property.IsDefined(typeof(FCMConfigSensitiveAttribute), true);
+                    bool inheritedOrDirectSensitive = inheritedSensitive || directSensitive;
+                    bool hasSensitiveChildren = FCMConfigSensitivity.ContainsSensitive(member.MemberType);
+                    bool isSensitive = inheritedOrDirectSensitive || hasSensitiveChildren;
                     object value = sample == null ? null : property.GetValue(sample, null);
-                    string defaultJson = value == null ? (sample == null ? null : "null") : FCMJsonValueCodec.Serialize(value);
+                    // Do not serialize secret-containing parents into public Schema metadata.
+                    string defaultJson = isSensitive ? null :
+                        value == null ? (sample == null ? null : "null") : FCMJsonValueCodec.Serialize(value);
                     string itemCategory = metadata == null || string.IsNullOrWhiteSpace(metadata.Category)
                         ? category : metadata.Category;
                     result.Add(new FCMConfigFieldInfo(itemPath, itemId, member.Label, member.MemberType, depth,
                         member.Order, member.Unit, itemCategory, metadata == null ? null : metadata.Description,
                         required != null, range == null ? null : range.Minimum + " .. " + range.Maximum,
-                        regex == null ? null : regex.Pattern, defaultJson, member.ApplyPolicy));
+                        regex == null ? null : regex.Pattern, defaultJson, member.ApplyPolicy, isSensitive));
                     Type nested = Nullable.GetUnderlyingType(member.MemberType) ?? member.MemberType;
                     if (!FCMConfigSchemaBuilder.IsScalar(nested))
-                        Visit(nested, value, itemPath, itemId, itemCategory, depth + 1, result, recursion);
+                        Visit(nested, value, itemPath, itemId, itemCategory, depth + 1,
+                            inheritedOrDirectSensitive, result, recursion);
                 }
             }
             finally { recursion.Remove(type); }

@@ -61,7 +61,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         public static void Run()
         {
             string root = Path.Combine(Path.GetTempPath(), "CxVisual-Config-Atomic-" + Guid.NewGuid().ToString("N"));
-            try { VerifyAtomicGroup(root); VerifyDurableEvents(root); VerifySecurity(root); VerifyReferences(root); VerifyEffectiveJournal(root); VerifyLiveReplay(root); VerifyRichTypes(root); VerifyAtomicLayers(root); }
+            try { VerifyAtomicGroup(root); VerifyDurableEvents(root); VerifySecurity(root); VerifyReferences(root); VerifyEffectiveJournal(root); VerifyLiveReplay(root); VerifyRichTypes(root); VerifyAtomicLayers(root); VerifyDeveloperErgonomics(root); }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
             Console.WriteLine("PASS atomic multi-model configuration transaction, validation and snapshots");
         }
@@ -207,16 +207,23 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 nestedId.SectionId, nestedId.ScopeKind, nestedId.ScopeId);
             Check(FCMConfigSensitivity.ContainsSensitive(typeof(ConfigSensitiveCollectionSample)),
                 "nested collection sensitive attributes must be discovered recursively");
-            Expect<UnauthorizedAccessException>(() =>
-                service.Authorize(reader, policy).Open<ConfigSensitiveCollectionSample>(nestedId),
+            MHSConfigAuthorizedSection<ConfigSensitiveCollectionSample> nestedReader =
+                service.Authorize(reader, policy).Open<ConfigSensitiveCollectionSample>(nestedId);
+            Expect<UnauthorizedAccessException>(() => nestedReader.Get(),
                 "reader is denied complete document with sensitive child inside dictionary");
             policy.Grant("operator", FCMConfigAccessAction.Read, id.SectionId, id.ScopeKind, id.ScopeId);
             policy.Grant("operator", FCMConfigAccessAction.ReadSensitive, id.SectionId, id.ScopeKind, id.ScopeId);
             policy.Grant("operator", FCMConfigAccessAction.Edit, id.SectionId, id.ScopeKind, id.ScopeId);
             policy.Grant("operator", FCMConfigAccessAction.Commit, id.SectionId, id.ScopeKind, id.ScopeId);
             MHSConfigAuthorizedSession readerSession = service.Authorize(reader, policy);
-            Expect<UnauthorizedAccessException>(() => readerSession.Open<ConfigSecureSample>(id),
-                "read role cannot open entire sensitive model without ReadSensitive");
+            MHSConfigAuthorizedSection<ConfigSecureSample> nonSensitiveReader =
+                readerSession.Open<ConfigSecureSample>(id);
+            Check(nonSensitiveReader.Value(x => x.Level) == 10,
+                "read-only user may read a non-sensitive sibling without whole-document privileges");
+            Expect<UnauthorizedAccessException>(() => nonSensitiveReader.Get(),
+                "whole sensitive document requires ReadSensitive");
+            Expect<UnauthorizedAccessException>(() => nonSensitiveReader.Value(x => x.SecretRef),
+                "sensitive single-field value requires ReadSensitive");
             MHSConfigAuthorizedSection<ConfigSecureSample> secured =
                 service.Authorize(operatorUser, policy).Open<ConfigSecureSample>(id);
             Check(secured.Get().SecretRef == "vault:test-key", "authorized sensitive read");
@@ -250,10 +257,27 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 id.SectionId, id.ScopeKind, id.ScopeId);
             Check(secured.ReadCommittedAfter(null, 10).Count == 1,
                 "authorized audit history read");
+            Check(secured.GetStatus().PendingChanges.IsEmpty,
+                "authorized audit status is available to sensitive reader");
+            string catalogDocument = FCMConfigCatalog.ExportMarkdown<ConfigSecureSample>();
+            Check(!catalogDocument.Contains("vault:test-key") &&
+                catalogDocument.Contains("敏感值已隐藏") &&
+                FCMConfigCatalog.Describe<ConfigSecureSample>()
+                    .Single(x => x.Path == "SecretRef").DefaultJson == null,
+                "automatically generated docs and Schema must not contain sensitive defaults");
+            string nestedDocs = FCMConfigCatalog.ExportMarkdown<ConfigSensitiveCollectionSample>();
+            Check(!nestedDocs.Contains("secret-in-nested-list") &&
+                FCMConfigCatalog.Describe<ConfigSensitiveCollectionSample>()
+                    .Single(x => x.Path == "Credentials").IsSensitive,
+                "nested secret inside collection must not leak through parent default serialization");
             policy.Revoke("operator", FCMConfigAccessAction.ReadSensitive,
                 id.SectionId, id.ScopeKind, id.ScopeId);
             Expect<UnauthorizedAccessException>(() => secured.Get(),
                 "revoked sensitive privilege is checked for every read");
+            Expect<UnauthorizedAccessException>(() => secured.GetStatus(),
+                "audit access alone cannot expose raw pending OldJson/NewJson or validation values");
+            Expect<UnauthorizedAccessException>(() => secured.ReadCommittedAfter(null, 10),
+                "audit reason cannot be read when sensitive read permission is revoked");
         }
 
         private static void VerifyReferences(string root)
@@ -535,6 +559,59 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 reopened.EffectiveVersion == profile.EffectiveVersion,
                 "complete profile persists and reopens under one effective version");
             Console.WriteLine("PASS atomic template/project/machine/product/override profile");
+        }
+
+        private static void VerifyDeveloperErgonomics(string root)
+        {
+            MHSConfigService service = new MHSConfigService(Path.Combine(root, "developer-api"));
+            MHSConfigSection<V13ConfigSample> config =
+                service.ForMachine("Machine-Developer").Open<V13ConfigSample>();
+            FCMConfigChange<int> committed = null, effective = null;
+            using (IDisposable save = config.WatchSaved(x => x.ExposureMs, change => committed = change))
+            using (IDisposable live = config.Watch(x => x.ExposureMs, change => effective = change))
+            {
+                MHSConfigCommitResult result = config.UpdateAsync(model =>
+                {
+                    model.ExposureMs = 147;
+                    model.Note = "Developer API";
+                }, "统一调整两个字段", CancellationToken.None).GetAwaiter().GetResult();
+                Check(result.Success && result.ChangeSet.Fields.Count == 2 &&
+                    committed != null && committed.OldValue == 80 &&
+                    committed.NewValue == 147 && effective == null,
+                    "simple multi-field update commits one transaction without premature effective change");
+                Check(config.Value(x => x.ExposureMs) == 80 &&
+                    config.GetLatestSaved().ExposureMs == 147 &&
+                    config.ApplyPendingAtTaskBoundary(),
+                    "simple update preserves staged/effective semantics");
+                Check(effective != null && effective.OldValue == 80 && effective.NewValue == 147 &&
+                    effective.Stage == FCMConfigChangeStage.Effective,
+                    "simple Watch observes only activated values");
+            }
+            FCMConfigChange<int> afterDispose = null;
+            using (IDisposable watch = config.Watch(x => x.ExposureMs, change => afterDispose = change)) { }
+            Check(config.SetValueAsync(x => x.ExposureMs, 148, "退订", CancellationToken.None)
+                .GetAwaiter().GetResult().Success && config.ApplyPendingAtTaskBoundary() &&
+                afterDispose == null, "simple Watch unsubscribe releases callback");
+
+            FCMConfigIdentity id = new FCMConfigIdentity("Tests.SecureSample", "machine", "Machine-Ergonomics");
+            FCMConfigRolePolicy policy = new FCMConfigRolePolicy();
+            foreach (FCMConfigAccessAction action in new[] { FCMConfigAccessAction.Read,
+                FCMConfigAccessAction.ReadSensitive, FCMConfigAccessAction.Edit, FCMConfigAccessAction.Commit,
+                FCMConfigAccessAction.Subscribe, FCMConfigAccessAction.Apply })
+                policy.Grant("maintainer", action, id.SectionId, id.ScopeKind, id.ScopeId);
+            MHSConfigAuthorizedSection<ConfigSecureSample> secure = service.Authorize(
+                new FCMConfigPrincipal("maintainer-01", new[] { "maintainer" }), policy)
+                .Open<ConfigSecureSample>(id);
+            FCMConfigChange<int> authorizedChanged = null;
+            using (IDisposable watch = secure.Watch(x => x.Level, c => authorizedChanged = c))
+            {
+                Check(secure.UpdateAsync(model => model.Level = 23, "授权改动", CancellationToken.None)
+                    .GetAwaiter().GetResult().Success &&
+                    secure.TryApplyPendingAtBoundary(FCMConfigApplyPolicy.Immediate).Applied &&
+                    authorizedChanged != null && authorizedChanged.NewValue == 23,
+                    "authorized simple update and Watch retain approval and validation semantics");
+            }
+            Console.WriteLine("PASS developer convenience UpdateAsync/Watch/WatchSaved and access safety");
         }
 
         private static void Check(bool condition, string message)

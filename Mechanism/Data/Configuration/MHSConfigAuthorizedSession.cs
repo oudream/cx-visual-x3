@@ -24,8 +24,8 @@ namespace CxVisual.Mechanism.Data.Configuration
         public MHSConfigAuthorizedSection<T> Open<T>(FCMConfigIdentity identity) where T : new()
         {
             Require(identity, FCMConfigAccessAction.Read, null);
-            if (FCMConfigSensitivity.ContainsSensitive(typeof(T)))
-                Require(identity, FCMConfigAccessAction.ReadSensitive, null);
+            // Opening a typed section grants no data itself. Non-sensitive fields remain
+            // readable with Read permission; Get()/snapshots still require ReadSensitive.
             MHSConfigSection<T> section = _service.Open<T>(identity);
             // This is monotonic: once an authorized session is issued, Immediate writes must
             // await explicit Apply authorization, even when another owner uses the raw section.
@@ -75,6 +75,18 @@ namespace CxVisual.Mechanism.Data.Configuration
             _session.RequireReadable<T>(Identity, null);
             return new MHSConfigAuthorizedEdit<T>(_source.BeginEdit(reason), _session, Identity);
         }
+        /// <summary>授权会话中的多字段编辑，不暴露原始 Section。</summary>
+        public async Task<MHSConfigCommitResult> UpdateAsync(Action<T> change,
+            string reason, CancellationToken token)
+        {
+            if (change == null) throw new ArgumentNullException("change");
+            using (MHSConfigAuthorizedEdit<T> edit = BeginEdit(reason))
+            {
+                change(edit.WorkingCopy);
+                return await edit.CommitAsync(token).ConfigureAwait(false);
+            }
+        }
+
         public MHSConfigApplyResult TryApplyPendingAtBoundary(FCMConfigApplyPolicy boundary)
         {
             Demand(FCMConfigAccessAction.Apply, null);
@@ -88,11 +100,13 @@ namespace CxVisual.Mechanism.Data.Configuration
         public IList<MHSConfigCommittedRecord> ReadCommittedAfter(string cursor, int count)
         {
             Demand(FCMConfigAccessAction.Audit, null);
+            _session.RequireReadable<T>(Identity, null); // Reasons may include sensitive context.
             return _source.ReadCommittedAfter(cursor, count);
         }
         public MHSConfigStatus GetStatus()
         {
             Demand(FCMConfigAccessAction.Audit, null);
+            _session.RequireReadable<T>(Identity, null); // PendingChanges contains raw OldJson/NewJson.
             return _source.GetStatus();
         }
         public MHSConfigPackage ExportPackage()
@@ -128,6 +142,15 @@ namespace CxVisual.Mechanism.Data.Configuration
                 callback(change);
             });
         }
+        /// <summary>监听有效值：同一入口保留按字段的权限检查。</summary>
+        public IDisposable Watch<TValue>(Expression<Func<T, TValue>> accessor,
+            Action<FCMConfigChange<TValue>> callback)
+        { return Subscribe(accessor, FCMConfigChangeStage.Effective, callback); }
+
+        public IDisposable WatchSaved<TValue>(Expression<Func<T, TValue>> accessor,
+            Action<FCMConfigChange<TValue>> callback)
+        { return Subscribe(accessor, FCMConfigChangeStage.Committed, callback); }
+
         private void Demand(FCMConfigAccessAction action, string path) { _session.Require(Identity, action, path); }
     }
 

@@ -191,6 +191,18 @@ namespace CxVisual.Mechanism.Data.Configuration
         }
         public MHSConfigEdit<T> BeginEdit(string reason)
         { lock (_gate) return new MHSConfigEdit<T>(this, Clone(_saved), _savedRev, reason); }
+        /// <summary>开发者一次编辑多个字段，沿用已有验证、CAS、审计和生效策略。</summary>
+        public async Task<MHSConfigCommitResult> UpdateAsync(Action<T> change,
+            string reason, CancellationToken token)
+        {
+            if (change == null) throw new ArgumentNullException("change");
+            using (MHSConfigEdit<T> edit = BeginEdit(reason))
+            {
+                change(edit.WorkingCopy);
+                return await edit.CommitAsync(token).ConfigureAwait(false);
+            }
+        }
+
         /// <summary>开发者单字段修改；仍经过相同校验、版本及持久化事务，不绕过安全检查。</summary>
         public async Task<MHSConfigCommitResult> SetValueAsync<V>(
             Expression<Func<T, V>> selector, V value, string reason, CancellationToken token)
@@ -387,6 +399,16 @@ namespace CxVisual.Mechanism.Data.Configuration
         public IDisposable Subscribe<TValue>(Expression<Func<T, TValue>> accessor,
             FCMConfigChangeStage stage, Action<FCMConfigChange<TValue>> callback)
         { return _publisher.Subscribe(FCMConfigPathUtil.FromExpression(accessor), accessor.Compile(), new T(), stage, callback); }
+        /// <summary>关注真正生效的参数变化，默认不把尚未生效的保存值误当运行值。</summary>
+        public IDisposable Watch<TValue>(Expression<Func<T, TValue>> accessor,
+            Action<FCMConfigChange<TValue>> callback)
+        { return Subscribe(accessor, FCMConfigChangeStage.Effective, callback); }
+
+        /// <summary>关注保存草稿提交事件，供编辑器和维护工具使用。</summary>
+        public IDisposable WatchSaved<TValue>(Expression<Func<T, TValue>> accessor,
+            Action<FCMConfigChange<TValue>> callback)
+        { return Subscribe(accessor, FCMConfigChangeStage.Committed, callback); }
+
         public IDisposable SubscribeSection<TPart>(Expression<Func<T, TPart>> accessor,
             FCMConfigChangeStage stage, Action<FCMConfigChange<TPart>> callback)
         { return Subscribe(accessor, stage, callback); }
