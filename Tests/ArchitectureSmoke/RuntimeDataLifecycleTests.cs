@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using CxVisual.Foundation.Data.Execution;
+using CxVisual.Foundation.Data.Types;
 using CxVisual.Foundation.Infrastructure.Concurrency;
 using CxVisual.Mechanism.Data.Execution;
 using CxVisual.Mechanism.Data.RuntimeData;
@@ -14,6 +15,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
     {
         internal static void Run()
         {
+            FoundationTypeSafetyContract();
             StackFrameCommitAndAbort();
             HeapStackMoveCopyConflictAndOwnedRejection();
             MultiOutputFanoutAndTypeIsolation();
@@ -104,6 +106,22 @@ namespace CxVisual.Tests.ArchitectureSmoke
             try { heap.Get<int>("Existing"); }
             catch (ObjectDisposedException) { disposed = true; }
             Check(disposed, "已关闭Heap仍可被读取");
+        }
+
+        private static void FoundationTypeSafetyContract()
+        {
+            FDTDataTypeDescriptor scalar = FDTDataTypeDescriptor.Describe(typeof(decimal));
+            FDTDataTypeDescriptor binary = FDTDataTypeDescriptor.Describe(typeof(byte[]));
+            FDTDataTypeDescriptor unknown = FDTDataTypeDescriptor.Describe(typeof(List<int>));
+            Check(scalar.Kind == FDTDataKind.Scalar && scalar.IsSafelyCopyable,
+                "Foundation数值类型描述不正确");
+            Check(binary.Kind == FDTDataKind.Buffer && binary.IsSafelyCopyable,
+                "Foundation二进制类型描述不正确");
+            Check(!unknown.IsSafelyCopyable, "未知可变集合被宣称安全复制");
+            byte[] original = new byte[] { 1, 2 };
+            byte[] copy = (byte[])FDTDataValueSafety.Capture(original);
+            copy[0] = 8;
+            Check(original[0] == 1, "基础安全复制仍共享可变数组");
         }
 
         private static void StackFrameCommitAndAbort()
