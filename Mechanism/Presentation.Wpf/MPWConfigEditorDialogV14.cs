@@ -34,6 +34,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         private bool _working;
         private bool _saved;
         private int _count;
+        private IDictionary<string, MHSConfigEditorField> _fieldStates;
         public bool WasSaved { get { return _saved; } }
         public T Draft { get { EnsureActive(); return _editor.Draft; } }
         public int VisibleEditorCount { get { return _count; } }
@@ -204,6 +205,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                     "    Saved: " + revision.Saved + "    Effective: " + revision.Effective +
                     (revision.IsPending ? "    [待生效]" : "    [已同步]");
                 object data = _editor.Draft;
+                _fieldStates = _editor.DescribeFields().ToDictionary(x => x.Schema.Path,
+                    x => x, StringComparer.Ordinal);
                 RenderObject(_form, typeof(T), data, "", 0, false);
                 string selected = _history.SelectedItem as string;
                 _history.Items.Clear();
@@ -332,15 +335,30 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         }
         private void AddFieldDetails(Panel host, string path)
         {
-            FCMConfigFieldInfo field = _editor.SchemaFields.FirstOrDefault(x => x.Path == path);
-            if (field == null) return;
-            string note = (field.Description ?? "") + "    " +
+            MHSConfigEditorField state;
+            if (_fieldStates == null || !_fieldStates.TryGetValue(path, out state) ||
+                state.Schema.IsSensitive) return;
+            FCMConfigFieldInfo field = state.Schema;
+            string summary = (field.Description ?? "") + "  " +
                 (field.Range == null ? "" : "范围: " + field.Range + "  ") +
                 (field.Regex == null ? "" : "正则: " + field.Regex + "  ") +
-                "生效: " + field.ApplyPolicy;
-            host.Children.Add(new TextBlock { Text = note, FontSize = 11,
-                Foreground = Brushes.SlateGray, Margin = new Thickness(196, 0, 2, 3),
-                TextWrapping = TextWrapping.Wrap });
+                "策略: " + field.ApplyPolicy + "  " +
+                "默认: " + (field.DefaultJson ?? "(无)") + "  " +
+                "Saved: " + (state.HasSavedValue ? state.SavedJson : "(缺失)") +
+                "  Effective: " + (state.EffectiveJson ?? "(缺失)") +
+                (state.IsModified ? "  [未保存草稿]" : "");
+            host.Children.Add(new TextBlock {
+                Text = summary, FontSize = 11, Foreground = Brushes.SlateGray,
+                Margin = new Thickness(196, 0, 3, 3), TextWrapping = TextWrapping.Wrap
+            });
+            if (state.Issues.Any(x => x.Severity == FCMConfigIssueSeverity.Error))
+                host.Children.Add(new TextBlock {
+                    Text = "校验: " + string.Join(" / ",
+                        state.Issues.Where(x => x.Severity == FCMConfigIssueSeverity.Error)
+                            .Select(x => x.Code).Distinct()),
+                    Foreground = Brushes.Firebrick, Margin = new Thickness(196, 0, 3, 5),
+                    TextWrapping = TextWrapping.Wrap
+                });
         }
         private void RenderCollection(Panel host, Type type, object value, string path, int depth)
         {
