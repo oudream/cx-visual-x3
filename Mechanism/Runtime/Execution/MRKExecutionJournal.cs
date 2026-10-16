@@ -69,11 +69,26 @@ namespace CxVisual.Mechanism.Runtime.Execution
             bool seen = false, finished = false;
             Dictionary<Guid, MRKJournalRecord> unknown = new Dictionary<Guid, MRKJournalRecord>();
             bool legacyUnknown = false, ambiguousIdentity = false;
+            bool unboundTimeout = false;
+            int starts = 0;
+            string planId = null;
+            long revision = -1;
             foreach (MRKJournalRecord record in history)
             {
                 if (record == null || record.FlowId != flowId) continue;
                 seen = true;
+                if (planId == null) { planId = record.PlanId; revision = record.Revision; }
+                else if (planId != record.PlanId || revision != record.Revision)
+                    ambiguousIdentity = true;
+                if (record.Kind == MRKJournalKind.FlowStarted)
+                {
+                    starts++;
+                    if (finished) ambiguousIdentity = true;
+                }
                 if (record.Kind == MRKJournalKind.FlowFinished) finished = true;
+                if (record.Kind == MRKJournalKind.StepTransition &&
+                    record.State == MRKStepState.ResultUnknown.ToString())
+                    unboundTimeout = true;
                 if (record.Kind == MRKJournalKind.ExternalUnknown)
                 {
                     if (record.OperationId == Guid.Empty) { legacyUnknown = true; continue; }
@@ -90,7 +105,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 }
             }
             if (!seen) return new MRKRecoveryDecision(flowId, MRKRecoveryDisposition.NoRecord, "没有运行记录");
-            if (legacyUnknown || ambiguousIdentity || unknown.Count != 0)
+            if (legacyUnknown || ambiguousIdentity || unboundTimeout || starts != 1 || unknown.Count != 0)
                 return new MRKRecoveryDecision(flowId, MRKRecoveryDisposition.RequiresReconciliation,
                     "存在结果未确认的外部操作");
             if (!finished)

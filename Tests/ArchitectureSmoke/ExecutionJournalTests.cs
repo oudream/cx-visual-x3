@@ -16,11 +16,32 @@ namespace CxVisual.Tests.ArchitectureSmoke
             RuntimeRecordsRealFlowTransitions();
             JournalAdmissionFailureIsFailClosed();
             MidFlowJournalFailureIsTypedFailure();
+            RepeatedFlowIdentityAndUnboundTimeoutRequireReconciliation();
         }
         private static void Check(bool value, string msg)
         { if (!value) throw new InvalidOperationException("运行Journal：" + msg); }
         private static string PathForTest()
         { return Path.Combine(Path.GetTempPath(), "cx-run-" + Guid.NewGuid().ToString("N") + ".bin"); }
+        private static void RepeatedFlowIdentityAndUnboundTimeoutRequireReconciliation()
+        {
+            Guid id = Guid.NewGuid();
+            MRKJournalRecord[] records = {
+                new MRKJournalRecord(MRKJournalKind.FlowStarted,id,"v",1,"","Running"),
+                new MRKJournalRecord(MRKJournalKind.FlowFinished,id,"v",1,"","Completed"),
+                new MRKJournalRecord(MRKJournalKind.FlowStarted,id,"v",1,"","Running"),
+                new MRKJournalRecord(MRKJournalKind.FlowFinished,id,"v",1,"","Completed")
+            };
+            Check(MRKJournalRecovery.Evaluate(id, records).Disposition ==
+                MRKRecoveryDisposition.RequiresReconciliation, "重复FlowId被误判安全关闭");
+            records = new[] {
+                new MRKJournalRecord(MRKJournalKind.FlowStarted,id,"v",1,"","Running"),
+                new MRKJournalRecord(MRKJournalKind.StepTransition,id,"v",1,"sdk","ResultUnknown"),
+                new MRKJournalRecord(MRKJournalKind.StepTransition,id,"v",1,"sdk","Failed"),
+                new MRKJournalRecord(MRKJournalKind.FlowFinished,id,"v",1,"","Failed")
+            };
+            Check(MRKJournalRecovery.Evaluate(id, records).Disposition ==
+                MRKRecoveryDisposition.RequiresReconciliation, "未关联OperationId的超时被误认安全");
+        }
         private static void ReopenAndConservativeRecovery()
         {
             string path = PathForTest();
