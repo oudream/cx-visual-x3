@@ -218,6 +218,8 @@ namespace CxVisual.Mechanism.Data.Configuration
             }
         }
 
+        public string ProfileId { get { return _profileId; } }
+        public IList<MVBConfigLayerSpec> Layers { get { return _layers; } }
         public FCMConfigIdentity Identity { get { return _group.Identity; } }
         public string SavedVersion { get { return _group.SavedVersion; } }
         public string EffectiveVersion { get { return _group.EffectiveVersion; } }

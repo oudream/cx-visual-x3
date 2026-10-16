@@ -279,6 +279,9 @@ namespace CxVisual.Mechanism.Data.Configuration
                 string.IsNullOrWhiteSpace(reason) ? "显式升级分层定义" : reason, token)
                 .ConfigureAwait(false);
         }
+        public string ProfileId { get { return _profileId; } }
+        public IList<MVBConfigLayerSpec> Layers
+        { get { return _layers.Select(x => x.Spec).ToList().AsReadOnly(); } }
         public MHSConfigSection<MVBConfigLayerOverrides> GetLayer(string name)
         { RequireDefinition(); return Find(name).Store; }
         /// <summary>复合诊断说明每个来源层的状态，不将跨层非原子更新伪装为成功发布。</summary>

@@ -135,16 +135,21 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 unrelated.Register<V13ConfigSample>("Scan");
             unrelated.Seal();
             using (MHSConfigAtomicEdit invalid = group.BeginEdit("foreign handle"))
+            {
                 Expect<InvalidOperationException>(() => invalid.Get(foreign),
                     "group member handle is tied to one physical group");
+                Expect<InvalidOperationException>(() => invalid.Update(scanMember, scan =>
+                {
+                    scan.ExposureMs = 999;
+                    throw new InvalidOperationException("failed mutation");
+                }), "failed member callback cannot overwrite group draft");
+                Check(invalid.Get(scanMember).ExposureMs == 80,
+                    "failed typed member update leaves old draft unchanged");
+            }
             Check(group.UpdateAsync(edit =>
             {
-                V13ConfigSample scan = edit.Get(scanMember);
-                scan.ExposureMs = 135;
-                edit.Set(scanMember, scan);
-                V13AsyncConfig rebuild = edit.Get(rebuildMember);
-                rebuild.Count = 4;
-                edit.Set(rebuildMember, rebuild);
+                edit.Update(scanMember, scan => scan.ExposureMs = 135);
+                edit.Update(rebuildMember, rebuild => rebuild.Count = 4);
             }, "扫描与重建联合配置", CancellationToken.None).GetAwaiter().GetResult().Success,
                 "atomic group declaration + one transaction");
             Check(group.TryApplyPendingAtBoundary(FCMConfigApplyPolicy.NextTask, null).Applied,
@@ -156,9 +161,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "CT acquisition and reconstruction share exactly one version");
                 Check(group.UpdateAsync(edit =>
                 {
-                    V13AsyncConfig rebuild = edit.Get(rebuildMember);
-                    rebuild.Count = 8;
-                    edit.Set(rebuildMember, rebuild);
+                    edit.Update(rebuildMember, rebuild => rebuild.Count = 8);
                 }, "后续重建方案", CancellationToken.None).GetAwaiter().GetResult().Success,
                     "second transaction is isolated from running scan");
                 Check(group.TryApplyPendingAtBoundary(FCMConfigApplyPolicy.NextTask, null).Applied &&
@@ -187,6 +190,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 edit.Set("Product", x => x.Note, "Cell-A");
             }, "产品配方", CancellationToken.None).GetAwaiter().GetResult().Success,
                 "all layer edits committed with one simple API");
+            Check(profile.ProfileId == "Recipe-A" && profile.Layers.Count == 5 &&
+                profile.Layers[4].Name == "Override", "layer definitions are discoverable");
             Check(profile.ResolveEffective().Value(x => x.ExposureMs) == 80 &&
                 profile.ResolveSaved().Value(x => x.ExposureMs) == 155,
                 "saved and effective composite profiles remain separate");

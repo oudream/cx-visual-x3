@@ -112,6 +112,17 @@ namespace CxVisual.Mechanism.Data.Configuration
         { return Get<T>(MemberKey(member)); }
         public void Remove<T>(MHSConfigGroupMember<T> member) where T : new()
         { Remove(MemberKey(member)); }
+        /// <summary>
+        /// A single strongly typed member mutation, preserving the same group transaction.
+        /// If the callback fails, the edited member is not written to the draft.
+        /// </summary>
+        public void Update<T>(MHSConfigGroupMember<T> member, Action<T> change) where T : new()
+        {
+            if (change == null) throw new ArgumentNullException("change");
+            T candidate = Get(member);
+            change(candidate);
+            Set(member, candidate);
+        }
 
         public void Set<T>(string key, T value) where T : new()
         {
