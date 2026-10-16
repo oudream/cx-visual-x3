@@ -31,6 +31,13 @@ namespace CxVisual.Mechanism.Data.Configuration
         { return new MVBConfigScopeResolver(this, "machine", machineId); }
         public MVBConfigScopeResolver ForProject(string projectId)
         { return new MVBConfigScopeResolver(this, "project", projectId); }
+        /// <summary>物理单实例聚合事务：一次提交/生效多种配置，不逐个写不同文件。</summary>
+        public MHSConfigAtomicGroup OpenAtomicGroup(string groupId)
+        {
+            if (string.IsNullOrWhiteSpace(groupId)) throw new ArgumentException("GroupId required", "groupId");
+            return new MHSConfigAtomicGroup(ForScope("config-group", groupId).Open<MHSConfigGroupDocument>());
+        }
+
         public MHSConfigSection<T> Open<T>(FCMConfigIdentity identity) where T : new()
         {
             if (identity == null) throw new ArgumentNullException("identity");
