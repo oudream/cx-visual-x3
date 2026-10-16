@@ -68,7 +68,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
             {
                 EnsureOpen();
                 if (_active.Contains(invocationId) || _committed.ContainsKey(invocationId))
-                    throw new InvalidOperationException("重复的运行调用身份：" + invocationId);
+                    throw new MDSDataException(MDSDataErrorCode.NameConflict, "重复的运行调用身份：" + invocationId, invocationId, invocationId);
                 MDSDataFrame frame = new MDSDataFrame(this, invocationId, scope,
                     safeInputs, declaredOutputs);
                 _active.Add(invocationId);
@@ -85,7 +85,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 if (!_active.Contains(invocationId))
                     throw new InvalidOperationException("未活动或已结算的调用帧：" + invocationId);
                 if (_committed.ContainsKey(invocationId))
-                    throw new InvalidOperationException("该调用帧的输出已提交：" + invocationId);
+                    throw new MDSDataException(MDSDataErrorCode.OutputConflict, "该调用帧的输出已提交：" + invocationId, invocationId, invocationId);
                 _committed.Add(invocationId, safe); // 所有Outputs同时可见
             }
         }
@@ -140,7 +140,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
             {
                 if (_closed) return;
                 if (_active.Count > 0)
-                    throw new InvalidOperationException("仍有执行节点，禁止回收DataStack");
+                    throw new MDSDataException(MDSDataErrorCode.Busy, "仍有执行节点，禁止回收DataStack");
                 _closed = true;
                 _committed.Clear();
             }
