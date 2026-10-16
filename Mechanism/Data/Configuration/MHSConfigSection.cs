@@ -302,6 +302,11 @@ namespace CxVisual.Mechanism.Data.Configuration
         /// Null 游标表示从第一条事件读取；重启后同一游标无重复且顺序不变。
         /// 当前仅承诺 Committed；Effective 状态转换还没有持久独立 Journal。
         /// </summary>
+        /// <summary>后台有限批量重放 + 实时增量；错误保留 Cursor 并可 Resume。</summary>
+        public MHSConfigCommitFeed<T> SubscribeCommittedFrom(string afterCursor,
+            Action<MHSConfigCommittedRecord> consumer, int batchSize = 128)
+        { return new MHSConfigCommitFeed<T>(this, afterCursor, batchSize, consumer); }
+
         public IList<MHSConfigCommittedRecord> ReadCommittedAfter(string afterCursor, int maxCount)
         {
             if (maxCount < 1 || maxCount > 10000) throw new ArgumentOutOfRangeException("maxCount");

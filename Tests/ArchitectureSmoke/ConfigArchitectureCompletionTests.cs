@@ -32,7 +32,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         public static void Run()
         {
             string root = Path.Combine(Path.GetTempPath(), "CxVisual-Config-Atomic-" + Guid.NewGuid().ToString("N"));
-            try { VerifyAtomicGroup(root); VerifyDurableEvents(root); VerifySecurity(root); VerifyReferences(root); VerifyEffectiveJournal(root); }
+            try { VerifyAtomicGroup(root); VerifyDurableEvents(root); VerifySecurity(root); VerifyReferences(root); VerifyEffectiveJournal(root); VerifyLiveReplay(root); }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
             Console.WriteLine("PASS atomic multi-model configuration transaction, validation and snapshots");
         }
@@ -309,6 +309,61 @@ namespace CxVisual.Tests.ArchitectureSmoke
             File.WriteAllText(events.OrderBy(x => x, StringComparer.Ordinal).Last(), "{\"Revision\":\"v9999\"}");
             Expect<InvalidOperationException>(() => reopened.ReadEffectiveAfter(null, 10),
                 "tampered effective chain must be detected");
+        }
+
+        private static void VerifyLiveReplay(string root)
+        {
+            string folder = Path.Combine(root, "live-replay");
+            MHSConfigService service = new MHSConfigService(folder);
+            MHSConfigSection<V13ConfigSample> config =
+                service.ForProject("Monitor").Open<V13ConfigSample>();
+            System.Collections.Generic.List<string> received =
+                new System.Collections.Generic.List<string>();
+            using (MHSConfigCommitFeed<V13ConfigSample> feed =
+                config.SubscribeCommittedFrom(null, record =>
+                {
+                    lock (received) received.Add(record.Cursor);
+                    Thread.Sleep(20); // Slow consumer must not block durable Commit.
+                }, 1))
+            {
+                Check(config.SetValueAsync(x => x.ExposureMs, 105, "事件一",
+                    CancellationToken.None).GetAwaiter().GetResult().Success &&
+                    config.SetValueAsync(x => x.ExposureMs, 106, "事件二",
+                    CancellationToken.None).GetAwaiter().GetResult().Success, "two commits during slow consumer");
+                Check(SpinWait.SpinUntil(() =>
+                { lock (received) return received.Count == 2 && feed.Cursor == "v3"; }, 5000),
+                    "feed drains both historical and live events in order");
+                lock (received)
+                    Check(received[0] == "v2" && received[1] == "v3" &&
+                        feed.Cursor == "v3", "exactly ordered and no duplicate cursor");
+            }
+            int replayCount = 0;
+            using (MHSConfigCommitFeed<V13ConfigSample> resumed =
+                config.SubscribeCommittedFrom("v2", record =>
+                {
+                    Interlocked.Increment(ref replayCount);
+                    Check(record.Cursor == "v3", "resume uses durable cursor");
+                }, 1))
+            {
+                Check(SpinWait.SpinUntil(() => Volatile.Read(ref replayCount) == 1 && resumed.Cursor == "v3", 5000),
+                    "reconnected feed replays only unseen committed revision");
+                Check(resumed.Cursor == "v3", "client can persist last successfully delivered cursor");
+            }
+            int attempts = 0, successes = 0;
+            using (MHSConfigCommitFeed<V13ConfigSample> failed =
+                config.SubscribeCommittedFrom(null, record =>
+                {
+                    if (Interlocked.Increment(ref attempts) == 1)
+                        throw new InvalidOperationException("模拟消费者异常");
+                    Interlocked.Increment(ref successes);
+                }, 1))
+            {
+                Check(SpinWait.SpinUntil(() => failed.LastError != null, 5000) &&
+                    failed.Cursor == null, "consumer failure must not acknowledge undelivered event");
+                failed.Resume();
+                Check(SpinWait.SpinUntil(() => Volatile.Read(ref successes) == 2 && failed.Cursor == "v3", 5000) &&
+                    failed.Cursor == "v3", "replay from prior cursor after explicit resume");
+            }
         }
 
         private static void Check(bool condition, string message)
