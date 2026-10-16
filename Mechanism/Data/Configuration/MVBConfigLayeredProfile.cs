@@ -169,6 +169,15 @@ namespace CxVisual.Mechanism.Data.Configuration
             }).ToList();
         }
         public MHSConfigSection<MVBConfigLayerOverrides> GetLayer(string name) { return Find(name).Store; }
+        /// <summary>复合诊断说明每个来源层的状态，不将跨层非原子更新伪装为成功发布。</summary>
+        public MVBConfigCompositeStatus<T> GetStatus()
+        {
+            MVBConfigResolved<T> snapshot = ResolveEffective();
+            List<MVBConfigLayerHealth> layers = _layers.Select(x =>
+                new MVBConfigLayerHealth(x.Spec.Name, x.Store.GetStatus())).ToList();
+            return new MVBConfigCompositeStatus<T>(snapshot, layers,
+                FCMConfigValidationEngine.Validate(snapshot.Get(), "composite"));
+        }
         /// <summary>用于长时间采图、重建、检测任务的配置版本隔离。</summary>
         public MVBConfigTaskSnapshot<T> CaptureForTask(string taskId)
         {

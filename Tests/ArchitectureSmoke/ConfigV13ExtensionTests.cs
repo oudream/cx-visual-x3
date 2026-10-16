@@ -488,6 +488,10 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Verify(auditFiles.Length == 2, "two immutable audit files");
             File.WriteAllText(auditFiles[0], "{\"Revision\":\"v1\",\"JsonSha256\":\"tampered\"}");
             Expect<InvalidOperationException>(() => section.ListAudit(), "tampered audit must be rejected");
+            MHSConfigStatus broken = section.GetStatus();
+            Verify(!broken.IsHealthy && broken.IntegrityIssues.Any(
+                x => x.Code == "CONFIG_AUDIT_INTEGRITY_FAILURE"),
+                "diagnostics report audit integrity errors without hiding them");
             Console.WriteLine("PASS configuration audit chain and integrity verification");
         }
 
@@ -585,6 +589,10 @@ namespace CxVisual.Tests.ArchitectureSmoke
             MVBConfigLayeredProfile<V13ConfigSample> layers =
                 new MVBConfigLayeredProfile<V13ConfigSample>(service, specs);
             MVBConfigResolved<V13ConfigSample> resolved = layers.ResolveEffective();
+            MVBConfigCompositeStatus<V13ConfigSample> health = layers.GetStatus();
+            Verify(health.IsHealthy && health.Layers.Count == 2 &&
+                health.RevisionVector.Equals(resolved.RevisionVector),
+                "composite diagnostics share exact layer version vector");
             Verify(resolved.RevisionVector.Entries.Count == 2 &&
                 resolved.RevisionVector.Fingerprint.Length == 64 &&
                 resolved.ExplainState(x => x.ExposureMs).Presence == FCMConfigValuePresence.Defaulted &&
@@ -642,6 +650,16 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Verify(config.GetLatestSaved().ExposureMs == 150 &&
                 config.GetLatestSaved().Acquisition.Group.CaptureKey == "CAP-123",
                 "editor changes persist without requiring any UI implementation");
+            MHSConfigStatus pending = config.GetStatus();
+            Verify(pending.IsHealthy && pending.HasPending &&
+                pending.PendingChanges.Fields.Any(x => x.Path == "ExposureMs") &&
+                pending.AuditCount == 1, "unified status exposes pending change and audit");
+            Verify(config.ApplyPendingAtTaskBoundary(), "editor value is applied at task boundary");
+            MHSConfigStatus applied = config.GetStatus();
+            Verify(!applied.HasPending && applied.PendingChanges.IsEmpty &&
+                applied.Revision.Saved == applied.Revision.Effective,
+                "status reports one coherent effective revision");
+
             Console.WriteLine("PASS CxVisual dependency-driven editor, Undo/Redo and transaction model");
         }
 

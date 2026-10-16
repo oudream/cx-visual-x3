@@ -155,6 +155,25 @@ namespace CxVisual.Mechanism.Data.Configuration
         { lock (_gate) return CloneValue(accessor.Compile()(_effective)); }
         public FCMConfigValidationReport ValidateEffective()
         { lock (_gate) return FCMConfigValidationEngine.Validate(_effective, _scope); }
+        /// <summary>一次性诊断，保存/生效/待生效/审计使用同一把实例锁。</summary>
+        public MHSConfigStatus GetStatus()
+        {
+            lock (_gate)
+            {
+                FCMConfigValidationReport saved = FCMConfigValidationEngine.Validate(_saved, _scope);
+                FCMConfigValidationReport effective = FCMConfigValidationEngine.Validate(_effective, _scope);
+                FCMConfigChangeSet pending = BuildChangeSet(_effective, _saved, _effectiveRev);
+                List<FCMConfigIssue> integrity = new List<FCMConfigIssue>();
+                int auditCount = 0;
+                try { auditCount = _store.ListAudit(_savedRev).Count; }
+                catch (Exception ex)
+                {
+                    integrity.Add(FCMConfigIssue.Error("", "CONFIG_AUDIT_INTEGRITY_FAILURE", ex.Message));
+                }
+                return new MHSConfigStatus(Identity, _schema, Revision, pending,
+                    saved, effective, integrity, auditCount);
+            }
+        }
         public MHSConfigSnapshot<T> CaptureForTask(string taskId)
         {
             if (string.IsNullOrWhiteSpace(taskId)) throw new ArgumentException("Missing taskId");
