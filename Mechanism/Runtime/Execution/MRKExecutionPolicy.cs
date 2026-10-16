@@ -70,9 +70,10 @@ namespace CxVisual.Mechanism.Runtime.Execution
                                 try { await operation.ConfigureAwait(false); }
                                 catch (Exception) { /* 实际结算之前仍保持原资源租约 */ }
                                 if (observationFailure != null)
-                                    throw new AggregateException(
+                                    // 诊断失败仍属于结果不确定的超时，不允许幂等重试分支误捕。
+                                    throw new TimeoutException(
                                         "超时诊断或取消通知失败，底层任务已结算",
-                                        observationFailure, new TimeoutException("原操作超时"));
+                                        observationFailure);
                                 throw new TimeoutException("节点执行超过策略超时，已等待原工作结束");
                             }
                         }

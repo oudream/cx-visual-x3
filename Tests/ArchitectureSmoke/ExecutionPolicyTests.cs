@@ -14,6 +14,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             BoundedRetryAndFaultPropagation();
             CooperativeTimeoutDoesNotPrematurelyAdvance();
             NonCooperativeTimeoutRemainsUnknownAndKeepsResources();
+            TimeoutDiagnosticFailureCannotTriggerRetryOrEarlyRelease();
         }
         private static void Check(bool yes, string message)
         { if (!yes) throw new InvalidOperationException("运行策略：" + message); }
@@ -76,6 +77,41 @@ namespace CxVisual.Tests.ArchitectureSmoke
             }
             Check(advanced == 0 && resources.CurrentOwner("robot-axis") == null,
                 "真实结算后下游误执行或资源没有最终释放");
+        }
+
+
+        private static void TimeoutDiagnosticFailureCannotTriggerRetryOrEarlyRelease()
+        {
+            int attempts = 0;
+            ManualResetEventSlim timeoutObserved = new ManualResetEventSlim(false);
+            TaskCompletionSource<object> pending = new TaskCompletionSource<object>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            MRKExecutionPolicy policy = new MRKExecutionPolicy(
+                maxAttempts: 3, idempotent: true,
+                timeout: TimeSpan.FromMilliseconds(30));
+            Task<object> execution = policy.ExecuteAsync(null,
+                (ctx,ct) =>
+                {
+                    Interlocked.Increment(ref attempts);
+                    return pending.Task;
+                }, CancellationToken.None, () =>
+                {
+                    timeoutObserved.Set();
+                    throw new System.IO.IOException("Journal不可用");
+                });
+            try
+            {
+                Check(timeoutObserved.Wait(2000) && !execution.IsCompleted &&
+                    attempts == 1, "诊断故障提前结束了未结算的原始操作");
+            }
+            finally { pending.TrySetResult((object)1); }
+            bool timedOut = false;
+            try { Await(execution); }
+            catch (TimeoutException ex)
+            { timedOut = ex.InnerException is System.IO.IOException; }
+            Check(timedOut && attempts == 1,
+                "诊断故障吞掉了超时信息或把未知结果操作自动重试");
+            timeoutObserved.Dispose();
         }
 
         private static void Await(Task task)

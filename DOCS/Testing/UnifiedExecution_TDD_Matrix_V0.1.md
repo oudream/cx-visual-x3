@@ -253,3 +253,7 @@ G0/G1通过不能代替G2/G3/G4。CI工作流故障时应分清本次新增测�
 ### 非协作操作超时的可见性和资源租约测试
 
 `ExecutionPolicyTests.NonCooperativeTimeoutRemainsUnknownAndKeepsResources`：不响应取消的原始工作在策略超时后仍继续运行；`MRKStepState.ResultUnknown`能被Flow快照观察，原软件资源租约依然排他，下游不会启动，Stop不能提前完成；底层结算后才允许释放。诊断回调故障也必须先等待真实工作结算。尚未实现安全隔离接管、OperationId持久确认；进程停止不可强制结束不合作的外部动作。
+
+### ResultUnknown诊断故障禁止重试
+
+`TimeoutDiagnosticFailureCannotTriggerRetryOrEarlyRelease`：策略虽标记Idempotent和3次尝试，但超时诊断写入失败也必须等待正在运行的实际工作结算；以`TimeoutException`（`InnerException`保存诊断失败）返回，不得按普通异常重新触发具有不确定外部结果的工作。
