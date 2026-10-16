@@ -198,7 +198,7 @@ namespace CxVisual.Mechanism.Data.Configuration
                 catch (Exception ex)
                 {
                     report.Add(FCMConfigIssue.Error("Members[" + item.Key + "]",
-                        "CONFIG_GROUP_INVALID_MEMBER", ex.Message));
+                        "CONFIG_GROUP_INVALID_MEMBER", "配置成员解码或校验失败"));
                 }
             }
             return report;

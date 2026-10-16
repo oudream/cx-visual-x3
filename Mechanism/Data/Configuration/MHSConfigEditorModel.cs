@@ -137,6 +137,7 @@ namespace CxVisual.Mechanism.Data.Configuration
         {
             if (selector == null) throw new ArgumentNullException("selector");
             if (key == null) throw new ArgumentNullException("key");
+            EnsureOpen();
             Func<T, Dictionary<string, V>> read = selector.Compile();
             RequireDefaultComparer(read(_edit.WorkingCopy));
             Modify(x => read(x).Add(key, value));
@@ -146,6 +147,7 @@ namespace CxVisual.Mechanism.Data.Configuration
         {
             if (selector == null) throw new ArgumentNullException("selector");
             if (from == null || to == null) throw new ArgumentNullException(from == null ? "from" : "to");
+            EnsureOpen();
             Func<T, Dictionary<string, V>> read = selector.Compile();
             RequireDefaultComparer(read(_edit.WorkingCopy));
             Modify(x =>
@@ -164,6 +166,7 @@ namespace CxVisual.Mechanism.Data.Configuration
         {
             if (selector == null) throw new ArgumentNullException("selector");
             if (key == null) throw new ArgumentNullException("key");
+            EnsureOpen();
             Func<T, Dictionary<string, V>> read = selector.Compile();
             RequireDefaultComparer(read(_edit.WorkingCopy));
             Modify(x =>
@@ -175,12 +178,14 @@ namespace CxVisual.Mechanism.Data.Configuration
             int index, V value)
         {
             if (selector == null) throw new ArgumentNullException("selector");
+            EnsureOpen();
             Func<T, List<V>> read = selector.Compile();
             Modify(x => read(x).Insert(index, value));
         }
         public void RemoveItemAt<V>(System.Linq.Expressions.Expression<Func<T, List<V>>> selector, int index)
         {
             if (selector == null) throw new ArgumentNullException("selector");
+            EnsureOpen();
             Func<T, List<V>> read = selector.Compile();
             Modify(x => read(x).RemoveAt(index));
         }
@@ -189,6 +194,7 @@ namespace CxVisual.Mechanism.Data.Configuration
             int fromIndex, int toIndex)
         {
             if (selector == null) throw new ArgumentNullException("selector");
+            EnsureOpen();
             Func<T, List<V>> read = selector.Compile();
             Modify(x =>
             {
@@ -204,6 +210,7 @@ namespace CxVisual.Mechanism.Data.Configuration
         public void AddSetItem<V>(System.Linq.Expressions.Expression<Func<T, HashSet<V>>> selector, V value)
         {
             if (selector == null) throw new ArgumentNullException("selector");
+            EnsureOpen();
             Func<T, HashSet<V>> read = selector.Compile();
             RequireDefaultComparer(read(_edit.WorkingCopy));
             Modify(x => read(x).Add(value));
@@ -211,6 +218,7 @@ namespace CxVisual.Mechanism.Data.Configuration
         public void RemoveSetItem<V>(System.Linq.Expressions.Expression<Func<T, HashSet<V>>> selector, V value)
         {
             if (selector == null) throw new ArgumentNullException("selector");
+            EnsureOpen();
             Func<T, HashSet<V>> read = selector.Compile();
             RequireDefaultComparer(read(_edit.WorkingCopy));
             Modify(x => read(x).Remove(value));

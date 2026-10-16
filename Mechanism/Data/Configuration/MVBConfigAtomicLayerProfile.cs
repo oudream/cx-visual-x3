@@ -54,7 +54,7 @@ namespace CxVisual.Mechanism.Data.Configuration
             catch (Exception ex)
             {
                 FCMConfigValidationReport invalid = new FCMConfigValidationReport();
-                invalid.Add(FCMConfigIssue.Error("", "CONFIG_LAYER_COMPOSE", ex.Message));
+                invalid.Add(FCMConfigIssue.Error("", "CONFIG_LAYER_COMPOSE", "层级配置合成失败"));
                 return new MHSConfigCommitResult { Success = false,
                     ErrorCode = "CONFIG_ATOMIC_LAYER_VALIDATION", Validation = invalid };
             }
