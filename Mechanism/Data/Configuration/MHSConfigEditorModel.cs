@@ -81,6 +81,7 @@ namespace CxVisual.Mechanism.Data.Configuration
         private readonly MHSConfigSection<T> _section;
         private readonly List<string> _states = new List<string>();
         private readonly FCMConfigDependencyGraph _dependencies;
+        private Action<FCMConfigAccessAction> _authorization;
         private int _position;
         private readonly int _maxStates;
         public MHSConfigEditorModel(MHSConfigSection<T> section, string reason, int maxUndoStates = 64)
@@ -93,6 +94,15 @@ namespace CxVisual.Mechanism.Data.Configuration
             _edit = section.BeginEdit(reason);
             _states.Add(FCMJsonValueCodec.Serialize(_edit.WorkingCopy));
         }
+        /// <summary>
+        /// Same editor engine behind dynamic authorization, rather than another
+        /// editor or a bypass to a raw service. Permissions are checked per action.
+        /// </summary>
+        public MHSConfigEditorModel(MHSConfigAuthorizedSection<T> authorized,
+            string reason, int maxUndoStates = 64)
+            : this(authorized == null ? throw new ArgumentNullException("authorized") :
+                authorized.EditorSource(), reason, maxUndoStates)
+        { _authorization = authorized.EditorDemand; }
         public FCMConfigIdentity Identity { get { return _section.Identity; } }
         public IList<FCMConfigFieldInfo> SchemaFields { get { return FCMConfigCatalog.Describe<T>(); } }
         public T Draft { get { EnsureOpen(); return Clone(_edit.WorkingCopy); } }
@@ -504,6 +514,7 @@ namespace CxVisual.Mechanism.Data.Configuration
         public async Task<MHSConfigCommitResult> CommitAsync(CancellationToken token)
         {
             EnsureOpen();
+            if (_authorization != null) _authorization(FCMConfigAccessAction.Commit);
             MHSConfigCommitResult result = await _edit.CommitAsync(token).ConfigureAwait(false);
             if (result.Success) Dispose();
             return result;
@@ -512,7 +523,10 @@ namespace CxVisual.Mechanism.Data.Configuration
         private static T Clone(T value)
         { return FCMJsonValueCodec.Deserialize<T>(FCMJsonValueCodec.Serialize(value)); }
         private void EnsureOpen()
-        { if (_edit == null) throw new ObjectDisposedException("MHSConfigEditorModel"); }
+        {
+            if (_edit == null) throw new ObjectDisposedException("MHSConfigEditorModel");
+            if (_authorization != null) _authorization(FCMConfigAccessAction.Edit);
+        }
         public void Dispose()
         {
             MHSConfigEdit<T> edit = _edit;

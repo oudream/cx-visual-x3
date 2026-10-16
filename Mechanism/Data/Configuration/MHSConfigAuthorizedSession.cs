@@ -60,6 +60,28 @@ namespace CxVisual.Mechanism.Data.Configuration
         internal MHSConfigAuthorizedSection(MHSConfigSection<T> source, MHSConfigAuthorizedSession session)
         { _source = source; _session = session; }
         public FCMConfigIdentity Identity { get { return _source.Identity; } }
+        /// <summary>Return only a guarded editor; the raw Section is never exposed publicly.</summary>
+        public MHSConfigEditorModel<T> BeginEditor(string reason, int maxUndoStates = 64)
+        { return new MHSConfigEditorModel<T>(this, reason, maxUndoStates); }
+        internal MHSConfigSection<T> EditorSource()
+        {
+            EditorDemand(FCMConfigAccessAction.Edit);
+            _source.RequireExplicitApply();
+            return _source;
+        }
+        internal void EditorDemand(FCMConfigAccessAction action)
+        {
+            Demand(FCMConfigAccessAction.Edit, null);
+            _session.RequireReadable<T>(Identity, null);
+            if (action == FCMConfigAccessAction.Commit)
+                Demand(FCMConfigAccessAction.Commit, null);
+        }
+        public IList<string> ListSavedVersions()
+        {
+            Demand(FCMConfigAccessAction.Audit, null);
+            _session.RequireReadable<T>(Identity, null);
+            return _source.ListSavedVersions();
+        }
         public FCMConfigRevision Revision
         { get { Demand(FCMConfigAccessAction.Read, null); return _source.Revision; } }
         public T Get()
