@@ -268,8 +268,9 @@ namespace CxVisual.TestCenter.Cases
             };
             context.AssertEqual(MRKRecoveryDisposition.RequiresReconciliation,
                 MRKJournalRecovery.Evaluate(flow, records).Disposition, "无终态仍需恢复审查");
-            context.AssertEqual(MRKRecoveryDisposition.Closed,
-                MRKJournalRecovery.Evaluate(unrelated, records).Disposition, "独立流程不交叉");
+            context.AssertEqual(MRKRecoveryDisposition.RequiresReconciliation,
+                MRKJournalRecovery.Evaluate(unrelated, records).Disposition,
+                "缺少FlowStarted的孤儿终态不可判定Closed");
             context.AssertEqual(MRKRecoveryDisposition.NoRecord,
                 MRKJournalRecovery.Evaluate(Guid.NewGuid(), records).Disposition, "无记录不能假绿");
         }
