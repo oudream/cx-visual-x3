@@ -1,95 +1,458 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using CxVisual.Foundation.Data.Configuration;
 using CxVisual.Mechanism.Data.Configuration;
 
 namespace CxVisual.Mechanism.Presentation.Wpf
 {
     /// <summary>
-    /// Studio UI projection only: the one authoritative configuration backend lives in Mechanism.Data.
-    /// Scalar values use the type codec; complex objects may be edited as JSON.
+    /// Reusable schema-driven editor for trusted WPF hosts. All writes go through
+    /// the existing MHSConfigEditorModel and its single saved/effective truth.
+    /// Never hand a raw Section or this trusted control to untrusted plugins.
     /// </summary>
+    public sealed class MPWConfigEditorControl<T> : UserControl, IDisposable where T : new()
+    {
+        private readonly MHSConfigSection<T> _section;
+        private MHSConfigEditorModel<T> _editor;
+        private readonly StackPanel _form = new StackPanel();
+        private readonly TextBlock _status = new TextBlock { TextWrapping = TextWrapping.Wrap };
+        private readonly TextBlock _issues = new TextBlock { TextWrapping = TextWrapping.Wrap, Foreground = Brushes.Firebrick };
+        private readonly ComboBox _boundaries = new ComboBox { Width = 120, Margin = new Thickness(5) };
+        private readonly ComboBox _history = new ComboBox { Width = 110, Margin = new Thickness(5) };
+        private readonly Dictionary<string, Func<string, Action<string>, FrameworkElement>> _custom =
+            new Dictionary<string, Func<string, Action<string>, FrameworkElement>>(StringComparer.Ordinal);
+        private bool _disposed;
+        private bool _working;
+        private bool _saved;
+        private int _count;
+        public bool WasSaved { get { return _saved; } }
+        public int VisibleEditorCount { get { return _count; } }
+        public MPWConfigEditorControl(MHSConfigSection<T> section)
+        {
+            _section = section ?? throw new ArgumentNullException("section");
+            _editor = new MHSConfigEditorModel<T>(section, "通用配置编辑");
+            foreach (FCMConfigApplyPolicy policy in Enum.GetValues(typeof(FCMConfigApplyPolicy)))
+                _boundaries.Items.Add(policy);
+            _boundaries.SelectedItem = FCMConfigApplyPolicy.NextTask;
+            BuildShell();
+            RefreshAll();
+            Unloaded += (s, e) => Dispose();
+        }
+        /// <summary>Professional editors return a WPF element and accept a JSON setter.
+        /// The setter still performs typed validation and edits only the current draft.</summary>
+        public void RegisterEditor(string path, Func<string, Action<string>, FrameworkElement> factory)
+        {
+            EnsureActive();
+            if (string.IsNullOrWhiteSpace(path) || factory == null) throw new ArgumentException("Editor required");
+            _custom[path] = factory;
+            RefreshAll();
+        }
+        private static Button MakeButton(string title, Action action)
+        {
+            Button button = new Button { Content = title, Padding = new Thickness(9, 5, 9, 5),
+                Margin = new Thickness(3), MinHeight = 27 };
+            button.Click += (s, e) => action();
+            return button;
+        }
+        private void BuildShell()
+        {
+            DockPanel root = new DockPanel { Margin = new Thickness(12) };
+            StackPanel header = new StackPanel { Margin = new Thickness(0, 0, 0, 8) };
+            header.Children.Add(new TextBlock { Text = FCMConfigSchemaBuilder.Describe<T>().SectionId,
+                FontSize = 19, FontWeight = FontWeights.SemiBold, Foreground = Brushes.DarkSlateBlue });
+            header.Children.Add(_status);
+            DockPanel.SetDock(header, Dock.Top);
+            root.Children.Add(header);
+
+            WrapPanel commands = new WrapPanel { Margin = new Thickness(0, 6, 0, 8) };
+            commands.Children.Add(MakeButton("撤销", () => Execute(() => _editor.Undo())));
+            commands.Children.Add(MakeButton("重做", () => Execute(() => _editor.Redo())));
+            commands.Children.Add(MakeButton("预览与验证", () => PreviewAsync()));
+            commands.Children.Add(MakeButton("校验并保存", () => SaveAsync()));
+            commands.Children.Add(_boundaries);
+            commands.Children.Add(MakeButton("申请生效", Apply));
+            commands.Children.Add(new TextBlock { Text = "历史版本", VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(8, 0, 0, 0) });
+            commands.Children.Add(_history);
+            commands.Children.Add(MakeButton("恢复为新修订", () => RestoreAsync()));
+            DockPanel.SetDock(commands, Dock.Top);
+            root.Children.Add(commands);
+
+            _issues.Margin = new Thickness(0, 3, 0, 8);
+            DockPanel.SetDock(_issues, Dock.Bottom);
+            root.Children.Add(_issues);
+
+            TabControl tabs = new TabControl();
+            tabs.Items.Add(new TabItem { Header = "参数及动态集合", Content = new ScrollViewer {
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = _form } });
+            StackPanel detail = new StackPanel { Margin = new Thickness(12) };
+            detail.Children.Add(new TextBlock { Text = "Saved / Effective / 审计诊断",
+                FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 0, 8) });
+            Button inspect = MakeButton("刷新诊断", () => ShowDiagnostics(detail));
+            detail.Children.Add(inspect);
+            tabs.Items.Add(new TabItem { Header = "版本、历史与诊断",
+                Content = new ScrollViewer { Content = detail, VerticalScrollBarVisibility = ScrollBarVisibility.Auto } });
+            tabs.SelectionChanged += (s, e) => { if (tabs.SelectedIndex == 1) ShowDiagnostics(detail); };
+            root.Children.Add(tabs);
+            Content = root;
+        }
+        private void ShowDiagnostics(StackPanel host)
+        {
+            if (_disposed || host.Children.Count < 2) return;
+            while (host.Children.Count > 2) host.Children.RemoveAt(2);
+            MHSConfigStatus status = _section.GetStatus();
+            host.Children.Add(new TextBlock { Text = "Saved: " + _section.SavedVersion +
+                "   Effective: " + _section.EffectiveVersion + "   Pending: " + _section.HasPendingApply +
+                "   Audit entries: " + status.AuditCount, TextWrapping = TextWrapping.Wrap });
+            host.Children.Add(new TextBlock { Text = "完整性: " + (status.IsHealthy ? "通过" : "需要检查") +
+                "  审计/校验问题数: " + status.IntegrityIssues.Count, Margin = new Thickness(0, 8, 0, 2) });
+            foreach (MHSConfigAuditEntry audit in _section.ListAudit().Reverse().Take(50))
+                host.Children.Add(new TextBlock { Text = audit.Revision + "  " +
+                    audit.RecordedAtUtc.ToLocalTime().ToString("g") + "  字段数: " +
+                    audit.ChangedPaths.Count, Margin = new Thickness(0, 4, 0, 0) });
+        }
+        private void EnsureActive()
+        { if (_disposed) throw new ObjectDisposedException("MPWConfigEditorControl"); }
+        private void Execute(Action action)
+        {
+            if (_disposed || _working) return;
+            try { action(); _issues.Text = ""; RefreshAll(); }
+            catch (Exception ex) { ShowError(ex); }
+        }
+        private void ShowError(Exception ex)
+        {
+            // Never display arbitrary plugin/validator exception messages; those may contain secrets.
+            _issues.Text = "操作未完成（" + ex.GetType().Name + "）。请检查输入及授权日志。";
+        }
+        private void RefreshAll()
+        {
+            if (_disposed) return;
+            _status.Text = "机台/工程: " + _section.Identity.ScopeKind + "/" +
+                _section.Identity.ScopeId + "    保存版本: " + _section.SavedVersion +
+                "    生效版本: " + _section.EffectiveVersion +
+                (_section.HasPendingApply ? "    [待生效]" : "    [已同步]");
+            _count = 0;
+            _form.Children.Clear();
+            object data = _editor.Draft;
+            RenderObject(_form, typeof(T), data, "", 0, false);
+            string selected = _history.SelectedItem as string;
+            _history.Items.Clear();
+            foreach (string version in _section.ListSavedVersions().Reverse())
+                _history.Items.Add(version);
+            _history.SelectedItem = selected != null && _history.Items.Contains(selected)
+                ? selected : _section.SavedVersion;
+        }
+        private static bool IsScalar(Type type)
+        {
+            type = Nullable.GetUnderlyingType(type) ?? type;
+            return FCMConfigSchemaBuilder.IsScalar(type);
+        }
+        private void RenderObject(Panel host, Type type, object model, string parent, int depth, bool hidden)
+        {
+            if (depth > 24) { host.Children.Add(new TextBlock { Text = "嵌套深度超过编辑限制" }); return; }
+            foreach (FCMConfigMemberDescriptor member in FCMConfigSchemaBuilder.Members(type))
+            {
+                string path = parent.Length == 0 ? member.Name : parent + "." + member.Name;
+                bool isSecret = hidden || member.Property.IsDefined(typeof(FCMConfigSensitiveAttribute), true) ||
+                    FCMConfigSensitivity.ContainsSensitive(member.MemberType);
+                object value = model == null ? null : member.Property.GetValue(model, null);
+                RenderValue(host, member.MemberType, value, path, member.Label, depth, isSecret, member.Unit);
+            }
+        }
+        private void RenderValue(Panel host, Type type, object value, string path,
+            string label, int depth, bool hidden, string unit)
+        {
+            if (hidden)
+            {
+                host.Children.Add(new TextBlock { Text = label + " — [敏感配置已隐藏，需使用授权专用编辑器]",
+                    Margin = new Thickness(4, 8, 0, 8), Foreground = Brushes.Gray });
+                return;
+            }
+            Type actual = Nullable.GetUnderlyingType(type) ?? type;
+            if (IsScalar(type))
+            {
+                StackPanel line = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(4, 5, 4, 5) };
+                TextBlock caption = new TextBlock { Text = label + (string.IsNullOrEmpty(unit) ? "" : " (" + unit + ")"),
+                    Width = 190, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+                line.Children.Add(caption);
+                Func<string, Action<string>, FrameworkElement> custom;
+                if (_custom.TryGetValue(path, out custom))
+                {
+                    FrameworkElement control = custom(_editor.ReadDraftJson(path), json =>
+                        Execute(() => _editor.SetPathJson(path, json)));
+                    line.Children.Add(control);
+                }
+                else if (actual == typeof(bool))
+                {
+                    CheckBox box = new CheckBox { IsChecked = value == null ? (bool?)null : (bool)value,
+                        IsThreeState = Nullable.GetUnderlyingType(type) != null, VerticalAlignment = VerticalAlignment.Center };
+                    box.Click += (s, e) => Execute(() => _editor.SetPathJson(path,
+                        box.IsChecked.HasValue ? (box.IsChecked.Value ? "true" : "false") : "null"));
+                    line.Children.Add(box);
+                }
+                else if (actual.IsEnum)
+                {
+                    ComboBox box = new ComboBox { Width = 210, ItemsSource = Enum.GetNames(actual),
+                        SelectedItem = value == null ? null : value.ToString() };
+                    box.SelectionChanged += (s, e) => {
+                        if (box.SelectedItem != null) Execute(() => _editor.SetPathJson(path,
+                            FCMJsonValueCodec.Serialize((string)box.SelectedItem)));
+                    };
+                    line.Children.Add(box);
+                }
+                else
+                {
+                    TextBox box = new TextBox { Width = 230, MinHeight = 26,
+                        Text = Format(value), Padding = new Thickness(5, 3, 5, 3) };
+                    box.LostFocus += (s, e) => Execute(() => _editor.SetPathJson(path,
+                        ToJson(box.Text, type)));
+                    line.Children.Add(box);
+                    if (Nullable.GetUnderlyingType(type) != null)
+                        line.Children.Add(MakeButton("置空", () => Execute(() => _editor.SetPathJson(path, "null"))));
+                }
+                _count++;
+                host.Children.Add(line);
+                AddFieldDetails(host, path);
+                return;
+            }
+            Expander expander = new Expander { Header = label + "  [" + path + "]", IsExpanded = depth < 2,
+                Margin = new Thickness(4, 6, 4, 2), Padding = new Thickness(8, 5, 3, 5) };
+            StackPanel inner = new StackPanel();
+            expander.Content = inner;
+            host.Children.Add(expander);
+            if (value == null)
+            {
+                inner.Children.Add(new TextBlock { Text = "null：请先初始化上层对象。",
+                    Foreground = Brushes.Gray });
+                return;
+            }
+            if (actual.IsArray || (actual.IsGenericType &&
+                (actual.GetGenericTypeDefinition() == typeof(List<>) ||
+                 actual.GetGenericTypeDefinition() == typeof(Dictionary<,>) ||
+                 actual.GetGenericTypeDefinition() == typeof(HashSet<>))))
+                RenderCollection(inner, actual, value, path, depth + 1);
+            else RenderObject(inner, actual, value, path, depth + 1, false);
+        }
+        private void AddFieldDetails(Panel host, string path)
+        {
+            FCMConfigFieldInfo field = _editor.SchemaFields.FirstOrDefault(x => x.Path == path);
+            if (field == null) return;
+            string note = (field.Description ?? "") + "    " +
+                (field.Range == null ? "" : "范围: " + field.Range + "  ") +
+                (field.Regex == null ? "" : "正则: " + field.Regex + "  ") +
+                "生效: " + field.ApplyPolicy;
+            host.Children.Add(new TextBlock { Text = note, FontSize = 11,
+                Foreground = Brushes.SlateGray, Margin = new Thickness(196, 0, 2, 3),
+                TextWrapping = TextWrapping.Wrap });
+        }
+        private void RenderCollection(Panel host, Type type, object value, string path, int depth)
+        {
+            Type[] args = type.IsArray ? new[] { type.GetElementType() } : type.GetGenericArguments();
+            if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Dictionary<,>))
+            {
+                if (args[0] != typeof(string))
+                { host.Children.Add(new TextBlock { Text = "仅支持 string 键" }); return; }
+                StackPanel add = new StackPanel { Orientation = Orientation.Horizontal };
+                TextBox newKey = new TextBox { Width = 160, Margin = new Thickness(3), ToolTip = "新字典键" };
+                add.Children.Add(newKey);
+                add.Children.Add(MakeButton("增加键", () => Execute(() =>
+                    _editor.AddMapItem(path, newKey.Text, DefaultJson(args[1])))));
+                host.Children.Add(add);
+                foreach (DictionaryEntry entry in (IDictionary)value)
+                {
+                    string key = (string)entry.Key, child = path + "[" + FCMJsonValueCodec.Serialize(key) + "]";
+                    StackPanel actions = new StackPanel { Orientation = Orientation.Horizontal };
+                    TextBox rename = new TextBox { Text = key, Width = 160, Margin = new Thickness(3) };
+                    actions.Children.Add(rename);
+                    actions.Children.Add(MakeButton("改名", () => Execute(() =>
+                        _editor.RenameMapItem(path, key, rename.Text))));
+                    actions.Children.Add(MakeButton("删除", () => Execute(() => _editor.RemoveMapItem(path, key))));
+                    host.Children.Add(actions);
+                    RenderValue(host, args[1], entry.Value, child, "键: " + key, depth, false, null);
+                }
+                return;
+            }
+            if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(HashSet<>))
+            {
+                StackPanel add = new StackPanel { Orientation = Orientation.Horizontal };
+                TextBox input = new TextBox { Width = 180, Margin = new Thickness(3),
+                    ToolTip = "输入新集合元素" };
+                add.Children.Add(input);
+                add.Children.Add(MakeButton("增加元素", () => Execute(() =>
+                    _editor.AddSetJson(path, ToJson(input.Text, args[0])))));
+                host.Children.Add(add);
+                foreach (object item in (IEnumerable)value)
+                {
+                    string json = FCMJsonValueCodec.Serialize(item);
+                    StackPanel row = new StackPanel { Orientation = Orientation.Horizontal };
+                    row.Children.Add(new TextBlock { Text = Format(item), Width = 200,
+                        VerticalAlignment = VerticalAlignment.Center });
+                    row.Children.Add(MakeButton("删除", () => Execute(() =>
+                        _editor.RemoveSetJson(path, json))));
+                    host.Children.Add(row);
+                }
+                return;
+            }
+            IList list = (IList)value;
+            bool mutable = !type.IsArray;
+            if (mutable)
+                host.Children.Add(MakeButton("追加一项", () =>
+                    Execute(() => _editor.InsertListItem(path, list.Count, DefaultJson(args[0])))));
+            for (int i = 0; i < list.Count; i++)
+            {
+                int index = i;
+                string child = path + "[" + i.ToString(CultureInfo.InvariantCulture) + "]";
+                if (mutable)
+                {
+                    StackPanel actions = new StackPanel { Orientation = Orientation.Horizontal };
+                    actions.Children.Add(new TextBlock { Text = "#" + i, Width = 55,
+                        VerticalAlignment = VerticalAlignment.Center });
+                    actions.Children.Add(MakeButton("↑", () => Execute(() =>
+                        _editor.MoveListItem(path, index, Math.Max(0, index - 1)))));
+                    actions.Children.Add(MakeButton("↓", () => Execute(() =>
+                        _editor.MoveListItem(path, index, Math.Min(list.Count - 1, index + 1)))));
+                    actions.Children.Add(MakeButton("删除", () => Execute(() =>
+                        _editor.RemoveListItem(path, index))));
+                    host.Children.Add(actions);
+                }
+                RenderValue(host, args[0], list[i], child, "第 " + i + " 项", depth, false, null);
+            }
+        }
+        private static string Format(object value)
+        { return value == null ? "" : Convert.ToString(value, CultureInfo.InvariantCulture); }
+        private static string DefaultJson(Type type)
+        {
+            if (type == typeof(string)) return FCMJsonValueCodec.Serialize("");
+            if (Nullable.GetUnderlyingType(type) != null) return "null";
+            object value = Activator.CreateInstance(type);
+            return FCMJsonValueCodec.Serialize(value);
+        }
+        private static string ToJson(string value, Type type)
+        {
+            Type t = Nullable.GetUnderlyingType(type) ?? type;
+            if (value.Length == 0 && Nullable.GetUnderlyingType(type) != null) return "null";
+            if (t == typeof(string) || t == typeof(char) || t.IsEnum ||
+                t == typeof(Guid) || t == typeof(DateTime) || t == typeof(DateTimeOffset) ||
+                t == typeof(TimeSpan) || t == typeof(Uri) || t == typeof(Version))
+                return FCMJsonValueCodec.Serialize(value);
+            // Reject malformed numbers/booleans using the actual value codec.
+            FCMJsonValueCodec.Deserialize(value, type);
+            return value;
+        }
+        private void ShowIssues(IEnumerable<FCMConfigIssue> issues)
+        {
+            // No untrusted validator text and no sensitive field content in UI.
+            _issues.Text = string.Join(Environment.NewLine, issues.Take(15)
+                .Select(x => x.Path + "  " + x.Code + "（详细信息请使用可信诊断）"));
+        }
+        private async void PreviewAsync()
+        {
+            if (_disposed || _working) return;
+            _working = true;
+            try
+            {
+                MHSConfigPreview result = await _editor.PreviewAsync(CancellationToken.None);
+                ShowIssues(result.Validation.Issues);
+                if (result.Validation.IsValid) _issues.Text = "验证通过，可保存当前草稿。";
+            }
+            catch (Exception ex) { ShowError(ex); }
+            finally { _working = false; }
+        }
+        private async void SaveAsync()
+        {
+            if (_disposed || _working) return;
+            _working = true;
+            try
+            {
+                MHSConfigCommitResult result = await _editor.CommitAsync(CancellationToken.None);
+                if (result.Success)
+                {
+                    _saved = true;
+                    _editor = new MHSConfigEditorModel<T>(_section, "通用配置编辑");
+                    _issues.Text = "已保存 " + result.Revision + "；实际生效取决于配置边界。";
+                    RefreshAll();
+                }
+                else
+                {
+                    ShowIssues(result.Validation == null ? new FCMConfigIssue[0] : result.Validation.Issues);
+                    _issues.Text = "保存失败：" + result.ErrorCode + " " + _issues.Text;
+                }
+            }
+            catch (Exception ex) { ShowError(ex); }
+            finally { _working = false; }
+        }
+        private void Apply()
+        {
+            Execute(() => {
+                var result = _section.TryApplyPendingAtBoundary(
+                    (FCMConfigApplyPolicy)_boundaries.SelectedItem, null);
+                _issues.Text = result.Applied ? "配置已生效: " + result.EffectiveVersion :
+                    "未生效: " + result.Status + " （边界或联锁尚未满足）";
+            });
+        }
+        private async void RestoreAsync()
+        {
+            if (_disposed || _working) return;
+            string version = _history.SelectedItem as string;
+            if (string.IsNullOrWhiteSpace(version)) return;
+            if (MessageBox.Show("历史版本将恢复为新的 Saved 修订，并不会直接改变正在运行的 Effective。继续？",
+                "历史恢复", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+            _working = true;
+            try
+            {
+                MHSConfigCommitResult result = await _section.RestoreSavedVersionAsync(
+                    version, "Studio 历史恢复", CancellationToken.None);
+                if (!result.Success) throw new InvalidOperationException("CONFIG_RESTORE_REJECTED");
+                _editor.Dispose();
+                _editor = new MHSConfigEditorModel<T>(_section, "历史恢复后的草稿");
+                _issues.Text = "已建立恢复修订 " + result.Revision + "，尚需检查生效边界。";
+                _saved = true;
+                RefreshAll();
+            }
+            catch (Exception ex) { ShowError(ex); }
+            finally { _working = false; }
+        }
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _editor.Dispose();
+        }
+    }
+
+    /// <summary>Existing Studio entry retained; the same UserControl can be embedded.</summary>
     public static class MPWConfigEditorDialog
     {
         public static bool Edit<T>(Window owner, MHSConfigSection<T> config) where T : new()
         {
             if (config == null) throw new ArgumentNullException("config");
-            using (MHSConfigEdit<T> edit = config.BeginEdit("Studio 配置编辑"))
+            using (var control = new MPWConfigEditorControl<T>(config))
             {
-                Window view = new Window
-                {
-                    Owner = owner, Width = 680, Height = 650, MinWidth = 480, MinHeight = 350,
-                    Title = typeof(T).Name + " — 配置编辑", WindowStartupLocation = WindowStartupLocation.CenterOwner
+                Window dialog = new Window {
+                    Title = "CxVisual · " + FCMConfigSchemaBuilder.Describe<T>().SectionId,
+                    Width = 960, Height = 770, MinWidth = 650, MinHeight = 470,
+                    WindowStartupLocation = owner == null ?
+                        WindowStartupLocation.CenterScreen : WindowStartupLocation.CenterOwner
                 };
-                DockPanel shell = new DockPanel { Margin = new Thickness(12) };
-                StackPanel footer = new StackPanel
-                { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
-                DockPanel.SetDock(footer, Dock.Bottom);
-                Button save = new Button { Content = "校验并保存", Padding = new Thickness(12, 6, 12, 6), Margin = new Thickness(5) };
-                Button cancel = new Button { Content = "取消", Padding = new Thickness(12, 6, 12, 6), Margin = new Thickness(5) };
-                footer.Children.Add(save); footer.Children.Add(cancel);
-                shell.Children.Add(footer);
-                ScrollViewer scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-                StackPanel form = new StackPanel { Orientation = Orientation.Vertical };
-                scroll.Content = form;
-                shell.Children.Add(scroll);
-                view.Content = shell;
-                List<Tuple<FCMConfigMemberDescriptor, TextBox>> editors =
-                    new List<Tuple<FCMConfigMemberDescriptor, TextBox>>();
-                foreach (FCMConfigMemberDescriptor member in FCMConfigSchemaBuilder.Describe<T>().Members)
-                {
-                    form.Children.Add(new TextBlock
-                    {
-                        Text = member.Label + (string.IsNullOrEmpty(member.Unit) ? "" : " (" + member.Unit + ")"),
-                        Margin = new Thickness(0, 8, 0, 3), FontWeight = FontWeights.SemiBold
-                    });
-                    object old = member.Property.GetValue(edit.WorkingCopy, null);
-                    TextBox field = new TextBox
-                    {
-                        Text = member.MemberType == typeof(string) ? (string)old ?? "" : FCMJsonValueCodec.Serialize(old),
-                        MinHeight = 26, Padding = new Thickness(5),
-                        ToolTip = "复杂对象使用 JSON；字符串直接输入文本。"
-                    };
-                    form.Children.Add(field);
-                    editors.Add(Tuple.Create(member, field));
-                }
-                cancel.Click += (sender, e) => view.DialogResult = false;
-                save.Click += (sender, e) =>
-                {
-                    try
-                    {
-                        foreach (Tuple<FCMConfigMemberDescriptor, TextBox> pair in editors)
-                        {
-                            string raw = pair.Item1.MemberType == typeof(string)
-                                ? FCMJsonValueCodec.Serialize(pair.Item2.Text) : pair.Item2.Text;
-                            object parsed = FCMJsonValueCodec.Deserialize(raw, pair.Item1.MemberType);
-                            pair.Item1.Property.SetValue(edit.WorkingCopy, parsed, null);
-                        }
-                        MHSConfigPreview preview = edit.Preview();
-                        if (!preview.Validation.IsValid)
-                        {
-                            List<string> errors = new List<string>();
-                            foreach (FCMConfigIssue issue in preview.Validation.Issues)
-                                errors.Add(issue.Path + ": " + issue.Message);
-                            MessageBox.Show(view, string.Join(Environment.NewLine, errors),
-                                "配置验证失败", MessageBoxButton.OK, MessageBoxImage.Warning);
-                            return;
-                        }
-                        MHSConfigCommitResult result = edit.CommitAsync(CancellationToken.None).GetAwaiter().GetResult();
-                        if (!result.Success)
-                            throw new InvalidOperationException("Commit failed: " + result.ErrorCode);
-                        view.DialogResult = true;
-                    }
-                    catch (Exception ex)
-                    {
-                        MessageBox.Show(view, ex.Message, "无法保存配置", MessageBoxButton.OK, MessageBoxImage.Error);
-                    }
-                };
-                return view.ShowDialog() == true;
+                if (owner != null) dialog.Owner = owner;
+                DockPanel shell = new DockPanel();
+                Button close = new Button { Content = "关闭编辑器", Height = 34, Width = 120,
+                    Margin = new Thickness(10), HorizontalAlignment = HorizontalAlignment.Right };
+                close.Click += (s, e) => dialog.Close();
+                DockPanel.SetDock(close, Dock.Bottom);
+                shell.Children.Add(close);
+                shell.Children.Add(control);
+                dialog.Content = shell;
+                dialog.ShowDialog();
+                return control.WasSaved;
             }
         }
     }
