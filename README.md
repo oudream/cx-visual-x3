@@ -7,6 +7,8 @@
 
 ## 文档入口与历史代码资产
 
+- **阶段 A 的实际验收矩阵**：[V2.4 层级定义、Schema、恢复、安全改造与 CI 证据](DOCS/Implementation/CxVisual_统一配置体系_V2.4_阶段A实施与验收矩阵.md)。
+
 - **统一配置体系 V2.4 主规范**：[完整设计、API、自动配置界面与验收](DOCS/Implementation/CxVisual_统一配置体系_完整设计与验收_V2.4.md)；[阶段 A-D 实施计划](DOCS/Implementation/CxVisual_统一配置体系_V2.4_源码审查与分阶段实施计划.md)。基础只在 Foundation.Data / Mechanism.Data 两个项目，功能完成状态须以 CI/验收矩阵为准。
 
 - **协同开发主入口**：[DOCS/00_CxVisual_协同开发入口与七仓复用基线.md](DOCS/00_CxVisual_协同开发入口与七仓复用基线.md)；工程规则见 [AGENTS.md](AGENTS.md)，Codex任务规范见 [.agents/skills/cxvisual-engineering/SKILL.md](.agents/skills/cxvisual-engineering/SKILL.md)。

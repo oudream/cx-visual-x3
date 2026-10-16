@@ -130,3 +130,5 @@
 - [V2.4 完整统一配置体系设计与验收](Implementation/CxVisual_统一配置体系_完整设计与验收_V2.4.md)：需求与 API、六角色、27 组职责、24 项需求、12 案例、四层通用自动配置界面。
 - [V2.4 源码审查与阶段 A—D 实施计划](Implementation/CxVisual_统一配置体系_V2.4_源码审查与分阶段实施计划.md)：按层级/Schema 正确性、安全、开发者体验、WPF、性能逐组闭环。当前唯一主规范为 V2.4，旧 V2.2/V2.3 保留历史证据，不重复建立配置框架。
 - 实现 Owner 仅为 `Foundation/Data/Configuration` 与 `Mechanism/Data/Configuration`；WPF 仅承载编辑显示，不产生第二配置真源。
+
+- [V2.4 阶段 A 实施与验收矩阵](Implementation/CxVisual_统一配置体系_V2.4_阶段A实施与验收矩阵.md)：按实际提交与测试追踪，不将 UI/实机/远端能力虚报已完成。
