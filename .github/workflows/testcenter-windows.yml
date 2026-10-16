@@ -49,6 +49,10 @@ jobs:
               try { Wait-Process -Id $p.Id -Timeout 90 -ErrorAction Stop }
               catch {
                   Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+                  $traceFile = "$report.trace.txt"
+                  if (Test-Path $traceFile) {
+                      Get-Content -LiteralPath $traceFile | ForEach-Object { Write-Host "NUnit trace at timeout: $_" }
+                  } else { Write-Host "NUnit trace file missing: $traceFile" }
                   throw "NUnit Engine PoC timed out after 90 seconds; negative=$negative"
               }
               $p.Refresh()
