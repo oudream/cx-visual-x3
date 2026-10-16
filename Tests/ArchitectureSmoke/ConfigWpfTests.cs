@@ -130,6 +130,28 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     if (groupUi.MemberCount != 2 || groupUi.Content == null ||
                         groupUi.PendingFields != 0)
                         throw new InvalidOperationException("CONFIG_WPF_GROUP_EDITOR_MISSING");
+                    groupUi.StageField("Scan", "ExposureMs", "137");
+                    groupUi.StageField("Reconstruction", "Count", "4");
+                    if (groupUi.PendingFields != 2)
+                        throw new InvalidOperationException("CONFIG_WPF_GROUP_STAGE_FAILED");
+                    MHSConfigCommitResult grouped = AwaitOnSta(
+                        groupUi.SaveGroupDraftAsync(CancellationToken.None));
+                    if (!grouped.Success || groupUi.PendingFields != 0)
+                        throw new InvalidOperationException("CONFIG_WPF_GROUP_COMMIT_FAILED");
+                    using (var before = group.CaptureForTask("WPF-Before-Apply"))
+                    using (var saved = group.CaptureSaved())
+                    {
+                        if (saved.Get<V13ConfigSample>("Scan").ExposureMs != 137 ||
+                            saved.Get<V13AsyncConfig>("Reconstruction").Count != 4 ||
+                            before.Get<V13ConfigSample>("Scan").ExposureMs != 80)
+                            throw new InvalidOperationException("CONFIG_WPF_GROUP_SAVED_NOT_ATOMIC");
+                    }
+                    if (!group.TryApplyPendingAtBoundary(FCMConfigApplyPolicy.NextTask, null).Applied)
+                        throw new InvalidOperationException("CONFIG_WPF_GROUP_APPLY_FAILED");
+                    using (var after = group.CaptureForTask("WPF-After-Apply"))
+                        if (after.Get<V13ConfigSample>("Scan").ExposureMs != 137 ||
+                            after.Get<V13AsyncConfig>("Reconstruction").Count != 4)
+                            throw new InvalidOperationException("CONFIG_WPF_GROUP_EFFECTIVE_NOT_ATOMIC");
                     var layers = new[] {
                         new MVBConfigLayerSpec("Template", "template", "WPF-Base", 10),
                         new MVBConfigLayerSpec("Machine", "machine", "WPF", 20)

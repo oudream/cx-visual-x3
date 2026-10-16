@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -118,10 +119,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                         if (_working) return;
                         try
                         {
-                            string json = MPWConfigEditorControl<MHSConfigGroupDocument>
-                                .ToConfigJson(edit.Text, field.DataType);
-                            FCMJsonValueCodec.Deserialize(json, field.DataType);
-                            _pending[key] = edit.Text;
+                            StageField(info.Key, field.Path, edit.Text);
                             _status.Text = "草稿字段已修改；请一次性原子校验并保存。";
                         }
                         catch (Exception ex)
@@ -135,9 +133,24 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 }
             }
         }
-        private async void SaveAsync()
+        public void StageField(string memberKey, string path, string raw)
         {
-            if (_working || _pending.Count == 0) return;
+            if (_working) throw new InvalidOperationException("CONFIG_GROUP_UI_BUSY");
+            MHSConfigGroupMemberInfo member = _members.SingleOrDefault(x => x.Key == memberKey);
+            if (member == null) throw new KeyNotFoundException("CONFIG_GROUP_UI_UNKNOWN_MEMBER");
+            FCMConfigFieldInfo field = FCMConfigCatalog.Describe(member.ModelType)
+                .SingleOrDefault(x => x.Path == path);
+            if (field == null || field.IsSensitive ||
+                !FCMConfigSchemaBuilder.IsScalar(field.DataType))
+                throw new InvalidOperationException("CONFIG_GROUP_UI_FIELD_NOT_EDITABLE");
+            string json = MPWConfigEditorControl<MHSConfigGroupDocument>.ToConfigJson(raw, field.DataType);
+            FCMJsonValueCodec.Deserialize(json, field.DataType);
+            _pending[Id(memberKey, path)] = raw;
+        }
+        public async Task<MHSConfigCommitResult> SaveGroupDraftAsync(CancellationToken token)
+        {
+            if (_working) throw new InvalidOperationException("CONFIG_GROUP_UI_BUSY");
+            if (_pending.Count == 0) return null;
             _working = true;
             try
             {
@@ -156,14 +169,20 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 {
                     foreach (var op in operations)
                         edit.SetMemberPathJson(op.Item1, op.Item2, op.Item3);
-                }, "WPF 多模型一次提交", CancellationToken.None);
+                }, "WPF 多模型一次提交", token);
                 if (result.Success) _pending.Clear();
                 RefreshMember();
                 _status.Text = result.Success ? "原子组已保存 " + result.Revision +
                     "；仍需按边界生效。" : "原子组校验或版本冲突：" + result.ErrorCode;
+                return result;
             }
-            catch (Exception ex) { _status.Text = "原子组未保存：" + ex.GetType().Name; }
             finally { _working = false; }
+        }
+        private async void SaveAsync()
+        {
+            if (_working || _pending.Count == 0) return;
+            try { await SaveGroupDraftAsync(CancellationToken.None); }
+            catch (Exception ex) { _status.Text = "原子组未保存：" + ex.GetType().Name; }
         }
         private void Apply()
         {
