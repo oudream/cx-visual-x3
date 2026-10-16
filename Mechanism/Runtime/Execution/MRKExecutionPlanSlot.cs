@@ -29,15 +29,19 @@ namespace CxVisual.Mechanism.Runtime.Execution
         private MRKExecutionPlan _active, _pending;
         private long _activeRevision, _pendingRevision;
         private int _running;
+        private readonly bool _requiresAuthorization;
 
-        public MRKExecutionPlanSlot(MRKExecutionPlan initial, long revision)
+        public MRKExecutionPlanSlot(MRKExecutionPlan initial, long revision,
+            bool requireAuthorizedPublication = false)
         {
             if (initial == null) throw new ArgumentNullException("initial");
             if (revision < 0) throw new ArgumentOutOfRangeException("revision");
             _active = initial;
             _activeRevision = revision;
+            _requiresAuthorization = requireAuthorizedPublication;
         }
         public long ActiveRevision { get { lock (_gate) return _activeRevision; } }
+        public bool RequiresAuthorization { get { return _requiresAuthorization; } }
         public long? PendingRevision
         { get { lock (_gate) return _pending == null ? (long?)null : _pendingRevision; } }
         public int RunningFlows { get { lock (_gate) return _running; } }
@@ -60,6 +64,12 @@ namespace CxVisual.Mechanism.Runtime.Execution
         }
         public void StageValidated(MRKExecutionPlan candidate, long revision)
         {
+            if (_requiresAuthorization)
+                throw new UnauthorizedAccessException("生产Slot禁止绕过授权发布入口");
+            StageAuthorized(candidate, revision);
+        }
+        internal void StageAuthorized(MRKExecutionPlan candidate, long revision)
+        {
             if (candidate == null) throw new ArgumentNullException("candidate");
             lock (_gate)
             {
@@ -72,6 +82,12 @@ namespace CxVisual.Mechanism.Runtime.Execution
         }
         /// <summary>只执行软件Plan切换；调用前仍需由实际运行Host确认硬件安全点。</summary>
         public bool TryActivatePending()
+        {
+            if (_requiresAuthorization)
+                throw new UnauthorizedAccessException("生产Slot禁止绕过Host安全点");
+            return TryActivateAuthorized();
+        }
+        internal bool TryActivateAuthorized()
         {
             lock (_gate)
             {

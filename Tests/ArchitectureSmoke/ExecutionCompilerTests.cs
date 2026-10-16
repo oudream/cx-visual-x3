@@ -34,6 +34,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             CompilesToSameCapabilityAndStableOrder();
             AggregatesBrokenNodeDiagnostics();
             RejectsGraphCycleBeforeAnyExecution();
+            AuthorizedPublishingAndSafeRollback();
         }
         private static void Check(bool ok, string msg)
         { if (!ok) throw new InvalidOperationException("计划编译：" + msg); }
@@ -90,6 +91,96 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(!result.Succeeded && result.Diagnostics.Any(x=>x.Code=="INVALID_GRAPH") &&
                 ran==0, "cyclic graph was compiled or executed");
         }
+
+        private sealed class SimulatedPublicationPolicy : IMRKPlanPublicationPolicy
+        {
+            internal bool Safe;
+            public bool Authorize(string principal, MRKPlanPublishAction action,
+                MRKExecutionPlan plan, long revision)
+            { return principal == "release-officer"; }
+            public bool IsSafeToActivate(MRKExecutionPlan plan, long revision)
+            { return Safe; }
+        }
+        private static void AuthorizedPublishingAndSafeRollback()
+        {
+            TaskCompletionSource<bool> started = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<bool> release = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            MRKExecutionPlan initial = new MRKExecutionPlan("stable",new[]{
+                new MRKExecutionStep("baseline",new string[0],async(c,t)=>{
+                    started.TrySetResult(true);
+                    await release.Task.ConfigureAwait(false);
+                    return (object)1;
+                })
+            });
+            MRKExecutionPlanSlot slot = new MRKExecutionPlanSlot(initial, 1, true);
+            SimulatedPublicationPolicy policy = new SimulatedPublicationPolicy();
+            MRKExecutionPlanPublisher publisher =
+                new MRKExecutionPlanPublisher(slot, initial, 1, policy);
+            Resolver resolver=new Resolver((c,t)=>Task.FromResult((object)2));
+            MRKExecutionEngine engine=new MRKExecutionEngine(new FCRWorkerOptions(1,4));
+            try
+            {
+                bool bypass=false;
+                try { slot.StageValidated(initial,3); }
+                catch (UnauthorizedAccessException) { bypass=true; }
+                Check(bypass, "生产Slot允许绕过授权提交");
+                bypass=false;
+                try { slot.TryActivatePending(); }
+                catch (UnauthorizedAccessException) { bypass=true; }
+                Check(bypass, "生产Slot允许绕过安全点切换");
+                MRKFlowHandle old=engine.StartFromSlot(slot);
+                Wait(started.Task);
+                bool denied=false;
+                try { publisher.CompileAndStage("readonly","stable",
+                    new[]{new MRKStepCompileRequest("new","Calculate")},
+                    resolver,2); }
+                catch (UnauthorizedAccessException) { denied=true; }
+                Check(denied && !publisher.PendingRevision.HasValue,
+                    "只读主体可发布或被拒绝的计划污染Slot");
+                MRKPlanPublicationReceipt staged=publisher.CompileAndStage(
+                    "release-officer","stable",
+                    new[]{new MRKStepCompileRequest("new","Calculate")},
+                    resolver,2);
+                Check(staged.Accepted && publisher.PendingRevision==2,
+                    "授权后不能阶段发布");
+                policy.Safe=false;
+                Check(!publisher.TryActivate("release-officer"),
+                    "未到安全点切换了执行Plan");
+                policy.Safe=true;
+                Check(!publisher.TryActivate("release-officer") &&
+                    slot.RunningFlows==1,"有在途Flow时意外切换");
+                release.TrySetResult(true);
+                Check(Wait(old.Completion).State==MRKFlowState.Completed &&
+                    old.Context.Metadata.PlanRevision==1,
+                    "原始Flow没有固定原版Plan");
+                Check(SpinWait.SpinUntil(()=>slot.RunningFlows==0,3000),
+                    "旧Plan引用未释放");
+                Check(publisher.TryActivate("release-officer") &&
+                    publisher.ActiveRevision==2,"授权激活失败");
+                MRKFlowResult newer=Wait(engine.StartFromSlot(slot).Completion);
+                Check(newer.State==MRKFlowState.Completed &&
+                    (int)newer.Results["new"]==2 && newer.Metadata.PlanRevision==2,
+                    "新Plan实际执行与发布版本不一致");
+                Check(SpinWait.SpinUntil(()=>slot.RunningFlows==0,3000),
+                    "新Plan引用未释放");
+                publisher.StageRollback("release-officer",3);
+                Check(publisher.TryActivate("release-officer") &&
+                    publisher.ActiveRevision==3,"回滚没有产生新的单调版本");
+                MRKFlowResult restored=Wait(engine.StartFromSlot(slot).Completion);
+                Check(restored.State==MRKFlowState.Completed &&
+                    (int)restored.Results["baseline"]==1 &&
+                    restored.Metadata.PlanRevision==3,
+                    "回滚未恢复原始Plan委托");
+            }
+            finally
+            {
+                release.TrySetResult(true);
+                Wait(engine.StopAsync(true));
+            }
+        }
+
         private static void Wait(Task task)
         {
             Task winner = Task.WhenAny(task, Task.Delay(6000)).GetAwaiter().GetResult();
