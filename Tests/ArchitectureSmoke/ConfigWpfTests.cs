@@ -44,6 +44,48 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     }
                     if (section.GetLatestSaved().ExposureMs != 80)
                         throw new InvalidOperationException("CONFIG_WPF_DISCARDED_DRAFT_WROTE_TO_DISK");
+                    using (var complex = new MPWConfigEditorControl<V13ConfigSample>(section))
+                    {
+                        Action<string> editComplex = null;
+                        complex.RegisterEditor("Acquisition.Group", (json, update) =>
+                        {
+                            editComplex = update;
+                            return new TextBox { Text = "专业复杂控件" };
+                        });
+                        if (editComplex == null)
+                            throw new InvalidOperationException("CONFIG_WPF_COMPLEX_CUSTOM_EDITOR_MISSING");
+                        editComplex(FCMJsonValueCodec.Serialize(new V13ExposureGroup {
+                            TimeoutMs = 630, CaptureKey = "CAP-232" }));
+                        if (complex.Draft.Acquisition.Group.TimeoutMs != 630 ||
+                            section.GetLatestSaved().Acquisition.Group.TimeoutMs == 630)
+                            throw new InvalidOperationException("CONFIG_WPF_COMPLEX_EDITOR_BYPASSED_TRANSACTION");
+                    }
+                    var secured = service.ForMachine("WPF-Secure").Open<ConfigSecureSample>();
+                    FCMConfigRolePolicy policy = new FCMConfigRolePolicy();
+                    foreach (FCMConfigAccessAction action in new[] {
+                        FCMConfigAccessAction.Read, FCMConfigAccessAction.ReadSensitive,
+                        FCMConfigAccessAction.Edit, FCMConfigAccessAction.Commit,
+                        FCMConfigAccessAction.Audit, FCMConfigAccessAction.Apply })
+                        policy.Grant("config-editor", action, secured.Identity.SectionId,
+                            secured.Identity.ScopeKind, secured.Identity.ScopeId);
+                    MHSConfigAuthorizedSection<ConfigSecureSample> authorized = service.Authorize(
+                        new FCMConfigPrincipal("WPF-User", new[] { "config-editor" }), policy)
+                        .Open<ConfigSecureSample>(secured.Identity);
+                    using (var secureControl = new MPWConfigEditorControl<ConfigSecureSample>(authorized))
+                    {
+                        if (secureControl.VisibleEditorCount != 1)
+                            throw new InvalidOperationException("CONFIG_WPF_SENSITIVE_FIELD_VISIBLE");
+                        secureControl.Draft.Level = 77; // detached clone, not a write
+                        if (secured.GetLatestSaved().Level != 10)
+                            throw new InvalidOperationException("CONFIG_WPF_UNAUTHORIZED_PERSISTENCE");
+                        policy.Revoke("config-editor", FCMConfigAccessAction.ReadSensitive,
+                            secured.Identity.SectionId, secured.Identity.ScopeKind, secured.Identity.ScopeId);
+                        bool refused = false;
+                        try { var value = secureControl.Draft; }
+                        catch (UnauthorizedAccessException) { refused = true; }
+                        if (!refused)
+                            throw new InvalidOperationException("CONFIG_WPF_PERMISSION_REVOCATION_IGNORED");
+                    }
 
                     var layers = new[] {
                         new MVBConfigLayerSpec("Template", "template", "WPF-Base", 10),
