@@ -75,6 +75,8 @@ namespace CxVisual.TestCenter.UI
         private TCTTestSourceLocation _currentSource;
         private readonly Button _openSource = new Button {
             Content = "跳转源码（若本机存在）", Margin = new Thickness(8), Padding = new Thickness(8, 4, 8, 4) };
+        private readonly TabControl _tabs = new TabControl();
+        private readonly TabItem _observationTab = new TabItem { Header = "观察Owner" };
         private readonly TextBlock _observation = new TextBlock { Margin = new Thickness(12),
             FontFamily = new FontFamily("Consolas"), TextWrapping = TextWrapping.Wrap };
         // 供WPF Smoke核实真实选择链，不通过UI推导Pass/Fail。
@@ -87,7 +89,7 @@ namespace CxVisual.TestCenter.UI
             _assertions.Columns.Add(new DataGridTextColumn { Header = "Expected", Binding = new Binding("Expected") });
             _assertions.Columns.Add(new DataGridTextColumn { Header = "Actual", Binding = new Binding("Actual") });
             _assertions.Columns.Add(new DataGridCheckBoxColumn { Header = "Pass", Binding = new Binding("Passed") });
-            TabControl tabs = new TabControl();
+            TabControl tabs = _tabs;
             tabs.Items.Add(new TabItem { Header = "属性", Content = new ScrollViewer { Content = _metadata } });
             tabs.Items.Add(new TabItem { Header = "断言", Content = _assertions });
             tabs.Items.Add(new TabItem { Header = "异常/Trace", Content = new ScrollViewer { Content = _error } });
@@ -112,7 +114,8 @@ namespace CxVisual.TestCenter.UI
             };
             tabs.Items.Add(new TabItem { Header = "源码定位", Content = sourcePanel });
             tabs.Items.Add(new TabItem { Header = "证据产物", Content = _artifacts });
-            tabs.Items.Add(new TabItem { Header = "观察Owner", Content = new ScrollViewer { Content = _observation } });
+            _observationTab.Content = new ScrollViewer { Content = _observation };
+            tabs.Items.Add(_observationTab);
             Content = tabs;
         }
         public void ShowCase(ITCTTestCase test)
@@ -120,6 +123,7 @@ namespace CxVisual.TestCenter.UI
             _assertions.ItemsSource = null;
             _artifacts.ItemsSource = null;
             SelectedObservationTitle = null;
+            _tabs.SelectedIndex = 0;
             _observation.Text = "请选择真实观察项以查看Owner、身份与证据引用。";
             _currentSource = null; _openSource.IsEnabled = false;
             _source.Text = "尚无PDB源码位置；绝不猜测源码行号。";
@@ -136,6 +140,7 @@ namespace CxVisual.TestCenter.UI
         {
             if (result == null) return;
             SelectedObservationTitle = null;
+            _tabs.SelectedIndex = 0;
             _observation.Text = "本Attempt有 " + result.Observations.Count +
                 " 条观察。请在专业Viewer点击观察项，查看真实Owner和SHA256。";
             TCTTestCaseDescriptor d = result.Descriptor;
@@ -175,6 +180,7 @@ namespace CxVisual.TestCenter.UI
                 return;
             }
             SelectedObservationTitle = observation.Title;
+            _tabs.SelectedItem = _observationTab;
             TCTObservationEnvelope e = observation.Envelope;
             _observation.Text = "Kind: " + observation.Kind +
                 "\nTitle: " + observation.Title +
