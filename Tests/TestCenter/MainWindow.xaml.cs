@@ -53,6 +53,7 @@ namespace CxVisual.TestCenter.UI
         {
             Inspector.ShowResult(result);
             DocumentHost.ShowResult(result);
+            Timeline.FocusAttempt(result.AttemptId);
         }
 
         private async void OnRerunFailed()

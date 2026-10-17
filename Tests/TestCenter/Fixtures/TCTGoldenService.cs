@@ -58,6 +58,66 @@ namespace CxVisual.TestCenter.Fixtures
             return new TCTGoldenComparison(true, TCTBaselineService.Sha256(expected), actualHash,
                 TCTSnapshotDiffService.CompareBytes(expected, actual));
         }
+        // Append-only local audit log. This records an explicit operator confirmation;
+        // it is not a substitute for authenticated approval or an immutable audit server.
+        private void AppendAudit(Guid receiptId, string phase, DateTime timeUtc, string relativePath,
+            string actor, string oldHash, string newHash)
+        {
+            string file = _fixture.ResolvePath(".tct-golden-approvals.log");
+            string line = receiptId.ToString("N") + "|" + phase + "|" +
+                timeUtc.Ticks.ToString(System.Globalization.CultureInfo.InvariantCulture) + "|" +
+                Convert.ToBase64String(Encoding.UTF8.GetBytes(relativePath)) + "|" +
+                Convert.ToBase64String(Encoding.UTF8.GetBytes(actor)) + "|" + oldHash + "|" +
+                newHash + Environment.NewLine;
+            byte[] data = Encoding.UTF8.GetBytes(line);
+            using (FileStream stream = new FileStream(file, FileMode.Append, FileAccess.Write,
+                FileShare.Read, 4096, FileOptions.WriteThrough))
+            {
+                stream.Write(data, 0, data.Length);
+                stream.Flush(true);
+            }
+        }
+
+        public System.Collections.Generic.IList<TCTGoldenApprovalReceipt> ReadApprovedHistory()
+        {
+            string file = _fixture.ResolvePath(".tct-golden-approvals.log");
+            var approved = new System.Collections.Generic.List<TCTGoldenApprovalReceipt>();
+            if (!File.Exists(file)) return approved;
+            var prepared = new System.Collections.Generic.Dictionary<string, string>();
+            foreach (string line in File.ReadAllLines(file, Encoding.UTF8))
+            {
+                string[] fields = line.Split('|');
+                if (fields.Length != 7) throw new InvalidDataException("Invalid Golden audit record");
+                Guid id;
+                long ticks;
+                if (!Guid.TryParseExact(fields[0], "N", out id) ||
+                    !long.TryParse(fields[2], out ticks))
+                    throw new InvalidDataException("Invalid Golden audit identity/time");
+                if (fields[1] == "PREPARED")
+                {
+                    prepared[fields[0]] = line;
+                }
+                else if (fields[1] == "COMMITTED")
+                {
+                    string before;
+                    if (!prepared.TryGetValue(fields[0], out before))
+                        throw new InvalidDataException("Golden commit has no prepared record");
+                    string[] old = before.Split('|');
+                    if (old[3] != fields[3] || old[4] != fields[4] ||
+                        old[5] != fields[5] || old[6] != fields[6])
+                        throw new InvalidDataException("Golden approval audit mismatch");
+                    approved.Add(new TCTGoldenApprovalReceipt(
+                        Encoding.UTF8.GetString(Convert.FromBase64String(fields[3])),
+                        Encoding.UTF8.GetString(Convert.FromBase64String(fields[4])),
+                        fields[5], fields[6], new DateTime(ticks, DateTimeKind.Utc)));
+                    prepared.Remove(fields[0]);
+                }
+                else throw new InvalidDataException("Unknown Golden audit phase");
+            }
+            // Orphan PREPARED means interrupted approval; it must not be reported as committed.
+            return approved;
+        }
+
         public TCTGoldenApprovalReceipt Approve(string relativePath, byte[] bytes, string actor,
             string approval, string expectedPreviousSha256)
         {
@@ -69,29 +129,31 @@ namespace CxVisual.TestCenter.Fixtures
             if (string.IsNullOrWhiteSpace(expectedPreviousSha256))
                 throw new ArgumentException("Known previous baseline hash required", "expectedPreviousSha256");
             string destination = _fixture.ResolvePath(relativePath);
-            string current = File.Exists(destination) ?
-                TCTBaselineService.Sha256(_fixture.ReadBytes(relativePath)) : NoExistingBaseline;
-            if (!string.Equals(current, expectedPreviousSha256, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("Golden version changed; refresh and approve again");
             string targetDir = Path.GetDirectoryName(destination);
             if (!Directory.Exists(targetDir)) Directory.CreateDirectory(targetDir);
-            // Avoid silent overwrite and leave old baseline intact when the atomic swap fails.
-            string temp = destination + "." + Guid.NewGuid().ToString("N") + ".partial";
-            try
+            // Exclusive per-Golden lock: stale expected SHA cannot win a concurrent approval.
+            using (FileStream guard = new FileStream(destination + ".tct.lock",
+                FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None))
             {
-                File.WriteAllBytes(temp, bytes);
-                // Re-check version immediately before atomic replace; no concurrent collaborators
-                // should approve the same Golden without their own expected version.
-                string again = File.Exists(destination) ?
+                string current = File.Exists(destination) ?
                     TCTBaselineService.Sha256(_fixture.ReadBytes(relativePath)) : NoExistingBaseline;
-                if (!string.Equals(current, again, StringComparison.OrdinalIgnoreCase))
-                    throw new InvalidOperationException("Golden changed during approval");
-                if (File.Exists(destination)) File.Replace(temp, destination, null);
-                else File.Move(temp, destination);
-                return new TCTGoldenApprovalReceipt(relativePath, actor, current,
-                    TCTBaselineService.Sha256(bytes), DateTime.UtcNow);
+                if (!string.Equals(current, expectedPreviousSha256, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException("Golden version changed; refresh and approve again");
+                string newHash = TCTBaselineService.Sha256(bytes);
+                Guid receiptId = Guid.NewGuid();
+                DateTime timeUtc = DateTime.UtcNow;
+                string temp = destination + "." + Guid.NewGuid().ToString("N") + ".partial";
+                try
+                {
+                    File.WriteAllBytes(temp, bytes);
+                    AppendAudit(receiptId, "PREPARED", timeUtc, relativePath, actor, current, newHash);
+                    if (File.Exists(destination)) File.Replace(temp, destination, null);
+                    else File.Move(temp, destination);
+                    AppendAudit(receiptId, "COMMITTED", timeUtc, relativePath, actor, current, newHash);
+                    return new TCTGoldenApprovalReceipt(relativePath, actor, current, newHash, timeUtc);
+                }
+                finally { if (File.Exists(temp)) File.Delete(temp); }
             }
-            finally { if (File.Exists(temp)) File.Delete(temp); }
         }
     }
 }

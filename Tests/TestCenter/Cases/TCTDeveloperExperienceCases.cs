@@ -34,6 +34,11 @@ namespace CxVisual.TestCenter.Cases
                     sample, "reviewer", "APPROVE_GOLDEN_EXPLICITLY",
                     TCTGoldenService.NoExistingBaseline);
                 test.AssertEqual("reviewer", receipt.Actor, "审批人");
+                var approvals = new TCTGoldenService(
+                    new TCTTestFixtureService(sandbox.Root)).ReadApprovedHistory();
+                test.AssertEqual(1, approvals.Count, "审批成功必须在重建Service后读到持久审计");
+                test.AssertEqual(receipt.NewSha256, approvals[0].NewSha256, "审计SHA256一致");
+                test.AssertEqual(receipt.Actor, approvals[0].Actor, "审计审批人一致");
                 test.AssertTrue(golden.Compare("golden/sample.bin", sample).Matches,
                     "保存后的真实Golden比较", true, true);
                 TCTGoldenComparison changed = golden.Compare("golden/sample.bin",
@@ -44,6 +49,8 @@ namespace CxVisual.TestCenter.Cases
                     golden.Approve("golden/sample.bin", Encoding.UTF8.GetBytes("v2\n"),
                         "reviewer", "APPROVE_GOLDEN_EXPLICITLY",
                         TCTGoldenService.NoExistingBaseline), "旧版本审批不能覆盖新版本");
+                test.AssertEqual(1, golden.ReadApprovedHistory().Count,
+                    "非法旧版本操作不会生成虚假成功审批");
                 test.Observe("ObjectTree", "Golden审批真实证据",
                     "Actor=" + receipt.Actor + " SHA256=" + receipt.NewSha256);
             }
