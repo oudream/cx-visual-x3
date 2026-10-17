@@ -256,6 +256,9 @@ namespace CxVisual.TestCenter.Cases
             try
             {
                 MRKFlowResult actual = engine.StartFlow(plan).Completion.GetAwaiter().GetResult();
+                if (actual.State != MRKFlowState.Completed)
+                    throw new InvalidOperationException("专业DTO MRK真实执行失败：" +
+                        (actual.Error == null ? "无内部错误" : actual.Error.ToString()));
                 t.AssertEqual(MRKFlowState.Completed, actual.State,
                     "真实MRK端口与MDS自定义类型对接");
                 TCTImageBlock copy = actual.GetCommittedOutput<TCTImageBlock>("OutputImage");
