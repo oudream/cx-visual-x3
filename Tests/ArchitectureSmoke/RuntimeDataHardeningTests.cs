@@ -26,6 +26,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
         {
             HeapQuotaAndAtomicCopy();
             SharedFlowStackAndHeapBudget();
+            CrossHeapQuotaAndUnknownDto();
+            MetadataLargeScaleSearch();
             FileLoadOverBudgetNoCache();
             LateNodeFileLoadMustNotPublish();
             RealVisionBudgetFailClosed();
@@ -96,6 +98,63 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "已提交Output应保活直到Flow结束");
             }
             Check(budget.RetainedBytes == 0, "Flow关闭后预算未完全释放");
+        }
+
+        private static void CrossHeapQuotaAndUnknownDto()
+        {
+            var sourceBudget = new MDSDataBudget(300);
+            var targetBudget = new MDSDataBudget(50);
+            using (var source = new MDSDataHeap(null, sourceBudget))
+            using (var target = new MDSDataHeap(null, targetBudget))
+            {
+                source.Set("Image", new byte[120]);
+                target.Set("Original", new byte[20]);
+                bool denied = false;
+                try { source.MoveTo("Image", target, "Original", replace: true); }
+                catch (MDSDataException ex)
+                { denied = ex.Code == MDSDataErrorCode.QuotaExceeded; }
+                Check(denied && source.Contains("Image") &&
+                    target.Get<byte[]>("Original").Length == 20 &&
+                    targetBudget.RetainedBytes == 20 && sourceBudget.RetainedBytes == 120,
+                    "跨Heap容量拒绝后源或旧目标被破坏");
+            }
+            Check(sourceBudget.RetainedBytes == 0 && targetBudget.RetainedBytes == 0,
+                "跨Heap各自数据预算在Dispose后泄漏");
+            var adapters = new FDTDataAdapterRegistry();
+            adapters.Register<Sample>(x => new Sample(x.Value));
+            using (var limited = new MDSDataHeap(adapters, new MDSDataBudget(100)))
+            {
+                bool rejected = false;
+                try { limited.Set("UnknownSize", new Sample(8)); }
+                catch (MDSDataException ex)
+                { rejected = ex.Code == MDSDataErrorCode.QuotaExceeded; }
+                Check(rejected && limited.Count == 0,
+                    "专业DTO未注册SizeEstimator却绕过有限数据预算");
+            }
+        }
+
+        private static void MetadataLargeScaleSearch()
+        {
+            using (var heap = new MDSDataHeap())
+            {
+                for (int index = 0; index < 4200; index++)
+                    heap.Set("Node." + index.ToString("D5"), index);
+                var watch = System.Diagnostics.Stopwatch.StartNew();
+                var page0 = heap.Query(new MDSDataQuery {
+                    NamePrefix="Node.04", Take=100
+                });
+                var page1 = heap.Query(new MDSDataQuery {
+                    NamePrefix="Node.04", Skip=100, Take=100
+                });
+                var exact = heap.Inspect("Node.04001");
+                watch.Stop();
+                Check(page0.Count == 100 && page1.Count == 100 &&
+                    page0[0].Name == "Node.04000" &&
+                    page1[0].Name == "Node.04100" &&
+                    exact.Name == "Node.04001", "大量元数据的过滤/稳定分页/精确查找错误");
+                Check(watch.Elapsed < TimeSpan.FromSeconds(15),
+                    "4200条元数据查询明显退化，耗时：" + watch.Elapsed);
+            }
         }
 
         private static void FileLoadOverBudgetNoCache()
