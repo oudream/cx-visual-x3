@@ -61,10 +61,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(result.GetCommittedOutput<long>("GraySum") == 880 &&
                     !result.GetCommittedOutput<bool>("Passed"),
                     "并行统计与最终判定未正确汇合");
-                // 下游消费者获取副本，不能修改已提交专业数据。
-                inspected.Regions[0].PixelArea = 99;
-                Check(result.GetCommittedOutput<CxVisionInspectionResult>("Inspection")
-                    .Regions[0].PixelArea == 3,
+                // 输出须是深度隔离的专业结果，而非共享一个可变缺陷Region。
+                CxVisionInspectionResult repeated =
+                    result.GetCommittedOutput<CxVisionInspectionResult>("Inspection");
+                Check(!object.ReferenceEquals(inspected, repeated) &&
+                    !object.ReferenceEquals(inspected.Regions[0], repeated.Regions[0]) &&
+                    repeated.Regions[0].PixelArea == 3,
                     "专业检测结果出现可变别名");
             }
             finally { engine.StopAsync().GetAwaiter().GetResult(); }
