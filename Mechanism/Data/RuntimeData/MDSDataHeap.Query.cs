@@ -15,7 +15,8 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 foreach (KeyValuePair<string, MDSDataEntry> pair in _values)
                     results.Add(new MDSDataSnapshot(pair.Key, pair.Value.Type,
                         MDSDataLocation.FlowHeap, MDSDataLoadState.NotFile,
-                        null, MDSDataQueryLogic.SizeOf(pair.Value.Value), 1));
+                        null, MDSDataQueryLogic.SizeOf(pair.Value.Value), 1,
+                        RunId, "FlowHeap"));
                 foreach (KeyValuePair<string, MDSDataFileEntry> pair in _files)
                     results.Add(new MDSDataSnapshot(pair.Key, pair.Value.Type,
                         MDSDataLocation.FlowHeap, pair.Value.State,
