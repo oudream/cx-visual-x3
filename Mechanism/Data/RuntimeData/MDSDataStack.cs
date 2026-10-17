@@ -230,7 +230,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                         // Move转移已由MDS接管的原数据；Copy才创建独立副本。
                         // 旧Scope Put的外部别名不受控，必须先防御复制再接管。
                         object owned = move && scope.TransferCanMoveOwned(from)
-                            ? original : MDSDataSafety.Capture(original);
+                            ? original : MDSDataSafety.Capture(original, heap.Adapters);
                         heap.TransferStoreOwned(to, owned, valueType, replace);
                         if (move) scope.TransferDetach(from);
                     }
@@ -238,7 +238,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                     {
                         Type valueType;
                         object original = heap.TransferPeekOwned(from, out valueType);
-                        object owned = move ? original : MDSDataSafety.Capture(original);
+                        object owned = move ? original : MDSDataSafety.Capture(original, heap.Adapters);
                         scope.TransferStore(to, owned, replace, valueType);
                         if (move) heap.Remove(from);
                     }
