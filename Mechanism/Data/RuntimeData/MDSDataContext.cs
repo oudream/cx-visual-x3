@@ -234,7 +234,8 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                         items.Add(new MDSDataSnapshot(item.Key,
                             item.Value == null ? typeof(object) : item.Value.GetType(),
                             MDSDataLocation.Input, MDSDataLoadState.NotFile,
-                            null, MDSDataQueryLogic.SizeOf(item.Value), 1));
+                            null, MDSDataQueryLogic.SizeOf(item.Value), 1,
+                            _heap == null ? null : _heap.RunId, _scope.Id));
                 IDictionary<string, object> local = _scope.SnapshotLocal();
                 MDEExecutionDataScope typedScope = _scope as MDEExecutionDataScope;
                 IDictionary<string, Type> types = typedScope == null
@@ -255,7 +256,8 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                         declared = item.Value == null ? typeof(object) : item.Value.GetType();
                     items.Add(new MDSDataSnapshot(item.Key, declared,
                         MDSDataLocation.PendingOutput, MDSDataLoadState.NotFile,
-                        null, MDSDataQueryLogic.SizeOf(item.Value), 1));
+                        null, MDSDataQueryLogic.SizeOf(item.Value), 1,
+                            _heap == null ? null : _heap.RunId, _scope.Id));
                 }
                 if (_heap != null) _heap.AppendSnapshots(items);
             }
