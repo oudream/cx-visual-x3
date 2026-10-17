@@ -170,7 +170,6 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                     entry.State = MDSDataLoadState.Loaded;
                 }
                 return (T)independentReturn;
-                }
             }
             catch
             {
