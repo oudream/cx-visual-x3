@@ -109,7 +109,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
             finally { if (_dataScope != null) _dataScope.Dispose(); }
         }
 
-        private static IDictionary<string, object> CopyByteBuffers(
+        private static ReadOnlyDictionary<string, object> CopyByteBuffers(
             IDictionary<string, object> source)
         {
             Dictionary<string, object> copy = new Dictionary<string, object>(StringComparer.Ordinal);
