@@ -11,6 +11,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
     {
         private int _take = 100;
         public string NamePrefix { get; set; }
+        public string ExactName { get; set; }
         public Type DataType { get; set; }
         public MDSDataLocation Location { get; set; }
         public MDSDataLoadState? LoadState { get; set; }
