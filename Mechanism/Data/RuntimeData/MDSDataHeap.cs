@@ -229,7 +229,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 {
                     EnsureOpen();
                     target.EnsureOpen();
-                    MDSDataEntry source;
+                    MDSDataEntry source = null;
                     MDSDataFileEntry file;
                     bool isFile = _files.TryGetValue(sourceName, out file);
                     if (!isFile && !_values.TryGetValue(sourceName, out source))
