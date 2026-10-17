@@ -1,5 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
+using CxVisual.Foundation.Data.Types;
+using CxVisual.Mechanism.Data.Execution;
 using CxVisual.Foundation.Data.Execution;
 using CxVisual.Mechanism.Data.RuntimeData;
 using CxVisual.TestCenter.Core;
@@ -117,6 +120,107 @@ namespace CxVisual.TestCenter.Cases
                     frame.AbortOutputs();
                 }
                 test.AssertEqual(0, stack.ActiveFrames, "有副作用仍能释放Frame");
+            }
+        }
+
+        [TCTTest("TCT.MDS.005", "只读Buffer由并行消费者共享，显式复制才可修改",
+            TCTTestAspect.Mechanism, "Data / RuntimeData", ObjectId = "FDTReadOnlyBuffer")]
+        public static void SharedImmutableBuffer(TCTTestContext test)
+        {
+            byte[] mutable = { 10, 20, 30 };
+            FDTReadOnlyBuffer readOnly = new FDTReadOnlyBuffer(mutable);
+            mutable[0] = 88;
+            using (MDSDataHeap a = new MDSDataHeap())
+            using (MDSDataHeap b = new MDSDataHeap())
+            {
+                a.Set("Buffer", readOnly);
+                a.CopyTo("Buffer", b, "Other");
+                FDTReadOnlyBuffer first = a.Get<FDTReadOnlyBuffer>("Buffer");
+                FDTReadOnlyBuffer second = b.Get<FDTReadOnlyBuffer>("Other");
+                test.AssertTrue(object.ReferenceEquals(first, second),
+                    "真正不可变的Buffer可以共享同一实例", true, true);
+                byte[] detached = first.ToArray();
+                detached[0] = 77;
+                test.AssertEqual((byte)10, second[0],
+                    "明确Copy出来的可写数组不能污染共享数据");
+            }
+        }
+
+        [TCTTest("TCT.MDS.006", "堆栈移动保留数据类型并防御旧Scope外部别名",
+            TCTTestAspect.Mechanism, "Data / RuntimeData", ObjectId = "MDSDataFrame")]
+        public static void SafeOwnershipMove(TCTTestContext test)
+        {
+            using (MDSDataStack stack = new MDSDataStack())
+            {
+                var scope = stack.RootScope.CreateChild("move");
+                using (MDSDataFrame frame = stack.OpenFrame("move", scope,
+                    new Dictionary<string, object>(), new Dictionary<string, Type>()))
+                {
+                    frame.Data.Set<byte[]>("Nullable", null);
+                    test.AssertThrows<InvalidCastException>(() => frame.Data.Get<string>("Nullable"),
+                        "Typed null不能变成string");
+                    frame.Data.MoveToHeap("Nullable");
+                    test.AssertThrows<InvalidCastException>(() => stack.FlowHeap.Get<string>("Nullable"),
+                        "Move到Heap也必须保留声明的原始类型");
+                    test.AssertTrue(stack.FlowHeap.Get<byte[]>("Nullable") == null,
+                        "Typed null的正确类型仍可读取", true, true);
+                    byte[] external = { 1, 2, 3 };
+                    scope.Put("Legacy", external);
+                    frame.Data.MoveToHeap("Legacy");
+                    external[0] = 55;
+                    test.AssertEqual((byte)1, stack.FlowHeap.Get<byte[]>("Legacy")[0],
+                        "旧Scope裸数组进入Heap时须防御外部写别名");
+                }
+            }
+        }
+
+        [TCTTest("TCT.MDS.007", "旧式子Scope活动时DataStack不得先回收Heap",
+            TCTTestAspect.Mechanism, "Data / RuntimeData", ObjectId = "MDSDataStack")]
+        public static void LiveChildPreventsHeapCleanup(TCTTestContext test)
+        {
+            MDSDataStack stack = new MDSDataStack();
+            var child = stack.RootScope.CreateChild("pending");
+            stack.FlowHeap.Set("Keep", 13);
+            test.AssertThrows<InvalidOperationException>(() => stack.Dispose(),
+                "遗留子Scope仍在使用时不能提前回收");
+            test.AssertEqual(13, stack.FlowHeap.Get<int>("Keep"),
+                "非法关闭没有破坏Heap现有数据");
+            child.Dispose();
+            stack.Dispose();
+        }
+
+        [TCTTest("TCT.MDS.008", "双向并行Move无死锁且不丢数据",
+            TCTTestAspect.Mechanism, "Data / RuntimeData", ObjectId = "MDSDataHeap")]
+        public static void ConcurrentHeapMove(TCTTestContext test)
+        {
+            using (MDSDataHeap a = new MDSDataHeap())
+            using (MDSDataHeap b = new MDSDataHeap())
+            {
+                for (int i = 0; i < 50; i++)
+                {
+                    a.Set("A" + i, i);
+                    b.Set("B" + i, i);
+                }
+                Task left = Task.Run(() =>
+                {
+                    for (int i = 0; i < 50; i++)
+                        a.MoveTo("A" + i, b, "FromA" + i);
+                });
+                Task right = Task.Run(() =>
+                {
+                    for (int i = 0; i < 50; i++)
+                        b.MoveTo("B" + i, a, "FromB" + i);
+                });
+                Task all = Task.WhenAll(left, right);
+                if (!all.Wait(TimeSpan.FromSeconds(10)))
+                    throw new TimeoutException("双向Move互锁超时");
+                test.AssertEqual(50, a.Count, "A堆目标数量保持完整");
+                test.AssertEqual(50, b.Count, "B堆目标数量保持完整");
+                for (int i = 0; i < 50; i++)
+                {
+                    test.AssertEqual(i, a.Get<int>("FromB" + i), "B→A移动值完整");
+                    test.AssertEqual(i, b.Get<int>("FromA" + i), "A→B移动值完整");
+                }
             }
         }
     }
