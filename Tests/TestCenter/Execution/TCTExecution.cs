@@ -249,6 +249,57 @@ namespace CxVisual.TestCenter.Execution
     // 封装父进程运行结果与Worker结果之间的最小XML协议。
     public static class TCTWireCodec
     {
+        private static System.Xml.Linq.XElement WriteObservation(TCTTestObservation o)
+        {
+            System.Xml.Linq.XElement x = new System.Xml.Linq.XElement("Observation",
+                new System.Xml.Linq.XAttribute("kind", o.Kind),
+                new System.Xml.Linq.XAttribute("title", o.Title),
+                new System.Xml.Linq.XAttribute("origin", o.Origin), o.Details);
+            if (o.Envelope == null) return x;
+            TCTObservationEnvelope e = o.Envelope;
+            x.Add(new System.Xml.Linq.XAttribute("schema", e.SchemaVersion),
+                new System.Xml.Linq.XAttribute("runId", e.RunId),
+                new System.Xml.Linq.XAttribute("attemptId", e.AttemptId),
+                new System.Xml.Linq.XAttribute("utcTicks", e.TimestampUtc.Ticks),
+                new System.Xml.Linq.XAttribute("sourceObjectId", e.SourceObjectId),
+                new System.Xml.Linq.XAttribute("definitionAddress", e.DefinitionAddress),
+                new System.Xml.Linq.XAttribute("runtimeInstanceId", e.RuntimeInstanceId),
+                new System.Xml.Linq.XAttribute("evidencePath", o.Evidence.RelativePath),
+                new System.Xml.Linq.XAttribute("evidenceHash", o.Evidence.Sha256),
+                new System.Xml.Linq.XAttribute("evidenceBytes", o.Evidence.ByteSize));
+            if (e.PayloadRef != null)
+                x.Add(new System.Xml.Linq.XAttribute("payloadPath", e.PayloadRef.RelativePath),
+                    new System.Xml.Linq.XAttribute("payloadMime", e.PayloadRef.Mime),
+                    new System.Xml.Linq.XAttribute("payloadHash", e.PayloadRef.Sha256),
+                    new System.Xml.Linq.XAttribute("payloadBytes", e.PayloadRef.ByteSize));
+            return x;
+        }
+        private static TCTTestObservation ReadObservation(System.Xml.Linq.XElement x,
+            TCTTestAttempt attempt)
+        {
+            string kind = (string)x.Attribute("kind"), title = (string)x.Attribute("title");
+            string origin = (string)x.Attribute("origin") ?? "Actual";
+            if (x.Attribute("schema") == null)
+                return new TCTTestObservation(kind, title, x.Value, origin);
+            if ((int)x.Attribute("schema") != TCTObservationEnvelope.CurrentSchema ||
+                (string)x.Attribute("runId") != attempt.RunId ||
+                (string)x.Attribute("attemptId") != attempt.AttemptId)
+                throw new InvalidDataException("Observation schema/Attempt mismatch");
+            TCTArtifactRef payload = x.Attribute("payloadPath") == null ? null :
+                new TCTArtifactRef((string)x.Attribute("payloadPath"),
+                    (string)x.Attribute("payloadMime"), (string)x.Attribute("payloadHash"),
+                    (long)x.Attribute("payloadBytes"), attempt.AttemptId);
+            TCTArtifactRef evidence = new TCTArtifactRef((string)x.Attribute("evidencePath"),
+                TCTObservationCodec.Mime, (string)x.Attribute("evidenceHash"),
+                (long)x.Attribute("evidenceBytes"), attempt.AttemptId);
+            TCTObservationEnvelope envelope = new TCTObservationEnvelope(
+                (int)x.Attribute("schema"), attempt.RunId, attempt.AttemptId,
+                kind, title, origin, x.Value, (string)x.Attribute("sourceObjectId"),
+                (string)x.Attribute("definitionAddress"), (string)x.Attribute("runtimeInstanceId"),
+                payload, new DateTime((long)x.Attribute("utcTicks"), DateTimeKind.Utc));
+            return new TCTTestObservation(kind, title, x.Value, origin, envelope, evidence);
+        }
+
         public static void Write(string file, TCTTestCaseResult result)
         {
             if (result == null) throw new ArgumentNullException("result");
@@ -281,12 +332,8 @@ namespace CxVisual.TestCenter.Execution
                         new System.Xml.Linq.XAttribute("passed", a.Passed),
                         new System.Xml.Linq.XElement("Expected", a.Expected),
                         new System.Xml.Linq.XElement("Actual", a.Actual)))),
-                new System.Xml.Linq.XElement("Observations", result.Observations.Select(o =>
-                    new System.Xml.Linq.XElement("Observation",
-                        new System.Xml.Linq.XAttribute("kind", o.Kind),
-                        new System.Xml.Linq.XAttribute("title", o.Title),
-                        new System.Xml.Linq.XAttribute("origin", o.Origin),
-                        o.Details))));
+                new System.Xml.Linq.XElement("Observations",
+                    result.Observations.Select(WriteObservation)));
             string temp = file + ".partial";
             new System.Xml.Linq.XDocument(root).Save(temp);
             if (File.Exists(file)) File.Delete(file);
@@ -317,8 +364,7 @@ namespace CxVisual.TestCenter.Execution
                     (string)x.Element("Expected"), (string)x.Element("Actual"),
                     (bool)x.Attribute("passed"))).ToList();
             List<TCTTestObservation> observations = root.Element("Observations").Elements("Observation")
-                .Select(x => new TCTTestObservation((string)x.Attribute("kind"),
-                    (string)x.Attribute("title"), x.Value, (string)x.Attribute("origin"))).ToList();
+                .Select(x => ReadObservation(x, attempt)).ToList();
             List<TCTArtifactRef> artifacts = root.Element("Artifacts") == null ?
                 new List<TCTArtifactRef>() : root.Element("Artifacts").Elements("Artifact")
                 .Select(a => new TCTArtifactRef((string)a.Attribute("path"), (string)a.Attribute("mime"),

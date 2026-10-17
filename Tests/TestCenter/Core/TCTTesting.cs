@@ -139,11 +139,20 @@ namespace CxVisual.TestCenter.Core
 
     public sealed class TCTTestObservation
     {
-        public TCTTestObservation(string kind, string title, string details, string origin = "Actual")
+        public TCTTestObservation(string kind, string title, string details, string origin = "Actual",
+            TCTObservationEnvelope envelope = null, TCTArtifactRef evidence = null)
         {
             Kind = kind ?? "Generic"; Title = title ?? string.Empty;
             Details = details ?? string.Empty; Origin = origin ?? "Actual";
+            Envelope = envelope; Evidence = evidence;
+            if (Envelope != null && (Envelope.Kind != Kind || Envelope.Title != Title ||
+                Envelope.Origin != Origin || Envelope.Details != Details ||
+                Evidence == null || Evidence.Mime != TCTObservationCodec.Mime ||
+                Evidence.AttemptId != Envelope.AttemptId))
+                throw new InvalidDataException("Structured observation does not match envelope/evidence");
         }
+        public TCTObservationEnvelope Envelope { get; private set; }
+        public TCTArtifactRef Evidence { get; private set; }
         public string Kind { get; private set; }
         public string Title { get; private set; }
         public string Details { get; private set; }
@@ -245,6 +254,32 @@ namespace CxVisual.TestCenter.Core
             catch (Exception ex) { AssertTrue(false, name, typeof(T).Name, ex.GetType().Name); return; }
             AssertTrue(false, name, typeof(T).Name, "No exception");
         }
+        // Opt-in for real Owner observations. Strings alone never claim structured provenance.
+        public TCTObservationEnvelope ObserveStructured(string kind, string title, string details,
+            string sourceObjectId, string definitionAddress = null, string runtimeInstanceId = null,
+            byte[] payload = null, string payloadMime = "application/octet-stream",
+            string origin = "Actual")
+        {
+            ThrowIfCancelled();
+            if (_artifactStore == null || Attempt == null)
+                throw new NotSupportedException("Structured observations require a persisted Attempt");
+            TCTArtifactRef payloadRef = payload == null ? null :
+                _artifactStore.Save(payload, payloadMime, Attempt.AttemptId);
+            if (payloadRef != null) _artifacts.Add(payloadRef);
+            TCTObservationEnvelope envelope = new TCTObservationEnvelope(
+                TCTObservationEnvelope.CurrentSchema, RunId, AttemptId,
+                kind, title, origin, details, sourceObjectId, definitionAddress,
+                runtimeInstanceId, payloadRef);
+            TCTArtifactRef evidence = _artifactStore.Save(
+                TCTObservationCodec.Serialize(envelope), TCTObservationCodec.Mime, AttemptId);
+            _artifacts.Add(evidence);
+            _observations.Add(new TCTTestObservation(kind, title, details, origin, envelope, evidence));
+            Publish(TCTTestEventKind.Observation, "Schema=" + envelope.SchemaVersion +
+                "; Kind=" + kind + "; SourceObjectId=" + envelope.SourceObjectId +
+                "; Evidence=" + evidence.Sha256);
+            return envelope;
+        }
+
         public void Observe(string kind, string title, string details, string origin = "Actual")
         {
             ThrowIfCancelled();
