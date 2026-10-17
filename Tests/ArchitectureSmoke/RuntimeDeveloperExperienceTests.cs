@@ -16,6 +16,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             InvalidDefinitionsNeverCreateRunnableRuntime();
             MultiFlowSharedWorkerAndCancellation();
             OneBlueprintBothDevelopmentAndAuthorizedProductionPublication();
+            NaturalTypedBusinessRequest();
         }
 
         private static void Check(bool condition, string message)
@@ -118,6 +119,31 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(rejected, "同一流程重复节点被静默接受");
         }
 
+
+        private static void NaturalTypedBusinessRequest()
+        {
+            MRKDevelopmentRuntime runtime = new MRKCodeRuntimeBuilder()
+                .CapabilityForRequest<int,int>("Offset",(request,ct) =>
+                    Task.FromResult(request+100))
+                .Flow("business",flow => flow.Step("action","Offset"))
+                .Build();
+            try
+            {
+                MRKFlowResult simple=Wait(runtime.RunAsync("business", 3));
+                Check(simple.State==MRKFlowState.Completed &&
+                    (int)simple.Results["action"]==103,
+                    "RunAsync(flow,request)没有直接调用类型安全的业务能力");
+                MRKFlowResult explicitInput=Wait(runtime.RunAsync("business",
+                    new Dictionary<string,object>{{"request",2}}));
+                Check(explicitInput.State==MRKFlowState.Completed &&
+                    (int)explicitInput.Results["action"]==102,
+                    "显式Flow输入被误当成单个request对象");
+                MRKFlowResult wrong=Wait(runtime.RunAsync("business","not-an-int"));
+                Check(wrong.State==MRKFlowState.Failed && wrong.Error!=null,
+                    "不匹配业务类型未返回明确失败结果");
+            }
+            finally { Wait(runtime.StopAsync()); }
+        }
 
         private sealed class Approval : IMRKPlanPublicationPolicy
         {

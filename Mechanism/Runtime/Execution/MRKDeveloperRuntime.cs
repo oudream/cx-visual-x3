@@ -94,6 +94,25 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 typeof(TResult));
         }
 
+        /// <summary>
+        /// 单请求业务能力：开发者只需接收业务请求和取消Token，
+        /// 底层自动使用Flow输入request绑定，不需要手工访问Context字典。
+        /// </summary>
+        public MRKCodeRuntimeBuilder CapabilityForRequest<TRequest, TResult>(string id,
+            Func<TRequest, CancellationToken, Task<TResult>> action)
+        {
+            if (action == null) throw new ArgumentNullException("action");
+            return Capability<TResult>(id, (context, token) =>
+            {
+                object input;
+                if (!context.Inputs.TryGetValue("request", out input) ||
+                    !(input is TRequest))
+                    throw new ArgumentException("流程缺少类型匹配的request输入：" +
+                        typeof(TRequest).FullName);
+                return action((TRequest)input, token);
+            });
+        }
+
         public MRKCodeRuntimeBuilder Flow(string id,
             Action<MRKCodeFlowBuilder> configure)
         {
@@ -212,12 +231,19 @@ namespace CxVisual.Mechanism.Runtime.Execution
             return StartFlow(flowId, inputs, cancellation).Completion;
         }
 
+        /// <summary>自然的业务请求入口：RunAsync("CT.Scan", request)。</summary>
+        public Task<MRKFlowResult> RunAsync(string flowId, object request,
+            CancellationToken cancellation = default(CancellationToken))
+        {
+            return RunRequestAsync(flowId, request, cancellation);
+        }
+
         /// <summary>约定将单个请求对象作为名为request的Flow输入。</summary>
         public Task<MRKFlowResult> RunRequestAsync<TRequest>(string flowId,
             TRequest request, CancellationToken cancellation = default(CancellationToken))
         {
             return RunAsync(flowId,
-                new Dictionary<string, object>(StringComparer.Ordinal)
+                (IDictionary<string, object>)new Dictionary<string, object>(StringComparer.Ordinal)
                 { { "request", request } }, cancellation);
         }
 
