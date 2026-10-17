@@ -24,7 +24,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                         pair.Value.State == MDSDataLoadState.Loaded
                             ? MDSDataQueryLogic.SizeOf(pair.Value.Cache)
                             : (long?)pair.Value.Length,
-                        pair.Value.Generation));
+                        pair.Value.Generation, RunId, "FlowHeap"));
             }
         }
 
