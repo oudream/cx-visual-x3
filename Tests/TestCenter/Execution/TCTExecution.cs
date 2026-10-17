@@ -73,21 +73,22 @@ namespace CxVisual.TestCenter.Execution
                             Task grace = Task.Delay(TimeSpan.FromSeconds(5));
                             Task stopped = await Task.WhenAny(exited, grace).ConfigureAwait(false);
                             if (stopped != exited || !child.HasExited)
-                                return Failure(test.Descriptor, TCTTestStatus.Error, watch.Elapsed,
-                                    "Worker did not exit after attempted termination; check orphan process", attempt);
+                                return FailureWithEventEvidence(test.Descriptor, TCTTestStatus.Error,
+                                    watch.Elapsed, "Worker did not exit after attempted termination; check orphan process",
+                                    attempt, eventFile);
                             // Observe the reader so a killed Worker does not leave an unobserved poller.
                             await eventReader.ConfigureAwait(false);
-                            return Failure(test.Descriptor, first == cancelled ?
+                            return FailureWithEventEvidence(test.Descriptor, first == cancelled ?
                                 TCTTestStatus.Cancelled : TCTTestStatus.TimedOut, watch.Elapsed,
                                 first == cancelled ? "Run cancelled; worker exited" :
-                                    "Worker exceeded deadline and exited after terminate", attempt);
+                                    "Worker exceeded deadline and exited after terminate", attempt, eventFile);
                         }
                         waits.Cancel();
                     }
                     await eventReader.ConfigureAwait(false);
                     if (!File.Exists(resultFile))
-                        return Failure(test.Descriptor, TCTTestStatus.Error, watch.Elapsed,
-                            "Worker exited " + child.ExitCode + " without result file", attempt);
+                        return FailureWithEventEvidence(test.Descriptor, TCTTestStatus.Error, watch.Elapsed,
+                            "Worker exited " + child.ExitCode + " without result file", attempt, eventFile);
                     TCTTestCaseResult result = TCTWireCodec.Read(resultFile, test.Descriptor, attempt);
                     if (File.Exists(eventFile) && attempt != null)
                     {
@@ -101,8 +102,8 @@ namespace CxVisual.TestCenter.Execution
                             attempt, all, result.Diagnostics);
                     }
                     if (child.ExitCode != 0 && result.Status == TCTTestStatus.Passed)
-                        return Failure(test.Descriptor, TCTTestStatus.Error, watch.Elapsed,
-                            "Worker exited unexpectedly (" + child.ExitCode + ")", attempt);
+                        return FailureWithEventEvidence(test.Descriptor, TCTTestStatus.Error, watch.Elapsed,
+                            "Worker exited unexpectedly (" + child.ExitCode + ")", attempt, eventFile);
                     return result;
                 }
             }
@@ -152,6 +153,43 @@ namespace CxVisual.TestCenter.Execution
             catch (InvalidOperationException) { return process.HasExited; }
             catch (System.ComponentModel.Win32Exception) { return false; }
         }
+        // Failure paths still preserve the observed Worker timeline, including Timeout and
+        // abrupt Exit. The record may be incomplete; it is diagnostic evidence, NOT a success proof.
+        private static TCTTestCaseResult FailureWithEventEvidence(TCTTestCaseDescriptor descriptor,
+            TCTTestStatus status, TimeSpan elapsed, string error, TCTTestAttempt attempt,
+            string eventFile)
+        {
+            var artifacts = new List<TCTArtifactRef>();
+            var diagnostics = new List<TCTTestDiagnostic>();
+            if (attempt != null && File.Exists(eventFile))
+            {
+                try
+                {
+                    FileInfo info = new FileInfo(eventFile);
+                    if (info.Length > 0)
+                    {
+                        TCTTestArtifactStore store = new TCTTestArtifactStore(
+                            TCTTestArtifactStore.RunRoot(attempt.RunId));
+                        artifacts.Add(store.Save(File.ReadAllBytes(eventFile),
+                            "application/vnd.cxvisual.test-events-partial", attempt.AttemptId));
+                        diagnostics.Add(new TCTTestDiagnostic("TCT.WORKER.PARTIAL_EVENTS",
+                            TCTTestDiagnosticSeverity.Warning, "Worker",
+                            "Worker ended abnormally; event journal is evidence only and may be incomplete",
+                            attempt.AttemptId));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // A damaged event journal must not conceal the original failure.
+                    diagnostics.Add(new TCTTestDiagnostic("TCT.WORKER.EVENT_ARCHIVE_ERROR",
+                        TCTTestDiagnosticSeverity.Warning, "Evidence", ex.Message, attempt.AttemptId));
+                }
+            }
+            return TCTTestCaseResult.FromTransport(descriptor, status, elapsed, error,
+                new List<TCTAssertionResult>(), new List<TCTTestObservation>(),
+                attempt, artifacts, diagnostics);
+        }
+
         internal static TCTTestCaseResult Failure(TCTTestCaseDescriptor descriptor,
             TCTTestStatus status, TimeSpan elapsed, string error, TCTTestAttempt attempt = null)
         {

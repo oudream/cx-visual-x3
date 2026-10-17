@@ -48,6 +48,30 @@ jobs:
           }
           '@ | Set-Content -LiteralPath 'Tests/TestCenter/Cases/TCTAutodiscoveredCases.generated.cs' -Encoding UTF8
           Write-Host 'Created .cs source after checkout; project file unchanged'
+          @'
+          using System.Threading.Tasks;
+          using NUnit.Framework;
+          namespace CxVisual.TestCenter.Cases
+          {
+              [TestFixture]
+              public sealed class TCTNewNUnit
+              {
+                  [Test]
+                  public async Task AsyncComputation()
+                  {
+                      await Task.Yield();
+                      Assert.That(6 * 7, Is.EqualTo(42));
+                  }
+                  [TestCase(2, 3, 5)]
+                  [TestCase(3, 4, 7)]
+                  public void ParameterComputation(int a, int b, int expected)
+                  {
+                      Assert.That(a + b, Is.EqualTo(expected));
+                  }
+              }
+          }
+          '@ | Set-Content -LiteralPath 'Tests/TestCenter/Cases/TCTNewNUnit.generated.cs' -Encoding UTF8
+          Write-Host 'Created native NUnit async/parameterized source after checkout; csproj unchanged'
       - name: Build all solution projects
         shell: powershell
         run: |
@@ -74,7 +98,35 @@ jobs:
           if ($rows.Count -lt 2 -or @($rows | Where-Object {
               [string]::IsNullOrWhiteSpace([string]$_.fingerprint)
           }).Count -ne 0) { throw 'NUnit parameter rows lack stable fingerprint' }
-          Write-Host "PASS Developer catalog discovered $($items.Count) cases"
+          $authored = @($items | Where-Object {
+              $_.id -like 'NUNIT.CxVisual.TestCenter.Cases.TCTNewNUnit.*'
+          })
+          if ($authored.Count -ne 3 -or
+              @($authored | Where-Object { [string]::IsNullOrWhiteSpace($_.fingerprint) }).Count -ne 0) {
+              throw "Dynamically authored NUnit cases were not compiled/discovered with fingerprints"
+          }
+          $asyncId = 'NUNIT.CxVisual.TestCenter.Cases.TCTNewNUnit.AsyncComputation'
+          if (@($authored | Where-Object { $_.id -eq $asyncId }).Count -ne 1 -or
+              @($authored | Where-Object { $_.rowKey -ne 'default' }).Count -ne 2) {
+              throw "Async test and parameter rows not independently represented"
+          }
+          Write-Host "PASS Developer catalog discovered $($items.Count) cases including 3 authored NUnit cases"
+      - name: Verify new NUnit test runs by TestId without registration
+        shell: powershell
+        run: |
+          $exe = (Resolve-Path 'Output/Debug/x64/CxVisual.TestCenter.exe').Path
+          $id = 'NUNIT.CxVisual.TestCenter.Cases.TCTNewNUnit.AsyncComputation'
+          $report = Join-Path (Get-Location) 'Output/Debug/x64/M1NUnitAuthor.junit.xml'
+          $p = Start-Process -FilePath $exe -WorkingDirectory (Get-Location).Path -ArgumentList @('--run','--id',('"' + $id + '"'),'--report',('"' + $report + '"'),'--format','junit','--isolate') -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Dynamic authored NUnit worker returned $($p.ExitCode)" }
+          [xml]$junit = Get-Content -LiteralPath $report -Raw
+          if ([int]$junit.testsuite.tests -ne 1 -or
+              [int]$junit.testsuite.failures -ne 0 -or
+              [int]$junit.testsuite.errors -ne 0 -or
+              [string]$junit.testsuite.testcase.GetAttribute('name') -ne $id) {
+              throw "Developer NUnit test identity or final result not preserved"
+          }
+          Write-Host 'PASS new NUnit async test: source -> build -> discovery -> Worker -> JUnit'
       - name: Verify actual WPF Shell and Viewer binding
         shell: powershell
         run: |
@@ -233,6 +285,12 @@ jobs:
                   [string]$result.cases[0].status -ne $(if ($mode -ne 'exit') { 'TimedOut' } else { 'Error' })) {
                   throw "Worker $mode emitted wrong terminal state"
               }
+              $partial = @($result.cases[0].artifacts | Where-Object {
+                  $_.Mime -eq 'application/vnd.cxvisual.test-events-partial'
+              })
+              if ($partial.Count -ne 1 -or $partial[0].AttemptId -ne $result.cases[0].attemptId) {
+                  throw "Worker $mode dropped abnormal-terminal event evidence"
+              }
               if ($mode -eq 'tree') {
                   if (-not (Test-Path $pidFile)) { throw 'Worker failed to create nested child in time' }
                   $childId = [int](Get-Content -LiteralPath $pidFile -Raw)
@@ -264,8 +322,8 @@ jobs:
           $nunitCases = @($junit.testsuite.testcase | Where-Object {
               $_.GetAttribute('name').StartsWith('NUNIT.')
           })
-          if ($nunitCases.Count -ne 5) {
-              throw "Unified TestCenter Catalog must contain 5 NUnit cases; got $($nunitCases.Count)"
+          if ($nunitCases.Count -ne 8) {
+              throw "Unified TestCenter Catalog must contain 8 NUnit cases including new sources; got $($nunitCases.Count)"
           }
           if (@($junit.testsuite.testcase | Where-Object {
               $_.GetAttribute('name') -eq 'TCT.AUTO.001'
@@ -430,6 +488,7 @@ jobs:
             Output/Debug/x64/NUnitProbe.negative.xml
             Output/Debug/x64/WorkerFault.*.json
             Output/Debug/x64/TestCenter.catalog.json
+            Output/Debug/x64/M1NUnitAuthor.junit.xml
             Output/Debug/x64/M1Evidence.*.json
             Output/Debug/x64/M1EvidenceHistory/**
             Output/Debug/x64/StructuredObservation.json

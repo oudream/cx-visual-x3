@@ -32,6 +32,28 @@
 | TCT-15 | 后续 | 六Workbench专业与安全HIL；当前只准备接口和验收清单，不能将业务设备接入冒充已完成 |
 | TCT-16 | 持续 | V4.0唯一规范、Owner/代码/TestId/CI证据、任务状态与变更追踪，禁止多份相互冲突标准 |
 
+## M0/M1 实际验收记录（2026-10-17）
+
+**完成状态：M0 与 M1 既定自动化交付范围已经完成，状态不等于整个 TestCenter 或 GUI/工业现场均完成。**
+
+- **验收代码 Commit：** `951a45e1654abe4cc60977fcd551573a917249ea`
+- **Windows CI：** https://github.com/oudream/cx-visual-x3/actions/runs/39016695155 （`success`，匹配该代码 Commit）
+- **结果：** 109/109 单次隔离通过；327/327 三轮并发重复通过；Failed=0、Error=0、Skipped=0。
+- **CI 对照源码：** `Tests/TestCenter`、`.github/workflows/testcenter-windows.yml`。
+- **继承原则：** GitHub 后续继续提交时必须重新以新 HEAD 的 CI 验收，不能把本次成功记录当成未来提交自动通过。
+
+| 工作包 | 验收结论 | 具体实现与反证 |
+|---|---|---|
+| TCT-00 M0基线 | **完成（当前代码基线）** | Windows 完整解决方案、层级依赖、NUnit包恢复、单轮、三轮重复、空选择不假绿，全部成功 |
+| TCT-01 开发者最短链 | **完成（NUnit默认作者入口）** | CI 动态创建NUnit `.cs`，不编辑csproj；NUnit `async Task` 和两行参数数据均发现，显式TestId在独立Worker执行，JUnit校验通过；旧TCT入口兼容 |
+| TCT-02 NUnit身份与状态 | **完成（受支持的本机/可信外部程序集路径）** | `DefinitionId/CaseId/RowKey`、程序集SHA256、Worker同一版本核对；外部DLL身份；Failed、Skipped、Error、Inconclusive反证；跨宿主多设备部署不在本阶段声明 |
+| TCT-03 Worker故障治理 | **完成（Windows受控子进程验证范围）** | Run/Attempt与独占资源、取消/超时/崩溃、进程树终止，超时/异常继续保留真实partial事件证据；任何故障不计Passed |
+| TCT-04 Schema Observation | **完成（M1数据生产/传输/回放合同）** | `TCTObservationEnvelope` V1、真实CxRect2D/MDS Owner、Run/Attempt/SourceObject/Definition/RuntimeInstance、PayloadRef；Worker XML与SHA256 Artifact；跨Attempt/DTD/Schema/篡改反证。Viewer的完整交互属于M2/M3 |
+| TCT-05 Artifact与历史 | **完成（M1内容寻址与可复现回放）** | SHA256、Artifact负载库存、归档Manifest/Attempt/summary一致性、跨Run Observation Diff、原临时目录删除后新进程回放、损坏/交叉身份拒绝；Golden的企业级认证/权限/多用户审批属于M4 |
+| TCT-16 持续治理 | **持续开展** | V4.0为唯一技术规格，台账只管执行状态；保留上述CI和Commit，后续版本按实际证据更新 |
+
+**不能越界宣称完成：** WPF Smoke 已通过，但六场景交互、真实 Geometry/Object 专业 Viewer 是 M2；Graph/Channel/Runtime 专业可视化是 M3；正式八维覆盖率、Suite/Plan 与具认证的 Golden 审批是 M4；性能长跑与工业HIL属 M5/专业Owner。通过的用例数量不代表上述功能完成或业务能力已经正式覆盖。
+
 ## 六个交付里程碑与依赖
 
 | 阶段 | 工作包 | 真实完成条件 |

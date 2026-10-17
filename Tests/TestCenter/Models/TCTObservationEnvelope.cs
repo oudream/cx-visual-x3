@@ -144,6 +144,16 @@ namespace CxVisual.TestCenter.Models
                     !result.Artifacts.Any(x => x.RelativePath == observation.Evidence.RelativePath &&
                         x.AttemptId == result.AttemptId && x.Sha256 == observation.Evidence.Sha256))
                     throw new InvalidDataException("Observation missing its registered evidence artifact");
+                // A referenced payload must be declared in the same Attempt result's
+                // artifact inventory, not just happen to exist in the content-addressed store.
+                if (observation.Envelope.PayloadRef != null &&
+                    !result.Artifacts.Any(x =>
+                        x.RelativePath == observation.Envelope.PayloadRef.RelativePath &&
+                        x.AttemptId == result.AttemptId &&
+                        x.Sha256 == observation.Envelope.PayloadRef.Sha256 &&
+                        x.Mime == observation.Envelope.PayloadRef.Mime &&
+                        x.ByteSize == observation.Envelope.PayloadRef.ByteSize))
+                    throw new InvalidDataException("Observation payload missing from Attempt inventory");
                 TCTObservationEnvelope record = TCTObservationCodec.Replay(observation.Evidence,
                     store, result.AttemptId);
                 if (record.RunId != result.RunId ||

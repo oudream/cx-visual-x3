@@ -36,15 +36,19 @@ namespace CxVisual.TestCenter.NUnitIntegration
                     trace("Before GetRunner");
                     using (ITestRunner runner = engine.GetRunner(package))
                     {
+                        // Probe only its own fixture. Developer-created NUnit tests must not
+                        // change the engine health check's expected five test cases.
+                        TestFilter ownFixture = new TestFilter("<filter><test>" +
+                            typeof(TCTNUnitProbeFixture).FullName + "</test></filter>");
                         trace("Before Explore");
-                        XmlNode discovered = runner.Explore(TestFilter.Empty);
+                        XmlNode discovered = runner.Explore(ownFixture);
                         trace("Explore done");
                         XmlNode[] found = discovered.SelectNodes("//test-case")
                             .Cast<XmlNode>().ToArray();
                         if (found.Length != 5)
                             throw new InvalidDataException("NUnit discovery: expected five cases, got " + found.Length);
                         trace("Before Run");
-                        XmlNode run = runner.Run(null, TestFilter.Empty);
+                        XmlNode run = runner.Run(null, ownFixture);
                         trace("Run done");
                         string parent = Path.GetDirectoryName(Path.GetFullPath(reportPath));
                         if (!Directory.Exists(parent)) Directory.CreateDirectory(parent);
