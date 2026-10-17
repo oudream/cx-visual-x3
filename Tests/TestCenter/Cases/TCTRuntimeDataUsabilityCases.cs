@@ -13,6 +13,16 @@ namespace CxVisual.TestCenter.Cases
 {
     public static class TCTRuntimeDataUsabilityCases
     {
+        private sealed class TCTExistingOwner : IMDSExternalBindingResolver
+        {
+            public object Resolve(MDSBindingSource source, string name, Type target)
+            {
+                if (source == MDSBindingSource.Variable && name == "PLC.Temperature"
+                    && target == typeof(int)) return 88;
+                throw new InvalidOperationException("外部解析器未授权该数据");
+            }
+        }
+
         [TCTTest("TCT.MDS.016", "当前执行Scope元数据检索不会窥探其他节点",
             TCTTestAspect.Mechanism, "Data / RuntimeData", ObjectId = "MDSDataContext")]
         public static void VisibleScopeSearch(TCTTestContext t)
@@ -108,6 +118,49 @@ namespace CxVisual.TestCenter.Cases
                     .GetAwaiter().GetResult(), "取消的算法不能发布输出");
                 t.AssertEqual(0, frame.Data.InspectPendingOutputs().Count,
                     "取消后没有部分输出");
+            }
+        }
+
+        [TCTTest("TCT.MDS.021", "参数来源选择只复用已有数据和外部Owner解析器",
+            TCTTestAspect.Mechanism, "Data / RuntimeData", ObjectId = "MDSDataBindingResolver")]
+        public static void AllBindingCategories(TCTTestContext t)
+        {
+            using (var stack = new MDSDataStack())
+            using (var frame = stack.OpenFrame("bind", stack.RootScope.CreateChild("bind"),
+                new Dictionary<string, object>{{"NodeAlias", 41}},
+                new Dictionary<string, Type>()))
+            {
+                frame.Data.Set("LocalValue", 7);
+                stack.FlowHeap.Set("SharedValue", 5);
+                t.AssertEqual(2, MDSDataBindingResolver.Resolve<int>(frame.Data,
+                    new MDSDataBinding(MDSBindingSource.Constant, typeof(int), constant: 2)),
+                    "常量绑定不用运行时搜索");
+                t.AssertEqual(41, MDSDataBindingResolver.Resolve<int>(frame.Data,
+                    new MDSDataBinding(MDSBindingSource.NodeOutput, typeof(int), "NodeAlias")),
+                    "节点Output必须以既有MRK映射的Input别名注入");
+                t.AssertEqual(7, MDSDataBindingResolver.Resolve<int>(frame.Data,
+                    new MDSDataBinding(MDSBindingSource.CurrentSlot, typeof(int), "LocalValue")),
+                    "当前Local绑定");
+                t.AssertEqual(5, MDSDataBindingResolver.Resolve<int>(frame.Data,
+                    new MDSDataBinding(MDSBindingSource.FlowHeap, typeof(int), "SharedValue")),
+                    "FlowHeap显式绑定");
+                t.AssertThrows<InvalidOperationException>(() =>
+                    MDSDataBindingResolver.Resolve<int>(frame.Data,
+                        new MDSDataBinding(MDSBindingSource.Variable, typeof(int),
+                            "PLC.Temperature")),
+                    "外部PLC变量没有Owner解析器时不能暗自读取");
+                t.AssertEqual(88, MDSDataBindingResolver.Resolve<int>(frame.Data,
+                    new MDSDataBinding(MDSBindingSource.Variable, typeof(int),
+                        "PLC.Temperature"), new TCTExistingOwner()),
+                    "PLC变量只由已授权Owner解析器提供");
+                t.AssertThrows<InvalidCastException>(() =>
+                    MDSDataBindingResolver.Resolve<string>(frame.Data,
+                        new MDSDataBinding(MDSBindingSource.CurrentSlot, typeof(int),
+                            "LocalValue")), "不兼容类型提前拒绝");
+                var candidates = MDSDataBindingResolver.CompatibleCandidates(frame.Data,
+                    typeof(int));
+                t.AssertEqual(3, candidates.Count,
+                    "参数选择只给出当前可见且类型匹配的三个int来源");
             }
         }
     }
