@@ -233,28 +233,47 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 throw new NotSupportedException("Move/Copy要求使用既有MDE执行作用域");
             if (string.IsNullOrWhiteSpace(from) || string.IsNullOrWhiteSpace(to))
                 throw new ArgumentException("来源或目标名称为空");
-            lock (scope.SyncRoot)
+            if (toHeap)
             {
-                lock (heap.SyncRoot)
+                object sourceToken = scope.TransferToken(from);
+                object original = scope.TransferPeek(from);
+                Type type = scope.TransferPeekType(from);
+                if (move) scope.TransferCheckDetachable(from);
+                object prepared = move && scope.TransferCanMoveOwned(from)
+                    ? original : MDSDataSafety.Capture(original, heap.Adapters);
+                long size = heap.Budget == null ? 0 :
+                    heap.Budget.Measure(prepared, heap.Adapters);
+                // 复制器和专业尺寸估算器在全部容器锁外执行。
+                lock (scope.SyncRoot)
                 {
-                    if (toHeap)
+                    lock (heap.SyncRoot)
                     {
-                        object original = scope.TransferPeek(from);
+                        if (!object.ReferenceEquals(sourceToken, scope.TransferToken(from)))
+                            throw new MDSDataException(MDSDataErrorCode.Busy,
+                                "复制期间局部数据已改变：" + from, from);
                         if (move) scope.TransferCheckDetachable(from);
-                        Type valueType = scope.TransferPeekType(from);
-                        // Move转移已由MDS接管的原数据；Copy才创建独立副本。
-                        // 旧Scope Put的外部别名不受控，必须先防御复制再接管。
-                        object owned = move && scope.TransferCanMoveOwned(from)
-                            ? original : MDSDataSafety.Capture(original, heap.Adapters);
-                        heap.TransferStoreOwned(to, owned, valueType, replace);
+                        heap.TransferStoreOwned(to, prepared, type, replace, size);
                         if (move) scope.TransferDetach(from);
                     }
-                    else
+                }
+            }
+            else
+            {
+                object sourceToken = heap.TransferToken(from);
+                Type type;
+                object original = heap.TransferPeekOwned(from, out type);
+                object prepared = move ? original : MDSDataSafety.Capture(original, heap.Adapters);
+                lock (scope.SyncRoot)
+                {
+                    lock (heap.SyncRoot)
                     {
-                        Type valueType;
-                        object original = heap.TransferPeekOwned(from, out valueType);
-                        object owned = move ? original : MDSDataSafety.Capture(original, heap.Adapters);
-                        scope.TransferStore(to, owned, replace, valueType);
+                        Type presentType;
+                        object current = heap.TransferPeekOwned(from, out presentType);
+                        if (!object.ReferenceEquals(sourceToken, heap.TransferToken(from)) ||
+                            !object.ReferenceEquals(original, current))
+                            throw new MDSDataException(MDSDataErrorCode.Busy,
+                                "复制期间Heap数据已改变：" + from, from);
+                        scope.TransferStore(to, prepared, replace, type);
                         if (move) heap.Remove(from);
                     }
                 }
