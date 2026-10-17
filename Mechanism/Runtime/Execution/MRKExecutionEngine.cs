@@ -43,7 +43,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
         private readonly ConcurrentQueue<string> _completedOrder = new ConcurrentQueue<string>();
         internal MRKExecutionContext(string planId, IDictionary<string, object> inputs,
             MRKFlowMetadata metadata = null, IFDEExecutionDataScope dataSpace = null,
-            IMRKExecutionJournal journal = null, int traceCapacity = 2048)
+            IMRKExecutionJournal journal = null, int traceCapacity = 2048,
+            MDSDataBudget dataBudget = null)
         {
             FlowId = Guid.NewGuid();
             PlanId = planId;
@@ -51,7 +52,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
             _scopePrefix = string.Empty;
             _journal = journal;
             _dataScope = dataSpace == null ? null : dataSpace.CreateChild("flow-" + FlowId.ToString("N"));
-            _managedStack = new MDSDataStack(_dataScope, null, FlowId.ToString("N"));
+            _managedStack = new MDSDataStack(_dataScope, null, FlowId.ToString("N"), dataBudget);
             _trace = new MRKExecutionTrace(traceCapacity);
             _boundInputs = new ReadOnlyDictionary<string, object>(new Dictionary<string, object>());
             _inputs = CopyByteBuffers(inputs ??
@@ -381,6 +382,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
         private readonly Dictionary<string, FCRDedicatedExecutor> _dedicated;
         private readonly int _traceCapacity;
         private readonly int _maxActiveFlows;
+        private readonly long _dataPayloadBudgetBytes;
         private readonly object _lifecycleGate = new object();
         private readonly Dictionary<Guid, MRKFlowHandle> _activeFlows =
             new Dictionary<Guid, MRKFlowHandle>();
@@ -396,10 +398,14 @@ namespace CxVisual.Mechanism.Runtime.Execution
             IEnumerable<MRKExecutionGroupDefinition> groups = null,
             IMRKExecutionJournal journal = null,
             IDictionary<string, FCRDedicatedExecutor> dedicatedExecutors = null,
-            int traceCapacity = 2048, int maxActiveFlows = int.MaxValue)
+            int traceCapacity = 2048, int maxActiveFlows = int.MaxValue,
+            long dataPayloadBudgetBytes = 0)
         {
             if (maxActiveFlows < 1) throw new ArgumentOutOfRangeException("maxActiveFlows");
+            if (dataPayloadBudgetBytes < 0)
+                throw new ArgumentOutOfRangeException("dataPayloadBudgetBytes");
             _maxActiveFlows = maxActiveFlows;
+            _dataPayloadBudgetBytes = dataPayloadBudgetBytes;
             _worker = new FCRWorker(options);
             _resources = coordinator ?? new MRKResourceLeaseCoordinator();
             _groups = new MRKExecutionGroups(groups);
@@ -639,7 +645,9 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 if (_activeFlows.Count >= _maxActiveFlows)
                     throw new MRKFlowCapacityExceededException(_maxActiveFlows);
                 MRKExecutionContext context = new MRKExecutionContext(plan.Id,
-                    inputs, metadata, dataSpace, _journal, _traceCapacity);
+                    inputs, metadata, dataSpace, _journal, _traceCapacity,
+                    _dataPayloadBudgetBytes == 0 ? null :
+                    new MDSDataBudget(_dataPayloadBudgetBytes));
                 try
                 {
                     if (_journal != null)

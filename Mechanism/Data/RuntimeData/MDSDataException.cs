@@ -18,7 +18,8 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         ScopeClosed,
         UnsafeValue,
         Unsupported,
-        OperationCancelled
+        OperationCancelled,
+        QuotaExceeded
     }
 
     /// <summary>携带数据槽与调用上下文的结构化故障，便于工程编排界面定位。</summary>

@@ -11,6 +11,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
     {
         private int _take = 100;
         public string NamePrefix { get; set; }
+        public string ExactName { get; set; }
         public Type DataType { get; set; }
         public MDSDataLocation Location { get; set; }
         public MDSDataLoadState? LoadState { get; set; }
@@ -62,6 +63,8 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         internal static bool Matches(MDSDataSnapshot item, MDSDataQuery q)
         {
             if (q == null) return true;
+            if (q.ExactName != null &&
+                !string.Equals(q.ExactName, item.Name, StringComparison.Ordinal)) return false;
             if (q.NamePrefix != null &&
                 !item.Name.StartsWith(q.NamePrefix, StringComparison.Ordinal)) return false;
             if (q.DataType != null && !q.DataType.IsAssignableFrom(item.DataType)) return false;

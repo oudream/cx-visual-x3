@@ -25,7 +25,14 @@ namespace CxVisual.TestCenter.UI
         public string FocusedAttemptId { get { return _focusedAttempt; } }
         public void FocusAttempt(string id)
         {
+            // Results选中Attempt时必须实际切换过滤范围；只修改caption会混入其它Worker事件。
+            if (string.IsNullOrWhiteSpace(id))
+            {
+                ShowAll();
+                return;
+            }
             _focusedAttempt = id;
+            _scope.SelectedIndex = 1;
             RefreshScope();
         }
         public void ShowAll()

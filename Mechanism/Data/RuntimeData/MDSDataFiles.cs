@@ -73,6 +73,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         internal readonly DateTime LastWriteUtc;
         internal MDSDataLoadState State;
         internal object Cache;
+        internal long CachedBytes;
         internal int Generation;
         internal MDSDataFileEntry(string path, Type type, IMDSDataFileLoader loader,
             long size, DateTime modified)
@@ -123,7 +124,13 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         public void SetFile(string name, string path)
         { SetFile<byte[]>(name, path, new MDSLimitedBinaryFileLoader()); }
 
-        public async Task<T> LoadAsync<T>(string name, CancellationToken cancellation = default(CancellationToken))
+        public Task<T> LoadAsync<T>(string name,
+            CancellationToken cancellation = default(CancellationToken))
+        { return LoadOwnedAsync<T>(name, cancellation, null); }
+
+        /// <summary>节点托管加载的发布屏障；canPublish只读取已同步的生命周期标记。</summary>
+        internal async Task<T> LoadOwnedAsync<T>(string name, CancellationToken cancellation,
+            Func<bool> canPublish)
         {
             CheckName(name);
             MDSDataFileEntry entry;
@@ -146,7 +153,12 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 }
             }
             if (cachedValue != null)
-                return (T)CaptureValue(cachedValue);
+            {
+                object copied = CaptureValue(cachedValue);
+                if (canPublish != null && !canPublish())
+                    throw new ObjectDisposedException("节点已结算，拒绝返回迟到文件缓存");
+                return (T)copied;
+            }
             object loaded = null;
             try
             {
@@ -158,6 +170,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                     throw new InvalidCastException("文件加载器返回值类型不符合契约");
                 object owned = CaptureValue(loaded);
                 object independentReturn = CaptureValue(owned);
+                long cachedBytes = Budget == null ? 0 : Budget.Measure(owned, Adapters);
                 VerifyFile(entry);
                 lock (_gate)
                 {
@@ -166,7 +179,11 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                     if (!_files.TryGetValue(name, out current) ||
                         !object.ReferenceEquals(current, entry) || entry.Generation != generation)
                         throw new InvalidOperationException("文件加载结果过期，禁止发布");
+                    if (canPublish != null && !canPublish())
+                        throw new ObjectDisposedException("节点已结算，文件数据不能迟到发布");
+                    if (Budget != null) Budget.Reserve(cachedBytes);
                     entry.Cache = owned;
+                    entry.CachedBytes = cachedBytes;
                     entry.State = MDSDataLoadState.Loaded;
                 }
                 return (T)independentReturn;
@@ -196,6 +213,8 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 if (file.State == MDSDataLoadState.Loading)
                     throw new MDSDataException(MDSDataErrorCode.Busy, "加载中不可卸载：" + name, name);
                 file.Cache = null;
+                if (Budget != null) Budget.Release(file.CachedBytes);
+                file.CachedBytes = 0;
                 file.State = MDSDataLoadState.Unloaded;
                 file.Generation++;
             }

@@ -36,17 +36,20 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         private readonly HashSet<string> _active = new HashSet<string>(StringComparer.Ordinal);
         private readonly Dictionary<string, IDictionary<string, object>> _committed =
             new Dictionary<string, IDictionary<string, object>>(StringComparer.Ordinal);
+        private long _committedCharge;
+        public MDSDataBudget Budget { get; private set; }
         private bool _closed;
 
         public MDSDataStack(IFDEExecutionDataScope root = null)
             : this(root, null) { }
 
         public MDSDataStack(IFDEExecutionDataScope root, FDTDataAdapterRegistry adapters,
-            string runId = null)
+            string runId = null, MDSDataBudget budget = null)
         {
             _ownsRoot = root == null;
             _root = root ?? MDEExecutionDataScope.CreateRoot("data-" + Guid.NewGuid().ToString("N"));
-            FlowHeap = new MDSDataHeap(adapters);
+            Budget = budget;
+            FlowHeap = new MDSDataHeap(adapters, budget);
             FlowHeap.RunId = runId ?? _root.Id;
         }
 
@@ -77,6 +80,10 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         internal void Publish(string invocationId, IDictionary<string, object> outputs)
         {
             IDictionary<string, object> safe = MDSDataSafety.Snapshot(outputs, FlowHeap.Adapters);
+            long charge = 0;
+            if (Budget != null)
+                foreach (KeyValuePair<string, object> output in safe)
+                    charge = checked(charge + Budget.Measure(output.Value, FlowHeap.Adapters));
             lock (_gate)
             {
                 EnsureOpen();
@@ -84,7 +91,10 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                     throw new InvalidOperationException("未活动或已结算的调用帧：" + invocationId);
                 if (_committed.ContainsKey(invocationId))
                     throw new MDSDataException(MDSDataErrorCode.OutputConflict, "该调用帧的输出已提交：" + invocationId, invocationId, invocationId);
-                _committed.Add(invocationId, safe); // 所有Outputs同时可见
+                if (Budget != null) Budget.Reserve(charge);
+                try { _committed.Add(invocationId, safe); }
+                catch { if (Budget != null) Budget.Release(charge); throw; }
+                _committedCharge = checked(_committedCharge + charge); // 所有Outputs同时可见
             }
         }
 
@@ -92,11 +102,11 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         {
             if (string.IsNullOrWhiteSpace(invocationId) || string.IsNullOrWhiteSpace(outputName))
                 throw new ArgumentException("调用帧及输出名不能为空");
+            object found;
             lock (_gate)
             {
                 EnsureOpen();
                 IDictionary<string, object> outputs;
-                object found;
                 if (!_committed.TryGetValue(invocationId, out outputs) ||
                     !outputs.TryGetValue(outputName, out found))
                 {
@@ -108,9 +118,10 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 if (found == null && typeof(T).IsValueType &&
                     Nullable.GetUnderlyingType(typeof(T)) == null)
                     throw new InvalidCastException("null不能转换为非空值类型");
-                value = (T)MDSDataSafety.Capture(found, FlowHeap.Adapters);
-                return true;
             }
+            // CLR托管对象由源快照保活；外部专业复制器绝不能在Stack锁内执行。
+            value = (T)MDSDataSafety.Capture(found, FlowHeap.Adapters);
+            return true;
         }
 
         public bool TryReadOutput(string invocationId, string outputName, out object value)
@@ -146,6 +157,8 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                     throw new ObjectDisposedException("MDSDataStack.RootScope");
                 _closed = true;
                 _committed.Clear();
+                if (Budget != null) Budget.Release(_committedCharge);
+                _committedCharge = 0;
             }
             try { FlowHeap.Dispose(); }
             finally { if (_ownsRoot) _root.Dispose(); }
@@ -220,28 +233,47 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 throw new NotSupportedException("Move/Copy要求使用既有MDE执行作用域");
             if (string.IsNullOrWhiteSpace(from) || string.IsNullOrWhiteSpace(to))
                 throw new ArgumentException("来源或目标名称为空");
-            lock (scope.SyncRoot)
+            if (toHeap)
             {
-                lock (heap.SyncRoot)
+                object sourceToken = scope.TransferToken(from);
+                object original = scope.TransferPeek(from);
+                Type type = scope.TransferPeekType(from);
+                if (move) scope.TransferCheckDetachable(from);
+                object prepared = move && scope.TransferCanMoveOwned(from)
+                    ? original : MDSDataSafety.Capture(original, heap.Adapters);
+                long size = heap.Budget == null ? 0 :
+                    heap.Budget.Measure(prepared, heap.Adapters);
+                // 复制器和专业尺寸估算器在全部容器锁外执行。
+                lock (scope.SyncRoot)
                 {
-                    if (toHeap)
+                    lock (heap.SyncRoot)
                     {
-                        object original = scope.TransferPeek(from);
+                        if (!object.ReferenceEquals(sourceToken, scope.TransferToken(from)))
+                            throw new MDSDataException(MDSDataErrorCode.Busy,
+                                "复制期间局部数据已改变：" + from, from);
                         if (move) scope.TransferCheckDetachable(from);
-                        Type valueType = scope.TransferPeekType(from);
-                        // Move转移已由MDS接管的原数据；Copy才创建独立副本。
-                        // 旧Scope Put的外部别名不受控，必须先防御复制再接管。
-                        object owned = move && scope.TransferCanMoveOwned(from)
-                            ? original : MDSDataSafety.Capture(original, heap.Adapters);
-                        heap.TransferStoreOwned(to, owned, valueType, replace);
+                        heap.TransferStoreOwned(to, prepared, type, replace, size);
                         if (move) scope.TransferDetach(from);
                     }
-                    else
+                }
+            }
+            else
+            {
+                object sourceToken = heap.TransferToken(from);
+                Type type;
+                object original = heap.TransferPeekOwned(from, out type);
+                object prepared = move ? original : MDSDataSafety.Capture(original, heap.Adapters);
+                lock (scope.SyncRoot)
+                {
+                    lock (heap.SyncRoot)
                     {
-                        Type valueType;
-                        object original = heap.TransferPeekOwned(from, out valueType);
-                        object owned = move ? original : MDSDataSafety.Capture(original, heap.Adapters);
-                        scope.TransferStore(to, owned, replace, valueType);
+                        Type presentType;
+                        object current = heap.TransferPeekOwned(from, out presentType);
+                        if (!object.ReferenceEquals(sourceToken, heap.TransferToken(from)) ||
+                            !object.ReferenceEquals(original, current))
+                            throw new MDSDataException(MDSDataErrorCode.Busy,
+                                "复制期间Heap数据已改变：" + from, from);
+                        scope.TransferStore(to, prepared, replace, type);
                         if (move) heap.Remove(from);
                     }
                 }
