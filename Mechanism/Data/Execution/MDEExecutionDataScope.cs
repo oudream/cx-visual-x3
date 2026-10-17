@@ -140,6 +140,19 @@ namespace CxVisual.Mechanism.Data.Execution
                 return new ReadOnlyDictionary<string, object>(copy);
             }
         }
+        /// <summary>同一个Scope的局部类型快照，避免null值在Inspect时失去类型。</summary>
+        internal IDictionary<string, Type> SnapshotLocalTypes()
+        {
+            lock (_gate)
+            {
+                EnsureOpen();
+                Dictionary<string, Type> result = new Dictionary<string, Type>(StringComparer.Ordinal);
+                foreach (KeyValuePair<string, MDEExecutionDataEntry> entry in _local)
+                    result.Add(entry.Key, entry.Value.DeclaredType);
+                return new ReadOnlyDictionary<string, Type>(result);
+            }
+        }
+
         // 仅供Mechanism.Data的Heap/Stack受控转移使用；调用方必须持有SyncRoot。
         // 不向一般业务暴露移除Owned数据的捷径，避免绕开Release生命周期。
         internal object SyncRoot { get { return _gate; } }
