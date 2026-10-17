@@ -15,7 +15,15 @@ namespace CxVisual.Mechanism.Data.Execution
         {
             internal readonly object Value;
             internal readonly Action Release;
-            internal MDEExecutionDataEntry(object value, Action release) { Value = value; Release = release; }
+            internal readonly Type DeclaredType;
+            internal readonly bool ManagedOwned;
+            internal MDEExecutionDataEntry(object value, Action release,
+                Type declaredType = null, bool managedOwned = false)
+            {
+                Value = value; Release = release;
+                DeclaredType = declaredType ?? (value == null ? typeof(object) : value.GetType());
+                ManagedOwned = managedOwned;
+            }
         }
         private readonly object _gate = new object();
         private readonly Dictionary<string, MDEExecutionDataEntry> _local =
@@ -46,13 +54,17 @@ namespace CxVisual.Mechanism.Data.Execution
         }
         private void EnsureOpen()
         { if (_closed) throw new ObjectDisposedException("MDEExecutionDataScope", Id); }
-        public void Put<T>(string name, T value) { Add(name, value, null); }
+        public void Put<T>(string name, T value)
+        { Add(name, value, null, typeof(T), false); }
+        internal void PutManaged<T>(string name, T value)
+        { Add(name, value, null, typeof(T), true); }
         public void PutOwned<T>(string name, T value, Action<T> release)
         {
             if (release == null) throw new ArgumentNullException("release");
-            Add(name, value, () => release(value));
+            Add(name, value, () => release(value), typeof(T), false);
         }
-        private void Add(string name, object value, Action release)
+        private void Add(string name, object value, Action release,
+            Type declaredType, bool managedOwned)
         {
             if (string.IsNullOrWhiteSpace(name)) throw new ArgumentException("数据名称不能为空", "name");
             lock (_gate)
@@ -60,7 +72,7 @@ namespace CxVisual.Mechanism.Data.Execution
                 EnsureOpen();
                 if (_local.ContainsKey(name))
                     throw new InvalidOperationException("同一作用域禁止覆盖已公布数据：" + name);
-                _local.Add(name, new MDEExecutionDataEntry(value, release));
+                _local.Add(name, new MDEExecutionDataEntry(value, release, declaredType, managedOwned));
                 _insertionOrder.Add(name);
             }
         }
@@ -90,6 +102,32 @@ namespace CxVisual.Mechanism.Data.Execution
             value = default(T);
             return false;
         }
+        /// <summary>不隐式读取父级，供新的MDSDataContext实现严格类型和输入隔离。</summary>
+        internal bool TryReadLocal<T>(string name, out T value)
+        {
+            lock (_gate)
+            {
+                EnsureOpen();
+                MDEExecutionDataEntry item;
+                if (!_local.TryGetValue(name, out item))
+                { value = default(T); return false; }
+                if (item.Value == null)
+                {
+                    Type requested = typeof(T);
+                    if ((requested.IsValueType && Nullable.GetUnderlyingType(requested) == null) ||
+                        (!requested.IsAssignableFrom(item.DeclaredType) &&
+                         Nullable.GetUnderlyingType(requested) != item.DeclaredType))
+                        throw new InvalidCastException("局部空值类型不匹配：" + name);
+                    value = default(T);
+                    return true;
+                }
+                if (!(item.Value is T))
+                    throw new InvalidCastException("局部数据类型不匹配：" + name);
+                value = (T)item.Value;
+                return true;
+            }
+        }
+
         public IDictionary<string, object> SnapshotLocal()
         {
             lock (_gate)
@@ -117,6 +155,29 @@ namespace CxVisual.Mechanism.Data.Execution
             }
         }
 
+        internal bool TransferCanMoveOwned(string name)
+        {
+            lock (_gate)
+            {
+                EnsureOpen();
+                MDEExecutionDataEntry item;
+                if (!_local.TryGetValue(name, out item))
+                    throw new KeyNotFoundException("局部数据不存在：" + name);
+                return item.ManagedOwned;
+            }
+        }
+        internal Type TransferPeekType(string name)
+        {
+            lock (_gate)
+            {
+                EnsureOpen();
+                MDEExecutionDataEntry item;
+                if (!_local.TryGetValue(name, out item))
+                    throw new KeyNotFoundException("局部数据不存在：" + name);
+                return item.DeclaredType;
+            }
+        }
+
         internal object TransferPeek(string name)
         {
             lock (_gate)
@@ -131,7 +192,8 @@ namespace CxVisual.Mechanism.Data.Execution
             }
         }
 
-        internal void TransferStore(string name, object value, bool replace)
+        internal void TransferStore(string name, object value, bool replace,
+            Type declaredType = null)
         {
             if (string.IsNullOrWhiteSpace(name))
                 throw new ArgumentException("局部数据名称不能为空", "name");
@@ -144,10 +206,10 @@ namespace CxVisual.Mechanism.Data.Execution
                     if (!replace) throw new InvalidOperationException("目标名称已存在：" + name);
                     if (old.Release != null || _liveChildren != 0)
                         throw new InvalidOperationException("目标正被占用或带有释放回调：" + name);
-                    _local[name] = new MDEExecutionDataEntry(value, null);
+                    _local[name] = new MDEExecutionDataEntry(value, null, declaredType, true);
                     return;
                 }
-                _local.Add(name, new MDEExecutionDataEntry(value, null));
+                _local.Add(name, new MDEExecutionDataEntry(value, null, declaredType, true));
                 _insertionOrder.Add(name);
             }
         }
