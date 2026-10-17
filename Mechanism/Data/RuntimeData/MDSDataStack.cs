@@ -36,17 +36,20 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         private readonly HashSet<string> _active = new HashSet<string>(StringComparer.Ordinal);
         private readonly Dictionary<string, IDictionary<string, object>> _committed =
             new Dictionary<string, IDictionary<string, object>>(StringComparer.Ordinal);
+        private long _committedCharge;
+        public MDSDataBudget Budget { get; private set; }
         private bool _closed;
 
         public MDSDataStack(IFDEExecutionDataScope root = null)
             : this(root, null) { }
 
         public MDSDataStack(IFDEExecutionDataScope root, FDTDataAdapterRegistry adapters,
-            string runId = null)
+            string runId = null, MDSDataBudget budget = null)
         {
             _ownsRoot = root == null;
             _root = root ?? MDEExecutionDataScope.CreateRoot("data-" + Guid.NewGuid().ToString("N"));
-            FlowHeap = new MDSDataHeap(adapters);
+            Budget = budget;
+            FlowHeap = new MDSDataHeap(adapters, budget);
             FlowHeap.RunId = runId ?? _root.Id;
         }
 
@@ -77,6 +80,10 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         internal void Publish(string invocationId, IDictionary<string, object> outputs)
         {
             IDictionary<string, object> safe = MDSDataSafety.Snapshot(outputs, FlowHeap.Adapters);
+            long charge = 0;
+            if (Budget != null)
+                foreach (KeyValuePair<string, object> output in safe)
+                    charge = checked(charge + Budget.Measure(output.Value, FlowHeap.Adapters));
             lock (_gate)
             {
                 EnsureOpen();
@@ -84,7 +91,10 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                     throw new InvalidOperationException("未活动或已结算的调用帧：" + invocationId);
                 if (_committed.ContainsKey(invocationId))
                     throw new MDSDataException(MDSDataErrorCode.OutputConflict, "该调用帧的输出已提交：" + invocationId, invocationId, invocationId);
-                _committed.Add(invocationId, safe); // 所有Outputs同时可见
+                if (Budget != null) Budget.Reserve(charge);
+                try { _committed.Add(invocationId, safe); }
+                catch { if (Budget != null) Budget.Release(charge); throw; }
+                _committedCharge = checked(_committedCharge + charge); // 所有Outputs同时可见
             }
         }
 
@@ -147,6 +157,8 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                     throw new ObjectDisposedException("MDSDataStack.RootScope");
                 _closed = true;
                 _committed.Clear();
+                if (Budget != null) Budget.Release(_committedCharge);
+                _committedCharge = 0;
             }
             try { FlowHeap.Dispose(); }
             finally { if (_ownsRoot) _root.Dispose(); }
