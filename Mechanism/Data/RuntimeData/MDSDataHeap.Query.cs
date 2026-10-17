@@ -39,7 +39,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         {
             CheckName(name);
             IList<MDSDataSnapshot> candidates = Query(new MDSDataQuery {
-                NamePrefix = name, Take = 500
+                ExactName = name, Take = 500
             });
             foreach (MDSDataSnapshot snapshot in candidates)
                 if (string.Equals(snapshot.Name, name, StringComparison.Ordinal))
