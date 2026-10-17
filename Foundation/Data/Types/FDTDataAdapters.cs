@@ -8,6 +8,7 @@ namespace CxVisual.Foundation.Data.Types
     {
         Type ValueType { get; }
         bool IsImmutable { get; }
+        FDTDataKind Kind { get; }
         object Capture(object value);
     }
 
@@ -15,15 +16,18 @@ namespace CxVisual.Foundation.Data.Types
     public sealed class FDTDataAdapter<T> : IFDTDataAdapter
     {
         private readonly Func<T, T> _copy;
-        public FDTDataAdapter(Func<T, T> copier, bool immutable = false)
+        public FDTDataAdapter(Func<T, T> copier, bool immutable = false,
+            FDTDataKind kind = FDTDataKind.Object)
         {
             if (!immutable && copier == null)
                 throw new ArgumentNullException("copier");
             _copy = copier;
             IsImmutable = immutable;
+            Kind = kind;
         }
         public Type ValueType { get { return typeof(T); } }
         public bool IsImmutable { get; private set; }
+        public FDTDataKind Kind { get; private set; }
         public object Capture(object value)
         {
             if (value == null) return null;
@@ -46,9 +50,10 @@ namespace CxVisual.Foundation.Data.Types
             new Dictionary<Type, IFDTDataAdapter>();
         private bool _frozen;
 
-        public void Register<T>(Func<T,T> copier, bool immutable = false)
+        public void Register<T>(Func<T,T> copier, bool immutable = false,
+            FDTDataKind kind = FDTDataKind.Object)
         {
-            Register(new FDTDataAdapter<T>(copier, immutable));
+            Register(new FDTDataAdapter<T>(copier, immutable, kind));
         }
         public void Register(IFDTDataAdapter adapter)
         {
@@ -77,6 +82,21 @@ namespace CxVisual.Foundation.Data.Types
             if (captured == null || !value.GetType().IsInstanceOfType(captured))
                 throw new InvalidOperationException("数据适配器返回类型不匹配");
             return true;
+        }
+
+        public bool TryDescribe(Type type, out FDTDataKind kind)
+        {
+            lock (_gate)
+            {
+                IFDTDataAdapter adapter;
+                if (type != null && _items.TryGetValue(type, out adapter))
+                {
+                    kind = adapter.Kind;
+                    return true;
+                }
+                kind = FDTDataKind.Object;
+                return false;
+            }
         }
 
         public bool Supports(Type valueType)
