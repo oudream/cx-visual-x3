@@ -57,9 +57,11 @@ namespace CxVisual.Professional.Vision
                     ct.ThrowIfCancellationRequested();
                     // 注册当前Flow的专业安全类型；图像自身为真正不可变类型。
                     ctx.Data.Adapters.Register<CxVisionGrayFrame>(null,
-                        immutable: true, kind: FDTDataKind.Image);
+                        immutable: true, kind: FDTDataKind.Image,
+                        sizeEstimator: frame => checked((long)frame.Width * frame.Height * 2L));
                     ctx.Data.Adapters.Register<CxVisionInspectionResult>(
-                        CopyResult, kind: FDTDataKind.Object);
+                        CopyResult, kind: FDTDataKind.Object,
+                        sizeEstimator: result => checked(128L + result.Regions.Count * 64L));
                     var raw = ctx.Data.Get<FDTReadOnlyBuffer>("Raw");
                     int width = ctx.Data.Get<int>("Width");
                     int height = ctx.Data.Get<int>("Height");
