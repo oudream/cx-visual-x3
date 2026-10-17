@@ -233,6 +233,12 @@ jobs:
                   [string]$result.cases[0].status -ne $(if ($mode -ne 'exit') { 'TimedOut' } else { 'Error' })) {
                   throw "Worker $mode emitted wrong terminal state"
               }
+              $partial = @($result.cases[0].artifacts | Where-Object {
+                  $_.Mime -eq 'application/vnd.cxvisual.test-events-partial'
+              })
+              if ($partial.Count -ne 1 -or $partial[0].AttemptId -ne $result.cases[0].attemptId) {
+                  throw "Worker $mode dropped abnormal-terminal event evidence"
+              }
               if ($mode -eq 'tree') {
                   if (-not (Test-Path $pidFile)) { throw 'Worker failed to create nested child in time' }
                   $childId = [int](Get-Content -LiteralPath $pidFile -Raw)
