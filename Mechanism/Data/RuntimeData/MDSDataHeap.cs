@@ -119,6 +119,37 @@ namespace CxVisual.Mechanism.Data.RuntimeData
             }
         }
 
+        /// <summary>仅供同一Mechanism.Data程序集的容器级转移使用；绝不公开裸数据。</summary>
+        internal object TransferPeekOwned(string name, out Type declaredType)
+        {
+            CheckName(name);
+            lock (_gate)
+            {
+                EnsureOpen();
+                MDSDataEntry entry;
+                if (!_values.TryGetValue(name, out entry))
+                    throw new KeyNotFoundException("找不到源数据：" + name);
+                declaredType = entry.Type;
+                return entry.Value;
+            }
+        }
+
+        /// <summary>调用方须持有Scope及Heap的受控事务锁，数据已经经过安全接管。</summary>
+        internal void TransferStoreOwned(string name, object safeOwnedValue,
+            Type declaredType, bool replace)
+        {
+            CheckName(name);
+            if (declaredType == null) throw new ArgumentNullException("declaredType");
+            lock (_gate)
+            {
+                EnsureOpen();
+                if (_values.ContainsKey(name) && !replace)
+                    throw new MDSDataException(MDSDataErrorCode.NameConflict,
+                        "目标Heap名称已存在：" + name, name);
+                _values[name] = new MDSDataEntry(safeOwnedValue, declaredType);
+            }
+        }
+
         public bool Contains(string name)
         {
             CheckName(name);
