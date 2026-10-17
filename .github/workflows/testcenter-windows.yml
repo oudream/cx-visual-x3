@@ -54,6 +54,27 @@ jobs:
           New-Item -ItemType Directory -Force 'Output/Debug/x64' | Out-Null
           & msbuild 'CxVisual.Unified.sln' /m:1 /t:Rebuild /p:Configuration=Debug /p:Platform=x64 /nologo /v:minimal "/flp:logfile=Output/Debug/x64/Build.log;verbosity=normal"
           if ($LASTEXITCODE -ne 0) { throw "MSBuild failed: $LASTEXITCODE" }
+      - name: Verify developer catalog and stable Case/Definition identities
+        shell: powershell
+        run: |
+          $exe = (Resolve-Path 'Output/Debug/x64/CxVisual.TestCenter.exe').Path
+          $manifest = Join-Path (Get-Location) 'Output/Debug/x64/TestCenter.catalog.json'
+          $p = Start-Process -FilePath $exe -WorkingDirectory (Get-Location).Path -ArgumentList @('--list','--report',('"' + $manifest + '"')) -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Developer catalog --list failed: $($p.ExitCode)" }
+          $data = Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
+          $items = @($data.cases)
+          if ($items.Count -lt 90 -or [int]$data.count -ne $items.Count) {
+              throw "Catalog incomplete: $($items.Count)"
+          }
+          $ids = @($items | ForEach-Object { [string]$_.id })
+          if (@($ids | Select-Object -Unique).Count -ne $items.Count) {
+              throw 'Duplicate Catalog CaseIds'
+          }
+          $rows = @($items | Where-Object { $_.rowKey -ne 'default' -and $_.id -like 'NUNIT.*' })
+          if ($rows.Count -lt 2 -or @($rows | Where-Object {
+              [string]::IsNullOrWhiteSpace([string]$_.fingerprint)
+          }).Count -ne 0) { throw 'NUnit parameter rows lack stable fingerprint' }
+          Write-Host "PASS Developer catalog discovered $($items.Count) cases"
       - name: Verify actual WPF Shell and Viewer binding
         shell: powershell
         run: |
@@ -386,6 +407,7 @@ jobs:
             Output/Debug/x64/NUnitProbe.positive.xml
             Output/Debug/x64/NUnitProbe.negative.xml
             Output/Debug/x64/WorkerFault.*.json
+            Output/Debug/x64/TestCenter.catalog.json
             Output/Debug/x64/StructuredObservation.json
             Output/Debug/x64/TestCenter.external.junit.xml
             Output/Debug/x64/TestCenter.events.json

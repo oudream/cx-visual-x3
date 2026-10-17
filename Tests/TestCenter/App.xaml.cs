@@ -33,11 +33,42 @@ namespace CxVisual.TestCenter.UI
                 string command = e.Args[0].ToLowerInvariant();
                 // The default run discovers both frameworks. A native Worker must not load
                 // NUnit Engine for all ordinary TCT cases; only NUnit attempts need it.
-                bool requiresNUnit = command == "--run" ||
+                bool requiresNUnit = command == "--run" || command == "--list" ||
                     (command == "--worker" && e.Args.Length > 1 &&
                      e.Args[1].StartsWith("NUNIT.", StringComparison.Ordinal));
                 TCTTestCatalog catalog = TCTRegistration.CreateCatalog(requiresNUnit);
-                if (command == "--nunit-probe")
+                if (command == "--list")
+                {
+                    if (e.Args.Length != 3 || e.Args[1] != "--report")
+                        throw new ArgumentException("--list --report <catalog.json>");
+                    var cases = catalog.Cases.OrderBy(x => x.Descriptor.Id, StringComparer.Ordinal)
+                        .Select(test =>
+                        {
+                            ITCTParameterizedCaseIdentity row = test as ITCTParameterizedCaseIdentity;
+                            ITCTTestDefinitionFingerprint versioned = test as ITCTTestDefinitionFingerprint;
+                            return new {
+                                id = test.Descriptor.Id,
+                                definitionId = row == null ? test.Descriptor.Id : row.DefinitionId,
+                                caseId = row == null ? test.Descriptor.Id : row.CaseId,
+                                rowKey = row == null ? "default" : row.RowKey,
+                                fingerprint = versioned == null ? "" : versioned.DefinitionFingerprint,
+                                aspect = test.Descriptor.Aspect.ToString(),
+                                group = test.Descriptor.Group,
+                                capabilityId = test.Descriptor.CapabilityId
+                            };
+                        }).ToArray();
+                    string output = Path.GetFullPath(e.Args[2]);
+                    Directory.CreateDirectory(Path.GetDirectoryName(output));
+                    var serializer = new System.Web.Script.Serialization.JavaScriptSerializer {
+                        MaxJsonLength = int.MaxValue };
+                    string temporary = output + ".partial";
+                    File.WriteAllText(temporary, serializer.Serialize(new {
+                        schema = 1, count = cases.Length, cases = cases }), System.Text.Encoding.UTF8);
+                    if (File.Exists(output)) File.Delete(output);
+                    File.Move(temporary, output);
+                    exit = cases.Length == 0 ? 1 : 0;
+                }
+                else if (command == "--nunit-probe")
                 {
                     if (e.Args.Length < 2 || e.Args.Length > 3 ||
                         (e.Args.Length == 3 && e.Args[2] != "--negative"))
