@@ -1,5 +1,8 @@
 using System;
 using System.Linq;
+using System.IO;
+using System.Diagnostics;
+using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using CxVisual.TestCenter.Cases;
@@ -19,6 +22,19 @@ namespace CxVisual.TestCenter.Cases
             // Normal regression remains a real, passing assertion.
             string mode = Environment.GetEnvironmentVariable("TCT_M1_WORKER_FAULT");
             if (mode == "hang") Thread.Sleep(10000);
+            if (mode == "tree")
+            {
+                string pidFile = Environment.GetEnvironmentVariable("TCT_M1_WORKER_PIDFILE");
+                if (string.IsNullOrWhiteSpace(pidFile))
+                    throw new InvalidOperationException("Tree probe needs output PID file");
+                using (Process child = Process.Start(new ProcessStartInfo("cmd.exe",
+                    "/c ping -n 45 127.0.0.1 >nul")
+                { UseShellExecute = false, CreateNoWindow = true }))
+                {
+                    File.WriteAllText(pidFile, child.Id.ToString(CultureInfo.InvariantCulture));
+                    Thread.Sleep(30000);
+                }
+            }
             if (mode == "exit") Environment.Exit(23);
             ctx.AssertTrue(true, "Worker normal result", true, true);
         }
