@@ -247,7 +247,8 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                         declared = item.Value == null ? typeof(object) : item.Value.GetType();
                     items.Add(new MDSDataSnapshot(item.Key, declared,
                         MDSDataLocation.Local, MDSDataLoadState.NotFile, null,
-                        MDSDataQueryLogic.SizeOf(item.Value), 1));
+                        MDSDataQueryLogic.SizeOf(item.Value), 1,
+                        _heap == null ? null : _heap.RunId, _scope.Id));
                 }
                 foreach (KeyValuePair<string, object> item in _pending)
                 {
