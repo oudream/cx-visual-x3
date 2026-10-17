@@ -54,7 +54,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         private readonly Action<IDictionary<string, object>> _publish;
         private readonly Dictionary<string, object> _pending =
             new Dictionary<string, object>(StringComparer.Ordinal);
-        private bool _finished;
+        private volatile bool _finished;
         private bool _heapMutated;
 
         /// <summary>向后兼容独立使用，未显式声明输出时只做本地输出快照。</summary>
@@ -82,6 +82,16 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 _outputs = new ReadOnlyDictionary<string, Type>(declared);
             }
             _publish = publish;
+        }
+
+        // 和Heap的异步Load发布采用同一容器锁，形成明确的先后结算顺序。
+        private void MarkFinished()
+        {
+            if (_heap != null)
+            {
+                lock (_heap.SyncRoot) _finished = true;
+            }
+            else _finished = true;
         }
 
         private void EnsureActive()
@@ -211,7 +221,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 // 先将完整快照交付到Flow级DataStack，再使当前帧结算。
                 // 失败则原Pending保持原状，不向任何消费者暴露部分输出。
                 if (_publish != null) _publish(ready);
-                _finished = true;
+                MarkFinished();
                 _pending.Clear();
                 return MDSDataSafety.Snapshot(ready, Adapters);
             }
@@ -329,7 +339,10 @@ namespace CxVisual.Mechanism.Data.RuntimeData
             lock (_gate) EnsureActive();
             if (_heap == null) throw new NotSupportedException("没有FlowHeap");
             // 数据堆本身在异步完成前再次校验Owner状态，不持有DataContext锁等待IO。
-            return await _heap.LoadAsync<T>(name, cancellation).ConfigureAwait(false);
+            T loaded = await _heap.LoadOwnedAsync<T>(name, cancellation,
+                () => !_finished).ConfigureAwait(false);
+            lock (_gate) EnsureActive();
+            return loaded;
         }
         public void Unload(string name)
         {
@@ -394,7 +407,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
             {
                 if (_finished) return;
                 _pending.Clear();
-                _finished = true;
+                MarkFinished();
             }
         }
     }
