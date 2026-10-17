@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Xml;
 using System.Xml.Linq;
 using CxVisual.Foundation.Geometry;
 using CxVisual.TestCenter.Core;
