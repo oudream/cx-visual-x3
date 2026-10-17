@@ -250,18 +250,25 @@ namespace CxVisual.Mechanism.Data.RuntimeData
             // Copy专业类型可能运行外部算法/分配大量内存，先在锁外制作副本。
             // 进入提交临界区后验证来源记录未发生变化，失败绝不修改目标。
             MDSDataEntry observed = null;
+            MDSDataFileEntry observedFile = null;
             object detachedCopy = null;
-            if (copy)
+            long targetBytes = 0;
+            if (copy || target.Budget != null)
             {
                 lock (_gate)
                 {
                     EnsureOpen();
-                    MDSDataEntry candidate;
-                    if (_values.TryGetValue(sourceName, out candidate))
-                        observed = candidate;
+                    _values.TryGetValue(sourceName, out observed);
+                    _files.TryGetValue(sourceName, out observedFile);
                 }
-                if (observed != null)
+                if (copy && observed != null)
                     detachedCopy = Freeze(observed.Value, observed.Type);
+                object forSizing = copy ? detachedCopy :
+                    observed != null ? observed.Value :
+                    observedFile != null && observedFile.State == MDSDataLoadState.Loaded
+                        ? observedFile.Cache : null;
+                if (target.Budget != null && forSizing != null)
+                    targetBytes = target.Budget.Measure(forSizing, target.Adapters);
             }
             MDSDataHeap first = _order < target._order ? this : target;
             MDSDataHeap second = _order < target._order ? target : this;
@@ -287,29 +294,50 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                     if (target._files.TryGetValue(targetName, out targetFile) &&
                         targetFile.State == MDSDataLoadState.Loading)
                         throw new MDSDataException(MDSDataErrorCode.Busy, "目标文件加载中：" + targetName, targetName);
+                    // 两个容器锁已按稳定顺序持有；预算预留失败前不得改任何条目。
+                    if ((copy || target.Budget != null) &&
+                        (isFile ? !object.ReferenceEquals(observedFile, file) :
+                            !object.ReferenceEquals(observed, source)))
+                        throw new MDSDataException(MDSDataErrorCode.Busy,
+                            "来源在复制或容量估算期间已经改变：" + sourceName, sourceName);
+                    if (isFile && file.State == MDSDataLoadState.Loading)
+                        throw new MDSDataException(MDSDataErrorCode.Busy, "来源文件加载中：" + sourceName, sourceName);
+                    MDSDataEntry replacedValue;
+                    MDSDataFileEntry replacedFile;
+                    target._values.TryGetValue(targetName, out replacedValue);
+                    target._files.TryGetValue(targetName, out replacedFile);
+                    long oldTarget = replacedValue != null ? replacedValue.Bytes :
+                        replacedFile == null ? 0 : replacedFile.CachedBytes;
+                    long actualTargetBytes = isFile && copy ? 0 : targetBytes;
+                    if (target.Budget == null) actualTargetBytes = 0;
+                    long delta = object.ReferenceEquals(Budget, target.Budget) && !copy
+                        ? 0 : actualTargetBytes - oldTarget;
+                    if (target.Budget != null && delta > 0) target.Budget.Reserve(delta);
                     if (isFile)
                     {
-                        if (copy && observed != null)
-                            throw new MDSDataException(MDSDataErrorCode.Busy,
-                                "复制期间来源从内存变更为文件，请重试：" + sourceName, sourceName);
-                        if (file.State == MDSDataLoadState.Loading)
-                            throw new MDSDataException(MDSDataErrorCode.Busy, "来源文件加载中：" + sourceName, sourceName);
                         MDSDataFileEntry outputFile = copy ? file.CopyLocation() : file;
                         target._values.Remove(targetName);
                         target._files[targetName] = outputFile;
                         if (!copy) _files.Remove(sourceName);
+                        if (!copy) outputFile.CachedBytes = actualTargetBytes;
                     }
                     else
                     {
-                        if (copy && !object.ReferenceEquals(observed, source))
-                            throw new MDSDataException(MDSDataErrorCode.Busy,
-                                "复制期间来源已被更新，请重试：" + sourceName, sourceName);
                         MDSDataEntry output = copy
-                            ? new MDSDataEntry(detachedCopy, source.Type) : source;
+                            ? new MDSDataEntry(detachedCopy, source.Type, actualTargetBytes)
+                            : new MDSDataEntry(source.Value, source.Type, actualTargetBytes);
                         target._files.Remove(targetName);
                         target._values[targetName] = output;
                         if (!copy) _values.Remove(sourceName);
                     }
+                    if (target.Budget != null)
+                    {
+                        if (object.ReferenceEquals(Budget, target.Budget) && !copy)
+                            target.Budget.Release(oldTarget);
+                        else if (delta < 0) target.Budget.Release(-delta);
+                    }
+                    if (!copy && Budget != null && !object.ReferenceEquals(Budget, target.Budget))
+                        Budget.Release(isFile ? file.CachedBytes : source.Bytes);
                 }
             }
         }
