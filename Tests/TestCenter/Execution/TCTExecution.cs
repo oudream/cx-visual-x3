@@ -36,7 +36,9 @@ namespace CxVisual.TestCenter.Execution
                 start.Arguments = "--worker " + Quote(test.Descriptor.Id) + " " +
                     Quote(resultFile) + " " + seed.ToString(CultureInfo.InvariantCulture) +
                     (attempt == null ? "" : " " + Quote(attempt.RunId) + " " + Quote(attempt.AttemptId) +
-                    " " + attempt.Iteration.ToString(CultureInfo.InvariantCulture) + " " + Quote(eventFile));
+                    " " + attempt.Iteration.ToString(CultureInfo.InvariantCulture) + " " + Quote(eventFile) +
+                    (test is ITCTTestDefinitionFingerprint ?
+                        " " + Quote(((ITCTTestDefinitionFingerprint)test).DefinitionFingerprint) : ""));
                 start.UseShellExecute = false;
                 start.CreateNoWindow = true;
                 start.WindowStyle = ProcessWindowStyle.Hidden;

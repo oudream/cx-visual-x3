@@ -109,6 +109,87 @@ jobs:
               }
               Write-Host "PASS NUnit Engine probe: $name; cases=$($cases.Count); failures=$failures"
           }
+      - name: Verify NUnit external assembly and worker fingerprint
+        shell: powershell
+        run: |
+          $exe = (Resolve-Path 'Output/Debug/x64/CxVisual.TestCenter.exe').Path
+          $output = (Resolve-Path 'Output/Debug/x64').Path
+          $external = Join-Path $output 'TCTExternalChecks.dll'
+          $nunitDll = Join-Path $output 'nunit.framework.dll'
+          if (-not (Test-Path $nunitDll)) { throw 'NUnit framework DLL missing from deployment' }
+          @'
+          using NUnit.Framework;
+          namespace ExternalOwnerChecks {
+            [TestFixture]
+            public sealed class AdditionFixture {
+              [TestCase(1,2)]
+              [TestCase(3,4)]
+              public void AddOne(int input, int expected) {
+                Assert.That(input + 1, Is.EqualTo(expected));
+              }
+            }
+          }
+          '@ | Set-Content -LiteralPath (Join-Path $output 'TCTExternalChecks.generated.cs') -Encoding UTF8
+          Add-Type -Path (Join-Path $output 'TCTExternalChecks.generated.cs') -ReferencedAssemblies $nunitDll -OutputAssembly $external
+          $env:TCT_NUNIT_ASSEMBLIES = $external
+          try {
+              $report = Join-Path $output 'TestCenter.external.junit.xml'
+              $p = Start-Process -FilePath $exe -WorkingDirectory (Get-Location).Path -ArgumentList @('--run','--filter','ExternalOwnerChecks.AdditionFixture','--report',('"' + $report + '"'),'--format','junit','--isolate') -Wait -PassThru
+              if ($p.ExitCode -ne 0) { throw "External NUnit assembly failed with code $($p.ExitCode)" }
+              [xml]$junit = Get-Content -LiteralPath $report -Raw
+              if ([int]$junit.testsuite.tests -ne 2 -or
+                  [int]$junit.testsuite.failures -ne 0 -or
+                  [int]$junit.testsuite.errors -ne 0) {
+                  throw 'Expected exactly two successful parameter rows from external assembly'
+              }
+              $cases = @($junit.testsuite.testcase)
+              $ids = @($cases | ForEach-Object { $_.GetAttribute('name') } | Sort-Object -Unique)
+              if ($ids.Count -ne 2 -or
+                  @($ids | Where-Object { $_.StartsWith('NUNIT.TCTExternalChecks::') }).Count -ne 2) {
+                  throw 'External NUnit IDs missing assembly namespace or parameter-row identity'
+              }
+              $wrongResult = Join-Path $output 'NUnitWorker.stale.xml'
+              $attempt = [guid]::NewGuid().ToString('N')
+              $runId = [guid]::NewGuid().ToString('N')
+              $events = Join-Path $output 'NUnitWorker.stale.events'
+              $q = Start-Process -FilePath $exe -WorkingDirectory (Get-Location).Path -ArgumentList @('--worker', ('"' + $ids[0] + '"'), ('"' + $wrongResult + '"'), '1', $runId, $attempt, '0', ('"' + $events + '"'), ('"' + ('0'*64) + '"')) -Wait -PassThru
+              if ($q.ExitCode -eq 0 -or (Test-Path $wrongResult)) {
+                  throw 'NUnit Worker accepted a stale/bad parent fingerprint'
+              }
+              Write-Host 'PASS external DLL rows and Worker definition fingerprint fail-closed'
+          } finally {
+              Remove-Item Env:TCT_NUNIT_ASSEMBLIES -ErrorAction SilentlyContinue
+          }
+      - name: Verify structured Owner observation artifact replay
+        shell: powershell
+        run: |
+          $exe = (Resolve-Path 'Output/Debug/x64/CxVisual.TestCenter.exe').Path
+          $report = Join-Path (Get-Location) 'Output/Debug/x64/StructuredObservation.json'
+          $p = Start-Process -FilePath $exe -WorkingDirectory (Get-Location).Path -ArgumentList @('--run','--id','TCT.M1.OBS.001','--report',('"' + $report + '"'),'--format','json','--isolate') -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw 'Real Owner structured observation case failed' }
+          $data = Get-Content -LiteralPath $report -Raw | ConvertFrom-Json
+          if ([int]$data.total -ne 1 -or $data.cases[0].status -ne 'Passed') {
+              throw 'Invalid structured test run summary'
+          }
+          $evidence = @($data.cases[0].artifacts | Where-Object {
+              $_.mime -eq 'application/vnd.cxvisual.test-observation+xml'
+          })
+          if ($evidence.Count -ne 1) { throw 'Expected exactly one structured evidence artifact' }
+          $root = Join-Path ([System.IO.Path]::GetTempPath()) ('CxVisual-TCT-Evidence/' + $data.runId)
+          $artifact = Join-Path $root $evidence[0].relativePath
+          if (-not (Test-Path $artifact)) { throw "Missing structured evidence $artifact" }
+          if ((Get-FileHash -LiteralPath $artifact -Algorithm SHA256).Hash.ToLowerInvariant() -ne
+              [string]$evidence[0].sha256) {
+              throw 'Structured observation SHA256 mismatch'
+          }
+          [xml]$observation = Get-Content -LiteralPath $artifact -Raw
+          $record = $observation.Observation
+          if ([string]$record.schema -ne '1' -or [string]$record.runId -ne [string]$data.runId -or
+              [string]$record.attemptId -ne [string]$data.cases[0].attemptId -or
+              [string]$record.sourceObjectId -ne 'CxRect2D') {
+              throw 'Structured observation lost Run/Attempt/Owner identity'
+          }
+          Write-Host 'PASS versioned Geometry Owner observation and content addressed replay'
       - name: Run TestCenter in isolated workers
         shell: powershell
         run: |
@@ -271,6 +352,8 @@ jobs:
             Output/Debug/x64/NUnitProbe.*.trace.txt
             Output/Debug/x64/NUnitProbe.positive.xml
             Output/Debug/x64/NUnitProbe.negative.xml
+            Output/Debug/x64/StructuredObservation.json
+            Output/Debug/x64/TestCenter.external.junit.xml
             Output/Debug/x64/TestCenter.events.json
             Output/Debug/x64/TestCenter.junit.xml
             Output/Debug/x64/TestCenter.parallel.junit.xml

@@ -52,6 +52,17 @@ namespace CxVisual.TestCenter.Core
             TCTTestArtifactStore artifacts);
     }
 
+    public interface ITCTTestDefinitionFingerprint
+    {
+        string DefinitionFingerprint { get; }
+    }
+    public interface ITCTParameterizedCaseIdentity
+    {
+        string DefinitionId { get; }
+        string CaseId { get; }
+        string RowKey { get; }
+    }
+
     public interface ITCTTestResultSink
     {
         void OnResult(TCTTestCaseResult result);

@@ -50,9 +50,21 @@ namespace CxVisual.TestCenter.UI
                 }
                 else if (command == "--worker")
                 {
-                    if (e.Args.Length != 4 && e.Args.Length != 7 && e.Args.Length != 8) throw new ArgumentException("--worker <id> <result-file> <seed> [runId attemptId iteration]");
+                    if (e.Args.Length != 4 && e.Args.Length != 7 &&
+                        e.Args.Length != 8 && e.Args.Length != 9) throw new ArgumentException("--worker <id> <result-file> <seed> [runId attemptId iteration]");
                     ITCTTestCase test = catalog.Cases.SingleOrDefault(x => x.Descriptor.Id == e.Args[1]);
                     if (test == null) throw new InvalidOperationException("Unknown worker test ID");
+                    if (test is ITCTTestDefinitionFingerprint && e.Args.Length != 9)
+                        throw new InvalidDataException("NUnit worker requires parent definition fingerprint");
+                    if (e.Args.Length == 9)
+                    {
+                        ITCTTestDefinitionFingerprint fingerprinted =
+                            test as ITCTTestDefinitionFingerprint;
+                        if (fingerprinted == null ||
+                            !string.Equals(fingerprinted.DefinitionFingerprint, e.Args[8],
+                                StringComparison.Ordinal))
+                            throw new InvalidDataException("NUnit Worker/Parent definition fingerprint mismatch");
+                    }
                     int seed = int.Parse(e.Args[3], CultureInfo.InvariantCulture);
                     TCTTestAttempt attempt = e.Args.Length >= 7 ?
                         new TCTTestAttempt(e.Args[4], test.Descriptor.Id,
@@ -60,7 +72,7 @@ namespace CxVisual.TestCenter.UI
                         new TCTTestAttempt("AdHoc", test.Descriptor.Id, 0, seed);
                     TCTTestArtifactStore store = e.Args.Length >= 7 ?
                         new TCTTestArtifactStore(TCTTestArtifactStore.RunRoot(attempt.RunId)) : null;
-                    TCTTestEventJournal events = e.Args.Length == 8 ? new TCTTestEventJournal(e.Args[7]) : null;
+                    TCTTestEventJournal events = e.Args.Length >= 8 ? new TCTTestEventJournal(e.Args[7]) : null;
                     TCTTestCaseResult result = await TCTTestRunner.RunOneAsync(test,
                         CancellationToken.None, seed, attempt, store, events == null ? null :
                             new Action<TCTTestEvent>(events.Write));
