@@ -75,6 +75,10 @@ namespace CxVisual.TestCenter.UI
         private TCTTestSourceLocation _currentSource;
         private readonly Button _openSource = new Button {
             Content = "跳转源码（若本机存在）", Margin = new Thickness(8), Padding = new Thickness(8, 4, 8, 4) };
+        private readonly TextBlock _observation = new TextBlock { Margin = new Thickness(12),
+            FontFamily = new FontFamily("Consolas"), TextWrapping = TextWrapping.Wrap };
+        // 供WPF Smoke核实真实选择链，不通过UI推导Pass/Fail。
+        public string SelectedObservationTitle { get; private set; }
         private readonly TextBlock _error = new TextBlock { Margin = new Thickness(12),
             FontFamily = new FontFamily("Consolas"), TextWrapping = TextWrapping.Wrap };
         public TCTTestInspectorControl()
@@ -108,12 +112,15 @@ namespace CxVisual.TestCenter.UI
             };
             tabs.Items.Add(new TabItem { Header = "源码定位", Content = sourcePanel });
             tabs.Items.Add(new TabItem { Header = "证据产物", Content = _artifacts });
+            tabs.Items.Add(new TabItem { Header = "观察Owner", Content = new ScrollViewer { Content = _observation } });
             Content = tabs;
         }
         public void ShowCase(ITCTTestCase test)
         {
             _assertions.ItemsSource = null;
             _artifacts.ItemsSource = null;
+            SelectedObservationTitle = null;
+            _observation.Text = "请选择真实观察项以查看Owner、身份与证据引用。";
             _currentSource = null; _openSource.IsEnabled = false;
             _source.Text = "尚无PDB源码位置；绝不猜测源码行号。";
             _error.Text = "未运行";
@@ -128,6 +135,9 @@ namespace CxVisual.TestCenter.UI
         public void ShowResult(TCTTestCaseResult result)
         {
             if (result == null) return;
+            SelectedObservationTitle = null;
+            _observation.Text = "本Attempt有 " + result.Observations.Count +
+                " 条观察。请在专业Viewer点击观察项，查看真实Owner和SHA256。";
             TCTTestCaseDescriptor d = result.Descriptor;
             _metadata.Text = "Test ID: " + d.Id + "\n状态: " + result.Status +
                 "\n耗时: " + result.Elapsed.TotalMilliseconds.ToString("F2") +
@@ -154,6 +164,32 @@ namespace CxVisual.TestCenter.UI
                     "\n[" + diag.Severity + "] " + diag.Code + " @" + diag.Stage + ": " + diag.Message)) +
                 string.Join("", result.Artifacts.Select(a =>
                     "\n[Artifact] " + a.RelativePath + " SHA256=" + a.Sha256));
+        }
+
+        public void ShowObservation(TCTTestObservation observation)
+        {
+            if (observation == null)
+            {
+                SelectedObservationTitle = null;
+                _observation.Text = "没有选择观察项。";
+                return;
+            }
+            SelectedObservationTitle = observation.Title;
+            TCTObservationEnvelope e = observation.Envelope;
+            _observation.Text = "Kind: " + observation.Kind +
+                "\nTitle: " + observation.Title +
+                "\nOrigin: " + observation.Origin +
+                "\nDetails: " + observation.Details +
+                (e == null ? "\nLegacy: 无结构化Owner身份（不能推断实例或伪造证据）" :
+                    "\nSchema: " + e.SchemaVersion +
+                    "\nRunId: " + e.RunId +
+                    "\nAttemptId: " + e.AttemptId +
+                    "\nSourceObjectId: " + e.SourceObjectId +
+                    "\nDefinitionAddress: " + e.DefinitionAddress +
+                    "\nRuntimeInstanceId: " + (string.IsNullOrEmpty(e.RuntimeInstanceId) ? "未提供" : e.RuntimeInstanceId) +
+                    "\nPayload SHA256: " + (e.PayloadRef == null ? "无" : e.PayloadRef.Sha256)) +
+                "\nEvidence SHA256: " +
+                    (observation.Evidence == null ? "无" : observation.Evidence.Sha256);
         }
     }
 
