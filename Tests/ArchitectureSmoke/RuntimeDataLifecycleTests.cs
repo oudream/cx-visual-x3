@@ -20,6 +20,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             PendingFrameWithChildMustRemainTracked();
             SubflowExportsCannotBypassCommitBarrier();
             HeapNullTypeCannotBeChanged();
+            StrictLocalNullAndLegacyMoveOwnership();
             FlowOutputsAndInputsHaveNoMutableAlias();
             ReadOnlyBufferCanShareWithoutCopying();
             StackFrameCommitAndAbort();
@@ -241,6 +242,45 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "已安全冻结的Buffer不应对每个消费者复制主体");
             }
             finally { Wait(engine.StopAsync()); }
+        }
+
+
+        private static void StrictLocalNullAndLegacyMoveOwnership()
+        {
+            using (MDSDataStack stack = new MDSDataStack())
+            {
+                IFDEExecutionDataScope scope = stack.RootScope.CreateChild("null-type");
+                using (MDSDataFrame frame = stack.OpenFrame("null-type", scope, null,
+                    new Dictionary<string, Type>()))
+                {
+                    frame.Data.Set<byte[]>("OptionalBuffer", null);
+                    bool rejected = false;
+                    try { frame.Data.Get<string>("OptionalBuffer"); }
+                    catch (InvalidCastException) { rejected = true; }
+                    Check(rejected && frame.Data.Get<byte[]>("OptionalBuffer") == null,
+                        "Scope中typed null被转换成不兼容类型");
+                    frame.Data.MoveToHeap("OptionalBuffer", "OnHeap");
+                    bool rejectHeap = false;
+                    try { stack.FlowHeap.Get<string>("OnHeap"); }
+                    catch (InvalidCastException) { rejectHeap = true; }
+                    Check(rejectHeap && stack.FlowHeap.Get<byte[]>("OnHeap") == null,
+                        "堆栈Move丢失空值声明类型");
+                }
+            }
+            using (MDSDataStack stack = new MDSDataStack())
+            {
+                IFDEExecutionDataScope scope = stack.RootScope.CreateChild("legacy");
+                byte[] external = new byte[] {4,5,6};
+                scope.Put("Legacy", external);
+                using (MDSDataFrame frame = stack.OpenFrame("legacy", scope, null,
+                    new Dictionary<string, Type>()))
+                {
+                    frame.Data.MoveToHeap("Legacy", "Imported");
+                    external[0] = 88;
+                    Check(stack.FlowHeap.Get<byte[]>("Imported")[0] == 4,
+                        "旧Scope裸数组移动未建立安全所有权");
+                }
+            }
         }
 
         private static void HeapStackMoveCopyConflictAndOwnedRejection()
