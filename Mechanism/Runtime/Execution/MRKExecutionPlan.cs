@@ -194,8 +194,11 @@ namespace CxVisual.Mechanism.Runtime.Execution
                         input.Source == MRKInputSource.StepOutput ?
                         new MRKExecutionInput(input.Name, input.Source,
                             scope + input.SourceName, input.ValueType, input.Required) : input);
+                // 新MDS具名Output即使尚未声明DataExports，也属于子流程内部数据。
+                // 纯旧式MRK StepResult保持已有兼容入口。
                 string accessGroup = local.SubflowAccessGroup == null
-                    ? (child.DataExports.Count == 0 ? null : prefix)
+                    ? (child.DataExports.Count == 0 && local.DataOutputs.Count == 0
+                        ? null : prefix)
                     : scope + local.SubflowAccessGroup;
                 list.Add(new MRKExecutionStep(scope + local.Id, depends,
                     (context, token) => local.ExecuteAsync(context.ForSubflow(scope), token),
