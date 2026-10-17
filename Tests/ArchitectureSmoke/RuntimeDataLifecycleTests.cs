@@ -23,6 +23,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             StrictLocalNullAndLegacyMoveOwnership();
             FlowOutputsAndInputsHaveNoMutableAlias();
             ReadOnlyBufferCanShareWithoutCopying();
+            ParallelHeapMovesDoNotDeadlockOrLoseData();
             StackFrameCommitAndAbort();
             HeapStackMoveCopyConflictAndOwnedRejection();
             MultiOutputFanoutAndTypeIsolation();
@@ -199,6 +200,38 @@ namespace CxVisual.Tests.ArchitectureSmoke
             finally { gate.TrySetResult(true); Wait(engine.StopAsync()); }
         }
 
+
+        private static void ParallelHeapMovesDoNotDeadlockOrLoseData()
+        {
+            MDSDataHeap a = new MDSDataHeap();
+            MDSDataHeap b = new MDSDataHeap();
+            const int count = 150;
+            for (int i = 0; i < count; i++)
+            {
+                a.Set("A." + i, i);
+                b.Set("B." + i, i);
+            }
+            Task ab = Task.Run(() =>
+            {
+                for (int i = 0; i < count; i++)
+                    a.MoveTo("A." + i, b, "MovedA." + i);
+            });
+            Task ba = Task.Run(() =>
+            {
+                for (int i = 0; i < count; i++)
+                    b.MoveTo("B." + i, a, "MovedB." + i);
+            });
+            Wait(Task.WhenAll(ab, ba));
+            Check(a.Count == count && b.Count == count,
+                "逆方向并行Move造成数据丢失或重复");
+            for (int i = 0; i < count; i++)
+            {
+                Check(a.Get<int>("MovedB." + i) == i &&
+                    b.Get<int>("MovedA." + i) == i,
+                    "逆方向并行Move发生来源或目标数据串值");
+            }
+            a.Dispose(); b.Dispose();
+        }
 
         private static void ReadOnlyBufferCanShareWithoutCopying()
         {
