@@ -54,8 +54,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
             _managedStack = new MDSDataStack(_dataScope);
             _trace = new MRKExecutionTrace(traceCapacity);
             _boundInputs = new ReadOnlyDictionary<string, object>(new Dictionary<string, object>());
-            _inputs = new ReadOnlyDictionary<string, object>(new Dictionary<string, object>(
-                inputs ?? new Dictionary<string, object>(), StringComparer.Ordinal));
+            _inputs = CopyByteBuffers(inputs ??
+                new Dictionary<string, object>(StringComparer.Ordinal));
         }
         private MRKExecutionContext(MRKExecutionContext parent, string prefix)
         {
@@ -109,12 +109,20 @@ namespace CxVisual.Mechanism.Runtime.Execution
             finally { if (_dataScope != null) _dataScope.Dispose(); }
         }
 
-        public IDictionary<string, object> BoundInputs { get { return _boundInputs; } }
+        private static IDictionary<string, object> CopyByteBuffers(
+            IDictionary<string, object> source)
+        {
+            Dictionary<string, object> copy = new Dictionary<string, object>(StringComparer.Ordinal);
+            foreach (KeyValuePair<string, object> item in source)
+                copy.Add(item.Key, item.Value is byte[] ? ((byte[])item.Value).Clone() : item.Value);
+            return new ReadOnlyDictionary<string, object>(copy);
+        }
+        public IDictionary<string, object> BoundInputs { get { return CopyByteBuffers(_boundInputs); } }
         public bool TryGetBoundInput<T>(string name, out T value)
         {
             object data;
             if (_boundInputs.TryGetValue(name, out data) && data is T)
-            { value = (T)data; return true; }
+            { value = (T)(data is byte[] ? ((byte[])data).Clone() : data); return true; }
             value = default(T);
             return false;
         }
@@ -130,7 +138,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
         public string PlanId { get; private set; }
         public MRKFlowMetadata Metadata { get; private set; }
         public MRKExecutionTrace Trace { get { return _trace; } }
-        public IDictionary<string, object> Inputs { get { return _inputs; } }
+        public IDictionary<string, object> Inputs { get { return CopyByteBuffers(_inputs); } }
         public bool TryGetResult(string stepId, out object result)
         {
             bool found = _results.TryGetValue(_scopePrefix + stepId, out result);
@@ -229,7 +237,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
             if (state == MRKFlowState.Completed && committedOutputs != null)
                 foreach (KeyValuePair<string, object> item in committedOutputs)
                     safe.Add(item.Key, FDTDataValueSafety.Capture(item.Value));
-            CommittedOutputs = new ReadOnlyDictionary<string, object>(safe);
+            _committedOutputs = new ReadOnlyDictionary<string, object>(safe);
         }
         public MRKFlowState State { get; private set; }
         public Guid FlowId { get; private set; }
@@ -237,14 +245,24 @@ namespace CxVisual.Mechanism.Runtime.Execution
         public DateTime CompletedUtc { get; private set; }
         public Exception Error { get; private set; }
         public IDictionary<string, object> Results { get; private set; }
-        /// <summary>完整Flow成功才产生的最终导出；与节点Results快照不是同一语义。</summary>
-        public IDictionary<string, object> CommittedOutputs { get; private set; }
+        private readonly IDictionary<string, object> _committedOutputs;
+        /// <summary>对外每次返回安全快照，避免ReadOnlyDictionary中可写数组被修改。</summary>
+        public IDictionary<string, object> CommittedOutputs
+        {
+            get
+            {
+                Dictionary<string, object> safe = new Dictionary<string, object>(StringComparer.Ordinal);
+                foreach (KeyValuePair<string, object> item in _committedOutputs)
+                    safe.Add(item.Key, FDTDataValueSafety.Capture(item.Value));
+                return new ReadOnlyDictionary<string, object>(safe);
+            }
+        }
         public T GetCommittedOutput<T>(string name)
         {
             if (State != MRKFlowState.Completed)
                 throw new InvalidOperationException("流程未成功，不能访问未提交输出");
             object value;
-            if (!CommittedOutputs.TryGetValue(name, out value))
+            if (!_committedOutputs.TryGetValue(name, out value))
                 throw new KeyNotFoundException("流程输出未声明或未提交：" + name);
             if (value != null && !(value is T))
                 throw new InvalidCastException("流程导出类型不匹配：" + name);
