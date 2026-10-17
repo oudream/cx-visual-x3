@@ -10,14 +10,15 @@ namespace CxVisual.Mechanism.Data.RuntimeData
     /// <summary>已验证的M1/M2值边界；不把object或可写Buffer假装不可变。</summary>
     internal static class MDSDataSafety
     {
-        internal static object Capture(object value)
-        { return FDTDataValueSafety.Capture(value); }
+        internal static object Capture(object value, FDTDataAdapterRegistry adapters = null)
+        { return FDTDataValueSafety.Capture(value, adapters); }
 
-        internal static IDictionary<string, object> Snapshot(IDictionary<string, object> source)
+        internal static IDictionary<string, object> Snapshot(IDictionary<string, object> source,
+            FDTDataAdapterRegistry adapters = null)
         {
             Dictionary<string, object> output = new Dictionary<string, object>(StringComparer.Ordinal);
             foreach (KeyValuePair<string, object> item in source)
-                output.Add(item.Key, Capture(item.Value));
+                output.Add(item.Key, Capture(item.Value, adapters));
             return new ReadOnlyDictionary<string, object>(output);
         }
     }
@@ -38,10 +39,13 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         private bool _closed;
 
         public MDSDataStack(IFDEExecutionDataScope root = null)
+            : this(root, null) { }
+
+        public MDSDataStack(IFDEExecutionDataScope root, FDTDataAdapterRegistry adapters)
         {
             _ownsRoot = root == null;
             _root = root ?? MDEExecutionDataScope.CreateRoot("data-" + Guid.NewGuid().ToString("N"));
-            FlowHeap = new MDSDataHeap();
+            FlowHeap = new MDSDataHeap(adapters);
         }
 
         public IFDEExecutionDataScope RootScope { get { return _root; } }
@@ -55,7 +59,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
             if (scope == null) throw new ArgumentNullException("scope");
             // 在锁外制作副本；复制失败不修改Stack。
             IDictionary<string, object> safeInputs = MDSDataSafety.Snapshot(
-                inputs ?? new Dictionary<string, object>());
+                inputs ?? new Dictionary<string, object>(), FlowHeap.Adapters);
             lock (_gate)
             {
                 EnsureOpen();
@@ -70,7 +74,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
 
         internal void Publish(string invocationId, IDictionary<string, object> outputs)
         {
-            IDictionary<string, object> safe = MDSDataSafety.Snapshot(outputs);
+            IDictionary<string, object> safe = MDSDataSafety.Snapshot(outputs, FlowHeap.Adapters);
             lock (_gate)
             {
                 EnsureOpen();
@@ -102,7 +106,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 if (found == null && typeof(T).IsValueType &&
                     Nullable.GetUnderlyingType(typeof(T)) == null)
                     throw new InvalidCastException("null不能转换为非空值类型");
-                value = (T)MDSDataSafety.Capture(found);
+                value = (T)MDSDataSafety.Capture(found, FlowHeap.Adapters);
                 return true;
             }
         }
