@@ -169,6 +169,20 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         }
 
         /// <summary>仅供同一Mechanism.Data程序集的容器级转移使用；绝不公开裸数据。</summary>
+        internal object TransferToken(string name)
+        {
+            CheckName(name);
+            lock (_gate)
+            {
+                EnsureOpen();
+                MDSDataEntry item;
+                if (_values.TryGetValue(name, out item)) return item;
+                MDSDataFileEntry file;
+                if (_files.TryGetValue(name, out file)) return file;
+                throw new KeyNotFoundException("找不到源数据：" + name);
+            }
+        }
+
         internal object TransferPeekOwned(string name, out Type declaredType)
         {
             CheckName(name);
@@ -193,7 +207,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
 
         /// <summary>调用方须持有Scope及Heap的受控事务锁，数据已经经过安全接管。</summary>
         internal void TransferStoreOwned(string name, object safeOwnedValue,
-            Type declaredType, bool replace)
+            Type declaredType, bool replace, long preparedBytes)
         {
             CheckName(name);
             if (declaredType == null) throw new ArgumentNullException("declaredType");
@@ -206,8 +220,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 MDSDataFileEntry file;
                 if (_files.TryGetValue(name, out file) && file.State == MDSDataLoadState.Loading)
                     throw new MDSDataException(MDSDataErrorCode.Busy, "目标加载中：" + name, name);
-                long size = Budget == null ? 0 :
-                    Budget.Measure(safeOwnedValue, Adapters);
+                long size = Budget == null ? 0 : preparedBytes;
                 MDSDataEntry previous;
                 _values.TryGetValue(name, out previous);
                 long oldSize = previous == null ? (file == null ? 0 : file.CachedBytes) : previous.Bytes;
