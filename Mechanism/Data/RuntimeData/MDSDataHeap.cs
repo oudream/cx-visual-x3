@@ -66,10 +66,10 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         public T Get<T>(string name)
         {
             CheckName(name);
+            MDSDataEntry entry;
             lock (_gate)
             {
                 EnsureOpen();
-                MDSDataEntry entry;
                 if (!_values.TryGetValue(name, out entry))
                 {
                     MDSDataFileEntry file;
@@ -89,8 +89,9 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                         Nullable.GetUnderlyingType(typeof(T)) != entry.Type)
                         throw new InvalidCastException("null条目的声明类型不匹配：" + name);
                 }
-                return (T)Read(entry);
             }
+            // 专业Adapter属于外部代码；不得在Heap锁内运行复杂复制器。
+            return (T)Read(entry);
         }
 
         /// <summary>仅返回名称快照，不暴露底层数据，也不加载外部文件。</summary>
@@ -225,6 +226,22 @@ namespace CxVisual.Mechanism.Data.RuntimeData
             if (object.ReferenceEquals(this, target) &&
                 string.Equals(sourceName, targetName, StringComparison.Ordinal))
                 throw new ArgumentException("来源和目标是同一条数据，不能原地Move/Copy");
+            // Copy专业类型可能运行外部算法/分配大量内存，先在锁外制作副本。
+            // 进入提交临界区后验证来源记录未发生变化，失败绝不修改目标。
+            MDSDataEntry observed = null;
+            object detachedCopy = null;
+            if (copy)
+            {
+                lock (_gate)
+                {
+                    EnsureOpen();
+                    MDSDataEntry candidate;
+                    if (_values.TryGetValue(sourceName, out candidate))
+                        observed = candidate;
+                }
+                if (observed != null)
+                    detachedCopy = Freeze(observed.Value, observed.Type);
+            }
             MDSDataHeap first = _order < target._order ? this : target;
             MDSDataHeap second = _order < target._order ? target : this;
             lock (first._gate)
@@ -255,8 +272,11 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                     }
                     else
                     {
+                        if (copy && !object.ReferenceEquals(observed, source))
+                            throw new MDSDataException(MDSDataErrorCode.Busy,
+                                "复制期间来源已被更新，请重试：" + sourceName, sourceName);
                         MDSDataEntry output = copy
-                            ? new MDSDataEntry(Freeze(source.Value, source.Type), source.Type) : source;
+                            ? new MDSDataEntry(detachedCopy, source.Type) : source;
                         target._files.Remove(targetName);
                         target._values[targetName] = output;
                         if (!copy) _values.Remove(sourceName);
