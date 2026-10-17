@@ -16,6 +16,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
         internal static void Run()
         {
             FoundationTypeSafetyContract();
+            InactiveScopeMustNotReleaseDataStack();
+            PendingFrameWithChildMustRemainTracked();
+            SubflowExportsCannotBypassCommitBarrier();
+            HeapNullTypeCannotBeChanged();
+            FlowOutputsAndInputsHaveNoMutableAlias();
             StackFrameCommitAndAbort();
             HeapStackMoveCopyConflictAndOwnedRejection();
             MultiOutputFanoutAndTypeIsolation();
@@ -58,6 +63,139 @@ namespace CxVisual.Tests.ArchitectureSmoke
             return map;
         }
 
+
+
+        private static void InactiveScopeMustNotReleaseDataStack()
+        {
+            MDSDataStack stack = new MDSDataStack();
+            stack.FlowHeap.Set("Keep", 99);
+            IFDEExecutionDataScope legacyChild = stack.RootScope.CreateChild("legacy");
+            bool rejected = false;
+            try { stack.Dispose(); }
+            catch (InvalidOperationException) { rejected = true; }
+            Check(rejected && stack.FlowHeap.Get<int>("Keep") == 99,
+                "旧式Scope子节点未结束却已清空FlowHeap");
+            legacyChild.Dispose();
+            stack.Dispose();
+        }
+
+        private static void PendingFrameWithChildMustRemainTracked()
+        {
+            using (MDSDataStack stack = new MDSDataStack())
+            {
+                IFDEExecutionDataScope scope = stack.RootScope.CreateChild("parent");
+                MDSDataFrame frame = stack.OpenFrame("parent", scope,
+                    new Dictionary<string, object>(),
+                    new Dictionary<string, Type>());
+                IFDEExecutionDataScope child = scope.CreateChild("live");
+                bool rejected = false;
+                try { frame.Dispose(); }
+                catch (InvalidOperationException) { rejected = true; }
+                Check(rejected && stack.ActiveFrames == 1,
+                    "帧关闭被拒绝后仍提前解除ActiveFrame记录");
+                bool blocked = false;
+                try { stack.Dispose(); }
+                catch (InvalidOperationException) { blocked = true; }
+                Check(blocked, "DataStack允许删除仍活动的Frame");
+                child.Dispose();
+                frame.Dispose();
+                Check(stack.ActiveFrames == 0, "子Frame真实完成后未释放占用");
+            }
+        }
+
+        private static void SubflowExportsCannotBypassCommitBarrier()
+        {
+            MRKExecutionPlan child = new MRKExecutionPlan("child", new[]
+            {
+                new MRKExecutionStep("produce", new string[0], (ctx, ct) =>
+                {
+                    ctx.Data.Return("Value", 17);
+                    return Task.FromResult((object)1);
+                }, dataOutputs: Outputs(
+                    new KeyValuePair<string, Type>("Value", typeof(int))))
+            }, new Dictionary<string, string> {{"Value", "produce.Value"}});
+            IList<MRKExecutionStep> flattened =
+                MRKExecutionPlan.InlineSubflow("nested", child, null);
+            bool rejected = false;
+            try
+            {
+                new MRKExecutionPlan("invalid-export", flattened,
+                    new Dictionary<string, string>{{"Leaked", "nested.produce.Value"}});
+            }
+            catch (ArgumentException) { rejected = true; }
+            Check(rejected, "父流程可绕过子流程屏障直接声明导出内部结果");
+            MRKExecutionPlan valid = new MRKExecutionPlan("valid-export", flattened,
+                new Dictionary<string, string>{{"Value", "nested.__commit.Value"}});
+            MRKExecutionEngine engine = new MRKExecutionEngine(new FCRWorkerOptions(2, 4));
+            try
+            {
+                MRKFlowResult result = Wait(engine.StartFlow(valid).Completion);
+                Check(result.State == MRKFlowState.Completed &&
+                    result.GetCommittedOutput<int>("Value") == 17,
+                    "经过屏障的合法导出不能运行");
+            }
+            finally { Wait(engine.StopAsync()); }
+        }
+
+        private static void HeapNullTypeCannotBeChanged()
+        {
+            MDSDataHeap heap = new MDSDataHeap();
+            heap.Set<byte[]>("NullBuffer", null);
+            bool rejected = false;
+            try { heap.Get<string>("NullBuffer"); }
+            catch (InvalidCastException) { rejected = true; }
+            Check(rejected && heap.Get<byte[]>("NullBuffer") == null,
+                "Null值读取绕过了存储的静态类型契约");
+            heap.Dispose();
+            Check(!FDTDataValueSafety.IsSimpleImmutable(typeof(IntPtr)) &&
+                !FDTDataValueSafety.IsSimpleImmutable(typeof(UIntPtr)),
+                "非托管指针被当作安全可共享值");
+        }
+
+        private static void FlowOutputsAndInputsHaveNoMutableAlias()
+        {
+            byte[] caller = new byte[] {4, 8};
+            TaskCompletionSource<bool> gate = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<bool> entered = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            MRKExecutionPlan plan = new MRKExecutionPlan("input-output-alias", new[]
+            {
+                new MRKExecutionStep("gate", new string[0], async (ctx, ct) =>
+                {
+                    entered.TrySetResult(true);
+                    await gate.Task.ConfigureAwait(false);
+                    return (object)true;
+                }),
+                new MRKExecutionStep("consume", new [] {"gate"}, (ctx, ct) =>
+                {
+                    byte[] value = ctx.Data.Get<byte[]>("Image");
+                    Check(value[0] == 4, "StartFlow的外部数组修改污染了正在运行的Flow");
+                    ctx.Data.Return("Output", value);
+                    return Task.FromResult((object)1);
+                }, inputs: new [] {
+                    new MRKExecutionInput("Image", MRKInputSource.FlowInput,
+                        "InputImage", typeof(byte[]))
+                }, dataOutputs: Outputs(
+                    new KeyValuePair<string, Type>("Output", typeof(byte[]))))
+            }, new Dictionary<string, string> {{"Image", "consume.Output"}});
+            MRKExecutionEngine engine = new MRKExecutionEngine(new FCRWorkerOptions(2, 4));
+            try
+            {
+                MRKFlowHandle handle = engine.StartFlow(plan,
+                    new Dictionary<string, object>{{"InputImage", caller}});
+                Wait(entered.Task);
+                caller[0] = 99;
+                gate.TrySetResult(true);
+                MRKFlowResult result = Wait(handle.Completion);
+                Check(result.State == MRKFlowState.Completed, "Flow输入快照保护未完成执行");
+                byte[] exposed = (byte[])result.CommittedOutputs["Image"];
+                exposed[0] = 88;
+                Check(result.GetCommittedOutput<byte[]>("Image")[0] == 4,
+                    "CommittedOutputs的ReadOnlyDictionary仍泄露可写内容");
+            }
+            finally { gate.TrySetResult(true); Wait(engine.StopAsync()); }
+        }
 
         private static void HeapStackMoveCopyConflictAndOwnedRejection()
         {
