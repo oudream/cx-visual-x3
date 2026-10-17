@@ -18,13 +18,13 @@ namespace CxVisual.Mechanism.Visual
         {
             if (items == null) return null;
             for (int i = items.Count - 1; i >= 0; i--)
-                if (items[i].Bounds.Contains(point)) return items[i].Id;
+                if (items[i].Source.HitTest(point.X, point.Y)) return items[i].Id;
             return null;
         }
         private static void Collect(CxNode node, List<CxSceneItem> items)
         {
-            CxElement element = node as CxElement;
-            if (element != null) items.Add(new CxSceneItem(element));
+            MRCElement element = node as MRCElement;
+            if (element != null && element.IsVisible) items.Add(new CxSceneItem(element));
             foreach (CxNode child in node.Children) Collect(child, items);
         }
     }

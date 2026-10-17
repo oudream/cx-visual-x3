@@ -17,6 +17,13 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 {
                     return ConfigWpfTests.Run();
                 }
+                if (Array.IndexOf(args, "--organization-benchmark") >= 0 || Array.IndexOf(args, "--organization-stress") >= 0)
+                {
+                    OrganizationH01Tests.Run();
+                    OrganizationPerformanceTests.Run(Array.IndexOf(args, "--organization-stress") >= 0);
+                    return 0;
+                }
+                OrganizationH01Tests.Run();
                 UiIndependentAssemblies();
                 ExecutionFlowTests.Run();
                 ExecutionCompilerTests.Run();

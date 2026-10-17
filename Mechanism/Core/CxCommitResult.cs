@@ -15,6 +15,8 @@ namespace CxVisual.Mechanism.Core
         {
             return new CxCommitResult(false, errorCode, errorCode, revision, new CxChangeOperation[0]);
         }
+        public static CxCommitResult FromEdit(MTCEditResult<bool> result)
+        { return new CxCommitResult(result.Success, result.Success ? "OK" : result.ErrorCode, result.Message, result.Revision, new CxChangeOperation[0]); }
         public bool Success { get; private set; }
         public string ErrorCode { get; private set; }
         public string Message { get; private set; }

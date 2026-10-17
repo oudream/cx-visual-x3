@@ -1,9 +1,13 @@
 using System;
 namespace CxVisual.Mechanism.Core
 {
-    public sealed class CxProject : CxNode
+    /// <summary>Compatibility name for the same authoritative model, not a copied wrapper.</summary>
+    public sealed class CxProject : MEMProject
     {
         public CxProject(Guid id, string name) : base(id, name) { }
-        public override CxNodeKind Kind { get { return CxNodeKind.Project; } }
+        public new System.Collections.ObjectModel.ReadOnlyCollection<CxNode> Children { get { return ((CxNode)this).Children; } }
+        public new CxNode Parent { get { return ((CxNode)this).Parent; } }
+        public new CxNode Find(Guid id) { return ((CxNode)this).Find(id); }
+        public new CxNodeKind Kind { get { return CxNodeKind.Project; } }
     }
 }
