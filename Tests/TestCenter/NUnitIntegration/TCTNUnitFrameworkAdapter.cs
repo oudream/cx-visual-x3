@@ -5,6 +5,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Security;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Xml;
@@ -29,6 +30,11 @@ namespace CxVisual.TestCenter.NUnitIntegration
         public IEnumerable<ITCTTestCase> Discover()
         {
             List<ITCTTestCase> cases = new List<ITCTTestCase>();
+            string fingerprint = TCTNUnitBridge.Fingerprint(_assemblyPath);
+            string stem = Path.GetFileNameWithoutExtension(_assemblyPath);
+            bool builtIn = string.Equals(Path.GetFullPath(_assemblyPath),
+                Path.GetFullPath(typeof(TCTNUnitFrameworkAdapter).Assembly.Location),
+                StringComparison.OrdinalIgnoreCase);
             using (ITestEngine engine = TestEngineActivator.CreateInstance())
             {
                 TestPackage package = TCTNUnitBridge.CreatePackage(_assemblyPath);
@@ -41,26 +47,44 @@ namespace CxVisual.TestCenter.NUnitIntegration
                         string display = TCTNUnitBridge.Read(node, "name");
                         if (string.IsNullOrEmpty(fullname))
                             throw new InvalidDataException("NUnit test-case without FullName");
-                        cases.Add(new TCTNUnitTestCase(_assemblyPath, fullname, display));
+                        cases.Add(new TCTNUnitTestCase(_assemblyPath, fullname, display,
+                            fingerprint, builtIn ? null : stem));
                     }
                 }
             }
+            if (TCTNUnitBridge.Fingerprint(_assemblyPath) != fingerprint)
+                throw new InvalidDataException("Assembly changed while NUnit was discovering tests");
             return cases;
         }
     }
 
-    public sealed class TCTNUnitTestCase : ITCTExternalResultTestCase
+    public sealed class TCTNUnitTestCase : ITCTExternalResultTestCase,
+        ITCTTestDefinitionFingerprint, ITCTParameterizedCaseIdentity
     {
         private readonly string _assemblyPath;
         private readonly string _fullName;
-        public TCTNUnitTestCase(string assemblyPath, string fullName, string displayName)
+        private readonly string _fingerprint;
+        public TCTNUnitTestCase(string assemblyPath, string fullName, string displayName,
+            string fingerprint = null, string externalAssemblyName = null)
         {
-            _assemblyPath = Path.GetFullPath(assemblyPath);
-            _fullName = fullName;
-            Descriptor = new TCTTestCaseDescriptor("NUNIT." + fullName,
+            _assemblyPath = Path.GetFullPath(assemblyPath ?? throw new ArgumentNullException("assemblyPath"));
+            _fullName = fullName ?? throw new ArgumentNullException("fullName");
+            _fingerprint = fingerprint ?? TCTNUnitBridge.Fingerprint(_assemblyPath);
+            string prefix = string.IsNullOrWhiteSpace(externalAssemblyName) ?
+                "NUNIT." : "NUNIT." + externalAssemblyName + "::";
+            CaseId = prefix + fullName;
+            int parameterOffset = fullName.IndexOf('(');
+            DefinitionId = prefix + (parameterOffset < 0 ? fullName :
+                fullName.Substring(0, parameterOffset));
+            RowKey = parameterOffset < 0 ? "default" : fullName.Substring(parameterOffset);
+            Descriptor = new TCTTestCaseDescriptor(CaseId,
                 string.IsNullOrWhiteSpace(displayName) ? fullName : displayName,
                 TCTTestAspect.Foundation, "NUnit", "Unmapped", "Unmapped", "NUnit.Framework");
         }
+        public string DefinitionFingerprint { get { return _fingerprint; } }
+        public string DefinitionId { get; private set; }
+        public string CaseId { get; private set; }
+        public string RowKey { get; private set; }
         public TCTTestCaseDescriptor Descriptor { get; private set; }
         public void Execute(TCTTestContext context)
         {
@@ -72,6 +96,8 @@ namespace CxVisual.TestCenter.NUnitIntegration
         {
             Stopwatch watch = Stopwatch.StartNew();
             cancellation.ThrowIfCancellationRequested();
+            if (TCTNUnitBridge.Fingerprint(_assemblyPath) != _fingerprint)
+                throw new InvalidDataException("NUnit assembly changed after discovery");
             XmlNode result;
             using (ITestEngine engine = TestEngineActivator.CreateInstance())
             using (ITestRunner runner = engine.GetRunner(TCTNUnitBridge.CreatePackage(_assemblyPath)))
@@ -123,6 +149,13 @@ namespace CxVisual.TestCenter.NUnitIntegration
 
     public static class TCTNUnitBridge
     {
+        public static string Fingerprint(string file)
+        {
+            using (FileStream stream = new FileStream(file, FileMode.Open,
+                FileAccess.Read, FileShare.Read))
+            using (SHA256 sha = SHA256.Create())
+                return BitConverter.ToString(sha.ComputeHash(stream)).Replace("-", "").ToLowerInvariant();
+        }
         public static TCTTestStatus MapStatus(string result, string label, int nativeAsserts)
         {
             if (result == "Passed") return nativeAsserts > 0 ? TCTTestStatus.Passed : TCTTestStatus.Inconclusive;

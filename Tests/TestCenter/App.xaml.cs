@@ -33,11 +33,42 @@ namespace CxVisual.TestCenter.UI
                 string command = e.Args[0].ToLowerInvariant();
                 // The default run discovers both frameworks. A native Worker must not load
                 // NUnit Engine for all ordinary TCT cases; only NUnit attempts need it.
-                bool requiresNUnit = command == "--run" ||
+                bool requiresNUnit = command == "--run" || command == "--list" ||
                     (command == "--worker" && e.Args.Length > 1 &&
                      e.Args[1].StartsWith("NUNIT.", StringComparison.Ordinal));
                 TCTTestCatalog catalog = TCTRegistration.CreateCatalog(requiresNUnit);
-                if (command == "--nunit-probe")
+                if (command == "--list")
+                {
+                    if (e.Args.Length != 3 || e.Args[1] != "--report")
+                        throw new ArgumentException("--list --report <catalog.json>");
+                    var cases = catalog.Cases.OrderBy(x => x.Descriptor.Id, StringComparer.Ordinal)
+                        .Select(test =>
+                        {
+                            ITCTParameterizedCaseIdentity row = test as ITCTParameterizedCaseIdentity;
+                            ITCTTestDefinitionFingerprint versioned = test as ITCTTestDefinitionFingerprint;
+                            return new {
+                                id = test.Descriptor.Id,
+                                definitionId = row == null ? test.Descriptor.Id : row.DefinitionId,
+                                caseId = row == null ? test.Descriptor.Id : row.CaseId,
+                                rowKey = row == null ? "default" : row.RowKey,
+                                fingerprint = versioned == null ? "" : versioned.DefinitionFingerprint,
+                                aspect = test.Descriptor.Aspect.ToString(),
+                                group = test.Descriptor.Group,
+                                capabilityId = test.Descriptor.CapabilityId
+                            };
+                        }).ToArray();
+                    string output = Path.GetFullPath(e.Args[2]);
+                    Directory.CreateDirectory(Path.GetDirectoryName(output));
+                    var serializer = new System.Web.Script.Serialization.JavaScriptSerializer {
+                        MaxJsonLength = int.MaxValue };
+                    string temporary = output + ".partial";
+                    File.WriteAllText(temporary, serializer.Serialize(new {
+                        schema = 1, count = cases.Length, cases = cases }), System.Text.Encoding.UTF8);
+                    if (File.Exists(output)) File.Delete(output);
+                    File.Move(temporary, output);
+                    exit = cases.Length == 0 ? 1 : 0;
+                }
+                else if (command == "--nunit-probe")
                 {
                     if (e.Args.Length < 2 || e.Args.Length > 3 ||
                         (e.Args.Length == 3 && e.Args[2] != "--negative"))
@@ -50,9 +81,21 @@ namespace CxVisual.TestCenter.UI
                 }
                 else if (command == "--worker")
                 {
-                    if (e.Args.Length != 4 && e.Args.Length != 7 && e.Args.Length != 8) throw new ArgumentException("--worker <id> <result-file> <seed> [runId attemptId iteration]");
+                    if (e.Args.Length != 4 && e.Args.Length != 7 &&
+                        e.Args.Length != 8 && e.Args.Length != 9) throw new ArgumentException("--worker <id> <result-file> <seed> [runId attemptId iteration]");
                     ITCTTestCase test = catalog.Cases.SingleOrDefault(x => x.Descriptor.Id == e.Args[1]);
                     if (test == null) throw new InvalidOperationException("Unknown worker test ID");
+                    if (test is ITCTTestDefinitionFingerprint && e.Args.Length != 9)
+                        throw new InvalidDataException("NUnit worker requires parent definition fingerprint");
+                    if (e.Args.Length == 9)
+                    {
+                        ITCTTestDefinitionFingerprint fingerprinted =
+                            test as ITCTTestDefinitionFingerprint;
+                        if (fingerprinted == null ||
+                            !string.Equals(fingerprinted.DefinitionFingerprint, e.Args[8],
+                                StringComparison.Ordinal))
+                            throw new InvalidDataException("NUnit Worker/Parent definition fingerprint mismatch");
+                    }
                     int seed = int.Parse(e.Args[3], CultureInfo.InvariantCulture);
                     TCTTestAttempt attempt = e.Args.Length >= 7 ?
                         new TCTTestAttempt(e.Args[4], test.Descriptor.Id,
@@ -60,7 +103,7 @@ namespace CxVisual.TestCenter.UI
                         new TCTTestAttempt("AdHoc", test.Descriptor.Id, 0, seed);
                     TCTTestArtifactStore store = e.Args.Length >= 7 ?
                         new TCTTestArtifactStore(TCTTestArtifactStore.RunRoot(attempt.RunId)) : null;
-                    TCTTestEventJournal events = e.Args.Length == 8 ? new TCTTestEventJournal(e.Args[7]) : null;
+                    TCTTestEventJournal events = e.Args.Length >= 8 ? new TCTTestEventJournal(e.Args[7]) : null;
                     TCTTestCaseResult result = await TCTTestRunner.RunOneAsync(test,
                         CancellationToken.None, seed, attempt, store, events == null ? null :
                             new Action<TCTTestEvent>(events.Write));
@@ -109,6 +152,44 @@ namespace CxVisual.TestCenter.UI
                         exit = 0;
                     }
                     finally { window.Close(); }
+                }
+                else if (command == "--replay-history")
+                {
+                    if (e.Args.Length != 4)
+                        throw new ArgumentException("--replay-history <history-dir> <runId> <report.json>");
+                    TCTArchivedTestRun archived = new TCTTestResultRepository(e.Args[1])
+                        .LoadDetailed(e.Args[2]);
+                    var observations = archived.Attempts.SelectMany(result =>
+                        result.Observations.Where(o => o.Envelope != null).Select(o => new {
+                            testId = result.Descriptor.Id,
+                            attemptId = result.AttemptId,
+                            kind = o.Kind, title = o.Title,
+                            sourceObjectId = o.Envelope.SourceObjectId,
+                            definitionAddress = o.Envelope.DefinitionAddress,
+                            runtimeInstanceId = o.Envelope.RuntimeInstanceId,
+                            evidenceSha256 = o.Evidence.Sha256,
+                            payloadSha256 = o.Envelope.PayloadRef == null ?
+                                "" : o.Envelope.PayloadRef.Sha256
+                        })).ToArray();
+                    string output = Path.GetFullPath(e.Args[3]);
+                    Directory.CreateDirectory(Path.GetDirectoryName(output));
+                    var serializer = new System.Web.Script.Serialization.JavaScriptSerializer {
+                        MaxJsonLength = int.MaxValue };
+                    string temporary = output + ".partial";
+                    File.WriteAllText(temporary, serializer.Serialize(new {
+                        schema = 1, runId = archived.RunId, commit = archived.Commit,
+                        count = archived.Attempts.Count,
+                        originalPassed = archived.Attempts.Count > 0 &&
+                            archived.Attempts.All(x => x.Status == TCTTestStatus.Passed),
+                        statuses = archived.Attempts.Select(x => new {
+                            testId = x.Descriptor.Id, attemptId = x.AttemptId,
+                            status = x.Status.ToString()
+                        }).ToArray(),
+                        observations = observations
+                    }), System.Text.Encoding.UTF8);
+                    if (File.Exists(output)) File.Delete(output);
+                    File.Move(temporary, output);
+                    exit = archived.Attempts.Count > 0 ? 0 : 1;
                 }
                 else if (command == "--run")
                 {

@@ -54,6 +54,27 @@ jobs:
           New-Item -ItemType Directory -Force 'Output/Debug/x64' | Out-Null
           & msbuild 'CxVisual.Unified.sln' /m:1 /t:Rebuild /p:Configuration=Debug /p:Platform=x64 /nologo /v:minimal "/flp:logfile=Output/Debug/x64/Build.log;verbosity=normal"
           if ($LASTEXITCODE -ne 0) { throw "MSBuild failed: $LASTEXITCODE" }
+      - name: Verify developer catalog and stable Case/Definition identities
+        shell: powershell
+        run: |
+          $exe = (Resolve-Path 'Output/Debug/x64/CxVisual.TestCenter.exe').Path
+          $manifest = Join-Path (Get-Location) 'Output/Debug/x64/TestCenter.catalog.json'
+          $p = Start-Process -FilePath $exe -WorkingDirectory (Get-Location).Path -ArgumentList @('--list','--report',('"' + $manifest + '"')) -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Developer catalog --list failed: $($p.ExitCode)" }
+          $data = Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
+          $items = @($data.cases)
+          if ($items.Count -lt 90 -or [int]$data.count -ne $items.Count) {
+              throw "Catalog incomplete: $($items.Count)"
+          }
+          $ids = @($items | ForEach-Object { [string]$_.id })
+          if (@($ids | Select-Object -Unique).Count -ne $items.Count) {
+              throw 'Duplicate Catalog CaseIds'
+          }
+          $rows = @($items | Where-Object { $_.rowKey -ne 'default' -and $_.id -like 'NUNIT.*' })
+          if ($rows.Count -lt 2 -or @($rows | Where-Object {
+              [string]::IsNullOrWhiteSpace([string]$_.fingerprint)
+          }).Count -ne 0) { throw 'NUnit parameter rows lack stable fingerprint' }
+          Write-Host "PASS Developer catalog discovered $($items.Count) cases"
       - name: Verify actual WPF Shell and Viewer binding
         shell: powershell
         run: |
@@ -108,6 +129,120 @@ jobs:
                   throw "NUnit Engine inaccurate case mapping: $name"
               }
               Write-Host "PASS NUnit Engine probe: $name; cases=$($cases.Count); failures=$failures"
+          }
+      - name: Verify NUnit external assembly and worker fingerprint
+        shell: powershell
+        run: |
+          $exe = (Resolve-Path 'Output/Debug/x64/CxVisual.TestCenter.exe').Path
+          $output = (Resolve-Path 'Output/Debug/x64').Path
+          $external = Join-Path $output 'TCTExternalChecks.dll'
+          $nunitDll = Join-Path $output 'nunit.framework.dll'
+          if (-not (Test-Path $nunitDll)) { throw 'NUnit framework DLL missing from deployment' }
+          @'
+          using NUnit.Framework;
+          namespace ExternalOwnerChecks {
+            [TestFixture]
+            public sealed class AdditionFixture {
+              [TestCase(1,2)]
+              [TestCase(3,4)]
+              public void AddOne(int input, int expected) {
+                Assert.That(input + 1, Is.EqualTo(expected));
+              }
+            }
+          }
+          '@ | Set-Content -LiteralPath (Join-Path $output 'TCTExternalChecks.generated.cs') -Encoding UTF8
+          Add-Type -Path (Join-Path $output 'TCTExternalChecks.generated.cs') -ReferencedAssemblies $nunitDll -OutputAssembly $external
+          $env:TCT_NUNIT_ASSEMBLIES = $external
+          try {
+              $report = Join-Path $output 'TestCenter.external.junit.xml'
+              $p = Start-Process -FilePath $exe -WorkingDirectory (Get-Location).Path -ArgumentList @('--run','--filter','ExternalOwnerChecks.AdditionFixture','--report',('"' + $report + '"'),'--format','junit','--isolate') -Wait -PassThru
+              if ($p.ExitCode -ne 0) { throw "External NUnit assembly failed with code $($p.ExitCode)" }
+              [xml]$junit = Get-Content -LiteralPath $report -Raw
+              if ([int]$junit.testsuite.tests -ne 2 -or
+                  [int]$junit.testsuite.failures -ne 0 -or
+                  [int]$junit.testsuite.errors -ne 0) {
+                  throw 'Expected exactly two successful parameter rows from external assembly'
+              }
+              $cases = @($junit.testsuite.testcase)
+              $ids = @($cases | ForEach-Object { $_.GetAttribute('name') } | Sort-Object -Unique)
+              if ($ids.Count -ne 2 -or
+                  @($ids | Where-Object { $_.StartsWith('NUNIT.TCTExternalChecks::') }).Count -ne 2) {
+                  throw 'External NUnit IDs missing assembly namespace or parameter-row identity'
+              }
+              $wrongResult = Join-Path $output 'NUnitWorker.stale.xml'
+              $attempt = [guid]::NewGuid().ToString('N')
+              $runId = [guid]::NewGuid().ToString('N')
+              $events = Join-Path $output 'NUnitWorker.stale.events'
+              $q = Start-Process -FilePath $exe -WorkingDirectory (Get-Location).Path -ArgumentList @('--worker', ('"' + $ids[0] + '"'), ('"' + $wrongResult + '"'), '1', $runId, $attempt, '0', ('"' + $events + '"'), ('"' + ('0'*64) + '"')) -Wait -PassThru
+              if ($q.ExitCode -eq 0 -or (Test-Path $wrongResult)) {
+                  throw 'NUnit Worker accepted a stale/bad parent fingerprint'
+              }
+              Write-Host 'PASS external DLL rows and Worker definition fingerprint fail-closed'
+          } finally {
+              Remove-Item Env:TCT_NUNIT_ASSEMBLIES -ErrorAction SilentlyContinue
+          }
+      - name: Verify structured Owner observation artifact replay
+        shell: powershell
+        run: |
+          $exe = (Resolve-Path 'Output/Debug/x64/CxVisual.TestCenter.exe').Path
+          $report = Join-Path (Get-Location) 'Output/Debug/x64/StructuredObservation.json'
+          $p = Start-Process -FilePath $exe -WorkingDirectory (Get-Location).Path -ArgumentList @('--run','--id','TCT.M1.OBS.001','--report',('"' + $report + '"'),'--format','json','--isolate') -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw 'Real Owner structured observation case failed' }
+          $data = Get-Content -LiteralPath $report -Raw | ConvertFrom-Json
+          if ([int]$data.total -ne 1 -or $data.cases[0].status -ne 'Passed') {
+              throw 'Invalid structured test run summary'
+          }
+          $evidence = @($data.cases[0].artifacts | Where-Object {
+              $_.mime -eq 'application/vnd.cxvisual.test-observation+xml'
+          })
+          if ($evidence.Count -ne 1) { throw 'Expected exactly one structured evidence artifact' }
+          $root = Join-Path ([System.IO.Path]::GetTempPath()) ('CxVisual-TCT-Evidence/' + $data.runId)
+          $artifact = Join-Path $root $evidence[0].relativePath
+          if (-not (Test-Path $artifact)) { throw "Missing structured evidence $artifact" }
+          if ((Get-FileHash -LiteralPath $artifact -Algorithm SHA256).Hash.ToLowerInvariant() -ne
+              [string]$evidence[0].sha256) {
+              throw 'Structured observation SHA256 mismatch'
+          }
+          [xml]$observation = Get-Content -LiteralPath $artifact -Raw
+          $record = $observation.Observation
+          if ([string]$record.schema -ne '1' -or [string]$record.runId -ne [string]$data.runId -or
+              [string]$record.attemptId -ne [string]$data.cases[0].attemptId -or
+              [string]$record.sourceObjectId -ne 'CxRect2D') {
+              throw 'Structured observation lost Run/Attempt/Owner identity'
+          }
+          Write-Host 'PASS versioned Geometry Owner observation and content addressed replay'
+      - name: Verify timeout and abnormal Worker exit fail closed
+        shell: powershell
+        run: |
+          $exe = (Resolve-Path 'Output/Debug/x64/CxVisual.TestCenter.exe').Path
+          foreach ($mode in @('hang','exit','tree')) {
+              $env:TCT_M1_WORKER_FAULT = $mode
+              $pidFile = Join-Path (Get-Location) 'Output/Debug/x64/WorkerFault.childpid.txt'
+              if (Test-Path $pidFile) { Remove-Item -LiteralPath $pidFile -Force }
+              $env:TCT_M1_WORKER_PIDFILE = $pidFile
+              $report = Join-Path (Get-Location) ("Output/Debug/x64/WorkerFault." + $mode + ".json")
+              try {
+                  $p = Start-Process -FilePath $exe -WorkingDirectory (Get-Location).Path -ArgumentList @('--run','--id','TCT.M1.WORKER.PROBE','--timeout-ms', $(if ($mode -eq 'tree') { '5000' } else { '450' }),'--report',('"' + $report + '"'),'--format','json','--isolate') -Wait -PassThru
+              } finally {
+                  Remove-Item Env:TCT_M1_WORKER_FAULT -ErrorAction SilentlyContinue
+                  Remove-Item Env:TCT_M1_WORKER_PIDFILE -ErrorAction SilentlyContinue
+              }
+              if ($p.ExitCode -ne 1) { throw "Fault probe $mode did not fail closed; exit=$($p.ExitCode)" }
+              $result = Get-Content -LiteralPath $report -Raw | ConvertFrom-Json
+              if ([int]$result.total -ne 1 -or
+                  [string]$result.cases[0].status -ne $(if ($mode -ne 'exit') { 'TimedOut' } else { 'Error' })) {
+                  throw "Worker $mode emitted wrong terminal state"
+              }
+              if ($mode -eq 'tree') {
+                  if (-not (Test-Path $pidFile)) { throw 'Worker failed to create nested child in time' }
+                  $childId = [int](Get-Content -LiteralPath $pidFile -Raw)
+                  Start-Sleep -Milliseconds 300
+                  if (Get-Process -Id $childId -ErrorAction SilentlyContinue) {
+                      & taskkill /PID $childId /T /F | Out-Null
+                      throw "Orphan child process remains after timed-out Worker, PID=$childId"
+                  }
+              }
+              Write-Host "PASS Worker fault mode $mode -> $($result.cases[0].status)"
           }
       - name: Run TestCenter in isolated workers
         shell: powershell
@@ -209,6 +344,28 @@ jobs:
               if (-not $line.StartsWith(($index.ToString() + '|'))) { throw 'Broken event sequence' }
           }
           Write-Host "PASS Worker event artifact $($lines.Count) events; SHA256 verified"
+      - name: Verify historical Owner replay in a fresh process after temp removal
+        shell: powershell
+        run: |
+          $exe = (Resolve-Path 'Output/Debug/x64/CxVisual.TestCenter.exe').Path
+          $history = Join-Path (Get-Location) 'Output/Debug/x64/M1EvidenceHistory'
+          $source = Join-Path (Get-Location) 'Output/Debug/x64/M1Evidence.source.json'
+          $replayed = Join-Path (Get-Location) 'Output/Debug/x64/M1Evidence.replayed.json'
+          $p = Start-Process -FilePath $exe -WorkingDirectory (Get-Location).Path -ArgumentList @('--run','--id','TCT.M1.OBS.004','--history-dir',('"' + $history + '"'),'--report',('"' + $source + '"'),'--format','json','--isolate') -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw 'Real MDS Owner archived run failed' }
+          $summary = Get-Content -LiteralPath $source -Raw | ConvertFrom-Json
+          $live = Join-Path ([System.IO.Path]::GetTempPath()) ('CxVisual-TCT-Evidence/' + $summary.runId)
+          if (Test-Path $live) { Remove-Item -LiteralPath $live -Recurse -Force }
+          $q = Start-Process -FilePath $exe -WorkingDirectory (Get-Location).Path -ArgumentList @('--replay-history',('"' + $history + '"'),$summary.runId,('"' + $replayed + '"')) -Wait -PassThru
+          if ($q.ExitCode -ne 0) { throw "Cold-process archived replay failed: $($q.ExitCode)" }
+          $historyResult = Get-Content -LiteralPath $replayed -Raw | ConvertFrom-Json
+          if ($historyResult.runId -ne $summary.runId -or [int]$historyResult.count -ne 1 -or
+              -not $historyResult.originalPassed -or
+              @($historyResult.observations).Count -ne 1 -or
+              $historyResult.observations[0].sourceObjectId -ne 'MDSDataStack') {
+              throw 'Historical replay lost actual Run/Attempt/MDS Owner evidence'
+          }
+          Write-Host 'PASS cold-process replay of real MDS Owner after deleting live evidence root'
       - name: Parallel repeat and history regression
         shell: powershell
         run: |
@@ -271,6 +428,12 @@ jobs:
             Output/Debug/x64/NUnitProbe.*.trace.txt
             Output/Debug/x64/NUnitProbe.positive.xml
             Output/Debug/x64/NUnitProbe.negative.xml
+            Output/Debug/x64/WorkerFault.*.json
+            Output/Debug/x64/TestCenter.catalog.json
+            Output/Debug/x64/M1Evidence.*.json
+            Output/Debug/x64/M1EvidenceHistory/**
+            Output/Debug/x64/StructuredObservation.json
+            Output/Debug/x64/TestCenter.external.junit.xml
             Output/Debug/x64/TestCenter.events.json
             Output/Debug/x64/TestCenter.junit.xml
             Output/Debug/x64/TestCenter.parallel.junit.xml

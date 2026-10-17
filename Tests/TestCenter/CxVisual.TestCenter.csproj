@@ -27,6 +27,8 @@
     <Compile Include="MainWindow.xaml.cs" />
     <Compile Include="Core\TCTTesting.cs" />
     <Compile Include="Models\TCTModels.cs" />
+    <Compile Include="Models\TCTObservationEnvelope.cs" />
+    <Compile Include="Models\TCTObservationDiff.cs" />
     <Compile Include="Models\TCTTestSourceLocation.cs" />
     <Compile Include="Fixtures\TCTArtifacts.cs" />
     <Compile Include="Execution\TCTLifecycle.cs" />

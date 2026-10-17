@@ -178,6 +178,27 @@ namespace CxVisual.TestCenter.Cases
                 TCTNUnitFrameworkAdapter nunit = new TCTNUnitFrameworkAdapter(
                     typeof(TCTFrameworkCases).Assembly.Location);
                 foreach (ITCTTestCase test in nunit.Discover()) catalog.Register(test);
+                // Opt-in only. Caller must trust these binaries; paths are inherited by TCT Worker.
+                string paths = Environment.GetEnvironmentVariable("TCT_NUNIT_ASSEMBLIES");
+                if (!string.IsNullOrWhiteSpace(paths))
+                {
+                    string[] assemblies = paths.Split(new[] { ';' },
+                        StringSplitOptions.RemoveEmptyEntries);
+                    if (assemblies.Length > 32)
+                        throw new InvalidOperationException("Maximum 32 explicit NUnit assemblies");
+                    foreach (string provided in assemblies)
+                    {
+                        string file = Path.GetFullPath(provided.Trim());
+                        if (!File.Exists(file) || !string.Equals(Path.GetExtension(file),
+                            ".dll", StringComparison.OrdinalIgnoreCase))
+                            throw new InvalidOperationException("Invalid explicit NUnit assembly: " + file);
+                        if (string.Equals(file, typeof(TCTFrameworkCases).Assembly.Location,
+                            StringComparison.OrdinalIgnoreCase)) continue;
+                        foreach (ITCTTestCase test in
+                            new TCTNUnitFrameworkAdapter(file).Discover())
+                            catalog.Register(test);
+                    }
+                }
             }
             return catalog;
         }
