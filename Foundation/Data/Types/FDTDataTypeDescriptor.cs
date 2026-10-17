@@ -76,6 +76,8 @@ namespace CxVisual.Foundation.Data.Types
             if (type == typeof(byte[])) return ((byte[])value).Clone();
             if (type == typeof(FDTReadOnlyBuffer)) return value;
             if (IsSimpleImmutable(type)) return value;
+            object adapted;
+            if (adapters != null && adapters.TryCapture(value, out adapted)) return adapted;
             throw new NotSupportedException(
                 "类型尚未注册安全复制/冻结能力：" + type.FullName);
         }
