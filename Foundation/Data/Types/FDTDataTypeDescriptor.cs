@@ -67,6 +67,9 @@ namespace CxVisual.Foundation.Data.Types
         }
 
         public static object Capture(object value)
+        { return Capture(value, null); }
+
+        public static object Capture(object value, FDTDataAdapterRegistry adapters)
         {
             if (value == null) return null;
             Type type = value.GetType();
