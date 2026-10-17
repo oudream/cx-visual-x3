@@ -146,6 +146,10 @@ namespace CxVisual.Mechanism.Runtime.Execution
                     if (!_byId.TryGetValue(producer, out source) ||
                         !source.DataOutputs.TryGetValue(slot, out valueType))
                         throw new ArgumentException("子流程导出未声明的具名输出：" + item.Value);
+                    // 如果来源属于内联子流程内部，必须通过其 __commit 节点。
+                    // 否则顶层Flow.DataExports就能绕过已声明的子流程原子屏障。
+                    if (source.SubflowAccessGroup != null)
+                        throw new ArgumentException("流程导出不能绕过子流程提交屏障：" + item.Value);
                     exports.Add(item.Key, item.Value);
                     exportTypes.Add(item.Key, valueType);
                 }
