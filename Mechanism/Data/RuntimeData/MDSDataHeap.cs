@@ -66,9 +66,14 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                     throw new KeyNotFoundException("找不到数据：" + name);
                 if (entry.Value != null && !(entry.Value is T))
                     throw new InvalidCastException("数据类型不匹配：" + name);
-                if (entry.Value == null && typeof(T).IsValueType &&
-                    Nullable.GetUnderlyingType(typeof(T)) == null)
-                    throw new InvalidCastException("null不能赋值给值类型：" + name);
+                if (entry.Value == null)
+                {
+                    if (typeof(T).IsValueType && Nullable.GetUnderlyingType(typeof(T)) == null)
+                        throw new InvalidCastException("null不能赋值给值类型：" + name);
+                    if (!typeof(T).IsAssignableFrom(entry.Type) &&
+                        Nullable.GetUnderlyingType(typeof(T)) != entry.Type)
+                        throw new InvalidCastException("null条目的声明类型不匹配：" + name);
+                }
                 return (T)Read(entry);
             }
         }
