@@ -363,5 +363,72 @@ namespace CxVisual.TestCenter.Cases
                     "源替换生效且没有被半完成Copy污染");
             }
         }
+
+        [TCTTest("TCT.MDS.026", "Flow级数据预算同时约束Heap和Stack且拒绝半提交",
+            TCTTestAspect.Mechanism, "Data / RuntimeData", ObjectId = "MDSDataBudget")]
+        public static void SharedRetainedBudget(TCTTestContext t)
+        {
+            var budget = new MDSDataBudget(90);
+            using (var stack = new MDSDataStack(null, null, null, budget))
+            {
+                stack.FlowHeap.Set("Image", new byte[50]);
+                using (var frame = stack.OpenFrame("budget-node",
+                    stack.RootScope.CreateChild("budget-node"),
+                    new Dictionary<string,object>(),
+                    new Dictionary<string,Type>{{"Result", typeof(byte[])}}))
+                {
+                    frame.Data.Return("Result",new byte[50]);
+                    t.AssertThrows<MDSDataException>(() => frame.CommitOutputs(),
+                        "提交大于Heap/Stack共享预算必须明确失败");
+                    byte[] absent;
+                    t.AssertTrue(!stack.TryReadOutput("budget-node","Result",out absent),
+                        "超额输出不得发布",true,true);
+                    t.AssertEqual(50L, budget.RetainedBytes,
+                        "预算拒绝时已存在Heap数据应保持并准确计费");
+                }
+                stack.FlowHeap.Remove("Image");
+                t.AssertEqual(0L, budget.RetainedBytes,"Remove归还内存预算");
+            }
+            t.AssertEqual(0L,budget.RetainedBytes,"Flow结束后不存在逻辑预算泄漏");
+        }
+
+        [TCTTest("TCT.MDS.027", "节点已关闭时异步Loader的迟到数据不得发布",
+            TCTTestAspect.Mechanism, "Data / RuntimeData", ObjectId = "MDSDataContext")]
+        public static void LateFileLoadRejected(TCTTestContext t)
+        {
+            string path = TempFile();
+            try
+            {
+                var entered = new TaskCompletionSource<bool>();
+                var unblock = new TaskCompletionSource<bool>();
+                using (var stack = new MDSDataStack())
+                {
+                    var frame = stack.OpenFrame("late",stack.RootScope.CreateChild("late"),
+                        new Dictionary<string,object>(),new Dictionary<string,Type>());
+                    frame.Data.SetFile<byte[]>("Image",path,
+                        new MDSDataFileLoader<byte[]>(async (file,ct) =>
+                        {
+                            entered.TrySetResult(true);
+                            await unblock.Task.ConfigureAwait(false);
+                            return File.ReadAllBytes(file);
+                        }));
+                    Task<byte[]> reading = frame.Data.LoadAsync<byte[]>("Image");
+                    try
+                    {
+                        if (!entered.Task.Wait(TimeSpan.FromSeconds(4)))
+                            throw new TimeoutException("Loader未开始");
+                        frame.Dispose();
+                    }
+                    finally { unblock.TrySetResult(true); }
+                    t.AssertThrows<ObjectDisposedException>(() =>
+                        reading.GetAwaiter().GetResult(),
+                        "节点结束后Loader不能发布迟到图像");
+                    t.AssertEqual(MDSDataLoadState.Failed,
+                        stack.FlowHeap.Inspect("Image").LoadState,
+                        "迟到加载仅留下失败诊断");
+                }
+            }
+            finally { File.Delete(path); }
+        }
     }
 }
