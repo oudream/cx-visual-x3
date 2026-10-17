@@ -9,62 +9,8 @@ using CxVisual.Mechanism.Runtime.Execution;
 
 namespace CxVisual.Runtime.Host
 {
-    /// <summary>本宿主的模拟能力只供无设备验收，不得被视为生产授权或联锁。</summary>
-    internal sealed class MRHSimulationResolver : IMRKCapabilityResolver
-    {
-        public bool TryResolve(string id, out MRKResolvedCapability capability)
-        {
-            if (id == "Prepare")
-            {
-                capability = new MRKResolvedCapability(
-                    (ctx, ct) => Task.FromResult((object)2),
-                    new MRKExecutionOutput(typeof(int)));
-                return true;
-            }
-            if (id == "Calculate")
-            {
-                capability = new MRKResolvedCapability(async (ctx, ct) =>
-                {
-                    object source;
-                    if (!ctx.TryGetResult("prepare", out source))
-                        throw new InvalidOperationException("宿主模拟能力依赖结果丢失");
-                    await Task.Delay(20, ct).ConfigureAwait(false);
-                    return (object)((int)source + 3);
-                }, new MRKExecutionOutput(typeof(int)));
-                return true;
-            }
-            capability = null;
-            return false;
-        }
-    }
-
-    /// <summary>Host演练用的瞬时编排Catalog；非工程持久定义的替代品。</summary>
-    internal sealed class MRHSimulationCatalog : IMRKFlowCompileCatalog
-    {
-        public bool TryGet(string id, out MRKFlowCompileDefinition definition)
-        {
-            if (id == "host-simulation")
-            {
-                definition = new MRKFlowCompileDefinition(id, new[]
-                {
-                    new MRKStepCompileRequest("process",null,subflowId:"calculate-pipeline")
-                });
-                return true;
-            }
-            if (id == "calculate-pipeline")
-            {
-                definition = new MRKFlowCompileDefinition(id, new[]
-                {
-                    new MRKStepCompileRequest("prepare","Prepare"),
-                    new MRKStepCompileRequest("calculate","Calculate",new[]{"prepare"})
-                });
-                return true;
-            }
-            definition = null;
-            return false;
-        }
-    }
-
+    // 无外设的模拟能力与流程使用代码优先Blueprint构建；
+    // 正式执行依然必须经过授权Publisher、PlanSlot和Session。
     internal sealed class MRHSimulationPublishPolicy : IMRKPlanPublicationPolicy
     {
         public bool Authorize(string principal, MRKPlanPublishAction action,
@@ -132,9 +78,24 @@ namespace CxVisual.Runtime.Host
                 MRKExecutionPlanPublisher publisher =
                     new MRKExecutionPlanPublisher(slot, baseline, 1,
                         new MRHSimulationPublishPolicy());
-                MRKPlanPublicationReceipt receipt = publisher.CompileAndStageOrchestration(
-                    "local-simulation", "host-simulation",
-                    new MRHSimulationCatalog(), new MRHSimulationResolver(), 2);
+                MRKCodeRuntimeBlueprint blueprint = new MRKCodeRuntimeBuilder()
+                    .Capability<int>("Prepare",(ctx,ct)=>Task.FromResult(2))
+                    .Capability<int>("Calculate",async (ctx,ct)=>
+                    {
+                        object value;
+                        if (!ctx.TryGetResult("prepare", out value))
+                            throw new InvalidOperationException("子流程输入没有传递");
+                        await Task.Delay(20,ct).ConfigureAwait(false);
+                        return (int)value + 3;
+                    })
+                    .Flow("calculate-pipeline",flow => flow
+                        .Step("prepare","Prepare")
+                        .Step("calculate","Calculate","prepare"))
+                    .Flow("host-simulation",flow => flow
+                        .Subflow("process","calculate-pipeline"))
+                    .Freeze();
+                MRKPlanPublicationReceipt receipt = publisher.CompileAndStageBlueprint(
+                    "local-simulation", "host-simulation", blueprint, 2);
                 if (!receipt.Accepted || !publisher.TryActivate("local-simulation"))
                     throw new InvalidOperationException("Host模拟计划发布未通过安全验证");
                 MRKExecutionEngine engine =
@@ -202,7 +163,7 @@ namespace CxVisual.Runtime.Host
                 if (result.State != MRKFlowState.Completed ||
                     (int)result.Results["process.calculate"] != 5)
                     return 1;
-                Console.WriteLine("RuntimeHost PASS compiled plan / session / journal");
+                Console.WriteLine("RuntimeHost PASS code blueprint / authorized publish / nested plan / session / journal");
                 return 0;
             }
         }
