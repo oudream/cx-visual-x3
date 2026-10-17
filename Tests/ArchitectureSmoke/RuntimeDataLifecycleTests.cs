@@ -21,6 +21,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             SubflowExportsCannotBypassCommitBarrier();
             HeapNullTypeCannotBeChanged();
             FlowOutputsAndInputsHaveNoMutableAlias();
+            ReadOnlyBufferCanShareWithoutCopying();
             StackFrameCommitAndAbort();
             HeapStackMoveCopyConflictAndOwnedRejection();
             MultiOutputFanoutAndTypeIsolation();
@@ -195,6 +196,51 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "CommittedOutputs的ReadOnlyDictionary仍泄露可写内容");
             }
             finally { gate.TrySetResult(true); Wait(engine.StopAsync()); }
+        }
+
+
+        private static void ReadOnlyBufferCanShareWithoutCopying()
+        {
+            byte[] source = new byte[] {11, 22, 33};
+            FDTReadOnlyBuffer immutable = new FDTReadOnlyBuffer(source);
+            source[0] = 99;
+            byte[] independent = immutable.ToArray();
+            independent[1] = 66;
+            Check(immutable[0] == 11 && immutable[1] == 22 &&
+                  FDTDataTypeDescriptor.Describe(typeof(FDTReadOnlyBuffer)).IsSafelyCopyable,
+                "只读Buffer未隔离写入或类型能力错误");
+
+            object a = null, b = null;
+            MRKExecutionPlan plan = new MRKExecutionPlan("readonly", new[]
+            {
+                new MRKExecutionStep("producer", new string[0], (ctx, ct) =>
+                {
+                    ctx.Data.Return("Image", immutable);
+                    return Task.FromResult((object)1);
+                }, dataOutputs: Outputs(
+                    new KeyValuePair<string, Type>("Image", typeof(FDTReadOnlyBuffer)))),
+                new MRKExecutionStep("a", new[] {"producer"}, (ctx, ct) =>
+                {
+                    a = ctx.Data.Get<FDTReadOnlyBuffer>("Input");
+                    return Task.FromResult((object)1);
+                }, inputs: new[] {new MRKExecutionInput("Input", MRKInputSource.StepOutput,
+                    "producer.Image", typeof(FDTReadOnlyBuffer))}),
+                new MRKExecutionStep("b", new[] {"producer"}, (ctx, ct) =>
+                {
+                    b = ctx.Data.Get<FDTReadOnlyBuffer>("Input");
+                    return Task.FromResult((object)1);
+                }, inputs: new[] {new MRKExecutionInput("Input", MRKInputSource.StepOutput,
+                    "producer.Image", typeof(FDTReadOnlyBuffer))})
+            });
+            MRKExecutionEngine engine = new MRKExecutionEngine(new FCRWorkerOptions(3, 5));
+            try
+            {
+                MRKFlowResult result = Wait(engine.StartFlow(plan).Completion);
+                Check(result.State == MRKFlowState.Completed &&
+                      object.ReferenceEquals(a, b) && object.ReferenceEquals(a, immutable),
+                    "已安全冻结的Buffer不应对每个消费者复制主体");
+            }
+            finally { Wait(engine.StopAsync()); }
         }
 
         private static void HeapStackMoveCopyConflictAndOwnedRejection()
