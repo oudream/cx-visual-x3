@@ -16,6 +16,9 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         bool TryGet<T>(string name, out T value);
         void Set<T>(string name, T value);
         void Return<T>(string name, T value);
+        T Get<T>(FDTDataKey<T> key);
+        void Set<T>(FDTDataKey<T> key, T value);
+        void Return<T>(FDTDataKey<T> key, T value);
         IDictionary<string, object> InspectPendingOutputs();
         FDTDataAdapterRegistry Adapters { get; }
         void SetFile(string name, string filePath);
@@ -88,6 +91,13 @@ namespace CxVisual.Mechanism.Data.RuntimeData
             if (string.IsNullOrWhiteSpace(name))
                 throw new ArgumentException("数据名称不能为空", "name");
         }
+
+        public T Get<T>(FDTDataKey<T> key)
+        { return Get<T>((key ?? throw new ArgumentNullException("key")).Name); }
+        public void Set<T>(FDTDataKey<T> key, T value)
+        { Set((key ?? throw new ArgumentNullException("key")).Name, value); }
+        public void Return<T>(FDTDataKey<T> key, T value)
+        { Return((key ?? throw new ArgumentNullException("key")).Name, value); }
 
         public T Get<T>(string name)
         {
