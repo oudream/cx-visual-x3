@@ -28,6 +28,13 @@ namespace CxVisual.TestCenter.UI
                 Content = ContentPanel };
             Content = scroll;
         }
+        // 仅传递真实Observation的选择，不参与测试状态和断言计算。
+        public event Action<TCTTestObservation> ObservationSelected;
+        protected void SelectObservation(TCTTestObservation observation)
+        {
+            if (observation != null && ObservationSelected != null)
+                ObservationSelected(observation);
+        }
         public abstract string Kind { get; }
         public virtual bool CanDisplay(TCTTestCaseResult result)
         {
@@ -50,8 +57,14 @@ namespace CxVisual.TestCenter.UI
             foreach (TCTTestObservation observation in result.Observations.Where(o =>
                 string.Equals(o.Kind, kind, StringComparison.OrdinalIgnoreCase)))
             {
-                ContentPanel.Children.Add(new TextBlock { Text = "[" + observation.Origin + "] " + observation.Title,
-                    FontWeight = FontWeights.Bold, Margin = new Thickness(0, 7, 0, 5) });
+                Button select = new Button {
+                    Content = "[" + observation.Origin + "] " + observation.Title + "  ·  查看证据",
+                    HorizontalContentAlignment = HorizontalAlignment.Left,
+                    FontWeight = FontWeights.Bold, Margin = new Thickness(0, 7, 0, 5),
+                    Padding = new Thickness(6, 4, 6, 4)
+                };
+                select.Click += (sender, args) => SelectObservation(observation);
+                ContentPanel.Children.Add(select);
                 ContentPanel.Children.Add(new TextBlock { Text = observation.Details,
                     TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 9) });
             }
@@ -128,6 +141,7 @@ namespace CxVisual.TestCenter.UI
             foreach (TCTTestObservation observation in result.Observations.Where(o => o.Kind == Kind))
             {
                 TreeView tree = new TreeView { Height = 160, Background = Brushes.AliceBlue };
+                tree.SelectedItemChanged += (sender, args) => SelectObservation(observation);
                 string[] nodes = observation.Details.Split(new[] { "→" }, StringSplitOptions.RemoveEmptyEntries);
                 if (nodes.Length > 1)
                 {
@@ -187,8 +201,15 @@ namespace CxVisual.TestCenter.UI
             new TCTGeometryTestView(), new TCTObjectTestView(), new TCTGraphTestView(),
             new TCTChannelTestView(), new TCTRuntimeTestView()
         };
+        // Shell订阅同一条选择事件，Inspector可显示结构化Owner/Attempt/Artifact证据。
+        public event Action<TCTTestObservation> ObservationSelected;
+        public int ViewerCount { get { return Math.Max(0, _tabs.Items.Count - 1); } }
         public TCTTestDocumentHostControl()
         {
+            foreach (TCTTestViewBase viewer in _viewers.OfType<TCTTestViewBase>())
+                viewer.ObservationSelected += observation => {
+                    if (ObservationSelected != null) ObservationSelected(observation);
+                };
             Content = _tabs;
             Clear();
         }
