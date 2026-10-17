@@ -209,6 +209,46 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         /// 不与Return的暂存输出混为一谈；调用方要避免在可能失败的业务节点里
         /// 将暂时数据作为已完成的生产结果写入共享堆。
         /// </summary>
+        /// <summary>当前运行调用可见的Input/Local/Pending与FlowHeap元数据，不自动加载文件或遍历其他节点。</summary>
+        public IList<MDSDataSnapshot> Search(MDSDataQuery query = null)
+        {
+            List<MDSDataSnapshot> items = new List<MDSDataSnapshot>();
+            lock (_gate)
+            {
+                EnsureActive();
+                if (_inputs != null)
+                    foreach (KeyValuePair<string, object> item in _inputs)
+                        items.Add(new MDSDataSnapshot(item.Key,
+                            item.Value == null ? typeof(object) : item.Value.GetType(),
+                            MDSDataLocation.Input, MDSDataLoadState.NotFile,
+                            null, MDSDataQueryLogic.SizeOf(item.Value), 1));
+                IDictionary<string, object> local = _scope.SnapshotLocal();
+                MDEExecutionDataScope typedScope = _scope as MDEExecutionDataScope;
+                IDictionary<string, Type> types = typedScope == null
+                    ? null : typedScope.SnapshotLocalTypes();
+                foreach (KeyValuePair<string, object> item in local)
+                {
+                    Type declared;
+                    if (types == null || !types.TryGetValue(item.Key, out declared))
+                        declared = item.Value == null ? typeof(object) : item.Value.GetType();
+                    items.Add(new MDSDataSnapshot(item.Key, declared,
+                        MDSDataLocation.Local, MDSDataLoadState.NotFile, null,
+                        MDSDataQueryLogic.SizeOf(item.Value), 1));
+                }
+                foreach (KeyValuePair<string, object> item in _pending)
+                {
+                    Type declared;
+                    if (_outputs == null || !_outputs.TryGetValue(item.Key, out declared))
+                        declared = item.Value == null ? typeof(object) : item.Value.GetType();
+                    items.Add(new MDSDataSnapshot(item.Key, declared,
+                        MDSDataLocation.PendingOutput, MDSDataLoadState.NotFile,
+                        null, MDSDataQueryLogic.SizeOf(item.Value), 1));
+                }
+                if (_heap != null) _heap.AppendSnapshots(items);
+            }
+            return MDSDataQueryLogic.Filter(items, query);
+        }
+
         public void SetFile(string name, string filePath)
         {
             lock (_gate)
