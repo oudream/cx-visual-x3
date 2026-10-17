@@ -15,6 +15,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             MinimalRunAndTypedRequest();
             InvalidDefinitionsNeverCreateRunnableRuntime();
             MultiFlowSharedWorkerAndCancellation();
+            OneBlueprintBothDevelopmentAndAuthorizedProductionPublication();
         }
 
         private static void Check(bool condition, string message)
@@ -115,6 +116,77 @@ namespace CxVisual.Tests.ArchitectureSmoke
             }
             catch(ArgumentException) { rejected = true; }
             Check(rejected, "同一流程重复节点被静默接受");
+        }
+
+
+        private sealed class Approval : IMRKPlanPublicationPolicy
+        {
+            internal bool Safe;
+            public bool Authorize(string principal, MRKPlanPublishAction action,
+                MRKExecutionPlan plan, long revision)
+            { return principal == "publisher"; }
+            public bool IsSafeToActivate(MRKExecutionPlan plan, long revision)
+            { return Safe; }
+        }
+
+        private static void OneBlueprintBothDevelopmentAndAuthorizedProductionPublication()
+        {
+            MRKCodeRuntimeBuilder developer = new MRKCodeRuntimeBuilder()
+                .Capability<int>("Number",(ctx,ct)=>Task.FromResult(17))
+                .Flow("sub",f=>f.Step("read","Number"))
+                .Flow("business",f=>f.Subflow("child","sub"));
+            MRKCodeRuntimeBlueprint blueprint = developer.Freeze();
+            developer.Capability<int>("New",(ctx,ct)=>Task.FromResult(99))
+                .Flow("late",f=>f.Step("only","New"));
+            Check(blueprint.FlowIds.SequenceEqual(new[]{"business","sub"}),
+                "已经冻结的编排定义被开发者后续修改污染");
+
+            MRKDevelopmentRuntime sandbox = blueprint.BuildForDevelopment();
+            try
+            {
+                MRKFlowResult simulated = Wait(sandbox.RunAsync("business"));
+                Check(simulated.State == MRKFlowState.Completed &&
+                    (int)simulated.Results["child.read"] == 17,
+                    "冻结编排无法用于开发模拟运行");
+            }
+            finally { Wait(sandbox.StopAsync()); }
+
+            MRKExecutionPlan initial=new MRKExecutionPlan("initial",new[]{
+                new MRKExecutionStep("old",new string[0],
+                    (c,t)=>Task.FromResult((object)1))
+            });
+            MRKExecutionPlanSlot slot=new MRKExecutionPlanSlot(initial,1,true);
+            Approval approval=new Approval();
+            MRKExecutionPlanPublisher publisher=
+                new MRKExecutionPlanPublisher(slot,initial,1,approval);
+            bool unauthorized=false;
+            try
+            {
+                publisher.CompileAndStageBlueprint("readonly","business",blueprint,2);
+            }
+            catch (UnauthorizedAccessException) { unauthorized=true; }
+            Check(unauthorized && !publisher.PendingRevision.HasValue,
+                "统一Blueprint绕过了正式发布权限");
+            MRKPlanPublicationReceipt staged=publisher.CompileAndStageBlueprint(
+                "publisher","business",blueprint,2);
+            Check(staged.Accepted && publisher.PendingRevision==2,
+                "同一Blueprint不能经官方Publisher部署");
+            Check(!publisher.TryActivate("publisher"),
+                "未到安全点的发布被错误激活");
+            approval.Safe = true;
+            Check(publisher.TryActivate("publisher"),
+                "正式发布安全点不能激活已经审核的代码定义");
+
+            MRKExecutionEngine engine=new MRKExecutionEngine(new FCRWorkerOptions(1,4));
+            try
+            {
+                MRKFlowResult published=Wait(engine.StartFromSlot(slot).Completion);
+                Check(published.State==MRKFlowState.Completed &&
+                    published.Metadata.PlanRevision==2 &&
+                    (int)published.Results["child.read"]==17,
+                    "代码定义发布后未走同一编排执行内核");
+            }
+            finally { Wait(engine.StopAsync()); }
         }
 
         private static void MultiFlowSharedWorkerAndCancellation()

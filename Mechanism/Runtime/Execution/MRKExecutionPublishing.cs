@@ -83,6 +83,17 @@ namespace CxVisual.Mechanism.Runtime.Execution
             return new MRKPlanPublicationReceipt(revision, true, compiled.Diagnostics);
         }
 
+        /// <summary>
+        /// 同一份已验证的代码编排快照，开发可直接运行，生产必须重新通过授权发布。
+        /// </summary>
+        public MRKPlanPublicationReceipt CompileAndStageBlueprint(string principal,
+            string rootId, MRKCodeRuntimeBlueprint blueprint, long revision)
+        {
+            if (blueprint == null) throw new ArgumentNullException("blueprint");
+            return CompileAndStageOrchestration(principal, rootId,
+                blueprint, blueprint, revision);
+        }
+
         private void StageCore(string principal, MRKExecutionPlan plan,
             long revision, bool rollback)
         {

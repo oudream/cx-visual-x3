@@ -108,50 +108,70 @@ namespace CxVisual.Mechanism.Runtime.Execution
             return this;
         }
 
+        /// <summary>冻结一次定义，供开发执行和正式授权发布共用。</summary>
+        public MRKCodeRuntimeBlueprint Freeze()
+        {
+            return new MRKCodeRuntimeBlueprint(_flows, _capabilities);
+        }
+
         public MRKDevelopmentRuntime Build(FCRWorkerOptions options = null)
         {
-            if (_flows.Count == 0)
+            return Freeze().BuildForDevelopment(options);
+        }
+    }
+
+    /// <summary>
+    /// 已验证的不可变代码编排快照；同时实现原Catalog与CapabilityResolver契约。
+    /// Dev使用同一份已编译定义；生产仍必须经Publisher授权和安全点。
+    /// </summary>
+    public sealed class MRKCodeRuntimeBlueprint :
+        IMRKFlowCompileCatalog, IMRKCapabilityResolver
+    {
+        private readonly IDictionary<string, MRKFlowCompileDefinition> _definitions;
+        private readonly IDictionary<string, MRKResolvedCapability> _capabilities;
+        private readonly IDictionary<string, MRKExecutionPlan> _plans;
+
+        internal MRKCodeRuntimeBlueprint(
+            IDictionary<string, MRKFlowCompileDefinition> definitions,
+            IDictionary<string, MRKResolvedCapability> capabilities)
+        {
+            if (definitions.Count == 0)
                 throw new InvalidOperationException("至少注册一个流程");
-            // 冻结能力解析与流程引用：构建后不受Builder再次注册影响。
-            Dictionary<string, MRKResolvedCapability> capabilities =
-                new Dictionary<string, MRKResolvedCapability>(_capabilities,
-                    StringComparer.Ordinal);
-            Dictionary<string, MRKFlowCompileDefinition> definitions =
-                new Dictionary<string, MRKFlowCompileDefinition>(_flows,
-                    StringComparer.Ordinal);
-            IMRKCapabilityResolver resolver = new CodeResolver(capabilities);
-            IMRKFlowCompileCatalog catalog = new CodeCatalog(definitions);
+            _definitions = new ReadOnlyDictionary<string, MRKFlowCompileDefinition>(
+                new Dictionary<string, MRKFlowCompileDefinition>(definitions,
+                    StringComparer.Ordinal));
+            _capabilities = new ReadOnlyDictionary<string, MRKResolvedCapability>(
+                new Dictionary<string, MRKResolvedCapability>(capabilities,
+                    StringComparer.Ordinal));
             MRKExecutionOrchestrationCompiler compiler =
                 new MRKExecutionOrchestrationCompiler();
             Dictionary<string, MRKExecutionPlan> plans =
                 new Dictionary<string, MRKExecutionPlan>(StringComparer.Ordinal);
-            // 在创建Worker之前验证所有流程，即使它们尚未被调用。
-            foreach (string id in definitions.Keys.OrderBy(x => x, StringComparer.Ordinal))
+            // 验证全部流程，未验证定义永远不能发布或创建Worker。
+            foreach (string id in _definitions.Keys.OrderBy(x => x, StringComparer.Ordinal))
             {
-                MRKCompileResult result = compiler.Compile(id, catalog, resolver);
+                MRKCompileResult result = compiler.Compile(id, this, this);
                 if (!result.Succeeded)
                     throw new MRKCodeRuntimeBuildException(id, result.Diagnostics);
                 plans.Add(id, result.Plan);
             }
-            return new MRKDevelopmentRuntime(new MRKExecutionEngine(
-                options ?? new FCRWorkerOptions(2, 64)), plans);
+            _plans = new ReadOnlyDictionary<string, MRKExecutionPlan>(plans);
         }
 
-        private sealed class CodeResolver : IMRKCapabilityResolver
+        public IList<string> FlowIds
+        { get { return new ReadOnlyCollection<string>(_plans.Keys.OrderBy(x => x,
+            StringComparer.Ordinal).ToList()); } }
+
+        public bool TryGet(string flowId, out MRKFlowCompileDefinition definition)
+        { return _definitions.TryGetValue(flowId, out definition); }
+
+        public bool TryResolve(string capabilityId, out MRKResolvedCapability capability)
+        { return _capabilities.TryGetValue(capabilityId, out capability); }
+
+        public MRKDevelopmentRuntime BuildForDevelopment(FCRWorkerOptions options = null)
         {
-            private readonly IDictionary<string, MRKResolvedCapability> _values;
-            internal CodeResolver(IDictionary<string, MRKResolvedCapability> values)
-            { _values = values; }
-            public bool TryResolve(string id, out MRKResolvedCapability value)
-            { return _values.TryGetValue(id, out value); }
-        }
-        private sealed class CodeCatalog : IMRKFlowCompileCatalog
-        {
-            private readonly IDictionary<string, MRKFlowCompileDefinition> _values;
-            internal CodeCatalog(IDictionary<string, MRKFlowCompileDefinition> values)
-            { _values = values; }
-            public bool TryGet(string id, out MRKFlowCompileDefinition value)
-            { return _values.TryGetValue(id, out value); }
+            return new MRKDevelopmentRuntime(new MRKExecutionEngine(
+                options ?? new FCRWorkerOptions(2, 64)), _plans);
         }
     }
 
