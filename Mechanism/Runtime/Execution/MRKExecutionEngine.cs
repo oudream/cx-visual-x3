@@ -231,12 +231,13 @@ namespace CxVisual.Mechanism.Runtime.Execution
             IDictionary<string, object> committedOutputs = null)
         {
             State = state; FlowId = context.FlowId; Metadata = context.Metadata; Error = error;
+            _dataAdapters = context.DataStack.FlowHeap.Adapters;
             CompletedUtc = DateTime.UtcNow;
             Results = context.ResultsSnapshot(); StepStates = context.StatesSnapshot();
             Dictionary<string, object> safe = new Dictionary<string, object>(StringComparer.Ordinal);
             if (state == MRKFlowState.Completed && committedOutputs != null)
                 foreach (KeyValuePair<string, object> item in committedOutputs)
-                    safe.Add(item.Key, FDTDataValueSafety.Capture(item.Value));
+                    safe.Add(item.Key, FDTDataValueSafety.Capture(item.Value, _dataAdapters));
             _committedOutputs = new ReadOnlyDictionary<string, object>(safe);
         }
         public MRKFlowState State { get; private set; }
@@ -246,6 +247,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
         public Exception Error { get; private set; }
         public IDictionary<string, object> Results { get; private set; }
         private readonly IDictionary<string, object> _committedOutputs;
+        private readonly FDTDataAdapterRegistry _dataAdapters;
         /// <summary>对外每次返回安全快照，避免ReadOnlyDictionary中可写数组被修改。</summary>
         public IDictionary<string, object> CommittedOutputs
         {
@@ -253,7 +255,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
             {
                 Dictionary<string, object> safe = new Dictionary<string, object>(StringComparer.Ordinal);
                 foreach (KeyValuePair<string, object> item in _committedOutputs)
-                    safe.Add(item.Key, FDTDataValueSafety.Capture(item.Value));
+                    safe.Add(item.Key, FDTDataValueSafety.Capture(item.Value, _dataAdapters));
                 return new ReadOnlyDictionary<string, object>(safe);
             }
         }
@@ -269,7 +271,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
             if (value == null && typeof(T).IsValueType &&
                 Nullable.GetUnderlyingType(typeof(T)) == null)
                 throw new InvalidCastException("非空值类型不能读取null：" + name);
-            return (T)FDTDataValueSafety.Capture(value);
+            return (T)FDTDataValueSafety.Capture(value, _dataAdapters);
         }
         public IDictionary<string, MRKStepState> StepStates { get; private set; }
     }
