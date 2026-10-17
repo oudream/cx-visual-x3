@@ -263,6 +263,9 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                         throw new MDSDataException(MDSDataErrorCode.Busy, "目标文件加载中：" + targetName, targetName);
                     if (isFile)
                     {
+                        if (copy && observed != null)
+                            throw new MDSDataException(MDSDataErrorCode.Busy,
+                                "复制期间来源从内存变更为文件，请重试：" + sourceName, sourceName);
                         if (file.State == MDSDataLoadState.Loading)
                             throw new MDSDataException(MDSDataErrorCode.Busy, "来源文件加载中：" + sourceName, sourceName);
                         MDSDataFileEntry outputFile = copy ? file.CopyLocation() : file;
