@@ -154,8 +154,8 @@ namespace CxVisual.Mechanism.Data.RuntimeData
             lock (_gate)
             {
                 EnsureOpen();
-                MDSDataEntry old;
-                MDSDataFileEntry file;
+                MDSDataEntry old = null;
+                MDSDataFileEntry file = null;
                 if (!_values.TryGetValue(name, out old) && !_files.TryGetValue(name, out file))
                     throw new KeyNotFoundException("需要覆盖的目标不存在：" + name);
                 if (file != null && file.State == MDSDataLoadState.Loading)
@@ -204,18 +204,15 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                     throw new MDSDataException(MDSDataErrorCode.NameConflict,
                         "目标Heap名称已存在：" + name, name);
                 MDSDataFileEntry file;
-                if (_files.TryGetValue(name, out file))
-                {
-                    if (file.State == MDSDataLoadState.Loading)
-                        throw new MDSDataException(MDSDataErrorCode.Busy, "目标加载中：" + name, name);
-                    _files.Remove(name);
-                }
+                if (_files.TryGetValue(name, out file) && file.State == MDSDataLoadState.Loading)
+                    throw new MDSDataException(MDSDataErrorCode.Busy, "目标加载中：" + name, name);
                 long size = Budget == null ? 0 :
                     Budget.Measure(safeOwnedValue, Adapters);
                 MDSDataEntry previous;
                 _values.TryGetValue(name, out previous);
                 long oldSize = previous == null ? (file == null ? 0 : file.CachedBytes) : previous.Bytes;
                 if (Budget != null && size > oldSize) Budget.Reserve(size - oldSize);
+                _files.Remove(name);
                 _values[name] = new MDSDataEntry(safeOwnedValue, declaredType, size);
                 if (Budget != null && oldSize > size) Budget.Release(oldSize - size);
             }
