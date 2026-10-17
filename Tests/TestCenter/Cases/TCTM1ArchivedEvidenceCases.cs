@@ -29,6 +29,58 @@ namespace CxVisual.TestCenter.Cases
                 TimeSpan.Zero, "", test.Assertions, test.Observations, attempt, test.Artifacts);
         }
 
+        [TCTTest("TCT.M1.HISTORY.002", "归档汇总不得与真实Attempt结果相矛盾",
+            TCTTestAspect.Foundation, "TestFramework", ObjectId = "TCTTestResultRepository")]
+        public static void ModifiedSummaryMustBeRejected(TCTTestContext test)
+        {
+            string run = Guid.NewGuid().ToString("N");
+            string live = TCTTestArtifactStore.RunRoot(run);
+            using (TCTTestSandbox sandbox = new TCTTestSandbox())
+            {
+                try
+                {
+                    TCTTestCaseResult original = Capture(run, true);
+                    var repository = new TCTTestResultRepository(sandbox.Root);
+                    string folder = repository.Save(new TCTTestRunSummary(
+                        new List<TCTTestCaseResult> { original }, run));
+                    test.AssertEqual(1, repository.LoadDetailed(run).Attempts.Count,
+                        "初始完整归档可回放");
+                    string summary = Path.Combine(folder, "summary.json");
+                    string source = File.ReadAllText(summary);
+                    // Maliciously alter only the JSON status, not the original Attempt XML.
+                    const string before = "\"status\":\"Passed\"";
+                    const string after = "\"status\":\"Failed\"";
+                    test.AssertTrue(source.Contains(before), "JSON内存在真实原始状态",
+                        true, source.Contains(before));
+                    File.WriteAllText(summary, source.Replace(before, after));
+                    test.AssertThrows<InvalidDataException>(() => repository.LoadDetailed(run),
+                        "修改汇总状态不可绕过归档结果一致性检查");
+                }
+                finally { if (Directory.Exists(live)) Directory.Delete(live, true); }
+            }
+        }
+
+        [TCTTest("TCT.M1.HISTORY.003", "Observation Payload必须在Attempt Artifact清单中",
+            TCTTestAspect.Foundation, "TestFramework", ObjectId = "TCTObservationReplay")]
+        public static void MissingPayloadInventoryMustFail(TCTTestContext test)
+        {
+            string run = Guid.NewGuid().ToString("N");
+            string live = TCTTestArtifactStore.RunRoot(run);
+            try
+            {
+                TCTTestCaseResult actual = Capture(run, true);
+                var artifacts = new List<TCTArtifactRef>();
+                foreach (TCTArtifactRef reference in actual.Artifacts)
+                    if (reference.Mime == TCTObservationCodec.Mime) artifacts.Add(reference);
+                var altered = TCTTestCaseResult.FromTransport(actual.Descriptor, actual.Status,
+                    actual.Elapsed, actual.Error, actual.Assertions, actual.Observations,
+                    actual.Attempt, artifacts, actual.Diagnostics);
+                test.AssertThrows<InvalidDataException>(() => TCTObservationReplay.Read(altered),
+                    "保留Envelope但删掉Payload库存引用必须拒绝回放");
+            }
+            finally { if (Directory.Exists(live)) Directory.Delete(live, true); }
+        }
+
         [TCTTest("TCT.M1.HISTORY.001", "完整Attempt及Owner证据归档后仍可回放与比较",
             TCTTestAspect.Foundation, "TestFramework", ObjectId = "TCTTestResultRepository")]
         public static void FullEvidenceSurvivesOriginalCleanup(TCTTestContext test)

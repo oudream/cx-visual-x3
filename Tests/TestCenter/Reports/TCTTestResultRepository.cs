@@ -199,6 +199,19 @@ namespace CxVisual.TestCenter.Reports
                 TCTObservationReplay.Read(attempt, store); // Include schema and logical Owner verification.
                 attempts.Add(attempt);
             }
+            // summary.json is not an independent authority: compare it with every SHA256
+            // verified Attempt result. A forged Passed summary cannot hide a failed Attempt.
+            if (header.Statuses.Count != attempts.Count)
+                throw new InvalidDataException("Archived summary/Attempt count mismatch");
+            foreach (TCTTestCaseResult attempt in attempts)
+            {
+                string key = attempt.Descriptor.Id + "#" +
+                    attempt.Attempt.Iteration.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                string expected;
+                if (!header.Statuses.TryGetValue(key, out expected) ||
+                    !string.Equals(expected, attempt.Status.ToString(), StringComparison.Ordinal))
+                    throw new InvalidDataException("Archived summary contradicts verified Attempt " + key);
+            }
             return new TCTArchivedTestRun(runId, header.Commit, header.OS, attempts);
         }
 
