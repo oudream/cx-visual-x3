@@ -35,6 +35,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         {
             RealPixelDetectionAndFanout();
             RealPixelNoDefectAndFailure();
+            SixteenBitRealPixelInspection();
             ConcurrentFlowOwnershipIsolation();
         }
 
@@ -92,6 +93,37 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(invalid.State == MRKFlowState.Failed &&
                     invalid.CommittedOutputs.Count == 0,
                     "无效图像尺寸仍允许导出半成品");
+            }
+            finally { engine.StopAsync().GetAwaiter().GetResult(); }
+        }
+
+        private static void SixteenBitRealPixelInspection()
+        {
+            // 500/500的两个相邻灰度像素，真实16位Little-Endian RAW。
+            byte[] raw = { 0xF4, 0x01, 0xF4, 0x01, 0, 0, 0, 0 };
+            var options = new CxVisionInspectionOptions {
+                PixelDepth = CxVisionPixelDepth.Bits16, GrayThreshold = 400,
+                MinDefectArea = 2, MaxDefectArea = 100, UseAi = false
+            };
+            var plan = CxVisionDataFlow.CreateCpuInspectionPlan(options, 23);
+            MRKExecutionEngine engine = new MRKExecutionEngine(new FCRWorkerOptions(3, 10));
+            try
+            {
+                MRKFlowResult result = engine.StartFlow(plan, Inputs(raw, 2, 2))
+                    .Completion.GetAwaiter().GetResult();
+                Check(result.State == MRKFlowState.Completed,
+                    "16位CPU Vision失败：" + (result.Error == null ? "" : result.Error.ToString()));
+                CxVisionInspectionResult inspected =
+                    result.GetCommittedOutput<CxVisionInspectionResult>("Inspection");
+                Check(inspected.ConfigRevision == 23 &&
+                    inspected.Regions.Count == 1 && inspected.Regions[0].PixelArea == 2 &&
+                    inspected.ThresholdPixelCount == 2 &&
+                    result.GetCommittedOutput<long>("GraySum") == 1000,
+                    "16位RAW解码或真实阈值算法返回错误");
+                MRKFlowResult bad = engine.StartFlow(plan, Inputs(new byte[]{0xF4,0x01,0xF4}, 2,2))
+                    .Completion.GetAwaiter().GetResult();
+                Check(bad.State == MRKFlowState.Failed && bad.CommittedOutputs.Count == 0,
+                    "16位截断文件仍导出了未完成结果");
             }
             finally { engine.StopAsync().GetAwaiter().GetResult(); }
         }
