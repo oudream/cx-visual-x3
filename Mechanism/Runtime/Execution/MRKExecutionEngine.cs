@@ -699,7 +699,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
                     object value;
                     if (!context.TryGetCommittedData(item.Value, out value))
                         throw new InvalidOperationException("必要流程导出未提交：" + item.Value);
-                    exports.Add(item.Key, FDTDataValueSafety.Capture(value));
+                    exports.Add(item.Key, FDTDataValueSafety.Capture(value, context.DataStack.FlowHeap.Adapters));
                 }
                 committedFlowOutputs = new ReadOnlyDictionary<string, object>(exports);
             }
