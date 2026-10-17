@@ -41,7 +41,8 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         public MDSDataStack(IFDEExecutionDataScope root = null)
             : this(root, null) { }
 
-        public MDSDataStack(IFDEExecutionDataScope root, FDTDataAdapterRegistry adapters)
+        public MDSDataStack(IFDEExecutionDataScope root, FDTDataAdapterRegistry adapters,
+            string runId = null)
         {
             _ownsRoot = root == null;
             _root = root ?? MDEExecutionDataScope.CreateRoot("data-" + Guid.NewGuid().ToString("N"));
