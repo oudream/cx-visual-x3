@@ -32,14 +32,16 @@ namespace CxVisual.Professional.Vision
             };
         }
 
-        /// <summary>仅支持单通道8-bit RAW，不将SDK、AI或机台功能冒充已实现。</summary>
+        /// <summary>单通道8/16-bit RAW（16位小端）；不将SDK、AI或机台功能冒充已实现。</summary>
         public static MRKExecutionPlan CreateCpuInspectionPlan(
             CxVisionInspectionOptions options, long revision = 1)
         {
             if (options == null) throw new ArgumentNullException("options");
             CxVisionThresholdPipeline pipeline = new CxVisionThresholdPipeline(options);
-            if (options.PixelDepth != CxVisionPixelDepth.Bits8)
-                throw new NotSupportedException("本案例只支持8-bit原始像素");
+            CxVisionPixelDepth pixelDepth = options.PixelDepth;
+            if (pixelDepth != CxVisionPixelDepth.Bits8 &&
+                pixelDepth != CxVisionPixelDepth.Bits16)
+                throw new NotSupportedException("只支持8/16位灰度原始像素");
             Dictionary<string, Type> imageOutput = new Dictionary<string, Type>
             { { "Frame", typeof(CxVisionGrayFrame) } };
             MRKExecutionInput[] rawInputs = {
@@ -65,14 +67,19 @@ namespace CxVisual.Professional.Vision
                     var raw = ctx.Data.Get<FDTReadOnlyBuffer>("Raw");
                     int width = ctx.Data.Get<int>("Width");
                     int height = ctx.Data.Get<int>("Height");
+                    int bytesPerPixel = pixelDepth == CxVisionPixelDepth.Bits16 ? 2 : 1;
                     if (width <= 0 || height <= 0 ||
-                        (long)width * height != raw.Length)
-                        throw new ArgumentException("RAW图像尺寸和字节数不符");
-                    ushort[] pixels = new ushort[raw.Length];
+                        (long)width * height * bytesPerPixel != raw.Length)
+                        throw new ArgumentException("RAW图像尺寸、位深和字节数不符");
+                    ushort[] pixels = new ushort[checked(width * height)];
                     for (int i = 0; i < pixels.Length; i++)
-                        pixels[i] = raw[i];
+                    {
+                        if ((i & 4095) == 0) ct.ThrowIfCancellationRequested();
+                        pixels[i] = bytesPerPixel == 1 ? raw[i] :
+                            (ushort)(raw[i * 2] | (raw[i * 2 + 1] << 8));
+                    }
                     var image = new CxVisionGrayFrame(width, height,
-                        CxVisionPixelDepth.Bits8, pixels);
+                        pixelDepth, pixels);
                     ctx.Data.Return("Frame", image);
                     return Task.FromResult((object)image.Width);
                 }, inputs: rawInputs, dataOutputs: imageOutput),
@@ -84,7 +91,10 @@ namespace CxVisual.Professional.Vision
                     // 真实逐像素背景清理；不修改Decode输出。
                     ushort[] filtered = new ushort[checked(image.Width * image.Height)];
                     for (int i = 0; i < filtered.Length; i++)
+                    {
+                        if ((i & 4095) == 0) ct.ThrowIfCancellationRequested();
                         filtered[i] = image.PixelAt(i) < 10 ? (ushort)0 : image.PixelAt(i);
+                    }
                     var prepared = new CxVisionGrayFrame(image.Width, image.Height,
                         image.PixelDepth, filtered);
                     ctx.Data.Return("Frame", prepared);
@@ -98,7 +108,7 @@ namespace CxVisual.Professional.Vision
                 {
                     ct.ThrowIfCancellationRequested();
                     var frame = ctx.Data.Get<CxVisionGrayFrame>("FrameInput");
-                    CxVisionInspectionResult result = pipeline.Inspect(frame, revision);
+                    CxVisionInspectionResult result = pipeline.Inspect(frame, revision, ct);
                     ct.ThrowIfCancellationRequested();
                     ctx.Data.Return("Result", result);
                     return Task.FromResult((object)result.Regions.Count);
@@ -115,7 +125,10 @@ namespace CxVisual.Professional.Vision
                     var frame = ctx.Data.Get<CxVisionGrayFrame>("FrameInput");
                     long sum = 0;
                     for (int i = 0; i < frame.Width * frame.Height; i++)
+                    {
+                        if ((i & 4095) == 0) ct.ThrowIfCancellationRequested();
                         sum += frame.PixelAt(i);
+                    }
                     ctx.Data.Return("GraySum", sum);
                     return Task.FromResult((object)sum);
                 }, inputs: new[] {
