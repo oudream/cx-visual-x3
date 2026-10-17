@@ -260,7 +260,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                         null, MDSDataQueryLogic.SizeOf(item.Value), 1,
                             _heap == null ? null : _heap.RunId, _scope.Id));
                 }
-                if (_heap != null) _heap.AppendSnapshots(items);
+                if (_heap != null) _heap.AppendSnapshots(items, query);
             }
             return MDSDataQueryLogic.Filter(items, query);
         }
