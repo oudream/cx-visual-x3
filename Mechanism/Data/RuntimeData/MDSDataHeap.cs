@@ -306,6 +306,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                     MDSDataFileEntry replacedFile;
                     target._values.TryGetValue(targetName, out replacedValue);
                     target._files.TryGetValue(targetName, out replacedFile);
+                    long originalSourceCharge = isFile ? file.CachedBytes : source.Bytes;
                     long oldTarget = replacedValue != null ? replacedValue.Bytes :
                         replacedFile == null ? 0 : replacedFile.CachedBytes;
                     long actualTargetBytes = isFile && copy ? 0 : targetBytes;
@@ -337,7 +338,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                         else if (delta < 0) target.Budget.Release(-delta);
                     }
                     if (!copy && Budget != null && !object.ReferenceEquals(Budget, target.Budget))
-                        Budget.Release(isFile ? file.CachedBytes : source.Bytes);
+                        Budget.Release(originalSourceCharge);
                 }
             }
         }
