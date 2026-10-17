@@ -315,5 +315,46 @@ namespace CxVisual.TestCenter.Cases
             }
             finally { File.Delete(path); }
         }
+
+        [TCTTest("TCT.MDS.022", "专业深复制期间源条目被替换则拒绝半成品提交",
+            TCTTestAspect.Mechanism, "Data / RuntimeData", ObjectId = "MDSDataHeap")]
+        public static void ConcurrentReplaceDuringDeepCopy(TCTTestContext t)
+        {
+            int calls = 0;
+            var entered = new TaskCompletionSource<bool>();
+            var continueCopy = new TaskCompletionSource<bool>();
+            var adapters = new FDTDataAdapterRegistry();
+            adapters.Register<TCTImageBlock>(v =>
+            {
+                int current = Interlocked.Increment(ref calls);
+                if (current == 2)
+                {
+                    entered.TrySetResult(true);
+                    continueCopy.Task.GetAwaiter().GetResult();
+                }
+                return new TCTImageBlock((byte[])v.Pixels.Clone());
+            });
+            using (var from = new MDSDataHeap(adapters))
+            using (var to = new MDSDataHeap(adapters))
+            {
+                from.Set("Image", new TCTImageBlock(new byte[] { 1 }));
+                Task copied = Task.Run(() => from.CopyTo("Image", to, "Copy"));
+                try
+                {
+                    if (!entered.Task.Wait(TimeSpan.FromSeconds(5)))
+                        throw new TimeoutException("专业Copy未进入复制器");
+                    from.Replace("Image", new TCTImageBlock(new byte[] { 2 }));
+                }
+                finally { continueCopy.TrySetResult(true); }
+                bool busy = false;
+                try { copied.GetAwaiter().GetResult(); }
+                catch (MDSDataException ex)
+                { busy = ex.Code == MDSDataErrorCode.Busy; }
+                t.AssertTrue(busy && !to.Contains("Copy"),
+                    "复制期间源数据被替换应拒绝旧版本发布", true, true);
+                t.AssertEqual((byte)2, from.Get<TCTImageBlock>("Image").Pixels[0],
+                    "源替换生效且没有被半完成Copy污染");
+            }
+        }
     }
 }
