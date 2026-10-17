@@ -38,7 +38,7 @@ namespace CxVisual.Foundation.Data.Types
         {
             if (type == null || type == typeof(void))
                 throw new ArgumentException("无效数据类型", "type");
-            if (type == typeof(byte[]))
+            if (type == typeof(byte[]) || type == typeof(FDTReadOnlyBuffer))
                 return new FDTDataTypeDescriptor(type, FDTDataKind.Buffer, true);
             if (FDTDataValueSafety.IsSimpleImmutable(type))
                 return new FDTDataTypeDescriptor(type, FDTDataKind.Scalar, true);
