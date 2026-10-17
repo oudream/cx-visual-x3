@@ -63,6 +63,8 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         internal static bool Matches(MDSDataSnapshot item, MDSDataQuery q)
         {
             if (q == null) return true;
+            if (q.ExactName != null &&
+                !string.Equals(q.ExactName, item.Name, StringComparison.Ordinal)) return false;
             if (q.NamePrefix != null &&
                 !item.Name.StartsWith(q.NamePrefix, StringComparison.Ordinal)) return false;
             if (q.DataType != null && !q.DataType.IsAssignableFrom(item.DataType)) return false;
