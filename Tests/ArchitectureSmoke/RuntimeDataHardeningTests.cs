@@ -27,6 +27,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             HeapQuotaAndAtomicCopy();
             SharedFlowStackAndHeapBudget();
             FileLoadOverBudgetNoCache();
+            LateNodeFileLoadMustNotPublish();
             RealVisionBudgetFailClosed();
             InspectAcrossLargePage();
             SlowAdapterCannotHoldStackLock();
@@ -119,6 +120,46 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         "Unload不能回到未加载状态");
                 }
                 Check(File.Exists(path), "失败的FileLoad误删磁盘原文件");
+            }
+            finally { File.Delete(path); }
+        }
+
+        private static void LateNodeFileLoadMustNotPublish()
+        {
+            string path = Path.Combine(Path.GetTempPath(),
+                "cxvisual-lateio-" + Guid.NewGuid().ToString("N") + ".raw");
+            File.WriteAllBytes(path, new byte[]{3, 4, 5});
+            try
+            {
+                var entered = new TaskCompletionSource<bool>();
+                var complete = new TaskCompletionSource<bool>();
+                using (var stack = new MDSDataStack())
+                {
+                    var frame = stack.OpenFrame("late",
+                        stack.RootScope.CreateChild("late"),
+                        new Dictionary<string, object>(), new Dictionary<string, Type>());
+                    frame.Data.SetFile<byte[]>("Image", path,
+                        new MDSDataFileLoader<byte[]>(async (file, ct) =>
+                        {
+                            entered.TrySetResult(true);
+                            await complete.Task.ConfigureAwait(false);
+                            return File.ReadAllBytes(file);
+                        }));
+                    Task<byte[]> pending = frame.Data.LoadAsync<byte[]>("Image");
+                    try
+                    {
+                        Check(entered.Task.Wait(TimeSpan.FromSeconds(4)),
+                            "迟到IO测试未进入Loader");
+                        frame.Dispose();
+                    }
+                    finally { complete.TrySetResult(true); }
+                    bool denied = false;
+                    try { pending.GetAwaiter().GetResult(); }
+                    catch (ObjectDisposedException) { denied = true; }
+                    Check(denied &&
+                        stack.FlowHeap.Inspect("Image").LoadState == MDSDataLoadState.Failed,
+                        "Frame结束后文件异步结果仍在Heap发布");
+                }
             }
             finally { File.Delete(path); }
         }
