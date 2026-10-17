@@ -28,7 +28,19 @@ namespace CxVisual.TestCenter.UI
             _focusedAttempt = id;
             RefreshScope();
         }
-        public void ShowAll() { _focusedAttempt = null; RefreshScope(); }
+        public void ShowAll()
+        {
+            _focusedAttempt = null;
+            _scope.SelectedIndex = 0;
+            RefreshScope();
+        }
+        public void ShowOnlyAttempt(string id)
+        {
+            if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("AttemptId required", "id");
+            _focusedAttempt = id;
+            _scope.SelectedIndex = 1;
+            RefreshScope();
+        }
         private void RefreshScope()
         {
             if (_view.View == null) return;

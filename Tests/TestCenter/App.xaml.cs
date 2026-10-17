@@ -90,6 +90,22 @@ namespace CxVisual.TestCenter.UI
                         foreach (TCTTestEvent evt in events) window.Timeline.AddEvent(evt);
                         if (window.Timeline.EventCount != events.Count)
                             throw new InvalidOperationException("WPF Timeline did not bind real event count");
+                        TCTTestAttempt second = new TCTTestAttempt(Guid.NewGuid().ToString("N"),
+                            test.Descriptor.Id, 1, 20261016);
+                        System.Collections.Generic.List<TCTTestEvent> secondEvents =
+                            new System.Collections.Generic.List<TCTTestEvent>();
+                        TCTTestCaseResult secondResult = await TCTTestRunner.RunOneAsync(test,
+                            CancellationToken.None, 20261016, second, null, secondEvents.Add);
+                        if (secondResult.Status != TCTTestStatus.Passed || secondEvents.Count == 0)
+                            throw new InvalidOperationException("Second real Attempt failed");
+                        foreach (TCTTestEvent evt in secondEvents) window.Timeline.AddEvent(evt);
+                        window.Timeline.ShowOnlyAttempt(attempt.AttemptId);
+                        if (window.Timeline.VisibleCount != events.Count ||
+                            window.Timeline.EventCount != events.Count + secondEvents.Count)
+                            throw new InvalidOperationException("Timeline selection did not isolate Attempt");
+                        window.Timeline.ShowAll();
+                        if (window.Timeline.VisibleCount != events.Count + secondEvents.Count)
+                            throw new InvalidOperationException("Timeline All events view did not restore");
                         exit = 0;
                     }
                     finally { window.Close(); }

@@ -47,15 +47,13 @@ namespace CxVisual.TestCenter.Fixtures
             for (int i = 0; i < actual.Length; i++) diff |= actual[i] ^ expected[i];
             return diff == 0;
         }
-        // 明确人工审批调用才能更新Golden；Runner永不自动Approve。
+        // Old direct-writer entry is disabled: it cannot enforce version or audit guarantees.
+        // Keep the API only to produce a deterministic migration error.
+        [Obsolete("Direct baseline update is disabled; use TCTGoldenService.Approve with version and audit.")]
         public void Approve(string relativePath, byte[] bytes, string approval)
         {
-            if (!string.Equals(approval, "APPROVE_BASELINE", StringComparison.Ordinal))
-                throw new InvalidOperationException("Explicit baseline approval required");
-            if (bytes == null) throw new ArgumentNullException("bytes");
-            string path = _fixtures.ResolvePath(relativePath);
-            Directory.CreateDirectory(Path.GetDirectoryName(path));
-            File.WriteAllBytes(path, bytes);
+            throw new InvalidOperationException(
+                "Direct baseline overwrite is not supported. Use TCTGoldenService.Approve.");
         }
         public static string Sha256(byte[] bytes)
         {

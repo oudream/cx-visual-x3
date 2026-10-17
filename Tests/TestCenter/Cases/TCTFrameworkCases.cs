@@ -101,8 +101,16 @@ namespace CxVisual.TestCenter.Cases
                 context.AssertThrows<InvalidOperationException>(() =>
                     baseline.Approve("example.data", bytes, "no"), "拒绝隐式审批");
                 context.AssertTrue(!File.Exists(Path.Combine(root, "example.data")), "拒绝写入", false, File.Exists(Path.Combine(root, "example.data")));
-                baseline.Approve("example.data", bytes, "APPROVE_BASELINE");
-                context.AssertTrue(baseline.Matches("example.data", bytes), "显式审批后可比较", true, true);
+                context.AssertThrows<InvalidOperationException>(() =>
+                    baseline.Approve("example.data", bytes, "APPROVE_BASELINE"),
+                    "旧公开入口即使含老口令也不能绕过审批");
+                TCTGoldenService secure = new TCTGoldenService(new TCTTestFixtureService(root));
+                TCTGoldenApprovalReceipt receipt = secure.Approve("example.data",
+                    bytes, "operator-reviewed", "APPROVE_GOLDEN_EXPLICITLY",
+                    TCTGoldenService.NoExistingBaseline);
+                context.AssertEqual("operator-reviewed", receipt.Actor, "真实审批记录");
+                context.AssertEqual(1, secure.ReadApprovedHistory().Count, "有可回读的批准记录");
+                context.AssertTrue(baseline.Matches("example.data", bytes), "经版本校验审批后可比较", true, true);
                 context.AssertTrue(!baseline.Matches("example.data", Encoding.UTF8.GetBytes("Changed")), "变更被检测", false, baseline.Matches("example.data", Encoding.UTF8.GetBytes("Changed")));
             }
             finally { Directory.Delete(root, true); }
