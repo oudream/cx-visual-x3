@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Threading;
+using System.Threading.Tasks;
+using CxVisual.Foundation.Data.Types;
 using CxVisual.Foundation.Data.Execution;
 using CxVisual.Mechanism.Data.Execution;
 
@@ -14,6 +17,12 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         void Set<T>(string name, T value);
         void Return<T>(string name, T value);
         IDictionary<string, object> InspectPendingOutputs();
+        FDTDataAdapterRegistry Adapters { get; }
+        void SetFile(string name, string filePath);
+        void SetFile<T>(string name, string filePath, IMDSDataFileLoader loader);
+        Task<T> LoadAsync<T>(string name, CancellationToken cancellation = default(CancellationToken));
+        void Unload(string name);
+        IList<MDSDataSnapshot> Search(MDSDataQuery query = null);
         void MoveToHeap(string localName, string heapName = null, bool replace = false);
         void CopyToHeap(string localName, string heapName = null, bool replace = false);
         void MoveFromHeap(string heapName, string localName = null, bool replace = false);
@@ -29,6 +38,11 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         private readonly object _gate = new object();
         private readonly IFDEExecutionDataScope _scope;
         private readonly MDSDataHeap _heap;
+        public FDTDataAdapterRegistry Adapters
+        { get { return _heap == null ? null : _heap.Adapters; } }
+
+        private object Capture(object value)
+        { return MDSDataSafety.Capture(value, Adapters); }
         private readonly IDictionary<string, object> _inputs;
         private readonly IDictionary<string, Type> _outputs;
         private readonly Action<IDictionary<string, object>> _publish;
@@ -48,7 +62,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
             if (scope == null) throw new ArgumentNullException("scope");
             _scope = scope;
             _heap = heap;
-            _inputs = inputs == null ? null : MDSDataSafety.Snapshot(inputs);
+            _inputs = inputs == null ? null : MDSDataSafety.Snapshot(inputs, Adapters);
             if (outputs != null)
             {
                 Dictionary<string, Type> declared = new Dictionary<string, Type>(StringComparer.Ordinal);
@@ -94,7 +108,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                     T legacy;
                     if (!_scope.TryRead(name, out legacy))
                     { value = default(T); return false; }
-                    value = (T)MDSDataSafety.Capture(legacy);
+                    value = (T)Capture(legacy);
                     return true;
                 }
                 // 严格边界：先读取带类型标识的Local，再查显式Input；不继承父Local。
@@ -104,7 +118,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                     T localValue;
                     if (managed.TryReadLocal<T>(name, out localValue))
                     {
-                        value = (T)MDSDataSafety.Capture(localValue);
+                        value = (T)Capture(localValue);
                         return true;
                     }
                 }
@@ -119,7 +133,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 if (found == null && typeof(T).IsValueType &&
                     Nullable.GetUnderlyingType(typeof(T)) == null)
                     throw new InvalidCastException("null不能转换为非空值类型：" + name);
-                value = (T)MDSDataSafety.Capture(found);
+                value = (T)Capture(found);
                 return true;
             }
         }
@@ -132,7 +146,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 EnsureActive();
                 if (_inputs != null && _inputs.ContainsKey(name))
                     throw new MDSDataException(MDSDataErrorCode.InputReadOnly, "只读输入不能被同名Local覆盖：" + name, name);
-                T frozen = (T)MDSDataSafety.Capture(value);
+                T frozen = (T)Capture(value);
                 MDEExecutionDataScope managed = _scope as MDEExecutionDataScope;
                 if (managed != null) managed.PutManaged(name, frozen);
                 else _scope.Put(name, frozen);
@@ -158,7 +172,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 }
                 if (_pending.ContainsKey(name))
                     throw new MDSDataException(MDSDataErrorCode.OutputConflict, "输出不能重复Return：" + name, name);
-                _pending.Add(name, MDSDataSafety.Capture(value));
+                _pending.Add(name, Capture(value));
             }
         }
 
@@ -167,7 +181,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
             lock (_gate)
             {
                 EnsureActive();
-                return MDSDataSafety.Snapshot(_pending);
+                return MDSDataSafety.Snapshot(_pending, Adapters);
             }
         }
 
@@ -180,7 +194,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                     foreach (string name in _outputs.Keys)
                         if (!_pending.ContainsKey(name))
                             throw new MDSDataException(MDSDataErrorCode.OutputMissing, "必要输出尚未返回：" + name, name);
-                IDictionary<string, object> ready = MDSDataSafety.Snapshot(_pending);
+                IDictionary<string, object> ready = MDSDataSafety.Snapshot(_pending, Adapters);
                 // 先将完整快照交付到Flow级DataStack，再使当前帧结算。
                 // 失败则原Pending保持原状，不向任何消费者暴露部分输出。
                 if (_publish != null) _publish(ready);
@@ -195,6 +209,44 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         /// 不与Return的暂存输出混为一谈；调用方要避免在可能失败的业务节点里
         /// 将暂时数据作为已完成的生产结果写入共享堆。
         /// </summary>
+        public void SetFile(string name, string filePath)
+        {
+            lock (_gate)
+            {
+                EnsureActive();
+                if (_heap == null) throw new NotSupportedException("没有FlowHeap");
+                _heap.SetFile(name, filePath);
+                _heapMutated = true;
+            }
+        }
+        public void SetFile<T>(string name, string filePath, IMDSDataFileLoader loader)
+        {
+            lock (_gate)
+            {
+                EnsureActive();
+                if (_heap == null) throw new NotSupportedException("没有FlowHeap");
+                _heap.SetFile<T>(name, filePath, loader);
+                _heapMutated = true;
+            }
+        }
+        public async Task<T> LoadAsync<T>(string name, CancellationToken cancellation = default(CancellationToken))
+        {
+            lock (_gate) EnsureActive();
+            if (_heap == null) throw new NotSupportedException("没有FlowHeap");
+            // 数据堆本身在异步完成前再次校验Owner状态，不持有DataContext锁等待IO。
+            return await _heap.LoadAsync<T>(name, cancellation).ConfigureAwait(false);
+        }
+        public void Unload(string name)
+        {
+            lock (_gate)
+            {
+                EnsureActive();
+                if (_heap == null) throw new NotSupportedException("没有FlowHeap");
+                _heap.Unload(name);
+                _heapMutated = true;
+            }
+        }
+
         public void MoveToHeap(string localName, string heapName = null, bool replace = false)
         { Transfer(localName, heapName ?? localName, true, true, replace); }
 
