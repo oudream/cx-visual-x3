@@ -58,6 +58,8 @@ namespace CxVisual.Foundation.Data.Types
             if (type == null) return false;
             Type underlying = Nullable.GetUnderlyingType(type);
             if (underlying != null) type = underlying;
+            // IntPtr/UIntPtr即使CLR视为primitive，也可能是非托管资源地址，不能按值安全共享。
+            if (type == typeof(IntPtr) || type == typeof(UIntPtr)) return false;
             return type.IsPrimitive || type.IsEnum ||
                 type == typeof(string) || type == typeof(decimal) ||
                 type == typeof(DateTime) || type == typeof(DateTimeOffset) ||
