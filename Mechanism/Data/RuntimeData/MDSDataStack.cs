@@ -133,6 +133,11 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 if (_closed) return;
                 if (_active.Count > 0)
                     throw new MDSDataException(MDSDataErrorCode.Busy, "仍有执行节点，禁止回收DataStack");
+                // 旧式DataScope不是MDSFrame的一部分，但仍归同一个执行树。
+                MDEExecutionDataScope original = _root as MDEExecutionDataScope;
+                if (original != null) original.EnsureCanClose();
+                if (_root.IsClosed)
+                    throw new ObjectDisposedException("MDSDataStack.RootScope");
                 _closed = true;
                 _committed.Clear();
             }
@@ -168,17 +173,28 @@ namespace CxVisual.Mechanism.Data.RuntimeData
             if (_closed) return;
             ((MDSDataContext)Data).AbortOutputs();
         }
+        private readonly object _disposeGate = new object();
         public void Dispose()
         {
-            if (_closed) return;
-            _closed = true;
-            AbortWhileClosing();
-            try { _scope.Dispose(); }
-            finally { _owner.FrameClosed(InvocationId); }
-        }
-        private void AbortWhileClosing()
-        {
-            ((MDSDataContext)Data).AbortOutputs();
+            lock (_disposeGate)
+            {
+                if (_closed) return;
+                ((MDSDataContext)Data).AbortOutputs();
+                try
+                {
+                    _scope.Dispose();
+                }
+                catch
+                {
+                    // 有未结束子Scope时Dispose被拒绝，此Frame依然活动且可重试关闭。
+                    if (!_scope.IsClosed) throw;
+                    _closed = true;
+                    _owner.FrameClosed(InvocationId);
+                    throw;
+                }
+                _closed = true;
+                _owner.FrameClosed(InvocationId);
+            }
         }
     }
 
