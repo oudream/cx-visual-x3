@@ -7,6 +7,8 @@
 
 ## 文档入口与历史代码资产
 
+- **统一工程组织体系 V1.0**：[完整架构设计与开发使用指南](DOCS/Architecture/CxVisual_统一工程组织体系_完整架构设计与开发使用指南_V1.0.md)。六角色、八案例、真实/建议 API、28 项核心需求追溯及本轮验证；不将待实现能力视为已交付。
+
 - **统一配置 V2.4 阶段 C/D**：[自动配置 UI、Windows 性能验收与自检查矩阵](DOCS/Implementation/CxVisual_统一配置体系_V2.4_阶段C与D实施和复核验收矩阵.md)。
 
 - **统一配置体系 V2.4 阶段 B**：[开发者 API 与动态编辑验收矩阵](DOCS/Implementation/CxVisual_统一配置体系_V2.4_阶段B开发者API与动态编辑验收矩阵.md)。
