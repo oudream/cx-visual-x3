@@ -149,9 +149,16 @@ namespace CxVisual.TestCenter.Models
                 if (record.RunId != result.RunId ||
                     record.Kind != observation.Kind ||
                     record.Title != observation.Title ||
+                    record.Origin != observation.Origin ||
+                    record.Details != observation.Details ||
+                    record.TimestampUtc != observation.Envelope.TimestampUtc ||
                     record.SourceObjectId != observation.Envelope.SourceObjectId ||
                     record.RuntimeInstanceId != observation.Envelope.RuntimeInstanceId ||
-                    record.DefinitionAddress != observation.Envelope.DefinitionAddress)
+                    record.DefinitionAddress != observation.Envelope.DefinitionAddress ||
+                    (record.PayloadRef == null) != (observation.Envelope.PayloadRef == null) ||
+                    (record.PayloadRef != null && (record.PayloadRef.Sha256 !=
+                        observation.Envelope.PayloadRef.Sha256 ||
+                        record.PayloadRef.Mime != observation.Envelope.PayloadRef.Mime)))
                     throw new InvalidDataException("Observation replay payload/identity mismatch");
                 output.Add(record);
             }

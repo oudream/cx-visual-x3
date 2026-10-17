@@ -105,6 +105,14 @@ namespace CxVisual.TestCenter.Cases
                 IList<TCTObservationEnvelope> replay = TCTObservationReplay.Read(restored, store);
                 test.AssertEqual(1, replay.Count, "只回放结构化证据");
                 test.AssertEqual("Flow/NodeA", replay[0].DefinitionAddress, "Replay指向定义地址");
+                XDocument tamperedWire = XDocument.Load(path);
+                tamperedWire.Root.Element("Observations").Elements("Observation").Last()
+                    .Value = "pretend state=Passed";
+                tamperedWire.Save(path);
+                TCTTestCaseResult forged = TCTWireCodec.Read(path, descriptor, attempt);
+                test.AssertThrows<InvalidDataException>(() =>
+                    TCTObservationReplay.Read(forged, store),
+                    "Wire显示内容与已保存证据不符时禁止回放");
             }
         }
     }

@@ -366,7 +366,16 @@ namespace CxVisual.TestCenter.Execution
         }
         public static TCTTestCaseResult Read(string file, TCTTestCaseDescriptor descriptor, TCTTestAttempt expectedAttempt = null)
         {
-            System.Xml.Linq.XElement root = System.Xml.Linq.XDocument.Load(file).Root;
+            FileInfo source = new FileInfo(file);
+            if (!source.Exists || source.Length > 16L * 1024 * 1024)
+                throw new InvalidDataException("Worker result missing or exceeds XML safety limit");
+            System.Xml.Linq.XElement root;
+            System.Xml.XmlReaderSettings xmlSafety = new System.Xml.XmlReaderSettings {
+                DtdProcessing = System.Xml.DtdProcessing.Prohibit, XmlResolver = null,
+                MaxCharactersInDocument = 16L * 1024 * 1024
+            };
+            using (System.Xml.XmlReader reader = System.Xml.XmlReader.Create(file, xmlSafety))
+                root = System.Xml.Linq.XDocument.Load(reader).Root;
             if (root == null || (string)root.Attribute("schema") != "1" ||
                 (string)root.Attribute("id") != descriptor.Id)
                 throw new InvalidDataException("Worker result schema/id mismatch");
