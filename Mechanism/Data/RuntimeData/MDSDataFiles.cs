@@ -127,7 +127,8 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         {
             CheckName(name);
             MDSDataFileEntry entry;
-            int generation;
+            int generation = 0;
+            object cachedValue = null;
             lock (_gate)
             {
                 EnsureOpen();
@@ -137,10 +138,15 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 if (entry.State == MDSDataLoadState.Loading)
                     throw new MDSDataException(MDSDataErrorCode.Busy, "已有文件加载进行中：" + name, name);
                 if (entry.State == MDSDataLoadState.Loaded)
-                    return (T)CaptureValue(entry.Cache);
-                entry.State = MDSDataLoadState.Loading;
-                generation = ++entry.Generation;
+                    cachedValue = entry.Cache;
+                else
+                {
+                    entry.State = MDSDataLoadState.Loading;
+                    generation = ++entry.Generation;
+                }
             }
+            if (cachedValue != null)
+                return (T)CaptureValue(cachedValue);
             object loaded = null;
             try
             {
@@ -151,6 +157,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 if (loaded == null || !entry.Type.IsInstanceOfType(loaded))
                     throw new InvalidCastException("文件加载器返回值类型不符合契约");
                 object owned = CaptureValue(loaded);
+                object independentReturn = CaptureValue(owned);
                 VerifyFile(entry);
                 lock (_gate)
                 {
@@ -161,7 +168,8 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                         throw new InvalidOperationException("文件加载结果过期，禁止发布");
                     entry.Cache = owned;
                     entry.State = MDSDataLoadState.Loaded;
-                    return (T)CaptureValue(owned);
+                }
+                return (T)independentReturn;
                 }
             }
             catch
