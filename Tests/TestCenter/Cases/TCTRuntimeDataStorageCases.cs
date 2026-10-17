@@ -53,6 +53,13 @@ namespace CxVisual.TestCenter.Cases
                     "自定义类型Copy必须隔离嵌套数组");
                 t.AssertThrows<InvalidOperationException>(() =>
                     adapters.Register<TCTImageBlock>(x => x), "冻结后不能改适配器");
+                using (var unadaptedTarget = new MDSDataHeap())
+                {
+                    t.AssertThrows<NotSupportedException>(() =>
+                        heap.CopyTo("Image", unadaptedTarget, "Copied"),
+                        "跨Heap复制未知专业对象不能在目标泄漏不可读取数据");
+                    t.AssertEqual(0, unadaptedTarget.Count, "类型能力拒绝后目标不能出现半成品");
+                }
             }
             using (var noAdapters = new MDSDataHeap())
             {
