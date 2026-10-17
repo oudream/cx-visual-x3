@@ -20,8 +20,12 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         private readonly long _order = Interlocked.Increment(ref _nextOrder);
         private readonly object _gate = new object();
         public FDTDataAdapterRegistry Adapters { get; private set; }
+        public string RunId { get; internal set; }
         public MDSDataHeap(FDTDataAdapterRegistry adapters = null)
-        { Adapters = adapters ?? new FDTDataAdapterRegistry(); }
+        {
+            Adapters = adapters ?? new FDTDataAdapterRegistry();
+            RunId = Guid.NewGuid().ToString("N");
+        }
         private object CaptureValue(object value)
         { return FDTDataValueSafety.Capture(value, Adapters); }
         private bool _closed;
