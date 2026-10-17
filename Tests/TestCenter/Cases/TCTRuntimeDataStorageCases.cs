@@ -4,6 +4,8 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using CxVisual.Foundation.Data.Types;
+using CxVisual.Foundation.Infrastructure.Concurrency;
+using CxVisual.Mechanism.Runtime.Execution;
 using CxVisual.Mechanism.Data.RuntimeData;
 using CxVisual.TestCenter.Core;
 using CxVisual.TestCenter.Discovery;
@@ -222,6 +224,86 @@ namespace CxVisual.TestCenter.Cases
                     t.AssertThrows<InvalidOperationException>(() =>
                         heap.LoadAsync<byte[]>("CT.Projection").GetAwaiter().GetResult(),
                         "默认大文件不能意外整卷读入内存");
+                }
+            }
+            finally { File.Delete(path); }
+        }
+
+        [TCTTest("TCT.MDS.019", "专业自定义数据经过MRK具名端口和Flow最终输出",
+            TCTTestAspect.Mechanism, "Data / RuntimeData", ObjectId = "FDTDataAdapterRegistry")]
+        public static void CustomTypeEndToEnd(TCTTestContext t)
+        {
+            MRKExecutionPlan plan = new MRKExecutionPlan("custom-type", new[]
+            {
+                new MRKExecutionStep("acquire", new string[0], (ctx, ct) =>
+                {
+                    ctx.Data.Adapters.Register<TCTImageBlock>(x =>
+                        new TCTImageBlock((byte[])x.Pixels.Clone()));
+                    ctx.Data.Return("Image", new TCTImageBlock(new byte[] { 9, 8, 7 }));
+                    return Task.FromResult((object)true);
+                }, dataOutputs: new Dictionary<string, Type>{{"Image", typeof(TCTImageBlock)}}),
+                new MRKExecutionStep("read", new []{"acquire"}, (ctx, ct) =>
+                {
+                    TCTImageBlock input = ctx.Data.Get<TCTImageBlock>("Pixels");
+                    input.Pixels[0] = 55;
+                    ctx.Data.Return("Image", input);
+                    return Task.FromResult((object)true);
+                }, inputs:new []{new MRKExecutionInput("Pixels", MRKInputSource.StepOutput,
+                    "acquire.Image", typeof(TCTImageBlock))},
+                dataOutputs:new Dictionary<string, Type>{{"Image", typeof(TCTImageBlock)}})
+            }, new Dictionary<string,string>{{"OutputImage", "read.Image"}});
+            var engine = new MRKExecutionEngine(new FCRWorkerOptions(2, 6));
+            try
+            {
+                MRKFlowResult actual = engine.StartFlow(plan).Completion.GetAwaiter().GetResult();
+                t.AssertEqual(MRKFlowState.Completed, actual.State,
+                    "真实MRK端口与MDS自定义类型对接");
+                TCTImageBlock copy = actual.GetCommittedOutput<TCTImageBlock>("OutputImage");
+                copy.Pixels[0] = 99;
+                t.AssertEqual((byte)55,
+                    actual.GetCommittedOutput<TCTImageBlock>("OutputImage").Pixels[0],
+                    "Flow最终输出仍执行专业自定义复制策略");
+            }
+            finally { engine.StopAsync().GetAwaiter().GetResult(); }
+        }
+
+        [TCTTest("TCT.MDS.020", "大文件由专业ROI Loader按小块获取而非整卷加载",
+            TCTTestAspect.Mechanism, "Data / RuntimeData", ObjectId = "MDSDataFileLoader")]
+        public static void LargeVolumeRoiLoader(TCTTestContext t)
+        {
+            string path = Path.Combine(Path.GetTempPath(), "CxVisual-MDS-roi-" +
+                Guid.NewGuid().ToString("N") + ".bin");
+            try
+            {
+                using (FileStream file = File.Create(path))
+                {
+                    file.WriteByte(42);
+                    file.SetLength(80L * 1024 * 1024);
+                }
+                var adapters = new FDTDataAdapterRegistry();
+                adapters.Register<TCTImageBlock>(value =>
+                    new TCTImageBlock((byte[])value.Pixels.Clone()));
+                using (var heap = new MDSDataHeap(adapters))
+                {
+                    heap.SetFile<TCTImageBlock>("CT.VolumeROI", path,
+                        new MDSDataFileLoader<TCTImageBlock>((filename, ct) =>
+                        {
+                            ct.ThrowIfCancellationRequested();
+                            using (FileStream file = File.OpenRead(filename))
+                            {
+                                byte[] block = new byte[1];
+                                int n = file.Read(block, 0, 1);
+                                if (n != 1) throw new EndOfStreamException();
+                                return Task.FromResult(new TCTImageBlock(block));
+                            }
+                        }));
+                    t.AssertEqual(80L*1024*1024, heap.Inspect("CT.VolumeROI").SizeBytes.Value,
+                        "来源文件虽大但仅元数据存储");
+                    TCTImageBlock roi = heap.LoadAsync<TCTImageBlock>("CT.VolumeROI")
+                        .GetAwaiter().GetResult();
+                    t.AssertEqual((byte)42, roi.Pixels[0], "从大文件实际读取小ROI");
+                    t.AssertEqual(1, heap.Get<TCTImageBlock>("CT.VolumeROI").Pixels.Length,
+                        "缓存占用以实际ROI为准，不整卷加载");
                 }
             }
             finally { File.Delete(path); }
