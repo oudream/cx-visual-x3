@@ -42,6 +42,12 @@ namespace CxVisual.TestCenter.Cases
                         frame.Data.Inspect("CameraInput").Location, "自动输入描述正确");
                     t.AssertEqual(MDSDataLocation.Local,
                         frame.Data.Inspect("CameraLocal").Location, "局部数据描述正确");
+                    t.AssertEqual(stack.FlowHeap.RunId,
+                        frame.Data.Inspect("CameraLocal").RunId, "局部数据Run归属正确");
+                    t.AssertEqual(1, frame.Data.Search(new MDSDataQuery {
+                        RunId = stack.FlowHeap.RunId, ScopeId = frame.Data.Inspect("CameraLocal").ScopeId,
+                        NamePrefix = "CameraLocal"
+                    }).Count, "按Run与Scope过滤可见数据");
                     t.AssertEqual(MDSDataLocation.PendingOutput,
                         frame.Data.Inspect("CameraResult").Location, "未提交输出可供本节点检查");
                     t.AssertEqual(MDSDataLocation.FlowHeap,
