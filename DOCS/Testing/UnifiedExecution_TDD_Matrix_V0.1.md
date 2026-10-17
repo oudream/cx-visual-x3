@@ -300,3 +300,14 @@ G0/G1通过不能代替G2/G3/G4。CI工作流故障时应分清本次新增测�
 - 新独立门禁`.github/workflows/unified-runtime-windows.yml`：在Windows Server 2022恢复NuGet依赖、全量Rebuild `.NET Framework 4.8 Release x64`、执行`FoundationSmoke --concurrency`、完整`ArchitectureSmoke`、Host多级编排发布/两次启动/Journal扫描与标准输入交互。原Config WPF和TestCenter工作流保持不变，不因其他模块测试失败隐藏全局红灯。
 - 首次全绿色参考：commit `ca23523f0e6946bb3863e0838e947808b3182e07` 对应独立Runtime CI `38926327538`（success）、Config L1 `38926327467`（success）、配置基础 `38926327449`（success）。后续提交必须再次查对应SHA，不能沿用历史success。
 - 明确仍缺：CxNode权威编排定义适配、子流程参数/结果Schema、结构化可恢复循环、Plan持久仓库、Checkpoint/数据快照、崩溃后的授权续运行、外部设备安全确认和远程可信凭证。单次CLI通过不等于生产级恢复。
+
+## 2026-10-17 开发者轻便入口与编排共源实测
+
+- 新 `MRKCodeRuntimeBuilder`：注册能力/类型输出，`Flow().Step()`、`Subflow()`，可用`Add(MRKStepCompileRequest)`访问既有高级策略；`MRKDevelopmentRuntime.RunAsync(flowId, request)` 直接执行一个请求并返回`MRKFlowResult`，所有异常必须通过State/Error核验。
+- `CapabilityForRequest<TRequest,TResult>` 自动使用约定Flow输入`request`；`RunAsync(flowId, IDictionary<string,object>)`仍维持显式多端口输入。它是开发/模拟入口，不等于生产权限跳过。
+- `MRKCodeRuntimeBlueprint` 完成全部注册Flow的编译与循环/能力验证，先验证后构造Worker；编译失败汇总`MRKCodeRuntimeBuildException`。同一个冻结Blueprint既能`BuildForDevelopment()`，也能`MRKExecutionPlanPublisher.CompileAndStageBlueprint`正式编译授权发布，仍走保护PlanSlot/安全点。
+- `RuntimeDeveloperExperienceTests` 实际涵盖类型化请求、单调用执行、编译拒绝、子流程嵌套、取消与共享Worker、定义快照隔离、模拟与发布两种模式执行同一流程、越权拒绝和激活检查。
+- `Applications/Runtime.Host/UnifiedRuntimeHost.cs` 演示从Blueprint直接构建原有子流程/授权发布，移除旧手写Resolver/Catalog的重复集成代码；CI运行`runtime-run`、`runtime-recover`和`runtime-serve`，以真实执行为依据。
+- **尚缺**：Studio图形编排、CxNode逻辑Aspect真源适配、工程保存/编辑事务、跨层参数与结果Schema、生产Plan持久仓库、数据快照、设备联锁与重启授权续运行；这些功能没有因本次开发门面而完成。
+- 详细使用说明：`DOCS/Architecture/CxVisual_统一运行体系_开发者简洁入口与编排共源_V0.1.md`。
+- **CI证据**：对应提交的Windows CI逐一判定，不把其他数据体系同时提交引起的编译错误算成本批完成；不得跳过Foundation、Architecture、Host和TestCenter。
