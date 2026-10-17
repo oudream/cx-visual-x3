@@ -344,6 +344,28 @@ jobs:
               if (-not $line.StartsWith(($index.ToString() + '|'))) { throw 'Broken event sequence' }
           }
           Write-Host "PASS Worker event artifact $($lines.Count) events; SHA256 verified"
+      - name: Verify historical Owner replay in a fresh process after temp removal
+        shell: powershell
+        run: |
+          $exe = (Resolve-Path 'Output/Debug/x64/CxVisual.TestCenter.exe').Path
+          $history = Join-Path (Get-Location) 'Output/Debug/x64/M1EvidenceHistory'
+          $source = Join-Path (Get-Location) 'Output/Debug/x64/M1Evidence.source.json'
+          $replayed = Join-Path (Get-Location) 'Output/Debug/x64/M1Evidence.replayed.json'
+          $p = Start-Process -FilePath $exe -WorkingDirectory (Get-Location).Path -ArgumentList @('--run','--id','TCT.M1.OBS.004','--history-dir',('"' + $history + '"'),'--report',('"' + $source + '"'),'--format','json','--isolate') -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw 'Real MDS Owner archived run failed' }
+          $summary = Get-Content -LiteralPath $source -Raw | ConvertFrom-Json
+          $live = Join-Path ([System.IO.Path]::GetTempPath()) ('CxVisual-TCT-Evidence/' + $summary.runId)
+          if (Test-Path $live) { Remove-Item -LiteralPath $live -Recurse -Force }
+          $q = Start-Process -FilePath $exe -WorkingDirectory (Get-Location).Path -ArgumentList @('--replay-history',('"' + $history + '"'),$summary.runId,('"' + $replayed + '"')) -Wait -PassThru
+          if ($q.ExitCode -ne 0) { throw "Cold-process archived replay failed: $($q.ExitCode)" }
+          $historyResult = Get-Content -LiteralPath $replayed -Raw | ConvertFrom-Json
+          if ($historyResult.runId -ne $summary.runId -or [int]$historyResult.count -ne 1 -or
+              -not $historyResult.originalPassed -or
+              @($historyResult.observations).Count -ne 1 -or
+              $historyResult.observations[0].sourceObjectId -ne 'MDSDataStack') {
+              throw 'Historical replay lost actual Run/Attempt/MDS Owner evidence'
+          }
+          Write-Host 'PASS cold-process replay of real MDS Owner after deleting live evidence root'
       - name: Parallel repeat and history regression
         shell: powershell
         run: |
@@ -408,6 +430,8 @@ jobs:
             Output/Debug/x64/NUnitProbe.negative.xml
             Output/Debug/x64/WorkerFault.*.json
             Output/Debug/x64/TestCenter.catalog.json
+            Output/Debug/x64/M1Evidence.*.json
+            Output/Debug/x64/M1EvidenceHistory/**
             Output/Debug/x64/StructuredObservation.json
             Output/Debug/x64/TestCenter.external.junit.xml
             Output/Debug/x64/TestCenter.events.json

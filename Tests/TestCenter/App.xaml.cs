@@ -153,6 +153,44 @@ namespace CxVisual.TestCenter.UI
                     }
                     finally { window.Close(); }
                 }
+                else if (command == "--replay-history")
+                {
+                    if (e.Args.Length != 4)
+                        throw new ArgumentException("--replay-history <history-dir> <runId> <report.json>");
+                    TCTArchivedTestRun archived = new TCTTestResultRepository(e.Args[1])
+                        .LoadDetailed(e.Args[2]);
+                    var observations = archived.Attempts.SelectMany(result =>
+                        result.Observations.Where(o => o.Envelope != null).Select(o => new {
+                            testId = result.Descriptor.Id,
+                            attemptId = result.AttemptId,
+                            kind = o.Kind, title = o.Title,
+                            sourceObjectId = o.Envelope.SourceObjectId,
+                            definitionAddress = o.Envelope.DefinitionAddress,
+                            runtimeInstanceId = o.Envelope.RuntimeInstanceId,
+                            evidenceSha256 = o.Evidence.Sha256,
+                            payloadSha256 = o.Envelope.PayloadRef == null ?
+                                "" : o.Envelope.PayloadRef.Sha256
+                        })).ToArray();
+                    string output = Path.GetFullPath(e.Args[3]);
+                    Directory.CreateDirectory(Path.GetDirectoryName(output));
+                    var serializer = new System.Web.Script.Serialization.JavaScriptSerializer {
+                        MaxJsonLength = int.MaxValue };
+                    string temporary = output + ".partial";
+                    File.WriteAllText(temporary, serializer.Serialize(new {
+                        schema = 1, runId = archived.RunId, commit = archived.Commit,
+                        count = archived.Attempts.Count,
+                        originalPassed = archived.Attempts.Count > 0 &&
+                            archived.Attempts.All(x => x.Status == TCTTestStatus.Passed),
+                        statuses = archived.Attempts.Select(x => new {
+                            testId = x.Descriptor.Id, attemptId = x.AttemptId,
+                            status = x.Status.ToString()
+                        }).ToArray(),
+                        observations = observations
+                    }), System.Text.Encoding.UTF8);
+                    if (File.Exists(output)) File.Delete(output);
+                    File.Move(temporary, output);
+                    exit = archived.Attempts.Count > 0 ? 0 : 1;
+                }
                 else if (command == "--run")
                 {
                     TCTTestRunRequest request = new TCTTestRunRequest();
