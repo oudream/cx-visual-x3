@@ -77,3 +77,16 @@ D. 然后做Suite/Plan最小保存/回放与后续Graph/Channel接入；现场HI
 每个工作包必须包含Owner、源文件/Commit、正反用例TestId、Run/Attempt和Artifact、Windows CI链接、GUI人工/自动状态、未完成阻塞。仅类名存在、Mock截图、测试总数增加，都不属于完成证据。
 
 2026-10-17曾有经验证快照38989347097（79/79独立、237/237重复），但其后master持续变动且曾出现Runtime编译失败，不能引用为实时HEAD验收。
+
+## M2 首批真实交互闭环（2026-10-17）
+
+> **本段为增量执行记录，不表示 M2 整体验收完成。** 本阶段不引入新的生产 Owner、第二套 Graph/Runtime/断言框架或新的工程项目。
+
+- **当前M2代码 Commit：** `47263c7def4c167f359e44a8ea7db32a2a54ccc5`
+- **当前代码的 Windows .NET Framework 4.8 / x64 CI：** https://github.com/oudream/cx-visual-x3/actions/runs/39041466941 （`success`，匹配上述 Commit）
+- **运行结果：** 完整解决方案编译、项目结构/DAG、既有 NUnit + TCT + Worker + 证据回放步骤、WPF Shell绑定/内存交互Smoke均通过；Catalog发现114例，3轮并发重复342个Attempt成功；CI已核查Attempt身份及失败/超时/空选择反证。
+- **TCT-06（进行中）：** 唯一 `TCTMainWindow` 将专业Viewer的观察选择路由到 Inspector；Results选中Attempt时 `TCTTestTimelineControl.FocusAttempt` 现在实际切换到该Attempt过滤范围，清空焦点恢复全部事件。未声明动态Ribbon全量、布局持久化或完整工作台验收。
+- **TCT-07（进行中）：** `TCTTestViewBase` 从真实 `TCTTestObservation` 提供可点击观察项；Inspector显示Observation原文、Schema、RunId、AttemptId、SourceObjectId、DefinitionAddress、RuntimeInstanceId与Evidence/Payload SHA256（只读，不推导Pass/Fail）。有结构化证据时显示原有Owner身份；没有Envelope的旧记录明确为Legacy，不伪造身份。
+- **TCT-14（首批Smoke通过，完整交互验收未完成）：** `App.xaml.cs --ui-smoke` 新增真实 `TCT.M1.OBS.001`（Foundation.Geometry/CxRect2D跨Artifact观察）、`M-OBJ-001`（Mechanism.Core/CxProjectDocument Ownership）、Viewer按钮事件→Inspector选中及结果Attempt→Timeline过滤的WPF进程内回归。该Smoke是实际WPF控件事件验证，**不是**Windows UI Automation全流程回归或人工验收。
+- **待补：** V4.0技术主规格原文需要在统一可访问位置归档以便逐项核对；Geometry Expected/Actual/Diff更广泛数据合同、对象Reference区分、历史选择/重跑、完整UIA、人工截图验收、M3/M4/M5及工业HIL保持未完成。六场景参考图不是代码实现证据。
+- **修改范围：** `Tests/TestCenter/UI/TCTTestViews.cs`、`TCTControls.cs`、`TCTTestTimelineControl.cs`、`MainWindow.xaml.cs`、`App.xaml.cs`。Foundation/Mechanism/Professional生产源码未被修改。
