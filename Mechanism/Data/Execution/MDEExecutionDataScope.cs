@@ -191,6 +191,18 @@ namespace CxVisual.Mechanism.Data.Execution
             }
         }
 
+        internal object TransferToken(string name)
+        {
+            lock (_gate)
+            {
+                EnsureOpen();
+                MDEExecutionDataEntry entry;
+                if (!_local.TryGetValue(name, out entry))
+                    throw new KeyNotFoundException("局部数据不存在：" + name);
+                return entry;
+            }
+        }
+
         internal object TransferPeek(string name)
         {
             lock (_gate)
