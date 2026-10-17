@@ -75,6 +75,8 @@ namespace CxVisual.TestCenter.Execution
                             if (stopped != exited || !child.HasExited)
                                 return Failure(test.Descriptor, TCTTestStatus.Error, watch.Elapsed,
                                     "Worker did not exit after attempted termination; check orphan process", attempt);
+                            // Observe the reader so a killed Worker does not leave an unobserved poller.
+                            await eventReader.ConfigureAwait(false);
                             return Failure(test.Descriptor, first == cancelled ?
                                 TCTTestStatus.Cancelled : TCTTestStatus.TimedOut, watch.Elapsed,
                                 first == cancelled ? "Run cancelled; worker exited" :
@@ -123,8 +125,29 @@ namespace CxVisual.TestCenter.Execution
         }
 
         private static string Quote(string value) { return "\"" + value.Replace("\"", "\\\"") + "\""; }
+        // On Windows terminate the whole descendant tree, not only the top-level Worker.
+        // The PID comes exclusively from the Process object this Host started.
         private static bool TryKill(Process process)
         {
+            if (process.HasExited) return true;
+            if (Environment.OSVersion.Platform == PlatformID.Win32NT)
+            {
+                try
+                {
+                    using (Process tree = Process.Start(new ProcessStartInfo("taskkill.exe",
+                        "/PID " + process.Id.ToString(CultureInfo.InvariantCulture) + " /T /F")
+                    {
+                        CreateNoWindow = true, UseShellExecute = false,
+                        WindowStyle = ProcessWindowStyle.Hidden
+                    }))
+                    {
+                        if (tree != null) tree.WaitForExit(5000);
+                    }
+                    if (process.WaitForExit(1000)) return true;
+                }
+                catch (System.ComponentModel.Win32Exception) { }
+                catch (InvalidOperationException) { }
+            }
             try { if (!process.HasExited) process.Kill(); return true; }
             catch (InvalidOperationException) { return process.HasExited; }
             catch (System.ComponentModel.Win32Exception) { return false; }

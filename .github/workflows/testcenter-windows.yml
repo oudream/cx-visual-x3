@@ -190,6 +190,26 @@ jobs:
               throw 'Structured observation lost Run/Attempt/Owner identity'
           }
           Write-Host 'PASS versioned Geometry Owner observation and content addressed replay'
+      - name: Verify timeout and abnormal Worker exit fail closed
+        shell: powershell
+        run: |
+          $exe = (Resolve-Path 'Output/Debug/x64/CxVisual.TestCenter.exe').Path
+          foreach ($mode in @('hang','exit')) {
+              $env:TCT_M1_WORKER_FAULT = $mode
+              $report = Join-Path (Get-Location) ("Output/Debug/x64/WorkerFault." + $mode + ".json")
+              try {
+                  $p = Start-Process -FilePath $exe -WorkingDirectory (Get-Location).Path -ArgumentList @('--run','--id','TCT.M1.WORKER.PROBE','--timeout-ms','450','--report',('"' + $report + '"'),'--format','json','--isolate') -Wait -PassThru
+              } finally {
+                  Remove-Item Env:TCT_M1_WORKER_FAULT -ErrorAction SilentlyContinue
+              }
+              if ($p.ExitCode -ne 1) { throw "Fault probe $mode did not fail closed; exit=$($p.ExitCode)" }
+              $result = Get-Content -LiteralPath $report -Raw | ConvertFrom-Json
+              if ([int]$result.total -ne 1 -or
+                  [string]$result.cases[0].status -ne $(if ($mode -eq 'hang') { 'TimedOut' } else { 'Error' })) {
+                  throw "Worker $mode emitted wrong terminal state"
+              }
+              Write-Host "PASS Worker fault mode $mode -> $($result.cases[0].status)"
+          }
       - name: Run TestCenter in isolated workers
         shell: powershell
         run: |
@@ -352,6 +372,7 @@ jobs:
             Output/Debug/x64/NUnitProbe.*.trace.txt
             Output/Debug/x64/NUnitProbe.positive.xml
             Output/Debug/x64/NUnitProbe.negative.xml
+            Output/Debug/x64/WorkerFault.*.json
             Output/Debug/x64/StructuredObservation.json
             Output/Debug/x64/TestCenter.external.junit.xml
             Output/Debug/x64/TestCenter.events.json
