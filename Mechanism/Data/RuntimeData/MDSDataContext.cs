@@ -97,8 +97,19 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                     value = (T)MDSDataSafety.Capture(legacy);
                     return true;
                 }
-                // 严格边界：只看本地及显式输入，绝不依赖父级自动继承。
-                IDictionary<string, object> local = _scope.SnapshotLocal();
+                // 严格边界：先读取带类型标识的Local，再查显式Input；不继承父Local。
+                MDEExecutionDataScope managed = _scope as MDEExecutionDataScope;
+                if (managed != null)
+                {
+                    T localValue;
+                    if (managed.TryReadLocal<T>(name, out localValue))
+                    {
+                        value = (T)MDSDataSafety.Capture(localValue);
+                        return true;
+                    }
+                }
+                IDictionary<string, object> local = managed == null
+                    ? _scope.SnapshotLocal() : new Dictionary<string, object>();
                 object found;
                 if (!local.TryGetValue(name, out found) &&
                     !_inputs.TryGetValue(name, out found))
@@ -121,7 +132,10 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 EnsureActive();
                 if (_inputs != null && _inputs.ContainsKey(name))
                     throw new MDSDataException(MDSDataErrorCode.InputReadOnly, "只读输入不能被同名Local覆盖：" + name, name);
-                _scope.Put(name, (T)MDSDataSafety.Capture(value));
+                T frozen = (T)MDSDataSafety.Capture(value);
+                MDEExecutionDataScope managed = _scope as MDEExecutionDataScope;
+                if (managed != null) managed.PutManaged(name, frozen);
+                else _scope.Put(name, frozen);
             }
         }
 
