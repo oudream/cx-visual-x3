@@ -149,6 +149,61 @@ namespace CxVisual.TestCenter.UI
                         window.Timeline.ShowAll();
                         if (window.Timeline.VisibleCount != events.Count + secondEvents.Count)
                             throw new InvalidOperationException("Timeline All events view did not restore");
+
+                        // M2 first interactive chain: actual Foundation Geometry Owner -> structured
+                        // Observation/Artifact -> Viewer button click -> Inspector identity.
+                        ITCTTestCase geometry = catalog.Cases.Single(x => x.Descriptor.Id == "TCT.M1.OBS.001");
+                        TCTTestAttempt geoAttempt = new TCTTestAttempt(Guid.NewGuid().ToString("N"),
+                            geometry.Descriptor.Id, 0, 20261017);
+                        TCTTestArtifactStore evidenceStore = new TCTTestArtifactStore(
+                            TCTTestArtifactStore.RunRoot(geoAttempt.RunId));
+                        TCTTestCaseResult geometryResult = await TCTTestRunner.RunOneAsync(geometry,
+                            CancellationToken.None, 20261017, geoAttempt, evidenceStore);
+                        if (geometryResult.Status != TCTTestStatus.Passed ||
+                            geometryResult.Observations.Count != 1 ||
+                            geometryResult.Observations[0].Envelope == null)
+                            throw new InvalidOperationException("M2 Geometry Owner observation is not real or structured");
+                        window.Inspector.ShowResult(geometryResult);
+                        window.DocumentHost.ShowResult(geometryResult);
+                        if (window.DocumentHost.ViewerCount != 1)
+                            throw new InvalidOperationException("M2 Geometry viewer not bound to Owner evidence");
+                        var geoTabs = (System.Windows.Controls.TabControl)window.DocumentHost.Content;
+                        var geoTab = (System.Windows.Controls.TabItem)geoTabs.Items[1];
+                        var geoView = (TCTGeometryTestView)geoTab.Content;
+                        var geoScroll = (System.Windows.Controls.ScrollViewer)geoView.Content;
+                        var geoPanel = (System.Windows.Controls.StackPanel)geoScroll.Content;
+                        var geoButton = geoPanel.Children.OfType<System.Windows.Controls.Button>().FirstOrDefault();
+                        if (geoButton == null)
+                            throw new InvalidOperationException("M2 observation selection command missing");
+                        geoButton.RaiseEvent(new RoutedEventArgs(
+                            System.Windows.Controls.Primitives.ButtonBase.ClickEvent, geoButton));
+                        if (window.Inspector.SelectedObservationTitle != geometryResult.Observations[0].Title)
+                            throw new InvalidOperationException("M2 Geometry Viewer->Inspector selection broken");
+
+                        // M2 Ownership case must use real Mechanism.Core CxNode/Document output.
+                        ITCTTestCase owner = catalog.Cases.Single(x => x.Descriptor.Id == "M-OBJ-001");
+                        TCTTestAttempt ownerAttempt = new TCTTestAttempt(Guid.NewGuid().ToString("N"),
+                            owner.Descriptor.Id, 0, 20261017);
+                        TCTTestCaseResult ownerResult = await TCTTestRunner.RunOneAsync(owner,
+                            CancellationToken.None, 20261017, ownerAttempt);
+                        if (ownerResult.Status != TCTTestStatus.Passed ||
+                            ownerResult.Observations.All(x => x.Kind != "ObjectTree"))
+                            throw new InvalidOperationException("M2 Mechanism Ownership case did not produce real observations");
+                        window.Inspector.ShowResult(ownerResult);
+                        window.DocumentHost.ShowResult(ownerResult);
+                        if (window.DocumentHost.ViewerCount != 1)
+                            throw new InvalidOperationException("M2 ObjectTree viewer not bound to real Owner observation");
+                        var ownerTabs = (System.Windows.Controls.TabControl)window.DocumentHost.Content;
+                        var ownerView = (TCTObjectTestView)((System.Windows.Controls.TabItem)ownerTabs.Items[1]).Content;
+                        var ownerPanel = (System.Windows.Controls.StackPanel)
+                            ((System.Windows.Controls.ScrollViewer)ownerView.Content).Content;
+                        var ownerButton = ownerPanel.Children.OfType<System.Windows.Controls.Button>().FirstOrDefault();
+                        if (ownerButton == null)
+                            throw new InvalidOperationException("M2 ObjectTree observation command missing");
+                        ownerButton.RaiseEvent(new RoutedEventArgs(
+                            System.Windows.Controls.Primitives.ButtonBase.ClickEvent, ownerButton));
+                        if (window.Inspector.SelectedObservationTitle != "Ownership")
+                            throw new InvalidOperationException("M2 Object Viewer->Inspector selection broken");
                         exit = 0;
                     }
                     finally { window.Close(); }
