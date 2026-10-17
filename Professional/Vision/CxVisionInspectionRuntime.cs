@@ -92,7 +92,8 @@ namespace CxVisual.Professional.Vision
                 options.MinDefectArea == _minArea && options.MaxDefectArea == _maxArea;
         }
 
-        internal CxVisionInspectionResult Inspect(CxVisionGrayFrame frame, long revision)
+        internal CxVisionInspectionResult Inspect(CxVisionGrayFrame frame, long revision,
+            System.Threading.CancellationToken cancellation = default(System.Threading.CancellationToken))
         {
             if (frame == null) throw new ArgumentNullException("frame");
             if (frame.PixelDepth != _pixelDepth)
@@ -105,10 +106,14 @@ namespace CxVisual.Professional.Vision
             int thresholdPixelCount = 0;
             // Pixel count is independent of accepted defect area; do not count a pixel twice.
             for (int index = 0; index < size; ++index)
+            {
+                if ((index & 4095) == 0) cancellation.ThrowIfCancellationRequested();
                 if (frame.PixelAt(index) >= _grayThreshold) thresholdPixelCount++;
+            }
 
             for (int index = 0; index < size; ++index)
             {
+                if ((index & 4095) == 0) cancellation.ThrowIfCancellationRequested();
                 if (visited[index] != 0 || frame.PixelAt(index) < _grayThreshold) continue;
                 int head = 0, tail = 1, area = 0;
                 queue[0] = index;
@@ -116,6 +121,7 @@ namespace CxVisual.Professional.Vision
                 int minX = width, maxX = 0, minY = frame.Height, maxY = 0;
                 while (head < tail)
                 {
+                    if ((area & 4095) == 0) cancellation.ThrowIfCancellationRequested();
                     int cursor = queue[head++];
                     int x = cursor % width;
                     int y = cursor / width;
