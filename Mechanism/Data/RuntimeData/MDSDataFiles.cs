@@ -73,6 +73,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         internal readonly DateTime LastWriteUtc;
         internal MDSDataLoadState State;
         internal object Cache;
+        internal long CachedBytes;
         internal int Generation;
         internal MDSDataFileEntry(string path, Type type, IMDSDataFileLoader loader,
             long size, DateTime modified)
@@ -158,6 +159,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                     throw new InvalidCastException("文件加载器返回值类型不符合契约");
                 object owned = CaptureValue(loaded);
                 object independentReturn = CaptureValue(owned);
+                long cachedBytes = Budget == null ? 0 : Budget.Measure(owned, Adapters);
                 VerifyFile(entry);
                 lock (_gate)
                 {
@@ -166,7 +168,9 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                     if (!_files.TryGetValue(name, out current) ||
                         !object.ReferenceEquals(current, entry) || entry.Generation != generation)
                         throw new InvalidOperationException("文件加载结果过期，禁止发布");
+                    if (Budget != null) Budget.Reserve(cachedBytes);
                     entry.Cache = owned;
+                    entry.CachedBytes = cachedBytes;
                     entry.State = MDSDataLoadState.Loaded;
                 }
                 return (T)independentReturn;
@@ -196,6 +200,8 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 if (file.State == MDSDataLoadState.Loading)
                     throw new MDSDataException(MDSDataErrorCode.Busy, "加载中不可卸载：" + name, name);
                 file.Cache = null;
+                if (Budget != null) Budget.Release(file.CachedBytes);
+                file.CachedBytes = 0;
                 file.State = MDSDataLoadState.Unloaded;
                 file.Generation++;
             }
