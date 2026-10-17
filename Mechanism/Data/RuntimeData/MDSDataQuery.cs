@@ -14,6 +14,8 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         public Type DataType { get; set; }
         public MDSDataLocation Location { get; set; }
         public MDSDataLoadState? LoadState { get; set; }
+        public string RunId { get; set; }
+        public string ScopeId { get; set; }
         public int Skip { get; set; }
         public int Take
         {
@@ -31,7 +33,8 @@ namespace CxVisual.Mechanism.Data.RuntimeData
     public sealed class MDSDataSnapshot
     {
         public MDSDataSnapshot(string name, Type dataType, MDSDataLocation location,
-            MDSDataLoadState loadState, string source, long? sizeBytes, long version)
+            MDSDataLoadState loadState, string source, long? sizeBytes, long version,
+            string runId = null, string scopeId = null)
         {
             Name = name;
             DataType = dataType;
@@ -40,6 +43,8 @@ namespace CxVisual.Mechanism.Data.RuntimeData
             Source = source;
             SizeBytes = sizeBytes;
             Version = version;
+            RunId = runId;
+            ScopeId = scopeId;
         }
         public string Name { get; private set; }
         public Type DataType { get; private set; }
@@ -48,6 +53,8 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         public string Source { get; private set; }
         public long? SizeBytes { get; private set; }
         public long Version { get; private set; }
+        public string RunId { get; private set; }
+        public string ScopeId { get; private set; }
     }
 
     internal static class MDSDataQueryLogic
@@ -60,6 +67,10 @@ namespace CxVisual.Mechanism.Data.RuntimeData
             if (q.DataType != null && !q.DataType.IsAssignableFrom(item.DataType)) return false;
             if (q.Location != MDSDataLocation.Any && item.Location != q.Location) return false;
             if (q.LoadState.HasValue && item.LoadState != q.LoadState.Value) return false;
+            if (q.RunId != null && !string.Equals(q.RunId, item.RunId, StringComparison.Ordinal))
+                return false;
+            if (q.ScopeId != null && !string.Equals(q.ScopeId, item.ScopeId, StringComparison.Ordinal))
+                return false;
             return true;
         }
 
