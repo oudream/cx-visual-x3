@@ -13,17 +13,22 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         {
             internal readonly object Value;
             internal readonly Type Type;
-            internal MDSDataEntry(object value, Type type) { Value = value; Type = type; }
+            internal readonly long Bytes;
+            internal MDSDataEntry(object value, Type type, long bytes = 0)
+            { Value = value; Type = type; Bytes = bytes; }
         }
 
         private static long _nextOrder;
         private readonly long _order = Interlocked.Increment(ref _nextOrder);
         private readonly object _gate = new object();
         public FDTDataAdapterRegistry Adapters { get; private set; }
+        public MDSDataBudget Budget { get; private set; }
         public string RunId { get; internal set; }
-        public MDSDataHeap(FDTDataAdapterRegistry adapters = null)
+        public MDSDataHeap(FDTDataAdapterRegistry adapters = null,
+            MDSDataBudget budget = null)
         {
             Adapters = adapters ?? new FDTDataAdapterRegistry();
+            Budget = budget;
             RunId = Guid.NewGuid().ToString("N");
         }
         private object CaptureValue(object value)
@@ -54,12 +59,15 @@ namespace CxVisual.Mechanism.Data.RuntimeData
             CheckName(name);
             Type type = value == null ? typeof(T) : value.GetType();
             object frozen = Freeze(value, type);
+            long size = Budget == null ? 0 : Budget.Measure(frozen, Adapters);
             lock (_gate)
             {
                 EnsureOpen();
                 if (_values.ContainsKey(name) || _files.ContainsKey(name))
                     throw new MDSDataException(MDSDataErrorCode.NameConflict, "数据名已存在：" + name, name);
-                _values.Add(name, new MDSDataEntry(frozen, type));
+                if (Budget != null) Budget.Reserve(size);
+                try { _values.Add(name, new MDSDataEntry(frozen, type, size)); }
+                catch { if (Budget != null) Budget.Release(size); throw; }
             }
         }
 
@@ -123,9 +131,16 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                     if (file.State == MDSDataLoadState.Loading)
                         throw new MDSDataException(MDSDataErrorCode.Busy, "加载中不可移除：" + name, name);
                     _files.Remove(name);
+                    if (Budget != null) Budget.Release(file.CachedBytes);
                 }
-                else if (!_values.Remove(name))
-                    throw new KeyNotFoundException("找不到数据：" + name);
+                else
+                {
+                    MDSDataEntry old;
+                    if (!_values.TryGetValue(name, out old))
+                        throw new KeyNotFoundException("找不到数据：" + name);
+                    _values.Remove(name);
+                    if (Budget != null) Budget.Release(old.Bytes);
+                }
             }
         }
 
@@ -135,19 +150,21 @@ namespace CxVisual.Mechanism.Data.RuntimeData
             CheckName(name);
             Type type = value == null ? typeof(T) : value.GetType();
             object frozen = Freeze(value, type);
+            long size = Budget == null ? 0 : Budget.Measure(frozen, Adapters);
             lock (_gate)
             {
                 EnsureOpen();
-                if (!_values.ContainsKey(name) && !_files.ContainsKey(name))
-                    throw new KeyNotFoundException("需要覆盖的目标不存在：" + name);
+                MDSDataEntry old;
                 MDSDataFileEntry file;
-                if (_files.TryGetValue(name, out file))
-                {
-                    if (file.State == MDSDataLoadState.Loading)
-                        throw new MDSDataException(MDSDataErrorCode.Busy, "加载中不可替换：" + name, name);
-                    _files.Remove(name);
-                }
-                _values[name] = new MDSDataEntry(frozen, type);
+                if (!_values.TryGetValue(name, out old) && !_files.TryGetValue(name, out file))
+                    throw new KeyNotFoundException("需要覆盖的目标不存在：" + name);
+                if (file != null && file.State == MDSDataLoadState.Loading)
+                    throw new MDSDataException(MDSDataErrorCode.Busy, "加载中不可替换：" + name, name);
+                long oldSize = old == null ? file.CachedBytes : old.Bytes;
+                if (Budget != null && size > oldSize) Budget.Reserve(size - oldSize);
+                _files.Remove(name);
+                _values[name] = new MDSDataEntry(frozen, type, size);
+                if (Budget != null && oldSize > size) Budget.Release(oldSize - size);
             }
         }
 
@@ -193,7 +210,14 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                         throw new MDSDataException(MDSDataErrorCode.Busy, "目标加载中：" + name, name);
                     _files.Remove(name);
                 }
-                _values[name] = new MDSDataEntry(safeOwnedValue, declaredType);
+                long size = Budget == null ? 0 :
+                    Budget.Measure(safeOwnedValue, Adapters);
+                MDSDataEntry previous;
+                _values.TryGetValue(name, out previous);
+                long oldSize = previous == null ? (file == null ? 0 : file.CachedBytes) : previous.Bytes;
+                if (Budget != null && size > oldSize) Budget.Reserve(size - oldSize);
+                _values[name] = new MDSDataEntry(safeOwnedValue, declaredType, size);
+                if (Budget != null && oldSize > size) Budget.Release(oldSize - size);
             }
         }
 
@@ -299,6 +323,13 @@ namespace CxVisual.Mechanism.Data.RuntimeData
             {
                 if (_closed) return;
                 _closed = true;
+                long held = 0;
+                if (Budget != null)
+                {
+                    foreach (MDSDataEntry item in _values.Values) held = checked(held + item.Bytes);
+                    foreach (MDSDataFileEntry item in _files.Values) held = checked(held + item.CachedBytes);
+                    Budget.Release(held);
+                }
                 _values.Clear();
                 _files.Clear();
             }
