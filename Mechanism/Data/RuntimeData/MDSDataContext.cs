@@ -26,6 +26,9 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         Task<T> LoadAsync<T>(string name, CancellationToken cancellation = default(CancellationToken));
         void Unload(string name);
         IList<MDSDataSnapshot> Search(MDSDataQuery query = null);
+        MDSDataSnapshot Inspect(string name, MDSDataLocation location = MDSDataLocation.Any);
+        T HeapGet<T>(string name);
+        void HeapSet<T>(string name, T value);
         void MoveToHeap(string localName, string heapName = null, bool replace = false);
         void CopyToHeap(string localName, string heapName = null, bool replace = false);
         void MoveFromHeap(string heapName, string localName = null, bool replace = false);
@@ -257,6 +260,45 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 if (_heap != null) _heap.AppendSnapshots(items);
             }
             return MDSDataQueryLogic.Filter(items, query);
+        }
+
+        public MDSDataSnapshot Inspect(string name,
+            MDSDataLocation location = MDSDataLocation.Any)
+        {
+            CheckName(name);
+            IList<MDSDataSnapshot> result = Search(new MDSDataQuery {
+                NamePrefix = name, Location = location, Take = 500
+            });
+            MDSDataSnapshot found = null;
+            foreach (MDSDataSnapshot entry in result)
+            {
+                if (!string.Equals(entry.Name, name, StringComparison.Ordinal)) continue;
+                if (found != null)
+                    throw new MDSDataException(MDSDataErrorCode.NameConflict,
+                        "当前作用域有多个同名数据，请明确Location：" + name, name);
+                found = entry;
+            }
+            if (found == null) throw new KeyNotFoundException("找不到数据：" + name);
+            return found;
+        }
+        public T HeapGet<T>(string name)
+        {
+            lock (_gate)
+            {
+                EnsureActive();
+                if (_heap == null) throw new NotSupportedException("没有FlowHeap");
+                return _heap.Get<T>(name);
+            }
+        }
+        public void HeapSet<T>(string name, T value)
+        {
+            lock (_gate)
+            {
+                EnsureActive();
+                if (_heap == null) throw new NotSupportedException("没有FlowHeap");
+                _heap.Set(name, value);
+                _heapMutated = true;
+            }
         }
 
         public void SetFile(string name, string filePath)
