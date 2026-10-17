@@ -67,6 +67,9 @@
     <ProjectReference Include="..\..\Foundation\Data\CxVisual.Foundation.Data.csproj">
       <Project>{C85B49CA-155F-5E79-8932-B56BC7B178CD}</Project><Name>CxVisual.Foundation.Data</Name>
     </ProjectReference>
+    <ProjectReference Include="..\..\Professional\Vision\CxVisual.Professional.Vision.csproj">
+      <Project>{828ED8C8-D754-54EB-9934-E27843EAF22D}</Project><Name>CxVisual.Professional.Vision</Name>
+    </ProjectReference>
     <ProjectReference Include="..\..\Mechanism\Runtime\CxVisual.Mechanism.Runtime.csproj">
       <Project>{AC72FB86-137B-5A37-AEB0-CCE73CE46B1E}</Project><Name>CxVisual.Mechanism.Runtime</Name>
     </ProjectReference>
