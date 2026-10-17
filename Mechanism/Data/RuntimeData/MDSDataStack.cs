@@ -92,11 +92,11 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         {
             if (string.IsNullOrWhiteSpace(invocationId) || string.IsNullOrWhiteSpace(outputName))
                 throw new ArgumentException("调用帧及输出名不能为空");
+            object found;
             lock (_gate)
             {
                 EnsureOpen();
                 IDictionary<string, object> outputs;
-                object found;
                 if (!_committed.TryGetValue(invocationId, out outputs) ||
                     !outputs.TryGetValue(outputName, out found))
                 {
@@ -108,9 +108,10 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 if (found == null && typeof(T).IsValueType &&
                     Nullable.GetUnderlyingType(typeof(T)) == null)
                     throw new InvalidCastException("null不能转换为非空值类型");
-                value = (T)MDSDataSafety.Capture(found, FlowHeap.Adapters);
-                return true;
             }
+            // CLR托管对象由源快照保活；外部专业复制器绝不能在Stack锁内执行。
+            value = (T)MDSDataSafety.Capture(found, FlowHeap.Adapters);
+            return true;
         }
 
         public bool TryReadOutput(string invocationId, string outputName, out object value)
