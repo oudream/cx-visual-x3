@@ -270,7 +270,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         {
             CheckName(name);
             IList<MDSDataSnapshot> result = Search(new MDSDataQuery {
-                NamePrefix = name, Location = location, Take = 500
+                ExactName = name, Location = location, Take = 500
             });
             MDSDataSnapshot found = null;
             foreach (MDSDataSnapshot entry in result)
