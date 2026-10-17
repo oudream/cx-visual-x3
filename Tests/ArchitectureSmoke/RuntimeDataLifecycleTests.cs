@@ -19,6 +19,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             InactiveScopeMustNotReleaseDataStack();
             PendingFrameWithChildMustRemainTracked();
             SubflowExportsCannotBypassCommitBarrier();
+            UndeclaredSubflowDataStaysPrivate();
             HeapNullTypeCannotBeChanged();
             StrictLocalNullAndLegacyMoveOwnership();
             FlowOutputsAndInputsHaveNoMutableAlias();
@@ -104,6 +105,29 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 frame.Dispose();
                 Check(stack.ActiveFrames == 0, "子Frame真实完成后未释放占用");
             }
+        }
+
+        private static void UndeclaredSubflowDataStaysPrivate()
+        {
+            MRKExecutionPlan privateChild = new MRKExecutionPlan("private", new[]
+            {
+                new MRKExecutionStep("source", new string[0], (ctx, ct) =>
+                {
+                    ctx.Data.Return("Secret", 7);
+                    return Task.FromResult((object)1);
+                }, dataOutputs: Outputs(
+                    new KeyValuePair<string, Type>("Secret", typeof(int))))
+            });
+            var steps = new List<MRKExecutionStep>(
+                MRKExecutionPlan.InlineSubflow("private", privateChild, null));
+            steps.Add(new MRKExecutionStep("unauthorized", new[] {"private.source"},
+                (ctx, ct) => Task.FromResult((object)1),
+                inputs: new [] {new MRKExecutionInput("Leaked", MRKInputSource.StepOutput,
+                    "private.source.Secret", typeof(int))}));
+            bool denied = false;
+            try { new MRKExecutionPlan("root", steps); }
+            catch (ArgumentException) { denied = true; }
+            Check(denied, "没有声明DataExports的子流程泄漏了内部具名MDS数据");
         }
 
         private static void SubflowExportsCannotBypassCommitBarrier()
@@ -646,15 +670,15 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     return Task.FromResult((object)1);
                 }, dataOutputs: Outputs(
                     new KeyValuePair<string, Type>("Value", typeof(int))))
-            });
+            }, new Dictionary<string, string> {{"Value", "make.Value"}});
             List<MRKExecutionStep> steps = new List<MRKExecutionStep>(
                 MRKExecutionPlan.InlineSubflow("nested", child, null));
-            steps.Add(new MRKExecutionStep("consume", new [] {"nested.make"}, (ctx,ct) =>
+            steps.Add(new MRKExecutionStep("consume", new [] {"nested.__commit"}, (ctx,ct) =>
             {
                 return Task.FromResult((object)(ctx.Data.Get<int>("Input") + 1));
             }, inputs: new [] {
                 new MRKExecutionInput("Input", MRKInputSource.StepOutput,
-                    "nested.make.Value", typeof(int))
+                    "nested.__commit.Value", typeof(int))
             }, output: new MRKExecutionOutput(typeof(int)), enableDataContext: true));
             MRKExecutionEngine engine = new MRKExecutionEngine(new FCRWorkerOptions(2, 4));
             try
