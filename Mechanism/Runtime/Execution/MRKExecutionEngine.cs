@@ -51,8 +51,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
             _scopePrefix = string.Empty;
             _journal = journal;
             _dataScope = dataSpace == null ? null : dataSpace.CreateChild("flow-" + FlowId.ToString("N"));
-            _managedStack = new MDSDataStack(_dataScope);
-            _managedStack.FlowHeap.RunId = FlowId.ToString("N");
+            _managedStack = new MDSDataStack(_dataScope, null, FlowId.ToString("N"));
             _trace = new MRKExecutionTrace(traceCapacity);
             _boundInputs = new ReadOnlyDictionary<string, object>(new Dictionary<string, object>());
             _inputs = CopyByteBuffers(inputs ??
