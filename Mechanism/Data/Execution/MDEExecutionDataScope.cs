@@ -106,6 +106,17 @@ namespace CxVisual.Mechanism.Data.Execution
         // 不向一般业务暴露移除Owned数据的捷径，避免绕开Release生命周期。
         internal object SyncRoot { get { return _gate; } }
 
+        /// <summary>预检执行子作用域，避免DataStack先清Heap后发现遗留子节点仍活动。</summary>
+        internal void EnsureCanClose()
+        {
+            lock (_gate)
+            {
+                EnsureOpen();
+                if (_liveChildren > 0)
+                    throw new InvalidOperationException("尚有子运行作用域，不能提前关闭：" + Id);
+            }
+        }
+
         internal object TransferPeek(string name)
         {
             lock (_gate)
