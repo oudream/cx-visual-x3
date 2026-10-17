@@ -149,6 +149,15 @@ namespace CxVisual.TestCenter.UI
                         window.Timeline.ShowAll();
                         if (window.Timeline.VisibleCount != events.Count + secondEvents.Count)
                             throw new InvalidOperationException("Timeline All events view did not restore");
+                        // M2 selection regression: selecting a result must actually scope the visible
+                        // Timeline events, rather than only changing the focus label.
+                        window.Timeline.FocusAttempt(attempt.AttemptId);
+                        if (window.Timeline.FocusedAttemptId != attempt.AttemptId ||
+                            window.Timeline.VisibleCount != events.Count)
+                            throw new InvalidOperationException("M2 selected Attempt did not filter Timeline");
+                        window.Timeline.FocusAttempt(null);
+                        if (window.Timeline.VisibleCount != events.Count + secondEvents.Count)
+                            throw new InvalidOperationException("M2 clearing result focus did not restore Timeline");
 
                         // M2 first interactive chain: actual Foundation Geometry Owner -> structured
                         // Observation/Artifact -> Viewer button click -> Inspector identity.
