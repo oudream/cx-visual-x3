@@ -213,7 +213,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 if (_publish != null) _publish(ready);
                 _finished = true;
                 _pending.Clear();
-                return MDSDataSafety.Snapshot(ready);
+                return MDSDataSafety.Snapshot(ready, Adapters);
             }
         }
 
