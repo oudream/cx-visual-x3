@@ -33,7 +33,11 @@ namespace CxVisual.TestCenter.Cases
         public static void CustomTypeCopy(TCTTestContext t)
         {
             var adapters = new FDTDataAdapterRegistry();
-            adapters.Register<TCTImageBlock>(x => new TCTImageBlock((byte[])x.Pixels.Clone()));
+            adapters.Register<TCTImageBlock>(x => new TCTImageBlock((byte[])x.Pixels.Clone()),
+                kind: FDTDataKind.Volume);
+            t.AssertEqual(FDTDataKind.Volume,
+                FDTDataTypeDescriptor.Describe(typeof(TCTImageBlock), adapters).Kind,
+                "注册体数据适配器后类型描述必须是Volume");
             adapters.Freeze();
             using (var heap = new MDSDataHeap(adapters))
             {
