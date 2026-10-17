@@ -35,9 +35,15 @@ namespace CxVisual.Foundation.Data.Types
         public bool IsNullable { get; private set; }
 
         public static FDTDataTypeDescriptor Describe(Type type)
+        { return Describe(type, null); }
+
+        public static FDTDataTypeDescriptor Describe(Type type, FDTDataAdapterRegistry adapters)
         {
             if (type == null || type == typeof(void))
                 throw new ArgumentException("无效数据类型", "type");
+            FDTDataKind kind;
+            if (adapters != null && adapters.TryDescribe(type, out kind))
+                return new FDTDataTypeDescriptor(type, kind, true);
             if (type == typeof(byte[]) || type == typeof(FDTReadOnlyBuffer))
                 return new FDTDataTypeDescriptor(type, FDTDataKind.Buffer, true);
             if (FDTDataValueSafety.IsSimpleImmutable(type))
