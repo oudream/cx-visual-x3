@@ -220,21 +220,22 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 {
                     if (toHeap)
                     {
-                        object value = scope.TransferPeek(from);
+                        object original = scope.TransferPeek(from);
                         if (move) scope.TransferCheckDetachable(from);
-                        // 复制准备先于目标可见性变更。
-                        object safe = MDSDataSafety.Capture(value);
-                        bool exists = heap.Contains(to);
-                        if (exists && !replace)
-                            throw new InvalidOperationException("目标Heap名称已存在：" + to);
-                        if (exists) heap.Replace(to, safe);
-                        else heap.Set(to, safe);
+                        Type valueType = scope.TransferPeekType(from);
+                        // Move转移已由MDS接管的原数据；Copy才创建独立副本。
+                        // 旧Scope Put的外部别名不受控，必须先防御复制再接管。
+                        object owned = move && scope.TransferCanMoveOwned(from)
+                            ? original : MDSDataSafety.Capture(original);
+                        heap.TransferStoreOwned(to, owned, valueType, replace);
                         if (move) scope.TransferDetach(from);
                     }
                     else
                     {
-                        object safe = heap.Get<object>(from);
-                        scope.TransferStore(to, MDSDataSafety.Capture(safe), replace);
+                        Type valueType;
+                        object original = heap.TransferPeekOwned(from, out valueType);
+                        object owned = move ? original : MDSDataSafety.Capture(original);
+                        scope.TransferStore(to, owned, replace, valueType);
                         if (move) heap.Remove(from);
                     }
                 }
