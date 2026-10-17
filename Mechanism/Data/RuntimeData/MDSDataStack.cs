@@ -46,6 +46,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
             _ownsRoot = root == null;
             _root = root ?? MDEExecutionDataScope.CreateRoot("data-" + Guid.NewGuid().ToString("N"));
             FlowHeap = new MDSDataHeap(adapters);
+            FlowHeap.RunId = _root.Id;
         }
 
         public IFDEExecutionDataScope RootScope { get { return _root; } }
