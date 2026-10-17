@@ -255,6 +255,11 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                     bool isFile = _files.TryGetValue(sourceName, out file);
                     if (!isFile && !_values.TryGetValue(sourceName, out source))
                         throw new KeyNotFoundException("找不到源数据：" + sourceName);
+                    Type movingType = isFile ? file.Type : source.Type;
+                    if (!FDTDataTypeDescriptor.Describe(movingType).IsSafelyCopyable &&
+                        !target.Adapters.Supports(movingType))
+                        throw new NotSupportedException(
+                            "目标Heap尚未注册该专业类型的安全复制能力：" + movingType.FullName);
                     if ((target._values.ContainsKey(targetName) || target._files.ContainsKey(targetName)) && !replace)
                         throw new MDSDataException(MDSDataErrorCode.NameConflict, "目标数据名已存在：" + targetName, targetName);
                     MDSDataFileEntry targetFile;
