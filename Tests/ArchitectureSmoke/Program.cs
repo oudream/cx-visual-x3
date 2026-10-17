@@ -13,6 +13,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         {
             try
             {
+                if (Array.IndexOf(args, "--organization-wpf") >= 0) return OrganizationWpfTests.Run();
                 if (args != null && args.Length > 0 && args[0] == "--config-wpf")
                 {
                     return ConfigWpfTests.Run();
@@ -24,6 +25,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     return 0;
                 }
                 OrganizationH01Tests.Run();
+                OrganizationAdversarialTests.Run();
                 UiIndependentAssemblies();
                 ExecutionFlowTests.Run();
                 ExecutionCompilerTests.Run();

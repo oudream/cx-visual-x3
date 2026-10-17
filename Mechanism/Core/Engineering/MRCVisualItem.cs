@@ -34,7 +34,7 @@ namespace CxVisual.Mechanism.Core
         {
             Finite(x); Finite(y); Finite(width); Finite(height); Finite(rotation); Finite(sx); Finite(sy);
             if (width <= 0 || height <= 0 || sx == 0 || sy == 0) throw new ArgumentOutOfRangeException("geometry");
-            _x = x; _y = y; _width = width; _height = height; _rotation = rotation; _scaleX = sx; _scaleY = sy;
+            _x = x; _y = y; _width = width; _height = height; _rotation = rotation % 360; _scaleX = sx; _scaleY = sy;
         }
         public MPMBinding GetBinding(string property)
         { MPMBinding binding; return BindingItems != null && BindingItems.TryGetValue(property, out binding) ? binding : null; }
@@ -52,6 +52,22 @@ namespace CxVisual.Mechanism.Core
                 if (v != null) v.LocalToParent(worldX, worldY, out worldX, out worldY);
             }
         }
+        /// <summary>Translate a canvas drag to this object's local position without rewriting children.</summary>
+        public void PositionAfterWorldDelta(double deltaX, double deltaY, out double x, out double y)
+        {
+            Finite(deltaX); Finite(deltaY);
+            double wx, wy; TransformPoint(0, 0, out wx, out wy); wx += deltaX; wy += deltaY;
+            var chain = new Stack<MRCVisualItem>();
+            for (var n = Parent; n != null; n = n.Parent) { var v = n as MRCVisualItem; if (v != null) chain.Push(v); }
+            while (chain.Count != 0) InversePoint(chain.Pop(), ref wx, ref wy);
+            Finite(wx); Finite(wy); x = wx; y = wy;
+        }
+        private static void InversePoint(MRCVisualItem v, ref double wx, ref double wy)
+        {
+            double x = wx - v.X, y = wy - v.Y, rad = v.Rotation * Math.PI / 180;
+            wx = (Math.Cos(rad) * x + Math.Sin(rad) * y) / v.ScaleX;
+            wy = (-Math.Sin(rad) * x + Math.Cos(rad) * y) / v.ScaleY;
+        }
         public bool HitTest(double worldX, double worldY)
         {
             Finite(worldX); Finite(worldY);
@@ -61,9 +77,7 @@ namespace CxVisual.Mechanism.Core
             if (!IsSelectable) return false;
             while (chain.Count != 0)
             {
-                var v = chain.Pop(); double x = worldX - v.X, y = worldY - v.Y, rad = v.Rotation * Math.PI / 180;
-                worldX = (Math.Cos(rad) * x + Math.Sin(rad) * y) / v.ScaleX;
-                worldY = (-Math.Sin(rad) * x + Math.Cos(rad) * y) / v.ScaleY;
+                InversePoint(chain.Pop(), ref worldX, ref worldY);
             }
             return worldX >= 0 && worldY >= 0 && worldX <= Width && worldY <= Height;
         }

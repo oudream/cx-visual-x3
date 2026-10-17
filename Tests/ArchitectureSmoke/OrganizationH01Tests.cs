@@ -30,9 +30,10 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(s.Find(item.Id) == item && item.Parent.Name == "设备区", "indexed ownership");
                 var page1 = s.Project.Pages[0];
                 Check(ReferenceEquals(page1, s.Project.FindResource(page1.Id)), "resource is same object");
-                s.SaveAs(path); s.Close();
+                string expected = Snapshot(s); s.SaveAs(path); s.Close();
                 Reject(() => s.Rename(item, "closed"));
                 var loaded = MEMEngineering.Open(path);
+                Check(Snapshot(loaded) == expected, "all persisted node fields/order/ownership differ");
                 var again = (MRCElement)loaded.Find(item.Id);
                 Check(again.Name == "运行灯" && again.X == 20 && again.Width == 40, "save/load fields");
                 Check(loaded.Count == 6 && loaded.Find(item.Id).Parent.Parent.Parent == loaded.Project.Pages[0], "save/load hierarchy");
@@ -46,8 +47,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(loaded.Project.Resources.Count == 4 && loaded.Project.FindResource(shared.Id) == shared, "resource index");
                 Check(loaded.FindReference(reference.Id).TargetId == symbol.Id, "reference");
                 Reject(() => loaded.Remove(symbol));
-                loaded.Save(); loaded.Close();
+                loaded.SetBinding(again,"visible",new MPMBinding("machine.status","running"));
+                var group = loaded.AddGroup(second.RootContent,"旋转组"); loaded.Move(group,100,200); loaded.Rotate(group,35); loaded.Scale(group,-2,3);
+                loaded.AddRectangle(group,"局部矩形",5,6,10,20); loaded.SetVisibility(group,false,false);
+                expected=Snapshot(loaded); loaded.Save(); loaded.Close();
                 var modified = MEMEngineering.Open(path);
+                Check(Snapshot(modified) == expected,"complex resource/visual/reference/binding semantic roundtrip");
                 Check(((MRCElement)modified.Find(item.Id)).X == 22 && modified.Find(item.Id).Name == "运行状态", "modify/reopen");
                 Check(modified.FindReference(reference.Id).TargetId == symbol.Id, "reference roundtrip");
                 modified.Remove(modified.FindReference(reference.Id)); modified.Remove(modified.Find(symbol.Id));
@@ -57,6 +62,25 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Console.WriteLine("PASS H01 real cases A/B/C, ownership, transactions, references, transforms, persistence");
             }
             finally { if (File.Exists(path)) File.Delete(path); }
+        }
+
+        private static string Snapshot(MEMEngineeringSession session)
+        {
+            var rows = new List<string> { session.Revision.ToString(System.Globalization.CultureInfo.InvariantCulture) };
+            foreach (var n in session.Project.DescendantsAndSelf())
+            {
+                rows.Add(string.Join("|",new[]{n.Id.ToString(),n.Name,n.TypeId,n.Kind.ToString(),n.Parent == null ? "" : n.Parent.Id.ToString(),string.Join(",",n.Children.Select(c=>c.Id))}));
+                var resource=n as IMEMResource; if(resource!=null)rows.Add(resource.Scope+"|"+resource.StorageRootId);
+                var v=n as MRCVisualItem;
+                if(v!=null)
+                {
+                    rows.Add(string.Join("|",new[]{v.X,v.Y,v.Width,v.Height,v.Rotation,v.ScaleX,v.ScaleY}.Select(x=>x.ToString("R",System.Globalization.CultureInfo.InvariantCulture)))+"|"+v.IsVisible+"|"+v.IsSelectable);
+                    var binding=v.GetBinding("visible");if(binding!=null)rows.Add(binding.SourceId+"|"+binding.MemberId);
+                }
+                var content=n as MEMContent;
+                if(content!=null)foreach(var r in content.References)rows.Add(r.Id+"|"+r.Name+"|"+r.Kind+"|"+r.TargetId+"|"+r.Owner.Id);
+            }
+            return string.Join("\n",rows);
         }
 
         private static void TransactionsAndTransforms()

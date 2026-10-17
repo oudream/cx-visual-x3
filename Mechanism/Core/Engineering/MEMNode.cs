@@ -20,6 +20,8 @@ namespace CxVisual.Mechanism.Core
     /// <summary>Only identity/navigation storage. Optional abilities and child lists belong to derived owners.</summary>
     public abstract class MEMNode : CxNode
     {
+        internal const int MaximumDepth = 256;
+        internal const int MaximumNodeCount = 2000000;
         internal static readonly IReadOnlyList<MEMNode> Empty = new MEMNode[0];
         private string _name;
         private MEMNode _parent;
@@ -56,7 +58,23 @@ namespace CxVisual.Mechanism.Core
             if (!Accepts(child)) throw new InvalidOperationException("Illegal containment");
             for (MEMNode n = this; n != null; n = n.Parent) if (n == child) throw new InvalidOperationException("Ownership cycle");
             if (index < 0 || index > Owned.Count) throw new ArgumentOutOfRangeException("index");
+            CheckDepth(this, child);
             InsertCore(index, child); child._parent = this;
+        }
+        // Inspect only the destination ancestry and the affected subtree, never the whole project.
+        internal static void CheckDepth(MEMNode parent, MEMNode child)
+        {
+            int depth = 0;
+            for (var n = parent; n != null; n = n.Parent) depth++;
+            if (child.Children.Count == 0)
+            { if (depth >= MaximumDepth) throw new InvalidOperationException("org.depth.exceeded"); return; }
+            var pending = new Stack<Tuple<MEMNode, int>>(); pending.Push(Tuple.Create(child, depth + 1));
+            while (pending.Count != 0)
+            {
+                var entry = pending.Pop();
+                if (entry.Item2 > MaximumDepth) throw new InvalidOperationException("org.depth.exceeded");
+                foreach (var owned in entry.Item1.Children) pending.Push(Tuple.Create(owned, entry.Item2 + 1));
+            }
         }
         internal void DetachOwned(MEMNode child)
         {
@@ -175,6 +193,17 @@ namespace CxVisual.Mechanism.Core
         internal override void RemoveCore(MEMNode child) { _items.Remove((MRCGroup)child); }
     }
     public enum MRIReferenceKind { Content = 1, Symbol = 2 }
+    /// <summary>On-demand metadata snapshot. It neither owns nor duplicates the resource definition.</summary>
+    public sealed class MEMResourceEntry
+    {
+        internal MEMResourceEntry(IMEMResource resource)
+        { Id = resource.Id; Name = resource.Name; TypeId = resource.TypeId; StorageRootId = resource.StorageRootId; Scope = resource.Scope; }
+        public Guid Id { get; private set; }
+        public string Name { get; private set; }
+        public string TypeId { get; private set; }
+        public Guid StorageRootId { get; private set; }
+        public MEMResourceScope Scope { get; private set; }
+    }
     public sealed class MRIResourceReference
     {
         internal MRIResourceReference(Guid id, string name, Guid targetId, MRIReferenceKind kind, MEMContent owner)

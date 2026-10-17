@@ -41,6 +41,7 @@ namespace CxVisual.Mechanism.Core
             if (old == null || old is MEMPage || old is MEMSymbol) throw new InvalidOperationException("org.root.protected");
             if (node == parent || _session.Reaches(node, parent)) throw new InvalidOperationException("org.ownership_or_reference.cycle");
             if (!parent.Accepts(node) && parent != old) throw new InvalidOperationException("Illegal destination");
+            MEMNode.CheckDepth(parent, node);
             if (node is IMEMResource && old is MEMProject && !(parent is MEMProject) && _session.HasUsages(node.Id)) throw new InvalidOperationException("org.reference.used");
             int oldIndex = old.IndexOf(node);
             int max = parent.Children.Count - (old == parent ? 1 : 0);
@@ -78,6 +79,7 @@ namespace CxVisual.Mechanism.Core
         private void Geometry(MRCVisualItem item, double x, double y, double width, double height, double angle, double sx, double sy)
         {
             Demand(); _session.DemandNode(item);
+            MRCVisualItem.Finite(angle); angle %= 360;
             double ox = item.X, oy = item.Y, ow = item.Width, oh = item.Height, oa = item.Rotation, osx = item.ScaleX, osy = item.ScaleY;
             if (x == ox && y == oy && width == ow && height == oh && angle == oa && sx == osx && sy == osy) return;
             Change(() => item.SetGeometry(x, y, width, height, angle, sx, sy), () => item.SetGeometry(ox, oy, ow, oh, oa, osx, osy));
@@ -99,6 +101,7 @@ namespace CxVisual.Mechanism.Core
         public void SetBinding(MRCVisualItem item, string property, MPMBinding binding)
         {
             Demand(); _session.DemandNode(item); property = MEMNode.NormalizeName(property); var old = item.GetBinding(property);
+            if (ReferenceEquals(old, binding) || (old != null && binding != null && old.SourceId == binding.SourceId && old.MemberId == binding.MemberId)) return;
             Change(() => AssignBinding(item, property, binding), () => AssignBinding(item, property, old));
         }
         private static void AssignBinding(MRCVisualItem item, string property, MPMBinding value)
@@ -110,6 +113,7 @@ namespace CxVisual.Mechanism.Core
         public void SetVisibility(MRCVisualItem item, bool visible, bool selectable)
         {
             Demand(); _session.DemandNode(item); bool ov = item.IsVisible, os = item.IsSelectable;
+            if (ov == visible && os == selectable) return;
             Change(() => { item.IsVisible = visible; item.IsSelectable = selectable; }, () => { item.IsVisible = ov; item.IsSelectable = os; });
         }
     }

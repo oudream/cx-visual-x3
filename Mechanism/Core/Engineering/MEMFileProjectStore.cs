@@ -12,12 +12,25 @@ namespace CxVisual.Mechanism.Core
     internal static class MEMFileProjectStore
     {
         private static readonly CultureInfo Invariant = CultureInfo.InvariantCulture;
+        private static readonly HashSet<string> ProjectFields = new HashSet<string>(new[] { "schema", "revision" }, StringComparer.Ordinal);
+        private static readonly HashSet<string> NodeFields = new HashSet<string>(new[] { "id", "kind", "name", "typeId", "legacy" }, StringComparer.Ordinal);
+        private static readonly HashSet<string> VisualFields = new HashSet<string>(new[] { "id", "kind", "name", "typeId", "legacy", "x", "y", "width", "height", "rotation", "scaleX", "scaleY", "visible", "selectable" }, StringComparer.Ordinal);
+        private static readonly HashSet<string> ReferenceFields = new HashSet<string>(new[] { "id", "name", "kind", "target" }, StringComparer.Ordinal);
+        private static readonly HashSet<string> BindingFields = new HashSet<string>(new[] { "property", "source", "member" }, StringComparer.Ordinal);
+        private static void CheckFields(XmlReader reader, HashSet<string> allowed)
+        {
+            if (reader.HasAttributes)
+                while (reader.MoveToNextAttribute())
+                    if (reader.NamespaceURI.Length != 0 || !allowed.Contains(reader.Name)) throw new InvalidDataException("Unsupported engineering attribute " + reader.Name);
+            reader.MoveToElement();
+        }
         internal static void Save(CxProjectDocument document, string path, CancellationToken token, bool legacy = false)
         {
             if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException("Path required", "path");
             document.ValidateTree(); token.ThrowIfCancellationRequested();
             string full = Path.GetFullPath(path), directory = Path.GetDirectoryName(full);
-            if (!legacy && File.Exists(full) && !string.Equals(full, document.Session.Location, StringComparison.OrdinalIgnoreCase)) throw new IOException("SaveAs target already exists");
+            bool replacing = File.Exists(full);
+            if (!legacy && replacing && !string.Equals(full, document.Session.Location, StringComparison.OrdinalIgnoreCase)) throw new IOException("SaveAs target already exists");
             Directory.CreateDirectory(directory);
             string temp = Path.Combine(directory, ".cx-save-" + Guid.NewGuid().ToString("N") + ".tmp");
             try
@@ -36,7 +49,8 @@ namespace CxVisual.Mechanism.Core
                     else using (var zip = new ZipArchive(file, ZipArchiveMode.Read, true)) using (var content = zip.GetEntry("project.xml").Open()) ValidateXmlBytes(content, token);
                 }
                 token.ThrowIfCancellationRequested();
-                if (File.Exists(full)) File.Replace(temp, full, null); else File.Move(temp, full);
+                // A first-save race must fail rather than replace a file another writer just created.
+                if (replacing) File.Replace(temp, full, null); else File.Move(temp, full);
                 // Cancellation after this publication point cannot claim that the saved file was not written.
             }
             finally { if (File.Exists(temp)) File.Delete(temp); }
@@ -114,16 +128,18 @@ namespace CxVisual.Mechanism.Core
             using (var r = Reader(stream))
             {
                 r.MoveToContent(); if (r.Name != "CxVisualProject") throw new InvalidDataException("Missing project");
+                CheckFields(r, ProjectFields);
                 string schema = Required(r, "schema"); if (schema != "1" && schema != "2") throw new InvalidDataException("Unsupported schema");
                 int revision = int.Parse(Required(r, "revision"), Invariant); var stack = new Stack<MEMNode>();
                 CxProject project = null; var references = new List<MRIResourceReference>(); int count = 0;
                 while (r.Read())
                 {
                     if (r.NodeType == XmlNodeType.EndElement && r.Name == "Node") { if (stack.Count == 0) throw new InvalidDataException("Invalid node end"); stack.Pop(); continue; }
+                    if ((r.NodeType == XmlNodeType.Text || r.NodeType == XmlNodeType.CDATA) && !string.IsNullOrWhiteSpace(r.Value)) throw new InvalidDataException("Unexpected engineering text");
                     if (r.NodeType != XmlNodeType.Element) continue;
                     if (r.Name == "Node")
                     {
-                        if (++count > 2000000 || stack.Count > 256) throw new InvalidDataException("Engineering structure budget exceeded");
+                        if (++count > MEMNode.MaximumNodeCount || stack.Count >= MEMNode.MaximumDepth) throw new InvalidDataException("Engineering structure budget exceeded");
                         bool legacy = schema == "1" || r.GetAttribute("legacy") == "true";
                         Guid id = Guid.Parse(Required(r, "id")); string name = Required(r, "name"), kind = Required(r, "kind"); MEMNode node;
                         switch (kind)
@@ -138,6 +154,7 @@ namespace CxVisual.Mechanism.Core
                         }
                         var declaredType = r.GetAttribute("typeId"); if (declaredType != null && declaredType != node.TypeId) throw new InvalidDataException("Unsupported TypeId");
                         var visual = node as MRCVisualItem;
+                        CheckFields(r, visual == null ? NodeFields : VisualFields);
                         if (visual != null)
                         {
                             visual.SetGeometry(Number(r,"x",0), Number(r,"y",0), Number(r,"width",120), Number(r,"height",80), Number(r,"rotation",0), Number(r,"scaleX",1), Number(r,"scaleY",1));
@@ -150,6 +167,7 @@ namespace CxVisual.Mechanism.Core
                     }
                     else if (r.Name == "Reference")
                     {
+                        CheckFields(r, ReferenceFields);
                         var owner = stack.Count == 0 ? null : stack.Peek() as MEMContent;
                         if (owner == null || !r.IsEmptyElement) throw new InvalidDataException("Invalid reference");
                         MRIReferenceKind kind;
@@ -159,10 +177,11 @@ namespace CxVisual.Mechanism.Core
                     }
                     else if (r.Name == "Binding")
                     {
+                        CheckFields(r, BindingFields);
                         var visual = stack.Count == 0 ? null : stack.Peek() as MRCVisualItem;
                         if (visual == null || !r.IsEmptyElement) throw new InvalidDataException("Invalid binding");
                         if (visual.BindingItems == null) visual.BindingItems = new Dictionary<string,MPMBinding>(StringComparer.Ordinal);
-                        visual.BindingItems.Add(Required(r,"property"),new MPMBinding(Required(r,"source"),Required(r,"member")));
+                        visual.BindingItems.Add(MEMNode.NormalizeName(Required(r,"property")),new MPMBinding(Required(r,"source"),Required(r,"member")));
                     }
                     else throw new InvalidDataException("Unknown engineering field " + r.Name);
                 }

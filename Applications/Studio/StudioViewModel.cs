@@ -80,7 +80,7 @@ namespace CxVisual.Studio
         private void MoveSelected()
         {
             if (!_selected.HasValue) return;
-            CxElement element = _editor.Document.Project.Find(_selected.Value) as CxElement;
+            MRCVisualItem element = _editor.Document.Project.Find(_selected.Value) as MRCVisualItem;
             if (element != null) Execute(() => _editor.Move(element.Id, element.X + 20, element.Y));
         }
         private void Execute(Func<CxCommitResult> callback)

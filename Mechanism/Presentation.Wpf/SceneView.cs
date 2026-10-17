@@ -44,7 +44,15 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 Brush fill = selected ? new SolidColorBrush(Color.FromRgb(206, 232, 253)) :
                     new SolidColorBrush(Color.FromRgb(229, 239, 252));
                 Pen pen = new Pen(selected ? Brushes.DodgerBlue : Brushes.SteelBlue, selected ? 2.5 : 1.2);
-                dc.DrawRoundedRectangle(fill, pen, bounds, 6, 6);
+                var geometry = new StreamGeometry();
+                using (var shape = geometry.Open())
+                {
+                    shape.BeginFigure(new Point(item.TopLeft.X + dx, item.TopLeft.Y + dy), true, true);
+                    shape.LineTo(new Point(item.TopRight.X + dx, item.TopRight.Y + dy), true, false);
+                    shape.LineTo(new Point(item.BottomRight.X + dx, item.BottomRight.Y + dy), true, false);
+                    shape.LineTo(new Point(item.BottomLeft.X + dx, item.BottomLeft.Y + dy), true, false);
+                }
+                geometry.Freeze(); dc.DrawGeometry(fill, pen, geometry);
                 FormattedText name = new FormattedText(item.Name, CultureInfo.CurrentCulture,
                     FlowDirection.LeftToRight, new Typeface("Segoe UI"), 13, Brushes.MidnightBlue, 1.0);
                 dc.DrawText(name, new Point(bounds.Left + 12, bounds.Top + 12));
@@ -59,7 +67,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             for (int i = _items.Count - 1; i >= 0; i--)
             {
                 CxSceneItem item = _items[i];
-                if (new Rect(item.Bounds.X, item.Bounds.Y, item.Bounds.Width, item.Bounds.Height).Contains(point))
+                if (item.Contains(point.X, point.Y))
                 { hit = item.Id; break; }
             }
             _selection = hit;
@@ -92,8 +100,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 CxSceneItem original = _items.Find(x => x.Id == _selection.Value);
                 EventHandler<CxMoveEventArgs> moved = MoveRequested;
                 if (original != null && moved != null)
-                    moved(this, new CxMoveEventArgs(original.Id,
-                        original.Bounds.X + _dragX, original.Bounds.Y + _dragY));
+                {
+                    double x, y; original.PositionAfterWorldDelta(_dragX, _dragY, out x, out y);
+                    moved(this, new CxMoveEventArgs(original.Id, x, y));
+                }
             }
             _dragX = 0; _dragY = 0;
             InvalidateVisual();

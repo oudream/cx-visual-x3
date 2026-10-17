@@ -79,11 +79,22 @@ namespace CxVisual.Mechanism.Core
         { MEMNode found; if (node == null || !_index.TryGetValue(node.Id, out found) || found != node) throw new InvalidOperationException("org.node.foreign_or_missing"); }
         public MEMNode Find(Guid id) { lock (_gate) { DemandOpen(); MEMNode node; return _index.TryGetValue(id, out node) ? node : null; } }
         public MRIResourceReference FindReference(Guid id) { lock (_gate) { DemandOpen(); MRIResourceReference value; return _references.TryGetValue(id, out value) ? value : null; } }
+        public MEMResourceEntry GetResourceEntry(Guid id)
+        { lock (_gate) { var resource = Find(id) as IMEMResource; return resource == null ? null : new MEMResourceEntry(resource); } }
+        private static void CheckSupportedType(MEMNode node)
+        {
+            var t = node.GetType();
+            if (t != typeof(MEMPage) && t != typeof(MEMContent) && t != typeof(MEMSymbol) && t != typeof(MRCGroup) && t != typeof(MRCRectangle)
+                && t != typeof(CxPage) && t != typeof(CxContent) && t != typeof(CxSymbol) && t != typeof(CxGroup) && t != typeof(CxElement))
+                throw new InvalidOperationException("org.type.unsupported: H01 requires a registered built-in type; custom payload persistence is a later phase");
+        }
         internal void CheckNew(MEMNode node)
         {
             if (node == null || node.Parent != null || node.OwnerSession != null) throw new InvalidOperationException("Object must be detached");
             if (node.Children.Count == 0)
             {
+                CheckSupportedType(node);
+                if (_index.Count >= MEMNode.MaximumNodeCount) throw new InvalidOperationException("org.node_budget.exceeded");
                 if (_index.ContainsKey(node.Id) || _references.ContainsKey(node.Id)) throw new InvalidOperationException("org.id.duplicate");
                 var content = node as MEMContent;
                 if (content != null && content.References.Count != 0) throw new InvalidOperationException("Attach definitions before references");
@@ -92,11 +103,13 @@ namespace CxVisual.Mechanism.Core
             var seen = new HashSet<Guid>();
             foreach (var child in node.DescendantsAndSelf())
             {
+                CheckSupportedType(child);
                 if (!seen.Add(child.Id) || _index.ContainsKey(child.Id) || _references.ContainsKey(child.Id)) throw new InvalidOperationException("org.id.duplicate");
                 foreach (var owned in child.Children) if (owned.Parent != child) throw new InvalidOperationException("Wrong subtree owner");
                 var content = child as MEMContent;
                 if (content != null && content.References.Count != 0) throw new InvalidOperationException("Use explicit reference creation after attaching definitions");
             }
+            if ((long)_index.Count + seen.Count > MEMNode.MaximumNodeCount) throw new InvalidOperationException("org.node_budget.exceeded");
         }
         internal void AddIndex(MEMNode root)
         { if (root.Children.Count == 0) { _index.Add(root.Id, root); return; } foreach (var node in root.DescendantsAndSelf()) _index.Add(node.Id, node); }
@@ -159,7 +172,7 @@ namespace CxVisual.Mechanism.Core
         public MTCEditResult<T> Edit<T>(string intent, int expectedRevision, Func<MTCEditSession, T> build)
         {
             if (build == null) throw new ArgumentNullException("build");
-            MEMNode.NormalizeName(intent); T value; int before;
+            MEMNode.NormalizeName(intent); T value; int before, committedRevision;
             lock (_gate)
             {
                 DemandOpen();
@@ -178,6 +191,7 @@ namespace CxVisual.Mechanism.Core
                         _history.Add(draft.Changes); _cursor++; Revision++;
                         _notifications.Enqueue(new MTCChangeSet(intent, before, Revision));
                     }
+                    committedRevision = Revision;
                 }
                 catch (Exception error)
                 {
@@ -190,10 +204,11 @@ namespace CxVisual.Mechanism.Core
                 finally { draft.Complete(); _editing = false; }
             }
             Deliver();
-            return new MTCEditResult<T>(true, value, before == Revision ? before : before + 1, null, null);
+            return new MTCEditResult<T>(true, value, committedRevision, null, null);
         }
         private MTCEditResult<bool> Replay(bool undo)
         {
+            int committedRevision;
             lock (_gate)
             {
                 DemandOpen();
@@ -207,6 +222,7 @@ namespace CxVisual.Mechanism.Core
                     { if (undo) change.Inverse(); else change.Forward(); done.Add(change); }
                     int before = Revision; _cursor += undo ? -1 : 1; Revision++;
                     _notifications.Enqueue(new MTCChangeSet(undo ? "撤销" : "重做", before, Revision));
+                    committedRevision = Revision;
                 }
                 catch (Exception failure)
                 {
@@ -217,7 +233,7 @@ namespace CxVisual.Mechanism.Core
                 }
                 finally { _editing = false; }
             }
-            Deliver(); return new MTCEditResult<bool>(true, true, Revision, null, null);
+            Deliver(); return new MTCEditResult<bool>(true, true, committedRevision, null, null);
         }
         public void ClearHistory()
         { lock (_gate) { DemandOpen(); if (_editing || _delivering || _historyFaulted) throw new InvalidOperationException("History busy/faulted"); _history.Clear(); _cursor=0; } }
@@ -234,12 +250,13 @@ namespace CxVisual.Mechanism.Core
         private void Deliver()
         {
             lock (_gate) { if (_delivering) return; _delivering = true; }
+            bool ownsDelivery = true;
             try
             {
                 while (true)
                 {
                     MTCChangeSet change; Action<MTCChangeSet>[] observers;
-                    lock (_gate) { if (_notifications.Count == 0) { _delivering = false; return; } change = _notifications.Dequeue(); observers = _observers.ToArray(); }
+                    lock (_gate) { if (_notifications.Count == 0) { _delivering = false; ownsDelivery = false; return; } change = _notifications.Dequeue(); observers = _observers.ToArray(); }
                     foreach (var observer in observers)
                     {
                         lock (_gate) { if (!_observers.Contains(observer)) continue; _callbackThread = Thread.CurrentThread.ManagedThreadId; }
@@ -248,7 +265,7 @@ namespace CxVisual.Mechanism.Core
                     }
                 }
             }
-            finally { lock (_gate) _delivering = false; }
+            finally { if (ownsDelivery) lock (_gate) _delivering = false; }
         }
         public MVEValidationReport Validate()
         {
@@ -294,7 +311,17 @@ namespace CxVisual.Mechanism.Core
         { lock (_gate) { DemandOpen(); if (_editing) throw new InvalidOperationException("No IO in edit callback"); MEMFileProjectStore.Save(Document, path, cancellation, legacy); Location = System.IO.Path.GetFullPath(path); _savedRevision = Revision; } }
         internal void SaveLegacy(string path) { SaveAs(path, CancellationToken.None, true); }
         public void Save() { if (Location == null) throw new InvalidOperationException("SaveAs first"); SaveAs(Location); }
-        public Task SaveAsync(CancellationToken cancellation) { return Task.Run(() => { cancellation.ThrowIfCancellationRequested(); if (Location == null) throw new InvalidOperationException("SaveAs first"); SaveAs(Location, cancellation); }, cancellation); }
+        public Task SaveAsync(CancellationToken cancellation)
+        {
+            string path;
+            lock (_gate)
+            {
+                DemandOpen();
+                if (_editing) throw new InvalidOperationException("No IO in edit callback");
+                path = Location; if (path == null) throw new InvalidOperationException("SaveAs first");
+            }
+            return Task.Run(() => { cancellation.ThrowIfCancellationRequested(); SaveAs(path, cancellation); }, cancellation);
+        }
         internal void MarkLoaded(string path) { Location = System.IO.Path.GetFullPath(path); _savedRevision = Revision; }
         public void Close(bool discardChanges = false)
         {
