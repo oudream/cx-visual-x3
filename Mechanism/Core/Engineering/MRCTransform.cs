@@ -23,4 +23,9 @@ namespace CxVisual.Mechanism.Core
             MRCVisualItem.Finite(sx);MRCVisualItem.Finite(sy);MRCVisualItem.Finite(shear);if(sy==0)throw new InvalidOperationException("org.visual.transform.singular");
         }
     }
+    internal sealed class MRIPlacementState
+    {
+        internal readonly MRCTransform Value;
+        internal MRIPlacementState(MRCTransform value){Value=value;}
+    }
 }

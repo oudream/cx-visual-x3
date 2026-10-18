@@ -9,14 +9,13 @@ using System.Xml;
 namespace CxVisual.Mechanism.Core
 {
     /// <summary>H01 format 2: one ZIP/project.xml. Schema 1 XML remains an explicit compatibility path.</summary>
-    internal static class MEMFileProjectStore
+    internal static partial class MEMFileProjectStore
     {
         private static readonly CultureInfo Invariant = CultureInfo.InvariantCulture;
         private static readonly HashSet<string> ProjectFields = new HashSet<string>(new[] { "schema", "revision" }, StringComparer.Ordinal);
         private static readonly HashSet<string> NodeFields = new HashSet<string>(new[] { "id", "kind", "name", "typeId", "legacy" }, StringComparer.Ordinal);
         private static readonly HashSet<string> VisualFields = new HashSet<string>(new[] { "id", "kind", "name", "typeId", "legacy", "x", "y", "width", "height", "rotation", "scaleX", "scaleY", "shear", "visible", "selectable", "locked", "layer" }, StringComparer.Ordinal);
         private static readonly HashSet<string> ReferenceFields = new HashSet<string>(new[] { "id", "name", "kind", "target" }, StringComparer.Ordinal);
-        private static readonly HashSet<string> BindingFields = new HashSet<string>(new[] { "property", "source", "member" }, StringComparer.Ordinal);
         private static void CheckFields(XmlReader reader, HashSet<string> allowed)
         {
             if (reader.HasAttributes)
@@ -94,13 +93,13 @@ namespace CxVisual.Mechanism.Core
                 Number(w,"shear",visual.Shear);w.WriteAttributeString("locked",XmlConvert.ToString(visual.IsLocked));w.WriteAttributeString("layer",visual.LayerId);
                 w.WriteAttributeString("visible", XmlConvert.ToString(visual.IsVisible)); w.WriteAttributeString("selectable", XmlConvert.ToString(visual.IsSelectable));
                 if (visual.BindingItems != null) foreach (var pair in visual.BindingItems)
-                { w.WriteStartElement("Binding"); w.WriteAttributeString("property", pair.Key); w.WriteAttributeString("source", pair.Value.SourceId); w.WriteAttributeString("member", pair.Value.MemberId); w.WriteEndElement(); }
+                { w.WriteStartElement("Binding"); w.WriteAttributeString("property", pair.Key); WriteBinding(w,pair.Value); w.WriteEndElement(); }
             }
+            WriteDeclarations(w,node);
             var content = node as MEMContent;
             if (content != null) foreach (var reference in content.References)
             {
-                w.WriteStartElement("Reference"); w.WriteAttributeString("id", reference.Id.ToString("D")); w.WriteAttributeString("name", reference.Name);
-                w.WriteAttributeString("kind", reference.Kind.ToString()); w.WriteAttributeString("target", reference.TargetId.ToString("D")); w.WriteEndElement();
+                WriteReference(w,reference);
             }
         }
         private static void Number(XmlWriter w, string name, double value) { w.WriteAttributeString(name, value.ToString("R", Invariant)); }
@@ -132,7 +131,7 @@ namespace CxVisual.Mechanism.Core
                 CheckFields(r, ProjectFields);
                 string schema = Required(r, "schema"); if (schema != "1" && schema != "2") throw new InvalidDataException("Unsupported schema");
                 int revision = int.Parse(Required(r, "revision"), Invariant); var stack = new Stack<MEMNode>();
-                CxProject project = null; var references = new List<MRIResourceReference>(); int count = 0;
+                CxProject project = null; var references = new List<MRIResourceReference>(); var declarations=new Dictionary<Guid,MPMDefinitionState>(); int count = 0;
                 while (r.Read())
                 {
                     if (r.NodeType == XmlNodeType.EndElement && r.Name == "Node") { if (stack.Count == 0) throw new InvalidDataException("Invalid node end"); stack.Pop(); continue; }
@@ -170,22 +169,18 @@ namespace CxVisual.Mechanism.Core
                     }
                     else if (r.Name == "Reference")
                     {
-                        CheckFields(r, ReferenceFields);
                         var owner = stack.Count == 0 ? null : stack.Peek() as MEMContent;
-                        if (owner == null || !r.IsEmptyElement) throw new InvalidDataException("Invalid reference");
-                        MRIReferenceKind kind;
-                        if (!Enum.TryParse(Required(r,"kind"), out kind) || (kind != MRIReferenceKind.Content && kind != MRIReferenceKind.Symbol)) throw new InvalidDataException("Unknown reference kind");
-                        var id = Guid.Parse(Required(r,"id")); if (id == Guid.Empty) throw new InvalidDataException("Empty reference identity");
-                        references.Add(new MRIResourceReference(id,Required(r,"name"),Guid.Parse(Required(r,"target")),kind,owner));
+                        if (owner == null) throw new InvalidDataException("Invalid reference");
+                        references.Add(ReadReference(r,owner));
                     }
                     else if (r.Name == "Binding")
                     {
-                        CheckFields(r, BindingFields);
                         var visual = stack.Count == 0 ? null : stack.Peek() as MRCVisualItem;
-                        if (visual == null || !r.IsEmptyElement) throw new InvalidDataException("Invalid binding");
+                        if (visual == null) throw new InvalidDataException("Invalid binding");
                         if (visual.BindingItems == null) visual.BindingItems = new Dictionary<string,MPMBinding>(StringComparer.Ordinal);
-                        visual.BindingItems.Add(MEMNode.NormalizeName(Required(r,"property")),new MPMBinding(Required(r,"source"),Required(r,"member")));
+                        var binding=ReadSmallElement(r);visual.BindingItems.Add(MEMNode.NormalizeName(XRequired(binding,"property")),ReadBinding(binding,true));
                     }
+                    else if(TryReadDeclaration(r,stack.Count==0?null:stack.Peek(),declarations)) { }
                     else throw new InvalidDataException("Unknown engineering field " + r.Name);
                 }
                 if (project == null || stack.Count != 0) throw new InvalidDataException("Incomplete project");
@@ -194,11 +189,12 @@ namespace CxVisual.Mechanism.Core
                 {
                     var target = document.Session.Find(reference.TargetId);
                     if ((reference.Kind == MRIReferenceKind.Symbol) != (target is MEMSymbol)) throw new InvalidDataException("Reference target kind mismatch");
-                    document.Session.CheckReference(reference.Owner, target); document.Session.IndexReference(reference);
+                    var overrides=reference.OverrideItems;reference.OverrideItems=null;
+                    document.Session.CheckReference(reference.Owner, target); document.Session.IndexReference(reference);reference.OverrideItems=overrides;
                     if (reference.Owner.ReferenceItems == null) reference.Owner.ReferenceItems = new List<MRIResourceReference>();
                     reference.Owner.ReferenceItems.Add(reference);
                 }
-                document.ValidateTree(); return document;
+                document.Session.AttachLoadedDeclarations(declarations);document.ValidateTree(); return document;
             }
         }
     }

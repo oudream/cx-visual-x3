@@ -39,6 +39,7 @@ namespace CxVisual.Mechanism.Core
         {
             Demand(); _session.DemandNode(node); _session.DemandNode(parent);
             DemandEditable(node);DemandEditable(parent);
+            _session.CheckDeclarationMove(node,parent);
             var old = node.Parent;
             if (old == null || old is MEMPage || old is MEMSymbol) throw new InvalidOperationException("org.root.protected");
             if (node == parent || _session.Reaches(node, parent)) throw new InvalidOperationException("org.ownership_or_reference.cycle");
@@ -76,6 +77,7 @@ namespace CxVisual.Mechanism.Core
         {
             Demand();
             if (reference == null || _session.FindReference(reference.Id) != reference) throw new InvalidOperationException("Unknown reference");
+            if(_session.HasOtherDeclarationUse(reference.Id,reference))throw new InvalidOperationException("org.reference.in_use");
             var owner = reference.Owner; int position = owner.ReferenceItems.IndexOf(reference);
             Change(() => { owner.ReferenceItems.RemoveAt(position); _session.UnindexReference(reference); }, () => { _session.IndexReference(reference); owner.ReferenceItems.Insert(position, reference); },MTCChangeKind.RemoveReference,reference.Id);
         }
@@ -107,8 +109,10 @@ namespace CxVisual.Mechanism.Core
         {
             Demand(); _session.DemandNode(item); property = MEMNode.NormalizeName(property); var old = item.GetBinding(property);
             DemandEditable(item);
-            if (ReferenceEquals(old, binding) || (old != null && binding != null && old.SourceId == binding.SourceId && old.MemberId == binding.MemberId)) return;
-            Change(() => AssignBinding(item, property, binding), () => AssignBinding(item, property, old),MTCChangeKind.Binding,item.Id);
+            if (object.Equals(old,binding)) return;
+            _session.CheckBindingAssignment(item,property,binding);
+            var key=Tuple.Create(item.Id,property);var before=_session.BindingTargets(old).ToArray();var after=_session.BindingTargets(binding).ToArray();
+            Change(() => {_session.UnindexUsage(key);AssignBinding(item, property, binding);_session.IndexUsage(key,after);}, () => {_session.UnindexUsage(key);AssignBinding(item, property, old);_session.IndexUsage(key,before);},MTCChangeKind.Binding,item.Id);
         }
         private static void AssignBinding(MRCVisualItem item, string property, MPMBinding value)
         {

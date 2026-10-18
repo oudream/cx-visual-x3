@@ -169,8 +169,14 @@ namespace CxVisual.Mechanism.Core
         internal override void InsertCore(int index, MEMNode child) { if (_items == null) _items = new MEMChildList<MEMContent>(); _items.Insert(index, (MEMContent)child); }
         internal override void RemoveCore(MEMNode child) { _items.Remove((MEMContent)child); }
     }
-    public class MEMContent : MEMNode, IMEMResource
+    public class MEMContent : MEMNode, IMEMResource, IMPMDefinition
     {
+        internal MPMDefinitionState DefinitionState;
+        public IReadOnlyList<MPMProperty> Properties {get{return MPMDefinitionState.PropertiesOf(this);}}
+        public IReadOnlyList<MPCPort> Ports {get{return MPMDefinitionState.PortsOf(this);}}
+        public IReadOnlyList<MPCConnection> Connections {get{return MPMDefinitionState.ConnectionsOf(this);}}
+        public IReadOnlyList<MRCPublicMapping> PublicMappings {get{return MPMDefinitionState.MappingsOf(this);}}
+        public IReadOnlyList<MPMAspect> Aspects {get{return MPMDefinitionState.AspectsOf(this);}}
         private MEMChildList<MEMNode> _items;
         internal List<MRIResourceReference> ReferenceItems;
         private static readonly MRIResourceReference[] NoReferences = new MRIResourceReference[0];
@@ -185,8 +191,14 @@ namespace CxVisual.Mechanism.Core
         internal override void InsertCore(int index, MEMNode child) { if (_items == null) _items = new MEMChildList<MEMNode>(); _items.Insert(index, child); }
         internal override void RemoveCore(MEMNode child) { _items.Remove(child); }
     }
-    public class MEMSymbol : MEMNode, IMEMResource
+    public class MEMSymbol : MEMNode, IMEMResource, IMPMDefinition
     {
+        internal MPMDefinitionState DefinitionState;
+        public IReadOnlyList<MPMProperty> Properties {get{return MPMDefinitionState.PropertiesOf(this);}}
+        public IReadOnlyList<MPCPort> Ports {get{return MPMDefinitionState.PortsOf(this);}}
+        public IReadOnlyList<MPCConnection> Connections {get{return MPMDefinitionState.ConnectionsOf(this);}}
+        public IReadOnlyList<MRCPublicMapping> PublicMappings {get{return MPMDefinitionState.MappingsOf(this);}}
+        public IReadOnlyList<MPMAspect> Aspects {get{return MPMDefinitionState.AspectsOf(this);}}
         private MEMChildList<MRCGroup> _items;
         public MEMSymbol(Guid id, string name) : this(id, name, true) { }
         internal MEMSymbol(Guid id, string name, bool root) : base(id, name, "core.symbol", MEMNodeKind.Symbol)
@@ -213,6 +225,9 @@ namespace CxVisual.Mechanism.Core
     }
     public sealed class MRIResourceReference
     {
+        internal Dictionary<string,MPMBinding> OverrideItems;
+        internal MRIPlacementState PlacementValue;
+        private static readonly IReadOnlyDictionary<string,MPMBinding> EmptyOverrides=new System.Collections.ObjectModel.ReadOnlyDictionary<string,MPMBinding>(new Dictionary<string,MPMBinding>());
         internal MRIResourceReference(Guid id, string name, Guid targetId, MRIReferenceKind kind, MEMContent owner)
         { Id = id; Name = MEMNode.NormalizeName(name); TargetId = targetId; Kind = kind; Owner = owner; }
         public Guid Id { get; private set; }
@@ -220,5 +235,7 @@ namespace CxVisual.Mechanism.Core
         public Guid TargetId { get; private set; }
         public MRIReferenceKind Kind { get; private set; }
         public MEMContent Owner { get; internal set; }
+        public IReadOnlyDictionary<string,MPMBinding> Overrides {get{return OverrideItems==null?EmptyOverrides:new System.Collections.ObjectModel.ReadOnlyDictionary<string,MPMBinding>(OverrideItems);}}
+        public MRCTransform Placement {get{return PlacementValue==null?MRCTransform.Identity:PlacementValue.Value;}}
     }
 }

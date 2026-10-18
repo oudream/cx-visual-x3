@@ -36,6 +36,7 @@ namespace CxVisual.Mechanism.Core
             Demand();_session.DemandNode(group);DemandEditable(group);var parent=group.Parent;
             if(!(parent is MEMContent||parent is MRCGroup))throw new InvalidOperationException("org.group.protected_or_invalid_parent");
             if(group.BindingItems!=null&&group.BindingItems.Count!=0)throw new InvalidOperationException("org.group.binding_in_use");
+            if(group.DefinitionState!=null&&group.DefinitionState.HasData)throw new InvalidOperationException("org.group.declaration_in_use");
             var children=group.Children.ToArray();foreach(var item in children)DemandEditable(item);
             var transforms=children.Select(c=>group.Transform.Compose(c.Transform)).ToArray();
             // Decompose every result before changing ownership; shear is retained, not approximated away.

@@ -13,6 +13,7 @@
     <Compile Include="OrganizationWpfTests.cs"/>
     <Compile Include="OrganizationH02Tests.cs"/>
     <Compile Include="OrganizationH03VisualTests.cs"/>
+    <Compile Include="OrganizationH03ContractTests.cs"/>
     <Reference Include="System"/>
     <Reference Include="System.Core"/><Reference Include="System.ComponentModel.DataAnnotations"/>
     <Reference Include="PresentationCore"/>

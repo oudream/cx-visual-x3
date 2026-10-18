@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace CxVisual.Mechanism.Core
 {
-    public enum MTCChangeKind { Add=1, Remove=2, Rename=3, Reparent=4, Geometry=5, Binding=6, Visibility=7, Reference=8, RemoveReference=9 }
+    public enum MTCChangeKind { Add=1, Remove=2, Rename=3, Reparent=4, Geometry=5, Binding=6, Visibility=7, Reference=8, RemoveReference=9, Property=10, Port=11, Connection=12, Mapping=13, Aspect=14, ReferenceValue=15, TypeRegistration=16 }
     /// <summary>Immutable committed operation identity; inverse values stay in the private journal, not a replayable WAL.</summary>
     public struct MTCChangeOperation
     {

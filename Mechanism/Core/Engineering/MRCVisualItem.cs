@@ -3,19 +3,14 @@ using System.Collections.Generic;
 
 namespace CxVisual.Mechanism.Core
 {
-    /// <summary>Persistent binding declaration only; evaluation belongs to the existing data/runtime owners.</summary>
-    public sealed class MPMBinding
+    public abstract class MRCVisualItem : MEMNode, IMPMDefinition
     {
-        public MPMBinding(string sourceId, string memberId)
-        {
-            if (string.IsNullOrWhiteSpace(sourceId) || string.IsNullOrWhiteSpace(memberId)) throw new ArgumentException("Binding source/member required");
-            SourceId = sourceId; MemberId = memberId;
-        }
-        public string SourceId { get; private set; }
-        public string MemberId { get; private set; }
-    }
-    public abstract class MRCVisualItem : MEMNode
-    {
+        internal MPMDefinitionState DefinitionState;
+        public IReadOnlyList<MPMProperty> Properties {get{return MPMDefinitionState.PropertiesOf(this);}}
+        public IReadOnlyList<MPCPort> Ports {get{return MPMDefinitionState.PortsOf(this);}}
+        public IReadOnlyList<MPCConnection> Connections {get{return MPMDefinitionState.ConnectionsOf(this);}}
+        public IReadOnlyList<MRCPublicMapping> PublicMappings {get{return MPMDefinitionState.MappingsOf(this);}}
+        public IReadOnlyList<MPMAspect> Aspects {get{return MPMDefinitionState.AspectsOf(this);}}
         internal Dictionary<string, MPMBinding> BindingItems;
         private double _x, _y, _width, _height, _rotation, _scaleX = 1, _scaleY = 1, _shear;
         protected MRCVisualItem(Guid id, string name, string typeId, MEMNodeKind kind, double x, double y, double width, double height) : base(id, name, typeId, kind)

@@ -98,7 +98,8 @@ namespace CxVisual.Mechanism.Core
             {
                 CheckSupportedType(node);
                 if (_index.Count >= MEMNode.MaximumNodeCount) throw new InvalidOperationException("org.node_budget.exceeded");
-                if (_index.ContainsKey(node.Id) || _references.ContainsKey(node.Id)) throw new InvalidOperationException("org.id.duplicate");
+                if (IdentityExists(node.Id)) throw new InvalidOperationException("org.id.duplicate");
+                if(MPMDefinitionState.For(node)!=null&&MPMDefinitionState.For(node).HasData)throw new InvalidOperationException("Attach empty definitions before adding declarations");
                 var content = node as MEMContent;
                 if (content != null && content.References.Count != 0) throw new InvalidOperationException("Attach definitions before references");
                 return;
@@ -107,7 +108,8 @@ namespace CxVisual.Mechanism.Core
             foreach (var child in node.DescendantsAndSelf())
             {
                 CheckSupportedType(child);
-                if (!seen.Add(child.Id) || _index.ContainsKey(child.Id) || _references.ContainsKey(child.Id)) throw new InvalidOperationException("org.id.duplicate");
+                if (!seen.Add(child.Id) || IdentityExists(child.Id)) throw new InvalidOperationException("org.id.duplicate");
+                if(MPMDefinitionState.For(child)!=null&&MPMDefinitionState.For(child).HasData)throw new InvalidOperationException("Attach empty definitions before adding declarations");
                 foreach (var owned in child.Children) if (owned.Parent != child) throw new InvalidOperationException("Wrong subtree owner");
                 var content = child as MEMContent;
                 if (content != null && content.References.Count != 0) throw new InvalidOperationException("Use explicit reference creation after attaching definitions");
@@ -118,6 +120,7 @@ namespace CxVisual.Mechanism.Core
         { if (root.Children.Count == 0) { _index.Add(root.Id, root); return; } foreach (var node in root.DescendantsAndSelf()) _index.Add(node.Id, node); }
         internal void RemoveIndex(MEMNode root)
         {
+            UnindexDeclarationTree(root);
             foreach (var node in root.DescendantsAndSelf())
             {
                 var content = node as MEMContent;
@@ -126,11 +129,12 @@ namespace CxVisual.Mechanism.Core
             }
         }
         internal void RestoreIndex(MEMNode root)
-        { AddIndex(root); foreach (var content in root.DescendantsAndSelf().OfType<MEMContent>()) foreach (var reference in content.References) IndexReference(reference); }
+        { AddIndex(root); foreach (var content in root.DescendantsAndSelf().OfType<MEMContent>()) foreach (var reference in content.References) IndexReference(reference); IndexDeclarationTree(root); }
         internal void CheckRemove(MEMNode root)
         {
             if (root.Parent == null || root.Parent is MEMPage || root.Parent is MEMSymbol) throw new InvalidOperationException("org.root.protected");
             var removed = new HashSet<MEMNode>(root.DescendantsAndSelf());
+            CheckDeclarationRemove(removed);
             foreach (var node in removed)
             {
                 HashSet<MRIResourceReference> uses;
@@ -139,14 +143,15 @@ namespace CxVisual.Mechanism.Core
         }
         internal void IndexReference(MRIResourceReference reference)
         {
-            if (_index.ContainsKey(reference.Id)) throw new InvalidOperationException("org.id.duplicate");
+            if (IdentityExists(reference.Id)) throw new InvalidOperationException("org.id.duplicate");
             _references.Add(reference.Id, reference);
             HashSet<MRIResourceReference> uses;
             if (!_usages.TryGetValue(reference.TargetId, out uses)) { uses = new HashSet<MRIResourceReference>(); _usages.Add(reference.TargetId, uses); }
             uses.Add(reference);
+            IndexUsage(reference,reference.Overrides.Values.SelectMany(BindingTargets));
         }
         internal void UnindexReference(MRIResourceReference reference)
-        { _references.Remove(reference.Id); var uses = _usages[reference.TargetId]; uses.Remove(reference); if (uses.Count == 0) _usages.Remove(reference.TargetId); }
+        { UnindexUsage(reference); _references.Remove(reference.Id); var uses = _usages[reference.TargetId]; uses.Remove(reference); if (uses.Count == 0) _usages.Remove(reference.TargetId); }
         internal void CheckReference(MEMContent owner, MEMNode definition)
         {
             DemandNode(owner); DemandNode(definition);
@@ -287,6 +292,7 @@ namespace CxVisual.Mechanism.Core
                 if (seen.Count != _index.Count) issues.Add("org.index.orphan");
                 foreach (var reference in _references.Values)
                 { try { CheckReference(reference.Owner, _index[reference.TargetId]); } catch (Exception e) { issues.Add(e.Message); } }
+                ValidateDeclarations(issues);
                 return new MVEValidationReport(issues);
             }
         }
@@ -334,6 +340,7 @@ namespace CxVisual.Mechanism.Core
                 if (_editing || _delivering) throw new InvalidOperationException("Session busy");
                 if (IsDirty && !discardChanges) throw new InvalidOperationException("Unsaved changes; save or explicitly discard");
                 _closed = true; _observers.Clear(); _history.Clear(); _index.Clear(); _references.Clear(); _usages.Clear();
+                _ports.Clear();_connections.Clear();_declarationUses.Clear();_declarationDependencies.Clear();_incoming.Clear();_outgoing.Clear();
             }
         }
         public void Dispose() { Close(); }
