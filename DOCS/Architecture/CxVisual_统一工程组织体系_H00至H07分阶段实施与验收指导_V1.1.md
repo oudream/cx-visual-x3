@@ -225,6 +225,8 @@ using (var edit = project.BeginEdit("整理设备区", project.Revision))
 
 **完成标准**：x2克隆/地址身份/导入导出反例断言迁移，至少双工程+依赖静态文件真实包验证；每项不支持内容可定位，不能通过空Exporter或Mock依赖图验收。不得整体引入x2旧Graph或运行对象注册表。
 
+**编排/运行/调试的统一逻辑对象、Owner、SourceMap/Invocation 与性能边界，统一以[工程组织主文档 §7.4](CxVisual_统一工程组织体系_完整架构设计与开发使用指南_V1.1.md#74-编排运行调试一体化统一逻辑类型运行界面及问题追溯2026-10-18)为设计依据**；H06/H07 这里只规定实施工作和客观验收，不建立新的并行编排体系。候选 MOL/MOC 类型必须先审源码、通过测试才能视为实现。
+
 ## H06：Visual/Studio 消费接续与工程用户体验
 
 **目标/前置**：H01～H05已完成；H00 D05交互事件合同明确。用户在界面与代码间自然接续同一工程，常用任务不填内部Id。此阶段修改**原有** Mechanism.Visual(M16/M17/M37)、Mechanism.Presentation.Wpf 和 Applications/Studio，不搬到 Core。
