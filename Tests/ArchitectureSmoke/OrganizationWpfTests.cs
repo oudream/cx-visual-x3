@@ -26,7 +26,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     var group = session.AddGroup(page.RootContent, "G"); session.Move(group, 100, 100); session.Rotate(group, 45);
                     var rectangle = session.AddRectangle(group, "R", 0, 0, 100, 50);
                     var symbol = session.AddSymbol("库定义"); session.AddRectangle(symbol.RootGroup, "不直接投影", 200, 20);
-                    var scene = CxSceneProjection.Project(session.Document);
+                    var scene = CxSceneProjection.Project(session);
                     Check(scene.Count == 1 && scene[0].Id == rectangle.Id, "shared library definition leaked into page scene");
                     Check(CxSceneProjection.HitTest(scene, new CxVisual.Foundation.Geometry.CxPoint2D(70, 108)) == null, "AABB false hit");
                     Check(CxSceneProjection.HitTest(scene, new CxVisual.Foundation.Geometry.CxPoint2D(105, 140)) == rectangle.Id, "rotated hit missing");
@@ -56,7 +56,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         Check(pixels[inside+2] < 245 && pixels[inside+3] == 255, "transformed rectangle not painted");
                         Console.WriteLine("PASS H01 raster pixels");
                     }
-                    session.SetVisibility(group, false, true); Check(CxSceneProjection.Project(session.Document).Count == 0, "hidden group projected descendants");
+                    session.SetVisibility(group, false, true); Check(CxSceneProjection.Project(session).Count == 0, "hidden group projected descendants");
                     session.Close(true);
                     Console.WriteLine("PASS H01 WPF real STA layout/retained polygon, precise hit test, drag conversion, resource visibility and hidden-group projection");
                 }
