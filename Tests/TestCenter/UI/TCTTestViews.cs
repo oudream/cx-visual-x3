@@ -5,6 +5,7 @@ using System.IO;
 using System.Xml.Linq;
 using CxVisual.TestCenter.Models;
 using CxVisual.TestCenter.Fixtures;
+using CxVisual.Mechanism.Core;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -255,8 +256,8 @@ namespace CxVisual.TestCenter.UI
                             string.Join(", ", node.Element("Visual").Attributes().Select(a =>
                                 a.Name.LocalName + "=" + a.Value))) :
                         "\nReference Kind: " + (string)node.Attribute("kind"));
-                if (ObjectSelected != null) ObjectSelected(id.ToString("D"), detail);
                 SelectObservation(observation);
+                if (ObjectSelected != null) ObjectSelected(id.ToString("D"), detail);
             };
             Grid.SetColumn(tree, 0); split.Children.Add(tree);
 
