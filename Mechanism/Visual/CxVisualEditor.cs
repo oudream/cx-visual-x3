@@ -19,6 +19,10 @@ namespace CxVisual.Mechanism.Visual
                 var pages = Document.Project.Pages;
                 if (pages.Count == 0) throw new InvalidOperationException("NO_PAGE");
                 MEMNode parent = pages[0].RootContent;
+                foreach (var node in pages[0].RootContent.DescendantsAndSelf())
+                {
+                    if (node is MRCGroup) { parent = node; break; }
+                }
                 e.AddRectangle(parent, name, x, y, width, height);
                 return true;
             });
