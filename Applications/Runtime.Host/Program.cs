@@ -26,8 +26,8 @@ namespace CxVisual.Runtime.Host
                     return MRHUnifiedRuntimeHost.Serve(args[1]);
                 if (verb == "save" && args.Length == 2)
                 {
-                    CxProjectDocument document = CxDocumentFactory.CreateSample();
-                    CxDocumentSerializer.Save(document, args[1]);
+                    MEMEngineeringSession document = CreateSample();
+                    document.SaveAs(args[1]);
                     Console.WriteLine("Saved " + Path.GetFullPath(args[1]));
                     return 0;
                 }
@@ -57,12 +57,12 @@ namespace CxVisual.Runtime.Host
                 }
                 if (verb == "load" && args.Length == 2)
                 {
-                    CxProjectDocument document = CxDocumentSerializer.Load(args[1]);
+                    MEMEngineeringSession document = MEMEngineering.Open(args[1]);
                     Console.WriteLine("Project=" + document.Project.Name + ", revision=" + document.Revision);
                     Show(CxSceneProjection.Project(document));
                     return 0;
                 }
-                Console.WriteLine("Usage: CxVisual.Runtime.Host.exe [runtime-run <journal> | runtime-recover <journal> | runtime-serve <journal> | demo | vision-demo | save <file.xml> | load <file.xml> | vision-inspect <configRoot> <machineId> <rawFile> <width> <height> <8|16>]");
+                Console.WriteLine("Usage: CxVisual.Runtime.Host.exe [runtime-run <journal> | runtime-recover <journal> | runtime-serve <journal> | demo | vision-demo | save <file.cxproj> | load <file.cxproj> | vision-inspect <configRoot> <machineId> <rawFile> <width> <height> <8|16>]");
                 return 2;
             }
             catch (Exception ex)
@@ -126,20 +126,30 @@ namespace CxVisual.Runtime.Host
             finally { try { if (Directory.Exists(root)) Directory.Delete(root, true); } catch (IOException) { } }
         }
 
+        private static MEMEngineeringSession CreateSample()
+        {
+            var session = MEMEngineering.Create("Demo Project");
+            var page = session.AddPage("Main Page");
+            var group = session.AddGroup(page.RootContent, "Drawing Group");
+            session.AddRectangle(group, "Detector", 50, 65, 170, 100);
+            session.AddRectangle(group, "Source", 300, 180, 125, 75);
+            session.ClearHistory();
+            return session;
+        }
         private static int Demo()
         {
-            CxProjectDocument document = CxDocumentFactory.CreateSample();
-            CxVisualEditor visual = new CxVisualEditor(new CxEngineeringSession(document));
+            MEMEngineeringSession document = CreateSample();
+            CxVisualEditor visual = new CxVisualEditor(document);
             Console.WriteLine("CxVisual unified engineering demo — no external device or driver");
             using (FLDFileLogSink logger = new FLDFileLogSink(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Logs", "runtime-host.log")))
                 logger.Write(new FLDLogRecord("RuntimeHost", "Demo", "Engineering demo started"));
             Show(visual.Scene);
-            CxCommitResult added = visual.AddRectangle("ROI", 450, 65, 95, 95);
+            MTCEditResult<bool> added = visual.AddRectangle("ROI", 450, 65, 95, 95);
             if (!added.Success) throw new InvalidOperationException(added.ErrorCode);
             CxSceneItem item = visual.Scene[visual.Scene.Count - 1];
-            CxCommitResult moved = visual.Move(item.Id, 470, 75);
-            CxCommitResult undone = visual.Undo();
-            CxCommitResult redone = visual.Redo();
+            MTCEditResult<bool> moved = visual.Move(item.Id, 470, 75);
+            MTCEditResult<bool> undone = visual.Undo();
+            MTCEditResult<bool> redone = visual.Redo();
             if (!moved.Success || !undone.Success || !redone.Success)
                 throw new InvalidOperationException("Visual edit demo failed");
             Console.WriteLine("Add → Move → Undo → Redo succeeded. Revision=" + document.Revision);

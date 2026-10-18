@@ -88,8 +88,9 @@ namespace CxVisual.TestCenter.Cases
             "Visual / Editing", ObjectId = "CxVisualEditor")]
         public static void RedoBranchInvalidation(TCTTestContext context)
         {
-            CxProjectDocument document = CxDocumentFactory.CreateSample();
-            CxVisualEditor editor = new CxVisualEditor(new CxEngineeringSession(document));
+            MEMEngineeringSession document = TCTRealCases.CreateOrganizationSample();
+            CxVisualEditor editor = new CxVisualEditor(document);
+            int initialRevision = document.Revision;
             context.AssertTrue(editor.AddRectangle("A", 10, 10, 20, 20).Success, "新增A", true, true);
             context.AssertTrue(editor.AddRectangle("B", 50, 10, 20, 20).Success, "新增B", true, true);
             context.AssertTrue(editor.Undo().Success, "撤销B", true, true);
@@ -98,7 +99,7 @@ namespace CxVisual.TestCenter.Cases
             context.AssertTrue(!editor.CanRedo, "新分支覆盖后不能Redo已废弃B", false, editor.CanRedo);
             context.AssertTrue(!editor.Scene.Any(x => x.Name == "B"), "已废弃分支不应出现", false, false);
             context.AssertTrue(editor.Scene.Any(x => x.Name == "C"), "新分支应可见", true, true);
-            context.AssertEqual(4, document.Revision, "事务Revision顺序");
+            context.AssertEqual(initialRevision + 4, document.Revision, "事务Revision顺序");
             context.Observe("ObjectTree", "真实Undo编辑分支", "Add A → Add B → Undo B → Add C; Redo=false");
         }
 

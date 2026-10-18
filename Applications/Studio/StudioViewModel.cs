@@ -20,7 +20,7 @@ namespace CxVisual.Studio
         public event EventHandler SceneChanged;
         public StudioViewModel()
         {
-            _defaultPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Data", "demo-project.xml");
+            _defaultPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Data", "demo-project.cxproj");
             _logger = new FLDFileLogSink(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Logs", "studio.log"));
             NewCommand = new RelayCommand(CreateNew);
             AddCommand = new RelayCommand(Add);
@@ -46,7 +46,7 @@ namespace CxVisual.Studio
             get
             {
                 if (!_selected.HasValue) return "（未选中）";
-                CxNode node = _editor.Document.Project.Find(_selected.Value);
+                MEMNode node = _editor.Document.Find(_selected.Value);
                 return node != null ? node.Name + " / " + node.Id.ToString("N").Substring(0, 8) : "（已删除）";
             }
         }
@@ -64,9 +64,19 @@ namespace CxVisual.Studio
             Select(id);
             Execute(() => _editor.Move(id, x, y));
         }
+        private static MEMEngineeringSession CreateSample()
+        {
+            var session = MEMEngineering.Create("Demo Project");
+            var page = session.AddPage("Main Page");
+            var group = session.AddGroup(page.RootContent, "Drawing Group");
+            session.AddRectangle(group, "Detector", 50, 65, 170, 100);
+            session.AddRectangle(group, "Source", 300, 180, 125, 75);
+            session.ClearHistory();
+            return session;
+        }
         private void CreateNew()
         {
-            _editor = new CxVisualEditor(new CxEngineeringSession(CxDocumentFactory.CreateSample()));
+            _editor = new CxVisualEditor(CreateSample());
             _selected = null;
             _logger.Write(new FLDLogRecord("Engineering", "CreateProject", "New example project"));
             Status = "已建立示例工程；使用鼠标选中/拖动矩形，或点击上方命令。";
@@ -80,14 +90,14 @@ namespace CxVisual.Studio
         private void MoveSelected()
         {
             if (!_selected.HasValue) return;
-            MRCVisualItem element = _editor.Document.Project.Find(_selected.Value) as MRCVisualItem;
+            MRCVisualItem element = _editor.Document.Find(_selected.Value) as MRCVisualItem;
             if (element != null) Execute(() => _editor.Move(element.Id, element.X + 20, element.Y));
         }
-        private void Execute(Func<CxCommitResult> callback)
+        private void Execute(Func<MTCEditResult<bool>> callback)
         {
             try
             {
-                CxCommitResult result = callback();
+                MTCEditResult<bool> result = callback();
                 _logger.Write(new FLDLogRecord("Visual", result.Success ? "Committed" : result.ErrorCode, result.Message));
                 Status = result.Success ? "操作成功 | Revision " + result.Revision : result.ErrorCode + ": " + result.Message;
                 NotifyScene();
@@ -96,15 +106,15 @@ namespace CxVisual.Studio
         }
         private void Save()
         {
-            try { CxDocumentSerializer.Save(_editor.Document, _defaultPath); Status = "已保存: " + _defaultPath; }
+            try { _editor.Document.SaveAs(_defaultPath); Status = "已保存: " + _defaultPath; }
             catch (Exception ex) { Status = "保存失败: " + ex.Message; }
         }
         private void Load()
         {
             try
             {
-                CxProjectDocument project = CxDocumentSerializer.Load(_defaultPath);
-                _editor = new CxVisualEditor(new CxEngineeringSession(project));
+                MEMEngineeringSession project = MEMEngineering.Open(_defaultPath);
+                _editor = new CxVisualEditor(project);
                 _selected = null;
                 Status = "已加载: " + _defaultPath;
                 NotifyScene();

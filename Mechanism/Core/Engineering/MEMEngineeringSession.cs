@@ -40,8 +40,8 @@ namespace CxVisual.Mechanism.Core
     }
     public static class MEMEngineering
     {
-        public static MEMEngineeringSession Create(string name) { return new CxProjectDocument(new CxProject(Guid.NewGuid(), name), 0).Session; }
-        public static MEMEngineeringSession Open(string path) { return MEMFileProjectStore.Load(path).Session; }
+        public static MEMEngineeringSession Create(string name) { return new MEMEngineeringSession(new MEMProject(Guid.NewGuid(), name), 0); }
+        public static MEMEngineeringSession Open(string path) { return MEMFileProjectStore.Load(path); }
         public static Task<MEMEngineeringSession> OpenAsync(string path, CancellationToken cancellation)
         { return Task.Run(() => { cancellation.ThrowIfCancellationRequested(); return Open(path); }, cancellation); }
     }
@@ -58,17 +58,17 @@ namespace CxVisual.Mechanism.Core
         private int _cursor, _callbackThread;
         private bool _editing, _delivering, _closed, _historyFaulted;
         private int? _savedRevision;
-        internal MEMEngineeringSession(CxProjectDocument document, int revision)
+        internal MEMEngineeringSession(MEMProject project, int revision)
         {
-            Document = document; Revision = revision;
-            var project = document.Project;
+            if (project == null) throw new ArgumentNullException("project");
+            if (revision < 0) throw new ArgumentOutOfRangeException("revision");
+            Project = project; Revision = revision;
             if (project.Session != null) throw new InvalidOperationException("Project already has a document");
             AddIndex(project); project.Session = this;
             var report = Validate();
             if (!report.IsValid) { project.Session = null; throw new InvalidOperationException(string.Join(";", report.Issues)); }
         }
-        public CxProjectDocument Document { get; private set; }
-        public MEMProject Project { get { return Document.Project; } }
+        public MEMProject Project { get; private set; }
         public int Revision { get; private set; }
         public string Location { get; private set; }
         public bool IsDirty { get { lock (_gate) return _savedRevision != Revision; } }
@@ -88,7 +88,7 @@ namespace CxVisual.Mechanism.Core
         {
             var t = node.GetType();
             if (t != typeof(MEMPage) && t != typeof(MEMContent) && t != typeof(MEMSymbol) && t != typeof(MRCGroup) && t != typeof(MRCRectangle)
-                && t != typeof(CxPage) && t != typeof(CxContent) && t != typeof(CxSymbol) && t != typeof(CxGroup) && t != typeof(CxElement))
+)
                 throw new InvalidOperationException("org.type.unsupported: H01 requires a registered built-in type; custom payload persistence is a later phase");
         }
         internal void CheckNew(MEMNode node)
@@ -317,7 +317,7 @@ namespace CxVisual.Mechanism.Core
         public void SetVisibility(MRCVisualItem item, bool visible, bool selectable) { Edit("设置可视属性", e => e.SetVisibility(item, visible, selectable)).RequireValue(); }
         public void SaveAs(string path) { SaveAs(path, CancellationToken.None); }
         internal void SaveAs(string path, CancellationToken cancellation, bool legacy = false)
-        { lock (_gate) { DemandOpen(); if (_editing) throw new InvalidOperationException("No IO in edit callback"); MEMFileProjectStore.Save(Document, path, cancellation, legacy); Location = System.IO.Path.GetFullPath(path); _savedRevision = Revision; } }
+        { lock (_gate) { DemandOpen(); if (_editing) throw new InvalidOperationException("No IO in edit callback"); MEMFileProjectStore.Save(this, path, cancellation, legacy); Location = System.IO.Path.GetFullPath(path); _savedRevision = Revision; } }
         internal void SaveLegacy(string path) { SaveAs(path, CancellationToken.None, true); }
         public void Save() { if (Location == null) throw new InvalidOperationException("SaveAs first"); SaveAs(Location); }
         public Task SaveAsync(CancellationToken cancellation)
@@ -341,6 +341,7 @@ namespace CxVisual.Mechanism.Core
                 if (IsDirty && !discardChanges) throw new InvalidOperationException("Unsaved changes; save or explicitly discard");
                 _closed = true; _observers.Clear(); _history.Clear(); _index.Clear(); _references.Clear(); _usages.Clear();
                 _ports.Clear();_connections.Clear();_declarationUses.Clear();_declarationDependencies.Clear();_incoming.Clear();_outgoing.Clear();
+                Project.Session = null;
             }
         }
         public void Dispose() { Close(); }

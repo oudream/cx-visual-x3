@@ -23,13 +23,13 @@ namespace CxVisual.Mechanism.Core
                     if (reader.NamespaceURI.Length != 0 || !allowed.Contains(reader.Name)) throw new InvalidDataException("Unsupported engineering attribute " + reader.Name);
             reader.MoveToElement();
         }
-        internal static void Save(CxProjectDocument document, string path, CancellationToken token, bool legacy = false)
+        internal static void Save(MEMEngineeringSession document, string path, CancellationToken token, bool legacy = false)
         {
             if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException("Path required", "path");
-            document.ValidateTree(); token.ThrowIfCancellationRequested();
+            if (!document.Validate().IsValid) throw new InvalidDataException("Invalid engineering tree"); token.ThrowIfCancellationRequested();
             string full = Path.GetFullPath(path), directory = Path.GetDirectoryName(full);
             bool replacing = File.Exists(full);
-            if (!legacy && replacing && !string.Equals(full, document.Session.Location, StringComparison.OrdinalIgnoreCase)) throw new IOException("SaveAs target already exists");
+            if (!legacy && replacing && !string.Equals(full, document.Location, StringComparison.OrdinalIgnoreCase)) throw new IOException("SaveAs target already exists");
             Directory.CreateDirectory(directory);
             string temp = Path.Combine(directory, ".cx-save-" + Guid.NewGuid().ToString("N") + ".tmp");
             try
@@ -63,7 +63,7 @@ namespace CxVisual.Mechanism.Core
             internal MEMNode Node; internal int Child;
             internal Frame(MEMNode node, int child) { Node = node; Child = child; }
         }
-        private static void Write(Stream stream, CxProjectDocument document, int schema, CancellationToken token)
+        private static void Write(Stream stream, MEMEngineeringSession document, int schema, CancellationToken token)
         {
             using (var w = XmlWriter.Create(stream, new XmlWriterSettings { Encoding = new System.Text.UTF8Encoding(false), CloseOutput = false }))
             {
@@ -84,7 +84,7 @@ namespace CxVisual.Mechanism.Core
         {
             w.WriteStartElement("Node"); w.WriteAttributeString("id", node.Id.ToString("D")); w.WriteAttributeString("kind", node.Kind.ToString());
             w.WriteAttributeString("name", node.Name); w.WriteAttributeString("typeId", node.TypeId);
-            if (node is CxPage || node is CxContent || node is CxSymbol || node is CxGroup || node is CxElement) w.WriteAttributeString("legacy", "true");
+            
             var visual = node as MRCVisualItem;
             if (visual != null)
             {
@@ -103,12 +103,12 @@ namespace CxVisual.Mechanism.Core
             }
         }
         private static void Number(XmlWriter w, string name, double value) { w.WriteAttributeString(name, value.ToString("R", Invariant)); }
-        internal static CxProjectDocument Load(string path)
+        internal static MEMEngineeringSession Load(string path)
         {
             using (var file = File.OpenRead(path))
             {
                 int first = file.ReadByte(), second = file.ReadByte(); file.Position = 0;
-                CxProjectDocument document;
+                MEMEngineeringSession document;
                 if (first == 'P' && second == 'K')
                 {
                     using (var zip = new ZipArchive(file, ZipArchiveMode.Read, true))
@@ -118,12 +118,12 @@ namespace CxVisual.Mechanism.Core
                     }
                 }
                 else document = Read(file);
-                document.Session.MarkLoaded(path); return document;
+                document.MarkLoaded(path); return document;
             }
         }
         private static string Required(XmlReader r, string name) { var value = r.GetAttribute(name); if (value == null) throw new InvalidDataException("Missing " + name); return value; }
         private static double Number(XmlReader r, string name, double fallback) { var value = r.GetAttribute(name); return value == null ? fallback : double.Parse(value, Invariant); }
-        private static CxProjectDocument Read(Stream stream)
+        private static MEMEngineeringSession Read(Stream stream)
         {
             using (var r = Reader(stream))
             {
@@ -131,7 +131,7 @@ namespace CxVisual.Mechanism.Core
                 CheckFields(r, ProjectFields);
                 string schema = Required(r, "schema"); if (schema != "1" && schema != "2") throw new InvalidDataException("Unsupported schema");
                 int revision = int.Parse(Required(r, "revision"), Invariant); var stack = new Stack<MEMNode>();
-                CxProject project = null; var references = new List<MRIResourceReference>(); var declarations=new Dictionary<Guid,MPMDefinitionState>(); int count = 0;
+                MEMProject project = null; var references = new List<MRIResourceReference>(); var declarations=new Dictionary<Guid,MPMDefinitionState>(); int count = 0;
                 while (r.Read())
                 {
                     if (r.NodeType == XmlNodeType.EndElement && r.Name == "Node") { if (stack.Count == 0) throw new InvalidDataException("Invalid node end"); stack.Pop(); continue; }
@@ -144,12 +144,12 @@ namespace CxVisual.Mechanism.Core
                         Guid id = Guid.Parse(Required(r, "id")); string name = Required(r, "name"), kind = Required(r, "kind"); MEMNode node;
                         switch (kind)
                         {
-                            case "Project": node = new CxProject(id, name); break;
-                            case "Page": node = legacy ? (MEMNode)new CxPage(id, name) : new MEMPage(id, name, false); break;
-                            case "Content": node = legacy ? (MEMNode)new CxContent(id, name) : new MEMContent(id, name); break;
-                            case "Symbol": node = legacy ? (MEMNode)new CxSymbol(id, name) : new MEMSymbol(id, name, false); break;
-                            case "Group": node = legacy ? (MEMNode)new CxGroup(id, name) : new MRCGroup(id, name); break;
-                            case "Element": node = legacy ? (MEMNode)new CxElement(id, name, Number(r,"x",0),Number(r,"y",0),Number(r,"width",120),Number(r,"height",80)) : new MRCRectangle(id,name,Number(r,"x",0),Number(r,"y",0),Number(r,"width",120),Number(r,"height",80)); break;
+                            case "Project": node = new MEMProject(id, name); break;
+                            case "Page": node = new MEMPage(id, name, false); break;
+                            case "Content": node = new MEMContent(id, name); break;
+                            case "Symbol": node = new MEMSymbol(id, name, false); break;
+                            case "Group": node = new MRCGroup(id, name); break;
+                            case "Element": node = new MRCRectangle(id,name,Number(r,"x",0),Number(r,"y",0),Number(r,"width",120),Number(r,"height",80)); break;
                             default: throw new InvalidDataException("Unknown kind " + kind);
                         }
                         var declaredType = r.GetAttribute("typeId"); if (declaredType != null && declaredType != node.TypeId) throw new InvalidDataException("Unsupported TypeId");
@@ -163,7 +163,15 @@ namespace CxVisual.Mechanism.Core
                             visual.IsVisible = r.GetAttribute("visible") == null || XmlConvert.ToBoolean(r.GetAttribute("visible"));
                             visual.IsSelectable = r.GetAttribute("selectable") == null || XmlConvert.ToBoolean(r.GetAttribute("selectable"));
                         }
-                        if (stack.Count == 0) { if (project != null || !(node is CxProject)) throw new InvalidDataException("Exactly one project required"); project = (CxProject)node; }
+                        if (stack.Count == 0) { if (project != null || !(node is MEMProject)) throw new InvalidDataException("Exactly one project required"); project = (MEMProject)node; }
+                        else if (legacy && node is MEMSymbol && stack.Peek() is MEMContent)
+                        {
+                            // Legacy Content-owned symbols become a shared definition plus an explicit use record.
+                            var owner = (MEMContent)stack.Peek();
+                            if (project == null) throw new InvalidDataException("Legacy symbol without project");
+                            project.InsertOwned(project.Children.Count, node);
+                            references.Add(new MRIResourceReference(Guid.NewGuid(), name, id, MRIReferenceKind.Symbol, owner));
+                        }
                         else stack.Peek().InsertOwned(stack.Peek().Children.Count, node);
                         if (!r.IsEmptyElement) stack.Push(node);
                     }
@@ -184,17 +192,17 @@ namespace CxVisual.Mechanism.Core
                     else throw new InvalidDataException("Unknown engineering field " + r.Name);
                 }
                 if (project == null || stack.Count != 0) throw new InvalidDataException("Incomplete project");
-                var document = new CxProjectDocument(project, revision);
+                var document = new MEMEngineeringSession(project, revision);
                 foreach (var reference in references)
                 {
-                    var target = document.Session.Find(reference.TargetId);
+                    var target = document.Find(reference.TargetId);
                     if ((reference.Kind == MRIReferenceKind.Symbol) != (target is MEMSymbol)) throw new InvalidDataException("Reference target kind mismatch");
                     var overrides=reference.OverrideItems;reference.OverrideItems=null;
-                    document.Session.CheckReference(reference.Owner, target); document.Session.IndexReference(reference);reference.OverrideItems=overrides;
+                    document.CheckReference(reference.Owner, target); document.IndexReference(reference);reference.OverrideItems=overrides;
                     if (reference.Owner.ReferenceItems == null) reference.Owner.ReferenceItems = new List<MRIResourceReference>();
                     reference.Owner.ReferenceItems.Add(reference);
                 }
-                document.Session.AttachLoadedDeclarations(declarations);document.ValidateTree(); return document;
+                document.AttachLoadedDeclarations(declarations); if(!document.Validate().IsValid) throw new InvalidDataException("Invalid engineering tree"); return document;
             }
         }
     }

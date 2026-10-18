@@ -7,12 +7,12 @@ namespace CxVisual.Mechanism.Visual
 {
     public static class CxSceneProjection
     {
-        public static ReadOnlyCollection<CxSceneItem> Project(CxProjectDocument document)
+        public static ReadOnlyCollection<CxSceneItem> Project(MEMEngineeringSession session)
         {
-            if (document == null) throw new ArgumentNullException("document");
+            if (session == null) throw new ArgumentNullException("session");
             List<CxSceneItem> result = new List<CxSceneItem>();
             // Library definitions are not placed page instances. Preserve the existing all-page preview.
-            foreach (var page in document.Session.Project.Pages) Collect(page, result);
+            foreach (var page in session.Project.Pages) Collect(page, result);
             return result.AsReadOnly();
         }
         public static Guid? HitTest(IList<CxSceneItem> items, CxPoint2D point)

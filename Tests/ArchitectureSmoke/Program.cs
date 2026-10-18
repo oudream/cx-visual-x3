@@ -73,8 +73,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         { if (!ok) throw new InvalidOperationException(message); }
         private static void UiIndependentAssemblies()
         {
-            Assembly[] assemblies = { typeof(CxProjectDocument).Assembly, typeof(CxVisualEditor).Assembly,
-                typeof(CxEngineeringSession).Assembly };
+            Assembly[] assemblies = { typeof(MEMEngineeringSession).Assembly, typeof(CxVisualEditor).Assembly };
             foreach (Assembly assembly in assemblies)
                 foreach (AssemblyName reference in assembly.GetReferencedAssemblies())
                 {
@@ -83,36 +82,60 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         "WPF leaked into core: " + assembly.GetName().Name + "/" + reference.Name);
                 }
         }
+        private static MEMEngineeringSession CreateSample()
+        {
+            var session = MEMEngineering.Create("Architecture Sample");
+            var page = session.AddPage("Main Page");
+            var group = session.AddGroup(page.RootContent, "Drawing Group");
+            session.AddRectangle(group, "Detector", 50, 65, 170, 100);
+            session.AddRectangle(group, "Source", 300, 180, 125, 75);
+            session.ClearHistory();
+            return session;
+        }
+        private static MRCGroup FirstGroup(MEMEngineeringSession session)
+        {
+            foreach (var child in session.Project.Pages[0].RootContent.VisualItems)
+                if (child is MRCGroup) return (MRCGroup)child;
+            throw new InvalidOperationException("Missing visual group");
+        }
         private static void HierarchyTransactionPersistence()
         {
-            CxProjectDocument document = CxDocumentFactory.CreateSample();
-            Check(document.Project.Kind == CxNodeKind.Project, "Invalid root");
-            CxNode page = document.Project.Children[0];
-            Check(page.Kind == CxNodeKind.Page && page.Children[0].Kind == CxNodeKind.Content,
-                "Incorrect six-level engineering tree");
-            CxGroup group = CxDocumentFactory.FirstGroup(document);
-            int before = group.Children.Count;
-            CxElement temporary = new CxElement(Guid.NewGuid(), "Transactional", 5, 6, 20, 20);
-            CxChangeOperation[] bad = { CxChangeOperation.Add(group.Id, temporary),
-                CxChangeOperation.Move(Guid.NewGuid(), 1, 2) };
-            CxCommitResult rejected = document.Commit(bad, 0);
-            Check(!rejected.Success && document.Revision == 0 && group.Children.Count == before
+            var document = CreateSample();
+            Check(document.Project.Kind == MEMNodeKind.Project, "Invalid root");
+            MEMNode page = document.Project.Children[0];
+            Check(page.Kind == MEMNodeKind.Page && page.Children[0].Kind == MEMNodeKind.Content,
+                "Incorrect engineering tree");
+            MRCGroup group = FirstGroup(document);
+            int before = group.Children.Count, revision = document.Revision;
+            var temporary = new MRCRectangle(Guid.NewGuid(), "Transactional", 5, 6, 20, 20);
+            var unknown = new MRCRectangle(Guid.NewGuid(), "Unknown", 1, 2, 20, 20);
+            var rejected = document.Edit("Reject invalid batch", e =>
+            {
+                e.Add(group, temporary);
+                e.Move(unknown, 1, 2);
+                return true;
+            });
+            Check(!rejected.Success && document.Revision == revision && group.Children.Count == before
                 && temporary.Parent == null, "Atomic rollback failed");
-            CxCommitResult conflict = document.Commit(new[] { CxChangeOperation.Add(group.Id, temporary) }, 5);
-            Check(!conflict.Success && conflict.ErrorCode == "REVISION_CONFLICT", "Optimistic lock missing");
-            string path = Path.Combine(Path.GetTempPath(), "cxvisual-" + Guid.NewGuid().ToString("N") + ".xml");
+            var conflict = document.Edit("Reject stale batch", revision + 5, e =>
+            {
+                e.Add(group, temporary);
+                return true;
+            });
+            Check(!conflict.Success && conflict.ErrorCode == "org.version.conflict", "Optimistic lock missing");
+            string path = Path.Combine(Path.GetTempPath(), "cxvisual-" + Guid.NewGuid().ToString("N") + ".cxproj");
             try
             {
-                CxDocumentSerializer.Save(document, path);
-                CxProjectDocument loaded = CxDocumentSerializer.Load(path);
-                Check(loaded.Project.Id == document.Project.Id && loaded.Revision == 0, "XML roundtrip failed");
-                Check(CxDocumentFactory.FirstGroup(loaded).Children.Count == before, "XML children missing");
+                document.SaveAs(path);
+                var loaded = MEMEngineering.Open(path);
+                Check(loaded.Project.Id == document.Project.Id && loaded.Revision == revision, "Project roundtrip failed");
+                Check(FirstGroup(loaded).Children.Count == before, "Project children missing");
             }
             finally { if (File.Exists(path)) File.Delete(path); }
         }
         private static void UndoRedo()
         {
-            CxVisualEditor editor = new CxVisualEditor(new CxEngineeringSession(CxDocumentFactory.CreateSample()));
+            var editor = new CxVisualEditor(CreateSample());
             int count = editor.Scene.Count;
             Check(editor.AddRectangle("New", 10, 20, 30, 40).Success, "Add failed");
             Check(editor.Scene.Count == count + 1 && editor.CanUndo, "Add not recorded");
@@ -132,10 +155,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
         }
         private static void RejectedCommand()
         {
-            CxVisualEditor editor = new CxVisualEditor(new CxEngineeringSession(CxDocumentFactory.CreateSample()));
-            CxCommitResult result = editor.Move(Guid.NewGuid(), 20, 30);
+            var editor = new CxVisualEditor(CreateSample());
+            int revision = editor.Document.Revision;
+            var result = editor.Move(Guid.NewGuid(), 20, 30);
             Check(!result.Success, "Unknown element moved");
-            Check(editor.Document.Revision == 0, "Rejected command changed revision");
+            Check(editor.Document.Revision == revision, "Rejected command changed revision");
             Check(!editor.CanUndo, "Rejected command entered undo history");
         }
     }

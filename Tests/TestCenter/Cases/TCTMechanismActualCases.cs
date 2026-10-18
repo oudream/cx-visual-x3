@@ -30,15 +30,15 @@ namespace CxVisual.TestCenter.Cases
             "Visual / Projection", ObjectId = "CxSceneProjection")]
         public static void ProjectionAndHitTest(TCTTestContext context)
         {
-            CxProjectDocument document = CxDocumentFactory.CreateSample();
+            MEMEngineeringSession document = TCTRealCases.CreateOrganizationSample();
             IList<CxSceneItem> scene = CxSceneProjection.Project(document);
             context.AssertEqual(2, scene.Count, "真实场景元素数");
             Guid detector = scene.First(x => x.Name == "Detector").Id;
             Guid? hit = CxSceneProjection.HitTest(scene, new CxPoint2D(60, 75));
             context.AssertEqual((Guid?)detector, hit, "原位置命中真实元素");
 
-            CxVisualEditor editor = new CxVisualEditor(new CxEngineeringSession(document));
-            CxCommitResult moved = editor.Move(detector, 500, 500);
+            CxVisualEditor editor = new CxVisualEditor(document);
+            MTCEditResult<bool> moved = editor.Move(detector, 500, 500);
             context.AssertTrue(moved.Success, "工程Move已提交", true, moved.Success);
             IList<CxSceneItem> updated = editor.Scene;
             context.AssertEqual((Guid?)null,
@@ -55,10 +55,11 @@ namespace CxVisual.TestCenter.Cases
             "Visual / Editing", ObjectId = "CxVisualEditor")]
         public static void UndoRedoAndRevision(TCTTestContext context)
         {
-            CxProjectDocument document = CxDocumentFactory.CreateSample();
-            CxVisualEditor editor = new CxVisualEditor(new CxEngineeringSession(document));
+            MEMEngineeringSession document = TCTRealCases.CreateOrganizationSample();
+            CxVisualEditor editor = new CxVisualEditor(document);
             int initial = editor.Scene.Count;
-            CxCommitResult add = editor.AddRectangle("TCT-Rectangle", 450, 20, 30, 40);
+            int initialRevision = document.Revision;
+            MTCEditResult<bool> add = editor.AddRectangle("TCT-Rectangle", 450, 20, 30, 40);
             context.AssertTrue(add.Success, "增加真正图元成功", true, add.Success);
             context.AssertEqual(initial + 1, editor.Scene.Count, "添加后场景数量");
             context.AssertTrue(editor.CanUndo, "可撤销", true, editor.CanUndo);
@@ -67,7 +68,7 @@ namespace CxVisual.TestCenter.Cases
             context.AssertTrue(editor.CanRedo, "可重做", true, editor.CanRedo);
             context.AssertTrue(editor.Redo().Success, "Redo事务", true, true);
             context.AssertEqual(initial + 1, editor.Scene.Count, "Redo还原数量");
-            context.AssertEqual(3, document.Revision, "三次事务推进Revision");
+            context.AssertEqual(initialRevision + 3, document.Revision, "三次事务推进Revision");
             context.Observe("ObjectTree", "Visual编辑生命周期",
                 "Add → Undo → Redo; Revision=" + document.Revision + "; SceneItems=" + editor.Scene.Count);
         }

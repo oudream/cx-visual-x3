@@ -18,7 +18,7 @@ namespace CxVisual.Mechanism.Core
     }
 
     /// <summary>Only identity/navigation storage. Optional abilities and child lists belong to derived owners.</summary>
-    public abstract class MEMNode : CxNode
+    public abstract class MEMNode
     {
         internal const int MaximumDepth = 256;
         internal const int MaximumNodeCount = 2000000;
@@ -29,12 +29,12 @@ namespace CxVisual.Mechanism.Core
         {
             Id = new FOIStableId(id).Value; _name = NormalizeName(name); TypeId = typeId; Kind = kind;
         }
-        public new Guid Id { get; private set; }
-        public new string Name { get { return _name; } }
+        public Guid Id { get; private set; }
+        public string Name { get { return _name; } }
         public string TypeId { get; private set; }
-        public new MEMNodeKind Kind { get; private set; }
-        public new MEMNode Parent { get { return _parent; } }
-        public new IReadOnlyList<MEMNode> Children { get { return Owned; } }
+        public MEMNodeKind Kind { get; private set; }
+        public MEMNode Parent { get { return _parent; } }
+        public IReadOnlyList<MEMNode> Children { get { return Owned; } }
         public MEMNode FirstChild { get { return Owned.Count == 0 ? null : Owned[0]; } }
         public MEMNode LastChild { get { return Owned.Count == 0 ? null : Owned[Owned.Count-1]; } }
         public MEMNode PreviousSibling { get { if(Parent==null)return null;int i=Parent.IndexOf(this);return i<=0?null:Parent.Children[i-1]; } }
@@ -95,7 +95,7 @@ namespace CxVisual.Mechanism.Core
             while (stack.Count != 0) { var n = stack.Pop(); yield return n; for (int i = n.Owned.Count - 1; i >= 0; i--) stack.Push(n.Owned[i]); }
         }
         public IEnumerable<MEMNode> Ancestors() { for (var n = Parent; n != null; n = n.Parent) yield return n; }
-        public new MEMNode Find(Guid id)
+        public MEMNode Find(Guid id)
         {
             var session = OwnerSession;
             if (session != null)
@@ -187,7 +187,7 @@ namespace CxVisual.Mechanism.Core
         public IReadOnlyList<MEMContent> Contents { get { return new MEMTypedView<MEMContent>(() => Owned.OfType<MEMContent>()); } }
         public IReadOnlyList<MRCVisualItem> VisualItems { get { return new MEMTypedView<MRCVisualItem>(() => Owned.OfType<MRCVisualItem>()); } }
         internal override IReadOnlyList<MEMNode> Owned { get { return _items == null ? Empty : _items; } }
-        internal override bool Accepts(MEMNode child) { return child is MEMContent || child is MRCVisualItem || (this is CxContent && child is CxSymbol); }
+        internal override bool Accepts(MEMNode child) { return child is MEMContent || child is MRCVisualItem; }
         internal override void InsertCore(int index, MEMNode child) { if (_items == null) _items = new MEMChildList<MEMNode>(); _items.Insert(index, child); }
         internal override void RemoveCore(MEMNode child) { _items.Remove(child); }
     }

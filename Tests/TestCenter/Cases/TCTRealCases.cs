@@ -32,13 +32,13 @@ namespace CxVisual.TestCenter.Cases
             Add(catalog, "F-GEO-003", "Affine2D 平移变换", TCTTestAspect.Foundation,
                 "Geometry", "CA-VIS-01", "CAP-GEOMETRY-TRANSFORM", "CxAffine2D", Transform);
             Add(catalog, "M-OBJ-001", "六对象 Ownership 组织", TCTTestAspect.Mechanism,
-                "Object / Ownership", "CA-ORG-01", "CAP-ORG-OWNERSHIP", "CxProjectDocument", Ownership);
+                "Object / Ownership", "CA-ORG-01", "CAP-ORG-OWNERSHIP", "MEMEngineeringSession", Ownership);
             Add(catalog, "M-OBJ-002", "原子提交失败回滚", TCTTestAspect.Mechanism,
-                "Object / Transaction", "CA-ORG-01", "CAP-ORG-ATOMIC", "CxProjectDocument", AtomicRollback);
+                "Object / Transaction", "CA-ORG-01", "CAP-ORG-ATOMIC", "MEMEngineeringSession", AtomicRollback);
             Add(catalog, "M-OBJ-003", "工程 XML 保存加载", TCTTestAspect.Mechanism,
-                "Object / Persistence", "CA-ORG-01", "CAP-ORG-ROUNDTRIP", "CxDocumentSerializer", RoundTrip);
+                "Object / Persistence", "CA-ORG-01", "CAP-ORG-ROUNDTRIP", "MEMFileProjectStore", RoundTrip);
             Add(catalog, "M-OBJ-004", "Revision 冲突拒绝", TCTTestAspect.Mechanism,
-                "Object / Transaction", "CA-ORG-01", "CAP-ORG-REVISION", "CxProjectDocument", RevisionConflict);
+                "Object / Transaction", "CA-ORG-01", "CAP-ORG-REVISION", "MEMEngineeringSession", RevisionConflict);
         }
 
         private static void Add(TCTTestCatalog catalog, string id, string name, TCTTestAspect aspect,
@@ -75,74 +75,103 @@ namespace CxVisual.TestCenter.Cases
             context.Observe("Geometry", "Affine2D", "(2,4) 经平移(30,40) → (" + point.X + "," + point.Y + ")");
         }
 
+        internal static MEMEngineeringSession CreateOrganizationSample()
+        {
+            var session = MEMEngineering.Create("TCT organization");
+            var page = session.AddPage("Main Page");
+            var group = session.AddGroup(page.RootContent, "Drawing Group");
+            session.AddRectangle(group, "Detector", 50, 65, 170, 100);
+            session.AddRectangle(group, "Source", 300, 180, 125, 75);
+            var symbol = session.AddSymbol("Shared Symbol");
+            session.AddRectangle(symbol.RootGroup, "Template Item", 0, 0, 50, 50);
+            session.PlaceSymbol(page.RootContent, symbol, "Symbol Instance");
+            session.ClearHistory();
+            return session;
+        }
+        internal static MRCGroup FirstGroup(MEMEngineeringSession session)
+        {
+            foreach (var page in session.Project.Pages)
+                foreach (var item in page.RootContent.VisualItems)
+                    if (item is MRCGroup) return (MRCGroup)item;
+            throw new InvalidOperationException("Missing group");
+        }
         private static void Ownership(TCTTestContext context)
         {
-            CxProjectDocument document = CxDocumentFactory.CreateSample();
-            CxNode project = document.Project;
-            CxNode page = project.Children[0];
-            CxNode content = page.Children[0];
-            CxNode symbol = content.Children[0];
-            CxNode group = symbol.Children[0];
-            context.AssertTrue(page.Kind == CxNodeKind.Page && page.Parent == project,
+            var session = CreateOrganizationSample();
+            var project = session.Project;
+            var page = project.Pages[0];
+            var content = page.RootContent;
+            var symbol = project.Symbols[0];
+            var group = FirstGroup(session);
+            context.AssertTrue(page.Parent == project && page.Kind == MEMNodeKind.Page,
                 "Page父子关系", "Page / Project", page.Kind + " / " + page.Parent.Kind);
-            context.AssertTrue(content.Kind == CxNodeKind.Content && content.Parent == page,
+            context.AssertTrue(content.Parent == page && content.Kind == MEMNodeKind.Content,
                 "Content父子关系", "Content / Page", content.Kind + " / " + content.Parent.Kind);
-            context.AssertTrue(symbol.Kind == CxNodeKind.Symbol && group.Kind == CxNodeKind.Group,
-                "Symbol-Group关系", "Symbol / Group", symbol.Kind + " / " + group.Kind);
-            context.AssertTrue(group.Children.Count == 2 && group.Children[0].Kind == CxNodeKind.Element,
+            context.AssertTrue(symbol.RootGroup.Parent == symbol && symbol.Kind == MEMNodeKind.Symbol,
+                "Symbol根关系", "Symbol / Group", symbol.Kind + " / " + symbol.RootGroup.Kind);
+            context.AssertTrue(group.Children.Count == 2 && group.Children[0].Kind == MEMNodeKind.Element,
                 "Element子节点数量", 2, group.Children.Count);
-            context.Observe("ObjectTree", "Ownership", "Project → Page → Content → Symbol → Group → 2 Elements（按当前仓库样例验证）");
+            context.AssertTrue(content.References.Count == 1 && content.References[0].TargetId == symbol.Id,
+                "独立定义有使用记录", symbol.Id, content.References[0].TargetId);
+            context.Observe("ObjectTree", "Ownership", "Project → Page/Content/Group/Element; standalone Symbol is referenced rather than multiply owned");
         }
-
         private static void AtomicRollback(TCTTestContext context)
         {
-            CxProjectDocument document = CxDocumentFactory.CreateSample();
-            CxGroup group = CxDocumentFactory.FirstGroup(document);
-            int before = group.Children.Count;
-            CxElement temporary = new CxElement(Guid.NewGuid(), "Temp", 5, 6, 20, 20);
-            CxChangeOperation[] batch = {
-                CxChangeOperation.Add(group.Id, temporary),
-                CxChangeOperation.Move(Guid.NewGuid(), 1, 2)
-            };
-            CxCommitResult result = document.Commit(batch, document.Revision);
+            var session = CreateOrganizationSample();
+            var group = FirstGroup(session);
+            int before = group.Children.Count, revision = session.Revision;
+            var temporary = new MRCRectangle(Guid.NewGuid(), "Temp", 5, 6, 20, 20);
+            var unknown = new MRCRectangle(Guid.NewGuid(), "Unknown", 1, 2, 20, 20);
+            var result = session.Edit("Atomic rollback", e =>
+            {
+                e.Add(group, temporary);
+                e.Move(unknown, 1, 2);
+                return true;
+            });
             context.AssertTrue(!result.Success, "无效批次拒绝", false, result.Success);
-            context.AssertTrue(document.Revision == 0, "Revision未增加", 0, document.Revision);
+            context.AssertTrue(session.Revision == revision, "Revision未增加", revision, session.Revision);
             context.AssertTrue(group.Children.Count == before, "恢复子节点数量", before, group.Children.Count);
             context.AssertTrue(temporary.Parent == null, "临时节点脱离父节点", true, temporary.Parent == null);
-            context.Observe("ObjectTree", "Atomic rollback", "首条Add成功，第二条Move失败，整体恢复至提交前");
+            context.Observe("ObjectTree", "Atomic rollback", "第一条Add后第二条Move失败，同一Session原子逆恢复");
         }
-
         private static void RoundTrip(TCTTestContext context)
         {
-            CxProjectDocument document = CxDocumentFactory.CreateSample();
-            string file = Path.Combine(Path.GetTempPath(), "CxVisual-TCT-" + Guid.NewGuid().ToString("N") + ".xml");
+            var session = CreateOrganizationSample();
+            string file = Path.Combine(Path.GetTempPath(), "CxVisual-TCT-" + Guid.NewGuid().ToString("N") + ".cxproj");
             try
             {
-                CxDocumentSerializer.Save(document, file);
-                CxProjectDocument restored = CxDocumentSerializer.Load(file);
-                context.AssertTrue(restored.Project.Id == document.Project.Id,
-                    "Project ID保持", document.Project.Id, restored.Project.Id);
-                context.AssertTrue(restored.Revision == document.Revision,
-                    "Revision保持", document.Revision, restored.Revision);
-                int expected = CxDocumentFactory.FirstGroup(document).Children.Count;
-                int actual = CxDocumentFactory.FirstGroup(restored).Children.Count;
+                session.SaveAs(file);
+                var restored = MEMEngineering.Open(file);
+                context.AssertTrue(restored.Project.Id == session.Project.Id,
+                    "Project ID保持", session.Project.Id, restored.Project.Id);
+                context.AssertTrue(restored.Revision == session.Revision,
+                    "Revision保持", session.Revision, restored.Revision);
+                int expected = FirstGroup(session).Children.Count;
+                int actual = FirstGroup(restored).Children.Count;
                 context.AssertTrue(actual == expected, "子元素数量保持", expected, actual);
-                context.Observe("ObjectTree", "RoundTrip", "使用临时文件完成真实CxDocumentSerializer.Save/Load；退出后删除");
+                context.AssertTrue(restored.Project.Symbols.Count == 1
+                    && restored.Project.Pages[0].RootContent.References.Count == 1,
+                    "共享资源引用往返", true, true);
+                context.Observe("ObjectTree", "RoundTrip", "真实工程包保存/加载保持唯一对象及资源引用");
             }
             finally { if (File.Exists(file)) File.Delete(file); }
         }
-
         private static void RevisionConflict(TCTTestContext context)
         {
-            CxProjectDocument document = CxDocumentFactory.CreateSample();
-            CxGroup group = CxDocumentFactory.FirstGroup(document);
-            CxElement temporary = new CxElement(Guid.NewGuid(), "Conflict", 1, 2, 3, 4);
-            CxCommitResult rejected = document.Commit(new [] { CxChangeOperation.Add(group.Id, temporary) }, 42);
+            var session = CreateOrganizationSample();
+            var group = FirstGroup(session);
+            int revision = session.Revision;
+            var temporary = new MRCRectangle(Guid.NewGuid(), "Conflict", 1, 2, 3, 4);
+            var rejected = session.Edit("Stale revision", revision + 42, e =>
+            {
+                e.Add(group, temporary);
+                return true;
+            });
             context.AssertTrue(!rejected.Success, "冲突拒绝", false, rejected.Success);
-            context.AssertTrue(rejected.ErrorCode == "REVISION_CONFLICT", "错误码",
-                "REVISION_CONFLICT", rejected.ErrorCode);
-            context.AssertTrue(document.Revision == 0 && temporary.Parent == null, "工程未变更", true,
-                document.Revision == 0 && temporary.Parent == null);
+            context.AssertTrue(rejected.ErrorCode == "org.version.conflict", "错误码",
+                "org.version.conflict", rejected.ErrorCode);
+            context.AssertTrue(session.Revision == revision && temporary.Parent == null,
+                "工程未变更", true, session.Revision == revision && temporary.Parent == null);
         }
     }
 }
