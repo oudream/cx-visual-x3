@@ -11,6 +11,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="MVIInteractionEventArgs.cs"/>
+    <Compile Include="MOLFlowLayout.cs"/>
     <Reference Include="System"/>
     <Reference Include="System.Core"/>
   </ItemGroup>

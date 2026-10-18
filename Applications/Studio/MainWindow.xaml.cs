@@ -1,5 +1,12 @@
 using System;
 using System.IO;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Windows.Threading;
+using CxVisual.Foundation.Infrastructure.Concurrency;
+using CxVisual.Mechanism.Orchestration;
+using CxVisual.Mechanism.Runtime.Execution;
 using System.Linq;
 using System.Windows;
 using CxVisual.Mechanism.Core;
@@ -14,12 +21,16 @@ namespace CxVisual.Studio
     public partial class MainWindow : Window
     {
         private readonly StudioViewModel _viewModel;
+        private readonly MOLRuntimeOverlay _logicOverlay=new MOLRuntimeOverlay();
+        private MRKFlowHandle _logicFlow;
+        private bool _logicRunning;
         public MainWindow()
         {
             InitializeComponent();
             _viewModel = new StudioViewModel();
             _viewModel.ConfirmReplace = ConfirmProjectReplacement;
             DataContext = _viewModel;
+            LogicHost.BlockSelected += (sender, args) => LogicInfo.Text = "已选逻辑块: " + args.BlockId.ToString("N");
             SceneHost.NodeActivated += OnActivated;
             SceneHost.MoveRequested += OnMove;
             _viewModel.SceneChanged += (sender, args) => RefreshScene();
@@ -167,10 +178,105 @@ namespace CxVisual.Studio
         }
         protected override void OnClosed(System.EventArgs e)
         {
+            if(_logicFlow!=null)_logicFlow.RequestCancel();
             _viewModel.Dispose();
             base.OnClosed(e);
         }
         private void RefreshScene()
-        { SceneHost.SetScene(_viewModel.Items, _viewModel.SelectedId); }
+        {
+            SceneHost.SetScene(_viewModel.Items, _viewModel.SelectedId);
+            if(_logicRunning)return;
+            MEMPage page=_viewModel.ActivePage;
+            LogicHost.Definition=page==null?null:
+                MOLLogicCodec.Get(_viewModel.ProjectSession.GetSnapshot().Find(page.RootContent.Id));
+            LogicHost.RuntimeStates=null;
+        }
+        private void OnCreateLogicDemo(object sender,RoutedEventArgs args)
+        {
+            if(_logicRunning)return;
+            try
+            {
+                MEMPage page=_viewModel.ActivePage;
+                if(page==null)throw new InvalidOperationException("请先创建或选择页面");
+                var model=new MOLLogicDefinition(MOLControlBlock.Sequence(
+                    MOLControlBlock.Action("Acquire"),
+                    MOLControlBlock.Parallel(MOLControlBlock.Action("AI"),MOLControlBlock.Action("CV")),
+                    MOLControlBlock.If(MOLExpression.InputTrue("accepted"),
+                        MOLControlBlock.Action("OutputOK"),MOLControlBlock.Action("OutputNG"))));
+                MOLLogicCodec.Set(_viewModel.ProjectSession,page.RootContent,model);
+                LogicHost.Definition=model;
+                LogicHost.RuntimeStates=null;
+                LogicInfo.Text="示例逻辑已通过工程Session提交到Content；可随工程保存、撤销和重开。";
+            }
+            catch(Exception ex){MessageBox.Show(this,ex.Message,"创建逻辑失败");}
+        }
+        private sealed class SimulationResolver : IMRKCapabilityResolver
+        {
+            public bool TryResolve(string id,out MRKResolvedCapability capability)
+            {
+                capability=null;
+                switch(id)
+                {
+                    case "Acquire": case "AI": case "CV": case "OutputOK": case "OutputNG":
+                        capability=new MRKResolvedCapability(async (ctx,token) =>
+                        {
+                            await Task.Delay(id=="AI"?80:20,token).ConfigureAwait(false);
+                            return (object)id;
+                        });
+                        return true;
+                    default:return false;
+                }
+            }
+        }
+        private async void OnRunLogicDemo(object sender,RoutedEventArgs args)
+        {
+            if(_logicRunning)return;
+            MRKExecutionEngine engine=null;
+            DispatcherTimer timer=null;
+            try
+            {
+                MEMPage page=_viewModel.ActivePage;
+                if(page==null)throw new InvalidOperationException("请先选择页面");
+                var compiled=new MOCEngineeringCompiler().Compile(
+                    _viewModel.ProjectSession.GetSnapshot(),page.RootContent.Id,new SimulationResolver());
+                _logicRunning=true;
+                _logicOverlay.Clear();
+                LogicHost.RuntimeStates=_logicOverlay.Snapshot();
+                engine=new MRKExecutionEngine(new FCRWorkerOptions(3,64));
+                _logicFlow=engine.StartFlow(compiled.Plan,
+                    new Dictionary<string,object>{{"accepted",true}});
+                long cursor=0;
+                Action update=()=>
+                {
+                    var changes=compiled.ReadTrace(_logicFlow,cursor);
+                    cursor=changes.NextCursor;
+                    if(changes.LostCount!=0)
+                    {
+                        LogicInfo.Text="运行追踪有数据缺口，请用Flow完整快照校准";
+                        return;
+                    }
+                    _logicOverlay.Apply(changes);
+                    LogicHost.RuntimeStates=_logicOverlay.Snapshot();
+                };
+                timer=new DispatcherTimer(DispatcherPriority.Background)
+                {Interval=TimeSpan.FromMilliseconds(150)};
+                timer.Tick+=(o,e)=>update();
+                timer.Start();
+                LogicInfo.Text="CPU仿真运行中：Plan Revision "+compiled.EngineeringRevision;
+                var result=await _logicFlow.Completion;
+                update();
+                LogicInfo.Text="仿真执行结束: "+result.State+
+                    "；FlowId="+result.FlowId.ToString("N")+
+                    (result.Error==null?"":"；错误: "+result.Error.Message);
+            }
+            catch(Exception ex){LogicInfo.Text="编排或运行失败: "+ex.Message;}
+            finally
+            {
+                if(timer!=null)timer.Stop();
+                if(engine!=null)await engine.StopAsync(true);
+                _logicFlow=null;
+                _logicRunning=false;
+            }
+        }
     }
 }

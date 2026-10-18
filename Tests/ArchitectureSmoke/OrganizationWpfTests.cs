@@ -56,6 +56,27 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         Check(pixels[inside+2] < 245 && pixels[inside+3] == 255, "transformed rectangle not painted");
                         Console.WriteLine("PASS H01 raster pixels");
                     }
+                    // The same saved logical definition is rendered in the actual WPF canvas.
+                    var logic = new MOLLogicDefinition(MOLControlBlock.Sequence(
+                        MOLControlBlock.Action("Acquire"),
+                        MOLControlBlock.If(MOLExpression.InputTrue("pass"),
+                            MOLControlBlock.Action("OK"),MOLControlBlock.Action("NG"))));
+                    MOLLogicCodec.Set(session,page.RootContent,logic);
+                    var layout=MOLFlowLayout.Build(logic);
+                    Check(layout.Count==5 && layout[1].Kind==MOLControlKind.Action,
+                        "logic view hierarchy projection wrong");
+                    var flowView=new MOLFlowCanvas { Definition=logic,
+                        RuntimeStates=new System.Collections.Generic.Dictionary<Guid,string>
+                            {{logic.Root.Children[0].Id,"Completed"}} };
+                    var flowWindow=new Window { Content=new System.Windows.Controls.ScrollViewer
+                            {Content=flowView}, Width=550,Height=390,
+                        Left=-10000,Top=-10000,ShowInTaskbar=false,
+                        ShowActivated=false,WindowStartupLocation=WindowStartupLocation.Manual };
+                    flowWindow.Show();flowView.Measure(new Size(520,360));
+                    flowView.Arrange(new Rect(0,0,520,360));flowView.UpdateLayout();
+                    Check(VisualTreeHelper.GetDrawing(flowView)!=null&&flowView.IsVisible,
+                        "real logic WPF canvas did not render");
+                    flowWindow.Close();
                     session.SetVisibility(group, false, true); Check(CxSceneProjection.Project(session).Count == 0, "hidden group projected descendants");
                     session.Close(true);
                     OrganizationStudioTests.RunOnSta();
