@@ -798,63 +798,93 @@ A得到成功提交后的Defects
 | S11 | 自动化测试/仿真 | 注入隔离、回放、不污染生产 | TestCenter+ArchitectureSmoke部分已验收 |
 | S12 | 异常/断电/恢复 | 稳定数据身份与Checkpoint一致性 | 当前无完整跨进程数据恢复协议；后续联合设计 |
 
-## 11. 验收规格：原T01～T30逐项保留，并映射现行架构
+## 11. 验收规格：原T01～T30完整继承与现行代码映射
 
-**这30项来自早期验收矩阵的目标要求；“有自动测试”仅表示相关方面在现有Tests可找到实际覆盖，不能理解为每个早期场景已经被同等级实机测试。**
+> **可追溯性原则**：此处首先完整保留V1.3每个T编号对应的原始“输入/期望/证据”，不能把某个编号借给现行其他测试。`T01～T30`是**规格目标编号**，而`TCT.MDS.001～027`是**实际TestCenter的程序ID**，两者不是同一套编号；必须建立映射但不可互相代替。
 
-| ID | 必须验收的行为 | 当前证据/继续补的反例 |
+### 11.1 V1.3原始T01—T30：完整可执行验收矩阵（保留并强化V1.1）
+
+> 以下为**验收规格**，不是已成功的测试记录。每一条需有测试输入、前置环境、实际调用入口、期望结果、故障反例、日志/计量及Commit SHA；自动化用例测试真实Foundation/Mechanism实现而非自编假存根。涉及Windows、GPU、真实设备者分级记录证据。
+
+| ID | 类型/场景 | 测试输入与操作 | 必须观察到的结果（失败反例） | 证据/门槛 |
+|---|---|---|---|---|
+| T01 | Type与Shape | 把`Image<uint16>`连到要求`Image<uint8>`的端口；ROI越维 | 编译绑定或调用前拒绝，指出端口和期待类型，不隐式截断 | Schema错误码+端口ID |
+| T02 | Scalar一行读写 | `Set("Threshold",120)`后`Get<int>`；再传错误类型 | 正常值正确；错误类型拒绝；不存在Local跨流程共享 | 自动单测 |
+| T03 | DataRef固定性 | 创建V1/V2与SHM新Generation，保存旧Ref | 旧Ref始终只指向V1；代际变化后旧Ref失败，不跳到V2 | Ref身份日志 |
+| T04 | Slot绑定与权限 | 缺少必填Input、用Output连只读Input、非法Unit/Frame | 逐项拒绝并指向映射来源；父Local无隐式继承 | 验证器报告 |
+| T05 | 三层Scope A/B/C | A→B→C映射两个输入；C输出Area | C成功后B能获得显式输出，B成功后A获得；各Local隔离 | Scope树和版本 |
+| T06 | Return原子性 | C暂存Area和Score，制造第二项类型错/异常 | **父两项均不更新**；旧版本仍可读；局部安全回收 | 原子提交前后快照 |
+| T07 | 双只读Lease | 一份4300×4300图像扇出AI和CV；两者并行延迟 | 两Lease同Version，结束前无提前释放；物理共享可复现 | LiveLease、CopyBytes、错误0 |
+| T08 | 并行分支隔离 | B#1、B#2同时使用相同Local键但不同SN | 结果按InvocationId正确归属；未声明Join写同一父Slot拒绝 | 运行Trace/冲突错误 |
+| T09 | ROI按需加载 | 8GB Volume指定16MiB ROI并随机扫描窗口 | 只读目标块且无越界；无隐含整8GB常驻 | 峰值RSS/ResidentBytes/IO字节 |
+| T10 | 配额/驱逐 | 给小内存预算、活动Lease与未租用缓存 | 仅驱逐合资格数据，或者明确拒绝/等待；绝不驱逐活动Lease | 配额指标与日志 |
+| T11 | 背压/丢弃 | 高频X-Ray连续入队并故意慢AI | 已明确可丢弃项按策略记录SN/Flow，其他项不能静默丢失 | 队列深度/拒绝计数 |
+| T12 | 读写冲突 | AI持只读V1，CV请求原地写V1 | 拒绝独占写或创建V2/COW，AI读V1不变 | 数据Hash/Version |
+| T13 | 变量质量与快照 | Good→Stale→Bad切换并更新OldValue/Time | 新旧值、质量、来源、时间原子一致 | 变量Revision/日志 |
+| T14 | 订阅生命周期 | 1000次Subscribe/Dispose，取消Scope | 不再回调已Dispose订阅，不泄漏句柄；历史不丢 | Handler/资源基线 |
+| T15 | 血缘追踪 | Image→AI/CV→Judge；配置V8，算法A1 | 结果可反查DataId、上游Ref、Flow/Work和配置算法版本 | Lineage记录 |
+| T16 | 只读Inspector | 在8GB Volume处连续打开/关闭数据查看器 | 只返回摘要且无写入/无隐式Pin或整块载入 | 内存差/读盘指标 |
+| T17 | WPF UI响应 | Carrier耗时5秒加载/10次刷新 | UI仍可交互、加载可取消，错误显示 | UI事件延迟/手工记录 |
+| T18 | 时间空间元数据 | 摄像图像与CT数据不同FrameId/时钟域，单位不符 | 验证指出不兼容；只能使用显式转换能力 | Schema/坐标日志 |
+| T19 | 配置任务固定 | Flow捕获V8，Studio保存V9，随后继续执行 | 当前任务V8，下一任务按允许策略用V9 | ConfigRevision对照 |
+| T20 | SHM重启代际 | 消费者持Ref，生产者崩溃重启同名SHM | Generation变化，旧Ref拒绝，重开后安全恢复 | 双进程故障注入 |
+| T21 | 外部AI迟到 | 超时后人工复判，故意收到旧Operation回包 | 已结束Scope不被写入；新SN不接收旧结果；保留安全Lease直到收敛 | OperationId+Trace |
+| T22 | GPU Fence | 异步GPU读数据，CPU先请求释放Carrier | GPU同步点完成前不销毁/复用显存；失败可诊断 | GPU测试/Adapter日志，P1 |
+| T23 | COW版本隔离 | AI读取V1同时CV产生增强V2 | 两分支互不修改；结果来源明确指向相应版本 | V1/V2内容Hash |
+| T24 | 设备结果与数据分离 | 发PLC/CT停止请求并模拟ACK丢失 | Data流程结束不被误报设备已安全停止 | 专业Mock+实机二级验收 |
+| T25 | 快照/回放 | 固定输入Refs、ConfigRevision、随机种子及算法版本 | 能重放确定性部分；外部设备事件要标注不可复现 | Snapshot+预期对比 |
+| T26 | 损坏数据恢复 | 载体断电中断/部分存盘/校验不一致 | 不发布损坏DataRef，不把半包当完成结果 | 故障注入日志 |
+| T27 | 跨Session/权限 | 用LineA身份尝试读取LineB私有Ref，试越权导出 | `ScopeDenied/PermissionDenied`，敏感元数据受限并审计 | 安全测试报告 |
+| T28 | 取消/异常Lease清理 | 1万次短任务+超时/异常/Join，含外部Unknown | 已确认结束的LiveLease回到基线；Unknown保留有界、可审计 | 资源监视趋势/无泄漏 |
+| T29 | 全解决方案构建 | Windows、.NET Framework 4.8、Release/x64 | 构建成功、依赖无反向、自动测试结果可复现 | CI日志+Commit SHA |
+| T30 | 系统级案例回归 | 5套历史系统与十大案例挑选真实主链、故障入口 | 能配置→运行→验证→归档；模拟/实机状态分别标注 | 工程文件+截图+Trace+实测 |
+
+
+### 11.2 按原T编号核对当前真实进度（不是改名）
+
+| 原规格范围 | 当前已有的可证明部分 | 保留待验或明确限制 |
 |---|---|---|
-| T01 | 类型/Shape越界或不兼容时拒绝端口连接 | 现有CLR端口验证；多维Shape未全实现 |
-| T02 | 标量Get/Set/Return最小行为与不存在/类型错误区分 | MDS Lifecycle/Usability自动测 |
-| T03 | 固定版本、陈旧标识不会自动指向新Buffer | 常规Heap版本有限；跨进程稳定Generation未实现 |
-| T04 | Slot显式输入映射、只读Input、父Local不隐式继承 | MRK Port与MDS Context回归 |
-| T05 | A→B→C三层子流程Input/Output映射 | MRK InlineSubflow屏障测试 |
-| T06 | 两个Output缺一个或类型错误，整组都不发布 | Frame原子输出回归 |
-| T07 | 一幅真实大图两算法同时只读、最后使用者未结束不能释放 | 只读Buffer/Flow保活已测；外部SDK精确保活待补 |
-| T08 | 并行实例同名Local隔离 | 多Flow、Scope回归 |
-| T09 | 8GB CT只按16MiB ROI读取 | 当前仅专业ROI Loader示例，不是8GB实测 |
-| T10 | 配额拒绝、异常不产生半对象，安全释放 | MDSDataBudget、Quota/Copy/File回归 |
-| T11 | 高频采图与慢AI背压、不可静默丢SN | 需要实采队列与压测 |
-| T12 | 读者持有原图时可写修改必须复制 | FDTReadOnlyBuffer/byte[]测试；外部SDK待补 |
-| T13 | 测点Good→Stale→Bad同时保证Quality/Timestamp一致 | 原Variable Owner与Studio联调 |
-| T14 | Subscribe/Dispose重复无泄漏 | 原设备/消息Owner测试，不由MDS发明新订阅 |
-| T15 | Image→AI/CV→Judge能反向追到配置和算法版本 | Vision CPU版本字段可测；全链路Lineage待建 |
-| T16 | 打开大Volume数据Inspector无隐式全量Load | Search只返元数据；真实WPF+CT待验 |
-| T17 | WPF在后台IO 5秒时保持可交互/可取消 | Loader async已存在；具体UI待验 |
-| T18 | 文件Unloaded→Loaded→Unload与失败/重试 | MDSStorage与FileLoader测试 |
-| T19 | 错误文件、更换文件版本拒绝使用旧缓存 | Size+MTime基本校验；强Hash未实现 |
-| T20 | 内存/共享内存/映射/GPU不同Carrier类型生命周期 | 普通内存与文件已测；SHM/GPU未实现 |
-| T21 | 多Run共享Plan但数据/结果不串值 | MRK/MDS+Vision多Run测试 |
-| T22 | 取消后旧Async结果不写入关闭Scope | FileLoader迟到保护测试；外部Operation另验 |
-| T23 | 超时Unknown不自动视为已安全停止硬件 | MRK ResultUnknown相关测试；设备ACK需实机 |
-| T24 | Retry时Pending重建，Heap即时副作用不能假回滚 | MDS PrepareRetry、MRK策略测试 |
-| T25 | 转移/Copy同名冲突默认拒绝、显式覆盖 | MDS Move/Copy tests |
-| T26 | Copy不共享可写嵌套Buffer，目标安全 | 专业Adapter DTO真实测试 |
-| T27 | 自定义专业Copy阻塞不得锁死无关读者 | MDS Hardening慢Adapter测试 |
-| T28 | 逻辑预算真实计费、释放、超限不发布半对象 | MDS Hardening+TestCenter.026 |
-| T29 | Search/Inspect支持类型/Run/Scope/状态、分页、不触发IO | MDS Query及4200条Smoke |
-| T30 | 完整工程/真实专业能从创建运行检查到恢复错误 | Vision CPU程序化路径已测；工程用户WPF闭环待实现 |
+| T01～T02 类型/基础值 | MRK CLR端口校验、MDS安全Get/Set/Return和类型异常 | Shape/Unit/坐标等语义转换不完整 |
+| T03 Ref固定版本 | 当前Run/Scope+FlowStack，以及FileLocator代际检查 | 稳定跨进程Ref/Generation协议暂缓 |
+| T04～T06 映射/三层/原子提交 | MRK Port、InlineSubflow和Frame原子Output测试 | UI工程用户三层编辑交互待实测 |
+| T07～T08 并行图像/调用隔离 | `FDTReadOnlyBuffer`、真实Vision并行、Stack/Scope生命周期 | 真实4300×4300相机SDK保活未实测 |
+| T09～T10 ROI与Quota | 专业文件Loader接口、限额/复制与失败原子性 | 8GB真实CT ROI IO/RSS和自动驱逐未证明 |
+| T11～T12 背压/COW冲突 | 默认只读与显式复制、MRK Worker现有能力 | 在线产线高频背压/原位独占写实测待做 |
+| T13～T14 变量质量与订阅 | `IMDSExternalBindingResolver`的委托契约 | 旧Variable Owner的Quality/Subscribe真实接入待验 |
+| T15～T16 血缘/Inspector | 轻量`Search/Inspect`、Run/Scope查询，文件不暗中Load | 持久Lineage及Workbench真实只读面板待接 |
+| T17～T19 UI/元数据/配置固定 | 加载异步、专业配置版本在Vision结果中可追溯 | WPF响应/跨坐标/正式配置快照联调待做 |
+| T20～T22 SHM/外部AI/GPU | MDS托管FileLoader迟到输出拒绝，可借鉴MRK ResultUnknown | SHM ABI、外部Operation活跃占用、GPU Fence均未实机验收 |
+| T23 COW版本隔离 | 新派生副本与原始安全只读Buffer已测 | 通用版本化COW并不存在，不宣称已实现 |
+| T24～T26 设备/回放/坏数据恢复 | MRK运行事件、错误路径、文件版本基本校验 | 真正设备ACK、确定性工业回放、损坏载体恢复仍待实测 |
+| T27 跨Session权限 | 当前Node/Run显式输入隔离和子流程屏障 | 跨Session/跨用户授权与脱敏未做完 |
+| T28 Lease清理 | 托管FlowStack/Heap逻辑保留与释放测试 | 外部Lease/Operation的1万次GPU/SHM故障尚未覆盖 |
+| T29 全解决方案CI | Windows .NET48构建、ArchitectureSmoke、TestCenter有真实CI入口 | 每次需要核对**最新SHA**，不能复用旧成功记录 |
+| T30 五大系统与案例 | 真实Vision CPU五节点链路程序化测试 | 五套历史系统与实际工程UI/实机端到端尚未全部验收 |
+
+**原始V1.3的测试状态规范继续适用**：`DESIGNED / CODED / BUILT / AUTOMATED_PASS / MANUAL_PASS / HARDWARE_PASS / BLOCKED`。即便某项基本单测成功，也不能因为“有了对应类”就提升到`HARDWARE_PASS`。
 
 ## 12. 易用性专门验收：原U01～U14 + 后续EUX01～EUX12
 
-### 12.1 U01～U14（V1.3历史目标）
+### 12.1 V1.3原始U01—U14（用户动作及客观检查，保持原编号）
 
-| ID | 开发者/编排用户可观察的通过标准 |
-|---|---|
-| U01 | D01普通算法无需手动创建Heap/Stack/Scope/Frame |
-| U02 | R1在常见输入/输出中只使用`Get/Set/Return`即可完成 |
-| U03 | 错误端口类型能在编排验证时明确定位，而不是运行期崩溃 |
-| U04 | 子流程展开/进入只需要端口映射，不画Push/Pop/Commit |
-| U05 | 默认只读共享不需管理Lease，修改产生明确新副本 |
-| U06 | 数据来源选择器对Constant/NodeOutput/Heap/Variable呈现一致 |
-| U07 | Inspector按Run/Scope/Step区分数据实例，未提交值有明确标签 |
-| U08 | 查询未加载8GB CT只看摘要，不能引起实际大IO |
-| U09 | FileLocator可从Unloaded显式Load再Unload且保留源文件 |
-| U10 | 完整异常/取消后业务看不到部分Committed Output |
-| U11 | 同名、无权限或类型不兼容时给可读错误，不自动覆盖 |
-| U12 | 真实专业算法可通过同一DataContext参与MRK运行 |
-| U13 | 两个并行Run中相同名称Key不得串值 |
-| U14 | 开发者代码和可视编排在同一能力/端口语义下结果一致 |
+这14项不额外引入新类型，而是从R1/R3实际操作衡量复杂度。
+
+| ID | 用户动作 | 客观检查 |
+|---|---|---|
+| U01 | 算法读取2个小值并返回1个结果 | 代码不手动new Heap/Push Stack/管理Lease |
+| U02 | 缺少输入或类型错误 | 指向具体Input端口，给出可理解原因 |
+| U03 | 一张Image扇出两算法 | 编排无需增加技术管理节点 |
+| U04 | 插入三层子流程 | 只映射输入输出，自动产生Scope树 |
+| U05 | 重入同一子流程N次 | N个Invocation完全隔离，结果无串值 |
+| U06 | 子流程C失败 | 父没有半成品Output，旧输出未变化 |
+| U07 | 单次运行修改阈值 | 已运行任务版本固定，下一任务按策略生效 |
+| U08 | 连接Image与Volume错误端口 | 不执行就报错，提示转换途径 |
+| U09 | 对CT选ROI | 可见ROI实际读量与预算，未整卷驻留 |
+| U10 | HMI拖测点绑定 | Unit/Quality/Time可见，断线可识别 |
+| U11 | 打开数据检查器 | 不显著改变被测Flow行为和内存占用 |
+| U12 | 用户取消外部AI | 明确“请求取消”和“已实际结束”两种状态 |
+| U13 | 两个Content实例并行 | 完全不同的运行数据作用域 |
+| U14 | 导出一次失败用例 | 有输入Ref版本、ConfigRevision、期望、实际、Trace及未验证限制 |
 
 ### 12.2 EUX01～EUX12（V1.4易用性讨论补充）
 
