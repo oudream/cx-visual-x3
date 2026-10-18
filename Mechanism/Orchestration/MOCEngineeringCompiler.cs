@@ -40,8 +40,12 @@ namespace CxVisual.Mechanism.Orchestration
         { return _steps.TryGetValue(compiledStepId, out origin); }
         public IList<MOCStepOrigin> Find(Guid blockId)
         {
+            // 循环同一Action会生成多个Step；按真实迭代序号稳定呈现，
+            // 而不是按编译ID的字典序列出（该ID包含运行结构前缀）。
             return _steps.Values.Where(o => o.BlockId == blockId)
-                .OrderBy(o => o.StepId, StringComparer.Ordinal).ToList().AsReadOnly();
+                .OrderBy(o => o.Iteration.HasValue ? 0 : 1)
+                .ThenBy(o => o.Iteration ?? int.MaxValue)
+                .ThenBy(o => o.StepId, StringComparer.Ordinal).ToList().AsReadOnly();
         }
     }
 
