@@ -12,10 +12,11 @@ namespace CxVisual.Mechanism.Core
         public MTCEditDraft BeginEdit(string intent,int expectedRevision) { lock(_gate){DemandOpen();return new MTCEditDraft(this,intent,expectedRevision);} }
         internal MVEValidationReport PreviewDraft(int expectedRevision,Action<MTCEditSession> commands)
         {
+            DemandAccess(MEMAccessOperation.Edit);
             lock(_gate)
             {
                 DemandOpen();
-                if(_editing||_callbackThread==Thread.CurrentThread.ManagedThreadId||_historyFaulted||Volatile.Read(ref _collectingTypes)!=0)throw new InvalidOperationException("org.preview.unavailable");
+                if(_editing||_callbackThread==Thread.CurrentThread.ManagedThreadId||_historyFaulted||Volatile.Read(ref _collectingTypes)!=0||Volatile.Read(ref _authorizing)!=0)throw new InvalidOperationException("org.preview.unavailable");
                 if(expectedRevision!=Revision)return new MVEValidationReport(new List<string>{"org.version.conflict"});
                 var edit=new MTCEditSession(this);var issues=new List<string>();_editing=true;
                 try { commands(edit); }
@@ -32,22 +33,25 @@ namespace CxVisual.Mechanism.Core
         }
         public MEMProjectSnapshot GetSnapshot()
         {
+            DemandAccess(MEMAccessOperation.Read);
             lock(_gate){DemandOpen();if(_editing)throw new InvalidOperationException("Snapshot requires a committed revision");return new MEMProjectSnapshot(Project,Revision);}
         }
         public IReadOnlyList<MEMNode> FindByName(string name,MEMNode scope=null)
-        {name=MEMNode.NormalizeName(name);lock(_gate){DemandOpen();scope=scope??Project;DemandNode(scope);return scope.DescendantsAndSelf().Where(n=>string.Equals(n.Name,name,StringComparison.Ordinal)).ToList().AsReadOnly();}}
+        {DemandAccess(MEMAccessOperation.Read);name=MEMNode.NormalizeName(name);lock(_gate){DemandOpen();scope=scope??Project;DemandNode(scope);return scope.DescendantsAndSelf().Where(n=>string.Equals(n.Name,name,StringComparison.Ordinal)).ToList().AsReadOnly();}}
         public IReadOnlyList<MEMNode> FindByType(string typeId,MEMNode scope=null)
-        {if(string.IsNullOrWhiteSpace(typeId))throw new ArgumentException("TypeId required");lock(_gate){DemandOpen();scope=scope??Project;DemandNode(scope);return scope.DescendantsAndSelf().Where(n=>string.Equals(n.TypeId,typeId,StringComparison.Ordinal)).ToList().AsReadOnly();}}
+        {DemandAccess(MEMAccessOperation.Read);if(string.IsNullOrWhiteSpace(typeId))throw new ArgumentException("TypeId required");lock(_gate){DemandOpen();scope=scope??Project;DemandNode(scope);return scope.DescendantsAndSelf().Where(n=>string.Equals(n.TypeId,typeId,StringComparison.Ordinal)).ToList().AsReadOnly();}}
         public MRIObjectHandle GetHandle(Guid id)
-        {lock(_gate){DemandOpen();if(Find(id)==null)throw new InvalidOperationException("org.node.missing");return new MRIObjectHandle(_sessionIdentity,Project.Id,id);}}
+        {DemandAccess(MEMAccessOperation.Read);lock(_gate){DemandOpen();if(Find(id)==null)throw new InvalidOperationException("org.node.missing");return new MRIObjectHandle(_sessionIdentity,Project.Id,id);}}
         public MEMNode Read(MRIObjectHandle handle)
-        {lock(_gate){DemandOpen();if(handle==null||handle.SessionId!=_sessionIdentity||handle.ProjectId!=Project.Id)throw new InvalidOperationException("org.handle.foreign");return Find(handle.ObjectId);}}
+        {DemandAccess(MEMAccessOperation.Read);lock(_gate){DemandOpen();if(handle==null||handle.SessionId!=_sessionIdentity||handle.ProjectId!=Project.Id)throw new InvalidOperationException("org.handle.foreign");return Find(handle.ObjectId);}}
         public MRIObjectAddress GetAddress(MEMNode node,IEnumerable<Guid> instancePath=null)
         {
+            DemandAccess(MEMAccessOperation.Read);
             lock(_gate){DemandOpen();DemandNode(node);var address=new MRIObjectAddress(Project.Id,node.ResourceRootId,node.Id,instancePath);if(Resolve(address)!=node)throw new InvalidOperationException("org.address.invalid");return address;}
         }
         public MEMNode Resolve(MRIObjectAddress address)
         {
+            DemandAccess(MEMAccessOperation.Read);
             lock(_gate)
             {
                 DemandOpen();if(address==null||address.ProjectId!=Project.Id)throw new InvalidOperationException("org.address.project_mismatch");

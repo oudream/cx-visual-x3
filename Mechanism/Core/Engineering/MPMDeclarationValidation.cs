@@ -52,6 +52,7 @@ namespace CxVisual.Mechanism.Core
         }
         public MPMBinding ResolveMappedBinding(MRIResourceReference reference,Guid targetId,string targetMember)
         {
+            DemandAccess(MEMAccessOperation.Read);
             lock(_gate)
             {
                 DemandReference(reference);var mappings=MPMDefinitionState.MappingsOf(Find(reference.TargetId)).Where(m=>m.Kind==MRCPublicMappingKind.Property&&m.TargetAddress.ObjectId==targetId&&m.TargetMemberId==targetMember).ToArray();
@@ -61,6 +62,7 @@ namespace CxVisual.Mechanism.Core
         }
         public MPMBinding ResolveMappedBinding(MRIResourceReference reference,MRIObjectAddress target,string targetMember)
         {
+            DemandAccess(MEMAccessOperation.Read);
             lock(_gate)
             {
                 DemandReference(reference);var mapping=MPMDefinitionState.MappingsOf(Find(reference.TargetId)).FirstOrDefault(m=>m.Kind==MRCPublicMappingKind.Property&&m.TargetAddress.Equals(target)&&m.TargetMemberId==targetMember);

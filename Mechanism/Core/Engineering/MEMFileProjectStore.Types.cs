@@ -7,7 +7,7 @@ using System.Xml.Linq;
 
 namespace CxVisual.Mechanism.Core
 {
-    internal static partial class MEMFileProjectStore
+    public sealed partial class MEMFileProjectStore
     {
         private static void WriteTypes(XmlWriter w,MEMProject project)
         {

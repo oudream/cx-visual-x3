@@ -42,10 +42,11 @@ namespace CxVisual.Mechanism.Core
     public sealed partial class MEMEngineeringSession
     {
         private int _collectingTypes;
-        public MPMTypeDescriptor FindType(string typeId){lock(_gate){DemandOpen();MPMTypeDescriptor value;return Project.TypeItems!=null&&Project.TypeItems.TryGetValue(typeId,out value)?value:null;}}
-        public IReadOnlyList<MPMTypeDescriptor> RegisteredTypes {get{lock(_gate){DemandOpen();return Project.TypeItems==null?MPMEmpty<MPMTypeDescriptor>.Items:Project.TypeItems.Values.OrderBy(t=>t.TypeId,StringComparer.Ordinal).ToList().AsReadOnly();}}}
+        public MPMTypeDescriptor FindType(string typeId){DemandAccess(MEMAccessOperation.Read);lock(_gate){DemandOpen();MPMTypeDescriptor value;return Project.TypeItems!=null&&Project.TypeItems.TryGetValue(typeId,out value)?value:null;}}
+        public IReadOnlyList<MPMTypeDescriptor> RegisteredTypes {get{DemandAccess(MEMAccessOperation.Read);lock(_gate){DemandOpen();return Project.TypeItems==null?MPMEmpty<MPMTypeDescriptor>.Items:Project.TypeItems.Values.OrderBy(t=>t.TypeId,StringComparer.Ordinal).ToList().AsReadOnly();}}}
         public void RegisterTypes(IMPMTypeProvider provider)
         {
+            DemandAccess(MEMAccessOperation.Edit);
             if(provider==null)throw new ArgumentNullException("provider");int revision;
             lock(_gate){DemandOpen();if(_editing||_callbackThread==Thread.CurrentThread.ManagedThreadId||Interlocked.CompareExchange(ref _collectingTypes,1,0)!=0)throw new InvalidOperationException("org.type.registration_reentrant");revision=Revision;}
             var descriptors=new List<MPMTypeDescriptor>();

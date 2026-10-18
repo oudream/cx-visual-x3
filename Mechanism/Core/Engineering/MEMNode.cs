@@ -137,6 +137,7 @@ namespace CxVisual.Mechanism.Core
     public class MEMProject : MEMNode
     {
         internal Dictionary<string,MPMTypeDescriptor> TypeItems;
+        internal Dictionary<Guid,MEMAssetReference> AssetItems;
         private MEMChildList<MEMNode> _items;
         internal MEMEngineeringSession Session;
         public MEMProject(Guid id, string name) : base(id, name, "core.project", MEMNodeKind.Project) { }
@@ -147,10 +148,10 @@ namespace CxVisual.Mechanism.Core
         public IReadOnlyList<MEMPage> Pages { get { return new MEMTypedView<MEMPage>(() => Owned.OfType<MEMPage>()); } }
         public IReadOnlyList<MEMContent> Contents { get { return new MEMTypedView<MEMContent>(() => Owned.OfType<MEMContent>()); } }
         public IReadOnlyList<MEMSymbol> Symbols { get { return new MEMTypedView<MEMSymbol>(() => Owned.OfType<MEMSymbol>()); } }
-        public IReadOnlyList<IMEMResource> Resources { get { return new MEMTypedView<IMEMResource>(() => Owned.OfType<IMEMResource>()); } }
+        public IReadOnlyList<IMEMResource> Resources { get { return new MEMTypedView<IMEMResource>(() => Owned.OfType<IMEMResource>().Concat(AssetItems==null?Enumerable.Empty<IMEMResource>():AssetItems.Values)); } }
         public IMEMResource FindResource(Guid id, bool includeEmbedded = false)
         {
-            var n = Find(id) as IMEMResource;
+            var n = Find(id) as IMEMResource;MEMAssetReference asset;if(n==null&&AssetItems!=null&&AssetItems.TryGetValue(id,out asset))n=asset;
             return n != null && (includeEmbedded || n.Scope == MEMResourceScope.Standalone) ? n : null;
         }
         public MEMPage FindPage(Guid id) { return Find(id) as MEMPage; }
@@ -217,13 +218,16 @@ namespace CxVisual.Mechanism.Core
     /// <summary>On-demand metadata snapshot. It neither owns nor duplicates the resource definition.</summary>
     public sealed class MEMResourceEntry
     {
-        internal MEMResourceEntry(IMEMResource resource)
-        { Id = resource.Id; Name = resource.Name; TypeId = resource.TypeId; StorageRootId = resource.StorageRootId; Scope = resource.Scope; }
+        internal MEMResourceEntry(IMEMResource resource,string hash,int schemaVersion,IEnumerable<Guid> dependencies)
+        { Id = resource.Id; Name = resource.Name; TypeId = resource.TypeId; StorageRootId = resource.StorageRootId; Scope = resource.Scope;ContentHash=hash;SchemaVersion=schemaVersion;Dependencies=Array.AsReadOnly(dependencies.Distinct().OrderBy(id=>id).ToArray()); }
         public Guid Id { get; private set; }
         public string Name { get; private set; }
         public string TypeId { get; private set; }
         public Guid StorageRootId { get; private set; }
         public MEMResourceScope Scope { get; private set; }
+        public string ContentHash {get;private set;}
+        public int SchemaVersion {get;private set;}
+        public IReadOnlyList<Guid> Dependencies {get;private set;}
     }
     public sealed class MRIResourceReference
     {

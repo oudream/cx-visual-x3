@@ -13,11 +13,13 @@ namespace CxVisual.Mechanism.Core
         {
             ProjectId=project.Id;Revision=revision;
             RegisteredTypes=project.TypeItems==null?MPMEmpty<MPMTypeDescriptor>.Items:project.TypeItems.Values.OrderBy(t=>t.TypeId,StringComparer.Ordinal).ToList().AsReadOnly();
+            Assets=project.AssetItems==null?MPMEmpty<MEMAssetReference>.Items:project.AssetItems.Values.ToList().AsReadOnly();
             var nodes=project.DescendantsAndSelf().Select(n=>new MEMNodeSnapshot(n)).ToList();
             Nodes=nodes.AsReadOnly();_index=nodes.ToDictionary(n=>n.Id);
         }
         public Guid ProjectId { get; private set; }
         public IReadOnlyList<MPMTypeDescriptor> RegisteredTypes {get;private set;}
+        public IReadOnlyList<MEMAssetReference> Assets {get;private set;}
         public int Revision { get; private set; }
         public IReadOnlyList<MEMNodeSnapshot> Nodes { get; private set; }
         public MEMNodeSnapshot Find(Guid id) { MEMNodeSnapshot node;return _index.TryGetValue(id,out node)?node:null; }

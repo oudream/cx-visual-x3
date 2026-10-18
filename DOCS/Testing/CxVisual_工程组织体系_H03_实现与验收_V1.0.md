@@ -57,3 +57,7 @@ D07原候选的Core→Foundation.Geometry引用没有增加：实际需要的是
 - 独立H03ContractsQuickStart编译及运行exit0；结构/DAG检查31项目77引用，未新增项目/依赖边；git diff --check通过。
 
 **范围限制**：Retarget对已公开端口连接支持无损替换；涉及嵌套内部地址、公开映射或Member引用需显式H05转移计划，当前原子拒绝。Expression/Variable/Config不在Core求值；Provider可用性不是设备验证。固定外部版本/资产包属于H04，不把项目内引用当作跨工程包已实现；H06/H07继续真实UI/运行衔接。
+
+### 本批Windows CI
+
+提交`1f64326ee23013296b1806cf25db53c56707e97e`的[工程组织Windows CI 39111822469](https://github.com/oudream/cx-visual-x3/actions/runs/39111822469)成功，job `117629385192`实际日志包含H03契约、WPF raster pixels、100000元素文件往返及H03ContractsQuickStart/H03VisualQuickStart PASS。统一运行、配置主门禁和配置底座同SHA成功；TestCenter状态单独按实际运行核验。

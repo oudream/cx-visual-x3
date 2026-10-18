@@ -5,12 +5,29 @@ using System.IO;
 using System.IO.Compression;
 using System.Threading;
 using System.Xml;
+using System.Linq;
 
 namespace CxVisual.Mechanism.Core
 {
     /// <summary>H01 format 2: one ZIP/project.xml. Schema 1 XML remains an explicit compatibility path.</summary>
-    internal static partial class MEMFileProjectStore
+    public sealed partial class MEMFileProjectStore : IMEMProjectStore
     {
+        public static readonly MEMFileProjectStore Default=new MEMFileProjectStore();
+        public void WritePackage(Stream output,MEMSaveSnapshot snapshot,CancellationToken cancellation)
+        {
+            if(output==null||!output.CanWrite)throw new ArgumentException("Writable stream required");if(snapshot==null)throw new ArgumentNullException("snapshot");
+            using(var zip=new ZipArchive(output,ZipArchiveMode.Create,true))
+            {
+                using(var content=zip.CreateEntry("project.xml",CompressionLevel.Fastest).Open())using(var xml=snapshot.OpenRead())
+                {var buffer=new byte[81920];int read;while((read=xml.Read(buffer,0,buffer.Length))!=0){cancellation.ThrowIfCancellationRequested();content.Write(buffer,0,read);}}
+                WriteAssetBytes(zip,snapshot,cancellation);
+            }
+        }
+        public MEMEngineeringSession ReadPackage(Stream input)
+        {
+            if(input==null||!input.CanRead)throw new ArgumentException("Readable stream required");
+            using(var zip=new ZipArchive(input,ZipArchiveMode.Read,true))return ReadArchive(zip);
+        }
         private static readonly CultureInfo Invariant = CultureInfo.InvariantCulture;
         private static readonly HashSet<string> ProjectFields = new HashSet<string>(new[] { "schema", "revision" }, StringComparer.Ordinal);
         private static readonly HashSet<string> NodeFields = new HashSet<string>(new[] { "id", "kind", "name", "typeId", "legacy" }, StringComparer.Ordinal);
@@ -23,33 +40,58 @@ namespace CxVisual.Mechanism.Core
                     if (reader.NamespaceURI.Length != 0 || !allowed.Contains(reader.Name)) throw new InvalidDataException("Unsupported engineering attribute " + reader.Name);
             reader.MoveToElement();
         }
-        internal static void Save(MEMEngineeringSession document, string path, CancellationToken token, bool legacy = false)
+        internal static MEMSaveSnapshot Capture(MEMEngineeringSession document,CancellationToken token)
         {
+            if(!document.Validate().IsValid)throw new InvalidDataException("Invalid engineering tree");
+            using(var xml=new MemoryStream()){Write(xml,document,2,token);if(xml.Length>512L*1024*1024)throw new InvalidDataException("Engineering snapshot budget exceeded");return new MEMSaveSnapshot(document.Project.Id,document.Revision,xml.ToArray(),document.Assets);}
+        }
+        private static string Hash(Stream stream)
+        {using(var sha=System.Security.Cryptography.SHA256.Create())return BitConverter.ToString(sha.ComputeHash(stream)).Replace("-","").ToLowerInvariant();}
+        private static string FileToken(string path){using(var file=File.OpenRead(path))return Hash(file);}
+        internal static string ResourceHash(MEMNode root)
+        {
+            using(var bytes=new MemoryStream())
+            {
+                using(var writer=XmlWriter.Create(bytes,new XmlWriterSettings{Encoding=new System.Text.UTF8Encoding(false),CloseOutput=false}))
+                {
+                    var pending=new Stack<Frame>();pending.Push(new Frame(root,-1));
+                    while(pending.Count!=0){var frame=pending.Pop();if(frame.Child==-1){WriteNodeStart(writer,frame.Node);frame.Child=0;}if(frame.Child<frame.Node.Children.Count){var child=frame.Node.Children[frame.Child++];pending.Push(frame);pending.Push(new Frame(child,-1));}else writer.WriteEndElement();}
+                }
+                bytes.Position=0;return Hash(bytes);
+            }
+        }
+        public MEMSaveResult Save(MEMSaveSnapshot snapshot, string path,string expectedToken,CancellationToken token)
+        {
+            if(snapshot==null)throw new ArgumentNullException("snapshot");
             if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException("Path required", "path");
-            if (!document.Validate().IsValid) throw new InvalidDataException("Invalid engineering tree"); token.ThrowIfCancellationRequested();
+            token.ThrowIfCancellationRequested();
             string full = Path.GetFullPath(path), directory = Path.GetDirectoryName(full);
-            bool replacing = File.Exists(full);
-            if (!legacy && replacing && !string.Equals(full, document.Location, StringComparison.OrdinalIgnoreCase)) throw new IOException("SaveAs target already exists");
             Directory.CreateDirectory(directory);
             string temp = Path.Combine(directory, ".cx-save-" + Guid.NewGuid().ToString("N") + ".tmp");
             try
             {
                 using (var file = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
                 {
-                    if (legacy) Write(file, document, 1, token);
-                    else using (var zip = new ZipArchive(file, ZipArchiveMode.Create, true))
-                        using (var content = zip.CreateEntry("project.xml", CompressionLevel.Fastest).Open()) Write(content, document, 2, token);
+                    WritePackage(file,snapshot,token);
                     file.Flush(true);
                 }
                 // Verify staged bytes before publication. No second live engineering document is built.
                 using (var file = File.OpenRead(temp))
                 {
-                    if (legacy) ValidateXmlBytes(file, token);
-                    else using (var zip = new ZipArchive(file, ZipArchiveMode.Read, true)) using (var content = zip.GetEntry("project.xml").Open()) ValidateXmlBytes(content, token);
+                    using (var zip = new ZipArchive(file, ZipArchiveMode.Read, true)) using (var content = zip.GetEntry("project.xml").Open()) ValidateXmlBytes(content, token);
                 }
                 token.ThrowIfCancellationRequested();
                 // A first-save race must fail rather than replace a file another writer just created.
-                if (replacing) File.Replace(temp, full, null); else File.Move(temp, full);
+                string nextToken=FileToken(temp);
+                // Cooperative cross-process writer lease. It is metadata, never an engineering object.
+                using(var lease=new FileStream(full+".cx-lock",FileMode.OpenOrCreate,FileAccess.ReadWrite,FileShare.None))
+                {
+                    bool replacing=File.Exists(full);
+                    if(expectedToken==null?replacing:(!replacing||FileToken(full)!=expectedToken))throw new MEMStoreConflictException(full);
+                    token.ThrowIfCancellationRequested();
+                    if (replacing) File.Replace(temp, full, null); else File.Move(temp, full);
+                }
+                return new MEMSaveResult(snapshot.ProjectId,snapshot.Revision,full,nextToken);
                 // Cancellation after this publication point cannot claim that the saved file was not written.
             }
             finally { if (File.Exists(temp)) File.Delete(temp); }
@@ -84,7 +126,7 @@ namespace CxVisual.Mechanism.Core
         {
             w.WriteStartElement("Node"); w.WriteAttributeString("id", node.Id.ToString("D")); w.WriteAttributeString("kind", node.Kind.ToString());
             w.WriteAttributeString("name", node.Name); w.WriteAttributeString("typeId", node.TypeId);
-            var project=node as MEMProject;if(project!=null)WriteTypes(w,project);
+            var project=node as MEMProject;if(project!=null){WriteTypes(w,project);WriteAssetManifest(w,project);}
             
             var visual = node as MRCVisualItem;
             if (visual != null)
@@ -104,7 +146,7 @@ namespace CxVisual.Mechanism.Core
             }
         }
         private static void Number(XmlWriter w, string name, double value) { w.WriteAttributeString(name, value.ToString("R", Invariant)); }
-        internal static MEMEngineeringSession Load(string path)
+        public MEMEngineeringSession Load(string path)
         {
             using (var file = File.OpenRead(path))
             {
@@ -114,17 +156,28 @@ namespace CxVisual.Mechanism.Core
                 {
                     using (var zip = new ZipArchive(file, ZipArchiveMode.Read, true))
                     {
-                        if (zip.Entries.Count != 1 || zip.Entries[0].FullName != "project.xml" || zip.Entries[0].Length > 512L * 1024 * 1024) throw new InvalidDataException("Unsupported/oversized H01 package");
-                        using (var content = zip.Entries[0].Open()) document = Read(content);
+                        document=ReadArchive(zip);
                     }
                 }
                 else document = Read(file);
-                document.MarkLoaded(path); return document;
+                file.Position=0;document.MarkLoaded(path,Hash(file));document.UseStore(this); return document;
             }
+        }
+        private static MEMEngineeringSession ReadArchive(ZipArchive zip)
+        {
+            var names=new HashSet<string>(StringComparer.Ordinal);long expanded=0;
+            foreach(var entry in zip.Entries)
+            {
+                if(!names.Add(entry.FullName)||(entry.FullName!="project.xml"&&(!entry.FullName.StartsWith("assets/",StringComparison.Ordinal)||entry.FullName.Length!=39||entry.FullName.Substring(7).Any(c=>!"0123456789abcdef".Contains(c))))||entry.Length>512L*1024*1024)throw new InvalidDataException("Invalid engineering package entry");
+                expanded+=entry.Length;if(expanded>768L*1024*1024||names.Count>4097)throw new InvalidDataException("Engineering package budget exceeded");
+            }
+            var definition=zip.GetEntry("project.xml");if(definition==null)throw new InvalidDataException("Project definition missing");MEMEngineeringSession document;
+            using(var content=definition.Open())document=Read(content,zip);
+            if(zip.Entries.Count!=document.Assets.Count+1)throw new InvalidDataException("Unmanifested asset entries");return document;
         }
         private static string Required(XmlReader r, string name) { var value = r.GetAttribute(name); if (value == null) throw new InvalidDataException("Missing " + name); return value; }
         private static double Number(XmlReader r, string name, double fallback) { var value = r.GetAttribute(name); return value == null ? fallback : double.Parse(value, Invariant); }
-        private static MEMEngineeringSession Read(Stream stream)
+        private static MEMEngineeringSession Read(Stream stream,ZipArchive package=null)
         {
             using (var r = Reader(stream))
             {
@@ -185,6 +238,10 @@ namespace CxVisual.Mechanism.Core
                     {
                         if(stack.Count!=1||stack.Peek()!=project||project.Children.Count!=0)throw new InvalidDataException("Type schemas must precede project resources");
                         var type=ReadType(r);if(project.TypeItems==null)project.TypeItems=new Dictionary<string,MPMTypeDescriptor>(StringComparer.Ordinal);if(project.TypeItems.Count>=4096)throw new InvalidDataException("Type registry budget exceeded");project.TypeItems.Add(type.TypeId,type);
+                    }
+                    else if(r.Name=="Asset")
+                    {
+                        if(stack.Count!=1||stack.Peek()!=project||project.Children.Count!=0)throw new InvalidDataException("Asset manifest must precede project resources");ReadAsset(r,project,package);
                     }
                     else if (r.Name == "Reference")
                     {

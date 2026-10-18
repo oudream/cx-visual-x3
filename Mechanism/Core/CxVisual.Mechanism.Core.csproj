@@ -21,6 +21,10 @@
     <Compile Include="Engineering\MPMDeclarationValidation.cs"/>
     <Compile Include="Engineering\MPMTypeDescriptor.cs"/>
     <Compile Include="Engineering\MEMFileProjectStore.Types.cs"/>
+    <Compile Include="Engineering\MEMProjectStorage.cs"/>
+    <Compile Include="Engineering\MEMAccessPolicy.cs"/>
+    <Compile Include="Engineering\MEMAssetReference.cs"/>
+    <Compile Include="Engineering\MEMFileProjectStore.Assets.cs"/>
     <Compile Include="Engineering\MTCEditSession.Visual.cs"/>
     <Compile Include="Engineering\MEMEngineeringSession.Editing.cs"/>
     <Compile Include="Engineering\MEMProjectSnapshot.cs"/>

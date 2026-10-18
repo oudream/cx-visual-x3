@@ -10,7 +10,7 @@ using CxVisual.Foundation.Data.Configuration;
 
 namespace CxVisual.Mechanism.Core
 {
-    internal static partial class MEMFileProjectStore
+    public sealed partial class MEMFileProjectStore
     {
         private static readonly Encoding StrictUtf8=new UTF8Encoding(false,true);
         private static string Encode(string value){return Convert.ToBase64String(StrictUtf8.GetBytes(value));}

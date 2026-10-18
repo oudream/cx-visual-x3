@@ -17,13 +17,14 @@ namespace CxVisual.Mechanism.Core
         private readonly Dictionary<object,Guid[]> _declarationDependencies=new Dictionary<object,Guid[]>();
         private readonly Dictionary<MPCEndpoint,HashSet<MPCConnection>> _incoming=new Dictionary<MPCEndpoint,HashSet<MPCConnection>>();
         private readonly Dictionary<MPCEndpoint,HashSet<MPCConnection>> _outgoing=new Dictionary<MPCEndpoint,HashSet<MPCConnection>>();
-        internal bool IdentityExists(Guid id){return _index.ContainsKey(id)||_references.ContainsKey(id)||_ports.ContainsKey(id)||_connections.ContainsKey(id);}
-        public MPCPort FindPort(Guid id){lock(_gate){DemandOpen();MPCPort value;return _ports.TryGetValue(id,out value)?value:null;}}
-        public MPCConnection FindConnection(Guid id){lock(_gate){DemandOpen();MPCConnection value;return _connections.TryGetValue(id,out value)?value:null;}}
+        internal bool IdentityExists(Guid id){return _index.ContainsKey(id)||_references.ContainsKey(id)||_ports.ContainsKey(id)||_connections.ContainsKey(id)||FindAsset(id)!=null;}
+        public MPCPort FindPort(Guid id){DemandAccess(MEMAccessOperation.Read);lock(_gate){DemandOpen();MPCPort value;return _ports.TryGetValue(id,out value)?value:null;}}
+        public MPCConnection FindConnection(Guid id){DemandAccess(MEMAccessOperation.Read);lock(_gate){DemandOpen();MPCConnection value;return _connections.TryGetValue(id,out value)?value:null;}}
         public MPMProperty FindProperty(MEMNode node,string member)
-        {lock(_gate){DemandOpen();DemandNode(node);return MPMDefinitionState.PropertiesOf(node).FirstOrDefault(p=>p.MemberId==member);}}
+        {DemandAccess(MEMAccessOperation.Read);lock(_gate){DemandOpen();DemandNode(node);return MPMDefinitionState.PropertiesOf(node).FirstOrDefault(p=>p.MemberId==member);}}
         public MPMBinding ResolveParameter(MRIResourceReference reference,string member)
         {
+            DemandAccess(MEMAccessOperation.Read);
             lock(_gate)
             {
                 DemandReference(reference);var property=FindProperty(Find(reference.TargetId),member);
@@ -34,9 +35,10 @@ namespace CxVisual.Mechanism.Core
         internal void DemandReference(MRIResourceReference reference)
         {DemandOpen();if(reference==null||FindReference(reference.Id)!=reference)throw new InvalidOperationException("org.reference.foreign_or_missing");}
         public MPCEndpoint Endpoint(MPCPort port)
-        {lock(_gate){DemandOpen();if(port==null||FindPort(port.Id)!=port)throw new InvalidOperationException("org.port.foreign_or_missing");return new MPCEndpoint(GetAddress(Find(port.OwnerId)),port.Id);}}
+        {DemandAccess(MEMAccessOperation.Read);lock(_gate){DemandOpen();if(port==null||FindPort(port.Id)!=port)throw new InvalidOperationException("org.port.foreign_or_missing");return new MPCEndpoint(GetAddress(Find(port.OwnerId)),port.Id);}}
         public MPCEndpoint Endpoint(MRIResourceReference reference,string publicMember)
         {
+            DemandAccess(MEMAccessOperation.Read);
             lock(_gate)
             {
                 DemandReference(reference);var node=Find(reference.TargetId);var port=MPMDefinitionState.PortsOf(node).FirstOrDefault(p=>p.MemberId==publicMember&&p.IsPublic);
@@ -103,7 +105,7 @@ namespace CxVisual.Mechanism.Core
         internal IEnumerable<Guid> BindingTargets(MPMBinding binding)
         {
             if(binding==null)yield break;
-            if(binding.Kind==MPMBindingKind.Resource){if(!(Find(binding.ResourceId.Value) is IMEMResource))throw new InvalidOperationException("org.binding.resource_missing");yield return binding.ResourceId.Value;}
+            if(binding.Kind==MPMBindingKind.Resource){if(Project.FindResource(binding.ResourceId.Value,true)==null)throw new InvalidOperationException("org.binding.resource_missing");yield return binding.ResourceId.Value;}
             if(binding.Kind==MPMBindingKind.Member)
             {var node=Resolve(binding.Address);if(node==null||!MemberExists(node,binding.MemberId))throw new InvalidOperationException("org.binding.member_missing");if(binding.Address.InstancePath.Count!=0){var last=FindReference(binding.Address.InstancePath.Last());var property=FindProperty(node,binding.MemberId);if(node.Id!=last.TargetId||property==null||!property.Descriptor.IsPublic)throw new InvalidOperationException("org.binding.member_private");}foreach(var id in AddressTargets(binding.Address))yield return id;}
         }
@@ -195,6 +197,7 @@ namespace CxVisual.Mechanism.Core
         }
         public MVEValidationReport ValidateForRun(MEMNode entry,IEnumerable<string> availableProviders=null)
         {
+            DemandAccess(MEMAccessOperation.PrepareRun);
             lock(_gate)
             {
                 DemandOpen();DemandNode(entry);var providers=new HashSet<string>(availableProviders??new string[0],StringComparer.Ordinal);var issues=new List<string>();
@@ -215,6 +218,7 @@ namespace CxVisual.Mechanism.Core
         }
         public IReadOnlyList<MRIUsage> FindUsages(Guid id)
         {
+            DemandAccess(MEMAccessOperation.Read);
             lock(_gate)
             {
                 DemandOpen();var result=new List<MRIUsage>();HashSet<MRIResourceReference> references;if(_usages.TryGetValue(id,out references))result.AddRange(references.Select(r=>new MRIUsage(r.Owner.Id,"Reference",r.Name)));

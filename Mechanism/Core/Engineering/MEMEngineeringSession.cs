@@ -40,8 +40,12 @@ namespace CxVisual.Mechanism.Core
     }
     public static class MEMEngineering
     {
-        public static MEMEngineeringSession Create(string name) { return new MEMEngineeringSession(new MEMProject(Guid.NewGuid(), name), 0); }
-        public static MEMEngineeringSession Open(string path) { return MEMFileProjectStore.Load(path); }
+        public static MEMEngineeringSession Create(string name,IMEMProjectStore store=null,IMEMAccessPolicy policy=null) { var session=new MEMEngineeringSession(new MEMProject(Guid.NewGuid(), name), 0);session.UseStore(store);session.UseAccessPolicy(policy);session.DemandAccess(MEMAccessOperation.Edit);return session; }
+        public static MEMEngineeringSession Open(string path,IMEMProjectStore store=null,IMEMAccessPolicy policy=null)
+        {
+            if(policy!=null&&!policy.IsAllowed(new MEMAccessRequest(MEMAccessOperation.Open,Guid.Empty,System.IO.Path.GetFullPath(path))))throw new UnauthorizedAccessException("Engineering open denied");
+            store=store??MEMFileProjectStore.Default;var session=store.Load(path);session.UseStore(store);session.UseAccessPolicy(policy);try{session.DemandAccess(MEMAccessOperation.Read);return session;}catch{session.Close(true);throw;}
+        }
         public static Task<MEMEngineeringSession> OpenAsync(string path, CancellationToken cancellation)
         { return Task.Run(() => { cancellation.ThrowIfCancellationRequested(); return Open(path); }, cancellation); }
     }
@@ -68,22 +72,39 @@ namespace CxVisual.Mechanism.Core
             var report = Validate();
             if (!report.IsValid) { project.Session = null; throw new InvalidOperationException(string.Join(";", report.Issues)); }
         }
-        public MEMProject Project { get; private set; }
+        private MEMProject _project;
+        public MEMProject Project { get { DemandAccess(MEMAccessOperation.Read);return _project; } private set{_project=value;} }
         public int Revision { get; private set; }
         public string Location { get; private set; }
         public bool IsDirty { get { lock (_gate) return _savedRevision != Revision; } }
         public bool IsClosed { get { lock (_gate) return _closed; } }
-        public int Count { get { lock (_gate) { DemandOpen(); return _index.Count; } } }
+        public int Count { get { DemandAccess(MEMAccessOperation.Read);lock (_gate) { DemandOpen(); return _index.Count; } } }
         public bool CanUndo { get { lock (_gate) return !_closed && !_historyFaulted && _cursor > 0; } }
         public bool CanRedo { get { lock (_gate) return !_closed && !_historyFaulted && _cursor < _history.Count; } }
         public Exception LastObserverError { get; private set; }
         internal void DemandOpen() { if (_closed) throw new InvalidOperationException("org.session.closed"); }
         internal void DemandNode(MEMNode node)
         { MEMNode found; if (node == null || !_index.TryGetValue(node.Id, out found) || found != node) throw new InvalidOperationException("org.node.foreign_or_missing"); }
-        public MEMNode Find(Guid id) { lock (_gate) { DemandOpen(); MEMNode node; return _index.TryGetValue(id, out node) ? node : null; } }
-        public MRIResourceReference FindReference(Guid id) { lock (_gate) { DemandOpen(); MRIResourceReference value; return _references.TryGetValue(id, out value) ? value : null; } }
+        public MEMNode Find(Guid id) { DemandAccess(MEMAccessOperation.Read);lock (_gate) { DemandOpen(); MEMNode node; return _index.TryGetValue(id, out node) ? node : null; } }
+        public MRIResourceReference FindReference(Guid id) { DemandAccess(MEMAccessOperation.Read);lock (_gate) { DemandOpen(); MRIResourceReference value; return _references.TryGetValue(id, out value) ? value : null; } }
         public MEMResourceEntry GetResourceEntry(Guid id)
-        { lock (_gate) { var resource = Find(id) as IMEMResource; return resource == null ? null : new MEMResourceEntry(resource); } }
+        {
+            DemandAccess(MEMAccessOperation.Read);lock(_gate)
+            {
+                var resource=Project.FindResource(id,true);if(resource==null)return null;var asset=resource as MEMAssetReference;
+                if(asset!=null)return new MEMResourceEntry(asset,asset.ContentHash,1,new Guid[0]);
+                var node=(MEMNode)resource;var type=FindType(resource.TypeId);var dependencies=new HashSet<Guid>();
+                foreach(var owned in node.DescendantsAndSelf())
+                {
+                    var content=owned as MEMContent;if(content!=null)foreach(var reference in content.References)dependencies.Add(reference.TargetId);
+                    var records=new List<object>();records.AddRange(MPMDefinitionState.PropertiesOf(owned));records.AddRange(MPMDefinitionState.PortsOf(owned));records.AddRange(MPMDefinitionState.ConnectionsOf(owned));records.AddRange(MPMDefinitionState.MappingsOf(owned));
+                    if(content!=null)records.AddRange(content.References);
+                    var visual=owned as MRCVisualItem;if(visual!=null&&visual.BindingItems!=null)foreach(var binding in visual.BindingItems)records.Add(Tuple.Create(owned.Id,binding.Key));
+                    foreach(var record in records){Guid[] targets;if(!_declarationDependencies.TryGetValue(record,out targets))continue;foreach(var target in targets){var targetNode=Find(target);if(targetNode!=null&&targetNode.ResourceRootId!=node.ResourceRootId)dependencies.Add(targetNode.ResourceRootId);if(FindAsset(target)!=null)dependencies.Add(target);}}
+                }
+                return new MEMResourceEntry(resource,MEMFileProjectStore.ResourceHash(node),type==null?1:type.SchemaVersion,dependencies.Where(dep=>dep!=resource.Id));
+            }
+        }
         private static void CheckSupportedType(MEMNode node)
         {
             var t = node.GetType();
@@ -179,13 +200,14 @@ namespace CxVisual.Mechanism.Core
         { return Edit(intent, e => { build(e); return true; }); }
         public MTCEditResult<T> Edit<T>(string intent, int expectedRevision, Func<MTCEditSession, T> build)
         {
+            DemandAccess(MEMAccessOperation.Edit);
             if (build == null) throw new ArgumentNullException("build");
             MEMNode.NormalizeName(intent); T value; int before, committedRevision;
             lock (_gate)
             {
                 DemandOpen();
                 if (_editing || _callbackThread == Thread.CurrentThread.ManagedThreadId) throw new InvalidOperationException("org.edit.reentrant");
-                if (Volatile.Read(ref _collectingTypes)!=0) throw new InvalidOperationException("org.type.provider_cannot_edit");
+                if (Volatile.Read(ref _collectingTypes)!=0||Volatile.Read(ref _authorizing)!=0) throw new InvalidOperationException("org.callback.cannot_edit");
                 if (_historyFaulted) throw new InvalidOperationException("org.history.faulted");
                 if (Revision != expectedRevision) return new MTCEditResult<T>(false, default(T), Revision, "org.version.conflict", "Stale revision");
                 if (Revision == int.MaxValue) throw new InvalidOperationException("Revision exhausted");
@@ -217,11 +239,12 @@ namespace CxVisual.Mechanism.Core
         }
         private MTCEditResult<bool> Replay(bool undo)
         {
+            DemandAccess(MEMAccessOperation.Edit);
             int committedRevision;
             lock (_gate)
             {
                 DemandOpen();
-                if (_editing || _callbackThread == Thread.CurrentThread.ManagedThreadId || _historyFaulted || Volatile.Read(ref _collectingTypes)!=0) throw new InvalidOperationException("History unavailable");
+                if (_editing || _callbackThread == Thread.CurrentThread.ManagedThreadId || _historyFaulted || Volatile.Read(ref _collectingTypes)!=0 || Volatile.Read(ref _authorizing)!=0) throw new InvalidOperationException("History unavailable");
                 if (undo ? _cursor == 0 : _cursor == _history.Count) return new MTCEditResult<bool>(false, false, Revision, "org.history.empty", "No entry");
                 if (Revision == int.MaxValue) throw new InvalidOperationException("Revision exhausted");
                 var batch = _history[undo ? _cursor - 1 : _cursor]; var done = new List<MTCMutation>(); _editing = true;
@@ -245,11 +268,11 @@ namespace CxVisual.Mechanism.Core
             Deliver(); return new MTCEditResult<bool>(true, true, committedRevision, null, null);
         }
         public void ClearHistory()
-        { lock (_gate) { DemandOpen(); if (_editing || _delivering || _historyFaulted || Volatile.Read(ref _collectingTypes)!=0) throw new InvalidOperationException("History busy/faulted"); _history.Clear(); _cursor=0; } }
+        { DemandAccess(MEMAccessOperation.Edit);lock (_gate) { DemandOpen(); if (_editing || _delivering || _historyFaulted || Volatile.Read(ref _collectingTypes)!=0 || Volatile.Read(ref _authorizing)!=0) throw new InvalidOperationException("History busy/faulted"); _history.Clear(); _cursor=0; } }
         public MTCEditResult<bool> Undo() { return Replay(true); }
         public MTCEditResult<bool> Redo() { return Replay(false); }
         public IDisposable Watch(Action<MTCChangeSet> observer)
-        { if (observer == null) throw new ArgumentNullException("observer"); lock (_gate) { DemandOpen(); _observers.Add(observer); } return new Subscription(this, observer); }
+        { DemandAccess(MEMAccessOperation.Read);if (observer == null) throw new ArgumentNullException("observer"); lock (_gate) { DemandOpen(); _observers.Add(observer); } return new Subscription(this, observer); }
         private sealed class Subscription : IDisposable
         {
             private MEMEngineeringSession _owner; private readonly Action<MTCChangeSet> _observer;
@@ -278,6 +301,7 @@ namespace CxVisual.Mechanism.Core
         }
         public MVEValidationReport Validate()
         {
+            DemandAccess(MEMAccessOperation.Read);
             lock (_gate)
             {
                 DemandOpen(); var issues = new List<string>(); var seen = new HashSet<Guid>();
@@ -291,6 +315,7 @@ namespace CxVisual.Mechanism.Core
                     if (symbol != null && (symbol.Children.Count != 1 || symbol.RootGroup == null)) issues.Add("org.symbol.root");
                 }
                 if (seen.Count != _index.Count) issues.Add("org.index.orphan");
+                if(Project.AssetItems!=null)foreach(var asset in Project.AssetItems.Values)if(!seen.Add(asset.Id)||_ports.ContainsKey(asset.Id)||_connections.ContainsKey(asset.Id)||_references.ContainsKey(asset.Id))issues.Add("org.asset.identity_conflict");
                 foreach (var reference in _references.Values)
                 { try { CheckReference(reference.Owner, _index[reference.TargetId]); } catch (Exception e) { issues.Add(e.Message); } }
                 ValidateDeclarations(issues);
@@ -317,9 +342,8 @@ namespace CxVisual.Mechanism.Core
         public void SetBinding(MRCVisualItem item, string property, MPMBinding binding) { Edit("设置绑定", e => e.SetBinding(item, property, binding)).RequireValue(); }
         public void SetVisibility(MRCVisualItem item, bool visible, bool selectable) { Edit("设置可视属性", e => e.SetVisibility(item, visible, selectable)).RequireValue(); }
         public void SaveAs(string path) { SaveAs(path, CancellationToken.None); }
-        internal void SaveAs(string path, CancellationToken cancellation, bool legacy = false)
-        { lock (_gate) { DemandOpen(); if (_editing || Volatile.Read(ref _collectingTypes)!=0) throw new InvalidOperationException("No IO in edit/provider callback"); MEMFileProjectStore.Save(this, path, cancellation, legacy); Location = System.IO.Path.GetFullPath(path); _savedRevision = Revision; } }
-        internal void SaveLegacy(string path) { SaveAs(path, CancellationToken.None, true); }
+        public void SaveAs(string path, CancellationToken cancellation)
+        { string full,expected;var snapshot=CaptureSave(path,cancellation,out full,out expected);SaveCaptured(snapshot,full,expected,cancellation); }
         public void Save() { if (Location == null) throw new InvalidOperationException("SaveAs first"); SaveAs(Location); }
         public Task SaveAsync(CancellationToken cancellation)
         {
@@ -330,15 +354,15 @@ namespace CxVisual.Mechanism.Core
                 if (_editing || Volatile.Read(ref _collectingTypes)!=0) throw new InvalidOperationException("No IO in edit/provider callback");
                 path = Location; if (path == null) throw new InvalidOperationException("SaveAs first");
             }
-            return Task.Run(() => { cancellation.ThrowIfCancellationRequested(); SaveAs(path, cancellation); }, cancellation);
+            return SaveAsAsync(path,cancellation);
         }
-        internal void MarkLoaded(string path) { Location = System.IO.Path.GetFullPath(path); _savedRevision = Revision; }
+        internal void MarkLoaded(string path,string token) { Location = System.IO.Path.GetFullPath(path); _savedRevision = Revision;StoreToken=token; }
         public void Close(bool discardChanges = false)
         {
             lock (_gate)
             {
                 if (_closed) return;
-                if (_editing || _delivering || Volatile.Read(ref _collectingTypes)!=0) throw new InvalidOperationException("Session busy");
+                if (_editing || _delivering || _saving || Volatile.Read(ref _collectingTypes)!=0 || Volatile.Read(ref _authorizing)!=0) throw new InvalidOperationException("Session busy");
                 if (IsDirty && !discardChanges) throw new InvalidOperationException("Unsaved changes; save or explicitly discard");
                 _closed = true; _observers.Clear(); _history.Clear(); _index.Clear(); _references.Clear(); _usages.Clear();
                 _ports.Clear();_connections.Clear();_declarationUses.Clear();_declarationDependencies.Clear();_incoming.Clear();_outgoing.Clear();
