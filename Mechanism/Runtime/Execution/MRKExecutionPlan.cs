@@ -171,12 +171,20 @@ namespace CxVisual.Mechanism.Runtime.Execution
         }
         /// <summary>子流程在编译期展开：复用现有Worker，不把每次子流程变成独立的线程池。</summary>
         public static IList<MRKExecutionStep> InlineSubflow(
-            string prefix, MRKExecutionPlan child, IEnumerable<string> entryDependencies)
+            string prefix, MRKExecutionPlan child, IEnumerable<string> entryDependencies,
+            IEnumerable<MRKExecutionInput> mappedInputs = null)
         {
             if (string.IsNullOrWhiteSpace(prefix)) throw new ArgumentException("前缀不能为空", "prefix");
             if (child == null) throw new ArgumentNullException("child");
             string scope = prefix + ".";
             List<string> entry = new List<string>(entryDependencies ?? new string[0]);
+            Dictionary<string, MRKExecutionInput> callerInputs = null;
+            if (mappedInputs != null)
+            {
+                callerInputs = new Dictionary<string, MRKExecutionInput>(StringComparer.Ordinal);
+                foreach (MRKExecutionInput input in mappedInputs)
+                    callerInputs.Add(input.Name, input);
+            }
             List<MRKExecutionStep> list = new List<MRKExecutionStep>();
             foreach (MRKExecutionStep current in child.Steps)
             {
@@ -190,10 +198,28 @@ namespace CxVisual.Mechanism.Runtime.Execution
                         local.CompensateAsync(context.ForSubflow(scope), token);
                 List<MRKExecutionInput> bindings = new List<MRKExecutionInput>();
                 foreach (MRKExecutionInput input in local.Inputs)
-                    bindings.Add(input.Source == MRKInputSource.StepResult ||
-                        input.Source == MRKInputSource.StepOutput ?
-                        new MRKExecutionInput(input.Name, input.Source,
-                            scope + input.SourceName, input.ValueType, input.Required) : input);
+                {
+                    if (input.Source == MRKInputSource.FlowInput && callerInputs != null)
+                    {
+                        MRKExecutionInput caller;
+                        if (!callerInputs.TryGetValue(input.SourceName, out caller))
+                            throw new ArgumentException("子流程未映射必需输入：" +
+                                child.Id + "." + input.SourceName);
+                        if (!input.ValueType.IsAssignableFrom(caller.ValueType))
+                            throw new ArgumentException("子流程入口类型不匹配：" +
+                                child.Id + "." + input.SourceName);
+                        bindings.Add(new MRKExecutionInput(input.Name,
+                            MRKInputSource.StepOutput, prefix + "$entry." +
+                            caller.Name, input.ValueType, input.Required));
+                        if (!depends.Contains(prefix + "$entry")) depends.Add(prefix + "$entry");
+                    }
+                    else
+                        bindings.Add(input.Source == MRKInputSource.StepResult ||
+                            input.Source == MRKInputSource.StepOutput ?
+                            new MRKExecutionInput(input.Name, input.Source,
+                                scope + input.SourceName, input.ValueType,
+                                input.Required) : input);
+                }
                 // 新MDS具名Output即使尚未声明DataExports，也属于子流程内部数据。
                 // 纯旧式MRK StepResult保持已有兼容入口。
                 string accessGroup = local.SubflowAccessGroup == null
