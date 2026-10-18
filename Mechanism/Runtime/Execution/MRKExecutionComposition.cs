@@ -151,8 +151,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
                             condition: request.Condition);
                         steps.Add(gate);
                         IList<MRKExecutionStep> inline = MRKExecutionPlan.InlineSubflow(
-                            request.Id, nestedPlan, new[]{gateId},
-                            request.Inputs.Count == 0 ? null : request.Inputs);
+                            request.Id, nestedPlan, new[]{gateId}, request.Inputs);
                         steps.AddRange(inline);
                         HashSet<string> depended = new HashSet<string>(
                             nestedPlan.Steps.SelectMany(x => x.Dependencies),
