@@ -10,6 +10,7 @@
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="MVIInteractionEventArgs.cs"/>
     <Reference Include="System"/>
     <Reference Include="System.Core"/>
   </ItemGroup>

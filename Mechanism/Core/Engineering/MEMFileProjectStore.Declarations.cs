@@ -123,7 +123,7 @@ namespace CxVisual.Mechanism.Core
             if(reference.PlacementValue!=null){var p=reference.Placement;Number(w,"m11",p.M11);Number(w,"m12",p.M12);Number(w,"m21",p.M21);Number(w,"m22",p.M22);Number(w,"x",p.X);Number(w,"y",p.Y);}
             foreach(var pair in reference.Overrides){w.WriteStartElement("Override");w.WriteAttributeString("property",pair.Key);WriteBinding(w,pair.Value);w.WriteEndElement();}w.WriteEndElement();
         }
-        private static MRIResourceReference ReadReference(XmlReader reader,MEMContent owner)
+        private static MRIResourceReference ReadReference(XmlReader reader,MEMNode owner)
         {
             var e=ReadSmallElement(reader);XFields(e,"id name kind target m11 m12 m21 m22 x y",true);if(e.Elements().Any(x=>x.Name!="Override"))throw new InvalidDataException("Unknown reference payload");
             var id=Guid.Parse(XRequired(e,"id"));if(id==Guid.Empty)throw new InvalidDataException("Empty reference identity");var reference=new MRIResourceReference(id,XRequired(e,"name"),Guid.Parse(XRequired(e,"target")),XEnum<MRIReferenceKind>(e,"kind"),owner);

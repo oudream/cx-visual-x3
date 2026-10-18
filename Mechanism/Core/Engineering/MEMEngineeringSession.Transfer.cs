@@ -66,7 +66,7 @@ namespace CxVisual.Mechanism.Core
             }
             foreach(var n in plan.Source.Nodes.Where(n=>plan.Included.Contains(n.Id)))
             {
-                var owner=(MEMContent)(_session.Find(plan.Map(n.Id)) as MEMContent);if(owner==null)continue;
+                var owner=_session.Find(plan.Map(n.Id));if(!(owner is MEMContent||owner is MEMSymbol))continue;
                 foreach(var r in n.References)
                 {var target=_session.Find(plan.Map(r.TargetId));_session.CheckReference(owner,target);AddReference(new MRIResourceReference(plan.Map(r.Id),r.Name,target.Id,r.Kind,owner));}
             }

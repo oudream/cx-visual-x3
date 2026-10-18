@@ -15,6 +15,7 @@ namespace CxVisual.Mechanism.Core
         public int Revision { get; private set; }
         public string ErrorCode { get; private set; }
         public string Message { get; private set; }
+        public static MTCEditResult<T> Rejected(int revision,string code,string message){return new MTCEditResult<T>(false,default(T),revision,code,message);}
         public T RequireValue() { if (!Success) throw new InvalidOperationException(ErrorCode + ": " + Message); return Value; }
     }
     public sealed class MTCChangeSet
@@ -96,9 +97,9 @@ namespace CxVisual.Mechanism.Core
                 var node=(MEMNode)resource;var type=FindType(resource.TypeId);var dependencies=new HashSet<Guid>();
                 foreach(var owned in node.DescendantsAndSelf())
                 {
-                    var content=owned as MEMContent;if(content!=null)foreach(var reference in content.References)dependencies.Add(reference.TargetId);
+                    var references=MRIReferenceList.View(owned);foreach(var reference in references)dependencies.Add(reference.TargetId);
                     var records=new List<object>();records.AddRange(MPMDefinitionState.PropertiesOf(owned));records.AddRange(MPMDefinitionState.PortsOf(owned));records.AddRange(MPMDefinitionState.ConnectionsOf(owned));records.AddRange(MPMDefinitionState.MappingsOf(owned));
-                    if(content!=null)records.AddRange(content.References);
+                    records.AddRange(references);
                     var visual=owned as MRCVisualItem;if(visual!=null&&visual.BindingItems!=null)foreach(var binding in visual.BindingItems)records.Add(Tuple.Create(owned.Id,binding.Key));
                     foreach(var record in records){Guid[] targets;if(!_declarationDependencies.TryGetValue(record,out targets))continue;foreach(var target in targets){var targetNode=Find(target);if(targetNode!=null&&targetNode.ResourceRootId!=node.ResourceRootId)dependencies.Add(targetNode.ResourceRootId);if(FindAsset(target)!=null)dependencies.Add(target);}}
                 }
@@ -121,8 +122,7 @@ namespace CxVisual.Mechanism.Core
                 if (_index.Count >= MEMNode.MaximumNodeCount) throw new InvalidOperationException("org.node_budget.exceeded");
                 if (IdentityExists(node.Id)) throw new InvalidOperationException("org.id.duplicate");
                 if(MPMDefinitionState.For(node)!=null&&MPMDefinitionState.For(node).HasData)throw new InvalidOperationException("Attach empty definitions before adding declarations");
-                var content = node as MEMContent;
-                if (content != null && content.References.Count != 0) throw new InvalidOperationException("Attach definitions before references");
+                if (MRIReferenceList.View(node).Count != 0) throw new InvalidOperationException("Attach definitions before references");
                 return;
             }
             var seen = new HashSet<Guid>();
@@ -132,8 +132,7 @@ namespace CxVisual.Mechanism.Core
                 if (!seen.Add(child.Id) || IdentityExists(child.Id)) throw new InvalidOperationException("org.id.duplicate");
                 if(MPMDefinitionState.For(child)!=null&&MPMDefinitionState.For(child).HasData)throw new InvalidOperationException("Attach empty definitions before adding declarations");
                 foreach (var owned in child.Children) if (owned.Parent != child) throw new InvalidOperationException("Wrong subtree owner");
-                var content = child as MEMContent;
-                if (content != null && content.References.Count != 0) throw new InvalidOperationException("Use explicit reference creation after attaching definitions");
+                if (MRIReferenceList.View(child).Count != 0) throw new InvalidOperationException("Use explicit reference creation after attaching definitions");
             }
             if ((long)_index.Count + seen.Count > MEMNode.MaximumNodeCount) throw new InvalidOperationException("org.node_budget.exceeded");
         }
@@ -144,13 +143,12 @@ namespace CxVisual.Mechanism.Core
             UnindexDeclarationTree(root);
             foreach (var node in root.DescendantsAndSelf())
             {
-                var content = node as MEMContent;
-                if (content != null) foreach (var reference in content.References) UnindexReference(reference);
+                foreach (var reference in MRIReferenceList.View(node)) UnindexReference(reference);
                 _index.Remove(node.Id);
             }
         }
         internal void RestoreIndex(MEMNode root)
-        { AddIndex(root); foreach (var content in root.DescendantsAndSelf().OfType<MEMContent>()) foreach (var reference in content.References) IndexReference(reference); IndexDeclarationTree(root); }
+        { AddIndex(root); foreach (var owner in root.DescendantsAndSelf()) foreach (var reference in MRIReferenceList.View(owner)) IndexReference(reference); IndexDeclarationTree(root); }
         internal void CheckRemove(MEMNode root)
         {
             if (root.Parent == null || root.Parent is MEMPage || root.Parent is MEMSymbol) throw new InvalidOperationException("org.root.protected");
@@ -173,9 +171,10 @@ namespace CxVisual.Mechanism.Core
         }
         internal void UnindexReference(MRIResourceReference reference)
         { UnindexUsage(reference); _references.Remove(reference.Id); var uses = _usages[reference.TargetId]; uses.Remove(reference); if (uses.Count == 0) _usages.Remove(reference.TargetId); }
-        internal void CheckReference(MEMContent owner, MEMNode definition)
+        internal void CheckReference(MEMNode owner, MEMNode definition)
         {
             DemandNode(owner); DemandNode(definition);
+            if(!(owner is MEMContent||owner is MEMSymbol))throw new InvalidOperationException("org.reference.owner_requires_content_or_symbol");
             if (!(definition is MEMContent || definition is MEMSymbol) || !(definition.Parent is MEMProject)) throw new InvalidOperationException("Reference target must be a shared content/symbol definition");
             if (Reaches(definition, owner)) throw new InvalidOperationException("org.reference.cycle");
         }
@@ -190,8 +189,7 @@ namespace CxVisual.Mechanism.Core
                 var n = todo.Pop(); if (n == target) return true;
                 if (!seen.Add(n.Id)) continue;
                 foreach (var child in n.Children) todo.Push(child);
-                var c = n as MEMContent;
-                if (c != null) foreach (var reference in c.References) todo.Push(_index[reference.TargetId]);
+                foreach (var reference in MRIReferenceList.View(n)) todo.Push(_index[reference.TargetId]);
             }
             return false;
         }
@@ -333,8 +331,8 @@ namespace CxVisual.Mechanism.Core
         public void Reparent(MEMNode node, MEMNode parent, int index = -1) { Edit("移动所有权", e => e.Reparent(node, parent, index)).RequireValue(); }
         public void Remove(MEMNode node) { Edit("删除对象", e => e.Remove(node)).RequireValue(); }
         public void Remove(MRIResourceReference reference) { Edit("删除引用", e => e.Remove(reference)).RequireValue(); }
-        public MRIResourceReference PlaceSymbol(MEMContent owner, MEMSymbol definition, string name) { return Edit("放置符号", e => e.Reference(owner, definition, name)).RequireValue(); }
-        public MRIResourceReference PlaceContent(MEMContent owner, MEMContent definition, string name) { return Edit("放置内容", e => e.Reference(owner, definition, name)).RequireValue(); }
+        public MRIResourceReference PlaceSymbol(MEMNode owner, MEMSymbol definition, string name) { return Edit("放置符号", e => e.Reference(owner, definition, name)).RequireValue(); }
+        public MRIResourceReference PlaceContent(MEMNode owner, MEMContent definition, string name) { return Edit("放置内容", e => e.Reference(owner, definition, name)).RequireValue(); }
         public void Move(MRCVisualItem item, double x, double y) { Edit("移动图元", e => e.Move(item, x, y)).RequireValue(); }
         public void Resize(MRCVisualItem item, double width, double height) { Edit("缩放图元", e => e.Resize(item, width, height)).RequireValue(); }
         public void Rotate(MRCVisualItem item, double angle) { Edit("旋转图元", e => e.Rotate(item, angle)).RequireValue(); }

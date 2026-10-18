@@ -139,8 +139,7 @@ namespace CxVisual.Mechanism.Core
                 { w.WriteStartElement("Binding"); w.WriteAttributeString("property", pair.Key); WriteBinding(w,pair.Value); w.WriteEndElement(); }
             }
             WriteDeclarations(w,node);
-            var content = node as MEMContent;
-            if (content != null) foreach (var reference in content.References)
+            foreach (var reference in MRIReferenceList.View(node))
             {
                 WriteReference(w,reference);
             }
@@ -245,8 +244,8 @@ namespace CxVisual.Mechanism.Core
                     }
                     else if (r.Name == "Reference")
                     {
-                        var owner = stack.Count == 0 ? null : stack.Peek() as MEMContent;
-                        if (owner == null) throw new InvalidDataException("Invalid reference");
+                        var owner = stack.Count == 0 ? null : stack.Peek();
+                        if (!(owner is MEMContent||owner is MEMSymbol)) throw new InvalidDataException("Invalid reference");
                         references.Add(ReadReference(r,owner));
                     }
                     else if (r.Name == "Binding")
@@ -267,8 +266,7 @@ namespace CxVisual.Mechanism.Core
                     if ((reference.Kind == MRIReferenceKind.Symbol) != (target is MEMSymbol)) throw new InvalidDataException("Reference target kind mismatch");
                     var overrides=reference.OverrideItems;reference.OverrideItems=null;
                     document.CheckReference(reference.Owner, target); document.IndexReference(reference);reference.OverrideItems=overrides;
-                    if (reference.Owner.ReferenceItems == null) reference.Owner.ReferenceItems = new List<MRIResourceReference>();
-                    reference.Owner.ReferenceItems.Add(reference);
+                    MRIReferenceList.Mutable(reference.Owner,true).Add(reference);
                 }
                 document.AttachLoadedDeclarations(declarations); if(!document.Validate().IsValid) throw new InvalidDataException("Invalid engineering tree"); return document;
             }

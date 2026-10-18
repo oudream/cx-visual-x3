@@ -36,6 +36,16 @@ namespace CxVisual.Mechanism.Core
             DemandAccess(MEMAccessOperation.Read);
             lock(_gate){DemandOpen();if(_editing)throw new InvalidOperationException("Snapshot requires a committed revision");return new MEMProjectSnapshot(Project,Revision);}
         }
+        public MEMProjectSnapshot GetSnapshot(Guid rootId,bool includeReferences)
+        {
+            DemandAccess(MEMAccessOperation.Read);lock(_gate)
+            {
+                DemandOpen();if(_editing)throw new InvalidOperationException("Snapshot requires a committed revision");var root=Find(rootId);if(root==null)throw new InvalidOperationException("org.node.missing");
+                var selected=new List<MEMNode>();var seen=new HashSet<Guid>();var pending=new Stack<MEMNode>();pending.Push(root);
+                while(pending.Count!=0){var node=pending.Pop();if(!seen.Add(node.Id))continue;selected.Add(node);foreach(var child in node.Children)pending.Push(child);if(includeReferences)foreach(var reference in MRIReferenceList.View(node))pending.Push(Find(reference.TargetId));}
+                return new MEMProjectSnapshot(Project,Revision,selected);
+            }
+        }
         public IReadOnlyList<MEMNode> FindByName(string name,MEMNode scope=null)
         {DemandAccess(MEMAccessOperation.Read);name=MEMNode.NormalizeName(name);lock(_gate){DemandOpen();scope=scope??Project;DemandNode(scope);return scope.DescendantsAndSelf().Where(n=>string.Equals(n.Name,name,StringComparison.Ordinal)).ToList().AsReadOnly();}}
         public IReadOnlyList<MEMNode> FindByType(string typeId,MEMNode scope=null)

@@ -12,6 +12,9 @@
   <ItemGroup>
     <Compile Include="OrganizationH04Tests.cs"/>
     <Compile Include="OrganizationH05Tests.cs"/>
+    <Compile Include="OrganizationH06Tests.cs"/>
+    <Compile Include="OrganizationStudioTests.cs"/>
+    <Reference Include="UIAutomationProvider"/>
     <Compile Include="OrganizationWpfTests.cs"/>
     <Compile Include="OrganizationH02Tests.cs"/>
     <Compile Include="OrganizationH03VisualTests.cs"/>

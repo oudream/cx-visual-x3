@@ -9,12 +9,12 @@ namespace CxVisual.Mechanism.Core
     public sealed class MEMProjectSnapshot
     {
         private readonly Dictionary<Guid,MEMNodeSnapshot> _index;
-        internal MEMProjectSnapshot(MEMProject project,int revision)
+        internal MEMProjectSnapshot(MEMProject project,int revision,IEnumerable<MEMNode> selection=null)
         {
             ProjectId=project.Id;Revision=revision;
             RegisteredTypes=project.TypeItems==null?MPMEmpty<MPMTypeDescriptor>.Items:project.TypeItems.Values.OrderBy(t=>t.TypeId,StringComparer.Ordinal).ToList().AsReadOnly();
             Assets=project.AssetItems==null?MPMEmpty<MEMAssetReference>.Items:project.AssetItems.Values.ToList().AsReadOnly();
-            var nodes=project.DescendantsAndSelf().Select(n=>new MEMNodeSnapshot(n)).ToList();
+            var nodes=(selection??project.DescendantsAndSelf()).Select(n=>new MEMNodeSnapshot(n)).ToList();
             Nodes=nodes.AsReadOnly();_index=nodes.ToDictionary(n=>n.Id);
         }
         public Guid ProjectId { get; private set; }
@@ -33,8 +33,8 @@ namespace CxVisual.Mechanism.Core
             ChildIds=node.Children.Count==0?MPMEmpty<Guid>.Items:Array.AsReadOnly(node.Children.Select(c=>c.Id).ToArray());StorageRootId=node.ResourceRootId;
             var resource=node as IMEMResource;Scope=resource==null?(MEMResourceScope?)null:resource.Scope;
             var visual=node as MRCVisualItem;if(visual!=null)Visual=new MRCVisualSnapshot(visual);
-            var content=node as MEMContent;
-            References=content==null||content.References.Count==0?EmptyReferences:content.References.Select(r=>new MRIReferenceSnapshot(r)).ToList().AsReadOnly();
+            var references=MRIReferenceList.View(node);
+            References=references.Count==0?EmptyReferences:references.Select(r=>new MRIReferenceSnapshot(r)).ToList().AsReadOnly();
             var properties=MPMDefinitionState.PropertiesOf(node);Properties=properties.Count==0?MPMEmpty<MPMPropertySnapshot>.Items:properties.Select(p=>new MPMPropertySnapshot(p)).ToList().AsReadOnly();
             var ports=MPMDefinitionState.PortsOf(node);Ports=ports.Count==0?MPMEmpty<MPCPort>.Items:Array.AsReadOnly(ports.ToArray());
             var connections=MPMDefinitionState.ConnectionsOf(node);Connections=connections.Count==0?MPMEmpty<MPCConnection>.Items:Array.AsReadOnly(connections.ToArray());

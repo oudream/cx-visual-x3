@@ -9,7 +9,7 @@ using CxVisual.Foundation.Infrastructure;
 
 namespace CxVisual.Studio
 {
-    public sealed class StudioViewModel : INotifyPropertyChanged, IDisposable
+    public sealed partial class StudioViewModel : INotifyPropertyChanged, IDisposable
     {
         private CxVisualEditor _editor;
         private Guid? _selected;
@@ -29,6 +29,7 @@ namespace CxVisual.Studio
             RedoCommand = new RelayCommand(() => Execute(() => _editor.Redo()));
             SaveCommand = new RelayCommand(Save);
             LoadCommand = new RelayCommand(Load);
+            InitializeEngineering();
             CreateNew();
         }
         public ICommand NewCommand { get; private set; }
@@ -55,9 +56,10 @@ namespace CxVisual.Studio
 
         public void Select(Guid? id)
         {
+            if(!_editor.Select(id))return;
             _selected = id;
-            Changed("SelectedName");
-            FireSceneChanged();
+            _selection=id.HasValue?new[]{id.Value}:new Guid[0];
+            NotifyScene();
         }
         public void Drag(Guid id, double x, double y)
         {
@@ -76,7 +78,7 @@ namespace CxVisual.Studio
         }
         private void CreateNew()
         {
-            _editor = new CxVisualEditor(CreateSample());
+            if(!CanReplace())return;AttachSession(CreateSample());
             _selected = null;
             _logger.Write(new FLDLogRecord("Engineering", "CreateProject", "New example project"));
             Status = "已建立示例工程；使用鼠标选中/拖动矩形，或点击上方命令。";
@@ -106,33 +108,33 @@ namespace CxVisual.Studio
         }
         private void Save()
         {
-            try { _editor.Document.SaveAs(_defaultPath); Status = "已保存: " + _defaultPath; }
+            try
+            {
+                string path=_editor.Document.Location;if(path==null){var dialog=new Microsoft.Win32.SaveFileDialog{Filter="CxVisual 工程|*.cxproj",FileName="project.cxproj"};if(dialog.ShowDialog()!=true)return;path=dialog.FileName;}
+                SaveProject(path);
+            }
             catch (Exception ex) { Status = "保存失败: " + ex.Message; }
         }
         private void Load()
         {
             try
             {
-                MEMEngineeringSession project = MEMEngineering.Open(_defaultPath);
-                _editor = new CxVisualEditor(project);
-                _selected = null;
-                Status = "已加载: " + _defaultPath;
-                NotifyScene();
+                var dialog=new Microsoft.Win32.OpenFileDialog{Filter="CxVisual 工程|*.cxproj"};if(dialog.ShowDialog()!=true)return;if(!CanReplace())return;OpenProject(dialog.FileName,true);
             }
             catch (Exception ex) { Status = "加载失败: " + ex.Message; }
         }
         private void NotifyScene()
         {
-            Changed("Revision"); Changed("ElementCount"); Changed("SelectedName");
-            FireSceneChanged();
-            CommandManager.InvalidateRequerySuggested();
+            if(_notifying)return;_notifying=true;
+            try{RefreshEngineering();Changed("Revision");Changed("ElementCount");Changed("SelectedName");Changed("Items");FireSceneChanged();CommandManager.InvalidateRequerySuggested();}
+            finally{_notifying=false;}
         }
         private void FireSceneChanged()
         {
             EventHandler callback = SceneChanged;
             if (callback != null) callback(this, EventArgs.Empty);
         }
-        public void Dispose() { _logger.Dispose(); }
+        public void Dispose() { if(_editor!=null){_editor.Dispose();_editor.Document.Close(true);}_logger.Dispose(); }
         private void Changed(string property)
         {
             PropertyChangedEventHandler callback = PropertyChanged;

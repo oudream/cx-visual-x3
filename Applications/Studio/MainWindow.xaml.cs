@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Windows;
 using CxVisual.Mechanism.Core;
 using CxVisual.Mechanism.Data.Configuration;
@@ -17,6 +18,7 @@ namespace CxVisual.Studio
         {
             InitializeComponent();
             _viewModel = new StudioViewModel();
+            _viewModel.ConfirmReplace = ConfirmProjectReplacement;
             DataContext = _viewModel;
             SceneHost.NodeActivated += OnActivated;
             SceneHost.MoveRequested += OnMove;
@@ -27,6 +29,15 @@ namespace CxVisual.Studio
         { _viewModel.Select(args.Id); }
         private void OnMove(object sender, CxMoveEventArgs args)
         { _viewModel.Drag(args.Id, args.X, args.Y); }
+        private void OnVisualSelectionChanged(object sender,System.Windows.Controls.SelectionChangedEventArgs args)
+        {if(_viewModel==null||_viewModel.IsRefreshing)return;var list=(System.Windows.Controls.ListBox)sender;_viewModel.SetSelection(list.SelectedItems.OfType<CxVisual.Mechanism.Visual.CxSceneItem>().Select(i=>i.Id));}
+        private bool ConfirmProjectReplacement(MEMEngineeringSession session)
+        {
+            var choice=MessageBox.Show(this,"当前工程有未保存修改。是否先保存？","工程修改",MessageBoxButton.YesNoCancel,MessageBoxImage.Question);
+            if(choice==MessageBoxResult.Cancel)return false;if(choice==MessageBoxResult.No)return true;_viewModel.SaveCommand.Execute(null);return !session.IsDirty;
+        }
+        protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+        {if(_viewModel.ProjectSession.IsDirty&&(_viewModel.ConfirmReplace==null||!_viewModel.ConfirmReplace(_viewModel.ProjectSession)))e.Cancel=true;base.OnClosing(e);}
         private const string ConfigSamplesFolder = "CxVisual";
 
         private static string GetDemoDataRoot()

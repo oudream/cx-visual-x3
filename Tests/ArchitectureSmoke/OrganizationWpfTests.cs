@@ -58,6 +58,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     }
                     session.SetVisibility(group, false, true); Check(CxSceneProjection.Project(session).Count == 0, "hidden group projected descendants");
                     session.Close(true);
+                    OrganizationStudioTests.RunOnSta();
                     Console.WriteLine("PASS H01 WPF real STA layout/retained polygon, precise hit test, drag conversion, resource visibility and hidden-group projection");
                 }
                 catch (Exception ex) { error = ex; }

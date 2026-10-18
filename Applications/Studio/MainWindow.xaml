@@ -9,7 +9,7 @@
         <Border DockPanel.Dock="Top" Background="#182D4B" Padding="18,14">
             <StackPanel>
                 <TextBlock Text="CxVisual Unified Studio" Foreground="White" FontSize="23" FontWeight="SemiBold"/>
-                <TextBlock Text="工程真源 → Visual编辑命令 → WPF输入/绘制；点击选择，拖动矩形，支持撤销重做" Foreground="#AEC7E9" FontSize="12" Margin="0,3,0,0" />
+                <TextBlock Text="选择页面，复用组件，编辑参数，保存工程；点击选中，拖动移动，Esc取消" Foreground="#AEC7E9" FontSize="12" Margin="0,3,0,0" />
             </StackPanel>
         </Border>
         <Border DockPanel.Dock="Top" Background="White" Padding="10" BorderBrush="#CFD8E6" BorderThickness="0,0,0,1">
@@ -19,8 +19,17 @@
                 <Button Command="{Binding MoveCommand}" Content="右移20"/>
                 <Button Command="{Binding UndoCommand}" Content="撤销"/>
                 <Button Command="{Binding RedoCommand}" Content="重做"/>
-                <Button Command="{Binding SaveCommand}" Content="保存XML"/>
-                <Button Command="{Binding LoadCommand}" Content="加载XML"/>
+                <Button Command="{Binding SaveCommand}" Content="保存工程"/>
+                <Button Command="{Binding LoadCommand}" Content="打开工程"/>
+                <Button Command="{Binding AddPageCommand}" Content="添加页面"/>
+                <Button Command="{Binding AddContentCommand}" Content="共享内容"/>
+                <Button Command="{Binding AddSymbolCommand}" Content="新建组件"/>
+                <Button Command="{Binding DeleteCommand}" Content="删除选中"/>
+                <Button Command="{Binding ImportCommand}" Content="导入资源包"/>
+                <Button Command="{Binding ExportCommand}" Content="导出所选资源"/>
+                <Button Command="{Binding GroupCommand}" Content="所选图元成组"/>
+                <Button Command="{Binding UngroupCommand}" Content="解散选中或父分组"/>
+                <Button Command="{Binding AddAssetCommand}" Content="添加静态资源"/>
                 <ComboBox x:Name="ConfigDemoKind" Width="150" SelectedIndex="0" Margin="10,0,4,0"
                           VerticalContentAlignment="Center" ToolTip="选择一种专业配置案例，均使用统一L1配置服务">
                     <ComboBoxItem Content="Studio配置"/>
@@ -42,13 +51,41 @@
             <TextBlock Text="{Binding Status}" TextWrapping="Wrap" FontSize="12" Foreground="#193B63" />
         </Border>
         <Grid Margin="13">
-            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="260"/></Grid.ColumnDefinitions>
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="320"/></Grid.ColumnDefinitions>
             <Border Grid.Column="0" CornerRadius="8" Background="White" BorderBrush="#D5DEEA" BorderThickness="1" ClipToBounds="True">
                 <scene:SceneView x:Name="SceneHost" Focusable="True"/>
             </Border>
             <Border Grid.Column="1" Margin="12,0,0,0" CornerRadius="8" Background="White" BorderBrush="#D5DEEA" BorderThickness="1" Padding="16">
-                <StackPanel>
+                <ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel>
                     <TextBlock Text="工程与编辑状态" FontWeight="SemiBold" FontSize="17" Foreground="#123660" Margin="0,0,0,15"/>
+                    <TextBlock Text="当前页面" FontWeight="SemiBold"/>
+                    <ComboBox x:Name="EngineeringPages" ItemsSource="{Binding Pages}" SelectedItem="{Binding ActivePage}" DisplayMemberPath="Name" Margin="0,4,0,8"/>
+                    <TextBlock Text="{Binding ContextName}" TextWrapping="Wrap"/>
+                    <TextBlock Text="工程资源库" FontWeight="SemiBold" Margin="0,10,0,4"/>
+                    <ListBox x:Name="EngineeringResources" ItemsSource="{Binding Resources}" SelectedItem="{Binding SelectedResource}" DisplayMemberPath="Name" MaxHeight="120"/>
+                    <WrapPanel><Button Command="{Binding PlaceResourceCommand}" Content="放置实例"/><Button Command="{Binding OpenDefinitionCommand}" Content="编辑共享定义"/><Button Command="{Binding BackCommand}" Content="返回"/></WrapPanel>
+                    <TextBlock Text="可视对象（Ctrl多选后分组）" FontWeight="SemiBold" Margin="0,8,0,4"/>
+                    <ListBox x:Name="EngineeringObjects" ItemsSource="{Binding Items}" DisplayMemberPath="Name" MaxHeight="110" SelectionMode="Extended" SelectionChanged="OnVisualSelectionChanged"/>
+                    <TextBox Text="{Binding RenameText, UpdateSourceTrigger=PropertyChanged}" ToolTip="对象或实例名称"/>
+                    <WrapPanel><Button Command="{Binding RenameCommand}" Content="重命名"/><Button Command="{Binding AddParameterCommand}" Content="新增数值参数"/></WrapPanel>
+                    <WrapPanel><Button Command="{Binding AddInputPortCommand}" Content="新增数值输入"/><Button Command="{Binding AddOutputPortCommand}" Content="新增数值输出"/></WrapPanel>
+                    <TextBlock Text="连接来源 → 目标端口" FontWeight="SemiBold"/>
+                    <ComboBox ItemsSource="{Binding Ports}" SelectedItem="{Binding SourcePort}" DisplayMemberPath="Name"/>
+                    <ComboBox ItemsSource="{Binding Ports}" SelectedItem="{Binding TargetPort}" DisplayMemberPath="Name"/>
+                    <Button Command="{Binding ConnectPortsCommand}" Content="连接端口"/>
+                    <ListBox ItemsSource="{Binding Connections}" SelectedItem="{Binding SelectedConnection}" DisplayMemberPath="Name" MaxHeight="80"/>
+                    <Button Command="{Binding DisconnectCommand}" Content="断开选中连接"/>
+                    <TextBlock Text="所选对象属性 / 实例公开参数" FontWeight="SemiBold" Margin="0,10,0,4"/>
+                    <ComboBox ItemsSource="{Binding Resources}" SelectedItem="{Binding BindingResource}" DisplayMemberPath="Name" ToolTip="资源来源选择；无需输入内部ID"/>
+                    <ItemsControl x:Name="EngineeringProperties" ItemsSource="{Binding Properties}">
+                        <ItemsControl.ItemTemplate><DataTemplate>
+                            <StackPanel Margin="0,4"><TextBlock Text="{Binding Member}" FontWeight="SemiBold"/>
+                                <ComboBox ItemsSource="{Binding DataContext.BindingModes, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding Mode}"/>
+                                <TextBox Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}"/>
+                                <DockPanel><TextBlock Text="{Binding Source}" VerticalAlignment="Center"/><Button Content="应用" Command="{Binding DataContext.ApplyPropertyCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"/></DockPanel>
+                            </StackPanel>
+                        </DataTemplate></ItemsControl.ItemTemplate>
+                    </ItemsControl>
                     <TextBlock Text="Project / Page / Content" Foreground="#64748B" FontSize="11" />
                     <TextBlock Text="Symbol / Group / Element" Foreground="#64748B" FontSize="11" Margin="0,0,0,18"/>
                     <TextBlock Text="版本（Revision）" FontWeight="SemiBold"/>
@@ -61,7 +98,7 @@
                     <TextBlock Text="本版验收路径" FontWeight="SemiBold"/>
                     <TextBlock Text="① 添加图元 → Core原子提交&#10;② 拖动/右移 → Revision递增&#10;③ Undo/Redo → 逆变更提交&#10;④ 保存/加载 → 工程树持久化" TextWrapping="Wrap" FontSize="12" LineHeight="24" Margin="0,8,0,0"/>
                     <TextBlock Text="注：这是架构样例，不包含专业运动控制、工业检测或设备驱动。" TextWrapping="Wrap" Foreground="#B45309" Margin="0,25,0,0" FontSize="12"/>
-                </StackPanel>
+                </StackPanel></ScrollViewer>
             </Border>
         </Grid>
     </DockPanel>

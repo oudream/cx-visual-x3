@@ -62,6 +62,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
         {
             base.OnMouseLeftButtonDown(e);
+            Focus();
             Point point = e.GetPosition(this);
             Guid? hit = null;
             for (int i = _items.Count - 1; i >= 0; i--)
@@ -108,5 +109,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             _dragX = 0; _dragY = 0;
             InvalidateVisual();
         }
+        public void CancelInteraction()
+        {_dragging=false;_dragX=0;_dragY=0;if(IsMouseCaptured)ReleaseMouseCapture();InvalidateVisual();}
+        protected override void OnKeyDown(KeyEventArgs e){if(e.Key==Key.Escape){CancelInteraction();e.Handled=true;}base.OnKeyDown(e);}
+        protected override void OnLostMouseCapture(MouseEventArgs e){if(_dragging)CancelInteraction();base.OnLostMouseCapture(e);}
     }
 }

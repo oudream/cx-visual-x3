@@ -61,7 +61,7 @@ namespace CxVisual.Mechanism.Core
             MEMNode parent = node.Parent; int index = parent.IndexOf(node);
             Change(() => { parent.DetachOwned(node); _session.RemoveIndex(node); }, () => { parent.InsertOwned(index, node); _session.RestoreIndex(node); },MTCChangeKind.Remove,node.Id);
         }
-        public MRIResourceReference Reference(MEMContent owner, MEMNode definition, string name)
+        public MRIResourceReference Reference(MEMNode owner, MEMNode definition, string name)
         {
             Demand(); _session.CheckReference(owner, definition);
             var reference = new MRIResourceReference(Guid.NewGuid(), name, definition.Id, definition is MEMSymbol ? MRIReferenceKind.Symbol : MRIReferenceKind.Content, owner);
@@ -70,16 +70,16 @@ namespace CxVisual.Mechanism.Core
         internal void AddReference(MRIResourceReference reference)
         {
             var owner = reference.Owner;
-            Change(() => { _session.IndexReference(reference); if (owner.ReferenceItems == null) owner.ReferenceItems = new List<MRIResourceReference>(); owner.ReferenceItems.Add(reference); },
-                () => { owner.ReferenceItems.Remove(reference); _session.UnindexReference(reference); },MTCChangeKind.Reference,reference.Id);
+            Change(() => { _session.IndexReference(reference);MRIReferenceList.Mutable(owner,true).Add(reference); },
+                () => { MRIReferenceList.Mutable(owner,false).Remove(reference); _session.UnindexReference(reference); },MTCChangeKind.Reference,reference.Id);
         }
         public void Remove(MRIResourceReference reference)
         {
             Demand();
             if (reference == null || _session.FindReference(reference.Id) != reference) throw new InvalidOperationException("Unknown reference");
             if(_session.HasOtherDeclarationUse(reference.Id,reference))throw new InvalidOperationException("org.reference.in_use");
-            var owner = reference.Owner; int position = owner.ReferenceItems.IndexOf(reference);
-            Change(() => { owner.ReferenceItems.RemoveAt(position); _session.UnindexReference(reference); }, () => { _session.IndexReference(reference); owner.ReferenceItems.Insert(position, reference); },MTCChangeKind.RemoveReference,reference.Id);
+            var owner = reference.Owner;var items=MRIReferenceList.Mutable(owner,false);int position = items.IndexOf(reference);
+            Change(() => { items.RemoveAt(position); _session.UnindexReference(reference); }, () => { _session.IndexReference(reference); items.Insert(position, reference); },MTCChangeKind.RemoveReference,reference.Id);
         }
         private void Geometry(MRCVisualItem item, double x, double y, double width, double height, double angle, double sx, double sy, double? shear = null)
         {

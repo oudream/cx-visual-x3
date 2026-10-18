@@ -196,6 +196,8 @@ namespace CxVisual.Mechanism.Core
     }
     public class MEMSymbol : MEMNode, IMEMResource, IMPMDefinition
     {
+        internal List<MRIResourceReference> ReferenceItems;
+        public IReadOnlyList<MRIResourceReference> References {get{return MRIReferenceList.View(this);}}
         internal MPMDefinitionState DefinitionState;
         public IReadOnlyList<MPMProperty> Properties {get{return MPMDefinitionState.PropertiesOf(this);}}
         public IReadOnlyList<MPCPort> Ports {get{return MPMDefinitionState.PortsOf(this);}}
@@ -234,16 +236,27 @@ namespace CxVisual.Mechanism.Core
         internal Dictionary<string,MPMBinding> OverrideItems;
         internal MRIPlacementState PlacementValue;
         private static readonly IReadOnlyDictionary<string,MPMBinding> EmptyOverrides=new System.Collections.ObjectModel.ReadOnlyDictionary<string,MPMBinding>(new Dictionary<string,MPMBinding>());
-        internal MRIResourceReference(Guid id, string name, Guid targetId, MRIReferenceKind kind, MEMContent owner)
+        internal MRIResourceReference(Guid id, string name, Guid targetId, MRIReferenceKind kind, MEMNode owner)
         { Id = id; Name = MEMNode.NormalizeName(name); TargetId = targetId; Kind = kind; Owner = owner; }
         public Guid Id { get; private set; }
         public string Name { get; private set; }
         public Guid TargetId { get; private set; }
         public MRIReferenceKind Kind { get; private set; }
-        public MEMContent Owner { get; internal set; }
+        public MEMNode Owner { get; internal set; }
         public IReadOnlyDictionary<string,MPMBinding> Overrides {get{return OverrideItems==null?EmptyOverrides:new System.Collections.ObjectModel.ReadOnlyDictionary<string,MPMBinding>(OverrideItems);}}
         public MRCTransform Placement {get{return PlacementValue==null?MRCTransform.Identity:PlacementValue.Value;}}
         internal void SetName(string name){Name=MEMNode.NormalizeName(name);}
         internal void SetTarget(Guid target){TargetId=target;}
+    }
+    internal static class MRIReferenceList
+    {
+        internal static IReadOnlyList<MRIResourceReference> View(MEMNode owner)
+        {var items=Mutable(owner,false);return items==null?MPMEmpty<MRIResourceReference>.Items:items.AsReadOnly();}
+        internal static List<MRIResourceReference> Mutable(MEMNode owner,bool create)
+        {
+            var content=owner as MEMContent;if(content!=null){if(create&&content.ReferenceItems==null)content.ReferenceItems=new List<MRIResourceReference>();return content.ReferenceItems;}
+            var symbol=owner as MEMSymbol;if(symbol!=null){if(create&&symbol.ReferenceItems==null)symbol.ReferenceItems=new List<MRIResourceReference>();return symbol.ReferenceItems;}
+            if(create)throw new InvalidOperationException("org.reference.owner_requires_content_or_symbol");return null;
+        }
     }
 }

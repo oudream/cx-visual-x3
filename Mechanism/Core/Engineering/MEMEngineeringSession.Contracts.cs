@@ -138,7 +138,7 @@ namespace CxVisual.Mechanism.Core
         internal void CheckDeclarationRemove(ISet<MEMNode> removed)
         {
             if(_declarationUses.Count==0)return;var owners=new HashSet<Guid>(removed.Select(n=>n.Id));var targets=new HashSet<Guid>(owners);
-            foreach(var node in removed){foreach(var port in MPMDefinitionState.PortsOf(node))targets.Add(port.Id);var content=node as MEMContent;if(content!=null)foreach(var r in content.References)targets.Add(r.Id);}
+            foreach(var node in removed){foreach(var port in MPMDefinitionState.PortsOf(node))targets.Add(port.Id);foreach(var r in MRIReferenceList.View(node))targets.Add(r.Id);}
             foreach(var id in targets){HashSet<object> uses;if(_declarationUses.TryGetValue(id,out uses)&&uses.Any(record=>!owners.Contains(RecordOwner(record))))throw new InvalidOperationException("org.declaration.in_use");}
         }
         internal void CheckDeclarationMove(MEMNode node,MEMNode parent)
@@ -212,7 +212,7 @@ namespace CxVisual.Mechanism.Core
                     foreach(var aspect in MPMDefinitionState.AspectsOf(node))if(aspect.Required&&!providers.Contains(aspect.ProviderId))issues.Add("org.run.provider_missing:"+aspect.ProviderId);
                     foreach(var aspect in MPMDefinitionState.AspectsOf(node))if(aspect.RequiresRemap)issues.Add("org.run.aspect_remap_required:"+node.Id+":"+aspect.ProviderId);
                     foreach(var child in node.Children)pending.Push(Tuple.Create(child,next.Item2));
-                    var content=node as MEMContent;if(content!=null)foreach(var reference in content.References)pending.Push(Tuple.Create(Find(reference.TargetId),reference));
+                    foreach(var reference in MRIReferenceList.View(node))pending.Push(Tuple.Create(Find(reference.TargetId),reference));
                 }
                 return new MVEValidationReport(issues);
             }

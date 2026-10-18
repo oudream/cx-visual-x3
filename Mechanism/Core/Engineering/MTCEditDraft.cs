@@ -48,7 +48,7 @@ namespace CxVisual.Mechanism.Core
         public void SetLayer(MRCVisualItem item,string layerId) {Queue(e=>e.SetLayer(item,layerId));}
         public void SetVisibility(MRCVisualItem item,bool visible,bool selectable) { Queue(e=>e.SetVisibility(item,visible,selectable)); }
         public void SetBinding(MRCVisualItem item,string property,MPMBinding binding) { Queue(e=>e.SetBinding(item,property,binding)); }
-        public void Reference(MEMContent owner,MEMNode definition,string name) { Queue(e=>e.Reference(owner,definition,name)); }
+        public void Reference(MEMNode owner,MEMNode definition,string name) { Queue(e=>e.Reference(owner,definition,name)); }
         public void DefineProperty(MEMNode owner,MPMPropertyDescriptor descriptor){Queue(e=>e.DefineProperty(owner,descriptor));}
         public void SetProperty(MEMNode owner,string member,MPMBinding binding){Queue(e=>e.SetProperty(owner,member,binding));}
         public void RemoveProperty(MEMNode owner,string member){Queue(e=>e.RemoveProperty(owner,member));}
