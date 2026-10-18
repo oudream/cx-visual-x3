@@ -381,6 +381,42 @@ namespace CxVisual.TestCenter.UI
             foreach (ITCTTestViewer viewer in _viewers) viewer.Clear();
             _tabs.Items.Add(new TabItem { Header = "概览", Content = _empty });
         }
+        public string ActiveMode
+        {
+            get { return _tabs.SelectedItem is TabItem ? ((TabItem)_tabs.SelectedItem).Header.ToString() : ""; }
+        }
+
+        public void ShowMode(string mode)
+        {
+            if (string.IsNullOrWhiteSpace(mode) || mode == "概览")
+            {
+                _tabs.SelectedIndex = 0;
+                return;
+            }
+            foreach (TabItem existing in _tabs.Items.OfType<TabItem>())
+                if (string.Equals(existing.Header as string, mode, StringComparison.OrdinalIgnoreCase))
+                {
+                    _tabs.SelectedItem = existing;
+                    return;
+                }
+            if (!_viewers.Any(v => string.Equals(v.Kind, mode, StringComparison.OrdinalIgnoreCase)))
+                throw new ArgumentException("Unknown viewer mode", "mode");
+            TabItem missing = new TabItem
+            {
+                Header = mode,
+                Content = new TextBlock
+                {
+                    Text = mode + " · NoEvidence / Unsupported\n\n" +
+                        "尚未从真实生产 Owner 的本次测试 Attempt 中获取此模式的结构化观察。" +
+                        "\n请先在左侧运行相应真实测试。不会绘制演示状态或虚假成功结果。",
+                    Margin = new Thickness(22), Foreground = Brushes.DarkGoldenrod,
+                    TextWrapping = TextWrapping.Wrap
+                }
+            };
+            _tabs.Items.Add(missing);
+            _tabs.SelectedItem = missing;
+        }
+
         public void ShowResult(TCTTestCaseResult result)
         {
             Clear();
