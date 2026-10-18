@@ -120,8 +120,9 @@ namespace CxVisual.TestCenter.Models
             foreach (XElement node in nodes)
             {
                 if (!Guid.TryParse((string)node.Attribute("id"), out Guid id) ||
-                    id == Guid.Empty || !index.TryAdd(id, node))
+                    id == Guid.Empty || index.ContainsKey(id))
                     throw new InvalidDataException("Duplicate or empty engineering node identity");
+                index.Add(id, node);
                 if (string.IsNullOrWhiteSpace((string)node.Attribute("kind")) ||
                     string.IsNullOrWhiteSpace((string)node.Attribute("name")))
                     throw new InvalidDataException("Engineering node missing kind or name");
