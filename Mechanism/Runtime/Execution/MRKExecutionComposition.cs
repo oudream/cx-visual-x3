@@ -156,9 +156,13 @@ namespace CxVisual.Mechanism.Runtime.Execution
                         HashSet<string> depended = new HashSet<string>(
                             nestedPlan.Steps.SelectMany(x => x.Dependencies),
                             StringComparer.Ordinal);
-                        string[] exits = nestedPlan.Steps
+                        List<string> exits = nestedPlan.Steps
                             .Where(x => !depended.Contains(x.Id))
-                            .Select(x => request.Id + "." + x.Id).ToArray();
+                            .Select(x => request.Id + "." + x.Id).ToList();
+                        // 子流程的__commit是InlineSubflow生成的公开出口，
+                        // 不包含在原始child.Steps内；必须成为调用屏障的直接依赖。
+                        if (nestedPlan.DataExports.Count != 0)
+                            exits.Add(request.Id + ".__commit");
                         List<MRKExecutionInput> exported = new List<MRKExecutionInput>();
                         foreach (KeyValuePair<string, Type> output in nestedPlan.DataExportTypes)
                             exported.Add(new MRKExecutionInput(output.Key,
