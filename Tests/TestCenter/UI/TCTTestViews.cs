@@ -1,6 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
+using System.Xml.Linq;
+using CxVisual.TestCenter.Models;
+using CxVisual.TestCenter.Fixtures;
+using CxVisual.Mechanism.Core;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -131,33 +136,184 @@ namespace CxVisual.TestCenter.UI
         }
     }
 
+    // Renders only SHA256-verified MEMProjectSnapshot evidence. No editable or guessed tree.
     public sealed class TCTObjectTestView : TCTTestViewBase
     {
         public override string Kind { get { return "ObjectTree"; } }
+        public event Action<string, string> ObjectSelected;
+        public int VerifiedNodeCount { get; private set; }
+        public int VerifiedReferenceCount { get; private set; }
+        public string EvidenceProblem { get; private set; }
+        public TreeView OwnershipTree { get; private set; }
+
+        public override void Clear()
+        {
+            base.Clear();
+            VerifiedNodeCount = 0;
+            VerifiedReferenceCount = 0;
+            EvidenceProblem = null;
+            OwnershipTree = null;
+        }
+
         public override void Bind(TCTTestCaseResult result)
         {
             Clear();
-            Header("Object / Ownership / Reference", "树结构只使用被测Mechanism生成的观察；不把Reference误当Ownership。");
-            foreach (TCTTestObservation observation in result.Observations.Where(o => o.Kind == Kind))
+            Header("Engineering · Ownership / Reference / Definition",
+                "真实 MEMProjectSnapshot 只读快照 · Ownership 实线层级，Reference 独立引用，不复制 Symbol 定义。");
+            TCTTestObservation[] observations = result.Observations.Where(o =>
+                string.Equals(o.Kind, Kind, StringComparison.OrdinalIgnoreCase)).ToArray();
+            foreach (TCTTestObservation observation in observations)
             {
-                TreeView tree = new TreeView { Height = 160, Background = Brushes.AliceBlue };
-                tree.SelectedItemChanged += (sender, args) => SelectObservation(observation);
-                string[] nodes = observation.Details.Split(new[] { "→" }, StringSplitOptions.RemoveEmptyEntries);
-                if (nodes.Length > 1)
+                if (observation.Envelope == null || observation.Envelope.PayloadRef == null ||
+                    observation.Envelope.PayloadRef.Mime != TCTEngineeringSnapshotCodec.Mime)
                 {
-                    TreeViewItem parent = null;
-                    foreach (string name in nodes)
+                    ContentPanel.Children.Add(new TextBlock
                     {
-                        TreeViewItem item = new TreeViewItem { Header = name.Trim(), IsExpanded = true };
-                        if (parent == null) tree.Items.Add(item);
-                        else parent.Items.Add(item);
-                        parent = item;
-                    }
+                        Text = "旧文本观察（没有经过验证的工程快照，不能生成对象树）：" +
+                            observation.Title + " · " + observation.Details,
+                        Foreground = Brushes.DarkGoldenrod, TextWrapping = TextWrapping.Wrap,
+                        Margin = new Thickness(0, 5, 0, 9)
+                    });
+                    continue;
                 }
-                else tree.Items.Add(new TreeViewItem { Header = observation.Details });
-                ContentPanel.Children.Add(tree);
+                try
+                {
+                    // Validates Evidence envelope, Attempt/Run, Payload inventory and SHA256 first.
+                    TCTObservationReplay.Read(result);
+                    TCTTestArtifactStore store = new TCTTestArtifactStore(
+                        TCTTestArtifactStore.RunRoot(result.RunId));
+                    XDocument snapshot = TCTEngineeringSnapshotCodec.Deserialize(
+                        store.Read(observation.Envelope.PayloadRef));
+                    BindSnapshot(snapshot, observation);
+                }
+                catch (Exception ex) when (ex is InvalidDataException ||
+                    ex is IOException || ex is UnauthorizedAccessException ||
+                    ex is NotSupportedException || ex is System.Xml.XmlException)
+                {
+                    EvidenceProblem = ex.GetType().Name + ": " + ex.Message;
+                    ContentPanel.Children.Add(new TextBlock
+                    {
+                        Text = "证据不可用 / 不可信： " + EvidenceProblem +
+                            "。对象树不显示；不会使用文字合成对象或冒充通过。",
+                        Foreground = Brushes.DarkRed, TextWrapping = TextWrapping.Wrap,
+                        Margin = new Thickness(0, 8, 0, 8)
+                    });
+                }
             }
-            Observations(result, Kind); Assertions(result);
+            Observations(result, Kind);
+            Assertions(result);
+        }
+
+        private void BindSnapshot(XDocument snapshot, TCTTestObservation observation)
+        {
+            XElement root = snapshot.Root;
+            Guid projectId = Guid.Parse((string)root.Attribute("projectId"));
+            int revision = (int)root.Attribute("revision");
+            XElement[] nodes = root.Elements("Node").ToArray();
+            Dictionary<Guid, XElement> index = nodes.ToDictionary(x =>
+                Guid.Parse((string)x.Attribute("id")));
+            VerifiedNodeCount = nodes.Length;
+            VerifiedReferenceCount = nodes.Sum(x => x.Elements("Reference").Count());
+            ContentPanel.Children.Add(new TextBlock
+            {
+                Text = "已验证工程 " + projectId + "   Revision " + revision +
+                    "   节点 " + VerifiedNodeCount + "   引用 " + VerifiedReferenceCount,
+                FontWeight = FontWeights.SemiBold, Foreground = Brushes.DarkSlateBlue,
+                Margin = new Thickness(0, 0, 0, 8)
+            });
+
+            Grid split = new Grid { Margin = new Thickness(0, 0, 0, 12) };
+            split.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(3, GridUnitType.Star) });
+            split.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2, GridUnitType.Star) });
+            TreeView tree = new TreeView
+            {
+                MinHeight = 310, MaxHeight = 520,
+                Background = Brushes.AliceBlue,
+                BorderBrush = Brushes.LightSteelBlue
+            };
+            OwnershipTree = tree;
+            tree.Items.Add(BuildItem(index[projectId], index));
+            tree.SelectedItemChanged += (sender, args) =>
+            {
+                TreeViewItem selected = args.NewValue as TreeViewItem;
+                if (selected == null) return;
+                XElement node = selected.Tag as XElement;
+                if (node == null) return;
+                Guid id;
+                if (!Guid.TryParse((string)node.Attribute("id"), out id)) return;
+                string kind = node.Name.LocalName;
+                string address = kind == "Node" ?
+                    new MRIObjectAddress(projectId,
+                        Guid.Parse((string)node.Attribute("storageRootId")), id).ToString() :
+                    "ReferenceId=" + id + " / TargetId=" + (string)node.Attribute("targetId");
+                string detail = kind + " / " + (string)node.Attribute("name") +
+                    "\nId: " + id +
+                    "\nAddress: " + address +
+                    (kind == "Node" ? "\nKind: " + (string)node.Attribute("kind") +
+                        "\nParentId: " + (string)node.Attribute("parentId") +
+                        "\nScope: " + (string)node.Attribute("scope") +
+                        "\nVisual: " + (node.Element("Visual") == null ? "未提供" :
+                            string.Join(", ", node.Element("Visual").Attributes().Select(a =>
+                                a.Name.LocalName + "=" + a.Value))) :
+                        "\nReference Kind: " + (string)node.Attribute("kind"));
+                SelectObservation(observation);
+                if (ObjectSelected != null) ObjectSelected(id.ToString("D"), detail);
+            };
+            Grid.SetColumn(tree, 0); split.Children.Add(tree);
+
+            StackPanel related = new StackPanel { Margin = new Thickness(10, 0, 0, 0) };
+            related.Children.Add(new TextBlock { Text = "关联 / 声明总览", FontWeight = FontWeights.Bold,
+                Foreground = Brushes.DarkSlateBlue, Margin = new Thickness(0, 0, 0, 7) });
+            int ports = nodes.Sum(n => n.Elements("Port").Count());
+            int connections = nodes.Sum(n => n.Elements("Connection").Count());
+            int properties = nodes.Sum(n => n.Elements("Property").Count());
+            int aspects = nodes.Sum(n => n.Elements("Aspect").Count());
+            related.Children.Add(new TextBlock
+            {
+                Text = "Port: " + ports + "  Connection: " + connections +
+                    "\nProperty: " + properties + "  Aspect: " + aspects,
+                TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8)
+            });
+            foreach (XElement node in nodes.Where(n => n.Elements("Reference").Any()))
+                foreach (XElement reference in node.Elements("Reference"))
+                {
+                    Guid targetId = Guid.Parse((string)reference.Attribute("targetId"));
+                    XElement target = index[targetId];
+                    related.Children.Add(new TextBlock
+                    {
+                        Text = "↪ " + (string)node.Attribute("name") +
+                            " / " + (string)reference.Attribute("name") +
+                            " → " + (string)target.Attribute("name") +
+                            " [" + (string)reference.Attribute("kind") + "]",
+                        TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 3, 0, 3)
+                    });
+                }
+            if (VerifiedReferenceCount == 0)
+                related.Children.Add(new TextBlock { Text = "此快照没有资源引用。",
+                    Foreground = Brushes.Gray });
+            ScrollViewer relatedScroll = new ScrollViewer { Content = related,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto, MaxHeight = 500 };
+            Grid.SetColumn(relatedScroll, 1); split.Children.Add(relatedScroll);
+            ContentPanel.Children.Add(split);
+        }
+
+        private static TreeViewItem BuildItem(XElement node, Dictionary<Guid, XElement> index)
+        {
+            TreeViewItem item = new TreeViewItem
+            {
+                Header = (string)node.Attribute("kind") + " · " + (string)node.Attribute("name"),
+                Tag = node, IsExpanded = (string)node.Attribute("kind") != "Group"
+            };
+            foreach (XElement child in node.Elements("Child"))
+                item.Items.Add(BuildItem(index[Guid.Parse((string)child.Attribute("id"))], index));
+            // Reference is an independent leaf, NOT a child-owned Symbol/Content definition.
+            foreach (XElement reference in node.Elements("Reference"))
+                item.Items.Add(new TreeViewItem
+                {
+                    Header = "↪ Reference · " + (string)reference.Attribute("name"),
+                    Tag = reference
+                });
+            return item;
         }
     }
 
@@ -203,6 +359,7 @@ namespace CxVisual.TestCenter.UI
         };
         // Shell订阅同一条选择事件，Inspector可显示结构化Owner/Attempt/Artifact证据。
         public event Action<TCTTestObservation> ObservationSelected;
+        public event Action<string, string> ObjectSelected;
         public int ViewerCount { get { return Math.Max(0, _tabs.Items.Count - 1); } }
         public TCTTestDocumentHostControl()
         {
@@ -210,6 +367,11 @@ namespace CxVisual.TestCenter.UI
                 viewer.ObservationSelected += observation => {
                     if (ObservationSelected != null) ObservationSelected(observation);
                 };
+            TCTObjectTestView objectViewer = _viewers.OfType<TCTObjectTestView>().Single();
+            objectViewer.ObjectSelected += (id, details) =>
+            {
+                if (ObjectSelected != null) ObjectSelected(id, details);
+            };
             Content = _tabs;
             Clear();
         }
