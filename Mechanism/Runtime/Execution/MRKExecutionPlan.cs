@@ -185,6 +185,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 foreach (MRKExecutionInput input in mappedInputs)
                     callerInputs.Add(input.Name, input);
             }
+            HashSet<string> consumedInputs = new HashSet<string>(StringComparer.Ordinal);
             List<MRKExecutionStep> list = new List<MRKExecutionStep>();
             foreach (MRKExecutionStep current in child.Steps)
             {
@@ -208,6 +209,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
                         if (!input.ValueType.IsAssignableFrom(caller.ValueType))
                             throw new ArgumentException("子流程入口类型不匹配：" +
                                 child.Id + "." + input.SourceName);
+                        consumedInputs.Add(input.SourceName);
                         bindings.Add(new MRKExecutionInput(input.Name,
                             MRKInputSource.StepOutput, prefix + "$entry." +
                             caller.Name, input.ValueType, input.Required));
@@ -243,6 +245,10 @@ namespace CxVisual.Mechanism.Runtime.Execution
                     local.Priority, local.EstimatedPendingBytes, local.DataOutputs,
                     local.EnableDataContext, accessGroup));
             }
+            if (callerInputs != null)
+                foreach (string supplied in callerInputs.Keys)
+                    if (!consumedInputs.Contains(supplied))
+                        throw new ArgumentException("子流程入口未声明输入：" + child.Id + "." + supplied);
             if (child.DataExports.Count != 0)
             {
                 if (child._byId.ContainsKey("__commit"))
