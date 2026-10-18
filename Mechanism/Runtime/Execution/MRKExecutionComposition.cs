@@ -10,16 +10,28 @@ namespace CxVisual.Mechanism.Runtime.Execution
     /// <summary>外部编排Owner提供的临时只读定义；Runtime不保存第二棵CxNode工程树。</summary>
     public sealed class MRKFlowCompileDefinition
     {
-        public MRKFlowCompileDefinition(string id, IEnumerable<MRKStepCompileRequest> steps)
+        public MRKFlowCompileDefinition(string id, IEnumerable<MRKStepCompileRequest> steps,
+            IDictionary<string, string> dataExports = null)
         {
             if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("流程ID不能为空", "id");
             if (steps == null) throw new ArgumentNullException("steps");
             Id = id;
             Steps = new ReadOnlyCollection<MRKStepCompileRequest>(
                 new List<MRKStepCompileRequest>(steps));
+            Dictionary<string, string> exports = new Dictionary<string, string>(StringComparer.Ordinal);
+            if (dataExports != null)
+                foreach (KeyValuePair<string, string> entry in dataExports)
+                {
+                    if (string.IsNullOrWhiteSpace(entry.Key) ||
+                        string.IsNullOrWhiteSpace(entry.Value))
+                        throw new ArgumentException("具名流程导出为空", "dataExports");
+                    exports.Add(entry.Key, entry.Value);
+                }
+            DataExports = new ReadOnlyDictionary<string, string>(exports);
         }
         public string Id { get; private set; }
         public IList<MRKStepCompileRequest> Steps { get; private set; }
+        public IDictionary<string, string> DataExports { get; private set; }
     }
     public interface IMRKFlowCompileCatalog
     {
@@ -45,11 +57,15 @@ namespace CxVisual.Mechanism.Runtime.Execution
             List<MRKExecutionStep> steps = new List<MRKExecutionStep>();
             try
             {
+                MRKFlowCompileDefinition root;
+                if (!catalog.TryGet(rootId, out root) || root == null)
+                    throw new ArgumentException("缺失入口流程定义：" + rootId);
                 int expanded = 0;
                 steps = Expand(rootId, catalog, resolver,
                     new HashSet<string>(StringComparer.Ordinal), diagnostics, ref expanded);
                 if (diagnostics.Count != 0) return new MRKCompileResult(null, diagnostics);
-                return new MRKCompileResult(new MRKExecutionPlan(rootId, steps), diagnostics);
+                return new MRKCompileResult(
+                    new MRKExecutionPlan(rootId, steps, root.DataExports), diagnostics);
             }
             catch (Exception ex) when (ex is ArgumentException || ex is InvalidOperationException)
             {
@@ -90,7 +106,6 @@ namespace CxVisual.Mechanism.Runtime.Execution
                     if (!string.IsNullOrWhiteSpace(request.SubflowId))
                     {
                         if (!string.IsNullOrWhiteSpace(request.CapabilityId) ||
-                            request.Inputs.Count != 0 ||
                             request.ExecutionGroup != null ||
                             request.RequiredResources.Count != 0 ||
                             request.DedicatedExecutorId != null ||
@@ -113,16 +128,31 @@ namespace CxVisual.Mechanism.Runtime.Execution
                                 "EMPTY_SUBFLOW", "不允许空子流程"));
                             continue;
                         }
+                        MRKFlowCompileDefinition nestedDefinition;
+                        if (!catalog.TryGet(request.SubflowId, out nestedDefinition) ||
+                            nestedDefinition == null)
+                            throw new ArgumentException("缺失子流程：" + request.SubflowId);
                         MRKExecutionPlan nestedPlan = new MRKExecutionPlan(
-                            request.SubflowId,nested);
+                            request.SubflowId, nested, nestedDefinition.DataExports);
                         string gateId = request.Id + "$entry";
+                        Dictionary<string, Type> gateOutputs =
+                            new Dictionary<string, Type>(StringComparer.Ordinal);
+                        foreach (MRKExecutionInput input in request.Inputs)
+                            gateOutputs.Add(input.Name, input.ValueType);
                         MRKExecutionStep gate = new MRKExecutionStep(gateId,
                             request.Dependencies,
-                            (ctx,ct) => Task.FromResult((object)true),
+                            (ctx,ct) =>
+                            {
+                                ct.ThrowIfCancellationRequested();
+                                foreach (KeyValuePair<string, object> entry in ctx.BoundInputs)
+                                    ctx.Data.Return(entry.Key, entry.Value);
+                                return Task.FromResult((object)true);
+                            }, inputs: request.Inputs, dataOutputs: gateOutputs,
                             condition: request.Condition);
                         steps.Add(gate);
                         IList<MRKExecutionStep> inline = MRKExecutionPlan.InlineSubflow(
-                            request.Id,nestedPlan,new[]{gateId});
+                            request.Id, nestedPlan, new[]{gateId},
+                            request.Inputs.Count == 0 ? null : request.Inputs);
                         steps.AddRange(inline);
                         HashSet<string> depended = new HashSet<string>(
                             nestedPlan.Steps.SelectMany(x => x.Dependencies),
@@ -130,8 +160,21 @@ namespace CxVisual.Mechanism.Runtime.Execution
                         string[] exits = nestedPlan.Steps
                             .Where(x => !depended.Contains(x.Id))
                             .Select(x => request.Id + "." + x.Id).ToArray();
+                        List<MRKExecutionInput> exported = new List<MRKExecutionInput>();
+                        foreach (KeyValuePair<string, Type> output in nestedPlan.DataExportTypes)
+                            exported.Add(new MRKExecutionInput(output.Key,
+                                MRKInputSource.StepOutput,
+                                request.Id + ".__commit." + output.Key, output.Value));
                         MRKExecutionStep barrier = new MRKExecutionStep(request.Id,
-                            exits,(ctx,ct)=>Task.FromResult((object)true),
+                            exits,
+                            (ctx,ct) =>
+                            {
+                                ct.ThrowIfCancellationRequested();
+                                foreach (KeyValuePair<string, object> output in ctx.BoundInputs)
+                                    ctx.Data.Return(output.Key, output.Value);
+                                return Task.FromResult((object)true);
+                            },
+                            inputs: exported, dataOutputs: nestedPlan.DataExportTypes,
                             condition: ctx => { object admitted; return ctx.TryGetResult(gateId,
                                 out admitted) && object.Equals(admitted, true); },
                             allowSkippedDependencies:true);
@@ -159,7 +202,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
                             request.ExecutionGroup,request.Inputs,ability.Output,
                             request.Condition,request.AllowSkippedDependencies,
                             request.DedicatedExecutorId,ability.SynchronousSdk,
-                            request.Priority,request.EstimatedPendingBytes));
+                            request.Priority,request.EstimatedPendingBytes,
+                            ability.DataOutputs));
                         expanded++;
                     }
                     if (expanded > MaxExpandedSteps)
