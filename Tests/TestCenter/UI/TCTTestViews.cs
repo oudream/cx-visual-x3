@@ -207,6 +207,8 @@ namespace CxVisual.TestCenter.UI
             }
             if (beforeBytes != null && afterBytes != null)
             {
+                try
+                {
                 IList<string> changes = TCTEngineeringSnapshotCodec.Compare(beforeBytes, afterBytes);
                 VerifiedDiffCount = changes.Count;
                 ContentPanel.Children.Add(new TextBlock
@@ -225,6 +227,13 @@ namespace CxVisual.TestCenter.UI
                 if (changes.Count == 0)
                     ContentPanel.Children.Add(new TextBlock { Text = "两个已验证快照没有对象差异。",
                         Foreground = Brushes.DarkGreen });
+                }
+                catch (InvalidDataException ex)
+                {
+                    EvidenceProblem = "工程版本不可比较：" + ex.Message;
+                    ContentPanel.Children.Add(new TextBlock { Text = EvidenceProblem,
+                        Foreground = Brushes.DarkRed, TextWrapping = TextWrapping.Wrap });
+                }
             }
             Observations(result, Kind);
             Assertions(result);
