@@ -420,7 +420,7 @@ namespace CxVisual.TestCenter.UI
         // Shell订阅同一条选择事件，Inspector可显示结构化Owner/Attempt/Artifact证据。
         public event Action<TCTTestObservation> ObservationSelected;
         public event Action<string, string> ObjectSelected;
-        public int ViewerCount { get { return Math.Max(0, _tabs.Items.Count - 1); } }
+        public int ViewerCount { get { return _tabs.Items.OfType<TabItem>().Count(tab => tab.Content is ITCTTestViewer); } }
         public TCTTestDocumentHostControl()
         {
             foreach (TCTTestViewBase viewer in _viewers.OfType<TCTTestViewBase>())
