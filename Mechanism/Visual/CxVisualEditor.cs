@@ -64,7 +64,10 @@ namespace CxVisual.Mechanism.Visual
         }
         public MTCEditResult<bool> Move(Guid id, double x, double y)
         {
-            int revision=Document.Revision;if(!Route(MVIInteractionKind.Move,id))return MTCEditResult<bool>.Rejected(Document.Revision,"visual.default_prevented","Move canceled before commit");
+            int revision=Document.Revision;
+            if(Document.Find(id)==null&&Document.FindReference(id)==null)
+                return MTCEditResult<bool>.Rejected(revision,"visual.target_not_found","Move target does not exist");
+            if(!Route(MVIInteractionKind.Move,id))return MTCEditResult<bool>.Rejected(Document.Revision,"visual.default_prevented","Move canceled before commit");
             return Document.Edit("移动可视对象",revision,e=>{var reference=Document.FindReference(id);if(reference==null)e.Move(RequireVisual(id),x,y);else{var p=reference.Placement;e.SetPlacement(reference,new MRCTransform(p.M11,p.M12,p.M21,p.M22,x,y));}return true;});
         }
         public MTCEditResult<bool> Remove(Guid id)
