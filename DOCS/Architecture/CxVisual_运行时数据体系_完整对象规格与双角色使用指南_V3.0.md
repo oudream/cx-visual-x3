@@ -319,3 +319,321 @@ public interface IMDSDataContext
 
 ---
 
+## 6. 核心对象规格：不是只有类名，还要职责、边界、关键属性和方法
+
+### 6.1 `IMDSDataContext / MDSDataContext`（P0便捷门面）
+
+**实例来源**：现有`MRKExecutionEngine`运行`MRKExecutionStep`时创建节点Frame，并通过`ctx.Data`注入。业务人员不自行`new MDSDataContext`。上下文以一次真实节点Invocation为边界。
+
+| 操作 | 实际接口 | 输入/结果 | 不变量、反例 |
+|---|---|---|---|
+| 读 | `Get<T>(name/key)` | 有值或类型异常 | 缺失抛`KeyNotFoundException`，不会暗中找父级Local |
+| 可选读 | `TryGet<T>(name,out value)` | 缺失返回false | 类型不匹配不能伪装成“缺失” |
+| 写局部 | `Set<T>(name/key,value)` | 当前Local | 当前Input同名不能覆盖；底层安全捕获 |
+| 暂存输出 | `Return<T>(name/key,value)` | 本Frame的PendingOutput | 必须在声明的Output内；重复Return拒绝；**未完成Commit** |
+| 查Pending | `InspectPendingOutputs()` | 当前帧Pending快照 | 只供当前授权调用诊断，不当Flow结果 |
+| Heap读写 | `HeapGet<T>,HeapSet<T>` | 显式FlowHeap | 不等同于Local；Heap即时副作用不能随Node失败自动回滚 |
+| 双向交接 | `MoveToHeap/CopyToHeap/MoveFromHeap/CopyFromHeap` | 默认同名拒绝，显式replace | Local属于Scope，Heap属于Flow，Move源将失效 |
+| 文件 | `SetFile,LoadAsync<T>,Unload` | 文件定位及托管缓存 | 未加载时`Get`不能自动触发IO；超限/取消/失效不发布 |
+| 元数据 | `Search,Inspect` | 轻量Snapshot，不含大内容 | 限当前授权范围，默认不遍历其他节点Committed |
+| 专业能力 | `Adapters` | 本Flow注册表 | 未注册可变类型拒绝；不在每个并行节点中重复注册同一类型 |
+
+`CommitOutputs/AbortOutputs/PrepareRetry`属于实现类与Frame/Runtime交接，不是普通`IMDSDataContext`对业务公开的指令。不能建议专业算法内部调用`CommitOutputs`。
+
+**使用优先级**：①`Get/Set/Return`；②`FDTDataKey<T>`与`MDSDataFunctions`；③高级`Heap/Move/Copy/File/Search`；④真正设备外部内存使用专业Owner的安全协议。
+
+### 6.2 `MDSDataHeap`（显式持有者）
+
+**持有状态**：内存条目（对象+CLR类型+载荷大小）、FileLocator（路径、类型、Loader、文件大小/UTC修改时间、`LoadState`、缓存及代际）、每Heap可选Budget、适配器注册表和RunId。
+
+- `Set<T>`：登记新条目，不隐式覆盖。
+- `Get<T>`：按安全复制/不可变承诺读取；FileLocator未加载则报错。
+- `Replace<T>`：覆盖已存在条目；与Set截然不同。
+- `Remove`：移除条目并归还逻辑持有量；移除Locator不会删除源文件。
+- `MoveTo/CopyTo`：Heap间受控移动或独立复制，可同Heap改名/派生；同名默认拒绝。
+- `SetFile<T>`：登记类型与专业Loader，**不立即读取**。
+- `LoadAsync<T>`：合法LoadState转换、源文件前后检查、取消、预算与节点结束屏障。
+- `Unload`：清缓存，继续持有文件定位。
+- `Query/Inspect`：只读摘要；`Inspect`在Heap可按字典精确获取条目。
+
+**特殊边界**：`CopyTo`对FileLocator默认复制定位描述，不复制几十GB文件；专业对象Copy需要目标Heap同样知道安全复制规则；跨不同Budget移动可能需要重新测量与预留。要把“外部文件持久化”与“Heap拥有缓存”严格区分。
+
+### 6.3 `MDSDataStack / MDSDataFrame / MDEExecutionDataScope`（运行交接）
+
+- 每个真实Flow有一份`MDSDataStack`，其中`FlowHeap`属于该Flow；多Flow之间不应通过“同名Key”共享实例。
+- `OpenFrame(invocationId,scope,inputs,declaredOutputs)`为节点创建唯一Frame；`invocationId`不能在同Flow重复。
+- Frame的`Data`注入当前Step，Inputs按MRK编译好的端口映射，Local由Scope拥有，Pending在Context内部。
+- 业务`Return`只写Pending；当MRK实际执行成功且声明的Output全部满足时调用`frame.CommitOutputs()`，一次性发布到`MDSDataStack`。
+- 下游通过MRK`StepOutput`绑定读取已提交数据；实际安全输出的读取可以委托`stack.TryReadOutput<T>(invocationId,outputName,out value)`。
+- `Frame.Dispose`和Scope结束时释放Local；已提交Output暂由Flow保活。此处`DataStack`不是线程局部的传统`Stack<T>`。
+- `MDEExecutionDataScope`保留旧代码兼容，但**新MDSDataContext托管帧不允许自动继承父Scope Local**；父子只在显式映射端口情况下传数据。
+- 嵌套专业子流程靠MRK编译期`InlineSubflow`与`__commit`屏障，不允许父节点读取未导出的子内部输出。
+
+### 6.4 `FDTDataAdapterRegistry`（专业值的安全形态）
+
+~~~csharp
+// 真实签名形状：全Flow独立注册，专业方负责Clone是否真正深复制。
+var adapters = new FDTDataAdapterRegistry();
+adapters.Register<MyResult>(
+    source => DeepClone(source),
+    kind: FDTDataKind.Object,
+    sizeEstimator: source => EstimateBytes(source));
+adapters.Freeze();
+~~~
+
+- `Capture`是安全值转入/离开容器的唯一核心校验；`byte[]`是防御复制，`FDTReadOnlyBuffer`按只读实例共享。
+- `sizeEstimator`是**托管有效载荷计费**，不是.NET精确RSS；不填时有限预算会拒绝无法确定大小的专业类型。
+- `Freeze`后不可再注册，适用于Flow的能力注册准备阶段。**当前实际Vision示例在Decode节点注册两个适配器**；未来如多分支可能抢注册，建议将类型注册提前到Flow创建/专业Provider准备阶段（**拟改进，不是当前已提供的MRK配置入口**）。
+- `Kind`的Image/Volume/Tensor是类型标记，不代表专业格式编码/解码、变换、深度学习网络自动存在。
+
+### 6.5 `MDSDataBudget`（逻辑保留量而非物理封顶）
+
+| 量 | 当前含义 | 不包含 |
+|---|---|---|
+| `LimitBytes` | FlowHeap及已提交FlowStack有效载荷上限 | CLR所有托管对象的真实堆峰值 |
+| `RetainedBytes` | 目前这些Owner仍持有的估计有效载荷 | 暂存的大数据副本、堆外/SHM/GPU与SDK资源 |
+| `QuotaExceeded` | 当写入/Commit/Load的收费超过剩余额度时拒绝 | 自动等待、自动驱逐或实时性能承诺 |
+
+配额默认**可选**，宿主`MRKExecutionEngine(dataPayloadBudgetBytes: ...)`启用。启用后大专业DTO应给尺寸估算器。并发Copy的峰值分配、临时图像算法工作内存仍需真实负载测量；不能由此推断“保证永不OOM”。
+
+### 6.6 `MDSDataQuery / MDSDataSnapshot / MDSDataBinding`（R3后端）
+
+**Snapshot最小字段**：`Name,DataType,Location,LoadState,Source,SizeBytes,Version,RunId,ScopeId`；不含实际像素、原始Buffer、可写对象句柄。
+
+**Query筛选**：`ExactName`或`NamePrefix`、类型、Location、LoadState、RunId、ScopeId、Skip、Take。默认Take=100，上限500；大量条目用分页或限制前缀。元数据查询不可触发文件实际装载。
+
+**Binding描述**：`MDSDataBinding(MDSBindingSource source, Type valueType, string sourceName=null, object constant=null)`：
+- 常量：只有值和目标类型，捕获后避免可写数组别名。
+- 节点输出：存明确端口来源，但运行前由MRK编译成**当前节点的Input别名**，业务数据上下文只知道别名。
+- FlowHeap：显式共享数据。
+- Variable/EngineeringResource/Expression：`IMDSExternalBindingResolver`委托给已有业务Owner，机制层不保存一份新真源。
+- `CompatibleCandidates`按类型筛选当前可见且状态可用的数据，不自动读取文件。**当前不是工程定义资源和历史Run的全量搜索API。**
+
+### 6.7 结构化错误与可视化错误呈现
+
+| 错误 | 机制现有语义 | 工程界面建议显示 |
+|---|---|---|
+| `NotFound` / `KeyNotFoundException` | 数据缺失或映射错误 | “节点Inspect缺少必需的Image输入” |
+| `TypeMismatch` / `InvalidCastException` | Input/Output类型不兼容 | “阈值应为int，连接结果为string” |
+| `NameConflict` | 默认拒绝同名Move/Copy/HeapSet | “目标已有Image；选择新名称或显式覆盖” |
+| `InputReadOnly` | 当前Input同名不能Set | “输入由上游只读提供，需要编辑副本” |
+| `OutputMissing` / `OutputConflict` | 必需Output少项或重复Return | “节点返回不完整，整组输出未提交” |
+| `Busy` | 加载中禁止Unload/Remove或复制源变更 | “数据正在使用/载入，稍后重试” |
+| `ScopeClosed` / `ObjectDisposedException` | 当前节点已结束 | “结果迟到，已拒绝写入旧运行实例” |
+| `QuotaExceeded` | 逻辑预算不足 | “本Flow已持有数据超过限定额度” |
+| `Unsupported` / `NotSupportedException` | 未注册专业安全类型/超出Loader能力 | “缺少专业Loader或复制适配器” |
+| `OperationCancelled` / `OperationCanceledException` | 协作取消 | “操作已取消，不提交输出” |
+
+以上“界面建议”尚未实现成统一WPF错误提示，不能误报UI完成。
+
+## 7. R1 软件开发者：完整D01～D09使用方案（真实API与目标能力分别标注）
+
+下面每段都有**业务目的、最小代码、实际边界与验收反例**。标记`[已可调用]`的代码使用目前真实存在的API（需正确的命名空间、上下文和MRK宿主）；`[场景规格]`表示由业务接口/宿主继续实现的部分，**不是能直接复制编译的伪造SDK**。
+
+### D01 小数值算法：真正只写业务的三动词 [已可调用]
+
+~~~csharp
+// 位于MRK节点回调内；运行宿主会注入ctx.Data。
+int threshold = ctx.Data.Get<int>("Threshold");
+ctx.Data.Set("Intermediate", threshold + 5);
+ctx.Data.Return("Area", threshold * 2);
+return Task.FromResult((object)true);
+~~~
+
+- 节点预先声明Input`Threshold:int`、DataOutput`Area:int`。
+- `Set("Intermediate")`属于本地，不会污染平行节点。
+- `Return("Area")`不等于成功：真正Commit在MRK工作返回、输出校验后执行。
+- **反例**：删掉Return、Return错误类型、重复Return；必须不能产生`FlowResult.Area`的半结果。
+
+### D02 强类型Key与普通C#函数 [已可调用]
+
+~~~csharp
+var src = new FDTDataKey<int>("Width");
+var dst = new FDTDataKey<int>("DoubleWidth");
+
+// 当前节点的Width已通过MRK端口绑定Input
+int answer = MDSDataFunctions.Invoke(
+    ctx.Data, src, dst, width => checked(width * 2));
+return Task.FromResult((object)answer);
+~~~
+
+- 当前方法`Invoke<TInput,TOutput>`自动`Get(src)`、运行`Func`、`Return(dst,result)`，**不是新调度器**。
+- 异步业务用`InvokeAsync(ctx.Data,src,dst,async (x,token)=>...,ct)`，取消后不得Return。
+- **反例**：输出没有在MRK Step的`DataOutputs`声明时，Return必须拒绝。
+
+### D03 一图两算法共享与“修改前复制” [已可调用基础]
+
+~~~csharp
+// 来源图像在进入运行前做一次安全只读封装。
+FDTReadOnlyBuffer original = new FDTReadOnlyBuffer(rawPixels);
+
+// 在采图/Decode节点，可通过Return发布给两个下游Input：
+ctx.Data.Return("Image", original);
+
+// 需要修改时：拿独立可写数据，不直接改original。
+byte[] editable = ctx.Data.Get<FDTReadOnlyBuffer>("ImageInput").ToArray();
+editable[0] = 0; // 这是派生副本，原图保持不变
+ctx.Data.Return("Enhanced", new FDTReadOnlyBuffer(editable));
+~~~
+
+这里的来源节点与增强节点是**两个不同的回调片段**，不能在同一节点同时执行或假设输出自己变成自己的Input；连接必须由MRK预先声明。典型结构：`Decode.Image → AI.ImageInput`且`Decode.Image → CV.ImageInput`。AI/CV不是靠全局Heap直接读“同一个名字”。
+
+**反例**：算法A持有原图，算法B修改自己复制得到的派生图；A读到的原始像素不能变化。`FDTReadOnlyBuffer`多消费者可以共用同一安全不可变实例，`byte[]`不能假定同实例传递。
+
+### D04 堆栈数据移动、复制与同名冲突 [已可调用]
+
+~~~csharp
+// 本节点Local
+ctx.Data.Set("ROI", new byte[] { 1, 2, 3 });
+// Move后不应再用Local ROI，Heap新持有者为GlobalROI
+ctx.Data.MoveToHeap("ROI", "GlobalROI");
+// Copy是独立安全副本；需要可写数组时取出并在本节点另存
+ctx.Data.CopyFromHeap("GlobalROI", "WorkingROI");
+byte[] working = ctx.Data.Get<byte[]>("WorkingROI");
+working[0] = 99;
+ctx.Data.Set("ModifiedROI", working);  // 修改结果成为新的Local
+~~~
+
+另可直接使用实际Heap API：
+
+~~~csharp
+using (var source = new MDSDataHeap())
+using (var target = new MDSDataHeap())
+{
+    source.Set("Result", new byte[] { 1, 2 });
+    source.CopyTo("Result", target, "Copy");  // 源仍有Result
+    source.MoveTo("Result", target, "Moved"); // 源Result被移除
+    // 如果目标已存在Moved，默认拒绝；
+    // 确需替换必须传replace: true。
+}
+~~~
+
+**反例**：把已有名字作为目标、同时竞争Move同一来源、复制器在复制过程中故意阻塞或来源被替换；均不得悄悄覆盖/发布半对象。显式Heap操作发生即生效，不能当成可自动回滚的Return。
+
+### D05 仅定位磁盘，按需加载与卸载 [已可调用]
+
+~~~csharp
+ctx.Data.SetFile("CT.Raw", absoluteFilePath);
+MDSDataSnapshot meta = ctx.Data.Inspect("CT.Raw", MDSDataLocation.FlowHeap);
+// meta.LoadState == Unloaded；这里没有读取文件主体
+
+byte[] bytes = await ctx.Data.LoadAsync<byte[]>("CT.Raw", ct);
+ctx.Data.Unload("CT.Raw"); // 只是清缓存，绝不删除文件
+~~~
+
+- 默认`MDSLimitedBinaryFileLoader`限制64MiB整文件加载；读取GB级CT需使用专业Loader读取ROI/块，不能凭当前API全量装载8GB。
+- 文件被替换、加载中Unload、取消、节点已关闭后迟到结果应失败；失败后Locator仍可检查。
+- **反例**：先搜索10000条磁盘Locator，磁盘读取字节不能因Search/Inspect增加；用容量小于文件缓存的Flow执行Load，应`QuotaExceeded`且不保留半缓存。
+
+### D06 自定义专业DTO与预算 [已可调用，专业类型是业务自有]
+
+~~~csharp
+// 假设此例的MyDetection是专业项目真实存在的自定义类型。
+// 专业应提供可审计的深复制与有效载荷字节估算器。
+var adapters = new FDTDataAdapterRegistry();
+adapters.Register<MyDetection>(
+    x => DeepCopyDetection(x),
+    kind: FDTDataKind.Object,
+    sizeEstimator: x => EstimateDetectionBytes(x));
+adapters.Freeze();
+
+var budget = new MDSDataBudget(100L * 1024 * 1024);
+using (var stack = new MDSDataStack(null, adapters, null, budget))
+{
+    stack.FlowHeap.Set("Result", myDetection);
+    // 读取到的专业DTO应符合专业安全复制承诺。
+}
+~~~
+
+注意`MyDetection/DeepCopyDetection/EstimateDetectionBytes`是**专业开发者必须提供的示例名称，不是仓库已有类**。当业务使用现有MRK Flow时，推荐由宿主设置`dataPayloadBudgetBytes`，而不是业务节点自己建立独立DataStack。
+
+**反例**：专业对象内含可变`byte[]`，复制器返回同一对象或共享同一可写底层数组；要证明隔离。有限预算而没有尺寸估算器，则不得默认为0字节继续。
+
+### D07 真正Vision专业算法进入MRK [已可调用，当前仓库实有对象]
+
+~~~csharp
+var options = new CxVisionInspectionOptions
+{
+    PixelDepth = CxVisionPixelDepth.Bits8,
+    GrayThreshold = 200,
+    MinDefectArea = 2,
+    MaxDefectArea = 100
+};
+MRKExecutionPlan plan = CxVisionDataFlow.CreateCpuInspectionPlan(options, 17);
+
+var inputs = new Dictionary<string, object>
+{
+    { "RawPixels", new FDTReadOnlyBuffer(rawPixels) },
+    { "Width", width },
+    { "Height", height }
+};
+
+MRKFlowResult result = await engine.StartFlow(plan, inputs).Completion;
+if (result.State != MRKFlowState.Completed)
+    throw result.Error ?? new InvalidOperationException("Vision运行失败");
+
+CxVisionInspectionResult imageResult =
+    result.GetCommittedOutput<CxVisionInspectionResult>("Inspection");
+long graySum = result.GetCommittedOutput<long>("GraySum");
+bool passed = result.GetCommittedOutput<bool>("Passed");
+~~~
+
+此源码调用的是`CxVisionDataFlow`中的真实5节点链路：Decode→Preprocess→（Inspect∥Statistics）→Decision。支持8/16位灰度RAW、阈值、四邻接连通域、灰度统计和结果合并。**这不是X-Ray工业相机、AI或CT硬件的实机接入**。
+
+**反例**：改输入宽高使RAW长度不匹配、使用不支持的位深、设Flow逻辑持有预算过小、并行运行两个不同输入；应按来源Run隔离，失败时`CommittedOutputs`为空。
+
+### D08 子流程A→B→C，无显式堆栈控制节点 [既有MRK机制，具体编排契约见测试]
+
+~~~text
+A主流程（SN、Recipe）
+   └─ B采图与检测子流程（Input: SN, Threshold）
+         └─ C缺陷检测子流程（Input: Image, Threshold; Output: Defects）
+B显式导出C.Defects → A.Defects
+~~~
+
+当前确有`MRKExecutionPlan.InlineSubflow(prefix,child,entryDependencies)`及`__commit`屏障；但**不存在旧V1.3示例中可直接使用的`runtime.RunChildAsync("...", data, ...)`通用API**。这点一定要纠正。
+
+实际集成步骤：①用`MRKExecutionStep`定义每层Input/DataOutputs；②子Plan声明`DataExports`；③编译期`InlineSubflow`展开；④外层只绑定子`__commit`后公开的Output；⑤任意C失败时B/A不应获得半结果。
+
+**反例**：外层连接到`nested.privateNode.Secret`应编译拒绝；并行同名C#1和C#2的Local不能串值。
+
+### D09 设备变量、IoT测点与检查器 [现有数据桥+拟对接专业Owner]
+
+~~~csharp
+// 以下绑定对象和解析器接口当前真实存在；resolver是原IoT/PLC Owner提供的实现。
+var binding = new MDSDataBinding(
+    MDSBindingSource.Variable, typeof(double), "Line01.Pressure");
+
+double pressure = MDSDataBindingResolver.Resolve<double>(
+    ctx.Data, binding, existingDeviceVariableResolver);
+
+// 当前运行数据元信息，绝不自动载入大文件：
+var visible = ctx.Data.Search(new MDSDataQuery {
+    RunId = ctx.Data.Inspect("Threshold").RunId,
+    NamePrefix = "Camera",
+    Take = 100
+});
+~~~
+
+`existingDeviceVariableResolver`是专业接口实现的示例参数名。实际设备变量Quality/Timestamp、订阅节流与PLC写入ACK必须由相应Owner提供，不能将`MDSDataBindingResolver`说成已经实现了PLC通道或新的IoT数据库。
+
+**反例**：没有外部Resolver时拒绝读取；类型不兼容时拒绝；给未授权节点一个`SourceName`不能绕过能力权限。
+
+### D10（新版补充）运行结束后的输出和并发Flow [已可调用]
+
+~~~csharp
+MRKFlowHandle flowA = engine.StartFlow(plan, inputsA);
+MRKFlowHandle flowB = engine.StartFlow(plan, inputsB);
+
+MRKFlowResult a = await flowA.Completion;
+MRKFlowResult b = await flowB.Completion;
+if (a.State == MRKFlowState.Completed)
+    Show(a.GetCommittedOutput<CxVisionInspectionResult>("Inspection"));
+if (b.State == MRKFlowState.Completed)
+    Show(b.GetCommittedOutput<CxVisionInspectionResult>("Inspection"));
+~~~
+
+`Show(...)`是界面业务占位函数；Flow输出是已提交结果的安全快照，**不是**跨Run随时可写Heap。测试必须保证`a.FlowId != b.FlowId`、两幅图的实际缺陷数量不同且不会串结果。`MRKFlowResult.Results`属于旧StepResult通道，不能无条件声称任何Object都是新MDS强保护类型。
+
+---
+
