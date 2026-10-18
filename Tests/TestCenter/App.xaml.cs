@@ -250,6 +250,19 @@ namespace CxVisual.TestCenter.UI
                             workerViewer.VerifiedReferenceCount != 1 ||
                             workerViewer.EvidenceProblem != null)
                             throw new InvalidOperationException("M2 WPF viewer failed to render cross-worker MEM evidence");
+                        // A six-mode shell must never manufacture a Graph when the selected
+                        // Owner has supplied only ObjectTree evidence.
+                        window.DocumentHost.ShowMode("Graph");
+                        if (window.DocumentHost.ActiveMode != "Graph")
+                            throw new InvalidOperationException("M2 Graph shell mode did not activate");
+                        var graphTab = (System.Windows.Controls.TabItem)
+                            ((System.Windows.Controls.TabControl)window.DocumentHost.Content).SelectedItem;
+                        var unsupported = graphTab.Content as System.Windows.Controls.TextBlock;
+                        if (unsupported == null || !unsupported.Text.Contains("NoEvidence"))
+                            throw new InvalidOperationException("M2 unsupported mode manufactured data");
+                        window.DocumentHost.ShowMode("ObjectTree");
+                        if (window.DocumentHost.ActiveMode != "ObjectTree")
+                            throw new InvalidOperationException("M2 viewer context switching failed");
                         exit = 0;
                     }
                     finally { window.Close(); }
