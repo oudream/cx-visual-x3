@@ -77,6 +77,13 @@ namespace CxVisual.TestCenter.UI
             Content = "跳转源码（若本机存在）", Margin = new Thickness(8), Padding = new Thickness(8, 4, 8, 4) };
         private readonly TabControl _tabs = new TabControl();
         private readonly TabItem _observationTab = new TabItem { Header = "观察Owner" };
+        private readonly TabItem _objectTab = new TabItem { Header = "工程对象" };
+        private readonly TextBlock _objectDetail = new TextBlock
+        {
+            Margin = new Thickness(12), FontFamily = new FontFamily("Consolas"),
+            TextWrapping = TextWrapping.Wrap
+        };
+        public string SelectedObjectId { get; private set; }
         private readonly TextBlock _observation = new TextBlock { Margin = new Thickness(12),
             FontFamily = new FontFamily("Consolas"), TextWrapping = TextWrapping.Wrap };
         // 供WPF Smoke核实真实选择链，不通过UI推导Pass/Fail。
@@ -116,6 +123,8 @@ namespace CxVisual.TestCenter.UI
             tabs.Items.Add(new TabItem { Header = "证据产物", Content = _artifacts });
             _observationTab.Content = new ScrollViewer { Content = _observation };
             tabs.Items.Add(_observationTab);
+            _objectTab.Content = new ScrollViewer { Content = _objectDetail };
+            tabs.Items.Add(_objectTab);
             Content = tabs;
         }
         public void ShowCase(ITCTTestCase test)
@@ -123,6 +132,8 @@ namespace CxVisual.TestCenter.UI
             _assertions.ItemsSource = null;
             _artifacts.ItemsSource = null;
             SelectedObservationTitle = null;
+            SelectedObjectId = null;
+            _objectDetail.Text = "选择真实工程快照中的节点或引用以查看稳定身份。";
             _tabs.SelectedIndex = 0;
             _observation.Text = "请选择真实观察项以查看Owner、身份与证据引用。";
             _currentSource = null; _openSource.IsEnabled = false;
@@ -140,6 +151,8 @@ namespace CxVisual.TestCenter.UI
         {
             if (result == null) return;
             SelectedObservationTitle = null;
+            SelectedObjectId = null;
+            _objectDetail.Text = "选择真实工程快照中的节点或引用以查看稳定身份。";
             _tabs.SelectedIndex = 0;
             _observation.Text = "本Attempt有 " + result.Observations.Count +
                 " 条观察。请在专业Viewer点击观察项，查看真实Owner和SHA256。";
@@ -169,6 +182,14 @@ namespace CxVisual.TestCenter.UI
                     "\n[" + diag.Severity + "] " + diag.Code + " @" + diag.Stage + ": " + diag.Message)) +
                 string.Join("", result.Artifacts.Select(a =>
                     "\n[Artifact] " + a.RelativePath + " SHA256=" + a.Sha256));
+        }
+
+        public void ShowObject(string objectId, string verifiedDetails)
+        {
+            SelectedObjectId = objectId;
+            _objectDetail.Text = string.IsNullOrWhiteSpace(objectId) ?
+                "未选择工程对象。" : (verifiedDetails ?? objectId);
+            _tabs.SelectedItem = _objectTab;
         }
 
         public void ShowObservation(TCTTestObservation observation)
