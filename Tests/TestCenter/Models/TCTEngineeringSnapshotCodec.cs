@@ -183,6 +183,39 @@ namespace CxVisual.TestCenter.Models
             return document;
         }
 
+        // Compares two verified, immutable snapshots of the SAME engineering project.
+        // Revision comparison is not Golden approval or a substitute for Owner assertions.
+        public static IList<string> Compare(byte[] before, byte[] after)
+        {
+            XDocument oldDocument = Deserialize(before);
+            XDocument newDocument = Deserialize(after);
+            string projectId = (string)oldDocument.Root.Attribute("projectId");
+            if (projectId != (string)newDocument.Root.Attribute("projectId"))
+                throw new InvalidDataException("Cannot compare snapshots of different projects");
+            var oldNodes = oldDocument.Root.Elements("Node")
+                .ToDictionary(x => (string)x.Attribute("id"), StringComparer.Ordinal);
+            var newNodes = newDocument.Root.Elements("Node")
+                .ToDictionary(x => (string)x.Attribute("id"), StringComparer.Ordinal);
+            var changes = new List<string>();
+            foreach (string id in oldNodes.Keys.Union(newNodes.Keys).OrderBy(x => x, StringComparer.Ordinal))
+            {
+                XElement oldNode, newNode;
+                bool hasOld = oldNodes.TryGetValue(id, out oldNode);
+                bool hasNew = newNodes.TryGetValue(id, out newNode);
+                if (!hasOld)
+                    changes.Add("+ " + (string)newNode.Attribute("kind") + " · " +
+                        (string)newNode.Attribute("name") + " (" + id + ")");
+                else if (!hasNew)
+                    changes.Add("- " + (string)oldNode.Attribute("kind") + " · " +
+                        (string)oldNode.Attribute("name") + " (" + id + ")");
+                else if (!XNode.DeepEquals(oldNode, newNode))
+                    changes.Add("~ " + (string)oldNode.Attribute("kind") + " · " +
+                        (string)oldNode.Attribute("name") + " → " +
+                        (string)newNode.Attribute("name") + " (" + id + ")");
+            }
+            return changes.AsReadOnly();
+        }
+
         private static string Format(double value)
         {
             return value.ToString("R", CultureInfo.InvariantCulture);
