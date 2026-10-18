@@ -32,7 +32,22 @@ namespace CxVisual.TestCenter.Cases
         {
             MEMEngineeringSession document = TCTRealCases.CreateOrganizationSample();
             IList<CxSceneItem> scene = CxSceneProjection.Project(document);
-            context.AssertEqual(2, scene.Count, "真实场景元素数");
+            int ownedElements = document.Project.Pages
+                .SelectMany(page => page.DescendantsAndSelf()).OfType<MRCElement>().Count();
+            MEMContent content = document.Project.Pages[0].RootContent;
+            MEMSymbol symbol = document.Project.Symbols[0];
+            int referencedElements = content.References.Count *
+                symbol.RootGroup.DescendantsAndSelf().OfType<MRCElement>().Count();
+            context.AssertEqual(ownedElements + referencedElements, scene.Count,
+                "真实场景包含页面拥有元素及Symbol引用展开实例");
+            CxSceneItem instance = scene.Single(x => x.Name.StartsWith("Symbol Instance / ",
+                StringComparison.Ordinal));
+            context.AssertTrue(instance.Address != null &&
+                instance.Address.InstancePath.Count == 1 &&
+                instance.Address.InstancePath[0] == content.References[0].Id &&
+                instance.Address.ObjectId == symbol.RootGroup.Children[0].Id,
+                "Symbol实例选择身份必须含使用路径", true,
+                instance.Address == null ? "Missing" : instance.Address.ToString());
             Guid detector = scene.First(x => x.Name == "Detector").Id;
             Guid? hit = CxSceneProjection.HitTest(scene, new CxPoint2D(60, 75));
             context.AssertEqual((Guid?)detector, hit, "原位置命中真实元素");
@@ -48,7 +63,9 @@ namespace CxVisual.TestCenter.Cases
             context.Observe("Geometry", "真实Visual投影",
                 "DocumentRevision=" + document.Revision + "; Detector moved (50,65) => (500,500)");
             context.Observe("ObjectTree", "场景对象归属",
-                "Project → Page → Content → Symbol → Group → Element");
+                "Ownership: Project → Page → Content → Group → Element; " +
+                "Reference: Content ↪ Symbol → RootGroup → Element; " +
+                "InstancePath=" + instance.Address);
         }
 
         [TCTTest("TCT.MVIS.002", "Visual编辑撤销重做与工程Revision保持一致", TCTTestAspect.Mechanism,
