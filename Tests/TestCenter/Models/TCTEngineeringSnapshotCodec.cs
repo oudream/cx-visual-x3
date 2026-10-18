@@ -141,9 +141,11 @@ namespace CxVisual.TestCenter.Models
                 }
                 else if (!Guid.TryParse(parentText, out parentId) || !index.ContainsKey(parentId))
                     throw new InvalidDataException("Engineering parent missing");
+                HashSet<Guid> children = new HashSet<Guid>();
                 foreach (XElement child in node.Elements("Child"))
                 {
                     if (!Guid.TryParse((string)child.Attribute("id"), out Guid childId) ||
+                        !children.Add(childId) ||
                         !index.TryGetValue(childId, out XElement descendant) ||
                         (string)descendant.Attribute("parentId") != id.ToString())
                         throw new InvalidDataException("Engineering ownership link mismatch");
@@ -163,6 +165,21 @@ namespace CxVisual.TestCenter.Models
                 }
             }
             if (roots != 1) throw new InvalidDataException("Engineering root count invalid");
+            // One root + local parent consistency is insufficient: an unrelated child cycle
+            // could otherwise masquerade as a valid disconnected subtree.
+            HashSet<Guid> reachable = new HashSet<Guid>();
+            Stack<Guid> pending = new Stack<Guid>();
+            pending.Push(projectId);
+            while (pending.Count != 0)
+            {
+                Guid id = pending.Pop();
+                if (!reachable.Add(id))
+                    throw new InvalidDataException("Engineering ownership cycle or duplicate traversal");
+                foreach (XElement child in index[id].Elements("Child"))
+                    pending.Push(Guid.Parse((string)child.Attribute("id")));
+            }
+            if (reachable.Count != nodes.Length)
+                throw new InvalidDataException("Engineering snapshot contains unreachable nodes");
             return document;
         }
 

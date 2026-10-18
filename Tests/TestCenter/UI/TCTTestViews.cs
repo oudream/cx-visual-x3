@@ -242,10 +242,16 @@ namespace CxVisual.TestCenter.UI
                 Guid id;
                 if (!Guid.TryParse((string)node.Attribute("id"), out id)) return;
                 string kind = node.Name.LocalName;
+                Guid targetId;
                 string address = kind == "Node" ?
                     new MRIObjectAddress(projectId,
                         Guid.Parse((string)node.Attribute("storageRootId")), id).ToString() :
-                    "ReferenceId=" + id + " / TargetId=" + (string)node.Attribute("targetId");
+                    (Guid.TryParse((string)node.Attribute("targetId"), out targetId) &&
+                     index.ContainsKey(targetId) ?
+                        new MRIObjectAddress(projectId,
+                            Guid.Parse((string)index[targetId].Attribute("storageRootId")),
+                            targetId, new[] { id }).ToString() :
+                        "ReferenceId=" + id + " / TargetId unavailable");
                 string detail = kind + " / " + (string)node.Attribute("name") +
                     "\nId: " + id +
                     "\nAddress: " + address +
@@ -291,6 +297,25 @@ namespace CxVisual.TestCenter.UI
             if (VerifiedReferenceCount == 0)
                 related.Children.Add(new TextBlock { Text = "此快照没有资源引用。",
                     Foreground = Brushes.Gray });
+            foreach (XElement node in nodes)
+            {
+                foreach (XElement port in node.Elements("Port"))
+                    related.Children.Add(new TextBlock
+                    {
+                        Text = "Port · " + (string)node.Attribute("name") + "." +
+                            (string)port.Attribute("member") + " / " +
+                            (string)port.Attribute("direction") + " / " +
+                            (string)port.Attribute("typeId"),
+                        TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 2)
+                    });
+                foreach (XElement connection in node.Elements("Connection"))
+                    related.Children.Add(new TextBlock
+                    {
+                        Text = "Connection · " + (string)connection.Attribute("source") +
+                            " → " + (string)connection.Attribute("target"),
+                        TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 2)
+                    });
+            }
             ScrollViewer relatedScroll = new ScrollViewer { Content = related,
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto, MaxHeight = 500 };
             Grid.SetColumn(relatedScroll, 1); split.Children.Add(relatedScroll);
@@ -381,6 +406,42 @@ namespace CxVisual.TestCenter.UI
             foreach (ITCTTestViewer viewer in _viewers) viewer.Clear();
             _tabs.Items.Add(new TabItem { Header = "概览", Content = _empty });
         }
+        public string ActiveMode
+        {
+            get { return _tabs.SelectedItem is TabItem ? ((TabItem)_tabs.SelectedItem).Header.ToString() : ""; }
+        }
+
+        public void ShowMode(string mode)
+        {
+            if (string.IsNullOrWhiteSpace(mode) || mode == "概览")
+            {
+                _tabs.SelectedIndex = 0;
+                return;
+            }
+            foreach (TabItem existing in _tabs.Items.OfType<TabItem>())
+                if (string.Equals(existing.Header as string, mode, StringComparison.OrdinalIgnoreCase))
+                {
+                    _tabs.SelectedItem = existing;
+                    return;
+                }
+            if (!_viewers.Any(v => string.Equals(v.Kind, mode, StringComparison.OrdinalIgnoreCase)))
+                throw new ArgumentException("Unknown viewer mode", "mode");
+            TabItem missing = new TabItem
+            {
+                Header = mode,
+                Content = new TextBlock
+                {
+                    Text = mode + " · NoEvidence / Unsupported\n\n" +
+                        "尚未从真实生产 Owner 的本次测试 Attempt 中获取此模式的结构化观察。" +
+                        "\n请先在左侧运行相应真实测试。不会绘制演示状态或虚假成功结果。",
+                    Margin = new Thickness(22), Foreground = Brushes.DarkGoldenrod,
+                    TextWrapping = TextWrapping.Wrap
+                }
+            };
+            _tabs.Items.Add(missing);
+            _tabs.SelectedItem = missing;
+        }
+
         public void ShowResult(TCTTestCaseResult result)
         {
             Clear();

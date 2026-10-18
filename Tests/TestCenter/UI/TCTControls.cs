@@ -259,10 +259,12 @@ namespace CxVisual.TestCenter.UI
         public Button Export { get; private set; }
         public Button RerunFailed { get; private set; }
         public Button CopyTestId { get; private set; }
+        public ComboBox ModeSelector { get; private set; }
         private readonly TextBlock _context = new TextBlock { VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(12, 0, 0, 0), Foreground = Brushes.SteelBlue };
         public ToolBar Build(Action runAll, Action runSelected, Action cancel, Action export,
-            Action rerunFailed = null, Action copyTestId = null)
+            Action rerunFailed = null, Action copyTestId = null,
+            Action<string> showMode = null)
         {
             ToolBar ribbon = new ToolBar { Background = Brushes.AliceBlue };
             RunAll = Create("▶ 运行全部", runAll);
@@ -281,6 +283,26 @@ namespace CxVisual.TestCenter.UI
                 CopyTestId = Create("复制TestId", copyTestId);
                 CopyTestId.IsEnabled = false;
                 ribbon.Items.Add(CopyTestId);
+            }
+            if (showMode != null)
+            {
+                ribbon.Items.Add(new Separator());
+                ribbon.Items.Add(new TextBlock { Text = "场景", Margin = new Thickness(8, 0, 5, 0),
+                    VerticalAlignment = VerticalAlignment.Center });
+                ModeSelector = new ComboBox
+                {
+                    Width = 160, MinHeight = 27, Margin = new Thickness(0, 0, 4, 0),
+                    ToolTip = "六场景共用TestCenter，不存在真实Owner证据时显示NoEvidence"
+                };
+                foreach (string mode in new[] { "概览", "Geometry", "ObjectTree", "Graph", "Channel", "Runtime" })
+                    ModeSelector.Items.Add(mode);
+                ModeSelector.SelectedIndex = 0;
+                ModeSelector.SelectionChanged += (s, e) =>
+                {
+                    if (ModeSelector.SelectedItem is string)
+                        showMode((string)ModeSelector.SelectedItem);
+                };
+                ribbon.Items.Add(ModeSelector);
             }
             ribbon.Items.Add(_context);
             return ribbon;
