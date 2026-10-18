@@ -90,3 +90,18 @@ D. 然后做Suite/Plan最小保存/回放与后续Graph/Channel接入；现场HI
 - **TCT-14（首批Smoke通过，完整交互验收未完成）：** `App.xaml.cs --ui-smoke` 新增真实 `TCT.M1.OBS.001`（Foundation.Geometry/CxRect2D跨Artifact观察）、`M-OBJ-001`（Mechanism.Core/CxProjectDocument Ownership）、Viewer按钮事件→Inspector选中及结果Attempt→Timeline过滤的WPF进程内回归。该Smoke是实际WPF控件事件验证，**不是**Windows UI Automation全流程回归或人工验收。
 - **待补：** V4.0技术主规格原文需要在统一可访问位置归档以便逐项核对；Geometry Expected/Actual/Diff更广泛数据合同、对象Reference区分、历史选择/重跑、完整UIA、人工截图验收、M3/M4/M5及工业HIL保持未完成。六场景参考图不是代码实现证据。
 - **修改范围：** `Tests/TestCenter/UI/TCTTestViews.cs`、`TCTControls.cs`、`TCTTestTimelineControl.cs`、`MainWindow.xaml.cs`、`App.xaml.cs`。Foundation/Mechanism/Professional生产源码未被修改。
+
+
+## M2 MEM统一工程组织与WPF六场景真实交互增量（2026-10-18）
+
+> 以下是 **M2 的真实增量验收**，不是 M2/六界面/M3～M5 的完整完成声明。生产 Owner 使用最新 `MEMNode/MEMEngineeringSession/MEMProjectSnapshot/MRCVisualItem/MRIObjectAddress`，原 `CxNode/CxProjectDocument` 旧组织测试不再作为当前权威真源。
+
+- **验收代码 Commit：** `a6d3bdfd21b9ae062e4ded5820715954369af69e`（`master`）。
+- **Windows CI：** https://github.com/oudream/cx-visual-x3/actions/runs/39114226490 （`success`，匹配上述代码）。Windows .NET Framework 4.8 / x64 全方案编译、Worker/NUnit、WPF UI Smoke、结构化Evidence/Replay、空选择及异常反证、3轮并发测试全部成功。Catalog 116，重复Attempt 348/348。
+- **TCT-04/05（M1合同增量）：** `TCTEngineeringSnapshotCodec` 将真实已提交 `MEMProjectSnapshot` 的节点、Parent/Child、独立Reference、Visual、Property/Port/Connection/Aspect 生成受限、版本化、只读XML负载；用已有 `TCTObservationEnvelope` 与 SHA256/Attempt/Run Artifact跨Worker传输。反证包括不存在父节点、重复Child、非法引用、断开子树、循环、DTD、跨Project比较拒绝，不能把纯文本冒充工程结构。
+- **TCT-06（M2进行中）：** 单一 `TCTMainWindow` 与已有 RibbonTray 加入“概览/Geometry/ObjectTree/Graph/Channel/Runtime”模式选择；不具真实Owner观察的模式显示 `NoEvidence`，不计真实Viewer；Results/DocumentHost/Inspector/Timeline沿用统一Shell，不新增项目和第七Workbench。
+- **TCT-07（M2进行中）：** `TCTObjectTestView` 不再解析 `Observation.Details` 的箭头文本构树，改为从经过归档核验的 `MEMProjectSnapshot` 展示真实Ownership、Reference、节点身份/Visual以及Property/Port/Connection/Aspect。点击Object/Reference进入Inspector“工程对象”，后者含定义地址和引用 `InstancePath`。支持同工程双已提交Revision的Before/After节点差异，只对证据事实显示，不能替代正式Golden审批。
+- **TCT-14（已通过进程内WPF控件事件Smoke，完整UIA未完成）：** `--ui-smoke` 验证真实 `M-OBJ-001` 的Snapshot/Artifact、跨进程Worker→Viewer、树节点→Inspector、六模式切换NoEvidence、不计虚假Viewer、`M-OBJ-006` 双Revision差异。该验证不是人工截图对照、鼠标级Windows UI Automation或六场景完整交互验收。
+- **测试用例与修复：** `M-OBJ-005` 验证MEM固定快照/非法Owner证据，`M-OBJ-006` 验证基于稳定NodeId的真实Revision变化。由于并行开发已令生产 `CxSceneProjection` 展开Symbol引用实例，旧 `TCT.MVIS.001` 固定场景元素数导致CI失败；现已根据真实Owned图元与Reference实例数量核算，并验证 `MRIObjectAddress.InstancePath`，修正错误的“Content owns Symbol”文本。失败CI归档不删除，最终通过CI如上。
+- **项目与源码：** 新增 `Tests/TestCenter/Models/TCTEngineeringSnapshotCodec.cs`，修订 `CxVisual.TestCenter.csproj`、`Cases/TCTRealCases.cs`、`Cases/TCTMechanismActualCases.cs`、`UI/TCTTestViews.cs`、`UI/TCTControls.cs`、`MainWindow.xaml.cs`、`App.xaml.cs` 及 `README.md`。未创建生产第二套工程树、Graph、Runtime或新的TestCenter项目。
+- **保持未完成：** M2完整Geometry/Content/Symbol的Expected/Actual/Golden Diff、真正动态的Context Ribbon全命令、历史GUI浏览与失败重跑、完整UIA与人工六图验收；M3工程H07→MRK正式翻译/SourceMap及Graph/Runtime/Channel结构化Viewer；M4 Suite/Plan、正式八维覆盖与审签Golden；M5 Benchmark/长跑/专业HIL。不得以这次成功CI冒称这些功能完成。
