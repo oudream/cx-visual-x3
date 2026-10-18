@@ -213,6 +213,14 @@ namespace CxVisual.TestCenter.Cases
                         "<!DOCTYPE x [<!ENTITY ext SYSTEM 'file:///tmp/secret'>]>" +
                         "<EngineeringSnapshot schema='1'/>")),
                     "工程证据不得包含DTD");
+                XDocument duplicate = TCTEngineeringSnapshotCodec.Deserialize(payload);
+                XElement parent = duplicate.Root.Elements("Node")
+                    .First(x => x.Elements("Child").Any());
+                parent.Add(new XElement(parent.Elements("Child").First()));
+                context.AssertThrows<InvalidDataException>(() =>
+                    TCTEngineeringSnapshotCodec.Deserialize(Encoding.UTF8.GetBytes(
+                        duplicate.ToString(SaveOptions.DisableFormatting))),
+                    "重复Child不能在Viewer中被渲染成两份对象");
                 context.ObserveStructured("ObjectTree", "Immutable Snapshot",
                     "真实MEM快照、引用、视觉字段和非法关系拒绝",
                     session.Project.Id.ToString("D"), session.GetAddress(session.Project).ToString(), null,
