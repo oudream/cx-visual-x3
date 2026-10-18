@@ -143,6 +143,7 @@ namespace CxVisual.TestCenter.UI
         public event Action<string, string> ObjectSelected;
         public int VerifiedNodeCount { get; private set; }
         public int VerifiedReferenceCount { get; private set; }
+        public int VerifiedDiffCount { get; private set; }
         public string EvidenceProblem { get; private set; }
         public TreeView OwnershipTree { get; private set; }
 
@@ -151,6 +152,7 @@ namespace CxVisual.TestCenter.UI
             base.Clear();
             VerifiedNodeCount = 0;
             VerifiedReferenceCount = 0;
+            VerifiedDiffCount = 0;
             EvidenceProblem = null;
             OwnershipTree = null;
         }
@@ -162,6 +164,7 @@ namespace CxVisual.TestCenter.UI
                 "真实 MEMProjectSnapshot 只读快照 · Ownership 实线层级，Reference 独立引用，不复制 Symbol 定义。");
             TCTTestObservation[] observations = result.Observations.Where(o =>
                 string.Equals(o.Kind, Kind, StringComparison.OrdinalIgnoreCase)).ToArray();
+            byte[] beforeBytes = null, afterBytes = null;
             foreach (TCTTestObservation observation in observations)
             {
                 if (observation.Envelope == null || observation.Envelope.PayloadRef == null ||
@@ -182,9 +185,11 @@ namespace CxVisual.TestCenter.UI
                     TCTObservationReplay.Read(result);
                     TCTTestArtifactStore store = new TCTTestArtifactStore(
                         TCTTestArtifactStore.RunRoot(result.RunId));
-                    XDocument snapshot = TCTEngineeringSnapshotCodec.Deserialize(
-                        store.Read(observation.Envelope.PayloadRef));
+                    byte[] bytes = store.Read(observation.Envelope.PayloadRef);
+                    XDocument snapshot = TCTEngineeringSnapshotCodec.Deserialize(bytes);
                     BindSnapshot(snapshot, observation);
+                    if (observation.Origin == "Before") beforeBytes = bytes;
+                    else if (observation.Origin == "After") afterBytes = bytes;
                 }
                 catch (Exception ex) when (ex is InvalidDataException ||
                     ex is IOException || ex is UnauthorizedAccessException ||
@@ -199,6 +204,27 @@ namespace CxVisual.TestCenter.UI
                         Margin = new Thickness(0, 8, 0, 8)
                     });
                 }
+            }
+            if (beforeBytes != null && afterBytes != null)
+            {
+                IList<string> changes = TCTEngineeringSnapshotCodec.Compare(beforeBytes, afterBytes);
+                VerifiedDiffCount = changes.Count;
+                ContentPanel.Children.Add(new TextBlock
+                {
+                    Text = "Revision Before / After · 差异 " + changes.Count + " 项",
+                    FontWeight = FontWeights.Bold, Foreground = Brushes.DarkSlateBlue,
+                    Margin = new Thickness(0, 6, 0, 8)
+                });
+                foreach (string change in changes)
+                    ContentPanel.Children.Add(new TextBlock
+                    {
+                        Text = change, TextWrapping = TextWrapping.Wrap,
+                        Foreground = Brushes.DarkOrange,
+                        Margin = new Thickness(4, 2, 0, 2)
+                    });
+                if (changes.Count == 0)
+                    ContentPanel.Children.Add(new TextBlock { Text = "两个已验证快照没有对象差异。",
+                        Foreground = Brushes.DarkGreen });
             }
             Observations(result, Kind);
             Assertions(result);
