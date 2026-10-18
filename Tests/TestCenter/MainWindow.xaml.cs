@@ -30,10 +30,17 @@ namespace CxVisual.TestCenter.UI
             DocumentHost.ObservationSelected += observation => Inspector.ShowObservation(observation);
             DocumentHost.ObjectSelected += (objectId, details) => Inspector.ShowObject(objectId, details);
             RibbonTray.ToolBars.Add(_ribbon.Build(OnRunAll, OnRunSelected, OnCancel, OnExport,
-                OnRerunFailed, OnCopyTestId));
+                OnRerunFailed, OnCopyTestId, OnModeSelected));
             _ribbon.SetContext(null);
             StatusText.Text = "Ready · " + _catalog.Cases.Count +
                 " 个真实测试用例。默认独立进程隔离；Graph/Channel/Runtime未接入的类型不会伪装通过。";
+        }
+
+        private void OnModeSelected(string mode)
+        {
+            DocumentHost.ShowMode(mode);
+            StatusText.Text = "TestCenter · " + mode +
+                " · 数据仅来自真实测试结果；无Owner证据时显示NoEvidence。";
         }
 
         private void OnTestSelected(ITCTTestCase test)
