@@ -16,6 +16,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             ThreeLevelNamedDataContract();
             MissingAndWrongSubflowInputsFailBeforeRuntime();
             MissingDeclaredCapabilityInputRejected();
+            StandaloneCompilerNamedExports();
             OrdinaryCapabilityAndExistingStepResultsRemainUsable();
         }
 
@@ -190,6 +191,43 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 rejected = error.Diagnostics.Any(d=>d.Message.Contains("类型不匹配"));
             }
             Check(rejected,"错误能力输入类型未被自动声明校验拦截");
+        }
+
+        private static void StandaloneCompilerNamedExports()
+        {
+            MRKCodeRuntimeBlueprint catalog = new MRKCodeRuntimeBuilder()
+                .DataCapability("Double", (ctx, ct) => {
+                    ctx.Data.Return("Doubled", ctx.Data.Get<int>("N") * 2);
+                    return Task.FromResult((object)true);
+                }, Output("Doubled"), new[] {
+                    new MRKCapabilityInput("N",typeof(int))
+                })
+                .Flow("Definition",f=>f.StepData("calculate","Double",new[] {
+                    new MRKExecutionInput("N",MRKInputSource.FlowInput,
+                        "n",typeof(int))
+                }).Export("Result","calculate.Doubled"))
+                .Freeze();
+            var single = new MRKExecutionPlanCompiler().Compile("Standalone",
+                new[] {new MRKStepCompileRequest("calculate","Double",
+                    inputs:new[] {
+                        new MRKExecutionInput("N", MRKInputSource.FlowInput,
+                            "n", typeof(int))
+                    })}, catalog,
+                new Dictionary<string,string>{{"Result","calculate.Doubled"}});
+            Check(single.Succeeded &&
+                single.Plan.DataExportTypes["Result"] == typeof(int),
+                "单层Compiler没有复用具名DataOutputs/Flow导出协议");
+            var runtime = new MRKExecutionEngine(new FCRWorkerOptions(2,8));
+            try
+            {
+                MRKFlowResult value = runtime.StartFlow(single.Plan,
+                    new Dictionary<string,object>{{"n",11}})
+                    .Completion.GetAwaiter().GetResult();
+                Check(value.State==MRKFlowState.Completed &&
+                      value.GetCommittedOutput<int>("Result")==22,
+                    "单层直接编译与子流程编译数据语义不同");
+            }
+            finally { runtime.StopAsync().GetAwaiter().GetResult(); }
         }
 
         private static void OrdinaryCapabilityAndExistingStepResultsRemainUsable()
