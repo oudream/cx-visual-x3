@@ -4,8 +4,8 @@
 
 > 日期：2026-10-17；在 V1.0 上增补复核，保留六角色、八案例、28项需求及源码/历史验证记录；不重新建设对象体系。
 > 本轮 x3：`master / ea6205b8ff4c9557efd56935f61430b2a49f7a23`（已正常合并 GitHub master `604718869e704d8ab943d6e593eeeb274afe657d`）；x2 本地/GitHub master：`2626734d0fd5e67ac50fd0621532173cec39b939`。x3 Core/Visual 及专业/运行源码相对此前 V1.0 审计基线 `464b2e8d1575736a1885e01ac00a239e22f29c79` 无变化；新远端变化是 TestCenter 验收/归档，不据此虚报本轮CI。
-> 性质：长期规范的**待审 V1.1 设计与实施准备**；H00重大结构项尚待确认。所有新 MEM/MRC/MRI 等 API 是目标设计，当前可用 Cx API 另列。
-> 范围：本轮只编写设计文档/导航；不改业务代码，不自动开始H01/H02。V1.0作为历史版本保留不覆盖，已有未跟踪V0.2草稿保留。
+> 上述提交号是V1.1设计审查时点的历史基线。2026-10-18更新：H00 D01～D04已确认，H01已实施；本轮真实源码/测试结果与剩余范围见H01报告。§4/§9/附录的旧审计证据只对应各自注明的提交，不能作为当前源码行号使用。
+> 性质：长期设计与分阶段实施规范。当前实际API与后续候选合同分开；V1.0作为历史版本保留，已有未跟踪V0.2草稿保留。
 
 配套交付（同一体系，不是四套规范）：
 
@@ -15,9 +15,9 @@
 
 ## 0. 先读：现在能做什么，怎样使用本指南
 
-当前可以直接使用：六类节点的样例工程、矩形增删/改位置、基础内存批量事务、Undo/Redo、schema 1 XML 保存加载；可以独立使用现有配置服务、CPU Vision 检测，以及代码方式的 MRK 能力/流程/子流程和 MDS 数据能力。
+当前可以直接使用：`MEMEngineering.Create/Open`、多页面/内容/符号自动合法根、矩形与嵌套Group、独立资源查询、最小共享定义引用、增量Id索引、统一Edit/Undo/Redo、基本绑定声明、format2包与schema1 XML保存加载。旧Cx工厂/编辑命令仍消费同一实体和历史。可执行入门程序为[H01QuickStart](../../Examples/EngineeringOrganization/H01QuickStart.cs)。
 
-当前不能据此认定已具备：通用新建多页面 API、唯一 RootContent/RootGroup 约束、共享 Content/Symbol 引用、一般属性/端口编辑、四 Aspect 持久化、工程到运行的完整翻译、六专业可视化编排、跨工程资源包、完整迁移发布和生产级恢复。**本指南能指导现有闭环的实际开发，并给出完整工程的目标设计与落地路径；在不改业务代码的本次任务中，不能将这些缺口伪装成可直接使用的 SDK。**
+当前不能据此认定已具备：参数化引用实例渲染、一般属性/端口编辑、四Aspect通用持久化、工程到MRK完整翻译、跨工程包、未知插件保真、完整x2 format6迁移、账户授权和生产恢复。Session对象是只读实时身份，固定版快照/长草稿/保存时继续编辑属于后续阶段。
 
 ### 0.1 状态与证据
 
@@ -29,11 +29,11 @@
 | 规划中 / 建议 API | 源码没有该入口，或本稿提出的契约设计 | 不可直接复制到当前程序集编译 |
 | 待验证 | 尚无本轮对应行为/环境证据 | 旧 CI、旧仓记录不能代替本轮实测 |
 
-文中的“目标规则”依据统一模型、V4.9 和工程规范；V1.1 对 D01～D07 的推荐与原V1.0目标有差异时，以明确标注的H00待确认状态为准，不能当作已批准变更。“建议”用于补齐尚未裁决的类型、交互与格式。当前源码与目标不一致时同时列出，不以任一方静默覆盖另一方。
+文中的“目标规则”依据统一模型、V4.9和工程规范；D01～D04以用户最终确认及下列UML为准。D05～D07的完整事件/迁移/分组算法按原Owner后续验收，不阻断H01。旧候选签名不得冒充已实现API。
 
 ### 0.2 阅读与入门路径
 
-- 软件开发者：先读 §2 对象关系、§4 当前 API，再运行 §8.1/8.2；需要执行流程时读 §8.8 的独立运行示例。
+- 软件开发者：先读§2对象关系及[H01真实API与可执行示例](../Testing/CxVisual_工程组织体系_H01_实现与验收_V1.0.md)，再对照§4旧Cx兼容面；需要运行流程时读§8.8的独立运行示例。
 - 工程编排用户：先读 §3 操作过程、§6 六角色、§8 案例；先使用当前 Studio 的矩形/保存功能，目标流程编辑器尚未完成。
 - 专业开发者：读 §5 类型与扩展、§7 协同、§8.5～8.8；不要通过修改 CxNodeKind 或持久化 SDK 句柄接入能力。
 - 维护者与审查者：读 §9 追溯矩阵、§10 兼容/冲突、§11 实测与自审、§12 来源及附录。
@@ -88,15 +88,15 @@ flowchart TD
 
 确认保留：唯一工程定义、四Aspect按需、零页面后台工程、Foundation/Mechanism各一个现有Core项目、原配置/数据/运行Owner，以及H01～H07的既有阶段。新增H00只收敛核心结构。
 
-| 待确认项 | V1.1 推荐 | 与V1.0的差异及后续动作 |
+| 裁决项 | 当前确定方案 | 与V1.0的差异及后续动作 |
 |---|---|---|
 | D01 Node与Resource | Page/Content/Symbol实现只读IMEMResource，Entry仍作登记与存储元数据 | 不再仅让用户通过Entry找所有对象；独立/内嵌/外部分类明确，无第二资源树 |
-| D02 Group继承 | Group : Element : MEMNode，Element为视觉对象基类 | x3和V1.0是平级；继承改变须确认，Group.Kind仍是Group，普通视觉叶不可拥有 |
+| D02 Group继承 | MRCVisualItem : MEMNode；Element/Group为兄弟派生类 | 用户已确认；Group拥有类型化VisualItem混合集合，Element为视觉叶 |
 | D03 Element定位 | 图元/显示表达；非视觉算法/控制/IoT通过Content与Logic/Data/Collaboration组织 | 不继续把所有业务能力泛化成Element；继承x2按需业务Aspect |
 | D04 API易用性 | Session便利方法＋Project强类型只读投影，复杂操作仍Edit | 减少普通场景的根/句柄/事务细节，不开放可写实体/List |
 | D05/D06/D07 | 提交观察与UI事件分工；x2旧格式显式适配；组变换基础依赖 | 历史事件/动态化/未知保真不因新API而消失；几何API现实、完整迁移/事件Owner需阶段确认 |
 
-下文UML的继承采用**D02推荐图并明确待确认**，当前源码事实仍以§4为准。详见待裁决清单的方案比较、影响与验收；版本号V1.1不构成批准记录。本轮完成后交文档审阅，不能开始H01代码。
+下文UML已同步用户最终裁决及H01生产模型。历史比较保留在H00文档，不能据其旧Group:Element推荐重新改变现有继承。
 
 ## 2. 完整工程组织模型
 
@@ -104,14 +104,14 @@ flowchart TD
 
 | 对象 | 职责与目标成员 | 所有权/实例及生命周期 | 当前事实 |
 |---|---|---|---|
-| Project | 工程身份、资源/依赖登记、页面、共享定义及版本策略 | 工程定义根；不拥有设备活跃会话或产品运行数据 | CxProject 仅是 Id/Name/Kind 节点 |
-| Page | 专业工作视图、尺寸/背景/导航、唯一 RootContent | 根内容归该页面；页面不是 Runtime 必需入口 | CxPage 无尺寸/专业归属/RootContent 属性 |
-| Content | 业务组合、复用、作用域与逻辑边界；拥有子 Content、引用及视觉内容 | 可本地嵌套或作为共享定义被引用；运行时按使用链实例化 | CxContent 为空壳，允许部分拥有关系 |
-| Symbol | 可复用视觉/语义模板；RootGroup、公开属性/端口 | 本身是定义；位置/参数差异属于 SymbolReference | CxSymbol 是普通拥有节点，没有共享引用或唯一根 |
-| Group | 视觉组合、局部变换、选择/布局边界 | 只含 Group/Element；不冒充设备/业务作用域 | CxGroup 无变换等属性，基础包含规则存在 |
-| Element | 推荐为视觉对象基类；语义 Kind.Element 是视觉叶 | 普通叶无子项，Group为视觉复合子类（D02待确认）；不强迫业务节点使用图元 | CxElement 目前只实现矩形 X/Y/Width/Height |
-| ContentReference / SymbolReference | 某次使用、目标定义/版本、实例 ID、覆盖与映射 | 是拥有者下的从属引用记录，不复制目标 Children | x3 未实现；x2 有真实来源 |
-| ResourceEntry | 可独立保存/版本化的资源身份、根地址或外部制品引用、依赖 | 登记不复制另一份业务内容；可不依赖 Page | x3 尚无通用登记和独立制品 API |
+| Project | 工程身份、资源/依赖登记、页面、共享定义及版本策略 | 工程定义根；不拥有设备活跃会话或产品运行数据 | MEMProject分类投影/索引查询已实现；完整依赖锁后续 |
+| Page | 专业工作视图、尺寸/背景/导航、唯一RootContent | 根内容归页面；页面不是Runtime必需入口 | 自动唯一根/保护已验证；Workbench/背景等后续 |
+| Content | 业务组合、复用、作用域与逻辑边界 | 嵌套或共享定义；不强制视觉 | MEMContent拥有嵌套Content/VisualItem及引用；完整Aspect后续 |
+| Symbol | 可复用组件定义；RootGroup、公开属性/端口 | 定义与使用位置分离 | MEMSymbol自动唯一根、最小引用已验证；参数/端口后续 |
+| Group | 视觉组合、局部变换、选择/布局边界 | 只含Group/Element；不是业务作用域 | MRCGroup:MRCVisualItem，混合嵌套、局部变换与命中已验证 |
+| Element | 视觉叶；公共可视操作来自MRCVisualItem | 无拥有子项；业务无显示可用Content | MRCElement抽象，MRCRectangle为H01实际图元 |
+| ContentReference / SymbolReference | 使用身份、目标定义、版本与覆盖 | 从属于Content，不复制目标Children | MRIResourceReference已实现独立Id/TargetId/Kind/Owner及往返；版本/覆盖后续 |
+| ResourceEntry | 元信息与存储登记 | 不拥有业务节点，不是第二资源树 | GetResourceEntry按需返回元数据快照；外部制品目录/独立版本后续 |
 | Property/Port/Connection/Aspect | 对象的契约和能力定义 | 从属于同一工程，拥有者、版本和序列化明确 | 配置/运行端有相关契约，Core 通用模型未完成 |
 | 工程树/Outline/画布/依赖图 | 不同任务的导航和投影 | 可重建，不独立保存可写业务真源 | 当前场景投影只遍历整个树的矩形 |
 | Runtime Instance/Scope/Result | 某次执行的状态、数据与证据 | MRK/MDS/专业拥有，按运行和目标释放 | 存在内核实现；未完整映射至工程视图 |
@@ -122,34 +122,41 @@ flowchart TD
 classDiagram
     MEMNode <|-- MEMProject
     MEMNode <|-- MEMPage
-    MEMNode <|-- MRCContent
-    MEMNode <|-- MRCSymbol
-    MEMNode <|-- MRCElement
-    MRCElement <|-- MRCGroup
+    MEMNode <|-- MEMContent
+    MEMNode <|-- MEMSymbol
+    MEMNode <|-- MRCVisualItem
+    MRCVisualItem <|-- MRCElement
+    MRCVisualItem <|-- MRCGroup
     MEMProject *-- MEMPage : 拥有
-    MEMPage *-- MRCContent : 唯一 RootContent
-    MRCContent *-- MRCContent : 嵌套
-    MRCContent *-- MRIReference : 内容或符号使用位置
-    MRIReference --> MRCContent : Content目标
-    MRIReference --> MRCSymbol : Symbol目标
-    MRCSymbol *-- MRCGroup : 唯一 RootGroup
-    MRCGroup *-- MRCElement : 视觉子项
+    MEMPage *-- MEMContent : 唯一 RootContent
+    MEMContent *-- MEMContent : 嵌套
+    MEMProject *-- MEMContent : 共享定义
+    MEMProject *-- MEMSymbol : 共享定义
+    MEMContent *-- MRIResourceReference : 内容或符号使用位置
+    MRIResourceReference --> MEMContent : Content目标
+    MRIResourceReference --> MEMSymbol : Symbol目标
+    MEMSymbol *-- MRCGroup : 唯一 RootGroup
+    MEMContent *-- MRCVisualItem : 视觉对象
+    MRCGroup *-- MRCVisualItem : 混合与多层嵌套
+    IMEMResource <|.. MEMPage
+    IMEMResource <|.. MEMContent
+    IMEMResource <|.. MEMSymbol
 ```
 
-本图中的 Group:Element 仅为 H00 D02 推荐（尚未批准）；当前 x3 是二者平级，不能按此声称源码已改变。组合实线表示拥有；关联表示引用。图省略共享定义的工程级登记、Group 嵌套及合法的视觉叶对象。Workbench 是专业工作环境/注册与导航上下文；旧设计存在其物理拥有关系争议，**本稿不将它增加为第七种 CxNode，不创建 WorkbenchRef**。本次目标采用 Project 登记共享资源、页面携带 WorkbenchId；不改变旧仓物理拥有结构的事实描述。
+本图是H00已批准并由H01落地的结构。CxNode为无状态源码兼容基类，旧Cx对象就是相应MEM/MRC实体，不并列存储另一棵树。Workbench仍是专业编辑上下文，不新增第七种节点；页面专业元数据后续补齐。
 
 ### 2.3 合法关系：目标与当前分开
 
-| 关系 | 目标规则 | 当前 CxNode.Allows |
+| 关系 | 目标规则 | 当前H01行为（完整策略在Session内） |
 |---|---|---|
-| Project → Page/共享定义/资源 | 允许；独立资源可以无页面 | 只允许 Page |
-| Page → 根内容 | 恰好一个 Content；由合法创建动作自动建立 | 可有多个 Content 或 Symbol；不验证唯一根/非空 |
+| Project → Page/共享定义/资源 | 允许；独立资源可以无页面 | Page/Content/Symbol合法，空工程合法 |
+| Page → 根内容 | 恰好一个Content；自动建立 | 单根受保护，公开编辑不能删/移根 |
 | Content → Content | 可嵌套，单 Parent，无拥有环 | 允许 |
-| Content → 引用/Group/Element | 支持业务复用和视觉内容；引用有自己身份 | 当前仅允许 Content/Symbol 节点，无引用记录 |
-| Symbol → Group | 恰好一个 RootGroup | 允许多个 Group；不检查恰好一个 |
+| Content → 引用/Group/Element | 支持业务复用和视觉内容；引用有自己身份 | 已支持；旧CxContent内嵌CxSymbol仅限显式legacy兼容 |
+| Symbol → Group | 恰好一个RootGroup | 自动创建、单根受保护 |
 | Group → Group/Element | 允许；只做视觉组合 | 允许 |
 | Group → Symbol/Content | 不允许；需要业务组合时用 Content | 不允许 |
-| Kind.Element → 任意子节点 | 普通叶不允许；Group即使是Element子类，按Kind.Group执行容器规则（D02待确认） | 不允许；当前Group与Element平级 |
+| Kind.Element → 任意子节点 | 不允许；Group与Element同继承MRCVisualItem | 不允许，重复Id/双父/拥有与引用展开环原子拒绝 |
 
 **符号嵌套的正确用法**：通过嵌套 Content 组织多个 SymbolReference，或在 Symbol 的 RootGroup 内嵌套视觉 Group/Element。不能为满足“嵌套符号”而悄悄允许 Group 拥有 SymbolReference/业务子流程。若确需另一种符号实例包含语义，必须形成单独兼容裁决。
 
@@ -289,7 +296,7 @@ ProjectPackage/
 
 ## 5. V1.1候选契约（最终用户模型及H01源码优先）：两个项目、统一前缀与完整操作闭环
 
-**本节是 2026-10-17 深审后的目标设计，全部尚待实现；涉及D01～D04的公开结构以前置H00确认为准。** 它替换前版“签名/工厂/载体待裁决”的草案；不把下列新类型写成当前 SDK。§4、§8 的 REAL 示例和附录仍使用真实 `Cx*` 名称。使用者不需要先学习全部内部类型：普通开发只接触 `MEMEngineering`、`MEMEngineeringSession`、`MTCEditSession` 和返回的句柄/结果。
+**本节保留2026-10-17的完整候选合同，作为后续阶段输入；D01～D04已经用户最终确认，H01实际子集见验收报告。** 不能因为类型同名就认定本节所有重载已实现；句柄/地址、长草稿、通用属性/端口等按后续阶段落地。§4、§8的REAL示例和附录保留旧`Cx*`兼容事实。日常开发先用MEMEngineering/Session便利面，复杂操作用同一事务。
 
 ### 5.1 两个现有项目与命名裁决
 
@@ -311,9 +318,9 @@ ProjectPackage/
 | 类型（形态 / Owner） | 必要成员、职责和身份 |
 |---|---|
 | `FOIStableId`（struct / F01） | `Guid Value`；构造非空、`NewId()`、`Parse(string)`、`TryParse(string,out FOIStableId)`、值相等/哈希、固定 `N` 格式；`default` 必须视为非法。工程 API 保留 Guid，避免强制包装所有调用 |
-| `MEMNode`（abstract / M01） | `Guid Id`、`string Name`、`string TypeId`、`MEMNodeKind Kind`、`Guid? ParentId`、只读 `Children`、`Properties`、`Aspects`、`Ports`、`References`、`Connections`；一个文档只有一份权威节点；不公开可变 Parent 指针 |
+| `MEMNode`（abstract / M01） | 已批准且已实现：Id/Name/TypeId/Kind/只读Parent及导航；Children由派生拥有者投影，叶共用空集合。基类不存Properties/Aspects/Ports/References/Connections，不预分配集合/事件；后续能力放实际拥有者并按需创建 |
 | `MEMProject / MEMPage`（sealed / M01） | Project 为唯一根，拥有 Page/共享定义/外部资源记录，附资源清单；Page 有 `WorkbenchId`、`RootContentId`。Page 根自动创建且不能独立删除 |
-| `MRCContent / MRCSymbol / MRCGroup / MRCElement`（形态按H00 D02确认 / M02） | Content 组合/作用域；Symbol 有 `RootGroupId` 和公开成员映射；Group 视觉组合；Element 为视觉对象基类、Group复合继承推荐见D02（待确认）；批准前不得生成另一套公开继承。非视觉能力优先Content+Aspect，不能强制矩形 |
+| `MEMContent / MEMSymbol / MRCVisualItem / MRCGroup / MRCElement` / M01,M02 | Content/Symbol直继MEMNode；MRCVisualItem承载公共视觉能力，Group/Element分别派生。Page.RootContent、Symbol.RootGroup等实际导航以H01源码为准；公开成员/端口映射仍为后续规划。无界面业务用Content，不强制图元 |
 | `MEMResourceEntry`（sealed / M01） | `Id`、`Name`、`TypeId`、`RootObjectId?`、`OwnerId`、`ArtifactUri?`、`Version`、`Hash`、`Dependencies`、`Lifecycle`。本地资源 Id 等于其根节点 Id；外部静态制品无本地业务根。清单按根 Id 索引，不再拥有另一份节点 |
 | `MEMLifecycleDescriptor`（sealed / M01） | `Kind`、稳定 `ResolverId/CompilerId/ProviderId`、依赖地址；仅描述所需解析/编译/外部生命周期。没有 Start/Stop、活动句柄或线程 |
 | `MRIObjectHandle`（struct / M03） | `SessionId/ResourceId/ObjectId`，临时/已提交句柄统一形态；不序列化、不拥有节点、不含可变实体；不能跨会话使用 |
@@ -616,7 +623,7 @@ public static class TargetEngineeringGuide
 
 ### 5.11 资源能力与便捷面：V1.1的推荐增量
 
-H00 D01建议 `MEMPage/MRCContent/MRCSymbol : MEMNode, IMEMResource`（Content/Symbol各自已有继承名按D02不受影响）；接口含Id/Name/TypeId/StorageRootId/Scope，Scope=Standalone/Embedded/PinnedExternal。Project.Pages/Contents/Symbols 是唯一拥有集合的只读分类投影；Project.Resources 默认列独立资源；FindResource可显式包含嵌入内容。本地Entry登记同一根，不复制字段/树；外部静态资产没有Node根，以已有登记提供只读资源适配。
+H00 D01建议 `MEMPage/MEMContent/MEMSymbol : MEMNode, IMEMResource`（Content/Symbol各自已有继承名按D02不受影响）；接口含Id/Name/TypeId/StorageRootId/Scope，Scope=Standalone/Embedded/PinnedExternal。Project.Pages/Contents/Symbols 是唯一拥有集合的只读分类投影；Project.Resources 默认列独立资源；FindResource可显式包含嵌入内容。本地Entry登记同一根，不复制字段/树；外部静态资产没有Node根，以已有登记提供只读资源适配。
 
 H00 D04建议 Session 的 AddPage(name)、AddContent(parent,name)、AddSymbol(name)、AddRectangle(pageOrContentOrGroup,...)、PlaceSymbol、Rename、Group/Ungroup 等单操作方法；返回相应MTCEditResult，内部只委托一次Edit。Session.Project返回当前冻结MEMProject，旧快照不自动更新；每次需读当前版须重新取Project/GetSnapshot。不新增可写facade树、隐式环境事务或六套Builder。
 

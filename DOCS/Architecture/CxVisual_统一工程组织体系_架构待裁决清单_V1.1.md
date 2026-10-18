@@ -11,7 +11,7 @@
 
 CxNode 是组织身份与拥有关系；IResource 是可被资源目录认识的能力。二者不是互斥的物理树。以下分析不因为 x2 字符串 ID、Newtonsoft.Json 或文件格式不同而否定其成熟语义。
 
-## 2. 待裁决总表
+## 2. 裁决与后续专项总表
 
 | ID | 问题与推荐 | 影响及需确认内容 | 状态 / 阻断 |
 |---|---|---|---|
@@ -33,10 +33,10 @@ x2 已有 Project.Pages、ContentDefinitions、SymbolDefinitions 和资源目录
 |---|---|---|---|
 | 只有节点，靠类型分支识别资源 | 新类型不断修改 if/else；库/保存/引用入口不统一 | 专业扩展受 Core 类型分支限制 | 不推荐 |
 | 只有 ResourceEntry，所有操作先找登记再找根 | 小工程需理解目录、根和句柄才能建页 | 可行，但节点本身缺资源能力，容易制造包装对象和双身份 | V1.0 方案保留价值，补能力接口 |
-| Node 实现资源能力，登记只承载存储/版本元数据 | `Project.Pages` 与 `FindResource(page.Id)` 指向同一节点；资源浏览器能统一操作 | 需明确内嵌内容不是独立文件/独立版本 | 推荐，待确认 |
+| Node 实现资源能力，登记只承载存储/版本元数据 | `Project.Pages` 与 `FindResource(page.Id)` 指向同一节点；资源浏览器能统一操作 | 内嵌内容随StorageRoot保存；H01 Entry只按需快照 | 已确认；最小能力已实现 |
 
 ```csharp
-// [H00 建议契约；未实现] namespace CxVisual.Mechanism.Core
+// [H01真实契约] namespace CxVisual.Mechanism.Core
 public interface IMEMResource
 {
     Guid Id { get; }
@@ -45,7 +45,7 @@ public interface IMEMResource
     Guid StorageRootId { get; }
     MEMResourceScope Scope { get; }
 }
-// 目标枚举：Standalone=1, Embedded=2, PinnedExternal=3。
+// H01枚举：Standalone=1, Embedded=2；PinnedExternal为后续规划。
 // Page、共享Content、Symbol：Standalone；Page.RootContent/嵌套Content：Embedded。
 ```
 
@@ -56,14 +56,14 @@ public interface IMEMResource
 ```mermaid
 classDiagram
     MEMNode <|-- MEMPage
-    MEMNode <|-- MRCContent
-    MEMNode <|-- MRCSymbol
+    MEMNode <|-- MEMContent
+    MEMNode <|-- MEMSymbol
     IMEMResource <|.. MEMPage
-    IMEMResource <|.. MRCContent
-    IMEMResource <|.. MRCSymbol
+    IMEMResource <|.. MEMContent
+    IMEMResource <|.. MEMSymbol
     MEMProject *-- MEMPage : 唯一拥有
-    MEMProject *-- MRCContent : 共享定义
-    MEMProject *-- MRCSymbol : 共享定义
+    MEMProject *-- MEMContent : 共享定义
+    MEMProject *-- MEMSymbol : 共享定义
     MEMResourceEntry --> IMEMResource : 登记与只读投影
 ```
 
@@ -71,7 +71,7 @@ classDiagram
 
 ## 4. Project 应自然提供强类型导航
 
-推荐的 MEMProject 只读成员：`IReadOnlyList<MEMPage> Pages`、`IReadOnlyList<MRCContent> Contents`（只含共享根）、`IReadOnlyList<MRCSymbol> Symbols`、`IReadOnlyList<IMEMResource> Resources`（默认独立资源）；以及 `FindPage(Guid)`、`FindContent(Guid)`、`FindSymbol(Guid)`、`FindResource(Guid,bool includeEmbedded=false)`、`FindResources(string typeId,bool includeEmbedded=false)`。
+推荐的 MEMProject 只读成员：`IReadOnlyList<MEMPage> Pages`、`IReadOnlyList<MEMContent> Contents`（只含共享根）、`IReadOnlyList<MEMSymbol> Symbols`、`IReadOnlyList<IMEMResource> Resources`（默认独立资源）；以及 `FindPage(Guid)`、`FindContent(Guid)`、`FindSymbol(Guid)`、`FindResource(Guid,bool includeEmbedded=false)`、`FindResources(string typeId,bool includeEmbedded=false)`。
 
 FindContent 可以定位合法嵌入内容，但不改变 Contents 的“共享根集合”含义；Find* 单 Id 缺失返回 null，重复 Id 是验证错误，不返回首项。名称搜索返回全部命中、范围显式、Ordinal 比较；x2 的 OrdinalIgnoreCase 字符串身份转换不得直接套到 Guid/稳定 TypeId。
 
@@ -90,19 +90,20 @@ x2 `Elements.cs` 明确 `ElementModel : CxNode`、`GroupElementModel : ElementMo
 | 平台扩展 | SVG/复杂图元复用复合图元；必须明确 Kind 与 CanHaveChildren | 结构干净，但容易再造 VisualNode 基类或复制能力 |
 | 风险 | Element 不能继续定义为“一定叶子”；不可让所有 Element 都有可写 Children | 不可仅为维持当前 sealed 类而抹掉 x2 能力 |
 
-**以下段落与图保留V1.1原推荐的历史比较，已被页首用户最终裁决覆盖；不可作为当前继承规则。** 原推荐把 Element 定义为视觉基类；普通图元通过 NodePolicy 判为叶子。MEMNodeKind.Group 仍为 Group，不因 CLR `is MRCElement` 就按 Element 编码；序列化先检查明确 Kind/TypeId，而非先匹配基类。
+原推荐曾把Element作为视觉基类；用户最终选择共同MRCVisualItem，保留x2的共有视觉操作并明确叶/容器区别。下图是唯一最终继承；旧Group:Element仅作为上表比较，不保留另一张可被误用的目标图。
 
 ```mermaid
 classDiagram
-    MEMNode <|-- MRCElement
-    MRCElement <|-- MRCGroup
+    MEMNode <|-- MRCVisualItem
+    MRCVisualItem <|-- MRCElement
+    MRCVisualItem <|-- MRCGroup
     MRCElement <|-- RectangleImplementation
-    MRCGroup *-- MRCElement : 拥有视觉子项
-    MRCSymbol *-- MRCGroup : 唯一RootGroup
-    MRCContent *-- MRCElement : 按需视觉
+    MRCGroup *-- MRCVisualItem : 混合拥有与嵌套
+    MEMSymbol *-- MRCGroup : 唯一RootGroup
+    MEMContent *-- MRCVisualItem : 按需视觉
 ```
 
-此 UML 是 D02 推荐图。批准前 V1.0 的平级模型仍是原目标记录；不得同时生成两套公开继承。迁移验证必须包含 `FindByType<MRCElement>()` 包含 Group、叶图元不可拥有、Group.Kind 正确、SVG 嵌套、Group/Ungroup 前后世界变换等价；旧绝对坐标与新局部坐标保留显式标记，不靠猜测。
+此UML已获确认并由H01实现。验证断言改为：MRCVisualItem集合包含Group/Element，`OfType<MRCElement>()`不包含Group，普通叶不可拥有，Group.Kind正确，组移动不改子项局部坐标。SVG、Group/Ungroup的完整世界变换等价及x2旧坐标迁移按H03/H05/H06后续验证。
 
 ## 6. D03：Element 的显示定位不妨碍业务统一
 

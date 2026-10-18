@@ -1,9 +1,9 @@
 # CxVisual 工程组织体系 V1.1：H00～H07 分阶段实施与验收指导
 
-> 2026-10-17；本计划延续 V1.0 的 H01～H07，仅增加 H00 定案、补足最小闭环与各阶段可执行标准。**本轮只交付文档，没有阶段代码完成声明。**
+> 2026-10-17；本计划延续 V1.0 的 H01～H07，仅增加 H00 定案、补足最小闭环与各阶段可执行标准。原文档准备时点记录；H01当前实测状态见下方更新。
 > **2026-10-17实施更新**：用户已确认D01～D04，最终结构为MEMNode→MEMProject/MEMPage/MEMContent/MEMSymbol/MRCVisualItem，视觉叶MRCElement与容器MRCGroup共用MRCVisualItem。以下“未确认/未开始”等为原计划时点记录；当前进度以H01验收报告为准。
 
-> 依据：[V1.1 主文档](CxVisual_统一工程组织体系_完整架构设计与开发使用指南_V1.1.md)、[x2 逐项复用映射](CxVisual_统一工程组织体系_x2至x3复用映射_V1.1.md)、[待裁决清单](CxVisual_统一工程组织体系_架构待裁决清单_V1.1.md)。当前 H00 未确认，H01～H07 均未开始；后续执行前必须重新核对 master。
+> 依据：[V1.1 主文档](CxVisual_统一工程组织体系_完整架构设计与开发使用指南_V1.1.md)、[x2 逐项复用映射](CxVisual_统一工程组织体系_x2至x3复用映射_V1.1.md)、[待裁决清单](CxVisual_统一工程组织体系_架构待裁决清单_V1.1.md)。H00的D01～D04已确认；H01核心闭环及所需H02/H04子集已实现，完整阶段边界与实际通过项见[H01验收报告](../Testing/CxVisual_工程组织体系_H01_实现与验收_V1.0.md)。下一阶段执行前重新核对master。
 
 ## 0. 每个阶段都必须执行的规则
 
@@ -12,7 +12,7 @@
 3. Foundation.Core 只放通用身份基础，Mechanism.Core 放组织模型/定义/资源/事务/格式。使用既有 Foundation.Data/FCM/FDT，依赖不能倒置；不引用 Visual/WPF/Runtime/Professional 实现。H06/H07 按各自原 Owner 修改消费方。
 4. 文件名与主类型对应，传统 csproj 显式 Compile；.NET Framework 4.8，使用当前真实可编译语言版本验证。本指南示例按 C#7.3 可表达形态设计，不先引入未经验证的新语言特性。
 5. 组织回归优先接入 `Tests/ArchitectureSmoke`，通用身份边界可接入 `Tests/FoundationSmoke`；不新增测试项目。可以新增测试源文件，但必须登记现有入口实际调用它们。NUnit/TestCenter 是既有可选呈现/汇总入口，不以其占位截图或一次 Mock 结果替代真实测试。
-6. 本文类型/方法都是目标；当前 API 见主文档 §4。共享基础签名见主文档 §5：MEMEngineering.Create/OpenAsync、Session.Edit/BeginEdit/Save/Close、MTCEditResult/Issues、Handle/Address。修改该合同必须同步案例与复用映射，不能在实现里悄悄选另一套名称。
+6. H01表与示例已同步真实API；H02～H07类型/方法仍是目标。当前API见H01验收报告，旧Cx兼容入口见主文档§4。共享基础签名见主文档 §5：MEMEngineering.Create/OpenAsync、Session.Edit/BeginEdit/Save/Close、MTCEditResult/Issues、Handle/Address。修改该合同必须同步案例与复用映射，不能在实现里悄悄选另一套名称。
 7. 阶段验收至少保留命令、退出码、实际断言、日志路径、SHA、未验证限制。H01/H02 的单位测试不代表 H03～H07 完成。所有“门槛通过”均指后续真实代码完成后的验收，不是本文已执行。
 
 ### 共用验证命令与提交准入
@@ -42,7 +42,7 @@ git diff --check
 | FOIStableId / Foundation.Core F01 | Guid 字节身份、空值/解析/default规则；兼容 CxStableId，不把项目语义下沉 |
 | MEMNode、MEMProject、MEMPage / Mechanism.Core M01 | 唯一拥有存储、Project 分类只读集合、Page 自动唯一根、零页面工程合法 |
 | IMEMResource、MEMResourceScope、MEMResourceEntry / M01 | D01 接口/元数据结合；Standalone/Embedded/PinnedExternal、StorageRootId、目录去重，外部记录无第二节点树 |
-| MRCContent/MRCSymbol/MRCElement/MRCGroup / M02 | D02 Group继承、D03 Element定位、Content轻量业务与Symbol可选行为；Group.Kind不因继承误编码 |
+| MEMContent/MEMSymbol/MRCElement/MRCGroup / M02 | D02 Group继承、D03 Element定位、Content轻量业务与Symbol可选行为；Group.Kind不因继承误编码 |
 | MEMEngineeringSession/MTCEditSession / M01,M07 | D04 便利面与统一提交器；禁止直接修改冻结实体与 List；一用户意图一历史 |
 
 **操作顺序**：核对上述真实源码→比较三角色影响→确定推荐/反例→负责人确认 D01～D04→将最终 UML/签名同步三份文档→写明确认日期/依据→才进入 H01。
@@ -51,54 +51,47 @@ git diff --check
 
 **设计/TDD 准备**：ORG-H00-01 检查两张 UML 只有一个最终推荐并标识批准状态；02 检查同一页面可同时以 Node/Resource 查询且无复制；03 检查视觉基类与无视觉业务无冲突；04 检查便利面与底层 API 同一收据/授权/历史；05 检查 R01～R50 的每项继承功能有阶段或明确不迁移理由。设计检查不能冒充行为单元测试。
 
-**完成标准**：D01～D04 有真实确认记录，D05/D06/D07 有Owner与后续门槛；对象关系、公开命名和最小保存格式没有阻断 H01 的未决项。当前没有达到此标准，不能用本轮提交自动将 H00 置完成。
+**完成标准**：D01～D04 有真实确认记录，D05/D06/D07 有Owner与后续门槛；对象关系、公开命名和最小保存格式没有阻断 H01 的未决项。用户已明确确认D01～D04，H00核心模型门槛已达到。D05～D07完整能力仍按对应后续阶段验收，不重新等待同一确认。
 
 ## H01：身份、合法模型与创建—编辑—保存—重开完整闭环
 
 **目标**：新开发者不用 CreateSample/XML 手写就能构造工程；创建 Project→Page/Content→视觉对象→修改→保存→加载后逐字段一致。保留 V1.0 H01 名称，同时前移 H04 的**最小文件闭环**；H04 仍负责完整资源/扩展/并发/迁移保障。
 
-**前置**：H00 的 D01～D04 已确认；若最终批准与推荐不同，先更新本节再编码。范围包括内存单次 Edit、明确修订和基本失败原子性；不含复用实例、通用端口、完整撤销、跨工程导入或专业执行。
+**前置**：H00 的 D01～D04 已确认；若最终批准与推荐不同，先更新本节再编码。范围包括内存单次 Edit、明确修订和基本失败原子性；包含最小引用记录与统一撤销重做，不含参数化复用实例、通用端口、复杂历史合并、跨工程导入或专业执行。
 
-| 类型 / 路径及Owner | 属性、方法与本阶段具体行为 | 复用依据 |
+| 当前生产类型 / 文件与Owner | H01实际行为 | 仍属后续能力 |
 |---|---|---|
-| `Foundation/Core/Identity/FOIStableId.cs` / F01 | Value/NewId/Parse/TryParse/Equals/ToString；非空Guid、default拒绝、N格式；保留旧 CxStableId 转换 | 改造当前 x3，旧 IdUtil 不另建一套随机身份 |
-| `Mechanism/Core/Engineering/MEMNode.cs` / M01 | Id/Name/Kind/ParentId、只读Children；唯一Id/单父/无拥有环；不公开 Attach/集合写入 | R01/R04/R07/R08 |
-| MEMProject/MEMPage / M01 | Project分类集合/Find；Page WorkbenchId/RootContentId、默认页面元数据；自动根与保根校验；空后台工程合法 | R09/R13/R14/R17/R18 |
-| IMEMResource/MEMResourceScope / M01 | 按 D01 最终合同实现只读资源能力；普通嵌入内容随所在资源保存，目录不重复节点 | R31～R34＋新能力接口 |
-| MRCContent/MRCSymbol/MRCElement/MRCGroup / M02 | 自动RootGroup、合法视觉包含、Element与Group继承按D02；本阶段可不开放所有Symbol编辑，但加载/验证不能接受非法根 | R19/R23/R26/R28 |
-| MEMEngineering/MEMEngineeringSession / M01 | Create/OpenAsync、Project/GetSnapshot、Revision/Location/IsDirty、GetHandle/Read、SaveAs/Save/Close；默认注册 core.canvas/core.rectangle 的合法值 | x3工厂改造，R09/R46/R50 |
-| MTCEditSession/MTCEditResult/MTCEditException / M07 | Edit、AddPage/GetRootContent/AddContent/AddElement、Rename/SetProperty、Commit/Dispose；先隔离构建再一次提交，失败原件不变 | R04/R07/R41；x3既有批次校验作兼容输入 |
-| MRIObjectHandle/MRIObjectAddress / M03 | 本会话句柄、最小Project/资源/对象地址；失败句柄不可用；本阶段不宣称支持外部库/完整实例链 | R02/R36 |
-| MPMValue/Binding、MVEIssue/Report / M04,M08 | 矩形有限坐标/正尺寸、基本文本/数值类型与Literal来源；可定位结构错误；非视觉Content不要求矩形 | R26/R38 |
-| MEMFileProjectStore/IMEMProjectStore、Snapshot/SaveResult/Result / M01 | `.cxproj` 最小 ZIP/XML格式2：工程/页/根/矩形与基本属性/Revision；唯一临时文件、基本回读/可靠替换、失败不清脏；旧 schema1 原读取入口保留 | R18/R44/R45/R46；完整 Token/未知负载/依赖能力留 H04 |
+| Foundation/Core/FOIStableId.cs / F01 | 非空Guid、解析/default拒绝、值相等；兼容CxStableId | 无工程语义下沉 |
+| Mechanism/Core/Engineering/MEMNode.cs / M01 | MEMNode/MEMProject/MEMPage/MEMContent/MEMSymbol、IMEMResource、类型化拥有、唯一根、只读导航 | Page专业工作环境/样式元数据后续；基类不预分配可选能力 |
+| Engineering/MRCVisualItem.cs / M02,M04 | MRCVisualItem共同基类；Element/Group兄弟继承；MRCRectangle、局部变换/逆变换命中、按需MPMBinding声明 | 样式/动画/通用Aspect/公开参数后续；不求值绑定 |
+| Engineering/MEMEngineeringSession.cs / M01,M03,M07 | Create/Open/OpenAsync、增量Find、资源元数据投影、Edit/Revision/Undo/Redo/Watch/Dirty/Close | 无固定快照/Handle/Address/长草稿；返回只读实时实体 |
+| Engineering/MTCEditSession.cs / M07 | AddPage/AddContent/AddSymbol/AddGroup/AddRectangle、Rename/Move/Resize/Rotate/Scale/Reparent/Remove/Reference | 局部逆日志＋单Session闸门；不声称全树隔离草稿或完整授权 |
+| Engineering/MEMFileProjectStore.cs / M01 | 内部流式format2单ZIP/project.xml；schema1读写兼容；临时件/Flush/校验/替换；失败保持脏状态 | 公共IMEMProjectStore/保存Token/未知载荷/完整x2 format6迁移留H04/H05 |
+| MEMResourceEntry / MEMNode.cs / M01 | 按需只读元数据快照，不拥有节点 | 外部依赖锁/物理资源目录后续 |
+| MRIResourceReference / MEMNode.cs / M03 | Content/Symbol使用记录Id独立于TargetId；引用/反向使用索引、展开环保护、保存往返 | 实例参数/变换/端口映射及视觉实例渲染留H03/H06 |
+| 旧Cx API、Visual/SceneView/Studio / 原Owner | 同一实体和Session；保留矩形命令与旧XML，必要WPF变换/命中/拖动适配 | 完整多页工程UI仍H06；没有把UI、MRK或MDS搬到Core |
 
-**实施顺序**：先测 ID/根/非法包含→最小冻结模型与兼容适配→Create/Edit/类型默认值→真实文件序列化/加载→Save/Close 失败路径→公共完整示例→现有回归。只有本阶段支持的数据能写入该格式；遇到未实现扩展须明确拒绝，不能丢字段再保存成功。
+最新用户要求性能/轻量优先，因此从原候选的全树冻结草稿改为局部逆日志与只读实时身份。按Id索引查询，局部编辑不重建工程。`SaveAsync`当前后台执行但保存期间占Session闸门；固定版并发保存留H04。下列原目标验收项中涉及候选Handle/Address/通用属性的部分按此实际API替换，完整扩展不计入H01完成范围。
 
-**开发者案例**（目标片段；完整失败/关闭程序见主文档 TARGET-01）：
+**实施顺序**：先测ID/根/非法包含→最小只读实体模型与兼容适配→Create/Edit/类型默认值→真实文件序列化/加载→Save/Close 失败路径→公共完整示例→现有回归。只有本阶段支持的数据能写入该格式；遇到未实现扩展须明确拒绝，不能丢字段再保存成功。
+
+**开发者案例（当前真实API；完整程序在Examples/EngineeringOrganization/H01QuickStart.cs）**：
 
 ```csharp
-// [阶段目标 H01；当前未实现]
 var project = MEMEngineering.Create("H01工程");
-var created = project.Edit("创建页面和内容", e =>
-{
-    var page = e.AddPage("core.canvas", "操作页");
-    var area = e.AddContent(e.GetRootContent(page), "设备区");
-    var lamp = e.AddElement(area, "core.rectangle", "状态灯");
-    e.SetProperty(lamp, "x", MPMBinding.Literal(MPMValue.Number(20)));
-    e.Rename(lamp, "运行状态");
-    return lamp;
-});
-if (!created.Success) throw new InvalidOperationException(created.Issues[0].Code);
-var saved = await project.SaveAsAsync(path, CancellationToken.None);
-if (!saved.Success) throw new InvalidOperationException(saved.Issues[0].Code);
-var opened = await MEMEngineering.OpenAsync(path, null, CancellationToken.None);
-if (!opened.Success) throw new InvalidOperationException(opened.Issues[0].Code);
-var lampAgain = opened.Value.Read(opened.Value.GetHandle(created.Value.ObjectId));
-if (!lampAgain.Success) throw new InvalidOperationException(lampAgain.Issues[0].Code);
-// 集成测试继续逐字段比较全树/名称/矩形/修订；会话均按显式策略关闭。
+var page = project.AddPage("操作页");
+var area = project.AddContent(page.RootContent, "设备区");
+var lamp = project.AddRectangle(area, "状态灯", 20, 30);
+project.Edit("统一修改", e => { e.Rename(lamp,"运行状态"); e.Move(lamp,25,35); }).RequireValue();
+project.SaveAs(path);
+project.Close();
+var opened = MEMEngineering.Open(path);
+var lampAgain = (MRCVisualItem)opened.Find(lamp.Id);
+if (lampAgain.Name != "运行状态" || lampAgain.X != 25) throw new InvalidOperationException();
+opened.Close();
 ```
 
-**TDD（均为待开发验收项）**：
+**TDD（已接入真实测试；覆盖、限制与证据见H01报告）**：
 
 | ID | 真实断言/反例 |
 |---|---|
@@ -106,16 +99,16 @@ if (!lampAgain.Success) throw new InvalidOperationException(lampAgain.Issues[0].
 | ORG-H01-02 | Create为零页合法、Revision0且未保存；AddPage恰好一个根；新增Content可嵌套 |
 | ORG-H01-03 | Page/Content/Group添加图元合法；Element叶子拒绝孩子；Symbol恰好一RootGroup |
 | ORG-H01-04 | 同一对象多父/重复Id/拥有环/删除唯一根拒绝，前后全树比较相等 |
-| ORG-H01-05 | 一次创建+修改只增加一次Revision；名称/位置/尺寸真实变化；失效句柄不可读 |
+| ORG-H01-05 | 一次创建+修改只增加一次Revision；名称/位置/尺寸真实变化；过期Edit不能写，删除对象不能从索引读到 |
 | ORG-H01-06 | 保存真实文件→关闭→加载，全树Id/Kind/父子次序/属性/Revision一致，加载后还能修改再保存 |
 | ORG-H01-07 | 保留旧schema1矩形读取/既有REAL-01～03受支持行为；非法多根明确报告，未批准迁移不静默修复 |
 | ORG-H01-08 | 目录不存在可创建；无权路径/损坏包/未知格式/写入异常不清脏、不改Location、不丢原件 |
 | ORG-H01-09 | 已有目标文件不被首次SaveAs静默覆盖；取消在提交点前保持旧件 |
-| ORG-H01-10 | 复制后修改快照集合/值不能影响会话；Project强类型导航与统一目录不产生重复身份 |
+| ORG-H01-10 | 公开集合不可写；Project强类型导航/目录指向同一实体；Entry是元数据快照。深度冻结全树快照留H04 |
 
 **客观完成**：上述断言在真实程序集与临时真实文件上通过；完整示例独立编译执行；既有Smoke/Owner检查通过或明确记录外部阻断。不是只有接口/工厂Mock/内存序列化字符串。H01 阶段报告必须写明 H04 尚未覆盖的未知插件、并发保存、完整迁移等能力。
 
-**禁止越界**：不运行设备，不新增专业根枚举，不搬 WPF/Runtime；不为两个Core之间凑数量增设无意义包装。用户审阅 H00 前不执行本阶段。
+**禁止越界**：不运行设备，不新增专业根枚举，不搬WPF/Runtime；不为两个Core之间凑数量增设无意义包装。H00已确认；2026-10-18用户追加授权，H01后自动依序继续H02～H07，每阶段须补真实Windows CI证据，无需重复确认。
 
 ## H02：一般编辑、地址、事务、历史与提交观察
 
@@ -176,7 +169,7 @@ using (var edit = project.BeginEdit("整理设备区", project.Revision))
 | 类型/Owner | 关键属性/方法及行为 | 复用 |
 |---|---|---|
 | IMEMResource/MEMResourceEntry、Project资源投影 / M01 | Id/Type/Scope/StorageRoot/版本散列/依赖；Pages/Contents/Symbols/Resources/FindResource，外部记录与根去重 | R13～R16/R31～R34，D01 |
-| MRCContent/MRCSymbol、MRIReference / M02,M03 | 可选四Aspect、公开属性/端口；引用Id/目标版/覆盖/实例布局；PlaceContent/PlaceSymbol/Retarget | R19～R25/R35 |
+| MEMContent/MEMSymbol、MRIReference / M02,M03 | 可选四Aspect、公开属性/端口；引用Id/目标版/覆盖/实例布局；PlaceContent/PlaceSymbol/Retarget | R19～R25/R35 |
 | MPMTypeDescriptor/Property/Value/Binding/Aspect、IMPMTypeProvider / M04 | 注册冻结类型/工厂、默认定义/缺失参数、类型单位约束、值来源；Literal与Config/Variable/Resource/Member分开 | R20/R26/R27/R38；复用FCM/FDT |
 | MPCPort/Endpoint/Connection、MRCPublicMapping、MTUContractReference / M05,M02,M06 | Define/Expose/Connect/Disconnect/Unexpose；方向/基数/类型/单位/时空来源；连接唯一拥有，跨资源通过公共绑定/调用 | R24/R39/R40 |
 | MRIResolver/派生索引 / M03 | Resolve/FindUsages/环检查/影响；固定版、实例链、嵌入作用域、外部只读包 | R21/R22/R35～R37 |

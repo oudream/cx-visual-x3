@@ -1,0 +1,53 @@
+name: CxVisual Engineering Organization Windows Acceptance
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'Foundation/Core/**'
+      - 'Mechanism/Core/**'
+      - 'Mechanism/Visual/**'
+      - 'Mechanism/Presentation.Wpf/**'
+      - 'Mechanism/Orchestration/**'
+      - 'Mechanism/Lifecycle/**'
+      - 'Applications/Studio/**'
+      - 'Tests/ArchitectureSmoke/**'
+      - 'Examples/EngineeringOrganization/**'
+      - 'DOCS/Testing/CxVisual_工程组织体系*'
+      - '.github/workflows/engineering-organization-windows.yml'
+jobs:
+  engineering-acceptance:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - name: Restore and build real Windows x64 solution
+        shell: pwsh
+        run: |
+          $msbuild = (Get-Command msbuild.exe -ErrorAction Stop).Source
+          & $msbuild .\CxVisual.Unified.sln /t:Restore,Build /m:1 /nr:false /p:Configuration=Release /p:Platform=x64 /p:UseSharedCompilation=false /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw 'Engineering full solution build failed' }
+          & .\Build\Verify-Structure.ps1
+          & .\Build\Verify-OwnerDependencies.ps1
+      - name: Execute engineering, compatibility and execution regression
+        shell: pwsh
+        run: |
+          & .\Output\Release\x64\CxVisual.Tests.FoundationSmoke.exe --concurrency
+          if ($LASTEXITCODE -ne 0) { throw 'F19 concurrency regression failed' }
+          & .\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Engineering/architecture regression failed' }
+          & .\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe --organization-wpf
+          if ($LASTEXITCODE -ne 0) { throw 'Engineering WPF acceptance failed' }
+          & .\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe --organization-benchmark
+          if ($LASTEXITCODE -ne 0) { throw 'Engineering 1k/100k benchmark roundtrip failed' }
+      - name: Compile and run the real developer example
+        shell: pwsh
+        run: |
+          $bin = Split-Path (Get-Command msbuild.exe -ErrorAction Stop).Source
+          $compiler = Join-Path $bin 'Roslyn\csc.exe'
+          if (-not (Test-Path $compiler)) { $compiler = Join-Path (Split-Path $bin) 'Roslyn\csc.exe' }
+          & $compiler /nologo /target:exe /platform:x64 /langversion:7.3 /out:Output/Release/x64/H01QuickStart.exe /reference:Output/Release/x64/CxVisual.Mechanism.Core.dll /reference:Output/Release/x64/CxVisual.Foundation.Core.dll Examples/EngineeringOrganization/H01QuickStart.cs
+          if ($LASTEXITCODE -ne 0) { throw 'Engineering developer example compilation failed' }
+          & .\Output\Release\x64\H01QuickStart.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Engineering developer example execution failed' }

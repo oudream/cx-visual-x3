@@ -3,6 +3,19 @@
 > 2026-10-17；x2 本地与 GitHub master 均为 `2626734d0fd5e67ac50fd0621532173cec39b939`；x3 本轮已正常合并远端 `604718869e704d8ab943d6e593eeeb274afe657d`，组织 Core/Visual 源码相对 V1.0 审计基线未变。
 > 配套[主文档](CxVisual_统一工程组织体系_完整架构设计与开发使用指南_V1.1.md)、[阶段指南](CxVisual_统一工程组织体系_H00至H07分阶段实施与验收指导_V1.1.md)、[H00 待裁决](CxVisual_统一工程组织体系_架构待裁决清单_V1.1.md)。**静态审查不等于本轮重跑 x2 测试，更不等于已迁移。**
 
+> **2026-10-18 H01实施更新**：下面“x3现状”栏保留V1.1设计审查基线；当前实现已发生变化。D01～D04已确认，Group/Element共用MRCVisualItem，Content/Symbol采用MEM前缀。真实代码提交为4d9dfcb/c61bb6a，完整案例与测试见[H01报告](../Testing/CxVisual_工程组织体系_H01_实现与验收_V1.0.md)。未将x2整文件原样复制或重新运行x2测试；以下记录为行为/算法/反例的改造继承。
+
+| R编号 | 本轮实际去向 | 已验证的继承行为 | 尚未迁移 |
+|---|---|---|---|
+| R01/R03/R04/R07/R08 | MEMNode、类型化拥有与MTCEditSession | 唯一Parent/统一遍历/合法结构、自动根、重复Id/循环/深度拒绝，父集合就是唯一存储 | 全DOM替换/全部导航选择器 |
+| R09/R13/R14/R17/R18 | MEMProject/Page、Create/AddPage/资源投影 | 空工程、自动唯一根、定义资源和内嵌资源作用域；轻量后台Content | StartPage/工作环境/全部页面元数据 |
+| R19/R23/R26/R28 | MEMContent/Symbol、MRCVisualItem/Group/Element | 共享定义最小使用记录、唯一RootGroup、局部坐标/父变换/负缩放/命中 | 公开参数、SVG、完整样式/逻辑Aspect、Group/Ungroup |
+| R31/R35/R37 | IMEMResource/MEMResourceEntry、Session节点/引用/反向索引 | 资源原对象查询、Entry元信息快照、引用展开环、在用定义删除/改父保护、增量Id查询 | 外部库/固定版/依赖锁/实例链 |
+| R41/R42/R49/R50 | Session.Edit/Undo/Redo/Watch/Dirty | 原子失败恢复、统一历史、通知锁外有序/异常不撤回、重入拒绝、版本冲突；旧Editor消费同一历史 | 长草稿/固定快照/完整UI传播 |
+| R44/R45/R46 | MEMFileProjectStore、CxSerializer兼容 | 恢复Parent/索引后验证、真实流式文件、随机暂存/回读/可靠替换、取消/失败保护、旧schema1 | 未知插件保真、保存Token、完整x2 format6迁移 |
+
+最重要的有意调整：x2的Group:Element改为已批准的共同VisualItem；字符串身份改为Guid；避免每次编辑复制/重建整个工程。未支持未知载荷时H01明确拒绝，不静默舍弃后宣布迁移成功。
+
 ## 1. 结论与复用分级
 
 x2 的关键价值不只是六个类名，而是“强类型拥有集合→统一导航→结构校验→事务回滚→地址/索引刷新→提交后通知”的整套行为，以及可复用定义/实例、持久化与大量反例测试。x3 目前只实现基础树、矩形三操作与 schema1 XML，不能因已经有 CxNode 就舍弃这些能力。
@@ -43,11 +56,11 @@ x2 的关键价值不只是六个类名，而是“强类型拥有集合→统�
 | R16 / S10,S11 | Project.Logic/Data/Collaboration；Workbench 记录 Logic/Data/Collaboration，页面以 WorkbenchId 关联 | 旧架构图画 Workbench 物理层，实际代码是登记 | 继承零页面后台能力/工作台登记，保留 x3 四 Aspect 原则；A/B；不增加第七节点/WorkbenchRef；H03/H07 |
 | R17 / S10 | PageModel：RootContent 自动创建；Width/Height/Background、Layers/Events、WorkbenchId、PermissionKey/VisibilityExpression/ScreenIndex/PreserveRuntimeState | x3 Page 没有页面属性/唯一根 | RootContent 结构继承；显示/导航元数据映射到 Visual/Collaboration；B；H01 根、H03 保真、H06 页面显示；运行状态保留策略不是持久活动实例 |
 | R18 / S10 | RootContent setter 拒绝隐式替换/降级；SetRootContent 显式事务；OnDeserializing 不伪造旧根 | x3 Load 不约束唯一根 | 保留旧格式必须显式迁移的规则；A/B；H04 多根/旧 Elements 原件与映射可审查 |
-| R19 / S11 | ContentDefinition：OwnedContents、ContentReferences、SymbolReferences、VisualChildren、Layers；Bounds/Transform/Visible/Enabled/ZIndex/Clip/Layout | x3 Content 仅 Name/Children，V1.0 目标缺部分布局细节 | MRCContent 组合/作用域；可选 Visual 的布局/裁剪/图层；B；H03 全字段往返、无视觉不分配几何 |
+| R19 / S11 | ContentDefinition：OwnedContents、ContentReferences、SymbolReferences、VisualChildren、Layers；Bounds/Transform/Visible/Enabled/ZIndex/Clip/Layout | x3 Content 仅 Name/Children，V1.0 目标缺部分布局细节 | MEMContent 组合/作用域；可选 Visual 的布局/裁剪/图层；B；H03 全字段往返、无视觉不分配几何 |
 | R20 / S11 | Content.Logic/Data/Collaboration 按需存在；Layout Absolute/HorizontalStack/VerticalStack/Grid，Spacing/Columns | V1.0 曾将无视觉能力也泛化到 Element | 保留 Content 业务组织；D03 推荐视觉 Element；B；H03/H07 分别验证无界面业务/布局不改逻辑顺序 |
 | R21 / S11,S15 | ContentReference：InstanceId/Alias/TargetContentId/TargetPath、BindingContextId/ParameterOverrides、Bounds/Transform/Visible、ResolveContent | x3 无共享 Content 实例 | MRIReference Kind.Content＋Address＋MPMBinding＋实例 Visual；B；H03 双实例/嵌套/缺失/版本环，保留绑定上下文来源 |
 | R22 / S11,S15 | SymbolReference：TargetSymbolId/DefinitionVersion、PropertyOverrides/Bindings/PublicPortBindings、Validate/ResolveSymbol | x3 Content 直接拥有 Symbol，无实例 | MRIReference Kind.Symbol＋公开映射/固定版；B；H03 目标版不支持须原样诊断，不自动升级/清空覆盖 |
-| R23 / S13 | SymbolDefinition：Id/Name/Version/Category/Tags/Width/Height、RootGroup、PublicProperties/PropertyMappings、ThumbnailResourceId | x3 Symbol 空壳/允许多组 | MRCSymbol 资源定义＋唯一根/公开契约；B；H03 类别、缩略图引用、参数及几何往返 |
+| R23 / S13 | SymbolDefinition：Id/Name/Version/Category/Tags/Width/Height、RootGroup、PublicProperties/PropertyMappings、ThumbnailResourceId | x3 Symbol 空壳/允许多组 | MEMSymbol 资源定义＋唯一根/公开契约；B；H03 类别、缩略图引用、参数及几何往返 |
 | R24 / S13,S18 | ReplaceRootGroup、Children 旧别名投影RootGroup；MapProperty/UnmapProperty、MapPort/UnmapPort、CreateInstanceSpec | x3 无公开契约 | MTC.Expose/Unexpose/SetOverride；B；旧别名只兼容读取，不给新 UI 可写 List；H03 内部目标/版本/映射删除保护 |
 | R25 / S13 | Symbol.Logic/Data/Collaboration/Behavior；DeepClone(preserveChildIds) | 只把 Symbol 当图标会丢业务行为 | 保留可选能力/实例隔离；B；由专业/原运行解释，不移执行器到 Core；H03/H07 |
 | R26 / S12 | ElementModel：Bounds/Transform/Style/LayerId/ZIndex/Visible/Locked/Selectable；TypeId/Name；Semantics/Behavior/Parameters/Connections | x3 CxElement 是矩形且 sealed | D02/D03 推荐视觉基类，普通视觉叶 Kind.Element；B；H01 基本矩形，H03/H06 持续继承交互/动态化契约 |
