@@ -637,3 +637,306 @@ if (b.State == MRKFlowState.Completed)
 
 ---
 
+## 8. R3 工程编排用户：V01～V08完整操作规格（以“拖→连→填→测→看”为主）
+
+> **状态特别说明**：这些是上一轮明确讨论的**目标用户体验与验收用例**。M4已具备运行数据Query/Binding/Inspect后端，Vision已有真实CPU流程，但`Applications.Studio`现阶段尚未全面提供以下每项WPF编排UI。不能把此章的交互步骤报告为“现有界面已经支持”。后续R3用户测试要求真实点鼠标，不用手改MRK计划源码完成。
+
+### 8.1 所有编排界面只出现一套参数来源选择器
+
+编辑节点“Threshold:int”的统一弹层建议：
+
+~~~text
+┌─ 设置：Inspect.Threshold ────────────────────────────┐
+│ [来源]  ○ 常量  ○ 上游节点输出  ○ 运行数据/Heap          │
+│         ○ 设备变量  ○ 工程资源  ○ 表达式               │
+│                                                      │
+│ [搜索]  关键字 / 类型int / 允许范围 / 当前可见Scope      │
+│ [候选]  名称             类型     来源         状态     │
+│         Camera.Score     int      Input        可用     │
+│         Recipe.Threshold int      工程参数     可用     │
+│         Flow.Calibration int      FlowHeap     可用     │
+│                                                      │
+│ [检查]  类型一致？有访问权限？执行前来源能否确定？       │
+│                         [取消]  [确定]               │
+└──────────────────────────────────────────────────────┘
+~~~
+
+一套选择器对应一个`MDSDataBinding`（或现有MRK连线端口映射）；不为常量、节点输出、变量分别开发三种互不兼容的数据仓库。设计时资源查找、运行时可见数据Search、跨Run历史追踪是**三种查询域**，各自用原Owner的数据源，统一结果展现但不混成一个Heap。
+
+| 操作 | 编排器需要生成 | 当前已有机制 | 待做的WPF/工程接入 |
+|---|---|---|---|
+| 用户键入常量120 | `Constant,int,120` | `MDSDataBinding`及常量安全校验 | 控件+序列化、默认值/单位显示 |
+| 从Camera.Score连线 | `MRKInputSource.StepOutput` + 目标Input别名 | MRK端口校验/绑定 | 连接线持久化、撤销、错误定位 |
+| 当前调用的Local/Heap | `CurrentSlot/FlowHeap` | `data.Search/Inspect/HeapGet` | 动态候选+权限过滤 |
+| 从PLC点表拖Point | `Variable` + 原Owner路径 | `IMDSExternalBindingResolver` | 设备变量目录/Quality/Timestamp接线 |
+| 工程资源文件/Content | `EngineeringResource`+工程资源Id | Resolver接口 | 与Project/CxNode资源树联动 |
+| 表达式 | `Expression`+授权表达式Owner | Resolver接口 | 安全解析/类型预检/求值证据 |
+
+**注意**：目前`MDSDataBinding.SourceName`是字符串；工程侧持久化来源还需采用现有工程稳定ID/资源定义，避免直接把显示名当永久资源标识。Flow运行时可以解析为当前Invocation和端口别名，但**工程资源的权威定义始终不在FlowHeap**。
+
+### V01 X-Ray图像检测：一图双算法再汇合（核心标杆）
+
+~~~text
+[采图A] Image ─────┬──→ [AI检测B] DefectsAI ──┐
+                   └──→ [传统视觉C] DefectsCV ─┼─→ [缺陷合并D] → [判定E] → [保存/MES F]
+~~~
+
+**拖**：从专业能力目录加入采图、AI检测、传统视觉、合并、判定、保存6个节点；算法是专业编排层的能力，不应把平台读写数据的内部机制画进业务图。  
+**连**：A.Image一拖二，B/C结果连D；平台显示类型，不允许`byte[]`不经明确转换就充当`Tensor`。  
+**填**：选择相机、模型、阈值、检测范围、合并规则与MES目的地；数值输入统一来源选择器。  
+**测**：验证必需输入、数据形态、错误出口、容量；故意令AI超时。  
+**看**：同一`SN+RunId`下的Image大小、B/C状态、已提交Defects、最终判定和错误原因。  
+**完成判据**：图像内容不因C的修改而影响B；B异常不许D误判为良品（除非业务降级明确声明）；当前Vision CPU五节点流程可作为真实局部验证，但**AI和相机实机链路不在这次已实现范围**。
+
+### V02 主流程→采图子流程→检测子流程：三层调用不画Push/Pop
+
+~~~text
+主流程A (SN,Recipe)
+   └─ 子流程B：AcquireAndInspect (SN → Image)
+          └─ 子流程C：Detect (Image,Threshold → Defects)
+   B对外明确导出Defects
+A得到成功提交后的Defects
+~~~
+
+**拖/连**：工程用户把B作为普通能力节点拖入A，双击进入B再拖C，填写Input/Output映射。  
+**填**：只编辑业务端口`SN,Recipe,Image,Threshold,Defects`，不选择DataFrame寿命。  
+**测**：在C内部注入缺少`Defects`或抛异常，观察B与A的Output不发布；再并行运行两个B实例。  
+**看**：树形Run A#01→B#01→C#01，与另一个B#02对比Input、Local、Pending、Committed；同名“Result”不会串。  
+**完成判据**：通过MRK`InlineSubflow/__commit`出口屏障，禁止父节点从`B.C.Internal.Result`偷读私有内容；UI一键进入子流程但不暴露Commit节点。
+
+### V03 CT读取、重建、MPR/体绘/检测多消费者
+
+~~~text
+[投影文件定位/采图] → [校正] → [重建] Volume ┬→ [MPR取ROI]
+                                            ├→ [Volume Render]
+                                            └→ [CT缺陷检测] → [判定]
+~~~
+
+**拖/连**：重建输出被三路并行连接；每个消费者声明`Volume/ROI`类型，渲染专业对象不要求放Mechanism.Data里。  
+**填**：路径、投影几何、重建参数、ROI、窗宽窗位、算法输入，所有配置仍由原Config Owner管理。  
+**测**：未加载的`CT.Volume`只显示Path/尺寸/状态；选小ROI后由专业Loader载入，不能因Inspector打开而整卷读入。  
+**看**：LoadState、逻辑预算、实际ROI大小、读取耗时、缓存状况。  
+**完成判据**：一个MPR退出不导致另一个消费者引用失效；大文件必须量测真实RSS/IO；**当前只具备FileLocator和专业Loader接口，不代表已接CT重建实机或通用CT缓存管理。**
+
+### V04 HMI/SCADA仪表直接绑定IoT/PLC测点
+
+**拖**：从既有设备变量/点表目录选择`Line01.Pressure`，拖入仪表和趋势曲线Value端口。  
+**连/填**：使用`MDSBindingSource.Variable`记录来源意图，实际解析归设备变量Owner；阈值/颜色规则采用相同参数选择器。  
+**测**：模拟Good→Stale→Bad、断线和重连，查看变量质量与时间戳，不把坏质量的数值当正常。  
+**看**：值、单位、Quality、Timestamp、来源设备、最后更新。  
+**完成判据**：MDS不创建第二份PLC读写变量Store；订阅释放/节流由原IoT Owner提供；向PLC写控制命令需要专业权限和真实ACK，不能经`Data.Set`偷写设备。
+
+### V05 同一Content、同一流程定义在两条生产线运行
+
+**拖**：同一个检测Content复用到LineA和LineB，不复制工程定义。  
+**连**：LineA绑定CameraA、RecipeA，LineB绑定CameraB、RecipeB；各实例真正持有独立Run/Scope。  
+**填**：每条线可设置自己的参数和运行输入映射，但ConfigVersion必须显式固定在相应任务。  
+**测**：同时处理两个SN，构造相同“Image”名字、不同图像内容；每个Run得到对应结果。  
+**看**：RunId、ScopeId、算法步骤、ResultId（若结果Owner已提供）、错误及耗时。  
+**完成判据**：不能靠字符串名字跨Run读取局部数据；当前MRK+MDS有真实并行Flow隔离测试，Content→Studio完整组织映射仍待业务UI联调。
+
+### V06 AI超时、迟到回包与复判分支
+
+**拖**：AI检测→成功判定、超时/未知→复判或待确认；保持“未知”和“失败”区别。  
+**连**：AI结果与原图、SN、FlowId及OperationId关联，错误分支不允许返回`Passed=true`的伪结果。  
+**填**：超时时间、允许降级规则、保留文件期限、复判出口。  
+**测**：AI作业被本地取消后继续后台工作，再把旧结果延迟送到已经关闭的Scope。  
+**看**：ResultUnknown、当前Run、外部操作是否仍占资源、数据可见性。  
+**完成判据**：迟到结果不写入旧Frame或下一SN；**当前已验证的是MDS托管FileLoader迟到保护，不代表外部AI/GPU/SHM Operation的真实释放与ACK已完成。**
+
+### V07 数据检查器：选择一次运行、一个节点，看那次真实数据
+
+~~~text
+运行历史 [RunId / SN / 状态 / ConfigRevision]
+   └─ 流程树：主流程 → 子流程 → 节点
+        ├─ Input [只读]         Name / Type / Source / Size
+        ├─ Local [只读检查]     Name / Type / Size
+        ├─ Pending [暂存]       Name / Type / 未提交
+        ├─ Committed [已提交]   Name / Type / 来源
+        └─ FlowHeap [受控查询]  Loaded/Unloaded/Failed
+~~~
+
+**拖/连**：不适用；通过调试视图选择Run与Step。  
+**填**：按名字、类型、来源、Scope、状态过滤，显示分页；对Image/Volume请求缩略图或小ROI需经专业Provider。  
+**测**：准备至少4200条元信息和一个未加载大CT定位；搜索必须不卡UI、不装载主体；同名数据在不同位置需选明确Location。  
+**看**：错误对应节点与端口、加载状态、逻辑预算、来源版本。  
+**完成判据**：数据查找无跨Run泄漏、不向生产环境提供隐式可写编辑功能。**现有MDS Search后端不直接包含所有历史Run和所有已提交Output；这些视图需要MRK/历史Owner明确接入。**
+
+### V08 Automation→Vision→CT3D→Inspection跨专业链路
+
+**拖**：Automation采图定位、Vision预处理、CT重建、缺陷检测、Inspection判定和结果输出。  
+**连**：参数与数据类型不仅校验CLR Type，还必须检查坐标系、像素尺寸、方向、采样时间、传感器标定版本等业务语义。  
+**填**：运动轨迹/触发、采样配置、重建/检测参数、SN/MES映射；仍通过相同绑定选择器关联现有Config/设备Owner。  
+**测**：错误坐标系和体数据形状不应默默进入算法；真实设备动作必须依据专业安全确认，不以“Data.Return成功”当设备运动停止。  
+**看**：最终Result→追踪上游图像/投影/重建/算法配置的来源链。  
+**完成判据**：基础MDS负责值安全、Own/Flow与元数据；真实专业语义验证和Lineage、硬件ACK尚需M5以后逐步接入。
+
+## 9. 三种搜索不能混成一个全局Heap
+
+| 搜索类型 | 典型提问 | 权威数据来源 | 返回什么 |
+|---|---|---|---|
+| **设计态资源/端口搜索** | “哪些Node Output能连接ImageInput？” | 工程组织树、专业能力Catalog、MRK/编排端口定义 | 可选节点输出、类型、资源ID与权限 |
+| **运行态当前数据查询** | “这个Run、这个Step现在有什么数据？” | `MDSDataContext`和当前FlowHeap/Stack，配合MRK运行实例 | `MDSDataSnapshot`、Run/Scope/Location、LoadState |
+| **历史追溯与结果查找** | “昨天SN001为何判NG？用什么版本？” | 已有运行Journal、专业结果与生产记录Owner | 结果链接、算法/配置版本、来源事件、按权限取样 |
+
+三类结果可以在Workbench展示成同一种列表卡片，但**不得为方便UI又复制出一份可写全局数据真源**。设计态Search只列能连的合法输出；运行态Search不拥有工程资源定义；历史追溯只存标识和元信息、按需读取旧数据。
+
+## 10. 完整十二类场景（继承V1.3，按现行Heap/Stack重新解释）
+
+| 编号 | 场景 | 核心数据挑战 | 现行代码证据 / 后续缺口 |
+|---|---|---|---|
+| S01 | 多探测器在线X-Ray | SN隔离、大图扇出、并行、背压 | 真实Vision CPU部分有测试；多相机硬件未接入 |
+| S02 | 2D离线机复判 | 旧结果保存、文件引用、回滚 | 有文件Locator/安全拷贝；业务复判UI待接 |
+| S03 | CT慢扫/大体积重建 | GB级卷、ROI、容量与取消 | FileLoader和逻辑预算已存在；真实CT分块IO待验 |
+| S04 | CT MPR/体绘/检测 | Volume多消费者与窗口寿命 | 通用只读共享；GPU/渲染View生命周期待验 |
+| S05 | 远程/本机AI推理 | Tensor与SHM、超时、迟到 | 托管迟到Load保护；远端Operation租约未实现 |
+| S06 | 运动控制同步采图 | 触发、轨迹、Timestamp、ACK | MRK编排能力已有；实卡安全确认专业接入待做 |
+| S07 | HMI/SCADA测点 | Quality/Timestamp、订阅与权限 | Binding Owner桥存在；设备变量模型映射待整合 |
+| S08 | IoT边缘网关 | 多规约、断线重连、点表 | 旧IoT Owner应适配，不能另建VariableStore |
+| S09 | 三层/跨专业流程 | Scope树、Output屏障、同名隔离 | MRK InlineSubflow及MDS已有自动测试 |
+| S10 | 运行数据诊断 | 只读搜索、分页、大小与加载状态 | Search/Inspect后端已实现；WPF Inspector待接 |
+| S11 | 自动化测试/仿真 | 注入隔离、回放、不污染生产 | TestCenter+ArchitectureSmoke部分已验收 |
+| S12 | 异常/断电/恢复 | 稳定数据身份与Checkpoint一致性 | 当前无完整跨进程数据恢复协议；后续联合设计 |
+
+## 11. 验收规格：原T01～T30逐项保留，并映射现行架构
+
+**这30项来自早期验收矩阵的目标要求；“有自动测试”仅表示相关方面在现有Tests可找到实际覆盖，不能理解为每个早期场景已经被同等级实机测试。**
+
+| ID | 必须验收的行为 | 当前证据/继续补的反例 |
+|---|---|---|
+| T01 | 类型/Shape越界或不兼容时拒绝端口连接 | 现有CLR端口验证；多维Shape未全实现 |
+| T02 | 标量Get/Set/Return最小行为与不存在/类型错误区分 | MDS Lifecycle/Usability自动测 |
+| T03 | 固定版本、陈旧标识不会自动指向新Buffer | 常规Heap版本有限；跨进程稳定Generation未实现 |
+| T04 | Slot显式输入映射、只读Input、父Local不隐式继承 | MRK Port与MDS Context回归 |
+| T05 | A→B→C三层子流程Input/Output映射 | MRK InlineSubflow屏障测试 |
+| T06 | 两个Output缺一个或类型错误，整组都不发布 | Frame原子输出回归 |
+| T07 | 一幅真实大图两算法同时只读、最后使用者未结束不能释放 | 只读Buffer/Flow保活已测；外部SDK精确保活待补 |
+| T08 | 并行实例同名Local隔离 | 多Flow、Scope回归 |
+| T09 | 8GB CT只按16MiB ROI读取 | 当前仅专业ROI Loader示例，不是8GB实测 |
+| T10 | 配额拒绝、异常不产生半对象，安全释放 | MDSDataBudget、Quota/Copy/File回归 |
+| T11 | 高频采图与慢AI背压、不可静默丢SN | 需要实采队列与压测 |
+| T12 | 读者持有原图时可写修改必须复制 | FDTReadOnlyBuffer/byte[]测试；外部SDK待补 |
+| T13 | 测点Good→Stale→Bad同时保证Quality/Timestamp一致 | 原Variable Owner与Studio联调 |
+| T14 | Subscribe/Dispose重复无泄漏 | 原设备/消息Owner测试，不由MDS发明新订阅 |
+| T15 | Image→AI/CV→Judge能反向追到配置和算法版本 | Vision CPU版本字段可测；全链路Lineage待建 |
+| T16 | 打开大Volume数据Inspector无隐式全量Load | Search只返元数据；真实WPF+CT待验 |
+| T17 | WPF在后台IO 5秒时保持可交互/可取消 | Loader async已存在；具体UI待验 |
+| T18 | 文件Unloaded→Loaded→Unload与失败/重试 | MDSStorage与FileLoader测试 |
+| T19 | 错误文件、更换文件版本拒绝使用旧缓存 | Size+MTime基本校验；强Hash未实现 |
+| T20 | 内存/共享内存/映射/GPU不同Carrier类型生命周期 | 普通内存与文件已测；SHM/GPU未实现 |
+| T21 | 多Run共享Plan但数据/结果不串值 | MRK/MDS+Vision多Run测试 |
+| T22 | 取消后旧Async结果不写入关闭Scope | FileLoader迟到保护测试；外部Operation另验 |
+| T23 | 超时Unknown不自动视为已安全停止硬件 | MRK ResultUnknown相关测试；设备ACK需实机 |
+| T24 | Retry时Pending重建，Heap即时副作用不能假回滚 | MDS PrepareRetry、MRK策略测试 |
+| T25 | 转移/Copy同名冲突默认拒绝、显式覆盖 | MDS Move/Copy tests |
+| T26 | Copy不共享可写嵌套Buffer，目标安全 | 专业Adapter DTO真实测试 |
+| T27 | 自定义专业Copy阻塞不得锁死无关读者 | MDS Hardening慢Adapter测试 |
+| T28 | 逻辑预算真实计费、释放、超限不发布半对象 | MDS Hardening+TestCenter.026 |
+| T29 | Search/Inspect支持类型/Run/Scope/状态、分页、不触发IO | MDS Query及4200条Smoke |
+| T30 | 完整工程/真实专业能从创建运行检查到恢复错误 | Vision CPU程序化路径已测；工程用户WPF闭环待实现 |
+
+## 12. 易用性专门验收：原U01～U14 + 后续EUX01～EUX12
+
+### 12.1 U01～U14（V1.3历史目标）
+
+| ID | 开发者/编排用户可观察的通过标准 |
+|---|---|
+| U01 | D01普通算法无需手动创建Heap/Stack/Scope/Frame |
+| U02 | R1在常见输入/输出中只使用`Get/Set/Return`即可完成 |
+| U03 | 错误端口类型能在编排验证时明确定位，而不是运行期崩溃 |
+| U04 | 子流程展开/进入只需要端口映射，不画Push/Pop/Commit |
+| U05 | 默认只读共享不需管理Lease，修改产生明确新副本 |
+| U06 | 数据来源选择器对Constant/NodeOutput/Heap/Variable呈现一致 |
+| U07 | Inspector按Run/Scope/Step区分数据实例，未提交值有明确标签 |
+| U08 | 查询未加载8GB CT只看摘要，不能引起实际大IO |
+| U09 | FileLocator可从Unloaded显式Load再Unload且保留源文件 |
+| U10 | 完整异常/取消后业务看不到部分Committed Output |
+| U11 | 同名、无权限或类型不兼容时给可读错误，不自动覆盖 |
+| U12 | 真实专业算法可通过同一DataContext参与MRK运行 |
+| U13 | 两个并行Run中相同名称Key不得串值 |
+| U14 | 开发者代码和可视编排在同一能力/端口语义下结果一致 |
+
+### 12.2 EUX01～EUX12（V1.4易用性讨论补充）
+
+| ID | 额外要求 |
+|---|---|
+| EUX01 | 输入Output声明后，R1不需额外注册同名全局数据 |
+| EUX02 | 支持强类型Key而不是只能写字符串 |
+| EUX03 | 普通`byte[]`不能出现可写别名，真正只读Buffer应可高效共享 |
+| EUX04 | 可变专业DTO未注册安全规则时明确拒绝，不能默默浅复制 |
+| EUX05 | Move/Copy结果清晰，同名冲突默认拒绝、显式覆盖 |
+| EUX06 | 文件未加载可查，加载中Busy/取消/失败状态可诊断 |
+| EUX07 | 专业Loader迟到时必须被当前Scope生命期拦截 |
+| EUX08 | SourceBinding选择七类来源使用一致的数据类型和错误语义 |
+| EUX09 | 下游NodeOutput须经MRK端口绑定；不能任意越权查其他节点值 |
+| EUX10 | 可视候选按类型/来源/可用状态筛选，而不呈现不可用对象 |
+| EUX11 | 编排界面支持“选Run→点节点→看数据”，生产模式默认只读 |
+| EUX12 | 真实CPU Vision、CT/Automation逐步端到端跑通，最终需专业实机证据 |
+
+**必须真实登记用例状态**：已存在的`Tests/ArchitectureSmoke/RuntimeDataLifecycleTests.cs`、`RuntimeDataStorageTests.cs`、`RuntimeDataHardeningTests.cs`、`RuntimeVisionDataFlowTests.cs`，以及`Tests/TestCenter/Cases/TCTRuntimeData*`、`TCTRuntimeVisionCases.cs`为实际测试入口。不是所有U/EUX都已在UI自动化中PASS。每个通过结论需给出**Git SHA、工作流、用例ID、真实日志**。
+
+## 13. 面向Codex的分期实施工作包：从已完成M1～M4到真正自然易用
+
+| 期次 | 目标与代码Owner | 可验收成果 | 不许做的事 |
+|---|---|---|---|
+| W0 对象规格/版本冻结 | 更新本V3.0、比对源码、清点类型 | 48+15状态清楚、现有声明无遗漏、API状态可核 | 不为凑原数量创建空壳 |
+| W1 R1开发API补强 | FDT/MDS两个已有Data项目 | D01～D10全部可运行、关键单行API、强类型绑定可靠 | 不增加第三项目/第二执行器 |
+| W2 R3真实参数选择器 | 现有Studio/Presentation项目仅**调用MDS后端** | Constant/NodeOutput/Heap/Variable/Resource/Expression一致界面和错误 | 不复制工程资源/PLC变量真源 |
+| W3 R3流程节点与数据Inspector | 现有流程UI+MRK + MDS | 真正从UI运行Vision案例、按Run/Step查Input/Local/Committed | 不允许图上手工控制Push/Pop |
+| W4 专业CT大数据 | Professional.CT3D+Data专业Loader适配 | 大文件ROI实际IO/RSS记录、取消、异常、共享安全 | 不用通用Heap假装实现CT重建/GPU |
+| W5 Automation/IoT及生产验证 | 现有专业Owner+MRK | 质量、时间戳、权限、设备ACK、实机报告 | 不用Data.Return作为运动停止证明 |
+
+**编码纪律**：直接master、中文Commit、保留既有项目结构；先看最新四大架构文档和GitHub代码；每一轮先写实际失败用例，再修复；Windows .NET48构建、ArchitectureSmoke和TestCenter都要有实测记录。若动到运行宿主，还应看统一运行体系TDD。不得只拿早期成功的SHA证明新提交通过。
+
+## 14. 仍有必要明确的七项设计决策（不是擅自补进源码）
+
+1. **数据范围层级**：当前FlowHeap拥有已提交数据；是否确需跨Flow/Session/Project缓存？若确需，必须先定义Owner/授权/关闭规则，不以进程单例绕开。
+2. **真正专业不可变值**：对Vision Frame/Volume的冻结/安全发布如何标准化？`immutable:true`是承诺，需要专业实证；不要默认所有`Image`都不可写。
+3. **容量保护的真实范围**：当前逻辑保留量预算不能约束瞬时Copy/GC/VRAM；是否需要为工业高负载引入额外峰值预算、分块及背压？
+4. **跨进程/SDK资源**：仅在真实相机、共享内存、GPU、远程AI需要时补受控引用/Lease协议，并与外部Operation实际结束绑定。
+5. **数据身份/路径**：当前运行时Name+Run/Scope、FileLocator已够基本访问；长期持久引用应采用何种稳定ID、版本/代际，避免只靠可重命名路径？
+6. **运行Inspect可见性**：当前DataContext.Search不含所有CommittedOutput；工程界面从MRK只读结果提取多少摘要、留存多久、谁有权限看历史？
+7. **数据与变量/历史统一体验**：Value+Quality+Timestamp、单位/坐标/来源血缘哪些字段归FDT基础，哪些仅属于现有专业Owner？先通过IoT和CT两类真实用例反推，不建镜像表。
+
+### 14.1 推荐裁决方向（保留简洁而非重新复杂化）
+
+- 常规业务保持`data.Get/Set/Return`绝对优先。
+- Local跟节点，CommittedOutput跟Flow，Heap按显式保留与文件定位；其他Owner在需求明确时再扩。
+- 类型、Shape、Quality/Provenance仅为真实工业语义增加必要基础描述，不强行把Vision/CT/Automation的专业类型迁入Data项目。
+- 对远程AI/大CT/GPU必须处理真正外部资源生命周期时，**只在高级边界**增加租约或Carrier，不改变常规R1/R3用法。
+- R3提供一套来源选择器和一套Inspect；真正重用MDS后端，而不是另造Workbench私有数据系统。
+
+## 15. 文档来源、版本和核对清单
+
+### 15.1 核对的实际文档
+
+1. `DOCS/Architecture/CxVisual_统一数据管理体系 V1.3.md`：**48项历史候选、15枚举、D01～D09、V01～V08、T01～T30、U01～U14的源头**。当时的DataRef/Lease优先方案已被后期所有权决策调整，本版逐项保留去向而不是简单删掉。
+2. `DOCS/Architecture/CxVisual_运行时数据体系_完整设计与实施总文档_V2.0.md`：堆栈所有权、五个开发阶段及真实实现边界；本版补齐其对象规格和双角色完整例子。
+3. `DOCS/Architecture/CxVisual_运行时数据体系_M1M2_代码实现与验收记录_V1.1.md`：M1/M2实际代码与问题修复。
+4. `DOCS/Architecture/CxVisual_运行时数据体系_M3M4_实现与验收基线_V1.0.md`：类型、文件、Query、Binding等真实API。
+5. `DOCS/Architecture/CxVisual_运行时数据体系_核心加固与真实Vision闭环_实施验收_V2.1.md`：Flow逻辑预算、堆栈锁优化、真实8/16位Vision CPU执行与测试证据。
+6. 当前master实际`Foundation/Data/Types`和`Mechanism/Data/RuntimeData`源文件；`Mechanism/Runtime/Execution`、`Professional/Vision`相关调用代码。
+
+### 15.2 完整性核对（审稿者必须检查）
+
+| 核对项 | 本版落点 | 应怎样验证 |
+|---|---|---|
+| 两个项目+MRK唯一Owner | `2` | csproj与项目依赖图 |
+| 当前实际类/接口/枚举、核心方法 | `3、6` | 对照最新源码逐个查 |
+| 历史48项候选，一个不漏 | `4.1–4.4` | F01–F15、M01–M33共48条 |
+| 历史15枚举及现有新增枚举 | `5` | E01–E15及5个真实枚举 |
+| R1/R3完整需求及六角色 | `1` | 用用户工作任务逐条复核 |
+| R1 D01–D09 + D10补充 | `7` | 编译/测试并区分示意专业函数 |
+| R3 V01–V08 | `8` | 人工真实Workbench点击验收 |
+| 12个工业场景 | `10` | S01–S12 |
+| T01–T30与U01–U14 | `11、12.1` | 保留原编号与现行反例 |
+| EUX01–EUX12 | `12.2` | 用TestCenter/操作性测试验收 |
+| M1～M4和M5边界 | `13、14` | 每项标已实现/待接入 |
+| 真实Vision与容量/迟到IO | `7、11、15.1` | 对应源代码和Windows CI |
+| 无法由测试证明的实机承诺 | `13、14` | 明确保留“不支持/未验证” |
+
+### 15.3 单一权威规则
+
+本V3.0是**完整类型规格+使用指南**，而V2.0继续保留为历史阶段汇总；二者冲突时，以本V3.0记录的**后期定案和最新源码**为准。每次实现新对象或更名，要同时更新`3`真实对象清单、`4～5`历史映射、`7～8`可用案例、`11～12`验收矩阵与`15`证据；避免再出现“新增一堆代码，总文档却只有摘要”的问题。
+
+**最终产品形态**：开发者最少只需`Get/Set/Return`，工程编排用户最少只需“拖能力、连端口、选来源、运行、Inspect”；严谨的Heap/Stack/安全复制/预算/文件Load/生命周期在两Data项目内部承担复杂度。**易用体验最终必须由真实Vision和Workbench完整操作来证明**，不能由文档本身宣布完成。
