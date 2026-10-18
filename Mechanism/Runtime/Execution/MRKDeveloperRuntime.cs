@@ -109,7 +109,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
         /// <summary>业务能力直接声明Data.Return的具名输出；不需要另外构造执行器。</summary>
         public MRKCodeRuntimeBuilder DataCapability(string id,
             Func<MRKExecutionContext, CancellationToken, Task<object>> action,
-            IDictionary<string, Type> dataOutputs)
+            IDictionary<string, Type> dataOutputs,
+            IEnumerable<MRKCapabilityInput> inputs = null)
         {
             if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("能力ID不能为空", "id");
             if (action == null) throw new ArgumentNullException("action");
