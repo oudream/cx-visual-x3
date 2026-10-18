@@ -118,7 +118,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 throw new ArgumentException("至少声明一个具名输出", "dataOutputs");
             if (_capabilities.ContainsKey(id))
                 throw new ArgumentException("重复能力：" + id, "id");
-            _capabilities.Add(id, new MRKResolvedCapability(action, dataOutputs: dataOutputs));
+            _capabilities.Add(id, new MRKResolvedCapability(action, dataOutputs: dataOutputs,
+                inputs: inputs));
             return this;
         }
 
