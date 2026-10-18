@@ -15,6 +15,8 @@
 - [H00～H07 分阶段实施与验收指导 V1.1](CxVisual_统一工程组织体系_H00至H07分阶段实施与验收指导_V1.1.md)：每阶段类型/Owner、顺序、案例、TDD与客观完成标准。
 - [H00 架构待裁决清单 V1.1](CxVisual_统一工程组织体系_架构待裁决清单_V1.1.md)：Node/Resource、Project资源导航、Group继承、Element定位、便利API、事件与格式取舍。
 
+> **2026-10-18 协同设计补充**：编排定义、逻辑类、编译/执行、Studio调试与SourceMap的完整共识集中于下文 §7.4；候选 MOL/MOC/Region 类型非已实现API。不新增平行的专项体系文档。
+
 ## 0. 先读：现在能做什么，怎样使用本指南
 
 当前可以直接使用：`MEMEngineering.Create/Open`、多页面/内容/符号自动合法根、矩形与嵌套Group、独立资源查询、最小共享定义引用、增量Id索引、统一Edit/Undo/Redo、基本绑定声明、format2包与schema1 XML保存加载。旧Cx工厂/编辑命令仍消费同一实体和历史。可执行入门程序为[H01QuickStart](../../Examples/EngineeringOrganization/H01QuickStart.cs)。
@@ -755,6 +757,132 @@ Foundation 不向上引用；Mechanism 不依赖 Professional 实现；Core 不�
 7. 保存工程、保存配置、生效配置、固定任务参数是不同动作/版本；联合操作未实现原子协调时显示部分完成，不能假装统一回滚。
 
 当前 MDSDataBinding.ValueType 使用 CLR Type；未来持久工程应保存稳定 TypeId/Schema 与来源引用，再在已校验插件环境解析为 CLR Type。不能直接序列化活动 Type、委托、DataContext 或外部 Provider 指针，也不能把“Binding 类存在”认作工程保存绑定已完成。
+
+
+### 7.4 编排—运行—调试一体化：统一逻辑类型、运行、界面及问题追溯（2026-10-18）
+
+> **本节是唯一跨体系设计依据**。补充 §7.1～7.3，不另建「统一逻辑体系」或第二套 Graph/ExecutionEngine。H06/H07 负责落实；运行体系文档继续维护引擎实现细节，Studio 既有界面基线继续维护视觉规范。**本节中 MOL、MOC、Region 和 Invocation 候选类均属于待实现设计，不能冒充已实现。**
+
+**核心目标：一份工程定义、一套编译执行语义、一张图三种模式（编辑、观察、调试）；任一实际运行实例可回到准确的工程逻辑、资源实例和迭代位置，同时生产路径保持轻量。**
+
+#### 7.4.1 五类职责的唯一归属
+
+| 职责 | 归属与项目 | 权威对象及边界 |
+|---|---|---|
+| 工程组织 | Mechanism.Core | MEMProject/Page/Content/Symbol、唯一所有权和资源引用、Session/Snapshot/Revision |
+| **逻辑定义** | Mechanism.Core 持久化 Logic Aspect；Orchestration 提供语义/解析 | 结构化控制定义、表达式、参数、端口/连线；不新建独立工程树，不以 WPF 节点或 CLR 委托作为持久定义 |
+| 编排编译 | Mechanism.Orchestration 负责工程定义适配，复用 Mechanism.Runtime 已有 MRK Compiler | 固定工程快照 → 验证 → MRKCompileRequest/FlowDefinition → ExecutionPlan + SourceMap；不再自造 Compiler/执行计划体系 |
+| **运行执行** | Mechanism.Runtime（MRK），配合 F19 | Flow/Step、条件、子流程、并行、资源、取消、补偿、执行身份、Trace；不得从 UI 线程驱动执行 |
+| 数据与显示 | Mechanism.Data（MDS）；Visual/Presentation.Wpf/Applications.Studio | Stack/Heap/迭代帧与运行数据；同一逻辑图编辑、运行覆盖、断点调试的投影，UI 不保存第二份逻辑 |
+
+现有 Mechanism.Logic M11/M12 承担的表达式、规则/命令需先核对并复用。Mechanism.Orchestration 截至本节审查仍只有基本程序集骨架；它的 Owner 规划不代表已有逻辑类型实现。
+
+#### 7.4.2 逻辑能力完整矩阵（定义、编译、运行一一对应）
+
+| 用户看见的控制结构 | 定义语义 | 编译/运行实际行为 | 当前基础与缺口 |
+|---|---|---|---|
+| Sequence 顺序 | 任务及显式依赖关系 | DAG Dependencies 调度 | MRK 已有；MEM 的 Parent/Children 顺序**不代表**执行顺序 |
+| If / ElseIf / Else | 互斥 Case、条件与默认分支 | Branch 选中一个出口，未选支 Skipped，Join 正确汇合 | Guard、Skipped、AllowSkippedDependencies 已有；完整持久化定义待接 |
+| Switch / Case | 枚举/表达式多路选择与 Default | 多路 Branch | 待补定义/编译 |
+| For | 初始化、条件、步进、循环体、上限 | 一段 Loop 区域，多次激活步骤 | MRKExecutionOperations.Loop 仅是单步内有限委托循环，**不是**多 Step Loop |
+| While / DoWhile | 判断条件、前测/后测、退出预算 | 同一个 Loop Region，不同判断时序 | 多节点动态循环待实现 |
+| Foreach | 集合、迭代项、顺序/并行及背压 | 每项独立调用上下文，有限并行 | 待实现 |
+| Parallel / Join | All/Any/FirstSuccess、失败/跳过策略 | 现有 MRK 并发、汇合和尾部结算 | 核心已具备；工程定义待适配 |
+| Await / Event / Wait | 等待条件、超时、取消、重连语义 | MRK 异步机制与触发/等待 | 基础已有，不能假定硬实时确认 |
+| Subflow / Invoke | 子流程资源、实例链、公开参数、输出契约 | 现有子流程编译内联/调用 | 现有编译基础；工程实例映射待完成 |
+| Try/Catch/Finally 与 Retry | 错误边界、补偿、幂等策略 | MRK 异常/补偿/重试及结构化恢复区域 | 策略部分已有，区域语义待完成 |
+| Break / Continue / Return | 控制区域或调用的退出 | 退出/继续当轮，保持数据提交与异常语义 | 待完成 |
+
+**实现上的硬约束**：目前 MRKExecutionEngine 一个 Flow 的每个 StepId 只注册一次 Task。给 DAG 连返回线不能实现多节点循环；循环执行必须能**重复激活步骤，区分每轮调用身份与局部数据，正确处理资源、取消、异常及上限**。既有 Condition/Loop 工具不得被误写为完整编排实现。
+
+#### 7.4.3 逻辑定义类/接口/枚举归位（明确候选与现有）
+
+| 类型 | Owner | 核心职责与方法 | 状态 |
+|---|---|---|---|
+| MEMContent、MPMAspectKind.Logic、MPMAspect | Core | Content 逻辑宿主、按需附着、Schema/载荷 | **已存在** |
+| MPCPort、MPCConnection、MPMProperty | Core | 参数和端口，控制/数据/事件线及类型语义 | **已存在** |
+| MOLLogicDefinition（类） | Core，Logic Aspect 的模型投影 | Root、Version、Validate() | 建议 |
+| MOLControlBlock（类） | Core | Id、Kind、Children、Options、SourceAddress；可被工程地址追踪 | 建议；默认**不继承 MEMNode**，避免第二树 |
+| MOLControlKind（枚举） | Core | Sequence、Branch、Loop、ForEach、Parallel、Invoke、Wait、Try、Exit | 建议 |
+| MOLBranchMode（枚举）+ MOLBranchCase（类） | Core | If/Switch、Condition、Body、Default | 建议 |
+| MOLLoopMode（枚举）+ MOLLoopDefinition（类） | Core | For/While/DoWhile；Initialize、Condition、Next、Body、MaxIterations | 建议 |
+| MOLExpression（类） | Core 或复用既有 Logic 契约 | 表达式、稳定TypeId/变量地址、类型校验；**不得持久化活动委托** | 建议，先去重 |
+| MOLExitKind（枚举） | Core | Break、Continue、Return | 建议 |
+| MOCEngineeringCompiler（类） | Orchestration | Compile(fixedSnapshot, entryContentId, resolver) → MOCCompiledPlan；只适配，不另造执行器 | 建议 |
+| MOCCompiledPlan + MOCSourceMap（类） | Orchestration | MRKExecutionPlan、工程/资源版本、StepId→定义+实例来源、反向索引 | 建议 |
+| MRKStepCompileRequest、MRKFlowCompileDefinition | Runtime | 编译器临时输入，不是持久化工程对象 | **已存在** |
+| MRKExecutionOrchestrationCompiler、MRKExecutionPlan/Step | Runtime | 子流程/依赖展开、编译、固定计划 | **已存在** |
+| MRKExecutionEngine、MRKExecutionContext | Runtime | 原生执行、调度、Flow上下文 | **已存在** |
+| MRKExecutionOperations.Condition/Loop | Runtime | 单 Step 内条件或有限循环委托 | **已存在，范围有限** |
+| MRKControlRegion（类） | Runtime | 一次编译、多轮执行的结构化控制区，复用已有 MRK 调度内核 | 建议 |
+| MRKInvocationContext（类） | Runtime | InvocationId、Iteration、父调用、局部数据帧 | 建议 |
+| MRKExecutionTrace、MRKExecutionDebugController | Runtime | 有界 Trace、断点/单步/恢复 | **已存在** |
+| MDSDataStack、MDSDataHeap | Data | 入参、出参、局部变量、共享数据、生命周期 | **已存在** |
+
+**少而清楚**：不是每种 C# 语法各建一个执行器。If/Switch 共用 Branch，For/While/DoWhile 共用 Loop，专业行为始终通过 Capability/Provider 接入。MOL、MOC 仅表示目标归类，待核源码后确定实际名称/数量；不得因前缀好看而创建同义类型。
+
+#### 7.4.4 界面显示也要归位：一张图，三种使用模式
+
+| 使用模式 | Studio 表现 | 状态真源 |
+|---|---|---|
+| **编辑编排** | Sequence 连线；If 菱形/Case出口；For/While 循环容器；Subflow 下钻；端口/属性编辑 | MEMContent Logic Aspect，通过工程 Session 统一 Edit/Undo/Redo/Save |
+| **运行观察** | 原图覆盖 Running、Completed、Skipped、WaitingResources、Failed、耗时、选中分支、当前迭代 | MRK StepSnapshot/Trace，固定 SourceMap；不修改工程定义 |
+| **调试定位** | 选择 Flow/工位/迭代，点击出错节点看参数来源、输入输出摘要、错误及子流程内部 | MRK Debug + MDS作用域 + SourceMap；安全点/权限控制生产暂停 |
+
+建议最少的 UI 投影构件：MOLFlowCanvas（Presentation.Wpf，优先复用现有画布）、MOLBlockViewModel（Studio，按需创建）、MOLBlockTemplateSelector（Presentation.Wpf，仅按种类选择图形）、MOLFlowLayout（Visual/Studio，布局与逻辑分离）、MOLRuntimeOverlay（Studio，状态覆盖）。**这些均非已存在声明；不为每个逻辑枚举新建一个 WPF 项目/控件**。业务 HMI 图元仍走 MRCVisualItem；逻辑块不为绘制目的继承 MRCVisualItem。
+
+运行与 WPF 线程隔离，关闭 Studio 不影响 Flow；大流程采用可见区虚拟化、仅变化区域重绘和批量有界状态通知。Trace 断线出现 Gap 必须重取状态快照。
+
+#### 7.4.5 SourceMap、执行身份和轻量调试契约
+
+**从设计到实际运行的唯一链路：**
+
+    MEMContent / Logic Aspect / MOL 控制块
+          ↓ 固定 Snapshot + 工程Revision + 配置/资源版本
+    MOCEngineeringCompiler（工程→MRK编译适配）
+          ↓ MRKStepCompileRequest / MRKFlowCompileDefinition
+    既有 MRKExecutionOrchestrationCompiler
+          ↓ MRKExecutionPlan + SourceMap（一起冻结）
+    MRKExecutionEngine → FlowId → StepId + InvocationId + Iteration
+          ↓ MRK Trace / MDS输出摘要
+    Studio 在同一张编排图中反查定义块 + 使用实例路径
+
+- **DefinitionId/NodeId** 是工程的定义身份；**MRIObjectAddress** 包含 ProjectId、ResourceId、ObjectId、InstancePath；**PlanId+Revision** 定位发布的执行计划；**FlowId** 定位一次流程；**StepId** 是编译后的步骤；**InvocationId** 定位同一步骤的某次实际执行；**Iteration** 定位本轮。这些身份不能互相替代。
+- 编译优化、子流程展开和结构化控制区域可以让一个逻辑块对应多个执行步骤，也可能让一个步骤承担入口/汇合等辅助角色。SourceMap 最终应支持 Step→多个来源角色以及工程对象→多个 Step，**不能只以一个 Dictionary 声称已经完整实现**。
+- 当前 MRKExecutionTrace 记录 StepId/State/Sequence/Timestamp，MRKStepObservation 记录 WorkId/Reason；它还不能证明循环每轮 Invocation/数据快照都已经有完整事实记录。生产最小诊断仍须能关联失败的工程来源、Plan/Flow/Invocation/错误原因。
+- **观察级别目标**：L0关键身份+失败+必要耗时；L1步骤状态/等待原因；L2参数及输入输出摘要/分支/迭代；L3受限专项快照。**当前未实现统一L0～L3开关，不得冒充代码现状**。采图数据/CT Volume/AI Tensor 记录引用、规格和摘要，不默认复制到 Trace。
+- 单步/断点应发生在 Worker 提交及设备资源申请前的安全点，工业设备暂停与生产计划切换均需授权；草稿 Revision 改动不影响已有 Flow 的固定计划和配置来源。
+
+#### 7.4.6 X-Ray端到端示例：同一结构用于编排、运行和定位
+
+    Project: XRayInspection
+      ├─ Page: MainPage
+      └─ Content: InspectFlow（唯一可复用定义）
+          └─ Logic: Acquire → ForEach(工位或图像)
+                         → Preprocess(Subflow)
+                         → Parallel(AIInspect,CVInspect)
+                         → Join(All) → Judge
+                         → If(IsOK) {OutputOK} Else {Retry受限 / OutputNG}
+      StationA, StationB 各自引用 InspectFlow，并有独立参数覆盖
+
+编译前固定工程资源/引用版本；由 MOCEngineeringCompiler 把持久化条件、端口和实际能力解析为 MRK 编译输入；Plan 与 SourceMap 一并冻结。**当前引擎已支持 DAG、Guard、Parallel 和子流程展开，但上述动态 ForEach 多轮区域不是已实现功能**，必须先补 Region/Invocation 才能称为完整案例。
+
+例如 StationB 第 37 张图 AI 检测超时，调试系统依靠 PlanRevision、FlowId、展开StepId、InvocationId、Iteration、InstancePath、ErrorCode 定位到「StationB→InspectFlow→AIInspect→第37轮」，而不是通过名字模糊搜索日志。UI 在原节点上显示 Failed，点击后下钻参数来源、输入输出摘要、调用链和实际等待/失败原因；不复制大图像到全局事件队列。
+
+**当前可真实调用的代码构建入口**是 MRKCodeRuntimeBuilder（提供的 Capability 必须已有真实委托），MRKDevelopmentRuntime.RunAsync/StartFlow、MRKExecutionTrace.ReadSince 等；开发入口的 Step/Flow 不等于已从 MEMContent 自动编译的工程流程。现有 MRKExecutionOperations.Loop 可用于单个动作内部有界循环，但不能替代多步骤的结构化编排循环。
+
+#### 7.4.7 后续实施与真实验收（不另立第五/第六份文档）
+
+1. **工程真源**：保存、关闭、重开的 MEMContent Logic/端口/表达式/实例覆盖保持语义，C# 开发者与 Studio 编排引用同一个 Capability/Provider，不存在第二套权威流程树。
+2. **条件/分支**：If/ElseIf/Switch/Join 的条件求值、未选分支 Skipped 和失败传播有实测，实时界面能解释“为什么未执行”。
+3. **循环**：跨多个 Step 的 For/While/DoWhile/Foreach 真正多次执行，每轮 Invocation/Frame 区分；Break/Continue/Return/取消/最大次数、并行 Foreach 背压验收。禁止以 DAG 回边或单动作 Loop 代替。
+4. **可追踪性**：同一 Content 两个使用实例、多轮子流程/并行分支，在 Flow 失败后从真实 Trace 反查正确的 MRIObjectAddress+InstancePath+Iteration；Plan版本必须固定。
+5. **同图调试**：编辑画布、运行覆盖、调用下钻共用稳定来源；UI断线/关闭、恢复及 Trace Gap 不影响实际执行。调试不占有已申请的设备资源。
+6. **性能与安全**：关UI/开基础观察/开详细调试分别实测吞吐、延迟、分配、GC、缓冲上限；生产不能默认复制大型数据或频繁阻塞写日志。未知外部操作状态和硬件实际停机不能用任务取消结果冒充安全成功。
+7. **按现有工作包落地**：H06 接入 Studio 原有界面体系；H07 首先完成「保存重开纯CPU工程→编译→MRK→SourceMap→Studio观察」，再逐专业扩展 Vision/CT/Automation/Inspection。具体测试名称和CI记录留在原 H06/H07 文档与测试报告。
+
+**维护原则**：此处写全部跨体系的定义、映射和类归属；运行内核自己的线程调度/发布/补偿细节仍见原运行体系主文档；Studio具体交互/画布视觉细节见既有 Studio 设计；实施顺序和证据见原 H06/H07。**其他文档只短链到本节，不重复拷贝整张类表。**
+
 
 ## 8. 八个完整使用案例
 
