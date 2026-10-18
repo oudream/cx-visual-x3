@@ -172,7 +172,7 @@ Professional.* (Vision/CT/Automation/IoT专业类型、算法与设备Owner)
 
 | Owner | 实际已存在主要对象 | 在本体系中的职责 |
 |---|---|---|
-| `Mechanism.Runtime.Execution` | `MRKExecutionPlan, MRKExecutionStep, MRKExecutionInput, MRKInputSource, MRKExecutionEngine, MRKExecutionContext, MRKFlowResult` | 唯一节点调度与Input/Output映射、成功提交、子流程屏障、最终Flow结果 |
+| `Mechanism.Runtime.Execution` | `MRKCapabilityInput, MRKResolvedCapability, MRKExecutionPlan, MRKExecutionStep, MRKExecutionInput, MRKInputSource, MRKExecutionEngine, MRKExecutionContext, MRKFlowResult` | 唯一能力输入声明、DataOutputs、编译和运行Owner；已有MRK计划负责端口映射、子流程屏障与最终结果，不创建第二个Data项目 |
 | `Professional.Vision` | `CxVisionGrayFrame,CxVisionInspectionResult,CxVisionDefectRegion,CxVisionDataFlow` | 专业图像/结果真实类型与8/16位CPU连通域算法 |
 | `Foundation.Infrastructure` | `FCRWorker`及相关并发原语 | Worker调度，不作为数据Lease |
 | `已有配置/变量/工程资源` | 相应现有Owner | 提供固定配置版本、设备变量/质量、工程资源定位；Data只登记来源/接收安全值 |
