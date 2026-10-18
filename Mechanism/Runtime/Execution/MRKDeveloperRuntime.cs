@@ -17,6 +17,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
         private readonly string _id;
         private readonly List<MRKStepCompileRequest> _steps =
             new List<MRKStepCompileRequest>();
+        private readonly Dictionary<string, string> _exports =
+            new Dictionary<string, string>(StringComparer.Ordinal);
         internal MRKCodeFlowBuilder(string id) { _id = id; }
         public MRKCodeFlowBuilder Step(string id, string capabilityId,
             params string[] after)
@@ -28,6 +30,25 @@ namespace CxVisual.Mechanism.Runtime.Execution
         {
             return Add(new MRKStepCompileRequest(id, null, after, subflowId:flowId));
         }
+        /// <summary>节点具名数据端口的轻便声明，支持StepOutput与FlowInput绑定。</summary>
+        public MRKCodeFlowBuilder StepData(string id, string capabilityId,
+            IEnumerable<MRKExecutionInput> inputs, params string[] after)
+        { return Add(new MRKStepCompileRequest(id, capabilityId, after, inputs)); }
+
+        /// <summary>子流程调用Input通过入口Gate映射，不能隐式继承父级Local。</summary>
+        public MRKCodeFlowBuilder Subflow(string id, string flowId,
+            IEnumerable<MRKExecutionInput> inputs, params string[] after)
+        { return Add(new MRKStepCompileRequest(id, null, after, inputs, subflowId:flowId)); }
+
+        /// <summary>最终Flow公开的具名数据结果；来源必须是节点Id.输出名。</summary>
+        public MRKCodeFlowBuilder Export(string name, string stepOutput)
+        {
+            if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(stepOutput))
+                throw new ArgumentException("流程导出名称和来源必须非空");
+            _exports.Add(name, stepOutput);
+            return this;
+        }
+
         public MRKCodeFlowBuilder Add(MRKStepCompileRequest definition)
         {
             if (definition == null) throw new ArgumentNullException("definition");
@@ -39,7 +60,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
             return this;
         }
         internal MRKFlowCompileDefinition Freeze()
-        { return new MRKFlowCompileDefinition(_id, _steps); }
+        { return new MRKFlowCompileDefinition(_id, _steps, _exports); }
     }
 
     /// <summary>编排检查失败时不创建Worker或部分启动Flow。</summary>
@@ -82,6 +103,21 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 throw new ArgumentException("重复能力：" + id, "id");
             _capabilities.Add(id, new MRKResolvedCapability(action,
                 outputType == null ? null : new MRKExecutionOutput(outputType)));
+            return this;
+        }
+
+        /// <summary>业务能力直接声明Data.Return的具名输出；不需要另外构造执行器。</summary>
+        public MRKCodeRuntimeBuilder DataCapability(string id,
+            Func<MRKExecutionContext, CancellationToken, Task<object>> action,
+            IDictionary<string, Type> dataOutputs)
+        {
+            if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("能力ID不能为空", "id");
+            if (action == null) throw new ArgumentNullException("action");
+            if (dataOutputs == null || dataOutputs.Count == 0)
+                throw new ArgumentException("至少声明一个具名输出", "dataOutputs");
+            if (_capabilities.ContainsKey(id))
+                throw new ArgumentException("重复能力：" + id, "id");
+            _capabilities.Add(id, new MRKResolvedCapability(action, dataOutputs: dataOutputs));
             return this;
         }
 
