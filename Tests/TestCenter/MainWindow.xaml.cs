@@ -28,6 +28,7 @@ namespace CxVisual.TestCenter.UI
             Explorer.TestSelected += OnTestSelected;
             Results.ResultSelected += OnResultSelected;
             DocumentHost.ObservationSelected += observation => Inspector.ShowObservation(observation);
+            DocumentHost.ObjectSelected += (objectId, details) => Inspector.ShowObject(objectId, details);
             RibbonTray.ToolBars.Add(_ribbon.Build(OnRunAll, OnRunSelected, OnCancel, OnExport,
                 OnRerunFailed, OnCopyTestId));
             _ribbon.SetContext(null);

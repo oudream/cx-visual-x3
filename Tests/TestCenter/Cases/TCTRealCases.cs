@@ -171,7 +171,8 @@ namespace CxVisual.TestCenter.Cases
         }
         private static void SnapshotEvidence(TCTTestContext context)
         {
-            using (MEMEngineeringSession session = CreateOrganizationSample())
+            MEMEngineeringSession session = CreateOrganizationSample();
+            try
             {
                 MEMProjectSnapshot original = session.GetSnapshot();
                 byte[] payload = TCTEngineeringSnapshotCodec.Serialize(original);
@@ -217,6 +218,7 @@ namespace CxVisual.TestCenter.Cases
                     session.Project.Id.ToString("D"), session.GetAddress(session.Project).ToString(), null,
                     payload, TCTEngineeringSnapshotCodec.Mime);
             }
+            finally { session.Close(true); }
         }
         private static void RevisionConflict(TCTTestContext context)
         {

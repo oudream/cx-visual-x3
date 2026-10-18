@@ -189,15 +189,20 @@ namespace CxVisual.TestCenter.UI
                         if (window.Inspector.SelectedObservationTitle != geometryResult.Observations[0].Title)
                             throw new InvalidOperationException("M2 Geometry Viewer->Inspector selection broken");
 
-                        // M2 Ownership case must use real Mechanism.Core CxNode/Document output.
+                        // M2 Ownership case MUST read real MEMEngineeringSession / MEMProjectSnapshot evidence.
                         ITCTTestCase owner = catalog.Cases.Single(x => x.Descriptor.Id == "M-OBJ-001");
                         TCTTestAttempt ownerAttempt = new TCTTestAttempt(Guid.NewGuid().ToString("N"),
                             owner.Descriptor.Id, 0, 20261017);
+                        TCTTestArtifactStore ownerStore = new TCTTestArtifactStore(
+                            TCTTestArtifactStore.RunRoot(ownerAttempt.RunId));
                         TCTTestCaseResult ownerResult = await TCTTestRunner.RunOneAsync(owner,
-                            CancellationToken.None, 20261017, ownerAttempt);
+                            CancellationToken.None, 20261017, ownerAttempt, ownerStore);
                         if (ownerResult.Status != TCTTestStatus.Passed ||
-                            ownerResult.Observations.All(x => x.Kind != "ObjectTree"))
-                            throw new InvalidOperationException("M2 Mechanism Ownership case did not produce real observations");
+                            ownerResult.Observations.All(x => x.Kind != "ObjectTree" ||
+                                x.Envelope == null || x.Envelope.PayloadRef == null))
+                            throw new InvalidOperationException("M2 MEM Ownership failed to produce genuine snapshot evidence");
+                        if (TCTObservationReplay.Read(ownerResult, ownerStore).Count != 1)
+                            throw new InvalidOperationException("M2 Owner snapshot did not roundtrip evidence");
                         window.Inspector.ShowResult(ownerResult);
                         window.DocumentHost.ShowResult(ownerResult);
                         if (window.DocumentHost.ViewerCount != 1)
@@ -206,6 +211,9 @@ namespace CxVisual.TestCenter.UI
                         var ownerView = (TCTObjectTestView)((System.Windows.Controls.TabItem)ownerTabs.Items[1]).Content;
                         var ownerPanel = (System.Windows.Controls.StackPanel)
                             ((System.Windows.Controls.ScrollViewer)ownerView.Content).Content;
+                        if (ownerView.EvidenceProblem != null || ownerView.VerifiedNodeCount < 7 ||
+                            ownerView.VerifiedReferenceCount != 1 || ownerView.OwnershipTree == null)
+                            throw new InvalidOperationException("M2 MEM snapshot ownership/reference not rendered from verified artifact");
                         var ownerButton = ownerPanel.Children.OfType<System.Windows.Controls.Button>().FirstOrDefault();
                         if (ownerButton == null)
                             throw new InvalidOperationException("M2 ObjectTree observation command missing");
@@ -213,6 +221,15 @@ namespace CxVisual.TestCenter.UI
                             System.Windows.Controls.Primitives.ButtonBase.ClickEvent, ownerButton));
                         if (window.Inspector.SelectedObservationTitle != "Ownership")
                             throw new InvalidOperationException("M2 Object Viewer->Inspector selection broken");
+                        var rootItem = (System.Windows.Controls.TreeViewItem)ownerView.OwnershipTree.Items[0];
+                        var selection = new RoutedPropertyChangedEventArgs<object>(null, rootItem);
+                        selection.RoutedEvent = System.Windows.Controls.TreeView.SelectedItemChangedEvent;
+                        ownerView.OwnershipTree.RaiseEvent(selection);
+                        if (window.Inspector.SelectedObjectId == null ||
+                            !window.Inspector.SelectedObjectId.Equals(
+                                ownerResult.Observations[0].Envelope.SourceObjectId,
+                                StringComparison.OrdinalIgnoreCase))
+                            throw new InvalidOperationException("M2 MEM object selection did not reach Inspector");
                         exit = 0;
                     }
                     finally { window.Close(); }
