@@ -222,9 +222,13 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 }
                 // 新MDS具名Output即使尚未声明DataExports，也属于子流程内部数据。
                 // 纯旧式MRK StepResult保持已有兼容入口。
+                // 已展开的内层入口Gate属于其被调用子流程；不能把它视为外层
+                // 普通输出，否则第二层/第三层输入会被端口权限校验错误拒绝。
                 string accessGroup = local.SubflowAccessGroup == null
-                    ? (child.DataExports.Count == 0 && local.DataOutputs.Count == 0
-                        ? null : prefix)
+                    ? (local.Id.EndsWith("$entry", StringComparison.Ordinal)
+                        ? scope + local.Id.Substring(0, local.Id.Length - "$entry".Length)
+                        : (child.DataExports.Count == 0 && local.DataOutputs.Count == 0
+                            ? null : prefix))
                     : scope + local.SubflowAccessGroup;
                 list.Add(new MRKExecutionStep(scope + local.Id, depends,
                     (context, token) => local.ExecuteAsync(context.ForSubflow(scope), token),
