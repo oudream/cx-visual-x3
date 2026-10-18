@@ -1,8 +1,12 @@
 # CxVisual 工程组织体系 H01：实现与验收 V1.0
 
-> 2026-10-17～18；H00 D01～D04已由用户明确确认。最终采用MEMContent/MEMSymbol，MRCVisualItem为MRCElement/MRCGroup共同基类。直接master开发，不新增csproj。**H01限定核心闭环已实现并验证，完整工程组织体系尚未完成；全仓测试不全绿，WPF像素/人工交互仍未验证。**
+> 2026-10-17～18；H00 D01～D04已由用户明确确认。最终采用MEMContent/MEMSymbol，MRCVisualItem为MRCElement/MRCGroup共同基类。直接master开发，不新增csproj。**H01限定核心闭环已实现并验证，完整工程组织体系尚未完成；全仓额外F16诊断不全绿，人工交互仍未全面验证。**
 >
 > 源码提交：`4d9dfcb`（核心闭环）、`c61bb6a7521217f44dcbc2f4152f11fc99bdba76`（异常/并发/变换兼容加固）；此前用正常合并`c4315ed`同步远端master `47e3a900db3d04c829e9a1a87ac02aeac3c045e4`。本报告最后一次更新只修改文档，不改变受测源码。
+>
+> **Windows CI补验（2026-10-18）**：H01/H02已共同推送至master `7549446074a704ef093766ef057e8e7e85af4d45`，[工程组织专项Windows验收](https://github.com/oudream/cx-visual-x3/actions/runs/39085237960)、[配置/架构门禁](https://github.com/oudream/cx-visual-x3/actions/runs/39085237948)、[统一运行门禁](https://github.com/oudream/cx-visual-x3/actions/runs/39085238002)实际success。下文“未推送/待CI”为首轮时点记录，本条覆盖其当前状态；F16额外诊断和人工/像素限制仍按实际记录。
+>
+> **WPF像素补验**：上述专项CI job `117550274278`真实输出`PASS H01 raster pixels`、STA保留几何/命中/拖动通过；本机H03第一批的h03-visual-wpf.log也补验像素通过。早期透明位图故障日志保留，不再把像素项标为当前未验证；这仍不代表全部人工键鼠体验验收。
 
 ## 1. 第一批：真实核心闭环
 

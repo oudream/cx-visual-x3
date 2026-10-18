@@ -14,7 +14,7 @@ namespace CxVisual.Mechanism.Core
         private static readonly CultureInfo Invariant = CultureInfo.InvariantCulture;
         private static readonly HashSet<string> ProjectFields = new HashSet<string>(new[] { "schema", "revision" }, StringComparer.Ordinal);
         private static readonly HashSet<string> NodeFields = new HashSet<string>(new[] { "id", "kind", "name", "typeId", "legacy" }, StringComparer.Ordinal);
-        private static readonly HashSet<string> VisualFields = new HashSet<string>(new[] { "id", "kind", "name", "typeId", "legacy", "x", "y", "width", "height", "rotation", "scaleX", "scaleY", "visible", "selectable" }, StringComparer.Ordinal);
+        private static readonly HashSet<string> VisualFields = new HashSet<string>(new[] { "id", "kind", "name", "typeId", "legacy", "x", "y", "width", "height", "rotation", "scaleX", "scaleY", "shear", "visible", "selectable", "locked", "layer" }, StringComparer.Ordinal);
         private static readonly HashSet<string> ReferenceFields = new HashSet<string>(new[] { "id", "name", "kind", "target" }, StringComparer.Ordinal);
         private static readonly HashSet<string> BindingFields = new HashSet<string>(new[] { "property", "source", "member" }, StringComparer.Ordinal);
         private static void CheckFields(XmlReader reader, HashSet<string> allowed)
@@ -91,6 +91,7 @@ namespace CxVisual.Mechanism.Core
             {
                 Number(w, "x", visual.X); Number(w, "y", visual.Y); Number(w, "width", visual.Width); Number(w, "height", visual.Height);
                 Number(w, "rotation", visual.Rotation); Number(w, "scaleX", visual.ScaleX); Number(w, "scaleY", visual.ScaleY);
+                Number(w,"shear",visual.Shear);w.WriteAttributeString("locked",XmlConvert.ToString(visual.IsLocked));w.WriteAttributeString("layer",visual.LayerId);
                 w.WriteAttributeString("visible", XmlConvert.ToString(visual.IsVisible)); w.WriteAttributeString("selectable", XmlConvert.ToString(visual.IsSelectable));
                 if (visual.BindingItems != null) foreach (var pair in visual.BindingItems)
                 { w.WriteStartElement("Binding"); w.WriteAttributeString("property", pair.Key); w.WriteAttributeString("source", pair.Value.SourceId); w.WriteAttributeString("member", pair.Value.MemberId); w.WriteEndElement(); }
@@ -157,7 +158,9 @@ namespace CxVisual.Mechanism.Core
                         CheckFields(r, visual == null ? NodeFields : VisualFields);
                         if (visual != null)
                         {
-                            visual.SetGeometry(Number(r,"x",0), Number(r,"y",0), Number(r,"width",120), Number(r,"height",80), Number(r,"rotation",0), Number(r,"scaleX",1), Number(r,"scaleY",1));
+                            visual.SetGeometry(Number(r,"x",0), Number(r,"y",0), Number(r,"width",120), Number(r,"height",80), Number(r,"rotation",0), Number(r,"scaleX",1), Number(r,"scaleY",1),Number(r,"shear",0));
+                            visual.IsLocked=r.GetAttribute("locked")!=null&&XmlConvert.ToBoolean(r.GetAttribute("locked"));
+                            string layer=r.GetAttribute("layer")??"";visual.LayerId=layer==""?"":MEMNode.NormalizeName(layer);
                             visual.IsVisible = r.GetAttribute("visible") == null || XmlConvert.ToBoolean(r.GetAttribute("visible"));
                             visual.IsSelectable = r.GetAttribute("selectable") == null || XmlConvert.ToBoolean(r.GetAttribute("selectable"));
                         }

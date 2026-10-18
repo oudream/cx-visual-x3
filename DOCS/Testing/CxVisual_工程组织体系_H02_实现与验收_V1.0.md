@@ -1,6 +1,10 @@
 # CxVisual 工程组织体系 H02：一般编辑、快照与地址
 
-> 2026-10-18；在H01最终模型上继续。状态：**源码/案例/本机验收已通过；Windows CI待验证**，因本机Git登录失败尚未触发。不得将本报告视为全部门禁已通过。用户已授权自动继续H02～H07；远端验证待凭据恢复后补齐。
+> 2026-10-18；在H01最终模型上继续。状态：**源码/案例/本机验收与专项Windows CI已通过**，源码`7549446074a704ef093766ef057e8e7e85af4d45`。当前工程组织体系整体尚未完成，自动继续H03～H07。
+
+> 远端证据：[工程组织Windows专项验收39085237960](https://github.com/oudream/cx-visual-x3/actions/runs/39085237960)为success；同SHA的[配置/Windows回归](https://github.com/oudream/cx-visual-x3/actions/runs/39085237948)及[统一运行门禁](https://github.com/oudream/cx-visual-x3/actions/runs/39085238002)均success。这些是本次提交真实CI，不再引用旧基线代替。TestCenter独立任务当时仍运行，不声明其结果。
+>
+> 已读取专项job `117550274278`日志：H02行为、H01实际像素、1千/10万真实文件基准及H01/H02独立C#案例全部PASS。本机旧GCM1.20认证问题通过官方便携GCM3.0.1（核对官方SHA256）恢复，仅使用单次命令helper，没有修改全局Git或业务DLL引用。
 
 ## 实现范围与接口
 

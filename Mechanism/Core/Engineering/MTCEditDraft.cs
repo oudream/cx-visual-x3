@@ -41,6 +41,9 @@ namespace CxVisual.Mechanism.Core
         public void Resize(MRCVisualItem item,double w,double h) { Queue(e=>e.Resize(item,w,h)); }
         public void Rotate(MRCVisualItem item,double angle) { Queue(e=>e.Rotate(item,angle)); }
         public void Scale(MRCVisualItem item,double x,double y) { Queue(e=>e.Scale(item,x,y)); }
+        public void SetTransform(MRCVisualItem item,MRCTransform transform) {Queue(e=>e.SetTransform(item,transform));}
+        public void SetLocked(MRCVisualItem item,bool locked) {Queue(e=>e.SetLocked(item,locked));}
+        public void SetLayer(MRCVisualItem item,string layerId) {Queue(e=>e.SetLayer(item,layerId));}
         public void SetVisibility(MRCVisualItem item,bool visible,bool selectable) { Queue(e=>e.SetVisibility(item,visible,selectable)); }
         public void SetBinding(MRCVisualItem item,string property,MPMBinding binding) { Queue(e=>e.SetBinding(item,property,binding)); }
         public void Reference(MEMContent owner,MEMNode definition,string name) { Queue(e=>e.Reference(owner,definition,name)); }

@@ -74,7 +74,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 var v=n as MRCVisualItem;
                 if(v!=null)
                 {
-                    rows.Add(string.Join("|",new[]{v.X,v.Y,v.Width,v.Height,v.Rotation,v.ScaleX,v.ScaleY}.Select(x=>x.ToString("R",System.Globalization.CultureInfo.InvariantCulture)))+"|"+v.IsVisible+"|"+v.IsSelectable);
+                    rows.Add(string.Join("|",new[]{v.X,v.Y,v.Width,v.Height,v.Rotation,v.ScaleX,v.ScaleY,v.Shear}.Select(x=>x.ToString("R",System.Globalization.CultureInfo.InvariantCulture)))+"|"+v.IsVisible+"|"+v.IsSelectable+"|"+v.IsLocked+"|"+v.LayerId);
                     var binding=v.GetBinding("visible");if(binding!=null)rows.Add(binding.SourceId+"|"+binding.MemberId);
                 }
                 var content=n as MEMContent;

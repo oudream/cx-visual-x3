@@ -11,6 +11,8 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Engineering\MTCEditDraft.cs"/>
+    <Compile Include="Engineering\MRCTransform.cs"/>
+    <Compile Include="Engineering\MTCEditSession.Visual.cs"/>
     <Compile Include="Engineering\MEMEngineeringSession.Editing.cs"/>
     <Compile Include="Engineering\MEMProjectSnapshot.cs"/>
     <Compile Include="Engineering\MRIObjectAddress.cs"/>

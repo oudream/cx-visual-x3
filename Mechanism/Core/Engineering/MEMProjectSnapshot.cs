@@ -49,6 +49,7 @@ namespace CxVisual.Mechanism.Core
         internal MRCVisualSnapshot(MRCVisualItem item)
         {
             X=item.X;Y=item.Y;Width=item.Width;Height=item.Height;Rotation=item.Rotation;ScaleX=item.ScaleX;ScaleY=item.ScaleY;IsVisible=item.IsVisible;IsSelectable=item.IsSelectable;
+            Shear=item.Shear;LayerId=item.LayerId;IsLocked=item.IsLocked;
             Bindings=item.BindingItems==null?EmptyBindings:new ReadOnlyDictionary<string,MPMBinding>(new Dictionary<string,MPMBinding>(item.BindingItems,StringComparer.Ordinal));
         }
         public double X { get; private set; }
@@ -58,6 +59,9 @@ namespace CxVisual.Mechanism.Core
         public double Rotation { get; private set; }
         public double ScaleX { get; private set; }
         public double ScaleY { get; private set; }
+        public double Shear { get; private set; }
+        public string LayerId { get; private set; }
+        public bool IsLocked { get; private set; }
         public bool IsVisible { get; private set; }
         public bool IsSelectable { get; private set; }
         public IReadOnlyDictionary<string,MPMBinding> Bindings { get; private set; }

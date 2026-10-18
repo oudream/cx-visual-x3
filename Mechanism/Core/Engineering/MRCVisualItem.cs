@@ -17,7 +17,7 @@ namespace CxVisual.Mechanism.Core
     public abstract class MRCVisualItem : MEMNode
     {
         internal Dictionary<string, MPMBinding> BindingItems;
-        private double _x, _y, _width, _height, _rotation, _scaleX = 1, _scaleY = 1;
+        private double _x, _y, _width, _height, _rotation, _scaleX = 1, _scaleY = 1, _shear;
         protected MRCVisualItem(Guid id, string name, string typeId, MEMNodeKind kind, double x, double y, double width, double height) : base(id, name, typeId, kind)
         { SetGeometry(x, y, width, height, 0, 1, 1); }
         public double X { get { return _x; } }
@@ -27,21 +27,27 @@ namespace CxVisual.Mechanism.Core
         public double Rotation { get { return _rotation; } }
         public double ScaleX { get { return _scaleX; } }
         public double ScaleY { get { return _scaleY; } }
+        public double Shear { get { return _shear; } }
+        public string LayerId { get; internal set; } = "";
+        public bool IsLocked { get; internal set; }
+        public MRCTransform Transform
+        {get{double a=Rotation*Math.PI/180,c=Math.Cos(a),s=Math.Sin(a);return new MRCTransform(c*ScaleX,c*Shear-s*ScaleY,s*ScaleX,s*Shear+c*ScaleY,X,Y);}}
         public bool IsVisible { get; internal set; } = true;
         public bool IsSelectable { get; internal set; } = true;
         internal static void Finite(double value) { if (double.IsNaN(value) || double.IsInfinity(value)) throw new ArgumentOutOfRangeException("value"); }
-        internal void SetGeometry(double x, double y, double width, double height, double rotation, double sx, double sy)
+        internal void SetGeometry(double x, double y, double width, double height, double rotation, double sx, double sy, double? shear = null)
         {
             Finite(x); Finite(y); Finite(width); Finite(height); Finite(rotation); Finite(sx); Finite(sy);
             if (width <= 0 || height <= 0 || sx == 0 || sy == 0) throw new ArgumentOutOfRangeException("geometry");
-            _x = x; _y = y; _width = width; _height = height; _rotation = rotation % 360; _scaleX = sx; _scaleY = sy;
+            double sh=shear??_shear;Finite(sh);
+            _x = x; _y = y; _width = width; _height = height; _rotation = rotation % 360; _scaleX = sx; _scaleY = sy; _shear=sh;
         }
         public MPMBinding GetBinding(string property)
         { MPMBinding binding; return BindingItems != null && BindingItems.TryGetValue(property, out binding) ? binding : null; }
         internal void LocalToParent(double x, double y, out double px, out double py)
         {
             double rad = Rotation * Math.PI / 180, cos = Math.Cos(rad), sin = Math.Sin(rad);
-            px = X + cos * x * ScaleX - sin * y * ScaleY; py = Y + sin * x * ScaleX + cos * y * ScaleY;
+            px = X + cos * x * ScaleX + (cos*Shear-sin*ScaleY)*y; py = Y + sin * x * ScaleX + (sin*Shear+cos*ScaleY)*y;
         }
         public void TransformPoint(double localX, double localY, out double worldX, out double worldY)
         {
@@ -65,15 +71,15 @@ namespace CxVisual.Mechanism.Core
         private static void InversePoint(MRCVisualItem v, ref double wx, ref double wy)
         {
             double x = wx - v.X, y = wy - v.Y, rad = v.Rotation * Math.PI / 180;
-            wx = (Math.Cos(rad) * x + Math.Sin(rad) * y) / v.ScaleX;
             wy = (-Math.Sin(rad) * x + Math.Cos(rad) * y) / v.ScaleY;
+            wx = (Math.Cos(rad) * x + Math.Sin(rad) * y-v.Shear*wy) / v.ScaleX;
         }
         public bool HitTest(double worldX, double worldY)
         {
             Finite(worldX); Finite(worldY);
             var chain = new Stack<MRCVisualItem>();
             for (MEMNode n = this; n != null; n = n.Parent)
-            { var v = n as MRCVisualItem; if (v != null) { if (!v.IsVisible) return false; chain.Push(v); } }
+            { var v = n as MRCVisualItem; if (v != null) { if (!v.IsVisible||v.IsLocked) return false; chain.Push(v); } }
             if (!IsSelectable) return false;
             while (chain.Count != 0)
             {

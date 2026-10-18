@@ -5,7 +5,7 @@ using System.Linq;
 namespace CxVisual.Mechanism.Core
 {
     /// <summary>Synchronous scoped transaction. Retaining it after Edit returns never grants write access.</summary>
-    public sealed class MTCEditSession
+    public sealed partial class MTCEditSession
     {
         private readonly MEMEngineeringSession _session;
         private bool _active = true;
@@ -19,6 +19,7 @@ namespace CxVisual.Mechanism.Core
         public MEMNode Add(MEMNode parent, MEMNode node)
         {
             Demand(); _session.DemandNode(parent); _session.CheckNew(node);
+            DemandEditable(parent);
             int index = parent.Children.Count;
             Change(() => { parent.InsertOwned(index, node); _session.AddIndex(node); }, () => { parent.DetachOwned(node); _session.RemoveIndex(node); }, MTCChangeKind.Add,node.Id);
             return node;
@@ -33,10 +34,11 @@ namespace CxVisual.Mechanism.Core
             return (MRCRectangle)Add(parent, new MRCRectangle(Guid.NewGuid(), name, x, y, width, height));
         }
         public void Rename(MEMNode node, string name)
-        { Demand(); _session.DemandNode(node); name = MEMNode.NormalizeName(name); string before = node.Name; if (before != name) Change(() => node.SetName(name), () => node.SetName(before),MTCChangeKind.Rename,node.Id); }
+        { Demand(); _session.DemandNode(node); DemandEditable(node); name = MEMNode.NormalizeName(name); string before = node.Name; if (before != name) Change(() => node.SetName(name), () => node.SetName(before),MTCChangeKind.Rename,node.Id); }
         public void Reparent(MEMNode node, MEMNode parent, int index = -1)
         {
             Demand(); _session.DemandNode(node); _session.DemandNode(parent);
+            DemandEditable(node);DemandEditable(parent);
             var old = node.Parent;
             if (old == null || old is MEMPage || old is MEMSymbol) throw new InvalidOperationException("org.root.protected");
             if (node == parent || _session.Reaches(node, parent)) throw new InvalidOperationException("org.ownership_or_reference.cycle");
@@ -54,6 +56,7 @@ namespace CxVisual.Mechanism.Core
         public void Remove(MEMNode node)
         {
             Demand(); _session.DemandNode(node); _session.CheckRemove(node);
+            DemandEditable(node);foreach(var child in node.DescendantsAndSelf()) {var visual=child as MRCVisualItem;if(visual!=null&&visual.IsLocked)throw new InvalidOperationException("org.visual.locked");}
             MEMNode parent = node.Parent; int index = parent.IndexOf(node);
             Change(() => { parent.DetachOwned(node); _session.RemoveIndex(node); }, () => { parent.InsertOwned(index, node); _session.RestoreIndex(node); },MTCChangeKind.Remove,node.Id);
         }
@@ -76,17 +79,19 @@ namespace CxVisual.Mechanism.Core
             var owner = reference.Owner; int position = owner.ReferenceItems.IndexOf(reference);
             Change(() => { owner.ReferenceItems.RemoveAt(position); _session.UnindexReference(reference); }, () => { _session.IndexReference(reference); owner.ReferenceItems.Insert(position, reference); },MTCChangeKind.RemoveReference,reference.Id);
         }
-        private void Geometry(MRCVisualItem item, double x, double y, double width, double height, double angle, double sx, double sy)
+        private void Geometry(MRCVisualItem item, double x, double y, double width, double height, double angle, double sx, double sy, double? shear = null)
         {
             Demand(); _session.DemandNode(item);
+            DemandEditable(item);
             MRCVisualItem.Finite(angle); angle %= 360;
             double ox = item.X, oy = item.Y, ow = item.Width, oh = item.Height, oa = item.Rotation, osx = item.ScaleX, osy = item.ScaleY;
-            if (x == ox && y == oy && width == ow && height == oh && angle == oa && sx == osx && sy == osy) return;
-            Change(() => item.SetGeometry(x, y, width, height, angle, sx, sy), () => item.SetGeometry(ox, oy, ow, oh, oa, osx, osy),MTCChangeKind.Geometry,item.Id);
+            double oldShear=item.Shear,newShear=shear??oldShear;
+            if (x == ox && y == oy && width == ow && height == oh && angle == oa && sx == osx && sy == osy && newShear==oldShear) return;
+            Change(() => item.SetGeometry(x, y, width, height, angle, sx, sy,newShear), () => item.SetGeometry(ox, oy, ow, oh, oa, osx, osy,oldShear),MTCChangeKind.Geometry,item.Id);
         }
         public void Move(MRCVisualItem item, double x, double y) { Geometry(item, x, y, item.Width, item.Height, item.Rotation, item.ScaleX, item.ScaleY); }
         public void Rotate(MRCVisualItem item, double angle) { Geometry(item, item.X, item.Y, item.Width, item.Height, angle, item.ScaleX, item.ScaleY); }
-        public void Scale(MRCVisualItem item, double sx, double sy) { Geometry(item, item.X, item.Y, item.Width, item.Height, item.Rotation, sx, sy); }
+        public void Scale(MRCVisualItem item, double sx, double sy) { Geometry(item, item.X, item.Y, item.Width, item.Height, item.Rotation, sx, sy,item.Shear*sy/item.ScaleY); }
         public void Resize(MRCVisualItem item, double width, double height)
         {
             // Group coordinates remain local: resizing scales its transform, never rewrites its descendants.
@@ -101,6 +106,7 @@ namespace CxVisual.Mechanism.Core
         public void SetBinding(MRCVisualItem item, string property, MPMBinding binding)
         {
             Demand(); _session.DemandNode(item); property = MEMNode.NormalizeName(property); var old = item.GetBinding(property);
+            DemandEditable(item);
             if (ReferenceEquals(old, binding) || (old != null && binding != null && old.SourceId == binding.SourceId && old.MemberId == binding.MemberId)) return;
             Change(() => AssignBinding(item, property, binding), () => AssignBinding(item, property, old),MTCChangeKind.Binding,item.Id);
         }
@@ -113,6 +119,7 @@ namespace CxVisual.Mechanism.Core
         public void SetVisibility(MRCVisualItem item, bool visible, bool selectable)
         {
             Demand(); _session.DemandNode(item); bool ov = item.IsVisible, os = item.IsSelectable;
+            DemandEditable(item);
             if (ov == visible && os == selectable) return;
             Change(() => { item.IsVisible = visible; item.IsSelectable = selectable; }, () => { item.IsVisible = ov; item.IsSelectable = os; },MTCChangeKind.Visibility,item.Id);
         }
