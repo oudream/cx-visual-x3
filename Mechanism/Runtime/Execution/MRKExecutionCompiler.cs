@@ -13,7 +13,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
         public MRKResolvedCapability(Func<MRKExecutionContext, CancellationToken, Task<object>> executeAsync,
             MRKExecutionOutput output = null,
             Func<MRKExecutionContext, CancellationToken, Task> compensateAsync = null,
-            Func<MRKExecutionContext, CancellationToken, object> synchronousSdk = null)
+            Func<MRKExecutionContext, CancellationToken, object> synchronousSdk = null,
+            IDictionary<string, Type> dataOutputs = null)
         {
             if (executeAsync == null && synchronousSdk == null)
                 throw new ArgumentException("能力必须提供异步或同步SDK实现");
@@ -21,10 +22,22 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 Task.FromResult(synchronousSdk(context, token)));
             SynchronousSdk = synchronousSdk;
             Output = output;
+            Dictionary<string, Type> declared = new Dictionary<string, Type>(StringComparer.Ordinal);
+            if (dataOutputs != null)
+                foreach (KeyValuePair<string, Type> entry in dataOutputs)
+                {
+                    if (string.IsNullOrWhiteSpace(entry.Key) || entry.Value == null ||
+                        entry.Value == typeof(void))
+                        throw new ArgumentException("专业具名数据输出契约无效", "dataOutputs");
+                    declared.Add(entry.Key, entry.Value);
+                }
+            DataOutputs = new ReadOnlyDictionary<string, Type>(declared);
             CompensateAsync = compensateAsync;
         }
         public Func<MRKExecutionContext, CancellationToken, Task<object>> ExecuteAsync { get; private set; }
         public MRKExecutionOutput Output { get; private set; }
+        /// <summary>能力的具名Data.Return契约，与直接构造MRKExecutionStep完全相同。</summary>
+        public IDictionary<string, Type> DataOutputs { get; private set; }
         public Func<MRKExecutionContext, CancellationToken, object> SynchronousSdk { get; private set; }
         public Func<MRKExecutionContext, CancellationToken, Task> CompensateAsync { get; private set; }
     }
@@ -154,7 +167,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
                         item.ExecutionGroup, item.Inputs, capability.Output,
                         item.Condition, item.AllowSkippedDependencies, item.DedicatedExecutorId,
                         capability.SynchronousSdk,
-                        item.Priority, item.EstimatedPendingBytes));
+                        item.Priority, item.EstimatedPendingBytes,
+                        capability.DataOutputs));
                 }
                 catch (Exception ex) when (ex is ArgumentException || ex is InvalidOperationException)
                 {
