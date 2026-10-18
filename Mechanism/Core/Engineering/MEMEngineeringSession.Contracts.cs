@@ -210,6 +210,7 @@ namespace CxVisual.Mechanism.Core
                     foreach(var property in MPMDefinitionState.PropertiesOf(node))
                     {var binding=next.Item2!=null&&node.Id==next.Item2.TargetId&&property.Descriptor.IsPublic?ResolveParameter(next.Item2,property.MemberId):property.Binding;if(property.Descriptor.Required&&(binding==null||(binding.Kind==MPMBindingKind.Literal&&binding.Value.Kind==MPMValueKind.Null)))issues.Add("org.run.required_property:"+node.Id+":"+property.MemberId);}
                     foreach(var aspect in MPMDefinitionState.AspectsOf(node))if(aspect.Required&&!providers.Contains(aspect.ProviderId))issues.Add("org.run.provider_missing:"+aspect.ProviderId);
+                    foreach(var aspect in MPMDefinitionState.AspectsOf(node))if(aspect.RequiresRemap)issues.Add("org.run.aspect_remap_required:"+node.Id+":"+aspect.ProviderId);
                     foreach(var child in node.Children)pending.Push(Tuple.Create(child,next.Item2));
                     var content=node as MEMContent;if(content!=null)foreach(var reference in content.References)pending.Push(Tuple.Create(Find(reference.TargetId),reference));
                 }

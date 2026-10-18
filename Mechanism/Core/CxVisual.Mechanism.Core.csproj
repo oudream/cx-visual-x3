@@ -23,6 +23,9 @@
     <Compile Include="Engineering\MEMFileProjectStore.Types.cs"/>
     <Compile Include="Engineering\MEMProjectStorage.cs"/>
     <Compile Include="Engineering\MEMAccessPolicy.cs"/>
+    <Compile Include="Engineering\MTITransferPlan.cs"/>
+    <Compile Include="Engineering\MTIPackages.cs"/>
+    <Compile Include="Engineering\MEMEngineeringSession.Transfer.cs"/>
     <Compile Include="Engineering\MEMAssetReference.cs"/>
     <Compile Include="Engineering\MEMFileProjectStore.Assets.cs"/>
     <Compile Include="Engineering\MTCEditSession.Visual.cs"/>

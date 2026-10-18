@@ -27,7 +27,7 @@ namespace CxVisual.Mechanism.Core
                     w.WriteAttributeString("unit64",Encode(port.Contract.UnitId));w.WriteAttributeString("frame64",Encode(port.Contract.CoordinateFrameId));w.WriteAttributeString("time64",Encode(port.Contract.TimeBaseId));w.WriteEndElement();
                 }
                 foreach(var aspect in type.Aspects)
-                {w.WriteStartElement("Aspect");w.WriteAttributeString("kind",aspect.Kind.ToString());w.WriteAttributeString("provider",aspect.ProviderId);w.WriteAttributeString("schema",aspect.SchemaVersion.ToString(Invariant));w.WriteAttributeString("required",XmlConvert.ToString(aspect.Required));w.WriteBase64(aspect.PayloadBytes,0,aspect.PayloadBytes.Length);w.WriteEndElement();}
+                {w.WriteStartElement("Aspect");w.WriteAttributeString("kind",aspect.Kind.ToString());w.WriteAttributeString("provider",aspect.ProviderId);w.WriteAttributeString("schema",aspect.SchemaVersion.ToString(Invariant));w.WriteAttributeString("required",XmlConvert.ToString(aspect.Required));if(aspect.RequiresRemap)w.WriteAttributeString("remap","true");w.WriteBase64(aspect.PayloadBytes,0,aspect.PayloadBytes.Length);w.WriteEndElement();}
                 w.WriteEndElement();
             }
         }
@@ -49,8 +49,8 @@ namespace CxVisual.Mechanism.Core
                 }
                 else if(child.Name=="Aspect")
                 {
-                    XFields(child,"kind provider schema required",true);if(child.Elements().Any()||child.Value.Length>5600000)throw new InvalidDataException("Invalid type aspect");
-                    aspects.Add(new MPMAspect(XEnum<MPMAspectKind>(child,"kind"),XRequired(child,"provider"),int.Parse(XRequired(child,"schema"),Invariant),Convert.FromBase64String(child.Value),XBool(child,"required",true)));
+                    XFields(child,"kind provider schema required remap",true);if(child.Elements().Any()||child.Value.Length>5600000)throw new InvalidDataException("Invalid type aspect");
+                    aspects.Add(new MPMAspect(XEnum<MPMAspectKind>(child,"kind"),XRequired(child,"provider"),int.Parse(XRequired(child,"schema"),Invariant),Convert.FromBase64String(child.Value),XBool(child,"required",true),XBool(child,"remap")));
                 }
                 else throw new InvalidDataException("Unsupported type schema field");
                 if(properties.Count+ports.Count+aspects.Count>4096)throw new InvalidDataException("Type member budget exceeded");

@@ -11,6 +11,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="OrganizationH04Tests.cs"/>
+    <Compile Include="OrganizationH05Tests.cs"/>
     <Compile Include="OrganizationWpfTests.cs"/>
     <Compile Include="OrganizationH02Tests.cs"/>
     <Compile Include="OrganizationH03VisualTests.cs"/>

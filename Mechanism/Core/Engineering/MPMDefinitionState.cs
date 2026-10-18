@@ -17,10 +17,11 @@ namespace CxVisual.Mechanism.Core
     public sealed class MPMAspect
     {
         private readonly byte[] _payload;
-        public MPMAspect(MPMAspectKind kind,string providerId,int schemaVersion,byte[] payload,bool required=true)
-        {if(!Enum.IsDefined(typeof(MPMAspectKind),kind)||schemaVersion<1)throw new ArgumentException("Invalid aspect contract");if(payload!=null&&payload.Length>4*1024*1024)throw new ArgumentException("Aspect budget exceeded");Kind=kind;ProviderId=MEMNode.NormalizeName(providerId);SchemaVersion=schemaVersion;_payload=(payload??new byte[0]).ToArray();Required=required;}
+        public MPMAspect(MPMAspectKind kind,string providerId,int schemaVersion,byte[] payload,bool required=true,bool requiresRemap=false)
+        {if(!Enum.IsDefined(typeof(MPMAspectKind),kind)||schemaVersion<1)throw new ArgumentException("Invalid aspect contract");if(payload!=null&&payload.Length>4*1024*1024)throw new ArgumentException("Aspect budget exceeded");Kind=kind;ProviderId=MEMNode.NormalizeName(providerId);SchemaVersion=schemaVersion;_payload=(payload??new byte[0]).ToArray();Required=required;RequiresRemap=requiresRemap;}
         public MPMAspectKind Kind {get;private set;} public string ProviderId {get;private set;}
         public int SchemaVersion {get;private set;} public bool Required {get;private set;}
+        public bool RequiresRemap {get;private set;}
         public byte[] Payload {get{return (byte[])_payload.Clone();}}
         internal byte[] PayloadBytes {get{return _payload;}}
     }

@@ -84,7 +84,7 @@ namespace CxVisual.Mechanism.Core
                 if(mapping.Kind==MRCPublicMappingKind.Port){w.WriteAttributeString("publicPort",mapping.PublicPortId.Value.ToString("D"));w.WriteAttributeString("targetPort",mapping.TargetPortId.Value.ToString("D"));}else w.WriteAttributeString("targetMember",mapping.TargetMemberId);w.WriteEndElement();
             }
             foreach(var aspect in MPMDefinitionState.AspectsOf(owner))
-            {w.WriteStartElement("Aspect");w.WriteAttributeString("kind",aspect.Kind.ToString());w.WriteAttributeString("provider",aspect.ProviderId);w.WriteAttributeString("schema",aspect.SchemaVersion.ToString(Invariant));w.WriteAttributeString("required",XmlConvert.ToString(aspect.Required));w.WriteBase64(aspect.PayloadBytes,0,aspect.PayloadBytes.Length);w.WriteEndElement();}
+            {w.WriteStartElement("Aspect");w.WriteAttributeString("kind",aspect.Kind.ToString());w.WriteAttributeString("provider",aspect.ProviderId);w.WriteAttributeString("schema",aspect.SchemaVersion.ToString(Invariant));w.WriteAttributeString("required",XmlConvert.ToString(aspect.Required));if(aspect.RequiresRemap)w.WriteAttributeString("remap","true");w.WriteBase64(aspect.PayloadBytes,0,aspect.PayloadBytes.Length);w.WriteEndElement();}
         }
         private static void WriteEndpoint(XmlWriter w,string prefix,MPCEndpoint endpoint){w.WriteAttributeString(prefix,endpoint.Address.ToString());w.WriteAttributeString(prefix+"Port",endpoint.PortId.ToString("D"));}
         private static MPCEndpoint ReadEndpoint(XElement e,string prefix){return new MPCEndpoint(MRIObjectAddress.Parse(XRequired(e,prefix)),Guid.Parse(XRequired(e,prefix+"Port")));}
@@ -112,7 +112,7 @@ namespace CxVisual.Mechanism.Core
                     var mapping=kind==MRCPublicMappingKind.Property?new MRCPublicMapping(owner.Id,XRequired(e,"member"),address,XRequired(e,"targetMember")):new MRCPublicMapping(owner.Id,XRequired(e,"member"),Guid.Parse(XRequired(e,"publicPort")),new MPCEndpoint(address,Guid.Parse(XRequired(e,"targetPort"))));
                     if(state.MappingItems==null)state.MappingItems=new List<MRCPublicMapping>();if(state.MappingItems.Any(m=>m.Kind==mapping.Kind&&m.MemberId==mapping.MemberId))throw new InvalidDataException("Duplicate public mapping");state.MappingItems.Add(mapping);break;
                 case "Aspect":
-                    XFields(e,"kind provider schema required",true);if(e.Elements().Any()||e.Value.Length>5600000)throw new InvalidDataException("Invalid/oversized aspect payload");var aspect=new MPMAspect(XEnum<MPMAspectKind>(e,"kind"),XRequired(e,"provider"),int.Parse(XRequired(e,"schema"),Invariant),Convert.FromBase64String(e.Value),XBool(e,"required",true));
+                    XFields(e,"kind provider schema required remap",true);if(e.Elements().Any()||e.Value.Length>5600000)throw new InvalidDataException("Invalid/oversized aspect payload");var aspect=new MPMAspect(XEnum<MPMAspectKind>(e,"kind"),XRequired(e,"provider"),int.Parse(XRequired(e,"schema"),Invariant),Convert.FromBase64String(e.Value),XBool(e,"required",true),XBool(e,"remap"));
                     if(state.AspectItems==null)state.AspectItems=new List<MPMAspect>();if(state.AspectItems.Any(a=>a.Kind==aspect.Kind&&a.ProviderId==aspect.ProviderId))throw new InvalidDataException("Duplicate aspect");state.AspectItems.Add(aspect);break;
             }
             return true;

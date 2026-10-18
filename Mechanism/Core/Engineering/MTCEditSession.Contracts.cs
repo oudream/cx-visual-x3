@@ -123,7 +123,7 @@ namespace CxVisual.Mechanism.Core
         public void SetAspect(MEMNode owner,MPMAspect aspect)
         {
             if(aspect==null)throw new ArgumentNullException("aspect");var state=Definition(owner);var old=MPMDefinitionState.AspectsOf(owner).FirstOrDefault(a=>a.Kind==aspect.Kind&&a.ProviderId==aspect.ProviderId);
-            if(old!=null&&old.Required==aspect.Required&&old.SchemaVersion==aspect.SchemaVersion&&old.PayloadBytes.SequenceEqual(aspect.PayloadBytes))return;
+            if(old!=null&&old.Required==aspect.Required&&old.RequiresRemap==aspect.RequiresRemap&&old.SchemaVersion==aspect.SchemaVersion&&old.PayloadBytes.SequenceEqual(aspect.PayloadBytes))return;
             int index=old==null?-1:state.AspectItems.IndexOf(old);
             Change(()=>{if(state.AspectItems==null)state.AspectItems=new List<MPMAspect>();if(index<0)state.AspectItems.Add(aspect);else state.AspectItems[index]=aspect;},()=>{if(index<0)state.AspectItems.Remove(aspect);else state.AspectItems[index]=old;},MTCChangeKind.Aspect,owner.Id);
         }

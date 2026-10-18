@@ -23,6 +23,7 @@ namespace CxVisual.Mechanism.Core
         }
         internal string ArchivePath {get{return "assets/"+Id.ToString("N");}}
         internal Stream OpenRead(){return new MemoryStream(_bytes,0,_bytes.Length,false,false);}
+        internal MEMAssetReference WithId(Guid id){return new MEMAssetReference(id,Name,MediaType,_bytes);}
         public Guid Id {get;private set;} public string Name {get;private set;} public string MediaType {get;private set;} public string ContentHash {get;private set;}
         public int Length {get{return _bytes.Length;}} public string TypeId {get{return "core.asset";}}
         public Guid StorageRootId {get{return Id;}} public MEMResourceScope Scope {get{return MEMResourceScope.Standalone;}}

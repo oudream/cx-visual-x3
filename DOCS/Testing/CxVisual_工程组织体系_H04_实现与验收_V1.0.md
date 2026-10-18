@@ -44,3 +44,7 @@
 - 外部只读固定版资源依赖、跨工程Pin/IncludeClosure与转移预览继续H05；当前包内资源与静态资产已真实可用，不将其冒充外部资源联邦完成。
 - 活动保存时Close明确拒绝；当前没有后台强行关闭/取消已发布文件的隐式行为。GUI提示、脏关闭重试属于H06。
 - H07仍需原运行编译、配置/数据与专业Owner验收；加载工程文件不是生产切换。
+
+## 本批Windows CI
+
+提交`eb4c14fd7a413f565cda1e602f359bd69cc74cb9`的[工程组织Windows CI 39112344484](https://github.com/oudream/cx-visual-x3/actions/runs/39112344484)成功；同SHA统一运行、配置L1、配置底座、TestCenter五条工作流均成功。后续TestCenter并行提交引入的CS0165另在`7162053`修复并普通合并，不混淆该历史失败与本批H04状态。
