@@ -1,6 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Text;
+using System.Xml.Linq;
+using CxVisual.TestCenter.Models;
 using CxVisual.Foundation.Geometry;
 using CxVisual.Mechanism.Core;
 using CxVisual.TestCenter.Core;
@@ -39,6 +43,8 @@ namespace CxVisual.TestCenter.Cases
                 "Object / Persistence", "CA-ORG-01", "CAP-ORG-ROUNDTRIP", "MEMFileProjectStore", RoundTrip);
             Add(catalog, "M-OBJ-004", "Revision 冲突拒绝", TCTTestAspect.Mechanism,
                 "Object / Transaction", "CA-ORG-01", "CAP-ORG-REVISION", "MEMEngineeringSession", RevisionConflict);
+            Add(catalog, "M-OBJ-005", "MEM固定快照和引用证据安全性", TCTTestAspect.Mechanism,
+                "Object / Snapshot", "CA-ORG-01", "CAP-ORG-SNAPSHOT", "MEMProjectSnapshot", SnapshotEvidence);
         }
 
         private static void Add(TCTTestCatalog catalog, string id, string name, TCTTestAspect aspect,
@@ -113,7 +119,14 @@ namespace CxVisual.TestCenter.Cases
                 "Element子节点数量", 2, group.Children.Count);
             context.AssertTrue(content.References.Count == 1 && content.References[0].TargetId == symbol.Id,
                 "独立定义有使用记录", symbol.Id, content.References[0].TargetId);
-            context.Observe("ObjectTree", "Ownership", "Project → Page/Content/Group/Element; standalone Symbol is referenced rather than multiply owned");
+            MEMProjectSnapshot snapshot = session.GetSnapshot();
+            context.AssertEqual(project.DescendantsAndSelf().Count(), snapshot.Nodes.Count,
+                "已提交工程快照覆盖全部拥有节点");
+            context.ObserveStructured("ObjectTree", "Ownership",
+                "MEMProjectSnapshot Revision=" + snapshot.Revision +
+                "; Ownership 和 Reference 在只读证据中分开，内容来自真实工程会话",
+                project.Id.ToString("D"), session.GetAddress(project).ToString(), null,
+                TCTEngineeringSnapshotCodec.Serialize(snapshot), TCTEngineeringSnapshotCodec.Mime);
         }
         private static void AtomicRollback(TCTTestContext context)
         {
@@ -155,6 +168,55 @@ namespace CxVisual.TestCenter.Cases
                 context.Observe("ObjectTree", "RoundTrip", "真实工程包保存/加载保持唯一对象及资源引用");
             }
             finally { if (File.Exists(file)) File.Delete(file); }
+        }
+        private static void SnapshotEvidence(TCTTestContext context)
+        {
+            using (MEMEngineeringSession session = CreateOrganizationSample())
+            {
+                MEMProjectSnapshot original = session.GetSnapshot();
+                byte[] payload = TCTEngineeringSnapshotCodec.Serialize(original);
+                XDocument decoded = TCTEngineeringSnapshotCodec.Deserialize(payload);
+                context.AssertEqual(original.Nodes.Count, decoded.Root.Elements("Node").Count(),
+                    "快照节点数与真实Owner一致");
+                XElement content = decoded.Root.Elements("Node")
+                    .Single(x => (string)x.Attribute("kind") == "Content");
+                XElement reference = content.Element("Reference");
+                context.AssertTrue(reference != null &&
+                    (string)reference.Attribute("targetId") == session.Project.Symbols[0].Id.ToString("D"),
+                    "Reference指向真实独立Symbol", true, reference != null);
+                Guid rectangleId = FirstGroup(session).Children[0].Id;
+                XElement rectangle = decoded.Root.Elements("Node")
+                    .Single(x => (string)x.Attribute("id") == rectangleId.ToString("D"));
+                context.AssertTrue(rectangle.Element("Visual") != null,
+                    "实际图元视觉参数已进入版本化证据", true,
+                    rectangle.Element("Visual") != null);
+
+                // Snapshot is an immutable revision projection, never a live shadow engineering tree.
+                string before = (string)rectangle.Attribute("name");
+                session.Rename(session.Find(rectangleId), "Renamed after snapshot");
+                context.AssertEqual(before, (string)rectangle.Attribute("name"),
+                    "提交新Revision不反向篡改旧证据");
+                context.AssertEqual(original.Revision, (int)decoded.Root.Attribute("revision"),
+                    "证据记录创建时的Revision");
+
+                XDocument invalid = TCTEngineeringSnapshotCodec.Deserialize(payload);
+                XElement broken = invalid.Root.Elements("Node")
+                    .Single(x => (string)x.Attribute("kind") == "Symbol");
+                broken.SetAttributeValue("parentId", Guid.NewGuid().ToString("D"));
+                context.AssertThrows<InvalidDataException>(() =>
+                    TCTEngineeringSnapshotCodec.Deserialize(Encoding.UTF8.GetBytes(
+                        invalid.ToString(SaveOptions.DisableFormatting))),
+                    "伪造Ownership必须拒绝");
+                context.AssertThrows<System.Xml.XmlException>(() =>
+                    TCTEngineeringSnapshotCodec.Deserialize(Encoding.UTF8.GetBytes(
+                        "<!DOCTYPE x [<!ENTITY ext SYSTEM 'file:///tmp/secret'>]>" +
+                        "<EngineeringSnapshot schema='1'/>")),
+                    "工程证据不得包含DTD");
+                context.ObserveStructured("ObjectTree", "Immutable Snapshot",
+                    "真实MEM快照、引用、视觉字段和非法关系拒绝",
+                    session.Project.Id.ToString("D"), session.GetAddress(session.Project).ToString(), null,
+                    payload, TCTEngineeringSnapshotCodec.Mime);
+            }
         }
         private static void RevisionConflict(TCTTestContext context)
         {
