@@ -45,6 +45,8 @@ namespace CxVisual.TestCenter.Cases
                 "Object / Transaction", "CA-ORG-01", "CAP-ORG-REVISION", "MEMEngineeringSession", RevisionConflict);
             Add(catalog, "M-OBJ-005", "MEM固定快照和引用证据安全性", TCTTestAspect.Mechanism,
                 "Object / Snapshot", "CA-ORG-01", "CAP-ORG-SNAPSHOT", "MEMProjectSnapshot", SnapshotEvidence);
+            Add(catalog, "M-OBJ-006", "MEM已提交Revision对象差异", TCTTestAspect.Mechanism,
+                "Object / Diff", "CA-ORG-01", "CAP-ORG-DIFF", "MEMProjectSnapshot", RevisionDiff);
         }
 
         private static void Add(TCTTestCatalog catalog, string id, string name, TCTTestAspect aspect,
@@ -228,6 +230,43 @@ namespace CxVisual.TestCenter.Cases
             }
             finally { session.Close(true); }
         }
+        private static void RevisionDiff(TCTTestContext context)
+        {
+            MEMEngineeringSession session = CreateOrganizationSample();
+            try
+            {
+                MEMProjectSnapshot before = session.GetSnapshot();
+                byte[] left = TCTEngineeringSnapshotCodec.Serialize(before);
+                MRCVisualItem visual = FirstGroup(session).Children[0];
+                string originalName = visual.Name;
+                session.Rename(visual, originalName + " Changed");
+                MEMProjectSnapshot after = session.GetSnapshot();
+                byte[] right = TCTEngineeringSnapshotCodec.Serialize(after);
+                IList<string> diff = TCTEngineeringSnapshotCodec.Compare(left, right);
+                context.AssertEqual(before.Revision + 1, after.Revision, "提交后Revision推进");
+                context.AssertEqual(1, diff.Count, "按稳定节点Id发现唯一重命名变化");
+                context.AssertTrue(diff[0].Contains(originalName) &&
+                    diff[0].Contains("Changed"), "差异来自真实名称变化", true, diff[0]);
+                context.AssertEqual(1, before.Nodes.SelectMany(n => n.References).Count(),
+                    "旧Revision仍保留资源引用");
+                context.AssertEqual(1, after.Nodes.SelectMany(n => n.References).Count(),
+                    "新Revision仍保留资源引用");
+                context.AssertThrows<InvalidDataException>(() =>
+                    TCTEngineeringSnapshotCodec.Compare(right,
+                        TCTEngineeringSnapshotCodec.Serialize(
+                            MEMEngineering.Create("Other project").GetSnapshot())),
+                    "不能比较不同工程的对象版本");
+                string address = session.GetAddress(session.Project).ToString();
+                context.ObserveStructured("ObjectTree", "Before Revision", "Revision=" + before.Revision,
+                    session.Project.Id.ToString("D"), address, null, left,
+                    TCTEngineeringSnapshotCodec.Mime, "Before");
+                context.ObserveStructured("ObjectTree", "After Revision", "Revision=" + after.Revision,
+                    session.Project.Id.ToString("D"), address, null, right,
+                    TCTEngineeringSnapshotCodec.Mime, "After");
+            }
+            finally { session.Close(true); }
+        }
+
         private static void RevisionConflict(TCTTestContext context)
         {
             var session = CreateOrganizationSample();
