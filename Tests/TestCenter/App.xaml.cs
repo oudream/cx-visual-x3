@@ -263,6 +263,27 @@ namespace CxVisual.TestCenter.UI
                         window.DocumentHost.ShowMode("ObjectTree");
                         if (window.DocumentHost.ActiveMode != "ObjectTree")
                             throw new InvalidOperationException("M2 viewer context switching failed");
+
+                        // Before/After in one real MEM Attempt: the UI must derive
+                        // changes from verified snapshots, not textual assert labels.
+                        ITCTTestCase revisionCase = catalog.Cases.Single(x =>
+                            x.Descriptor.Id == "M-OBJ-006");
+                        TCTTestAttempt revisionAttempt = new TCTTestAttempt(Guid.NewGuid().ToString("N"),
+                            revisionCase.Descriptor.Id, 0, 20261018);
+                        TCTTestArtifactStore revisionStore = new TCTTestArtifactStore(
+                            TCTTestArtifactStore.RunRoot(revisionAttempt.RunId));
+                        TCTTestCaseResult revisionResult = await TCTTestRunner.RunOneAsync(revisionCase,
+                            CancellationToken.None, 20261018, revisionAttempt, revisionStore);
+                        if (revisionResult.Status != TCTTestStatus.Passed ||
+                            revisionResult.Observations.Count != 2 ||
+                            TCTObservationReplay.Read(revisionResult, revisionStore).Count != 2)
+                            throw new InvalidOperationException("M2 MEM revision comparison evidence invalid");
+                        window.DocumentHost.ShowResult(revisionResult);
+                        var revisionTabs = (System.Windows.Controls.TabControl)window.DocumentHost.Content;
+                        var revisionViewer = (TCTObjectTestView)
+                            ((System.Windows.Controls.TabItem)revisionTabs.Items[1]).Content;
+                        if (revisionViewer.VerifiedDiffCount != 1 || revisionViewer.EvidenceProblem != null)
+                            throw new InvalidOperationException("M2 WPF failed to display actual MEM Revision diff");
                         exit = 0;
                     }
                     finally { window.Close(); }
