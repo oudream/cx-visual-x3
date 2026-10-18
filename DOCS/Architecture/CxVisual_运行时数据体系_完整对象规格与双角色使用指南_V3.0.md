@@ -637,6 +637,51 @@ if (b.State == MRKFlowState.Completed)
 
 ---
 
+### 7.11 原V1.3开发者D01～D09案例与现行示例逐项对应
+
+> **特别说明**：上面的D01～D10为了按当前最自然的API组织，重新编排了示例顺序。因此它们的D编号不应被误认为直接复刻原V1.3中的D编号。以下保留**原编号及原意**，给出对应现行实例与尚未完成处。
+
+| V1.3原案例 | 原始业务目标 | 本V3.0现行落点 | 仍需兑现的差异 |
+|---|---|---|---|
+| 原D01 | 3行小值算法 | `7.D01` | 无需引入Ref/Lease |
+| 原D02 | X-Ray采图→AI/CV并行→合并 | `7.D03`+`8.V01` | 当前验证是Vision CPU并行统计，真正AI/相机SDK未接 |
+| 原D03 | 三层子流程A→B→C的Return/Commit | `7.D08`+`8.V02` | 由MRK InlineSubflow实现，不存在旧示意RunChildAsync通用API |
+| 原D04 | 8GB CT Volume仅读小ROI | `7.D05`+`8.V03` | 通用FileLoader可用，但8GB实测与专业只读ROI视图仍待验 |
+| 原D05 | IoT测点Quality/Time/Subscribe | `7.D09`+`8.V04` | 外部变量Owner的Quality、订阅接口未在本MDS内部重建 |
+| 原D06 | 检测任务固定配置V8，后台保存V9 | **本节7.12新增**+`8.V05` | 由已有Configuration独立负责CaptureForTask，MDS只关联来源 |
+| 原D07 | 图像增强产生独立版本，原图不被改写 | `7.D03～D04` | 现行显式Copy保证值隔离；通用版本化COW未实现 |
+| 原D08 | 跨进程AI超时但数据不能早释放 | **本节7.13新增**+`8.V06` | 只能列设计契约，SHM/GPU/外部Operation保活尚未实装 |
+| 原D09 | 编排之外通过Runtime携Data的普通C#任务 | `7.D07/D10` | 现有`MRKExecutionEngine.StartFlow`可用，不必先画图；任意Task无需强制造Flow |
+
+### 7.12 源案例D06：固定配置版本、算法来源 [原需求保留；Config侧实现需审计]
+
+~~~text
+任务开始：配置系统捕获Recipe V8（本次运行唯一快照）
+  ├─ Vision检测多个节点都使用V8
+  ├─ 后台操作员保存Recipe V9
+  ├─ 当前任务不得悄然切换V9
+  └─ 下一个Run按既有配置应用策略选择V9
+最终结果记录：RunId + ConfigRevision + AlgorithmVersion + Result
+~~~
+
+这是**数据与配置各自只有一份权威源**的交接规范：现有MHS/FCM配置体系管理版本捕获与保存；MDS接收输入中明确绑定的配置/版本元数据，MRK记录Flow。不得凭“`data.Set("ConfigRevision",8)`”就宣称任务已经实现全程固定配置——真正的“固定”要由配置Owner和运行入口保证。**验收原U07/T19**要求运行中更新配置后当前任务结果仍关联V8，下一个任务按策略关联新版本。
+
+### 7.13 源案例D08：跨进程AI超时、迟到结果与外部资源 [原需求保留；高级能力未实现]
+
+~~~text
+Vision图像Owner（Flow A，SN001）
+  -> 专业AI Bridge提交 OperationId + 输入标识 + 版本
+  -> 远程AI或独立进程异步执行
+      ├─ 收到确认结果：仅在Run/SN/Operation/输入版本均匹配时Return
+      └─ 本地等待超时：Run进入Unknown/复判，不代表AI进程已停止
+  -> 外部Operation结束/IPC确认之后才可安全释放对应SHM/GPU载体
+  -> 任何迟到回包不得进入已关闭Scope或下一个SN
+~~~
+
+用户当时的重点是**不早释放**，而不是坚持全业务都必须使用`MDSDataRef/MDSDataLease`。后期定案是：普通托管数据仍由Heap/Stack直接拥有；仅涉及SHM、GPU、SDK缓冲等外部Owner时，专业适配器才可能引入高级稳定标识/Lease。当前已有**托管FileLoader迟到数据拒绝**与MRK`ResultUnknown`的部分测试，但**没有完成远程AI/SHM外部操作的全生命周期协议**。这一区别必须写在Codex验收和UI告警中。
+
+---
+
 ## 8. R3 工程编排用户：V01～V08完整操作规格（以“拖→连→填→测→看”为主）
 
 > **状态特别说明**：这些是上一轮明确讨论的**目标用户体验与验收用例**。M4已具备运行数据Query/Binding/Inspect后端，Vision已有真实CPU流程，但`Applications.Studio`现阶段尚未全面提供以下每项WPF编排UI。不能把此章的交互步骤报告为“现有界面已经支持”。后续R3用户测试要求真实点鼠标，不用手改MRK计划源码完成。
