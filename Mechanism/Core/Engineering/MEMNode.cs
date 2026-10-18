@@ -47,6 +47,7 @@ namespace CxVisual.Mechanism.Core
         internal virtual void InsertCore(int index, MEMNode child) { throw new InvalidOperationException("Leaf has no children"); }
         internal virtual void RemoveCore(MEMNode child) { throw new InvalidOperationException("Leaf has no children"); }
         internal void SetName(string name) { _name = NormalizeName(name); }
+        internal void SetTypeId(string typeId) { if(Parent!=null||OwnerSession!=null)throw new InvalidOperationException("Type identity is immutable after attachment");TypeId=NormalizeName(typeId); }
         internal static string NormalizeName(string name)
         {
             if (string.IsNullOrWhiteSpace(name)) throw new ArgumentException("Name is required", "name");
@@ -135,6 +136,7 @@ namespace CxVisual.Mechanism.Core
 
     public class MEMProject : MEMNode
     {
+        internal Dictionary<string,MPMTypeDescriptor> TypeItems;
         private MEMChildList<MEMNode> _items;
         internal MEMEngineeringSession Session;
         public MEMProject(Guid id, string name) : base(id, name, "core.project", MEMNodeKind.Project) { }
@@ -237,5 +239,7 @@ namespace CxVisual.Mechanism.Core
         public MEMContent Owner { get; internal set; }
         public IReadOnlyDictionary<string,MPMBinding> Overrides {get{return OverrideItems==null?EmptyOverrides:new System.Collections.ObjectModel.ReadOnlyDictionary<string,MPMBinding>(OverrideItems);}}
         public MRCTransform Placement {get{return PlacementValue==null?MRCTransform.Identity:PlacementValue.Value;}}
+        internal void SetName(string name){Name=MEMNode.NormalizeName(name);}
+        internal void SetTarget(Guid target){TargetId=target;}
     }
 }

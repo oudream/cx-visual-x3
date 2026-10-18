@@ -16,6 +16,9 @@ namespace CxVisual.Mechanism.Core
         internal void CheckBindingAssignment(MEMNode owner,string member,MPMBinding binding,MPMValueKind? expectedKind=null,MRIResourceReference instance=null)
         {
             if(binding==null)return;BindingTargets(binding).ToArray();
+            var declared=expectedKind??MemberKind(owner,member);
+            if(binding.Kind==MPMBindingKind.Literal&&binding.Value.Kind!=MPMValueKind.Null&&declared.HasValue&&declared.Value!=binding.Value.Kind)throw new InvalidOperationException("org.binding.type_mismatch");
+            if(binding.Kind==MPMBindingKind.Resource&&declared.HasValue&&declared!=MPMValueKind.Resource)throw new InvalidOperationException("org.binding.type_mismatch");
             if(binding.Kind==MPMBindingKind.Member)
             {
                 var target=Resolve(binding.Address);var property=FindProperty(target,binding.MemberId);
@@ -25,7 +28,7 @@ namespace CxVisual.Mechanism.Core
                 var actual=MemberKind(target,binding.MemberId);var expected=expectedKind??MemberKind(owner,member);
                 if(actual.HasValue&&expected.HasValue&&actual!=expected)throw new InvalidOperationException("org.binding.type_mismatch");
             }
-            var source=GetAddress(owner,instance==null?null:new[]{instance.Id}).ToString()+"#"+member;var seen=new HashSet<string>(StringComparer.Ordinal);var current=binding;
+            var source=(instance==null?GetAddress(owner):new MRIObjectAddress(Project.Id,owner.ResourceRootId,owner.Id,new[]{instance.Id})).ToString()+"#"+member;var seen=new HashSet<string>(StringComparer.Ordinal);var current=binding;
             while(current!=null&&current.Kind==MPMBindingKind.Member)
             {
                 var key=current.Address.ToString()+"#"+current.MemberId;if(key==source||!seen.Add(key))throw new InvalidOperationException("org.binding.member_cycle");

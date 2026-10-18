@@ -4,7 +4,7 @@ using CxVisual.Foundation.Data.Configuration;
 
 namespace CxVisual.Mechanism.Core
 {
-    public enum MPMValueKind { Null=0, String=1, Number=2, Integer=3, Boolean=4, Decimal=5 }
+    public enum MPMValueKind { Null=0, String=1, Number=2, Integer=3, Boolean=4, Decimal=5, Resource=6 }
     /// <summary>Closed persistent engineering literal, not a configuration store or runtime heap.</summary>
     public sealed class MPMValue : IEquatable<MPMValue>
     {
@@ -13,7 +13,7 @@ namespace CxVisual.Mechanism.Core
         public MPMValueKind Kind {get;private set;}
         public string Canonical {get;private set;}
         public static MPMValue Null {get{return new MPMValue(MPMValueKind.Null,"");}}
-        public static MPMValue String(string value){return value==null?Null:new MPMValue(MPMValueKind.String,value);}
+        public static MPMValue String(string value){if(value==null)return Null;for(int i=0;i<value.Length;i++){if(char.IsHighSurrogate(value[i])){if(++i>=value.Length||!char.IsLowSurrogate(value[i]))throw new ArgumentException("Unpaired UTF16 surrogate");}else if(char.IsLowSurrogate(value[i]))throw new ArgumentException("Unpaired UTF16 surrogate");}return new MPMValue(MPMValueKind.String,value);}
         public static MPMValue Number(double value){MRCVisualItem.Finite(value);return new MPMValue(MPMValueKind.Number,value.ToString("R",Invariant));}
         public static MPMValue Integer(long value){return new MPMValue(MPMValueKind.Integer,value.ToString(Invariant));}
         public static MPMValue Decimal(decimal value){return new MPMValue(MPMValueKind.Decimal,value.ToString("G29",Invariant));}
@@ -75,6 +75,7 @@ namespace CxVisual.Mechanism.Core
         public double? Maximum {get;private set;}
         internal void Validate(MPMBinding binding)
         {
+            if(binding!=null&&binding.Kind==MPMBindingKind.Resource&&ValueKind!=MPMValueKind.Resource)throw new InvalidOperationException("org.property.type_mismatch: "+MemberId);
             if(binding==null||binding.Kind!=MPMBindingKind.Literal||binding.Value.Kind==MPMValueKind.Null)return;
             if(binding.Value.Kind!=ValueKind)throw new InvalidOperationException("org.property.type_mismatch: "+MemberId);
             if(Minimum.HasValue||Maximum.HasValue)

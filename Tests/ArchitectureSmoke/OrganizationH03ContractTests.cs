@@ -28,6 +28,13 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 var boundary=s.DefinePort(sink,"command",MPCPortDirection.Input,"core.number",MPCPortKind.Data,MPCPortMultiplicity.One,new MTUContractReference("mm","world","utc"));
                 var publicInput=s.ExposePort(motor,"input",s.Endpoint(boundary));var publicOutput=s.ExposePort(motor,"output",s.Endpoint(output));
                 var cross=s.Connect(p.RootContent,s.Endpoint(a,"output"),s.Endpoint(b,"input"));
+                var newer=s.AddContent(s.Project,"Motor V2");s.DefineProperty(newer,new MPMPropertyDescriptor("speed",MPMValueKind.Number,true,true,MPMBinding.Literal(MPMValue.Number(50)),0,1000));
+                s.DefinePort(newer,"input",MPCPortDirection.Input,"core.number",MPCPortKind.Data,MPCPortMultiplicity.One,new MTUContractReference("mm","world","utc"),true);
+                s.DefinePort(newer,"output",MPCPortDirection.Output,"core.number",MPCPortKind.Data,MPCPortMultiplicity.Many,new MTUContractReference("mm","world","utc"),true);
+                s.Retarget(b,newer);Check(b.TargetId==newer.Id&&s.FindConnection(cross.Id).Target.Address.ObjectId==newer.Id&&s.Validate().IsValid,"connected retarget did not map public ports");
+                s.Undo().RequireValue();Check(b.TargetId==motor.Id&&s.FindConnection(cross.Id)==cross,"retarget undo did not preserve original connection identity");
+                var wrong=s.AddContent(s.Project,"no ports");int rejectedRevision=s.Revision;Reject(()=>s.Retarget(b,wrong));Check(b.TargetId==motor.Id&&s.FindConnection(cross.Id)==cross&&s.Revision==rejectedRevision,"failed retarget corrupted live graph");
+                s.Rename(a,"Station A");Check(a.Name=="Station A","reference rename");
                 Reject(()=>s.Remove(a));Reject(()=>s.Unexpose(motor,"input",MRCPublicMappingKind.Port));
                 var meter=s.AddContent(motor,"wrong unit");var incompatible=s.DefinePort(meter,"in",MPCPortDirection.Input,"core.number",MPCPortKind.Data,MPCPortMultiplicity.One,new MTUContractReference("m","world","utc"));
                 Reject(()=>s.Connect(motor,s.Endpoint(output),s.Endpoint(incompatible)));
@@ -37,7 +44,39 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(opened.FindConnection(cross.Id)!=null&&opened.FindPort(publicInput.Id)!=null&&opened.FindPort(publicOutput.Id)!=null&&opened.Validate().IsValid,"public ports/mappings/connections/index roundtrip");
                 opened.Disconnect(opened.FindConnection(cross.Id));opened.Remove(again);opened.Undo().RequireValue();Check(opened.FindReference(a.Id)!=null,"reference restore lost contracts");opened.Close(true);
                 Advanced();
+                TypeFactories();
                 Console.WriteLine("PASS H03 real double-instance parameter isolation, public ports/mappings, directional/unit/cardinality protection, placement and file roundtrip");
+            }
+            finally{if(File.Exists(path))File.Delete(path);}
+        }
+        private sealed class Provider : IMPMTypeProvider
+        {
+            internal Func<System.Collections.Generic.IEnumerable<MPMTypeDescriptor>> Read;
+            public System.Collections.Generic.IEnumerable<MPMTypeDescriptor> DescribeTypes(){return Read();}
+        }
+        private static void TypeFactories()
+        {
+            string path=Path.Combine(Path.GetTempPath(),"cx-h03-types-"+Guid.NewGuid().ToString("N")+".cxproj");
+            try
+            {
+                var s=MEMEngineering.Create("typed service");
+                var input=new[]{new MPMPropertyDescriptor("rate",MPMValueKind.Number,true,true,MPMBinding.Literal(MPMValue.Number(10)))};
+                var descriptor=new MPMTypeDescriptor("demo.service",1,MEMNodeKind.Content,input,new[]{new MPCPortDescriptor("result",MPCPortDirection.Output,"core.number")});
+                input[0]=new MPMPropertyDescriptor("changed",MPMValueKind.String);
+                s.RegisterTypes(new Provider{Read=()=>new[]{descriptor}});
+                var service=s.AddTypedContent(s.Project,"Service","demo.service");
+                Check(service.TypeId=="demo.service"&&service.Properties[0].MemberId=="rate"&&service.Ports.Count==1&&s.Project.Pages.Count==0,"typed nonvisual factory or frozen schema");
+                int revision=s.Revision;
+                Reject(()=>s.RegisterTypes(new Provider{Read=()=>new[]{new MPMTypeDescriptor("demo.other",1,MEMNodeKind.Content),descriptor}}));
+                Check(s.FindType("demo.other")==null&&s.Revision==revision,"registration conflict partially committed");
+                Reject(()=>s.RegisterTypes(new Provider{Read=()=>{s.AddPage("illegal callback mutation");return new[]{descriptor};}}));
+                Check(s.Project.Pages.Count==0&&s.Revision==revision,"provider callback escaped registration boundary");
+                using(var draft=s.BeginEdit("public parameter draft")){draft.SetProperty(service,"rate",MPMBinding.Literal(MPMValue.Number(30)));Check(draft.Preview().IsValid&&s.FindProperty(service,"rate").Binding.Value.AsNumber()==10,"contract draft preview leaked");draft.Commit().RequireValue();}
+                s.SaveAs(path);s.Close();var opened=MEMEngineering.Open(path);var again=(MEMContent)opened.Find(service.Id);
+                Check(opened.FindType("demo.service").SchemaVersion==1&&again.TypeId=="demo.service"&&again.Properties.Count==1&&opened.FindProperty(again,"rate").Binding.Value.AsNumber()==30,"typed definition roundtrip");
+                var second=opened.AddTypedContent(opened.Project,"second","demo.service");Check(opened.FindProperty(second,"rate").Binding.Value.AsNumber()==10,"factory defaults changed with first instance");
+                opened.Undo().RequireValue();Check(opened.Find(second.Id)==null,"typed creation not atomic undo");opened.Close(true);
+                Reject(()=>MPMValue.String("\ud800"));
             }
             finally{if(File.Exists(path))File.Delete(path);}
         }

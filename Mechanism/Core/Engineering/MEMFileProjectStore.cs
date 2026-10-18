@@ -84,6 +84,7 @@ namespace CxVisual.Mechanism.Core
         {
             w.WriteStartElement("Node"); w.WriteAttributeString("id", node.Id.ToString("D")); w.WriteAttributeString("kind", node.Kind.ToString());
             w.WriteAttributeString("name", node.Name); w.WriteAttributeString("typeId", node.TypeId);
+            var project=node as MEMProject;if(project!=null)WriteTypes(w,project);
             
             var visual = node as MRCVisualItem;
             if (visual != null)
@@ -152,7 +153,12 @@ namespace CxVisual.Mechanism.Core
                             case "Element": node = new MRCRectangle(id,name,Number(r,"x",0),Number(r,"y",0),Number(r,"width",120),Number(r,"height",80)); break;
                             default: throw new InvalidDataException("Unknown kind " + kind);
                         }
-                        var declaredType = r.GetAttribute("typeId"); if (declaredType != null && declaredType != node.TypeId) throw new InvalidDataException("Unsupported TypeId");
+                        var declaredType = r.GetAttribute("typeId"); if (declaredType != null && declaredType != node.TypeId)
+                        {
+                            MPMTypeDescriptor descriptor;
+                            if(project==null||project.TypeItems==null||!project.TypeItems.TryGetValue(declaredType,out descriptor)||descriptor.Kind!=node.Kind)throw new InvalidDataException("Unregistered/mismatched TypeId");
+                            node.SetTypeId(declaredType);
+                        }
                         var visual = node as MRCVisualItem;
                         CheckFields(r, visual == null ? NodeFields : VisualFields);
                         if (visual != null)
@@ -174,6 +180,11 @@ namespace CxVisual.Mechanism.Core
                         }
                         else stack.Peek().InsertOwned(stack.Peek().Children.Count, node);
                         if (!r.IsEmptyElement) stack.Push(node);
+                    }
+                    else if(r.Name=="Type")
+                    {
+                        if(stack.Count!=1||stack.Peek()!=project||project.Children.Count!=0)throw new InvalidDataException("Type schemas must precede project resources");
+                        var type=ReadType(r);if(project.TypeItems==null)project.TypeItems=new Dictionary<string,MPMTypeDescriptor>(StringComparer.Ordinal);if(project.TypeItems.Count>=4096)throw new InvalidDataException("Type registry budget exceeded");project.TypeItems.Add(type.TypeId,type);
                     }
                     else if (r.Name == "Reference")
                     {

@@ -6,6 +6,26 @@ namespace CxVisual.Mechanism.Core
 {
     public sealed partial class MTCEditSession
     {
+        public void Rename(MRIResourceReference reference,string name)
+        {
+            Demand();_session.DemandReference(reference);DemandEditable(reference.Owner);name=MEMNode.NormalizeName(name);var before=reference.Name;
+            if(before!=name)Change(()=>reference.SetName(name),()=>reference.SetName(before),MTCChangeKind.ReferenceValue,reference.Id);
+        }
+        public void Retarget(MRIResourceReference reference,MEMNode definition)
+        {
+            Demand();_session.DemandReference(reference);DemandEditable(reference.Owner);_session.CheckReference(reference.Owner,definition);
+            if(reference.TargetId==definition.Id)return;if((definition is MEMSymbol)!=(reference.Kind==MRIReferenceKind.Symbol))throw new InvalidOperationException("org.retarget.kind_mismatch");
+            foreach(var pair in reference.Overrides)
+            {var property=_session.FindProperty(definition,pair.Key);if(property==null||!property.Descriptor.IsPublic)throw new InvalidOperationException("org.retarget.parameter_mismatch");property.Descriptor.Validate(pair.Value);_session.CheckBindingAssignment(definition,pair.Key,pair.Value,property.Descriptor.ValueKind,reference);}
+            var replacements=_session.RetargetConnections(reference,definition);foreach(var connection in replacements)Disconnect(_session.FindConnection(connection.Id));
+            var previous=reference.TargetId;
+            Change(()=>{_session.UnindexReference(reference);reference.SetTarget(definition.Id);_session.IndexReference(reference);},()=>{_session.UnindexReference(reference);reference.SetTarget(previous);_session.IndexReference(reference);},MTCChangeKind.ReferenceValue,reference.Id);
+            foreach(var connection in replacements)
+            {
+                var owner=_session.Find(connection.OwnerId);var state=Definition(owner);_session.CheckConnection(owner,connection.Source,connection.Target);
+                Change(()=>{_session.IndexConnection(connection);state.ConnectionItems.Add(connection);},()=>{state.ConnectionItems.Remove(connection);_session.UnindexConnection(connection);},MTCChangeKind.Connection,connection.Id);
+            }
+        }
         private MPMDefinitionState Definition(MEMNode owner)
         {Demand();_session.DemandNode(owner);DemandEditable(owner);return MPMDefinitionState.For(owner,true);}
         public MPMProperty DefineProperty(MEMNode owner,MPMPropertyDescriptor descriptor)

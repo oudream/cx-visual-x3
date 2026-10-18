@@ -185,6 +185,7 @@ namespace CxVisual.Mechanism.Core
             {
                 DemandOpen();
                 if (_editing || _callbackThread == Thread.CurrentThread.ManagedThreadId) throw new InvalidOperationException("org.edit.reentrant");
+                if (Volatile.Read(ref _collectingTypes)!=0) throw new InvalidOperationException("org.type.provider_cannot_edit");
                 if (_historyFaulted) throw new InvalidOperationException("org.history.faulted");
                 if (Revision != expectedRevision) return new MTCEditResult<T>(false, default(T), Revision, "org.version.conflict", "Stale revision");
                 if (Revision == int.MaxValue) throw new InvalidOperationException("Revision exhausted");
@@ -220,7 +221,7 @@ namespace CxVisual.Mechanism.Core
             lock (_gate)
             {
                 DemandOpen();
-                if (_editing || _callbackThread == Thread.CurrentThread.ManagedThreadId || _historyFaulted) throw new InvalidOperationException("History unavailable");
+                if (_editing || _callbackThread == Thread.CurrentThread.ManagedThreadId || _historyFaulted || Volatile.Read(ref _collectingTypes)!=0) throw new InvalidOperationException("History unavailable");
                 if (undo ? _cursor == 0 : _cursor == _history.Count) return new MTCEditResult<bool>(false, false, Revision, "org.history.empty", "No entry");
                 if (Revision == int.MaxValue) throw new InvalidOperationException("Revision exhausted");
                 var batch = _history[undo ? _cursor - 1 : _cursor]; var done = new List<MTCMutation>(); _editing = true;
@@ -244,7 +245,7 @@ namespace CxVisual.Mechanism.Core
             Deliver(); return new MTCEditResult<bool>(true, true, committedRevision, null, null);
         }
         public void ClearHistory()
-        { lock (_gate) { DemandOpen(); if (_editing || _delivering || _historyFaulted) throw new InvalidOperationException("History busy/faulted"); _history.Clear(); _cursor=0; } }
+        { lock (_gate) { DemandOpen(); if (_editing || _delivering || _historyFaulted || Volatile.Read(ref _collectingTypes)!=0) throw new InvalidOperationException("History busy/faulted"); _history.Clear(); _cursor=0; } }
         public MTCEditResult<bool> Undo() { return Replay(true); }
         public MTCEditResult<bool> Redo() { return Replay(false); }
         public IDisposable Watch(Action<MTCChangeSet> observer)
@@ -317,7 +318,7 @@ namespace CxVisual.Mechanism.Core
         public void SetVisibility(MRCVisualItem item, bool visible, bool selectable) { Edit("设置可视属性", e => e.SetVisibility(item, visible, selectable)).RequireValue(); }
         public void SaveAs(string path) { SaveAs(path, CancellationToken.None); }
         internal void SaveAs(string path, CancellationToken cancellation, bool legacy = false)
-        { lock (_gate) { DemandOpen(); if (_editing) throw new InvalidOperationException("No IO in edit callback"); MEMFileProjectStore.Save(this, path, cancellation, legacy); Location = System.IO.Path.GetFullPath(path); _savedRevision = Revision; } }
+        { lock (_gate) { DemandOpen(); if (_editing || Volatile.Read(ref _collectingTypes)!=0) throw new InvalidOperationException("No IO in edit/provider callback"); MEMFileProjectStore.Save(this, path, cancellation, legacy); Location = System.IO.Path.GetFullPath(path); _savedRevision = Revision; } }
         internal void SaveLegacy(string path) { SaveAs(path, CancellationToken.None, true); }
         public void Save() { if (Location == null) throw new InvalidOperationException("SaveAs first"); SaveAs(Location); }
         public Task SaveAsync(CancellationToken cancellation)
@@ -326,7 +327,7 @@ namespace CxVisual.Mechanism.Core
             lock (_gate)
             {
                 DemandOpen();
-                if (_editing) throw new InvalidOperationException("No IO in edit callback");
+                if (_editing || Volatile.Read(ref _collectingTypes)!=0) throw new InvalidOperationException("No IO in edit/provider callback");
                 path = Location; if (path == null) throw new InvalidOperationException("SaveAs first");
             }
             return Task.Run(() => { cancellation.ThrowIfCancellationRequested(); SaveAs(path, cancellation); }, cancellation);
@@ -337,7 +338,7 @@ namespace CxVisual.Mechanism.Core
             lock (_gate)
             {
                 if (_closed) return;
-                if (_editing || _delivering) throw new InvalidOperationException("Session busy");
+                if (_editing || _delivering || Volatile.Read(ref _collectingTypes)!=0) throw new InvalidOperationException("Session busy");
                 if (IsDirty && !discardChanges) throw new InvalidOperationException("Unsaved changes; save or explicitly discard");
                 _closed = true; _observers.Clear(); _history.Clear(); _index.Clear(); _references.Clear(); _usages.Clear();
                 _ports.Clear();_connections.Clear();_declarationUses.Clear();_declarationDependencies.Clear();_incoming.Clear();_outgoing.Clear();

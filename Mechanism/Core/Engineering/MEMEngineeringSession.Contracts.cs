@@ -175,13 +175,13 @@ namespace CxVisual.Mechanism.Core
             if(mapping.Kind==MRCPublicMappingKind.Port)
             {
                 var endpoint=new MPCEndpoint(mapping.TargetAddress,mapping.TargetPortId.Value);CheckEndpointScope(owner,endpoint);var inner=ResolvePort(endpoint);var outer=FindPort(mapping.PublicPortId.Value);
-                if(outer==null||outer.OwnerId!=owner.Id||!outer.IsPublic||outer.MemberId!=mapping.MemberId||inner.Direction!=outer.Direction||inner.Kind!=outer.Kind||inner.TypeId!=outer.TypeId||!inner.Contract.Equals(outer.Contract))throw new InvalidOperationException("org.mapping.port_contract");
+                if(outer==null||outer.OwnerId!=owner.Id||!outer.IsPublic||outer.MemberId!=mapping.MemberId||inner.Direction!=outer.Direction||inner.Kind!=outer.Kind||inner.TypeId!=outer.TypeId||inner.Multiplicity!=outer.Multiplicity||inner.Required!=outer.Required||!inner.Contract.Equals(outer.Contract))throw new InvalidOperationException("org.mapping.port_contract");
                 CanonicalEndpoint(new MPCEndpoint(GetAddress(owner),outer.Id));
             }
             else
             {
                 var property=FindProperty(owner,mapping.MemberId);
-                CheckAddressScope(owner,mapping.TargetAddress);if(property==null||!property.Descriptor.IsPublic||!MemberExists(target,mapping.TargetMemberId))throw new InvalidOperationException("org.mapping.property_contract");
+                CheckAddressScope(owner,mapping.TargetAddress);if(property==null||!property.Descriptor.IsPublic||!MemberExists(target,mapping.TargetMemberId)||MemberKind(target,mapping.TargetMemberId)!=property.Descriptor.ValueKind)throw new InvalidOperationException("org.mapping.property_contract");
             }
         }
         internal void AttachLoadedDeclarations(IDictionary<Guid,MPMDefinitionState> declarations)
@@ -199,8 +199,10 @@ namespace CxVisual.Mechanism.Core
             {
                 DemandOpen();DemandNode(entry);var providers=new HashSet<string>(availableProviders??new string[0],StringComparer.Ordinal);var issues=new List<string>();
                 var pending=new Stack<Tuple<MEMNode,MRIResourceReference>>();pending.Push(Tuple.Create(entry,(MRIResourceReference)null));
+                int expanded=0;
                 while(pending.Count!=0)
                 {
+                    if(++expanded>MEMNode.MaximumNodeCount){issues.Add("org.run.expansion_budget");break;}
                     var next=pending.Pop();var node=next.Item1;
                     foreach(var property in MPMDefinitionState.PropertiesOf(node))
                     {var binding=next.Item2!=null&&node.Id==next.Item2.TargetId&&property.Descriptor.IsPublic?ResolveParameter(next.Item2,property.MemberId):property.Binding;if(property.Descriptor.Required&&(binding==null||(binding.Kind==MPMBindingKind.Literal&&binding.Value.Kind==MPMValueKind.Null)))issues.Add("org.run.required_property:"+node.Id+":"+property.MemberId);}
@@ -224,6 +226,22 @@ namespace CxVisual.Mechanism.Core
         public void SetOverride(MRIResourceReference reference,string member,MPMBinding binding){Edit("设置实例参数",e=>e.SetOverride(reference,member,binding)).RequireValue();}
         public void ClearOverride(MRIResourceReference reference,string member){Edit("清除实例参数",e=>e.SetOverride(reference,member,null)).RequireValue();}
         public void SetPlacement(MRIResourceReference reference,MRCTransform transform){Edit("设置实例布局",e=>e.SetPlacement(reference,transform)).RequireValue();}
+        public void Rename(MRIResourceReference reference,string name){Edit("重命名实例",e=>e.Rename(reference,name)).RequireValue();}
+        public void Retarget(MRIResourceReference reference,MEMNode definition){Edit("替换资源定义",e=>e.Retarget(reference,definition)).RequireValue();}
+        internal IReadOnlyList<MPCConnection> RetargetConnections(MRIResourceReference reference,MEMNode definition)
+        {
+            HashSet<object> records;if(!_declarationUses.TryGetValue(reference.Id,out records))return MPMEmpty<MPCConnection>.Items;
+            if(records.Any(r=>!(r is MPCConnection)))throw new InvalidOperationException("org.retarget.requires_transfer_plan: mapped/member-bound instances require explicit remapping");
+            Func<MPCEndpoint,MPCEndpoint> remap=endpoint=>
+            {
+                if(!endpoint.Address.InstancePath.Contains(reference.Id))return endpoint;
+                if(endpoint.Address.InstancePath.Count!=1||endpoint.Address.ObjectId!=reference.TargetId)throw new InvalidOperationException("org.retarget.nested_endpoint");
+                var old=ResolvePort(endpoint);var port=MPMDefinitionState.PortsOf(definition).FirstOrDefault(p=>p.MemberId==old.MemberId&&p.IsPublic);
+                if(port==null||port.Direction!=old.Direction||port.Kind!=old.Kind||port.TypeId!=old.TypeId||port.Multiplicity!=old.Multiplicity||!port.Contract.Equals(old.Contract))throw new InvalidOperationException("org.retarget.public_port_mismatch");
+                return new MPCEndpoint(new MRIObjectAddress(Project.Id,definition.ResourceRootId,definition.Id,endpoint.Address.InstancePath),port.Id);
+            };
+            return records.Cast<MPCConnection>().Select(c=>new MPCConnection(c.Id,c.OwnerId,remap(c.Source),remap(c.Target))).ToList().AsReadOnly();
+        }
         public MPCPort DefinePort(MEMNode owner,string member,MPCPortDirection direction,string typeId,MPCPortKind kind=MPCPortKind.Data,MPCPortMultiplicity multiplicity=MPCPortMultiplicity.Many,MTUContractReference contract=null,bool isPublic=false,bool required=false)
         {return Edit("声明端口",e=>e.DefinePort(owner,member,direction,typeId,kind,multiplicity,contract,isPublic,required)).RequireValue();}
         public void RemovePort(MPCPort port){Edit("删除端口",e=>e.RemovePort(port)).RequireValue();}

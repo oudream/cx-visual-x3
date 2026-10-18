@@ -13,7 +13,6 @@ namespace CxVisual.Mechanism.Core
     internal static partial class MEMFileProjectStore
     {
         private static readonly Encoding StrictUtf8=new UTF8Encoding(false,true);
-        private static readonly string BindingFieldList="kind source member source64 member64 valueKind value64 resource address section64 scopeKind64 scopeId64 path64 optional";
         private static string Encode(string value){return Convert.ToBase64String(StrictUtf8.GetBytes(value));}
         private static string Decode(string value){return StrictUtf8.GetString(Convert.FromBase64String(value));}
         private static XElement ReadSmallElement(XmlReader reader){using(var subtree=reader.ReadSubtree())return XElement.Load(subtree,LoadOptions.PreserveWhitespace);}
@@ -27,7 +26,7 @@ namespace CxVisual.Mechanism.Core
             var allowed=new HashSet<string>(fields.Split(new[]{' '},StringSplitOptions.RemoveEmptyEntries),StringComparer.Ordinal);
             if(element.Name.NamespaceName!=""||element.Attributes().Any(a=>a.Name.NamespaceName!=""||!allowed.Contains(a.Name.LocalName)))throw new InvalidDataException("Unsupported declaration attribute");
             if(!children&&element.Elements().Any())throw new InvalidDataException("Unexpected declaration child");
-            if(!children&&element.Nodes().OfType<XText>().Any(t=>!string.IsNullOrWhiteSpace(t.Value)))throw new InvalidDataException("Unexpected declaration text");
+            if(element.Name.LocalName!="Aspect"&&element.Nodes().OfType<XText>().Any(t=>!string.IsNullOrWhiteSpace(t.Value)))throw new InvalidDataException("Unexpected declaration text");
         }
         private static void WriteBinding(XmlWriter w,MPMBinding binding)
         {
@@ -39,13 +38,17 @@ namespace CxVisual.Mechanism.Core
                 case MPMBindingKind.Member:w.WriteAttributeString("address",binding.Address.ToString());w.WriteAttributeString("member64",Encode(binding.MemberId));break;
                 case MPMBindingKind.Configuration:
                     var c=binding.Configuration;w.WriteAttributeString("section64",Encode(c.Target.SectionId));w.WriteAttributeString("scopeKind64",Encode(c.Target.ScopeKind));w.WriteAttributeString("scopeId64",Encode(c.Target.ScopeId));w.WriteAttributeString("path64",Encode(c.Path));w.WriteAttributeString("optional",XmlConvert.ToString(c.Optional));break;
+                case MPMBindingKind.Expression:w.WriteAttributeString("source64",Encode(binding.SourceId));break;
                 default:w.WriteAttributeString("source64",Encode(binding.SourceId));w.WriteAttributeString("member64",Encode(binding.MemberId));break;
             }
         }
         private static MPMBinding ReadBinding(XElement element,bool hasProperty=false)
         {
-            XFields(element,BindingFieldList+(hasProperty?" property":""));
             MPMBindingKind kind=element.Attribute("kind")==null?MPMBindingKind.Legacy:XEnum<MPMBindingKind>(element,"kind");
+            string fields;
+            switch(kind){case MPMBindingKind.Literal:fields="valueKind value64";break;case MPMBindingKind.Resource:fields="resource";break;case MPMBindingKind.Member:fields="address member member64";break;case MPMBindingKind.Configuration:fields="section64 scopeKind64 scopeId64 path64 optional";break;case MPMBindingKind.Expression:fields="source source64";break;default:fields="source source64 member member64";break;}
+            XFields(element,"kind "+fields+(hasProperty?" property":""));
+            foreach(var field in new[]{"source","member"})if(element.Attribute(field)!=null&&element.Attribute(field+"64")!=null)throw new InvalidDataException("Ambiguous binding field");
             Func<string,string,string> text=(name,fallback)=>element.Attribute(name+"64")!=null?Decode(XRequired(element,name+"64")):XOptional(element,name,fallback);
             switch(kind)
             {
@@ -105,11 +108,11 @@ namespace CxVisual.Mechanism.Core
                 case "Connection":
                     XFields(e,"id source sourcePort target targetPort");if(state.ConnectionItems==null)state.ConnectionItems=new List<MPCConnection>();state.ConnectionItems.Add(new MPCConnection(Guid.Parse(XRequired(e,"id")),owner.Id,ReadEndpoint(e,"source"),ReadEndpoint(e,"target")));break;
                 case "Mapping":
-                    XFields(e,"kind member target targetMember publicPort targetPort");var address=MRIObjectAddress.Parse(XRequired(e,"target"));var kind=XEnum<MRCPublicMappingKind>(e,"kind");
+                    var kind=XEnum<MRCPublicMappingKind>(e,"kind");XFields(e,"kind member target "+(kind==MRCPublicMappingKind.Property?"targetMember":"publicPort targetPort"));var address=MRIObjectAddress.Parse(XRequired(e,"target"));
                     var mapping=kind==MRCPublicMappingKind.Property?new MRCPublicMapping(owner.Id,XRequired(e,"member"),address,XRequired(e,"targetMember")):new MRCPublicMapping(owner.Id,XRequired(e,"member"),Guid.Parse(XRequired(e,"publicPort")),new MPCEndpoint(address,Guid.Parse(XRequired(e,"targetPort"))));
                     if(state.MappingItems==null)state.MappingItems=new List<MRCPublicMapping>();if(state.MappingItems.Any(m=>m.Kind==mapping.Kind&&m.MemberId==mapping.MemberId))throw new InvalidDataException("Duplicate public mapping");state.MappingItems.Add(mapping);break;
                 case "Aspect":
-                    XFields(e,"kind provider schema required",true);if(e.Elements().Any())throw new InvalidDataException("Nested aspect payload");var aspect=new MPMAspect(XEnum<MPMAspectKind>(e,"kind"),XRequired(e,"provider"),int.Parse(XRequired(e,"schema"),Invariant),Convert.FromBase64String(e.Value),XBool(e,"required",true));
+                    XFields(e,"kind provider schema required",true);if(e.Elements().Any()||e.Value.Length>5600000)throw new InvalidDataException("Invalid/oversized aspect payload");var aspect=new MPMAspect(XEnum<MPMAspectKind>(e,"kind"),XRequired(e,"provider"),int.Parse(XRequired(e,"schema"),Invariant),Convert.FromBase64String(e.Value),XBool(e,"required",true));
                     if(state.AspectItems==null)state.AspectItems=new List<MPMAspect>();if(state.AspectItems.Any(a=>a.Kind==aspect.Kind&&a.ProviderId==aspect.ProviderId))throw new InvalidDataException("Duplicate aspect");state.AspectItems.Add(aspect);break;
             }
             return true;
@@ -124,7 +127,8 @@ namespace CxVisual.Mechanism.Core
         {
             var e=ReadSmallElement(reader);XFields(e,"id name kind target m11 m12 m21 m22 x y",true);if(e.Elements().Any(x=>x.Name!="Override"))throw new InvalidDataException("Unknown reference payload");
             var id=Guid.Parse(XRequired(e,"id"));if(id==Guid.Empty)throw new InvalidDataException("Empty reference identity");var reference=new MRIResourceReference(id,XRequired(e,"name"),Guid.Parse(XRequired(e,"target")),XEnum<MRIReferenceKind>(e,"kind"),owner);
-            if(e.Attribute("m11")!=null)
+            var matrixFields=new[]{"m11","m12","m21","m22","x","y"};int matrixCount=matrixFields.Count(n=>e.Attribute(n)!=null);if(matrixCount!=0&&matrixCount!=6)throw new InvalidDataException("Incomplete placement");
+            if(matrixCount==6)
             {Func<string,double> number=name=>double.Parse(XRequired(e,name),Invariant);var transform=new MRCTransform(number("m11"),number("m12"),number("m21"),number("m22"),number("x"),number("y"));double a,sx,sy,sh;transform.Decompose(out a,out sx,out sy,out sh);reference.PlacementValue=new MRIPlacementState(transform);}
             foreach(var item in e.Elements()) {if(reference.OverrideItems==null)reference.OverrideItems=new Dictionary<string,MPMBinding>(StringComparer.Ordinal);reference.OverrideItems.Add(MEMNode.NormalizeName(XRequired(item,"property")),ReadBinding(item,true));}
             return reference;

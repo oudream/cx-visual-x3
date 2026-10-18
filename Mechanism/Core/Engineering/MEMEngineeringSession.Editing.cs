@@ -15,7 +15,7 @@ namespace CxVisual.Mechanism.Core
             lock(_gate)
             {
                 DemandOpen();
-                if(_editing||_callbackThread==Thread.CurrentThread.ManagedThreadId||_historyFaulted)throw new InvalidOperationException("org.preview.unavailable");
+                if(_editing||_callbackThread==Thread.CurrentThread.ManagedThreadId||_historyFaulted||Volatile.Read(ref _collectingTypes)!=0)throw new InvalidOperationException("org.preview.unavailable");
                 if(expectedRevision!=Revision)return new MVEValidationReport(new List<string>{"org.version.conflict"});
                 var edit=new MTCEditSession(this);var issues=new List<string>();_editing=true;
                 try { commands(edit); }

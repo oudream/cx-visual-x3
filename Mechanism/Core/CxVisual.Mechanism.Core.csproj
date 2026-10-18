@@ -19,6 +19,8 @@
     <Compile Include="Engineering\MTCEditSession.Contracts.cs"/>
     <Compile Include="Engineering\MEMFileProjectStore.Declarations.cs"/>
     <Compile Include="Engineering\MPMDeclarationValidation.cs"/>
+    <Compile Include="Engineering\MPMTypeDescriptor.cs"/>
+    <Compile Include="Engineering\MEMFileProjectStore.Types.cs"/>
     <Compile Include="Engineering\MTCEditSession.Visual.cs"/>
     <Compile Include="Engineering\MEMEngineeringSession.Editing.cs"/>
     <Compile Include="Engineering\MEMProjectSnapshot.cs"/>
