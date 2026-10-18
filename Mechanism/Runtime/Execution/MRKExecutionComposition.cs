@@ -199,6 +199,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
                                 "UNKNOWN_CAPABILITY","找不到能力："+request.CapabilityId));
                             continue;
                         }
+                        ability.ValidateInputs(request.Inputs);
                         steps.Add(new MRKExecutionStep(request.Id,request.Dependencies,
                             ability.ExecuteAsync,request.SerialKey,request.Policy,
                             request.RequiredResources,ability.CompensateAsync,
