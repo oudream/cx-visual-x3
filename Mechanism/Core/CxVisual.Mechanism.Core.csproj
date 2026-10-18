@@ -11,6 +11,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Engineering\MTCEditDraft.cs"/>
+    <Compile Include="Engineering\MOLLogicDefinition.cs"/>
     <Compile Include="Engineering\MRCTransform.cs"/>
     <Compile Include="Engineering\MPMValue.cs"/>
     <Compile Include="Engineering\MPMDefinitionState.cs"/>

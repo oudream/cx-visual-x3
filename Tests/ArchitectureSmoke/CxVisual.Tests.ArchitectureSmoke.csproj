@@ -13,6 +13,7 @@
     <Compile Include="OrganizationH04Tests.cs"/>
     <Compile Include="OrganizationH05Tests.cs"/>
     <Compile Include="OrganizationH06Tests.cs"/>
+    <Compile Include="OrganizationLogicIntegrationTests.cs"/>
     <Compile Include="OrganizationStudioTests.cs"/>
     <Reference Include="UIAutomationProvider"/>
     <Compile Include="OrganizationWpfTests.cs"/>
@@ -44,5 +45,8 @@
     <ProjectReference Include="..\..\Foundation\Geometry\CxVisual.Foundation.Geometry.csproj"><Project>{B6570EF1-8979-50D9-AF3A-3BD5450A0A23}</Project><Name>CxVisual.Foundation.Geometry</Name></ProjectReference>
     <ProjectReference Include="..\..\Foundation\Core\CxVisual.Foundation.Core.csproj"><Project>{688C0850-BA46-559F-B977-A6F9D1DE4DB0}</Project><Name>CxVisual.Foundation.Core</Name></ProjectReference>
   <ProjectReference Include="..\..\Foundation\Infrastructure\CxVisual.Foundation.Infrastructure.csproj"><Project>{1626A969-FF77-560F-AA00-53D010AD01B3}</Project><Name>CxVisual.Foundation.Infrastructure</Name></ProjectReference></ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\Mechanism\Orchestration\CxVisual.Mechanism.Orchestration.csproj"><Project>{6E9A7006-3AD6-5F5B-A452-1C89847495A0}</Project><Name>CxVisual.Mechanism.Orchestration</Name></ProjectReference>
+  </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets"/>
 </Project>
