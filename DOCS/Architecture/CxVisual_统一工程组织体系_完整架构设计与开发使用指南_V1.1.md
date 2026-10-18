@@ -2,7 +2,7 @@
 
 > **H01实施更新（2026-10-17）**：用户已正式确认D01～D04，最终视觉层为MRCVisualItem→MRCElement/MRCGroup，Content/Symbol使用MEM前缀。以下候选签名/旧源码审计保留历史，不覆盖用户最终模型；当前可运行API、真实测试、边界与进度见[H01实现与验收](../Testing/CxVisual_工程组织体系_H01_实现与验收_V1.0.md)。不再等待同一架构确认。
 >
-> **后续实施更新（2026-10-18）**：用户已授权自动依次完成H02～H07。H02已增加BeginEdit/Preview/Commit、GetSnapshot与稳定定义/实例地址，真实案例、本机测试及本次Windows CI成功证据见[H02验收](../Testing/CxVisual_工程组织体系_H02_实现与验收_V1.0.md)。当前继续H03，完整后续能力尚未完成。
+> **后续实施更新（2026-10-18）**：用户已授权自动依次完成H02～H07。H02已增加BeginEdit/Preview/Commit、GetSnapshot与稳定定义/实例地址，真实案例、本机测试及本次Windows CI成功证据见[H02验收](../Testing/CxVisual_工程组织体系_H02_实现与验收_V1.0.md)。此段是当时的H02阶段进展记录，并非最新master的实施完成度；后续以实际源码、对应验收报告和CI为准。
 
 > 日期：2026-10-17；在 V1.0 上增补复核，保留六角色、八案例、28项需求及源码/历史验证记录；不重新建设对象体系。
 > 本轮 x3：`master / ea6205b8ff4c9557efd56935f61430b2a49f7a23`（已正常合并 GitHub master `604718869e704d8ab943d6e593eeeb274afe657d`）；x2 本地/GitHub master：`2626734d0fd5e67ac50fd0621532173cec39b939`。x3 Core/Visual 及专业/运行源码相对此前 V1.0 审计基线 `464b2e8d1575736a1885e01ac00a239e22f29c79` 无变化；新远端变化是 TestCenter 验收/归档，不据此虚报本轮CI。
@@ -19,7 +19,7 @@
 
 ## 0. 先读：现在能做什么，怎样使用本指南
 
-当前可以直接使用：`MEMEngineering.Create/Open`、多页面/内容/符号自动合法根、矩形与嵌套Group、独立资源查询、最小共享定义引用、增量Id索引、统一Edit/Undo/Redo、基本绑定声明、format2包与schema1 XML保存加载。旧Cx工厂/编辑命令仍消费同一实体和历史。可执行入门程序为[H01QuickStart](../../Examples/EngineeringOrganization/H01QuickStart.cs)。
+当前已有核心工程入口包括 `MEMEngineering.Create/Open`、Page/Content/Symbol、可视Group/Element、共享资源引用、增量Id索引、统一Edit/Undo/Redo及工程存储。2026-10-18 已删除旧14个 Cx 工程类，正式工程入口为MEM/MRC/MTC；迁移记录见[旧Cx工程体系清理与迁移](../Testing/CxVisual_旧Cx工程体系清理与迁移记录_V1.0.md)。可执行入门程序仍可参见[H01QuickStart](../../Examples/EngineeringOrganization/H01QuickStart.cs)，但历史示例若引用已删除类型，必须优先按当前源码修订。
 
 当前不能据此认定已具备：参数化引用实例渲染、一般属性/端口编辑、四Aspect通用持久化、工程到MRK完整翻译、跨工程包、未知插件保真、完整x2 format6迁移、账户授权和生产恢复。Session对象是只读实时身份，固定版快照/长草稿/保存时继续编辑属于后续阶段。
 
