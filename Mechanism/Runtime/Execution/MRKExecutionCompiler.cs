@@ -7,6 +7,21 @@ using System.Threading.Tasks;
 
 namespace CxVisual.Mechanism.Runtime.Execution
 {
+    /// <summary>专业能力的输入端口声明，不包含来源绑定；实际连接由MRKExecutionInput负责。</summary>
+    public sealed class MRKCapabilityInput
+    {
+        public MRKCapabilityInput(string name, Type valueType, bool required = true)
+        {
+            if (string.IsNullOrWhiteSpace(name)) throw new ArgumentException("输入端口名不能为空", "name");
+            if (valueType == null || valueType == typeof(void))
+                throw new ArgumentException("输入端口类型无效", "valueType");
+            Name = name; ValueType = valueType; Required = required;
+        }
+        public string Name { get; private set; }
+        public Type ValueType { get; private set; }
+        public bool Required { get; private set; }
+    }
+
     /// <summary>能力契约与实际委托的已解析适配，不是第二套专业实现或全局Schema。</summary>
     public sealed class MRKResolvedCapability
     {
@@ -14,7 +29,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
             MRKExecutionOutput output = null,
             Func<MRKExecutionContext, CancellationToken, Task> compensateAsync = null,
             Func<MRKExecutionContext, CancellationToken, object> synchronousSdk = null,
-            IDictionary<string, Type> dataOutputs = null)
+            IDictionary<string, Type> dataOutputs = null,
+            IEnumerable<MRKCapabilityInput> inputs = null)
         {
             if (executeAsync == null && synchronousSdk == null)
                 throw new ArgumentException("能力必须提供异步或同步SDK实现");
@@ -32,12 +48,48 @@ namespace CxVisual.Mechanism.Runtime.Execution
                     declared.Add(entry.Key, entry.Value);
                 }
             DataOutputs = new ReadOnlyDictionary<string, Type>(declared);
+            HasInputContract = inputs != null;
+            List<MRKCapabilityInput> defined = new List<MRKCapabilityInput>();
+            HashSet<string> inputNames = new HashSet<string>(StringComparer.Ordinal);
+            if (inputs != null)
+                foreach (MRKCapabilityInput input in inputs)
+                {
+                    if (input == null || !inputNames.Add(input.Name))
+                        throw new ArgumentException("能力输入端口为空或重复", "inputs");
+                    defined.Add(input);
+                }
+            Inputs = new ReadOnlyCollection<MRKCapabilityInput>(defined);
             CompensateAsync = compensateAsync;
         }
         public Func<MRKExecutionContext, CancellationToken, Task<object>> ExecuteAsync { get; private set; }
         public MRKExecutionOutput Output { get; private set; }
         /// <summary>能力的具名Data.Return契约，与直接构造MRKExecutionStep完全相同。</summary>
         public IDictionary<string, Type> DataOutputs { get; private set; }
+        public IList<MRKCapabilityInput> Inputs { get; private set; }
+        public bool HasInputContract { get; private set; }
+        /// <summary>只验证专业能力的端口声明；绑定来源与依赖由原MRK端口校验。</summary>
+        internal void ValidateInputs(IEnumerable<MRKExecutionInput> bindings)
+        {
+            if (!HasInputContract) return; // 遗留能力继续采用原编译调用契约
+            Dictionary<string, MRKCapabilityInput> expected =
+                Inputs.ToDictionary(x => x.Name, x => x, StringComparer.Ordinal);
+            HashSet<string> actual = new HashSet<string>(StringComparer.Ordinal);
+            foreach (MRKExecutionInput binding in bindings)
+            {
+                MRKCapabilityInput declared;
+                if (binding == null || !actual.Add(binding.Name) ||
+                    !expected.TryGetValue(binding.Name, out declared))
+                    throw new ArgumentException("能力输入端口不存在或重复：" +
+                        (binding == null ? "<null>" : binding.Name));
+                if (!declared.ValueType.IsAssignableFrom(binding.ValueType))
+                    throw new ArgumentException("能力输入端口类型不匹配：" + binding.Name);
+                if (declared.Required && !binding.Required)
+                    throw new ArgumentException("必需输入不能以可选绑定绕过：" + binding.Name);
+            }
+            foreach (MRKCapabilityInput port in Inputs)
+                if (port.Required && !actual.Contains(port.Name))
+                    throw new ArgumentException("能力必需输入未绑定：" + port.Name);
+        }
         public Func<MRKExecutionContext, CancellationToken, object> SynchronousSdk { get; private set; }
         public Func<MRKExecutionContext, CancellationToken, Task> CompensateAsync { get; private set; }
     }
@@ -161,6 +213,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 }
                 try
                 {
+                    capability.ValidateInputs(item.Inputs);
                     steps.Add(new MRKExecutionStep(item.Id, item.Dependencies,
                         capability.ExecuteAsync, item.SerialKey, item.Policy,
                         item.RequiredResources, capability.CompensateAsync,
