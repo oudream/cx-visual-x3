@@ -230,6 +230,26 @@ namespace CxVisual.TestCenter.UI
                                 ownerResult.Observations[0].Envelope.SourceObjectId,
                                 StringComparison.OrdinalIgnoreCase))
                             throw new InvalidOperationException("M2 MEM object selection did not reach Inspector");
+                        // The real GUI must also consume a separate Worker process result, not
+                        // only locally-created observations. Parent and Worker use the same RunRoot.
+                        TCTTestAttempt isolated = new TCTTestAttempt(Guid.NewGuid().ToString("N"),
+                            owner.Descriptor.Id, 0, 20261018);
+                        TCTTestCaseResult workerOwnership =
+                            await new TCTTestHostController().RunIsolatedAsync(owner,
+                                TimeSpan.FromSeconds(20), 20261018, CancellationToken.None, isolated);
+                        if (workerOwnership.Status != TCTTestStatus.Passed ||
+                            workerOwnership.Observations.Count != 1 ||
+                            TCTObservationReplay.Read(workerOwnership).Count != 1)
+                            throw new InvalidOperationException("M2 cross-process MEM snapshot evidence missing");
+                        window.Inspector.ShowResult(workerOwnership);
+                        window.DocumentHost.ShowResult(workerOwnership);
+                        var workerTabs = (System.Windows.Controls.TabControl)window.DocumentHost.Content;
+                        var workerViewer = (TCTObjectTestView)
+                            ((System.Windows.Controls.TabItem)workerTabs.Items[1]).Content;
+                        if (workerViewer.VerifiedNodeCount < 7 ||
+                            workerViewer.VerifiedReferenceCount != 1 ||
+                            workerViewer.EvidenceProblem != null)
+                            throw new InvalidOperationException("M2 WPF viewer failed to render cross-worker MEM evidence");
                         exit = 0;
                     }
                     finally { window.Close(); }
