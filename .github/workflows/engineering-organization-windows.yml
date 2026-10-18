@@ -47,7 +47,10 @@ jobs:
           $bin = Split-Path (Get-Command msbuild.exe -ErrorAction Stop).Source
           $compiler = Join-Path $bin 'Roslyn\csc.exe'
           if (-not (Test-Path $compiler)) { $compiler = Join-Path (Split-Path $bin) 'Roslyn\csc.exe' }
-          & $compiler /nologo /target:exe /platform:x64 /langversion:7.3 /out:Output/Release/x64/H01QuickStart.exe /reference:Output/Release/x64/CxVisual.Mechanism.Core.dll /reference:Output/Release/x64/CxVisual.Foundation.Core.dll Examples/EngineeringOrganization/H01QuickStart.cs
-          if ($LASTEXITCODE -ne 0) { throw 'Engineering developer example compilation failed' }
-          & .\Output\Release\x64\H01QuickStart.exe
-          if ($LASTEXITCODE -ne 0) { throw 'Engineering developer example execution failed' }
+          foreach ($source in Get-ChildItem .\Examples\EngineeringOrganization\H*QuickStart.cs) {
+            $example = Join-Path .\Output\Release\x64 ($source.BaseName + '.exe')
+            & $compiler /nologo /target:exe /platform:x64 /langversion:7.3 "/out:$example" /reference:Output/Release/x64/CxVisual.Mechanism.Core.dll /reference:Output/Release/x64/CxVisual.Foundation.Core.dll $source.FullName
+            if ($LASTEXITCODE -ne 0) { throw "Engineering example compilation failed: $source" }
+            & $example
+            if ($LASTEXITCODE -ne 0) { throw "Engineering example execution failed: $source" }
+          }

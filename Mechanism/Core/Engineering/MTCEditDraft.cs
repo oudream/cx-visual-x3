@@ -1,0 +1,62 @@
+using System;
+using System.Collections.Generic;
+
+namespace CxVisual.Mechanism.Core
+{
+    public enum MTCChangeKind { Add=1, Remove=2, Rename=3, Reparent=4, Geometry=5, Binding=6, Visibility=7, Reference=8, RemoveReference=9 }
+    /// <summary>Immutable committed operation identity; inverse values stay in the private journal, not a replayable WAL.</summary>
+    public struct MTCChangeOperation
+    {
+        internal MTCChangeOperation(MTCChangeKind kind,Guid target) { Kind=kind;TargetId=target; }
+        public MTCChangeKind Kind { get; private set; }
+        public Guid TargetId { get; private set; }
+        internal MTCChangeOperation Reversed()
+        { return new MTCChangeOperation(Kind==MTCChangeKind.Add?MTCChangeKind.Remove:Kind==MTCChangeKind.Remove?MTCChangeKind.Add:Kind==MTCChangeKind.Reference?MTCChangeKind.RemoveReference:Kind==MTCChangeKind.RemoveReference?MTCChangeKind.Reference:Kind,TargetId); }
+    }
+    public enum MTCEditState { Open=1, Committing=2, Committed=3, Cancelled=4, Rejected=5 }
+    /// <summary>Queued intentions, not a second engineering tree. Preview uses the same reversible validator under the session gate.</summary>
+    public sealed class MTCEditDraft : IDisposable
+    {
+        private readonly MEMEngineeringSession _session;
+        private readonly object _gate=new object();
+        private readonly List<Action<MTCEditSession>> _commands=new List<Action<MTCEditSession>>();
+        internal MTCEditDraft(MEMEngineeringSession session,string intent,int revision) { _session=session;Intent=MEMNode.NormalizeName(intent);BaseRevision=revision;State=MTCEditState.Open; }
+        public string Intent { get; private set; }
+        public int BaseRevision { get; private set; }
+        public MTCEditState State { get; private set; }
+        private void Demand() { if(State!=MTCEditState.Open)throw new InvalidOperationException("org.draft.closed"); }
+        private void Queue(Action<MTCEditSession> command) { lock(_gate){Demand();_commands.Add(command);} }
+        public MEMNode Add(MEMNode parent,MEMNode node) { if(node==null)throw new ArgumentNullException("node");Queue(e=>e.Add(parent,node));return node; }
+        public MEMPage AddPage(string name) { return (MEMPage)Add(_session.Project,new MEMPage(Guid.NewGuid(),name)); }
+        public MEMContent AddContent(MEMNode parent,string name) { return (MEMContent)Add(parent,new MEMContent(Guid.NewGuid(),name)); }
+        public MEMSymbol AddSymbol(string name) { return (MEMSymbol)Add(_session.Project,new MEMSymbol(Guid.NewGuid(),name)); }
+        public MRCGroup AddGroup(MEMNode parent,string name) { return (MRCGroup)Add(parent,new MRCGroup(Guid.NewGuid(),name)); }
+        public MRCRectangle AddRectangle(MEMNode parent,string name,double x,double y,double width=120,double height=80)
+        { var page=parent as MEMPage;if(page!=null)parent=page.RootContent;return (MRCRectangle)Add(parent,new MRCRectangle(Guid.NewGuid(),name,x,y,width,height)); }
+        public void Rename(MEMNode node,string name) { name=MEMNode.NormalizeName(name);Queue(e=>e.Rename(node,name)); }
+        public void Reparent(MEMNode node,MEMNode parent,int index=-1) { Queue(e=>e.Reparent(node,parent,index)); }
+        public void Remove(MEMNode node) { Queue(e=>e.Remove(node)); }
+        public void Remove(MRIResourceReference reference) { Queue(e=>e.Remove(reference)); }
+        public void Move(MRCVisualItem item,double x,double y) { Queue(e=>e.Move(item,x,y)); }
+        public void Resize(MRCVisualItem item,double w,double h) { Queue(e=>e.Resize(item,w,h)); }
+        public void Rotate(MRCVisualItem item,double angle) { Queue(e=>e.Rotate(item,angle)); }
+        public void Scale(MRCVisualItem item,double x,double y) { Queue(e=>e.Scale(item,x,y)); }
+        public void SetVisibility(MRCVisualItem item,bool visible,bool selectable) { Queue(e=>e.SetVisibility(item,visible,selectable)); }
+        public void SetBinding(MRCVisualItem item,string property,MPMBinding binding) { Queue(e=>e.SetBinding(item,property,binding)); }
+        public void Reference(MEMContent owner,MEMNode definition,string name) { Queue(e=>e.Reference(owner,definition,name)); }
+        public MVEValidationReport Preview()
+        { Action<MTCEditSession>[] copy;lock(_gate){Demand();copy=_commands.ToArray();}return _session.PreviewDraft(BaseRevision,e=>{foreach(var command in copy)command(e);}); }
+        public MTCEditResult<bool> Commit()
+        {
+            Action<MTCEditSession>[] copy;lock(_gate){Demand();State=MTCEditState.Committing;copy=_commands.ToArray();}
+            try
+            {
+                var result=_session.Edit(Intent,BaseRevision,e=>{foreach(var command in copy)command(e);return true;});
+                lock(_gate){State=result.Success?MTCEditState.Committed:MTCEditState.Rejected;_commands.Clear();}return result;
+            }
+            catch { lock(_gate){State=MTCEditState.Rejected;_commands.Clear();}throw; }
+        }
+        public void Cancel() { lock(_gate){Demand();State=MTCEditState.Cancelled;_commands.Clear();} }
+        public void Dispose() { lock(_gate)if(State==MTCEditState.Open){State=MTCEditState.Cancelled;_commands.Clear();} }
+    }
+}

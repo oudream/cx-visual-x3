@@ -10,6 +10,10 @@
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="Engineering\MTCEditDraft.cs"/>
+    <Compile Include="Engineering\MEMEngineeringSession.Editing.cs"/>
+    <Compile Include="Engineering\MEMProjectSnapshot.cs"/>
+    <Compile Include="Engineering\MRIObjectAddress.cs"/>
     <Reference Include="System"/>
     <Reference Include="System.Core"/>
     <Reference Include="System.IO.Compression"/><Reference Include="System.IO.Compression.FileSystem"/><Reference Include="System.Xml"/>

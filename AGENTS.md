@@ -1,5 +1,7 @@
 # CxVisual.Unified repository guidance (merge into existing AGENTS.md)
 
+- Engineering organization continuation (user authorization, 2026-10-18): continue H02 through H07 automatically after H01; each package requires real implementation, examples, tests, Windows CI, Chinese commits and evidence. Do not wait for repeated stage approval. Consult the latest stage acceptance report for actual API/status; Git authentication failure means Windows CI is pending, not passed. Preserve the unique engineering source and original Runtime/Data/Professional owners.
+
 This repository uses the approved CxVisual F/M/P architecture and engineering standards.
 
 ## Required workflow

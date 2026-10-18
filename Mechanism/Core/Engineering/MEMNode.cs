@@ -35,6 +35,13 @@ namespace CxVisual.Mechanism.Core
         public new MEMNodeKind Kind { get; private set; }
         public new MEMNode Parent { get { return _parent; } }
         public new IReadOnlyList<MEMNode> Children { get { return Owned; } }
+        public MEMNode FirstChild { get { return Owned.Count == 0 ? null : Owned[0]; } }
+        public MEMNode LastChild { get { return Owned.Count == 0 ? null : Owned[Owned.Count-1]; } }
+        public MEMNode PreviousSibling { get { if(Parent==null)return null;int i=Parent.IndexOf(this);return i<=0?null:Parent.Children[i-1]; } }
+        public MEMNode NextSibling { get { if(Parent==null)return null;int i=Parent.IndexOf(this);return i<0||i+1==Parent.Children.Count?null:Parent.Children[i+1]; } }
+        public MEMNode RootNode { get { var node=this;while(node.Parent!=null)node=node.Parent;return node; } }
+        public MEMProject OwnerProject { get { return RootNode as MEMProject; } }
+        public MEMPage OwnerPage { get { for(var node=this;node!=null;node=node.Parent){var page=node as MEMPage;if(page!=null)return page;}return null; } }
         internal virtual IReadOnlyList<MEMNode> Owned { get { return Empty; } }
         internal virtual bool Accepts(MEMNode child) { return false; }
         internal virtual void InsertCore(int index, MEMNode child) { throw new InvalidOperationException("Leaf has no children"); }

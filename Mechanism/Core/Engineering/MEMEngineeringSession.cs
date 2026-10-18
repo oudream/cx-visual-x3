@@ -19,10 +19,12 @@ namespace CxVisual.Mechanism.Core
     }
     public sealed class MTCChangeSet
     {
-        internal MTCChangeSet(string intent, int before, int after) { Intent = intent; BeforeRevision = before; AfterRevision = after; }
+        internal MTCChangeSet(string intent, int before, int after, IEnumerable<MTCMutation> changes, bool undo = false)
+        { Intent = intent; BeforeRevision = before; AfterRevision = after; Operations = changes.Select(c => undo ? c.Info.Reversed() : c.Info).ToList().AsReadOnly(); }
         public string Intent { get; private set; }
         public int BeforeRevision { get; private set; }
         public int AfterRevision { get; private set; }
+        public IReadOnlyList<MTCChangeOperation> Operations { get; private set; }
     }
     public sealed class MVEValidationReport
     {
@@ -33,7 +35,8 @@ namespace CxVisual.Mechanism.Core
     internal sealed class MTCMutation
     {
         internal Action Forward, Inverse;
-        internal MTCMutation(Action forward, Action inverse) { Forward = forward; Inverse = inverse; }
+        internal readonly MTCChangeOperation Info;
+        internal MTCMutation(Action forward, Action inverse, MTCChangeOperation info) { Forward = forward; Inverse = inverse; Info = info; }
     }
     public static class MEMEngineering
     {
@@ -43,7 +46,7 @@ namespace CxVisual.Mechanism.Core
         { return Task.Run(() => { cancellation.ThrowIfCancellationRequested(); return Open(path); }, cancellation); }
     }
     /// <summary>One authoritative tree, index, write gate and history. Returned nodes are read-only live identities.</summary>
-    public sealed class MEMEngineeringSession : IDisposable
+    public sealed partial class MEMEngineeringSession : IDisposable
     {
         private readonly object _gate = new object();
         private readonly Dictionary<Guid, MEMNode> _index = new Dictionary<Guid, MEMNode>();
@@ -189,7 +192,7 @@ namespace CxVisual.Mechanism.Core
                     {
                         if (_cursor < _history.Count) _history.RemoveRange(_cursor, _history.Count - _cursor);
                         _history.Add(draft.Changes); _cursor++; Revision++;
-                        _notifications.Enqueue(new MTCChangeSet(intent, before, Revision));
+                        if (_observers.Count != 0) _notifications.Enqueue(new MTCChangeSet(intent, before, Revision, draft.Changes));
                     }
                     committedRevision = Revision;
                 }
@@ -221,7 +224,7 @@ namespace CxVisual.Mechanism.Core
                     foreach (var change in undo ? batch.AsEnumerable().Reverse() : batch)
                     { if (undo) change.Inverse(); else change.Forward(); done.Add(change); }
                     int before = Revision; _cursor += undo ? -1 : 1; Revision++;
-                    _notifications.Enqueue(new MTCChangeSet(undo ? "撤销" : "重做", before, Revision));
+                    if (_observers.Count != 0) _notifications.Enqueue(new MTCChangeSet(undo ? "撤销" : "重做", before, Revision, undo ? batch.AsEnumerable().Reverse() : batch, undo));
                     committedRevision = Revision;
                 }
                 catch (Exception failure)

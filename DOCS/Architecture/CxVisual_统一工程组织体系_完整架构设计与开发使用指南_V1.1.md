@@ -1,6 +1,8 @@
 # CxVisual 统一工程组织体系：完整架构设计与开发使用指南 V1.1
 
 > **H01实施更新（2026-10-17）**：用户已正式确认D01～D04，最终视觉层为MRCVisualItem→MRCElement/MRCGroup，Content/Symbol使用MEM前缀。以下候选签名/旧源码审计保留历史，不覆盖用户最终模型；当前可运行API、真实测试、边界与进度见[H01实现与验收](../Testing/CxVisual_工程组织体系_H01_实现与验收_V1.0.md)。不再等待同一架构确认。
+>
+> **后续实施更新（2026-10-18）**：用户已授权自动依次完成H02～H07。H02已增加BeginEdit/Preview/Commit、GetSnapshot与稳定定义/实例地址，真实案例和本机测试见[H02验收](../Testing/CxVisual_工程组织体系_H02_实现与验收_V1.0.md)。当前Git HTTPS登录失败，阶段Windows CI待补，不以本机通过冒充远端验收。
 
 > 日期：2026-10-17；在 V1.0 上增补复核，保留六角色、八案例、28项需求及源码/历史验证记录；不重新建设对象体系。
 > 本轮 x3：`master / ea6205b8ff4c9557efd56935f61430b2a49f7a23`（已正常合并 GitHub master `604718869e704d8ab943d6e593eeeb274afe657d`）；x2 本地/GitHub master：`2626734d0fd5e67ac50fd0621532173cec39b939`。x3 Core/Visual 及专业/运行源码相对此前 V1.0 审计基线 `464b2e8d1575736a1885e01ac00a239e22f29c79` 无变化；新远端变化是 TestCenter 验收/归档，不据此虚报本轮CI。
