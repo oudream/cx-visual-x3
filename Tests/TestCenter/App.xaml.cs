@@ -253,8 +253,9 @@ namespace CxVisual.TestCenter.UI
                         // A six-mode shell must never manufacture a Graph when the selected
                         // Owner has supplied only ObjectTree evidence.
                         window.DocumentHost.ShowMode("Graph");
-                        if (window.DocumentHost.ActiveMode != "Graph")
-                            throw new InvalidOperationException("M2 Graph shell mode did not activate");
+                        if (window.DocumentHost.ActiveMode != "Graph" ||
+                            window.DocumentHost.ViewerCount != 1)
+                            throw new InvalidOperationException("M2 NoEvidence mode must not count as a real viewer");
                         var graphTab = (System.Windows.Controls.TabItem)
                             ((System.Windows.Controls.TabControl)window.DocumentHost.Content).SelectedItem;
                         var unsupported = graphTab.Content as System.Windows.Controls.TextBlock;
