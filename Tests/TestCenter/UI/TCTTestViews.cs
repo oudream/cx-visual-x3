@@ -242,10 +242,16 @@ namespace CxVisual.TestCenter.UI
                 Guid id;
                 if (!Guid.TryParse((string)node.Attribute("id"), out id)) return;
                 string kind = node.Name.LocalName;
+                Guid targetId;
                 string address = kind == "Node" ?
                     new MRIObjectAddress(projectId,
                         Guid.Parse((string)node.Attribute("storageRootId")), id).ToString() :
-                    "ReferenceId=" + id + " / TargetId=" + (string)node.Attribute("targetId");
+                    (Guid.TryParse((string)node.Attribute("targetId"), out targetId) &&
+                     index.ContainsKey(targetId) ?
+                        new MRIObjectAddress(projectId,
+                            Guid.Parse((string)index[targetId].Attribute("storageRootId")),
+                            targetId, new[] { id }).ToString() :
+                        "ReferenceId=" + id + " / TargetId unavailable");
                 string detail = kind + " / " + (string)node.Attribute("name") +
                     "\nId: " + id +
                     "\nAddress: " + address +
@@ -291,6 +297,25 @@ namespace CxVisual.TestCenter.UI
             if (VerifiedReferenceCount == 0)
                 related.Children.Add(new TextBlock { Text = "此快照没有资源引用。",
                     Foreground = Brushes.Gray });
+            foreach (XElement node in nodes)
+            {
+                foreach (XElement port in node.Elements("Port"))
+                    related.Children.Add(new TextBlock
+                    {
+                        Text = "Port · " + (string)node.Attribute("name") + "." +
+                            (string)port.Attribute("member") + " / " +
+                            (string)port.Attribute("direction") + " / " +
+                            (string)port.Attribute("typeId"),
+                        TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 2)
+                    });
+                foreach (XElement connection in node.Elements("Connection"))
+                    related.Children.Add(new TextBlock
+                    {
+                        Text = "Connection · " + (string)connection.Attribute("source") +
+                            " → " + (string)connection.Attribute("target"),
+                        TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 2)
+                    });
+            }
             ScrollViewer relatedScroll = new ScrollViewer { Content = related,
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto, MaxHeight = 500 };
             Grid.SetColumn(relatedScroll, 1); split.Children.Add(relatedScroll);
