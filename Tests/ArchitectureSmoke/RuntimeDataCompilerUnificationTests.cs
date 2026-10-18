@@ -15,6 +15,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         {
             ThreeLevelNamedDataContract();
             MissingAndWrongSubflowInputsFailBeforeRuntime();
+            MissingDeclaredCapabilityInputRejected();
             OrdinaryCapabilityAndExistingStepResultsRemainUsable();
         }
 
@@ -37,17 +38,20 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     ct.ThrowIfCancellationRequested();
                     ctx.Data.Return("Doubled", ctx.Data.Get<int>("N") * 2);
                     return Task.FromResult((object)true);
-                }, Output("Doubled"))
+                }, Output("Doubled"),
+                    new[]{new MRKCapabilityInput("N",typeof(int))})
                 .DataCapability("Plus", (ctx, ct) =>
                 {
                     ctx.Data.Return("Raised", ctx.Data.Get<int>("Value") + 1);
                     return Task.FromResult((object)true);
-                }, Output("Raised"))
+                }, Output("Raised"),
+                    new[]{new MRKCapabilityInput("Value",typeof(int))})
                 .DataCapability("Final", (ctx, ct) =>
                 {
                     ctx.Data.Return("Answer", ctx.Data.Get<int>("FromMid") * 3);
                     return Task.FromResult((object)true);
-                }, Output("Answer"))
+                }, Output("Answer"),
+                    new[]{new MRKCapabilityInput("FromMid",typeof(int))})
                 .Flow("Child", f => f
                     .StepData("scale", "Double", new [] {
                         new MRKExecutionInput("N", MRKInputSource.FlowInput,
@@ -152,6 +156,40 @@ namespace CxVisual.Tests.ArchitectureSmoke
             catch(MRKCodeRuntimeBuildException ex)
             { refused = ex.Diagnostics.Any(x=>x.Code=="INVALID_ORCHESTRATION"); }
             Check(refused, "调用口类型不兼容仍然编译通过");
+        }
+
+        private static void MissingDeclaredCapabilityInputRejected()
+        {
+            var unresolved = new MRKCodeRuntimeBuilder()
+                .DataCapability("NeedsImage", (c,t) => {
+                    c.Data.Return("Done", c.Data.Get<int>("Image") * 2);
+                    return Task.FromResult((object)true);
+                }, Output("Done"), new[]{new MRKCapabilityInput("Image",typeof(int))})
+                .Flow("Test", f => f.Step("missingInput", "NeedsImage"));
+            bool rejected = false;
+            try { unresolved.Freeze(); }
+            catch (MRKCodeRuntimeBuildException error)
+            {
+                rejected = error.Diagnostics.Any(d=>d.Message.Contains("必需输入未绑定"));
+            }
+            Check(rejected, "能力已声明必要输入，但没有数据连线时仍编译成功");
+
+            var wrongType = new MRKCodeRuntimeBuilder()
+                .DataCapability("NeedsImage", (c,t) => {
+                    c.Data.Return("Done", 1);
+                    return Task.FromResult((object)true);
+                }, Output("Done"), new[]{new MRKCapabilityInput("Image",typeof(int))})
+                .Flow("Test", f=>f.StepData("wrongType","NeedsImage",new [] {
+                    new MRKExecutionInput("Image", MRKInputSource.FlowInput,
+                        "text", typeof(string))
+                }));
+            rejected = false;
+            try { wrongType.Freeze(); }
+            catch (MRKCodeRuntimeBuildException error)
+            {
+                rejected = error.Diagnostics.Any(d=>d.Message.Contains("类型不匹配"));
+            }
+            Check(rejected,"错误能力输入类型未被自动声明校验拦截");
         }
 
         private static void OrdinaryCapabilityAndExistingStepResultsRemainUsable()
