@@ -131,7 +131,7 @@ namespace CxVisual.TestCenter.Models
             foreach (XElement node in nodes)
             {
                 Guid id = Guid.Parse((string)node.Attribute("id"));
-                Guid parentId;
+                Guid parentId = Guid.Empty;
                 string parentText = (string)node.Attribute("parentId");
                 if (string.IsNullOrEmpty(parentText))
                 {
@@ -148,7 +148,7 @@ namespace CxVisual.TestCenter.Models
                         (string)descendant.Attribute("parentId") != id.ToString())
                         throw new InvalidDataException("Engineering ownership link mismatch");
                 }
-                if (parentText != null)
+                if (!string.IsNullOrEmpty(parentText))
                 {
                     XElement parent = index[parentId];
                     if (!parent.Elements("Child").Any(x => (string)x.Attribute("id") == id.ToString()))
