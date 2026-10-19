@@ -77,9 +77,12 @@ namespace CxVisual.Studio
             {
                 try
                 {
-                    _viewModel.EditVisualHandle(edit.Handle,edit.WorldX,edit.WorldY);
-                    VisualInfo.Text="已修改"+edit.Handle.Kind+" | Revision "+_viewModel.Revision+
-                        "（可撤销、重做并保存工程）";
+                    MTCEditResult<bool> result=_viewModel.EditVisualHandle(
+                        edit.Handle,edit.WorldX,edit.WorldY);
+                    VisualInfo.Text=result.Success?
+                        "已修改"+edit.Handle.Kind+" | Revision "+result.Revision+
+                            "（可撤销、重做并保存工程）":
+                        "图元编辑被拒绝："+result.ErrorCode+" "+result.Message;
                 }
                 catch(Exception ex){VisualInfo.Text="图元编辑失败："+ex.Message;}
             };
