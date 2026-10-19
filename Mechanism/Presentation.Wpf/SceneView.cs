@@ -22,6 +22,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         private double _dragX;
         private double _dragY;
         private bool _dragging;
+        private readonly HashSet<Guid> _selectedItems=new HashSet<Guid>();
+        private bool _marquee;
+        private Point _marqueeStart,_marqueeEnd;
+        public event Action<IReadOnlyList<Guid>> SelectionSetRequested;
         private MVIVisualHandle _activeHandle;
         private bool _handleDragging;
         private Point _handlePointer;
@@ -180,6 +184,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             _items.Clear();
             if(items!=null)_items.AddRange(items);
             _selection=selected;
+            if(selected.HasValue)_selectedItems.Add(selected.Value);
+            _selectedItems.RemoveWhere(id=>!_items.Exists(item=>item.Id==id));
             if(!reuse)BuildWidgetLayer();
             else
             {
@@ -202,7 +208,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             dc.PushTransform(new MatrixTransform(new Matrix(_zoom,0,0,_zoom,_panX,_panY)));
             foreach (CxSceneItem item in _items)
             {
-                bool selected = _selection.HasValue && _selection.Value == item.Id;
+                bool selected = _selectedItems.Contains(item.Id)||
+                    (_selection.HasValue&&_selection.Value==item.Id);
                 if(item.Shape!=null)
                 {
                     MPWShapeRenderer.Draw(dc,item,selected&&_dragging?_dragX:0,
@@ -319,6 +326,15 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                     }
                 }
             }
+            if(_marquee)
+            {
+                double x=Math.Min(_marqueeStart.X,_marqueeEnd.X);
+                double y=Math.Min(_marqueeStart.Y,_marqueeEnd.Y);
+                var rect=new Rect(x,y,Math.Abs(_marqueeEnd.X-_marqueeStart.X),
+                    Math.Abs(_marqueeEnd.Y-_marqueeStart.Y));
+                dc.DrawRectangle(new SolidColorBrush(Color.FromArgb(42,35,117,218)),
+                    new Pen(Brushes.DodgerBlue,1){DashStyle=DashStyles.Dash},rect);
+            }
             dc.Pop();
         }
 
@@ -354,19 +370,39 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 if (item.Contains(point.X, point.Y))
                 { hit = item.Id; break; }
             }
-            _selection = hit;
+            bool extend=(Keyboard.Modifiers&ModifierKeys.Control)!=0||
+                (Keyboard.Modifiers&ModifierKeys.Shift)!=0;
+            if(!extend)_selectedItems.Clear();
+            if(hit.HasValue)
+            {
+                if(extend&&!_selectedItems.Add(hit.Value))_selectedItems.Remove(hit.Value);
+                else _selectedItems.Add(hit.Value);
+            }
+            _selection=hit;
+            if(hit==null)
+            {
+                _marquee=true;_marqueeStart=point;_marqueeEnd=point;
+                CaptureMouse();
+            }
             _dragStart = point;
             _dragX = 0; _dragY = 0;
             _dragging = hit.HasValue;
             if (_dragging) CaptureMouse();
             EventHandler<CxNodeEventArgs> activated = NodeActivated;
             if (activated != null) activated(this, new CxNodeEventArgs(hit));
+            if(hit.HasValue&&SelectionSetRequested!=null)
+                SelectionSetRequested(new List<Guid>(_selectedItems).AsReadOnly());
             InvalidateVisual();
             e.Handled = true;
         }
         protected override void OnMouseMove(MouseEventArgs e)
         {
             base.OnMouseMove(e);
+            if(_marquee)
+            {
+                _marqueeEnd=WorldPoint(e.GetPosition(this));
+                InvalidateVisual();return;
+            }
             if(_panning)
             {
                 Point position=e.GetPosition(this);
@@ -390,6 +426,25 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
         {
             base.OnMouseLeftButtonUp(e);
+            if(_marquee)
+            {
+                _marquee=false;
+                if(IsMouseCaptured)ReleaseMouseCapture();
+                FGEPoint2D a=new FGEPoint2D(_marqueeStart.X,_marqueeStart.Y);
+                FGEPoint2D b=new FGEPoint2D(_marqueeEnd.X,_marqueeEnd.Y);
+                FGERect2D selection=FGERect2D.FromPoints(a,b);
+                foreach(CxSceneItem item in _items)
+                    if(item.IsSelectable&&(selection.Intersects(item.Bounds)||
+                        selection.Contains(new FGEPoint2D(item.Bounds.X,item.Bounds.Y))))
+                        _selectedItems.Add(item.Id);
+                if(_selectedItems.Count!=0)
+                {
+                    foreach(Guid id in _selectedItems){_selection=id;break;}
+                    if(SelectionSetRequested!=null)
+                        SelectionSetRequested(new List<Guid>(_selectedItems).AsReadOnly());
+                }
+                InvalidateVisual();e.Handled=true;return;
+            }
             if(_handleDragging)
             {
                 MVIVisualHandle handle=_activeHandle;
@@ -426,7 +481,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             InvalidateVisual();
         }
         public void CancelInteraction()
-        {_dragging=false;_handleDragging=false;_activeHandle=null;_panning=false;_dragX=0;_dragY=0;
+        {_dragging=false;_marquee=false;_handleDragging=false;_activeHandle=null;_panning=false;_dragX=0;_dragY=0;
             if(IsMouseCaptured)ReleaseMouseCapture();InvalidateVisual();}
         protected override void OnKeyDown(KeyEventArgs e){if(e.Key==Key.Escape){CancelInteraction();e.Handled=true;}base.OnKeyDown(e);}
         protected override void OnLostMouseCapture(MouseEventArgs e){if(_dragging||_handleDragging)CancelInteraction();base.OnLostMouseCapture(e);}
