@@ -62,6 +62,28 @@ namespace CxVisual.Foundation.Geometry
                 return FGEGeometry2D.Bounds(vertices);
             }
         }
+        /// <summary>按独立子路径采样，不把多个MoveTo起始的轮廓错误连接起来。</summary>
+        public IReadOnlyList<IReadOnlyList<FGEPoint2D>> FlattenContours(int subdivisions=48)
+        {
+            var result=new List<IReadOnlyList<FGEPoint2D>>();
+            var segment=new List<FGEPathCommand>();
+            foreach(var cmd in _commands)
+            {
+                if(cmd.Verb==FGEPathVerb.Move && segment.Count>0)
+                {
+                    if(segment.Count>1)result.Add(new FGEPath2D(segment).Flatten(subdivisions));
+                    segment.Clear();
+                }
+                segment.Add(cmd);
+                if(cmd.Verb==FGEPathVerb.Close)
+                {
+                    result.Add(new FGEPath2D(segment).Flatten(subdivisions));
+                    segment.Clear();
+                }
+            }
+            if(segment.Count>1)result.Add(new FGEPath2D(segment).Flatten(subdivisions));
+            return result.AsReadOnly();
+        }
         public static FGEPath2D Line(FGEPoint2D a,FGEPoint2D b)
         {return new FGEPath2D(new[]{FGEPathCommand.Move(a),FGEPathCommand.Line(b)});}
         public static FGEPath2D Rectangle(double w,double h)

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 
 namespace CxVisual.Foundation.Geometry
 {
+    public enum FGEFillRule { EvenOdd=0, NonZero=1 }
     /// <summary>无状态二维几何运算；几何容差由调用者显式传入，不依赖 DPI/像素。</summary>
     public static class FGEGeometry2D
     {
@@ -52,5 +53,35 @@ namespace CxVisual.Foundation.Geometry
             for(int i=1;i<points.Count;i++){l=Math.Min(l,points[i].X);r=Math.Max(r,points[i].X);t=Math.Min(t,points[i].Y);b=Math.Max(b,points[i].Y);}
             return new FGERect2D(l,t,r-l,b-t);
         }
+        public static double DistanceToPath(FGEPoint2D p,FGEPath2D path,int subdivisions=48)
+        {
+            if(path==null)throw new ArgumentNullException("path");
+            double distance=double.PositiveInfinity;
+            foreach(var contour in path.FlattenContours(subdivisions))
+                for(int i=1;i<contour.Count;i++)
+                    distance=Math.Min(distance,DistanceToSegment(p,new FGESegment2D(contour[i-1],contour[i])));
+            return distance;
+        }
+        /// <summary>闭合路径按SVG式填充规则计算，允许多轮廓及孔洞；与Stroke命中是不同操作。</summary>
+        public static bool ContainsPath(FGEPoint2D p,FGEPath2D path,FGEFillRule fillRule=FGEFillRule.NonZero,int subdivisions=48)
+        {
+            if(path==null)throw new ArgumentNullException("path");
+            if(!Enum.IsDefined(typeof(FGEFillRule),fillRule))throw new ArgumentOutOfRangeException("fillRule");
+            int winding=0;
+            foreach(var points in path.FlattenContours(subdivisions))
+            {
+                if(points.Count<3)continue;
+                for(int i=0;i<points.Count;i++)
+                {
+                    FGEPoint2D a=points[i],b=points[(i+1)%points.Count];
+                    if(PointOnSegment(p,new FGESegment2D(a,b),1e-10))return true;
+                    double cross=FGEVector2D.Cross(b-a,p-a);
+                    if(a.Y<=p.Y){if(b.Y>p.Y&&cross>0)winding++;}
+                    else if(b.Y<=p.Y&&cross<0)winding--;
+                }
+            }
+            return fillRule==FGEFillRule.NonZero?winding!=0:(Math.Abs(winding)%2)!=0;
+        }
+
     }
 }
