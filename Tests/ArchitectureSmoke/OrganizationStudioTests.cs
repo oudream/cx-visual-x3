@@ -63,6 +63,24 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Click(window,"重做");
                 Check(MRCVisualAppearance.BehaviorOf(gallery[8]).EventActions.Count==1,
                     "Studio event redo failed");
+                // 同一Shape的动画在预览帧真实求值，不修改工程Revision。
+                Click(window,"添加呼吸动画");
+                var animated=gallery[8];
+                Check(MRCVisualAppearance.BehaviorOf(animated).Animations.Count==1,
+                    "Studio animation command not persisted");
+                int beforePreviewRevision=session.Revision;
+                Click(window,"预览交互");
+                var vmType=vm.GetType();
+                vmType.GetMethod("UpdateVisualRuntimeFrame").Invoke(vm,new object[]{450.0});
+                var runtimeItems=(IEnumerable<CxVisual.Mechanism.Visual.CxSceneItem>)Get(vm,"Items");
+                var rendered=runtimeItems.First(x=>x.Id==animated.Id);
+                Check(Math.Abs(rendered.Style.Opacity-0.575)<1e-6,
+                    "Studio animation evaluation frame missing");
+                Check(session.Revision==beforePreviewRevision,
+                    "Studio animation preview dirtied engineering project");
+                Click(window,"返回设计");
+                Check(session.Revision==beforePreviewRevision,
+                    "Leaving runtime preview committed an edit transaction");
                 Click(window,"文字图元");
                 Check(page.RootContent.DescendantsAndSelf().OfType<MRCTextElement>().Any(),
                     "Studio did not create text element");
