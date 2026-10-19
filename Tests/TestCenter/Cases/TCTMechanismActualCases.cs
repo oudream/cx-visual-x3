@@ -208,6 +208,75 @@ namespace CxVisual.TestCenter.Cases
             }
         }
 
+        [TCTTest("TCT.MVIS.006", "Symbol双实例Widget事件按实例地址授权与工程重开",
+            TCTTestAspect.Mechanism,"Visual / Runtime",ObjectId="MVIVisualEventRouter")]
+        public static void SymbolWidgetEventIsolation(TCTTestContext context)
+        {
+            using(var sandbox=new TCTTestSandbox())
+            {
+                string file=sandbox.PathFor("motor-widgets.cxproj");
+                var project=MEMEngineering.Create("Symbol Event Integration");
+                var page=project.AddPage("Motor Control");
+                var symbol=project.AddSymbol("Motor Symbol");
+                var button=new MRCWidgetElement(Guid.NewGuid(),"启动","core.widget",
+                    10,10,90,35);
+                project.Add(symbol.RootGroup,button);
+                project.SetVisualBehavior(button,new MRCVisualBehaviorDefinition(
+                    eventActions:new[]{new MRCVisualEventAction("Click","motor.start")}));
+                var a=project.PlaceSymbol(page.RootContent,symbol,"Motor-A");
+                var b=project.PlaceSymbol(page.RootContent,symbol,"Motor-B");
+                project.SetPlacement(a,new MRCTransform(1,0,0,1,40,20));
+                project.SetPlacement(b,new MRCTransform(1,0,0,1,210,20));
+                Guid pageId=page.Id;
+                Guid buttonId=button.Id;
+                int revision=project.Revision;
+                var scene=CxSceneProjection.Project(project,pageId);
+                context.AssertEqual(2,scene.Count,"两个Symbol实例展开为两个真实控件");
+                int invocationCount=0;
+                foreach(CxSceneItem item in scene)
+                {
+                    context.AssertEqual(buttonId,item.Address.ObjectId,"共享控件定义身份");
+                    context.AssertTrue(item.Address.InstancePath.Count==1,
+                        "保留工程实例地址",true,item.Address.InstancePath.Count==1);
+                    context.AssertEqual(0,MVIVisualEventRouter.Dispatch(project,item.Address,
+                        "Click","start",null),"没有专业授权宿主时拒绝设备事件");
+                    int accepted=MVIVisualEventRouter.Dispatch(project,item.Address,
+                        "Click","start",request=>
+                        {
+                            context.AssertTrue(request.Address.Equals(item.Address)&&
+                                request.ItemId==buttonId&&request.ActionId=="motor.start",
+                                "命令附带当前实例身份",true,
+                                request.Address==null?"missing":request.Address.ToString());
+                            invocationCount++;
+                            return true;
+                        });
+                    context.AssertEqual(1,accepted,"单个实例只授权一次");
+                    context.AssertEqual(0,MVIVisualEventRouter.Dispatch(project,item.Id,
+                        "Click","start",request=>true),"禁止退化为引用Id的模糊派发");
+                }
+                context.AssertEqual(2,invocationCount,"两个实例各自独立派发");
+                context.AssertEqual(revision,project.Revision,"运行请求没有污染工程Revision");
+                project.SaveAs(file);
+                project.Close();
+                using(var reopened=MEMEngineering.Open(file))
+                {
+                    var restored=CxSceneProjection.Project(reopened,pageId);
+                    context.AssertEqual(2,restored.Count,"保存后仍有两个实例");
+                    context.AssertTrue(restored.Select(x=>x.Address.InstancePath[0])
+                        .Distinct().Count()==2,"工程重开后实例地址保持独立",
+                        true,restored.Count==2);
+                    context.AssertEqual(buttonId,restored[0].Address.ObjectId,
+                        "重开后事件目标仍指向原定义");
+                    context.AssertEqual(1,MVIVisualEventRouter.Dispatch(reopened,
+                        restored[1].Address,"Click","start",req=>
+                            req.Address.Equals(restored[1].Address)),
+                        "重开后实例事件仍需走宿主授权");
+                }
+                context.Observe("Runtime","Symbol事件完整地址",
+                    "Two motor instances; fail-closed; authorized dispatch; save/reopen");
+            }
+        }
+
         [TCTTest("TCT.MDATA.001", "Mechanism.Data配置保存与任务生效分离", TCTTestAspect.Mechanism,
             "Data / Configuration", ObjectId = "MHSConfigSection")]
         public static void ConfigSnapshotAndBoundary(TCTTestContext context)
