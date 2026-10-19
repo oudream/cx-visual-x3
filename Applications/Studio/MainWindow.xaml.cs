@@ -548,6 +548,130 @@ namespace CxVisual.Studio
             }
             catch(Exception ex){LogicInfo.Text="删除连接失败: "+ex.Message;}
         }
+        private void OnFlowSelectAll(object sender,RoutedEventArgs args)
+        {LogicHost.SelectAll();LogicHost.Focus();}
+        private void OnFlowCopy(object sender,RoutedEventArgs args)
+        {
+            try
+            {
+                var wiring=LogicHost.WiringDefinition;
+                if(wiring==null)throw new InvalidOperationException("请先进入V2自由编排");
+                _flowClipboard=MOCWiringFragment.Capture(wiring,LogicHost.SelectedBlockIds);
+                _flowPasteCount=0;
+                LogicInfo.Text="已复制 "+_flowClipboard.Blocks.Count+
+                    " 个节点及 "+_flowClipboard.Links.Count+" 条内部连接（内存选区快照）。";
+            }
+            catch(Exception ex){LogicInfo.Text="复制失败："+ex.Message;}
+        }
+        private void OnFlowPaste(object sender,RoutedEventArgs args)
+        {
+            if(_logicRunning)return;
+            try
+            {
+                if(_flowClipboard==null)throw new InvalidOperationException("请先复制节点选区");
+                var page=_viewModel.ActivePage;
+                if(page==null)throw new InvalidOperationException("请先打开目标Content");
+                int pasteIndex=_flowPasteCount+1;
+                IReadOnlyDictionary<Guid,Guid> mapping=null;
+                MOCFlowBuilder.Edit(_viewModel.ProjectSession,page.RootContent,b=>
+                    mapping=b.Paste(_flowClipboard,40*pasteIndex,40*pasteIndex));
+                _flowPasteCount=pasteIndex;
+                RefreshScene();
+                LogicHost.SetSelection(mapping.Values);
+                LogicInfo.Text="已粘贴 "+mapping.Count+" 个新节点及内部连接（原子工程事务）。";
+            }
+            catch(Exception ex){LogicInfo.Text="粘贴失败："+ex.Message;}
+        }
+        private void OnFlowDeleteSelection(object sender,RoutedEventArgs args)
+        {
+            if(_logicRunning)return;
+            try
+            {
+                Guid[] selected=LogicHost.SelectedBlockIds.ToArray();
+                var page=_viewModel.ActivePage;
+                if(page==null||selected.Length==0)
+                    throw new InvalidOperationException("请先选择至少一个节点");
+                MOCFlowBuilder.Edit(_viewModel.ProjectSession,page.RootContent,
+                    b=>b.RemoveMany(selected));
+                RefreshScene();
+                LogicHost.SetSelection(new Guid[0]);
+                LogicInfo.Text="已删除 "+selected.Length+" 个节点及相关连线；可一次撤销。";
+            }
+            catch(Exception ex){LogicInfo.Text="批量删除失败："+ex.Message;}
+        }
+        private void OnFlowAlign(object sender,RoutedEventArgs args)
+        {
+            if(_logicRunning)return;
+            try
+            {
+                var button=sender as Button;
+                var alignment=(MOCBlockAlignment)Enum.Parse(typeof(MOCBlockAlignment),
+                    Convert.ToString(button.Tag));
+                Guid[] selected=LogicHost.SelectedBlockIds.ToArray();
+                var page=_viewModel.ActivePage;
+                if(page==null||selected.Length<2)
+                    throw new InvalidOperationException("请选择至少两个节点");
+                MOCFlowBuilder.Edit(_viewModel.ProjectSession,page.RootContent,
+                    b=>b.Align(selected,alignment));
+                RefreshScene();
+                LogicInfo.Text="已对齐 "+selected.Length+" 个节点，Undo可原子撤销。";
+            }
+            catch(Exception ex){LogicInfo.Text="对齐失败："+ex.Message;}
+        }
+        private void OnFlowZoom(object sender,RoutedEventArgs args)
+        {
+            var button=sender as Button;
+            string mode=Convert.ToString(button.Tag);
+            double next=mode=="reset"?1:mode=="in"?
+                Math.Min(3,LogicHost.ZoomFactor*1.2):
+                Math.Max(0.25,LogicHost.ZoomFactor/1.2);
+            LogicHost.ZoomFactor=next;
+            LogicInfo.Text="画布视图 "+Math.Round(next*100)+"%（不改变工程定义）。";
+        }
+        private void OnFlowWheel(object sender,MouseWheelEventArgs args)
+        {
+            if((Keyboard.Modifiers&ModifierKeys.Control)==0)return;
+            LogicHost.ZoomFactor=args.Delta>0?
+                Math.Min(3,LogicHost.ZoomFactor*1.1):
+                Math.Max(0.25,LogicHost.ZoomFactor/1.1);
+            args.Handled=true;
+        }
+        private void OnFlowPanDown(object sender,MouseButtonEventArgs args)
+        {
+            if(args.ChangedButton!=MouseButton.Middle)return;
+            _flowPanning=true;_flowPanStart=args.GetPosition(FlowScroll);
+            _flowPanX=FlowScroll.HorizontalOffset;_flowPanY=FlowScroll.VerticalOffset;
+            FlowScroll.CaptureMouse();args.Handled=true;
+        }
+        private void OnFlowPanMove(object sender,MouseEventArgs args)
+        {
+            if(!_flowPanning)return;
+            Point pos=args.GetPosition(FlowScroll);
+            FlowScroll.ScrollToHorizontalOffset(_flowPanX+_flowPanStart.X-pos.X);
+            FlowScroll.ScrollToVerticalOffset(_flowPanY+_flowPanStart.Y-pos.Y);
+            args.Handled=true;
+        }
+        private void OnFlowPanUp(object sender,MouseButtonEventArgs args)
+        {
+            if(!_flowPanning||args.ChangedButton!=MouseButton.Middle)return;
+            _flowPanning=false;
+            if(FlowScroll.IsMouseCaptured)FlowScroll.ReleaseMouseCapture();
+            args.Handled=true;
+        }
+        private void OnFlowShortcuts(object sender,KeyEventArgs args)
+        {
+            if(!FlowTab.IsSelected||_logicRunning)return;
+            if(args.OriginalSource is TextBoxBase||args.OriginalSource is ComboBox)return;
+            bool control=(Keyboard.Modifiers&ModifierKeys.Control)!=0;
+            if(control&&args.Key==Key.A)OnFlowSelectAll(sender,new RoutedEventArgs());
+            else if(control&&args.Key==Key.C)OnFlowCopy(sender,new RoutedEventArgs());
+            else if(control&&args.Key==Key.V)OnFlowPaste(sender,new RoutedEventArgs());
+            else if(control&&args.Key==Key.Z)OnUndoWiring(sender,new RoutedEventArgs());
+            else if(control&&args.Key==Key.Y)OnRedoWiring(sender,new RoutedEventArgs());
+            else if(args.Key==Key.Delete)OnFlowDeleteSelection(sender,new RoutedEventArgs());
+            else return;
+            args.Handled=true;
+        }
         private void OnDeleteWiringBlock(object sender,RoutedEventArgs args)
         {
             if(_logicRunning)return;
