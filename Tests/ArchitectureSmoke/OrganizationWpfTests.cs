@@ -122,6 +122,16 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     CxSceneItem bezierScene=shapeScene.First(x=>x.Shape!=null&&
                         x.Shape.Kind==MRCShapeKind.Bezier);
                     shapeView.SetScene(shapeScene,bezierScene.Id);
+                    Check(shapeView.SelectedVisualIds.Count==1&&
+                        shapeView.SelectedVisualIds[0]==bezierScene.Id,
+                        "select one Bezier item");
+                    CxSceneItem another=shapeScene.First(x=>x.Shape!=null&&
+                        x.Id!=bezierScene.Id);
+                    shapeView.SetScene(shapeScene,another.Id);
+                    Check(shapeView.SelectedVisualIds.Count==1&&
+                        shapeView.SelectedVisualIds[0]==another.Id,
+                        "external single selection retained stale multiple objects");
+                    shapeView.SetScene(shapeScene,bezierScene.Id);
                     shapeView.UpdateLayout();
                     System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(new Action(()=>{}),
                         System.Windows.Threading.DispatcherPriority.Render);
