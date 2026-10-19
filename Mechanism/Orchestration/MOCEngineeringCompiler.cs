@@ -173,6 +173,84 @@ namespace CxVisual.Mechanism.Orchestration
         }
     }
 
+
+    /// <summary>Developer and Studio share the same Content Logic Edit transaction; no parallel runtime builder.</summary>
+    public sealed class MOCFlowBuilder
+    {
+        private readonly List<MOLControlBlock> _blocks=new List<MOLControlBlock>();
+        private readonly List<MOLLink> _links=new List<MOLLink>();
+        private readonly Dictionary<Guid,IEnumerable<MPCPortDescriptor>> _ports=
+            new Dictionary<Guid,IEnumerable<MPCPortDescriptor>>();
+        private Guid _entry;
+        private MOCFlowBuilder(MOLWiringDefinition current)
+        {
+            if(current==null)return;
+            _entry=current.EntryBlockId;
+            _blocks.AddRange(current.Blocks);
+            _links.AddRange(current.Links);
+            foreach(var pair in current.Ports)_ports.Add(pair.Key,pair.Value.ToArray());
+        }
+        public Guid LastBlockId{get{return _blocks.Count==0?Guid.Empty:_blocks[_blocks.Count-1].Id;}}
+        public Guid Step(string capabilityId,IEnumerable<MPCPortDescriptor> extraPorts=null)
+        {
+            if(string.IsNullOrWhiteSpace(capabilityId))
+                throw new ArgumentException("能力ID不能为空","capabilityId");
+            var action=MOLControlBlock.Action(capabilityId);
+            var declared=new List<MPCPortDescriptor>{
+                new MPCPortDescriptor("Start",MPCPortDirection.Input,"signal",
+                    MPCPortKind.Control,MPCPortMultiplicity.Many),
+                new MPCPortDescriptor("Done",MPCPortDirection.Output,"signal",MPCPortKind.Control)
+            };
+            if(extraPorts!=null)declared.AddRange(extraPorts);
+            if(declared.Any(x=>x==null)||declared.GroupBy(x=>x.MemberId,StringComparer.Ordinal)
+                .Any(x=>x.Count()>1))
+                throw new ArgumentException("重复端口","extraPorts");
+            _blocks.Add(action);_ports.Add(action.Id,declared.ToArray());
+            if(_entry==Guid.Empty)_entry=action.Id;
+            return action.Id;
+        }
+        public Guid Connect(Guid source,string outPort,Guid target,string inPort,
+            MPCPortKind kind=MPCPortKind.Control)
+        {
+            var link=new MOLLink(Guid.NewGuid(),new MOLBlockEndpoint(source,outPort),
+                new MOLBlockEndpoint(target,inPort),kind);
+            _links.Add(link);return link.Id;
+        }
+        public void Disconnect(Guid linkId)
+        {
+            int removed=_links.RemoveAll(x=>x.Id==linkId);
+            if(removed!=1)throw new InvalidOperationException("moc.wiring.link_missing");
+        }
+        public void Remove(Guid blockId)
+        {
+            if(_blocks.RemoveAll(x=>x.Id==blockId)!=1)
+                throw new InvalidOperationException("moc.wiring.block_missing");
+            _ports.Remove(blockId);
+            _links.RemoveAll(x=>x.Source.BlockId==blockId||x.Target.BlockId==blockId);
+            if(_entry==blockId)_entry=_blocks.Count==0?Guid.Empty:_blocks[0].Id;
+        }
+        public MOLWiringDefinition Build()
+        {return new MOLWiringDefinition(_entry,_blocks,_ports,_links);}
+        public static void Edit(MEMEngineeringSession session,MEMContent content,
+            Action<MOCFlowBuilder> configure)
+        {
+            if(session==null||content==null||configure==null)
+                throw new ArgumentNullException("session/content/configure");
+            int revision=session.Revision;
+            MEMNodeSnapshot node=session.GetSnapshot().Find(content.Id);
+            if(node==null||node.Kind!=MEMNodeKind.Content)
+                throw new InvalidOperationException("moc.wiring.foreign_content");
+            MOLWiringDefinition old=MOLWiringCodec.Get(node);
+            if(old==null&&MOLLogicCodec.Get(node)!=null)
+                throw new InvalidOperationException("moc.wiring.legacy_requires_explicit_conversion");
+            var builder=new MOCFlowBuilder(old);
+            configure(builder);
+            var aspect=MOLWiringCodec.CreateAspect(builder.Build());
+            session.Edit("编辑自由编排",revision,e=>{e.SetAspect(content,aspect);return true;})
+                .RequireValue();
+        }
+    }
+
     public sealed class MOCEngineeringCompiler
     {
         private const int MaxSteps = 4096;

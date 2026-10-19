@@ -31,6 +31,7 @@ namespace CxVisual.Studio
             _viewModel.ConfirmReplace = ConfirmProjectReplacement;
             DataContext = _viewModel;
             LogicHost.BlockSelected += (sender, args) => LogicInfo.Text = "已选逻辑块: " + args.BlockId.ToString("N");
+            LogicHost.LinkRequested += OnWiringLinkRequested;
             SceneHost.NodeActivated += OnActivated;
             SceneHost.MoveRequested += OnMove;
             _viewModel.SceneChanged += (sender, args) => RefreshScene();
@@ -187,8 +188,11 @@ namespace CxVisual.Studio
             SceneHost.SetScene(_viewModel.Items, _viewModel.SelectedId);
             if(_logicRunning)return;
             MEMPage page=_viewModel.ActivePage;
-            LogicHost.Definition=page==null?null:
-                MOLLogicCodec.Get(_viewModel.ProjectSession.GetSnapshot().Find(page.RootContent.Id));
+            MEMNodeSnapshot node=page==null?null:
+                _viewModel.ProjectSession.GetSnapshot().Find(page.RootContent.Id);
+            LogicHost.WiringDefinition=node==null?null:MOLWiringCodec.Get(node);
+            LogicHost.Definition=node==null||LogicHost.WiringDefinition!=null?null:
+                MOLLogicCodec.Get(node);
             LogicHost.RuntimeStates=null;
         }
         private void OnCreateLogicDemo(object sender,RoutedEventArgs args)
@@ -210,6 +214,73 @@ namespace CxVisual.Studio
             }
             catch(Exception ex){MessageBox.Show(this,ex.Message,"创建逻辑失败");}
         }
+
+        private void OnCreateWiringDemo(object sender,RoutedEventArgs args)
+        {
+            if(_logicRunning)return;
+            try
+            {
+                var page=_viewModel.ActivePage;
+                if(page==null)throw new InvalidOperationException("请先选择页面");
+                MEMNodeSnapshot node=_viewModel.ProjectSession.GetSnapshot().Find(page.RootContent.Id);
+                if(MOLLogicCodec.Get(node)!=null&&MessageBox.Show(this,
+                    "将以V2自由连线替换本Content现有V1示例。继续？","替换编排",
+                    MessageBoxButton.YesNo)!=MessageBoxResult.Yes)return;
+                var a=MOLControlBlock.Action("Acquire");
+                var b=MOLControlBlock.Action("AI");
+                var ports=new Dictionary<Guid,IEnumerable<MPCPortDescriptor>>{
+                    {a.Id,new[]{new MPCPortDescriptor("Done",MPCPortDirection.Output,"signal",MPCPortKind.Control)}},
+                    {b.Id,new[]{new MPCPortDescriptor("Start",MPCPortDirection.Input,"signal",MPCPortKind.Control)}}
+                };
+                var wiring=new MOLWiringDefinition(a.Id,new[]{a,b},ports,new[]{
+                    new MOLLink(Guid.NewGuid(),new MOLBlockEndpoint(a.Id,"Done"),
+                        new MOLBlockEndpoint(b.Id,"Start"),MPCPortKind.Control)
+                });
+                MOLWiringCodec.Set(_viewModel.ProjectSession,page.RootContent,wiring);
+                RefreshScene();
+                LogicInfo.Text="V2自由连线已保存到同一Content，支持添加能力、连接与CPU仿真。";
+            }
+            catch(Exception ex){LogicInfo.Text="创建自由连线失败: "+ex.Message;}
+        }
+        private void OnAddWiringAction(object sender,RoutedEventArgs args)
+        {
+            if(_logicRunning)return;
+            try
+            {
+                var page=_viewModel.ActivePage;
+                if(page==null)throw new InvalidOperationException("请先选择页面");
+                string capability=FlowActionCapability.Text==null?"":FlowActionCapability.Text.Trim();
+                MOCFlowBuilder.Edit(_viewModel.ProjectSession,page.RootContent,b=>{
+                    Guid previous=b.LastBlockId;
+                    Guid next=b.Step(capability);
+                    if(previous!=Guid.Empty)b.Connect(previous,"Done",next,"Start");
+                });
+                RefreshScene();
+                LogicInfo.Text="通过统一工程Session添加能力并提交，撤销/重做、保存/重开可用。";
+            }
+            catch(Exception ex){LogicInfo.Text="添加能力失败: "+ex.Message;}
+        }
+        private void OnToggleWiring(object sender,RoutedEventArgs args)
+        {
+            LogicHost.IsConnectMode=!LogicHost.IsConnectMode;
+            FlowWireMode.Content=LogicHost.IsConnectMode?"结束连线":"开始连线";
+            LogicInfo.Text=LogicHost.IsConnectMode?"请依次点击来源和目标逻辑块，创建Done→Start控制线。":"已退出连线模式。";
+        }
+        private void OnWiringLinkRequested(object sender,MOLLinkRequestedEventArgs args)
+        {
+            if(_logicRunning)return;
+            try
+            {
+                var page=_viewModel.ActivePage;
+                if(page==null)throw new InvalidOperationException("请先选择页面");
+                MOCFlowBuilder.Edit(_viewModel.ProjectSession,page.RootContent,b=>
+                    b.Connect(args.SourceBlockId,"Done",args.TargetBlockId,"Start"));
+                RefreshScene();
+                LogicInfo.Text="连接已通过Core合法性验证并提交。";
+            }
+            catch(Exception ex){LogicInfo.Text="连接被拒绝: "+ex.Message;}
+        }
+
         private sealed class SimulationResolver : IMRKCapabilityResolver
         {
             public bool TryResolve(string id,out MRKResolvedCapability capability)

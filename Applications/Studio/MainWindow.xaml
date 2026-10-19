@@ -63,6 +63,10 @@
                         <StackPanel DockPanel.Dock="Top">
                             <WrapPanel Margin="10,8">
                                 <Button Content="创建 X-Ray 逻辑示例" Click="OnCreateLogicDemo"/>
+                                <Button Content="创建自由连接示例" Click="OnCreateWiringDemo"/>
+                                <TextBox x:Name="FlowActionCapability" Width="115" Text="AI" Margin="5,0,2,0"/>
+                                <Button Content="添加能力" Click="OnAddWiringAction"/>
+                                <Button x:Name="FlowWireMode" Content="开始连线" Click="OnToggleWiring"/>
                                 <Button Content="仿真执行并追踪" Click="OnRunLogicDemo"/>
                             </WrapPanel>
                             <TextBlock x:Name="LogicInfo" Margin="12,0,12,10"

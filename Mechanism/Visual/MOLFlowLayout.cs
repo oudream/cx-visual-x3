@@ -21,6 +21,19 @@ namespace CxVisual.Mechanism.Visual
     /// <summary>Only computes presentation positions; it is not another workflow or engineering tree.</summary>
     public static class MOLFlowLayout
     {
+
+        public static IReadOnlyList<MOLBlockLayout> Build(MOLWiringDefinition wiring)
+        {
+            if(wiring==null)return Array.AsReadOnly(new MOLBlockLayout[0]);
+            wiring.Validate();
+            var items=new List<MOLBlockLayout>();
+            int index=0;
+            // Coordinates are presentation only; execution order comes from MOLLink.
+            foreach(var block in wiring.Blocks)
+                items.Add(new MOLBlockLayout(block.Id,block.Kind,block.CapabilityId,0,
+                    20,20+(index++)*70));
+            return items.AsReadOnly();
+        }
         public static IReadOnlyList<MOLBlockLayout> Build(MOLLogicDefinition definition)
         {
             if(definition==null)return Array.AsReadOnly(new MOLBlockLayout[0]);

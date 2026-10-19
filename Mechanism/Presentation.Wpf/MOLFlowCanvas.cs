@@ -16,6 +16,15 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         public Guid BlockId {get;private set;}
     }
 
+
+    public sealed class MOLLinkRequestedEventArgs : EventArgs
+    {
+        public MOLLinkRequestedEventArgs(Guid source,Guid target)
+        {SourceBlockId=source;TargetBlockId=target;}
+        public Guid SourceBlockId{get;private set;}
+        public Guid TargetBlockId{get;private set;}
+    }
+
     public static class MOLBlockTemplateSelector
     {
         public static bool IsDecision(MOLControlKind kind)
@@ -38,6 +47,19 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         public MOLLogicDefinition Definition
         {get{return (MOLLogicDefinition)GetValue(DefinitionProperty);}set{SetValue(DefinitionProperty,value);}}
 
+
+        public static readonly DependencyProperty WiringDefinitionProperty=
+            DependencyProperty.Register("WiringDefinition",typeof(MOLWiringDefinition),
+                typeof(MOLFlowCanvas),new FrameworkPropertyMetadata(null,
+                    FrameworkPropertyMetadataOptions.AffectsMeasure |
+                    FrameworkPropertyMetadataOptions.AffectsRender));
+        public MOLWiringDefinition WiringDefinition
+        {get{return (MOLWiringDefinition)GetValue(WiringDefinitionProperty);}
+         set{SetValue(WiringDefinitionProperty,value);}}
+        private Guid? _sourceForLink;
+        public bool IsConnectMode {get;set;}
+        public event EventHandler<MOLLinkRequestedEventArgs> LinkRequested;
+
         public static readonly DependencyProperty RuntimeStatesProperty =
             DependencyProperty.Register("RuntimeStates",typeof(IDictionary<Guid,string>),
                 typeof(MOLFlowCanvas),new FrameworkPropertyMetadata(null,
@@ -50,7 +72,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         public event EventHandler<MOLBlockSelectedEventArgs> BlockSelected;
         protected override Size MeasureOverride(Size availableSize)
         {
-            _layout=MOLFlowLayout.Build(Definition);
+            _layout=WiringDefinition!=null?MOLFlowLayout.Build(WiringDefinition):MOLFlowLayout.Build(Definition);
             double width=_layout.Count==0?520:Math.Max(520,_layout.Max(b=>b.X+b.Width+20));
             double height=_layout.Count==0?180:_layout.Max(b=>b.Y+b.Height+24);
             return new Size(width,height);
@@ -65,6 +87,23 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                     Brushes.SlateGray);
                 dc.DrawText(hint,new Point(20,25));return;
             }
+
+            if(WiringDefinition!=null)
+            {
+                var byId=_layout.ToDictionary(x=>x.BlockId);
+                foreach(var edge in WiringDefinition.Links)
+                {
+                    MOLBlockLayout from,to;
+                    if(!byId.TryGetValue(edge.Source.BlockId,out from)||
+                       !byId.TryGetValue(edge.Target.BlockId,out to))continue;
+                    var color=edge.Kind==MPCPortKind.Data?Brushes.DarkOrange:Brushes.SteelBlue;
+                    var pen=new Pen(color,edge.Kind==MPCPortKind.Data?1.8:1.4);
+                    var start=new Point(from.X+from.Width/2,from.Y+from.Height);
+                    var end=new Point(to.X+to.Width/2,to.Y);
+                    dc.DrawLine(pen,start,end);
+                }
+            }
+
             for(int i=0;i<_layout.Count;i++)
             {
                 var item=_layout[i];
@@ -92,7 +131,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 else dc.DrawRoundedRectangle(fill,pen,rect,7,7);
                 dc.DrawText(Text(item.Label+(state==null?"":" · "+state),Brushes.MidnightBlue),
                     new Point(item.X+26,item.Y+11));
-                if(i!=0)
+                if(i!=0 && WiringDefinition==null)
                 {
                     var previous=_layout[i-1];
                     dc.DrawLine(new Pen(Brushes.LightSteelBlue,1),
@@ -115,6 +154,19 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 {
                     var handler=BlockSelected;
                     if(handler!=null)handler(this,new MOLBlockSelectedEventArgs(item.BlockId));
+                    if(IsConnectMode&&WiringDefinition!=null)
+                    {
+                        if(!_sourceForLink.HasValue)_sourceForLink=item.BlockId;
+                        else
+                        {
+                            Guid source=_sourceForLink.Value;_sourceForLink=null;
+                            if(source!=item.BlockId)
+                            {
+                                var link=LinkRequested;
+                                if(link!=null)link(this,new MOLLinkRequestedEventArgs(source,item.BlockId));
+                            }
+                        }
+                    }
                     break;
                 }
             }

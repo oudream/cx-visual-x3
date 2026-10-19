@@ -55,6 +55,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             SaveLoadAndIdentity();
             V2WiringRoundtrip();
             V2WiringCompileRun();
+            V2BuilderSharedDefinition();
             BranchParallelAndTrace();
             LoopKindsAndBoundedForEach();
             InvokedContentAndInvalidSource();
@@ -335,6 +336,42 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 finally{reloaded.Close(true);}
             }
             finally{session.Close(true);if(System.IO.File.Exists(path))System.IO.File.Delete(path);}
+        }
+
+        private static void V2BuilderSharedDefinition()
+        {
+            var session=MEMEngineering.Create("Builder");
+            var page=session.AddPage("P");
+            Guid acquire=Guid.Empty, inspect=Guid.Empty;
+            try
+            {
+                MOCFlowBuilder.Edit(session,page.RootContent,b=>{
+                    acquire=b.Step("capture");
+                    inspect=b.Step("inspect");
+                    b.Connect(acquire,"Done",inspect,"Start");
+                });
+                int revision=session.Revision;
+                var model=MOLWiringCodec.Get(session.GetSnapshot().Find(page.RootContent.Id));
+                Check(model!=null&&model.Links.Count==1&&model.Blocks[0].Id==acquire,
+                    "builder uses authoritative Content Logic");
+                bool rejected=false;
+                try{MOCFlowBuilder.Edit(session,page.RootContent,b=>
+                    b.Connect(inspect,"Done",acquire,"Start"));}
+                catch(InvalidOperationException){rejected=true;}
+                Check(rejected&&session.Revision==revision,
+                    "builder cycle rejected without commit");
+                var resolver=new TestResolver()
+                    .Register("capture",(c,t)=>Task.FromResult((object)1))
+                    .Register("inspect",(c,t)=>Task.FromResult((object)2));
+                var plan=new MOCEngineeringCompiler().Compile(session.GetSnapshot(),
+                    page.RootContent.Id,resolver);
+                MOCTraceView trace;
+                var result=Execute(plan,null,out trace);
+                Check(result.State==MRKFlowState.Completed&&
+                    trace.Events.Any(x=>x.Origin.BlockId==inspect),
+                    "builder content compiled and traced");
+            }
+            finally{session.Close(true);}
         }
     }
 }
