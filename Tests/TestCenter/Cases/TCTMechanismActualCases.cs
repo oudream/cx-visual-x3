@@ -148,6 +148,66 @@ namespace CxVisual.TestCenter.Cases
             }
         }
 
+        [TCTTest("TCT.MVIS.005", "Widget属性配置单事务与运行只读快照保存重开",
+            TCTTestAspect.Mechanism,"Visual / Widgets",ObjectId="MRCWidgetElement")]
+        public static void WidgetSettingsSnapshotRoundtrip(TCTTestContext context)
+        {
+            using(var sandbox=new TCTTestSandbox())
+            {
+                string path=sandbox.PathFor("widget-config.cxproj");
+                var project=MEMEngineering.Create("Widget-Properties");
+                var page=project.AddPage("Control Panel");
+                var group=project.AddGroup(page.RootContent,"Controls");
+                var widget=new MRCWidgetElement(Guid.NewGuid(),"Modes",
+                    "core.widget.combobox",24,35,140,38);
+                project.Add(group,widget);
+                Guid id=widget.Id;
+                project.ClearHistory();
+                int before=project.Revision;
+                MTCEditResult<bool> result=project.Edit("配置Widget",before,e=>
+                {
+                    e.SetBinding(widget,"content",MPMBinding.Literal(MPMValue.String("工作模式")));
+                    e.SetBinding(widget,"options",MPMBinding.Literal(MPMValue.String("运行|停止|维护")));
+                    e.SetBinding(widget,"minimum",MPMBinding.Literal(MPMValue.Number(10)));
+                    e.SetBinding(widget,"maximum",MPMBinding.Literal(MPMValue.Number(90)));
+                    e.SetBinding(widget,"enabled",MPMBinding.Literal(MPMValue.Boolean(true)));
+                    e.SetBinding(widget,"value",MPMBinding.Literal(MPMValue.String("运行")));
+                    return true;
+                });
+                context.AssertTrue(result.Success,"Widget配置事务",true,result.Success);
+                context.AssertEqual(before+1,project.Revision,"一次Widget配置Revision");
+                CxSceneItem item=CxSceneProjection.Project(project,page.Id).Single(x=>x.Id==id);
+                context.AssertEqual("运行|停止|维护",
+                    item.WidgetSettings["options"].AsString(),"工程Widget选项投影");
+                context.AssertEqual(90d,item.WidgetSettings["maximum"].AsNumber(),
+                    "工程Widget范围投影");
+                context.AssertEqual("运行",item.RuntimeValue.AsString(),
+                    "Widget值为只读场景快照");
+                int readRevision=project.Revision;
+                CxSceneProjection.Project(project,page.Id);
+                context.AssertEqual(readRevision,project.Revision,"场景投影不得污染工程Revision");
+                context.AssertTrue(project.Undo().Success,"一键撤销Widget属性",true,true);
+                context.AssertTrue(widget.GetBinding("options")==null,"撤销一次恢复所有属性",
+                    true,widget.GetBinding("options")==null);
+                context.AssertTrue(project.Redo().Success,"Widget重做",true,true);
+                context.AssertEqual("运行|停止|维护",
+                    widget.GetBinding("options").Value.AsString(),"重做后恢复选项");
+                project.SaveAs(path);
+                project.Close();
+                using(var restored=MEMEngineering.Open(path))
+                {
+                    CxSceneItem replay=CxSceneProjection.Project(restored,page.Id)
+                        .Single(x=>x.Id==id);
+                    context.AssertEqual("运行|停止|维护",
+                        replay.WidgetSettings["options"].AsString(),"工程打包重开Widget选项");
+                    context.AssertEqual("运行",replay.RuntimeValue.AsString(),
+                        "工程重开Widget初始值");
+                }
+                context.Observe("ObjectTree","Widget持久属性",
+                    "6 typed MPM bindings, 1 revision, undo/redo, save/reopen");
+            }
+        }
+
         [TCTTest("TCT.MDATA.001", "Mechanism.Data配置保存与任务生效分离", TCTTestAspect.Mechanism,
             "Data / Configuration", ObjectId = "MHSConfigSection")]
         public static void ConfigSnapshotAndBoundary(TCTTestContext context)
