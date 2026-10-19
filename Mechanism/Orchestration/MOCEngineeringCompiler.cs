@@ -234,7 +234,7 @@ namespace CxVisual.Mechanism.Orchestration
                 p=>(IEnumerable<MPCPortDescriptor>)p.Value);
             var positions=_positions.ToDictionary(p=>p.Key,p=>p.Value);
             var parameters=_parameters.ToDictionary(p=>p.Key,
-                p=>(IDictionary<string,string>)new Dictionary<string,string>(p.Value));
+                p=>(IDictionary<string,string>)p.Value.ToDictionary(k=>k.Key,k=>k.Value,StringComparer.Ordinal));
             var wiring=new MOLWiringDefinition(_blocks[0].Id,_blocks,ports,_links,
                 positions,_groups,parameters);
             return MOLWiringCodec.Serialize(wiring);
@@ -281,7 +281,7 @@ namespace CxVisual.Mechanism.Orchestration
             foreach(var pair in current.Positions)_positions.Add(pair.Key,pair.Value);
             _groups.AddRange(current.Groups);
             foreach(var pair in current.Parameters)
-                _parameters.Add(pair.Key,new Dictionary<string,string>(pair.Value,StringComparer.Ordinal));
+                _parameters.Add(pair.Key,pair.Value.ToDictionary(k=>k.Key,k=>k.Value,StringComparer.Ordinal));
         }
         public Guid LastBlockId{get{return _blocks.Count==0?Guid.Empty:_blocks[_blocks.Count-1].Id;}}
         public Guid Step(MOCCapabilityDescriptor descriptor)
@@ -615,7 +615,7 @@ namespace CxVisual.Mechanism.Orchestration
             }
             foreach(var pair in fragment.Parameters)
                 _parameters.Add(ids[pair.Key],
-                    new Dictionary<string,string>(pair.Value,StringComparer.Ordinal));
+                    pair.Value.ToDictionary(k=>k.Key,k=>k.Value,StringComparer.Ordinal));
             foreach(var group in fragment.Groups)
                 _groups.Add(new MOLSelectionGroup(Guid.NewGuid(),group.Name,
                     group.BlockIds.Select(id=>ids[id])));
