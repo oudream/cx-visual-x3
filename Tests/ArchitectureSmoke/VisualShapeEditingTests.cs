@@ -21,6 +21,31 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 FGEPathCommand.Quadratic(new FGEPoint2D(10,25),new FGEPoint2D(40,10)),
                 FGEPathCommand.Cubic(new FGEPoint2D(55,75),
                     new FGEPoint2D(85,60),new FGEPoint2D(110,15))});
+            // de Casteljau 在任意t拆分曲线必须保持曲线原形，而非离散近似。
+            var split=FGEPathEditing.SplitSegment(plain,2,0.35);
+            Check(split.Commands.Count==4&&split.Commands[2].Verb==FGEPathVerb.Cubic,
+                "Bezier exact split did not create two cubic segments");
+            FGEBezier2D originalCurve=new FGEBezier2D(plain.Commands[1].End,
+                plain.Commands[2].Control1,plain.Commands[2].Control2,plain.Commands[2].End);
+            FGEBezier2D firstCurve=new FGEBezier2D(split.Commands[1].End,
+                split.Commands[2].Control1,split.Commands[2].Control2,split.Commands[2].End);
+            FGEBezier2D secondCurve=new FGEBezier2D(split.Commands[2].End,
+                split.Commands[3].Control1,split.Commands[3].Control2,split.Commands[3].End);
+            for(int step=0;step<=20;step++)
+            {
+                double t=step/20.0;
+                FGEPoint2D expected=originalCurve.PointAt(t);
+                FGEPoint2D actual=t<=0.35?firstCurve.PointAt(t/0.35):
+                    secondCurve.PointAt((t-0.35)/0.65);
+                Check(Near(expected,actual),"de Casteljau changed the original Bezier shape");
+            }
+            var converted=FGEPathEditing.ConvertSegment(plain,1,FGEPathVerb.Line);
+            Check(converted.Commands[1].Verb==FGEPathVerb.Line&&
+                converted.Commands[1].End.Equals(plain.Commands[1].End),
+                "segment conversion altered endpoint");
+            var deletion=FGEPathEditing.DeleteAnchor(converted,1);
+            Check(deletion.Commands.Count==2&&deletion.Commands[1].Verb==FGEPathVerb.Cubic,
+                "line vertex deletion damaged remaining contour");
             var modified=FGEPathEditing.MoveHandle(plain,2,FGEPathHandleKind.Control2,
                 new FGEPoint2D(95,100));
             Check(modified.Commands[2].Control2.Equals(new FGEPoint2D(95,100)),
@@ -39,6 +64,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 new FGEPoint2D(50,50));}
             catch(ArgumentException){rejected=true;}
             Check(rejected,"arc start should stay constrained to exact center/radius/angle");
+            FGEArc2D updatedArc=new FGEArc2D(new FGEPoint2D(24,25),30,16,0.4,2.3);
+            FGEPath2D revisedArc=FGEPathEditing.UpdateArc(
+                FGEPath2D.Arc(new FGEArc2D(new FGEPoint2D(24,25),20,14,0,2)),1,updatedArc);
+            Check(Near(revisedArc.Commands[0].End,updatedArc.PointAt(0))&&
+                Near(revisedArc.Commands[1].End,updatedArc.PointAt(1)),
+                "Arc start/end points did not derive from exact parameters");
 
             string filename=Path.Combine(Path.GetTempPath(),"cxvisual-edit-a-"+Guid.NewGuid().ToString("N")+".cxproj");
             try
