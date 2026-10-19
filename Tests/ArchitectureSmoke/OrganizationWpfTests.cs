@@ -132,6 +132,14 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         shapeView.SelectedVisualIds[0]==another.Id,
                         "external single selection retained stale multiple objects");
                     shapeView.SetScene(shapeScene,bezierScene.Id);
+                    shapeView.SetSelectedVisualIds(new[]{bezierScene.Id,another.Id});
+                    Check(shapeView.SelectedVisualIds.Count==2,
+                        "Studio multi-selection wasn't retained after view refresh");
+                    shapeView.SetScene(shapeScene,another.Id);
+                    shapeView.SetSelectedVisualIds(new[]{bezierScene.Id,another.Id});
+                    Check(shapeView.SelectedVisualIds.Count==2,
+                        "multi-selection was lost across scene re-projection");
+                    shapeView.SetSelectedVisualIds(new[]{bezierScene.Id});
                     shapeView.UpdateLayout();
                     System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(new Action(()=>{}),
                         System.Windows.Threading.DispatcherPriority.Render);
