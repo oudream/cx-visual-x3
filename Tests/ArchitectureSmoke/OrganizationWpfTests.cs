@@ -7,6 +7,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using CxVisual.Foundation.Geometry;
 using CxVisual.Mechanism.Core;
+using CxVisual.Mechanism.Data.RuntimeData;
 using CxVisual.Mechanism.Visual;
 using CxVisual.Mechanism.Presentation.Wpf;
 
@@ -14,6 +15,15 @@ namespace CxVisual.Tests.ArchitectureSmoke
 {
     internal static class OrganizationWpfTests
     {
+        private sealed class WidgetData : IMDSExternalBindingResolver
+        {
+            public bool Ready=true;
+            public object Resolve(MDSBindingSource kind,string name,Type target)
+            {
+                if(kind==MDSBindingSource.Variable&&name=="Motor.Ready")return Ready;
+                return null;
+            }
+        }
         private static void Check(bool value, string message) { if (!value) throw new InvalidOperationException("H01 WPF: " + message); }
         // PushOpacity/PushTransform 会让真实Shape绘制嵌套在DrawingGroup中。
         private static System.Collections.Generic.IEnumerable<GeometryDrawing> DeepGeometries(Drawing drawing)
@@ -166,6 +176,27 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         Check(assetView.AssetErrors.Count==0&&
                             VisualTreeHelper.GetDrawing(assetView)!=null,
                             "real raster/SVG resource decoding or WPF drawing failed");
+                        // MDS -> Scene RuntimeValue -> 实际WPF CheckBox 的真实回归。
+                        var ready=new MRCWidgetElement(Guid.NewGuid(),"Ready",
+                            "core.widget.checkbox",260,20,80,28);
+                        session.Add(assetsGroup,ready);
+                        session.SetBinding(ready,"value",MPMBinding.Variable("Motor.Ready"));
+                        var data=new WidgetData();
+                        int emitted=0;
+                        assetView.WidgetEventRequested+=(sender,args)=>emitted++;
+                        assetView.SetScene(CxSceneProjection.Project(session,pageAsset.Id,data,0),null);
+                        var assetWidgets=(System.Windows.Controls.Canvas)
+                            VisualTreeHelper.GetChild(assetView,0);
+                        var checkbox=assetWidgets.Children.OfType<System.Windows.Controls.CheckBox>()
+                            .Single();
+                        Check(checkbox.IsChecked==true&&emitted==0,
+                            "MDS runtime Boolean did not update real WPF checkbox safely");
+                        data.Ready=false;
+                        assetView.SetScene(CxSceneProjection.Project(session,pageAsset.Id,data,10),null);
+                        Check(object.ReferenceEquals(checkbox,
+                            assetWidgets.Children.OfType<System.Windows.Controls.CheckBox>().Single())&&
+                            checkbox.IsChecked==false&&emitted==0,
+                            "runtime data update recreated WPF control or emitted a user event");
                         assetWindow.Close();
                         bool rejectedUnsafe=false;
                         using(var input=new MemoryStream(System.Text.Encoding.UTF8.GetBytes(
