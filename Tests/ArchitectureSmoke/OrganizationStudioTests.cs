@@ -433,10 +433,13 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 var inspectorPorts=(ComboBox)window.FindName("FlowInspectorPorts");
                 portName.Text="Threshold";
                 portType.Text="double";
+                ((ComboBox)window.FindName("FlowInspectorDirection")).SelectedIndex=0;
+                ((ComboBox)window.FindName("FlowInspectorKind")).SelectedIndex=0;
                 Click(window,"添加Port");
                 var withPort=MOLWiringCodec.Get(finalSession.GetSnapshot().Find(active.RootContent.Id));
-                Check(withPort.Ports[selectedIds[0]].Any(p=>p.MemberId=="Threshold"),
-                    "Studio typed Port add did not commit");
+                Check(withPort.Ports[selectedIds[0]].Any(p=>p.MemberId=="Threshold"&&
+                    p.Kind==MPCPortKind.Data&&p.Direction==MPCPortDirection.Input),
+                    "Studio typed Data Input Port add did not commit");
                 inspectorPorts.SelectedItem=inspectorPorts.Items.Cast<MPCPortDescriptor>()
                     .Single(p=>p.MemberId=="Threshold");
                 Pump();
