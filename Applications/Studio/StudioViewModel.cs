@@ -78,6 +78,13 @@ namespace CxVisual.Studio
             if(result.Success)NotifyScene();
             return result;
         }
+        public MTCEditResult<bool> AlignVisualSelection(string mode)
+        {
+            MTCEditResult<bool> result=_editor.Align(_selection,mode);
+            Status=result.Success?"图元对齐/分布已提交":"无法对齐："+result.ErrorCode+" "+result.Message;
+            if(result.Success)NotifyScene();
+            return result;
+        }
         public MTCEditResult<bool> EditVisualGeometry(double x,double y,double width,
             double height,double rotation)
         {
