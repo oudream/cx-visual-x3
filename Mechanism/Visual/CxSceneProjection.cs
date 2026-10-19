@@ -148,25 +148,54 @@ namespace CxVisual.Mechanism.Visual
                             }
                         }
                         MPMValue runtimeValue=null;
-                        if(_runtimeEnabled&&(node.TypeId=="core.widget"||
-                            node.TypeId.EndsWith(".textbox",StringComparison.OrdinalIgnoreCase)||
-                            node.TypeId.EndsWith(".checkbox",StringComparison.OrdinalIgnoreCase)||
-                            node.TypeId.EndsWith(".slider",StringComparison.OrdinalIgnoreCase)||
-                            node.TypeId.EndsWith(".progressbar",StringComparison.OrdinalIgnoreCase)||
-                            node.TypeId.EndsWith(".combobox",StringComparison.OrdinalIgnoreCase)))
+                        var widgetSettings=new Dictionary<string,MPMValue>(StringComparer.Ordinal);
+                        bool widget=node.TypeId=="core.widget"||
+                            node.TypeId.StartsWith("core.widget.",StringComparison.OrdinalIgnoreCase);
+                        if(widget)
                         {
-                            MPMValueKind valueKind=node.TypeId.EndsWith(".checkbox",
+                            string[] textSettings={"content","placeholder","options","tooltip"};
+                            foreach(string member in textSettings)
+                            {
+                                MPMValue value=Value(node,member,path,MPMValueKind.String);
+                                if(value!=null)
+                                {
+                                    if(value.Kind!=MPMValueKind.String)
+                                        throw new InvalidOperationException("visual.widget.string_required:"+member);
+                                    widgetSettings.Add(member,value);
+                                }
+                            }
+                            string[] numberSettings={"minimum","maximum"};
+                            foreach(string member in numberSettings)
+                            {
+                                MPMValue value=Value(node,member,path,MPMValueKind.Number);
+                                if(value!=null)
+                                {
+                                    if(value.Kind!=MPMValueKind.Number)
+                                        throw new InvalidOperationException("visual.widget.number_required:"+member);
+                                    widgetSettings.Add(member,value);
+                                }
+                            }
+                            MPMValue enabled=Value(node,"enabled",path,MPMValueKind.Boolean);
+                            if(enabled!=null)
+                            {
+                                if(enabled.Kind!=MPMValueKind.Boolean)
+                                    throw new InvalidOperationException("visual.widget.boolean_required:enabled");
+                                widgetSettings.Add("enabled",enabled);
+                            }
+                            MPMValueKind kind=node.TypeId.EndsWith(".checkbox",
                                 StringComparison.OrdinalIgnoreCase)?MPMValueKind.Boolean:
                                 (node.TypeId.EndsWith(".slider",StringComparison.OrdinalIgnoreCase)||
                                 node.TypeId.EndsWith(".progressbar",StringComparison.OrdinalIgnoreCase))?
                                 MPMValueKind.Number:MPMValueKind.String;
-                            runtimeValue=Value(node,"value",path,valueKind);
+                            runtimeValue=Value(node,"value",path,kind);
+                            if(runtimeValue!=null&&runtimeValue.Kind!=kind)
+                                throw new InvalidOperationException("visual.widget.value_kind_mismatch");
                         }
                         Items.Add(new CxSceneItem(first==null?node.Id:first.Id,
                             first==null?node.Name:first.Name+" / "+node.Name,address,world,
                             width,height,selectable,first==null?parent:firstParent,
                             first==null?x:first.Placement.X,first==null?y:first.Placement.Y,
-                            node.TypeId,shape,style,displayText,assetId,mediaType,runtimeValue));
+                            node.TypeId,shape,style,displayText,assetId,mediaType,runtimeValue,widgetSettings));
                     }
                 }
                 foreach(var id in node.ChildIds)Collect(_snapshot.Find(id),world,path,locked,first,firstParent,depth+1);
