@@ -253,8 +253,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                     MRCTransform transform=item.WorldTransform;
                     dc.PushTransform(new MatrixTransform(new Matrix(
                         transform.M11,transform.M21,transform.M12,transform.M22,
-                        transform.X+(_dragging&&selected?_dragX:0),
-                        transform.Y+(_dragging&&selected?_dragY:0))));
+                        transform.X+(_dragging&&_selectedItems.Contains(item.Id)?_dragX:0),
+                        transform.Y+(_dragging&&_selectedItems.Contains(item.Id)?_dragY:0))));
                     dc.PushOpacity(item.Style.Opacity);
                     if(image!=null)
                         dc.DrawImage(image,new Rect(0,0,item.LocalWidth,item.LocalHeight));
@@ -411,7 +411,16 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             }
             bool extend=(Keyboard.Modifiers&ModifierKeys.Control)!=0||
                 (Keyboard.Modifiers&ModifierKeys.Shift)!=0;
-            IReadOnlyList<Guid> intendedSelection=ApplyPointerSelection(hit,extend);
+            // 选中的多个对象拖动时保留选区；点击其他对象才清除原选区。
+            bool moveGroup=hit.HasValue&&!extend&&_selectedItems.Count>1&&
+                _selectedItems.Contains(hit.Value);
+            IReadOnlyList<Guid> intendedSelection;
+            if(moveGroup)
+            {
+                _selection=hit;
+                intendedSelection=SelectedVisualIds;
+            }
+            else intendedSelection=ApplyPointerSelection(hit,extend);
             if(hit==null)
             {
                 _marquee=true;_marqueeStart=point;_marqueeEnd=point;
@@ -423,8 +432,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             _dragging = hit.HasValue&&!extend&&_selectedItems.Contains(hit.Value);
             if (_dragging) CaptureMouse();
             EventHandler<CxNodeEventArgs> activated = NodeActivated;
-            if (!extend&&activated != null) activated(this, new CxNodeEventArgs(hit));
-            if(hit.HasValue&&SelectionSetRequested!=null)
+            if (!extend&&!moveGroup&&activated != null) activated(this, new CxNodeEventArgs(hit));
+            if(hit.HasValue&&!moveGroup&&SelectionSetRequested!=null)
                 SelectionSetRequested(intendedSelection);
             InvalidateVisual();
             e.Handled = true;
@@ -508,7 +517,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 {
                     double x, y; original.PositionAfterWorldDelta(_dragX, _dragY, out x, out y);
                     if(_gridSnap){x=Math.Round(x/25)*25;y=Math.Round(y/25)*25;}
-                    moved(this, new CxMoveEventArgs(original.Id, x, y));
+                    moved(this, new CxMoveEventArgs(original.Id, x, y, _dragX, _dragY));
                 }
             }
             _dragX = 0; _dragY = 0;
