@@ -99,6 +99,13 @@ namespace CxVisual.Studio
                 45+(index%7)*24,55+(index%7)*20));
             if(ElementCount>before)Select(Items[Items.Count-1].Id);
         }
+        public void AddVisualWidget()
+        {
+            int index=ElementCount+1,before=ElementCount;
+            Execute(()=>_editor.AddWidget("Button "+index,"core.widget",
+                45+(index%7)*25,55+(index%7)*20));
+            if(ElementCount>before)Select(Items[Items.Count-1].Id);
+        }
         public void AddVisualText()
         {
             int index=ElementCount+1;
