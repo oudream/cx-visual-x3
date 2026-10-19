@@ -200,6 +200,24 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                             dc.DrawLine(new Pen(Brushes.DodgerBlue,1){DashStyle=DashStyles.Dash},
                                 new Point(handle.WorldPoint.X,handle.WorldPoint.Y),center);
                     }
+                    // 鼠标按住时直接预览整条Bezier/Path，不污染MEM Revision；
+                    // 松开后由统一EditHandle事务一次性提交精确曲线。
+                    if(_handleDragging&&_activeHandle!=null&&edited.Shape!=null&&
+                        (_activeHandle.Kind==MVIVisualHandleKind.Anchor||
+                         _activeHandle.Kind==MVIVisualHandleKind.Control1||
+                         _activeHandle.Kind==MVIVisualHandleKind.Control2))
+                    {
+                        FGEPathHandleKind kind=_activeHandle.Kind==MVIVisualHandleKind.Anchor?
+                            FGEPathHandleKind.Anchor:_activeHandle.Kind==MVIVisualHandleKind.Control1?
+                            FGEPathHandleKind.Control1:FGEPathHandleKind.Control2;
+                        FGEPoint2D point=edited.GeometryToWorld.Inverse().TransformPoint(
+                            new FGEPoint2D(_handlePointer.X,_handlePointer.Y));
+                        FGEPath2D preview=FGEPathEditing.MoveHandle(
+                            edited.Shape.Geometry,_activeHandle.CommandIndex,kind,point);
+                        Geometry geometry=MPWShapeRenderer.BuildGeometry(preview,edited.GeometryToWorld);
+                        dc.DrawGeometry(null,new Pen(Brushes.OrangeRed,2)
+                            {DashStyle=DashStyles.Dash},geometry);
+                    }
                 }
             }
         }
