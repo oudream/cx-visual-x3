@@ -73,6 +73,11 @@ namespace CxVisual.Studio
             LogicHost.PortLinkRejected += (sender,args) =>
                 LogicInfo.Text="拖线被拒绝："+args.Reason;
             SceneHost.NodeActivated += OnActivated;
+            SceneHost.SelectionSetRequested += ids=>
+            {
+                _viewModel.SetSelection(ids);
+                VisualInfo.Text="场景选中 "+ids.Count+" 个对象，可用原工程成组操作";
+            };
             SceneHost.MoveRequested += OnMove;
             SceneHost.HandleEditRequested += (sender,edit)=>
             {
