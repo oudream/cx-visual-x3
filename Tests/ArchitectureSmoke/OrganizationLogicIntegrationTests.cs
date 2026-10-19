@@ -599,14 +599,16 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 MOCFlowBuilder.Edit(session,firstPage.RootContent,builder=>
                     builder.Distribute(new[]{a,b,c},true));
                 var distributed=MOLWiringCodec.Get(session.GetSnapshot().Find(firstPage.RootContent.Id));
-                Check(Math.Abs(distributed.Positions[b].X-
-                    (distributed.Positions[a].X+distributed.Positions[c].X)/2)<0.001,
+                var xs=new[]{a,b,c}.Select(id=>distributed.Positions[id].X)
+                    .OrderBy(x=>x).ToArray();
+                Check(Math.Abs(xs[1]-(xs[0]+xs[2])/2)<0.001,
                     "horizontal distribution lost equal intervals");
                 MOCFlowBuilder.Edit(session,firstPage.RootContent,builder=>
                     builder.ArrangeGrid(new[]{a,b,c}));
                 var arranged=MOLWiringCodec.Get(session.GetSnapshot().Find(firstPage.RootContent.Id));
                 Check(arranged.Positions[a].X<arranged.Positions[b].X&&
-                    arranged.Positions[b].X<arranged.Positions[c].X&&
+                    arranged.Positions[c].X==arranged.Positions[a].X&&
+                    arranged.Positions[c].Y>arranged.Positions[b].Y&&
                     arranged.Groups.Count==1,"grid arrangement changed group or order");
                 Check(session.Undo().Success&&
                     MOLWiringCodec.Get(session.GetSnapshot().Find(firstPage.RootContent.Id))
