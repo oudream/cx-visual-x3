@@ -26,7 +26,7 @@ namespace CxVisual.Mechanism.Core
         public MPMTypeDescriptor(string typeId,int schemaVersion,MEMNodeKind kind,IEnumerable<MPMPropertyDescriptor> properties=null,
             IEnumerable<MPCPortDescriptor> ports=null,IEnumerable<MPMAspect> aspects=null)
         {
-            TypeId=MEMNode.NormalizeName(typeId);if(TypeId.StartsWith("core.",StringComparison.Ordinal)||schemaVersion<1||(kind!=MEMNodeKind.Content&&kind!=MEMNodeKind.Symbol))throw new ArgumentException("Invalid custom type schema");
+            TypeId=MEMNode.NormalizeName(typeId);if(TypeId.StartsWith("core.",StringComparison.Ordinal)||schemaVersion<1||(kind!=MEMNodeKind.Content&&kind!=MEMNodeKind.Symbol&&kind!=MEMNodeKind.Element))throw new ArgumentException("Invalid custom type schema");
             SchemaVersion=schemaVersion;Kind=kind;
             Properties=Freeze(properties,p=>p.MemberId);Ports=Freeze(ports,p=>p.MemberId);Aspects=Freeze(aspects,a=>a.Kind+":"+a.ProviderId);
             foreach(var p in Properties)if(p.DefaultBinding!=null&&(p.DefaultBinding.Kind==MPMBindingKind.Member||p.DefaultBinding.Kind==MPMBindingKind.Resource))throw new ArgumentException("Type defaults cannot capture project identities");
@@ -67,6 +67,7 @@ namespace CxVisual.Mechanism.Core
         }
         public MEMContent AddTypedContent(MEMNode parent,string name,string typeId){return Edit("创建业务内容",e=>e.AddTypedContent(parent,name,typeId)).RequireValue();}
         public MEMSymbol AddTypedSymbol(string name,string typeId){return Edit("创建组件定义",e=>e.AddTypedSymbol(name,typeId)).RequireValue();}
+        public MRCWidgetElement AddTypedElement(MEMNode parent,string name,string typeId){return Edit("创建控件图元",e=>e.AddTypedElement(parent,name,typeId)).RequireValue();}
         public void RemoveProperty(MEMNode owner,string member){Edit("删除属性",e=>e.RemoveProperty(owner,member)).RequireValue();}
     }
     public sealed partial class MTCEditSession
@@ -80,12 +81,13 @@ namespace CxVisual.Mechanism.Core
         private MEMNode AddTyped(MEMNode parent,string name,string typeId,MEMNodeKind kind)
         {
             Demand();var descriptor=_session.FindType(typeId);if(descriptor==null||descriptor.Kind!=kind)throw new InvalidOperationException("org.type.missing_or_wrong_kind");
-            MEMNode node=kind==MEMNodeKind.Content?(MEMNode)new MEMContent(Guid.NewGuid(),name):new MEMSymbol(Guid.NewGuid(),name);node.SetTypeId(typeId);Add(parent,node);
+            MEMNode node=kind==MEMNodeKind.Content?(MEMNode)new MEMContent(Guid.NewGuid(),name):kind==MEMNodeKind.Symbol?(MEMNode)new MEMSymbol(Guid.NewGuid(),name):new MRCWidgetElement(Guid.NewGuid(),name,typeId,0,0);node.SetTypeId(typeId);Add(parent,node);
             foreach(var property in descriptor.Properties)DefineProperty(node,property);
             foreach(var port in descriptor.Ports)DefinePort(node,port.MemberId,port.Direction,port.TypeId,port.Kind,port.Multiplicity,port.Contract,port.IsPublic,port.Required);
             foreach(var aspect in descriptor.Aspects)SetAspect(node,aspect);return node;
         }
         public MEMContent AddTypedContent(MEMNode parent,string name,string typeId){return (MEMContent)AddTyped(parent,name,typeId,MEMNodeKind.Content);}
         public MEMSymbol AddTypedSymbol(string name,string typeId){return (MEMSymbol)AddTyped(_session.Project,name,typeId,MEMNodeKind.Symbol);}
+        public MRCWidgetElement AddTypedElement(MEMNode parent,string name,string typeId){return (MRCWidgetElement)AddTyped(parent,name,typeId,MEMNodeKind.Element);}
     }
 }

@@ -203,9 +203,16 @@ namespace CxVisual.Mechanism.Core
                             case "Symbol": node = new MEMSymbol(id, name, false); break;
                             case "Group": node = new MRCGroup(id, name); break;
                             case "Element":
-                                node = r.GetAttribute("typeId") == "core.shape"
-                                    ? (MEMNode)new MRCShapeElement(id,name,Number(r,"x",0),Number(r,"y",0),Number(r,"width",120),Number(r,"height",80))
-                                    : new MRCRectangle(id,name,Number(r,"x",0),Number(r,"y",0),Number(r,"width",120),Number(r,"height",80));
+                                string elementType=r.GetAttribute("typeId")??"core.rectangle";
+                                double elementX=Number(r,"x",0),elementY=Number(r,"y",0),elementWidth=Number(r,"width",120),elementHeight=Number(r,"height",80);
+                                if(elementType=="core.shape")node=new MRCShapeElement(id,name,elementX,elementY,elementWidth,elementHeight);
+                                else if(elementType=="core.text")node=new MRCTextElement(id,name,elementX,elementY,elementWidth,elementHeight);
+                                else if(elementType=="core.image")node=new MRCImageElement(id,name,elementX,elementY,elementWidth,elementHeight);
+                                else if(elementType=="core.svg")node=new MRCSvgElement(id,name,elementX,elementY,elementWidth,elementHeight);
+                                else if(elementType=="core.widget")node=new MRCWidgetElement(id,name,"core.widget",elementX,elementY,elementWidth,elementHeight);
+                                else if(project!=null&&project.TypeItems!=null&&project.TypeItems.ContainsKey(elementType)&&project.TypeItems[elementType].Kind==MEMNodeKind.Element)
+                                    node=new MRCWidgetElement(id,name,elementType,elementX,elementY,elementWidth,elementHeight);
+                                else node=new MRCRectangle(id,name,elementX,elementY,elementWidth,elementHeight);
                                 break;
                             default: throw new InvalidDataException("Unknown kind " + kind);
                         }

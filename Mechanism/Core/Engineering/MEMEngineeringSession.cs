@@ -109,7 +109,7 @@ namespace CxVisual.Mechanism.Core
         private static void CheckSupportedType(MEMNode node)
         {
             var t = node.GetType();
-            if (t != typeof(MEMPage) && t != typeof(MEMContent) && t != typeof(MEMSymbol) && t != typeof(MRCGroup) && t != typeof(MRCRectangle) && t != typeof(MRCShapeElement)
+            if (t != typeof(MEMPage) && t != typeof(MEMContent) && t != typeof(MEMSymbol) && t != typeof(MRCGroup) && t != typeof(MRCRectangle) && t != typeof(MRCShapeElement) && t != typeof(MRCTextElement) && t != typeof(MRCImageElement) && t != typeof(MRCSvgElement) && t != typeof(MRCWidgetElement)
 )
                 throw new InvalidOperationException("org.type.unsupported: H01 requires a registered built-in type; custom payload persistence is a later phase");
         }
