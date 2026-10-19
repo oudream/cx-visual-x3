@@ -10,7 +10,7 @@
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="OrganizationH04Tests.cs"/>
+    <Compile Include="VisualAuthoringStage1Tests.cs"/><Compile Include="OrganizationH04Tests.cs"/>
     <Compile Include="OrganizationH05Tests.cs"/>
     <Compile Include="OrganizationH06Tests.cs"/>
     <Compile Include="OrganizationLogicIntegrationTests.cs"/>

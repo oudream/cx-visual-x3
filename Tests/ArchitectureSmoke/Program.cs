@@ -16,7 +16,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 if (Array.IndexOf(args, "--organization-wpf") >= 0) return OrganizationWpfTests.Run();
                 if (Array.IndexOf(args, "--organization") >= 0)
                 {
-                    OrganizationH01Tests.Run(); OrganizationAdversarialTests.Run(); OrganizationH02Tests.Run(); OrganizationH03VisualTests.Run(); OrganizationH03ContractTests.Run(); OrganizationH04Tests.Run(); OrganizationH05Tests.Run(); OrganizationH06Tests.Run(); OrganizationLogicIntegrationTests.Run(); return 0;
+                    VisualAuthoringStage1Tests.Run(); OrganizationH01Tests.Run(); OrganizationAdversarialTests.Run(); OrganizationH02Tests.Run(); OrganizationH03VisualTests.Run(); OrganizationH03ContractTests.Run(); OrganizationH04Tests.Run(); OrganizationH05Tests.Run(); OrganizationH06Tests.Run(); OrganizationLogicIntegrationTests.Run(); return 0;
                 }
                 if (args != null && args.Length > 0 && args[0] == "--config-wpf")
                 {
@@ -28,6 +28,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     OrganizationPerformanceTests.Run(Array.IndexOf(args, "--organization-stress") >= 0);
                     return 0;
                 }
+                VisualAuthoringStage1Tests.Run();
                 OrganizationH01Tests.Run();
                 OrganizationAdversarialTests.Run();
                 OrganizationH02Tests.Run();
