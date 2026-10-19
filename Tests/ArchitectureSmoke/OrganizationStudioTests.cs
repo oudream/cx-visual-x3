@@ -135,7 +135,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     new CxVisual.Mechanism.Presentation.Wpf.MOLLinkRequestedEventArgs(
                         selectedIds[1],selectedIds[2])});
                 var choiceBox=(ComboBox)window.FindName("FlowPortPairs");
-                Check(choiceBox.Items.Count>0,"compatible Port pairs not shown");
+                Check(choiceBox.Items.Count>0,"compatible Port pairs not shown: "+((TextBlock)window.FindName("LogicInfo")).Text);
                 Click(window,"确认端口连线");
                 var complete=MOLWiringCodec.Get(reopened.GetSnapshot().Find(active.RootContent.Id));
                 Check(complete.Links.Count==2,"UI chosen typed Port link was not committed");
