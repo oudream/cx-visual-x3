@@ -22,6 +22,7 @@ namespace CxVisual.Foundation.Geometry
         public static FGETransform2D Rotation(double radians){FGEValidation.Finite(radians,"radians");double c=Math.Cos(radians),s=Math.Sin(radians);return new FGETransform2D(c,-s,s,c,0,0);}
         public double Determinant{get{return M11*M22-M12*M21;}}
         public FGEPoint2D TransformPoint(FGEPoint2D p){return new FGEPoint2D(M11*p.X+M12*p.Y+DX,M21*p.X+M22*p.Y+DY);}
+        public FGEPoint2D Transform(FGEPoint2D p){return TransformPoint(p);}
         public FGEVector2D TransformVector(FGEVector2D p){return new FGEVector2D(M11*p.X+M12*p.Y,M21*p.X+M22*p.Y);}
         public FGETransform2D Compose(FGETransform2D child)
         {

@@ -15,7 +15,7 @@ namespace CxVisual.Mechanism.Visual
             foreach(var page in snapshot.Nodes.Where(n=>n.Kind==MEMNodeKind.Page&&(!pageId.HasValue||n.Id==pageId.Value)))projection.Collect(page,MRCTransform.Identity,new Guid[0],false,null,MRCTransform.Identity);
             return projection.Items.AsReadOnly();
         }
-        public static Guid? HitTest(IList<CxSceneItem> items, CxPoint2D point)
+        public static Guid? HitTest(IList<CxSceneItem> items, FGEPoint2D point)
         {
             if (items == null) return null;
             for (int i = items.Count - 1; i >= 0; i--)

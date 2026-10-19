@@ -28,8 +28,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     var symbol = session.AddSymbol("库定义"); session.AddRectangle(symbol.RootGroup, "不直接投影", 200, 20);
                     var scene = CxSceneProjection.Project(session);
                     Check(scene.Count == 1 && scene[0].Id == rectangle.Id, "shared library definition leaked into page scene");
-                    Check(CxSceneProjection.HitTest(scene, new CxVisual.Foundation.Geometry.CxPoint2D(70, 108)) == null, "AABB false hit");
-                    Check(CxSceneProjection.HitTest(scene, new CxVisual.Foundation.Geometry.CxPoint2D(105, 140)) == rectangle.Id, "rotated hit missing");
+                    Check(CxSceneProjection.HitTest(scene, new CxVisual.Foundation.Geometry.FGEPoint2D(70, 108)) == null, "AABB false hit");
+                    Check(CxSceneProjection.HitTest(scene, new CxVisual.Foundation.Geometry.FGEPoint2D(105, 140)) == rectangle.Id, "rotated hit missing");
                     double localX, localY; scene[0].PositionAfterWorldDelta(10, 0, out localX, out localY);
                     Check(Math.Abs(localX - Math.Sqrt(50)) < 1e-8 && Math.Abs(localY + Math.Sqrt(50)) < 1e-8, "world drag was not converted to parent coordinates");
                     var view = new SceneView { Width = 300, Height = 300 }; view.SetScene(scene, null);

@@ -19,8 +19,8 @@ namespace CxVisual.Mechanism.Visual
         {
             Id=id;Name=name;Address=address;_world=world;_width=width;_height=height;IsSelectable=selectable;_moveParent=moveParent;_moveX=moveX;_moveY=moveY;
             double x1,y1,x2,y2,x3,y3,x4,y4;world.TransformPoint(0,0,out x1,out y1);world.TransformPoint(width,0,out x2,out y2);world.TransformPoint(0,height,out x3,out y3);world.TransformPoint(width,height,out x4,out y4);
-            TopLeft=new CxPoint2D(x1,y1);TopRight=new CxPoint2D(x2,y2);BottomLeft=new CxPoint2D(x3,y3);BottomRight=new CxPoint2D(x4,y4);
-            double left=Math.Min(Math.Min(x1,x2),Math.Min(x3,x4)),top=Math.Min(Math.Min(y1,y2),Math.Min(y3,y4));Bounds=new CxRect2D(left,top,Math.Max(Math.Max(x1,x2),Math.Max(x3,x4))-left,Math.Max(Math.Max(y1,y2),Math.Max(y3,y4))-top);
+            TopLeft=new FGEPoint2D(x1,y1);TopRight=new FGEPoint2D(x2,y2);BottomLeft=new FGEPoint2D(x3,y3);BottomRight=new FGEPoint2D(x4,y4);
+            double left=Math.Min(Math.Min(x1,x2),Math.Min(x3,x4)),top=Math.Min(Math.Min(y1,y2),Math.Min(y3,y4));Bounds=new FGERect2D(left,top,Math.Max(Math.Max(x1,x2),Math.Max(x3,x4))-left,Math.Max(Math.Max(y1,y2),Math.Max(y3,y4))-top);
         }
         internal static MRCTransform Inverse(MRCTransform transform)
         {
@@ -28,7 +28,7 @@ namespace CxVisual.Mechanism.Visual
             double a=transform.M22/d,b=-transform.M12/d,c=-transform.M21/d,e=transform.M11/d;return new MRCTransform(a,b,c,e,-a*transform.X-b*transform.Y,-c*transform.X-e*transform.Y);
         }
         public Guid Id {get;private set;} public string Name {get;private set;}public MRIObjectAddress Address {get;private set;}public bool IsSelectable {get;private set;}
-        public CxRect2D Bounds {get;private set;}public CxPoint2D TopLeft {get;private set;}public CxPoint2D TopRight {get;private set;}public CxPoint2D BottomRight {get;private set;}public CxPoint2D BottomLeft {get;private set;}
+        public FGERect2D Bounds {get;private set;}public FGEPoint2D TopLeft {get;private set;}public FGEPoint2D TopRight {get;private set;}public FGEPoint2D BottomRight {get;private set;}public FGEPoint2D BottomLeft {get;private set;}
         public bool Contains(double x,double y)
         {if(!IsSelectable)return false;double lx,ly;Inverse(_world).TransformPoint(x,y,out lx,out ly);return lx>=0&&ly>=0&&lx<=_width&&ly<=_height;}
         public void PositionAfterWorldDelta(double dx,double dy,out double x,out double y)
