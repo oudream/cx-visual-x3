@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
+using CxVisual.Mechanism.Core;
 using CxVisual.Mechanism.Visual;
 
 namespace CxVisual.Mechanism.Presentation.Wpf
@@ -38,6 +39,39 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             foreach (CxSceneItem item in _items)
             {
                 bool selected = _selection.HasValue && _selection.Value == item.Id;
+                if(item.Shape!=null)
+                {
+                    MPWShapeRenderer.Draw(dc,item,selected&&_dragging?_dragX:0,
+                        selected&&_dragging?_dragY:0);
+                    if(selected)
+                    {
+                        Rect highlight=new Rect(item.Bounds.X+( _dragging?_dragX:0),
+                            item.Bounds.Y+(_dragging?_dragY:0),
+                            Math.Max(1,item.Bounds.Width),Math.Max(1,item.Bounds.Height));
+                        dc.DrawRectangle(null,new Pen(Brushes.DodgerBlue,0.8){DashStyle=DashStyles.Dash},highlight);
+                    }
+                    continue;
+                }
+                if(item.ElementTypeId=="core.text")
+                {
+                    MRCVisualStyle textStyle=item.Style;
+                    var matrix=item.WorldTransform;
+                    dc.PushTransform(new MatrixTransform(new Matrix(matrix.M11,matrix.M21,
+                        matrix.M12,matrix.M22,matrix.X+(_dragging&&selected?_dragX:0),
+                        matrix.Y+(_dragging&&selected?_dragY:0))));
+                    var textBrush=MPWShapeRenderer.BrushOf(textStyle.Fill,Brushes.MidnightBlue);
+                    if(textStyle.Fill.Kind==MRCBrushKind.None)textBrush=Brushes.MidnightBlue;
+                    var formatted=new FormattedText(item.Text,CultureInfo.CurrentUICulture,
+                        FlowDirection.LeftToRight,new Typeface(textStyle.FontFamily),
+                        textStyle.FontSize,textBrush,1.0);
+                    formatted.MaxTextWidth=Math.Max(1,item.Bounds.Width);
+                    dc.PushOpacity(textStyle.Opacity);
+                    dc.DrawText(formatted,new Point(0,0));
+                    dc.Pop();
+                    dc.Pop();
+                    continue;
+                }
+
                 double dx = selected && _dragging ? _dragX : 0;
                 double dy = selected && _dragging ? _dragY : 0;
                 Rect bounds = new Rect(item.Bounds.X + dx, item.Bounds.Y + dy, item.Bounds.Width, item.Bounds.Height);
