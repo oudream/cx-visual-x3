@@ -290,6 +290,29 @@ namespace CxVisual.Studio
             Status="完整样式已保存";
             NotifyScene();
         }
+        /// <summary>同一MEM事务绑定状态灯与逻辑块，自动生成变量名，不要求填写Guid。</summary>
+        public void LinkSelectedVisualToFlowBlock(Guid blockId)
+        {
+            MRCVisualItem item=SelectedVisualDefinition();
+            MRCVisualStyle baseStyle=MRCVisualAppearance.StyleOf(item);
+            MRCVisualBehaviorDefinition before=MRCVisualAppearance.BehaviorOf(item);
+            var states=new System.Collections.Generic.List<MRCVisualStateDefinition>(before.States);
+            string[] names={"Running","Completed","Failed"};
+            string[] colors={"#FF2778D7","#FF16A34A","#FFDC2626"};
+            for(int i=0;i<names.Length;i++)
+            {
+                string key=MOLVisualTraceBindingResolver.VariableFor(blockId,names[i]);
+                states.RemoveAll(x=>x.Name==key);
+                states.Add(new MRCVisualStateDefinition(key,new MRCVisualStyle(
+                    MRCBrushDefinition.Solid(MRCColor.Parse(colors[i])),
+                    baseStyle.Stroke,baseStyle.StrokeWidth,baseStyle.Opacity,
+                    baseStyle.FontFamily,baseStyle.FontSize,baseStyle.ThemeKey)));
+            }
+            ProjectSession.SetVisualBehavior(item,new MRCVisualBehaviorDefinition(
+                states,before.Animations,before.EventActions));
+            Status="已关联MOL节点运行/完成/失败三态 | Revision "+ProjectSession.Revision;
+            NotifyScene();
+        }
         public void AddVisualState(string stateName,string fillColor)
         {
             MRCVisualItem item=SelectedVisualDefinition();
