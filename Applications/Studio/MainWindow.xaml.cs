@@ -41,6 +41,37 @@ namespace CxVisual.Studio
         { _viewModel.Select(args.Id); }
         private void OnMove(object sender, CxMoveEventArgs args)
         { _viewModel.Drag(args.Id, args.X, args.Y); }
+        private void OnInsertShape(object sender,RoutedEventArgs args)
+        {
+            try
+            {
+                var button=(System.Windows.Controls.Button)sender;
+                string kind=button.Tag.ToString();
+                if(kind=="Text")_viewModel.AddVisualText();
+                else _viewModel.AddVisualShape((MRCShapeKind)Enum.Parse(typeof(MRCShapeKind),kind));
+                VisualInfo.Text="已创建 "+button.Content+" | Revision "+_viewModel.Revision;
+            }
+            catch(Exception ex){VisualInfo.Text="创建失败: "+ex.Message;}
+        }
+        private void OnApplyVisualStyle(object sender,RoutedEventArgs args)
+        {
+            try
+            {
+                _viewModel.SetSelectedFillColor(FillColorInput.Text,
+                    double.Parse(StrokeWidthInput.Text,System.Globalization.CultureInfo.InvariantCulture));
+                VisualInfo.Text="图元样式已提交，可使用撤销/重做和保存工程。";
+            }
+            catch(Exception ex){VisualInfo.Text="设置样式失败: "+ex.Message;}
+        }
+        private void OnBindVisualEvent(object sender,RoutedEventArgs args)
+        {
+            try
+            {
+                _viewModel.AppendSelectedEventAction(EventIdInput.Text,ActionIdInput.Text);
+                VisualInfo.Text="事件定义已保存；命令实际执行由运行体系和专业权限负责。";
+            }
+            catch(Exception ex){VisualInfo.Text="事件定义失败: "+ex.Message;}
+        }
         private void OnVisualSelectionChanged(object sender,System.Windows.Controls.SelectionChangedEventArgs args)
         {if(_viewModel==null||_viewModel.IsRefreshing)return;var list=(System.Windows.Controls.ListBox)sender;_viewModel.SetSelection(list.SelectedItems.OfType<CxVisual.Mechanism.Visual.CxSceneItem>().Select(i=>i.Id));}
         private bool ConfirmProjectReplacement(MEMEngineeringSession session)
