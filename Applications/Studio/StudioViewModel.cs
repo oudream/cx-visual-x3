@@ -2,6 +2,7 @@ using System;
 using System.ComponentModel;
 using System.IO;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Windows.Input;
 using CxVisual.Mechanism.Core;
 using CxVisual.Mechanism.Visual;
@@ -291,6 +292,23 @@ namespace CxVisual.Studio
             ProjectSession.SetVisualStyle(item,style);
             Status="完整样式已保存";
             NotifyScene();
+        }
+        /// <summary>用已有MPM状态绑定反查当前资源内关联某流程节点的画面对象。</summary>
+        public Guid? FindVisualForFlowBlock(Guid blockId)
+        {
+            string running=MOLVisualTraceBindingResolver.VariableFor(blockId,"Running");
+            string completed=MOLVisualTraceBindingResolver.VariableFor(blockId,"Completed");
+            string failed=MOLVisualTraceBindingResolver.VariableFor(blockId,"Failed");
+            foreach(CxSceneItem scene in Items)
+            {
+                if(scene.Address==null)continue;
+                MRCVisualItem visual=ProjectSession.Find(scene.Address.ObjectId) as MRCVisualItem;
+                if(visual==null)continue;
+                if(MRCVisualAppearance.BehaviorOf(visual).States.Any(state=>
+                    state.Name==running||state.Name==completed||state.Name==failed))
+                    return scene.Id;
+            }
+            return null;
         }
         /// <summary>同一MEM事务绑定状态灯与逻辑块，自动生成变量名，不要求填写Guid。</summary>
         public void LinkSelectedVisualToFlowBlock(Guid blockId)
