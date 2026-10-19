@@ -504,7 +504,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
 
                 // C同一工程验证：真实WPF按钮自动关联选中MOL节点到图元状态，
                 // 创建三个MPM运行态定义，一次MEM事务，Undo/Redo与逻辑共用。
-                var flowLamp=finalSession.AddShape(active.RootContent,"Flow Status Lamp",
+                var flowLamp=finalSession.AddShape((MEMContent)finalSession.Find(active.RootContent.Id),
+                    "Flow Status Lamp",
                     MRCShapeDefinition.Circle(new FGEPoint2D(20,20),20),24,24);
                 Guid sourceBlock=MOLWiringCodec.Get(finalSession.GetSnapshot()
                     .Find(active.RootContent.Id)).Blocks[0].Id;
