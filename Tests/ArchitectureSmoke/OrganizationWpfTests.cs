@@ -135,6 +135,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         widgetCanvas.Children[0] is System.Windows.Controls.Button,
                         "Widget did not materialize an actual WPF Button");
                     var widgetButton=(System.Windows.Controls.Button)widgetCanvas.Children[0];
+                    widgetView.SetScene(CxSceneProjection.Project(session,widgetPage.Id),null);
+                    Check(object.ReferenceEquals(widgetButton,widgetCanvas.Children[0]),
+                        "visual frame update rebuilt live WPF Widget");
                     widgetButton.RaiseEvent(new RoutedEventArgs(
                         System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
                     Check(events==0,"design-mode widget executed a runtime event");
