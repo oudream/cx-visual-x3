@@ -183,8 +183,11 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             bool reuse=CanReuseWidgets(items);
             _items.Clear();
             if(items!=null)_items.AddRange(items);
+            // 外部切换选择时清除旧高亮；鼠标本地维护多选时不被场景重投影覆盖。
+            bool changedSelection=_selection!=selected;
+            if(changedSelection)_selectedItems.Clear();
             _selection=selected;
-            if(selected.HasValue)_selectedItems.Add(selected.Value);
+            if(changedSelection&&selected.HasValue)_selectedItems.Add(selected.Value);
             _selectedItems.RemoveWhere(id=>!_items.Exists(item=>item.Id==id));
             if(!reuse)BuildWidgetLayer();
             else
