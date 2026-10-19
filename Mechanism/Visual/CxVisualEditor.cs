@@ -3,6 +3,7 @@ using System.Collections.ObjectModel;
 using System.Collections.Generic;
 using System.Linq;
 using CxVisual.Mechanism.Core;
+using CxVisual.Foundation.Geometry;
 using CxVisual.Mechanism.Data.RuntimeData;
 namespace CxVisual.Mechanism.Visual
 {
@@ -141,6 +142,30 @@ namespace CxVisual.Mechanism.Visual
                 return MTCEditResult<bool>.Rejected(Document.Revision,"visual.default_prevented",
                     "Handle edit prevented by capture/target/bubble interaction");
             return MVIVisualEditing.Edit(this,handle,worldX,worldY);
+        }
+        /// <summary>路径插入/删除/类型转换：与鼠标控制柄共用几何补偿与MEM事务。</summary>
+        public MTCEditResult<bool> EditPathSegment(Guid id,int commandIndex,string operation,
+            double fraction=0.5)
+        {
+            Demand();
+            if(!Route(MVIInteractionKind.Move,id))
+                return MTCEditResult<bool>.Rejected(Document.Revision,"visual.default_prevented",
+                    "Path editing blocked by interaction policy");
+            var shape=Document.Find(id) as MRCShapeElement;
+            if(shape==null)return MTCEditResult<bool>.Rejected(Document.Revision,
+                "visual.path_required","Open an editable Shape definition");
+            FGEPath2D before=shape.Shape.Geometry;
+            FGEPath2D after;
+            switch(operation)
+            {
+                case "split":after=FGEPathEditing.SplitSegment(before,commandIndex,fraction);break;
+                case "delete":after=FGEPathEditing.DeleteAnchor(before,commandIndex);break;
+                case "line":after=FGEPathEditing.ConvertSegment(before,commandIndex,FGEPathVerb.Line);break;
+                case "quadratic":after=FGEPathEditing.ConvertSegment(before,commandIndex,FGEPathVerb.Quadratic);break;
+                case "cubic":after=FGEPathEditing.ConvertSegment(before,commandIndex,FGEPathVerb.Cubic);break;
+                default:throw new ArgumentException("visual.path.operation");
+            }
+            return MVIVisualEditing.CommitGeometry(this,shape,after);
         }
         public MTCEditResult<bool> Move(Guid id, double x, double y)
         {
