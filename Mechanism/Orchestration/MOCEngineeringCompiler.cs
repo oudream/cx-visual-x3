@@ -629,6 +629,95 @@ namespace CxVisual.Mechanism.Orchestration
         }
         public MOLWiringDefinition Build()
         {return new MOLWiringDefinition(_entry,_blocks,_ports,_links,_positions,_groups,_parameters);}
+        /// <summary>
+        /// G04-F：提取无Data边界的连续Control动作段为真实MEMContent，
+        /// 在同一MEM事务中替换为调用节点。Data参数跨Content待独立契约支持，明确拒绝。
+        /// </summary>
+        public static MEMContent ExtractLinearContent(MEMEngineeringSession session,
+            MEMContent parent,IEnumerable<Guid> selectedBlocks,string name)
+        {
+            if(session==null||parent==null||selectedBlocks==null)
+                throw new ArgumentNullException("session/parent/selectedBlocks");
+            Guid[] requested=selectedBlocks.Distinct().ToArray();
+            if(requested.Length<2)throw new InvalidOperationException("moc.extract.needs_two");
+            int revision=session.Revision;
+            var node=session.GetSnapshot().Find(parent.Id);
+            if(node==null||node.Kind!=MEMNodeKind.Content)
+                throw new InvalidOperationException("moc.extract.foreign_content");
+            var definition=MOLWiringCodec.Get(node);
+            if(definition==null)throw new InvalidOperationException("moc.extract.requires_v2");
+            var set=new HashSet<Guid>(requested);
+            if(requested.Any(id=>!definition.Blocks.Any(b=>b.Id==id))||
+                definition.Links.Any(l=>l.Kind!=MPCPortKind.Control&&
+                    (set.Contains(l.Source.BlockId)||set.Contains(l.Target.BlockId)))||
+                definition.Parameters.Keys.Any(set.Contains)||
+                definition.Groups.Any(g=>g.BlockIds.Any(set.Contains)&&
+                    g.BlockIds.Any(id=>!set.Contains(id))))
+                throw new InvalidOperationException("moc.extract.unsupported_boundary");
+            var inside=definition.Links.Where(l=>set.Contains(l.Source.BlockId)&&
+                set.Contains(l.Target.BlockId)).ToArray();
+            var incoming=definition.Links.Where(l=>!set.Contains(l.Source.BlockId)&&
+                set.Contains(l.Target.BlockId)).ToArray();
+            var outgoing=definition.Links.Where(l=>set.Contains(l.Source.BlockId)&&
+                !set.Contains(l.Target.BlockId)).ToArray();
+            if(inside.Length!=requested.Length-1||incoming.Length>1||outgoing.Length>1||
+                inside.GroupBy(l=>l.Source.BlockId).Any(g=>g.Count()>1)||
+                inside.GroupBy(l=>l.Target.BlockId).Any(g=>g.Count()>1))
+                throw new InvalidOperationException("moc.extract.requires_linear_control");
+            Guid[] entryCandidates=requested.Where(id=>!inside.Any(l=>l.Target.BlockId==id)).ToArray();
+            Guid[] exitCandidates=requested.Where(id=>!inside.Any(l=>l.Source.BlockId==id)).ToArray();
+            if(entryCandidates.Length!=1||exitCandidates.Length!=1||
+                (incoming.Length==1&&incoming[0].Target.BlockId!=entryCandidates[0])||
+                (outgoing.Length==1&&outgoing[0].Source.BlockId!=exitCandidates[0])||
+                (definition.EntryBlockId!=entryCandidates[0]&&incoming.Length==0))
+                throw new InvalidOperationException("moc.extract.boundary_invalid");
+            if(definition.Blocks.Count==requested.Length&&incoming.Length+outgoing.Length!=0)
+                throw new InvalidOperationException("moc.extract.invalid_scope");
+            var fragment=MOCWiringFragment.Capture(definition,requested);
+            var ports=fragment.Ports.ToDictionary(p=>p.Key,
+                p=>(IEnumerable<MPCPortDescriptor>)p.Value);
+            var positions=fragment.Positions.ToDictionary(p=>p.Key,p=>p.Value);
+            var child=new MOLWiringDefinition(entryCandidates[0],fragment.Blocks,ports,
+                fragment.Links,positions,fragment.Groups);
+            child.ValidateExecutable();
+            var edit=new MOCFlowBuilder(definition);
+            edit.RemoveMany(requested);
+            Guid callId=Guid.NewGuid();
+            var call=new MOLControlBlock(callId,MOLControlKind.Action,
+                "moc.invoke:"+"00000000000000000000000000000000");
+            // 占位ID在同一事务生成目标Content后修正，外部代码不接触半成品。
+            var location=positions[entryCandidates[0]];
+            var oldIn=incoming.Length==0?null:incoming[0];
+            var oldOut=outgoing.Length==0?null:outgoing[0];
+            MEMContent created=null;
+            session.Edit("提取可复用Content子流程",revision,e=>
+            {
+                created=e.AddContent(session.Project,name);
+                var realCall=new MOLControlBlock(callId,MOLControlKind.Action,
+                    "moc.invoke:"+created.Id.ToString("N"));
+                edit._blocks.Add(realCall);
+                edit._ports.Add(callId,new MPCPortDescriptor[]{
+                    new MPCPortDescriptor("Start",MPCPortDirection.Input,
+                        "signal",MPCPortKind.Control,MPCPortMultiplicity.Many),
+                    new MPCPortDescriptor("Done",MPCPortDirection.Output,
+                        "signal",MPCPortKind.Control)});
+                edit._positions.Add(callId,location);
+                if(definition.EntryBlockId==entryCandidates[0])edit._entry=callId;
+                if(oldIn!=null)edit._links.Add(new MOLLink(Guid.NewGuid(),
+                    oldIn.Source,new MOLBlockEndpoint(callId,"Start"),MPCPortKind.Control));
+                if(oldOut!=null)edit._links.Add(new MOLLink(Guid.NewGuid(),
+                    new MOLBlockEndpoint(callId,"Done"),oldOut.Target,MPCPortKind.Control));
+                e.SetAspect(created,MOLWiringCodec.CreateAspect(child));
+                e.DefinePort(created,"Start",MPCPortDirection.Input,"signal",
+                    MPCPortKind.Control,MPCPortMultiplicity.Many,null,true);
+                e.DefinePort(created,"Done",MPCPortDirection.Output,"signal",
+                    MPCPortKind.Control,MPCPortMultiplicity.Many,null,true);
+                e.SetAspect(parent,MOLWiringCodec.CreateAspect(edit.Build()));
+                return true;
+            }).RequireValue();
+            return created;
+        }
+
         public static void Edit(MEMEngineeringSession session,MEMContent content,
             Action<MOCFlowBuilder> configure)
         {
