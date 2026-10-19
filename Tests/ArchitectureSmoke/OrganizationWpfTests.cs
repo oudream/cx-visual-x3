@@ -56,6 +56,48 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         Check(pixels[inside+2] < 245 && pixels[inside+3] == 255, "transformed rectangle not painted");
                         Console.WriteLine("PASS H01 raster pixels");
                     }
+                    // 九种Shape通过同一工程快照投影为真正的WPF曲线/弧/路径，而非矩形包围盒。
+                    var shapePage=session.AddPage("Shape gallery");
+                    var shapeGroup=session.AddGroup(shapePage.RootContent,"Shape items");
+                    for(int i=1;i<=9;i++)
+                    {
+                        MRCShapeKind kind=(MRCShapeKind)i;
+                        var shape=session.AddShape(shapeGroup,kind.ToString(),
+                            MVIShapeCatalog.CreateDefault(kind),
+                            20+(i-1)%3*200,25+(i-1)/3*145);
+                        session.SetVisualStyle(shape,new MRCVisualStyle(
+                            MRCBrushDefinition.Solid(MRCColor.Parse("#FF81BDF4")),
+                            MRCBrushDefinition.Solid(MRCColor.Parse("#FF176DAD")),2));
+                    }
+                    session.AddText(shapeGroup,"Title","真实Shape与Text",20,480);
+                    var shapeScene=CxSceneProjection.Project(session,shapePage.Id);
+                    Check(shapeScene.Count==10&&shapeScene.Count(i=>i.Shape!=null)==9,
+                        "nine shape definitions not projected");
+                    var shapeView=new SceneView{Width=650,Height=555};
+                    var shapeWindow=new Window{Content=shapeView,Width=680,Height=585,
+                        Left=-10000,Top=-10000,ShowInTaskbar=false,ShowActivated=false,
+                        WindowStartupLocation=WindowStartupLocation.Manual};
+                    shapeView.SetScene(shapeScene,null);
+                    shapeWindow.Show();
+                    shapeView.Measure(new Size(650,555));
+                    shapeView.Arrange(new Rect(0,0,650,555));shapeView.UpdateLayout();
+                    System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(new Action(()=>{}),
+                        System.Windows.Threading.DispatcherPriority.Render);
+                    var visualDrawing=VisualTreeHelper.GetDrawing(shapeView);
+                    Check(visualDrawing!=null&&shapeView.IsVisible,"shape gallery WPF canvas inactive");
+                    var pathGeometries=visualDrawing.Children.OfType<GeometryDrawing>()
+                        .Where(d=>d.Geometry is StreamGeometry).ToArray();
+                    Check(pathGeometries.Length==9,"nine shape WPF path drawings missing");
+                    var circle=shapeScene.Single(i=>i.Shape!=null&&i.Shape.Kind==MRCShapeKind.Circle);
+                    Check(circle.Contains(circle.Bounds.X+circle.Bounds.Width/2,
+                        circle.Bounds.Y+circle.Bounds.Height/2),
+                        "circle geometry center should be hit");
+                    Check(!circle.Contains(circle.Bounds.X,circle.Bounds.Y),
+                        "circle outside corner must not hit");
+                    foreach(var item in shapeScene.Where(i=>i.Shape!=null))
+                        Check(MPWShapeRenderer.BuildGeometry(item) is StreamGeometry,
+                            "renderer fell back to rectangle for "+item.Shape.Kind);
+                    shapeWindow.Close();
                     // The same saved logical definition is rendered in the actual WPF canvas.
                     var logic = new MOLLogicDefinition(MOLControlBlock.Sequence(
                         MOLControlBlock.Action("Acquire"),
