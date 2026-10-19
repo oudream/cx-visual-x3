@@ -55,7 +55,7 @@
 | 轮次 | EP | 最小闭环切片与验证重点 | 状态 | 对应SHA/CI |
 |---|---|---|---|---|
 | R01 | EP04 | Studio属性显示MPM类型/必填/数值范围；合法应用、越界拒绝且Revision不变 | 已提交待CI | f6c0dceb7afa（须同SHA Windows复核） |
-| R02 | EP04 | 根据Schema形成Boolean与Numeric输入控件；拒绝错误类型 | 未开始 | 待对应源码及Windows证据 |
+| R02 | EP04 | 根据Schema形成Boolean与Numeric输入控件；拒绝错误类型 | 已提交待CI | f49760aa9d5c（静态结构已核对，Windows待检） |
 | R03 | EP04 | 属性默认、资源来源与无效引用诊断 | 未开始 | 待对应源码及Windows证据 |
 | R04 | EP04 | 定义/实例覆盖、多选混合值/只读约束 | 未开始 | 待对应源码及Windows证据 |
 | R05 | EP01 | 工作区/资源树/实例与定义往返导航 | 未开始 | 待对应源码及Windows证据 |
@@ -130,5 +130,6 @@ R01源码已提交（截止 f6c0dceb7afae75d320f6b442f3a152b11566162）：修改
 | 轮次 | 当前状态 | 实际SHA | 真实变更与证据 | 未通过或待办 |
 |---|---|---|---|---|
 | R01 | 已提交待CI | f6c0dceb7afa | Studio属性行/真实WPF提示/双实例越界回归代码已提交；仅静态核查源文件已落仓 | Windows MSBuild、OrganizationStudioTests STA、对应SHA CI均待实际执行 |
+| R02 | 已提交待CI | f49760aa9d5c | StudioPropertyItem的INotifyPropertyChanged、Boolean/Number/Integer/Decimal类型投影及格式/范围提示；WPF CheckBox与Numeric TextBox随来源动态切换；OrganizationStudioTests新增非法格式拒绝、Boolean双实例、Undo/Redo、保存重开与变量/常量切换用例。当前已对比GitHub实际3处源码并做XAML标记栈静态核查 | 未有实际Windows构建、WPF STA或同SHA完整CI通过报告；公共XAML结构检查不等于WPF编译，现场设备与外部鼠标注入不适用本轮 |
 
-下一轮只在R01实际提交和对应检验状态记录后推进；若新HEAD的其它Owner回归失败，先定位与本轮相关性，不靠关闭测试获取绿色。
+R02状态说明：代码和测试均已提交，不能称“验收通过”。适配当前GitHub连接器的CI查询仅能读综合Commit Status与PR触发运行，两者在`f49760aa9d5c`返回空；这**不能证明**没有push-triggered的Actions，更不能冒称成功。需要在GitHub Actions中以HEAD/完整SHA核对工程组织Windows Acceptance、TestCenter、统一Runtime和Config，再补实测结论。若旧R01测试在新版HEAD失败，先修正R01/R02再开始R03，不禁用任何测试。下一任务：R03（默认值、资源来源选择、无效引用反证）。
