@@ -151,8 +151,18 @@ namespace CxVisual.Studio
         }
         private void OnActivated(object sender, CxNodeEventArgs args)
         { _viewModel.Select(args.Id); RefreshVisualInspector(); }
-        private void OnMove(object sender, CxMoveEventArgs args)
-        { _viewModel.Drag(args.Id, args.X, args.Y); }
+        private void OnMove(object sender,CxMoveEventArgs args)
+        {
+            IReadOnlyList<Guid> ids=SceneHost.SelectedVisualIds;
+            if(ids.Count>1&&ids.Contains(args.Id))
+            {
+                MTCEditResult<bool> result=_viewModel.DragVisualSelection(ids,
+                    args.WorldDeltaX,args.WorldDeltaY,SceneHost.SnapToGrid);
+                VisualInfo.Text=result.Success?"整体拖动已提交一个可撤销事务":
+                    result.ErrorCode+" "+result.Message;
+            }
+            else _viewModel.Drag(args.Id,args.X,args.Y);
+        }
         private static double ReadVisualNumber(TextBox text)
         {
             return double.Parse(text.Text,System.Globalization.NumberStyles.Float,
