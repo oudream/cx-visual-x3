@@ -69,6 +69,14 @@ namespace CxVisual.Mechanism.Orchestration
                     // Content引用由MOC编译校验并经MRK子流程内联，不冒充专业Provider。
                     if(block.CapabilityId.StartsWith("moc.invoke:",StringComparison.Ordinal))
                         continue;
+                    if(block.CapabilityId=="moc.state-machine")
+                    {
+                        if(!wiring.StateMachines.ContainsKey(block.Id))
+                            errors.Add(new MOCDiagnostic(MOCDiagnosticSeverity.Error,
+                                "MOC_STATE_MACHINE_MISSING",
+                                "节点未声明StateMachine状态和转移规则",contentId,block.Id));
+                        continue;
+                    }
                     MRKResolvedCapability action;
                     if(!resolver.TryResolve(block.CapabilityId,out action)||action==null)
                     {
