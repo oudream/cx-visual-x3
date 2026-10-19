@@ -112,7 +112,7 @@ MOCFlowBuilder.Edit(session, content, b =>
 - 真实测试：`Tests/ArchitectureSmoke/OrganizationLogicIntegrationTests.cs`，`Tests/ArchitectureSmoke/OrganizationStudioTests.cs`。覆盖非法坐标/未知ID/组交叠拒绝、剪贴板恶意负例、跨Content复制重映射、保存重开、WPF拖动、选区缩放、布局和撤销重做。
 - 中间提交曾出现失败：布局命令引用错误、测试对布局顺序的错误假设，以及同名`删除选中`误点资源操作；均已修复。不能引用单次中间失败作为最终成败判断。
 - 已独立确认`d8402e967fb6a1fe2c76f508b7ec5cc413833c0e`工程组织Windows CI成功：[39224417427](https://github.com/oudream/cx-visual-x3/actions/runs/39224417427)，统一运行体系TDD成功：[39224417460](https://github.com/oudream/cx-visual-x3/actions/runs/39224417460)。
-- 后续针对空草稿粘贴恢复及Esc取消预览新增回归（提交`b3eeeb7d`、`dca5d696`、`42c6bd4d`），**新增回归是否通过以这些提交对应的真实Windows CI为准，未通过前不得直接认定其已验收。**
+- 空草稿重新粘贴、撤销/重做及Esc取消Port/节点预览回归分别由`b3eeeb7d`、`dca5d696`、`42c6bd4d`实现。最终源码提交`42c6bd4df9096d1a49d7d2bcfc0706c87b806891`的真实Windows CI**均成功**：工程组织 [39230835230](https://github.com/oudream/cx-visual-x3/actions/runs/39230835230)、统一运行 [39230835511](https://github.com/oudream/cx-visual-x3/actions/runs/39230835511)、配置L1 [39230835473](https://github.com/oudream/cx-visual-x3/actions/runs/39230835473)、配置公共底座 [39230835683](https://github.com/oudream/cx-visual-x3/actions/runs/39230835683)。
 
 ### 6.3 严格边界与后续工作
 
