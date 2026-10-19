@@ -284,12 +284,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 new MPCPortDescriptor("Done",MPCPortDirection.Output,"signal",MPCPortKind.Control),
                 new MPCPortDescriptor("Image",MPCPortDirection.Output,"int",MPCPortKind.Data)};
             ports[inspect.Id]=new[]{
-                new MPCPortDescriptor("Start",MPCPortDirection.Input,"signal",MPCPortKind.Control,true),
+                new MPCPortDescriptor("Start",MPCPortDirection.Input,"signal",MPCPortKind.Control,required:true),
                 new MPCPortDescriptor("Done",MPCPortDirection.Output,"signal",MPCPortKind.Control),
                 new MPCPortDescriptor("Image",MPCPortDirection.Input,"int",MPCPortKind.Data,
                     required:true)};
             ports[judge.Id]=new[]{
-                new MPCPortDescriptor("Start",MPCPortDirection.Input,"signal",MPCPortKind.Control,true)};
+                new MPCPortDescriptor("Start",MPCPortDirection.Input,"signal",MPCPortKind.Control,required:true)};
             var links=new[]{
                 new MOLLink(Guid.NewGuid(),new MOLBlockEndpoint(acquire.Id,"Done"),
                     new MOLBlockEndpoint(inspect.Id,"Start"),MPCPortKind.Control),
