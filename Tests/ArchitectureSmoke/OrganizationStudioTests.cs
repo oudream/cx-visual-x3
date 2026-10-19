@@ -112,6 +112,26 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Click(window,"按钮控件");
                 Check(page.RootContent.DescendantsAndSelf().OfType<MRCWidgetElement>().Count()==1,
                     "Studio widget tool did not create engineering element");
+                var studioWidget=page.RootContent.DescendantsAndSelf()
+                    .OfType<MRCWidgetElement>().Single();
+                ((TextBox)window.FindName("WidgetContentInput")).Text="检测启动";
+                ((TextBox)window.FindName("WidgetOptionsInput")).Text="运行|停止";
+                ((TextBox)window.FindName("WidgetMinInput")).Text="10";
+                ((TextBox)window.FindName("WidgetMaxInput")).Text="90";
+                ((CheckBox)window.FindName("WidgetEnabledInput")).IsChecked=false;
+                int revisionBeforeWidget=session.Revision;
+                Click(window,"应用控件属性");
+                Check(session.Revision==revisionBeforeWidget+1&&
+                    studioWidget.GetBinding("content").Value.AsString()=="检测启动"&&
+                    studioWidget.GetBinding("maximum").Value.AsNumber()==90&&
+                    !studioWidget.GetBinding("enabled").Value.AsBoolean(),
+                    "Studio Widget editor failed to atomically persist settings");
+                Click(window,"撤销");
+                Check(studioWidget.GetBinding("content")==null,
+                    "Studio Widget configuration requires more than one Undo");
+                Click(window,"重做");
+                Check(studioWidget.GetBinding("content").Value.AsString()=="检测启动",
+                    "Studio Widget settings not restored by Redo");
                 var sceneHost=(CxVisual.Mechanism.Presentation.Wpf.SceneView)window.FindName("SceneHost");
                 var widgetHost=VisualTreeHelper.GetChild(sceneHost,0) as Canvas;
                 Check(widgetHost!=null&&widgetHost.Children.OfType<Button>().Any(),
