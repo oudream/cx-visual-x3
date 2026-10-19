@@ -55,6 +55,7 @@ namespace CxVisual.Studio
         {
             public Guid BlockId{get;set;}
             public Guid ContentId{get;set;}
+            public IReadOnlyList<Guid> CallPath{get;set;}
             public string Label{get;set;}
         }
         private sealed class FlowPortChoice
@@ -1332,14 +1333,27 @@ namespace CxVisual.Studio
         {
             var trace=FlowTraceList.SelectedItem as FlowTraceRecord;
             if(trace==null){LogicInfo.Text="请先选择一条运行轨迹";return;}
-            if(LogicHost.WiringDefinition!=null&&
-                LogicHost.WiringDefinition.Blocks.Any(b=>b.Id==trace.BlockId))
+            var wiring=LogicHost.WiringDefinition;
+            Guid candidate=trace.BlockId;
+            if(wiring!=null&&!wiring.Blocks.Any(b=>b.Id==candidate))
             {
-                LogicHost.SetSelection(new[]{trace.BlockId});
-                OnFlowLocate(sender,args);
-                LogicInfo.Text="已定位运行轨迹："+trace.Label;
+                // 内嵌Content的真实MRK轨迹保留原始BlockId；
+                // 在当前父流程画布定位其调用链，不能伪装成当前Content里的本地节点。
+                candidate=trace.CallPath==null?Guid.Empty:
+                    trace.CallPath.Reverse().FirstOrDefault(id=>
+                        wiring.Blocks.Any(b=>b.Id==id));
             }
-            else LogicInfo.Text="轨迹指向其他Content，需要先切换工程资源："+trace.Label;
+            if(candidate!=Guid.Empty&&wiring!=null&&
+                wiring.Blocks.Any(b=>b.Id==candidate))
+            {
+                LogicHost.SetSelection(new[]{candidate});
+                OnFlowLocate(sender,args);
+                LogicInfo.Text=candidate==trace.BlockId?
+                    "已定位运行轨迹："+trace.Label:
+                    "已定位子流程调用节点；实际执行节点属于Content "+
+                    trace.ContentId.ToString("N").Substring(0,8)+"："+trace.Label;
+            }
+            else LogicInfo.Text="当前画布无法解析此子流程调用链："+trace.Label;
         }
         private void OnValidateWiring(object sender,RoutedEventArgs args)
         {
@@ -1452,6 +1466,7 @@ namespace CxVisual.Studio
                         .ToList();
                     previous.AddRange(changes.Events.Select(e=>new FlowTraceRecord{
                         BlockId=e.Origin.BlockId,ContentId=e.Origin.ContentAddress.ObjectId,
+                        CallPath=e.Origin.CallPath,
                         Label=e.Transition.State+" · "+e.Origin.BlockId.ToString("N")
                             .Substring(0,8)+" · "+e.Transition.StepId}));
                     if(previous.Count>500)previous=previous.Skip(previous.Count-500).ToList();
