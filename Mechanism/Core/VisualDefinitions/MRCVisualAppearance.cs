@@ -146,6 +146,14 @@ namespace CxVisual.Mechanism.Core
         }
         public static MRCVisualStyle StyleOf(MRCVisualItem item)
         {MPMAspect aspect=Find(item,StyleProvider);return aspect==null?MRCVisualStyle.Default:ReadStyleAspect(aspect);}
+        public static MRCVisualBehaviorDefinition BehaviorFromAspects(IEnumerable<MPMAspect> aspects)
+        {
+            if(aspects!=null)
+                foreach(MPMAspect aspect in aspects)
+                    if(aspect.Kind==MPMAspectKind.Visual&&aspect.ProviderId==BehaviorProvider)
+                        return ReadBehaviorAspect(aspect);
+            return new MRCVisualBehaviorDefinition();
+        }
         public static MRCVisualBehaviorDefinition BehaviorOf(MRCVisualItem item)
         {MPMAspect aspect=Find(item,BehaviorProvider);return aspect==null?new MRCVisualBehaviorDefinition():ReadBehaviorAspect(aspect);}
         public static MPMAspect StyleAspect(MRCVisualStyle style)
