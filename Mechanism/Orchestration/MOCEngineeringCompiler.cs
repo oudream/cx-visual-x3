@@ -776,6 +776,22 @@ namespace CxVisual.Mechanism.Orchestration
         }
 
 
+        // 只在MOC编译期间构造瞬时MRK子流程目录，不保存第二份Graph。
+        private sealed class MOCInlineContentCatalog : IMRKFlowCompileCatalog
+        {
+            private readonly Dictionary<string,MRKFlowCompileDefinition> _items=
+                new Dictionary<string,MRKFlowCompileDefinition>(StringComparer.Ordinal);
+            internal MOCInlineContentCatalog(string rootId,
+                IEnumerable<MRKStepCompileRequest> root,
+                IDictionary<string,MRKFlowCompileDefinition> children)
+            {
+                _items.Add(rootId,new MRKFlowCompileDefinition(rootId,root));
+                foreach(var child in children)_items.Add(child.Key,child.Value);
+            }
+            public bool TryGet(string flowId,out MRKFlowCompileDefinition result)
+            {return _items.TryGetValue(flowId,out result);}
+        }
+
         // Stage 2: V2自由连接实际参与MRK依赖及数据绑定；复杂分支/循环不做假执行。
         private static MOCCompiledPlan CompileWiring(MEMProjectSnapshot snapshot, MEMNodeSnapshot entry,
             Guid[] instancePath, MOLWiringDefinition wiring, IMRKCapabilityResolver resolver)
@@ -786,6 +802,7 @@ namespace CxVisual.Mechanism.Orchestration
             var requests=new List<MRKStepCompileRequest>();
             var origins=new List<MOCStepOrigin>();
             var inputDefaults=new Dictionary<string,object>(StringComparer.Ordinal);
+            var subflowDefinitions=new Dictionary<string,MRKFlowCompileDefinition>(StringComparer.Ordinal);
             foreach(var block in wiring.Blocks)
             {
                 var entering=wiring.Links.Where(x=>x.Target.BlockId==block.Id).ToArray();
@@ -837,16 +854,66 @@ namespace CxVisual.Mechanism.Orchestration
                         inputKey,type,port.Required));
                     inputDefaults.Add(inputKey,literal);
                 }
-                requests.Add(new MRKStepCompileRequest(stepIds[block.Id],block.CapabilityId,
-                    depends,inputs));
+                string childId=null;
+                if(block.CapabilityId.StartsWith("moc.invoke:",StringComparison.Ordinal))
+                {
+                    if(inputs.Count!=0)
+                        throw new InvalidOperationException("moc.invoke.data_binding_not_ready");
+                    Guid targetId;
+                    if(!Guid.TryParseExact(block.CapabilityId.Substring("moc.invoke:".Length),
+                        "N",out targetId)||targetId==entry.Id)
+                        throw new InvalidOperationException("moc.invoke.invalid_target");
+                    if(!entry.References.Any(r=>r.TargetId==targetId&&
+                        r.Kind==MRIReferenceKind.Content))
+                        throw new InvalidOperationException("moc.invoke.missing_content_ref");
+                    var target=snapshot.Find(targetId);
+                    if(target==null||target.Kind!=MEMNodeKind.Content)
+                        throw new InvalidOperationException("moc.invoke.missing_content");
+                    var nested=MOLWiringCodec.Get(target);
+                    if(nested==null)throw new InvalidOperationException("moc.invoke.requires_v2");
+                    nested.ValidateExecutable();
+                    if(nested.Parameters.Count!=0||
+                        nested.Links.Any(l=>l.Kind!=MPCPortKind.Control)||
+                        nested.Blocks.Any(b=>b.CapabilityId.StartsWith(
+                            "moc.invoke:",StringComparison.Ordinal)))
+                        throw new InvalidOperationException("moc.invoke.nested_or_data_unsupported");
+                    childId=targetId.ToString("N");
+                    if(!subflowDefinitions.ContainsKey(childId))
+                    {
+                        var innerSteps=nested.Blocks.Select(b=>
+                            new MRKStepCompileRequest("w"+b.Id.ToString("N"),
+                                b.CapabilityId,nested.Links.Where(l=>l.Target.BlockId==b.Id)
+                                    .Select(l=>"w"+l.Source.BlockId.ToString("N")))).ToArray();
+                        subflowDefinitions.Add(childId,
+                            new MRKFlowCompileDefinition(childId,innerSteps));
+                    }
+                    origins.Add(new MOCStepOrigin(stepIds[block.Id]+"$entry",
+                        new MRIObjectAddress(snapshot.ProjectId,entry.StorageRootId,
+                            entry.Id,instancePath),block.Id,new Guid[0],null,"InvokeEnter"));
+                    foreach(var inner in nested.Blocks)
+                    {
+                        origins.Add(new MOCStepOrigin(stepIds[block.Id]+".w"+inner.Id.ToString("N"),
+                            new MRIObjectAddress(snapshot.ProjectId,target.StorageRootId,
+                                target.Id,instancePath),
+                            inner.Id,new[]{block.Id},null,"InvokedAction"));
+                    }
+                }
+                requests.Add(childId==null?
+                    new MRKStepCompileRequest(stepIds[block.Id],block.CapabilityId,
+                        depends,inputs):
+                    new MRKStepCompileRequest(stepIds[block.Id],null,
+                        depends,inputs,subflowId:childId));
                 origins.Add(new MOCStepOrigin(stepIds[block.Id],
                     new MRIObjectAddress(snapshot.ProjectId,entry.StorageRootId,entry.Id,instancePath),
                     block.Id,new Guid[0],null,"Action"));
             }
-            var compiled=new MRKExecutionPlanCompiler().Compile(
-                "moc."+snapshot.ProjectId.ToString("N")+"."+entry.Id.ToString("N")+
-                ".r"+snapshot.Revision.ToString(CultureInfo.InvariantCulture)+".wired",
-                requests,resolver);
+            string planId="moc."+snapshot.ProjectId.ToString("N")+"."+
+                entry.Id.ToString("N")+".r"+
+                snapshot.Revision.ToString(CultureInfo.InvariantCulture)+".wired";
+            var compiled=subflowDefinitions.Count==0?
+                new MRKExecutionPlanCompiler().Compile(planId,requests,resolver):
+                new MRKExecutionOrchestrationCompiler().Compile(planId,
+                    new MOCInlineContentCatalog(planId,requests,subflowDefinitions),resolver);
             if(!compiled.Succeeded)
                 throw new InvalidOperationException("moc.wiring.compile_rejected:"+
                     string.Join(";",compiled.Diagnostics.Select(x=>x.Code+"@"+x.StepId)));
