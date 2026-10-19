@@ -38,6 +38,30 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 var vm=window.DataContext;vm.GetType().GetProperty("ConfirmReplace").SetValue(vm,new Func<MEMEngineeringSession,bool>(s=>true),null);window.Show();Pump();
                 var session=(MEMEngineeringSession)Get(vm,"ProjectSession");var original=session.Project.Pages[0];int oldCount=original.RootContent.DescendantsAndSelf().Count();
                 Click(window,"添加页面");var page=session.Project.Pages.Last();Click(window,"添加矩形");Check(page.RootContent.VisualItems.Count==1&&original.RootContent.DescendantsAndSelf().Count()==oldCount,"active page button added to wrong page");
+                // 真正点击Studio九图元工具箱，并用属性入口提交工程定义。
+                var nine=new[]{"直线","矩形Shape","圆形","椭圆","折线","多边形",
+                    "圆弧","贝塞尔","自由路径"};
+                foreach(string label in nine)Click(window,label);
+                var gallery=page.RootContent.DescendantsAndSelf().OfType<MRCShapeElement>().ToArray();
+                Check(gallery.Length==9&&gallery.Select(x=>x.Shape.Kind).Distinct().Count()==9,
+                    "Studio palette did not create nine persisted shapes");
+                var fillBox=(TextBox)window.FindName("FillColorInput");
+                fillBox.Text="#FF27B478";
+                Click(window,"应用填充");
+                Check(MRCVisualAppearance.StyleOf(gallery[8]).Fill.Color.Equals(
+                    MRCColor.Parse("#FF27B478")),"Studio style was not committed");
+                Click(window,"绑定事件");
+                Check(MRCVisualAppearance.BehaviorOf(gallery[8]).EventActions.Count==1,
+                    "Studio event/action was not persisted");
+                Click(window,"撤销");
+                Check(MRCVisualAppearance.BehaviorOf(gallery[8]).EventActions.Count==0,
+                    "Studio event undo did not restore prior definition");
+                Click(window,"重做");
+                Check(MRCVisualAppearance.BehaviorOf(gallery[8]).EventActions.Count==1,
+                    "Studio event redo failed");
+                Click(window,"文字图元");
+                Check(page.RootContent.DescendantsAndSelf().OfType<MRCTextElement>().Any(),
+                    "Studio did not create text element");
                 Click(window,"新建组件");var symbol=session.Project.Symbols.Last();var resources=(ListBox)window.FindName("EngineeringResources");resources.SelectedItem=symbol;Pump();
                 Click(window,"放置实例");var first=page.RootContent.References.Last();Click(window,"放置实例");var second=page.RootContent.References.Last();
                 Check(first.Id!=second.Id&&page.RootContent.References.Count==2,"resource button did not create two real instances");
@@ -47,6 +71,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Click(window,"编辑共享定义");Click(window,"添加矩形");Check(symbol.RootGroup.Children.Count==2,"shared definition editor context missing");Click(window,"返回");
                 vm.GetType().GetMethod("SaveProject").Invoke(vm,new object[]{path});Click(window,"保存工程");vm.GetType().GetMethod("OpenProject").Invoke(vm,new object[]{path,true});Pump();
                 var reopened=(MEMEngineeringSession)Get(vm,"ProjectSession");Check(reopened.FindReference(second.Id)!=null&&reopened.ResolveParameter(reopened.FindReference(second.Id),"宽度").Value.AsNumber()==240,"Studio file reopen lost instance parameter");
+                Check(reopened.Project.Pages.Last().RootContent.DescendantsAndSelf()
+                    .OfType<MRCShapeElement>().Count()==9,
+                    "Studio nine shapes lost after real Save/Open");
                 Check(((ComboBox)window.FindName("EngineeringPages")).Items.Count==2&&((ListBox)window.FindName("EngineeringResources")).Items.Count==3,"real WPF collections failed to refresh after reopen");
                 Console.WriteLine("PASS H06 Studio real WPF automation: add/switch page, resource two instances, bound parameter edit, shared Undo/Redo, definition navigation, save/reopen");
             }
