@@ -540,6 +540,16 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "Flow.Block.bad.Running",typeof(bool));}
                 catch(ArgumentException){malformed=true;}
                 Check(malformed,"C malformed MRK reference escaped the binding boundary");
+                // 故障追溯闭环：从现有MOL块直接反查已绑定的HMI图元并跳转视觉画布。
+                vm.GetType().GetMethod("Select").Invoke(vm,new object[]{(Guid?)null});
+                flowCanvas.SetSelection(new[]{sourceBlock});
+                Click(window,"定位关联画面");
+                Check(((Guid?)Get(vm,"SelectedId"))==flowLamp.Id&&
+                    ((TabItem)window.FindName("VisualTab")).IsSelected,
+                    "C trace -> linked HMI element navigation lost MEM identity");
+                Check(finalSession.Revision==runtimeRevision,
+                    "C diagnostic navigation must never commit engineering changes");
+
                 Console.WriteLine("PASS H06 Studio real WPF automation: add/switch page, resource two instances, bound parameter edit, shared Undo/Redo, definition navigation, save/reopen");
             }
             finally{if(window!=null)window.Close();if(app!=null)app.Shutdown();if(File.Exists(path))File.Delete(path);if(File.Exists(path+".cx-lock"))File.Delete(path+".cx-lock");}
