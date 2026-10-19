@@ -14,6 +14,16 @@ namespace CxVisual.Tests.ArchitectureSmoke
     internal static class OrganizationWpfTests
     {
         private static void Check(bool value, string message) { if (!value) throw new InvalidOperationException("H01 WPF: " + message); }
+        // PushOpacity/PushTransform 会让真实Shape绘制嵌套在DrawingGroup中。
+        private static System.Collections.Generic.IEnumerable<GeometryDrawing> DeepGeometries(Drawing drawing)
+        {
+            var leaf=drawing as GeometryDrawing;
+            if(leaf!=null)yield return leaf;
+            var group=drawing as DrawingGroup;
+            if(group==null)yield break;
+            foreach(var child in group.Children)
+                foreach(var geometry in DeepGeometries(child))yield return geometry;
+        }
         public static int Run()
         {
             Exception error = null;
@@ -85,7 +95,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         System.Windows.Threading.DispatcherPriority.Render);
                     var visualDrawing=VisualTreeHelper.GetDrawing(shapeView);
                     Check(visualDrawing!=null&&shapeView.IsVisible,"shape gallery WPF canvas inactive");
-                    var pathGeometries=visualDrawing.Children.OfType<GeometryDrawing>()
+                    var pathGeometries=DeepGeometries(visualDrawing)
                         .Where(d=>d.Geometry is StreamGeometry).ToArray();
                     Check(pathGeometries.Length==9,"nine shape WPF path drawings missing");
                     var circle=shapeScene.Single(i=>i.Shape!=null&&i.Shape.Kind==MRCShapeKind.Circle);
