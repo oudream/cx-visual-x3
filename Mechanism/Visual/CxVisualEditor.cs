@@ -334,7 +334,7 @@ namespace CxVisual.Mechanism.Visual
                         x=Math.Round(x/25)*25;
                         y=Math.Round(y/25)*25;
                     }
-                    MRIReference reference=Document.FindReference(scene.Id);
+                    MRIResourceReference reference=Document.FindReference(scene.Id);
                     if(reference!=null)
                     {
                         MRCTransform p=reference.Placement;
