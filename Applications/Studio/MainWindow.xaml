@@ -143,6 +143,43 @@
                                 <Button Content="垂直分布" Tag="vertical" Click="OnFlowDistribute"/>
                                 <Button Content="自动布局" Click="OnFlowArrange"/>
                             </WrapPanel>
+                            <Expander Header="G04-E 节点参数与Port" Margin="10,0,10,7" IsExpanded="True">
+                                <StackPanel Margin="5">
+                                    <WrapPanel Margin="0,3">
+                                        <TextBlock Text="能力ID" VerticalAlignment="Center"/>
+                                        <TextBox x:Name="FlowInspectorCapability" Width="120" Margin="5,0"/>
+                                        <Button Content="应用节点能力" Click="OnFlowSetCapability"/>
+                                        <ComboBox x:Name="FlowInspectorPorts" Width="110" DisplayMemberPath="MemberId"
+                                                  SelectionChanged="OnFlowInspectorPortSelected"/>
+                                        <Button Content="设为流程入口" Click="OnFlowSetEntry"/>
+                                    </WrapPanel>
+                                    <WrapPanel Margin="0,3">
+                                        <TextBlock Text="Port名" VerticalAlignment="Center"/>
+                                        <TextBox x:Name="FlowInspectorPortName" Width="85" Margin="5,0"/>
+                                        <TextBlock Text="类型" VerticalAlignment="Center"/>
+                                        <TextBox x:Name="FlowInspectorType" Width="100" Text="string" Margin="5,0"/>
+                                        <ComboBox x:Name="FlowInspectorDirection" Width="75" SelectedIndex="0">
+                                            <ComboBoxItem Content="Input"/><ComboBoxItem Content="Output"/>
+                                        </ComboBox>
+                                        <ComboBox x:Name="FlowInspectorKind" Width="80" SelectedIndex="0">
+                                            <ComboBoxItem Content="Data"/><ComboBoxItem Content="Control"/>
+                                        </ComboBox>
+                                        <CheckBox x:Name="FlowInspectorRequired" Content="必需" Margin="8,0"
+                                                  VerticalAlignment="Center"/>
+                                        <Button Content="添加Port" Click="OnFlowAddPort"/>
+                                        <Button Content="更新Port" Click="OnFlowUpdatePort"/>
+                                        <Button Content="删除Port" Click="OnFlowRemovePort"/>
+                                    </WrapPanel>
+                                    <WrapPanel Margin="0,3">
+                                        <TextBlock Text="Data输入参数" VerticalAlignment="Center"/>
+                                        <TextBox x:Name="FlowInspectorValue" Width="200" Margin="5,0"/>
+                                        <Button Content="保存节点参数" Click="OnFlowSetParameter"/>
+                                        <Button Content="清除节点参数" Click="OnFlowClearParameter"/>
+                                        <TextBlock Text="与同名Data连线互斥" Foreground="#45617C"
+                                                   Margin="8,0" VerticalAlignment="Center"/>
+                                    </WrapPanel>
+                                </StackPanel>
+                            </Expander>
                             <TextBlock x:Name="LogicInfo" Margin="12,0,12,10"
                                 Text="使用 Content Logic Aspect 保存编排；从运行轨迹点击定位逻辑块。此处为 CPU 仿真，不连接生产设备。"
                                 TextWrapping="Wrap" Foreground="#45617C"/>
