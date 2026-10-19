@@ -136,6 +136,33 @@ namespace CxVisual.Studio
                 45+(index%7)*24,55+(index%7)*20));
             if(ElementCount>before)Select(Items[Items.Count-1].Id);
         }
+        /// <summary>导入项目打包资产并在当前编辑资源创建真实图片/SVG图元。</summary>
+        public void AddVisualAsset(string file)
+        {
+            if(string.IsNullOrWhiteSpace(file)||!File.Exists(file))
+                throw new FileNotFoundException("请选择存在的本地资源文件",file);
+            string extension=Path.GetExtension(file).ToLowerInvariant();
+            string media=extension==".svg"?"image/svg+xml":
+                extension==".png"?"image/png":extension==".jpg"||extension==".jpeg"?
+                "image/jpeg":extension==".bmp"?"image/bmp":null;
+            if(media==null)throw new InvalidOperationException("只支持PNG/JPEG/BMP及受限SVG");
+            MEMAssetReference asset=ProjectSession.AddAsset(Path.GetFileName(file),file,media);
+            int before=ElementCount;
+            Execute(()=>_editor.AddAssetElement(asset.Id,Path.GetFileNameWithoutExtension(file),
+                extension==".svg",60+before*11,90+before*8));
+            if(ElementCount>before)Select(Items[Items.Count-1].Id);
+        }
+        public void AddVisualWidgetType(string type)
+        {
+            if(type!="core.widget"&&type!="core.widget.textbox"&&
+                type!="core.widget.checkbox"&&type!="core.widget.slider"&&
+                type!="core.widget.progressbar"&&type!="core.widget.combobox")
+                throw new ArgumentException("Unsupported Widget type", "type");
+            int before=ElementCount;
+            Execute(()=>_editor.AddWidget(type.Substring(type.LastIndexOf('.')+1)+" "+before,
+                type,65+before*17,60+before*12));
+            if(ElementCount>before)Select(Items[Items.Count-1].Id);
+        }
         public void AddVisualWidget()
         {
             int index=ElementCount+1,before=ElementCount;
