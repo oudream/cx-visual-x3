@@ -13,6 +13,7 @@
   <ItemGroup>
     <Reference Include="System"/>
     <Reference Include="System.Core"/>
+    <Reference Include="System.Xml"/><Reference Include="System.Xml.Linq"/>
     <Reference Include="PresentationCore"/>
     <Reference Include="PresentationFramework"/>
     <Reference Include="WindowsBase"/>
@@ -20,7 +21,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Properties\AssemblyInfo.cs"/>
-    <Compile Include="MPWVisualHandleEventArgs.cs"/><Compile Include="Renderers\MPWShapeRenderer.cs"/><Compile Include="Widgets\MPWWidgetPresenter.cs"/><Compile Include="MOLFlowCanvas.cs"/><Compile Include="MPWConfigEditorDialogV14.cs"/><Compile Include="MPWConfigLayerOverview.cs"/><Compile Include="MPWConfigAtomicGroupControl.cs"/><Compile Include="CxMoveEventArgs.cs"/><Compile Include="CxNodeEventArgs.cs"/><Compile Include="SceneView.cs"/><Compile Include="LogViewerControl.xaml.cs"/><Compile Include="SystemMonitorControl.xaml.cs"/></ItemGroup>
+    <Compile Include="MPWVisualHandleEventArgs.cs"/><Compile Include="Renderers\MPWShapeRenderer.cs"/><Compile Include="Renderers\MPWVisualAssetRenderer.cs"/><Compile Include="Widgets\MPWWidgetPresenter.cs"/><Compile Include="MOLFlowCanvas.cs"/><Compile Include="MPWConfigEditorDialogV14.cs"/><Compile Include="MPWConfigLayerOverview.cs"/><Compile Include="MPWConfigAtomicGroupControl.cs"/><Compile Include="CxMoveEventArgs.cs"/><Compile Include="CxNodeEventArgs.cs"/><Compile Include="SceneView.cs"/><Compile Include="LogViewerControl.xaml.cs"/><Compile Include="SystemMonitorControl.xaml.cs"/></ItemGroup>
   <ItemGroup>
     <Page Include="LogViewerControl.xaml"><Generator>MSBuild:Compile</Generator><SubType>Designer</SubType></Page>
     <Page Include="SystemMonitorControl.xaml"><Generator>MSBuild:Compile</Generator><SubType>Designer</SubType></Page>
