@@ -5,7 +5,7 @@ using CxVisual.Mechanism.Core;
 
 namespace CxVisual.Mechanism.Visual
 {
-    public enum MVIVisualHandleKind { Anchor=1, Control1=2, Control2=3, Resize=4, Rotate=5 }
+    public enum MVIVisualHandleKind { Anchor=1, Control1=2, Control2=3, Resize=4, Rotate=5, ArcCenter=6, ArcRadiusX=7, ArcRadiusY=8, ArcStart=9, ArcEnd=10 }
 
     /// <summary>只描述一次场景投影中的编辑柄；真正修改由MEM工程事务提交。</summary>
     public sealed class MVIVisualHandle
@@ -47,6 +47,37 @@ namespace CxVisual.Mechanism.Visual
                         result.Add(new MVIVisualHandle(item.Id,MVIVisualHandleKind.Control2,i,
                             matrix.TransformPoint(cmd.Control2)));
                 }
+            }
+            if(item.Shape!=null&&(item.Shape.Kind==MRCShapeKind.Arc||
+                item.Shape.Kind==MRCShapeKind.Circle||item.Shape.Kind==MRCShapeKind.Ellipse))
+            {
+                var commands=item.Shape.Geometry.Commands;
+                for(int i=0;i<commands.Count;i++)
+                    if(commands[i].Verb==FGEPathVerb.Arc)
+                    {
+                        FGEArc2D arc=commands[i].Arc;
+                        FGETransform2D transform=item.GeometryToWorld;
+                        result.Add(new MVIVisualHandle(item.Id,MVIVisualHandleKind.ArcCenter,i,
+                            transform.TransformPoint(arc.Center)));
+                        double rotation=arc.RotationRadians;
+                        result.Add(new MVIVisualHandle(item.Id,MVIVisualHandleKind.ArcRadiusX,i,
+                            transform.TransformPoint(new FGEPoint2D(
+                                arc.Center.X+arc.RadiusX*Math.Cos(rotation),
+                                arc.Center.Y+arc.RadiusX*Math.Sin(rotation)))));
+                        if(item.Shape.Kind!=MRCShapeKind.Circle)
+                            result.Add(new MVIVisualHandle(item.Id,MVIVisualHandleKind.ArcRadiusY,i,
+                                transform.TransformPoint(new FGEPoint2D(
+                                    arc.Center.X-arc.RadiusY*Math.Sin(rotation),
+                                    arc.Center.Y+arc.RadiusY*Math.Cos(rotation)))));
+                        if(item.Shape.Kind==MRCShapeKind.Arc)
+                        {
+                            result.Add(new MVIVisualHandle(item.Id,MVIVisualHandleKind.ArcStart,i,
+                                transform.TransformPoint(arc.PointAt(0))));
+                            result.Add(new MVIVisualHandle(item.Id,MVIVisualHandleKind.ArcEnd,i,
+                                transform.TransformPoint(arc.PointAt(1))));
+                        }
+                        break;
+                    }
             }
             // 将缩放手柄移到角点外侧，避免与路径末端重叠。
             result.Add(new MVIVisualHandle(item.Id,MVIVisualHandleKind.Resize,-1,
@@ -133,12 +164,25 @@ namespace CxVisual.Mechanism.Visual
             }
 
             var shape=item as MRCShapeElement;
-            if(shape!=null&&(shape.Shape.Kind==MRCShapeKind.Arc||
-                shape.Shape.Kind==MRCShapeKind.Circle||shape.Shape.Kind==MRCShapeKind.Ellipse))
-                return MTCEditResult<bool>.Rejected(revision,"visual.arc_parameter_required",
-                    "Ellipse/arc control points are derived; use resize until arc parameter handles are implemented");
             if(shape==null||projected.Shape==null)
                 return MTCEditResult<bool>.Rejected(revision,"visual.path_required","Only Shape paths expose geometry handles");
+            if(handle.Kind>=MVIVisualHandleKind.ArcCenter)
+            {
+                FGEPath2D path=shape.Shape.Geometry;
+                if(handle.CommandIndex<0||handle.CommandIndex>=path.Commands.Count||
+                    path.Commands[handle.CommandIndex].Verb!=FGEPathVerb.Arc)
+                    return MTCEditResult<bool>.Rejected(revision,"visual.arc.invalid_handle","Arc not found");
+                FGEArc2D arc=path.Commands[handle.CommandIndex].Arc;
+                FGEPoint2D destination=projected.GeometryToWorld.Inverse().TransformPoint(
+                    new FGEPoint2D(worldX,worldY));
+                FGEArc2D changed=EditArc(arc,handle.Kind,destination,shape.Shape.Kind);
+                FGEPath2D newPath=FGEPathEditing.UpdateArc(path,handle.CommandIndex,changed);
+                return CommitGeometry(editor,shape,newPath);
+            }
+            if(handle.Kind!=MVIVisualHandleKind.Anchor&&
+                handle.Kind!=MVIVisualHandleKind.Control1&&
+                handle.Kind!=MVIVisualHandleKind.Control2)
+                return MTCEditResult<bool>.Rejected(revision,"visual.path.invalid_handle","Unsupported handle");
             FGEPathHandleKind kind=handle.Kind==MVIVisualHandleKind.Anchor?
                 FGEPathHandleKind.Anchor:handle.Kind==MVIVisualHandleKind.Control1?
                 FGEPathHandleKind.Control1:FGEPathHandleKind.Control2;
@@ -146,6 +190,68 @@ namespace CxVisual.Mechanism.Visual
                 new FGEPoint2D(worldX,worldY));
             FGEPath2D oldPath=shape.Shape.Geometry;
             FGEPath2D newPath=FGEPathEditing.MoveHandle(oldPath,handle.CommandIndex,kind,pointOnPath);
+            return CommitGeometry(editor,shape,newPath);
+        }
+
+        private static FGEArc2D EditArc(FGEArc2D arc,MVIVisualHandleKind handle,
+            FGEPoint2D position,MRCShapeKind shape)
+        {
+            double centerX=arc.Center.X,centerY=arc.Center.Y;
+            double rx=arc.RadiusX,ry=arc.RadiusY,start=arc.StartRadians,sweep=arc.SweepRadians;
+            double cos=Math.Cos(arc.RotationRadians),sin=Math.Sin(arc.RotationRadians);
+            double dx=position.X-centerX,dy=position.Y-centerY;
+            double localX=cos*dx+sin*dy,localY=-sin*dx+cos*dy;
+            switch(handle)
+            {
+                case MVIVisualHandleKind.ArcCenter:
+                    centerX=position.X;centerY=position.Y;break;
+                case MVIVisualHandleKind.ArcRadiusX:
+                    rx=Math.Max(0.01,Math.Abs(localX));
+                    if(shape==MRCShapeKind.Circle)ry=rx;
+                    break;
+                case MVIVisualHandleKind.ArcRadiusY:
+                    ry=Math.Max(0.01,Math.Abs(localY));break;
+                case MVIVisualHandleKind.ArcStart:
+                    {
+                        double end=start+sweep;
+                        double begin=Math.Atan2(localY/ry,localX/rx);
+                        double change=NormalizeAngle(end-begin);
+                        if(sweep<0&&change>0)change-=Math.PI*2;
+                        if(sweep>0&&change<0)change+=Math.PI*2;
+                        start=begin;
+                        sweep=change;
+                        break;
+                    }
+                case MVIVisualHandleKind.ArcEnd:
+                    {
+                        double end=Math.Atan2(localY/ry,localX/rx);
+                        double change=NormalizeAngle(end-start);
+                        if(sweep<0&&change>0)change-=Math.PI*2;
+                        if(sweep>0&&change<0)change+=Math.PI*2;
+                        sweep=change;
+                        break;
+                    }
+                default:throw new ArgumentException("visual.arc.handle_unsupported");
+            }
+            return new FGEArc2D(new FGEPoint2D(centerX,centerY),rx,ry,start,
+                sweep,arc.RotationRadians);
+        }
+        private static double NormalizeAngle(double a)
+        {
+            double two=Math.PI*2;
+            while(a>Math.PI)a-=two;
+            while(a< -Math.PI)a+=two;
+            return a;
+        }
+
+        /// <summary>修改任意路径命令后，重算布局并保留未修改端点世界坐标。</summary>
+        public static MTCEditResult<bool> CommitGeometry(CxVisualEditor editor,
+            MRCShapeElement item,FGEPath2D newPath)
+        {
+            if(editor==null||item==null||newPath==null)throw new ArgumentNullException(
+                editor==null?"editor":item==null?"item":"newPath");
+            int revision=editor.Document.Revision;
+            FGEPath2D oldPath=item.Shape.Geometry;
             FGERect2D oldBounds=oldPath.Bounds,newBounds=newPath.Bounds;
             double ratioX=oldBounds.Width==0?1:item.Width/oldBounds.Width;
             double ratioY=oldBounds.Height==0?1:item.Height/oldBounds.Height;
@@ -159,7 +265,7 @@ namespace CxVisual.Mechanism.Visual
                 original.Y+original.M21*localShiftX+original.M22*localShiftY);
             // 三次状态写入属于一次工程事务，同一次Undo严格恢复Shape/布局/世界坐标。
             var updated=new MRCShapeDefinition(shape.Shape.Kind,newPath);
-            return editor.Document.Edit("修改路径控制点",revision,e=>
+            return editor.Document.Edit("编辑路径几何",revision,e=>
             {
                 e.SetShape(shape,updated);
                 e.Resize(shape,width,height);
