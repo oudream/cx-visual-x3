@@ -29,6 +29,7 @@ namespace CxVisual.Studio
         private MRKFlowHandle _logicFlow;
         private bool _logicRunning;
         private readonly System.Diagnostics.Stopwatch _visualClock=new System.Diagnostics.Stopwatch();
+        private MEMEngineeringSession _renderAssetSession;
         private readonly DispatcherTimer _visualPreviewTimer=new DispatcherTimer{
             Interval=TimeSpan.FromMilliseconds(50)};
 
@@ -193,10 +194,68 @@ namespace CxVisual.Studio
                 string kind=button.Tag.ToString();
                 if(kind=="Text")_viewModel.AddVisualText();
                 else if(kind=="WidgetButton")_viewModel.AddVisualWidget();
+                else if(kind.StartsWith("core.widget.",StringComparison.Ordinal))
+                    _viewModel.AddVisualWidgetType(kind);
                 else _viewModel.AddVisualShape((MRCShapeKind)Enum.Parse(typeof(MRCShapeKind),kind));
                 VisualInfo.Text="已创建 "+button.Content+" | Revision "+_viewModel.Revision;
             }
             catch(Exception ex){VisualInfo.Text="创建失败: "+ex.Message;}
+        }
+        private void OnInsertVisualAsset(object sender,RoutedEventArgs args)
+        {
+            try
+            {
+                var dialog=new Microsoft.Win32.OpenFileDialog
+                {
+                    Filter="图片/SVG|*.png;*.jpg;*.jpeg;*.bmp;*.svg",
+                    CheckFileExists=true
+                };
+                if(dialog.ShowDialog()!=true)return;
+                _viewModel.AddVisualAsset(dialog.FileName);
+                VisualInfo.Text="工程资源已打包并绑定至当前图元，保存工程后无需原始外部文件";
+            }
+            catch(Exception ex){VisualInfo.Text="添加资源失败："+ex.Message;}
+        }
+        private void OnApplyVisualBinding(object sender,RoutedEventArgs args)
+        {
+            try
+            {
+                _viewModel.BindVisualVariable(VisualBindingPropertyInput.Text,
+                    VisualBindingSourceInput.Text);
+                VisualInfo.Text="已保存MDS变量引用；附加运行数据源后预览会实际更新";
+            }
+            catch(Exception ex){VisualInfo.Text="绑定失败："+ex.Message;}
+        }
+        private void OnAddVisualState(object sender,RoutedEventArgs args)
+        {
+            try
+            {
+                _viewModel.AddVisualState(VisualStateInput.Text,VisualStateColorInput.Text);
+                VisualInfo.Text="已保存状态样式，运行态由MDS布尔变量触发";
+            }
+            catch(Exception ex){VisualInfo.Text="添加状态失败："+ex.Message;}
+        }
+        private void OnApplyVisualAnimation(object sender,RoutedEventArgs args)
+        {
+            try
+            {
+                _viewModel.AddVisualAnimation(VisualAnimationProperty.Text,
+                    ReadVisualNumber(VisualAnimationFrom),ReadVisualNumber(VisualAnimationTo),
+                    int.Parse(VisualAnimationDuration.Text,
+                        System.Globalization.CultureInfo.InvariantCulture));
+                VisualInfo.Text="动画参数已保存，可点击预览交互查看";
+            }
+            catch(Exception ex){VisualInfo.Text="动画参数失败："+ex.Message;}
+        }
+        private void OnApplyFullStyle(object sender,RoutedEventArgs args)
+        {
+            try
+            {
+                _viewModel.SetFullVisualStyle(VisualStrokeColor.Text,
+                    ReadVisualNumber(VisualOpacityInput),ReadVisualNumber(VisualFontSizeInput));
+                VisualInfo.Text="字体、描边、不透明度已保存";
+            }
+            catch(Exception ex){VisualInfo.Text="完整样式失败："+ex.Message;}
         }
         private void OnAddBreathingAnimation(object sender,RoutedEventArgs args)
         {
@@ -394,6 +453,11 @@ namespace CxVisual.Studio
         }
         private void RefreshScene()
         {
+            if(!object.ReferenceEquals(_renderAssetSession,_viewModel.ProjectSession))
+            {
+                _renderAssetSession=_viewModel.ProjectSession;
+                SceneHost.SetAssetResolver(id=>_viewModel.ProjectSession.OpenAsset(id));
+            }
             SceneHost.SetScene(_viewModel.Items, _viewModel.SelectedId);
             if(_logicRunning||_visualPreviewTimer.IsEnabled)return;
             MEMPage page=_viewModel.ActivePage;
