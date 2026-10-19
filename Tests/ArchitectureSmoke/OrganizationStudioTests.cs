@@ -425,14 +425,24 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 portValue.Text="1.75";
                 Click(window,"保存节点参数");
                 var withValue=MOLWiringCodec.Get(finalSession.GetSnapshot().Find(active.RootContent.Id));
-                Check(withValue.Parameters[selectedIds[0]]["Threshold"]=="1.75",
-                    "Studio parameter value did not persist");
+                IReadOnlyDictionary<string,string> inspectorValues;
+                string inspectorThreshold;
+                Check(withValue.Parameters.TryGetValue(selectedIds[0],out inspectorValues)&&
+                    inspectorValues.TryGetValue("Threshold",out inspectorThreshold)&&
+                    inspectorThreshold=="1.75",
+                    "Studio parameter value did not persist: "+
+                    ((TextBlock)window.FindName("LogicInfo")).Text+
+                    " / id="+selectedIds[0].ToString("N")+
+                    " / present="+string.Join(",",withValue.Parameters.Keys));
                 int revisionBeforeBad=finalSession.Revision;
                 portValue.Text="invalid-double";
                 Click(window,"保存节点参数");
+                var failedInput=MOLWiringCodec.Get(
+                    finalSession.GetSnapshot().Find(active.RootContent.Id));
                 Check(finalSession.Revision==revisionBeforeBad&&
-                    MOLWiringCodec.Get(finalSession.GetSnapshot().Find(active.RootContent.Id))
-                        .Parameters[selectedIds[0]]["Threshold"]=="1.75",
+                    failedInput.Parameters.ContainsKey(selectedIds[0])&&
+                    failedInput.Parameters[selectedIds[0]].ContainsKey("Threshold")&&
+                    failedInput.Parameters[selectedIds[0]]["Threshold"]=="1.75",
                     "Studio invalid typed input altered engineering revision");
                 Click(window,"撤销编排");
                 Check(!MOLWiringCodec.Get(finalSession.GetSnapshot().Find(active.RootContent.Id))
