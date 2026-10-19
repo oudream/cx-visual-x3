@@ -213,6 +213,21 @@ namespace CxVisual.Mechanism.Orchestration
         public IReadOnlyList<MOLSelectionGroup> Groups {get{return _groups;}}
         public IReadOnlyDictionary<Guid,IReadOnlyList<MPCPortDescriptor>> Ports {get{return _ports;}}
         public IReadOnlyDictionary<Guid,MOLBlockPosition> Positions {get{return _positions;}}
+        /// <summary>受V2 Codec和4MB限制的剪贴板传输格式，绝不作为工程真源保存。</summary>
+        public byte[] ToPayload()
+        {
+            var ports=_ports.ToDictionary(p=>p.Key,
+                p=>(IEnumerable<MPCPortDescriptor>)p.Value);
+            var positions=_positions.ToDictionary(p=>p.Key,p=>p.Value);
+            var wiring=new MOLWiringDefinition(_blocks[0].Id,_blocks,ports,_links,
+                positions,_groups);
+            return MOLWiringCodec.Serialize(wiring);
+        }
+        public static MOCWiringFragment FromPayload(byte[] payload)
+        {
+            var wiring=MOLWiringCodec.Deserialize(payload);
+            return Capture(wiring,wiring.Blocks.Select(b=>b.Id));
+        }
         public static MOCWiringFragment Capture(MOLWiringDefinition definition,IEnumerable<Guid> selection)
         {
             if(definition==null||selection==null)throw new ArgumentNullException("definition/selection");
