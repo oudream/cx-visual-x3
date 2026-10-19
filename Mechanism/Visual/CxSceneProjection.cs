@@ -118,11 +118,40 @@ namespace CxVisual.Mechanism.Visual
                             style=MVIVisualRuntimeEvaluator.EvaluateStyle(style,
                                 MRCVisualAppearance.BehaviorFromAspects(node.Aspects),
                                 _elapsedMilliseconds,_runtimeSource);
+                        Guid? assetId=null;
+                        string mediaType=null;
+                        if(node.TypeId=="core.image"||node.TypeId=="core.svg")
+                        {
+                            MPMBinding sourceBinding;
+                            if(node.Visual.Bindings.TryGetValue("source",out sourceBinding)&&
+                                sourceBinding!=null&&sourceBinding.Kind==MPMBindingKind.Resource&&
+                                sourceBinding.ResourceId.HasValue)
+                            {
+                                assetId=sourceBinding.ResourceId.Value;
+                                MEMAssetReference asset=_snapshot.Assets.FirstOrDefault(a=>a.Id==assetId.Value);
+                                if(asset!=null)mediaType=asset.MediaType;
+                            }
+                        }
+                        MPMValue runtimeValue=null;
+                        if(_runtimeEnabled&&(node.TypeId=="core.widget"||
+                            node.TypeId.EndsWith(".textbox",StringComparison.OrdinalIgnoreCase)||
+                            node.TypeId.EndsWith(".checkbox",StringComparison.OrdinalIgnoreCase)||
+                            node.TypeId.EndsWith(".slider",StringComparison.OrdinalIgnoreCase)||
+                            node.TypeId.EndsWith(".progressbar",StringComparison.OrdinalIgnoreCase)||
+                            node.TypeId.EndsWith(".combobox",StringComparison.OrdinalIgnoreCase)))
+                        {
+                            MPMValueKind valueKind=node.TypeId.EndsWith(".checkbox",
+                                StringComparison.OrdinalIgnoreCase)?MPMValueKind.Boolean:
+                                (node.TypeId.EndsWith(".slider",StringComparison.OrdinalIgnoreCase)||
+                                node.TypeId.EndsWith(".progressbar",StringComparison.OrdinalIgnoreCase))?
+                                MPMValueKind.Number:MPMValueKind.String;
+                            runtimeValue=Value(node,"value",path,valueKind);
+                        }
                         Items.Add(new CxSceneItem(first==null?node.Id:first.Id,
                             first==null?node.Name:first.Name+" / "+node.Name,address,world,
                             width,height,selectable,first==null?parent:firstParent,
                             first==null?x:first.Placement.X,first==null?y:first.Placement.Y,
-                            node.TypeId,shape,style,displayText));
+                            node.TypeId,shape,style,displayText,assetId,mediaType,runtimeValue));
                     }
                 }
                 foreach(var id in node.ChildIds)Collect(_snapshot.Find(id),world,path,locked,first,firstParent,depth+1);
