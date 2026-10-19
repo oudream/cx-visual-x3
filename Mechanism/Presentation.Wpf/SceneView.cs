@@ -306,9 +306,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                         Brush fill=handle.Kind==MVIVisualHandleKind.Rotate?Brushes.Orange:
                             handle.Kind==MVIVisualHandleKind.Resize?Brushes.MediumPurple:
                             handle.Kind==MVIVisualHandleKind.Anchor?Brushes.White:Brushes.Gold;
-                        dc.DrawEllipse(fill,new Pen(Brushes.DodgerBlue,1.5),center,5,5);
+                        dc.DrawEllipse(fill,new Pen(Brushes.DodgerBlue,1.5/_zoom),center,5/_zoom,5/_zoom);
                         if(moving)
-                            dc.DrawLine(new Pen(Brushes.DodgerBlue,1){DashStyle=DashStyles.Dash},
+                            dc.DrawLine(new Pen(Brushes.DodgerBlue,1/_zoom){DashStyle=DashStyles.Dash},
                                 new Point(handle.WorldPoint.X,handle.WorldPoint.Y),center);
                     }
                     // 鼠标按住时直接预览整条Bezier/Path，不污染MEM Revision；
@@ -326,7 +326,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                         FGEPath2D preview=FGEPathEditing.MoveHandle(
                             edited.Shape.Geometry,_activeHandle.CommandIndex,kind,point);
                         Geometry geometry=MPWShapeRenderer.BuildGeometry(preview,edited.GeometryToWorld);
-                        dc.DrawGeometry(null,new Pen(Brushes.OrangeRed,2)
+                        dc.DrawGeometry(null,new Pen(Brushes.OrangeRed,2/_zoom)
                             {DashStyle=DashStyles.Dash},geometry);
                     }
                 }
@@ -354,7 +354,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 CxSceneItem selected=_items.Find(i=>i.Id==_selection.Value);
                 if(selected!=null)
                 {
-                    MVIVisualHandle handle=MVIVisualEditing.HitHandle(selected,point.X,point.Y);
+                    MVIVisualHandle handle=MVIVisualEditing.HitHandle(selected,point.X,point.Y,8/_zoom);
                     if(handle!=null)
                     {
                         _activeHandle=handle;
