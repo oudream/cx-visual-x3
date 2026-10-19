@@ -144,10 +144,15 @@ namespace CxVisual.Studio
         public void UpdateVisualRuntimeFrame(double elapsedMilliseconds)
         {
             _editor.SetRuntimeFrame(null,elapsedMilliseconds);
+            // 运行帧只更新Scene，不刷新属性面板、资源树或工程历史。
+            Changed("Items");
+            FireSceneChanged();
         }
         public void StopVisualRuntime()
         {
             _editor.ClearRuntimeFrame();
+            Changed("Items");
+            FireSceneChanged();
         }
         public void AppendSelectedEventAction(string eventId,string actionId)
         {
