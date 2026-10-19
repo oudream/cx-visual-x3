@@ -68,6 +68,12 @@
                                 <Button Content="自由路径" Tag="Path" Click="OnInsertShape"/>
                                 <Button Content="文字图元" Tag="Text" Click="OnInsertShape"/>
                                 <Button Content="按钮控件" Tag="WidgetButton" Click="OnInsertShape"/>
+                                <Button Content="图片/SVG资源" Click="OnInsertVisualAsset"/>
+                                <Button Content="文本框控件" Tag="core.widget.textbox" Click="OnInsertShape"/>
+                                <Button Content="勾选控件" Tag="core.widget.checkbox" Click="OnInsertShape"/>
+                                <Button Content="滑块控件" Tag="core.widget.slider" Click="OnInsertShape"/>
+                                <Button Content="进度控件" Tag="core.widget.progressbar" Click="OnInsertShape"/>
+                                <Button Content="下拉控件" Tag="core.widget.combobox" Click="OnInsertShape"/>
                                 <Button Content="路径插点" Tag="split" Click="OnPathOperation"/>
                                 <Button Content="路径删点" Tag="delete" Click="OnPathOperation"/>
                                 <Button Content="转直线" Tag="line" Click="OnPathOperation"/>
@@ -177,6 +183,32 @@
                         <TextBox x:Name="FillColorInput" Width="115" Text="#FF4A90E2" ToolTip="ARGB格式，例如#FF4A90E2"/>
                         <TextBox x:Name="StrokeWidthInput" Width="50" Text="2" ToolTip="描边宽度"/>
                         <Button Content="应用填充" Click="OnApplyVisualStyle"/>
+                    </WrapPanel>
+                    <TextBlock Text="数据绑定（直接引用已有MDS变量名）" FontWeight="SemiBold" Margin="0,8,0,3"/>
+                    <WrapPanel>
+                        <TextBox x:Name="VisualBindingPropertyInput" Width="68" Text="visible" ToolTip="visible/x/y/width/height/rotation/value"/>
+                        <TextBox x:Name="VisualBindingSourceInput" Width="120" Text="Motor.Ready" ToolTip="MDS变量名"/>
+                        <Button Content="绑定变量" Click="OnApplyVisualBinding"/>
+                    </WrapPanel>
+                    <TextBlock Text="状态样式 / 动画参数" FontWeight="SemiBold" Margin="0,8,0,3"/>
+                    <WrapPanel>
+                        <TextBox x:Name="VisualStateInput" Width="66" Text="Fault" ToolTip="布尔状态变量名"/>
+                        <TextBox x:Name="VisualStateColorInput" Width="91" Text="#FFFF3030" ToolTip="状态填充颜色"/>
+                        <Button Content="添加状态" Click="OnAddVisualState"/>
+                    </WrapPanel>
+                    <WrapPanel>
+                        <TextBox x:Name="VisualAnimationProperty" Width="65" Text="opacity" ToolTip="opacity/x/y/rotation"/>
+                        <TextBox x:Name="VisualAnimationFrom" Width="44" Text="0.2"/>
+                        <TextBox x:Name="VisualAnimationTo" Width="44" Text="1"/>
+                        <TextBox x:Name="VisualAnimationDuration" Width="51" Text="1000" ToolTip="时长ms"/>
+                        <Button Content="应用动画" Click="OnApplyVisualAnimation"/>
+                    </WrapPanel>
+                    <TextBlock Text="完整画面样式" FontWeight="SemiBold" Margin="0,8,0,3"/>
+                    <WrapPanel>
+                        <TextBox x:Name="VisualStrokeColor" Width="100" Text="#FF184E83" ToolTip="ARGB描边颜色"/>
+                        <TextBox x:Name="VisualOpacityInput" Width="50" Text="1" ToolTip="不透明度0~1"/>
+                        <TextBox x:Name="VisualFontSizeInput" Width="44" Text="12" ToolTip="文字字号"/>
+                        <Button Content="应用完整样式" Click="OnApplyFullStyle"/>
                     </WrapPanel>
                     <TextBlock Text="运行事件定义（执行需专业命令授权）" FontWeight="SemiBold" Margin="0,8,0,3"/>
                     <WrapPanel>
