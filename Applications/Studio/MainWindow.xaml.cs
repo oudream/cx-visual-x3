@@ -27,6 +27,8 @@ namespace CxVisual.Studio
         private readonly StudioViewModel _viewModel;
         private readonly MOLRuntimeOverlay _logicOverlay=new MOLRuntimeOverlay();
         private MRKFlowHandle _logicFlow;
+        private MRKExecutionDebugController _logicDebug;
+        private readonly HashSet<Guid> _logicBreakpoints=new HashSet<Guid>();
         private bool _logicRunning;
         private readonly System.Diagnostics.Stopwatch _visualClock=new System.Diagnostics.Stopwatch();
         private MEMEngineeringSession _renderAssetSession;
@@ -42,6 +44,18 @@ namespace CxVisual.Studio
         private Guid? _pendingWireSource;
         private Guid? _pendingWireTarget;
         private readonly SimulationResolver _simulation=new SimulationResolver();
+        private sealed class FlowDiagnosis
+        {
+            public Guid? BlockId{get;set;}
+            public Guid? LinkId{get;set;}
+            public string Label{get;set;}
+        }
+        private sealed class FlowTraceRecord
+        {
+            public Guid BlockId{get;set;}
+            public Guid ContentId{get;set;}
+            public string Label{get;set;}
+        }
         private sealed class FlowPortChoice
         {
             public string SourcePort{get;set;}
@@ -1125,6 +1139,65 @@ namespace CxVisual.Studio
                 (x.LinkId.HasValue?" / Link "+x.LinkId.Value.ToString("N").Substring(0,8):"")+
                 "： "+x.Message));
         }
+        private void OnFlowToggleBreakpoint(object sender,RoutedEventArgs args)
+        {
+            try
+            {
+                Guid id=SelectedFlowBlock();
+                if(!_logicBreakpoints.Add(id))_logicBreakpoints.Remove(id);
+                LogicInfo.Text=(_logicBreakpoints.Contains(id)?"已增加":"已移除")+
+                    "节点断点 "+id.ToString("N").Substring(0,8);
+            }
+            catch(Exception ex){LogicInfo.Text="设置断点失败："+ex.Message;}
+        }
+        private void OnFlowDebugPause(object sender,RoutedEventArgs args)
+        {
+            if(_logicDebug==null){LogicInfo.Text="当前没有活跃MRK调试会话";return;}
+            _logicDebug.Pause();
+            LogicInfo.Text="已请求在下一个MRK节点边界暂停";
+        }
+        private void OnFlowDebugResume(object sender,RoutedEventArgs args)
+        {
+            if(_logicDebug==null){LogicInfo.Text="当前没有活跃MRK调试会话";return;}
+            _logicDebug.Resume();
+            LogicInfo.Text="已恢复MRK执行";
+        }
+        private void OnFlowDebugStep(object sender,RoutedEventArgs args)
+        {
+            LogicInfo.Text=_logicDebug!=null&&_logicDebug.StepOnce()?
+                "已单步释放一个等待的MRK节点":"当前无可单步的等待节点";
+        }
+        private void OnFlowDebugCancel(object sender,RoutedEventArgs args)
+        {
+            if(_logicFlow!=null&&_logicFlow.RequestCancel())
+                LogicInfo.Text="已向MRK发送取消请求";
+            else LogicInfo.Text="没有可取消的运行任务";
+        }
+        private void OnFlowLocateDiagnostic(object sender,RoutedEventArgs args)
+        {
+            var item=FlowDiagnosticList.SelectedItem as FlowDiagnosis;
+            if(item==null){LogicInfo.Text="请先选择一条诊断";return;}
+            if(item.BlockId.HasValue&&LogicHost.WiringDefinition!=null)
+            {
+                LogicHost.SetSelection(new[]{item.BlockId.Value});
+                OnFlowLocate(sender,args);
+                LogicInfo.Text="已定位构建诊断："+item.Label;
+            }
+            else LogicInfo.Text="当前诊断只定位到Content，缺少BlockId："+item.Label;
+        }
+        private void OnFlowLocateTrace(object sender,RoutedEventArgs args)
+        {
+            var trace=FlowTraceList.SelectedItem as FlowTraceRecord;
+            if(trace==null){LogicInfo.Text="请先选择一条运行轨迹";return;}
+            if(LogicHost.WiringDefinition!=null&&
+                LogicHost.WiringDefinition.Blocks.Any(b=>b.Id==trace.BlockId))
+            {
+                LogicHost.SetSelection(new[]{trace.BlockId});
+                OnFlowLocate(sender,args);
+                LogicInfo.Text="已定位运行轨迹："+trace.Label;
+            }
+            else LogicInfo.Text="轨迹指向其他Content，需要先切换工程资源："+trace.Label;
+        }
         private void OnValidateWiring(object sender,RoutedEventArgs args)
         {
             if(_logicRunning)return;
@@ -1135,6 +1208,9 @@ namespace CxVisual.Studio
                 var result=new MOCBuildService().Build(_viewModel.ProjectSession.GetSnapshot(),
                     page.RootContent.Id,_simulation);
                 LogicInfo.Text=FormatBuildDiagnostics(result);
+                FlowDiagnosticList.ItemsSource=result.Diagnostics.Select(x=>new FlowDiagnosis{
+                    BlockId=x.BlockId,LinkId=x.LinkId,
+                    Label=x.Code+" · "+x.Message}).ToList();
                 LogicHost.RuntimeStates=result.Diagnostics.Where(x=>x.BlockId.HasValue)
                     .GroupBy(x=>x.BlockId.Value).ToDictionary(x=>x.Key,x=>"Failed");
             }
@@ -1188,13 +1264,18 @@ namespace CxVisual.Studio
                     return;
                 }
                 var compiled=checkedBuild.Plan;
+                _logicDebug=new MRKExecutionDebugController();
+                foreach(Guid id in _logicBreakpoints)
+                foreach(var origin in compiled.SourceMap.Find(id))
+                    _logicDebug.AddBreakpoint(origin.StepId);
+                FlowTraceList.ItemsSource=new List<FlowTraceRecord>();
                 _logicRunning=true;
                 _logicOverlay.Clear();
                 LogicHost.RuntimeStates=_logicOverlay.Snapshot();
                 engine=new MRKExecutionEngine(new FCRWorkerOptions(3,64));
                 var inputs=compiled.InputDefaults.ToDictionary(p=>p.Key,p=>p.Value,StringComparer.Ordinal);
                 inputs["accepted"]=true;
-                _logicFlow=engine.StartFlow(compiled.Plan,inputs);
+                _logicFlow=engine.StartFlowWithControl(compiled.Plan,_logicDebug,inputs);
                 long cursor=0;
                 Action update=()=>
                 {
@@ -1207,6 +1288,14 @@ namespace CxVisual.Studio
                     }
                     _logicOverlay.Apply(changes);
                     LogicHost.RuntimeStates=_logicOverlay.Snapshot();
+                    var previous=(FlowTraceList.ItemsSource as IEnumerable<FlowTraceRecord>)
+                        .ToList();
+                    previous.AddRange(changes.Events.Select(e=>new FlowTraceRecord{
+                        BlockId=e.Origin.BlockId,ContentId=e.Origin.ContentAddress.ObjectId,
+                        Label=e.Transition.State+" · "+e.Origin.BlockId.ToString("N")
+                            .Substring(0,8)+" · "+e.Transition.StepId}));
+                    if(previous.Count>500)previous=previous.Skip(previous.Count-500).ToList();
+                    FlowTraceList.ItemsSource=previous;
                 };
                 timer=new DispatcherTimer(DispatcherPriority.Background)
                 {Interval=TimeSpan.FromMilliseconds(150)};
@@ -1225,6 +1314,7 @@ namespace CxVisual.Studio
                 if(timer!=null)timer.Stop();
                 if(engine!=null)await engine.StopAsync(true);
                 _logicFlow=null;
+                _logicDebug=null;
                 _logicRunning=false;
             }
         }
