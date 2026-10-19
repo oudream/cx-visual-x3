@@ -66,6 +66,12 @@ namespace CxVisual.Studio
             Select(id);
             Execute(() => _editor.Move(id, x, y));
         }
+        /// <summary>路径、缩放和旋转统一提交到MEM事务；失败时不修改工程状态。</summary>
+        public void EditVisualHandle(MVIVisualHandle handle,double worldX,double worldY)
+        {
+            if(handle==null)throw new ArgumentNullException("handle");
+            Execute(()=>_editor.EditHandle(handle,worldX,worldY));
+        }
         private static MEMEngineeringSession CreateSample()
         {
             var session = MEMEngineering.Create("Demo Project");
