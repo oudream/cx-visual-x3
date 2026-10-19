@@ -59,6 +59,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             G05aConditionalBranchesAndJoin();
             G05cWorkflowRetryPolicy();
             G05bStreamBackpressureAndFlow();
+            G05dHierarchicalParallelMachine();
             V2ExtractLinearContent();
             CThreeTierXRayTwoSubflows();
             V2LayoutContract();
@@ -722,6 +723,92 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(session.Redo().Success&&
                     session.GetSnapshot().Find(child.Id)!=null,
                     "extract redo did not restore referenced Content atomically");
+            }
+            finally{session.Close(true);}
+        }
+
+        /// <summary>G05d：单Logic内StateMachine按正交Region处理同一事件，并以MRK真实执行。</summary>
+        private static void G05dHierarchicalParallelMachine()
+        {
+            var machine=new MOLStateMachineDefinition(new[]{
+                new MOLStateDescriptor("CameraRoot","Camera",initial:true),
+                new MOLStateDescriptor("CameraIdle","Camera","CameraRoot",true),
+                new MOLStateDescriptor("CameraBusy","Camera","CameraRoot"),
+                new MOLStateDescriptor("MotionRoot","Motion",initial:true),
+                new MOLStateDescriptor("MotionParked","Motion","MotionRoot",true),
+                new MOLStateDescriptor("MotionMoving","Motion","MotionRoot")
+            },new[]{
+                new MOLStateTransition("CameraIdle","start","CameraBusy"),
+                new MOLStateTransition("CameraBusy","stop","CameraIdle"),
+                new MOLStateTransition("CameraRoot","reset","CameraIdle"),
+                new MOLStateTransition("MotionParked","start","MotionMoving"),
+                new MOLStateTransition("MotionMoving","stop","MotionParked"),
+                new MOLStateTransition("MotionRoot","reset","MotionParked")
+            });
+            var active=machine.Run(new[]{"start"});
+            Check(active["Camera"]=="CameraBusy"&&active["Motion"]=="MotionMoving",
+                "G05d orthogonal regions did not consume shared event");
+            active=machine.Run(new[]{"start","reset"});
+            Check(active["Camera"]=="CameraIdle"&&active["Motion"]=="MotionParked",
+                "G05d hierarchical parent transition did not override active child");
+            active=machine.Run(new[]{"unsupported"});
+            Check(active["Camera"]=="CameraIdle"&&active["Motion"]=="MotionParked",
+                "G05d unknown event changed current state");
+            bool rejected=false;
+            try{new MOLStateMachineDefinition(machine.States,
+                new[]{new MOLStateTransition("CameraIdle","start","MotionMoving")});}
+            catch(InvalidOperationException){rejected=true;}
+            Check(rejected,"G05d cross-region transition was not rejected");
+            var session=MEMEngineering.Create("G05d状态机工程");
+            var page=session.AddPage("状态监控");
+            try
+            {
+                Guid id=Guid.Empty;
+                MOCFlowBuilder.Edit(session,page.RootContent,b=>id=b.AddStateMachine(machine));
+                var read=MOLWiringCodec.Get(session.GetSnapshot().Find(page.RootContent.Id));
+                Check(read.Blocks.Count==1&&read.StateMachines.ContainsKey(id),
+                    "G05d state machine did not persist as same Content Logic");
+                var code=MOLWiringCodec.Deserialize(MOLWiringCodec.Serialize(read));
+                Check(code.StateMachines[id].States.Count==6&&
+                    code.StateMachines[id].Transitions.Count==6,
+                    "G05d state machine V2 codec lost hierarchy or transitions");
+                var fragment=MOCWiringFragment.Capture(read,new[]{id});
+                Check(MOCWiringFragment.FromPayload(fragment.ToPayload())
+                    .StateMachines[id].Transitions.Count==6,
+                    "G05d state machine clipboard lost definition");
+                var compiled=new MOCBuildService().Build(
+                    session.GetSnapshot(),page.RootContent.Id,new TestResolver());
+                Check(compiled.Succeeded,"G05d state machine failed to compile: "+
+                    string.Join(",",compiled.Diagnostics.Select(x=>x.Code+":"+x.Message)));
+                var engine=new MRKExecutionEngine(new FCRWorkerOptions(1,8));
+                try
+                {
+                    var events=new Dictionary<string,object>{
+                        {"moc.state.events."+id.ToString("N"),new[]{"start","reset"}}};
+                    var handle=engine.StartFlow(compiled.Plan.Plan,events);
+                    var result=handle.Completion.GetAwaiter().GetResult();
+                    object output;
+                    var outputState=handle.Context.TryGetResult("w"+id.ToString("N"),out output)?
+                        output as IReadOnlyDictionary<string,string>:null;
+                    Check(result.State==MRKFlowState.Completed&&outputState!=null&&
+                        outputState["Camera"]=="CameraIdle"&&
+                        outputState["Motion"]=="MotionParked"&&
+                        compiled.Plan.SourceMap.Find(id).Single().Role=="StateMachine",
+                        "G05d MRK execution did not produce deterministic StateMachine result");
+                }
+                finally{engine.StopAsync(true).GetAwaiter().GetResult();}
+                int before=session.Revision;
+                MOCFlowBuilder.Edit(session,page.RootContent,b=>
+                    b.SetStateMachine(id,new MOLStateMachineDefinition(machine.States,
+                        new[]{new MOLStateTransition("CameraIdle","start","CameraBusy")})));
+                Check(session.Revision==before+1&&
+                    MOLWiringCodec.Get(session.GetSnapshot().Find(page.RootContent.Id))
+                        .StateMachines[id].Transitions.Count==1,
+                    "G05d state machine edit not atomic");
+                Check(session.Undo().Success&&
+                    MOLWiringCodec.Get(session.GetSnapshot().Find(page.RootContent.Id))
+                        .StateMachines[id].Transitions.Count==6,
+                    "G05d state machine undo did not recover event rules");
             }
             finally{session.Close(true);}
         }
