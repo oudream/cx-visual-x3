@@ -37,7 +37,15 @@ namespace CxVisual.Studio
         public string Mode
         {
             get{return _mode;}
-            set{if(_mode==value)return;_mode=value;Notify("Mode");Notify("IsBooleanConstant");Notify("IsNumericConstant");Notify("ValidationMessage");}
+            set
+            {
+                if(_mode==value)return;
+                _mode=value;
+                // 从变量/资源切回布尔常量时让可见CheckBox与实际提交值保持一致。
+                bool parsed;
+                if(Kind==MPMValueKind.Boolean&&value=="常量"&&!bool.TryParse(Text,out parsed))Text="false";
+                Notify("Mode");Notify("IsBooleanConstant");Notify("IsNumericConstant");Notify("ValidationMessage");
+            }
         }
         public bool IsBooleanConstant {get{return Kind==MPMValueKind.Boolean&&Mode=="常量";}}
         public bool IsNumericConstant
@@ -68,7 +76,7 @@ namespace CxVisual.Studio
                         return "请输入有效十进制数值";
                     number=(double)decimalValue;
                 }
-                else if(!double.TryParse(Text,NumberStyles.Float,CultureInfo.InvariantCulture,out number)||
+                else if(!double.TryParse(Text,NumberStyles.Float|NumberStyles.AllowThousands,CultureInfo.InvariantCulture,out number)||
                     double.IsNaN(number)||double.IsInfinity(number))
                     return "请输入有效有限数值";
                 if(Descriptor!=null&&
