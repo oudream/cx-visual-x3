@@ -15,11 +15,17 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         public static Geometry BuildGeometry(CxSceneItem item)
         {
             if(item==null||item.Shape==null)throw new ArgumentException("Scene Shape required.","item");
+            return BuildGeometry(item.Shape.Geometry,item.GeometryToWorld);
+        }
+        /// <summary>拖拽预览复用同一原生路径渲染；传入纯几何副本，不修改MEM工程。</summary>
+        public static Geometry BuildGeometry(FGEPath2D geometry,FGETransform2D transform)
+        {
+            if(geometry==null)throw new ArgumentNullException("geometry");
             var path=new StreamGeometry{FillRule=FillRule.Nonzero};
             using(StreamGeometryContext dc=path.Open())
             {
                 bool hasFigure=false;
-                var commands=item.Shape.Geometry.Commands;
+                var commands=geometry.Commands;
                 for(int i=0;i<commands.Count;i++)
                 {
                     FGEPathCommand command=commands[i];
@@ -65,7 +71,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                     }
                 }
             }
-            var m=item.GeometryToWorld;
+            var m=transform;
             // WPF Matrix参数为列基: x' = M11*x + M21*y + OffsetX。
             path.Transform=new MatrixTransform(new Matrix(m.M11,m.M21,m.M12,m.M22,m.DX,m.DY));
             path.Freeze();
