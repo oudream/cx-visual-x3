@@ -259,7 +259,7 @@ jobs:
           $record = $observation.Observation
           if ([string]$record.schema -ne '1' -or [string]$record.runId -ne [string]$data.runId -or
               [string]$record.attemptId -ne [string]$data.cases[0].attemptId -or
-              [string]$record.sourceObjectId -ne 'CxRect2D') {
+              [string]$record.sourceObjectId -ne 'FGERect2D') {
               throw 'Structured observation lost Run/Attempt/Owner identity'
           }
           Write-Host 'PASS versioned Geometry Owner observation and content addressed replay'
