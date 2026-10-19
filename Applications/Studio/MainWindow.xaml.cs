@@ -73,6 +73,16 @@ namespace CxVisual.Studio
                 LogicInfo.Text="拖线被拒绝："+args.Reason;
             SceneHost.NodeActivated += OnActivated;
             SceneHost.MoveRequested += OnMove;
+            SceneHost.HandleEditRequested += (sender,edit)=>
+            {
+                try
+                {
+                    _viewModel.EditVisualHandle(edit.Handle,edit.WorldX,edit.WorldY);
+                    VisualInfo.Text="已修改"+edit.Handle.Kind+" | Revision "+_viewModel.Revision+
+                        "（可撤销、重做并保存工程）";
+                }
+                catch(Exception ex){VisualInfo.Text="图元编辑失败："+ex.Message;}
+            };
             _visualPreviewTimer.Tick+=(sender,args)=>
             {
                 if(SceneHost.IsDesignMode)return;
