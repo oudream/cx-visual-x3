@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using CxVisual.Foundation.Infrastructure.Concurrency;
 using CxVisual.Mechanism.Core;
 using CxVisual.Mechanism.Orchestration;
+using CxVisual.Mechanism.Data.RuntimeData;
 using CxVisual.Mechanism.Runtime.Execution;
 
 namespace CxVisual.Tests.ArchitectureSmoke
@@ -57,6 +58,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             V2TypedParameterConfiguration();
             G05aConditionalBranchesAndJoin();
             G05cWorkflowRetryPolicy();
+            G05bStreamBackpressureAndFlow();
             V2ExtractLinearContent();
             V2LayoutContract();
             V2BulkEditingClipboard();
@@ -633,6 +635,116 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(session.Redo().Success&&
                     session.GetSnapshot().Find(child.Id)!=null,
                     "extract redo did not restore referenced Content atomically");
+            }
+            finally{session.Close(true);}
+        }
+
+        /// <summary>G05b：真实背压、双向隔离、取消及MOC→MRK Stream Port通信。</summary>
+        private static void G05bStreamBackpressureAndFlow()
+        {
+            using(var stream=new MDSBoundedByteStream(1,128))
+            {
+                byte[] first={1,2,3};
+                stream.WriteAsync(first).GetAwaiter().GetResult();
+                first[0]=99;
+                var pending=stream.WriteAsync(new byte[]{4});
+                Check(!pending.IsCompleted,"G05b full-capacity writer did not wait for consumer");
+                var consumed=stream.ReadAsync().GetAwaiter().GetResult();
+                Check(consumed.Length==3&&consumed[0]==1,
+                    "G05b sender mutation changed enqueued bytes");
+                consumed[0]=55;
+                pending.GetAwaiter().GetResult();
+                stream.Complete();
+                var last=stream.ReadAsync().GetAwaiter().GetResult();
+                Check(last.Length==1&&last[0]==4&&
+                    stream.ReadAsync().GetAwaiter().GetResult()==null,
+                    "G05b complete did not drain then return end-of-stream");
+            }
+            using(var stream=new MDSBoundedByteStream(1,4))
+            using(var cancellation=new CancellationTokenSource())
+            {
+                stream.WriteAsync(new byte[]{1}).GetAwaiter().GetResult();
+                var blocked=stream.WriteAsync(new byte[]{2},cancellation.Token);
+                Check(!blocked.IsCompleted,"G05b cancellation prerequisite not blocked");
+                cancellation.Cancel();
+                bool cancelled=false;
+                try{blocked.GetAwaiter().GetResult();}
+                catch(OperationCanceledException){cancelled=true;}
+                Check(cancelled,"G05b pending writer ignored cancellation");
+                bool oversize=false;
+                try{stream.WriteAsync(new byte[5]).GetAwaiter().GetResult();}
+                catch(ArgumentException){oversize=true;}
+                Check(oversize,"G05b chunk budget not enforced");
+            }
+            using(var stream=new MDSBoundedByteStream(1,5))
+            {
+                stream.Complete(new InvalidOperationException("producer failed"));
+                bool failed=false;
+                try{stream.ReadAsync().GetAwaiter().GetResult();}
+                catch(InvalidOperationException ex){failed=ex.InnerException!=null;}
+                Check(failed,"G05b producer fault did not propagate to consumer");
+            }
+            var session=MEMEngineering.Create("G05b 数据流");
+            var page=session.AddPage("工业图像流");
+            try
+            {
+                Guid source=Guid.Empty,target=Guid.Empty;
+                MOCFlowBuilder.Edit(session,page.RootContent,b=>{
+                    source=b.Step("stream.producer");target=b.Step("stream.consumer");
+                    b.AddPort(source,new MPCPortDescriptor("Chunks",
+                        MPCPortDirection.Output,"stream.bytes",MPCPortKind.Stream));
+                    b.AddPort(target,new MPCPortDescriptor("Chunks",
+                        MPCPortDirection.Input,"stream.bytes",MPCPortKind.Stream,
+                        required:true));
+                    b.Connect(source,"Done",target,"Start");
+                    b.Connect(source,"Chunks",target,"Chunks",MPCPortKind.Stream);
+                });
+                var wiring=MOLWiringCodec.Get(session.GetSnapshot().Find(page.RootContent.Id));
+                Check(wiring.Links.Any(l=>l.Kind==MPCPortKind.Stream),
+                    "G05b Stream link not stored in authoritative V2");
+                int aggregate=0;
+                var resolver=new TestResolver()
+                    .Register("stream.producer",async (ctx,cancel)=>{
+                        var buffer=new MDSBoundedByteStream(1,1024);
+                        Task ignored=Task.Run(async()=>{
+                            try
+                            {
+                                await buffer.WriteAsync(new byte[]{1,2},cancel).ConfigureAwait(false);
+                                await buffer.WriteAsync(new byte[]{3,4},cancel).ConfigureAwait(false);
+                                buffer.Complete();
+                            }
+                            catch(Exception ex){buffer.Complete(ex);}
+                        },cancel);
+                        await Task.Yield();
+                        return (object)buffer;
+                    })
+                    .Register("stream.consumer",async (ctx,cancel)=>{
+                        var buffer=(MDSBoundedByteStream)ctx.BoundInputs["Chunks"];
+                        try
+                        {
+                            byte[] item;
+                            while((item=await buffer.ReadAsync(cancel).ConfigureAwait(false))!=null)
+                                foreach(byte value in item)Interlocked.Add(ref aggregate,value);
+                        }
+                        finally{buffer.Dispose();}
+                        return (object)aggregate;
+                    });
+                var built=new MOCBuildService().Build(session.GetSnapshot(),page.RootContent.Id,resolver);
+                Check(built.Succeeded,
+                    "G05b Stream Port flow failed to compile: "+
+                    string.Join(",",built.Diagnostics.Select(x=>x.Code+"="+x.Message)));
+                MOCTraceView trace;
+                var flow=Execute(built.Plan,null,out trace);
+                Check(flow.State==MRKFlowState.Completed&&aggregate==10&&trace.Events.Count>0,
+                    "G05b streaming producer/consumer failed real MRK handoff");
+                int revision=session.Revision;
+                bool rejected=false;
+                try{MOCFlowBuilder.Edit(session,page.RootContent,b=>
+                    b.ReplacePort(target,new MPCPortDescriptor("Chunks",
+                        MPCPortDirection.Input,"int",MPCPortKind.Stream)));}
+                catch(InvalidOperationException){rejected=true;}
+                Check(rejected&&session.Revision==revision,
+                    "G05b incompatible Stream type did not roll back");
             }
             finally{session.Close(true);}
         }
