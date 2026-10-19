@@ -115,9 +115,76 @@ namespace CxVisual.Studio
             RefreshScene();
         }
         private void OnActivated(object sender, CxNodeEventArgs args)
-        { _viewModel.Select(args.Id); }
+        { _viewModel.Select(args.Id); RefreshVisualInspector(); }
         private void OnMove(object sender, CxMoveEventArgs args)
         { _viewModel.Drag(args.Id, args.X, args.Y); }
+        private static double ReadVisualNumber(TextBox text)
+        {
+            return double.Parse(text.Text,System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture);
+        }
+        private void RefreshVisualInspector()
+        {
+            if(!_viewModel.SelectedId.HasValue)return;
+            MRCVisualItem item=_viewModel.ProjectSession.Find(
+                _viewModel.SelectedId.Value) as MRCVisualItem;
+            if(item==null)return;
+            VisualXInput.Text=item.X.ToString("R",System.Globalization.CultureInfo.InvariantCulture);
+            VisualYInput.Text=item.Y.ToString("R",System.Globalization.CultureInfo.InvariantCulture);
+            VisualWidthInput.Text=item.Width.ToString("R",System.Globalization.CultureInfo.InvariantCulture);
+            VisualHeightInput.Text=item.Height.ToString("R",System.Globalization.CultureInfo.InvariantCulture);
+            VisualRotationInput.Text=item.Rotation.ToString("R",System.Globalization.CultureInfo.InvariantCulture);
+            VisualLayerInput.Text=item.LayerId;
+        }
+        private void OnToggleVisualSnap(object sender,RoutedEventArgs args)
+        {SceneHost.SnapToGrid=VisualGridSnap.IsChecked==true;}
+        private void OnVisualZoom(object sender,RoutedEventArgs args)
+        {
+            string operation=((Button)sender).Tag.ToString();
+            double zoom=operation=="reset"?1:
+                Math.Max(0.05,Math.Min(16,SceneHost.Zoom*(operation=="in"?1.25:0.8)));
+            SceneHost.SetViewport(zoom,0,0);
+            VisualInfo.Text="画布缩放："+zoom.ToString("P0")+
+                "；鼠标滚轮以指针为中心缩放，中键拖动画布";
+        }
+        private void OnPathOperation(object sender,RoutedEventArgs args)
+        {
+            try
+            {
+                int index=int.Parse(PathCommandIndex.Text,
+                    System.Globalization.CultureInfo.InvariantCulture);
+                string op=((Button)sender).Tag.ToString();
+                MTCEditResult<bool> result=_viewModel.EditVisualPath(index,op);
+                VisualInfo.Text=result.Success?"路径操作已保存："+op:
+                    result.ErrorCode+" "+result.Message;
+            }
+            catch(Exception ex){VisualInfo.Text="路径操作失败："+ex.Message;}
+        }
+        private void OnApplyVisualGeometry(object sender,RoutedEventArgs args)
+        {
+            try
+            {
+                MTCEditResult<bool> result=_viewModel.EditVisualGeometry(
+                    ReadVisualNumber(VisualXInput),ReadVisualNumber(VisualYInput),
+                    ReadVisualNumber(VisualWidthInput),ReadVisualNumber(VisualHeightInput),
+                    ReadVisualNumber(VisualRotationInput));
+                VisualInfo.Text=result.Success?"已提交几何位置/尺寸/旋转":
+                    result.ErrorCode+" "+result.Message;
+            }
+            catch(Exception ex){VisualInfo.Text="几何属性失败："+ex.Message;}
+        }
+        private void ApplyVisualLayer(bool toFront)
+        {
+            try
+            {
+                MTCEditResult<bool> result=_viewModel.EditVisualLayer(VisualLayerInput.Text,toFront);
+                VisualInfo.Text=result.Success?"图层修改已提交":
+                    result.ErrorCode+" "+result.Message;
+            }
+            catch(Exception ex){VisualInfo.Text="图层编辑失败："+ex.Message;}
+        }
+        private void OnApplyVisualLayer(object sender,RoutedEventArgs args){ApplyVisualLayer(false);}
+        private void OnBringVisualFront(object sender,RoutedEventArgs args){ApplyVisualLayer(true);}
         private void OnInsertShape(object sender,RoutedEventArgs args)
         {
             try
