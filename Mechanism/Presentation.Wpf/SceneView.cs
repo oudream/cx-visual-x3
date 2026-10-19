@@ -23,6 +23,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         private double _dragY;
         private bool _dragging;
         private readonly HashSet<Guid> _selectedItems=new HashSet<Guid>();
+        public IReadOnlyList<Guid> SelectedVisualIds
+        {get{return new List<Guid>(_selectedItems).AsReadOnly();}}
         private bool _marquee;
         private Point _marqueeStart,_marqueeEnd;
         public event Action<IReadOnlyList<Guid>> SelectionSetRequested;
