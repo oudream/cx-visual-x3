@@ -515,7 +515,8 @@ namespace CxVisual.Mechanism.Core
             IDictionary<Guid,MOLBlockPosition> positions=null,
             IEnumerable<MOLSelectionGroup> groups=null,
             IDictionary<Guid,IDictionary<string,string>> parameters=null,
-            IDictionary<Guid,MOLStepPolicy> policies=null)
+            IDictionary<Guid,MOLStepPolicy> policies=null,
+            IDictionary<Guid,MOLStateMachineDefinition> stateMachines=null)
         {
             EntryBlockId=entryBlockId;
             Blocks=new ReadOnlyCollection<MOLControlBlock>((blocks??new MOLControlBlock[0]).ToArray());
@@ -547,6 +548,13 @@ namespace CxVisual.Mechanism.Core
                 strategy.Add(entry.Key,entry.Value);
             }
             Policies=new ReadOnlyDictionary<Guid,MOLStepPolicy>(strategy);
+            var machines=new Dictionary<Guid,MOLStateMachineDefinition>();
+            if(stateMachines!=null)foreach(var item in stateMachines)
+            {
+                if(item.Value==null)throw new ArgumentException("wiring.null_state_machine");
+                machines.Add(item.Key,item.Value);
+            }
+            StateMachines=new ReadOnlyDictionary<Guid,MOLStateMachineDefinition>(machines);
             Validate();
         }
         public Guid EntryBlockId{get;private set;}
@@ -558,6 +566,7 @@ namespace CxVisual.Mechanism.Core
         /// <summary>端口字面量参数，按BlockId绑定到已有Data Input；不是另一个参数真源。</summary>
         public IReadOnlyDictionary<Guid,IReadOnlyDictionary<string,string>> Parameters{get;private set;}
         public IReadOnlyDictionary<Guid,MOLStepPolicy> Policies{get;private set;}
+        public IReadOnlyDictionary<Guid,MOLStateMachineDefinition> StateMachines{get;private set;}
         public void Validate()
         {
             // G04：合法空草稿可保存，不能交给MOC/MRK执行。
@@ -565,7 +574,7 @@ namespace CxVisual.Mechanism.Core
             {
                 if(EntryBlockId!=Guid.Empty||Links.Count!=0||Ports.Count!=0||
                     Positions.Count!=0||Groups.Count!=0||Parameters.Count!=0||
-                    Policies.Count!=0)
+                    Policies.Count!=0||StateMachines.Count!=0)
                     throw new InvalidOperationException("wiring.empty_draft_has_references");
                 return;
             }
@@ -587,6 +596,9 @@ namespace CxVisual.Mechanism.Core
                     group.BlockIds.Any(id=>!ids.Contains(id)||!groupedMembers.Add(id)))
                     throw new InvalidOperationException("wiring.group_overlap_or_scope");
             }
+            if(StateMachines.Count>128||StateMachines.Keys.Any(id=>!ids.Contains(id))||
+                StateMachines.Keys.Any(id=>Blocks.Single(b=>b.Id==id).CapabilityId!="moc.state-machine"))
+                throw new InvalidOperationException("wiring.state_machine_scope");
             if(Policies.Count>4096||Policies.Keys.Any(id=>!ids.Contains(id)))
                 throw new InvalidOperationException("wiring.policy_scope");
             if(Parameters.Keys.Any(id=>!ids.Contains(id))||
@@ -776,6 +788,18 @@ namespace CxVisual.Mechanism.Core
                     new XAttribute("in",l.Target.PortMemberId),
                     new XAttribute("condition",l.ConditionId),
                     new XAttribute("order",l.Order.HasValue?l.Order.Value.ToString(CultureInfo.InvariantCulture):"")))));
+            if(def.StateMachines.Count>0)
+                root.Add(new XElement("StateMachines",def.StateMachines.Select(item=>
+                    new XElement("Machine",new XAttribute("block",item.Key.ToString("N")),
+                        new XElement("States",item.Value.States.Select(state=>
+                            new XElement("State",new XAttribute("id",state.Id),
+                                new XAttribute("region",state.Region),
+                                new XAttribute("parent",state.ParentId),
+                                new XAttribute("initial",state.Initial)))),
+                        new XElement("Transitions",item.Value.Transitions.Select(edge=>
+                            new XElement("Transition",new XAttribute("from",edge.Source),
+                                new XAttribute("event",edge.EventId),
+                                new XAttribute("to",edge.Target))))))));
             if(def.Policies.Count>0)
                 root.Add(new XElement("Policies",def.Policies.Select(item=>
                     new XElement("Policy",new XAttribute("block",item.Key.ToString("N")),
@@ -807,9 +831,10 @@ namespace CxVisual.Mechanism.Core
                 var root=XDocument.Load(reader).Root;
                 if(root==null||root.Name!="MOL"||(string)root.Attribute("v")!="2"||
                     root.Element("Blocks")==null||root.Element("Links")==null||
-                    root.Elements().Count()<2||root.Elements().Count()>5||
+                    root.Elements().Count()<2||root.Elements().Count()>6||
                     root.Elements().Any(x=>x.Name!="Blocks"&&x.Name!="Links"&&
-                        x.Name!="Groups"&&x.Name!="Parameters"&&x.Name!="Policies")||
+                        x.Name!="Groups"&&x.Name!="Parameters"&&x.Name!="Policies"&&
+                        x.Name!="StateMachines")||
                     root.Elements().GroupBy(x=>x.Name).Any(x=>x.Count()!=1))
                     throw new InvalidDataException("wiring.schema");
                 string rawEntry=(string)root.Attribute("entry");
@@ -879,7 +904,25 @@ namespace CxVisual.Mechanism.Core
                         bool.Parse((string)policy.Attribute("idempotent")));
                     policies.Add(id,instance);
                 }
-                return new MOLWiringDefinition(entry,blocks,ports,links,positions,groups,parameters,policies);
+                var stateMachines=new Dictionary<Guid,MOLStateMachineDefinition>();
+                if(root.Element("StateMachines")!=null)
+                foreach(var machine in root.Element("StateMachines").Elements("Machine"))
+                {
+                    if(machine.Element("States")==null||machine.Element("Transitions")==null||
+                        machine.Elements().Count()!=2)
+                        throw new InvalidDataException("wiring.state_machine_schema");
+                    Guid id=ReadGuid(machine,"block");
+                    var states=machine.Element("States").Elements("State").Select(state=>
+                        new MOLStateDescriptor((string)state.Attribute("id"),
+                            (string)state.Attribute("region"),(string)state.Attribute("parent"),
+                            (bool?)state.Attribute("initial")??false)).ToArray();
+                    var transitions=machine.Element("Transitions").Elements("Transition").Select(edge=>
+                        new MOLStateTransition((string)edge.Attribute("from"),
+                            (string)edge.Attribute("event"),(string)edge.Attribute("to"))).ToArray();
+                    stateMachines.Add(id,new MOLStateMachineDefinition(states,transitions));
+                }
+                return new MOLWiringDefinition(entry,blocks,ports,links,positions,groups,parameters,
+                    policies,stateMachines);
             }
         }
         private static Guid ReadGuid(XElement x,string name)
