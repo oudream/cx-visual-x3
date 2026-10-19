@@ -666,12 +666,53 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     afterDelete.Groups.Count==1&&afterDelete.Groups[0].Id==groupId&&
                     afterDelete.Links.Any(l=>l.Id==boundaryId),
                     "batch delete removed unrelated links");
-                revision=session.Revision;rejected=false;
-                try{MOCFlowBuilder.Edit(session,secondPage.RootContent,builder=>
-                    builder.RemoveMany(builder.Blocks.Select(x=>x.Id).ToArray()));}
-                catch(InvalidOperationException){rejected=true;}
-                Check(rejected&&session.Revision==revision,
-                    "delete last remaining blocks failed to roll back");
+                // 删除全部节点生成合法编辑草稿；构建与执行必须继续拒绝。
+                int beforeClear=session.Revision;
+                MOCFlowBuilder.Edit(session,secondPage.RootContent,builder=>
+                    builder.RemoveMany(builder.Blocks.Select(x=>x.Id).ToArray()));
+                var empty=MOLWiringCodec.Get(session.GetSnapshot().Find(secondPage.RootContent.Id));
+                Check(session.Revision==beforeClear+1&&empty.Blocks.Count==0&&
+                    empty.Links.Count==0&&empty.Ports.Count==0&&
+                    empty.Groups.Count==0&&empty.EntryBlockId==Guid.Empty,
+                    "delete all did not save a clean empty draft");
+                var emptyCodec=MOLWiringCodec.Deserialize(MOLWiringCodec.Serialize(empty));
+                Check(emptyCodec.Blocks.Count==0&&emptyCodec.EntryBlockId==Guid.Empty,
+                    "empty V2 draft cannot roundtrip");
+                bool emptyRejected=false;
+                try{empty.ValidateExecutable();}
+                catch(InvalidOperationException){emptyRejected=true;}
+                Check(emptyRejected,"empty draft was treated as executable");
+                var invalidBuild=new MOCBuildService().Build(session.GetSnapshot(),
+                    secondPage.RootContent.Id,new TestResolver());
+                Check(!invalidBuild.Succeeded&&invalidBuild.Diagnostics.Any(d=>
+                    d.Code=="MOC_WIRING_INVALID"),
+                    "empty draft bypassed MOC build gate");
+                Check(session.Undo().Success&&
+                    MOLWiringCodec.Get(session.GetSnapshot().Find(secondPage.RootContent.Id))
+                    .Blocks.Count==3,"delete-all Undo failed");
+                Check(session.Redo().Success&&
+                    MOLWiringCodec.Get(session.GetSnapshot().Find(secondPage.RootContent.Id))
+                    .Blocks.Count==0,"delete-all Redo failed");
+                string emptyPath=System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                    "moc-empty-"+Guid.NewGuid().ToString("N")+".cxproj");
+                try
+                {
+                    session.SaveAs(emptyPath);
+                    var again=MEMEngineering.Open(emptyPath);
+                    try
+                    {
+                        var reopen=MOLWiringCodec.Get(again.GetSnapshot().Find(secondPage.RootContent.Id));
+                        Check(reopen!=null&&reopen.Blocks.Count==0&&
+                            reopen.EntryBlockId==Guid.Empty,
+                            "actual engineering file lost empty wiring draft");
+                    }
+                    finally{again.Close(true);}
+                }
+                finally
+                {
+                    if(System.IO.File.Exists(emptyPath))System.IO.File.Delete(emptyPath);
+                    if(System.IO.File.Exists(emptyPath+".cx-lock"))System.IO.File.Delete(emptyPath+".cx-lock");
+                }
                 MOCFlowBuilder.Edit(session,firstPage.RootContent,builder=>
                     builder.Ungroup(groupId));
                 Check(MOLWiringCodec.Get(session.GetSnapshot().Find(firstPage.RootContent.Id))
