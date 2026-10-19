@@ -26,10 +26,18 @@ namespace CxVisual.Mechanism.Visual
             MEMEngineeringSession document,Guid elementId,string eventId,string value)
         {
             if(document==null)throw new ArgumentNullException("document");
-            if(string.IsNullOrWhiteSpace(eventId))throw new ArgumentException("eventId");
+            if(string.IsNullOrWhiteSpace(eventId)||eventId.Length>512)
+                throw new ArgumentException("visual.event.invalid_id");
+            if(value!=null&&value.Length>65536)
+                throw new ArgumentException("visual.event.payload_budget");
             var result=new List<MVIVisualActionInvocation>();
             MRCVisualItem item=document.Find(elementId) as MRCVisualItem;
-            if(item==null||!item.IsVisible)return result.AsReadOnly();
+            if(item==null)return result.AsReadOnly();
+            for(MEMNode parent=item;parent!=null;parent=parent.Parent)
+            {
+                MRCVisualItem visual=parent as MRCVisualItem;
+                if(visual!=null&&!visual.IsVisible)return result.AsReadOnly();
+            }
             foreach(MRCVisualEventAction action in MRCVisualAppearance.BehaviorOf(item).EventActions)
             {
                 if(!string.Equals(action.EventId,eventId,StringComparison.Ordinal))continue;
