@@ -56,6 +56,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             V2WiringRoundtrip();
             V2WiringCompileRun();
             V2BuilderSharedDefinition();
+            V2DraftPortsUndoAndCompileGate();
             BranchParallelAndTrace();
             LoopKindsAndBoundedForEach();
             InvokedContentAndInvalidSource();
@@ -370,6 +371,70 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(result.State==MRKFlowState.Completed&&
                     trace.Events.Any(x=>x.Origin.BlockId==inspect),
                     "builder content compiled and traced");
+            }
+            finally{session.Close(true);}
+        }
+
+        private static void V2DraftPortsUndoAndCompileGate()
+        {
+            var session=MEMEngineering.Create("自由编辑草稿");
+            var page=session.AddPage("Flow");
+            try
+            {
+                Guid first=Guid.Empty, second=Guid.Empty;
+                MOCFlowBuilder.Edit(session,page.RootContent,b=>{
+                    first=b.Step("capture");
+                    second=b.Step("inspect");
+                    b.AddPort(first,new MPCPortDescriptor("Image",MPCPortDirection.Output,
+                        "int",MPCPortKind.Data));
+                    b.AddPort(second,new MPCPortDescriptor("Image",MPCPortDirection.Input,
+                        "int",MPCPortKind.Data,required:true));
+                });
+                var stored=MOLWiringCodec.Get(session.GetSnapshot().Find(page.RootContent.Id));
+                Check(stored!=null&&stored.Blocks.Count==2&&stored.Links.Count==0,
+                    "draft could not persist disconnected Blocks");
+                bool rejected=false;
+                var provider=new TestResolver()
+                    .Register("capture",(c,t)=>Task.FromResult((object)42))
+                    .Register("inspect",(c,t)=>Task.FromResult((object)1));
+                try{new MOCEngineeringCompiler().Compile(session.GetSnapshot(),
+                    page.RootContent.Id,provider);}
+                catch(InvalidOperationException){rejected=true;}
+                Check(rejected,"unfinished draft was compiled");
+                int revision=session.Revision;
+                rejected=false;
+                try{MOCFlowBuilder.Edit(session,page.RootContent,b=>{
+                    b.Connect(second,"Image",first,"Image",MPCPortKind.Data);
+                });}catch(InvalidOperationException){rejected=true;}
+                Check(rejected&&session.Revision==revision,
+                    "illegal port direction changed document");
+                rejected=false;
+                try{MOCFlowBuilder.Edit(session,page.RootContent,b=>{
+                    b.RemovePort(first,"Image");
+                    b.Connect(first,"Image",second,"Image",MPCPortKind.Data);
+                });}catch(InvalidOperationException){rejected=true;}
+                Check(rejected&&session.Revision==revision,
+                    "failed edit transaction did not roll back");
+                MOCFlowBuilder.Edit(session,page.RootContent,b=>{
+                    b.SetCapability(first,"capture");
+                    b.Connect(first,"Done",second,"Start",MPCPortKind.Control);
+                    b.Connect(first,"Image",second,"Image",MPCPortKind.Data);
+                });
+                var complete=MOLWiringCodec.Get(session.GetSnapshot().Find(page.RootContent.Id));
+                Check(complete.Links.Count==2&&complete.Blocks[0].Id==first,
+                    "connection edit corrupted stable identity");
+                complete.ValidateExecutable();
+                var reverted=session.Undo();
+                Check(reverted.Success&&
+                    MOLWiringCodec.Get(session.GetSnapshot().Find(page.RootContent.Id)).Links.Count==0,
+                    "Undo failed to restore draft");
+                Check(session.Redo().Success&&
+                    MOLWiringCodec.Get(session.GetSnapshot().Find(page.RootContent.Id)).Links.Count==2,
+                    "Redo failed to restore wiring");
+                rejected=false;
+                try { session.Edit("stale",revision,e=>true).RequireValue(); }
+                catch(InvalidOperationException){rejected=true;}
+                Check(rejected,"stale edit revision should be rejected");
             }
             finally{session.Close(true);}
         }

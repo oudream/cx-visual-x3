@@ -229,6 +229,59 @@ namespace CxVisual.Mechanism.Orchestration
             _links.RemoveAll(x=>x.Source.BlockId==blockId||x.Target.BlockId==blockId);
             if(_entry==blockId)_entry=_blocks.Count==0?Guid.Empty:_blocks[0].Id;
         }
+
+        /// <summary>查询正式端口，UI可按PortKind/Direction显示候选，不写第二份目录。</summary>
+        public IReadOnlyList<MPCPortDescriptor> GetPorts(Guid blockId)
+        {
+            IEnumerable<MPCPortDescriptor> source;
+            if(!_ports.TryGetValue(blockId,out source))
+                throw new InvalidOperationException("moc.wiring.block_missing");
+            return source.ToList().AsReadOnly();
+        }
+        public IReadOnlyList<MOLControlBlock> Blocks
+        {get{return _blocks.ToList().AsReadOnly();}}
+        public IReadOnlyList<MOLLink> Links
+        {get{return _links.ToList().AsReadOnly();}}
+        public void AddPort(Guid blockId,MPCPortDescriptor descriptor)
+        {
+            if(descriptor==null)throw new ArgumentNullException("descriptor");
+            IEnumerable<MPCPortDescriptor> existing;
+            if(!_ports.TryGetValue(blockId,out existing))
+                throw new InvalidOperationException("moc.wiring.block_missing");
+            var updated=existing.ToList();
+            if(updated.Any(x=>x.MemberId==descriptor.MemberId))
+                throw new InvalidOperationException("moc.wiring.duplicate_port");
+            updated.Add(descriptor);
+            _ports[blockId]=updated.ToArray();
+        }
+        public void RemovePort(Guid blockId,string memberId)
+        {
+            IEnumerable<MPCPortDescriptor> existing;
+            if(!_ports.TryGetValue(blockId,out existing))
+                throw new InvalidOperationException("moc.wiring.block_missing");
+            if(_links.Any(x=>(x.Source.BlockId==blockId&&x.Source.PortMemberId==memberId)||
+                (x.Target.BlockId==blockId&&x.Target.PortMemberId==memberId)))
+                throw new InvalidOperationException("moc.wiring.port_in_use");
+            var updated=existing.Where(x=>x.MemberId!=memberId).ToArray();
+            if(updated.Length==existing.Count())
+                throw new InvalidOperationException("moc.wiring.port_missing");
+            _ports[blockId]=updated;
+        }
+        /// <summary>只修改能力身份，不更换BlockId或已有Port/Link身份。</summary>
+        public void SetCapability(Guid blockId,string capabilityId)
+        {
+            if(string.IsNullOrWhiteSpace(capabilityId))
+                throw new ArgumentException("moc.wiring.capability_missing","capabilityId");
+            int index=_blocks.FindIndex(x=>x.Id==blockId);
+            if(index<0)throw new InvalidOperationException("moc.wiring.block_missing");
+            _blocks[index]=new MOLControlBlock(blockId,MOLControlKind.Action,capabilityId);
+        }
+        public void SetEntry(Guid blockId)
+        {
+            if(!_blocks.Any(x=>x.Id==blockId))
+                throw new InvalidOperationException("moc.wiring.entry_missing");
+            _entry=blockId;
+        }
         public MOLWiringDefinition Build()
         {return new MOLWiringDefinition(_entry,_blocks,_ports,_links);}
         public static void Edit(MEMEngineeringSession session,MEMContent content,
@@ -292,7 +345,7 @@ namespace CxVisual.Mechanism.Orchestration
         private static MOCCompiledPlan CompileWiring(MEMProjectSnapshot snapshot, MEMNodeSnapshot entry,
             Guid[] instancePath, MOLWiringDefinition wiring, IMRKCapabilityResolver resolver)
         {
-            wiring.Validate();
+            wiring.ValidateExecutable();
             var blocks=wiring.Blocks.ToDictionary(x=>x.Id);
             var stepIds=blocks.Keys.ToDictionary(x=>x,x=>"w"+x.ToString("N"));
             var requests=new List<MRKStepCompileRequest>();

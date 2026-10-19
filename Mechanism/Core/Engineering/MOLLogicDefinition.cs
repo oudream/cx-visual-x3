@@ -403,10 +403,8 @@ namespace CxVisual.Mechanism.Core
                 successors[link.Source.BlockId].Add(link.Target.BlockId);
                 if(link.Kind==MPCPortKind.Control)controlSuccessors[link.Source.BlockId].Add(link.Target.BlockId);
             }
-            foreach(var b in Blocks)foreach(var port in Ports[b.Id])
-                if(port.Required&&port.Direction!=MPCPortDirection.Output&&
-                    !incoming.ContainsKey(b.Id+":"+port.MemberId))
-                    throw new InvalidOperationException("wiring.required_port");
+            // 未完成连线的编辑草稿可以保存；构建/运行时由ValidateExecutable拒绝。
+            // 连接类型、方向、重复、环路等无效结构仍严格拒绝。
             var colors=ids.ToDictionary(x=>x,x=>0);
             Action<Guid> visit=null;
             visit=id=>{
@@ -415,11 +413,30 @@ namespace CxVisual.Mechanism.Core
                 colors[id]=1;foreach(var next in successors[id])visit(next);colors[id]=2;
             };
             foreach(var id in ids)visit(id);
-            var reached=new HashSet<Guid>();var pending=new Queue<Guid>();pending.Enqueue(EntryBlockId);
+        }
+        /// <summary>只有可执行的完整自由连线才能提交给MOC/MRK，草稿不能运行。</summary>
+        public void ValidateExecutable()
+        {
+            Validate();
+            var incoming=Links.GroupBy(x=>x.Target.BlockId.ToString("N")+":"+x.Target.PortMemberId)
+                .ToDictionary(x=>x.Key,x=>x.Count(),StringComparer.Ordinal);
+            foreach(var b in Blocks)foreach(var port in Ports[b.Id])
+                if(port.Required&&port.Direction!=MPCPortDirection.Output&&
+                    !incoming.ContainsKey(b.Id.ToString("N")+":"+port.MemberId))
+                    throw new InvalidOperationException("wiring.required_port:"+b.Id+":"+port.MemberId);
+            var reached=new HashSet<Guid>();
+            var pending=new Queue<Guid>();pending.Enqueue(EntryBlockId);
+            var controls=Links.Where(x=>x.Kind==MPCPortKind.Control)
+                .ToLookup(x=>x.Source.BlockId,x=>x.Target.BlockId);
             while(pending.Count>0)
-            {var id=pending.Dequeue();if(!reached.Add(id))continue;
-             foreach(var next in controlSuccessors[id])pending.Enqueue(next);}
-            if(reached.Count!=Blocks.Count)throw new InvalidOperationException("wiring.unreachable_action");
+            {
+                var id=pending.Dequeue();
+                if(!reached.Add(id))continue;
+                foreach(var next in controls[id])pending.Enqueue(next);
+            }
+            if(reached.Count!=Blocks.Count)
+                throw new InvalidOperationException("wiring.unreachable_action");
+        }
         }
     }
     /// <summary>V1(cx.logic.structured/1)原样保留；V2在同一Logic Aspect中原子替换。</summary>
