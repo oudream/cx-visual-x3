@@ -80,6 +80,17 @@ namespace CxVisual.Mechanism.Visual
                 return true;
             });
         }
+        /// <summary>按钮Widget保存的是TypeId/Schema，真实WPF Button只在呈现层创建。</summary>
+        public MTCEditResult<bool> AddWidget(string name,string typeId,double x,double y,
+            double width=120,double height=36)
+        {
+            return Document.Edit("添加UI控件",e=>
+            {
+                e.Add(CurrentDrawParent(),new MRCWidgetElement(
+                    Guid.NewGuid(),name,typeId,x,y,width,height));
+                return true;
+            });
+        }
         private MEMNode CurrentDrawParent()
         {
             if(!CurrentResourceId.HasValue)throw new InvalidOperationException("NO_PAGE");
