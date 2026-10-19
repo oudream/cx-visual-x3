@@ -68,6 +68,16 @@
                                 <Button Content="自由路径" Tag="Path" Click="OnInsertShape"/>
                                 <Button Content="文字图元" Tag="Text" Click="OnInsertShape"/>
                                 <Button Content="按钮控件" Tag="WidgetButton" Click="OnInsertShape"/>
+                                <Button Content="路径插点" Tag="split" Click="OnPathOperation"/>
+                                <Button Content="路径删点" Tag="delete" Click="OnPathOperation"/>
+                                <Button Content="转直线" Tag="line" Click="OnPathOperation"/>
+                                <Button Content="转二次" Tag="quadratic" Click="OnPathOperation"/>
+                                <Button Content="转三次" Tag="cubic" Click="OnPathOperation"/>
+                                <TextBox x:Name="PathCommandIndex" Width="28" Text="1" ToolTip="路径命令索引（从1开始）"/>
+                                <Button Content="放大" Tag="in" Click="OnVisualZoom"/>
+                                <Button Content="缩小" Tag="out" Click="OnVisualZoom"/>
+                                <Button Content="重置视口" Tag="reset" Click="OnVisualZoom"/>
+                                <CheckBox x:Name="VisualGridSnap" Content="吸附25" VerticalAlignment="Center" Margin="6,0"/>
                                 <Button Content="添加呼吸动画" Click="OnAddBreathingAnimation"/>
                                 <Button x:Name="VisualPreviewButton" Content="预览交互" Click="OnToggleVisualPreview"/>
                             </WrapPanel>
@@ -148,6 +158,20 @@
                     <WrapPanel><Button Command="{Binding PlaceResourceCommand}" Content="放置实例"/><Button Command="{Binding OpenDefinitionCommand}" Content="编辑共享定义"/><Button Command="{Binding BackCommand}" Content="返回"/></WrapPanel>
                     <TextBlock Text="可视对象（Ctrl多选后分组）" FontWeight="SemiBold" Margin="0,8,0,4"/>
                     <ListBox x:Name="EngineeringObjects" ItemsSource="{Binding Items}" DisplayMemberPath="Name" MaxHeight="110" SelectionMode="Extended" SelectionChanged="OnVisualSelectionChanged"/>
+                    <TextBlock Text="可视图元属性（本地坐标）" FontWeight="SemiBold" Margin="0,8,0,3"/>
+                    <WrapPanel>
+                        <TextBlock Text="X" VerticalAlignment="Center"/><TextBox x:Name="VisualXInput" Width="51" Text="0"/>
+                        <TextBlock Text="Y" VerticalAlignment="Center"/><TextBox x:Name="VisualYInput" Width="51" Text="0"/>
+                        <TextBlock Text="W" VerticalAlignment="Center"/><TextBox x:Name="VisualWidthInput" Width="51" Text="120"/>
+                        <TextBlock Text="H" VerticalAlignment="Center"/><TextBox x:Name="VisualHeightInput" Width="51" Text="80"/>
+                        <TextBlock Text="角度" VerticalAlignment="Center"/><TextBox x:Name="VisualRotationInput" Width="51" Text="0"/>
+                        <Button Content="应用几何属性" Click="OnApplyVisualGeometry"/>
+                    </WrapPanel>
+                    <WrapPanel>
+                        <TextBox x:Name="VisualLayerInput" Width="88" Text="Default" ToolTip="工程图层名"/>
+                        <Button Content="应用图层" Click="OnApplyVisualLayer"/>
+                        <Button Content="置于顶层" Click="OnBringVisualFront"/>
+                    </WrapPanel>
                     <TextBlock Text="图元外观（ARGB / 线宽）" FontWeight="SemiBold" Margin="0,8,0,3"/>
                     <WrapPanel>
                         <TextBox x:Name="FillColorInput" Width="115" Text="#FF4A90E2" ToolTip="ARGB格式，例如#FF4A90E2"/>
