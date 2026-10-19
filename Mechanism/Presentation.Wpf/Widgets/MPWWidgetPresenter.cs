@@ -61,8 +61,18 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             else if(Ends(type,".progressbar"))
                 control=new ProgressBar{Minimum=0,Maximum=100,Value=0};
             else control=new ComboBox{ToolTip="请在属性面板配置选项（Widget定义）"};
-            control.Width=Math.Max(1,item.Bounds.Width);
-            control.Height=Math.Max(1,item.Bounds.Height);
+            UpdateAppearance(control,item);
+            return control;
+        }
+        /// <summary>帧刷新复用活动控件：不重建Button/TextBox，保护焦点和文本输入态。</summary>
+        public static void UpdateAppearance(FrameworkElement widget,CxSceneItem item)
+        {
+            if(widget==null||item==null)throw new ArgumentNullException(
+                widget==null?"widget":"item");
+            Control control=widget as Control;
+            if(control==null)throw new ArgumentException("WPF Control required","widget");
+            control.Width=Math.Max(1,item.LocalWidth);
+            control.Height=Math.Max(1,item.LocalHeight);
             MRCVisualStyle style=item.Style;
             if(style.Fill.Kind!=MRCBrushKind.None)
                 control.Background=MPWShapeRenderer.BrushOf(style.Fill,control.Background);
@@ -72,11 +82,13 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             control.Opacity=style.Opacity;
             control.FontFamily=new FontFamily(style.FontFamily);
             control.FontSize=style.FontSize;
+            var button=control as Button;
+            if(button!=null)button.Content=item.Name;
+            var checkbox=control as CheckBox;
+            if(checkbox!=null)checkbox.Content=item.Name;
             MRCTransform m=item.WorldTransform;
-            // 真实WPF控件可以随页面Group和Symbol实例旋转、缩放、斜切。
             control.RenderTransform=new MatrixTransform(new Matrix(
                 m.M11,m.M21,m.M12,m.M22,m.X,m.Y));
-            return control;
         }
         private static void Emit(Action<MPWWidgetEventArgs> callback,CxSceneItem item,string name,string value)
         {
