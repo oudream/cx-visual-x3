@@ -185,6 +185,24 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             InvalidateMeasure();
             InvalidateArrange();
         }
+        /// <summary>仅预览本次画布拖动：真实WPF Widget跟随Shape整体移动，不提交工程事务。</summary>
+        private void UpdateWidgetDragPreview()
+        {
+            if(!_designMode)return;
+            int index=0;
+            foreach(CxSceneItem item in _items)
+            {
+                if(!MPWWidgetPresenter.Supports(item.ElementTypeId))continue;
+                if(index>=_widgetCanvas.Children.Count)break;
+                var widget=_widgetCanvas.Children[index++] as FrameworkElement;
+                if(widget==null)continue;
+                MRCTransform m=item.WorldTransform;
+                bool selected=_dragging&&_selectedItems.Contains(item.Id);
+                widget.RenderTransform=new MatrixTransform(new Matrix(
+                    m.M11,m.M21,m.M12,m.M22,
+                    m.X+(selected?_dragX:0),m.Y+(selected?_dragY:0)));
+            }
+        }
         private void OnWidgetEvent(MPWWidgetEventArgs args)
         {
             if(_designMode)return;
@@ -474,6 +492,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             Point point = WorldPoint(e.GetPosition(this));
             _dragX = point.X - _dragStart.X;
             _dragY = point.Y - _dragStart.Y;
+            UpdateWidgetDragPreview();
             InvalidateVisual();
         }
         protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
@@ -531,11 +550,13 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 }
             }
             _dragX = 0; _dragY = 0;
+            UpdateWidgetDragPreview();
             InvalidateVisual();
         }
         public void CancelInteraction()
         {_dragging=false;_marquee=false;_handleDragging=false;_activeHandle=null;_panning=false;_dragX=0;_dragY=0;
-            if(IsMouseCaptured)ReleaseMouseCapture();InvalidateVisual();}
+            if(IsMouseCaptured)ReleaseMouseCapture();
+            UpdateWidgetDragPreview();InvalidateVisual();}
         protected override void OnKeyDown(KeyEventArgs e){if(e.Key==Key.Escape){CancelInteraction();e.Handled=true;}base.OnKeyDown(e);}
         protected override void OnLostMouseCapture(MouseEventArgs e){if(_dragging||_handleDragging)CancelInteraction();base.OnLostMouseCapture(e);}
     }
