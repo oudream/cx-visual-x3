@@ -27,6 +27,46 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         private readonly VisualCollection _visualChildren;
         private readonly Canvas _widgetCanvas;
         private bool _designMode=true;
+        private double _zoom=1,_panX,_panY;
+        private bool _panning;private Point _panPointer;
+        private bool _gridSnap;
+        public double Zoom{get{return _zoom;}}
+        public bool SnapToGrid{get{return _gridSnap;}set{_gridSnap=value;}}
+        public void SetViewport(double zoom,double panX,double panY)
+        {
+            if(double.IsNaN(zoom)||double.IsInfinity(zoom)||zoom<0.05||zoom>16||
+                double.IsNaN(panX)||double.IsNaN(panY)||double.IsInfinity(panX)||double.IsInfinity(panY))
+                throw new ArgumentOutOfRangeException("zoom");
+            _zoom=zoom;_panX=panX;_panY=panY;
+            _widgetCanvas.RenderTransform=new MatrixTransform(
+                new Matrix(zoom,0,0,zoom,panX,panY));
+            InvalidateVisual();
+        }
+        private Point WorldPoint(Point screen)
+        {return new Point((screen.X-_panX)/_zoom,(screen.Y-_panY)/_zoom);}
+        private Point ScreenPoint(Point world)
+        {return new Point(world.X*_zoom+_panX,world.Y*_zoom+_panY);}
+        protected override void OnMouseWheel(MouseWheelEventArgs e)
+        {
+            if(!IsDesignMode){base.OnMouseWheel(e);return;}
+            Point center=e.GetPosition(this);double before=_zoom;
+            double next=Math.Max(0.05,Math.Min(16,_zoom*(e.Delta>0?1.15:1/1.15)));
+            Point target=WorldPoint(center);
+            SetViewport(next,center.X-target.X*next,center.Y-target.Y*next);
+            e.Handled=true;
+        }
+        protected override void OnMouseDown(MouseButtonEventArgs e)
+        {
+            if(_designMode&&e.ChangedButton==MouseButton.Middle)
+            {_panning=true;_panPointer=e.GetPosition(this);CaptureMouse();e.Handled=true;return;}
+            base.OnMouseDown(e);
+        }
+        protected override void OnMouseUp(MouseButtonEventArgs e)
+        {
+            if(_panning&&e.ChangedButton==MouseButton.Middle)
+            {_panning=false;if(IsMouseCaptured)ReleaseMouseCapture();e.Handled=true;return;}
+            base.OnMouseUp(e);
+        }
         public SceneView()
         {
             _widgetCanvas=new Canvas();
@@ -124,6 +164,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             Pen gridPen = new Pen(new SolidColorBrush(Color.FromRgb(237, 241, 247)), 1);
             for (double x = 0; x < ActualWidth; x += 25) dc.DrawLine(gridPen, new Point(x, 0), new Point(x, ActualHeight));
             for (double y = 0; y < ActualHeight; y += 25) dc.DrawLine(gridPen, new Point(0, y), new Point(ActualWidth, y));
+            dc.PushTransform(new MatrixTransform(new Matrix(_zoom,0,0,_zoom,_panX,_panY)));
             foreach (CxSceneItem item in _items)
             {
                 bool selected = _selection.HasValue && _selection.Value == item.Id;
@@ -220,13 +261,15 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                     }
                 }
             }
+            dc.Pop();
         }
 
         protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
         {
             base.OnMouseLeftButtonDown(e);
             Focus();
-            Point point = e.GetPosition(this);
+            Point point = WorldPoint(e.GetPosition(this));
+            if(!_designMode)return;
             if(_designMode&&_selection.HasValue)
             {
                 CxSceneItem selected=_items.Find(i=>i.Id==_selection.Value);
@@ -266,14 +309,22 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         protected override void OnMouseMove(MouseEventArgs e)
         {
             base.OnMouseMove(e);
+            if(_panning)
+            {
+                Point position=e.GetPosition(this);
+                SetViewport(_zoom,_panX+position.X-_panPointer.X,
+                    _panY+position.Y-_panPointer.Y);
+                _panPointer=position;
+                return;
+            }
             if(_handleDragging)
             {
-                _handlePointer=e.GetPosition(this);
+                _handlePointer=WorldPoint(e.GetPosition(this));
                 InvalidateVisual();
                 return;
             }
             if (!_dragging) return;
-            Point point = e.GetPosition(this);
+            Point point = WorldPoint(e.GetPosition(this));
             _dragX = point.X - _dragStart.X;
             _dragY = point.Y - _dragStart.Y;
             InvalidateVisual();
@@ -284,7 +335,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             if(_handleDragging)
             {
                 MVIVisualHandle handle=_activeHandle;
-                Point current=e.GetPosition(this);
+                Point current=WorldPoint(e.GetPosition(this));
                 _activeHandle=null;
                 _handleDragging=false;
                 if(IsMouseCaptured)ReleaseMouseCapture();
@@ -309,6 +360,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 if (original != null && moved != null)
                 {
                     double x, y; original.PositionAfterWorldDelta(_dragX, _dragY, out x, out y);
+                    if(_gridSnap){x=Math.Round(x/25)*25;y=Math.Round(y/25)*25;}
                     moved(this, new CxMoveEventArgs(original.Id, x, y));
                 }
             }
@@ -316,7 +368,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             InvalidateVisual();
         }
         public void CancelInteraction()
-        {_dragging=false;_handleDragging=false;_activeHandle=null;_dragX=0;_dragY=0;
+        {_dragging=false;_handleDragging=false;_activeHandle=null;_panning=false;_dragX=0;_dragY=0;
             if(IsMouseCaptured)ReleaseMouseCapture();InvalidateVisual();}
         protected override void OnKeyDown(KeyEventArgs e){if(e.Key==Key.Escape){CancelInteraction();e.Handled=true;}base.OnKeyDown(e);}
         protected override void OnLostMouseCapture(MouseEventArgs e){if(_dragging||_handleDragging)CancelInteraction();base.OnLostMouseCapture(e);}
