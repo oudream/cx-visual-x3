@@ -136,6 +136,17 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(new Action(()=>{}),
                         System.Windows.Threading.DispatcherPriority.Render);
                     var handleDrawing=VisualTreeHelper.GetDrawing(shapeView);
+                    shapeView.SetViewport(4,20,30);
+                    shapeView.UpdateLayout();
+                    System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(new Action(()=>{}),
+                        System.Windows.Threading.DispatcherPriority.Render);
+                    var zoomHandles=DeepGeometries(VisualTreeHelper.GetDrawing(shapeView))
+                        .Where(x=>x.Geometry is EllipseGeometry)
+                        .Select(x=>(EllipseGeometry)x.Geometry).ToArray();
+                    Check(zoomHandles.Length>=5&&
+                        zoomHandles.All(x=>Math.Abs(x.RadiusX-1.25)<1e-6),
+                        "zoom changed visual handle on-screen radius");
+                    shapeView.SetViewport(1,0,0);
                     Check(DeepGeometries(handleDrawing).Count(x=>
                         x.Geometry is EllipseGeometry)>=5,
                         "selected Bezier WPF handles were not actually drawn");
