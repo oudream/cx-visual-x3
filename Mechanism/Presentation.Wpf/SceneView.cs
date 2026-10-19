@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Controls;
 using CxVisual.Mechanism.Core;
 using CxVisual.Mechanism.Visual;
 
@@ -18,6 +19,65 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         private double _dragX;
         private double _dragY;
         private bool _dragging;
+        private readonly VisualCollection _visualChildren;
+        private readonly Canvas _widgetCanvas;
+        private bool _designMode=true;
+        public SceneView()
+        {
+            _widgetCanvas=new Canvas();
+            _visualChildren=new VisualCollection(this);
+            _visualChildren.Add(_widgetCanvas);
+            Focusable=true;
+        }
+        protected override int VisualChildrenCount{get{return _visualChildren.Count;}}
+        protected override Visual GetVisualChild(int index)
+        {
+            if(index<0||index>=_visualChildren.Count)throw new ArgumentOutOfRangeException("index");
+            return _visualChildren[index];
+        }
+        protected override Size MeasureOverride(Size availableSize)
+        {
+            double w=double.IsInfinity(availableSize.Width)?720:availableSize.Width;
+            double h=double.IsInfinity(availableSize.Height)?520:availableSize.Height;
+            _widgetCanvas.Measure(new Size(w,h));
+            return new Size(w,h);
+        }
+        protected override Size ArrangeOverride(Size finalSize)
+        {
+            _widgetCanvas.Arrange(new Rect(new Point(0,0),finalSize));
+            return finalSize;
+        }
+        /// <summary>设计模式只允许画布选择移动；运行预览才允许真实控件接收输入。</summary>
+        public bool IsDesignMode
+        {
+            get{return _designMode;}
+            set
+            {
+                _designMode=value;
+                foreach(UIElement element in _widgetCanvas.Children)
+                    element.IsHitTestVisible=!_designMode;
+            }
+        }
+        public event EventHandler<MPWWidgetEventArgs> WidgetEventRequested;
+        private void BuildWidgetLayer()
+        {
+            _widgetCanvas.Children.Clear();
+            foreach(CxSceneItem item in _items)
+            {
+                FrameworkElement widget=MPWWidgetPresenter.Create(item,OnWidgetEvent);
+                if(widget==null)continue;
+                widget.IsHitTestVisible=!_designMode;
+                _widgetCanvas.Children.Add(widget);
+            }
+            InvalidateMeasure();
+            InvalidateArrange();
+        }
+        private void OnWidgetEvent(MPWWidgetEventArgs args)
+        {
+            if(_designMode)return;
+            EventHandler<MPWWidgetEventArgs> callback=WidgetEventRequested;
+            if(callback!=null)callback(this,args);
+        }
 
         public event EventHandler<CxNodeEventArgs> NodeActivated;
         public event EventHandler<CxMoveEventArgs> MoveRequested;
@@ -26,6 +86,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             _items.Clear();
             if (items != null) _items.AddRange(items);
             _selection = selected;
+            BuildWidgetLayer();
             InvalidateVisual();
         }
 
@@ -52,6 +113,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                     }
                     continue;
                 }
+                if(MPWWidgetPresenter.Supports(item.ElementTypeId))continue;
                 if(item.ElementTypeId=="core.text")
                 {
                     MRCVisualStyle textStyle=item.Style;
