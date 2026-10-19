@@ -70,7 +70,22 @@ namespace CxVisual.Mechanism.Visual
                     if(node.Kind==MEMNodeKind.Element)
                     {
                         var address=new MRIObjectAddress(_snapshot.ProjectId,node.StorageRootId,node.Id,path);bool selectable=Boolean(node,"selectable",v.IsSelectable,path)&&!locked;
-                        Items.Add(new CxSceneItem(first==null?node.Id:first.Id,first==null?node.Name:first.Name+" / "+node.Name,address,world,width,height,selectable,first==null?parent:firstParent,first==null?x:first.Placement.X,first==null?y:first.Placement.Y));
+                        MRCShapeDefinition shape=null;
+                        if(node.TypeId=="core.shape")
+                        {
+                            var definition=node.Aspects.FirstOrDefault(a=>
+                                a.Kind==MPMAspectKind.Visual&&a.ProviderId==MRCShapeDefinition.ProviderId);
+                            if(definition==null)throw new InvalidOperationException("visual.shape.missing_definition");
+                            shape=MRCShapeDefinition.FromAspect(definition);
+                        }
+                        string displayText=node.TypeId=="core.text"?
+                            MRCTextElement.TextFromAspects(node.Aspects):"";
+                        MRCVisualStyle style=MRCVisualAppearance.StyleFromAspects(node.Aspects);
+                        Items.Add(new CxSceneItem(first==null?node.Id:first.Id,
+                            first==null?node.Name:first.Name+" / "+node.Name,address,world,
+                            width,height,selectable,first==null?parent:firstParent,
+                            first==null?x:first.Placement.X,first==null?y:first.Placement.Y,
+                            node.TypeId,shape,style,displayText));
                     }
                 }
                 foreach(var id in node.ChildIds)Collect(_snapshot.Find(id),world,path,locked,first,firstParent,depth+1);
