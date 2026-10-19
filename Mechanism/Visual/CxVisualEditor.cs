@@ -299,6 +299,22 @@ namespace CxVisual.Mechanism.Visual
             });
         }
         /// <summary>多选世界位移：复杂父坐标各自换算，一次MEM事务/Undo；实例只改Placement。</summary>
+        /// <summary>同一父容器内调整Z序，保留MEM身份，所有改动在原事务与Undo栈内。</summary>
+        public MTCEditResult<bool> SetZOrder(Guid id,bool bringToFront)
+        {
+            Demand();
+            int revision=Document.Revision;
+            MRCVisualItem item=Document.Find(id) as MRCVisualItem;
+            if(item==null||item.Parent==null)
+                return MTCEditResult<bool>.Rejected(revision,"visual.layer.definition_required",
+                    "Open a visual definition");
+            if(!Route(MVIInteractionKind.Move,id))
+                return MTCEditResult<bool>.Rejected(revision,"visual.default_prevented",
+                    "Z-order edit prevented");
+            int index=bringToFront?item.Parent.Children.Count-1:0;
+            return Document.Edit("调整图元绘制顺序",revision,e=>
+            {e.Reparent(item,item.Parent,index);return true;});
+        }
         public MTCEditResult<bool> MoveSelection(IReadOnlyList<Guid> ids,
             double worldDx,double worldDy,bool snapToGrid=false)
         {
