@@ -49,7 +49,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     window.Show(); view.Measure(new Size(300, 300)); view.Arrange(new Rect(0, 0, 300, 300)); view.UpdateLayout();
                     System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(new Action(() => { }), System.Windows.Threading.DispatcherPriority.Render);
                     var drawing = VisualTreeHelper.GetDrawing(view); Check(drawing != null && view.IsVisible, "real WPF layout did not render");
-                    var polygon = drawing.Children.OfType<GeometryDrawing>().Single(d => d.Geometry is StreamGeometry);
+                    var polygon = DeepGeometries(drawing).Single(d => d.Geometry is StreamGeometry);
                     Check(!polygon.Geometry.FillContains(new Point(70,108)) && polygon.Geometry.FillContains(new Point(105,140)), "production OnRender drew an AABB instead of a transformed polygon");
                     // Rasterize SceneView's retained OnRender commands without its offscreen window clip/offset.
                     var visual = new DrawingVisual(); using (var dc = visual.RenderOpen()) dc.DrawDrawing(drawing);
