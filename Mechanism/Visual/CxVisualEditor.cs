@@ -298,6 +298,54 @@ namespace CxVisual.Mechanism.Visual
                 return true;
             });
         }
+        /// <summary>多选世界位移：复杂父坐标各自换算，一次MEM事务/Undo；实例只改Placement。</summary>
+        public MTCEditResult<bool> MoveSelection(IReadOnlyList<Guid> ids,
+            double worldDx,double worldDy,bool snapToGrid=false)
+        {
+            Demand();
+            FGEValidation.Finite(worldDx,"worldDx");
+            FGEValidation.Finite(worldDy,"worldDy");
+            int revision=Document.Revision;
+            if(ids==null||ids.Count<2||ids.Count!=ids.Distinct().Count())
+                return MTCEditResult<bool>.Rejected(revision,"visual.move.selection",
+                    "Multiple distinct visual IDs required");
+            var selected=Scene.Where(x=>ids.Contains(x.Id)&&x.IsSelectable).ToArray();
+            if(selected.Length!=ids.Count)
+                return MTCEditResult<bool>.Rejected(revision,"visual.move.inaccessible",
+                    "Selection contains hidden, locked or missing items");
+            foreach(CxSceneItem item in selected)
+            {
+                if(Document.Find(item.Id) as MRCVisualItem==null&&
+                    Document.FindReference(item.Id)==null)
+                    return MTCEditResult<bool>.Rejected(revision,"visual.move.definition",
+                        "Unknown selected visual definition/reference");
+                if(!Route(MVIInteractionKind.Move,item.Id))
+                    return MTCEditResult<bool>.Rejected(revision,"visual.default_prevented",
+                        "Selected visual disallowed the move");
+            }
+            return Document.Edit("批量移动可视对象",revision,e=>
+            {
+                foreach(CxSceneItem scene in selected)
+                {
+                    double x,y;
+                    scene.PositionAfterWorldDelta(worldDx,worldDy,out x,out y);
+                    if(snapToGrid)
+                    {
+                        x=Math.Round(x/25)*25;
+                        y=Math.Round(y/25)*25;
+                    }
+                    MRIReference reference=Document.FindReference(scene.Id);
+                    if(reference!=null)
+                    {
+                        MRCTransform p=reference.Placement;
+                        e.SetPlacement(reference,new MRCTransform(
+                            p.M11,p.M12,p.M21,p.M22,x,y));
+                    }
+                    else e.Move((MRCVisualItem)Document.Find(scene.Id),x,y);
+                }
+                return true;
+            });
+        }
         public MTCEditResult<bool> Move(Guid id, double x, double y)
         {
             int revision=Document.Revision;
