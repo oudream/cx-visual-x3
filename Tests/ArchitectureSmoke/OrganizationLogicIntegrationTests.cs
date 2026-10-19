@@ -211,7 +211,6 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(failed,"unknown provider silently built a runnable plan");
             session.Close(true);
         }
-    }
 
         // V2自由连接：保持V1独立编译，验证真实文件保存/重开和非法连接拒绝。
         private static void V2WiringRoundtrip()
@@ -270,4 +269,5 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(rejected,"reversed port rejected");
         }
 
+    }
 }
