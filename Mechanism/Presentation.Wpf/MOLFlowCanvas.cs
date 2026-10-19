@@ -489,7 +489,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                             }
                         }
                     }
-                    break;
+                    return;
                 }
             }
             if(WiringDefinition!=null&&!_movingBlockId.HasValue)
