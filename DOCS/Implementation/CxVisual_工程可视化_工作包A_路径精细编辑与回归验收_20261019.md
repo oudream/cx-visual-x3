@@ -71,7 +71,7 @@ Studio操作：在“视觉设计”页插入Bezier/自由路径，单击图元�
 | 持久化 | 单次Undo/Redo后保存并重开，核对Bezier参数、尺寸和旋转 |
 | WPF真实STA | `OrganizationWpfTests` 检查渲染树控制柄EllipseGeometry和Path预览StreamGeometry |
 | Studio真实实例 | `OrganizationStudioTests` 从WPF场景中选择Bezier柄、调用UI层编辑入口，验证Undo/Redo |
-| TestCenter | 新增 `TCT.MVIS.003`，真实Owner路径、Revision与重开 |
+| TestCenter | 新增 `TCT.MVIS.004`，真实Owner路径、Revision与重开 |
 
 **每条验收必须核对对应HEAD的 GitHub Windows CI 和日志。** 历史成功结果不能自动代表最新提交通过。
 
