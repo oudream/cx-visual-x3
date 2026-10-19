@@ -108,6 +108,41 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         Check(MPWShapeRenderer.BuildGeometry(item) is StreamGeometry,
                             "renderer fell back to rectangle for "+item.Shape.Kind);
                     shapeWindow.Close();
+
+                    // 真正WPF Button的托管与交互：设计态仅作选择，预览态只发安全事件。
+                    var widgetPage=session.AddPage("Widget gallery");
+                    var widgetGroup=session.AddGroup(widgetPage.RootContent,"Controls");
+                    var widgetModel=new MRCWidgetElement(Guid.NewGuid(),"启动按钮",
+                        "core.widget",40,40,130,42);
+                    session.Add(widgetGroup,widgetModel);
+                    var widgetView=new SceneView{Width=300,Height=170};
+                    int events=0;
+                    widgetView.WidgetEventRequested+=(sender,request)=>
+                    {
+                        Check(request.ElementId==widgetModel.Id&&request.EventId=="Click",
+                            "Widget host event identity wrong");
+                        events++;
+                    };
+                    widgetView.SetScene(CxSceneProjection.Project(session,widgetPage.Id),null);
+                    var widgetWindow=new Window{Content=widgetView,Width=320,Height=200,
+                        Left=-10000,Top=-10000,ShowInTaskbar=false,ShowActivated=false,
+                        WindowStartupLocation=WindowStartupLocation.Manual};
+                    widgetWindow.Show();widgetView.Measure(new Size(300,170));
+                    widgetView.Arrange(new Rect(0,0,300,170));widgetView.UpdateLayout();
+                    var widgetCanvas=VisualTreeHelper.GetChild(widgetView,0)
+                        as System.Windows.Controls.Canvas;
+                    Check(widgetCanvas!=null&&widgetCanvas.Children.Count==1&&
+                        widgetCanvas.Children[0] is System.Windows.Controls.Button,
+                        "Widget did not materialize an actual WPF Button");
+                    var widgetButton=(System.Windows.Controls.Button)widgetCanvas.Children[0];
+                    widgetButton.RaiseEvent(new RoutedEventArgs(
+                        System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                    Check(events==0,"design-mode widget executed a runtime event");
+                    widgetView.IsDesignMode=false;
+                    widgetButton.RaiseEvent(new RoutedEventArgs(
+                        System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                    Check(events==1,"widget preview event not dispatched");
+                    widgetWindow.Close();
                     // The same saved logical definition is rendered in the actual WPF canvas.
                     var logic = new MOLLogicDefinition(MOLControlBlock.Sequence(
                         MOLControlBlock.Action("Acquire"),
