@@ -235,6 +235,7 @@
                         <TextBox x:Name="VisualLayerInput" Width="88" Text="Default" ToolTip="工程图层名"/>
                         <Button Content="应用图层" Click="OnApplyVisualLayer"/>
                         <Button Content="置于顶层" Click="OnBringVisualFront"/>
+                        <Button Content="置于底层" Click="OnSendVisualBack"/>
                     </WrapPanel>
                     <TextBlock Text="图元外观（ARGB / 线宽）" FontWeight="SemiBold" Margin="0,8,0,3"/>
                     <WrapPanel>
