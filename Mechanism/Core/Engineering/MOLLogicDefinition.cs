@@ -298,4 +298,213 @@ namespace CxVisual.Mechanism.Core
                     (string)e.Attribute("exit")));
         }
     }
+
+    // V2自由连线：逻辑块是Content内的值记录，不扩展MEM工程对象树。
+    public sealed class MOLBlockEndpoint : IEquatable<MOLBlockEndpoint>
+    {
+        public MOLBlockEndpoint(Guid blockId, string portMemberId)
+        { if(blockId==Guid.Empty)throw new ArgumentException("wiring.empty_block");
+          BlockId=blockId;PortMemberId=MEMNode.NormalizeName(portMemberId); }
+        public Guid BlockId{get;private set;}
+        public string PortMemberId{get;private set;}
+        public bool Equals(MOLBlockEndpoint other)
+        {return other!=null&&BlockId==other.BlockId&&PortMemberId==other.PortMemberId;}
+        public override bool Equals(object obj){return Equals(obj as MOLBlockEndpoint);}
+        public override int GetHashCode(){return BlockId.GetHashCode()*397^PortMemberId.GetHashCode();}
+    }
+    public sealed class MOLLink
+    {
+        public MOLLink(Guid id,MOLBlockEndpoint source,MOLBlockEndpoint target,
+            MPCPortKind kind,string conditionId=null,int? order=null)
+        {
+            if(id==Guid.Empty||source==null||target==null||!Enum.IsDefined(typeof(MPCPortKind),kind)||
+                (order.HasValue&&order.Value<0))throw new ArgumentException("wiring.invalid_link");
+            Id=id;Source=source;Target=target;Kind=kind;ConditionId=conditionId??"";Order=order;
+        }
+        public Guid Id{get;private set;}
+        public MOLBlockEndpoint Source{get;private set;}
+        public MOLBlockEndpoint Target{get;private set;}
+        public MPCPortKind Kind{get;private set;}
+        public string ConditionId{get;private set;}
+        public int? Order{get;private set;}
+    }
+    /// <summary>每个Content只有一个Logic槽。V2的自由连接是权威定义，不额外保存AST。</summary>
+    public sealed class MOLWiringDefinition
+    {
+        public MOLWiringDefinition(Guid entryBlockId,IEnumerable<MOLControlBlock> blocks,
+            IDictionary<Guid,IEnumerable<MPCPortDescriptor>> ports,IEnumerable<MOLLink> links)
+        {
+            EntryBlockId=entryBlockId;
+            Blocks=new ReadOnlyCollection<MOLControlBlock>((blocks??new MOLControlBlock[0]).ToArray());
+            Links=new ReadOnlyCollection<MOLLink>((links??new MOLLink[0]).ToArray());
+            var map=new Dictionary<Guid,IReadOnlyList<MPCPortDescriptor>>();
+            if(ports!=null)foreach(var kv in ports)
+                map.Add(kv.Key,new ReadOnlyCollection<MPCPortDescriptor>((kv.Value??Enumerable.Empty<MPCPortDescriptor>()).ToArray()));
+            Ports=new ReadOnlyDictionary<Guid,IReadOnlyList<MPCPortDescriptor>>(map);
+            Validate();
+        }
+        public Guid EntryBlockId{get;private set;}
+        public IReadOnlyList<MOLControlBlock> Blocks{get;private set;}
+        public IReadOnlyList<MOLLink> Links{get;private set;}
+        public IReadOnlyDictionary<Guid,IReadOnlyList<MPCPortDescriptor>> Ports{get;private set;}
+        public void Validate()
+        {
+            if(EntryBlockId==Guid.Empty||Blocks.Count<1||Blocks.Count>4096||Links.Count>32768)
+                throw new InvalidOperationException("wiring.budget");
+            if(Blocks.Any(x=>x==null||x.Kind!=MOLControlKind.Action||string.IsNullOrWhiteSpace(x.CapabilityId)))
+                throw new InvalidOperationException("wiring.action_only");
+            var ids=new HashSet<Guid>();
+            foreach(var b in Blocks)if(!ids.Add(b.Id))throw new InvalidOperationException("wiring.duplicate_block");
+            if(!ids.Contains(EntryBlockId)||Ports.Count!=ids.Count||Ports.Keys.Any(x=>!ids.Contains(x)))
+                throw new InvalidOperationException("wiring.scope");
+            var schemas=new Dictionary<Guid,Dictionary<string,MPCPortDescriptor>>();
+            foreach(var b in Blocks)
+            {
+                IReadOnlyList<MPCPortDescriptor> defs;
+                if(!Ports.TryGetValue(b.Id,out defs))throw new InvalidOperationException("wiring.missing_schema");
+                var lookup=new Dictionary<string,MPCPortDescriptor>(StringComparer.Ordinal);
+                foreach(var p in defs)
+                {
+                    if(p==null||lookup.ContainsKey(p.MemberId))throw new InvalidOperationException("wiring.duplicate_port");
+                    lookup.Add(p.MemberId,p);
+                }
+                schemas.Add(b.Id,lookup);
+            }
+            var linkIds=new HashSet<Guid>();
+            var edgeKeys=new HashSet<string>();
+            var incoming=new Dictionary<string,int>();
+            var successors=ids.ToDictionary(x=>x,x=>new List<Guid>());
+            var controlSuccessors=ids.ToDictionary(x=>x,x=>new List<Guid>());
+            foreach(var link in Links)
+            {
+                if(link==null||!linkIds.Add(link.Id))throw new InvalidOperationException("wiring.duplicate_link");
+                if((link.Kind!=MPCPortKind.Control&&link.Kind!=MPCPortKind.Data)||
+                    !string.IsNullOrEmpty(link.ConditionId)||link.Order.HasValue)
+                    throw new InvalidOperationException("wiring.unsupported_semantics");
+                if(!ids.Contains(link.Source.BlockId)||!ids.Contains(link.Target.BlockId)||
+                    link.Source.BlockId==link.Target.BlockId)
+                    throw new InvalidOperationException("wiring.foreign_endpoint");
+                MPCPortDescriptor from,to;
+                if(!schemas[link.Source.BlockId].TryGetValue(link.Source.PortMemberId,out from)||
+                   !schemas[link.Target.BlockId].TryGetValue(link.Target.PortMemberId,out to))
+                    throw new InvalidOperationException("wiring.unknown_port");
+                if(from.Kind!=link.Kind||to.Kind!=link.Kind||
+                    from.Direction==MPCPortDirection.Input||to.Direction==MPCPortDirection.Output||
+                    !string.Equals(from.TypeId,to.TypeId,StringComparison.Ordinal)||
+                    !object.Equals(from.Contract,to.Contract))
+                    throw new InvalidOperationException("wiring.port_contract");
+                string edge=link.Source.BlockId+":"+link.Source.PortMemberId+">"+
+                    link.Target.BlockId+":"+link.Target.PortMemberId;
+                if(!edgeKeys.Add(edge))throw new InvalidOperationException("wiring.duplicate_edge");
+                string toKey=link.Target.BlockId+":"+link.Target.PortMemberId;
+                int n;incoming.TryGetValue(toKey,out n);incoming[toKey]=++n;
+                if(n>1&&to.Multiplicity==MPCPortMultiplicity.One)
+                    throw new InvalidOperationException("wiring.port_multiplicity");
+                successors[link.Source.BlockId].Add(link.Target.BlockId);
+                if(link.Kind==MPCPortKind.Control)controlSuccessors[link.Source.BlockId].Add(link.Target.BlockId);
+            }
+            foreach(var b in Blocks)foreach(var port in Ports[b.Id])
+                if(port.Required&&port.Direction!=MPCPortDirection.Output&&
+                    !incoming.ContainsKey(b.Id+":"+port.MemberId))
+                    throw new InvalidOperationException("wiring.required_port");
+            var colors=ids.ToDictionary(x=>x,x=>0);
+            Action<Guid> visit=null;
+            visit=id=>{
+                if(colors[id]==1)throw new InvalidOperationException("wiring.cycle");
+                if(colors[id]==2)return;
+                colors[id]=1;foreach(var next in successors[id])visit(next);colors[id]=2;
+            };
+            foreach(var id in ids)visit(id);
+            var reached=new HashSet<Guid>();var pending=new Queue<Guid>();pending.Enqueue(EntryBlockId);
+            while(pending.Count>0)
+            {var id=pending.Dequeue();if(!reached.Add(id))continue;
+             foreach(var next in controlSuccessors[id])pending.Enqueue(next);}
+            if(reached.Count!=Blocks.Count)throw new InvalidOperationException("wiring.unreachable_action");
+        }
+    }
+    /// <summary>V1(cx.logic.structured/1)原样保留；V2在同一Logic Aspect中原子替换。</summary>
+    public static class MOLWiringCodec
+    {
+        public const int SchemaVersion=2;
+        public static MPMAspect CreateAspect(MOLWiringDefinition definition)
+        {return new MPMAspect(MPMAspectKind.Logic,MOLLogicCodec.ProviderId,2,Serialize(definition));}
+        public static void Set(MEMEngineeringSession session,MEMContent content,MOLWiringDefinition definition)
+        {if(session==null||content==null)throw new ArgumentNullException("session/content");
+         session.SetAspect(content,CreateAspect(definition));}
+        public static MOLWiringDefinition Get(MEMNodeSnapshot node)
+        {
+            if(node==null)throw new ArgumentNullException("node");
+            var found=node.Aspects.SingleOrDefault(x=>x.Kind==MPMAspectKind.Logic&&x.ProviderId==MOLLogicCodec.ProviderId);
+            if(found==null||found.SchemaVersion==1)return null;
+            if(found.SchemaVersion!=2||found.RequiresRemap)throw new InvalidDataException("wiring.unknown_schema");
+            return Deserialize(found.Payload);
+        }
+        public static byte[] Serialize(MOLWiringDefinition def)
+        {
+            if(def==null)throw new ArgumentNullException("def");def.Validate();
+            var root=new XElement("MOL",new XAttribute("v",2),new XAttribute("entry",def.EntryBlockId.ToString("N")),
+                new XElement("Blocks",def.Blocks.Select(b=>new XElement("Block",
+                    new XAttribute("id",b.Id.ToString("N")),new XAttribute("cap",b.CapabilityId),
+                    new XElement("Ports",def.Ports[b.Id].Select(p=>new XElement("Port",
+                        new XAttribute("id",p.MemberId),new XAttribute("dir",p.Direction),
+                        new XAttribute("type",p.TypeId),new XAttribute("kind",p.Kind),
+                        new XAttribute("mul",p.Multiplicity),new XAttribute("required",p.Required),
+                        new XAttribute("unit",p.Contract.UnitId),
+                        new XAttribute("frame",p.Contract.CoordinateFrameId),
+                        new XAttribute("time",p.Contract.TimeBaseId))))))),
+                new XElement("Links",def.Links.Select(l=>new XElement("Link",
+                    new XAttribute("id",l.Id.ToString("N")),new XAttribute("kind",l.Kind),
+                    new XAttribute("source",l.Source.BlockId.ToString("N")),
+                    new XAttribute("out",l.Source.PortMemberId),
+                    new XAttribute("target",l.Target.BlockId.ToString("N")),
+                    new XAttribute("in",l.Target.PortMemberId),
+                    new XAttribute("condition",l.ConditionId),
+                    new XAttribute("order",l.Order.HasValue?l.Order.Value.ToString(CultureInfo.InvariantCulture):"")))));
+            byte[] bytes=Encoding.UTF8.GetBytes(root.ToString(SaveOptions.DisableFormatting));
+            if(bytes.Length>4*1024*1024)throw new InvalidDataException("wiring.payload_budget");
+            return bytes;
+        }
+        public static MOLWiringDefinition Deserialize(byte[] bytes)
+        {
+            if(bytes==null||bytes.Length<1||bytes.Length>4*1024*1024)throw new InvalidDataException("wiring.payload_invalid");
+            var settings=new XmlReaderSettings{DtdProcessing=DtdProcessing.Prohibit,XmlResolver=null,MaxCharactersInDocument=4*1024*1024};
+            using(var memory=new MemoryStream(bytes))using(var reader=XmlReader.Create(memory,settings))
+            {
+                var root=XDocument.Load(reader).Root;
+                if(root==null||root.Name!="MOL"||(string)root.Attribute("v")!="2"||
+                    root.Elements().Count()!=2||root.Element("Blocks")==null||root.Element("Links")==null)
+                    throw new InvalidDataException("wiring.schema");
+                Guid entry=ReadGuid(root,"entry");
+                var blocks=new List<MOLControlBlock>();
+                var ports=new Dictionary<Guid,IEnumerable<MPCPortDescriptor>>();
+                foreach(var b in root.Element("Blocks").Elements("Block"))
+                {
+                    if(b.Element("Ports")==null||b.Elements().Count()!=1)
+                        throw new InvalidDataException("wiring.block_schema");
+                    Guid id=ReadGuid(b,"id");
+                    blocks.Add(new MOLControlBlock(id,MOLControlKind.Action,(string)b.Attribute("cap")));
+                    ports.Add(id,b.Element("Ports").Elements("Port").Select(p=>
+                        new MPCPortDescriptor((string)p.Attribute("id"),ReadEnum<MPCPortDirection>(p,"dir"),
+                            (string)p.Attribute("type"),ReadEnum<MPCPortKind>(p,"kind"),
+                            ReadEnum<MPCPortMultiplicity>(p,"mul"),
+                            new MTUContractReference((string)p.Attribute("unit"),(string)p.Attribute("frame"),
+                                (string)p.Attribute("time")),false,(bool?)p.Attribute("required")??false)).ToArray());
+                }
+                var links=root.Element("Links").Elements("Link").Select(l=>new MOLLink(
+                    ReadGuid(l,"id"),new MOLBlockEndpoint(ReadGuid(l,"source"),(string)l.Attribute("out")),
+                    new MOLBlockEndpoint(ReadGuid(l,"target"),(string)l.Attribute("in")),
+                    ReadEnum<MPCPortKind>(l,"kind"),(string)l.Attribute("condition"),
+                    string.IsNullOrEmpty((string)l.Attribute("order"))?(int?)null:
+                        int.Parse((string)l.Attribute("order"),CultureInfo.InvariantCulture))).ToArray();
+                return new MOLWiringDefinition(entry,blocks,ports,links);
+            }
+        }
+        private static Guid ReadGuid(XElement x,string name)
+        {Guid id;if(!Guid.TryParseExact((string)x.Attribute(name),"N",out id)||id==Guid.Empty)
+            throw new InvalidDataException("wiring.guid:"+name);return id;}
+        private static T ReadEnum<T>(XElement x,string name)where T:struct
+        {T v;if(!Enum.TryParse<T>((string)x.Attribute(name),false,out v)||!Enum.IsDefined(typeof(T),v))
+            throw new InvalidDataException("wiring.enum:"+name);return v;}
+    }
+
 }

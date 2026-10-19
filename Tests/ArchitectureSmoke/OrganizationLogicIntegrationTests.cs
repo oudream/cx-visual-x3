@@ -53,6 +53,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         internal static void Run()
         {
             SaveLoadAndIdentity();
+            V2WiringRoundtrip();
             BranchParallelAndTrace();
             LoopKindsAndBoundedForEach();
             InvokedContentAndInvalidSource();
@@ -211,4 +212,62 @@ namespace CxVisual.Tests.ArchitectureSmoke
             session.Close(true);
         }
     }
+
+        // V2自由连接：保持V1独立编译，验证真实文件保存/重开和非法连接拒绝。
+        private static void V2WiringRoundtrip()
+        {
+            var first=MOLControlBlock.Action("capture");
+            var second=MOLControlBlock.Action("inspect");
+            var last=MOLControlBlock.Action("judge");
+            var ports=new Dictionary<Guid,IEnumerable<MPCPortDescriptor>>();
+            ports[first.Id]=new[]{
+                new MPCPortDescriptor("Done",MPCPortDirection.Output,"signal",MPCPortKind.Control),
+                new MPCPortDescriptor("Image",MPCPortDirection.Output,"image",MPCPortKind.Data)};
+            ports[second.Id]=new[]{
+                new MPCPortDescriptor("Start",MPCPortDirection.Input,"signal",MPCPortKind.Control,
+                    required:true),
+                new MPCPortDescriptor("Done",MPCPortDirection.Output,"signal",MPCPortKind.Control),
+                new MPCPortDescriptor("Image",MPCPortDirection.Input,"image",MPCPortKind.Data,
+                    required:true)};
+            ports[last.Id]=new[]{
+                new MPCPortDescriptor("Start",MPCPortDirection.Input,"signal",MPCPortKind.Control,
+                    required:true)};
+            var a=new MOLLink(Guid.NewGuid(),new MOLBlockEndpoint(first.Id,"Done"),
+                new MOLBlockEndpoint(second.Id,"Start"),MPCPortKind.Control);
+            var b=new MOLLink(Guid.NewGuid(),new MOLBlockEndpoint(second.Id,"Done"),
+                new MOLBlockEndpoint(last.Id,"Start"),MPCPortKind.Control);
+            var data=new MOLLink(Guid.NewGuid(),new MOLBlockEndpoint(first.Id,"Image"),
+                new MOLBlockEndpoint(second.Id,"Image"),MPCPortKind.Data);
+            var definition=new MOLWiringDefinition(first.Id,new[]{first,second,last},ports,
+                new[]{a,b,data});
+            var reread=MOLWiringCodec.Deserialize(MOLWiringCodec.Serialize(definition));
+            Check(reread.Links.Count==3&&reread.Links[2].Id==data.Id&&
+                reread.Blocks[1].Id==second.Id,"V2 codec identity");
+            var session=MEMEngineering.Create("FreeWiring");
+            var page=session.AddPage("Main");
+            var path=System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                "cx-wiring-"+Guid.NewGuid().ToString("N")+".cxproj");
+            try{
+                MOLWiringCodec.Set(session,page.RootContent,definition);
+                session.SaveAs(path);
+                var reopened=MEMEngineering.Open(path);
+                try{
+                    var wire=MOLWiringCodec.Get(reopened.GetSnapshot().Find(page.RootContent.Id));
+                    Check(wire!=null&&wire.EntryBlockId==first.Id&&wire.Links[0].Id==a.Id,
+                        "V2 file roundtrip");
+                }finally{reopened.Close(true);}
+            }finally{session.Close(true);if(System.IO.File.Exists(path))System.IO.File.Delete(path);}
+            bool rejected=false;
+            try{new MOLWiringDefinition(first.Id,new[]{first,second,last},ports,
+                    new[]{a,a,b,data});}catch(InvalidOperationException){rejected=true;}
+            Check(rejected,"duplicate link rejected");
+            rejected=false;
+            try{new MOLWiringDefinition(first.Id,new[]{first,second,last},ports,
+                    new[]{a,b,data,new MOLLink(Guid.NewGuid(),
+                      new MOLBlockEndpoint(last.Id,"Start"),
+                      new MOLBlockEndpoint(first.Id,"Done"),MPCPortKind.Control)});}
+            catch(InvalidOperationException){rejected=true;}
+            Check(rejected,"reversed port rejected");
+        }
+
 }
