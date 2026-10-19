@@ -132,6 +132,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
             var passed = Execute(plan, new Dictionary<string,object> {{"accepted", true}}, out trace);
             Check(passed.State == MRKFlowState.Completed &&
                 aiCalls == 1 && cvCalls == 1 && yesCalls == 1 && noCalls == 0, "parallel true path");
+            Check(plan.Plan.Regions.Count==1&&
+                plan.Plan.Regions[0].Members.Count>=5,
+                "MOC结构化Branch未生成真实MRK ControlRegion");
             Check(plan.SourceMap.Find(yes.Id).Count == 1 &&
                 plan.SourceMap.Find(yes.Id)[0].ContentAddress.ObjectId == page.RootContent.Id,
                 "stable source address");

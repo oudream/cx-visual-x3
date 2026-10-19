@@ -835,7 +835,7 @@ namespace CxVisual.Mechanism.Orchestration
             var compiled = new MRKExecutionPlanCompiler().Compile(
                 "moc." + snapshot.ProjectId.ToString("N") + "." + entryContentId.ToString("N") +
                 ".r" + snapshot.Revision.ToString(CultureInfo.InvariantCulture),
-                build.Steps, build.Resolver);
+                build.Steps, build.Resolver, regions:build.Regions);
             if (!compiled.Succeeded)
                 throw new InvalidOperationException("moc.compile_rejected:" +
                     string.Join(";", compiled.Diagnostics.Select(d => d.Code + "@" + d.StepId)));
@@ -1103,6 +1103,7 @@ namespace CxVisual.Mechanism.Orchestration
         private sealed class Compilation
         {
             internal readonly List<MRKStepCompileRequest> Steps = new List<MRKStepCompileRequest>();
+            internal readonly List<MRKControlRegion> Regions = new List<MRKControlRegion>();
             internal readonly List<MOCStepOrigin> Origins = new List<MOCStepOrigin>();
             internal readonly MOCResolver Resolver;
             private readonly MEMProjectSnapshot _snapshot;
@@ -1205,6 +1206,9 @@ namespace CxVisual.Mechanism.Orchestration
                     }
                     case MOLControlKind.Branch:
                     {
+                        int first=Steps.Count;
+                        string entry=Add(block,owner,calls,scope==null?(int?)null:scope.Index,
+                            "BranchEntry","moc.internal.noop",before);
                         var joins = new List<string>();
                         var cases = block.Cases.ToArray();
                         var casePredicates = cases.Select(c =>
@@ -1221,16 +1225,22 @@ namespace CxVisual.Mechanism.Orchestration
                                 return casePredicates[chosen] == null || casePredicates[chosen](ctx);
                             };
                             string gate=Add(block, owner, calls, scope == null ? (int?)null : scope.Index,
-                                "Case." + i, "moc.internal.noop", before, guard);
+                                "Case." + i, "moc.internal.noop", new[]{entry}, guard);
                             joins.AddRange(Emit(cases[i].Body, owner, new[]{gate}, calls, scope, depth+1));
                         }
-                        return new[]{Add(block, owner, calls, scope == null ? (int?)null : scope.Index,
-                            "BranchJoin", "moc.internal.noop", joins,
+                        string exit=Add(block,owner,calls,scope==null?(int?)null:scope.Index,
+                            "BranchJoin","moc.internal.noop",joins,
                             condition: ctx => !before.Any(d => {
                                 MRKStepState state;
                                 return ctx.StatesSnapshot().TryGetValue(d, out state) &&
                                     state == MRKStepState.Skipped;
-                            }), join:true)};
+                            }), join:true);
+                        string regionId="moc.branch."+block.Id.ToString("N")+
+                            (scope==null?"":".i"+scope.Index.ToString(CultureInfo.InvariantCulture))+
+                            (calls.Length==0?"":".c"+string.Join(".",calls.Select(id=>id.ToString("N"))));
+                        Regions.Add(new MRKControlRegion(regionId,entry,exit,
+                            Steps.Skip(first).Select(step=>step.Id)));
+                        return new[]{exit};
                     }
                     case MOLControlKind.Loop:
                     case MOLControlKind.ForEach:

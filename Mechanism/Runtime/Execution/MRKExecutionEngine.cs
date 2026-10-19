@@ -324,7 +324,37 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 Volatile.Read(ref _cancelRequested) != 0, _createdUtc,
                 done != null && done.Status == TaskStatus.RanToCompletion
                     ? (DateTime?)done.Result.CompletedUtc : null,
-                steps.Count, completed, waiting, failed, skipped);
+                steps.Count, completed, waiting, failed, skipped,
+                GetRegionStates(_originalPlan,steps));
+        }
+
+        private static IDictionary<string,MRKStepState> GetRegionStates(
+            MRKExecutionPlan plan,IDictionary<string,MRKStepState> states)
+        {
+            Dictionary<string,MRKStepState> result=
+                new Dictionary<string,MRKStepState>(StringComparer.Ordinal);
+            foreach(MRKControlRegion region in plan.Regions)
+            {
+                MRKStepState[] items=region.Members.Where(states.ContainsKey)
+                    .Select(id=>states[id]).ToArray();
+                MRKStepState state;
+                if(items.Any(s=>s==MRKStepState.Failed||s==MRKStepState.ResultUnknown))
+                    state=MRKStepState.Failed;
+                else if(items.Any(s=>s==MRKStepState.Cancelled))
+                    state=MRKStepState.Cancelled;
+                else if(items.Any(s=>s==MRKStepState.Paused))
+                    state=MRKStepState.Paused;
+                else if(items.Length==region.Members.Count&&
+                    items.All(s=>s==MRKStepState.Completed||s==MRKStepState.Skipped))
+                    state=items.All(s=>s==MRKStepState.Skipped)?
+                        MRKStepState.Skipped:MRKStepState.Completed;
+                else if(items.Any(s=>s==MRKStepState.Running||s==MRKStepState.Waiting||
+                    s==MRKStepState.WaitingGroup||s==MRKStepState.WaitingResources))
+                    state=MRKStepState.Running;
+                else state=MRKStepState.WaitingDependencies;
+                result.Add(region.Id,state);
+            }
+            return result;
         }
 
         internal CancellationToken Token { get { return _cancellation.Token; } }

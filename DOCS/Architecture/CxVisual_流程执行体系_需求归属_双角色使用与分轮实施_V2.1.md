@@ -205,3 +205,23 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 - ArchitectureSmoke 增加真实工程 V1/V2 Save/Open、相同 Provider/输入的真值、选中 Case、Join、SourceMap/Trace 和无效定义/原子回滚反证。
 
 **第一轮一次提交前的静态检查**：新增的辅助方法均位于原 Core/MOC 类型；未建立 Graph/Runtime 第二模型、未新增工程项目或不必要的枚举。最终通过与否仍只以本轮 SHA 的 Windows Runtime 和工程组织 CI 为依据。
+
+## R02 真实验收（S3）
+
+- Commit：`a63e978a98328b1498d4fa6e11d4c61507d22abd`，直接 master 单次中文提交。
+- 真实 Windows CI 均成功：Runtime `39276599886`；工程组织 `39276599766`；TestCenter `39276599684`；Config L1 `39276599773`；配置公共底座 `39276599691`。
+- 原 MOL/MOC/MRK 不重复设计；V1/V2 数值比较、互斥有序 Case、Save/Open、Join 与 SourceMap 已纳入 ArchitectureSmoke。
+
+## R03 控制区域编译基础：范围与验收
+
+**本轮交付范围**：现有 `MRKExecutionPlan` 携带不可变 `MRKControlRegion`（入口、出口、成员）；旧式 DAG 不传 Region 时行为不变；编译必须拒绝未知成员、外部中间依赖、不可达节点、缺失 Join、交叉重叠；允许合法嵌套。没有增加第二套引擎。
+
+**MOC 接入**：V1 结构化 Branch 创建原有 noop 能力入口 Gate，以已有 Case/Join 机制编译形成 Region；运行继续由同一 MRK Engine 执行。V2 自由连线维持现有 DAG 路径，后续阶段再让 V2 的复杂控制块自然生成 Region。
+
+**真实观察**：`MRKFlowHandle.GetSnapshot().RegionStates` 从 Plan 定义与已存在的 Step 状态实时推导，状态只读，不单独产生第二套状态真源。
+
+**正反例**：Region 真实执行成功、原 DAG 结果不变、区域完成可观察，错误边界被编译拒绝、MOC 真工程的 Branch 产生 Region。
+
+**明确边界**：R03 是可执行 Region 的静态编译基石，不代表 R04 Invocation 数据帧、R05 动态重入循环、R10 Checkpoint 已完成。
+
+**本轮状态**：源码与测试准备中，固定 Commit/Windows CI 需在提交后补证据；不得凭本段文字标记已完成。

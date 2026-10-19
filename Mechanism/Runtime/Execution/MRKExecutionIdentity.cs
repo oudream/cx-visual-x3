@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
 
 namespace CxVisual.Mechanism.Runtime.Execution
 {
@@ -42,12 +44,16 @@ namespace CxVisual.Mechanism.Runtime.Execution
         internal MRKFlowSnapshot(Guid id, string planId, MRKFlowMetadata metadata,
             MRKFlowState state, bool cancelRequested, DateTime createdUtc,
             DateTime? endedUtc, int total, int completed, int waiting,
-            int failed, int skipped)
+            int failed, int skipped,
+            IDictionary<string,MRKStepState> regionStates = null)
         {
             FlowId=id;PlanId=planId;Metadata=metadata;State=state;
             CancelRequested=cancelRequested;CreatedUtc=createdUtc;EndedUtc=endedUtc;
             TotalSteps=total;CompletedSteps=completed;WaitingSteps=waiting;
             FailedSteps=failed;SkippedSteps=skipped;
+            RegionStates=new ReadOnlyDictionary<string,MRKStepState>(
+                new Dictionary<string,MRKStepState>(regionStates ??
+                    new Dictionary<string,MRKStepState>(),StringComparer.Ordinal));
         }
         public Guid FlowId {get;private set;}
         public string PlanId {get;private set;}
@@ -61,6 +67,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
         public int WaitingSteps {get;private set;}
         public int FailedSteps {get;private set;}
         public int SkippedSteps {get;private set;}
+        public IDictionary<string,MRKStepState> RegionStates{get;private set;}
     }
 
 }

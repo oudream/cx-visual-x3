@@ -38,6 +38,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             NestedOrchestrationRunsAndSkipsCorrectly();
             NestedOrchestrationUsesAuthorizedPublisher();
             SubflowModifiersAreNotSilentlyIgnored();
+            CompiledControlRegionAndLegacyDag();
         }
         private static void Check(bool ok, string msg)
         { if (!ok) throw new InvalidOperationException("计划编译：" + msg); }
@@ -47,6 +48,52 @@ namespace CxVisual.Tests.ArchitectureSmoke
             if (!object.ReferenceEquals(winner, task)) throw new TimeoutException("计划编译测试超时");
             return task.GetAwaiter().GetResult();
         }
+        /// <summary>R03：控制区域编译、原DAG兼容和真实MRK状态。</summary>
+        private static void CompiledControlRegionAndLegacyDag()
+        {
+            Resolver resolver=new Resolver((ctx,ct)=>Task.FromResult((object)17));
+            MRKStepCompileRequest[] steps={
+                new MRKStepCompileRequest("a","Calculate"),
+                new MRKStepCompileRequest("b","Calculate",new[]{"a"}),
+                new MRKStepCompileRequest("c","Calculate",new[]{"b"}),
+                new MRKStepCompileRequest("d","Calculate",new[]{"c"})
+            };
+            MRKControlRegion region=new MRKControlRegion("r","a","c",
+                new[]{"a","b","c"});
+            MRKCompileResult scoped=new MRKExecutionPlanCompiler().Compile(
+                "r03.region",steps,resolver,regions:new[]{region});
+            MRKCompileResult legacy=new MRKExecutionPlanCompiler().Compile(
+                "r03.legacy",steps,resolver);
+            Check(scoped.Succeeded&&scoped.Plan.Regions.Count==1&&
+                scoped.Plan.Regions[0].Members.Count==3&&
+                legacy.Succeeded&&legacy.Plan.Regions.Count==0,
+                "Region编译失败或原DAG语义被破坏");
+            MRKExecutionEngine engine=new MRKExecutionEngine(new FCRWorkerOptions(2,8));
+            try
+            {
+                MRKFlowHandle handle=engine.StartFlow(scoped.Plan);
+                MRKFlowResult result=Wait(handle.Completion);
+                Check(result.State==MRKFlowState.Completed&&result.Results.Count==4&&
+                    handle.GetSnapshot().RegionStates["r"]==MRKStepState.Completed,
+                    "真实MRK运行没有反映区域完成状态");
+                MRKFlowResult plain=Wait(engine.StartFlow(legacy.Plan).Completion);
+                Check(plain.State==MRKFlowState.Completed&&plain.Results.Count==4,
+                    "旧DAG真实执行回归");
+            }
+            finally{Wait(engine.StopAsync());}
+            MRKCompileResult invalid=new MRKExecutionPlanCompiler().Compile(
+                "r03.bad",steps,resolver,regions:new[]{
+                    new MRKControlRegion("bad","a","c",new[]{"a","c"})});
+            Check(!invalid.Succeeded&&invalid.Plan==null,
+                "带外部中间依赖的区域不应该通过");
+            invalid=new MRKExecutionPlanCompiler().Compile("r03.cross",steps,resolver,
+                regions:new[]{
+                    new MRKControlRegion("one","a","c",new[]{"a","b","c"}),
+                    new MRKControlRegion("two","b","d",new[]{"b","c","d"})});
+            Check(!invalid.Succeeded&&invalid.Plan==null,
+                "交叉区域不应该通过编译");
+        }
+
         private static void CompilesToSameCapabilityAndStableOrder()
         {
             int count = 0;

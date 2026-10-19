@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -97,15 +98,42 @@ namespace CxVisual.Mechanism.Runtime.Execution
         public Func<MRKExecutionContext, CancellationToken, Task<object>> ExecuteAsync { get; private set; }
     }
 
+    /// <summary>编译期控制区域，沿用Plan DAG与既有MRK引擎，不保存第二套工程逻辑。</summary>
+    public sealed class MRKControlRegion
+    {
+        private readonly ReadOnlyCollection<string> _members;
+        public MRKControlRegion(string id,string entryStepId,string exitStepId,
+            IEnumerable<string> members)
+        {
+            if(string.IsNullOrWhiteSpace(id)||string.IsNullOrWhiteSpace(entryStepId)||
+               string.IsNullOrWhiteSpace(exitStepId)||members==null)
+                throw new ArgumentException("region.identity");
+            string[] ids=members.ToArray();
+            if(ids.Length<2||ids.Any(string.IsNullOrWhiteSpace)||
+               ids.Distinct(StringComparer.Ordinal).Count()!=ids.Length||
+               !ids.Contains(entryStepId)||!ids.Contains(exitStepId)||
+               entryStepId==exitStepId)
+                throw new ArgumentException("region.members");
+            Id=id;EntryStepId=entryStepId;ExitStepId=exitStepId;
+            _members=Array.AsReadOnly(ids);
+        }
+        public string Id{get;private set;}
+        public string EntryStepId{get;private set;}
+        public string ExitStepId{get;private set;}
+        public IList<string> Members{get{return _members;}}
+    }
+
     /// <summary>每次编译的不可变DAG计划；由编排定义转换而来，不能代替编排的权威工程树。</summary>
     public sealed class MRKExecutionPlan
     {
         private readonly Dictionary<string, MRKExecutionStep> _byId;
         private readonly ReadOnlyCollection<MRKExecutionStep> _steps;
+        private readonly ReadOnlyCollection<MRKControlRegion> _regions;
         public IDictionary<string, string> DataExports { get; private set; }
         public IDictionary<string, Type> DataExportTypes { get; private set; }
         public MRKExecutionPlan(string id, IEnumerable<MRKExecutionStep> steps,
-            IDictionary<string, string> dataExports = null)
+            IDictionary<string, string> dataExports = null,
+            IEnumerable<MRKControlRegion> regions = null)
         {
             if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("Plan ID required", "id");
             if (steps == null) throw new ArgumentNullException("steps");
@@ -156,7 +184,59 @@ namespace CxVisual.Mechanism.Runtime.Execution
             DataExports = new ReadOnlyDictionary<string, string>(exports);
             DataExportTypes = new ReadOnlyDictionary<string, Type>(exportTypes);
             _steps = list.AsReadOnly();
+            List<MRKControlRegion> candidates=new List<MRKControlRegion>(
+                regions??Enumerable.Empty<MRKControlRegion>());
+            ValidateRegions(candidates);
+            _regions=candidates.AsReadOnly();
         }
+        private void ValidateRegions(IList<MRKControlRegion> regions)
+        {
+            HashSet<string> ids=new HashSet<string>(StringComparer.Ordinal);
+            foreach(MRKControlRegion r in regions)
+            {
+                if(r==null||!ids.Add(r.Id))throw new ArgumentException("region.duplicate");
+                HashSet<string> members=new HashSet<string>(r.Members,StringComparer.Ordinal);
+                if(members.Any(id=>!_byId.ContainsKey(id)))
+                    throw new ArgumentException("region.unknown_step");
+                Dictionary<string,List<string>> next=members.ToDictionary(
+                    id=>id,id=>new List<string>(),StringComparer.Ordinal);
+                foreach(string member in members)
+                    foreach(string dep in _byId[member].Dependencies)
+                    {
+                        if(members.Contains(dep))next[dep].Add(member);
+                        else if(member!=r.EntryStepId)
+                            throw new ArgumentException("region.external_dependency");
+                    }
+                HashSet<string> fromEntry=new HashSet<string>(StringComparer.Ordinal);
+                Stack<string> pending=new Stack<string>();pending.Push(r.EntryStepId);
+                while(pending.Count>0)
+                {
+                    string current=pending.Pop();
+                    if(!fromEntry.Add(current))continue;
+                    foreach(string step in next[current])pending.Push(step);
+                }
+                if(fromEntry.Count!=members.Count)throw new ArgumentException("region.unreachable");
+                HashSet<string> toExit=new HashSet<string>(StringComparer.Ordinal);
+                pending.Push(r.ExitStepId);
+                while(pending.Count>0)
+                {
+                    string current=pending.Pop();
+                    if(!toExit.Add(current))continue;
+                    foreach(string dep in _byId[current].Dependencies)
+                        if(members.Contains(dep))pending.Push(dep);
+                }
+                if(toExit.Count!=members.Count)throw new ArgumentException("region.missing_join");
+            }
+            for(int i=0;i<regions.Count;i++)
+                for(int j=i+1;j<regions.Count;j++)
+                {
+                    HashSet<string> x=new HashSet<string>(regions[i].Members);
+                    HashSet<string> y=new HashSet<string>(regions[j].Members);
+                    if(x.Overlaps(y)&&!x.IsProperSupersetOf(y)&&!y.IsProperSupersetOf(x))
+                        throw new ArgumentException("region.crossing");
+                }
+        }
+
         private void Visit(string id, Dictionary<string, int> marks)
         {
             int state;
@@ -275,6 +355,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
 
         public string Id { get; private set; }
         public IList<MRKExecutionStep> Steps { get { return _steps; } }
+        public IList<MRKControlRegion> Regions { get { return _regions; } }
         public MRKExecutionStep GetStep(string id) { return _byId[id]; }
     }
 }
