@@ -23,7 +23,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
         private static void Pump(){Dispatcher.CurrentDispatcher.Invoke(new Action(()=>{}),DispatcherPriority.ApplicationIdle);}
         private static void Click(Window window,string label)
         {
-            window.UpdateLayout();var button=Descendants(window).OfType<Button>().First(b=>object.Equals(b.Content,label));
+            window.UpdateLayout();
+            var buttons=Descendants(window).OfType<Button>().ToArray();
+            var button=buttons.FirstOrDefault(b=>object.Equals(b.Content,label));
+            if(button==null)throw new InvalidOperationException("Missing Studio button '"+label+
+                "'; visible controls: "+string.Join(" | ",buttons.Select(b=>b.Content==null?"(none)":b.Content.ToString())));
             var peer=new ButtonAutomationPeer(button);((IInvokeProvider)peer.GetPattern(PatternInterface.Invoke)).Invoke();Pump();
         }
         private static object Get(object instance,string name){return instance.GetType().GetProperty(name).GetValue(instance,null);}
