@@ -202,7 +202,11 @@ namespace CxVisual.Mechanism.Core
                             case "Content": node = new MEMContent(id, name); break;
                             case "Symbol": node = new MEMSymbol(id, name, false); break;
                             case "Group": node = new MRCGroup(id, name); break;
-                            case "Element": node = new MRCRectangle(id,name,Number(r,"x",0),Number(r,"y",0),Number(r,"width",120),Number(r,"height",80)); break;
+                            case "Element":
+                                node = r.GetAttribute("typeId") == "core.shape"
+                                    ? (MEMNode)new MRCShapeElement(id,name,Number(r,"x",0),Number(r,"y",0),Number(r,"width",120),Number(r,"height",80))
+                                    : new MRCRectangle(id,name,Number(r,"x",0),Number(r,"y",0),Number(r,"width",120),Number(r,"height",80));
+                                break;
                             default: throw new InvalidDataException("Unknown kind " + kind);
                         }
                         var declaredType = r.GetAttribute("typeId"); if (declaredType != null && declaredType != node.TypeId)
