@@ -11,12 +11,15 @@ namespace CxVisual.Mechanism.Visual
     {
         public static ReadOnlyCollection<CxSceneItem> Project(MEMEngineeringSession session){return Project(session,null);}
         public static ReadOnlyCollection<CxSceneItem> Project(MEMEngineeringSession session,Guid? pageId)
-        {return Project(session,pageId,null,0);}
+        {return ProjectCore(session,pageId,null,0,false);}
         /// <summary>可注入既有MDS/专业数据源；时间采样不修改工程Revision。</summary>
         public static ReadOnlyCollection<CxSceneItem> Project(MEMEngineeringSession session,Guid? pageId,
             IMDSExternalBindingResolver runtimeSource,double elapsedMilliseconds=0)
+        {return ProjectCore(session,pageId,runtimeSource,elapsedMilliseconds,true);}
+        private static ReadOnlyCollection<CxSceneItem> ProjectCore(MEMEngineeringSession session,
+            Guid? pageId,IMDSExternalBindingResolver runtimeSource,double elapsedMilliseconds,bool runtimeEnabled)
         {
-            if(session==null)throw new ArgumentNullException("session");var snapshot=session.GetSnapshot();var projection=new Projection(snapshot,runtimeSource,elapsedMilliseconds);
+            if(session==null)throw new ArgumentNullException("session");var snapshot=session.GetSnapshot();var projection=new Projection(snapshot,runtimeSource,elapsedMilliseconds,runtimeEnabled);
             foreach(var page in snapshot.Nodes.Where(n=>n.Kind==MEMNodeKind.Page&&(!pageId.HasValue||n.Id==pageId.Value)))projection.Collect(page,MRCTransform.Identity,new Guid[0],false,null,MRCTransform.Identity);
             return projection.Items.AsReadOnly();
         }
@@ -29,12 +32,16 @@ namespace CxVisual.Mechanism.Visual
         }
         public static ReadOnlyCollection<CxSceneItem> ProjectResource(MEMEngineeringSession session,Guid resourceId)
         {
-            return ProjectResource(session,resourceId,null,0);
+            return ProjectResourceCore(session,resourceId,null,0,false);
         }
         public static ReadOnlyCollection<CxSceneItem> ProjectResource(MEMEngineeringSession session,Guid resourceId,
             IMDSExternalBindingResolver runtimeSource,double elapsedMilliseconds=0)
+        {return ProjectResourceCore(session,resourceId,runtimeSource,elapsedMilliseconds,true);}
+        private static ReadOnlyCollection<CxSceneItem> ProjectResourceCore(
+            MEMEngineeringSession session,Guid resourceId,IMDSExternalBindingResolver runtimeSource,
+            double elapsedMilliseconds,bool runtimeEnabled)
         {
-            var snapshot=session.GetSnapshot(resourceId,true);var root=snapshot.Find(resourceId);if(root==null)throw new InvalidOperationException("Missing projection root");var projection=new Projection(snapshot,runtimeSource,elapsedMilliseconds);
+            var snapshot=session.GetSnapshot(resourceId,true);var root=snapshot.Find(resourceId);if(root==null)throw new InvalidOperationException("Missing projection root");var projection=new Projection(snapshot,runtimeSource,elapsedMilliseconds,runtimeEnabled);
             projection.Collect(root,MRCTransform.Identity,new Guid[0],false,null,MRCTransform.Identity);return projection.Items.AsReadOnly();
         }
         private sealed class Projection
@@ -44,13 +51,15 @@ namespace CxVisual.Mechanism.Visual
             private readonly Dictionary<Guid,MRIReferenceSnapshot> _refs;
             private readonly IMDSExternalBindingResolver _runtimeSource;
             private readonly double _elapsedMilliseconds;
+            private readonly bool _runtimeEnabled;
             private int _expanded;
             internal Projection(MEMProjectSnapshot snapshot,IMDSExternalBindingResolver runtimeSource,
-                double elapsedMilliseconds)
+                double elapsedMilliseconds,bool runtimeEnabled)
             {
                 if(double.IsNaN(elapsedMilliseconds)||double.IsInfinity(elapsedMilliseconds)||
                     elapsedMilliseconds<0)throw new ArgumentOutOfRangeException("elapsedMilliseconds");
                 _snapshot=snapshot;_runtimeSource=runtimeSource;_elapsedMilliseconds=elapsedMilliseconds;
+                _runtimeEnabled=runtimeEnabled;
                 _refs=snapshot.Nodes.SelectMany(n=>n.References).ToDictionary(r=>r.Id);
             }
             private MPMBinding Parameter(MRIReferenceSnapshot reference,string member)
@@ -104,10 +113,11 @@ namespace CxVisual.Mechanism.Visual
                         }
                         string displayText=node.TypeId=="core.text"?
                             MRCTextElement.TextFromAspects(node.Aspects):"";
-                        MRCVisualStyle style=MVIVisualRuntimeEvaluator.EvaluateStyle(
-                            MRCVisualAppearance.StyleFromAspects(node.Aspects),
-                            MRCVisualAppearance.BehaviorFromAspects(node.Aspects),
-                            _elapsedMilliseconds,_runtimeSource);
+                        MRCVisualStyle style=MRCVisualAppearance.StyleFromAspects(node.Aspects);
+                        if(_runtimeEnabled)
+                            style=MVIVisualRuntimeEvaluator.EvaluateStyle(style,
+                                MRCVisualAppearance.BehaviorFromAspects(node.Aspects),
+                                _elapsedMilliseconds,_runtimeSource);
                         Items.Add(new CxSceneItem(first==null?node.Id:first.Id,
                             first==null?node.Name:first.Name+" / "+node.Name,address,world,
                             width,height,selectable,first==null?parent:firstParent,
