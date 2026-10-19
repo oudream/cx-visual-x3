@@ -502,6 +502,43 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     .Blocks.Count==2,
                     "Studio extract Content Undo did not restore original flow");
 
+                // C同一工程验证：真实WPF按钮自动关联选中MOL节点到图元状态，
+                // 创建三个MPM运行态定义，一次MEM事务，Undo/Redo与逻辑共用。
+                var flowLamp=finalSession.AddShape(active.RootContent,"Flow Status Lamp",
+                    MRCShapeDefinition.Circle(new FGEPoint2D(20,20),20),24,24);
+                Guid sourceBlock=MOLWiringCodec.Get(finalSession.GetSnapshot()
+                    .Find(active.RootContent.Id)).Blocks[0].Id;
+                vm.GetType().GetMethod("Select").Invoke(vm,new object[]{(Guid?)flowLamp.Id});
+                flowCanvas.SetSelection(new[]{sourceBlock});
+                int beforeLink=finalSession.Revision;
+                Click(window,"关联流程状态");
+                string runningKey=assembly.GetType("CxVisual.Studio.MOLVisualTraceBindingResolver")
+                    .GetMethod("VariableFor").Invoke(null,new object[]{sourceBlock,"Running"}) as string;
+                Check(finalSession.Revision==beforeLink+1&&
+                    MRCVisualAppearance.BehaviorOf(flowLamp).States.Any(s=>s.Name==runningKey),
+                    "C Studio Flow->Visual linkage must use a single MEM edit");
+                Click(window,"撤销编排");
+                Check(!MRCVisualAppearance.BehaviorOf(flowLamp).States.Any(s=>s.Name==runningKey),
+                    "C visual linkage ignored shared Undo");
+                Click(window,"重做编排");
+                Check(MRCVisualAppearance.BehaviorOf(flowLamp).States.Any(s=>s.Name==runningKey),
+                    "C visual linkage ignored shared Redo");
+                // 同一份工程定义进行C运行态预览，帧只变颜色不改变Revision。
+                int runtimeRevision=finalSession.Revision;
+                var bridgeType=assembly.GetType("CxVisual.Studio.MOLVisualTraceBindingResolver");
+                var resolver=(CxVisual.Mechanism.Data.RuntimeData.IMDSExternalBindingResolver)
+                    Activator.CreateInstance(bridgeType,new object[]{
+                        new Func<Guid,string>(id=>id==sourceBlock?"Running":null),null});
+                CxSceneItem runningScene=CxSceneProjection.Project(finalSession,
+                    active.Id,resolver,20).First(x=>x.Id==flowLamp.Id);
+                Check(runningScene.Style.Fill.Color.Equals(MRCColor.Parse("#FF2778D7"))&&
+                    finalSession.Revision==runtimeRevision,
+                    "C MRK trace state did not repaint WPF model without MEM edit");
+                bool malformed=false;
+                try{resolver.Resolve(CxVisual.Mechanism.Data.RuntimeData.MDSBindingSource.Variable,
+                    "Flow.Block.bad.Running",typeof(bool));}
+                catch(ArgumentException){malformed=true;}
+                Check(malformed,"C malformed MRK reference escaped the binding boundary");
                 Console.WriteLine("PASS H06 Studio real WPF automation: add/switch page, resource two instances, bound parameter edit, shared Undo/Redo, definition navigation, save/reopen");
             }
             finally{if(window!=null)window.Close();if(app!=null)app.Shutdown();if(File.Exists(path))File.Delete(path);if(File.Exists(path+".cx-lock"))File.Delete(path+".cx-lock");}
