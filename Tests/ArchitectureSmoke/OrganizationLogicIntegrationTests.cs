@@ -713,6 +713,25 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     if(System.IO.File.Exists(emptyPath))System.IO.File.Delete(emptyPath);
                     if(System.IO.File.Exists(emptyPath+".cx-lock"))System.IO.File.Delete(emptyPath+".cx-lock");
                 }
+                // 清空后能继续通过统一Builder粘贴、编译校验并原子撤销/重做。
+                IReadOnlyDictionary<Guid,Guid> reintroduced=null;
+                MOCFlowBuilder.Edit(session,secondPage.RootContent,builder=>
+                    reintroduced=builder.Paste(transferred,120,90));
+                var restoredDraft=MOLWiringCodec.Get(
+                    session.GetSnapshot().Find(secondPage.RootContent.Id));
+                Check(restoredDraft.Blocks.Count==2&&restoredDraft.Links.Count==1&&
+                    restoredDraft.Groups.Count==1&&restoredDraft.EntryBlockId!=Guid.Empty&&
+                    reintroduced.Count==2&&reintroduced.Values.Distinct().Count()==2,
+                    "paste into empty draft failed to restore entry, groups, or internal links");
+                restoredDraft.ValidateExecutable();
+                Check(session.Undo().Success&&
+                    MOLWiringCodec.Get(session.GetSnapshot().Find(secondPage.RootContent.Id))
+                        .Blocks.Count==0,
+                    "paste-into-empty was not one undo step");
+                Check(session.Redo().Success&&
+                    MOLWiringCodec.Get(session.GetSnapshot().Find(secondPage.RootContent.Id))
+                        .Blocks.Count==2,
+                    "paste-into-empty redo lost flow identity");
                 MOCFlowBuilder.Edit(session,firstPage.RootContent,builder=>
                     builder.Ungroup(groupId));
                 Check(MOLWiringCodec.Get(session.GetSnapshot().Find(firstPage.RootContent.Id))
