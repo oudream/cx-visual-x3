@@ -624,6 +624,115 @@ namespace CxVisual.Studio
             LogicInfo.Text=LogicHost.IsConnectMode?
                 "依次点击来源和目标块，随后在端口列表选择合法端口对并确认。":"已退出连线模式。";
         }
+        private Guid SelectedFlowBlock()
+        {
+            if(LogicHost.WiringDefinition==null||LogicHost.SelectedBlockIds.Count!=1)
+                throw new InvalidOperationException("请先只选择一个V2逻辑节点");
+            return LogicHost.SelectedBlockIds[0];
+        }
+        private void RefreshFlowInspector()
+        {
+            var wiring=LogicHost.WiringDefinition;
+            Guid id=LogicHost.SelectedBlockIds.Count==1?LogicHost.SelectedBlockIds[0]:Guid.Empty;
+            var block=wiring==null?null:wiring.Blocks.FirstOrDefault(b=>b.Id==id);
+            FlowInspectorCapability.Text=block==null?"":block.CapabilityId;
+            FlowInspectorPorts.ItemsSource=block==null?null:wiring.Ports[id];
+            if(block!=null&&wiring.Ports[id].Count>0)FlowInspectorPorts.SelectedIndex=0;
+            else FlowInspectorValue.Text="";
+        }
+        private void OnFlowInspectorPortSelected(object sender,
+            System.Windows.Controls.SelectionChangedEventArgs args)
+        {
+            var port=FlowInspectorPorts.SelectedItem as MPCPortDescriptor;
+            if(port==null)return;
+            FlowInspectorPortName.Text=port.MemberId;
+            FlowInspectorType.Text=port.TypeId;
+            FlowInspectorDirection.SelectedIndex=port.Direction==MPCPortDirection.Output?1:0;
+            FlowInspectorKind.SelectedIndex=port.Kind==MPCPortKind.Control?1:0;
+            FlowInspectorRequired.IsChecked=port.Required;
+            var wiring=LogicHost.WiringDefinition;
+            Guid id=LogicHost.SelectedBlockIds.Count==1?LogicHost.SelectedBlockIds[0]:Guid.Empty;
+            IReadOnlyDictionary<string,string> values;
+            string value;
+            FlowInspectorValue.Text=wiring!=null&&wiring.Parameters.TryGetValue(id,out values)&&
+                values.TryGetValue(port.MemberId,out value)?value:"";
+        }
+        private MPCPortDescriptor ReadFlowPort()
+        {
+            var direction=(MPCPortDirection)Enum.Parse(typeof(MPCPortDirection),
+                ((System.Windows.Controls.ComboBoxItem)FlowInspectorDirection.SelectedItem).Content.ToString());
+            var kind=(MPCPortKind)Enum.Parse(typeof(MPCPortKind),
+                ((System.Windows.Controls.ComboBoxItem)FlowInspectorKind.SelectedItem).Content.ToString());
+            return new MPCPortDescriptor(FlowInspectorPortName.Text.Trim(),direction,
+                FlowInspectorType.Text.Trim(),kind,MPCPortMultiplicity.One,null,false,
+                FlowInspectorRequired.IsChecked==true);
+        }
+        private void ApplyFlowProperty(Action<MOCFlowBuilder> edit,string message)
+        {
+            if(_logicRunning)return;
+            try
+            {
+                GetFlowPage();
+                MOCFlowBuilder.Edit(_viewModel.ProjectSession,_viewModel.ActivePage.RootContent,edit);
+                RefreshScene();
+                LogicInfo.Text=message;
+            }
+            catch(Exception ex){LogicInfo.Text="属性编辑拒绝："+ex.Message;}
+        }
+        private MEMPage GetFlowPage()
+        {
+            if(_viewModel.ActivePage==null)throw new InvalidOperationException("请先选择页面");
+            return _viewModel.ActivePage;
+        }
+        private void OnFlowSetCapability(object sender,RoutedEventArgs args)
+        {
+            try
+            {
+                Guid id=SelectedFlowBlock();
+                var entry=CurrentCatalog().Find(FlowInspectorCapability.Text.Trim());
+                if(entry==null||!entry.RuntimeAvailable)
+                    throw new InvalidOperationException("能力Provider尚未注册或不可执行");
+                ApplyFlowProperty(b=>b.SetCapability(id,entry.Definition.Id),"节点能力ID已更新");
+            }
+            catch(Exception ex){LogicInfo.Text="能力修改拒绝："+ex.Message;}
+        }
+        private void OnFlowSetEntry(object sender,RoutedEventArgs args)
+        {
+            try{Guid id=SelectedFlowBlock();ApplyFlowProperty(b=>b.SetEntry(id),"流程入口已更新");}
+            catch(Exception ex){LogicInfo.Text=ex.Message;}
+        }
+        private void OnFlowAddPort(object sender,RoutedEventArgs args)
+        {
+            try{Guid id=SelectedFlowBlock();var port=ReadFlowPort();
+                ApplyFlowProperty(b=>b.AddPort(id,port),"已添加类型化Port");}
+            catch(Exception ex){LogicInfo.Text="端口编辑拒绝："+ex.Message;}
+        }
+        private void OnFlowUpdatePort(object sender,RoutedEventArgs args)
+        {
+            try{Guid id=SelectedFlowBlock();var port=ReadFlowPort();
+                ApplyFlowProperty(b=>b.ReplacePort(id,port),"Port契约已更新");}
+            catch(Exception ex){LogicInfo.Text="端口编辑拒绝："+ex.Message;}
+        }
+        private void OnFlowRemovePort(object sender,RoutedEventArgs args)
+        {
+            try{Guid id=SelectedFlowBlock();string name=FlowInspectorPortName.Text.Trim();
+                ApplyFlowProperty(b=>b.RemovePort(id,name),"已删除未连线Port");}
+            catch(Exception ex){LogicInfo.Text="端口删除拒绝："+ex.Message;}
+        }
+        private void OnFlowSetParameter(object sender,RoutedEventArgs args)
+        {
+            try{Guid id=SelectedFlowBlock();string name=FlowInspectorPortName.Text.Trim();
+                string value=FlowInspectorValue.Text;
+                ApplyFlowProperty(b=>b.SetParameter(id,name,value),"端口输入参数已保存");}
+            catch(Exception ex){LogicInfo.Text="参数编辑拒绝："+ex.Message;}
+        }
+        private void OnFlowClearParameter(object sender,RoutedEventArgs args)
+        {
+            try{Guid id=SelectedFlowBlock();string name=FlowInspectorPortName.Text.Trim();
+                ApplyFlowProperty(b=>b.RemoveParameter(id,name),"已清除参数");}
+            catch(Exception ex){LogicInfo.Text="参数删除拒绝："+ex.Message;}
+        }
+
         private void OnWiringBlocksMoved(object sender,MOLBlocksMoveRequestedEventArgs args)
         {
             if(_logicRunning)return;
