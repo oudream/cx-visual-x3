@@ -71,7 +71,7 @@
                                 <Button Content="添加呼吸动画" Click="OnAddBreathingAnimation"/>
                                 <Button x:Name="VisualPreviewButton" Content="预览交互" Click="OnToggleVisualPreview"/>
                             </WrapPanel>
-                            <TextBlock x:Name="VisualInfo" Text="选择基础图元工具创建；单击画布选择，拖动预览，松开提交MEM事务。"
+                            <TextBlock x:Name="VisualInfo" Text="选择图元后拖动白色锚点/黄色曲线控制点；紫色缩放、橙色旋转；松开提交、Esc取消、支持撤销重做。"
                                 Margin="4,3,0,0" FontSize="11" Foreground="#45617C"/>
                         </StackPanel>
                         <Border CornerRadius="8" Background="White" BorderBrush="#D5DEEA" BorderThickness="1" ClipToBounds="True">
