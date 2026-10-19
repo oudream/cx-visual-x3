@@ -54,9 +54,27 @@
             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="320"/></Grid.ColumnDefinitions>
             <TabControl Grid.Column="0">
                 <TabItem Header="视觉设计">
-                    <Border CornerRadius="8" Background="White" BorderBrush="#D5DEEA" BorderThickness="1" ClipToBounds="True">
-                        <scene:SceneView x:Name="SceneHost" Focusable="True"/>
-                    </Border>
+                    <DockPanel>
+                        <StackPanel DockPanel.Dock="Top" Margin="4,2,4,6">
+                            <WrapPanel>
+                                <Button Content="直线" Tag="Line" Click="OnInsertShape"/>
+                                <Button Content="矩形Shape" Tag="Rect" Click="OnInsertShape"/>
+                                <Button Content="圆形" Tag="Circle" Click="OnInsertShape"/>
+                                <Button Content="椭圆" Tag="Ellipse" Click="OnInsertShape"/>
+                                <Button Content="折线" Tag="Polyline" Click="OnInsertShape"/>
+                                <Button Content="多边形" Tag="Polygon" Click="OnInsertShape"/>
+                                <Button Content="圆弧" Tag="Arc" Click="OnInsertShape"/>
+                                <Button Content="贝塞尔" Tag="Bezier" Click="OnInsertShape"/>
+                                <Button Content="自由路径" Tag="Path" Click="OnInsertShape"/>
+                                <Button Content="文字图元" Tag="Text" Click="OnInsertShape"/>
+                            </WrapPanel>
+                            <TextBlock x:Name="VisualInfo" Text="选择基础图元工具创建；单击画布选择，拖动预览，松开提交MEM事务。"
+                                Margin="4,3,0,0" FontSize="11" Foreground="#45617C"/>
+                        </StackPanel>
+                        <Border CornerRadius="8" Background="White" BorderBrush="#D5DEEA" BorderThickness="1" ClipToBounds="True">
+                            <scene:SceneView x:Name="SceneHost" Focusable="True"/>
+                        </Border>
+                    </DockPanel>
                 </TabItem>
                 <TabItem Header="逻辑编排 · 运行观察">
                     <DockPanel Background="White">
@@ -90,6 +108,18 @@
                     <WrapPanel><Button Command="{Binding PlaceResourceCommand}" Content="放置实例"/><Button Command="{Binding OpenDefinitionCommand}" Content="编辑共享定义"/><Button Command="{Binding BackCommand}" Content="返回"/></WrapPanel>
                     <TextBlock Text="可视对象（Ctrl多选后分组）" FontWeight="SemiBold" Margin="0,8,0,4"/>
                     <ListBox x:Name="EngineeringObjects" ItemsSource="{Binding Items}" DisplayMemberPath="Name" MaxHeight="110" SelectionMode="Extended" SelectionChanged="OnVisualSelectionChanged"/>
+                    <TextBlock Text="图元外观（ARGB / 线宽）" FontWeight="SemiBold" Margin="0,8,0,3"/>
+                    <WrapPanel>
+                        <TextBox x:Name="FillColorInput" Width="115" Text="#FF4A90E2" ToolTip="ARGB格式，例如#FF4A90E2"/>
+                        <TextBox x:Name="StrokeWidthInput" Width="50" Text="2" ToolTip="描边宽度"/>
+                        <Button Content="应用填充" Click="OnApplyVisualStyle"/>
+                    </WrapPanel>
+                    <TextBlock Text="运行事件定义（执行需专业命令授权）" FontWeight="SemiBold" Margin="0,8,0,3"/>
+                    <WrapPanel>
+                        <TextBox x:Name="EventIdInput" Width="78" Text="Click" ToolTip="事件名称"/>
+                        <TextBox x:Name="ActionIdInput" Width="108" Text="hmi.open" ToolTip="命令ID"/>
+                        <Button Content="绑定事件" Click="OnBindVisualEvent"/>
+                    </WrapPanel>
                     <TextBox Text="{Binding RenameText, UpdateSourceTrigger=PropertyChanged}" ToolTip="对象或实例名称"/>
                     <WrapPanel><Button Command="{Binding RenameCommand}" Content="重命名"/><Button Command="{Binding AddParameterCommand}" Content="新增数值参数"/></WrapPanel>
                     <WrapPanel><Button Command="{Binding AddInputPortCommand}" Content="新增数值输入"/><Button Command="{Binding AddOutputPortCommand}" Content="新增数值输出"/></WrapPanel>
