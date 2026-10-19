@@ -71,6 +71,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Check(Math.Abs(editor.Scene[0].Bounds.X-10)<1e-9,"runtime frame was not cleared");
                 }
                 Check(doc.Revision==revision,"editor runtime update modified persisted definitions");
+                doc.Close(true); // 显式放弃测试定义；正常用户工程仍保持未保存保护
             }
             Console.WriteLine("PASS Visual runtime: MDS Owner variable/source, state style, animation time, visibility, invalid type, editor frame separation");
         }
