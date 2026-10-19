@@ -225,6 +225,69 @@ namespace CxVisual.Studio
             Changed("Items");
             FireSceneChanged();
         }
+        private MRCVisualItem SelectedVisualDefinition()
+        {
+            if(!_selected.HasValue)throw new InvalidOperationException("请选择图元定义");
+            MRCVisualItem item=ProjectSession.Find(_selected.Value) as MRCVisualItem;
+            if(item==null)throw new InvalidOperationException("组件引用请先打开定义进行修改");
+            return item;
+        }
+        public void BindVisualVariable(string property,string variable)
+        {
+            if(property!="visible"&&property!="x"&&property!="y"&&
+                property!="width"&&property!="height"&&property!="rotation"&&
+                property!="scaleX"&&property!="scaleY"&&property!="shear"&&
+                property!="value"&&property!="locked"&&property!="selectable")
+                throw new ArgumentException("不支持的动态属性", "property");
+            MRCVisualItem item=SelectedVisualDefinition();
+            ProjectSession.SetBinding(item,property,MPMBinding.Variable(variable));
+            Status="MDS变量绑定已保存："+property+" ← "+variable;
+            NotifyScene();
+        }
+        public void SetFullVisualStyle(string strokeColor,double opacity,double fontSize)
+        {
+            MRCVisualItem item=SelectedVisualDefinition();
+            MRCVisualStyle old=MRCVisualAppearance.StyleOf(item);
+            MRCVisualStyle style=new MRCVisualStyle(old.Fill,
+                MRCBrushDefinition.Solid(MRCColor.Parse(strokeColor)),
+                old.StrokeWidth,opacity,old.FontFamily,fontSize,old.ThemeKey);
+            ProjectSession.SetVisualStyle(item,style);
+            Status="完整样式已保存";
+            NotifyScene();
+        }
+        public void AddVisualState(string stateName,string fillColor)
+        {
+            MRCVisualItem item=SelectedVisualDefinition();
+            MRCVisualStyle old=MRCVisualAppearance.StyleOf(item);
+            MRCVisualStyle style=new MRCVisualStyle(
+                MRCBrushDefinition.Solid(MRCColor.Parse(fillColor)),old.Stroke,
+                old.StrokeWidth,old.Opacity,old.FontFamily,old.FontSize,old.ThemeKey);
+            MRCVisualBehaviorDefinition before=MRCVisualAppearance.BehaviorOf(item);
+            var states=new System.Collections.Generic.List<MRCVisualStateDefinition>(before.States);
+            states.RemoveAll(x=>x.Name==stateName);
+            states.Add(new MRCVisualStateDefinition(stateName,style));
+            ProjectSession.SetVisualBehavior(item,new MRCVisualBehaviorDefinition(
+                states,before.Animations,before.EventActions));
+            Status="状态定义已保存；通过现有MDS布尔变量触发："+stateName;
+            NotifyScene();
+        }
+        public void AddVisualAnimation(string property,double from,double to,int duration)
+        {
+            if(property!="opacity"&&property!="strokeWidth"&&property!="x"&&
+                property!="y"&&property!="width"&&property!="height"&&
+                property!="rotation"&&property!="scaleX"&&property!="scaleY"&&
+                property!="shear")throw new ArgumentException("不支持的动画属性","property");
+            MRCVisualItem item=SelectedVisualDefinition();
+            MRCVisualBehaviorDefinition before=MRCVisualAppearance.BehaviorOf(item);
+            var animations=new System.Collections.Generic.List<MRCAnimationDefinition>(before.Animations);
+            animations.RemoveAll(x=>x.Property==property);
+            animations.Add(new MRCAnimationDefinition(property,from,to,duration,"",
+                MRCAnimationEasing.EaseInOut,true));
+            ProjectSession.SetVisualBehavior(item,new MRCVisualBehaviorDefinition(
+                before.States,animations,before.EventActions));
+            Status="动画已保存："+property+" ("+duration+"ms)";
+            NotifyScene();
+        }
         public void AppendSelectedEventAction(string eventId,string actionId)
         {
             if(!_selected.HasValue)throw new InvalidOperationException("请选择图元");
