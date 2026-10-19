@@ -114,9 +114,17 @@ namespace CxVisual.Studio
             };
 
             SceneHost.WidgetEventRequested += (sender,widget) =>
-                VisualInfo.Text="Widget事件："+widget.EventId+
-                    " · 对象："+widget.ElementId.ToString("N").Substring(0,8)+
-                    "（仅事件通知，实际动作需运行时授权）";
+            {
+                try
+                {
+                    int approved=_viewModel.RouteVisualWidgetEvent(
+                        widget.ElementId,widget.EventId,widget.Value);
+                    VisualInfo.Text="Widget事件："+widget.EventId+
+                        " · 对象："+widget.ElementId.ToString("N").Substring(0,8)+
+                        (approved>0?" · 已转交授权宿主":" · 无授权宿主，不执行设备命令");
+                }
+                catch(Exception ex){VisualInfo.Text="Widget事件被拒绝："+ex.Message;}
+            };
             _viewModel.SceneChanged += (sender, args) => RefreshScene();
             RefreshScene();
         }
