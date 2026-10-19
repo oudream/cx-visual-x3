@@ -77,6 +77,33 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Check(VisualTreeHelper.GetDrawing(flowView)!=null&&flowView.IsVisible,
                         "real logic WPF canvas did not render");
                     flowWindow.Close();
+                    // V2:真实WPF画布从统一Logic自由连接定义投影，并绘制持久Control边。
+                    var first=MOLControlBlock.Action("Acquire");
+                    var second=MOLControlBlock.Action("AI");
+                    var schemas=new System.Collections.Generic.Dictionary<Guid,
+                        System.Collections.Generic.IEnumerable<MPCPortDescriptor>>{
+                        {first.Id,new[]{new MPCPortDescriptor("Done",MPCPortDirection.Output,
+                            "signal",MPCPortKind.Control)}},
+                        {second.Id,new[]{new MPCPortDescriptor("Start",MPCPortDirection.Input,
+                            "signal",MPCPortKind.Control)}}};
+                    var link=new MOLLink(Guid.NewGuid(),
+                        new MOLBlockEndpoint(first.Id,"Done"),
+                        new MOLBlockEndpoint(second.Id,"Start"),MPCPortKind.Control);
+                    var wired=new MOLWiringDefinition(first.Id,new[]{first,second},schemas,new[]{link});
+                    MOLWiringCodec.Set(session,page.RootContent,wired);
+                    Check(MOLFlowLayout.Build(wired).Count==2,"V2 wiring layout lost blocks");
+                    var wiredView=new MOLFlowCanvas{WiringDefinition=wired,
+                        RuntimeStates=new System.Collections.Generic.Dictionary<Guid,string>{
+                            {first.Id,"Completed"}}};
+                    var wiredWindow=new Window{Content=new System.Windows.Controls.ScrollViewer{
+                            Content=wiredView},Width=550,Height=360,
+                        Left=-10000,Top=-10000,ShowInTaskbar=false,ShowActivated=false,
+                        WindowStartupLocation=WindowStartupLocation.Manual};
+                    wiredWindow.Show();wiredView.Measure(new Size(520,320));
+                    wiredView.Arrange(new Rect(0,0,520,320));wiredView.UpdateLayout();
+                    Check(VisualTreeHelper.GetDrawing(wiredView)!=null&&wiredView.IsVisible,
+                        "V2 wiring WPF canvas did not render");
+                    wiredWindow.Close();
                     session.SetVisibility(group, false, true); Check(CxSceneProjection.Project(session).Count == 0, "hidden group projected descendants");
                     session.Close(true);
                     OrganizationStudioTests.RunOnSta();
