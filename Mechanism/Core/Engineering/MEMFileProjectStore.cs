@@ -209,7 +209,7 @@ namespace CxVisual.Mechanism.Core
                                 else if(elementType=="core.text")node=new MRCTextElement(id,name,elementX,elementY,elementWidth,elementHeight);
                                 else if(elementType=="core.image")node=new MRCImageElement(id,name,elementX,elementY,elementWidth,elementHeight);
                                 else if(elementType=="core.svg")node=new MRCSvgElement(id,name,elementX,elementY,elementWidth,elementHeight);
-                                else if(elementType=="core.widget")node=new MRCWidgetElement(id,name,"core.widget",elementX,elementY,elementWidth,elementHeight);
+                                else if(MRCWidgetTypes.IsBuiltIn(elementType))node=new MRCWidgetElement(id,name,elementType,elementX,elementY,elementWidth,elementHeight);
                                 else if(project!=null&&project.TypeItems!=null&&project.TypeItems.ContainsKey(elementType)&&project.TypeItems[elementType].Kind==MEMNodeKind.Element)
                                     node=new MRCWidgetElement(id,name,elementType,elementX,elementY,elementWidth,elementHeight);
                                 else node=new MRCRectangle(id,name,elementX,elementY,elementWidth,elementHeight);
