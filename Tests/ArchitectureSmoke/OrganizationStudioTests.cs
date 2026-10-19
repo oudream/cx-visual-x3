@@ -210,6 +210,17 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 var enabledRow=((IEnumerable)Get(vm,"Properties")).Cast<object>()
                     .Single(x=>(string)Get(x,"Member")=="启用");
                 Check((bool)Get(enabledRow,"IsBooleanConstant"),"MPM Boolean property did not select literal editor");
+                // 绑定来源切换必须真正切换模板，回到常量时布尔值和CheckBox不能脱节。
+                enabledRow.GetType().GetProperty("Mode").SetValue(enabledRow,"变量",null);
+                Pump();
+                Check(!Descendants(properties).OfType<CheckBox>().Any()&&
+                    Descendants(properties).OfType<TextBox>().Count()==2,
+                    "Boolean variable source did not restore the text editor");
+                enabledRow.GetType().GetProperty("Text").SetValue(enabledRow,"Motor.Ready",null);
+                enabledRow.GetType().GetProperty("Mode").SetValue(enabledRow,"常量",null);
+                Pump();
+                Check((string)Get(enabledRow,"Text")=="false",
+                    "Switching a Boolean variable source back to literal did not normalize the value");
                 var checkbox=Descendants(properties).OfType<CheckBox>().Single();
                 Check(checkbox.IsChecked==false,"Boolean editor initial MPM value mismatch");
                 checkbox.IsChecked=true;Pump();
