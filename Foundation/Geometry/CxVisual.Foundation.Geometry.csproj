@@ -23,6 +23,7 @@
     <Compile Include="Transforms\FGETransform2D.cs"/>
     <Compile Include="Operations\FGEGeometryAlgorithms.cs"/>
     <Compile Include="Paths\FGEPath2D.cs"/>
+    <Compile Include="Paths\FGEPathEditing.cs"/>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets"/>
 </Project>
