@@ -94,13 +94,17 @@ namespace CxVisual.Studio
         {
             int index=ElementCount+1;
             MRCShapeDefinition definition=MVIShapeCatalog.CreateDefault(kind);
+            int before=ElementCount;
             Execute(()=>_editor.AddShape(kind+" "+index,definition,
                 45+(index%7)*24,55+(index%7)*20));
+            if(ElementCount>before)Select(Items[Items.Count-1].Id);
         }
         public void AddVisualText()
         {
             int index=ElementCount+1;
+            int before=ElementCount;
             Execute(()=>_editor.AddText("文字 "+index,"双击属性面板修改",45+index*14,40+index*10));
+            if(ElementCount>before)Select(Items[Items.Count-1].Id);
         }
         public void SetSelectedFillColor(string color,double strokeWidth)
         {
