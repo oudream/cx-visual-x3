@@ -31,6 +31,7 @@ namespace CxVisual.Studio
         private readonly HashSet<Guid> _logicBreakpoints=new HashSet<Guid>();
         private bool _logicRunning;
         private readonly System.Diagnostics.Stopwatch _visualClock=new System.Diagnostics.Stopwatch();
+        private readonly System.Diagnostics.Stopwatch _flowVisualClock=new System.Diagnostics.Stopwatch();
         private MEMEngineeringSession _renderAssetSession;
         private readonly DispatcherTimer _visualPreviewTimer=new DispatcherTimer{
             Interval=TimeSpan.FromMilliseconds(50)};
@@ -274,6 +275,17 @@ namespace CxVisual.Studio
             }
             catch(Exception ex){VisualInfo.Text="Widget属性配置失败："+ex.Message;}
         }
+        private void OnLinkVisualFlowState(object sender,RoutedEventArgs args)
+        {
+            if(_logicRunning){VisualInfo.Text="MRK运行中不可修改图元定义";return;}
+            try
+            {
+                Guid selectedBlock=SelectedFlowBlock();
+                _viewModel.LinkSelectedVisualToFlowBlock(selectedBlock);
+                VisualInfo.Text="已建立同工程MOL节点状态关联：蓝色运行、绿色完成、红色失败。";
+            }
+            catch(Exception ex){VisualInfo.Text="关联流程状态失败："+ex.Message;}
+        }
         private void OnApplyVisualBinding(object sender,RoutedEventArgs args)
         {
             try
@@ -326,6 +338,7 @@ namespace CxVisual.Studio
         }
         private void OnToggleVisualPreview(object sender,RoutedEventArgs args)
         {
+            if(_logicRunning){VisualInfo.Text="正在MRK运行，由MRK轨迹统一刷新画面";return;}
             SceneHost.CancelInteraction();
             bool entering=SceneHost.IsDesignMode;
             SceneHost.IsDesignMode=!entering;
@@ -1287,6 +1300,8 @@ namespace CxVisual.Studio
                         .GroupBy(x=>x.BlockId.Value).ToDictionary(x=>x.Key,x=>"Failed");
                     return;
                 }
+                if(_visualPreviewTimer.IsEnabled)
+                    throw new InvalidOperationException("请先退出独立视觉预览，再运行同工程MRK仿真");
                 var compiled=checkedBuild.Plan;
                 _logicDebug=new MRKExecutionDebugController();
                 foreach(Guid id in _logicBreakpoints)
@@ -1295,7 +1310,14 @@ namespace CxVisual.Studio
                 FlowTraceList.ItemsSource=new List<FlowTraceRecord>();
                 _logicRunning=true;
                 _logicOverlay.Clear();
+                // 复用现有MRK轨迹和MDS外部绑定，不另建运行数据仓库。
+                _viewModel.AttachVisualRuntimeSource(
+                    new MOLVisualTraceBindingResolver(id=>_logicOverlay.StateOf(id)));
+                _flowVisualClock.Restart();
+                SceneHost.CancelInteraction();
+                SceneHost.IsDesignMode=false;
                 LogicHost.RuntimeStates=_logicOverlay.Snapshot();
+                _viewModel.UpdateVisualRuntimeFrame(0);
                 engine=new MRKExecutionEngine(new FCRWorkerOptions(3,64));
                 var inputs=compiled.InputDefaults.ToDictionary(p=>p.Key,p=>p.Value,StringComparer.Ordinal);
                 inputs["accepted"]=true;
@@ -1312,6 +1334,7 @@ namespace CxVisual.Studio
                     }
                     _logicOverlay.Apply(changes);
                     LogicHost.RuntimeStates=_logicOverlay.Snapshot();
+                    _viewModel.UpdateVisualRuntimeFrame(_flowVisualClock.Elapsed.TotalMilliseconds);
                     var previous=(FlowTraceList.ItemsSource as IEnumerable<FlowTraceRecord>)
                         .ToList();
                     previous.AddRange(changes.Events.Select(e=>new FlowTraceRecord{
@@ -1337,6 +1360,10 @@ namespace CxVisual.Studio
             {
                 if(timer!=null)timer.Stop();
                 if(engine!=null)await engine.StopAsync(true);
+                _flowVisualClock.Reset();
+                SceneHost.IsDesignMode=true;
+                _viewModel.StopVisualRuntime();
+                _viewModel.AttachVisualRuntimeSource(null);
                 _logicFlow=null;
                 _logicDebug=null;
                 _logicRunning=false;
