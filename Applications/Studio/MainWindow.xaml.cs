@@ -240,7 +240,17 @@ namespace CxVisual.Studio
             catch(Exception ex){VisualInfo.Text="图层编辑失败："+ex.Message;}
         }
         private void OnApplyVisualLayer(object sender,RoutedEventArgs args){ApplyVisualLayer(false);}
-        private void OnBringVisualFront(object sender,RoutedEventArgs args){ApplyVisualLayer(true);}
+
+        private void OnSendVisualBack(object sender,RoutedEventArgs args)
+        {
+            try
+            {
+                MTCEditResult<bool> result=_viewModel.SetSelectedZOrder(false);
+                VisualInfo.Text=result.Success?"已置于同容器底层（可撤销）":
+                    result.ErrorCode+" "+result.Message;
+            }
+            catch(Exception ex){VisualInfo.Text="置于底层失败："+ex.Message;}
+        }        private void OnBringVisualFront(object sender,RoutedEventArgs args){ApplyVisualLayer(true);}
         private void OnInsertShape(object sender,RoutedEventArgs args)
         {
             try
