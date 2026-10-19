@@ -208,6 +208,7 @@ namespace CxVisual.Studio
                     MOLControlBlock.If(MOLExpression.InputTrue("accepted"),
                         MOLControlBlock.Action("OutputOK"),MOLControlBlock.Action("OutputNG"))));
                 MOLLogicCodec.Set(_viewModel.ProjectSession,page.RootContent,model);
+                LogicHost.WiringDefinition=null;
                 LogicHost.Definition=model;
                 LogicHost.RuntimeStates=null;
                 LogicInfo.Text="示例逻辑已通过工程Session提交到Content；可随工程保存、撤销和重开。";
