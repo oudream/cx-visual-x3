@@ -31,9 +31,23 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         -Math.Sin(rotation),Math.Sin(rotation),Math.Cos(rotation),90,45));
                     var a=doc.AddRectangle(firstGroup,"A",5,7,35,25);
                     var b=doc.AddRectangle(secondGroup,"B",15,20,40,30);
+                    var c=doc.AddRectangle(firstGroup,"C",60,5,30,20);
                     doc.ClearHistory();
                     using(var editor=new CxVisualEditor(doc))
                     {
+                        Check(firstGroup.Children.First().Id==a.Id,
+                            "A initial draw order unexpectedly changed");
+                        Check(editor.SetZOrder(a.Id,true).Success&&
+                            firstGroup.Children.Last().Id==a.Id,
+                            "A bring-to-front failed to reorder siblings");
+                        Check(editor.Undo().Success&&firstGroup.Children.First().Id==a.Id,
+                            "A z-order Undo failed");
+                        Check(editor.Redo().Success&&firstGroup.Children.Last().Id==a.Id,
+                            "A z-order Redo failed");
+                        Check(editor.SetZOrder(a.Id,false).Success&&
+                            firstGroup.Children.First().Id==a.Id,
+                            "A send-to-back failed");
+                        doc.ClearHistory();
                         var originA=editor.Scene.Single(x=>x.Id==a.Id).Bounds;
                         var originB=editor.Scene.Single(x=>x.Id==b.Id).Bounds;
                         int originalRevision=doc.Revision;
