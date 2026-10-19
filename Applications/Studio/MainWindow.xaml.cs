@@ -232,6 +232,20 @@ namespace CxVisual.Studio
             }
             catch(Exception ex){VisualInfo.Text="添加资源失败："+ex.Message;}
         }
+        private void OnApplyWidgetSettings(object sender,RoutedEventArgs args)
+        {
+            try
+            {
+                MTCEditResult<bool> result=_viewModel.ConfigureVisualWidget(
+                    WidgetContentInput.Text,WidgetOptionsInput.Text,
+                    ReadVisualNumber(WidgetMinInput),ReadVisualNumber(WidgetMaxInput),
+                    WidgetEnabledInput.IsChecked==true,WidgetTooltipInput.Text);
+                VisualInfo.Text=result.Success?
+                    "Widget控件属性已原子提交；撤销可一次恢复":
+                    result.ErrorCode+": "+result.Message;
+            }
+            catch(Exception ex){VisualInfo.Text="Widget属性配置失败："+ex.Message;}
+        }
         private void OnApplyVisualBinding(object sender,RoutedEventArgs args)
         {
             try
