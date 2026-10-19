@@ -58,6 +58,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             V2BuilderSharedDefinition();
             V2DraftPortsUndoAndCompileGate();
             V2CapabilityDiscovery();
+            V2DiagnosticLocations();
             BranchParallelAndTrace();
             LoopKindsAndBoundedForEach();
             InvokedContentAndInvalidSource();
@@ -477,6 +478,39 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "capability ports not used by common Builder");
             }
             finally{session.Close(true);}
+        }
+
+        private static void V2DiagnosticLocations()
+        {
+            var session=MEMEngineering.Create("诊断");
+            var page=session.AddPage("Inspection");
+            try
+            {
+                Guid acquire=Guid.Empty, inspect=Guid.Empty;
+                MOCFlowBuilder.Edit(session,page.RootContent,b=>{
+                    acquire=b.Step("capture"); inspect=b.Step("vision.not_registered");
+                    b.Connect(acquire,"Done",inspect,"Start");
+                });
+                var snapshot=session.GetSnapshot();
+                var missing=new MOCBuildService().Build(snapshot,page.RootContent.Id,
+                    new TestResolver().Register("capture",(c,t)=>Task.FromResult((object)1)));
+                Check(!missing.Succeeded&&missing.Diagnostics.Any(x=>
+                    x.Code=="MOC_CAPABILITY_NOT_REGISTERED"&&x.BlockId==inspect),
+                    "build diagnostics lost block origin");
+                var valid=new MOCBuildService().Build(snapshot,page.RootContent.Id,
+                    new TestResolver()
+                        .Register("capture",(c,t)=>Task.FromResult((object)1))
+                        .Register("vision.not_registered",(c,t)=>Task.FromResult((object)2)));
+                Check(valid.Succeeded&&valid.Plan.SourceMap.Find(inspect).Count==1,
+                    "successful build did not use ordinary MRK plan");
+                MOCFlowBuilder.Edit(session,page.RootContent,b=>b.Disconnect(
+                    b.Links.Single().Id));
+                var incomplete=new MOCBuildService().Build(session.GetSnapshot(),
+                    page.RootContent.Id,new TestResolver());
+                Check(!incomplete.Succeeded&&incomplete.Diagnostics.Any(x=>
+                    x.Code=="MOC_WIRING_INVALID"),
+                    "incomplete draft did not return typed diagnostics");
+            }finally{session.Close(true);}
         }
     }
 }
