@@ -574,6 +574,34 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "C Studio XRay HMI states not connected to executable nodes");
                 Check(((TextBlock)window.FindName("LogicInfo")).Text.Contains("MOC构建通过"),
                     "C Studio XRay Flow did not pass real MOC validation");
+                // 从内联Content真实SourceMap产生的BlockId/CallPath出发，
+                // 当前根画布只能高亮调用节点，不能把子流程内部节点误当根节点。
+                var aiSubflow=xrayRoot.References.First(r=>
+                    xraySession.Find(r.TargetId).Name.Contains("AI"));
+                Guid aiInternal=MOLWiringCodec.Get(xraySession.GetSnapshot()
+                    .Find(aiSubflow.TargetId)).Blocks[0].Id;
+                Guid aiCall=xrayFlow.Blocks.Single(b=>
+                    b.CapabilityId=="moc.invoke:"+aiSubflow.TargetId.ToString("N")).Id;
+                var traceType=assembly.GetType("CxVisual.Studio.MainWindow+FlowTraceRecord");
+                Check(traceType!=null,"C trace view model type missing");
+                object traceItem=Activator.CreateInstance(traceType,true);
+                traceType.GetProperty("BlockId").SetValue(traceItem,aiInternal,null);
+                traceType.GetProperty("ContentId").SetValue(traceItem,aiSubflow.TargetId,null);
+                traceType.GetProperty("CallPath").SetValue(traceItem,
+                    new Guid[]{aiCall},null);
+                traceType.GetProperty("Label").SetValue(traceItem,"Completed AI",null);
+                var traceSource=Array.CreateInstance(traceType,1);
+                traceSource.SetValue(traceItem,0);
+                var traceList=(ComboBox)window.FindName("FlowTraceList");
+                traceList.ItemsSource=traceSource;traceList.SelectedIndex=0;
+                Click(window,"定位轨迹节点");
+                Check(flowCanvas.SelectedBlockIds.Count==1&&
+                    flowCanvas.SelectedBlockIds[0]==aiCall,
+                    "C child MRK trace did not navigate to its parent Invoke block");
+                Click(window,"定位关联画面");
+                Check(((TabItem)window.FindName("VisualTab")).IsSelected&&
+                    ((Guid?)Get(vm,"SelectedId")).HasValue,
+                    "C child trace didn't locate its HMI status lamp");
                 Console.WriteLine("PASS H06 Studio real WPF automation: add/switch page, resource two instances, bound parameter edit, shared Undo/Redo, definition navigation, save/reopen");
             }
             finally{if(window!=null)window.Close();if(app!=null)app.Shutdown();if(File.Exists(path))File.Delete(path);if(File.Exists(path+".cx-lock"))File.Delete(path+".cx-lock");}
