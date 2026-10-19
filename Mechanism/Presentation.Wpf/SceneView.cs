@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Controls;
+using CxVisual.Foundation.Geometry;
 using CxVisual.Mechanism.Core;
 using CxVisual.Mechanism.Visual;
 
@@ -19,6 +20,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         private double _dragX;
         private double _dragY;
         private bool _dragging;
+        private MVIVisualHandle _activeHandle;
+        private bool _handleDragging;
+        private Point _handlePointer;
+        public event EventHandler<MPWVisualHandleEventArgs> HandleEditRequested;
         private readonly VisualCollection _visualChildren;
         private readonly Canvas _widgetCanvas;
         private bool _designMode=true;
@@ -175,6 +180,28 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                     FlowDirection.LeftToRight, new Typeface("Segoe UI"), 13, Brushes.MidnightBlue, 1.0);
                 dc.DrawText(name, new Point(bounds.Left + 12, bounds.Top + 12));
             }
+            if(IsDesignMode&&_selection.HasValue)
+            {
+                CxSceneItem edited=_items.Find(i=>i.Id==_selection.Value);
+                if(edited!=null)
+                {
+                    foreach(MVIVisualHandle handle in MVIVisualEditing.Handles(edited))
+                    {
+                        bool moving=_handleDragging&&_activeHandle!=null&&
+                            handle.Kind==_activeHandle.Kind&&
+                            handle.CommandIndex==_activeHandle.CommandIndex;
+                        Point center=moving?_handlePointer:
+                            new Point(handle.WorldPoint.X,handle.WorldPoint.Y);
+                        Brush fill=handle.Kind==MVIVisualHandleKind.Rotate?Brushes.Orange:
+                            handle.Kind==MVIVisualHandleKind.Resize?Brushes.MediumPurple:
+                            handle.Kind==MVIVisualHandleKind.Anchor?Brushes.White:Brushes.Gold;
+                        dc.DrawEllipse(fill,new Pen(Brushes.DodgerBlue,1.5),center,5,5);
+                        if(moving)
+                            dc.DrawLine(new Pen(Brushes.DodgerBlue,1){DashStyle=DashStyles.Dash},
+                                new Point(handle.WorldPoint.X,handle.WorldPoint.Y),center);
+                    }
+                }
+            }
         }
 
         protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
@@ -182,6 +209,25 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             base.OnMouseLeftButtonDown(e);
             Focus();
             Point point = e.GetPosition(this);
+            if(_designMode&&_selection.HasValue)
+            {
+                CxSceneItem selected=_items.Find(i=>i.Id==_selection.Value);
+                if(selected!=null)
+                {
+                    MVIVisualHandle handle=MVIVisualEditing.HitHandle(selected,point.X,point.Y);
+                    if(handle!=null)
+                    {
+                        _activeHandle=handle;
+                        _handleDragging=true;
+                        _handlePointer=point;
+                        _dragging=false;
+                        CaptureMouse();
+                        InvalidateVisual();
+                        e.Handled=true;
+                        return;
+                    }
+                }
+            }
             Guid? hit = null;
             for (int i = _items.Count - 1; i >= 0; i--)
             {
@@ -202,6 +248,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         protected override void OnMouseMove(MouseEventArgs e)
         {
             base.OnMouseMove(e);
+            if(_handleDragging)
+            {
+                _handlePointer=e.GetPosition(this);
+                InvalidateVisual();
+                return;
+            }
             if (!_dragging) return;
             Point point = e.GetPosition(this);
             _dragX = point.X - _dragStart.X;
@@ -211,6 +263,24 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
         {
             base.OnMouseLeftButtonUp(e);
+            if(_handleDragging)
+            {
+                MVIVisualHandle handle=_activeHandle;
+                Point current=e.GetPosition(this);
+                _activeHandle=null;
+                _handleDragging=false;
+                if(IsMouseCaptured)ReleaseMouseCapture();
+                if(handle!=null&&(Math.Abs(current.X-handle.WorldPoint.X)>0.8||
+                    Math.Abs(current.Y-handle.WorldPoint.Y)>0.8))
+                {
+                    EventHandler<MPWVisualHandleEventArgs> edited=HandleEditRequested;
+                    if(edited!=null)edited(this,
+                        new MPWVisualHandleEventArgs(handle,current.X,current.Y));
+                }
+                InvalidateVisual();
+                e.Handled=true;
+                return;
+            }
             if (!_dragging) return;
             _dragging = false;
             if (IsMouseCaptured) ReleaseMouseCapture();
@@ -228,8 +298,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             InvalidateVisual();
         }
         public void CancelInteraction()
-        {_dragging=false;_dragX=0;_dragY=0;if(IsMouseCaptured)ReleaseMouseCapture();InvalidateVisual();}
+        {_dragging=false;_handleDragging=false;_activeHandle=null;_dragX=0;_dragY=0;
+            if(IsMouseCaptured)ReleaseMouseCapture();InvalidateVisual();}
         protected override void OnKeyDown(KeyEventArgs e){if(e.Key==Key.Escape){CancelInteraction();e.Handled=true;}base.OnKeyDown(e);}
-        protected override void OnLostMouseCapture(MouseEventArgs e){if(_dragging)CancelInteraction();base.OnLostMouseCapture(e);}
+        protected override void OnLostMouseCapture(MouseEventArgs e){if(_dragging||_handleDragging)CancelInteraction();base.OnLostMouseCapture(e);}
     }
 }
