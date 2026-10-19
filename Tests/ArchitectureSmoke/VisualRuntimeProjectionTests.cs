@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using CxVisual.Foundation.Geometry;
 using CxVisual.Mechanism.Core;
 using CxVisual.Mechanism.Data.RuntimeData;
