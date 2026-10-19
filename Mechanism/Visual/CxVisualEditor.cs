@@ -131,7 +131,17 @@ namespace CxVisual.Mechanism.Visual
         }
         /// <summary>开发者与WPF使用相同编辑入口，修改一次即产生一条工程Undo记录。</summary>
         public MTCEditResult<bool> EditHandle(MVIVisualHandle handle,double worldX,double worldY)
-        {Demand();return MVIVisualEditing.Edit(this,handle,worldX,worldY);}
+        {
+            Demand();
+            if(handle==null)throw new ArgumentNullException("handle");
+            if(Document.Find(handle.ElementId)==null&&Document.FindReference(handle.ElementId)==null)
+                return MTCEditResult<bool>.Rejected(Document.Revision,"visual.target_not_found",
+                    "Handle target no longer exists");
+            if(!Route(MVIInteractionKind.Move,handle.ElementId))
+                return MTCEditResult<bool>.Rejected(Document.Revision,"visual.default_prevented",
+                    "Handle edit prevented by capture/target/bubble interaction");
+            return MVIVisualEditing.Edit(this,handle,worldX,worldY);
+        }
         public MTCEditResult<bool> Move(Guid id, double x, double y)
         {
             int revision=Document.Revision;
