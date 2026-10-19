@@ -25,6 +25,15 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         public Guid TargetBlockId{get;private set;}
     }
 
+    public sealed class MOLBlockMoveRequestedEventArgs : EventArgs
+    {
+        internal MOLBlockMoveRequestedEventArgs(Guid blockId,double x,double y)
+        {BlockId=blockId;X=x;Y=y;}
+        public Guid BlockId {get;private set;}
+        public double X {get;private set;}
+        public double Y {get;private set;}
+    }
+
     /// <summary>类型化端口在画布上的投影，不是另一份工程定义。</summary>
     public sealed class MOLPortVisual
     {
@@ -90,12 +99,16 @@ namespace CxVisual.Mechanism.Presentation.Wpf
          set{SetValue(WiringDefinitionProperty,value);}}
         private MOLPortVisual _dragSource;
         private Point _dragPointer;
+        private Guid? _movingBlockId;
+        private Point _moveOrigin,_moveBase,_moveDelta;
+        public event EventHandler<MOLBlockMoveRequestedEventArgs> BlockMoveRequested;
         public event EventHandler<MOLPortLinkRequestedEventArgs> PortLinkRequested;
         public event EventHandler<MOLPortLinkRejectedEventArgs> PortLinkRejected;
         private Guid? _sourceForLink;
         public void ResetLinkSelection()
         {
-            _sourceForLink=null;_dragSource=null;
+            _sourceForLink=null;_dragSource=null;_movingBlockId=null;
+            _moveDelta=new Point();
             if(IsMouseCaptured)ReleaseMouseCapture();
             InvalidateVisual();
         }
@@ -110,17 +123,54 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             {
                 var ports=WiringDefinition.Ports[item.BlockId];
                 int left=0,right=0;
+                double dx=_movingBlockId==item.BlockId?_moveDelta.X:0;
+                double dy=_movingBlockId==item.BlockId?_moveDelta.Y:0;
                 foreach(var descriptor in ports)
                 {
                     if(descriptor.Direction!=MPCPortDirection.Output)
                         result.Add(new MOLPortVisual(item.BlockId,descriptor,
-                            MPCPortDirection.Input,new Point(item.X+2,item.Y+36+22*left++)));
+                            MPCPortDirection.Input,new Point(item.X+dx+2,item.Y+dy+36+22*left++)));
                     if(descriptor.Direction!=MPCPortDirection.Input)
                         result.Add(new MOLPortVisual(item.BlockId,descriptor,
-                            MPCPortDirection.Output,new Point(item.X+item.Width-2,item.Y+36+22*right++)));
+                            MPCPortDirection.Output,new Point(item.X+dx+item.Width-2,item.Y+dy+36+22*right++)));
                 }
             }
             return result.AsReadOnly();
+        }
+
+        /// <summary>块拖动与鼠标事件共用此入口；结束时才提交工程事务。</summary>
+        public bool BeginBlockDrag(Point position)
+        {
+            if(WiringDefinition==null||HitTestPort(position)!=null)return false;
+            var item=MOLFlowLayout.Build(WiringDefinition).FirstOrDefault(b=>
+                position.X>=b.X&&position.X<=b.X+b.Width&&
+                position.Y>=b.Y&&position.Y<=b.Y+b.Height);
+            if(item==null)return false;
+            _movingBlockId=item.BlockId;
+            _moveOrigin=position;_moveBase=new Point(item.X,item.Y);
+            _moveDelta=new Point();InvalidateVisual();
+            return true;
+        }
+        public void UpdateBlockDrag(Point position)
+        {
+            if(!_movingBlockId.HasValue)return;
+            _moveDelta=new Point(
+                Math.Max(-_moveBase.X,Math.Min(100000-_moveBase.X,position.X-_moveOrigin.X)),
+                Math.Max(-_moveBase.Y,Math.Min(100000-_moveBase.Y,position.Y-_moveOrigin.Y)));
+            InvalidateVisual();
+        }
+        public bool CompleteBlockDrag(Point position)
+        {
+            if(!_movingBlockId.HasValue)return false;
+            UpdateBlockDrag(position);
+            Guid block=_movingBlockId.Value;
+            double x=_moveBase.X+_moveDelta.X,y=_moveBase.Y+_moveDelta.Y;
+            bool changed=Math.Abs(_moveDelta.X)>=1||Math.Abs(_moveDelta.Y)>=1;
+            _movingBlockId=null;_moveDelta=new Point();InvalidateVisual();
+            if(!changed)return false;
+            var handler=BlockMoveRequested;
+            if(handler!=null)handler(this,new MOLBlockMoveRequestedEventArgs(block,x,y));
+            return true;
         }
 
         public MOLPortVisual HitTestPort(Point position)
@@ -226,6 +276,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             for(int i=0;i<_layout.Count;i++)
             {
                 var item=_layout[i];
+                bool isPreview=_movingBlockId==item.BlockId;
+                if(isPreview)dc.PushTransform(new TranslateTransform(_moveDelta.X,_moveDelta.Y));
                 string state=null;
                 if(RuntimeStates!=null)RuntimeStates.TryGetValue(item.BlockId,out state);
                 Brush fill=state=="Completed"?Brushes.Honeydew:state=="Failed"?Brushes.MistyRose:
@@ -257,6 +309,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                         new Point(previous.X+previous.Width/2,previous.Y+previous.Height),
                         new Point(item.X+item.Width/2,item.Y));
                 }
+                if(isPreview)dc.Pop();
             }
             foreach(var port in visiblePorts)
             {
@@ -289,6 +342,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 {
                     var handler=BlockSelected;
                     if(handler!=null)handler(this,new MOLBlockSelectedEventArgs(item.BlockId));
+                    if(!IsConnectMode&&BeginBlockDrag(p))
+                    {
+                        CaptureMouse();e.Handled=true;return;
+                    }
                     if(IsConnectMode&&WiringDefinition!=null)
                     {
                         if(!_sourceForLink.HasValue)_sourceForLink=item.BlockId;
@@ -311,20 +368,27 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             base.OnMouseMove(e);
             if(_dragSource!=null)
             {_dragPointer=e.GetPosition(this);InvalidateVisual();e.Handled=true;}
+            else if(_movingBlockId.HasValue)
+            {UpdateBlockDrag(e.GetPosition(this));e.Handled=true;}
         }
         protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
         {
             base.OnMouseLeftButtonUp(e);
-            if(_dragSource==null)return;
+            if(_dragSource==null&&!_movingBlockId.HasValue)return;
             Point position=e.GetPosition(this);
-            try{CompletePortDrag(position);}
+            try
+            {
+                if(_dragSource!=null)CompletePortDrag(position);
+                else CompleteBlockDrag(position);
+            }
             finally{if(IsMouseCaptured)ReleaseMouseCapture();}
             e.Handled=true;
         }
         protected override void OnLostMouseCapture(MouseEventArgs e)
         {
             base.OnLostMouseCapture(e);
-            if(_dragSource!=null){_dragSource=null;InvalidateVisual();}
+            if(_dragSource!=null||_movingBlockId.HasValue)
+            {_dragSource=null;_movingBlockId=null;_moveDelta=new Point();InvalidateVisual();}
         }
     }
 }

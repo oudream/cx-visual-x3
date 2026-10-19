@@ -49,6 +49,7 @@ namespace CxVisual.Studio
             LogicHost.BlockSelected += (sender, args) => { _logicSelected=args.BlockId; LogicInfo.Text = "已选逻辑块: " + args.BlockId.ToString("N"); };
             LogicHost.LinkRequested += OnWiringLinkRequested;
             LogicHost.PortLinkRequested += OnDirectPortLinkRequested;
+            LogicHost.BlockMoveRequested += OnWiringBlockMoveRequested;
             LogicHost.PortLinkRejected += (sender,args) =>
                 LogicInfo.Text="拖线被拒绝："+args.Reason;
             SceneHost.NodeActivated += OnActivated;
@@ -376,6 +377,21 @@ namespace CxVisual.Studio
             LogicInfo.Text=LogicHost.IsConnectMode?
                 "依次点击来源和目标块，随后在端口列表选择合法端口对并确认。":"已退出连线模式。";
         }
+        private void OnWiringBlockMoveRequested(object sender,MOLBlockMoveRequestedEventArgs args)
+        {
+            if(_logicRunning)return;
+            try
+            {
+                var page=_viewModel.ActivePage;
+                if(page==null)throw new InvalidOperationException("未选择Content");
+                MOCFlowBuilder.Edit(_viewModel.ProjectSession,page.RootContent,
+                    b=>b.Move(args.BlockId,args.X,args.Y));
+                RefreshScene();
+                LogicInfo.Text="节点位置已写入同一Content Logic；支持撤销、重做与保存重开。";
+            }
+            catch(Exception ex){LogicInfo.Text="移动未提交："+ex.Message;}
+        }
+
         // 鼠标直接由输出端口拖至输入端口：使用与C#开发者一致的Builder事务。
         private void OnDirectPortLinkRequested(object sender,MOLPortLinkRequestedEventArgs args)
         {

@@ -329,10 +329,25 @@ namespace CxVisual.Mechanism.Core
         public int? Order{get;private set;}
     }
     /// <summary>每个Content只有一个Logic槽。V2的自由连接是权威定义，不额外保存AST。</summary>
+    /// <summary>编排画布位置，只负责展示；不参与MRK计划或执行依赖。</summary>
+    public sealed class MOLBlockPosition
+    {
+        public MOLBlockPosition(double x,double y)
+        {
+            if(double.IsNaN(x)||double.IsInfinity(x)||double.IsNaN(y)||double.IsInfinity(y)||
+                x<0||y<0||x>100000||y>100000)
+                throw new ArgumentOutOfRangeException("wiring.position");
+            X=x;Y=y;
+        }
+        public double X {get;private set;}
+        public double Y {get;private set;}
+    }
+
     public sealed class MOLWiringDefinition
     {
         public MOLWiringDefinition(Guid entryBlockId,IEnumerable<MOLControlBlock> blocks,
-            IDictionary<Guid,IEnumerable<MPCPortDescriptor>> ports,IEnumerable<MOLLink> links)
+            IDictionary<Guid,IEnumerable<MPCPortDescriptor>> ports,IEnumerable<MOLLink> links,
+            IDictionary<Guid,MOLBlockPosition> positions=null)
         {
             EntryBlockId=entryBlockId;
             Blocks=new ReadOnlyCollection<MOLControlBlock>((blocks??new MOLControlBlock[0]).ToArray());
@@ -341,12 +356,20 @@ namespace CxVisual.Mechanism.Core
             if(ports!=null)foreach(var kv in ports)
                 map.Add(kv.Key,new ReadOnlyCollection<MPCPortDescriptor>((kv.Value??Enumerable.Empty<MPCPortDescriptor>()).ToArray()));
             Ports=new ReadOnlyDictionary<Guid,IReadOnlyList<MPCPortDescriptor>>(map);
+            var locations=new Dictionary<Guid,MOLBlockPosition>();
+            if(positions!=null)foreach(var pair in positions)
+            {
+                if(pair.Value==null)throw new ArgumentException("wiring.null_position");
+                locations.Add(pair.Key,pair.Value);
+            }
+            Positions=new ReadOnlyDictionary<Guid,MOLBlockPosition>(locations);
             Validate();
         }
         public Guid EntryBlockId{get;private set;}
         public IReadOnlyList<MOLControlBlock> Blocks{get;private set;}
         public IReadOnlyList<MOLLink> Links{get;private set;}
         public IReadOnlyDictionary<Guid,IReadOnlyList<MPCPortDescriptor>> Ports{get;private set;}
+        public IReadOnlyDictionary<Guid,MOLBlockPosition> Positions{get;private set;}
         public void Validate()
         {
             if(EntryBlockId==Guid.Empty||Blocks.Count<1||Blocks.Count>4096||Links.Count>32768)
@@ -355,7 +378,8 @@ namespace CxVisual.Mechanism.Core
                 throw new InvalidOperationException("wiring.action_only");
             var ids=new HashSet<Guid>();
             foreach(var b in Blocks)if(!ids.Add(b.Id))throw new InvalidOperationException("wiring.duplicate_block");
-            if(!ids.Contains(EntryBlockId)||Ports.Count!=ids.Count||Ports.Keys.Any(x=>!ids.Contains(x)))
+            if(!ids.Contains(EntryBlockId)||Ports.Count!=ids.Count||Ports.Keys.Any(x=>!ids.Contains(x))||
+                Positions.Keys.Any(x=>!ids.Contains(x)))
                 throw new InvalidOperationException("wiring.scope");
             var schemas=new Dictionary<Guid,Dictionary<string,MPCPortDescriptor>>();
             foreach(var b in Blocks)
@@ -461,6 +485,10 @@ namespace CxVisual.Mechanism.Core
             var root=new XElement("MOL",new XAttribute("v",2),new XAttribute("entry",def.EntryBlockId.ToString("N")),
                 new XElement("Blocks",def.Blocks.Select(b=>new XElement("Block",
                     new XAttribute("id",b.Id.ToString("N")),new XAttribute("cap",b.CapabilityId),
+                    def.Positions.ContainsKey(b.Id)?
+                        new XAttribute("x",def.Positions[b.Id].X.ToString("R",CultureInfo.InvariantCulture)):null,
+                    def.Positions.ContainsKey(b.Id)?
+                        new XAttribute("y",def.Positions[b.Id].Y.ToString("R",CultureInfo.InvariantCulture)):null,
                     new XElement("Ports",def.Ports[b.Id].Select(p=>new XElement("Port",
                         new XAttribute("id",p.MemberId),new XAttribute("dir",p.Direction),
                         new XAttribute("type",p.TypeId),new XAttribute("kind",p.Kind),
@@ -493,11 +521,22 @@ namespace CxVisual.Mechanism.Core
                 Guid entry=ReadGuid(root,"entry");
                 var blocks=new List<MOLControlBlock>();
                 var ports=new Dictionary<Guid,IEnumerable<MPCPortDescriptor>>();
+                var positions=new Dictionary<Guid,MOLBlockPosition>();
                 foreach(var b in root.Element("Blocks").Elements("Block"))
                 {
                     if(b.Element("Ports")==null||b.Elements().Count()!=1)
                         throw new InvalidDataException("wiring.block_schema");
                     Guid id=ReadGuid(b,"id");
+                    string sx=(string)b.Attribute("x"),sy=(string)b.Attribute("y");
+                    if(sx!=null||sy!=null)
+                    {
+                        double x,y;
+                        if(sx==null||sy==null||
+                            !double.TryParse(sx,NumberStyles.Float,CultureInfo.InvariantCulture,out x)||
+                            !double.TryParse(sy,NumberStyles.Float,CultureInfo.InvariantCulture,out y))
+                            throw new InvalidDataException("wiring.invalid_position");
+                        positions.Add(id,new MOLBlockPosition(x,y));
+                    }
                     blocks.Add(new MOLControlBlock(id,MOLControlKind.Action,(string)b.Attribute("cap")));
                     ports.Add(id,b.Element("Ports").Elements("Port").Select(p=>
                         new MPCPortDescriptor((string)p.Attribute("id"),ReadEnum<MPCPortDirection>(p,"dir"),
@@ -512,7 +551,7 @@ namespace CxVisual.Mechanism.Core
                     ReadEnum<MPCPortKind>(l,"kind"),(string)l.Attribute("condition"),
                     string.IsNullOrEmpty((string)l.Attribute("order"))?(int?)null:
                         int.Parse((string)l.Attribute("order"),CultureInfo.InvariantCulture))).ToArray();
-                return new MOLWiringDefinition(entry,blocks,ports,links);
+                return new MOLWiringDefinition(entry,blocks,ports,links,positions);
             }
         }
         private static Guid ReadGuid(XElement x,string name)

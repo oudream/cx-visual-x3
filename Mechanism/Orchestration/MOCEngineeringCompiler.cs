@@ -181,6 +181,8 @@ namespace CxVisual.Mechanism.Orchestration
         private readonly List<MOLLink> _links=new List<MOLLink>();
         private readonly Dictionary<Guid,IEnumerable<MPCPortDescriptor>> _ports=
             new Dictionary<Guid,IEnumerable<MPCPortDescriptor>>();
+        private readonly Dictionary<Guid,MOLBlockPosition> _positions=
+            new Dictionary<Guid,MOLBlockPosition>();
         private Guid _entry;
         private MOCFlowBuilder(MOLWiringDefinition current)
         {
@@ -189,6 +191,7 @@ namespace CxVisual.Mechanism.Orchestration
             _blocks.AddRange(current.Blocks);
             _links.AddRange(current.Links);
             foreach(var pair in current.Ports)_ports.Add(pair.Key,pair.Value.ToArray());
+            foreach(var pair in current.Positions)_positions.Add(pair.Key,pair.Value);
         }
         public Guid LastBlockId{get{return _blocks.Count==0?Guid.Empty:_blocks[_blocks.Count-1].Id;}}
         public Guid Step(MOCCapabilityDescriptor descriptor)
@@ -231,6 +234,7 @@ namespace CxVisual.Mechanism.Orchestration
             if(_blocks.RemoveAll(x=>x.Id==blockId)!=1)
                 throw new InvalidOperationException("moc.wiring.block_missing");
             _ports.Remove(blockId);
+            _positions.Remove(blockId);
             _links.RemoveAll(x=>x.Source.BlockId==blockId||x.Target.BlockId==blockId);
             if(_entry==blockId)_entry=_blocks.Count==0?Guid.Empty:_blocks[0].Id;
         }
@@ -287,8 +291,15 @@ namespace CxVisual.Mechanism.Orchestration
                 throw new InvalidOperationException("moc.wiring.entry_missing");
             _entry=blockId;
         }
+        /// <summary>节点布局跟Logic定义同事务保存；不会影响控制和数据连接。</summary>
+        public void Move(Guid blockId,double x,double y)
+        {
+            if(!_blocks.Any(b=>b.Id==blockId))
+                throw new InvalidOperationException("moc.wiring.block_missing");
+            _positions[blockId]=new MOLBlockPosition(x,y);
+        }
         public MOLWiringDefinition Build()
-        {return new MOLWiringDefinition(_entry,_blocks,_ports,_links);}
+        {return new MOLWiringDefinition(_entry,_blocks,_ports,_links,_positions);}
         public static void Edit(MEMEngineeringSession session,MEMContent content,
             Action<MOCFlowBuilder> configure)
         {

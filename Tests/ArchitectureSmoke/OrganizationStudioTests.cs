@@ -145,6 +145,29 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Click(window,"重做编排");
                 Check(MOLWiringCodec.Get(reopened.GetSnapshot().Find(active.RootContent.Id))
                     .Links.Count==1,"Port drag Redo lost connection");
+                // G04布局同源：块拖动写回V2 Logic可选位置，Undo/Redo继续由Core负责。
+                var movedId=detached.Blocks[1].Id;
+                var previewBlock=CxVisual.Mechanism.Visual.MOLFlowLayout.Build(
+                    flowCanvas.WiringDefinition).Single(b=>b.BlockId==movedId);
+                var origin=new Point(previewBlock.X+previewBlock.Width/2,
+                    previewBlock.Y+12);
+                var destination=new Point(origin.X+85,origin.Y+38);
+                Check(flowCanvas.BeginBlockDrag(origin),"WPF node body could not begin drag");
+                flowCanvas.UpdateBlockDrag(destination);
+                Check(flowCanvas.CompleteBlockDrag(destination),
+                    "WPF drag was not committed to engineering session");
+                var withPosition=MOLWiringCodec.Get(reopened.GetSnapshot().Find(active.RootContent.Id));
+                MOLBlockPosition position;
+                Check(withPosition.Positions.TryGetValue(movedId,out position)&&
+                    Math.Abs(position.X-previewBlock.X-85)<0.001&&
+                    Math.Abs(position.Y-previewBlock.Y-38)<0.001,
+                    "Studio mouse move did not persist node layout");
+                Click(window,"撤销编排");
+                Check(!MOLWiringCodec.Get(reopened.GetSnapshot().Find(active.RootContent.Id))
+                    .Positions.ContainsKey(movedId),"Layout move Undo was not atomic");
+                Click(window,"重做编排");
+                Check(MOLWiringCodec.Get(reopened.GetSnapshot().Find(active.RootContent.Id))
+                    .Positions.ContainsKey(movedId),"Layout move Redo failed");
                 Click(window,"搜索能力");
                 var searchResults=(ComboBox)window.FindName("FlowCapabilityResults");
                 Check(searchResults.Items.Count>=2,"capability catalog search not populated");
@@ -195,6 +218,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(persisted!=null&&persisted.Blocks.Count==3&&
                     persisted.Blocks[2].Id==selectedIds[2]&&persisted.Links.Count==3,
                     "Studio edited Logic did not survive real Save/Open");
+                Check(persisted.Positions.ContainsKey(movedId)&&
+                    Math.Abs(persisted.Positions[movedId].X-position.X)<0.001,
+                    "Studio node layout was not retained across Save/Open");
                 Console.WriteLine("PASS H06 Studio real WPF automation: add/switch page, resource two instances, bound parameter edit, shared Undo/Redo, definition navigation, save/reopen");
             }
             finally{if(window!=null)window.Close();if(app!=null)app.Shutdown();if(File.Exists(path))File.Delete(path);if(File.Exists(path+".cx-lock"))File.Delete(path+".cx-lock");}

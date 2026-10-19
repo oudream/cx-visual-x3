@@ -36,7 +36,11 @@ namespace CxVisual.Mechanism.Visual
                 int inputs=ports.Count(p=>p.Direction!=MPCPortDirection.Output);
                 int outputs=ports.Count(p=>p.Direction!=MPCPortDirection.Input);
                 double height=Math.Max(58,32+Math.Max(inputs,outputs)*22);
-                items.Add(new MOLBlockLayout(block.Id,block.Kind,block.CapabilityId,0,20,top,height));
+                MOLBlockPosition position;
+                double x=20,y=top;
+                if(wiring.Positions.TryGetValue(block.Id,out position))
+                {x=position.X;y=position.Y;}
+                items.Add(new MOLBlockLayout(block.Id,block.Kind,block.CapabilityId,0,x,y,height));
                 top+=height+24;
             }
             return items.AsReadOnly();
