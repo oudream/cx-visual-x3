@@ -25,8 +25,7 @@ namespace CxVisual.Mechanism.Visual
                 elapsedMilliseconds<0)throw new ArgumentOutOfRangeException("elapsedMilliseconds");
             _runtimeSource=source;
             _runtimeElapsedMs=elapsedMilliseconds;
-            _scene=null; // 仅重投影运行外观；不触发MEM工程事务，不修改Revision
-            RaiseChanged();
+            _scene=null; // 仅重投影运行外观；调用方自主安排UI帧，不触发工程Changed和Revision
         }
         public void ClearRuntimeFrame(){SetRuntimeFrame(null,0);}
 
