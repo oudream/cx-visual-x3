@@ -181,6 +181,35 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Check(MPWShapeRenderer.BuildGeometry(previewPath,bezierScene.GeometryToWorld)
                         is StreamGeometry,"drag preview did not use the WPF path renderer");
                     shapeWindow.Close();
+                    // B：真实WPF SceneView从授权本地Theme Provider解析工程资源画刷，
+                    // 不由Designer读取URI或第二份Style存储。
+                    var themePage=session.AddPage("Local theme");
+                    var themeGroup=session.AddGroup(themePage.RootContent,"Theme Shapes");
+                    var themeShape=session.AddShape(themeGroup,"Themed",
+                        MVIShapeCatalog.CreateDefault(MRCShapeKind.Rect),20,20);
+                    session.SetVisualStyle(themeShape,new MRCVisualStyle(
+                        MRCBrushDefinition.Resource("industrial.theme.ready"),
+                        MRCBrushDefinition.None()));
+                    var themeView=new SceneView{Width=260,Height=150,
+                        ResourceBrushResolver=key=>key=="industrial.theme.ready"?
+                            Brushes.OrangeRed:null};
+                    var themeWindow=new Window{Content=themeView,Width=300,Height=180,
+                        Left=-10000,Top=-10000,ShowInTaskbar=false,ShowActivated=false};
+                    try
+                    {
+                        themeView.SetScene(CxSceneProjection.Project(session,themePage.Id),null);
+                        themeWindow.Show();
+                        themeView.Measure(new Size(260,150));
+                        themeView.Arrange(new Rect(0,0,260,150));themeView.UpdateLayout();
+                        System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(
+                            new Action(()=>{}),System.Windows.Threading.DispatcherPriority.Render);
+                        Check(DeepGeometries(VisualTreeHelper.GetDrawing(themeView)).Any(d=>
+                            d.Brush is SolidColorBrush&&
+                            ((SolidColorBrush)d.Brush).Color==Colors.OrangeRed),
+                            "B SceneView failed to apply authorized theme brush to actual WPF shape");
+                    }
+                    finally{themeWindow.Close();}
+
                     // B: 像素与SVG资产均来自真实MEM资源包，WPF实际解码并投影。
                     string pixelPath=Path.Combine(Path.GetTempPath(),
                         "cxvisual-wpf-asset-"+Guid.NewGuid().ToString("N")+".png");
