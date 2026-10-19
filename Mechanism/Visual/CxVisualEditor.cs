@@ -62,6 +62,34 @@ namespace CxVisual.Mechanism.Visual
                 return true;
             });
         }
+        /// <summary>图元新增只通过原MEM工程事务提交，一次Undo即可撤销。</summary>
+        public MTCEditResult<bool> AddShape(string name,MRCShapeDefinition shape,double x,double y)
+        {
+            if(shape==null)throw new ArgumentNullException("shape");
+            return Document.Edit("添加Shape",e=>
+            {
+                e.AddShape(CurrentDrawParent(),name,shape,x,y);
+                return true;
+            });
+        }
+        public MTCEditResult<bool> AddText(string name,string text,double x,double y)
+        {
+            return Document.Edit("添加文字",e=>
+            {
+                e.AddText(CurrentDrawParent(),name,text,x,y);
+                return true;
+            });
+        }
+        private MEMNode CurrentDrawParent()
+        {
+            if(!CurrentResourceId.HasValue)throw new InvalidOperationException("NO_PAGE");
+            MEMNode root=Document.Find(CurrentResourceId.Value);
+            MEMNode parent=root is MEMPage?((MEMPage)root).RootContent:
+                root is MEMSymbol?(MEMNode)((MEMSymbol)root).RootGroup:root;
+            foreach(MEMNode node in parent.DescendantsAndSelf())
+                if(node is MRCGroup)return node;
+            return parent;
+        }
         public MTCEditResult<bool> Move(Guid id, double x, double y)
         {
             int revision=Document.Revision;
