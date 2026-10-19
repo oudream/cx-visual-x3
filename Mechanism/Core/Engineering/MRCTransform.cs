@@ -1,4 +1,5 @@
 using System;
+using CxVisual.Foundation.Geometry;
 
 namespace CxVisual.Mechanism.Core
 {
@@ -11,9 +12,17 @@ namespace CxVisual.Mechanism.Core
         public double M21 {get;private set;} public double M22 {get;private set;}
         public double X {get;private set;} public double Y {get;private set;}
         public static MRCTransform Identity {get{return new MRCTransform(1,0,0,1,0,0);}}
-        public void TransformPoint(double x,double y,out double tx,out double ty) {tx=M11*x+M12*y+X;ty=M21*x+M22*y+Y;}
+        /// <summary>旧工程存储布局保持不变；统一由 Foundation.Geometry 执行变换。</summary>
+        public FGETransform2D ToGeometry()
+        {return new FGETransform2D(M11,M12,M21,M22,X,Y);}
+        public static MRCTransform FromGeometry(FGETransform2D value)
+        {return new MRCTransform(value.M11,value.M12,value.M21,value.M22,value.DX,value.DY);}
+        public void TransformPoint(double x,double y,out double tx,out double ty)
+        {FGEPoint2D p=ToGeometry().TransformPoint(new FGEPoint2D(x,y));tx=p.X;ty=p.Y;}
         public MRCTransform Compose(MRCTransform child)
-        {return new MRCTransform(M11*child.M11+M12*child.M21,M11*child.M12+M12*child.M22,M21*child.M11+M22*child.M21,M21*child.M12+M22*child.M22,M11*child.X+M12*child.Y+X,M21*child.X+M22*child.Y+Y);}
+        {return FromGeometry(ToGeometry().Compose(child.ToGeometry()));}
+        public MRCTransform Inverse()
+        {return FromGeometry(ToGeometry().Inverse());}
         internal void Decompose(out double angle,out double sx,out double sy,out double shear)
         {
             double max=Math.Max(Math.Abs(M11),Math.Abs(M21));
