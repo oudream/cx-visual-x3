@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using CxVisual.Foundation.Geometry;
 using CxVisual.Mechanism.Core;
 
@@ -24,27 +26,32 @@ namespace CxVisual.Mechanism.Visual
             Initialize(source.Id,source.Name,null,world,source.Width,source.Height,
                 source.IsSelectable&&!source.IsLocked,parent,source.X,source.Y,
                 source.TypeId,shape==null?null:shape.Shape,
-                MRCVisualAppearance.StyleOf(source),text==null?"":text.Text,null,null,null);
+                MRCVisualAppearance.StyleOf(source),text==null?"":text.Text,null,null,null,null);
         }
         internal CxSceneItem(Guid selectionId,string name,MRIObjectAddress address,
             MRCTransform world,double width,double height,bool selectable,
             MRCTransform moveParent,double moveX,double moveY,
             string typeId=null,MRCShapeDefinition shape=null,MRCVisualStyle style=null,string text=null,
-            Guid? assetId=null,string mediaType=null,MPMValue runtimeValue=null)
+            Guid? assetId=null,string mediaType=null,MPMValue runtimeValue=null,
+            IReadOnlyDictionary<string,MPMValue> widgetSettings=null)
         {
             Initialize(selectionId,name,address,world,width,height,selectable,moveParent,
-                moveX,moveY,typeId,shape,style,text,assetId,mediaType,runtimeValue);
+                moveX,moveY,typeId,shape,style,text,assetId,mediaType,runtimeValue,widgetSettings);
         }
         private void Initialize(Guid id,string name,MRIObjectAddress address,MRCTransform world,
             double width,double height,bool selectable,MRCTransform moveParent,
             double moveX,double moveY,string typeId,MRCShapeDefinition shape,
-            MRCVisualStyle style,string text,Guid? assetId,string mediaType,MPMValue runtimeValue)
+            MRCVisualStyle style,string text,Guid? assetId,string mediaType,
+            MPMValue runtimeValue,IReadOnlyDictionary<string,MPMValue> widgetSettings)
         {
             Id=id;Name=name;Address=address;_world=world;_width=width;_height=height;
             IsSelectable=selectable;_moveParent=moveParent;_moveX=moveX;_moveY=moveY;
             ElementTypeId=typeId??"core.rectangle";Shape=shape;
             Style=style??MRCVisualStyle.Default;Text=text??"";
             AssetId=assetId;MediaType=mediaType;RuntimeValue=runtimeValue;
+            var settings=new Dictionary<string,MPMValue>(StringComparer.Ordinal);
+            if(widgetSettings!=null)foreach(var pair in widgetSettings)settings.Add(pair.Key,pair.Value);
+            WidgetSettings=new ReadOnlyDictionary<string,MPMValue>(settings);
             double x1,y1,x2,y2,x3,y3,x4,y4;
             world.TransformPoint(0,0,out x1,out y1);world.TransformPoint(width,0,out x2,out y2);
             world.TransformPoint(0,height,out x3,out y3);world.TransformPoint(width,height,out x4,out y4);
@@ -68,6 +75,7 @@ namespace CxVisual.Mechanism.Visual
         public Guid? AssetId{get;private set;}
         public string MediaType{get;private set;}
         public MPMValue RuntimeValue{get;private set;}
+        public IReadOnlyDictionary<string,MPMValue> WidgetSettings{get;private set;}
         public MRCTransform WorldTransform{get{return _world;}}
         public FGERect2D Bounds{get;private set;}
         public FGEPoint2D TopLeft{get;private set;}
