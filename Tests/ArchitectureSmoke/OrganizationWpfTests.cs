@@ -197,6 +197,47 @@ namespace CxVisual.Tests.ArchitectureSmoke
                             assetWidgets.Children.OfType<System.Windows.Controls.CheckBox>().Single())&&
                             checkbox.IsChecked==false&&emitted==0,
                             "runtime data update recreated WPF control or emitted a user event");
+                        // Widget范围/选项/内容/禁用全部来自工程MPM快照。
+                        var comboModel=new MRCWidgetElement(Guid.NewGuid(),"模式",
+                            "core.widget.combobox",20,105,125,30);
+                        session.Add(assetsGroup,comboModel);
+                        session.SetBinding(comboModel,"options",MPMBinding.Literal(
+                            MPMValue.String("运行|停止|维护")));
+                        session.SetBinding(comboModel,"value",MPMBinding.Literal(
+                            MPMValue.String("运行")));
+                        session.SetBinding(comboModel,"tooltip",MPMBinding.Literal(
+                            MPMValue.String("运行模式")));
+                        assetView.SetScene(CxSceneProjection.Project(session,pageAsset.Id,data,12),null);
+                        var combo=assetWidgets.Children.OfType<System.Windows.Controls.ComboBox>()
+                            .Single();
+                        Check(combo.Items.Count==3&&combo.SelectedItem as string=="运行"&&
+                            combo.ToolTip as string=="运行模式"&&emitted==0,
+                            "Widget MPM options/value/tooltip did not reach real WPF ComboBox");
+                        assetView.SetScene(CxSceneProjection.Project(session,pageAsset.Id,data,14),null);
+                        Check(object.ReferenceEquals(combo,
+                            assetWidgets.Children.OfType<System.Windows.Controls.ComboBox>().Single())&&
+                            emitted==0,"reused ComboBox generated a user event during frame update");
+                        assetView.IsDesignMode=false;
+                        combo.SelectedItem="维护";
+                        Check(emitted==1,"actual ComboBox user selection failed to raise event");
+                        assetView.IsDesignMode=true;
+                        var sliderModel=new MRCWidgetElement(Guid.NewGuid(),"速度",
+                            "core.widget.slider",165,103,110,30);
+                        session.Add(assetsGroup,sliderModel);
+                        session.SetBinding(sliderModel,"minimum",
+                            MPMBinding.Literal(MPMValue.Number(20)));
+                        session.SetBinding(sliderModel,"maximum",
+                            MPMBinding.Literal(MPMValue.Number(80)));
+                        session.SetBinding(sliderModel,"value",
+                            MPMBinding.Literal(MPMValue.Number(45)));
+                        session.SetBinding(sliderModel,"enabled",
+                            MPMBinding.Literal(MPMValue.Boolean(false)));
+                        assetView.SetScene(CxSceneProjection.Project(session,pageAsset.Id,data,16),null);
+                        var slider=assetWidgets.Children.OfType<System.Windows.Controls.Slider>()
+                            .Single();
+                        Check(slider.Minimum==20&&slider.Maximum==80&&slider.Value==45&&
+                            !slider.IsEnabled&&emitted==1,
+                            "slider min/max/value/enabled were not applied from persisted bindings");
                         assetWindow.Close();
                         bool rejectedUnsafe=false;
                         using(var input=new MemoryStream(System.Text.Encoding.UTF8.GetBytes(
