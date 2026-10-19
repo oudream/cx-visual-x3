@@ -66,6 +66,9 @@ namespace CxVisual.Mechanism.Orchestration
                 var available=new Dictionary<Guid,MRKResolvedCapability>();
                 foreach(var block in wiring.Blocks)
                 {
+                    // Content引用由MOC编译校验并经MRK子流程内联，不冒充专业Provider。
+                    if(block.CapabilityId.StartsWith("moc.invoke:",StringComparison.Ordinal))
+                        continue;
                     MRKResolvedCapability action;
                     if(!resolver.TryResolve(block.CapabilityId,out action)||action==null)
                     {
