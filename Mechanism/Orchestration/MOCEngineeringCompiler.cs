@@ -525,13 +525,11 @@ namespace CxVisual.Mechanism.Orchestration
         {
             var selected=ResolveSelection(ids);
             var removed=new HashSet<Guid>(selected);
-            if(removed.Count==_blocks.Count)
-                throw new InvalidOperationException("moc.wiring.cannot_remove_last_block");
             _blocks.RemoveAll(x=>removed.Contains(x.Id));
             _links.RemoveAll(x=>removed.Contains(x.Source.BlockId)||removed.Contains(x.Target.BlockId));
             foreach(Guid id in selected){_ports.Remove(id);_positions.Remove(id);}
             RemoveGroupMembers(removed);
-            if(removed.Contains(_entry))_entry=_blocks[0].Id;
+            if(removed.Contains(_entry))_entry=_blocks.Count==0?Guid.Empty:_blocks[0].Id;
         }
         /// <summary>跨Content粘贴快照；新建Block/Link ID，仅复制选区内部边。</summary>
         public IReadOnlyDictionary<Guid,Guid> Paste(MOCWiringFragment fragment,double dx=40,double dy=40)
