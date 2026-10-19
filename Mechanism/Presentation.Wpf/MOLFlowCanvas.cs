@@ -25,6 +25,19 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         public Guid TargetBlockId{get;private set;}
     }
 
+    public sealed class MOLBlocksMoveRequestedEventArgs : EventArgs
+    {
+        internal MOLBlocksMoveRequestedEventArgs(IEnumerable<Guid> ids,double dx,double dy)
+        {BlockIds=ids.ToArray();DeltaX=dx;DeltaY=dy;}
+        public IReadOnlyList<Guid> BlockIds {get;private set;}
+        public double DeltaX {get;private set;}
+        public double DeltaY {get;private set;}
+    }
+    public sealed class MOLSelectionChangedEventArgs : EventArgs
+    {
+        internal MOLSelectionChangedEventArgs(IEnumerable<Guid> ids){BlockIds=ids.ToArray();}
+        public IReadOnlyList<Guid> BlockIds {get;private set;}
+    }
     public sealed class MOLBlockMoveRequestedEventArgs : EventArgs
     {
         internal MOLBlockMoveRequestedEventArgs(Guid blockId,double x,double y)
@@ -101,14 +114,101 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         private Point _dragPointer;
         private Guid? _movingBlockId;
         private Point _moveOrigin,_moveBase,_moveDelta;
+        private Guid[] _movingIds=new Guid[0];
+        private readonly HashSet<Guid> _selected=new HashSet<Guid>();
+        private bool _marqueeActive,_marqueeAdditive;
+        private Point _marqueeStart,_marqueeEnd;
+        private double _zoom=1;
         public event EventHandler<MOLBlockMoveRequestedEventArgs> BlockMoveRequested;
+        public event EventHandler<MOLBlocksMoveRequestedEventArgs> BlocksMoveRequested;
+        public event EventHandler<MOLSelectionChangedEventArgs> SelectionChanged;
+        /// <summary>纯视口比例；布局使用WPF LayoutTransform，不改变Content坐标。</summary>
+        public double ZoomFactor
+        {
+            get{return _zoom;}
+            set
+            {
+                if(double.IsNaN(value)||double.IsInfinity(value)||value<0.25||value>3)
+                    throw new ArgumentOutOfRangeException("value");
+                _zoom=value;
+                LayoutTransform=new ScaleTransform(value,value);
+            }
+        }
+        public IReadOnlyList<Guid> SelectedBlockIds
+        {get{return _selected.OrderBy(id=>id).ToArray();}}
+        public void SetSelection(IEnumerable<Guid> ids)
+        {
+            if(ids==null)throw new ArgumentNullException("ids");
+            var allowed=new HashSet<Guid>(WiringDefinition==null?
+                Enumerable.Empty<Guid>():WiringDefinition.Blocks.Select(b=>b.Id));
+            Guid[] requested=ids.Distinct().ToArray();
+            if(requested.Any(id=>!allowed.Contains(id)))
+                throw new InvalidOperationException("wiring.selection.unknown_block");
+            if(_selected.SetEquals(requested))return;
+            _selected.Clear();
+            foreach(Guid id in requested)_selected.Add(id);
+            InvalidateVisual();
+            var callback=SelectionChanged;
+            if(callback!=null)callback(this,new MOLSelectionChangedEventArgs(SelectedBlockIds));
+        }
+        public void RetainValidSelection()
+        {
+            var valid=new HashSet<Guid>(WiringDefinition==null?
+                Enumerable.Empty<Guid>():WiringDefinition.Blocks.Select(b=>b.Id));
+            SetSelection(_selected.Where(valid.Contains).ToArray());
+        }
+        public void SelectAll()
+        {SetSelection(WiringDefinition==null?Enumerable.Empty<Guid>():WiringDefinition.Blocks.Select(b=>b.Id));}
+        public void SelectBlock(Guid id,bool additive=false,bool toggle=false)
+        {
+            var next=additive?new HashSet<Guid>(_selected):new HashSet<Guid>();
+            if(toggle&&!next.Add(id))next.Remove(id);
+            else next.Add(id);
+            SetSelection(next);
+        }
+        public void SelectRectangle(Rect bounds,bool additive=false)
+        {
+            var selected=additive?new HashSet<Guid>(_selected):new HashSet<Guid>();
+            if(WiringDefinition!=null)foreach(var block in MOLFlowLayout.Build(WiringDefinition))
+            {
+                if(bounds.IntersectsWith(new Rect(block.X,block.Y,block.Width,block.Height)))
+                    selected.Add(block.BlockId);
+            }
+            SetSelection(selected);
+        }
+        public void BeginMarquee(Point position,bool additive=false)
+        {
+            _marqueeActive=true;_marqueeAdditive=additive;
+            _marqueeStart=position;_marqueeEnd=position;InvalidateVisual();
+        }
+        public void UpdateMarquee(Point position)
+        {
+            if(!_marqueeActive)return;
+            _marqueeEnd=position;InvalidateVisual();
+        }
+        public void CompleteMarquee(Point position)
+        {
+            if(!_marqueeActive)return;
+            UpdateMarquee(position);
+            _marqueeActive=false;
+            Rect bounds=MarqueeRect();
+            if(bounds.Width>=2||bounds.Height>=2)
+                SelectRectangle(bounds,_marqueeAdditive);
+            else if(!_marqueeAdditive)SetSelection(new Guid[0]);
+            InvalidateVisual();
+        }
+        private Rect MarqueeRect()
+        {return new Rect(new Point(Math.Min(_marqueeStart.X,_marqueeEnd.X),
+            Math.Min(_marqueeStart.Y,_marqueeEnd.Y)),
+            new Point(Math.Max(_marqueeStart.X,_marqueeEnd.X),
+                Math.Max(_marqueeStart.Y,_marqueeEnd.Y)));}
         public event EventHandler<MOLPortLinkRequestedEventArgs> PortLinkRequested;
         public event EventHandler<MOLPortLinkRejectedEventArgs> PortLinkRejected;
         private Guid? _sourceForLink;
         public void ResetLinkSelection()
         {
             _sourceForLink=null;_dragSource=null;_movingBlockId=null;
-            _moveDelta=new Point();
+            _movingIds=new Guid[0];_marqueeActive=false;_moveDelta=new Point();
             if(IsMouseCaptured)ReleaseMouseCapture();
             InvalidateVisual();
         }
@@ -123,8 +223,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             {
                 var ports=WiringDefinition.Ports[item.BlockId];
                 int left=0,right=0;
-                double dx=_movingBlockId==item.BlockId?_moveDelta.X:0;
-                double dy=_movingBlockId==item.BlockId?_moveDelta.Y:0;
+                bool moving=_movingBlockId.HasValue&&_movingIds.Contains(item.BlockId);
+                double dx=moving?_moveDelta.X:0;
+                double dy=moving?_moveDelta.Y:0;
                 foreach(var descriptor in ports)
                 {
                     if(descriptor.Direction!=MPCPortDirection.Output)
@@ -146,7 +247,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 position.X>=b.X&&position.X<=b.X+b.Width&&
                 position.Y>=b.Y&&position.Y<=b.Y+b.Height);
             if(item==null)return false;
+            if(!_selected.Contains(item.BlockId))SetSelection(new[]{item.BlockId});
             _movingBlockId=item.BlockId;
+            _movingIds=_selected.OrderBy(id=>id).ToArray();
             _moveOrigin=position;_moveBase=new Point(item.X,item.Y);
             _moveDelta=new Point();InvalidateVisual();
             return true;
@@ -154,10 +257,13 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         public void UpdateBlockDrag(Point position)
         {
             if(!_movingBlockId.HasValue)return;
-            _moveDelta=new Point(
-                Math.Max(-_moveBase.X,Math.Min(100000-_moveBase.X,position.X-_moveOrigin.X)),
-                Math.Max(-_moveBase.Y,Math.Min(100000-_moveBase.Y,position.Y-_moveOrigin.Y)));
-            InvalidateVisual();
+            double dx=position.X-_moveOrigin.X,dy=position.Y-_moveOrigin.Y;
+            var layout=MOLFlowLayout.Build(WiringDefinition)
+                .Where(x=>_movingIds.Contains(x.BlockId)).ToArray();
+            if(layout.Length==0)return;
+            dx=Math.Max(-layout.Min(x=>x.X),Math.Min(100000-layout.Max(x=>x.X),dx));
+            dy=Math.Max(-layout.Min(x=>x.Y),Math.Min(100000-layout.Max(x=>x.Y),dy));
+            _moveDelta=new Point(dx,dy);InvalidateVisual();
         }
         public bool CompleteBlockDrag(Point position)
         {
@@ -166,10 +272,20 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             Guid block=_movingBlockId.Value;
             double x=_moveBase.X+_moveDelta.X,y=_moveBase.Y+_moveDelta.Y;
             bool changed=Math.Abs(_moveDelta.X)>=1||Math.Abs(_moveDelta.Y)>=1;
-            _movingBlockId=null;_moveDelta=new Point();InvalidateVisual();
+            var moving=_movingIds;
+            _movingBlockId=null;_movingIds=new Guid[0];_moveDelta=new Point();InvalidateVisual();
             if(!changed)return false;
-            var handler=BlockMoveRequested;
-            if(handler!=null)handler(this,new MOLBlockMoveRequestedEventArgs(block,x,y));
+            if(moving.Length>1)
+            {
+                var many=BlocksMoveRequested;
+                if(many!=null)many(this,new MOLBlocksMoveRequestedEventArgs(moving,
+                    x-_moveBase.X,y-_moveBase.Y));
+            }
+            else
+            {
+                var handler=BlockMoveRequested;
+                if(handler!=null)handler(this,new MOLBlockMoveRequestedEventArgs(block,x,y));
+            }
             return true;
         }
 
@@ -276,7 +392,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             for(int i=0;i<_layout.Count;i++)
             {
                 var item=_layout[i];
-                bool isPreview=_movingBlockId==item.BlockId;
+                bool isPreview=_movingBlockId.HasValue&&_movingIds.Contains(item.BlockId);
                 if(isPreview)dc.PushTransform(new TranslateTransform(_moveDelta.X,_moveDelta.Y));
                 string state=null;
                 if(RuntimeStates!=null)RuntimeStates.TryGetValue(item.BlockId,out state);
@@ -284,7 +400,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                     state=="Running"?Brushes.LightBlue:state=="Skipped"?Brushes.LightGray:
                     Brushes.AliceBlue;
                 var rect=new Rect(item.X,item.Y,item.Width,item.Height);
-                var pen=new Pen(Brushes.SteelBlue,1.4);
+                var pen=new Pen(_selected.Contains(item.BlockId)?Brushes.RoyalBlue:Brushes.SteelBlue,
+                    _selected.Contains(item.BlockId)?2.8:1.4);
                 if(MOLBlockTemplateSelector.IsDecision(item.Kind))
                 {
                     var geo=new StreamGeometry();
@@ -323,6 +440,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             if(_dragSource!=null)
                 dc.DrawLine(new Pen(Brushes.DarkSlateBlue,2){DashStyle=DashStyles.Dash},
                     _dragSource.Center,_dragPointer);
+            if(_marqueeActive)
+            {
+                var area=MarqueeRect();
+                dc.DrawRectangle(new SolidColorBrush(Color.FromArgb(45,45,118,220)),
+                    new Pen(Brushes.CornflowerBlue,1){DashStyle=DashStyles.Dash},area);
+            }
         }
         private static FormattedText Text(string value,Brush brush)
         {return new FormattedText(value,CultureInfo.CurrentUICulture,FlowDirection.LeftToRight,
@@ -340,6 +463,13 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 if(p.X>=item.X&&p.X<=item.X+item.Width&&
                     p.Y>=item.Y&&p.Y<=item.Y+item.Height)
                 {
+                    if(WiringDefinition!=null)
+                    {
+                        ModifierKeys modifiers=Keyboard.Modifiers;
+                        SelectBlock(item.BlockId,
+                            (modifiers&ModifierKeys.Control)!=0||(modifiers&ModifierKeys.Shift)!=0,
+                            (modifiers&ModifierKeys.Control)!=0);
+                    }
                     var handler=BlockSelected;
                     if(handler!=null)handler(this,new MOLBlockSelectedEventArgs(item.BlockId));
                     if(!IsConnectMode&&BeginBlockDrag(p))
@@ -362,6 +492,11 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                     break;
                 }
             }
+            if(WiringDefinition!=null&&!_movingBlockId.HasValue)
+            {
+                BeginMarquee(p,(Keyboard.Modifiers&(ModifierKeys.Control|ModifierKeys.Shift))!=0);
+                CaptureMouse();e.Handled=true;
+            }
         }
         protected override void OnMouseMove(MouseEventArgs e)
         {
@@ -370,16 +505,19 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             {_dragPointer=e.GetPosition(this);InvalidateVisual();e.Handled=true;}
             else if(_movingBlockId.HasValue)
             {UpdateBlockDrag(e.GetPosition(this));e.Handled=true;}
+            else if(_marqueeActive)
+            {UpdateMarquee(e.GetPosition(this));e.Handled=true;}
         }
         protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
         {
             base.OnMouseLeftButtonUp(e);
-            if(_dragSource==null&&!_movingBlockId.HasValue)return;
+            if(_dragSource==null&&!_movingBlockId.HasValue&&!_marqueeActive)return;
             Point position=e.GetPosition(this);
             try
             {
                 if(_dragSource!=null)CompletePortDrag(position);
-                else CompleteBlockDrag(position);
+                else if(_movingBlockId.HasValue)CompleteBlockDrag(position);
+                else CompleteMarquee(position);
             }
             finally{if(IsMouseCaptured)ReleaseMouseCapture();}
             e.Handled=true;
@@ -387,8 +525,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         protected override void OnLostMouseCapture(MouseEventArgs e)
         {
             base.OnLostMouseCapture(e);
-            if(_dragSource!=null||_movingBlockId.HasValue)
-            {_dragSource=null;_movingBlockId=null;_moveDelta=new Point();InvalidateVisual();}
+            if(_dragSource!=null||_movingBlockId.HasValue||_marqueeActive)
+            {_dragSource=null;_movingBlockId=null;_movingIds=new Guid[0];
+             _marqueeActive=false;_moveDelta=new Point();InvalidateVisual();}
         }
     }
 }
