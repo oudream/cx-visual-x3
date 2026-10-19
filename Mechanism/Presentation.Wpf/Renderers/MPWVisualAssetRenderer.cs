@@ -57,6 +57,26 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 default:throw new InvalidDataException("visual.svg.color_unsupported");
             }
         }
+        private static string Inherited(XElement element,string attribute)
+        {
+            for(XElement e=element;e!=null;e=e.Parent)
+            {
+                XAttribute value=e.Attribute(attribute);
+                if(value!=null)return value.Value;
+            }
+            return null;
+        }
+        private static double EffectiveOpacity(XElement element)
+        {
+            double opacity=1;
+            for(XElement e=element;e!=null;e=e.Parent)
+            {
+                double value=Attr(e,"opacity",1);
+                if(value<0||value>1)throw new InvalidDataException("visual.svg.opacity");
+                opacity*=value;
+            }
+            return opacity;
+        }
         private static Geometry ReadGeometry(XElement e)
         {
             string type=e.Name.LocalName;
@@ -136,13 +156,25 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 }
             }
             var group=new DrawingGroup();
+            // viewBox参与图像绘制边界，不能因图形没有铺满坐标系而自行裁边。
+            string viewBox=(string)root.Attribute("viewBox");
+            if(!string.IsNullOrWhiteSpace(viewBox))
+            {
+                string[] bounds=Numbers(viewBox);
+                if(bounds.Length!=4)throw new InvalidDataException("visual.svg.viewbox");
+                double x=Number(bounds[0],0),y=Number(bounds[1],0);
+                double width=Number(bounds[2],0),height=Number(bounds[3],0);
+                if(width<=0||height<=0)
+                    throw new InvalidDataException("visual.svg.viewbox_size");
+                group.Children.Add(new GeometryDrawing(Brushes.Transparent,null,
+                    new RectangleGeometry(new Rect(x,y,width,height))));
+            }
             foreach(XElement e in elements.Where(x=>x!=root&&x.Name.LocalName!="g"))
             {
                 Geometry geometry=ReadGeometry(e);
-                Brush fill=Fill((string)e.Attribute("fill"),e.Name.LocalName=="line"?null:Brushes.Black);
-                Brush stroke=Fill((string)e.Attribute("stroke"),null);
-                double opacity=Attr(e,"opacity",1);
-                if(opacity<0||opacity>1)throw new InvalidDataException("visual.svg.opacity");
+                Brush fill=Fill(Inherited(e,"fill"),e.Name.LocalName=="line"?null:Brushes.Black);
+                Brush stroke=Fill(Inherited(e,"stroke"),null);
+                double opacity=EffectiveOpacity(e);
                 var drawing=new GeometryDrawing(fill,
                     stroke==null?null:new Pen(stroke,Math.Max(0,Attr(e,"stroke-width",1))),
                     geometry);
