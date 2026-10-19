@@ -101,6 +101,22 @@ namespace CxVisual.Mechanism.Visual
                 return true;
             });
         }
+        public MTCEditResult<bool> AddAssetElement(Guid assetId,string name,bool svg,
+            double x,double y,double width=160,double height=110)
+        {
+            Demand();
+            if(!Document.Assets.Any(a=>a.Id==assetId))
+                return MTCEditResult<bool>.Rejected(Document.Revision,
+                    "visual.asset.missing","Import the asset into the current project first");
+            return Document.Edit(svg?"添加SVG图元":"添加图片图元",e=>
+            {
+                MRCVisualItem element=svg?(MRCVisualItem)e.AddSvg(
+                    CurrentDrawParent(),name,x,y,width,height):
+                    e.AddImage(CurrentDrawParent(),name,x,y,width,height);
+                e.SetBinding(element,"source",MPMBinding.Resource(assetId));
+                return true;
+            });
+        }
         public MTCEditResult<bool> AddText(string name,string text,double x,double y)
         {
             return Document.Edit("添加文字",e=>
