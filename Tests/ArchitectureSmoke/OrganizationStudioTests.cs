@@ -139,9 +139,28 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Click(window,"确认端口连线");
                 var complete=MOLWiringCodec.Get(reopened.GetSnapshot().Find(active.RootContent.Id));
                 Check(complete.Links.Count==2,"UI chosen typed Port link was not committed");
+                // 类型化Data端口与Control端口共用一套Port匹配和Connect事务。
+                onLink.Invoke(window,new object[]{null,
+                    new CxVisual.Mechanism.Presentation.Wpf.MOLLinkRequestedEventArgs(
+                        selectedIds[0],selectedIds[2])});
+                var dataChoice=choiceBox.Items.Cast<object>().FirstOrDefault(x=>
+                    (MPCPortKind)x.GetType().GetProperty("Kind").GetValue(x,null)==MPCPortKind.Data);
+                Check(dataChoice!=null,"Studio compatible Data Port option was not shown");
+                choiceBox.SelectedItem=dataChoice;Pump();
+                Click(window,"确认端口连线");
+                var linked=MOLWiringCodec.Get(reopened.GetSnapshot().Find(active.RootContent.Id));
+                Check(linked.Links.Count==3&&linked.Links.Count(x=>x.Kind==MPCPortKind.Data)==1,
+                    "Studio Data Port connection was not persisted");
                 Click(window,"验证工程编排");
                 Check(((TextBlock)window.FindName("LogicInfo")).Text.Contains("编译验证通过"),
-                    "Studio did not validate the completed edited flow");
+                    "Studio Control+Data flow did not validate");
+                vm.GetType().GetMethod("SaveProject").Invoke(vm,new object[]{path});
+                vm.GetType().GetMethod("OpenProject").Invoke(vm,new object[]{path,true});Pump();
+                var again=(MEMEngineeringSession)Get(vm,"ProjectSession");
+                var persisted=MOLWiringCodec.Get(again.GetSnapshot().Find(active.RootContent.Id));
+                Check(persisted!=null&&persisted.Blocks.Count==3&&
+                    persisted.Blocks[2].Id==selectedIds[2]&&persisted.Links.Count==3,
+                    "Studio edited Logic did not survive real Save/Open");
                 Console.WriteLine("PASS H06 Studio real WPF automation: add/switch page, resource two instances, bound parameter edit, shared Undo/Redo, definition navigation, save/reopen");
             }
             finally{if(window!=null)window.Close();if(app!=null)app.Shutdown();if(File.Exists(path))File.Delete(path);if(File.Exists(path+".cx-lock"))File.Delete(path+".cx-lock");}

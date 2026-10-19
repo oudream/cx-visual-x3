@@ -303,10 +303,13 @@ namespace CxVisual.Studio
                 var a=MOLControlBlock.Action("Acquire");
                 var b=MOLControlBlock.Action("AI");
                 var ports=new Dictionary<Guid,IEnumerable<MPCPortDescriptor>>{
-                    {a.Id,new[]{new MPCPortDescriptor("Done",MPCPortDirection.Output,"signal",MPCPortKind.Control)}},
+                    {a.Id,new[]{
+                        new MPCPortDescriptor("Done",MPCPortDirection.Output,"signal",MPCPortKind.Control),
+                        new MPCPortDescriptor("Image",MPCPortDirection.Output,"string",MPCPortKind.Data)}},
                     {b.Id,new[]{
                         new MPCPortDescriptor("Start",MPCPortDirection.Input,"signal",MPCPortKind.Control),
-                        new MPCPortDescriptor("Done",MPCPortDirection.Output,"signal",MPCPortKind.Control)}}
+                        new MPCPortDescriptor("Done",MPCPortDirection.Output,"signal",MPCPortKind.Control),
+                        new MPCPortDescriptor("Image",MPCPortDirection.Input,"string",MPCPortKind.Data)}}
                 };
                 var wiring=new MOLWiringDefinition(a.Id,new[]{a,b},ports,new[]{
                     new MOLLink(Guid.NewGuid(),new MOLBlockEndpoint(a.Id,"Done"),
