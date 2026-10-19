@@ -66,6 +66,17 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Click(window,"文字图元");
                 Check(page.RootContent.DescendantsAndSelf().OfType<MRCTextElement>().Any(),
                     "Studio did not create text element");
+                Click(window,"按钮控件");
+                Check(page.RootContent.DescendantsAndSelf().OfType<MRCWidgetElement>().Count()==1,
+                    "Studio widget tool did not create engineering element");
+                var sceneHost=(CxVisual.Mechanism.Presentation.Wpf.SceneView)window.FindName("SceneHost");
+                var widgetHost=VisualTreeHelper.GetChild(sceneHost,0) as Canvas;
+                Check(widgetHost!=null&&widgetHost.Children.OfType<Button>().Any(),
+                    "Studio widget is not a true WPF Button");
+                Click(window,"预览交互");
+                Check(!sceneHost.IsDesignMode,"Widget preview did not enter runtime interaction mode");
+                Click(window,"返回设计");
+                Check(sceneHost.IsDesignMode,"Widget preview did not return to design mode");
                 Click(window,"新建组件");var symbol=session.Project.Symbols.Last();var resources=(ListBox)window.FindName("EngineeringResources");resources.SelectedItem=symbol;Pump();
                 Click(window,"放置实例");var first=page.RootContent.References.Last();Click(window,"放置实例");var second=page.RootContent.References.Last();
                 Check(first.Id!=second.Id&&page.RootContent.References.Count==2,"resource button did not create two real instances");
@@ -78,6 +89,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(reopened.Project.Pages.Last().RootContent.DescendantsAndSelf()
                     .OfType<MRCShapeElement>().Count()==9,
                     "Studio nine shapes lost after real Save/Open");
+                Check(reopened.Project.Pages.Last().RootContent.DescendantsAndSelf()
+                    .OfType<MRCWidgetElement>().Count()==1,
+                    "Studio Widget lost after Save/Open");
                 Check(((ComboBox)window.FindName("EngineeringPages")).Items.Count==2&&((ListBox)window.FindName("EngineeringResources")).Items.Count==3,"real WPF collections failed to refresh after reopen");
                 // G04 工程师界面：目录搜索、自由插入草稿、撤销重做、选择端口并编译。
                 Click(window,"创建自由连接示例");
