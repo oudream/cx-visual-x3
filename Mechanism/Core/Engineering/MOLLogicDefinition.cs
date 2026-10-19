@@ -489,7 +489,13 @@ namespace CxVisual.Mechanism.Core
             {
                 if(link==null||!linkIds.Add(link.Id))throw new InvalidOperationException("wiring.duplicate_link");
                 if((link.Kind!=MPCPortKind.Control&&link.Kind!=MPCPortKind.Data)||
-                    !string.IsNullOrEmpty(link.ConditionId)||link.Order.HasValue)
+                    link.Order.HasValue||link.ConditionId.Length>128||
+                    (link.Kind!=MPCPortKind.Control&&!string.IsNullOrEmpty(link.ConditionId))||
+                    (!string.IsNullOrEmpty(link.ConditionId)&&
+                     link.ConditionId!="bool:true"&&link.ConditionId!="bool:false"&&
+                     link.ConditionId!="default"&&
+                     !(link.ConditionId.StartsWith("case:",StringComparison.Ordinal)&&
+                       link.ConditionId.Length>5)))
                     throw new InvalidOperationException("wiring.unsupported_semantics");
                 if(!ids.Contains(link.Source.BlockId)||!ids.Contains(link.Target.BlockId)||
                     link.Source.BlockId==link.Target.BlockId)
@@ -513,6 +519,20 @@ namespace CxVisual.Mechanism.Core
                 successors[link.Source.BlockId].Add(link.Target.BlockId);
                 if(link.Kind==MPCPortKind.Control)controlSuccessors[link.Source.BlockId].Add(link.Target.BlockId);
             }
+            // 同一条件源不得混用无条件出口；Switch case/default必须互斥。
+            foreach(var group in Links.Where(l=>l.Kind==MPCPortKind.Control)
+                .GroupBy(l=>l.Source.BlockId))
+            {
+                var guarded=group.Where(l=>l.ConditionId.Length>0).ToArray();
+                if(guarded.Length==0)continue;
+                if(guarded.Length!=group.Count()||
+                    guarded.Select(l=>l.ConditionId).Distinct(StringComparer.Ordinal).Count()!=guarded.Length||
+                    (guarded.Any(l=>l.ConditionId.StartsWith("bool:",StringComparison.Ordinal))&&
+                     guarded.Any(l=>!l.ConditionId.StartsWith("bool:",StringComparison.Ordinal)))||
+                    (guarded.Any(l=>l.ConditionId.StartsWith("case:",StringComparison.Ordinal)||l.ConditionId=="default")&&
+                     guarded.Any(l=>l.ConditionId.StartsWith("bool:",StringComparison.Ordinal))))
+                    throw new InvalidOperationException("wiring.invalid_branch_guards");
+            }
             // 未完成连线的编辑草稿可以保存；构建/运行时由ValidateExecutable拒绝。
             // 连接类型、方向、重复、环路等无效结构仍严格拒绝。
             var colors=ids.ToDictionary(x=>x,x=>0);
@@ -529,6 +549,10 @@ namespace CxVisual.Mechanism.Core
         {
             Validate();
             if(Blocks.Count==0)throw new InvalidOperationException("wiring.empty_executable");
+            if(Links.Where(l=>l.Kind==MPCPortKind.Control&&l.ConditionId.Length>0)
+                .Any(l=>Links.Count(x=>x.Kind==MPCPortKind.Control&&
+                    x.Target.BlockId==l.Target.BlockId)>1))
+                throw new InvalidOperationException("wiring.conditional_join_requires_explicit_node");
             var incoming=Links.GroupBy(x=>x.Target.BlockId.ToString("N")+":"+x.Target.PortMemberId)
                 .ToDictionary(x=>x.Key,x=>x.Count(),StringComparer.Ordinal);
             foreach(var b in Blocks)foreach(var port in Ports[b.Id])
