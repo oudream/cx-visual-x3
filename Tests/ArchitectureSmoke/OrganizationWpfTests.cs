@@ -361,8 +361,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                             "<rect x=\"10\" y=\"5\" width=\"40\" height=\"20\" rx=\"6\" ry=\"4\"/>"+
                             "</g></svg>")))
                         {
-                            DrawingImage image=MPWVisualAssetRenderer.DecodeSvg(supported);
-                            Check(DeepGeometries(image.Drawing).Any(d=>d.Pen!=null&&
+                            DrawingImage roundedAsset=MPWVisualAssetRenderer.DecodeSvg(supported);
+                            Check(DeepGeometries(roundedAsset.Drawing).Any(d=>d.Pen!=null&&
                                 Math.Abs(d.Pen.Thickness-4)<1e-6&&
                                 d.Geometry is RectangleGeometry&&
                                 ((RectangleGeometry)d.Geometry).RadiusX==6),
