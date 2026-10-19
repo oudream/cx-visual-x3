@@ -117,6 +117,11 @@
                                 <Button Content="放大画布" Tag="in" Click="OnFlowZoom"/>
                                 <Button Content="缩小画布" Tag="out" Click="OnFlowZoom"/>
                                 <Button Content="100%" Tag="reset" Click="OnFlowZoom"/>
+                                <Button Content="适配画布" Click="OnFlowFit"/>
+                                <Button Content="定位选中" Click="OnFlowLocate"/>
+                                <Button Content="水平分布" Tag="horizontal" Click="OnFlowDistribute"/>
+                                <Button Content="垂直分布" Tag="vertical" Click="OnFlowDistribute"/>
+                                <Button Content="自动布局" Click="OnFlowArrange"/>
                             </WrapPanel>
                             <TextBlock x:Name="LogicInfo" Margin="12,0,12,10"
                                 Text="使用 Content Logic Aspect 保存编排；从运行轨迹点击定位逻辑块。此处为 CPU 仿真，不连接生产设备。"

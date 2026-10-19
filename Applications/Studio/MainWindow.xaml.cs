@@ -658,6 +658,65 @@ namespace CxVisual.Studio
             }
             catch(Exception ex){LogicInfo.Text="对齐失败："+ex.Message;}
         }
+        private void OnFlowDistribute(object sender,RoutedEventArgs args)
+        {
+            if(_logicRunning)return;
+            try
+            {
+                var page=_viewModel.ActivePage;
+                Guid[] ids=LogicHost.SelectedBlockIds.ToArray();
+                if(page==null||ids.Length<3)throw new InvalidOperationException("至少选中三个节点");
+                bool horizontal=Convert.ToString(((Button)sender).Tag)=="horizontal";
+                MOCFlowBuilder.Edit(_viewModel.ProjectSession,page.RootContent,b=>
+                    b.Distribute(ids,horizontal));
+                RefreshScene();
+                LogicInfo.Text="节点均匀分布已提交；可撤销重做。";
+            }
+            catch(Exception ex){LogicInfo.Text="均匀分布失败："+ex.Message;}
+        }
+        private void OnFlowArrange(object sender,RoutedEventArgs args)
+        {
+            if(_logicRunning)return;
+            try
+            {
+                var page=_viewModel.ActivePage;
+                Guid[] ids=LogicHost.SelectedBlockIds.ToArray();
+                if(page==null||ids.Length==0)throw new InvalidOperationException("请先选择节点");
+                MOCFlowBuilder.Edit(_viewModel.ProjectSession,page.RootContent,
+                    b=>b.ArrangeGrid(ids));
+                RefreshScene();
+                LogicInfo.Text="已按稳定次序自动布局 "+ids.Length+" 个节点。";
+            }
+            catch(Exception ex){LogicInfo.Text="布局失败："+ex.Message;}
+        }
+        private void OnFlowFit(object sender,RoutedEventArgs args)
+        {
+            if(LogicHost.WiringDefinition==null)return;
+            var layout=MOLFlowLayout.Build(LogicHost.WiringDefinition);
+            if(layout.Count==0)return;
+            double width=layout.Max(x=>x.X+x.Width)+35;
+            double height=layout.Max(x=>x.Y+x.Height)+35;
+            double x=FlowScroll.ViewportWidth>0?FlowScroll.ViewportWidth/width:1;
+            double y=FlowScroll.ViewportHeight>0?FlowScroll.ViewportHeight/height:1;
+            LogicHost.ZoomFactor=Math.Max(0.25,Math.Min(3,Math.Min(x,y)));
+            FlowScroll.ScrollToHorizontalOffset(0);
+            FlowScroll.ScrollToVerticalOffset(0);
+            LogicInfo.Text="画布已适配视口；仅更改显示倍率。";
+        }
+        private void OnFlowLocate(object sender,RoutedEventArgs args)
+        {
+            if(LogicHost.WiringDefinition==null||LogicHost.SelectedBlockIds.Count==0)return;
+            var selected=new HashSet<Guid>(LogicHost.SelectedBlockIds);
+            var bounds=MOLFlowLayout.Build(LogicHost.WiringDefinition)
+                .Where(x=>selected.Contains(x.BlockId)).ToArray();
+            if(bounds.Length==0)return;
+            double scale=LogicHost.ZoomFactor;
+            FlowScroll.ScrollToHorizontalOffset(Math.Max(0,
+                bounds.Min(x=>x.X)*scale-FlowScroll.ViewportWidth/3));
+            FlowScroll.ScrollToVerticalOffset(Math.Max(0,
+                bounds.Min(x=>x.Y)*scale-FlowScroll.ViewportHeight/3));
+            LogicInfo.Text="已将选中节点定位到可视区。";
+        }
         private void OnFlowZoom(object sender,RoutedEventArgs args)
         {
             var button=sender as Button;
