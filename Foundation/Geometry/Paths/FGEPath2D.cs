@@ -19,7 +19,7 @@ namespace CxVisual.Foundation.Geometry
         public static FGEPathCommand Quadratic(FGEPoint2D c,FGEPoint2D end){return new FGEPathCommand(FGEPathVerb.Quadratic,end,c,default(FGEPoint2D),default(FGEArc2D));}
         public static FGEPathCommand Cubic(FGEPoint2D c1,FGEPoint2D c2,FGEPoint2D end){return new FGEPathCommand(FGEPathVerb.Cubic,end,c1,c2,default(FGEArc2D));}
         public static FGEPathCommand ArcTo(FGEArc2D arc){return new FGEPathCommand(FGEPathVerb.Arc,arc.PointAt(1),default(FGEPoint2D),default(FGEPoint2D),arc);}
-        public static FGEPathCommand Close(){return new FGEPathCommand(FGEPathVerb.Close,default(FGEPoint2D),default(FGEPoint2D),default(FGEArc2D));}
+        public static FGEPathCommand Close(){return new FGEPathCommand(FGEPathVerb.Close,default(FGEPoint2D),default(FGEPoint2D),default(FGEPoint2D),default(FGEArc2D));}
     }
     public sealed class FGEPath2D
     {
