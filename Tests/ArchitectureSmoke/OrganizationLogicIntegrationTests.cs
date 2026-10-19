@@ -55,6 +55,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             SaveLoadAndIdentity();
             V2WiringRoundtrip();
             V2TypedParameterConfiguration();
+            V2ExtractLinearContent();
             V2LayoutContract();
             V2BulkEditingClipboard();
             V2WiringCompileRun();
@@ -549,6 +550,89 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 if(System.IO.File.Exists(path))System.IO.File.Delete(path);
                 if(System.IO.File.Exists(path+".cx-lock"))System.IO.File.Delete(path+".cx-lock");
             }
+        }
+
+        private static void V2ExtractLinearContent()
+        {
+            var session=MEMEngineering.Create("G04真实可复用子流程");
+            var page=session.AddPage("检测入口");
+            Guid a=Guid.Empty,b=Guid.Empty,c=Guid.Empty,d=Guid.Empty;
+            try
+            {
+                MOCFlowBuilder.Edit(session,page.RootContent,flow=>{
+                    a=flow.Step("acquire");b=flow.Step("inspect");
+                    c=flow.Step("classify");d=flow.Step("save");
+                    flow.Connect(a,"Done",b,"Start");
+                    flow.Connect(b,"Done",c,"Start");
+                    flow.Connect(c,"Done",d,"Start");
+                    flow.Move(a,30,50);flow.Move(b,320,50);
+                    flow.Move(c,610,50);flow.Move(d,900,50);
+                });
+                int revision=session.Revision;
+                var child=MOCFlowBuilder.ExtractLinearContent(session,page.RootContent,
+                    new[]{b,c},"AI子流程");
+                Check(session.Revision==revision+1,"subflow extract was not one MEM transaction");
+                var root=session.GetSnapshot().Find(page.RootContent.Id);
+                var extracted=session.GetSnapshot().Find(child.Id);
+                var parentWiring=MOLWiringCodec.Get(root);
+                var childWiring=MOLWiringCodec.Get(extracted);
+                Check(parentWiring.Blocks.Count==3&&parentWiring.Links.Count==2&&
+                    childWiring.Blocks.Count==2&&childWiring.Links.Count==1&&
+                    root.References.Any(r=>r.TargetId==child.Id)&&
+                    extracted.Ports.Count==2,
+                    "extract did not make a real MEMContent with Control public ports and reference");
+                var call=parentWiring.Blocks.Single(x=>
+                    x.CapabilityId=="moc.invoke:"+child.Id.ToString("N"));
+                Check(parentWiring.Links.Any(l=>l.Source.BlockId==a&&l.Target.BlockId==call.Id)&&
+                    parentWiring.Links.Any(l=>l.Source.BlockId==call.Id&&l.Target.BlockId==d),
+                    "parent Control boundary links were not reconnected");
+                int count=0;
+                var resolver=new TestResolver()
+                    .Register("acquire",(ctx,t)=>{Interlocked.Increment(ref count);return Task.FromResult((object)1);})
+                    .Register("inspect",(ctx,t)=>{Interlocked.Increment(ref count);return Task.FromResult((object)2);})
+                    .Register("classify",(ctx,t)=>{Interlocked.Increment(ref count);return Task.FromResult((object)3);})
+                    .Register("save",(ctx,t)=>{Interlocked.Increment(ref count);return Task.FromResult((object)4);});
+                var build=new MOCBuildService().Build(session.GetSnapshot(),page.RootContent.Id,resolver);
+                Check(build.Succeeded,"real subflow did not compile: "+
+                    string.Join(",",build.Diagnostics.Select(x=>x.Code+"="+x.Message)));
+                MOCTraceView trace;
+                var result=Execute(build.Plan,null,out trace);
+                Check(result.State==MRKFlowState.Completed&&count==4&&
+                    build.Plan.SourceMap.Find(b).Any(origin=>
+                        origin.CallPath.Count==1&&origin.CallPath[0]==call.Id&&
+                        origin.ContentAddress.ObjectId==child.Id),
+                    "MRK did not execute inlined Content with correct SourceMap CallPath");
+                string path=System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                    "moc-extract-"+Guid.NewGuid().ToString("N")+".cxproj");
+                try
+                {
+                    session.SaveAs(path);
+                    var reopened=MEMEngineering.Open(path);
+                    try
+                    {
+                        var after=MOLWiringCodec.Get(reopened.GetSnapshot().Find(page.RootContent.Id));
+                        Check(after.Blocks.Count==3&&
+                            reopened.GetSnapshot().Find(child.Id)!=null,
+                            "real file lost extracted Content and call");
+                    }
+                    finally{reopened.Close(true);}
+                }
+                finally
+                {
+                    if(System.IO.File.Exists(path))System.IO.File.Delete(path);
+                    if(System.IO.File.Exists(path+".cx-lock"))
+                        System.IO.File.Delete(path+".cx-lock");
+                }
+                Check(session.Undo().Success&&
+                    session.GetSnapshot().Find(child.Id)==null&&
+                    MOLWiringCodec.Get(session.GetSnapshot().Find(page.RootContent.Id))
+                        .Blocks.Count==4,
+                    "extract undo did not restore original V2 flow atomically");
+                Check(session.Redo().Success&&
+                    session.GetSnapshot().Find(child.Id)!=null,
+                    "extract redo did not restore referenced Content atomically");
+            }
+            finally{session.Close(true);}
         }
 
         private static void V2TypedParameterConfiguration()
