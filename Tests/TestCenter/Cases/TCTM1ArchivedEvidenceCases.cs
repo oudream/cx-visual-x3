@@ -21,10 +21,10 @@ namespace CxVisual.TestCenter.Cases
             var test = new TCTTestContext(default(System.Threading.CancellationToken), 12, attempt, store);
             test.AssertTrue(true, "Actual owner returned boolean", true, true);
             test.ObserveStructured("Geometry", "Contains", "inside=" + actual,
-                "CxRect2D", "Geometry/CxRect2D.Contains", null,
+                "FGERect2D", "Geometry/FGERect2D.Contains", null,
                 Encoding.UTF8.GetBytes(actual ? "inside" : "outside"), "text/plain");
             var descriptor = new TCTTestCaseDescriptor(id, "Actual geometry snapshot",
-                TCTTestAspect.Foundation, "Geometry", "Unmapped", "Unmapped", "CxRect2D");
+                TCTTestAspect.Foundation, "Geometry", "Unmapped", "Unmapped", "FGERect2D");
             return TCTTestCaseResult.FromTransport(descriptor, TCTTestStatus.Passed,
                 TimeSpan.Zero, "", test.Assertions, test.Observations, attempt, test.Artifacts);
         }
@@ -85,9 +85,9 @@ namespace CxVisual.TestCenter.Cases
             TCTTestAspect.Foundation, "TestFramework", ObjectId = "TCTTestResultRepository")]
         public static void FullEvidenceSurvivesOriginalCleanup(TCTTestContext test)
         {
-            var geometry = new CxRect2D(0, 0, 100, 80);
-            bool inside = geometry.Contains(new CxPoint2D(25, 30));
-            bool outside = geometry.Contains(new CxPoint2D(125, 30));
+            var geometry = new FGERect2D(0, 0, 100, 80);
+            bool inside = geometry.Contains(new FGEPoint2D(25, 30));
+            bool outside = geometry.Contains(new FGEPoint2D(125, 30));
             test.AssertTrue(inside && !outside, "生产Owner给出两组真实输出", true, true);
             string leftId = Guid.NewGuid().ToString("N"), rightId = Guid.NewGuid().ToString("N");
             string liveLeft = TCTTestArtifactStore.RunRoot(leftId);

@@ -49,7 +49,7 @@ namespace CxVisual.TestCenter.Cases
                 "Symbol实例选择身份必须含使用路径", true,
                 instance.Address == null ? "Missing" : instance.Address.ToString());
             Guid detector = scene.First(x => x.Name == "Detector").Id;
-            Guid? hit = CxSceneProjection.HitTest(scene, new CxPoint2D(60, 75));
+            Guid? hit = CxSceneProjection.HitTest(scene, new FGEPoint2D(60, 75));
             context.AssertEqual((Guid?)detector, hit, "原位置命中真实元素");
 
             CxVisualEditor editor = new CxVisualEditor(document);
@@ -57,9 +57,9 @@ namespace CxVisual.TestCenter.Cases
             context.AssertTrue(moved.Success, "工程Move已提交", true, moved.Success);
             IList<CxSceneItem> updated = editor.Scene;
             context.AssertEqual((Guid?)null,
-                CxSceneProjection.HitTest(updated, new CxPoint2D(60, 75)), "旧位置不再命中");
+                CxSceneProjection.HitTest(updated, new FGEPoint2D(60, 75)), "旧位置不再命中");
             context.AssertEqual((Guid?)detector,
-                CxSceneProjection.HitTest(updated, new CxPoint2D(510, 510)), "新位置命中");
+                CxSceneProjection.HitTest(updated, new FGEPoint2D(510, 510)), "新位置命中");
             context.Observe("Geometry", "真实Visual投影",
                 "DocumentRevision=" + document.Revision + "; Detector moved (50,65) => (500,500)");
             context.Observe("ObjectTree", "场景对象归属",

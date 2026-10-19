@@ -30,11 +30,11 @@ namespace CxVisual.TestCenter.Cases
         {
             if (catalog == null) throw new ArgumentNullException("catalog");
             Add(catalog, "F-GEO-001", "Rectangle Contains 边界", TCTTestAspect.Foundation,
-                "Geometry", "CA-VIS-01", "CAP-GEOMETRY-CONTAINS", "CxRect2D", Contains);
+                "Geometry", "CA-VIS-01", "CAP-GEOMETRY-CONTAINS", "FGERect2D", Contains);
             Add(catalog, "F-GEO-002", "Rectangle Intersects 接触边界", TCTTestAspect.Foundation,
-                "Geometry", "CA-VIS-01", "CAP-GEOMETRY-INTERSECTS", "CxRect2D", Intersects);
+                "Geometry", "CA-VIS-01", "CAP-GEOMETRY-INTERSECTS", "FGERect2D", Intersects);
             Add(catalog, "F-GEO-003", "Affine2D 平移变换", TCTTestAspect.Foundation,
-                "Geometry", "CA-VIS-01", "CAP-GEOMETRY-TRANSFORM", "CxAffine2D", Transform);
+                "Geometry", "CA-VIS-01", "CAP-GEOMETRY-TRANSFORM", "FGETransform2D", Transform);
             Add(catalog, "M-OBJ-001", "六对象 Ownership 组织", TCTTestAspect.Mechanism,
                 "Object / Ownership", "CA-ORG-01", "CAP-ORG-OWNERSHIP", "MEMEngineeringSession", Ownership);
             Add(catalog, "M-OBJ-002", "原子提交失败回滚", TCTTestAspect.Mechanism,
@@ -58,18 +58,18 @@ namespace CxVisual.TestCenter.Cases
 
         private static void Contains(TCTTestContext context)
         {
-            CxRect2D rect = new CxRect2D(10, 20, 20, 30);
-            context.AssertTrue(rect.Contains(new CxPoint2D(10, 20)), "左上边界包含", true, rect.Contains(new CxPoint2D(10, 20)));
-            context.AssertTrue(rect.Contains(new CxPoint2D(30, 50)), "右下边界包含", true, rect.Contains(new CxPoint2D(30, 50)));
-            context.AssertTrue(!rect.Contains(new CxPoint2D(31, 50)), "界外点排除", false, rect.Contains(new CxPoint2D(31, 50)));
-            context.Observe("Geometry", "Rectangle", "X=10 Y=20 Width=20 Height=30; 边界与外部点命中已由生产CxRect2D计算");
+            FGERect2D rect = new FGERect2D(10, 20, 20, 30);
+            context.AssertTrue(rect.Contains(new FGEPoint2D(10, 20)), "左上边界包含", true, rect.Contains(new FGEPoint2D(10, 20)));
+            context.AssertTrue(rect.Contains(new FGEPoint2D(30, 50)), "右下边界包含", true, rect.Contains(new FGEPoint2D(30, 50)));
+            context.AssertTrue(!rect.Contains(new FGEPoint2D(31, 50)), "界外点排除", false, rect.Contains(new FGEPoint2D(31, 50)));
+            context.Observe("Geometry", "Rectangle", "X=10 Y=20 Width=20 Height=30; 边界与外部点命中已由生产FGERect2D计算");
         }
 
         private static void Intersects(TCTTestContext context)
         {
-            CxRect2D rect = new CxRect2D(10, 20, 20, 30);
-            bool overlaps = rect.Intersects(new CxRect2D(20, 30, 10, 10));
-            bool touchesOnly = rect.Intersects(new CxRect2D(30, 30, 5, 10));
+            FGERect2D rect = new FGERect2D(10, 20, 20, 30);
+            bool overlaps = rect.Intersects(new FGERect2D(20, 30, 10, 10));
+            bool touchesOnly = rect.Intersects(new FGERect2D(30, 30, 5, 10));
             context.AssertTrue(overlaps, "面积交叠", true, overlaps);
             context.AssertTrue(!touchesOnly, "仅接触边界不是面积交叠", false, touchesOnly);
             context.Observe("Geometry", "Intersects", "重叠矩形(20,30,10,10)；贴边矩形(30,30,5,10)");
@@ -77,7 +77,7 @@ namespace CxVisual.TestCenter.Cases
 
         private static void Transform(TCTTestContext context)
         {
-            CxPoint2D point = new CxAffine2D(1, 0, 0, 1, 30, 40).Transform(new CxPoint2D(2, 4));
+            FGEPoint2D point = new FGETransform2D(1, 0, 0, 1, 30, 40).Transform(new FGEPoint2D(2, 4));
             context.AssertTrue(point.X == 32, "变换X", 32, point.X);
             context.AssertTrue(point.Y == 44, "变换Y", 44, point.Y);
             context.Observe("Geometry", "Affine2D", "(2,4) 经平移(30,40) → (" + point.X + "," + point.Y + ")");

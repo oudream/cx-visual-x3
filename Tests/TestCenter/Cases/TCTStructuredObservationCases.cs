@@ -17,22 +17,22 @@ namespace CxVisual.TestCenter.Cases
     public static class TCTStructuredObservationCases
     {
         [TCTTest("TCT.M1.OBS.001", "真实几何Owner结构化观察通过Worker保存", TCTTestAspect.Foundation,
-            "Geometry / Observations", ObjectId = "CxRect2D")]
+            "Geometry / Observations", ObjectId = "FGERect2D")]
         public static void RealOwnerObservation(TCTTestContext test)
         {
-            CxRect2D rect = new CxRect2D(0, 0, 100, 80);
-            bool actual = rect.Contains(new CxPoint2D(25, 30));
-            test.AssertTrue(actual, "真实CxRect2D.Contains执行结果", true, actual);
+            FGERect2D rect = new FGERect2D(0, 0, 100, 80);
+            bool actual = rect.Contains(new FGEPoint2D(25, 30));
+            test.AssertTrue(actual, "真实FGERect2D.Contains执行结果", true, actual);
             if (test.Attempt == null) throw new InvalidOperationException("This case needs real Attempt");
-            byte[] payload = Encoding.UTF8.GetBytes("CxRect2D(0,0,100,80);Contains(25,30)=True");
+            byte[] payload = Encoding.UTF8.GetBytes("FGERect2D(0,0,100,80);Contains(25,30)=True");
             TCTObservationEnvelope record = test.ObserveStructured(
                 "Geometry", "矩形Contains真实执行", "point=(25,30), inside=true",
-                "CxRect2D", "Foundation.Geometry/CxRect2D.Contains",
+                "FGERect2D", "Foundation.Geometry/FGERect2D.Contains",
                 null, payload, "text/plain");
             test.AssertEqual(TCTObservationEnvelope.CurrentSchema, record.SchemaVersion, "观察版本");
             test.AssertEqual(test.AttemptId, record.AttemptId, "观察Attempt");
             test.AssertEqual(test.RunId, record.RunId, "观察Run");
-            test.AssertEqual("CxRect2D", record.SourceObjectId, "真实Owner对象");
+            test.AssertEqual("FGERect2D", record.SourceObjectId, "真实Owner对象");
             TCTObservationEnvelope replay = TCTObservationCodec.Replay(
                 test.Observations.Last().Evidence,
                 new TCTTestArtifactStore(TCTTestArtifactStore.RunRoot(test.RunId)),
