@@ -68,6 +68,7 @@ namespace CxVisual.Studio
             LogicHost.SelectionChanged += (sender,args)=>{
                 _logicSelected=args.BlockIds.Count==1?(Guid?)args.BlockIds[0]:null;
                 LogicInfo.Text="选中 "+args.BlockIds.Count+" 个节点；Ctrl增减、空白框选、拖动批量移动。";
+                RefreshFlowInspector();
             };
             PreviewKeyDown += OnFlowShortcuts;
             LogicHost.PortLinkRejected += (sender,args) =>
@@ -518,6 +519,7 @@ namespace CxVisual.Studio
             _logicSelected=null;
             LogicHost.ResetLinkSelection();
             LogicHost.RetainValidSelection();
+            RefreshFlowInspector();
         }
         private void OnCreateLogicDemo(object sender,RoutedEventArgs args)
         {
@@ -1190,8 +1192,9 @@ namespace CxVisual.Studio
                 _logicOverlay.Clear();
                 LogicHost.RuntimeStates=_logicOverlay.Snapshot();
                 engine=new MRKExecutionEngine(new FCRWorkerOptions(3,64));
-                _logicFlow=engine.StartFlow(compiled.Plan,
-                    new Dictionary<string,object>{{"accepted",true}});
+                var inputs=new Dictionary<string,object>(compiled.InputDefaults,StringComparer.Ordinal);
+                inputs["accepted"]=true;
+                _logicFlow=engine.StartFlow(compiled.Plan,inputs);
                 long cursor=0;
                 Action update=()=>
                 {
