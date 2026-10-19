@@ -129,6 +129,9 @@ namespace CxVisual.Mechanism.Visual
                 if(node is MRCGroup)return node;
             return parent;
         }
+        /// <summary>开发者与WPF使用相同编辑入口，修改一次即产生一条工程Undo记录。</summary>
+        public MTCEditResult<bool> EditHandle(MVIVisualHandle handle,double worldX,double worldY)
+        {Demand();return MVIVisualEditing.Edit(this,handle,worldX,worldY);}
         public MTCEditResult<bool> Move(Guid id, double x, double y)
         {
             int revision=Document.Revision;
