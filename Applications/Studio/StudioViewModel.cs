@@ -239,6 +239,34 @@ namespace CxVisual.Studio
             if(item==null)throw new InvalidOperationException("组件引用请先打开定义进行修改");
             return item;
         }
+        /// <summary>六类WPF Widget共享MPM定义；一次提交内容/选项/范围/状态，撤销只需一步。</summary>
+        public MTCEditResult<bool> ConfigureVisualWidget(string content,string options,
+            double minimum,double maximum,bool enabled,string tooltip)
+        {
+            MRCWidgetElement widget=SelectedVisualDefinition() as MRCWidgetElement;
+            if(widget==null)throw new InvalidOperationException("请选择Widget图元");
+            if(content==null||options==null||tooltip==null||
+                content.Length>8192||options.Length>8192||tooltip.Length>2048||
+                double.IsNaN(minimum)||double.IsNaN(maximum)||
+                double.IsInfinity(minimum)||double.IsInfinity(maximum)||
+                minimum>maximum||options.Split('|').Length>128)
+                throw new ArgumentException("Widget配置范围错误");
+            int revision=ProjectSession.Revision;
+            MTCEditResult<bool> result=ProjectSession.Edit("配置可视控件",revision,e=>
+            {
+                e.SetBinding(widget,"content",MPMBinding.Literal(MPMValue.String(content)));
+                e.SetBinding(widget,"options",MPMBinding.Literal(MPMValue.String(options)));
+                e.SetBinding(widget,"minimum",MPMBinding.Literal(MPMValue.Number(minimum)));
+                e.SetBinding(widget,"maximum",MPMBinding.Literal(MPMValue.Number(maximum)));
+                e.SetBinding(widget,"enabled",MPMBinding.Literal(MPMValue.Boolean(enabled)));
+                e.SetBinding(widget,"tooltip",MPMBinding.Literal(MPMValue.String(tooltip)));
+                return true;
+            });
+            Status=result.Success?"Widget配置已保存 | Revision "+result.Revision:
+                result.ErrorCode+": "+result.Message;
+            if(result.Success)NotifyScene();
+            return result;
+        }
         public void BindVisualVariable(string property,string variable)
         {
             if(property!="visible"&&property!="x"&&property!="y"&&
