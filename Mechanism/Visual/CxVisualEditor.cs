@@ -18,6 +18,7 @@ namespace CxVisual.Mechanism.Visual
         private int _sceneRevision=-1;
         private IMDSExternalBindingResolver _runtimeSource;
         private double _runtimeElapsedMs;
+        private bool _runtimeEnabled;
         public void SetRuntimeFrame(IMDSExternalBindingResolver source,double elapsedMilliseconds)
         {
             Demand();
@@ -25,9 +26,17 @@ namespace CxVisual.Mechanism.Visual
                 elapsedMilliseconds<0)throw new ArgumentOutOfRangeException("elapsedMilliseconds");
             _runtimeSource=source;
             _runtimeElapsedMs=elapsedMilliseconds;
+            _runtimeEnabled=true;
             _scene=null; // 仅重投影运行外观；调用方自主安排UI帧，不触发工程Changed和Revision
         }
-        public void ClearRuntimeFrame(){SetRuntimeFrame(null,0);}
+        public void ClearRuntimeFrame()
+        {
+            Demand();
+            _runtimeEnabled=false;
+            _runtimeSource=null;
+            _runtimeElapsedMs=0;
+            _scene=null;
+        }
 
         private Guid? _sceneRoot;
         public CxVisualEditor(MEMEngineeringSession session)
@@ -50,8 +59,12 @@ namespace CxVisual.Mechanism.Visual
         public bool CanUndo { get { return Document.CanUndo; } }
         public bool CanRedo { get { return Document.CanRedo; } }
         public ReadOnlyCollection<CxSceneItem> Scene
-        {get{Demand();if(_scene==null||_sceneRevision!=Document.Revision||_sceneRoot!=CurrentResourceId){_sceneRoot=CurrentResourceId;int revision=Document.Revision;_scene=CurrentResourceId.HasValue?CxSceneProjection.ProjectResource(Document,CurrentResourceId.Value,
-                _runtimeSource,_runtimeElapsedMs):new List<CxSceneItem>().AsReadOnly();_sceneRevision=revision;}return _scene;}}
+        {get{Demand();if(_scene==null||_sceneRevision!=Document.Revision||_sceneRoot!=CurrentResourceId){_sceneRoot=CurrentResourceId;int revision=Document.Revision;_scene=CurrentResourceId.HasValue?
+                (_runtimeEnabled?
+                    CxSceneProjection.ProjectResource(Document,CurrentResourceId.Value,
+                        _runtimeSource,_runtimeElapsedMs):
+                    CxSceneProjection.ProjectResource(Document,CurrentResourceId.Value)):
+                new List<CxSceneItem>().AsReadOnly();_sceneRevision=revision;}return _scene;}}
         public bool Select(Guid? id){Demand();if(id.HasValue&&!Route(MVIInteractionKind.Select,id.Value))return false;SelectedId=id;RaiseChanged();return true;}
         private bool Route(MVIInteractionKind kind,Guid target)
         {
