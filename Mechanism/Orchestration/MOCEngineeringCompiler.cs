@@ -314,6 +314,16 @@ namespace CxVisual.Mechanism.Orchestration
                 new MOLBlockEndpoint(target,inPort),kind);
             _links.Add(link);return link.Id;
         }
+        /// <summary>G05a：Control出口基于上游结果判断，条件只属于原有Logic边。</summary>
+        public Guid ConnectConditional(Guid source,string outPort,Guid target,string inPort,
+            string guard)
+        {
+            if(guard==null)throw new ArgumentNullException("guard");
+            var link=new MOLLink(Guid.NewGuid(),new MOLBlockEndpoint(source,outPort),
+                new MOLBlockEndpoint(target,inPort),MPCPortKind.Control,guard);
+            _links.Add(link);
+            return link.Id;
+        }
         public void Disconnect(Guid linkId)
         {
             int removed=_links.RemoveAll(x=>x.Id==linkId);
@@ -792,6 +802,30 @@ namespace CxVisual.Mechanism.Orchestration
             {return _items.TryGetValue(flowId,out result);}
         }
 
+        /// <summary>受限布尔/标量Switch条件。执行上下文读取真实上游StepResult，绝不执行任意表达式。</summary>
+        private static bool EvaluateWiringGuard(MRKExecutionContext context,
+            string producer,string guard,IReadOnlyList<string> alternatives)
+        {
+            object value;
+            if(!context.TryGetResult(producer,out value))
+                throw new InvalidOperationException("moc.branch.result_unavailable:"+producer);
+            if(guard=="bool:true"||guard=="bool:false")
+            {
+                if(!(value is bool))throw new InvalidOperationException("moc.branch.bool_required:"+producer);
+                return (bool)value==(guard=="bool:true");
+            }
+            if(value==null)throw new InvalidOperationException("moc.branch.null_result");
+            if(!(value is string||value is bool||value is int||value is long||
+                value is double||value is float||value is decimal))
+                throw new InvalidOperationException("moc.branch.scalar_required");
+            string actual=Convert.ToString(value,CultureInfo.InvariantCulture);
+            if(guard.StartsWith("case:",StringComparison.Ordinal))
+                return string.Equals(actual,guard.Substring(5),StringComparison.Ordinal);
+            if(guard=="default")
+                return !alternatives.Any(x=>string.Equals(actual,x,StringComparison.Ordinal));
+            throw new InvalidOperationException("moc.branch.unknown_guard");
+        }
+
         // Stage 2: V2自由连接实际参与MRK依赖及数据绑定；复杂分支/循环不做假执行。
         private static MOCCompiledPlan CompileWiring(MEMProjectSnapshot snapshot, MEMNodeSnapshot entry,
             Guid[] instancePath, MOLWiringDefinition wiring, IMRKCapabilityResolver resolver)
@@ -808,6 +842,20 @@ namespace CxVisual.Mechanism.Orchestration
                 var entering=wiring.Links.Where(x=>x.Target.BlockId==block.Id).ToArray();
                 var depends=entering.Select(x=>stepIds[x.Source.BlockId])
                     .Distinct(StringComparer.Ordinal).ToArray();
+                var incomingControl=entering.Where(l=>l.Kind==MPCPortKind.Control).ToArray();
+                Func<MRKExecutionContext,bool> branchCondition=null;
+                if(incomingControl.Length==1&&incomingControl[0].ConditionId.Length>0)
+                {
+                    var guardedLink=incomingControl[0];
+                    string sourceStep=stepIds[guardedLink.Source.BlockId];
+                    string guard=guardedLink.ConditionId;
+                    string[] cases=wiring.Links.Where(l=>l.Source.BlockId==guardedLink.Source.BlockId&&
+                        l.Kind==MPCPortKind.Control&&
+                        l.ConditionId.StartsWith("case:",StringComparison.Ordinal))
+                        .Select(l=>l.ConditionId.Substring(5)).ToArray();
+                    branchCondition=ctx=>EvaluateWiringGuard(ctx,sourceStep,guard,cases);
+                }
+                bool allowSkippedJoin=incomingControl.Length>1;
                 var inputs=new List<MRKExecutionInput>();
                 foreach(var link in entering.Where(x=>x.Kind==MPCPortKind.Data))
                 {
@@ -900,9 +948,11 @@ namespace CxVisual.Mechanism.Orchestration
                 }
                 requests.Add(childId==null?
                     new MRKStepCompileRequest(stepIds[block.Id],block.CapabilityId,
-                        depends,inputs):
+                        depends,inputs,condition:branchCondition,
+                        allowSkippedDependencies:allowSkippedJoin):
                     new MRKStepCompileRequest(stepIds[block.Id],null,
-                        depends,inputs,subflowId:childId));
+                        depends,inputs,condition:branchCondition,
+                        allowSkippedDependencies:allowSkippedJoin,subflowId:childId));
                 origins.Add(new MOCStepOrigin(stepIds[block.Id],
                     new MRIObjectAddress(snapshot.ProjectId,entry.StorageRootId,entry.Id,instancePath),
                     block.Id,new Guid[0],null,"Action"));
