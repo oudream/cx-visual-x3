@@ -54,6 +54,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         {
             SaveLoadAndIdentity();
             V2WiringRoundtrip();
+            V2TypedParameterConfiguration();
             V2LayoutContract();
             V2BulkEditingClipboard();
             V2WiringCompileRun();
@@ -548,6 +549,90 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 if(System.IO.File.Exists(path))System.IO.File.Delete(path);
                 if(System.IO.File.Exists(path+".cx-lock"))System.IO.File.Delete(path+".cx-lock");
             }
+        }
+
+        private static void V2TypedParameterConfiguration()
+        {
+            var session=MEMEngineering.Create("G04节点参数与类型化端口");
+            var page=session.AddPage("参数页");
+            try
+            {
+                Guid first=Guid.Empty,second=Guid.Empty;
+                MOCFlowBuilder.Edit(session,page.RootContent,b=>{
+                    first=b.Step("acquire");
+                    second=b.Step("inspect");
+                    b.AddPort(second,new MPCPortDescriptor("Threshold",
+                        MPCPortDirection.Input,"double",MPCPortKind.Data));
+                    b.AddPort(second,new MPCPortDescriptor("Mode",
+                        MPCPortDirection.Input,"string",MPCPortKind.Data));
+                    b.Connect(first,"Done",second,"Start");
+                    b.SetParameter(second,"Threshold","2.25");
+                    b.SetParameter(second,"Mode","Fast");
+                });
+                var flow=MOLWiringCodec.Get(session.GetSnapshot().Find(page.RootContent.Id));
+                Check(flow.Parameters[second].Count==2&&
+                    flow.Parameters[second]["Threshold"]=="2.25",
+                    "typed parameter did not persist in V2 Logic");
+                var decoded=MOLWiringCodec.Deserialize(MOLWiringCodec.Serialize(flow));
+                Check(decoded.Parameters[second]["Mode"]=="Fast",
+                    "V2 codec parameter roundtrip failed");
+                var snapshot=MOCWiringFragment.Capture(flow,new[]{second});
+                var fragment=MOCWiringFragment.FromPayload(snapshot.ToPayload());
+                Check(fragment.Parameters[second]["Mode"]=="Fast",
+                    "clipboard lost typed parameters");
+                IReadOnlyDictionary<Guid,Guid> newIds=null;
+                MOCFlowBuilder.Edit(session,page.RootContent,b=>
+                    newIds=b.Paste(fragment,80,40));
+                var pasted=MOLWiringCodec.Get(session.GetSnapshot().Find(page.RootContent.Id));
+                Check(newIds.Count==1&&newIds[second]!=second&&
+                    pasted.Parameters[newIds[second]]["Threshold"]=="2.25",
+                    "clipboard pasted old ID or lost values");
+                Check(session.Undo().Success&&
+                    !MOLWiringCodec.Get(session.GetSnapshot().Find(page.RootContent.Id))
+                        .Parameters.ContainsKey(newIds[second]),
+                    "parameter clipboard paste was not atomic Undo");
+                // 未连线的Data Port字面量参与MOC→MRK输入绑定，不只是保存在UI。
+                var resolver=new TestResolver()
+                    .Register("acquire",(c,t)=>Task.FromResult((object)1))
+                    .Register("inspect",(c,t)=>Task.FromResult((object)2));
+                var compiled=new MOCBuildService().Build(session.GetSnapshot(),
+                    page.RootContent.Id,resolver);
+                Check(compiled.Succeeded&&compiled.Plan.InputDefaults.Count==2&&
+                    compiled.Plan.InputDefaults.Values.OfType<double>().Single()==2.25,
+                    "MOC did not compile typed defaults for runtime");
+                MOCTraceView trace;
+                var running=Execute(compiled.Plan,
+                    compiled.Plan.InputDefaults.ToDictionary(k=>k.Key,k=>k.Value),
+                    out trace);
+                Check(running.State==MRKFlowState.Completed&&trace.Steps.Count>0,
+                    "MRK did not execute configured input defaults");
+                int revision=session.Revision;
+                bool rejected=false;
+                try{MOCFlowBuilder.Edit(session,page.RootContent,b=>
+                    b.SetParameter(second,"Threshold","not-a-double"));}
+                catch(InvalidOperationException){rejected=true;}
+                Check(rejected&&session.Revision==revision,
+                    "invalid typed parameter was not atomic");
+                MOCFlowBuilder.Edit(session,page.RootContent,b=>
+                    b.ReplacePort(second,new MPCPortDescriptor("Mode",
+                        MPCPortDirection.Input,"string",MPCPortKind.Data)));
+                revision=session.Revision;rejected=false;
+                try{MOCFlowBuilder.Edit(session,page.RootContent,b=>
+                    b.RemovePort(first,"Done"));}
+                catch(InvalidOperationException){rejected=true;}
+                Check(rejected&&session.Revision==revision,
+                    "in-use Control Port removal wrongly committed");
+                MOCFlowBuilder.Edit(session,page.RootContent,b=>
+                    b.RemoveParameter(second,"Threshold"));
+                Check(!MOLWiringCodec.Get(session.GetSnapshot().Find(page.RootContent.Id))
+                    .Parameters[second].ContainsKey("Threshold"),
+                    "parameter delete did not persist");
+                Check(session.Undo().Success&&
+                    MOLWiringCodec.Get(session.GetSnapshot().Find(page.RootContent.Id))
+                    .Parameters[second].ContainsKey("Threshold"),
+                    "parameter delete Undo failed");
+            }
+            finally{session.Close(true);}
         }
 
         private static void V2BulkEditingClipboard()
