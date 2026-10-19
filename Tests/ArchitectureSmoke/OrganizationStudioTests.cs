@@ -170,6 +170,13 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     p.MemberId=="Start"&&p.Direction==MPCPortDirection.Input);
                 Check(!flowCanvas.BeginPortDrag(toPort.Center),
                     "Input Port incorrectly allowed as mouse drag source");
+                // Escape/ResetLinkSelection只能取消预览，不能残留提交边。
+                Check(flowCanvas.BeginPortDrag(fromPort.Center),
+                    "Port cancellation setup failed");
+                flowCanvas.ResetLinkSelection();
+                Check(!flowCanvas.CompletePortDrag(toPort.Center)&&
+                    MOLWiringCodec.Get(reopened.GetSnapshot().Find(active.RootContent.Id))
+                    .Links.Count==0,"cancelled port drag unexpectedly committed a link");
                 Check(flowCanvas.BeginPortDrag(fromPort.Center),
                     "Output Port geometry was not hit-testable");
                 Check(!flowCanvas.CompletePortDrag(fromPort.Center),
@@ -195,6 +202,13 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 var origin=new Point(previewBlock.X+previewBlock.Width/2,
                     previewBlock.Y+12);
                 var destination=new Point(origin.X+85,origin.Y+38);
+                Check(flowCanvas.BeginBlockDrag(origin),"WPF node cancel setup failed");
+                flowCanvas.UpdateBlockDrag(destination);
+                flowCanvas.ResetLinkSelection();
+                Check(!flowCanvas.CompleteBlockDrag(destination)&&
+                    !MOLWiringCodec.Get(reopened.GetSnapshot().Find(active.RootContent.Id))
+                        .Positions.ContainsKey(movedId),
+                    "cancelled WPF block drag wrote engineering position");
                 Check(flowCanvas.BeginBlockDrag(origin),"WPF node body could not begin drag");
                 flowCanvas.UpdateBlockDrag(destination);
                 Check(flowCanvas.CompleteBlockDrag(destination),
