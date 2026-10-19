@@ -555,6 +555,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Click(window,"添加页面");
                 var xraySession=(MEMEngineeringSession)Get(vm,"ProjectSession");
                 var xrayPage=xraySession.Project.Pages.Last();
+                ((TabItem)window.FindName("FlowTab")).IsSelected=true;Pump();
                 Click(window,"创建完整X-Ray双子流程");
                 var xrayRoot=xraySession.GetSnapshot().Find(xrayPage.RootContent.Id);
                 var xrayFlow=MOLWiringCodec.Get(xrayRoot);
