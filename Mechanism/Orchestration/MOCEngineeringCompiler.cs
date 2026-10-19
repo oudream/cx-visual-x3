@@ -191,6 +191,7 @@ namespace CxVisual.Mechanism.Orchestration
         private readonly IReadOnlyList<MOLSelectionGroup> _groups;
         private readonly IReadOnlyDictionary<Guid,IReadOnlyDictionary<string,string>> _parameters;
         private readonly IReadOnlyDictionary<Guid,MOLStepPolicy> _policies;
+        private readonly IReadOnlyDictionary<Guid,MOLStateMachineDefinition> _stateMachines;
         private readonly IReadOnlyDictionary<Guid,IReadOnlyList<MPCPortDescriptor>> _ports;
         private readonly IReadOnlyDictionary<Guid,MOLBlockPosition> _positions;
         private MOCWiringFragment(MOLWiringDefinition definition,Guid[] selected)
@@ -205,6 +206,9 @@ namespace CxVisual.Mechanism.Orchestration
                     g=>g.Key,g=>g.Value));
             _policies=new ReadOnlyDictionary<Guid,MOLStepPolicy>(
                 definition.Policies.Where(g=>ids.Contains(g.Key)).ToDictionary(
+                    g=>g.Key,g=>g.Value));
+            _stateMachines=new ReadOnlyDictionary<Guid,MOLStateMachineDefinition>(
+                definition.StateMachines.Where(g=>ids.Contains(g.Key)).ToDictionary(
                     g=>g.Key,g=>g.Value));
             _ports=new ReadOnlyDictionary<Guid,IReadOnlyList<MPCPortDescriptor>>(
                 _blocks.ToDictionary(x=>x.Id,x=>definition.Ports[x.Id]));
@@ -230,6 +234,8 @@ namespace CxVisual.Mechanism.Orchestration
         public IReadOnlyDictionary<Guid,IReadOnlyDictionary<string,string>> Parameters
         {get{return _parameters;}}
         public IReadOnlyDictionary<Guid,MOLStepPolicy> Policies{get{return _policies;}}
+        public IReadOnlyDictionary<Guid,MOLStateMachineDefinition> StateMachines
+        {get{return _stateMachines;}}
         public IReadOnlyDictionary<Guid,IReadOnlyList<MPCPortDescriptor>> Ports {get{return _ports;}}
         public IReadOnlyDictionary<Guid,MOLBlockPosition> Positions {get{return _positions;}}
         /// <summary>受V2 Codec和4MB限制的剪贴板传输格式，绝不作为工程真源保存。</summary>
@@ -241,7 +247,8 @@ namespace CxVisual.Mechanism.Orchestration
             var parameters=_parameters.ToDictionary(p=>p.Key,
                 p=>(IDictionary<string,string>)p.Value.ToDictionary(k=>k.Key,k=>k.Value,StringComparer.Ordinal));
             var wiring=new MOLWiringDefinition(_blocks[0].Id,_blocks,ports,_links,
-                positions,_groups,parameters,_policies.ToDictionary(x=>x.Key,x=>x.Value));
+                positions,_groups,parameters,_policies.ToDictionary(x=>x.Key,x=>x.Value),
+                _stateMachines.ToDictionary(x=>x.Key,x=>x.Value));
             return MOLWiringCodec.Serialize(wiring);
         }
         public static MOCWiringFragment FromPayload(byte[] payload)
@@ -277,6 +284,8 @@ namespace CxVisual.Mechanism.Orchestration
             new Dictionary<Guid,IDictionary<string,string>>();
         private readonly Dictionary<Guid,MOLStepPolicy> _policies=
             new Dictionary<Guid,MOLStepPolicy>();
+        private readonly Dictionary<Guid,MOLStateMachineDefinition> _stateMachines=
+            new Dictionary<Guid,MOLStateMachineDefinition>();
         private Guid _entry;
         private MOCFlowBuilder(MOLWiringDefinition current)
         {
@@ -290,6 +299,7 @@ namespace CxVisual.Mechanism.Orchestration
             foreach(var pair in current.Parameters)
                 _parameters.Add(pair.Key,pair.Value.ToDictionary(k=>k.Key,k=>k.Value,StringComparer.Ordinal));
             foreach(var pair in current.Policies)_policies.Add(pair.Key,pair.Value);
+            foreach(var pair in current.StateMachines)_stateMachines.Add(pair.Key,pair.Value);
         }
         public Guid LastBlockId{get{return _blocks.Count==0?Guid.Empty:_blocks[_blocks.Count-1].Id;}}
         public Guid Step(MOCCapabilityDescriptor descriptor)
@@ -345,6 +355,7 @@ namespace CxVisual.Mechanism.Orchestration
             _positions.Remove(blockId);
             _parameters.Remove(blockId);
             _policies.Remove(blockId);
+            _stateMachines.Remove(blockId);
             _links.RemoveAll(x=>x.Source.BlockId==blockId||x.Target.BlockId==blockId);
             RemoveGroupMembers(new HashSet<Guid>(new[]{blockId}));
             if(_entry==blockId)_entry=_blocks.Count==0?Guid.Empty:_blocks[0].Id;
@@ -388,6 +399,20 @@ namespace CxVisual.Mechanism.Orchestration
             _ports[blockId]=ports.ToArray();
         }
         /// <summary>执行策略在V2 Logic内事务管理，由MRKExecutionPolicy负责实际执行。</summary>
+        public Guid AddStateMachine(MOLStateMachineDefinition definition)
+        {
+            if(definition==null)throw new ArgumentNullException("definition");
+            Guid id=Step("moc.state-machine");
+            _stateMachines.Add(id,definition);
+            return id;
+        }
+        public void SetStateMachine(Guid blockId,MOLStateMachineDefinition definition)
+        {
+            if(definition==null)throw new ArgumentNullException("definition");
+            if(!_blocks.Any(b=>b.Id==blockId&&b.CapabilityId=="moc.state-machine"))
+                throw new InvalidOperationException("moc.state.block_missing");
+            _stateMachines[blockId]=definition;
+        }
         public void SetWorkflowPolicy(Guid blockId,MOLStepPolicy policy)
         {
             if(policy==null)throw new ArgumentNullException("policy");
@@ -623,7 +648,7 @@ namespace CxVisual.Mechanism.Orchestration
             var removed=new HashSet<Guid>(selected);
             _blocks.RemoveAll(x=>removed.Contains(x.Id));
             _links.RemoveAll(x=>removed.Contains(x.Source.BlockId)||removed.Contains(x.Target.BlockId));
-            foreach(Guid id in selected){_ports.Remove(id);_positions.Remove(id);_parameters.Remove(id);_policies.Remove(id);}
+            foreach(Guid id in selected){_ports.Remove(id);_positions.Remove(id);_parameters.Remove(id);_policies.Remove(id);_stateMachines.Remove(id);}
             RemoveGroupMembers(removed);
             if(removed.Contains(_entry))_entry=_blocks.Count==0?Guid.Empty:_blocks[0].Id;
         }
@@ -649,6 +674,8 @@ namespace CxVisual.Mechanism.Orchestration
                 _parameters.Add(ids[pair.Key],
                     pair.Value.ToDictionary(k=>k.Key,k=>k.Value,StringComparer.Ordinal));
             foreach(var pair in fragment.Policies)_policies.Add(ids[pair.Key],pair.Value);
+            foreach(var pair in fragment.StateMachines)
+                _stateMachines.Add(ids[pair.Key],pair.Value);
             foreach(var group in fragment.Groups)
                 _groups.Add(new MOLSelectionGroup(Guid.NewGuid(),group.Name,
                     group.BlockIds.Select(id=>ids[id])));
@@ -661,7 +688,8 @@ namespace CxVisual.Mechanism.Orchestration
             return new ReadOnlyDictionary<Guid,Guid>(ids);
         }
         public MOLWiringDefinition Build()
-        {return new MOLWiringDefinition(_entry,_blocks,_ports,_links,_positions,_groups,_parameters,_policies);}
+        {return new MOLWiringDefinition(_entry,_blocks,_ports,_links,_positions,_groups,
+            _parameters,_policies,_stateMachines);}
         /// <summary>
         /// G04-F：提取无Data边界的连续Control动作段为真实MEMContent，
         /// 在同一MEM事务中替换为调用节点。Data参数跨Content待独立契约支持，明确拒绝。
@@ -684,6 +712,7 @@ namespace CxVisual.Mechanism.Orchestration
                 definition.Links.Any(l=>l.Kind!=MPCPortKind.Control&&
                     (set.Contains(l.Source.BlockId)||set.Contains(l.Target.BlockId)))||
                 definition.Parameters.Keys.Any(set.Contains)||
+                definition.StateMachines.Keys.Any(set.Contains)||
                 definition.Groups.Any(g=>g.BlockIds.Any(set.Contains)&&
                     g.BlockIds.Any(id=>!set.Contains(id))))
                 throw new InvalidOperationException("moc.extract.unsupported_boundary");
@@ -861,6 +890,7 @@ namespace CxVisual.Mechanism.Orchestration
             var origins=new List<MOCStepOrigin>();
             var inputDefaults=new Dictionary<string,object>(StringComparer.Ordinal);
             var subflowDefinitions=new Dictionary<string,MRKFlowCompileDefinition>(StringComparer.Ordinal);
+            var transientResolver=new MOCResolver(resolver);
             foreach(var block in wiring.Blocks)
             {
                 var entering=wiring.Links.Where(x=>x.Target.BlockId==block.Id).ToArray();
@@ -927,6 +957,23 @@ namespace CxVisual.Mechanism.Orchestration
                     inputDefaults.Add(inputKey,literal);
                 }
                 string childId=null;
+                string executeCapability=block.CapabilityId;
+                if(block.CapabilityId=="moc.state-machine")
+                {
+                    MOLStateMachineDefinition machine;
+                    if(!wiring.StateMachines.TryGetValue(block.Id,out machine))
+                        throw new InvalidOperationException("moc.state.missing_definition");
+                    string inputName="moc.state.events."+block.Id.ToString("N");
+                    executeCapability="moc.internal.state."+block.Id.ToString("N");
+                    var definition=machine;
+                    transientResolver.Register(executeCapability,ctx=>{
+                        object events;
+                        if(!ctx.Inputs.TryGetValue(inputName,out events)||
+                            !(events is IEnumerable<string>))
+                            throw new InvalidOperationException("moc.state.events_input_missing:"+inputName);
+                        return (object)definition.Run((IEnumerable<string>)events);
+                    },typeof(object));
+                }
                 if(block.CapabilityId.StartsWith("moc.invoke:",StringComparison.Ordinal))
                 {
                     if(inputs.Count!=0)
@@ -993,7 +1040,7 @@ namespace CxVisual.Mechanism.Orchestration
                         configuration.Idempotent);
                 }
                 requests.Add(childId==null?
-                    new MRKStepCompileRequest(stepIds[block.Id],block.CapabilityId,
+                    new MRKStepCompileRequest(stepIds[block.Id],executeCapability,
                         depends,inputs,condition:branchCondition,
                         allowSkippedDependencies:allowSkippedJoin,policy:executionPolicy):
                     new MRKStepCompileRequest(stepIds[block.Id],null,
@@ -1001,15 +1048,16 @@ namespace CxVisual.Mechanism.Orchestration
                         allowSkippedDependencies:allowSkippedJoin,subflowId:childId));
                 origins.Add(new MOCStepOrigin(stepIds[block.Id],
                     new MRIObjectAddress(snapshot.ProjectId,entry.StorageRootId,entry.Id,instancePath),
-                    block.Id,new Guid[0],null,"Action"));
+                    block.Id,new Guid[0],null,
+                    block.CapabilityId=="moc.state-machine"?"StateMachine":"Action"));
             }
             string planId="moc."+snapshot.ProjectId.ToString("N")+"."+
                 entry.Id.ToString("N")+".r"+
                 snapshot.Revision.ToString(CultureInfo.InvariantCulture)+".wired";
             var compiled=subflowDefinitions.Count==0?
-                new MRKExecutionPlanCompiler().Compile(planId,requests,resolver):
+                new MRKExecutionPlanCompiler().Compile(planId,requests,transientResolver):
                 new MRKExecutionOrchestrationCompiler().Compile(planId,
-                    new MOCInlineContentCatalog(planId,requests,subflowDefinitions),resolver);
+                    new MOCInlineContentCatalog(planId,requests,subflowDefinitions),transientResolver);
             if(!compiled.Succeeded)
                 throw new InvalidOperationException("moc.wiring.compile_rejected:"+
                     string.Join(";",compiled.Diagnostics.Select(x=>x.Code+"@"+x.StepId)));
