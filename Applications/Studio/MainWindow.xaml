@@ -142,6 +142,8 @@
                                 <Button Content="水平分布" Tag="horizontal" Click="OnFlowDistribute"/>
                                 <Button Content="垂直分布" Tag="vertical" Click="OnFlowDistribute"/>
                                 <Button Content="自动布局" Click="OnFlowArrange"/>
+                                <TextBox x:Name="FlowExtractName" Width="110" Text="检测子流程"/>
+                                <Button Content="提取可执行Content" Click="OnFlowExtractContent"/>
                             </WrapPanel>
                             <WrapPanel Margin="10,0,10,6">
                                 <Button Content="切换断点" Click="OnFlowToggleBreakpoint"/>

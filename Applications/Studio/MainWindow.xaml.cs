@@ -700,6 +700,26 @@ namespace CxVisual.Studio
             if(_viewModel.ActivePage==null)throw new InvalidOperationException("请先选择页面");
             return _viewModel.ActivePage;
         }
+        private void OnFlowExtractContent(object sender,RoutedEventArgs args)
+        {
+            if(_logicRunning)return;
+            try
+            {
+                var page=GetFlowPage();
+                Guid[] selected=LogicHost.SelectedBlockIds.ToArray();
+                if(selected.Length<2)
+                    throw new InvalidOperationException("至少选择两个连续Control节点");
+                var content=MOCFlowBuilder.ExtractLinearContent(_viewModel.ProjectSession,
+                    page.RootContent,selected,FlowExtractName.Text.Trim());
+                RefreshScene();
+                var call=LogicHost.WiringDefinition.Blocks.Single(b=>
+                    b.CapabilityId=="moc.invoke:"+content.Id.ToString("N"));
+                LogicHost.SetSelection(new[]{call.Id});
+                LogicInfo.Text="已在单次事务中提取可执行Content："+content.Name+
+                    "；保留原Control连线，跨子流程Data映射尚未支持。";
+            }
+            catch(Exception ex){LogicInfo.Text="提取Content被拒绝："+ex.Message;}
+        }
         private void OnFlowSetCapability(object sender,RoutedEventArgs args)
         {
             try
