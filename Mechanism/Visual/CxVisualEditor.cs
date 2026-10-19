@@ -184,6 +184,60 @@ namespace CxVisual.Mechanism.Visual
             return MVIVisualEditing.CommitGeometry(this,shape,after);
         }
         /// <summary>统一属性面板几何编辑，一次原工程事务，禁止原型式直接写字段。</summary>
+        /// <summary>世界坐标对齐与水平分布；嵌套Group由场景变换回推各自父坐标。</summary>
+        public MTCEditResult<bool> Align(IReadOnlyList<Guid> ids,string mode)
+        {
+            Demand();
+            int revision=Document.Revision;
+            if(ids==null||ids.Count<2)
+                return MTCEditResult<bool>.Rejected(revision,"visual.align.selection",
+                    "至少选择两个图元");
+            if(mode!="left"&&mode!="top"&&mode!="centerX"&&
+                mode!="centerY"&&mode!="distributeX")
+                return MTCEditResult<bool>.Rejected(revision,"visual.align.mode",
+                    "Unsupported alignment");
+            var selection=Scene.Where(x=>ids.Contains(x.Id)&&x.IsSelectable)
+                .GroupBy(x=>x.Id).Select(g=>g.First()).ToArray();
+            if(selection.Length!=ids.Distinct().Count()||
+                selection.Any(x=>Document.Find(x.Id) as MRCVisualItem==null))
+                return MTCEditResult<bool>.Rejected(revision,"visual.align.definition",
+                    "Select editable definitions, not reference instances");
+            foreach(CxSceneItem item in selection)
+                if(!Route(MVIInteractionKind.Move,item.Id))
+                    return MTCEditResult<bool>.Rejected(revision,"visual.default_prevented",
+                        "Alignment blocked by interaction policy");
+            double targetLeft=selection.Min(x=>x.Bounds.Left);
+            double targetTop=selection.Min(x=>x.Bounds.Top);
+            double centerX=selection.Average(x=>(x.Bounds.Left+x.Bounds.Right)/2);
+            double centerY=selection.Average(x=>(x.Bounds.Top+x.Bounds.Bottom)/2);
+            var ordered=selection.OrderBy(x=>x.Bounds.Left).ToArray();
+            double step=ordered.Length<2?0:
+                (ordered[ordered.Length-1].Bounds.Left-ordered[0].Bounds.Left)/(ordered.Length-1);
+            return Document.Edit("图元对齐/分布",revision,e=>
+            {
+                for(int i=0;i<selection.Length;i++)
+                {
+                    CxSceneItem item=selection[i];
+                    double dx=0,dy=0;
+                    if(mode=="left")dx=targetLeft-item.Bounds.Left;
+                    if(mode=="top")dy=targetTop-item.Bounds.Top;
+                    if(mode=="centerX")
+                        dx=centerX-(item.Bounds.Left+item.Bounds.Right)/2;
+                    if(mode=="centerY")
+                        dy=centerY-(item.Bounds.Top+item.Bounds.Bottom)/2;
+                    if(mode=="distributeX")
+                    {
+                        int order=Array.IndexOf(ordered,item);
+                        dx=ordered[0].Bounds.Left+step*order-item.Bounds.Left;
+                    }
+                    if(Math.Abs(dx)<1e-9&&Math.Abs(dy)<1e-9)continue;
+                    double x,y;
+                    item.PositionAfterWorldDelta(dx,dy,out x,out y);
+                    e.Move((MRCVisualItem)Document.Find(item.Id),x,y);
+                }
+                return true;
+            });
+        }
         public MTCEditResult<bool> SetGeometry(Guid id,double x,double y,double width,
             double height,double angle)
         {
