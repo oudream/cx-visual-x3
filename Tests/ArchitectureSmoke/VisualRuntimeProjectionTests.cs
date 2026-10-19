@@ -44,6 +44,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 var defaultScene=CxSceneProjection.Project(doc,page.Id);
                 Check(defaultScene.Count==1&&Math.Abs(defaultScene[0].Bounds.X-10)<1e-9,
                     "design mode fallback");
+                Check(Math.Abs(defaultScene[0].Style.Opacity-1)<1e-9,
+                    "static design must not run animation at t=0");
                 var scene=CxSceneProjection.Project(doc,page.Id,source,500);
                 Check(scene.Count==1&&Math.Abs(scene[0].Bounds.X-56)<1e-9,
                     "runtime variable position");
@@ -69,6 +71,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         "editor runtime frame not reflected");
                     editor.ClearRuntimeFrame();
                     Check(Math.Abs(editor.Scene[0].Bounds.X-10)<1e-9,"runtime frame was not cleared");
+                    Check(Math.Abs(editor.Scene[0].Style.Opacity-1)<1e-9,
+                        "editor clear must restore declared static appearance");
                 }
                 Check(doc.Revision==revision,"editor runtime update modified persisted definitions");
                 doc.Close(true); // 显式放弃测试定义；正常用户工程仍保持未保存保护
