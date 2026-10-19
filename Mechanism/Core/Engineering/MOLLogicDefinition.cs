@@ -437,7 +437,6 @@ namespace CxVisual.Mechanism.Core
             if(reached.Count!=Blocks.Count)
                 throw new InvalidOperationException("wiring.unreachable_action");
         }
-        }
     }
     /// <summary>V1(cx.logic.structured/1)原样保留；V2在同一Logic Aspect中原子替换。</summary>
     public static class MOLWiringCodec
