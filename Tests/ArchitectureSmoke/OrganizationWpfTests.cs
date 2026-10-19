@@ -128,6 +128,60 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Check(MPWShapeRenderer.BuildGeometry(previewPath,bezierScene.GeometryToWorld)
                         is StreamGeometry,"drag preview did not use the WPF path renderer");
                     shapeWindow.Close();
+                    // B: 像素与SVG资产均来自真实MEM资源包，WPF实际解码并投影。
+                    string pixelPath=Path.Combine(Path.GetTempPath(),
+                        "cxvisual-wpf-asset-"+Guid.NewGuid().ToString("N")+".png");
+                    string svgPath=Path.Combine(Path.GetTempPath(),
+                        "cxvisual-wpf-asset-"+Guid.NewGuid().ToString("N")+".svg");
+                    try
+                    {
+                        var sourceBitmap=BitmapSource.Create(4,4,96,96,PixelFormats.Bgra32,
+                            null,new byte[4*4*4],4*4);
+                        var png=new PngBitmapEncoder();png.Frames.Add(BitmapFrame.Create(sourceBitmap));
+                        using(var stream=File.Create(pixelPath))png.Save(stream);
+                        File.WriteAllText(svgPath,
+                            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"64\" height=\"32\">"+
+                            "<rect x=\"2\" y=\"4\" width=\"55\" height=\"24\" fill=\"#3498db\"/>"+
+                            "</svg>");
+                        MEMAssetReference rasterAsset=session.AddAsset("Raster Image",pixelPath,"image/png");
+                        MEMAssetReference svgAsset=session.AddAsset("Vector Image",svgPath,"image/svg+xml");
+                        var pageAsset=session.AddPage("Asset gallery");
+                        var assetsGroup=session.AddGroup(pageAsset.RootContent,"Images");
+                        MRCImageElement image=session.AddImage(assetsGroup,"Raster",15,20,90,60);
+                        MRCSvgElement vector=session.AddSvg(assetsGroup,"SVG",145,20,100,65);
+                        session.SetBinding(image,"source",MPMBinding.Resource(rasterAsset.Id));
+                        session.SetBinding(vector,"source",MPMBinding.Resource(svgAsset.Id));
+                        var assetScene=CxSceneProjection.Project(session,pageAsset.Id);
+                        Check(assetScene.Count==2&&assetScene.All(x=>x.AssetId.HasValue),
+                            "MEM source asset ID not projected");
+                        var assetView=new SceneView{Width=310,Height=145};
+                        assetView.SetAssetResolver(id=>session.OpenAsset(id));
+                        assetView.SetScene(assetScene,null);
+                        var assetWindow=new Window{Content=assetView,Width=335,Height=180,
+                            Left=-10000,Top=-10000,ShowInTaskbar=false,ShowActivated=false};
+                        assetWindow.Show();assetView.Measure(new Size(310,145));
+                        assetView.Arrange(new Rect(0,0,310,145));assetView.UpdateLayout();
+                        System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(new Action(()=>{}),
+                            System.Windows.Threading.DispatcherPriority.Render);
+                        Check(assetView.AssetErrors.Count==0&&
+                            VisualTreeHelper.GetDrawing(assetView)!=null,
+                            "real raster/SVG resource decoding or WPF drawing failed");
+                        assetWindow.Close();
+                        bool rejectedUnsafe=false;
+                        using(var input=new MemoryStream(System.Text.Encoding.UTF8.GetBytes(
+                            "<svg xmlns=\"http://www.w3.org/2000/svg\"><script>alert(1)</script></svg>")))
+                        {
+                            try{MPWVisualAssetRenderer.DecodeSvg(input);}
+                            catch(InvalidDataException){rejectedUnsafe=true;}
+                        }
+                        Check(rejectedUnsafe,"SVG script injection must be rejected");
+                    }
+                    finally
+                    {
+                        if(File.Exists(pixelPath))File.Delete(pixelPath);
+                        if(File.Exists(svgPath))File.Delete(svgPath);
+                    }
+
 
                     // 真正WPF Button的托管与交互：设计态仅作选择，预览态只发安全事件。
                     var widgetPage=session.AddPage("Widget gallery");
