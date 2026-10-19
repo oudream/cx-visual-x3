@@ -107,6 +107,25 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     foreach(var item in shapeScene.Where(i=>i.Shape!=null))
                         Check(MPWShapeRenderer.BuildGeometry(item) is StreamGeometry,
                             "renderer fell back to rectangle for "+item.Shape.Kind);
+                    // UI层真的绘制了可交互控制柄，不仅是Visual内部计算了位置。
+                    CxSceneItem bezierScene=shapeScene.First(x=>x.Shape!=null&&
+                        x.Shape.Kind==MRCShapeKind.Bezier);
+                    shapeView.SetScene(shapeScene,bezierScene.Id);
+                    shapeView.UpdateLayout();
+                    System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(new Action(()=>{}),
+                        System.Windows.Threading.DispatcherPriority.Render);
+                    var handleDrawing=VisualTreeHelper.GetDrawing(shapeView);
+                    Check(DeepGeometries(handleDrawing).Count(x=>
+                        x.Geometry is EllipseGeometry)>=5,
+                        "selected Bezier WPF handles were not actually drawn");
+                    var visualHandles=MVIVisualEditing.Handles(bezierScene);
+                    Check(visualHandles.Count(x=>x.Kind==MVIVisualHandleKind.Control1||
+                        x.Kind==MVIVisualHandleKind.Control2)==2,
+                        "Bezier does not expose two separate editable control handles");
+                    var previewPath=FGEPathEditing.MoveHandle(bezierScene.Shape.Geometry,
+                        1,FGEPathHandleKind.Control1,new FGEPoint2D(21,95));
+                    Check(MPWShapeRenderer.BuildGeometry(previewPath,bezierScene.GeometryToWorld)
+                        is StreamGeometry,"drag preview did not use the WPF path renderer");
                     shapeWindow.Close();
 
                     // 真正WPF Button的托管与交互：设计态仅作选择，预览态只发安全事件。
