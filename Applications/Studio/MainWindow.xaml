@@ -68,6 +68,7 @@
                                 <Button Content="自由路径" Tag="Path" Click="OnInsertShape"/>
                                 <Button Content="文字图元" Tag="Text" Click="OnInsertShape"/>
                                 <Button Content="按钮控件" Tag="WidgetButton" Click="OnInsertShape"/>
+                                <Button Content="添加呼吸动画" Click="OnAddBreathingAnimation"/>
                                 <Button Content="预览交互" Click="OnToggleVisualPreview"/>
                             </WrapPanel>
                             <TextBlock x:Name="VisualInfo" Text="选择基础图元工具创建；单击画布选择，拖动预览，松开提交MEM事务。"
