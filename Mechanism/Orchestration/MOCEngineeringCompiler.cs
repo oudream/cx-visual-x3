@@ -461,6 +461,50 @@ namespace CxVisual.Mechanism.Orchestration
             }
             foreach(var pair in updated)_positions[pair.Key]=pair.Value;
         }
+        /// <summary>同一坐标维度均匀分布；只写位置，不改变连接图。</summary>
+        public void Distribute(IEnumerable<Guid> ids,bool horizontal)
+        {
+            Guid[] selected=ResolveSelection(ids);
+            if(selected.Length<3)throw new InvalidOperationException("moc.wiring.distribute_needs_three");
+            var ordered=selected.OrderBy(id=>horizontal?EffectivePosition(id).X:
+                EffectivePosition(id).Y).ThenBy(id=>id).ToArray();
+            double start=horizontal?EffectivePosition(ordered[0]).X:
+                EffectivePosition(ordered[0]).Y;
+            double end=horizontal?EffectivePosition(ordered[ordered.Length-1]).X:
+                EffectivePosition(ordered[ordered.Length-1]).Y;
+            double step=(end-start)/(ordered.Length-1);
+            var updates=new Dictionary<Guid,MOLBlockPosition>();
+            for(int i=0;i<ordered.Length;i++)
+            {
+                var position=EffectivePosition(ordered[i]);
+                double value=start+step*i;
+                updates.Add(ordered[i],horizontal?
+                    new MOLBlockPosition(value,position.Y):
+                    new MOLBlockPosition(position.X,value));
+            }
+            foreach(var pair in updates)_positions[pair.Key]=pair.Value;
+        }
+        /// <summary>矩阵自动排列，无持久Graph、无执行顺序副作用。</summary>
+        public void ArrangeGrid(IEnumerable<Guid> ids)
+        {
+            var selected=new HashSet<Guid>(ResolveSelection(ids));
+            var blocks=_blocks.Where(b=>selected.Contains(b.Id)).ToArray();
+            int cols=Math.Min(4,(int)Math.Ceiling(Math.Sqrt(blocks.Length)));
+            double left=blocks.Min(b=>EffectivePosition(b.Id).X);
+            double top=blocks.Min(b=>EffectivePosition(b.Id).Y);
+            double y=top;
+            var updates=new Dictionary<Guid,MOLBlockPosition>();
+            for(int offset=0;offset<blocks.Length;offset+=cols)
+            {
+                var row=blocks.Skip(offset).Take(cols).ToArray();
+                double rowHeight=row.Max(b=>GetSize(b.Id).Y);
+                for(int j=0;j<row.Length;j++)
+                    updates.Add(row[j].Id,new MOLBlockPosition(left+j*340,y));
+                y+=rowHeight+28;
+            }
+            foreach(var pair in updates)_positions[pair.Key]=pair.Value;
+        }
+
         /// <summary>批量删除块及其边界连接，至少保留一个有效入口节点。</summary>
         public void RemoveMany(IEnumerable<Guid> ids)
         {
