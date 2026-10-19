@@ -573,6 +573,71 @@ namespace CxVisual.Studio
             catch(Exception ex){MessageBox.Show(this,ex.Message,"创建逻辑失败");}
         }
 
+        /// <summary>同一个MEM工程中创建实际X-Ray主流程、两段可执行Content、HMI状态灯。</summary>
+        private void OnCreateXRayDualSubflowDemo(object sender,RoutedEventArgs args)
+        {
+            if(_logicRunning)return;
+            try
+            {
+                var page=GetFlowPage();
+                var session=_viewModel.ProjectSession;
+                var current=session.GetSnapshot().Find(page.RootContent.Id);
+                if(MOLWiringCodec.Get(current)!=null||MOLLogicCodec.Get(current)!=null)
+                    throw new InvalidOperationException("当前页面已有编排，请先新建页面；不能静默覆盖现有流程");
+                Guid acquire=Guid.Empty,ai=Guid.Empty,aiPost=Guid.Empty,cv=Guid.Empty,
+                    cvPost=Guid.Empty,judge=Guid.Empty,result=Guid.Empty;
+                MOCFlowBuilder.Edit(session,page.RootContent,b=>
+                {
+                    acquire=b.Step("Acquire");
+                    ai=b.Step("AI");
+                    aiPost=b.Step("AIReview");
+                    cv=b.Step("CV");
+                    cvPost=b.Step("CVReview");
+                    judge=b.Step("Judge");
+                    result=b.Step("OutputOK");
+                    Guid[] ids={acquire,ai,aiPost,cv,cvPost,judge,result};
+                    for(int i=1;i<ids.Length;i++)
+                    {
+                        b.Connect(ids[i-1],"Done",ids[i],"Start");
+                        b.Move(ids[i],30+i*170,40+(i%2)*50);
+                    }
+                });
+                var aiContent=MOCFlowBuilder.ExtractLinearContent(
+                    session,page.RootContent,new[]{ai,aiPost},
+                    "XRay-AI检测子流程");
+                var cvContent=MOCFlowBuilder.ExtractLinearContent(
+                    session,page.RootContent,new[]{cv,cvPost},
+                    "XRay-传统算法子流程");
+                // 不创建第二份设备模型。HMI图元在同一Page的MEM节点树内。
+                var aiLamp=session.AddRectangle(page.RootContent,"AI检测运行状态",35,255,125,58);
+                var cvLamp=session.AddRectangle(page.RootContent,"传统算法运行状态",215,255,125,58);
+                session.SetVisualStyle(aiLamp,MRCVisualStyle.Solid(MRCColor.Parse("#FF7A8394")));
+                session.SetVisualStyle(cvLamp,MRCVisualStyle.Solid(MRCColor.Parse("#FF7A8394")));
+                BindFlowExampleState(session,aiLamp,ai);
+                BindFlowExampleState(session,cvLamp,cv);
+                var build=new MOCBuildService().Build(
+                    session.GetSnapshot(),page.RootContent.Id,_simulation);
+                RefreshScene();
+                LogicInfo.Text="同一工程已创建采图、AI/传统算法双可执行Content、判定及两个HMI状态灯；"+
+                    "主流程5节点、子流程各2节点；"+
+                    (build.Succeeded?"MOC构建通过，可点击仿真执行并追踪":
+                        "MOC构建失败："+FormatBuildDiagnostics(build));
+            }
+            catch(Exception ex){LogicInfo.Text="创建完整X-Ray示例失败："+ex.Message;}
+        }
+        private static void BindFlowExampleState(MEMEngineeringSession session,
+            MRCVisualItem item,Guid block)
+        {
+            string[] names={"Running","Completed","Failed"};
+            string[] colors={"#FF2778D7","#FF16A34A","#FFDC2626"};
+            var states=new List<MRCVisualStateDefinition>();
+            for(int i=0;i<names.Length;i++)
+                states.Add(new MRCVisualStateDefinition(
+                    MOLVisualTraceBindingResolver.VariableFor(block,names[i]),
+                    MRCVisualStyle.Solid(MRCColor.Parse(colors[i]))));
+            session.SetVisualBehavior(item,new MRCVisualBehaviorDefinition(states:states));
+        }
+
         private void OnCreateWiringDemo(object sender,RoutedEventArgs args)
         {
             if(_logicRunning)return;
@@ -1285,7 +1350,10 @@ namespace CxVisual.Studio
                 new MOCCapabilityDescriptor("CV","传统检测","Vision",
                     new[]{new MPCPortDescriptor("Image",MPCPortDirection.Input,"string",MPCPortKind.Data)}),
                 new MOCCapabilityDescriptor("OutputOK","合格放行","Inspection"),
-                new MOCCapabilityDescriptor("OutputNG","不合格剔除","Inspection")
+                new MOCCapabilityDescriptor("OutputNG","不合格剔除","Inspection"),
+                new MOCCapabilityDescriptor("AIReview","AI后处理","Vision"),
+                new MOCCapabilityDescriptor("CVReview","传统算法后处理","Vision"),
+                new MOCCapabilityDescriptor("Judge","综合结果判定","Inspection")
             };
             public IEnumerable<MOCCapabilityDescriptor> DescribeCapabilities()
             {return _definitions;}
