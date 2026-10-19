@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using CxVisual.Foundation.Geometry;
 using CxVisual.Mechanism.Core;
 using CxVisual.Mechanism.Data.RuntimeData;
@@ -10,6 +11,14 @@ namespace CxVisual.Tests.ArchitectureSmoke
     {
         private static void Check(bool condition,string message)
         {if(!condition)throw new InvalidOperationException("VisualRuntime: "+message);}
+        private sealed class CustomWidgets : IMPMTypeProvider
+        {
+            public IEnumerable<MPMTypeDescriptor> DescribeTypes()
+            {
+                return new[]{new MPMTypeDescriptor("demo.widget.slider",1,
+                    MEMNodeKind.Element)};
+            }
+        }
         private sealed class LiveSource : IMDSExternalBindingResolver
         {
             public bool Ready=true,Fault,Running=true,InvalidValue;
@@ -109,6 +118,18 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(MVIVisualEventRouter.Dispatch(doc,shape.Id,"Click","x",
                     request=>{invoked++;return true;})==0&&invoked==1,
                     "hidden shape must never dispatch visual actions");
+                doc.RegisterTypes(new CustomWidgets());
+                using(var customEditor=new CxVisualEditor(doc))
+                {
+                    MTCEditResult<bool> invalid=customEditor.AddWidget("Unregistered",
+                        "core.widget.unregistered",15,20);
+                    Check(!invalid.Success,"unregistered core widget must be rejected before saving");
+                    MTCEditResult<bool> permitted=customEditor.AddWidget("CustomSlider",
+                        "demo.widget.slider",15,20);
+                    Check(permitted.Success&&
+                        customEditor.Scene.Count(x=>x.ElementTypeId=="demo.widget.slider")==1,
+                        "registered custom Element Widget failed to project");
+                }
                 doc.Close(true); // 显式放弃测试定义；正常用户工程仍保持未保存保护
             }
             Console.WriteLine("PASS Visual runtime: MDS Owner variable/source, state style, animation time, visibility, invalid type, editor frame separation");
