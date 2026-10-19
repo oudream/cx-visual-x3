@@ -693,6 +693,7 @@ namespace CxVisual.Mechanism.Orchestration
             session.Edit("提取可复用Content子流程",revision,e=>
             {
                 created=e.AddContent(session.Project,name);
+                e.Reference(parent,created,name+"调用");
                 var realCall=new MOLControlBlock(callId,MOLControlKind.Action,
                     "moc.invoke:"+created.Id.ToString("N"));
                 edit._blocks.Add(realCall);
