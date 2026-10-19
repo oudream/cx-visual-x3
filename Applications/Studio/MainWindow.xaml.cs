@@ -60,8 +60,23 @@ namespace CxVisual.Studio
             SceneHost.MoveRequested += OnMove;
             _visualPreviewTimer.Tick+=(sender,args)=>
             {
-                if(!SceneHost.IsDesignMode)
+                if(SceneHost.IsDesignMode)return;
+                try
+                {
                     _viewModel.UpdateVisualRuntimeFrame(_visualClock.Elapsed.TotalMilliseconds);
+                }
+                catch(Exception ex)
+                {
+                    // 错误类型/外部数据失联不能使WPF UI线程崩溃；立即撤回预览。
+                    _visualPreviewTimer.Stop();
+                    _visualClock.Reset();
+                    SceneHost.IsDesignMode=true;
+                    VisualPreviewButton.Content="预览交互";
+                    try{_viewModel.StopVisualRuntime();}
+                    catch(Exception){/* 保留原始数据异常；不触发现场命令 */ }
+                    VisualInfo.Text="动态可视预览已停止："+ex.Message+
+                        "；请检查MDS绑定来源及数据类型。";
+                }
             };
 
             SceneHost.WidgetEventRequested += (sender,widget) =>
