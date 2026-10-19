@@ -129,6 +129,11 @@ namespace CxVisual.Mechanism.Visual
         public MTCEditResult<bool> AddWidget(string name,string typeId,double x,double y,
             double width=120,double height=36)
         {
+            MPMTypeDescriptor registered=Document.FindType(typeId);
+            if(!MRCWidgetTypes.IsBuiltIn(typeId)&&
+                (registered==null||registered.Kind!=MEMNodeKind.Element))
+                return MTCEditResult<bool>.Rejected(Document.Revision,"visual.widget.type_unregistered",
+                    "Built-in Widget type or registered custom Element type required");
             return Document.Edit("添加UI控件",e=>
             {
                 e.Add(CurrentDrawParent(),new MRCWidgetElement(
