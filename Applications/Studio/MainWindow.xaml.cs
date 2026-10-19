@@ -24,6 +24,10 @@ namespace CxVisual.Studio
         private readonly MOLRuntimeOverlay _logicOverlay=new MOLRuntimeOverlay();
         private MRKFlowHandle _logicFlow;
         private bool _logicRunning;
+        private readonly System.Diagnostics.Stopwatch _visualClock=new System.Diagnostics.Stopwatch();
+        private readonly DispatcherTimer _visualPreviewTimer=new DispatcherTimer{
+            Interval=TimeSpan.FromMilliseconds(50)};
+
         private Guid? _logicSelected;
         private Guid? _pendingWireSource;
         private Guid? _pendingWireTarget;
@@ -54,6 +58,12 @@ namespace CxVisual.Studio
                 LogicInfo.Text="拖线被拒绝："+args.Reason;
             SceneHost.NodeActivated += OnActivated;
             SceneHost.MoveRequested += OnMove;
+            _visualPreviewTimer.Tick+=(sender,args)=>
+            {
+                if(!SceneHost.IsDesignMode)
+                    _viewModel.UpdateVisualRuntimeFrame(_visualClock.Elapsed.TotalMilliseconds);
+            };
+
             SceneHost.WidgetEventRequested += (sender,widget) =>
                 VisualInfo.Text="Widget事件："+widget.EventId+
                     " · 对象："+widget.ElementId.ToString("N").Substring(0,8)+
@@ -78,15 +88,36 @@ namespace CxVisual.Studio
             }
             catch(Exception ex){VisualInfo.Text="创建失败: "+ex.Message;}
         }
+        private void OnAddBreathingAnimation(object sender,RoutedEventArgs args)
+        {
+            try
+            {
+                _viewModel.AddSelectedBreathingAnimation();
+                VisualInfo.Text="透明度动画已保存：点击预览交互查看效果；撤销可恢复定义。";
+            }
+            catch(Exception ex){VisualInfo.Text="添加动画失败："+ex.Message;}
+        }
         private void OnToggleVisualPreview(object sender,RoutedEventArgs args)
         {
             SceneHost.CancelInteraction();
-            SceneHost.IsDesignMode=!SceneHost.IsDesignMode;
+            bool entering=SceneHost.IsDesignMode;
+            SceneHost.IsDesignMode=!entering;
             var button=(System.Windows.Controls.Button)sender;
-            button.Content=SceneHost.IsDesignMode?"预览交互":"返回设计";
-            VisualInfo.Text=SceneHost.IsDesignMode?
-                "设计模式：单击选择，拖动编辑工程。":
-                "预览模式：WPF Widget接收输入；不会直接执行工业设备命令。";
+            if(entering)
+            {
+                _visualClock.Restart();
+                _visualPreviewTimer.Start();
+                button.Content="返回设计";
+                VisualInfo.Text="运行预览：动画随帧采样；未连接的数据仍显示工程默认值。设备命令不会直接执行。";
+            }
+            else
+            {
+                _visualPreviewTimer.Stop();
+                _visualClock.Reset();
+                _viewModel.StopVisualRuntime();
+                button.Content="预览交互";
+                VisualInfo.Text="设计模式：工程属性与几何编辑已恢复，运行态值不写入工程。";
+            }
         }
         private void OnApplyVisualStyle(object sender,RoutedEventArgs args)
         {
@@ -246,13 +277,15 @@ namespace CxVisual.Studio
         protected override void OnClosed(System.EventArgs e)
         {
             if(_logicFlow!=null)_logicFlow.RequestCancel();
+            _visualPreviewTimer.Stop();
+            _visualClock.Stop();
             _viewModel.Dispose();
             base.OnClosed(e);
         }
         private void RefreshScene()
         {
             SceneHost.SetScene(_viewModel.Items, _viewModel.SelectedId);
-            if(_logicRunning)return;
+            if(_logicRunning||_visualPreviewTimer.IsEnabled)return;
             MEMPage page=_viewModel.ActivePage;
             MEMNodeSnapshot node=page==null?null:
                 _viewModel.ProjectSession.GetSnapshot().Find(page.RootContent.Id);
