@@ -62,6 +62,25 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(!circle.HitTest(20,0),"circle corner no false hit");
                 var zeroLine=(MRCShapeElement)session.Find(ids[0]);
                 Check(zeroLine.Shape.Bounds.Height==0,"line exact zero height");
+                // 真实复用工业图元：一份定义、两个独立实例、各自的参数覆盖。
+                var motor=session.AddSymbol("Motor");
+                var motorBody=session.AddShape(motor.RootGroup,"Body",
+                    MRCShapeDefinition.Circle(new FGEPoint2D(20,20),20),0,0);
+                session.DefineProperty(motor,new MPMPropertyDescriptor("DeviceName",
+                    MPMValueKind.String,false,true,
+                    MPMBinding.Literal(MPMValue.String("DefaultMotor"))));
+                var motorA=session.PlaceSymbol(page.RootContent,motor,"Motor-A");
+                var motorB=session.PlaceSymbol(page.RootContent,motor,"Motor-B");
+                session.SetOverride(motorA,"DeviceName",
+                    MPMBinding.Literal(MPMValue.String("Axis-A")));
+                session.SetOverride(motorB,"DeviceName",
+                    MPMBinding.Literal(MPMValue.String("Axis-B")));
+                Check(session.ResolveParameter(motorA,"DeviceName").Value.AsString()=="Axis-A",
+                    "independent symbol A parameters");
+                Check(session.ResolveParameter(motorB,"DeviceName").Value.AsString()=="Axis-B",
+                    "independent symbol B parameters");
+                Check(motorA.TargetId==motorB.TargetId&&motorA.Id!=motorB.Id,
+                    "shared symbol definition with distinct instances");
                 var text=session.AddText(group,"Title","Original",0,100);
                 session.SetText(text,"工程标题");
                 session.AddImage(group,"Image",0,200);
@@ -93,6 +112,16 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Check(element.Shape.Geometry.Commands.Count==sample[i].Geometry.Commands.Count,"exact commands "+i);
                 }
                 Check(((MRCTextElement)loaded.Find(text.Id)).Text=="工程标题","text roundtrip");
+                Check(loaded.Find(motorBody.Id) is MRCShapeElement,
+                    "symbol member shape roundtrip");
+                var restoredMotorA=loaded.FindReference(motorA.Id);
+                var restoredMotorB=loaded.FindReference(motorB.Id);
+                Check(restoredMotorA!=null&&restoredMotorB!=null&&
+                    restoredMotorA.TargetId==restoredMotorB.TargetId,
+                    "shared symbol references saved");
+                Check(loaded.ResolveParameter(restoredMotorA,"DeviceName").Value.AsString()=="Axis-A"&&
+                    loaded.ResolveParameter(restoredMotorB,"DeviceName").Value.AsString()=="Axis-B",
+                    "symbol instance binding roundtrip");
                 Check(loaded.Find(widget.Id) is MRCWidgetElement,"widget runtime type roundtrip");
                 Check(loaded.Find(widget.Id).TypeId=="demo.ui.button","widget type identity");
                 var brush=MRCVisualAppearance.StyleOf((MRCVisualItem)loaded.Find(ids[0]));
