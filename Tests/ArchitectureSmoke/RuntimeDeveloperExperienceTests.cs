@@ -17,6 +17,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             MultiFlowSharedWorkerAndCancellation();
             OneBlueprintBothDevelopmentAndAuthorizedProductionPublication();
             NaturalTypedBusinessRequest();
+            TypedOutputRunValue();
         }
 
         private static void Check(bool condition, string message)
@@ -119,6 +120,70 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(rejected, "同一流程重复节点被静默接受");
         }
 
+
+        /// <summary>R01：自然的单值返回，且不得隐藏失败、绕开Export或猜测输出。</summary>
+        private static void TypedOutputRunValue()
+        {
+            MRKCodeRuntimeBuilder builder = new MRKCodeRuntimeBuilder()
+                .DataCapability("DoubleValue", (context, token) =>
+                {
+                    token.ThrowIfCancellationRequested();
+                    context.Data.Return("Result", context.Data.Get<int>("N") * 2);
+                    return Task.FromResult((object)true);
+                }, new Dictionary<string, Type> { { "Result", typeof(int) } },
+                new[] { new MRKCapabilityInput("N", typeof(int)) })
+                .DataCapability("FailValue", (context, token) =>
+                    Task.FromException<object>(new InvalidOperationException("R01.expected.failure")),
+                    new Dictionary<string, Type> { { "Result", typeof(int) } })
+                .Flow("double", flow => flow.StepData("step", "DoubleValue",
+                    new[] { new MRKExecutionInput("N", MRKInputSource.FlowInput,
+                        "request", typeof(int)) }).Export("answer", "step.Result"))
+                .Flow("private", flow => flow.StepData("step", "DoubleValue",
+                    new[] { new MRKExecutionInput("N", MRKInputSource.FlowInput,
+                        "request", typeof(int)) }))
+                .Flow("fails", flow => flow.Step("fail", "FailValue")
+                    .Export("answer", "fail.Result"));
+            MRKDevelopmentRuntime runtime = builder.Build();
+            try
+            {
+                int number = Wait(runtime.RunValueAsync<int>("double", (object)12, "answer"));
+                Check(number == 24, "业务单请求未正确返回具名提交值");
+                int fromPorts = Wait(runtime.RunValueAsync<int>("double",
+                    new Dictionary<string, object> { { "request", 7 } }, "answer"));
+                Check(fromPorts == 14, "显式多端口输入未返回同一契约的值");
+
+                bool refused = false;
+                try { Wait(runtime.RunValueAsync<int>("double", (object)12, "missing")); }
+                catch (KeyNotFoundException) { refused = true; }
+                Check(refused, "未声明Export的输出被错误读取");
+
+                refused = false;
+                try { Wait(runtime.RunValueAsync<string>("double", (object)12, "answer")); }
+                catch (InvalidCastException) { refused = true; }
+                Check(refused, "输出类型不匹配未拒绝");
+
+                refused = false;
+                try { Wait(runtime.RunValueAsync<int>("private", (object)12, "Result")); }
+                catch (KeyNotFoundException) { refused = true; }
+                Check(refused, "私有Step输出不能冒充Flow Export");
+
+                refused = false;
+                try { Wait(runtime.RunValueAsync<int>("fails", (object)1, "answer")); }
+                catch (InvalidOperationException ex)
+                {
+                    refused = ex.InnerException is InvalidOperationException &&
+                        ex.InnerException.Message == "R01.expected.failure" &&
+                        ex.Message.Contains("FlowId=") && ex.Message.Contains("Failed");
+                }
+                Check(refused, "流程失败被当作成功或丢失FlowId及原始异常");
+
+                refused = false;
+                try { Wait(runtime.RunValueAsync<int>("double", (object)1, " ")); }
+                catch (ArgumentException) { refused = true; }
+                Check(refused, "空Export名称应在执行前明确拒绝");
+            }
+            finally { Wait(runtime.StopAsync()); }
+        }
 
         private static void NaturalTypedBusinessRequest()
         {

@@ -285,6 +285,50 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 { { "request", request } }, cancellation);
         }
 
+        /// <summary>
+        /// 开发/模拟轻便入口：只有已成功提交的具名Flow Export才能作为结果。
+        /// 不猜测最后一步，也不将Task正常结束视作Flow成功；生产仍需授权网关。
+        /// </summary>
+        public async Task<TResult> RunValueAsync<TResult>(string flowId, object request,
+            string outputName, CancellationToken cancellation = default(CancellationToken))
+        {
+            ValidateOutputName(outputName);
+            MRKFlowResult result = await RunAsync(flowId, request, cancellation)
+                .ConfigureAwait(false);
+            return ReadValue<TResult>(result, outputName);
+        }
+
+        /// <summary>显式多端口输入与单请求入口复用同一结果契约。</summary>
+        public async Task<TResult> RunValueAsync<TResult>(string flowId,
+            IDictionary<string, object> inputs, string outputName,
+            CancellationToken cancellation = default(CancellationToken))
+        {
+            ValidateOutputName(outputName);
+            MRKFlowResult result = await RunAsync(flowId, inputs, cancellation)
+                .ConfigureAwait(false);
+            return ReadValue<TResult>(result, outputName);
+        }
+
+        private static void ValidateOutputName(string outputName)
+        {
+            if (string.IsNullOrWhiteSpace(outputName))
+                throw new ArgumentException("必须指定具名Flow Export，不推测最后一步输出", "outputName");
+        }
+
+        private static TResult ReadValue<TResult>(MRKFlowResult result, string outputName)
+        {
+            if (result.State == MRKFlowState.Cancelled)
+                throw new OperationCanceledException(
+                    "流程已取消，FlowId=" + result.FlowId + "，Output=" + outputName,
+                    result.Error);
+            if (result.State != MRKFlowState.Completed)
+                throw new InvalidOperationException(
+                    "流程未成功，State=" + result.State + "，FlowId=" + result.FlowId +
+                    "，Output=" + outputName, result.Error);
+            // 已有Data导出屏障强制公开输出，未导出或类型不符均显式报错。
+            return result.GetCommittedOutput<TResult>(outputName);
+        }
+
         public FCRWorkerSnapshot Snapshot() { return _engine.GetSnapshot(); }
         public Task StopAsync(bool cancelPending = false)
         { return _engine.StopAsync(cancelPending); }
