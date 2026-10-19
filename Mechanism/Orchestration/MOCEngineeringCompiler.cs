@@ -193,6 +193,9 @@ namespace CxVisual.Mechanism.Orchestration
             foreach (Guid id in path)
                 if (!known.ContainsKey(id)) throw new InvalidOperationException("moc.unknown_instance:" + id);
 
+            MOLWiringDefinition wired = MOLWiringCodec.Get(entry);
+            if (wired != null) return CompileWiring(snapshot, entry, path, wired, resolver);
+
             var build = new Compilation(snapshot, resolver, path);
             build.EmitContent(entry, new string[0], new Guid[0], null, 0);
             var compiled = new MRKExecutionPlanCompiler().Compile(
@@ -204,6 +207,83 @@ namespace CxVisual.Mechanism.Orchestration
                     string.Join(";", compiled.Diagnostics.Select(d => d.Code + "@" + d.StepId)));
             return new MOCCompiledPlan(compiled.Plan, new MOCSourceMap(build.Origins),
                 snapshot.ProjectId, snapshot.Revision);
+        }
+
+
+        // Stage 2: V2自由连接实际参与MRK依赖及数据绑定；复杂分支/循环不做假执行。
+        private static MOCCompiledPlan CompileWiring(MEMProjectSnapshot snapshot, MEMNodeSnapshot entry,
+            Guid[] instancePath, MOLWiringDefinition wiring, IMRKCapabilityResolver resolver)
+        {
+            wiring.Validate();
+            var blocks=wiring.Blocks.ToDictionary(x=>x.Id);
+            var stepIds=blocks.Keys.ToDictionary(x=>x,x=>"w"+x.ToString("N"));
+            var requests=new List<MRKStepCompileRequest>();
+            var origins=new List<MOCStepOrigin>();
+            foreach(var block in wiring.Blocks)
+            {
+                var entering=wiring.Links.Where(x=>x.Target.BlockId==block.Id).ToArray();
+                var depends=entering.Select(x=>stepIds[x.Source.BlockId])
+                    .Distinct(StringComparer.Ordinal).ToArray();
+                var inputs=new List<MRKExecutionInput>();
+                foreach(var link in entering.Where(x=>x.Kind==MPCPortKind.Data))
+                {
+                    if(entering.Count(x=>x.Kind==MPCPortKind.Data &&
+                        x.Target.PortMemberId==link.Target.PortMemberId)>1)
+                        throw new InvalidOperationException("moc.wiring.data_fanin_requires_aggregator:"+
+                            link.Target.BlockId+":"+link.Target.PortMemberId);
+                    var sourcePorts=wiring.Ports[link.Source.BlockId];
+                    var from=sourcePorts.Single(x=>x.MemberId==link.Source.PortMemberId);
+                    var target=wiring.Ports[block.Id].Single(x=>x.MemberId==link.Target.PortMemberId);
+                    var resolvedCapability=blocks[link.Source.BlockId];
+                    MRKResolvedCapability actual;
+                    if(!resolver.TryResolve(resolvedCapability.CapabilityId,out actual)||actual==null)
+                        throw new InvalidOperationException("moc.wiring.unknown_producer:"+resolvedCapability.CapabilityId);
+                    MRKInputSource sourceKind;
+                    string sourceName=stepIds[link.Source.BlockId];
+                    Type valueType=ResolveWiringType(target.TypeId);
+                    if(actual.DataOutputs.ContainsKey(from.MemberId))
+                    {
+                        sourceKind=MRKInputSource.StepOutput;
+                        sourceName+="."+from.MemberId;
+                    }
+                    else if(sourcePorts.Count(x=>x.Kind==MPCPortKind.Data&&
+                        x.Direction!=MPCPortDirection.Input)==1)
+                        sourceKind=MRKInputSource.StepResult;
+                    else
+                        throw new InvalidOperationException("moc.wiring.ambiguous_output:"+
+                            link.Source.BlockId+":"+from.MemberId);
+                    inputs.Add(new MRKExecutionInput(target.MemberId,sourceKind,sourceName,
+                        valueType,target.Required));
+                }
+                requests.Add(new MRKStepCompileRequest(stepIds[block.Id],block.CapabilityId,
+                    depends,inputs));
+                origins.Add(new MOCStepOrigin(stepIds[block.Id],
+                    new MRIObjectAddress(snapshot.ProjectId,entry.StorageRootId,entry.Id,instancePath),
+                    block.Id,new Guid[0],null,"Action"));
+            }
+            var compiled=new MRKExecutionPlanCompiler().Compile(
+                "moc."+snapshot.ProjectId.ToString("N")+"."+entry.Id.ToString("N")+
+                ".r"+snapshot.Revision.ToString(CultureInfo.InvariantCulture)+".wired",
+                requests,resolver);
+            if(!compiled.Succeeded)
+                throw new InvalidOperationException("moc.wiring.compile_rejected:"+
+                    string.Join(";",compiled.Diagnostics.Select(x=>x.Code+"@"+x.StepId)));
+            return new MOCCompiledPlan(compiled.Plan,new MOCSourceMap(origins),
+                snapshot.ProjectId,snapshot.Revision);
+        }
+        private static Type ResolveWiringType(string id)
+        {
+            switch(id)
+            {
+                case "bool":case "System.Boolean":return typeof(bool);
+                case "int":case "System.Int32":return typeof(int);
+                case "long":case "System.Int64":return typeof(long);
+                case "double":case "System.Double":return typeof(double);
+                case "string":case "System.String":return typeof(string);
+                case "byte[]":case "System.Byte[]":return typeof(byte[]);
+                // 自定义组合数据契约由能力Provider和运行时适配器校验；首批不反射加载陌生类型。
+                default:return typeof(object);
+            }
         }
 
         private sealed class IterationScope

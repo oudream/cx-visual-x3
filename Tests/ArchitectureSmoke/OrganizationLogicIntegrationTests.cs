@@ -54,6 +54,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         {
             SaveLoadAndIdentity();
             V2WiringRoundtrip();
+            V2WiringCompileRun();
             BranchParallelAndTrace();
             LoopKindsAndBoundedForEach();
             InvokedContentAndInvalidSource();
@@ -269,5 +270,71 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(rejected,"reversed port rejected");
         }
 
+
+        // 保存重开后编译V2有向边：真实StepResult绑定、顺序及SourceMap。
+        private static void V2WiringCompileRun()
+        {
+            var session=MEMEngineering.Create("V2Runtime");
+            var page=session.AddPage("Main");
+            var acquire=MOLControlBlock.Action("capture");
+            var inspect=MOLControlBlock.Action("inspect");
+            var judge=MOLControlBlock.Action("judge");
+            var ports=new Dictionary<Guid,IEnumerable<MPCPortDescriptor>>();
+            ports[acquire.Id]=new[]{
+                new MPCPortDescriptor("Done",MPCPortDirection.Output,"signal",MPCPortKind.Control),
+                new MPCPortDescriptor("Image",MPCPortDirection.Output,"int",MPCPortKind.Data)};
+            ports[inspect.Id]=new[]{
+                new MPCPortDescriptor("Start",MPCPortDirection.Input,"signal",MPCPortKind.Control,true),
+                new MPCPortDescriptor("Done",MPCPortDirection.Output,"signal",MPCPortKind.Control),
+                new MPCPortDescriptor("Image",MPCPortDirection.Input,"int",MPCPortKind.Data,
+                    required:true)};
+            ports[judge.Id]=new[]{
+                new MPCPortDescriptor("Start",MPCPortDirection.Input,"signal",MPCPortKind.Control,true)};
+            var links=new[]{
+                new MOLLink(Guid.NewGuid(),new MOLBlockEndpoint(acquire.Id,"Done"),
+                    new MOLBlockEndpoint(inspect.Id,"Start"),MPCPortKind.Control),
+                new MOLLink(Guid.NewGuid(),new MOLBlockEndpoint(inspect.Id,"Done"),
+                    new MOLBlockEndpoint(judge.Id,"Start"),MPCPortKind.Control),
+                new MOLLink(Guid.NewGuid(),new MOLBlockEndpoint(acquire.Id,"Image"),
+                    new MOLBlockEndpoint(inspect.Id,"Image"),MPCPortKind.Data)};
+            MOLWiringCodec.Set(session,page.RootContent,new MOLWiringDefinition(acquire.Id,
+                new[]{acquire,inspect,judge},ports,links));
+            var path=System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                "moc-wired-"+Guid.NewGuid().ToString("N")+".cxproj");
+            try
+            {
+                session.SaveAs(path);
+                var reloaded=MEMEngineering.Open(path);
+                try
+                {
+                    int calls=0;
+                    var resolver=new TestResolver()
+                        .Register("capture",(c,t)=>{Interlocked.Increment(ref calls);
+                            return Task.FromResult((object)42);})
+                        .Register("inspect",(c,t)=>{
+                            Check((int)c.BoundInputs["Image"]==42,"V2 real data edge");
+                            Interlocked.Increment(ref calls);return Task.FromResult((object)true);})
+                        .Register("judge",(c,t)=>{
+                            Check(calls==2,"V2 real Control dependencies");
+                            Interlocked.Increment(ref calls);return Task.FromResult((object)1);});
+                    var compiled=new MOCEngineeringCompiler().Compile(
+                        reloaded.GetSnapshot(),page.RootContent.Id,resolver);
+                    MOCTraceView trace;
+                    MRKFlowResult result=Execute(compiled,null,out trace);
+                    Check(result.State==MRKFlowState.Completed&&calls==3,
+                        "V2 compiled CPU flow");
+                    Check(compiled.SourceMap.Find(inspect.Id).Count==1&&
+                        trace.Events.Any(x=>x.Origin.BlockId==inspect.Id),
+                        "V2 SourceMap and trace");
+                    bool rejected=false;
+                    try {new MOCEngineeringCompiler().Compile(
+                        reloaded.GetSnapshot(),page.RootContent.Id,new TestResolver());}
+                    catch(InvalidOperationException){rejected=true;}
+                    Check(rejected,"V2 unavailable capability was not rejected");
+                }
+                finally{reloaded.Close(true);}
+            }
+            finally{session.Close(true);if(System.IO.File.Exists(path))System.IO.File.Delete(path);}
+        }
     }
 }
