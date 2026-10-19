@@ -223,7 +223,7 @@ namespace CxVisual.Studio
                 var page=_viewModel.ActivePage;
                 if(page==null)throw new InvalidOperationException("请先选择页面");
                 MEMNodeSnapshot node=_viewModel.ProjectSession.GetSnapshot().Find(page.RootContent.Id);
-                if(MOLLogicCodec.Get(node)!=null&&MessageBox.Show(this,
+                if(MOLWiringCodec.Get(node)==null&&MOLLogicCodec.Get(node)!=null&&MessageBox.Show(this,
                     "将以V2自由连线替换本Content现有V1示例。继续？","替换编排",
                     MessageBoxButton.YesNo)!=MessageBoxResult.Yes)return;
                 var a=MOLControlBlock.Action("Acquire");
