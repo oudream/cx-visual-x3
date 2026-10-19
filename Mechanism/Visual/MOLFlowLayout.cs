@@ -6,8 +6,8 @@ namespace CxVisual.Mechanism.Visual
 {
     public sealed class MOLBlockLayout
     {
-        internal MOLBlockLayout(Guid id,MOLControlKind kind,string label,int depth,double x,double y)
-        { BlockId=id;Kind=kind;Label=label;Depth=depth;X=x;Y=y;Width=260;Height=40; }
+        internal MOLBlockLayout(Guid id,MOLControlKind kind,string label,int depth,double x,double y,double height=40)
+        { BlockId=id;Kind=kind;Label=label;Depth=depth;X=x;Y=y;Width=260;Height=height; }
         public Guid BlockId {get;private set;}
         public MOLControlKind Kind {get;private set;}
         public string Label {get;private set;}
@@ -27,11 +27,17 @@ namespace CxVisual.Mechanism.Visual
             if(wiring==null)return Array.AsReadOnly(new MOLBlockLayout[0]);
             wiring.Validate();
             var items=new List<MOLBlockLayout>();
-            int index=0;
-            // Coordinates are presentation only; execution order comes from MOLLink.
+            double top=20;
+            // V2端口高度由真实声明决定；布局只在Visual计算，不改变Logic真源。
             foreach(var block in wiring.Blocks)
-                items.Add(new MOLBlockLayout(block.Id,block.Kind,block.CapabilityId,0,
-                    20,20+(index++)*70));
+            {
+                var ports=wiring.Ports[block.Id];
+                int inputs=ports.Count(p=>p.Direction!=MPCPortDirection.Output);
+                int outputs=ports.Count(p=>p.Direction!=MPCPortDirection.Input);
+                double height=Math.Max(58,32+Math.Max(inputs,outputs)*22);
+                items.Add(new MOLBlockLayout(block.Id,block.Kind,block.CapabilityId,0,20,top,height));
+                top+=height+24;
+            }
             return items.AsReadOnly();
         }
         public static IReadOnlyList<MOLBlockLayout> Build(MOLLogicDefinition definition)

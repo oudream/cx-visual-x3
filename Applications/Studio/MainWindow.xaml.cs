@@ -48,6 +48,9 @@ namespace CxVisual.Studio
             DataContext = _viewModel;
             LogicHost.BlockSelected += (sender, args) => { _logicSelected=args.BlockId; LogicInfo.Text = "已选逻辑块: " + args.BlockId.ToString("N"); };
             LogicHost.LinkRequested += OnWiringLinkRequested;
+            LogicHost.PortLinkRequested += OnDirectPortLinkRequested;
+            LogicHost.PortLinkRejected += (sender,args) =>
+                LogicInfo.Text="拖线被拒绝："+args.Reason;
             SceneHost.NodeActivated += OnActivated;
             SceneHost.MoveRequested += OnMove;
             SceneHost.WidgetEventRequested += (sender,widget) =>
@@ -373,6 +376,23 @@ namespace CxVisual.Studio
             LogicInfo.Text=LogicHost.IsConnectMode?
                 "依次点击来源和目标块，随后在端口列表选择合法端口对并确认。":"已退出连线模式。";
         }
+        // 鼠标直接由输出端口拖至输入端口：使用与C#开发者一致的Builder事务。
+        private void OnDirectPortLinkRequested(object sender,MOLPortLinkRequestedEventArgs args)
+        {
+            if(_logicRunning)return;
+            try
+            {
+                var page=_viewModel.ActivePage;
+                if(page==null)throw new InvalidOperationException("未选择Content");
+                MOCFlowBuilder.Edit(_viewModel.ProjectSession,page.RootContent,
+                    b=>b.Connect(args.SourceBlockId,args.SourcePort,
+                        args.TargetBlockId,args.TargetPort,args.Kind));
+                RefreshScene();
+                LogicInfo.Text="Port拖线已提交工程事务；可撤销、构建及保存重开。";
+            }
+            catch(Exception ex){LogicInfo.Text="Port拖线未提交："+ex.Message;}
+        }
+
         private void OnWiringLinkRequested(object sender,MOLLinkRequestedEventArgs args)
         {
             if(_logicRunning)return;

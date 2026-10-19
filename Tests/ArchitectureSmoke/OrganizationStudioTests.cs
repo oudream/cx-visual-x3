@@ -111,6 +111,40 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 var beforeWiring=MOLWiringCodec.Get(reopened.GetSnapshot().Find(active.RootContent.Id));
                 Check(beforeWiring!=null&&beforeWiring.Blocks.Count==2,
                     "Studio V2 wiring demo not persisted in current Content");
+                // G04深化：真实WPF逻辑画布的Port点拖线入口，复用工程事务、撤销重做。
+                var flowCanvas=(CxVisual.Mechanism.Presentation.Wpf.MOLFlowCanvas)
+                    window.FindName("LogicHost");
+                var existingLinks=(ComboBox)window.FindName("FlowExistingLinks");
+                existingLinks.SelectedIndex=0;
+                Click(window,"删除连接");
+                var detached=MOLWiringCodec.Get(reopened.GetSnapshot().Find(active.RootContent.Id));
+                Check(detached.Links.Count==0,"Studio failed to detach prior edge before Port drag");
+                flowCanvas.UpdateLayout();
+                var endpoints=flowCanvas.GetVisiblePorts();
+                var fromPort=endpoints.Single(p=>p.BlockId==detached.Blocks[0].Id&&
+                    p.MemberId=="Done"&&p.Direction==MPCPortDirection.Output);
+                var toPort=endpoints.Single(p=>p.BlockId==detached.Blocks[1].Id&&
+                    p.MemberId=="Start"&&p.Direction==MPCPortDirection.Input);
+                Check(!flowCanvas.BeginPortDrag(toPort.Center),
+                    "Input Port incorrectly allowed as mouse drag source");
+                Check(flowCanvas.BeginPortDrag(fromPort.Center),
+                    "Output Port geometry was not hit-testable");
+                Check(!flowCanvas.CompletePortDrag(fromPort.Center),
+                    "Output-to-output connection was incorrectly accepted");
+                Check(flowCanvas.BeginPortDrag(fromPort.Center)&&
+                    flowCanvas.CompletePortDrag(toPort.Center),
+                    "Port drag did not reach Studio engineering transaction");
+                var dragCommitted=MOLWiringCodec.Get(reopened.GetSnapshot().Find(active.RootContent.Id));
+                Check(dragCommitted.Links.Count==1&&
+                    dragCommitted.Links[0].Source.PortMemberId=="Done"&&
+                    dragCommitted.Links[0].Target.PortMemberId=="Start",
+                    "Mouse Port drag did not persist exact typed endpoints");
+                Click(window,"撤销编排");
+                Check(MOLWiringCodec.Get(reopened.GetSnapshot().Find(active.RootContent.Id))
+                    .Links.Count==0,"Port drag was not one atomic Undo step");
+                Click(window,"重做编排");
+                Check(MOLWiringCodec.Get(reopened.GetSnapshot().Find(active.RootContent.Id))
+                    .Links.Count==1,"Port drag Redo lost connection");
                 Click(window,"搜索能力");
                 var searchResults=(ComboBox)window.FindName("FlowCapabilityResults");
                 Check(searchResults.Items.Count>=2,"capability catalog search not populated");

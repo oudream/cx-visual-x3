@@ -25,6 +25,38 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         public Guid TargetBlockId{get;private set;}
     }
 
+    /// <summary>类型化端口在画布上的投影，不是另一份工程定义。</summary>
+    public sealed class MOLPortVisual
+    {
+        internal MOLPortVisual(Guid blockId,MPCPortDescriptor descriptor,
+            MPCPortDirection direction,Point center)
+        {BlockId=blockId;Descriptor=descriptor;Direction=direction;Center=center;}
+        internal MPCPortDescriptor Descriptor {get;private set;}
+        public Guid BlockId {get;private set;}
+        public string MemberId {get{return Descriptor.MemberId;}}
+        public MPCPortKind Kind {get{return Descriptor.Kind;}}
+        public MPCPortDirection Direction {get;private set;}
+        public Point Center {get;private set;}
+    }
+
+    public sealed class MOLPortLinkRequestedEventArgs : EventArgs
+    {
+        internal MOLPortLinkRequestedEventArgs(MOLPortVisual from,MOLPortVisual to)
+        {SourceBlockId=from.BlockId;SourcePort=from.MemberId;
+         TargetBlockId=to.BlockId;TargetPort=to.MemberId;Kind=from.Kind;}
+        public Guid SourceBlockId {get;private set;}
+        public string SourcePort {get;private set;}
+        public Guid TargetBlockId {get;private set;}
+        public string TargetPort {get;private set;}
+        public MPCPortKind Kind {get;private set;}
+    }
+
+    public sealed class MOLPortLinkRejectedEventArgs : EventArgs
+    {
+        internal MOLPortLinkRejectedEventArgs(string reason){Reason=reason;}
+        public string Reason {get;private set;}
+    }
+
     public static class MOLBlockTemplateSelector
     {
         public static bool IsDecision(MOLControlKind kind)
@@ -56,8 +88,93 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         public MOLWiringDefinition WiringDefinition
         {get{return (MOLWiringDefinition)GetValue(WiringDefinitionProperty);}
          set{SetValue(WiringDefinitionProperty,value);}}
+        private MOLPortVisual _dragSource;
+        private Point _dragPointer;
+        public event EventHandler<MOLPortLinkRequestedEventArgs> PortLinkRequested;
+        public event EventHandler<MOLPortLinkRejectedEventArgs> PortLinkRejected;
         private Guid? _sourceForLink;
-        public void ResetLinkSelection(){_sourceForLink=null;}
+        public void ResetLinkSelection()
+        {
+            _sourceForLink=null;_dragSource=null;
+            if(IsMouseCaptured)ReleaseMouseCapture();
+            InvalidateVisual();
+        }
+
+        /// <summary>供WPF命中测试、辅助访问和自动化验收使用；坐标在画布局部空间。</summary>
+        public IReadOnlyList<MOLPortVisual> GetVisiblePorts()
+        {
+            if(WiringDefinition==null)return Array.AsReadOnly(new MOLPortVisual[0]);
+            var layout=MOLFlowLayout.Build(WiringDefinition);
+            var result=new List<MOLPortVisual>();
+            foreach(var item in layout)
+            {
+                var ports=WiringDefinition.Ports[item.BlockId];
+                int left=0,right=0;
+                foreach(var descriptor in ports)
+                {
+                    if(descriptor.Direction!=MPCPortDirection.Output)
+                        result.Add(new MOLPortVisual(item.BlockId,descriptor,
+                            MPCPortDirection.Input,new Point(item.X+2,item.Y+36+22*left++)));
+                    if(descriptor.Direction!=MPCPortDirection.Input)
+                        result.Add(new MOLPortVisual(item.BlockId,descriptor,
+                            MPCPortDirection.Output,new Point(item.X+item.Width-2,item.Y+36+22*right++)));
+                }
+            }
+            return result.AsReadOnly();
+        }
+
+        public MOLPortVisual HitTestPort(Point position)
+        {
+            return GetVisiblePorts().FirstOrDefault(port=>
+                Math.Abs(port.Center.X-position.X)<=8 &&
+                Math.Abs(port.Center.Y-position.Y)<=8);
+        }
+
+        /// <summary>鼠标事件与WPF自动化共用的拖拽入口；不修改Content。</summary>
+        public bool BeginPortDrag(Point position)
+        {
+            _dragSource=null;
+            var port=HitTestPort(position);
+            if(port==null||port.Direction!=MPCPortDirection.Output)return false;
+            _dragSource=port;_dragPointer=port.Center;InvalidateVisual();
+            return true;
+        }
+
+        public bool CompletePortDrag(Point position)
+        {
+            var source=_dragSource;
+            _dragSource=null;InvalidateVisual();
+            if(source==null||WiringDefinition==null)return false;
+            var target=HitTestPort(position);
+            if(target==null)return false;
+            if(target.Direction!=MPCPortDirection.Input)
+            {RejectPortLink("目标必须是输入Port");return false;}
+            if(source.Kind!=target.Kind||source.Descriptor.TypeId!=target.Descriptor.TypeId||
+                !object.Equals(source.Descriptor.Contract,target.Descriptor.Contract)||
+                (source.Kind!=MPCPortKind.Control&&source.Kind!=MPCPortKind.Data))
+            {RejectPortLink("Port种类、数据类型或数据契约不匹配");return false;}
+            try
+            {
+                // 复用Core唯一的方向、重边、多重度、环路规则，不添加WPF独立校验真源。
+                var link=new MOLLink(Guid.NewGuid(),
+                    new MOLBlockEndpoint(source.BlockId,source.MemberId),
+                    new MOLBlockEndpoint(target.BlockId,target.MemberId),source.Kind);
+                var schemas=WiringDefinition.Ports.ToDictionary(
+                    pair=>pair.Key,pair=>(IEnumerable<MPCPortDescriptor>)pair.Value);
+                new MOLWiringDefinition(WiringDefinition.EntryBlockId,
+                    WiringDefinition.Blocks,schemas,WiringDefinition.Links.Concat(new[]{link}));
+            }
+            catch(Exception ex){RejectPortLink(ex.Message);return false;}
+            var requested=PortLinkRequested;
+            if(requested!=null)requested(this,new MOLPortLinkRequestedEventArgs(source,target));
+            return true;
+        }
+
+        private void RejectPortLink(string reason)
+        {
+            var handler=PortLinkRejected;
+            if(handler!=null)handler(this,new MOLPortLinkRejectedEventArgs(reason));
+        }
         public bool IsConnectMode {get;set;}
         public event EventHandler<MOLLinkRequestedEventArgs> LinkRequested;
 
@@ -89,19 +206,20 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 dc.DrawText(hint,new Point(20,25));return;
             }
 
+            var visiblePorts=GetVisiblePorts();
             if(WiringDefinition!=null)
             {
-                var byId=_layout.ToDictionary(x=>x.BlockId);
+                var sources=visiblePorts.Where(p=>p.Direction==MPCPortDirection.Output)
+                    .ToDictionary(p=>new MOLBlockEndpoint(p.BlockId,p.MemberId),p=>p.Center);
+                var targets=visiblePorts.Where(p=>p.Direction==MPCPortDirection.Input)
+                    .ToDictionary(p=>new MOLBlockEndpoint(p.BlockId,p.MemberId),p=>p.Center);
                 foreach(var edge in WiringDefinition.Links)
                 {
-                    MOLBlockLayout from,to;
-                    if(!byId.TryGetValue(edge.Source.BlockId,out from)||
-                       !byId.TryGetValue(edge.Target.BlockId,out to))continue;
+                    Point start,end;
+                    if(!sources.TryGetValue(edge.Source,out start)||
+                       !targets.TryGetValue(edge.Target,out end))continue;
                     var color=edge.Kind==MPCPortKind.Data?Brushes.DarkOrange:Brushes.SteelBlue;
-                    var pen=new Pen(color,edge.Kind==MPCPortKind.Data?1.8:1.4);
-                    var start=new Point(from.X+from.Width/2,from.Y+from.Height);
-                    var end=new Point(to.X+to.Width/2,to.Y);
-                    dc.DrawLine(pen,start,end);
+                    dc.DrawLine(new Pen(color,edge.Kind==MPCPortKind.Data?1.8:1.4),start,end);
                 }
             }
 
@@ -140,6 +258,18 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                         new Point(item.X+item.Width/2,item.Y));
                 }
             }
+            foreach(var port in visiblePorts)
+            {
+                Brush brush=port.Kind==MPCPortKind.Data?Brushes.DarkOrange:Brushes.SteelBlue;
+                dc.DrawEllipse(Brushes.White,new Pen(brush,2),port.Center,5,5);
+                var label=Text(port.MemberId,brush);
+                double x=port.Direction==MPCPortDirection.Input?
+                    port.Center.X+10:port.Center.X-10-label.Width;
+                dc.DrawText(label,new Point(x,port.Center.Y-8));
+            }
+            if(_dragSource!=null)
+                dc.DrawLine(new Pen(Brushes.DarkSlateBlue,2){DashStyle=DashStyles.Dash},
+                    _dragSource.Center,_dragPointer);
         }
         private static FormattedText Text(string value,Brush brush)
         {return new FormattedText(value,CultureInfo.CurrentUICulture,FlowDirection.LeftToRight,
@@ -148,6 +278,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         {
             base.OnMouseLeftButtonDown(e);
             Point p=e.GetPosition(this);
+            if(BeginPortDrag(p))
+            {
+                CaptureMouse();e.Handled=true;return;
+            }
             foreach(var item in _layout)
             {
                 if(p.X>=item.X&&p.X<=item.X+item.Width&&
@@ -171,6 +305,26 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                     break;
                 }
             }
+        }
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            base.OnMouseMove(e);
+            if(_dragSource!=null)
+            {_dragPointer=e.GetPosition(this);InvalidateVisual();e.Handled=true;}
+        }
+        protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
+        {
+            base.OnMouseLeftButtonUp(e);
+            if(_dragSource==null)return;
+            Point position=e.GetPosition(this);
+            try{CompletePortDrag(position);}
+            finally{if(IsMouseCaptured)ReleaseMouseCapture();}
+            e.Handled=true;
+        }
+        protected override void OnLostMouseCapture(MouseEventArgs e)
+        {
+            base.OnLostMouseCapture(e);
+            if(_dragSource!=null){_dragSource=null;InvalidateVisual();}
         }
     }
 }
