@@ -184,8 +184,18 @@ namespace CxVisual.Mechanism.Visual
                 case "line":after=FGEPathEditing.ConvertSegment(before,commandIndex,FGEPathVerb.Line);break;
                 case "quadratic":after=FGEPathEditing.ConvertSegment(before,commandIndex,FGEPathVerb.Quadratic);break;
                 case "cubic":after=FGEPathEditing.ConvertSegment(before,commandIndex,FGEPathVerb.Cubic);break;
+                case "close":
+                case "open":
+                    if(shape.Shape.Kind!=MRCShapeKind.Path)
+                        return MTCEditResult<bool>.Rejected(Document.Revision,
+                            "visual.path.kind_required","Contour editing requires a Path definition");
+                    after=FGEPathEditing.SetContourClosed(before,commandIndex,operation=="close");
+                    break;
                 default:throw new ArgumentException("visual.path.operation");
             }
+            if(object.ReferenceEquals(before,after))
+                return MTCEditResult<bool>.Rejected(Document.Revision,
+                    "visual.path.unchanged","Contour already has the requested closure");
             return MVIVisualEditing.CommitGeometry(this,shape,after);
         }
         /// <summary>统一属性面板几何编辑，一次原工程事务，禁止原型式直接写字段。</summary>

@@ -83,6 +83,8 @@
                                 <Button Content="转直线" Tag="line" Click="OnPathOperation"/>
                                 <Button Content="转二次" Tag="quadratic" Click="OnPathOperation"/>
                                 <Button Content="转三次" Tag="cubic" Click="OnPathOperation"/>
+                                <Button Content="路径闭合" Tag="close" Click="OnPathOperation"/>
+                                <Button Content="路径断开" Tag="open" Click="OnPathOperation"/>
                                 <TextBox x:Name="PathCommandIndex" Width="28" Text="1" ToolTip="路径命令索引（从1开始）"/>
                                 <Button Content="放大" Tag="in" Click="OnVisualZoom"/>
                                 <Button Content="缩小" Tag="out" Click="OnVisualZoom"/>

@@ -39,6 +39,47 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     secondCurve.PointAt((t-0.35)/0.65);
                 Check(Near(expected,actual),"de Casteljau changed the original Bezier shape");
             }
+            // 二次曲线升阶为三次Bezier必须精确保形（含非直线控制点）。
+            var elevated=FGEPathEditing.ConvertSegment(plain,1,FGEPathVerb.Cubic);
+            Check(elevated.Commands[1].Verb==FGEPathVerb.Cubic,
+                "quadratic degree elevation didn't create a cubic");
+            for(int step=0;step<=30;step++)
+            {
+                double f=step/30.0,u=1-f;
+                FGEPoint2D from=plain.Commands[0].End;
+                FGEPoint2D control=plain.Commands[1].Control1;
+                FGEPoint2D end=plain.Commands[1].End;
+                var expected=new FGEPoint2D(
+                    u*u*from.X+2*u*f*control.X+f*f*end.X,
+                    u*u*from.Y+2*u*f*control.Y+f*f*end.Y);
+                var curve=new FGEBezier2D(from,elevated.Commands[1].Control1,
+                    elevated.Commands[1].Control2,elevated.Commands[1].End);
+                Check(Near(curve.PointAt(f),expected),
+                    "quadratic-to-cubic conversion changed the curve");
+            }
+            // 第二轮廓的闭合与断开不能触及第一轮廓，反向操作恢复原定义。
+            var contours=new FGEPath2D(new[]{
+                FGEPathCommand.Move(new FGEPoint2D(0,0)),
+                FGEPathCommand.Line(new FGEPoint2D(20,0)),
+                FGEPathCommand.Line(new FGEPoint2D(20,20)),
+                FGEPathCommand.Close(),
+                FGEPathCommand.Move(new FGEPoint2D(100,100)),
+                FGEPathCommand.Cubic(new FGEPoint2D(105,70),
+                    new FGEPoint2D(130,140),new FGEPoint2D(140,120)),
+                FGEPathCommand.Line(new FGEPoint2D(150,130))});
+            var closed=FGEPathEditing.SetContourClosed(contours,5,true);
+            Check(closed.Commands.Count==8&&closed.Commands[3].Verb==FGEPathVerb.Close&&
+                closed.Commands[7].Verb==FGEPathVerb.Close&&
+                closed.FlattenContours().Count==2,
+                "closing the second contour damaged the first");
+            var opened=FGEPathEditing.SetContourClosed(closed,6,false);
+            Check(opened.Commands.Count==contours.Commands.Count&&
+                opened.Commands[5].Control1.Equals(contours.Commands[5].Control1)&&
+                opened.Commands[3].Verb==FGEPathVerb.Close,
+                "reopening contour did not preserve other geometry");
+            Check(object.ReferenceEquals(contours,
+                FGEPathEditing.SetContourClosed(contours,5,false)),
+                "unchanged open contour should not allocate or commit");
             var converted=FGEPathEditing.ConvertSegment(plain,1,FGEPathVerb.Line);
             Check(converted.Commands[1].Verb==FGEPathVerb.Line&&
                 converted.Commands[1].End.Equals(plain.Commands[1].End),

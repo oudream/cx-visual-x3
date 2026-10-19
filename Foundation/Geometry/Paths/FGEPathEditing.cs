@@ -101,12 +101,51 @@ namespace CxVisual.Foundation.Geometry
             FGEPoint2D start=EndBefore(path.Commands,index),end=old.End;
             if(to==FGEPathVerb.Line)all[index]=FGEPathCommand.Line(end);
             else if(to==FGEPathVerb.Quadratic)
-                all[index]=FGEPathCommand.Quadratic(
-                    old.Verb==FGEPathVerb.Quadratic?old.Control1:
-                    Lerp(start,end,0.5),end);
-            else all[index]=FGEPathCommand.Cubic(
-                old.Verb==FGEPathVerb.Cubic?old.Control1:Lerp(start,end,1.0/3),
-                old.Verb==FGEPathVerb.Cubic?old.Control2:Lerp(start,end,2.0/3),end);
+            {
+                FGEPoint2D control;
+                if(old.Verb==FGEPathVerb.Quadratic)control=old.Control1;
+                else if(old.Verb==FGEPathVerb.Cubic)
+                {
+                    // 三次曲线降阶通常无法精确重合；折中保留两端切向推导控制点。
+                    FGEPoint2D fromStart=Lerp(start,old.Control1,1.5);
+                    FGEPoint2D fromEnd=Lerp(end,old.Control2,1.5);
+                    control=Lerp(fromStart,fromEnd,0.5);
+                }
+                else control=Lerp(start,end,0.5);
+                all[index]=FGEPathCommand.Quadratic(control,end);
+            }
+            else
+            {
+                // 二次Bezier升阶为三次可完全保形，不能按线段三等分丢失原曲率。
+                FGEPoint2D c1=old.Verb==FGEPathVerb.Cubic?old.Control1:
+                    old.Verb==FGEPathVerb.Quadratic?Lerp(start,old.Control1,2.0/3):
+                    Lerp(start,end,1.0/3);
+                FGEPoint2D c2=old.Verb==FGEPathVerb.Cubic?old.Control2:
+                    old.Verb==FGEPathVerb.Quadratic?Lerp(end,old.Control1,2.0/3):
+                    Lerp(start,end,2.0/3);
+                all[index]=FGEPathCommand.Cubic(c1,c2,end);
+            }
+            return new FGEPath2D(all);
+        }
+        /// <summary>按命令所在轮廓闭合/断开，不修改其他Move轮廓或曲线控制点。</summary>
+        public static FGEPath2D SetContourClosed(FGEPath2D path,int commandIndex,bool closed)
+        {
+            if(path==null)throw new ArgumentNullException("path");
+            if(commandIndex<0||commandIndex>=path.Commands.Count)
+                throw new ArgumentOutOfRangeException("commandIndex");
+            var all=new List<FGEPathCommand>(path.Commands);
+            int start=commandIndex;
+            while(start>0&&all[start].Verb!=FGEPathVerb.Move)start--;
+            if(all[start].Verb!=FGEPathVerb.Move)
+                throw new ArgumentException("geometry.contour.missing_move");
+            int end=start+1;
+            while(end<all.Count&&all[end].Verb!=FGEPathVerb.Move&&
+                all[end].Verb!=FGEPathVerb.Close)end++;
+            if(end==start+1)throw new ArgumentException("geometry.contour.empty");
+            bool alreadyClosed=end<all.Count&&all[end].Verb==FGEPathVerb.Close;
+            if(alreadyClosed==closed)return path;
+            if(closed)all.Insert(end,FGEPathCommand.Close());
+            else all.RemoveAt(end);
             return new FGEPath2D(all);
         }
         /// <summary>精确编辑Arc参数；起点Move自动重算，避免Path几何断裂。</summary>

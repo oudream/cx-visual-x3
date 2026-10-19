@@ -13,6 +13,7 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using CxVisual.Mechanism.Core;
 using CxVisual.Mechanism.Visual;
+using CxVisual.Foundation.Geometry;
 
 namespace CxVisual.Tests.ArchitectureSmoke
 {
@@ -50,6 +51,23 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 var gallery=page.RootContent.DescendantsAndSelf().OfType<MRCShapeElement>().ToArray();
                 Check(gallery.Length==9&&gallery.Select(x=>x.Shape.Kind).Distinct().Count()==9,
                     "Studio palette did not create nine persisted shapes");
+                // Studio真实按钮闭合/断开Path，同一工程历史负责Undo/Redo。
+                var editablePath=gallery[8];
+                vm.GetType().GetMethod("Select").Invoke(vm,new object[]{(Guid?)editablePath.Id});
+                int pathRevision=session.Revision;
+                Click(window,"路径断开");
+                Check(session.Revision==pathRevision+1&&
+                    editablePath.Shape.Geometry.Commands.Last().Verb!=FGEPathVerb.Close,
+                    "Studio path open button didn't commit the definition");
+                Click(window,"撤销");
+                Check(editablePath.Shape.Geometry.Commands.Last().Verb==FGEPathVerb.Close,
+                    "Studio path opening didn't use original Undo");
+                Click(window,"重做");
+                Check(editablePath.Shape.Geometry.Commands.Last().Verb!=FGEPathVerb.Close,
+                    "Studio path opening didn't use original Redo");
+                Click(window,"路径闭合");
+                Check(editablePath.Shape.Geometry.Commands.Last().Verb==FGEPathVerb.Close,
+                    "Studio path close button didn't restore closed path");
                 // 实际Studio ViewModel从当前WPF场景世界坐标提交Bezier控制柄事务。
                 Guid bezierId=gallery[7].Id;
                 var visualRows=(IEnumerable<CxSceneItem>)Get(vm,"Items");
