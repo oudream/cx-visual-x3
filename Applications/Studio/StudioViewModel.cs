@@ -78,6 +78,31 @@ namespace CxVisual.Studio
             if(result.Success)NotifyScene();
             return result;
         }
+        public MTCEditResult<bool> EditVisualGeometry(double x,double y,double width,
+            double height,double rotation)
+        {
+            if(!_selected.HasValue)throw new InvalidOperationException("请选择图元定义");
+            MTCEditResult<bool> result=_editor.SetGeometry(_selected.Value,x,y,width,height,rotation);
+            Status=result.Success?"几何属性已保存："+result.Revision:result.ErrorCode+": "+result.Message;
+            if(result.Success)NotifyScene();
+            return result;
+        }
+        public MTCEditResult<bool> EditVisualPath(int index,string operation)
+        {
+            if(!_selected.HasValue)throw new InvalidOperationException("请选择路径图元");
+            MTCEditResult<bool> result=_editor.EditPathSegment(_selected.Value,index,operation);
+            Status=result.Success?"路径操作已保存："+result.Revision:result.ErrorCode+": "+result.Message;
+            if(result.Success)NotifyScene();
+            return result;
+        }
+        public MTCEditResult<bool> EditVisualLayer(string layer,bool toFront)
+        {
+            if(!_selected.HasValue)throw new InvalidOperationException("请选择图元");
+            MTCEditResult<bool> result=_editor.SetLayer(_selected.Value,layer,toFront);
+            Status=result.Success?"图层与顺序已保存："+result.Revision:result.ErrorCode+": "+result.Message;
+            if(result.Success)NotifyScene();
+            return result;
+        }
         private static MEMEngineeringSession CreateSample()
         {
             var session = MEMEngineering.Create("Demo Project");
