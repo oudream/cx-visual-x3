@@ -12,6 +12,7 @@ using System.Windows.Data;
 using System.Windows.Media;
 using System.Windows.Threading;
 using CxVisual.Mechanism.Core;
+using CxVisual.Mechanism.Visual;
 
 namespace CxVisual.Tests.ArchitectureSmoke
 {
@@ -49,6 +50,27 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 var gallery=page.RootContent.DescendantsAndSelf().OfType<MRCShapeElement>().ToArray();
                 Check(gallery.Length==9&&gallery.Select(x=>x.Shape.Kind).Distinct().Count()==9,
                     "Studio palette did not create nine persisted shapes");
+                // 实际Studio ViewModel从当前WPF场景世界坐标提交Bezier控制柄事务。
+                Guid bezierId=gallery[7].Id;
+                var visualRows=(IEnumerable<CxSceneItem>)Get(vm,"Items");
+                CxSceneItem bezierScene=visualRows.First(x=>x.Id==bezierId);
+                MVIVisualHandle studioHandle=MVIVisualEditing.Handles(bezierScene)
+                    .First(x=>x.Kind==MVIVisualHandleKind.Control1);
+                var oldControl=gallery[7].Shape.Geometry.Commands[1].Control1;
+                int editBefore=session.Revision;
+                vm.GetType().GetMethod("Select").Invoke(vm,new object[]{(Guid?)bezierId});
+                vm.GetType().GetMethod("EditVisualHandle").Invoke(vm,new object[]{
+                    studioHandle,studioHandle.WorldPoint.X+19,studioHandle.WorldPoint.Y-17});
+                Check(session.Revision==editBefore+1&&
+                    !gallery[7].Shape.Geometry.Commands[1].Control1.Equals(oldControl),
+                    "Studio did not commit world Bezier control handle transaction");
+                Click(window,"撤销");
+                Check(gallery[7].Shape.Geometry.Commands[1].Control1.Equals(oldControl),
+                    "Studio Bezier control handle Undo failed");
+                Click(window,"重做");
+                Check(!gallery[7].Shape.Geometry.Commands[1].Control1.Equals(oldControl),
+                    "Studio Bezier control handle Redo failed");
+                vm.GetType().GetMethod("Select").Invoke(vm,new object[]{(Guid?)gallery[8].Id});
                 var fillBox=(TextBox)window.FindName("FillColorInput");
                 fillBox.Text="#FF27B478";
                 Click(window,"应用填充");
