@@ -146,8 +146,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 var drawing=new GeometryDrawing(fill,
                     stroke==null?null:new Pen(stroke,Math.Max(0,Attr(e,"stroke-width",1))),
                     geometry);
-                drawing.Opacity=opacity;
-                group.Children.Add(drawing);
+                var layer=new DrawingGroup{Opacity=opacity};
+                layer.Children.Add(drawing);
+                group.Children.Add(layer);
             }
             if(group.Children.Count==0)throw new InvalidDataException("visual.svg.no_geometry");
             group.Freeze();
