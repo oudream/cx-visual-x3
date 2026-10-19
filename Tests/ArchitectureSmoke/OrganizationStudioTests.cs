@@ -550,6 +550,29 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(finalSession.Revision==runtimeRevision,
                     "C diagnostic navigation must never commit engineering changes");
 
+                // C综合Studio用户路径：新建页后点一次真实WPF按钮，
+                // 同一MEM工程创建主流程、两份可运行Content引用和状态图元。
+                Click(window,"添加页面");
+                var xraySession=(MEMEngineeringSession)Get(vm,"ProjectSession");
+                var xrayPage=xraySession.Project.Pages.Last();
+                Click(window,"创建完整X-Ray双子流程");
+                var xrayRoot=xraySession.GetSnapshot().Find(xrayPage.RootContent.Id);
+                var xrayFlow=MOLWiringCodec.Get(xrayRoot);
+                Check(xrayFlow!=null&&xrayFlow.Blocks.Count==5&&
+                    xrayRoot.References.Count==2&&
+                    xraySession.Project.Contents.Count(c=>c.Name.StartsWith("XRay-",StringComparison.Ordinal))==2,
+                    "C Studio XRay didn't persist both executable child Contents");
+                Check(xrayRoot.References.All(r=>
+                    MOLWiringCodec.Get(xraySession.GetSnapshot().Find(r.TargetId)).Blocks.Count==2),
+                    "C Studio XRay children not real Content Logic definitions");
+                var xrayLamps=xrayPage.RootContent.DescendantsAndSelf()
+                    .OfType<MRCVisualItem>()
+                    .Where(x=>x.Name.Contains("运行状态")).ToArray();
+                Check(xrayLamps.Length==2&&xrayLamps.All(x=>
+                    MRCVisualAppearance.BehaviorOf(x).States.Count==3),
+                    "C Studio XRay HMI states not connected to executable nodes");
+                Check(((TextBlock)window.FindName("LogicInfo")).Text.Contains("MOC构建通过"),
+                    "C Studio XRay Flow did not pass real MOC validation");
                 Console.WriteLine("PASS H06 Studio real WPF automation: add/switch page, resource two instances, bound parameter edit, shared Undo/Redo, definition navigation, save/reopen");
             }
             finally{if(window!=null)window.Close();if(app!=null)app.Shutdown();if(File.Exists(path))File.Delete(path);if(File.Exists(path+".cx-lock"))File.Delete(path+".cx-lock");}
