@@ -136,6 +136,22 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 var data=MRCVisualAppearance.BehaviorOf((MRCVisualItem)loaded.Find(ids[0]));
                 Check(data.States.Count==1&&data.Animations.Count==1&&data.EventActions.Count==1,"behavior roundtrip");
                 loaded.Close();
+                // 开发者简洁API示例必须真实执行，不只通过编译。
+                string quickPath=Path.Combine(Path.GetTempPath(),
+                    "cxvisual-quickstart-"+Guid.NewGuid().ToString("N")+".cxproj");
+                try
+                {
+                    CxVisual.Examples.VisualAuthoring.EngineeringVisualQuickStart.Create(quickPath);
+                    using(var demo=MEMEngineering.Open(quickPath))
+                    {
+                        Check(demo.Validate().IsValid,"developer quickstart roundtrip");
+                        Check(demo.Project.Pages.Count==1&&demo.Project.Symbols.Count==1,
+                            "developer quickstart model");
+                        Check(demo.Project.Symbols[0].RootGroup.Children.Count==1,
+                            "developer quickstart compound element");
+                    }
+                }
+                finally{if(File.Exists(quickPath))File.Delete(quickPath);}
                 Console.WriteLine("PASS Visual M0: nine shapes, exact geometry, text, widget schema, style, state, animation, actions and save/open");
             }
             finally{if(File.Exists(file))File.Delete(file);}
