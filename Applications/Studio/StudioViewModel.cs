@@ -67,10 +67,16 @@ namespace CxVisual.Studio
             Execute(() => _editor.Move(id, x, y));
         }
         /// <summary>路径、缩放和旋转统一提交到MEM事务；失败时不修改工程状态。</summary>
-        public void EditVisualHandle(MVIVisualHandle handle,double worldX,double worldY)
+        public MTCEditResult<bool> EditVisualHandle(MVIVisualHandle handle,double worldX,double worldY)
         {
             if(handle==null)throw new ArgumentNullException("handle");
-            Execute(()=>_editor.EditHandle(handle,worldX,worldY));
+            MTCEditResult<bool> result=_editor.EditHandle(handle,worldX,worldY);
+            _logger.Write(new FLDLogRecord("Visual",
+                result.Success?"Committed":result.ErrorCode,result.Message));
+            Status=result.Success?"修改图元成功 | Revision "+result.Revision:
+                result.ErrorCode+": "+result.Message;
+            if(result.Success)NotifyScene();
+            return result;
         }
         private static MEMEngineeringSession CreateSample()
         {
