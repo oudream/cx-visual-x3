@@ -498,6 +498,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                     }
                     var handler=BlockSelected;
                     if(handler!=null)handler(this,new MOLBlockSelectedEventArgs(item.BlockId));
+                    // Ctrl点击只切换多选状态；不应被拖动入口再次重选。
+                    if((Keyboard.Modifiers&ModifierKeys.Control)!=0)
+                    {e.Handled=true;return;}
                     if(!IsConnectMode&&BeginBlockDrag(p))
                     {
                         CaptureMouse();e.Handled=true;return;
