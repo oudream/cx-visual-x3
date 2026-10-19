@@ -81,6 +81,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Click(window,"返回设计");
                 Check(session.Revision==beforePreviewRevision,
                     "Leaving runtime preview committed an edit transaction");
+                var editorItems=(IEnumerable<CxVisual.Mechanism.Visual.CxSceneItem>)Get(vm,"Items");
+                Check(Math.Abs(editorItems.First(x=>x.Id==animated.Id).Style.Opacity-1)<1e-9,
+                    "Studio returned to design but retained animation frame appearance");
                 Click(window,"文字图元");
                 Check(page.RootContent.DescendantsAndSelf().OfType<MRCTextElement>().Any(),
                     "Studio did not create text element");
