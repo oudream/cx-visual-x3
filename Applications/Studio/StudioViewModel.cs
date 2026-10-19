@@ -2,6 +2,7 @@ using System;
 using System.ComponentModel;
 using System.IO;
 using System.Collections.ObjectModel;
+using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Input;
 using CxVisual.Mechanism.Core;
@@ -61,6 +62,16 @@ namespace CxVisual.Studio
             _selected = id;
             _selection=id.HasValue?new[]{id.Value}:new Guid[0];
             NotifyScene();
+        }
+        /// <summary>Studio多选操作直接复用原工程事务，不逐项提交。</summary>
+        public MTCEditResult<bool> DragVisualSelection(IReadOnlyList<Guid> ids,
+            double worldDx,double worldDy,bool snap)
+        {
+            MTCEditResult<bool> result=_editor.MoveSelection(ids,worldDx,worldDy,snap);
+            Status=result.Success?"已整体移动 "+ids.Count+" 个图元 | Revision "+result.Revision:
+                "批量移动失败："+result.ErrorCode+" "+result.Message;
+            if(result.Success)NotifyScene();
+            return result;
         }
         public void Drag(Guid id, double x, double y)
         {
