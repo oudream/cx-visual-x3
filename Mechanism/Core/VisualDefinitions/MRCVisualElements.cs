@@ -55,6 +55,17 @@ namespace CxVisual.Mechanism.Core
             :base(id,name,"core.svg",x,y,width,height){}
         public MPMBinding Source{get{return GetBinding("source");}}
     }
+    /// <summary>平台内置控件类型；core命名空间不可由用户MPMTypeDescriptor伪注册。</summary>
+    public static class MRCWidgetTypes
+    {
+        public static bool IsBuiltIn(string id)
+        {
+            return id=="core.widget"||id=="core.widget.button"||
+                id=="core.widget.textbox"||id=="core.widget.checkbox"||
+                id=="core.widget.slider"||id=="core.widget.progressbar"||
+                id=="core.widget.combobox";
+        }
+    }
     /// <summary>控件类型可由 MPMTypeDescriptor(Kind.Element) 注册；不序列化活动WPF Control。</summary>
     public sealed class MRCWidgetElement : MRCElement
     {
