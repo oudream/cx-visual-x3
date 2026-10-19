@@ -257,6 +257,28 @@ namespace CxVisual.Tests.ArchitectureSmoke
                             catch(InvalidDataException){rejectedUnsafe=true;}
                         }
                         Check(rejectedUnsafe,"SVG script injection must be rejected");
+                        using(var safe=new MemoryStream(System.Text.Encoding.UTF8.GetBytes(
+                            "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\">"+
+                            "<g fill=\"#ff0000\" opacity=\"0.5\"><rect x=\"12\" y=\"17\" width=\"20\" height=\"10\"/></g></svg>")))
+                        {
+                            DrawingImage decoded=MPWVisualAssetRenderer.DecodeSvg(safe);
+                            Check(Math.Abs(decoded.Drawing.Bounds.Width-100)<1e-6&&
+                                Math.Abs(decoded.Drawing.Bounds.Height-100)<1e-6,
+                                "SVG viewBox was cropped to painted geometry");
+                            Check(DeepGeometries(decoded.Drawing).Any(d=>
+                                d.Brush is SolidColorBrush&&
+                                ((SolidColorBrush)d.Brush).Color.R==255&&
+                                ((SolidColorBrush)d.Brush).Color.G==0),
+                                "inherited SVG group paint did not reach the real geometry");
+                        }
+                        bool rejectedExternal=false;
+                        using(var unsafeExternal=new MemoryStream(System.Text.Encoding.UTF8.GetBytes(
+                            "<svg xmlns=\"http://www.w3.org/2000/svg\"><image href=\"https://evil.example/x\"/></svg>")))
+                        {
+                            try{MPWVisualAssetRenderer.DecodeSvg(unsafeExternal);}
+                            catch(InvalidDataException){rejectedExternal=true;}
+                        }
+                        Check(rejectedExternal,"SVG external image must be rejected");
                     }
                     finally
                     {
