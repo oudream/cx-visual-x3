@@ -60,3 +60,15 @@ session.SaveAs("monitor.cxproj");
 ## 5. 源码与验收管理
 
 直接在 master 开发，中文提交；每次以对应提交SHA的 Windows CI为准。若出现其他并行开发引入的失败，报告其真实测试名称与文件，不得以“此前提交成功”代替最新验收。仅在所有必需真实CI及人工体验通过后给出阶段闭环结论。
+
+## 6. Windows 实际验收证据（补记）
+
+**代码验收基准：** `13237211`（该提交已经包含上述可视化功能及同期工程构建修复）。
+
+- [工程组织 Windows Acceptance](https://github.com/oudream/cx-visual-x3/actions/runs/39207988478)：**Success**，真实 STA/WPF；日志包含 `PASS Visual M0`、`PASS H03 visual`、`PASS H06 Studio real WPF automation`、`PASS H01 WPF real STA`。
+- [统一 Runtime Windows TDD](https://github.com/oudream/cx-visual-x3/actions/runs/39207988482)：**Success**。
+- [Config L1 Windows 构建与冒烟](https://github.com/oudream/cx-visual-x3/actions/runs/39207988447)：**Success**。
+- [配置公共底座独立编译验收](https://github.com/oudream/cx-visual-x3/actions/runs/39207988451)：**Success**。
+- [TestCenter Windows .NET48](https://github.com/oudream/cx-visual-x3/actions/runs/39207573796)：**Success**，但这是较早的 `60e8a115` 提交，**不能当成当前HEAD的专项TestCenter通过**。
+
+自动化验证覆盖真实按钮可视化和设计态/预览态事件隔离，并非真实工业设备联调。由于工程持续并行开发，后续改动必须继续检查最新 Windows CI。
