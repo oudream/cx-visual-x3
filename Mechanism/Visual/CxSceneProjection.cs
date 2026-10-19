@@ -9,6 +9,15 @@ namespace CxVisual.Mechanism.Visual
 {
     public static class CxSceneProjection
     {
+        private static bool IsWidgetType(string type)
+        {
+            return type=="core.widget"||type.EndsWith(".button",StringComparison.OrdinalIgnoreCase)||
+                type.EndsWith(".textbox",StringComparison.OrdinalIgnoreCase)||
+                type.EndsWith(".checkbox",StringComparison.OrdinalIgnoreCase)||
+                type.EndsWith(".slider",StringComparison.OrdinalIgnoreCase)||
+                type.EndsWith(".progressbar",StringComparison.OrdinalIgnoreCase)||
+                type.EndsWith(".combobox",StringComparison.OrdinalIgnoreCase);
+        }
         public static ReadOnlyCollection<CxSceneItem> Project(MEMEngineeringSession session){return Project(session,null);}
         public static ReadOnlyCollection<CxSceneItem> Project(MEMEngineeringSession session,Guid? pageId)
         {return ProjectCore(session,pageId,null,0,false);}
@@ -149,8 +158,7 @@ namespace CxVisual.Mechanism.Visual
                         }
                         MPMValue runtimeValue=null;
                         var widgetSettings=new Dictionary<string,MPMValue>(StringComparer.Ordinal);
-                        bool widget=node.TypeId=="core.widget"||
-                            node.TypeId.StartsWith("core.widget.",StringComparison.OrdinalIgnoreCase);
+                        bool widget=IsWidgetType(node.TypeId);
                         if(widget)
                         {
                             string[] textSettings={"content","placeholder","options","tooltip"};
