@@ -191,3 +191,17 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 - 修复仅调整测试：要求完整错误链最深处仍为原业务异常、外层便捷 API 显式包含 \`FlowId\` 和 \`Failed\`。不删掉失败用例，不吞异常，不改动引擎错误传播。
 - 初次实测证据：[Runtime CI](https://github.com/oudream/cx-visual-x3/actions/runs/39273211753)（failure）、[工程组织 CI](https://github.com/oudream/cx-visual-x3/actions/runs/39273211810)（failure）、[TestCenter CI](https://github.com/oudream/cx-visual-x3/actions/runs/39273211756)（success）。同一根因可能造成共享 ArchitectureSmoke 的多条流水线红灯。
 - 修复轮次必须等待新的 \`master\` SHA 所对应 CI 真实结果，再判断 R01 是否达到 S3。
+
+
+## R02：V1/V2 条件与多路选择首批一致性（2026-10-19）
+
+**归属与事实**：现有 \`MOLControlBlock\` 是 Core 的持久结构定义，V2 \`MOLLink.ConditionId\` 是相同 Logic Aspect 的连线条件；\`MOCEngineeringCompiler\` 编译到现有 MRK Plan。G05a 原已实现 bool:true/false、case:/default 及多源 Join，本轮不复制执行器。
+
+**本轮加强**：
+- Core 原类增加 \`MOLControlBlock.Branch(params MOLBranchCase[])\` 便捷表达多级 ElseIf/Switch，第一个 Case 命中、最多一个末尾 Default，错误定义立即拒绝；
+- MOC 将 V1表达式与 V2 case 的标量比较统一为原有布尔、数字、字符串比较语义；例如运行值 \`1\` 与字面量 \`1.0\` 匹配；
+- V2 重叠但不同字面量的等价 case 按工程连线的稳定保存顺序只执行第一个，与 V1 有序 Case 一致；default 只有无 case 命中才执行；
+- V2 仍严格拒绝错误数据类型、丢失源结果、跨源非法 Join、环与无效端口；动态 Region/循环仍归 R03～R05，不假装 R02 已经实现；
+- ArchitectureSmoke 增加真实工程 V1/V2 Save/Open、相同 Provider/输入的真值、选中 Case、Join、SourceMap/Trace 和无效定义/原子回滚反证。
+
+**第一轮一次提交前的静态检查**：新增的辅助方法均位于原 Core/MOC 类型；未建立 Graph/Runtime 第二模型、未新增工程项目或不必要的枚举。最终通过与否仍只以本轮 SHA 的 Windows Runtime 和工程组织 CI 为依据。

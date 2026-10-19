@@ -130,17 +130,7 @@ namespace CxVisual.Mechanism.Orchestration
                 if (actual is int) return (int)actual != 0;
                 throw new InvalidOperationException("moc.truth_type");
             }
-            int order;
-            decimal numberA, numberB;
-            string left = Convert.ToString(actual, CultureInfo.InvariantCulture);
-            string right = expr.Expected;
-            bool booleanA, booleanB;
-            if (bool.TryParse(left, out booleanA) && bool.TryParse(right, out booleanB))
-                order = booleanA.CompareTo(booleanB);
-            else if (decimal.TryParse(left, NumberStyles.Number, CultureInfo.InvariantCulture, out numberA)
-                && decimal.TryParse(right, NumberStyles.Number, CultureInfo.InvariantCulture, out numberB))
-                order = numberA.CompareTo(numberB);
-            else order = string.CompareOrdinal(left, right);
+            int order = CompareScalar(actual, expr.Expected);
             switch (expr.Comparison)
             {
                 case MOLComparison.Equal: return order == 0;
@@ -152,6 +142,21 @@ namespace CxVisual.Mechanism.Orchestration
                 default: throw new InvalidOperationException("moc.expression_compare");
             }
         }
+        internal static int CompareScalar(object actual, string expected)
+        {
+            string left = Convert.ToString(actual, CultureInfo.InvariantCulture);
+            bool booleanA, booleanB;
+            if (bool.TryParse(left, out booleanA) && bool.TryParse(expected, out booleanB))
+                return booleanA.CompareTo(booleanB);
+            decimal numberA, numberB;
+            if (decimal.TryParse(left, NumberStyles.Number, CultureInfo.InvariantCulture, out numberA) &&
+                decimal.TryParse(expected, NumberStyles.Number, CultureInfo.InvariantCulture, out numberB))
+                return numberA.CompareTo(numberB);
+            return string.CompareOrdinal(left, expected);
+        }
+
+        internal static bool ScalarEquals(object actual, string expected)
+        { return CompareScalar(actual, expected) == 0; }
     }
 
     internal sealed class MOCResolver : IMRKCapabilityResolver
@@ -857,7 +862,8 @@ namespace CxVisual.Mechanism.Orchestration
 
         /// <summary>受限布尔/标量Switch条件。执行上下文读取真实上游StepResult，绝不执行任意表达式。</summary>
         private static bool EvaluateWiringGuard(MRKExecutionContext context,
-            string producer,string guard,IReadOnlyList<string> alternatives)
+            string producer,string guard,IReadOnlyList<string> earlierGuards,
+            IReadOnlyList<string> alternatives)
         {
             object value;
             if(!context.TryGetResult(producer,out value))
@@ -871,11 +877,15 @@ namespace CxVisual.Mechanism.Orchestration
             if(!(value is string||value is bool||value is int||value is long||
                 value is double||value is float||value is decimal))
                 throw new InvalidOperationException("moc.branch.scalar_required");
-            string actual=Convert.ToString(value,CultureInfo.InvariantCulture);
             if(guard.StartsWith("case:",StringComparison.Ordinal))
-                return string.Equals(actual,guard.Substring(5),StringComparison.Ordinal);
+            {
+                // 与V1 Branch的有序Case一致：等价的数值别名只能命中第一条。
+                if(earlierGuards.Any(x=>x.StartsWith("case:",StringComparison.Ordinal)&&
+                    MOCExpressions.ScalarEquals(value,x.Substring(5))))return false;
+                return MOCExpressions.ScalarEquals(value,guard.Substring(5));
+            }
             if(guard=="default")
-                return !alternatives.Any(x=>string.Equals(actual,x,StringComparison.Ordinal));
+                return !alternatives.Any(x=>MOCExpressions.ScalarEquals(value,x));
             throw new InvalidOperationException("moc.branch.unknown_guard");
         }
 
@@ -903,11 +913,14 @@ namespace CxVisual.Mechanism.Orchestration
                     var guardedLink=incomingControl[0];
                     string sourceStep=stepIds[guardedLink.Source.BlockId];
                     string guard=guardedLink.ConditionId;
-                    string[] cases=wiring.Links.Where(l=>l.Source.BlockId==guardedLink.Source.BlockId&&
-                        l.Kind==MPCPortKind.Control&&
-                        l.ConditionId.StartsWith("case:",StringComparison.Ordinal))
-                        .Select(l=>l.ConditionId.Substring(5)).ToArray();
-                    branchCondition=ctx=>EvaluateWiringGuard(ctx,sourceStep,guard,cases);
+                    MOLLink[] ordered=wiring.Links.Where(l=>l.Source.BlockId==guardedLink.Source.BlockId&&
+                        l.Kind==MPCPortKind.Control).ToArray();
+                    string[] earlierGuards=ordered.TakeWhile(l=>l.Id!=guardedLink.Id)
+                        .Select(l=>l.ConditionId).ToArray();
+                    string[] cases=ordered.Where(l=>l.ConditionId.StartsWith(
+                        "case:",StringComparison.Ordinal)).Select(l=>l.ConditionId.Substring(5)).ToArray();
+                    branchCondition=ctx=>EvaluateWiringGuard(
+                        ctx,sourceStep,guard,earlierGuards,cases);
                 }
                 bool allowSkippedJoin=incomingControl.Length>1;
                 var inputs=new List<MRKExecutionInput>();

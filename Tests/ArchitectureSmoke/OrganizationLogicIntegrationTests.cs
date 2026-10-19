@@ -57,6 +57,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             V2WiringRoundtrip();
             V2TypedParameterConfiguration();
             G05aConditionalBranchesAndJoin();
+            R02V1V2SwitchBranchParity();
             G05cWorkflowRetryPolicy();
             G05bStreamBackpressureAndFlow();
             G05dHierarchicalParallelMachine();
@@ -991,6 +992,134 @@ namespace CxVisual.Tests.ArchitectureSmoke
         }
 
         /// <summary>G05a Control分支实际执行与Join：不能用编排图或源码存在替代结果。</summary>
+        /// <summary>
+        /// R02：真实MEM工程内V1结构化Branch与V2自由连线Switch共用标量语义。
+        /// 数值1与1.0语义相等时只能选择第一个Case；持久重开后仍一致。
+        /// </summary>
+        private static void R02V1V2SwitchBranchParity()
+        {
+            var session=MEMEngineering.Create("R02双入口语义对照");
+            var structured=session.AddPage("CodeBranch");
+            var wired=session.AddPage("StudioBranch");
+            string path=System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                "r02-branch-"+Guid.NewGuid().ToString("N")+".cxproj");
+            try
+            {
+                var decision=MOLControlBlock.Action("decide");
+                var optionA=MOLControlBlock.Action("a");
+                var shadow=MOLControlBlock.Action("shadow");
+                var optionB=MOLControlBlock.Action("b");
+                var otherwise=MOLControlBlock.Action("otherwise");
+                var after=MOLControlBlock.Action("joined");
+                var stepValue=new MOLExpression(MOLExpressionSource.StepResult,
+                    decision.Id.ToString("N"),MOLComparison.Equal,"1.0");
+                var aliasValue=new MOLExpression(MOLExpressionSource.StepResult,
+                    decision.Id.ToString("N"),MOLComparison.Equal,"1");
+                var secondValue=new MOLExpression(MOLExpressionSource.StepResult,
+                    decision.Id.ToString("N"),MOLComparison.Equal,"2");
+                MOLControlBlock branch=MOLControlBlock.Branch(
+                    new MOLBranchCase(stepValue,optionA,"case 1.0"),
+                    new MOLBranchCase(aliasValue,shadow,"numeric alias"),
+                    new MOLBranchCase(secondValue,optionB,"case 2"),
+                    new MOLBranchCase(null,otherwise,"default"));
+                MOLLogicCodec.Set(session,structured.RootContent,new MOLLogicDefinition(
+                    MOLControlBlock.Sequence(decision,branch,after)));
+                Guid source=Guid.Empty,a=Guid.Empty,alias=Guid.Empty,b=Guid.Empty,
+                    fallback=Guid.Empty,join=Guid.Empty;
+                MOCFlowBuilder.Edit(session,wired.RootContent,flow=>{
+                    source=flow.Step("decide");
+                    a=flow.Step("a");
+                    alias=flow.Step("shadow");
+                    b=flow.Step("b");
+                    fallback=flow.Step("otherwise");
+                    join=flow.Step("joined");
+                    flow.ConnectConditional(source,"Done",a,"Start","case:1.0");
+                    flow.ConnectConditional(source,"Done",alias,"Start","case:1");
+                    flow.ConnectConditional(source,"Done",b,"Start","case:2");
+                    flow.ConnectConditional(source,"Done",fallback,"Start","default");
+                    flow.Connect(a,"Done",join,"Start");
+                    flow.Connect(alias,"Done",join,"Start");
+                    flow.Connect(b,"Done",join,"Start");
+                    flow.Connect(fallback,"Done",join,"Start");
+                });
+                session.SaveAs(path);
+                using(var restored=MEMEngineering.Open(path))
+                {
+                    var snapshot=restored.GetSnapshot();
+                    var reloaded=MOLWiringCodec.Get(snapshot.Find(wired.RootContent.Id));
+                    Check(reloaded!=null&&reloaded.Links.Count(l=>l.ConditionId.Length>0)==4,
+                        "V2 Switch guards lost on actual project Save/Open");
+                    foreach(var testcase in new[]{
+                        new{Input=(object)1,Expected="a"},
+                        new{Input=(object)2,Expected="b"},
+                        new{Input=(object)3,Expected="otherwise"}
+                    })
+                    {
+                        foreach(var contentId in new[]{structured.RootContent.Id,wired.RootContent.Id})
+                        {
+                            var hits=new List<string>();
+                            var resolver=new TestResolver().Register("decide",(ctx,ct)=>
+                                Task.FromResult((object)ctx.Inputs["selection"]));
+                            foreach(string cap in new[]{"a","shadow","b","otherwise","joined"})
+                            {
+                                string name=cap;
+                                resolver.Register(name,(ctx,ct)=>{
+                                    lock(hits){hits.Add(name);}
+                                    return Task.FromResult((object)name);
+                                });
+                            }
+                            var compiled=new MOCEngineeringCompiler().Compile(
+                                snapshot,contentId,resolver);
+                            MOCTraceView trace;
+                            var result=Execute(compiled,new Dictionary<string,object>{
+                                {"selection",testcase.Input}},out trace);
+                            Check(result.State==MRKFlowState.Completed,
+                                "R02 V1/V2 flow execution failed");
+                            Check(hits.Count==2&&hits.Contains(testcase.Expected)&&
+                                hits.Contains("joined")&&!hits.Contains("shadow"),
+                                "R02 ordered numeric/Else/Join semantics diverged: "+
+                                string.Join(",",hits));
+                            Guid selected=contentId==structured.RootContent.Id?
+                                testcase.Expected=="a"?optionA.Id:
+                                testcase.Expected=="b"?optionB.Id:otherwise.Id:
+                                testcase.Expected=="a"?a:
+                                testcase.Expected=="b"?b:fallback;
+                            Check(result.StepStates[compiled.SourceMap.Find(selected).Single().StepId]
+                                    ==MRKStepState.Completed &&
+                                trace.Events.Any(e=>e.Origin.BlockId==selected),
+                                "R02 selected Case not mapped into real MRK/SourceMap");
+                        }
+                    }
+                }
+                int revision=session.Revision;
+                bool rejected=false;
+                try
+                {
+                    MOCFlowBuilder.Edit(session,wired.RootContent,flow=>
+                        flow.ConnectConditional(source,"Done",a,"Start","case:1.0"));
+                }
+                catch(InvalidOperationException){rejected=true;}
+                Check(rejected&&session.Revision==revision,
+                    "R02 duplicate Link/Case broke atomic engineering edit");
+                rejected=false;
+                try
+                {
+                    MOLControlBlock.Branch(
+                        new MOLBranchCase(null,MOLControlBlock.Action("a")),
+                        new MOLBranchCase(MOLExpression.Always(true),
+                            MOLControlBlock.Action("b")));
+                }
+                catch(InvalidOperationException){rejected=true;}
+                Check(rejected,"R02 code Branch must reject Default before other Cases");
+            }
+            finally
+            {
+                session.Close(true);
+                if(System.IO.File.Exists(path))System.IO.File.Delete(path);
+                if(System.IO.File.Exists(path+".cx-lock"))System.IO.File.Delete(path+".cx-lock");
+            }
+        }
+
         private static void G05aConditionalBranchesAndJoin()
         {
             var session=MEMEngineering.Create("G05a 条件分支");

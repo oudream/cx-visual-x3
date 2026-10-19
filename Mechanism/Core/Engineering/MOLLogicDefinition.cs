@@ -101,6 +101,14 @@ namespace CxVisual.Mechanism.Core
         { return new MOLControlBlock(Guid.NewGuid(), MOLControlKind.Sequence, children: children); }
         public static MOLControlBlock Parallel(params MOLControlBlock[] children)
         { return new MOLControlBlock(Guid.NewGuid(), MOLControlKind.Parallel, children: children); }
+        /// <summary>R02：按输入顺序选择第一个成立的Case；最后允许一个Else/Default。</summary>
+        public static MOLControlBlock Branch(params MOLBranchCase[] cases)
+        {
+            if(cases==null)throw new ArgumentNullException("cases");
+            var branch=new MOLControlBlock(Guid.NewGuid(),MOLControlKind.Branch,cases:cases);
+            new MOLLogicDefinition(branch); // 立即检查Default次序和非法分支，不留坏定义。
+            return branch;
+        }
         public static MOLControlBlock If(MOLExpression condition, MOLControlBlock yes, MOLControlBlock no = null)
         {
             if (condition == null) throw new ArgumentNullException("condition");
