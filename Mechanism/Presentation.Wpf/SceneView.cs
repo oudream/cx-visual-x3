@@ -81,12 +81,34 @@ namespace CxVisual.Mechanism.Presentation.Wpf
 
         public event EventHandler<CxNodeEventArgs> NodeActivated;
         public event EventHandler<CxMoveEventArgs> MoveRequested;
+        private bool CanReuseWidgets(IList<CxSceneItem> next)
+        {
+            if(next==null||next.Count!=_items.Count)return false;
+            int widgetCount=0;
+            for(int i=0;i<next.Count;i++)
+            {
+                CxSceneItem before=_items[i],after=next[i];
+                if(before.Id!=after.Id||before.ElementTypeId!=after.ElementTypeId)
+                    return false;
+                if(MPWWidgetPresenter.Supports(after.ElementTypeId))widgetCount++;
+            }
+            return widgetCount==_widgetCanvas.Children.Count;
+        }
         public void SetScene(IList<CxSceneItem> items, Guid? selected)
         {
+            bool reuse=CanReuseWidgets(items);
             _items.Clear();
-            if (items != null) _items.AddRange(items);
-            _selection = selected;
-            BuildWidgetLayer();
+            if(items!=null)_items.AddRange(items);
+            _selection=selected;
+            if(!reuse)BuildWidgetLayer();
+            else
+            {
+                int index=0;
+                foreach(CxSceneItem item in _items)
+                    if(MPWWidgetPresenter.Supports(item.ElementTypeId))
+                        MPWWidgetPresenter.UpdateAppearance(
+                            (FrameworkElement)_widgetCanvas.Children[index++],item);
+            }
             InvalidateVisual();
         }
 
