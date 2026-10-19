@@ -323,6 +323,20 @@ namespace CxVisual.Studio
             Status="动画已保存："+property+" ("+duration+"ms)";
             NotifyScene();
         }
+        private Func<MVIVisualActionInvocation,bool> _authorizedVisualActionHost;
+        /// <summary>只能由专业运行宿主显式注入；Studio预览默认不具备设备控制权限。</summary>
+        public void AttachVisualActionHost(Func<MVIVisualActionInvocation,bool> host)
+        {
+            _authorizedVisualActionHost=host;
+        }
+        public int RouteVisualWidgetEvent(Guid visualId,string eventId,string value)
+        {
+            int approved=MVIVisualEventRouter.Dispatch(ProjectSession,visualId,eventId,
+                value,_authorizedVisualActionHost);
+            Status=approved>0?"已通过专业授权宿主转发 "+approved+" 个动作":
+                "事件收到，但未授权执行设备命令";
+            return approved;
+        }
         public void AppendSelectedEventAction(string eventId,string actionId)
         {
             if(!_selected.HasValue)throw new InvalidOperationException("请选择图元");
