@@ -182,3 +182,12 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 - 工程 Scope、Invocation、Flow、Operation 身份独立；调试不阻塞真实设备安全；
 - 每轮中文提交尽量一次；经真实 Windows CI 验收，红灯就留在本轮修复。
 
+
+
+### R01 初次 CI 反证修复（固定 SHA 证据）
+
+- 初次提交 \`204ca58ba0b280d9e077663d0008f8b1b7833652\` 已在 Windows Release x64 编译成功，但 ArchitectureSmoke 的新增失败反证未通过。
+- 失败并非编译错误或流程返回成功：测试假定原始业务异常直接处于第一层 \`InnerException\`，而 MRK 既有 Work/Step 错误屏障会保留多级包装。
+- 修复仅调整测试：要求完整错误链最深处仍为原业务异常、外层便捷 API 显式包含 \`FlowId\` 和 \`Failed\`。不删掉失败用例，不吞异常，不改动引擎错误传播。
+- 初次实测证据：[Runtime CI](https://github.com/oudream/cx-visual-x3/actions/runs/39273211753)（failure）、[工程组织 CI](https://github.com/oudream/cx-visual-x3/actions/runs/39273211810)（failure）、[TestCenter CI](https://github.com/oudream/cx-visual-x3/actions/runs/39273211756)（success）。同一根因可能造成共享 ArchitectureSmoke 的多条流水线红灯。
+- 修复轮次必须等待新的 \`master\` SHA 所对应 CI 真实结果，再判断 R01 是否达到 S3。

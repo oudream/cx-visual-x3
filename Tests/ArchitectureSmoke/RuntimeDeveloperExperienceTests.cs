@@ -171,8 +171,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 try { Wait(runtime.RunValueAsync<int>("fails", (object)1, "answer")); }
                 catch (InvalidOperationException ex)
                 {
-                    refused = ex.InnerException is InvalidOperationException &&
-                        ex.InnerException.Message == "R01.expected.failure" &&
+                    // MRK原有Step/Work异常屏障会保留多层InnerException。
+                    // 检验根因可追溯，而不假定专业异常就是第一层InnerException。
+                    Exception root = ex;
+                    while (root.InnerException != null) root = root.InnerException;
+                    refused = root is InvalidOperationException &&
+                        root.Message == "R01.expected.failure" &&
                         ex.Message.Contains("FlowId=") && ex.Message.Contains("Failed");
                 }
                 Check(refused, "流程失败被当作成功或丢失FlowId及原始异常");
