@@ -67,8 +67,16 @@ namespace CxVisual.Mechanism.Orchestration
 
     public sealed class MOCCompiledPlan
     {
-        internal MOCCompiledPlan(MRKExecutionPlan plan, MOCSourceMap source, Guid projectId, int revision)
-        { Plan = plan; SourceMap = source; ProjectId = projectId; EngineeringRevision = revision; }
+        internal MOCCompiledPlan(MRKExecutionPlan plan, MOCSourceMap source, Guid projectId, int revision,
+            IDictionary<string,object> inputDefaults=null)
+        {
+            Plan=plan;SourceMap=source;ProjectId=projectId;EngineeringRevision=revision;
+            InputDefaults=new ReadOnlyDictionary<string,object>(
+                new Dictionary<string,object>(inputDefaults??new Dictionary<string,object>(),
+                    StringComparer.Ordinal));
+        }
+        /// <summary>由MOC已校验字面量生成的每次执行输入默认值；运行请求可显式覆盖。</summary>
+        public IReadOnlyDictionary<string,object> InputDefaults{get;private set;}
         public MRKExecutionPlan Plan { get; private set; }
         public MOCSourceMap SourceMap { get; private set; }
         public Guid ProjectId { get; private set; }
@@ -181,6 +189,7 @@ namespace CxVisual.Mechanism.Orchestration
         private readonly IReadOnlyList<MOLControlBlock> _blocks;
         private readonly IReadOnlyList<MOLLink> _links;
         private readonly IReadOnlyList<MOLSelectionGroup> _groups;
+        private readonly IReadOnlyDictionary<Guid,IReadOnlyDictionary<string,string>> _parameters;
         private readonly IReadOnlyDictionary<Guid,IReadOnlyList<MPCPortDescriptor>> _ports;
         private readonly IReadOnlyDictionary<Guid,MOLBlockPosition> _positions;
         private MOCWiringFragment(MOLWiringDefinition definition,Guid[] selected)
@@ -190,6 +199,9 @@ namespace CxVisual.Mechanism.Orchestration
             _links=definition.Links.Where(x=>ids.Contains(x.Source.BlockId)&&
                 ids.Contains(x.Target.BlockId)).ToList().AsReadOnly();
             _groups=definition.Groups.Where(g=>g.BlockIds.All(ids.Contains)).ToList().AsReadOnly();
+            _parameters=new ReadOnlyDictionary<Guid,IReadOnlyDictionary<string,string>>(
+                definition.Parameters.Where(g=>ids.Contains(g.Key)).ToDictionary(
+                    g=>g.Key,g=>g.Value));
             _ports=new ReadOnlyDictionary<Guid,IReadOnlyList<MPCPortDescriptor>>(
                 _blocks.ToDictionary(x=>x.Id,x=>definition.Ports[x.Id]));
             var layout=new Dictionary<Guid,MOLBlockPosition>();
@@ -211,6 +223,8 @@ namespace CxVisual.Mechanism.Orchestration
         public IReadOnlyList<MOLControlBlock> Blocks {get{return _blocks;}}
         public IReadOnlyList<MOLLink> Links {get{return _links;}}
         public IReadOnlyList<MOLSelectionGroup> Groups {get{return _groups;}}
+        public IReadOnlyDictionary<Guid,IReadOnlyDictionary<string,string>> Parameters
+        {get{return _parameters;}}
         public IReadOnlyDictionary<Guid,IReadOnlyList<MPCPortDescriptor>> Ports {get{return _ports;}}
         public IReadOnlyDictionary<Guid,MOLBlockPosition> Positions {get{return _positions;}}
         /// <summary>受V2 Codec和4MB限制的剪贴板传输格式，绝不作为工程真源保存。</summary>
@@ -219,8 +233,10 @@ namespace CxVisual.Mechanism.Orchestration
             var ports=_ports.ToDictionary(p=>p.Key,
                 p=>(IEnumerable<MPCPortDescriptor>)p.Value);
             var positions=_positions.ToDictionary(p=>p.Key,p=>p.Value);
+            var parameters=_parameters.ToDictionary(p=>p.Key,
+                p=>(IDictionary<string,string>)new Dictionary<string,string>(p.Value));
             var wiring=new MOLWiringDefinition(_blocks[0].Id,_blocks,ports,_links,
-                positions,_groups);
+                positions,_groups,parameters);
             return MOLWiringCodec.Serialize(wiring);
         }
         public static MOCWiringFragment FromPayload(byte[] payload)
@@ -252,6 +268,8 @@ namespace CxVisual.Mechanism.Orchestration
         private readonly Dictionary<Guid,MOLBlockPosition> _positions=
             new Dictionary<Guid,MOLBlockPosition>();
         private readonly List<MOLSelectionGroup> _groups=new List<MOLSelectionGroup>();
+        private readonly Dictionary<Guid,IDictionary<string,string>> _parameters=
+            new Dictionary<Guid,IDictionary<string,string>>();
         private Guid _entry;
         private MOCFlowBuilder(MOLWiringDefinition current)
         {
@@ -262,6 +280,8 @@ namespace CxVisual.Mechanism.Orchestration
             foreach(var pair in current.Ports)_ports.Add(pair.Key,pair.Value.ToArray());
             foreach(var pair in current.Positions)_positions.Add(pair.Key,pair.Value);
             _groups.AddRange(current.Groups);
+            foreach(var pair in current.Parameters)
+                _parameters.Add(pair.Key,new Dictionary<string,string>(pair.Value,StringComparer.Ordinal));
         }
         public Guid LastBlockId{get{return _blocks.Count==0?Guid.Empty:_blocks[_blocks.Count-1].Id;}}
         public Guid Step(MOCCapabilityDescriptor descriptor)
@@ -305,6 +325,7 @@ namespace CxVisual.Mechanism.Orchestration
                 throw new InvalidOperationException("moc.wiring.block_missing");
             _ports.Remove(blockId);
             _positions.Remove(blockId);
+            _parameters.Remove(blockId);
             _links.RemoveAll(x=>x.Source.BlockId==blockId||x.Target.BlockId==blockId);
             RemoveGroupMembers(new HashSet<Guid>(new[]{blockId}));
             if(_entry==blockId)_entry=_blocks.Count==0?Guid.Empty:_blocks[0].Id;
@@ -334,6 +355,43 @@ namespace CxVisual.Mechanism.Orchestration
             updated.Add(descriptor);
             _ports[blockId]=updated.ToArray();
         }
+        /// <summary>更改现有端口契约；连线不兼容时Build拒绝整笔事务。</summary>
+        public void ReplacePort(Guid blockId,MPCPortDescriptor descriptor)
+        {
+            if(descriptor==null)throw new ArgumentNullException("descriptor");
+            IEnumerable<MPCPortDescriptor> found;
+            if(!_ports.TryGetValue(blockId,out found))
+                throw new InvalidOperationException("moc.wiring.block_missing");
+            var ports=found.ToList();
+            int index=ports.FindIndex(p=>p.MemberId==descriptor.MemberId);
+            if(index<0)throw new InvalidOperationException("moc.wiring.port_missing");
+            ports[index]=descriptor;
+            _ports[blockId]=ports.ToArray();
+        }
+        public void SetParameter(Guid blockId,string memberId,string text)
+        {
+            IEnumerable<MPCPortDescriptor> ports;
+            if(!_ports.TryGetValue(blockId,out ports))
+                throw new InvalidOperationException("moc.wiring.block_missing");
+            if(text==null)throw new ArgumentNullException("text");
+            if(!ports.Any(p=>p.MemberId==memberId&&p.Kind==MPCPortKind.Data&&
+                p.Direction==MPCPortDirection.Input))
+                throw new InvalidOperationException("moc.wiring.parameter_port_missing");
+            IDictionary<string,string> values;
+            if(!_parameters.TryGetValue(blockId,out values))
+            {
+                values=new Dictionary<string,string>(StringComparer.Ordinal);
+                _parameters.Add(blockId,values);
+            }
+            values[memberId]=text;
+        }
+        public void RemoveParameter(Guid blockId,string memberId)
+        {
+            IDictionary<string,string> values;
+            if(!_parameters.TryGetValue(blockId,out values)||!values.Remove(memberId))
+                throw new InvalidOperationException("moc.wiring.parameter_missing");
+            if(values.Count==0)_parameters.Remove(blockId);
+        }
         public void RemovePort(Guid blockId,string memberId)
         {
             IEnumerable<MPCPortDescriptor> existing;
@@ -346,6 +404,12 @@ namespace CxVisual.Mechanism.Orchestration
             if(updated.Length==existing.Count())
                 throw new InvalidOperationException("moc.wiring.port_missing");
             _ports[blockId]=updated;
+            IDictionary<string,string> values;
+            if(_parameters.TryGetValue(blockId,out values))
+            {
+                values.Remove(memberId);
+                if(values.Count==0)_parameters.Remove(blockId);
+            }
         }
         /// <summary>只修改能力身份，不更换BlockId或已有Port/Link身份。</summary>
         public void SetCapability(Guid blockId,string capabilityId)
@@ -527,7 +591,7 @@ namespace CxVisual.Mechanism.Orchestration
             var removed=new HashSet<Guid>(selected);
             _blocks.RemoveAll(x=>removed.Contains(x.Id));
             _links.RemoveAll(x=>removed.Contains(x.Source.BlockId)||removed.Contains(x.Target.BlockId));
-            foreach(Guid id in selected){_ports.Remove(id);_positions.Remove(id);}
+            foreach(Guid id in selected){_ports.Remove(id);_positions.Remove(id);_parameters.Remove(id);}
             RemoveGroupMembers(removed);
             if(removed.Contains(_entry))_entry=_blocks.Count==0?Guid.Empty:_blocks[0].Id;
         }
@@ -549,6 +613,9 @@ namespace CxVisual.Mechanism.Orchestration
                 _ports.Add(newId,fragment.Ports[source.Id].ToArray());
                 _positions.Add(newId,addedPositions[newId]);
             }
+            foreach(var pair in fragment.Parameters)
+                _parameters.Add(ids[pair.Key],
+                    new Dictionary<string,string>(pair.Value,StringComparer.Ordinal));
             foreach(var group in fragment.Groups)
                 _groups.Add(new MOLSelectionGroup(Guid.NewGuid(),group.Name,
                     group.BlockIds.Select(id=>ids[id])));
@@ -561,7 +628,7 @@ namespace CxVisual.Mechanism.Orchestration
             return new ReadOnlyDictionary<Guid,Guid>(ids);
         }
         public MOLWiringDefinition Build()
-        {return new MOLWiringDefinition(_entry,_blocks,_ports,_links,_positions,_groups);}
+        {return new MOLWiringDefinition(_entry,_blocks,_ports,_links,_positions,_groups,_parameters);}
         public static void Edit(MEMEngineeringSession session,MEMContent content,
             Action<MOCFlowBuilder> configure)
         {
@@ -628,6 +695,7 @@ namespace CxVisual.Mechanism.Orchestration
             var stepIds=blocks.Keys.ToDictionary(x=>x,x=>"w"+x.ToString("N"));
             var requests=new List<MRKStepCompileRequest>();
             var origins=new List<MOCStepOrigin>();
+            var inputDefaults=new Dictionary<string,object>(StringComparer.Ordinal);
             foreach(var block in wiring.Blocks)
             {
                 var entering=wiring.Links.Where(x=>x.Target.BlockId==block.Id).ToArray();
@@ -664,6 +732,21 @@ namespace CxVisual.Mechanism.Orchestration
                     inputs.Add(new MRKExecutionInput(target.MemberId,sourceKind,sourceName,
                         valueType,target.Required));
                 }
+                IReadOnlyDictionary<string,string> parameters;
+                if(wiring.Parameters.TryGetValue(block.Id,out parameters))
+                foreach(var parameter in parameters)
+                {
+                    var port=wiring.Ports[block.Id].Single(p=>p.MemberId==parameter.Key);
+                    Type type=ResolveWiringType(port.TypeId);
+                    if(type==typeof(object)||type==typeof(byte[]))
+                        throw new InvalidOperationException("moc.wiring.parameter_unknown_type");
+                    string inputKey=stepIds[block.Id]+"."+parameter.Key;
+                    object literal=type==typeof(string)?(object)parameter.Value:
+                        Convert.ChangeType(parameter.Value,type,CultureInfo.InvariantCulture);
+                    inputs.Add(new MRKExecutionInput(parameter.Key,MRKInputSource.FlowInput,
+                        inputKey,type,port.Required));
+                    inputDefaults.Add(inputKey,literal);
+                }
                 requests.Add(new MRKStepCompileRequest(stepIds[block.Id],block.CapabilityId,
                     depends,inputs));
                 origins.Add(new MOCStepOrigin(stepIds[block.Id],
@@ -678,7 +761,7 @@ namespace CxVisual.Mechanism.Orchestration
                 throw new InvalidOperationException("moc.wiring.compile_rejected:"+
                     string.Join(";",compiled.Diagnostics.Select(x=>x.Code+"@"+x.StepId)));
             return new MOCCompiledPlan(compiled.Plan,new MOCSourceMap(origins),
-                snapshot.ProjectId,snapshot.Revision);
+                snapshot.ProjectId,snapshot.Revision,inputDefaults);
         }
         private static Type ResolveWiringType(string id)
         {
