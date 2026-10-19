@@ -74,6 +74,10 @@
                                 <Button Content="滑块控件" Tag="core.widget.slider" Click="OnInsertShape"/>
                                 <Button Content="进度控件" Tag="core.widget.progressbar" Click="OnInsertShape"/>
                                 <Button Content="下拉控件" Tag="core.widget.combobox" Click="OnInsertShape"/>
+                                <Button Content="左对齐" Tag="left" Click="OnAlignVisuals"/>
+                                <Button Content="顶对齐" Tag="top" Click="OnAlignVisuals"/>
+                                <Button Content="水平居中" Tag="centerX" Click="OnAlignVisuals"/>
+                                <Button Content="水平分布" Tag="distributeX" Click="OnAlignVisuals"/>
                                 <Button Content="路径插点" Tag="split" Click="OnPathOperation"/>
                                 <Button Content="路径删点" Tag="delete" Click="OnPathOperation"/>
                                 <Button Content="转直线" Tag="line" Click="OnPathOperation"/>
