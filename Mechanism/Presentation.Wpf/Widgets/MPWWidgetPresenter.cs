@@ -41,21 +41,33 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             else if(Ends(type,".textbox"))
             {
                 var input=new TextBox{Text=item.Name};
-                input.TextChanged+=(sender,args)=>Emit(callback,item,"ValueChanged",input.Text);
+                input.TextChanged+=(sender,args)=>{
+                    if(!object.Equals(input.Tag,"visual.update"))
+                        Emit(callback,item,"ValueChanged",input.Text);
+                };
                 control=input;
             }
             else if(Ends(type,".checkbox"))
             {
                 var input=new CheckBox{Content=item.Name};
-                input.Checked+=(sender,args)=>Emit(callback,item,"ValueChanged","true");
-                input.Unchecked+=(sender,args)=>Emit(callback,item,"ValueChanged","false");
+                input.Checked+=(sender,args)=>{
+                    if(!object.Equals(input.Tag,"visual.update"))
+                        Emit(callback,item,"ValueChanged","true");
+                };
+                input.Unchecked+=(sender,args)=>{
+                    if(!object.Equals(input.Tag,"visual.update"))
+                        Emit(callback,item,"ValueChanged","false");
+                };
                 control=input;
             }
             else if(Ends(type,".slider"))
             {
                 var input=new Slider{Minimum=0,Maximum=100,Value=0};
-                input.ValueChanged+=(sender,args)=>Emit(callback,item,"ValueChanged",
+                input.ValueChanged+=(sender,args)=>{
+                    if(!object.Equals(input.Tag,"visual.update"))
+                        Emit(callback,item,"ValueChanged",
                     input.Value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                };
                 control=input;
             }
             else if(Ends(type,".progressbar"))
@@ -86,6 +98,31 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             if(button!=null)button.Content=item.Name;
             var checkbox=control as CheckBox;
             if(checkbox!=null)checkbox.Content=item.Name;
+            if(item.RuntimeValue!=null)
+            {
+                // 控件值来自运行态数据：从工程里只读投影，不写回工程，不触发用户事件。
+                object prior=control.Tag;
+                control.Tag="visual.update";
+                try
+                {
+                    var box=control as TextBox;
+                    if(box!=null&&item.RuntimeValue.Kind==MPMValueKind.String)
+                    {
+                        string value=item.RuntimeValue.AsString();
+                        if(box.Text!=value)box.Text=value;
+                    }
+                    var check=control as CheckBox;
+                    if(check!=null&&item.RuntimeValue.Kind==MPMValueKind.Boolean)
+                        check.IsChecked=item.RuntimeValue.AsBoolean();
+                    var slider=control as Slider;
+                    if(slider!=null&&item.RuntimeValue.Kind==MPMValueKind.Number)
+                        slider.Value=item.RuntimeValue.AsNumber();
+                    var progress=control as ProgressBar;
+                    if(progress!=null&&item.RuntimeValue.Kind==MPMValueKind.Number)
+                        progress.Value=item.RuntimeValue.AsNumber();
+                }
+                finally{control.Tag=prior;}
+            }
             MRCTransform m=item.WorldTransform;
             control.RenderTransform=new MatrixTransform(new Matrix(
                 m.M11,m.M21,m.M12,m.M22,m.X,m.Y));
