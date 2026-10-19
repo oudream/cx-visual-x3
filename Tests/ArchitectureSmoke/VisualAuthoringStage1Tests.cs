@@ -98,6 +98,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 session.Edit("批量图形定义",e=>{e.SetVisualStyle(session.Find(ids[0]) as MRCVisualItem,style);e.SetVisualBehavior(session.Find(ids[0]) as MRCVisualItem,behavior);return true;}).RequireValue();
                 Check(MRCVisualAppearance.StyleOf((MRCVisualItem)session.Find(ids[0])).StrokeWidth==2,"style write");
                 Check(MRCVisualAppearance.BehaviorOf((MRCVisualItem)session.Find(ids[0])).EventActions.Count==1,"event write");
+                // 动态绑定是工程声明，不因实时值变化而提交工程Revision。
+                session.SetBinding((MRCVisualItem)session.Find(ids[0]),"visible",
+                    MPMBinding.Variable("Motor.Ready"));
+                Check(((MRCVisualItem)session.Find(ids[0])).GetBinding("visible").Kind==
+                    MPMBindingKind.Variable,"binding API write");
                 int rev=session.Revision;session.SetVisualStyle((MRCVisualItem)session.Find(ids[0]),MRCVisualStyle.Default);
                 Check(session.Undo().Success&&MRCVisualAppearance.StyleOf((MRCVisualItem)session.Find(ids[0])).StrokeWidth==2,"undo style");
                 Check(session.Revision>=rev,"revision consistent");
@@ -126,6 +131,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(loaded.Find(widget.Id).TypeId=="demo.ui.button","widget type identity");
                 var brush=MRCVisualAppearance.StyleOf((MRCVisualItem)loaded.Find(ids[0]));
                 Check(brush.Fill.Color.Equals(MRCColor.Parse("#FF4488AA")),"ARGB style roundtrip");
+                Check(((MRCVisualItem)loaded.Find(ids[0])).GetBinding("visible").Kind==
+                    MPMBindingKind.Variable,"binding source roundtrip");
                 var data=MRCVisualAppearance.BehaviorOf((MRCVisualItem)loaded.Find(ids[0]));
                 Check(data.States.Count==1&&data.Animations.Count==1&&data.EventActions.Count==1,"behavior roundtrip");
                 loaded.Close();
