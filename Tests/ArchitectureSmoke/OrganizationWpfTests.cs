@@ -432,6 +432,27 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         widgetCanvas.Children[0] is System.Windows.Controls.Button,
                         "Widget did not materialize an actual WPF Button");
                     var widgetButton=(System.Windows.Controls.Button)widgetCanvas.Children[0];
+                    // A：设计态拖动真实WPF Widget必须有随动预览，取消必须原样恢复。
+                    int widgetRevision=session.Revision;
+                    widgetView.SetSelectedVisualIds(new[]{widgetModel.Id});
+                    var widgetBase=((MatrixTransform)widgetButton.RenderTransform).Matrix;
+                    var flags=System.Reflection.BindingFlags.NonPublic|
+                        System.Reflection.BindingFlags.Instance;
+                    typeof(SceneView).GetField("_dragging",flags).SetValue(widgetView,true);
+                    typeof(SceneView).GetField("_dragX",flags).SetValue(widgetView,31.0);
+                    typeof(SceneView).GetField("_dragY",flags).SetValue(widgetView,17.0);
+                    typeof(SceneView).GetMethod("UpdateWidgetDragPreview",flags)
+                        .Invoke(widgetView,null);
+                    var widgetMoving=((MatrixTransform)widgetButton.RenderTransform).Matrix;
+                    Check(Math.Abs(widgetMoving.OffsetX-widgetBase.OffsetX-31)<1e-6&&
+                        Math.Abs(widgetMoving.OffsetY-widgetBase.OffsetY-17)<1e-6&&
+                        session.Revision==widgetRevision,
+                        "design-time WPF Widget did not preview group drag without MEM edits");
+                    widgetView.CancelInteraction();
+                    var widgetRestored=((MatrixTransform)widgetButton.RenderTransform).Matrix;
+                    Check(Math.Abs(widgetRestored.OffsetX-widgetBase.OffsetX)<1e-6&&
+                        Math.Abs(widgetRestored.OffsetY-widgetBase.OffsetY)<1e-6,
+                        "cancelling WPF Widget drag left stale transforms");
                     widgetView.SetScene(CxSceneProjection.Project(session,widgetPage.Id),null);
                     Check(object.ReferenceEquals(widgetButton,widgetCanvas.Children[0]),
                         "visual frame update rebuilt live WPF Widget");
