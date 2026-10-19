@@ -180,6 +180,7 @@ namespace CxVisual.Mechanism.Orchestration
     {
         private readonly IReadOnlyList<MOLControlBlock> _blocks;
         private readonly IReadOnlyList<MOLLink> _links;
+        private readonly IReadOnlyList<MOLSelectionGroup> _groups;
         private readonly IReadOnlyDictionary<Guid,IReadOnlyList<MPCPortDescriptor>> _ports;
         private readonly IReadOnlyDictionary<Guid,MOLBlockPosition> _positions;
         private MOCWiringFragment(MOLWiringDefinition definition,Guid[] selected)
@@ -188,6 +189,7 @@ namespace CxVisual.Mechanism.Orchestration
             _blocks=definition.Blocks.Where(x=>ids.Contains(x.Id)).ToList().AsReadOnly();
             _links=definition.Links.Where(x=>ids.Contains(x.Source.BlockId)&&
                 ids.Contains(x.Target.BlockId)).ToList().AsReadOnly();
+            _groups=definition.Groups.Where(g=>g.BlockIds.All(ids.Contains)).ToList().AsReadOnly();
             _ports=new ReadOnlyDictionary<Guid,IReadOnlyList<MPCPortDescriptor>>(
                 _blocks.ToDictionary(x=>x.Id,x=>definition.Ports[x.Id]));
             var layout=new Dictionary<Guid,MOLBlockPosition>();
@@ -208,6 +210,7 @@ namespace CxVisual.Mechanism.Orchestration
         }
         public IReadOnlyList<MOLControlBlock> Blocks {get{return _blocks;}}
         public IReadOnlyList<MOLLink> Links {get{return _links;}}
+        public IReadOnlyList<MOLSelectionGroup> Groups {get{return _groups;}}
         public IReadOnlyDictionary<Guid,IReadOnlyList<MPCPortDescriptor>> Ports {get{return _ports;}}
         public IReadOnlyDictionary<Guid,MOLBlockPosition> Positions {get{return _positions;}}
         public static MOCWiringFragment Capture(MOLWiringDefinition definition,IEnumerable<Guid> selection)
@@ -233,6 +236,7 @@ namespace CxVisual.Mechanism.Orchestration
             new Dictionary<Guid,IEnumerable<MPCPortDescriptor>>();
         private readonly Dictionary<Guid,MOLBlockPosition> _positions=
             new Dictionary<Guid,MOLBlockPosition>();
+        private readonly List<MOLSelectionGroup> _groups=new List<MOLSelectionGroup>();
         private Guid _entry;
         private MOCFlowBuilder(MOLWiringDefinition current)
         {
@@ -242,6 +246,7 @@ namespace CxVisual.Mechanism.Orchestration
             _links.AddRange(current.Links);
             foreach(var pair in current.Ports)_ports.Add(pair.Key,pair.Value.ToArray());
             foreach(var pair in current.Positions)_positions.Add(pair.Key,pair.Value);
+            _groups.AddRange(current.Groups);
         }
         public Guid LastBlockId{get{return _blocks.Count==0?Guid.Empty:_blocks[_blocks.Count-1].Id;}}
         public Guid Step(MOCCapabilityDescriptor descriptor)
@@ -286,6 +291,7 @@ namespace CxVisual.Mechanism.Orchestration
             _ports.Remove(blockId);
             _positions.Remove(blockId);
             _links.RemoveAll(x=>x.Source.BlockId==blockId||x.Target.BlockId==blockId);
+            RemoveGroupMembers(new HashSet<Guid>(new[]{blockId}));
             if(_entry==blockId)_entry=_blocks.Count==0?Guid.Empty:_blocks[0].Id;
         }
 
@@ -348,6 +354,36 @@ namespace CxVisual.Mechanism.Orchestration
                 throw new InvalidOperationException("moc.wiring.block_missing");
             _positions[blockId]=new MOLBlockPosition(x,y);
         }
+        /// <summary>画布编辑组不能更改执行语义，必须至少两个节点且不得重叠。</summary>
+        public Guid Group(IEnumerable<Guid> ids,string name)
+        {
+            Guid[] members=ResolveSelection(ids);
+            if(members.Length<2)throw new InvalidOperationException("moc.wiring.group_needs_two");
+            if(_groups.Any(g=>g.BlockIds.Any(id=>members.Contains(id))))
+                throw new InvalidOperationException("moc.wiring.group_overlap");
+            var group=new MOLSelectionGroup(Guid.NewGuid(),name,members);
+            _groups.Add(group);
+            return group.Id;
+        }
+        public void Ungroup(Guid id)
+        {
+            if(_groups.RemoveAll(g=>g.Id==id)!=1)
+                throw new InvalidOperationException("moc.wiring.group_missing");
+        }
+        public IReadOnlyList<MOLSelectionGroup> Groups
+        {get{return _groups.ToList().AsReadOnly();}}
+        private void RemoveGroupMembers(HashSet<Guid> removed)
+        {
+            var groups=_groups.ToArray();
+            _groups.Clear();
+            foreach(var group in groups)
+            {
+                var remaining=group.BlockIds.Where(id=>!removed.Contains(id)).ToArray();
+                if(remaining.Length>=2)
+                    _groups.Add(new MOLSelectionGroup(group.Id,group.Name,remaining));
+            }
+        }
+
         private MOLBlockPosition EffectivePosition(Guid id)
         {
             MOLBlockPosition stored;
@@ -435,6 +471,7 @@ namespace CxVisual.Mechanism.Orchestration
             _blocks.RemoveAll(x=>removed.Contains(x.Id));
             _links.RemoveAll(x=>removed.Contains(x.Source.BlockId)||removed.Contains(x.Target.BlockId));
             foreach(Guid id in selected){_ports.Remove(id);_positions.Remove(id);}
+            RemoveGroupMembers(removed);
             if(removed.Contains(_entry))_entry=_blocks[0].Id;
         }
         /// <summary>跨Content粘贴快照；新建Block/Link ID，仅复制选区内部边。</summary>
@@ -455,6 +492,9 @@ namespace CxVisual.Mechanism.Orchestration
                 _ports.Add(newId,fragment.Ports[source.Id].ToArray());
                 _positions.Add(newId,addedPositions[newId]);
             }
+            foreach(var group in fragment.Groups)
+                _groups.Add(new MOLSelectionGroup(Guid.NewGuid(),group.Name,
+                    group.BlockIds.Select(id=>ids[id])));
             foreach(var link in fragment.Links)
                 _links.Add(new MOLLink(Guid.NewGuid(),
                     new MOLBlockEndpoint(ids[link.Source.BlockId],link.Source.PortMemberId),
@@ -464,7 +504,7 @@ namespace CxVisual.Mechanism.Orchestration
             return new ReadOnlyDictionary<Guid,Guid>(ids);
         }
         public MOLWiringDefinition Build()
-        {return new MOLWiringDefinition(_entry,_blocks,_ports,_links,_positions);}
+        {return new MOLWiringDefinition(_entry,_blocks,_ports,_links,_positions,_groups);}
         public static void Edit(MEMEngineeringSession session,MEMContent content,
             Action<MOCFlowBuilder> configure)
         {
