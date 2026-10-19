@@ -56,6 +56,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             V2WiringRoundtrip();
             V2TypedParameterConfiguration();
             G05aConditionalBranchesAndJoin();
+            G05cWorkflowRetryPolicy();
             V2ExtractLinearContent();
             V2LayoutContract();
             V2BulkEditingClipboard();
@@ -632,6 +633,73 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(session.Redo().Success&&
                     session.GetSnapshot().Find(child.Id)!=null,
                     "extract redo did not restore referenced Content atomically");
+            }
+            finally{session.Close(true);}
+        }
+
+        /// <summary>G05c策略必须实测MRK尝试次数、未知结果拒绝与原子工程回滚。</summary>
+        private static void G05cWorkflowRetryPolicy()
+        {
+            var session=MEMEngineering.Create("G05c 工作流策略");
+            var page=session.AddPage("幂等执行");
+            try
+            {
+                Guid block=Guid.Empty;
+                MOCFlowBuilder.Edit(session,page.RootContent,b=>{
+                    block=b.Step("idempotent.task");
+                    b.SetWorkflowPolicy(block,new MOLStepPolicy(3,1,0,true));
+                });
+                var definition=MOLWiringCodec.Get(session.GetSnapshot().Find(page.RootContent.Id));
+                Check(definition.Policies[block].MaxAttempts==3&&
+                    definition.Policies[block].Idempotent,
+                    "G05c policy not persisted in V2 Logic");
+                var decoded=MOLWiringCodec.Deserialize(MOLWiringCodec.Serialize(definition));
+                Check(decoded.Policies[block].RetryDelayMs==1,
+                    "G05c policy codec lost retry delay");
+                var snapshot=MOCWiringFragment.Capture(definition,new[]{block});
+                var payload=MOCWiringFragment.FromPayload(snapshot.ToPayload());
+                Check(payload.Policies[block].MaxAttempts==3,
+                    "G05c clipboard lost workflow policy");
+                int attempts=0;
+                var resolver=new TestResolver().Register("idempotent.task",(ctx,token)=>{
+                    int n=Interlocked.Increment(ref attempts);
+                    if(n<2)throw new InvalidOperationException("transient");
+                    return Task.FromResult((object)n);
+                });
+                var checkedBuild=new MOCBuildService().Build(
+                    session.GetSnapshot(),page.RootContent.Id,resolver);
+                Check(checkedBuild.Succeeded,
+                    "G05c workflow execution policy build failed");
+                MOCTraceView trace;
+                var result=Execute(checkedBuild.Plan,null,out trace);
+                Check(result.State==MRKFlowState.Completed&&attempts==2,
+                    "G05c MRK did not apply bounded idempotent retry");
+
+                int before=session.Revision;
+                bool refused=false;
+                try{MOCFlowBuilder.Edit(session,page.RootContent,b=>
+                    b.SetWorkflowPolicy(block,new MOLStepPolicy(2,0,0,false)));}
+                catch(ArgumentException){refused=true;}
+                Check(refused&&session.Revision==before,
+                    "G05c non-idempotent retry wrongly committed");
+                var failing=new TestResolver().Register("idempotent.task",(ctx,token)=>{
+                    Interlocked.Increment(ref attempts);
+                    throw new InvalidOperationException("permanent failure");
+                });
+                MOCBuildResult negative=new MOCBuildService().Build(
+                    session.GetSnapshot(),page.RootContent.Id,failing);
+                Check(negative.Succeeded,"G05c failure case failed to compile");
+                attempts=0;
+                result=Execute(negative.Plan,null,out trace);
+                Check(result.State==MRKFlowState.Failed&&attempts==3,
+                    "G05c bounded retries did not stop at attempt budget");
+                MOCFlowBuilder.Edit(session,page.RootContent,b=>
+                    b.ClearWorkflowPolicy(block));
+                Check(!MOLWiringCodec.Get(session.GetSnapshot().Find(page.RootContent.Id))
+                    .Policies.ContainsKey(block),"G05c policy removal not persisted");
+                Check(session.Undo().Success&&
+                    MOLWiringCodec.Get(session.GetSnapshot().Find(page.RootContent.Id))
+                    .Policies.ContainsKey(block),"G05c policy Undo not restored");
             }
             finally{session.Close(true);}
         }
