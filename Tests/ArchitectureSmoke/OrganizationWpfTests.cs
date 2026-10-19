@@ -156,7 +156,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Check(VisualTreeHelper.GetDrawing(wiredView)!=null&&wiredView.IsVisible,
                         "V2 wiring WPF canvas did not render");
                     wiredWindow.Close();
-                    session.SetVisibility(group, false, true); Check(CxSceneProjection.Project(session).Count == 0, "hidden group projected descendants");
+                    session.SetVisibility(group, false, true); Check(CxSceneProjection.Project(session,page.Id).Count == 0, "hidden group projected descendants");
                     session.Close(true);
                     OrganizationStudioTests.RunOnSta();
                     Console.WriteLine("PASS H01 WPF real STA layout/retained polygon, precise hit test, drag conversion, resource visibility and hidden-group projection");
