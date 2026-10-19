@@ -1192,7 +1192,7 @@ namespace CxVisual.Studio
                 _logicOverlay.Clear();
                 LogicHost.RuntimeStates=_logicOverlay.Snapshot();
                 engine=new MRKExecutionEngine(new FCRWorkerOptions(3,64));
-                var inputs=new Dictionary<string,object>(compiled.InputDefaults,StringComparer.Ordinal);
+                var inputs=compiled.InputDefaults.ToDictionary(p=>p.Key,p=>p.Value,StringComparer.Ordinal);
                 inputs["accepted"]=true;
                 _logicFlow=engine.StartFlow(compiled.Plan,inputs);
                 long cursor=0;
