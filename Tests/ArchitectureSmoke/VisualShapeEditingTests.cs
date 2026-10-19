@@ -14,8 +14,62 @@ namespace CxVisual.Tests.ArchitectureSmoke
         {if(!valid)throw new InvalidOperationException("Visual editing A: "+context);}
         private static bool Near(FGEPoint2D a,FGEPoint2D b,double eps=1e-6)
         {return a.DistanceTo(b)<eps;}
+        private static void BatchVisualMoveTests()
+        {
+            string path=Path.Combine(Path.GetTempPath(),
+                "cxvisual-batch-move-"+Guid.NewGuid().ToString("N")+".cxproj");
+            try
+            {
+                using(var doc=MEMEngineering.Create("A 多选拖动"))
+                {
+                    var page=doc.AddPage("Page");
+                    var firstGroup=doc.AddGroup(page.RootContent,"G1");
+                    var secondGroup=doc.AddGroup(page.RootContent,"G2");
+                    double rotation=Math.PI/6;
+                    doc.SetTransform(firstGroup,new MRCTransform(1,0,0,1,15,25));
+                    doc.SetTransform(secondGroup,new MRCTransform(Math.Cos(rotation),
+                        -Math.Sin(rotation),Math.Sin(rotation),Math.Cos(rotation),90,45));
+                    var a=doc.AddRectangle(firstGroup,"A",5,7,35,25);
+                    var b=doc.AddRectangle(secondGroup,"B",15,20,40,30);
+                    doc.ClearHistory();
+                    using(var editor=new CxVisualEditor(doc))
+                    {
+                        var originA=editor.Scene.Single(x=>x.Id==a.Id).Bounds;
+                        var originB=editor.Scene.Single(x=>x.Id==b.Id).Bounds;
+                        int originalRevision=doc.Revision;
+                        Check(editor.MoveSelection(new[]{a.Id,b.Id},48,27).Success,
+                            "multi selection drag rejected two different parents");
+                        var movedA=editor.Scene.Single(x=>x.Id==a.Id).Bounds;
+                        var movedB=editor.Scene.Single(x=>x.Id==b.Id).Bounds;
+                        Check(Math.Abs(movedA.Left-originA.Left-48)<1e-5&&
+                            Math.Abs(movedA.Top-originA.Top-27)<1e-5&&
+                            Math.Abs(movedB.Left-originB.Left-48)<1e-5&&
+                            Math.Abs(movedB.Top-originB.Top-27)<1e-5&&
+                            doc.Revision==originalRevision+1,
+                            "multi select drag lost world coordinates or was not one transaction");
+                        Check(editor.Undo().Success&&
+                            Math.Abs(editor.Scene.Single(x=>x.Id==a.Id).Bounds.Left-originA.Left)<1e-5&&
+                            Math.Abs(editor.Scene.Single(x=>x.Id==b.Id).Bounds.Top-originB.Top)<1e-5,
+                            "multi select must restore all items with one Undo");
+                        Check(editor.Redo().Success,"multi select Redo rejected");
+                        doc.SaveAs(path);
+                    }
+                }
+                using(var reopened=MEMEngineering.Open(path))
+                {
+                    var scene=CxSceneProjection.Project(reopened);
+                    Check(scene.Count>=2,"batch move save/open lost the shapes");
+                }
+            }
+            finally
+            {
+                if(File.Exists(path))File.Delete(path);
+                if(File.Exists(path+".cx-lock"))File.Delete(path+".cx-lock");
+            }
+        }
         public static void Run()
         {
+            BatchVisualMoveTests();
             var plain=new FGEPath2D(new[]{
                 FGEPathCommand.Move(new FGEPoint2D(0,0)),
                 FGEPathCommand.Quadratic(new FGEPoint2D(10,25),new FGEPoint2D(40,10)),
