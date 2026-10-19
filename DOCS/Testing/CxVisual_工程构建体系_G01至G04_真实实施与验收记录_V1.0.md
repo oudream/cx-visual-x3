@@ -42,3 +42,42 @@
 - **G06～G08**：真实专业Provider、工程发布/版本锁定、十案例与五历史系统的可重复验收。不要为不同执行语义建立第二棵工程树或第二套调度内核。
 
 **后续工作继续遵守三方面及28个既定项目组织，不新增项目，所有阶段先测后编、CI未通过不得宣称完成。**
+
+## 5. 2026-10-19 G04 深化两批实际实施增补（原 G01～G03 不重做）
+
+### 5.1 G04-A：端口可视化、直接拖连线
+
+- 源码：`Mechanism/Presentation.Wpf/MOLFlowCanvas.cs`、`Mechanism/Visual/MOLFlowLayout.cs`、`Applications/Studio/MainWindow.xaml.cs`。
+- 在真实WPF画布中依据原有 `MOLWiringDefinition.Ports` 绘制类型化Port：Control蓝色、Data橙色，拖拽有预览线。输出到输入自动选择明确的PortMemberId；旧的双节点选中+端口列表模式仍保留。
+- 画布调用Core现有 `MOLWiringDefinition.Validate()` 做方向、契约、重边、多重度及环路拒绝，随后经 `MOCFlowBuilder.Edit` 及 `MEMEngineeringSession.Edit` 原子保存。不另外保存Graph或WPF状态。
+- 真实Studio STA回归覆盖画布端口坐标命中、错误起点/终点拒绝、选择端口精确连接、Undo/Redo。测试入口 `Tests/ArchitectureSmoke/OrganizationStudioTests.cs`；WPF自动化通过与鼠标事件共用的画布交互方法执行，非真实硬件鼠标轨迹注入。
+- 第一轮提交 `7cc19d030ae94aacdc498b5571c2accba823dfa0` 缺少LINQ命名空间，首轮Windows编译失败；已以中文提交 `a782d94ff96f154afef2b078a33fda8f2070aad3` 修正并重新验收。
+- **真实Windows工程组织CI成功**：[39210904966](https://github.com/oudream/cx-visual-x3/actions/runs/39210904966)。
+
+### 5.2 G04-B：节点拖动、布局投影及工程持久化
+
+- 源码：`Mechanism/Core/Engineering/MOLLogicDefinition.cs`（`MOLBlockPosition`、可选`Positions`、V2 Codec）；`Mechanism/Orchestration/MOCEngineeringCompiler.cs`（`MOCFlowBuilder.Move`）；`Mechanism/Visual/MOLFlowLayout.cs`；`Mechanism/Presentation.Wpf/MOLFlowCanvas.cs`；`Applications/Studio/MainWindow.xaml.cs`。
+- 拖动节点时画布有位置预览，连接端口与边跟随。结束拖动后调用公共 `MOCFlowBuilder.Edit(session,content,b=>b.Move(blockId,x,y))`，所有位置写入Content原有Logic Aspect V2；开发者使用同一个Builder API。
+- V2块在需要时增加可选 `x/y` 属性；没有坐标的原V2文档继续默认自动排布。位置采用InvariantCulture、有限非负坐标，拒绝NaN、Infinity、越界和未知BlockId。后续增删/连线必须保留其他块的坐标。
+- 测试：`OrganizationStudioTests` 中真实WPF画布实例的节点拖动、Undo/Redo和最终文件Save/Open；`OrganizationLogicIntegrationTests` 的兼容Codec、合法/非法位置、Revision不变、Builder增量编辑及实体文件往返。
+- 实现提交 `923e177321182876c063157e0cc419464a0d8653`；**真实Windows工程组织CI成功**：[39211521133](https://github.com/oudream/cx-visual-x3/actions/runs/39211521133)。配置L1及统一运行CI对应提交也成功。
+
+开发者实际使用入口（示意，运行时使用同一Content）：
+
+```csharp
+MOCFlowBuilder.Edit(session, content, b =>
+{
+    Guid acquire = b.Step("Acquire");
+    Guid inspect = b.Step("AI");
+    b.Connect(acquire, "Done", inspect, "Start", MPCPortKind.Control);
+    b.Move(inspect, 340, 140);
+});
+```
+
+### 5.3 未完成范围及验收边界
+
+1. 尚未实现缩放、自动路径避障、节点碰撞规避、框选多选/组合、剪贴板、可复用子Content提取、子流程公开Port及完整参数属性编辑；不能将G04整体标记完成。
+2. Port拖拽/节点拖动采用真实WPF控件事件实现，但自动化回归通过公共WPF交互方法模拟坐标，完整鼠标设备注入、DPI/缩放和大图性能仍需后续验收。
+3. 布局只是V2 Logic的可选展示坐标，不改变MOC/MRK/MDS行为，不引入第二套工程真源；未迁移或修改V1结构化Logic格式。
+4. 两批测试均是CPU与WPF工程验收，不代表真实X-Ray、CT、PLC或运动互锁实机验收。
+5. 工程构建体系后续继续G04全量和G05各独立执行语义，不得以现有有向无环Action代替动态循环、数据流、Workflow或StateMachine。

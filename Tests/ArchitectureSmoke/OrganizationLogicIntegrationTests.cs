@@ -54,6 +54,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         {
             SaveLoadAndIdentity();
             V2WiringRoundtrip();
+            V2LayoutContract();
             V2WiringCompileRun();
             V2BuilderSharedDefinition();
             V2DraftPortsUndoAndCompileGate();
@@ -478,6 +479,74 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "capability ports not used by common Builder");
             }
             finally{session.Close(true);}
+        }
+
+        private static void V2LayoutContract()
+        {
+            var session=MEMEngineering.Create("可视编排布局契约");
+            var page=session.AddPage("Main");
+            string path=System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                "moc-layout-"+Guid.NewGuid().ToString("N")+".cxproj");
+            try
+            {
+                Guid first=Guid.Empty,second=Guid.Empty;
+                MOCFlowBuilder.Edit(session,page.RootContent,b=>{
+                    first=b.Step("capture");
+                    second=b.Step("inspect");
+                    b.Connect(first,"Done",second,"Start");
+                });
+                var initial=MOLWiringCodec.Get(session.GetSnapshot().Find(page.RootContent.Id));
+                Check(initial.Positions.Count==0,"old V2 position-free layout must be accepted");
+                var oldPayload=MOLWiringCodec.Serialize(initial);
+                Check(MOLWiringCodec.Deserialize(oldPayload).Positions.Count==0,
+                    "old V2 codec unexpectedly required layout coordinates");
+
+                MOCFlowBuilder.Edit(session,page.RootContent,b=>b.Move(second,145.5,203.25));
+                var located=MOLWiringCodec.Get(session.GetSnapshot().Find(page.RootContent.Id));
+                Check(located.Positions.ContainsKey(second)&&
+                    Math.Abs(located.Positions[second].X-145.5)<0.001&&
+                    located.Links.Count==1,"Builder move changed link identity or lost position");
+                var payload=MOLWiringCodec.Serialize(located);
+                var decoded=MOLWiringCodec.Deserialize(payload);
+                Check(decoded.Positions.ContainsKey(second)&&
+                    Math.Abs(decoded.Positions[second].Y-203.25)<0.001,
+                    "V2 layout XML roundtrip dropped position");
+
+                int revision=session.Revision;
+                bool rejected=false;
+                try{MOCFlowBuilder.Edit(session,page.RootContent,
+                    b=>b.Move(second,double.NaN,9));}
+                catch(ArgumentOutOfRangeException){rejected=true;}
+                Check(rejected&&session.Revision==revision,
+                    "invalid or non-finite position mutated the engineering document");
+                rejected=false;
+                try{MOCFlowBuilder.Edit(session,page.RootContent,
+                    b=>b.Move(Guid.NewGuid(),15,22));}
+                catch(InvalidOperationException){rejected=true;}
+                Check(rejected&&session.Revision==revision,
+                    "unknown BlockId unexpectedly accepted a layout edit");
+                MOCFlowBuilder.Edit(session,page.RootContent,b=>b.Step("more"));
+                var afterStep=MOLWiringCodec.Get(session.GetSnapshot().Find(page.RootContent.Id));
+                Check(afterStep.Positions.ContainsKey(second)&&
+                    afterStep.Links[0].Id==located.Links[0].Id,
+                    "subsequent Builder edits failed to preserve layout/link identity");
+                session.SaveAs(path);
+                var reopened=MEMEngineering.Open(path);
+                try
+                {
+                    var persisted=MOLWiringCodec.Get(reopened.GetSnapshot().Find(page.RootContent.Id));
+                    Check(persisted.Positions.ContainsKey(second)&&
+                        Math.Abs(persisted.Positions[second].X-145.5)<0.001,
+                        "actual cxproj Save/Open lost V2 optional layout");
+                }
+                finally{reopened.Close(true);}
+            }
+            finally
+            {
+                session.Close(true);
+                if(System.IO.File.Exists(path))System.IO.File.Delete(path);
+                if(System.IO.File.Exists(path+".cx-lock"))System.IO.File.Delete(path+".cx-lock");
+            }
         }
 
         private static void V2DiagnosticLocations()
