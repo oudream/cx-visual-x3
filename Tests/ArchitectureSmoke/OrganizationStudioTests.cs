@@ -158,7 +158,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(!sceneHost.IsDesignMode,"Widget preview did not enter runtime interaction mode");
                 Click(window,"返回设计");
                 Check(sceneHost.IsDesignMode,"Widget preview did not return to design mode");
-                Click(window,"新建组件");var symbol=session.Project.Symbols.Last();var resources=(ListBox)window.FindName("EngineeringResources");resources.SelectedItem=symbol;Pump();
+                Click(window,"新建组件");var symbol=session.Project.Symbols.Last();
+                // R02: 在真实MEM Symbol中声明Boolean Schema属性，由Studio动态使用CheckBox模板。
+                session.DefineProperty(symbol,new MPMPropertyDescriptor("启用",MPMValueKind.Boolean,
+                    false,true,MPMBinding.Literal(MPMValue.Boolean(false))));
+                var resources=(ListBox)window.FindName("EngineeringResources");resources.SelectedItem=symbol;Pump();
                 Click(window,"放置实例");var first=page.RootContent.References.Last();Click(window,"放置实例");var second=page.RootContent.References.Last();
                 Check(first.Id!=second.Id&&page.RootContent.References.Count==2,"resource button did not create two real instances");
                 var properties=(ItemsControl)window.FindName("EngineeringProperties");
@@ -175,6 +179,19 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 var text=Descendants(properties).OfType<TextBox>().First();
                 text.Text="240";BindingOperations.GetBindingExpression(text,TextBox.TextProperty).UpdateSource();Click(window,"应用");
                 Check(session.ResolveParameter(second,"宽度").Value.AsNumber()==240&&session.ResolveParameter(first,"宽度").Value.AsNumber()==120,"WPF property binding changed shared defaults");
+                // R02: 编辑中即时报告非法数字，错误的输入绝不会触发真实MEM编辑提交。
+                text.Text="not-a-number";
+                BindingOperations.GetBindingExpression(text,TextBox.TextProperty).UpdateSource();
+                Pump();
+                Check(((string)Get(schemaRow,"ValidationMessage")).Contains("请输入有效"),
+                    "Studio numeric editor failed to report invalid number while typing");
+                Check(Descendants(properties).OfType<TextBlock>().Any(x=>x.Text.Contains("请输入有效")),
+                    "Studio WPF does not display numeric inline validation error");
+                int revisionBeforeBadFormat=session.Revision;
+                Click(window,"应用");
+                Check(session.Revision==revisionBeforeBadFormat&&
+                    session.ResolveParameter(second,"宽度").Value.AsNumber()==240,
+                    "Invalid numeric text changed MEM revision or reference override");
                 // 范围非法的实例覆盖必须沿原MEM校验链拒绝，且既有成功编辑可继续Undo/Redo。
                 window.UpdateLayout();
                 var invalidText=Descendants(properties).OfType<TextBox>().First();
@@ -189,9 +206,35 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(((string)Get(vm,"Status")).Contains("操作失败"),
                     "Studio did not report MPM range rejection to the engineering user");
                 Click(window,"撤销");Check(session.ResolveParameter(second,"宽度").Value.AsNumber()==120,"property change required multiple undo");Click(window,"重做");
+                window.UpdateLayout();
+                var enabledRow=((IEnumerable)Get(vm,"Properties")).Cast<object>()
+                    .Single(x=>(string)Get(x,"Member")=="启用");
+                Check((bool)Get(enabledRow,"IsBooleanConstant"),"MPM Boolean property did not select literal editor");
+                var checkbox=Descendants(properties).OfType<CheckBox>().Single();
+                Check(checkbox.IsChecked==false,"Boolean editor initial MPM value mismatch");
+                checkbox.IsChecked=true;Pump();
+                Check((bool)Get(enabledRow,"BooleanValue")&&
+                    (string)Get(enabledRow,"Text")=="true","Checkbox did not update canonical MPM literal");
+                var applyButtons=Descendants(properties).OfType<Button>()
+                    .Where(x=>object.Equals(x.Content,"应用")).ToArray();
+                Check(applyButtons.Length==2,"Boolean and numeric property editors missing independent actions");
+                var booleanPeer=new ButtonAutomationPeer(applyButtons.Last());
+                ((IInvokeProvider)booleanPeer.GetPattern(PatternInterface.Invoke)).Invoke();Pump();
+                Check(session.ResolveParameter(second,"启用").Value.AsBoolean()&&
+                    !session.ResolveParameter(first,"启用").Value.AsBoolean(),
+                    "Boolean Schema input was not committed to the correct Symbol instance");
+                Click(window,"撤销");
+                Check(!session.ResolveParameter(second,"启用").Value.AsBoolean(),
+                    "Boolean editor did not use the original MEM Undo history");
+                Click(window,"重做");
+                Check(session.ResolveParameter(second,"启用").Value.AsBoolean(),
+                    "Boolean editor did not use the original MEM Redo history");
                 Click(window,"编辑共享定义");Click(window,"添加矩形");Check(symbol.RootGroup.Children.Count==2,"shared definition editor context missing");Click(window,"返回");
                 vm.GetType().GetMethod("SaveProject").Invoke(vm,new object[]{path});Click(window,"保存工程");vm.GetType().GetMethod("OpenProject").Invoke(vm,new object[]{path,true});Pump();
                 var reopened=(MEMEngineeringSession)Get(vm,"ProjectSession");Check(reopened.FindReference(second.Id)!=null&&reopened.ResolveParameter(reopened.FindReference(second.Id),"宽度").Value.AsNumber()==240,"Studio file reopen lost instance parameter");
+                Check(reopened.ResolveParameter(reopened.FindReference(second.Id),"启用").Value.AsBoolean()&&
+                    !reopened.ResolveParameter(reopened.FindReference(first.Id),"启用").Value.AsBoolean(),
+                    "Boolean Schema instance value lost isolation or persistence after Studio reopen");
                 Check(reopened.Project.Pages.Last().RootContent.DescendantsAndSelf()
                     .OfType<MRCShapeElement>().Count()==9,
                     "Studio nine shapes lost after real Save/Open");
