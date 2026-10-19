@@ -159,6 +159,39 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         "undo stack did not restore original Path");
                     Check(editor.Redo().Success&&editor.Redo().Success&&editor.Redo().Success,
                         "redo stack did not replay precise Path + resize + rotate");
+                    // Arc半径/端点编辑采用精确FGEArc2D而非折线重建。
+                    FGEArc2D originalArc=new FGEArc2D(new FGEPoint2D(60,60),
+                        42,27,0,Math.PI);
+                    var arcShape=doc.AddShape(group,"Arc",MRCShapeDefinition.Arc(originalArc),
+                        160,140);
+                    var arcItem=editor.Scene.Single(x=>x.Id==arcShape.Id);
+                    var radiusHandle=MVIVisualEditing.Handles(arcItem).First(x=>
+                        x.Kind==MVIVisualHandleKind.ArcRadiusX);
+                    FGEPoint2D radiusTarget=arcItem.GeometryToWorld.TransformPoint(
+                        new FGEPoint2D(originalArc.Center.X+52,originalArc.Center.Y));
+                    Check(editor.EditHandle(radiusHandle,radiusTarget.X,radiusTarget.Y).Success,
+                        "Arc radius handle edit failed");
+                    Check(Math.Abs(arcShape.Shape.Geometry.Commands[1].Arc.RadiusX-52)<1e-5,
+                        "Arc radius did not update exact parameter");
+                    Check(editor.Undo().Success&&
+                        Math.Abs(arcShape.Shape.Geometry.Commands[1].Arc.RadiusX-42)<1e-5,
+                        "Arc radius undo did not restore exact parameter");
+                    Check(editor.Redo().Success,"Arc radius redo failed");
+
+                    // 多层旋转组合中的两个图元对齐，必须使用世界坐标而非局部X。
+                    var neighbor=doc.AddRectangle(group,"Neighbor",330,140,50,40);
+                    CxSceneItem beforeAlignA=editor.Scene.Single(x=>x.Id==shape.Id);
+                    CxSceneItem beforeAlignB=editor.Scene.Single(x=>x.Id==neighbor.Id);
+                    Check(editor.Align(new[]{shape.Id,neighbor.Id},"left").Success,
+                        "world-space multi-selection alignment failed");
+                    CxSceneItem afterAlignA=editor.Scene.Single(x=>x.Id==shape.Id);
+                    CxSceneItem afterAlignB=editor.Scene.Single(x=>x.Id==neighbor.Id);
+                    Check(Math.Abs(afterAlignA.Bounds.Left-afterAlignB.Bounds.Left)<1e-6,
+                        "alignment did not match left edge in world coordinates");
+                    Check(editor.Undo().Success,"alignment undo failed");
+                    Check(Math.Abs(editor.Scene.Single(x=>x.Id==neighbor.Id).Bounds.Left-
+                        beforeAlignB.Bounds.Left)<1e-6,"alignment Undo did not restore original");
+                    Check(editor.Redo().Success,"alignment redo failed");
                     doc.SaveAs(filename);
                 }
                 doc.Close();
