@@ -88,6 +88,15 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         private bool _gridSnap;
         public double Zoom{get{return _zoom;}}
         public bool SnapToGrid{get{return _gridSnap;}set{_gridSnap=value;}}
+        /// <summary>资源画刷仅从宿主WPF主题或授权的本地Provider获取，绝不从ResourceKey加载外部地址。</summary>
+        public Func<string,Brush> ResourceBrushResolver{get;set;}
+        private Brush ResolveStyleBrush(string key)
+        {
+            if(string.IsNullOrWhiteSpace(key))return null;
+            if(ResourceBrushResolver!=null)return ResourceBrushResolver(key);
+            object value=TryFindResource(key);
+            return value as Brush;
+        }
         public void SetViewport(double zoom,double panX,double panY)
         {
             if(double.IsNaN(zoom)||double.IsInfinity(zoom)||zoom<0.05||zoom>16||
@@ -237,7 +246,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 if(item.Shape!=null)
                 {
                     MPWShapeRenderer.Draw(dc,item,selected&&_dragging?_dragX:0,
-                        selected&&_dragging?_dragY:0);
+                        selected&&_dragging?_dragY:0,ResolveStyleBrush);
                     if(selected)
                     {
                         Rect highlight=new Rect(item.Bounds.X+( _dragging?_dragX:0),
@@ -278,7 +287,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                     dc.PushTransform(new MatrixTransform(new Matrix(matrix.M11,matrix.M21,
                         matrix.M12,matrix.M22,matrix.X+(_dragging&&selected?_dragX:0),
                         matrix.Y+(_dragging&&selected?_dragY:0))));
-                    var textBrush=MPWShapeRenderer.BrushOf(textStyle.Fill,Brushes.MidnightBlue);
+                    var textBrush=MPWShapeRenderer.BrushOf(textStyle.Fill,
+                        Brushes.MidnightBlue,ResolveStyleBrush);
                     if(textStyle.Fill.Kind==MRCBrushKind.None)textBrush=Brushes.MidnightBlue;
                     var formatted=new FormattedText(item.Text,CultureInfo.CurrentUICulture,
                         FlowDirection.LeftToRight,new Typeface(textStyle.FontFamily),
