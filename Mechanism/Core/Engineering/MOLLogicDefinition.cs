@@ -366,7 +366,7 @@ namespace CxVisual.Mechanism.Core
         public MOLStateDescriptor(string id,string region,string parent=null,bool initial=false)
         {
             Id=Check(id);Region=Check(region);
-            ParentId=parent==null?"":Check(parent);
+            ParentId=string.IsNullOrEmpty(parent)?"":Check(parent);
             if(Id==ParentId)throw new ArgumentException("moc.state.self_parent");
             Initial=initial;
         }
