@@ -360,6 +360,136 @@ namespace CxVisual.Mechanism.Core
         public IReadOnlyList<Guid> BlockIds{get;private set;}
     }
 
+    /// <summary>状态及分区是同一Logic Aspect中的值对象，不是第二棵CxNode树。</summary>
+    public sealed class MOLStateDescriptor
+    {
+        public MOLStateDescriptor(string id,string region,string parent=null,bool initial=false)
+        {
+            Id=Check(id);Region=Check(region);
+            ParentId=parent==null?"":Check(parent);
+            if(Id==ParentId)throw new ArgumentException("moc.state.self_parent");
+            Initial=initial;
+        }
+        internal static string Check(string input)
+        {
+            if(string.IsNullOrWhiteSpace(input)||input.Length>128||input.Any(char.IsControl))
+                throw new ArgumentException("moc.state.bad_id");
+            return input.Trim().Normalize();
+        }
+        public string Id{get;private set;}
+        public string Region{get;private set;}
+        public string ParentId{get;private set;}
+        public bool Initial{get;private set;}
+    }
+    public sealed class MOLStateTransition
+    {
+        public MOLStateTransition(string source,string eventId,string target)
+        {
+            Source=MOLStateDescriptor.Check(source);
+            EventId=MOLStateDescriptor.Check(eventId);
+            Target=MOLStateDescriptor.Check(target);
+        }
+        public string Source{get;private set;}
+        public string EventId{get;private set;}
+        public string Target{get;private set;}
+    }
+    /// <summary>G05d：确定性层级状态及正交Region，同一事件按Region键顺序分别转移。</summary>
+    public sealed class MOLStateMachineDefinition
+    {
+        public IReadOnlyList<MOLStateDescriptor> States{get;private set;}
+        public IReadOnlyList<MOLStateTransition> Transitions{get;private set;}
+        public MOLStateMachineDefinition(IEnumerable<MOLStateDescriptor> states,
+            IEnumerable<MOLStateTransition> transitions)
+        {
+            var entries=(states??Enumerable.Empty<MOLStateDescriptor>()).ToArray();
+            var edges=(transitions??Enumerable.Empty<MOLStateTransition>()).ToArray();
+            if(entries.Length==0||entries.Length>256||edges.Length>512||
+                entries.Any(x=>x==null)||edges.Any(x=>x==null)||
+                entries.Select(x=>x.Id).Distinct(StringComparer.Ordinal).Count()!=entries.Length)
+                throw new InvalidOperationException("moc.state.definition_budget_or_duplicate");
+            var lookup=entries.ToDictionary(x=>x.Id,StringComparer.Ordinal);
+            foreach(var state in entries)
+            {
+                var current=state;
+                var ancestors=new HashSet<string>(StringComparer.Ordinal);
+                while(current.ParentId.Length>0)
+                {
+                    if(!ancestors.Add(current.Id)||
+                        !lookup.ContainsKey(current.ParentId)||
+                        lookup[current.ParentId].Region!=state.Region)
+                        throw new InvalidOperationException("moc.state.parent_cycle_or_region");
+                    current=lookup[current.ParentId];
+                }
+            }
+            foreach(var region in entries.GroupBy(s=>s.Region,StringComparer.Ordinal))
+            {
+                if(region.Count(s=>s.ParentId.Length==0&&s.Initial)!=1)
+                    throw new InvalidOperationException("moc.state.missing_region_initial");
+            }
+            foreach(var parent in entries)
+            {
+                var children=entries.Where(s=>s.ParentId==parent.Id).ToArray();
+                if(children.Length>0&&children.Count(s=>s.Initial)!=1)
+                    throw new InvalidOperationException("moc.state.missing_nested_initial");
+            }
+            var transitionKeys=new HashSet<string>(StringComparer.Ordinal);
+            foreach(var edge in edges)
+            {
+                MOLStateDescriptor from,to;
+                if(!lookup.TryGetValue(edge.Source,out from)||
+                    !lookup.TryGetValue(edge.Target,out to)||from.Region!=to.Region||
+                    !transitionKeys.Add(edge.Source+"\u001f"+edge.EventId))
+                    throw new InvalidOperationException("moc.state.invalid_transition");
+            }
+            States=Array.AsReadOnly(entries);Transitions=Array.AsReadOnly(edges);
+        }
+        private string ResolveLeaf(string id,IDictionary<string,MOLStateDescriptor> map)
+        {
+            while(true)
+            {
+                var initial=States.SingleOrDefault(s=>s.ParentId==id&&s.Initial);
+                if(initial==null)return id;
+                id=initial.Id;
+            }
+        }
+        /// <summary>每个输入事件严格处理一次；最多1万条事件，取消逐事件可观察。</summary>
+        public IReadOnlyDictionary<string,string> Run(IEnumerable<string> events,
+            System.Threading.CancellationToken cancellation=
+                default(System.Threading.CancellationToken))
+        {
+            if(events==null)throw new ArgumentNullException("events");
+            var map=States.ToDictionary(s=>s.Id,StringComparer.Ordinal);
+            var active=new Dictionary<string,string>(StringComparer.Ordinal);
+            foreach(var region in States.GroupBy(s=>s.Region,StringComparer.Ordinal))
+                active.Add(region.Key,ResolveLeaf(region.Single(s=>
+                    s.ParentId.Length==0&&s.Initial).Id,map));
+            int count=0;
+            foreach(string eventId in events)
+            {
+                cancellation.ThrowIfCancellationRequested();
+                if(++count>10000)throw new InvalidOperationException("moc.state.event_budget");
+                string eventName=MOLStateDescriptor.Check(eventId);
+                foreach(var region in active.Keys.OrderBy(x=>x,StringComparer.Ordinal).ToArray())
+                {
+                    var current=map[active[region]];
+                    while(true)
+                    {
+                        var rule=Transitions.FirstOrDefault(x=>x.Source==current.Id&&
+                            x.EventId==eventName);
+                        if(rule!=null)
+                        {
+                            active[region]=ResolveLeaf(rule.Target,map);
+                            break;
+                        }
+                        if(current.ParentId.Length==0)break;
+                        current=map[current.ParentId];
+                    }
+                }
+            }
+            return new ReadOnlyDictionary<string,string>(active);
+        }
+    }
+
     /// <summary>G05c：幂等工作流重试/超时的工程配置；执行仍归MRKExecutionPolicy。</summary>
     public sealed class MOLStepPolicy
     {
