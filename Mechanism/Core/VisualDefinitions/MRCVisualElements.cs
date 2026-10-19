@@ -23,6 +23,17 @@ namespace CxVisual.Mechanism.Core
                 return "";
             }
         }
+        public static string TextFromAspects(System.Collections.Generic.IEnumerable<MPMAspect> aspects)
+        {
+            if(aspects==null)return "";
+            foreach(MPMAspect aspect in aspects)
+                if(aspect.Kind==MPMAspectKind.Visual&&aspect.ProviderId==TextProvider)
+                {
+                    if(aspect.SchemaVersion!=1)throw new InvalidDataException("visual.text.version");
+                    return new UTF8Encoding(false,true).GetString(aspect.Payload);
+                }
+            return "";
+        }
         internal static MPMAspect ToAspect(string text)
         {
             if(text==null)throw new ArgumentNullException("text");

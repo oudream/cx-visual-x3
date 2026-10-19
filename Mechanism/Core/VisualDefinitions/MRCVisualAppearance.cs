@@ -135,6 +135,15 @@ namespace CxVisual.Mechanism.Core
         private const int StyleMagic=0x4D535431,BehaviorMagic=0x4D424831;
         private static MPMAspect Find(MRCVisualItem item,string provider)
         {if(item==null)throw new ArgumentNullException("item");foreach(var a in item.Aspects)if(a.Kind==MPMAspectKind.Visual&&a.ProviderId==provider)return a;return null;}
+        /// <summary>从不可变工程快照解析样式，保证引用实例与文档图元使用同一份定义。</summary>
+        public static MRCVisualStyle StyleFromAspects(IEnumerable<MPMAspect> aspects)
+        {
+            if(aspects==null)return MRCVisualStyle.Default;
+            foreach(MPMAspect aspect in aspects)
+                if(aspect.Kind==MPMAspectKind.Visual&&aspect.ProviderId==StyleProvider)
+                    return ReadStyleAspect(aspect);
+            return MRCVisualStyle.Default;
+        }
         public static MRCVisualStyle StyleOf(MRCVisualItem item)
         {MPMAspect aspect=Find(item,StyleProvider);return aspect==null?MRCVisualStyle.Default:ReadStyleAspect(aspect);}
         public static MRCVisualBehaviorDefinition BehaviorOf(MRCVisualItem item)
