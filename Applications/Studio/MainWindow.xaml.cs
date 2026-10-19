@@ -1287,6 +1287,8 @@ namespace CxVisual.Studio
             if(_logicRunning)return;
             MRKExecutionEngine engine=null;
             DispatcherTimer timer=null;
+            var previousVisualOwner=_viewModel.VisualRuntimeSource;
+            bool flowVisualAttached=false;
             try
             {
                 MEMPage page=_viewModel.ActivePage;
@@ -1312,7 +1314,9 @@ namespace CxVisual.Studio
                 _logicOverlay.Clear();
                 // 复用现有MRK轨迹和MDS外部绑定，不另建运行数据仓库。
                 _viewModel.AttachVisualRuntimeSource(
-                    new MOLVisualTraceBindingResolver(id=>_logicOverlay.StateOf(id)));
+                    new MOLVisualTraceBindingResolver(
+                        id=>_logicOverlay.StateOf(id),previousVisualOwner));
+                flowVisualAttached=true;
                 _flowVisualClock.Restart();
                 SceneHost.CancelInteraction();
                 SceneHost.IsDesignMode=false;
@@ -1361,9 +1365,12 @@ namespace CxVisual.Studio
                 if(timer!=null)timer.Stop();
                 if(engine!=null)await engine.StopAsync(true);
                 _flowVisualClock.Reset();
-                SceneHost.IsDesignMode=true;
-                _viewModel.StopVisualRuntime();
-                _viewModel.AttachVisualRuntimeSource(null);
+                if(flowVisualAttached)
+                {
+                    SceneHost.IsDesignMode=true;
+                    _viewModel.StopVisualRuntime();
+                    _viewModel.AttachVisualRuntimeSource(previousVisualOwner);
+                }
                 _logicFlow=null;
                 _logicDebug=null;
                 _logicRunning=false;

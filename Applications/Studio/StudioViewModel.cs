@@ -213,6 +213,8 @@ namespace CxVisual.Studio
             NotifyScene();
         }
         private CxVisual.Mechanism.Data.RuntimeData.IMDSExternalBindingResolver _visualRuntimeSource;
+        public CxVisual.Mechanism.Data.RuntimeData.IMDSExternalBindingResolver VisualRuntimeSource
+        {get{return _visualRuntimeSource;}}
         /// <summary>生产运行数据由现有MDS/专业Owner提供；Studio不建立第二份变量表。</summary>
         public void AttachVisualRuntimeSource(
             CxVisual.Mechanism.Data.RuntimeData.IMDSExternalBindingResolver source)

@@ -53,7 +53,7 @@ namespace CxVisual.Studio
         {
             if(id==Guid.Empty)throw new ArgumentException("flow.block.empty_id","id");
             if(state!="Running"&&state!="Completed"&&state!="Failed"&&
-                state!="Paused"&&state!="Canceled")
+                state!="Paused"&&state!="Cancelled")
                 throw new ArgumentException("visual.flow.unsupported_state","state");
             return Prefix+id.ToString("N")+"."+state;
         }
