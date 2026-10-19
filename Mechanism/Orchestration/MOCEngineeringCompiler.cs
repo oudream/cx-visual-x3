@@ -191,6 +191,11 @@ namespace CxVisual.Mechanism.Orchestration
             foreach(var pair in current.Ports)_ports.Add(pair.Key,pair.Value.ToArray());
         }
         public Guid LastBlockId{get{return _blocks.Count==0?Guid.Empty:_blocks[_blocks.Count-1].Id;}}
+        public Guid Step(MOCCapabilityDescriptor descriptor)
+        {
+            if(descriptor==null)throw new ArgumentNullException("descriptor");
+            return Step(descriptor.Id,descriptor.Ports);
+        }
         public Guid Step(string capabilityId,IEnumerable<MPCPortDescriptor> extraPorts=null)
         {
             if(string.IsNullOrWhiteSpace(capabilityId))

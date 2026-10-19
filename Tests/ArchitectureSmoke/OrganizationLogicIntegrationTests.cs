@@ -57,6 +57,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             V2WiringCompileRun();
             V2BuilderSharedDefinition();
             V2DraftPortsUndoAndCompileGate();
+            V2CapabilityDiscovery();
             BranchParallelAndTrace();
             LoopKindsAndBoundedForEach();
             InvokedContentAndInvalidSource();
@@ -435,6 +436,45 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 try { session.Edit("stale",revision,e=>true).RequireValue(); }
                 catch(InvalidOperationException){rejected=true;}
                 Check(rejected,"stale edit revision should be rejected");
+            }
+            finally{session.Close(true);}
+        }
+
+        private sealed class DemoCapabilityProvider:IMOCCapabilityProvider
+        {
+            private readonly MOCCapabilityDescriptor[] _definitions;
+            internal DemoCapabilityProvider(params MOCCapabilityDescriptor[] types){_definitions=types;}
+            public IEnumerable<MOCCapabilityDescriptor> DescribeCapabilities(){return _definitions;}
+        }
+        private static void V2CapabilityDiscovery()
+        {
+            var capture=new MOCCapabilityDescriptor("vision.capture","采图","Vision");
+            var inspect=new MOCCapabilityDescriptor("vision.inspect","图像检测","Vision",
+                new[]{new MPCPortDescriptor("Image",MPCPortDirection.Input,"int",
+                    MPCPortKind.Data,required:true)});
+            var resolver=new TestResolver()
+                .Register("vision.capture",(ctx,t)=>Task.FromResult((object)7));
+            var catalog=new MOCCapabilityCatalog(
+                new[]{new DemoCapabilityProvider(capture,inspect)},resolver);
+            Check(catalog.All.Count==2&&catalog.Search("inspect").Count==1,
+                "capability discovery/search");
+            Check(catalog.Find("vision.capture").RuntimeAvailable&&
+                !catalog.Find("vision.inspect").RuntimeAvailable,
+                "unresolved professional capability reported available");
+            bool rejected=false;
+            try{new MOCCapabilityCatalog(new[]{
+                new DemoCapabilityProvider(inspect),new DemoCapabilityProvider(inspect)},resolver);}
+            catch(InvalidOperationException){rejected=true;}
+            Check(rejected,"catalog silently merged duplicate capability");
+            var session=MEMEngineering.Create("能力发现");
+            try
+            {
+                var page=session.AddPage("Main");
+                Guid id=Guid.Empty;
+                MOCFlowBuilder.Edit(session,page.RootContent,b=>id=b.Step(inspect));
+                var def=MOLWiringCodec.Get(session.GetSnapshot().Find(page.RootContent.Id));
+                Check(def.Blocks[0].Id==id&&def.Ports[id].Any(x=>x.MemberId=="Image"),
+                    "capability ports not used by common Builder");
             }
             finally{session.Close(true);}
         }
