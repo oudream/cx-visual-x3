@@ -77,7 +77,7 @@
                                 <Button Content="放大" Tag="in" Click="OnVisualZoom"/>
                                 <Button Content="缩小" Tag="out" Click="OnVisualZoom"/>
                                 <Button Content="重置视口" Tag="reset" Click="OnVisualZoom"/>
-                                <CheckBox x:Name="VisualGridSnap" Content="吸附25" VerticalAlignment="Center" Margin="6,0"/>
+                                <CheckBox x:Name="VisualGridSnap" Content="吸附25" Click="OnToggleVisualSnap" VerticalAlignment="Center" Margin="6,0"/>
                                 <Button Content="添加呼吸动画" Click="OnAddBreathingAnimation"/>
                                 <Button x:Name="VisualPreviewButton" Content="预览交互" Click="OnToggleVisualPreview"/>
                             </WrapPanel>
