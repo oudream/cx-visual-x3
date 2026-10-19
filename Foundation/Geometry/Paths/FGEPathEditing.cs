@@ -27,6 +27,12 @@ namespace CxVisual.Foundation.Geometry
         {
             HandlePoint(path,commandIndex,kind); // 验证该命令是否具有此控制点
             var commands=new List<FGEPathCommand>(path.Commands);
+            // Arc 的起点由圆心/半径/角度约束，不能单独拖 Move 破坏连续性。
+            if(kind==FGEPathHandleKind.Anchor&&
+                commands[commandIndex].Verb==FGEPathVerb.Move&&
+                commandIndex+1<commands.Count&&
+                commands[commandIndex+1].Verb==FGEPathVerb.Arc)
+                throw new ArgumentException("geometry.arc_start_is_derived");
             FGEPathCommand old=commands[commandIndex];
             switch(old.Verb)
             {
