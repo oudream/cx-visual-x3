@@ -153,6 +153,17 @@ namespace CxVisual.Studio
             VisualInfo.Text="画布缩放："+zoom.ToString("P0")+
                 "；鼠标滚轮以指针为中心缩放，中键拖动画布";
         }
+        private void OnAlignVisuals(object sender,RoutedEventArgs args)
+        {
+            try
+            {
+                string mode=((Button)sender).Tag.ToString();
+                MTCEditResult<bool> result=_viewModel.AlignVisualSelection(mode);
+                VisualInfo.Text=result.Success?"多选对齐/分布已提交（可撤销）":
+                    "对齐被拒绝："+result.ErrorCode+" "+result.Message;
+            }
+            catch(Exception ex){VisualInfo.Text="对齐失败："+ex.Message;}
+        }
         private void OnPathOperation(object sender,RoutedEventArgs args)
         {
             try
