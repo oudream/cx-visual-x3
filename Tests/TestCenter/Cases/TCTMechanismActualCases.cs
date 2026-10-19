@@ -90,7 +90,7 @@ namespace CxVisual.TestCenter.Cases
                 "Add → Undo → Redo; Revision=" + document.Revision + "; SceneItems=" + editor.Scene.Count);
         }
 
-        [TCTTest("TCT.MVIS.003", "真实Bezier控制柄一次工程事务与保存重开",
+        [TCTTest("TCT.MVIS.004", "真实Bezier控制柄一次工程事务与保存重开",
             TCTTestAspect.Mechanism,"Visual / Editing",ObjectId="MVIVisualEditing")]
         public static void BezierControlPointOwnerAndRoundtrip(TCTTestContext context)
         {
