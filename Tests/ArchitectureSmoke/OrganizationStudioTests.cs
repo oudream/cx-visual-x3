@@ -161,8 +161,33 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Click(window,"新建组件");var symbol=session.Project.Symbols.Last();var resources=(ListBox)window.FindName("EngineeringResources");resources.SelectedItem=symbol;Pump();
                 Click(window,"放置实例");var first=page.RootContent.References.Last();Click(window,"放置实例");var second=page.RootContent.References.Last();
                 Check(first.Id!=second.Id&&page.RootContent.References.Count==2,"resource button did not create two real instances");
-                var properties=(ItemsControl)window.FindName("EngineeringProperties");window.UpdateLayout();var text=Descendants(properties).OfType<TextBox>().First();text.Text="240";BindingOperations.GetBindingExpression(text,TextBox.TextProperty).UpdateSource();Click(window,"应用");
+                var properties=(ItemsControl)window.FindName("EngineeringProperties");
+                window.UpdateLayout();
+                // R01: 属性提示真正来自已有MPM Schema，通过WPF数据绑定可见；不复制一份工程属性模型。
+                var schemaRow=((IEnumerable)Get(vm,"Properties")).Cast<object>()
+                    .Single(x=>(string)Get(x,"Member")=="宽度");
+                string schemaLabel=(string)Get(schemaRow,"Schema");
+                Check(schemaLabel.Contains("Number")&&schemaLabel.Contains("可选")&&
+                    schemaLabel.Contains("1 ～ 10000")&&schemaLabel.Contains("实例覆盖"),
+                    "Studio schema did not expose the MPM type, requirement, range and instance context");
+                Check(Descendants(properties).OfType<TextBlock>().Any(x=>x.Text==schemaLabel),
+                    "Studio WPF property inspector does not display actual MPM schema metadata");
+                var text=Descendants(properties).OfType<TextBox>().First();
+                text.Text="240";BindingOperations.GetBindingExpression(text,TextBox.TextProperty).UpdateSource();Click(window,"应用");
                 Check(session.ResolveParameter(second,"宽度").Value.AsNumber()==240&&session.ResolveParameter(first,"宽度").Value.AsNumber()==120,"WPF property binding changed shared defaults");
+                // 范围非法的实例覆盖必须沿原MEM校验链拒绝，且既有成功编辑可继续Undo/Redo。
+                window.UpdateLayout();
+                var invalidText=Descendants(properties).OfType<TextBox>().First();
+                invalidText.Text="10001";
+                BindingOperations.GetBindingExpression(invalidText,TextBox.TextProperty).UpdateSource();
+                int beforeInvalidProperty=session.Revision;
+                Click(window,"应用");
+                Check(session.Revision==beforeInvalidProperty&&
+                    session.ResolveParameter(second,"宽度").Value.AsNumber()==240&&
+                    session.ResolveParameter(first,"宽度").Value.AsNumber()==120,
+                    "Schema out-of-range input polluted MEM Revision or symbol instance state");
+                Check(((string)Get(vm,"Status")).Contains("操作失败"),
+                    "Studio did not report MPM range rejection to the engineering user");
                 Click(window,"撤销");Check(session.ResolveParameter(second,"宽度").Value.AsNumber()==120,"property change required multiple undo");Click(window,"重做");
                 Click(window,"编辑共享定义");Click(window,"添加矩形");Check(symbol.RootGroup.Children.Count==2,"shared definition editor context missing");Click(window,"返回");
                 vm.GetType().GetMethod("SaveProject").Invoke(vm,new object[]{path});Click(window,"保存工程");vm.GetType().GetMethod("OpenProject").Invoke(vm,new object[]{path,true});Pump();
