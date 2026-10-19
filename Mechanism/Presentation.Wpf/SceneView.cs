@@ -25,6 +25,20 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         private readonly HashSet<Guid> _selectedItems=new HashSet<Guid>();
         public IReadOnlyList<Guid> SelectedVisualIds
         {get{return new List<Guid>(_selectedItems).AsReadOnly();}}
+        /// <summary>由Studio组织选择结果回写画布，解决双向通知时只剩最后一个的多选丢失。</summary>
+        public void SetSelectedVisualIds(IEnumerable<Guid> ids)
+        {
+            if(ids==null)throw new ArgumentNullException("ids");
+            _selectedItems.Clear();
+            Guid? last=null;
+            foreach(Guid id in ids)
+            {
+                if(!_items.Exists(x=>x.Id==id&&x.IsSelectable))continue;
+                if(_selectedItems.Add(id))last=id;
+            }
+            _selection=last;
+            InvalidateVisual();
+        }
         private bool _marquee;
         private Point _marqueeStart,_marqueeEnd;
         public event Action<IReadOnlyList<Guid>> SelectionSetRequested;
