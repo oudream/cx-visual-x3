@@ -190,6 +190,7 @@ namespace CxVisual.Mechanism.Orchestration
         private readonly IReadOnlyList<MOLLink> _links;
         private readonly IReadOnlyList<MOLSelectionGroup> _groups;
         private readonly IReadOnlyDictionary<Guid,IReadOnlyDictionary<string,string>> _parameters;
+        private readonly IReadOnlyDictionary<Guid,MOLStepPolicy> _policies;
         private readonly IReadOnlyDictionary<Guid,IReadOnlyList<MPCPortDescriptor>> _ports;
         private readonly IReadOnlyDictionary<Guid,MOLBlockPosition> _positions;
         private MOCWiringFragment(MOLWiringDefinition definition,Guid[] selected)
@@ -201,6 +202,9 @@ namespace CxVisual.Mechanism.Orchestration
             _groups=definition.Groups.Where(g=>g.BlockIds.All(ids.Contains)).ToList().AsReadOnly();
             _parameters=new ReadOnlyDictionary<Guid,IReadOnlyDictionary<string,string>>(
                 definition.Parameters.Where(g=>ids.Contains(g.Key)).ToDictionary(
+                    g=>g.Key,g=>g.Value));
+            _policies=new ReadOnlyDictionary<Guid,MOLStepPolicy>(
+                definition.Policies.Where(g=>ids.Contains(g.Key)).ToDictionary(
                     g=>g.Key,g=>g.Value));
             _ports=new ReadOnlyDictionary<Guid,IReadOnlyList<MPCPortDescriptor>>(
                 _blocks.ToDictionary(x=>x.Id,x=>definition.Ports[x.Id]));
@@ -225,6 +229,7 @@ namespace CxVisual.Mechanism.Orchestration
         public IReadOnlyList<MOLSelectionGroup> Groups {get{return _groups;}}
         public IReadOnlyDictionary<Guid,IReadOnlyDictionary<string,string>> Parameters
         {get{return _parameters;}}
+        public IReadOnlyDictionary<Guid,MOLStepPolicy> Policies{get{return _policies;}}
         public IReadOnlyDictionary<Guid,IReadOnlyList<MPCPortDescriptor>> Ports {get{return _ports;}}
         public IReadOnlyDictionary<Guid,MOLBlockPosition> Positions {get{return _positions;}}
         /// <summary>受V2 Codec和4MB限制的剪贴板传输格式，绝不作为工程真源保存。</summary>
@@ -236,7 +241,7 @@ namespace CxVisual.Mechanism.Orchestration
             var parameters=_parameters.ToDictionary(p=>p.Key,
                 p=>(IDictionary<string,string>)p.Value.ToDictionary(k=>k.Key,k=>k.Value,StringComparer.Ordinal));
             var wiring=new MOLWiringDefinition(_blocks[0].Id,_blocks,ports,_links,
-                positions,_groups,parameters);
+                positions,_groups,parameters,_policies.ToDictionary(x=>x.Key,x=>x.Value));
             return MOLWiringCodec.Serialize(wiring);
         }
         public static MOCWiringFragment FromPayload(byte[] payload)
@@ -270,6 +275,8 @@ namespace CxVisual.Mechanism.Orchestration
         private readonly List<MOLSelectionGroup> _groups=new List<MOLSelectionGroup>();
         private readonly Dictionary<Guid,IDictionary<string,string>> _parameters=
             new Dictionary<Guid,IDictionary<string,string>>();
+        private readonly Dictionary<Guid,MOLStepPolicy> _policies=
+            new Dictionary<Guid,MOLStepPolicy>();
         private Guid _entry;
         private MOCFlowBuilder(MOLWiringDefinition current)
         {
@@ -282,6 +289,7 @@ namespace CxVisual.Mechanism.Orchestration
             _groups.AddRange(current.Groups);
             foreach(var pair in current.Parameters)
                 _parameters.Add(pair.Key,pair.Value.ToDictionary(k=>k.Key,k=>k.Value,StringComparer.Ordinal));
+            foreach(var pair in current.Policies)_policies.Add(pair.Key,pair.Value);
         }
         public Guid LastBlockId{get{return _blocks.Count==0?Guid.Empty:_blocks[_blocks.Count-1].Id;}}
         public Guid Step(MOCCapabilityDescriptor descriptor)
@@ -336,6 +344,7 @@ namespace CxVisual.Mechanism.Orchestration
             _ports.Remove(blockId);
             _positions.Remove(blockId);
             _parameters.Remove(blockId);
+            _policies.Remove(blockId);
             _links.RemoveAll(x=>x.Source.BlockId==blockId||x.Target.BlockId==blockId);
             RemoveGroupMembers(new HashSet<Guid>(new[]{blockId}));
             if(_entry==blockId)_entry=_blocks.Count==0?Guid.Empty:_blocks[0].Id;
@@ -377,6 +386,19 @@ namespace CxVisual.Mechanism.Orchestration
             if(index<0)throw new InvalidOperationException("moc.wiring.port_missing");
             ports[index]=descriptor;
             _ports[blockId]=ports.ToArray();
+        }
+        /// <summary>执行策略在V2 Logic内事务管理，由MRKExecutionPolicy负责实际执行。</summary>
+        public void SetWorkflowPolicy(Guid blockId,MOLStepPolicy policy)
+        {
+            if(policy==null)throw new ArgumentNullException("policy");
+            if(!_blocks.Any(x=>x.Id==blockId))
+                throw new InvalidOperationException("moc.wiring.block_missing");
+            _policies[blockId]=policy;
+        }
+        public void ClearWorkflowPolicy(Guid blockId)
+        {
+            if(!_policies.Remove(blockId))
+                throw new InvalidOperationException("moc.wiring.policy_missing");
         }
         public void SetParameter(Guid blockId,string memberId,string text)
         {
@@ -601,7 +623,7 @@ namespace CxVisual.Mechanism.Orchestration
             var removed=new HashSet<Guid>(selected);
             _blocks.RemoveAll(x=>removed.Contains(x.Id));
             _links.RemoveAll(x=>removed.Contains(x.Source.BlockId)||removed.Contains(x.Target.BlockId));
-            foreach(Guid id in selected){_ports.Remove(id);_positions.Remove(id);_parameters.Remove(id);}
+            foreach(Guid id in selected){_ports.Remove(id);_positions.Remove(id);_parameters.Remove(id);_policies.Remove(id);}
             RemoveGroupMembers(removed);
             if(removed.Contains(_entry))_entry=_blocks.Count==0?Guid.Empty:_blocks[0].Id;
         }
@@ -626,6 +648,7 @@ namespace CxVisual.Mechanism.Orchestration
             foreach(var pair in fragment.Parameters)
                 _parameters.Add(ids[pair.Key],
                     pair.Value.ToDictionary(k=>k.Key,k=>k.Value,StringComparer.Ordinal));
+            foreach(var pair in fragment.Policies)_policies.Add(ids[pair.Key],pair.Value);
             foreach(var group in fragment.Groups)
                 _groups.Add(new MOLSelectionGroup(Guid.NewGuid(),group.Name,
                     group.BlockIds.Select(id=>ids[id])));
@@ -638,7 +661,7 @@ namespace CxVisual.Mechanism.Orchestration
             return new ReadOnlyDictionary<Guid,Guid>(ids);
         }
         public MOLWiringDefinition Build()
-        {return new MOLWiringDefinition(_entry,_blocks,_ports,_links,_positions,_groups,_parameters);}
+        {return new MOLWiringDefinition(_entry,_blocks,_ports,_links,_positions,_groups,_parameters,_policies);}
         /// <summary>
         /// G04-F：提取无Data边界的连续Control动作段为真实MEMContent，
         /// 在同一MEM事务中替换为调用节点。Data参数跨Content待独立契约支持，明确拒绝。
@@ -688,7 +711,8 @@ namespace CxVisual.Mechanism.Orchestration
                 p=>(IEnumerable<MPCPortDescriptor>)p.Value);
             var positions=fragment.Positions.ToDictionary(p=>p.Key,p=>p.Value);
             var child=new MOLWiringDefinition(entryCandidates[0],fragment.Blocks,ports,
-                fragment.Links,positions,fragment.Groups);
+                fragment.Links,positions,fragment.Groups,null,
+                fragment.Policies.ToDictionary(x=>x.Key,x=>x.Value));
             child.ValidateExecutable();
             var edit=new MOCFlowBuilder(definition);
             edit.RemoveMany(requested);
@@ -928,10 +952,20 @@ namespace CxVisual.Mechanism.Orchestration
                     childId=targetId.ToString("N");
                     if(!subflowDefinitions.ContainsKey(childId))
                     {
-                        var innerSteps=nested.Blocks.Select(b=>
-                            new MRKStepCompileRequest("w"+b.Id.ToString("N"),
+                        var innerSteps=nested.Blocks.Select(b=>{
+                            MOLStepPolicy stepPolicy;
+                            MRKExecutionPolicy policy=null;
+                            if(nested.Policies.TryGetValue(b.Id,out stepPolicy))
+                                policy=new MRKExecutionPolicy(stepPolicy.MaxAttempts,
+                                    TimeSpan.FromMilliseconds(stepPolicy.RetryDelayMs),
+                                    stepPolicy.TimeoutMs>0?
+                                        (TimeSpan?)TimeSpan.FromMilliseconds(stepPolicy.TimeoutMs):null,
+                                    stepPolicy.Idempotent);
+                            return new MRKStepCompileRequest("w"+b.Id.ToString("N"),
                                 b.CapabilityId,nested.Links.Where(l=>l.Target.BlockId==b.Id)
-                                    .Select(l=>"w"+l.Source.BlockId.ToString("N")))).ToArray();
+                                    .Select(l=>"w"+l.Source.BlockId.ToString("N")),
+                                policy:policy);
+                        }).ToArray();
                         subflowDefinitions.Add(childId,
                             new MRKFlowCompileDefinition(childId,innerSteps));
                     }
@@ -946,10 +980,22 @@ namespace CxVisual.Mechanism.Orchestration
                             inner.Id,new[]{block.Id},null,"InvokedAction"));
                     }
                 }
+                MOLStepPolicy configuration;
+                MRKExecutionPolicy executionPolicy=null;
+                if(wiring.Policies.TryGetValue(block.Id,out configuration))
+                {
+                    if(childId!=null)
+                        throw new InvalidOperationException("moc.invoke.workflow_policy_not_supported");
+                    executionPolicy=new MRKExecutionPolicy(configuration.MaxAttempts,
+                        TimeSpan.FromMilliseconds(configuration.RetryDelayMs),
+                        configuration.TimeoutMs>0?
+                            (TimeSpan?)TimeSpan.FromMilliseconds(configuration.TimeoutMs):null,
+                        configuration.Idempotent);
+                }
                 requests.Add(childId==null?
                     new MRKStepCompileRequest(stepIds[block.Id],block.CapabilityId,
                         depends,inputs,condition:branchCondition,
-                        allowSkippedDependencies:allowSkippedJoin):
+                        allowSkippedDependencies:allowSkippedJoin,policy:executionPolicy):
                     new MRKStepCompileRequest(stepIds[block.Id],null,
                         depends,inputs,condition:branchCondition,
                         allowSkippedDependencies:allowSkippedJoin,subflowId:childId));
