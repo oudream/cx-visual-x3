@@ -175,6 +175,56 @@ namespace CxVisual.Mechanism.Orchestration
 
 
     /// <summary>Developer and Studio share the same Content Logic Edit transaction; no parallel runtime builder.</summary>
+    /// <summary>G04-D临时选区快照，不是工程对象树或第二份可执行定义。</summary>
+    public sealed class MOCWiringFragment
+    {
+        private readonly IReadOnlyList<MOLControlBlock> _blocks;
+        private readonly IReadOnlyList<MOLLink> _links;
+        private readonly IReadOnlyDictionary<Guid,IReadOnlyList<MPCPortDescriptor>> _ports;
+        private readonly IReadOnlyDictionary<Guid,MOLBlockPosition> _positions;
+        private MOCWiringFragment(MOLWiringDefinition definition,Guid[] selected)
+        {
+            var ids=new HashSet<Guid>(selected);
+            _blocks=definition.Blocks.Where(x=>ids.Contains(x.Id)).ToList().AsReadOnly();
+            _links=definition.Links.Where(x=>ids.Contains(x.Source.BlockId)&&
+                ids.Contains(x.Target.BlockId)).ToList().AsReadOnly();
+            _ports=new ReadOnlyDictionary<Guid,IReadOnlyList<MPCPortDescriptor>>(
+                _blocks.ToDictionary(x=>x.Id,x=>definition.Ports[x.Id]));
+            var layout=new Dictionary<Guid,MOLBlockPosition>();
+            double top=20;
+            foreach(var block in definition.Blocks)
+            {
+                var ports=definition.Ports[block.Id];
+                int ins=ports.Count(p=>p.Direction!=MPCPortDirection.Output);
+                int outs=ports.Count(p=>p.Direction!=MPCPortDirection.Input);
+                double height=Math.Max(58,32+22*Math.Max(ins,outs));
+                MOLBlockPosition saved;
+                if(ids.Contains(block.Id))
+                    layout.Add(block.Id,definition.Positions.TryGetValue(block.Id,out saved)?
+                        saved:new MOLBlockPosition(20,top));
+                top+=height+24;
+            }
+            _positions=new ReadOnlyDictionary<Guid,MOLBlockPosition>(layout);
+        }
+        public IReadOnlyList<MOLControlBlock> Blocks {get{return _blocks;}}
+        public IReadOnlyList<MOLLink> Links {get{return _links;}}
+        public IReadOnlyDictionary<Guid,IReadOnlyList<MPCPortDescriptor>> Ports {get{return _ports;}}
+        public IReadOnlyDictionary<Guid,MOLBlockPosition> Positions {get{return _positions;}}
+        public static MOCWiringFragment Capture(MOLWiringDefinition definition,IEnumerable<Guid> selection)
+        {
+            if(definition==null||selection==null)throw new ArgumentNullException("definition/selection");
+            Guid[] ids=selection.Distinct().ToArray();
+            if(ids.Length==0||ids.Any(id=>!definition.Blocks.Any(b=>b.Id==id)))
+                throw new InvalidOperationException("moc.clipboard.invalid_selection");
+            return new MOCWiringFragment(definition,ids);
+        }
+    }
+
+    public enum MOCBlockAlignment
+    {
+        Left=1,Right=2,Top=3,Bottom=4,HorizontalCenter=5,VerticalCenter=6
+    }
+
     public sealed class MOCFlowBuilder
     {
         private readonly List<MOLControlBlock> _blocks=new List<MOLControlBlock>();
@@ -297,6 +347,121 @@ namespace CxVisual.Mechanism.Orchestration
             if(!_blocks.Any(b=>b.Id==blockId))
                 throw new InvalidOperationException("moc.wiring.block_missing");
             _positions[blockId]=new MOLBlockPosition(x,y);
+        }
+        private MOLBlockPosition EffectivePosition(Guid id)
+        {
+            MOLBlockPosition stored;
+            if(_positions.TryGetValue(id,out stored))return stored;
+            double top=20;
+            foreach(var block in _blocks)
+            {
+                if(block.Id==id)return new MOLBlockPosition(20,top);
+                var ports=_ports[block.Id].ToArray();
+                int ins=ports.Count(p=>p.Direction!=MPCPortDirection.Output);
+                int outs=ports.Count(p=>p.Direction!=MPCPortDirection.Input);
+                top+=Math.Max(58,32+22*Math.Max(ins,outs))+24;
+            }
+            throw new InvalidOperationException("moc.wiring.block_missing");
+        }
+        private MOLBlockPosition GetSize(Guid id)
+        {
+            var ports=_ports[id].ToArray();
+            int ins=ports.Count(p=>p.Direction!=MPCPortDirection.Output);
+            int outs=ports.Count(p=>p.Direction!=MPCPortDirection.Input);
+            return new MOLBlockPosition(260,Math.Max(58,32+22*Math.Max(ins,outs)));
+        }
+        private Guid[] ResolveSelection(IEnumerable<Guid> ids)
+        {
+            if(ids==null)throw new ArgumentNullException("ids");
+            Guid[] selected=ids.Distinct().ToArray();
+            if(selected.Length==0||selected.Any(id=>!_ports.ContainsKey(id)))
+                throw new InvalidOperationException("moc.wiring.invalid_selection");
+            return selected;
+        }
+        /// <summary>统一事务内移动多节点，失败则整个工程编辑回滚。</summary>
+        public void MoveMany(IEnumerable<Guid> ids,double dx,double dy)
+        {
+            var selected=ResolveSelection(ids);
+            var updates=new Dictionary<Guid,MOLBlockPosition>();
+            foreach(Guid id in selected)
+            {
+                var old=EffectivePosition(id);
+                updates.Add(id,new MOLBlockPosition(old.X+dx,old.Y+dy));
+            }
+            foreach(var pair in updates)_positions[pair.Key]=pair.Value;
+        }
+        /// <summary>按真实块尺寸对齐，不改数据连接及执行顺序。</summary>
+        public void Align(IEnumerable<Guid> ids,MOCBlockAlignment alignment)
+        {
+            var selected=ResolveSelection(ids);
+            if(!Enum.IsDefined(typeof(MOCBlockAlignment),alignment))
+                throw new ArgumentOutOfRangeException("alignment");
+            var coords=selected.ToDictionary(id=>id,id=>EffectivePosition(id));
+            var sizes=selected.ToDictionary(id=>id,id=>GetSize(id));
+            double anchor=0;
+            switch(alignment)
+            {
+                case MOCBlockAlignment.Left: anchor=coords.Values.Min(p=>p.X);break;
+                case MOCBlockAlignment.Right: anchor=selected.Max(id=>coords[id].X+sizes[id].X);break;
+                case MOCBlockAlignment.Top: anchor=coords.Values.Min(p=>p.Y);break;
+                case MOCBlockAlignment.Bottom: anchor=selected.Max(id=>coords[id].Y+sizes[id].Y);break;
+                case MOCBlockAlignment.HorizontalCenter: anchor=selected.Average(id=>coords[id].X+sizes[id].X/2);break;
+                case MOCBlockAlignment.VerticalCenter: anchor=selected.Average(id=>coords[id].Y+sizes[id].Y/2);break;
+            }
+            var updated=new Dictionary<Guid,MOLBlockPosition>();
+            foreach(Guid id in selected)
+            {
+                double x=coords[id].X,y=coords[id].Y;
+                switch(alignment)
+                {
+                    case MOCBlockAlignment.Left:x=anchor;break;
+                    case MOCBlockAlignment.Right:x=anchor-sizes[id].X;break;
+                    case MOCBlockAlignment.Top:y=anchor;break;
+                    case MOCBlockAlignment.Bottom:y=anchor-sizes[id].Y;break;
+                    case MOCBlockAlignment.HorizontalCenter:x=anchor-sizes[id].X/2;break;
+                    case MOCBlockAlignment.VerticalCenter:y=anchor-sizes[id].Y/2;break;
+                }
+                updated.Add(id,new MOLBlockPosition(x,y));
+            }
+            foreach(var pair in updated)_positions[pair.Key]=pair.Value;
+        }
+        /// <summary>批量删除块及其边界连接，至少保留一个有效入口节点。</summary>
+        public void RemoveMany(IEnumerable<Guid> ids)
+        {
+            var selected=ResolveSelection(ids);
+            var removed=new HashSet<Guid>(selected);
+            if(removed.Count==_blocks.Count)
+                throw new InvalidOperationException("moc.wiring.cannot_remove_last_block");
+            _blocks.RemoveAll(x=>removed.Contains(x.Id));
+            _links.RemoveAll(x=>removed.Contains(x.Source.BlockId)||removed.Contains(x.Target.BlockId));
+            foreach(Guid id in selected){_ports.Remove(id);_positions.Remove(id);}
+            if(removed.Contains(_entry))_entry=_blocks[0].Id;
+        }
+        /// <summary>跨Content粘贴快照；新建Block/Link ID，仅复制选区内部边。</summary>
+        public IReadOnlyDictionary<Guid,Guid> Paste(MOCWiringFragment fragment,double dx=40,double dy=40)
+        {
+            if(fragment==null)throw new ArgumentNullException("fragment");
+            var ids=fragment.Blocks.ToDictionary(x=>x.Id,x=>Guid.NewGuid());
+            var addedPositions=new Dictionary<Guid,MOLBlockPosition>();
+            foreach(var source in fragment.Blocks)
+            {
+                MOLBlockPosition point=fragment.Positions[source.Id];
+                addedPositions.Add(ids[source.Id],new MOLBlockPosition(point.X+dx,point.Y+dy));
+            }
+            foreach(var source in fragment.Blocks)
+            {
+                Guid newId=ids[source.Id];
+                _blocks.Add(new MOLControlBlock(newId,MOLControlKind.Action,source.CapabilityId));
+                _ports.Add(newId,fragment.Ports[source.Id].ToArray());
+                _positions.Add(newId,addedPositions[newId]);
+            }
+            foreach(var link in fragment.Links)
+                _links.Add(new MOLLink(Guid.NewGuid(),
+                    new MOLBlockEndpoint(ids[link.Source.BlockId],link.Source.PortMemberId),
+                    new MOLBlockEndpoint(ids[link.Target.BlockId],link.Target.PortMemberId),
+                    link.Kind,link.ConditionId,link.Order));
+            if(_entry==Guid.Empty)_entry=ids[fragment.Blocks[0].Id];
+            return new ReadOnlyDictionary<Guid,Guid>(ids);
         }
         public MOLWiringDefinition Build()
         {return new MOLWiringDefinition(_entry,_blocks,_ports,_links,_positions);}

@@ -55,6 +55,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             SaveLoadAndIdentity();
             V2WiringRoundtrip();
             V2LayoutContract();
+            V2BulkEditingClipboard();
             V2WiringCompileRun();
             V2BuilderSharedDefinition();
             V2DraftPortsUndoAndCompileGate();
@@ -547,6 +548,82 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 if(System.IO.File.Exists(path))System.IO.File.Delete(path);
                 if(System.IO.File.Exists(path+".cx-lock"))System.IO.File.Delete(path+".cx-lock");
             }
+        }
+
+        private static void V2BulkEditingClipboard()
+        {
+            var session=MEMEngineering.Create("G04批量事务");
+            var firstPage=session.AddPage("Page A");
+            var secondPage=session.AddPage("Page B");
+            try
+            {
+                Guid a=Guid.Empty,b=Guid.Empty,c=Guid.Empty;
+                MOCFlowBuilder.Edit(session,firstPage.RootContent,builder=>{
+                    a=builder.Step("capture");b=builder.Step("inspect");c=builder.Step("save");
+                    builder.Connect(a,"Done",b,"Start");
+                    builder.Connect(b,"Done",c,"Start");
+                    builder.Move(a,30,40);builder.Move(b,360,140);builder.Move(c,690,220);
+                });
+                var initial=MOLWiringCodec.Get(session.GetSnapshot().Find(firstPage.RootContent.Id));
+                Guid boundaryId=initial.Links.Single(l=>l.Target.BlockId==c).Id;
+                var snapshot=MOCWiringFragment.Capture(initial,new[]{a,b});
+                Check(snapshot.Blocks.Count==2&&snapshot.Links.Count==1,
+                    "selection copied edges crossing outside selection");
+                MOCFlowBuilder.Edit(session,firstPage.RootContent,builder=>{
+                    builder.MoveMany(new[]{a,b},12,17);
+                    builder.Align(new[]{a,b},MOCBlockAlignment.Left);
+                });
+                var aligned=MOLWiringCodec.Get(session.GetSnapshot().Find(firstPage.RootContent.Id));
+                Check(aligned.Positions[a].X==aligned.Positions[b].X&&
+                    aligned.Links.Single(l=>l.Target.BlockId==c).Id==boundaryId,
+                    "batch align damaged external link identity");
+                int revision=session.Revision;
+                bool rejected=false;
+                try{MOCFlowBuilder.Edit(session,firstPage.RootContent,builder=>
+                    builder.MoveMany(new[]{a,b},-999999,0));}
+                catch(ArgumentOutOfRangeException){rejected=true;}
+                Check(rejected&&session.Revision==revision,
+                    "invalid batch move partially mutated document");
+                IReadOnlyDictionary<Guid,Guid> mapping=null;
+                MOCFlowBuilder.Edit(session,firstPage.RootContent,builder=>
+                    mapping=builder.Paste(snapshot,60,65));
+                var copied=MOLWiringCodec.Get(session.GetSnapshot().Find(firstPage.RootContent.Id));
+                Check(mapping.Count==2&&mapping[a]!=a&&mapping[b]!=b&&
+                    copied.Blocks.Count==5&&copied.Links.Count==3&&
+                    copied.Links.Any(l=>l.Source.BlockId==mapping[a]&&
+                        l.Target.BlockId==mapping[b])&&
+                    copied.Links.All(l=>!(l.Source.BlockId==mapping[b]&&l.Target.BlockId==c)),
+                    "paste IDs or internal-only wiring are incorrect");
+                Check(session.Undo().Success&&
+                    MOLWiringCodec.Get(session.GetSnapshot().Find(firstPage.RootContent.Id)).Blocks.Count==3,
+                    "bulk paste did not undo as one transaction");
+                Check(session.Redo().Success&&
+                    MOLWiringCodec.Get(session.GetSnapshot().Find(firstPage.RootContent.Id)).Blocks.Count==5,
+                    "bulk paste Redo failed");
+
+                // 第二个Content不是复制时的实时对象引用，而是不可变选区快照。
+                MOCFlowBuilder.Edit(session,secondPage.RootContent,builder=>{
+                    builder.Step("receiver");
+                    builder.Paste(snapshot,45,50);
+                });
+                var second=MOLWiringCodec.Get(session.GetSnapshot().Find(secondPage.RootContent.Id));
+                Check(second.Blocks.Count==3&&second.Links.Count==1&&
+                    second.Blocks.All(x=>!initial.Blocks.Any(y=>y.Id==x.Id)),
+                    "cross-Content paste identity or internal edge lost");
+                MOCFlowBuilder.Edit(session,firstPage.RootContent,builder=>
+                    builder.RemoveMany(new[]{mapping[a],mapping[b]}));
+                var afterDelete=MOLWiringCodec.Get(session.GetSnapshot().Find(firstPage.RootContent.Id));
+                Check(afterDelete.Blocks.Count==3&&afterDelete.Links.Count==2&&
+                    afterDelete.Links.Any(l=>l.Id==boundaryId),
+                    "batch delete removed unrelated links");
+                revision=session.Revision;rejected=false;
+                try{MOCFlowBuilder.Edit(session,secondPage.RootContent,builder=>
+                    builder.RemoveMany(builder.Blocks.Select(x=>x.Id).ToArray()));}
+                catch(InvalidOperationException){rejected=true;}
+                Check(rejected&&session.Revision==revision,
+                    "delete last remaining blocks failed to roll back");
+            }
+            finally{session.Close(true);}
         }
 
         private static void V2DiagnosticLocations()
