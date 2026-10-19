@@ -259,6 +259,7 @@
                         <TextBox x:Name="VisualBindingPropertyInput" Width="68" Text="visible" ToolTip="visible/x/y/width/height/rotation/value"/>
                         <TextBox x:Name="VisualBindingSourceInput" Width="120" Text="Motor.Ready" ToolTip="MDS变量名"/>
                         <Button Content="绑定变量" Click="OnApplyVisualBinding"/>
+                        <Button Content="关联流程状态" Click="OnLinkVisualFlowState" ToolTip="先选中逻辑块与图元；自动关联三态，无需输入内部ID"/>
                     </WrapPanel>
                     <TextBlock Text="状态样式 / 动画参数" FontWeight="SemiBold" Margin="0,8,0,3"/>
                     <WrapPanel>
