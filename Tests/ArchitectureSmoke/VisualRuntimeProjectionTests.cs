@@ -97,6 +97,18 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 {
                     invoked++;return true;
                 })==0&&invoked==1,"unmatched event must not invoke host");
+                bool oversizeRejected=false;
+                try
+                {
+                    MVIVisualEventRouter.Dispatch(doc,shape.Id,"Click",
+                        new string('x',65537),request=>true);
+                }
+                catch(ArgumentException){oversizeRejected=true;}
+                Check(oversizeRejected,"unbounded Widget input must not enter authorized host");
+                doc.SetVisibility(shape,false);
+                Check(MVIVisualEventRouter.Dispatch(doc,shape.Id,"Click","x",
+                    request=>{invoked++;return true;})==0&&invoked==1,
+                    "hidden shape must never dispatch visual actions");
                 doc.Close(true); // 显式放弃测试定义；正常用户工程仍保持未保存保护
             }
             Console.WriteLine("PASS Visual runtime: MDS Owner variable/source, state style, animation time, visibility, invalid type, editor frame separation");
