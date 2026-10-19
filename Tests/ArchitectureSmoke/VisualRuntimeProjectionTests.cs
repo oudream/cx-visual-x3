@@ -196,6 +196,43 @@ namespace CxVisual.Tests.ArchitectureSmoke
             {
                 if(File.Exists(motorFile))File.Delete(motorFile);
             }
+            // 同一Widget定义放进两个Symbol实例：场景选择Id可能是同一类引用Id，
+            // 只有完整MRIObjectAddress才能把已授权动作归属到正确实例。
+            using(var instanceEvents=MEMEngineering.Create("Symbol widget events"))
+            {
+                var page=instanceEvents.AddPage("Control");
+                var symbol=instanceEvents.AddSymbol("Reusable motor panel");
+                var button=new MRCWidgetElement(Guid.NewGuid(),"Start","core.widget",0,0,90,35);
+                instanceEvents.Add(symbol.RootGroup,button);
+                instanceEvents.SetVisualBehavior(button,new MRCVisualBehaviorDefinition(
+                    eventActions:new[]{new MRCVisualEventAction("Click","motor.start")}));
+                var first=instanceEvents.PlaceSymbol(page.RootContent,symbol,"Motor-A");
+                var second=instanceEvents.PlaceSymbol(page.RootContent,symbol,"Motor-B");
+                instanceEvents.SetPlacement(first,new MRCTransform(1,0,0,1,30,30));
+                instanceEvents.SetPlacement(second,new MRCTransform(1,0,0,1,180,30));
+                var scene=CxSceneProjection.Project(instanceEvents,page.Id);
+                Check(scene.Count==2&&scene.All(x=>x.Address.ObjectId==button.Id)&&
+                    scene.Select(x=>x.Address.InstancePath[0]).Distinct().Count()==2,
+                    "Widget instance address missing in Scene projection");
+                int called=0;
+                foreach(var row in scene)
+                {
+                    int result=MVIVisualEventRouter.Dispatch(instanceEvents,row.Address,
+                        "Click","requested",request=>
+                        {
+                            Check(request.ItemId==button.Id&&
+                                request.Address.Equals(row.Address)&&
+                                request.ActionId=="motor.start",
+                                "authorized action lost its instance identity");
+                            called++;return true;
+                        });
+                    Check(result==1,"Symbol Widget action not routed through authorized host");
+                    Check(MVIVisualEventRouter.Dispatch(instanceEvents,row.Id,
+                        "Click","requested",request=>true)==0,
+                        "ambiguous reference Guid must not execute a definition event");
+                }
+                Check(called==2,"two distinct Widget instances were not dispatched separately");
+            }
             Console.WriteLine("PASS Visual runtime: MDS Owner, state/animation, Widget events, Motor Symbol dual instances and disk roundtrip");
         }
     }

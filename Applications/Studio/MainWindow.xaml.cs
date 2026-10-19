@@ -134,8 +134,11 @@ namespace CxVisual.Studio
             {
                 try
                 {
-                    int approved=_viewModel.RouteVisualWidgetEvent(
-                        widget.ElementId,widget.EventId,widget.Value);
+                    int approved=widget.Address!=null?
+                        _viewModel.RouteVisualWidgetEvent(
+                            widget.Address,widget.EventId,widget.Value):
+                        _viewModel.RouteVisualWidgetEvent(
+                            widget.ElementId,widget.EventId,widget.Value);
                     VisualInfo.Text="Widget事件："+widget.EventId+
                         " · 对象："+widget.ElementId.ToString("N").Substring(0,8)+
                         (approved>0?" · 已转交授权宿主":" · 无授权宿主，不执行设备命令");

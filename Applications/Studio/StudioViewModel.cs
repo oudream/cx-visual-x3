@@ -329,6 +329,14 @@ namespace CxVisual.Studio
         {
             _authorizedVisualActionHost=host;
         }
+        public int RouteVisualWidgetEvent(MRIObjectAddress address,string eventId,string value)
+        {
+            int approved=MVIVisualEventRouter.Dispatch(ProjectSession,address,eventId,
+                value,_authorizedVisualActionHost);
+            Status=approved>0?"已通过专业授权宿主转发 "+approved+" 个动作":
+                "事件收到，但未授权执行设备命令";
+            return approved;
+        }
         public int RouteVisualWidgetEvent(Guid visualId,string eventId,string value)
         {
             int approved=MVIVisualEventRouter.Dispatch(ProjectSession,visualId,eventId,

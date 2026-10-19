@@ -10,7 +10,11 @@ namespace CxVisual.Mechanism.Presentation.Wpf
     public sealed class MPWWidgetEventArgs : EventArgs
     {
         public MPWWidgetEventArgs(Guid id,string eventId,string value)
-        {ElementId=id;EventId=eventId;Value=value;}
+            :this(id,null,eventId,value){}
+        public MPWWidgetEventArgs(Guid id,MRIObjectAddress address,string eventId,string value)
+        {ElementId=id;Address=address;EventId=eventId;Value=value;}
+        /// <summary>完整工程实例地址，解决两个Symbol实例共享选择Id时的事件歧义。</summary>
+        public MRIObjectAddress Address{get;private set;}
         public Guid ElementId{get;private set;}
         public string EventId{get;private set;}
         public string Value{get;private set;}
@@ -205,7 +209,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         }
         private static void Emit(Action<MPWWidgetEventArgs> callback,CxSceneItem item,string name,string value)
         {
-            if(callback!=null)callback(new MPWWidgetEventArgs(item.Id,name,value));
+            if(callback!=null)callback(new MPWWidgetEventArgs(
+                item.Id,item.Address,name,value));
         }
     }
 }
