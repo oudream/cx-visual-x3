@@ -939,6 +939,19 @@ namespace CxVisual.Studio
             else if(control&&args.Key==Key.Z)OnUndoWiring(sender,new RoutedEventArgs());
             else if(control&&args.Key==Key.Y)OnRedoWiring(sender,new RoutedEventArgs());
             else if(args.Key==Key.Delete)OnFlowDeleteSelection(sender,new RoutedEventArgs());
+            else if(args.Key==Key.Escape)
+            {
+                // 不创建Revision：仅取消当前预览与旧式两点连线暂存。
+                LogicHost.ResetLinkSelection();
+                LogicHost.IsConnectMode=false;
+                FlowWireMode.Content="开始连线";
+                _pendingWireSource=null;
+                _pendingWireTarget=null;
+                FlowPortPairs.ItemsSource=null;
+                _flowPanning=false;
+                if(FlowScroll.IsMouseCaptured)FlowScroll.ReleaseMouseCapture();
+                LogicInfo.Text="已取消当前画布操作，工程未修改。";
+            }
             else return;
             args.Handled=true;
         }
