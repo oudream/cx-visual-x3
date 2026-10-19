@@ -19,12 +19,17 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             using(StreamGeometryContext dc=path.Open())
             {
                 bool hasFigure=false;
-                foreach(FGEPathCommand command in item.Shape.Geometry.Commands)
+                var commands=item.Shape.Geometry.Commands;
+                for(int i=0;i<commands.Count;i++)
                 {
+                    FGEPathCommand command=commands[i];
                     switch(command.Verb)
                     {
                         case FGEPathVerb.Move:
-                            dc.BeginFigure(PointOf(command.End),true,false);
+                            bool closed=false;
+                            for(int k=i+1;k<commands.Count&&commands[k].Verb!=FGEPathVerb.Move;k++)
+                                if(commands[k].Verb==FGEPathVerb.Close){closed=true;break;}
+                            dc.BeginFigure(PointOf(command.End),true,closed);
                             hasFigure=true;
                             break;
                         case FGEPathVerb.Line:
@@ -54,7 +59,6 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                             break;
                         }
                         case FGEPathVerb.Close:
-                            dc.SetClosedState(true);
                             hasFigure=false;
                             break;
                         default:throw new InvalidOperationException("visual.path.verb_not_supported");
