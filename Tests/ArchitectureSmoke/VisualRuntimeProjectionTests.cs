@@ -82,6 +82,21 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         "editor clear must restore declared static appearance");
                 }
                 Check(doc.Revision==revision,"editor runtime update modified persisted definitions");
+                // 事件定义与设备命令执行隔离：无Owner授权必须拒绝，授权才可转发。
+                doc.SetVisualBehavior(shape,new MRCVisualBehaviorDefinition(
+                    eventActions:new[]{new MRCVisualEventAction("Click","hmi.open")}));
+                int invoked=0;
+                Check(MVIVisualEventRouter.Dispatch(doc,shape.Id,"Click","ok",null)==0&&
+                    invoked==0,"visual command must fail closed without an authorized Owner");
+                Check(MVIVisualEventRouter.Dispatch(doc,shape.Id,"Click","ok",request=>
+                {
+                    invoked++;
+                    return request.ActionId=="hmi.open"&&request.EventValue=="ok";
+                })==1&&invoked==1,"saved event did not dispatch to approved host");
+                Check(MVIVisualEventRouter.Dispatch(doc,shape.Id,"Changed","x",request=>
+                {
+                    invoked++;return true;
+                })==0&&invoked==1,"unmatched event must not invoke host");
                 doc.Close(true); // 显式放弃测试定义；正常用户工程仍保持未保存保护
             }
             Console.WriteLine("PASS Visual runtime: MDS Owner variable/source, state style, animation time, visibility, invalid type, editor frame separation");
