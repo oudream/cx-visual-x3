@@ -167,6 +167,43 @@ namespace CxVisual.Mechanism.Visual
             }
             return MVIVisualEditing.CommitGeometry(this,shape,after);
         }
+        /// <summary>统一属性面板几何编辑，一次原工程事务，禁止原型式直接写字段。</summary>
+        public MTCEditResult<bool> SetGeometry(Guid id,double x,double y,double width,
+            double height,double angle)
+        {
+            Demand();
+            if(!Route(MVIInteractionKind.Move,id))
+                return MTCEditResult<bool>.Rejected(Document.Revision,"visual.default_prevented",
+                    "Editing prevented by policy");
+            MRCVisualItem item=Document.Find(id) as MRCVisualItem;
+            if(item==null)return MTCEditResult<bool>.Rejected(Document.Revision,
+                "visual.definition_required","Open a visual definition");
+            int revision=Document.Revision;
+            return Document.Edit("编辑可视几何属性",revision,e=>
+            {
+                e.Move(item,x,y);
+                e.Resize(item,width,height);
+                e.Rotate(item,angle);
+                return true;
+            });
+        }
+        public MTCEditResult<bool> SetLayer(Guid id,string layer,bool toFront)
+        {
+            Demand();
+            if(!Route(MVIInteractionKind.Move,id))
+                return MTCEditResult<bool>.Rejected(Document.Revision,"visual.default_prevented",
+                    "Layer edit prevented");
+            MRCVisualItem item=Document.Find(id) as MRCVisualItem;
+            if(item==null)return MTCEditResult<bool>.Rejected(Document.Revision,
+                "visual.definition_required","Open a visual definition");
+            int revision=Document.Revision;
+            return Document.Edit("设置图层及绘制顺序",revision,e=>
+            {
+                e.SetLayer(item,layer??"");
+                if(toFront)e.Reparent(item,item.Parent,item.Parent.Children.Count-1);
+                return true;
+            });
+        }
         public MTCEditResult<bool> Move(Guid id, double x, double y)
         {
             int revision=Document.Revision;
