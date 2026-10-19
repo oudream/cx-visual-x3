@@ -176,8 +176,8 @@ namespace CxVisual.Mechanism.Visual
                 FGEPoint2D destination=projected.GeometryToWorld.Inverse().TransformPoint(
                     new FGEPoint2D(worldX,worldY));
                 FGEArc2D changed=EditArc(arc,handle.Kind,destination,shape.Shape.Kind);
-                FGEPath2D newPath=FGEPathEditing.UpdateArc(path,handle.CommandIndex,changed);
-                return CommitGeometry(editor,shape,newPath);
+                FGEPath2D arcPath=FGEPathEditing.UpdateArc(path,handle.CommandIndex,changed);
+                return CommitGeometry(editor,shape,arcPath);
             }
             if(handle.Kind!=MVIVisualHandleKind.Anchor&&
                 handle.Kind!=MVIVisualHandleKind.Control1&&
@@ -264,12 +264,12 @@ namespace CxVisual.Mechanism.Visual
                 original.X+original.M11*localShiftX+original.M12*localShiftY,
                 original.Y+original.M21*localShiftX+original.M22*localShiftY);
             // 三次状态写入属于一次工程事务，同一次Undo严格恢复Shape/布局/世界坐标。
-            var updated=new MRCShapeDefinition(shape.Shape.Kind,newPath);
+            var updated=new MRCShapeDefinition(item.Shape.Kind,newPath);
             return editor.Document.Edit("编辑路径几何",revision,e=>
             {
-                e.SetShape(shape,updated);
-                e.Resize(shape,width,height);
-                e.SetTransform(shape,compensated);
+                e.SetShape(item,updated);
+                e.Resize(item,width,height);
+                e.SetTransform(item,compensated);
                 return true;
             });
         }
