@@ -18,5 +18,11 @@
   <ItemGroup>
     <ProjectReference Include="..\..\Foundation\Core\CxVisual.Foundation.Core.csproj"><Project>{688C0850-BA46-559F-B977-A6F9D1DE4DB0}</Project><Name>CxVisual.Foundation.Core</Name></ProjectReference>
   </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Primitives2D\FGEGeometry2D.cs"/>
+    <Compile Include="Transforms\FGETransform2D.cs"/>
+    <Compile Include="Operations\FGEGeometryAlgorithms.cs"/>
+    <Compile Include="Paths\FGEPath2D.cs"/>
+  </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets"/>
 </Project>
