@@ -141,9 +141,16 @@ namespace CxVisual.Studio
             Status="已添加透明度呼吸动画；预览交互可查看真实动画";
             NotifyScene();
         }
+        private CxVisual.Mechanism.Data.RuntimeData.IMDSExternalBindingResolver _visualRuntimeSource;
+        /// <summary>生产运行数据由现有MDS/专业Owner提供；Studio不建立第二份变量表。</summary>
+        public void AttachVisualRuntimeSource(
+            CxVisual.Mechanism.Data.RuntimeData.IMDSExternalBindingResolver source)
+        {
+            _visualRuntimeSource=source;
+        }
         public void UpdateVisualRuntimeFrame(double elapsedMilliseconds)
         {
-            _editor.SetRuntimeFrame(null,elapsedMilliseconds);
+            _editor.SetRuntimeFrame(_visualRuntimeSource,elapsedMilliseconds);
             // 运行帧只更新Scene，不刷新属性面板、资源树或工程历史。
             Changed("Items");
             FireSceneChanged();
