@@ -365,7 +365,8 @@ namespace CxVisual.Mechanism.Core
         public MOLWiringDefinition(Guid entryBlockId,IEnumerable<MOLControlBlock> blocks,
             IDictionary<Guid,IEnumerable<MPCPortDescriptor>> ports,IEnumerable<MOLLink> links,
             IDictionary<Guid,MOLBlockPosition> positions=null,
-            IEnumerable<MOLSelectionGroup> groups=null)
+            IEnumerable<MOLSelectionGroup> groups=null,
+            IDictionary<Guid,IDictionary<string,string>> parameters=null)
         {
             EntryBlockId=entryBlockId;
             Blocks=new ReadOnlyCollection<MOLControlBlock>((blocks??new MOLControlBlock[0]).ToArray());
@@ -382,6 +383,14 @@ namespace CxVisual.Mechanism.Core
             }
             Positions=new ReadOnlyDictionary<Guid,MOLBlockPosition>(locations);
             Groups=Array.AsReadOnly((groups??Enumerable.Empty<MOLSelectionGroup>()).ToArray());
+            var values=new Dictionary<Guid,IReadOnlyDictionary<string,string>>();
+            if(parameters!=null)foreach(var group in parameters)
+            {
+                if(group.Value==null)throw new ArgumentException("wiring.params_null");
+                values.Add(group.Key,new ReadOnlyDictionary<string,string>(
+                    new Dictionary<string,string>(group.Value,StringComparer.Ordinal)));
+            }
+            Parameters=new ReadOnlyDictionary<Guid,IReadOnlyDictionary<string,string>>(values);
             Validate();
         }
         public Guid EntryBlockId{get;private set;}
@@ -390,13 +399,15 @@ namespace CxVisual.Mechanism.Core
         public IReadOnlyDictionary<Guid,IReadOnlyList<MPCPortDescriptor>> Ports{get;private set;}
         public IReadOnlyDictionary<Guid,MOLBlockPosition> Positions{get;private set;}
         public IReadOnlyList<MOLSelectionGroup> Groups{get;private set;}
+        /// <summary>端口字面量参数，按BlockId绑定到已有Data Input；不是另一个参数真源。</summary>
+        public IReadOnlyDictionary<Guid,IReadOnlyDictionary<string,string>> Parameters{get;private set;}
         public void Validate()
         {
             // G04：合法空草稿可保存，不能交给MOC/MRK执行。
             if(Blocks.Count==0)
             {
                 if(EntryBlockId!=Guid.Empty||Links.Count!=0||Ports.Count!=0||
-                    Positions.Count!=0||Groups.Count!=0)
+                    Positions.Count!=0||Groups.Count!=0||Parameters.Count!=0)
                     throw new InvalidOperationException("wiring.empty_draft_has_references");
                 return;
             }
@@ -418,6 +429,9 @@ namespace CxVisual.Mechanism.Core
                     group.BlockIds.Any(id=>!ids.Contains(id)||!groupedMembers.Add(id)))
                     throw new InvalidOperationException("wiring.group_overlap_or_scope");
             }
+            if(Parameters.Keys.Any(id=>!ids.Contains(id))||
+                Parameters.Sum(group=>group.Value.Count)>4096)
+                throw new InvalidOperationException("wiring.parameters_scope");
             var schemas=new Dictionary<Guid,Dictionary<string,MPCPortDescriptor>>();
             foreach(var b in Blocks)
             {
@@ -430,6 +444,41 @@ namespace CxVisual.Mechanism.Core
                     lookup.Add(p.MemberId,p);
                 }
                 schemas.Add(b.Id,lookup);
+            }
+            foreach(var group in Parameters)
+            foreach(var entry in group.Value)
+            {
+                MPCPortDescriptor port;
+                if(string.IsNullOrWhiteSpace(entry.Key)||entry.Key.Length>128||
+                    entry.Key.Any(char.IsControl)||entry.Value==null||
+                    entry.Value.Length>8192||
+                    !schemas[group.Key].TryGetValue(entry.Key,out port)||
+                    port.Kind!=MPCPortKind.Data||port.Direction!=MPCPortDirection.Input)
+                    throw new InvalidOperationException("wiring.invalid_parameter");
+                if(Links.Any(l=>l.Kind==MPCPortKind.Data&&
+                    l.Target.BlockId==group.Key&&l.Target.PortMemberId==entry.Key))
+                    throw new InvalidOperationException("wiring.parameter_link_conflict");
+                switch(port.TypeId)
+                {
+                    case "string":case "System.String":break;
+                    case "bool":case "System.Boolean":
+                        bool b;if(!bool.TryParse(entry.Value,out b))
+                            throw new InvalidOperationException("wiring.parameter_type");break;
+                    case "int":case "System.Int32":
+                        int iv;if(!int.TryParse(entry.Value,NumberStyles.Integer,
+                            CultureInfo.InvariantCulture,out iv))
+                            throw new InvalidOperationException("wiring.parameter_type");break;
+                    case "long":case "System.Int64":
+                        long lv;if(!long.TryParse(entry.Value,NumberStyles.Integer,
+                            CultureInfo.InvariantCulture,out lv))
+                            throw new InvalidOperationException("wiring.parameter_type");break;
+                    case "double":case "System.Double":
+                        double dv;if(!double.TryParse(entry.Value,NumberStyles.Float,
+                            CultureInfo.InvariantCulture,out dv)||double.IsInfinity(dv)||
+                            double.IsNaN(dv))
+                            throw new InvalidOperationException("wiring.parameter_type");break;
+                    default:throw new InvalidOperationException("wiring.parameter_unknown_type");
+                }
             }
             var linkIds=new HashSet<Guid>();
             var edgeKeys=new HashSet<string>();
@@ -542,6 +591,12 @@ namespace CxVisual.Mechanism.Core
                     new XAttribute("in",l.Target.PortMemberId),
                     new XAttribute("condition",l.ConditionId),
                     new XAttribute("order",l.Order.HasValue?l.Order.Value.ToString(CultureInfo.InvariantCulture):"")))));
+            if(def.Parameters.Count>0)
+                root.Add(new XElement("Parameters",def.Parameters.Select(group=>
+                    new XElement("Block",new XAttribute("id",group.Key.ToString("N")),
+                        group.Value.Select(item=>new XElement("Value",
+                            new XAttribute("port",item.Key),
+                            new XAttribute("text",item.Value)))))));
             if(def.Groups.Count>0)
                 root.Add(new XElement("Groups",def.Groups.Select(g=>new XElement("Group",
                     new XAttribute("id",g.Id.ToString("N")),new XAttribute("name",g.Name),
@@ -559,9 +614,11 @@ namespace CxVisual.Mechanism.Core
             {
                 var root=XDocument.Load(reader).Root;
                 if(root==null||root.Name!="MOL"||(string)root.Attribute("v")!="2"||
-                    (root.Elements().Count()!=2&&root.Elements().Count()!=3)||
                     root.Element("Blocks")==null||root.Element("Links")==null||
-                    (root.Elements().Count()==3&&root.Element("Groups")==null))
+                    root.Elements().Count()<2||root.Elements().Count()>4||
+                    root.Elements().Any(x=>x.Name!="Blocks"&&x.Name!="Links"&&
+                        x.Name!="Groups"&&x.Name!="Parameters")||
+                    root.Elements().GroupBy(x=>x.Name).Any(x=>x.Count()!=1))
                     throw new InvalidDataException("wiring.schema");
                 string rawEntry=(string)root.Attribute("entry");
                 Guid entry=root.Element("Blocks").Elements("Block").Any()?
@@ -603,7 +660,22 @@ namespace CxVisual.Mechanism.Core
                     root.Element("Groups").Elements("Group").Select(g=>
                         new MOLSelectionGroup(ReadGuid(g,"id"),(string)g.Attribute("name"),
                             g.Elements("Member").Select(m=>ReadGuid(m,"id")))).ToArray();
-                return new MOLWiringDefinition(entry,blocks,ports,links,positions,groups);
+                var parameters=new Dictionary<Guid,IDictionary<string,string>>();
+                if(root.Element("Parameters")!=null)
+                foreach(var group in root.Element("Parameters").Elements("Block"))
+                {
+                    Guid id=ReadGuid(group,"id");
+                    var values=new Dictionary<string,string>(StringComparer.Ordinal);
+                    foreach(var p in group.Elements("Value"))
+                    {
+                        string name=(string)p.Attribute("port");
+                        if(string.IsNullOrWhiteSpace(name)||p.Attribute("text")==null)
+                            throw new InvalidDataException("wiring.parameter_schema");
+                        values.Add(name,(string)p.Attribute("text"));
+                    }
+                    parameters.Add(id,values);
+                }
+                return new MOLWiringDefinition(entry,blocks,ports,links,positions,groups,parameters);
             }
         }
         private static Guid ReadGuid(XElement x,string name)
