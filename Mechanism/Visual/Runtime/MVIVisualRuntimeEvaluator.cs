@@ -46,6 +46,36 @@ namespace CxVisual.Mechanism.Visual
             if(!(value is bool))throw new InvalidCastException("visual.runtime.state_requires_boolean");
             return (bool)value;
         }
+        /// <summary>运行时动画采样：属性只在当前Scene帧变化，不回写MEM声明。</summary>
+        public static double EvaluateNumber(string property,double declared,
+            MRCVisualBehaviorDefinition behavior,double elapsedMilliseconds,
+            IMDSExternalBindingResolver source)
+        {
+            if(behavior==null)return declared;
+            if(double.IsNaN(elapsedMilliseconds)||double.IsInfinity(elapsedMilliseconds)||
+                elapsedMilliseconds<0)throw new ArgumentOutOfRangeException("elapsedMilliseconds");
+            double value=declared;
+            foreach(MRCAnimationDefinition animation in behavior.Animations)
+            {
+                if(!string.Equals(animation.Property,property,StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if(animation.TriggerId.Length>0&&!StateActive(animation.TriggerId,source))
+                    continue;
+                double t=elapsedMilliseconds/animation.DurationMilliseconds;
+                if(animation.Repeat)t=t-Math.Floor(t);
+                else t=Math.Min(1,t);
+                switch(animation.Easing)
+                {
+                    case MRCAnimationEasing.EaseIn:t=t*t;break;
+                    case MRCAnimationEasing.EaseOut:t=1-(1-t)*(1-t);break;
+                    case MRCAnimationEasing.EaseInOut:t=t*t*(3-2*t);break;
+                }
+                value=animation.From+(animation.To-animation.From)*t;
+                if(double.IsNaN(value)||double.IsInfinity(value))
+                    throw new InvalidOperationException("visual.animation.overflow");
+            }
+            return value;
+        }
         public static MRCVisualStyle EvaluateStyle(MRCVisualStyle declared,
             MRCVisualBehaviorDefinition behavior,double elapsedMilliseconds,
             IMDSExternalBindingResolver source)
@@ -58,9 +88,12 @@ namespace CxVisual.Mechanism.Visual
             foreach(MRCVisualStateDefinition state in behavior.States)
                 if(StateActive(state.Name,source))style=state.Style;
             double opacity=style.Opacity;
+            double strokeWidth=style.StrokeWidth;
             foreach(MRCAnimationDefinition animation in behavior.Animations)
             {
-                if(!string.Equals(animation.Property,"opacity",StringComparison.OrdinalIgnoreCase))continue;
+                bool opacityAnimation=string.Equals(animation.Property,"opacity",StringComparison.OrdinalIgnoreCase);
+                bool widthAnimation=string.Equals(animation.Property,"strokeWidth",StringComparison.OrdinalIgnoreCase);
+                if(!opacityAnimation&&!widthAnimation)continue;
                 if(animation.TriggerId.Length>0&&!StateActive(animation.TriggerId,source))continue;
                 double t=elapsedMilliseconds/animation.DurationMilliseconds;
                 if(animation.Repeat)t=t-Math.Floor(t);
@@ -71,10 +104,12 @@ namespace CxVisual.Mechanism.Visual
                     case MRCAnimationEasing.EaseOut:t=1-(1-t)*(1-t);break;
                     case MRCAnimationEasing.EaseInOut:t=t*t*(3-2*t);break;
                 }
-                opacity=Math.Max(0,Math.Min(1,animation.From+(animation.To-animation.From)*t));
+                double value=animation.From+(animation.To-animation.From)*t;
+                if(opacityAnimation)opacity=Math.Max(0,Math.Min(1,value));
+                else strokeWidth=Math.Max(0,value);
             }
-            if(opacity==style.Opacity)return style;
-            return new MRCVisualStyle(style.Fill,style.Stroke,style.StrokeWidth,
+            if(opacity==style.Opacity&&strokeWidth==style.StrokeWidth)return style;
+            return new MRCVisualStyle(style.Fill,style.Stroke,strokeWidth,
                 opacity,style.FontFamily,style.FontSize,style.ThemeKey);
         }
     }
