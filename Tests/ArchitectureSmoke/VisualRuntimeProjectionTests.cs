@@ -115,7 +115,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 }
                 catch(ArgumentException){oversizeRejected=true;}
                 Check(oversizeRejected,"unbounded Widget input must not enter authorized host");
-                doc.SetVisibility(shape,false);
+                doc.SetVisibility(shape,false,false);
                 Check(MVIVisualEventRouter.Dispatch(doc,shape.Id,"Click","x",
                     request=>{invoked++;return true;})==0&&invoked==1,
                     "hidden shape must never dispatch visual actions");
