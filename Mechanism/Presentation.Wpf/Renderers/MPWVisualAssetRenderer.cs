@@ -108,9 +108,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             switch(type)
             {
                 case "rect":
+                    double width=NonNegative(Attr(e,"width"),"width");
+                    double height=NonNegative(Attr(e,"height"),"height");
+                    double rx=NonNegative(Attr(e,"rx",Attr(e,"ry")),"radius_x");
+                    double ry=NonNegative(Attr(e,"ry",rx),"radius_y");
                     return new RectangleGeometry(new Rect(Attr(e,"x"),Attr(e,"y"),
-                        NonNegative(Attr(e,"width"),"width"),
-                        NonNegative(Attr(e,"height"),"height")));
+                        width,height),Math.Min(width/2,rx),Math.Min(height/2,ry));
                 case "circle":
                     return new EllipseGeometry(new Point(Attr(e,"cx"),Attr(e,"cy")),
                         NonNegative(Attr(e,"r"),"radius"),
