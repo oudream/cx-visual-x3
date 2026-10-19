@@ -55,6 +55,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             SaveLoadAndIdentity();
             V2WiringRoundtrip();
             V2TypedParameterConfiguration();
+            G05aConditionalBranchesAndJoin();
             V2ExtractLinearContent();
             V2LayoutContract();
             V2BulkEditingClipboard();
@@ -631,6 +632,98 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(session.Redo().Success&&
                     session.GetSnapshot().Find(child.Id)!=null,
                     "extract redo did not restore referenced Content atomically");
+            }
+            finally{session.Close(true);}
+        }
+
+        /// <summary>G05a Control分支实际执行与Join：不能用编排图或源码存在替代结果。</summary>
+        private static void G05aConditionalBranchesAndJoin()
+        {
+            var session=MEMEngineering.Create("G05a 条件分支");
+            var page=session.AddPage("检测与判定");
+            try
+            {
+                Guid source=Guid.Empty,pass=Guid.Empty,fail=Guid.Empty,join=Guid.Empty;
+                MOCFlowBuilder.Edit(session,page.RootContent,b=>{
+                    source=b.Step("decide");
+                    pass=b.Step("pass");fail=b.Step("fail");join=b.Step("join");
+                    b.ConnectConditional(source,"Done",pass,"Start","bool:true");
+                    b.ConnectConditional(source,"Done",fail,"Start","bool:false");
+                    b.Connect(pass,"Done",join,"Start");
+                    b.Connect(fail,"Done",join,"Start");
+                });
+                var roundtrip=MOLWiringCodec.Get(session.GetSnapshot().Find(page.RootContent.Id));
+                Check(roundtrip.Links.Count(l=>l.ConditionId.StartsWith("bool:",StringComparison.Ordinal))==2,
+                    "G05a branch guard not stored in Logic V2");
+                var encoded=MOLWiringCodec.Deserialize(MOLWiringCodec.Serialize(roundtrip));
+                Check(encoded.Links.Count==4&&encoded.Links.Any(l=>l.ConditionId=="bool:true"),
+                    "G05a guarded V2 serialization roundtrip failed");
+
+                int yes=0,no=0,joined=0;
+                var resolver=new TestResolver()
+                    .Register("decide",(c,t)=>Task.FromResult((object)true))
+                    .Register("pass",(c,t)=>{Interlocked.Increment(ref yes);return Task.FromResult((object)1);})
+                    .Register("fail",(c,t)=>{Interlocked.Increment(ref no);return Task.FromResult((object)2);})
+                    .Register("join",(c,t)=>{Interlocked.Increment(ref joined);return Task.FromResult((object)3);});
+                var built=new MOCBuildService().Build(session.GetSnapshot(),page.RootContent.Id,resolver);
+                Check(built.Succeeded,"G05a guarded Control flow failed MOC validation: "+
+                    string.Join(",",built.Diagnostics.Select(d=>d.Code+":"+d.Message)));
+                MOCTraceView trace;
+                var result=Execute(built.Plan,null,out trace);
+                Check(result.State==MRKFlowState.Completed&&yes==1&&no==0&&joined==1,
+                    "G05a true branch/Join did not execute correctly");
+                Check(built.Plan.SourceMap.Find(join).Count==1&&trace.Events.Count>0,
+                    "G05a branch SourceMap or runtime trace missing");
+
+                yes=0;no=0;joined=0;
+                var negative=new TestResolver()
+                    .Register("decide",(c,t)=>Task.FromResult((object)false))
+                    .Register("pass",(c,t)=>{Interlocked.Increment(ref yes);return Task.FromResult((object)1);})
+                    .Register("fail",(c,t)=>{Interlocked.Increment(ref no);return Task.FromResult((object)2);})
+                    .Register("join",(c,t)=>{Interlocked.Increment(ref joined);return Task.FromResult((object)3);});
+                var rejectedBranch=new MOCBuildService().Build(session.GetSnapshot(),page.RootContent.Id,negative);
+                Check(rejectedBranch.Succeeded,"G05a false branch build failed");
+                result=Execute(rejectedBranch.Plan,null,out trace);
+                Check(result.State==MRKFlowState.Completed&&yes==0&&no==1&&joined==1,
+                    "G05a false branch/Join did not execute correctly");
+
+                int rev=session.Revision;
+                bool conflict=false;
+                try{MOCFlowBuilder.Edit(session,page.RootContent,b=>
+                    b.ConnectConditional(source,"Done",join,"Start","bool:true"));}
+                catch(InvalidOperationException){conflict=true;}
+                Check(conflict&&session.Revision==rev,
+                    "G05a duplicate branch guard did not roll back atomically");
+
+                MOCFlowBuilder.Edit(session,page.RootContent,b=>{
+                    b.RemoveMany(new[]{pass,fail,join});
+                    pass=b.Step("pass");fail=b.Step("fail");join=b.Step("join");
+                    b.ConnectConditional(source,"Done",pass,"Start","case:PASS");
+                    b.ConnectConditional(source,"Done",fail,"Start","default");
+                    b.Connect(pass,"Done",join,"Start");
+                    b.Connect(fail,"Done",join,"Start");
+                });
+                yes=0;no=0;joined=0;
+                var switchResolver=new TestResolver()
+                    .Register("decide",(c,t)=>Task.FromResult((object)"PASS"))
+                    .Register("pass",(c,t)=>{Interlocked.Increment(ref yes);return Task.FromResult((object)1);})
+                    .Register("fail",(c,t)=>{Interlocked.Increment(ref no);return Task.FromResult((object)2);})
+                    .Register("join",(c,t)=>{Interlocked.Increment(ref joined);return Task.FromResult((object)3);});
+                var switchBuild=new MOCBuildService().Build(session.GetSnapshot(),page.RootContent.Id,switchResolver);
+                Check(switchBuild.Succeeded,"G05a Switch could not compile");
+                result=Execute(switchBuild.Plan,null,out trace);
+                Check(result.State==MRKFlowState.Completed&&yes==1&&no==0&&joined==1,
+                    "G05a Switch case path failed");
+                yes=0;no=0;joined=0;
+                var defaultResolver=new TestResolver()
+                    .Register("decide",(c,t)=>Task.FromResult((object)"UNKNOWN"))
+                    .Register("pass",(c,t)=>{Interlocked.Increment(ref yes);return Task.FromResult((object)1);})
+                    .Register("fail",(c,t)=>{Interlocked.Increment(ref no);return Task.FromResult((object)2);})
+                    .Register("join",(c,t)=>{Interlocked.Increment(ref joined);return Task.FromResult((object)3);});
+                var defaultBuild=new MOCBuildService().Build(session.GetSnapshot(),page.RootContent.Id,defaultResolver);
+                result=Execute(defaultBuild.Plan,null,out trace);
+                Check(result.State==MRKFlowState.Completed&&yes==0&&no==1&&joined==1,
+                    "G05a Switch default path failed");
             }
             finally{session.Close(true);}
         }
