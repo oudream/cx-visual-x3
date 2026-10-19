@@ -106,6 +106,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 widget==null?"widget":"item");
             Control control=widget as Control;
             if(control==null)throw new ArgumentException("WPF Control required","widget");
+            // 整次外观刷新都是程序操作：范围收缩、选项重建也可能触发ValueChanged。
+            // 必须在设置任何WPF属性前加保护，而不只保护最后的运行值赋值。
+            object appearanceTag=control.Tag;
+            control.Tag="visual.update";
+            try
+            {
             control.Width=Math.Max(1,item.LocalWidth);
             control.Height=Math.Max(1,item.LocalHeight);
             MRCVisualStyle style=item.Style;
@@ -194,6 +200,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             MRCTransform m=item.WorldTransform;
             control.RenderTransform=new MatrixTransform(new Matrix(
                 m.M11,m.M21,m.M12,m.M22,m.X,m.Y));
+            }
+            finally{control.Tag=appearanceTag;}
         }
         private static void Emit(Action<MPWWidgetEventArgs> callback,CxSceneItem item,string name,string value)
         {

@@ -184,6 +184,15 @@ namespace CxVisual.Tests.ArchitectureSmoke
                             "</svg>");
                         MEMAssetReference rasterAsset=session.AddAsset("Raster Image",pixelPath,"image/png");
                         MEMAssetReference svgAsset=session.AddAsset("Vector Image",svgPath,"image/svg+xml");
+                        using(var assetEditor=new CxVisualEditor(session))
+                        {
+                            int beforeInvalid=session.Revision;
+                            Check(!assetEditor.AddAssetElement(svgAsset.Id,"wrong bitmap",
+                                false,0,0).Success&&
+                                !assetEditor.AddAssetElement(rasterAsset.Id,"wrong svg",
+                                true,0,0).Success&&session.Revision==beforeInvalid,
+                                "asset MIME mismatch must fail before creating an engineering element");
+                        }
                         var pageAsset=session.AddPage("Asset gallery");
                         var assetsGroup=session.AddGroup(pageAsset.RootContent,"Images");
                         MRCImageElement image=session.AddImage(assetsGroup,"Raster",15,20,90,60);
@@ -267,6 +276,24 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         Check(slider.Minimum==20&&slider.Maximum==80&&slider.Value==45&&
                             !slider.IsEnabled&&emitted==1,
                             "slider min/max/value/enabled were not applied from persisted bindings");
+                        // B反证：真实预览中程序改变范围会触发WPF的ValueChanged，
+                        // 但不能被转交为用户设备操作事件。
+                        assetView.IsDesignMode=false;
+                        session.SetBinding(sliderModel,"minimum",MPMBinding.Literal(
+                            MPMValue.Number(70)));
+                        assetView.SetScene(CxSceneProjection.Project(session,pageAsset.Id,data,17),null);
+                        Check(slider.Value==70&&emitted==1,
+                            "programmatic slider range coercion emitted an unauthorized event");
+                        data.Ready=true;
+                        assetView.SetScene(CxSceneProjection.Project(session,pageAsset.Id,data,18),null);
+                        Check(assetWidgets.Children.OfType<System.Windows.Controls.CheckBox>()
+                            .Single().IsChecked==true,
+                            "runtime checkbox did not reflect new MDS frame");
+                        assetView.IsDesignMode=true;
+                        assetView.SetScene(CxSceneProjection.Project(session,pageAsset.Id),null);
+                        Check(assetWidgets.Children.OfType<System.Windows.Controls.CheckBox>()
+                            .Single().IsChecked==false&&emitted==1,
+                            "returning to design kept a stale runtime checkbox value");
                         assetWindow.Close();
                         bool rejectedUnsafe=false;
                         using(var input=new MemoryStream(System.Text.Encoding.UTF8.GetBytes(

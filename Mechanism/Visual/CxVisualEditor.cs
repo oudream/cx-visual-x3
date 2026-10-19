@@ -105,9 +105,18 @@ namespace CxVisual.Mechanism.Visual
             double x,double y,double width=160,double height=110)
         {
             Demand();
-            if(!Document.Assets.Any(a=>a.Id==assetId))
+            MEMAssetReference asset=Document.Assets.FirstOrDefault(a=>a.Id==assetId);
+            if(asset==null)
                 return MTCEditResult<bool>.Rejected(Document.Revision,
                     "visual.asset.missing","Import the asset into the current project first");
+            bool mediaMatch=svg?
+                string.Equals(asset.MediaType,"image/svg+xml",StringComparison.OrdinalIgnoreCase):
+                string.Equals(asset.MediaType,"image/png",StringComparison.OrdinalIgnoreCase)||
+                string.Equals(asset.MediaType,"image/jpeg",StringComparison.OrdinalIgnoreCase)||
+                string.Equals(asset.MediaType,"image/bmp",StringComparison.OrdinalIgnoreCase);
+            if(!mediaMatch)
+                return MTCEditResult<bool>.Rejected(Document.Revision,
+                    "visual.asset.media_mismatch","Asset media type is incompatible with this element");
             return Document.Edit(svg?"添加SVG图元":"添加图片图元",e=>
             {
                 MRCVisualItem element=svg?(MRCVisualItem)e.AddSvg(

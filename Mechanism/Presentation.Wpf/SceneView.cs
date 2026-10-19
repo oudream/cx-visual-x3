@@ -82,6 +82,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             }
         }
         private bool _designMode=true;
+        private bool _resetWidgetLayerOnNextScene;
         private double _zoom=1,_panX,_panY;
         private bool _panning;private Point _panPointer;
         private bool _gridSnap;
@@ -153,6 +154,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             get{return _designMode;}
             set
             {
+                // 退出预览后，下次投影应重新按工程定义物化Widget。
+                // 否则变量失联返回null时旧的运行态值会遗留在重用的TextBox/CheckBox中。
+                if(!_designMode&&value)_resetWidgetLayerOnNextScene=true;
                 _designMode=value;
                 foreach(UIElement element in _widgetCanvas.Children)
                     element.IsHitTestVisible=!_designMode;
@@ -196,7 +200,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         }
         public void SetScene(IList<CxSceneItem> items, Guid? selected)
         {
-            bool reuse=CanReuseWidgets(items);
+            bool reuse=!_resetWidgetLayerOnNextScene&&CanReuseWidgets(items);
+            _resetWidgetLayerOnNextScene=false;
             _items.Clear();
             if(items!=null)_items.AddRange(items);
             // 外部切换选择时清除旧高亮；鼠标本地维护多选时不被场景重投影覆盖。
