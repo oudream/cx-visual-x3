@@ -92,6 +92,7 @@ namespace CxVisual.Studio
             {
                 _viewModel.SetSelection(ids);
                 SceneHost.SetSelectedVisualIds(ids);
+                RefreshVisualInspector();
                 VisualInfo.Text="场景选中 "+ids.Count+" 个对象，可用原工程成组操作";
             };
             SceneHost.MoveRequested += OnMove;

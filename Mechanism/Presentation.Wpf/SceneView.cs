@@ -362,13 +362,28 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             dc.Pop();
         }
 
+        /// <summary>真实鼠标选择共用的集合运算：Ctrl/Shift切换选中不依赖上一次单选事件回写。</summary>
+        private IReadOnlyList<Guid> ApplyPointerSelection(Guid? hit,bool extend)
+        {
+            if(!extend)_selectedItems.Clear();
+            if(hit.HasValue)
+            {
+                if(extend&&!_selectedItems.Add(hit.Value))_selectedItems.Remove(hit.Value);
+                else _selectedItems.Add(hit.Value);
+            }
+            _selection=hit.HasValue&&_selectedItems.Contains(hit.Value)?hit:null;
+            if(!_selection.HasValue)
+                foreach(Guid id in _selectedItems){_selection=id;break;}
+            return new List<Guid>(_selectedItems).AsReadOnly();
+        }
         protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
         {
             base.OnMouseLeftButtonDown(e);
             Focus();
             Point point = WorldPoint(e.GetPosition(this));
             if(!_designMode)return;
-            if(_designMode&&_selection.HasValue)
+            if(_designMode&&_selection.HasValue&&
+                (Keyboard.Modifiers&(ModifierKeys.Control|ModifierKeys.Shift))==0)
             {
                 CxSceneItem selected=_items.Find(i=>i.Id==_selection.Value);
                 if(selected!=null)
@@ -396,13 +411,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             }
             bool extend=(Keyboard.Modifiers&ModifierKeys.Control)!=0||
                 (Keyboard.Modifiers&ModifierKeys.Shift)!=0;
-            if(!extend)_selectedItems.Clear();
-            if(hit.HasValue)
-            {
-                if(extend&&!_selectedItems.Add(hit.Value))_selectedItems.Remove(hit.Value);
-                else _selectedItems.Add(hit.Value);
-            }
-            _selection=hit;
+            IReadOnlyList<Guid> intendedSelection=ApplyPointerSelection(hit,extend);
             if(hit==null)
             {
                 _marquee=true;_marqueeStart=point;_marqueeEnd=point;
@@ -410,12 +419,13 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             }
             _dragStart = point;
             _dragX = 0; _dragY = 0;
-            _dragging = hit.HasValue;
+            // 增减选择不能再触发单选NodeActivated，否则Studio回写会抹掉集合。
+            _dragging = hit.HasValue&&!extend&&_selectedItems.Contains(hit.Value);
             if (_dragging) CaptureMouse();
             EventHandler<CxNodeEventArgs> activated = NodeActivated;
-            if (activated != null) activated(this, new CxNodeEventArgs(hit));
+            if (!extend&&activated != null) activated(this, new CxNodeEventArgs(hit));
             if(hit.HasValue&&SelectionSetRequested!=null)
-                SelectionSetRequested(new List<Guid>(_selectedItems).AsReadOnly());
+                SelectionSetRequested(intendedSelection);
             InvalidateVisual();
             e.Handled = true;
         }

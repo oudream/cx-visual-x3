@@ -132,6 +132,20 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         shapeView.SelectedVisualIds[0]==another.Id,
                         "external single selection retained stale multiple objects");
                     shapeView.SetScene(shapeScene,bezierScene.Id);
+                    // 与真实鼠标OnMouseLeftButtonDown共用的选择算法：Ctrl增减保留集合，
+                    // 不再被NodeActivated的单选回写覆盖。
+                    var pointerSelection=typeof(SceneView).GetMethod("ApplyPointerSelection",
+                        System.Reflection.BindingFlags.Instance|
+                        System.Reflection.BindingFlags.NonPublic);
+                    Check(pointerSelection!=null,"WPF pointer selection handler missing");
+                    pointerSelection.Invoke(shapeView,new object[]{bezierScene.Id,false});
+                    pointerSelection.Invoke(shapeView,new object[]{another.Id,true});
+                    Check(shapeView.SelectedVisualIds.Count==2,
+                        "Ctrl add selection unexpectedly reset prior shape");
+                    pointerSelection.Invoke(shapeView,new object[]{another.Id,true});
+                    Check(shapeView.SelectedVisualIds.Count==1&&
+                        shapeView.SelectedVisualIds[0]==bezierScene.Id,
+                        "Ctrl toggling a selected shape did not remove it");
                     shapeView.SetSelectedVisualIds(new[]{bezierScene.Id,another.Id});
                     Check(shapeView.SelectedVisualIds.Count==2,
                         "Studio multi-selection wasn't retained after view refresh");
