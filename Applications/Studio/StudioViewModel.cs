@@ -64,6 +64,15 @@ namespace CxVisual.Studio
             NotifyScene();
         }
         /// <summary>Studio多选操作直接复用原工程事务，不逐项提交。</summary>
+        public MTCEditResult<bool> SetSelectedZOrder(bool toFront)
+        {
+            if(!_selected.HasValue)throw new InvalidOperationException("请选择图元");
+            MTCEditResult<bool> result=_editor.SetZOrder(_selected.Value,toFront);
+            Status=result.Success?"图层顺序已更新 | Revision "+result.Revision:
+                result.ErrorCode+": "+result.Message;
+            if(result.Success)NotifyScene();
+            return result;
+        }
         public MTCEditResult<bool> DragVisualSelection(IReadOnlyList<Guid> ids,
             double worldDx,double worldDy,bool snap)
         {
