@@ -33,6 +33,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
             try{FGEPathEditing.MoveHandle(plain,1,FGEPathHandleKind.Control2,new FGEPoint2D(1,1));}
             catch(ArgumentException){rejected=true;}
             Check(rejected,"invalid control handle should be rejected");
+            var circlePath=FGEPath2D.Circle(new FGEPoint2D(20,20),20);
+            rejected=false;
+            try{FGEPathEditing.MoveHandle(circlePath,0,FGEPathHandleKind.Anchor,
+                new FGEPoint2D(50,50));}
+            catch(ArgumentException){rejected=true;}
+            Check(rejected,"arc start should stay constrained to exact center/radius/angle");
 
             string filename=Path.Combine(Path.GetTempPath(),"cxvisual-edit-a-"+Guid.NewGuid().ToString("N")+".cxproj");
             try
