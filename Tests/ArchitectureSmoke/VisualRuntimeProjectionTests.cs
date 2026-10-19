@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Collections.Generic;
 using System.Linq;
 using CxVisual.Foundation.Geometry;
@@ -23,11 +24,14 @@ namespace CxVisual.Tests.ArchitectureSmoke
         private sealed class LiveSource : IMDSExternalBindingResolver
         {
             public bool Ready=true,Fault,Running=true,InvalidValue;
+            public bool MotorAReady=true,MotorBReady=false;
             public double Position=56;
             public object Resolve(MDSBindingSource source,string name,Type requested)
             {
                 if(source!=MDSBindingSource.Variable)throw new InvalidOperationException("wrong binding Owner");
                 if(name=="Motor.Ready")return Ready;
+                if(name=="Motor.A.Ready")return MotorAReady;
+                if(name=="Motor.B.Ready")return MotorBReady;
                 if(name=="Motor.Position")return InvalidValue?(object)"bad-number":Position;
                 if(name=="Fault")return Fault;
                 if(name=="Running")return Running;
@@ -133,7 +137,66 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 }
                 doc.Close(true); // 显式放弃测试定义；正常用户工程仍保持未保存保护
             }
-            Console.WriteLine("PASS Visual runtime: MDS Owner variable/source, state style, animation time, visibility, invalid type, editor frame separation");
+            // 真实电机Symbol双实例：共享工程定义但各自覆盖不同MDS来源。
+            // 本案例不借助第二个数据仓库；每帧投影不能产生工程Revision。
+            string motorFile=Path.Combine(Path.GetTempPath(),
+                "cxvisual-motors-"+Guid.NewGuid().ToString("N")+".cxproj");
+            try
+            {
+                using(var motors=MEMEngineering.Create("Motor symbol runtime"))
+                {
+                    var page=motors.AddPage("Motors");
+                    var definition=motors.AddSymbol("Motor");
+                    var indicator=motors.AddShape(definition.RootGroup,"Indicator",
+                        MRCShapeDefinition.Circle(new FGEPoint2D(20,20),20),0,0);
+                    motors.DefineProperty(definition,new MPMPropertyDescriptor("Online",
+                        MPMValueKind.Boolean,false,true,
+                        MPMBinding.Literal(MPMValue.Boolean(true))));
+                    motors.ExposeProperty(definition,"Online",
+                        motors.GetAddress(indicator),"visible");
+                    var first=motors.PlaceSymbol(page.RootContent,definition,"Motor-A");
+                    var second=motors.PlaceSymbol(page.RootContent,definition,"Motor-B");
+                    motors.SetPlacement(first,new MRCTransform(1,0,0,1,100,20));
+                    motors.SetPlacement(second,new MRCTransform(1,0,0,1,200,20));
+                    motors.SetOverride(first,"Online",MPMBinding.Variable("Motor.A.Ready"));
+                    motors.SetOverride(second,"Online",MPMBinding.Variable("Motor.B.Ready"));
+                    var source=new LiveSource();
+                    int revision=motors.Revision;
+                    var visible=CxSceneProjection.Project(motors,page.Id,source,0);
+                    Check(visible.Count==1&&visible[0].Id==first.Id&&
+                        visible[0].Address.InstancePath.Single()==first.Id,
+                        "Motor-A did not resolve its own MDS instance override");
+                    source.MotorAReady=false;source.MotorBReady=true;
+                    visible=CxSceneProjection.Project(motors,page.Id,source,40);
+                    Check(visible.Count==1&&visible[0].Id==second.Id&&
+                        visible[0].Address.InstancePath.Single()==second.Id,
+                        "Motor-B runtime value leaked from another symbol instance");
+                    source.MotorAReady=true;
+                    visible=CxSceneProjection.Project(motors,page.Id,source,80);
+                    Check(visible.Count==2&&visible.Select(x=>x.Id).Distinct().Count()==2&&
+                        motors.Revision==revision,
+                        "runtime source refresh mutated MEM or merged separate instances");
+                    motors.SaveAs(motorFile);
+                    using(var restored=MEMEngineering.Open(motorFile))
+                    {
+                        var a=restored.FindReference(first.Id);
+                        var b=restored.FindReference(second.Id);
+                        Check(a!=null&&b!=null&&a.TargetId==b.TargetId,
+                            "shared definition was not preserved by project Save/Open");
+                        source.MotorBReady=false;
+                        visible=CxSceneProjection.Project(restored,page.Id,source,120);
+                        Check(visible.Count==1&&visible[0].Id==first.Id&&
+                            restored.ResolveParameter(a,"Online").Kind==MPMBindingKind.Variable&&
+                            restored.ResolveParameter(b,"Online").Kind==MPMBindingKind.Variable,
+                            "symbol instance MDS bindings lost after project reopen");
+                    }
+                }
+            }
+            finally
+            {
+                if(File.Exists(motorFile))File.Delete(motorFile);
+            }
+            Console.WriteLine("PASS Visual runtime: MDS Owner, state/animation, Widget events, Motor Symbol dual instances and disk roundtrip");
         }
     }
 }
