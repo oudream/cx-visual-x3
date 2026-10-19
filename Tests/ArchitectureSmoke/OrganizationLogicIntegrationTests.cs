@@ -577,6 +577,25 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(aligned.Positions[a].X==aligned.Positions[b].X&&
                     aligned.Links.Single(l=>l.Target.BlockId==c).Id==boundaryId,
                     "batch align damaged external link identity");
+                Guid groupId=Guid.Empty;
+                MOCFlowBuilder.Edit(session,firstPage.RootContent,builder=>
+                    groupId=builder.Group(new[]{a,b},"检测组合"));
+                var grouped=MOLWiringCodec.Get(session.GetSnapshot().Find(firstPage.RootContent.Id));
+                Check(grouped.Groups.Count==1&&grouped.Groups[0].Id==groupId&&
+                    grouped.Groups[0].BlockIds.Count==2,
+                    "group persisted wrong Block IDs");
+                var decodedGroups=MOLWiringCodec.Deserialize(MOLWiringCodec.Serialize(grouped));
+                Check(decodedGroups.Groups.Count==1&&decodedGroups.Groups[0].Id==groupId,
+                    "V2 grouped layout XML roundtrip failed");
+                snapshot=MOCWiringFragment.Capture(grouped,new[]{a,b});
+                Check(snapshot.Groups.Count==1,"clipboard lost complete selected group");
+                int conflictRevision=session.Revision;
+                bool groupOverlapRejected=false;
+                try{MOCFlowBuilder.Edit(session,firstPage.RootContent,builder=>
+                    builder.Group(new[]{b,c},"非法交叠"));}
+                catch(InvalidOperationException){groupOverlapRejected=true;}
+                Check(groupOverlapRejected&&session.Revision==conflictRevision,
+                    "overlapping groups were silently accepted");
                 int revision=session.Revision;
                 bool rejected=false;
                 try{MOCFlowBuilder.Edit(session,firstPage.RootContent,builder=>
@@ -590,6 +609,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 var copied=MOLWiringCodec.Get(session.GetSnapshot().Find(firstPage.RootContent.Id));
                 Check(mapping.Count==2&&mapping[a]!=a&&mapping[b]!=b&&
                     copied.Blocks.Count==5&&copied.Links.Count==3&&
+                    copied.Groups.Count==2&&
+                    copied.Groups.Select(g=>g.Id).Distinct().Count()==2&&
                     copied.Links.Any(l=>l.Source.BlockId==mapping[a]&&
                         l.Target.BlockId==mapping[b])&&
                     copied.Links.All(l=>!(l.Source.BlockId==mapping[b]&&l.Target.BlockId==c)),
@@ -608,12 +629,14 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 });
                 var second=MOLWiringCodec.Get(session.GetSnapshot().Find(secondPage.RootContent.Id));
                 Check(second.Blocks.Count==3&&second.Links.Count==1&&
+                    second.Groups.Count==1&&
                     second.Blocks.All(x=>!initial.Blocks.Any(y=>y.Id==x.Id)),
                     "cross-Content paste identity or internal edge lost");
                 MOCFlowBuilder.Edit(session,firstPage.RootContent,builder=>
                     builder.RemoveMany(new[]{mapping[a],mapping[b]}));
                 var afterDelete=MOLWiringCodec.Get(session.GetSnapshot().Find(firstPage.RootContent.Id));
                 Check(afterDelete.Blocks.Count==3&&afterDelete.Links.Count==2&&
+                    afterDelete.Groups.Count==1&&afterDelete.Groups[0].Id==groupId&&
                     afterDelete.Links.Any(l=>l.Id==boundaryId),
                     "batch delete removed unrelated links");
                 revision=session.Revision;rejected=false;
@@ -622,6 +645,16 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 catch(InvalidOperationException){rejected=true;}
                 Check(rejected&&session.Revision==revision,
                     "delete last remaining blocks failed to roll back");
+                MOCFlowBuilder.Edit(session,firstPage.RootContent,builder=>
+                    builder.Ungroup(groupId));
+                Check(MOLWiringCodec.Get(session.GetSnapshot().Find(firstPage.RootContent.Id))
+                    .Groups.Count==0,"ungroup removed wrong objects or was not saved");
+                Check(session.Undo().Success&&
+                    MOLWiringCodec.Get(session.GetSnapshot().Find(firstPage.RootContent.Id))
+                    .Groups.Count==1,"ungroup Undo did not restore group");
+                Check(session.Redo().Success&&
+                    MOLWiringCodec.Get(session.GetSnapshot().Find(firstPage.RootContent.Id))
+                    .Groups.Count==0,"ungroup Redo did not remove group");
             }
             finally{session.Close(true);}
         }

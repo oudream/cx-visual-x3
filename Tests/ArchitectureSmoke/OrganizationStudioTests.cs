@@ -242,6 +242,72 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(persisted.Positions.ContainsKey(movedId)&&
                     Math.Abs(persisted.Positions[movedId].X-position.X)<0.001,
                     "Studio node layout was not retained across Save/Open");
+                // G04-C/D：同一真实WPF窗口操作框选、组合、粘贴、对齐、批量拖动及原子回滚。
+                Check(Math.Abs(flowCanvas.ZoomFactor-1)<0.001,"Studio canvas zoom baseline wrong");
+                Click(window,"放大画布");
+                Check(flowCanvas.ZoomFactor>1,"Studio zoom button did not change LayoutTransform");
+                Click(window,"100%");
+                Check(Math.Abs(flowCanvas.ZoomFactor-1)<0.001,"Studio zoom reset failed");
+                flowCanvas.UpdateLayout();
+                var firstBox=CxVisual.Mechanism.Visual.MOLFlowLayout.Build(
+                    flowCanvas.WiringDefinition).Single(x=>x.BlockId==selectedIds[0]);
+                flowCanvas.SelectRectangle(new Rect(firstBox.X+20,firstBox.Y+9,30,20));
+                Check(flowCanvas.SelectedBlockIds.Count==1&&
+                    flowCanvas.SelectedBlockIds[0]==selectedIds[0],"WPF marquee selection hit testing failed");
+                Click(window,"全选节点");
+                Check(flowCanvas.SelectedBlockIds.Count==3,"Studio Select All failed");
+                Click(window,"组合选中");
+                var groupedUI=MOLWiringCodec.Get(again.GetSnapshot().Find(active.RootContent.Id));
+                Check(groupedUI.Groups.Count==1&&groupedUI.Groups[0].BlockIds.Count==3,
+                    "Studio grouped selection not stored in same Content Logic");
+                Click(window,"复制选区");
+                Click(window,"粘贴选区");
+                var pastedUI=MOLWiringCodec.Get(again.GetSnapshot().Find(active.RootContent.Id));
+                Check(pastedUI.Blocks.Count==6&&pastedUI.Links.Count==6&&
+                    pastedUI.Groups.Count==2&&flowCanvas.SelectedBlockIds.Count==3,
+                    "Studio paste did not copy group/internal links or select new IDs");
+                var pastedIds=flowCanvas.SelectedBlockIds.ToArray();
+                Check(pastedIds.All(id=>!selectedIds.Contains(id)),
+                    "Studio paste reused original block identity");
+                Click(window,"对齐左侧");
+                var alignedUI=MOLWiringCodec.Get(again.GetSnapshot().Find(active.RootContent.Id));
+                Check(pastedIds.Select(id=>alignedUI.Positions[id].X).Distinct().Count()==1,
+                    "Studio selected nodes were not aligned as one transaction");
+                flowCanvas.UpdateLayout();
+                var sample=CxVisual.Mechanism.Visual.MOLFlowLayout.Build(
+                    flowCanvas.WiringDefinition).Single(x=>x.BlockId==pastedIds[0]);
+                var dragStart=new Point(sample.X+sample.Width/2,sample.Y+12);
+                Check(flowCanvas.BeginBlockDrag(dragStart),"group member not draggable");
+                Check(flowCanvas.CompleteBlockDrag(new Point(dragStart.X+22,dragStart.Y+15)),
+                    "group drag did not commit");
+                var shiftedUI=MOLWiringCodec.Get(again.GetSnapshot().Find(active.RootContent.Id));
+                Check(pastedIds.All(id=>
+                    Math.Abs(shiftedUI.Positions[id].X-alignedUI.Positions[id].X-22)<0.001),
+                    "group drag did not move all selected nodes in one edit");
+                Click(window,"撤销编排");
+                Check(pastedIds.All(id=>
+                    Math.Abs(MOLWiringCodec.Get(again.GetSnapshot().Find(active.RootContent.Id))
+                        .Positions[id].X-alignedUI.Positions[id].X)<0.001),
+                    "group move Undo not atomic");
+                Click(window,"重做编排");
+                Click(window,"解除组合");
+                Check(MOLWiringCodec.Get(again.GetSnapshot().Find(active.RootContent.Id))
+                    .Groups.Count==1,"Studio ungroup failed");
+                Click(window,"撤销编排");
+                Check(MOLWiringCodec.Get(again.GetSnapshot().Find(active.RootContent.Id))
+                    .Groups.Count==2,"Studio ungroup Undo failed");
+                Click(window,"删除选中");
+                Check(MOLWiringCodec.Get(again.GetSnapshot().Find(active.RootContent.Id))
+                    .Blocks.Count==3,"Studio batch delete failed");
+                Click(window,"撤销编排");
+                Check(MOLWiringCodec.Get(again.GetSnapshot().Find(active.RootContent.Id))
+                    .Blocks.Count==6,"Studio batch delete undo failed");
+                vm.GetType().GetMethod("SaveProject").Invoke(vm,new object[]{path});
+                vm.GetType().GetMethod("OpenProject").Invoke(vm,new object[]{path,true});Pump();
+                var finalSession=(MEMEngineeringSession)Get(vm,"ProjectSession");
+                var finalWiring=MOLWiringCodec.Get(finalSession.GetSnapshot().Find(active.RootContent.Id));
+                Check(finalWiring.Blocks.Count==6&&finalWiring.Groups.Count==2&&
+                    finalWiring.Links.Count==6,"Studio grouped paste lost Save/Open identity");
                 Console.WriteLine("PASS H06 Studio real WPF automation: add/switch page, resource two instances, bound parameter edit, shared Undo/Redo, definition navigation, save/reopen");
             }
             finally{if(window!=null)window.Close();if(app!=null)app.Shutdown();if(File.Exists(path))File.Delete(path);if(File.Exists(path+".cx-lock"))File.Delete(path+".cx-lock");}
