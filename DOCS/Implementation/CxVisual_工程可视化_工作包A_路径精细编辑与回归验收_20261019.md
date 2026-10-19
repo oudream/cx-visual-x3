@@ -84,3 +84,17 @@ Studio操作：在“视觉设计”页插入Bezier/自由路径，单击图元�
 5. 单独对真实鼠标驱动事件的Windows GUI端到端输入验证；当前有真实WPF渲染和Studio命令链验证，但不能替代所有手势的外部UI自动化。
 
 完成以上工作包A余项后再推进原计划B的Image/SVG/Widget完整属性、绑定、动画和事件，以及C的可视化构建运行调试统一工作台。
+
+
+## 六、本轮实际Windows验收证据（2026-10-19）
+
+本节依据真实 Actions Job 日志，不能仅凭测试类或汇报表推定成功。
+
+- [工作包A当前源码提交 `6fd59bed` 的 Windows 工程组织/WPF验收](https://github.com/oudream/cx-visual-x3/actions/runs/39219600170)：**Success**，包含 `PASS Visual editing A`、`PASS H06 Studio real WPF automation`、`PASS H01 WPF real STA`，控制柄编辑、World稳定、Undo/Redo和工程往返均实际执行。
+- [同版本 Config L1 Windows 构建和冒烟](https://github.com/oudream/cx-visual-x3/actions/runs/39219600189)：**Success**。
+- [同版本配置公共底座独立验收](https://github.com/oudream/cx-visual-x3/actions/runs/39219600116)：**Success**。
+- [`038f7d06` 的统一Runtime Windows TDD](https://github.com/oudream/cx-visual-x3/actions/runs/39219415122)：**Success**，包含控制柄编辑及 Visual 前述逻辑；后续仅增加UI结果反馈。
+- [`c50e7b6c` TestCenter Windows .NET48](https://github.com/oudream/cx-visual-x3/actions/runs/39219037056)：**Success**，119项、失败0、错误0、跳过0，包含新的 `TCT.MVIS.004` 生产Owner控制点场景及原有用例。后续若发生Core改动，应重新以更近提交的TestCenter CI验证。
+- 路径拖动涉及的近边界Arc不允许单独修改受约束的Move起点；`MVIInteractionKind.Move` 仍经过捕获、目标、冒泡并支持 `PreventDefault`；UI失败应显示真实MEM拒绝原因。
+
+**通过范围**：本轮A的“路径/Bezier控制柄、变换、实时预览、Undo/Redo、保存重开”实现闭环；尚非A的全部编辑能力或整个平台开发完成。真实鼠标操作的独立Windows系统注入测试仍需补上。
