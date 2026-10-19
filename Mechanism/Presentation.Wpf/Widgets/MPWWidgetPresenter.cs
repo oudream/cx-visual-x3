@@ -72,9 +72,32 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             }
             else if(Ends(type,".progressbar"))
                 control=new ProgressBar{Minimum=0,Maximum=100,Value=0};
-            else control=new ComboBox{ToolTip="请在属性面板配置选项（Widget定义）"};
+            else
+            {
+                var combo=new ComboBox{ToolTip="请在属性面板配置选项"};
+                combo.SelectionChanged+=(sender,args)=>{
+                    if(!object.Equals(combo.Tag,"visual.update"))
+                        Emit(callback,item,"ValueChanged",combo.SelectedItem as string);
+                };
+                control=combo;
+            }
             UpdateAppearance(control,item);
             return control;
+        }
+        private static MPMValue Setting(CxSceneItem item,string name)
+        {
+            MPMValue value;
+            return item.WidgetSettings.TryGetValue(name,out value)?value:null;
+        }
+        private static string Text(CxSceneItem item,string name,string fallback)
+        {
+            MPMValue value=Setting(item,name);
+            return value==null?fallback:value.AsString();
+        }
+        private static double Number(CxSceneItem item,string name,double fallback)
+        {
+            MPMValue value=Setting(item,name);
+            return value==null?fallback:value.AsNumber();
         }
         /// <summary>帧刷新复用活动控件：不重建Button/TextBox，保护焦点和文本输入态。</summary>
         public static void UpdateAppearance(FrameworkElement widget,CxSceneItem item)
@@ -94,10 +117,47 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             control.Opacity=style.Opacity;
             control.FontFamily=new FontFamily(style.FontFamily);
             control.FontSize=style.FontSize;
+            control.ToolTip=Text(item,"tooltip",null);
+            MPMValue enabled=Setting(item,"enabled");
+            control.IsEnabled=enabled==null||enabled.AsBoolean();
             var button=control as Button;
-            if(button!=null)button.Content=item.Name;
+            if(button!=null)button.Content=Text(item,"content",item.Name);
             var checkbox=control as CheckBox;
-            if(checkbox!=null)checkbox.Content=item.Name;
+            if(checkbox!=null)checkbox.Content=Text(item,"content",item.Name);
+            var inputBox=control as TextBox;
+            if(inputBox!=null)
+            {
+                string placeholder=Text(item,"placeholder","");
+                if(!string.IsNullOrEmpty(placeholder))inputBox.ToolTip=placeholder;
+            }
+            double minimum=Number(item,"minimum",0),maximum=Number(item,"maximum",100);
+            if(minimum>maximum)throw new InvalidOperationException("visual.widget.range_invalid");
+            var sliderRange=control as Slider;
+            if(sliderRange!=null){sliderRange.Minimum=minimum;sliderRange.Maximum=maximum;}
+            var progressRange=control as ProgressBar;
+            if(progressRange!=null){progressRange.Minimum=minimum;progressRange.Maximum=maximum;}
+            var combo=control as ComboBox;
+            if(combo!=null)
+            {
+                string options=Text(item,"options","");
+                string[] values=options.Split(new[]{'|'},StringSplitOptions.RemoveEmptyEntries);
+                if(values.Length>128||options.Length>8192)
+                    throw new InvalidOperationException("visual.widget.options_budget");
+                bool changed=values.Length!=combo.Items.Count;
+                if(!changed)for(int i=0;i<values.Length;i++)
+                    if(!string.Equals(combo.Items[i] as string,values[i],StringComparison.Ordinal))
+                    {changed=true;break;}
+                if(changed)
+                {
+                    object prior=combo.Tag;combo.Tag="visual.update";
+                    try
+                    {
+                        combo.Items.Clear();
+                        foreach(string value in values)combo.Items.Add(value);
+                    }
+                    finally{combo.Tag=prior;}
+                }
+            }
             if(item.RuntimeValue!=null)
             {
                 // 控件值来自运行态数据：从工程里只读投影，不写回工程，不触发用户事件。
@@ -105,6 +165,14 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 control.Tag="visual.update";
                 try
                 {
+                    var comboValue=control as ComboBox;
+                    if(comboValue!=null&&item.RuntimeValue.Kind==MPMValueKind.String)
+                    {
+                        string value=item.RuntimeValue.AsString();
+                        if(comboValue.Items.Contains(value)&&
+                            !object.Equals(comboValue.SelectedItem,value))
+                            comboValue.SelectedItem=value;
+                    }
                     var box=control as TextBox;
                     if(box!=null&&item.RuntimeValue.Kind==MPMValueKind.String)
                     {
