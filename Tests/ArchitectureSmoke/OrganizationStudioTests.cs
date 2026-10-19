@@ -94,9 +94,17 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "Studio Widget lost after Save/Open");
                 Check(((ComboBox)window.FindName("EngineeringPages")).Items.Count==2&&((ListBox)window.FindName("EngineeringResources")).Items.Count==3,"real WPF collections failed to refresh after reopen");
                 // 先激活逻辑编排Tab，使工具箱在可视树中。
+                var tabControl=Descendants(window).OfType<TabControl>().First();
                 var logicTab=Descendants(window).OfType<TabItem>()
                     .First(t=>object.Equals(t.Header,"逻辑编排 · 运行观察"));
-                logicTab.IsSelected=true;Pump();
+                tabControl.SelectedItem=logicTab;
+                tabControl.SelectedIndex=1;
+                tabControl.ApplyTemplate();
+                tabControl.UpdateLayout();
+                window.UpdateLayout();
+                Dispatcher.CurrentDispatcher.Invoke(new Action(()=>{}),DispatcherPriority.Loaded);
+                Pump();
+                Check(tabControl.SelectedIndex==1,"logic tab did not become active");
                 // G04 工程师界面：目录搜索、自由插入草稿、撤销重做、选择端口并编译。
                 Click(window,"创建自由连接示例");
                 var active=(MEMPage)Get(vm,"ActivePage");
