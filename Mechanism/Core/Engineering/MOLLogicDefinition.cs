@@ -360,13 +360,32 @@ namespace CxVisual.Mechanism.Core
         public IReadOnlyList<Guid> BlockIds{get;private set;}
     }
 
+    /// <summary>G05c：幂等工作流重试/超时的工程配置；执行仍归MRKExecutionPolicy。</summary>
+    public sealed class MOLStepPolicy
+    {
+        public MOLStepPolicy(int maxAttempts=1,int retryDelayMs=0,int timeoutMs=0,
+            bool idempotent=false)
+        {
+            if(maxAttempts<1||maxAttempts>10||retryDelayMs<0||retryDelayMs>60000||
+                timeoutMs<0||timeoutMs>600000||(maxAttempts>1&&!idempotent))
+                throw new ArgumentException("wiring.invalid_workflow_policy");
+            MaxAttempts=maxAttempts;RetryDelayMs=retryDelayMs;TimeoutMs=timeoutMs;
+            Idempotent=idempotent;
+        }
+        public int MaxAttempts{get;private set;}
+        public int RetryDelayMs{get;private set;}
+        public int TimeoutMs{get;private set;}
+        public bool Idempotent{get;private set;}
+    }
+
     public sealed class MOLWiringDefinition
     {
         public MOLWiringDefinition(Guid entryBlockId,IEnumerable<MOLControlBlock> blocks,
             IDictionary<Guid,IEnumerable<MPCPortDescriptor>> ports,IEnumerable<MOLLink> links,
             IDictionary<Guid,MOLBlockPosition> positions=null,
             IEnumerable<MOLSelectionGroup> groups=null,
-            IDictionary<Guid,IDictionary<string,string>> parameters=null)
+            IDictionary<Guid,IDictionary<string,string>> parameters=null,
+            IDictionary<Guid,MOLStepPolicy> policies=null)
         {
             EntryBlockId=entryBlockId;
             Blocks=new ReadOnlyCollection<MOLControlBlock>((blocks??new MOLControlBlock[0]).ToArray());
@@ -391,6 +410,13 @@ namespace CxVisual.Mechanism.Core
                     new Dictionary<string,string>(group.Value,StringComparer.Ordinal)));
             }
             Parameters=new ReadOnlyDictionary<Guid,IReadOnlyDictionary<string,string>>(values);
+            var strategy=new Dictionary<Guid,MOLStepPolicy>();
+            if(policies!=null)foreach(var entry in policies)
+            {
+                if(entry.Value==null)throw new ArgumentException("wiring.null_policy");
+                strategy.Add(entry.Key,entry.Value);
+            }
+            Policies=new ReadOnlyDictionary<Guid,MOLStepPolicy>(strategy);
             Validate();
         }
         public Guid EntryBlockId{get;private set;}
@@ -401,13 +427,15 @@ namespace CxVisual.Mechanism.Core
         public IReadOnlyList<MOLSelectionGroup> Groups{get;private set;}
         /// <summary>端口字面量参数，按BlockId绑定到已有Data Input；不是另一个参数真源。</summary>
         public IReadOnlyDictionary<Guid,IReadOnlyDictionary<string,string>> Parameters{get;private set;}
+        public IReadOnlyDictionary<Guid,MOLStepPolicy> Policies{get;private set;}
         public void Validate()
         {
             // G04：合法空草稿可保存，不能交给MOC/MRK执行。
             if(Blocks.Count==0)
             {
                 if(EntryBlockId!=Guid.Empty||Links.Count!=0||Ports.Count!=0||
-                    Positions.Count!=0||Groups.Count!=0||Parameters.Count!=0)
+                    Positions.Count!=0||Groups.Count!=0||Parameters.Count!=0||
+                    Policies.Count!=0)
                     throw new InvalidOperationException("wiring.empty_draft_has_references");
                 return;
             }
@@ -429,6 +457,8 @@ namespace CxVisual.Mechanism.Core
                     group.BlockIds.Any(id=>!ids.Contains(id)||!groupedMembers.Add(id)))
                     throw new InvalidOperationException("wiring.group_overlap_or_scope");
             }
+            if(Policies.Count>4096||Policies.Keys.Any(id=>!ids.Contains(id)))
+                throw new InvalidOperationException("wiring.policy_scope");
             if(Parameters.Keys.Any(id=>!ids.Contains(id))||
                 Parameters.Sum(group=>group.Value.Count)>4096)
                 throw new InvalidOperationException("wiring.parameters_scope");
@@ -615,6 +645,13 @@ namespace CxVisual.Mechanism.Core
                     new XAttribute("in",l.Target.PortMemberId),
                     new XAttribute("condition",l.ConditionId),
                     new XAttribute("order",l.Order.HasValue?l.Order.Value.ToString(CultureInfo.InvariantCulture):"")))));
+            if(def.Policies.Count>0)
+                root.Add(new XElement("Policies",def.Policies.Select(item=>
+                    new XElement("Policy",new XAttribute("block",item.Key.ToString("N")),
+                        new XAttribute("attempts",item.Value.MaxAttempts),
+                        new XAttribute("delay",item.Value.RetryDelayMs),
+                        new XAttribute("timeout",item.Value.TimeoutMs),
+                        new XAttribute("idempotent",item.Value.Idempotent)))));
             if(def.Parameters.Count>0)
                 root.Add(new XElement("Parameters",def.Parameters.Select(group=>
                     new XElement("Block",new XAttribute("id",group.Key.ToString("N")),
@@ -639,9 +676,9 @@ namespace CxVisual.Mechanism.Core
                 var root=XDocument.Load(reader).Root;
                 if(root==null||root.Name!="MOL"||(string)root.Attribute("v")!="2"||
                     root.Element("Blocks")==null||root.Element("Links")==null||
-                    root.Elements().Count()<2||root.Elements().Count()>4||
+                    root.Elements().Count()<2||root.Elements().Count()>5||
                     root.Elements().Any(x=>x.Name!="Blocks"&&x.Name!="Links"&&
-                        x.Name!="Groups"&&x.Name!="Parameters")||
+                        x.Name!="Groups"&&x.Name!="Parameters"&&x.Name!="Policies")||
                     root.Elements().GroupBy(x=>x.Name).Any(x=>x.Count()!=1))
                     throw new InvalidDataException("wiring.schema");
                 string rawEntry=(string)root.Attribute("entry");
@@ -699,7 +736,19 @@ namespace CxVisual.Mechanism.Core
                     }
                     parameters.Add(id,values);
                 }
-                return new MOLWiringDefinition(entry,blocks,ports,links,positions,groups,parameters);
+                var policies=new Dictionary<Guid,MOLStepPolicy>();
+                if(root.Element("Policies")!=null)
+                foreach(var policy in root.Element("Policies").Elements("Policy"))
+                {
+                    Guid id=ReadGuid(policy,"block");
+                    var instance=new MOLStepPolicy(
+                        int.Parse((string)policy.Attribute("attempts"),CultureInfo.InvariantCulture),
+                        int.Parse((string)policy.Attribute("delay"),CultureInfo.InvariantCulture),
+                        int.Parse((string)policy.Attribute("timeout"),CultureInfo.InvariantCulture),
+                        bool.Parse((string)policy.Attribute("idempotent")));
+                    policies.Add(id,instance);
+                }
+                return new MOLWiringDefinition(entry,blocks,ports,links,positions,groups,parameters,policies);
             }
         }
         private static Guid ReadGuid(XElement x,string name)
