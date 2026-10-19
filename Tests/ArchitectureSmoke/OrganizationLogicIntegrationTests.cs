@@ -604,7 +604,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 var running=Execute(compiled.Plan,
                     compiled.Plan.InputDefaults.ToDictionary(k=>k.Key,k=>k.Value),
                     out trace);
-                Check(running.State==MRKFlowState.Completed&&trace.Steps.Count>0,
+                Check(running.State==MRKFlowState.Completed&&trace.Events.Count>0,
                     "MRK did not execute configured input defaults");
                 int revision=session.Revision;
                 bool rejected=false;
