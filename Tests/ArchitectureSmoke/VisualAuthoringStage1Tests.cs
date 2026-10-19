@@ -57,6 +57,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     ids[i]=element.Id;
                     Check(element.Shape.Kind==(MRCShapeKind)(i+1),"ShapeKind "+i);
                 }
+                var circle=(MRCShapeElement)session.Find(ids[2]);
+                Check(circle.HitTest(40+20,40),"circle fill hit");
+                Check(!circle.HitTest(20,0),"circle corner no false hit");
+                var zeroLine=(MRCShapeElement)session.Find(ids[0]);
+                Check(zeroLine.Shape.Bounds.Height==0,"line exact zero height");
                 var text=session.AddText(group,"Title","Original",0,100);
                 session.SetText(text,"工程标题");
                 session.AddImage(group,"Image",0,200);

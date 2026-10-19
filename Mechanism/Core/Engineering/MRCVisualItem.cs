@@ -69,7 +69,7 @@ namespace CxVisual.Mechanism.Core
             wy = (-Math.Sin(rad) * x + Math.Cos(rad) * y) / v.ScaleY;
             wx = (Math.Cos(rad) * x + Math.Sin(rad) * y-v.Shear*wy) / v.ScaleX;
         }
-        public bool HitTest(double worldX, double worldY)
+        public virtual bool HitTest(double worldX, double worldY)
         {
             Finite(worldX); Finite(worldY);
             var chain = new Stack<MRCVisualItem>();

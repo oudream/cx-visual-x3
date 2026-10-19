@@ -31,6 +31,29 @@ namespace CxVisual.Mechanism.Core
         public static MRCShapeDefinition Bezier(FGEBezier2D bezier){return new MRCShapeDefinition(MRCShapeKind.Bezier,FGEPath2D.Bezier(bezier));}
         public static MRCShapeDefinition Path(FGEPath2D path){return new MRCShapeDefinition(MRCShapeKind.Path,path);}
 
+        /// <summary>连续几何命中；开路径判断Stroke距离，闭合区域判断精确圆/椭圆或路径填充。</summary>
+        public bool HitTest(FGEPoint2D point,double strokeTolerance=2)
+        {
+            FGEValidation.Finite(strokeTolerance,"strokeTolerance");
+            if(strokeTolerance<0)throw new ArgumentOutOfRangeException("strokeTolerance");
+            bool open=Kind==MRCShapeKind.Line||Kind==MRCShapeKind.Polyline||
+                      Kind==MRCShapeKind.Arc||Kind==MRCShapeKind.Bezier;
+            if(Kind==MRCShapeKind.Circle||Kind==MRCShapeKind.Ellipse)
+            {
+                foreach(var command in Geometry.Commands)
+                    if(command.Verb==FGEPathVerb.Arc)
+                    {
+                        var arc=command.Arc;
+                        if(Kind==MRCShapeKind.Circle)
+                            return new FGECircle2D(arc.Center,arc.RadiusX).Contains(point)||
+                                FGEGeometry2D.DistanceToPath(point,Geometry)<=strokeTolerance;
+                        return new FGEEllipse2D(arc.Center,arc.RadiusX,arc.RadiusY).Contains(point)||
+                               FGEGeometry2D.DistanceToPath(point,Geometry)<=strokeTolerance;
+                    }
+            }
+            if(!open&&FGEGeometry2D.ContainsPath(point,Geometry,FGEFillRule.NonZero))return true;
+            return FGEGeometry2D.DistanceToPath(point,Geometry)<=strokeTolerance;
+        }
         internal MPMAspect ToAspect()
         {
             using(var memory=new MemoryStream())
@@ -99,12 +122,45 @@ namespace CxVisual.Mechanism.Core
         public MRCShapeElement(Guid id,string name,double x,double y,double width,double height)
             :base(id,name,"core.shape",x,y,width,height){}
         public MRCShapeDefinition Shape{get{return MRCShapeDefinition.Read(this);}}
+        /// <summary>真实路径坐标映射到可缩放布局框；退化线段保持真实几何，不虚构厚度。</summary>
+        public FGETransform2D GeometryToLocalTransform
+        {
+            get
+            {
+                FGERect2D bounds=Shape.Bounds;
+                double sx=bounds.Width==0?1:Width/bounds.Width;
+                double sy=bounds.Height==0?1:Height/bounds.Height;
+                return FGETransform2D.Scale(sx,sy).Compose(FGETransform2D.Translation(-bounds.Left,-bounds.Top));
+            }
+        }
+        public override bool HitTest(double worldX,double worldY)
+        {
+            FGEValidation.Finite(worldX,"worldX");FGEValidation.Finite(worldY,"worldY");
+            if(!IsSelectable)return false;
+            FGETransform2D world=FGETransform2D.Identity;
+            for(MEMNode node=this;node!=null;node=node.Parent)
+            {
+                MRCVisualItem visual=node as MRCVisualItem;
+                if(visual==null)continue;
+                if(!visual.IsVisible||visual.IsLocked)return false;
+                MRCTransform local=visual.Transform;
+                var matrix=new FGETransform2D(local.M11,local.M12,local.M21,local.M22,local.X,local.Y);
+                world=matrix.Compose(world);
+            }
+            FGETransform2D inv;
+            if(!world.TryInverse(out inv))return false;
+            FGEPoint2D point=inv.TransformPoint(new FGEPoint2D(worldX,worldY));
+            FGETransform2D geom;
+            if(!GeometryToLocalTransform.TryInverse(out geom))return false;
+            point=geom.TransformPoint(point);
+            return Shape.HitTest(point,Math.Max(2,MRCVisualAppearance.StyleOf(this).StrokeWidth/2));
+        }
         internal static MRCShapeElement Create(Guid id,string name,MRCShapeDefinition shape,double x,double y)
         {
             if(shape==null)throw new ArgumentNullException("shape");
             FGERect2D bounds=shape.Bounds;
             // 布局包围盒必须可被原有组编辑系统接受；路径保留独立的真实零宽几何。
-            var item=new MRCShapeElement(id,name,x,y,Math.Max(1,bounds.Right-Math.Min(0,bounds.Left)),Math.Max(1,bounds.Bottom-Math.Min(0,bounds.Top)));
+            var item=new MRCShapeElement(id,name,x,y,Math.Max(1,bounds.Width),Math.Max(1,bounds.Height));
             return item;
         }
     }
