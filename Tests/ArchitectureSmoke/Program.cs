@@ -29,6 +29,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     return 0;
                 }
                 VisualAuthoringStage1Tests.Run();
+                VisualRuntimeProjectionTests.Run();
                 OrganizationH01Tests.Run();
                 OrganizationAdversarialTests.Run();
                 OrganizationH02Tests.Run();
