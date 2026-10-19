@@ -126,6 +126,29 @@ namespace CxVisual.Studio
             Status="已应用图元填充和线宽 | Revision "+ProjectSession.Revision;
             NotifyScene();
         }
+        /// <summary>真正写入工程动画定义；呈现帧由MVI运行态求值，不修改工程数据。</summary>
+        public void AddSelectedBreathingAnimation()
+        {
+            if(!_selected.HasValue)throw new InvalidOperationException("请选择图元");
+            MRCVisualItem item=ProjectSession.Find(_selected.Value) as MRCVisualItem;
+            if(item==null)throw new InvalidOperationException("请选择图元定义（实例请打开共享定义）");
+            var old=MRCVisualAppearance.BehaviorOf(item);
+            var animations=new System.Collections.Generic.List<MRCAnimationDefinition>(old.Animations);
+            animations.Add(new MRCAnimationDefinition("opacity",0.15,1,900,"",
+                MRCAnimationEasing.EaseInOut,true));
+            ProjectSession.SetVisualBehavior(item,new MRCVisualBehaviorDefinition(
+                old.States,animations,old.EventActions));
+            Status="已添加透明度呼吸动画；预览交互可查看真实动画";
+            NotifyScene();
+        }
+        public void UpdateVisualRuntimeFrame(double elapsedMilliseconds)
+        {
+            _editor.SetRuntimeFrame(null,elapsedMilliseconds);
+        }
+        public void StopVisualRuntime()
+        {
+            _editor.ClearRuntimeFrame();
+        }
         public void AppendSelectedEventAction(string eventId,string actionId)
         {
             if(!_selected.HasValue)throw new InvalidOperationException("请选择图元");
