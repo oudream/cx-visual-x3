@@ -311,6 +311,14 @@ jobs:
           if (-not (Test-Path $report)) { throw 'TestCenter did not produce JUnit report' }
           [xml]$junit = Get-Content -LiteralPath $report -Raw
           Write-Host "TestCenter count: $($junit.testsuite.tests); failures: $($junit.testsuite.failures); errors: $($junit.testsuite.errors); skipped: $($junit.testsuite.skipped)"
+          foreach ($case in @($junit.testsuite.testcase)) {
+              $issue = $case.SelectSingleNode('error | failure | skipped')
+              if ($null -ne $issue) {
+                  Write-Host ("DIAGNOSTIC TestCenter case=" + $case.GetAttribute('name') +
+                      "; type=" + $issue.Name + "; detail=" +
+                      $issue.InnerText.Substring(0, [Math]::Min(1500, $issue.InnerText.Length)))
+              }
+          }
           if ($process.ExitCode -ne 0) { throw "TestCenter failed with exit code $($process.ExitCode)" }
           if ([int]$junit.testsuite.tests -lt 1 -or [int]$junit.testsuite.failures -ne 0 -or
               [int]$junit.testsuite.errors -ne 0 -or [int]$junit.testsuite.skipped -ne 0) {
