@@ -9,6 +9,9 @@ using CxVisual.Mechanism.Orchestration;
 using CxVisual.Mechanism.Runtime.Execution;
 using System.Linq;
 using System.Windows;
+using System.Windows.Input;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using CxVisual.Mechanism.Core;
 using CxVisual.Mechanism.Data.Configuration;
 using CxVisual.Professional.Automation;
@@ -28,6 +31,11 @@ namespace CxVisual.Studio
         private readonly DispatcherTimer _visualPreviewTimer=new DispatcherTimer{
             Interval=TimeSpan.FromMilliseconds(50)};
 
+        private MOCWiringFragment _flowClipboard;
+        private int _flowPasteCount;
+        private bool _flowPanning;
+        private Point _flowPanStart;
+        private double _flowPanX,_flowPanY;
         private Guid? _logicSelected;
         private Guid? _pendingWireSource;
         private Guid? _pendingWireTarget;
@@ -54,6 +62,12 @@ namespace CxVisual.Studio
             LogicHost.LinkRequested += OnWiringLinkRequested;
             LogicHost.PortLinkRequested += OnDirectPortLinkRequested;
             LogicHost.BlockMoveRequested += OnWiringBlockMoveRequested;
+            LogicHost.BlocksMoveRequested += OnWiringBlocksMoved;
+            LogicHost.SelectionChanged += (sender,args)=>{
+                _logicSelected=args.BlockIds.Count==1?(Guid?)args.BlockIds[0]:null;
+                LogicInfo.Text="选中 "+args.BlockIds.Count+" 个节点；Ctrl增减、空白框选、拖动批量移动。";
+            };
+            PreviewKeyDown += OnFlowShortcuts;
             LogicHost.PortLinkRejected += (sender,args) =>
                 LogicInfo.Text="拖线被拒绝："+args.Reason;
             SceneHost.NodeActivated += OnActivated;
@@ -319,6 +333,7 @@ namespace CxVisual.Studio
             _pendingWireTarget=null;
             _logicSelected=null;
             LogicHost.ResetLinkSelection();
+            LogicHost.RetainValidSelection();
         }
         private void OnCreateLogicDemo(object sender,RoutedEventArgs args)
         {
@@ -425,6 +440,20 @@ namespace CxVisual.Studio
             LogicInfo.Text=LogicHost.IsConnectMode?
                 "依次点击来源和目标块，随后在端口列表选择合法端口对并确认。":"已退出连线模式。";
         }
+        private void OnWiringBlocksMoved(object sender,MOLBlocksMoveRequestedEventArgs args)
+        {
+            if(_logicRunning)return;
+            try
+            {
+                var page=_viewModel.ActivePage;
+                if(page==null)throw new InvalidOperationException("未选择Content");
+                MOCFlowBuilder.Edit(_viewModel.ProjectSession,page.RootContent,
+                    b=>b.MoveMany(args.BlockIds,args.DeltaX,args.DeltaY));
+                RefreshScene();
+                LogicInfo.Text="批量移动 "+args.BlockIds.Count+" 个节点，已一次提交工程事务。";
+            }
+            catch(Exception ex){LogicInfo.Text="批量移动失败："+ex.Message;}
+        }
         private void OnWiringBlockMoveRequested(object sender,MOLBlockMoveRequestedEventArgs args)
         {
             if(_logicRunning)return;
@@ -525,11 +554,11 @@ namespace CxVisual.Studio
             try
             {
                 var page=_viewModel.ActivePage;
-                if(page==null||!_logicSelected.HasValue)
+                if(page==null||LogicHost.SelectedBlockIds.Count==0)
                     throw new InvalidOperationException("请先在画布中选中节点");
-                Guid id=_logicSelected.Value;
-                MOCFlowBuilder.Edit(_viewModel.ProjectSession,page.RootContent,b=>b.Remove(id));
-                RefreshScene();LogicInfo.Text="已删除节点及相邻连接。";
+                Guid[] ids=LogicHost.SelectedBlockIds.ToArray();
+                MOCFlowBuilder.Edit(_viewModel.ProjectSession,page.RootContent,b=>b.RemoveMany(ids));
+                RefreshScene();LogicInfo.Text="已删除 "+ids.Length+" 个节点及相邻连接。";
             }
             catch(Exception ex){LogicInfo.Text="删除节点失败: "+ex.Message;}
         }

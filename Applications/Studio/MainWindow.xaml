@@ -79,7 +79,7 @@
                         </Border>
                     </DockPanel>
                 </TabItem>
-                <TabItem Header="逻辑编排 · 运行观察">
+                <TabItem x:Name="FlowTab" Header="逻辑编排 · 运行观察">
                     <DockPanel Background="White">
                         <StackPanel DockPanel.Dock="Top">
                             <WrapPanel Margin="10,8">
@@ -103,12 +103,29 @@
                                 <Button Content="撤销编排" Click="OnUndoWiring"/>
                                 <Button Content="重做编排" Click="OnRedoWiring"/>
                             </WrapPanel>
+                            <WrapPanel Margin="10,0,10,8">
+                                <Button Content="全选节点" Click="OnFlowSelectAll"/>
+                                <Button Content="复制选区" Click="OnFlowCopy"/>
+                                <Button Content="粘贴选区" Click="OnFlowPaste"/>
+                                <Button Content="删除选中" Click="OnFlowDeleteSelection"/>
+                                <Button Content="对齐左侧" Tag="Left" Click="OnFlowAlign"/>
+                                <Button Content="对齐顶部" Tag="Top" Click="OnFlowAlign"/>
+                                <Button Content="水平居中" Tag="HorizontalCenter" Click="OnFlowAlign"/>
+                                <Button Content="垂直居中" Tag="VerticalCenter" Click="OnFlowAlign"/>
+                                <Button Content="放大画布" Tag="in" Click="OnFlowZoom"/>
+                                <Button Content="缩小画布" Tag="out" Click="OnFlowZoom"/>
+                                <Button Content="100%" Tag="reset" Click="OnFlowZoom"/>
+                            </WrapPanel>
                             <TextBlock x:Name="LogicInfo" Margin="12,0,12,10"
                                 Text="使用 Content Logic Aspect 保存编排；从运行轨迹点击定位逻辑块。此处为 CPU 仿真，不连接生产设备。"
                                 TextWrapping="Wrap" Foreground="#45617C"/>
                         </StackPanel>
-                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
-                            <scene:MOLFlowCanvas x:Name="LogicHost"/>
+                        <ScrollViewer x:Name="FlowScroll" VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Auto"
+                                      PreviewMouseWheel="OnFlowWheel"
+                                      PreviewMouseDown="OnFlowPanDown" PreviewMouseMove="OnFlowPanMove"
+                                      PreviewMouseUp="OnFlowPanUp">
+                            <scene:MOLFlowCanvas x:Name="LogicHost" Focusable="True"/>
                         </ScrollViewer>
                     </DockPanel>
                 </TabItem>
