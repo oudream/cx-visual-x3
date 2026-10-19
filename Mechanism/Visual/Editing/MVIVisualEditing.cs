@@ -26,14 +26,17 @@ namespace CxVisual.Mechanism.Visual
             if(item==null)throw new ArgumentNullException("item");
             var result=new List<MVIVisualHandle>();
             if(!item.IsSelectable)return result.AsReadOnly();
-            if(item.Shape!=null)
+            if(item.Shape!=null&&item.Shape.Kind!=MRCShapeKind.Arc&&
+                item.Shape.Kind!=MRCShapeKind.Circle&&item.Shape.Kind!=MRCShapeKind.Ellipse)
             {
                 FGETransform2D matrix=item.GeometryToWorld;
                 var commands=item.Shape.Geometry.Commands;
                 for(int i=0;i<commands.Count&&result.Count<512;i++)
                 {
                     FGEPathCommand cmd=commands[i];
-                    if(cmd.Verb==FGEPathVerb.Move||cmd.Verb==FGEPathVerb.Line||
+                    if((cmd.Verb==FGEPathVerb.Move&&
+                        (i+1>=commands.Count||commands[i+1].Verb!=FGEPathVerb.Arc))||
+                        cmd.Verb==FGEPathVerb.Line||
                         cmd.Verb==FGEPathVerb.Quadratic||cmd.Verb==FGEPathVerb.Cubic)
                         result.Add(new MVIVisualHandle(item.Id,MVIVisualHandleKind.Anchor,i,
                             matrix.TransformPoint(cmd.End)));
@@ -130,6 +133,10 @@ namespace CxVisual.Mechanism.Visual
             }
 
             var shape=item as MRCShapeElement;
+            if(shape!=null&&(shape.Shape.Kind==MRCShapeKind.Arc||
+                shape.Shape.Kind==MRCShapeKind.Circle||shape.Shape.Kind==MRCShapeKind.Ellipse))
+                return MTCEditResult<bool>.Rejected(revision,"visual.arc_parameter_required",
+                    "Ellipse/arc control points are derived; use resize until arc parameter handles are implemented");
             if(shape==null||projected.Shape==null)
                 return MTCEditResult<bool>.Rejected(revision,"visual.path_required","Only Shape paths expose geometry handles");
             FGEPathHandleKind kind=handle.Kind==MVIVisualHandleKind.Anchor?
