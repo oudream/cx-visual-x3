@@ -60,6 +60,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             G05cWorkflowRetryPolicy();
             G05bStreamBackpressureAndFlow();
             V2ExtractLinearContent();
+            CThreeTierXRayTwoSubflows();
             V2LayoutContract();
             V2BulkEditingClipboard();
             V2WiringCompileRun();
@@ -553,6 +554,92 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 session.Close(true);
                 if(System.IO.File.Exists(path))System.IO.File.Delete(path);
                 if(System.IO.File.Exists(path+".cx-lock"))System.IO.File.Delete(path+".cx-lock");
+            }
+        }
+
+        /// <summary>C验收：X-Ray主流程与AI/CV两个真实可执行Content子流程。</summary>
+        private static void CThreeTierXRayTwoSubflows()
+        {
+            var session=MEMEngineering.Create("C-XRay主从工程");
+            var page=session.AddPage("X-Ray检测线");
+            Guid acquire=Guid.Empty,ai=Guid.Empty,aiJudge=Guid.Empty,
+                cv=Guid.Empty,cvJudge=Guid.Empty,quality=Guid.Empty,result=Guid.Empty;
+            string file=System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                "cxvisual-c-xray-"+Guid.NewGuid().ToString("N")+".cxproj");
+            try
+            {
+                MOCFlowBuilder.Edit(session,page.RootContent,b=>{
+                    acquire=b.Step("xray.acquire");
+                    ai=b.Step("xray.ai");
+                    aiJudge=b.Step("xray.ai.post");
+                    cv=b.Step("xray.cv");
+                    cvJudge=b.Step("xray.cv.post");
+                    quality=b.Step("xray.judge");
+                    result=b.Step("xray.result");
+                    var steps=new[]{acquire,ai,aiJudge,cv,cvJudge,quality,result};
+                    for(int i=1;i<steps.Length;i++)
+                        b.Connect(steps[i-1],"Done",steps[i],"Start");
+                });
+                var aiContent=MOCFlowBuilder.ExtractLinearContent(session,page.RootContent,
+                    new[]{ai,aiJudge},"AI检测子流程");
+                var cvContent=MOCFlowBuilder.ExtractLinearContent(session,page.RootContent,
+                    new[]{cv,cvJudge},"传统算法子流程");
+                var root=session.GetSnapshot().Find(page.RootContent.Id);
+                var wiring=MOLWiringCodec.Get(root);
+                Check(root.References.Count==2&&wiring.Blocks.Count==5&&
+                    wiring.Links.Count==4&&
+                    wiring.Blocks.Count(x=>x.CapabilityId.StartsWith("moc.invoke:",
+                        StringComparison.Ordinal))==2,
+                    "C main flow must own two executable Content references, not canvas-only groups");
+                int executed=0;
+                var resolver=new TestResolver();
+                foreach(string id in new[]{"xray.acquire","xray.ai","xray.ai.post",
+                    "xray.cv","xray.cv.post","xray.judge","xray.result"})
+                {
+                    string capability=id;
+                    resolver.Register(capability,(ctx,token)=>{
+                        Interlocked.Increment(ref executed);
+                        return Task.FromResult((object)capability);
+                    });
+                }
+                var build=new MOCBuildService().Build(
+                    session.GetSnapshot(),page.RootContent.Id,resolver);
+                Check(build.Succeeded,"C two subflow build failed: "+
+                    string.Join(",",build.Diagnostics.Select(x=>x.Code+" "+x.Message)));
+                MOCTraceView trace;
+                var finished=Execute(build.Plan,null,out trace);
+                Check(finished.State==MRKFlowState.Completed&&executed==7&&
+                    trace.Events.Count>=7,"C actual MRK main/child flows didn't all execute");
+                foreach(var item in new[]{
+                    new{Id=ai,Content=aiContent.Id},
+                    new{Id=aiJudge,Content=aiContent.Id},
+                    new{Id=cv,Content=cvContent.Id},
+                    new{Id=cvJudge,Content=cvContent.Id}})
+                {
+                    var origin=build.Plan.SourceMap.Find(item.Id).Single();
+                    Check(origin.ContentAddress.ObjectId==item.Content&&
+                        origin.CallPath.Count==1&&
+                        trace.Events.Any(ev=>ev.Origin.BlockId==item.Id&&
+                            ev.Transition.State==MRKStepState.Completed),
+                        "C failed to map child MRK transition back to its real source Content");
+                }
+                session.SaveAs(file);
+                using(var restored=MEMEngineering.Open(file))
+                {
+                    var snapshot=restored.GetSnapshot();
+                    Check(snapshot.Find(aiContent.Id)!=null&&snapshot.Find(cvContent.Id)!=null&&
+                        snapshot.Find(page.RootContent.Id).References.Count==2,
+                        "C two executable subflows were not persisted with their references");
+                    var reopenedBuild=new MOCBuildService().Build(snapshot,
+                        page.RootContent.Id,resolver);
+                    Check(reopenedBuild.Succeeded,"C reopened project did not recompile");
+                }
+            }
+            finally
+            {
+                session.Close(true);
+                if(System.IO.File.Exists(file))System.IO.File.Delete(file);
+                if(System.IO.File.Exists(file+".cx-lock"))System.IO.File.Delete(file+".cx-lock");
             }
         }
 
