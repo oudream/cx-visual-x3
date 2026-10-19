@@ -407,6 +407,70 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(restored.Blocks.Count==6&&restored.Groups.Count==2&&restored.Links.Count==6,
                     "Studio delete-all undo lost group/link identity");
 
+                // G04-E：真实Studio节点属性与输入参数，验证原子更新与非法值回滚。
+                flowCanvas.SetSelection(new[]{selectedIds[0]});
+                var portName=(TextBox)window.FindName("FlowInspectorPortName");
+                var portType=(TextBox)window.FindName("FlowInspectorType");
+                var portValue=(TextBox)window.FindName("FlowInspectorValue");
+                var inspectorPorts=(ComboBox)window.FindName("FlowInspectorPorts");
+                portName.Text="Threshold";
+                portType.Text="double";
+                Click(window,"添加Port");
+                var withPort=MOLWiringCodec.Get(finalSession.GetSnapshot().Find(active.RootContent.Id));
+                Check(withPort.Ports[selectedIds[0]].Any(p=>p.MemberId=="Threshold"),
+                    "Studio typed Port add did not commit");
+                inspectorPorts.SelectedItem=inspectorPorts.Items.Cast<MPCPortDescriptor>()
+                    .Single(p=>p.MemberId=="Threshold");
+                Pump();
+                portValue.Text="1.75";
+                Click(window,"保存节点参数");
+                var withValue=MOLWiringCodec.Get(finalSession.GetSnapshot().Find(active.RootContent.Id));
+                Check(withValue.Parameters[selectedIds[0]]["Threshold"]=="1.75",
+                    "Studio parameter value did not persist");
+                int revisionBeforeBad=finalSession.Revision;
+                portValue.Text="invalid-double";
+                Click(window,"保存节点参数");
+                Check(finalSession.Revision==revisionBeforeBad&&
+                    MOLWiringCodec.Get(finalSession.GetSnapshot().Find(active.RootContent.Id))
+                        .Parameters[selectedIds[0]]["Threshold"]=="1.75",
+                    "Studio invalid typed input altered engineering revision");
+                Click(window,"撤销编排");
+                Check(!MOLWiringCodec.Get(finalSession.GetSnapshot().Find(active.RootContent.Id))
+                    .Parameters.ContainsKey(selectedIds[0]),"Studio parameter Undo failed");
+                Click(window,"重做编排");
+                Check(MOLWiringCodec.Get(finalSession.GetSnapshot().Find(active.RootContent.Id))
+                    .Parameters[selectedIds[0]]["Threshold"]=="1.75",
+                    "Studio parameter Redo failed");
+                // G04-G：断点可用，编译失败从结构化诊断对象定位，不吞异常。
+                Click(window,"切换断点");
+                Click(window,"验证工程编排");
+                var errors=(ComboBox)window.FindName("FlowDiagnosticList");
+                Check(errors.Items.Count>0,"Studio compile diagnostics list was not populated");
+                errors.SelectedIndex=0;
+                Click(window,"定位诊断");
+                Click(window,"切换断点");
+                Click(window,"调试暂停");
+                Check(((TextBlock)window.FindName("LogicInfo")).Text.Contains("没有活跃MRK"),
+                    "Studio debug pause falsely reported an active flow");
+                // G04-F：选择简单Control链后提取真正Content，且一个Undo回到原V2工程。
+                Click(window,"创建自由连接示例");
+                var beforeExtract=MOLWiringCodec.Get(
+                    finalSession.GetSnapshot().Find(active.RootContent.Id));
+                Check(beforeExtract.Blocks.Count==2&&beforeExtract.Links.Count==1,
+                    "G04-F Studio setup missing a linear V2 Control flow");
+                flowCanvas.SelectAll();
+                Click(window,"提取可执行Content");
+                var extractedRoot=finalSession.GetSnapshot().Find(active.RootContent.Id);
+                var extractWiring=MOLWiringCodec.Get(extractedRoot);
+                Check(extractWiring.Blocks.Count==1&&
+                    extractWiring.Blocks[0].CapabilityId.StartsWith("moc.invoke:")&&
+                    extractedRoot.References.Count==1,
+                    "Studio extract did not create a referenced executable Content");
+                Click(window,"撤销编排");
+                Check(MOLWiringCodec.Get(finalSession.GetSnapshot().Find(active.RootContent.Id))
+                    .Blocks.Count==2,
+                    "Studio extract Content Undo did not restore original flow");
+
                 Console.WriteLine("PASS H06 Studio real WPF automation: add/switch page, resource two instances, bound parameter edit, shared Undo/Redo, definition navigation, save/reopen");
             }
             finally{if(window!=null)window.Close();if(app!=null)app.Shutdown();if(File.Exists(path))File.Delete(path);if(File.Exists(path+".cx-lock"))File.Delete(path+".cx-lock");}
