@@ -75,6 +75,16 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     FGEPoint2D target=new FGEPoint2D(selected.WorldPoint.X+27,
                         selected.WorldPoint.Y-31);
                     int baseRevision=doc.Revision;
+                    EventHandler<MVIInteractionEventArgs> deny=(sender,args)=>
+                    {
+                        if(args.Kind==MVIInteractionKind.Move&&
+                            args.Phase==MVIEventPhase.Target)args.PreventDefault();
+                    };
+                    editor.Interaction+=deny;
+                    Check(!editor.EditHandle(selected,target.X,target.Y).Success&&
+                        doc.Revision==baseRevision,
+                        "capture/target route veto must block handle edit without committing");
+                    editor.Interaction-=deny;
                     Check(editor.EditHandle(selected,target.X,target.Y).Success,"control handle edit failed");
                     Check(doc.Revision==baseRevision+1,"edit should be a single MEM transaction");
                     CxSceneItem edited=editor.Scene.Single(x=>x.Id==id);
