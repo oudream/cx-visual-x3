@@ -107,6 +107,7 @@
                             <WrapPanel Margin="10,8">
                                 <Button Content="创建 X-Ray 逻辑示例" Click="OnCreateLogicDemo"/>
                                 <Button Content="创建自由连接示例" Click="OnCreateWiringDemo"/>
+                                <Button Content="创建完整X-Ray双子流程" Click="OnCreateXRayDualSubflowDemo" ToolTip="同一页面：HMI电机状态图元 + 采图、AI与传统算法两个可执行Content子流程 + MOC/MRK"/>
                                 <TextBox x:Name="FlowCapabilitySearch" Width="100" Text="Vision" Margin="5,0,2,0"/>
                                 <Button Content="搜索能力" Click="OnSearchCapabilities"/>
                                 <ComboBox x:Name="FlowCapabilityResults" Width="145" DisplayMemberPath="Definition.Name" SelectionChanged="OnCapabilitySelected"/>
