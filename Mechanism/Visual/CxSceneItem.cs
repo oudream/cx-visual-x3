@@ -57,6 +57,8 @@ namespace CxVisual.Mechanism.Visual
         public string Name{get;private set;}
         public MRIObjectAddress Address{get;private set;}
         public bool IsSelectable{get;private set;}
+        public double LocalWidth{get{return _width;}}
+        public double LocalHeight{get{return _height;}}
         public string ElementTypeId{get;private set;}
         public MRCShapeDefinition Shape{get;private set;}
         public MRCVisualStyle Style{get;private set;}
