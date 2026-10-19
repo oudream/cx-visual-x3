@@ -77,6 +77,31 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             }
             return opacity;
         }
+        /// <summary>限制SVG到此渲染器真正支持的语义，不能静默忽略filter、mask、CSS等属性。</summary>
+        private static bool AllowedAttribute(string element,string key)
+        {
+            if(key=="fill"||key=="stroke"||key=="stroke-width"||
+                key=="opacity"||key=="id")return true;
+            switch(element)
+            {
+                case "svg":return key=="viewBox"||key=="width"||key=="height";
+                case "g":return false;
+                case "rect":return key=="x"||key=="y"||key=="width"||
+                    key=="height"||key=="rx"||key=="ry";
+                case "circle":return key=="cx"||key=="cy"||key=="r";
+                case "ellipse":return key=="cx"||key=="cy"||key=="rx"||key=="ry";
+                case "line":return key=="x1"||key=="y1"||key=="x2"||key=="y2";
+                case "polygon":case "polyline":return key=="points";
+                case "path":return key=="d";
+                default:return false;
+            }
+        }
+        private static double NonNegative(double value,string label)
+        {
+            if(value<0||value>1000000)
+                throw new InvalidDataException("visual.svg.invalid_"+label);
+            return value;
+        }
         private static Geometry ReadGeometry(XElement e)
         {
             string type=e.Name.LocalName;
@@ -84,13 +109,16 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             {
                 case "rect":
                     return new RectangleGeometry(new Rect(Attr(e,"x"),Attr(e,"y"),
-                        Math.Max(0,Attr(e,"width")),Math.Max(0,Attr(e,"height"))));
+                        NonNegative(Attr(e,"width"),"width"),
+                        NonNegative(Attr(e,"height"),"height")));
                 case "circle":
                     return new EllipseGeometry(new Point(Attr(e,"cx"),Attr(e,"cy")),
-                        Math.Max(0,Attr(e,"r")),Math.Max(0,Attr(e,"r")));
+                        NonNegative(Attr(e,"r"),"radius"),
+                        NonNegative(Attr(e,"r"),"radius"));
                 case "ellipse":
                     return new EllipseGeometry(new Point(Attr(e,"cx"),Attr(e,"cy")),
-                        Math.Max(0,Attr(e,"rx")),Math.Max(0,Attr(e,"ry")));
+                        NonNegative(Attr(e,"rx"),"radius_x"),
+                        NonNegative(Attr(e,"ry"),"radius_y"));
                 case "line":
                     return new LineGeometry(new Point(Attr(e,"x1"),Attr(e,"y1")),
                         new Point(Attr(e,"x2"),Attr(e,"y2")));
@@ -144,15 +172,19 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                     name!="ellipse"&&name!="line"&&name!="path"&&
                     name!="polygon"&&name!="polyline")
                     throw new InvalidDataException("visual.svg.unsafe_or_unsupported:"+name);
+                if(e.Name.NamespaceName!=root.Name.NamespaceName)
+                    throw new InvalidDataException("visual.svg.foreign_namespace");
                 foreach(XAttribute attribute in e.Attributes())
                 {
-                    string key=attribute.Name.LocalName.ToLowerInvariant();
+                    if(attribute.IsNamespaceDeclaration)continue;
+                    string key=attribute.Name.LocalName;
                     string value=attribute.Value;
-                    if(key.StartsWith("on",StringComparison.Ordinal)||
-                        key=="href"||key=="style"||key=="transform"||
+                    if(attribute.Name.NamespaceName.Length!=0||
+                        !AllowedAttribute(name,key)||
+                        key.StartsWith("on",StringComparison.OrdinalIgnoreCase)||
                         value.IndexOf("url(",StringComparison.OrdinalIgnoreCase)>=0||
                         value.IndexOf("@import",StringComparison.OrdinalIgnoreCase)>=0)
-                        throw new InvalidDataException("visual.svg.unsafe_attribute:"+key);
+                        throw new InvalidDataException("visual.svg.unsafe_or_unsupported_attribute:"+key);
                 }
             }
             var group=new DrawingGroup();
@@ -175,8 +207,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 Brush fill=Fill(Inherited(e,"fill"),e.Name.LocalName=="line"?null:Brushes.Black);
                 Brush stroke=Fill(Inherited(e,"stroke"),null);
                 double opacity=EffectiveOpacity(e);
+                double strokeWidth=NonNegative(Number(Inherited(e,"stroke-width"),1),
+                    "stroke_width");
                 var drawing=new GeometryDrawing(fill,
-                    stroke==null?null:new Pen(stroke,Math.Max(0,Attr(e,"stroke-width",1))),
+                    stroke==null?null:new Pen(stroke,strokeWidth),
                     geometry);
                 var layer=new DrawingGroup{Opacity=opacity};
                 layer.Children.Add(drawing);
