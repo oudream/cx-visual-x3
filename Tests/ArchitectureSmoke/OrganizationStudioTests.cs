@@ -324,6 +324,20 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 var finalWiring=MOLWiringCodec.Get(finalSession.GetSnapshot().Find(active.RootContent.Id));
                 Check(finalWiring.Blocks.Count==6&&finalWiring.Groups.Count==2&&
                     finalWiring.Links.Count==6,"Studio grouped paste lost Save/Open identity");
+                // 删除全部节点仍是可保存V2草稿，不允许伪造成功编译。
+                Click(window,"全选节点");
+                Click(window,"删除逻辑选区");
+                var blank=MOLWiringCodec.Get(finalSession.GetSnapshot().Find(active.RootContent.Id));
+                Check(blank!=null&&blank.Blocks.Count==0&&blank.EntryBlockId==Guid.Empty,
+                    "Studio all-node delete did not persist a clean empty draft");
+                Click(window,"验证工程编排");
+                Check(((TextBlock)window.FindName("LogicInfo")).Text.Contains("MOC_WIRING_INVALID"),
+                    "Studio allowed empty draft into MOC/MRK executable path");
+                Click(window,"撤销编排");
+                var restored=MOLWiringCodec.Get(finalSession.GetSnapshot().Find(active.RootContent.Id));
+                Check(restored.Blocks.Count==6&&restored.Groups.Count==2&&restored.Links.Count==6,
+                    "Studio delete-all undo lost group/link identity");
+
                 Console.WriteLine("PASS H06 Studio real WPF automation: add/switch page, resource two instances, bound parameter edit, shared Undo/Redo, definition navigation, save/reopen");
             }
             finally{if(window!=null)window.Close();if(app!=null)app.Shutdown();if(File.Exists(path))File.Delete(path);if(File.Exists(path+".cx-lock"))File.Delete(path+".cx-lock");}
