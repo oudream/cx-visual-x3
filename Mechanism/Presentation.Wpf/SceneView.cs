@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Windows.Media.Imaging;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Input;
@@ -26,6 +28,39 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         public event EventHandler<MPWVisualHandleEventArgs> HandleEditRequested;
         private readonly VisualCollection _visualChildren;
         private readonly Canvas _widgetCanvas;
+        private Func<Guid,Stream> _assetResolver;
+        private readonly Dictionary<Guid,ImageSource> _assetCache=new Dictionary<Guid,ImageSource>();
+        private readonly Dictionary<Guid,string> _assetErrors=new Dictionary<Guid,string>();
+        public IReadOnlyDictionary<Guid,string> AssetErrors{get{return _assetErrors;}}
+        public void SetAssetResolver(Func<Guid,Stream> resolver)
+        {
+            _assetResolver=resolver;
+            _assetCache.Clear();_assetErrors.Clear();InvalidateVisual();
+        }
+        private ImageSource AssetImage(CxSceneItem item)
+        {
+            if(!item.AssetId.HasValue||_assetResolver==null)return null;
+            Guid id=item.AssetId.Value;
+            ImageSource found;if(_assetCache.TryGetValue(id,out found))return found;
+            if(_assetErrors.ContainsKey(id))return null;
+            try
+            {
+                using(Stream stream=_assetResolver(id))
+                {
+                    if(stream==null)throw new InvalidDataException("visual.asset.unavailable");
+                    found=item.ElementTypeId=="core.svg"?
+                        (ImageSource)MPWVisualAssetRenderer.DecodeSvg(stream):
+                        MPWVisualAssetRenderer.DecodeBitmap(stream,item.MediaType);
+                }
+                _assetCache.Add(id,found);
+                return found;
+            }
+            catch(Exception ex)
+            {
+                _assetErrors[id]=ex.GetType().Name+": "+ex.Message;
+                return null; // 画面显示资源错误而不是使整个WPF Designer崩溃
+            }
+        }
         private bool _designMode=true;
         private double _zoom=1,_panX,_panY;
         private bool _panning;private Point _panPointer;
@@ -179,6 +214,29 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                             Math.Max(1,item.Bounds.Width),Math.Max(1,item.Bounds.Height));
                         dc.DrawRectangle(null,new Pen(Brushes.DodgerBlue,0.8){DashStyle=DashStyles.Dash},highlight);
                     }
+                    continue;
+                }
+                if(item.ElementTypeId=="core.image"||item.ElementTypeId=="core.svg")
+                {
+                    ImageSource image=AssetImage(item);
+                    MRCTransform transform=item.WorldTransform;
+                    dc.PushTransform(new MatrixTransform(new Matrix(
+                        transform.M11,transform.M21,transform.M12,transform.M22,
+                        transform.X+(_dragging&&selected?_dragX:0),
+                        transform.Y+(_dragging&&selected?_dragY:0))));
+                    dc.PushOpacity(item.Style.Opacity);
+                    if(image!=null)
+                        dc.DrawImage(image,new Rect(0,0,item.LocalWidth,item.LocalHeight));
+                    else
+                    {
+                        dc.DrawRectangle(Brushes.MistyRose,new Pen(Brushes.IndianRed,1),
+                            new Rect(0,0,item.LocalWidth,item.LocalHeight));
+                        var label=new FormattedText(item.AssetId.HasValue?"资源不可用":"未绑定资源",
+                            CultureInfo.CurrentCulture,FlowDirection.LeftToRight,
+                            new Typeface("Segoe UI"),10,Brushes.DarkRed,1.0);
+                        dc.DrawText(label,new Point(4,4));
+                    }
+                    dc.Pop();dc.Pop();
                     continue;
                 }
                 if(MPWWidgetPresenter.Supports(item.ElementTypeId))continue;
