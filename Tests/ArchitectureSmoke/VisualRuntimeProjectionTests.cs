@@ -232,6 +232,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         "ambiguous reference Guid must not execute a definition event");
                 }
                 Check(called==2,"two distinct Widget instances were not dispatched separately");
+                instanceEvents.Close(true); // 此处仅做无磁盘事件验证，明确丢弃临时工程
             }
             Console.WriteLine("PASS Visual runtime: MDS Owner, state/animation, Widget events, Motor Symbol dual instances and disk roundtrip");
         }
