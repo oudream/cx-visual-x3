@@ -143,6 +143,17 @@
                                 <Button Content="垂直分布" Tag="vertical" Click="OnFlowDistribute"/>
                                 <Button Content="自动布局" Click="OnFlowArrange"/>
                             </WrapPanel>
+                            <WrapPanel Margin="10,0,10,6">
+                                <Button Content="切换断点" Click="OnFlowToggleBreakpoint"/>
+                                <Button Content="调试暂停" Click="OnFlowDebugPause"/>
+                                <Button Content="调试继续" Click="OnFlowDebugResume"/>
+                                <Button Content="调试单步" Click="OnFlowDebugStep"/>
+                                <Button Content="终止调试" Click="OnFlowDebugCancel"/>
+                                <Button Content="定位诊断" Click="OnFlowLocateDiagnostic"/>
+                                <ComboBox x:Name="FlowDiagnosticList" Width="230" DisplayMemberPath="Label"/>
+                                <Button Content="定位轨迹节点" Click="OnFlowLocateTrace"/>
+                                <ComboBox x:Name="FlowTraceList" Width="220" DisplayMemberPath="Label"/>
+                            </WrapPanel>
                             <Expander Header="G04-E 节点参数与Port" Margin="10,0,10,7" IsExpanded="True">
                                 <StackPanel Margin="5">
                                     <WrapPanel Margin="0,3">
