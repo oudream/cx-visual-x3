@@ -243,7 +243,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         public bool BeginBlockDrag(Point position)
         {
             if(WiringDefinition==null||HitTestPort(position)!=null)return false;
-            var item=MOLFlowLayout.Build(WiringDefinition).FirstOrDefault(b=>
+            var item=MOLFlowLayout.Build(WiringDefinition).LastOrDefault(b=>
                 position.X>=b.X&&position.X<=b.X+b.Width&&
                 position.Y>=b.Y&&position.Y<=b.Y+b.Height);
             if(item==null)return false;
@@ -291,7 +291,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
 
         public MOLPortVisual HitTestPort(Point position)
         {
-            return GetVisiblePorts().FirstOrDefault(port=>
+            return GetVisiblePorts().LastOrDefault(port=>
                 Math.Abs(port.Center.X-position.X)<=8 &&
                 Math.Abs(port.Center.Y-position.Y)<=8);
         }
@@ -476,8 +476,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             {
                 CaptureMouse();e.Handled=true;return;
             }
-            foreach(var item in _layout)
+            for(int i=_layout.Count-1;i>=0;i--)
             {
+                var item=_layout[i];
                 if(p.X>=item.X&&p.X<=item.X+item.Width&&
                     p.Y>=item.Y&&p.Y<=item.Y+item.Height)
                 {
