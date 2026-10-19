@@ -89,6 +89,45 @@ namespace CxVisual.Studio
             int index = ElementCount + 1;
             Execute(() => _editor.AddRectangle("Element " + index, 60 + 35 * index, 60 + 25 * index, 110, 65));
         }
+        /// <summary>Studio工具箱统一创建九种Shape；当前页面或Symbol资源是唯一工程真源。</summary>
+        public void AddVisualShape(MRCShapeKind kind)
+        {
+            int index=ElementCount+1;
+            MRCShapeDefinition definition=MVIShapeCatalog.CreateDefault(kind);
+            Execute(()=>_editor.AddShape(kind+" "+index,definition,
+                45+(index%7)*24,55+(index%7)*20));
+        }
+        public void AddVisualText()
+        {
+            int index=ElementCount+1;
+            Execute(()=>_editor.AddText("文字 "+index,"双击属性面板修改",45+index*14,40+index*10));
+        }
+        public void SetSelectedFillColor(string color,double strokeWidth)
+        {
+            if(!_selected.HasValue)throw new InvalidOperationException("请选择需要设置样式的图元");
+            MRCVisualItem item=ProjectSession.Find(_selected.Value) as MRCVisualItem;
+            if(item==null)throw new InvalidOperationException("组件实例请先打开定义进行样式编辑");
+            MRCColor fill=MRCColor.Parse(color);
+            MRCVisualStyle old=MRCVisualAppearance.StyleOf(item);
+            var style=new MRCVisualStyle(MRCBrushDefinition.Solid(fill),old.Stroke,
+                strokeWidth,old.Opacity,old.FontFamily,old.FontSize,old.ThemeKey);
+            ProjectSession.SetVisualStyle(item,style);
+            Status="已应用图元填充和线宽 | Revision "+ProjectSession.Revision;
+            NotifyScene();
+        }
+        public void AppendSelectedEventAction(string eventId,string actionId)
+        {
+            if(!_selected.HasValue)throw new InvalidOperationException("请选择图元");
+            MRCVisualItem item=ProjectSession.Find(_selected.Value) as MRCVisualItem;
+            if(item==null)throw new InvalidOperationException("组件实例请先打开定义");
+            var old=MRCVisualAppearance.BehaviorOf(item);
+            var actions=new System.Collections.Generic.List<MRCVisualEventAction>(old.EventActions);
+            actions.Add(new MRCVisualEventAction(eventId,actionId));
+            ProjectSession.SetVisualBehavior(item,new MRCVisualBehaviorDefinition(
+                old.States,old.Animations,actions));
+            Status="已保存事件动作定义（实际命令仍由运行时验证）";
+            NotifyScene();
+        }
         private void MoveSelected()
         {
             if (!_selected.HasValue) return;
