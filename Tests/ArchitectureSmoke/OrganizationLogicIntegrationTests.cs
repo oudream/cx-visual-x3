@@ -589,6 +589,16 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "V2 grouped layout XML roundtrip failed");
                 snapshot=MOCWiringFragment.Capture(grouped,new[]{a,b});
                 Check(snapshot.Groups.Count==1,"clipboard lost complete selected group");
+                var transferred=MOCWiringFragment.FromPayload(snapshot.ToPayload());
+                Check(transferred.Blocks.Count==2&&transferred.Links.Count==1&&
+                    transferred.Groups.Count==1&&
+                    transferred.Groups[0].Id==snapshot.Groups[0].Id,
+                    "cross-process clipboard V2 payload lost identity or internal links");
+                bool malformedRejected=false;
+                try{MOCWiringFragment.FromPayload(new byte[]{60,33,68,79,67,84,89,80,69,32,120,62});}
+                catch(Exception){malformedRejected=true;}
+                Check(malformedRejected,"malformed clipboard payload accepted");
+                snapshot=transferred;
                 int conflictRevision=session.Revision;
                 bool groupOverlapRejected=false;
                 try{MOCFlowBuilder.Edit(session,firstPage.RootContent,builder=>
