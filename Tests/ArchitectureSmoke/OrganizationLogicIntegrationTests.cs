@@ -596,6 +596,21 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 catch(InvalidOperationException){groupOverlapRejected=true;}
                 Check(groupOverlapRejected&&session.Revision==conflictRevision,
                     "overlapping groups were silently accepted");
+                MOCFlowBuilder.Edit(session,firstPage.RootContent,builder=>
+                    builder.Distribute(new[]{a,b,c},true));
+                var distributed=MOLWiringCodec.Get(session.GetSnapshot().Find(firstPage.RootContent.Id));
+                Check(Math.Abs(distributed.Positions[b].X-
+                    (distributed.Positions[a].X+distributed.Positions[c].X)/2)<0.001,
+                    "horizontal distribution lost equal intervals");
+                MOCFlowBuilder.Edit(session,firstPage.RootContent,builder=>
+                    builder.ArrangeGrid(new[]{a,b,c}));
+                var arranged=MOLWiringCodec.Get(session.GetSnapshot().Find(firstPage.RootContent.Id));
+                Check(arranged.Positions[a].X<arranged.Positions[b].X&&
+                    arranged.Positions[b].X<arranged.Positions[c].X&&
+                    arranged.Groups.Count==1,"grid arrangement changed group or order");
+                Check(session.Undo().Success&&
+                    MOLWiringCodec.Get(session.GetSnapshot().Find(firstPage.RootContent.Id))
+                    .Groups.Count==1,"grid layout Undo lost group");
                 int revision=session.Revision;
                 bool rejected=false;
                 try{MOCFlowBuilder.Edit(session,firstPage.RootContent,builder=>

@@ -269,6 +269,19 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 var pastedIds=flowCanvas.SelectedBlockIds.ToArray();
                 Check(pastedIds.All(id=>!selectedIds.Contains(id)),
                     "Studio paste reused original block identity");
+                Click(window,"自动布局");
+                var gridUI=MOLWiringCodec.Get(again.GetSnapshot().Find(active.RootContent.Id));
+                Check(pastedIds.Select(id=>gridUI.Positions[id].X).Distinct().Count()==2,
+                    "Studio two-column automatic grid did not persist positions");
+                Click(window,"水平分布");
+                var spacedUI=MOLWiringCodec.Get(again.GetSnapshot().Find(active.RootContent.Id));
+                Check(spacedUI.Positions.Count>=3&&spacedUI.Groups.Count==2,
+                    "Studio distribution changed group identity");
+                Click(window,"定位选中");
+                Click(window,"适配画布");
+                Check(flowCanvas.ZoomFactor>=0.25&&flowCanvas.ZoomFactor<=3,
+                    "Studio zoom-to-fit went out of range");
+                Click(window,"100%");
                 Click(window,"对齐左侧");
                 var alignedUI=MOLWiringCodec.Get(again.GetSnapshot().Find(active.RootContent.Id));
                 Check(pastedIds.Select(id=>alignedUI.Positions[id].X).Distinct().Count()==1,
