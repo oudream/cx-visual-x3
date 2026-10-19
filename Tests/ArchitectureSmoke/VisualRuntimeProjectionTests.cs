@@ -50,6 +50,13 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(scene.Count==1&&Math.Abs(scene[0].Bounds.X-56)<1e-9,
                     "runtime variable position");
                 Check(Math.Abs(scene[0].Style.Opacity-0.5)<1e-9,"runtime easing at midpoint");
+                var movingBehavior=new MRCVisualBehaviorDefinition(
+                    animations:new[]{new MRCAnimationDefinition("x",80,180,1000,
+                        "Running",MRCAnimationEasing.Linear,true)});
+                Check(Math.Abs(MVIVisualRuntimeEvaluator.EvaluateNumber(
+                    "x",56,movingBehavior,500,source)-130)<1e-8,
+                    "runtime X animation did not produce the correct timed value");
+                Check(doc.Revision==revision,"runtime animation calculation committed engineering data");
                 source.Fault=true;
                 scene=CxSceneProjection.Project(doc,page.Id,source,250);
                 Check(scene[0].Style.Fill.Color.Equals(MRCColor.Parse("#FFE02020")),
