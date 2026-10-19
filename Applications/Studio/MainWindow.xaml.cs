@@ -559,6 +559,9 @@ namespace CxVisual.Studio
                 if(wiring==null)throw new InvalidOperationException("请先进入V2自由编排");
                 _flowClipboard=MOCWiringFragment.Capture(wiring,LogicHost.SelectedBlockIds);
                 _flowPasteCount=0;
+                // Windows系统剪贴板可跨进程传输；不可用时仍保留当前Studio内存快照。
+                try{Clipboard.SetData("CxVisual.MOLWiringFragment.V2",_flowClipboard.ToPayload());}
+                catch(System.Runtime.InteropServices.ExternalException){/* 无剪贴板桌面会话 */ }
                 LogicInfo.Text="已复制 "+_flowClipboard.Blocks.Count+
                     " 个节点及 "+_flowClipboard.Links.Count+" 条内部连接（内存选区快照）。";
             }
@@ -569,6 +572,13 @@ namespace CxVisual.Studio
             if(_logicRunning)return;
             try
             {
+                try
+                {
+                    var payload=Clipboard.GetData("CxVisual.MOLWiringFragment.V2") as byte[];
+                    if(payload!=null)_flowClipboard=MOCWiringFragment.FromPayload(payload);
+                }
+                catch(System.Runtime.InteropServices.ExternalException)
+                { /* 无操作系统剪贴板时使用本会话内存快照 */ }
                 if(_flowClipboard==null)throw new InvalidOperationException("请先复制节点选区");
                 var page=_viewModel.ActivePage;
                 if(page==null)throw new InvalidOperationException("请先打开目标Content");
