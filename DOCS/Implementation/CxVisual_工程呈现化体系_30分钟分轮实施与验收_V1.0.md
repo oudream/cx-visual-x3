@@ -54,7 +54,7 @@
 
 | 轮次 | EP | 最小闭环切片与验证重点 | 状态 | 对应SHA/CI |
 |---|---|---|---|---|
-| R01 | EP04 | Studio属性显示MPM类型/必填/数值范围；合法应用、越界拒绝且Revision不变 | 未开始 | 待对应源码及Windows证据 |
+| R01 | EP04 | Studio属性显示MPM类型/必填/数值范围；合法应用、越界拒绝且Revision不变 | 已提交待CI | f6c0dceb7afa（须同SHA Windows复核） |
 | R02 | EP04 | 根据Schema形成Boolean与Numeric输入控件；拒绝错误类型 | 未开始 | 待对应源码及Windows证据 |
 | R03 | EP04 | 属性默认、资源来源与无效引用诊断 | 未开始 | 待对应源码及Windows证据 |
 | R04 | EP04 | 定义/实例覆盖、多选混合值/只读约束 | 未开始 | 待对应源码及Windows证据 |
@@ -123,12 +123,12 @@
 
 本轮仅做小纵向切片：**将既有Schema类型/必填/范围显示在属性行，不增第二Schema**；现有MEM提交原样负责验证；新增WPF STA实用例验证合法值生效、越界值被拒且Revision及实例值不变，另一个Symbol实例不受影响。对象属性元信息只在UI投影，不持久化第二份数据。
 
-R01初始状态：进行中。最终证据写入下方记录；由于并行master可能前进，实施时重新读取源文件blob SHA并用原Contents API原子更新，发生冲突立即复核。不得宣称本地Windows测试通过。
+R01源码已提交（截止 f6c0dceb7afae75d320f6b442f3a152b11566162）：修改StudioViewModel.Engineering.cs，仅把现有MPM Descriptor投影为属性行Schema提示；MainWindow.xaml以实际WPF TextBlock显示元信息；OrganizationStudioTests.cs在原双Symbol实例测试上增加类型/范围UI展示、越界拒绝不改Revision及实例值、错误反馈的STA断言。未创建平行Schema/工程数据仓库，未改生产MPM验证机制。**验收状态：已提交待CI**。当前工具仅验证源码文件存在及关键绑定字符串，未能执行Windows MSBuild/WPF STA；该SHA的GitHub合并状态与PR触发运行记录查询均为空，不能当作通过。
 
 ## 7. 滚动轮次记录（不要另起几十份阶段日记）
 
 | 轮次 | 当前状态 | 实际SHA | 真实变更与证据 | 未通过或待办 |
 |---|---|---|---|---|
-| R01 | 进行中 | 待写入 | 已检查既有MPM范围验证和Studio实例属性操作入口 | 真实WPF回归、Windows同SHA CI待执行 |
+| R01 | 已提交待CI | f6c0dceb7afa | Studio属性行/真实WPF提示/双实例越界回归代码已提交；仅静态核查源文件已落仓 | Windows MSBuild、OrganizationStudioTests STA、对应SHA CI均待实际执行 |
 
 下一轮只在R01实际提交和对应检验状态记录后推进；若新HEAD的其它Owner回归失败，先定位与本轮相关性，不靠关闭测试获取绿色。
