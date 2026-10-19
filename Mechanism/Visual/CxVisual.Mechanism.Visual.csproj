@@ -10,7 +10,7 @@
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="Catalog\MVIShapeCatalog.cs"/><Compile Include="Runtime\MVIVisualRuntimeEvaluator.cs"/><Compile Include="MVIInteractionEventArgs.cs"/>
+    <Compile Include="Editing\MVIVisualEditing.cs"/><Compile Include="Catalog\MVIShapeCatalog.cs"/><Compile Include="Runtime\MVIVisualRuntimeEvaluator.cs"/><Compile Include="MVIInteractionEventArgs.cs"/>
     <Compile Include="MOLFlowLayout.cs"/>
     <Reference Include="System"/>
     <Reference Include="System.Core"/>
