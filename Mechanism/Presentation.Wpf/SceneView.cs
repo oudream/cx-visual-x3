@@ -30,7 +30,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             Focusable=true;
         }
         protected override int VisualChildrenCount{get{return _visualChildren.Count;}}
-        protected override Visual GetVisualChild(int index)
+        protected override System.Windows.Media.Visual GetVisualChild(int index)
         {
             if(index<0||index>=_visualChildren.Count)throw new ArgumentOutOfRangeException("index");
             return _visualChildren[index];
