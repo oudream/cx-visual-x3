@@ -518,7 +518,8 @@ namespace CxVisual.Mechanism.Core
             foreach(var link in Links)
             {
                 if(link==null||!linkIds.Add(link.Id))throw new InvalidOperationException("wiring.duplicate_link");
-                if((link.Kind!=MPCPortKind.Control&&link.Kind!=MPCPortKind.Data)||
+                if((link.Kind!=MPCPortKind.Control&&link.Kind!=MPCPortKind.Data&&
+                     link.Kind!=MPCPortKind.Stream)||
                     link.Order.HasValue||link.ConditionId.Length>128||
                     (link.Kind!=MPCPortKind.Control&&!string.IsNullOrEmpty(link.ConditionId))||
                     (!string.IsNullOrEmpty(link.ConditionId)&&

@@ -79,7 +79,8 @@ namespace CxVisual.Mechanism.Orchestration
                     }
                     available.Add(block.Id,action);
                 }
-                foreach(var link in wiring.Links.Where(x=>x.Kind==MPCPortKind.Data))
+                foreach(var link in wiring.Links.Where(x=>x.Kind==MPCPortKind.Data||
+                    x.Kind==MPCPortKind.Stream))
                 {
                     MRKResolvedCapability target;
                     if(!available.TryGetValue(link.Target.BlockId,out target))continue;
