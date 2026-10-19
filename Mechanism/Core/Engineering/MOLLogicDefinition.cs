@@ -392,7 +392,15 @@ namespace CxVisual.Mechanism.Core
         public IReadOnlyList<MOLSelectionGroup> Groups{get;private set;}
         public void Validate()
         {
-            if(EntryBlockId==Guid.Empty||Blocks.Count<1||Blocks.Count>4096||Links.Count>32768)
+            // G04：合法空草稿可保存，不能交给MOC/MRK执行。
+            if(Blocks.Count==0)
+            {
+                if(EntryBlockId!=Guid.Empty||Links.Count!=0||Ports.Count!=0||
+                    Positions.Count!=0||Groups.Count!=0)
+                    throw new InvalidOperationException("wiring.empty_draft_has_references");
+                return;
+            }
+            if(EntryBlockId==Guid.Empty||Blocks.Count>4096||Links.Count>32768)
                 throw new InvalidOperationException("wiring.budget");
             if(Blocks.Any(x=>x==null||x.Kind!=MOLControlKind.Action||string.IsNullOrWhiteSpace(x.CapabilityId)))
                 throw new InvalidOperationException("wiring.action_only");
@@ -471,6 +479,7 @@ namespace CxVisual.Mechanism.Core
         public void ValidateExecutable()
         {
             Validate();
+            if(Blocks.Count==0)throw new InvalidOperationException("wiring.empty_executable");
             var incoming=Links.GroupBy(x=>x.Target.BlockId.ToString("N")+":"+x.Target.PortMemberId)
                 .ToDictionary(x=>x.Key,x=>x.Count(),StringComparer.Ordinal);
             foreach(var b in Blocks)foreach(var port in Ports[b.Id])
@@ -554,7 +563,10 @@ namespace CxVisual.Mechanism.Core
                     root.Element("Blocks")==null||root.Element("Links")==null||
                     (root.Elements().Count()==3&&root.Element("Groups")==null))
                     throw new InvalidDataException("wiring.schema");
-                Guid entry=ReadGuid(root,"entry");
+                string rawEntry=(string)root.Attribute("entry");
+                Guid entry=root.Element("Blocks").Elements("Block").Any()?
+                    ReadGuid(root,"entry"):
+                    rawEntry==Guid.Empty.ToString("N")?Guid.Empty:ReadGuid(root,"entry");
                 var blocks=new List<MOLControlBlock>();
                 var ports=new Dictionary<Guid,IEnumerable<MPCPortDescriptor>>();
                 var positions=new Dictionary<Guid,MOLBlockPosition>();
