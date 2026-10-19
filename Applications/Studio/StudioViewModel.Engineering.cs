@@ -1,5 +1,6 @@
 using System;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Globalization;
 using System.Linq;
 using System.Threading;
@@ -10,10 +11,73 @@ using CxVisual.Mechanism.Visual;
 
 namespace CxVisual.Studio
 {
-    public sealed class StudioPropertyItem
+    /// <summary>Only Studio editing state projected from an existing MPM descriptor; never an engineering source or a second Schema.</summary>
+    public sealed class StudioPropertyItem : INotifyPropertyChanged
     {
-        internal Guid OwnerId;internal int Revision;internal bool Reference,Visual;internal MPMValueKind Kind;
-        public string Member {get;internal set;}public string Schema {get;internal set;}public string Text {get;set;}public string Mode {get;set;}public string Source {get;internal set;}
+        internal Guid OwnerId;
+        internal int Revision;
+        internal bool Reference,Visual;
+        internal MPMValueKind Kind;
+        internal MPMPropertyDescriptor Descriptor;
+        private string _text, _mode;
+        public event PropertyChangedEventHandler PropertyChanged;
+        private void Notify(string member)
+        {
+            var handler=PropertyChanged;
+            if(handler!=null)handler(this,new PropertyChangedEventArgs(member));
+        }
+        public string Member {get;internal set;}
+        public string Schema {get;internal set;}
+        public string Source {get;internal set;}
+        public string Text
+        {
+            get{return _text;}
+            set{if(_text==value)return;_text=value;Notify("Text");Notify("BooleanValue");Notify("ValidationMessage");}
+        }
+        public string Mode
+        {
+            get{return _mode;}
+            set{if(_mode==value)return;_mode=value;Notify("Mode");Notify("IsBooleanConstant");Notify("IsNumericConstant");Notify("ValidationMessage");}
+        }
+        public bool IsBooleanConstant {get{return Kind==MPMValueKind.Boolean&&Mode=="常量";}}
+        public bool IsNumericConstant
+        {get{return Mode=="常量"&&(Kind==MPMValueKind.Number||Kind==MPMValueKind.Integer||Kind==MPMValueKind.Decimal);}}
+        public bool BooleanValue
+        {
+            get{return string.Equals(Text,"true",StringComparison.OrdinalIgnoreCase);}
+            set{Text=value?"true":"false";}
+        }
+        /// <summary>Advisory UI feedback. MEM/MPM remain the authoritative validator during transaction commit.</summary>
+        public string ValidationMessage
+        {
+            get
+            {
+                if(!IsNumericConstant)return "";
+                double number;
+                if(Kind==MPMValueKind.Integer)
+                {
+                    long integerValue;
+                    if(!long.TryParse(Text,NumberStyles.Integer,CultureInfo.InvariantCulture,out integerValue))
+                        return "请输入有效整数";
+                    number=integerValue;
+                }
+                else if(Kind==MPMValueKind.Decimal)
+                {
+                    decimal decimalValue;
+                    if(!decimal.TryParse(Text,NumberStyles.Number,CultureInfo.InvariantCulture,out decimalValue))
+                        return "请输入有效十进制数值";
+                    number=(double)decimalValue;
+                }
+                else if(!double.TryParse(Text,NumberStyles.Float,CultureInfo.InvariantCulture,out number)||
+                    double.IsNaN(number)||double.IsInfinity(number))
+                    return "请输入有效有限数值";
+                if(Descriptor!=null&&
+                    ((Descriptor.Minimum.HasValue&&number<Descriptor.Minimum.Value)||
+                     (Descriptor.Maximum.HasValue&&number>Descriptor.Maximum.Value)))
+                    return "数值超出工程Schema规定范围";
+                return "";
+            }
+        }
     }
     public sealed class StudioPortItem
     {internal MPCEndpoint Endpoint;public string Name {get;internal set;}}
@@ -131,7 +195,7 @@ namespace CxVisual.Studio
                 schemaLabel+=reference?" · 实例覆盖":" · 定义属性";
             }
             else if(visual) schemaLabel+=" · 几何属性";
-            return new StudioPropertyItem{OwnerId=owner,Revision=ProjectSession.Revision,Member=member,Kind=kind,Reference=reference,Visual=visual,Schema=schemaLabel,Text=binding==null?"":binding.Kind==MPMBindingKind.Literal?binding.Value.Canonical:binding.Kind==MPMBindingKind.Resource?(ProjectSession.Project.FindResource(binding.ResourceId.Value,true)?.Name??"资源缺失"):binding.SourceId,Mode=binding==null||binding.Kind==MPMBindingKind.Literal?"常量":binding.Kind==MPMBindingKind.Resource?"资源":binding.Kind==MPMBindingKind.Variable?"变量":"保留来源",Source=binding==null?"未绑定":binding.Kind==MPMBindingKind.Configuration?"配置来源":binding.Kind==MPMBindingKind.Member?"对象成员来源":binding.Kind==MPMBindingKind.Expression?"表达式来源":"当前来源："+(binding.Kind==MPMBindingKind.Literal?"常量":binding.Kind==MPMBindingKind.Resource?"资源":"变量")};}
+            return new StudioPropertyItem{OwnerId=owner,Revision=ProjectSession.Revision,Member=member,Kind=kind,Reference=reference,Visual=visual,Schema=schemaLabel,Descriptor=descriptor,Text=binding==null?"":binding.Kind==MPMBindingKind.Literal?binding.Value.Canonical:binding.Kind==MPMBindingKind.Resource?(ProjectSession.Project.FindResource(binding.ResourceId.Value,true)?.Name??"资源缺失"):binding.SourceId,Mode=binding==null||binding.Kind==MPMBindingKind.Literal?"常量":binding.Kind==MPMBindingKind.Resource?"资源":binding.Kind==MPMBindingKind.Variable?"变量":"保留来源",Source=binding==null?"未绑定":binding.Kind==MPMBindingKind.Configuration?"配置来源":binding.Kind==MPMBindingKind.Member?"对象成员来源":binding.Kind==MPMBindingKind.Expression?"表达式来源":"当前来源："+(binding.Kind==MPMBindingKind.Literal?"常量":binding.Kind==MPMBindingKind.Resource?"资源":"变量")};}
         public void SetSelection(System.Collections.Generic.IEnumerable<Guid> ids){if(IsRefreshing)return;var selected=ids.Distinct().ToArray();Select(selected.Length==0?(Guid?)null:selected[selected.Length-1]);_selection=selected;}
         private MEMNode CurrentOwner(){if(!_editor.CurrentResourceId.HasValue)throw new InvalidOperationException("请选择页面或资源");var root=ProjectSession.Find(_editor.CurrentResourceId.Value);return root is MEMPage?((MEMPage)root).RootContent:root;}
         private MEMNode SelectedDefinition(){return _selected.HasValue?ProjectSession.Find(_selected.Value)??SelectedResource as MEMNode:SelectedResource as MEMNode;}
@@ -140,7 +204,10 @@ namespace CxVisual.Studio
         {var node=_selected.HasValue?ProjectSession.Find(_selected.Value):SelectedResource as MEMNode;if(!(node is IMPMDefinition))throw new InvalidOperationException("请选择内容、组件或图元定义");var definition=(IMPMDefinition)node;ProjectSession.DefinePort(node,(direction==MPCPortDirection.Input?"输入 ":"输出 ")+(definition.Ports.Count+1),direction,"core.number",isPublic:node.Parent is MEMProject);}
         private void ApplyProperty(StudioPropertyItem row)
         {
-            if(row==null)return;MPMBinding binding;
+            if(row==null)return;
+            // 早期提示拒绝非法数字，最终范围/类型仍由原MEM编辑事务验证；失败绝不写工程历史。
+            if(!string.IsNullOrEmpty(row.ValidationMessage))throw new InvalidOperationException(row.ValidationMessage);
+            MPMBinding binding;
             if(row.Mode=="资源"){if(BindingResource==null)throw new InvalidOperationException("请先选择一个资源");binding=MPMBinding.Resource(BindingResource.Id);}
             else if(row.Mode=="变量")binding=MPMBinding.Variable(row.Text);
             else if(row.Mode=="常量")
