@@ -375,6 +375,24 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             var visiblePorts=GetVisiblePorts();
             if(WiringDefinition!=null)
             {
+                var positions=_layout.ToDictionary(b=>b.BlockId);
+                foreach(var group in WiringDefinition.Groups)
+                {
+                    var blocks=group.BlockIds.Select(id=>positions[id]).ToArray();
+                    double left=blocks.Min(b=>b.X)-12;
+                    double top=blocks.Min(b=>b.Y)-12;
+                    double right=blocks.Max(b=>b.X+b.Width)+12;
+                    double bottom=blocks.Max(b=>b.Y+b.Height)+12;
+                    dc.DrawRoundedRectangle(
+                        new SolidColorBrush(Color.FromArgb(16,80,118,210)),
+                        new Pen(Brushes.SlateBlue,1.2){DashStyle=DashStyles.Dash},
+                        new Rect(left,top,right-left,bottom-top),9,9);
+                    dc.DrawText(Text(group.Name,Brushes.SlateBlue),
+                        new Point(left+9,Math.Max(0,top-15)));
+                }
+            }
+            if(WiringDefinition!=null)
+            {
                 var sources=visiblePorts.Where(p=>p.Direction==MPCPortDirection.Output)
                     .ToDictionary(p=>new MOLBlockEndpoint(p.BlockId,p.MemberId),p=>p.Center);
                 var targets=visiblePorts.Where(p=>p.Direction==MPCPortDirection.Input)
@@ -466,8 +484,15 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                     if(WiringDefinition!=null)
                     {
                         ModifierKeys modifiers=Keyboard.Modifiers;
-                        SelectBlock(item.BlockId,
-                            (modifiers&ModifierKeys.Control)!=0||(modifiers&ModifierKeys.Shift)!=0,
+                        bool additive=(modifiers&(ModifierKeys.Control|ModifierKeys.Shift))!=0;
+                        if(!additive)
+                        {
+                            var group=WiringDefinition.Groups.FirstOrDefault(g=>
+                                g.BlockIds.Contains(item.BlockId));
+                            if(group!=null)SetSelection(group.BlockIds);
+                            else SelectBlock(item.BlockId);
+                        }
+                        else SelectBlock(item.BlockId,true,
                             (modifiers&ModifierKeys.Control)!=0);
                     }
                     var handler=BlockSelected;

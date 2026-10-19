@@ -108,6 +108,8 @@
                                 <Button Content="复制选区" Click="OnFlowCopy"/>
                                 <Button Content="粘贴选区" Click="OnFlowPaste"/>
                                 <Button Content="删除选中" Click="OnFlowDeleteSelection"/>
+                                <Button Content="组合选中" Click="OnFlowGroup"/>
+                                <Button Content="解除组合" Click="OnFlowUngroup"/>
                                 <Button Content="对齐左侧" Tag="Left" Click="OnFlowAlign"/>
                                 <Button Content="对齐顶部" Tag="Top" Click="OnFlowAlign"/>
                                 <Button Content="水平居中" Tag="HorizontalCenter" Click="OnFlowAlign"/>

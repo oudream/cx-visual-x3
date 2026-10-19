@@ -599,6 +599,46 @@ namespace CxVisual.Studio
             }
             catch(Exception ex){LogicInfo.Text="批量删除失败："+ex.Message;}
         }
+        private void OnFlowGroup(object sender,RoutedEventArgs args)
+        {
+            if(_logicRunning)return;
+            try
+            {
+                var page=_viewModel.ActivePage;
+                Guid[] ids=LogicHost.SelectedBlockIds.ToArray();
+                if(page==null||ids.Length<2)
+                    throw new InvalidOperationException("至少选择两个节点");
+                Guid group=Guid.Empty;
+                MOCFlowBuilder.Edit(_viewModel.ProjectSession,page.RootContent,
+                    b=>group=b.Group(ids,"组合 "+DateTime.Now.ToString("HHmmss")));
+                RefreshScene();
+                LogicHost.SetSelection(ids);
+                LogicInfo.Text="已创建画布编辑组合 "+group.ToString("N").Substring(0,8)+
+                    "；移动成员将一起移动，不改变运行逻辑。";
+            }
+            catch(Exception ex){LogicInfo.Text="组合失败："+ex.Message;}
+        }
+        private void OnFlowUngroup(object sender,RoutedEventArgs args)
+        {
+            if(_logicRunning)return;
+            try
+            {
+                var page=_viewModel.ActivePage;
+                var wiring=LogicHost.WiringDefinition;
+                var selected=new HashSet<Guid>(LogicHost.SelectedBlockIds);
+                if(page==null||wiring==null||selected.Count==0)
+                    throw new InvalidOperationException("请先选中组合成员");
+                Guid[] groups=wiring.Groups.Where(g=>
+                    g.BlockIds.Any(selected.Contains)).Select(g=>g.Id).ToArray();
+                if(groups.Length==0)throw new InvalidOperationException("选区没有组合");
+                MOCFlowBuilder.Edit(_viewModel.ProjectSession,page.RootContent,b=>{
+                    foreach(Guid id in groups)b.Ungroup(id);
+                });
+                RefreshScene();
+                LogicInfo.Text="已解除 "+groups.Length+" 个画布编辑组合；节点和连接保留。";
+            }
+            catch(Exception ex){LogicInfo.Text="解除组合失败："+ex.Message;}
+        }
         private void OnFlowAlign(object sender,RoutedEventArgs args)
         {
             if(_logicRunning)return;
