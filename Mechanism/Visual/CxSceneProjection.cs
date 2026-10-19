@@ -86,6 +86,13 @@ namespace CxVisual.Mechanism.Visual
                 MPMBinding binding;if(node.Visual!=null&&node.Visual.Bindings.TryGetValue(member,out binding))return Literal(binding,path,new HashSet<string>(StringComparer.Ordinal),target);return null;
             }
             private double Number(MEMNodeSnapshot node,string member,double fallback,Guid[] path){var value=Value(node,member,path,MPMValueKind.Number);return value!=null&&value.Kind==MPMValueKind.Number?value.AsNumber():fallback;}
+            private double Animated(MEMNodeSnapshot node,string member,double fallback,
+                Guid[] path,MRCVisualBehaviorDefinition behavior)
+            {
+                double value=Number(node,member,fallback,path);
+                return _runtimeEnabled?MVIVisualRuntimeEvaluator.EvaluateNumber(
+                    member,value,behavior,_elapsedMilliseconds,_runtimeSource):value;
+            }
             private bool Boolean(MEMNodeSnapshot node,string member,bool fallback,Guid[] path){var value=Value(node,member,path,MPMValueKind.Boolean);return value!=null&&value.Kind==MPMValueKind.Boolean?value.AsBoolean():fallback;}
             internal void Collect(MEMNodeSnapshot node,MRCTransform parent,Guid[] path,bool locked,MRIReferenceSnapshot first,MRCTransform firstParent,int depth=0)
             {
@@ -95,9 +102,18 @@ namespace CxVisual.Mechanism.Visual
                 {
                     // 显式隐藏是强约束；动态绑定不得把已隐藏的Group/Element重新投影。
                     if(!v.IsVisible||!Boolean(node,"visible",true,path))return;locked|=Boolean(node,"locked",v.IsLocked,path);
-                    x=Number(node,"x",v.X,path);y=Number(node,"y",v.Y,path);width=Number(node,"width",v.Width,path);height=Number(node,"height",v.Height,path);
+                    MRCVisualBehaviorDefinition behavior=_runtimeEnabled?
+                        MRCVisualAppearance.BehaviorFromAspects(node.Aspects):null;
+                    x=Animated(node,"x",v.X,path,behavior);
+                    y=Animated(node,"y",v.Y,path,behavior);
+                    width=Animated(node,"width",v.Width,path,behavior);
+                    height=Animated(node,"height",v.Height,path,behavior);
                     if(width<=0||height<=0)throw new InvalidOperationException("visual.invalid_effective_size");
-                    double angle=Number(node,"rotation",v.Rotation,path)*Math.PI/180,c=Math.Cos(angle),s=Math.Sin(angle),sx=Number(node,"scaleX",v.ScaleX,path),sy=Number(node,"scaleY",v.ScaleY,path),shear=Number(node,"shear",v.Shear,path);
+                    double angle=Animated(node,"rotation",v.Rotation,path,behavior)*Math.PI/180;
+                    double c=Math.Cos(angle),s=Math.Sin(angle);
+                    double sx=Animated(node,"scaleX",v.ScaleX,path,behavior),
+                        sy=Animated(node,"scaleY",v.ScaleY,path,behavior),
+                        shear=Animated(node,"shear",v.Shear,path,behavior);
                     if(node.Kind==MEMNodeKind.Group){sx*=width/v.Width;shear*=height/v.Height;sy*=height/v.Height;}
                     world=parent.Compose(new MRCTransform(c*sx,c*shear-s*sy,s*sx,s*shear+c*sy,x,y));
                     if(node.Kind==MEMNodeKind.Element)
@@ -116,8 +132,7 @@ namespace CxVisual.Mechanism.Visual
                         MRCVisualStyle style=MRCVisualAppearance.StyleFromAspects(node.Aspects);
                         if(_runtimeEnabled)
                             style=MVIVisualRuntimeEvaluator.EvaluateStyle(style,
-                                MRCVisualAppearance.BehaviorFromAspects(node.Aspects),
-                                _elapsedMilliseconds,_runtimeSource);
+                                behavior,_elapsedMilliseconds,_runtimeSource);
                         Guid? assetId=null;
                         string mediaType=null;
                         if(node.TypeId=="core.image"||node.TypeId=="core.svg")
