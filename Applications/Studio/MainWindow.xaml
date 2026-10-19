@@ -188,6 +188,20 @@
                         <TextBox x:Name="StrokeWidthInput" Width="50" Text="2" ToolTip="描边宽度"/>
                         <Button Content="应用填充" Click="OnApplyVisualStyle"/>
                     </WrapPanel>
+                    <TextBlock Text="Widget控件属性（六类WPF控件共用）" FontWeight="SemiBold" Margin="0,8,0,3"/>
+                    <WrapPanel>
+                        <TextBox x:Name="WidgetContentInput" Width="100" Text="启动设备" ToolTip="按钮或复选框内容"/>
+                        <TextBox x:Name="WidgetOptionsInput" Width="115" Text="运行|停止|维护" ToolTip="下拉框选项，以竖线分隔"/>
+                        <TextBox x:Name="WidgetTooltipInput" Width="95" Text="控件提示" ToolTip="悬停提示"/>
+                    </WrapPanel>
+                    <WrapPanel>
+                        <TextBlock Text="Min" VerticalAlignment="Center"/>
+                        <TextBox x:Name="WidgetMinInput" Width="48" Text="0"/>
+                        <TextBlock Text="Max" VerticalAlignment="Center"/>
+                        <TextBox x:Name="WidgetMaxInput" Width="48" Text="100"/>
+                        <CheckBox x:Name="WidgetEnabledInput" IsChecked="True" Content="启用" VerticalAlignment="Center"/>
+                        <Button Content="应用控件属性" Click="OnApplyWidgetSettings"/>
+                    </WrapPanel>
                     <TextBlock Text="数据绑定（直接引用已有MDS变量名）" FontWeight="SemiBold" Margin="0,8,0,3"/>
                     <WrapPanel>
                         <TextBox x:Name="VisualBindingPropertyInput" Width="68" Text="visible" ToolTip="visible/x/y/width/height/rotation/value"/>
