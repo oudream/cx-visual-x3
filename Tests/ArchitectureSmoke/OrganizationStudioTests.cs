@@ -309,7 +309,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Click(window,"撤销编排");
                 Check(MOLWiringCodec.Get(again.GetSnapshot().Find(active.RootContent.Id))
                     .Groups.Count==2,"Studio ungroup Undo failed");
-                Click(window,"删除选中");
+                Click(window,"删除逻辑选区");
                 Check(MOLWiringCodec.Get(again.GetSnapshot().Find(active.RootContent.Id))
                     .Blocks.Count==3,"Studio batch delete failed: count="+
                     MOLWiringCodec.Get(again.GetSnapshot().Find(active.RootContent.Id)).Blocks.Count+

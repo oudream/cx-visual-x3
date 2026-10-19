@@ -107,7 +107,7 @@
                                 <Button Content="全选节点" Click="OnFlowSelectAll"/>
                                 <Button Content="复制选区" Click="OnFlowCopy"/>
                                 <Button Content="粘贴选区" Click="OnFlowPaste"/>
-                                <Button Content="删除选中" Click="OnFlowDeleteSelection"/>
+                                <Button Content="删除逻辑选区" Click="OnFlowDeleteSelection"/>
                                 <Button Content="组合选中" Click="OnFlowGroup"/>
                                 <Button Content="解除组合" Click="OnFlowUngroup"/>
                                 <Button Content="对齐左侧" Tag="Left" Click="OnFlowAlign"/>
