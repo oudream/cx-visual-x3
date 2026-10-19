@@ -61,7 +61,8 @@ namespace CxVisual.Mechanism.Visual
                 var world=parent;var v=node.Visual;double width=0,height=0,x=0,y=0;
                 if(v!=null)
                 {
-                    if(!Boolean(node,"visible",v.IsVisible,path))return;locked|=Boolean(node,"locked",v.IsLocked,path);
+                    // 显式隐藏是强约束；动态绑定不得把已隐藏的Group/Element重新投影。
+                    if(!v.IsVisible||!Boolean(node,"visible",true,path))return;locked|=Boolean(node,"locked",v.IsLocked,path);
                     x=Number(node,"x",v.X,path);y=Number(node,"y",v.Y,path);width=Number(node,"width",v.Width,path);height=Number(node,"height",v.Height,path);
                     if(width<=0||height<=0)throw new InvalidOperationException("visual.invalid_effective_size");
                     double angle=Number(node,"rotation",v.Rotation,path)*Math.PI/180,c=Math.Cos(angle),s=Math.Sin(angle),sx=Number(node,"scaleX",v.ScaleX,path),sy=Number(node,"scaleY",v.ScaleY,path),shear=Number(node,"shear",v.Shear,path);
