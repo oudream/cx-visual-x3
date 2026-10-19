@@ -339,6 +339,36 @@ namespace CxVisual.Tests.ArchitectureSmoke
                             catch(InvalidDataException){rejectedExternal=true;}
                         }
                         Check(rejectedExternal,"SVG external image must be rejected");
+                        // B属性与资产安全反证：只渲染白名单内属性，不能静默吞掉危险或不支持配置。
+                        foreach(string invalidSvg in new[]{
+                            "<svg xmlns=\"http://www.w3.org/2000/svg\"><rect x=\"1\" y=\"1\" width=\"5\" height=\"5\" filter=\"none\"/></svg>",
+                            "<svg xmlns=\"http://www.w3.org/2000/svg\"><rect x=\"1\" y=\"1\" width=\"-5\" height=\"5\"/></svg>",
+                            "<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\"><rect x=\"1\" y=\"1\" width=\"5\" height=\"5\" xlink:href=\"file:///secret\"/></svg>",
+                            "<svg xmlns=\"http://www.w3.org/2000/svg\"><g><circle cx=\"1\" cy=\"1\" r=\"-1\"/></g></svg>"
+                        })
+                        {
+                            bool rejected=false;
+                            using(var buffer=new MemoryStream(System.Text.Encoding.UTF8.GetBytes(invalidSvg)))
+                            {
+                                try{MPWVisualAssetRenderer.DecodeSvg(buffer);}
+                                catch(InvalidDataException){rejected=true;}
+                            }
+                            Check(rejected,"unsafe or unsupported SVG attribute/geometry was silently accepted");
+                        }
+                        using(var supported=new MemoryStream(System.Text.Encoding.UTF8.GetBytes(
+                            "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 40\">"+
+                            "<g stroke=\"#00ff00\" stroke-width=\"4\">"+
+                            "<rect x=\"10\" y=\"5\" width=\"40\" height=\"20\" rx=\"6\" ry=\"4\"/>"+
+                            "</g></svg>")))
+                        {
+                            DrawingImage image=MPWVisualAssetRenderer.DecodeSvg(supported);
+                            Check(DeepGeometries(image.Drawing).Any(d=>d.Pen!=null&&
+                                Math.Abs(d.Pen.Thickness-4)<1e-6&&
+                                d.Geometry is RectangleGeometry&&
+                                ((RectangleGeometry)d.Geometry).RadiusX==6),
+                                "SVG inherited stroke or supported rounded corners lost in renderer");
+                        }
+
                     }
                     finally
                     {
