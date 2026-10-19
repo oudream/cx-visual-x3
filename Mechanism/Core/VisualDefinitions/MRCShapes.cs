@@ -105,7 +105,6 @@ namespace CxVisual.Mechanism.Core
             FGERect2D bounds=shape.Bounds;
             // 布局包围盒必须可被原有组编辑系统接受；路径保留独立的真实零宽几何。
             var item=new MRCShapeElement(id,name,x,y,Math.Max(1,bounds.Right-Math.Min(0,bounds.Left)),Math.Max(1,bounds.Bottom-Math.Min(0,bounds.Top)));
-            var state=MPMDefinitionState.For(item,true);state.AspectItems=new List<MPMAspect>{shape.ToAspect()};
             return item;
         }
     }
@@ -113,7 +112,11 @@ namespace CxVisual.Mechanism.Core
     public sealed partial class MTCEditSession
     {
         public MRCShapeElement AddShape(MEMNode parent,string name,MRCShapeDefinition shape,double x=0,double y=0)
-        {return (MRCShapeElement)Add(parent,MRCShapeElement.Create(Guid.NewGuid(),name,shape,x,y));}
+        {
+            var item=(MRCShapeElement)Add(parent,MRCShapeElement.Create(Guid.NewGuid(),name,shape,x,y));
+            SetAspect(item,shape.ToAspect());
+            return item;
+        }
         public void SetShape(MRCShapeElement element,MRCShapeDefinition shape)
         {if(shape==null)throw new ArgumentNullException("shape");SetAspect(element,shape.ToAspect());}
     }
