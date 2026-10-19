@@ -881,9 +881,9 @@ namespace CxVisual.Mechanism.Orchestration
                 }
                 bool allowSkippedJoin=incomingControl.Length>1;
                 var inputs=new List<MRKExecutionInput>();
-                foreach(var link in entering.Where(x=>x.Kind==MPCPortKind.Data))
+                foreach(var link in entering.Where(x=>x.Kind==MPCPortKind.Data||x.Kind==MPCPortKind.Stream))
                 {
-                    if(entering.Count(x=>x.Kind==MPCPortKind.Data &&
+                    if(entering.Count(x=>(x.Kind==MPCPortKind.Data||x.Kind==MPCPortKind.Stream) &&
                         x.Target.PortMemberId==link.Target.PortMemberId)>1)
                         throw new InvalidOperationException("moc.wiring.data_fanin_requires_aggregator:"+
                             link.Target.BlockId+":"+link.Target.PortMemberId);
@@ -902,7 +902,7 @@ namespace CxVisual.Mechanism.Orchestration
                         sourceKind=MRKInputSource.StepOutput;
                         sourceName+="."+from.MemberId;
                     }
-                    else if(sourcePorts.Count(x=>x.Kind==MPCPortKind.Data&&
+                    else if(sourcePorts.Count(x=>(x.Kind==MPCPortKind.Data||x.Kind==MPCPortKind.Stream)&&
                         x.Direction!=MPCPortDirection.Input)==1)
                         sourceKind=MRKInputSource.StepResult;
                     else
@@ -1026,6 +1026,7 @@ namespace CxVisual.Mechanism.Orchestration
                 case "double":case "System.Double":return typeof(double);
                 case "string":case "System.String":return typeof(string);
                 case "byte[]":case "System.Byte[]":return typeof(byte[]);
+                case "stream.bytes":return typeof(CxVisual.Mechanism.Data.RuntimeData.MDSBoundedByteStream);
                 // 自定义组合数据契约由能力Provider和运行时适配器校验；首批不反射加载陌生类型。
                 default:return typeof(object);
             }
