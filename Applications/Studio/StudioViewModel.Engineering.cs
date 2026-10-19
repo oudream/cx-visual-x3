@@ -13,7 +13,7 @@ namespace CxVisual.Studio
     public sealed class StudioPropertyItem
     {
         internal Guid OwnerId;internal int Revision;internal bool Reference,Visual;internal MPMValueKind Kind;
-        public string Member {get;internal set;}public string Text {get;set;}public string Mode {get;set;}public string Source {get;internal set;}
+        public string Member {get;internal set;}public string Schema {get;internal set;}public string Text {get;set;}public string Mode {get;set;}public string Source {get;internal set;}
     }
     public sealed class StudioPortItem
     {internal MPCEndpoint Endpoint;public string Name {get;internal set;}}
@@ -99,7 +99,7 @@ namespace CxVisual.Studio
                 {
                     var reference=ProjectSession.FindReference(_selected.Value);var node=reference==null?ProjectSession.Find(_selected.Value):ProjectSession.Find(reference.TargetId);var definition=node as IMPMDefinition;
                     if(definition!=null)foreach(var property in definition.Properties.Where(p=>reference==null||p.Descriptor.IsPublic))
-                    {var binding=reference==null?property.Binding:ProjectSession.ResolveParameter(reference,property.MemberId);Properties.Add(Row(_selected.Value,property.MemberId,property.Descriptor.ValueKind,binding,reference!=null,false));}
+                    {var binding=reference==null?property.Binding:ProjectSession.ResolveParameter(reference,property.MemberId);Properties.Add(Row(_selected.Value,property.MemberId,property.Descriptor.ValueKind,binding,reference!=null,false,property.Descriptor));}
                     var visual=reference==null?node as MRCVisualItem:null;
                     if(visual!=null){foreach(var pair in new[]{Tuple.Create("x",visual.X),Tuple.Create("y",visual.Y),Tuple.Create("width",visual.Width),Tuple.Create("height",visual.Height),Tuple.Create("rotation",visual.Rotation)})Properties.Add(Row(visual.Id,pair.Item1,MPMValueKind.Number,MPMBinding.Literal(MPMValue.Number(pair.Item2)),false,true));}
                 }
@@ -119,8 +119,19 @@ namespace CxVisual.Studio
             }
             finally{_refreshing=false;}
         }
-        private StudioPropertyItem Row(Guid owner,string member,MPMValueKind kind,MPMBinding binding,bool reference,bool visual)
-        {return new StudioPropertyItem{OwnerId=owner,Revision=ProjectSession.Revision,Member=member,Kind=kind,Reference=reference,Visual=visual,Text=binding==null?"":binding.Kind==MPMBindingKind.Literal?binding.Value.Canonical:binding.Kind==MPMBindingKind.Resource?(ProjectSession.Project.FindResource(binding.ResourceId.Value,true)?.Name??"资源缺失"):binding.SourceId,Mode=binding==null||binding.Kind==MPMBindingKind.Literal?"常量":binding.Kind==MPMBindingKind.Resource?"资源":binding.Kind==MPMBindingKind.Variable?"变量":"保留来源",Source=binding==null?"未绑定":binding.Kind==MPMBindingKind.Configuration?"配置来源":binding.Kind==MPMBindingKind.Member?"对象成员来源":binding.Kind==MPMBindingKind.Expression?"表达式来源":"当前来源："+(binding.Kind==MPMBindingKind.Literal?"常量":binding.Kind==MPMBindingKind.Resource?"资源":"变量")};}
+        private StudioPropertyItem Row(Guid owner,string member,MPMValueKind kind,MPMBinding binding,bool reference,bool visual,MPMPropertyDescriptor descriptor=null)
+        {
+            string schemaLabel="类型："+kind.ToString();
+            if(descriptor!=null)
+            {
+                schemaLabel+=descriptor.Required?" · 必填":" · 可选";
+                if(descriptor.Minimum.HasValue||descriptor.Maximum.HasValue)
+                    schemaLabel+=" · 范围："+(descriptor.Minimum.HasValue?descriptor.Minimum.Value.ToString(CultureInfo.InvariantCulture):"无下限")
+                        +" ～ "+(descriptor.Maximum.HasValue?descriptor.Maximum.Value.ToString(CultureInfo.InvariantCulture):"无上限");
+                schemaLabel+=reference?" · 实例覆盖":" · 定义属性";
+            }
+            else if(visual) schemaLabel+=" · 几何属性";
+            return new StudioPropertyItem{OwnerId=owner,Revision=ProjectSession.Revision,Member=member,Kind=kind,Reference=reference,Visual=visual,Schema=schemaLabel,Text=binding==null?"":binding.Kind==MPMBindingKind.Literal?binding.Value.Canonical:binding.Kind==MPMBindingKind.Resource?(ProjectSession.Project.FindResource(binding.ResourceId.Value,true)?.Name??"资源缺失"):binding.SourceId,Mode=binding==null||binding.Kind==MPMBindingKind.Literal?"常量":binding.Kind==MPMBindingKind.Resource?"资源":binding.Kind==MPMBindingKind.Variable?"变量":"保留来源",Source=binding==null?"未绑定":binding.Kind==MPMBindingKind.Configuration?"配置来源":binding.Kind==MPMBindingKind.Member?"对象成员来源":binding.Kind==MPMBindingKind.Expression?"表达式来源":"当前来源："+(binding.Kind==MPMBindingKind.Literal?"常量":binding.Kind==MPMBindingKind.Resource?"资源":"变量")};}
         public void SetSelection(System.Collections.Generic.IEnumerable<Guid> ids){if(IsRefreshing)return;var selected=ids.Distinct().ToArray();Select(selected.Length==0?(Guid?)null:selected[selected.Length-1]);_selection=selected;}
         private MEMNode CurrentOwner(){if(!_editor.CurrentResourceId.HasValue)throw new InvalidOperationException("请选择页面或资源");var root=ProjectSession.Find(_editor.CurrentResourceId.Value);return root is MEMPage?((MEMPage)root).RootContent:root;}
         private MEMNode SelectedDefinition(){return _selected.HasValue?ProjectSession.Find(_selected.Value)??SelectedResource as MEMNode:SelectedResource as MEMNode;}
