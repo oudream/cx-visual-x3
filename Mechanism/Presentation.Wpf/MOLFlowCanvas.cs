@@ -57,6 +57,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         {get{return (MOLWiringDefinition)GetValue(WiringDefinitionProperty);}
          set{SetValue(WiringDefinitionProperty,value);}}
         private Guid? _sourceForLink;
+        public void ResetLinkSelection(){_sourceForLink=null;}
         public bool IsConnectMode {get;set;}
         public event EventHandler<MOLLinkRequestedEventArgs> LinkRequested;
 

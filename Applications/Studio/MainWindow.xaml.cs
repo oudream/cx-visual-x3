@@ -24,13 +24,29 @@ namespace CxVisual.Studio
         private readonly MOLRuntimeOverlay _logicOverlay=new MOLRuntimeOverlay();
         private MRKFlowHandle _logicFlow;
         private bool _logicRunning;
+        private Guid? _logicSelected;
+        private Guid? _pendingWireSource;
+        private Guid? _pendingWireTarget;
+        private readonly SimulationResolver _simulation=new SimulationResolver();
+        private sealed class FlowPortChoice
+        {
+            public string SourcePort{get;set;}
+            public string TargetPort{get;set;}
+            public MPCPortKind Kind{get;set;}
+            public string Label{get;set;}
+        }
+        private sealed class FlowExistingLink
+        {
+            public Guid LinkId{get;set;}
+            public string Label{get;set;}
+        }
         public MainWindow()
         {
             InitializeComponent();
             _viewModel = new StudioViewModel();
             _viewModel.ConfirmReplace = ConfirmProjectReplacement;
             DataContext = _viewModel;
-            LogicHost.BlockSelected += (sender, args) => LogicInfo.Text = "已选逻辑块: " + args.BlockId.ToString("N");
+            LogicHost.BlockSelected += (sender, args) => { _logicSelected=args.BlockId; LogicInfo.Text = "已选逻辑块: " + args.BlockId.ToString("N"); };
             LogicHost.LinkRequested += OnWiringLinkRequested;
             SceneHost.NodeActivated += OnActivated;
             SceneHost.MoveRequested += OnMove;
@@ -225,6 +241,17 @@ namespace CxVisual.Studio
             LogicHost.Definition=node==null||LogicHost.WiringDefinition!=null?null:
                 MOLLogicCodec.Get(node);
             LogicHost.RuntimeStates=null;
+            FlowExistingLinks.ItemsSource=LogicHost.WiringDefinition==null?null:
+                LogicHost.WiringDefinition.Links.Select(l=>new FlowExistingLink{
+                    LinkId=l.Id,
+                    Label=l.Kind+": "+l.Source.BlockId.ToString("N").Substring(0,6)+"."+
+                        l.Source.PortMemberId+" → "+l.Target.BlockId.ToString("N").Substring(0,6)+"."+
+                        l.Target.PortMemberId}).ToList();
+            FlowPortPairs.ItemsSource=null;
+            _pendingWireSource=null;
+            _pendingWireTarget=null;
+            _logicSelected=null;
+            LogicHost.ResetLinkSelection();
         }
         private void OnCreateLogicDemo(object sender,RoutedEventArgs args)
         {
@@ -282,53 +309,190 @@ namespace CxVisual.Studio
                 var page=_viewModel.ActivePage;
                 if(page==null)throw new InvalidOperationException("请先选择页面");
                 string capability=FlowActionCapability.Text==null?"":FlowActionCapability.Text.Trim();
-                MOCFlowBuilder.Edit(_viewModel.ProjectSession,page.RootContent,b=>{
-                    Guid previous=b.LastBlockId;
-                    Guid next=b.Step(capability);
-                    if(previous!=Guid.Empty)b.Connect(previous,"Done",next,"Start");
-                });
+                var found=CurrentCatalog().Find(capability);
+                if(found==null)throw new InvalidOperationException("能力尚未注册，请先在工具箱搜索并选择。");
+                if(!found.RuntimeAvailable)
+                    throw new InvalidOperationException("当前Provider未提供此能力的执行实现。");
+                MOCFlowBuilder.Edit(_viewModel.ProjectSession,page.RootContent,
+                    b=>b.Step(found.Definition));
                 RefreshScene();
-                LogicInfo.Text="通过统一工程Session添加能力并提交，撤销/重做、保存/重开可用。";
+                LogicInfo.Text="已插入未连线的类型化能力节点；请选取两个节点并选择端口连接。";
             }
             catch(Exception ex){LogicInfo.Text="添加能力失败: "+ex.Message;}
+        }
+        private MOCCapabilityCatalog CurrentCatalog()
+        {
+            return new MOCCapabilityCatalog(new IMOCCapabilityProvider[]{_simulation},_simulation);
+        }
+        private void OnSearchCapabilities(object sender,RoutedEventArgs args)
+        {
+            try
+            {
+                var entries=CurrentCatalog().Search(FlowCapabilitySearch.Text);
+                FlowCapabilityResults.ItemsSource=entries;
+                LogicInfo.Text="找到 "+entries.Count+" 项已注册能力（灰度及授权状态以实际Provider为准）。";
+            }
+            catch(Exception ex){LogicInfo.Text="搜索失败: "+ex.Message;}
+        }
+        private void OnCapabilitySelected(object sender,System.Windows.Controls.SelectionChangedEventArgs args)
+        {
+            var item=FlowCapabilityResults.SelectedItem as MOCCapabilityCatalogItem;
+            if(item!=null)
+            {
+                FlowActionCapability.Text=item.Definition.Id;
+                LogicInfo.Text=item.Definition.Name+" · "+item.Definition.Category+
+                    " · 契约V"+item.Definition.Version+
+                    (item.RuntimeAvailable?"（已提供运行实现）":"（暂无运行实现）");
+            }
         }
         private void OnToggleWiring(object sender,RoutedEventArgs args)
         {
             LogicHost.IsConnectMode=!LogicHost.IsConnectMode;
+            LogicHost.ResetLinkSelection();
             FlowWireMode.Content=LogicHost.IsConnectMode?"结束连线":"开始连线";
-            LogicInfo.Text=LogicHost.IsConnectMode?"请依次点击来源和目标逻辑块，创建Done→Start控制线。":"已退出连线模式。";
+            LogicInfo.Text=LogicHost.IsConnectMode?
+                "依次点击来源和目标块，随后在端口列表选择合法端口对并确认。":"已退出连线模式。";
         }
         private void OnWiringLinkRequested(object sender,MOLLinkRequestedEventArgs args)
         {
             if(_logicRunning)return;
             try
             {
+                var wiring=LogicHost.WiringDefinition;
+                if(wiring==null)throw new InvalidOperationException("当前Content不是V2自由编排");
+                var result=new List<FlowPortChoice>();
+                foreach(var output in wiring.Ports[args.SourceBlockId])
+                foreach(var input in wiring.Ports[args.TargetBlockId])
+                {
+                    if(output.Direction==MPCPortDirection.Input||
+                        input.Direction==MPCPortDirection.Output||
+                        output.Kind!=input.Kind||output.TypeId!=input.TypeId||
+                        !object.Equals(output.Contract,input.Contract)||
+                        (output.Kind!=MPCPortKind.Control&&output.Kind!=MPCPortKind.Data))
+                        continue;
+                    result.Add(new FlowPortChoice{
+                        SourcePort=output.MemberId,TargetPort=input.MemberId,Kind=output.Kind,
+                        Label=output.Kind+": "+output.MemberId+" → "+input.MemberId+
+                            " ("+output.TypeId+")"});
+                }
+                _pendingWireSource=args.SourceBlockId;
+                _pendingWireTarget=args.TargetBlockId;
+                FlowPortPairs.ItemsSource=result;
+                if(result.Count!=0)FlowPortPairs.SelectedIndex=0;
+                LogicInfo.Text=result.Count==0?
+                    "没有类型、方向和种类都兼容的端口对；请检查端口契约。":
+                    "找到 "+result.Count+" 组兼容端口，请选择并点击确认端口连线。";
+            }
+            catch(Exception ex){LogicInfo.Text="端口匹配失败: "+ex.Message;}
+        }
+        private void OnConfirmWiringLink(object sender,RoutedEventArgs args)
+        {
+            if(_logicRunning)return;
+            try
+            {
                 var page=_viewModel.ActivePage;
-                if(page==null)throw new InvalidOperationException("请先选择页面");
+                var choice=FlowPortPairs.SelectedItem as FlowPortChoice;
+                if(page==null||!_pendingWireSource.HasValue||!_pendingWireTarget.HasValue||
+                    choice==null)throw new InvalidOperationException("请先在画布中选择起止块和合法端口对。");
+                var from=_pendingWireSource.Value;var to=_pendingWireTarget.Value;
                 MOCFlowBuilder.Edit(_viewModel.ProjectSession,page.RootContent,b=>
-                    b.Connect(args.SourceBlockId,"Done",args.TargetBlockId,"Start"));
+                    b.Connect(from,choice.SourcePort,to,choice.TargetPort,choice.Kind));
                 RefreshScene();
-                LogicInfo.Text="连接已通过Core合法性验证并提交。";
+                LogicInfo.Text="类型化连接已通过工程事务提交。";
             }
             catch(Exception ex){LogicInfo.Text="连接被拒绝: "+ex.Message;}
         }
-
-        private sealed class SimulationResolver : IMRKCapabilityResolver
+        private void OnDeleteWiringLink(object sender,RoutedEventArgs args)
         {
+            if(_logicRunning)return;
+            try
+            {
+                var link=FlowExistingLinks.SelectedItem as FlowExistingLink;
+                var page=_viewModel.ActivePage;
+                if(link==null||page==null)throw new InvalidOperationException("请选择要删除的连接");
+                MOCFlowBuilder.Edit(_viewModel.ProjectSession,page.RootContent,b=>b.Disconnect(link.LinkId));
+                RefreshScene();LogicInfo.Text="已删除连接；不完整流程仍可作为草稿保存。";
+            }
+            catch(Exception ex){LogicInfo.Text="删除连接失败: "+ex.Message;}
+        }
+        private void OnDeleteWiringBlock(object sender,RoutedEventArgs args)
+        {
+            if(_logicRunning)return;
+            try
+            {
+                var page=_viewModel.ActivePage;
+                if(page==null||!_logicSelected.HasValue)
+                    throw new InvalidOperationException("请先在画布中选中节点");
+                Guid id=_logicSelected.Value;
+                MOCFlowBuilder.Edit(_viewModel.ProjectSession,page.RootContent,b=>b.Remove(id));
+                RefreshScene();LogicInfo.Text="已删除节点及相邻连接。";
+            }
+            catch(Exception ex){LogicInfo.Text="删除节点失败: "+ex.Message;}
+        }
+        private void OnUndoWiring(object sender,RoutedEventArgs args)
+        {
+            if(_logicRunning)return;
+            try{_viewModel.ProjectSession.Undo().RequireValue();RefreshScene();
+                LogicInfo.Text="已撤销最近一次工程修改。";}
+            catch(Exception ex){LogicInfo.Text="撤销失败: "+ex.Message;}
+        }
+        private void OnRedoWiring(object sender,RoutedEventArgs args)
+        {
+            if(_logicRunning)return;
+            try{_viewModel.ProjectSession.Redo().RequireValue();RefreshScene();
+                LogicInfo.Text="已重做最近一次工程修改。";}
+            catch(Exception ex){LogicInfo.Text="重做失败: "+ex.Message;}
+        }
+        private static string FormatBuildDiagnostics(MOCBuildResult build)
+        {
+            if(build.Succeeded)return "编译验证通过：Content与能力契约可生成MRK执行计划。";
+            return string.Join(Environment.NewLine,build.Diagnostics.Take(8).Select(x=>
+                x.Code+(x.BlockId.HasValue?" / Block "+x.BlockId.Value.ToString("N").Substring(0,8):"")+
+                (x.LinkId.HasValue?" / Link "+x.LinkId.Value.ToString("N").Substring(0,8):"")+
+                "： "+x.Message));
+        }
+        private void OnValidateWiring(object sender,RoutedEventArgs args)
+        {
+            if(_logicRunning)return;
+            try
+            {
+                var page=_viewModel.ActivePage;
+                if(page==null)throw new InvalidOperationException("请先选择页面");
+                var result=new MOCBuildService().Build(_viewModel.ProjectSession.GetSnapshot(),
+                    page.RootContent.Id,_simulation);
+                LogicInfo.Text=FormatBuildDiagnostics(result);
+                LogicHost.RuntimeStates=result.Diagnostics.Where(x=>x.BlockId.HasValue)
+                    .GroupBy(x=>x.BlockId.Value).ToDictionary(x=>x.Key,x=>"Failed");
+            }
+            catch(Exception ex){LogicInfo.Text="校验失败: "+ex.Message;}
+        }
+
+        private sealed class SimulationResolver : IMRKCapabilityResolver,IMOCCapabilityProvider
+        {
+            private readonly MOCCapabilityDescriptor[] _definitions={
+                new MOCCapabilityDescriptor("Acquire","采图","X-Ray",
+                    new[]{new MPCPortDescriptor("Image",MPCPortDirection.Output,"string",MPCPortKind.Data)}),
+                new MOCCapabilityDescriptor("AI","AI检测","Vision",
+                    new[]{new MPCPortDescriptor("Image",MPCPortDirection.Input,"string",MPCPortKind.Data)}),
+                new MOCCapabilityDescriptor("CV","传统检测","Vision",
+                    new[]{new MPCPortDescriptor("Image",MPCPortDirection.Input,"string",MPCPortKind.Data)}),
+                new MOCCapabilityDescriptor("OutputOK","合格放行","Inspection"),
+                new MOCCapabilityDescriptor("OutputNG","不合格剔除","Inspection")
+            };
+            public IEnumerable<MOCCapabilityDescriptor> DescribeCapabilities()
+            {return _definitions;}
             public bool TryResolve(string id,out MRKResolvedCapability capability)
             {
                 capability=null;
-                switch(id)
+                if(!_definitions.Any(x=>x.Id==id))return false;
+                var input=(id=="AI"||id=="CV")?
+                    new[]{new MRKCapabilityInput("Image",typeof(string),false)}:null;
+                capability=new MRKResolvedCapability(async (ctx,token) =>
                 {
-                    case "Acquire": case "AI": case "CV": case "OutputOK": case "OutputNG":
-                        capability=new MRKResolvedCapability(async (ctx,token) =>
-                        {
-                            await Task.Delay(id=="AI"?80:20,token).ConfigureAwait(false);
-                            return (object)id;
-                        });
-                        return true;
-                    default:return false;
-                }
+                    await Task.Delay(id=="AI"?80:20,token).ConfigureAwait(false);
+                    return (object)id;
+                },new MRKExecutionOutput(typeof(string)),inputs:input);
+                return true;
             }
         }
         private async void OnRunLogicDemo(object sender,RoutedEventArgs args)
@@ -340,8 +504,16 @@ namespace CxVisual.Studio
             {
                 MEMPage page=_viewModel.ActivePage;
                 if(page==null)throw new InvalidOperationException("请先选择页面");
-                var compiled=new MOCEngineeringCompiler().Compile(
-                    _viewModel.ProjectSession.GetSnapshot(),page.RootContent.Id,new SimulationResolver());
+                var checkedBuild=new MOCBuildService().Build(
+                    _viewModel.ProjectSession.GetSnapshot(),page.RootContent.Id,_simulation);
+                if(!checkedBuild.Succeeded)
+                {
+                    LogicInfo.Text=FormatBuildDiagnostics(checkedBuild);
+                    LogicHost.RuntimeStates=checkedBuild.Diagnostics.Where(x=>x.BlockId.HasValue)
+                        .GroupBy(x=>x.BlockId.Value).ToDictionary(x=>x.Key,x=>"Failed");
+                    return;
+                }
+                var compiled=checkedBuild.Plan;
                 _logicRunning=true;
                 _logicOverlay.Clear();
                 LogicHost.RuntimeStates=_logicOverlay.Snapshot();

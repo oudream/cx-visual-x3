@@ -82,10 +82,23 @@
                             <WrapPanel Margin="10,8">
                                 <Button Content="创建 X-Ray 逻辑示例" Click="OnCreateLogicDemo"/>
                                 <Button Content="创建自由连接示例" Click="OnCreateWiringDemo"/>
-                                <TextBox x:Name="FlowActionCapability" Width="115" Text="AI" Margin="5,0,2,0"/>
+                                <TextBox x:Name="FlowCapabilitySearch" Width="100" Text="Vision" Margin="5,0,2,0"/>
+                                <Button Content="搜索能力" Click="OnSearchCapabilities"/>
+                                <ComboBox x:Name="FlowCapabilityResults" Width="145" DisplayMemberPath="Definition.Name" SelectionChanged="OnCapabilitySelected"/>
+                                <TextBox x:Name="FlowActionCapability" Width="100" Text="AI" Margin="5,0,2,0"/>
                                 <Button Content="添加能力" Click="OnAddWiringAction"/>
                                 <Button x:Name="FlowWireMode" Content="开始连线" Click="OnToggleWiring"/>
+                                <Button Content="验证工程编排" Click="OnValidateWiring"/>
                                 <Button Content="仿真执行并追踪" Click="OnRunLogicDemo"/>
+                            </WrapPanel>
+                            <WrapPanel Margin="10,0,10,8">
+                                <ComboBox x:Name="FlowPortPairs" Width="260" DisplayMemberPath="Label"/>
+                                <Button Content="确认端口连线" Click="OnConfirmWiringLink"/>
+                                <ComboBox x:Name="FlowExistingLinks" Width="220" DisplayMemberPath="Label"/>
+                                <Button Content="删除连接" Click="OnDeleteWiringLink"/>
+                                <Button Content="删除节点" Click="OnDeleteWiringBlock"/>
+                                <Button Content="撤销编排" Click="OnUndoWiring"/>
+                                <Button Content="重做编排" Click="OnRedoWiring"/>
                             </WrapPanel>
                             <TextBlock x:Name="LogicInfo" Margin="12,0,12,10"
                                 Text="使用 Content Logic Aspect 保存编排；从运行轨迹点击定位逻辑块。此处为 CPU 仿真，不连接生产设备。"

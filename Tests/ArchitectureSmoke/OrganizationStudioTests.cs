@@ -75,6 +75,43 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     .OfType<MRCShapeElement>().Count()==9,
                     "Studio nine shapes lost after real Save/Open");
                 Check(((ComboBox)window.FindName("EngineeringPages")).Items.Count==2&&((ListBox)window.FindName("EngineeringResources")).Items.Count==3,"real WPF collections failed to refresh after reopen");
+                // G04 工程师界面：目录搜索、自由插入草稿、撤销重做、选择端口并编译。
+                Click(window,"创建自由连接示例");
+                var active=(MEMPage)Get(vm,"ActivePage");
+                var beforeWiring=MOLWiringCodec.Get(reopened.GetSnapshot().Find(active.RootContent.Id));
+                Check(beforeWiring!=null&&beforeWiring.Blocks.Count==2,
+                    "Studio V2 wiring demo not persisted in current Content");
+                Click(window,"搜索能力");
+                var searchResults=(ComboBox)window.FindName("FlowCapabilityResults");
+                Check(searchResults.Items.Count>=2,"capability catalog search not populated");
+                Click(window,"添加能力");
+                var draft=MOLWiringCodec.Get(reopened.GetSnapshot().Find(active.RootContent.Id));
+                Check(draft.Blocks.Count==3&&draft.Links.Count==1,
+                    "free Step insertion unexpectedly forced a control link");
+                Click(window,"验证工程编排");
+                Check(((TextBlock)window.FindName("LogicInfo")).Text.Contains("MOC_WIRING_INVALID"),
+                    "Studio did not show incomplete draft error");
+                Click(window,"撤销编排");
+                Check(MOLWiringCodec.Get(reopened.GetSnapshot().Find(active.RootContent.Id)).Blocks.Count==2,
+                    "Studio wiring Undo failed");
+                Click(window,"重做编排");
+                var afterRedo=MOLWiringCodec.Get(reopened.GetSnapshot().Find(active.RootContent.Id));
+                Check(afterRedo.Blocks.Count==3,"Studio wiring Redo failed");
+                var selectedIds=afterRedo.Blocks.Select(x=>x.Id).ToArray();
+                var evType=assembly.GetType("CxVisual.Studio.MainWindow");
+                var onLink=evType.GetMethod("OnWiringLinkRequested",
+                    BindingFlags.NonPublic|BindingFlags.Instance);
+                onLink.Invoke(window,new object[]{null,
+                    new CxVisual.Mechanism.Presentation.Wpf.MOLLinkRequestedEventArgs(
+                        selectedIds[1],selectedIds[2])});
+                var choiceBox=(ComboBox)window.FindName("FlowPortPairs");
+                Check(choiceBox.Items.Count>0,"compatible Port pairs not shown");
+                Click(window,"确认端口连线");
+                var complete=MOLWiringCodec.Get(reopened.GetSnapshot().Find(active.RootContent.Id));
+                Check(complete.Links.Count==2,"UI chosen typed Port link was not committed");
+                Click(window,"验证工程编排");
+                Check(((TextBlock)window.FindName("LogicInfo")).Text.Contains("编译验证通过"),
+                    "Studio did not validate the completed edited flow");
                 Console.WriteLine("PASS H06 Studio real WPF automation: add/switch page, resource two instances, bound parameter edit, shared Undo/Redo, definition navigation, save/reopen");
             }
             finally{if(window!=null)window.Close();if(app!=null)app.Shutdown();if(File.Exists(path))File.Delete(path);if(File.Exists(path+".cx-lock"))File.Delete(path+".cx-lock");}
