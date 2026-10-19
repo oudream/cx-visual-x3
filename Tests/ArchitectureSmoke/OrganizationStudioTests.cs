@@ -254,6 +254,19 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 flowCanvas.SelectRectangle(new Rect(firstBox.X+20,firstBox.Y+9,30,20));
                 Check(flowCanvas.SelectedBlockIds.Count==1&&
                     flowCanvas.SelectedBlockIds[0]==selectedIds[0],"WPF marquee selection hit testing failed");
+                flowCanvas.SelectBlock(selectedIds[1],true,true);
+                Check(flowCanvas.SelectedBlockIds.Count==2,"Ctrl additive selection failed");
+                flowCanvas.SelectBlock(selectedIds[1],true,true);
+                Check(flowCanvas.SelectedBlockIds.Count==1&&
+                    flowCanvas.SelectedBlockIds[0]==selectedIds[0],
+                    "Ctrl deselect must not reselect through drag");
+                flowCanvas.SelectRectangle(new Rect(firstBox.X+20,firstBox.Y+9,30,20),true);
+                Check(flowCanvas.SelectedBlockIds.Count==1,"additive marquee unexpectedly removed selected node");
+                bool badSelectionRejected=false;
+                try{flowCanvas.SetSelection(new[]{Guid.NewGuid()});}
+                catch(InvalidOperationException){badSelectionRejected=true;}
+                Check(badSelectionRejected&&flowCanvas.SelectedBlockIds.Count==1,
+                    "WPF selection accepted foreign BlockId");
                 Click(window,"全选节点");
                 Check(flowCanvas.SelectedBlockIds.Count==3,"Studio Select All failed");
                 Click(window,"组合选中");
