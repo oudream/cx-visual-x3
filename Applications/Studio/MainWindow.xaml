@@ -302,11 +302,49 @@
                     <TextBlock Text="所选对象属性 / 实例公开参数" FontWeight="SemiBold" Margin="0,10,0,4"/>
                     <ComboBox ItemsSource="{Binding Resources}" SelectedItem="{Binding BindingResource}" DisplayMemberPath="Name" ToolTip="资源来源选择；无需输入内部ID"/>
                     <ItemsControl x:Name="EngineeringProperties" ItemsSource="{Binding Properties}">
+                        <ItemsControl.Resources>
+                            <!-- 只呈现已有MPM Schema；模板不保管独立业务数据或编辑历史。 -->
+                            <DataTemplate x:Key="EngineeringScalarEditor">
+                                <TextBox Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}"/>
+                            </DataTemplate>
+                            <DataTemplate x:Key="EngineeringNumericEditor">
+                                <TextBox Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}"
+                                         ToolTip="数值在输入时提示错误，提交时仍执行原工程Schema校验"/>
+                            </DataTemplate>
+                            <DataTemplate x:Key="EngineeringBooleanEditor">
+                                <CheckBox Content="启用" IsChecked="{Binding BooleanValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                            </DataTemplate>
+                        </ItemsControl.Resources>
                         <ItemsControl.ItemTemplate><DataTemplate>
                             <StackPanel Margin="0,4"><TextBlock Text="{Binding Member}" FontWeight="SemiBold"/>
                                 <TextBlock Text="{Binding Schema}" FontSize="11" Foreground="#64748B" TextWrapping="Wrap" ToolTip="来自工程MPM属性Schema，而非界面自行定义"/>
                                 <ComboBox ItemsSource="{Binding DataContext.BindingModes, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding Mode}"/>
-                                <TextBox Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}"/>
+                                <ContentControl Content="{Binding}">
+                                    <ContentControl.Style>
+                                        <Style TargetType="ContentControl">
+                                            <Setter Property="ContentTemplate" Value="{StaticResource EngineeringScalarEditor}"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsNumericConstant}" Value="True">
+                                                    <Setter Property="ContentTemplate" Value="{StaticResource EngineeringNumericEditor}"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding IsBooleanConstant}" Value="True">
+                                                    <Setter Property="ContentTemplate" Value="{StaticResource EngineeringBooleanEditor}"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </ContentControl.Style>
+                                </ContentControl>
+                                <TextBlock Text="{Binding ValidationMessage}" Foreground="#B45309" FontSize="11" TextWrapping="Wrap">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding ValidationMessage}" Value="">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
                                 <DockPanel><TextBlock Text="{Binding Source}" VerticalAlignment="Center"/><Button Content="应用" Command="{Binding DataContext.ApplyPropertyCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"/></DockPanel>
                             </StackPanel>
                         </DataTemplate></ItemsControl.ItemTemplate>
