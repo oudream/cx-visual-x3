@@ -1210,6 +1210,27 @@ namespace CxVisual.Studio
                 LogicInfo.Text="已向MRK发送取消请求";
             else LogicInfo.Text="没有可取消的运行任务";
         }
+        /// <summary>从MOC/MRK SourceMap节点反查相同MEM工程中的图元绑定。</summary>
+        private void OnFlowLocateVisual(object sender,RoutedEventArgs args)
+        {
+            try
+            {
+                var trace=FlowTraceList.SelectedItem as FlowTraceRecord;
+                Guid blockId=trace==null?SelectedFlowBlock():trace.BlockId;
+                Guid? visualId=_viewModel.FindVisualForFlowBlock(blockId);
+                if(!visualId.HasValue)
+                {
+                    LogicInfo.Text="当前画面未配置关联此逻辑节点的状态图元；请先在视觉页关联流程状态。";
+                    return;
+                }
+                _viewModel.Select(visualId.Value);
+                VisualTab.IsSelected=true;
+                RefreshVisualInspector();
+                VisualInfo.Text="已从流程节点 "+blockId.ToString("N").Substring(0,8)+
+                    " 定位关联画面对象；与逻辑执行、诊断共用MEM身份和MPM绑定。";
+            }
+            catch(Exception ex){LogicInfo.Text="定位关联画面失败："+ex.Message;}
+        }
         private void OnFlowLocateDiagnostic(object sender,RoutedEventArgs args)
         {
             var item=FlowDiagnosticList.SelectedItem as FlowDiagnosis;
