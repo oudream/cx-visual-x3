@@ -90,6 +90,64 @@ namespace CxVisual.TestCenter.Cases
                 "Add → Undo → Redo; Revision=" + document.Revision + "; SceneItems=" + editor.Scene.Count);
         }
 
+        [TCTTest("TCT.MVIS.003", "真实Bezier控制柄一次工程事务与保存重开",
+            TCTTestAspect.Mechanism,"Visual / Editing",ObjectId="MVIVisualEditing")]
+        public static void BezierControlPointOwnerAndRoundtrip(TCTTestContext context)
+        {
+            using(var sandbox=new TCTTestSandbox())
+            {
+                string file=sandbox.PathFor("visual-editing.cxproj");
+                var project=MEMEngineering.Create("TCT-Bezier");
+                var page=project.AddPage("Drawing");
+                var group=project.AddGroup(page.RootContent,"Canvas");
+                var path=new FGEPath2D(new[]{
+                    FGEPathCommand.Move(new FGEPoint2D(0,0)),
+                    FGEPathCommand.Cubic(new FGEPoint2D(30,75),
+                        new FGEPoint2D(80,80),new FGEPoint2D(130,10))});
+                var shape=project.AddShape(group,"Bezier",
+                    MRCShapeDefinition.Bezier(new FGEBezier2D(
+                        new FGEPoint2D(0,0),new FGEPoint2D(30,75),
+                        new FGEPoint2D(80,80),new FGEPoint2D(130,10))),35,50);
+                Guid id=shape.Id;project.ClearHistory();
+                using(var editor=new CxVisualEditor(project))
+                {
+                    var scene=editor.Scene.Single(x=>x.Id==id);
+                    var handle=MVIVisualEditing.Handles(scene).First(x=>
+                        x.Kind==MVIVisualHandleKind.Control1);
+                    FGEPoint2D endpointBefore=scene.GeometryToWorld.TransformPoint(
+                        shape.Shape.Geometry.Commands[1].End);
+                    int revision=project.Revision;
+                    MTCEditResult<bool> changed=editor.EditHandle(handle,
+                        handle.WorldPoint.X+23,handle.WorldPoint.Y-15);
+                    context.AssertTrue(changed.Success,"工程控制点编辑提交成功",true,changed.Success);
+                    context.AssertEqual(revision+1,project.Revision,"一次手势=一条MEM事务");
+                    var edited=editor.Scene.Single(x=>x.Id==id);
+                    FGEPoint2D endpointAfter=edited.GeometryToWorld.TransformPoint(
+                        shape.Shape.Geometry.Commands[1].End);
+                    context.AssertTrue(endpointBefore.DistanceTo(endpointAfter)<1e-7,
+                        "移动控制点不应拖动Bezier其他端点",
+                        true,endpointBefore.DistanceTo(endpointAfter)<1e-7);
+                    context.AssertTrue(editor.Undo().Success,"Bezier撤销",true,true);
+                    context.AssertTrue(editor.Redo().Success,"Bezier重做",true,true);
+                    project.SaveAs(file);
+                    context.Observe("Geometry","Bezier控制点事务",
+                        "Revision="+project.Revision+"; endpoint stable; exact cubic path");
+                }
+                FGEPoint2D expected=shape.Shape.Geometry.Commands[1].Control1;
+                project.Close();
+                using(var reopened=MEMEngineering.Open(file))
+                {
+                    var restored=reopened.Find(id) as MRCShapeElement;
+                    context.AssertTrue(restored!=null,"重开仍为Shape",true,restored!=null);
+                    context.AssertEqual(MRCShapeKind.Bezier,restored.Shape.Kind,
+                        "Bezier图元种类往返");
+                    context.AssertTrue(restored.Shape.Geometry.Commands[1].Control1.Equals(expected),
+                        "Bezier曲线控制点精度往返",true,
+                        restored.Shape.Geometry.Commands[1].Control1.Equals(expected));
+                }
+            }
+        }
+
         [TCTTest("TCT.MDATA.001", "Mechanism.Data配置保存与任务生效分离", TCTTestAspect.Mechanism,
             "Data / Configuration", ObjectId = "MHSConfigSection")]
         public static void ConfigSnapshotAndBoundary(TCTTestContext context)
