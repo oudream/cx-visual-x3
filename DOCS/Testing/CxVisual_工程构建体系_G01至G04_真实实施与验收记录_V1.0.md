@@ -1,0 +1,44 @@
+# CxVisual 工程构建体系 G01～G04 实施与验收记录 V1.0
+
+> 2026-10-19。该记录继承《CxVisual 工程构建体系 · 长远架构问题与详细完成方案 V1.2》。直接在 master 开发，中文提交，不新增工程项目；以固定提交的真实 Windows CI 为依据。
+> 本文件记录的是已完成的核心构建纵向闭环，**不是**宣布 32 能力方面、496 项需求、四类编排模型或十大专业案例全部完成。
+
+## 1. 已实现功能与 Owner
+
+| 阶段 | 已落地 | 主要归属 |
+|---|---|---|
+| G01 自由逻辑编辑 | V2 Content Logic，BlockId/LinkId、Port类型、Control/Data Link、原子Session提交、合法编辑草稿/完整可执行校验分离、添加/删除Port、修改能力、指定入口、Undo/Redo、Revision冲突拒绝、V1兼容 | Mechanism.Core；MOCFlowBuilder在Mechanism.Orchestration |
+| G02 能力发现 | IMOCCapabilityProvider、MOCCapabilityDescriptor、MOCCapabilityCatalog；检索/分类/版本号/Port声明/运行Provider可用性，Builder类型化Step入口 | Mechanism.Orchestration；实际能力归Professional和IMRKCapabilityResolver |
+| G03 检查构建 | MOCBuildService、MOCBuildResult、MOCDiagnostic、MOCDiagnosticSeverity；拒绝无效草稿/未知能力/不匹配输入；使用既有MOCEngineeringCompiler与MRKPlan，诊断含ContentId、可用时BlockId/LinkId | Mechanism.Orchestration；MRK仍唯一执行Owner |
+| G04 Studio编辑 | 搜索目录、选择能力、插入未连线节点、两块选定后选择兼容Port对、Control/Data连线、删除连接/块、撤销重做、验证诊断、CPU仿真及同图状态、保存重开 | Applications.Studio + Mechanism.Presentation.Wpf + Mechanism.Visual |
+
+统一对象根基仍为 MEMProject/Content/Logic Aspect，Visual 仅为可交互投影。MOLBlockEndpoint 不新增 MEMNode；MOLLink 与公开资源间的 MPCConnection 范围不同、互不重复保存；MRK执行状态与MDS运行数据不变。
+
+## 2. 客观测试证据
+
+- G01：工程组织CI成功 https://github.com/oudream/cx-visual-x3/actions/runs/39206224893 。
+- G02：工程组织CI成功 https://github.com/oudream/cx-visual-x3/actions/runs/39206603007 。
+- G03：工程组织CI成功 https://github.com/oudream/cx-visual-x3/actions/runs/39206723343 。
+- G04：包含 Control/Data 真实 WPF Studio 自动化、保存重开与身份检查的工程组织CI成功 https://github.com/oudream/cx-visual-x3/actions/runs/39208117405 ，对应代码提交 `0b5e9a8db5c7f061f11f5d632e72fcdff9a67446`。
+- 测试范围：ArchitectureSmoke 的 `OrganizationLogicIntegrationTests`、`OrganizationStudioTests`、`OrganizationWpfTests`，包括 Core 草稿校验、端口正反例、编译MRK/SourceMap、真实文件往返、WPF STA界面操作。
+- 相关旧结构化 V1 Logic Codec和编译路径保留，旧工程没有自动重写为新Schema。
+
+## 3. 不得混淆的完成边界
+
+1. V2 首批语义是 **有向无环的 Control/Data Action**；复杂 If/Switch/Loop、动态Region、Join、DataFlow、Workflow、StateMachine、跨模型调用仍需后续专门实现。旧V1结构化语义可继续使用，不能误认为V2已覆盖它们。
+2. Studio已能选块匹配类型化Port，但尚非完整鼠标从端口圆点拖线、缩放路由、任意布局、框选多节点/提取子流程/编辑全部控件属性的生产级编辑器。
+3. 当前示例是 CPU 模拟 Provider；实际 X-Ray/PLC/运动/CT/MES 等设备与工业安全互锁未在此处完成实机验收。
+4. G02的运行可用性只表示 Provider 可解析，**不等于** G07 的发布能力版本、配方/设备依赖锁定和授权。
+5. G03错误有Content/Block/Link定位字段，但部分通用校验仍仅能定位Content，不应宣称所有错误已有精确LinkId。
+6. 独立的 TestCenter Windows 工作流还需单独检查；工程组织CI成功不等于整个TestCenter和全平台验收成功。
+
+## 4. 下一轮阶段与严格完成标准
+
+- **G04深化（Studio完整编排）**：画布端口几何位置、鼠标拖连线、端口属性/参数编辑、节点排布/缩放/多选/框选、选区提取子流程、诊断定位和逐项Undo/Redo；必须有真实WPF操作、保存重开、错误回退证据。
+- **G05a 控制模型**：V2 If/Switch、Join、动态Region、For/While/Foreach、Break/Continue/Try、结构化/自由互转；高迭代数不允许简单静态展开突破MRK预算。
+- **G05b 数据流**：具名端口输出、多生产者显式聚合、流式大图、背压/队列/取消/生命周期和跨实例数据隔离。
+- **G05c Workflow**：持久等待、人工活动、重试与补偿、进程恢复，故障注入严禁重复危险设备动作。
+- **G05d StateMachine**：事件、层级状态、复合状态与并行状态的确定性校验。
+- **G06～G08**：真实专业Provider、工程发布/版本锁定、十案例与五历史系统的可重复验收。不要为不同执行语义建立第二棵工程树或第二套调度内核。
+
+**后续工作继续遵守三方面及28个既定项目组织，不新增项目，所有阶段先测后编、CI未通过不得宣称完成。**
