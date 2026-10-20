@@ -22,6 +22,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             R07_CompletedLoopOutputsAreFullyScoped();
             R07_NestedLoopOutputsPreserveInvocationPath();
             R07_ParallelForeachRealOverlapAndOutputIdentity();
+            R07_ForeachBudgetMustRejectBeforeAnyBusinessWork();
             R07_ParallelFailureWaitsForUncooperativeTail();
             ConcurrentInvocationFrameIsolation();
             RepeatedInvocationFrameIsolation();
@@ -497,6 +498,57 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 collectionInput:"Items",maxParallelIterations:2);}
             catch(ArgumentException){invalid=true;}
             Check(invalid,"R07依赖前轮谓词的循环不应并行");
+        }
+
+        /// <summary>
+        /// R07：MaxIterations是安全预算，不是吞掉批次剩余图片的limit。
+        /// Serial/parallel不允许静默截断，且超限必须在第一项能力执行前拒绝。
+        /// </summary>
+        private static void R07_ForeachBudgetMustRejectBeforeAnyBusinessWork()
+        {
+            int called=0;
+            var body=new MRKExecutionPlan("r07.budget.body",new[]{
+                new MRKExecutionStep("inspect",new string[0],(ctx,ct)=>{
+                    Interlocked.Increment(ref called);
+                    return Task.FromResult((object)true);
+                })
+            });
+            var engine=new MRKExecutionEngine(new FCRWorkerOptions(2,6));
+            try
+            {
+                foreach(int width in new[]{1,2})
+                {
+                    var loop=new MRKLoopRegion(body,2,collectionInput:"Items",
+                        maxParallelIterations:width);
+                    var plan=new MRKExecutionPlan("r07.budget."+width,new[]{
+                        new MRKExecutionStep("foreach",new string[0],
+                            (ctx,ct)=>Task.FromResult((object)true),loopRegion:loop)
+                    });
+                    int previous=Volatile.Read(ref called);
+                    MRKFlowResult tooMany=engine.StartFlow(plan,
+                        new Dictionary<string,object>{{"Items",new[]{1,2,3}}})
+                        .Completion.GetAwaiter().GetResult();
+                    Check(tooMany.State==MRKFlowState.Failed&&
+                        tooMany.Error!=null&&
+                        tooMany.Error.ToString().Contains("moc.foreach_budget_exceeded")&&
+                        tooMany.CommittedOutputs.Count==0&&
+                        Volatile.Read(ref called)==previous,
+                        "R07 "+width+"个并行槽的Foreach静默截断/提前执行业务");
+                    MRKFlowResult exact=engine.StartFlow(plan,
+                        new Dictionary<string,object>{{"Items",new[]{1,2}}})
+                        .Completion.GetAwaiter().GetResult();
+                    Check(exact.State==MRKFlowState.Completed&&
+                        Volatile.Read(ref called)==previous+2,
+                        "R07 正好等于MaxIterations的集合不能完整执行");
+                    MRKFlowResult empty=engine.StartFlow(plan,
+                        new Dictionary<string,object>{{"Items",new int[0]}})
+                        .Completion.GetAwaiter().GetResult();
+                    Check(empty.State==MRKFlowState.Completed&&
+                        Volatile.Read(ref called)==previous+2,
+                        "R07 空集合不应触发业务");
+                }
+            }
+            finally{engine.StopAsync().GetAwaiter().GetResult();}
         }
 
         /// <summary>R07：一轮失败后不合作的在途工作必须真实结束才释放流程。</summary>

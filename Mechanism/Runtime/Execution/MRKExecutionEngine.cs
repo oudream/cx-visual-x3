@@ -936,21 +936,28 @@ namespace CxVisual.Mechanism.Runtime.Execution
             MRKExecutionContext parent,CancellationToken cancellation,
             MRKExecutionDebugController control)
         {
+            // Foreach 的 MaxIterations 是安全预算，不是允许静默丢弃集合尾部。
+            // 在启动任何业务Step前检查；并行与串行必须具有相同的全集语义。
+            int collectionCount=-1;
+            if(!string.IsNullOrEmpty(loop.CollectionInput))
+            {
+                object source;
+                if(!parent.Inputs.TryGetValue(loop.CollectionInput,out source)||
+                    !(source is System.Collections.IList))
+                    throw new InvalidOperationException("moc.foreach_requires_IList:"+
+                        loop.CollectionInput);
+                collectionCount=((System.Collections.IList)source).Count;
+                if(collectionCount>loop.MaxIterations)
+                    throw new InvalidOperationException("moc.foreach_budget_exceeded:"+
+                        collectionCount+"/"+loop.MaxIterations);
+            }
             int count=0;
             MRKExecutionContext predicateContext=parent;
             for(int iteration=0;iteration<loop.MaxIterations;iteration++)
             {
                 cancellation.ThrowIfCancellationRequested();
                 if(parent.FlowReturnRequested)break;
-                if(!string.IsNullOrEmpty(loop.CollectionInput))
-                {
-                    object source;
-                    if(!parent.Inputs.TryGetValue(loop.CollectionInput,out source)||
-                        !(source is System.Collections.IList))
-                        throw new InvalidOperationException("moc.foreach_requires_IList:"+
-                            loop.CollectionInput);
-                    if(iteration>=((System.Collections.IList)source).Count)break;
-                }
+                if(collectionCount>=0&&iteration>=collectionCount)break;
                 if(!(iteration==0&&loop.ExecuteFirst)&&loop.Condition!=null&&
                    !loop.Condition(predicateContext,iteration))break;
                 // 每轮只有一份编译Plan，任务/输出采用不同限定路径。
@@ -999,7 +1006,10 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 !(source is System.Collections.IList))
                 throw new InvalidOperationException("moc.foreach_requires_IList:"+
                     loop.CollectionInput);
-            int count=Math.Min(loop.MaxIterations,((System.Collections.IList)source).Count);
+            int count=((System.Collections.IList)source).Count;
+            if(count>loop.MaxIterations)
+                throw new InvalidOperationException("moc.foreach_budget_exceeded:"+
+                    count+"/"+loop.MaxIterations);
             string step=parent.Invocation.StepId.Substring(
                 parent.Invocation.StepId.LastIndexOf('.')+1);
             using(CancellationTokenSource linked=
