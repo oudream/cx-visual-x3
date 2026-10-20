@@ -1,0 +1,112 @@
+<Window x:Class="CxVisual.DockingPoC.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:dock="https://github.com/Dirkster99/AvalonDock"
+        Title="CxVisual Studio · AvalonDock 5.0.1 验证" Width="1520" Height="900"
+        MinWidth="1040" MinHeight="650" WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource ShellBrush}" Foreground="{DynamicResource TextBrush}">
+    <Window.Resources>
+        <SolidColorBrush x:Key="ShellBrush" Color="#F5F7FA"/>
+        <SolidColorBrush x:Key="PanelBrush" Color="#FFFFFF"/>
+        <SolidColorBrush x:Key="TextBrush" Color="#202D40"/>
+        <SolidColorBrush x:Key="LineBrush" Color="#D9E0EA"/>
+        <SolidColorBrush x:Key="AccentBrush" Color="#2563AB"/>
+        <Style TargetType="Button">
+            <Setter Property="Margin" Value="2,2" />
+            <Setter Property="Padding" Value="11,5" />
+            <Setter Property="MinHeight" Value="28" />
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
+        </Style>
+        <Style TargetType="TextBox">
+            <Setter Property="Margin" Value="2" />
+            <Setter Property="Padding" Value="5" />
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
+        </Style>
+        <Style TargetType="TreeView">
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
+        </Style>
+        <Style TargetType="ListBox">
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
+        </Style>
+        <Style TargetType="CheckBox">
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+        </Style>
+    </Window.Resources>
+    <DockPanel LastChildFill="True">
+        <Border DockPanel.Dock="Top" Padding="14,10" Background="{DynamicResource PanelBrush}"
+                BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,0,0,1">
+            <StackPanel>
+                <TextBlock Text="CxVisual Studio · Docking 功能验证" FontSize="20" FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextBrush}"/>
+                <TextBlock Text="独立测试工程 / .NET Framework 4.8 / WPF / AvalonDock 5.0.1 · 仅模拟编辑，不连接设备"
+                           Foreground="{DynamicResource AccentBrush}" Margin="0,4,0,8"/>
+                <WrapPanel>
+                    <Button Content="资源树自动隐藏" Click="AutoHideResources_Click"/>
+                    <Button Content="属性浮动" Click="FloatProperties_Click"/>
+                    <Button Content="属性停靠" Click="DockProperties_Click"/>
+                    <Button Content="关闭属性" Click="CloseProperties_Click"/>
+                    <Button Content="重开属性" Click="ReopenProperties_Click"/>
+                    <Separator Width="12" Opacity="0"/>
+                    <Button Content="打开配置" Click="OpenConfig_Click"/>
+                    <Button Content="打开图元" Click="OpenVisual_Click"/>
+                    <Button Content="打开流程" Click="OpenFlow_Click"/>
+                    <Separator Width="12" Opacity="0"/>
+                    <Button Content="保存布局" Click="Save_Click"/>
+                    <Button Content="恢复布局" Click="Restore_Click"/>
+                    <Button Content="重置布局" Click="Reset_Click"/>
+                    <Button x:Name="ThemeButton" Content="切换深色" Click="Theme_Click"/>
+                    <Button Content="模拟编辑工程 (+Revision)" Click="ChangeRevision_Click"/>
+                    <Button Content="刷新 DPI" Click="Dpi_Click"/>
+                </WrapPanel>
+            </StackPanel>
+        </Border>
+        <Border DockPanel.Dock="Bottom" Background="{DynamicResource PanelBrush}"
+                BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,1,0,0" Padding="12,8">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock x:Name="StatusText" Text="等待初始化" TextWrapping="Wrap"
+                           Foreground="{DynamicResource TextBrush}" />
+                <TextBlock x:Name="DpiText" Text="" Margin="22,0,0,0"
+                           Foreground="{DynamicResource AccentBrush}" />
+            </StackPanel>
+        </Border>
+        <dock:DockingManager x:Name="DockManager">
+            <dock:LayoutRoot>
+                <dock:LayoutPanel Orientation="Vertical">
+                    <dock:LayoutPanel Orientation="Horizontal">
+                        <dock:LayoutAnchorablePane DockWidth="245">
+                            <dock:LayoutAnchorable Title="资源树" ContentId="tool.resources"
+                                                   CanClose="True" CanHide="True" CanFloat="True" CanAutoHide="True"/>
+                            <dock:LayoutAnchorable Title="对象树" ContentId="tool.objects"
+                                                   CanClose="True" CanHide="True" CanFloat="True" CanAutoHide="True"/>
+                            <dock:LayoutAnchorable Title="工具箱" ContentId="tool.toolbox"
+                                                   CanClose="True" CanHide="True" CanFloat="True" CanAutoHide="True"/>
+                        </dock:LayoutAnchorablePane>
+                        <dock:LayoutDocumentPane>
+                            <dock:LayoutDocument Title="资源配置" ContentId="doc.configuration" CanClose="True" CanFloat="True"/>
+                            <dock:LayoutDocument Title="图元编辑" ContentId="doc.visual" CanClose="True" CanFloat="True"/>
+                            <dock:LayoutDocument Title="流程编排" ContentId="doc.flow" CanClose="True" CanFloat="True"/>
+                        </dock:LayoutDocumentPane>
+                        <dock:LayoutAnchorablePane DockWidth="290">
+                            <dock:LayoutAnchorable Title="属性 / 绑定" ContentId="tool.properties"
+                                                   CanClose="True" CanHide="True" CanFloat="True" CanAutoHide="True"/>
+                        </dock:LayoutAnchorablePane>
+                    </dock:LayoutPanel>
+                    <dock:LayoutAnchorablePane DockHeight="195">
+                        <dock:LayoutAnchorable Title="诊断" ContentId="tool.diagnostics"
+                                               CanClose="True" CanHide="True" CanFloat="True" CanAutoHide="True"/>
+                        <dock:LayoutAnchorable Title="日志" ContentId="tool.logs"
+                                               CanClose="True" CanHide="True" CanFloat="True" CanAutoHide="True"/>
+                    </dock:LayoutAnchorablePane>
+                </dock:LayoutPanel>
+            </dock:LayoutRoot>
+        </dock:DockingManager>
+    </DockPanel>
+</Window>
