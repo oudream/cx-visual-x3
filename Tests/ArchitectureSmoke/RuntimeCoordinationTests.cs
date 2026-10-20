@@ -24,6 +24,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             R07_ConditionalJoinAndExplicitFailureCancel();
             R07_CorrelationReceiveCancelRaceHasSingleResult();
             R07_TimedOutTicketCannotDisposeNewRegistration();
+            R07_JoinObserverTimeoutAndCancellationCannotReleaseActiveWork();
         }
         private static void Check(bool ok, string message)
         { if (!ok) throw new InvalidOperationException("Runtime协作测试: " + message); }
@@ -513,6 +514,87 @@ namespace CxVisual.Tests.ArchitectureSmoke
             old.Dispose();
             Check(waiter.PendingCount == 0,
                 "旧超时与新完成后仍残留未结算的请求");
+        }
+
+        private static void R07_JoinObserverTimeoutAndCancellationCannotReleaseActiveWork()
+        {
+            var worker = new CxVisual.Foundation.Infrastructure.Concurrency.FCRWorker(
+                new CxVisual.Foundation.Infrastructure.Concurrency.FCRWorkerOptions(2, 4));
+            TaskCompletionSource<bool> entered = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<bool> release = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var active = worker.Submit<int>(async token =>
+            {
+                entered.TrySetResult(true);
+                await release.Task.ConfigureAwait(false);
+                return 23;
+            }, "r07-observe-timeout");
+            try
+            {
+                Await(entered.Task);
+                var timedOut = Await(MRKWorkJoin.ObserveAllAsync(
+                    new[] { active }, TimeSpan.Zero));
+                Check(timedOut.TimedOut && !timedOut.Cancelled && !timedOut.Settled &&
+                    timedOut.Results == null && !timedOut.AllSettled.IsCompleted &&
+                    !active.Completion.IsCompleted,
+                    "Join观察超时错误回收在途分支或伪造已结算结果");
+                Check(!active.Completion.IsCompleted,
+                    "观察者超时不可默认终止外部工作");
+
+                TaskCompletionSource<bool> secondEntered = new TaskCompletionSource<bool>(
+                    TaskCreationOptions.RunContinuationsAsynchronously);
+                TaskCompletionSource<bool> secondRelease = new TaskCompletionSource<bool>(
+                    TaskCreationOptions.RunContinuationsAsynchronously);
+                var other = worker.Submit<int>(async token =>
+                {
+                    secondEntered.TrySetResult(true);
+                    await secondRelease.Task.ConfigureAwait(false);
+                    return 35;
+                }, "r07-observe-cancel");
+                try
+                {
+                    Await(secondEntered.Task);
+                    using (CancellationTokenSource cancel = new CancellationTokenSource())
+                    {
+                        cancel.Cancel();
+                        var abandoned = Await(MRKWorkJoin.ObserveAllAsync(
+                            new[] { other }, TimeSpan.FromSeconds(1), cancel.Token, true));
+                        Check(abandoned.Cancelled && !abandoned.TimedOut &&
+                            abandoned.Results == null && !abandoned.Settled &&
+                            !abandoned.AllSettled.IsCompleted && !other.Completion.IsCompleted,
+                            "Join取消观察错误假定仍在运行的分支已安全结束");
+                        secondRelease.TrySetResult(true);
+                        var terminal = Await(abandoned.AllSettled);
+                        Check(terminal.Length == 1 && terminal[0].CancellationRequested &&
+                            terminal[0].Value == 35 && terminal[0].Succeeded,
+                            "协作取消不合作分支应保留实际成功与取消请求事实");
+                    }
+                }
+                finally { secondRelease.TrySetResult(true); }
+
+                release.TrySetResult(true);
+                var final = Await(timedOut.AllSettled);
+                Check(final.Length == 1 && final[0].Succeeded && final[0].Value == 23 &&
+                    !final[0].CancellationRequested,
+                    "默认超时观察应保留无取消的原分支结果");
+                var alreadySettled = Await(MRKWorkJoin.ObserveAllAsync(
+                    new[] { active }, TimeSpan.Zero));
+                Check(alreadySettled.Settled && !alreadySettled.TimedOut &&
+                    alreadySettled.Results.Count == 1 && alreadySettled.Results[0].Value == 23,
+                    "已结算结果不应被零超时误判为超时");
+                bool invalid = false;
+                try { MRKWorkJoin.ObserveAllAsync(new[] { active }, TimeSpan.FromSeconds(-2)); }
+                catch (ArgumentOutOfRangeException) { invalid = true; }
+                Check(invalid, "非法Join等待时间未拒绝");
+            }
+            finally
+            {
+                release.TrySetResult(true);
+                Await(worker.StopAsync());
+            }
+            Check(worker.GetSnapshot().Active == 0,
+                "Join观察终止与底层Worker最终结算之间存在资源泄漏");
         }
 
     }

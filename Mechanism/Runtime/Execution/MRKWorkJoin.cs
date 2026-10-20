@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using CxVisual.Foundation.Infrastructure.Concurrency;
 
@@ -18,6 +19,29 @@ namespace CxVisual.Mechanism.Runtime.Execution
         public bool Succeeded { get { return WinningResult != null && WinningResult.Succeeded; } }
         public FCRWorkHandle<T> Winner { get; private set; }
         public FCRWorkResult<T> WinningResult { get; private set; }
+        public Task<FCRWorkResult<T>[]> AllSettled { get; private set; }
+    }
+
+
+    /// <summary>
+    /// Join等待的观察结果，不是设备完成凭证。
+    /// 超时/观察者取消时 Results==null，必须另等 AllSettled 才能回收工作资源。
+    /// </summary>
+    public sealed class MRKJoinWaitObservation<T>
+    {
+        internal MRKJoinWaitObservation(bool timedOut, bool cancelled,
+            FCRWorkResult<T>[] results, Task<FCRWorkResult<T>[]> allSettled)
+        {
+            TimedOut = timedOut;
+            Cancelled = cancelled;
+            Results = results == null ? null :
+                (IReadOnlyList<FCRWorkResult<T>>)Array.AsReadOnly((FCRWorkResult<T>[])results.Clone());
+            AllSettled = allSettled;
+        }
+        public bool TimedOut { get; private set; }
+        public bool Cancelled { get; private set; }
+        public bool Settled { get { return Results != null; } }
+        public IReadOnlyList<FCRWorkResult<T>> Results { get; private set; }
         public Task<FCRWorkResult<T>[]> AllSettled { get; private set; }
     }
 
@@ -43,6 +67,52 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 Task.WhenAll(handles.Select(x => x.Completion));
         }
 
+
+
+        /// <summary>
+        /// 仅约束调用方等待时间；超时或取消观察，不会假装未完成的外部操作已经停止。
+        /// requestCancelRemainingOnAbort 必须由调用方明确选择，且仅发送协作取消。
+        /// 若未全部结算，Results为null，AllSettled始终保留原始所有分支的结果。
+        /// </summary>
+        public static async Task<MRKJoinWaitObservation<T>> ObserveAllAsync<T>(
+            IEnumerable<FCRWorkHandle<T>> source, TimeSpan timeout,
+            CancellationToken cancellation = default(CancellationToken),
+            bool requestCancelRemainingOnAbort = false)
+        {
+            if (timeout < TimeSpan.Zero && timeout != Timeout.InfiniteTimeSpan)
+                throw new ArgumentOutOfRangeException("timeout");
+            if (source == null) throw new ArgumentNullException("source");
+            // AllAsync 对空分支、重复WorkId和null分支做统一校验。
+            List<FCRWorkHandle<T>> handles = source.ToList();
+            Task<FCRWorkResult<T>[]> allSettled = AllAsync(handles);
+            if (allSettled.IsCompleted)
+                return new MRKJoinWaitObservation<T>(false, false,
+                    await allSettled.ConfigureAwait(false), allSettled);
+            if (cancellation.IsCancellationRequested)
+            {
+                if (requestCancelRemainingOnAbort)
+                    foreach (FCRWorkHandle<T> handle in handles) handle.RequestCancel();
+                return new MRKJoinWaitObservation<T>(false, true, null, allSettled);
+            }
+            using (CancellationTokenSource delayCancellation =
+                CancellationTokenSource.CreateLinkedTokenSource(cancellation))
+            {
+                Task deadline = Task.Delay(timeout, delayCancellation.Token);
+                Task winner = await Task.WhenAny(allSettled, deadline).ConfigureAwait(false);
+                // 若二者在同一时间完成，以真实的已结算结果优先，不制造虚假超时。
+                if (allSettled.IsCompleted || object.ReferenceEquals(winner, allSettled))
+                {
+                    delayCancellation.Cancel();
+                    return new MRKJoinWaitObservation<T>(false, false,
+                        await allSettled.ConfigureAwait(false), allSettled);
+                }
+                bool aborted = cancellation.IsCancellationRequested;
+                if (requestCancelRemainingOnAbort)
+                    foreach (FCRWorkHandle<T> handle in handles)
+                        if (!handle.Completion.IsCompleted) handle.RequestCancel();
+                return new MRKJoinWaitObservation<T>(!aborted, aborted, null, allSettled);
+            }
+        }
 
         private static async Task<FCRWorkResult<T>[]> AllCancelOnFailureAsync<T>(
             IList<FCRWorkHandle<T>> handles)

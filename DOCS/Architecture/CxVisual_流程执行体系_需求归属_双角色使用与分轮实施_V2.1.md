@@ -360,3 +360,11 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 - 固定提交`4d033d216d62ebb7b37fb79bb34e587441e65f23`的Windows Runtime `39403015208` **失败**，编译成功、运行到`R07_ConditionalJoinAndExplicitFailureCancel`，报`条件异常未传播或未向仍在运行的外部任务发出协作取消`。失败用例保留。
 - 根因：测试在观察输入工作Completion之后立刻放开非协作尾部，未同步等待谓词执行或Token取消通知；Windows线程时序可能让尾部先于取消结算，从而`FCRWorkResult.CancellationRequested=false`。此失败不能证明运行时未实现取消。
 - 修复：测试中增加`predicateEvaluated`和`predicateTailCancelled`两个RunContinuationsAsynchronously信号，只有两信号均到达才释放真实尾部工作；继续断言原异常传递、取消通知、在途资源不能提前结算、Worker排空。本次同时修改MRK原类的安全注释与ArchitectureSmoke反证，确保TestCenter与工程CI同一SHA触发，**不能把失败提交改写成成功**。
+
+
+### R07 持续实施：Join等待观察与真实执行结算分离（2026-10-20）
+
+- 复核最新master `59f538a1c7e33f1e4fb40a21bace3dff65844564`，五条Windows CI全部success（Runtime 39403347486、TestCenter 39403347453、工程组织39403347434、Config L1 39403347549、配置公共底座39403347439）。上次R07处于局部S3，未宣布完整结束。
+- 沿用现有 `MRKWorkJoin` / `FCRWorkHandle` / F19，不引入第二引擎：新增只读 `MRKJoinWaitObservation<T>` 和 `MRKWorkJoin.ObserveAllAsync`。外部超时/取消仅结束观察者等待，`Results==null`代表未结算；只有`AllSettled`完成之后才允许回收有关资源。可选的`requestCancelRemainingOnAbort`仅发送协作取消，未确认硬件安全停机。
+- 正反例：非协作工作、零等待超时、不主动取消、显式Token取消但尾部继续、之后真正结算且成功态与取消请求共存、已结算优先、非法超时拒绝、Worker排空无活动槽；使用源项目ArchitectureSmoke，保持全部既有失败用例。
+- **当前状态：新增源码待对应提交SHA的Windows x64 CI确认。** 这只补足E08-06/09的观察者与执行分支生命周期边界；E08-05/07/08/10及Studio完整可视路径仍未达整轮闭环，不能宣称R07已全部完成或自动进入R08。
