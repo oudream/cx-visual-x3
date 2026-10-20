@@ -111,6 +111,10 @@ namespace CxVisual.Studio
                 {
                     window.OpenStudioDocument("doc.visual");
                     window.RefreshStudioGraphicsTree();
+                    var tools=window.StudioDock.Layout.Descendents().OfType<AvalonDock.Layout.LayoutAnchorable>().ToArray();
+                    Assert(tools.Any(p=>p.ContentId=="tool.graphics"&&p.IsVisible)&&
+                        tools.Any(p=>p.ContentId=="tool.properties"&&p.IsVisible),
+                        "图形结构与属性必须可同时显示，不应共用一组分页遮挡属性操作");
                     TreeViewItem root = window.StudioGraphicsTree.Items.OfType<TreeViewItem>().FirstOrDefault();
                     Assert(root != null && root.Items.Count > 0, "图形结构没有列出当前绘图定义");
                     Assert(root.Items.OfType<TreeViewItem>().Any(item => Convert.ToString(item.Header).Contains("图层")),

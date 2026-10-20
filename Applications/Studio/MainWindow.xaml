@@ -298,7 +298,8 @@
                     </DockPanel>
                 </dock:LayoutDocument>
                     </dock:LayoutDocumentPane>
-                    <dock:LayoutAnchorablePane DockWidth="330">
+                    <dock:LayoutPanel Orientation="Vertical">
+                        <dock:LayoutAnchorablePane DockWidth="330" DockHeight="270">
                         <dock:LayoutAnchorable ContentId="tool.graphics" Title="图形结构" CanClose="True" CanHide="True" CanFloat="True" CanAutoHide="True">
                             <DockPanel Background="{DynamicResource StudioPanelBrush}" Margin="5">
                                 <TextBlock DockPanel.Dock="Bottom" FontSize="11" Margin="5,6,5,2" TextWrapping="Wrap"
@@ -307,6 +308,8 @@
                                           SelectedItemChanged="OnStudioGraphicsTreeSelected"/>
                             </DockPanel>
                         </dock:LayoutAnchorable>
+                        </dock:LayoutAnchorablePane>
+                        <dock:LayoutAnchorablePane DockWidth="330">
                         <dock:LayoutAnchorable ContentId="tool.properties" Title="属性 / Schema / 绑定" CanClose="True" CanHide="True" CanFloat="True" CanAutoHide="True">
             <Border Margin="0,0,0,0" CornerRadius="8" Background="{DynamicResource StudioPanelBrush}" BorderBrush="{DynamicResource StudioBorderBrush}" BorderThickness="1" Padding="16">
                 <ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel>
@@ -487,7 +490,8 @@
                 </StackPanel></ScrollViewer>
             </Border>
                         </dock:LayoutAnchorable>
-                    </dock:LayoutAnchorablePane>
+                        </dock:LayoutAnchorablePane>
+                    </dock:LayoutPanel>
                 </dock:LayoutPanel>
                 <dock:LayoutAnchorablePane DockHeight="140">
                     <dock:LayoutAnchorable ContentId="tool.output" Title="输出 / 诊断" CanClose="True" CanHide="True" CanFloat="True" CanAutoHide="True">
