@@ -32,9 +32,10 @@ jobs:
             try { $p.Kill() } catch { }
             throw 'Studio STA self-test did not exit within 120 seconds'
           }
+          if (Test-Path $report) { Get-Content $report }
+          else { Write-Host "GUI process exited without a self-test report." }
           if ($p.ExitCode -ne 0) { throw "Studio Shell self tests exited $($p.ExitCode)" }
           if (-not (Test-Path $report)) { throw "Missing StudioShellSelfTest.txt" }
-          Get-Content $report
           $pass = @(Select-String -Path $report -Pattern '^PASS:').Count
           $fail = @(Select-String -Path $report -Pattern '^FAIL:').Count
           if ($pass -ne 8 -or $fail -ne 0) { throw "Expected 8 PASS and 0 FAIL; actual $pass PASS / $fail FAIL" }
@@ -45,3 +46,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Structure verification failed' }
           & .\Build\Verify-OwnerDependencies.ps1
           if ($LASTEXITCODE -ne 0) { throw 'Owner dependency verification failed' }
+      - name: Preserve STA self-test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: studio-shell-self-test
+          path: Output/Release/x64/StudioShellSelfTest.txt
+          if-no-files-found: warn
