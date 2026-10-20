@@ -27,7 +27,11 @@ jobs:
           $exe = Resolve-Path .\Output\Release\x64\CxVisual.Studio.exe
           $report = Join-Path (Split-Path $exe) 'StudioShellSelfTest.txt'
           Remove-Item $report -Force -ErrorAction SilentlyContinue
-          $p = Start-Process -FilePath $exe -ArgumentList '--shell-self-test' -PassThru -Wait
+          $p = Start-Process -FilePath $exe -ArgumentList '--shell-self-test' -PassThru
+          if (-not $p.WaitForExit(120000)) {
+            try { $p.Kill() } catch { }
+            throw 'Studio STA self-test did not exit within 120 seconds'
+          }
           if ($p.ExitCode -ne 0) { throw "Studio Shell self tests exited $($p.ExitCode)" }
           if (-not (Test-Path $report)) { throw "Missing StudioShellSelfTest.txt" }
           Get-Content $report

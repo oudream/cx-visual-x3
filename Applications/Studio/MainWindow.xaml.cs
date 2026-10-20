@@ -408,7 +408,7 @@ namespace CxVisual.Studio
             if(choice==MessageBoxResult.Cancel)return false;if(choice==MessageBoxResult.No)return true;_viewModel.SaveCommand.Execute(null);return !session.IsDirty;
         }
         protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
-        {if(_viewModel.ProjectSession.IsDirty&&(_viewModel.ConfirmReplace==null||!_viewModel.ConfirmReplace(_viewModel.ProjectSession)))e.Cancel=true;OnStudioShellClosing(e);base.OnClosing(e);}
+        {if(!Environment.GetCommandLineArgs().Contains("--shell-self-test",StringComparer.OrdinalIgnoreCase)&&_viewModel.ProjectSession.IsDirty&&(_viewModel.ConfirmReplace==null||!_viewModel.ConfirmReplace(_viewModel.ProjectSession)))e.Cancel=true;OnStudioShellClosing(e);base.OnClosing(e);}
         private const string ConfigSamplesFolder = "CxVisual";
 
         private static string GetDemoDataRoot()
