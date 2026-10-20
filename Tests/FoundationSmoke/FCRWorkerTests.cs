@@ -17,6 +17,7 @@ namespace CxVisual.Tests.FoundationSmoke
             ErrorIsObservable();
             DeveloperConvenienceAndKeyedStress();
             PriorityDoesNotBreakPerKeyFIFO();
+            PriorityFairnessBoundedAcrossKeys();
             ByteBudgetAndOverflowAccounting();
             RandomizedCancellationAndStopStress();
         }
@@ -244,6 +245,68 @@ namespace CxVisual.Tests.FoundationSmoke
                 order[1] == "low" && order[2] == "same-key",
                 "priority broke FIFO in same key or other-key priority");
             Await(worker.StopAsync());
+        }
+
+        /// <summary>
+        /// R08：持续高优先级流不得无限饿死更早排队的低优先级工作；
+        /// 同Key原FIFO、等待配额、停止排空与PendingBytes不改变。
+        /// </summary>
+        private static void PriorityFairnessBoundedAcrossKeys()
+        {
+            bool invalid = false;
+            try { new FCRWorkerOptions(1, 12, priorityFairnessBurst: 0); }
+            catch (ArgumentOutOfRangeException) { invalid = true; }
+            Check(invalid, "priorityFairnessBurst=0应在配置时拒绝");
+
+            FCRWorker worker = new FCRWorker(new FCRWorkerOptions(1, 16,
+                pendingByteBudget: 200, priorityFairnessBurst: 3));
+            TaskCompletionSource<bool> entered = Gate(), release = Gate();
+            FCRWorkHandle<int> barrier = worker.Submit<int>(async ct =>
+            {
+                entered.TrySetResult(true);
+                await release.Task.ConfigureAwait(false);
+                return 0;
+            }, "barrier");
+            Await(entered.Task);
+            System.Collections.Generic.List<string> order =
+                new System.Collections.Generic.List<string>();
+            FCRWorkHandle<int> low = worker.Submit<int>(ct =>
+            {
+                order.Add("low");
+                return Task.FromResult(1);
+            }, "slow-key", priority: -100, estimatedBytes: 10);
+            System.Collections.Generic.List<FCRWorkHandle<int>> high =
+                new System.Collections.Generic.List<FCRWorkHandle<int>>();
+            for (int i = 0; i < 10; i++)
+            {
+                int number = i;
+                high.Add(worker.Submit<int>(ct =>
+                {
+                    order.Add("high-" + number);
+                    return Task.FromResult(number);
+                }, "high-key", priority: 100, estimatedBytes: 10));
+            }
+            Check(worker.GetSnapshot().Pending == 11 &&
+                worker.GetSnapshot().PendingBytes == 110,
+                "公平性检查不能绕过原队列和字节背压");
+            release.TrySetResult(true);
+            Await(barrier.Completion);
+            Check(Await(low.Completion).Succeeded, "低优先级工作饥饿或拒绝");
+            foreach (FCRWorkHandle<int> item in high)
+                Check(Await(item.Completion).Succeeded, "高优先级工作丢失");
+            Check(order.Count == 11 && order[0] == "high-0" &&
+                order[1] == "high-1" && order[2] == "high-2" &&
+                order[3] == "low",
+                "高优先级连续超车必须有界且同Key仍FIFO");
+            for (int i = 0; i < high.Count; i++)
+                Check(order.IndexOf("high-" + i) < 0 ? false :
+                    (i == 0 || order.IndexOf("high-" + (i - 1)) <
+                        order.IndexOf("high-" + i)), "跨Key公平调度破坏同Key FIFO");
+            Await(worker.StopAsync());
+            Check(worker.GetSnapshot().Active == 0 &&
+                worker.GetSnapshot().Pending == 0 &&
+                worker.GetSnapshot().PendingBytes == 0,
+                "公平调度停止后Worker资源/容量泄漏");
         }
 
         private static void ByteBudgetAndOverflowAccounting()

@@ -472,3 +472,10 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 **封轮不覆盖且必须保留的真实门槛：** Studio目前明确支持V2 Control的多依赖All汇合、原图跟踪；Any/FirstSuccess在MRK开发者API已验证，不把它们写成完整可编辑的V2 DSL。Try/Catch/Finally复杂结构化控制与全量生产级调试不因本轮封轮视为实现；物理设备停止与授权、跨进程未知执行与恢复、可靠Checkpoint以及24小时长稳分别进入R09/R10/R11/R12。未通过现场联锁测试前禁止自动重放或宣称设备已停止。
 
 **下一轮门槛已满足：** R07范围内已明确的代码与Studio软件验收通过，可进入R08（F19公平、组/资源仲裁与容量/背压）；R08仍必须分别实现与Windows CI验收，不沿用本轮旧绿色。
+
+## R08 实施启动：F19跨Key有界公平调度（2026-10-21）
+
+- **前置验收**：R07进程内软件执行及Studio Join事务/CPU仿真范围已封轮；设备安全及生产级持久恢复各有R10～R12独立准入门槛，不得被R07/R08的普通Worker测试替代。
+- **本次R08增量**：仍在`Foundation.Infrastructure/Concurrency/FCRWorker`原有`PumpLocked`内调度，不新增队列或执行器；`FCRWorkerOptions`加可选`priorityFairnessBurst=16`，旧构造函数兼容。不同Key优先选高Priority，但连续跳过较早已就绪工作达到设定上限，至少给最老可执行Key一次机会；相同Key始终优先最早提交者，既有ActiveKey、QueueCapacity、PendingBytes、Cancel与Stop逻辑保持。
+- **可验证反证**：显式Burst=3时，实际高优先级连续三个先执行，之后低优先级被安排；持续高优先级仍按Key FIFO，且队列字节预算、容量、Stop排空完全归还。非法Burst=0拒绝；原队列溢出、KeyedSerial及200任务压力测试不删除。
+- **验收边界**：此为R08的第一项（调度公平性）真实源码及回归，需新SHA Windows FoundationSmoke/Runtime/TestCenter/Config验证后才记本增量完成。Stage/WholeFlow组仲裁、多资源取消/背压的复杂竞态及长稳性能仍在R08剩余任务，不能据此把R08整轮标为完成。

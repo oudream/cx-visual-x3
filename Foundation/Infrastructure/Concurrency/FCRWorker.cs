@@ -84,6 +84,8 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
         private readonly HashSet<string> _activeKeys = new HashSet<string>(StringComparer.Ordinal);
         private readonly FCRWorkerOptions _options;
         private int _active;
+        // R08：跨Key高优先级可优先，但不能永久压制排队更久的任务。
+        private int _priorityOvertakes;
         private long _finished, _rejected, _dropped, _pendingBytes;
         private bool _stopping;
         private TaskCompletionSource<bool> _stopped;
@@ -226,18 +228,28 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
             List<Job> launch = new List<Job>();
             while (_active < _options.MaxConcurrency)
             {
-                LinkedListNode<Job> eligible = null;
+                LinkedListNode<Job> preferred = null;
+                LinkedListNode<Job> oldest = null;
                 HashSet<string> observedKeys = new HashSet<string>(StringComparer.Ordinal);
                 for (LinkedListNode<Job> candidate = _pending.First;
                      candidate != null; candidate = candidate.Next)
                 {
-                    // 此轮一个Key只能选最早提交的未完成工作，防止高优先级超车同Key任务。
+                    // Key内只考虑最早提交的工作；后提交的高优先级不可超车。
                     if (!observedKeys.Add(candidate.Value.Key)) continue;
                     if (_activeKeys.Contains(candidate.Value.Key)) continue;
-                    if (eligible == null || candidate.Value.Priority > eligible.Value.Priority)
-                        eligible = candidate;
+                    if (oldest == null) oldest = candidate;
+                    if (preferred == null || candidate.Value.Priority > preferred.Value.Priority)
+                        preferred = candidate;
                 }
-                if (eligible == null) break;
+                if (preferred == null) break;
+                // 连续偏向较新高优先级达到阈值后，强制让最老可执行Key先得到一次机会。
+                // 被同Key正在运行任务阻挡者不计入“可执行”，但Key释放后仍保持原序。
+                bool oldestWins = _priorityOvertakes >= _options.PriorityFairnessBurst;
+                LinkedListNode<Job> eligible = oldestWins ? oldest : preferred;
+                if (object.ReferenceEquals(eligible, oldest))
+                    _priorityOvertakes = 0;
+                else
+                    _priorityOvertakes++;
                 Job job = eligible.Value;
                 _pending.Remove(eligible);
                 _pendingBytes -= job.EstimatedBytes;

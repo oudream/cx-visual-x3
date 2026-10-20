@@ -15,13 +15,18 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
         public int QueueCapacity { get; private set; }
         public FCROverflowPolicy OverflowPolicy { get; private set; }
         public long PendingByteBudget { get; private set; }
+        /// <summary>跨Key高优先级连续超过较早工作时的最大次数；仍保证单Key FIFO。</summary>
+        public int PriorityFairnessBurst { get; private set; }
         public FCRWorkerOptions(int maxConcurrency, int queueCapacity,
             FCROverflowPolicy overflowPolicy = FCROverflowPolicy.RejectNew,
-            long pendingByteBudget = long.MaxValue)
+            long pendingByteBudget = long.MaxValue, int priorityFairnessBurst = 16)
         {
             if (maxConcurrency < 1) throw new ArgumentOutOfRangeException("maxConcurrency");
             if (queueCapacity < 0) throw new ArgumentOutOfRangeException("queueCapacity");
             if (pendingByteBudget < 0) throw new ArgumentOutOfRangeException("pendingByteBudget");
+            if (priorityFairnessBurst < 1)
+                throw new ArgumentOutOfRangeException("priorityFairnessBurst");
+            PriorityFairnessBurst = priorityFairnessBurst;
             PendingByteBudget = pendingByteBudget;
             MaxConcurrency = maxConcurrency;
             QueueCapacity = queueCapacity;
