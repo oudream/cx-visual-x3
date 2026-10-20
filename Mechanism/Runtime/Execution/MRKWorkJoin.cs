@@ -103,7 +103,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 try { matched = condition(outcome); }
                 catch
                 {
-                    // 谓词本身出错不可遗弃尾部分支且直接释放资源。
+                    // 谓词本身出错先请求协作取消，再等待尾部实际结算。
+                    // 取消通知与真正结算是两个独立时点：不强行释放仍在执行的设备资源。
                     foreach (FCRWorkHandle<T> pending in remaining) pending.RequestCancel();
                     await allSettled.ConfigureAwait(false);
                     throw;

@@ -354,3 +354,9 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 
 - 之前同ID旧票据在应答完成后Dispose的反证已实现；本次补充更危险的**旧请求自然超时→新票据重登记→旧票据Dispose**反证，要求旧回调不得注销新订阅，确认后PendingCount=0。网络层复用同RequestId并不安全，必须给每次外部请求唯一ID，MRK不能伪造跨代网络应答识别。
 - 同提交修改原MRK协调器的公开注释与ArchitectureSmoke运行反证，因此同时触发TestCenter（监听Mechanism）与工程组织（监听ArchitectureSmoke）及Runtime/Config对应门禁。**本最终增量不以触发成功代替实际通过**；需固定提交SHA所有门禁success才算这部分S3通过。R07阶段性未闭合风险仍保留，R08尚未开始。
+
+### R07 Windows CI 竞态反证修复（同轮失败例外，2026-10-20）
+
+- 固定提交`4d033d216d62ebb7b37fb79bb34e587441e65f23`的Windows Runtime `39403015208` **失败**，编译成功、运行到`R07_ConditionalJoinAndExplicitFailureCancel`，报`条件异常未传播或未向仍在运行的外部任务发出协作取消`。失败用例保留。
+- 根因：测试在观察输入工作Completion之后立刻放开非协作尾部，未同步等待谓词执行或Token取消通知；Windows线程时序可能让尾部先于取消结算，从而`FCRWorkResult.CancellationRequested=false`。此失败不能证明运行时未实现取消。
+- 修复：测试中增加`predicateEvaluated`和`predicateTailCancelled`两个RunContinuationsAsynchronously信号，只有两信号均到达才释放真实尾部工作；继续断言原异常传递、取消通知、在途资源不能提前结算、Worker排空。本次同时修改MRK原类的安全注释与ArchitectureSmoke反证，确保TestCenter与工程CI同一SHA触发，**不能把失败提交改写成成功**。

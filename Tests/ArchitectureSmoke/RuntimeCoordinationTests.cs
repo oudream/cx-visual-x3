@@ -418,11 +418,19 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 TaskCreationOptions.RunContinuationsAsynchronously);
             TaskCompletionSource<bool> predicateTailRelease = new TaskCompletionSource<bool>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<bool> predicateTailCancelled = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<bool> predicateEvaluated = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
             var predicateTail = worker.Submit<int>(async token =>
             {
-                predicateTailEntered.TrySetResult(true);
-                await predicateTailRelease.Task.ConfigureAwait(false);
-                return 8;
+                using (token.Register(() => predicateTailCancelled.TrySetResult(true)))
+                {
+                    predicateTailEntered.TrySetResult(true);
+                    // 非协作尾部不因Token取消提前退出，仍需真实结束。
+                    await predicateTailRelease.Task.ConfigureAwait(false);
+                    return 8;
+                }
             }, "r07-predicate-tail");
             Await(predicateTailEntered.Task);
             var invalidBranch = worker.Submit<int>(token => Task.FromResult(7),
@@ -432,10 +440,17 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     outcome =>
                     {
                         if (outcome.Value == 7)
+                        {
+                            predicateEvaluated.TrySetResult(true);
                             throw new InvalidOperationException("r07.condition.tail");
+                        }
                         return false;
                     });
             Await(invalidBranch.Completion);
+            // 必须先观察谓词抛错及Token通知，再放行非协作分支。
+            // 避免测试线程抢先放行尾部，导致取消尚未送达就已结算。
+            Await(predicateEvaluated.Task);
+            Await(predicateTailCancelled.Task);
             Check(!predicateFailure.IsCompleted,
                 "条件异常错误地提前释放了未完成外部任务");
             predicateTailRelease.TrySetResult(true);
