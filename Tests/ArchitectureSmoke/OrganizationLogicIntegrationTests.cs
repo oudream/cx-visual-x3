@@ -316,7 +316,10 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 var result2=Execute(plan,null,out trace);
                 Check(result2.State==MRKFlowState.Completed&&visit==4&&after==2&&
                     plan.Plan.Steps.Count==1,
-                    "R05 Break/Continue did not settle remaining nodes at safe points");
+                    "R05 Break/Continue did not settle remaining nodes at safe points: "+
+                    "state="+result2.State+", visit="+visit+", after="+after+
+                    ", steps="+plan.Plan.Steps.Count+
+                    ", error="+(result2.Error==null?"none":result2.Error.ToString()));
 
                 int tail=0;
                 var terminating=MOLControlBlock.Sequence(
