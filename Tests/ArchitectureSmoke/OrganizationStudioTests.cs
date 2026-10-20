@@ -425,6 +425,34 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 catch(InvalidOperationException){refusedPrivate=true;}
                 Check(refusedPrivate&&session.Revision==revisionBeforePrivate,
                     "R04 private reference override bypassed the MEM public boundary");
+                // 只读不等于private：公共只读属性可观察，但不能在Studio或直接MEM事务中写入。
+                session.DefineProperty(symbol,new MPMPropertyDescriptor("设备型号",
+                    MPMValueKind.String,false,true,MPMBinding.Literal(MPMValue.String("M100")),
+                    null,null,true));
+                vm.GetType().GetMethod("SetSelection").Invoke(vm,new object[]{new Guid[]{second.Id}});
+                Pump();window.UpdateLayout();
+                var readOnlyRow=((IEnumerable)Get(vm,"Properties")).Cast<object>()
+                    .Single(x=>(string)Get(x,"Member")=="设备型号");
+                Check((bool)Get(readOnlyRow,"IsReadOnly")&&
+                    ((string)Get(readOnlyRow,"Schema")).Contains("只读"),
+                    "R04 public readonly Schema was not projected into Studio");
+                var readOnlyPresenter=(DependencyObject)properties.ItemContainerGenerator.ContainerFromItem(readOnlyRow);
+                Check(readOnlyPresenter!=null,"R04 readonly WPF row missing");
+                var readOnlyStack=Descendants(readOnlyPresenter).OfType<StackPanel>()
+                    .FirstOrDefault(x=>x.DataContext==readOnlyRow);
+                Check(readOnlyStack!=null&&!readOnlyStack.IsEnabled,
+                    "R04 readonly property input was not disabled in WPF");
+                int revisionBeforeReadOnly=session.Revision;
+                bool rejectedDefinition=false,rejectedInstance=false;
+                try{session.SetProperty(symbol,"设备型号",
+                    MPMBinding.Literal(MPMValue.String("M200")));}
+                catch(InvalidOperationException){rejectedDefinition=true;}
+                try{session.SetOverride(second,"设备型号",
+                    MPMBinding.Literal(MPMValue.String("M300")));}
+                catch(InvalidOperationException){rejectedInstance=true;}
+                Check(rejectedDefinition&&rejectedInstance&&session.Revision==revisionBeforeReadOnly&&
+                    session.ResolveParameter(second,"设备型号").Value.AsString()=="M100",
+                    "R04 Core readonly declaration was bypassed or changed MEM revision");
                 vm.GetType().GetMethod("SaveProject").Invoke(vm,new object[]{path});Click(window,"保存工程");vm.GetType().GetMethod("OpenProject").Invoke(vm,new object[]{path,true});Pump();
                 var reopened=(MEMEngineeringSession)Get(vm,"ProjectSession");Check(reopened.FindReference(second.Id)!=null&&reopened.ResolveParameter(reopened.FindReference(second.Id),"宽度").Value.AsNumber()==240,"Studio file reopen lost instance parameter");
                 Check(reopened.ResolveParameter(reopened.FindReference(second.Id),"启用").Value.AsBoolean()&&
@@ -434,6 +462,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     reopened.ResolveParameter(reopened.FindReference(first.Id),"资源图")==null&&
                     reopened.Assets.Any(x=>x.Id==localAsset.Id),
                     "R03 resource reference or packaged asset lost after save/reopen");
+                Check(reopened.FindProperty(reopened.Find(symbol.Id),"设备型号").Descriptor.IsReadOnly&&
+                    reopened.ResolveParameter(reopened.FindReference(second.Id),"设备型号").Value.AsString()=="M100",
+                    "R04 readOnly Schema metadata did not survive MEM persistence");
                 Check(reopened.Project.Pages.Last().RootContent.DescendantsAndSelf()
                     .OfType<MRCShapeElement>().Count()==9,
                     "Studio nine shapes lost after real Save/Open");
