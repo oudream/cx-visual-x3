@@ -1,6 +1,7 @@
 using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Threading;
@@ -20,6 +21,25 @@ namespace CxVisual.Studio
         internal MPMValueKind Kind;
         internal MPMPropertyDescriptor Descriptor;
         private string _text, _mode;
+        private IMEMResource _selectedBindingResource;
+        public IReadOnlyList<IMEMResource> ResourceChoices {get;internal set;}
+        public IMEMResource SelectedBindingResource
+        {
+            get{return _selectedBindingResource;}
+            set
+            {
+                if(object.ReferenceEquals(_selectedBindingResource,value))return;
+                _selectedBindingResource=value;
+                Notify("SelectedBindingResource");Notify("ValidationMessage");
+            }
+        }
+        public bool IsResourceSource {get{return Mode=="资源";}}
+        public string DefaultDescription {get;internal set;}
+        public bool CanRestoreDefault {get;internal set;}
+        public string[] BindingModes
+        {
+            get{return Kind==MPMValueKind.Resource?new[]{"资源","变量"}:new[]{"常量","变量"};}
+        }
         public event PropertyChangedEventHandler PropertyChanged;
         private void Notify(string member)
         {
@@ -44,7 +64,7 @@ namespace CxVisual.Studio
                 // 从变量/资源切回布尔常量时让可见CheckBox与实际提交值保持一致。
                 bool parsed;
                 if(Kind==MPMValueKind.Boolean&&value=="常量"&&!bool.TryParse(Text,out parsed))Text="false";
-                Notify("Mode");Notify("IsBooleanConstant");Notify("IsNumericConstant");Notify("ValidationMessage");
+                Notify("Mode");Notify("IsBooleanConstant");Notify("IsNumericConstant");Notify("IsResourceSource");Notify("ValidationMessage");
             }
         }
         public bool IsBooleanConstant {get{return Kind==MPMValueKind.Boolean&&Mode=="常量";}}
@@ -60,6 +80,15 @@ namespace CxVisual.Studio
         {
             get
             {
+                if(IsResourceSource)
+                {
+                    if(Kind!=MPMValueKind.Resource)return "只有Resource类型属性可以引用工程资源";
+                    if(SelectedBindingResource==null)return "请选择要引用的工程资源";
+                    if(ResourceChoices==null||!ResourceChoices.Any(x=>x.Id==SelectedBindingResource.Id))
+                        return "资源不属于当前工程或已失效";
+                    return "";
+                }
+                if(Mode=="常量"&&Kind==MPMValueKind.Resource)return "Resource属性必须选择资源来源";
                 if(!IsNumericConstant)return "";
                 double number;
                 if(Kind==MPMValueKind.Integer)
@@ -119,7 +148,7 @@ namespace CxVisual.Studio
         public bool IsDirty {get{return _editor.Document.IsDirty;}}
         public ICommand AddPageCommand {get;private set;}public ICommand AddContentCommand {get;private set;}public ICommand AddSymbolCommand {get;private set;}
         public ICommand PlaceResourceCommand {get;private set;}public ICommand OpenDefinitionCommand {get;private set;}public ICommand BackCommand {get;private set;}
-        public ICommand ApplyPropertyCommand {get;private set;}public ICommand DeleteCommand {get;private set;}public ICommand ImportCommand {get;private set;}public ICommand ExportCommand {get;private set;}
+        public ICommand ApplyPropertyCommand {get;private set;}public ICommand RestorePropertyDefaultCommand {get;private set;}public ICommand DeleteCommand {get;private set;}public ICommand ImportCommand {get;private set;}public ICommand ExportCommand {get;private set;}
         public ICommand GroupCommand {get;private set;}public ICommand UngroupCommand {get;private set;}public ICommand ConnectPortsCommand {get;private set;}
         public ICommand AddInputPortCommand {get;private set;}public ICommand AddOutputPortCommand {get;private set;}
         public ICommand DisconnectCommand {get;private set;}public ICommand AddAssetCommand {get;private set;}public ICommand AddParameterCommand {get;private set;}public ICommand RenameCommand {get;private set;}
@@ -134,6 +163,7 @@ namespace CxVisual.Studio
             BackCommand=new RelayCommand(()=>RunEngineering(()=>{_selected=null;_editor.ReturnToPrevious();}));
             DeleteCommand=new RelayCommand(()=>{if(_selected.HasValue)Execute(()=>_editor.Remove(_selected.Value));});
             ApplyPropertyCommand=new RelayCommand((object row)=>RunEngineering(()=>ApplyProperty((StudioPropertyItem)row)));
+            RestorePropertyDefaultCommand=new RelayCommand((object row)=>RunEngineering(()=>RestorePropertyDefault((StudioPropertyItem)row)));
             ImportCommand=new RelayCommand(()=>RunEngineering(ImportPackage));ExportCommand=new RelayCommand(()=>RunEngineering(ExportSelected));
             GroupCommand=new RelayCommand(()=>RunEngineering(()=>{var items=_selection.Select(id=>ProjectSession.Find(id) as MRCVisualItem).ToArray();if(items.Any(i=>i==null))throw new InvalidOperationException("请选择同父级图元；资源实例可通过提取内容复用");var group=ProjectSession.Group(items,"分组");Select(group.Id);}));
             UngroupCommand=new RelayCommand(()=>RunEngineering(()=>{var node=_selected.HasValue?ProjectSession.Find(_selected.Value):null;var group=node as MRCGroup??node?.Parent as MRCGroup;if(group==null)throw new InvalidOperationException("请选择分组或组内图元");ProjectSession.Ungroup(group);Select(null);}));
@@ -171,7 +201,17 @@ namespace CxVisual.Studio
                 {
                     var reference=ProjectSession.FindReference(_selected.Value);var node=reference==null?ProjectSession.Find(_selected.Value):ProjectSession.Find(reference.TargetId);var definition=node as IMPMDefinition;
                     if(definition!=null)foreach(var property in definition.Properties.Where(p=>reference==null||p.Descriptor.IsPublic))
-                    {var binding=reference==null?property.Binding:ProjectSession.ResolveParameter(reference,property.MemberId);Properties.Add(Row(_selected.Value,property.MemberId,property.Descriptor.ValueKind,binding,reference!=null,false,property.Descriptor));}
+                    {
+                        var binding=reference==null?property.Binding:ProjectSession.ResolveParameter(reference,property.MemberId);
+                        var item=Row(_selected.Value,property.MemberId,property.Descriptor.ValueKind,binding,reference!=null,false,property.Descriptor);
+                        var inherited=reference==null?property.Descriptor.DefaultBinding:property.Binding;
+                        item.DefaultDescription=(reference==null?"Schema默认：":"继承定义：")+BindingSummary(inherited);
+                        item.CanRestoreDefault=reference==null?property.HasOverride:reference.Overrides.ContainsKey(property.MemberId);
+                        item.ResourceChoices=Resources.ToList().AsReadOnly();
+                        if(binding!=null&&binding.Kind==MPMBindingKind.Resource)
+                            item.SelectedBindingResource=item.ResourceChoices.FirstOrDefault(x=>x.Id==binding.ResourceId.Value);
+                        Properties.Add(item);
+                    }
                     var visual=reference==null?node as MRCVisualItem:null;
                     if(visual!=null){foreach(var pair in new[]{Tuple.Create("x",visual.X),Tuple.Create("y",visual.Y),Tuple.Create("width",visual.Width),Tuple.Create("height",visual.Height),Tuple.Create("rotation",visual.Rotation)})Properties.Add(Row(visual.Id,pair.Item1,MPMValueKind.Number,MPMBinding.Literal(MPMValue.Number(pair.Item2)),false,true));}
                 }
@@ -191,6 +231,14 @@ namespace CxVisual.Studio
             }
             finally{_refreshing=false;}
         }
+        private static string BindingSummary(MPMBinding binding)
+        {
+            if(binding==null)return "(无默认)";
+            if(binding.Kind==MPMBindingKind.Literal)return binding.Value.Kind==MPMValueKind.Null?"(空)":binding.Value.Canonical;
+            if(binding.Kind==MPMBindingKind.Resource)return "工程资源："+binding.SourceId;
+            if(binding.Kind==MPMBindingKind.Variable)return "变量："+binding.SourceId;
+            return "来源："+binding.Kind;
+        }
         private StudioPropertyItem Row(Guid owner,string member,MPMValueKind kind,MPMBinding binding,bool reference,bool visual,MPMPropertyDescriptor descriptor=null)
         {
             string schemaLabel="类型："+kind.ToString();
@@ -203,20 +251,37 @@ namespace CxVisual.Studio
                 schemaLabel+=reference?" · 实例覆盖":" · 定义属性";
             }
             else if(visual) schemaLabel+=" · 几何属性";
-            return new StudioPropertyItem{OwnerId=owner,Revision=ProjectSession.Revision,Member=member,Kind=kind,Reference=reference,Visual=visual,Schema=schemaLabel,Descriptor=descriptor,Text=binding==null?"":binding.Kind==MPMBindingKind.Literal?binding.Value.Canonical:binding.Kind==MPMBindingKind.Resource?(ProjectSession.Project.FindResource(binding.ResourceId.Value,true)?.Name??"资源缺失"):binding.SourceId,Mode=binding==null||binding.Kind==MPMBindingKind.Literal?"常量":binding.Kind==MPMBindingKind.Resource?"资源":binding.Kind==MPMBindingKind.Variable?"变量":"保留来源",Source=binding==null?"未绑定":binding.Kind==MPMBindingKind.Configuration?"配置来源":binding.Kind==MPMBindingKind.Member?"对象成员来源":binding.Kind==MPMBindingKind.Expression?"表达式来源":"当前来源："+(binding.Kind==MPMBindingKind.Literal?"常量":binding.Kind==MPMBindingKind.Resource?"资源":"变量")};}
+            return new StudioPropertyItem{OwnerId=owner,Revision=ProjectSession.Revision,Member=member,Kind=kind,Reference=reference,Visual=visual,Schema=schemaLabel,Descriptor=descriptor,Text=binding==null?"":binding.Kind==MPMBindingKind.Literal?binding.Value.Canonical:binding.Kind==MPMBindingKind.Resource?(ProjectSession.Project.FindResource(binding.ResourceId.Value,true)?.Name??"资源缺失"):binding.SourceId,Mode=binding==null?(kind==MPMValueKind.Resource?"资源":"常量"):binding.Kind==MPMBindingKind.Literal?"常量":binding.Kind==MPMBindingKind.Resource?"资源":binding.Kind==MPMBindingKind.Variable?"变量":"保留来源",Source=binding==null?"未绑定":binding.Kind==MPMBindingKind.Configuration?"配置来源":binding.Kind==MPMBindingKind.Member?"对象成员来源":binding.Kind==MPMBindingKind.Expression?"表达式来源":"当前来源："+(binding.Kind==MPMBindingKind.Literal?"常量":binding.Kind==MPMBindingKind.Resource?"资源":"变量")};}
         public void SetSelection(System.Collections.Generic.IEnumerable<Guid> ids){if(IsRefreshing)return;var selected=ids.Distinct().ToArray();Select(selected.Length==0?(Guid?)null:selected[selected.Length-1]);_selection=selected;}
         private MEMNode CurrentOwner(){if(!_editor.CurrentResourceId.HasValue)throw new InvalidOperationException("请选择页面或资源");var root=ProjectSession.Find(_editor.CurrentResourceId.Value);return root is MEMPage?((MEMPage)root).RootContent:root;}
         private MEMNode SelectedDefinition(){return _selected.HasValue?ProjectSession.Find(_selected.Value)??SelectedResource as MEMNode:SelectedResource as MEMNode;}
         private string EndpointLabel(MPCEndpoint endpoint){var port=ProjectSession.FindPort(endpoint.PortId);var name=endpoint.Address.InstancePath.Count==0?ProjectSession.Find(endpoint.Address.ObjectId).Name:ProjectSession.FindReference(endpoint.Address.InstancePath[0]).Name;return name+" / "+port.MemberId;}
         private void AddPort(MPCPortDirection direction)
         {var node=_selected.HasValue?ProjectSession.Find(_selected.Value):SelectedResource as MEMNode;if(!(node is IMPMDefinition))throw new InvalidOperationException("请选择内容、组件或图元定义");var definition=(IMPMDefinition)node;ProjectSession.DefinePort(node,(direction==MPCPortDirection.Input?"输入 ":"输出 ")+(definition.Ports.Count+1),direction,"core.number",isPublic:node.Parent is MEMProject);}
+        private void RestorePropertyDefault(StudioPropertyItem row)
+        {
+            if(row==null||row.Visual||row.Descriptor==null)throw new InvalidOperationException("请选择工程定义属性或公开实例参数");
+            ProjectSession.Edit("恢复工程属性默认值",row.Revision,e=>
+            {
+                if(row.Reference)e.SetOverride(ProjectSession.FindReference(row.OwnerId),row.Member,null);
+                else e.SetProperty(ProjectSession.Find(row.OwnerId),row.Member,null);
+                return true;
+            }).RequireValue();
+        }
         private void ApplyProperty(StudioPropertyItem row)
         {
             if(row==null)return;
             // 早期提示拒绝非法数字，最终范围/类型仍由原MEM编辑事务验证；失败绝不写工程历史。
             if(!string.IsNullOrEmpty(row.ValidationMessage))throw new InvalidOperationException(row.ValidationMessage);
             MPMBinding binding;
-            if(row.Mode=="资源"){if(BindingResource==null)throw new InvalidOperationException("请先选择一个资源");binding=MPMBinding.Resource(BindingResource.Id);}
+            if(row.Mode=="资源")
+            {
+                if(row.Kind!=MPMValueKind.Resource)throw new InvalidOperationException("当前属性不是Resource类型");
+                IMEMResource resource=row.SelectedBindingResource;
+                if(resource==null||ProjectSession.Project.FindResource(resource.Id,true)==null)
+                    throw new InvalidOperationException("资源不存在于当前工程或已失效");
+                binding=MPMBinding.Resource(resource.Id);
+            }
             else if(row.Mode=="变量")binding=MPMBinding.Variable(row.Text);
             else if(row.Mode=="常量")
             {MPMValue value;switch(row.Kind){case MPMValueKind.Number:value=MPMValue.Number(double.Parse(row.Text,CultureInfo.InvariantCulture));break;case MPMValueKind.Integer:value=MPMValue.Integer(long.Parse(row.Text,CultureInfo.InvariantCulture));break;case MPMValueKind.Decimal:value=MPMValue.Decimal(decimal.Parse(row.Text,CultureInfo.InvariantCulture));break;case MPMValueKind.Boolean:value=MPMValue.Boolean(bool.Parse(row.Text));break;case MPMValueKind.String:value=MPMValue.String(row.Text);break;default:throw new InvalidOperationException("请选择资源来源");}binding=MPMBinding.Literal(value);}
