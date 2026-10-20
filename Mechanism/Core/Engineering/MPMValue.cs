@@ -58,10 +58,10 @@ namespace CxVisual.Mechanism.Core
     }
     public sealed class MPMPropertyDescriptor
     {
-        public MPMPropertyDescriptor(string memberId,MPMValueKind valueKind,bool required=false,bool isPublic=true,MPMBinding defaultBinding=null,double? minimum=null,double? maximum=null)
+        public MPMPropertyDescriptor(string memberId,MPMValueKind valueKind,bool required=false,bool isPublic=true,MPMBinding defaultBinding=null,double? minimum=null,double? maximum=null,bool isReadOnly=false)
         {
             MemberId=MEMNode.NormalizeName(memberId);if(!Enum.IsDefined(typeof(MPMValueKind),valueKind)||valueKind==MPMValueKind.Null)throw new ArgumentException("Declared value kind required");
-            ValueKind=valueKind;Required=required;IsPublic=isPublic;Minimum=minimum;Maximum=maximum;
+            ValueKind=valueKind;Required=required;IsPublic=isPublic;IsReadOnly=isReadOnly;Minimum=minimum;Maximum=maximum;
             if(minimum.HasValue)MRCVisualItem.Finite(minimum.Value);if(maximum.HasValue)MRCVisualItem.Finite(maximum.Value);if(minimum>maximum)throw new ArgumentException("Invalid range");
             if((minimum.HasValue||maximum.HasValue)&&valueKind!=MPMValueKind.Number&&valueKind!=MPMValueKind.Integer&&valueKind!=MPMValueKind.Decimal)throw new ArgumentException("Range requires a numeric declaration");
             Validate(defaultBinding);DefaultBinding=defaultBinding;
@@ -70,6 +70,8 @@ namespace CxVisual.Mechanism.Core
         public MPMValueKind ValueKind {get;private set;}
         public bool Required {get;private set;}
         public bool IsPublic {get;private set;}
+        /// <summary>Immutable engineering value after definition; independent from public visibility.</summary>
+        public bool IsReadOnly {get;private set;}
         public MPMBinding DefaultBinding {get;private set;}
         public double? Minimum {get;private set;}
         public double? Maximum {get;private set;}
