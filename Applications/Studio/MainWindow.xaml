@@ -221,6 +221,10 @@
                             </WrapPanel>
                             <WrapPanel Margin="10,0,10,6">
                                 <Button Content="切换断点" Click="OnFlowToggleBreakpoint"/>
+                                <TextBox x:Name="FlowInvocationBreakpoint" Width="158"
+                                         ToolTip="如 loop.i2.work；为空则使用选中轨迹的StepId"/>
+                                <Button Content="切换迭代断点" Click="OnFlowToggleInvocationBreakpoint"
+                                        ToolTip="按真实MRK执行实例路径设断点，支持从历史轨迹定位，不改变工程定义"/>
                                 <Button Content="调试暂停" Click="OnFlowDebugPause"/>
                                 <Button Content="调试继续" Click="OnFlowDebugResume"/>
                                 <Button Content="调试单步" Click="OnFlowDebugStep"/>

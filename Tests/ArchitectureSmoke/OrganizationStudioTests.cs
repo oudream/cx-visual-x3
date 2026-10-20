@@ -518,6 +518,19 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 var beforeWiring=MOLWiringCodec.Get(reopened.GetSnapshot().Find(active.RootContent.Id));
                 Check(beforeWiring!=null&&beforeWiring.Blocks.Count==2,
                     "Studio V2 wiring demo not persisted in current Content");
+                // R09：完整Iteration StepId断点属于运行调试，不修改当前MEM工程Revision。
+                var instanceBreakpoint=(TextBox)window.FindName("FlowInvocationBreakpoint");
+                Check(instanceBreakpoint!=null,"Studio R09 iteration breakpoint editor missing");
+                instanceBreakpoint.Text="loop.i2.work";
+                int definitionBeforeBreakpoint=reopened.Revision;
+                Click(window,"切换迭代断点");
+                Check(((TextBlock)window.FindName("LogicInfo")).Text.Contains("已增加执行实例断点")&&
+                    reopened.Revision==definitionBeforeBreakpoint,
+                    "Studio scoped invocation breakpoint was not installed independently of MEM");
+                Click(window,"切换迭代断点");
+                Check(((TextBlock)window.FindName("LogicInfo")).Text.Contains("已移除执行实例断点")&&
+                    reopened.Revision==definitionBeforeBreakpoint,
+                    "Studio scoped invocation breakpoint removal affected the engineering definition");
                 // G04深化：真实WPF逻辑画布的Port点拖线入口，复用工程事务、撤销重做。
                 var flowCanvas=(CxVisual.Mechanism.Presentation.Wpf.MOLFlowCanvas)
                     window.FindName("LogicHost");

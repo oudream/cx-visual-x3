@@ -29,6 +29,9 @@ namespace CxVisual.Studio
         private MRKFlowHandle _logicFlow;
         private MRKExecutionDebugController _logicDebug;
         private readonly HashSet<Guid> _logicBreakpoints=new HashSet<Guid>();
+        // 调试会话的限定执行路径，不参与MEM工程持久化。
+        private readonly HashSet<string> _invocationBreakpoints=
+            new HashSet<string>(StringComparer.Ordinal);
         private bool _logicRunning;
         private readonly System.Diagnostics.Stopwatch _visualClock=new System.Diagnostics.Stopwatch();
         private readonly System.Diagnostics.Stopwatch _flowVisualClock=new System.Diagnostics.Stopwatch();
@@ -53,6 +56,7 @@ namespace CxVisual.Studio
         }
         private sealed class FlowTraceRecord
         {
+            public string StepId{get;set;}
             public Guid BlockId{get;set;}
             public Guid ContentId{get;set;}
             public IReadOnlyList<Guid> CallPath{get;set;}
@@ -1371,6 +1375,30 @@ namespace CxVisual.Studio
             }
             catch(Exception ex){LogicInfo.Text="设置断点失败："+ex.Message;}
         }
+        private void OnFlowToggleInvocationBreakpoint(object sender,RoutedEventArgs args)
+        {
+            try
+            {
+                string qualified=FlowInvocationBreakpoint.Text.Trim();
+                if(qualified.Length==0)
+                {
+                    var chosen=FlowTraceList.SelectedItem as FlowTraceRecord;
+                    qualified=chosen==null?string.Empty:chosen.StepId;
+                }
+                if(string.IsNullOrWhiteSpace(qualified)||qualified.Length>1024||
+                    qualified.Any(char.IsControl))
+                    throw new InvalidOperationException("请输入完整StepId，或先选择一条运行轨迹");
+                bool enabled=_invocationBreakpoints.Add(qualified);
+                if(!enabled)_invocationBreakpoints.Remove(qualified);
+                if(_logicDebug!=null)
+                {
+                    if(enabled)_logicDebug.AddBreakpoint(qualified);
+                    else _logicDebug.RemoveBreakpoint(qualified);
+                }
+                LogicInfo.Text=(enabled?"已增加":"已移除")+"执行实例断点: "+qualified;
+            }
+            catch(Exception ex){LogicInfo.Text="设置执行实例断点失败: "+ex.Message;}
+        }
         private void OnFlowDebugPause(object sender,RoutedEventArgs args)
         {
             if(_logicDebug==null){LogicInfo.Text="当前没有活跃MRK调试会话";return;}
@@ -1530,6 +1558,8 @@ namespace CxVisual.Studio
                 foreach(Guid id in _logicBreakpoints)
                 foreach(var origin in compiled.SourceMap.Find(id))
                     _logicDebug.AddBreakpoint(origin.StepId);
+                foreach(string qualified in _invocationBreakpoints)
+                    _logicDebug.AddBreakpoint(qualified);
                 FlowTraceList.ItemsSource=new List<FlowTraceRecord>();
                 _logicRunning=true;
                 _logicOverlay.Clear();
@@ -1563,6 +1593,7 @@ namespace CxVisual.Studio
                     var previous=(FlowTraceList.ItemsSource as IEnumerable<FlowTraceRecord>)
                         .ToList();
                     previous.AddRange(changes.Events.Select(e=>new FlowTraceRecord{
+                        StepId=e.Transition.StepId,
                         BlockId=e.Origin.BlockId,ContentId=e.Origin.ContentAddress.ObjectId,
                         CallPath=e.Origin.CallPath,
                         Label=e.Transition.State+" · "+e.Origin.BlockId.ToString("N")
