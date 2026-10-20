@@ -1,6 +1,6 @@
-# CxVisual.TestCenter 开发者快速使用（V4.0 M1）
+# CxVisual.TestCenter 开发者快速使用（依据唯一主规格 V4.1）
 
-这是给开发者使用的**一页说明**，不是另一本技术规格；所有设计和 F/M/P Owner 归属仍以《CxVisual TestCenter 统一测试体系完整规格 V4.0》为准。开发者无需手动注册 Catalog、Runner 或 Worker，也不需要修改生产项目引用。
+这是给开发者使用的**一页说明**，不是另一本技术规格；所有设计和 F/M/P Owner 归属仍以[《CxVisual.TestCenter 统一测试体系完整规格 V4.1》](../../DOCS/Architecture/CxVisual_测试体系——完整规格%20V4.1.md)为准。开发者无需手动注册 Catalog、Runner 或 Worker，也不需要修改生产项目引用。
 
 ## 最常见：新增一个测试
 
@@ -79,4 +79,4 @@ $env:TCT_NUNIT_ASSEMBLIES = 'D:\tests\TrustedChecks.dll'
 
 运行 `CxVisual.TestCenter.exe --ui-smoke` 可自动验证真实WPF控件事件和跨进程Worker证据回显（**不是**完整Windows UIA及人工外观验收）。`M-OBJ-005` 反证检验提交后旧快照不变、父子伪造、重复拥有、DTD禁用。当前Snapshot格式只用于测试证据，**不替代** MEM工程文件持久化格式、生产编译器和运行实例真源。
 
-界面视觉依据：`DOCS/Architecture/TestCenter/` 中六张2560×1440设计图；权威需求以 `DOCS/Architecture/CxVisual_统一测试体系——完整规格 V4.0.md` 第08章及全局台账为准。当前完整Geometry Expected/Actual/Diff、Graph/Channel/Runtime专业结构化Viewer、历史浏览/重跑联动、Golden审批、Suite/Plan、正式覆盖率、完整UIA和HIL仍未验收，不允许以本段Smoke冒充完成。
+界面视觉依据：`DOCS/Architecture/TestCenter/` 中六张2560×1440设计图；权威需求以 `DOCS/Architecture/CxVisual_测试体系——完整规格 V4.1.md` 第08章及全局台账为准。当前完整Geometry Expected/Actual/Diff、Graph/Channel/Runtime专业结构化Viewer、历史浏览/重跑联动、Golden审批、Suite/Plan、正式覆盖率、完整UIA和HIL仍未验收，不允许以本段Smoke冒充完成。
