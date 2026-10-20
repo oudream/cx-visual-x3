@@ -331,3 +331,9 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 - Commit `a859f5a89ab85b2435afb166671a7f7962d73abb` 的Windows CI五项均成功：Runtime 39400696836；工程组织 39400696785；TestCenter 39400696731；Config L1 39400696671；配置公共底座 39400696692。
 - 本增量沿用R06真实Root→Mid→Leaf工程保存重开及同Plan复用案例，注入Leaf原始业务异常，要求Root失败、未提交Export不公开，Trace保持原Leaf与两级CallPath；另修复FCR Completion与Worker活动槽释放的测试时序假设。
 - 增量当前仍待本提交固定SHA的Windows CI，R07尚未完成全部E08原子项和Studio安全交互，不提前进入R08。
+
+### R07 三级失败反证CI及条件谓词异常反证（2026-10-20）
+
+- 固定提交 `49c6d7d254870c3bc96eea906bb07bd6c8a57cbb` 已取得相同SHA的五项Windows CI success：Runtime `39401722909`、工程组织 `39401722742`、TestCenter `39401722699`、Config L1 `39401722773`、配置公共底座 `39401722757`。这证实R06三层真实工程在Leaf注入业务异常后的MRK失败传播和MOC SourceMap/Trace仍保留调用层级。
+- 本次新增`FirstMatchingAsync`谓词本身失败时抛出错误、不伪造任何结果的回归测试，仍须等本次修订SHA的Windows验证。
+- **R07阶段性状态：S3增量通过，不等于整轮完成**。E08-05/07/08/10以及Studio完整交互、正式权限/硬件安全、各种不可控外部动作仍存在验收缺口；此时仍不得进入R08，更不能声称R08～R12完成。

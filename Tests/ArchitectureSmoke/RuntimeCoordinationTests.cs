@@ -400,6 +400,18 @@ namespace CxVisual.Tests.ArchitectureSmoke
             var end = Await(all);
             Check(!end[1].Succeeded && end[0].CancellationRequested,
                 "All显式取消未记录请求或原始失败被隐藏");
+            // 条件求值失败属于错误，不可被静默降级为“没有任何匹配”。
+            var predicateInput = worker.Submit<int>(ct => Task.FromResult(6), "r07-bad-predicate");
+            bool predicateRejected = false;
+            try
+            {
+                Await(MRKWorkJoin.FirstMatchingAsync(new[] { predicateInput },
+                    outcome => { throw new InvalidOperationException("r07.condition.failed"); }));
+            }
+            catch (InvalidOperationException ex)
+            { predicateRejected = ex.Message == "r07.condition.failed"; }
+            Check(predicateRejected, "条件汇合吞掉了谓词异常");
+
             // FCRWork.Completion先于Worker活动槽位最终释放。
             Await(worker.StopAsync());
             Check(worker.GetSnapshot().Active == 0, "已结算Worker仍占用活动槽位");
