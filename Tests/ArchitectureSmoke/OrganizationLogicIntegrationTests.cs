@@ -62,6 +62,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             G05bStreamBackpressureAndFlow();
             G05dHierarchicalParallelMachine();
             V2ExtractLinearContent();
+            G04ParameterSubflowIsolation();
             CThreeTierXRayTwoSubflows();
             V2LayoutContract();
             V2BulkEditingClipboard();
@@ -646,6 +647,83 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 if(System.IO.File.Exists(file))System.IO.File.Delete(file);
                 if(System.IO.File.Exists(file+".cx-lock"))System.IO.File.Delete(file+".cx-lock");
             }
+        }
+
+        /// <summary>G04-F：提取带Data参数的Control子流程，按两次调用隔离MRK绑定。</summary>
+        private static void G04ParameterSubflowIsolation()
+        {
+            var session=MEMEngineering.Create("G04-F类型化参数子流程");
+            var page=session.AddPage("参数化子流程入口");
+            try
+            {
+                Guid start=Guid.Empty,inspect=Guid.Empty,finish=Guid.Empty;
+                MOCFlowBuilder.Edit(session,page.RootContent,b=>{
+                    start=b.Step("acquire");
+                    inspect=b.Step("inspect");
+                    finish=b.Step("finish");
+                    b.Connect(start,"Done",inspect,"Start");
+                    b.Connect(inspect,"Done",finish,"Start");
+                    b.AddPort(inspect,new MPCPortDescriptor("Threshold",
+                        MPCPortDirection.Input,"double",MPCPortKind.Data));
+                    b.SetParameter(inspect,"Threshold","2.25");
+                    b.Move(start,20,40);b.Move(inspect,340,40);b.Move(finish,660,40);
+                });
+                var child=MOCFlowBuilder.ExtractLinearContent(session,page.RootContent,
+                    new[]{inspect,finish},"检测阈值子流程");
+                var stored=MOLWiringCodec.Get(session.GetSnapshot().Find(child.Id));
+                Check(stored.Parameters[inspect]["Threshold"]=="2.25",
+                    "G04-F extract lost typed Data parameters");
+                var first=MOLWiringCodec.Get(session.GetSnapshot().Find(page.RootContent.Id))
+                    .Blocks.Single(b=>b.CapabilityId=="moc.invoke:"+child.Id.ToString("N"));
+                Guid second=Guid.Empty;
+                MOCFlowBuilder.Edit(session,page.RootContent,b=>{
+                    second=b.Step("moc.invoke:"+child.Id.ToString("N"));
+                    b.Connect(first.Id,"Done",second,"Start");
+                });
+                int count=0;
+                var resolver=new TestResolver()
+                    .Register("acquire",(ctx,t)=>Task.FromResult((object)1))
+                    .Register("inspect",(ctx,t)=>{
+                        object value;
+                        if(!ctx.BoundInputs.TryGetValue("Threshold",out value)||
+                            !(value is double)||Math.Abs((double)value-2.25)>0.00001)
+                            throw new InvalidOperationException("G04-F instance parameter mismatch");
+                        Interlocked.Increment(ref count);
+                        return Task.FromResult((object)value);
+                    })
+                    .Register("finish",(ctx,t)=>Task.FromResult((object)true));
+                var result=new MOCBuildService().Build(
+                    session.GetSnapshot(),page.RootContent.Id,resolver);
+                Check(result.Succeeded,"G04-F parameter subflow compile: "+
+                    string.Join(";",result.Diagnostics.Select(d=>d.Code+":"+d.Message)));
+                Check(result.Plan.InputDefaults.Count==2&&
+                    result.Plan.InputDefaults.Keys.Distinct().Count()==2&&
+                    result.Plan.InputDefaults.Values.All(v=>v is double &&
+                        Math.Abs((double)v-2.25)<0.00001),
+                    "G04-F two Content calls share an incorrect input-default key");
+                MOCTraceView trace;
+                var flow=Execute(result.Plan,
+                    result.Plan.InputDefaults.ToDictionary(x=>x.Key,x=>x.Value),out trace);
+                Check(flow.State==MRKFlowState.Completed&&count==2&&
+                    result.Plan.SourceMap.Find(inspect).Count==2,
+                    "G04-F parameterized child did not execute twice with source identity");
+                int revision=session.Revision;
+                bool rejected=false;
+                try
+                {
+                    MOCFlowBuilder.Edit(session,page.RootContent,b=>
+                        b.AddPort(first.Id,new MPCPortDescriptor("Unknown",
+                            MPCPortDirection.Input,"double",MPCPortKind.Data)));
+                    var modified=new MOCBuildService().Build(
+                        session.GetSnapshot(),page.RootContent.Id,resolver);
+                    Check(modified.Succeeded,"G04-F added unused port changed executable plan");
+                }
+                catch(Exception){rejected=true;}
+                Check(!rejected,"G04-F unrelated unbound port disrupted child invocation");
+                Check(session.Revision==revision+1,"G04-F unrelated port edit did not commit once");
+                Check(session.Undo().Success,"G04-F Undo on caller port failed");
+            }
+            finally{session.Close(true);}
         }
 
         private static void V2ExtractLinearContent()
