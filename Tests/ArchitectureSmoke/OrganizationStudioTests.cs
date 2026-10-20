@@ -313,6 +313,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         session.ResolveParameter(second,"资源图").ResourceId==localAsset.Id&&
                         ((string)Get(vm,"Status")).Contains("操作失败"),
                         "R03 foreign resource mutated MEM revision or bypassed project identity validation");
+                    // 负例工程在AddAsset后处于Dirty；测试明确丢弃，绝不隐式依赖Dispose保存。
+                    foreign.Close(true);
                 }
                 // R03定义属性恢复Schema默认：不触碰另一实例的显式覆盖。
                 session.SetProperty(symbol,"启用",MPMBinding.Literal(MPMValue.Boolean(true)));
