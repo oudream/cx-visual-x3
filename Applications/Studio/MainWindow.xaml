@@ -300,7 +300,7 @@
                     <ListBox ItemsSource="{Binding Connections}" SelectedItem="{Binding SelectedConnection}" DisplayMemberPath="Name" MaxHeight="80"/>
                     <Button Command="{Binding DisconnectCommand}" Content="断开选中连接"/>
                     <TextBlock Text="所选对象属性 / 实例公开参数" FontWeight="SemiBold" Margin="0,10,0,4"/>
-                    <ComboBox ItemsSource="{Binding Resources}" SelectedItem="{Binding BindingResource}" DisplayMemberPath="Name" ToolTip="资源来源选择；无需输入内部ID"/>
+                    <TextBlock Text="资源来源在每条属性内选择；恢复默认使用原工程定义/实例继承机制。" FontSize="11" Foreground="#64748B" TextWrapping="Wrap"/>
                     <ItemsControl x:Name="EngineeringProperties" ItemsSource="{Binding Properties}">
                         <ItemsControl.Resources>
                             <!-- 只呈现已有MPM Schema；模板不保管独立业务数据或编辑历史。 -->
@@ -313,6 +313,11 @@
                             </DataTemplate>
                             <DataTemplate x:Key="EngineeringBooleanEditor">
                                 <CheckBox Content="启用" IsChecked="{Binding BooleanValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                            </DataTemplate>
+                            <DataTemplate x:Key="EngineeringResourceEditor">
+                                <ComboBox ItemsSource="{Binding ResourceChoices}"
+                                          SelectedItem="{Binding SelectedBindingResource, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                          DisplayMemberPath="Name" ToolTip="仅显示当前工程可引用的资源，提交前验证引用身份"/>
                             </DataTemplate>
                         </ItemsControl.Resources>
                         <ItemsControl.ItemTemplate><DataTemplate>
@@ -330,6 +335,9 @@
                                                 <DataTrigger Binding="{Binding IsBooleanConstant}" Value="True">
                                                     <Setter Property="ContentTemplate" Value="{StaticResource EngineeringBooleanEditor}"/>
                                                 </DataTrigger>
+                                                <DataTrigger Binding="{Binding IsResourceSource}" Value="True">
+                                                    <Setter Property="ContentTemplate" Value="{StaticResource EngineeringResourceEditor}"/>
+                                                </DataTrigger>
                                             </Style.Triggers>
                                         </Style>
                                     </ContentControl.Style>
@@ -345,7 +353,15 @@
                                         </Style>
                                     </TextBlock.Style>
                                 </TextBlock>
-                                <DockPanel><TextBlock Text="{Binding Source}" VerticalAlignment="Center"/><Button Content="应用" Command="{Binding DataContext.ApplyPropertyCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"/></DockPanel>
+                                <TextBlock Text="{Binding DefaultDescription}" FontSize="11" Foreground="#64748B" TextWrapping="Wrap"/>
+                                <DockPanel>
+                                    <TextBlock Text="{Binding Source}" VerticalAlignment="Center"/>
+                                    <Button Content="应用" Command="{Binding DataContext.ApplyPropertyCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"/>
+                                    <Button Content="恢复默认" IsEnabled="{Binding CanRestoreDefault}"
+                                            ToolTip="定义属性恢复Schema默认；实例参数清除覆盖，继承定义"
+                                            Command="{Binding DataContext.RestorePropertyDefaultCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                            CommandParameter="{Binding}"/>
+                                </DockPanel>
                             </StackPanel>
                         </DataTemplate></ItemsControl.ItemTemplate>
                     </ItemsControl>
