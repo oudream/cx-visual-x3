@@ -398,3 +398,11 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 - 提交`8936665a2b4ffb6d9070828b46ae21040244f3b6`的TestCenter `39410272485`在`Verify project structure`失败：`Expected 31 projects, got 32`，尚未执行R07新业务反证。原因是并行新建的`Hello/AvalonDock/src/CxVisual.AvalonDock.PoC`被验证脚本全仓库递归枚举；该独立PoC不在正式Owner六方面与原31个产品项目中。
 - 最小修复：只修改`Build/Verify-Structure.ps1`，项目发现限于既有`Foundation/Mechanism/Professional/Applications/Intelligence/Tests`六个正式顶层Owner，后续依旧严格验证31个数量、目录深度、NET48、程序集名、所有源码与ProjectReference和正式sln；不改PoC/历史或降低产品侧验证门槛。
 - 补强旧/新Flow迟到输出反证的FlowId一致性；以新Commit SHA的Runtime、Engineering、TestCenter、Config结果为准，未过不得宣布本次增量完成。
+
+
+### R07 本轮已核验固定提交（2026-10-20）
+
+- **最终源码及修复提交**：`16482d6810cc093ff480a82691c67b1ace888441`，是包含全部R07本轮代码、正反例、Build结构验证范围修复的固定SHA。
+- 已再次查询GitHub Actions，五项同SHA Windows CI `completed/success`：Runtime TDD [39410511650](https://github.com/oudream/cx-visual-x3/actions/runs/39410511650)；Engineering Organization [39410511695](https://github.com/oudream/cx-visual-x3/actions/runs/39410511695)；TestCenter [39410511642](https://github.com/oudream/cx-visual-x3/actions/runs/39410511642)；Config L1 [39410511637](https://github.com/oudream/cx-visual-x3/actions/runs/39410511637)；配置公共底座 [39410511673](https://github.com/oudream/cx-visual-x3/actions/runs/39410511673)。
+- 本轮经Windows证实：Join等待观察超时/取消不释放非协作Work、具名输出显式同名聚合且通过MDS提交、Skipped/Failed依赖区分、同Plan旧Flow迟到Return不会污染新Flow、PoC不误计正式项目数量。上述属于**已通过源码增量**，不能等同R07全部需求已完成。
+- 尚缺或待扩展：Studio工程编排用户对高级Join/异常/补偿的可见可编辑操作、跨Invocation与Parallel Foreach的归并完整身份、多生产者真实专业连接、跨进程外部设备Unknown与硬件安全交接及整体长稳反证。**R07整轮状态：持续实施，未封轮；R08～R12仍待推进**。此次仅追加文档证据，不修改最后已经CI验证过的源码。
