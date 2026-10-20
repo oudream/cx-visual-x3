@@ -1,5 +1,7 @@
 # CxVisual Studio S1：统一 Shell 与 AvalonDock 接入（实施与验收）
 
+> **实测进度（2026-10-21）**：S1 自动验收已通过（10/10）；完整 Windows 工程组织回归已通过。以下仅陈述相应 SHA 的真实 CI，人工视觉/浮动/DPI/长稳仍待验证，不能将其等同完整工业Studio交付。
+
 ## 1. 依据、范围及事实等级
 
 - 需求：`CxVisual Studio 统一界面架构与完整设计规范 V1.2`；`DOCS/界面设计` 中 00～09 原图。视觉图不是已实现功能证明。
@@ -14,7 +16,8 @@
 |---|---|---|
 | `Applications/Studio/MainWindow.xaml` | 统一Shell、菜单、Ribbon、工具面板、原HMI/流程编辑器 | 原编辑器继续使用实际SceneView/MOLFlowCanvas |
 | `Applications/Studio/StudioShell.cs` | LayoutDocument/Anchorable、ID、主题、布局保存恢复、菜单上下文 | 无任何新的MEM工程模型或运行引擎 |
-| `Applications/Studio/StudioShellSelfTests.cs` | Windows真STA自测 S1-01～08 | 失败必须进程ExitCode!=0 |
+| `Applications/Studio/StudioShell.ResourceTree.cs` | 投影MEM页面、Content、Symbol和其它资源，支持筛选/选中/双击导航及刷新去重 | 不复制工程真源；Group/Element不进入普通资源树 |
+| `Applications/Studio/StudioShellSelfTests.cs` | Windows真STA自测 S1-01～09 + R07 Join | 失败必须进程ExitCode!=0 |
 | `Applications/Studio/StudioViewModel.Shell.cs` | Shell级故障文本接入已有Status | 不修改Revision |
 | `Applications/Studio/App.xaml.cs` | 非交互 self-test 入口 | 日常启动仍进入MainWindow |
 | `.github/workflows/studio-shell-windows.yml` | Windows完整解决方案 + S1 STA + 结构检查 | 以对应commit的workflow实测为准 |
@@ -25,6 +28,7 @@
 2. 启动 `CxVisual.Studio.exe`。顶部是固定9项 + 文档动态菜单，中央主页/HMI/流程在同一DockingManager下，不出现第二层固定导航。
 3. 打开“视图”可操作工具面板、保存/恢复/重置布局；点击右上“浅色/深色”切换主题。工作区保存在 `%APPDATA%\CxVisual\Studio\workspace.layout.xml`，**不在工程保存中**。
 4. HMI/流程仍使用原ViewModel/Scene/Logic命令；资源配置 S1 页面仅展示配置服务入口，真实Schema分组编辑列入S2，禁止当作已交付。
+5. 左侧“工程资源管理器”按照真实MEM对象显示“工程 → 页面 / 共享内容(Content) / 共享组件(Symbol) / 其它资源”；支持名称筛选、单击页/资源、双击打开HMI定义。普通树不展开Group、Element；它们需要独立图形结构面板（待实现）。
 
 ## 4. 自动验收
 
@@ -38,8 +42,18 @@
 - S1-06 关闭重开工具面板唯一。
 - S1-07 拒绝DTD、超限XML、未知ContentId。
 - S1-08 重置初始布局。
+- S1-09 层级资源树与MEM工程身份一致，不改Revision、不包含普通Element节点。
+- R07 现有MEM工程Join的保存重开及非法输入回滚（由并行开发加入）。
 
-真实编译、测试、CI结果务必单独记录。代码提交≠验收成功。
+### 本轮真实CI证据（按Commit定位）
+
+| 版本 | Windows任务 | 实测结果 |
+|---|---|---|
+| [813df07](https://github.com/oudream/cx-visual-x3/commit/813df07bd8c9a3fb203dcee1c4434e1a3e2478be) | [Studio S1 / 39515710269](https://github.com/oudream/cx-visual-x3/actions/runs/39515710269) | **成功**：完整Release x64编译、10/10 WPF STA自测、结构与Owner依赖检查 |
+| 同一提交 | [工程组织 / 39515710245](https://github.com/oudream/cx-visual-x3/actions/runs/39515710245) | **成功**：工程组织、兼容性、真WPF交互、编排与开发者例程 |
+| [11cbc3a](https://github.com/oudream/cx-visual-x3/commit/11cbc3ab90efdca70d9ef42d442a5b36a461a434) | [工程组织 / 39514735744](https://github.com/oudream/cx-visual-x3/actions/runs/39514735744) | **成功**：修复原测试依赖旧TabItem的问题，不跳过原有断言 |
+
+初版失败事实：S1一度使用`DockingManager.ActiveContent as LayoutContent`误判动态菜单；工程测试将旧TabItem当成新AvalonDock文档；树刷新重复触发NotifyScene导致GUI无响应。以上均依真实CI复现和修复。过去的失败不能由最新成功覆盖其技术原因。
 
 ## 5. 人工验收（CI无法替代）
 
@@ -50,7 +64,20 @@
 - 关闭窗口时Dirty工程取消退出，不能错误保存布局或丢工程。
 - 100次多文档切换与50次布局保存恢复的性能及视图引用复用。
 
-## 6. 风险及待验项
+## 6. 剩余S1实际差距与下一轮优先级
+
+| 优先级 | 待完成 | 当前真实状态 |
+|---|---|---|
+| P0 | HMI图形结构独立面板（Layer/Group/Element），只在图元文档使用 | **未实现**，不能把普通资源树当图形对象树 |
+| P0 | 资源点击/双击导航的真实端到端键鼠验收、停靠与布局恢复后事件回连 | 现有树身份及刷新自动测试通过，完整用户键鼠链未覆盖 |
+| P0 | WPF真实桌面拖拽/浮动/自动隐藏、多屏DPI、关闭取消与焦点测试 | **未实测** |
+| P1 | 配置资源Schema驱动1×N/2×N/3×N真实组合面板 | 当前只有入口与基础展示，未提供完整自动编辑 |
+| P1 | V1.2唯一CommandId目录、动态页签Descriptor与权限门控 | 当前采用既有真实命令+Shell分组绑定，不声称完全覆盖 |
+| P1 | 11个设计场景（含文件Backstage、主流程、子流程、运行调试、CT3D等） | 尚未全面落地，设计图不能当功能截图 |
+
+**下一步先闭环P0（特别是图形结构独立面板），再进入S2的Schema生成器和专业上下文扩展。** 不为界面另建工程树或运行真源。
+
+## 7. 风险及待验项
 
 - `Hello/AvalonDock` 文档目前记录Windows动态验收待执行；首次正式集成应以本工作流及主程序手测为准。
 - 既有Studio内部仍有历史操作按钮，为防止回归S1未删除全部专业内嵌工具；S2再根据V1.2的Ribbon注册体系逐个收敛。
