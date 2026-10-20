@@ -57,7 +57,7 @@
 | R01 | EP04 | Studio属性显示MPM类型/必填/数值范围；合法应用、越界拒绝且Revision不变 | 已提交待CI | f6c0dceb7afa（须同SHA Windows复核） |
 | R02 | EP04 | 根据Schema形成Boolean与Numeric输入控件；拒绝错误类型 | 已提交待CI | f49760aa9d5c（静态结构已核对，Windows待检） |
 | R03 | EP04 | 属性默认、资源来源与无效引用诊断 | 已提交待CI | c2799d713c27（等待Windows验收） |
-| R04 | EP04 | 定义/实例覆盖、多选混合值/只读约束 | 部分实现已提交待CI | 7d55224493f1（同定义实例批量、混合值、跨类型只读；泛化Schema只读待补） |
+| R04 | EP04 | 定义/实例覆盖、多选混合值/只读约束 | 已提交待CI，范围部分闭环 | 45ff4d1eecc（同定义实例批量、MPM原生ReadOnly；待Windows验证） |
 | R05 | EP01 | 工作区/资源树/实例与定义往返导航 | 未开始 | 待对应源码及Windows证据 |
 | R06 | EP01 | 多页/多标签/保存重开/未保存提醒/布局恢复 | 未开始 | 待对应源码及Windows证据 |
 | R07 | EP02 | 九Shape精确WPF绘制和文本图片受限SVG回归 | 未开始 | 待对应源码及Windows证据 |
@@ -132,6 +132,6 @@ R01源码已提交（截止 f6c0dceb7afae75d320f6b442f3a152b11566162）：修改
 | R01 | 已提交待CI | f6c0dceb7afa | Studio属性行/真实WPF提示/双实例越界回归代码已提交；仅静态核查源文件已落仓 | Windows MSBuild、OrganizationStudioTests STA、对应SHA CI均待实际执行 |
 | R02 | 已提交待CI | f49760aa9d5c | StudioPropertyItem的INotifyPropertyChanged、Boolean/Number/Integer/Decimal类型投影及格式/范围提示；WPF CheckBox与Numeric TextBox随来源动态切换；OrganizationStudioTests新增非法格式拒绝、Boolean双实例、Undo/Redo、保存重开与变量/常量切换用例。当前已对比GitHub实际3处源码并做XAML标记栈静态核查 | 未有实际Windows构建、WPF STA或同SHA完整CI通过报告；公共XAML结构检查不等于WPF编译，现场设备与外部鼠标注入不适用本轮 |
 | R03 | 已提交待CI | c2799d713c27 | 增加属性独立资源选择、Schema默认恢复、实例覆盖清除及输入提示；WPF回归代码覆盖有效资产、跨工程无效资产、两实例隔离、Undo/Redo、保存重开；源码和XAML结构已核查 | Windows编译、WPF STA、TestCenter及最新同SHA CI均待核实；本轮不能标记验收通过 |
-| R04 | 部分实现已提交待CI | 7d55224493f1 | ViewModel同一Content/Symbol定义的多个引用实例可投影公共MPM属性；混合数值空态与Boolean三态、相同值批量事务、更改一次Revision、单次Undo/Redo、批量清除覆盖；不同定义/图元混选显示只读提示且拒绝过期选区；私有属性不泄漏到实例编辑器。组织WPF STA已加入正反例（尚未执行）。 | 未能检索R01–R03的同SHA push Actions完整日志，未证明通过或失败；R04源代码仅静态结构/XAML平衡核查。跨定义兼容Schema的批量交集、真正Descriptor只读元数据与权限UI、外部鼠标实测仍未完成。 |
+| R04 | 已提交待CI，范围部分闭环 | 45ff4d1eecc | 同一Content/Symbol定义的多个引用实例通过MPM公共Schema投影共同属性；混合值与Boolean三态、一个MEM事务更新/撤销重做、批量清除覆盖、过期选区拒绝；跨定义/图元混选不降级成最后实例编辑。新增原生MPMPropertyDescriptor.IsReadOnly（旧构造兼容），MTC拒绝设置定义/实例覆盖；两条工程XML持久化、类型Schema比较、工程资源转移同步该标记。Studio按只读禁用。ArchitectureSmoke新增纯Core和WPF STA反证（未经执行）。 | 仍未获得R01～R04同SHA Windows构建/STA/CI验证。跨定义兼容Schema的批量交集、多选性能和真实外部鼠标验证待追加轮次；若有CI失败先修复。 |
 
-R01～R04验收判定：目前仅确认源码/测试写入master及R04静态结构检查，**Windows编译、OrganizationStudioTests的WPF STA、TestCenter和同一最终SHA的Actions仍是待验证**。本次尝试GitHub综合Commit Status、PR-run查询、GitHub Actions网页及容器API连接，均未取得R01～R03的完整push运行日志；不能据此推断“测试通过”或“测试失败”。必须先获得真实日志，若有编译/测试失败按实际错误修复，严禁禁用用例/修改绿色日志。R04已完成同定义多实例安全批量的纵向切片，**仍欠MPM正式只读Schema约束、跨定义兼容属性选择、更完整的多选工效验证**；后续应单独排入补轮，不因R05推进而丢失。下一任务在完成门禁复核后进入R05工作区导航。
+R01～R04验收判定：目前确认源码/测试写入master，验证仅限文件内容与括号/XAML结构检查；**Windows编译、OrganizationStudioTests的WPF STA、TestCenter和同一最终SHA的Actions仍是待验证**。本次查询GitHub综合Commit Status、PR-run、Actions网页及容器API均未取得R01～R03及本次R04完整push运行日志，不能据此推断成功或失败。现有 .github/workflows/engineering-organization-windows.yml 明确包含Studio/ArchitectureSmoke变更路径，且运行ArchitectureSmoke.exe --organization-wpf，故已确认门禁路由存在，不等于运行通过。若真实CI有失败必须先按日志修复，严禁禁用测试。R04已补原生MPM IsReadOnly并贯通Core/序列化/资源转移/Studio，以及单定义双实例批量；**跨定义兼容属性的安全交集、多选工效及权限类型进一步扩展**作为明确剩余功能。下一任务先复核Windows同SHA CI，再进入R05工作区导航。
