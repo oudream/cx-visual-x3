@@ -165,3 +165,14 @@ MOCFlowBuilder.Edit(session, content, b =>
 ### 7.4 结论
 
 **目前三轮不允许整体封板。** 这一批提供了可执行的CPU专业路径、软件发布候选锁及参数化子Content真实测试；G05动态循环/Workflow恢复以及G06～G08硬件、部署和历史系统整体验收仍需继续开发。最终机台安全与ACK只能由受授权的专业Provider在真实现场反馈确认。
+
+
+### 7.5 2026-10-20 第一次收尾闭环：Windows复验实证
+
+- 最终软件源码测试提交：`97ac6b0660523ce7aceeac0131ed856246228472`。
+- 同一 SHA 的 **CxVisual Engineering Organization Windows Acceptance** 成功：[39352378264](https://github.com/oudream/cx-visual-x3/actions/runs/39352378264)。
+- 同一 SHA 的 **CxVisual Unified Runtime Windows TDD** 成功：[39352378332](https://github.com/oudream/cx-visual-x3/actions/runs/39352378332)。
+- 同一 SHA 的 **CxVisual Config L1 Windows Build and Smoke** 成功：[39352378390](https://github.com/oudream/cx-visual-x3/actions/runs/39352378390)。
+- 同一 SHA 的 **配置公共底座独立编译与验收** 成功：[39352378246](https://github.com/oudream/cx-visual-x3/actions/runs/39352378246)。
+- 本批期间还修复了：Data端口由节点参数提供时必需性校验错误、G06 Vision Provider契约必需输入、三级公开子Content字段确定赋值、层级子流程测试中将必需输入误标为可选、Studio反证中未保存外来工程的关闭异常。
+- 以上验证属于**软件S2/S3**，部分Studio UI覆盖可判定为对应范围S4；不代表三轮G04～G08所有子项已完成，尤其真实FPD/CT运控/PLC/MES设备及整体G08案例S5仍待落实。
