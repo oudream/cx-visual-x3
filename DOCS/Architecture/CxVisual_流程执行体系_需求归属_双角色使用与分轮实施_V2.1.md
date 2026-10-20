@@ -485,3 +485,10 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 
 - 前一提交 `b39a708109164cbe49afdf81b19d4fa5819ea9de` 对应Windows Runtime [39515316490](https://github.com/oudream/cx-visual-x3/actions/runs/39515316490)、TestCenter [39515316520](https://github.com/oudream/cx-visual-x3/actions/runs/39515316520)、Config L1 [39515316500](https://github.com/oudream/cx-visual-x3/actions/runs/39515316500)、配置公共底座 [39515316510](https://github.com/oudream/cx-visual-x3/actions/runs/39515316510)，全部success。
 - 本次保留原MRKExecutionGroups实现不增新调度器，ArchitectureSmoke增加64轮取消等待者、Waiting释放、Active持有者不受干扰、拒绝配额统计、另一组独立运行及重新准入的执行反证。待本提交固定SHA的Windows实际回归；R08仍有Stage/WholeFlow、资源交接与长稳压测待完成。
+
+
+### R08执行组容量反证：固定Windows证据（2026-10-21）
+
+- 固定源码SHA：`79470098f18d90a87d5eada9a01ea3018b4553e0`。Windows Release/x64同SHA四项工作流均`completed/success`：Runtime [39515895209](https://github.com/oudream/cx-visual-x3/actions/runs/39515895209)、工程组织 [39515895189](https://github.com/oudream/cx-visual-x3/actions/runs/39515895189)、Config L1 [39515895258](https://github.com/oudream/cx-visual-x3/actions/runs/39515895258)、配置公共底座 [39515895187](https://github.com/oudream/cx-visual-x3/actions/runs/39515895187)。本SHA仅修改Tests/ArchitectureSmoke和此文档，TestCenter工作流的路径过滤未触发，不能冒称该SHA独立运行了TestCenter；前次Foundation源改动SHA `b39a708109164cbe49afdf81b19d4fa5819ea9de` 的TestCenter实际成功。
+- 经证实：原执行组等待配额满足限制，64轮等待Token取消后不占用Waiting，已经占用Active的Holder不被抢占，独立cpu组正常，拒绝统计64次，最终许可归还可重新接纳。
+- **R08状态仍为进行中**：已完成并验证F19跨Key有界优先级公平性，以及MRK组等待取消配额归还；尚需WholeFlow/Stage组调度语义、真实多资源公平仲裁、背压冲突/压力与长稳数据。不得将普通Windows软件测试当作实机或跨进程独占证据。
