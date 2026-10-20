@@ -778,7 +778,9 @@ namespace CxVisual.Mechanism.Core
             foreach(var b in Blocks)foreach(var port in Ports[b.Id])
                 if(port.Required&&port.Direction!=MPCPortDirection.Output&&
                     !incoming.ContainsKey(b.Id.ToString("N")+":"+port.MemberId)&&
-                    !FlowInputs.Values.Any(x=>x.BlockId==b.Id&&x.PortMemberId==port.MemberId))
+                    !FlowInputs.Values.Any(x=>x.BlockId==b.Id&&x.PortMemberId==port.MemberId)&&
+                    !(port.Kind==MPCPortKind.Data&&Parameters.ContainsKey(b.Id)&&
+                      Parameters[b.Id].ContainsKey(port.MemberId)))
                     throw new InvalidOperationException("wiring.required_port:"+b.Id+":"+port.MemberId);
             var reached=new HashSet<Guid>();
             var pending=new Queue<Guid>();pending.Enqueue(EntryBlockId);
