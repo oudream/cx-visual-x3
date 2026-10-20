@@ -307,3 +307,13 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 - 在 R06 双调用Content测试中，Seed 能力从运行请求 `ctx.Inputs` 读取每个Flow的独立数据，不依赖闭包全局变量；对同一已编译Plan同时提交两套输入，验证 20/34 两个具名结果、不同Flow身份、唯一对外Export、SourceMap/Trace的原始Content定位。
 - 保持已有 Save/Close/Open、必填输入断开→构建拒绝、私有子输出不公开、三层 SourceMap CallPath、空白Content不可调用等既有反证。
 - 验收条件：本增强提交的 Windows Runtime TDD、Engineering Organization、TestCenter及 Config 系列真实CI全部成功，才登记R06 S3；如有失败不得从测试中删除场景。
+
+
+## R07 · Join / 异步关联与尾部结算（本轮增量，验收中）
+
+- 基线：从固定SHA `002ca9428b85cb841189f7615d937372f11c0f44` 开始，仅修改既有 MRK / F19 路径与 ArchitectureSmoke；没有新增执行引擎、Worker、Graph、工程项目或第二数据真源。
+- 已有行为：`MRKWorkJoin.FirstCompletedAsync` 是 Any（首个完成可失败）；`FirstSuccessfulAsync` 是 FirstSuccess（只认首个成功，全失败不伪造胜者）；`AllSettled` 必须等所有分支的原始 FCR 结果结算，提前成功不等于可释放底层资源。
+- 本轮增量：原类补充 `MRKWorkJoin.AllAsync`，按分支提交顺序等待全部结算，返回原始成功/失败/取消结果供调用者判断；不得将任一失败变成All成功，也不得隐式取消或重放外部操作。
+- 本轮修复：`MRKCorrelationTicket` 的超时和Dispose只能结束当前Ticket实例；同ID前一个Ticket已终结并重新注册后，旧Ticket晚到的Dispose不能误移除新Ticket。实际外部请求必须使用新的唯一RequestId，否则网络层同ID迟到应答无法辨认，不能因此宣称提供跨重启应答去重。
+- 自动反证：All正常/失败/取消有序结算、重复分支拒绝、FirstSuccess全失败没有虚假胜者、旧Ticket与新Ticket的注销竞态；继续运行现有Any、FirstSuccess余支取消、Unknown操作、租约、显式补偿等旧测试。
+- **验收状态**：本增量需要固定Commit SHA的Windows Release/x64 Runtime、TestCenter、工程组织和配置CI实际结果；在全部核验之前本段为S1源码增量，不能将R07判定完成。R07尚需更多条件汇合、异步取消竞态、真实Studio路径、多级失败追踪和补偿边界的整体闭环反证，未通过不得进入R08。

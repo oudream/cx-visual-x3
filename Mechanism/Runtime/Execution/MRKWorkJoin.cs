@@ -28,6 +28,24 @@ namespace CxVisual.Mechanism.Runtime.Execution
         /// Any：第一个完成的分支即返回，允许返回失败结果；与FirstSuccessful语义不同。
         /// 剩余分支的生命周期通过AllSettled显式结算，不能提前回收共享数据。
         /// </summary>
+        /// <summary>
+        /// All：按调用方输入顺序等待所有分支结算，保留失败、取消和拒绝的原结果；
+        /// 调用方仅可在结果全部到达后释放共享资源，不隐式重放或取消外部操作。
+        /// 全部Succeeded才表示All成功，任何非成功均不能当作成功Join。
+        /// </summary>
+        public static Task<FCRWorkResult<T>[]> AllAsync<T>(
+            IEnumerable<FCRWorkHandle<T>> source)
+        {
+            if (source == null) throw new ArgumentNullException("source");
+            List<FCRWorkHandle<T>> handles = source.ToList();
+            if (handles.Count == 0 || handles.Any(x => x == null))
+                throw new ArgumentException("必须提供有效的执行分支", "source");
+            if (handles.Select(x => x.Id).Distinct().Count() != handles.Count)
+                throw new ArgumentException("执行分支不可重复", "source");
+            // Task.WhenAll保留source顺序，并等待失败/取消的FCRWorkResult真正结算。
+            return Task.WhenAll(handles.Select(x => x.Completion));
+        }
+
         public static async Task<MRKJoinResult<T>> FirstCompletedAsync<T>(
             IEnumerable<FCRWorkHandle<T>> source, bool requestCancelRemaining = false)
         {

@@ -224,13 +224,13 @@ namespace CxVisual.Mechanism.Runtime.Execution
                     timer.Cancel();
                     return await Completion.ConfigureAwait(false);
                 }
-                _owner.Finish(RequestId,
+                _owner.Finish(RequestId, this,
                     cancellation.IsCancellationRequested ? MRKCorrelationState.Cancelled
                         : MRKCorrelationState.TimedOut, null);
                 return await Completion.ConfigureAwait(false);
             }
         }
-        public void Dispose() { _owner.Finish(RequestId, MRKCorrelationState.Cancelled, null); }
+        public void Dispose() { _owner.Finish(RequestId, this, MRKCorrelationState.Cancelled, null); }
     }
 
     /// <summary>进程内一次性请求-响应关联；协议编解码、权限及跨进程投递不归它负责。</summary>
@@ -252,13 +252,16 @@ namespace CxVisual.Mechanism.Runtime.Execution
             }
         }
         public bool Receive(Guid requestId, object payload)
-        { return Finish(requestId, MRKCorrelationState.Received, payload); }
-        internal bool Finish(Guid requestId, MRKCorrelationState state, object payload)
+        { return Finish(requestId, null, MRKCorrelationState.Received, payload); }
+        // 已结算旧Ticket的Dispose/超时不得移除同RequestId重新登记的新Ticket。
+        internal bool Finish(Guid requestId, MRKCorrelationTicket expected,
+            MRKCorrelationState state, object payload)
         {
             MRKCorrelationTicket ticket;
             lock (_gate)
             {
-                if (!_tickets.TryGetValue(requestId, out ticket)) return false;
+                if (!_tickets.TryGetValue(requestId, out ticket) ||
+                    (expected != null && !object.ReferenceEquals(expected, ticket))) return false;
                 _tickets.Remove(requestId);
             }
             ticket.Complete(state, payload);

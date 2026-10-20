@@ -18,6 +18,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
             T14_FirstSuccessRequestsCancelAndTracksRemaining();
             AnyReturnsFailedWinnerWithoutKillingOtherBranch();
             T19_UnknownPhysicalOperationDoesNotReleaseSoftwareLease();
+            R07_OldCorrelationTicketCannotCancelNewRequest();
+            R07_AllJoinRetainsFailedCancelledAndSettlesResources();
+            R07_FirstSuccessfulAllFailedIsNotSuccess();
         }
         private static void Check(bool ok, string message)
         { if (!ok) throw new InvalidOperationException("Runtime协作测试: " + message); }
@@ -268,6 +271,80 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(outcomes.Length == 2 && outcomes[0].Succeeded &&
                 outcomes[1].State == CxVisual.Foundation.Infrastructure.Concurrency.FCRWorkState.Failed,
                 "Any的余下结果没有完整结算");
+            Await(worker.StopAsync());
+        }
+
+        private static void R07_OldCorrelationTicketCannotCancelNewRequest()
+        {
+            MRKCorrelationWaiter waiter = new MRKCorrelationWaiter();
+            Guid id = Guid.NewGuid();
+            MRKCorrelationTicket old = waiter.Register(id);
+            Check(waiter.Receive(id, "old"), "旧票据没有先结算");
+            MRKCorrelationTicket current = waiter.Register(id);
+            try
+            {
+                old.Dispose();
+                Check(waiter.PendingCount == 1 && !current.Completion.IsCompleted,
+                    "旧票据Dispose错误取消了复用ID的新请求");
+                Check(waiter.Receive(id, "new"), "新请求的应答被旧票据吞掉");
+                MRKCorrelationResult result = Await(current.WaitAsync(TimeSpan.FromSeconds(1)));
+                Check(result.State == MRKCorrelationState.Received &&
+                    (string)result.Payload == "new", "新请求的应答关联不正确");
+            }
+            finally { old.Dispose(); current.Dispose(); }
+            Check(waiter.PendingCount == 0, "旧票据与新票据没有全部释放");
+            // 一般外部请求仍必须使用每次唯一ID，避免网络层无法判别同ID的迟到应答。
+        }
+
+        private static void R07_AllJoinRetainsFailedCancelledAndSettlesResources()
+        {
+            var worker = new CxVisual.Foundation.Infrastructure.Concurrency.FCRWorker(
+                new CxVisual.Foundation.Infrastructure.Concurrency.FCRWorkerOptions(3, 4));
+            TaskCompletionSource<bool> entered = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var passed = worker.Submit<int>(ct => Task.FromResult(12), "r07-ok");
+            var failed = worker.Submit<int>(ct =>
+            { throw new InvalidOperationException("预期分支失败"); }, "r07-fail");
+            var pending = worker.Submit<int>(async ct =>
+            {
+                entered.TrySetResult(true);
+                await Task.Delay(Timeout.Infinite, ct).ConfigureAwait(false);
+                return 30;
+            }, "r07-pending");
+            Await(entered.Task);
+            Task<CxVisual.Foundation.Infrastructure.Concurrency.FCRWorkResult<int>[]> settling =
+                MRKWorkJoin.AllAsync(new[] { passed, failed, pending });
+            Check(!settling.IsCompleted, "All尚有未完成分支却提前释放等待");
+            Check(pending.RequestCancel(), "执行分支无法接收显式取消请求");
+            var results = Await(settling);
+            Check(results.Length == 3 && results[0].Succeeded &&
+                results[0].Value == 12 &&
+                results[1].State == CxVisual.Foundation.Infrastructure.Concurrency.FCRWorkState.Failed &&
+                results[2].State == CxVisual.Foundation.Infrastructure.Concurrency.FCRWorkState.Cancelled,
+                "All把失败/取消误判为成功或没有按原分支顺序结算");
+            Await(worker.StopAsync());
+            Check(worker.GetSnapshot().Active == 0,
+                "All结算后仍有Worker正在占用资源");
+            bool rejected = false;
+            try { MRKWorkJoin.AllAsync(new[] { passed, passed }); }
+            catch (ArgumentException) { rejected = true; }
+            Check(rejected, "All没有拒绝重复执行分支");
+        }
+
+        private static void R07_FirstSuccessfulAllFailedIsNotSuccess()
+        {
+            var worker = new CxVisual.Foundation.Infrastructure.Concurrency.FCRWorker(
+                new CxVisual.Foundation.Infrastructure.Concurrency.FCRWorkerOptions(2, 3));
+            var bad = worker.Submit<int>(ct =>
+            { throw new InvalidOperationException("预期错误"); }, "r07-bad");
+            var canceled = worker.Submit<int>(ct =>
+            { throw new OperationCanceledException(ct); }, "r07-cancel");
+            var joined = Await(MRKWorkJoin.FirstSuccessfulAsync(new[] { bad, canceled }));
+            Check(!joined.Succeeded && joined.Winner == null && joined.WinningResult == null,
+                "FirstSuccess全失败时不应伪造Winner");
+            var outcomes = Await(joined.AllSettled);
+            Check(outcomes.Length == 2 && !outcomes[0].Succeeded && !outcomes[1].Succeeded,
+                "FirstSuccess错误丢失未成功分支的真实结算");
             Await(worker.StopAsync());
         }
 
