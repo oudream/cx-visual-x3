@@ -94,6 +94,21 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 blueprint, blueprint, revision);
         }
 
+        /// <summary>
+        /// 供MOC工程快照先完整预编译并锁定能力后，仍经唯一Publisher授权Stage。
+        /// 仅软件Plan授权，不代表设备侧联锁/ACK已经完成。
+        /// </summary>
+        public MRKPlanPublicationReceipt StagePrecompiled(string principal,
+            MRKExecutionPlan compiledPlan,long revision)
+        {
+            if(compiledPlan==null)throw new ArgumentNullException("compiledPlan");
+            if(string.IsNullOrWhiteSpace(compiledPlan.Id)||compiledPlan.Steps.Count==0)
+                throw new ArgumentException("发布计划必须有可执行步骤","compiledPlan");
+            StageCore(principal,compiledPlan,revision,false);
+            return new MRKPlanPublicationReceipt(revision,true,
+                new List<MRKCompileDiagnostic>());
+        }
+
         private void StageCore(string principal, MRKExecutionPlan plan,
             long revision, bool rollback)
         {
