@@ -304,7 +304,7 @@ namespace CxVisual.Studio
         private void AddRibbonButton(string label, string tag, RoutedEventHandler handler)
         {
             Button button = new Button { Content = label, Tag = tag, Margin = new Thickness(2),
-                Padding = new Thickness(12, 8) };
+                Padding = new Thickness(12, 8, 12, 8) };
             button.Click += handler;
             StudioRibbonActions.Children.Add(button);
         }
