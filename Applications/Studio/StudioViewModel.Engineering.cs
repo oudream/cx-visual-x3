@@ -231,11 +231,12 @@ namespace CxVisual.Studio
             }
             finally{_refreshing=false;}
         }
-        private static string BindingSummary(MPMBinding binding)
+        private string BindingSummary(MPMBinding binding)
         {
             if(binding==null)return "(无默认)";
             if(binding.Kind==MPMBindingKind.Literal)return binding.Value.Kind==MPMValueKind.Null?"(空)":binding.Value.Canonical;
-            if(binding.Kind==MPMBindingKind.Resource)return "工程资源："+binding.SourceId;
+            if(binding.Kind==MPMBindingKind.Resource)
+                return "资源："+(ProjectSession.Project.FindResource(binding.ResourceId.Value,true)?.Name??"资源缺失");
             if(binding.Kind==MPMBindingKind.Variable)return "变量："+binding.SourceId;
             return "来源："+binding.Kind;
         }
