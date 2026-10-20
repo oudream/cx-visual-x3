@@ -52,7 +52,9 @@ namespace CxVisual.Mechanism.Orchestration
                 MOLWiringDefinition wiring=MOLWiringCodec.Get(node);
                 if(wiring==null)throw new InvalidOperationException("moc.release.requires_v2");
                 wiring.ValidateExecutable();
-                sources.Add(contentId.ToString("N"),
+                string address=contentId.ToString("N");
+                if(sources.ContainsKey(address))return; // 同一个Content可被多次调用
+                sources.Add(address,
                     Convert.ToBase64String(MOLWiringCodec.Serialize(wiring)));
                 foreach(MOLControlBlock block in wiring.Blocks)
                 {
