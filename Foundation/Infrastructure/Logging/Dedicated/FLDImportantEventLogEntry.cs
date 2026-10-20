@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 
-namespace CxVisual.Foundation.Infrastructure
+using CxVisual.Foundation.Infrastructure.Logging;
+
+namespace CxVisual.Foundation.Infrastructure.Logging.Dedicated
 {
     /// <summary>同步专有文件事件记录，不依赖异步日志和实时订阅。</summary>
     public sealed class FLDImportantEventLogEntry

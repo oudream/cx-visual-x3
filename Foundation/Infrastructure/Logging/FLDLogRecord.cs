@@ -1,7 +1,7 @@
 using System;
 using System.Globalization;
 
-namespace CxVisual.Foundation.Infrastructure
+namespace CxVisual.Foundation.Infrastructure.Logging
 {
     /// <summary>不可变的结构化日志记录，兼容既有三参数构造。</summary>
     public sealed class FLDLogRecord

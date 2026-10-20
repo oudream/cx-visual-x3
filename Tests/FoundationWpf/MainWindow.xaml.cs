@@ -4,7 +4,9 @@ using System.Diagnostics;
 using System.IO;
 using System.Threading.Tasks;
 using System.Windows;
-using CxVisual.Foundation.Infrastructure;
+using CxVisual.Foundation.Infrastructure.Logging;
+using CxVisual.Foundation.Infrastructure.Logging.Dedicated;
+using CxVisual.Foundation.Infrastructure.Monitoring;
 
 namespace CxVisual.Tests.FoundationWpf
 {

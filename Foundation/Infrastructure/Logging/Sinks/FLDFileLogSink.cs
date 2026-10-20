@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text;
-namespace CxVisual.Foundation.Infrastructure
+using CxVisual.Foundation.Infrastructure.Logging;
+
+namespace CxVisual.Foundation.Infrastructure.Logging.Sinks
 {
     public sealed class FLDFileLogSink : IFLDLogSink, IDisposable
     {

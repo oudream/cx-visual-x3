@@ -7,7 +7,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 
-namespace CxVisual.Foundation.Infrastructure
+namespace CxVisual.Foundation.Infrastructure.Monitoring
 {
     /// <summary>
     /// 基础系统和进程采样。仅提供状态，不负责进程重启、工业安全和运行调度。

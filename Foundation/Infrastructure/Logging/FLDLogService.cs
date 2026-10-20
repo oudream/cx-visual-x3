@@ -4,7 +4,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 
-namespace CxVisual.Foundation.Infrastructure
+using CxVisual.Foundation.Infrastructure.Logging.Sinks;
+
+namespace CxVisual.Foundation.Infrastructure.Logging
 {
     /// <summary>
     /// 主机级日志实例：公共日志 + 可选专有日志 + 重要事件；

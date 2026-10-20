@@ -2,7 +2,10 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Threading;
-using CxVisual.Foundation.Infrastructure;
+using CxVisual.Foundation.Infrastructure.Logging;
+using CxVisual.Foundation.Infrastructure.Logging.Sinks;
+using CxVisual.Foundation.Infrastructure.Logging.Dedicated;
+using CxVisual.Foundation.Infrastructure.Monitoring;
 
 namespace CxVisual.Tests.FoundationSmoke
 {
@@ -10,6 +13,10 @@ namespace CxVisual.Tests.FoundationSmoke
     {
         public static void Run()
         {
+            Assert(typeof(FLDLogService).Namespace == "CxVisual.Foundation.Infrastructure.Logging", "Logging namespace mismatch");
+            Assert(typeof(FLDMemoryLogSink).Namespace == "CxVisual.Foundation.Infrastructure.Logging.Sinks", "Sinks namespace mismatch");
+            Assert(typeof(FLDEventLogHelper).Namespace == "CxVisual.Foundation.Infrastructure.Logging.Dedicated", "Dedicated namespace mismatch");
+            Assert(typeof(FCRSystemMonitor).Namespace == "CxVisual.Foundation.Infrastructure.Monitoring", "Monitoring namespace mismatch");
             string root = Path.Combine(Path.GetTempPath(), "CxVisual-F16F19-"
                 + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(root);

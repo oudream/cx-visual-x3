@@ -4,7 +4,7 @@ using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
-using CxVisual.Foundation.Infrastructure;
+using CxVisual.Foundation.Infrastructure.Logging;
 
 namespace CxVisual.Mechanism.Presentation.Wpf
 {

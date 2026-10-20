@@ -1,7 +1,7 @@
 using System;
 using System.Globalization;
 using System.Windows.Controls;
-using CxVisual.Foundation.Infrastructure;
+using CxVisual.Foundation.Infrastructure.Monitoring;
 
 namespace CxVisual.Mechanism.Presentation.Wpf
 {

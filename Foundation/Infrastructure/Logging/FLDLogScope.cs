@@ -1,7 +1,7 @@
 using System;
 using System.Runtime.CompilerServices;
 
-namespace CxVisual.Foundation.Infrastructure
+namespace CxVisual.Foundation.Infrastructure.Logging
 {
     /// <summary>
     /// F16模块/任务日志上下文值，只有ModuleId和CorrelationId；

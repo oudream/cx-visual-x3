@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
 
-namespace CxVisual.Foundation.Infrastructure
+using CxVisual.Foundation.Infrastructure.Logging;
+
+namespace CxVisual.Foundation.Infrastructure.Logging.Dedicated
 {
     /// <summary>
     /// F16 独立同步专有文件日志入口；不使用 FLDLogService、

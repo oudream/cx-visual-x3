@@ -1,6 +1,7 @@
 using System;
 using CxVisual.Foundation.Core;
-using CxVisual.Foundation.Infrastructure;
+using CxVisual.Foundation.Infrastructure.Logging;
+using CxVisual.Foundation.Infrastructure.Logging.Sinks;
 using CxVisual.Foundation.Geometry;
 namespace CxVisual.Tests.FoundationSmoke
 {

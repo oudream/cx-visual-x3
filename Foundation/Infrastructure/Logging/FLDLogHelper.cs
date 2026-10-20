@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
 
-namespace CxVisual.Foundation.Infrastructure
+namespace CxVisual.Foundation.Infrastructure.Logging
 {
     /// <summary>F16实时日志通知，回调运行于日志分发线程，WPF订阅者必须切换到Dispatcher。</summary>
     public delegate void FLDLogEventHandler(FLDLogRecord record);

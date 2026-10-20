@@ -1,6 +1,6 @@
 using System;
 
-namespace CxVisual.Foundation.Infrastructure
+namespace CxVisual.Foundation.Infrastructure.Monitoring
 {
     /// <summary>不可变的进程观测值，采样失败时相应数据使用null而不是假设为零。</summary>
     public sealed class FCRProcessSnapshot

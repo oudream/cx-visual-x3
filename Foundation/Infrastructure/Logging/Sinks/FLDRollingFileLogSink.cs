@@ -3,7 +3,9 @@ using System.Globalization;
 using System.IO;
 using System.Text;
 
-namespace CxVisual.Foundation.Infrastructure
+using CxVisual.Foundation.Infrastructure.Logging;
+
+namespace CxVisual.Foundation.Infrastructure.Logging.Sinks
 {
     /// <summary>
     /// 同步滚动文件Sink：UTC日期、文件大小分卷、独立保留策略。

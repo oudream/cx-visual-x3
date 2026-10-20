@@ -4,7 +4,8 @@ using System.Globalization;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
-using CxVisual.Foundation.Infrastructure;
+using CxVisual.Foundation.Infrastructure.Logging;
+using CxVisual.Foundation.Infrastructure.Logging.Dedicated;
 
 namespace CxVisual.Tests.FoundationSmoke
 {

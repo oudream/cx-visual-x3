@@ -4,7 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Text;
 
-namespace CxVisual.Foundation.Infrastructure
+namespace CxVisual.Foundation.Infrastructure.Logging.Dedicated
 {
     /// <summary>
     /// F16 独立同步专有日志，不经过异步日志队列或实时事件订阅。

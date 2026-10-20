@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace CxVisual.Foundation.Infrastructure
+namespace CxVisual.Foundation.Infrastructure.Monitoring
 {
     /// <summary>系统采样快照，不依赖UI、设备和Runtime。</summary>
     public sealed class FCRSystemSnapshot

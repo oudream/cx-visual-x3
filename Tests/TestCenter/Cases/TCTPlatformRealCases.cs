@@ -5,7 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using CxVisual.Foundation.Infrastructure;
+using CxVisual.Foundation.Infrastructure.Logging;
 using CxVisual.Foundation.Infrastructure.Concurrency;
 using CxVisual.Foundation.Data.Configuration;
 using CxVisual.Mechanism.Runtime.Execution;

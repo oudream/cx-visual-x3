@@ -1,4 +1,4 @@
-namespace CxVisual.Foundation.Infrastructure
+namespace CxVisual.Foundation.Infrastructure.Logging
 {
     /// <summary>日志严重程度；用途分类和严重程度相互独立。</summary>
     public enum FLDLogLevel

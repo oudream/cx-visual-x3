@@ -7,7 +7,8 @@ using System.Linq;
 using System.Windows.Input;
 using CxVisual.Mechanism.Core;
 using CxVisual.Mechanism.Visual;
-using CxVisual.Foundation.Infrastructure;
+using CxVisual.Foundation.Infrastructure.Logging;
+using CxVisual.Foundation.Infrastructure.Logging.Sinks;
 
 namespace CxVisual.Studio
 {

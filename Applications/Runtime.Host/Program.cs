@@ -6,7 +6,8 @@ using CxVisual.Foundation.Data.Configuration;
 using CxVisual.Mechanism.Data.Configuration;
 using CxVisual.Professional.Vision;
 using CxVisual.Mechanism.Visual;
-using CxVisual.Foundation.Infrastructure;
+using CxVisual.Foundation.Infrastructure.Logging;
+using CxVisual.Foundation.Infrastructure.Logging.Sinks;
 
 namespace CxVisual.Runtime.Host
 {
