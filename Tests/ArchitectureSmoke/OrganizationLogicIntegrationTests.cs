@@ -74,6 +74,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             G06CpuVisionThroughMOC();
             G04ParameterSubflowIsolation();
             V2NamedSubflowDataContracts();
+            V2ThreeLevelNamedData();
             CThreeTierXRayTwoSubflows();
             V2LayoutContract();
             V2BulkEditingClipboard();
@@ -946,6 +947,102 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     var invalid=new MOCBuildService().Build(reopened.GetSnapshot(),
                         page.RootContent.Id,providers);
                     Check(!invalid.Succeeded,"unmapped required child input compiled successfully");
+                }
+                finally{reopened.Close(true);}
+            }
+            finally
+            {
+                session.Close(true);
+                if(System.IO.File.Exists(path))System.IO.File.Delete(path);
+                if(System.IO.File.Exists(path+".cx-lock"))System.IO.File.Delete(path+".cx-lock");
+            }
+        }
+
+        private static void V2ThreeLevelNamedData()
+        {
+            var session=MEMEngineering.Create("MOC three level typed data");
+            var page=session.AddPage("Top");
+            var mid=session.AddContent(session.Project,"Mid");
+            var leaf=session.AddContent(session.Project,"Leaf");
+            string path=System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                "moc-3level-"+Guid.NewGuid().ToString("N")+".cxproj");
+            try
+            {
+                session.Edit("配置三层资源引用",e=>{
+                    e.Reference(page.RootContent,mid,"MidRef");
+                    e.Reference(mid,leaf,"LeafRef");
+                    return true;
+                }).RequireValue();
+                Guid leafStep=Guid.Empty,midCall=Guid.Empty,rootCall=Guid.Empty;
+                MOCFlowBuilder.Edit(session,leaf,b=>{
+                    leafStep=b.Step("Double",new[]{
+                        new MPCPortDescriptor("N",MPCPortDirection.Input,"int",MPCPortKind.Data),
+                        new MPCPortDescriptor("Doubled",MPCPortDirection.Output,"int",MPCPortKind.Data)
+                    });
+                    b.ExposeInput("Number",leafStep,"N");
+                    b.ExposeOutput("LeafValue",leafStep,"Doubled");
+                });
+                MOCFlowBuilder.Edit(session,mid,b=>{
+                    midCall=b.Step("moc.invoke:"+leaf.Id.ToString("N"),new[]{
+                        new MPCPortDescriptor("Number",MPCPortDirection.Input,"int",MPCPortKind.Data),
+                        new MPCPortDescriptor("LeafValue",MPCPortDirection.Output,"int",MPCPortKind.Data)});
+                    b.ExposeInput("MidSeed",midCall,"Number");
+                    b.ExposeOutput("MidResult",midCall,"LeafValue");
+                });
+                Guid seed=Guid.Empty,plus=Guid.Empty;
+                MOCFlowBuilder.Edit(session,page.RootContent,b=>{
+                    seed=b.Step("Seed",new[]{new MPCPortDescriptor("Value",
+                        MPCPortDirection.Output,"int",MPCPortKind.Data)});
+                    rootCall=b.Step("moc.invoke:"+mid.Id.ToString("N"),new[]{
+                        new MPCPortDescriptor("MidSeed",MPCPortDirection.Input,"int",MPCPortKind.Data),
+                        new MPCPortDescriptor("MidResult",MPCPortDirection.Output,"int",MPCPortKind.Data)});
+                    plus=b.Step("Plus",new[]{
+                        new MPCPortDescriptor("N",MPCPortDirection.Input,"int",MPCPortKind.Data),
+                        new MPCPortDescriptor("Answer",MPCPortDirection.Output,"int",MPCPortKind.Data)});
+                    b.Connect(seed,"Done",rootCall,"Start");
+                    b.Connect(rootCall,"Done",plus,"Start");
+                    b.Connect(seed,"Value",rootCall,"MidSeed",MPCPortKind.Data);
+                    b.Connect(rootCall,"MidResult",plus,"N",MPCPortKind.Data);
+                    b.ExposeOutput("Final",plus,"Answer");
+                });
+                var resolver=new TestResolver()
+                    .RegisterData("Seed",(c,t)=>{
+                        c.Data.Return("Value",4);return Task.FromResult((object)true);
+                    },new Dictionary<string,Type>{{"Value",typeof(int)}},null)
+                    .RegisterData("Double",(c,t)=>{
+                        c.Data.Return("Doubled",c.Data.Get<int>("N")*2);
+                        return Task.FromResult((object)true);
+                    },new Dictionary<string,Type>{{"Doubled",typeof(int)}},
+                    new[]{new MRKCapabilityInput("N",typeof(int))})
+                    .RegisterData("Plus",(c,t)=>{
+                        c.Data.Return("Answer",c.Data.Get<int>("N")+1);
+                        return Task.FromResult((object)true);
+                    },new Dictionary<string,Type>{{"Answer",typeof(int)}},
+                    new[]{new MRKCapabilityInput("N",typeof(int))});
+                session.SaveAs(path);
+                var reopened=MEMEngineering.Open(path);
+                try
+                {
+                    var node=reopened.GetSnapshot().Find(mid.Id);
+                    Check(MOLWiringCodec.Get(node).FlowInputs.ContainsKey("MidSeed"),
+                        "three-level public input lost after disk reload");
+                    var compiled=new MOCBuildService().Build(reopened.GetSnapshot(),
+                        page.RootContent.Id,resolver);
+                    Check(compiled.Succeeded,"three-level compilation failed: "+
+                        string.Join(";",compiled.Diagnostics.Select(x=>x.Code+":"+x.Message)));
+                    MOCTraceView trace;
+                    var result=Execute(compiled.Plan,null,out trace);
+                    Check(result.State==MRKFlowState.Completed&&
+                        result.GetCommittedOutput<int>("Final")==9,
+                        "three-level actual data return is wrong");
+                    Check(result.CommittedOutputs.Count==1&&
+                        !result.CommittedOutputs.ContainsKey("LeafValue")&&
+                        !result.CommittedOutputs.ContainsKey("MidResult"),
+                        "nested private outputs escaped the declared DataExports boundary");
+                    Check(compiled.Plan.SourceMap.Find(leafStep).Any(x=>
+                        x.CallPath.Count==2&&x.CallPath[0]==rootCall&&x.CallPath[1]==midCall),
+                        "three-level leaf SourceMap did not preserve exact invocation chain");
+                    Check(trace.Events.Count>0,"three-level trace was empty");
                 }
                 finally{reopened.Close(true);}
             }

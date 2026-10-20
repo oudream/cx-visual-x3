@@ -932,15 +932,28 @@ namespace CxVisual.Mechanism.Orchestration
 
         private static string WireId(Guid blockId) {return "w"+blockId.ToString("N");}
         private static IDictionary<string,string> BuildPublicExports(
-            MOLWiringDefinition wiring,IMRKCapabilityResolver resolver)
+            MOLWiringDefinition wiring,IMRKCapabilityResolver resolver,MEMProjectSnapshot snapshot=null)
         {
             var exports=new Dictionary<string,string>(StringComparer.Ordinal);
             foreach(var pair in wiring.FlowOutputs)
             {
                 MOLControlBlock block=wiring.Blocks.Single(b=>b.Id==pair.Value.BlockId);
                 MRKResolvedCapability ability;
-                if(!resolver.TryResolve(block.CapabilityId,out ability)||ability==null||
-                   !ability.DataOutputs.ContainsKey(pair.Value.PortMemberId))
+                if(block.CapabilityId.StartsWith("moc.invoke:",StringComparison.Ordinal))
+                {
+                    if(snapshot==null)throw new InvalidOperationException("moc.flow_export_requires_snapshot");
+                    Guid id;
+                    if(!Guid.TryParseExact(block.CapabilityId.Substring("moc.invoke:".Length),
+                        "N",out id))throw new InvalidOperationException("moc.flow_export_child_id");
+                    var target=snapshot.Find(id);
+                    var nested=target==null?null:MOLWiringCodec.Get(target);
+                    MOLBlockEndpoint endpoint;
+                    if(nested==null||!nested.FlowOutputs.TryGetValue(pair.Value.PortMemberId,out endpoint))
+                        throw new InvalidOperationException("moc.flow_export_child_missing:"+pair.Key);
+                    // The nested MRK barrier publishes this alias; the caller never reads private child nodes.
+                }
+                else if(!resolver.TryResolve(block.CapabilityId,out ability)||ability==null||
+                        !ability.DataOutputs.ContainsKey(pair.Value.PortMemberId))
                     throw new InvalidOperationException("moc.flow_output_not_declared:"+pair.Key);
                 exports.Add(pair.Key,WireId(block.Id)+"."+pair.Value.PortMemberId);
             }
@@ -959,7 +972,8 @@ namespace CxVisual.Mechanism.Orchestration
             }
         }
         private static IEnumerable<MRKExecutionInput> InternalDataInputs(
-            MOLWiringDefinition wiring,Guid blockId,IMRKCapabilityResolver resolver)
+            MOLWiringDefinition wiring,Guid blockId,IMRKCapabilityResolver resolver,
+            MEMProjectSnapshot snapshot=null)
         {
             foreach(var link in wiring.Links.Where(l=>l.Target.BlockId==blockId&&
                 (l.Kind==MPCPortKind.Data||l.Kind==MPCPortKind.Stream)))
@@ -968,11 +982,25 @@ namespace CxVisual.Mechanism.Orchestration
                 var to=wiring.Ports[blockId].Single(p=>p.MemberId==link.Target.PortMemberId);
                 var producer=wiring.Blocks.Single(b=>b.Id==link.Source.BlockId);
                 MRKResolvedCapability ability;
-                if(!resolver.TryResolve(producer.CapabilityId,out ability)||ability==null)
+                bool invoked=producer.CapabilityId.StartsWith("moc.invoke:",StringComparison.Ordinal);
+                if(invoked)
+                {
+                    if(snapshot==null)throw new InvalidOperationException("moc.nested_source_needs_snapshot");
+                    Guid childId;
+                    if(!Guid.TryParseExact(producer.CapabilityId.Substring("moc.invoke:".Length),
+                        "N",out childId))throw new InvalidOperationException("moc.nested_source_id");
+                    var content=snapshot.Find(childId);
+                    var child=content==null?null:MOLWiringCodec.Get(content);
+                    if(child==null||!child.FlowOutputs.ContainsKey(from.MemberId))
+                        throw new InvalidOperationException("moc.nested_source_unpublished:"+from.MemberId);
+                }
+                else if(!resolver.TryResolve(producer.CapabilityId,out ability)||ability==null)
                     throw new InvalidOperationException("moc.nested_data_unknown_producer");
                 MRKInputSource kind;
                 string source=WireId(producer.Id);
-                if(ability.DataOutputs.ContainsKey(from.MemberId))
+                if(invoked)
+                {kind=MRKInputSource.StepOutput;source+="."+from.MemberId;}
+                else if(ability.DataOutputs.ContainsKey(from.MemberId))
                 {kind=MRKInputSource.StepOutput;source+="."+from.MemberId;}
                 else if(wiring.Ports[producer.Id].Count(p=>(p.Kind==MPCPortKind.Data||
                     p.Kind==MPCPortKind.Stream)&&p.Direction==MPCPortDirection.Output)==1)
@@ -981,6 +1009,115 @@ namespace CxVisual.Mechanism.Orchestration
                 yield return new MRKExecutionInput(to.MemberId,kind,source,
                     ResolveWiringType(to.TypeId),to.Required);
             }
+        }
+
+        // Recursively adapt a persisted nested Content; all execution still belongs to MRK.
+        private static void BuildDeepFlow(MEMProjectSnapshot snapshot,MEMNodeSnapshot content,
+            IMRKCapabilityResolver resolver,IDictionary<string,MRKFlowCompileDefinition> catalog,
+            HashSet<Guid> active)
+        {
+            string id=content.Id.ToString("N");
+            if(catalog.ContainsKey(id))return;
+            if(active.Count>=16||!active.Add(content.Id))
+                throw new InvalidOperationException("moc.subflow.recursive_or_too_deep");
+            try
+            {
+                var wiring=MOLWiringCodec.Get(content);
+                if(wiring==null)throw new InvalidOperationException("moc.subflow.requires_v2");
+                wiring.ValidateExecutable();
+                // Nested defaults are not silently hoisted into unrelated caller scopes.
+                // Existing G04-F direct subflows retain their isolated typed defaults.
+                if(wiring.Parameters.Count!=0)
+                    throw new InvalidOperationException("moc.deep.parameters_need_explicit_mapping");
+                var definitions=new List<MRKStepCompileRequest>();
+                foreach(var block in wiring.Blocks)
+                {
+                    var entering=wiring.Links.Where(l=>l.Target.BlockId==block.Id).ToArray();
+                    if(entering.Any(l=>l.Kind==MPCPortKind.Control&&l.ConditionId.Length>0))
+                        throw new InvalidOperationException("moc.deep.guarded_branch_not_implemented");
+                    var dependencies=entering.Select(l=>WireId(l.Source.BlockId))
+                        .Distinct(StringComparer.Ordinal).ToArray();
+                    var inputs=new List<MRKExecutionInput>();
+                    inputs.AddRange(ExposedInputs(wiring,block.Id));
+                    inputs.AddRange(InternalDataInputs(wiring,block.Id,resolver,snapshot));
+                    string childId=null;
+                    if(block.CapabilityId.StartsWith("moc.invoke:",StringComparison.Ordinal))
+                    {
+                        Guid nestedId;
+                        if(!Guid.TryParseExact(block.CapabilityId.Substring("moc.invoke:".Length),
+                            "N",out nestedId)||nestedId==content.Id)
+                            throw new InvalidOperationException("moc.deep.invalid_target");
+                        if(!content.References.Any(r=>r.Kind==MRIReferenceKind.Content&&r.TargetId==nestedId))
+                            throw new InvalidOperationException("moc.deep.missing_content_ref");
+                        var nested=snapshot.Find(nestedId);
+                        if(nested==null||nested.Kind!=MEMNodeKind.Content)
+                            throw new InvalidOperationException("moc.deep.missing_content");
+                        BuildDeepFlow(snapshot,nested,resolver,catalog,active);
+                        childId=nestedId.ToString("N");
+                    }
+                    MOLStepPolicy stepPolicy;
+                    MRKExecutionPolicy policy=null;
+                    if(wiring.Policies.TryGetValue(block.Id,out stepPolicy))
+                    {
+                        if(childId!=null)
+                            throw new InvalidOperationException("moc.deep.invoke_policy_not_supported");
+                        policy=new MRKExecutionPolicy(stepPolicy.MaxAttempts,
+                            TimeSpan.FromMilliseconds(stepPolicy.RetryDelayMs),
+                            stepPolicy.TimeoutMs>0?(TimeSpan?)TimeSpan.FromMilliseconds(stepPolicy.TimeoutMs):null,
+                            stepPolicy.Idempotent);
+                    }
+                    definitions.Add(childId==null?
+                        new MRKStepCompileRequest(WireId(block.Id),block.CapabilityId,dependencies,
+                            inputs,policy:policy,allowSkippedDependencies:
+                            entering.Count(l=>l.Kind==MPCPortKind.Control)>1):
+                        new MRKStepCompileRequest(WireId(block.Id),null,dependencies,inputs,
+                            subflowId:childId));
+                }
+                catalog.Add(id,new MRKFlowCompileDefinition(id,definitions,
+                    BuildPublicExports(wiring,resolver,snapshot)));
+            }
+            finally{active.Remove(content.Id);}
+        }
+
+        private static void AppendDeepOrigins(MEMProjectSnapshot snapshot,MEMNodeSnapshot content,
+            string prefix,Guid[] calls,Guid[] instancePath,ICollection<MOCStepOrigin> output,
+            HashSet<Guid> active)
+        {
+            if(!active.Add(content.Id))throw new InvalidOperationException("moc.origin.recursion");
+            try
+            {
+                var wiring=MOLWiringCodec.Get(content);
+                foreach(var block in wiring.Blocks)
+                {
+                    string step=prefix+WireId(block.Id);
+                    if(!output.Any(x=>x.StepId==step))
+                        output.Add(new MOCStepOrigin(step,new MRIObjectAddress(snapshot.ProjectId,
+                            content.StorageRootId,content.Id,instancePath),block.Id,
+                            calls,null,"InvokedAction"));
+                    if(!block.CapabilityId.StartsWith("moc.invoke:",StringComparison.Ordinal))continue;
+                    Guid nestedId;
+                    if(!Guid.TryParseExact(block.CapabilityId.Substring("moc.invoke:".Length),
+                        "N",out nestedId))throw new InvalidOperationException("moc.origin.bad_target");
+                    var nested=snapshot.Find(nestedId);
+                    if(nested==null)throw new InvalidOperationException("moc.origin.missing_target");
+                    string gate=step+"$entry";
+                    if(!output.Any(x=>x.StepId==gate))
+                        output.Add(new MOCStepOrigin(gate,new MRIObjectAddress(snapshot.ProjectId,
+                            content.StorageRootId,content.Id,instancePath),block.Id,
+                            calls,null,"InvokeEnter"));
+                    var nextCalls=calls.Concat(new[]{block.Id}).ToArray();
+                    if(MOLWiringCodec.Get(nested).FlowOutputs.Count>0)
+                    {
+                        string commit=step+".__commit";
+                        if(!output.Any(x=>x.StepId==commit))
+                            output.Add(new MOCStepOrigin(commit,new MRIObjectAddress(snapshot.ProjectId,
+                                nested.StorageRootId,nested.Id,instancePath),block.Id,
+                                nextCalls,null,"InvokeCommit"));
+                    }
+                    AppendDeepOrigins(snapshot,nested,step+".",nextCalls,instancePath,output,active);
+                }
+            }
+            finally{active.Remove(content.Id);}
         }
         private static MOCCompiledPlan CompileWiring(MEMProjectSnapshot snapshot, MEMNodeSnapshot entry,
             Guid[] instancePath, MOLWiringDefinition wiring, IMRKCapabilityResolver resolver)
@@ -1122,10 +1259,11 @@ namespace CxVisual.Mechanism.Orchestration
                     var nested=MOLWiringCodec.Get(target);
                     if(nested==null)throw new InvalidOperationException("moc.invoke.requires_v2");
                     nested.ValidateExecutable();
+                    childId=targetId.ToString("N");
                     if(nested.Blocks.Any(b=>b.CapabilityId.StartsWith(
                             "moc.invoke:",StringComparison.Ordinal)))
-                        throw new InvalidOperationException("moc.invoke.nested_or_data_unsupported");
-                    childId=targetId.ToString("N");
+                        BuildDeepFlow(snapshot,target,resolver,subflowDefinitions,
+                            new HashSet<Guid>());
                     // 每次调用单独命名运行默认值；依赖MRK入口Gate做类型安全映射。
                     // 既不扩散子Content全局变量，也不将参数改为并行Graph。
                     foreach(var nestedValues in nested.Parameters)
@@ -1193,6 +1331,10 @@ namespace CxVisual.Mechanism.Orchestration
                                 target.Id,instancePath),
                             inner.Id,new[]{block.Id},null,"InvokedAction"));
                     }
+                    if(nested.Blocks.Any(b=>b.CapabilityId.StartsWith(
+                        "moc.invoke:",StringComparison.Ordinal)))
+                        AppendDeepOrigins(snapshot,target,stepIds[block.Id]+".",
+                            new[]{block.Id},instancePath,origins,new HashSet<Guid>());
                 }
                 MOLStepPolicy configuration;
                 MRKExecutionPolicy executionPolicy=null;
@@ -1221,7 +1363,7 @@ namespace CxVisual.Mechanism.Orchestration
             string planId="moc."+snapshot.ProjectId.ToString("N")+"."+
                 entry.Id.ToString("N")+".r"+
                 snapshot.Revision.ToString(CultureInfo.InvariantCulture)+".wired";
-            var publicExports=BuildPublicExports(wiring,resolver);
+            var publicExports=BuildPublicExports(wiring,resolver,snapshot);
             var compiled=subflowDefinitions.Count==0?
                 new MRKExecutionPlanCompiler().Compile(planId,requests,transientResolver,
                     publicExports):
