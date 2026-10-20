@@ -112,17 +112,25 @@ namespace CxVisual.Mechanism.Runtime.Execution
     {
         public MRKLoopRegion(MRKExecutionPlan body,int maxIterations,
             Func<MRKExecutionContext,int,bool> condition=null,
-            string collectionInput=null,bool executeFirst=false)
+            string collectionInput=null,bool executeFirst=false,
+            int maxParallelIterations=1)
         {
             if(body==null||body.Steps.Count==0||maxIterations<1)
                 throw new ArgumentException("loop.invalid_body_or_limit");
             if(!string.IsNullOrEmpty(collectionInput)&&executeFirst)
                 throw new ArgumentException("loop.foreach_do_while_invalid");
+            if(maxParallelIterations<1)throw new ArgumentOutOfRangeException("maxParallelIterations");
+            // 并行只支持无跨轮条件谓词的显式Foreach；不改变原有串行默认行为。
+            if(maxParallelIterations>1&&(string.IsNullOrWhiteSpace(collectionInput)||
+                condition!=null||executeFirst))
+                throw new ArgumentException("loop.parallel_requires_pure_foreach");
+            MaxParallelIterations=maxParallelIterations;
             Body=body;MaxIterations=maxIterations;Condition=condition;
             CollectionInput=collectionInput;ExecuteFirst=executeFirst;
         }
         public MRKExecutionPlan Body{get;private set;}
         public int MaxIterations{get;private set;}
+        public int MaxParallelIterations{get;private set;}
         public Func<MRKExecutionContext,int,bool> Condition{get;private set;}
         public string CollectionInput{get;private set;}
         public bool ExecuteFirst{get;private set;}

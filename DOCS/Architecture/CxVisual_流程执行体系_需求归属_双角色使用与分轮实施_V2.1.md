@@ -414,3 +414,11 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 - 在现有`MRKExecutionContext`增补`CollectLoopOutputs<T>(loopStepId, bodyStepId, outputName)`和只读身份值`MRKLoopOutput<T>`。从Loop执行结果取得真实完成迭代数，按输入迭代次序读取原MDS已提交数据；每项包含FlowId、IterationIndex、FrameKey、InvocationId。必须检查Loop已Completed及各迭代节点Completed；任一缺失/Skipped/Failed均拒绝整个聚合，不伪造部分成功；实际导出仍使用原MDS的Return/CommitOutputs屏障。
 - 实际执行反证：同一Plan并发两个Flow不同输入、同名循环/同名输出不串账；跳过中间迭代拒绝局部提交；两层嵌套Loop先内层归并再外层归并且可精确定位原FrameKey，验证原有Trace/Invocation身份而不创建第二运行数据仓库。
 - 本轮不更改R05循环本身串行迭代语义，也**不声称已具备并行Foreach调度**、Studio画布编辑、持久恢复、跨进程联锁或外部设备安全。仅为E08-10补完整的运行态归并基础，待本次提交的真实Windows五项CI核验；R07未封轮，R08未启动。
+
+
+### R07 E08-10 有界并行 Foreach 增构与反证（2026-10-20，待固定SHA CI）
+
+- 上一提交`bc684e89f632100bb47872c6b86e3237899409cc`的Windows五项CI均成功：Runtime 39443570540、工程组织39443570457、TestCenter39443570484、Config L1 39443570604、配置公共底座39443570603。
+- 沿用唯一MRK引擎和F19 Worker，`MRKLoopRegion`新增`maxParallelIterations=1`（默认完全兼容原R05串行）；显式大于1仅支持声明了IList集合、无前轮依赖谓词的Foreach，限额调度在途迭代，仍用原MDS Frame与原Flow身份。
+- 任一迭代失败仅请求其余分支协作取消并等待真实在途任务结算；不合作Provider可能导致长期等待，这不是硬件停止确认。并行Break/Continue/Return运行时拒绝，避免未定义的跨迭代流程控制。所有迭代成功后仍按原MDS/DataExports统一发布。
+- ArchitectureSmoke验证两迭代真实重叠、峰值上限2、4轮原Invocation有序输出、最终Sum=10；以及未声明集合/跨轮谓词非法，另一迭代失败而非合作尾部仍占资源，完成后Flow失败且无导出，并行Break被拒绝。**本提交待Windows x64真实CI，R07未封轮；设备硬件与Studio完整交互仍需独立验收，R08尚未开始。**

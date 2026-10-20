@@ -79,6 +79,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
         private readonly MDSDataStack _managedStack;
         private readonly IMDSDataContext _data;
         private readonly int _iterationIndex;
+        private readonly bool _insideParallelLoop;
         private readonly MRKIterationSignal _iterationSignal;
         private readonly MRKFlowReturnSignal _returnSignal=new MRKFlowReturnSignal();
         private readonly MRKInvocationContext _invocation;
@@ -118,6 +119,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
             _data = parent._data;
             _invocation = parent._invocation;
             _iterationIndex=parent._iterationIndex;
+            _insideParallelLoop=parent._insideParallelLoop;
             _iterationSignal=parent._iterationSignal;
             _returnSignal=parent._returnSignal;
             _boundInputs = parent._boundInputs;
@@ -125,17 +127,20 @@ namespace CxVisual.Mechanism.Runtime.Execution
         }
         internal MRKExecutionContext ForSubflow(string prefix)
         { return new MRKExecutionContext(this, prefix); }
-        private MRKExecutionContext(MRKExecutionContext parent,string prefix,int iteration)
+        private MRKExecutionContext(MRKExecutionContext parent,string prefix,int iteration,
+            bool parallel)
             : this(parent,prefix)
         {
             _iterationIndex=iteration;
+            _insideParallelLoop=parent._insideParallelLoop||parallel;
             _iterationSignal=new MRKIterationSignal();
         }
-        internal MRKExecutionContext ForLoopIteration(string prefix,int iteration)
+        internal MRKExecutionContext ForLoopIteration(string prefix,int iteration,
+            bool parallel=false)
         {
             if(string.IsNullOrWhiteSpace(prefix)||iteration<0)
                 throw new ArgumentException("loop.invalid_activation");
-            return new MRKExecutionContext(this,prefix,iteration);
+            return new MRKExecutionContext(this,prefix,iteration,parallel);
         }
         /// <summary>当前动态循环迭代号，常规DAG默认为0。</summary>
         public int IterationIndex{get{return _iterationIndex;}}
@@ -145,6 +150,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
         /// <summary>由编译的Break/Continue/Return控制节点请求，不能绕过安全点。</summary>
         public void SignalControlExit(string kind)
         {
+            if(_insideParallelLoop)
+                throw new InvalidOperationException("loop.parallel_control_exit_unsupported");
             if(_iterationSignal==null)
             {
                 if(kind!="return")
@@ -951,26 +958,84 @@ namespace CxVisual.Mechanism.Runtime.Execution
                     parent.Invocation.StepId.Substring(parent.Invocation.StepId.LastIndexOf('.')+1)+
                     ".i"+iteration.ToString(
                         System.Globalization.CultureInfo.InvariantCulture)+".",iteration);
-                Dictionary<string,Task<object>> tasks=
-                    new Dictionary<string,Task<object>>(StringComparer.Ordinal);
-                Func<string,Task<object>> schedule=null;
-                schedule=id=>
-                {
-                    Task<object> known;
-                    if(tasks.TryGetValue(id,out known))return known;
-                    Task<object> current=RunStepAsync(loop.Body.GetStep(id),scope,
-                        cancellation,schedule,control);
-                    tasks.Add(id,current);
-                    return current;
-                };
-                foreach(MRKExecutionStep item in loop.Body.Steps) schedule(item.Id);
-                await Task.WhenAll(tasks.Values.ToArray()).ConfigureAwait(false);
+                await ExecuteLoopBodyAsync(loop.Body,scope,cancellation,control)
+                    .ConfigureAwait(false);
                 count++;
                 predicateContext=scope;
                 if(scope.LoopExit==1||scope.LoopExit==3||scope.FlowReturnRequested)break;
                 // Continue 等到本轮已有Work结算并释放资源后再开始下一轮。
             }
             return count;
+        }
+
+        /// <summary>各迭代独立DAG和Frame，真正能力仍只使用原F19 Worker。</summary>
+        private async Task ExecuteLoopBodyAsync(MRKExecutionPlan body,
+            MRKExecutionContext scope, CancellationToken cancellation,
+            MRKExecutionDebugController control)
+        {
+            Dictionary<string,Task<object>> tasks=
+                new Dictionary<string,Task<object>>(StringComparer.Ordinal);
+            Func<string,Task<object>> schedule=null;
+            schedule=id=>
+            {
+                Task<object> existing;
+                if(tasks.TryGetValue(id,out existing))return existing;
+                Task<object> current=RunStepAsync(body.GetStep(id),scope,
+                    cancellation,schedule,control);
+                tasks.Add(id,current);
+                return current;
+            };
+            foreach(MRKExecutionStep item in body.Steps)schedule(item.Id);
+            await Task.WhenAll(tasks.Values.ToArray()).ConfigureAwait(false);
+        }
+
+        /// <summary>有界并行Foreach：失败仅协作取消，仍排空所有实际执行的迭代。</summary>
+        private async Task<int> ExecuteParallelForeachAsync(MRKLoopRegion loop,
+            MRKExecutionContext parent,CancellationToken cancellation,
+            MRKExecutionDebugController control)
+        {
+            object source;
+            if(!parent.Inputs.TryGetValue(loop.CollectionInput,out source)||
+                !(source is System.Collections.IList))
+                throw new InvalidOperationException("moc.foreach_requires_IList:"+
+                    loop.CollectionInput);
+            int count=Math.Min(loop.MaxIterations,((System.Collections.IList)source).Count);
+            string step=parent.Invocation.StepId.Substring(
+                parent.Invocation.StepId.LastIndexOf('.')+1);
+            using(CancellationTokenSource linked=
+                CancellationTokenSource.CreateLinkedTokenSource(cancellation))
+            {
+                List<Task> active=new List<Task>();
+                int next=0;
+                try
+                {
+                    while(next<count||active.Count>0)
+                    {
+                        cancellation.ThrowIfCancellationRequested();
+                        while(next<count&&active.Count<loop.MaxParallelIterations)
+                        {
+                            MRKExecutionContext scope=parent.ForLoopIteration(
+                                step+".i"+next.ToString(
+                                    System.Globalization.CultureInfo.InvariantCulture)+".",
+                                next,true);
+                            active.Add(ExecuteLoopBodyAsync(loop.Body,scope,linked.Token,control));
+                            next++;
+                        }
+                        Task finished=await Task.WhenAny(active).ConfigureAwait(false);
+                        await finished.ConfigureAwait(false);
+                        active.Remove(finished);
+                    }
+                    cancellation.ThrowIfCancellationRequested();
+                    return count;
+                }
+                catch
+                {
+                    linked.Cancel();
+                    try{await Task.WhenAll(active).ConfigureAwait(false);}
+                    catch{ /* 其它分支错误保留于原节点Trace；传播第一个触发的异常。 */ }
+                    throw;
+                }
+            }
         }
 
         private async Task<object> RunStepAsync(MRKExecutionStep step, MRKExecutionContext context,
@@ -1030,8 +1095,11 @@ namespace CxVisual.Mechanism.Runtime.Execution
                     // 控制区域自身不占Worker槽位：只让真正的Body Capability
                     // 通过同一F19 Worker运行，避免单线程Worker上的自等待死锁。
                     context.SetState(step.Id,MRKStepState.Running,"loop.region");
-                    int completed=await ExecuteLoopRegionAsync(step.LoopRegion,context,
-                        cancellation,control).ConfigureAwait(false);
+                    int completed=step.LoopRegion.MaxParallelIterations>1
+                        ?await ExecuteParallelForeachAsync(step.LoopRegion,context,
+                            cancellation,control).ConfigureAwait(false)
+                        :await ExecuteLoopRegionAsync(step.LoopRegion,context,
+                            cancellation,control).ConfigureAwait(false);
                     context.SetResult(step.Id,completed);
                     context.SetState(step.Id,MRKStepState.Completed,"loop.completed");
                     return completed;

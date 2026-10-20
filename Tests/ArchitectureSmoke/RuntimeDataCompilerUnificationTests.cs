@@ -21,6 +21,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
             DynamicLoopCommittedDataFrames();
             R07_CompletedLoopOutputsAreFullyScoped();
             R07_NestedLoopOutputsPreserveInvocationPath();
+            R07_ParallelForeachRealOverlapAndOutputIdentity();
+            R07_ParallelFailureWaitsForUncooperativeTail();
             ConcurrentInvocationFrameIsolation();
             RepeatedInvocationFrameIsolation();
         }
@@ -425,6 +427,150 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "R07双层迭代真正执行或具名输出归并失败");
             }
             finally { engine.StopAsync().GetAwaiter().GetResult(); }
+        }
+
+
+        /// <summary>R07：实测重叠迭代、并发上限、原Invocation与有序汇总。</summary>
+        private static void R07_ParallelForeachRealOverlapAndOutputIdentity()
+        {
+            var entered=new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var release=new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            int startCount=0,active=0,peak=0;
+            var body=new MRKExecutionPlan("r07.parallel.body",new[]{
+                new MRKExecutionStep("write",new string[0],async (ctx,token)=>{
+                    int now=Interlocked.Increment(ref active);
+                    int old;
+                    while((old=Volatile.Read(ref peak))<now &&
+                        Interlocked.CompareExchange(ref peak,now,old)!=old){}
+                    if(Interlocked.Increment(ref startCount)==2)entered.TrySetResult(true);
+                    try
+                    {
+                        await release.Task.ConfigureAwait(false);
+                        ctx.Data.Return("Value",ctx.IterationIndex+1);
+                        return (object)true;
+                    }
+                    finally{Interlocked.Decrement(ref active);}
+                },dataOutputs:Output("Value"))
+            });
+            var parallel=new MRKLoopRegion(body,4,
+                collectionInput:"Items",maxParallelIterations:2);
+            var plan=new MRKExecutionPlan("r07.parallel",new[]{
+                new MRKExecutionStep("loop",new string[0],(ctx,ct)=>
+                    Task.FromResult((object)true),loopRegion:parallel),
+                new MRKExecutionStep("join",new[]{"loop"},(ctx,ct)=>{
+                    IReadOnlyList<MRKLoopOutput<int>> rows=
+                        ctx.CollectLoopOutputs<int>("loop","write","Value");
+                    Check(rows.Select(x=>x.Value).SequenceEqual(new[]{1,2,3,4}) &&
+                        rows.Select(x=>x.InvocationId).Distinct().Count()==4 &&
+                        rows.All(x=>x.FlowId==ctx.FlowId),
+                        "R07并行迭代原Frame身份丢失或值被完成顺序覆盖");
+                    ctx.Data.Return("Sum",rows.Sum(x=>x.Value));
+                    return Task.FromResult((object)true);
+                },dataOutputs:Output("Sum"))
+            },new Dictionary<string,string>{{"Final","join.Sum"}});
+            var runtime=new MRKExecutionEngine(new FCRWorkerOptions(2,8));
+            try
+            {
+                MRKFlowHandle flow=runtime.StartFlow(plan,
+                    new Dictionary<string,object>{{"Items",new[]{1,2,3,4}}});
+                Task winner=Task.WhenAny(entered.Task,Task.Delay(TimeSpan.FromSeconds(7)))
+                    .GetAwaiter().GetResult();
+                Check(object.ReferenceEquals(winner,entered.Task)&&
+                    !flow.Completion.IsCompleted,
+                    "R07两轮未真正重叠却冒充并行，或提前结算Flow");
+                release.TrySetResult(true);
+                MRKFlowResult result=flow.Completion.GetAwaiter().GetResult();
+                Check(result.State==MRKFlowState.Completed &&
+                    result.GetCommittedOutput<int>("Final")==10 &&
+                    startCount==4&&peak==2&&Volatile.Read(ref active)==0,
+                    "R07并发上限或真实MDS输出失败");
+            }
+            finally{release.TrySetResult(true);runtime.StopAsync().GetAwaiter().GetResult();}
+            bool invalid=false;
+            try{new MRKLoopRegion(body,3,maxParallelIterations:2);}
+            catch(ArgumentException){invalid=true;}
+            Check(invalid,"R07未指定集合的任意循环不应并行");
+            invalid=false;
+            try{new MRKLoopRegion(body,3,(ctx,i)=>i<3,
+                collectionInput:"Items",maxParallelIterations:2);}
+            catch(ArgumentException){invalid=true;}
+            Check(invalid,"R07依赖前轮谓词的循环不应并行");
+        }
+
+        /// <summary>R07：一轮失败后不合作的在途工作必须真实结束才释放流程。</summary>
+        private static void R07_ParallelFailureWaitsForUncooperativeTail()
+        {
+            var first=new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var cancelled=new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var release=new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var body=new MRKExecutionPlan("r07.parallel.failed.body",new[]{
+                new MRKExecutionStep("work",new string[0],async (ctx,ct)=>{
+                    if(ctx.IterationIndex==0)
+                    {
+                        first.TrySetResult(true);
+                        using(ct.Register(()=>cancelled.TrySetResult(true)))
+                            await release.Task.ConfigureAwait(false);
+                        ctx.Data.Return("Value",99);
+                        return (object)true;
+                    }
+                    await first.Task.ConfigureAwait(false);
+                    throw new InvalidOperationException("expected.parallel.failure");
+                },dataOutputs:Output("Value"))
+            });
+            var loop=new MRKLoopRegion(body,2,
+                collectionInput:"Items",maxParallelIterations:2);
+            var plan=new MRKExecutionPlan("r07.parallel.failed",new[]{
+                new MRKExecutionStep("loop",new string[0],
+                    (ctx,ct)=>Task.FromResult((object)true),loopRegion:loop)
+            });
+            var runtime=new MRKExecutionEngine(new FCRWorkerOptions(2,5));
+            try
+            {
+                MRKFlowHandle flow=runtime.StartFlow(plan,
+                    new Dictionary<string,object>{{"Items",new[]{10,20}}});
+                Task seen=Task.WhenAny(cancelled.Task,Task.Delay(TimeSpan.FromSeconds(7)))
+                    .GetAwaiter().GetResult();
+                Check(object.ReferenceEquals(seen,cancelled.Task) &&
+                    !flow.Completion.IsCompleted,
+                    "R07失败分支没有取消其余分支或提前释放非合作尾部");
+                release.TrySetResult(true);
+                MRKFlowResult result=flow.Completion.GetAwaiter().GetResult();
+                Check(result.State==MRKFlowState.Failed&&
+                    result.CommittedOutputs.Count==0&&
+                    result.StepStates["loop.i1.work"]==MRKStepState.Failed&&
+                    result.StepStates["loop.i0.work"]==MRKStepState.Cancelled,
+                    "R07并行失败泄漏部分输出或误标真实状态");
+            }
+            finally{release.TrySetResult(true);runtime.StopAsync().GetAwaiter().GetResult();}
+            bool rejected=false;
+            var controlBody=new MRKExecutionPlan("r07.control",new[]{
+                new MRKExecutionStep("break",new string[0],(ctx,ct)=>{
+                    ctx.SignalControlExit("break");
+                    return Task.FromResult((object)true);
+                })
+            });
+            var controlPlan=new MRKExecutionPlan("r07.control.root",new[]{
+                new MRKExecutionStep("loop",new string[0],
+                    (ctx,ct)=>Task.FromResult((object)true),
+                    loopRegion:new MRKLoopRegion(controlBody,2,
+                        collectionInput:"Items",maxParallelIterations:2))
+            });
+            var checker=new MRKExecutionEngine(new FCRWorkerOptions(2,5));
+            try
+            {
+                MRKFlowResult result=checker.StartFlow(controlPlan,
+                    new Dictionary<string,object>{{"Items",new[]{1,2}}})
+                    .Completion.GetAwaiter().GetResult();
+                rejected=result.State==MRKFlowState.Failed&&
+                    result.CommittedOutputs.Count==0;
+            }
+            finally{checker.StopAsync().GetAwaiter().GetResult();}
+            Check(rejected,"R07并行Break不能被当作合法的随机退出");
         }
 
         /// <summary>R04：两个并行Flow运行同一个编译Step，各有独立Invocation和MDS Frame。</summary>
