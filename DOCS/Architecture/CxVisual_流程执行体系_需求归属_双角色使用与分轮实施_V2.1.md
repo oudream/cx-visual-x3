@@ -444,3 +444,31 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 - Studio更改：OpenStudioDocument以明确用户请求的ContentId直接刷新动态菜单，之后仍由原Dock事件驱动后续变化，保留S1-02不降级；StudioShell验证期望增至9项，新增真实Join/工程保存重开回归。
 - CI更改：所有需要未预热状态Rebuild的Windows工作流显式Restore Studio.csproj的AvalonDock 5.0.1依赖，继续严格进行全量Rebuild、Runtime、TestCenter正反例，不禁用XAML。
 - 并行开发者已于`9befd165ed450f331f675842e15f2210b1aee6f4`完善Foreach超预算行为，本次仅触及Studio、CI和主文档，不覆盖其源码或测试。当前R07仍待修复SHA真正Windows验收，未封轮，R08暂不启动。
+
+
+## R07 阶段封轮记录：Join、异步等待、失败与补偿安全边界（2026-10-21）
+
+**裁决：R07在“进程内MRK/F19/MDS软件执行 + MEM/MOC工程定义 + Windows Studio真实编排/CPU仿真”范围内封轮，达到对应S3代码验收与已实现Studio交互路径的S4本机验证。** R07不包含实机安全停止授权、跨进程可靠恢复、生产现场长稳；这些仍是R10/R11/R12专项，不能被本次封轮冒充通过。正式设备写入仍不得绕过专业Provider的授权和联锁。
+
+| R07原子要求 | 已实现且经回归的证据 | 范围 |
+|---|---|---|
+| E08-01 All | 原MRKWorkJoin.AllAsync，失败/取消仍等待全部原FCR结果结算 | 进程内 |
+| E08-02 Any | FirstCompletedAsync返回实际先完成者；AllSettled保留其余分支 | 进程内 |
+| E08-03 FirstSuccess | FirstSuccessfulAsync失败不伪造胜者，成功后可显式取消余支 | 进程内 |
+| E08-04 ConditionalJoin | FirstMatchingAsync带真实谓词、无匹配、谓词异常及取消尾部反证 | 进程内 |
+| E08-05 Skipped/Failed | 真实MRK Step不同终态，允许跳过依赖但不把失败当成功 | 进程内 |
+| E08-06 尾部策略 | 显式取消/等待、非协作Provider后置结算、资源不可提前回收 | 进程内 |
+| E08-07 LateResult | 同Plan多Flow、Invocation隔离、旧取消结果不得污染新Flow | 进程内 |
+| E08-08 多生产者数据 | MergeNamedOutputsAsync缺省拒绝同名覆盖，显式聚合，MDS Commit屏障 | 进程内 |
+| E08-09 超时/外部Unknown | ObserveAllAsync区分观察超时与真实执行；Unknown使用现有操作账本及明确安全补偿 | 软件事实，不是物理停机凭证 |
+| E08-10 多层归并 | CollectLoopOutputs/真实分层Frame、有界并行Foreach、失败等待尾部排空 | 进程内 |
+| 工程编排双角色 | Studio实际“选中分支→插入Join”以MOCFlowBuilder/MEM事务建立多控制输入；Studio STA保存重开、无效输入回滚、原MRK仿真Trace通路 | Windows真实WPF，本机CPU仿真 |
+
+**实际Windows验收：**
+- R07并行Foreach/数据身份：固定源码`cdde9ff13d283117d06ecccc566e355529ddc273`的 Runtime [39445017744](https://github.com/oudream/cx-visual-x3/actions/runs/39445017744)、Engineering [39445017789](https://github.com/oudream/cx-visual-x3/actions/runs/39445017789)、TestCenter [39445018101](https://github.com/oudream/cx-visual-x3/actions/runs/39445018101)、Config L1 [39445017995](https://github.com/oudream/cx-visual-x3/actions/runs/39445017995)、配置公共底座 [39445017976](https://github.com/oudream/cx-visual-x3/actions/runs/39445017976)，五项success。
+- R07 Studio实际事务与9项STA：固定源码`babd23c4ac26d686cd2cb7d79511992c0cd982a9`对应 Studio Shell [39514050239](https://github.com/oudream/cx-visual-x3/actions/runs/39514050239) success；其同SHA Runtime [39514050194](https://github.com/oudream/cx-visual-x3/actions/runs/39514050194)、Config L1 [39514050176](https://github.com/oudream/cx-visual-x3/actions/runs/39514050176)、配置公共底座 [39514050316](https://github.com/oudream/cx-visual-x3/actions/runs/39514050316)均success。工程组织在该SHA出现历史H06回归超时，因此不把该失败改成绿灯。
+- H06的原测试时限/旧页签兼容修复后，`11cbc3ab90efdca70d9ef42d442a5b36a461a434`对应 Engineering Organization [39514735744](https://github.com/oudream/cx-visual-x3/actions/runs/39514735744)、Runtime [39514735933](https://github.com/oudream/cx-visual-x3/actions/runs/39514735933)、Config L1 [39514735773](https://github.com/oudream/cx-visual-x3/actions/runs/39514735773)、配置公共底座 [39514735887](https://github.com/oudream/cx-visual-x3/actions/runs/39514735887)均success。该SHA只改ArchitectureSmoke，因此不要求在该SHA重复触发路径过滤的Studio流水线；Studio源码与已验收版本一致。
+
+**封轮不覆盖且必须保留的真实门槛：** Studio目前明确支持V2 Control的多依赖All汇合、原图跟踪；Any/FirstSuccess在MRK开发者API已验证，不把它们写成完整可编辑的V2 DSL。Try/Catch/Finally复杂结构化控制与全量生产级调试不因本轮封轮视为实现；物理设备停止与授权、跨进程未知执行与恢复、可靠Checkpoint以及24小时长稳分别进入R09/R10/R11/R12。未通过现场联锁测试前禁止自动重放或宣称设备已停止。
+
+**下一轮门槛已满足：** R07范围内已明确的代码与Studio软件验收通过，可进入R08（F19公平、组/资源仲裁与容量/背压）；R08仍必须分别实现与Windows CI验收，不沿用本轮旧绿色。
