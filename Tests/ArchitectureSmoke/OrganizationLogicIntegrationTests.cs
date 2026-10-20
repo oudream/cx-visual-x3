@@ -9,6 +9,7 @@ using CxVisual.Mechanism.Core;
 using CxVisual.Mechanism.Orchestration;
 using CxVisual.Mechanism.Data.RuntimeData;
 using CxVisual.Mechanism.Runtime.Execution;
+using CxVisual.Professional.Vision;
 
 namespace CxVisual.Tests.ArchitectureSmoke
 {
@@ -63,6 +64,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             G05dHierarchicalParallelMachine();
             V2ExtractLinearContent();
             G07ProjectReleaseLockAndAuthorization();
+            G06CpuVisionThroughMOC();
             G04ParameterSubflowIsolation();
             CThreeTierXRayTwoSubflows();
             V2LayoutContract();
@@ -651,6 +653,91 @@ namespace CxVisual.Tests.ArchitectureSmoke
         }
 
         /// <summary>G04-F：提取带Data参数的Control子流程，按两次调用隔离MRK绑定。</summary>
+        /// <summary>G06：真实CPU像素处理经V2 MOC构建、MRK调度和专业Provider，不用模拟结果。</summary>
+        private static void G06CpuVisionThroughMOC()
+        {
+            var session=MEMEngineering.Create("G06工业视觉CPU能力");
+            var page=session.AddPage("在线阈值检测");
+            string filename=System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                "moc-vision-"+Guid.NewGuid().ToString("N")+".cxproj");
+            try
+            {
+                Guid source=Guid.Empty,inspect=Guid.Empty;
+                MOCFlowBuilder.Edit(session,page.RootContent,b=>{
+                    source=b.Step("vision.test.source");
+                    inspect=b.Step(CxVisionThresholdProvider.CapabilityId);
+                    b.AddPort(source,new MPCPortDescriptor("Pixels",
+                        MPCPortDirection.Output,"byte[]",MPCPortKind.Data));
+                    b.AddPort(inspect,new MPCPortDescriptor("RawPixels",
+                        MPCPortDirection.Input,"byte[]",MPCPortKind.Data));
+                    b.AddPort(inspect,new MPCPortDescriptor("Width",
+                        MPCPortDirection.Input,"int",MPCPortKind.Data));
+                    b.AddPort(inspect,new MPCPortDescriptor("Height",
+                        MPCPortDirection.Input,"int",MPCPortKind.Data));
+                    b.SetParameter(inspect,"Width","5");
+                    b.SetParameter(inspect,"Height","3");
+                    b.Connect(source,"Done",inspect,"Start");
+                    b.Connect(source,"Pixels",inspect,"RawPixels",MPCPortKind.Data);
+                });
+                var options=new CxVisionInspectionOptions{
+                    PixelDepth=CxVisionPixelDepth.Bits8,GrayThreshold=200,
+                    MinDefectArea=2,MaxDefectArea=100,UseAi=false};
+                byte[] pixels={210,210,0,0,0,210,0,0,0,0,0,0,0,0,250};
+                var sourceResolver=new TestResolver().Register("vision.test.source",
+                    (ctx,token)=>Task.FromResult((object)((byte[])pixels.Clone())));
+                var provider=new CxVisionThresholdProvider(options,12,sourceResolver);
+                var build=new MOCBuildService().Build(
+                    session.GetSnapshot(),page.RootContent.Id,provider);
+                Check(build.Succeeded,"G06 Vision real MOC build failed: "+
+                    string.Join(";",build.Diagnostics.Select(x=>x.Code+":"+x.Message)));
+                MOCTraceView trace;
+                var result=Execute(build.Plan,
+                    build.Plan.InputDefaults.ToDictionary(x=>x.Key,x=>x.Value),out trace);
+                Check(result.State==MRKFlowState.Completed&&
+                    result.Results.ContainsKey("w"+inspect.ToString("N")),
+                    "G06 real Vision capability did not reach MRK StepResult");
+                var image=result.Results["w"+inspect.ToString("N")] as CxVisionInspectionResult;
+                Check(image!=null&&image.ConfigRevision==12&&image.Width==5&&
+                    image.Height==3&&image.ThresholdPixelCount==4&&
+                    image.Regions.Count==1&&image.Regions[0].PixelArea==3&&
+                    !image.Passed,
+                    "G06 pixel threshold/connected regions were not actually computed");
+                Check(trace.Events.Any(e=>e.Origin.BlockId==inspect&&
+                    e.Transition.State==MRKStepState.Completed),
+                    "G06 true professional Provider lost MRK SourceMap tracing");
+                session.SaveAs(filename);
+                using(var reopened=MEMEngineering.Open(filename))
+                {
+                    var repeat=new MOCBuildService().Build(reopened.GetSnapshot(),
+                        page.RootContent.Id,provider);
+                    Check(repeat.Succeeded&&repeat.Plan.InputDefaults.Count==2,
+                        "G06 CPU Vision lost Port and parameters after real .cxproj reopen");
+                }
+                var invalidSource=new TestResolver().Register("vision.test.source",
+                    (ctx,token)=>Task.FromResult((object)new byte[]{210,210}));
+                var invalidProvider=new CxVisionThresholdProvider(options,12,invalidSource);
+                var invalidBuild=new MOCBuildService().Build(
+                    session.GetSnapshot(),page.RootContent.Id,invalidProvider);
+                Check(invalidBuild.Succeeded,"G06 invalid-data test failed at compile");
+                var failure=Execute(invalidBuild.Plan,
+                    invalidBuild.Plan.InputDefaults.ToDictionary(x=>x.Key,x=>x.Value),out trace);
+                Check(failure.State==MRKFlowState.Failed,
+                    "G06 truncated detector bytes were silently accepted");
+                bool unsupported=false;
+                options.UseAi=true;
+                try{new CxVisionThresholdProvider(options,12);}
+                catch(NotSupportedException){unsupported=true;}
+                Check(unsupported,"G06 CPU threshold Provider falsely claims to implement AI");
+            }
+            finally
+            {
+                session.Close(true);
+                if(System.IO.File.Exists(filename))System.IO.File.Delete(filename);
+                if(System.IO.File.Exists(filename+".cx-lock"))
+                    System.IO.File.Delete(filename+".cx-lock");
+            }
+        }
+
         private sealed class ProjectReleaseTestPolicy : IMRKPlanPublicationPolicy
         {
             public bool Safe;
