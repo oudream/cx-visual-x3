@@ -62,6 +62,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             G05bStreamBackpressureAndFlow();
             G05dHierarchicalParallelMachine();
             V2ExtractLinearContent();
+            G07ProjectReleaseLockAndAuthorization();
             G04ParameterSubflowIsolation();
             CThreeTierXRayTwoSubflows();
             V2LayoutContract();
@@ -650,6 +651,111 @@ namespace CxVisual.Tests.ArchitectureSmoke
         }
 
         /// <summary>G04-F：提取带Data参数的Control子流程，按两次调用隔离MRK绑定。</summary>
+        private sealed class ProjectReleaseTestPolicy : IMRKPlanPublicationPolicy
+        {
+            public bool Safe;
+            public bool Authorize(string principal,MRKPlanPublishAction action,
+                MRKExecutionPlan plan,long revision)
+            {return principal=="release-officer";}
+            public bool IsSafeToActivate(MRKExecutionPlan plan,long revision){return Safe;}
+        }
+
+        /// <summary>G07：来源Logic与版本锁核对、授权、设备安全点拒绝、在途版本及变更反证。</summary>
+        private static void G07ProjectReleaseLockAndAuthorization()
+        {
+            var session=MEMEngineering.Create("G07软件发布候选锁定");
+            var page=session.AddPage("发布页");
+            var path=System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                "moc-release-"+Guid.NewGuid().ToString("N")+".cxproj");
+            try
+            {
+                Guid first=Guid.Empty,second=Guid.Empty;
+                MOCFlowBuilder.Edit(session,page.RootContent,b=>{
+                    first=b.Step("acquire");
+                    second=b.Step("analyze");
+                    b.Connect(first,"Done",second,"Start");
+                });
+                var resolver=new TestResolver()
+                    .Register("acquire",(c,t)=>Task.FromResult((object)1))
+                    .Register("analyze",(c,t)=>Task.FromResult((object)2));
+                var versions=new Dictionary<string,string>(StringComparer.Ordinal){
+                    {"acquire","1.0.0"},{"analyze","2.1.3"}};
+                int revision=session.Revision;
+                bool rejected=false;
+                try{MOCProjectRelease.Prepare(session.GetSnapshot(),page.RootContent.Id,
+                    resolver,new Dictionary<string,string>{{"acquire","1.0.0"}});}
+                catch(InvalidOperationException){rejected=true;}
+                Check(rejected&&session.Revision==revision,
+                    "G07 silently accepted an unversioned capability");
+                var release=MOCProjectRelease.Prepare(session.GetSnapshot(),
+                    page.RootContent.Id,resolver,versions);
+                Check(release.EngineeringRevision==revision&&release.ProjectId==session.Project.Id&&
+                    release.Fingerprint.Length==64&&release.CapabilityVersions.Count==2,
+                    "G07 release candidate did not bind actual Project and dependencies");
+                session.SaveAs(path);
+                using(var reopened=MEMEngineering.Open(path))
+                {
+                    var baseline=new MRKExecutionPlan("previous",new[]{
+                        new MRKExecutionStep("old",new string[0],
+                            (c,t)=>Task.FromResult((object)1))});
+                    var slot=new MRKExecutionPlanSlot(baseline,1,true);
+                    var policy=new ProjectReleaseTestPolicy();
+                    var publisher=new MRKExecutionPlanPublisher(slot,baseline,1,policy);
+                    rejected=false;
+                    try{MOCProjectRelease.Stage(release,reopened.GetSnapshot(),
+                        resolver,versions,publisher,"reader",2);}
+                    catch(UnauthorizedAccessException){rejected=true;}
+                    Check(rejected&&!publisher.PendingRevision.HasValue,
+                        "G07 unauthorized principal staged plan");
+                    var receipt=MOCProjectRelease.Stage(release,reopened.GetSnapshot(),
+                        resolver,versions,publisher,"release-officer",2);
+                    Check(receipt.Accepted&&publisher.PendingRevision==2,
+                        "G07 validated project plan did not reach standard MRK Publisher");
+                    Check(!publisher.TryActivate("release-officer")&&
+                        publisher.ActiveRevision==1,
+                        "G07 device safety point was bypassed");
+                    policy.Safe=true;
+                    Check(publisher.TryActivate("release-officer")&&
+                        publisher.ActiveRevision==2,
+                        "G07 approved software Plan failed to activate");
+                    using(var lease=slot.Capture())
+                        Check(lease.Plan.Id==release.Plan.Plan.Id,
+                            "G07 activated Plan differs from locked source");
+                    var altered=new Dictionary<string,string>(versions,StringComparer.Ordinal);
+                    altered["analyze"]="2.1.4";
+                    rejected=false;
+                    try{MOCProjectRelease.Stage(release,reopened.GetSnapshot(),resolver,
+                        altered,publisher,"release-officer",3);}
+                    catch(InvalidOperationException){rejected=true;}
+                    Check(rejected&&!publisher.PendingRevision.HasValue&&
+                        publisher.ActiveRevision==2,
+                        "G07 capability version change contaminated active Plan");
+                }
+                MOCFlowBuilder.Edit(session,page.RootContent,b=>b.Move(second,500,120));
+                var baseline2=new MRKExecutionPlan("previous2",new[]{
+                    new MRKExecutionStep("old",new string[0],
+                        (c,t)=>Task.FromResult((object)1))});
+                var slot2=new MRKExecutionPlanSlot(baseline2,1,true);
+                var policy2=new ProjectReleaseTestPolicy{Safe=true};
+                var publisher2=new MRKExecutionPlanPublisher(slot2,baseline2,1,policy2);
+                rejected=false;
+                try{MOCProjectRelease.Stage(release,session.GetSnapshot(),resolver,
+                    versions,publisher2,"release-officer",2);}
+                catch(InvalidOperationException){rejected=true;}
+                Check(rejected&&!publisher2.PendingRevision.HasValue,
+                    "G07 stale engineering Revision could publish a previous Plan");
+                Check(session.Undo().Success&&session.Revision>revision,
+                    "G07 stale source Undo must still require fresh release fingerprint");
+            }
+            finally
+            {
+                session.Close(true);
+                if(System.IO.File.Exists(path))System.IO.File.Delete(path);
+                if(System.IO.File.Exists(path+".cx-lock"))
+                    System.IO.File.Delete(path+".cx-lock");
+            }
+        }
+
         private static void G04ParameterSubflowIsolation()
         {
             var session=MEMEngineering.Create("G04-F类型化参数子流程");
