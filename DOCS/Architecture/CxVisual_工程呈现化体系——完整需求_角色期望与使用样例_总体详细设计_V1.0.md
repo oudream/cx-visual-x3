@@ -490,7 +490,7 @@ using (MEMEngineeringSession project = MEMEngineering.Create("产线工程"))
 1. 支持面板停靠、浮动、自动隐藏、Tab 合并、分组/关闭/重开、默认布局恢复；中央可以并排打开 HMI、主流程、AI/CV 子流程、Viewer。
 2. 当前激活 Tab 决定专业 Ribbon、工具箱、Schema、底部 Watch/Trace 的焦点，关闭 Tab **不得删除对应工程资源**；跨工程切换时释放旧观察订阅与 Viewer 句柄。
 3. 用户 Workspace 布局与工程持久化分开存放；保存布局不应增加 MEM Revision，资源/编辑操作则必须服从原 Owner 的工程保存。
-4. **AvalonDock 已作为 Docking 候选讨论**，但 5.x/4.x 最终版本、真实 .NET Framework 4.8 兼容、主题、许可及 Windows CI 尚未核对；此处不替先前聊天做版本决议。
+4. **实现状态更新（S1）**：此前 AvalonDock 曾讨论 4.x/5.x 选型；最新 `Applications/Studio` 已接入 **Dirkster.AvalonDock 5.0.1** 与 `MainWindow` partial Shell（见 §26），但真实 Windows 运行、主题一致性、许可证确认及全路径人工验收仍需同 SHA 证据。
 5. 浅色以 TestCenter 白底为基调、深色以 VS 深灰为基调；需涵盖菜单、焦点、禁用、混合值、错误/告警、专业 Viewer 和高 DPI，不仅换背景。
 
 ### 12.8 资源→编辑→构建→运行→调试的统一交互
@@ -523,7 +523,7 @@ using (MEMEngineeringSession project = MEMEngineering.Create("产线工程"))
 | 主页结构与风格 | 主页结构参考图4、总体风格参考图1；深 VS 灰 / 浅 TestCenter 白底 | 最终图纸、尺寸、主题 Token |
 | 配置组合面板 | 1×N/2×N/3×N，2×N 为倾向 | 自动排列阈值、配置类全量种类 |
 | Undo/Redo | 图元/流程重点支持、配置组合不强制逐键历史 | 各配置 Owner 的编辑提交颗粒度 |
-| Docking | AvalonDock 候选 | 4.x vs 5.x、依赖/许可证/真实 WindowsCI |
+| Docking | S1 已用 AvalonDock 5.0.1 接入 Studio | 真实 WindowsCI、主题/许可证与多屏/浮动稳定性仍待核 |
 | 一级菜单与 Ribbon | V1.0 已核读九菜单+专业上下文 | V1.1 最终命令/分组清单及变更 |
 | 两体系接口 | 本稿明确 Shell vs 工程能力边界 | 后续与 V1.1 最终逐章核对/ADR |
 
@@ -671,8 +671,8 @@ Foundation.Geometry 负责数学/Path/Transform/命中基础；Mechanism.Visual 
 | MEM 工程、MPM 属性与资源、MTC 事务、现有 Visual/WPF Studio 基础能力 | 仓库源码存在、已有示例与测试代码 | 用为既有 Owner/API 的依据；仍需同 SHA Windows 实测 |
 | EP01～EP15 需求追踪、R01～R04 的阶段实施记录 | 仓库文档和已提交源码 | 用作需求来源与已有纵向切片；不是功能全部完成证明 |
 | 当前 R04 同定义多实例批量、Mixed、MPM IsReadOnly | 当前源码已声明，配有 Core/WPF 测试代码 | 目标的部分实现；不得声明已在 Windows 通过 |
-| 停靠工作区、动态 Top Ribbon、全搜索与全部专业 Schema 编辑器 | 目标设计；已有《临时聊天2》讨论方向及实际读到的 V1.0 Ribbon 规范；当前 Studio XAML 仍见示例式 WrapPanel 工具区 | 属于待落实能力，不冒称现有 Studio 已完整具备固定九项菜单与 Docking |
-| 《Studio V1.1》完整章节与 AvalonDock 版本 | 尚未取得 V1.1 最终全文、最终图片与版本裁决 | §12.10§ 单列待核项，现有 4.x/5.x 不冒称已定案 |
+| 停靠工作区、动态 Top Ribbon、全搜索与全部专业 Schema 编辑器 | 最新 Studio S1 已接入固定九菜单、动态 Ribbon 基础、AvalonDock 5.0.1 和主题/布局；配置组合真实 Schema、资源ID文档、专业 Viewer 尚未全量 | 属于**部分源码已实现、需CI与专业UI集成验证**，不将已有 S1 演示入口误报为全部 EP 功能完成 |
+| 《Studio V1.1/V1.2》完整章节与 S1 Docking 事实 | 尚未取得界面规范 V1.1/V1.2 全文，S1 源码已确认选择 AvalonDock 5.0.1 | 已选择的 NuGet 版本不再列为待决；仍须按最新规范原稿及真实 Windows CI 验证 |
 | 六专业 Workbench 的全生命周期集成与 A/B/C 最终验收 | 平台宪法、需求与真实业务场景目标 | 需逐项实现、运行/调试/真实设备验证 |
 | 跨定义同名兼容 Schema 批量编辑、表达式/复合值编辑器、完整用户布局持久化 | 需在下一阶段进行详细契约/性能裁决 | 未定细节不能通过 UI 猜测行为；必须兼顾安全与简便 |
 
@@ -1111,7 +1111,7 @@ Foundation.Geometry 负责数学/Path/Transform/命中基础；Mechanism.Visual 
 
 ### 24.1 未发现统一 Shell 类型时如何处理
 
-- 本轮读取的 `Applications/Studio/CxVisual.Studio.csproj` 编译清单仅含现有 `MainWindow`、`StudioViewModel`、`MOLRuntimeOverlay`、`RelayCommand`、示例配置及应用入口，**没有单独声明的通用 Document/EditorHost/ContextRibbon/DockLayout 类型**；这是一项具体项目范围内的源码事实，并非全库不存在任何相似内部机制的证明。
+- **阶段一历史事实**：当时 `Applications/Studio/CxVisual.Studio.csproj` 编译清单以原 `MainWindow`、`StudioViewModel`、`MOLRuntimeOverlay`、`RelayCommand` 等为主，尚无通用 Document/EditorHost/ContextRibbon/DockLayout 独立类型；**随后 S1 新增了 `StudioShell.cs`（MainWindow partial）、`StudioViewModel.Shell.cs` 和 Studio 自测，已有九菜单/基础Ribbon/布局/主题能力**。最新情况以 §26～34 为准，不能延用本条旧判断认定 S1 尚未开展。
 - `Mechanism/Presentation.Wpf` 已有配置控件、SceneView、MOLFlowCanvas，阶段二必须优先判断能否以少量适配整合**配置组合面板 / 图元主画布 / 流程主画布**，而不是因为需要统一界面就重做三套 View。
 - `Professional.HMI`、`Professional.Inspection`、`Professional.Simulation` 的当前 `.csproj` 编译清单仅含 `Properties/AssemblyInfo.cs`。这**不能证明旧仓或其它当前项目缺乏对应业务功能**，只是当前这些 Professional 工程的事实状态；后续专业能力复用由阶段二验证。
 - **待裁决候选职责（不是类名定案）**：活动文档和资源类型路由、编辑器生命周期、跨视图选择/定位、统一 Schema 模板、动态 Ribbon/命令/权限、Dock 布局、专业 Viewer/结果订阅、诊断 SourceMap 导航。需逐职责确定已有承载点、必要接口和归属，不能跳过重复性审计。
