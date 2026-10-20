@@ -120,3 +120,48 @@ MOCFlowBuilder.Edit(session, content, b =>
 2. 尚未以物理鼠标/键盘注入、大规模节点画布性能、复杂缩放DPI组合、自动正交连线路由证明生产级交互质量；现有WPF STA测试通过真实窗口与公共交互入口验证。
 3. G04-E参数/Port契约属性面板、G04-F复用子Content、G04-G调试及精确定位、G05a～d执行语义均未因G04-C/D完成而自动通过。
 4. 新增可选V2 `Groups`和`x/y`仅为兼容性扩展；老V2无组/位置字段仍应可读取；V1结构化Logic仍走原路径。
+
+## 7. 2026-10-20 三轮工程构建收口与验收差距
+
+> 此处同时承接G04至G08，为持续收尾**同一本真实验收台账**；本文历史G01～G04记录不覆盖后续新证据。**软件CI成功≠工业设备实机验收。** 对同一master的并行提交，需要记录各自SHA及对应测试结果，不得将别的Commit绿灯贴到本批。
+
+### 7.1 当前新增的真实源码/测试
+
+| 部分 | 本次新增实现 | 代码证据 | 尚不能宣称完成的边界 |
+| --- | --- | --- | --- |
+| G04-F | 子Content提取保留Data输入参数，通过MRK入口Gate按每次调用的独立Key传递；同一子Content双调用正反例 | `MOCEngineeringCompiler.cs`、`OrganizationLogicIntegrationTests.G04ParameterSubflowIsolation` | 真正跨Content的任意Data/Stream连线、复杂嵌套、分支/异常子流程仍须单独闭环 |
+| G04-F（协作增量） | Content公开输入输出及数据映射进入同一V2/MRK；编译路径补齐局部变量确定赋值 | `MOLLogicDefinition.cs`、`MOCEngineeringCompiler.cs`、`OrganizationLogicIntegrationTests.cs` | 按最新HEAD独立正反例及Windows CI确认，不能以类型出现代替支持所有边界 |
+| G07 | MOC工程Logic指纹与能力声明版本锁、授权Stage、软件安全点Activate、原版Plan固定；Host变更版本或工程Rev禁止污染Slot | `MOCProjectRelease.cs`、`MRKExecutionPublishing.cs`、`G07ProjectReleaseLockAndAuthorization` | 目前是软件Logic来源指纹，不是整个工程资源包可信签名、安装部署包、设备授权/互锁/ACK |
+| G06 | Vision真实CPU灰度阈值+四邻接算法以MRK能力Provider接入MOC；原始像素尺寸、位深和运行错误校验 | `CxVisionThresholdProvider.cs`、`G06CpuVisionThroughMOC` | 未接入FPD/X-Ray/AI、CT重建、PLC/运控及MES实机；只能报告CPU工业视觉软件级闭环 |
+| G04-E | 必需Data输入可由有效Data连线、公开输入或已校验的节点字面量满足；无来源仍拒绝 | `MOLWiringDefinition.ValidateExecutable`、`G06CpuVisionThroughMOC`负例 | 复杂跨模型Port契约仍需扩展及S4/S5现场反证 |
+
+### 7.2 G01至G08完整验收级别说明
+
+- **S0** 文档需求；**S1** 类/文件有代码；**S2** 指定Windows构建；**S3** 真实正反自动化测试；**S4** 开发者API+Studio/Host全闭环；**S5** 性能、故障、权限、真实工业设备和交付验证。
+- 一轮完成必须要求对应工作包目标的全部子项达到规定验收等级，不能因为少量路径已达S3就标记整个工作包S5。
+
+| 工作包 | 截至本次软件级可确认的范围 | 封板前不可省略的验收 |
+| --- | --- | --- |
+| G04-E | 节点参数、Port编辑与类型检查、工程Undo/Redo | Schema/实例覆盖完整性、输入源切换、UI异常回退 |
+| G04-F | 真实Content、Control调用、类型化参数、部分公开Data映射 | 嵌套及跨类型Data/Stream参数/输出、生命周期和无污染失败 |
+| G04-G | SourceMap、断点、暂停、单步、诊断定位 | 复杂子流程及并行迭代的调试身份/堆栈、UI定位准确率 |
+| G04-H | WPF STA与窗口交互、工程往返已有覆盖 | DPI、鼠标注入、2k/10k大画布压力、性能与完整异常矩阵 |
+| G05a | If/Switch/Join及ControlRegion静态编译 | 运行时可重入循环、独立MDS Frame/Invocation、Break/Continue/Try |
+| G05b | Stream/Data Port、有界缓冲与背压 | 多生产者聚合、GB级流压测、生命周期和跨实例隔离 |
+| G05c | 重试/超时/日志与补偿基本能力 | Checkpoint持久等待、人工任务、进程重启恢复、Unknown硬件动作禁止自动重放 |
+| G05d | 层级/正交Region、事件转移和MRK节点 | 事件订阅与排队、状态快照、重启恢复、异常事件反证 |
+| G06 | CPU Vision已接MOC专业Provider | CT/Automation/Inspection/HMI及真实设备、安全联锁/完成反馈 |
+| G07 | 基于已编译Plan的软件授权Stage/Activate、Logic指纹版本锁 | 完整资源依赖清单、包格式与签名、部署/回滚、Host设备侧验证 |
+| G08 | X-Ray双子Content CPU模拟及若干专业软件测试 | 五大旧系统分别验收，8案例主/子流程及异常、性能、交付重复门禁 |
+
+### 7.3 最新提交与CI使用规则
+
+- G04-F：`d9871464`、`7cc47fcd`、`7a518351`（实际入口Gate参数命名不允许含点）；对应核心集成测试须通过。
+- G07：`86f407f3`、`74650aa4`、`3b8ff2eb`、`a2801afa`；发布指纹仅覆盖可达Logic及显式能力版本，不可冒充全部资源签名。
+- G06：`2a3c2eb6`、`df1799e8`、`48bd9899`；后续必需Data输入校验于`7c471778`修正并加入`c2080ceb`负例。
+- 与此同时，其他协同任务继续在master提交Studio属性和公开Content数据功能；每次合并后必须以**最后HEAD对应CI**重新判断。
+- 若出现Windows红灯，记录具体失败用例并修复；**未经过新CI成功的增量一律不标成已通过**。
+
+### 7.4 结论
+
+**目前三轮不允许整体封板。** 这一批提供了可执行的CPU专业路径、软件发布候选锁及参数化子Content真实测试；G05动态循环/Workflow恢复以及G06～G08硬件、部署和历史系统整体验收仍需继续开发。最终机台安全与ACK只能由受授权的专业Provider在真实现场反馈确认。
