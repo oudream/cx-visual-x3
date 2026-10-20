@@ -1195,15 +1195,15 @@ namespace CxVisual.Tests.ArchitectureSmoke
             try
             {
                 Guid leaf=Guid.Empty;
-                MOCFlowBuilder.Edit(session,child,b=>{
-                    leaf=b.Step("Double",new[]{
+                MOCFlowBuilder.Edit(session,child,childFlow=>{
+                    leaf=childFlow.Step("Double",new[]{
                         new MPCPortDescriptor("N",MPCPortDirection.Input,"int",
                             MPCPortKind.Data,required:true),
                         new MPCPortDescriptor("Doubled",MPCPortDirection.Output,"int",
                             MPCPortKind.Data)
                     });
-                    b.ExposeInput("Number",leaf,"N");
-                    b.ExposeOutput("LeafValue",leaf,"Doubled");
+                    childFlow.ExposeInput("Number",leaf,"N");
+                    childFlow.ExposeOutput("LeafValue",leaf,"Doubled");
                 });
                 session.Edit("引用可复用Content",e=>{
                     e.Reference(page.RootContent,child,"ReuseDouble");return true;
