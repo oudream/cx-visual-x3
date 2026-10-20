@@ -86,6 +86,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             V2DiagnosticLocations();
             BranchParallelAndTrace();
             LoopKindsAndBoundedForEach();
+            ForeachOverflowMustFailBeforeExecution();
             R05DynamicLoopAndExit();
             InvokedContentAndInvalidSource();
         }
@@ -219,6 +220,39 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 plan.SourceMap.Find(action.Id)[0].Role=="Action",
                 "loop Body should compile once, not clone 3 static iterations");
             session.Close(true);
+        }
+
+        /// <summary>MOL→MOC→MRK端到端：Foreach预算不足必须拒绝，而不是只处理前两张图片。</summary>
+        private static void ForeachOverflowMustFailBeforeExecution()
+        {
+            var session=MEMEngineering.Create("Foreach全批次完整性");
+            var page=session.AddPage("Batch");
+            int inspected=0;
+            try
+            {
+                MOLControlBlock loop=MOLControlBlock.Each("images",2,
+                    MOLControlBlock.Action("inspect"));
+                MOLLogicCodec.Set(session,page.RootContent,new MOLLogicDefinition(loop));
+                var resolver=new TestResolver().Register("inspect",(ctx,ct)=>{
+                    Interlocked.Increment(ref inspected);
+                    return Task.FromResult((object)ctx.BoundInputs["item"]);
+                });
+                var compiled=new MOCEngineeringCompiler().Compile(
+                    session.GetSnapshot(),page.RootContent.Id,resolver);
+                MOCTraceView trace;
+                MRKFlowResult failed=Execute(compiled,
+                    new Dictionary<string,object>{{"images",new[]{"a","b","c"}}},out trace);
+                Check(failed.State==MRKFlowState.Failed&&
+                    failed.Error!=null&&failed.Error.ToString().Contains(
+                        "moc.foreach_budget_exceeded")&&
+                    failed.CommittedOutputs.Count==0&&inspected==0,
+                    "MOC Foreach ignored surplus image without failing the full batch");
+                MRKFlowResult complete=Execute(compiled,
+                    new Dictionary<string,object>{{"images",new[]{"a","b"}}},out trace);
+                Check(complete.State==MRKFlowState.Completed&&inspected==2,
+                    "MOC Foreach failed with an exact-size image batch");
+            }
+            finally{session.Close(true);}
         }
 
         /// <summary>
