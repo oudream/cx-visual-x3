@@ -981,7 +981,7 @@ namespace CxVisual.Mechanism.Orchestration
                 var from=wiring.Ports[link.Source.BlockId].Single(p=>p.MemberId==link.Source.PortMemberId);
                 var to=wiring.Ports[blockId].Single(p=>p.MemberId==link.Target.PortMemberId);
                 var producer=wiring.Blocks.Single(b=>b.Id==link.Source.BlockId);
-                MRKResolvedCapability ability;
+                MRKResolvedCapability ability=null;
                 bool invoked=producer.CapabilityId.StartsWith("moc.invoke:",StringComparison.Ordinal);
                 if(invoked)
                 {
