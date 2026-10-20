@@ -694,6 +694,14 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 var sourceResolver=new TestResolver().Register("vision.test.source",
                     (ctx,token)=>Task.FromResult((object)((byte[])pixels.Clone())));
                 var provider=new CxVisionThresholdProvider(options,12,sourceResolver);
+                // 必需Data输入允许类型化参数满足，但移除参数后必须由构建门禁拒绝。
+                MOCFlowBuilder.Edit(session,page.RootContent,b=>b.RemoveParameter(inspect,"Width"));
+                var incomplete=new MOCBuildService().Build(
+                    session.GetSnapshot(),page.RootContent.Id,provider);
+                Check(!incomplete.Succeeded&&incomplete.Diagnostics.Any(d=>
+                    d.Code=="MOC_WIRING_INVALID"),
+                    "G06 missing required Width parameter escaped V2 compile gate");
+                Check(session.Undo().Success,"G06 missing required input Undo failed");
                 var build=new MOCBuildService().Build(
                     session.GetSnapshot(),page.RootContent.Id,provider);
                 Check(build.Succeeded,"G06 Vision real MOC build failed: "+
