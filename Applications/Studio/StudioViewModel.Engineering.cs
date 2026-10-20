@@ -20,6 +20,21 @@ namespace CxVisual.Studio
         internal bool Reference,Visual;
         internal MPMValueKind Kind;
         internal MPMPropertyDescriptor Descriptor;
+        internal Guid[] BatchOwnerIds;
+        public int SelectionCount {get;internal set;}
+        public bool IsReadOnly {get;internal set;}
+        private bool _isMixedValue;
+        public bool IsMixedValue
+        {
+            get{return _isMixedValue;}
+            internal set
+            {
+                if(_isMixedValue==value)return;
+                _isMixedValue=value;
+                Notify("IsMixedValue");Notify("MixedValueDescription");Notify("NullableBooleanValue");Notify("ValidationMessage");
+            }
+        }
+        public string MixedValueDescription {get{return IsMixedValue?"多个对象的值不一致，请指定统一新值":"";}}
         private string _text, _mode;
         private IMEMResource _selectedBindingResource;
         public IReadOnlyList<IMEMResource> ResourceChoices {get;internal set;}
@@ -52,7 +67,13 @@ namespace CxVisual.Studio
         public string Text
         {
             get{return _text;}
-            set{if(_text==value)return;_text=value;Notify("Text");Notify("BooleanValue");Notify("ValidationMessage");}
+            set
+            {
+                if(_text==value)return;
+                _text=value;
+                if(_isMixedValue)IsMixedValue=false;
+                Notify("Text");Notify("BooleanValue");Notify("NullableBooleanValue");Notify("ValidationMessage");
+            }
         }
         public string Mode
         {
@@ -75,11 +96,18 @@ namespace CxVisual.Studio
             get{return string.Equals(Text,"true",StringComparison.OrdinalIgnoreCase);}
             set{Text=value?"true":"false";}
         }
+        public bool? NullableBooleanValue
+        {
+            get{return IsMixedValue?(bool?)null:BooleanValue;}
+            set{if(value.HasValue)BooleanValue=value.Value;}
+        }
         /// <summary>Advisory UI feedback. MEM/MPM remain the authoritative validator during transaction commit.</summary>
         public string ValidationMessage
         {
             get
             {
+                if(IsReadOnly)return "所选属性只读，不允许编辑";
+                if(IsMixedValue)return "多个对象的值不一致，请指定统一新值";
                 if(IsResourceSource)
                 {
                     if(Kind!=MPMValueKind.Resource)return "只有Resource类型属性可以引用工程资源";
@@ -129,6 +157,7 @@ namespace CxVisual.Studio
         private bool _notifying;
         public bool IsRefreshing {get{return _refreshing||_notifying;}}
         private Guid[] _selection=new Guid[0];
+        public string PropertySelectionHint {get;private set;}
         public Func<MEMEngineeringSession,bool> ConfirmReplace {get;set;}
         public MEMEngineeringSession ProjectSession {get{return _editor.Document;}}
         public ObservableCollection<MEMPage> Pages {get;private set;}
@@ -197,7 +226,36 @@ namespace CxVisual.Studio
             try
             {
                 Pages.Clear();foreach(var page in ProjectSession.Project.Pages)Pages.Add(page);Resources.Clear();foreach(var resource in ProjectSession.Project.Resources)Resources.Add(resource);
-                Properties.Clear();if(_selected.HasValue)
+                Properties.Clear();
+                PropertySelectionHint="";
+                if(_selection.Length>1)
+                {
+                    // 本阶段仅对同一资源定义的多个实例批量编辑。其他混选只读提示，绝不降级为编辑最后一个对象。
+                    MRIResourceReference[] references=_selection.Select(id=>ProjectSession.FindReference(id)).ToArray();
+                    if(references.All(x=>x!=null)&&references.Select(x=>x.TargetId).Distinct().Count()==1)
+                    {
+                        var target=ProjectSession.Find(references[0].TargetId) as IMPMDefinition;
+                        if(target!=null)
+                            foreach(var property in target.Properties.Where(p=>p.Descriptor.IsPublic))
+                            {
+                                MPMBinding[] values=references.Select(x=>ProjectSession.ResolveParameter(x,property.MemberId)).ToArray();
+                                bool mixed=values.Skip(1).Any(v=>!object.Equals(v,values[0]));
+                                var row=Row(references[references.Length-1].Id,property.MemberId,
+                                    property.Descriptor.ValueKind,values[0],true,false,property.Descriptor);
+                                row.BatchOwnerIds=(Guid[])_selection.Clone();
+                                row.SelectionCount=references.Length;
+                                row.DefaultDescription="共同继承定义："+BindingSummary(property.Binding);
+                                row.CanRestoreDefault=references.Any(x=>x.Overrides.ContainsKey(property.MemberId));
+                                row.ResourceChoices=Resources.ToList().AsReadOnly();
+                                if(!mixed&&values[0]!=null&&values[0].Kind==MPMBindingKind.Resource)
+                                    row.SelectedBindingResource=row.ResourceChoices.FirstOrDefault(x=>x.Id==values[0].ResourceId.Value);
+                                if(mixed){row.Text="";row.IsMixedValue=true;row.Source="混合值（"+references.Length+"个实例）";}
+                                Properties.Add(row);
+                            }
+                    }
+                    else PropertySelectionHint="当前选区只读：批量属性编辑仅支持同一Content/Symbol定义的多个实例；不同定义或图元混选不能误改。";
+                }
+                else if(_selected.HasValue)
                 {
                     var reference=ProjectSession.FindReference(_selected.Value);var node=reference==null?ProjectSession.Find(_selected.Value):ProjectSession.Find(reference.TargetId);var definition=node as IMPMDefinition;
                     if(definition!=null)foreach(var property in definition.Properties.Where(p=>reference==null||p.Descriptor.IsPublic))
@@ -227,7 +285,7 @@ namespace CxVisual.Studio
                 }
                 SourcePort=null;TargetPort=null;
                 var selectedReference=_selected.HasValue?ProjectSession.FindReference(_selected.Value):null;var selectedNode=SelectedDefinition();RenameText=selectedReference==null?selectedNode?.Name:selectedReference.Name;
-                Changed("Pages");Changed("Resources");Changed("ActivePage");Changed("SelectedResource");Changed("ContextName");Changed("Properties");Changed("IsDirty");Changed("Ports");Changed("Connections");Changed("RenameText");
+                Changed("Pages");Changed("Resources");Changed("ActivePage");Changed("SelectedResource");Changed("ContextName");Changed("Properties");Changed("IsDirty");Changed("Ports");Changed("Connections");Changed("RenameText");Changed("PropertySelectionHint");
             }
             finally{_refreshing=false;}
         }
@@ -253,15 +311,47 @@ namespace CxVisual.Studio
             }
             else if(visual) schemaLabel+=" · 几何属性";
             return new StudioPropertyItem{OwnerId=owner,Revision=ProjectSession.Revision,Member=member,Kind=kind,Reference=reference,Visual=visual,Schema=schemaLabel,Descriptor=descriptor,Text=binding==null?"":binding.Kind==MPMBindingKind.Literal?binding.Value.Canonical:binding.Kind==MPMBindingKind.Resource?(ProjectSession.Project.FindResource(binding.ResourceId.Value,true)?.Name??"资源缺失"):binding.SourceId,Mode=binding==null?(kind==MPMValueKind.Resource?"资源":"常量"):binding.Kind==MPMBindingKind.Literal?"常量":binding.Kind==MPMBindingKind.Resource?"资源":binding.Kind==MPMBindingKind.Variable?"变量":"保留来源",Source=binding==null?"未绑定":binding.Kind==MPMBindingKind.Configuration?"配置来源":binding.Kind==MPMBindingKind.Member?"对象成员来源":binding.Kind==MPMBindingKind.Expression?"表达式来源":"当前来源："+(binding.Kind==MPMBindingKind.Literal?"常量":binding.Kind==MPMBindingKind.Resource?"资源":"变量")};}
-        public void SetSelection(System.Collections.Generic.IEnumerable<Guid> ids){if(IsRefreshing)return;var selected=ids.Distinct().ToArray();Select(selected.Length==0?(Guid?)null:selected[selected.Length-1]);_selection=selected;}
+        public void SetSelection(System.Collections.Generic.IEnumerable<Guid> ids)
+        {
+            if(IsRefreshing)return;
+            Guid[] selected=ids==null?new Guid[0]:ids.Distinct().ToArray();
+            Select(selected.Length==0?(Guid?)null:selected[selected.Length-1]);
+            _selection=selected;
+            RefreshEngineering();
+        }
         private MEMNode CurrentOwner(){if(!_editor.CurrentResourceId.HasValue)throw new InvalidOperationException("请选择页面或资源");var root=ProjectSession.Find(_editor.CurrentResourceId.Value);return root is MEMPage?((MEMPage)root).RootContent:root;}
         private MEMNode SelectedDefinition(){return _selected.HasValue?ProjectSession.Find(_selected.Value)??SelectedResource as MEMNode:SelectedResource as MEMNode;}
         private string EndpointLabel(MPCEndpoint endpoint){var port=ProjectSession.FindPort(endpoint.PortId);var name=endpoint.Address.InstancePath.Count==0?ProjectSession.Find(endpoint.Address.ObjectId).Name:ProjectSession.FindReference(endpoint.Address.InstancePath[0]).Name;return name+" / "+port.MemberId;}
         private void AddPort(MPCPortDirection direction)
         {var node=_selected.HasValue?ProjectSession.Find(_selected.Value):SelectedResource as MEMNode;if(!(node is IMPMDefinition))throw new InvalidOperationException("请选择内容、组件或图元定义");var definition=(IMPMDefinition)node;ProjectSession.DefinePort(node,(direction==MPCPortDirection.Input?"输入 ":"输出 ")+(definition.Ports.Count+1),direction,"core.number",isPublic:node.Parent is MEMProject);}
+        private MRIResourceReference[] BatchReferences(StudioPropertyItem row)
+        {
+            if(row==null||row.BatchOwnerIds==null||row.BatchOwnerIds.Length<2||
+                !row.Reference||row.IsReadOnly||!_selection.SequenceEqual(row.BatchOwnerIds))
+                throw new InvalidOperationException("多选上下文已改变，禁止执行过期属性修改");
+            MRIResourceReference[] refs=row.BatchOwnerIds.Select(id=>ProjectSession.FindReference(id)).ToArray();
+            if(refs.Any(x=>x==null)||refs.Select(x=>x.TargetId).Distinct().Count()!=1)
+                throw new InvalidOperationException("批量修改只支持同一定义的实例");
+            var target=ProjectSession.Find(refs[0].TargetId) as IMPMDefinition;
+            if(target==null||!target.Properties.Any(p=>p.MemberId==row.Member&&
+                p.Descriptor.IsPublic&&p.Descriptor.ValueKind==row.Kind))
+                throw new InvalidOperationException("批量属性非公开或Schema已改变");
+            return refs;
+        }
         private void RestorePropertyDefault(StudioPropertyItem row)
         {
-            if(row==null||row.Visual||row.Descriptor==null)throw new InvalidOperationException("请选择工程定义属性或公开实例参数");
+            if(row==null||row.Visual||row.Descriptor==null||row.IsReadOnly)
+                throw new InvalidOperationException("请选择可编辑的工程定义属性或公开实例参数");
+            if(row.BatchOwnerIds!=null&&row.BatchOwnerIds.Length>1)
+            {
+                MRIResourceReference[] refs=BatchReferences(row);
+                ProjectSession.Edit("批量清除实例属性覆盖",row.Revision,e=>
+                {
+                    foreach(MRIResourceReference reference in refs)e.SetOverride(reference,row.Member,null);
+                    return true;
+                }).RequireValue();
+                return;
+            }
             ProjectSession.Edit("恢复工程属性默认值",row.Revision,e=>
             {
                 if(row.Reference)e.SetOverride(ProjectSession.FindReference(row.OwnerId),row.Member,null);
@@ -272,6 +362,7 @@ namespace CxVisual.Studio
         private void ApplyProperty(StudioPropertyItem row)
         {
             if(row==null)return;
+            if(row.IsReadOnly)throw new InvalidOperationException("当前属性只读");
             // 早期提示拒绝非法数字，最终范围/类型仍由原MEM编辑事务验证；失败绝不写工程历史。
             if(!string.IsNullOrEmpty(row.ValidationMessage))throw new InvalidOperationException(row.ValidationMessage);
             MPMBinding binding;
@@ -287,6 +378,17 @@ namespace CxVisual.Studio
             else if(row.Mode=="常量")
             {MPMValue value;switch(row.Kind){case MPMValueKind.Number:value=MPMValue.Number(double.Parse(row.Text,CultureInfo.InvariantCulture));break;case MPMValueKind.Integer:value=MPMValue.Integer(long.Parse(row.Text,CultureInfo.InvariantCulture));break;case MPMValueKind.Decimal:value=MPMValue.Decimal(decimal.Parse(row.Text,CultureInfo.InvariantCulture));break;case MPMValueKind.Boolean:value=MPMValue.Boolean(bool.Parse(row.Text));break;case MPMValueKind.String:value=MPMValue.String(row.Text);break;default:throw new InvalidOperationException("请选择资源来源");}binding=MPMBinding.Literal(value);}
             else throw new InvalidOperationException("原来源保持不变；请选择一种明确的新来源再应用");
+            if(row.BatchOwnerIds!=null&&row.BatchOwnerIds.Length>1)
+            {
+                MRIResourceReference[] references=BatchReferences(row);
+                ProjectSession.Edit("批量编辑实例属性",row.Revision,e=>
+                {
+                    foreach(MRIResourceReference reference in references)
+                        e.SetOverride(reference,row.Member,binding);
+                    return true;
+                }).RequireValue();
+                return;
+            }
             ProjectSession.Edit("编辑对象属性",row.Revision,e=>
             {
                 if(row.Reference)e.SetOverride(ProjectSession.FindReference(row.OwnerId),row.Member,binding);
