@@ -121,14 +121,22 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 return false;
             }
         }
+        // 兼容旧Step断点，同时允许按loop.iN.step的真实Invocation路径精准暂停。
         internal Task WaitBeforeAsync(string stepId, CancellationToken cancellation)
+        { return WaitBeforeAsync(stepId,stepId,cancellation); }
+
+        internal Task WaitBeforeAsync(string stepId,string qualifiedStepId,
+            CancellationToken cancellation)
         {
+            if(string.IsNullOrWhiteSpace(stepId)||string.IsNullOrWhiteSpace(qualifiedStepId))
+                throw new ArgumentException("debug.breakpoint_step_required");
             cancellation.ThrowIfCancellationRequested();
             TaskCompletionSource<bool> pending;
             LinkedListNode<TaskCompletionSource<bool>> node;
             lock (_gate)
             {
-                if (_breakpoints.Contains(stepId)) _paused = true;
+                if (_breakpoints.Contains(stepId)||_breakpoints.Contains(qualifiedStepId))
+                    _paused = true;
                 if (!_paused) return Task.FromResult(true);
                 pending = new TaskCompletionSource<bool>(
                     TaskCreationOptions.RunContinuationsAsynchronously);

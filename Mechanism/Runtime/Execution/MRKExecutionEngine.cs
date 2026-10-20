@@ -1096,7 +1096,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 }
                 if (control != null)
                 {
-                    Task checkpoint = control.WaitBeforeAsync(step.Id, cancellation);
+                    Task checkpoint = control.WaitBeforeAsync(step.Id,
+                        context.QualifiedStepId(step.Id), cancellation);
                     if (!checkpoint.IsCompleted) context.SetState(step.Id, MRKStepState.Paused, "breakpoint");
                     await checkpoint.ConfigureAwait(false);
                 }

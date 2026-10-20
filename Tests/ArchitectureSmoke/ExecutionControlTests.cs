@@ -13,6 +13,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         {
             ConditionalBranchesAndBoundedLoops();
             DebugBreakpointStepAndResume();
+            QualifiedLoopIterationBreakpoint();
             CancellationUnblocksPausedFlow();
             CancelledBreakpointsAreRemovedImmediately();
             GlobalFlowQuotaRejectsBeforeAdmission();
@@ -91,6 +92,66 @@ namespace CxVisual.Tests.ArchitectureSmoke
             MRKFlowResult result = Await(flow.Completion);
             Check(result.State == MRKFlowState.Completed && count == 2, "debug completion wrong");
             Await(engine.StopAsync());
+        }
+
+        /// <summary>
+        /// R09：相同逻辑Step每轮共享定义，但调试者可精确选择某一次Invocation。
+        /// 不修改原有AddBreakpoint("work")匹配所有迭代的兼容语义。
+        /// </summary>
+        private static void QualifiedLoopIterationBreakpoint()
+        {
+            int executed=0;
+            var body=new MRKExecutionPlan("r09.breakpoint.body",new[]{
+                new MRKExecutionStep("work",new string[0],(ctx,ct)=>{
+                    Interlocked.Increment(ref executed);
+                    return Task.FromResult((object)ctx.IterationIndex);
+                })
+            });
+            var plan=new MRKExecutionPlan("r09.breakpoint",new[]{
+                new MRKExecutionStep("loop",new string[0],(ctx,ct)=>
+                    Task.FromResult((object)true),
+                    loopRegion:new MRKLoopRegion(body,4,collectionInput:"Items"))
+            });
+            var runtime=new MRKExecutionEngine(new FCRWorkerOptions(2,6));
+            var debug=new MRKExecutionDebugController();
+            debug.AddBreakpoint("loop.i2.work");
+            try
+            {
+                MRKFlowHandle flow=runtime.StartFlowWithControl(plan,debug,
+                    new Dictionary<string,object>{{"Items",new[]{1,2,3,4}}});
+                Check(Until(()=>debug.WaitingCount==1),
+                    "指定第三轮的限定路径断点没有暂停真实执行");
+                MRKStepState paused;
+                Check(Volatile.Read(ref executed)==2&&
+                    flow.Context.StatesSnapshot().TryGetValue("loop.i2.work",out paused)&&
+                    paused==MRKStepState.Paused,
+                    "限定路径断点提前暂停前两轮，或未在第三轮Step执行前停止");
+                Check(debug.StepOnce(),
+                    "限定路径断点单步执行未解除等待节点");
+                Check(Until(()=>Volatile.Read(ref executed)==3&&debug.WaitingCount==1),
+                    "单步后未精确执行第三轮，或下一轮未保持暂停状态");
+                debug.Resume();
+                MRKFlowResult done=Await(flow.Completion);
+                Check(done.State==MRKFlowState.Completed&&
+                    Volatile.Read(ref executed)==4,
+                    "断点继续后未完整执行全批次");
+                var all=new MRKExecutionDebugController();
+                all.AddBreakpoint("work");
+                MRKFlowHandle legacy=runtime.StartFlowWithControl(plan,all,
+                    new Dictionary<string,object>{{"Items",new[]{1,2,3,4}}});
+                Check(Until(()=>all.WaitingCount==1)&&Volatile.Read(ref executed)==4,
+                    "历史StepId断点未兼容第一轮动态循环");
+                all.RemoveBreakpoint("work");
+                all.Resume();
+                Check(Await(legacy.Completion).State==MRKFlowState.Completed&&
+                    Volatile.Read(ref executed)==8,
+                    "旧式StepId断点恢复后未正常执行");
+            }
+            finally
+            {
+                debug.Resume();
+                Await(runtime.StopAsync(true));
+            }
         }
 
         private static void CancelledBreakpointsAreRemovedImmediately()
