@@ -242,10 +242,11 @@ namespace CxVisual.Studio
                                 bool mixed=values.Skip(1).Any(v=>!object.Equals(v,values[0]));
                                 var row=Row(references[references.Length-1].Id,property.MemberId,
                                     property.Descriptor.ValueKind,values[0],true,false,property.Descriptor);
+                                row.IsReadOnly=property.Descriptor.IsReadOnly;
                                 row.BatchOwnerIds=(Guid[])_selection.Clone();
                                 row.SelectionCount=references.Length;
                                 row.DefaultDescription="共同继承定义："+BindingSummary(property.Binding);
-                                row.CanRestoreDefault=references.Any(x=>x.Overrides.ContainsKey(property.MemberId));
+                                row.CanRestoreDefault=!row.IsReadOnly&&references.Any(x=>x.Overrides.ContainsKey(property.MemberId));
                                 row.ResourceChoices=Resources.ToList().AsReadOnly();
                                 if(!mixed&&values[0]!=null&&values[0].Kind==MPMBindingKind.Resource)
                                     row.SelectedBindingResource=row.ResourceChoices.FirstOrDefault(x=>x.Id==values[0].ResourceId.Value);
@@ -264,7 +265,8 @@ namespace CxVisual.Studio
                         var item=Row(_selected.Value,property.MemberId,property.Descriptor.ValueKind,binding,reference!=null,false,property.Descriptor);
                         var inherited=reference==null?property.Descriptor.DefaultBinding:property.Binding;
                         item.DefaultDescription=(reference==null?"Schema默认：":"继承定义：")+BindingSummary(inherited);
-                        item.CanRestoreDefault=reference==null?property.HasOverride:reference.Overrides.ContainsKey(property.MemberId);
+                        item.IsReadOnly=property.Descriptor.IsReadOnly;
+                        item.CanRestoreDefault=!item.IsReadOnly&&(reference==null?property.HasOverride:reference.Overrides.ContainsKey(property.MemberId));
                         item.ResourceChoices=Resources.ToList().AsReadOnly();
                         if(binding!=null&&binding.Kind==MPMBindingKind.Resource)
                             item.SelectedBindingResource=item.ResourceChoices.FirstOrDefault(x=>x.Id==binding.ResourceId.Value);
@@ -308,6 +310,7 @@ namespace CxVisual.Studio
                     schemaLabel+=" · 范围："+(descriptor.Minimum.HasValue?descriptor.Minimum.Value.ToString(CultureInfo.InvariantCulture):"无下限")
                         +" ～ "+(descriptor.Maximum.HasValue?descriptor.Maximum.Value.ToString(CultureInfo.InvariantCulture):"无上限");
                 schemaLabel+=reference?" · 实例覆盖":" · 定义属性";
+                if(descriptor.IsReadOnly)schemaLabel+=" · 只读";
             }
             else if(visual) schemaLabel+=" · 几何属性";
             return new StudioPropertyItem{OwnerId=owner,Revision=ProjectSession.Revision,Member=member,Kind=kind,Reference=reference,Visual=visual,Schema=schemaLabel,Descriptor=descriptor,Text=binding==null?"":binding.Kind==MPMBindingKind.Literal?binding.Value.Canonical:binding.Kind==MPMBindingKind.Resource?(ProjectSession.Project.FindResource(binding.ResourceId.Value,true)?.Name??"资源缺失"):binding.SourceId,Mode=binding==null?(kind==MPMValueKind.Resource?"资源":"常量"):binding.Kind==MPMBindingKind.Literal?"常量":binding.Kind==MPMBindingKind.Resource?"资源":binding.Kind==MPMBindingKind.Variable?"变量":"保留来源",Source=binding==null?"未绑定":binding.Kind==MPMBindingKind.Configuration?"配置来源":binding.Kind==MPMBindingKind.Member?"对象成员来源":binding.Kind==MPMBindingKind.Expression?"表达式来源":"当前来源："+(binding.Kind==MPMBindingKind.Literal?"常量":binding.Kind==MPMBindingKind.Resource?"资源":"变量")};}
@@ -334,7 +337,7 @@ namespace CxVisual.Studio
                 throw new InvalidOperationException("批量修改只支持同一定义的实例");
             var target=ProjectSession.Find(refs[0].TargetId) as IMPMDefinition;
             if(target==null||!target.Properties.Any(p=>p.MemberId==row.Member&&
-                p.Descriptor.IsPublic&&p.Descriptor.ValueKind==row.Kind))
+                p.Descriptor.IsPublic&&!p.Descriptor.IsReadOnly&&p.Descriptor.ValueKind==row.Kind))
                 throw new InvalidOperationException("批量属性非公开或Schema已改变");
             return refs;
         }
