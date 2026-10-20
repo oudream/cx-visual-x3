@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using CxVisual.Mechanism.Runtime.Execution;
+using CxVisual.Mechanism.Data.RuntimeData;
 
 namespace CxVisual.Tests.ArchitectureSmoke
 {
@@ -25,6 +27,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             R07_CorrelationReceiveCancelRaceHasSingleResult();
             R07_TimedOutTicketCannotDisposeNewRegistration();
             R07_JoinObserverTimeoutAndCancellationCannotReleaseActiveWork();
+            R07_NamedOutputMergeRequiresExplicitConflictPolicyAndMDSCommit();
         }
         private static void Check(bool ok, string message)
         { if (!ok) throw new InvalidOperationException("Runtime协作测试: " + message); }
@@ -596,6 +599,83 @@ namespace CxVisual.Tests.ArchitectureSmoke
             }
             Check(worker.GetSnapshot().Active == 0,
                 "Join观察终止与底层Worker最终结算之间存在资源泄漏");
+        }
+
+        private static void R07_NamedOutputMergeRequiresExplicitConflictPolicyAndMDSCommit()
+        {
+            var worker = new CxVisual.Foundation.Infrastructure.Concurrency.FCRWorker(
+                new CxVisual.Foundation.Infrastructure.Concurrency.FCRWorkerOptions(3, 5));
+            TaskCompletionSource<bool> entered = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<bool> release = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var first = worker.Submit<IDictionary<string, int>>(token =>
+                Task.FromResult((IDictionary<string, int>)new Dictionary<string, int>
+                { { "Count", 2 }, { "Left", 11 } }), "r07-merge-first");
+            var second = worker.Submit<IDictionary<string, int>>(async token =>
+            {
+                entered.TrySetResult(true);
+                await release.Task.ConfigureAwait(false);
+                return (IDictionary<string, int>)new Dictionary<string, int>
+                    { { "Count", 3 }, { "Right", 13 } };
+            }, "r07-merge-second");
+            try
+            {
+                Await(entered.Task);
+                Task<IReadOnlyDictionary<string, int>> pending =
+                    MRKWorkJoin.MergeNamedOutputsAsync(new[] { first, second },
+                        (name, values) => values[0] + values[1]);
+                Check(!pending.IsCompleted, "尚未结算的输出被提前合并发布");
+                release.TrySetResult(true);
+                IReadOnlyDictionary<string, int> merged = Await(pending);
+                Check(merged.Count == 3 && merged["Count"] == 5 &&
+                    merged["Left"] == 11 && merged["Right"] == 13,
+                    "具名输出未按分支声明顺序合并或丢失其他名称");
+
+                bool conflict = false;
+                try { Await(MRKWorkJoin.MergeNamedOutputsAsync(new[] { first, second })); }
+                catch (InvalidOperationException ex)
+                { conflict = ex.Message.Contains("join.outputs.conflicting_producers:Count"); }
+                Check(conflict, "同名输出未经显式聚合却静默覆盖");
+
+                var bad = worker.Submit<IDictionary<string, int>>(token =>
+                { throw new InvalidOperationException("r07.producer.failure"); }, "r07-merge-failed");
+                bool failure = false, mergeInvoked = false;
+                try
+                {
+                    Await(MRKWorkJoin.MergeNamedOutputsAsync(new[] { first, bad },
+                        (name, values) => { mergeInvoked = true; return 0; }));
+                }
+                catch (InvalidOperationException ex)
+                { failure = ex.Message.Contains("join.outputs.branch_not_success"); }
+                Check(failure && !mergeInvoked,
+                    "失败分支进入聚合或发布了局部成功分支的结果");
+
+                // 真正的数据真源仍为MDS。Join仅计算候选值，明确Return之后再Commit。
+                using (MDSDataStack stack = new MDSDataStack())
+                {
+                    var scope = stack.RootScope.CreateChild("r07-merge-output");
+                    using (MDSDataFrame frame = stack.OpenFrame("r07-merge",
+                        scope, null, new Dictionary<string, Type> { { "Count", typeof(int) } }))
+                    {
+                        int unavailable;
+                        Check(!stack.TryReadOutput<int>("r07-merge", "Count", out unavailable),
+                            "Join合并直接越权发布到尚未Commit的MDS");
+                        frame.Data.Return("Count", merged["Count"]);
+                        Check(!stack.TryReadOutput<int>("r07-merge", "Count", out unavailable),
+                            "MDS Pending输出在显式Commit前可见");
+                        frame.CommitOutputs();
+                        int stored;
+                        Check(stack.TryReadOutput<int>("r07-merge", "Count", out stored) &&
+                            stored == 5, "显式聚合结果未通过原MDS数据帧完整提交");
+                    }
+                }
+            }
+            finally
+            {
+                release.TrySetResult(true);
+                Await(worker.StopAsync());
+            }
         }
 
     }

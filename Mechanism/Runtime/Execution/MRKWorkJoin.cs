@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -113,6 +114,60 @@ namespace CxVisual.Mechanism.Runtime.Execution
                         if (!handle.Completion.IsCompleted) handle.RequestCancel();
                 return new MRKJoinWaitObservation<T>(!aborted, aborted, null, allSettled);
             }
+        }
+
+
+        /// <summary>
+        /// 只聚合已全部结算且均成功的具名输出，不向MDS自动发布。
+        /// 不同名称直接保留，同名名称必须明确传入聚合函数；绝不采用最后写入覆盖。
+        /// 相同名称的值按source输入分支的次序交给聚合函数，不依赖完成时序。
+        /// 调用方将最终字典作为后继Input或通过原有MDS Data.Return显式提交。
+        /// </summary>
+        public static async Task<IReadOnlyDictionary<string, T>> MergeNamedOutputsAsync<T>(
+            IEnumerable<FCRWorkHandle<IDictionary<string, T>>> source,
+            Func<string, IReadOnlyList<T>, T> mergeConflicts = null)
+        {
+            FCRWorkResult<IDictionary<string, T>>[] settled =
+                await AllAsync(source).ConfigureAwait(false);
+            // 所有分支结算后才能检查全局结果。存在失败则拒绝任何部分输出。
+            for (int i = 0; i < settled.Length; i++)
+            {
+                if (!settled[i].Succeeded)
+                    throw new InvalidOperationException(
+                        "join.outputs.branch_not_success:" + i + ":" + settled[i].State,
+                        settled[i].Error);
+                if (settled[i].Value == null)
+                    throw new InvalidOperationException("join.outputs.null_branch:" + i);
+            }
+            Dictionary<string, List<T>> candidates =
+                new Dictionary<string, List<T>>(StringComparer.Ordinal);
+            foreach (FCRWorkResult<IDictionary<string, T>> branch in settled)
+            {
+                foreach (KeyValuePair<string, T> output in branch.Value)
+                {
+                    if (string.IsNullOrWhiteSpace(output.Key))
+                        throw new InvalidOperationException("join.outputs.invalid_name");
+                    List<T> values;
+                    if (!candidates.TryGetValue(output.Key, out values))
+                    {
+                        values = new List<T>();
+                        candidates.Add(output.Key, values);
+                    }
+                    values.Add(output.Value);
+                }
+            }
+            Dictionary<string, T> merged = new Dictionary<string, T>(StringComparer.Ordinal);
+            foreach (KeyValuePair<string, List<T>> group in candidates)
+            {
+                if (group.Value.Count > 1 && mergeConflicts == null)
+                    throw new InvalidOperationException("join.outputs.conflicting_producers:" +
+                        group.Key);
+                T value = group.Value.Count == 1 ? group.Value[0] :
+                    mergeConflicts(group.Key, group.Value.AsReadOnly());
+                merged.Add(group.Key, value);
+            }
+            // 字典结构只读；可变专业对象的值安全拷贝继续由MDSDataContext负责。
+            return new ReadOnlyDictionary<string, T>(merged);
         }
 
         private static async Task<FCRWorkResult<T>[]> AllCancelOnFailureAsync<T>(
