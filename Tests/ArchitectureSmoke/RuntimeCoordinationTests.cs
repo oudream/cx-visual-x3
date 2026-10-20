@@ -412,6 +412,39 @@ namespace CxVisual.Tests.ArchitectureSmoke
             { predicateRejected = ex.Message == "r07.condition.failed"; }
             Check(predicateRejected, "条件汇合吞掉了谓词异常");
 
+            // 错误谓词触发协作取消后，原外部任务未结束不得提前报告已结算。
+            TaskCompletionSource<bool> predicateTailEntered = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<bool> predicateTailRelease = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var predicateTail = worker.Submit<int>(async token =>
+            {
+                predicateTailEntered.TrySetResult(true);
+                await predicateTailRelease.Task.ConfigureAwait(false);
+                return 8;
+            }, "r07-predicate-tail");
+            Await(predicateTailEntered.Task);
+            var invalidBranch = worker.Submit<int>(token => Task.FromResult(7),
+                "r07-predicate-invalid");
+            Task<MRKJoinResult<int>> predicateFailure =
+                MRKWorkJoin.FirstMatchingAsync(new[] { predicateTail, invalidBranch },
+                    outcome =>
+                    {
+                        if (outcome.Value == 7)
+                            throw new InvalidOperationException("r07.condition.tail");
+                        return false;
+                    });
+            Await(invalidBranch.Completion);
+            Check(!predicateFailure.IsCompleted,
+                "条件异常错误地提前释放了未完成外部任务");
+            predicateTailRelease.TrySetResult(true);
+            bool propagated = false;
+            try { Await(predicateFailure); }
+            catch (InvalidOperationException ex)
+            { propagated = ex.Message == "r07.condition.tail"; }
+            Check(propagated && Await(predicateTail.Completion).CancellationRequested,
+                "条件异常未传播或未向仍在运行的外部任务发出协作取消");
+
             // FCRWork.Completion先于Worker活动槽位最终释放。
             Await(worker.StopAsync());
             Check(worker.GetSnapshot().Active == 0, "已结算Worker仍占用活动槽位");

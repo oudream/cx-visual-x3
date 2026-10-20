@@ -343,3 +343,9 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 - 追加修订 `a886b859a9ac05c33bb4642291311fd2fab1f602` 的四项实际Windows工作流均success：Runtime `39402361803`、工程组织 `39402362086`、Config L1 `39402362032`、配置公共底座 `39402361826`；由于该SHA只变动ArchitectureSmoke与文档，原TestCenter路径过滤没有触发。
 - 本提交同步补原 `MRKWorkJoin.FirstMatchingAsync` 条件谓词异常处理的公开安全说明，以触发TestCenter，测试仍保留完整R07正反例（含谓词异常），不删除任何失败场景。
 - 只有这个新提交的固定SHA对应Runtime/工程组织/TestCenter和配置检查实际绿色才登记最终增量S3；**整轮R07仍留有Studio工业级交互、多生产者/Invocation资源交接、物理外部设备安全证据缺口，不能凭CI绿色标记R07整轮完成或直接开R08。**
+
+### R07 同一SHA运行/工程/TestCenter触发补充
+
+- 固定SHA `a886b859a9ac05c33bb4642291311fd2fab1f602` 的Windows Runtime `39402361803`、工程组织 `39402362086`、Config L1 `39402362032`、配置公共底座 `39402361826`均success；该提交未修改TestCenter监听路径，因此没有同SHA的TestCenter运行记录。
+- 前一提交 `7b5274f8e5e066d7aec7aadc4b1d04f854c5dd74` 对原MRK条件汇合公开契约补充条件谓词错误与安全尾部的说明，相关Windows门禁需独立看固定SHA，不能借其他SHA替代。
+- 本次加强反证：谓词异常发生时，即使还有不协作取消的尾部任务，`FirstMatchingAsync`必须等该任务真实结算再传播错误；并确认已请求取消，绝不把本地退出当设备安全停机。此次`Tests/ArchitectureSmoke`修改能同时触发工程组织Windows回归；与原MRK修改一道保证最终SHA五项门禁均触发。
