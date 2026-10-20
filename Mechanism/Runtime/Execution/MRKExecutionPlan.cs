@@ -230,11 +230,23 @@ namespace CxVisual.Mechanism.Runtime.Execution
                     throw new ArgumentException("region.unknown_step");
                 Dictionary<string,List<string>> next=members.ToDictionary(
                     id=>id,id=>new List<string>(),StringComparer.Ordinal);
+                // R05：允许从Entry已确认的上游读取索引/数据。
+                // 非祖先的旁路仍会被拒绝，不能绕开Region入口执行。
+                HashSet<string> ancestors=new HashSet<string>(StringComparer.Ordinal);
+                Stack<string> external=new Stack<string>();
+                foreach(string dep in _byId[r.EntryStepId].Dependencies) external.Push(dep);
+                while(external.Count>0)
+                {
+                    string current=external.Pop();
+                    if(!ancestors.Add(current))continue;
+                    foreach(string previous in _byId[current].Dependencies)
+                        external.Push(previous);
+                }
                 foreach(string member in members)
                     foreach(string dep in _byId[member].Dependencies)
                     {
                         if(members.Contains(dep))next[dep].Add(member);
-                        else if(member!=r.EntryStepId)
+                        else if(member!=r.EntryStepId&&!ancestors.Contains(dep))
                             throw new ArgumentException("region.external_dependency");
                     }
                 HashSet<string> fromEntry=new HashSet<string>(StringComparer.Ordinal);

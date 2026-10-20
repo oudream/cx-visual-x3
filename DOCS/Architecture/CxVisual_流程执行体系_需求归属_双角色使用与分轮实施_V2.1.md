@@ -267,3 +267,10 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 - 首次提交 `9b5e4e28f32bd5505ac02cffa90279a85c60ee09` 由 Windows 全解决方案编译通过，但 ArchitectureSmoke 的 `R05DynamicLoopAndExit` 在 `MOLLoopDefinition` 构造阶段触发 `maxIterations>1024` 的旧上限，不能认定动态区域已完成。
 - 经用户明确批准，本轮允许为 CI 缺陷增加修复 Commit。现取消旧1024上限，保留 `maxIterations>=1` 正数约束；动态循环迭代由 MRK 运行时执行与取消令牌管控，循环体不按上限静态复制。
 - 同时新增零次边界反例。后续必须核验固定修复SHA的 Windows Runtime、工程组织、Config/TestCenter CI，不能用首次提交的结果代替。
+
+### R05修复：区域入口祖先数据校验（Windows失败反证）
+
+- 修复前真实 CI 揭示 `moc.loop_body_compile:INVALID_GRAPH:region.external_dependency`；根因是内部节点读取迭代索引时，其来源虽在Region的Entry之前，却被R03不分情况视为非法外部边。
+- 继续保留唯一MRKPlan依赖校验：Region内部成员只可额外依赖Entry在DAG上的传递祖先（已先于Entry完成），不是任意侧入节点；缺失汇合、旁路控制、未知节点、交叉区域仍拒绝。
+- 新增允许上游共享数据与拒绝独立旁路的正反例；严禁通过关闭Region验证掩盖问题。
+- 此修复需以新SHA的真实Windows CI进一步验证动态循环的全链路。

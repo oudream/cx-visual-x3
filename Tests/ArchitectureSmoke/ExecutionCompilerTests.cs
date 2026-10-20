@@ -86,6 +86,33 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     new MRKControlRegion("bad","a","c",new[]{"a","c"})});
             Check(!invalid.Succeeded&&invalid.Plan==null,
                 "带外部中间依赖的区域不应该通过");
+            MRKStepCompileRequest[] withSharedAncestor={
+                new MRKStepCompileRequest("source","Calculate"),
+                new MRKStepCompileRequest("entry","Calculate",new[]{"source"}),
+                new MRKStepCompileRequest("body","Calculate",new[]{"entry","source"}),
+                new MRKStepCompileRequest("exit","Calculate",new[]{"body"})
+            };
+            MRKCompileResult permitted=new MRKExecutionPlanCompiler().Compile(
+                "r05.region_ancestor",withSharedAncestor,resolver,regions:new[]{
+                    new MRKControlRegion("valid","entry","exit",
+                        new[]{"entry","body","exit"})
+                });
+            Check(permitted.Succeeded,
+                "Region must accept data/iteration dependency already preceding Entry");
+            MRKStepCompileRequest[] withBypass={
+                new MRKStepCompileRequest("source","Calculate"),
+                new MRKStepCompileRequest("entry","Calculate"),
+                new MRKStepCompileRequest("body","Calculate",new[]{"entry","source"}),
+                new MRKStepCompileRequest("exit","Calculate",new[]{"body"})
+            };
+            MRKCompileResult bypass=new MRKExecutionPlanCompiler().Compile(
+                "r05.region_bypass",withBypass,resolver,regions:new[]{
+                    new MRKControlRegion("invalid","entry","exit",
+                        new[]{"entry","body","exit"})
+                });
+            Check(!bypass.Succeeded&&bypass.Plan==null&&
+                bypass.Diagnostics.Any(x=>x.Message.Contains("region.external_dependency")),
+                "Region must reject external edge not dominated by Entry");
             invalid=new MRKExecutionPlanCompiler().Compile("r03.cross",steps,resolver,
                 regions:new[]{
                     new MRKControlRegion("one","a","c",new[]{"a","b","c"}),
