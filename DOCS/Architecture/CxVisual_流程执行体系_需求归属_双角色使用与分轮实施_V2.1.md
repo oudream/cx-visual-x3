@@ -479,3 +479,9 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 - **本次R08增量**：仍在`Foundation.Infrastructure/Concurrency/FCRWorker`原有`PumpLocked`内调度，不新增队列或执行器；`FCRWorkerOptions`加可选`priorityFairnessBurst=16`，旧构造函数兼容。不同Key优先选高Priority，但连续跳过较早已就绪工作达到设定上限，至少给最老可执行Key一次机会；相同Key始终优先最早提交者，既有ActiveKey、QueueCapacity、PendingBytes、Cancel与Stop逻辑保持。
 - **可验证反证**：显式Burst=3时，实际高优先级连续三个先执行，之后低优先级被安排；持续高优先级仍按Key FIFO，且队列字节预算、容量、Stop排空完全归还。非法Burst=0拒绝；原队列溢出、KeyedSerial及200任务压力测试不删除。
 - **验收边界**：此为R08的第一项（调度公平性）真实源码及回归，需新SHA Windows FoundationSmoke/Runtime/TestCenter/Config验证后才记本增量完成。Stage/WholeFlow组仲裁、多资源取消/背压的复杂竞态及长稳性能仍在R08剩余任务，不能据此把R08整轮标为完成。
+
+
+### R08组等待容量取消回归（2026-10-21，待CI）
+
+- 前一提交 `b39a708109164cbe49afdf81b19d4fa5819ea9de` 对应Windows Runtime [39515316490](https://github.com/oudream/cx-visual-x3/actions/runs/39515316490)、TestCenter [39515316520](https://github.com/oudream/cx-visual-x3/actions/runs/39515316520)、Config L1 [39515316500](https://github.com/oudream/cx-visual-x3/actions/runs/39515316500)、配置公共底座 [39515316510](https://github.com/oudream/cx-visual-x3/actions/runs/39515316510)，全部success。
+- 本次保留原MRKExecutionGroups实现不增新调度器，ArchitectureSmoke增加64轮取消等待者、Waiting释放、Active持有者不受干扰、拒绝配额统计、另一组独立运行及重新准入的执行反证。待本提交固定SHA的Windows实际回归；R08仍有Stage/WholeFlow、资源交接与长稳压测待完成。

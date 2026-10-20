@@ -12,6 +12,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             QuotaAndBackpressureDoNotBlockThreads();
             UnknownGroupRejectedBeforeRunning();
             GroupAndDeviceResourcesHaveUniformOrder();
+            R08_GroupCancellationReclaimsWaitingBudget();
         }
         private static void Check(bool condition, string msg)
         { if (!condition) throw new InvalidOperationException("执行组：" + msg); }
@@ -93,6 +94,48 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 "组配额未生效");
             Await(engine.StopAsync());
         }
+
+        /// <summary>R08：取消的等待者立即归还组配额，不能夺走已有运行者的许可。</summary>
+        private static void R08_GroupCancellationReclaimsWaitingBudget()
+        {
+            MRKExecutionGroups groups=new MRKExecutionGroups(new[]{
+                new MRKExecutionGroupDefinition("device",1,1),
+                new MRKExecutionGroupDefinition("cpu",1,0)
+            });
+            MRKExecutionGroupLease held=Await(groups.AcquireAsync("device"));
+            try
+            {
+                for(int i=0;i<64;i++)
+                {
+                    using(CancellationTokenSource c=new CancellationTokenSource())
+                    {
+                        Task<MRKExecutionGroupLease> pending=groups.AcquireAsync("device",c.Token);
+                        Check(!pending.IsCompleted&&groups.Snapshot()[0].Waiting==1,
+                            "R08等待状态没有占用组配额");
+                        bool rejected=false;
+                        try{Await(groups.AcquireAsync("device"));}
+                        catch(MRKExecutionGroupRejectedException){rejected=true;}
+                        Check(rejected,"R08已满的等待队列未拒绝额外申请");
+                        c.Cancel();
+                        bool cancelled=false;
+                        try{Await(pending);}
+                        catch(OperationCanceledException){cancelled=true;}
+                        Check(cancelled&&groups.Snapshot()[0].Waiting==0&&
+                            groups.Snapshot()[0].Active==1,
+                            "R08等待者取消未归还配额或影响当前持有者");
+                    }
+                }
+                using(MRKExecutionGroupLease other=Await(groups.AcquireAsync("cpu")))
+                    Check(groups.Snapshot()[1].Active==1,"R08另一执行组被错误阻塞");
+            }
+            finally{held.Dispose();}
+            using(MRKExecutionGroupLease again=Await(groups.AcquireAsync("device")))
+                Check(groups.Snapshot()[0].Active==1,"R08取消风暴后新申请没有进入");
+            Check(groups.Snapshot()[0].Active==0&&groups.Snapshot()[0].Waiting==0&&
+                groups.Snapshot()[0].Rejected==64,
+                "R08组许可与拒绝次数未全部正确结算");
+        }
+
         private static void Await(Task task)
         {
             Task winner = Task.WhenAny(task, Task.Delay(6000)).GetAwaiter().GetResult();
