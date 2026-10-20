@@ -677,11 +677,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     b.AddPort(source,new MPCPortDescriptor("Pixels",
                         MPCPortDirection.Output,"byte[]",MPCPortKind.Data));
                     b.AddPort(inspect,new MPCPortDescriptor("RawPixels",
-                        MPCPortDirection.Input,"byte[]",MPCPortKind.Data));
+                        MPCPortDirection.Input,"byte[]",MPCPortKind.Data,required:true));
                     b.AddPort(inspect,new MPCPortDescriptor("Width",
-                        MPCPortDirection.Input,"int",MPCPortKind.Data));
+                        MPCPortDirection.Input,"int",MPCPortKind.Data,required:true));
                     b.AddPort(inspect,new MPCPortDescriptor("Height",
-                        MPCPortDirection.Input,"int",MPCPortKind.Data));
+                        MPCPortDirection.Input,"int",MPCPortKind.Data,required:true));
                     b.SetParameter(inspect,"Width","5");
                     b.SetParameter(inspect,"Height","3");
                     b.Connect(source,"Done",inspect,"Start");
