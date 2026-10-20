@@ -23,6 +23,8 @@ jobs:
           # Restore PackageReference dependencies (NUnit) before the full rebuild.
           & $msbuild .\Tests\TestCenter\CxVisual.TestCenter.csproj /t:Restore /p:Configuration=Release /p:Platform=x64 /nologo /v:minimal
           if ($LASTEXITCODE -ne 0) { throw "TestCenter PackageReference restore failed" }
+          & $msbuild .\Applications\Studio\CxVisual.Studio.csproj /t:Restore /p:Configuration=Release /p:Platform=x64 /nologo /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw "Studio AvalonDock NuGet Restore failed" }
           & $msbuild .\CxVisual.Unified.sln /m:1 /t:Rebuild /p:Configuration=Release /p:Platform=x64 /nologo /v:minimal
           if ($LASTEXITCODE -ne 0) { throw "CxVisual full solution build failed" }
 

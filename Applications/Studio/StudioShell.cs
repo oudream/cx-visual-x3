@@ -145,7 +145,8 @@ namespace CxVisual.Studio
                 pane.Children.Add(doc);
             }
             doc.IsActive = true;
-            RefreshStudioMenus();
+            // WPF Dispatcher激活回调可能后到，先以用户请求的真实ContentId同步菜单。
+            RefreshStudioMenus(id);
         }
 
         public void CloseStudioDocument(string id)
@@ -255,10 +256,11 @@ namespace CxVisual.Studio
             if (_viewModel != null) RefreshStudioMenus();
         }
 
-        private void RefreshStudioMenus()
+        private void RefreshStudioMenus(string requestedDocument = null)
         {
             if (StudioDynamicMenus == null || StudioRibbonActions == null) return;
-            string active = (StudioDock.ActiveContent as LayoutContent)?.ContentId;
+            string active = requestedDocument ??
+                (StudioDock.ActiveContent as LayoutContent)?.ContentId;
             string[] domains = active == "doc.visual"
                 ? new[] { "绘图", "排列", "图层", "绑定" }
                 : active == "doc.flow"

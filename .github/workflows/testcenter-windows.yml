@@ -29,6 +29,11 @@ jobs:
         run: |
           & msbuild 'Tests/TestCenter/CxVisual.TestCenter.csproj' /t:Restore /p:Configuration=Debug /p:Platform=x64 /nologo /v:minimal
           if ($LASTEXITCODE -ne 0) { throw "NuGet PackageReference restore failed" }
+      - name: Restore Studio package references before full Rebuild
+        shell: powershell
+        run: |
+          & msbuild 'Applications/Studio/CxVisual.Studio.csproj' /t:Restore /p:Configuration=Debug /p:Platform=x64 /nologo /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw "Studio AvalonDock NuGet Restore failed" }
       - name: Verify new test source requires no project edit
         shell: powershell
         run: |

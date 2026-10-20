@@ -436,3 +436,11 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 - 复核新Studio已有V2 Content自由连线、MOC能力目录、真实MRK仿真及SourceMap Trace，避免再建Flow Graph。增加Studio实际按钮与“节点”上下文Ribbon中的插入Join命令；选中至少两个具有Done控制输出的真实分支，在一次MOCFlowBuilder.Edit/MEM工程事务中创建Judge Join节点并连到其Start（Many）控制端口。
 - 反例：未选两个不同来源、来源无Done、能力不可用，均拒绝且不会产生孤儿Join或提升工程Revision。真实Windows WPF STA StudioShellSelfTests验证按钮、原工程Aspect里双控制边、MEM事务、保存重开身份一致、重复来源拒绝不污染工程。
 - 此Join是现有V2 DAG多依赖汇合，**不是**将FCR任意外部操作的Any/FirstSuccess中途胜者语义伪装成V2内建控制。Any/FirstSuccess软件API此前已验证；高级结构化异常和物理设备Unknown仍须另行验收。此提交需要核对Windows Studio门禁和Runtime/TestCenter并与同一SHA匹配，未过不得封轮或进入R08。
+
+
+### R07 · Studio Join 首轮CI缺陷与原验收保留（2026-10-21）
+
+- 固定提交 `34bd8b7a76a5ffccfa41fbc435c22cd4adffb86b` 的 Studio Shell `39513096869` 真实红灯为既有 `S1-02` 即时切换上下文菜单断言；Config L1 `39513096835` 的全量Rebuild则因只恢复TestCenter包，未恢复Studio AvalonDock包而发生XAML MC3074。不能借其他SHA成功记录替代这两个红灯。
+- Studio更改：OpenStudioDocument以明确用户请求的ContentId直接刷新动态菜单，之后仍由原Dock事件驱动后续变化，保留S1-02不降级；StudioShell验证期望增至9项，新增真实Join/工程保存重开回归。
+- CI更改：所有需要未预热状态Rebuild的Windows工作流显式Restore Studio.csproj的AvalonDock 5.0.1依赖，继续严格进行全量Rebuild、Runtime、TestCenter正反例，不禁用XAML。
+- 并行开发者已于`9befd165ed450f331f675842e15f2210b1aee6f4`完善Foreach超预算行为，本次仅触及Studio、CI和主文档，不覆盖其源码或测试。当前R07仍待修复SHA真正Windows验收，未封轮，R08暂不启动。
