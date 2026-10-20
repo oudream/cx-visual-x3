@@ -17,7 +17,7 @@ namespace CxVisual.Mechanism.Core
                 w.WriteStartElement("Type");w.WriteAttributeString("id",type.TypeId);w.WriteAttributeString("schema",type.SchemaVersion.ToString(Invariant));w.WriteAttributeString("kind",type.Kind.ToString());
                 foreach(var property in type.Properties)
                 {
-                    w.WriteStartElement("Property");w.WriteAttributeString("member",property.MemberId);w.WriteAttributeString("valueKind",property.ValueKind.ToString());w.WriteAttributeString("required",XmlConvert.ToString(property.Required));w.WriteAttributeString("public",XmlConvert.ToString(property.IsPublic));
+                    w.WriteStartElement("Property");w.WriteAttributeString("member",property.MemberId);w.WriteAttributeString("valueKind",property.ValueKind.ToString());w.WriteAttributeString("required",XmlConvert.ToString(property.Required));w.WriteAttributeString("public",XmlConvert.ToString(property.IsPublic));if(property.IsReadOnly)w.WriteAttributeString("readOnly","true");
                     if(property.Minimum.HasValue)Number(w,"min",property.Minimum.Value);if(property.Maximum.HasValue)Number(w,"max",property.Maximum.Value);
                     if(property.DefaultBinding!=null){w.WriteStartElement("Default");WriteBinding(w,property.DefaultBinding);w.WriteEndElement();}w.WriteEndElement();
                 }
@@ -39,8 +39,8 @@ namespace CxVisual.Mechanism.Core
             {
                 if(child.Name=="Property")
                 {
-                    XFields(child,"member valueKind required public min max",true);if(child.Elements().Any(c=>c.Name!="Default")||child.Elements().Count()>1)throw new InvalidDataException("Invalid type property");var value=child.Element("Default");
-                    properties.Add(new MPMPropertyDescriptor(XRequired(child,"member"),XEnum<MPMValueKind>(child,"valueKind"),XBool(child,"required"),XBool(child,"public",true),value==null?null:ReadBinding(value),child.Attribute("min")==null?(double?)null:double.Parse(XRequired(child,"min"),Invariant),child.Attribute("max")==null?(double?)null:double.Parse(XRequired(child,"max"),Invariant)));
+                    XFields(child,"member valueKind required public min max readOnly",true);if(child.Elements().Any(c=>c.Name!="Default")||child.Elements().Count()>1)throw new InvalidDataException("Invalid type property");var value=child.Element("Default");
+                    properties.Add(new MPMPropertyDescriptor(XRequired(child,"member"),XEnum<MPMValueKind>(child,"valueKind"),XBool(child,"required"),XBool(child,"public",true),value==null?null:ReadBinding(value),child.Attribute("min")==null?(double?)null:double.Parse(XRequired(child,"min"),Invariant),child.Attribute("max")==null?(double?)null:double.Parse(XRequired(child,"max"),Invariant),XBool(child,"readOnly")));
                 }
                 else if(child.Name=="Port")
                 {
