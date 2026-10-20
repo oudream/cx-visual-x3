@@ -28,9 +28,41 @@ namespace CxVisual.Tests.ArchitectureSmoke
             window.UpdateLayout();
             var buttons=Descendants(window).OfType<Button>().ToArray();
             var button=buttons.FirstOrDefault(b=>object.Equals(b.Content,label));
+            if(button==null)
+            {
+                // 操作必须通过真实菜单与真实Ribbon按钮；切换标签以发现动态组内的命令。
+                string menu=(label=="撤销"||label=="重做"||label=="删除选中"||
+                    label=="所选图元成组"||label=="解散选中或父分组")?"编辑":
+                    (label=="添加页面"||label=="新建组件"||label=="共享内容"||
+                     label=="添加静态资源")?"工程":
+                    (label=="保存工程"||label=="打开工程"||label=="新建工程")?"文件":
+                    label=="添加矩形"?"绘图":null;
+                var menuButton=menu==null?null:buttons.FirstOrDefault(b=>Object.Equals(b.Content,menu));
+                if(menuButton!=null)
+                {
+                    var peerMenu=new ButtonAutomationPeer(menuButton);
+                    ((IInvokeProvider)peerMenu.GetPattern(PatternInterface.Invoke)).Invoke();
+                    Pump();
+                    window.UpdateLayout();
+                    buttons=Descendants(window).OfType<Button>().ToArray();
+                    button=buttons.FirstOrDefault(b=>Object.Equals(b.Content,label));
+                }
+            }
             if(button==null)throw new InvalidOperationException("Missing Studio button '"+label+
                 "'; visible controls: "+string.Join(" | ",buttons.Select(b=>b.Content==null?"(none)":b.Content.ToString())));
             var peer=new ButtonAutomationPeer(button);((IInvokeProvider)peer.GetPattern(PatternInterface.Invoke)).Invoke();Pump();
+        }
+        private static void OpenEditor(Window window, string contentId)
+        {
+            // S1 AvalonDock布局：通过实际Studio公开的多文档入口打开，而不是假定历史TabItem结构。
+            var method=window.GetType().GetMethod("OpenStudioDocument");
+            Check(method!=null,"Studio must expose a document-opening command");
+            method.Invoke(window,new object[]{contentId});
+            Pump();
+            window.UpdateLayout();
+            var active=window.GetType().GetProperty("ActiveStudioDocumentId");
+            Check(active!=null&&Object.Equals(active.GetValue(window,null),contentId),
+                "Studio activity not synchronized: "+contentId);
         }
         private static object Get(object instance,string name){return instance.GetType().GetProperty(name).GetValue(instance,null);}
         internal static void RunOnSta()
@@ -45,7 +77,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 window=(Window)Activator.CreateInstance(assembly.GetType("CxVisual.Studio.MainWindow"));window.Left=-10000;window.Top=-10000;window.ShowInTaskbar=false;window.ShowActivated=false;
                 var vm=window.DataContext;vm.GetType().GetProperty("ConfirmReplace").SetValue(vm,new Func<MEMEngineeringSession,bool>(s=>true),null);window.Show();Pump();
                 var session=(MEMEngineeringSession)Get(vm,"ProjectSession");var original=session.Project.Pages[0];int oldCount=original.RootContent.DescendantsAndSelf().Count();
-                Click(window,"添加页面");var page=session.Project.Pages.Last();Click(window,"添加矩形");Check(page.RootContent.VisualItems.Count==1&&original.RootContent.DescendantsAndSelf().Count()==oldCount,"active page button added to wrong page");
+                Click(window,"添加页面");var page=session.Project.Pages.Last();
+                OpenEditor(window,"doc.visual");Click(window,"添加矩形");Check(page.RootContent.VisualItems.Count==1&&original.RootContent.DescendantsAndSelf().Count()==oldCount,"active page button added to wrong page");
                 // 真正点击Studio九图元工具箱，并用属性入口提交工程定义。
                 var nine=new[]{"直线","矩形Shape","圆形","椭圆","折线","多边形",
                     "圆弧","贝塞尔","自由路径"};
@@ -472,18 +505,10 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     .OfType<MRCWidgetElement>().Count()==1,
                     "Studio Widget lost after Save/Open");
                 Check(((ComboBox)window.FindName("EngineeringPages")).Items.Count==2&&((ListBox)window.FindName("EngineeringResources")).Items.Count==4,"real WPF collections failed to refresh after reopen");
-                // 先激活逻辑编排Tab，使工具箱在可视树中。
-                var tabControl=Descendants(window).OfType<TabControl>().First();
-                var logicTab=Descendants(window).OfType<TabItem>()
-                    .First(t=>object.Equals(t.Header,"逻辑编排 · 运行观察"));
-                tabControl.SelectedItem=logicTab;
-                tabControl.SelectedIndex=1;
-                tabControl.ApplyTemplate();
-                tabControl.UpdateLayout();
-                window.UpdateLayout();
+                // 动态工作区切换到同一工程的流程主画布，继续测试真实MOL控件。
+                OpenEditor(window,"doc.flow");
                 Dispatcher.CurrentDispatcher.Invoke(new Action(()=>{}),DispatcherPriority.Loaded);
                 Pump();
-                Check(tabControl.SelectedIndex==1,"logic tab did not become active");
                 // G04 工程师界面：目录搜索、自由插入草稿、撤销重做、选择端口并编译。
                 Click(window,"创建自由连接示例");
                 var active=(MEMPage)Get(vm,"ActivePage");

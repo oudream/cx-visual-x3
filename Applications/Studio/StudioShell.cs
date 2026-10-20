@@ -30,6 +30,7 @@ namespace CxVisual.Studio
         private bool _studioDark;
         private bool _studioInitialized;
         private string _ribbonSelection = "主页";
+        private string _activeStudioDocumentId = "doc.home";
         private static readonly string[] KnownDocuments =
             { "doc.home", "doc.visual", "doc.flow", "doc.config" };
         private static readonly string[] KnownTools =
@@ -114,8 +115,28 @@ namespace CxVisual.Studio
 
         private bool IsStudioDocumentActive(string id)
         {
-            LayoutContent active = StudioDock.ActiveContent as LayoutContent;
-            return active != null && active.ContentId == id;
+            return String.Equals(_activeStudioDocumentId, id, StringComparison.Ordinal);
+        }
+
+        /// <summary>实际激活的编辑文档身份。工具面板获焦不改变最后一个活动编辑器。</summary>
+        public string ActiveStudioDocumentId { get { return _activeStudioDocumentId; } }
+
+        private static string DefaultContextFor(string id)
+        {
+            if (id == "doc.visual") return "绘图";
+            if (id == "doc.flow") return "节点";
+            if (id == "doc.config") return "配置";
+            return "主页";
+        }
+
+        private void SelectStudioContext(string id)
+        {
+            if (!KnownDocuments.Contains(id, StringComparer.Ordinal)) return;
+            if (!String.Equals(_activeStudioDocumentId, id, StringComparison.Ordinal))
+            {
+                _activeStudioDocumentId = id;
+                _ribbonSelection = DefaultContextFor(id);
+            }
         }
 
         private void OnStudioOpenDocumentClick(object sender, RoutedEventArgs args)
@@ -145,8 +166,8 @@ namespace CxVisual.Studio
                 pane.Children.Add(doc);
             }
             doc.IsActive = true;
-            // WPF Dispatcher激活回调可能后到，先以用户请求的真实ContentId同步菜单。
-            RefreshStudioMenus(id);
+            SelectStudioContext(id);
+            RefreshStudioMenus();
         }
 
         public void CloseStudioDocument(string id)
@@ -155,6 +176,14 @@ namespace CxVisual.Studio
             if (doc == null) return;
             doc.Content = null; // 下次打开复用同一个真实编辑视图和命令状态
             doc.Close();
+            if (_activeStudioDocumentId == id)
+            {
+                LayoutDocument next = StudioDock.Layout.ActiveContent as LayoutDocument;
+                if (next == null || next.ContentId == id)
+                    next = ExistingContents().OfType<LayoutDocument>()
+                        .FirstOrDefault(item => item.ContentId != id);
+                SelectStudioContext(next == null ? "doc.home" : next.ContentId);
+            }
             RefreshStudioMenus();
         }
 
@@ -253,14 +282,18 @@ namespace CxVisual.Studio
 
         private void OnStudioActiveContentChanged(object sender, EventArgs args)
         {
-            if (_viewModel != null) RefreshStudioMenus();
+            // DockingManager.ActiveContent是文档的实际View，不是LayoutContent。
+            // 正确的文档身份来自LayoutRoot.ActiveContent，且右侧/底部工具获焦不能清空上下文。
+            if (_viewModel == null) return;
+            LayoutDocument document = StudioDock.Layout.ActiveContent as LayoutDocument;
+            if (document != null) SelectStudioContext(document.ContentId);
+            RefreshStudioMenus();
         }
 
-        private void RefreshStudioMenus(string requestedDocument = null)
+        private void RefreshStudioMenus()
         {
             if (StudioDynamicMenus == null || StudioRibbonActions == null) return;
-            string active = requestedDocument ??
-                (StudioDock.ActiveContent as LayoutContent)?.ContentId;
+            string active = _activeStudioDocumentId;
             string[] domains = active == "doc.visual"
                 ? new[] { "绘图", "排列", "图层", "绑定" }
                 : active == "doc.flow"
@@ -326,6 +359,10 @@ namespace CxVisual.Studio
             if (group == "绘图")
             {
                 AddRibbonButton("选择", null, (s, e) => OpenStudioDocument("doc.visual"));
+                AddRibbonButton("添加矩形", null, (s, e) =>
+                {
+                    if (_viewModel.AddCommand.CanExecute(null)) _viewModel.AddCommand.Execute(null);
+                });
                 AddRibbonButton("矩形", "Rect", OnInsertShape);
                 AddRibbonButton("圆", "Circle", OnInsertShape);
                 AddRibbonButton("折线", "Polyline", OnInsertShape);
@@ -497,6 +534,8 @@ namespace CxVisual.Studio
                 args.Content = view;
             };
             using (StringReader text = new StringReader(xml)) serializer.Deserialize(text);
+            LayoutDocument active = StudioDock.Layout.ActiveContent as LayoutDocument;
+            if (active != null) SelectStudioContext(active.ContentId);
             RefreshStudioMenus();
         }
 
