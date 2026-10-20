@@ -21,6 +21,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
             R07_OldCorrelationTicketCannotCancelNewRequest();
             R07_AllJoinRetainsFailedCancelledAndSettlesResources();
             R07_FirstSuccessfulAllFailedIsNotSuccess();
+            R07_ConditionalJoinAndExplicitFailureCancel();
+            R07_CorrelationReceiveCancelRaceHasSingleResult();
         }
         private static void Check(bool ok, string message)
         { if (!ok) throw new InvalidOperationException("Runtime协作测试: " + message); }
@@ -346,6 +348,84 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(outcomes.Length == 2 && !outcomes[0].Succeeded && !outcomes[1].Succeeded,
                 "FirstSuccess错误丢失未成功分支的真实结算");
             Await(worker.StopAsync());
+        }
+
+        private static void R07_ConditionalJoinAndExplicitFailureCancel()
+        {
+            var worker = new CxVisual.Foundation.Infrastructure.Concurrency.FCRWorker(
+                new CxVisual.Foundation.Infrastructure.Concurrency.FCRWorkerOptions(2, 3));
+            TaskCompletionSource<bool> entered = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var waiting = worker.Submit<int>(async token =>
+            {
+                entered.TrySetResult(true);
+                await Task.Delay(Timeout.Infinite, token).ConfigureAwait(false);
+                return 0;
+            }, "r07-match-wait");
+            Await(entered.Task);
+            var matched = worker.Submit<int>(ct => Task.FromResult(45), "r07-match-fast");
+            var found = Await(MRKWorkJoin.FirstMatchingAsync(new[] { waiting, matched },
+                result => result.Succeeded && result.Value > 40, true));
+            Check(found.Winner != null && found.Winner.Id == matched.Id &&
+                found.Succeeded && found.WinningResult.Value == 45,
+                "条件汇合未使用明确谓词选择实际命中的分支");
+            var settled = Await(found.AllSettled);
+            Check(settled[0].State == CxVisual.Foundation.Infrastructure.Concurrency.FCRWorkState.Cancelled &&
+                settled[1].Succeeded, "条件汇合的未命中分支没有协作取消与结算");
+
+            var noMatch = worker.Submit<int>(ct => Task.FromResult(1));
+            var absent = Await(MRKWorkJoin.FirstMatchingAsync(new[] { noMatch },
+                result => result.Succeeded && result.Value > 10));
+            Check(absent.Winner == null && !absent.Succeeded &&
+                Await(absent.AllSettled).Length == 1,
+                "无条件命中时不应伪造成功分支");
+
+            TaskCompletionSource<bool> release = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<bool> started = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var nonCooperative = worker.Submit<int>(async token =>
+            {
+                started.TrySetResult(true);
+                await release.Task.ConfigureAwait(false);
+                return 99;
+            }, "r07-all-tail");
+            Await(started.Task);
+            var failed = worker.Submit<int>(ct =>
+            { throw new InvalidOperationException("预期失败"); }, "r07-all-fail");
+            var all = MRKWorkJoin.AllAsync(new[] { nonCooperative, failed }, true);
+            Check(!all.IsCompleted && !nonCooperative.Completion.IsCompleted,
+                "失败即取消不等于已结算，All不可在非协作尾部退出前返回");
+            release.TrySetResult(true);
+            var end = Await(all);
+            Check(!end[1].Succeeded && end[0].CancellationRequested &&
+                worker.GetSnapshot().Active == 0,
+                "All显式取消未记录请求或资源在未结算时被提前回收");
+            Await(worker.StopAsync());
+        }
+
+        private static void R07_CorrelationReceiveCancelRaceHasSingleResult()
+        {
+            MRKCorrelationWaiter waiter = new MRKCorrelationWaiter();
+            for (int round = 0; round < 64; round++)
+            {
+                Guid id = Guid.NewGuid();
+                using (CancellationTokenSource cancellation = new CancellationTokenSource())
+                using (MRKCorrelationTicket ticket = waiter.Register(id))
+                {
+                    Task<MRKCorrelationResult> outcome =
+                        ticket.WaitAsync(TimeSpan.FromSeconds(2), cancellation.Token);
+                    Task receiver = Task.Run(() => waiter.Receive(id, "ack"));
+                    Task canceller = Task.Run(() => cancellation.Cancel());
+                    Await(Task.WhenAll(receiver, canceller));
+                    MRKCorrelationResult settled = Await(outcome);
+                    Check(settled.State == MRKCorrelationState.Received ||
+                        settled.State == MRKCorrelationState.Cancelled,
+                        "取消与应答竞态返回了无效终态");
+                    Check(!waiter.Receive(id, "late") && waiter.PendingCount == 0,
+                        "竞态结算后仍可重复匹配或残留请求");
+                }
+            }
         }
 
     }

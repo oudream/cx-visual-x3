@@ -19,6 +19,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             CompensationPortsRemainAvailableAfterDataScopeDisposal();
             StopWaitsForAdmittedMultiStepCompensation();
             StopRejectsNewCompensationBeforeClaimingEligibility();
+            R07_ParallelFailureMustSettleBeforeCompensation();
         }
         private static T Await<T>(Task<T> task)
         {
@@ -279,5 +280,60 @@ namespace CxVisual.Tests.ArchitectureSmoke
             if (!object.ReferenceEquals(winner, task)) throw new TimeoutException("流程补偿超时");
             task.GetAwaiter().GetResult();
         }
+        private static void R07_ParallelFailureMustSettleBeforeCompensation()
+        {
+            int compensationCount = 0;
+            TaskCompletionSource<bool> entered = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<bool> release = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            MRKExecutionPlan plan = new MRKExecutionPlan("r07-join-compensation", new[]
+            {
+                new MRKExecutionStep("prepared", new string[0],
+                    (context, token) => Task.FromResult((object)1),
+                    compensateAsync: (context, token) =>
+                    {
+                        Interlocked.Increment(ref compensationCount);
+                        return Task.FromResult(true);
+                    }),
+                new MRKExecutionStep("inflight", new string[0], async (context, token) =>
+                {
+                    entered.TrySetResult(true);
+                    // 非协作外部操作：本地失败不代表它已经物理停止。
+                    await release.Task.ConfigureAwait(false);
+                    return (object)2;
+                }),
+                new MRKExecutionStep("fails", new[] { "prepared" },
+                    (context, token) =>
+                    { throw new InvalidOperationException("并行子任务失败"); })
+            });
+            MRKExecutionEngine engine = new MRKExecutionEngine(new FCRWorkerOptions(3, 5));
+            try
+            {
+                MRKFlowHandle flow = engine.StartFlow(plan);
+                Await(entered.Task);
+                Check(SpinWait.SpinUntil(() =>
+                    flow.Context.StatesSnapshot().ContainsKey("fails") &&
+                    flow.Context.StatesSnapshot()["fails"] == MRKStepState.Failed, 3000),
+                    "并行失败没有报告真实节点状态");
+                bool denied = false;
+                try { Await(engine.CompensateAsync(plan, flow)); }
+                catch (InvalidOperationException) { denied = true; }
+                Check(denied && compensationCount == 0 && !flow.Completion.IsCompleted,
+                    "分支仍在执行时错误执行了补偿");
+                release.TrySetResult(true);
+                Check(Await(flow.Completion).State == MRKFlowState.Failed,
+                    "等待全部分支结束之后未保留失败状态");
+                MRKCompensationReport report = Await(engine.CompensateAsync(plan, flow));
+                Check(report.Succeeded && compensationCount == 1,
+                    "完成结算后显式授权补偿没有恰好执行一次");
+            }
+            finally
+            {
+                release.TrySetResult(true);
+                Await(engine.StopAsync());
+            }
+        }
+
     }
 }

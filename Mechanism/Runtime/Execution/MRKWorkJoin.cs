@@ -34,7 +34,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
         /// 全部Succeeded才表示All成功，任何非成功均不能当作成功Join。
         /// </summary>
         public static Task<FCRWorkResult<T>[]> AllAsync<T>(
-            IEnumerable<FCRWorkHandle<T>> source)
+            IEnumerable<FCRWorkHandle<T>> source, bool requestCancelRemainingOnFailure = false)
         {
             if (source == null) throw new ArgumentNullException("source");
             List<FCRWorkHandle<T>> handles = source.ToList();
@@ -42,8 +42,80 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 throw new ArgumentException("必须提供有效的执行分支", "source");
             if (handles.Select(x => x.Id).Distinct().Count() != handles.Count)
                 throw new ArgumentException("执行分支不可重复", "source");
-            // Task.WhenAll保留source顺序，并等待失败/取消的FCRWorkResult真正结算。
-            return Task.WhenAll(handles.Select(x => x.Completion));
+            // 默认不取消外部操作；只有调用方明确选择失败时协作取消。
+            return requestCancelRemainingOnFailure ? AllCancelOnFailureAsync(handles) :
+                Task.WhenAll(handles.Select(x => x.Completion));
+        }
+
+
+        private static async Task<FCRWorkResult<T>[]> AllCancelOnFailureAsync<T>(
+            IList<FCRWorkHandle<T>> handles)
+        {
+            List<FCRWorkHandle<T>> remaining = new List<FCRWorkHandle<T>>(handles);
+            bool cancelSent = false;
+            while (remaining.Count > 0)
+            {
+                Task<FCRWorkResult<T>> done =
+                    await Task.WhenAny(remaining.Select(x => x.Completion)).ConfigureAwait(false);
+                FCRWorkHandle<T> finished =
+                    remaining.Find(x => object.ReferenceEquals(x.Completion, done));
+                FCRWorkResult<T> outcome = await done.ConfigureAwait(false);
+                remaining.Remove(finished);
+                if (!outcome.Succeeded && !cancelSent)
+                {
+                    cancelSent = true;
+                    // 只发送协作取消：不强杀工作、不释放尚在执行的租约。
+                    foreach (FCRWorkHandle<T> stillRunning in remaining)
+                        stillRunning.RequestCancel();
+                }
+            }
+            // 即使取消不合作，也必须等待底层完成才把All交给后继。
+            return await Task.WhenAll(handles.Select(x => x.Completion)).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// ConditionalJoin：第一个满足明确谓词的已结算分支胜出。
+        /// 未命中不视为成功；无命中返回空Winner并通过AllSettled保留失败原因。
+        /// 若提前返回，调用者仍须先等待AllSettled才能释放共享资源。
+        /// </summary>
+        public static async Task<MRKJoinResult<T>> FirstMatchingAsync<T>(
+            IEnumerable<FCRWorkHandle<T>> source,
+            Func<FCRWorkResult<T>, bool> condition,
+            bool requestCancelRemaining = false)
+        {
+            if (condition == null) throw new ArgumentNullException("condition");
+            if (source == null) throw new ArgumentNullException("source");
+            List<FCRWorkHandle<T>> handles = source.ToList();
+            if (handles.Count == 0 || handles.Any(x => x == null))
+                throw new ArgumentException("必须提供有效的执行分支", "source");
+            if (handles.Select(x => x.Id).Distinct().Count() != handles.Count)
+                throw new ArgumentException("执行分支不可重复", "source");
+            Task<FCRWorkResult<T>[]> allSettled =
+                Task.WhenAll(handles.Select(x => x.Completion));
+            List<FCRWorkHandle<T>> remaining = new List<FCRWorkHandle<T>>(handles);
+            while (remaining.Count > 0)
+            {
+                Task<FCRWorkResult<T>> done =
+                    await Task.WhenAny(remaining.Select(x => x.Completion)).ConfigureAwait(false);
+                FCRWorkHandle<T> finished =
+                    remaining.Find(x => object.ReferenceEquals(x.Completion, done));
+                FCRWorkResult<T> outcome = await done.ConfigureAwait(false);
+                remaining.Remove(finished);
+                bool matched;
+                try { matched = condition(outcome); }
+                catch
+                {
+                    // 谓词本身出错不可遗弃尾部分支且直接释放资源。
+                    foreach (FCRWorkHandle<T> pending in remaining) pending.RequestCancel();
+                    await allSettled.ConfigureAwait(false);
+                    throw;
+                }
+                if (!matched) continue;
+                if (requestCancelRemaining)
+                    foreach (FCRWorkHandle<T> pending in remaining) pending.RequestCancel();
+                return new MRKJoinResult<T>(finished, outcome, allSettled);
+            }
+            return new MRKJoinResult<T>(null, null, allSettled);
         }
 
         public static async Task<MRKJoinResult<T>> FirstCompletedAsync<T>(

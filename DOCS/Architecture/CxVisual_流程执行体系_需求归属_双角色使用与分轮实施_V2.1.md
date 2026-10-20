@@ -317,3 +317,10 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 - 本轮修复：`MRKCorrelationTicket` 的超时和Dispose只能结束当前Ticket实例；同ID前一个Ticket已终结并重新注册后，旧Ticket晚到的Dispose不能误移除新Ticket。实际外部请求必须使用新的唯一RequestId，否则网络层同ID迟到应答无法辨认，不能因此宣称提供跨重启应答去重。
 - 自动反证：All正常/失败/取消有序结算、重复分支拒绝、FirstSuccess全失败没有虚假胜者、旧Ticket与新Ticket的注销竞态；继续运行现有Any、FirstSuccess余支取消、Unknown操作、租约、显式补偿等旧测试。
 - **验收状态**：本增量需要固定Commit SHA的Windows Release/x64 Runtime、TestCenter、工程组织和配置CI实际结果；在全部核验之前本段为S1源码增量，不能将R07判定完成。R07尚需更多条件汇合、异步取消竞态、真实Studio路径、多级失败追踪和补偿边界的整体闭环反证，未通过不得进入R08。
+
+### R07 连续增强：条件汇合与安全尾部（待本增强SHA CI）
+
+- 原`MRKWorkJoin`增加`FirstMatchingAsync`：仅在用户明确的谓词满足时提前汇合；未命中全部结算后返回空Winner；谓词抛异常时对其余可取消分支发送协作取消并等待全部结算，绝不把异常变成命中。
+- `AllAsync`新增显式`requestCancelRemainingOnFailure`：默认false继续全部等待；选择true后，任一失败/取消/拒绝才请求其他分支协作取消，但仍等待全部Completion，不强行断开真实外部动作。
+- 新增反证：条件命中/未命中、取消尾部分支、非协作任务仍占资源直至真实结束、64轮异步应答与取消竞争、并行子任务失败时补偿不可提前发生且确认结算后可显式执行一次。
+- 继续保留之前All/Any/FirstSuccess、Unknown外部动作与显式补偿原有测试；高级Try/Catch/Finally结构化异常控制、Studio同图调试、持久恢复及真实设备联锁不能因本次headless测试通过而冒充已验收。是否达到R07整轮门槛还需按`DOCS/Architecture/CxVisua_ 运行体系#流程执行体系 V2.1.md`各项反证清算。
