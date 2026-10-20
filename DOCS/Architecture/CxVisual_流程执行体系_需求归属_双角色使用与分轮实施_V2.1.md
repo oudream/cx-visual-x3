@@ -324,3 +324,10 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 - `AllAsync`新增显式`requestCancelRemainingOnFailure`：默认false继续全部等待；选择true后，任一失败/取消/拒绝才请求其他分支协作取消，但仍等待全部Completion，不强行断开真实外部动作。
 - 新增反证：条件命中/未命中、取消尾部分支、非协作任务仍占资源直至真实结束、64轮异步应答与取消竞争、并行子任务失败时补偿不可提前发生且确认结算后可显式执行一次。
 - 继续保留之前All/Any/FirstSuccess、Unknown外部动作与显式补偿原有测试；高级Try/Catch/Finally结构化异常控制、Studio同图调试、持久恢复及真实设备联锁不能因本次headless测试通过而冒充已验收。是否达到R07整轮门槛还需按`DOCS/Architecture/CxVisua_ 运行体系#流程执行体系 V2.1.md`各项反证清算。
+
+### R07 Windows固定SHA与三级Content失败反证（2026-10-20）
+
+- Commit `ba19232ea78c329d856860d4ce98e460fa9ef4f9` 的Windows CI五项均成功：Runtime 39399995301；工程组织 39399995286；TestCenter 39399995217；Config L1 39399995208；配置公共底座 39399995182。
+- Commit `a859f5a89ab85b2435afb166671a7f7962d73abb` 的Windows CI五项均成功：Runtime 39400696836；工程组织 39400696785；TestCenter 39400696731；Config L1 39400696671；配置公共底座 39400696692。
+- 本增量沿用R06真实Root→Mid→Leaf工程保存重开及同Plan复用案例，注入Leaf原始业务异常，要求Root失败、未提交Export不公开，Trace保持原Leaf与两级CallPath；另修复FCR Completion与Worker活动槽释放的测试时序假设。
+- 增量当前仍待本提交固定SHA的Windows CI，R07尚未完成全部E08原子项和Studio安全交互，不提前进入R08。

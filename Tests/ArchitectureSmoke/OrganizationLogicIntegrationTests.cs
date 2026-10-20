@@ -1129,11 +1129,14 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     b.Connect(rootCall,"MidResult",plus,"N",MPCPortKind.Data);
                     b.ExposeOutput("Final",plus,"Answer");
                 });
+                bool failLeafForR07=false;
                 var resolver=new TestResolver()
                     .RegisterData("Seed",(c,t)=>{
                         c.Data.Return("Value",4);return Task.FromResult((object)true);
                     },new Dictionary<string,Type>{{"Value",typeof(int)}},null)
                     .RegisterData("Double",(c,t)=>{
+                        if(failLeafForR07)
+                            throw new InvalidOperationException("r07.leaf.failure");
                         c.Data.Return("Doubled",c.Data.Get<int>("N")*2);
                         return Task.FromResult((object)true);
                     },new Dictionary<string,Type>{{"Doubled",typeof(int)}},
@@ -1167,6 +1170,19 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         x.CallPath.Count==2&&x.CallPath[0]==rootCall&&x.CallPath[1]==midCall),
                         "three-level leaf SourceMap did not preserve exact invocation chain");
                     Check(trace.Events.Count>0,"three-level trace was empty");
+                    // R07：已编译的三层Content发生最深层异常，不能冒充成功。
+                    failLeafForR07=true;
+                    var failed=Execute(compiled.Plan,null,out trace);
+                    Check(failed.State==MRKFlowState.Failed && failed.Error!=null &&
+                        failed.Error.ToString().Contains("r07.leaf.failure") &&
+                        failed.CommittedOutputs.Count==0,
+                        "three-level Leaf failure swallowed or partial outputs leaked");
+                    Check(trace.Events.Any(e=>e.Origin.BlockId==leafStep &&
+                        e.Transition.State==MRKStepState.Failed &&
+                        e.Origin.CallPath.Count==2 &&
+                        e.Origin.CallPath[0]==rootCall &&
+                        e.Origin.CallPath[1]==midCall),
+                        "three-level failed Leaf lost two-tier invocation origin");
                 }
                 finally{reopened.Close(true);}
             }

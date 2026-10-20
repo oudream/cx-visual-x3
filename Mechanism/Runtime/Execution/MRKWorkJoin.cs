@@ -25,10 +25,6 @@ namespace CxVisual.Mechanism.Runtime.Execution
     public static class MRKWorkJoin
     {
         /// <summary>
-        /// Any：第一个完成的分支即返回，允许返回失败结果；与FirstSuccessful语义不同。
-        /// 剩余分支的生命周期通过AllSettled显式结算，不能提前回收共享数据。
-        /// </summary>
-        /// <summary>
         /// All：按调用方输入顺序等待所有分支结算，保留失败、取消和拒绝的原结果；
         /// 调用方仅可在结果全部到达后释放共享资源，不隐式重放或取消外部操作。
         /// 全部Succeeded才表示All成功，任何非成功均不能当作成功Join。
@@ -118,6 +114,10 @@ namespace CxVisual.Mechanism.Runtime.Execution
             return new MRKJoinResult<T>(null, null, allSettled);
         }
 
+        /// <summary>
+        /// Any：第一个完成的分支即返回，允许返回失败结果；与FirstSuccessful语义不同。
+        /// 剩余分支的生命周期通过AllSettled显式结算，不能提前回收共享数据。
+        /// </summary>
         public static async Task<MRKJoinResult<T>> FirstCompletedAsync<T>(
             IEnumerable<FCRWorkHandle<T>> source, bool requestCancelRemaining = false)
         {

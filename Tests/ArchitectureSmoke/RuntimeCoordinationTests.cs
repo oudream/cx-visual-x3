@@ -398,10 +398,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 "失败即取消不等于已结算，All不可在非协作尾部退出前返回");
             release.TrySetResult(true);
             var end = Await(all);
-            Check(!end[1].Succeeded && end[0].CancellationRequested &&
-                worker.GetSnapshot().Active == 0,
-                "All显式取消未记录请求或资源在未结算时被提前回收");
+            Check(!end[1].Succeeded && end[0].CancellationRequested,
+                "All显式取消未记录请求或原始失败被隐藏");
+            // FCRWork.Completion先于Worker活动槽位最终释放。
             Await(worker.StopAsync());
+            Check(worker.GetSnapshot().Active == 0, "已结算Worker仍占用活动槽位");
         }
 
         private static void R07_CorrelationReceiveCancelRaceHasSingleResult()
