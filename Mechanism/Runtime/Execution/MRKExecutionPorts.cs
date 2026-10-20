@@ -129,7 +129,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 else if (input.Source == MRKInputSource.StepOutput)
                     found = context.TryGetCommittedData(input.SourceName, out value);
                 else
-                    found = context.TryGetAbsoluteResult(input.SourceName, out value);
+                    found = context.TryGetScopedResult(input.SourceName, out value);
                 if (!found)
                 {
                     if (input.Required)

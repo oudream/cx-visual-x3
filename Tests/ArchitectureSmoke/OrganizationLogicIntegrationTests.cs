@@ -85,6 +85,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             V2DiagnosticLocations();
             BranchParallelAndTrace();
             LoopKindsAndBoundedForEach();
+            R05DynamicLoopAndExit();
             InvokedContentAndInvalidSource();
         }
 
@@ -212,10 +213,126 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 {"go",true}, {"images",new []{"a","b","c"}} },out trace);
             Check(result.State == MRKFlowState.Completed && count == 9,
                 "For/While/DoWhile/Foreach actual invocation count");
-            Check(plan.SourceMap.Find(action.Id).Count == 3 &&
-                plan.SourceMap.Find(action.Id).Select(x => x.Iteration.Value).SequenceEqual(new[]{0,1,2}),
-                "loop step provenance missing");
+            Check(plan.SourceMap.Find(action.Id).Count==1&&
+                plan.Plan.Steps.Count==4&&
+                plan.SourceMap.Find(action.Id)[0].Role=="Action",
+                "loop Body should compile once, not clone 3 static iterations");
             session.Close(true);
+        }
+
+        /// <summary>
+        /// R05真实动态循环：100000上限仅编译一个Loop节点；运行时多次激活
+        /// 同一多节点Body，Break/Continue/Return及条件分支不泄漏。
+        /// </summary>
+        private static void R05DynamicLoopAndExit()
+        {
+            var session=MEMEngineering.Create("R05动态控制区域");
+            var page=session.AddPage("DynLoop");
+            try
+            {
+                int first=0,second=0;
+                var a=MOLControlBlock.Action("first");
+                var b=MOLControlBlock.Action("second");
+                var loop=MOLControlBlock.Repeat(MOLLoopMode.While,100000,
+                    MOLControlBlock.Sequence(a,b),
+                    new MOLExpression(MOLExpressionSource.Iteration,
+                        comparison:MOLComparison.LessThan,expected:"220"));
+                MOLLogicCodec.Set(session,page.RootContent,new MOLLogicDefinition(loop));
+                var observed=new System.Collections.Concurrent.ConcurrentDictionary<int,int>();
+                var resolver=new TestResolver()
+                    .Register("first",(ctx,ct)=>{
+                        Check(ctx.Invocation!=null&&ctx.Data==null&&
+                            ctx.BoundInputs["iteration"] is int,
+                            "dynamic loop step lost MRK invocation or index");
+                        int n=(int)ctx.BoundInputs["iteration"];
+                        Check(ctx.Invocation.FrameKey.Contains(".i"+n+"."),
+                            "loop activation identity is not per iteration");
+                        observed.AddOrUpdate(n,1,(key,val)=>val+1);
+                        Interlocked.Increment(ref first);
+                        return Task.FromResult((object)n);
+                    })
+                    .Register("second",(ctx,ct)=>{
+                        Interlocked.Increment(ref second);
+                        return Task.FromResult((object)ctx.BoundInputs["iteration"]);
+                    });
+                var compiled=new MOCEngineeringCompiler().Compile(
+                    session.GetSnapshot(),page.RootContent.Id,resolver);
+                Check(compiled.Plan.Steps.Count==1&&
+                    compiled.Plan.Steps[0].LoopRegion!=null&&
+                    compiled.Plan.Steps[0].LoopRegion.Body.Steps.Count<=5&&
+                    compiled.SourceMap.Find(a.Id).Count==1,
+                    "R05 high-count loop still statically expands the body");
+                var engine=new MRKExecutionEngine(new FCRWorkerOptions(3,128));
+                try
+                {
+                    MRKFlowHandle handle=engine.StartFlow(compiled.Plan);
+                    var result=handle.Completion.GetAwaiter().GetResult();
+                    Check(result.State==MRKFlowState.Completed&&
+                        first==220&&second==220&&observed.Count==220&&
+                        observed.Values.All(x=>x==1),
+                        "R05 dynamic activation count or repeated Body execution wrong");
+                    Check(handle.Context.ObservationsSnapshot().Keys
+                        .Count(x=>x.Contains(".i")&&x.Contains(a.Id.ToString("N")))==220,
+                        "R05 per-iteration trace identity collapsed to one step");
+                    var view=compiled.ReadTrace(handle,0);
+                    Check(view.Events.Count!=0&&
+                        view.Events.All(x=>x.Origin!=null&&x.Origin.BlockId!=Guid.Empty),
+                        "R05 dynamic StepId cannot resolve its original MOC SourceMap");
+                }
+                finally{engine.StopAsync(true).GetAwaiter().GetResult();}
+
+                int visit=0,after=0;
+                var branch=MOLControlBlock.Branch(
+                    new MOLBranchCase(new MOLExpression(MOLExpressionSource.Iteration,
+                        comparison:MOLComparison.Equal,expected:"1"),
+                        new MOLControlBlock(Guid.NewGuid(),MOLControlKind.Exit,
+                            exitKind:MOLExitKind.Continue)),
+                    new MOLBranchCase(new MOLExpression(MOLExpressionSource.Iteration,
+                        comparison:MOLComparison.Equal,expected:"3"),
+                        new MOLControlBlock(Guid.NewGuid(),MOLControlKind.Exit,
+                            exitKind:MOLExitKind.Break)),
+                    new MOLBranchCase(null,MOLControlBlock.Action("after")));
+                var exitLoop=MOLControlBlock.Repeat(MOLLoopMode.For,200,
+                    MOLControlBlock.Sequence(MOLControlBlock.Action("visit"),branch));
+                MOLLogicCodec.Set(session,page.RootContent,new MOLLogicDefinition(exitLoop));
+                var guarded=new TestResolver()
+                    .Register("visit",(ctx,ct)=>{
+                        Interlocked.Increment(ref visit);
+                        return Task.FromResult((object)ctx.IterationIndex);
+                    })
+                    .Register("after",(ctx,ct)=>{
+                        Interlocked.Increment(ref after);
+                        return Task.FromResult((object)ctx.IterationIndex);
+                    });
+                var plan=new MOCEngineeringCompiler().Compile(
+                    session.GetSnapshot(),page.RootContent.Id,guarded);
+                MOCTraceView trace;
+                var result2=Execute(plan,null,out trace);
+                Check(result2.State==MRKFlowState.Completed&&visit==4&&after==2&&
+                    plan.Plan.Steps.Count==1,
+                    "R05 Break/Continue did not settle remaining nodes at safe points");
+
+                int tail=0;
+                var terminating=MOLControlBlock.Sequence(
+                    MOLControlBlock.Repeat(MOLLoopMode.For,10,
+                        MOLControlBlock.Sequence(
+                            MOLControlBlock.Action("visit"),
+                            new MOLControlBlock(Guid.NewGuid(),MOLControlKind.Exit,
+                                exitKind:MOLExitKind.Return))),
+                    MOLControlBlock.Action("tail"));
+                MOLLogicCodec.Set(session,page.RootContent,new MOLLogicDefinition(terminating));
+                var returned=new TestResolver()
+                    .Register("visit",(ctx,ct)=>Task.FromResult((object)1))
+                    .Register("tail",(ctx,ct)=>{
+                        Interlocked.Increment(ref tail);return Task.FromResult((object)0);
+                    });
+                var returnPlan=new MOCEngineeringCompiler().Compile(
+                    session.GetSnapshot(),page.RootContent.Id,returned);
+                var done=Execute(returnPlan,null,out trace);
+                Check(done.State==MRKFlowState.Completed&&tail==0,
+                    "R05 Return did not prevent downstream Flow execution");
+            }
+            finally{session.Close(true);}
         }
 
         private static void InvokedContentAndInvalidSource()

@@ -236,3 +236,28 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 - **测试**：并行运行两个相同编译Plan但不同FlowId的请求，验证独立Invocation、Frame输入、CommittedOutput、观察快照；MDS同一逻辑Step不同激活帧分别提交且互不污染；Abort后的输出禁止读取。
 - **边界**：R04建立调用实例身份和数据帧的运行协议，不把当前静态DAG声称为已经动态重入；MRK在单Flow内部为同一Step生成二次激活并正确重定位StepOutput属于R05。
 - **验收**：以本轮唯一中文Commit所触发的真实Windows Runtime/工程组织等CI为准，未验证前不记S3。
+
+
+## R04 最终 Windows CI 事实（已完成）
+
+- 唯一提交 \`ca37a212200512dd93204dd14800d448bc31ab82\`，MRK Invocation 与 MDSFrame 隔离。
+- 当前提交固定 SHA 的五项 CI 均已 success：Runtime \`39358389277\`、工程组织 \`39358389234\`、TestCenter \`39358389230\`、Config L1 \`39358389253\`、配置公共底座 \`39358389231\`。
+- R04 判定 S3，R05 不重建既有 Invocation/Frame。
+
+## R05 · 动态多节点 Loop 与执行安全（准备验收）
+
+**本轮目标**：For/While/DoWhile/ForEach 由同一 MOM/MOC 工程逻辑编译，真实 Body Plan 编译一次，运行时依次激活多轮；MRK 仍使用同一 F19 Worker，不生成第二个 Graph、线程调度器或数据堆。
+
+- 原 \`MRKExecutionPlanCompiler\` 支持已编译的 \`MRKLoopRegion\`（Body/MaxIterations/条件/ForEach输入）；当动作没有循环时，旧DAG和R01～R04入口不变。
+- MOC 在原 \`MOLControlKind.Loop/ForEach\` 分支将索引、Item、多个Body节点与Join编译为一个嵌套 MRK Plan，外层只增加一个动态区域调用Step。不得将 MaxIterations 展开成数十万个Plan.Step。
+- MRK 接收带迭代前缀的真实 \`MRKExecutionContext\`；MDS保持唯一Frame Owner，\`Invocation.FrameKey\`、Step结果、NodeState和Trace使用每轮限定路径，StepOutput只能读取正确的帧。
+- Break/Continue/Return 由原 MOL.Exit 编译成受控执行信号，在节点安全点跳过未执行的依赖后续节点，先等待在途 Worker 结算并释放资源，再退出或开始下一轮；Return 同时阻止主Flow后续Step。
+- 保持 MOC SourceMap 只有一份原节点定义，由运行时限定路径映射原Block ID；准确 Iteration 位置与历史回放的高级策略继续在R09收敛。
+- 正例：巨大 MaxIterations 但Plan.Step总数常量、多个Body节点多轮真实执行、For/While/DoWhile/Foreach、Break/Continue/Return、并发不同 Flow 不串结果；反例：错配条件、无效集合、取消、作用域、历史数据滥用。
+- 不合并已失败的CI：只有 R05 单次中文 Commit 对应 Windows Runtime/工程组织/TestCenter/Config等检查全部通过，才算S3。未通过禁止进入R06。
+
+## R06 · 多级Content与公开输入输出（本轮R05门禁通过后实施）
+
+- 使用真实MEM持久Content、MOL LogicAspect、MOC编译与SourceMap、现有MRK/MDS；多个调用点、三层子Content、输入/输出端口和实例路径必须独立。
+- 禁止将子Content私有Step结果冒充公开Export；保存→关闭→重开→编译→执行→Trace完整闭环；不同调用者及并发Flow的数据不得混淆。
+- R06必须在 R05 固定SHA的Windows CI全部通过后独立完成一次中文Commit和真实验收，不与R05合并到一个提交。

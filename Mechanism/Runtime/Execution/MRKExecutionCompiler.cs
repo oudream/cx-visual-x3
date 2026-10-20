@@ -109,9 +109,11 @@ namespace CxVisual.Mechanism.Runtime.Execution
             IEnumerable<string> requiredResources = null,
             Func<MRKExecutionContext, bool> condition = null,
             bool allowSkippedDependencies = false, string dedicatedExecutorId = null,
-            int priority = 0, long estimatedPendingBytes = 0, string subflowId = null)
+            int priority = 0, long estimatedPendingBytes = 0, string subflowId = null,
+            MRKLoopRegion loopRegion = null)
         {
-            Id = id; CapabilityId = capabilityId; SubflowId = subflowId; SerialKey = serialKey;
+            Id = id; CapabilityId = capabilityId; SubflowId = subflowId;
+            LoopRegion = loopRegion; SerialKey = serialKey;
             ExecutionGroup = executionGroup; Policy = policy; Condition = condition;
             AllowSkippedDependencies = allowSkippedDependencies;
             DedicatedExecutorId = dedicatedExecutorId;
@@ -127,6 +129,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
         public string Id { get; private set; }
         public string CapabilityId { get; private set; }
         public string SubflowId { get; private set; }
+        public MRKLoopRegion LoopRegion {get;private set;}
         public IList<string> Dependencies { get; private set; }
         public IList<MRKExecutionInput> Inputs { get; private set; }
         public string SerialKey { get; private set; }
@@ -223,7 +226,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
                         item.Condition, item.AllowSkippedDependencies, item.DedicatedExecutorId,
                         capability.SynchronousSdk,
                         item.Priority, item.EstimatedPendingBytes,
-                        capability.DataOutputs));
+                        capability.DataOutputs, loopRegion:item.LoopRegion));
                 }
                 catch (Exception ex) when (ex is ArgumentException || ex is InvalidOperationException)
                 {

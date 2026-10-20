@@ -18,6 +18,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             MissingDeclaredCapabilityInputRejected();
             StandaloneCompilerNamedExports();
             OrdinaryCapabilityAndExistingStepResultsRemainUsable();
+            DynamicLoopCommittedDataFrames();
             ConcurrentInvocationFrameIsolation();
             RepeatedInvocationFrameIsolation();
         }
@@ -230,6 +231,62 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "单层直接编译与子流程编译数据语义不同");
             }
             finally { runtime.StopAsync().GetAwaiter().GetResult(); }
+        }
+
+        /// <summary>
+        /// R05：重复执行同一Data Step四轮；每轮有新的真实MDS输出帧，
+        /// 下一节点从本轮Frame读取，不从上轮、其它Flow或共享字典偷读。
+        /// </summary>
+        private static void DynamicLoopCommittedDataFrames()
+        {
+            var seen=new System.Collections.Concurrent.ConcurrentDictionary<int,string>();
+            var accepted=new List<int>();
+            MRKExecutionPlan body=new MRKExecutionPlan("r05.body",new[]{
+                new MRKExecutionStep("write",new string[0],(ctx,ct)=>{
+                    ct.ThrowIfCancellationRequested();
+                    int i=ctx.IterationIndex;
+                    Check(ctx.Invocation!=null&&ctx.Data!=null&&
+                        ctx.Invocation.FrameKey.Contains(".i"+i+"."),
+                        "R05 MDS data Step has no per-iteration Invocation");
+                    Check(seen.TryAdd(i,ctx.Invocation.FrameKey),
+                        "R05 same iteration activated twice");
+                    ctx.Data.Return("Value",i*11);
+                    return Task.FromResult((object)true);
+                },dataOutputs:new Dictionary<string,Type>{{"Value",typeof(int)}}),
+                new MRKExecutionStep("read",new[]{"write"},(ctx,ct)=>{
+                    ct.ThrowIfCancellationRequested();
+                    int value=(int)ctx.BoundInputs["Value"];
+                    lock(accepted){accepted.Add(value);}
+                    return Task.FromResult((object)value);
+                },inputs:new[]{new MRKExecutionInput("Value",MRKInputSource.StepOutput,
+                    "write.Value",typeof(int))})
+            });
+            var region=new MRKLoopRegion(body,100000,(ctx,i)=>i<4);
+            var plan=new MRKExecutionPlan("r05.dynamic",new[]{
+                new MRKExecutionStep("loop",new string[0],
+                    (ctx,ct)=>Task.FromResult((object)true),loopRegion:region)
+            });
+            Check(plan.Steps.Count==1&&body.Steps.Count==2,
+                "R05 Body Plan repeated in compile stage");
+            var engine=new MRKExecutionEngine(new FCRWorkerOptions(2,16));
+            try
+            {
+                MRKFlowHandle run=engine.StartFlow(plan);
+                MRKFlowResult result=run.Completion.GetAwaiter().GetResult();
+                Check(result.State==MRKFlowState.Completed&&
+                    (int)result.Results["loop"]==4,
+                    "R05 loop did not really run four activations");
+                lock(accepted)
+                {
+                    Check(accepted.Count==4&&
+                        accepted.OrderBy(x=>x).SequenceEqual(new[]{0,11,22,33}),
+                        "R05 committed StepOutput mixed up different iterations");
+                }
+                Check(seen.Count==4&&seen.Values.Distinct().Count()==4&&
+                    run.Context.ObservationsSnapshot().ContainsKey("loop.i3.read"),
+                    "R05 FrameKey or Step observation reused across activations");
+            }
+            finally{engine.StopAsync(true).GetAwaiter().GetResult();}
         }
 
         /// <summary>R04：两个并行Flow运行同一个编译Step，各有独立Invocation和MDS Frame。</summary>

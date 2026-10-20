@@ -27,7 +27,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
             Func<MRKExecutionContext, CancellationToken, object> synchronousSdk = null,
             int priority = 0, long estimatedPendingBytes = 0,
             IDictionary<string, Type> dataOutputs = null, bool enableDataContext = false,
-            string subflowAccessGroup = null)
+            string subflowAccessGroup = null, MRKLoopRegion loopRegion = null)
         {
             if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("Step ID required", "id");
             if (executeAsync == null) throw new ArgumentNullException("executeAsync");
@@ -59,6 +59,11 @@ namespace CxVisual.Mechanism.Runtime.Execution
             DataOutputs = new ReadOnlyDictionary<string, Type>(declaredData);
             EnableDataContext = enableDataContext || declaredData.Count != 0;
             SubflowAccessGroup = subflowAccessGroup;
+            LoopRegion = loopRegion;
+            if(loopRegion!=null&&(declaredData.Count!=0||
+                (requiredResources!=null&&requiredResources.Any())||
+                dedicatedExecutorId!=null))
+                throw new ArgumentException("loop.control_step_requires_no_data_or_resource");
             List<string> resources = new List<string>();
             if (requiredResources != null)
                 foreach (string resource in requiredResources)
@@ -91,11 +96,36 @@ namespace CxVisual.Mechanism.Runtime.Execution
         /// <summary>必须同步执行且不可在内部阻塞等待专用线程自身队列。</summary>
         public Func<MRKExecutionContext, CancellationToken, object> SynchronousSdk { get; private set; }
         public MRKExecutionPolicy Policy { get; private set; }
+        public MRKLoopRegion LoopRegion {get;private set;}
         /// <summary>显式声明的可安全调用补偿动作；绝不会在失败后默认执行。</summary>
         public Func<MRKExecutionContext, CancellationToken, Task> CompensateAsync { get; private set; }
         public IList<string> RequiredResources { get; private set; }
         public IList<string> Dependencies { get { return _dependencies; } }
         public Func<MRKExecutionContext, CancellationToken, Task<object>> ExecuteAsync { get; private set; }
+    }
+
+    /// <summary>
+    /// R05：不可变的编译后循环区域；循环体只含一份已编译MRK Plan。
+    /// 每轮由原MRKExecutionEngine调度同一个F19 Worker，数据继续归MDS。
+    /// </summary>
+    public sealed class MRKLoopRegion
+    {
+        public MRKLoopRegion(MRKExecutionPlan body,int maxIterations,
+            Func<MRKExecutionContext,int,bool> condition=null,
+            string collectionInput=null,bool executeFirst=false)
+        {
+            if(body==null||body.Steps.Count==0||maxIterations<1)
+                throw new ArgumentException("loop.invalid_body_or_limit");
+            if(!string.IsNullOrEmpty(collectionInput)&&executeFirst)
+                throw new ArgumentException("loop.foreach_do_while_invalid");
+            Body=body;MaxIterations=maxIterations;Condition=condition;
+            CollectionInput=collectionInput;ExecuteFirst=executeFirst;
+        }
+        public MRKExecutionPlan Body{get;private set;}
+        public int MaxIterations{get;private set;}
+        public Func<MRKExecutionContext,int,bool> Condition{get;private set;}
+        public string CollectionInput{get;private set;}
+        public bool ExecuteFirst{get;private set;}
     }
 
     /// <summary>编译期控制区域，沿用Plan DAG与既有MRK引擎，不保存第二套工程逻辑。</summary>

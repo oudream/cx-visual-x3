@@ -91,7 +91,13 @@ namespace CxVisual.Mechanism.Orchestration
             {
                 MOCStepOrigin from;
                 if (!SourceMap.TryResolve(change.StepId, out from))
-                    throw new InvalidOperationException("moc.missing_source:" + change.StepId);
+                {
+                    // 动态循环在运行时限定路径：loop.iN.originalStepId。
+                    // SourceMap仍只有一次编译的原始Block映射，不制造每轮副本。
+                    string local=change.StepId.Substring(change.StepId.LastIndexOf('.')+1);
+                    if(!SourceMap.TryResolve(local,out from))
+                        throw new InvalidOperationException("moc.missing_source:"+change.StepId);
+                }
                 result.Add(new MOCObservedStep(change, from));
             }
             return new MOCTraceView(result, batch.NextCursor, batch.LostCount);
@@ -113,7 +119,7 @@ namespace CxVisual.Mechanism.Orchestration
                         throw new InvalidOperationException("moc.input_missing:" + expr.Name);
                     break;
                 case MOLExpressionSource.StepResult:
-                    if (resolvedStepId == null || !context.TryGetAbsoluteResult(resolvedStepId, out actual))
+                    if (resolvedStepId == null || !context.TryGetScopedResult(resolvedStepId, out actual))
                         throw new InvalidOperationException("moc.step_result_missing:" + expr.Name);
                     break;
                 case MOLExpressionSource.Iteration: actual = iteration; break;
@@ -1446,8 +1452,23 @@ namespace CxVisual.Mechanism.Orchestration
                     resolved = origin.StepId;
                 }
                 string stepId = resolved;
-                return ctx => MOCExpressions.Evaluate(expression, ctx, iteration, stepId);
+                return ctx => MOCExpressions.Evaluate(expression, ctx,
+                    iteration<0?ctx.IterationIndex:iteration, stepId);
             }
+            private string ResolveLoopConditionStepId(MOLExpression expression)
+            {
+                if(expression==null||expression.Source!=MOLExpressionSource.StepResult)
+                    return null;
+                Guid id;
+                if(!Guid.TryParse(expression.Name,out id))
+                    throw new InvalidOperationException("moc.loop_condition_step_id");
+                MOCStepOrigin action=Origins.LastOrDefault(o=>
+                    o.BlockId==id&&o.Role=="Action");
+                if(action==null)
+                    throw new InvalidOperationException("moc.loop_condition_step_missing");
+                return action.StepId;
+            }
+
             private static string[] Merge(IEnumerable<string> first, IEnumerable<string> second)
             { return first.Concat(second).Distinct(StringComparer.Ordinal).ToArray(); }
             internal string[] EmitContent(MEMNodeSnapshot content, string[] after,
@@ -1485,7 +1506,7 @@ namespace CxVisual.Mechanism.Orchestration
                                     scope.ItemStep, typeof(object)));
                             }
                         }
-                        return new[] {Add(block, owner, calls, scope == null ? (int?)null : scope.Index,
+                        return new[] {Add(block, owner, calls, scope == null || scope.Index < 0 ? (int?)null : scope.Index,
                             "Action", block.CapabilityId, dependencies, inputs: inputs)};
                     }
                     case MOLControlKind.Sequence:
@@ -1500,13 +1521,13 @@ namespace CxVisual.Mechanism.Orchestration
                         var exits = new List<string>();
                         foreach (var child in block.Children)
                             exits.AddRange(Emit(child, owner, before, calls, scope, depth + 1));
-                        return new[]{Add(block, owner, calls, scope == null ? (int?)null : scope.Index,
+                        return new[]{Add(block, owner, calls, scope == null || scope.Index < 0 ? (int?)null : scope.Index,
                             "ParallelJoin", "moc.internal.noop", exits)};
                     }
                     case MOLControlKind.Branch:
                     {
                         int first=Steps.Count;
-                        string entry=Add(block,owner,calls,scope==null?(int?)null:scope.Index,
+                        string entry=Add(block,owner,calls,scope == null || scope.Index < 0 ? (int?)null : scope.Index,
                             "BranchEntry","moc.internal.noop",before);
                         var joins = new List<string>();
                         var cases = block.Cases.ToArray();
@@ -1523,11 +1544,11 @@ namespace CxVisual.Mechanism.Orchestration
                                         return false;
                                 return casePredicates[chosen] == null || casePredicates[chosen](ctx);
                             };
-                            string gate=Add(block, owner, calls, scope == null ? (int?)null : scope.Index,
+                            string gate=Add(block, owner, calls, scope == null || scope.Index < 0 ? (int?)null : scope.Index,
                                 "Case." + i, "moc.internal.noop", new[]{entry}, guard);
                             joins.AddRange(Emit(cases[i].Body, owner, new[]{gate}, calls, scope, depth+1));
                         }
-                        string exit=Add(block,owner,calls,scope==null?(int?)null:scope.Index,
+                        string exit=Add(block,owner,calls,scope == null || scope.Index < 0 ? (int?)null : scope.Index,
                             "BranchJoin","moc.internal.noop",joins,
                             condition: ctx => !before.Any(d => {
                                 MRKStepState state;
@@ -1544,61 +1565,77 @@ namespace CxVisual.Mechanism.Orchestration
                     case MOLControlKind.Loop:
                     case MOLControlKind.ForEach:
                     {
-                        MOLLoopDefinition l = block.Loop;
-                        string[] exits = before;
-                        string previousGuard = null;
-                        for(int i=0;i<l.MaxIterations;i++)
+                        // R05：循环体只编译一次。临时Step列表编译到MRK嵌套Plan，
+                        // 再从外层移走；绝不能按MaxIterations生成大量Step。
+                        MOLLoopDefinition loop=block.Loop;
+                        int first=Steps.Count,firstRegion=Regions.Count;
+                        string entry=Add(block,owner,calls,null,"IterationEntry",
+                            "moc.internal.noop",new string[0]);
+                        string indexCapability="moc.internal.index."+entry;
+                        Resolver.Register(indexCapability,ctx=>ctx.IterationIndex,typeof(int));
+                        string indexStep=Add(block,owner,calls,null,"IterationIndex",
+                            indexCapability,new[]{entry});
+                        string itemStep=null;
+                        if(block.Kind==MOLControlKind.ForEach)
                         {
-                            int index = i;
-                            string prior = previousGuard;
-                            Func<MRKExecutionContext,bool> test = (l.Mode == MOLLoopMode.DoWhile && index == 0)
-                                ? (Func<MRKExecutionContext,bool>)(ctx => true)
-                                : Predicate(l.Condition, index);
-                            Func<MRKExecutionContext,bool> condition = ctx =>
-                            {
-                                if (before.Any(d => {
-                                    MRKStepState state;
-                                    return ctx.StatesSnapshot().TryGetValue(d, out state) &&
-                                        state == MRKStepState.Skipped;
-                                })) return false;
-                                if (prior != null)
-                                {
-                                    object valid;
-                                    if (!ctx.TryGetAbsoluteResult(prior, out valid)) return false;
-                                }
-                                if (block.Kind == MOLControlKind.ForEach)
-                                {
-                                    object data;
-                                    if (!ctx.Inputs.TryGetValue(l.CollectionInput, out data) || !(data is IList))
-                                        throw new InvalidOperationException("moc.foreach_requires_IList:" + l.CollectionInput);
-                                    return index < ((IList)data).Count;
-                                }
-                                if (l.Mode == MOLLoopMode.DoWhile && index == 0) return true;
-                                return test(ctx);
-                            };
-                            string gate=Add(block, owner, calls, index, "IterationGuard",
-                                "moc.internal.noop", exits, condition, join:true);
-                            previousGuard = gate;
-                            string idxName="moc.internal.index." + gate;
-                            Resolver.Register(idxName, ctx => index, typeof(int));
-                            string idx=Add(block, owner, calls, index, "IterationIndex",
-                                idxName, new[]{gate});
-                            string item=null;
-                            if(block.Kind == MOLControlKind.ForEach)
-                            {
-                                string capability="moc.internal.item." + gate;
-                                Resolver.Register(capability, ctx => ((IList)ctx.Inputs[l.CollectionInput])[index],
-                                    typeof(object));
-                                item=Add(block,owner,calls,index,"IterationItem",capability,new[]{idx});
-                            }
-                            var iterationScope=new IterationScope{Index=index,IndexStep=idx,ItemStep=item,
-                                Input=l.CollectionInput};
-                            string[] bodyStart=item==null?new[]{idx}:new[]{item};
-                            string[] body=Emit(l.Body,owner,bodyStart,calls,iterationScope,depth+1);
-                            exits=new[]{Add(block, owner, calls, index, "IterationJoin",
-                                "moc.internal.noop", body, join:true)};
+                            string itemCapability="moc.internal.item."+entry;
+                            Resolver.Register(itemCapability,ctx=>
+                                ((IList)ctx.Inputs[loop.CollectionInput])[ctx.IterationIndex],
+                                typeof(object));
+                            itemStep=Add(block,owner,calls,null,"IterationItem",
+                                itemCapability,new[]{indexStep});
                         }
-                        return exits;
+                        var iterationScope=new IterationScope{
+                            Index=-1,IndexStep=indexStep,ItemStep=itemStep,
+                            Input=loop.CollectionInput};
+                        string[] bodyStart=itemStep==null?
+                            new[]{indexStep}:new[]{itemStep};
+                        string[] exits=Emit(loop.Body,owner,bodyStart,calls,
+                            iterationScope,depth+1);
+                        Add(block,owner,calls,null,"IterationJoin","moc.internal.noop",
+                            exits,join:true);
+                        MRKStepCompileRequest[] requests=Steps.Skip(first).ToArray();
+                        MRKControlRegion[] nestedRegions=Regions.Skip(firstRegion).ToArray();
+                        Steps.RemoveRange(first,Steps.Count-first);
+                        Regions.RemoveRange(firstRegion,Regions.Count-firstRegion);
+                        var compiledBody=new MRKExecutionPlanCompiler().Compile(
+                            "moc.loop."+block.Id.ToString("N"),requests,Resolver,
+                            regions:nestedRegions);
+                        if(!compiledBody.Succeeded)
+                            throw new InvalidOperationException("moc.loop_body_compile:"+
+                                string.Join(";",compiledBody.Diagnostics.Select(d=>d.Code)));
+                        // 迭代条件可引用输入、迭代索引或上一轮已提交的StepResult。
+                        Func<MRKExecutionContext,int,bool> predicate=loop.Condition==null?
+                            (Func<MRKExecutionContext,int,bool>)null:
+                            (ctx,i)=>MOCExpressions.Evaluate(loop.Condition,ctx,i,
+                                ResolveLoopConditionStepId(loop.Condition));
+                        MRKLoopRegion region=new MRKLoopRegion(compiledBody.Plan,
+                            loop.MaxIterations,predicate,
+                            block.Kind==MOLControlKind.ForEach?loop.CollectionInput:null,
+                            loop.Mode==MOLLoopMode.DoWhile);
+                        string step=NewId(block);
+                        // 控制Step在MRK中返回实际完成的迭代次数(int)；
+                        // 编译期端口类型也必须为int，不能继续冒用noop的bool。
+                        string loopCapability="moc.internal.loop."+step;
+                        Resolver.Register(loopCapability,ctx=>(object)0,typeof(int));
+                        Steps.Add(new MRKStepCompileRequest(step,loopCapability,
+                            before,loopRegion:region));
+                        Origins.Add(new MOCStepOrigin(step,new MRIObjectAddress(
+                            _snapshot.ProjectId,owner.StorageRootId,owner.Id,_instances),
+                            block.Id,calls,null,"DynamicLoop"));
+                        return new[]{step};
+                    }
+                    case MOLControlKind.Exit:
+                    {
+                        string signal=block.ExitKind==MOLExitKind.Break?"break":
+                            block.ExitKind==MOLExitKind.Continue?"continue":"return";
+                        string marker="moc.internal.exit."+NewId(block);
+                        Resolver.Register(marker,ctx=>{
+                            ctx.SignalControlExit(signal);return (object)signal;
+                        },typeof(string));
+                        return new[]{Add(block,owner,calls,
+                            scope == null || scope.Index < 0 ? (int?)null : scope.Index,
+                            "LoopExit",marker,before)};
                     }
                     case MOLControlKind.Invoke:
                     {

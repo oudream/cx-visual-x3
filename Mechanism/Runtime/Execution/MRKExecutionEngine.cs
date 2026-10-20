@@ -21,6 +21,24 @@ namespace CxVisual.Mechanism.Runtime.Execution
     }
     public enum MRKStepState { WaitingDependencies, Scheduled, Completed, Failed, Cancelled, Queued, Running, Waiting, Paused, WaitingResources, WaitingGroup, Skipped, ResultUnknown }
 
+    internal sealed class MRKIterationSignal
+    {
+        private int _exit;
+        internal void Request(string kind)
+        {
+            int value=kind=="break"?1:kind=="continue"?2:kind=="return"?3:0;
+            if(value==0)throw new ArgumentException("loop.unknown_exit");
+            Interlocked.CompareExchange(ref _exit,value,0);
+        }
+        internal int Exit{get{return Volatile.Read(ref _exit);}}
+    }
+    internal sealed class MRKFlowReturnSignal
+    {
+        private int _requested;
+        internal bool Requested{get{return Volatile.Read(ref _requested)!=0;}}
+        internal void Request(){Interlocked.Exchange(ref _requested,1);}
+    }
+
     /// <summary>同一次流程的局部快照；不对外暴露可写的全局数据字典。</summary>
     public sealed class MRKExecutionContext
     {
@@ -40,6 +58,9 @@ namespace CxVisual.Mechanism.Runtime.Execution
         private readonly IFDEExecutionDataScope _dataScope;
         private readonly MDSDataStack _managedStack;
         private readonly IMDSDataContext _data;
+        private readonly int _iterationIndex;
+        private readonly MRKIterationSignal _iterationSignal;
+        private readonly MRKFlowReturnSignal _returnSignal=new MRKFlowReturnSignal();
         private readonly MRKInvocationContext _invocation;
         private readonly ConcurrentQueue<string> _completedOrder = new ConcurrentQueue<string>();
         internal MRKExecutionContext(string planId, IDictionary<string, object> inputs,
@@ -76,11 +97,50 @@ namespace CxVisual.Mechanism.Runtime.Execution
             _managedStack = parent._managedStack;
             _data = parent._data;
             _invocation = parent._invocation;
+            _iterationIndex=parent._iterationIndex;
+            _iterationSignal=parent._iterationSignal;
+            _returnSignal=parent._returnSignal;
             _boundInputs = parent._boundInputs;
             _completedOrder = parent._completedOrder;
         }
         internal MRKExecutionContext ForSubflow(string prefix)
         { return new MRKExecutionContext(this, prefix); }
+        private MRKExecutionContext(MRKExecutionContext parent,string prefix,int iteration)
+            : this(parent,prefix)
+        {
+            _iterationIndex=iteration;
+            _iterationSignal=new MRKIterationSignal();
+        }
+        internal MRKExecutionContext ForLoopIteration(string prefix,int iteration)
+        {
+            if(string.IsNullOrWhiteSpace(prefix)||iteration<0)
+                throw new ArgumentException("loop.invalid_activation");
+            return new MRKExecutionContext(this,prefix,iteration);
+        }
+        /// <summary>当前动态循环迭代号，常规DAG默认为0。</summary>
+        public int IterationIndex{get{return _iterationIndex;}}
+        internal string QualifiedStepId(string id){return _scopePrefix+id;}
+        internal int LoopExit{get{return _iterationSignal==null?0:_iterationSignal.Exit;}}
+        internal bool FlowReturnRequested{get{return _returnSignal.Requested;}}
+        /// <summary>由编译的Break/Continue/Return控制节点请求，不能绕过安全点。</summary>
+        public void SignalControlExit(string kind)
+        {
+            if(_iterationSignal==null)
+            {
+                if(kind!="return")
+                    throw new InvalidOperationException("loop.exit_outside_region");
+                _returnSignal.Request();
+                return;
+            }
+            _iterationSignal.Request(kind);
+            if(kind=="return")_returnSignal.Request();
+        }
+        public bool TryGetScopedResult(string stepId,out object value)
+        {
+            if(TryGetResult(stepId,out value))return true;
+            return TryGetAbsoluteResult(stepId,out value);
+        }
+
         private MRKExecutionContext(MRKExecutionContext parent,MRKInvocationContext invocation)
             : this(parent,string.Empty)
         { _invocation=invocation; }
@@ -114,8 +174,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
             int dot = sourceName.LastIndexOf('.');
             if (dot < 1 || dot == sourceName.Length - 1)
                 throw new ArgumentException("具名输出必须为节点ID.输出名", "sourceName");
-            return _managedStack.TryReadOutput(sourceName.Substring(0, dot),
-                sourceName.Substring(dot + 1), out value);
+            return _managedStack.TryReadOutput(_scopePrefix+sourceName.Substring(0,dot),
+                sourceName.Substring(dot+1),out value);
         }
         internal void CloseFlowDataScope()
         {
@@ -792,12 +852,62 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 finalState == MRKFlowState.Completed ? committedFlowOutputs : null);
         }
 
+        private async Task<int> ExecuteLoopRegionAsync(MRKLoopRegion loop,
+            MRKExecutionContext parent,CancellationToken cancellation,
+            MRKExecutionDebugController control)
+        {
+            int count=0;
+            MRKExecutionContext predicateContext=parent;
+            for(int iteration=0;iteration<loop.MaxIterations;iteration++)
+            {
+                cancellation.ThrowIfCancellationRequested();
+                if(parent.FlowReturnRequested)break;
+                if(!string.IsNullOrEmpty(loop.CollectionInput))
+                {
+                    object source;
+                    if(!parent.Inputs.TryGetValue(loop.CollectionInput,out source)||
+                        !(source is System.Collections.IList))
+                        throw new InvalidOperationException("moc.foreach_requires_IList:"+
+                            loop.CollectionInput);
+                    if(iteration>=((System.Collections.IList)source).Count)break;
+                }
+                if(!(iteration==0&&loop.ExecuteFirst)&&loop.Condition!=null&&
+                   !loop.Condition(predicateContext,iteration))break;
+                // 每轮只有一份编译Plan，任务/输出采用不同限定路径。
+                MRKExecutionContext scope=parent.ForLoopIteration(
+                    parent.Invocation.StepId.Substring(parent.Invocation.StepId.LastIndexOf('.')+1)+
+                    ".i"+iteration.ToString(
+                        System.Globalization.CultureInfo.InvariantCulture)+".",iteration);
+                Dictionary<string,Task<object>> tasks=
+                    new Dictionary<string,Task<object>>(StringComparer.Ordinal);
+                Func<string,Task<object>> schedule=null;
+                schedule=id=>
+                {
+                    Task<object> known;
+                    if(tasks.TryGetValue(id,out known))return known;
+                    Task<object> current=RunStepAsync(loop.Body.GetStep(id),scope,
+                        cancellation,schedule,control);
+                    tasks.Add(id,current);
+                    return current;
+                };
+                foreach(MRKExecutionStep item in loop.Body.Steps) schedule(item.Id);
+                await Task.WhenAll(tasks.Values.ToArray()).ConfigureAwait(false);
+                count++;
+                predicateContext=scope;
+                if(scope.LoopExit==1||scope.LoopExit==3||scope.FlowReturnRequested)break;
+                // Continue 等到本轮已有Work结算并释放资源后再开始下一轮。
+            }
+            return count;
+        }
+
         private async Task<object> RunStepAsync(MRKExecutionStep step, MRKExecutionContext context,
             CancellationToken cancellation, Func<string, Task<object>> schedule, MRKExecutionDebugController control)
         {
             // 每次实际调度绑定独立调用身份；静态DAG每Step只激活一次。
             // 不改变Plan既有StepOutput的FrameKey，动态激活在R05扩展。
-            context=context.WithInvocation(new MRKInvocationContext(context.FlowId,step.Id));
+            context=context.WithInvocation(new MRKInvocationContext(context.FlowId,
+                context.QualifiedStepId(step.Id),0,
+                context.Invocation==null?null:context.Invocation.InvocationId));
             context.SetState(step.Id, MRKStepState.WaitingDependencies,
                 string.Join(",", step.Dependencies));
             bool dependencyFailed = false;
@@ -812,6 +922,11 @@ namespace CxVisual.Mechanism.Runtime.Execution
                     throw;
                 }
                 cancellation.ThrowIfCancellationRequested();
+                if(context.LoopExit!=0||context.FlowReturnRequested)
+                {
+                    context.SetState(step.Id,MRKStepState.Skipped,"loop.exit_requested");
+                    return null;
+                }
                 if (!step.AllowSkippedDependencies)
                 {
                     IDictionary<string, MRKStepState> states = context.StatesSnapshot();
@@ -837,6 +952,17 @@ namespace CxVisual.Mechanism.Runtime.Execution
                     Task checkpoint = control.WaitBeforeAsync(step.Id, cancellation);
                     if (!checkpoint.IsCompleted) context.SetState(step.Id, MRKStepState.Paused, "breakpoint");
                     await checkpoint.ConfigureAwait(false);
+                }
+                if(step.LoopRegion!=null)
+                {
+                    // 控制区域自身不占Worker槽位：只让真正的Body Capability
+                    // 通过同一F19 Worker运行，避免单线程Worker上的自等待死锁。
+                    context.SetState(step.Id,MRKStepState.Running,"loop.region");
+                    int completed=await ExecuteLoopRegionAsync(step.LoopRegion,context,
+                        cancellation,control).ConfigureAwait(false);
+                    context.SetResult(step.Id,completed);
+                    context.SetState(step.Id,MRKStepState.Completed,"loop.completed");
+                    return completed;
                 }
                 // 在占用Worker槽位之前等资源，避免等锁的节点堵住真正持锁的执行任务。
                 List<MRKResourceLease> leases = new List<MRKResourceLease>();
