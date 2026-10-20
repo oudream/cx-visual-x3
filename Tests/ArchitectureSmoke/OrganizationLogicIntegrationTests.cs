@@ -874,7 +874,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Guid leaf=Guid.Empty;
                 MOCFlowBuilder.Edit(session,child,b=>{
                     leaf=b.Step("Double",new[]{
-                        new MPCPortDescriptor("N",MPCPortDirection.Input,"int",MPCPortKind.Data),
+                        new MPCPortDescriptor("N",MPCPortDirection.Input,"int",MPCPortKind.Data,required:true),
                         new MPCPortDescriptor("Doubled",MPCPortDirection.Output,"int",MPCPortKind.Data)
                     });
                     b.ExposeInput("Number",leaf,"N");
@@ -892,10 +892,10 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     seed=b.Step("Seed",new[]{
                         new MPCPortDescriptor("Value",MPCPortDirection.Output,"int",MPCPortKind.Data)});
                     call=b.Step("moc.invoke:"+child.Id.ToString("N"),new[]{
-                        new MPCPortDescriptor("Number",MPCPortDirection.Input,"int",MPCPortKind.Data),
+                        new MPCPortDescriptor("Number",MPCPortDirection.Input,"int",MPCPortKind.Data,required:true),
                         new MPCPortDescriptor("LeafValue",MPCPortDirection.Output,"int",MPCPortKind.Data)});
                     plus=b.Step("Plus",new[]{
-                        new MPCPortDescriptor("N",MPCPortDirection.Input,"int",MPCPortKind.Data),
+                        new MPCPortDescriptor("N",MPCPortDirection.Input,"int",MPCPortKind.Data,required:true),
                         new MPCPortDescriptor("Answer",MPCPortDirection.Output,"int",MPCPortKind.Data)});
                     b.Connect(seed,"Done",call,"Start");
                     b.Connect(call,"Done",plus,"Start");
