@@ -1021,7 +1021,7 @@ namespace CxVisual.Mechanism.Orchestration
                         Type type=ResolveWiringType(port.TypeId);
                         if(type==typeof(object)||type==typeof(byte[]))
                             throw new InvalidOperationException("moc.invoke.parameter_type");
-                        string name="w"+nestedValues.Key.ToString("N")+"."+parameter.Key;
+                        string name="p"+nestedValues.Key.ToString("N")+"_"+parameter.Key;
                         string uniqueKey=stepIds[block.Id]+"."+name;
                         object value=type==typeof(string)?(object)parameter.Value:
                             Convert.ChangeType(parameter.Value,type,CultureInfo.InvariantCulture);
@@ -1050,8 +1050,8 @@ namespace CxVisual.Mechanism.Orchestration
                                 if(type==typeof(object)||type==typeof(byte[]))
                                     throw new InvalidOperationException("moc.invoke.parameter_type");
                                 innerInputs.Add(new MRKExecutionInput(parameter.Key,
-                                    MRKInputSource.FlowInput,"w"+b.Id.ToString("N")+
-                                    "."+parameter.Key,type,port.Required));
+                                    MRKInputSource.FlowInput,"p"+b.Id.ToString("N")+
+                                    "_"+parameter.Key,type,port.Required));
                             }
                             return new MRKStepCompileRequest("w"+b.Id.ToString("N"),
                                 b.CapabilityId,nested.Links.Where(l=>l.Target.BlockId==b.Id)
@@ -1105,7 +1105,7 @@ namespace CxVisual.Mechanism.Orchestration
                     new MOCInlineContentCatalog(planId,requests,subflowDefinitions),transientResolver);
             if(!compiled.Succeeded)
                 throw new InvalidOperationException("moc.wiring.compile_rejected:"+
-                    string.Join(";",compiled.Diagnostics.Select(x=>x.Code+"@"+x.StepId)));
+                    string.Join(";",compiled.Diagnostics.Select(x=>x.Code+"@"+x.StepId+":"+x.Message)));
             return new MOCCompiledPlan(compiled.Plan,new MOCSourceMap(origins),
                 snapshot.ProjectId,snapshot.Revision,inputDefaults);
         }
