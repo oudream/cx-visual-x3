@@ -181,6 +181,13 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 var text=Descendants(properties).OfType<TextBox>().First();
                 text.Text="240";BindingOperations.GetBindingExpression(text,TextBox.TextProperty).UpdateSource();Click(window,"应用");
                 Check(session.ResolveParameter(second,"宽度").Value.AsNumber()==240&&session.ResolveParameter(first,"宽度").Value.AsNumber()==120,"WPF property binding changed shared defaults");
+                // MEM提交会重投影Properties；必须操作当前WPF数据项，不能再用旧TextBox。
+                schemaRow=((IEnumerable)Get(vm,"Properties")).Cast<object>()
+                    .Single(x=>(string)Get(x,"Member")=="宽度");
+                window.UpdateLayout();
+                text=Descendants(properties).OfType<TextBox>().First();
+                Check((string)Get(schemaRow,"Mode")=="常量",
+                    "Studio saved numeric override was not reprojected as constant mode");
                 // R02: 编辑中即时报告非法数字，错误的输入绝不会触发真实MEM编辑提交。
                 text.Text="not-a-number";
                 BindingOperations.GetBindingExpression(text,TextBox.TextProperty).UpdateSource();
