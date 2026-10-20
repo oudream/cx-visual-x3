@@ -35,7 +35,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
         private static object Get(object instance,string name){return instance.GetType().GetProperty(name).GetValue(instance,null);}
         internal static void RunOnSta()
         {
-            string path=Path.Combine(Path.GetTempPath(),"cx-h06-studio-"+Guid.NewGuid().ToString("N")+".cxproj");Window window=null;Application app=null;
+            string path=Path.Combine(Path.GetTempPath(),"cx-h06-studio-"+Guid.NewGuid().ToString("N")+".cxproj");
+            string assetPath=Path.Combine(Path.GetTempPath(),"cx-h06-r03-"+Guid.NewGuid().ToString("N")+".bin");
+            Window window=null;Application app=null;
             try
             {
                 var assembly=Assembly.LoadFrom(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"CxVisual.Studio.exe"));
@@ -241,18 +243,86 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(session.ResolveParameter(second,"启用").Value.AsBoolean(),
                     "Boolean editor did not use the original MEM Redo history");
                 Click(window,"编辑共享定义");Click(window,"添加矩形");Check(symbol.RootGroup.Children.Count==2,"shared definition editor context missing");Click(window,"返回");
+                // R03: 资产仍归MEM持久化，一条属性只使用自己的资源选择项。
+                File.WriteAllBytes(assetPath,new byte[]{1,2,3,4,5});
+                var localAsset=session.AddAsset("电机图像",assetPath);
+                session.DefineProperty(symbol,new MPMPropertyDescriptor("资源图",MPMValueKind.Resource,false,true));
+                vm.GetType().GetMethod("Select").Invoke(vm,new object[]{(Guid?)second.Id});Pump();window.UpdateLayout();
+                var resourceRow=((IEnumerable)Get(vm,"Properties")).Cast<object>()
+                    .Single(x=>(string)Get(x,"Member")=="资源图");
+                Check((string)Get(resourceRow,"Mode")=="资源"&&
+                    ((string)Get(resourceRow,"ValidationMessage")).Contains("请选择"),
+                    "R03 Resource Schema didn't require selection instead of a literal");
+                var resourcePresenter=(DependencyObject)properties.ItemContainerGenerator.ContainerFromItem(resourceRow);
+                Check(resourcePresenter!=null,"R03 resource property WPF template missing");
+                var resourceCombo=Descendants(resourcePresenter).OfType<ComboBox>()
+                    .Single(c=>c.ItemsSource!=null&&
+                        ((IEnumerable)c.ItemsSource).Cast<object>().OfType<MEMAssetReference>().Any());
+                Check(resourceCombo.Items.Cast<object>().Any(x=>object.ReferenceEquals(x,localAsset)),
+                    "R03 engineering asset missing in row-scoped picker");
+                resourceCombo.SelectedItem=localAsset;Pump();
+                Check(object.ReferenceEquals(Get(resourceRow,"SelectedBindingResource"),localAsset),
+                    "R03 resource picker didn't update its row");
+                var resourceApply=Descendants(resourcePresenter).OfType<Button>()
+                    .Single(b=>object.Equals(b.Content,"应用"));
+                ((IInvokeProvider)new ButtonAutomationPeer(resourceApply).GetPattern(PatternInterface.Invoke)).Invoke();Pump();
+                Check(session.ResolveParameter(second,"资源图").ResourceId==localAsset.Id&&
+                    session.ResolveParameter(first,"资源图")==null,
+                    "R03 resource reference didn't persist to its own instance only");
+                var currentWidthRow=((IEnumerable)Get(vm,"Properties")).Cast<object>()
+                    .Single(x=>(string)Get(x,"Member")=="宽度");
+                Check((bool)Get(currentWidthRow,"CanRestoreDefault")&&
+                    ((string)Get(currentWidthRow,"DefaultDescription")).Contains("120"),
+                    "R03 width instance didn't report the inherited default");
+                window.UpdateLayout();
+                var widthPresenter=(DependencyObject)properties.ItemContainerGenerator.ContainerFromItem(currentWidthRow);
+                Check(widthPresenter!=null,"R03 default button presenter missing");
+                var defaultButton=Descendants(widthPresenter).OfType<Button>()
+                    .Single(b=>object.Equals(b.Content,"恢复默认"));
+                ((IInvokeProvider)new ButtonAutomationPeer(defaultButton).GetPattern(PatternInterface.Invoke)).Invoke();Pump();
+                Check(session.ResolveParameter(second,"宽度").Value.AsNumber()==120&&
+                    session.ResolveParameter(first,"宽度").Value.AsNumber()==120,
+                    "R03 reset didn't remove the instance override");
+                Click(window,"撤销");
+                Check(session.ResolveParameter(second,"宽度").Value.AsNumber()==240,
+                    "R03 restore default didn't use the existing MEM Undo");
+                Click(window,"重做");
+                Check(session.ResolveParameter(second,"宽度").Value.AsNumber()==120,
+                    "R03 restore default didn't use the existing MEM Redo");
+                Click(window,"撤销");
+                Check(session.ResolveParameter(second,"宽度").Value.AsNumber()==240,
+                    "R03 Undo did not restore the original instance state for save/open");
+                // 非本工程资源即使通过程序注入，也不能写入实例引用或增加Revision。
+                var rowForInvalid=((IEnumerable)Get(vm,"Properties")).Cast<object>()
+                    .Single(x=>(string)Get(x,"Member")=="资源图");
+                using(var foreign=MEMEngineering.Create("Foreign Asset Project"))
+                {
+                    var foreignAsset=foreign.AddAsset("另一工程资源",assetPath);
+                    rowForInvalid.GetType().GetProperty("SelectedBindingResource")
+                        .SetValue(rowForInvalid,foreignAsset,null);
+                    int revisionBeforeForeign=session.Revision;
+                    ((System.Windows.Input.ICommand)Get(vm,"ApplyPropertyCommand")).Execute(rowForInvalid);
+                    Check(session.Revision==revisionBeforeForeign&&
+                        session.ResolveParameter(second,"资源图").ResourceId==localAsset.Id&&
+                        ((string)Get(vm,"Status")).Contains("操作失败"),
+                        "R03 foreign resource mutated MEM revision or bypassed project identity validation");
+                }
                 vm.GetType().GetMethod("SaveProject").Invoke(vm,new object[]{path});Click(window,"保存工程");vm.GetType().GetMethod("OpenProject").Invoke(vm,new object[]{path,true});Pump();
                 var reopened=(MEMEngineeringSession)Get(vm,"ProjectSession");Check(reopened.FindReference(second.Id)!=null&&reopened.ResolveParameter(reopened.FindReference(second.Id),"宽度").Value.AsNumber()==240,"Studio file reopen lost instance parameter");
                 Check(reopened.ResolveParameter(reopened.FindReference(second.Id),"启用").Value.AsBoolean()&&
                     !reopened.ResolveParameter(reopened.FindReference(first.Id),"启用").Value.AsBoolean(),
                     "Boolean Schema instance value lost isolation or persistence after Studio reopen");
+                Check(reopened.ResolveParameter(reopened.FindReference(second.Id),"资源图").ResourceId==localAsset.Id&&
+                    reopened.ResolveParameter(reopened.FindReference(first.Id),"资源图")==null&&
+                    reopened.Assets.Any(x=>x.Id==localAsset.Id),
+                    "R03 resource reference or packaged asset lost after save/reopen");
                 Check(reopened.Project.Pages.Last().RootContent.DescendantsAndSelf()
                     .OfType<MRCShapeElement>().Count()==9,
                     "Studio nine shapes lost after real Save/Open");
                 Check(reopened.Project.Pages.Last().RootContent.DescendantsAndSelf()
                     .OfType<MRCWidgetElement>().Count()==1,
                     "Studio Widget lost after Save/Open");
-                Check(((ComboBox)window.FindName("EngineeringPages")).Items.Count==2&&((ListBox)window.FindName("EngineeringResources")).Items.Count==3,"real WPF collections failed to refresh after reopen");
+                Check(((ComboBox)window.FindName("EngineeringPages")).Items.Count==2&&((ListBox)window.FindName("EngineeringResources")).Items.Count==4,"real WPF collections failed to refresh after reopen");
                 // 先激活逻辑编排Tab，使工具箱在可视树中。
                 var tabControl=Descendants(window).OfType<TabControl>().First();
                 var logicTab=Descendants(window).OfType<TabItem>()
@@ -683,7 +753,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "C child trace didn't locate its HMI status lamp");
                 Console.WriteLine("PASS H06 Studio real WPF automation: add/switch page, resource two instances, bound parameter edit, shared Undo/Redo, definition navigation, save/reopen");
             }
-            finally{if(window!=null)window.Close();if(app!=null)app.Shutdown();if(File.Exists(path))File.Delete(path);if(File.Exists(path+".cx-lock"))File.Delete(path+".cx-lock");}
+            finally{if(window!=null)window.Close();if(app!=null)app.Shutdown();if(File.Exists(path))File.Delete(path);if(File.Exists(path+".cx-lock"))File.Delete(path+".cx-lock");if(File.Exists(assetPath))File.Delete(assetPath);}
         }
     }
 }
