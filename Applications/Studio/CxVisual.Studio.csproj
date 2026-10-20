@@ -15,6 +15,7 @@
     <Compile Include="MOLRuntimeOverlay.cs"/>
     <Compile Include="StudioShell.cs"/>
     <Compile Include="StudioShell.ResourceTree.cs"/>
+    <Compile Include="StudioShell.GraphicsTree.cs"/>
     <Compile Include="StudioShellSelfTests.cs"/>
     <Compile Include="StudioViewModel.Shell.cs"/>
     <Reference Include="System"/>

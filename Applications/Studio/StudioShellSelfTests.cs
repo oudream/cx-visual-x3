@@ -26,7 +26,7 @@ namespace CxVisual.Studio
                 {
                     window.EnsureStudioContentIds();
                     string[] ids = window.GetStudioContentIds();
-                    Assert(ids.Length == 7, "应为三个文档及四个工具面板，实际：" + ids.Length);
+                    Assert(ids.Length == 8, "应为三个文档及五个工具面板，实际：" + ids.Length);
                     Assert(ids.Contains("doc.home") && ids.Contains("doc.visual") &&
                            ids.Contains("doc.flow") && ids.Contains("tool.properties"), "必需内容缺失");
                 });
@@ -86,7 +86,7 @@ namespace CxVisual.Studio
                 {
                     window.ResetStudioLayout();
                     window.EnsureStudioContentIds();
-                    Assert(window.GetStudioContentIds().Length == 7, "重置后数量异常");
+                    Assert(window.GetStudioContentIds().Length == 8, "重置后数量异常");
                     Assert(window.StudioEngineeringRevision == revision, "重置改变工程Revision");
                 });
                 CheckStep("S1-09 层级资源树与MEM工程身份一致", () =>
@@ -100,6 +100,20 @@ namespace CxVisual.Studio
                     Assert(!root.Items.OfType<TreeViewItem>().Any(item=>Convert.ToString(item.Header).Contains("Element")),
                         "普通资源树不应展开图形Element");
                     Assert(window.StudioEngineeringRevision==revision,"资源树刷新修改了MEM工程Revision");
+                });
+                CheckStep("S1-10 图形结构与资源树分离且指向真实MEM视觉对象", () =>
+                {
+                    window.OpenStudioDocument("doc.visual");
+                    window.RefreshStudioGraphicsTree();
+                    TreeViewItem root = window.StudioGraphicsTree.Items.OfType<TreeViewItem>().FirstOrDefault();
+                    Assert(root != null && root.Items.Count > 0, "图形结构没有列出当前绘图定义");
+                    Assert(root.Items.OfType<TreeViewItem>().Any(item => Convert.ToString(item.Header).Contains("图层")),
+                        "图形结构缺少Layer分组");
+                    TreeViewItem projectRoot = window.StudioResourceTree.Items.OfType<TreeViewItem>().Single();
+                    Assert(projectRoot.Items.OfType<TreeViewItem>().All(item =>
+                        !Convert.ToString(item.Header).Contains("Group/Element")),
+                        "资源导航误混入图元内层");
+                    Assert(window.StudioEngineeringRevision == revision, "图形树读取修改MEM Revision");
                 });
                 CheckStep("R07 同一工程插入Join、保存重开及非法输入回滚", () =>
                 {

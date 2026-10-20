@@ -34,7 +34,7 @@ namespace CxVisual.Studio
         private static readonly string[] KnownDocuments =
             { "doc.home", "doc.visual", "doc.flow", "doc.config" };
         private static readonly string[] KnownTools =
-            { "tool.resources", "tool.toolbox", "tool.properties", "tool.output" };
+            { "tool.resources", "tool.toolbox", "tool.graphics", "tool.properties", "tool.output" };
 
         public bool StudioDarkTheme { get { return _studioDark; } }
         public int StudioEngineeringRevision { get { return _viewModel.Revision; } }
@@ -61,6 +61,9 @@ namespace CxVisual.Studio
             RefreshStudioMenus();
             _viewModel.SceneChanged += OnStudioSceneChangedForTree;
             RefreshStudioResourceTree();
+            _viewModel.SceneChanged += OnStudioSceneChangedForGraphics;
+            RefreshStudioGraphicsTree();
+            UpdateStudioGraphicsVisibility();
             Loaded += (sender, args) =>
             {
                 if (_studioInitialized) return;
@@ -138,6 +141,8 @@ namespace CxVisual.Studio
             {
                 _activeStudioDocumentId = id;
                 _ribbonSelection = DefaultContextFor(id);
+                UpdateStudioGraphicsVisibility();
+                RefreshStudioGraphicsTree();
             }
         }
 
@@ -253,7 +258,7 @@ namespace CxVisual.Studio
                 tool = new LayoutAnchorable { ContentId = id, Title = StudioToolTitle(id),
                     CanClose = true, CanHide = true, CanFloat = true, CanAutoHide = true,
                     Content = view };
-                AnchorableShowStrategy side = id == "tool.properties"
+                AnchorableShowStrategy side = id == "tool.properties" || id == "tool.graphics"
                     ? AnchorableShowStrategy.Right
                     : (id == "tool.output" ? AnchorableShowStrategy.Bottom : AnchorableShowStrategy.Left);
                 tool.AddToLayout(StudioDock, side);
@@ -269,6 +274,7 @@ namespace CxVisual.Studio
                 case "tool.resources": return "工程资源管理器";
                 case "tool.toolbox": return "工具箱";
                 case "tool.properties": return "属性 / Schema / 绑定";
+                case "tool.graphics": return "图形结构";
                 case "tool.output": return "输出 / 诊断";
                 default: return id;
             }
@@ -401,6 +407,7 @@ namespace CxVisual.Studio
             {
                 AddRibbonButton("资源树", null, (s,e)=>ShowStudioTool("tool.resources"));
                 AddRibbonButton("属性", null, (s,e)=>ShowStudioTool("tool.properties"));
+                AddRibbonButton("图形结构", null, (s,e)=>ShowStudioTool("tool.graphics"));
                 AddRibbonButton("输出", null, (s,e)=>ShowStudioTool("tool.output"));
                 AddRibbonButton("保存布局", null, (s,e)=>SafeStudioAction(()=>SaveStudioLayout(LayoutFile)));
                 AddRibbonButton("恢复布局", null, (s,e)=>SafeStudioAction(()=>RestoreStudioLayout(LayoutFile)));
@@ -538,6 +545,8 @@ namespace CxVisual.Studio
             using (StringReader text = new StringReader(xml)) serializer.Deserialize(text);
             LayoutDocument active = StudioDock.Layout.ActiveContent as LayoutDocument;
             if (active != null) SelectStudioContext(active.ContentId);
+            UpdateStudioGraphicsVisibility();
+            RefreshStudioGraphicsTree();
             RefreshStudioMenus();
         }
 
