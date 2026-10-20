@@ -76,15 +76,16 @@
                 <dock:LayoutPanel Orientation="Horizontal">
                     <dock:LayoutAnchorablePane DockWidth="250">
                         <dock:LayoutAnchorable ContentId="tool.resources" Title="工程资源管理器" CanClose="True" CanHide="True" CanFloat="True" CanAutoHide="True">
-                            <ScrollViewer Background="{DynamicResource StudioPanelBrush}">
-                                <StackPanel Margin="9">
-                                    <TextBlock Text="工程 / 页面" FontWeight="SemiBold"/>
-                                    <ListBox ItemsSource="{Binding Pages}" SelectedItem="{Binding ActivePage}" DisplayMemberPath="Name" MinHeight="140" Margin="0,5,0,10"/>
-                                    <TextBlock Text="可复用资源" FontWeight="SemiBold"/>
-                                    <ListBox ItemsSource="{Binding Resources}" SelectedItem="{Binding SelectedResource}" DisplayMemberPath="Name" MinHeight="120" Margin="0,5,0,10"/>
-                                    <TextBlock Text="Group/Element在图形结构面板中管理，不进入工程资源树。" TextWrapping="Wrap" FontSize="11"/>
-                                </StackPanel>
-                            </ScrollViewer>
+                            <DockPanel Background="{DynamicResource StudioPanelBrush}" Margin="5">
+                                <TextBlock DockPanel.Dock="Bottom" Text="仅工程与资源定义；Group/Element在独立图形结构面板管理。"
+                                           TextWrapping="Wrap" FontSize="11" Margin="6,8,6,4"/>
+                                <TextBox DockPanel.Dock="Top" x:Name="StudioResourceSearch"
+                                         ToolTip="筛选页面、Content和Symbol；不修改MEM工程"
+                                         TextChanged="OnStudioResourceSearchChanged" Margin="4" />
+                                <TreeView x:Name="StudioResourceTree" BorderThickness="0"
+                                          SelectedItemChanged="OnStudioResourceTreeSelected"
+                                          MouseDoubleClick="OnStudioResourceTreeDoubleClick"/>
+                            </DockPanel>
                         </dock:LayoutAnchorable>
                         <dock:LayoutAnchorable ContentId="tool.toolbox" Title="工具箱" CanClose="True" CanHide="True" CanFloat="True" CanAutoHide="True">
                             <ScrollViewer Background="{DynamicResource StudioPanelBrush}">

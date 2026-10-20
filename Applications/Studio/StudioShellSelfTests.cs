@@ -89,6 +89,18 @@ namespace CxVisual.Studio
                     Assert(window.GetStudioContentIds().Length == 7, "重置后数量异常");
                     Assert(window.StudioEngineeringRevision == revision, "重置改变工程Revision");
                 });
+                CheckStep("S1-09 层级资源树与MEM工程身份一致", () =>
+                {
+                    window.RefreshStudioResourceTree();
+                    TreeViewItem root=window.StudioResourceTree.Items.OfType<TreeViewItem>().Single();
+                    Assert(root.Items.OfType<TreeViewItem>().Any(item=>Convert.ToString(item.Header).StartsWith("页面")),
+                        "缺少实际MEM页面分组");
+                    Assert(root.Items.OfType<TreeViewItem>().Any(item=>Convert.ToString(item.Header).StartsWith("共享组件")),
+                        "缺少Symbol分组");
+                    Assert(!root.Items.OfType<TreeViewItem>().Any(item=>Convert.ToString(item.Header).Contains("Element")),
+                        "普通资源树不应展开图形Element");
+                    Assert(window.StudioEngineeringRevision==revision,"资源树刷新修改了MEM工程Revision");
+                });
                 CheckStep("R07 同一工程插入Join、保存重开及非法输入回滚", () =>
                 {
                     Assert(window.FlowInsertJoin != null &&

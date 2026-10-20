@@ -59,6 +59,8 @@ namespace CxVisual.Studio
             _legacyRibbonActions.AddRange(StudioRibbonActions.Children.Cast<UIElement>());
             ApplyStudioTheme(false);
             RefreshStudioMenus();
+            _viewModel.SceneChanged += OnStudioSceneChangedForTree;
+            RefreshStudioResourceTree();
             Loaded += (sender, args) =>
             {
                 if (_studioInitialized) return;
