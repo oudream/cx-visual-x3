@@ -57,7 +57,7 @@ namespace CxVisual.Mechanism.Core
             {
                 var owner=_session.Find(plan.Map(n.Id));
                 foreach(var p in n.Properties)
-                {var d=p.Descriptor;DefineProperty(owner,new MPMPropertyDescriptor(d.MemberId,d.ValueKind,d.Required,d.IsPublic,null,d.Minimum,d.Maximum));}
+                {var d=p.Descriptor;DefineProperty(owner,new MPMPropertyDescriptor(d.MemberId,d.ValueKind,d.Required,d.IsPublic,null,d.Minimum,d.Maximum,d.IsReadOnly));}
                 foreach(var p in n.Ports)
                 {
                     var contract=p.Contract;var port=new MPCPort(plan.Map(p.Id),owner.Id,p.MemberId,p.Direction,p.TypeId,p.Kind,p.Multiplicity,new MTUContractReference(contract.UnitId,contract.CoordinateFrameId,contract.TimeBaseId,contract.Calibration==null?null:plan.Map(contract.Calibration)),p.IsPublic,p.Required);
@@ -75,7 +75,7 @@ namespace CxVisual.Mechanism.Core
                 var owner=_session.Find(plan.Map(n.Id));
                 foreach(var p in n.Properties)
                 {
-                    var d=p.Descriptor;var property=_session.FindProperty(owner,d.MemberId);var replacement=new MPMPropertyDescriptor(d.MemberId,d.ValueKind,d.Required,d.IsPublic,plan.Map(d.DefaultBinding),d.Minimum,d.Maximum);
+                    var d=p.Descriptor;var property=_session.FindProperty(owner,d.MemberId);var replacement=new MPMPropertyDescriptor(d.MemberId,d.ValueKind,d.Required,d.IsPublic,plan.Map(d.DefaultBinding),d.Minimum,d.Maximum,d.IsReadOnly);
                     _session.CheckBindingAssignment(owner,d.MemberId,replacement.DefaultBinding,replacement.ValueKind);
                     var state=Definition(owner);int index=state.PropertyItems.IndexOf(property);var final=new MPMProperty(owner.Id,replacement);
                     var dependencies=_session.BindingTargets(final.Binding).ToArray();
