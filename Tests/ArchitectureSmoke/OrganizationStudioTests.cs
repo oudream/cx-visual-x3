@@ -340,6 +340,90 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Click(window,"重做");
                 Check(!session.FindProperty(symbol,"启用").HasOverride,
                     "R03 definition default reset was not redoable");
+                // R04：在Studio中同时选择同一个Symbol的两个实例，属性行不能偷偷退化成最后实例的值。
+                vm.GetType().GetMethod("SetSelection").Invoke(vm,new object[]{new Guid[]{first.Id,second.Id}});
+                Pump();window.UpdateLayout();
+                var batchRows=((IEnumerable)Get(vm,"Properties")).Cast<object>().ToArray();
+                var batchWidth=batchRows.Single(x=>(string)Get(x,"Member")=="宽度");
+                var batchEnabled=batchRows.Single(x=>(string)Get(x,"Member")=="启用");
+                Check((bool)Get(batchWidth,"IsMixedValue")&&
+                    ((string)Get(batchWidth,"MixedValueDescription")).Contains("不一致")&&
+                    (int)Get(batchWidth,"SelectionCount")==2,
+                    "R04 multi-instance numeric values were not shown as mixed");
+                Check((bool)Get(batchEnabled,"IsMixedValue")&&
+                    Get(batchEnabled,"NullableBooleanValue")==null,
+                    "R04 mixed Boolean values must appear as tri-state instead of false");
+                Check(Descendants(properties).OfType<CheckBox>().Any(x=>x.IsChecked==null),
+                    "R04 mixed Boolean WPF CheckBox was not indeterminate");
+                int revisionBeforeMixed=session.Revision;
+                ((System.Windows.Input.ICommand)Get(vm,"ApplyPropertyCommand")).Execute(batchWidth);
+                Check(session.Revision==revisionBeforeMixed&&
+                    session.ResolveParameter(first,"宽度").Value.AsNumber()==120&&
+                    session.ResolveParameter(second,"宽度").Value.AsNumber()==240,
+                    "R04 applying an unchanged mixed placeholder mutated engineering data");
+                batchWidth.GetType().GetProperty("Text").SetValue(batchWidth,"180",null);
+                Check(!(bool)Get(batchWidth,"IsMixedValue"),"R04 explicit mixed edit did not clear the mixed marker");
+                var widthRowPresenter=(DependencyObject)properties.ItemContainerGenerator.ContainerFromItem(batchWidth);
+                Check(widthRowPresenter!=null,"R04 common Schema property is missing from WPF");
+                var applyBatch=Descendants(widthRowPresenter).OfType<Button>()
+                    .Single(b=>object.Equals(b.Content,"应用"));
+                ((IInvokeProvider)new ButtonAutomationPeer(applyBatch).GetPattern(PatternInterface.Invoke)).Invoke();
+                Pump();
+                Check(session.Revision==revisionBeforeMixed+1&&
+                    session.ResolveParameter(first,"宽度").Value.AsNumber()==180&&
+                    session.ResolveParameter(second,"宽度").Value.AsNumber()==180,
+                    "R04 batch edit must change two real instances in one MEM transaction");
+                Click(window,"撤销");
+                Check(session.ResolveParameter(first,"宽度").Value.AsNumber()==120&&
+                    session.ResolveParameter(second,"宽度").Value.AsNumber()==240,
+                    "R04 batch Undo must restore both different prior values in one operation");
+                Click(window,"重做");
+                Check(session.ResolveParameter(first,"宽度").Value.AsNumber()==180&&
+                    session.ResolveParameter(second,"宽度").Value.AsNumber()==180,
+                    "R04 batch Redo failed");
+                Click(window,"撤销");
+                var batchReset=((IEnumerable)Get(vm,"Properties")).Cast<object>()
+                    .Single(x=>(string)Get(x,"Member")=="宽度");
+                Check((bool)Get(batchReset,"CanRestoreDefault"),
+                    "R04 multiple instances must allow clearing existing overrides");
+                ((System.Windows.Input.ICommand)Get(vm,"RestorePropertyDefaultCommand")).Execute(batchReset);
+                Check(session.ResolveParameter(first,"宽度").Value.AsNumber()==120&&
+                    session.ResolveParameter(second,"宽度").Value.AsNumber()==120,
+                    "R04 batch reset did not inherit the common Symbol definition");
+                Click(window,"撤销");
+                Check(session.ResolveParameter(second,"宽度").Value.AsNumber()==240,
+                    "R04 batch reset did not preserve a distinct original override on Undo");
+                // 混合选区无法安全判定公共Schema时，UI为只读，旧批量属性行也不得被复用。
+                vm.GetType().GetMethod("SetSelection").Invoke(vm,new object[]{
+                    new Guid[]{first.Id,studioWidget.Id}});
+                Pump();
+                Check(!string.IsNullOrEmpty((string)Get(vm,"PropertySelectionHint"))&&
+                    !((IEnumerable)Get(vm,"Properties")).Cast<object>().Any(),
+                    "R04 incompatible reference/visual selection exposed editable properties");
+                int revisionBeforeStale=session.Revision;
+                ((System.Windows.Input.ICommand)Get(vm,"ApplyPropertyCommand")).Execute(batchReset);
+                Check(session.Revision==revisionBeforeStale&&
+                    ((string)Get(vm,"Status")).Contains("操作失败"),
+                    "R04 stale selection must be rejected before any partial batch edit");
+                // MPM的IsPublic不是定义层只读标记：仅公开参数出现在引用实例；私有属性不得泄漏。
+                session.DefineProperty(symbol,new MPMPropertyDescriptor("内部标记",
+                    MPMValueKind.String,false,false,MPMBinding.Literal(MPMValue.String("隐藏"))));
+                vm.GetType().GetMethod("SetSelection").Invoke(vm,new object[]{new Guid[]{first.Id,second.Id}});
+                Pump();
+                Check(!((IEnumerable)Get(vm,"Properties")).Cast<object>()
+                    .Any(x=>(string)Get(x,"Member")=="内部标记"),
+                    "R04 private definition member leaked into public instance batch editor");
+                vm.GetType().GetMethod("SetSelection").Invoke(vm,new object[]{new Guid[]{second.Id}});
+                Pump();
+                Check(!((IEnumerable)Get(vm,"Properties")).Cast<object>()
+                    .Any(x=>(string)Get(x,"Member")=="内部标记"),
+                    "R04 private definition member leaked into single instance editor");
+                int revisionBeforePrivate=session.Revision;
+                bool refusedPrivate=false;
+                try{session.SetOverride(second,"内部标记",MPMBinding.Literal(MPMValue.String("非法")));}
+                catch(InvalidOperationException){refusedPrivate=true;}
+                Check(refusedPrivate&&session.Revision==revisionBeforePrivate,
+                    "R04 private reference override bypassed the MEM public boundary");
                 vm.GetType().GetMethod("SaveProject").Invoke(vm,new object[]{path});Click(window,"保存工程");vm.GetType().GetMethod("OpenProject").Invoke(vm,new object[]{path,true});Pump();
                 var reopened=(MEMEngineeringSession)Get(vm,"ProjectSession");Check(reopened.FindReference(second.Id)!=null&&reopened.ResolveParameter(reopened.FindReference(second.Id),"宽度").Value.AsNumber()==240,"Studio file reopen lost instance parameter");
                 Check(reopened.ResolveParameter(reopened.FindReference(second.Id),"启用").Value.AsBoolean()&&
