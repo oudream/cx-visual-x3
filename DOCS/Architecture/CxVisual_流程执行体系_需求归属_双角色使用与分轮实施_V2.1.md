@@ -422,3 +422,10 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 - 沿用唯一MRK引擎和F19 Worker，`MRKLoopRegion`新增`maxParallelIterations=1`（默认完全兼容原R05串行）；显式大于1仅支持声明了IList集合、无前轮依赖谓词的Foreach，限额调度在途迭代，仍用原MDS Frame与原Flow身份。
 - 任一迭代失败仅请求其余分支协作取消并等待真实在途任务结算；不合作Provider可能导致长期等待，这不是硬件停止确认。并行Break/Continue/Return运行时拒绝，避免未定义的跨迭代流程控制。所有迭代成功后仍按原MDS/DataExports统一发布。
 - ArchitectureSmoke验证两迭代真实重叠、峰值上限2、4轮原Invocation有序输出、最终Sum=10；以及未声明集合/跨轮谓词非法，另一迭代失败而非合作尾部仍占资源，完成后Flow失败且无导出，并行Break被拒绝。**本提交待Windows x64真实CI，R07未封轮；设备硬件与Studio完整交互仍需独立验收，R08尚未开始。**
+
+
+### R07 有界并行Foreach：固定SHA全项Windows验收（2026-10-20）
+
+- **固定源码SHA：** `cdde9ff13d283117d06ecccc566e355529ddc273`。GitHub Actions同SHA的五项工作流均已完成且`success`：Runtime TDD [39445017744](https://github.com/oudream/cx-visual-x3/actions/runs/39445017744)、工程组织 [39445017789](https://github.com/oudream/cx-visual-x3/actions/runs/39445017789)、TestCenter [39445018101](https://github.com/oudream/cx-visual-x3/actions/runs/39445018101)、Config L1 [39445017995](https://github.com/oudream/cx-visual-x3/actions/runs/39445017995)、配置公共底座 [39445017976](https://github.com/oudream/cx-visual-x3/actions/runs/39445017976)。本条提交只追加CI证据，不改变已验证源码。
+- 本轮实际完成：E08-10进程内串行/有界并行Foreach的迭代数据身份、两级嵌套归并、按迭代序输出、同Plan不同Flow隔离；`maxParallelIterations`显式限额且默认串行兼容；失败协作取消并等待非合作尾部真正结算，拒绝并行Break/Continue/Return。
+- **尚未验收，不得冒充已完成：** Studio自由编排画布完整入口与原图Join/调试，Try/Catch/Finally高级结构化异常，真实专业Provider跨进程安全/联锁与重启恢复、正式用户授权和规模化性能。R07仍为S3局部功能验收状态，**整轮未闭合，R08尚未启动**。
