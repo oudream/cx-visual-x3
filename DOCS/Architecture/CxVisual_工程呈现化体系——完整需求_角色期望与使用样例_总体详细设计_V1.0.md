@@ -7,6 +7,8 @@
 > 资料：`DOCS/Implementation/CxVisual_工程呈现化体系_30分钟分轮实施与验收_V1.0.md`、工程可视化 A/B/C 审计与 A+B 工作包、`DOCS/01_CxVisual_平台灵魂与架构宪法_V1.0_Review.md`、当前 `Applications/Studio`、`Mechanism/Core`、`Mechanism/Visual` 及开发者示例。
 >
 > **事实界限**：本稿在现有 EP01～EP15 追踪索引基础上扩写为详细规格；原始用户需求全文未作为逐字源提供，不应把本稿冒称为该原文的无遗漏转录。标注“目标”的行为不等于仓库已有代码。R01～R04 有已提交实现但**未获得同 SHA 完整 Windows 编译、WPF STA 和端到端验收证明**。
+>
+> **2026-10-20 融合修订说明**：结合《临时聊天2》的 Studio 工作区决议和已核读的《CxVisual_Studio_一级菜单与上下文Ribbon设计规范_V1.0.docx》，保留本稿原有十五组需求、六角色与五场景，重点强化中央配置/图元/流程三种编辑器、九项菜单和专业 Ribbon、资源/对象分层导航、Docking、主题及协同验收。**Studio V1.1 最终完整原稿尚未获取，因此只融合已经确认的信息，保留待核差异。**本修订继续维护一份综合文档，不另建平行规格。
 
 ---
 
@@ -58,7 +60,10 @@
 5. **EP01-05 统一查找**：工程/资源/对象/变量/属性/文本/错误搜索，GoToDefinition、FindUsages、History、Back/Forward，支持跨画布双向定位。
 6. **EP01-06 Workspace**：Workbench 切换只改变用户视图与工具供给，不另开第二工程；面板停靠与布局按用户/Workbench 恢复。
 7. **EP01-07 版本可见**：明确展示 MEM Revision、未保存状态、已构建计划版本、实际运行计划版本；新编辑必须提示运行计划是否过期。
-8. **反例/验收**：保存重开资源身份和打开位置一致；资源删除被引用时禁止静默留下悬空引用；断链、版本不符或面板重建可定位、可恢复。
+8. **EP01-08 编辑器分型**：资源选择应进入**配置组合面板**或其专业默认编辑器；进入图元资源内部采用**图元主画布**，进入逻辑/流程定义采用**流程主画布**；专业 Viewer 可扩展；资源不必一律使用绘图画布。
+9. **EP01-09 组合配置布局**：多子对象资源支持 1×N/2×N/3×N 自适应卡片布局；常规桌面倾向 2×N，实际列数依复杂度与宽度决定，仍待 V1.1 细化。
+10. **EP01-10 Shell 统一**：固定一级菜单、动态上下文 Ribbon、可停靠面板与多 Tab 管理；工程、运行和布局偏好必须分开保存，所有命令由原 Owner 执行。
+11. **反例/验收**：保存重开资源身份和打开位置一致；资源删除被引用时禁止静默留下悬空引用；配置/图元/流程三形态切换不创建第二工程状态；断链、版本不符或面板重建可定位、可恢复。
 
 ### EP02｜图元、场景和资源画布
 
@@ -77,6 +82,7 @@
 4. **EP03-04 选择一致**：Canvas、Outline、Property、专业预览同一对象/引用身份；批量操作中不允许意外退化为“仅最后一个被选对象”。
 5. **EP03-05 修改权威**：拖动过程可暂存交互预览，完成时统一由 MEM/MTC 事务提交；一次用户动作应对应易理解的 Undo 单元；事务失败不部分修改。
 6. **EP03-06 快捷操作**：多层快捷键路由和冲突处理、Esc 取消、键盘精调、上下文菜单、Undo/Redo 后视图与模型同步。
+7. **EP03-07 Undo 边界**：图元/流程画布的持久化编辑必须走原 MEM/MTC 可撤销事务；配置组合面板不强制逐键输入构建完整 Undo，但提交后仍遵守原工程/配置 Owner 的事务及历史规则。
 7. **反例/验收**：非法几何、不可选对象、锁定对象、跨不同父级组合、过期 Revision 和中断手势都不污染工程。
 
 ### EP04｜统一 Schema 属性编辑
@@ -174,6 +180,7 @@
 3. **EP14-03 逻辑与运行 API**：MOL 声明/关系、MOC 构建结果、MRK 命令/会话/调试、MDS 数据只读观察；权限由原 Owner 执行。
 4. **EP14-04 专业注册**：Descriptor/Schema、Editor/Viewer、工具箱/Top Command 贡献、专业校验、Provider 和安全能力注册。
 5. **EP14-05 易用性**：常用场景应由少数清晰步骤达成，错误诊断包含对象身份和修复提示；不能逼每个专业重写 Shell 与基础交互。
+6. **EP14-06 Studio 专业贡献接口**：专业注册受控 Editor/Viewer、配置模板、Schema属性编辑模板、Toolbox/Ribbon/菜单命令与诊断定位适配；生命周期由统一 Shell 管理，不直接持有主窗口或新建持久化真源。
 6. **验收**：有可编译的独立开发者示例，且从代码生成的工程能在 Studio 打开、编辑、保存并与原工具链共用模型。
 
 ### EP15｜质量、安全、可靠性和证据
@@ -193,6 +200,8 @@
 - **多资源并行**：同一工程 HMI、逻辑、AI 检测、CT Viewer 可以同时打开 Tab/Dock；保持跨视图导航回退历史、Dirty 和焦点。
 - **面板停靠**：Project Explorer、Toolbox、Properties、Variables、Diagnostics、Watch、Trace 按上下文展示、停靠、浮动、自动隐藏，布局按用户/Workbench 保存恢复。
 - **少步骤、不藏能力**：高级功能通过上下文、搜索、更多属性和专业贡献呈现；简单动作默认路径短，复杂功能不因“界面简洁”被阉割。
+- **配置/图元/流程三种主编辑器**：选中资源与进入资源内部定义是不同操作；相同 Shell、不同编辑形式，具体遵循 §12§，其中配置组合面板不强求画布式 Undo。
+- **两体系分工**：Studio 统一界面体系提供 Shell、导航、菜单、Ribbon、Docking 与编辑器宿主；工程呈现化负责其上的资源/图形/逻辑/运行/调试真实能力，避免重复架构。
 
 ---
 
@@ -268,6 +277,8 @@ using (MEMEngineeringSession project = MEMEngineering.Create("产线工程"))
 | 9 | 预览并注入 A 故障、B 正常，再保存重开 | A 变红、B 正常；数据/事件不串线，订阅可清理 |
 | 10 | 构建后授权运行并检查 Trace | MOC 计划版本可见，MRK/专业侧确认动作结果，日志可返回到该实例 |
 
+**Studio 界面操作链补充**：资源树选择电机配置→中央配置组合面板；进入电机 Symbol 定义→中央图元主画布→右侧 Schema/Style；返回 HMI 页面放置两次→选择实例显示对应覆盖与 MDS 绑定。Group/Element 属于该资源的 Object Outline，不被重复包装成顶层资源；从实例跳到共享定义后可返回原页面与位置。
+
 **验收场景 B**：一个电机 Symbol、两实例、各自状态与变量、Theme/状态动画、真实 Widget、合法命令/拒绝命令、保存重开、Revision 不被运行帧污染，**缺一项不签收**。
 
 ## 7. 使用样例 U3：X-Ray 2D 检测工程——主流程与多个专业子流程（C 场景）
@@ -303,6 +314,8 @@ using (MEMEngineeringSession project = MEMEngineering.Create("产线工程"))
 6. 在 AI 子流程故意给出不兼容模型/坏参数；通过 Trace/SourceMap：**AI失败节点 → AI调用块 → 检测主流程 → HMI工位状态**。
 7. 修改参数 → MEM 事务更新 → 再构建 → 明确发布/切换运行计划 → 重跑 → 比较结果；保存重开保持映射和定义。
 8. 真实机台启动另经设备授权/安全互锁确认，不能因仿真通过自动发送运控/曝光指令。
+
+**Studio 界面操作链补充**：资源树先选检测方案/设备算法配置，中央显示配置组合面板；进入主流程后切成流程画布；双击 AI/CV/复测子流程分别打开独立 Tab；图像结果通过专业 Viewer 查看。活动 Tab 控制专业 Ribbon 和右侧属性，底部 Watch/Trace 对同一实例显示数据。故障可按 SourceMap 回到 AI 子流程节点→父流程调用→HMI 工位；不能用几张孤立的可视化截图代替真实导航。
 
 **验收场景 C**：必须有**一张主流程 + 多张独立专业子流程**、实际可引用的 Port、MOC 计划、MRK 观察与 Trace 定位、HMI 双向追踪、错误后完整重跑证据；一张“看起来复杂的编排图”不能代替执行事实。
 
@@ -358,7 +371,7 @@ using (MEMEngineeringSession project = MEMEngineering.Create("产线工程"))
                               Inspection/Simulation
 ```
 
-**设计定案**：工程呈现化是穿越这些既有 Owner 的**共性用户体验/适配体系**，不是新增一个持有所有状态的超级核心项目。
+**设计定案**：工程呈现化是穿越这些既有 Owner 的**共性用户体验/适配体系**，不是新增一个持有所有状态的超级核心项目。**Studio 是界面容器和命令/停靠规范，工程呈现化负责容器里真实的工程能力及生命周期**，同一 Resource/Definition/Instance/RunSession 和 SourceMap 贯穿两者，禁止“工程可视化 Shell”和“Studio Shell”重复建设。
 
 ### 10.2 项目、责任与依赖
 
@@ -586,7 +599,7 @@ Foundation.Geometry 负责数学/Path/Transform/命中基础；Mechanism.Visual 
 | **Run** | 按生产安全策略限制 | 执行已授权的编译计划、状态/告警/数据观察 | 用新编辑覆盖正在运行的旧计划 |
 | **Debug** | 调试目标与编辑资源分离 | 断点、单步、Watch、Trace、错误定位与安全复现 | 绕过 MRK 会话或专业联锁调试真实设备 |
 
-**Build/Publish 是阶段化工作流，不是第五个工程模型模式**。切换模式必须检查未保存/未构建/计划已过期/会话未释放/未授权情况；返回 Design 后临时状态不得滞留到源定义。
+**Build/Publish 是阶段化工作流，不是第五个工程模型模式**。切换模式必须检查未保存/未构建/计划已过期/会话未释放/未授权情况；返回 Design 后临时状态不得滞留到源定义。固定菜单的“调试/运行/发布”是**不同功能入口分组**，不能错误地当成三个新增运行模式。
 
 ## 17. 专业扩展的集成方式
 
@@ -634,6 +647,16 @@ Foundation.Geometry 负责数学/Path/Transform/命中基础；Mechanism.Visual 
 | **开发者 SDK 易用性** | EP01/04/09/13/14/15 | R1/R2/R6 | 原 Core/Visual/Runtime/专业接口 | 外部独立示例建真工程、可打开保存、无UI核心测试 |
 | **安全/交付** | EP08/10/11/12/15 | R4/R5/R6 | 专业权限/设备联锁、MRK、Audit | 无授权拒绝、仿真≠现场、真实机台授权与审计 |
 
+### Studio Shell 交互补充验收
+
+| 跨界面路径 | 对应需求 | 必须核验 |
+|---|---|---|
+| 资源树→配置组合面板 | EP01/04/14 | 1×N/2×N/3×N合适布局、同Owner保存与失败回滚 |
+| 资源树→图元/流程画布→对象树 | EP01/02/03/09 | 同一工程ID、真实Undo、双向选中和返回 |
+| 文档Tab→动态专业Ribbon | EP01/08/13/14 | 当前Workbench/资源/模式/权限切换命令实际变化 |
+| Docking/浅深主题/布局恢复 | EP01/13/15 | 浮动停靠、重启恢复、订阅释放、DPI和深灰/白底样式 |
+| AI节点→父流程→HMI故障定位 | EP09/10/11/12 | 真实SourceMap和Trace，计划与实例身份正确 |
+
 ### A/B/C 最终验收不可互相替代
 
 - **A**：九个 Shape、复杂 Bezier/Path、多选/精确变换、层级锁定、Undo/Redo、真实鼠键、保存重开全过。
@@ -648,7 +671,8 @@ Foundation.Geometry 负责数学/Path/Transform/命中基础；Mechanism.Visual 
 | MEM 工程、MPM 属性与资源、MTC 事务、现有 Visual/WPF Studio 基础能力 | 仓库源码存在、已有示例与测试代码 | 用为既有 Owner/API 的依据；仍需同 SHA Windows 实测 |
 | EP01～EP15 需求追踪、R01～R04 的阶段实施记录 | 仓库文档和已提交源码 | 用作需求来源与已有纵向切片；不是功能全部完成证明 |
 | 当前 R04 同定义多实例批量、Mixed、MPM IsReadOnly | 当前源码已声明，配有 Core/WPF 测试代码 | 目标的部分实现；不得声明已在 Windows 通过 |
-| 停靠工作区、动态 Top Ribbon、全搜索与全部专业 Schema 编辑器 | 目标设计，来源于既定统一工作区规格与本稿需求 | 属于待落实能力，不冒称现有 Studio 完整具备 |
+| 停靠工作区、动态 Top Ribbon、全搜索与全部专业 Schema 编辑器 | 目标设计；已有《临时聊天2》讨论方向及实际读到的 V1.0 Ribbon 规范；当前 Studio XAML 仍见示例式 WrapPanel 工具区 | 属于待落实能力，不冒称现有 Studio 已完整具备固定九项菜单与 Docking |
+| 《Studio V1.1》完整章节与 AvalonDock 版本 | 尚未取得 V1.1 最终全文、最终图片与版本裁决 | §12.10§ 单列待核项，现有 4.x/5.x 不冒称已定案 |
 | 六专业 Workbench 的全生命周期集成与 A/B/C 最终验收 | 平台宪法、需求与真实业务场景目标 | 需逐项实现、运行/调试/真实设备验证 |
 | 跨定义同名兼容 Schema 批量编辑、表达式/复合值编辑器、完整用户布局持久化 | 需在下一阶段进行详细契约/性能裁决 | 未定细节不能通过 UI 猜测行为；必须兼顾安全与简便 |
 
@@ -662,6 +686,7 @@ Foundation.Geometry 负责数学/Path/Transform/命中基础；Mechanism.Visual 
 - 真实 A/B 工作包：`DOCS/Implementation/CxVisual_工程可视化_工作包A+B_完整实现与真实验收.md`。
 - A/B/C 审计：`DOCS/Implementation/CxVisual_工程可视化_ABC_源码与Windows验收审计_V1.0.md`。
 - 平台架构原则：`DOCS/01_CxVisual_平台灵魂与架构宪法_V1.0_Review.md`。
+- Studio 菜单与 Ribbon 依据：已核读《CxVisual_Studio_一级菜单与上下文Ribbon设计规范_V1.0.docx》；《CxVisual Studio 统一界面架构与完整设计规范 V1.1》当前只恢复到已讨论的要点，尚待完整原稿核对。
 - 真实开发者范例：`Examples/VisualAuthoring/EngineeringVisualQuickStart.cs`、`Examples/EngineeringOrganization/H03ContractsQuickStart.cs`。
 - 工程/属性与事务：`Mechanism/Core/Engineering/`；场景投影：`Mechanism/Visual/`；WPF：`Mechanism/Presentation.Wpf/`；Studio：`Applications/Studio/`。
 - 自动化测试：`Tests/ArchitectureSmoke/OrganizationStudioTests.cs`、`Tests/ArchitectureSmoke/OrganizationH03ContractTests.cs`。
@@ -669,7 +694,7 @@ Foundation.Geometry 负责数学/Path/Transform/命中基础；Mechanism.Visual 
 
 ## 附录 B｜规格追踪使用规则
 
-设计讨论以 `EPxx-yy` 引用需求；工程用户反馈以 `U1～U5` 指向场景；后续全类架构每个类型标记 Owner + 需求 ID + 用例 + 证据状态；实现记录仍在原 30 分钟分轮文档统一维护，不复制成多套进度台账。
+设计讨论以 `EPxx-yy` 引用需求；工程用户反馈以 `U1～U5` 指向场景；Studio 与工程呈现化协作引用 `§12.1～12.10`；后续全类架构每个类型标记 Owner + 需求 ID + 用例 + 证据状态，区分已定案与待核 V1.1；实现记录仍在原 30 分钟分轮文档统一维护，不复制成多套进度台账。
 
 **本文件的价值是规范“应该能干什么、谁怎么用、各体系怎样协作”；它本身不代表功能已交付。**
 
