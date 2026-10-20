@@ -42,10 +42,12 @@ jobs:
       - name: Guard architecture dependencies
         shell: pwsh
         run: |
+          # 两个脚本是PowerShell脚本，用throw表示失败；它们不设置LASTEXITCODE。
+          # 与原先其他工具留下的LASTEXITCODE隔离，避免输出PASS却被误判。
           & .\Build\Verify-Structure.ps1
-          if ($LASTEXITCODE -ne 0) { throw 'Structure verification failed' }
+          if (-not $?) { throw 'Structure verification failed' }
           & .\Build\Verify-OwnerDependencies.ps1
-          if ($LASTEXITCODE -ne 0) { throw 'Owner dependency verification failed' }
+          if (-not $?) { throw 'Owner dependency verification failed' }
       - name: Preserve STA self-test evidence
         if: always()
         uses: actions/upload-artifact@v4

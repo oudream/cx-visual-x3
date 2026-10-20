@@ -50,13 +50,16 @@ namespace CxVisual.Tests.ArchitectureSmoke
             }
             if(button==null)throw new InvalidOperationException("Missing Studio button '"+label+
                 "'; visible controls: "+string.Join(" | ",buttons.Select(b=>b.Content==null?"(none)":b.Content.ToString())));
+            Console.WriteLine("STUDIO-WPF before click: "+label);
             var peer=new ButtonAutomationPeer(button);((IInvokeProvider)peer.GetPattern(PatternInterface.Invoke)).Invoke();Pump();
+            Console.WriteLine("STUDIO-WPF after click: "+label);
         }
         private static void OpenEditor(Window window, string contentId)
         {
             // S1 AvalonDock布局：通过实际Studio公开的多文档入口打开，而不是假定历史TabItem结构。
             var method=window.GetType().GetMethod("OpenStudioDocument");
             Check(method!=null,"Studio must expose a document-opening command");
+            Console.WriteLine("STUDIO-WPF activating: "+contentId);
             method.Invoke(window,new object[]{contentId});
             Pump();
             window.UpdateLayout();
