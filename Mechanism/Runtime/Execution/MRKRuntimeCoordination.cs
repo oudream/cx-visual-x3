@@ -253,7 +253,9 @@ namespace CxVisual.Mechanism.Runtime.Execution
         }
         public bool Receive(Guid requestId, object payload)
         { return Finish(requestId, null, MRKCorrelationState.Received, payload); }
-        // 已结算旧Ticket的Dispose/超时不得移除同RequestId重新登记的新Ticket。
+        // 请求自身超时/Dispose只能终结当前Ticket实例，避免晚到的清理回调
+        // 撤销同ID新订阅；Provider实际请求须使用全局唯一RequestId辨别迟到网络应答。
+        // expected==null专用于外部Receive；外部无法用同ID辨别不同代的应答。
         internal bool Finish(Guid requestId, MRKCorrelationTicket expected,
             MRKCorrelationState state, object payload)
         {

@@ -23,6 +23,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             R07_FirstSuccessfulAllFailedIsNotSuccess();
             R07_ConditionalJoinAndExplicitFailureCancel();
             R07_CorrelationReceiveCancelRaceHasSingleResult();
+            R07_TimedOutTicketCannotDisposeNewRegistration();
         }
         private static void Check(bool ok, string message)
         { if (!ok) throw new InvalidOperationException("Runtime协作测试: " + message); }
@@ -472,6 +473,31 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         "竞态结算后仍可重复匹配或残留请求");
                 }
             }
+        }
+
+        private static void R07_TimedOutTicketCannotDisposeNewRegistration()
+        {
+            MRKCorrelationWaiter waiter = new MRKCorrelationWaiter();
+            Guid requestId = Guid.NewGuid();
+            MRKCorrelationTicket old = waiter.Register(requestId);
+            var first = Await(old.WaitAsync(TimeSpan.FromMilliseconds(15)));
+            Check(first.State == MRKCorrelationState.TimedOut,
+                "预期的旧请求超时未被正确结算");
+            using (MRKCorrelationTicket current = waiter.Register(requestId))
+            {
+                old.Dispose();
+                Check(waiter.PendingCount == 1 && !current.Completion.IsCompleted,
+                    "已超时旧Ticket的Dispose错误撤销新注册");
+                Check(waiter.Receive(requestId, "new-reply"),
+                    "旧Ticket清理造成新应答被丢弃");
+                var settled = Await(current.WaitAsync(TimeSpan.FromSeconds(1)));
+                Check(settled.State == MRKCorrelationState.Received &&
+                    (string)settled.Payload == "new-reply",
+                    "新Ticket结果被过期超时污染");
+            }
+            old.Dispose();
+            Check(waiter.PendingCount == 0,
+                "旧超时与新完成后仍残留未结算的请求");
         }
 
     }

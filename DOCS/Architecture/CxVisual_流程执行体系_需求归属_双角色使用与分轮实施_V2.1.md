@@ -349,3 +349,8 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 - 固定SHA `a886b859a9ac05c33bb4642291311fd2fab1f602` 的Windows Runtime `39402361803`、工程组织 `39402362086`、Config L1 `39402362032`、配置公共底座 `39402361826`均success；该提交未修改TestCenter监听路径，因此没有同SHA的TestCenter运行记录。
 - 前一提交 `7b5274f8e5e066d7aec7aadc4b1d04f854c5dd74` 对原MRK条件汇合公开契约补充条件谓词错误与安全尾部的说明，相关Windows门禁需独立看固定SHA，不能借其他SHA替代。
 - 本次加强反证：谓词异常发生时，即使还有不协作取消的尾部任务，`FirstMatchingAsync`必须等该任务真实结算再传播错误；并确认已请求取消，绝不把本地退出当设备安全停机。此次`Tests/ArchitectureSmoke`修改能同时触发工程组织Windows回归；与原MRK修改一道保证最终SHA五项门禁均触发。
+
+### R07 请求超时重登记回归与工作流路径闭环
+
+- 之前同ID旧票据在应答完成后Dispose的反证已实现；本次补充更危险的**旧请求自然超时→新票据重登记→旧票据Dispose**反证，要求旧回调不得注销新订阅，确认后PendingCount=0。网络层复用同RequestId并不安全，必须给每次外部请求唯一ID，MRK不能伪造跨代网络应答识别。
+- 同提交修改原MRK协调器的公开注释与ArchitectureSmoke运行反证，因此同时触发TestCenter（监听Mechanism）与工程组织（监听ArchitectureSmoke）及Runtime/Config对应门禁。**本最终增量不以触发成功代替实际通过**；需固定提交SHA所有门禁success才算这部分S3通过。R07阶段性未闭合风险仍保留，R08尚未开始。
