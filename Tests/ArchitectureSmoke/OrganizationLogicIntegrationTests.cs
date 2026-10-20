@@ -28,6 +28,13 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 _items.Add(id, new MRKResolvedCapability(action));
                 return this;
             }
+            internal TestResolver RegisterData(string id,
+                Func<MRKExecutionContext,CancellationToken,Task<object>> action,
+                IDictionary<string,Type> outputs,IEnumerable<MRKCapabilityInput> inputs)
+            {
+                _items.Add(id,new MRKResolvedCapability(action,dataOutputs:outputs,inputs:inputs));
+                return this;
+            }
             public bool TryResolve(string id, out MRKResolvedCapability result)
             { return _items.TryGetValue(id, out result); }
         }
@@ -66,6 +73,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             G07ProjectReleaseLockAndAuthorization();
             G06CpuVisionThroughMOC();
             G04ParameterSubflowIsolation();
+            V2NamedSubflowDataContracts();
             CThreeTierXRayTwoSubflows();
             V2LayoutContract();
             V2BulkEditingClipboard();
@@ -840,6 +848,103 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 if(System.IO.File.Exists(path))System.IO.File.Delete(path);
                 if(System.IO.File.Exists(path+".cx-lock"))
                     System.IO.File.Delete(path+".cx-lock");
+            }
+        }
+
+        // One engineering Content calls a typed sub-Content; all output commits use the original MRK/MDS.
+        private static void V2NamedSubflowDataContracts()
+        {
+            var session=MEMEngineering.Create("V2 typed child data");
+            var page=session.AddPage("Top");
+            var child=session.AddContent(session.Project,"Double Content");
+            string path=System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                "moc-public-"+Guid.NewGuid().ToString("N")+".cxproj");
+            try
+            {
+                Guid leaf=Guid.Empty;
+                MOCFlowBuilder.Edit(session,child,b=>{
+                    leaf=b.Step("Double",new[]{
+                        new MPCPortDescriptor("N",MPCPortDirection.Input,"int",MPCPortKind.Data),
+                        new MPCPortDescriptor("Doubled",MPCPortDirection.Output,"int",MPCPortKind.Data)
+                    });
+                    b.ExposeInput("Number",leaf,"N");
+                    b.ExposeOutput("LeafValue",leaf,"Doubled");
+                });
+                var childRead=MOLWiringCodec.Get(session.GetSnapshot().Find(child.Id));
+                Check(childRead.FlowInputs["Number"].BlockId==leaf&&
+                      childRead.FlowOutputs["LeafValue"].PortMemberId=="Doubled",
+                    "V2 child public ports were not persisted");
+                Guid seed=Guid.Empty,call=Guid.Empty,plus=Guid.Empty,sourceLink=Guid.Empty;
+                session.Edit("引用可复用子Content",e=>{
+                    e.Reference(page.RootContent,child,"DoubleRef");return true;
+                }).RequireValue();
+                MOCFlowBuilder.Edit(session,page.RootContent,b=>{
+                    seed=b.Step("Seed",new[]{
+                        new MPCPortDescriptor("Value",MPCPortDirection.Output,"int",MPCPortKind.Data)});
+                    call=b.Step("moc.invoke:"+child.Id.ToString("N"),new[]{
+                        new MPCPortDescriptor("Number",MPCPortDirection.Input,"int",MPCPortKind.Data),
+                        new MPCPortDescriptor("LeafValue",MPCPortDirection.Output,"int",MPCPortKind.Data)});
+                    plus=b.Step("Plus",new[]{
+                        new MPCPortDescriptor("N",MPCPortDirection.Input,"int",MPCPortKind.Data),
+                        new MPCPortDescriptor("Answer",MPCPortDirection.Output,"int",MPCPortKind.Data)});
+                    b.Connect(seed,"Done",call,"Start");
+                    b.Connect(call,"Done",plus,"Start");
+                    sourceLink=b.Connect(seed,"Value",call,"Number",MPCPortKind.Data);
+                    b.Connect(call,"LeafValue",plus,"N",MPCPortKind.Data);
+                    b.ExposeOutput("Final",plus,"Answer");
+                });
+                var seedValue=4;
+                var providers=new TestResolver()
+                    .RegisterData("Seed",(c,t)=>{
+                        c.Data.Return("Value",seedValue);return Task.FromResult((object)true);
+                    },new Dictionary<string,Type>{{"Value",typeof(int)}},null)
+                    .RegisterData("Double",(c,t)=>{
+                        c.Data.Return("Doubled",c.Data.Get<int>("N")*2);
+                        return Task.FromResult((object)true);
+                    },new Dictionary<string,Type>{{"Doubled",typeof(int)}},
+                      new[]{new MRKCapabilityInput("N",typeof(int))})
+                    .RegisterData("Plus",(c,t)=>{
+                        c.Data.Return("Answer",c.Data.Get<int>("N")+1);
+                        return Task.FromResult((object)true);
+                    },new Dictionary<string,Type>{{"Answer",typeof(int)}},
+                      new[]{new MRKCapabilityInput("N",typeof(int))});
+                session.SaveAs(path);
+                var reopened=MEMEngineering.Open(path);
+                try
+                {
+                    var after=MOLWiringCodec.Get(reopened.GetSnapshot().Find(child.Id));
+                    Check(after.FlowInputs.ContainsKey("Number")&&after.FlowOutputs.ContainsKey("LeafValue"),
+                        "V2 child public contract did not survive actual disk roundtrip");
+                    var compiled=new MOCBuildService().Build(reopened.GetSnapshot(),
+                        page.RootContent.Id,providers);
+                    Check(compiled.Succeeded,"V2 child data build: "+
+                        string.Join(";",compiled.Diagnostics.Select(d=>d.Code+":"+d.Message)));
+                    Check(compiled.Plan.Plan.DataExportTypes["Final"]==typeof(int),
+                        "root DataExports not committed");
+                    MOCTraceView trace;
+                    var run=Execute(compiled.Plan,null,out trace);
+                    Check(run.State==MRKFlowState.Completed&&
+                        run.GetCommittedOutput<int>("Final")==9,
+                        "typed root→child→root data not executed");
+                    Check(trace.Events.Count>0&&compiled.Plan.SourceMap.Find(leaf).Any(),
+                        "nested executed content source not traceable");
+                    seedValue=10;
+                    var again=Execute(compiled.Plan,null,out trace);
+                    Check(again.State==MRKFlowState.Completed&&
+                        again.GetCommittedOutput<int>("Final")==21,
+                        "two Flow invocations shared prior committed output");
+                    MOCFlowBuilder.Edit(reopened,reopened.Project.Pages[0].RootContent,b=>b.Disconnect(sourceLink));
+                    var invalid=new MOCBuildService().Build(reopened.GetSnapshot(),
+                        page.RootContent.Id,providers);
+                    Check(!invalid.Succeeded,"unmapped required child input compiled successfully");
+                }
+                finally{reopened.Close(true);}
+            }
+            finally
+            {
+                session.Close(true);
+                if(System.IO.File.Exists(path))System.IO.File.Delete(path);
+                if(System.IO.File.Exists(path+".cx-lock"))System.IO.File.Delete(path+".cx-lock");
             }
         }
 

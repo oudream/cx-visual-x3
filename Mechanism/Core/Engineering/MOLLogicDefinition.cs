@@ -524,7 +524,9 @@ namespace CxVisual.Mechanism.Core
             IEnumerable<MOLSelectionGroup> groups=null,
             IDictionary<Guid,IDictionary<string,string>> parameters=null,
             IDictionary<Guid,MOLStepPolicy> policies=null,
-            IDictionary<Guid,MOLStateMachineDefinition> stateMachines=null)
+            IDictionary<Guid,MOLStateMachineDefinition> stateMachines=null,
+            IDictionary<string,MOLBlockEndpoint> flowInputs=null,
+            IDictionary<string,MOLBlockEndpoint> flowOutputs=null)
         {
             EntryBlockId=entryBlockId;
             Blocks=new ReadOnlyCollection<MOLControlBlock>((blocks??new MOLControlBlock[0]).ToArray());
@@ -563,6 +565,12 @@ namespace CxVisual.Mechanism.Core
                 machines.Add(item.Key,item.Value);
             }
             StateMachines=new ReadOnlyDictionary<Guid,MOLStateMachineDefinition>(machines);
+            FlowInputs=new ReadOnlyDictionary<string,MOLBlockEndpoint>(
+                new Dictionary<string,MOLBlockEndpoint>(flowInputs??
+                    new Dictionary<string,MOLBlockEndpoint>(),StringComparer.Ordinal));
+            FlowOutputs=new ReadOnlyDictionary<string,MOLBlockEndpoint>(
+                new Dictionary<string,MOLBlockEndpoint>(flowOutputs??
+                    new Dictionary<string,MOLBlockEndpoint>(),StringComparer.Ordinal));
             Validate();
         }
         public Guid EntryBlockId{get;private set;}
@@ -575,6 +583,9 @@ namespace CxVisual.Mechanism.Core
         public IReadOnlyDictionary<Guid,IReadOnlyDictionary<string,string>> Parameters{get;private set;}
         public IReadOnlyDictionary<Guid,MOLStepPolicy> Policies{get;private set;}
         public IReadOnlyDictionary<Guid,MOLStateMachineDefinition> StateMachines{get;private set;}
+        /// <summary>对外公开的子流程端口别名→内部节点端口（仍属同一 Logic Aspect）。</summary>
+        public IReadOnlyDictionary<string,MOLBlockEndpoint> FlowInputs{get;private set;}
+        public IReadOnlyDictionary<string,MOLBlockEndpoint> FlowOutputs{get;private set;}
         public void Validate()
         {
             // G04：合法空草稿可保存，不能交给MOC/MRK执行。
@@ -582,7 +593,7 @@ namespace CxVisual.Mechanism.Core
             {
                 if(EntryBlockId!=Guid.Empty||Links.Count!=0||Ports.Count!=0||
                     Positions.Count!=0||Groups.Count!=0||Parameters.Count!=0||
-                    Policies.Count!=0||StateMachines.Count!=0)
+                    Policies.Count!=0||StateMachines.Count!=0||FlowInputs.Count!=0||FlowOutputs.Count!=0)
                     throw new InvalidOperationException("wiring.empty_draft_has_references");
                 return;
             }
@@ -625,6 +636,34 @@ namespace CxVisual.Mechanism.Core
                 }
                 schemas.Add(b.Id,lookup);
             }
+            if(FlowInputs.Count+FlowOutputs.Count>256)
+                throw new InvalidOperationException("wiring.public_ports_budget");
+            Action<IReadOnlyDictionary<string,MOLBlockEndpoint>,MPCPortDirection> checkPublic =
+                (publicPorts,direction)=>{
+                    foreach(var exposed in publicPorts)
+                    {
+                        string name=exposed.Key;
+                        if(string.IsNullOrWhiteSpace(name)||name.Length>128||name.Contains(".")||
+                           name.Any(char.IsControl)||exposed.Value==null)
+                            throw new InvalidOperationException("wiring.invalid_public_port");
+                        Dictionary<string,MPCPortDescriptor> registered;
+                        MPCPortDescriptor port;
+                        if(!schemas.TryGetValue(exposed.Value.BlockId,out registered)||
+                           !registered.TryGetValue(exposed.Value.PortMemberId,out port)||
+                           port.Kind!=MPCPortKind.Data||port.Direction!=direction)
+                            throw new InvalidOperationException("wiring.public_port_contract");
+                        if(direction==MPCPortDirection.Input &&
+                           (Links.Any(l=>(l.Kind==MPCPortKind.Data||l.Kind==MPCPortKind.Stream)&&
+                               l.Target.Equals(exposed.Value)) ||
+                            (Parameters.ContainsKey(exposed.Value.BlockId)&&
+                             Parameters[exposed.Value.BlockId].ContainsKey(exposed.Value.PortMemberId))))
+                            throw new InvalidOperationException("wiring.public_input_conflict");
+                    }
+                };
+            checkPublic(FlowInputs,MPCPortDirection.Input);
+            checkPublic(FlowOutputs,MPCPortDirection.Output);
+            if(FlowInputs.Values.GroupBy(x=>x).Any(x=>x.Count()!=1))
+                throw new InvalidOperationException("wiring.public_input_duplicate_target");
             foreach(var group in Parameters)
             foreach(var entry in group.Value)
             {
@@ -738,7 +777,8 @@ namespace CxVisual.Mechanism.Core
                 .ToDictionary(x=>x.Key,x=>x.Count(),StringComparer.Ordinal);
             foreach(var b in Blocks)foreach(var port in Ports[b.Id])
                 if(port.Required&&port.Direction!=MPCPortDirection.Output&&
-                    !incoming.ContainsKey(b.Id.ToString("N")+":"+port.MemberId))
+                    !incoming.ContainsKey(b.Id.ToString("N")+":"+port.MemberId)&&
+                    !FlowInputs.Values.Any(x=>x.BlockId==b.Id&&x.PortMemberId==port.MemberId))
                     throw new InvalidOperationException("wiring.required_port:"+b.Id+":"+port.MemberId);
             var reached=new HashSet<Guid>();
             var pending=new Queue<Guid>();pending.Enqueue(EntryBlockId);
@@ -821,6 +861,16 @@ namespace CxVisual.Mechanism.Core
                         group.Value.Select(item=>new XElement("Value",
                             new XAttribute("port",item.Key),
                             new XAttribute("text",item.Value)))))));
+            if(def.FlowInputs.Count>0)
+                root.Add(new XElement("FlowInputs",def.FlowInputs.Select(x=>
+                    new XElement("Port",new XAttribute("name",x.Key),
+                        new XAttribute("block",x.Value.BlockId.ToString("N")),
+                        new XAttribute("member",x.Value.PortMemberId)))));
+            if(def.FlowOutputs.Count>0)
+                root.Add(new XElement("FlowOutputs",def.FlowOutputs.Select(x=>
+                    new XElement("Port",new XAttribute("name",x.Key),
+                        new XAttribute("block",x.Value.BlockId.ToString("N")),
+                        new XAttribute("member",x.Value.PortMemberId)))));
             if(def.Groups.Count>0)
                 root.Add(new XElement("Groups",def.Groups.Select(g=>new XElement("Group",
                     new XAttribute("id",g.Id.ToString("N")),new XAttribute("name",g.Name),
@@ -839,10 +889,10 @@ namespace CxVisual.Mechanism.Core
                 var root=XDocument.Load(reader).Root;
                 if(root==null||root.Name!="MOL"||(string)root.Attribute("v")!="2"||
                     root.Element("Blocks")==null||root.Element("Links")==null||
-                    root.Elements().Count()<2||root.Elements().Count()>6||
+                    root.Elements().Count()<2||root.Elements().Count()>8||
                     root.Elements().Any(x=>x.Name!="Blocks"&&x.Name!="Links"&&
                         x.Name!="Groups"&&x.Name!="Parameters"&&x.Name!="Policies"&&
-                        x.Name!="StateMachines")||
+                        x.Name!="StateMachines"&&x.Name!="FlowInputs"&&x.Name!="FlowOutputs")||
                     root.Elements().GroupBy(x=>x.Name).Any(x=>x.Count()!=1))
                     throw new InvalidDataException("wiring.schema");
                 string rawEntry=(string)root.Attribute("entry");
@@ -929,8 +979,24 @@ namespace CxVisual.Mechanism.Core
                             (string)edge.Attribute("event"),(string)edge.Attribute("to"))).ToArray();
                     stateMachines.Add(id,new MOLStateMachineDefinition(states,transitions));
                 }
+                Func<string,Dictionary<string,MOLBlockEndpoint>> readPublic=tag=>{
+                    var result=new Dictionary<string,MOLBlockEndpoint>(StringComparer.Ordinal);
+                    XElement node=root.Element(tag);
+                    if(node!=null)
+                    {
+                        if(node.Elements().Any(x=>x.Name!="Port"))throw new InvalidDataException("wiring.public_port_schema");
+                        foreach(var item in node.Elements("Port"))
+                        {
+                            string name=(string)item.Attribute("name");
+                            if(string.IsNullOrWhiteSpace(name))throw new InvalidDataException("wiring.public_port_name");
+                            result.Add(name,new MOLBlockEndpoint(ReadGuid(item,"block"),
+                                (string)item.Attribute("member")));
+                        }
+                    }
+                    return result;
+                };
                 return new MOLWiringDefinition(entry,blocks,ports,links,positions,groups,parameters,
-                    policies,stateMachines);
+                    policies,stateMachines,readPublic("FlowInputs"),readPublic("FlowOutputs"));
             }
         }
         private static Guid ReadGuid(XElement x,string name)

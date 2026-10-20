@@ -291,6 +291,10 @@ namespace CxVisual.Mechanism.Orchestration
             new Dictionary<Guid,MOLStepPolicy>();
         private readonly Dictionary<Guid,MOLStateMachineDefinition> _stateMachines=
             new Dictionary<Guid,MOLStateMachineDefinition>();
+        private readonly Dictionary<string,MOLBlockEndpoint> _flowInputs=
+            new Dictionary<string,MOLBlockEndpoint>(StringComparer.Ordinal);
+        private readonly Dictionary<string,MOLBlockEndpoint> _flowOutputs=
+            new Dictionary<string,MOLBlockEndpoint>(StringComparer.Ordinal);
         private Guid _entry;
         private MOCFlowBuilder(MOLWiringDefinition current)
         {
@@ -305,6 +309,30 @@ namespace CxVisual.Mechanism.Orchestration
                 _parameters.Add(pair.Key,pair.Value.ToDictionary(k=>k.Key,k=>k.Value,StringComparer.Ordinal));
             foreach(var pair in current.Policies)_policies.Add(pair.Key,pair.Value);
             foreach(var pair in current.StateMachines)_stateMachines.Add(pair.Key,pair.Value);
+            foreach(var pair in current.FlowInputs)_flowInputs.Add(pair.Key,pair.Value);
+            foreach(var pair in current.FlowOutputs)_flowOutputs.Add(pair.Key,pair.Value);
+        }
+        /// <summary>公开子 Content 输入端口，仍使用现有内部 Port Schema 与 Logic Aspect。</summary>
+        public void ExposeInput(string publicName,Guid blockId,string inputPort)
+        {
+            if(string.IsNullOrWhiteSpace(publicName)||_flowInputs.ContainsKey(publicName))
+                throw new InvalidOperationException("moc.flow_input_duplicate");
+            _flowInputs.Add(publicName,new MOLBlockEndpoint(blockId,inputPort));
+        }
+        /// <summary>将一个 Data.Output 发布给父流程；不能直接绕过子流程提交屏障。</summary>
+        public void ExposeOutput(string publicName,Guid blockId,string outputPort)
+        {
+            if(string.IsNullOrWhiteSpace(publicName)||_flowOutputs.ContainsKey(publicName))
+                throw new InvalidOperationException("moc.flow_output_duplicate");
+            _flowOutputs.Add(publicName,new MOLBlockEndpoint(blockId,outputPort));
+        }
+        public void RemoveExposedInput(string publicName)
+        {
+            if(!_flowInputs.Remove(publicName))throw new InvalidOperationException("moc.flow_input_missing");
+        }
+        public void RemoveExposedOutput(string publicName)
+        {
+            if(!_flowOutputs.Remove(publicName))throw new InvalidOperationException("moc.flow_output_missing");
         }
         public Guid LastBlockId{get{return _blocks.Count==0?Guid.Empty:_blocks[_blocks.Count-1].Id;}}
         public Guid Step(MOCCapabilityDescriptor descriptor)
@@ -361,6 +389,10 @@ namespace CxVisual.Mechanism.Orchestration
             _parameters.Remove(blockId);
             _policies.Remove(blockId);
             _stateMachines.Remove(blockId);
+            foreach(string key in _flowInputs.Where(x=>x.Value.BlockId==blockId).Select(x=>x.Key).ToArray())
+                _flowInputs.Remove(key);
+            foreach(string key in _flowOutputs.Where(x=>x.Value.BlockId==blockId).Select(x=>x.Key).ToArray())
+                _flowOutputs.Remove(key);
             _links.RemoveAll(x=>x.Source.BlockId==blockId||x.Target.BlockId==blockId);
             RemoveGroupMembers(new HashSet<Guid>(new[]{blockId}));
             if(_entry==blockId)_entry=_blocks.Count==0?Guid.Empty:_blocks[0].Id;
@@ -654,6 +686,10 @@ namespace CxVisual.Mechanism.Orchestration
             _blocks.RemoveAll(x=>removed.Contains(x.Id));
             _links.RemoveAll(x=>removed.Contains(x.Source.BlockId)||removed.Contains(x.Target.BlockId));
             foreach(Guid id in selected){_ports.Remove(id);_positions.Remove(id);_parameters.Remove(id);_policies.Remove(id);_stateMachines.Remove(id);}
+            foreach(string key in _flowInputs.Where(x=>removed.Contains(x.Value.BlockId)).Select(x=>x.Key).ToArray())
+                _flowInputs.Remove(key);
+            foreach(string key in _flowOutputs.Where(x=>removed.Contains(x.Value.BlockId)).Select(x=>x.Key).ToArray())
+                _flowOutputs.Remove(key);
             RemoveGroupMembers(removed);
             if(removed.Contains(_entry))_entry=_blocks.Count==0?Guid.Empty:_blocks[0].Id;
         }
@@ -694,7 +730,7 @@ namespace CxVisual.Mechanism.Orchestration
         }
         public MOLWiringDefinition Build()
         {return new MOLWiringDefinition(_entry,_blocks,_ports,_links,_positions,_groups,
-            _parameters,_policies,_stateMachines);}
+            _parameters,_policies,_stateMachines,_flowInputs,_flowOutputs);}
         /// <summary>
         /// G04-F：提取无Data边界的连续Control动作段为真实MEMContent，
         /// 在同一MEM事务中替换为调用节点。Data参数跨Content待独立契约支持，明确拒绝。
@@ -853,9 +889,10 @@ namespace CxVisual.Mechanism.Orchestration
                 new Dictionary<string,MRKFlowCompileDefinition>(StringComparer.Ordinal);
             internal MOCInlineContentCatalog(string rootId,
                 IEnumerable<MRKStepCompileRequest> root,
-                IDictionary<string,MRKFlowCompileDefinition> children)
+                IDictionary<string,MRKFlowCompileDefinition> children,
+                IDictionary<string,string> rootExports=null)
             {
-                _items.Add(rootId,new MRKFlowCompileDefinition(rootId,root));
+                _items.Add(rootId,new MRKFlowCompileDefinition(rootId,root,rootExports));
                 foreach(var child in children)_items.Add(child.Key,child.Value);
             }
             public bool TryGet(string flowId,out MRKFlowCompileDefinition result)
@@ -892,6 +929,59 @@ namespace CxVisual.Mechanism.Orchestration
         }
 
         // Stage 2: V2自由连接实际参与MRK依赖及数据绑定；复杂分支/循环不做假执行。
+
+        private static string WireId(Guid blockId) {return "w"+blockId.ToString("N");}
+        private static IDictionary<string,string> BuildPublicExports(
+            MOLWiringDefinition wiring,IMRKCapabilityResolver resolver)
+        {
+            var exports=new Dictionary<string,string>(StringComparer.Ordinal);
+            foreach(var pair in wiring.FlowOutputs)
+            {
+                MOLControlBlock block=wiring.Blocks.Single(b=>b.Id==pair.Value.BlockId);
+                MRKResolvedCapability ability;
+                if(!resolver.TryResolve(block.CapabilityId,out ability)||ability==null||
+                   !ability.DataOutputs.ContainsKey(pair.Value.PortMemberId))
+                    throw new InvalidOperationException("moc.flow_output_not_declared:"+pair.Key);
+                exports.Add(pair.Key,WireId(block.Id)+"."+pair.Value.PortMemberId);
+            }
+            return exports;
+        }
+        private static IEnumerable<MRKExecutionInput> ExposedInputs(
+            MOLWiringDefinition wiring,Guid blockId)
+        {
+            foreach(var pair in wiring.FlowInputs)
+            {
+                if(pair.Value.BlockId!=blockId)continue;
+                MPCPortDescriptor port=wiring.Ports[blockId].Single(p=>
+                    p.MemberId==pair.Value.PortMemberId);
+                yield return new MRKExecutionInput(port.MemberId,MRKInputSource.FlowInput,
+                    pair.Key,ResolveWiringType(port.TypeId),port.Required);
+            }
+        }
+        private static IEnumerable<MRKExecutionInput> InternalDataInputs(
+            MOLWiringDefinition wiring,Guid blockId,IMRKCapabilityResolver resolver)
+        {
+            foreach(var link in wiring.Links.Where(l=>l.Target.BlockId==blockId&&
+                (l.Kind==MPCPortKind.Data||l.Kind==MPCPortKind.Stream)))
+            {
+                var from=wiring.Ports[link.Source.BlockId].Single(p=>p.MemberId==link.Source.PortMemberId);
+                var to=wiring.Ports[blockId].Single(p=>p.MemberId==link.Target.PortMemberId);
+                var producer=wiring.Blocks.Single(b=>b.Id==link.Source.BlockId);
+                MRKResolvedCapability ability;
+                if(!resolver.TryResolve(producer.CapabilityId,out ability)||ability==null)
+                    throw new InvalidOperationException("moc.nested_data_unknown_producer");
+                MRKInputSource kind;
+                string source=WireId(producer.Id);
+                if(ability.DataOutputs.ContainsKey(from.MemberId))
+                {kind=MRKInputSource.StepOutput;source+="."+from.MemberId;}
+                else if(wiring.Ports[producer.Id].Count(p=>(p.Kind==MPCPortKind.Data||
+                    p.Kind==MPCPortKind.Stream)&&p.Direction==MPCPortDirection.Output)==1)
+                    kind=MRKInputSource.StepResult;
+                else throw new InvalidOperationException("moc.nested_data_ambiguous_output");
+                yield return new MRKExecutionInput(to.MemberId,kind,source,
+                    ResolveWiringType(to.TypeId),to.Required);
+            }
+        }
         private static MOCCompiledPlan CompileWiring(MEMProjectSnapshot snapshot, MEMNodeSnapshot entry,
             Guid[] instancePath, MOLWiringDefinition wiring, IMRKCapabilityResolver resolver)
         {
@@ -926,6 +1016,7 @@ namespace CxVisual.Mechanism.Orchestration
                 }
                 bool allowSkippedJoin=incomingControl.Length>1;
                 var inputs=new List<MRKExecutionInput>();
+                inputs.AddRange(ExposedInputs(wiring,block.Id));
                 foreach(var link in entering.Where(x=>x.Kind==MPCPortKind.Data||x.Kind==MPCPortKind.Stream))
                 {
                     if(entering.Count(x=>(x.Kind==MPCPortKind.Data||x.Kind==MPCPortKind.Stream) &&
@@ -937,12 +1028,37 @@ namespace CxVisual.Mechanism.Orchestration
                     var target=wiring.Ports[block.Id].Single(x=>x.MemberId==link.Target.PortMemberId);
                     var resolvedCapability=blocks[link.Source.BlockId];
                     MRKResolvedCapability actual;
-                    if(!resolver.TryResolve(resolvedCapability.CapabilityId,out actual)||actual==null)
+                    bool sourceIsInvoke=resolvedCapability.CapabilityId.StartsWith(
+                        "moc.invoke:",StringComparison.Ordinal);
+                    MOLWiringDefinition published=null;
+                    if(sourceIsInvoke)
+                    {
+                        Guid contentId;
+                        if(!Guid.TryParseExact(resolvedCapability.CapabilityId.Substring(
+                            "moc.invoke:".Length),"N",out contentId))
+                            throw new InvalidOperationException("moc.invoke.source_id");
+                        var content=snapshot.Find(contentId);
+                        if(content==null)throw new InvalidOperationException("moc.invoke.missing_source_content");
+                        published=MOLWiringCodec.Get(content);
+                        if(published==null||!published.FlowOutputs.ContainsKey(from.MemberId))
+                            throw new InvalidOperationException("moc.invoke.unknown_output:"+from.MemberId);
+                    }
+                    else if(!resolver.TryResolve(resolvedCapability.CapabilityId,out actual)||actual==null)
                         throw new InvalidOperationException("moc.wiring.unknown_producer:"+resolvedCapability.CapabilityId);
                     MRKInputSource sourceKind;
                     string sourceName=stepIds[link.Source.BlockId];
                     Type valueType=ResolveWiringType(target.TypeId);
-                    if(actual.DataOutputs.ContainsKey(from.MemberId))
+                    if(sourceIsInvoke)
+                    {
+                        var publicSource=published.FlowOutputs[from.MemberId];
+                        var declared=published.Ports[publicSource.BlockId].Single(p=>
+                            p.MemberId==publicSource.PortMemberId);
+                        if(ResolveWiringType(declared.TypeId)!=valueType)
+                            throw new InvalidOperationException("moc.invoke.output_type_mismatch");
+                        sourceKind=MRKInputSource.StepOutput;
+                        sourceName+="."+from.MemberId;
+                    }
+                    else if(actual.DataOutputs.ContainsKey(from.MemberId))
                     {
                         sourceKind=MRKInputSource.StepOutput;
                         sourceName+="."+from.MemberId;
@@ -991,8 +1107,8 @@ namespace CxVisual.Mechanism.Orchestration
                 }
                 if(block.CapabilityId.StartsWith("moc.invoke:",StringComparison.Ordinal))
                 {
-                    if(inputs.Count!=0)
-                        throw new InvalidOperationException("moc.invoke.data_binding_not_ready");
+                    // Declared child inputs are mapped by name through the existing MRK entry Gate.
+                    // G04-F call-local typed defaults remain below.
                     Guid targetId;
                     if(!Guid.TryParseExact(block.CapabilityId.Substring("moc.invoke:".Length),
                         "N",out targetId)||targetId==entry.Id)
@@ -1006,8 +1122,7 @@ namespace CxVisual.Mechanism.Orchestration
                     var nested=MOLWiringCodec.Get(target);
                     if(nested==null)throw new InvalidOperationException("moc.invoke.requires_v2");
                     nested.ValidateExecutable();
-                    if(nested.Links.Any(l=>l.Kind!=MPCPortKind.Control)||
-                        nested.Blocks.Any(b=>b.CapabilityId.StartsWith(
+                    if(nested.Blocks.Any(b=>b.CapabilityId.StartsWith(
                             "moc.invoke:",StringComparison.Ordinal)))
                         throw new InvalidOperationException("moc.invoke.nested_or_data_unsupported");
                     childId=targetId.ToString("N");
@@ -1041,6 +1156,8 @@ namespace CxVisual.Mechanism.Orchestration
                                         (TimeSpan?)TimeSpan.FromMilliseconds(stepPolicy.TimeoutMs):null,
                                     stepPolicy.Idempotent);
                             var innerInputs=new List<MRKExecutionInput>();
+                            innerInputs.AddRange(ExposedInputs(nested,b.Id));
+                            innerInputs.AddRange(InternalDataInputs(nested,b.Id,resolver));
                             IReadOnlyDictionary<string,string> values;
                             if(nested.Parameters.TryGetValue(b.Id,out values))
                             foreach(var parameter in values)
@@ -1059,8 +1176,13 @@ namespace CxVisual.Mechanism.Orchestration
                                 inputs:innerInputs,policy:policy);
                         }).ToArray();
                         subflowDefinitions.Add(childId,
-                            new MRKFlowCompileDefinition(childId,innerSteps));
+                            new MRKFlowCompileDefinition(childId,innerSteps,
+                                BuildPublicExports(nested,resolver)));
                     }
+                    if(nested.FlowOutputs.Count>0)
+                        origins.Add(new MOCStepOrigin(stepIds[block.Id]+".__commit",
+                            new MRIObjectAddress(snapshot.ProjectId,target.StorageRootId,
+                                target.Id,instancePath),block.Id,new[]{block.Id},null,"InvokeCommit"));
                     origins.Add(new MOCStepOrigin(stepIds[block.Id]+"$entry",
                         new MRIObjectAddress(snapshot.ProjectId,entry.StorageRootId,
                             entry.Id,instancePath),block.Id,new Guid[0],null,"InvokeEnter"));
@@ -1099,10 +1221,13 @@ namespace CxVisual.Mechanism.Orchestration
             string planId="moc."+snapshot.ProjectId.ToString("N")+"."+
                 entry.Id.ToString("N")+".r"+
                 snapshot.Revision.ToString(CultureInfo.InvariantCulture)+".wired";
+            var publicExports=BuildPublicExports(wiring,resolver);
             var compiled=subflowDefinitions.Count==0?
-                new MRKExecutionPlanCompiler().Compile(planId,requests,transientResolver):
+                new MRKExecutionPlanCompiler().Compile(planId,requests,transientResolver,
+                    publicExports):
                 new MRKExecutionOrchestrationCompiler().Compile(planId,
-                    new MOCInlineContentCatalog(planId,requests,subflowDefinitions),transientResolver);
+                    new MOCInlineContentCatalog(planId,requests,subflowDefinitions,publicExports),
+                    transientResolver);
             if(!compiled.Succeeded)
                 throw new InvalidOperationException("moc.wiring.compile_rejected:"+
                     string.Join(";",compiled.Diagnostics.Select(x=>x.Code+"@"+x.StepId+":"+x.Message)));
