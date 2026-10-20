@@ -223,6 +223,13 @@ namespace CxVisual.Mechanism.Runtime.Execution
         internal void SetResult(string stepId, object result)
         { _results[_scopePrefix + stepId] = result is byte[] ? ((byte[])result).Clone() :
                 (result ?? NullResult.Instance); }
+        /// <summary>用当前调用实例的完整路径读取状态，防止循环内同名节点串账。</summary>
+        public bool TryGetScopedState(string stepId,out MRKStepState state)
+        {
+            if(string.IsNullOrWhiteSpace(stepId))
+                throw new ArgumentException("step.identity_required","stepId");
+            return _states.TryGetValue(_scopePrefix+stepId,out state);
+        }
         internal void SetState(string stepId, MRKStepState state, string reason = null)
         {
             string qualified = _scopePrefix + stepId;
@@ -929,11 +936,10 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 }
                 if (!step.AllowSkippedDependencies)
                 {
-                    IDictionary<string, MRKStepState> states = context.StatesSnapshot();
                     foreach (string dependency in step.Dependencies)
                     {
                         MRKStepState previous;
-                        if (states.TryGetValue(dependency, out previous) &&
+                        if (context.TryGetScopedState(dependency, out previous) &&
                             previous == MRKStepState.Skipped)
                         {
                             context.SetState(step.Id, MRKStepState.Skipped,

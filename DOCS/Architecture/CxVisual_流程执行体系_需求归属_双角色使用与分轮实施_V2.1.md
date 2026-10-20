@@ -274,3 +274,9 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 - 继续保留唯一MRKPlan依赖校验：Region内部成员只可额外依赖Entry在DAG上的传递祖先（已先于Entry完成），不是任意侧入节点；缺失汇合、旁路控制、未知节点、交叉区域仍拒绝。
 - 新增允许上游共享数据与拒绝独立旁路的正反例；严禁通过关闭Region验证掩盖问题。
 - 此修复需以新SHA的真实Windows CI进一步验证动态循环的全链路。
+
+### R05修复：每轮限定节点状态与分支跳过传播
+
+- Windows 实测：循环已真实执行但 Break/Continue 第一轮即中止（`state=Completed, visit=1, after=1`），并非迭代预算错误。
+- 根因：循环的 Step State 使用 `loop.iN.step` 限定身份储存，`RunStepAsync` 却按不带前缀的依赖ID读取，导致分支Gate被跳过后其子动作依旧执行（包括不该执行的 Break）。
+- MRK 增加现有执行上下文上的 `TryGetScopedState`，RunStepAsync 的跳过依赖判断与 MOC BranchJoin 条件都复用这一入口；不改全局快照、不创建第二StateStore。R05 原有Break/Continue/Return测试继续作为反证。

@@ -1552,7 +1552,7 @@ namespace CxVisual.Mechanism.Orchestration
                             "BranchJoin","moc.internal.noop",joins,
                             condition: ctx => !before.Any(d => {
                                 MRKStepState state;
-                                return ctx.StatesSnapshot().TryGetValue(d, out state) &&
+                                return ctx.TryGetScopedState(d, out state) &&
                                     state == MRKStepState.Skipped;
                             }), join:true);
                         string regionId="moc.branch."+block.Id.ToString("N")+
