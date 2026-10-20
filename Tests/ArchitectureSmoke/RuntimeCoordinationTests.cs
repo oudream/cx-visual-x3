@@ -584,7 +584,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     alreadySettled.Results.Count == 1 && alreadySettled.Results[0].Value == 23,
                     "已结算结果不应被零超时误判为超时");
                 bool invalid = false;
-                try { MRKWorkJoin.ObserveAllAsync(new[] { active }, TimeSpan.FromSeconds(-2)); }
+                // async Task 的参数验证以 Faulted Task 传播，必须真正 await。
+                try { Await(MRKWorkJoin.ObserveAllAsync(new[] { active }, TimeSpan.FromSeconds(-2))); }
                 catch (ArgumentOutOfRangeException) { invalid = true; }
                 Check(invalid, "非法Join等待时间未拒绝");
             }

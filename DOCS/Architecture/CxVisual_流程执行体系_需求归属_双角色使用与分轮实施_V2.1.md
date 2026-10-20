@@ -368,3 +368,10 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 - 沿用现有 `MRKWorkJoin` / `FCRWorkHandle` / F19，不引入第二引擎：新增只读 `MRKJoinWaitObservation<T>` 和 `MRKWorkJoin.ObserveAllAsync`。外部超时/取消仅结束观察者等待，`Results==null`代表未结算；只有`AllSettled`完成之后才允许回收有关资源。可选的`requestCancelRemainingOnAbort`仅发送协作取消，未确认硬件安全停机。
 - 正反例：非协作工作、零等待超时、不主动取消、显式Token取消但尾部继续、之后真正结算且成功态与取消请求共存、已结算优先、非法超时拒绝、Worker排空无活动槽；使用源项目ArchitectureSmoke，保持全部既有失败用例。
 - **当前状态：新增源码待对应提交SHA的Windows x64 CI确认。** 这只补足E08-06/09的观察者与执行分支生命周期边界；E08-05/07/08/10及Studio完整可视路径仍未达整轮闭环，不能宣称R07已全部完成或自动进入R08。
+
+
+### R07 Join观察首次CI失败与修复（2026-10-20）
+
+- 首次提交 `14eb2201db6576f3dbe5ff7828fd7710b1903ac5`：Windows Release/x64已编译成功，但Runtime `39408745128`、工程组织 `39408745134`、Config L1 `39408745193`均在ArchitectureSmoke反例 `非法Join等待时间未拒绝` 失败；失败被保留，不能据此判定该SHA通过。
+- 根因：`ObserveAllAsync`为`async Task` API，非法参数异常被存入 Faulted Task 而非在取得Task时同步抛出；原测试仅调用但未等待。修复测试使用已有`Await`来观察`ArgumentOutOfRangeException`，且原MRK注释明确异步验证契约。无须删除反例或伪造通过。
+- **本修复后继续按固定新SHA的Runtime/Engineering/TestCenter/Config实际结果验收**；未绿灯之前R07仍是局部S3，R08不启动。

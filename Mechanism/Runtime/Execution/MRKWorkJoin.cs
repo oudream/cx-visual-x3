@@ -73,6 +73,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
         /// 仅约束调用方等待时间；超时或取消观察，不会假装未完成的外部操作已经停止。
         /// requestCancelRemainingOnAbort 必须由调用方明确选择，且仅发送协作取消。
         /// 若未全部结算，Results为null，AllSettled始终保留原始所有分支的结果。
+        /// 参数错误会使返回的Task失败，调用方须await以观察异常；不创建第二等待线程。
         /// </summary>
         public static async Task<MRKJoinWaitObservation<T>> ObserveAllAsync<T>(
             IEnumerable<FCRWorkHandle<T>> source, TimeSpan timeout,
