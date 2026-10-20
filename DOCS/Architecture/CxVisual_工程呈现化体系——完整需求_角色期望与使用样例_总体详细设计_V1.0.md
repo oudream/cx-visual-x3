@@ -676,10 +676,483 @@ Foundation.Geometry 负责数学/Path/Transform/命中基础；Mechanism.Visual 
 | 六专业 Workbench 的全生命周期集成与 A/B/C 最终验收 | 平台宪法、需求与真实业务场景目标 | 需逐项实现、运行/调试/真实设备验证 |
 | 跨定义同名兼容 Schema 批量编辑、表达式/复合值编辑器、完整用户布局持久化 | 需在下一阶段进行详细契约/性能裁决 | 未定细节不能通过 UI 猜测行为；必须兼顾安全与简便 |
 
-**后续单独工作**（不属于本稿范围）：从以上 EP×角色×用例×Owner **反推全类架构**（类/接口/枚举/属性/方法、真实已存在/复用/新增、所属项目），再以它驱动代码计划、分轮实现和 Windows 验收。无需额外拆成五篇文档；本稿持续作为需求、角色与设计的唯一综合基线。
+**全类架构按三个阶段并入本稿第四部分**：阶段一已完成源码归属与现有类型基线；阶段二做完整差距反推及类型归属裁决；阶段三完善属性/方法契约和端到端验收。设计、代码声明和实际Windows/设备验收等级严格区分。
 
 ---
 
+# 第四部分｜全类架构反推（三阶段实施）
+
+> **实施声明**：本部分是对原文需求、角色和设计的反推；不另起一份并行工程模型。阶段一为**现有类型与归属基线**，阶段二进行增量类型/接口和依赖裁决，阶段三完善属性/方法与端到端验收。所有阶段按实际源码重检，出现并行 `master` 更新应复核 SHA。
+
+## 21. 三阶段范围、交付和完成判据
+
+| 阶段 | 工作内容 | 直接成果 | 当前状态与完成判据 |
+|---|---|---|---|
+| **阶段一：真实现状与归属基线** | 从现有 `.csproj`、源码声明、项目目录对照；核对 **F/M/P/Applications** 唯一 Owner；列工程呈现化关联现有类/接口/枚举及 EP/角色、复用方向，记录缺口和证据等级 | `22～25` 已核查类型台账与覆盖差距，不改代码 | **本轮已完成“关联类型现状审计”**：逐条可回源码；不以阶段一替代全库所有私有辅助类型扫描或 Windows 验收 |
+| **阶段二：缺失/扩展类型反推和归属裁决** | 从 EP01～EP15 × 六角色 × U1～U5 × Studio V1.1 契约反推差距；逐项“直接复用/增强/必要新增/重复取消”，定接口、枚举、依赖、关键场景 | 候选全类架构、唯一 Owner、依赖 DAG、重名合并/迁移与风险裁决 | **待实施**；不得依据当前设计名称立即创建代码项目 |
+| **阶段三：全类规格与验收映射** | 为阶段二裁决保留的每个类型补充属性、方法签名、生命周期、错误、安全、线程、序列化；开发者 API 与 Studio 操作双角色样例；类→EP→案例→测试→Windows证据 | 可直接指导 Codex 的完整对象规格和实施/验收矩阵 | **待实施**；仅有文档或源码不得称实际运行通过 |
+
+## 22. 阶段一核对方法、项目归属及状态定义
+
+- **核对范围**：截至本阶段读取的当前 `master`，按真实 `.csproj` 编译清单和源码 `class/interface/enum/struct` 声明，检查与 EP01～EP15 **直接相关的公共可复用类型、编辑器、运行数据和专业接入类型**。同一个 `partial` 类型只记一行；不重复列私有嵌套实现/自动生成 `AssemblyInfo`。这份台账是“工程呈现化的现状基线”，**不是 28 项目所有类型的绝对全量扫描**。
+- **归属来源**：实际 `.csproj` 的 `AssemblyName` 与源码物理路径决定已实现类型的项目归属；`DOCS/ProjectCatalog.csv` 仅做辅助对照，部分 `Assembly-only skeleton` 旧标记已与当前源码不一致，**不能直接用作最新完成度**。项目/子方面 ID 仍以四大统一规格和最新批准架构定案为准，表中 ID 是该项目在现有目录表的归属范围，并非逐类精确子方面裁决。
+- **状态口径**：台账所有列出的类型都已在当前源码文本中找到声明（`S1=源码声明存在`）；**不据此宣称 `S2=已在Studio形成完整操作`、`S3=同SHA Windows编译/自动测试通过`、`S4=实际专业/硬件场景验收通过`**。复用建议不是实施完成。表中“现状处理”描述后续动作，不暗示完成。
+- **类型形态**：类（含 `abstract`/`static`/泛型）、接口、枚举、结构体分别显示；完整的 `public`/`internal` 可见性、方法/属性和重载属于阶段三逐一校核对象。表内个别静态帮助类亦记作类，不为它们创建服务实例。
+
+### 22.1 当前真实项目—方面—范围对照
+
+| 方面 | 物理项目 / 现有子方面范围 | 此次审计定位 |
+|---|---|---|
+| Foundation | `CxVisual.Foundation.Geometry`（F05/F06/F07） | 纯几何、Path、变换/命中计算，不承担 WPF 和工程事务 |
+| Mechanism | `CxVisual.Mechanism.Core`（M01～M08/M38） | MEM 工程/MPM Schema/MTC事务/MOL 定义/MRC 图元语义；不引入第二工程真源 |
+| Mechanism | `CxVisual.Mechanism.Visual`（M16/M17/M37） | 场景投影、编辑行为、可视运行帧，必须可脱离 WPF |
+| Mechanism | `CxVisual.Mechanism.Presentation.Wpf`（无独立 M-ID） | WPF 技术适配、控件、画布/Viewer 宿主组件，不持有 MEM 真源 |
+| Mechanism | `CxVisual.Mechanism.Data`（M09/M10/M35/M36） | MDS 运行时数据、配置与受控操作，注意同项目不同目录职责不混淆 |
+| Mechanism | `CxVisual.Mechanism.Orchestration`（M18～M25） | MOC 编译、诊断、计划/SourceMap，不是执行器 |
+| Mechanism | `CxVisual.Mechanism.Runtime`（M26～M34） | MRK 运行、执行、调试/审计会话，不是逻辑编辑器 |
+| Professional | Automation（P01～P18）、HMI（P19～P29）、Vision（P30～P42）、CT3D（P43～P53）、Inspection（P54～P65）、Simulation（P66～P73） | 专业能力的唯一 Owner；专业编辑入口由 Shell 装载 |
+| Applications | `CxVisual.Studio`（无独立子方面 ID） | 公共 Shell、资源编辑/导航、命令/停靠与各机制的 UI 薄适配；不是第四架构方面 |
+
+## 23. 阶段一已核源码类型明细
+
+### 23.1 01 Foundation 几何与变换
+
+| 名称 | 形态 | 所属项目（唯一物理Owner） | 需求/角色 | 来源与现状处理 |
+|---|---|---|---|---|
+| `FGEPoint2D` | 结构体 | `CxVisual.Foundation.Geometry` | EP02/03；R1/R3 | [源码](../../Foundation/Geometry/Primitives2D/FGEGeometry2D.cs)；**S1**；原位复用 |
+| `FGEVector2D` | 结构体 | `CxVisual.Foundation.Geometry` | EP02/03；R1/R3 | [源码](../../Foundation/Geometry/Primitives2D/FGEGeometry2D.cs)；**S1**；原位复用 |
+| `FGESize2D` | 结构体 | `CxVisual.Foundation.Geometry` | EP02/03；R1/R3 | [源码](../../Foundation/Geometry/Primitives2D/FGEGeometry2D.cs)；**S1**；原位复用 |
+| `FGERect2D` | 结构体 | `CxVisual.Foundation.Geometry` | EP02/03；R1/R3 | [源码](../../Foundation/Geometry/Primitives2D/FGEGeometry2D.cs)；**S1**；原位复用 |
+| `FGESegment2D` | 结构体 | `CxVisual.Foundation.Geometry` | EP02/03；R1/R3 | [源码](../../Foundation/Geometry/Primitives2D/FGEGeometry2D.cs)；**S1**；原位复用 |
+| `FGECircle2D` | 结构体 | `CxVisual.Foundation.Geometry` | EP02/03；R1/R3 | [源码](../../Foundation/Geometry/Primitives2D/FGEGeometry2D.cs)；**S1**；原位复用 |
+| `FGEEllipse2D` | 结构体 | `CxVisual.Foundation.Geometry` | EP02/03；R1/R3 | [源码](../../Foundation/Geometry/Primitives2D/FGEGeometry2D.cs)；**S1**；原位复用 |
+| `FGEPolyline2D` | 类 | `CxVisual.Foundation.Geometry` | EP02/03；R1/R3 | [源码](../../Foundation/Geometry/Primitives2D/FGEGeometry2D.cs)；**S1**；原位复用 |
+| `FGEPolygon2D` | 类 | `CxVisual.Foundation.Geometry` | EP02/03；R1/R3 | [源码](../../Foundation/Geometry/Primitives2D/FGEGeometry2D.cs)；**S1**；原位复用 |
+| `FGEArc2D` | 结构体 | `CxVisual.Foundation.Geometry` | EP02/03；R1/R3 | [源码](../../Foundation/Geometry/Primitives2D/FGEGeometry2D.cs)；**S1**；原位复用 |
+| `FGEBezier2D` | 结构体 | `CxVisual.Foundation.Geometry` | EP02/03；R1/R3 | [源码](../../Foundation/Geometry/Primitives2D/FGEGeometry2D.cs)；**S1**；原位复用 |
+| `FGEValidation` | 类 | `CxVisual.Foundation.Geometry` | EP02/03；R1/R3 | [源码](../../Foundation/Geometry/Primitives2D/FGEGeometry2D.cs)；**S1**；原位复用 |
+| `FGEPathVerb` | 枚举 | `CxVisual.Foundation.Geometry` | EP02/03；R1/R3 | [源码](../../Foundation/Geometry/Paths/FGEPath2D.cs)；**S1**；原位复用 |
+| `FGEPathCommand` | 结构体 | `CxVisual.Foundation.Geometry` | EP02/03；R1/R3 | [源码](../../Foundation/Geometry/Paths/FGEPath2D.cs)；**S1**；原位复用 |
+| `FGEPath2D` | 类 | `CxVisual.Foundation.Geometry` | EP02/03；R1/R3 | [源码](../../Foundation/Geometry/Paths/FGEPath2D.cs)；**S1**；原位复用 |
+| `FGEPathHandleKind` | 枚举 | `CxVisual.Foundation.Geometry` | EP03；R1/R3 | [源码](../../Foundation/Geometry/Paths/FGEPathEditing.cs)；**S1**；原位复用 |
+| `FGEPathEditing` | 类 | `CxVisual.Foundation.Geometry` | EP03；R1/R3 | [源码](../../Foundation/Geometry/Paths/FGEPathEditing.cs)；**S1**；原位复用 |
+| `FGETransform2D` | 结构体 | `CxVisual.Foundation.Geometry` | EP02/03；R1/R3 | [源码](../../Foundation/Geometry/Transforms/FGETransform2D.cs)；**S1**；原位复用 |
+| `FGEFillRule` | 枚举 | `CxVisual.Foundation.Geometry` | EP02/03；R1/R3 | [源码](../../Foundation/Geometry/Operations/FGEGeometryAlgorithms.cs)；**S1**；原位复用 |
+| `FGEGeometry2D` | 类 | `CxVisual.Foundation.Geometry` | EP02/03；R1/R3 | [源码](../../Foundation/Geometry/Operations/FGEGeometryAlgorithms.cs)；**S1**；原位复用 |
+
+> 此表以源码声明建立 Owner/复用基线；是否达到 API 易用、真实编辑、运行、Windows 构建和 A/B/C 场景效果仍需独立证据。
+
+### 23.2 02 MEM 工程、身份、历史
+
+| 名称 | 形态 | 所属项目（唯一物理Owner） | 需求/角色 | 来源与现状处理 |
+|---|---|---|---|---|
+| `MEMNodeKind` | 枚举 | `CxVisual.Mechanism.Core` | EP01/03/14；R1/R3 | [源码](../../Mechanism/Core/Engineering/MEMNode.cs)；**S1**；原位复用 |
+| `MEMResourceScope` | 枚举 | `CxVisual.Mechanism.Core` | EP01/03/14；R1/R3 | [源码](../../Mechanism/Core/Engineering/MEMNode.cs)；**S1**；原位复用 |
+| `IMEMResource` | 接口 | `CxVisual.Mechanism.Core` | EP01/03/14；R1/R3 | [源码](../../Mechanism/Core/Engineering/MEMNode.cs)；**S1**；原位复用 |
+| `MEMNode` | 类 | `CxVisual.Mechanism.Core` | EP01/03/14；R1/R3 | [源码](../../Mechanism/Core/Engineering/MEMNode.cs)；**S1**；原位复用 |
+| `MEMProject` | 类 | `CxVisual.Mechanism.Core` | EP01/03/14；R1/R3 | [源码](../../Mechanism/Core/Engineering/MEMNode.cs)；**S1**；原位复用 |
+| `MEMPage` | 类 | `CxVisual.Mechanism.Core` | EP01/03/14；R1/R3 | [源码](../../Mechanism/Core/Engineering/MEMNode.cs)；**S1**；原位复用 |
+| `MEMContent` | 类 | `CxVisual.Mechanism.Core` | EP01/03/14；R1/R3 | [源码](../../Mechanism/Core/Engineering/MEMNode.cs)；**S1**；原位复用 |
+| `MEMSymbol` | 类 | `CxVisual.Mechanism.Core` | EP01/03/14；R1/R3 | [源码](../../Mechanism/Core/Engineering/MEMNode.cs)；**S1**；原位复用 |
+| `MRIReferenceKind` | 枚举 | `CxVisual.Mechanism.Core` | EP01/03/14；R1/R3 | [源码](../../Mechanism/Core/Engineering/MEMNode.cs)；**S1**；原位复用 |
+| `MEMResourceEntry` | 类 | `CxVisual.Mechanism.Core` | EP01/03/14；R1/R3 | [源码](../../Mechanism/Core/Engineering/MEMNode.cs)；**S1**；原位复用 |
+| `MRIResourceReference` | 类 | `CxVisual.Mechanism.Core` | EP01/03/14；R1/R3 | [源码](../../Mechanism/Core/Engineering/MEMNode.cs)；**S1**；原位复用 |
+| `MEMEngineering` | 类 | `CxVisual.Mechanism.Core` | EP01/03/15；R1/R3/R6 | [源码](../../Mechanism/Core/Engineering/MEMEngineeringSession.cs)；**S1**；原位复用 |
+| `MEMEngineeringSession` | 类 | `CxVisual.Mechanism.Core` | EP01/03/15；R1/R3/R6 | [源码](../../Mechanism/Core/Engineering/MEMEngineeringSession.cs)；**S1**；原位复用 |
+| `MTCEditResult` | 类 | `CxVisual.Mechanism.Core` | EP01/03/15；R1/R3/R6 | [源码](../../Mechanism/Core/Engineering/MEMEngineeringSession.cs)；**S1**；原位复用 |
+| `MTCChangeSet` | 类 | `CxVisual.Mechanism.Core` | EP01/03/15；R1/R3/R6 | [源码](../../Mechanism/Core/Engineering/MEMEngineeringSession.cs)；**S1**；原位复用 |
+| `MVEValidationReport` | 类 | `CxVisual.Mechanism.Core` | EP01/03/15；R1/R3/R6 | [源码](../../Mechanism/Core/Engineering/MEMEngineeringSession.cs)；**S1**；原位复用 |
+| `MTCEditSession` | 类 | `CxVisual.Mechanism.Core` | EP03/04/15；R1/R3 | [源码](../../Mechanism/Core/Engineering/MTCEditSession.cs)；**S1**；原位复用 |
+| `MTCChangeKind` | 枚举 | `CxVisual.Mechanism.Core` | EP03/04/15；R1/R3/R6 | [源码](../../Mechanism/Core/Engineering/MTCEditDraft.cs)；**S1**；原位复用 |
+| `MTCChangeOperation` | 结构体 | `CxVisual.Mechanism.Core` | EP03/04/15；R1/R3/R6 | [源码](../../Mechanism/Core/Engineering/MTCEditDraft.cs)；**S1**；原位复用 |
+| `MTCEditState` | 枚举 | `CxVisual.Mechanism.Core` | EP03/04/15；R1/R3/R6 | [源码](../../Mechanism/Core/Engineering/MTCEditDraft.cs)；**S1**；原位复用 |
+| `MTCEditDraft` | 类 | `CxVisual.Mechanism.Core` | EP03/04/15；R1/R3/R6 | [源码](../../Mechanism/Core/Engineering/MTCEditDraft.cs)；**S1**；原位复用 |
+| `IMEMProjectStore` | 接口 | `CxVisual.Mechanism.Core` | EP01/15；R1/R6 | [源码](../../Mechanism/Core/Engineering/MEMProjectStorage.cs)；**S1**；原位复用 |
+| `MEMSaveSnapshot` | 类 | `CxVisual.Mechanism.Core` | EP01/15；R1/R6 | [源码](../../Mechanism/Core/Engineering/MEMProjectStorage.cs)；**S1**；原位复用 |
+| `MEMSaveResult` | 类 | `CxVisual.Mechanism.Core` | EP01/15；R1/R6 | [源码](../../Mechanism/Core/Engineering/MEMProjectStorage.cs)；**S1**；原位复用 |
+| `MEMStoreConflictException` | 类 | `CxVisual.Mechanism.Core` | EP01/15；R1/R6 | [源码](../../Mechanism/Core/Engineering/MEMProjectStorage.cs)；**S1**；原位复用 |
+| `MEMFileProjectStore` | 类 | `CxVisual.Mechanism.Core` | EP01/15；R1/R6 | [源码](../../Mechanism/Core/Engineering/MEMFileProjectStore.cs)；**S1**；原位复用 |
+| `MEMProjectSnapshot` | 类 | `CxVisual.Mechanism.Core` | EP01/12/15；R1/R5/R6 | [源码](../../Mechanism/Core/Engineering/MEMProjectSnapshot.cs)；**S1**；原位复用 |
+| `MEMNodeSnapshot` | 类 | `CxVisual.Mechanism.Core` | EP01/12/15；R1/R5/R6 | [源码](../../Mechanism/Core/Engineering/MEMProjectSnapshot.cs)；**S1**；原位复用 |
+| `MPMPropertySnapshot` | 类 | `CxVisual.Mechanism.Core` | EP01/12/15；R1/R5/R6 | [源码](../../Mechanism/Core/Engineering/MEMProjectSnapshot.cs)；**S1**；原位复用 |
+| `MRCVisualSnapshot` | 类 | `CxVisual.Mechanism.Core` | EP01/12/15；R1/R5/R6 | [源码](../../Mechanism/Core/Engineering/MEMProjectSnapshot.cs)；**S1**；原位复用 |
+| `MRIReferenceSnapshot` | 类 | `CxVisual.Mechanism.Core` | EP01/12/15；R1/R5/R6 | [源码](../../Mechanism/Core/Engineering/MEMProjectSnapshot.cs)；**S1**；原位复用 |
+| `MRIObjectAddress` | 类 | `CxVisual.Mechanism.Core` | EP01/12；R1/R3/R5 | [源码](../../Mechanism/Core/Engineering/MRIObjectAddress.cs)；**S1**；原位复用 |
+| `MRIObjectHandle` | 类 | `CxVisual.Mechanism.Core` | EP01/12；R1/R3/R5 | [源码](../../Mechanism/Core/Engineering/MRIObjectAddress.cs)；**S1**；原位复用 |
+| `MEMAccessOperation` | 枚举 | `CxVisual.Mechanism.Core` | EP01/08/15；R1/R4/R6 | [源码](../../Mechanism/Core/Engineering/MEMAccessPolicy.cs)；**S1**；原位复用 |
+| `IMEMAccessPolicy` | 接口 | `CxVisual.Mechanism.Core` | EP01/08/15；R1/R4/R6 | [源码](../../Mechanism/Core/Engineering/MEMAccessPolicy.cs)；**S1**；原位复用 |
+| `MEMAccessRequest` | 类 | `CxVisual.Mechanism.Core` | EP01/08/15；R1/R4/R6 | [源码](../../Mechanism/Core/Engineering/MEMAccessPolicy.cs)；**S1**；原位复用 |
+| `MEMCloseMode` | 枚举 | `CxVisual.Mechanism.Core` | EP01/08/15；R1/R4/R6 | [源码](../../Mechanism/Core/Engineering/MEMAccessPolicy.cs)；**S1**；原位复用 |
+| `MEMAssetReference` | 类 | `CxVisual.Mechanism.Core` | EP01/05；R1/R2/R3 | [源码](../../Mechanism/Core/Engineering/MEMAssetReference.cs)；**S1**；原位复用 |
+| `MTIExternalPolicy` | 枚举 | `CxVisual.Mechanism.Core` | EP01/05/15；R1/R6 | [源码](../../Mechanism/Core/Engineering/MTITransferPlan.cs)；**S1**；原位复用 |
+| `IMTIAspectRemapper` | 接口 | `CxVisual.Mechanism.Core` | EP01/05/15；R1/R6 | [源码](../../Mechanism/Core/Engineering/MTITransferPlan.cs)；**S1**；原位复用 |
+| `MTITransferResult` | 类 | `CxVisual.Mechanism.Core` | EP01/05/15；R1/R6 | [源码](../../Mechanism/Core/Engineering/MTITransferPlan.cs)；**S1**；原位复用 |
+| `MTITransferPlan` | 类 | `CxVisual.Mechanism.Core` | EP01/05/15；R1/R6 | [源码](../../Mechanism/Core/Engineering/MTITransferPlan.cs)；**S1**；原位复用 |
+| `MTIExtractionResult` | 类 | `CxVisual.Mechanism.Core` | EP01/05/15；R1/R3/R6 | [源码](../../Mechanism/Core/Engineering/MTIPackages.cs)；**S1**；原位复用 |
+| `MTIEngineeringTemplates` | 类 | `CxVisual.Mechanism.Core` | EP01/05/15；R1/R3/R6 | [源码](../../Mechanism/Core/Engineering/MTIPackages.cs)；**S1**；原位复用 |
+
+> 此表以源码声明建立 Owner/复用基线；是否达到 API 易用、真实编辑、运行、Windows 构建和 A/B/C 场景效果仍需独立证据。
+
+### 23.3 03 MPM、端口及逻辑定义
+
+| 名称 | 形态 | 所属项目（唯一物理Owner） | 需求/角色 | 来源与现状处理 |
+|---|---|---|---|---|
+| `MPMValueKind` | 枚举 | `CxVisual.Mechanism.Core` | EP04/07；R1/R2/R3 | [源码](../../Mechanism/Core/Engineering/MPMValue.cs)；**S1**；原位复用 |
+| `MPMValue` | 类 | `CxVisual.Mechanism.Core` | EP04/07；R1/R2/R3 | [源码](../../Mechanism/Core/Engineering/MPMValue.cs)；**S1**；原位复用 |
+| `MPMBindingKind` | 枚举 | `CxVisual.Mechanism.Core` | EP04/07；R1/R2/R3 | [源码](../../Mechanism/Core/Engineering/MPMValue.cs)；**S1**；原位复用 |
+| `MPMBinding` | 类 | `CxVisual.Mechanism.Core` | EP04/07；R1/R2/R3 | [源码](../../Mechanism/Core/Engineering/MPMValue.cs)；**S1**；原位复用 |
+| `MPMPropertyDescriptor` | 类 | `CxVisual.Mechanism.Core` | EP04/07；R1/R2/R3 | [源码](../../Mechanism/Core/Engineering/MPMValue.cs)；**S1**；原位复用 |
+| `MPMProperty` | 类 | `CxVisual.Mechanism.Core` | EP04/07；R1/R2/R3 | [源码](../../Mechanism/Core/Engineering/MPMValue.cs)；**S1**；原位复用 |
+| `IMPMTypeProvider` | 接口 | `CxVisual.Mechanism.Core` | EP04/14；R1/R2/R3 | [源码](../../Mechanism/Core/Engineering/MPMTypeDescriptor.cs)；**S1**；原位复用 |
+| `MPCPortDescriptor` | 类 | `CxVisual.Mechanism.Core` | EP04/14；R1/R2/R3 | [源码](../../Mechanism/Core/Engineering/MPMTypeDescriptor.cs)；**S1**；原位复用 |
+| `MPMTypeDescriptor` | 类 | `CxVisual.Mechanism.Core` | EP04/14；R1/R2/R3 | [源码](../../Mechanism/Core/Engineering/MPMTypeDescriptor.cs)；**S1**；原位复用 |
+| `IMPMDefinition` | 接口 | `CxVisual.Mechanism.Core` | EP04/14；R1/R2 | [源码](../../Mechanism/Core/Engineering/MPMDefinitionState.cs)；**S1**；原位复用 |
+| `MPMAspectKind` | 枚举 | `CxVisual.Mechanism.Core` | EP04/14；R1/R2 | [源码](../../Mechanism/Core/Engineering/MPMDefinitionState.cs)；**S1**；原位复用 |
+| `MPMAspect` | 类 | `CxVisual.Mechanism.Core` | EP04/14；R1/R2 | [源码](../../Mechanism/Core/Engineering/MPMDefinitionState.cs)；**S1**；原位复用 |
+| `MPCPortDirection` | 枚举 | `CxVisual.Mechanism.Core` | EP09/14；R1/R2/R3 | [源码](../../Mechanism/Core/Engineering/MPCPort.cs)；**S1**；原位复用 |
+| `MPCPortKind` | 枚举 | `CxVisual.Mechanism.Core` | EP09/14；R1/R2/R3 | [源码](../../Mechanism/Core/Engineering/MPCPort.cs)；**S1**；原位复用 |
+| `MPCPortMultiplicity` | 枚举 | `CxVisual.Mechanism.Core` | EP09/14；R1/R2/R3 | [源码](../../Mechanism/Core/Engineering/MPCPort.cs)；**S1**；原位复用 |
+| `MTUContractReference` | 类 | `CxVisual.Mechanism.Core` | EP09/14；R1/R2/R3 | [源码](../../Mechanism/Core/Engineering/MPCPort.cs)；**S1**；原位复用 |
+| `MPCPort` | 类 | `CxVisual.Mechanism.Core` | EP09/14；R1/R2/R3 | [源码](../../Mechanism/Core/Engineering/MPCPort.cs)；**S1**；原位复用 |
+| `MPCEndpoint` | 类 | `CxVisual.Mechanism.Core` | EP09/14；R1/R2/R3 | [源码](../../Mechanism/Core/Engineering/MPCPort.cs)；**S1**；原位复用 |
+| `MPCConnection` | 类 | `CxVisual.Mechanism.Core` | EP09/14；R1/R2/R3 | [源码](../../Mechanism/Core/Engineering/MPCPort.cs)；**S1**；原位复用 |
+| `MRCPublicMappingKind` | 枚举 | `CxVisual.Mechanism.Core` | EP09/14；R1/R2/R3 | [源码](../../Mechanism/Core/Engineering/MPCPort.cs)；**S1**；原位复用 |
+| `MRCPublicMapping` | 类 | `CxVisual.Mechanism.Core` | EP09/14；R1/R2/R3 | [源码](../../Mechanism/Core/Engineering/MPCPort.cs)；**S1**；原位复用 |
+| `MOLControlKind` | 枚举 | `CxVisual.Mechanism.Core` | EP09/10/12；R1/R2/R3/R5 | [源码](../../Mechanism/Core/Engineering/MOLLogicDefinition.cs)；**S1**；原位复用 |
+| `MOLBranchMode` | 枚举 | `CxVisual.Mechanism.Core` | EP09/10/12；R1/R2/R3/R5 | [源码](../../Mechanism/Core/Engineering/MOLLogicDefinition.cs)；**S1**；原位复用 |
+| `MOLLoopMode` | 枚举 | `CxVisual.Mechanism.Core` | EP09/10/12；R1/R2/R3/R5 | [源码](../../Mechanism/Core/Engineering/MOLLogicDefinition.cs)；**S1**；原位复用 |
+| `MOLExitKind` | 枚举 | `CxVisual.Mechanism.Core` | EP09/10/12；R1/R2/R3/R5 | [源码](../../Mechanism/Core/Engineering/MOLLogicDefinition.cs)；**S1**；原位复用 |
+| `MOLExpressionSource` | 枚举 | `CxVisual.Mechanism.Core` | EP09/10/12；R1/R2/R3/R5 | [源码](../../Mechanism/Core/Engineering/MOLLogicDefinition.cs)；**S1**；原位复用 |
+| `MOLComparison` | 枚举 | `CxVisual.Mechanism.Core` | EP09/10/12；R1/R2/R3/R5 | [源码](../../Mechanism/Core/Engineering/MOLLogicDefinition.cs)；**S1**；原位复用 |
+| `MOLExpression` | 类 | `CxVisual.Mechanism.Core` | EP09/10/12；R1/R2/R3/R5 | [源码](../../Mechanism/Core/Engineering/MOLLogicDefinition.cs)；**S1**；原位复用 |
+| `MOLBranchCase` | 类 | `CxVisual.Mechanism.Core` | EP09/10/12；R1/R2/R3/R5 | [源码](../../Mechanism/Core/Engineering/MOLLogicDefinition.cs)；**S1**；原位复用 |
+| `MOLLoopDefinition` | 类 | `CxVisual.Mechanism.Core` | EP09/10/12；R1/R2/R3/R5 | [源码](../../Mechanism/Core/Engineering/MOLLogicDefinition.cs)；**S1**；原位复用 |
+| `MOLControlBlock` | 类 | `CxVisual.Mechanism.Core` | EP09/10/12；R1/R2/R3/R5 | [源码](../../Mechanism/Core/Engineering/MOLLogicDefinition.cs)；**S1**；原位复用 |
+| `MOLLogicDefinition` | 类 | `CxVisual.Mechanism.Core` | EP09/10/12；R1/R2/R3/R5 | [源码](../../Mechanism/Core/Engineering/MOLLogicDefinition.cs)；**S1**；原位复用 |
+| `MOLLogicCodec` | 类 | `CxVisual.Mechanism.Core` | EP09/10/12；R1/R2/R3/R5 | [源码](../../Mechanism/Core/Engineering/MOLLogicDefinition.cs)；**S1**；原位复用 |
+| `MOLBlockEndpoint` | 类 | `CxVisual.Mechanism.Core` | EP09/10/12；R1/R2/R3/R5 | [源码](../../Mechanism/Core/Engineering/MOLLogicDefinition.cs)；**S1**；原位复用 |
+| `MOLLink` | 类 | `CxVisual.Mechanism.Core` | EP09/10/12；R1/R2/R3/R5 | [源码](../../Mechanism/Core/Engineering/MOLLogicDefinition.cs)；**S1**；原位复用 |
+| `MOLBlockPosition` | 类 | `CxVisual.Mechanism.Core` | EP09/10/12；R1/R2/R3/R5 | [源码](../../Mechanism/Core/Engineering/MOLLogicDefinition.cs)；**S1**；原位复用 |
+| `MOLSelectionGroup` | 类 | `CxVisual.Mechanism.Core` | EP09/10/12；R1/R2/R3/R5 | [源码](../../Mechanism/Core/Engineering/MOLLogicDefinition.cs)；**S1**；原位复用 |
+| `MOLStateDescriptor` | 类 | `CxVisual.Mechanism.Core` | EP09/10/12；R1/R2/R3/R5 | [源码](../../Mechanism/Core/Engineering/MOLLogicDefinition.cs)；**S1**；原位复用 |
+| `MOLStateTransition` | 类 | `CxVisual.Mechanism.Core` | EP09/10/12；R1/R2/R3/R5 | [源码](../../Mechanism/Core/Engineering/MOLLogicDefinition.cs)；**S1**；原位复用 |
+| `MOLStateMachineDefinition` | 类 | `CxVisual.Mechanism.Core` | EP09/10/12；R1/R2/R3/R5 | [源码](../../Mechanism/Core/Engineering/MOLLogicDefinition.cs)；**S1**；原位复用 |
+| `MOLStepPolicy` | 类 | `CxVisual.Mechanism.Core` | EP09/10/12；R1/R2/R3/R5 | [源码](../../Mechanism/Core/Engineering/MOLLogicDefinition.cs)；**S1**；原位复用 |
+| `MOLWiringDefinition` | 类 | `CxVisual.Mechanism.Core` | EP09/10/12；R1/R2/R3/R5 | [源码](../../Mechanism/Core/Engineering/MOLLogicDefinition.cs)；**S1**；原位复用 |
+| `MOLWiringCodec` | 类 | `CxVisual.Mechanism.Core` | EP09/10/12；R1/R2/R3/R5 | [源码](../../Mechanism/Core/Engineering/MOLLogicDefinition.cs)；**S1**；原位复用 |
+
+> 此表以源码声明建立 Owner/复用基线；是否达到 API 易用、真实编辑、运行、Windows 构建和 A/B/C 场景效果仍需独立证据。
+
+### 23.4 04 MRC 可视工程定义
+
+| 名称 | 形态 | 所属项目（唯一物理Owner） | 需求/角色 | 来源与现状处理 |
+|---|---|---|---|---|
+| `MRCVisualItem` | 类 | `CxVisual.Mechanism.Core` | EP02/03；R1/R2/R3 | [源码](../../Mechanism/Core/Engineering/MRCVisualItem.cs)；**S1**；原位复用 |
+| `MRCElement` | 类 | `CxVisual.Mechanism.Core` | EP02/03；R1/R2/R3 | [源码](../../Mechanism/Core/Engineering/MRCVisualItem.cs)；**S1**；原位复用 |
+| `MRCRectangle` | 类 | `CxVisual.Mechanism.Core` | EP02/03；R1/R2/R3 | [源码](../../Mechanism/Core/Engineering/MRCVisualItem.cs)；**S1**；原位复用 |
+| `MRCGroup` | 类 | `CxVisual.Mechanism.Core` | EP02/03；R1/R2/R3 | [源码](../../Mechanism/Core/Engineering/MRCVisualItem.cs)；**S1**；原位复用 |
+| `MRCShapeKind` | 枚举 | `CxVisual.Mechanism.Core` | EP02/03；R1/R3 | [源码](../../Mechanism/Core/VisualDefinitions/MRCShapes.cs)；**S1**；原位复用 |
+| `MRCShapeDefinition` | 类 | `CxVisual.Mechanism.Core` | EP02/03；R1/R3 | [源码](../../Mechanism/Core/VisualDefinitions/MRCShapes.cs)；**S1**；原位复用 |
+| `MRCShapeElement` | 类 | `CxVisual.Mechanism.Core` | EP02/03；R1/R3 | [源码](../../Mechanism/Core/VisualDefinitions/MRCShapes.cs)；**S1**；原位复用 |
+| `MRCTextElement` | 类 | `CxVisual.Mechanism.Core` | EP02/05/06；R1/R2/R3 | [源码](../../Mechanism/Core/VisualDefinitions/MRCVisualElements.cs)；**S1**；原位复用 |
+| `MRCImageElement` | 类 | `CxVisual.Mechanism.Core` | EP02/05/06；R1/R2/R3 | [源码](../../Mechanism/Core/VisualDefinitions/MRCVisualElements.cs)；**S1**；原位复用 |
+| `MRCSvgElement` | 类 | `CxVisual.Mechanism.Core` | EP02/05/06；R1/R2/R3 | [源码](../../Mechanism/Core/VisualDefinitions/MRCVisualElements.cs)；**S1**；原位复用 |
+| `MRCWidgetTypes` | 类 | `CxVisual.Mechanism.Core` | EP02/05/06；R1/R2/R3 | [源码](../../Mechanism/Core/VisualDefinitions/MRCVisualElements.cs)；**S1**；原位复用 |
+| `MRCWidgetElement` | 类 | `CxVisual.Mechanism.Core` | EP02/05/06；R1/R2/R3 | [源码](../../Mechanism/Core/VisualDefinitions/MRCVisualElements.cs)；**S1**；原位复用 |
+| `MRCColor` | 结构体 | `CxVisual.Mechanism.Core` | EP05/07/08；R1/R2/R3 | [源码](../../Mechanism/Core/VisualDefinitions/MRCVisualAppearance.cs)；**S1**；原位复用 |
+| `MRCBrushKind` | 枚举 | `CxVisual.Mechanism.Core` | EP05/07/08；R1/R2/R3 | [源码](../../Mechanism/Core/VisualDefinitions/MRCVisualAppearance.cs)；**S1**；原位复用 |
+| `MRCGradientStop` | 类 | `CxVisual.Mechanism.Core` | EP05/07/08；R1/R2/R3 | [源码](../../Mechanism/Core/VisualDefinitions/MRCVisualAppearance.cs)；**S1**；原位复用 |
+| `MRCBrushDefinition` | 类 | `CxVisual.Mechanism.Core` | EP05/07/08；R1/R2/R3 | [源码](../../Mechanism/Core/VisualDefinitions/MRCVisualAppearance.cs)；**S1**；原位复用 |
+| `MRCVisualStyle` | 类 | `CxVisual.Mechanism.Core` | EP05/07/08；R1/R2/R3 | [源码](../../Mechanism/Core/VisualDefinitions/MRCVisualAppearance.cs)；**S1**；原位复用 |
+| `MRCVisualStateDefinition` | 类 | `CxVisual.Mechanism.Core` | EP05/07/08；R1/R2/R3 | [源码](../../Mechanism/Core/VisualDefinitions/MRCVisualAppearance.cs)；**S1**；原位复用 |
+| `MRCAnimationEasing` | 枚举 | `CxVisual.Mechanism.Core` | EP05/07/08；R1/R2/R3 | [源码](../../Mechanism/Core/VisualDefinitions/MRCVisualAppearance.cs)；**S1**；原位复用 |
+| `MRCAnimationDefinition` | 类 | `CxVisual.Mechanism.Core` | EP05/07/08；R1/R2/R3 | [源码](../../Mechanism/Core/VisualDefinitions/MRCVisualAppearance.cs)；**S1**；原位复用 |
+| `MRCVisualEventAction` | 类 | `CxVisual.Mechanism.Core` | EP05/07/08；R1/R2/R3 | [源码](../../Mechanism/Core/VisualDefinitions/MRCVisualAppearance.cs)；**S1**；原位复用 |
+| `MRCVisualBehaviorDefinition` | 类 | `CxVisual.Mechanism.Core` | EP05/07/08；R1/R2/R3 | [源码](../../Mechanism/Core/VisualDefinitions/MRCVisualAppearance.cs)；**S1**；原位复用 |
+| `MRCVisualAppearance` | 类 | `CxVisual.Mechanism.Core` | EP05/07/08；R1/R2/R3 | [源码](../../Mechanism/Core/VisualDefinitions/MRCVisualAppearance.cs)；**S1**；原位复用 |
+| `MRCTransform` | 结构体 | `CxVisual.Mechanism.Core` | EP02/03；R1/R3 | [源码](../../Mechanism/Core/Engineering/MRCTransform.cs)；**S1**；原位复用 |
+
+> 此表以源码声明建立 Owner/复用基线；是否达到 API 易用、真实编辑、运行、Windows 构建和 A/B/C 场景效果仍需独立证据。
+
+### 23.5 05 Visual 场景编辑与行为
+
+| 名称 | 形态 | 所属项目（唯一物理Owner） | 需求/角色 | 来源与现状处理 |
+|---|---|---|---|---|
+| `CxSceneItem` | 类 | `CxVisual.Mechanism.Visual` | EP02/07；R1/R3 | [源码](../../Mechanism/Visual/CxSceneItem.cs)；**S1**；原位复用 |
+| `CxSceneProjection` | 类 | `CxVisual.Mechanism.Visual` | EP02/05/07；R1/R3 | [源码](../../Mechanism/Visual/CxSceneProjection.cs)；**S1**；原位复用 |
+| `CxVisualEditor` | 类 | `CxVisual.Mechanism.Visual` | EP02/03/14；R1/R3 | [源码](../../Mechanism/Visual/CxVisualEditor.cs)；**S1**；原位复用 |
+| `MVIShapeCatalog` | 类 | `CxVisual.Mechanism.Visual` | EP02；R1/R3 | [源码](../../Mechanism/Visual/Catalog/MVIShapeCatalog.cs)；**S1**；原位复用 |
+| `MVIVisualHandleKind` | 枚举 | `CxVisual.Mechanism.Visual` | EP03；R1/R3 | [源码](../../Mechanism/Visual/Editing/MVIVisualEditing.cs)；**S1**；原位复用 |
+| `MVIVisualHandle` | 类 | `CxVisual.Mechanism.Visual` | EP03；R1/R3 | [源码](../../Mechanism/Visual/Editing/MVIVisualEditing.cs)；**S1**；原位复用 |
+| `MVIVisualEditing` | 类 | `CxVisual.Mechanism.Visual` | EP03；R1/R3 | [源码](../../Mechanism/Visual/Editing/MVIVisualEditing.cs)；**S1**；原位复用 |
+| `MVIVisualRuntimeEvaluator` | 类 | `CxVisual.Mechanism.Visual` | EP07；R1/R4/R5 | [源码](../../Mechanism/Visual/Runtime/MVIVisualRuntimeEvaluator.cs)；**S1**；原位复用 |
+| `MVIVisualActionInvocation` | 类 | `CxVisual.Mechanism.Visual` | EP08；R1/R2/R4 | [源码](../../Mechanism/Visual/Runtime/MVIVisualEventRouter.cs)；**S1**；原位复用 |
+| `MVIVisualEventRouter` | 类 | `CxVisual.Mechanism.Visual` | EP08；R1/R2/R4 | [源码](../../Mechanism/Visual/Runtime/MVIVisualEventRouter.cs)；**S1**；原位复用 |
+| `MVIEventPhase` | 枚举 | `CxVisual.Mechanism.Visual` | EP03/08；R1/R3 | [源码](../../Mechanism/Visual/MVIInteractionEventArgs.cs)；**S1**；原位复用 |
+| `MVIInteractionKind` | 枚举 | `CxVisual.Mechanism.Visual` | EP03/08；R1/R3 | [源码](../../Mechanism/Visual/MVIInteractionEventArgs.cs)；**S1**；原位复用 |
+| `MVIInteractionEventArgs` | 类 | `CxVisual.Mechanism.Visual` | EP03/08；R1/R3 | [源码](../../Mechanism/Visual/MVIInteractionEventArgs.cs)；**S1**；原位复用 |
+| `MOLBlockLayout` | 类 | `CxVisual.Mechanism.Visual` | EP09；R1/R3 | [源码](../../Mechanism/Visual/MOLFlowLayout.cs)；**S1**；原位复用 |
+| `MOLFlowLayout` | 类 | `CxVisual.Mechanism.Visual` | EP09；R1/R3 | [源码](../../Mechanism/Visual/MOLFlowLayout.cs)；**S1**；原位复用 |
+
+> 此表以源码声明建立 Owner/复用基线；是否达到 API 易用、真实编辑、运行、Windows 构建和 A/B/C 场景效果仍需独立证据。
+
+### 23.6 06 WPF 真实界面适配
+
+| 名称 | 形态 | 所属项目（唯一物理Owner） | 需求/角色 | 来源与现状处理 |
+|---|---|---|---|---|
+| `SceneView` | 类 | `CxVisual.Mechanism.Presentation.Wpf` | EP02/03/06；R3 | [源码](../../Mechanism/Presentation.Wpf/SceneView.cs)；**S1**；原位复用 |
+| `MOLFlowCanvas` | 类 | `CxVisual.Mechanism.Presentation.Wpf` | EP09/12；R3/R5 | [源码](../../Mechanism/Presentation.Wpf/MOLFlowCanvas.cs)；**S1**；原位复用 |
+| `MOLPortVisual` | 类 | `CxVisual.Mechanism.Presentation.Wpf` | EP09/12；R3/R5 | [源码](../../Mechanism/Presentation.Wpf/MOLFlowCanvas.cs)；**S1**；原位复用 |
+| `MOLBlockTemplateSelector` | 类 | `CxVisual.Mechanism.Presentation.Wpf` | EP09/12；R3/R5 | [源码](../../Mechanism/Presentation.Wpf/MOLFlowCanvas.cs)；**S1**；原位复用 |
+| `MOLSelectionChangedEventArgs` | 类 | `CxVisual.Mechanism.Presentation.Wpf` | EP09/12；R3/R5 | [源码](../../Mechanism/Presentation.Wpf/MOLFlowCanvas.cs)；**S1**；原位复用 |
+| `MOLPortLinkRequestedEventArgs` | 类 | `CxVisual.Mechanism.Presentation.Wpf` | EP09/12；R3/R5 | [源码](../../Mechanism/Presentation.Wpf/MOLFlowCanvas.cs)；**S1**；原位复用 |
+| `MOLPortLinkRejectedEventArgs` | 类 | `CxVisual.Mechanism.Presentation.Wpf` | EP09/12；R3/R5 | [源码](../../Mechanism/Presentation.Wpf/MOLFlowCanvas.cs)；**S1**；原位复用 |
+| `MPWShapeRenderer` | 类 | `CxVisual.Mechanism.Presentation.Wpf` | EP02/05；R3 | [源码](../../Mechanism/Presentation.Wpf/Renderers/MPWShapeRenderer.cs)；**S1**；原位复用 |
+| `MPWVisualAssetRenderer` | 类 | `CxVisual.Mechanism.Presentation.Wpf` | EP05；R3 | [源码](../../Mechanism/Presentation.Wpf/Renderers/MPWVisualAssetRenderer.cs)；**S1**；原位复用 |
+| `MPWWidgetEventArgs` | 类 | `CxVisual.Mechanism.Presentation.Wpf` | EP06/08；R3/R4 | [源码](../../Mechanism/Presentation.Wpf/Widgets/MPWWidgetPresenter.cs)；**S1**；原位复用 |
+| `MPWWidgetPresenter` | 类 | `CxVisual.Mechanism.Presentation.Wpf` | EP06/08；R3/R4 | [源码](../../Mechanism/Presentation.Wpf/Widgets/MPWWidgetPresenter.cs)；**S1**；原位复用 |
+| `MPWConfigEditorControl` | 类 | `CxVisual.Mechanism.Presentation.Wpf` | EP01/04；R2/R3 | [源码](../../Mechanism/Presentation.Wpf/MPWConfigEditorDialogV14.cs)；**S1**；复用配置控件；尚未等同统一组合面板 |
+| `MPWConfigEditorDialog` | 类 | `CxVisual.Mechanism.Presentation.Wpf` | EP01/04；R2/R3 | [源码](../../Mechanism/Presentation.Wpf/MPWConfigEditorDialogV14.cs)；**S1**；复用配置控件；尚未等同统一组合面板 |
+| `MPWConfigLayerOverview` | 类 | `CxVisual.Mechanism.Presentation.Wpf` | EP01/04；R2/R3 | [源码](../../Mechanism/Presentation.Wpf/MPWConfigLayerOverview.cs)；**S1**；泛型配置呈现基础；中央组合宿主待核 |
+| `MPWConfigLayerDialog` | 类 | `CxVisual.Mechanism.Presentation.Wpf` | EP01/04；R2/R3 | [源码](../../Mechanism/Presentation.Wpf/MPWConfigLayerOverview.cs)；**S1**；泛型配置呈现基础；中央组合宿主待核 |
+| `MPWConfigAtomicGroupControl` | 类 | `CxVisual.Mechanism.Presentation.Wpf` | EP01/04；R2/R3 | [源码](../../Mechanism/Presentation.Wpf/MPWConfigAtomicGroupControl.cs)；**S1**；原位复用 |
+| `MPWConfigAtomicGroupDialog` | 类 | `CxVisual.Mechanism.Presentation.Wpf` | EP01/04；R2/R3 | [源码](../../Mechanism/Presentation.Wpf/MPWConfigAtomicGroupControl.cs)；**S1**；原位复用 |
+| `LogViewerControl` | 类 | `CxVisual.Mechanism.Presentation.Wpf` | EP12/15；R5/R6 | [源码](../../Mechanism/Presentation.Wpf/LogViewerControl.xaml.cs)；**S1**；原位复用 |
+| `SystemMonitorControl` | 类 | `CxVisual.Mechanism.Presentation.Wpf` | EP11/15；R4/R5 | [源码](../../Mechanism/Presentation.Wpf/SystemMonitorControl.xaml.cs)；**S1**；原位复用 |
+
+> 此表以源码声明建立 Owner/复用基线；是否达到 API 易用、真实编辑、运行、Windows 构建和 A/B/C 场景效果仍需独立证据。
+
+### 23.7 07 MOC 构建与SourceMap
+
+| 名称 | 形态 | 所属项目（唯一物理Owner） | 需求/角色 | 来源与现状处理 |
+|---|---|---|---|---|
+| `MOCDiagnosticSeverity` | 枚举 | `CxVisual.Mechanism.Orchestration` | EP10/12；R1/R3/R5 | [源码](../../Mechanism/Orchestration/MOCBuildService.cs)；**S1**；原位复用 |
+| `MOCDiagnostic` | 类 | `CxVisual.Mechanism.Orchestration` | EP10/12；R1/R3/R5 | [源码](../../Mechanism/Orchestration/MOCBuildService.cs)；**S1**；原位复用 |
+| `MOCBuildResult` | 类 | `CxVisual.Mechanism.Orchestration` | EP10/12；R1/R3/R5 | [源码](../../Mechanism/Orchestration/MOCBuildService.cs)；**S1**；原位复用 |
+| `MOCBuildService` | 类 | `CxVisual.Mechanism.Orchestration` | EP10/12；R1/R3/R5 | [源码](../../Mechanism/Orchestration/MOCBuildService.cs)；**S1**；原位复用 |
+| `MOCStepOrigin` | 类 | `CxVisual.Mechanism.Orchestration` | EP09/10/12；R1/R3/R5 | [源码](../../Mechanism/Orchestration/MOCEngineeringCompiler.cs)；**S1**；原位复用 |
+| `MOCSourceMap` | 类 | `CxVisual.Mechanism.Orchestration` | EP09/10/12；R1/R3/R5 | [源码](../../Mechanism/Orchestration/MOCEngineeringCompiler.cs)；**S1**；原位复用 |
+| `MOCObservedStep` | 类 | `CxVisual.Mechanism.Orchestration` | EP09/10/12；R1/R3/R5 | [源码](../../Mechanism/Orchestration/MOCEngineeringCompiler.cs)；**S1**；原位复用 |
+| `MOCTraceView` | 类 | `CxVisual.Mechanism.Orchestration` | EP09/10/12；R1/R3/R5 | [源码](../../Mechanism/Orchestration/MOCEngineeringCompiler.cs)；**S1**；原位复用 |
+| `MOCCompiledPlan` | 类 | `CxVisual.Mechanism.Orchestration` | EP09/10/12；R1/R3/R5 | [源码](../../Mechanism/Orchestration/MOCEngineeringCompiler.cs)；**S1**；原位复用 |
+| `MOCFlowBuilder` | 类 | `CxVisual.Mechanism.Orchestration` | EP09/10/12；R1/R3/R5 | [源码](../../Mechanism/Orchestration/MOCEngineeringCompiler.cs)；**S1**；原位复用 |
+| `MOCEngineeringCompiler` | 类 | `CxVisual.Mechanism.Orchestration` | EP09/10/12；R1/R3/R5 | [源码](../../Mechanism/Orchestration/MOCEngineeringCompiler.cs)；**S1**；原位复用 |
+| `MOCCapabilityDescriptor` | 类 | `CxVisual.Mechanism.Orchestration` | EP10/13/14；R1/R2/R3 | [源码](../../Mechanism/Orchestration/MOCCapabilityCatalog.cs)；**S1**；原位复用 |
+| `IMOCCapabilityProvider` | 接口 | `CxVisual.Mechanism.Orchestration` | EP10/13/14；R1/R2/R3 | [源码](../../Mechanism/Orchestration/MOCCapabilityCatalog.cs)；**S1**；原位复用 |
+| `MOCCapabilityCatalogItem` | 类 | `CxVisual.Mechanism.Orchestration` | EP10/13/14；R1/R2/R3 | [源码](../../Mechanism/Orchestration/MOCCapabilityCatalog.cs)；**S1**；原位复用 |
+| `MOCCapabilityCatalog` | 类 | `CxVisual.Mechanism.Orchestration` | EP10/13/14；R1/R2/R3 | [源码](../../Mechanism/Orchestration/MOCCapabilityCatalog.cs)；**S1**；原位复用 |
+| `MOCProjectReleaseCandidate` | 类 | `CxVisual.Mechanism.Orchestration` | EP10/15；R1/R6 | [源码](../../Mechanism/Orchestration/MOCProjectRelease.cs)；**S1**；原位复用 |
+| `MOCProjectRelease` | 类 | `CxVisual.Mechanism.Orchestration` | EP10/15；R1/R6 | [源码](../../Mechanism/Orchestration/MOCProjectRelease.cs)；**S1**；原位复用 |
+
+> 此表以源码声明建立 Owner/复用基线；是否达到 API 易用、真实编辑、运行、Windows 构建和 A/B/C 场景效果仍需独立证据。
+
+### 23.8 08 MRK 执行、调试与发布
+
+| 名称 | 形态 | 所属项目（唯一物理Owner） | 需求/角色 | 来源与现状处理 |
+|---|---|---|---|---|
+| `MRKFlowState` | 枚举 | `CxVisual.Mechanism.Runtime` | EP11/12；R1/R4/R5 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionEngine.cs)；**S1**；原位复用 |
+| `MRKStepState` | 枚举 | `CxVisual.Mechanism.Runtime` | EP11/12；R1/R4/R5 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionEngine.cs)；**S1**；原位复用 |
+| `MRKExecutionContext` | 类 | `CxVisual.Mechanism.Runtime` | EP11/12；R1/R4/R5 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionEngine.cs)；**S1**；原位复用 |
+| `MRKFlowResult` | 类 | `CxVisual.Mechanism.Runtime` | EP11/12；R1/R4/R5 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionEngine.cs)；**S1**；原位复用 |
+| `MRKFlowHandle` | 类 | `CxVisual.Mechanism.Runtime` | EP11/12；R1/R4/R5 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionEngine.cs)；**S1**；原位复用 |
+| `IMRKExecutionEngine` | 接口 | `CxVisual.Mechanism.Runtime` | EP11/12；R1/R4/R5 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionEngine.cs)；**S1**；原位复用 |
+| `MRKExecutionEngine` | 类 | `CxVisual.Mechanism.Runtime` | EP11/12；R1/R4/R5 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionEngine.cs)；**S1**；原位复用 |
+| `MRKExecutionStep` | 类 | `CxVisual.Mechanism.Runtime` | EP10/11；R1/R5 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionPlan.cs)；**S1**；原位复用 |
+| `MRKLoopRegion` | 类 | `CxVisual.Mechanism.Runtime` | EP10/11；R1/R5 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionPlan.cs)；**S1**；原位复用 |
+| `MRKControlRegion` | 类 | `CxVisual.Mechanism.Runtime` | EP10/11；R1/R5 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionPlan.cs)；**S1**；原位复用 |
+| `MRKExecutionPlan` | 类 | `CxVisual.Mechanism.Runtime` | EP10/11；R1/R5 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionPlan.cs)；**S1**；原位复用 |
+| `MRKRuntimeSessionState` | 枚举 | `CxVisual.Mechanism.Runtime` | EP11/12；R1/R4/R5 | [源码](../../Mechanism/Runtime/Execution/MRKRuntimeSession.cs)；**S1**；原位复用 |
+| `MRKRuntimeSessionSnapshot` | 类 | `CxVisual.Mechanism.Runtime` | EP11/12；R1/R4/R5 | [源码](../../Mechanism/Runtime/Execution/MRKRuntimeSession.cs)；**S1**；原位复用 |
+| `MRKRuntimeSession` | 类 | `CxVisual.Mechanism.Runtime` | EP11/12；R1/R4/R5 | [源码](../../Mechanism/Runtime/Execution/MRKRuntimeSession.cs)；**S1**；原位复用 |
+| `MRKExecutionTransition` | 类 | `CxVisual.Mechanism.Runtime` | EP11/12；R1/R5 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionControls.cs)；**S1**；原位复用 |
+| `MRKTraceBatch` | 类 | `CxVisual.Mechanism.Runtime` | EP11/12；R1/R5 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionControls.cs)；**S1**；原位复用 |
+| `MRKExecutionTrace` | 类 | `CxVisual.Mechanism.Runtime` | EP11/12；R1/R5 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionControls.cs)；**S1**；原位复用 |
+| `MRKExecutionDebugController` | 类 | `CxVisual.Mechanism.Runtime` | EP11/12；R1/R5 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionControls.cs)；**S1**；原位复用 |
+| `MRKExecutionOperations` | 类 | `CxVisual.Mechanism.Runtime` | EP11/12；R1/R5 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionControls.cs)；**S1**；原位复用 |
+| `MRKFlowMetadata` | 类 | `CxVisual.Mechanism.Runtime` | EP11/12；R1/R5 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionIdentity.cs)；**S1**；原位复用 |
+| `MRKInvocationContext` | 类 | `CxVisual.Mechanism.Runtime` | EP11/12；R1/R5 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionIdentity.cs)；**S1**；原位复用 |
+| `MRKStepObservation` | 类 | `CxVisual.Mechanism.Runtime` | EP11/12；R1/R5 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionIdentity.cs)；**S1**；原位复用 |
+| `MRKFlowSnapshot` | 类 | `CxVisual.Mechanism.Runtime` | EP11/12；R1/R5 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionIdentity.cs)；**S1**；原位复用 |
+| `MRKPlanPublishAction` | 枚举 | `CxVisual.Mechanism.Runtime` | EP10/11/15；R1/R4/R6 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionPublishing.cs)；**S1**；原位复用 |
+| `IMRKPlanPublicationPolicy` | 接口 | `CxVisual.Mechanism.Runtime` | EP10/11/15；R1/R4/R6 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionPublishing.cs)；**S1**；原位复用 |
+| `MRKPlanPublicationReceipt` | 类 | `CxVisual.Mechanism.Runtime` | EP10/11/15；R1/R4/R6 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionPublishing.cs)；**S1**；原位复用 |
+| `MRKExecutionPlanPublisher` | 类 | `CxVisual.Mechanism.Runtime` | EP10/11/15；R1/R4/R6 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionPublishing.cs)；**S1**；原位复用 |
+| `MRKExecutionPlanLease` | 类 | `CxVisual.Mechanism.Runtime` | EP11；R1/R4 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionPlanSlot.cs)；**S1**；原位复用 |
+| `MRKExecutionPlanSlot` | 类 | `CxVisual.Mechanism.Runtime` | EP11；R1/R4 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionPlanSlot.cs)；**S1**；原位复用 |
+| `MRKJournalKind` | 枚举 | `CxVisual.Mechanism.Runtime` | EP11/12/15；R1/R5/R6 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionJournal.cs)；**S1**；原位复用 |
+| `MRKJournalRecord` | 类 | `CxVisual.Mechanism.Runtime` | EP11/12/15；R1/R5/R6 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionJournal.cs)；**S1**；原位复用 |
+| `IMRKExecutionJournal` | 接口 | `CxVisual.Mechanism.Runtime` | EP11/12/15；R1/R5/R6 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionJournal.cs)；**S1**；原位复用 |
+| `MRKRecoveryDecision` | 类 | `CxVisual.Mechanism.Runtime` | EP11/12/15；R1/R5/R6 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionJournal.cs)；**S1**；原位复用 |
+| `MRKFileExecutionJournal` | 类 | `CxVisual.Mechanism.Runtime` | EP11/12/15；R1/R5/R6 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionJournal.cs)；**S1**；原位复用 |
+| `MRKInputSource` | 枚举 | `CxVisual.Mechanism.Runtime` | EP09/11；R1/R2 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionPorts.cs)；**S1**；原位复用 |
+| `MRKExecutionInput` | 类 | `CxVisual.Mechanism.Runtime` | EP09/11；R1/R2 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionPorts.cs)；**S1**；原位复用 |
+| `MRKExecutionOutput` | 类 | `CxVisual.Mechanism.Runtime` | EP09/11；R1/R2 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionPorts.cs)；**S1**；原位复用 |
+| `MRKExecutionPortException` | 类 | `CxVisual.Mechanism.Runtime` | EP09/11；R1/R2 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionPorts.cs)；**S1**；原位复用 |
+| `MRKExecutionGroupDefinition` | 类 | `CxVisual.Mechanism.Runtime` | EP11；R1/R5 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionGroups.cs)；**S1**；原位复用 |
+| `MRKExecutionGroupSnapshot` | 类 | `CxVisual.Mechanism.Runtime` | EP11；R1/R5 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionGroups.cs)；**S1**；原位复用 |
+| `MRKExecutionGroups` | 类 | `CxVisual.Mechanism.Runtime` | EP11；R1/R5 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionGroups.cs)；**S1**；原位复用 |
+| `IMRKCapabilityResolver` | 接口 | `CxVisual.Mechanism.Runtime` | EP10/11；R1/R2 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionCompiler.cs)；**S1**；原位复用 |
+| `MRKStepCompileRequest` | 类 | `CxVisual.Mechanism.Runtime` | EP10/11；R1/R2 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionCompiler.cs)；**S1**；原位复用 |
+| `MRKCompileDiagnostic` | 类 | `CxVisual.Mechanism.Runtime` | EP10/11；R1/R2 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionCompiler.cs)；**S1**；原位复用 |
+| `MRKCompileResult` | 类 | `CxVisual.Mechanism.Runtime` | EP10/11；R1/R2 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionCompiler.cs)；**S1**；原位复用 |
+| `MRKExecutionPlanCompiler` | 类 | `CxVisual.Mechanism.Runtime` | EP10/11；R1/R2 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionCompiler.cs)；**S1**；原位复用 |
+| `MRKFlowCompileDefinition` | 类 | `CxVisual.Mechanism.Runtime` | EP09/10；R1/R2 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionComposition.cs)；**S1**；原位复用 |
+| `IMRKFlowCompileCatalog` | 接口 | `CxVisual.Mechanism.Runtime` | EP09/10；R1/R2 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionComposition.cs)；**S1**；原位复用 |
+| `MRKExecutionOrchestrationCompiler` | 类 | `CxVisual.Mechanism.Runtime` | EP09/10；R1/R2 | [源码](../../Mechanism/Runtime/Execution/MRKExecutionComposition.cs)；**S1**；原位复用 |
+| `MRKCodeFlowBuilder` | 类 | `CxVisual.Mechanism.Runtime` | EP11/14；R1/R2 | [源码](../../Mechanism/Runtime/Execution/MRKDeveloperRuntime.cs)；**S1**；原位复用 |
+| `MRKCodeRuntimeBuilder` | 类 | `CxVisual.Mechanism.Runtime` | EP11/14；R1/R2 | [源码](../../Mechanism/Runtime/Execution/MRKDeveloperRuntime.cs)；**S1**；原位复用 |
+| `MRKCodeRuntimeBlueprint` | 类 | `CxVisual.Mechanism.Runtime` | EP11/14；R1/R2 | [源码](../../Mechanism/Runtime/Execution/MRKDeveloperRuntime.cs)；**S1**；原位复用 |
+| `MRKDevelopmentRuntime` | 类 | `CxVisual.Mechanism.Runtime` | EP11/14；R1/R2 | [源码](../../Mechanism/Runtime/Execution/MRKDeveloperRuntime.cs)；**S1**；原位复用 |
+
+> 此表以源码声明建立 Owner/复用基线；是否达到 API 易用、真实编辑、运行、Windows 构建和 A/B/C 场景效果仍需独立证据。
+
+### 23.9 09 MDS 运行数据及配置
+
+| 名称 | 形态 | 所属项目（唯一物理Owner） | 需求/角色 | 来源与现状处理 |
+|---|---|---|---|---|
+| `MDSDataHeap` | 类 | `CxVisual.Mechanism.Data` | EP07/11；R1/R4/R5 | [源码](../../Mechanism/Data/RuntimeData/MDSDataHeap.cs)；**S1**；原位复用 |
+| `MDSDataStack` | 类 | `CxVisual.Mechanism.Data` | EP07/11/12；R1/R5 | [源码](../../Mechanism/Data/RuntimeData/MDSDataStack.cs)；**S1**；原位复用 |
+| `MDSDataFrame` | 类 | `CxVisual.Mechanism.Data` | EP07/11/12；R1/R5 | [源码](../../Mechanism/Data/RuntimeData/MDSDataStack.cs)；**S1**；原位复用 |
+| `IMDSDataContext` | 接口 | `CxVisual.Mechanism.Data` | EP07/11；R1/R5 | [源码](../../Mechanism/Data/RuntimeData/MDSDataContext.cs)；**S1**；原位复用 |
+| `MDSDataContext` | 类 | `CxVisual.Mechanism.Data` | EP07/11；R1/R5 | [源码](../../Mechanism/Data/RuntimeData/MDSDataContext.cs)；**S1**；原位复用 |
+| `MDSBindingSource` | 枚举 | `CxVisual.Mechanism.Data` | EP07/11；R1/R2/R4 | [源码](../../Mechanism/Data/RuntimeData/MDSDataBindings.cs)；**S1**；原位复用 |
+| `MDSDataBinding` | 类 | `CxVisual.Mechanism.Data` | EP07/11；R1/R2/R4 | [源码](../../Mechanism/Data/RuntimeData/MDSDataBindings.cs)；**S1**；原位复用 |
+| `IMDSExternalBindingResolver` | 接口 | `CxVisual.Mechanism.Data` | EP07/11；R1/R2/R4 | [源码](../../Mechanism/Data/RuntimeData/MDSDataBindings.cs)；**S1**；原位复用 |
+| `MDSDataBindingResolver` | 类 | `CxVisual.Mechanism.Data` | EP07/11；R1/R2/R4 | [源码](../../Mechanism/Data/RuntimeData/MDSDataBindings.cs)；**S1**；原位复用 |
+| `MDSDataLocation` | 枚举 | `CxVisual.Mechanism.Data` | EP11/12；R1/R5 | [源码](../../Mechanism/Data/RuntimeData/MDSDataQuery.cs)；**S1**；原位复用 |
+| `MDSDataQuery` | 类 | `CxVisual.Mechanism.Data` | EP11/12；R1/R5 | [源码](../../Mechanism/Data/RuntimeData/MDSDataQuery.cs)；**S1**；原位复用 |
+| `MDSDataSnapshot` | 类 | `CxVisual.Mechanism.Data` | EP11/12；R1/R5 | [源码](../../Mechanism/Data/RuntimeData/MDSDataQuery.cs)；**S1**；原位复用 |
+| `MDSDataBudget` | 类 | `CxVisual.Mechanism.Data` | EP11/15；R1/R6 | [源码](../../Mechanism/Data/RuntimeData/MDSDataBudget.cs)；**S1**；原位复用 |
+| `MDSDataLoadState` | 枚举 | `CxVisual.Mechanism.Data` | EP11/13；R1/R2 | [源码](../../Mechanism/Data/RuntimeData/MDSDataFiles.cs)；**S1**；原位复用 |
+| `IMDSDataFileLoader` | 接口 | `CxVisual.Mechanism.Data` | EP11/13；R1/R2 | [源码](../../Mechanism/Data/RuntimeData/MDSDataFiles.cs)；**S1**；原位复用 |
+| `MDSDataFileLoader` | 类 | `CxVisual.Mechanism.Data` | EP11/13；R1/R2 | [源码](../../Mechanism/Data/RuntimeData/MDSDataFiles.cs)；**S1**；原位复用 |
+| `MDSLimitedBinaryFileLoader` | 类 | `CxVisual.Mechanism.Data` | EP11/13；R1/R2 | [源码](../../Mechanism/Data/RuntimeData/MDSDataFiles.cs)；**S1**；原位复用 |
+| `MHSConfigEditorField` | 类 | `CxVisual.Mechanism.Data` | EP01/04；R1/R3 | [源码](../../Mechanism/Data/Configuration/MHSConfigEditorModel.cs)；**S1**；原位复用 |
+| `MHSConfigCollectionItem` | 类 | `CxVisual.Mechanism.Data` | EP01/04；R1/R3 | [源码](../../Mechanism/Data/Configuration/MHSConfigEditorModel.cs)；**S1**；原位复用 |
+| `MHSConfigEditorModel` | 类 | `CxVisual.Mechanism.Data` | EP01/04；R1/R3 | [源码](../../Mechanism/Data/Configuration/MHSConfigEditorModel.cs)；**S1**；原位复用 |
+| `MVBConfigLayerOverrides` | 类 | `CxVisual.Mechanism.Data` | EP01/04；R1/R3 | [源码](../../Mechanism/Data/Configuration/MVBConfigLayeredProfile.cs)；**S1**；原位复用 |
+| `MVBConfigLayerSpec` | 类 | `CxVisual.Mechanism.Data` | EP01/04；R1/R3 | [源码](../../Mechanism/Data/Configuration/MVBConfigLayeredProfile.cs)；**S1**；原位复用 |
+| `MVBConfigLayerOrigin` | 类 | `CxVisual.Mechanism.Data` | EP01/04；R1/R3 | [源码](../../Mechanism/Data/Configuration/MVBConfigLayeredProfile.cs)；**S1**；原位复用 |
+| `MVBConfigLayerValueInfo` | 类 | `CxVisual.Mechanism.Data` | EP01/04；R1/R3 | [源码](../../Mechanism/Data/Configuration/MVBConfigLayeredProfile.cs)；**S1**；原位复用 |
+| `MVBConfigResolved` | 类 | `CxVisual.Mechanism.Data` | EP01/04；R1/R3 | [源码](../../Mechanism/Data/Configuration/MVBConfigLayeredProfile.cs)；**S1**；原位复用 |
+| `MVBConfigLayerChange` | 类 | `CxVisual.Mechanism.Data` | EP01/04；R1/R3 | [源码](../../Mechanism/Data/Configuration/MVBConfigLayeredProfile.cs)；**S1**；原位复用 |
+| `MVBConfigTaskSnapshot` | 类 | `CxVisual.Mechanism.Data` | EP01/04；R1/R3 | [源码](../../Mechanism/Data/Configuration/MVBConfigLayeredProfile.cs)；**S1**；原位复用 |
+| `MVBConfigLayeredProfile` | 类 | `CxVisual.Mechanism.Data` | EP01/04；R1/R3 | [源码](../../Mechanism/Data/Configuration/MVBConfigLayeredProfile.cs)；**S1**；原位复用 |
+| `MVBConfigAtomicLayerEdit` | 类 | `CxVisual.Mechanism.Data` | EP01/04；R1/R3 | [源码](../../Mechanism/Data/Configuration/MVBConfigAtomicLayerProfile.cs)；**S1**；原位复用 |
+| `MVBConfigAtomicLayerProfile` | 类 | `CxVisual.Mechanism.Data` | EP01/04；R1/R3 | [源码](../../Mechanism/Data/Configuration/MVBConfigAtomicLayerProfile.cs)；**S1**；原位复用 |
+| `MHSConfigAuthorizedSession` | 类 | `CxVisual.Mechanism.Data` | EP04/08；R1/R4 | [源码](../../Mechanism/Data/Configuration/MHSConfigAuthorizedSession.cs)；**S1**；原位复用 |
+| `MHSConfigAuthorizedSection` | 类 | `CxVisual.Mechanism.Data` | EP04/08；R1/R4 | [源码](../../Mechanism/Data/Configuration/MHSConfigAuthorizedSession.cs)；**S1**；原位复用 |
+| `MHSConfigAuthorizedEdit` | 类 | `CxVisual.Mechanism.Data` | EP04/08；R1/R4 | [源码](../../Mechanism/Data/Configuration/MHSConfigAuthorizedSession.cs)；**S1**；原位复用 |
+| `MHSConfigService` | 类 | `CxVisual.Mechanism.Data` | EP01/04；R1/R3 | [源码](../../Mechanism/Data/Configuration/MHSConfigService.cs)；**S1**；原位复用 |
+| `MVBConfigScopeResolver` | 类 | `CxVisual.Mechanism.Data` | EP01/04；R1/R3 | [源码](../../Mechanism/Data/Configuration/MHSConfigService.cs)；**S1**；原位复用 |
+| `MHSConfigApplyReview` | 类 | `CxVisual.Mechanism.Data` | EP04/10；R1/R3 | [源码](../../Mechanism/Data/Configuration/MHSConfigApply.cs)；**S1**；原位复用 |
+| `MHSConfigApplyDecision` | 类 | `CxVisual.Mechanism.Data` | EP04/10；R1/R3 | [源码](../../Mechanism/Data/Configuration/MHSConfigApply.cs)；**S1**；原位复用 |
+| `MHSConfigApplyResult` | 类 | `CxVisual.Mechanism.Data` | EP04/10；R1/R3 | [源码](../../Mechanism/Data/Configuration/MHSConfigApply.cs)；**S1**；原位复用 |
+| `MDEExecutionDataScope` | 类 | `CxVisual.Mechanism.Data` | EP11/12；R1/R5 | [源码](../../Mechanism/Data/Execution/MDEExecutionDataScope.cs)；**S1**；原位复用 |
+
+> 此表以源码声明建立 Owner/复用基线；是否达到 API 易用、真实编辑、运行、Windows 构建和 A/B/C 场景效果仍需独立证据。
+
+### 23.10 10 专业方面（已核现有代码）
+
+| 名称 | 形态 | 所属项目（唯一物理Owner） | 需求/角色 | 来源与现状处理 |
+|---|---|---|---|---|
+| `CxAutomationDeviceOptions` | 类 | `CxVisual.Professional.Automation` | EP13/14；R2/R3 | [源码](../../Professional/Automation/CxAutomationDeviceOptions.cs)；**S1**；仅配置模型/规则源码，完整设备编辑与运行未据此成立 |
+| `CxAutomationDeviceOptionsRules` | 类 | `CxVisual.Professional.Automation` | EP13/14；R2/R3 | [源码](../../Professional/Automation/CxAutomationDeviceOptions.cs)；**S1**；仅配置模型/规则源码，完整设备编辑与运行未据此成立 |
+| `CxVisionPixelDepth` | 枚举 | `CxVisual.Professional.Vision` | EP13/14；R2/R3 | [源码](../../Professional/Vision/CxVisionInspectionOptions.cs)；**S1**；原位复用 |
+| `CxVisionInspectionOptions` | 类 | `CxVisual.Professional.Vision` | EP13/14；R2/R3 | [源码](../../Professional/Vision/CxVisionInspectionOptions.cs)；**S1**；原位复用 |
+| `CxVisionInspectionOptionsRules` | 类 | `CxVisual.Professional.Vision` | EP13/14；R2/R3 | [源码](../../Professional/Vision/CxVisionInspectionOptions.cs)；**S1**；原位复用 |
+| `CxVisionGrayFrame` | 类 | `CxVisual.Professional.Vision` | EP11/13；R2/R3 | [源码](../../Professional/Vision/CxVisionInspectionRuntime.cs)；**S1**；原位复用 |
+| `CxVisionDefectRegion` | 类 | `CxVisual.Professional.Vision` | EP11/13；R2/R3 | [源码](../../Professional/Vision/CxVisionInspectionRuntime.cs)；**S1**；原位复用 |
+| `CxVisionInspectionResult` | 类 | `CxVisual.Professional.Vision` | EP11/13；R2/R3 | [源码](../../Professional/Vision/CxVisionInspectionRuntime.cs)；**S1**；原位复用 |
+| `CxVisionInspectionTask` | 类 | `CxVisual.Professional.Vision` | EP11/13；R2/R3 | [源码](../../Professional/Vision/CxVisionInspectionRuntime.cs)；**S1**；原位复用 |
+| `CxVisionInspectionRuntime` | 类 | `CxVisual.Professional.Vision` | EP11/13；R2/R3 | [源码](../../Professional/Vision/CxVisionInspectionRuntime.cs)；**S1**；原位复用 |
+| `CxVisionRawFrameReader` | 类 | `CxVisual.Professional.Vision` | EP11/13；R2/R3 | [源码](../../Professional/Vision/CxVisionInspectionRuntime.cs)；**S1**；原位复用 |
+| `CxVisionDataFlow` | 类 | `CxVisual.Professional.Vision` | EP07/13；R2 | [源码](../../Professional/Vision/CxVisionDataFlow.cs)；**S1**；原位复用 |
+| `CxVisionThresholdProvider` | 类 | `CxVisual.Professional.Vision` | EP11/13；R2 | [源码](../../Professional/Vision/CxVisionThresholdProvider.cs)；**S1**；原位复用 |
+| `CxCtReconstructionMode` | 枚举 | `CxVisual.Professional.CT3D` | EP13/14；R2/R3 | [源码](../../Professional/CT3D/CxCtReconstructionOptions.cs)；**S1**；仅选项/规则源码，非完整CT MPR/重建工作台 |
+| `CxCtReconstructionOptions` | 类 | `CxVisual.Professional.CT3D` | EP13/14；R2/R3 | [源码](../../Professional/CT3D/CxCtReconstructionOptions.cs)；**S1**；仅选项/规则源码，非完整CT MPR/重建工作台 |
+| `CxCtReconstructionOptionsRules` | 类 | `CxVisual.Professional.CT3D` | EP13/14；R2/R3 | [源码](../../Professional/CT3D/CxCtReconstructionOptions.cs)；**S1**；仅选项/规则源码，非完整CT MPR/重建工作台 |
+
+> 此表以源码声明建立 Owner/复用基线；是否达到 API 易用、真实编辑、运行、Windows 构建和 A/B/C 场景效果仍需独立证据。
+
+### 23.11 11 Studio 应用与呈现桥接
+
+| 名称 | 形态 | 所属项目（唯一物理Owner） | 需求/角色 | 来源与现状处理 |
+|---|---|---|---|---|
+| `StudioViewModel` | 类 | `CxVisual.Studio` | EP01/02/03/04；R3/R5 | [源码](../../Applications/Studio/StudioViewModel.cs)；**S1**；现有单体ViewModel；拆分职责待阶段二裁决 |
+| `StudioPropertyItem` | 类 | `CxVisual.Studio` | EP01/04/09；R3 | [源码](../../Applications/Studio/StudioViewModel.Engineering.cs)；**S1**；已有投影/局部属性编辑；R01-R04源码存在但未本轮验收 |
+| `StudioPortItem` | 类 | `CxVisual.Studio` | EP01/04/09；R3 | [源码](../../Applications/Studio/StudioViewModel.Engineering.cs)；**S1**；已有投影/局部属性编辑；R01-R04源码存在但未本轮验收 |
+| `StudioConnectionItem` | 类 | `CxVisual.Studio` | EP01/04/09；R3 | [源码](../../Applications/Studio/StudioViewModel.Engineering.cs)；**S1**；已有投影/局部属性编辑；R01-R04源码存在但未本轮验收 |
+| `MainWindow` | 类 | `CxVisual.Studio` | EP01/09/10/11/12；R3/R5 | [源码](../../Applications/Studio/MainWindow.xaml.cs)；**S1**；现有示例式Shell，九菜单/完整Docking尚未据此核定 |
+| `MOLBlockViewModel` | 类 | `CxVisual.Studio` | EP11/12；R3/R5 | [源码](../../Applications/Studio/MOLRuntimeOverlay.cs)；**S1**；原位复用 |
+| `MOLRuntimeOverlay` | 类 | `CxVisual.Studio` | EP11/12；R3/R5 | [源码](../../Applications/Studio/MOLRuntimeOverlay.cs)；**S1**；原位复用 |
+| `MOLVisualTraceBindingResolver` | 类 | `CxVisual.Studio` | EP11/12；R3/R5 | [源码](../../Applications/Studio/MOLRuntimeOverlay.cs)；**S1**；原位复用 |
+| `RelayCommand` | 类 | `CxVisual.Studio` | EP01/14；R1/R3 | [源码](../../Applications/Studio/RelayCommand.cs)；**S1**；原位复用 |
+| `StudioDemoConfig` | 类 | `CxVisual.Studio` | EP04/13；R3 | [源码](../../Applications/Studio/StudioDemoConfig.cs)；**S1**；Studio示例数据定义；不得当成通用专业契约 |
+| `StudioQuality` | 枚举 | `CxVisual.Studio` | EP04/13；R3 | [源码](../../Applications/Studio/StudioDemoConfig.cs)；**S1**；Studio示例数据定义；不得当成通用专业契约 |
+| `StudioDetectorSetting` | 类 | `CxVisual.Studio` | EP04/13；R3 | [源码](../../Applications/Studio/StudioDemoConfig.cs)；**S1**；Studio示例数据定义；不得当成通用专业契约 |
+| `StudioWorkflowStep` | 类 | `CxVisual.Studio` | EP04/13；R3 | [源码](../../Applications/Studio/StudioDemoConfig.cs)；**S1**；Studio示例数据定义；不得当成通用专业契约 |
+| `StudioCalibration` | 类 | `CxVisual.Studio` | EP04/13；R3 | [源码](../../Applications/Studio/StudioDemoConfig.cs)；**S1**；Studio示例数据定义；不得当成通用专业契约 |
+| `StudioRichConfig` | 类 | `CxVisual.Studio` | EP04/13；R3 | [源码](../../Applications/Studio/StudioDemoConfig.cs)；**S1**；Studio示例数据定义；不得当成通用专业契约 |
+
+> 此表以源码声明建立 Owner/复用基线；是否达到 API 易用、真实编辑、运行、Windows 构建和 A/B/C 场景效果仍需独立证据。
+
+## 24. 阶段一覆盖总结与重要缺口（不是第二阶段类名定案）
+
+| EP 组 | 源码可复用 Owner / 已核类型基础 | 当前尚不能据源码确认的闭环 | 阶段二必须做的核查 |
+|---|---|---|---|
+| EP01 / EP14 工作区及 SDK | MEM工程/ResourceRef、StudioViewModel/MainWindow、WPF配置控件 | 完整九项菜单、上下文 Ribbon、资源树/对象树隔离、三编辑器宿主、Docking/布局恢复、面向专业的受控注册 SDK | 薄 Shell/编辑器/上下文契约的最小必要增构与Owner裁决 |
+| EP02 / EP03 / EP05 / EP06 图形控件 | FGE几何、MRC形状样式、Visual投影/编辑、WPF Scene/Widget | 九图元精细编辑的完整鼠键、DPI、资产安全/主题、专业控件完整性 | 按现有行为先复用，不在Studio复制 Geometry/Widget实现 |
+| EP04 / EP07 / EP08 属性绑定与事件 | MPM Schema、MDS绑定、Visual RuntimeEvaluator/EventRouter、StudioPropertyItem | Enum/集合/资源/表达式完整模板，多选跨定义兼容，真实设备授权安全链 | 显式只读/权限/数据质量/来源的横向契约差距审计 |
+| EP09 / EP10 流程与构建 | MOL逻辑、WPF MOLFlowCanvas、MOC编译/SourceMap | 主/子/子子流程完整可编排操作、端口导航、Plan/SourceMap与各编辑器双向定位 | 现有MOL/MOC为权威，避免第二持久化Graph和第二编译器 |
+| EP11 / EP12 运行调试 | MRK执行引擎/会话/Trace、MDS堆栈、Studio运行叠加 | 统一 Watch/Breakpoints/Trace UI、真实诊断导航、合法发布/设备联锁链 | 优先适配既有运行/数据契约，禁止Studio私自执行设备命令 |
+| EP13 专业扩展 | Automation选项、Vision检测运行/Provider、CT3D选项；现有MOC能力目录 | Professional.HMI / Inspection / Simulation `.csproj` 当前仅编译 `AssemblyInfo.cs`；并非真实业务完整实现，CT3D现仅选项/规则不足以证明MPR/体绘 | 专业 Editor/Viewer/安全 Provider 按六专业 Owner 分别盘点，先考虑旧六仓能力复用 |
+| EP15 质量与交付 | Core结果/快照/事务、MOC诊断、MRK日志、Studio测试源 | A/B/C + Windows WPF STA + 同SHA CI + 实机权限安全尚无本次统一验收证据 | 阶段三建立每类/方法的测试追踪，不依赖旧绿色记录 |
+
+### 24.1 未发现统一 Shell 类型时如何处理
+
+- 本轮读取的 `Applications/Studio/CxVisual.Studio.csproj` 编译清单仅含现有 `MainWindow`、`StudioViewModel`、`MOLRuntimeOverlay`、`RelayCommand`、示例配置及应用入口，**没有单独声明的通用 Document/EditorHost/ContextRibbon/DockLayout 类型**；这是一项具体项目范围内的源码事实，并非全库不存在任何相似内部机制的证明。
+- `Mechanism/Presentation.Wpf` 已有配置控件、SceneView、MOLFlowCanvas，阶段二必须优先判断能否以少量适配整合**配置组合面板 / 图元主画布 / 流程主画布**，而不是因为需要统一界面就重做三套 View。
+- `Professional.HMI`、`Professional.Inspection`、`Professional.Simulation` 的当前 `.csproj` 编译清单仅含 `Properties/AssemblyInfo.cs`。这**不能证明旧仓或其它当前项目缺乏对应业务功能**，只是当前这些 Professional 工程的事实状态；后续专业能力复用由阶段二验证。
+- **待裁决候选职责（不是类名定案）**：活动文档和资源类型路由、编辑器生命周期、跨视图选择/定位、统一 Schema 模板、动态 Ribbon/命令/权限、Dock 布局、专业 Viewer/结果订阅、诊断 SourceMap 导航。需逐职责确定已有承载点、必要接口和归属，不能跳过重复性审计。
+
+## 25. 阶段一交付统计、依赖纪律与阶段二进入条件
+
+| 统计维度 | 本轮实际值 | 口径 |
+|---|---:|---|
+| 已核工程呈现化相关类型 | **305** | 源码声明型别逐条入账；`partial` 去重；含类/接口/枚举/结构体 |
+| 覆盖的物理项目 | **11** | 1个Foundation + 6个Mechanism + 3个Professional + Studio（具体以下表为准） |
+| 源码文件路径 | **89** | 表内每项可点击到声明源文件，不含未采样私有辅助实现 |
+| 需求 | **EP01～EP15** | 按主需求+角色映射，未据此认定验收成功 |
+| 已实现类型 S1 | **305** | 仅代表源码中存在声明和物理 Owner |
+| 本轮新建业务类/项目 | **0** | 本阶段只更新文档，不改代码、解决方案、依赖 |
+| Windows/MSBuild/WPF STA同 SHA验收 | **本轮未运行** | 禁止以静态清点冒称通过 |
+
+### 25.1 每个项目的已核声明数量
+
+| 项目 | 本轮审计类型数 | 状态说明 |
+|---|---:|---|
+| `CxVisual.Foundation.Geometry` | 20 | **源码已定义**；本阶段不对完整功能/CI签收 |
+| `CxVisual.Mechanism.Core` | 111 | **源码已定义**；本阶段不对完整功能/CI签收 |
+| `CxVisual.Mechanism.Visual` | 15 | **源码已定义**；本阶段不对完整功能/CI签收 |
+| `CxVisual.Mechanism.Presentation.Wpf` | 19 | **源码已定义**；本阶段不对完整功能/CI签收 |
+| `CxVisual.Mechanism.Orchestration` | 17 | **源码已定义**；本阶段不对完整功能/CI签收 |
+| `CxVisual.Mechanism.Runtime` | 53 | **源码已定义**；本阶段不对完整功能/CI签收 |
+| `CxVisual.Mechanism.Data` | 39 | **源码已定义**；本阶段不对完整功能/CI签收 |
+| `CxVisual.Professional.Automation` | 2 | **源码已定义**；本阶段不对完整功能/CI签收 |
+| `CxVisual.Professional.Vision` | 11 | **源码已定义**；本阶段不对完整功能/CI签收 |
+| `CxVisual.Professional.CT3D` | 3 | **源码已定义**；本阶段不对完整功能/CI签收 |
+| `CxVisual.Studio` | 15 | **源码已定义**；本阶段不对完整功能/CI签收 |
+
+### 25.2 向阶段二交接的强制规则
+
+1. 为每个已列类确认是否有 **可用API/调用链/已跑测试**，不能因为单独文件/接口/空壳就批准复用完整性；后续若发现更多相关内部类型，追加到此现状表并核实际路径。
+2. 以 EP01～EP15/六角色/U1～U5/Studio `12` 的**缺口功能**反推“必须承担的职责”，逐个与这里的 305 个已核类型比较后再提出新增；禁止预设‘先创建349个类’或复制旧版 Graph。
+3. 每个候选给出 **复用 / 原位增强 / 必须新增 / 废弃重复 / 待调查** 决定、唯一Owner、项目与目录、依赖方向、实例/定义/运行生命周期；Studio薄适配优先。
+4. 阶段三再对保留类型写**完整属性/方法签名、返回与异常、并发/线程/内存所有权、工程序列化、测试矩阵**；本阶段不凭摘要猜方法签名。
+5. 当前仅阶段一归档完成，**全类架构未总体定案**。项目数/代码现状会随并行 master 演进，后续先复核提交/差异；无法获得可靠CI就保留待验。
+
+---
 ## 附录 A｜现有源码和记录入口
 
 - 统一实施/验收进度：`DOCS/Implementation/CxVisual_工程呈现化体系_30分钟分轮实施与验收_V1.0.md`。
@@ -696,5 +1169,5 @@ Foundation.Geometry 负责数学/Path/Transform/命中基础；Mechanism.Visual 
 
 设计讨论以 `EPxx-yy` 引用需求；工程用户反馈以 `U1～U5` 指向场景；Studio 与工程呈现化协作引用 `§12.1～12.10`；后续全类架构每个类型标记 Owner + 需求 ID + 用例 + 证据状态，区分已定案与待核 V1.1；实现记录仍在原 30 分钟分轮文档统一维护，不复制成多套进度台账。
 
-**本文件的价值是规范“应该能干什么、谁怎么用、各体系怎样协作”；它本身不代表功能已交付。**
+**本文件统一保存需求、角色/用例、总体设计及三阶段全类架构；阶段一是可回源码的类型/Owner现状清点，并非全体系代码完成或Windows验收通过。**
 
