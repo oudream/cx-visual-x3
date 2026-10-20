@@ -312,6 +312,7 @@
                     <Button Command="{Binding DisconnectCommand}" Content="断开选中连接"/>
                     <TextBlock Text="所选对象属性 / 实例公开参数" FontWeight="SemiBold" Margin="0,10,0,4"/>
                     <TextBlock Text="资源来源在每条属性内选择；恢复默认使用原工程定义/实例继承机制。" FontSize="11" Foreground="#64748B" TextWrapping="Wrap"/>
+                    <TextBlock Text="{Binding PropertySelectionHint}" FontSize="11" Foreground="#B45309" TextWrapping="Wrap" ToolTip="跨定义/不同类型选区不执行隐式编辑"/>
                     <ItemsControl x:Name="EngineeringProperties" ItemsSource="{Binding Properties}">
                         <ItemsControl.Resources>
                             <!-- 只呈现已有MPM Schema；模板不保管独立业务数据或编辑历史。 -->
@@ -323,7 +324,7 @@
                                          ToolTip="数值在输入时提示错误，提交时仍执行原工程Schema校验"/>
                             </DataTemplate>
                             <DataTemplate x:Key="EngineeringBooleanEditor">
-                                <CheckBox Content="启用" IsChecked="{Binding BooleanValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                <CheckBox Content="启用" IsThreeState="{Binding IsMixedValue}" IsChecked="{Binding NullableBooleanValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
                             </DataTemplate>
                             <DataTemplate x:Key="EngineeringResourceEditor">
                                 <ComboBox ItemsSource="{Binding ResourceChoices}"
@@ -332,7 +333,16 @@
                             </DataTemplate>
                         </ItemsControl.Resources>
                         <ItemsControl.ItemTemplate><DataTemplate>
-                            <StackPanel Margin="0,4"><TextBlock Text="{Binding Member}" FontWeight="SemiBold"/>
+                            <StackPanel Margin="0,4">
+                                <StackPanel.Style><Style TargetType="StackPanel">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsReadOnly}" Value="True">
+                                            <Setter Property="IsEnabled" Value="False"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style></StackPanel.Style>
+                                <TextBlock Text="{Binding Member}" FontWeight="SemiBold"/>
+                                <TextBlock Text="{Binding MixedValueDescription}" FontSize="11" Foreground="#B45309" TextWrapping="Wrap"/>
                                 <TextBlock Text="{Binding Schema}" FontSize="11" Foreground="#64748B" TextWrapping="Wrap" ToolTip="来自工程MPM属性Schema，而非界面自行定义"/>
                                 <ComboBox ItemsSource="{Binding BindingModes}" SelectedItem="{Binding Mode}"/>
                                 <ContentControl Content="{Binding}">
