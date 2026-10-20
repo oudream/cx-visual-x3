@@ -398,46 +398,121 @@ using (MEMEngineeringSession project = MEMEngineering.Create("产线工程"))
 
 同一 Symbol 双实例可以拥有独立数据源、状态、位置和公开属性。私有成员对实例不开放。`MPMPropertyDescriptor.IsReadOnly` 已见于当前源码的 R04 变更；必须由原 MTC/Core 拒绝非法显式写入，而不是只用 WPF Disable。版本/身份过期时必须整体拒绝事务。
 
-## 12. Studio 工作区交互设计
+## 12. Studio 统一界面架构与工程呈现化的协同设计
 
-### 12.1 共享 Workbench Shell
+> **融合依据与局限**：本章承接《临时聊天2》关于 Studio V1.1 的已恢复决议，并核读《CxVisual_Studio_一级菜单与上下文Ribbon设计规范_V1.0.docx》。**尚未取得《CxVisual Studio 统一界面架构与完整设计规范 V1.1》的完整目录/最终原文**，所以不冒称已按其逐章合并。已定原则、当前讨论倾向和待核事项分别列明。Studio 统一界面体系主责 Shell 与布局；工程呈现化体系主责工程能力如何被有效呈现和使用。
 
-**唯一 Shell + 六专业工作区**，不创建六套互不兼容的 Studio。核心上下文：
+### 12.1 协作边界：Studio Shell 与工程呈现化不是两套平台
 
-- `ProjectContext`：当前工程、Revision、Dirty、权限。
-- `WorkbenchContext`：当前专业与可用工具/面板。
-- `ResourceContext`：当前资源、Editor 类型、Definition/Instance。
-- `SelectionContext`：稳定 ID、单/多选、混合类型和只读状态。
-- `RunContext`：Design / Preview / Run / Debug、实际会话、计划版本。
+**Studio Shell 负责**固定菜单/上下文 Ribbon、导航框架、Document Tab、Dock/Float/AutoHide、通用编辑器宿主、Workspace 布局偏好、命令与键盘入口。**工程呈现化负责**把工程资源、配置、图元、流程、构建、运行、数据和调试能力接入这些容器，完成可编辑、可保存、可执行、可定位的闭环。二者必须共用 MEM/MPM/MTC/MOL/MOC/MRK/MDS 和专业 Owner。
 
-以上为**设计时上下文概念**，不是宣称已有同名类。上下文变化由 Shell 更新可见菜单、Ribbon、Toolbox、属性分组、诊断/Watch，而不重建工程模型。
+共同上下文包括：`ProjectContext`（工程/Revision/Dirty）、`WorkbenchContext`（专业工具贡献）、`ResourceContext`（资源及编辑器类型/Definition-Instance）、`SelectionContext`（对象/混合多选）、`RunContext`（Design/Preview/Run/Debug/计划与权限）。这些仅是**上下文职责概念**，后续全类架构应优先复用真实类，而不是照名称新增平行状态对象。
 
-### 12.2 界面结构与职责
+### 12.2 整体布局和六个可复用容器
 
-| 区域 | 主要内容 | 交互规则 |
+| 布局 | 组成 | 呈现化协同规则 |
 |---|---|---|
-| **Top** | 工程菜单、Save、Undo/Redo、查找、Build、Simulation、Run/Stop、Debug、版本/权限；动态 Ribbon | 统一 Command Router；按 Workbench/资源/选中/模式显示对应专业命令；禁用说明可解释 |
-| **左侧** | Project Explorer、Resource Explorer、Object Outline、Toolbox、References/Usages、Variables | Resource 与内部对象分层；跨 Outline/Canvas/Property 统一选中；可跳定义返回 |
-| **中央** | Document Tab 与停靠编辑器：HMI Scene、MOL Flow、算法/ROI、CT/3D Viewer、资源专用编辑器 | 多文档共用工程身份；多个子流程可并排比较；Dirty/关闭/返回稳定 |
-| **右侧** | Schema Properties、Binding、Style/Theme、State/Animation、Event/Action、专业参数 | 通用 Schema 先呈现，再叠加专业 Editor；多选 Mixed、只读、来源/覆盖清楚 |
-| **底部** | Diagnostics、Build Output、Run/Watch、Call Stack、Trace、Log、TestCenter | 点击诊断/轨迹可跨资源定位；错误与工程 Revision/计划版本绑定 |
-| **Workspace Layout** | Dock/Float/AutoHide、窗口分组、偏好、快捷键冲突设置 | 按用户和 Workbench 恢复；布局配置是工作区偏好，不把坐标塞入运行工程语义 |
+| **顶部** | 固定九项主菜单、通用工具、上下文 Ribbon、保存/构建/运行/调试及版本状态 | 一个 Command 经实际 Owner 执行；按活动资源/模式/权限切换 |
+| **左侧** | Project/Resource Explorer、当前资源的 Object Outline、Toolbox，可用多个面板 Tab | 资源树不直接列 Group/Element；对象树只负责当前编辑资源内部对象 |
+| **中央** | Document Area；配置组合面板、图元主画布、流程主画布；专业 Viewer 扩展 | 多 Tab、同一工程和对象 ID；编辑器切换保留上级/返回上下文 |
+| **右侧** | Properties、Binding、Style、State、Animation、Event、专业参数 | 统一 Schema/绑定/定义实例覆盖，按选择的资源与对象显示 |
+| **底部** | Diagnostics、Build、Runtime Data、Ports、Watch、Stack、Breakpoints、Trace、Logs、TestCenter | 按 SourceMap 与运行实例精确定位，分清工程与运行帧 |
+| **布局与主题** | Dock/Float/AutoHide、布局保存/恢复、浅色/深色模式 | 工作区偏好不污染 MEM Revision；浅色参照 TestCenter 白底、深色参照 VS 深灰 |
 
-### 12.3 Top 命令路由详细规则
+原聊天提到“主页结构参照图4、整体风格参照图1”；由于当前没有取得那几张图的最终标注版，**布局关系可承接，视觉像素细节仍待 Studio V1.1 原图复核**。深色不是一律蓝黑，需符合既定 VS 深灰取向。
 
-1. 所有动作先解析当前 `Project/Workbench/Resource/Selection/RunMode` 上下文，再判断“可见/可用/所需权限/目标 Owner”。
-2. 通用命令唯一：Undo、Save、Find、Build、Run、Debug。专业通过贡献项增加“ROI提取”“采图”“CT重建”等；不能各自创建同名命令而产生多个真源。
-3. 单击行为返回明确结果/异常和可定位诊断；快捷键与菜单/右键共享同一命令定义，冲突按焦点、Editor、Workbench、全局顺序裁决。
-4. 运行态 Toolbars 与设计态不同；现场控制命令在未满足权限与安全联锁时不可执行，显示原因而不“假绿灯”。
-5. Top 不应始终塞满功能；专业能力应“可搜索、按上下文出现、必要时可收藏”。
+### 12.3 资源树与对象树：不同层级、同一对象身份
 
-### 12.4 资源编辑与停靠体验
+1. **Resource Explorer**：Project/Workbench 下可独立创建、引用、保存或打开的 Page、Content、Symbol、Flow 及专业 Resource。专业文件夹可以是导航分组，不自动变成新的持久化 Graph。
+2. **Object Outline**：当前 Resource 内 Group、Element、Flow Node、ROI、图层和连接；与中央 Editor 互相高亮/选择，避免 Group/Element 充斥资源树。
+3. **点击资源节点**：自动激活/打开其匹配的配置组合面板或专业编辑器；**进入图元/流程定义**才切换对应主画布，不必把一切资源都打开为画布。
+4. **Definition/Instance**：从页面中的 SymbolRef/ContentRef 进入共享定义、查全部引用，再返回实例原页/位置；原 ID、继承/覆盖、引用关系不丢失。
+5. **跨画布导航**：从诊断/Trace → 主/子/子子流程节点 → HMI 页面/实例；跳转依赖稳定 ID 和 SourceMap，而非标题字符串或屏幕位置。
 
-- 双击 Resource 打开对应 Editor Tab；对象 Outline 选中同步场景；点击 Trace 以 SourceMap 导航到原始 Content/Flow/Node。
-- 跨 Definition/Instance：GoToDefinition → 查看属性/引用 → 返回原实例，面包屑与历史列表可维护。
-- Copy/Paste/Duplicate：由原 MEM 身份重写与引用规则执行；粘贴后复用语义保留，事务/Undo 一致。
-- 批量属性编辑：可安全验证的公共字段允许一次提交；不兼容选区仅解释只读，不沉默回落到最后一个对象。
-- 保存 Workspace 布局与保存工程区分；多个用户的面板布局不污染同一个工程文件，资源内容保存需要 MEM 权威。
+### 12.4 中央编辑器三种主形态与专业 Viewer
+
+| 形态 | 何时出现 | 需要实现什么 | 工程真源与 Undo |
+|---|---|---|---|
+| **A 配置类组合面板** | 当前资源为设备、参数、检测方案、算法配置或组合资源 | 多个配置子面板、属性、引用/集合、校验、专业配置项 | 原 MEM/配置 Owner；按真实提交事务，不建独立 Form 仓 |
+| **B 图元主画布** | 进入 HMI Page、Symbol 或图形资源设计 | Shape/Group/Widget/样式/绑定、图层、鼠键、手柄 | Geometry/Visual 投影 + MEM/MTC 工程事务、Undo/Redo |
+| **C 流程主画布** | 进入主流程/专业子流程、逻辑节点设计 | 节点、Port、控制/数据关系、参数映射、进入/返回 | MOL/MEM 定义为真源，MOC/MRK 决定构建与执行语义 |
+
+**专业 Viewer 属于可插入的 Editor/预览能力**：Vision 图像/ROI、CT 的 MPR/Volume、Inspection 结果、运行 Trace 可以在中央 Tab 或配置组合中加载 Viewer。它们不是第四套公共工程树；体数据、算法运行结果不被强塞进 MRC Shape。
+
+**操作直觉**：资源树选“探测器配置”→ A；进入“设备总览页面”→ B；双击“AI 子流程”→ C；打开“重建结果”→ CT 专业 Viewer；可以同时保留多个 Tab。
+
+### 12.5 配置组合面板：1×N / 2×N / 3×N 与提交边界
+
+- **初步布局偏好是 2×N**：常规桌面双列组合；窄窗口、长表单可 1×N；宽屏/短卡可 3×N。列数不是硬编码的唯一答案，也不是已经最终定案的 V1.1 规则。
+- 同资源内多个子对象/子配置通过卡片标题、折叠、筛选、分组、定位和校验组织；避免弹出大量孤立窗口。专业只贡献配置表单/Schema，Shell 提供宿主和共同上下文。
+- 保存与取消明确区分**字段草稿、已经按 Owner 事务提交的工程值、来自 MDS 的运行观察值**。
+- **Undo/Redo**：图元与流程的持久化可视编辑明确应可撤销。配置类组合面板**不强制每次键入、焦点移动都要有独立 Undo 记录**；但已经写入 MEM 的修改仍应符合原 MTC/配置机制的提交和撤销规则，绝不在 UI 另做一套历史。
+
+### 12.6 主菜单九项固定、上下文 Ribbon 动态贡献
+
+已核读的 Ribbon V1.0 正式建议固定一级菜单为：
+
+**文件 ｜ 编辑 ｜ 视图 ｜ 工程 ｜ 调试 ｜ 运行 ｜ 发布 ｜ 工具 ｜ 帮助**
+
+| 一级菜单 | 全局稳定职责 | 专业协同 |
+|---|---|---|
+| 文件 | 新建/打开/保存/另存/导入导出/关闭 | 不承载算法或设备控制按钮 |
+| 编辑 | Undo/Redo、复制粘贴、删除、查找 | 当前 Editor 决定可撤销的工程动作 |
+| 视图 | 缩放、面板、布局、主题、窗口 | 图元/流程/Viewer 按上下文贡献视图选项 |
+| 工程 | 资源/依赖/配置、验证、构建 | MOC 接构建命令，MEM 执行修改 |
+| 调试 | 仿真/回放/断点/Watch/单步/Trace | MRK 真接口和安全权限 |
+| 运行 | 运行会话、启动/停止、结果/状态 | 设备操作经 MRK/专业授权/互锁 |
+| 发布 | 构建成果版本/制品、签名、部署、回滚、记录 | 与构建、生产运行分开 |
+| 工具 | 选项/扩展/测试/开发者工具 | 不堆积所有专业功能 |
+| 帮助 | 文档、关于、诊断指南 | 不修改工程或设备 |
+
+“绘图”由早期永久一级菜单改为 **HMI/Screen/Symbol 上下文 Ribbon**；Vision、CT3D、Inspection 及 Automation 下 Motion/Robot 等随活动 Document/Workbench 提供专业 Ribbon 页签，**不把 Motion/Robot 因为拥有 Ribbon 而当成新增一级 Workbench**。
+
+统一命令路由：`活动 Project + Workbench + Resource/Editor + Selection + RunMode + Permission → 可见/可用/诊断 → 原 Owner 执行 → UI 结果与刷新`。菜单、Ribbon、快捷键和右键共享同一命令语义；禁用须说明原因；不直接让 Ribbon 操作 Vendor SDK。
+
+**三个维度不能混淆**：九项菜单是信息架构；`Design / Preview / Run / Debug` 是工作模式；`Build / Publish` 是工程生命周期动作，并非第五、第六工作模式。
+
+### 12.7 多 Tab、Docking、布局恢复与颜色主题
+
+1. 支持面板停靠、浮动、自动隐藏、Tab 合并、分组/关闭/重开、默认布局恢复；中央可以并排打开 HMI、主流程、AI/CV 子流程、Viewer。
+2. 当前激活 Tab 决定专业 Ribbon、工具箱、Schema、底部 Watch/Trace 的焦点，关闭 Tab **不得删除对应工程资源**；跨工程切换时释放旧观察订阅与 Viewer 句柄。
+3. 用户 Workspace 布局与工程持久化分开存放；保存布局不应增加 MEM Revision，资源/编辑操作则必须服从原 Owner 的工程保存。
+4. **AvalonDock 已作为 Docking 候选讨论**，但 5.x/4.x 最终版本、真实 .NET Framework 4.8 兼容、主题、许可及 Windows CI 尚未核对；此处不替先前聊天做版本决议。
+5. 浅色以 TestCenter 白底为基调、深色以 VS 深灰为基调；需涵盖菜单、焦点、禁用、混合值、错误/告警、专业 Viewer 和高 DPI，不仅换背景。
+
+### 12.8 资源→编辑→构建→运行→调试的统一交互
+
+`资源树选择 → 选择Editor类型 → 激活Document Tab → Shell发布上下文 → 左/右/底面板协同 → 原Owner提交/查询 → 其它视图重投影`。
+
+- **工程编辑**：Schema 校验/权限/Revision 由 MEM/MPM/MTC 决定，ViewModel 只维护投影和未提交草稿；非法输入和过期资源不能产生半个事务。
+- **跨编辑器共享身份**：选择内部 Node 与选择 Resource 不同；Definition/Instance、多个子流程、数据端口的来源要始终明确。
+- **构建**：MOC 返回版本化验证/计划和 SourceMap；构建成功不代表设备发布/授权运行成功。
+- **观察**：MRK/MDS 返回真实会话/数据质量/时间戳/Trace；“运行观察”属性不能误当“定义编辑”，运行帧不修改 MEM。
+- **故障定位**：从子流程/专业算法失败节点跳到父流程调用、所属工位及 HMI；导航 Back 保留来源 Tab/选择上下文。
+- **生命周期**：关闭 Tab、切换工程、退出 Run/Debug 清理订阅、Viewer 与旧运行实例；操作失败给出可定位诊断，不伪造成功。
+
+### 12.9 两类完整 UI 路径与实体验收
+
+**示例 I：电机配置与 HMI**
+
+资源树选“电机设备配置”→中央 A 组合面板（建议 2×N）→配置通信、变量、设备参数→进入“电机 Symbol”中央 B 图元画布→右侧设置样式/Schema→放两个 Symbol 实例→观察不同 MDS 值→从实例入定义再返回→预览不发真实设备指令→保存重开与 Undo/Redo 确认。
+
+**示例 II：X-Ray 主流程与 AI/CV 子流程**
+
+资源树选择“检测方案”→中央 A 组合面板→双击“检测主流程”进入 C 流程画布→进入 AI/CV/复测子流程的各个 Tab→选图像结果激活专业 Viewer→底部 Build/Watch/Trace 显示真实诊断/执行信息→点击子流程失败项按 SourceMap 回父流程调用/HMI 工位→修改工程→新 Revision/MOC计划→再执行；不能只做孤立截图或虚构 Trace。
+
+**UI 验收基准**：三形态真实可切换；中央和左右/底上下文同步；固定菜单与专业 Ribbon 不冲突；导航回退正确；布局重启可恢复；Undo/Redo、保存重开和运行帧分离；拒绝无权限设备动作；Windows WPF STA 和真实场景验证。现有 EP01–EP15 / R01–R04 有代码不等于此处全部实现。
+
+### 12.10 待和 Studio V1.1 原稿核对的决议
+
+| 问题 | 已讨论的方向 | 目前不可冒称已定案的细节 |
+|---|---|---|
+| 主页结构与风格 | 主页结构参考图4、总体风格参考图1；深 VS 灰 / 浅 TestCenter 白底 | 最终图纸、尺寸、主题 Token |
+| 配置组合面板 | 1×N/2×N/3×N，2×N 为倾向 | 自动排列阈值、配置类全量种类 |
+| Undo/Redo | 图元/流程重点支持、配置组合不强制逐键历史 | 各配置 Owner 的编辑提交颗粒度 |
+| Docking | AvalonDock 候选 | 4.x vs 5.x、依赖/许可证/真实 WindowsCI |
+| 一级菜单与 Ribbon | V1.0 已核读九菜单+专业上下文 | V1.1 最终命令/分组清单及变更 |
+| 两体系接口 | 本稿明确 Shell vs 工程能力边界 | 后续与 V1.1 最终逐章核对/ADR |
 
 ## 13. 图元编辑、场景投影与专业 Viewer 设计
 
