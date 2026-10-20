@@ -406,3 +406,11 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 - 已再次查询GitHub Actions，五项同SHA Windows CI `completed/success`：Runtime TDD [39410511650](https://github.com/oudream/cx-visual-x3/actions/runs/39410511650)；Engineering Organization [39410511695](https://github.com/oudream/cx-visual-x3/actions/runs/39410511695)；TestCenter [39410511642](https://github.com/oudream/cx-visual-x3/actions/runs/39410511642)；Config L1 [39410511637](https://github.com/oudream/cx-visual-x3/actions/runs/39410511637)；配置公共底座 [39410511673](https://github.com/oudream/cx-visual-x3/actions/runs/39410511673)。
 - 本轮经Windows证实：Join等待观察超时/取消不释放非协作Work、具名输出显式同名聚合且通过MDS提交、Skipped/Failed依赖区分、同Plan旧Flow迟到Return不会污染新Flow、PoC不误计正式项目数量。上述属于**已通过源码增量**，不能等同R07全部需求已完成。
 - 尚缺或待扩展：Studio工程编排用户对高级Join/异常/补偿的可见可编辑操作、跨Invocation与Parallel Foreach的归并完整身份、多生产者真实专业连接、跨进程外部设备Unknown与硬件安全交接及整体长稳反证。**R07整轮状态：持续实施，未封轮；R08～R12仍待推进**。此次仅追加文档证据，不修改最后已经CI验证过的源码。
+
+
+### R07 · E08-10 分层循环真实Invocation输出归并（2026-10-20，待CI）
+
+- 基线HEAD `28c011b53a616e75ff527df89988367e25901f6e`；继续复用唯一MRKExecutionEngine、MRKExecutionContext、MDSDataStack。已有R05动态循环每轮独立Frame，但后继步骤没有一个无需拼接字符串且保证完整性的一站式读取入口。
+- 在现有`MRKExecutionContext`增补`CollectLoopOutputs<T>(loopStepId, bodyStepId, outputName)`和只读身份值`MRKLoopOutput<T>`。从Loop执行结果取得真实完成迭代数，按输入迭代次序读取原MDS已提交数据；每项包含FlowId、IterationIndex、FrameKey、InvocationId。必须检查Loop已Completed及各迭代节点Completed；任一缺失/Skipped/Failed均拒绝整个聚合，不伪造部分成功；实际导出仍使用原MDS的Return/CommitOutputs屏障。
+- 实际执行反证：同一Plan并发两个Flow不同输入、同名循环/同名输出不串账；跳过中间迭代拒绝局部提交；两层嵌套Loop先内层归并再外层归并且可精确定位原FrameKey，验证原有Trace/Invocation身份而不创建第二运行数据仓库。
+- 本轮不更改R05循环本身串行迭代语义，也**不声称已具备并行Foreach调度**、Studio画布编辑、持久恢复、跨进程联锁或外部设备安全。仅为E08-10补完整的运行态归并基础，待本次提交的真实Windows五项CI核验；R07未封轮，R08未启动。

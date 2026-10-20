@@ -19,6 +19,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
             StandaloneCompilerNamedExports();
             OrdinaryCapabilityAndExistingStepResultsRemainUsable();
             DynamicLoopCommittedDataFrames();
+            R07_CompletedLoopOutputsAreFullyScoped();
+            R07_NestedLoopOutputsPreserveInvocationPath();
             ConcurrentInvocationFrameIsolation();
             RepeatedInvocationFrameIsolation();
         }
@@ -287,6 +289,142 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "R05 FrameKey or Step observation reused across activations");
             }
             finally{engine.StopAsync(true).GetAwaiter().GetResult();}
+        }
+
+
+        /// <summary>
+        /// R07 E08-10：Join只读同一Flow、每轮独立MDS Frame的已提交结果；
+        /// 多Flow复用同Plan不串账；跳过一轮时拒绝局部聚合。
+        /// </summary>
+        private static void R07_CompletedLoopOutputsAreFullyScoped()
+        {
+            MRKExecutionPlan body = new MRKExecutionPlan("r07.loop.body", new[]
+            {
+                new MRKExecutionStep("write", new string[0], (ctx, ct) =>
+                {
+                    int seed = (int)ctx.Inputs["Seed"];
+                    ctx.Data.Return("Value", seed + ctx.IterationIndex);
+                    return Task.FromResult((object)true);
+                }, condition: ctx => !((bool)ctx.Inputs["SkipMiddle"] &&
+                    ctx.IterationIndex == 1),
+                    dataOutputs: Output("Value"))
+            });
+            MRKLoopRegion region = new MRKLoopRegion(body, 3, (ctx, i) => i < 3);
+            MRKExecutionPlan plan = new MRKExecutionPlan("r07.loop.all", new[]
+            {
+                new MRKExecutionStep("loop", new string[0],
+                    (ctx, ct) => Task.FromResult((object)true), loopRegion: region),
+                new MRKExecutionStep("join", new[] { "loop" }, (ctx, ct) =>
+                {
+                    IReadOnlyList<MRKLoopOutput<int>> records =
+                        ctx.CollectLoopOutputs<int>("loop", "write", "Value");
+                    int sum = 0;
+                    for (int i = 0; i < records.Count; i++)
+                    {
+                        MRKLoopOutput<int> item = records[i];
+                        string key = "loop.i" + i + ".write";
+                        Check(item.FlowId == ctx.FlowId &&
+                            item.IterationIndex == i && item.FrameKey == key &&
+                            item.InvocationId == ctx.FlowId.ToString("N") + ":" + key,
+                            "R07迭代归并丢失原Flow/Invocation/索引身份");
+                        sum += item.Value;
+                    }
+                    bool rejected = false;
+                    try { ctx.CollectLoopOutputs<int>("loop", "write", "Missing"); }
+                    catch (InvalidOperationException ex)
+                    { rejected = ex.Message.Contains("missing_committed_output"); }
+                    Check(rejected || records.Count == 0,
+                        "未声明的具名输出被当作正常结果返回");
+                    ctx.Data.Return("Total", sum);
+                    return Task.FromResult((object)true);
+                }, dataOutputs: Output("Total"))
+            }, new Dictionary<string, string> { { "Final", "join.Total" } });
+            MRKExecutionEngine engine = new MRKExecutionEngine(new FCRWorkerOptions(4, 16));
+            try
+            {
+                MRKFlowHandle first = engine.StartFlow(plan, new Dictionary<string, object>
+                    { { "Seed", 10 }, { "SkipMiddle", false } });
+                MRKFlowHandle second = engine.StartFlow(plan, new Dictionary<string, object>
+                    { { "Seed", 100 }, { "SkipMiddle", false } });
+                MRKFlowResult a = first.Completion.GetAwaiter().GetResult();
+                MRKFlowResult b = second.Completion.GetAwaiter().GetResult();
+                Check(a.State == MRKFlowState.Completed &&
+                    b.State == MRKFlowState.Completed &&
+                    a.GetCommittedOutput<int>("Final") == 33 &&
+                    b.GetCommittedOutput<int>("Final") == 303 &&
+                    a.FlowId != b.FlowId,
+                    "R07同Plan并发Flow的迭代值交叉或统计错误");
+                Check(first.Context.ObservationsSnapshot()["loop.i1.write"].InvocationId !=
+                    second.Context.ObservationsSnapshot()["loop.i1.write"].InvocationId,
+                    "R07不同Flow复用相同循环节点没有独立Invocation身份");
+                MRKFlowResult skipped = engine.StartFlow(plan, new Dictionary<string, object>
+                    { { "Seed", 10 }, { "SkipMiddle", true } }).Completion
+                    .GetAwaiter().GetResult();
+                Check(skipped.State == MRKFlowState.Failed &&
+                    skipped.CommittedOutputs.Count == 0 &&
+                    skipped.StepStates["loop.i1.write"] == MRKStepState.Skipped &&
+                    skipped.StepStates["join"] == MRKStepState.Failed,
+                    "R07缺少一轮提交却发布部分Join结果");
+            }
+            finally { engine.StopAsync().GetAwaiter().GetResult(); }
+        }
+
+        /// <summary>R07：双层循环同名write，内层先按真实Invocation汇总，外层再汇总。</summary>
+        private static void R07_NestedLoopOutputsPreserveInvocationPath()
+        {
+            MRKExecutionPlan innerBody = new MRKExecutionPlan("r07.nested.inner", new[]
+            {
+                new MRKExecutionStep("write", new string[0], (ctx, ct) =>
+                {
+                    ctx.Data.Return("Value", 1 + ctx.IterationIndex);
+                    return Task.FromResult((object)true);
+                }, dataOutputs: Output("Value"))
+            });
+            MRKExecutionPlan outerBody = new MRKExecutionPlan("r07.nested.outer", new[]
+            {
+                new MRKExecutionStep("inner", new string[0],
+                    (ctx, ct) => Task.FromResult((object)true),
+                    loopRegion: new MRKLoopRegion(innerBody, 2, (ctx, i) => i < 2)),
+                new MRKExecutionStep("rollup", new[] { "inner" }, (ctx, ct) =>
+                {
+                    IReadOnlyList<MRKLoopOutput<int>> rows =
+                        ctx.CollectLoopOutputs<int>("inner", "write", "Value");
+                    Check(rows.Count == 2 && rows[0].Value == 1 && rows[1].Value == 2 &&
+                        rows[0].FrameKey.StartsWith("outer.i" + ctx.IterationIndex + ".inner.i",
+                            StringComparison.Ordinal),
+                        "R07内层循环Output错误匹配其他层Invocation");
+                    ctx.Data.Return("Partial", rows.Sum(x => x.Value));
+                    return Task.FromResult((object)true);
+                }, dataOutputs: Output("Partial"))
+            });
+            MRKExecutionPlan root = new MRKExecutionPlan("r07.nested.root", new[]
+            {
+                new MRKExecutionStep("outer", new string[0],
+                    (ctx, ct) => Task.FromResult((object)true),
+                    loopRegion: new MRKLoopRegion(outerBody, 2, (ctx, i) => i < 2)),
+                new MRKExecutionStep("join", new[] { "outer" }, (ctx, ct) =>
+                {
+                    IReadOnlyList<MRKLoopOutput<int>> rows =
+                        ctx.CollectLoopOutputs<int>("outer", "rollup", "Partial");
+                    Check(rows.Count == 2 &&
+                        rows[0].FrameKey == "outer.i0.rollup" &&
+                        rows[1].FrameKey == "outer.i1.rollup" &&
+                        rows[0].InvocationId != rows[1].InvocationId,
+                        "R07两层归并的原Invocation路径错误");
+                    ctx.Data.Return("Total", rows.Sum(x => x.Value));
+                    return Task.FromResult((object)true);
+                }, dataOutputs: Output("Total"))
+            }, new Dictionary<string, string> { { "Total", "join.Total" } });
+            MRKExecutionEngine engine = new MRKExecutionEngine(new FCRWorkerOptions(3, 10));
+            try
+            {
+                MRKFlowResult result = engine.StartFlow(root).Completion.GetAwaiter().GetResult();
+                Check(result.State == MRKFlowState.Completed &&
+                    result.GetCommittedOutput<int>("Total") == 6 &&
+                    result.StepStates.ContainsKey("outer.i1.inner.i1.write"),
+                    "R07双层迭代真正执行或具名输出归并失败");
+            }
+            finally { engine.StopAsync().GetAwaiter().GetResult(); }
         }
 
         /// <summary>R04：两个并行Flow运行同一个编译Step，各有独立Invocation和MDS Frame。</summary>

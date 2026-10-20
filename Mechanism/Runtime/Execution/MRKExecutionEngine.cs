@@ -40,6 +40,26 @@ namespace CxVisual.Mechanism.Runtime.Execution
     }
 
     /// <summary>同一次流程的局部快照；不对外暴露可写的全局数据字典。</summary>
+
+    /// <summary>
+    /// 同一Flow的一次循环体节点已提交的输出引用。值来自MDS安全快照，
+    /// FrameKey和InvocationId与原MRK Trace/观察路径相同，不新建数据真源。
+    /// </summary>
+    public sealed class MRKLoopOutput<T>
+    {
+        internal MRKLoopOutput(Guid flowId, int iterationIndex, string frameKey,
+            string invocationId, T value)
+        {
+            FlowId = flowId; IterationIndex = iterationIndex;
+            FrameKey = frameKey; InvocationId = invocationId; Value = value;
+        }
+        public Guid FlowId { get; private set; }
+        public int IterationIndex { get; private set; }
+        public string FrameKey { get; private set; }
+        public string InvocationId { get; private set; }
+        public T Value { get; private set; }
+    }
+
     public sealed class MRKExecutionContext
     {
         private readonly ConcurrentDictionary<string, object> _results =
@@ -177,6 +197,52 @@ namespace CxVisual.Mechanism.Runtime.Execution
             return _managedStack.TryReadOutput(_scopePrefix+sourceName.Substring(0,dot),
                 sourceName.Substring(dot+1),out value);
         }
+
+        /// <summary>
+        /// R07：按原循环的真实完成次数，按迭代号读取每轮已提交的具名输出。
+        /// 仅能在本Flow的数据栈存活期间调用，常见场景是依赖该Loop的后继节点。
+        /// 循环未完成、任一迭代Skipped/Failed/缺少输出均拒绝整个归并；
+        /// 不读取Pending，不替代MDS Commit，不启动新调度器或扩散到其他Flow。
+        /// </summary>
+        public IReadOnlyList<MRKLoopOutput<T>> CollectLoopOutputs<T>(
+            string loopStepId, string bodyStepId, string outputName)
+        {
+            if (string.IsNullOrWhiteSpace(loopStepId) ||
+                string.IsNullOrWhiteSpace(bodyStepId) ||
+                string.IsNullOrWhiteSpace(outputName))
+                throw new ArgumentException("loop.outputs.identity_required");
+            string loopKey = _scopePrefix + loopStepId;
+            MRKStepState loopState;
+            object countValue;
+            if (!_states.TryGetValue(loopKey, out loopState) ||
+                loopState != MRKStepState.Completed ||
+                !_results.TryGetValue(loopKey, out countValue) || !(countValue is int))
+                throw new InvalidOperationException("loop.outputs.loop_not_completed:" + loopKey);
+            int iterations = (int)countValue;
+            if (iterations < 0)
+                throw new InvalidOperationException("loop.outputs.invalid_iteration_count");
+            List<MRKLoopOutput<T>> outputs = new List<MRKLoopOutput<T>>();
+            for (int iteration = 0; iteration < iterations; iteration++)
+            {
+                string frameKey = loopKey + ".i" +
+                    iteration.ToString(System.Globalization.CultureInfo.InvariantCulture) +
+                    "." + bodyStepId;
+                MRKStepObservation step;
+                if (!_observations.TryGetValue(frameKey, out step) ||
+                    step.State != MRKStepState.Completed ||
+                    step.InvocationId != FlowId.ToString("N") + ":" + frameKey)
+                    throw new InvalidOperationException(
+                        "loop.outputs.step_not_completed:" + frameKey);
+                T value;
+                if (!_managedStack.TryReadOutput<T>(frameKey, outputName, out value))
+                    throw new InvalidOperationException(
+                        "loop.outputs.missing_committed_output:" + frameKey + "." + outputName);
+                outputs.Add(new MRKLoopOutput<T>(
+                    FlowId, iteration, frameKey, step.InvocationId, value));
+            }
+            return outputs.AsReadOnly();
+        }
+
         internal void CloseFlowDataScope()
         {
             try { _managedStack.Dispose(); }
