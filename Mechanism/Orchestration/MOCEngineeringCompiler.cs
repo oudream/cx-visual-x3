@@ -716,7 +716,6 @@ namespace CxVisual.Mechanism.Orchestration
             if(requested.Any(id=>!definition.Blocks.Any(b=>b.Id==id))||
                 definition.Links.Any(l=>l.Kind!=MPCPortKind.Control&&
                     (set.Contains(l.Source.BlockId)||set.Contains(l.Target.BlockId)))||
-                definition.Parameters.Keys.Any(set.Contains)||
                 definition.StateMachines.Keys.Any(set.Contains)||
                 definition.Groups.Any(g=>g.BlockIds.Any(set.Contains)&&
                     g.BlockIds.Any(id=>!set.Contains(id))))
@@ -744,8 +743,11 @@ namespace CxVisual.Mechanism.Orchestration
             var ports=fragment.Ports.ToDictionary(p=>p.Key,
                 p=>(IEnumerable<MPCPortDescriptor>)p.Value);
             var positions=fragment.Positions.ToDictionary(p=>p.Key,p=>p.Value);
+            var childParameters=fragment.Parameters.ToDictionary(p=>p.Key,
+                p=>(IDictionary<string,string>)p.Value.ToDictionary(v=>v.Key,v=>v.Value,
+                    StringComparer.Ordinal));
             var child=new MOLWiringDefinition(entryCandidates[0],fragment.Blocks,ports,
-                fragment.Links,positions,fragment.Groups,null,
+                fragment.Links,positions,fragment.Groups,childParameters,
                 fragment.Policies.ToDictionary(x=>x.Key,x=>x.Value));
             child.ValidateExecutable();
             var edit=new MOCFlowBuilder(definition);
@@ -1004,12 +1006,29 @@ namespace CxVisual.Mechanism.Orchestration
                     var nested=MOLWiringCodec.Get(target);
                     if(nested==null)throw new InvalidOperationException("moc.invoke.requires_v2");
                     nested.ValidateExecutable();
-                    if(nested.Parameters.Count!=0||
-                        nested.Links.Any(l=>l.Kind!=MPCPortKind.Control)||
+                    if(nested.Links.Any(l=>l.Kind!=MPCPortKind.Control)||
                         nested.Blocks.Any(b=>b.CapabilityId.StartsWith(
                             "moc.invoke:",StringComparison.Ordinal)))
                         throw new InvalidOperationException("moc.invoke.nested_or_data_unsupported");
                     childId=targetId.ToString("N");
+                    // 每次调用单独命名运行默认值；依赖MRK入口Gate做类型安全映射。
+                    // 既不扩散子Content全局变量，也不将参数改为并行Graph。
+                    foreach(var nestedValues in nested.Parameters)
+                    foreach(var parameter in nestedValues.Value)
+                    {
+                        var port=nested.Ports[nestedValues.Key].Single(p=>
+                            p.MemberId==parameter.Key);
+                        Type type=ResolveWiringType(port.TypeId);
+                        if(type==typeof(object)||type==typeof(byte[]))
+                            throw new InvalidOperationException("moc.invoke.parameter_type");
+                        string name="w"+nestedValues.Key.ToString("N")+"."+parameter.Key;
+                        string uniqueKey=stepIds[block.Id]+"."+name;
+                        object value=type==typeof(string)?(object)parameter.Value:
+                            Convert.ChangeType(parameter.Value,type,CultureInfo.InvariantCulture);
+                        inputs.Add(new MRKExecutionInput(name,MRKInputSource.FlowInput,
+                            uniqueKey,type,port.Required));
+                        inputDefaults.Add(uniqueKey,value);
+                    }
                     if(!subflowDefinitions.ContainsKey(childId))
                     {
                         var innerSteps=nested.Blocks.Select(b=>{
@@ -1021,10 +1040,23 @@ namespace CxVisual.Mechanism.Orchestration
                                     stepPolicy.TimeoutMs>0?
                                         (TimeSpan?)TimeSpan.FromMilliseconds(stepPolicy.TimeoutMs):null,
                                     stepPolicy.Idempotent);
+                            var innerInputs=new List<MRKExecutionInput>();
+                            IReadOnlyDictionary<string,string> values;
+                            if(nested.Parameters.TryGetValue(b.Id,out values))
+                            foreach(var parameter in values)
+                            {
+                                var port=nested.Ports[b.Id].Single(p=>p.MemberId==parameter.Key);
+                                Type type=ResolveWiringType(port.TypeId);
+                                if(type==typeof(object)||type==typeof(byte[]))
+                                    throw new InvalidOperationException("moc.invoke.parameter_type");
+                                innerInputs.Add(new MRKExecutionInput(parameter.Key,
+                                    MRKInputSource.FlowInput,"w"+b.Id.ToString("N")+
+                                    "."+parameter.Key,type,port.Required));
+                            }
                             return new MRKStepCompileRequest("w"+b.Id.ToString("N"),
                                 b.CapabilityId,nested.Links.Where(l=>l.Target.BlockId==b.Id)
                                     .Select(l=>"w"+l.Source.BlockId.ToString("N")),
-                                policy:policy);
+                                inputs:innerInputs,policy:policy);
                         }).ToArray();
                         subflowDefinitions.Add(childId,
                             new MRKFlowCompileDefinition(childId,innerSteps));
