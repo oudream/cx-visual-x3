@@ -66,7 +66,7 @@ namespace CxVisual.Mechanism.Core
             var state=MPMDefinitionState.For(owner);if(state==null)return;
             foreach(var property in MPMDefinitionState.PropertiesOf(owner))
             {
-                var d=property.Descriptor;w.WriteStartElement("Property");w.WriteAttributeString("member",d.MemberId);w.WriteAttributeString("valueKind",d.ValueKind.ToString());w.WriteAttributeString("required",XmlConvert.ToString(d.Required));w.WriteAttributeString("public",XmlConvert.ToString(d.IsPublic));
+                var d=property.Descriptor;w.WriteStartElement("Property");w.WriteAttributeString("member",d.MemberId);w.WriteAttributeString("valueKind",d.ValueKind.ToString());w.WriteAttributeString("required",XmlConvert.ToString(d.Required));w.WriteAttributeString("public",XmlConvert.ToString(d.IsPublic));if(d.IsReadOnly)w.WriteAttributeString("readOnly","true");
                 if(d.Minimum.HasValue)Number(w,"min",d.Minimum.Value);if(d.Maximum.HasValue)Number(w,"max",d.Maximum.Value);
                 if(d.DefaultBinding!=null){w.WriteStartElement("Default");WriteBinding(w,d.DefaultBinding);w.WriteEndElement();}
                 if(property.ExplicitBinding!=null){w.WriteStartElement("Explicit");WriteBinding(w,property.ExplicitBinding);w.WriteEndElement();}w.WriteEndElement();
@@ -95,9 +95,10 @@ namespace CxVisual.Mechanism.Core
             switch(e.Name.LocalName)
             {
                 case "Property":
-                    XFields(e,"member valueKind required public min max",true);if(e.Elements().Any(x=>x.Name!="Default"&&x.Name!="Explicit")||e.Elements("Default").Count()>1||e.Elements("Explicit").Count()>1)throw new InvalidDataException("Invalid property payload");
+                    XFields(e,"member valueKind required public min max readOnly",true);if(e.Elements().Any(x=>x.Name!="Default"&&x.Name!="Explicit")||e.Elements("Default").Count()>1||e.Elements("Explicit").Count()>1)throw new InvalidDataException("Invalid property payload");
                     var def=e.Element("Default");var explicitValue=e.Element("Explicit");
-                    var descriptor=new MPMPropertyDescriptor(XRequired(e,"member"),XEnum<MPMValueKind>(e,"valueKind"),XBool(e,"required"),XBool(e,"public",true),def==null?null:ReadBinding(def),e.Attribute("min")==null?(double?)null:double.Parse(XRequired(e,"min"),Invariant),e.Attribute("max")==null?(double?)null:double.Parse(XRequired(e,"max"),Invariant));
+                    var descriptor=new MPMPropertyDescriptor(XRequired(e,"member"),XEnum<MPMValueKind>(e,"valueKind"),XBool(e,"required"),XBool(e,"public",true),def==null?null:ReadBinding(def),e.Attribute("min")==null?(double?)null:double.Parse(XRequired(e,"min"),Invariant),e.Attribute("max")==null?(double?)null:double.Parse(XRequired(e,"max"),Invariant),XBool(e,"readOnly"));
+                    if(descriptor.IsReadOnly&&explicitValue!=null)throw new InvalidDataException("Readonly property cannot have explicit override");
                     var property=new MPMProperty(owner.Id,descriptor);property.ExplicitBinding=explicitValue==null?null:ReadBinding(explicitValue);descriptor.Validate(property.ExplicitBinding);
                     if(state.PropertyItems==null)state.PropertyItems=new List<MPMProperty>();if(state.PropertyItems.Any(p=>p.MemberId==property.MemberId))throw new InvalidDataException("Duplicate property");state.PropertyItems.Add(property);break;
                 case "Port":
