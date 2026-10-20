@@ -225,3 +225,14 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 **明确边界**：R03 是可执行 Region 的静态编译基石，不代表 R04 Invocation 数据帧、R05 动态重入循环、R10 Checkpoint 已完成。
 
 **本轮状态**：源码与测试准备中，固定 Commit/Windows CI 需在提交后补证据；不得凭本段文字标记已完成。
+
+
+## R04 · Invocation身份与MDS帧隔离
+
+- **原Owner**：MRK执行身份位于Mechanism.Runtime；MDSDataStack/MDSDataFrame保持Mechanism.Data唯一数据Owner；复用现有Frame，不增加新引擎/数据容器/项目。
+- 新增不可变 \`MRKInvocationContext\` 作为真正执行某个Step时的身份（FlowId、StepId、ActivationIndex、FrameKey、InvocationId），并通过现有 \`MRKExecutionContext.Invocation\` 暴露给专业Capability。根Flow无Invocation，派生BoundInputs/Data/Subflow上下文保持当前身份。
+- \`MRKExecutionEngine.RunStepAsync\` 每次调度建立Invocation上下文，并使用FrameKey创建既有MDS作用域/Frame；静态DAG默认FrameKey仍为StepId，确保旧StepOutput/DataExports协议不回归。
+- \`MRKStepObservation.InvocationId\` 来源于真实MRK运行节点，不由Studio伪造第二套状态；既有状态、Trace、WorkId沿用原状态真源。
+- **测试**：并行运行两个相同编译Plan但不同FlowId的请求，验证独立Invocation、Frame输入、CommittedOutput、观察快照；MDS同一逻辑Step不同激活帧分别提交且互不污染；Abort后的输出禁止读取。
+- **边界**：R04建立调用实例身份和数据帧的运行协议，不把当前静态DAG声称为已经动态重入；MRK在单Flow内部为同一Step生成二次激活并正确重定位StepOutput属于R05。
+- **验收**：以本轮唯一中文Commit所触发的真实Windows Runtime/工程组织等CI为准，未验证前不记S3。

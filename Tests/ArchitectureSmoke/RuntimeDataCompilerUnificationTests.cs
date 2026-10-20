@@ -18,6 +18,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
             MissingDeclaredCapabilityInputRejected();
             StandaloneCompilerNamedExports();
             OrdinaryCapabilityAndExistingStepResultsRemainUsable();
+            ConcurrentInvocationFrameIsolation();
+            RepeatedInvocationFrameIsolation();
         }
 
         private static void Check(bool ok, string name)
@@ -228,6 +230,96 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "单层直接编译与子流程编译数据语义不同");
             }
             finally { runtime.StopAsync().GetAwaiter().GetResult(); }
+        }
+
+        /// <summary>R04：两个并行Flow运行同一个编译Step，各有独立Invocation和MDS Frame。</summary>
+        private static void ConcurrentInvocationFrameIsolation()
+        {
+            var seen=new System.Collections.Concurrent.ConcurrentDictionary<int,string>();
+            MRKCodeRuntimeBlueprint blueprint=new MRKCodeRuntimeBuilder()
+                .DataCapability("Twice",(ctx,ct)=>{
+                    Check(ctx.Invocation!=null&&ctx.Invocation.FlowId==ctx.FlowId&&
+                        ctx.Invocation.StepId=="calculate"&&
+                        ctx.Invocation.FrameKey=="calculate"&&ctx.Data!=null,
+                        "实际节点没有绑定Invocation/MDS Frame");
+                    int n=ctx.Data.Get<int>("N");
+                    Check(seen.TryAdd(n,ctx.Invocation.InvocationId),
+                        "并行流程错误共享输入或Invocation");
+                    ctx.Data.Return("Value",n*2);
+                    return Task.FromResult((object)true);
+                },new Dictionary<string,Type>{{"Value",typeof(int)}},
+                new[]{new MRKCapabilityInput("N",typeof(int))})
+                .Flow("R04",f=>f.StepData("calculate","Twice",new[]{
+                    new MRKExecutionInput("N",MRKInputSource.FlowInput,
+                        "request",typeof(int))
+                }).Export("answer","calculate.Value"))
+                .Freeze();
+            MRKCompileResult compiled=new MRKExecutionOrchestrationCompiler()
+                .Compile("R04",blueprint,blueprint);
+            Check(compiled.Succeeded,"R04独立Flow编译失败");
+            MRKExecutionEngine engine=new MRKExecutionEngine(
+                new FCRWorkerOptions(2,8));
+            try
+            {
+                MRKFlowHandle left=engine.StartFlow(compiled.Plan,
+                    new Dictionary<string,object>{{"request",7}});
+                MRKFlowHandle right=engine.StartFlow(compiled.Plan,
+                    new Dictionary<string,object>{{"request",11}});
+                MRKFlowResult[] values=Task.WhenAll(left.Completion,right.Completion)
+                    .GetAwaiter().GetResult();
+                Check(values.All(x=>x.State==MRKFlowState.Completed)&&
+                    values[0].GetCommittedOutput<int>("answer")==14&&
+                    values[1].GetCommittedOutput<int>("answer")==22,
+                    "并发Flow数据被覆盖");
+                Check(seen.Count==2&&seen[7]!=seen[11]&&
+                    seen[7].StartsWith(left.FlowId.ToString("N")+":",
+                        StringComparison.Ordinal)&&
+                    seen[11].StartsWith(right.FlowId.ToString("N")+":",
+                        StringComparison.Ordinal),
+                    "相同StepId的Invocation身份在并发Flow中冲突");
+                Check(left.Context.ObservationsSnapshot()["calculate"].InvocationId==seen[7]&&
+                    right.Context.ObservationsSnapshot()["calculate"].InvocationId==seen[11],
+                    "观察快照没有沿用真实Invocation");
+                Check(left.Context.Invocation==null&&right.Context.Invocation==null,
+                    "Flow根Context错误变成某个节点的运行Context");
+            }
+            finally{engine.StopAsync().GetAwaiter().GetResult();}
+        }
+
+        /// <summary>R04：同一逻辑Step不同激活索引必须分离帧，失败帧不可泄漏输出。</summary>
+        private static void RepeatedInvocationFrameIsolation()
+        {
+            using(var stack=new CxVisual.Mechanism.Data.RuntimeData.MDSDataStack())
+            {
+                Guid flowId=Guid.NewGuid();
+                string[] keys={"sameStep","sameStep$activation.1"};
+                for(int i=0;i<2;i++)
+                {
+                    var frame=stack.OpenFrame(keys[i],
+                        stack.RootScope.CreateChild(keys[i]),
+                        new Dictionary<string,object>{{"N",i+1}},
+                        new Dictionary<string,Type>{{"Value",typeof(int)}});
+                    Check(frame.InvocationId==keys[i]&&
+                        frame.Data.Get<int>("N")==i+1,
+                        "不同激活帧无法保留各自输入");
+                    frame.Data.Return("Value",(i+1)*10);
+                    frame.CommitOutputs();
+                    frame.Dispose();
+                }
+                int first,second;
+                Check(stack.TryReadOutput("sameStep","Value",out first)&&first==10&&
+                    stack.TryReadOutput("sameStep$activation.1","Value",out second)&&second==20,
+                    "相同逻辑节点多轮提交输出发生串账");
+                var aborted=stack.OpenFrame("sameStep$activation.2",
+                    stack.RootScope.CreateChild("sameStep$activation.2"),
+                    new Dictionary<string,object>(),
+                    new Dictionary<string,Type>{{"Value",typeof(int)}});
+                aborted.Data.Return("Value",99);
+                aborted.Dispose();
+                int hidden;
+                Check(!stack.TryReadOutput("sameStep$activation.2","Value",out hidden),
+                    "失败或放弃的Frame公开了未提交输出");
+            }
         }
 
         private static void OrdinaryCapabilityAndExistingStepResultsRemainUsable()

@@ -40,6 +40,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
         private readonly IFDEExecutionDataScope _dataScope;
         private readonly MDSDataStack _managedStack;
         private readonly IMDSDataContext _data;
+        private readonly MRKInvocationContext _invocation;
         private readonly ConcurrentQueue<string> _completedOrder = new ConcurrentQueue<string>();
         internal MRKExecutionContext(string planId, IDictionary<string, object> inputs,
             MRKFlowMetadata metadata = null, IFDEExecutionDataScope dataSpace = null,
@@ -74,11 +75,23 @@ namespace CxVisual.Mechanism.Runtime.Execution
             _dataScope = parent._dataScope;
             _managedStack = parent._managedStack;
             _data = parent._data;
+            _invocation = parent._invocation;
             _boundInputs = parent._boundInputs;
             _completedOrder = parent._completedOrder;
         }
         internal MRKExecutionContext ForSubflow(string prefix)
         { return new MRKExecutionContext(this, prefix); }
+        private MRKExecutionContext(MRKExecutionContext parent,MRKInvocationContext invocation)
+            : this(parent,string.Empty)
+        { _invocation=invocation; }
+        internal MRKExecutionContext WithInvocation(MRKInvocationContext invocation)
+        {
+            if(invocation==null||invocation.FlowId!=FlowId)
+                throw new ArgumentException("invocation.flow_mismatch");
+            return new MRKExecutionContext(this,invocation);
+        }
+        /// <summary>当前实际运行节点的Invocation；根Flow上下文为null。</summary>
+        public MRKInvocationContext Invocation{get{return _invocation;}}
         private MRKExecutionContext(MRKExecutionContext parent, IDictionary<string, object> ports)
             : this(parent, string.Empty)
         { _boundInputs = ports; }
@@ -158,7 +171,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
             Guid? workId = _handles.TryGetValue(qualified, out handle)
                 ? (Guid?)handle.Id : null;
             _observations[qualified] = new MRKStepObservation(qualified, state, workId,
-                reason ?? string.Empty, DateTime.UtcNow);
+                reason ?? string.Empty, DateTime.UtcNow,
+                _invocation==null?null:_invocation.InvocationId);
             if (state == MRKStepState.Completed) _completedOrder.Enqueue(qualified);
             _trace.Record(qualified, state);
             if (_journal != null)
@@ -183,7 +197,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
             MRKStepObservation current;
             if (_observations.TryGetValue(id, out current))
                 _observations[id] = new MRKStepObservation(id, current.State, handle.Id,
-                    current.Reason, current.ChangedUtc);
+                    current.Reason, current.ChangedUtc,current.InvocationId);
         }
         public IDictionary<string, MRKStepObservation> ObservationsSnapshot()
         {
@@ -199,7 +213,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
                     ? (Guid?)handle.Id : known == null ? (Guid?)null : known.WorkId;
                 output.Add(pair.Key, new MRKStepObservation(pair.Key, pair.Value, workId,
                     known == null ? string.Empty : known.Reason,
-                    known == null ? DateTime.UtcNow : known.ChangedUtc));
+                    known == null ? DateTime.UtcNow : known.ChangedUtc,
+                    known == null ? null : known.InvocationId));
             }
             return new ReadOnlyDictionary<string, MRKStepObservation>(output);
         }
@@ -780,6 +795,9 @@ namespace CxVisual.Mechanism.Runtime.Execution
         private async Task<object> RunStepAsync(MRKExecutionStep step, MRKExecutionContext context,
             CancellationToken cancellation, Func<string, Task<object>> schedule, MRKExecutionDebugController control)
         {
+            // 每次实际调度绑定独立调用身份；静态DAG每Step只激活一次。
+            // 不改变Plan既有StepOutput的FrameKey，动态激活在R05扩展。
+            context=context.WithInvocation(new MRKInvocationContext(context.FlowId,step.Id));
             context.SetState(step.Id, MRKStepState.WaitingDependencies,
                 string.Join(",", step.Dependencies));
             bool dependencyFailed = false;
@@ -849,13 +867,13 @@ namespace CxVisual.Mechanism.Runtime.Execution
                         if (input.Source == MRKInputSource.StepOutput) useManagedData = true;
                     if (useManagedData || context.DataScope != null)
                     {
-                        localData = context.DataStack.RootScope.CreateChild(step.Id);
+                        localData = context.DataStack.RootScope.CreateChild(context.Invocation.FrameKey);
                         // 新Data入口不可通过旧DataScope越权读取父级Local或拿到可写别名。
                         nodeContext = nodeContext.WithDataScope(useManagedData ? null : localData);
                     }
                     if (useManagedData)
                     {
-                        dataFrame = context.DataStack.OpenFrame(step.Id, localData,
+                        dataFrame = context.DataStack.OpenFrame(context.Invocation.FrameKey, localData,
                             nodeContext.BoundInputs, step.DataOutputs);
                         nodeContext = nodeContext.WithDataContext(dataFrame.Data);
                     }
