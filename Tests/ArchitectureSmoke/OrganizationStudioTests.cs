@@ -401,6 +401,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     !((IEnumerable)Get(vm,"Properties")).Cast<object>().Any(),
                     "R04 incompatible reference/visual selection exposed editable properties");
                 int revisionBeforeStale=session.Revision;
+                batchReset.GetType().GetProperty("Text").SetValue(batchReset,"275",null);
                 ((System.Windows.Input.ICommand)Get(vm,"ApplyPropertyCommand")).Execute(batchReset);
                 Check(session.Revision==revisionBeforeStale&&
                     ((string)Get(vm,"Status")).Contains("操作失败"),
