@@ -15,6 +15,7 @@ namespace CxVisual.Studio
     public partial class MainWindow
     {
         private bool _studioTreeRefreshing;
+        private string _studioTreeSnapshot;
         private readonly Dictionary<string, bool> _studioTreeExpanded =
             new Dictionary<string, bool>(StringComparer.Ordinal);
 
@@ -59,6 +60,13 @@ namespace CxVisual.Studio
         {
             if (_viewModel == null || StudioResourceTree == null || _studioTreeRefreshing)
                 return;
+            // 资源树是MEM页面和资源的只读投影：纯图元位置/运行帧变化不重建导航。
+            string search = StudioResourceSearch == null ? "" : StudioResourceSearch.Text.Trim();
+            string snapshot = _viewModel.ProjectSession.Project.Id.ToString("N") + "|" + search + "|" +
+                (_viewModel.ActivePage == null ? "" : _viewModel.ActivePage.Id.ToString("N")) + "|" +
+                String.Join(";", _viewModel.Pages.Select(item => item.Id.ToString("N") + ":" + item.Name)) + "|" +
+                String.Join(";", _viewModel.Resources.Select(item => item.Id.ToString("N") + ":" + item.Name));
+            if (String.Equals(_studioTreeSnapshot, snapshot, StringComparison.Ordinal)) return;
             _studioTreeRefreshing = true;
             try
             {
@@ -103,6 +111,7 @@ namespace CxVisual.Studio
                 projectRoot.Items.Add(symbols);
                 projectRoot.Items.Add(assets);
                 StudioResourceTree.Items.Add(projectRoot);
+                _studioTreeSnapshot = snapshot;
             }
             finally { _studioTreeRefreshing = false; }
         }
@@ -113,9 +122,18 @@ namespace CxVisual.Studio
             TreeViewItem selected = args.NewValue as TreeViewItem;
             if (selected == null) return;
             MEMPage page = selected.Tag as MEMPage;
-            if (page != null) { _viewModel.ActivePage = page; return; }
+            if (page != null)
+            {
+                MEMPage current = _viewModel.ActivePage;
+                if (current == null || current.Id != page.Id) _viewModel.ActivePage = page;
+                return;
+            }
             IMEMResource resource = selected.Tag as IMEMResource;
-            if (resource != null) _viewModel.SelectedResource = resource;
+            if (resource != null)
+            {
+                IMEMResource current = _viewModel.SelectedResource;
+                if (current == null || current.Id != resource.Id) _viewModel.SelectedResource = resource;
+            }
         }
 
         private void OnStudioResourceTreeDoubleClick(object sender, MouseButtonEventArgs args)
