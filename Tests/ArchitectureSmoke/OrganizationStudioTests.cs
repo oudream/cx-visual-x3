@@ -654,6 +654,43 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(MOLWiringCodec.Get(finalSession.GetSnapshot().Find(active.RootContent.Id))
                     .Parameters[selectedIds[0]]["Threshold"]=="1.75",
                     "Studio parameter Redo failed");
+                // Studio 公开 Data 输入是实际 MEM 事务；已有字面量参数不能被第二个真源覆盖。
+                inspectorPorts.SelectedItem=inspectorPorts.Items.Cast<MPCPortDescriptor>()
+                    .Single(p=>p.MemberId=="Threshold");
+                Pump();
+                ((TextBox)window.FindName("FlowPublicPortName")).Text="InspectionThreshold";
+                int beforeExpose=finalSession.Revision;
+                Click(window,"公开为Input");
+                Check(finalSession.Revision==beforeExpose&&
+                    !MOLWiringCodec.Get(finalSession.GetSnapshot().Find(active.RootContent.Id))
+                        .FlowInputs.ContainsKey("InspectionThreshold"),
+                    "Studio incorrectly exposed a Data input already bound by a local parameter");
+                Click(window,"清除节点参数");
+                inspectorPorts.SelectedItem=inspectorPorts.Items.Cast<MPCPortDescriptor>()
+                    .Single(p=>p.MemberId=="Threshold");
+                Pump();
+                Click(window,"公开为Input");
+                var exposed=MOLWiringCodec.Get(finalSession.GetSnapshot().Find(active.RootContent.Id));
+                Check(exposed.FlowInputs.ContainsKey("InspectionThreshold")&&
+                    exposed.FlowInputs["InspectionThreshold"].BlockId==selectedIds[0],
+                    "Studio UI did not persist the public Content input endpoint");
+                Click(window,"撤销编排");
+                Check(!MOLWiringCodec.Get(finalSession.GetSnapshot().Find(active.RootContent.Id))
+                    .FlowInputs.ContainsKey("InspectionThreshold"),
+                    "Studio public Content input undo failed");
+                Click(window,"重做编排");
+                Check(MOLWiringCodec.Get(finalSession.GetSnapshot().Find(active.RootContent.Id))
+                    .FlowInputs.ContainsKey("InspectionThreshold"),
+                    "Studio public Content input redo failed");
+                Click(window,"取消公开Input");
+                Check(!MOLWiringCodec.Get(finalSession.GetSnapshot().Find(active.RootContent.Id))
+                    .FlowInputs.ContainsKey("InspectionThreshold"),
+                    "Studio public Content input remove failed");
+                inspectorPorts.SelectedItem=inspectorPorts.Items.Cast<MPCPortDescriptor>()
+                    .Single(p=>p.MemberId=="Threshold");
+                Pump();
+                portValue.Text="1.75";
+                Click(window,"保存节点参数");
                 // G04-G：断点可用，编译失败从结构化诊断对象定位，不吞异常。
                 Click(window,"切换断点");
                 Click(window,"验证工程编排");
