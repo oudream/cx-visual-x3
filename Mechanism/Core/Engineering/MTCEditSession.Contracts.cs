@@ -38,7 +38,9 @@ namespace CxVisual.Mechanism.Core
         }
         public void SetProperty(MEMNode owner,string member,MPMBinding binding)
         {
-            Definition(owner);var property=_session.FindProperty(owner,member);if(property==null)throw new InvalidOperationException("org.property.missing");property.Descriptor.Validate(binding);
+            Definition(owner);var property=_session.FindProperty(owner,member);if(property==null)throw new InvalidOperationException("org.property.missing");
+            if(property.Descriptor.IsReadOnly)throw new InvalidOperationException("org.property.read_only: "+member);
+            property.Descriptor.Validate(binding);
             var old=property.ExplicitBinding;if(object.Equals(old,binding))return;var before=_session.BindingTargets(property.Binding).ToArray();var after=_session.BindingTargets(binding??property.Descriptor.DefaultBinding).ToArray();
             _session.CheckBindingAssignment(owner,member,binding??property.Descriptor.DefaultBinding,property.Descriptor.ValueKind);
             Change(()=>{_session.UnindexUsage(property);property.ExplicitBinding=binding;_session.IndexUsage(property,after);},()=>{_session.UnindexUsage(property);property.ExplicitBinding=old;_session.IndexUsage(property,before);},MTCChangeKind.Property,owner.Id);
@@ -53,7 +55,9 @@ namespace CxVisual.Mechanism.Core
         public void SetOverride(MRIResourceReference reference,string member,MPMBinding binding)
         {
             Demand();_session.DemandReference(reference);DemandEditable(reference.Owner);var target=_session.Find(reference.TargetId);var property=_session.FindProperty(target,member);
-            if(property==null||!property.Descriptor.IsPublic)throw new InvalidOperationException("org.parameter.not_public");property.Descriptor.Validate(binding);
+            if(property==null||!property.Descriptor.IsPublic)throw new InvalidOperationException("org.parameter.not_public");
+            if(property.Descriptor.IsReadOnly)throw new InvalidOperationException("org.property.read_only: "+member);
+            property.Descriptor.Validate(binding);
             _session.CheckBindingAssignment(target,member,binding??property.Binding,property.Descriptor.ValueKind,reference);
             MPMBinding old=null;if(reference.OverrideItems!=null)reference.OverrideItems.TryGetValue(member,out old);if(object.Equals(old,binding))return;
             var before=reference.Overrides.Values.SelectMany(_session.BindingTargets).ToArray();var pending=reference.Overrides.ToDictionary(p=>p.Key,p=>p.Value,StringComparer.Ordinal);if(binding==null)pending.Remove(member);else pending[member]=binding;
