@@ -89,9 +89,18 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 s.DefineProperty(symbol,new MPMPropertyDescriptor("width",MPMValueKind.Number,true,true,MPMBinding.Literal(MPMValue.Number(120))));
                 s.DefineProperty(symbol,new MPMPropertyDescriptor("text",MPMValueKind.String,false,true,MPMBinding.Literal(MPMValue.String("A\0B\n中文"))));
                 s.DefineProperty(symbol,new MPMPropertyDescriptor("secret",MPMValueKind.Integer,false,false,MPMBinding.Literal(MPMValue.Integer(long.MaxValue))));
+                s.DefineProperty(symbol,new MPMPropertyDescriptor("model",MPMValueKind.String,false,true,
+                    MPMBinding.Literal(MPMValue.String("M100")),null,null,true));
                 s.ExposeProperty(symbol,"width",s.GetAddress(rectangle),"width");var reference=s.PlaceSymbol(page.RootContent,symbol,"one");s.SetOverride(reference,"width",MPMBinding.Literal(MPMValue.Number(250)));
                 Check(s.ResolveMappedBinding(reference,rectangle.Id,"width").Value.AsNumber()==250&&rectangle.Width==120,"public mapping mutated shared definition");
                 Reject(()=>s.SetOverride(reference,"secret",MPMBinding.Literal(MPMValue.Integer(1))));
+                int readOnlyRevision=s.Revision;
+                Reject(()=>s.SetOverride(reference,"model",MPMBinding.Literal(MPMValue.String("M200"))));
+                Reject(()=>s.SetProperty(symbol,"model",MPMBinding.Literal(MPMValue.String("M300"))));
+                Reject(()=>s.ClearOverride(reference,"model"));
+                Check(s.Revision==readOnlyRevision&&
+                    s.ResolveParameter(reference,"model").Value.AsString()=="M100",
+                    "R04 readonly Schema did not protect Core/MEM edits or Revision");
                 s.DefineProperty(page.RootContent,new MPMPropertyDescriptor("input",MPMValueKind.Number));
                 Reject(()=>s.SetProperty(page.RootContent,"input",MPMBinding.Member(s.GetAddress(symbol,new[]{reference.Id}),"secret")));
                 Reject(()=>s.SetProperty(page.RootContent,"input",MPMBinding.Member(s.GetAddress(rectangle),"width")));
@@ -102,6 +111,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(snapshot.Find(page.RootContent.Id).References[0].Overrides["width"].Value.AsNumber()==250,"reference snapshot shared override dictionary");
                 s.SaveAs(path);s.Close();var opened=MEMEngineering.Open(path);var definition=(MEMSymbol)opened.Find(symbol.Id);
                 Check(opened.FindProperty(definition,"text").Binding.Value.AsString()=="A\0B\n中文"&&opened.FindProperty(definition,"secret").Binding.Value.AsInteger()==long.MaxValue,"literal precision/text roundtrip");
+                Check(opened.FindProperty(definition,"model").Descriptor.IsReadOnly&&
+                    opened.ResolveParameter(opened.FindReference(reference.Id),"model").Value.AsString()=="M100",
+                    "R04 readonly Schema failed the real engineering Save/Open");
                 Check(definition.Aspects[0].Payload[2]==255&&definition.PublicMappings.Count==1&&opened.Validate().IsValid,"aspect/property mapping roundtrip");opened.Close();
             }
             finally{if(File.Exists(path))File.Delete(path);}
