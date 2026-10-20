@@ -323,7 +323,7 @@
                         <ItemsControl.ItemTemplate><DataTemplate>
                             <StackPanel Margin="0,4"><TextBlock Text="{Binding Member}" FontWeight="SemiBold"/>
                                 <TextBlock Text="{Binding Schema}" FontSize="11" Foreground="#64748B" TextWrapping="Wrap" ToolTip="来自工程MPM属性Schema，而非界面自行定义"/>
-                                <ComboBox ItemsSource="{Binding DataContext.BindingModes, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding Mode}"/>
+                                <ComboBox ItemsSource="{Binding BindingModes}" SelectedItem="{Binding Mode}"/>
                                 <ContentControl Content="{Binding}">
                                     <ContentControl.Style>
                                         <Style TargetType="ContentControl">
