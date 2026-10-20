@@ -302,8 +302,10 @@ namespace CxVisual.Mechanism.Orchestration
         private readonly Dictionary<string,MOLBlockEndpoint> _flowOutputs=
             new Dictionary<string,MOLBlockEndpoint>(StringComparer.Ordinal);
         private Guid _entry;
-        private MOCFlowBuilder(MOLWiringDefinition current)
+        private readonly MEMProjectSnapshot _editingSnapshot;
+        private MOCFlowBuilder(MOLWiringDefinition current,MEMProjectSnapshot snapshot=null)
         {
+            _editingSnapshot=snapshot;
             if(current==null)return;
             _entry=current.EntryBlockId;
             _blocks.AddRange(current.Blocks);
@@ -341,6 +343,41 @@ namespace CxVisual.Mechanism.Orchestration
             if(!_flowOutputs.Remove(publicName))throw new InvalidOperationException("moc.flow_output_missing");
         }
         public Guid LastBlockId{get{return _blocks.Count==0?Guid.Empty:_blocks[_blocks.Count-1].Id;}}
+        /// <summary>
+        /// R06：直接使用MEM Content的公开Logic端口生成调用节点，避免手写
+        /// moc.invoke:Guid或重复维护调用口Schema。父Content引用仍由MEM负责。
+        /// </summary>
+        public Guid InvokeContent(MEMContent content)
+        {
+            if(content==null)throw new ArgumentNullException("content");
+            if(_editingSnapshot==null)
+                throw new InvalidOperationException("moc.invoke.requires_engineering_session");
+            MEMNodeSnapshot target=_editingSnapshot.Find(content.Id);
+            if(target==null||target.Kind!=MEMNodeKind.Content)
+                throw new InvalidOperationException("moc.invoke.foreign_content");
+            MOLWiringDefinition definition=MOLWiringCodec.Get(target);
+            if(definition==null)
+                throw new InvalidOperationException("moc.invoke.requires_v2");
+            definition.ValidateExecutable();
+            var published=new List<MPCPortDescriptor>();
+            foreach(var pair in definition.FlowInputs.OrderBy(x=>x.Key,StringComparer.Ordinal))
+            {
+                MPCPortDescriptor source=definition.Ports[pair.Value.BlockId].Single(p=>
+                    p.MemberId==pair.Value.PortMemberId);
+                published.Add(new MPCPortDescriptor(pair.Key,MPCPortDirection.Input,
+                    source.TypeId,MPCPortKind.Data,source.Multiplicity,source.Contract,
+                    required:source.Required));
+            }
+            foreach(var pair in definition.FlowOutputs.OrderBy(x=>x.Key,StringComparer.Ordinal))
+            {
+                MPCPortDescriptor source=definition.Ports[pair.Value.BlockId].Single(p=>
+                    p.MemberId==pair.Value.PortMemberId);
+                published.Add(new MPCPortDescriptor(pair.Key,MPCPortDirection.Output,
+                    source.TypeId,MPCPortKind.Data,source.Multiplicity,source.Contract));
+            }
+            return Step("moc.invoke:"+content.Id.ToString("N"),published);
+        }
+
         public Guid Step(MOCCapabilityDescriptor descriptor)
         {
             if(descriptor==null)throw new ArgumentNullException("descriptor");
@@ -837,13 +874,14 @@ namespace CxVisual.Mechanism.Orchestration
             if(session==null||content==null||configure==null)
                 throw new ArgumentNullException("session/content/configure");
             int revision=session.Revision;
-            MEMNodeSnapshot node=session.GetSnapshot().Find(content.Id);
+            MEMProjectSnapshot snapshot=session.GetSnapshot();
+            MEMNodeSnapshot node=snapshot.Find(content.Id);
             if(node==null||node.Kind!=MEMNodeKind.Content)
                 throw new InvalidOperationException("moc.wiring.foreign_content");
             MOLWiringDefinition old=MOLWiringCodec.Get(node);
             if(old==null&&MOLLogicCodec.Get(node)!=null)
                 throw new InvalidOperationException("moc.wiring.legacy_requires_explicit_conversion");
-            var builder=new MOCFlowBuilder(old);
+            var builder=new MOCFlowBuilder(old,snapshot);
             configure(builder);
             var aspect=MOLWiringCodec.CreateAspect(builder.Build());
             session.Edit("编辑自由编排",revision,e=>{e.SetAspect(content,aspect);return true;})

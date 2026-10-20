@@ -75,6 +75,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             G04ParameterSubflowIsolation();
             V2NamedSubflowDataContracts();
             V2ThreeLevelNamedData();
+            R06NaturalRepeatedChildInvocation();
             CThreeTierXRayTwoSubflows();
             V2LayoutContract();
             V2BulkEditingClipboard();
@@ -1171,6 +1172,143 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Check(trace.Events.Count>0,"three-level trace was empty");
                 }
                 finally{reopened.Close(true);}
+            }
+            finally
+            {
+                session.Close(true);
+                if(System.IO.File.Exists(path))System.IO.File.Delete(path);
+                if(System.IO.File.Exists(path+".cx-lock"))System.IO.File.Delete(path+".cx-lock");
+            }
+        }
+
+        /// <summary>
+        /// R06：同一Content两个实例共用一份公开Port契约；
+        /// 保存/重开后仍经同一MOC/MRK执行，输出不串账、不泄漏私有端口。
+        /// </summary>
+        private static void R06NaturalRepeatedChildInvocation()
+        {
+            var session=MEMEngineering.Create("R06双实例类型化子流程");
+            var page=session.AddPage("Main");
+            var child=session.AddContent(session.Project,"ReusableDouble");
+            string path=System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                "moc-r06-"+Guid.NewGuid().ToString("N")+".cxproj");
+            try
+            {
+                Guid leaf=Guid.Empty;
+                MOCFlowBuilder.Edit(session,child,b=>{
+                    leaf=b.Step("Double",new[]{
+                        new MPCPortDescriptor("N",MPCPortDirection.Input,"int",
+                            MPCPortKind.Data,required:true),
+                        new MPCPortDescriptor("Doubled",MPCPortDirection.Output,"int",
+                            MPCPortKind.Data)
+                    });
+                    b.ExposeInput("Number",leaf,"N");
+                    b.ExposeOutput("LeafValue",leaf,"Doubled");
+                });
+                session.Edit("引用可复用Content",e=>{
+                    e.Reference(page.RootContent,child,"ReuseDouble");return true;
+                }).RequireValue();
+                Guid a=Guid.Empty,b=Guid.Empty,callA=Guid.Empty,callB=Guid.Empty,sum=Guid.Empty;
+                Guid sourceA=Guid.Empty,sourceB=Guid.Empty;
+                MOCFlowBuilder.Edit(session,page.RootContent,flow=>{
+                    a=flow.Step("SeedA",new[]{
+                        new MPCPortDescriptor("Value",MPCPortDirection.Output,"int",
+                            MPCPortKind.Data)});
+                    callA=flow.InvokeContent(child);
+                    b=flow.Step("SeedB",new[]{
+                        new MPCPortDescriptor("Value",MPCPortDirection.Output,"int",
+                            MPCPortKind.Data)});
+                    callB=flow.InvokeContent(child);
+                    sum=flow.Step("Sum",new[]{
+                        new MPCPortDescriptor("Left",MPCPortDirection.Input,"int",
+                            MPCPortKind.Data,required:true),
+                        new MPCPortDescriptor("Right",MPCPortDirection.Input,"int",
+                            MPCPortKind.Data,required:true),
+                        new MPCPortDescriptor("Total",MPCPortDirection.Output,"int",
+                            MPCPortKind.Data)
+                    });
+                    flow.Connect(a,"Done",callA,"Start");
+                    flow.Connect(callA,"Done",b,"Start");
+                    flow.Connect(b,"Done",callB,"Start");
+                    flow.Connect(callB,"Done",sum,"Start");
+                    sourceA=flow.Connect(a,"Value",callA,"Number",MPCPortKind.Data);
+                    sourceB=flow.Connect(b,"Value",callB,"Number",MPCPortKind.Data);
+                    flow.Connect(callA,"LeafValue",sum,"Left",MPCPortKind.Data);
+                    flow.Connect(callB,"LeafValue",sum,"Right",MPCPortKind.Data);
+                    flow.ExposeOutput("Result",sum,"Total");
+                });
+                MOLWiringDefinition caller=MOLWiringCodec.Get(
+                    session.GetSnapshot().Find(page.RootContent.Id));
+                Check(caller.Ports[callA].Any(p=>p.MemberId=="Number"&&
+                        p.TypeId=="int"&&p.Required)&&
+                    caller.Ports[callB].Any(p=>p.MemberId=="LeafValue"&&
+                        p.TypeId=="int"&&p.Direction==MPCPortDirection.Output),
+                    "R06 invoked Content did not inherit real public typed ports");
+                int left=3,right=7;
+                var resolver=new TestResolver()
+                    .RegisterData("SeedA",(ctx,ct)=>{
+                        ctx.Data.Return("Value",left);return Task.FromResult((object)true);
+                    },new Dictionary<string,Type>{{"Value",typeof(int)}},null)
+                    .RegisterData("SeedB",(ctx,ct)=>{
+                        ctx.Data.Return("Value",right);return Task.FromResult((object)true);
+                    },new Dictionary<string,Type>{{"Value",typeof(int)}},null)
+                    .RegisterData("Double",(ctx,ct)=>{
+                        ctx.Data.Return("Doubled",ctx.Data.Get<int>("N")*2);
+                        return Task.FromResult((object)true);
+                    },new Dictionary<string,Type>{{"Doubled",typeof(int)}},
+                        new[]{new MRKCapabilityInput("N",typeof(int))})
+                    .RegisterData("Sum",(ctx,ct)=>{
+                        ctx.Data.Return("Total",ctx.Data.Get<int>("Left")+
+                            ctx.Data.Get<int>("Right"));
+                        return Task.FromResult((object)true);
+                    },new Dictionary<string,Type>{{"Total",typeof(int)}},
+                        new[]{new MRKCapabilityInput("Left",typeof(int)),
+                            new MRKCapabilityInput("Right",typeof(int))});
+                session.SaveAs(path);
+                var reopened=MEMEngineering.Open(path);
+                try
+                {
+                    var rebuilt=new MOCBuildService().Build(reopened.GetSnapshot(),
+                        page.RootContent.Id,resolver);
+                    Check(rebuilt.Succeeded,
+                        "R06 content compilation failed: "+
+                        string.Join(";",rebuilt.Diagnostics.Select(x=>x.Code+":"+x.Message)));
+                    Check(rebuilt.Plan.SourceMap.Find(leaf).Count==2&&
+                        rebuilt.Plan.SourceMap.Find(leaf)
+                            .Select(x=>x.StepId).Distinct(StringComparer.Ordinal).Count()==2,
+                        "R06 reused Content callers collapsed to a single invocation identity");
+                    MOCTraceView trace;
+                    MRKFlowResult first=Execute(rebuilt.Plan,null,out trace);
+                    Check(first.State==MRKFlowState.Completed&&
+                        first.GetCommittedOutput<int>("Result")==20&&
+                        first.CommittedOutputs.Count==1&&
+                        trace.Events.Any(x=>x.Origin.BlockId==leaf),
+                        "R06 caller public outputs/trace or private-output isolation failed");
+                    left=11;right=2;
+                    MRKFlowResult second=Execute(rebuilt.Plan,null,out trace);
+                    Check(second.State==MRKFlowState.Completed&&
+                        second.GetCommittedOutput<int>("Result")==26&&
+                        second.CommittedOutputs.Count==1,
+                        "R06 repeated Flow reused stale per-Content input or committed output");
+                    MOCFlowBuilder.Edit(reopened,reopened.Project.Pages[0].RootContent,
+                        flow=>flow.Disconnect(sourceA));
+                    var rejected=new MOCBuildService().Build(reopened.GetSnapshot(),
+                        page.RootContent.Id,resolver);
+                    Check(!rejected.Succeeded,
+                        "R06 required Content input missing but compile succeeded");
+                }
+                finally{reopened.Close(true);}
+                // 缺少可执行Logic时不允许凭Content名字或Guid制造不可运行调用。
+                var draft=session.AddContent(session.Project,"Unconfigured");
+                int revision=session.Revision;
+                bool denied=false;
+                try{
+                    MOCFlowBuilder.Edit(session,page.RootContent,flow=>
+                        flow.InvokeContent(draft));
+                }
+                catch(InvalidOperationException){denied=true;}
+                Check(denied&&revision==session.Revision,
+                    "R06 undeclared Content was accepted or wrote half-edit");
             }
             finally
             {

@@ -280,3 +280,17 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 - Windows 实测：循环已真实执行但 Break/Continue 第一轮即中止（`state=Completed, visit=1, after=1`），并非迭代预算错误。
 - 根因：循环的 Step State 使用 `loop.iN.step` 限定身份储存，`RunStepAsync` 却按不带前缀的依赖ID读取，导致分支Gate被跳过后其子动作依旧执行（包括不该执行的 Break）。
 - MRK 增加现有执行上下文上的 `TryGetScopedState`，RunStepAsync 的跳过依赖判断与 MOC BranchJoin 条件都复用这一入口；不改全局快照、不创建第二StateStore。R05 原有Break/Continue/Return测试继续作为反证。
+
+## R05最终验收 · 动态循环与结构化退出
+
+- 初始提交 `9b5e4e28f32bd5505ac02cffa90279a85c60ee09` 及用户授权的必要修复提交；最终通过的提交是 `07af5d1dd1d8ae40ce29a1c6abd606f58822bd1b`。
+- 五项真实 Windows CI：Runtime `39364338476`、工程组织 `39364338474`、Config L1 `39364338454`、TestCenter `39364338451`、配置公共底座 `39364338430` 均 success。
+- 错误反证及修复：旧1024静态预算、Region祖先数据边、动态Invocation跳过分支状态三项均有明确源码修复，未移除坏例；R05=S3，现场生产级恢复不归此轮。
+
+## R06：可复用Content自然调用与多实例隔离
+
+- **唯一真源**：MEM Content + MOLWiringDefinition FlowInputs/FlowOutputs。MOCFlowBuilder新增 `InvokeContent(MEMContent)` 便捷入口，从实际工程快照推导类型化的公开输入输出端口，禁止手写 `moc.invoke:Guid` 及复制调用端口Schema；真实控制/Data连线和ContentRef仍由现有MOC/MEM负责。
+- **两类用户**：软件开发者使用 `MOCFlowBuilder.Edit(session, parent, flow=>{ Guid id=flow.InvokeContent(child); ... });`，工程编排用户在Studio选择Content后用同一Logic Aspect持久化调用，不另造Workflow DSL或图形运行器。
+- **真实测试**：一份子Content被同一主Content两次调用，不同输入独立Double后在主Flow汇总；工程保存重开后通过MOCBuildService/MRK执行并检查公开结果和跨调用SourceMap、Trace；改变两路业务输入后重跑不可读到旧输出；断开必要输入必须编译拒绝；空白Content直接被InvokeContent拒绝且无半成品事务。
+- 已有 `V2ThreeLevelNamedData`、`G04ParameterSubflowIsolation` 等三层/独立参数场景持续回归，本轮不声称实现未定义的递归Content循环调用，也不取消Depth与安全权限校验。
+- **验收门槛**：本轮中文一次提交，等固定 SHA Windows Runtime/工程组织/TestCenter CI 全部通过后才能记R06=S3。
