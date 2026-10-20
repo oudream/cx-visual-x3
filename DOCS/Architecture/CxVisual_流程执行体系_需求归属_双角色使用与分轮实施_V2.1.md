@@ -337,3 +337,9 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 - 固定提交 `49c6d7d254870c3bc96eea906bb07bd6c8a57cbb` 已取得相同SHA的五项Windows CI success：Runtime `39401722909`、工程组织 `39401722742`、TestCenter `39401722699`、Config L1 `39401722773`、配置公共底座 `39401722757`。这证实R06三层真实工程在Leaf注入业务异常后的MRK失败传播和MOC SourceMap/Trace仍保留调用层级。
 - 本次新增`FirstMatchingAsync`谓词本身失败时抛出错误、不伪造任何结果的回归测试，仍须等本次修订SHA的Windows验证。
 - **R07阶段性状态：S3增量通过，不等于整轮完成**。E08-05/07/08/10以及Studio完整交互、正式权限/硬件安全、各种不可控外部动作仍存在验收缺口；此时仍不得进入R08，更不能声称R08～R12完成。
+
+### R07 最终同一SHA TestCenter门禁补充（持续验收）
+
+- 追加修订 `a886b859a9ac05c33bb4642291311fd2fab1f602` 的四项实际Windows工作流均success：Runtime `39402361803`、工程组织 `39402362086`、Config L1 `39402362032`、配置公共底座 `39402361826`；由于该SHA只变动ArchitectureSmoke与文档，原TestCenter路径过滤没有触发。
+- 本提交同步补原 `MRKWorkJoin.FirstMatchingAsync` 条件谓词异常处理的公开安全说明，以触发TestCenter，测试仍保留完整R07正反例（含谓词异常），不删除任何失败场景。
+- 只有这个新提交的固定SHA对应Runtime/工程组织/TestCenter和配置检查实际绿色才登记最终增量S3；**整轮R07仍留有Studio工业级交互、多生产者/Invocation资源交接、物理外部设备安全证据缺口，不能凭CI绿色标记R07整轮完成或直接开R08。**

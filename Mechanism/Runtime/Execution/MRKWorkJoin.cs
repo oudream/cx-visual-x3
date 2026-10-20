@@ -73,6 +73,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
         /// ConditionalJoin：第一个满足明确谓词的已结算分支胜出。
         /// 未命中不视为成功；无命中返回空Winner并通过AllSettled保留失败原因。
         /// 若提前返回，调用者仍须先等待AllSettled才能释放共享资源。
+        /// 条件谓词自身抛错时，优先通知剩余分支协作取消，等待全部实际结算后重抛原错误；
+        /// 不把条件异常或本地取消误当成外部设备已经停止。
         /// </summary>
         public static async Task<MRKJoinResult<T>> FirstMatchingAsync<T>(
             IEnumerable<FCRWorkHandle<T>> source,
