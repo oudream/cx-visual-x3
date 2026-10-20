@@ -921,7 +921,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 flowCanvas.SetSelection(new[]{sourceBlock});
                 Click(window,"定位关联画面");
                 Check(((Guid?)Get(vm,"SelectedId"))==flowLamp.Id&&
-                    ((TabItem)window.FindName("VisualTab")).IsSelected,
+                    Object.Equals(Get(window,"ActiveStudioDocumentId"),"doc.visual"),
                     "C trace -> linked HMI element navigation lost MEM identity");
                 Check(finalSession.Revision==runtimeRevision,
                     "C diagnostic navigation must never commit engineering changes");
@@ -931,7 +931,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Click(window,"添加页面");
                 var xraySession=(MEMEngineeringSession)Get(vm,"ProjectSession");
                 var xrayPage=xraySession.Project.Pages.Last();
-                ((TabItem)window.FindName("FlowTab")).IsSelected=true;Pump();
+                OpenEditor(window,"doc.flow");Pump();
                 Click(window,"创建完整X-Ray双子流程");
                 var xrayRoot=xraySession.GetSnapshot().Find(xrayPage.RootContent.Id);
                 var xrayFlow=MOLWiringCodec.Get(xrayRoot);
@@ -975,7 +975,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     flowCanvas.SelectedBlockIds[0]==aiCall,
                     "C child MRK trace did not navigate to its parent Invoke block");
                 Click(window,"定位关联画面");
-                Check(((TabItem)window.FindName("VisualTab")).IsSelected&&
+                Check(Object.Equals(Get(window,"ActiveStudioDocumentId"),"doc.visual")&&
                     ((Guid?)Get(vm,"SelectedId")).HasValue,
                     "C child trace didn't locate its HMI status lamp");
                 Console.WriteLine("PASS H06 Studio real WPF automation: add/switch page, resource two instances, bound parameter edit, shared Undo/Redo, definition navigation, save/reopen");
