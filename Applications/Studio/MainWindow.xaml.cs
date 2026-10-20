@@ -752,6 +752,9 @@ namespace CxVisual.Studio
         private void RefreshFlowInspector()
         {
             var wiring=LogicHost.WiringDefinition;
+            FlowPublicPortSummary.Text=wiring==null?"未声明公开端口":
+                "Input: "+string.Join(",",wiring.FlowInputs.Keys.OrderBy(x=>x))+
+                " · Output: "+string.Join(",",wiring.FlowOutputs.Keys.OrderBy(x=>x));
             Guid id=LogicHost.SelectedBlockIds.Count==1?LogicHost.SelectedBlockIds[0]:Guid.Empty;
             var block=wiring==null?null:wiring.Blocks.FirstOrDefault(b=>b.Id==id);
             FlowInspectorCapability.Text=block==null?"":block.CapabilityId;
@@ -857,6 +860,46 @@ namespace CxVisual.Studio
             try{Guid id=SelectedFlowBlock();string name=FlowInspectorPortName.Text.Trim();
                 ApplyFlowProperty(b=>b.RemovePort(id,name),"已删除未连线Port");}
             catch(Exception ex){LogicInfo.Text="端口删除拒绝："+ex.Message;}
+        }
+        private void OnFlowExposeInput(object sender,RoutedEventArgs args)
+        {
+            try
+            {
+                Guid id=SelectedFlowBlock();
+                var port=FlowInspectorPorts.SelectedItem as MPCPortDescriptor;
+                if(port==null||port.Kind!=MPCPortKind.Data||
+                   port.Direction!=MPCPortDirection.Input)
+                    throw new InvalidOperationException("请选择一个已有Data Input端口");
+                string alias=FlowPublicPortName.Text.Trim();
+                ApplyFlowProperty(b=>b.ExposeInput(alias,id,port.MemberId),
+                    "已公开子流程输入: "+alias);
+            }
+            catch(Exception ex){LogicInfo.Text="公开Input拒绝: "+ex.Message;}
+        }
+        private void OnFlowExposeOutput(object sender,RoutedEventArgs args)
+        {
+            try
+            {
+                Guid id=SelectedFlowBlock();
+                var port=FlowInspectorPorts.SelectedItem as MPCPortDescriptor;
+                if(port==null||port.Kind!=MPCPortKind.Data||
+                   port.Direction!=MPCPortDirection.Output)
+                    throw new InvalidOperationException("请选择一个已有Data Output端口");
+                string alias=FlowPublicPortName.Text.Trim();
+                ApplyFlowProperty(b=>b.ExposeOutput(alias,id,port.MemberId),
+                    "已公开子流程输出: "+alias);
+            }
+            catch(Exception ex){LogicInfo.Text="公开Output拒绝: "+ex.Message;}
+        }
+        private void OnFlowUnexposeInput(object sender,RoutedEventArgs args)
+        {
+            string alias=FlowPublicPortName.Text.Trim();
+            ApplyFlowProperty(b=>b.RemoveExposedInput(alias),"已取消公开输入: "+alias);
+        }
+        private void OnFlowUnexposeOutput(object sender,RoutedEventArgs args)
+        {
+            string alias=FlowPublicPortName.Text.Trim();
+            ApplyFlowProperty(b=>b.RemoveExposedOutput(alias),"已取消公开输出: "+alias);
         }
         private void OnFlowSetParameter(object sender,RoutedEventArgs args)
         {

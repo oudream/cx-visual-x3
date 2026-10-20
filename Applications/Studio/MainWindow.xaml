@@ -188,6 +188,17 @@
                                         <Button Content="删除Port" Click="OnFlowRemovePort"/>
                                     </WrapPanel>
                                     <WrapPanel Margin="0,3">
+                                        <TextBlock Text="子流程公开端口名" VerticalAlignment="Center"/>
+                                        <TextBox x:Name="FlowPublicPortName" Width="115" Margin="5,0"
+                                            ToolTip="定义在当前Content上的公开名称，绑定到当前选中节点的Data端口"/>
+                                        <Button Content="公开为Input" Click="OnFlowExposeInput"/>
+                                        <Button Content="公开为Output" Click="OnFlowExposeOutput"/>
+                                        <Button Content="取消公开Input" Click="OnFlowUnexposeInput"/>
+                                        <Button Content="取消公开Output" Click="OnFlowUnexposeOutput"/>
+                                        <TextBlock x:Name="FlowPublicPortSummary" Margin="8,0"
+                                            VerticalAlignment="Center" Foreground="#45617C" TextWrapping="Wrap"/>
+                                    </WrapPanel>
+                                    <WrapPanel Margin="0,3">
                                         <TextBlock Text="Data输入参数" VerticalAlignment="Center"/>
                                         <TextBox x:Name="FlowInspectorValue" Width="200" Margin="5,0"/>
                                         <Button Content="保存节点参数" Click="OnFlowSetParameter"/>
