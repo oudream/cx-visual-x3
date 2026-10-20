@@ -1,0 +1,43 @@
+name: CxVisual Studio S1 Windows Shell Acceptance
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'Applications/Studio/**'
+      - 'Mechanism/Presentation.Wpf/**'
+      - 'Hello/AvalonDock/**'
+      - '.github/workflows/studio-shell-windows.yml'
+jobs:
+  studio-shell:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - name: Build existing unified solution with AvalonDock 5.0.1
+        shell: pwsh
+        run: |
+          $msbuild = (Get-Command msbuild.exe -ErrorAction Stop).Source
+          & $msbuild .\CxVisual.Unified.sln /t:Restore,Build /m:1 /nr:false /p:Configuration=Release /p:Platform=x64 /p:UseSharedCompilation=false /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw "Studio S1 unified solution build failed" }
+      - name: Run real WPF STA S1 shell tests
+        shell: pwsh
+        run: |
+          $exe = Resolve-Path .\Output\Release\x64\CxVisual.Studio.exe
+          $report = Join-Path (Split-Path $exe) 'StudioShellSelfTest.txt'
+          Remove-Item $report -Force -ErrorAction SilentlyContinue
+          $p = Start-Process -FilePath $exe -ArgumentList '--shell-self-test' -PassThru -Wait
+          if ($p.ExitCode -ne 0) { throw "Studio Shell self tests exited $($p.ExitCode)" }
+          if (-not (Test-Path $report)) { throw "Missing StudioShellSelfTest.txt" }
+          Get-Content $report
+          $pass = @(Select-String -Path $report -Pattern '^PASS:').Count
+          $fail = @(Select-String -Path $report -Pattern '^FAIL:').Count
+          if ($pass -ne 8 -or $fail -ne 0) { throw "Expected 8 PASS and 0 FAIL; actual $pass PASS / $fail FAIL" }
+      - name: Guard architecture dependencies
+        shell: pwsh
+        run: |
+          & .\Build\Verify-Structure.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Structure verification failed' }
+          & .\Build\Verify-OwnerDependencies.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Owner dependency verification failed' }

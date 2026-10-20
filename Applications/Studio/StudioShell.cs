@@ -1,0 +1,512 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Media;
+using System.Xml;
+using AvalonDock.Layout;
+using AvalonDock.Serializer.Xml;
+using AvalonDock.Themes;
+
+namespace CxVisual.Studio
+{
+    /// <summary>
+    /// S1：统一Studio壳。AvalonDock只管理视图及用户布局；工程定义、事务和运行仍由原Owner持有。
+    /// 本类是原MainWindow的增量实现，不引入演示版工程状态或第二套业务文档。
+    /// </summary>
+    public partial class MainWindow
+    {
+        private const int LayoutByteLimit = 1024 * 1024;
+        private readonly Dictionary<string, object> _studioViews =
+            new Dictionary<string, object>(StringComparer.Ordinal);
+        private readonly List<UIElement> _legacyRibbonActions = new List<UIElement>();
+        private string _defaultStudioLayout;
+        private bool _studioDark;
+        private bool _studioInitialized;
+        private string _ribbonSelection = "主页";
+        private static readonly string[] KnownDocuments =
+            { "doc.home", "doc.visual", "doc.flow", "doc.config" };
+        private static readonly string[] KnownTools =
+            { "tool.resources", "tool.toolbox", "tool.properties", "tool.output" };
+
+        public bool StudioDarkTheme { get { return _studioDark; } }
+        public int StudioEngineeringRevision { get { return _viewModel.Revision; } }
+
+        private static string LayoutFile
+        {
+            get
+            {
+                return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    "CxVisual", "Studio", "workspace.layout.xml");
+            }
+        }
+
+        private void InitializeStudioShell()
+        {
+            foreach (LayoutContent item in StudioDock.Layout.Descendents().OfType<LayoutContent>())
+            {
+                if (!IsKnownContent(item.ContentId) || _studioViews.ContainsKey(item.ContentId))
+                    throw new InvalidOperationException("无效或重复的工作区ContentId：" + item.ContentId);
+                _studioViews[item.ContentId] = item.Content;
+            }
+            _legacyRibbonActions.AddRange(StudioRibbonActions.Children.Cast<UIElement>());
+            ApplyStudioTheme(false);
+            RefreshStudioMenus();
+            Loaded += (sender, args) =>
+            {
+                if (_studioInitialized) return;
+                _defaultStudioLayout = SerializeStudioLayout();
+                _studioInitialized = true;
+                if (File.Exists(LayoutFile))
+                {
+                    try { RestoreStudioLayout(LayoutFile); }
+                    catch (Exception ex)
+                    {
+                        _viewModel.ReportStudioShellWarning("用户布局恢复失败，保留默认布局：" + ex.Message);
+                    }
+                }
+            };
+        }
+
+        private static bool IsKnownContent(string id)
+        {
+            return KnownDocuments.Contains(id, StringComparer.Ordinal) ||
+                   KnownTools.Contains(id, StringComparer.Ordinal);
+        }
+
+        private IEnumerable<LayoutContent> ExistingContents()
+        {
+            List<LayoutContent> found = StudioDock.Layout.Descendents().OfType<LayoutContent>().ToList();
+            found.AddRange(StudioDock.Layout.Hidden);
+            LayoutAnchorSide[] sides = { StudioDock.Layout.LeftSide, StudioDock.Layout.RightSide,
+                StudioDock.Layout.TopSide, StudioDock.Layout.BottomSide };
+            foreach (LayoutAnchorSide side in sides)
+                if (side != null)
+                    foreach (LayoutAnchorGroup group in side.Children)
+                        found.AddRange(group.Children);
+            return found.Distinct();
+        }
+
+        public string[] GetStudioContentIds()
+        {
+            return ExistingContents().Select(x => x.ContentId)
+                .OrderBy(x => x, StringComparer.Ordinal).ToArray();
+        }
+
+        public void EnsureStudioContentIds()
+        {
+            string[] ids = GetStudioContentIds();
+            if (ids.Any(id => !IsKnownContent(id)) ||
+                ids.Distinct(StringComparer.Ordinal).Count() != ids.Length)
+                throw new InvalidDataException("工作区ContentId未知或重复。");
+        }
+
+        private LayoutContent FindStudioContent(string id)
+        {
+            return ExistingContents().FirstOrDefault(x => x.ContentId == id);
+        }
+
+        private bool IsStudioDocumentActive(string id)
+        {
+            LayoutContent active = StudioDock.ActiveContent as LayoutContent;
+            return active != null && active.ContentId == id;
+        }
+
+        private void OnStudioOpenDocumentClick(object sender, RoutedEventArgs args)
+        {
+            Button button = sender as Button;
+            if (button != null) OpenStudioDocument(button.Tag as string);
+        }
+
+        public void OpenStudioDocument(string id)
+        {
+            if (!KnownDocuments.Contains(id, StringComparer.Ordinal))
+                throw new ArgumentException("未知Studio文档：" + id);
+            LayoutDocument doc = FindStudioContent(id) as LayoutDocument;
+            if (doc == null)
+            {
+                LayoutDocumentPane pane = StudioDock.Layout.Descendents()
+                    .OfType<LayoutDocumentPane>().FirstOrDefault();
+                if (pane == null) throw new InvalidOperationException("找不到中央文档面板。");
+                object view;
+                if (!_studioViews.TryGetValue(id, out view))
+                {
+                    view = CreateConfigurationDocument();
+                    _studioViews[id] = view;
+                }
+                doc = new LayoutDocument { ContentId = id, Title = StudioDocumentTitle(id),
+                    CanClose = true, CanFloat = true, Content = view };
+                pane.Children.Add(doc);
+            }
+            doc.IsActive = true;
+            RefreshStudioMenus();
+        }
+
+        public void CloseStudioDocument(string id)
+        {
+            LayoutDocument doc = FindStudioContent(id) as LayoutDocument;
+            if (doc == null) return;
+            doc.Content = null; // 下次打开复用同一个真实编辑视图和命令状态
+            doc.Close();
+            RefreshStudioMenus();
+        }
+
+        private static string StudioDocumentTitle(string id)
+        {
+            switch (id)
+            {
+                case "doc.home": return "主页";
+                case "doc.visual": return "HMI图元与Symbol [设计]";
+                case "doc.flow": return "主流程编排 [设计]";
+                case "doc.config": return "资源配置";
+                default: return id;
+            }
+        }
+
+        private FrameworkElement CreateConfigurationDocument()
+        {
+            StackPanel content = new StackPanel { Margin = new Thickness(20) };
+            content.Children.Add(new TextBlock { Text = "资源配置", FontSize = 23, FontWeight = FontWeights.SemiBold });
+            content.Children.Add(new TextBlock
+            {
+                Text = "使用现有统一配置服务；本轮不建立Studio私有配置或设备连接。不同专业可按1/2/3列自适应扩展。",
+                TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 9, 0, 15)
+            });
+            UniformGrid grid = new UniformGrid { Columns = 2 };
+            string[] groups = { "基本信息 / Schema", "配置层与来源", "参数验证 / 原子应用", "配置版本 / 发布" };
+            foreach (string group in groups)
+            {
+                Border card = new Border { BorderThickness = new Thickness(1),
+                    BorderBrush = (Brush)Application.Current.Resources["StudioBorderBrush"],
+                    Background = (Brush)Application.Current.Resources["StudioPanelBrush"],
+                    CornerRadius = new CornerRadius(4), Padding = new Thickness(15), Margin = new Thickness(5) };
+                StackPanel column = new StackPanel { MinHeight = 95 };
+                column.Children.Add(new TextBlock { Text = group, FontWeight = FontWeights.SemiBold });
+                if (group.StartsWith("参数验证", StringComparison.Ordinal))
+                {
+                    Button edit = new Button { Content = "打开现有配置编辑", Margin = new Thickness(0, 10, 0, 0) };
+                    edit.Click += OnConfigDemo;
+                    column.Children.Add(edit);
+                }
+                else
+                {
+                    column.Children.Add(new TextBlock
+                    { Text = "此组由专业配置Schema和原配置Owner提供。", TextWrapping = TextWrapping.Wrap,
+                      Margin = new Thickness(0, 9, 0, 0) });
+                }
+                card.Child = column;
+                grid.Children.Add(card);
+            }
+            content.Children.Add(grid);
+            return new ScrollViewer { Content = content, Background =
+                (Brush)Application.Current.Resources["StudioBackgroundBrush"] };
+        }
+
+        public void ShowStudioTool(string id)
+        {
+            if (!KnownTools.Contains(id, StringComparer.Ordinal))
+                throw new ArgumentException("未知工具面板：" + id);
+            LayoutAnchorable tool = FindStudioContent(id) as LayoutAnchorable;
+            if (tool == null)
+            {
+                object view;
+                if (!_studioViews.TryGetValue(id, out view))
+                    throw new InvalidOperationException("面板视图未注册：" + id);
+                tool = new LayoutAnchorable { ContentId = id, Title = StudioToolTitle(id),
+                    CanClose = true, CanHide = true, CanFloat = true, CanAutoHide = true,
+                    Content = view };
+                AnchorableShowStrategy side = id == "tool.properties"
+                    ? AnchorableShowStrategy.Right
+                    : (id == "tool.output" ? AnchorableShowStrategy.Bottom : AnchorableShowStrategy.Left);
+                tool.AddToLayout(StudioDock, side);
+            }
+            if (!tool.IsVisible) tool.Show();
+            tool.IsActive = true;
+        }
+
+        private static string StudioToolTitle(string id)
+        {
+            switch (id)
+            {
+                case "tool.resources": return "工程资源管理器";
+                case "tool.toolbox": return "工具箱";
+                case "tool.properties": return "属性 / Schema / 绑定";
+                case "tool.output": return "输出 / 诊断";
+                default: return id;
+            }
+        }
+
+        public void CloseStudioTool(string id)
+        {
+            LayoutAnchorable tool = FindStudioContent(id) as LayoutAnchorable;
+            if (tool == null) return;
+            tool.Content = null;
+            tool.Close();
+        }
+
+        private void OnStudioActiveContentChanged(object sender, EventArgs args)
+        {
+            if (_viewModel != null) RefreshStudioMenus();
+        }
+
+        private void RefreshStudioMenus()
+        {
+            if (StudioDynamicMenus == null || StudioRibbonActions == null) return;
+            string active = (StudioDock.ActiveContent as LayoutContent)?.ContentId;
+            string[] domains = active == "doc.visual"
+                ? new[] { "绘图", "排列", "图层", "绑定" }
+                : active == "doc.flow"
+                    ? new[] { "节点", "连线", "编排", "端口" }
+                    : active == "doc.config"
+                        ? new[] { "配置" }
+                        : new[] { "主页", "资源" };
+            StudioDynamicMenus.Children.Clear();
+            foreach (string name in domains)
+            {
+                Button tab = new Button { Content = name, Tag = name,
+                    Padding = new Thickness(11, 5, 11, 5), Margin = new Thickness(1, 0, 0, 0) };
+                tab.Click += OnStudioMenuClick;
+                StudioDynamicMenus.Children.Add(tab);
+            }
+            if (!domains.Contains(_ribbonSelection, StringComparer.Ordinal) &&
+                !new[] { "文件", "编辑", "视图", "工程", "调试", "运行", "发布", "工具", "帮助" }
+                    .Contains(_ribbonSelection, StringComparer.Ordinal))
+                _ribbonSelection = domains[0];
+            UpdateStudioRibbon();
+        }
+
+        private void OnStudioMenuClick(object sender, RoutedEventArgs args)
+        {
+            Button button = sender as Button;
+            if (button == null) return;
+            _ribbonSelection = button.Tag as string ?? "主页";
+            UpdateStudioRibbon();
+        }
+
+        private static string RibbonGroupOf(UIElement item)
+        {
+            if (item is ComboBox) return "工具";
+            Button button = item as Button;
+            string name = button == null ? "" : Convert.ToString(button.Content, CultureInfo.InvariantCulture);
+            if (new[] { "新建工程", "保存工程", "打开工程", "导入资源包", "导出所选资源" }.Contains(name)) return "文件";
+            if (new[] { "撤销", "重做", "删除选中", "重命名", "所选图元成组", "解散选中或父分组", "右移20" }.Contains(name)) return "编辑";
+            if (new[] { "添加页面", "共享内容", "新建组件", "添加静态资源" }.Contains(name)) return "工程";
+            if (new[] { "发布示例配置 (L4)", "回滚发布" }.Contains(name)) return "发布";
+            return "工具";
+        }
+
+        private void AddRibbonButton(string label, string tag, RoutedEventHandler handler)
+        {
+            Button button = new Button { Content = label, Tag = tag, Margin = new Thickness(2),
+                Padding = new Thickness(12, 8) };
+            button.Click += handler;
+            StudioRibbonActions.Children.Add(button);
+        }
+
+        private void UpdateStudioRibbon()
+        {
+            if (StudioRibbonActions == null || _legacyRibbonActions.Count == 0) return;
+            StudioRibbonActions.Children.Clear();
+            string group = _ribbonSelection;
+            foreach (UIElement item in _legacyRibbonActions)
+            {
+                if (RibbonGroupOf(item) == group ||
+                    (group == "主页" && (RibbonGroupOf(item) == "文件" || RibbonGroupOf(item) == "工程")) ||
+                    (group == "资源" && RibbonGroupOf(item) == "工程"))
+                    StudioRibbonActions.Children.Add(item);
+            }
+            if (group == "绘图")
+            {
+                AddRibbonButton("选择", null, (s, e) => OpenStudioDocument("doc.visual"));
+                AddRibbonButton("矩形", "Rect", OnInsertShape);
+                AddRibbonButton("圆", "Circle", OnInsertShape);
+                AddRibbonButton("折线", "Polyline", OnInsertShape);
+                AddRibbonButton("自由曲线", "Path", OnInsertShape);
+                AddRibbonButton("文字", "Text", OnInsertShape);
+            }
+            else if (group == "排列")
+            {
+                AddRibbonButton("左对齐", "left", OnAlignVisuals);
+                AddRibbonButton("顶对齐", "top", OnAlignVisuals);
+                AddRibbonButton("水平居中", "centerX", OnAlignVisuals);
+            }
+            else if (group == "图层")
+            {
+                AddRibbonButton("置于顶层", null, OnBringVisualFront);
+                AddRibbonButton("置于底层", null, OnSendVisualBack);
+            }
+            else if (group == "绑定") AddRibbonButton("绑定变量", null, OnApplyVisualBinding);
+            else if (group == "节点") AddRibbonButton("添加流程能力", null, OnAddWiringAction);
+            else if (group == "连线") AddRibbonButton("开始连线", null, OnToggleWiring);
+            else if (group == "编排")
+            {
+                AddRibbonButton("校验编排", null, OnValidateWiring);
+                AddRibbonButton("自动布局", null, OnFlowArrange);
+                AddRibbonButton("仿真执行", null, OnRunLogicDemo);
+            }
+            else if (group == "端口") AddRibbonButton("添加Port", null, OnFlowAddPort);
+            else if (group == "配置") AddRibbonButton("配置编辑", null, OnConfigDemo);
+            else if (group == "视图")
+            {
+                AddRibbonButton("资源树", null, (s,e)=>ShowStudioTool("tool.resources"));
+                AddRibbonButton("属性", null, (s,e)=>ShowStudioTool("tool.properties"));
+                AddRibbonButton("输出", null, (s,e)=>ShowStudioTool("tool.output"));
+                AddRibbonButton("保存布局", null, (s,e)=>SafeStudioAction(()=>SaveStudioLayout(LayoutFile)));
+                AddRibbonButton("恢复布局", null, (s,e)=>SafeStudioAction(()=>RestoreStudioLayout(LayoutFile)));
+                AddRibbonButton("重置布局", null, (s,e)=>SafeStudioAction(ResetStudioLayout));
+            }
+            else if (group == "运行") AddRibbonButton("CPU仿真执行", null, OnRunLogicDemo);
+            else if (group == "调试")
+            {
+                AddRibbonButton("暂停", null, OnFlowDebugPause);
+                AddRibbonButton("继续", null, OnFlowDebugResume);
+                AddRibbonButton("单步", null, OnFlowDebugStep);
+            }
+            else if (group == "帮助") AddRibbonButton("文档入口", null, (s,e)=>
+                MessageBox.Show(this, "开发入口：DOCS/00_CxVisual_协同开发入口与七仓复用基线.md\n设计规范：DOCS/界面设计。", "CxVisual帮助"));
+        }
+
+        private void SafeStudioAction(Action command)
+        {
+            try { command(); }
+            catch (Exception ex) { MessageBox.Show(this, ex.Message, "Studio工作区", MessageBoxButton.OK, MessageBoxImage.Warning); }
+        }
+
+        private void OnStudioThemeClick(object sender, RoutedEventArgs args)
+        {
+            ApplyStudioTheme(!_studioDark);
+        }
+
+        public void ApplyStudioTheme(bool dark)
+        {
+            _studioDark = dark;
+            StudioDock.Theme = dark ? (Theme)new Vs2013DarkTheme() : new Vs2013LightTheme();
+            SetStudioColor("StudioBackgroundBrush", dark ? "#252526" : "#F3F6FA");
+            SetStudioColor("StudioPrimaryBrush", dark ? "#333337" : "#182D4B");
+            SetStudioColor("StudioPanelBrush", dark ? "#2D2D30" : "#FFFFFF");
+            SetStudioColor("StudioTextBrush", dark ? "#E4E4E7" : "#243447");
+            SetStudioColor("StudioSurfaceBrush", dark ? "#333337" : "#E9EFF7");
+            SetStudioColor("StudioBorderBrush", dark ? "#49494F" : "#D2DDEA");
+            SetStudioColor("StudioAccentBrush", dark ? "#80B9FF" : "#1969C5");
+        }
+
+        private static void SetStudioColor(string key, string hex)
+        {
+            Application.Current.Resources[key] =
+                new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
+        }
+
+        private sealed class Utf8Writer : StringWriter
+        {
+            public override Encoding Encoding { get { return Encoding.UTF8; } }
+        }
+
+        public string SerializeStudioLayout()
+        {
+            XmlLayoutSerializer serializer = new XmlLayoutSerializer(StudioDock);
+            using (Utf8Writer writer = new Utf8Writer())
+            {
+                serializer.Serialize(writer);
+                return writer.ToString();
+            }
+        }
+
+        public static void ValidateStudioLayoutXml(string xml)
+        {
+            if (string.IsNullOrWhiteSpace(xml) ||
+                Encoding.UTF8.GetByteCount(xml) > LayoutByteLimit)
+                throw new InvalidDataException("布局文件为空或超过1MB上限。");
+            XmlReaderSettings settings = new XmlReaderSettings
+            {
+                DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null,
+                MaxCharactersInDocument = LayoutByteLimit, MaxCharactersFromEntities = 0
+            };
+            HashSet<string> seen = new HashSet<string>(StringComparer.Ordinal);
+            using (StringReader text = new StringReader(xml))
+            using (XmlReader reader = XmlReader.Create(text, settings))
+            {
+                while (reader.Read())
+                {
+                    if (reader.NodeType != XmlNodeType.Element) continue;
+                    string id = reader.GetAttribute("ContentId");
+                    if (id == null || id.Length == 0) continue;
+                    if (!IsKnownContent(id) || !seen.Add(id))
+                        throw new InvalidDataException("布局含未知或重复ContentId：" + id);
+                }
+            }
+        }
+
+        public void SaveStudioLayout(string path)
+        {
+            string xml = SerializeStudioLayout();
+            ValidateStudioLayoutXml(xml);
+            string directory = Path.GetDirectoryName(path);
+            if (string.IsNullOrWhiteSpace(directory)) throw new InvalidOperationException("布局路径无效。");
+            Directory.CreateDirectory(directory);
+            string temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            try
+            {
+                File.WriteAllText(temporary, xml, new UTF8Encoding(false));
+                if (File.Exists(path)) File.Replace(temporary, path, null);
+                else File.Move(temporary, path);
+            }
+            finally { if (File.Exists(temporary)) File.Delete(temporary); }
+        }
+
+        public void RestoreStudioLayout(string path)
+        {
+            FileInfo file = new FileInfo(path);
+            if (!file.Exists || file.Length > LayoutByteLimit) throw new InvalidDataException("布局不存在或超出限制。");
+            string xml = File.ReadAllText(path, Encoding.UTF8);
+            ValidateStudioLayoutXml(xml);
+            string backup = SerializeStudioLayout();
+            try { DeserializeStudioLayout(xml); EnsureStudioContentIds(); }
+            catch
+            {
+                try { DeserializeStudioLayout(backup); }
+                catch (Exception recovery)
+                { _viewModel.ReportStudioShellWarning("恢复默认前的工作区失败：" + recovery.Message); }
+                throw;
+            }
+        }
+
+        private void DeserializeStudioLayout(string xml)
+        {
+            ValidateStudioLayoutXml(xml);
+            foreach (LayoutContent item in ExistingContents().ToArray()) item.Content = null;
+            XmlLayoutSerializer serializer = new XmlLayoutSerializer(StudioDock);
+            serializer.LayoutSerializationCallback += (sender, args) =>
+            {
+                object view;
+                if (!_studioViews.TryGetValue(args.Model.ContentId, out view))
+                    view = args.Model.ContentId == "doc.config" ? CreateConfigurationDocument() : null;
+                if (view == null) { args.Cancel = true; return; }
+                _studioViews[args.Model.ContentId] = view;
+                args.Content = view;
+            };
+            using (StringReader text = new StringReader(xml)) serializer.Deserialize(text);
+            RefreshStudioMenus();
+        }
+
+        public void ResetStudioLayout()
+        {
+            if (string.IsNullOrWhiteSpace(_defaultStudioLayout))
+                throw new InvalidOperationException("尚未记录默认工作区布局。");
+            DeserializeStudioLayout(_defaultStudioLayout);
+        }
+
+        private void OnStudioShellClosing(CancelEventArgs args)
+        {
+            if (args.Cancel || !_studioInitialized ||
+                Environment.GetCommandLineArgs().Contains("--shell-self-test", StringComparer.OrdinalIgnoreCase)) return;
+            try { SaveStudioLayout(LayoutFile); }
+            catch (Exception ex) { _viewModel.ReportStudioShellWarning("保存用户布局失败：" + ex.Message); }
+        }
+    }
+}

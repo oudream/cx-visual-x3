@@ -149,6 +149,7 @@ namespace CxVisual.Studio
             };
             _viewModel.SceneChanged += (sender, args) => RefreshScene();
             RefreshScene();
+            InitializeStudioShell();
         }
         private void OnActivated(object sender, CxNodeEventArgs args)
         { _viewModel.Select(args.Id); RefreshVisualInspector(); }
@@ -407,7 +408,7 @@ namespace CxVisual.Studio
             if(choice==MessageBoxResult.Cancel)return false;if(choice==MessageBoxResult.No)return true;_viewModel.SaveCommand.Execute(null);return !session.IsDirty;
         }
         protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
-        {if(_viewModel.ProjectSession.IsDirty&&(_viewModel.ConfirmReplace==null||!_viewModel.ConfirmReplace(_viewModel.ProjectSession)))e.Cancel=true;base.OnClosing(e);}
+        {if(_viewModel.ProjectSession.IsDirty&&(_viewModel.ConfirmReplace==null||!_viewModel.ConfirmReplace(_viewModel.ProjectSession)))e.Cancel=true;OnStudioShellClosing(e);base.OnClosing(e);}
         private const string ConfigSamplesFolder = "CxVisual";
 
         private static string GetDemoDataRoot()
@@ -1244,7 +1245,7 @@ namespace CxVisual.Studio
         }
         private void OnFlowShortcuts(object sender,KeyEventArgs args)
         {
-            if(!FlowTab.IsSelected||_logicRunning)return;
+            if(!IsStudioDocumentActive("doc.flow")||_logicRunning)return;
             if(args.OriginalSource is TextBoxBase||args.OriginalSource is ComboBox)return;
             bool control=(Keyboard.Modifiers&ModifierKeys.Control)!=0;
             if(control&&args.Key==Key.A)OnFlowSelectAll(sender,new RoutedEventArgs());
@@ -1353,7 +1354,7 @@ namespace CxVisual.Studio
                     return;
                 }
                 _viewModel.Select(visualId.Value);
-                VisualTab.IsSelected=true;
+                OpenStudioDocument("doc.visual");
                 RefreshVisualInspector();
                 VisualInfo.Text="已从流程节点 "+blockId.ToString("N").Substring(0,8)+
                     " 定位关联画面对象；与逻辑执行、诊断共用MEM身份和MPM绑定。";

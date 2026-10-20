@@ -1,4 +1,9 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <SolidColorBrush x:Key="StudioBackgroundBrush" Color="#F3F6FA"/>
     <SolidColorBrush x:Key="StudioPrimaryBrush" Color="#182D4B"/>
+    <SolidColorBrush x:Key="StudioPanelBrush" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="StudioTextBrush" Color="#243447"/>
+    <SolidColorBrush x:Key="StudioSurfaceBrush" Color="#E9EFF7"/>
+    <SolidColorBrush x:Key="StudioBorderBrush" Color="#D2DDEA"/>
+    <SolidColorBrush x:Key="StudioAccentBrush" Color="#1969C5"/>
 </ResourceDictionary>
