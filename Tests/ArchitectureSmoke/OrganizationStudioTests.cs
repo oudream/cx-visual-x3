@@ -307,6 +307,30 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         ((string)Get(vm,"Status")).Contains("操作失败"),
                         "R03 foreign resource mutated MEM revision or bypassed project identity validation");
                 }
+                // R03定义属性恢复Schema默认：不触碰另一实例的显式覆盖。
+                session.SetProperty(symbol,"启用",MPMBinding.Literal(MPMValue.Boolean(true)));
+                vm.GetType().GetMethod("Select").Invoke(vm,new object[]{(Guid?)symbol.Id});
+                Pump();window.UpdateLayout();
+                var definitionRow=((IEnumerable)Get(vm,"Properties")).Cast<object>()
+                    .Single(x=>(string)Get(x,"Member")=="启用");
+                Check((bool)Get(definitionRow,"CanRestoreDefault")&&
+                    ((string)Get(definitionRow,"DefaultDescription")).Contains("false"),
+                    "R03 definition did not expose the original Schema default");
+                var definitionPresenter=(DependencyObject)properties.ItemContainerGenerator.ContainerFromItem(definitionRow);
+                Check(definitionPresenter!=null,"R03 definition default editor missing");
+                var definitionReset=Descendants(definitionPresenter).OfType<Button>()
+                    .Single(b=>object.Equals(b.Content,"恢复默认"));
+                ((IInvokeProvider)new ButtonAutomationPeer(definitionReset).GetPattern(PatternInterface.Invoke)).Invoke();Pump();
+                Check(!session.FindProperty(symbol,"启用").HasOverride&&
+                    !session.FindProperty(symbol,"启用").Binding.Value.AsBoolean()&&
+                    session.ResolveParameter(second,"启用").Value.AsBoolean(),
+                    "R03 definition reset changed an instance override or retained the explicit definition value");
+                Click(window,"撤销");
+                Check(session.FindProperty(symbol,"启用").HasOverride,
+                    "R03 definition default reset was not undoable");
+                Click(window,"重做");
+                Check(!session.FindProperty(symbol,"启用").HasOverride,
+                    "R03 definition default reset was not redoable");
                 vm.GetType().GetMethod("SaveProject").Invoke(vm,new object[]{path});Click(window,"保存工程");vm.GetType().GetMethod("OpenProject").Invoke(vm,new object[]{path,true});Pump();
                 var reopened=(MEMEngineeringSession)Get(vm,"ProjectSession");Check(reopened.FindReference(second.Id)!=null&&reopened.ResolveParameter(reopened.FindReference(second.Id),"宽度").Value.AsNumber()==240,"Studio file reopen lost instance parameter");
                 Check(reopened.ResolveParameter(reopened.FindReference(second.Id),"启用").Value.AsBoolean()&&
