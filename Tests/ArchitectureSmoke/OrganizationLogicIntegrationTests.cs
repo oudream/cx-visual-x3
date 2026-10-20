@@ -976,7 +976,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Guid leafStep=Guid.Empty,midCall=Guid.Empty,rootCall=Guid.Empty;
                 MOCFlowBuilder.Edit(session,leaf,b=>{
                     leafStep=b.Step("Double",new[]{
-                        new MPCPortDescriptor("N",MPCPortDirection.Input,"int",MPCPortKind.Data),
+                        new MPCPortDescriptor("N",MPCPortDirection.Input,"int",MPCPortKind.Data,required:true),
                         new MPCPortDescriptor("Doubled",MPCPortDirection.Output,"int",MPCPortKind.Data)
                     });
                     b.ExposeInput("Number",leafStep,"N");
@@ -984,7 +984,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 });
                 MOCFlowBuilder.Edit(session,mid,b=>{
                     midCall=b.Step("moc.invoke:"+leaf.Id.ToString("N"),new[]{
-                        new MPCPortDescriptor("Number",MPCPortDirection.Input,"int",MPCPortKind.Data),
+                        new MPCPortDescriptor("Number",MPCPortDirection.Input,"int",MPCPortKind.Data,required:true),
                         new MPCPortDescriptor("LeafValue",MPCPortDirection.Output,"int",MPCPortKind.Data)});
                     b.ExposeInput("MidSeed",midCall,"Number");
                     b.ExposeOutput("MidResult",midCall,"LeafValue");
@@ -994,10 +994,10 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     seed=b.Step("Seed",new[]{new MPCPortDescriptor("Value",
                         MPCPortDirection.Output,"int",MPCPortKind.Data)});
                     rootCall=b.Step("moc.invoke:"+mid.Id.ToString("N"),new[]{
-                        new MPCPortDescriptor("MidSeed",MPCPortDirection.Input,"int",MPCPortKind.Data),
+                        new MPCPortDescriptor("MidSeed",MPCPortDirection.Input,"int",MPCPortKind.Data,required:true),
                         new MPCPortDescriptor("MidResult",MPCPortDirection.Output,"int",MPCPortKind.Data)});
                     plus=b.Step("Plus",new[]{
-                        new MPCPortDescriptor("N",MPCPortDirection.Input,"int",MPCPortKind.Data),
+                        new MPCPortDescriptor("N",MPCPortDirection.Input,"int",MPCPortKind.Data,required:true),
                         new MPCPortDescriptor("Answer",MPCPortDirection.Output,"int",MPCPortKind.Data)});
                     b.Connect(seed,"Done",rootCall,"Start");
                     b.Connect(rootCall,"Done",plus,"Start");
