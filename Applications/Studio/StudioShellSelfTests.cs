@@ -35,9 +35,15 @@ namespace CxVisual.Studio
                     Assert(window.StudioStaticMenus.Children.OfType<Button>().Count() == 9, "固定菜单不是9项");
                     Assert(window.StudioDynamicMenus.Children.Count >= 1, "动态菜单为空");
                     window.OpenStudioDocument("doc.visual");
+                    Assert(window.StudioDock.Layout.ActiveContent != null &&
+                        window.StudioDock.Layout.ActiveContent.ContentId == "doc.visual",
+                        "图形结构显示不能抢占HMI中央文档焦点");
                     Assert(window.StudioDynamicMenus.Children.OfType<Button>().Any(
                         b => Convert.ToString(b.Content) == "绘图"), "图元上下文菜单未切换");
                     window.OpenStudioDocument("doc.flow");
+                    Assert(window.StudioDock.Layout.ActiveContent != null &&
+                        window.StudioDock.Layout.ActiveContent.ContentId == "doc.flow",
+                        "从HMI切换流程必须保留流程主文档焦点");
                     Assert(window.StudioDynamicMenus.Children.OfType<Button>().Any(
                         b => Convert.ToString(b.Content) == "编排"), "流程上下文菜单未切换");
                 });

@@ -27,6 +27,12 @@ namespace CxVisual.Studio
                 if (!graphic.IsVisible) graphic.Show();
             }
             else if (graphic.IsVisible) graphic.Hide();
+
+            // Anchorable.Show会夺取焦点，必须把中心LayoutDocument重新设为活动。
+            // 否则原HMI SceneView仍存在于模型，却不会进入WPF可视树。
+            LayoutDocument document = ExistingContents().OfType<LayoutDocument>()
+                .FirstOrDefault(item => item.ContentId == _activeStudioDocumentId);
+            if (document != null && !document.IsActive) document.IsActive = true;
         }
 
         private void OnStudioSceneChangedForGraphics(object sender, EventArgs args)
