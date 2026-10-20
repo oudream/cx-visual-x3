@@ -741,6 +741,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "G06 truncated detector bytes were silently accepted");
                 bool unsupported=false;
                 options.UseAi=true;
+                options.AiModelName="unsupported-ai.onnx"; // 合法AI配置，CPU Provider仍必须拒绝执行
                 try{new CxVisionThresholdProvider(options,12);}
                 catch(NotSupportedException){unsupported=true;}
                 Check(unsupported,"G06 CPU threshold Provider falsely claims to implement AI");
