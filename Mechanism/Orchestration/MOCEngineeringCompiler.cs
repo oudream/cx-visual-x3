@@ -1603,7 +1603,7 @@ namespace CxVisual.Mechanism.Orchestration
                             regions:nestedRegions);
                         if(!compiledBody.Succeeded)
                             throw new InvalidOperationException("moc.loop_body_compile:"+
-                                string.Join(";",compiledBody.Diagnostics.Select(d=>d.Code)));
+                                string.Join(";",compiledBody.Diagnostics.Select(d=>d.Code+":"+d.Message)));
                         // 迭代条件可引用输入、迭代索引或上一轮已提交的StepResult。
                         Func<MRKExecutionContext,int,bool> predicate=loop.Condition==null?
                             (Func<MRKExecutionContext,int,bool>)null:
