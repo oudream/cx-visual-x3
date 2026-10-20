@@ -60,7 +60,8 @@ namespace CxVisual.Mechanism.Core
             MOLExpression condition = null, string collectionInput = null)
         {
             if (!Enum.IsDefined(typeof(MOLLoopMode), mode)) throw new ArgumentException("Unknown loop kind");
-            if (maxIterations < 1 || maxIterations > 1024) throw new ArgumentOutOfRangeException("maxIterations");
+            // R05动态区域只编译一次：迭代上限用于运行时安全预算，不再限制为静态展开的1024次。
+            if (maxIterations < 1) throw new ArgumentOutOfRangeException("maxIterations");
             if (body == null) throw new ArgumentNullException("body");
             Mode = mode; MaxIterations = maxIterations; Body = body; Condition = condition;
             CollectionInput = collectionInput ?? "";

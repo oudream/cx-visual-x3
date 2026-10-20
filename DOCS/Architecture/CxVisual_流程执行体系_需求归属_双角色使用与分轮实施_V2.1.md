@@ -261,3 +261,9 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 - 使用真实MEM持久Content、MOL LogicAspect、MOC编译与SourceMap、现有MRK/MDS；多个调用点、三层子Content、输入/输出端口和实例路径必须独立。
 - 禁止将子Content私有Step结果冒充公开Export；保存→关闭→重开→编译→执行→Trace完整闭环；不同调用者及并发Flow的数据不得混淆。
 - R06必须在 R05 固定SHA的Windows CI全部通过后独立完成一次中文Commit和真实验收，不与R05合并到一个提交。
+
+### R05修复轮：旧1024次静态展开上限清除与边界反证
+
+- 首次提交 `9b5e4e28f32bd5505ac02cffa90279a85c60ee09` 由 Windows 全解决方案编译通过，但 ArchitectureSmoke 的 `R05DynamicLoopAndExit` 在 `MOLLoopDefinition` 构造阶段触发 `maxIterations>1024` 的旧上限，不能认定动态区域已完成。
+- 经用户明确批准，本轮允许为 CI 缺陷增加修复 Commit。现取消旧1024上限，保留 `maxIterations>=1` 正数约束；动态循环迭代由 MRK 运行时执行与取消令牌管控，循环体不按上限静态复制。
+- 同时新增零次边界反例。后续必须核验固定修复SHA的 Windows Runtime、工程组织、Config/TestCenter CI，不能用首次提交的结果代替。

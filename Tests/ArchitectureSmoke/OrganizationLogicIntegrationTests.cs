@@ -230,6 +230,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
             var page=session.AddPage("DynLoop");
             try
             {
+                bool invalidLimitRejected=false;
+                try{MOLControlBlock.Repeat(MOLLoopMode.For,0,
+                    MOLControlBlock.Action("invalid"));}
+                catch(ArgumentOutOfRangeException){invalidLimitRejected=true;}
+                Check(invalidLimitRejected,
+                    "R05 must reject zero loop bound despite enabling dynamic large loops");
                 int first=0,second=0;
                 var a=MOLControlBlock.Action("first");
                 var b=MOLControlBlock.Action("second");
