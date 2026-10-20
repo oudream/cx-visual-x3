@@ -300,3 +300,10 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 - 首次R06提交 `b851ed2417639f5390d09e4cc1aeb2d4a50a73e2` 在Windows Release/x64出现ArchitectureSmoke测试的局部变量与lambda参数重名 `CS0136`，属于测试代码命名缺陷；业务接口 `MOCFlowBuilder.InvokeContent` 未改变。
 - 修复提交 `7ae5044fd02a884f83ff8ede207c529306849726` 后，Runtime Windows TDD `39365158186`、工程组织 `39365158564`、Config L1 `39365158422`、配置公共底座 `39365158238` 全部成功。
 - TestCenter工作流基于路径触发，仅监听Mechanism/Foundation/Tests.TestCenter等；上述仅修改ArchitectureSmoke的修复没有触发TestCenter。此次补充原MOC源码注释与验收文档，目的是让最终同一源版本重新触发TestCenter及其相关Windows门禁；全部完成前不宣称R06 S3最终验收闭环。
+
+### R06 最终增强验收：自然三层调用与同Plan并发隔离
+
+- 将既有三层 Root→Mid→Leaf 的两个调用改为 `MOCFlowBuilder.InvokeContent(content)`，明确验证公开端口Schema由真实Content生成，不再要求开发者手写 `moc.invoke:Guid` 与输入输出端口。
+- 在 R06 双调用Content测试中，Seed 能力从运行请求 `ctx.Inputs` 读取每个Flow的独立数据，不依赖闭包全局变量；对同一已编译Plan同时提交两套输入，验证 20/34 两个具名结果、不同Flow身份、唯一对外Export、SourceMap/Trace的原始Content定位。
+- 保持已有 Save/Close/Open、必填输入断开→构建拒绝、私有子输出不公开、三层 SourceMap CallPath、空白Content不可调用等既有反证。
+- 验收条件：本增强提交的 Windows Runtime TDD、Engineering Organization、TestCenter及 Config 系列真实CI全部成功，才登记R06 S3；如有失败不得从测试中删除场景。

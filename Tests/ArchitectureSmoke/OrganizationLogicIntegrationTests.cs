@@ -1110,9 +1110,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     b.ExposeOutput("LeafValue",leafStep,"Doubled");
                 });
                 MOCFlowBuilder.Edit(session,mid,b=>{
-                    midCall=b.Step("moc.invoke:"+leaf.Id.ToString("N"),new[]{
-                        new MPCPortDescriptor("Number",MPCPortDirection.Input,"int",MPCPortKind.Data,required:true),
-                        new MPCPortDescriptor("LeafValue",MPCPortDirection.Output,"int",MPCPortKind.Data)});
+                    // R06：父Content从真实子Content公开契约推导端口，不再手抄Schema。
+                    midCall=b.InvokeContent(leaf);
                     b.ExposeInput("MidSeed",midCall,"Number");
                     b.ExposeOutput("MidResult",midCall,"LeafValue");
                 });
@@ -1120,9 +1119,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 MOCFlowBuilder.Edit(session,page.RootContent,b=>{
                     seed=b.Step("Seed",new[]{new MPCPortDescriptor("Value",
                         MPCPortDirection.Output,"int",MPCPortKind.Data)});
-                    rootCall=b.Step("moc.invoke:"+mid.Id.ToString("N"),new[]{
-                        new MPCPortDescriptor("MidSeed",MPCPortDirection.Input,"int",MPCPortKind.Data,required:true),
-                        new MPCPortDescriptor("MidResult",MPCPortDirection.Output,"int",MPCPortKind.Data)});
+                    rootCall=b.InvokeContent(mid);
                     plus=b.Step("Plus",new[]{
                         new MPCPortDescriptor("N",MPCPortDirection.Input,"int",MPCPortKind.Data,required:true),
                         new MPCPortDescriptor("Answer",MPCPortDirection.Output,"int",MPCPortKind.Data)});
@@ -1244,13 +1241,15 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     caller.Ports[callB].Any(p=>p.MemberId=="LeafValue"&&
                         p.TypeId=="int"&&p.Direction==MPCPortDirection.Output),
                     "R06 invoked Content did not inherit real public typed ports");
-                int left=3,right=7;
+                // 输入按FlowId隔离，而不是依赖测试闭包上的共享可变变量。
                 var resolver=new TestResolver()
                     .RegisterData("SeedA",(ctx,ct)=>{
-                        ctx.Data.Return("Value",left);return Task.FromResult((object)true);
+                        ctx.Data.Return("Value",(int)ctx.Inputs["R06Left"]);
+                        return Task.FromResult((object)true);
                     },new Dictionary<string,Type>{{"Value",typeof(int)}},null)
                     .RegisterData("SeedB",(ctx,ct)=>{
-                        ctx.Data.Return("Value",right);return Task.FromResult((object)true);
+                        ctx.Data.Return("Value",(int)ctx.Inputs["R06Right"]);
+                        return Task.FromResult((object)true);
                     },new Dictionary<string,Type>{{"Value",typeof(int)}},null)
                     .RegisterData("Double",(ctx,ct)=>{
                         ctx.Data.Return("Doubled",ctx.Data.Get<int>("N")*2);
@@ -1278,18 +1277,43 @@ namespace CxVisual.Tests.ArchitectureSmoke
                             .Select(x=>x.StepId).Distinct(StringComparer.Ordinal).Count()==2,
                         "R06 reused Content callers collapsed to a single invocation identity");
                     MOCTraceView trace;
-                    MRKFlowResult first=Execute(rebuilt.Plan,null,out trace);
+                    MRKFlowResult first=Execute(rebuilt.Plan,new Dictionary<string,object>{
+                        {"R06Left",3},{"R06Right",7}},out trace);
                     Check(first.State==MRKFlowState.Completed&&
                         first.GetCommittedOutput<int>("Result")==20&&
                         first.CommittedOutputs.Count==1&&
                         trace.Events.Any(x=>x.Origin.BlockId==leaf),
                         "R06 caller public outputs/trace or private-output isolation failed");
-                    left=11;right=2;
-                    MRKFlowResult second=Execute(rebuilt.Plan,null,out trace);
+                    MRKFlowResult second=Execute(rebuilt.Plan,new Dictionary<string,object>{
+                        {"R06Left",11},{"R06Right",2}},out trace);
                     Check(second.State==MRKFlowState.Completed&&
                         second.GetCommittedOutput<int>("Result")==26&&
                         second.CommittedOutputs.Count==1,
                         "R06 repeated Flow reused stale per-Content input or committed output");
+                    // 同一个不可变Plan同时运行两个Flow，每个Flow的两个
+                    // 子Content实例必须读取各自输入，不能共享MDS Frame/Commit。
+                    var concurrentEngine=new MRKExecutionEngine(new FCRWorkerOptions(4,128));
+                    try
+                    {
+                        MRKFlowHandle parallelA=concurrentEngine.StartFlow(rebuilt.Plan.Plan,
+                            new Dictionary<string,object>{{"R06Left",4},{"R06Right",6}});
+                        MRKFlowHandle parallelB=concurrentEngine.StartFlow(rebuilt.Plan.Plan,
+                            new Dictionary<string,object>{{"R06Left",8},{"R06Right",9}});
+                        MRKFlowResult[] parallel=Task.WhenAll(parallelA.Completion,
+                            parallelB.Completion).GetAwaiter().GetResult();
+                        Check(parallelA.FlowId!=parallelB.FlowId&&
+                            parallel.All(x=>x.State==MRKFlowState.Completed)&&
+                            parallel[0].GetCommittedOutput<int>("Result")==20&&
+                            parallel[1].GetCommittedOutput<int>("Result")==34&&
+                            parallel.All(x=>x.CommittedOutputs.Count==1),
+                            "R06 concurrent Flow reused a caller's private Frame or output");
+                        MOCTraceView traceA=rebuilt.Plan.ReadTrace(parallelA,0);
+                        MOCTraceView traceB=rebuilt.Plan.ReadTrace(parallelB,0);
+                        Check(traceA.Events.Any(x=>x.Origin.BlockId==leaf)&&
+                            traceB.Events.Any(x=>x.Origin.BlockId==leaf),
+                            "R06 concurrent invocations lost the original Content source map");
+                    }
+                    finally{concurrentEngine.StopAsync(true).GetAwaiter().GetResult();}
                     MOCFlowBuilder.Edit(reopened,reopened.Project.Pages[0].RootContent,
                         flow=>flow.Disconnect(sourceA));
                     var rejected=new MOCBuildService().Build(reopened.GetSnapshot(),

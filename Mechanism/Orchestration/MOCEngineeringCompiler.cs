@@ -347,6 +347,8 @@ namespace CxVisual.Mechanism.Orchestration
         /// R06：直接使用MEM Content的公开Logic端口生成调用节点，避免手写
         /// moc.invoke:Guid或重复维护调用口Schema。父Content引用仍由MEM负责。
         /// 真实三层及多实例执行由同一MOC/MRK管线负责，端口以当前工程快照为准。
+        /// 仍需调用者通过MEM登记ContentRef；编译期会拒绝缺失引用、未公开端口
+        /// 与必需输入遗漏。InvokeContent只负责便利的类型化编辑，不绕过验证。
         /// </summary>
         public Guid InvokeContent(MEMContent content)
         {
