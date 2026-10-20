@@ -1027,7 +1027,7 @@ namespace CxVisual.Mechanism.Orchestration
                     var from=sourcePorts.Single(x=>x.MemberId==link.Source.PortMemberId);
                     var target=wiring.Ports[block.Id].Single(x=>x.MemberId==link.Target.PortMemberId);
                     var resolvedCapability=blocks[link.Source.BlockId];
-                    MRKResolvedCapability actual;
+                    MRKResolvedCapability actual=null;
                     bool sourceIsInvoke=resolvedCapability.CapabilityId.StartsWith(
                         "moc.invoke:",StringComparison.Ordinal);
                     MOLWiringDefinition published=null;
