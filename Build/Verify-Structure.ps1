@@ -1,7 +1,12 @@
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $groups = @('Foundation','Mechanism','Professional','Applications','Intelligence','Tests')
-$projects = @(Get-ChildItem -Path $root -Recurse -Filter 'CxVisual*.csproj' -File | Where-Object { $_.FullName -notmatch '[\\/](Legacy|Output)[\\/]' })
+# 仅统计正式解决方案所属六个顶层方面；Hello/AvalonDock等独立PoC不属于31个产品项目。
+# 不通过全仓库递归枚举把示例验证工程误计为正式产品，仍严格验证Owner目录和引用。
+$projects = @($groups | ForEach-Object {
+    Get-ChildItem -Path (Join-Path $root $_) -Recurse -Filter 'CxVisual*.csproj' -File |
+        Where-Object { $_.FullName -notmatch '[\\/](Legacy|Output)[\\/]' }
+})
 if ($projects.Count -ne 31) { throw "Expected 31 projects, got $($projects.Count)" }
 foreach ($project in $projects) {
     $relativeDirectory = $project.DirectoryName.Substring($root.Length).TrimStart('\','/')

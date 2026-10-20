@@ -391,3 +391,10 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 - 同一已编译MRKPlan同时启动旧/新Flow、重复同名Step：旧Flow取消后仍有不合作Provider执行，新Flow可先提交202；旧Provider迟到Return(101)后旧Flow只能Cancelled且无CommittedOutputs，两个Invocation身份不同，不能污染新Flow。验证E08-07的进程内执行与数据隔离，不冒充物理设备已停止。
 - 该轮先前 `5dbaa58da86da3845661d1cbc333c42ea93d4aa3` 的Windows五项已全部success（Runtime 39409470439、TestCenter 39409470103、工程组织39409470272、Config L1 39409470408、配置公共底座39409470060）。随后有独立的Studio/AvalonDock图片及PoC并行提交，已确认未改动本次MRK/Test源或主文档，故在最新master继续快进提交。
 - 此增量尚需新SHA的Windows五项验收；Studio、跨进程/真实硬件未知状态与完整并行ForEach仍未全面验证，不能将R07整轮判定完成，也不进入R08。
+
+
+### 并行PoC导致Windows结构检查误计数——R07同轮CI修复例外（2026-10-20）
+
+- 提交`8936665a2b4ffb6d9070828b46ae21040244f3b6`的TestCenter `39410272485`在`Verify project structure`失败：`Expected 31 projects, got 32`，尚未执行R07新业务反证。原因是并行新建的`Hello/AvalonDock/src/CxVisual.AvalonDock.PoC`被验证脚本全仓库递归枚举；该独立PoC不在正式Owner六方面与原31个产品项目中。
+- 最小修复：只修改`Build/Verify-Structure.ps1`，项目发现限于既有`Foundation/Mechanism/Professional/Applications/Intelligence/Tests`六个正式顶层Owner，后续依旧严格验证31个数量、目录深度、NET48、程序集名、所有源码与ProjectReference和正式sln；不改PoC/历史或降低产品侧验证门槛。
+- 补强旧/新Flow迟到输出反证的FlowId一致性；以新Commit SHA的Runtime、Engineering、TestCenter、Config结果为准，未过不得宣布本次增量完成。

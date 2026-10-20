@@ -770,6 +770,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 oldRelease.TrySetResult(true);
                 MRKFlowResult oldResult = Await(old.Completion);
                 Check(oldResult.State == MRKFlowState.Cancelled &&
+                    oldResult.FlowId == old.FlowId &&
                     oldResult.CommittedOutputs.Count == 0 &&
                     currentResult.GetCommittedOutput<int>("Final") == 202,
                     "已取消的旧Flow迟到Data.Return污染新Flow或泄漏未提交输出");
