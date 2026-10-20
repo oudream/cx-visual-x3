@@ -294,3 +294,9 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 - **真实测试**：一份子Content被同一主Content两次调用，不同输入独立Double后在主Flow汇总；工程保存重开后通过MOCBuildService/MRK执行并检查公开结果和跨调用SourceMap、Trace；改变两路业务输入后重跑不可读到旧输出；断开必要输入必须编译拒绝；空白Content直接被InvokeContent拒绝且无半成品事务。
 - 已有 `V2ThreeLevelNamedData`、`G04ParameterSubflowIsolation` 等三层/独立参数场景持续回归，本轮不声称实现未定义的递归Content循环调用，也不取消Depth与安全权限校验。
 - **验收门槛**：本轮中文一次提交，等固定 SHA Windows Runtime/工程组织/TestCenter CI 全部通过后才能记R06=S3。
+
+### R06 Windows修复及同SHA再验收
+
+- 首次R06提交 `b851ed2417639f5390d09e4cc1aeb2d4a50a73e2` 在Windows Release/x64出现ArchitectureSmoke测试的局部变量与lambda参数重名 `CS0136`，属于测试代码命名缺陷；业务接口 `MOCFlowBuilder.InvokeContent` 未改变。
+- 修复提交 `7ae5044fd02a884f83ff8ede207c529306849726` 后，Runtime Windows TDD `39365158186`、工程组织 `39365158564`、Config L1 `39365158422`、配置公共底座 `39365158238` 全部成功。
+- TestCenter工作流基于路径触发，仅监听Mechanism/Foundation/Tests.TestCenter等；上述仅修改ArchitectureSmoke的修复没有触发TestCenter。此次补充原MOC源码注释与验收文档，目的是让最终同一源版本重新触发TestCenter及其相关Windows门禁；全部完成前不宣称R06 S3最终验收闭环。
