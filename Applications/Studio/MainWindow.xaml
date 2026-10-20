@@ -182,6 +182,8 @@
                                 <ComboBox x:Name="FlowCapabilityResults" Width="145" DisplayMemberPath="Definition.Name" SelectionChanged="OnCapabilitySelected"/>
                                 <TextBox x:Name="FlowActionCapability" Width="100" Text="AI" Margin="5,0,2,0"/>
                                 <Button Content="添加能力" Click="OnAddWiringAction"/>
+                                <Button x:Name="FlowInsertJoin" Content="选中分支→插入Join" Click="OnInsertSelectedJoin"
+                                        ToolTip="先选择两个及以上有Done控制输出的分支；在原工程事务中连接到Judge节点的Start端口"/>
                                 <Button x:Name="FlowWireMode" Content="开始连线" Click="OnToggleWiring"/>
                                 <Button Content="验证工程编排" Click="OnValidateWiring"/>
                                 <Button Content="仿真执行并追踪" Click="OnRunLogicDemo"/>

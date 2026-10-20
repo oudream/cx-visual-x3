@@ -711,6 +711,60 @@ namespace CxVisual.Studio
             }
             catch(Exception ex){LogicInfo.Text="添加能力失败: "+ex.Message;}
         }
+        /// <summary>
+        /// R07：Studio与开发者走同一MOC事务。只接受两个以上已有分支，
+        /// 所有连接在一次MEM编辑中完成；错误来源不会产生孤立Join。
+        /// Join在已有V2 Control边上由MOC编译为多依赖MRK Step。
+        /// </summary>
+        internal static Guid InsertSelectedJoin(MEMEngineeringSession session,
+            MEMContent content, MOCCapabilityDescriptor capability,
+            IEnumerable<Guid> branchIds)
+        {
+            if(session==null||content==null||capability==null||branchIds==null)
+                throw new ArgumentNullException("session/content/capability/branchIds");
+            Guid[] branches=branchIds.ToArray();
+            if(branches.Length<2||branches.Any(id=>id==Guid.Empty)||
+                branches.Distinct().Count()!=branches.Length)
+                throw new InvalidOperationException("studio.join.requires_distinct_branches");
+            Guid joined=Guid.Empty;
+            MOCFlowBuilder.Edit(session,content,b=>{
+                foreach(Guid branch in branches)
+                {
+                    var outputs=b.GetPorts(branch);
+                    if(!outputs.Any(p=>p.MemberId=="Done" &&
+                        p.Kind==MPCPortKind.Control &&
+                        p.Direction==MPCPortDirection.Output))
+                        throw new InvalidOperationException("studio.join.branch_without_done:"+
+                            branch.ToString("N"));
+                }
+                joined=b.Step(capability);
+                foreach(Guid branch in branches)
+                    b.Connect(branch,"Done",joined,"Start",MPCPortKind.Control);
+            });
+            return joined;
+        }
+
+        private void OnInsertSelectedJoin(object sender,RoutedEventArgs args)
+        {
+            if(_logicRunning)return;
+            try
+            {
+                var page=_viewModel.ActivePage;
+                if(page==null)throw new InvalidOperationException("请先选择页面");
+                var found=CurrentCatalog().Find("Judge");
+                if(found==null||!found.RuntimeAvailable)
+                    throw new InvalidOperationException("Join后继判断能力不可用");
+                Guid[] selected=LogicHost.SelectedBlockIds.ToArray();
+                Guid join=InsertSelectedJoin(_viewModel.ProjectSession,
+                    page.RootContent,found.Definition,selected);
+                RefreshScene();
+                LogicHost.SetSelection(new[]{join});
+                LogicInfo.Text="已将 "+selected.Length+
+                    " 条分支接入同一个Join（Control依赖）；按原Content保存，可撤销、重开、编译和仿真。";
+            }
+            catch(Exception ex){LogicInfo.Text="插入Join失败："+ex.Message;}
+        }
+
         private MOCCapabilityCatalog CurrentCatalog()
         {
             return new MOCCapabilityCatalog(new IMOCCapabilityProvider[]{_simulation},_simulation);

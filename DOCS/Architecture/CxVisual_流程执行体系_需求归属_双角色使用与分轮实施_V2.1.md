@@ -429,3 +429,10 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 - **固定源码SHA：** `cdde9ff13d283117d06ecccc566e355529ddc273`。GitHub Actions同SHA的五项工作流均已完成且`success`：Runtime TDD [39445017744](https://github.com/oudream/cx-visual-x3/actions/runs/39445017744)、工程组织 [39445017789](https://github.com/oudream/cx-visual-x3/actions/runs/39445017789)、TestCenter [39445018101](https://github.com/oudream/cx-visual-x3/actions/runs/39445018101)、Config L1 [39445017995](https://github.com/oudream/cx-visual-x3/actions/runs/39445017995)、配置公共底座 [39445017976](https://github.com/oudream/cx-visual-x3/actions/runs/39445017976)。本条提交只追加CI证据，不改变已验证源码。
 - 本轮实际完成：E08-10进程内串行/有界并行Foreach的迭代数据身份、两级嵌套归并、按迭代序输出、同Plan不同Flow隔离；`maxParallelIterations`显式限额且默认串行兼容；失败协作取消并等待非合作尾部真正结算，拒绝并行Break/Continue/Return。
 - **尚未验收，不得冒充已完成：** Studio自由编排画布完整入口与原图Join/调试，Try/Catch/Finally高级结构化异常，真实专业Provider跨进程安全/联锁与重启恢复、正式用户授权和规模化性能。R07仍为S3局部功能验收状态，**整轮未闭合，R08尚未启动**。
+
+
+### R07 Studio真实Join编辑与工程一致性（2026-10-21，本轮待Windows验收）
+
+- 复核新Studio已有V2 Content自由连线、MOC能力目录、真实MRK仿真及SourceMap Trace，避免再建Flow Graph。增加Studio实际按钮与“节点”上下文Ribbon中的插入Join命令；选中至少两个具有Done控制输出的真实分支，在一次MOCFlowBuilder.Edit/MEM工程事务中创建Judge Join节点并连到其Start（Many）控制端口。
+- 反例：未选两个不同来源、来源无Done、能力不可用，均拒绝且不会产生孤儿Join或提升工程Revision。真实Windows WPF STA StudioShellSelfTests验证按钮、原工程Aspect里双控制边、MEM事务、保存重开身份一致、重复来源拒绝不污染工程。
+- 此Join是现有V2 DAG多依赖汇合，**不是**将FCR任意外部操作的Any/FirstSuccess中途胜者语义伪装成V2内建控制。Any/FirstSuccess软件API此前已验证；高级结构化异常和物理设备Unknown仍须另行验收。此提交需要核对Windows Studio门禁和Runtime/TestCenter并与同一SHA匹配，未过不得封轮或进入R08。

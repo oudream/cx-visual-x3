@@ -4,6 +4,8 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Windows.Controls;
+using CxVisual.Mechanism.Core;
+using CxVisual.Mechanism.Orchestration;
 
 namespace CxVisual.Studio
 {
@@ -86,6 +88,57 @@ namespace CxVisual.Studio
                     window.EnsureStudioContentIds();
                     Assert(window.GetStudioContentIds().Length == 7, "重置后数量异常");
                     Assert(window.StudioEngineeringRevision == revision, "重置改变工程Revision");
+                });
+                CheckStep("R07 同一工程插入Join、保存重开及非法输入回滚", () =>
+                {
+                    Assert(window.FlowInsertJoin != null &&
+                        Convert.ToString(window.FlowInsertJoin.Content).Contains("Join"),
+                        "Studio没有暴露真实Join操作");
+                    string path=Path.Combine(Path.GetTempPath(),
+                        "CxVisual-Studio-R07-"+Guid.NewGuid().ToString("N")+".json");
+                    try
+                    {
+                        var session=MEMEngineering.Create("R07 Join Studio");
+                        var page=session.AddPage("流程");
+                        Guid left=Guid.Empty,right=Guid.Empty;
+                        MOCFlowBuilder.Edit(session,page.RootContent,b=>{
+                            left=b.Step("Acquire");
+                            right=b.Step("AI");
+                        });
+                        var judge=new MOCCapabilityDescriptor("Judge",
+                            "综合结果判定","Inspection");
+                        int before=session.Revision;
+                        Guid joined=MainWindow.InsertSelectedJoin(session,
+                            page.RootContent,judge,new[]{left,right});
+                        Assert(session.Revision>before,"Join操作没有提交MEM工程事务");
+                        var snapshot=session.GetSnapshot();
+                        var wiring=MOLWiringCodec.Get(snapshot.Find(page.RootContent.Id));
+                        Assert(wiring!=null && wiring.Blocks.Any(b=>b.Id==joined) &&
+                            wiring.Links.Count(l=>l.Target.BlockId==joined &&
+                                l.Target.PortMemberId=="Start" &&
+                                l.Kind==MPCPortKind.Control)==2,
+                            "Join没有写到原逻辑Aspect及两条真实Control连线");
+                        before=session.Revision;
+                        AssertThrows(()=>MainWindow.InsertSelectedJoin(session,
+                            page.RootContent,judge,new[]{left,left}));
+                        Assert(session.Revision==before,
+                            "重复分支验证失败却修改MEM工程版本");
+                        session.SaveAs(path);
+                        var reopened=MEMEngineering.Open(path);
+                        try
+                        {
+                            var saved=MOLWiringCodec.Get(
+                                reopened.GetSnapshot().Find(page.RootContent.Id));
+                            Assert(saved!=null&&saved.Blocks.Any(b=>b.Id==joined)&&
+                                saved.Links.Count(l=>l.Target.BlockId==joined)==2,
+                                "保存重开丢失Join原BlockId及Control连线");
+                        }
+                        finally{reopened.Close(true);}
+                        session.Close(true);
+                    }
+                    finally{if(File.Exists(path))File.Delete(path);}
+                    Assert(window.StudioEngineeringRevision==revision,
+                        "独立Join自测误修改当前打开的Studio工程");
                 });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;

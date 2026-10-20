@@ -342,7 +342,11 @@ namespace CxVisual.Studio
                 AddRibbonButton("置于底层", null, OnSendVisualBack);
             }
             else if (group == "绑定") AddRibbonButton("绑定变量", null, OnApplyVisualBinding);
-            else if (group == "节点") AddRibbonButton("添加流程能力", null, OnAddWiringAction);
+            else if (group == "节点")
+            {
+                AddRibbonButton("添加流程能力", null, OnAddWiringAction);
+                AddRibbonButton("插入分支Join", null, OnInsertSelectedJoin);
+            }
             else if (group == "连线") AddRibbonButton("开始连线", null, OnToggleWiring);
             else if (group == "编排")
             {
