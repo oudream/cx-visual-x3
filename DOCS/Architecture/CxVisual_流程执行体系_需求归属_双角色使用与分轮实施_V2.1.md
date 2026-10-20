@@ -383,3 +383,11 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 - 所有FCR分支真正结算且成功之后，按调用方分支输入顺序合并具名输出；同名键默认抛错，只有显式`mergeConflicts`才允许聚合。任一分支失败或某分支返回null，则不执行聚合、不发布任何部分结果；结果字典只读，实际值的深拷贝/安全校验仍归MDS Data.Return/CommitOutputs。
 - ArchitectureSmoke增加正反例：第二分支未结算时拒绝提前聚合、显式Count=2+3且其他名字不丢失、无聚合策略禁止同名覆盖、失败分支禁止局部发布、MDS Commit前不可读/Commit后可读；不启用任何隐式设备重试。
 - **这一增量须对应新SHA的五项Windows CI通过后才能登记完成。** 它只证明具名软件结果聚合的受控边界，不等于直接支持任意Studio多生产者Port物理绑定与跨Flow分布式原子提交；R07整体仍需剩余E08反证。
+
+
+### R07 持续实施：Skipped与失败区分、旧Flow迟到结果隔离（2026-10-20）
+
+- 实际源代码继续使用唯一MRKExecutionEngine和MDSDataStack；添加ArchitectureSmoke真实执行测试而不是模拟Join图。普通Skipped不执行Body；显式AllowSkippedDependencies允许跳过的控制依赖参与汇合，但真正Failed依赖必须失败传播，不能误成功。验证E08-05。
+- 同一已编译MRKPlan同时启动旧/新Flow、重复同名Step：旧Flow取消后仍有不合作Provider执行，新Flow可先提交202；旧Provider迟到Return(101)后旧Flow只能Cancelled且无CommittedOutputs，两个Invocation身份不同，不能污染新Flow。验证E08-07的进程内执行与数据隔离，不冒充物理设备已停止。
+- 该轮先前 `5dbaa58da86da3845661d1cbc333c42ea93d4aa3` 的Windows五项已全部success（Runtime 39409470439、TestCenter 39409470103、工程组织39409470272、Config L1 39409470408、配置公共底座39409470060）。随后有独立的Studio/AvalonDock图片及PoC并行提交，已确认未改动本次MRK/Test源或主文档，故在最新master继续快进提交。
+- 此增量尚需新SHA的Windows五项验收；Studio、跨进程/真实硬件未知状态与完整并行ForEach仍未全面验证，不能将R07整轮判定完成，也不进入R08。

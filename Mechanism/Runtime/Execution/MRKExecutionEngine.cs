@@ -1029,6 +1029,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
                         throw new OperationCanceledException("Work cancelled", cancellation);
                     if (!result.Succeeded)
                         throw new InvalidOperationException("STEP_" + step.Id + "_" + result.State, result.Error);
+                    // 即使不合作Provider在取消后迟到返回成功，本Flow必须阻断
+                    // 其Pending输出提交，不可污染同Plan的其他Flow/Invocation。
                     cancellation.ThrowIfCancellationRequested();
                     MRKExecutionPortBinder.VerifyOutput(step, result.Value);
                     // 所有具名Output先验证、整体发布，再让依赖任务观察节点Completed。

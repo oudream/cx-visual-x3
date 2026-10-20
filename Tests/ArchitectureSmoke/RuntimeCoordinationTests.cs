@@ -28,6 +28,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
             R07_TimedOutTicketCannotDisposeNewRegistration();
             R07_JoinObserverTimeoutAndCancellationCannotReleaseActiveWork();
             R07_NamedOutputMergeRequiresExplicitConflictPolicyAndMDSCommit();
+            R07_SkippedAndFailedBranchesRemainDifferent();
+            R07_LateCancelledFlowDoesNotPublishToAnotherFlow();
         }
         private static void Check(bool ok, string message)
         { if (!ok) throw new InvalidOperationException("Runtime协作测试: " + message); }
@@ -675,6 +677,107 @@ namespace CxVisual.Tests.ArchitectureSmoke
             {
                 release.TrySetResult(true);
                 Await(worker.StopAsync());
+            }
+        }
+
+        private static void R07_SkippedAndFailedBranchesRemainDifferent()
+        {
+            int skipCalls = 0, joinCalls = 0, strictCalls = 0;
+            var okPlan = new MRKExecutionPlan("r07.skipped", new[]
+            {
+                new MRKExecutionStep("skip", new string[0], (ctx, token) =>
+                { Interlocked.Increment(ref skipCalls); return Task.FromResult((object)true); },
+                    condition: ctx => false),
+                new MRKExecutionStep("active", new string[0],
+                    (ctx, token) => Task.FromResult((object)true)),
+                new MRKExecutionStep("join", new[] { "skip", "active" }, (ctx, token) =>
+                { Interlocked.Increment(ref joinCalls); return Task.FromResult((object)true); },
+                    allowSkippedDependencies: true),
+                new MRKExecutionStep("strict", new[] { "skip" }, (ctx, token) =>
+                { Interlocked.Increment(ref strictCalls); return Task.FromResult((object)true); })
+            });
+            var badPlan = new MRKExecutionPlan("r07.failed", new[]
+            {
+                new MRKExecutionStep("fail", new string[0], (ctx, token) =>
+                { throw new InvalidOperationException("r07.expected.failure"); }),
+                new MRKExecutionStep("blocked", new[] { "fail" }, (ctx, token) =>
+                { Interlocked.Increment(ref joinCalls); return Task.FromResult((object)true); },
+                    allowSkippedDependencies: true)
+            });
+            var engine = new MRKExecutionEngine(
+                new CxVisual.Foundation.Infrastructure.Concurrency.FCRWorkerOptions(3, 6));
+            try
+            {
+                MRKFlowResult success = Await(engine.StartFlow(okPlan).Completion);
+                Check(success.State == MRKFlowState.Completed &&
+                    success.StepStates["skip"] == MRKStepState.Skipped &&
+                    success.StepStates["active"] == MRKStepState.Completed &&
+                    success.StepStates["join"] == MRKStepState.Completed &&
+                    success.StepStates["strict"] == MRKStepState.Skipped &&
+                    skipCalls == 0 && strictCalls == 0 && joinCalls == 1,
+                    "Skipped分支不应执行Body或阻塞显式允许Skipped依赖的Join");
+                MRKFlowResult failed = Await(engine.StartFlow(badPlan).Completion);
+                Check(failed.State == MRKFlowState.Failed &&
+                    failed.StepStates["fail"] == MRKStepState.Failed &&
+                    failed.StepStates["blocked"] == MRKStepState.Skipped &&
+                    joinCalls == 1 && failed.Error != null,
+                    "失败依赖不应被AllowSkippedDependencies转换成成功汇合");
+            }
+            finally { Await(engine.StopAsync()); }
+        }
+
+        private static void R07_LateCancelledFlowDoesNotPublishToAnotherFlow()
+        {
+            TaskCompletionSource<bool> oldEntered = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<bool> oldRelease = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var plan = new MRKExecutionPlan("r07.same-plan", new[]
+            {
+                new MRKExecutionStep("produce", new string[0], async (ctx, token) =>
+                {
+                    string request = (string)ctx.Inputs["Request"];
+                    if (request == "old")
+                    {
+                        oldEntered.TrySetResult(true);
+                        // 非协作Provider：即使取消，直到释放信号才真正返回。
+                        await oldRelease.Task.ConfigureAwait(false);
+                    }
+                    ctx.Data.Return("Value", request == "old" ? 101 : 202);
+                    return (object)true;
+                }, dataOutputs: new Dictionary<string, Type>{{"Value",typeof(int)}})
+            }, new Dictionary<string, string>{{"Final","produce.Value"}});
+            var engine = new MRKExecutionEngine(
+                new CxVisual.Foundation.Infrastructure.Concurrency.FCRWorkerOptions(2, 4));
+            try
+            {
+                MRKFlowHandle old = engine.StartFlow(plan,
+                    new Dictionary<string,object>{{"Request","old"}});
+                Await(oldEntered.Task);
+                Check(old.RequestCancel(), "旧Flow未接收取消");
+                MRKFlowHandle current = engine.StartFlow(plan,
+                    new Dictionary<string,object>{{"Request","current"}});
+                MRKFlowResult currentResult = Await(current.Completion);
+                Check(currentResult.State == MRKFlowState.Completed &&
+                    currentResult.GetCommittedOutput<int>("Final") == 202 &&
+                    !old.Completion.IsCompleted && current.FlowId != old.FlowId,
+                    "同名Plan的新Flow被旧Flow尾部阻塞或覆盖");
+                string firstId = old.Context.ObservationsSnapshot()["produce"].InvocationId;
+                string secondId = current.Context.ObservationsSnapshot()["produce"].InvocationId;
+                Check(!string.IsNullOrWhiteSpace(firstId) &&
+                    !string.IsNullOrWhiteSpace(secondId) && firstId != secondId,
+                    "不同Flow重复Step没有独立Invocation身份");
+                oldRelease.TrySetResult(true);
+                MRKFlowResult oldResult = Await(old.Completion);
+                Check(oldResult.State == MRKFlowState.Cancelled &&
+                    oldResult.CommittedOutputs.Count == 0 &&
+                    currentResult.GetCommittedOutput<int>("Final") == 202,
+                    "已取消的旧Flow迟到Data.Return污染新Flow或泄漏未提交输出");
+            }
+            finally
+            {
+                oldRelease.TrySetResult(true);
+                Await(engine.StopAsync());
             }
         }
 
