@@ -41,7 +41,7 @@ namespace CxVisual.Mechanism.Core
         internal static bool SameSchema(MPMTypeDescriptor a,MPMTypeDescriptor b)
         {
             if(a.TypeId!=b.TypeId||a.SchemaVersion!=b.SchemaVersion||a.Kind!=b.Kind||a.Properties.Count!=b.Properties.Count||a.Ports.Count!=b.Ports.Count||a.Aspects.Count!=b.Aspects.Count)return false;
-            for(int i=0;i<a.Properties.Count;i++){var x=a.Properties[i];var y=b.Properties[i];if(x.MemberId!=y.MemberId||x.ValueKind!=y.ValueKind||x.Required!=y.Required||x.IsPublic!=y.IsPublic||x.Minimum!=y.Minimum||x.Maximum!=y.Maximum||!object.Equals(x.DefaultBinding,y.DefaultBinding))return false;}
+            for(int i=0;i<a.Properties.Count;i++){var x=a.Properties[i];var y=b.Properties[i];if(x.MemberId!=y.MemberId||x.ValueKind!=y.ValueKind||x.Required!=y.Required||x.IsPublic!=y.IsPublic||x.IsReadOnly!=y.IsReadOnly||x.Minimum!=y.Minimum||x.Maximum!=y.Maximum||!object.Equals(x.DefaultBinding,y.DefaultBinding))return false;}
             for(int i=0;i<a.Ports.Count;i++){var x=a.Ports[i];var y=b.Ports[i];if(x.MemberId!=y.MemberId||x.Direction!=y.Direction||x.Kind!=y.Kind||x.TypeId!=y.TypeId||x.Multiplicity!=y.Multiplicity||x.IsPublic!=y.IsPublic||x.Required!=y.Required||!x.Contract.Equals(y.Contract))return false;}
             for(int i=0;i<a.Aspects.Count;i++){var x=a.Aspects[i];var y=b.Aspects[i];if(x.Kind!=y.Kind||x.ProviderId!=y.ProviderId||x.SchemaVersion!=y.SchemaVersion||x.Required!=y.Required||x.RequiresRemap!=y.RequiresRemap||!x.PayloadBytes.SequenceEqual(y.PayloadBytes))return false;}return true;
         }
