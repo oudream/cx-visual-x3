@@ -520,7 +520,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 catch (Exception ex) { error = ex; }
             });
             thread.SetApartmentState(ApartmentState.STA); thread.Start();
-            if (!thread.Join(15000)) throw new InvalidOperationException("H01 WPF thread timeout");
+            // AvalonDock集成后同一STA覆盖原画布 + 真实Studio编辑全路径；CI实测超过15秒但操作仍持续推进。
+            // 保留有界90秒防真实死锁，绝不减少原有WPF业务断言。
+            if (!thread.Join(90000)) throw new InvalidOperationException("H01 WPF thread timeout after 90 seconds");
             if (error != null) throw new InvalidOperationException("H01 WPF failed", error);
             return 0;
         }
