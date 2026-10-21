@@ -78,7 +78,13 @@ namespace CxVisual.Studio
                 observed.Find(configuredResource)==null)
             {
                 LayoutDocument config=FindStudioContent("doc.config") as LayoutDocument;
-                if(config!=null)CloseStudioDocument("doc.config");
+                if(config!=null)
+                {
+                    if(HasStudioUnsavedConfiguration())
+                        _viewModel.ReportStudioShellWarning(
+                            "资源已删除：未保存配置不能再提交，配置草稿已失效并被隔离。");
+                    TryCloseStudioDocument("doc.config",true); // MEM目标消失必须强制失效
+                }
                 _studioConfigurationScopeKind="project";
                 _studioConfigurationScopeId=observed.Project.Id.ToString("N");
                 _viewModel.ReportStudioShellWarning(
@@ -1040,8 +1046,15 @@ namespace CxVisual.Studio
                         _studioConfigurationProjectId!=_viewModel.ProjectSession.Project.Id)
                     {
                         LayoutDocument config=FindStudioContent("doc.config") as LayoutDocument;
-                        if(config!=null){config.Content=null;config.Close();}
+                        if(config!=null)
+                        {
+                            if(HasStudioUnsavedConfiguration())
+                                _viewModel.ReportStudioShellWarning(
+                                    "工程已切换：旧工程配置草稿不能用于新工程，已失效。");
+                            TryCloseStudioDocument("doc.config",true);
+                        }
                         _studioViews.Remove("doc.config");
+                        _studioConfigEditors.Clear();
                         _studioConfigurationProjectId=Guid.Empty;
                     }
                     AttachStudioResourceChangeWatch(_viewModel.ProjectSession);
