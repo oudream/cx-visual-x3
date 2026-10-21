@@ -1880,6 +1880,34 @@ namespace CxVisual.Studio
                     ribbon.Command.Execute(null);
                     Assert(executed==3,"失效文档命令仍改变专业状态");
                 });
+                CheckStep("S2/P1 专业Command实时工程Revision及配置Scope上下文", () =>
+                {
+                    StudioViewModel vm=window.DataContext as StudioViewModel;
+                    MEMEngineeringSession session=vm.ProjectSession;
+                    window.OpenStudioDocument("doc.config");
+                    MainWindow.StudioCommandContext observed=null;
+                    window.RegisterStudioCommand("p1.context.verify","查询配置作用域",
+                        "配置","doc.config",new RelayCommand(value=>
+                        {
+                            observed=value as MainWindow.StudioCommandContext;
+                        }));
+                    window.StudioDynamicMenus.Children.OfType<Button>()
+                        .Single(x=>Convert.ToString(x.Content)=="配置")
+                        .RaiseEvent(new System.Windows.RoutedEventArgs(Button.ClickEvent));
+                    Button item=window.StudioRibbonActions.Children.OfType<Button>()
+                        .Single(x=>Convert.ToString(x.Tag)=="p1.context.verify");
+                    item.Command.Execute(null);
+                    Assert(observed!=null&&observed.ProjectId==session.Project.Id&&
+                        observed.EngineeringRevision==session.Revision&&
+                        observed.DocumentId=="doc.config"&&
+                        observed.ConfigScopeKind=="machine"&&
+                        observed.ConfigScopeId=="P1-MACHINE-001"&&
+                        !observed.ResourceId.HasValue,
+                        "专业命令没有收到真实工程/Revision/配置Scope上下文");
+                    window.OpenStudioDocument("doc.visual");
+                    Assert(!item.Command.CanExecute(null),
+                        "离开配置Editor之后仍允许沿旧Scope执行专业Command");
+                });
                 CheckStep("S2/P1 删除MEM资源使MHS配置页失效且Undo恢复后可发现", () =>
                 {
                     StudioViewModel vm=window.DataContext as StudioViewModel;
