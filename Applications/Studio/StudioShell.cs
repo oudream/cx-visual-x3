@@ -63,6 +63,7 @@ namespace CxVisual.Studio
                 _studioViews[item.ContentId] = item.Content;
             }
             _legacyRibbonActions.AddRange(StudioRibbonActions.Children.Cast<UIElement>());
+            PreviewKeyDown+=OnStudioRegisteredShortcut;
             ApplyStudioTheme(false);
             RefreshStudioMenus();
             _viewModel.SceneChanged += OnStudioSceneChangedForTree;
@@ -248,6 +249,99 @@ namespace CxVisual.Studio
 
         // P1 注册表只保存Editor类型与可信工厂，不持有工程数据或配置草稿。
         // 实际Schema/保存/审计/授权机制均在MHS和MPW中，保持Owner唯一。
+        // 专业贡献现有ICommand；Studio只管理入口和活动文档，不重建业务Command Owner。
+        private sealed class StudioCommandContribution
+        {
+            internal readonly string Id,Label,Group,DocumentId;
+            internal readonly Key ShortcutKey;
+            internal readonly ModifierKeys ShortcutModifiers;
+            internal readonly ICommand Adapter;
+            internal StudioCommandContribution(MainWindow host,string id,string label,string group,
+                string documentId,ICommand command,Key key,ModifierKeys modifiers)
+            {
+                Id=id;Label=label;Group=group;DocumentId=documentId;
+                ShortcutKey=key;ShortcutModifiers=modifiers;
+                Adapter=new StudioCommandAdapter(host,documentId,command);
+            }
+        }
+        private sealed class StudioCommandAdapter : ICommand
+        {
+            private readonly MainWindow _host;
+            private readonly string _documentId;
+            private readonly ICommand _owner;
+            internal StudioCommandAdapter(MainWindow host,string doc,ICommand owner)
+            {_host=host;_documentId=doc;_owner=owner;}
+            public bool CanExecute(object parameter)
+            {
+                return _host._activeStudioDocumentId==_documentId&&
+                    _host.FindStudioContent(_documentId)!=null&&
+                    _owner.CanExecute(parameter);
+            }
+            public void Execute(object parameter)
+            {if(CanExecute(parameter))_owner.Execute(parameter);}
+            public event EventHandler CanExecuteChanged
+            {
+                add { _owner.CanExecuteChanged+=value;CommandManager.RequerySuggested+=value; }
+                remove { _owner.CanExecuteChanged-=value;CommandManager.RequerySuggested-=value; }
+            }
+        }
+        private readonly Dictionary<string,StudioCommandContribution> _studioCommands=
+            new Dictionary<string,StudioCommandContribution>(StringComparer.Ordinal);
+        /// <summary>复用Owner ICommand；Ribbon、右键与快捷键只路由同一Adapter。</summary>
+        public void RegisterStudioCommand(string id,string label,string group,string documentId,
+            ICommand command,Key shortcutKey=Key.None,
+            ModifierKeys shortcutModifiers=ModifierKeys.None)
+        {
+            if(string.IsNullOrWhiteSpace(id)||id.Length>128||
+                id.Any(c=>!char.IsLetterOrDigit(c)&&c!='.'&&c!='-'&&c!='_')||
+                string.IsNullOrWhiteSpace(label)||string.IsNullOrWhiteSpace(group)||
+                !IsKnownContent(documentId)||command==null)
+                throw new ArgumentException("无效专业命令描述");
+            if(_studioCommands.ContainsKey(id))
+                throw new InvalidOperationException("CommandId重复："+id);
+            if(shortcutKey!=Key.None&&_studioCommands.Values.Any(x=>
+                x.ShortcutKey==shortcutKey&&x.ShortcutModifiers==shortcutModifiers&&
+                x.DocumentId==documentId))
+                throw new InvalidOperationException("专业快捷键冲突："+documentId);
+            var item=new StudioCommandContribution(this,id,label,group,documentId,
+                command,shortcutKey,shortcutModifiers);
+            _studioCommands.Add(id,item);
+            RefreshStudioMenus();
+            FrameworkElement view=GetStudioCommandDocumentView(documentId);
+            if(view!=null)RefreshStudioCommandContextMenu(view,documentId);
+        }
+        private FrameworkElement GetStudioCommandDocumentView(string id)
+        {
+            LayoutDocument doc=FindStudioContent(id) as LayoutDocument;
+            return doc==null?null:doc.Content as FrameworkElement;
+        }
+        private void RefreshStudioCommandContextMenu(FrameworkElement host,string id)
+        {
+            ContextMenu menu=new ContextMenu();
+            foreach(StudioCommandContribution item in _studioCommands.Values
+                .Where(x=>x.DocumentId==id).OrderBy(x=>x.Id,StringComparer.Ordinal))
+                menu.Items.Add(new MenuItem {Header=item.Label,Tag=item.Id,
+                    Command=item.Adapter});
+            host.ContextMenu=menu.Items.Count>0?menu:null;
+        }
+        internal bool HandleStudioRegisteredShortcut(Key key,ModifierKeys modifiers)
+        {
+            StudioCommandContribution command=_studioCommands.Values.FirstOrDefault(x=>
+                x.DocumentId==_activeStudioDocumentId&&
+                x.ShortcutKey!=Key.None&&x.ShortcutKey==key&&
+                x.ShortcutModifiers==modifiers);
+            if(command==null)return false;
+            if(command.Adapter.CanExecute(null))command.Adapter.Execute(null);
+            return true; // 被禁用的命令同样消费保留快捷键，禁止落入旧编辑器
+        }
+        private void OnStudioRegisteredShortcut(object sender,KeyEventArgs args)
+        {
+            if(args.Handled||args.OriginalSource is TextBoxBase||
+                args.OriginalSource is ComboBox)return;
+            if(HandleStudioRegisteredShortcut(args.Key,Keyboard.Modifiers))
+                args.Handled=true;
+        }
+
         private sealed class StudioConfigurationScopeChoice
         {
             internal readonly string Kind,Id,Label,ResourceTypeId;
@@ -459,6 +553,7 @@ namespace CxVisual.Studio
                 grid.Columns=Math.Max(1,Math.Min(max,cols));
             };
             scroller.Content=grid;host.Children.Add(scroller);
+            RefreshStudioCommandContextMenu(host,"doc.config");
             _studioConfigurationProjectId=projectId;
             return host;
         }
@@ -693,7 +788,13 @@ namespace CxVisual.Studio
             }
             else if (group == "帮助") AddRibbonButton("文档入口", null, (s,e)=>
                 MessageBox.Show(this, "开发入口：DOCS/00_CxVisual_协同开发入口与七仓复用基线.md\n设计规范：DOCS/界面设计。", "CxVisual帮助"));
-        }
+                    foreach(StudioCommandContribution registered in _studioCommands.Values
+                .Where(x=>x.DocumentId==_activeStudioDocumentId&&x.Group==group)
+                .OrderBy(x=>x.Id,StringComparer.Ordinal))
+                StudioRibbonActions.Children.Add(new Button {
+                    Content=registered.Label,Tag=registered.Id,Command=registered.Adapter,
+                    Margin=new Thickness(2),Padding=new Thickness(12,8,12,8) });
+}
 
         private void SafeStudioAction(Action command)
         {
