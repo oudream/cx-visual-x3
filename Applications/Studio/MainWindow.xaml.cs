@@ -1623,6 +1623,7 @@ namespace CxVisual.Studio
         private void OnValidateWiring(object sender,RoutedEventArgs args)
         {
             if(_logicRunning)return;
+            if(RouteStudioResourceFlowCommand("validate"))return;
             try
             {
                 var page=_viewModel.ActivePage;

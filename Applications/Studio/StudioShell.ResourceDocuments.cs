@@ -919,6 +919,31 @@ namespace CxVisual.Studio
                 _viewModel.ReportStudioShellWarning("失效子流程拒绝命令："+command);
                 return true;
             }
+            if(command=="validate")
+            {
+                // 主/AI/CV子Content验证的是活动Tab的真实工程快照，
+                // 诊断记录保留原始ContentId和Revision，绝不沿用旧主页面。
+                try
+                {
+                    MEMProjectSnapshot snapshot=_viewModel.ProjectSession.GetSnapshot();
+                    MOCBuildResult result=new MOCBuildService().Build(snapshot,context.ResourceId,_simulation);
+                    LogicInfo.Text=FormatBuildDiagnostics(result);
+                    FlowDiagnosticList.ItemsSource=result.Diagnostics.Select(x=>new FlowDiagnosis{
+                        ContentId=x.ContentId,ProjectId=snapshot.ProjectId,
+                        EngineeringRevision=snapshot.Revision,
+                        BlockId=x.BlockId,LinkId=x.LinkId,
+                        Label=x.Code+" · "+x.Message}).ToList();
+                    context.Flow.RuntimeStates=result.Diagnostics.Where(x=>x.BlockId.HasValue)
+                        .GroupBy(x=>x.BlockId.Value).ToDictionary(x=>x.Key,x=>"Failed");
+                }
+                catch(Exception ex)
+                {
+                    LogicInfo.Text="当前资源流程校验失败："+ex.Message;
+                    FlowDiagnosticList.ItemsSource=null;
+                    context.Flow.RuntimeStates=null;
+                }
+                return true;
+            }
             if(command=="wiring"){context.ToggleFlowWiring();return true;}
             if(command=="arrange"){context.ArrangeFlow();return true;}
             if(command=="action"||command=="join")

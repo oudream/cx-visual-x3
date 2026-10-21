@@ -1358,6 +1358,52 @@ namespace CxVisual.Studio
                         window.ActiveStudioDocumentId==before&&session.Revision==traceRevision,
                         "不存在的根流程ContentId造成跨页面错跳或工程修改");
                 });
+                CheckStep("P0 动态绑定与流程校验命令必须命中活动Content而非旧Page", () =>
+                {
+                    StudioViewModel vm=window.DataContext as StudioViewModel;
+                    MEMEngineeringSession session=vm.ProjectSession;
+                    MEMContent vision=session.AddContent(session.Project,"P0绑定校验Content");
+                    MEMPage unrelatedPage=session.AddPage("P0绑定隔离Page");
+                    window.OpenStudioResourceDocument(vision.Id,false);
+                    Button rect=window.StudioRibbonActions.Children.OfType<Button>()
+                        .Single(x=>Convert.ToString(x.Content)=="矩形");
+                    rect.RaiseEvent(new System.Windows.RoutedEventArgs(Button.ClickEvent));
+                    MRCShapeElement visual=vision.DescendantsAndSelf().OfType<MRCShapeElement>()
+                        .Single();
+                    window.GetStudioResourceScene(vision.Id)
+                        .SetSelectedVisualIds(new[]{visual.Id});
+                    vm.ActivePage=unrelatedPage;
+                    window.VisualBindingPropertyInput.Text="visible";
+                    window.VisualBindingSourceInput.Text="Inspection.Ready";
+                    window.StudioDynamicMenus.Children.OfType<Button>()
+                        .Single(x=>Convert.ToString(x.Content)=="绑定")
+                        .RaiseEvent(new System.Windows.RoutedEventArgs(Button.ClickEvent));
+                    Button binding=window.StudioRibbonActions.Children.OfType<Button>()
+                        .Single(x=>Convert.ToString(x.Content)=="绑定变量");
+                    int beforeBinding=session.Revision;
+                    binding.RaiseEvent(new System.Windows.RoutedEventArgs(Button.ClickEvent));
+                    MPMBinding value=(session.Find(visual.Id) as MRCVisualItem).GetBinding("visible");
+                    Assert(session.Revision==beforeBinding+1&&value!=null&&
+                        value.Kind==MPMBindingKind.Variable&&value.SourceId=="Inspection.Ready",
+                        "Content动态绑定Ribbon仍被旧Page Guard拦截或绑定错对象");
+                    window.OpenStudioResourceDocument(vision.Id,true);
+                    MOCFlowBuilder.Edit(session,vision,b=>b.Step("test.missing.provider.P0"));
+                    vm.ActivePage=unrelatedPage;
+                    window.StudioDynamicMenus.Children.OfType<Button>()
+                        .Single(x=>Convert.ToString(x.Content)=="编排")
+                        .RaiseEvent(new System.Windows.RoutedEventArgs(Button.ClickEvent));
+                    Button validate=window.StudioRibbonActions.Children.OfType<Button>()
+                        .Single(x=>Convert.ToString(x.Content)=="校验编排");
+                    int beforeValidate=session.Revision;
+                    validate.RaiseEvent(new System.Windows.RoutedEventArgs(Button.ClickEvent));
+                    Assert(session.Revision==beforeValidate,
+                        "编排校验错误地修改了MEM工程Revision");
+                    System.Collections.IEnumerable source=window.FlowDiagnosticList.ItemsSource
+                        as System.Collections.IEnumerable;
+                    Assert(source!=null&&source.Cast<object>().Any(x=>
+                        (Guid)x.GetType().GetProperty("ContentId").GetValue(x,null)==vision.Id),
+                        "独立子流程校验使用了旧主Page的MOC诊断来源");
+                });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;
             }
