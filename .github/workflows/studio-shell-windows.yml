@@ -38,7 +38,7 @@ jobs:
           if (-not (Test-Path $report)) { throw "Missing StudioShellSelfTest.txt" }
           $pass = @(Select-String -Path $report -Pattern '^PASS:').Count
           $fail = @(Select-String -Path $report -Pattern '^FAIL:').Count
-          if ($pass -ne 21 -or $fail -ne 0) { throw "Expected 21 PASS and 0 FAIL; actual $pass PASS / $fail FAIL" }
+          if ($pass -ne 22 -or $fail -ne 0) { throw "Expected 22 PASS and 0 FAIL; actual $pass PASS / $fail FAIL" }
       - name: Guard architecture dependencies
         shell: pwsh
         run: |

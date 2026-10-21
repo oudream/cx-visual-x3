@@ -692,6 +692,43 @@ namespace CxVisual.Studio
                         window.ActiveStudioDocumentId==active,
                         "工程修改后旧Plan来源被错误解释为新工程节点");
                 });
+                CheckStep("P0-4 构建诊断到AI子流程原始MOL节点与版本隔离", () =>
+                {
+                    StudioViewModel vm=window.DataContext as StudioViewModel;
+                    MEMEngineeringSession session=vm.ProjectSession;
+                    MEMContent ai=session.Project.Contents.Single(x=>x.Name=="P0-4 AI子流程");
+                    Guid blockId=MOLWiringCodec.Get(session.GetSnapshot().Find(ai.Id))
+                        .Blocks.Single().Id;
+                    Type type=typeof(MainWindow).GetNestedType("FlowDiagnosis",
+                        System.Reflection.BindingFlags.NonPublic);
+                    Assert(type!=null,"构建诊断类型不存在");
+                    object item=Activator.CreateInstance(type,true);
+                    type.GetProperty("ProjectId").SetValue(item,session.Project.Id,null);
+                    type.GetProperty("EngineeringRevision").SetValue(item,session.Revision,null);
+                    type.GetProperty("ContentId").SetValue(item,ai.Id,null);
+                    type.GetProperty("BlockId").SetValue(item,(Guid?)blockId,null);
+                    type.GetProperty("Label").SetValue(item,"P0-4 AI来源验证",null);
+                    ComboBox list=window.FindName("FlowDiagnosticList") as ComboBox;
+                    Assert(list!=null,"构建诊断界面缺失");
+                    list.ItemsSource=new[]{item};list.SelectedIndex=0;
+                    var locate=typeof(MainWindow).GetMethod("OnFlowLocateDiagnostic",
+                        System.Reflection.BindingFlags.NonPublic|
+                        System.Reflection.BindingFlags.Instance);
+                    Assert(locate!=null,"构建诊断入口缺失");
+                    int revision=session.Revision;
+                    locate.Invoke(window,new object[]{window,new System.Windows.RoutedEventArgs()});
+                    Assert(window.ActiveStudioDocumentId==
+                        "doc.resourceflow."+ai.Id.ToString("N")&&
+                        window.GetStudioResourceFlow(ai.Id).SelectedBlockIds.Single()==blockId&&
+                        session.Revision==revision,
+                        "构建诊断未正确下钻原AI流程或修改了工程");
+                    string active=window.ActiveStudioDocumentId;
+                    session.AddContent(session.Project,"P0-4 诊断版本变更");
+                    locate.Invoke(window,new object[]{window,new System.Windows.RoutedEventArgs()});
+                    Assert(window.ActiveStudioDocumentId==active&&
+                        ((TextBlock)window.FindName("LogicInfo")).Text.Contains("Revision"),
+                        "过期构建诊断错误下钻当前工程节点");
+                });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;
             }

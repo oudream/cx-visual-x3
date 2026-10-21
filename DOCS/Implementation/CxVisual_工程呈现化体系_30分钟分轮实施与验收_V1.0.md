@@ -177,3 +177,9 @@ R01源码已提交（截止 f6c0dceb7afae75d320f6b442f3a152b11566162）：修改
 - Studio消费现有MOC已编译计划的 `ProjectId`、`EngineeringRevision`，并随现有MRK Trace行携带，不另建Plan/SourceMap/版本数据仓库。
 - “跳转子流程源”在定位前校验当前MEM `Project.Id` 和 `Revision`。跨工程、过期Revision拒绝导航并提示重新构建运行；有效版本仍按原MEM Content和MOL V2 Block定位。旧 `LocateStudioFlowSource(Guid,Guid)` 保留兼容。
 - WPF STA新增独立正/反测试：当前版本、外来工程、未来版本、修改工程后旧Plan版本，检查非法导航不切换Tab；Studio CI断言从20提高到21。这里只记录**源码实施目标**；编译与STA结果以该轮真实commit和Windows Actions为准，未执行之前不宣称通过。
+
+### P0-4 构建诊断从主流程进入原始子流程（2026-10-21，待该轮Windows验收）
+
+- 直接消费既有 `MOCBuildResult.Diagnostics` 的 `ContentId/BlockId`，连同本次MOC构建所用不可变Snapshot的ProjectId/Revision投影到Studio诊断行；不创建诊断数据真源。
+- “定位诊断”保留主流程原有MOL选中路径；当诊断指向其他Content且其MOL V2定义实际包含原Block时，使用同一资源Tab下钻；跨工程或过期构建诊断拒绝错跳并要求重新构建。
+- WPF STA新增跨Content诊断导航、Revision不变和过期诊断拒绝测试（总22项）。这仅是有具体BlockId诊断的UI定位增量；当前MOC某些深层编译异常只返回根Content级错误，无原子块来源时不能虚称能够定位子流程节点。CI证据须按实际提交对应run记录。

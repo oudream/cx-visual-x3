@@ -50,6 +50,9 @@ namespace CxVisual.Studio
         private readonly SimulationResolver _simulation=new SimulationResolver();
         private sealed class FlowDiagnosis
         {
+            public Guid ContentId{get;set;}
+            public Guid ProjectId{get;set;}
+            public int EngineeringRevision{get;set;}
             public Guid? BlockId{get;set;}
             public Guid? LinkId{get;set;}
             public string Label{get;set;}
@@ -1447,15 +1450,33 @@ namespace CxVisual.Studio
         }
         private void OnFlowLocateDiagnostic(object sender,RoutedEventArgs args)
         {
-            var item=FlowDiagnosticList.SelectedItem as FlowDiagnosis;
+            FlowDiagnosis item=FlowDiagnosticList.SelectedItem as FlowDiagnosis;
             if(item==null){LogicInfo.Text="请先选择一条诊断";return;}
-            if(item.BlockId.HasValue&&LogicHost.WiringDefinition!=null)
+            MEMEngineeringSession current=_viewModel.ProjectSession;
+            if(item.ProjectId!=current.Project.Id||
+                item.EngineeringRevision!=current.Revision)
+            {
+                LogicInfo.Text="此构建诊断所属工程或Revision已变化，请重新构建后定位。";
+                return;
+            }
+            if(!item.BlockId.HasValue)
+            {
+                LogicInfo.Text="当前诊断只定位到Content，缺少BlockId："+item.Label;
+                return;
+            }
+            MEMPage page=_viewModel.ActivePage;
+            MOLWiringDefinition wiring=LogicHost.WiringDefinition;
+            if(page!=null&&page.RootContent.Id==item.ContentId&&wiring!=null&&
+                wiring.Blocks.Any(block=>block.Id==item.BlockId.Value))
             {
                 LogicHost.SetSelection(new[]{item.BlockId.Value});
                 OnFlowLocate(sender,args);
-                LogicInfo.Text="已定位构建诊断："+item.Label;
+                LogicInfo.Text="已定位主流程构建诊断："+item.Label;
             }
-            else LogicInfo.Text="当前诊断只定位到Content，缺少BlockId："+item.Label;
+            else if(LocateStudioFlowSource(item.ProjectId,item.EngineeringRevision,
+                item.ContentId,item.BlockId.Value))
+                LogicInfo.Text="已定位原始Content流程构建诊断："+item.Label;
+            else LogicInfo.Text="诊断来源已失效或无可定位MOL节点："+item.Label;
         }
         /// <summary>从MRK原始Content/Block来源定位子流程；与父流程调用定位并存。</summary>
         private void OnFlowLocateSourceContent(object sender,RoutedEventArgs args)
@@ -1511,10 +1532,13 @@ namespace CxVisual.Studio
             {
                 var page=_viewModel.ActivePage;
                 if(page==null)throw new InvalidOperationException("请先选择页面");
-                var result=new MOCBuildService().Build(_viewModel.ProjectSession.GetSnapshot(),
+                MEMProjectSnapshot snapshot=_viewModel.ProjectSession.GetSnapshot();
+                var result=new MOCBuildService().Build(snapshot,
                     page.RootContent.Id,_simulation);
                 LogicInfo.Text=FormatBuildDiagnostics(result);
                 FlowDiagnosticList.ItemsSource=result.Diagnostics.Select(x=>new FlowDiagnosis{
+                    ContentId=x.ContentId,ProjectId=snapshot.ProjectId,
+                    EngineeringRevision=snapshot.Revision,
                     BlockId=x.BlockId,LinkId=x.LinkId,
                     Label=x.Code+" · "+x.Message}).ToList();
                 LogicHost.RuntimeStates=result.Diagnostics.Where(x=>x.BlockId.HasValue)
