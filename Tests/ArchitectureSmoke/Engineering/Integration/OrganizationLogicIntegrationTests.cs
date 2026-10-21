@@ -1377,7 +1377,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     e.Reference(mid,leaf,"LeafRef");
                     return true;
                 }).RequireValue();
-                Guid leafStep=Guid.Empty,midCall=Guid.Empty,rootCall=Guid.Empty;
+                Guid leafStep=Guid.Empty,midCall=Guid.Empty,rootCall=Guid.Empty,midGate=Guid.Empty,midRejected=Guid.Empty;
                 MOCFlowBuilder.Edit(session,leaf,b=>{
                     leafStep=b.Step("Double",new[]{
                         new MPCPortDescriptor("N",MPCPortDirection.Input,"int",MPCPortKind.Data,required:true),
@@ -1388,7 +1388,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 });
                 MOCFlowBuilder.Edit(session,mid,b=>{
                     // R06：父Content从真实子Content公开契约推导端口，不再手抄Schema。
+                    midGate=b.Step("MidGate");
                     midCall=b.InvokeContent(leaf);
+                    midRejected=b.Step("MidWrongBranch");
+                    b.ConnectConditional(midGate,"Done",midCall,"Start","bool:true");
+                    b.ConnectConditional(midGate,"Done",midRejected,"Start","bool:false");
                     b.ExposeInput("MidSeed",midCall,"Number");
                     b.ExposeOutput("MidResult",midCall,"LeafValue");
                 });
@@ -1407,7 +1411,13 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     b.ExposeOutput("Final",plus,"Answer");
                 });
                 bool failLeafForR07=false;
+                int rejectedCalls=0;
                 var resolver=new TestResolver()
+                    .Register("MidGate",(c,t)=>Task.FromResult((object)true))
+                    .Register("MidWrongBranch",(c,t)=>{
+                        Interlocked.Increment(ref rejectedCalls);
+                        return Task.FromResult((object)true);
+                    })
                     .RegisterData("Seed",(c,t)=>{
                         c.Data.Return("Value",4);return Task.FromResult((object)true);
                     },new Dictionary<string,Type>{{"Value",typeof(int)}},null)
@@ -1439,6 +1449,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Check(result.State==MRKFlowState.Completed&&
                         result.GetCommittedOutput<int>("Final")==9,
                         "three-level actual data return is wrong");
+                    Check(rejectedCalls==0&&
+                        compiled.Plan.SourceMap.Find(midRejected).Count>0,
+                        "nested guarded branch was executed despite its false predicate");
                     Check(result.CommittedOutputs.Count==1&&
                         !result.CommittedOutputs.ContainsKey("LeafValue")&&
                         !result.CommittedOutputs.ContainsKey("MidResult"),

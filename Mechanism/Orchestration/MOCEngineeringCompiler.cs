@@ -1089,8 +1089,23 @@ namespace CxVisual.Mechanism.Orchestration
                 foreach(var block in wiring.Blocks)
                 {
                     var entering=wiring.Links.Where(l=>l.Target.BlockId==block.Id).ToArray();
-                    if(entering.Any(l=>l.Kind==MPCPortKind.Control&&l.ConditionId.Length>0))
-                        throw new InvalidOperationException("moc.deep.guarded_branch_not_implemented");
+                    var incomingControl=entering.Where(l=>l.Kind==MPCPortKind.Control).ToArray();
+                    Func<MRKExecutionContext,bool> branchCondition=null;
+                    if(incomingControl.Length==1&&incomingControl[0].ConditionId.Length>0)
+                    {
+                        MOLLink guarded=incomingControl[0];
+                        string source=WireId(guarded.Source.BlockId);
+                        string guard=guarded.ConditionId;
+                        var order=wiring.Links.Where(l=>l.Source.BlockId==guarded.Source.BlockId&&
+                            l.Kind==MPCPortKind.Control).ToArray();
+                        string[] earlier=order.TakeWhile(l=>l.Id!=guarded.Id)
+                            .Select(l=>l.ConditionId).ToArray();
+                        string[] alternatives=order.Where(l=>l.ConditionId.StartsWith(
+                            "case:",StringComparison.Ordinal))
+                            .Select(l=>l.ConditionId.Substring(5)).ToArray();
+                        branchCondition=ctx=>EvaluateWiringGuard(ctx,source,guard,earlier,alternatives);
+                    }
+                    bool allowSkippedJoin=incomingControl.Length>1;
                     var dependencies=entering.Select(l=>WireId(l.Source.BlockId))
                         .Distinct(StringComparer.Ordinal).ToArray();
                     var inputs=new List<MRKExecutionInput>();
@@ -1124,9 +1139,10 @@ namespace CxVisual.Mechanism.Orchestration
                     }
                     definitions.Add(childId==null?
                         new MRKStepCompileRequest(WireId(block.Id),block.CapabilityId,dependencies,
-                            inputs,policy:policy,allowSkippedDependencies:
-                            entering.Count(l=>l.Kind==MPCPortKind.Control)>1):
+                            inputs,policy:policy,condition:branchCondition,
+                            allowSkippedDependencies:allowSkippedJoin):
                         new MRKStepCompileRequest(WireId(block.Id),null,dependencies,inputs,
+                            condition:branchCondition,allowSkippedDependencies:allowSkippedJoin,
                             subflowId:childId));
                 }
                 catalog.Add(id,new MRKFlowCompileDefinition(id,definitions,
