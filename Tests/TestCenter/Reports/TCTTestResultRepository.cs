@@ -58,6 +58,53 @@ namespace CxVisual.TestCenter.Reports
         public IList<TCTTestCaseResult> Attempts { get; private set; }
     }
 
+    /// <summary>A pair of identity-matched, SHA256-verified Attempt results.</summary>
+    public sealed class TCTArchivedComparisonRow
+    {
+        public TCTArchivedComparisonRow(string key, TCTTestCaseResult before,
+            TCTTestCaseResult after, TCTObservationComparison observation)
+        {
+            CaseKey = key; Before = before; After = after; Observation = observation;
+        }
+        public string CaseKey { get; private set; }
+        public TCTTestCaseResult Before { get; private set; }
+        public TCTTestCaseResult After { get; private set; }
+        public TCTObservationComparison Observation { get; private set; }
+        public string StatusBefore { get { return Before == null ? "Missing" : Before.Status.ToString(); } }
+        public string StatusAfter { get { return After == null ? "Missing" : After.Status.ToString(); } }
+        public int EvidenceChanges { get { return Observation == null ? 0 : Observation.Differences.Count; } }
+        public string Difference
+        {
+            get
+            {
+                if (Before == null) return "Added";
+                if (After == null) return "Removed";
+                return Before.Status != After.Status || EvidenceChanges != 0 ? "Changed" : "Unchanged";
+            }
+        }
+    }
+
+    public sealed class TCTArchivedRunComparison
+    {
+        public TCTArchivedRunComparison(TCTArchivedTestRun before, TCTArchivedTestRun after,
+            IList<TCTArchivedComparisonRow> rows)
+        {
+            Before = before; After = after;
+            Rows = new ReadOnlyCollection<TCTArchivedComparisonRow>(
+                new List<TCTArchivedComparisonRow>(rows));
+        }
+        public TCTArchivedTestRun Before { get; private set; }
+        public TCTArchivedTestRun After { get; private set; }
+        // Different commit/OS can still have a verified evidence Diff, but is not a like-for-like regression.
+        public bool Comparable
+        {
+            get { return Before.Commit == After.Commit && Before.OS == After.OS &&
+                Before.Commit != "Unknown"; }
+        }
+        public IList<TCTArchivedComparisonRow> Rows { get; private set; }
+        public int ChangedCount { get { return Rows.Count(x => x.Difference != "Unchanged"); } }
+    }
+
     // History is opt-in; never deletes user files or edits a golden baseline.
     public sealed class TCTTestResultRepository
     {
@@ -213,6 +260,40 @@ namespace CxVisual.TestCenter.Reports
                     throw new InvalidDataException("Archived summary contradicts verified Attempt " + key);
             }
             return new TCTArchivedTestRun(runId, header.Commit, header.OS, attempts);
+        }
+
+        /// <summary>Compares complete, verified archives by stable TestId and iteration.</summary>
+        public TCTArchivedRunComparison CompareArchived(string beforeRunId, string afterRunId)
+        {
+            if (string.Equals(beforeRunId, afterRunId, StringComparison.Ordinal))
+                throw new ArgumentException("Choose two different archived Runs");
+            TCTArchivedTestRun before = LoadDetailed(beforeRunId);
+            TCTArchivedTestRun after = LoadDetailed(afterRunId);
+            var left = before.Attempts.ToDictionary(x => CaseKey(x), StringComparer.Ordinal);
+            var right = after.Attempts.ToDictionary(x => CaseKey(x), StringComparer.Ordinal);
+            TCTTestArtifactStore beforeStore = new TCTTestArtifactStore(
+                Path.Combine(_root, "Run_" + beforeRunId));
+            TCTTestArtifactStore afterStore = new TCTTestArtifactStore(
+                Path.Combine(_root, "Run_" + afterRunId));
+            List<TCTArchivedComparisonRow> rows = new List<TCTArchivedComparisonRow>();
+            foreach (string key in left.Keys.Union(right.Keys).OrderBy(x => x, StringComparer.Ordinal))
+            {
+                TCTTestCaseResult a, b;
+                left.TryGetValue(key, out a);
+                right.TryGetValue(key, out b);
+                TCTObservationComparison observation = a != null && b != null ?
+                    TCTObservationDiffService.Compare(a, b, beforeStore, afterStore) : null;
+                rows.Add(new TCTArchivedComparisonRow(key, a, b, observation));
+            }
+            return new TCTArchivedRunComparison(before, after, rows);
+        }
+
+        private static string CaseKey(TCTTestCaseResult result)
+        {
+            if (result == null || result.Attempt == null)
+                throw new InvalidDataException("Attempt identity required for archive comparison");
+            return result.Descriptor.Id + "#" + result.Attempt.Iteration.ToString(
+                System.Globalization.CultureInfo.InvariantCulture);
         }
 
         public static TCTTestRunDiff Compare(TCTStoredTestRun before, TCTStoredTestRun after)
