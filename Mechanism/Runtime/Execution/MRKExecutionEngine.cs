@@ -813,17 +813,9 @@ namespace CxVisual.Mechanism.Runtime.Execution
         {
             if (plan == null) throw new ArgumentNullException("plan");
             MRKExecutionPortBinder.VerifyFlowInputs(plan, inputs);
-            foreach (MRKExecutionStep candidate in plan.Steps)
-            {
-                if (!string.IsNullOrEmpty(candidate.ExecutionGroup) &&
-                    !_groups.Contains(candidate.ExecutionGroup))
-                    throw new ArgumentException("流程引用了未配置执行组：" + candidate.ExecutionGroup,
-                        "plan");
-                if (!string.IsNullOrWhiteSpace(candidate.DedicatedExecutorId) &&
-                    !_dedicated.ContainsKey(candidate.DedicatedExecutorId))
-                    throw new ArgumentException("流程引用了未配置专用执行位置：" +
-                        candidate.DedicatedExecutorId, "plan");
-            }
+            // 包括动态循环内部节点；不能在Flow已经开始对外产生副作用后才发现未知组。
+            HashSet<string> wholeFlowGroups = new HashSet<string>(StringComparer.Ordinal);
+            ValidateExecutionGroups(plan, wholeFlowGroups);
             lock (_lifecycleGate)
             {
                 if (_stopping) throw new InvalidOperationException("运行引擎已经停止接收新流程");
@@ -860,6 +852,29 @@ namespace CxVisual.Mechanism.Runtime.Execution
             }
         }
 
+        // 遍历复用的编译Plan及循环体，不构造第二份持久执行图。
+        // 各WholeFlow组依字典序获取，以免两个Flow颠倒持有顺序形成等待环。
+        private void ValidateExecutionGroups(MRKExecutionPlan plan, HashSet<string> wholeFlow)
+        {
+            foreach (MRKExecutionStep step in plan.Steps)
+            {
+                if (!string.IsNullOrEmpty(step.ExecutionGroup))
+                {
+                    if (!_groups.Contains(step.ExecutionGroup))
+                        throw new ArgumentException("流程引用了未配置执行组：" +
+                            step.ExecutionGroup, "plan");
+                    if (_groups.GetScope(step.ExecutionGroup) == MRKExecutionGroupScope.WholeFlow)
+                        wholeFlow.Add(step.ExecutionGroup);
+                }
+                if (!string.IsNullOrWhiteSpace(step.DedicatedExecutorId) &&
+                    !_dedicated.ContainsKey(step.DedicatedExecutorId))
+                    throw new ArgumentException("流程引用了未配置专用执行位置：" +
+                        step.DedicatedExecutorId, "plan");
+                if (step.LoopRegion != null)
+                    ValidateExecutionGroups(step.LoopRegion.Body, wholeFlow);
+            }
+        }
+
         private async Task<MRKFlowResult> RunFlowAsync(MRKExecutionPlan plan, MRKFlowHandle flow, MRKExecutionDebugController control)
         {
             MRKExecutionContext context = flow.Context;
@@ -877,8 +892,16 @@ namespace CxVisual.Mechanism.Runtime.Execution
             MRKFlowState finalState = MRKFlowState.Completed;
             Exception finalError = null;
             IDictionary<string, object> committedFlowOutputs = null;
+            List<MRKExecutionGroupLease> wholeFlowLeases = new List<MRKExecutionGroupLease>();
             try
             {
+                // 整个Flow（包括内部Loop）先持有指定组，避免多个Stage/Step间释放席位。
+                // 等待不占F19 Worker线程；Cancel/Stop可取消排队的整条Flow。
+                HashSet<string> wholeFlow = new HashSet<string>(StringComparer.Ordinal);
+                ValidateExecutionGroups(plan, wholeFlow);
+                foreach (string groupId in wholeFlow.OrderBy(x => x, StringComparer.Ordinal))
+                    wholeFlowLeases.Add(await _groups.AcquireAsync(groupId, flow.Token)
+                        .ConfigureAwait(false));
                 foreach (MRKExecutionStep step in plan.Steps)
                 {
                     Task<object> scheduled = schedule(step.Id);
@@ -928,8 +951,18 @@ namespace CxVisual.Mechanism.Runtime.Execution
                         new AggregateException("流程执行和Journal最终写入同时失败", finalError, ex);
                 }
             }
-            return new MRKFlowResult(finalState, context, finalError,
-                finalState == MRKFlowState.Completed ? committedFlowOutputs : null);
+            // Journal写入无论成功失败必须结算。保守做法：真实Flow终态落盘/报错后
+            // 才归还WholeFlow许可；非合作底层Work仍由Task.WhenAll等待实际结算。
+            try
+            {
+                return new MRKFlowResult(finalState, context, finalError,
+                    finalState == MRKFlowState.Completed ? committedFlowOutputs : null);
+            }
+            finally
+            {
+                for (int i = wholeFlowLeases.Count - 1; i >= 0; i--)
+                    wholeFlowLeases[i].Dispose();
+            }
         }
 
         private async Task<int> ExecuteLoopRegionAsync(MRKLoopRegion loop,
@@ -1122,7 +1155,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 MDSDataFrame dataFrame = null;
                 try
                 {
-                    if (!string.IsNullOrWhiteSpace(step.ExecutionGroup))
+                    if (!string.IsNullOrWhiteSpace(step.ExecutionGroup) &&
+                        _groups.GetScope(step.ExecutionGroup) == MRKExecutionGroupScope.Step)
                     {
                         context.SetState(step.Id, MRKStepState.WaitingGroup, step.ExecutionGroup);
                         groupLease = await _groups.AcquireAsync(step.ExecutionGroup, cancellation)

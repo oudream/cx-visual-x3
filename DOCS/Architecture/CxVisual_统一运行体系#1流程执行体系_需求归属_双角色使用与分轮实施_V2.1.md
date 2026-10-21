@@ -492,3 +492,10 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 - 固定源码SHA：`79470098f18d90a87d5eada9a01ea3018b4553e0`。Windows Release/x64同SHA四项工作流均`completed/success`：Runtime [39515895209](https://github.com/oudream/cx-visual-x3/actions/runs/39515895209)、工程组织 [39515895189](https://github.com/oudream/cx-visual-x3/actions/runs/39515895189)、Config L1 [39515895258](https://github.com/oudream/cx-visual-x3/actions/runs/39515895258)、配置公共底座 [39515895187](https://github.com/oudream/cx-visual-x3/actions/runs/39515895187)。本SHA仅修改Tests/ArchitectureSmoke和此文档，TestCenter工作流的路径过滤未触发，不能冒称该SHA独立运行了TestCenter；前次Foundation源改动SHA `b39a708109164cbe49afdf81b19d4fa5819ea9de` 的TestCenter实际成功。
 - 经证实：原执行组等待配额满足限制，64轮等待Token取消后不占用Waiting，已经占用Active的Holder不被抢占，独立cpu组正常，拒绝统计64次，最终许可归还可重新接纳。
 - **R08状态仍为进行中**：已完成并验证F19跨Key有界优先级公平性，以及MRK组等待取消配额归还；尚需WholeFlow/Stage组调度语义、真实多资源公平仲裁、背压冲突/压力与长稳数据。不得将普通Windows软件测试当作实机或跨进程独占证据。
+
+### R08 WholeFlow组作用域：跨Flow共享原许可证（2026-10-21，待固定SHA Windows验收）
+
+- 根因：原MRKExecutionGroups仅按每个Step获取/释放许可；即使多个Step属于同组，也会在节点交界释放席位，无法表达“完整流水线/设备会话期间独占执行组”。
+- 在原MRKExecutionGroupDefinition增加可选Scope，默认Step完全兼容；WholeFlow由原MRKExecutionEngine在任何节点启动之前按GroupId确定顺序取得席位，并保留到全部节点、动态Loop、DataScope与Journal终态结算之后；原Step组按原规则获取，不产生第二套Worker/Session或资源管理器。
+- 动态Loop内部组在正式准入前递归验证及归集，防止Loop内WholeFlow重复获取导致自死锁；未知嵌套组/执行位置在执行副作用之前拒绝。整条Flow等待仍消耗原有ActiveFlow配额且不占Worker线程。取消排队WholeFlow必须即时归还Waiting，不改变已占有者，所有成功/失败/超时/停止出口必须归还Active。
+- 当前仅实现Step和WholeFlow。Stage作用域必须有真实Stage边界/Stage结束信号再独立实现；不得作为Step别名静默接受。跨进程硬件Owner/安全停机不属于软件Group许可证明。

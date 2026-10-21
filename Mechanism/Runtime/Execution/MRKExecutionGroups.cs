@@ -6,14 +6,24 @@ using System.Threading.Tasks;
 
 namespace CxVisual.Mechanism.Runtime.Execution
 {
+    /// <summary>
+    /// Step按单节点持有席位；WholeFlow从Flow准入后、任何节点执行前取得，
+    /// 所有节点/动态循环及日志终态结算后才释放。Stage单独验收，暂不混同Step。
+    /// </summary>
+    public enum MRKExecutionGroupScope { Step, WholeFlow }
+
     /// <summary>组配额与等待上限是独立于线程池和串行Key的运行约束。</summary>
     public sealed class MRKExecutionGroupDefinition
     {
-        public MRKExecutionGroupDefinition(string id, int maxConcurrency, int maxWaiting)
+        public MRKExecutionGroupDefinition(string id, int maxConcurrency, int maxWaiting,
+            MRKExecutionGroupScope scope = MRKExecutionGroupScope.Step)
         {
             if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("执行组ID为空", "id");
             if (maxConcurrency < 1) throw new ArgumentOutOfRangeException("maxConcurrency");
             if (maxWaiting < 0) throw new ArgumentOutOfRangeException("maxWaiting");
+            if (!Enum.IsDefined(typeof(MRKExecutionGroupScope), scope))
+                throw new ArgumentOutOfRangeException("scope");
+            Scope = scope;
             Id = id;
             MaxConcurrency = maxConcurrency;
             MaxWaiting = maxWaiting;
@@ -21,6 +31,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
         public string Id { get; private set; }
         public int MaxConcurrency { get; private set; }
         public int MaxWaiting { get; private set; }
+        public MRKExecutionGroupScope Scope { get; private set; }
     }
 
     public sealed class MRKExecutionGroupSnapshot
@@ -86,6 +97,13 @@ namespace CxVisual.Mechanism.Runtime.Execution
         }
 
         public bool Contains(string id) { return _groups.ContainsKey(id); }
+        public MRKExecutionGroupScope GetScope(string id)
+        {
+            Group group;
+            if (!_groups.TryGetValue(id, out group))
+                throw new KeyNotFoundException("未知执行组：" + id);
+            return group.Definition.Scope;
+        }
 
         public async Task<MRKExecutionGroupLease> AcquireAsync(string id,
             CancellationToken cancellation = default(CancellationToken))
