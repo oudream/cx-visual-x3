@@ -16,14 +16,17 @@ namespace CxVisual.TestCenter.Models
         public string Role { get; private set; }
         public string Label { get; private set; }
         public string SourceObjectId { get; private set; }
+        // Stable engineering address includes Symbol/Content reference instance path.
+        public string DefinitionAddress { get; private set; }
         public double X { get; private set; }
         public double Y { get; private set; }
         public double Width { get; private set; }
         public double Height { get; private set; }
         public TCTGeometryFigure(string kind, string role, string label, string sourceObjectId,
-            double x, double y, double width, double height)
+            double x, double y, double width, double height, string definitionAddress = null)
         {
             Kind = kind; Role = role; Label = label ?? ""; SourceObjectId = sourceObjectId ?? "";
+            DefinitionAddress = definitionAddress ?? "";
             X = x; Y = y; Width = width; Height = height;
             TCTGeometryEvidence.ValidateFigure(this);
         }
@@ -43,7 +46,8 @@ namespace CxVisual.TestCenter.Models
                 !(f.Role == "Input" || f.Role == "Expected" || f.Role == "Actual" || f.Role == "Diff") ||
                 !Finite(f.X) || !Finite(f.Y) || !Finite(f.Width) || !Finite(f.Height) ||
                 (f.Kind != "Segment" && (f.Width < 0 || f.Height < 0)) ||
-                f.Label.Length > 128 || f.SourceObjectId.Length > 128)
+                f.Label.Length > 128 || f.SourceObjectId.Length > 128 ||
+                f.DefinitionAddress.Length > 1024)
                 throw new InvalidDataException("Invalid geometry figure, coordinate, role or kind");
         }
         private static bool Finite(double value)
@@ -63,6 +67,7 @@ namespace CxVisual.TestCenter.Models
                 root.Add(new XElement("Figure", new XAttribute("kind", f.Kind),
                     new XAttribute("role", f.Role),
                     new XAttribute("label", f.Label), new XAttribute("owner", f.SourceObjectId),
+                    new XAttribute("address", f.DefinitionAddress),
                     new XAttribute("x", N(f.X)), new XAttribute("y", N(f.Y)),
                     new XAttribute("w", N(f.Width)), new XAttribute("h", N(f.Height))));
             }
@@ -105,7 +110,8 @@ namespace CxVisual.TestCenter.Models
                     throw new InvalidDataException("Invalid geometry numeric field");
                 list.Add(new TCTGeometryFigure((string)element.Attribute("kind"),
                     (string)element.Attribute("role"), (string)element.Attribute("label"),
-                    (string)element.Attribute("owner"), x, y, w, h));
+                    (string)element.Attribute("owner"), x, y, w, h,
+                    (string)element.Attribute("address")));
             }
             return list.AsReadOnly();
         }
