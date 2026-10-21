@@ -529,3 +529,9 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 
 - `RunStepAsync`的Invocation身份和`WaitingDependencies`状态初始化改入既有try/catch/finally，确保即使首个StepTransition的Journal Append抛异常，Stage成员仍可进入计数结算的finally；不静默吞Journal异常。
 - ArchitectureSmoke的`R08_StageJournalInitialTransitionFailureReleasesPermit`在同Stage两并行节点中向一个节点的第一条StepTransition注入一次真实Journal失败，要求Flow最终Failed且全部Stage Active/Waiting为0，不得造成永久席位泄漏。测试将在本SHA的Windows Runtime/Engineering/Config门禁核验。
+
+### R08 细化Stage至动态Loop/并行Foreach的逐Invocation生命周期（2026-10-21）
+
+- 原版本保守拒绝所有Loop内Stage。本轮在`ExecuteLoopBodyAsync`为每个真实Iteration建立原`StageLeaseBatch`（只是生命周期计数，不建调度器）；每轮都沿用原MDS Frame和MRK Invocation路径，同阶段多个节点共享一次组许可证。对R05串行Loop及并行Foreach均适用，作用域完成才归还许可证，不会把不同迭代错误合成整条Flow锁。
+- 原`ValidateExecutionGroups`先完整检查当前Plan，再递归Loop；若**外层和内层同时存在Stage**，跨组反向持有可能死锁，当前仍在StartFlow前拒绝，不执行任何业务副作用（以后若需要可由专业声明明确的无环嵌套锁顺序）。
+- ArchitectureSmoke反证：两轮串行Loop每轮2个Stage Step，四轮并行Foreach两Stage Step/迭代，组MaxConcurrency=1、MaxWaiting=4，全部真实执行并归还组Active/Waiting；外层Stage持有期间进入内层Stage被提前拒绝。该增量须对应本提交固定SHA的Windows Runtime/工程组织与配置CI成功后才记已验证。

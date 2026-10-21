@@ -918,29 +918,40 @@ namespace CxVisual.Mechanism.Runtime.Execution
         // 遍历复用的编译Plan及循环体，不构造第二份持久执行图。
         // 各WholeFlow组依字典序获取，以免两个Flow颠倒持有顺序形成等待环。
         private void ValidateExecutionGroups(MRKExecutionPlan plan,
-            HashSet<string> wholeFlow, bool insideDynamicLoop=false)
+            HashSet<string> wholeFlow, HashSet<string> enclosingStages=null)
         {
-            foreach (MRKExecutionStep step in plan.Steps)
+            HashSet<string> localStages=new HashSet<string>(StringComparer.Ordinal);
+            // 先校验完整Plan，再递归进Loop。动态每轮使用独立Invocation的Stage计数器。
+            foreach(MRKExecutionStep step in plan.Steps)
             {
-                if (!string.IsNullOrEmpty(step.ExecutionGroup))
+                if(!string.IsNullOrEmpty(step.ExecutionGroup))
                 {
-                    if (!_groups.Contains(step.ExecutionGroup))
+                    if(!_groups.Contains(step.ExecutionGroup))
                         throw new ArgumentException("流程引用了未配置执行组：" +
                             step.ExecutionGroup, "plan");
                     MRKExecutionGroupScope scope=_groups.GetScope(step.ExecutionGroup);
-                    if (scope == MRKExecutionGroupScope.WholeFlow)
+                    if(scope==MRKExecutionGroupScope.WholeFlow)
                         wholeFlow.Add(step.ExecutionGroup);
-                    if (insideDynamicLoop && scope == MRKExecutionGroupScope.Stage)
-                        throw new ArgumentException(
-                            "stage.dynamic_loop_requires_explicit_iteration_scope", "plan");
+                    else if(scope==MRKExecutionGroupScope.Stage)
+                        localStages.Add(step.ExecutionGroup);
                 }
-                if (!string.IsNullOrWhiteSpace(step.DedicatedExecutorId) &&
+                if(!string.IsNullOrWhiteSpace(step.DedicatedExecutorId) &&
                     !_dedicated.ContainsKey(step.DedicatedExecutorId))
                     throw new ArgumentException("流程引用了未配置专用执行位置：" +
                         step.DedicatedExecutorId, "plan");
-                if (step.LoopRegion != null)
-                    ValidateExecutionGroups(step.LoopRegion.Body, wholeFlow, true);
             }
+            // 外层Stage等待内层Stage（即使不同组）可能与另一Flow构成跨组反向占用环。
+            // 目前保守拒绝阶段嵌套；子Loop自身没有外层Stage时可逐Invocation使用Stage。
+            if(enclosingStages!=null && enclosingStages.Count>0 && localStages.Count>0)
+                throw new ArgumentException(
+                    "stage.nested_scope_may_deadlock", "plan");
+            HashSet<string> activeStages=new HashSet<string>(
+                enclosingStages??new HashSet<string>(StringComparer.Ordinal),
+                StringComparer.Ordinal);
+            activeStages.UnionWith(localStages);
+            foreach(MRKExecutionStep step in plan.Steps)
+                if(step.LoopRegion!=null)
+                    ValidateExecutionGroups(step.LoopRegion.Body,wholeFlow,activeStages);
         }
 
         private async Task<MRKFlowResult> RunFlowAsync(MRKExecutionPlan plan, MRKFlowHandle flow, MRKExecutionDebugController control)
@@ -1085,13 +1096,15 @@ namespace CxVisual.Mechanism.Runtime.Execution
         {
             Dictionary<string,Task<object>> tasks=
                 new Dictionary<string,Task<object>>(StringComparer.Ordinal);
+            // 每个真实Iteration/Invocation建立自己的Stage引用计数，不按MaxIterations展开Plan。
+            StageLeaseBatch stages=new StageLeaseBatch(body,_groups);
             Func<string,Task<object>> schedule=null;
             schedule=id=>
             {
                 Task<object> existing;
                 if(tasks.TryGetValue(id,out existing))return existing;
                 Task<object> current=RunStepAsync(body.GetStep(id),scope,
-                    cancellation,schedule,control);
+                    cancellation,schedule,control,stages);
                 tasks.Add(id,current);
                 return current;
             };

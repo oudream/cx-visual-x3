@@ -19,7 +19,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
             R08_CancelledNonCooperativeWorkRetainsWholeFlowPermit();
             R08_StageReleasesBeforeLaterFlowTail();
             R08_ParallelStageNodesShareOneGroupPermit();
-            R08_StageInsideDynamicLoopMustBeRejectedEarly();
+            R08_StageDynamicLoopUsesInvocationScopedLease();
+            R08_NestedStageMustBeRejectedBeforeSideEffects();
             R08_StageJournalInitialTransitionFailureReleasesPermit();
         }
         private static void Check(bool condition, string msg)
@@ -412,30 +413,80 @@ namespace CxVisual.Tests.ArchitectureSmoke
             }
         }
 
-        private static void R08_StageInsideDynamicLoopMustBeRejectedEarly()
+        /// <summary>串行/并行迭代有独立Stage作用域，不扩张原MRK Plan或创建第二调度器。</summary>
+        private static void R08_StageDynamicLoopUsesInvocationScopedLease()
         {
             int effects=0;
             MRKExecutionPlan body=new MRKExecutionPlan("loop-stage-body",new[]{
-                new MRKExecutionStep("inner",new string[0],(ctx,ct)=>{
+                new MRKExecutionStep("a",new string[0],(ctx,ct)=>{
                     Interlocked.Increment(ref effects);
                     return Task.FromResult((object)1);
+                },executionGroup:"stage"),
+                new MRKExecutionStep("b",new[]{"a"},(ctx,ct)=>{
+                    Interlocked.Increment(ref effects);
+                    return Task.FromResult((object)2);
                 },executionGroup:"stage")
             });
-            MRKExecutionPlan outer=new MRKExecutionPlan("loop-stage",new[]{
+            MRKExecutionPlan serial=new MRKExecutionPlan("loop-stage-serial",new[]{
                 new MRKExecutionStep("repeat",new string[0],
                     (ctx,ct)=>Task.FromResult((object)0),
                     loopRegion:new MRKLoopRegion(body,2))
             });
-            MRKExecutionEngine engine=new MRKExecutionEngine(new FCRWorkerOptions(1,2),
-                groups:new[]{new MRKExecutionGroupDefinition("stage",1,1,
+            MRKExecutionPlan parallel=new MRKExecutionPlan("loop-stage-parallel",new[]{
+                new MRKExecutionStep("foreach",new string[0],
+                    (ctx,ct)=>Task.FromResult((object)0),
+                    loopRegion:new MRKLoopRegion(body,4,
+                        collectionInput:"items",maxParallelIterations:2))
+            });
+            MRKExecutionEngine engine=new MRKExecutionEngine(new FCRWorkerOptions(2,8),
+                groups:new[]{new MRKExecutionGroupDefinition("stage",1,4,
                     MRKExecutionGroupScope.Stage)});
+            try
+            {
+                Check(Await(engine.StartFlow(serial).Completion).State==MRKFlowState.Completed &&
+                    effects==4 && engine.GroupSnapshot()[0].Active==0,
+                    "R08串行动态Loop的每轮Stage必须结算且不自锁");
+                MRKFlowHandle run=engine.StartFlow(parallel,
+                    new Dictionary<string,object>{{"items",new int[]{1,2,3,4}}});
+                Check(Await(run.Completion).State==MRKFlowState.Completed &&
+                    effects==12 &&
+                    engine.GroupSnapshot()[0].Active==0 &&
+                    engine.GroupSnapshot()[0].Waiting==0,
+                    "R08并行Foreach每个Invocation必须独立持有并释放Stage许可");
+            }
+            finally{Await(engine.StopAsync(true));}
+        }
+
+        /// <summary>静态外层Stage与内层动态Stage组合存在反向组持有死锁，当前安全拒绝。</summary>
+        private static void R08_NestedStageMustBeRejectedBeforeSideEffects()
+        {
+            int effects=0;
+            MRKExecutionPlan body=new MRKExecutionPlan("nested-stage-body",new[]{
+                new MRKExecutionStep("inner",new string[0],(ctx,ct)=>{
+                    Interlocked.Increment(ref effects);
+                    return Task.FromResult((object)1);
+                },executionGroup:"stage-inner")
+            });
+            MRKExecutionPlan outer=new MRKExecutionPlan("nested-stage-outer",new[]{
+                new MRKExecutionStep("loop",new string[0],
+                    (ctx,ct)=>Task.FromResult((object)0),
+                    executionGroup:"stage-outer",
+                    loopRegion:new MRKLoopRegion(body,1))
+            });
+            MRKExecutionEngine engine=new MRKExecutionEngine(new FCRWorkerOptions(1,2),
+                groups:new[]{
+                    new MRKExecutionGroupDefinition("stage-inner",1,1,
+                        MRKExecutionGroupScope.Stage),
+                    new MRKExecutionGroupDefinition("stage-outer",1,1,
+                        MRKExecutionGroupScope.Stage)
+                });
             try
             {
                 bool rejected=false;
                 try{engine.StartFlow(outer);}
                 catch(ArgumentException){rejected=true;}
                 Check(rejected && effects==0,
-                    "R08动态迭代Stage引用尚未定义，必须在业务开始前拒绝");
+                    "R08嵌套Stage可能构成跨组循环占有，必须在业务开始前拒绝");
             }
             finally{Await(engine.StopAsync(true));}
         }
