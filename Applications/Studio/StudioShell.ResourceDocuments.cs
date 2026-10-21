@@ -541,6 +541,19 @@ namespace CxVisual.Studio
                 _viewModel.ReportStudioShellWarning("流程画布不能插入图元。");
                 return true;
             }
+            // 保留R06旧页面编辑器上下文契约：Ribbon目标来自真实活动Tab，
+            // 页面级VM也同步此Page；Content/Symbol绝不可强行切回旧Page。
+            if(resourceKind=="page")
+            {
+                MEMPage activePage=_viewModel.ProjectSession.Find(id) as MEMPage;
+                if(activePage==null)
+                {
+                    _viewModel.ReportStudioShellWarning("页面已失效，拒绝绘图命令。");
+                    return true;
+                }
+                if(_viewModel.ActivePage==null||_viewModel.ActivePage.Id!=activePage.Id)
+                    _viewModel.ActivePage=activePage;
+            }
             context.InsertVisual(kind);
             return true;
         }
