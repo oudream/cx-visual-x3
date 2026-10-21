@@ -11,6 +11,9 @@ using AvalonDock.Layout;
 using CxVisual.Mechanism.Presentation.Wpf;
 using CxVisual.Mechanism.Core;
 using CxVisual.Mechanism.Orchestration;
+using CxVisual.Mechanism.Data.Configuration;
+using CxVisual.Professional.Vision;
+using CxVisual.Professional.CT3D;
 
 namespace CxVisual.Studio
 {
@@ -1522,6 +1525,43 @@ namespace CxVisual.Studio
                             resolver,versions,policy)!=null,
                         "Studio工程变更后未能重新准备并激活有效CPU候选");
                     field.SetValue(window,null); // 避免此STA命令候选影响下一测试的仿真入口
+                });
+                CheckStep("S2/P1 工程配置中心真实Vision与CT双Schema编辑并隔离Project Scope", () =>
+                {
+                    StudioViewModel vm=window.DataContext as StudioViewModel;
+                    MEMEngineeringSession session=vm.ProjectSession;
+                    int revision=session.Revision;
+                    window.OpenStudioDocument("doc.config");
+                    LayoutDocument doc=window.StudioDock.Layout.Descendents()
+                        .OfType<LayoutDocument>().Single(x=>x.ContentId=="doc.config");
+                    var root=doc.Content as System.Windows.DependencyObject;
+                    Assert(root!=null,"中央配置工作区未创建真实WPF控件");
+                    Func<System.Windows.DependencyObject,Type,bool> exists=null;
+                    exists=(element,type)=>type.IsInstanceOfType(element)||
+                        System.Windows.LogicalTreeHelper.GetChildren(element)
+                            .OfType<System.Windows.DependencyObject>()
+                            .Any(child=>exists(child,type));
+                    Assert(exists(root,typeof(MPWConfigEditorControl<CxVisionInspectionOptions>))&&
+                        exists(root,typeof(MPWConfigEditorControl<CxCtReconstructionOptions>)),
+                        "中央配置仍为模拟占位，没有装载两种专业Schema Editor");
+                    string folder=System.IO.Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                        "CxVisual","Configs","V24","Projects");
+                    MHSConfigService service=new MHSConfigService(folder);
+                    string projectId=session.Project.Id.ToString("N");
+                    var scope=service.ForProject(projectId);
+                    MHSConfigSection<CxVisionInspectionOptions> vision=scope.Open<CxVisionInspectionOptions>();
+                    MHSConfigSection<CxCtReconstructionOptions> ct=scope.Open<CxCtReconstructionOptions>();
+                    Assert(vision.Identity.ScopeId==projectId&&ct.Identity.ScopeId==projectId&&
+                        vision.Identity.SectionId!=ct.Identity.SectionId&&session.Revision==revision,
+                        "Vision/CT配置不属于真实Project Scope或错误修改MEM真源");
+                    window.CloseStudioDocument("doc.config");
+                    window.OpenStudioDocument("doc.config");
+                    LayoutDocument reopened=window.StudioDock.Layout.Descendents()
+                        .OfType<LayoutDocument>().Single(x=>x.ContentId=="doc.config");
+                    Assert(!Object.ReferenceEquals(root,reopened.Content)&&
+                        session.Revision==revision,
+                        "关闭后复用已Dispose的MHS编辑器或配置操作污染MEM历史");
                 });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;
