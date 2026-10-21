@@ -294,7 +294,9 @@ namespace CxVisual.TestCenter.Cases
                 foreach (CxSceneItem item in scene)
                 {
                     geometry.Add(new TCTGeometryFigure("Rectangle", "Actual",
-                        item.Name, item.Id.ToString("D"), item.Bounds.X, item.Bounds.Y,
+                        item.Name,
+                        (item.Address == null ? item.Id : item.Address.ObjectId).ToString("D"),
+                        item.Bounds.X, item.Bounds.Y,
                         item.Bounds.Width, item.Bounds.Height,
                         item.Address == null ? null : item.Address.ToString()));
                 }
