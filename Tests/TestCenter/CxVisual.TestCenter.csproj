@@ -47,6 +47,7 @@
     <Compile Include="UI\TCTControls.cs" />
     <Compile Include="UI\TCTTestTimelineControl.cs" />
     <Compile Include="UI\TCTTestHistoryControl.cs" />
+    <Compile Include="UI\TCTTestPlanControl.cs" />
     <Compile Include="UI\TCTGeometryEvidenceCanvas.cs" />
     <Compile Include="UI\TCTTestViews.cs" />
     <Compile Include="NUnitIntegration\TCTNUnitEngineProbe.cs" />
