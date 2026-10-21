@@ -250,6 +250,35 @@ namespace CxVisual.Studio
 
         // P1 注册表只保存Editor类型与可信工厂，不持有工程数据或配置草稿。
         // 实际Schema/保存/审计/授权机制均在MHS和MPW中，保持Owner唯一。
+        /// <summary>命令执行时的只读快照，用于专业Owner复核对象身份/版本。
+        /// Studio不保存第二套资源定义；每次CanExecute/Execute即时从MEM获得。</summary>
+        public sealed class StudioCommandContext
+        {
+            public Guid ProjectId { get; private set; }
+            public int EngineeringRevision { get; private set; }
+            public string DocumentId { get; private set; }
+            public Guid? ResourceId { get; private set; }
+            public string ResourceTypeId { get; private set; }
+            public string ConfigScopeKind { get; private set; }
+            public string ConfigScopeId { get; private set; }
+            internal StudioCommandContext(Guid projectId,int revision,string doc,
+                Guid? resourceId,string typeId,string scopeKind,string scopeId)
+            {ProjectId=projectId;EngineeringRevision=revision;DocumentId=doc;
+             ResourceId=resourceId;ResourceTypeId=typeId;
+             ConfigScopeKind=scopeKind;ConfigScopeId=scopeId;}
+        }
+        public StudioCommandContext GetStudioCommandContext()
+        {
+            MEMEngineeringSession session=_viewModel.ProjectSession;
+            Guid id;string kind;
+            Guid? resourceId=TryParseResourceDocumentId(_activeStudioDocumentId,out id,out kind)
+                ?(Guid?)id:null;
+            MEMNode resource=resourceId.HasValue?session.Find(resourceId.Value):null;
+            return new StudioCommandContext(session.Project.Id,session.Revision,
+                _activeStudioDocumentId,resourceId,resource==null?null:resource.TypeId,
+                _activeStudioDocumentId=="doc.config"?_studioConfigurationScopeKind:null,
+                _activeStudioDocumentId=="doc.config"?_studioConfigurationScopeId:null);
+        }
         // 专业贡献现有ICommand；Studio只管理入口和活动文档，不重建业务Command Owner。
         private sealed class StudioCommandContribution
         {
@@ -274,12 +303,18 @@ namespace CxVisual.Studio
             {_host=host;_documentId=doc;_owner=owner;}
             public bool CanExecute(object parameter)
             {
-                return _host._activeStudioDocumentId==_documentId&&
-                    _host.FindStudioContent(_documentId)!=null&&
-                    _owner.CanExecute(parameter);
+                if(_host._activeStudioDocumentId!=_documentId||
+                    _host.FindStudioContent(_documentId)==null)return false;
+                Guid resource;string kind;
+                if(TryParseResourceDocumentId(_documentId,out resource,out kind)&&
+                    !_host.ResourceDocumentExists(_documentId))return false;
+                return _owner.CanExecute(parameter??_host.GetStudioCommandContext());
             }
             public void Execute(object parameter)
-            {if(CanExecute(parameter))_owner.Execute(parameter);}
+            {
+                if(CanExecute(parameter))
+                    _owner.Execute(parameter??_host.GetStudioCommandContext());
+            }
             public event EventHandler CanExecuteChanged
             {
                 add { _owner.CanExecuteChanged+=value;CommandManager.RequerySuggested+=value; }
