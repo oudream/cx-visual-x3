@@ -241,3 +241,9 @@ R01源码已提交（截止 f6c0dceb7afae75d320f6b442f3a152b11566162）：修改
 - 在[修复提交c1410705](https://github.com/oudream/cx-visual-x3/commit/c1410705511713c12594fa15871322adec10260c)同SHA下，Config L1 [39576040321](https://github.com/oudream/cx-visual-x3/actions/runs/39576040321)最终 **success**，与Studio 32/32、Unified Runtime TDD、配置公共底座同SHA全部成功；TestCenter[39576040522](https://github.com/oudream/cx-visual-x3/actions/runs/39576040522)在此更新时仍跑并行重复测试，不提前签收。
 - 并行P0主编辑器提交[a78a89f1](https://github.com/oudream/cx-visual-x3/commit/a78a89f1a28b1ea046bbab92ca5d96a02c71ebe1)进一步增加活动Content动态绑定/校验命令反证；[Studio S1 Windows 39576219329](https://github.com/oudream/cx-visual-x3/actions/runs/39576219329) **33/33 WPF STA success、0 FAIL**，保留并再次实测本轮P0-4双Flow跨页面来源验证；同SHA[Engineering 39576219487](https://github.com/oudream/cx-visual-x3/actions/runs/39576219487)、[配置公共底座39576219204](https://github.com/oudream/cx-visual-x3/actions/runs/39576219204)亦success，其余工作流以最终结果为准。
 - 下一步仍是专业Provider版本/构建发布交接、复杂多实例故障可观察性、真实设备安全联锁，以及Windows桌面高DPI和长期负载的非自动验收。不得将WPF STA变绿误写成P0-4全生产签收。
+
+### 连续收敛：P0-4 Vision CPU专业能力版本→MOC/授权MRK软件发布（2026-10-21，待本轮同SHA验收）
+
+- **专业Owner**：`CxVisionThresholdProvider`公布只读`ConfigurationRevision`、`ReleaseVersion`（算法合同版本+配置Revision，非硬件/AI模型版本），Host必须从该Provider取得标识并声明给原`MOCProjectRelease`。G06真实像素链路贯通Prepare、Version锁定、MRK授权Stage/Activate、Slot Plan执行、错误主体/安全点拒绝与配置升级失效反证，不增新Publisher。
+- **Studio CPU仿真**：在原MOL工具栏新增“准备CPU软件发布”，使用既有`MOCProjectRelease.Prepare`锁定主/AI/CV可达子Content及模拟能力版本；运行此候选时经`MOCProjectRelease.Stage`和受保护的`MRKExecutionPlanPublisher/PlanSlot`授权激活才执行，过期Revision/能力版本拒绝且不得悄悄降级为普通运行。Studio本地模拟策略只承认`studio-cpu-simulation`，**绝不用于生产设备授权/联锁**。轨迹补软件候选指纹与发布修订号，原Flow/根Content身份不变。
+- **验收**：原Studio STA总数34→35，新增真实X-Ray Prepare、未授权、Host否决、模拟AI版本变化、工程Revision变更、重新构建发布反证。原G06集成测试追加真实Vision Provider版本锁定→执行。仅在Windows CI证实后计为自动化通过；真正设备版本/发布ACK、高DPI/长时/现场安全未签收。

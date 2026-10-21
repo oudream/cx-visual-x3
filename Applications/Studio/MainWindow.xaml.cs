@@ -48,6 +48,61 @@ namespace CxVisual.Studio
         private Guid? _pendingWireSource;
         private Guid? _pendingWireTarget;
         private readonly SimulationResolver _simulation=new SimulationResolver();
+        // 仅保存当前Studio CPU仿真发布候选。MEM工程、MOC构建和MRK Slot仍是唯一Owner。
+        private MOCProjectReleaseCandidate _preparedCpuRelease;
+        private const string CpuReleasePrincipal="studio-cpu-simulation";
+
+        private sealed class StudioCpuSoftwarePolicy : IMRKPlanPublicationPolicy
+        {
+            public bool Authorize(string principal,MRKPlanPublishAction action,
+                MRKExecutionPlan plan,long revision)
+            {return principal==CpuReleasePrincipal;}
+            public bool IsSafeToActivate(MRKExecutionPlan plan,long revision)
+            {return true;} // 仅内存CPU仿真；绝不可用作生产机台设备联锁策略。
+        }
+        /// <summary>
+        /// 已有MOC源指纹、MRK授权Publisher和受保护Slot的CPU仿真交接。
+        /// 不替代Runtime.Host生产授权，也不触发硬件设备。
+        /// </summary>
+        internal static MOCCompiledPlan StageCpuSoftwareRelease(
+            MOCProjectReleaseCandidate candidate,MEMProjectSnapshot current,
+            IMRKCapabilityResolver resolver,IReadOnlyDictionary<string,string> versions,
+            IMRKPlanPublicationPolicy policy)
+        {
+            if(candidate==null)throw new ArgumentNullException("candidate");
+            if(policy==null)throw new ArgumentNullException("policy");
+            // 初次CPU预演无历史部署版本。只用标准MRK Slot作为受保护软件发布门禁。
+            MRKExecutionPlan baseline=candidate.Plan.Plan;
+            MRKExecutionPlanSlot slot=new MRKExecutionPlanSlot(baseline,0,true);
+            MRKExecutionPlanPublisher publisher=new MRKExecutionPlanPublisher(slot,baseline,0,policy);
+            MRKPlanPublicationReceipt receipt=MOCProjectRelease.Stage(candidate,
+                current,resolver,versions,publisher,CpuReleasePrincipal,1);
+            if(!receipt.Accepted||!publisher.TryActivate(CpuReleasePrincipal))
+                throw new InvalidOperationException("studio.cpu_release.activation_denied");
+            using(MRKExecutionPlanLease active=slot.Capture())
+                if(!object.ReferenceEquals(active.Plan,candidate.Plan.Plan)||active.Revision!=1)
+                    throw new InvalidOperationException("studio.cpu_release.plan_mismatch");
+            return candidate.Plan;
+        }
+        private void OnPrepareFlowSoftwareRelease(object sender,RoutedEventArgs args)
+        {
+            if(_logicRunning)return;
+            _preparedCpuRelease=null;
+            try
+            {
+                MEMPage page=_viewModel.ActivePage;
+                if(page==null)throw new InvalidOperationException("请先选择工程主流程页面");
+                _preparedCpuRelease=MOCProjectRelease.Prepare(
+                    _viewModel.ProjectSession.GetSnapshot(),page.RootContent.Id,
+                    _simulation,_simulation.DescribeReleaseVersions());
+                LogicInfo.Text="CPU仿真软件候选已锁定：Revision "+
+                    _preparedCpuRelease.EngineeringRevision+"；能力版本 "+
+                    _preparedCpuRelease.CapabilityVersions.Count+"；指纹 "+
+                    _preparedCpuRelease.Fingerprint.Substring(0,12)+
+                    "。下次仿真运行将走MOC→MRK授权Stage/Activate（非现场发布）。";
+            }
+            catch(Exception ex){LogicInfo.Text="CPU仿真软件候选拒绝："+ex.Message;}
+        }
         private sealed class FlowDiagnosis
         {
             public Guid ContentId{get;set;}
@@ -68,12 +123,15 @@ namespace CxVisual.Studio
             public Guid RootContentId{get;set;}
             /// <summary>原MRK Flow实例，不以相同StepId混同两次运行。</summary>
             public Guid FlowId{get;set;}
+            public string SoftwareReleaseFingerprint{get;set;}
+            public long PublicationRevision{get;set;}
             public IReadOnlyList<Guid> CallPath{get;set;}
             public string Label{get;set;}
         }
         /// <summary>使用真实MOC编译源与MRK观测记录创建同一个Studio轨迹投影。</summary>
         internal static FlowTraceRecord ProjectFlowTrace(MOCCompiledPlan compiled,
-            MOCObservedStep observed,Guid rootContentId=default(Guid),Guid flowId=default(Guid))
+            MOCObservedStep observed,Guid rootContentId=default(Guid),Guid flowId=default(Guid),
+            string releaseFingerprint=null,long publicationRevision=0)
         {
             if(compiled==null)throw new ArgumentNullException("compiled");
             if(observed==null||observed.Origin==null||observed.Transition==null)
@@ -85,6 +143,8 @@ namespace CxVisual.Studio
                 ProjectId=compiled.ProjectId,
                 EngineeringRevision=compiled.EngineeringRevision,
                 RootContentId=rootContentId,FlowId=flowId,
+                SoftwareReleaseFingerprint=releaseFingerprint,
+                PublicationRevision=publicationRevision,
                 CallPath=observed.Origin.CallPath,
                 Label=observed.Transition.State+" · "+observed.Origin.BlockId.ToString("N")
                     .Substring(0,8)+" · "+observed.Transition.StepId};
@@ -1708,6 +1768,12 @@ namespace CxVisual.Studio
             };
             public IEnumerable<MOCCapabilityDescriptor> DescribeCapabilities()
             {return _definitions;}
+            // 唯一CPU模拟Host声明的能力版本；不代表真实PLC、AI模型或CT Provider。
+            public IReadOnlyDictionary<string,string> DescribeReleaseVersions()
+            {
+                return _definitions.ToDictionary(d=>d.Id,
+                    d=>"studio-cpu-v1",StringComparer.Ordinal);
+            }
             public bool TryResolve(string id,out MRKResolvedCapability capability)
             {
                 capability=null;
@@ -1733,8 +1799,9 @@ namespace CxVisual.Studio
             {
                 MEMPage page=_viewModel.ActivePage;
                 if(page==null)throw new InvalidOperationException("请先选择页面");
+                MEMProjectSnapshot runSnapshot=_viewModel.ProjectSession.GetSnapshot();
                 var checkedBuild=new MOCBuildService().Build(
-                    _viewModel.ProjectSession.GetSnapshot(),page.RootContent.Id,_simulation);
+                    runSnapshot,page.RootContent.Id,_simulation);
                 if(!checkedBuild.Succeeded)
                 {
                     LogicInfo.Text=FormatBuildDiagnostics(checkedBuild);
@@ -1744,7 +1811,20 @@ namespace CxVisual.Studio
                 }
                 if(_visualPreviewTimer.IsEnabled)
                     throw new InvalidOperationException("请先退出独立视觉预览，再运行同工程MRK仿真");
-                var compiled=checkedBuild.Plan;
+                MOCCompiledPlan compiled=checkedBuild.Plan;
+                string releaseFingerprint=null;
+                long publicationRevision=0;
+                if(_preparedCpuRelease!=null)
+                {
+                    // 候选锁定旧Revision、子Content和Host声明能力版本；
+                    // 过期/未授权时绝不自动回退为普通CPU运行。
+                    compiled=StageCpuSoftwareRelease(_preparedCpuRelease,runSnapshot,
+                        _simulation,_simulation.DescribeReleaseVersions(),
+                        new StudioCpuSoftwarePolicy());
+                    releaseFingerprint=_preparedCpuRelease.Fingerprint;
+                    publicationRevision=1;
+                    _preparedCpuRelease=null;
+                }
                 _logicDebug=new MRKExecutionDebugController();
                 foreach(Guid id in _logicBreakpoints)
                 foreach(var origin in compiled.SourceMap.Find(id))
@@ -1784,7 +1864,8 @@ namespace CxVisual.Studio
                     var previous=(FlowTraceList.ItemsSource as IEnumerable<FlowTraceRecord>)
                         .ToList();
                     previous.AddRange(changes.Events.Select(e=>ProjectFlowTrace(compiled,e,
-                        page.RootContent.Id,_logicFlow.FlowId)));
+                        page.RootContent.Id,_logicFlow.FlowId,
+                        releaseFingerprint,publicationRevision)));
                     if(previous.Count>500)previous=previous.Skip(previous.Count-500).ToList();
                     FlowTraceList.ItemsSource=previous;
                 };

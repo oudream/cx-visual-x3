@@ -856,6 +856,10 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 var sourceResolver=new TestResolver().Register("vision.test.source",
                     (ctx,token)=>Task.FromResult((object)((byte[])pixels.Clone())));
                 var provider=new CxVisionThresholdProvider(options,12,sourceResolver);
+                Check(provider.ConfigurationRevision==12&&
+                    provider.ReleaseVersion=="vision.cpu.threshold.v1/config:12"&&
+                    new CxVisionThresholdProvider(options,13).ReleaseVersion!=provider.ReleaseVersion,
+                    "G06 real Vision Provider failed to expose config-bound immutable release version");
                 // 必需Data输入允许类型化参数满足，但移除参数后必须由构建门禁拒绝。
                 MOCFlowBuilder.Edit(session,page.RootContent,b=>b.RemoveParameter(inspect,"Width"));
                 var incomplete=new MOCBuildService().Build(
@@ -883,6 +887,62 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(trace.Events.Any(e=>e.Origin.BlockId==inspect&&
                     e.Transition.State==MRKStepState.Completed),
                     "G06 true professional Provider lost MRK SourceMap tracing");
+                // G07+G06：专业CPU算法和配置Revision进入已有MOC锁定→MRK授权发布门。
+                var declared=new Dictionary<string,string>(StringComparer.Ordinal){
+                    {"vision.test.source","g06.source.v1"},
+                    {CxVisionThresholdProvider.CapabilityId,provider.ReleaseVersion}};
+                var candidate=MOCProjectRelease.Prepare(session.GetSnapshot(),
+                    page.RootContent.Id,provider,declared);
+                Check(candidate.CapabilityVersions[CxVisionThresholdProvider.CapabilityId]
+                    ==provider.ReleaseVersion&&candidate.EngineeringRevision==session.Revision,
+                    "G06 professional version was not pinned into genuine MOC release");
+                var prior=new MRKExecutionPlan("g06.prior",new[]{
+                    new MRKExecutionStep("noop",new string[0],
+                        (c,t)=>Task.FromResult((object)0))});
+                var slot=new MRKExecutionPlanSlot(prior,1,true);
+                var policy=new ProjectReleaseTestPolicy();
+                var publisher=new MRKExecutionPlanPublisher(slot,prior,1,policy);
+                bool refused=false;
+                try{MOCProjectRelease.Stage(candidate,session.GetSnapshot(),provider,
+                    declared,publisher,"visitor",2);}
+                catch(UnauthorizedAccessException){refused=true;}
+                Check(refused&&!publisher.PendingRevision.HasValue,
+                    "G06 unapproved professional release unexpectedly entered MRK slot");
+                var receipt=MOCProjectRelease.Stage(candidate,session.GetSnapshot(),provider,
+                    declared,publisher,"release-officer",2);
+                Check(receipt.Accepted&&!publisher.TryActivate("release-officer"),
+                    "G06 published professional software plan ignored Host safety veto");
+                policy.Safe=true;
+                Check(publisher.TryActivate("release-officer")&&publisher.ActiveRevision==2,
+                    "G06 approved and safe Vision CPU plan was not activated");
+                using(var lease=slot.Capture())
+                {
+                    Check(object.ReferenceEquals(lease.Plan,candidate.Plan.Plan),
+                        "G06 published MRK Plan differs from MOC pinned candidate");
+                    var engine=new MRKExecutionEngine(new FCRWorkerOptions(2,16));
+                    try
+                    {
+                        MRKFlowHandle flow=engine.StartFlow(lease.Plan,
+                            candidate.Plan.InputDefaults.ToDictionary(x=>x.Key,x=>x.Value));
+                        var publishedRun=flow.Completion.GetAwaiter().GetResult();
+                        var publishedTrace=candidate.Plan.ReadTrace(flow,0);
+                        Check(publishedRun.State==MRKFlowState.Completed&&
+                            publishedTrace.Events.Any(e=>e.Origin.BlockId==inspect&&
+                                e.Transition.State==MRKStepState.Completed),
+                            "G06 approved version did not execute original professional algorithm");
+                    }
+                    finally{engine.StopAsync(true).GetAwaiter().GetResult();}
+                }
+                var changed=new Dictionary<string,string>(declared,StringComparer.Ordinal);
+                changed[CxVisionThresholdProvider.CapabilityId]=
+                    new CxVisionThresholdProvider(options,13).ReleaseVersion;
+                refused=false;
+                try{MOCProjectRelease.Stage(candidate,session.GetSnapshot(),provider,
+                    changed,publisher,"release-officer",3);}
+                catch(InvalidOperationException){refused=true;}
+                Check(refused&&!publisher.PendingRevision.HasValue&&
+                    publisher.ActiveRevision==2,
+                    "G06 provider config update staged stale plan or contaminated active version");
                 session.SaveAs(filename);
                 using(var reopened=MEMEngineering.Open(filename))
                 {

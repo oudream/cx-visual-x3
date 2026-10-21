@@ -1452,6 +1452,77 @@ namespace CxVisual.Studio
                     window.OpenStudioResourceDocument(ai.Id,true);
                     Assert(window.ActiveStudioDocumentId==tab,"重新打开Flow丢失文档身份");
                 });
+                CheckStep("P0-4 X-Ray CPU软件发布候选与MRK授权版本交接", () =>
+                {
+                    StudioViewModel vm=window.DataContext as StudioViewModel;
+                    MEMEngineeringSession session=vm.ProjectSession;
+                    MEMPage page=session.Project.Pages.Single(p=>p.Name=="P0-4 真实执行XRay");
+                    vm.ActivePage=page;
+                    window.OpenStudioDocument("doc.flow");
+                    Button button=window.FindName("FlowTraceList")==null?null:
+                        window.GetType().GetMethod("OnPrepareFlowSoftwareRelease",
+                            System.Reflection.BindingFlags.NonPublic|
+                            System.Reflection.BindingFlags.Instance)==null?null:
+                        new Button();
+                    Assert(button!=null,"Studio CPU软件发布命令未接入");
+                    var prepare=typeof(MainWindow).GetMethod("OnPrepareFlowSoftwareRelease",
+                        System.Reflection.BindingFlags.NonPublic|
+                        System.Reflection.BindingFlags.Instance);
+                    prepare.Invoke(window,new object[]{window,new System.Windows.RoutedEventArgs()});
+                    var field=typeof(MainWindow).GetField("_preparedCpuRelease",
+                        System.Reflection.BindingFlags.NonPublic|
+                        System.Reflection.BindingFlags.Instance);
+                    MOCProjectReleaseCandidate candidate=(MOCProjectReleaseCandidate)field.GetValue(window);
+                    Assert(candidate!=null&&candidate.ProjectId==session.Project.Id&&
+                        candidate.EntryContentId==page.RootContent.Id&&
+                        candidate.CapabilityVersions.ContainsKey("AI")&&
+                        candidate.CapabilityVersions.ContainsKey("CV"),
+                        "Studio没有锁定真实AI/CV及主流程发布依赖");
+                    var resolverField=typeof(MainWindow).GetField("_simulation",
+                        System.Reflection.BindingFlags.NonPublic|
+                        System.Reflection.BindingFlags.Instance);
+                    IMRKCapabilityResolver resolver=(IMRKCapabilityResolver)resolverField.GetValue(window);
+                    var getVersions=resolver.GetType().GetMethod("DescribeReleaseVersions");
+                    var versions=(IReadOnlyDictionary<string,string>)getVersions.Invoke(resolver,null);
+                    var policy=new P04CpuReleaseTestPolicy{Safe=true};
+                    bool denied=false;
+                    try{MainWindow.StageCpuSoftwareRelease(candidate,session.GetSnapshot(),
+                        resolver,versions,new P04CpuReleaseTestPolicy());}
+                    catch(UnauthorizedAccessException){denied=true;}
+                    Assert(denied,"CPU软件发布候选未执行MRK授权拒绝");
+                    denied=false;
+                    try{MainWindow.StageCpuSoftwareRelease(candidate,session.GetSnapshot(),
+                        resolver,versions,new P04CpuReleaseTestPolicy{Authorized=true,Safe=false});}
+                    catch(InvalidOperationException){denied=true;}
+                    Assert(denied,"CPU模拟Host安全点拒绝未生效");
+                    policy.Authorized=true;
+                    MOCCompiledPlan staged=MainWindow.StageCpuSoftwareRelease(
+                        candidate,session.GetSnapshot(),resolver,versions,policy);
+                    Assert(object.ReferenceEquals(staged,candidate.Plan),
+                        "发布过的MOC Plan被Studio替换为另外一次编译结果");
+                    var updated=new Dictionary<string,string>(versions,StringComparer.Ordinal);
+                    updated["AI"]="studio-cpu-v2";
+                    denied=false;
+                    try{MainWindow.StageCpuSoftwareRelease(candidate,session.GetSnapshot(),
+                        resolver,updated,policy);}
+                    catch(InvalidOperationException){denied=true;}
+                    Assert(denied,"模拟AI Provider版本变化未拒绝旧Candidate");
+                    int savedRevision=session.Revision;
+                    session.AddContent(session.Project,"P0-4 发布Revision冲突反证");
+                    denied=false;
+                    try{MainWindow.StageCpuSoftwareRelease(candidate,session.GetSnapshot(),
+                        resolver,versions,policy);}
+                    catch(InvalidOperationException){denied=true;}
+                    Assert(denied&&session.Revision>savedRevision,
+                        "旧工程Revision的MOC发布Candidate跨修改仍被激活");
+                    var again=MOCProjectRelease.Prepare(session.GetSnapshot(),
+                        page.RootContent.Id,resolver,versions);
+                    Assert(again.EngineeringRevision==session.Revision&&
+                        MainWindow.StageCpuSoftwareRelease(again,session.GetSnapshot(),
+                            resolver,versions,policy)!=null,
+                        "Studio工程变更后未能重新准备并激活有效CPU候选");
+                    field.SetValue(window,null); // 避免此STA命令候选影响下一测试的仿真入口
+                });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;
             }
@@ -1489,6 +1560,16 @@ namespace CxVisual.Studio
             }
         }
 
+        private sealed class P04CpuReleaseTestPolicy : IMRKPlanPublicationPolicy
+        {
+            public bool Authorized;
+            public bool Safe;
+            public bool Authorize(string principal,MRKPlanPublishAction action,
+                MRKExecutionPlan plan,long revision)
+            {return Authorized&&principal=="studio-cpu-simulation";}
+            public bool IsSafeToActivate(MRKExecutionPlan plan,long revision)
+            {return Safe;}
+        }
         private static void CheckStep(string title, Action body)
         {
             body();

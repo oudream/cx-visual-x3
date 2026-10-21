@@ -236,6 +236,8 @@
                                 <Button Content="调试继续" Click="OnFlowDebugResume"/>
                                 <Button Content="调试单步" Click="OnFlowDebugStep"/>
                                 <Button Content="终止调试" Click="OnFlowDebugCancel"/>
+                                <Button Content="准备CPU软件发布" Click="OnPrepareFlowSoftwareRelease"
+                                        ToolTip="锁定MEM/MOL和模拟Provider能力版本；下次仿真运行需经过真实MOC→MRK软件Stage/Activate。不是现场设备发布。"/>
                                 <Button Content="定位诊断" Click="OnFlowLocateDiagnostic"/>
                                 <ComboBox x:Name="FlowDiagnosticList" Width="230" DisplayMemberPath="Label"/>
                                 <Button Content="定位轨迹节点" Click="OnFlowLocateTrace"/>

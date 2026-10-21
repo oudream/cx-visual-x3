@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using CxVisual.Mechanism.Runtime.Execution;
@@ -13,6 +14,10 @@ namespace CxVisual.Professional.Vision
     public sealed class CxVisionThresholdProvider : IMRKCapabilityResolver
     {
         public const string CapabilityId="vision.cpu.threshold.inspect";
+        // 专业Owner给Host提供不可变的软件能力+配置Revision标识；不能冒充模型/设备版本。
+        public long ConfigurationRevision{get{return _configRevision;}}
+        public string ReleaseVersion{get{return "vision.cpu.threshold.v1/config:"+
+            _configRevision.ToString(CultureInfo.InvariantCulture);}}
         private readonly CxVisionThresholdPipeline _pipeline;
         private readonly CxVisionPixelDepth _depth;
         private readonly long _configRevision;
