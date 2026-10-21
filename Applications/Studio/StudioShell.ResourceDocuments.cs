@@ -71,22 +71,22 @@ namespace CxVisual.Studio
                 MEMNode node=observed.Find(operation.TargetId);
                 if(node!=null)
                 {
-                    if(node.ResourceRootId!=Guid.Empty&&
-                        node.ResourceRootId!=observed.Project.Id)
-                        changed.Add(node.ResourceRootId);
+                    if(observed.GetAddress(node).ResourceId!=Guid.Empty&&
+                        observed.GetAddress(node).ResourceId!=observed.Project.Id)
+                        changed.Add(observed.GetAddress(node).ResourceId);
                     continue;
                 }
                 MRIResourceReference reference=observed.FindReference(operation.TargetId);
                 if(reference!=null)
                 {
-                    changed.Add(reference.Owner.ResourceRootId);
+                    changed.Add(observed.GetAddress(reference.Owner).ResourceId);
                     continue;
                 }
                 MPCPort port=observed.FindPort(operation.TargetId);
                 if(port!=null)
                 {
                     MEMNode owner=observed.Find(port.OwnerId);
-                    if(owner!=null){changed.Add(owner.ResourceRootId);continue;}
+                    if(owner!=null){changed.Add(observed.GetAddress(owner).ResourceId);continue;}
                 }
                 // 已删除的对象失去正向索引时，宁可显示保守提示，不能宣称它们干净。
                 if(observed.GetResourceEntry(operation.TargetId)!=null)
@@ -118,7 +118,7 @@ namespace CxVisual.Studio
         private static Guid ResourceDocumentRoot(MEMEngineeringSession session,Guid resourceId)
         {
             MEMNode node=session.Find(resourceId);
-            return node==null?resourceId:node.ResourceRootId;
+            return node==null?resourceId:session.GetAddress(node).ResourceId;
         }
         private void RefreshStudioResourceCaptions()
         {
@@ -130,7 +130,7 @@ namespace CxVisual.Studio
                 LayoutDocument document=FindStudioContent(pair.Key) as LayoutDocument;
                 MEMNode node=_viewModel.ProjectSession.Find(pair.Value.ResourceId);
                 if(document==null||node==null)continue;
-                Guid root=node.ResourceRootId;
+                Guid root=_viewModel.ProjectSession.GetAddress(node).ResourceId;
                 string marker=dirty&&_resourceChangedRoots.Contains(root)?" *":
                     dirty&&_resourceAffectedRoots.Contains(root)?" ~":"";
                 document.Title=node.Name+marker+
