@@ -2,6 +2,7 @@
  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
  xmlns:ui="clr-namespace:CxVisual.TestCenter.UI"
+ xmlns:dock="https://github.com/Dirkster99/AvalonDock"
  Title="CxVisual · TestCenter — 统一测试与质量工作台"
  Width="1600" Height="960" MinWidth="1100" MinHeight="700"
  WindowStartupLocation="CenterScreen" FontFamily="Segoe UI"
@@ -19,8 +20,6 @@
    <RowDefinition Height="31"/>
    <RowDefinition Height="Auto"/>
    <RowDefinition Height="*"/>
-   <RowDefinition Height="5"/>
-   <RowDefinition x:Name="BottomRow" Height="255"/>
    <RowDefinition Height="33"/>
   </Grid.RowDefinitions>
   <Border Grid.Row="0" Background="#17365D" Padding="13,8">
@@ -52,39 +51,47 @@
    </MenuItem>
   </Menu>
   <ToolBarTray x:Name="RibbonTray" Grid.Row="2" Background="#E0EDF9"/>
-  <Grid Grid.Row="3" Margin="5">
-   <Grid.ColumnDefinitions>
-    <ColumnDefinition x:Name="LeftColumn" Width="290" MinWidth="190"/>
-    <ColumnDefinition Width="5"/>
-    <ColumnDefinition Width="*" MinWidth="320"/>
-    <ColumnDefinition Width="5"/>
-    <ColumnDefinition x:Name="RightColumn" Width="330" MinWidth="230"/>
-   </Grid.ColumnDefinitions>
-   <GroupBox Header="Explorer · 测试资源和能力" Grid.Column="0" Background="White">
-    <ui:TCTTestExplorerControl x:Name="Explorer"/>
-   </GroupBox>
-   <GridSplitter Grid.Column="1" Width="5" Background="#B8CADA" HorizontalAlignment="Stretch"/>
-   <GroupBox Header="DocumentHost · 专业证据 / Viewer" Grid.Column="2" Background="White">
-    <ui:TCTTestDocumentHostControl x:Name="DocumentHost"/>
-   </GroupBox>
-   <GridSplitter Grid.Column="3" Width="5" Background="#B8CADA" HorizontalAlignment="Stretch"/>
-   <GroupBox Header="Inspector · 对象 / 断言 / 证据" Grid.Column="4" Background="White">
-    <ui:TCTTestInspectorControl x:Name="Inspector"/>
-   </GroupBox>
-  </Grid>
-  <GridSplitter Grid.Row="4" Height="5" HorizontalAlignment="Stretch" Background="#B8CADA"/>
-  <TabControl x:Name="BottomTabs" Grid.Row="5" Margin="5,0,5,5" Background="White">
-   <TabItem Header="Results · 测试执行">
-    <ui:TCTTestResultsControl x:Name="Results"/>
-   </TabItem>
-   <TabItem Header="Timeline · Attempt事件">
-    <ui:TCTTestTimelineControl x:Name="Timeline"/>
-   </TabItem>
-   <TabItem Header="History · 归档 / 验证 / 重跑">
-    <ui:TCTTestHistoryControl x:Name="History"/>
-   </TabItem>
-  </TabControl>
-  <Border Grid.Row="6" Background="#17365D" Padding="12,6">
+  <dock:DockingManager x:Name="TestDock" Grid.Row="3" Grid.RowSpan="3">
+   <dock:LayoutRoot>
+    <dock:LayoutPanel Orientation="Vertical">
+     <dock:LayoutPanel Orientation="Horizontal">
+      <dock:LayoutAnchorablePane DockWidth="290">
+       <dock:LayoutAnchorable ContentId="test.explorer" Title="Explorer · 能力与用例"
+         CanClose="False" CanFloat="True" CanHide="True" CanAutoHide="True">
+        <ui:TCTTestExplorerControl x:Name="Explorer"/>
+       </dock:LayoutAnchorable>
+      </dock:LayoutAnchorablePane>
+      <dock:LayoutDocumentPane>
+       <dock:LayoutDocument ContentId="test.documents" Title="DocumentHost · 专业证据"
+         CanClose="False" CanFloat="True">
+        <ui:TCTTestDocumentHostControl x:Name="DocumentHost"/>
+       </dock:LayoutDocument>
+      </dock:LayoutDocumentPane>
+      <dock:LayoutAnchorablePane DockWidth="330">
+       <dock:LayoutAnchorable ContentId="test.inspector" Title="Inspector · 诊断与对象"
+         CanClose="False" CanFloat="True" CanHide="True" CanAutoHide="True">
+        <ui:TCTTestInspectorControl x:Name="Inspector"/>
+       </dock:LayoutAnchorable>
+      </dock:LayoutAnchorablePane>
+     </dock:LayoutPanel>
+     <dock:LayoutAnchorablePane DockHeight="250">
+      <dock:LayoutAnchorable ContentId="test.results" Title="Results · 真实执行"
+        CanClose="False" CanFloat="True" CanHide="True" CanAutoHide="True">
+       <ui:TCTTestResultsControl x:Name="Results"/>
+      </dock:LayoutAnchorable>
+      <dock:LayoutAnchorable ContentId="test.timeline" Title="Timeline · Attempt事件"
+        CanClose="False" CanFloat="True" CanHide="True" CanAutoHide="True">
+       <ui:TCTTestTimelineControl x:Name="Timeline"/>
+      </dock:LayoutAnchorable>
+      <dock:LayoutAnchorable ContentId="test.history" Title="History · 验证与重跑"
+        CanClose="False" CanFloat="True" CanHide="True" CanAutoHide="True">
+       <ui:TCTTestHistoryControl x:Name="History"/>
+      </dock:LayoutAnchorable>
+     </dock:LayoutAnchorablePane>
+    </dock:LayoutPanel>
+   </dock:LayoutRoot>
+  </dock:DockingManager>
+  <Border Grid.Row="4" Background="#17365D" Padding="12,6">
    <TextBlock x:Name="StatusText" Foreground="White" Text="Ready" TextTrimming="CharacterEllipsis"/>
   </Border>
  </Grid>
