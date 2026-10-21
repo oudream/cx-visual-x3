@@ -137,6 +137,7 @@ namespace CxVisual.TestCenter.Models
                     throw new InvalidDataException("Invalid MRK step identity/state");
             }
             long previous = 0;
+            var actualRecords = new List<MRKJournalRecord>();
             foreach (XElement entry in journal.Elements("Entry"))
             {
                 long seq, rev;
@@ -150,8 +151,24 @@ namespace CxVisual.TestCenter.Models
                 string step = (string)entry.Attribute("step");
                 if (!string.IsNullOrWhiteSpace(step) && !stepIds.Contains(step))
                     throw new InvalidDataException("MRK journal has unmapped Step");
+                MRKJournalKind kind = (MRKJournalKind)Enum.Parse(typeof(MRKJournalKind),
+                    (string)entry.Attribute("kind"));
+                Guid operation;
+                if (!Guid.TryParse((string)entry.Attribute("operation"), out operation))
+                    throw new InvalidDataException("Invalid MRK journal OperationId");
+                DateTime timestamp;
+                if (!DateTime.TryParse((string)entry.Attribute("utc"),
+                    CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out timestamp) ||
+                    timestamp.Kind != DateTimeKind.Utc)
+                    throw new InvalidDataException("Invalid MRK journal timestamp");
+                actualRecords.Add(new MRKJournalRecord(kind, flow, plan, rev, step,
+                    (string)entry.Attribute("state"), (string)entry.Attribute("correlation"), operation));
                 previous = seq;
             }
+            // 不信任归档声明的Closed；复用MRK生产恢复策略在读取时重新计算。
+            MRKRecoveryDisposition calculated = MRKJournalRecovery.Evaluate(flow, actualRecords).Disposition;
+            if (calculated.ToString() != (string)root.Attribute("recovery"))
+                throw new InvalidDataException("Forged MRK Journal recovery disposition");
             foreach (XElement group in groups.Elements("Group"))
             {
                 int active, waiting;

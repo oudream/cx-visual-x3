@@ -456,7 +456,7 @@ namespace CxVisual.TestCenter.UI
     public abstract class TCTGraphRuntimeViewBase : TCTTestViewBase
     {
         public string ArchivedEvidenceRoot { get; set; }
-        public string EvidenceProblem { get; private set; }
+        public string EvidenceProblem { get; protected set; }
         public int VerifiedItems { get; private set; }
         public event Action<string, string> SourceSelected;
 
@@ -477,6 +477,10 @@ namespace CxVisual.TestCenter.UI
             foreach (TCTTestObservation observation in result.Observations.Where(o =>
                 string.Equals(o.Kind, Kind, StringComparison.OrdinalIgnoreCase)))
             {
+                if (Kind == "Runtime" && observation.Envelope != null &&
+                    observation.Envelope.PayloadRef != null &&
+                    observation.Envelope.PayloadRef.Mime == TCTRuntimeOwnerEvidence.Mime)
+                    continue;
                 if (observation.Envelope == null || observation.Envelope.PayloadRef == null ||
                     observation.Envelope.PayloadRef.Mime != TCTGraphRuntimeEvidence.Mime)
                 {
@@ -707,11 +711,128 @@ namespace CxVisual.TestCenter.UI
     public sealed class TCTRuntimeTestView : TCTGraphRuntimeViewBase
     {
         public override string Kind { get { return "Runtime"; } }
+        public int VerifiedJournalCount { get; private set; }
+        public override void Clear()
+        {
+            base.Clear();
+            VerifiedJournalCount = 0;
+        }
         public override void Bind(TCTTestCaseResult result)
         {
-            Clear(); Header("MRK Flow / StepState / Trace Timeline",
-                "原生MRK运行实例与事件；Unknown、失败、取消只显示实际状态，不以节点颜色猜测。");
+            Clear(); Header("MRK Session / Flow / Journal / Step / Timeline",
+                "真实MRK会话、运行状态、Journal恢复判定及Trace；若存在未知外部动作，不允许自动视为安全恢复。");
             RenderEvidence(result);
+            RenderRuntimeOwner(result);
+        }
+        private void RenderRuntimeOwner(TCTTestCaseResult result)
+        {
+            foreach (TCTTestObservation observation in result.Observations.Where(o =>
+                string.Equals(o.Kind, "Runtime", StringComparison.OrdinalIgnoreCase) &&
+                o.Envelope != null && o.Envelope.PayloadRef != null &&
+                o.Envelope.PayloadRef.Mime == TCTRuntimeOwnerEvidence.Mime))
+            {
+                try
+                {
+                    TCTTestArtifactStore store = new TCTTestArtifactStore(
+                        ArchivedEvidenceRoot ?? TCTTestArtifactStore.RunRoot(result.RunId));
+                    TCTObservationReplay.Read(result, store);
+                    XDocument evidence = TCTRuntimeOwnerEvidence.Read(store.Read(observation.Envelope.PayloadRef));
+                    XElement root = evidence.Root;
+                    string flow = (string)root.Attribute("flow");
+                    XElement session = root.Element("Session"), flowInfo = root.Element("Flow");
+                    ContentPanel.Children.Add(new TextBlock {
+                        Text = "SHA256已验证 · MRKRuntimeSession / MRKFileExecutionJournal",
+                        FontWeight = FontWeights.Bold, Margin = new Thickness(0, 12, 0, 6) });
+                    ContentPanel.Children.Add(new TextBlock {
+                        Text = "Session: " + (string)session.Attribute("id") + " · State: " +
+                            (string)session.Attribute("activeState") + " → " +
+                            (string)session.Attribute("endState") + " · Active: " +
+                            (string)session.Attribute("active") + " → " +
+                            (string)session.Attribute("settled") + " · Rejected: " +
+                            (string)session.Attribute("rejected") +
+                            "\nFlow: " + flow + " · " + (string)root.Attribute("state") +
+                            " · Revision: " + (string)root.Attribute("revision") +
+                            " · Completed: " + (string)flowInfo.Attribute("completed") +
+                            " / " + (string)flowInfo.Attribute("total") +
+                            " · Waiting: " + (string)flowInfo.Attribute("waiting") +
+                            " · Failed: " + (string)flowInfo.Attribute("failed"),
+                        TextWrapping = TextWrapping.Wrap });
+                    string recovery = (string)root.Attribute("recovery");
+                    ContentPanel.Children.Add(new TextBlock {
+                        Text = "Journal Recovery: " + recovery +
+                            (recovery == "Closed" ? "（流程终态已闭合）" :
+                             "（须由实际Owner核对，不能自动重播）"),
+                        FontWeight = FontWeights.Bold,
+                        Foreground = recovery == "Closed" ? Brushes.DarkGreen : Brushes.DarkRed,
+                        Margin = new Thickness(0, 8, 0, 6) });
+                    ContentPanel.Children.Add(new TextBlock {
+                        Text = "Step · MRKStepObservation / Definition Address",
+                        FontWeight = FontWeights.Bold, Margin = new Thickness(0, 8, 0, 4) });
+                    foreach (XElement step in root.Element("Observations").Elements("Step"))
+                    {
+                        string stepId = (string)step.Attribute("id");
+                        string block = (string)step.Attribute("block");
+                        Button select = new Button {
+                            Content = (string)step.Attribute("state") + " · " + stepId +
+                                " → " + block,
+                            HorizontalContentAlignment = HorizontalAlignment.Left,
+                            Margin = new Thickness(0, 2, 0, 2), Padding = new Thickness(5, 4, 5, 4) };
+                        System.Windows.Automation.AutomationProperties.SetAutomationId(select,
+                            "TCT.Runtime.Owner.Step." + stepId);
+                        select.Click += (sender, args) => Selected(observation, block,
+                            "MRK StepObservation → MOL SourceMap\nFlow: " + flow +
+                            "\nStep: " + stepId + "\nBlock: " + block +
+                            "\nState: " + (string)step.Attribute("state") +
+                            "\nWait/Failure Reason: " + (string)step.Attribute("reason") +
+                            "\nInvocation: " + (string)step.Attribute("invocation") +
+                            "\nDefinitionAddress: " + (string)step.Attribute("address"));
+                        ContentPanel.Children.Add(select);
+                        Count();
+                    }
+                    ContentPanel.Children.Add(new TextBlock {
+                        Text = "Journal · 原生顺序记录，不回放设备副作用",
+                        FontWeight = FontWeights.Bold, Margin = new Thickness(0, 10, 0, 4) });
+                    foreach (XElement entry in root.Element("Journal").Elements("Entry"))
+                    {
+                        string sequence = (string)entry.Attribute("seq"), stepId = (string)entry.Attribute("step");
+                        Button select = new Button {
+                            Content = "#" + sequence + " " + (string)entry.Attribute("kind") +
+                                " · " + (string)entry.Attribute("state") + " · " + stepId,
+                            HorizontalContentAlignment = HorizontalAlignment.Left,
+                            Margin = new Thickness(0, 2, 0, 2), Padding = new Thickness(5, 4, 5, 4) };
+                        System.Windows.Automation.AutomationProperties.SetAutomationId(select,
+                            "TCT.Runtime.Journal." + sequence);
+                        select.Click += (sender, args) => Selected(observation, flow,
+                            "MRK Journal 原生事实\nFlow: " + flow + "\nSequence: " + sequence +
+                            "\nKind: " + (string)entry.Attribute("kind") +
+                            "\nStep: " + stepId + "\nState: " + (string)entry.Attribute("state") +
+                            "\nCorrelation: " + (string)entry.Attribute("correlation") +
+                            "\nOperationId: " + (string)entry.Attribute("operation") +
+                            "\nUTC: " + (string)entry.Attribute("utc"));
+                        ContentPanel.Children.Add(select);
+                        VerifiedJournalCount++; Count();
+                    }
+                    ContentPanel.Children.Add(new TextBlock {
+                        Text = "MRK ExecutionGroup · 运行时实际配额快照",
+                        FontWeight = FontWeights.Bold, Margin = new Thickness(0, 10, 0, 4) });
+                    foreach (XElement group in root.Element("Groups").Elements("Group"))
+                        ContentPanel.Children.Add(new TextBlock {
+                            Text = (string)group.Attribute("id") + " · Active=" +
+                                (string)group.Attribute("active") + " · Waiting=" +
+                                (string)group.Attribute("waiting") + " · Rejected=" +
+                                (string)group.Attribute("rejected"),
+                            Margin = new Thickness(0, 2, 0, 2) });
+                }
+                catch (Exception ex) when (ex is InvalidDataException || ex is IOException ||
+                    ex is System.Xml.XmlException || ex is UnauthorizedAccessException ||
+                    ex is NotSupportedException)
+                {
+                    EvidenceProblem = ex.Message;
+                    ContentPanel.Children.Add(new TextBlock {
+                        Text = "MRK Owner证据拒绝：" + ex.Message,
+                        Foreground = Brushes.DarkRed, TextWrapping = TextWrapping.Wrap });
+                }
+            }
         }
         protected override void Render(XDocument data, TCTTestObservation observation)
         {
