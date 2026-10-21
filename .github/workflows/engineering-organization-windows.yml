@@ -33,7 +33,7 @@ jobs:
       - name: Execute engineering, compatibility and execution regression
         shell: pwsh
         run: |
-          & .\Output\Release\x64\CxVisual.Tests.FoundationSmoke.exe --concurrency
+          & .\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe --concurrency
           if ($LASTEXITCODE -ne 0) { throw 'F19 concurrency regression failed' }
           & .\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe
           if ($LASTEXITCODE -ne 0) { throw 'Engineering/architecture regression failed' }

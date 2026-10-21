@@ -9,8 +9,9 @@ function Invoke-Sample([string]$file, [string[]]$arguments = @()) {
     & $exe @arguments
     if ($LASTEXITCODE -ne 0) { throw "$file exit code $LASTEXITCODE" }
 }
-Invoke-Sample 'CxVisual.Tests.FoundationSmoke.exe'
 Invoke-Sample 'CxVisual.Tests.ArchitectureSmoke.exe'
+Invoke-Sample 'CxVisual.Tests.ArchitectureSmoke.exe' @('--concurrency')
+Invoke-Sample 'CxVisual.Tests.ArchitectureSmoke.exe' @('--config-foundation')
 Invoke-Sample 'CxVisual.Runtime.Host.exe' @('demo')
 $path = Join-Path $out 'Data\ci-smoke.xml'
 Invoke-Sample 'CxVisual.Runtime.Host.exe' @('save', $path)

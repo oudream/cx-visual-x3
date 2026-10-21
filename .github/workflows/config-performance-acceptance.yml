@@ -4,7 +4,8 @@ on:
     branches: [master]
     paths:
       - '.github/workflows/config-performance-acceptance.yml'
-      - 'Tests/ArchitectureSmoke/ConfigPerformanceTests.cs'
+      - 'Tests/ArchitectureSmoke/Configuration/**'
+      - 'Build/Build-ConfigIsolation.ps1'
   workflow_dispatch:
 
 jobs:
@@ -17,14 +18,12 @@ jobs:
       - name: Rebuild .NET Framework 4.8 configuration foundation smoke
         shell: pwsh
         run: |
-          $msbuild = (Get-Command msbuild.exe -ErrorAction Stop).Source
-          & $msbuild .\Tests\ConfigFoundationSmoke\CxVisual.Tests.ConfigFoundationSmoke.csproj /m:1 /t:Rebuild /p:Configuration=Release /p:Platform=x64 /nologo /v:minimal
-          if ($LASTEXITCODE -ne 0) { throw "配置底座压力验收编译失败" }
+          & ./Build/Build-ConfigIsolation.ps1 -Configuration Release
       - name: Run 10000 items 1000 subscribers 1000 revisions and latency samples
         shell: pwsh
         run: |
           $log = Join-Path $env:RUNNER_TEMP "CxConfigD-Full-Metrics.txt"
-          & .\Output\Release\x64\CxVisual.Tests.ConfigFoundationSmoke.exe --config-performance-full *>&1 | Tee-Object -FilePath $log
+          & .\Output\Release\x64\CxVisual.ConfigIsolation.exe --config-performance-full *>&1 | Tee-Object -FilePath $log
           if ($LASTEXITCODE -ne 0) { throw "CONFIG_D full acceptance failed; inspect artifact log" }
       - name: Preserve measured report and failures
         if: always()

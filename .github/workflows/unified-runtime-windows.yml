@@ -9,8 +9,7 @@ on:
       - 'Mechanism/Runtime/Execution/**'
       - 'Mechanism/Data/Execution/**'
       - 'Applications/Runtime.Host/**'
-      - 'Tests/FoundationSmoke/**'
-      - 'Tests/ArchitectureSmoke/**'
+            - 'Tests/ArchitectureSmoke/**'
       - 'DOCS/Testing/UnifiedExecution_TDD_Matrix_V0.1.md'
       - 'DOCS/Architecture/CxVisual_统一运行体系_开发者简洁入口与编排共源_V0.1.md'
       - 'DOCS/Testing/CxVisual_统一运行体系内核_实现与验收_V0.3.md'
@@ -39,7 +38,7 @@ jobs:
       - name: Execute real concurrency and orchestration tests
         shell: pwsh
         run: |
-          & .\Output\Release\x64\CxVisual.Tests.FoundationSmoke.exe --concurrency
+          & .\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe --concurrency
           if ($LASTEXITCODE -ne 0) { throw "F19 concurrency tests failed" }
           & .\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe
           if ($LASTEXITCODE -ne 0) { throw "Unified Execution architecture tests failed" }
