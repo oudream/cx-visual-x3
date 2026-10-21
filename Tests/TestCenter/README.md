@@ -79,4 +79,19 @@ $env:TCT_NUNIT_ASSEMBLIES = 'D:\tests\TrustedChecks.dll'
 
 运行 `CxVisual.TestCenter.exe --ui-smoke` 可自动验证真实WPF控件事件和跨进程Worker证据回显（**不是**完整Windows UIA及人工外观验收）。`M-OBJ-005` 反证检验提交后旧快照不变、父子伪造、重复拥有、DTD禁用。当前Snapshot格式只用于测试证据，**不替代** MEM工程文件持久化格式、生产编译器和运行实例真源。
 
-界面视觉依据：`DOCS/Architecture/TestCenter/` 中六张2560×1440设计图；权威需求以 `DOCS/Architecture/CxVisual_测试体系——完整规格 V4.1.md` 第08章及全局台账为准。当前完整Geometry Expected/Actual/Diff、Graph/Channel/Runtime专业结构化Viewer、历史浏览/重跑联动、Golden审批、Suite/Plan、正式覆盖率、完整UIA和HIL仍未验收，不允许以本段Smoke冒充完成。
+界面视觉依据：`DOCS/Architecture/TestCenter/` 中六张2560×1440设计图；权威需求以 `DOCS/Architecture/CxVisual_测试体系——完整规格 V4.1.md` 第08章及全局台账为准。
+
+## 第一阶段：统一WPF工作台 + Geometry/Object（2026-10-21增量）
+
+单一 `CxVisual.TestCenter` 工程已实现以下软件能力，**是否完成验收以同一代码Commit的Windows CI为准**：
+
+- 共用AvalonDock 5.0.1 Shell：Explorer、DocumentHost、Inspector、Results、Timeline、History、Plan、Diff均可停靠；支持主题与工作区保存/恢复。
+- Explorer单项/多项、上下文Ribbon、真实Worker执行、取消、失败重跑、源码与对象定位、报告导出。
+- Geometry使用真实 `FGERect2D` 和 `CxSceneProjection`，保存版本化Input/Expected/Actual/Diff及定义/实例地址。支持视口缩放平移、四图层、重叠实例列表、坐标系/单位标注和可核查的点位容差；未知单位不能假定毫米或像素。
+- Object使用SHA256校验的 `MEMProjectSnapshot`，显示Owner树、已提交双Revision差异、Ownership实线/Reference虚线关系图、Symbol多实例选择及Inspector关联。
+- History/Plan可保存重开；两个History Run的Attempt、Artifact、Schema均验证后才计算Status和Observation Diff；不同Commit/OS不冒充同环境回归。
+- `--ui-smoke` 检查真实Owner案例与WPF事件；`--ui-automation` 借助Windows UIAutomation实际筛选、选择、运行Geometry/Object、切换页签和上下文Ribbon，并保存工作台/Geometry/Object/深色主题四张真实截图作为Actions工件。
+
+开发者只需要在统一Catalog内增加真实用例，不需要新建第二套Runner、工程树或测试项目。
+
+**范围与证据边界**：软件功能实现不等于人工界面验收。六张设计图中的01～03须在真实窗口按布局、键盘、DPI、停靠和错误路径进行人工核对；04～06 Graph/Channel/Runtime专业Viewer属于第二阶段。正式Fixture/Golden/Suite高级调度/八维覆盖/长稳及专业HIL属于第三阶段。无真实设备与授权时不能标工业现场通过。
