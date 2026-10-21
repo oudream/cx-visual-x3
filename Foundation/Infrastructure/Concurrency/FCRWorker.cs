@@ -31,6 +31,8 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
             }
             internal abstract Task InvokeAsync();
             internal abstract void FinishWithoutRun(FCRWorkState state);
+            // 非泛型排队器不访问Job<T>的Handle；由原Job负责标记准入。
+            internal abstract void MarkAccepted();
         }
 
         private sealed class Job<T> : Job
@@ -56,6 +58,7 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
             }
             internal override void FinishWithoutRun(FCRWorkState state)
             { Finish(state, default(T), null); }
+            internal override void MarkAccepted() { Handle.Accepted = true; }
 
             internal override async Task InvokeAsync()
             {
@@ -325,7 +328,7 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
                     _pendingBytes = checked(_pendingBytes + job.EstimatedBytes);
                     if (_pendingBytes > _peakPendingBytes)
                         _peakPendingBytes = _pendingBytes;
-                    job.Handle.Accepted = true;
+                    job.MarkAccepted();
                     _admittedProducers++;
                     admission.Admitted.TrySetResult(true);
                     promoted = true;
