@@ -221,7 +221,16 @@ namespace CxVisual.Studio
             AddParameterCommand=new RelayCommand(()=>RunEngineering(()=>{var owner=SelectedDefinition();var definition=owner as IMPMDefinition;if(definition==null)throw new InvalidOperationException("请选择内容、组件或图元定义");ProjectSession.DefineProperty(owner,new MPMPropertyDescriptor("参数 "+(definition.Properties.Count+1),MPMValueKind.Number,false,true,MPMBinding.Literal(MPMValue.Number(0))));}));
             RenameCommand=new RelayCommand(()=>RunEngineering(()=>{var reference=_selected.HasValue?ProjectSession.FindReference(_selected.Value):null;if(reference!=null)ProjectSession.Rename(reference,RenameText);else ProjectSession.Rename(SelectedDefinition(),RenameText);}));
         }
-        private bool CanReplace(){if(_editor==null||!_editor.Document.IsDirty)return true;if(ConfirmReplace!=null&&ConfirmReplace(_editor.Document))return true;Status="当前工程尚未保存，已保留。";return false;}
+        /// <summary>Studio只负责用户级草稿确认；MEM工程仍由原CanReplace处理。</summary>
+        public Func<bool> BeforeProjectReplacement {get;set;}
+        private bool CanReplace()
+        {
+            if(BeforeProjectReplacement!=null&&!BeforeProjectReplacement())
+            {Status="专业配置草稿尚未确认，工程保持不变。";return false;}
+            if(_editor==null||!_editor.Document.IsDirty)return true;
+            if(ConfirmReplace!=null&&ConfirmReplace(_editor.Document))return true;
+            Status="当前工程尚未保存，已保留。";return false;
+        }
         private void OpenSelectedDefinition()
         {
             Guid? target=_selected??_resourceId;
@@ -244,7 +253,13 @@ namespace CxVisual.Studio
         }
         public void OpenProject(string path,bool discardCurrent=false)
         {
-            if(!discardCurrent&&!CanReplace())return;var project=MEMEngineering.Open(path);AttachSession(project);Status="已加载: "+path;NotifyScene();
+            if(discardCurrent)
+            {
+                if(BeforeProjectReplacement!=null&&!BeforeProjectReplacement())return;
+            }
+            else if(!CanReplace())return;
+            var project=MEMEngineering.Open(path);AttachSession(project);
+            Status="已加载: "+path;NotifyScene();
         }
         public void SaveProject(string path){ProjectSession.SaveAs(path);Status="已保存: "+path;NotifyScene();}
         private void EditorChanged(object sender,EventArgs args)
