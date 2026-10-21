@@ -138,7 +138,21 @@ namespace CxVisual.TestCenter.UI
                         objects.RelationDiagram.VerifiedReferenceLines == 2 &&
                         objects.EvidenceProblem == null;
                 }));
-                if (ready) return;
+                if (ready)
+                {
+                    AutomationElement objectViewer = Find(root, "TCT.Viewer.ObjectTree");
+                    SelectionItemPattern objectTab = objectViewer.GetCurrentPattern(
+                        SelectionItemPattern.Pattern) as SelectionItemPattern;
+                    if (objectTab == null)
+                        throw new InvalidOperationException("Object viewer tab has no UIA selection pattern");
+                    objectTab.Select();
+                    bool selected = false;
+                    window.Dispatcher.Invoke(new Action(() =>
+                        selected = window.DocumentHost.ActiveMode == "ObjectTree"));
+                    if (!selected)
+                        throw new InvalidOperationException("Object screenshot is not showing ObjectTree tab");
+                    return;
+                }
                 Thread.Sleep(200);
             }
             throw new TimeoutException("UIA executed Symbol case but did not display verified Geometry/Object evidence");
