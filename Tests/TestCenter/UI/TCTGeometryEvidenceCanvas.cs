@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -16,6 +17,8 @@ namespace CxVisual.TestCenter.UI
         private readonly Canvas _canvas = new Canvas { Width = 700, Height = 410,
             Background = Brushes.WhiteSmoke, ClipToBounds = true };
         private readonly TextBlock _state = new TextBlock { Margin = new Thickness(6) };
+        private readonly TextBlock _space = new TextBlock { Margin = new Thickness(9, 3, 9, 3),
+            Foreground = Brushes.DimGray };
         private readonly ListBox _figuresList = new ListBox { Height = 108, Margin = new Thickness(5),
             DisplayMemberPath = "DisplayName", ToolTip = "重叠图元也可以通过实例地址精确选择" };
         private readonly ScaleTransform _zoomTransform = new ScaleTransform(1, 1);
@@ -72,7 +75,8 @@ namespace CxVisual.TestCenter.UI
                     "TCT.Geometry.Layer." + capturedRole);
             }
             StackPanel panel = new StackPanel();
-            panel.Children.Add(buttons); panel.Children.Add(layers); panel.Children.Add(_canvas);
+            panel.Children.Add(buttons); panel.Children.Add(layers);
+            panel.Children.Add(_space); panel.Children.Add(_canvas);
             panel.Children.Add(new TextBlock { Text = "真实图元与实例地址（支持重叠图元独立选择）",
                 FontWeight = FontWeights.Bold, Margin = new Thickness(7, 8, 7, 2) });
             panel.Children.Add(_figuresList);
@@ -119,6 +123,16 @@ namespace CxVisual.TestCenter.UI
         {
             if (figures == null) throw new ArgumentNullException("figures");
             _figures = figures.ToArray();
+            if (_figures.Count > 0)
+            {
+                string coordinateSpace = _figures[0].CoordinateSpace;
+                string unit = _figures[0].Unit;
+                if (_figures.Any(x => x.CoordinateSpace != coordinateSpace || x.Unit != unit))
+                    throw new InvalidDataException("Mixed Geometry coordinate spaces/units require a verified transform");
+                _space.Text = "坐标系: " + coordinateSpace + " · 单位: " + unit +
+                    (unit == "Unspecified" ? "（未提供单位，不进行物理长度推断）" : "");
+            }
+            else _space.Text = "NoEvidence";
             _figuresList.ItemsSource = _figures;
             RenderFigures();
         }
