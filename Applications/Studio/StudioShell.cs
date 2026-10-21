@@ -14,6 +14,7 @@ using AvalonDock.Layout;
 using AvalonDock.Serializer.Xml;
 using AvalonDock.Themes;
 using CxVisual.Mechanism.Core;
+using CxVisual.Foundation.Data.Configuration;
 using CxVisual.Mechanism.Data.Configuration;
 using CxVisual.Mechanism.Presentation.Wpf;
 using CxVisual.Professional.Vision;
@@ -245,50 +246,102 @@ namespace CxVisual.Studio
             }
         }
 
-        // S2/P1：现有MHS配置服务是真源，MPWConfigEditorControl负责Schema与UI。
-        // 它们按真实MEM工程身份进行Project Scope隔离，不写回MEM运行数据堆。
+        // P1 注册表只保存Editor类型与可信工厂，不持有工程数据或配置草稿。
+        // 实际Schema/保存/审计/授权机制均在MHS和MPW中，保持Owner唯一。
+        private sealed class StudioConfigurationContribution
+        {
+            internal readonly string SectionId;
+            internal readonly string Title;
+            internal readonly Func<MVBConfigScopeResolver,FrameworkElement> Create;
+            internal StudioConfigurationContribution(string id,string title,
+                Func<MVBConfigScopeResolver,FrameworkElement> create)
+            {SectionId=id;Title=title;Create=create;}
+        }
+        private readonly Dictionary<string,StudioConfigurationContribution> _studioConfigurations =
+            new Dictionary<string,StudioConfigurationContribution>(StringComparer.Ordinal);
+        private bool _studioConfigDefaultsRegistered;
         private Guid _studioConfigurationProjectId;
+
+        private void EnsureStudioConfigurationDefaults()
+        {
+            if(_studioConfigDefaultsRegistered)return;
+            _studioConfigDefaultsRegistered=true;
+            RegisterStudioConfiguration<CxVisionInspectionOptions>("Vision · 检测参数");
+            RegisterStudioConfiguration<CxCtReconstructionOptions>("CT3D · 重建参数");
+        }
+
+        /// <summary>
+        /// 已受信任的专业宿主使用此入口向Studio提供真实配置Section。
+        /// 不注册第二套Schema；每个SectionId只允许一个Editor贡献。
+        /// 为保护草稿，不允许在配置文档已打开时热替换。
+        /// </summary>
+        public void RegisterStudioConfiguration<T>(string title) where T : new()
+        {
+            if(string.IsNullOrWhiteSpace(title))
+                throw new ArgumentException("必须提供专业配置名称","title");
+            if(FindStudioContent("doc.config") is LayoutDocument)
+                throw new InvalidOperationException("请先关闭配置文档，再注册新专业以保护当前草稿");
+            string id=FCMConfigSchemaBuilder.Describe<T>().SectionId;
+            if(_studioConfigurations.ContainsKey(id))
+                throw new InvalidOperationException("专业配置SectionId重复："+id);
+            _studioConfigurations.Add(id,new StudioConfigurationContribution(id,title,
+                scope=>new MPWConfigEditorControl<T>(scope.Open<T>())));
+        }
+
         private FrameworkElement CreateConfigurationDocument()
         {
-            MEMEngineeringSession session = _viewModel.ProjectSession;
-            if (session == null || session.Project == null)
+            EnsureStudioConfigurationDefaults();
+            MEMEngineeringSession session=_viewModel.ProjectSession;
+            if(session==null||session.Project==null)
                 throw new InvalidOperationException("必须先打开有效工程");
-            Guid projectId = session.Project.Id;
-            string root = Path.Combine(GetDemoDataRoot(), "Configs", "V24", "Projects");
-            MHSConfigService configs = new MHSConfigService(root);
-            MVBConfigScopeResolver scope = configs.ForProject(projectId.ToString("N"));
-            MPWConfigEditorControl<CxVisionInspectionOptions> vision =
-                new MPWConfigEditorControl<CxVisionInspectionOptions>(
-                    scope.Open<CxVisionInspectionOptions>());
-            MPWConfigEditorControl<CxCtReconstructionOptions> ct =
-                new MPWConfigEditorControl<CxCtReconstructionOptions>(
-                    scope.Open<CxCtReconstructionOptions>());
-            DockPanel host = new DockPanel {
+            Guid projectId=session.Project.Id;
+            string root=Path.Combine(GetDemoDataRoot(),"Configs","V24","Projects");
+            MHSConfigService configs=new MHSConfigService(root);
+            MVBConfigScopeResolver scope=configs.ForProject(projectId.ToString("N"));
+
+            DockPanel host=new DockPanel {
                 Background=(Brush)Application.Current.Resources["StudioBackgroundBrush"] };
-            StackPanel caption = new StackPanel { Margin=new Thickness(12,10,12,6) };
-            caption.Children.Add(new TextBlock { Text="真实专业配置 · Vision + CT3D",
+            StackPanel caption=new StackPanel { Margin=new Thickness(12,10,12,6) };
+            caption.Children.Add(new TextBlock {
+                Text="专业配置 · Schema驱动组合编辑",
                 FontSize=19,FontWeight=FontWeights.SemiBold });
             caption.Children.Add(new TextBlock {
                 Text="工程 "+projectId.ToString("N").Substring(0,10)+
-                    "  | MHS Project Scope；Saved、Effective、待生效、校验、历史由统一配置服务分别管理。",
+                    " | MHS Project Scope；Saved、Effective、待生效、校验、历史由统一机制管理。",
                 TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,4,0,0) });
             DockPanel.SetDock(caption,Dock.Top);host.Children.Add(caption);
-            Grid editorGrid = new Grid { MinWidth=840 };
-            editorGrid.ColumnDefinitions.Add(new ColumnDefinition {
-                Width=new GridLength(1,GridUnitType.Star) });
-            editorGrid.ColumnDefinitions.Add(new ColumnDefinition {
-                Width=new GridLength(1,GridUnitType.Star) });
-            Border left = new Border { Child=vision,BorderThickness=new Thickness(1),
-                BorderBrush=(Brush)Application.Current.Resources["StudioBorderBrush"],
-                Margin=new Thickness(5),Padding=new Thickness(3) };
-            Border right = new Border { Child=ct,BorderThickness=new Thickness(1),
-                BorderBrush=(Brush)Application.Current.Resources["StudioBorderBrush"],
-                Margin=new Thickness(5),Padding=new Thickness(3) };
-            Grid.SetColumn(left,0);Grid.SetColumn(right,1);
-            editorGrid.Children.Add(left);editorGrid.Children.Add(right);
-            host.Children.Add(new ScrollViewer { Content=editorGrid,
-                HorizontalScrollBarVisibility=ScrollBarVisibility.Auto,
-                VerticalScrollBarVisibility=ScrollBarVisibility.Auto });
+            ScrollViewer scroller=new ScrollViewer {
+                VerticalScrollBarVisibility=ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility=ScrollBarVisibility.Auto };
+            UniformGrid grid=new UniformGrid { Columns=2,Rows=0 };
+            foreach(StudioConfigurationContribution item in
+                _studioConfigurations.Values.OrderBy(c=>c.SectionId,StringComparer.Ordinal))
+            {
+                // 专业可以贡献模型；画布组合、尺寸和统一样式均由Studio控制。
+                Border card=new Border {
+                    BorderThickness=new Thickness(1),
+                    BorderBrush=(Brush)Application.Current.Resources["StudioBorderBrush"],
+                    Margin=new Thickness(5),Padding=new Thickness(3) };
+                DockPanel panel=new DockPanel();
+                TextBlock title=new TextBlock {
+                    Text=item.Title+" · "+item.SectionId,
+                    FontWeight=FontWeights.SemiBold,
+                    Margin=new Thickness(8,6,8,6) };
+                DockPanel.SetDock(title,Dock.Top);panel.Children.Add(title);
+                panel.Children.Add(item.Create(scope));
+                card.Child=panel;
+                grid.Children.Add(card);
+            }
+            // 真正随中央可用宽度变为1/2/3列，不依赖特定专业的硬编码UI。
+            host.SizeChanged+=(sender,args)=>
+            {
+                int max=Math.Min(3,grid.Children.Count);
+                int cols=args.NewSize.Width<900?1:
+                    args.NewSize.Width<1500?2:3;
+                grid.Columns=Math.Max(1,Math.Min(max,cols));
+            };
+            scroller.Content=grid;
+            host.Children.Add(scroller);
             _studioConfigurationProjectId=projectId;
             return host;
         }
