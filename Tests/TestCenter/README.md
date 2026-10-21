@@ -95,3 +95,22 @@ $env:TCT_NUNIT_ASSEMBLIES = 'D:\tests\TrustedChecks.dll'
 开发者只需要在统一Catalog内增加真实用例，不需要新建第二套Runner、工程树或测试项目。
 
 **范围与证据边界**：软件功能实现不等于人工界面验收。六张设计图中的01～03须在真实窗口按布局、键盘、DPI、停靠和错误路径进行人工核对；04～06 Graph/Channel/Runtime专业Viewer属于第二阶段。正式Fixture/Golden/Suite高级调度/八维覆盖/长稳及专业HIL属于第三阶段。无真实设备与授权时不能标工业现场通过。
+
+## 阶段一正式界面复核步骤（尚需人工签认）
+
+在Windows x64构建通过后运行 `Output/Debug/x64/CxVisual.TestCenter.exe`。与
+`DOCS/Architecture/TestCenter/01～03` 三张设计图逐项核对：
+
+1. **01 工作台**：Explorer筛选/勾选两条真实Case→运行、取消与重跑；Results选择Attempt后Timeline、Inspector必须指向同一Run/Attempt；布局停靠浮动、保存重开及浅深主题；History验证两次真实Run并显示Diff，错误SHA不能打开。
+2. **02 Geometry**：选择`TCT.M2.GEOMETRY.001`，检查Input/Expected/Actual/Diff独立图层、真实坐标系/单位/容差、缩放平移和图元→Inspector；不同单位无变换时不得显示可比较成功。
+3. **03 MEM Object/Symbol**：运行`M-OBJ-007`与`M-OBJ-006`，验证两个共享Symbol的不同InstancePath、Ownership实线/Reference虚线、引用边点击定位、双Revision Diff、图元重叠时仍可从证据列表选不同实例。
+4. **反证与证据**：无Owner数据必须NoEvidence；超时/取消/失败不得变绿；归档损坏、跨Attempt引用、非法Schema须显式拒绝；导出与History来源一致。
+5. **视觉与交互**：DPI 100%/150%/200%，键盘、鼠标、滚轮、停靠浮窗、窗口大小变化和异常提示；比较Windows Actions工件`TestCenter-WPF-UIA`的Workspace/Geometry/Object/Dark截图与01～03设计图。
+
+自动验收入口：
+```powershell
+./Output/Debug/x64/CxVisual.TestCenter.exe --ui-smoke
+./Output/Debug/x64/CxVisual.TestCenter.exe --ui-automation
+```
+`--ui-smoke`是WPF真实控件及Owner证据回归；`--ui-automation`是真实桌面UIA操作、连续执行Geometry/Object并保存WPF截图。
+两者不能替代上述人工窗口对照与实际工业现场验收，**未签认不得标为人工已验收**。
