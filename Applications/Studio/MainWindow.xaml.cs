@@ -169,6 +169,7 @@ namespace CxVisual.Studio
             InitializeComponent();
             _viewModel = new StudioViewModel();
             _viewModel.ConfirmReplace = ConfirmProjectReplacement;
+            _viewModel.BeforeProjectReplacement = ConfirmStudioConfigReplacement;
             DataContext = _viewModel;
             LogicHost.BlockSelected += (sender, args) => { _logicSelected=args.BlockId; LogicInfo.Text = "已选逻辑块: " + args.BlockId.ToString("N"); };
             LogicHost.LinkRequested += OnWiringLinkRequested;
@@ -519,8 +520,25 @@ namespace CxVisual.Studio
             var choice=MessageBox.Show(this,"当前工程有未保存修改。是否先保存？","工程修改",MessageBoxButton.YesNoCancel,MessageBoxImage.Question);
             if(choice==MessageBoxResult.Cancel)return false;if(choice==MessageBoxResult.No)return true;_viewModel.SaveCommand.Execute(null);return !session.IsDirty;
         }
+        private bool ConfirmStudioConfigReplacement()
+        {
+            if(!HasStudioUnsavedConfiguration())return true;
+            return MessageBox.Show(this,
+                "当前专业配置尚有未保存的草稿。切换工程将失效并放弃这些修改，是否继续？",
+                "CxVisual专业配置",MessageBoxButton.YesNo,MessageBoxImage.Warning)==
+                MessageBoxResult.Yes;
+        }
         protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
-        {if(!Environment.GetCommandLineArgs().Contains("--shell-self-test",StringComparer.OrdinalIgnoreCase)&&_viewModel.ProjectSession.IsDirty&&(_viewModel.ConfirmReplace==null||!_viewModel.ConfirmReplace(_viewModel.ProjectSession)))e.Cancel=true;OnStudioShellClosing(e);base.OnClosing(e);}
+        {
+            bool automated=Environment.GetCommandLineArgs().Contains(
+                "--shell-self-test",StringComparer.OrdinalIgnoreCase);
+            if(!automated&&!ConfirmStudioConfigReplacement())e.Cancel=true;
+            if(!e.Cancel&&!automated&&_viewModel.ProjectSession.IsDirty&&
+                (_viewModel.ConfirmReplace==null||
+                 !_viewModel.ConfirmReplace(_viewModel.ProjectSession)))e.Cancel=true;
+            OnStudioShellClosing(e);
+            base.OnClosing(e);
+        }
         private const string ConfigSamplesFolder = "CxVisual";
 
         private static string GetDemoDataRoot()
