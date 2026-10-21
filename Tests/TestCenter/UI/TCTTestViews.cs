@@ -579,7 +579,10 @@ namespace CxVisual.TestCenter.UI
             {
                 if (!viewer.CanDisplay(result)) continue;
                 viewer.Bind(result);
-                _tabs.Items.Add(new TabItem { Header = viewer.Kind, Content = (UserControl)viewer });
+                TabItem tab = new TabItem { Header = viewer.Kind, Content = (UserControl)viewer };
+                System.Windows.Automation.AutomationProperties.SetAutomationId(tab,
+                    "TCT.Viewer." + viewer.Kind);
+                _tabs.Items.Add(tab);
             }
             if (_tabs.Items.Count > 1) _tabs.SelectedIndex = 1;
         }
