@@ -206,3 +206,10 @@ R01源码已提交（截止 f6c0dceb7afae75d320f6b442f3a152b11566162）：修改
 - 基于上轮同一个真实X-Ray主/AI/CV工程，MOC构建时把AI Provider替换为确定抛出异常的CPU能力实现（只在STA测试中），不连接真实设备、不修改工程逻辑或另建引擎。
 - 通过MRKExecutionEngine真实运行失败Plan、MOCCompiledPlan.ReadTrace定位AI Content/Block的Failed转移，反证失败状态、错误传播、无成功输出泄漏和MEM Revision不变；Studio现有“跳转子流程源”从失败观测来源直接打开AI流程Tab选中原Block。
 - 保存重开后确认AI定义、Block身份和MOC SourceMap可重新构建。本轮新增第25项WPF STA反证；CI的相同SHA验收证据和全量设备验证必须另行记录。
+
+### P0-4 真实X-Ray正常/失败执行Windows同SHA证据（2026-10-21）
+
+- [98604b44](https://github.com/oudream/cx-visual-x3/commit/98604b4488bce19028b5045739b2ef121a0b69df)把现有主/AI/CV真实资源示例走通MOC→MRK，再用真实ReadTrace投影到Studio父流程调用点/源子流程MOL Tab/HMI，并对父流程与画面导航同样执行Plan ProjectId/Revision版本校验。首次构建发现不可变MRIReferenceSnapshot误写为可编辑MRIResourceReference，引起CS0029，并非运行语义故障。
+- [2b4ab62b](https://github.com/oudream/cx-visual-x3/commit/2b4ab62b17ce4332d21756420ba945cb5aef7814) 修复上述测试类型。真实[Studio Windows 39565169101](https://github.com/oudream/cx-visual-x3/actions/runs/39565169101) **success，24/24 WPF STA，0 FAIL**，真实CPU执行AI/CV和SourceMap/父子流程/画面定位、旧版本拒绝及MOC再构建均PASS；同SHA[工程组织39565169043](https://github.com/oudream/cx-visual-x3/actions/runs/39565169043)及[配置公共底座39565169105](https://github.com/oudream/cx-visual-x3/actions/runs/39565169105)均success。
+- [f0d2ce56](https://github.com/oudream/cx-visual-x3/commit/f0d2ce56076f78ef93b4559aa97f5d4e525901ed)：对相同真实X-Ray工程提供只在测试中的AI CPU能力失败注入，MRK真实失败、Trace定位原AI Content/Block、无成功输出泄漏、Revision不变、保存重开后编译/SourceMap身份恢复。[Studio Windows 39565607220](https://github.com/oudream/cx-visual-x3/actions/runs/39565607220) **success，25/25 STA，0 FAIL**；[工程组织39565607298](https://github.com/oudream/cx-visual-x3/actions/runs/39565607298)与[配置公共底座39565607271](https://github.com/oudream/cx-visual-x3/actions/runs/39565607271)亦success，配置L1[39565607209](https://github.com/oudream/cx-visual-x3/actions/runs/39565607209)在落文时仍在执行，不先写通过。
+- 保留失败事实及边界：上述为CPU仿真+WPF STA与工程保存重建，非多实例设备调度、全部异常恢复、生产硬件联锁、高DPI人工交互、长时间运行或整体EP01～EP15签收。并行开发如提交新Studio功能，需重新核验其自身HEAD的Windows CI。
