@@ -55,6 +55,14 @@ namespace CxVisual.TestCenter.UI
                 as SelectionItemPattern;
             if (selector == null) throw new InvalidOperationException("Case selection pattern missing");
             selector.Select();
+            AutomationElement context = Find(root, "TCT.Context.Geometry");
+            InvokePattern modeAction = context.GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
+            if (modeAction == null)
+                throw new InvalidOperationException("Dynamic Geometry Ribbon does not expose InvokePattern");
+            modeAction.Invoke();
+            AutomationElement source = Find(root, "TCT.Context.Source");
+            if (source.GetCurrentPattern(InvokePattern.Pattern) == null)
+                throw new InvalidOperationException("Contextual source navigation missing");
             AutomationElement run = Find(root, "TCT.RunSelected");
             InvokePattern invoke = run.GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
             if (invoke == null) throw new InvalidOperationException("Run Selected invoke pattern missing");
