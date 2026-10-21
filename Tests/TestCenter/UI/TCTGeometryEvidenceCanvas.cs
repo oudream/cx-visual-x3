@@ -16,6 +16,8 @@ namespace CxVisual.TestCenter.UI
         private readonly Canvas _canvas = new Canvas { Width = 700, Height = 410,
             Background = Brushes.WhiteSmoke, ClipToBounds = true };
         private readonly TextBlock _state = new TextBlock { Margin = new Thickness(6) };
+        private readonly ListBox _figuresList = new ListBox { Height = 108, Margin = new Thickness(5),
+            DisplayMemberPath = "DisplayName", ToolTip = "重叠图元也可以通过实例地址精确选择" };
         private readonly ScaleTransform _zoomTransform = new ScaleTransform(1, 1);
         private readonly TranslateTransform _panTransform = new TranslateTransform();
         private readonly TransformGroup _viewTransform = new TransformGroup();
@@ -30,6 +32,14 @@ namespace CxVisual.TestCenter.UI
         public int RenderedFigureCount { get; private set; }
         public int VisibleFigureCount { get; private set; }
         public double Zoom { get { return _zoom; } }
+        public TCTGeometryFigure SelectedFigure { get { return _figuresList.SelectedItem as TCTGeometryFigure; } }
+        public void SelectFigure(int index)
+        {
+            if (index < 0 || index >= _figures.Count)
+                throw new ArgumentOutOfRangeException("index");
+            _figuresList.SelectedItem = _figures[index];
+            _figuresList.ScrollIntoView(_figures[index]);
+        }
         public TCTGeometryEvidenceCanvas()
         {
             _viewTransform.Children.Add(_zoomTransform);
@@ -61,7 +71,17 @@ namespace CxVisual.TestCenter.UI
             }
             StackPanel panel = new StackPanel();
             panel.Children.Add(buttons); panel.Children.Add(layers); panel.Children.Add(_canvas);
+            panel.Children.Add(new TextBlock { Text = "真实图元与实例地址（支持重叠图元独立选择）",
+                FontWeight = FontWeights.Bold, Margin = new Thickness(7, 8, 7, 2) });
+            panel.Children.Add(_figuresList);
             Content = panel;
+            System.Windows.Automation.AutomationProperties.SetAutomationId(_figuresList,
+                "TCT.Geometry.Figures");
+            _figuresList.SelectionChanged += (sender, args) =>
+            {
+                TCTGeometryFigure selected = _figuresList.SelectedItem as TCTGeometryFigure;
+                if (selected != null && FigureSelected != null) FigureSelected(selected);
+            };
             _canvas.MouseWheel += (s, e) => { SetZoom(_zoom * (e.Delta > 0 ? 1.15 : 1 / 1.15)); e.Handled = true; };
             _canvas.MouseRightButtonDown += (s, e) =>
             { _dragOrigin = e.GetPosition(_canvas); _panning = true; _canvas.CaptureMouse(); e.Handled = true; };
@@ -97,6 +117,7 @@ namespace CxVisual.TestCenter.UI
         {
             if (figures == null) throw new ArgumentNullException("figures");
             _figures = figures.ToArray();
+            _figuresList.ItemsSource = _figures;
             RenderFigures();
         }
         private void RenderFigures()
@@ -142,6 +163,7 @@ namespace CxVisual.TestCenter.UI
                 shape.ToolTip = f.Role + " · " + f.Label + " / " + f.SourceObjectId;
                 TCTGeometryFigure selected = f;
                 shape.MouseLeftButtonDown += (s, e) => {
+                    _figuresList.SelectedItem = selected;
                     if (FigureSelected != null) FigureSelected(selected);
                     e.Handled = true;
                 };
