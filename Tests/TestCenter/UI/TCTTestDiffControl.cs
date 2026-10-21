@@ -22,10 +22,6 @@ namespace CxVisual.TestCenter.UI
         private readonly TextBlock _changes = new TextBlock { Margin = new Thickness(7),
             TextWrapping = TextWrapping.Wrap };
         private readonly Grid _comparison = new Grid();
-        private readonly TCTGeometryTestView _leftGeometry = new TCTGeometryTestView();
-        private readonly TCTGeometryTestView _rightGeometry = new TCTGeometryTestView();
-        private readonly TCTObjectTestView _leftObjects = new TCTObjectTestView();
-        private readonly TCTObjectTestView _rightObjects = new TCTObjectTestView();
         private string _historyRoot;
         private TCTArchivedRunComparison _current;
 
@@ -102,8 +98,8 @@ namespace CxVisual.TestCenter.UI
             {
                 string path = System.IO.Path.Combine(_historyRoot, "Run_" + runId);
                 // A fresh viewer instance per side: one WPF visual cannot have two parents.
-                TCTGeometryTestView geometry = column == 0 ? _leftGeometry : _rightGeometry;
-                TCTObjectTestView objects = column == 0 ? _leftObjects : _rightObjects;
+                TCTGeometryTestView geometry = new TCTGeometryTestView();
+                TCTObjectTestView objects = new TCTObjectTestView();
                 geometry.ArchivedEvidenceRoot = path;
                 objects.ArchivedEvidenceRoot = path;
                 if (geometry.CanDisplay(result)) { geometry.Bind(result); panel.Children.Add(geometry); }
