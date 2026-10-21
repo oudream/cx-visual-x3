@@ -295,6 +295,29 @@ namespace CxVisual.Studio
                         window.OpenStudioPageDocument(one.Id);
                         Assert(window.GetStudioContentIds().Count(x => x == first) == 1,
                             "重开资源Tab重复注册");
+                        // 资源树检视了页面B时，页面A仍是活动Tab；统一Ribbon不得误写B。
+                        int firstCircles = one.RootContent.DescendantsAndSelf()
+                            .OfType<MRCShapeElement>().Count(x => x.Shape.Kind == MRCShapeKind.Circle);
+                        int secondCircles = two.RootContent.DescendantsAndSelf()
+                            .OfType<MRCShapeElement>().Count(x => x.Shape.Kind == MRCShapeKind.Circle);
+                        model.ActivePage = two;
+                        Assert(window.ActiveStudioDocumentId == first,
+                            "仅选中资源树节点不应暗中切走页面编辑Tab");
+                        Button circleButton = window.StudioRibbonActions.Children.OfType<Button>()
+                            .First(b => Convert.ToString(b.Content) == "圆");
+                        circleButton.RaiseEvent(new System.Windows.RoutedEventArgs(Button.ClickEvent));
+                        Assert(model.ActivePage.Id == one.Id &&
+                            one.RootContent.DescendantsAndSelf().OfType<MRCShapeElement>()
+                                .Count(x => x.Shape.Kind == MRCShapeKind.Circle) == firstCircles + 1 &&
+                            two.RootContent.DescendantsAndSelf().OfType<MRCShapeElement>()
+                                .Count(x => x.Shape.Kind == MRCShapeKind.Circle) == secondCircles,
+                            "动态Ribbon没有将真实图元编辑限定到活动页面Tab");
+                        window.CloseStudioDocument(first);
+                        LayoutDocument afterClose = window.StudioDock.Layout.ActiveContent as LayoutDocument;
+                        Assert(afterClose != null && afterClose.ContentId != first &&
+                            window.ActiveStudioDocumentId == afterClose.ContentId,
+                            "关闭当前页面Tab后中央文档与Ribbon上下文失去一致性");
+                        window.OpenStudioPageDocument(one.Id);
                         // 真实工程保存→重新打开：只能释放旧工程页面Tab，不得抢走固定流程文档。
                         string projectPath = Path.Combine(Path.GetTempPath(),
                             "cxstudio-r06-project-" + Guid.NewGuid().ToString("N") + ".cxproj");
@@ -311,6 +334,17 @@ namespace CxVisual.Studio
                             Assert(!window.GetStudioContentIds().Contains(first) &&
                                 !window.GetStudioContentIds().Contains(second),
                                 "切换工程后仍保留旧MEM会话页面Tab");
+                            // 从活动的动态页面切换工程：需要恢复真实doc.visual和绘图Ribbon。
+                            MEMPage reloadedPage = model.ProjectSession.Project.Pages.First(p => p.Name == one.Name);
+                            string reloadedId = window.OpenStudioPageDocument(reloadedPage.Id);
+                            Assert(window.StudioDock.Layout.ActiveContent.ContentId == reloadedId,
+                                "保存重开后页面文档无法恢复编辑");
+                            model.OpenProject(projectPath, true);
+                            Assert(!window.GetStudioContentIds().Contains(reloadedId) &&
+                                window.StudioDock.Layout.ActiveContent is LayoutDocument &&
+                                window.StudioDock.Layout.ActiveContent.ContentId == "doc.visual" &&
+                                window.ActiveStudioDocumentId == "doc.visual",
+                                "从活动页面切换MEM会话未激活有效的固定HMI编辑器");
                         }
                         finally { if (File.Exists(projectPath)) File.Delete(projectPath); }
                     }

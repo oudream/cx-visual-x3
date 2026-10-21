@@ -190,8 +190,15 @@ namespace CxVisual.Studio
                 }
                 if (_activeStudioDocumentId == document.ContentId && !_closingPageDocuments)
                 {
-                    SelectStudioContext("doc.visual");
-                    RefreshStudioMenus();
+                    // AvalonDock关闭当前Tab后，必须真正激活有效文档，不能只改上下文字符串。
+                    LayoutDocument next = StudioDock.Layout.ActiveContent as LayoutDocument;
+                    if (next == null || next.ContentId == document.ContentId)
+                        OpenStudioDocument("doc.visual");
+                    else
+                    {
+                        SelectStudioContext(next.ContentId);
+                        RefreshStudioMenus();
+                    }
                 }
             };
         }
@@ -251,10 +258,8 @@ namespace CxVisual.Studio
                 if (_activeStudioDocumentId != null &&
                     _activeStudioDocumentId.StartsWith(PageDocumentPrefix, StringComparison.Ordinal))
                 {
-                    LayoutDocument fallback = FindStudioContent("doc.visual") as LayoutDocument;
-                    if (fallback != null) fallback.IsActive = true;
-                    SelectStudioContext("doc.visual");
-                    RefreshStudioMenus();
+                    // 旧页面Tab已释放；即使doc.visual曾被关闭，也必须恢复有效的中央文档。
+                    OpenStudioDocument("doc.visual");
                 }
             }
             foreach (string id in _pageDocuments.Keys.ToArray())

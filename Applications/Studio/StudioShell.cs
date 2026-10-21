@@ -368,11 +368,33 @@ namespace CxVisual.Studio
             return "工具";
         }
 
+        // 动态Ribbon复用已有StudioViewModel命令；激活资源Tab时必须先恢复其MEM页面。
+        // 左资源树单击只改变资源检视目标，不能让当前页面Tab的编辑命令误改另一页。
+        private bool EnsureActiveStudioPageForRibbon()
+        {
+            Guid id;
+            if (!TryParsePageDocumentId(_activeStudioDocumentId, out id)) return true;
+            PageDocumentContext context;
+            MEMPage page = _viewModel.ProjectSession.Find(id) as MEMPage;
+            if (page == null || !_pageDocuments.TryGetValue(_activeStudioDocumentId, out context) ||
+                !ReferenceEquals(context.Session, _viewModel.ProjectSession))
+            {
+                _viewModel.ReportStudioShellWarning("当前页面文档已失效，已拒绝编辑命令。");
+                return false;
+            }
+            if (_viewModel.ActivePage == null || _viewModel.ActivePage.Id != id)
+                _viewModel.ActivePage = page;
+            return true;
+        }
+
         private void AddRibbonButton(string label, string tag, RoutedEventHandler handler)
         {
             Button button = new Button { Content = label, Tag = tag, Margin = new Thickness(2),
                 Padding = new Thickness(12, 8, 12, 8) };
-            button.Click += handler;
+            button.Click += (sender, args) =>
+            {
+                if (EnsureActiveStudioPageForRibbon()) handler(sender, args);
+            };
             StudioRibbonActions.Children.Add(button);
         }
 
