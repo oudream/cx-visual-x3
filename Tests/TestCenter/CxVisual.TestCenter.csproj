@@ -31,6 +31,7 @@
     <Compile Include="Models\TCTModels.cs" />
     <Compile Include="Models\TCTObservationEnvelope.cs" />
     <Compile Include="Models\TCTGraphRuntimeEvidence.cs" />
+    <Compile Include="Models\TCTChannelEvidence.cs" />
     <Compile Include="Models\TCTEngineeringSnapshotCodec.cs" />
     <Compile Include="Models\TCTGeometryEvidence.cs" />
     <Compile Include="Models\TCTObservationDiff.cs" />
@@ -80,6 +81,9 @@
     </ProjectReference>
     <ProjectReference Include="..\..\Professional\Vision\CxVisual.Professional.Vision.csproj">
       <Project>{828ED8C8-D754-54EB-9934-E27843EAF22D}</Project><Name>CxVisual.Professional.Vision</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\..\Mechanism\Connectivity\CxVisual.Mechanism.Connectivity.csproj">
+      <Project>{C7214F9E-1205-5F24-AA31-39FD49CD7EE1}</Project><Name>CxVisual.Mechanism.Connectivity</Name>
     </ProjectReference>
     <ProjectReference Include="..\..\Mechanism\Orchestration\CxVisual.Mechanism.Orchestration.csproj">
       <Project>{6E9A7006-3AD6-5F5B-A452-1C89847495A0}</Project><Name>CxVisual.Mechanism.Orchestration</Name>

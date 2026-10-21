@@ -616,10 +616,90 @@ namespace CxVisual.TestCenter.UI
     public sealed class TCTChannelTestView : TCTTestViewBase
     {
         public override string Kind { get { return "Channel"; } }
+        public string ArchivedEvidenceRoot { get; set; }
+        public int VerifiedFrameCount { get; private set; }
+        public int VerifiedErrorCount { get; private set; }
+        public string EvidenceProblem { get; private set; }
+        public event Action<string, string> FrameSelected;
+        public override void Clear()
+        {
+            base.Clear();
+            VerifiedFrameCount = 0; VerifiedErrorCount = 0; EvidenceProblem = null;
+        }
         public override void Bind(TCTTestCaseResult result)
         {
-            Clear(); Header("Channel / Protocol / TX-RX",
-                "尚未取得真实生产Channel/Codec/Session及Frame证据时不绘制虚构报文。");
+            Clear();
+            Header("Channel / Protocol / TX-RX / Virtual Session",
+                "经Run/Attempt及SHA256核验的生产Connectivity原始帧、CRC解码、错误和重连记录。仅Virtual模式，非Real设备。");
+            foreach (TCTTestObservation observation in result.Observations.Where(o =>
+                string.Equals(o.Kind, Kind, StringComparison.OrdinalIgnoreCase)))
+            {
+                if (observation.Envelope == null || observation.Envelope.PayloadRef == null ||
+                    observation.Envelope.PayloadRef.Mime != TCTChannelEvidence.Mime)
+                {
+                    ContentPanel.Children.Add(new TextBlock {
+                        Text = "NoEvidence：没有Channel生产Owner结构化收发证据 · " + observation.Title,
+                        Foreground = Brushes.DarkGoldenrod, TextWrapping = TextWrapping.Wrap });
+                    continue;
+                }
+                try
+                {
+                    TCTTestArtifactStore store = new TCTTestArtifactStore(
+                        ArchivedEvidenceRoot ?? TCTTestArtifactStore.RunRoot(result.RunId));
+                    TCTObservationReplay.Read(result, store);
+                    XDocument verified = TCTChannelEvidence.Read(store.Read(observation.Envelope.PayloadRef));
+                    ContentPanel.Children.Add(new TextBlock {
+                        Text = "SHA256已验证 · " + (string)verified.Root.Attribute("mode") +
+                            " · " + verified.Root.Elements("Frame").Count() + " 条Owner TX/RX/Error记录",
+                        FontWeight = FontWeights.Bold, Margin = new Thickness(0, 8, 0, 7) });
+                    foreach (XElement frame in verified.Root.Elements("Frame"))
+                    {
+                        string channel = (string)frame.Attribute("channel");
+                        string sequence = (string)frame.Attribute("sequence");
+                        string direction = (string)frame.Attribute("direction");
+                        string correlation = (string)frame.Attribute("correlation");
+                        byte[] bytes = Convert.FromBase64String((string)frame.Attribute("raw"));
+                        string hex = BitConverter.ToString(bytes).Replace("-", " ");
+                        string payload = frame.Attribute("decoded") == null ? "" :
+                            BitConverter.ToString(Convert.FromBase64String(
+                                (string)frame.Attribute("decoded"))).Replace("-", " ");
+                        string problem = (string)frame.Attribute("error");
+                        string details = "Channel Frame · " + direction +
+                            "\nSessionId: " + (string)frame.Attribute("session") +
+                            "\nChannelId: " + channel + "\nSequence: " + sequence +
+                            "\nTime UTC: " + (string)frame.Attribute("utc") +
+                            "\nCorrelation: " + correlation +
+                            "\nOriginal raw HEX: " + hex +
+                            (payload.Length == 0 ? "" : "\nDecoded payload HEX: " + payload) +
+                            (problem.Length == 0 ? "" : "\nError: " + problem);
+                        Button frameLink = new Button {
+                            Content = direction + " · " + channel + " #" + sequence + " · " +
+                                correlation + (problem.Length == 0 ? "" : " · ERROR"),
+                            HorizontalContentAlignment = HorizontalAlignment.Left,
+                            Padding = new Thickness(6, 4, 6, 4), Margin = new Thickness(0, 3, 0, 3)
+                        };
+                        System.Windows.Automation.AutomationProperties.SetAutomationId(frameLink,
+                            "TCT.Channel.Frame." + channel + "." + sequence);
+                        frameLink.Click += (sender, args) => {
+                            SelectObservation(observation);
+                            if (FrameSelected != null)
+                                FrameSelected(channel + ":" + sequence, details);
+                        };
+                        ContentPanel.Children.Add(frameLink);
+                        if (direction == "Error") VerifiedErrorCount++;
+                        VerifiedFrameCount++;
+                    }
+                }
+                catch (Exception ex) when (ex is InvalidDataException || ex is IOException ||
+                    ex is System.Xml.XmlException || ex is UnauthorizedAccessException ||
+                    ex is NotSupportedException)
+                {
+                    EvidenceProblem = ex.Message;
+                    ContentPanel.Children.Add(new TextBlock {
+                        Text = "Channel证据拒绝：" + ex.Message,
+                        Foreground = Brushes.DarkRed, TextWrapping = TextWrapping.Wrap });
+                }
+            }
             Observations(result, Kind); Assertions(result);
         }
     }
@@ -710,6 +790,9 @@ namespace CxVisual.TestCenter.UI
             {
                 if (ObjectSelected != null) ObjectSelected(id, details);
             };
+            _viewers.OfType<TCTChannelTestView>().Single().FrameSelected += (id, details) => {
+                if (ObjectSelected != null) ObjectSelected(id, details);
+            };
             foreach (TCTGraphRuntimeViewBase sourceView in _viewers.OfType<TCTGraphRuntimeViewBase>())
                 sourceView.SourceSelected += (id, details) => {
                     if (ObjectSelected != null) ObjectSelected(id, details);
@@ -777,6 +860,8 @@ namespace CxVisual.TestCenter.UI
                 verifiedArchiveDirectory;
             foreach (TCTGraphRuntimeViewBase ownerView in _viewers.OfType<TCTGraphRuntimeViewBase>())
                 ownerView.ArchivedEvidenceRoot = verifiedArchiveDirectory;
+            _viewers.OfType<TCTChannelTestView>().Single().ArchivedEvidenceRoot =
+                verifiedArchiveDirectory;
             if (result == null) return;
             _empty.Text = result.Status + " · " + result.Descriptor.Name +
                 "\n观察数：" + result.Observations.Count +
