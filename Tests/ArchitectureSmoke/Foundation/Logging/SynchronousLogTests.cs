@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Text;
 using CxVisual.Foundation.Infrastructure.Logging;
 using CxVisual.Foundation.Infrastructure.Logging.Dedicated;
 
@@ -24,6 +25,16 @@ namespace CxVisual.Tests.FoundationSmoke
         private static void Check(bool condition, string message)
         {
             if (!condition) throw new InvalidOperationException("SynchronousLogTests: " + message);
+        }
+
+        // Windows的共享模式是双向约束：活动Writer使用FileShare.Read，
+        // 测试Reader必须允许既有写入句柄，否则File.ReadAllText(FileShare.Read)会误报占用。
+        private static string ReadLogWhileWriterOpen(string path)
+        {
+            using (FileStream stream = new FileStream(path, FileMode.Open,
+                FileAccess.Read, FileShare.ReadWrite))
+            using (StreamReader reader = new StreamReader(stream, Encoding.UTF8))
+                return reader.ReadToEnd();
         }
 
         private static void TestSynchronousEntry(string root)
@@ -47,7 +58,7 @@ namespace CxVisual.Tests.FoundationSmoke
                     "MES write failed");
                 string today = DateTime.Now.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
                 string mesFile = Path.Combine(root, "Mes-" + today + ".log");
-                Check(File.Exists(mesFile) && File.ReadAllText(mesFile).Contains("成功"),
+                Check(File.Exists(mesFile) && ReadLogWhileWriterOpen(mesFile).Contains("成功"),
                     "MES not synchronously readable after return");
                 Check(!File.Exists(expired) && File.Exists(unrelated),
                     "Retention deleted unrelated files or failed to delete own old file");
@@ -58,8 +69,8 @@ namespace CxVisual.Tests.FoundationSmoke
                 Check(FLDEventLogHelper.Error(FLDLOG_TYPE.Panda, "Request", "Panda", "接口失败"),
                     "Panda error write failed");
                 string panda = Path.Combine(root, "Panda-" + today + ".log");
-                Check(File.ReadAllText(panda).Contains("接口失败")
-                    && !File.ReadAllText(panda).Contains("Skipped"),
+                Check(ReadLogWhileWriterOpen(panda).Contains("接口失败")
+                    && !ReadLogWhileWriterOpen(panda).Contains("Skipped"),
                     "Panda category log invalid");
 
                 Check(FLDEventLogHelper.Write("CT3DConfig", new FLDImportantEventLogEntry
@@ -72,8 +83,8 @@ namespace CxVisual.Tests.FoundationSmoke
                     ExtraData = new Dictionary<string, string> { { "Old", "1" }, { "New", "2" } }
                 }, flushToDisk: true), "Custom sync file write failed");
                 string configFile = Path.Combine(root, "CT3DConfig-" + today + ".log");
-                Check(File.ReadAllText(configFile).Contains("engineer")
-                    && File.ReadAllText(configFile).Contains("Old=1"), "Custom fields missing");
+                Check(ReadLogWhileWriterOpen(configFile).Contains("engineer")
+                    && ReadLogWhileWriterOpen(configFile).Contains("Old=1"), "Custom fields missing");
                 Check(pushed == 0, "Sync log must not push realtime events");
                 bool rejected = false;
                 try { FLDEventLogHelper.Information("../escape", "Invalid"); }
@@ -92,7 +103,7 @@ namespace CxVisual.Tests.FoundationSmoke
                 FLDEventLogHelper.Information(FLDLOG_TYPE.Mes, "Resume", "MES", "继续追加");
                 string file = Path.Combine(root, "Mes-" +
                     DateTime.Now.ToString("yyyyMMdd", CultureInfo.InvariantCulture) + ".log");
-                string text = File.ReadAllText(file);
+                string text = ReadLogWhileWriterOpen(file);
                 Check(text.Contains("成功") && text.Contains("继续追加"),
                     "Reinitialization truncated existing log");
             }
@@ -140,7 +151,7 @@ namespace CxVisual.Tests.FoundationSmoke
                 Task.WaitAll(tasks);
                 string file = Path.Combine(root, "PLC-" +
                     DateTime.Now.ToString("yyyyMMdd", CultureInfo.InvariantCulture) + ".log");
-                Check(File.ReadAllLines(file).Length == 200, "Concurrent lines lost");
+                Check(ReadLogWhileWriterOpen(file).Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries).Length == 200, "Concurrent lines lost");
             }
             finally { FLDEventLogHelper.Release(); }
         }
