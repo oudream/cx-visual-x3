@@ -155,6 +155,9 @@ namespace CxVisual.TestCenter.UI
                             GeometrySelected(figure.SourceObjectId,
                                 "角色: " + figure.Role + "\n类型: " + figure.Kind +
                                 "\n名称: " + figure.Label + "\nOwner: " + figure.SourceObjectId +
+                                "\nDefinition/InstanceAddress: " +
+                                    (string.IsNullOrWhiteSpace(figure.DefinitionAddress) ?
+                                        "未提供" : figure.DefinitionAddress) +
                                 "\n坐标: " + figure.X + ", " + figure.Y +
                                 "\n尺寸/向量: " + figure.Width + ", " + figure.Height);
                     };
