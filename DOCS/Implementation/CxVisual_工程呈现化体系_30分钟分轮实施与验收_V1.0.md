@@ -218,3 +218,7 @@ R01源码已提交（截止 f6c0dceb7afae75d320f6b442f3a152b11566162）：修改
 
 - 实际源码：[a8022b66](https://github.com/oudream/cx-visual-x3/commit/a8022b66975821da39b472baa1e4582e6dc07706)。Page/Content/Symbol活动Tab的真实Scene多选调用原`CxVisualEditor.Align`一次MEM事务；Z序调用`SetZOrder`；原固定图元Editor路径不变，流程/失效文档拒绝图元命令。并行P0-4 X-Ray真实执行及失败追踪测试完整保留。
 - **同SHA测试**：[Studio Windows 39565771432](https://github.com/oudream/cx-visual-x3/actions/runs/39565771432) **26/26 WPF STA成功**；[Engineering Windows 39565771340](https://github.com/oudream/cx-visual-x3/actions/runs/39565771340) **success**；反证涵盖仅单选拒绝、跨资源误写、Undo/Redo、Z序及流程Tab拒绝。完整几何/交互/人工DPI仍待下一轮。
+
+### Studio P0统一Resource Editor/Command收敛（2026-10-21）
+
+- 最新代码[c696905c](https://github.com/oudream/cx-visual-x3/commit/c696905cc0418b13030a32ebeedafb1defcbdd7a) 对应[Studio Windows 39568829529](https://github.com/oudream/cx-visual-x3/actions/runs/39568829529) **31/31 WPF STA success**、[工程组织39568829447](https://github.com/oudream/cx-visual-x3/actions/runs/39568829447)success。实装四个资源Tab的几何/路径/多选/子流程主命令、属性防串写及Tab浮动/关闭释放的自动化切片。真实操作尚需另行Windows桌面人工记录；详细交叉矩阵统一维护在[Studio S1～S4主规划§15](CxVisual_Studio_S1至S4_阶段开发与真实验收总规划_V1.0.md)。

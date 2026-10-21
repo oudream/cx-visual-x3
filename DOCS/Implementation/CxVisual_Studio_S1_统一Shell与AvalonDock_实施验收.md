@@ -116,3 +116,8 @@
 - [a8022b66](https://github.com/oudream/cx-visual-x3/commit/a8022b66975821da39b472baa1e4582e6dc07706) 从Page/Content/Symbol的真实`SceneView.SelectedVisualIds`调用原`CxVisualEditor.Align/SetZOrder`，动态“排列”“图层”Ribbon支持左/顶对齐、水平/垂直居中、水平分布、置顶/置底；固定`doc.visual`仍沿旧ViewModel。流程Tab及无效选区拒绝写入。
 - [Studio Windows #39565771432](https://github.com/oudream/cx-visual-x3/actions/runs/39565771432) **success，26/26 STA**；[工程组织 #39565771340](https://github.com/oudream/cx-visual-x3/actions/runs/39565771340) **success**；同SHA无新增MEM Owner/项目。新增测试验收一次事务和Undo/Redo/单选拒绝/跨资源隔离，并保持X-Ray P0-4测试。
 - **边界**：这只是多选排列与图层Z序接通，尚未覆盖路径控制柄精修、完整几何编辑、键鼠/DPI及运行态授权、所有专业配置与Viewer。
+
+## 12. S1→S2 P0统一编辑器最新源码与验收证据
+
+- 2026-10-21连续实装：独立Page/Content/Symbol的精细几何、路径、画布控制柄、多选移动和选区保持；资源MOL Flow的能力添加、Join、布局与快捷键；Inspector防串改、图像资产、文档浮动与关闭后重建。全部复用旧`CxVisualEditor/MOCFlowBuilder/MEM/MTC` Owner，不另建Graph/Undo；主记录见[Studio S1～S4主规划第15节](CxVisual_Studio_S1至S4_阶段开发与真实验收总规划_V1.0.md)。
+- 源码[c696905c](https://github.com/oudream/cx-visual-x3/commit/c696905cc0418b13030a32ebeedafb1defcbdd7a)经[Studio Windows 39568829529](https://github.com/oudream/cx-visual-x3/actions/runs/39568829529) **31/31 STA成功**、[Engineering Windows 39568829447](https://github.com/oudream/cx-visual-x3/actions/runs/39568829447)成功；早期选区丢失确实产生过红灯，随后修复。当前自动化覆盖在继续扩大，但浮动/DPI/多显示器/实机交互人工验收尚未完成。

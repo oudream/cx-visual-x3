@@ -181,3 +181,39 @@
 - **完整可重复反证**：多选3图元一次MEM Revision完成对齐，Undo一次恢复原坐标、Redo恢复排列；与其他Page的VM检视状态隔离；层次Z序一次原MEM事务/撤销/重做；单选对齐不改Revision；流程Tab旧按钮不能改工程。同提交保留并行的P0-4真实X-Ray MRK/SourceMap/故障追踪自动回归。
 - **同SHA Windows证据**：[Studio Shell CI 39565771432](https://github.com/oudream/cx-visual-x3/actions/runs/39565771432) **success，26/26 WPF STA**，[Engineering Organization CI 39565771340](https://github.com/oudream/cx-visual-x3/actions/runs/39565771340) **success**，[配置公共底座 39565771331](https://github.com/oudream/cx-visual-x3/actions/runs/39565771331) **success**；其他工作流必须独立核实，不替代同SHA全量Gate。
 - **未签收**：独立Editor的路径节点精编、旋转/尺寸属性、右键/快捷键统一、复杂图层管理、WPF真实鼠键DPI/多显示器、专业资源可发现Command Descriptor，以及S2通用Schema组合编辑/独立Host发布仍未全闭环。下一轮优先补编辑器路径/几何命令和画布/属性上下文，然后验证专业Schema统一配置。
+
+## 15. P0统一Editor/Command连续推进与代码验收结论（2026-10-21）
+
+> 范围定义：对应本文件§6、§10所称**S1→S2 P0统一Resource Editor/Command/Document上下文**，不是S2通用Schema 1/2/3列配置、生产Release或S3/S4完整功能验收。判定坚持**源码/STA/人工/实机分开**。
+
+### 15.1 已落实到真实源码的操作
+
+| P0子项 | 实际接入点与唯一Owner | 自动化验收 |
+|---|---|---|
+| P0-A Page/Content/Symbol图元命令 | 活动资源Tab→`CxVisualEditor`：九Shape、文字、Widget、对齐/分布、Z序，单MEM/MTC历史 | [26/26 STA](https://github.com/oudream/cx-visual-x3/actions/runs/39565771432) |
+| P0-B 几何/路径/控制柄与拖动 | 右属性面板→活动`CxVisualEditor.SetGeometry/EditPathSegment`；`SceneView.HandleEditRequested`→`EditHandle`；多选拖动→`MoveSelection`；重投影保留本Tab单/多选 | 首版[路径连续编辑失败](https://github.com/oudream/cx-visual-x3/actions/runs/39567391198)后[修复通过28/28](https://github.com/oudream/cx-visual-x3/actions/runs/39567592196) |
+| P0-C 独立MOL流程命令 | 当前Content的Flow Tab→现有Capability目录、`MOCFlowBuilder.Step/ArrangeGrid`、Join既有方法；Ctrl+A/Delete/Esc/Ctrl+Z/Y与现有MEM事务 | [29/29 STA](https://github.com/oudream/cx-visual-x3/actions/runs/39568070033) |
+| P0-D 多文档操作与关闭生命周期 | 资源Tab“选择/添加矩形”不再默认跳旧`doc.visual`，允许AvalonDock浮动；Ctrl+A对当前Scene；关闭Dispose Editor订阅、重开创建新视口保留原MEM | [30/30 STA](https://github.com/oudream/cx-visual-x3/actions/runs/39568418322) |
+| P0-E 属性面板防跨资源误写 | 样式、Widget、状态/事件/动画/变量绑定调用既有VM前，按活动Tab/Scene选中的MEM真实视觉定义刷新选区；受限图片/SVG写当前资源 | [31/31 STA](https://github.com/oudream/cx-visual-x3/actions/runs/39568829529) |
+| P0-F 底层变更触发Studio回归 | Studio S1 workflow监听Core、Visual、Orchestration、Runtime、Data、Lifecycle、Foundation、Professional源码变更，不再仅凭Studio/WPF路径触发 | 本行属于工作流触发策略修改；本次Commit对应CI完成后方可确认触发生效 |
+
+**最新实际源码验收SHA**：[c696905c](https://github.com/oudream/cx-visual-x3/commit/c696905cc0418b13030a32ebeedafb1defcbdd7a)；[Studio Windows 39568829529](https://github.com/oudream/cx-visual-x3/actions/runs/39568829529) **31/31 WPF STA success**、[工程组织39568829447](https://github.com/oudream/cx-visual-x3/actions/runs/39568829447) **success**、[配置公共底座39568829522](https://github.com/oudream/cx-visual-x3/actions/runs/39568829522) **success**、[Config L1 39568829396](https://github.com/oudream/cx-visual-x3/actions/runs/39568829396) **success**。这四条针对同一源码SHA；后续仅文档/Workflow更新的提交要独立注明SHA。
+
+### 15.2 不得错误宣称的完成范围
+
+1. **代码与自动验收：P0约定的基础多编辑器路由、单MEM事务、精细编辑、子流程主要Ribbon与错误写入反证已经有实装和STA通过证据。** 当前资源命令仍由部分Shell判断和原VM处理，尚未达到S2.07完整的`CommandId/Descriptor`插件扩展、全专业命令可发现的架构目标，不作为“统一命令体系彻底完成”。
+2. **Studio人工E级验收：未执行**。真机Windows桌面至少须实际重复执行：Page/Content/Symbol多窗口鼠标拖动和控制柄、Ctrl多选/右键/快捷键、流程端口连线、在各种工具面板焦点下切换Tab、浮动/停靠/自动隐藏后恢复、跨工程切换/删除失效/关闭取消、浅深主题及各项菜单、布局保存后重启。每项要有人工记录、截图/视频及失败反证。
+3. **DPI与硬件F级验收：未执行**。100/150/200%DPI、多显示器/混合DPI、CT/VTK/WinForms/HWND嵌入Viewer、真实PLC授权联锁、长时内存/句柄泄漏、工业数据压力均不能用当前Windows STA代替。
+4. **S2/S3/S4并非P0**：MPM/MHS通用Schema配置生成器、通用Descriptor/Provider、完整S3 UI工具和生产发布Runtime Host仍按既有阶段计划推进，不因本轮31项STA变绿就提前签收。
+
+### 15.3 人工验收可复现记录模板
+
+| 记录字段 | 验收要求 |
+|---|---|
+| 设备/系统 | Windows版本、GPU、显示器数量、分辨率、DPI、输入设备、AvalonDock实际加载版本 |
+| 工程与操作 | ProjectId、Revision，Page/Content/Symbol/Flow ID、当前DocumentId；步骤与预期结果 |
+| 异常反证 | 故意切换活动Tab/选旧资源/删资源/模拟错误Capability，确认拒绝且Revision不变 |
+| 证据 | 截图或短视频、日志路径、测试人员、时间、结果；失败则关联Issue/Commit |
+| 结论 | 自动CI A通过/人工E未完成/实机F未完成必须分别标记，禁止合并为“P0工业验收完成” |
+
+**下一轮**：从S2.01～S2.09完善资源种类→Editor/Descriptor注册、MPM/MHS原生Schema组合编辑器与专业贡献发现；此处若因具体真实Studio交互验收暴露P0缺陷，直接回归P0修复，不新增第二套系统。

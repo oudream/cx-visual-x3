@@ -6,6 +6,15 @@ on:
     paths:
       - 'Applications/Studio/**'
       - 'Mechanism/Presentation.Wpf/**'
+      # P0联动门禁：底层Owner源码改变时也需重验Studio实际WPF操作。
+      - 'Mechanism/Core/**'
+      - 'Mechanism/Visual/**'
+      - 'Mechanism/Orchestration/**'
+      - 'Mechanism/Data/**'
+      - 'Mechanism/Runtime/**'
+      - 'Mechanism/Lifecycle/**'
+      - 'Foundation/**'
+      - 'Professional/**'
       - 'Hello/AvalonDock/**'
       - '.github/workflows/studio-shell-windows.yml'
 jobs:
