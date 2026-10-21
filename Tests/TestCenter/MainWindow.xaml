@@ -4,10 +4,17 @@
  xmlns:ui="clr-namespace:CxVisual.TestCenter.UI"
  xmlns:dock="https://github.com/Dirkster99/AvalonDock"
  Title="CxVisual · TestCenter — 统一测试与质量工作台"
- Width="1600" Height="960" MinWidth="1100" MinHeight="700"
+ Width="1800" Height="1020" MinWidth="1180" MinHeight="760"
  WindowStartupLocation="CenterScreen" FontFamily="Segoe UI"
  Background="#EEF3F9">
  <Window.Resources>
+  <Style TargetType="TabItem">
+   <Setter Property="Padding" Value="14,6"/>
+   <Setter Property="FontSize" Value="13"/>
+  </Style>
+  <Style TargetType="MenuItem">
+   <Setter Property="FontSize" Value="13"/>
+  </Style>
   <Style TargetType="GroupBox">
    <Setter Property="BorderBrush" Value="#C4D3E4"/>
    <Setter Property="Margin" Value="2"/>
@@ -16,17 +23,22 @@
  </Window.Resources>
  <Grid>
   <Grid.RowDefinitions>
-   <RowDefinition Height="44"/>
+   <RowDefinition Height="45"/>
    <RowDefinition Height="31"/>
    <RowDefinition Height="Auto"/>
+   <RowDefinition Height="34"/>
    <RowDefinition Height="*"/>
-   <RowDefinition Height="33"/>
+   <RowDefinition Height="29"/>
   </Grid.RowDefinitions>
-  <Border Grid.Row="0" Background="#17365D" Padding="13,8">
+  <Border x:Name="HeaderBand" Grid.Row="0" Background="#17365D" Padding="13,8">
    <DockPanel>
-    <TextBlock Text="Cx" Foreground="White" FontSize="20" FontWeight="Bold" Margin="0,0,12,0"/>
-    <TextBlock Text="CxVisual · TestCenter   |   Foundation · Mechanism · Professional"
-     Foreground="White" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
+    <Border Background="#237CCB" CornerRadius="3" Padding="6,2" Margin="0,0,11,0">
+     <TextBlock Text="Cx" Foreground="White" FontSize="17" FontWeight="Bold"/>
+    </Border>
+    <TextBlock Text="CxVisual 工业可视化组态平台  ·  Platform Test Center"
+     Foreground="White" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center"/>
+    <TextBlock Text="测试工程：CxVisual.Platform.Tests  ·  .NET Framework 4.8" DockPanel.Dock="Right"
+     Foreground="#D5E5F9" FontSize="12" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="30,0,0,0"/>
    </DockPanel>
   </Border>
   <Menu Grid.Row="1" Background="#F4F7FC" Padding="7,0">
@@ -51,31 +63,39 @@
    </MenuItem>
   </Menu>
   <ToolBarTray x:Name="RibbonTray" Grid.Row="2" Background="#E0EDF9"/>
-  <dock:DockingManager x:Name="TestDock" Grid.Row="3">
+  <Border x:Name="BreadcrumbBand" Grid.Row="3" Background="#DBEAF8" BorderBrush="#C4D8ED" BorderThickness="0,1,0,1">
+   <DockPanel Margin="15,0" LastChildFill="True">
+    <TextBlock x:Name="EnvironmentText" DockPanel.Dock="Right" Text="环境：本地  ·  SIMULATE  ·  Target: .NET Framework 4.8"
+     Foreground="#637D98" FontSize="12" VerticalAlignment="Center" Margin="16,0,0,0"/>
+    <TextBlock x:Name="WorkspaceTitle" Text="测试主界面 / Overview"
+     Foreground="#17365D" FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center"/>
+   </DockPanel>
+  </Border>
+  <dock:DockingManager x:Name="TestDock" Grid.Row="4">
    <dock:LayoutRoot>
     <dock:LayoutPanel Orientation="Vertical">
      <dock:LayoutPanel Orientation="Horizontal">
       <dock:LayoutAnchorablePane DockWidth="290">
-       <dock:LayoutAnchorable ContentId="test.explorer" Title="Explorer · 能力与用例"
+       <dock:LayoutAnchorable ContentId="test.explorer" Title="测试资源浏览器 / Explorer"
          CanClose="False" CanFloat="True" CanHide="True" CanAutoHide="True">
         <ui:TCTTestExplorerControl x:Name="Explorer"/>
        </dock:LayoutAnchorable>
       </dock:LayoutAnchorablePane>
       <dock:LayoutDocumentPane>
-       <dock:LayoutDocument ContentId="test.documents" Title="DocumentHost · 专业证据"
+       <dock:LayoutDocument ContentId="test.documents" Title="测试视图 / Viewer"
          CanClose="False" CanFloat="True">
         <ui:TCTTestDocumentHostControl x:Name="DocumentHost"/>
        </dock:LayoutDocument>
       </dock:LayoutDocumentPane>
       <dock:LayoutAnchorablePane DockWidth="330">
-       <dock:LayoutAnchorable ContentId="test.inspector" Title="Inspector · 诊断与对象"
+       <dock:LayoutAnchorable ContentId="test.inspector" Title="测试属性 / 断言"
          CanClose="False" CanFloat="True" CanHide="True" CanAutoHide="True">
         <ui:TCTTestInspectorControl x:Name="Inspector"/>
        </dock:LayoutAnchorable>
       </dock:LayoutAnchorablePane>
      </dock:LayoutPanel>
      <dock:LayoutAnchorablePane DockHeight="250">
-      <dock:LayoutAnchorable ContentId="test.results" Title="Results · 真实执行"
+      <dock:LayoutAnchorable ContentId="test.results" Title="测试结果 / Results"
         CanClose="False" CanFloat="True" CanHide="True" CanAutoHide="True">
        <ui:TCTTestResultsControl x:Name="Results"/>
       </dock:LayoutAnchorable>
@@ -99,8 +119,8 @@
     </dock:LayoutPanel>
    </dock:LayoutRoot>
   </dock:DockingManager>
-  <Border Grid.Row="4" Background="#17365D" Padding="12,6">
-   <TextBlock x:Name="StatusText" Foreground="White" Text="Ready" TextTrimming="CharacterEllipsis"/>
+  <Border Grid.Row="5" Background="#F2F7FC" BorderBrush="#C1D5E9" BorderThickness="0,1,0,0" Padding="12,5">
+   <TextBlock x:Name="StatusText" Foreground="#244871" Text="Ready" TextTrimming="CharacterEllipsis"/>
   </Border>
  </Grid>
 </Window>

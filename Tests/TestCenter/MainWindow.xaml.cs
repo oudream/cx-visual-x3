@@ -40,6 +40,11 @@ namespace CxVisual.TestCenter.UI
         {
             InitializeComponent();
             Explorer.Bind(_catalog);
+            DocumentHost.Overview.Update(_catalog, null, null);
+            DocumentHost.Overview.RunAllRequested += OnRunAll;
+            DocumentHost.Overview.RunSelectedRequested += OnRunSelected;
+            DocumentHost.Overview.HistoryRequested += () => { History.Refresh(); ActivateDockPanel("test.history"); };
+            DocumentHost.Overview.ReportRequested += OnExport;
             TestPlan.Bind(_catalog, () => Explorer.CheckedIds);
             TestPlan.RunRequested += async ids => await RunAsync(false, ids);
             Explorer.TestSelected += OnTestSelected;
@@ -90,6 +95,7 @@ namespace CxVisual.TestCenter.UI
         private void OnModeSelected(string mode)
         {
             DocumentHost.ShowMode(mode);
+            WorkspaceTitle.Text = mode == "概览" ? "测试主界面 / Overview" : "TestCenter / " + mode;
             StatusText.Text = "TestCenter · " + mode +
                 " · 数据仅来自真实测试结果；无Owner证据时显示NoEvidence。";
         }
@@ -97,6 +103,8 @@ namespace CxVisual.TestCenter.UI
         private void OnTestSelected(ITCTTestCase test)
         {
             _ribbon.SetContext(test);
+            WorkspaceTitle.Text = test == null ? "测试主界面 / Overview" :
+                test.Descriptor.Aspect + " / " + test.Descriptor.Group + " / " + test.Descriptor.Name;
             Inspector.ShowCase(test);
             TCTTestCaseResult result = test == null ? null :
                 _visibleResults.LastOrDefault(r => r.Descriptor.Id == test.Descriptor.Id);
@@ -111,6 +119,7 @@ namespace CxVisual.TestCenter.UI
             _displayedRun = new TCTTestRunSummary(run.Attempts.ToList(), run.RunId);
             _visibleResults.Clear();
             _visibleResults.AddRange(run.Attempts);
+            DocumentHost.Overview.Update(_catalog, _visibleResults, run.RunId);
             Results.Clear();
             DocumentHost.Clear();
             Timeline.Clear();
@@ -192,6 +201,7 @@ namespace CxVisual.TestCenter.UI
             History.SetCurrent(null);
             History.IsEnabled = false;
             Results.Clear(); DocumentHost.Clear(); Timeline.Clear();
+            DocumentHost.Overview.Update(_catalog, _visibleResults, null);
             _cancel = new CancellationTokenSource();
             _ribbon.SetRunning(true);
             MenuRunAll.IsEnabled = MenuRunSelected.IsEnabled = MenuRerunFailed.IsEnabled = false;
@@ -203,9 +213,11 @@ namespace CxVisual.TestCenter.UI
                     result => Dispatcher.Invoke(() => {
                         _visibleResults.Add(result);
                         Results.Add(result); ShowResult(result);
+                        DocumentHost.Overview.Update(_catalog, _visibleResults, result.RunId);
                     }),
                     evt => Dispatcher.BeginInvoke(new Action(() => Timeline.AddEvent(evt))));
                 _displayedRun = _lastRun;
+                DocumentHost.Overview.Update(_catalog, _visibleResults, _lastRun.RunId);
                 History.SetCurrent(_lastRun);
                 StatusText.Text = "Run " + _lastRun.RunId + " · " + _lastRun.Total + "执行；" +
                     _lastRun.Passed + "通过；" + _lastRun.Failed + "失败/错误；" +
@@ -275,6 +287,14 @@ namespace CxVisual.TestCenter.UI
         private void ApplyTheme(bool dark)
         {
             _darkTheme = dark;
+            HeaderBand.Background = dark ? new SolidColorBrush(Color.FromRgb(34, 38, 44)) :
+                new SolidColorBrush(Color.FromRgb(23, 54, 93));
+            BreadcrumbBand.Background = dark ? new SolidColorBrush(Color.FromRgb(56, 63, 74)) :
+                new SolidColorBrush(Color.FromRgb(219, 234, 248));
+            WorkspaceTitle.Foreground = dark ? Brushes.WhiteSmoke :
+                new SolidColorBrush(Color.FromRgb(23, 54, 93));
+            EnvironmentText.Foreground = dark ? Brushes.Gainsboro :
+                new SolidColorBrush(Color.FromRgb(99, 125, 152));
             TestDock.Theme = dark ? (Theme)new Vs2013DarkTheme() : new Vs2013LightTheme();
             Background = dark ? new SolidColorBrush(Color.FromRgb(48, 52, 59)) :
                 new SolidColorBrush(Color.FromRgb(238, 243, 249));

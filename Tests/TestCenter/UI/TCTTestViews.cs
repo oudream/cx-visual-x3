@@ -890,8 +890,8 @@ namespace CxVisual.TestCenter.UI
     public sealed class TCTTestDocumentHostControl : UserControl
     {
         private readonly TabControl _tabs = new TabControl();
-        private readonly TextBlock _empty = new TextBlock { Text = "选择用例运行后显示真实观察数据。",
-            Margin = new Thickness(15), Foreground = Brushes.DimGray };
+        private readonly TCTTestOverviewControl _overview = new TCTTestOverviewControl();
+        public TCTTestOverviewControl Overview { get { return _overview; } }
         private readonly List<ITCTTestViewer> _viewers = new List<ITCTTestViewer> {
             new TCTGeometryTestView(), new TCTObjectTestView(), new TCTGraphTestView(),
             new TCTChannelTestView(), new TCTRuntimeTestView()
@@ -930,7 +930,7 @@ namespace CxVisual.TestCenter.UI
         {
             _tabs.Items.Clear();
             foreach (ITCTTestViewer viewer in _viewers) viewer.Clear();
-            _tabs.Items.Add(new TabItem { Header = "概览", Content = _empty });
+            _tabs.Items.Add(new TabItem { Header = "概览", Content = _overview });
         }
         public string ActiveMode
         {
@@ -984,12 +984,6 @@ namespace CxVisual.TestCenter.UI
             _viewers.OfType<TCTChannelTestView>().Single().ArchivedEvidenceRoot =
                 verifiedArchiveDirectory;
             if (result == null) return;
-            _empty.Text = result.Status + " · " + result.Descriptor.Name +
-                "\n观察数：" + result.Observations.Count +
-                "\n断言数：" + result.Assertions.Count +
-                "\n诊断数：" + result.Diagnostics.Count +
-                "\n产物数：" + result.Artifacts.Count +
-                "\n\n没有专业观察时不生成演示数据。";
             foreach (ITCTTestViewer viewer in _viewers)
             {
                 if (!viewer.CanDisplay(result)) continue;

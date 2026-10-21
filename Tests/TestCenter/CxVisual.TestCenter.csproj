@@ -57,6 +57,7 @@
     <Compile Include="Fixtures\TCTGoldenService.cs" />
     <Compile Include="Reports\TCTReportWriter.cs" />
     <Compile Include="UI\TCTControls.cs" />
+    <Compile Include="UI\TCTTestOverviewControl.cs" />
     <Compile Include="UI\TCTTestTimelineControl.cs" />
     <Compile Include="UI\TCTTestHistoryControl.cs" />
     <Compile Include="UI\TCTTestDiffControl.cs" />

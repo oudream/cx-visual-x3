@@ -25,6 +25,7 @@ namespace CxVisual.TestCenter.UI
             await window.Dispatcher.InvokeAsync(() => window.UpdateLayout());
             IntPtr hwnd = new WindowInteropHelper(window).Handle;
             if (hwnd == IntPtr.Zero) throw new InvalidOperationException("TestCenter has no HWND");
+            await Task.Run(() => VerifyOverview(hwnd, window));
             SaveScreenshot(window, "TestCenter-01-Workspace.png");
             await Task.Run(() => Interact(hwnd, window));
             SaveScreenshot(window, "TestCenterUIA.png");
@@ -42,6 +43,21 @@ namespace CxVisual.TestCenter.UI
             window.MenuThemeDark.RaiseEvent(new RoutedEventArgs(
                 System.Windows.Controls.MenuItem.ClickEvent, window.MenuThemeDark));
             SaveScreenshot(window, "TestCenter-04-Dark.png");
+        }
+        private static void VerifyOverview(IntPtr hwnd, TCTMainWindow window)
+        {
+            AutomationElement root = AutomationElement.FromHandle(hwnd);
+            if (root == null) throw new InvalidOperationException("Overview HWND unavailable");
+            AutomationElement discovered = Find(root, "TCT.Overview.Discovered");
+            AutomationElement action = Find(root, "TCT.Overview.Action.运行选中测试");
+            if (action.GetCurrentPattern(InvokePattern.Pattern) == null)
+                throw new InvalidOperationException("Overview action lacks real InvokePattern");
+            window.Dispatcher.Invoke(new Action(() => {
+                if (window.DocumentHost.ActiveMode != "概览" ||
+                    window.DocumentHost.Overview.DiscoveredCount <= 0 ||
+                    discovered.Current.Name != window.DocumentHost.Overview.DiscoveredCount.ToString())
+                    throw new InvalidOperationException("Overview is not bound to real test discovery");
+            }));
         }
         private static AutomationElement Find(AutomationElement root, string id)
         {
