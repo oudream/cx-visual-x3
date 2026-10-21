@@ -22,6 +22,10 @@ namespace CxVisual.TestCenter.UI
         private readonly TextBlock _hint = new TextBlock { Margin = new Thickness(7),
             TextWrapping = TextWrapping.Wrap };
         private readonly Dictionary<Guid, Border> _boxes = new Dictionary<Guid, Border>();
+        private readonly Dictionary<Guid, string> _referenceDetails =
+            new Dictionary<Guid, string>();
+        public IReadOnlyList<Guid> VerifiedReferenceIds
+        { get { return _referenceDetails.Keys.OrderBy(x => x).ToList().AsReadOnly(); } }
         private readonly Dictionary<Guid, Point> _positions = new Dictionary<Guid, Point>();
         private double _zoom = 1;
         public event Action<Guid, string> ObjectSelected;
@@ -78,6 +82,7 @@ namespace CxVisual.TestCenter.UI
                 throw new InvalidOperationException("Object diagram supports 1..500 verified nodes");
             var index = nodes.ToDictionary(n => Guid.Parse((string)n.Attribute("id")));
             _canvas.Children.Clear(); _boxes.Clear(); _positions.Clear();
+            _referenceDetails.Clear();
             RenderedNodeCount = VerifiedOwnershipLines = VerifiedReferenceLines = 0;
             int maxDepth = 0;
             const double nodeWidth = 184, nodeHeight = 40, rowGap = 63, indent = 213;
@@ -112,14 +117,24 @@ namespace CxVisual.TestCenter.UI
                     Point to;
                     if (!_positions.TryGetValue(target, out to))
                         throw new InvalidOperationException("Snapshot reference target not present");
-                    _canvas.Children.Add(new Line {
+                    Guid referenceId = Guid.Parse((string)reference.Attribute("id"));
+                    string detail = "Reference " + (string)reference.Attribute("name") +
+                        "\nReferenceId: " + referenceId +
+                        "\nOwnerObjectId: " + id +
+                        "\nDefinitionTargetId: " + target +
+                        "\n此线为独立引用，不代表定义被Owner持有。";
+                    _referenceDetails.Add(referenceId, detail);
+                    Line link = new Line {
                         X1 = current.X + nodeWidth / 2, Y1 = current.Y + nodeHeight,
                         X2 = to.X + nodeWidth / 2, Y2 = to.Y,
-                        Stroke = Brushes.DarkOrange, StrokeThickness = 2,
+                        Stroke = Brushes.DarkOrange, StrokeThickness = 4,
                         StrokeDashArray = new DoubleCollection { 4, 3 },
-                        IsHitTestVisible = false,
-                        ToolTip = "Reference: " + (string)reference.Attribute("name")
-                    });
+                        Cursor = Cursors.Hand, ToolTip = detail
+                    };
+                    Guid capturedReference = referenceId;
+                    link.MouseLeftButtonDown += (sender, args) =>
+                    { SelectReference(capturedReference); args.Handled = true; };
+                    _canvas.Children.Add(link);
                     VerifiedReferenceLines++;
                 }
             }
@@ -150,6 +165,13 @@ namespace CxVisual.TestCenter.UI
             _hint.Text = RenderedNodeCount + " Node · " + VerifiedOwnershipLines +
                 " Ownership（蓝色实线）· " + VerifiedReferenceLines +
                 " Reference（橙色虚线）";
+        }
+        public void SelectReference(Guid referenceId)
+        {
+            string details;
+            if (!_referenceDetails.TryGetValue(referenceId, out details))
+                throw new ArgumentException("Unknown verified reference", "referenceId");
+            if (ObjectSelected != null) ObjectSelected(referenceId, details);
         }
         public void SelectNode(Guid id)
         {
