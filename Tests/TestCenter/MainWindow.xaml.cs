@@ -30,6 +30,8 @@ namespace CxVisual.TestCenter.UI
         private readonly TCTTestRibbonController _ribbon = new TCTTestRibbonController();
         private CancellationTokenSource _cancel;
         private TCTTestRunSummary _lastRun;
+        private TCTTestRunSummary _displayedRun;
+        private readonly List<TCTTestCaseResult> _visibleResults = new List<TCTTestCaseResult>();
         private string _activeHistoryDirectory;
         private string _defaultDockLayout;
         private Dictionary<string, object> _dockViews;
@@ -85,16 +87,19 @@ namespace CxVisual.TestCenter.UI
         {
             _ribbon.SetContext(test);
             Inspector.ShowCase(test);
-            TCTTestCaseResult result = _lastRun == null || test == null ? null :
-                _lastRun.Results.LastOrDefault(r => r.Descriptor.Id == test.Descriptor.Id);
+            TCTTestCaseResult result = test == null ? null :
+                _visibleResults.LastOrDefault(r => r.Descriptor.Id == test.Descriptor.Id);
             if (result != null) ShowResult(result);
             else DocumentHost.Clear();
         }
 
         private void OnHistoryOpened(TCTArchivedTestRun run, string directory)
         {
-            if (run == null) return;
+            if (run == null || _cancel != null) return;
             _activeHistoryDirectory = directory;
+            _displayedRun = new TCTTestRunSummary(run.Attempts.ToList(), run.RunId);
+            _visibleResults.Clear();
+            _visibleResults.AddRange(run.Attempts);
             Results.Clear();
             DocumentHost.Clear();
             Timeline.Clear();
@@ -124,8 +129,8 @@ namespace CxVisual.TestCenter.UI
 
         private async void OnRerunFailed()
         {
-            if (_lastRun == null) return;
-            string[] failures = _lastRun.Results.Where(r => r.Status != TCTTestStatus.Passed)
+            if (_displayedRun == null) return;
+            string[] failures = _displayedRun.Results.Where(r => r.Status != TCTTestStatus.Passed)
                 .Select(r => r.Descriptor.Id).Distinct().ToArray();
             if (failures.Length == 0)
             {
@@ -170,8 +175,11 @@ namespace CxVisual.TestCenter.UI
             if (selectedOnly) request.SelectedIds.Add(Explorer.SelectedTest.Descriptor.Id);
             if (explicitIds != null) foreach (string id in explicitIds) request.SelectedIds.Add(id);
             _lastRun = null;
+            _displayedRun = null;
+            _visibleResults.Clear();
             _activeHistoryDirectory = null;
             History.SetCurrent(null);
+            History.IsEnabled = false;
             Results.Clear(); DocumentHost.Clear(); Timeline.Clear();
             _cancel = new CancellationTokenSource();
             _ribbon.SetRunning(true);
@@ -182,9 +190,11 @@ namespace CxVisual.TestCenter.UI
             {
                 _lastRun = await _coordinator.RunAsync(_catalog, request, _cancel.Token,
                     result => Dispatcher.Invoke(() => {
+                        _visibleResults.Add(result);
                         Results.Add(result); ShowResult(result);
                     }),
                     evt => Dispatcher.BeginInvoke(new Action(() => Timeline.AddEvent(evt))));
+                _displayedRun = _lastRun;
                 History.SetCurrent(_lastRun);
                 StatusText.Text = "Run " + _lastRun.RunId + " · " + _lastRun.Total + "执行；" +
                     _lastRun.Passed + "通过；" + _lastRun.Failed + "失败/错误；" +
@@ -198,6 +208,7 @@ namespace CxVisual.TestCenter.UI
             finally
             {
                 _cancel.Dispose(); _cancel = null;
+                History.IsEnabled = true;
                 _ribbon.SetRunning(false);
                 MenuRunAll.IsEnabled = MenuRunSelected.IsEnabled = MenuRerunFailed.IsEnabled = true;
                 MenuCancel.IsEnabled = false;
@@ -213,7 +224,7 @@ namespace CxVisual.TestCenter.UI
 
         private void OnExport()
         {
-            if (_lastRun == null || _lastRun.Total == 0)
+            if (_displayedRun == null || _displayedRun.Total == 0)
             {
                 MessageBox.Show(this, "请先运行测试再导出报告。", "TestCenter");
                 return;
@@ -227,9 +238,9 @@ namespace CxVisual.TestCenter.UI
             if (dlg.ShowDialog(this) != true) return;
             try
             {
-                if (dlg.FilterIndex == 1) TCTReportWriter.WriteJUnit(dlg.FileName, _lastRun);
-                else if (dlg.FilterIndex == 2) TCTReportWriter.WriteJson(dlg.FileName, _lastRun);
-                else TCTReportWriter.WriteText(dlg.FileName, _lastRun);
+                if (dlg.FilterIndex == 1) TCTReportWriter.WriteJUnit(dlg.FileName, _displayedRun);
+                else if (dlg.FilterIndex == 2) TCTReportWriter.WriteJson(dlg.FileName, _displayedRun);
+                else TCTReportWriter.WriteText(dlg.FileName, _displayedRun);
                 StatusText.Text = "Report saved: " + dlg.FileName;
             }
             catch (Exception ex)
