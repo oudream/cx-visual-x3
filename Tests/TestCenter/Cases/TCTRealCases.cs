@@ -295,13 +295,21 @@ namespace CxVisual.TestCenter.Cases
                 {
                     geometry.Add(new TCTGeometryFigure("Rectangle", "Actual",
                         item.Name, item.Id.ToString("D"), item.Bounds.X, item.Bounds.Y,
-                        item.Bounds.Width, item.Bounds.Height));
+                        item.Bounds.Width, item.Bounds.Height,
+                        item.Address == null ? null : item.Address.ToString()));
                 }
+                byte[] geometryEvidence = TCTGeometryEvidence.Serialize(geometry);
+                TCTGeometryFigure[] decodedFigures =
+                    TCTGeometryEvidence.Read(geometryEvidence).ToArray();
+                context.AssertEqual(2, decodedFigures
+                    .Where(x => !string.IsNullOrEmpty(x.DefinitionAddress))
+                    .Select(x => x.DefinitionAddress).Distinct(StringComparer.Ordinal).Count(),
+                    "两处Symbol使用必须在几何证据中保留不同InstancePath");
                 context.ObserveStructured("Geometry", "真实工程画布与Symbol实例",
                     "CxSceneProjection.Project(MEMEngineeringSession)，矩形与2个Symbol使用位置",
                     session.Project.Id.ToString("D"),
                     session.GetAddress(session.Project).ToString(), null,
-                    TCTGeometryEvidence.Serialize(geometry), TCTGeometryEvidence.Mime);
+                    geometryEvidence, TCTGeometryEvidence.Mime);
                 context.ObserveStructured("ObjectTree", "所属与两处引用定义",
                     "独立Symbol是Reference，不是Content的Owned Child",
                     session.Project.Id.ToString("D"),
