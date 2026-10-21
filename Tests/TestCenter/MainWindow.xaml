@@ -37,7 +37,7 @@
     </Border>
     <TextBlock Text="CxVisual 工业可视化组态平台  ·  Platform Test Center"
      Foreground="White" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center"/>
-    <TextBlock Text="测试工程：CxVisual.Platform.Tests  ·  .NET Framework 4.8" DockPanel.Dock="Right"
+    <TextBlock Text="测试工程：CxVisual.TestCenter  ·  .NET Framework 4.8" DockPanel.Dock="Right"
      Foreground="#D5E5F9" FontSize="12" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="30,0,0,0"/>
    </DockPanel>
   </Border>
@@ -94,7 +94,7 @@
        </dock:LayoutAnchorable>
       </dock:LayoutAnchorablePane>
      </dock:LayoutPanel>
-     <dock:LayoutAnchorablePane DockHeight="250">
+     <dock:LayoutAnchorablePane DockHeight="195">
       <dock:LayoutAnchorable ContentId="test.results" Title="测试结果 / Results"
         CanClose="False" CanFloat="True" CanHide="True" CanAutoHide="True">
        <ui:TCTTestResultsControl x:Name="Results"/>

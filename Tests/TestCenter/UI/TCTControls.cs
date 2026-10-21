@@ -13,7 +13,10 @@ namespace CxVisual.TestCenter.UI
 {
     public sealed class TCTTestExplorerControl : UserControl
     {
-        private readonly TextBox _search = new TextBox { Margin = new Thickness(6), ToolTip = "按ID/名称/能力检索" };
+        private readonly TextBox _search = new TextBox { Margin = new Thickness(7, 5, 7, 7),
+            Padding = new Thickness(7, 5, 7, 5), MinHeight = 31,
+            BorderBrush = new SolidColorBrush(Color.FromRgb(195, 215, 235)),
+            ToolTip = "按ID/名称/能力检索" };
         private readonly TreeView _tree = new TreeView { Margin = new Thickness(5) };
         private TCTTestCatalog _catalog;
         private readonly HashSet<string> _checkedIds = new HashSet<string>(StringComparer.Ordinal);
@@ -23,9 +26,17 @@ namespace CxVisual.TestCenter.UI
         public TCTTestExplorerControl()
         {
             System.Windows.Automation.AutomationProperties.SetAutomationId(_search, "TCT.Explorer.Search");
-            DockPanel panel = new DockPanel();
-            DockPanel.SetDock(_search, Dock.Top);
-            panel.Children.Add(_search); panel.Children.Add(_tree);
+            DockPanel panel = new DockPanel { Background = Brushes.White };
+            StackPanel searchPanel = new StackPanel { Background =
+                new SolidColorBrush(Color.FromRgb(246, 250, 254)) };
+            searchPanel.Children.Add(new TextBlock {
+                Text = "搜索测试 / Capability / ObjectId", FontSize = 11,
+                Foreground = new SolidColorBrush(Color.FromRgb(108, 131, 156)),
+                Margin = new Thickness(9, 9, 0, 0) });
+            searchPanel.Children.Add(_search);
+            DockPanel.SetDock(searchPanel, Dock.Top);
+            panel.Children.Add(searchPanel);
+            panel.Children.Add(_tree);
             Content = panel;
             _search.TextChanged += (s, e) => Refresh();
             _tree.SelectedItemChanged += (s, e) =>
@@ -297,7 +308,7 @@ namespace CxVisual.TestCenter.UI
             Action rerunFailed = null, Action copyTestId = null,
             Action<string> showMode = null)
         {
-            ToolBar ribbon = new ToolBar { Background = Brushes.AliceBlue, Band = 0, BandIndex = 0 };
+            ToolBar ribbon = new ToolBar { Background = Brushes.White, Band = 0, BandIndex = 0, Padding = new Thickness(5, 3, 5, 3) };
             RunAll = Create("▶ 运行全部", runAll);
             RunSelected = Create("▶ 运行选中", runSelected);
             System.Windows.Automation.AutomationProperties.SetAutomationId(RunSelected, "TCT.RunSelected");
@@ -348,13 +359,14 @@ namespace CxVisual.TestCenter.UI
             _showSource = showSource ?? throw new ArgumentNullException("showSource");
             _showHistory = showHistory ?? throw new ArgumentNullException("showHistory");
             _showDiff = showDiff ?? throw new ArgumentNullException("showDiff");
-            _contextActions = new ToolBar { Background = Brushes.AliceBlue, Band = 1, BandIndex = 0 };
+            _contextActions = new ToolBar { Background = new SolidColorBrush(Color.FromRgb(242, 248, 254)),
+                Band = 1, BandIndex = 0, Padding = new Thickness(5, 1, 5, 1) };
             RebuildContextCommands();
             return _contextActions;
         }
         private void AddContextCommand(string id, string text, Action action)
         {
-            Button button = Create(text, action);
+            Button button = Create(text, action, true);
             System.Windows.Automation.AutomationProperties.SetAutomationId(button, "TCT.Context." + id);
             _contextActions.Items.Add(button);
             _activeContextCommands.Add(id);
@@ -402,9 +414,44 @@ namespace CxVisual.TestCenter.UI
             if (_contextActions != null) _contextActions.IsEnabled = !running;
             if (RerunFailed != null) RerunFailed.IsEnabled = !running;
         }
-        private static Button Create(string text, Action action)
+        private static Button Create(string text, Action action, bool compact = false)
         {
-            Button button = new Button { Content = text, Padding = new Thickness(12, 6, 12, 6) };
+            Button button = new Button {
+                MinWidth = compact ? 64 : 78, Height = compact ? 31 : 65,
+                Margin = new Thickness(3, 2, 3, 2),
+                Padding = compact ? new Thickness(8, 3, 8, 3) : new Thickness(8, 5, 8, 5),
+                Foreground = new SolidColorBrush(Color.FromRgb(22, 105, 194)),
+                Background = new SolidColorBrush(Color.FromRgb(248, 251, 255)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(199, 217, 237)),
+                BorderThickness = new Thickness(1),
+                Cursor = System.Windows.Input.Cursors.Hand };
+            System.Windows.Automation.AutomationProperties.SetName(button, text);
+            if (compact)
+                button.Content = text;
+            else
+            {
+                string icon = "▣", caption = text;
+                if (text.StartsWith("▶ ", StringComparison.Ordinal))
+                { icon = "▶"; caption = text.Substring(2); }
+                else if (text.StartsWith("■ ", StringComparison.Ordinal))
+                { icon = "■"; caption = text.Substring(2); }
+                else if (text.StartsWith("↻ ", StringComparison.Ordinal))
+                { icon = "↻"; caption = text.Substring(2); }
+                else if (text.Contains("报告")) icon = "▤";
+                else if (text.Contains("复制")) icon = "◇";
+                StackPanel vertical = new StackPanel {
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center };
+                vertical.Children.Add(new TextBlock {
+                    Text = icon, FontSize = 20, FontWeight = FontWeights.SemiBold,
+                    Foreground = new SolidColorBrush(Color.FromRgb(23, 119, 213)),
+                    HorizontalAlignment = HorizontalAlignment.Center });
+                vertical.Children.Add(new TextBlock {
+                    Text = caption, FontSize = 11, Foreground =
+                        new SolidColorBrush(Color.FromRgb(26, 64, 107)),
+                    HorizontalAlignment = HorizontalAlignment.Center });
+                button.Content = vertical;
+            }
             button.Click += (s, e) => action();
             return button;
         }

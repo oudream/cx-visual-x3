@@ -75,6 +75,12 @@ namespace CxVisual.TestCenter.UI
             stats.Children.Add(Metric("失败 / 错误 / 超时", _failed, Red, "当前显示 Run 的 Attempt"));
             stats.Children.Add(Metric("未执行用例", _pending, Amber, "当前 Catalog · 按唯一 TestId"));
             content.Children.Add(stats);
+            // 设计稿以宽屏四列为基准，窄屏自动两列；不截断操作卡或伪造数据。
+            SizeChanged += (sender, args) => {
+                int columns = args.NewSize.Width < 820 ? 2 : 4;
+                if (actions.Columns != columns) actions.Columns = columns;
+                if (stats.Columns != columns) stats.Columns = columns;
+            };
             Border section = Surface();
             StackPanel body = new StackPanel { Margin = new Thickness(14, 13, 14, 15) };
             body.Children.Add(new TextBlock {
