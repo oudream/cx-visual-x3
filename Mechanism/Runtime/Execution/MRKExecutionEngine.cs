@@ -576,6 +576,69 @@ namespace CxVisual.Mechanism.Runtime.Execution
         private readonly Dictionary<Guid, TaskCompletionSource<bool>> _activeCompensations =
             new Dictionary<Guid, TaskCompletionSource<bool>>();
         private Task _stopTask;
+
+        /// <summary>
+        /// 原MRK Flow内的Stage租约计数。组容量仍由MRKExecutionGroups唯一Owner维护；
+        /// 一个Flow的同组Stage节点共享同一个入场Task，最后一个Stage节点结算后释放。
+        /// 动态Loop内的Stage在本轮显式拒绝，避免未知迭代数错误计算引用次数。
+        /// </summary>
+        private sealed class StageLeaseBatch
+        {
+            private sealed class Slot
+            {
+                internal readonly object Gate=new object();
+                internal int Remaining;
+                internal Task<MRKExecutionGroupLease> Admission;
+            }
+            private readonly MRKExecutionGroups _groups;
+            private readonly Dictionary<string, Slot> _slots=
+                new Dictionary<string, Slot>(StringComparer.Ordinal);
+            internal StageLeaseBatch(MRKExecutionPlan plan, MRKExecutionGroups groups)
+            {
+                _groups=groups;
+                foreach (MRKExecutionStep step in plan.Steps)
+                {
+                    if (string.IsNullOrWhiteSpace(step.ExecutionGroup) ||
+                        groups.GetScope(step.ExecutionGroup)!=MRKExecutionGroupScope.Stage)
+                        continue;
+                    Slot slot;
+                    if (!_slots.TryGetValue(step.ExecutionGroup, out slot))
+                    {
+                        slot=new Slot();
+                        _slots.Add(step.ExecutionGroup,slot);
+                    }
+                    slot.Remaining++;
+                }
+            }
+            internal async Task EnterAsync(string id, CancellationToken cancellation)
+            {
+                Slot slot=_slots[id];
+                Task<MRKExecutionGroupLease> admission;
+                lock(slot.Gate)
+                {
+                    if(slot.Admission==null)
+                        slot.Admission=_groups.AcquireAsync(id,cancellation);
+                    admission=slot.Admission;
+                }
+                await admission.ConfigureAwait(false);
+            }
+            internal void CompleteStep(string id)
+            {
+                Slot slot=_slots[id];
+                MRKExecutionGroupLease release=null;
+                lock(slot.Gate)
+                {
+                    slot.Remaining--;
+                    if(slot.Remaining<0)
+                        throw new InvalidOperationException("stage.negative_remaining");
+                    if(slot.Remaining==0 && slot.Admission!=null &&
+                        slot.Admission.Status==TaskStatus.RanToCompletion)
+                        release=slot.Admission.Result;
+                }
+                if(release!=null)release.Dispose();
+            }
+        }
+
         public int ActiveFlowCount
         { get { lock (_lifecycleGate) return _activeFlows.Count; } }
         public MRKExecutionEngine(FCRWorkerOptions options,
@@ -854,7 +917,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
 
         // 遍历复用的编译Plan及循环体，不构造第二份持久执行图。
         // 各WholeFlow组依字典序获取，以免两个Flow颠倒持有顺序形成等待环。
-        private void ValidateExecutionGroups(MRKExecutionPlan plan, HashSet<string> wholeFlow)
+        private void ValidateExecutionGroups(MRKExecutionPlan plan,
+            HashSet<string> wholeFlow, bool insideDynamicLoop=false)
         {
             foreach (MRKExecutionStep step in plan.Steps)
             {
@@ -863,15 +927,19 @@ namespace CxVisual.Mechanism.Runtime.Execution
                     if (!_groups.Contains(step.ExecutionGroup))
                         throw new ArgumentException("流程引用了未配置执行组：" +
                             step.ExecutionGroup, "plan");
-                    if (_groups.GetScope(step.ExecutionGroup) == MRKExecutionGroupScope.WholeFlow)
+                    MRKExecutionGroupScope scope=_groups.GetScope(step.ExecutionGroup);
+                    if (scope == MRKExecutionGroupScope.WholeFlow)
                         wholeFlow.Add(step.ExecutionGroup);
+                    if (insideDynamicLoop && scope == MRKExecutionGroupScope.Stage)
+                        throw new ArgumentException(
+                            "stage.dynamic_loop_requires_explicit_iteration_scope", "plan");
                 }
                 if (!string.IsNullOrWhiteSpace(step.DedicatedExecutorId) &&
                     !_dedicated.ContainsKey(step.DedicatedExecutorId))
                     throw new ArgumentException("流程引用了未配置专用执行位置：" +
                         step.DedicatedExecutorId, "plan");
                 if (step.LoopRegion != null)
-                    ValidateExecutionGroups(step.LoopRegion.Body, wholeFlow);
+                    ValidateExecutionGroups(step.LoopRegion.Body, wholeFlow, true);
             }
         }
 
@@ -880,12 +948,14 @@ namespace CxVisual.Mechanism.Runtime.Execution
             MRKExecutionContext context = flow.Context;
             Dictionary<string, Task<object>> tasks =
                 new Dictionary<string, Task<object>>(StringComparer.Ordinal);
+            StageLeaseBatch stages=new StageLeaseBatch(plan,_groups);
             Func<string, Task<object>> schedule = null;
             schedule = id =>
             {
                 Task<object> existing;
                 if (tasks.TryGetValue(id, out existing)) return existing;
-                Task<object> task = RunStepAsync(plan.GetStep(id), context, flow.Token, schedule, control);
+                Task<object> task = RunStepAsync(plan.GetStep(id), context, flow.Token,
+                    schedule, control, stages);
                 tasks.Add(id, task);
                 return task;
             };
@@ -1082,7 +1152,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
         }
 
         private async Task<object> RunStepAsync(MRKExecutionStep step, MRKExecutionContext context,
-            CancellationToken cancellation, Func<string, Task<object>> schedule, MRKExecutionDebugController control)
+            CancellationToken cancellation, Func<string, Task<object>> schedule,
+            MRKExecutionDebugController control, StageLeaseBatch stages=null)
         {
             // 每次实际调度绑定独立调用身份；静态DAG每Step只激活一次。
             // 不改变Plan既有StepOutput的FrameKey，动态激活在R05扩展。
@@ -1160,6 +1231,17 @@ namespace CxVisual.Mechanism.Runtime.Execution
                     {
                         context.SetState(step.Id, MRKStepState.WaitingGroup, step.ExecutionGroup);
                         groupLease = await _groups.AcquireAsync(step.ExecutionGroup, cancellation)
+                            .ConfigureAwait(false);
+                    }
+                    else if (!string.IsNullOrWhiteSpace(step.ExecutionGroup) &&
+                        _groups.GetScope(step.ExecutionGroup)==MRKExecutionGroupScope.Stage)
+                    {
+                        // 本阶段内的后续节点共用已经获取的许可证，不自等待第二次。
+                        // 只在所有同Stage节点结算（含Skipped/Cancelled）后才释放。
+                        if(stages==null)throw new InvalidOperationException(
+                            "stage.flow_batch_required");
+                        context.SetState(step.Id,MRKStepState.WaitingGroup,step.ExecutionGroup);
+                        await stages.EnterAsync(step.ExecutionGroup,cancellation)
                             .ConfigureAwait(false);
                     }
                     if (step.RequiredResources.Count > 0)
@@ -1245,6 +1327,12 @@ namespace CxVisual.Mechanism.Runtime.Execution
                     dependencyFailed ? MRKStepState.Skipped : MRKStepState.Failed,
                     dependencyFailed ? "依赖未成功" : ex.GetType().Name);
                 throw;
+            }
+            finally
+            {
+                if(stages!=null && !string.IsNullOrWhiteSpace(step.ExecutionGroup) &&
+                    _groups.GetScope(step.ExecutionGroup)==MRKExecutionGroupScope.Stage)
+                    stages.CompleteStep(step.ExecutionGroup);
             }
         }
     }

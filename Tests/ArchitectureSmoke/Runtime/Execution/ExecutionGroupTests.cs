@@ -16,6 +16,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
             R08_WholeFlowSerializesAcrossFlowsAndCancelsQueue();
             R08_WholeFlowLoopUsesOneLeaseAndRejectsUnknownInnerGroups();
             R08_CancelledNonCooperativeWorkRetainsWholeFlowPermit();
+            R08_StageReleasesBeforeLaterFlowTail();
+            R08_ParallelStageNodesShareOneGroupPermit();
+            R08_StageInsideDynamicLoopMustBeRejectedEarly();
         }
         private static void Check(bool condition, string msg)
         { if (!condition) throw new InvalidOperationException("执行组：" + msg); }
@@ -309,6 +312,130 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 externalFinished.TrySetResult(true);
                 Await(engine.StopAsync(true));
             }
+        }
+
+
+        /// <summary>同Stage跨两个依赖Step只申请一次，Stage之后的尾部不再占组席位。</summary>
+        private static void R08_StageReleasesBeforeLaterFlowTail()
+        {
+            TaskCompletionSource<bool> firstTailEntered=new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<bool> releaseTail=new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            int secondEntered=0;
+            MRKExecutionPlan plan=new MRKExecutionPlan("stage-pipeline",new[]{
+                new MRKExecutionStep("capture",new string[0],(ctx,ct)=>{
+                    if((string)ctx.Inputs["lane"]=="second")
+                        Interlocked.Increment(ref secondEntered);
+                    return Task.FromResult((object)1);
+                },executionGroup:"stage-vision"),
+                new MRKExecutionStep("inspect",new[]{"capture"},
+                    (ctx,ct)=>Task.FromResult((object)2),executionGroup:"stage-vision"),
+                new MRKExecutionStep("save",new[]{"inspect"},async (ctx,ct)=>{
+                    if((string)ctx.Inputs["lane"]=="first")
+                    {
+                        firstTailEntered.TrySetResult(true);
+                        await releaseTail.Task.ConfigureAwait(false);
+                    }
+                    return (object)3;
+                })
+            });
+            MRKExecutionEngine engine=new MRKExecutionEngine(new FCRWorkerOptions(2,6),
+                groups:new[]{new MRKExecutionGroupDefinition("stage-vision",1,1,
+                    MRKExecutionGroupScope.Stage)});
+            try
+            {
+                MRKFlowHandle first=engine.StartFlow(plan,
+                    new System.Collections.Generic.Dictionary<string,object>{{"lane","first"}});
+                Await(firstTailEntered.Task);
+                Check(!first.Completion.IsCompleted &&
+                    engine.GroupSnapshot()[0].Active==0,
+                    "R08最后一个Stage节点结算后应立即释放，而不是等整条Flow完成");
+                MRKFlowHandle second=engine.StartFlow(plan,
+                    new System.Collections.Generic.Dictionary<string,object>{{"lane","second"}});
+                Check(Await(second.Completion).State==MRKFlowState.Completed &&
+                    Volatile.Read(ref secondEntered)==1 && !first.Completion.IsCompleted,
+                    "R08两个Flow的不同Stage应流水重叠，不该被WholeFlow级互斥阻塞");
+                releaseTail.TrySetResult(true);
+                Check(Await(first.Completion).State==MRKFlowState.Completed &&
+                    engine.GroupSnapshot()[0].Active==0,
+                    "R08两条Flow结算后Stage组席位未释放");
+            }
+            finally
+            {
+                releaseTail.TrySetResult(true);
+                Await(engine.StopAsync(true));
+            }
+        }
+
+        /// <summary>同一Stage内部并行节点共享1份租约，而非把Stage错误退化为逐Step锁。</summary>
+        private static void R08_ParallelStageNodesShareOneGroupPermit()
+        {
+            int running=0,peak=0;
+            TaskCompletionSource<bool> bothStarted=new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<bool> release=new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            Func<MRKExecutionContext,CancellationToken,Task<object>> operation=
+                async (ctx,ct)=>{
+                    int value=Interlocked.Increment(ref running);
+                    if(value>peak)peak=value;
+                    if(value==2)bothStarted.TrySetResult(true);
+                    await release.Task.ConfigureAwait(false);
+                    Interlocked.Decrement(ref running);
+                    return (object)1;
+                };
+            MRKExecutionPlan plan=new MRKExecutionPlan("stage-parallel",new[]{
+                new MRKExecutionStep("ai",new string[0],operation,executionGroup:"vision"),
+                new MRKExecutionStep("cv",new string[0],operation,executionGroup:"vision")
+            });
+            MRKExecutionEngine engine=new MRKExecutionEngine(new FCRWorkerOptions(2,4),
+                groups:new[]{new MRKExecutionGroupDefinition("vision",1,1,
+                    MRKExecutionGroupScope.Stage)});
+            try
+            {
+                MRKFlowHandle flow=engine.StartFlow(plan);
+                Await(bothStarted.Task);
+                Check(peak==2 && engine.GroupSnapshot()[0].Active==1,
+                    "R08同一Stage多个并行节点不得互相串行阻塞");
+                release.TrySetResult(true);
+                Check(Await(flow.Completion).State==MRKFlowState.Completed &&
+                    engine.GroupSnapshot()[0].Active==0,
+                    "R08 Stage并行成员结算后未归还唯一组席位");
+            }
+            finally
+            {
+                release.TrySetResult(true);
+                Await(engine.StopAsync(true));
+            }
+        }
+
+        private static void R08_StageInsideDynamicLoopMustBeRejectedEarly()
+        {
+            int effects=0;
+            MRKExecutionPlan body=new MRKExecutionPlan("loop-stage-body",new[]{
+                new MRKExecutionStep("inner",new string[0],(ctx,ct)=>{
+                    Interlocked.Increment(ref effects);
+                    return Task.FromResult((object)1);
+                },executionGroup:"stage")
+            });
+            MRKExecutionPlan outer=new MRKExecutionPlan("loop-stage",new[]{
+                new MRKExecutionStep("repeat",new string[0],
+                    (ctx,ct)=>Task.FromResult((object)0),
+                    loopRegion:new MRKLoopRegion(body,2))
+            });
+            MRKExecutionEngine engine=new MRKExecutionEngine(new FCRWorkerOptions(1,2),
+                groups:new[]{new MRKExecutionGroupDefinition("stage",1,1,
+                    MRKExecutionGroupScope.Stage)});
+            try
+            {
+                bool rejected=false;
+                try{engine.StartFlow(outer);}
+                catch(ArgumentException){rejected=true;}
+                Check(rejected && effects==0,
+                    "R08动态迭代Stage引用尚未定义，必须在业务开始前拒绝");
+            }
+            finally{Await(engine.StopAsync(true));}
         }
 
         private static void Await(Task task)

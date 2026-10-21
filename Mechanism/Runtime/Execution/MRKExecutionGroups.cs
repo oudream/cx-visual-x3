@@ -7,10 +7,10 @@ using System.Threading.Tasks;
 namespace CxVisual.Mechanism.Runtime.Execution
 {
     /// <summary>
-    /// Step按单节点持有席位；WholeFlow从Flow准入后、任何节点执行前取得，
-    /// 所有节点/动态循环及日志终态结算后才释放。Stage单独验收，暂不混同Step。
+    /// Step按节点持有；WholeFlow按完整Flow持有；Stage按同一Flow内所有同组
+    /// 静态DAG节点的阶段生命周期持有，不在节点交界释放，也不锁住后续无关Stage。
     /// </summary>
-    public enum MRKExecutionGroupScope { Step, WholeFlow }
+    public enum MRKExecutionGroupScope { Step, WholeFlow, Stage }
 
     /// <summary>组配额与等待上限是独立于线程池和串行Key的运行约束。</summary>
     public sealed class MRKExecutionGroupDefinition

@@ -517,3 +517,10 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 
 - 增加`R08_CancelledNonCooperativeWorkRetainsWholeFlowPermit`。一个真实MRK Flow中的Provider忽略CancellationToken，仍异步等待外部终态；用户请求取消后Flow保持在途、组Active=1。此时第二Flow必须处于组Waiting状态，绝不能在前者尾部真正返回前执行。收到迟到成功结果后原Flow应是Cancelled而不是Completed，结算后组许可释放、第二Flow成功进入。
 - 该测试验证软件Worker/Flow生命周期和执行组许可的正确结合，不得解读为真实设备已经安全停止。须以本提交Windows x64 Runtime/Engineering测试结果为准。
+
+### R08 Stage组作用域：按阶段生命周期共享许可（2026-10-21，待CI）
+
+- 与WholeFlow不同：`MRKExecutionGroupScope.Stage`按同一Flow内声明相同`ExecutionGroup`的静态DAG节点集合形成一段明确Stage，同组节点共用一次组入场任务，Stage内多个并行节点可同时执行；必须等所有成员（包括Skipped/Failed/Cancelled）真实结算才释放许可。之后其他Flow可进入同Stage，即使上一Flow尚在执行后续无组节点，从而允许不同阶段重叠。
+- 作用域仍由`MRKExecutionGroups`管理原有组容量，`MRKExecutionEngine.StageLeaseBatch`只是当前Flow内的引用计数/共享等待，不是第二个Worker或业务调度器。Step/WholeFlow默认语义及现有串行Key/资源取得顺序不变。
+- 动态循环内部的Stage需要真实Iteration级Stage身份，否则成员数量无法静态确定，**当前必须在正式StartFlow前拒绝**；不能静默退化为Step。MOL/MOC在编译Plan后使用相同组声明，未实现的Studio Stage参数UI不能冒充交付。
+- 执行反证：两节点同Stage后续尾部非合作等待时另一个Flow能完成阶段；两个并行Stage节点共享一组席位且都实际开始；Loop内Stage必须在任何业务副作用前拒绝。均需新提交固定SHA Windows CI确认，尚不等于R08整体长稳/生产安全封轮。
