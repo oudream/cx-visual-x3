@@ -417,6 +417,15 @@ namespace CxVisual.TestCenter.UI
                             symbolObject.VerifiedReferenceCount != 2 ||
                             symbolGeometry.EvidenceProblem != null || symbolObject.EvidenceProblem != null)
                             throw new InvalidOperationException("Real Symbol instance projection not in both viewers");
+                        if (symbolObject.RelationDiagram == null ||
+                            symbolObject.RelationDiagram.VerifiedReferenceLines != 2 ||
+                            symbolObject.RelationDiagram.RenderedNodeCount < 7)
+                            throw new InvalidOperationException("MEM relation diagram lost verified ownership/reference");
+                        var diagramNode = symbolObject.OwnershipTree.Items.OfType<System.Windows.Controls.TreeViewItem>().First();
+                        var diagramId = Guid.Parse((string)((System.Xml.Linq.XElement)diagramNode.Tag).Attribute("id"));
+                        symbolObject.RelationDiagram.SelectNode(diagramId);
+                        if (window.Inspector.SelectedObjectId != diagramId.ToString("D"))
+                            throw new InvalidOperationException("Diagram selection did not reach Inspector");
 
                         // Suite/Plan is only CaseId selection; Runner and result remain unified.
                         var planUi = new TCTTestPlanControl();
