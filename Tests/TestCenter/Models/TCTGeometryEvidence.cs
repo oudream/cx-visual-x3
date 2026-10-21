@@ -18,6 +18,8 @@ namespace CxVisual.TestCenter.Models
         public string SourceObjectId { get; private set; }
         // Stable engineering address includes Symbol/Content reference instance path.
         public string DefinitionAddress { get; private set; }
+        public string CoordinateSpace { get; private set; }
+        public string Unit { get; private set; }
         public double X { get; private set; }
         public double Y { get; private set; }
         public double Width { get; private set; }
@@ -29,12 +31,47 @@ namespace CxVisual.TestCenter.Models
                     " · Instance: " + DefinitionAddress); }
         }
         public TCTGeometryFigure(string kind, string role, string label, string sourceObjectId,
-            double x, double y, double width, double height, string definitionAddress = null)
+            double x, double y, double width, double height, string definitionAddress = null,
+            string coordinateSpace = null, string unit = null)
         {
             Kind = kind; Role = role; Label = label ?? ""; SourceObjectId = sourceObjectId ?? "";
             DefinitionAddress = definitionAddress ?? "";
+            CoordinateSpace = coordinateSpace ?? "Unspecified";
+            Unit = unit ?? "Unspecified";
             X = x; Y = y; Width = width; Height = height;
             TCTGeometryEvidence.ValidateFigure(this);
+        }
+    }
+
+    public sealed class TCTGeometryDelta
+    {
+        internal TCTGeometryDelta(double dx, double dy, double distance, double tolerance)
+        { DeltaX = dx; DeltaY = dy; Distance = distance; Tolerance = tolerance; }
+        public double DeltaX { get; private set; }
+        public double DeltaY { get; private set; }
+        public double Distance { get; private set; }
+        public double Tolerance { get; private set; }
+        public bool WithinTolerance { get { return Distance <= Tolerance; } }
+    }
+
+    /// <summary>Compares real Owner point coordinates only within one known space and unit.</summary>
+    public static class TCTGeometryComparer
+    {
+        public static TCTGeometryDelta ComparePoints(TCTGeometryFigure expected,
+            TCTGeometryFigure actual, double tolerance)
+        {
+            if (expected == null || actual == null)
+                throw new ArgumentNullException("figure");
+            if (expected.Kind != "Point" || expected.Role != "Expected" ||
+                actual.Kind != "Point" || actual.Role != "Actual" ||
+                expected.CoordinateSpace != actual.CoordinateSpace ||
+                expected.Unit != actual.Unit)
+                throw new InvalidDataException("Expected and actual points have incompatible kinds, coordinates or units");
+            if (double.IsNaN(tolerance) || double.IsInfinity(tolerance) ||
+                tolerance < 0 || tolerance > 1e9)
+                throw new ArgumentOutOfRangeException("tolerance");
+            double dx = actual.X - expected.X, dy = actual.Y - expected.Y;
+            return new TCTGeometryDelta(dx, dy, Math.Sqrt(dx * dx + dy * dy), tolerance);
         }
     }
 
@@ -53,7 +90,9 @@ namespace CxVisual.TestCenter.Models
                 !Finite(f.X) || !Finite(f.Y) || !Finite(f.Width) || !Finite(f.Height) ||
                 (f.Kind != "Segment" && (f.Width < 0 || f.Height < 0)) ||
                 f.Label.Length > 128 || f.SourceObjectId.Length > 128 ||
-                f.DefinitionAddress.Length > 1024)
+                f.DefinitionAddress.Length > 1024 ||
+                f.CoordinateSpace.Length == 0 || f.CoordinateSpace.Length > 128 ||
+                f.Unit.Length == 0 || f.Unit.Length > 32)
                 throw new InvalidDataException("Invalid geometry figure, coordinate, role or kind");
         }
         private static bool Finite(double value)
@@ -74,6 +113,7 @@ namespace CxVisual.TestCenter.Models
                     new XAttribute("role", f.Role),
                     new XAttribute("label", f.Label), new XAttribute("owner", f.SourceObjectId),
                     new XAttribute("address", f.DefinitionAddress),
+                    new XAttribute("space", f.CoordinateSpace), new XAttribute("unit", f.Unit),
                     new XAttribute("x", N(f.X)), new XAttribute("y", N(f.Y)),
                     new XAttribute("w", N(f.Width)), new XAttribute("h", N(f.Height))));
             }
@@ -117,7 +157,8 @@ namespace CxVisual.TestCenter.Models
                 list.Add(new TCTGeometryFigure((string)element.Attribute("kind"),
                     (string)element.Attribute("role"), (string)element.Attribute("label"),
                     (string)element.Attribute("owner"), x, y, w, h,
-                    (string)element.Attribute("address")));
+                    (string)element.Attribute("address"),
+                    (string)element.Attribute("space"), (string)element.Attribute("unit")));
             }
             return list.AsReadOnly();
         }
