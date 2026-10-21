@@ -94,17 +94,21 @@ namespace CxVisual.Tests.ArchitectureSmoke
             string executable = Process.GetCurrentProcess().MainModule.FileName;
             ProcessStartInfo start = new ProcessStartInfo(executable, "--foundation")
             {
-                UseShellExecute = false,
-                CreateNoWindow = true
+                UseShellExecute = false, CreateNoWindow = true,
+                RedirectStandardOutput = true, RedirectStandardError = true
             };
             using (Process child = Process.Start(start))
             {
                 if (child == null) throw new InvalidOperationException("Foundation child process failed to start");
+                var standardOutput = child.StandardOutput.ReadToEndAsync();
+                var standardError = child.StandardError.ReadToEndAsync();
                 if (!child.WaitForExit(180000))
                 {
                     try { child.Kill(); } catch (InvalidOperationException) { }
                     throw new TimeoutException("Foundation smoke subprocess did not exit");
                 }
+                Console.Write(standardOutput.GetAwaiter().GetResult());
+                Console.Error.Write(standardError.GetAwaiter().GetResult());
                 if (child.ExitCode != 0)
                     throw new InvalidOperationException("Foundation smoke subprocess failed: " + child.ExitCode);
                 return child.ExitCode;
