@@ -301,8 +301,10 @@ namespace CxVisual.TestCenter.Cases
                 byte[] geometryEvidence = TCTGeometryEvidence.Serialize(geometry);
                 TCTGeometryFigure[] decodedFigures =
                     TCTGeometryEvidence.Read(geometryEvidence).ToArray();
+                string[] actualInstances = instances.Select(x =>
+                    x.Address.ToString()).ToArray();
                 context.AssertEqual(2, decodedFigures
-                    .Where(x => !string.IsNullOrEmpty(x.DefinitionAddress))
+                    .Where(x => actualInstances.Contains(x.DefinitionAddress))
                     .Select(x => x.DefinitionAddress).Distinct(StringComparer.Ordinal).Count(),
                     "两处Symbol使用必须在几何证据中保留不同InstancePath");
                 context.ObserveStructured("Geometry", "真实工程画布与Symbol实例",
