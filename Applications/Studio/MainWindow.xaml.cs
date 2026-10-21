@@ -71,8 +71,11 @@ namespace CxVisual.Studio
         {
             if(candidate==null)throw new ArgumentNullException("candidate");
             if(policy==null)throw new ArgumentNullException("policy");
-            // 初次CPU预演无历史部署版本。只用标准MRK Slot作为受保护软件发布门禁。
-            MRKExecutionPlan baseline=candidate.Plan.Plan;
+            // 未授权的候选不可作为Slot的初始活动Plan，初始仅放置无外设惰性步骤。
+            // 正式候选必须通过原MOC Stage和MRK授权Activate后才能成为活动版本。
+            MRKExecutionPlan baseline=new MRKExecutionPlan("studio.cpu.inert.baseline",
+                new[]{new MRKExecutionStep("inert",new string[0],
+                    (context,token)=>Task.FromResult((object)0))});
             MRKExecutionPlanSlot slot=new MRKExecutionPlanSlot(baseline,0,true);
             MRKExecutionPlanPublisher publisher=new MRKExecutionPlanPublisher(slot,baseline,0,policy);
             MRKPlanPublicationReceipt receipt=MOCProjectRelease.Stage(candidate,

@@ -290,3 +290,7 @@ R01源码已提交（截止 f6c0dceb7afae75d320f6b442f3a152b11566162）：修改
 
 - 从MHS Effective构造的Vision Provider仅在发布版本查询时校验`MHSConfigSection.EffectiveVersion`仍等于初次捕获版本；实际Execute仍使用独立不可变的CPU算法/配置快照，不把新版本写进正在运行的旧Plan。
 - G06新反证：**只修改Saved未Apply**时，原Effective候选仍能Prepare且指纹保持稳定；**NextTask真正Apply**后，哪怕Host继续声明旧版本并持有旧Provider对象，`MOCProjectRelease.Stage`也应拒绝`vision.provider.effective_version_changed`，不污染活动MRK PlanSlot；新Provider可正常生成新候选。此为专业软件配置发布安全门，非物理设备ACK。
+
+### P0-4 Studio CPU候选未授权前惰性Plan安全边界（2026-10-21，待同SHA CI）
+
+- 更正`StageCpuSoftwareRelease`：受保护的MRK PlanSlot由唯一无设备惰性基线Plan初始化，不再将尚未授权的`candidate.Plan.Plan`预置为活动版；随后仍严格经过原MOC Stage、Host模拟策略授权与MRK Activate，最后验证Slot活动对象确实等于Candidate。原Studio WPF授权失败/安全拒绝/版本失效/真实MRK运行STA保留，不增发布体系或降低测试门槛。
