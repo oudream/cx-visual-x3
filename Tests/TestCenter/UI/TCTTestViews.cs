@@ -89,6 +89,15 @@ namespace CxVisual.TestCenter.UI
 
     public sealed class TCTGeometryTestView : TCTTestViewBase
     {
+        public event Action<string, string> GeometrySelected;
+        public int VerifiedFigureCount { get; private set; }
+        public string EvidenceProblem { get; private set; }
+        public string ArchivedEvidenceRoot { get; set; }
+        public TCTGeometryEvidenceCanvas EvidenceCanvas { get; private set; }
+        public override void Clear()
+        {
+            base.Clear(); VerifiedFigureCount = 0; EvidenceProblem = null; EvidenceCanvas = null;
+        }
         public override string Kind { get { return "Geometry"; } }
         public override void Bind(TCTTestCaseResult result)
         {
@@ -125,6 +134,46 @@ namespace CxVisual.TestCenter.UI
                 Canvas.SetLeft(hint, 75); Canvas.SetTop(hint, 100); canvas.Children.Add(hint);
             }
             ContentPanel.Children.Add(canvas);
+            foreach (TCTTestObservation observation in result.Observations.Where(o =>
+                string.Equals(o.Kind, Kind, StringComparison.OrdinalIgnoreCase) &&
+                o.Envelope != null && o.Envelope.PayloadRef != null &&
+                o.Envelope.PayloadRef.Mime == TCTGeometryEvidence.Mime))
+            {
+                try
+                {
+                    TCTTestArtifactStore store = new TCTTestArtifactStore(
+                        ArchivedEvidenceRoot ?? TCTTestArtifactStore.RunRoot(result.RunId));
+                    TCTObservationReplay.Read(result, store);
+                    IList<TCTGeometryFigure> figures = TCTGeometryEvidence.Read(
+                        store.Read(observation.Envelope.PayloadRef));
+                    TCTGeometryEvidenceCanvas proof = new TCTGeometryEvidenceCanvas();
+                    proof.ShowFigures(figures);
+                    proof.FigureSelected += figure =>
+                    {
+                        SelectObservation(observation);
+                        if (GeometrySelected != null)
+                            GeometrySelected(figure.SourceObjectId,
+                                "角色: " + figure.Role + "\n类型: " + figure.Kind +
+                                "\n名称: " + figure.Label + "\nOwner: " + figure.SourceObjectId +
+                                "\n坐标: " + figure.X + ", " + figure.Y +
+                                "\n尺寸/向量: " + figure.Width + ", " + figure.Height);
+                    };
+                    EvidenceCanvas = proof;
+                    VerifiedFigureCount += proof.RenderedFigureCount;
+                    ContentPanel.Children.Add(new TextBlock { Text = "SHA256已验证 · " +
+                        observation.Title + " · " + proof.RenderedFigureCount + " 项真实几何",
+                        FontWeight = FontWeights.Bold, Margin = new Thickness(0, 8, 0, 5) });
+                    ContentPanel.Children.Add(proof);
+                }
+                catch (Exception ex) when (ex is InvalidDataException ||
+                    ex is IOException || ex is UnauthorizedAccessException ||
+                    ex is System.Xml.XmlException || ex is NotSupportedException)
+                {
+                    EvidenceProblem = ex.Message;
+                    ContentPanel.Children.Add(new TextBlock { Text = "Geometry证据不可验证：" +
+                        ex.Message, Foreground = Brushes.DarkRed, TextWrapping = TextWrapping.Wrap });
+                }
+            }
             Observations(result, Kind); Assertions(result);
         }
         private static void DrawPoint(Canvas canvas, double x, double y, Brush color, string label)
@@ -433,6 +482,11 @@ namespace CxVisual.TestCenter.UI
             {
                 if (ObjectSelected != null) ObjectSelected(id, details);
             };
+            TCTGeometryTestView geometryViewer = _viewers.OfType<TCTGeometryTestView>().Single();
+            geometryViewer.GeometrySelected += (id, details) =>
+            {
+                if (ObjectSelected != null) ObjectSelected(id, details);
+            };
             Content = _tabs;
             Clear();
         }
@@ -486,6 +540,8 @@ namespace CxVisual.TestCenter.UI
         {
             Clear();
             _viewers.OfType<TCTObjectTestView>().Single().ArchivedEvidenceRoot =
+                verifiedArchiveDirectory;
+            _viewers.OfType<TCTGeometryTestView>().Single().ArchivedEvidenceRoot =
                 verifiedArchiveDirectory;
             if (result == null) return;
             _empty.Text = result.Status + " · " + result.Descriptor.Name +
