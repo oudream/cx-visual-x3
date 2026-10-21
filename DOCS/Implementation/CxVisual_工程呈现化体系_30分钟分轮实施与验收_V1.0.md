@@ -285,3 +285,8 @@ R01源码已提交（截止 f6c0dceb7afae75d320f6b442f3a152b11566162）：修改
 
 - 专业Vision Owner新增`CxVisionThresholdProvider.FromEffectiveConfiguration(MHSConfigSection<CxVisionInspectionOptions>, fallback)`；使用现有`CaptureForTask`读取Effective不可变快照，从MHS`vN`得到真实配置Revision，复制并释放快照；不自动Apply、不以Saved为Effective，不引入第二配置仓库。
 - G06真实工程集成测试新增MHS Project Scope编辑、NextTask Saved/Effective分离、Effective CPU像素MRK执行、任务边界升级、旧候选`MOCProjectRelease.Stage`因版本自证拒绝、PlanSlot当前软件Revision不受污染、新候选指纹改变。此为软件版本/配置闭环；物理设备配置ACK与机台联锁继续未验。
+
+### P0-4 新发布阻断旧MHS Effective快照（2026-10-21，待同SHA CI）
+
+- 从MHS Effective构造的Vision Provider仅在发布版本查询时校验`MHSConfigSection.EffectiveVersion`仍等于初次捕获版本；实际Execute仍使用独立不可变的CPU算法/配置快照，不把新版本写进正在运行的旧Plan。
+- G06新反证：**只修改Saved未Apply**时，原Effective候选仍能Prepare且指纹保持稳定；**NextTask真正Apply**后，哪怕Host继续声明旧版本并持有旧Provider对象，`MOCProjectRelease.Stage`也应拒绝`vision.provider.effective_version_changed`，不污染活动MRK PlanSlot；新Provider可正常生成新候选。此为专业软件配置发布安全门，非物理设备ACK。

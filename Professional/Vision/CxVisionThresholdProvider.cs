@@ -24,6 +24,8 @@ namespace CxVisual.Professional.Vision
         private readonly long _configRevision;
         private readonly IMRKCapabilityResolver _fallback;
         private readonly MRKResolvedCapability _capability;
+        private readonly MHSConfigSection<CxVisionInspectionOptions> _effectiveSource;
+        private readonly string _capturedEffectiveVersion;
 
         /// <summary>
         /// 从唯一MHS真源的Effective配置快照构造CPU Provider。
@@ -44,8 +46,17 @@ namespace CxVisual.Professional.Vision
                     !long.TryParse(version.Substring(1),NumberStyles.None,
                         CultureInfo.InvariantCulture,out revision)||revision<0)
                     throw new InvalidOperationException("vision.provider.invalid_effective_version");
-                return new CxVisionThresholdProvider(snapshot.Get(),revision,fallback);
+                return new CxVisionThresholdProvider(snapshot.Get(),revision,fallback,
+                    section,version);
             }
+        }
+
+        private CxVisionThresholdProvider(CxVisionInspectionOptions options,long revision,
+            IMRKCapabilityResolver fallback,MHSConfigSection<CxVisionInspectionOptions> source,
+            string capturedEffectiveVersion):this(options,revision,fallback)
+        {
+            _effectiveSource=source;
+            _capturedEffectiveVersion=capturedEffectiveVersion;
         }
 
         public CxVisionThresholdProvider(CxVisionInspectionOptions options,long configRevision,
@@ -69,7 +80,15 @@ namespace CxVisual.Professional.Vision
         public bool TryGetCapabilityVersion(string id,out string version)
         {
             if(string.Equals(id,CapabilityId,StringComparison.Ordinal))
-            {version=ReleaseVersion;return true;}
+            {
+                // 新发布不许复用旧Effective Provider；原运行中的不可变算法实例仍可完成。
+                if(_effectiveSource!=null&&
+                    !string.Equals(_effectiveSource.EffectiveVersion,_capturedEffectiveVersion,
+                        StringComparison.Ordinal))
+                    throw new InvalidOperationException(
+                        "vision.provider.effective_version_changed");
+                version=ReleaseVersion;return true;
+            }
             IMRKVersionedCapabilityResolver next=_fallback as IMRKVersionedCapabilityResolver;
             if(next!=null)return next.TryGetCapabilityVersion(id,out version);
             version=null;return false;

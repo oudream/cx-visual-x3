@@ -1018,10 +1018,23 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     config,sourceResolver);
                 Check(currentBeforeApply.ReleaseVersion==effectiveProvider.ReleaseVersion,
                     "G06 未生效Saved版本污染了正在使用的Provider软件版本");
+                // 仅保存尚未生效的候选，不应让当前Effective的Provider提前失效。
+                var beforeApplyCandidate=MOCProjectRelease.Prepare(session.GetSnapshot(),
+                    page.RootContent.Id,currentBeforeApply,effectiveVersions);
+                Check(beforeApplyCandidate.Fingerprint==effectiveCandidate.Fingerprint,
+                    "G06只有Saved变化时错误拒绝旧Effective的软件发布身份");
                 Check(config.ApplyPendingAtTaskBoundary(),
                     "G06 Pending NextTask配置未在任务边界生效");
                 var nextProvider=CxVisionThresholdProvider.FromEffectiveConfiguration(
                     config,sourceResolver);
+                bool oldEffectiveRejected=false;
+                try{MOCProjectRelease.Stage(effectiveCandidate,session.GetSnapshot(),
+                    effectiveProvider,effectiveVersions,publisher,"release-officer",3);}
+                catch(InvalidOperationException ex)
+                {oldEffectiveRejected=ex.Message.Contains("effective_version_changed");}
+                Check(oldEffectiveRejected&&publisher.ActiveRevision==2&&
+                    !publisher.PendingRevision.HasValue,
+                    "G06 MHS已切换Effective但旧快照Provider竟可重新发布旧Plan");
                 Check(nextProvider.ConfigurationRevision>effectiveVersion&&
                     nextProvider.ReleaseVersion!=effectiveProvider.ReleaseVersion,
                     "G06 配置任务边界版本未触发新Provider身份");
