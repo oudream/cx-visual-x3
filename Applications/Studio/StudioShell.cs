@@ -279,6 +279,9 @@ namespace CxVisual.Studio
         {
             if(string.IsNullOrWhiteSpace(title))
                 throw new ArgumentException("必须提供专业配置名称","title");
+            // 专业可在首次打开配置页之前注册；先固定已有两个公共入口，
+            // 避免稍后加载默认Schema时发生身份冲突。
+            if(!_studioConfigDefaultsRegistered)EnsureStudioConfigurationDefaults();
             if(FindStudioContent("doc.config") is LayoutDocument)
                 throw new InvalidOperationException("请先关闭配置文档，再注册新专业以保护当前草稿");
             string id=FCMConfigSchemaBuilder.Describe<T>().SectionId;
