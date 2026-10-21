@@ -217,3 +217,38 @@
 | 结论 | 自动CI A通过/人工E未完成/实机F未完成必须分别标记，禁止合并为“P0工业验收完成” |
 
 **下一轮**：从S2.01～S2.09完善资源种类→Editor/Descriptor注册、MPM/MHS原生Schema组合编辑器与专业贡献发现；此处若因具体真实Studio交互验收暴露P0缺陷，直接回归P0修复，不新增第二套系统。
+
+## 16. P0收敛复审：代码通过不等于全部签收（2026-10-21）
+
+> 本节是截至源码[a78a89f1](https://github.com/oudream/cx-visual-x3/commit/a78a89f1a28b1ea046bbab92ca5d96a02c71ebe1)的**Studio与工程呈现化双范围审计**。P0-1～P0-4属工程呈现化工作包，Studio的P0 Editor/Command是另一个交叉切片，不应误用同一编号推断完成。只引用真实Windows自动化证据，不把尚未人工或现场实施的项目标已验。
+
+### 16.1 收敛判定（目标→实装→剩余）
+
+| 工作包 | 当前状态 | 实际代码与证据 | 不能视为完成的内容／下一道门槛 |
+|---|---|---|---|
+| 工程呈现化P0-1：工程依赖/重定向影响 | **工程API与T级回归通过；扩大范围待验** | `MEMEngineeringSession.AnalyzeResourceImpact/PreviewRetarget`，既有MEM依赖与MTC事务；[工程Windows 39549728186](https://github.com/oudream/cx-visual-x3/actions/runs/39549728186)成功 | 已构建MOC计划失效、跨Provider真实部署和长期资源迁移仍需集成与异常反证 |
+| P0-2：同MEM的多资源独立Editor | **自动化主要闭环，人工待签** | Page/Content/Symbol独立Scene，Content/Flow独立MOL；同MEM Undo/Redo/Dirty/焦点/关闭/保存重开；[Studio 31/31](https://github.com/oudream/cx-visual-x3/actions/runs/39568829529)和[最新33/33](https://github.com/oudream/cx-visual-x3/actions/runs/39576219329) | 浮动/停靠/自动隐藏、真实鼠键、屏幕切换/跨DPI、复杂样式/视觉选区联动未有人工E级实证 |
+| P0-3：MPM Schema与真实资源编辑 | **部分完成，不能签全量** | AI/CV/Symbol/Page内Content属性Schema投影、旧Revision拒绝、Undo/重开已有STA；Content动态“绑定变量”刚修复并由第33项证明 | 第二真实专业Provider的Schema/复杂类型/权限与值来源、MPM/MHS Draft/Saved/Effective的操作体验以及统一Command Descriptor需进一步实现/验证；不以初版属性行等于完整通用配置编辑器 |
+| P0-4：X-Ray主/AI/CV来源回链 | **工程CPU仿真主链通过，现场未验** | 实际MOC Build/SourceMap→MRK执行和失败→Trace→源Content/Block与父/HMI定位→修改重构建，旧ProjectId/Revision拒绝；[历史25/25](https://github.com/oudream/cx-visual-x3/actions/runs/39565607220)与[最新33/33](https://github.com/oudream/cx-visual-x3/actions/runs/39576219329)均含有关回归 | 多Provider版本/发布包交接、真实工业运行宿主、PLC/机台授权/联锁、故障现场及长稳性能不可由CPU软件仿真签收 |
+| Studio P0：Editor/Command/Document统一 | **基础命令自动化通过；统一扩展机制未完成** | 资源Tab九Shape/路径/几何/多选排列、图层、Flow Step/Join/布局、快捷键、Inspector事务与失效拒绝；[最新33/33](https://github.com/oudream/cx-visual-x3/actions/runs/39576219329) | 仍见字符串驱动的Ribbon与旧固定编辑器混合，专业命令可发现、统一`CommandId/Descriptor`、所有右键/Flow Port/运行调试命令没有统一闭环。该差距保留S2 Owner，严禁将其记作“P0全部完成” |
+
+### 16.2 本次发现并修复的证据遗漏
+
+- 原`StudioShell.cs`的动态“绑定变量”在Content/Symbol Tab未启用活动资源路由，被`EnsureActiveStudioPageForRibbon`旧Page Guard拒绝。现复用原`StudioViewModel.BindVisualVariable`/MPM Owner，并在调用前校验活动`SceneView`的真实图元ID；不建第二绑定仓库。
+- 原独立Flow Tab“校验编排”按钮同样使用旧Guard；现通过`MOCBuildService.Build(snapshot,活动ContentId,_simulation)`进行非破坏性构建校验，诊断附ProjectId、Revision、ContentId和原Block/Link身份，杜绝把旧主Page当当前资源。
+- 修复提交：[a78a89f1](https://github.com/oudream/cx-visual-x3/commit/a78a89f1a28b1ea046bbab92ca5d96a02c71ebe1)；[Studio Windows #39576219329](https://github.com/oudream/cx-visual-x3/actions/runs/39576219329) **33/33 WPF STA成功**，[Engineering #39576219487](https://github.com/oudream/cx-visual-x3/actions/runs/39576219487)、[配置公共底座 #39576219204](https://github.com/oudream/cx-visual-x3/actions/runs/39576219204)同SHA **success**。Config L1应按最终工作流结果单独查验，不推定。
+- CI门禁已在[67d3c75b](https://github.com/oudream/cx-visual-x3/commit/67d3c75b42328dba67be8f47e8fce13f33d54eca)扩大监听Core、Visual、Orchestration、Data、Runtime、Lifecycle、Foundation、Professional变更；但路径触发只能证明该工作流**运行时覆盖源码**，不是人工GUI或实机证据。
+
+### 16.3 严格退出条件与后续顺序
+
+**当前可以在工程日志中关闭**：原有明确测试范围的P0-1影响推导API、P0-2多编辑器基础事务、P0-4工程CPU仿真来源回链的已通过子项；关闭时必须附源码SHA/同SHA CI/测试说明。
+
+**当前不能关闭**：工程呈现化P0-3完整专业Schema/通用命令、Studio跨编辑器全命令及人工E级、所有实机F级项目。不能改叫S2就视为原P0自动完成：需要明确迁移后的具体Owner、同等验收用例和追踪编号，保留未验状态。
+
+最小继续工作：
+1. 复核现有MPM/MHS与专业Resource Descriptor接入点，选Vision与另一不同专业跑通Schema编辑、保存重开、非法/越权反证；禁止重复Schema或项目。
+2. 用至少两种资源Editor验证Ribbon/属性/工具箱/快捷键/右键同一个活动`DocumentKey`与命令状态；修完旧Page Guard造成的全部可复现漏口（如Flow Port等）。
+3. 录制一份Windows桌面实际操作证据矩阵：真实鼠标拖动/多选/控制柄、浮动/停靠/自动隐藏、重启布局、100/150/200%DPI/双显示器、跨工程/已删除资源和关闭取消。无证据的格子保持“待验”。
+4. P0-4实体机台发布/授权/联锁归后续专业/Runtime安全Owner并设置硬门槛；**软件CPU仿真通过不可转成现场合格**。
+
+**本节最终判定：P0已实现的核心代码与自动测试相当扎实，但“整个P0真正签收完成”仍不成立；需要按上述未验项逐条补证，而不是再增加类似按钮数或盲目提升STA项数。**
