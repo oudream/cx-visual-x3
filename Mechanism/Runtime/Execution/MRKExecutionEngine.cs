@@ -1155,16 +1155,16 @@ namespace CxVisual.Mechanism.Runtime.Execution
             CancellationToken cancellation, Func<string, Task<object>> schedule,
             MRKExecutionDebugController control, StageLeaseBatch stages=null)
         {
-            // 每次实际调度绑定独立调用身份；静态DAG每Step只激活一次。
-            // 不改变Plan既有StepOutput的FrameKey，动态激活在R05扩展。
-            context=context.WithInvocation(new MRKInvocationContext(context.FlowId,
-                context.QualifiedStepId(step.Id),0,
-                context.Invocation==null?null:context.Invocation.InvocationId));
-            context.SetState(step.Id, MRKStepState.WaitingDependencies,
-                string.Join(",", step.Dependencies));
             bool dependencyFailed = false;
             try
             {
+                // 运行身份与WaitingDependencies状态本身也可能写Journal失败。
+                // 不能在Stage的生命周期finally之外执行它们，否则Stage席位可能泄露。
+                context=context.WithInvocation(new MRKInvocationContext(context.FlowId,
+                    context.QualifiedStepId(step.Id),0,
+                    context.Invocation==null?null:context.Invocation.InvocationId));
+                context.SetState(step.Id, MRKStepState.WaitingDependencies,
+                    string.Join(",", step.Dependencies));
                 List<Task<object>> dependencies = new List<Task<object>>();
                 foreach (string id in step.Dependencies) dependencies.Add(schedule(id));
                 try { await Task.WhenAll(dependencies).ConfigureAwait(false); }

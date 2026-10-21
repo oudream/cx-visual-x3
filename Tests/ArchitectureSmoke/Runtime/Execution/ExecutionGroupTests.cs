@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using CxVisual.Foundation.Infrastructure.Concurrency;
@@ -19,6 +20,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             R08_StageReleasesBeforeLaterFlowTail();
             R08_ParallelStageNodesShareOneGroupPermit();
             R08_StageInsideDynamicLoopMustBeRejectedEarly();
+            R08_StageJournalInitialTransitionFailureReleasesPermit();
         }
         private static void Check(bool condition, string msg)
         { if (!condition) throw new InvalidOperationException("执行组：" + msg); }
@@ -434,6 +436,46 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 catch(ArgumentException){rejected=true;}
                 Check(rejected && effects==0,
                     "R08动态迭代Stage引用尚未定义，必须在业务开始前拒绝");
+            }
+            finally{Await(engine.StopAsync(true));}
+        }
+
+
+        /// <summary>故障注入：节点初次SetState的Journal异常不能使共享Stage永远占用许可。</summary>
+        private sealed class R08OneShotStageJournal : IMRKExecutionJournal
+        {
+            private int _failed;
+            public void Append(MRKJournalRecord record)
+            {
+                if(record.Kind==MRKJournalKind.StepTransition &&
+                    record.StepId=="bad" &&
+                    Interlocked.CompareExchange(ref _failed,1,0)==0)
+                    throw new InvalidOperationException("injected.r08.stage.first_transition");
+            }
+            public IList<MRKJournalRecord> ReadAll()
+            { return new List<MRKJournalRecord>(); }
+        }
+
+        private static void R08_StageJournalInitialTransitionFailureReleasesPermit()
+        {
+            MRKExecutionPlan plan=new MRKExecutionPlan("stage-journal-fail",new[]{
+                new MRKExecutionStep("bad",new string[0],
+                    (ctx,ct)=>Task.FromResult((object)1),executionGroup:"stage"),
+                new MRKExecutionStep("good",new string[0],
+                    (ctx,ct)=>Task.FromResult((object)2),executionGroup:"stage")
+            });
+            MRKExecutionEngine engine=new MRKExecutionEngine(new FCRWorkerOptions(2,4),
+                groups:new[]{new MRKExecutionGroupDefinition("stage",1,0,
+                    MRKExecutionGroupScope.Stage)},
+                journal:new R08OneShotStageJournal());
+            try
+            {
+                MRKFlowResult failed=Await(engine.StartFlow(plan).Completion);
+                Check(failed.State==MRKFlowState.Failed && failed.Error!=null,
+                    "R08 Journal失败必须形成真实失败终态，不可吞掉原始异常");
+                Check(engine.GroupSnapshot()[0].Active==0 &&
+                    engine.GroupSnapshot()[0].Waiting==0,
+                    "R08初始运行状态日志异常导致Stage许可未释放");
             }
             finally{Await(engine.StopAsync(true));}
         }

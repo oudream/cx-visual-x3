@@ -524,3 +524,8 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 - 作用域仍由`MRKExecutionGroups`管理原有组容量，`MRKExecutionEngine.StageLeaseBatch`只是当前Flow内的引用计数/共享等待，不是第二个Worker或业务调度器。Step/WholeFlow默认语义及现有串行Key/资源取得顺序不变。
 - 动态循环内部的Stage需要真实Iteration级Stage身份，否则成员数量无法静态确定，**当前必须在正式StartFlow前拒绝**；不能静默退化为Step。MOL/MOC在编译Plan后使用相同组声明，未实现的Studio Stage参数UI不能冒充交付。
 - 执行反证：两节点同Stage后续尾部非合作等待时另一个Flow能完成阶段；两个并行Stage节点共享一组席位且都实际开始；Loop内Stage必须在任何业务副作用前拒绝。均需新提交固定SHA Windows CI确认，尚不等于R08整体长稳/生产安全封轮。
+
+### R08 Stage初始状态Journal失败的资源清算（2026-10-21）
+
+- `RunStepAsync`的Invocation身份和`WaitingDependencies`状态初始化改入既有try/catch/finally，确保即使首个StepTransition的Journal Append抛异常，Stage成员仍可进入计数结算的finally；不静默吞Journal异常。
+- ArchitectureSmoke的`R08_StageJournalInitialTransitionFailureReleasesPermit`在同Stage两并行节点中向一个节点的第一条StepTransition注入一次真实Journal失败，要求Flow最终Failed且全部Stage Active/Waiting为0，不得造成永久席位泄漏。测试将在本SHA的Windows Runtime/Engineering/Config门禁核验。
