@@ -196,6 +196,39 @@ namespace CxVisual.Studio
                     Assert(window.StudioEngineeringRevision==revision,
                         "独立Join自测误修改当前打开的Studio工程");
                 });
+                CheckStep("R05 定义与实例往返恢复及失效选择保护", () =>
+                {
+                    StudioViewModel vm=window.DataContext as StudioViewModel;
+                    Assert(vm!=null,"Studio缺少当前工程的统一ViewModel");
+                    MEMPage page=vm.ActivePage;
+                    Assert(page!=null,"当前工程缺少有效页面");
+                    MEMSymbol motor=vm.ProjectSession.AddSymbol("R05共享电机");
+                    MRIResourceReference instance=vm.ProjectSession.PlaceSymbol(
+                        page.RootContent,motor,"R05电机实例");
+                    vm.ActivePage=page;
+                    vm.Select(instance.Id);
+                    int version=vm.ProjectSession.Revision;
+                    Assert(!vm.BackCommand.CanExecute(null),"未导航时返回应禁用");
+                    vm.OpenDefinitionCommand.Execute(null);
+                    Assert(vm.CurrentStudioDefinition!=null&&
+                        vm.CurrentStudioDefinition.Id==motor.Id,"未进入真实共享定义");
+                    Assert(vm.SelectedId==null,"定义编辑仍然选中页面实例");
+                    Assert(window.StudioResourceBackButton.Command.CanExecute(null),
+                        "左侧资源导航缺少可执行的返回入口");
+                    window.StudioResourceBackButton.Command.Execute(null);
+                    Assert(vm.CurrentStudioDefinition!=null&&
+                        vm.CurrentStudioDefinition.Id==page.Id,"未回到原页面");
+                    Assert(vm.SelectedId==instance.Id,"未恢复原实例的稳定MEM身份");
+                    Assert(vm.ProjectSession.Revision==version,
+                        "进入/返回共享定义不应修改工程Revision");
+                    Assert(!vm.BackCommand.CanExecute(null),"已返回原页但导航栈仍未清空");
+                    vm.OpenDefinitionCommand.Execute(null);
+                    vm.ProjectSession.Remove(instance);
+                    vm.BackCommand.Execute(null);
+                    Assert(vm.CurrentStudioDefinition!=null&&
+                        vm.CurrentStudioDefinition.Id==page.Id,"实例删除后无法返回页面");
+                    Assert(vm.SelectedId==null,"返回时复活了已删除的实例选择");
+                });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;
             }

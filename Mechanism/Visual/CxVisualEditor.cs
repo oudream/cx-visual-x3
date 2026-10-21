@@ -12,7 +12,16 @@ namespace CxVisual.Mechanism.Visual
     {
         private readonly MEMEngineeringSession _session;
         private readonly IDisposable _watch;
-        private readonly Stack<Guid?> _contexts=new Stack<Guid?>();
+        // 导航仅记录稳定资源与选择身份，不复制工程对象及历史。
+        private sealed class NavigationFrame
+        {
+            internal readonly Guid? ResourceId;
+            internal readonly Guid? SelectedId;
+            internal NavigationFrame(Guid? resourceId,Guid? selectedId)
+            {ResourceId=resourceId;SelectedId=selectedId;}
+        }
+        private readonly Stack<NavigationFrame> _contexts=new Stack<NavigationFrame>();
+        public bool CanReturnToPrevious { get { Demand();return _contexts.Count>0; } }
         private Guid? _resource;
         private bool _disposed;
         private ReadOnlyCollection<CxSceneItem> _scene;
@@ -54,8 +63,36 @@ namespace CxVisual.Mechanism.Visual
         private void RaiseChanged(){if(_disposed)return;var handler=Changed;if(handler!=null)handler(this,EventArgs.Empty);}
         public void SetPage(Guid id){Demand();if(!(Document.Find(id) is MEMPage))throw new InvalidOperationException("Missing page");CurrentPageId=id;_resource=null;_contexts.Clear();SelectedId=null;RaiseChanged();}
         public void OpenDefinition(Guid id)
-        {Demand();var reference=Document.FindReference(id);if(reference!=null)id=reference.TargetId;if(Document.Project.FindResource(id,true)==null||Document.Find(id)==null)throw new InvalidOperationException("Missing engineering definition");_contexts.Push(CurrentResourceId);_resource=id;SelectedId=null;RaiseChanged();}
-        public bool ReturnToPrevious(){Demand();if(_contexts.Count==0)return false;_resource=_contexts.Pop();SelectedId=null;RaiseChanged();return true;}
+        {
+            Demand();
+            MRIResourceReference reference=Document.FindReference(id);
+            if(reference!=null)id=reference.TargetId;
+            if(Document.Project.FindResource(id,true)==null||Document.Find(id)==null)
+                throw new InvalidOperationException("Missing engineering definition");
+            _contexts.Push(new NavigationFrame(_resource,SelectedId));
+            _resource=id;
+            SelectedId=null;
+            RaiseChanged();
+        }
+        public bool ReturnToPrevious()
+        {
+            Demand();
+            if(_contexts.Count==0)return false;
+            NavigationFrame frame=_contexts.Peek();
+            // 上一个资源已被删除时不改变当前文档及导航栈。
+            Guid previous=frame.ResourceId??CurrentPageId??Guid.Empty;
+            if(previous==Guid.Empty||Document.Find(previous)==null)
+                throw new InvalidOperationException("Previous engineering resource no longer exists");
+            _contexts.Pop();
+            _resource=frame.ResourceId;
+            // 被删除的实例不得恢复为悬空选中对象。
+            Guid? selected=frame.SelectedId;
+            SelectedId=selected.HasValue&&
+                (Document.Find(selected.Value)!=null||
+                 Document.FindReference(selected.Value)!=null)?selected:null;
+            RaiseChanged();
+            return true;
+        }
         public MEMEngineeringSession Document { get { return _session; } }
         public bool CanUndo { get { return Document.CanUndo; } }
         public bool CanRedo { get { return Document.CanRedo; } }

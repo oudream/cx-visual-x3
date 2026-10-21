@@ -188,8 +188,9 @@ namespace CxVisual.Studio
             AddContentCommand=new RelayCommand(()=>RunEngineering(()=>{var content=ProjectSession.AddContent(ProjectSession.Project,"内容 "+(ProjectSession.Project.Contents.Count+1));_resourceId=content.Id;}));
             AddSymbolCommand=new RelayCommand(()=>RunEngineering(CreateSymbol));
             PlaceResourceCommand=new RelayCommand(()=>RunEngineering(PlaceSelectedResource));
-            OpenDefinitionCommand=new RelayCommand(()=>RunEngineering(()=>{Guid? id=_selected??_resourceId;if(id.HasValue){_selected=null;_editor.OpenDefinition(id.Value);}}));
-            BackCommand=new RelayCommand(()=>RunEngineering(()=>{_selected=null;_editor.ReturnToPrevious();}));
+            OpenDefinitionCommand=new RelayCommand(()=>RunEngineering(OpenSelectedDefinition));
+            BackCommand=new RelayCommand(()=>RunEngineering(ReturnToPreviousDefinition),
+                ()=>_editor!=null&&_editor.CanReturnToPrevious);
             DeleteCommand=new RelayCommand(()=>{if(_selected.HasValue)Execute(()=>_editor.Remove(_selected.Value));});
             ApplyPropertyCommand=new RelayCommand((object row)=>RunEngineering(()=>ApplyProperty((StudioPropertyItem)row)));
             RestorePropertyDefaultCommand=new RelayCommand((object row)=>RunEngineering(()=>RestorePropertyDefault((StudioPropertyItem)row)));
@@ -204,6 +205,21 @@ namespace CxVisual.Studio
             RenameCommand=new RelayCommand(()=>RunEngineering(()=>{var reference=_selected.HasValue?ProjectSession.FindReference(_selected.Value):null;if(reference!=null)ProjectSession.Rename(reference,RenameText);else ProjectSession.Rename(SelectedDefinition(),RenameText);}));
         }
         private bool CanReplace(){if(_editor==null||!_editor.Document.IsDirty)return true;if(ConfirmReplace!=null&&ConfirmReplace(_editor.Document))return true;Status="当前工程尚未保存，已保留。";return false;}
+        private void OpenSelectedDefinition()
+        {
+            Guid? target=_selected??_resourceId;
+            if(!target.HasValue)throw new InvalidOperationException("请先选择实例或共享定义资源");
+            _editor.OpenDefinition(target.Value);
+            _selected=null;
+            _selection=new Guid[0];
+        }
+        private void ReturnToPreviousDefinition()
+        {
+            if(!_editor.ReturnToPrevious())
+                throw new InvalidOperationException("没有可以返回的工程资源位置");
+            _selected=_editor.SelectedId;
+            _selection=_selected.HasValue?new[]{_selected.Value}:new Guid[0];
+        }
         private void AttachSession(MEMEngineeringSession session)
         {
             if(_editor!=null){_editor.Changed-=EditorChanged;_editor.Dispose();_editor.Document.Close(true);}
