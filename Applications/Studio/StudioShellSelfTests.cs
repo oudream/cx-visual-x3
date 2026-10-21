@@ -2103,6 +2103,74 @@ namespace CxVisual.Studio
                     }
                     finally {vm.BeforeProjectReplacement=saved;}
                 });
+                CheckStep("S2/P1 页面嵌入多层Content Scope发现与删除Undo稳定身份", () =>
+                {
+                    StudioViewModel embeddedVm=window.DataContext as StudioViewModel;
+                    MEMEngineeringSession embeddedSession=embeddedVm.ProjectSession;
+                    window.TryCloseStudioDocument("doc.config",true);
+                    MEMPage embeddedScopePage=embeddedSession.AddPage("P1嵌入式配置页面");
+                    MEMContent embeddedScopeChild=embeddedSession.AddContent(
+                        embeddedScopePage.RootContent,"P1相机嵌入配置");
+                    Guid embeddedStableId=embeddedScopeChild.Id;
+                    int embeddedScopeRevision=embeddedSession.Revision;
+                    window.OpenStudioDocument("doc.config");
+                    LayoutDocument embeddedScopeDocument=window.StudioDock.Layout.Descendents()
+                        .OfType<LayoutDocument>().Single(x=>x.ContentId=="doc.config");
+                    Func<System.Windows.DependencyObject,ComboBox> embeddedFindBox=null;
+                    embeddedFindBox=node=>{
+                        ComboBox box=node as ComboBox;
+                        if(box!=null&&box.Name=="StudioConfigScopeSelector")return box;
+                        return System.Windows.LogicalTreeHelper.GetChildren(node)
+                            .OfType<System.Windows.DependencyObject>()
+                            .Select(child=>embeddedFindBox(child)).FirstOrDefault(x=>x!=null);
+                    };
+                    ComboBox embeddedSelector=embeddedFindBox(
+                        (System.Windows.DependencyObject)embeddedScopeDocument.Content);
+                    Assert(embeddedSelector!=null,"多层资源配置没有真实Scope选择器");
+                    object embeddedChoice=embeddedSelector.Items.Cast<object>().Single(x=>
+                        x.ToString().Contains("P1嵌入式配置页面/RootContent/P1相机嵌入配置"));
+                    Assert(embeddedSelector.Items.Cast<object>().Any(x=>
+                        x.ToString().Contains("P1嵌入式配置页面/RootContent (core.content)")),
+                        "Page根内嵌Content未被识别为可配置的MEM资源");
+                    embeddedSelector.SelectedItem=embeddedChoice;
+                    Func<System.Windows.DependencyObject,Type,bool> embeddedHasEditor=null;
+                    embeddedHasEditor=(node,type)=>type.IsInstanceOfType(node)||
+                        System.Windows.LogicalTreeHelper.GetChildren(node)
+                            .OfType<System.Windows.DependencyObject>()
+                            .Any(child=>embeddedHasEditor(child,type));
+                    Assert(embeddedHasEditor(
+                        (System.Windows.DependencyObject)embeddedScopeDocument.Content,
+                        typeof(MPWConfigEditorControl<CxAutomationDeviceOptions>))&&
+                        !embeddedHasEditor(
+                            (System.Windows.DependencyObject)embeddedScopeDocument.Content,
+                            typeof(MPWConfigEditorControl<CxVisionInspectionOptions>)),
+                        "多层资源Scope没有根据真实TypeId注册匹配Automation专业");
+                    var embeddedService=new MHSConfigService(System.IO.Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                        "CxVisual","Configs","V24","Projects"));
+                    Assert(embeddedService.ForScope("resource",embeddedStableId.ToString("N"))
+                        .Open<CxAutomationDeviceOptions>().Identity.ScopeId==
+                        embeddedStableId.ToString("N")&&
+                        embeddedSession.Revision==embeddedScopeRevision,
+                        "内嵌资源配置Scope没有使用稳定Id或错误写了MEM Revision");
+                    // Undo刚新增的嵌套资源：旧配置编辑器必须立即失效，禁止悬空提交。
+                    embeddedSession.Undo().RequireValue();
+                    Assert(embeddedSession.Find(embeddedStableId)==null&&
+                        !window.GetStudioContentIds().Contains("doc.config"),
+                        "撤销删除内嵌资源后旧MHS编辑器仍然存活");
+                    embeddedSession.Redo().RequireValue();
+                    Assert(embeddedSession.Find(embeddedStableId)!=null,
+                        "Redo没有恢复MEM内嵌资源稳定身份");
+                    window.OpenStudioDocument("doc.config");
+                    embeddedScopeDocument=window.StudioDock.Layout.Descendents()
+                        .OfType<LayoutDocument>().Single(x=>x.ContentId=="doc.config");
+                    embeddedSelector=embeddedFindBox(
+                        (System.Windows.DependencyObject)embeddedScopeDocument.Content);
+                    Assert(embeddedSelector.Items.Cast<object>().Any(x=>x.ToString()
+                        .Contains("P1嵌入式配置页面/RootContent/P1相机嵌入配置")),
+                        "嵌入Content恢复后仍不能从唯一MEM真树重新发现");
+                    window.TryCloseStudioDocument("doc.config",true);
+                });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;
             }
