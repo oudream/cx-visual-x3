@@ -293,7 +293,7 @@ namespace CxVisual.TestCenter.UI
             Action rerunFailed = null, Action copyTestId = null,
             Action<string> showMode = null)
         {
-            ToolBar ribbon = new ToolBar { Background = Brushes.AliceBlue };
+            ToolBar ribbon = new ToolBar { Background = Brushes.AliceBlue, Band = 0, BandIndex = 0 };
             RunAll = Create("▶ 运行全部", runAll);
             RunSelected = Create("▶ 运行选中", runSelected);
             System.Windows.Automation.AutomationProperties.SetAutomationId(RunSelected, "TCT.RunSelected");
@@ -344,7 +344,7 @@ namespace CxVisual.TestCenter.UI
             _showSource = showSource ?? throw new ArgumentNullException("showSource");
             _showHistory = showHistory ?? throw new ArgumentNullException("showHistory");
             _showDiff = showDiff ?? throw new ArgumentNullException("showDiff");
-            _contextActions = new ToolBar { Background = Brushes.AliceBlue };
+            _contextActions = new ToolBar { Background = Brushes.AliceBlue, Band = 1, BandIndex = 0 };
             RebuildContextCommands();
             return _contextActions;
         }
