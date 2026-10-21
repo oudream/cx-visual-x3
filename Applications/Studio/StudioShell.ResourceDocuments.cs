@@ -508,7 +508,10 @@ namespace CxVisual.Studio
                 {
                     Guid[] selected=Scene.SelectedVisualIds.ToArray();
                     Scene.SetScene(Editor.Scene,Editor.SelectedId);
-                    if(selected.Length>1)Scene.SetSelectedVisualIds(selected);
+                    // MEM重投影不丢活动资源自己的单选/多选；显式Editor导航另行优先。
+                    // SetSelectedVisualIds自动排除不再可见/已删除的ID。
+                    if(selected.Length>0&&!Editor.SelectedId.HasValue)
+                        Scene.SetSelectedVisualIds(selected);
                     Status.Text=resource.Name+" | MEM Revision "+Session.Revision+
                         " | 独立视口与选择，统一Undo/Redo";
                 }
