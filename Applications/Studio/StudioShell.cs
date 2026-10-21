@@ -248,14 +248,42 @@ namespace CxVisual.Studio
 
         // P1 注册表只保存Editor类型与可信工厂，不持有工程数据或配置草稿。
         // 实际Schema/保存/审计/授权机制均在MHS和MPW中，保持Owner唯一。
+        private sealed class StudioConfigurationScopeChoice
+        {
+            internal readonly string Kind,Id,Label,ResourceTypeId;
+            internal StudioConfigurationScopeChoice(string kind,string id,string label,string resourceTypeId)
+            {Kind=kind;Id=id;Label=label;ResourceTypeId=resourceTypeId;}
+            public override string ToString(){return Label;}
+        }
+        private readonly List<StudioConfigurationScopeChoice> _studioExtraScopes =
+            new List<StudioConfigurationScopeChoice>();
+        private string _studioConfigurationScopeKind="project";
+        private string _studioConfigurationScopeId;
+        private bool _studioScopeSwitching;
+        // 仅可信宿主可注册真实机台/产品等外部身份；Studio不允许用户伪造Scope字符串。
+        public void RegisterStudioConfigurationScope(string kind,string id,string label)
+        {
+            if(string.IsNullOrWhiteSpace(kind)||kind=="project"||kind=="resource"||
+               kind.Any(c=>!char.IsLetterOrDigit(c)&&c!='-')||
+               string.IsNullOrWhiteSpace(id)||id.Length>128||
+               id.Any(char.IsControl)||string.IsNullOrWhiteSpace(label))
+                throw new ArgumentException("不合法的专业配置作用域身份");
+            if(FindStudioContent("doc.config") is LayoutDocument)
+                throw new InvalidOperationException("请先关闭配置页，避免丢失未保存草稿");
+            if(_studioExtraScopes.Any(x=>x.Kind==kind&&x.Id==id))
+                throw new InvalidOperationException("配置作用域重复："+kind+"/"+id);
+            _studioExtraScopes.Add(new StudioConfigurationScopeChoice(
+                kind,id,label+" · "+kind+"/"+id,null));
+        }
         private sealed class StudioConfigurationContribution
         {
             internal readonly string SectionId;
             internal readonly string Title;
             internal readonly Func<MVBConfigScopeResolver,FrameworkElement> Create;
+            internal readonly string[] ResourceTypeIds;
             internal StudioConfigurationContribution(string id,string title,
-                Func<MVBConfigScopeResolver,FrameworkElement> create)
-            {SectionId=id;Title=title;Create=create;}
+                Func<MVBConfigScopeResolver,FrameworkElement> create,string[] resourceTypeIds)
+            {SectionId=id;Title=title;Create=create;ResourceTypeIds=resourceTypeIds;}
         }
         private readonly Dictionary<string,StudioConfigurationContribution> _studioConfigurations =
             new Dictionary<string,StudioConfigurationContribution>(StringComparer.Ordinal);
@@ -276,6 +304,11 @@ namespace CxVisual.Studio
         /// 为保护草稿，不允许在配置文档已打开时热替换。
         /// </summary>
         public void RegisterStudioConfiguration<T>(string title) where T : new()
+        {RegisterStudioConfiguration<T>(title,new string[0]);}
+        // resourceTypeIds为真实MEM TypeId；空数组表示通用Project/可信外部Scope，
+        // 禁止不声明资源类型就把专业配置自动关联到任意工程对象。
+        public void RegisterStudioConfiguration<T>(string title,params string[] resourceTypeIds)
+            where T : new()
         {
             if(string.IsNullOrWhiteSpace(title))
                 throw new ArgumentException("必须提供专业配置名称","title");
@@ -287,10 +320,44 @@ namespace CxVisual.Studio
             string id=FCMConfigSchemaBuilder.Describe<T>().SectionId;
             if(_studioConfigurations.ContainsKey(id))
                 throw new InvalidOperationException("专业配置SectionId重复："+id);
+            if(resourceTypeIds==null)throw new ArgumentNullException("resourceTypeIds");
+            if(resourceTypeIds.Any(x=>string.IsNullOrWhiteSpace(x)||x.Length>128))
+                throw new ArgumentException("资源类型标识无效","resourceTypeIds");
             _studioConfigurations.Add(id,new StudioConfigurationContribution(id,title,
-                scope=>new MPWConfigEditorControl<T>(scope.Open<T>())));
+                scope=>new MPWConfigEditorControl<T>(scope.Open<T>()),
+                resourceTypeIds.Distinct(StringComparer.Ordinal).ToArray()));
         }
 
+        private StudioConfigurationScopeChoice[] StudioConfigurationScopeChoices()
+        {
+            MEMEngineeringSession session=_viewModel.ProjectSession;
+            if(session==null||session.Project==null)return new StudioConfigurationScopeChoice[0];
+            List<StudioConfigurationScopeChoice> choices=
+                new List<StudioConfigurationScopeChoice>();
+            string projectId=session.Project.Id.ToString("N");
+            choices.Add(new StudioConfigurationScopeChoice("project",projectId,
+                "工程配置 · "+session.Project.Name+" ("+projectId.Substring(0,8)+")",null));
+            // 只从真实MEM资源获取身份；不凭界面名称创造机台、产品或虚构资源。
+            foreach(IMEMResource resource in session.Project.Resources
+                .Where(x=>x is MEMNode)
+                .OrderBy(x=>x.Name,StringComparer.Ordinal))
+            {
+                if(!_studioConfigurations.Values.Any(c=>
+                    c.ResourceTypeIds.Contains(resource.TypeId,StringComparer.Ordinal)))continue;
+                choices.Add(new StudioConfigurationScopeChoice("resource",
+                    resource.Id.ToString("N"),"资源配置 · "+resource.Name+
+                    " ("+resource.TypeId+")",resource.TypeId));
+            }
+            choices.AddRange(_studioExtraScopes);
+            return choices.ToArray();
+        }
+        private static bool ConfigurationMatchesScope(
+            StudioConfigurationContribution contribution,StudioConfigurationScopeChoice scope)
+        {
+            if(scope.Kind!="resource")return true;
+            return contribution.ResourceTypeIds.Contains(scope.ResourceTypeId,
+                StringComparer.Ordinal);
+        }
         private FrameworkElement CreateConfigurationDocument()
         {
             EnsureStudioConfigurationDefaults();
@@ -298,44 +365,92 @@ namespace CxVisual.Studio
             if(session==null||session.Project==null)
                 throw new InvalidOperationException("必须先打开有效工程");
             Guid projectId=session.Project.Id;
+            StudioConfigurationScopeChoice[] choices=StudioConfigurationScopeChoices();
+            if(choices.Length==0)throw new InvalidOperationException("没有有效配置Scope");
+            StudioConfigurationScopeChoice selected=choices.FirstOrDefault(x=>
+                x.Kind==_studioConfigurationScopeKind&&
+                x.Id==_studioConfigurationScopeId)??choices[0];
             string root=Path.Combine(GetDemoDataRoot(),"Configs","V24","Projects");
             MHSConfigService configs=new MHSConfigService(root);
-            MVBConfigScopeResolver scope=configs.ForProject(projectId.ToString("N"));
 
             DockPanel host=new DockPanel {
                 Background=(Brush)Application.Current.Resources["StudioBackgroundBrush"] };
-            StackPanel caption=new StackPanel { Margin=new Thickness(12,10,12,6) };
-            caption.Children.Add(new TextBlock {
+            StackPanel header=new StackPanel {Margin=new Thickness(12,10,12,6)};
+            header.Children.Add(new TextBlock {
                 Text="专业配置 · Schema驱动组合编辑",
                 FontSize=19,FontWeight=FontWeights.SemiBold });
-            caption.Children.Add(new TextBlock {
-                Text="工程 "+projectId.ToString("N").Substring(0,10)+
-                    " | MHS Project Scope；Saved、Effective、待生效、校验、历史由统一机制管理。",
+            header.Children.Add(new TextBlock {
+                Text="当前工程 "+projectId.ToString("N").Substring(0,10)+
+                    "；从MEM选择合法资源Scope，可信宿主可贡献机台或产品Scope。",
                 TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,4,0,0) });
-            DockPanel.SetDock(caption,Dock.Top);host.Children.Add(caption);
+            DockPanel.SetDock(header,Dock.Top);host.Children.Add(header);
+            ComboBox scopeBox=new ComboBox {
+                Name="StudioConfigScopeSelector",MinWidth=270,MaxWidth=760,
+                Margin=new Thickness(4,6,4,6),HorizontalAlignment=HorizontalAlignment.Left };
+            foreach(StudioConfigurationScopeChoice item in choices)scopeBox.Items.Add(item);
+            scopeBox.SelectedItem=selected;
+            header.Children.Add(scopeBox);
+            TextBlock origin=new TextBlock {
+                TextWrapping=TextWrapping.Wrap,Margin=new Thickness(4,3,4,7) };
+            header.Children.Add(origin);
             ScrollViewer scroller=new ScrollViewer {
                 VerticalScrollBarVisibility=ScrollBarVisibility.Auto,
                 HorizontalScrollBarVisibility=ScrollBarVisibility.Auto };
-            UniformGrid grid=new UniformGrid { Columns=2,Rows=0 };
-            foreach(StudioConfigurationContribution item in
-                _studioConfigurations.Values.OrderBy(c=>c.SectionId,StringComparer.Ordinal))
+            UniformGrid grid=new UniformGrid {Columns=2,Rows=0};
+            List<FrameworkElement> editors=new List<FrameworkElement>();
+            Action<StudioConfigurationScopeChoice> populate=choice=>
             {
-                // 专业可以贡献模型；画布组合、尺寸和统一样式均由Studio控制。
-                Border card=new Border {
-                    BorderThickness=new Thickness(1),
-                    BorderBrush=(Brush)Application.Current.Resources["StudioBorderBrush"],
-                    Margin=new Thickness(5),Padding=new Thickness(3) };
-                DockPanel panel=new DockPanel();
-                TextBlock title=new TextBlock {
-                    Text=item.Title+" · "+item.SectionId,
-                    FontWeight=FontWeights.SemiBold,
-                    Margin=new Thickness(8,6,8,6) };
-                DockPanel.SetDock(title,Dock.Top);panel.Children.Add(title);
-                panel.Children.Add(item.Create(scope));
-                card.Child=panel;
-                grid.Children.Add(card);
-            }
-            // 真正随中央可用宽度变为1/2/3列，不依赖特定专业的硬编码UI。
+                foreach(FrameworkElement editor in editors)
+                {
+                    IDisposable disposable=editor as IDisposable;
+                    if(disposable!=null)disposable.Dispose();
+                }
+                editors.Clear();grid.Children.Clear();
+                MVBConfigScopeResolver resolver=configs.ForScope(choice.Kind,choice.Id);
+                foreach(StudioConfigurationContribution item in _studioConfigurations.Values
+                    .Where(c=>ConfigurationMatchesScope(c,choice))
+                    .OrderBy(c=>c.SectionId,StringComparer.Ordinal))
+                {
+                    FrameworkElement editor=item.Create(resolver);
+                    editors.Add(editor);
+                    Border card=new Border {
+                        BorderThickness=new Thickness(1),
+                        BorderBrush=(Brush)Application.Current.Resources["StudioBorderBrush"],
+                        Margin=new Thickness(5),Padding=new Thickness(3) };
+                    DockPanel panel=new DockPanel();
+                    TextBlock title=new TextBlock {
+                        Text=item.Title+" · "+item.SectionId,
+                        FontWeight=FontWeights.SemiBold,
+                        Margin=new Thickness(8,6,8,6) };
+                    DockPanel.SetDock(title,Dock.Top);panel.Children.Add(title);
+                    panel.Children.Add(editor);card.Child=panel;grid.Children.Add(card);
+                }
+                origin.Text="配置来源："+choice.Label+
+                    "；ScopeKind="+choice.Kind+"；ScopeId="+choice.Id+
+                    "。Saved与Effective由MHS独立管理，选择Scope不触发设备生效。";
+                _studioConfigurationScopeKind=choice.Kind;
+                _studioConfigurationScopeId=choice.Id;
+            };
+            scopeBox.SelectionChanged+=(sender,args)=>
+            {
+                if(_studioScopeSwitching)return;
+                StudioConfigurationScopeChoice choice=scopeBox.SelectedItem as
+                    StudioConfigurationScopeChoice;
+                if(choice==null)return;
+                if(editors.OfType<IStudioConfigDraftGuard>().Any(e=>e.HasUnsavedDraft))
+                {
+                    _studioScopeSwitching=true;
+                    scopeBox.SelectedItem=choices.First(x=>
+                        x.Kind==_studioConfigurationScopeKind&&
+                        x.Id==_studioConfigurationScopeId);
+                    _studioScopeSwitching=false;
+                    _viewModel.ReportStudioShellWarning(
+                        "当前配置存在未保存草稿，请先保存、撤销或关闭配置编辑器。");
+                    return;
+                }
+                populate(choice);
+            };
+            populate(selected);
             host.SizeChanged+=(sender,args)=>
             {
                 int max=Math.Min(3,grid.Children.Count);
@@ -343,8 +458,7 @@ namespace CxVisual.Studio
                     args.NewSize.Width<1500?2:3;
                 grid.Columns=Math.Max(1,Math.Min(max,cols));
             };
-            scroller.Content=grid;
-            host.Children.Add(scroller);
+            scroller.Content=grid;host.Children.Add(scroller);
             _studioConfigurationProjectId=projectId;
             return host;
         }
