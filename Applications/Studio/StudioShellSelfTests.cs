@@ -977,6 +977,77 @@ namespace CxVisual.Studio
                         if(File.Exists(file+".cx-lock"))File.Delete(file+".cx-lock");
                     }
                 });
+                CheckStep("P0 Editor活动多选对齐分布与图层顺序统一事务", () =>
+                {
+                    StudioViewModel model=window.DataContext as StudioViewModel;
+                    MEMEngineeringSession session=model.ProjectSession;
+                    MEMContent content=session.AddContent(session.Project,"P0排列编辑Content");
+                    MEMPage unrelated=session.AddPage("P0排列隔离Page");
+                    string tab=window.OpenStudioResourceDocument(content.Id,false);
+                    Button rect=window.StudioRibbonActions.Children.OfType<Button>()
+                        .Single(x=>Convert.ToString(x.Content)=="矩形");
+                    for(int i=0;i<3;i++)
+                        rect.RaiseEvent(new System.Windows.RoutedEventArgs(Button.ClickEvent));
+                    MRCShapeElement[] originals=content.DescendantsAndSelf()
+                        .OfType<MRCShapeElement>().Where(x=>x.Shape.Kind==MRCShapeKind.Rect).ToArray();
+                    Assert(originals.Length==3&&originals.Select(x=>x.X).Distinct().Count()==3,
+                        "排列测试未创建三个真实独立图元");
+                    Guid[] selected=originals.Select(x=>x.Id).ToArray();
+                    double[] beforeX=originals.Select(x=>x.X).ToArray();
+                    SceneView scene=window.GetStudioResourceScene(content.Id);
+                    scene.SetSelectedVisualIds(selected);
+                    model.ActivePage=unrelated; // 活动Tab不变，旧检视目标不得被排列操作修改
+                    window.StudioDynamicMenus.Children.OfType<Button>()
+                        .Single(x=>Convert.ToString(x.Content)=="排列")
+                        .RaiseEvent(new System.Windows.RoutedEventArgs(Button.ClickEvent));
+                    Button align=window.StudioRibbonActions.Children.OfType<Button>()
+                        .Single(x=>Convert.ToString(x.Content)=="左对齐");
+                    int beforeRevision=session.Revision;
+                    align.RaiseEvent(new System.Windows.RoutedEventArgs(Button.ClickEvent));
+                    Assert(session.Revision==beforeRevision+1&&
+                        selected.Select(id=>(session.Find(id) as MRCShapeElement).X)
+                            .Distinct().Count()==1&&
+                        !unrelated.RootContent.DescendantsAndSelf().OfType<MRCShapeElement>().Any(),
+                        "排列Ribbon未针对活动资源多选一次提交或误写其他页面");
+                    session.Undo().RequireValue();
+                    Assert(selected.Select((id,i)=>
+                        Math.Abs((session.Find(id) as MRCShapeElement).X-beforeX[i])<1e-8)
+                            .All(x=>x),"排列不是单步可撤销MEM事务");
+                    session.Redo().RequireValue();
+                    Assert(selected.Select(id=>(session.Find(id) as MRCShapeElement).X)
+                        .Distinct().Count()==1,"Redo后未恢复对齐");
+                    // 单选时Align必须拒绝：与旧页面选择/内容Tab选区无关。
+                    scene.SetSelectedVisualIds(new[]{selected[0]});
+                    int unchanged=session.Revision;
+                    align.RaiseEvent(new System.Windows.RoutedEventArgs(Button.ClickEvent));
+                    Assert(session.Revision==unchanged,"不足两个元素竟创建排列事务");
+                    window.StudioDynamicMenus.Children.OfType<Button>()
+                        .Single(x=>Convert.ToString(x.Content)=="图层")
+                        .RaiseEvent(new System.Windows.RoutedEventArgs(Button.ClickEvent));
+                    Button front=window.StudioRibbonActions.Children.OfType<Button>()
+                        .Single(x=>Convert.ToString(x.Content)=="置于顶层");
+                    scene.SetSelectedVisualIds(new[]{selected[0]});
+                    int zRevision=session.Revision;
+                    front.RaiseEvent(new System.Windows.RoutedEventArgs(Button.ClickEvent));
+                    MRCShapeElement first=session.Find(selected[0]) as MRCShapeElement;
+                    Assert(session.Revision==zRevision+1&&
+                        first.Parent.Children.Last().Id==first.Id,
+                        "活动资源图层命令未通过原MEM重排");
+                    session.Undo().RequireValue();
+                    Assert((session.Find(selected[0]) as MRCShapeElement).Parent.Children.Last().Id!=
+                        selected[0],"撤销未恢复原Z顺序");
+                    session.Redo().RequireValue();
+                    Assert((session.Find(selected[0]) as MRCShapeElement).Parent.Children.Last().Id==
+                        selected[0],"重做未恢复前置顺序");
+                    window.OpenStudioResourceDocument(content.Id,true);
+                    int flowRevision=session.Revision;
+                    align.RaiseEvent(new System.Windows.RoutedEventArgs(Button.ClickEvent));
+                    front.RaiseEvent(new System.Windows.RoutedEventArgs(Button.ClickEvent));
+                    Assert(session.Revision==flowRevision,
+                        "流程Tab借由旧排列/图层按钮错误修改可视对象");
+                    window.OpenStudioResourceDocument(content.Id,false);
+                    Assert(window.ActiveStudioDocumentId==tab,"返回图元Tab丢失稳定资源身份");
+                });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;
             }

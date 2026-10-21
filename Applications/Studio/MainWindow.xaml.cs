@@ -225,6 +225,7 @@ namespace CxVisual.Studio
             try
             {
                 string mode=((Button)sender).Tag.ToString();
+                if(RouteStudioResourceVisualAlignment(mode))return;
                 MTCEditResult<bool> result=_viewModel.AlignVisualSelection(mode);
                 VisualInfo.Text=result.Success?"多选对齐/分布已提交（可撤销）":
                     "对齐被拒绝："+result.ErrorCode+" "+result.Message;
@@ -261,6 +262,7 @@ namespace CxVisual.Studio
         {
             try
             {
+                if(toFront&&RouteStudioResourceVisualZOrder(true))return;
                 MTCEditResult<bool> result=_viewModel.EditVisualLayer(VisualLayerInput.Text,toFront);
                 VisualInfo.Text=result.Success?"图层修改已提交":
                     result.ErrorCode+" "+result.Message;
@@ -273,6 +275,7 @@ namespace CxVisual.Studio
         {
             try
             {
+                if(RouteStudioResourceVisualZOrder(false))return;
                 MTCEditResult<bool> result=_viewModel.SetSelectedZOrder(false);
                 VisualInfo.Text=result.Success?"已置于同容器底层（可撤销）":
                     result.ErrorCode+" "+result.Message;

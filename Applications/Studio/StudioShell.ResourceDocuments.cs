@@ -318,6 +318,35 @@ namespace CxVisual.Studio
                     "插入失败："+result.ErrorCode+" "+result.Message;
                 return result.Success;
             }
+            // 使用真实活动Tab的多选结果，而不是旧固定页面ViewModel的_selection。
+            // 真正的几何坐标变换、可选择权限与事务全部归CxVisualEditor/MEM。
+            internal bool AlignVisuals(string mode)
+            {
+                if(_disposed||Editor==null||!_owner.IsStudioDocumentActive(Key)||
+                    !ReferenceEquals(Session,_owner._viewModel.ProjectSession)||
+                    Session.Find(ResourceId)==null)return false;
+                IReadOnlyList<Guid> selected=Scene.SelectedVisualIds;
+                MTCEditResult<bool> result=Editor.Align(selected,mode);
+                Status.Text=result.Success?"当前资源已原子对齐/分布："+mode:
+                    "对齐未执行："+result.ErrorCode+" "+result.Message;
+                return result.Success;
+            }
+            internal bool ChangeVisualZOrder(bool toFront)
+            {
+                if(_disposed||Editor==null||!_owner.IsStudioDocumentActive(Key)||
+                    !ReferenceEquals(Session,_owner._viewModel.ProjectSession)||
+                    Session.Find(ResourceId)==null)return false;
+                IReadOnlyList<Guid> selected=Scene.SelectedVisualIds;
+                if(selected.Count!=1)
+                {
+                    Status.Text="图层顺序需要当前资源恰好一个可编辑图元";
+                    return false;
+                }
+                MTCEditResult<bool> result=Editor.SetZOrder(selected[0],toFront);
+                Status.Text=result.Success?"当前资源已调整图层顺序":
+                    "图层顺序未修改："+result.ErrorCode+" "+result.Message;
+                return result.Success;
+            }
             internal void Select(Guid? id)
             {
                 if(_disposed||Editor==null||!_owner.IsStudioDocumentActive(Key))return;
@@ -555,6 +584,36 @@ namespace CxVisual.Studio
                     _viewModel.ActivePage=activePage;
             }
             context.InsertVisual(kind);
+            return true;
+        }
+        // 返回true表示已由资源Tab负责命令（包括非法选择/Flow的拒绝）。
+        // 普通固定doc.visual继续走原StudioViewModel命令，不创建第二套Command表。
+        private bool RouteStudioResourceVisualAlignment(string mode)
+        {
+            Guid id;string kind;
+            if(!TryParseResourceDocumentId(_activeStudioDocumentId,out id,out kind))return false;
+            ResourceDocumentContext context=ActiveStudioResourceContext();
+            if(context==null||!ResourceDocumentExists(_activeStudioDocumentId)||
+                !ReferenceEquals(context.Session,_viewModel.ProjectSession)||context.IsFlow)
+            {
+                _viewModel.ReportStudioShellWarning("当前不是可编辑图元资源，已拒绝对齐/分布。");
+                return true;
+            }
+            context.AlignVisuals(mode);
+            return true;
+        }
+        private bool RouteStudioResourceVisualZOrder(bool toFront)
+        {
+            Guid id;string kind;
+            if(!TryParseResourceDocumentId(_activeStudioDocumentId,out id,out kind))return false;
+            ResourceDocumentContext context=ActiveStudioResourceContext();
+            if(context==null||!ResourceDocumentExists(_activeStudioDocumentId)||
+                !ReferenceEquals(context.Session,_viewModel.ProjectSession)||context.IsFlow)
+            {
+                _viewModel.ReportStudioShellWarning("当前不是可编辑图元资源，已拒绝图层命令。");
+                return true;
+            }
+            context.ChangeVisualZOrder(toFront);
             return true;
         }
         public string OpenStudioPageDocument(Guid pageId)

@@ -407,14 +407,14 @@ namespace CxVisual.Studio
         }
 
         private void AddRibbonButton(string label, string tag, RoutedEventHandler handler,
-            bool visualInsert = false)
+            bool resourceVisualCommand = false)
         {
             Button button = new Button { Content = label, Tag = tag, Margin = new Thickness(2),
                 Padding = new Thickness(12, 8, 12, 8) };
             button.Click += (sender, args) =>
             {
-                // 仅绘图插入路由到资源Editor，其它旧版页面命令保留原Guard。
-                if (visualInsert && IsResourceDocumentId(_activeStudioDocumentId))
+                // 仅已接入的绘图/排列/图层能力路由到资源Editor，其它旧命令保持Guard。
+                if (resourceVisualCommand && IsResourceDocumentId(_activeStudioDocumentId))
                     handler(sender, args);
                 else if (EnsureActiveStudioPageForRibbon())
                     handler(sender, args);
@@ -455,14 +455,16 @@ namespace CxVisual.Studio
             }
             else if (group == "排列")
             {
-                AddRibbonButton("左对齐", "left", OnAlignVisuals);
-                AddRibbonButton("顶对齐", "top", OnAlignVisuals);
-                AddRibbonButton("水平居中", "centerX", OnAlignVisuals);
+                AddRibbonButton("左对齐", "left", OnAlignVisuals, true);
+                AddRibbonButton("顶对齐", "top", OnAlignVisuals, true);
+                AddRibbonButton("水平居中", "centerX", OnAlignVisuals, true);
+                AddRibbonButton("垂直居中", "centerY", OnAlignVisuals, true);
+                AddRibbonButton("水平分布", "distributeX", OnAlignVisuals, true);
             }
             else if (group == "图层")
             {
-                AddRibbonButton("置于顶层", null, OnBringVisualFront);
-                AddRibbonButton("置于底层", null, OnSendVisualBack);
+                AddRibbonButton("置于顶层", null, OnBringVisualFront, true);
+                AddRibbonButton("置于底层", null, OnSendVisualBack, true);
             }
             else if (group == "绑定") AddRibbonButton("绑定变量", null, OnApplyVisualBinding);
             else if (group == "节点")
