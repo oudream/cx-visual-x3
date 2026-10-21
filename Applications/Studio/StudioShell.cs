@@ -437,7 +437,7 @@ namespace CxVisual.Studio
                 StudioConfigurationScopeChoice choice=scopeBox.SelectedItem as
                     StudioConfigurationScopeChoice;
                 if(choice==null)return;
-                if(editors.OfType<IStudioConfigDraftGuard>().Any(e=>e.HasUnsavedDraft))
+                if(editors.OfType<IMPWConfigDraftGuard>().Any(e=>e.HasUnsavedDraft))
                 {
                     _studioScopeSwitching=true;
                     scopeBox.SelectedItem=choices.First(x=>
