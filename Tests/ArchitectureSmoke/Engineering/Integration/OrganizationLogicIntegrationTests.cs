@@ -63,6 +63,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         internal static void Run()
         {
             SaveLoadAndIdentity();
+            V1WaitDelayCancellationRoundtrip();
             V2WiringRoundtrip();
             V2TypedParameterConfiguration();
             G05aConditionalBranchesAndJoin();
@@ -120,6 +121,75 @@ namespace CxVisual.Tests.ArchitectureSmoke
             {
                 session.Close(true);
                 if (System.IO.File.Exists(path)) System.IO.File.Delete(path);
+            }
+        }
+
+        /// <summary>P0-1：V1定时等待写入同一Logic Aspect，MRK异步执行/取消，拒绝坏合同。</summary>
+        private static void V1WaitDelayCancellationRoundtrip()
+        {
+            bool rejected=false;
+            try{new MOLLogicDefinition(new MOLControlBlock(
+                Guid.NewGuid(),MOLControlKind.Wait));}
+            catch(InvalidOperationException ex){rejected=ex.Message=="logic.wait_missing";}
+            Check(rejected,"V1 Wait without a bounded declaration was accepted");
+            rejected=false;
+            try{MOLControlBlock.Delay(600001);}
+            catch(ArgumentOutOfRangeException){rejected=true;}
+            Check(rejected,"V1 Wait accepted an unbounded delay");
+
+            var session=MEMEngineering.Create("P0-1 可取消等待");
+            var page=session.AddPage("Inspect");
+            string path=System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                "moc-wait-"+Guid.NewGuid().ToString("N")+".cxproj");
+            var wait=MOLControlBlock.Delay(20);
+            var action=MOLControlBlock.Action("after.wait");
+            MOLLogicCodec.Set(session,page.RootContent,new MOLLogicDefinition(
+                MOLControlBlock.Sequence(wait,action)));
+            var resolver=new TestResolver().Register("after.wait",(ctx,ct)=>
+                Task.FromResult((object)true));
+            try
+            {
+                session.SaveAs(path);
+                var opened=MEMEngineering.Open(path);
+                try
+                {
+                    var definition=MOLLogicCodec.Get(opened.GetSnapshot().Find(page.RootContent.Id));
+                    Check(definition.Root.Children[0].Wait.DurationMilliseconds==20&&
+                        definition.Root.Children[0].Id==wait.Id,
+                        "V1 Wait schema1/BlockId lost after real disk roundtrip");
+                    var plan=new MOCEngineeringCompiler().Compile(opened.GetSnapshot(),
+                        page.RootContent.Id,resolver);
+                    MOCTraceView trace;
+                    MRKFlowResult done=Execute(plan,null,out trace);
+                    Check(done.State==MRKFlowState.Completed&&
+                        done.StepStates[plan.SourceMap.Find(wait.Id).Single().StepId]==MRKStepState.Completed&&
+                        trace.Events.Any(e=>e.Origin.BlockId==wait.Id),
+                        "V1 Wait did not execute in the existing MRK plan/trace");
+
+                    MOLLogicCodec.Set(opened,opened.Project.Pages[0].RootContent,
+                        new MOLLogicDefinition(MOLControlBlock.Sequence(
+                            MOLControlBlock.Delay(600000),action)));
+                    var slow=new MOCEngineeringCompiler().Compile(opened.GetSnapshot(),
+                        page.RootContent.Id,resolver);
+                    var runtime=new MRKExecutionEngine(new FCRWorkerOptions(2,8));
+                    try
+                    {
+                        MRKFlowHandle handle=runtime.StartFlow(slow.Plan);
+                        handle.RequestCancel();
+                        Check(handle.Completion.Wait(TimeSpan.FromSeconds(5)),
+                            "V1 Wait did not honor MRK cancellation promptly");
+                        var stopped=handle.Completion.GetAwaiter().GetResult();
+                        Check(stopped.State==MRKFlowState.Cancelled,
+                            "V1 Wait cancellation produced a successful flow");
+                    }
+                    finally{runtime.StopAsync(true).GetAwaiter().GetResult();}
+                }
+                finally{opened.Close(true);}
+            }
+            finally
+            {
+                session.Close(true);
+                if(System.IO.File.Exists(path))System.IO.File.Delete(path);
             }
         }
 

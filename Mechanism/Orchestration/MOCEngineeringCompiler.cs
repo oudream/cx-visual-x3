@@ -184,6 +184,15 @@ namespace CxVisual.Mechanism.Orchestration
                 new MRKExecutionOutput(type, true)));
             return id;
         }
+        /// <summary>复用MRK能力编译，等待不占用业务线程且遵从Flow取消。</summary>
+        internal string RegisterAsync(string id,
+            Func<MRKExecutionContext,CancellationToken,Task<object>> run,Type type)
+        {
+            if(_internal.ContainsKey(id))throw new InvalidOperationException("moc.internal_duplicate");
+            _internal.Add(id,new MRKResolvedCapability(run,
+                new MRKExecutionOutput(type,true)));
+            return id;
+        }
         public bool TryResolve(string capabilityId, out MRKResolvedCapability capability)
         {
             if (capabilityId != null && capabilityId.StartsWith("moc.internal.", StringComparison.Ordinal))
@@ -1549,6 +1558,18 @@ namespace CxVisual.Mechanism.Orchestration
                         }
                         return new[] {Add(block, owner, calls, scope == null || scope.Index < 0 ? (int?)null : scope.Index,
                             "Action", block.CapabilityId, dependencies, inputs: inputs)};
+                    }
+                    case MOLControlKind.Wait:
+                    {
+                        if(block.Wait==null)throw new InvalidOperationException("moc.wait_missing");
+                        int milliseconds=block.Wait.DurationMilliseconds;
+                        string capability="moc.internal.wait."+NewId(block);
+                        Resolver.RegisterAsync(capability,async (context,token)=>{
+                            await Task.Delay(milliseconds,token).ConfigureAwait(false);
+                            token.ThrowIfCancellationRequested();
+                            return (object)true;
+                        },typeof(bool));
+                        return new[]{Add(block,owner,calls,null,"Wait",capability,before)};
                     }
                     case MOLControlKind.Sequence:
                     {

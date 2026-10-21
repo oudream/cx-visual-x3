@@ -73,17 +73,29 @@ namespace CxVisual.Mechanism.Core
         public string CollectionInput { get; private set; }
     }
 
+    /// <summary>工程逻辑中的可取消定时等待声明；实际计时与取消由MRK执行。</summary>
+    public sealed class MOLWaitDefinition
+    {
+        public MOLWaitDefinition(int durationMilliseconds)
+        {
+            if(durationMilliseconds<0||durationMilliseconds>600000)
+                throw new ArgumentOutOfRangeException("durationMilliseconds");
+            DurationMilliseconds=durationMilliseconds;
+        }
+        public int DurationMilliseconds{get;private set;}
+    }
+
     public sealed class MOLControlBlock
     {
         public MOLControlBlock(Guid id, MOLControlKind kind, string capabilityId = null,
             IEnumerable<MOLControlBlock> children = null, IEnumerable<MOLBranchCase> cases = null,
             MOLLoopDefinition loop = null, MOLExpression condition = null, string targetFlow = null,
-            MOLExitKind exitKind = MOLExitKind.Return)
+            MOLExitKind exitKind = MOLExitKind.Return, MOLWaitDefinition wait = null)
         {
             if (id == Guid.Empty || !Enum.IsDefined(typeof(MOLControlKind), kind))
                 throw new ArgumentException("Invalid logical block identity");
             Id = id; Kind = kind; CapabilityId = capabilityId ?? ""; Condition = condition;
-            TargetFlow = targetFlow ?? ""; ExitKind = exitKind; Loop = loop;
+            TargetFlow = targetFlow ?? ""; ExitKind = exitKind; Loop = loop; Wait = wait;
             Children = Array.AsReadOnly((children ?? new MOLControlBlock[0]).ToArray());
             Cases = Array.AsReadOnly((cases ?? new MOLBranchCase[0]).ToArray());
         }
@@ -93,9 +105,13 @@ namespace CxVisual.Mechanism.Core
         public string TargetFlow { get; private set; }
         public MOLExpression Condition { get; private set; }
         public MOLLoopDefinition Loop { get; private set; }
+        public MOLWaitDefinition Wait { get; private set; }
         public MOLExitKind ExitKind { get; private set; }
         public IReadOnlyList<MOLControlBlock> Children { get; private set; }
         public IReadOnlyList<MOLBranchCase> Cases { get; private set; }
+        public static MOLControlBlock Delay(int durationMilliseconds)
+        {return new MOLControlBlock(Guid.NewGuid(),MOLControlKind.Wait,
+            wait:new MOLWaitDefinition(durationMilliseconds));}
         public static MOLControlBlock Action(string capability)
         { return new MOLControlBlock(Guid.NewGuid(), MOLControlKind.Action, capability); }
         public static MOLControlBlock Sequence(params MOLControlBlock[] children)
@@ -145,6 +161,8 @@ namespace CxVisual.Mechanism.Core
                     throw new InvalidOperationException("logic.unexpected_children");
                 if (block.Kind != MOLControlKind.Branch && block.Cases.Count != 0)
                     throw new InvalidOperationException("logic.unexpected_cases");
+                if(block.Kind!=MOLControlKind.Wait&&block.Wait!=null)
+                    throw new InvalidOperationException("logic.unexpected_wait");
                 if (block.Kind != MOLControlKind.Loop && block.Kind != MOLControlKind.ForEach &&
                     block.Loop != null)
                     throw new InvalidOperationException("logic.unexpected_loop");
@@ -177,6 +195,9 @@ namespace CxVisual.Mechanism.Core
                         if (block.Kind == MOLControlKind.ForEach && string.IsNullOrWhiteSpace(block.Loop.CollectionInput))
                             throw new InvalidOperationException("logic.collection_missing");
                         walk(block.Loop.Body, depth + 1);
+                        break;
+                    case MOLControlKind.Wait:
+                        if(block.Wait==null)throw new InvalidOperationException("logic.wait_missing");
                         break;
                     case MOLControlKind.Invoke:
                         if (string.IsNullOrWhiteSpace(block.TargetFlow)) throw new InvalidOperationException("logic.invoke_missing");
@@ -258,6 +279,8 @@ namespace CxVisual.Mechanism.Core
                 new XAttribute("kind", b.Kind), new XAttribute("cap", b.CapabilityId),
                 new XAttribute("target", b.TargetFlow), new XAttribute("exit", b.ExitKind));
             if (b.Condition != null) e.Add(new XElement("Guard", WriteExpression(b.Condition)));
+            if (b.Wait != null) e.Add(new XElement("Wait",
+                new XAttribute("durationMs",b.Wait.DurationMilliseconds)));
             foreach (var c in b.Children) e.Add(WriteBlock(c));
             foreach (var c in b.Cases)
             {
@@ -280,9 +303,9 @@ namespace CxVisual.Mechanism.Core
         {
             if (depth > 32 || e.Name != "Block") throw new InvalidDataException("logic.depth_or_type");
             if (e.Elements().Any(x => x.Name != "Block" && x.Name != "Case" &&
-                x.Name != "Loop" && x.Name != "Guard"))
+                x.Name != "Loop" && x.Name != "Guard" && x.Name != "Wait"))
                 throw new InvalidDataException("logic.unknown_field");
-            if (e.Elements("Loop").Count() > 1 || e.Elements("Guard").Count() > 1)
+            if (e.Elements("Loop").Count() > 1 || e.Elements("Guard").Count() > 1 || e.Elements("Wait").Count()>1)
                 throw new InvalidDataException("logic.duplicate_field");
             Guid id;
             if (!Guid.TryParseExact((string)e.Attribute("id"), "N", out id))
@@ -301,10 +324,21 @@ namespace CxVisual.Mechanism.Core
                     (string)le.Attribute("mode")), (int)le.Attribute("max"),
                     ReadBlock(le.Elements("Block").Single(), depth + 1),
                     ReadExpression(le.Element("Expression")), (string)le.Attribute("collection"));
+            MOLWaitDefinition wait=null;
+            var waitElement=e.Element("Wait");
+            if(waitElement!=null)
+            {
+                int duration;
+                if(waitElement.Attributes().Count()!=1||
+                   !int.TryParse((string)waitElement.Attribute("durationMs"),
+                       NumberStyles.None,CultureInfo.InvariantCulture,out duration))
+                    throw new InvalidDataException("logic.wait_payload");
+                wait=new MOLWaitDefinition(duration);
+            }
             return new MOLControlBlock(id, kind, (string)e.Attribute("cap"), blocks, cases,
                 loop, ReadExpression(e.Element("Guard") == null ? null : e.Element("Guard").Element("Expression")),
                 (string)e.Attribute("target"), (MOLExitKind)Enum.Parse(typeof(MOLExitKind),
-                    (string)e.Attribute("exit")));
+                    (string)e.Attribute("exit")),wait);
         }
     }
 
