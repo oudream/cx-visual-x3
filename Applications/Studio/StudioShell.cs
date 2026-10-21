@@ -175,6 +175,7 @@ namespace CxVisual.Studio
                 }
                 UpdateStudioGraphicsVisibility();
                 RefreshStudioGraphicsTree();
+                if(kind=="flow"||id=="doc.flow")RefreshFlowInspector();
             }
         }
 
@@ -486,7 +487,7 @@ namespace CxVisual.Studio
                 AddRibbonButton("自动布局", null, OnFlowArrange, true);
                 AddRibbonButton("仿真执行", null, OnRunLogicDemo);
             }
-            else if (group == "端口") AddRibbonButton("添加Port", null, OnFlowAddPort);
+            else if (group == "端口") AddRibbonButton("添加Port", null, OnFlowAddPort, true);
             else if (group == "配置") AddRibbonButton("配置编辑", null, OnConfigDemo);
             else if (group == "视图")
             {

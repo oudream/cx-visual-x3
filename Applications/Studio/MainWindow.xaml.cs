@@ -850,19 +850,54 @@ namespace CxVisual.Studio
             LogicInfo.Text=LogicHost.IsConnectMode?
                 "依次点击来源和目标块，随后在端口列表选择合法端口对并确认。":"已退出连线模式。";
         }
+        // P0收口：固定主流程与独立子流程共用同一属性面板，
+        // 但Selection/Content必须来自当前活动Document，而非旧ActivePage。
+        private MOLFlowCanvas ActiveFlowCanvas()
+        {
+            Guid resourceId;string kind;
+            if(TryParseResourceDocumentId(_activeStudioDocumentId,out resourceId,out kind))
+            {
+                ResourceDocumentContext context=ActiveStudioResourceContext();
+                if(kind!="flow"||context==null||!context.IsFlow||
+                    !ResourceDocumentExists(_activeStudioDocumentId)||
+                    !ReferenceEquals(context.Session,_viewModel.ProjectSession))
+                    return null;
+                return context.Flow;
+            }
+            return _activeStudioDocumentId=="doc.flow"?LogicHost:null;
+        }
+        private MEMContent ActiveFlowContent()
+        {
+            Guid resourceId;string kind;
+            if(TryParseResourceDocumentId(_activeStudioDocumentId,out resourceId,out kind))
+            {
+                if(kind!="flow"||ActiveFlowCanvas()==null)
+                    throw new InvalidOperationException("当前Tab不是有效流程编辑器");
+                MEMContent content=_viewModel.ProjectSession.Find(resourceId) as MEMContent;
+                if(content==null)throw new InvalidOperationException("源流程已删除");
+                return content;
+            }
+            if(_activeStudioDocumentId!="doc.flow")
+                throw new InvalidOperationException("请先激活流程编辑器");
+            return GetFlowPage().RootContent;
+        }
         private Guid SelectedFlowBlock()
         {
-            if(LogicHost.WiringDefinition==null||LogicHost.SelectedBlockIds.Count!=1)
-                throw new InvalidOperationException("请先只选择一个V2逻辑节点");
-            return LogicHost.SelectedBlockIds[0];
+            MOLFlowCanvas canvas=ActiveFlowCanvas();
+            if(canvas==null||canvas.WiringDefinition==null||
+                canvas.SelectedBlockIds.Count!=1)
+                throw new InvalidOperationException("请在当前流程Tab选择唯一V2逻辑节点");
+            return canvas.SelectedBlockIds[0];
         }
         private void RefreshFlowInspector()
         {
-            var wiring=LogicHost.WiringDefinition;
+            MOLFlowCanvas canvas=ActiveFlowCanvas();
+            var wiring=canvas==null?null:canvas.WiringDefinition;
             FlowPublicPortSummary.Text=wiring==null?"未声明公开端口":
                 "Input: "+string.Join(",",wiring.FlowInputs.Keys.OrderBy(x=>x))+
                 " · Output: "+string.Join(",",wiring.FlowOutputs.Keys.OrderBy(x=>x));
-            Guid id=LogicHost.SelectedBlockIds.Count==1?LogicHost.SelectedBlockIds[0]:Guid.Empty;
+            Guid id=canvas!=null&&canvas.SelectedBlockIds.Count==1?
+                canvas.SelectedBlockIds[0]:Guid.Empty;
             var block=wiring==null?null:wiring.Blocks.FirstOrDefault(b=>b.Id==id);
             FlowInspectorCapability.Text=block==null?"":block.CapabilityId;
             FlowInspectorPorts.ItemsSource=block==null?null:wiring.Ports[id];
@@ -879,8 +914,10 @@ namespace CxVisual.Studio
             FlowInspectorDirection.SelectedIndex=port.Direction==MPCPortDirection.Output?1:0;
             FlowInspectorKind.SelectedIndex=port.Kind==MPCPortKind.Control?1:0;
             FlowInspectorRequired.IsChecked=port.Required;
-            var wiring=LogicHost.WiringDefinition;
-            Guid id=LogicHost.SelectedBlockIds.Count==1?LogicHost.SelectedBlockIds[0]:Guid.Empty;
+            MOLFlowCanvas canvas=ActiveFlowCanvas();
+            var wiring=canvas==null?null:canvas.WiringDefinition;
+            Guid id=canvas!=null&&canvas.SelectedBlockIds.Count==1?
+                canvas.SelectedBlockIds[0]:Guid.Empty;
             IReadOnlyDictionary<string,string> values;
             string value;
             FlowInspectorValue.Text=wiring!=null&&wiring.Parameters.TryGetValue(id,out values)&&
@@ -901,9 +938,20 @@ namespace CxVisual.Studio
             if(_logicRunning)return;
             try
             {
-                GetFlowPage();
-                MOCFlowBuilder.Edit(_viewModel.ProjectSession,_viewModel.ActivePage.RootContent,edit);
-                RefreshScene();
+                MEMContent current=ActiveFlowContent();
+                MOCFlowBuilder.Edit(_viewModel.ProjectSession,current,edit);
+                if(_activeStudioDocumentId=="doc.flow")RefreshScene();
+                else
+                {
+                    MOLFlowCanvas flow=ActiveFlowCanvas();
+                    if(flow!=null)
+                    {
+                        MEMNodeSnapshot snapshot=_viewModel.ProjectSession.GetSnapshot().Find(current.Id);
+                        flow.WiringDefinition=MOLWiringCodec.Get(snapshot);
+                        flow.RetainValidSelection();
+                    }
+                }
+                RefreshFlowInspector();
                 LogicInfo.Text=message;
             }
             catch(Exception ex){LogicInfo.Text="属性编辑拒绝："+ex.Message;}

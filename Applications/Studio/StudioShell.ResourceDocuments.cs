@@ -204,6 +204,10 @@ namespace CxVisual.Studio
                 if(flow)
                 {
                     Flow=new MOLFlowCanvas{Focusable=true,MinHeight=410};
+                    Flow.SelectionChanged+=(s,e)=>{
+                        if(!_disposed&&_owner.IsStudioDocumentActive(Key))
+                            _owner.RefreshFlowInspector();
+                    };
                     Panel.Children.Add(Flow);
                     actions.Children.Add(Button("撤销",()=>Undo(false)));
                     actions.Children.Add(Button("重做",()=>Undo(true)));

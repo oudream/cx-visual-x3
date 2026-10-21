@@ -1404,6 +1404,54 @@ namespace CxVisual.Studio
                         (Guid)x.GetType().GetProperty("ContentId").GetValue(x,null)==vision.Id),
                         "独立子流程校验使用了旧主Page的MOC诊断来源");
                 });
+                CheckStep("P0 Flow Port属性必须落活动AI子流程且单MEM事务可撤销", () =>
+                {
+                    StudioViewModel vm=window.DataContext as StudioViewModel;
+                    MEMEngineeringSession session=vm.ProjectSession;
+                    MEMPage wrong=session.AddPage("P0端口旧页面");
+                    MEMContent ai=session.AddContent(session.Project,"P0端口真实AI Content");
+                    string tab=window.OpenStudioResourceDocument(ai.Id,true);
+                    MOCFlowBuilder.Edit(session,ai,b=>b.Step("AI"));
+                    MOLFlowCanvas canvas=window.GetStudioResourceFlow(ai.Id);
+                    Guid node=canvas.WiringDefinition.Blocks.Single().Id;
+                    canvas.SetSelection(new[]{node});
+                    vm.ActivePage=wrong;
+                    window.StudioDynamicMenus.Children.OfType<Button>()
+                        .Single(x=>Convert.ToString(x.Content)=="端口")
+                        .RaiseEvent(new System.Windows.RoutedEventArgs(Button.ClickEvent));
+                    window.FlowInspectorPortName.Text="InspectionScore";
+                    window.FlowInspectorType.Text="core.number";
+                    window.FlowInspectorDirection.SelectedIndex=1;
+                    window.FlowInspectorKind.SelectedIndex=0;
+                    window.FlowInspectorRequired.IsChecked=false;
+                    int before=session.Revision;
+                    window.StudioRibbonActions.Children.OfType<Button>()
+                        .Single(x=>Convert.ToString(x.Content)=="添加Port")
+                        .RaiseEvent(new System.Windows.RoutedEventArgs(Button.ClickEvent));
+                    Assert(session.Revision==before+1&&
+                        canvas.WiringDefinition.Ports[node].Any(x=>x.MemberId=="InspectionScore")&&
+                        !wrong.RootContent.DescendantsAndSelf().OfType<MRCShapeElement>().Any(),
+                        "Port属性误命中旧主页面或没有提交当前Flow");
+                    session.Undo().RequireValue();
+                    Assert(!canvas.WiringDefinition.Ports[node].Any(x=>x.MemberId=="InspectionScore"),
+                        "Port属性编辑未通过可撤销的单MEM事务");
+                    session.Redo().RequireValue();
+                    Assert(canvas.WiringDefinition.Ports[node].Any(x=>x.MemberId=="InspectionScore"),
+                        "Port属性重做丢失定义");
+                    window.OpenStudioResourceDocument(ai.Id,false);
+                    int unchanged=session.Revision;
+                    window.StudioRibbonActions.Children.OfType<Button>()
+                        .Any(x=>Convert.ToString(x.Content)=="添加Port");
+                    // 独立Visual Tab触发面板旧Port编辑必须明确拒绝，而非修改wrong页面
+                    var method=typeof(MainWindow).GetMethod("OnFlowAddPort",
+                        System.Reflection.BindingFlags.NonPublic|
+                        System.Reflection.BindingFlags.Instance);
+                    method.Invoke(window,new object[]{window,new System.Windows.RoutedEventArgs()});
+                    Assert(session.Revision==unchanged,
+                        "独立Visual Tab的旧Port操作误写其他Flow");
+                    window.OpenStudioResourceDocument(ai.Id,true);
+                    Assert(window.ActiveStudioDocumentId==tab,"重新打开Flow丢失文档身份");
+                });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;
             }
