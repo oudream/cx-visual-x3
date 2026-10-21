@@ -559,3 +559,9 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 - `FCRWorker.SubmitWhenCapacityAsync<T>` 将生产者等待与已接纳待执行工作严格分离；`maxWaitingProducers`默认64并强制非负，拒绝超预算项/超额生产者，取消等待会终止Admission且不会悄悄加入Worker队列；Stop(false/true)均唤醒未接纳者，原已接纳工作按原语义排空/取消。
 - 等待者在同一F19 `PumpLocked` 内FIFO受理；每受理一名即先执行既有Pump再考虑下一名，以避免并发空槽时绕过队列/字节预算。`WaitingProducers`、`AdmittedProducers`、`PeakPendingBytes`对外可观察，不与Worker等待中的Active混同。异步背压不调用DropOldest，现有普通Submit仍支持原有Reject/Drop。
 - 运行反例：真实满队列+8字节预算下2名生产者等待，第三名/超字节单项明确Rejected，先行已接纳Droppable不能被异步入口淘汰；取消队列工作后仅第一生产者受理、同Key任务FIFO执行；原排队/字节容量归零且不误计Drop。另验证等待Token取消立即归还名额、非法配置拒绝、Stop(false)唤醒等待者但等已入队工作结束。**以新SHA对应Windows CI实际结果为准，不提前宣布R08封轮。**
+
+
+### R08异步生产者容量风暴与Stop(true)真实反证（2026-10-21，待Windows CI）
+
+- FoundationSmoke新增8轮重复压力：2个运行中异步工作、3个已排队任务恰好占满30字节、12个异步等待生产者（上限12）、第13名Rejected；取消前6名等待者立即释放Admission、取消原已接纳队列的3个任务后由FIFO前3名生产者准入、取消剩余等待者、释放在途工作并断言Pending/Active/Waiting/Bytes均为0。检查Admitted=3/Rejected=1/Dropped=0，不能将等待生产者混入原队列统计。
+- 增加Stop(true)的非合作在途任务案例：取消已接纳Pending、拒绝尚未接纳的生产者，同时仍等待运行中非合作业务真正返回后才能完成Stop。全部仍采用唯一FCR Worker及原有Token/Handle。待固定SHA真实Windows CI验收。
