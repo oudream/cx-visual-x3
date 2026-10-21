@@ -29,6 +29,114 @@ namespace CxVisual.Studio
         private bool _switchingPageDocument;
         private bool _closingPageDocuments;
         private MEMEngineeringSession _pageDocumentSession;
+        // 工程Dirty的唯一真源仍然是MEM；这里只保存界面级变更来源提示。
+        private IDisposable _resourceDocumentChanges;
+        private readonly HashSet<Guid> _resourceChangedRoots=new HashSet<Guid>();
+        private readonly HashSet<Guid> _resourceAffectedRoots=new HashSet<Guid>();
+
+        private void AttachStudioResourceChangeWatch(MEMEngineeringSession session)
+        {
+            if(_resourceDocumentChanges!=null)
+            {_resourceDocumentChanges.Dispose();_resourceDocumentChanges=null;}
+            _resourceChangedRoots.Clear();
+            _resourceAffectedRoots.Clear();
+            _pageDocumentSession=session;
+            if(session!=null)
+            {
+                MEMEngineeringSession observed=session;
+                _resourceDocumentChanges=session.Watch(change=>
+                    OnStudioResourceMutation(observed,change));
+            }
+        }
+        private void OnStudioResourceMutation(MEMEngineeringSession observed,MTCChangeSet change)
+        {
+            if(!Dispatcher.CheckAccess())
+            {
+                Dispatcher.BeginInvoke(new Action(()=>
+                    OnStudioResourceMutation(observed,change)));
+                return;
+            }
+            if(_viewModel==null||_closingPageDocuments||
+                !ReferenceEquals(observed,_viewModel.ProjectSession))return;
+            if(!observed.IsDirty)
+            {
+                _resourceChangedRoots.Clear();_resourceAffectedRoots.Clear();
+                RefreshStudioResourceCaptions();
+                return;
+            }
+            var changed=new HashSet<Guid>();
+            bool unresolved=false;
+            foreach(MTCChangeOperation operation in change.Operations)
+            {
+                MEMNode node=observed.Find(operation.TargetId);
+                if(node!=null)
+                {
+                    if(node.ResourceRootId!=Guid.Empty&&
+                        node.ResourceRootId!=observed.Project.Id)
+                        changed.Add(node.ResourceRootId);
+                    continue;
+                }
+                MRIResourceReference reference=observed.FindReference(operation.TargetId);
+                if(reference!=null)
+                {
+                    changed.Add(reference.Owner.ResourceRootId);
+                    continue;
+                }
+                MPCPort port=observed.FindPort(operation.TargetId);
+                if(port!=null)
+                {
+                    MEMNode owner=observed.Find(port.OwnerId);
+                    if(owner!=null){changed.Add(owner.ResourceRootId);continue;}
+                }
+                // 已删除的对象失去正向索引时，宁可显示保守提示，不能宣称它们干净。
+                if(observed.GetResourceEntry(operation.TargetId)!=null)
+                {changed.Add(operation.TargetId);continue;}
+                unresolved=true;
+            }
+            foreach(Guid root in changed.Where(x=>x!=Guid.Empty))
+            {
+                _resourceChangedRoots.Add(root);
+                try
+                {
+                    MRIResourceImpactReport report=observed.AnalyzeResourceImpact(root);
+                    foreach(MRIResourceImpact item in report.Affected)
+                        if(!_resourceChangedRoots.Contains(item.ResourceId))
+                            _resourceAffectedRoots.Add(item.ResourceId);
+                }
+                catch(InvalidOperationException)
+                {
+                    // 当前真实资源已经删除或不适合分析时，标记所有可见Tab待核。
+                    unresolved=true;
+                }
+            }
+            if(unresolved)
+                foreach(ResourceDocumentContext context in _pageDocuments.Values)
+                    _resourceAffectedRoots.Add(
+                        ResourceDocumentRoot(observed,context.ResourceId));
+            RefreshStudioResourceCaptions();
+        }
+        private static Guid ResourceDocumentRoot(MEMEngineeringSession session,Guid resourceId)
+        {
+            MEMNode node=session.Find(resourceId);
+            return node==null?resourceId:node.ResourceRootId;
+        }
+        private void RefreshStudioResourceCaptions()
+        {
+            if(_viewModel==null||_closingPageDocuments)return;
+            bool dirty=_viewModel.ProjectSession.IsDirty;
+            if(!dirty){_resourceChangedRoots.Clear();_resourceAffectedRoots.Clear();}
+            foreach(KeyValuePair<string,ResourceDocumentContext> pair in _pageDocuments)
+            {
+                LayoutDocument document=FindStudioContent(pair.Key) as LayoutDocument;
+                MEMNode node=_viewModel.ProjectSession.Find(pair.Value.ResourceId);
+                if(document==null||node==null)continue;
+                Guid root=node.ResourceRootId;
+                string marker=dirty&&_resourceChangedRoots.Contains(root)?" *":
+                    dirty&&_resourceAffectedRoots.Contains(root)?" ~":"";
+                document.Title=node.Name+marker+
+                    (pair.Value.IsFlow?" [流程]":" [设计]");
+            }
+        }
 
         private sealed class ResourceDocumentContext : IDisposable
         {
@@ -356,7 +464,7 @@ namespace CxVisual.Studio
                         {ctx.Dispose();_pageDocuments.Remove(key);}
                         _studioViews.Remove(key);
                     }
-                    _pageDocumentSession=_viewModel.ProjectSession;
+                    AttachStudioResourceChangeWatch(_viewModel.ProjectSession);
                 }
                 finally{_closingPageDocuments=false;}
                 Guid id;string kind;
@@ -373,10 +481,9 @@ namespace CxVisual.Studio
                 MEMNode resource=_viewModel.ProjectSession.Find(ctx.ResourceId);
                 LayoutDocument document=FindStudioContent(key) as LayoutDocument;
                 if(resource==null||!ResourceDocumentExists(key))
-                {if(document!=null){document.Content=null;document.Close();}continue;}
-                if(document!=null)document.Title=resource.Name+
-                    (_viewModel.IsDirty?" *":"")+(ctx.IsFlow?" [流程]":" [设计]");
+                    if(document!=null){document.Content=null;document.Close();}
             }
+            RefreshStudioResourceCaptions();
         }
     }
 }

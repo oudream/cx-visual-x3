@@ -65,7 +65,7 @@ namespace CxVisual.Studio
             _viewModel.SceneChanged += OnStudioSceneChangedForGraphics;
             RefreshStudioGraphicsTree();
             UpdateStudioGraphicsVisibility();
-            _pageDocumentSession = _viewModel.ProjectSession;
+            AttachStudioResourceChangeWatch(_viewModel.ProjectSession);
             _viewModel.SceneChanged += OnStudioPageSourceChanged;
             Loaded += (sender, args) =>
             {

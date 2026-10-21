@@ -453,6 +453,46 @@ namespace CxVisual.Studio
                         window.GetStudioContentIds().Contains(a),
                         "删除CV误关闭了其他合法子流程Tab");
                 });
+                CheckStep("P0-2 资源Dirty与引用影响独立标记和保存复位", () =>
+                {
+                    StudioViewModel model=window.DataContext as StudioViewModel;
+                    MEMEngineeringSession session=model.ProjectSession;
+                    MEMContent changed=session.AddContent(session.Project,"P0-2 被共享的算法");
+                    MEMContent unrelated=session.AddContent(session.Project,"P0-2 无关算法");
+                    MEMPage dependent=session.AddPage("P0-2 使用方HMI");
+                    session.PlaceContent(dependent.RootContent,changed,"使用算法");
+                    string target=window.OpenStudioResourceDocument(changed.Id);
+                    string other=window.OpenStudioResourceDocument(unrelated.Id);
+                    string user=window.OpenStudioResourceDocument(dependent.Id);
+                    Func<string,string> title=id=>window.StudioDock.Layout.Descendents()
+                        .OfType<LayoutDocument>().Single(d=>d.ContentId==id).Title;
+                    string projectFile=Path.Combine(Path.GetTempPath(),
+                        "cxstudio-dirty-"+Guid.NewGuid().ToString("N")+".cxproj");
+                    try
+                    {
+                        model.SaveProject(projectFile);
+                        Assert(!session.IsDirty&&!title(target).Contains(" *")&&
+                            !title(other).Contains(" *")&&!title(user).Contains(" ~"),
+                            "保存后工作区仍显示旧Dirty状态");
+                        int before=session.Revision;
+                        session.AddRectangle(changed,"参数图元",8,9);
+                        Assert(session.Revision==before+1&&
+                            title(target).Contains(" *")&&title(user).Contains(" ~")&&
+                            !title(other).Contains(" *")&&!title(other).Contains(" ~"),
+                            "不同资源的直接修改和引用影响未独立显示");
+                        // 图元和流程文档共享同一Content真源与Dirty来源。
+                        string flow=window.OpenStudioResourceDocument(changed.Id,true);
+                        Assert(title(flow).Contains(" *"),"同资源流程Tab缺少真实Dirty状态");
+                        model.SaveProject(projectFile);
+                        Assert(!session.IsDirty&&!title(target).Contains(" *")&&
+                            !title(user).Contains(" ~")&&!title(flow).Contains(" *"),
+                            "保存后各Tab没有一起回到干净状态");
+                        session.Undo().RequireValue();
+                        Assert(title(target).Contains(" *")&&title(user).Contains(" ~"),
+                            "Undo产生的新Revision未更新引用影响与Dirty提示");
+                    }
+                    finally{if(File.Exists(projectFile))File.Delete(projectFile);}
+                });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;
             }
