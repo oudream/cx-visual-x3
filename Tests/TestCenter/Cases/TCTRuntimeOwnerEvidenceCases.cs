@@ -70,6 +70,12 @@ namespace CxVisual.TestCenter.Cases
                             if (!handle.Completion.Wait(TimeSpan.FromSeconds(10)))
                                 throw new TimeoutException("MRK Runtime Session did not finish");
                             MRKFlowResult result = handle.Completion.GetAwaiter().GetResult();
+                            // 完成Task与Session清理回调不是一个原子操作。
+                            // 等待生产Owner释放活动实例，超时仍判失败，不修饰计数。
+                            bool drained = SpinWait.SpinUntil(
+                                () => runtime.Snapshot().ActiveFlows == 0,
+                                TimeSpan.FromSeconds(4));
+                            test.AssertTrue(drained, "MRK Session限定时间释放活动Flow", true, drained);
                             MRKRuntimeSessionSnapshot settled = runtime.Snapshot();
                             MRKFlowSnapshot flow = handle.GetSnapshot();
                             test.AssertEqual(MRKFlowState.Completed, result.State, "MRK原生完成状态");
