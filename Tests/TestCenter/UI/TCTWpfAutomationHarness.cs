@@ -37,6 +37,8 @@ namespace CxVisual.TestCenter.UI
             SaveScreenshot(window, "TestCenter-06-Runtime.png");
             await Task.Run(() => InteractChannel(hwnd, window));
             SaveScreenshot(window, "TestCenter-07-Channel.png");
+            await Task.Run(() => InteractRuntimeJournal(hwnd, window));
+            SaveScreenshot(window, "TestCenter-08-RuntimeJournal.png");
             window.MenuThemeDark.RaiseEvent(new RoutedEventArgs(
                 System.Windows.Controls.MenuItem.ClickEvent, window.MenuThemeDark));
             SaveScreenshot(window, "TestCenter-04-Dark.png");
@@ -216,6 +218,45 @@ namespace CxVisual.TestCenter.UI
             tab.Select();
             InvokeFirstOwnerLink(root, "TCT.Runtime.Step.");
             WaitForInspector(window, "MRK Step", "Runtime UIA Step → MOL definition");
+        }
+
+        private static void InteractRuntimeJournal(IntPtr hwnd, TCTMainWindow window)
+        {
+            AutomationElement root = AutomationElement.FromHandle(hwnd);
+            ValuePattern search = Find(root, "TCT.Explorer.Search")
+                .GetCurrentPattern(ValuePattern.Pattern) as ValuePattern;
+            if (search == null) throw new InvalidOperationException("MRK session search has no ValuePattern");
+            search.SetValue("TCT.M3.RUNTIME.001");
+            SelectionItemPattern selected = Find(root, "TCT.Case.TCT.M3.RUNTIME.001")
+                .GetCurrentPattern(SelectionItemPattern.Pattern) as SelectionItemPattern;
+            if (selected == null) throw new InvalidOperationException("MRK session test not selectable");
+            selected.Select();
+            InvokePattern run = Find(root, "TCT.RunSelected")
+                .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
+            if (run == null) throw new InvalidOperationException("MRK Owner run command not invocable");
+            run.Invoke();
+            bool ready = false;
+            for (int attempt = 0; attempt < 240; attempt++)
+            {
+                window.Dispatcher.Invoke(new Action(() => {
+                    var tabs = window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                    if (tabs == null || !window.MenuRunSelected.IsEnabled) return;
+                    TCTRuntimeTestView owner = tabs.Items.OfType<System.Windows.Controls.TabItem>()
+                        .Select(x => x.Content).OfType<TCTRuntimeTestView>().FirstOrDefault();
+                    ready = owner != null && owner.VerifiedJournalCount >= 3 &&
+                        owner.EvidenceProblem == null;
+                }));
+                if (ready) break;
+                Thread.Sleep(200);
+            }
+            if (!ready) throw new TimeoutException(
+                "MRK RuntimeSession UIA did not show verified Session/Journal evidence");
+            SelectionItemPattern tab = Find(root, "TCT.Viewer.Runtime")
+                .GetCurrentPattern(SelectionItemPattern.Pattern) as SelectionItemPattern;
+            if (tab == null) throw new InvalidOperationException("RuntimeOwner viewer UIA selection missing");
+            tab.Select();
+            InvokeFirstOwnerLink(root, "TCT.Runtime.Journal.");
+            WaitForInspector(window, "MRK Journal", "MRK Journal → Inspector");
         }
 
         // InvokePattern invokes WPF controls asynchronously. Synchronize on actual Inspector
