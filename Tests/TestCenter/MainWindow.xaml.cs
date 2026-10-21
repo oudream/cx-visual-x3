@@ -45,6 +45,14 @@ namespace CxVisual.TestCenter.UI
             Explorer.TestSelected += OnTestSelected;
             Results.ResultSelected += OnResultSelected;
             History.HistoryOpened += OnHistoryOpened;
+            History.ComparisonOpened += (comparison, root) =>
+            {
+                Diff.ShowComparison(comparison, root);
+                ActivateDockPanel("test.diff");
+                StatusText.Text = "History Diff: " + comparison.ChangedCount + "/" +
+                    comparison.Rows.Count + " different Attempts" +
+                    (comparison.Comparable ? "" : " · 跨版本/平台仅展示差异");
+            };
             History.RerunRequested += async ids => await RunAsync(false, ids);
             DocumentHost.ObservationSelected += observation => Inspector.ShowObservation(observation);
             DocumentHost.ObjectSelected += (objectId, details) => Inspector.ShowObject(objectId, details);
@@ -67,7 +75,7 @@ namespace CxVisual.TestCenter.UI
                 { "test.explorer", Explorer }, { "test.documents", DocumentHost },
                 { "test.inspector", Inspector }, { "test.results", Results },
                 { "test.timeline", Timeline }, { "test.history", History },
-                { "test.plan", TestPlan }
+                { "test.plan", TestPlan }, { "test.diff", Diff }
             };
             ApplyTheme(false);
             _defaultDockLayout = SerializeDockLayout();
@@ -299,7 +307,7 @@ namespace CxVisual.TestCenter.UI
                 throw new InvalidDataException("Dock layout missing or oversized");
             HashSet<string> allowed = new HashSet<string>(StringComparer.Ordinal)
             { "test.explorer", "test.documents", "test.inspector",
-                "test.results", "test.timeline", "test.history", "test.plan" };
+                "test.results", "test.timeline", "test.history", "test.plan", "test.diff" };
             HashSet<string> seen = new HashSet<string>(StringComparer.Ordinal);
             XmlReaderSettings settings = new XmlReaderSettings
             {
