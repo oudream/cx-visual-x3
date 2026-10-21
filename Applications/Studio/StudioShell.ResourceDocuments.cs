@@ -239,6 +239,13 @@ namespace CxVisual.Studio
             if (_viewModel == null || _closingPageDocuments) return;
             if (!ReferenceEquals(_pageDocumentSession, _viewModel.ProjectSession))
             {
+                // Dock关闭Tab时会同步触发ActiveContentChanged；必须在关闭之前保存原活动身份。
+                // 否则关闭动作自动激活doc.flow/doc.home后，再检查_activeStudioDocumentId将漏掉回退。
+                LayoutDocument activeBefore = StudioDock.Layout.ActiveContent as LayoutDocument;
+                bool wasEditingPage = (_activeStudioDocumentId != null &&
+                    _activeStudioDocumentId.StartsWith(PageDocumentPrefix, StringComparison.Ordinal)) ||
+                    (activeBefore != null && activeBefore.ContentId != null &&
+                     activeBefore.ContentId.StartsWith(PageDocumentPrefix, StringComparison.Ordinal));
                 _closingPageDocuments = true;
                 try
                 {
@@ -255,8 +262,7 @@ namespace CxVisual.Studio
                 finally { _closingPageDocuments = false; }
                 // 新工程应撤销旧工程页面Tab，但不得将当前固定HMI/流程编辑器强行切回主页。
                 // 已关闭的页面Tab则退回通用图元主画布。
-                if (_activeStudioDocumentId != null &&
-                    _activeStudioDocumentId.StartsWith(PageDocumentPrefix, StringComparison.Ordinal))
+                if (wasEditingPage)
                 {
                     // 旧页面Tab已释放；即使doc.visual曾被关闭，也必须恢复有效的中央文档。
                     OpenStudioDocument("doc.visual");

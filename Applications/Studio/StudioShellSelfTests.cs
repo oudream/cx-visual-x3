@@ -344,7 +344,10 @@ namespace CxVisual.Studio
                                 window.StudioDock.Layout.ActiveContent is LayoutDocument &&
                                 window.StudioDock.Layout.ActiveContent.ContentId == "doc.visual" &&
                                 window.ActiveStudioDocumentId == "doc.visual",
-                                "从活动页面切换MEM会话未激活有效的固定HMI编辑器");
+                                "从活动页面切换MEM会话未激活有效的固定HMI编辑器；实际中央=" +
+                                Convert.ToString(window.StudioDock.Layout.ActiveContent == null
+                                    ? null : window.StudioDock.Layout.ActiveContent.ContentId) +
+                                "，Ribbon上下文=" + window.ActiveStudioDocumentId);
                         }
                         finally { if (File.Exists(projectPath)) File.Delete(projectPath); }
                     }
