@@ -535,6 +535,11 @@ namespace CxVisual.Mechanism.Runtime.Execution
         FCRWorkHandle<T> Submit<T>(Func<CancellationToken, Task<T>> action,
             string serialKey = null, bool droppable = false,
             CancellationToken cancellation = default(CancellationToken));
+        /// <summary>等待原F19队列容量，不占执行线程；被接纳后仍通过Handle观察真实终态。</summary>
+        Task<FCRWorkHandle<T>> SubmitWhenCapacityAsync<T>(
+            Func<CancellationToken, Task<T>> action, string serialKey = null,
+            CancellationToken cancellation = default(CancellationToken),
+            int priority = 0, long estimatedBytes = 0);
         MRKFlowHandle StartFlow(MRKExecutionPlan plan, IDictionary<string, object> inputs = null,
             CancellationToken cancellation = default(CancellationToken));
         MRKFlowHandle StartFlowWithControl(MRKExecutionPlan plan, MRKExecutionDebugController control,
@@ -680,6 +685,24 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 return _worker.Submit(action, serialKey, droppable, cancellation);
             }
         }
+        /// <summary>
+        /// 开发者异步生产者入口仍依赖唯一F19 Worker，不提前预留运行态或工程数据。
+        /// Stop前受理的等待请求由F19返回Accepted/Rejected，绝不越过Runtime生命周期。
+        /// </summary>
+        public Task<FCRWorkHandle<T>> SubmitWhenCapacityAsync<T>(
+            Func<CancellationToken, Task<T>> action, string serialKey = null,
+            CancellationToken cancellation = default(CancellationToken),
+            int priority = 0, long estimatedBytes = 0)
+        {
+            lock (_lifecycleGate)
+            {
+                if (_stopping) throw new InvalidOperationException(
+                    "运行引擎正在停止，不能提交新工作");
+                return _worker.SubmitWhenCapacityAsync(action, serialKey,
+                    cancellation, priority, estimatedBytes);
+            }
+        }
+
         /// <summary>
         /// 仅供操作方显式调用：失败流程所有任务完成后，按实际完成逆序补偿。
         /// 自动补偿可能改变真实设备状态，故默认不启用；对外部命令需专业确认后再授权。

@@ -571,3 +571,9 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 
 - 固定提交 `7b42a94545e0fe92251e9e35f92f0c331ba99964` 的 Runtime [39576596104](https://github.com/oudream/cx-visual-x3/actions/runs/39576596104) 与工程组织 [39576596130](https://github.com/oudream/cx-visual-x3/actions/runs/39576596130) 失败于新增8轮压力测试的“预算泄漏、误Drop或统计不一致”最终断言；该原断言在只等待业务Handle.Completion后就要求Worker.Active为0，而原Worker将结果写入Handle与`ExecuteAsync`的finally释放Active/Key分为两个先后阶段。
 - 保留8轮全部容量、取消、FIFO、拒绝、Drop和Stop(true)业务反证；在最终Active==0快照前增加`Await(worker.StopAsync())`作为正式排空屏障。若修复SHA仍不成功，应继续排查真实计费/回调竞争，不得删减或弱化压力要求。
+
+
+### R08 统一MRK开发者API复用F19异步生产者背压（2026-10-21，待CI）
+
+- `IMRKExecutionEngine` 与原实现增加 `SubmitWhenCapacityAsync<T>(action, serialKey, cancellation, priority, estimatedBytes)`，仅转发到现有F19 Worker并受原Runtime`_lifecycleGate`停止接单约束；普通`Submit`仍即刻受理/拒绝，没有第二套Executor和状态仓库。等待准入与Worker最终完成分成两段，开发者收到`FCRWorkHandle<T>`后按原`Completion`获取真实结果。
+- ArchitectureSmoke执行反证：底层单线程/单队列/4字节预算时，已有运行工作+待执行任务占住槽位，第三个通过MRK开发者异步API等待；Engine.Stop(false)唤醒第三名返回Rejected，同时等待前两项真实完成；停止后再提交明确拒绝，最终Pending与Bytes归零。按新提交SHA真实Windows验收，不以源码声明代替测试。

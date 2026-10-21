@@ -31,6 +31,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             R07_NamedOutputMergeRequiresExplicitConflictPolicyAndMDSCommit();
             R07_SkippedAndFailedBranchesRemainDifferent();
             R07_LateCancelledFlowDoesNotPublishToAnotherFlow();
+            R08_RuntimeDeveloperBackpressureRespectsEngineStop();
         }
         private static void Check(bool ok, string message)
         { if (!ok) throw new InvalidOperationException("Runtime协作测试: " + message); }
@@ -46,6 +47,59 @@ namespace CxVisual.Tests.ArchitectureSmoke
             if (!task.Wait(TimeSpan.FromSeconds(8))) throw new TimeoutException("协作任务未结束");
             task.GetAwaiter().GetResult();
         }
+        /// <summary>R08 开发者直接使用MRK API等待容量，不创建另一套队列。</summary>
+        private static void R08_RuntimeDeveloperBackpressureRespectsEngineStop()
+        {
+            MRKExecutionEngine engine=new MRKExecutionEngine(
+                new CxVisual.Foundation.Infrastructure.Concurrency.FCRWorkerOptions(
+                    1,1,pendingByteBudget:4,maxWaitingProducers:1));
+            TaskCompletionSource<bool> entered=new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<bool> release=new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            try
+            {
+                CxVisual.Foundation.Infrastructure.Concurrency.FCRWorkHandle<int> active=
+                    engine.Submit<int>(async ct=>{
+                        entered.TrySetResult(true);
+                        await release.Task.ConfigureAwait(false);
+                        return 1;
+                    },"same");
+                Await(entered.Task);
+                CxVisual.Foundation.Infrastructure.Concurrency.FCRWorkHandle<int> queued=
+                    engine.Submit<int>(ct=>Task.FromResult(2),"same");
+                Task<CxVisual.Foundation.Infrastructure.Concurrency.FCRWorkHandle<int>>
+                    waiting=engine.SubmitWhenCapacityAsync<int>(
+                        ct=>Task.FromResult(3),"same",estimatedBytes:4);
+                Check(!waiting.IsCompleted&&engine.GetSnapshot().WaitingProducers==1,
+                    "R08开发者MRK背压入口没有复用原F19等待容量");
+                Task stop=engine.StopAsync(false);
+                var rejected=Await(waiting);
+                Check(!rejected.Accepted &&
+                    Await(rejected.Completion).State==
+                        CxVisual.Foundation.Infrastructure.Concurrency.FCRWorkState.Rejected &&
+                    !stop.IsCompleted &&
+                    engine.GetSnapshot().WaitingProducers==0,
+                    "R08 Runtime Stop应唤醒尚未入队生产者并等待已接纳工作结束");
+                release.TrySetResult(true);
+                Await(stop);
+                Check(Await(active.Completion).Succeeded &&
+                    Await(queued.Completion).Succeeded &&
+                    engine.GetSnapshot().Pending==0 &&
+                    engine.GetSnapshot().PendingBytes==0,
+                    "R08 Runtime已接纳工作排空后残留底层Worker配额");
+                bool stopped=false;
+                try{engine.SubmitWhenCapacityAsync<int>(ct=>Task.FromResult(1));}
+                catch(InvalidOperationException){stopped=true;}
+                Check(stopped,"R08 Runtime停止后仍允许提交等待生产者");
+            }
+            finally
+            {
+                release.TrySetResult(true);
+                Await(engine.StopAsync(true));
+            }
+        }
+
         private static void T11_ResourceLeaseAndCancellation()
         {
             MRKResourceLeaseCoordinator coordinator = new MRKResourceLeaseCoordinator();
