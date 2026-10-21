@@ -52,10 +52,12 @@ namespace CxVisual.TestCenter.UI
             AutomationElement action = Find(root, "TCT.Overview.Action.运行选中测试");
             if (action.GetCurrentPattern(InvokePattern.Pattern) == null)
                 throw new InvalidOperationException("Overview action lacks real InvokePattern");
+            // UIAutomation COM属性必须留在UIA工作线程读取；放进Dispatcher会自锁至超时。
+            string renderedCount = discovered.Current.Name;
             window.Dispatcher.Invoke(new Action(() => {
                 if (window.DocumentHost.ActiveMode != "概览" ||
                     window.DocumentHost.Overview.DiscoveredCount <= 0 ||
-                    discovered.Current.Name != window.DocumentHost.Overview.DiscoveredCount.ToString())
+                    renderedCount != window.DocumentHost.Overview.DiscoveredCount.ToString())
                     throw new InvalidOperationException("Overview is not bound to real test discovery");
             }));
         }
