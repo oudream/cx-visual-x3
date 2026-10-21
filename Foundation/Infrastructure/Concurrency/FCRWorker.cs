@@ -79,7 +79,17 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
             }
         }
 
+        private sealed class ProducerAdmission
+        {
+            internal readonly Job Work;
+            internal readonly TaskCompletionSource<bool> Admitted =
+                new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            internal ProducerAdmission(Job work) { Work = work; }
+        }
+
         private readonly object _gate = new object();
+        private readonly LinkedList<ProducerAdmission> _waitingProducers =
+            new LinkedList<ProducerAdmission>();
         private readonly LinkedList<Job> _pending = new LinkedList<Job>();
         private readonly HashSet<string> _activeKeys = new HashSet<string>(StringComparer.Ordinal);
         private readonly FCRWorkerOptions _options;
@@ -87,6 +97,7 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
         // R08：跨Key高优先级可优先，但不能永久压制排队更久的任务。
         private int _priorityOvertakes;
         private long _finished, _rejected, _dropped, _pendingBytes;
+        private long _admittedProducers, _peakPendingBytes;
         private bool _stopping;
         private TaskCompletionSource<bool> _stopped;
 
@@ -123,7 +134,8 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
         {
             lock (_gate)
                 return new FCRWorkerSnapshot(_pending.Count, _active, _finished,
-                    _rejected, _dropped, _stopping, _pendingBytes, _options.PendingByteBudget);
+                    _rejected, _dropped, _stopping, _pendingBytes, _options.PendingByteBudget,
+                    _waitingProducers.Count, _admittedProducers, _peakPendingBytes);
         }
 
         /// <summary>高Priority先执行不同Key的待执行工作；同Key始终维持原提交顺序。</summary>
@@ -190,6 +202,7 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
                 }
                 _pending.AddLast(job);
                 _pendingBytes = checked(_pendingBytes + job.EstimatedBytes);
+                if (_pendingBytes > _peakPendingBytes) _peakPendingBytes = _pendingBytes;
                 job.Handle.Accepted = true;
                 launch.AddRange(PumpLocked());
             }
@@ -205,6 +218,47 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
                     TaskContinuationOptions.None, TaskScheduler.Default);
             }
             LaunchInstance(launch);
+            return job.Handle;
+        }
+
+        /// <summary>
+        /// 等待容量时不占用Worker槽位或PendingBytes；只在正式入队后返回Handle。
+        /// 等待生产者有独立上限，且此入口不执行DropOldest，确保不可静默丢业务。
+        /// 取消等待抛OperationCanceledException；停止/过量提交返回Rejected Handle。
+        /// </summary>
+        public async Task<FCRWorkHandle<T>> SubmitWhenCapacityAsync<T>(
+            Func<CancellationToken, Task<T>> action, string key = null,
+            CancellationToken cancellation = default(CancellationToken),
+            int priority = 0, long estimatedBytes = 0)
+        {
+            if (action == null) throw new ArgumentNullException("action");
+            if (estimatedBytes < 0) throw new ArgumentOutOfRangeException("estimatedBytes");
+            cancellation.ThrowIfCancellationRequested();
+            Job<T> job = new Job<T>(this, key, false, priority, estimatedBytes,
+                cancellation, action);
+            ProducerAdmission admission = new ProducerAdmission(job);
+            List<Job> launch;
+            lock (_gate)
+            {
+                if (_stopping || job.EstimatedBytes > _options.PendingByteBudget ||
+                    _waitingProducers.Count >= _options.MaxWaitingProducers)
+                {
+                    _rejected++;
+                    job.FinishWithoutRun(FCRWorkState.Rejected);
+                    job.Source.Dispose();
+                    return job.Handle;
+                }
+                _waitingProducers.AddLast(admission);
+                launch = PumpLocked();
+            }
+            // 外部取消回调须在门闩之外注册，否则已取消Token可能同步重入。
+            CancellationTokenRegistration registration =
+                cancellation.Register(() => RequestCancel(job));
+            Task cleanup = job.Handle.Completion.ContinueWith(
+                completed => registration.Dispose(), CancellationToken.None,
+                TaskContinuationOptions.None, TaskScheduler.Default);
+            LaunchInstance(launch);
+            await admission.Admitted.Task.ConfigureAwait(false);
             return job.Handle;
         }
 
@@ -226,37 +280,57 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
         private List<Job> PumpLocked()
         {
             List<Job> launch = new List<Job>();
-            while (_active < _options.MaxConcurrency)
+            while (true)
             {
-                LinkedListNode<Job> preferred = null;
-                LinkedListNode<Job> oldest = null;
-                HashSet<string> observedKeys = new HashSet<string>(StringComparer.Ordinal);
-                for (LinkedListNode<Job> candidate = _pending.First;
-                     candidate != null; candidate = candidate.Next)
+                while (_active < _options.MaxConcurrency)
                 {
-                    // Key内只考虑最早提交的工作；后提交的高优先级不可超车。
-                    if (!observedKeys.Add(candidate.Value.Key)) continue;
-                    if (_activeKeys.Contains(candidate.Value.Key)) continue;
-                    if (oldest == null) oldest = candidate;
-                    if (preferred == null || candidate.Value.Priority > preferred.Value.Priority)
-                        preferred = candidate;
+                    LinkedListNode<Job> preferred = null;
+                    LinkedListNode<Job> oldest = null;
+                    HashSet<string> observedKeys = new HashSet<string>(StringComparer.Ordinal);
+                    for (LinkedListNode<Job> candidate = _pending.First;
+                         candidate != null; candidate = candidate.Next)
+                    {
+                        if (!observedKeys.Add(candidate.Value.Key)) continue;
+                        if (_activeKeys.Contains(candidate.Value.Key)) continue;
+                        if (oldest == null) oldest = candidate;
+                        if (preferred == null || candidate.Value.Priority > preferred.Value.Priority)
+                            preferred = candidate;
+                    }
+                    if (preferred == null) break;
+                    bool oldestWins = _priorityOvertakes >= _options.PriorityFairnessBurst;
+                    LinkedListNode<Job> eligible = oldestWins ? oldest : preferred;
+                    if (object.ReferenceEquals(eligible, oldest))
+                        _priorityOvertakes = 0;
+                    else
+                        _priorityOvertakes++;
+                    Job job = eligible.Value;
+                    _pending.Remove(eligible);
+                    _pendingBytes -= job.EstimatedBytes;
+                    _active++;
+                    _activeKeys.Add(job.Key);
+                    Interlocked.Exchange(ref job.State, (int)FCRWorkState.Running);
+                    launch.Add(job);
                 }
-                if (preferred == null) break;
-                // 连续偏向较新高优先级达到阈值后，强制让最老可执行Key先得到一次机会。
-                // 被同Key正在运行任务阻挡者不计入“可执行”，但Key释放后仍保持原序。
-                bool oldestWins = _priorityOvertakes >= _options.PriorityFairnessBurst;
-                LinkedListNode<Job> eligible = oldestWins ? oldest : preferred;
-                if (object.ReferenceEquals(eligible, oldest))
-                    _priorityOvertakes = 0;
-                else
-                    _priorityOvertakes++;
-                Job job = eligible.Value;
-                _pending.Remove(eligible);
-                _pendingBytes -= job.EstimatedBytes;
-                _active++;
-                _activeKeys.Add(job.Key);
-                Interlocked.Exchange(ref job.State, (int)FCRWorkState.Running);
-                launch.Add(job);
+                // 只从等待生产者头部准入，容量计费与入队原子化。
+                // Waiter还不是业务Job，故等待者不消耗Worker和PendingBytes。
+                bool promoted = false;
+                while (_waitingProducers.Count > 0)
+                {
+                    ProducerAdmission admission = _waitingProducers.First.Value;
+                    Job job = admission.Work;
+                    if (!CanStartImmediatelyLocked(job) && WouldOverflowLocked(job))
+                        break;
+                    _waitingProducers.RemoveFirst();
+                    _pending.AddLast(job);
+                    _pendingBytes = checked(_pendingBytes + job.EstimatedBytes);
+                    if (_pendingBytes > _peakPendingBytes)
+                        _peakPendingBytes = _pendingBytes;
+                    job.Handle.Accepted = true;
+                    _admittedProducers++;
+                    admission.Admitted.TrySetResult(true);
+                    promoted = true;
+                }
+                if (!promoted) break;
             }
             return launch;
         }
@@ -297,6 +371,21 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
                 if (state == FCRWorkState.Completed || state == FCRWorkState.Failed
                     || state == FCRWorkState.Cancelled || state == FCRWorkState.Dropped
                     || state == FCRWorkState.Rejected) return false;
+                LinkedListNode<ProducerAdmission> waiter = _waitingProducers.First;
+                while (waiter != null && !object.ReferenceEquals(waiter.Value.Work, job))
+                    waiter = waiter.Next;
+                if (waiter != null)
+                {
+                    ProducerAdmission admission = waiter.Value;
+                    _waitingProducers.Remove(waiter);
+                    job.FinishWithoutRun(FCRWorkState.Cancelled);
+                    admission.Admitted.TrySetCanceled();
+                    _finished++;
+                    launch = PumpLocked();
+                    SignalStopLocked();
+                }
+                else
+                {
                 LinkedListNode<Job> node = _pending.Find(job);
                 if (node != null)
                 {
@@ -306,6 +395,7 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
                     _finished++;
                     launch = PumpLocked();
                     SignalStopLocked();
+                }
                 }
             }
             try { job.Source.Cancel(); }
@@ -328,6 +418,16 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
                 if (_stopped == null)
                     _stopped = new TaskCompletionSource<bool>(
                         TaskCreationOptions.RunContinuationsAsynchronously);
+                // 停止接单时永远结束尚未正式入队的生产者等待。
+                while (_waitingProducers.Count > 0)
+                {
+                    ProducerAdmission admission = _waitingProducers.First.Value;
+                    _waitingProducers.RemoveFirst();
+                    _rejected++;
+                    admission.Work.FinishWithoutRun(FCRWorkState.Rejected);
+                    admission.Admitted.TrySetResult(false);
+                    cancel.Add(admission.Work);
+                }
                 if (cancelPending)
                 {
                     while (_pending.Count > 0)
@@ -353,7 +453,8 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
 
         private void SignalStopLocked()
         {
-            if (_stopping && _active == 0 && _pending.Count == 0 && _stopped != null)
+            if (_stopping && _active == 0 && _pending.Count == 0 &&
+                _waitingProducers.Count == 0 && _stopped != null)
                 _stopped.TrySetResult(true);
         }
     }

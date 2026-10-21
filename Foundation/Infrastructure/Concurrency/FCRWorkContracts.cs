@@ -17,15 +17,19 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
         public long PendingByteBudget { get; private set; }
         /// <summary>跨Key高优先级连续超过较早工作时的最大次数；仍保证单Key FIFO。</summary>
         public int PriorityFairnessBurst { get; private set; }
+        public int MaxWaitingProducers { get; private set; }
         public FCRWorkerOptions(int maxConcurrency, int queueCapacity,
             FCROverflowPolicy overflowPolicy = FCROverflowPolicy.RejectNew,
-            long pendingByteBudget = long.MaxValue, int priorityFairnessBurst = 16)
+            long pendingByteBudget = long.MaxValue, int priorityFairnessBurst = 16,
+            int maxWaitingProducers = 64)
         {
             if (maxConcurrency < 1) throw new ArgumentOutOfRangeException("maxConcurrency");
             if (queueCapacity < 0) throw new ArgumentOutOfRangeException("queueCapacity");
             if (pendingByteBudget < 0) throw new ArgumentOutOfRangeException("pendingByteBudget");
             if (priorityFairnessBurst < 1)
                 throw new ArgumentOutOfRangeException("priorityFairnessBurst");
+            if (maxWaitingProducers < 0) throw new ArgumentOutOfRangeException("maxWaitingProducers");
+            MaxWaitingProducers = maxWaitingProducers;
             PriorityFairnessBurst = priorityFairnessBurst;
             PendingByteBudget = pendingByteBudget;
             MaxConcurrency = maxConcurrency;
@@ -91,13 +95,19 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
     public sealed class FCRWorkerSnapshot
     {
         internal FCRWorkerSnapshot(int pending, int active, long finished,
-            long rejected, long dropped, bool stopping, long pendingBytes, long byteBudget)
+            long rejected, long dropped, bool stopping, long pendingBytes, long byteBudget,
+            int waitingProducers = 0, long admittedProducers = 0, long peakPendingBytes = 0)
         { Pending = pending; Active = active; Finished = finished; Rejected = rejected;
           Dropped = dropped; Stopping = stopping; PendingBytes = pendingBytes;
-          PendingByteBudget = byteBudget; }
+          PendingByteBudget = byteBudget; WaitingProducers = waitingProducers;
+          AdmittedProducers = admittedProducers; PeakPendingBytes = peakPendingBytes; }
         public int Pending { get; private set; }
         public long PendingBytes { get; private set; }
         public long PendingByteBudget { get; private set; }
+        /// <summary>尚未入队的异步背压生产者数量，不计入Pending或字节预算。</summary>
+        public int WaitingProducers { get; private set; }
+        public long AdmittedProducers { get; private set; }
+        public long PeakPendingBytes { get; private set; }
         /// <summary>活动的逻辑工作数，包括异步等待；不等于正在运行的线程数。</summary>
         public int Active { get; private set; }
         public long Finished { get; private set; }
