@@ -139,15 +139,28 @@ namespace CxVisual.TestCenter.Cases
                     new XAttribute("block", block), new XAttribute("state", "Completed"),
                     new XAttribute("reason", ""), new XAttribute("invocation", ""),
                     new XAttribute("address", ""), new XAttribute("utc", DateTime.UtcNow.ToString("o")))),
-                new XElement("Journal", new XElement("Entry", new XAttribute("seq", 1),
-                    new XAttribute("kind", "StepTransition"), new XAttribute("flow", flow),
-                    new XAttribute("plan", "plan"), new XAttribute("revision", 1),
-                    new XAttribute("step", "step"), new XAttribute("state", "Completed"),
-                    new XAttribute("correlation", ""), new XAttribute("operation", Guid.Empty),
-                    new XAttribute("utc", DateTime.UtcNow.ToString("o")))),
+                new XElement("Journal",
+                    new XElement("Entry", new XAttribute("seq", 1),
+                        new XAttribute("kind", "FlowStarted"), new XAttribute("flow", flow),
+                        new XAttribute("plan", "plan"), new XAttribute("revision", 1),
+                        new XAttribute("step", ""), new XAttribute("state", "Running"),
+                        new XAttribute("correlation", ""), new XAttribute("operation", Guid.Empty),
+                        new XAttribute("utc", DateTime.UtcNow.ToString("o"))),
+                    new XElement("Entry", new XAttribute("seq", 2),
+                        new XAttribute("kind", "StepTransition"), new XAttribute("flow", flow),
+                        new XAttribute("plan", "plan"), new XAttribute("revision", 1),
+                        new XAttribute("step", "step"), new XAttribute("state", "Completed"),
+                        new XAttribute("correlation", ""), new XAttribute("operation", Guid.Empty),
+                        new XAttribute("utc", DateTime.UtcNow.ToString("o"))),
+                    new XElement("Entry", new XAttribute("seq", 3),
+                        new XAttribute("kind", "FlowFinished"), new XAttribute("flow", flow),
+                        new XAttribute("plan", "plan"), new XAttribute("revision", 1),
+                        new XAttribute("step", ""), new XAttribute("state", "Completed"),
+                        new XAttribute("correlation", ""), new XAttribute("operation", Guid.Empty),
+                        new XAttribute("utc", DateTime.UtcNow.ToString("o")))),
                 new XElement("Groups")));
             Func<XDocument, byte[]> bytes = d => Encoding.UTF8.GetBytes(d.ToString(SaveOptions.DisableFormatting));
-            test.AssertEqual(1, TCTRuntimeOwnerEvidence.Read(bytes(original))
+            test.AssertEqual(3, TCTRuntimeOwnerEvidence.Read(bytes(original))
                 .Root.Element("Journal").Elements("Entry").Count(), "合法只读数据可解析");
             XDocument tampered = new XDocument(original);
             tampered.Root.Element("Journal").Element("Entry").SetAttributeValue("flow", Guid.NewGuid());
@@ -157,6 +170,10 @@ namespace CxVisual.TestCenter.Cases
             tampered.Root.Element("Journal").Element("Entry").SetAttributeValue("seq", 0);
             test.AssertThrows<InvalidDataException>(() => TCTRuntimeOwnerEvidence.Read(bytes(tampered)),
                 "Journal序号无效拒绝");
+            tampered = new XDocument(original);
+            tampered.Root.Element("Journal").Element("Entry").SetAttributeValue("kind", "ExternalUnknown");
+            test.AssertThrows<InvalidDataException>(() => TCTRuntimeOwnerEvidence.Read(bytes(tampered)),
+                "伪造Closed但原生Journal需核对不得显示成功");
             tampered = new XDocument(original);
             tampered.Root.Element("Observations").Element("Step").SetAttributeValue("state", "FakePassed");
             test.AssertThrows<InvalidDataException>(() => TCTRuntimeOwnerEvidence.Read(bytes(tampered)),
