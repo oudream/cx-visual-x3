@@ -294,3 +294,15 @@ R01源码已提交（截止 f6c0dceb7afae75d320f6b442f3a152b11566162）：修改
 ### P0-4 Studio CPU候选未授权前惰性Plan安全边界（2026-10-21，待同SHA CI）
 
 - 更正`StageCpuSoftwareRelease`：受保护的MRK PlanSlot由唯一无设备惰性基线Plan初始化，不再将尚未授权的`candidate.Plan.Plan`预置为活动版；随后仍严格经过原MOC Stage、Host模拟策略授权与MRK Activate，最后验证Slot活动对象确实等于Candidate。原Studio WPF授权失败/安全拒绝/版本失效/真实MRK运行STA保留，不增发布体系或降低测试门槛。
+
+### P0-4 MHS到Vision软件发布的Windows集成核验（2026-10-21）
+
+| 同SHA源码 | 收敛内容 | Windows真实结果 |
+|---|---|---|
+| [af4bb301](https://github.com/oudream/cx-visual-x3/commit/af4bb301f7c801c5bf4313e7d4dadf7d6c7eeb8c) | Vision Provider从MHS Effective快照构建；G06真实CPU阈值检测、NextTask Saved/Effective分离、旧版本发布拒绝、新候选指纹变化 | [工程组织39586644647](https://github.com/oudream/cx-visual-x3/actions/runs/39586644647)、[Studio39586644626](https://github.com/oudream/cx-visual-x3/actions/runs/39586644626)、[Runtime39586644661](https://github.com/oudream/cx-visual-x3/actions/runs/39586644661)、[Config L1 39586644715](https://github.com/oudream/cx-visual-x3/actions/runs/39586644715)、[配置底座39586644676](https://github.com/oudream/cx-visual-x3/actions/runs/39586644676)，**五项均success** |
+| [9ea11ac6](https://github.com/oudream/cx-visual-x3/commit/9ea11ac62c9ce719766add0ed1f81dde34b64120) | MHS未生效Saved不影响当前Provider；NextTask真正生效后阻止旧Effective Provider再发布，原正在运行的不可变实例不被改写 | [工程组织39587196609](https://github.com/oudream/cx-visual-x3/actions/runs/39587196609)、[Studio39587196549](https://github.com/oudream/cx-visual-x3/actions/runs/39587196549)、[Runtime39587196552](https://github.com/oudream/cx-visual-x3/actions/runs/39587196552)、[Config L1 39587196665](https://github.com/oudream/cx-visual-x3/actions/runs/39587196665)、[配置底座39587196619](https://github.com/oudream/cx-visual-x3/actions/runs/39587196619)，**五项均success** |
+| [e13ba9d6](https://github.com/oudream/cx-visual-x3/commit/e13ba9d6747636b488f1785060b0a7b59ef81568) | CPU授权PlanSlot初始化不再直接装载未授权候选；采用惰性Plan，必须经MOC Stage/MRK授权Activate才可成为活动版 | [Studio39587592794](https://github.com/oudream/cx-visual-x3/actions/runs/39587592794)、[工程组织39587592628](https://github.com/oudream/cx-visual-x3/actions/runs/39587592628)、[Config L1 39587592653](https://github.com/oudream/cx-visual-x3/actions/runs/39587592653)、[配置底座39587592671](https://github.com/oudream/cx-visual-x3/actions/runs/39587592671)，**四项均success** |
+
+**本次可关闭的自动化切片**：MHS Effective配置→Vision真实CPU Provider构造和版本锁定→MRK真实图像运算→下一任务边界配置生效→旧发布候选失效→授权PlanSlot切换（无生产设备）。相关工程身份、配置修订和发布声明使用既有MEM/MHS/MOC/MRK Owner。若外部进程独立修改MHS文件或另有Provider持有不同Scope，依然需要运行Host跨进程一致性/发布ACK机制，当前测试不能签收。
+
+**尚未收敛**：工程资源自动选择对应多Scope专业Schema与命令Descriptor、Studio完整可发现命令/Ribbon上下文、人工作业与DPI、真实CT三维Viewer负载及GPU、PLC/机台联锁/专业Provider生产发布ACK、长时间稳定性。此条只关闭明确具备同SHA CI的软件测试切片，保留EP/R、S1～S4原有未验条目。
