@@ -87,6 +87,10 @@
         CanClose="False" CanFloat="True" CanHide="True" CanAutoHide="True">
        <ui:TCTTestHistoryControl x:Name="History"/>
       </dock:LayoutAnchorable>
+      <dock:LayoutAnchorable ContentId="test.plan" Title="Suite / Plan · 选择与执行"
+        CanClose="False" CanFloat="True" CanHide="True" CanAutoHide="True">
+       <ui:TCTTestPlanControl x:Name="TestPlan"/>
+      </dock:LayoutAnchorable>
      </dock:LayoutAnchorablePane>
     </dock:LayoutPanel>
    </dock:LayoutRoot>
