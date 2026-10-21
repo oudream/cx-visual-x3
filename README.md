@@ -30,6 +30,35 @@
 
 - **六角色差距审计与运行内核V0.6.1**：[逐项需求、新增执行概念、未闭合契约及下一轮测试](DOCS/Architecture/CxVisual_统一运行体系_六角色差距审计与内核增构_V0.5.md)。实际新增ExecutionGroup、端口绑定、Flow身份/Session、条件Join、计划编译、作用域数据、Journal、预计字节背压与专用SDK线程；保留正式发布、持久恢复、跨进程和授权差距。
 
+## 了解入口
+```text
+我们开始继续开发 **CxVisual**。
+
+**主仓库：** `https://github.com/oudream/cx-visual-x3`
+
+请先读取仓库根目录的 `AGENTS.md`、`.agents/skills/cxvisual-engineering/SKILL.md` 和 `DOCS/00_CxVisual_协同开发入口与七仓复用基线.md`，恢复现有开发规则与架构上下文。
+
+然后了解 `DOCS/01～04` 的统一架构基线，并根据具体开发任务查阅 `DOCS/Architecture/`、`DOCS/Implementation/`、`DOCS/Testing/` 中的最新相关文档。
+
+我们的核心架构原则是：
+
+**各方面都尽能力展现，便捷友好尽支撑各专业达到目标。**
+
+协作要求：
+
+1. 以已确定的架构和真实代码为基础，继续完善 CxVisual，不重新发明已有体系。
+2. 先核实代码与文档的实际状态，区分已实现、已验证、设计规划及待完成内容。
+3. 充分考虑 Foundation、Mechanism、Professional 各体系的完整能力、职责边界、组合复用与专业应用。
+4. 我负责提出目标、讨论重要架构决策；你负责代码分析、实现、修改、测试与验收。
+5. 发现架构问题要主动指出并给出建议，但不要随意推翻已确定的合理设计。
+6. 具体编码按仓库现有规范执行，保持代码质量、工程兼容性及真实可验证性。
+7. 回复尽量简明，重点呈现关键问题、决策、实施成果和验证结果。
+
+**第一步：** 快速核实当前仓库版本、工程结构、开发规范及最近的实施进展，告诉我你已了解的情况和需要关注的问题。
+
+先不要修改代码，等我提出第一项具体开发任务后，我们直接进入实际开发。
+```
+
 ## Build and verify on Windows
 
 1. Open `CxVisual.Unified.sln` in Visual Studio, select **Debug | x64**, **Rebuild Solution**.
