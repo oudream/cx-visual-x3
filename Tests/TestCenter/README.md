@@ -114,3 +114,17 @@ $env:TCT_NUNIT_ASSEMBLIES = 'D:\tests\TrustedChecks.dll'
 ```
 `--ui-smoke`是WPF真实控件及Owner证据回归；`--ui-automation`是真实桌面UIA操作、连续执行Geometry/Object并保存WPF截图。
 两者不能替代上述人工窗口对照与实际工业现场验收，**未签认不得标为人工已验收**。
+
+
+## 第二阶段：真实Graph/Runtime及Virtual Channel开发者使用
+
+使用现有TestCenter Shell，在Explorer输入以下TestId后运行并打开实际专业Viewer：
+
+- TCT.M3.GRAPHRUNTIME.001：真实MEM/MOL→MOC SourceMap→MRK Flow/Trace，Graph树及Runtime Timeline的CompiledStep/Block定位。
+- TCT.M3.GRAPHRUNTIME.003：真实MOL V2 MPC端口/控制连线，保留工程Link身份；与编译Step依赖分开呈现。
+- TCT.M3.CHANNEL.001：生产Mechanism.Connectivity的Virtual Channel真实分片、RX、CRC错误、断连与重开。Channel页经SHA256校验显示原始HEX/解码Payload与会话/Correlation，点击Frame定位到Inspector。**不接实际设备，不等于HIL**。
+- GRAPHRUNTIME.002与CHANNEL.002包含非法Schema、伪造映射、半包/粘包、CRC、DTD异常反证。
+
+Window x64 .NET Framework 4.8可使用统一命令 --ui-smoke 或 --ui-automation 做实际WPF验证。后者现覆盖Geometry、Object、Graph、Runtime、Virtual Channel，Actions工件期望工作台/Geometry/Object/Dark/Graph/Runtime/Channel共七张截图；以同Commit的TestCenter Windows Actions最终结论为准。
+
+以上只是阶段二的实际垂直切片：尚缺MRKSession/Resource/Journal全面实时观察、工业设备Protocol/Real、Studio端到端六案例与正式第三阶段Fixture/Golden/八维覆盖/性能/HIL。人工设计04～06视觉验收仍需实际签认。

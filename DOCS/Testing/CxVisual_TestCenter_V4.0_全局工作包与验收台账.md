@@ -116,3 +116,32 @@ D. 然后做Suite/Plan最小保存/回放与后续Graph/Channel接入；现场HI
 - 统一AvalonDock Shell、动态Ribbon、单多选、Suite/Plan最小保存执行、Geometry Expected/Actual/Diff/单位容差、MEM Ownership/Reference/Symbol InstancePath、历史回放、WPF/UIA两Owner真实操作与四张截图已验证。
 - **未完成状态独立保留**：设计01～03人工视觉验收、全DPI键鼠/真实用户验收；阶段二Graph/Channel/Runtime；阶段三正式Golden/八维覆盖/可靠性和专业HIL。
 - 每次后续master变更仍须重新匹配代码SHA与CI，不能把此快照标为永久最新验收。
+
+
+## 第二阶段Graph、Runtime、Channel真实接入记录（2026-10-21）
+
+此节为V4.1唯一技术主规格下的实际增量台账，沿用TCT-00～TCT-16编号；**绝不是第二阶段整体完成声明**。Graph、Runtime和Channel均由原生产Owner计算/编解码，TestCenter仅做校验过的Run/Attempt Artifact只读投影。
+
+| 工作包及结果 | 真实源码、Owner与范围 | 对应Windows验收及未完成 |
+|---|---|---|
+| TCT-08 Graph→Runtime V1 | MEM快照、MOL原Block、MOCBuild/CompiledPlan/SourceMap、MRK Flow/StepState/Trace；WPF只读Graph Tree与Runtime Timeline，Step→Block→Inspector | 21f62994 CI [39615126778](https://github.com/oudream/cx-visual-x3/actions/runs/39615126778) success；d15ff59d CI [39615472553](https://github.com/oudream/cx-visual-x3/actions/runs/39615472553) success。完整MRK Session/Journal/Lease/Wait并未验收 |
+| TCT-08 Graph V2/MPC Port+Link | 实际持久的MOLWiringDefinition/MPCPortDescriptor/MOLLink，保持Port类型、方向、BlockId、LinkId与MOC Step分别可追踪；真实MOC→MRK正例和伪造映射反证 | e8402c92 CI [39617372824](https://github.com/oudream/cx-visual-x3/actions/runs/39617372824) success。更复杂的数据端口、跨Content、失败编译诊断UI待继续 |
+| TCT-14 Graph/Runtime真实Windows UIA | Explorer搜索→Selection→Run→两Viewer→CompiledStep→Inspector；截图01～06 | 6ea1bc3b CI [39615910115](https://github.com/oudream/cx-visual-x3/actions/runs/39615910115) 初次failure；修复17f5b4d9 CI [39616272134](https://github.com/oudream/cx-visual-x3/actions/runs/39616272134) success，保留失败历史 |
+| TCT-09生产Virtual Channel | 原Mechanism.Connectivity/M13-M14补IMCCChannel、MCCVirtualChannel、MCCCxChannelSession、IMPAProtocolCodec、CRC16长度帧及增量Parser；真实字节分包/粘包/校验失败/断连/重开；TX与RX raw、decoded payload区分 | e5f212c9 CI [39618049072](https://github.com/oudream/cx-visual-x3/actions/runs/39618049072) success；171c39aa CI [39618318357](https://github.com/oudream/cx-visual-x3/actions/runs/39618318357) success。Virtual不是TCP、PLC或现场HIL |
+| TCT-09 Channel正反例和Viewer | TCT.M3.CHANNEL.001真实Virtual TX/RX/Error/恢复和SHA256观察；.002半包/粘包、CRC及Schema/DTD反证；WPF显示HEX、Session、Correlation、Parser结果，Frame→Inspector | 31e9a1b6 CI [39618617090](https://github.com/oudream/cx-visual-x3/actions/runs/39618617090) success；66d814ae CI [39618814456](https://github.com/oudream/cx-visual-x3/actions/runs/39618814456) success；GUI全面诊断仍需补强 |
+| TCT-14 Channel真实Windows UIA | 02ea37cc增加Explorer→Channel Owner运行→UIA实际选帧→Inspector，新增07-Channel截图和七张截图门禁 | [39619024972](https://github.com/oudream/cx-visual-x3/actions/runs/39619024972) 已观察UIA步骤success；**完整CI仍须以该Run最终conclusion为准** |
+
+新增测试TestId：TCT.M3.GRAPHRUNTIME.001（MOL V1到MRK）、.002（非法证据拒绝）、.003（MOL V2 MPC typed Port/Link）；TCT.M3.CHANNEL.001（生产Virtual分包、故障及恢复）、.002（Parser半包/粘包和恶意证据拒绝）。归档读取仍采用原TCTObservationReplay与Artifact SHA256，未知Schema/跨Attempt不得伪造Viewer成功。
+
+**第二阶段仍未完成：** MRKRuntimeSession、资源Lease及等待队列、Journal、完整Trace/实时刷新及Run回放；Graph MOC错误定位、多Content/多实例的更完整关联；生产真实TCP/UDP/串口Channel/工业Protocol与完整安全授权；Studio→MEM→MOL→MOC→MRK→MDS→TestCenter六场景闭环；异常/多线程/长稳/全部UIA与人工设计图04～06验收。
+
+**第三阶段仍未完成：** 正式Suite/Plan依赖/资源、Fixture/Dataset/Seed、Golden审批与安全审计、正式CapabilityId/Requirement八维Evidence、Benchmark P50/P95/P99、六Workbench专业扩展、受控Real/HIL及AB C综合验收，不能借用上述成功CI标绿。
+
+| 状态级别 | 第一阶段 | 第二阶段本次Graph/Runtime/Virtual Channel切片 | 整个第二/第三阶段 |
+|---|---|---|---|
+| 设计确定 | 已 | 已 | 主规格V4.1已确定 |
+| 代码实现 | 对应第一阶段已 | 上述增量已提交master | **部分/未完成** |
+| Windows自动测试 | 既有成功证据 | 上表已匹配的Commit成功；最后UIA提交需终态复核 | **未完成** |
+| Windows UIA | Geometry/Object已过 | Graph/Runtime成功；Channel步骤已过，等待最终Run结论 | **未完成** |
+| 人工界面 | **未签认** | **未签认** | 未签认 |
+| 工业设备/HIL | 不适用 | **Virtual不等于Real/HIL** | 未验收 |
