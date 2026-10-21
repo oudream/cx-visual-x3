@@ -39,9 +39,8 @@
 | Applications | `Applications/Studio` | `CxVisual.Studio.csproj` | `CxVisual.Studio` |
 | Intelligence | `Intelligence/Core` | `CxVisual.Intelligence.csproj` | `CxVisual.Intelligence` |
 | Tests | `Tests/ArchitectureSmoke` | `CxVisual.Tests.ArchitectureSmoke.csproj` | `CxVisual.Tests.ArchitectureSmoke` |
-| Tests | `Tests/FoundationSmoke` | `CxVisual.Tests.FoundationSmoke.csproj` | `CxVisual.Tests.FoundationSmoke` |
+| Tests | `Tests/TestCenter` | `CxVisual.TestCenter.csproj` | `CxVisual.TestCenter` |
 
-| Tests | `Tests/FoundationWpf` | `CxVisual.Tests.FoundationWpf.csproj` | `CxVisual.Tests.FoundationWpf` |
 
 ## 验证
 

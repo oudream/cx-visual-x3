@@ -1,6 +1,6 @@
 # CxVisual.Unified — unified solution and executable samples V1.0-preview
 
-**Architecture:** Foundation (8) → Mechanism (9) → Professional Domain (6) → Applications (2), with Intelligence (1) and Tests (5): **31 traditional C# projects** (includes FoundationWpf, ConfigFoundationSmoke and TestCenter).
+**Architecture:** Foundation (8) → Mechanism (9) → Professional Domain (6) → Applications (2), with Intelligence (1) and Tests (2): **28 traditional C# projects** (ArchitectureSmoke and TestCenter).
 
 **Target platform:** Windows x64 / Visual Studio 2019 or 2022 / .NET Framework 4.8 Developer Pack, MSBuild 15+.
 **UI:** WPF and MVVM, no WinForms, no VTK dependency in this sample. `Project/Page/Content/Symbol/Group/Element` lives in `CxVisual.Mechanism.Core`, not Foundation. **Only the specified sample projects contain production-like demonstration behavior.** Other projects are deliberately assembly-only stubs, not invented functionality.
@@ -64,7 +64,7 @@
 1. Open `CxVisual.Unified.sln` in Visual Studio, select **Debug | x64**, **Rebuild Solution**.
 2. Or run `Build\BUILD.cmd` (compiles the entire solution then runs independent CLI smoke tests).
 3. `Build\BUILD.cmd -ShowGUI` also launches `CxVisual.Studio.exe` for manual acceptance.
-4. `CxVisual.Foundation.sln` is a smaller Foundation-only solution with its smoke test.
+4. `CxVisual.Foundation.sln` contains only the eight Foundation production projects; smoke tests run through the unified ArchitectureSmoke project.
 5. All built binaries go to `Output\<Configuration>\x64\`. Intermediate `obj` files remain project-local.
 
 A manual graphical acceptance procedure is in `Examples/WPF/README.md`. The CLI commands are in `Examples/CLI/README.md`.
@@ -73,14 +73,14 @@ A manual graphical acceptance procedure is in `Examples/WPF/README.md`. The CLI 
 
 ```text
 CxVisual.Unified/
-├── CxVisual.Unified.sln            # all 31 projects
-├── CxVisual.Foundation.sln         # 8 foundation projects + 1 test
+├── CxVisual.Unified.sln            # all 28 projects
+├── CxVisual.Foundation.sln         # 8 foundation projects
 ├── Foundation/                     # 8 projects
 ├── Mechanism/                      # 9 projects incl. WPF adapter
 ├── Professional/                   # 6 domain workbench projects
 ├── Applications/                   # Studio (WPF) / Runtime.Host (CLI)
 ├── Intelligence/                   # 1 project
-├── Tests/                          # FoundationSmoke / ArchitectureSmoke / FoundationWpf / ConfigFoundationSmoke / TestCenter
+├── Tests/                          # ArchitectureSmoke / TestCenter
 ├── DOCS/                           # decisions / testing / migration / catalog
 ├── DLL/x64/                        # actual manually staged runtime binaries only
 ├── Examples/{CLI,WPF,Cases}/       # demos + test fixtures
@@ -99,8 +99,8 @@ CxVisual.Unified/
 - `CxVisual.Mechanism.Presentation.Wpf`: WPF painting and pointer input adapter only.
 - `CxVisual.Runtime.Host`: CLI demo/save/load executable.
 - `CxVisual.Studio`: interactive WPF application, command toolbar and project state panel.
-- `CxVisual.Tests.FoundationSmoke` and `CxVisual.Tests.ArchitectureSmoke`: independent CLI tests, exit 0/1.
-- `CxVisual.Tests.FoundationWpf`: standalone WPF test harness for F16 logging and F19 monitoring; requires manual GUI acceptance.
+- `CxVisual.Tests.ArchitectureSmoke`: consolidated Foundation/Configuration/Engineering/Runtime CLI tests, exit 0/1; supports `--foundation`, `--concurrency`, `--config-foundation`.
+- `CxVisual.TestCenter`: unified test discovery, isolated execution, structured evidence, history, WPF workbench and reports.
 
 Remaining **18 projects** have real `.csproj` and assembly metadata only. This is intentional; they are not yet implemented or tested domain capabilities.
 
@@ -117,8 +117,8 @@ Only structural checks were executed in the current Linux environment; Windows .
 
 - `Foundation.Infrastructure`：统一日志记录、`FLDLogService`有界队列、专有文件简单日志、重要事件、UTC滚动日志和保留策略；`FCRSystemMonitor`系统与进程指标。
 - `Mechanism.Presentation.Wpf`：可复用 `LogViewerControl` 与 `SystemMonitorControl`；不把WPF依赖带入Foundation。
-- `Tests/FoundationWpf`：独立窗口，三页签，日志操作、监控、压力/异常；只写入系统临时目录。
-- CLI验收 `CxVisual.Tests.FoundationSmoke.exe` 扩充F16/F19正常与异常测试；GUI人工验收：`Build\BUILD.cmd -ShowGUI`，或手动启动 `Output\Debug\x64\CxVisual.Tests.FoundationWpf.exe`。
+- `Tests/FoundationWpf` 已删除；原日志和并发自动回归在 `Tests/ArchitectureSmoke/Foundation/`，日志/监测的专门人工窗口不再提供，未来如需GUI验收应在TestCenter中实现。
+- CLI验收：`CxVisual.Tests.ArchitectureSmoke.exe --foundation`（或 `--concurrency`）；`Build\BUILD.cmd -ShowGUI` 仅打开 Studio；F16/F19 专门人工GUI已移除，不能再计作已验收。
 
 **验证边界：** 此实现基于源码审阅与结构检查；只有Windows VS2022/MSBuild17 + .NET Framework 4.8环境执行成功后，才能写“编译/自动测试/WPF运行通过”。见 `DOCS/Implementation/Foundation_F16F19_Milestone.md`。
 
@@ -133,7 +133,7 @@ Only structural checks were executed in the current Linux environment; Windows .
 
 新增`FLDEventLogHelper`/`FLDImportantEventLog`同步文件接口，支持MES/Panda/PLC等分类、自定义类别、按本地日期独立文件、流Flush、类别级门限和只清理当前类别历史文件；默认不进入`FLDLogHelper`异步队列，也不触发`LogEvent`，详见`DOCS/Implementation/F16_SynchronousDedicatedFileLogging_V1.md`。
 
-CLI自动测试已登记在`FoundationSmoke/SynchronousLogTests.cs`；FoundationWpf提供同步MES/Panda测试按钮。当前尚未有Windows MSBuild/.NET Framework 4.8实编译及动态验收记录，请不要将源码静态检查误认为已通过运行测试。
+CLI自动测试现位于 `Tests/ArchitectureSmoke/Foundation/Logging/SynchronousLogTests.cs`。历史 FoundationWpf 的同步 MES/Panda 测试按钮已随项目移除；自动回归结果需查对应 Windows CI，原人工窗口验收不再有效。
 
 ## TestCenter (TCT)
 

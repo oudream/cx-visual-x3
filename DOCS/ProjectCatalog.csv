@@ -25,7 +25,5 @@ Professional,CxVisual.Professional.Simulation,P66-P73,Assembly-only skeleton,
 Applications,CxVisual.Studio,—,Implemented sample,"CxVisual.Mechanism.Presentation.Wpf, CxVisual.Mechanism.Visual, CxVisual.Mechanism.Core, CxVisual.Foundation.Core, CxVisual.Foundation.Infrastructure"
 Applications,CxVisual.Runtime.Host,—,Implemented sample,"CxVisual.Mechanism.Visual, CxVisual.Mechanism.Core, CxVisual.Foundation.Core, CxVisual.Foundation.Infrastructure"
 Intelligence,CxVisual.Intelligence,—,Assembly-only skeleton,
-Tests,CxVisual.Tests.FoundationSmoke,—,Implemented sample,"CxVisual.Foundation.Geometry, CxVisual.Foundation.Core, CxVisual.Foundation.Infrastructure"
-Tests,CxVisual.Tests.ArchitectureSmoke,—,Implemented sample,"CxVisual.Mechanism.Visual, CxVisual.Mechanism.Core, CxVisual.Foundation.Geometry, CxVisual.Foundation.Core"
-Tests,CxVisual.Tests.FoundationWpf,—,WPF manual test harness,"CxVisual.Foundation.Infrastructure, CxVisual.Mechanism.Presentation.Wpf"
+Tests,CxVisual.Tests.ArchitectureSmoke,—,Foundation/Config/Architecture consolidated smoke tests,"CxVisual.Mechanism.Visual, CxVisual.Mechanism.Core, CxVisual.Foundation.Geometry, CxVisual.Foundation.Core"
 Tests,CxVisual.TestCenter,—,WPF unified Foundation/Mechanism test system,"CxVisual.Foundation.Geometry, CxVisual.Mechanism.Core"
