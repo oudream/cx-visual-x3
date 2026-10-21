@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Windows.Controls;
 using AvalonDock.Layout;
+using CxVisual.Mechanism.Presentation.Wpf;
 using CxVisual.Mechanism.Core;
 using CxVisual.Mechanism.Orchestration;
 
@@ -228,6 +229,74 @@ namespace CxVisual.Studio
                     Assert(vm.CurrentStudioDefinition!=null&&
                         vm.CurrentStudioDefinition.Id==page.Id,"实例删除后无法返回页面");
                     Assert(vm.SelectedId==null,"返回时复活了已删除的实例选择");
+                });
+                CheckStep("R06 两页面独立编辑Tab、事务、布局和跨工程失效反证", () =>
+                {
+                    StudioViewModel model = window.DataContext as StudioViewModel;
+                    MEMEngineeringSession session = model.ProjectSession;
+                    MEMPage one = session.AddPage("R06 一号工位");
+                    MEMPage two = session.AddPage("R06 二号工位");
+                    int revision = session.Revision;
+                    string first = window.OpenStudioPageDocument(one.Id);
+                    Assert(window.ActiveStudioDocumentId == first, "页面一未成为活动资源文档");
+                    string second = window.OpenStudioPageDocument(two.Id);
+                    Assert(window.ActiveStudioDocumentId == second, "页面二未成为活动资源文档");
+                    Assert(first != second && window.GetStudioContentIds().Contains(first) &&
+                        window.GetStudioContentIds().Contains(second), "页面没有不同的资源Tab");
+                    SceneView firstView = window.GetStudioPageScene(one.Id);
+                    SceneView secondView = window.GetStudioPageScene(two.Id);
+                    Assert(firstView != null && secondView != null &&
+                        !Object.ReferenceEquals(firstView, secondView), "两个Tab仍共用一张场景");
+                    firstView.SetViewport(1.7, 0, 0);
+                    Assert(Math.Abs(firstView.Zoom - 1.7) < 0.001 &&
+                        Math.Abs(secondView.Zoom - 1) < 0.001,
+                        "不同页面的独立视口丢失");
+                    window.OpenStudioPageDocument(one.Id);
+                    Assert(model.ActivePage.Id == one.Id, "Tab激活没有切换真实MEM页面");
+                    Assert(session.Revision == revision, "仅激活页面修改MEM Revision");
+                    LayoutDocument firstDoc = window.StudioDock.Layout.Descendents()
+                        .OfType<LayoutDocument>().First(d => d.ContentId == first);
+                    DockPanel panel = firstDoc.Content as DockPanel;
+                    Assert(panel != null, "页面Tab未挂载真实画布");
+                    StackPanel stack = panel.Children.OfType<StackPanel>().First();
+                    Button add = stack.Children.OfType<WrapPanel>().First()
+                        .Children.OfType<Button>().First(b =>
+                            Object.Equals(b.Content, "添加矩形"));
+                    int shapes = one.RootContent.DescendantsAndSelf().OfType<MRCShapeElement>().Count();
+                    add.RaiseEvent(new System.Windows.RoutedEventArgs(Button.ClickEvent));
+                    Assert(one.RootContent.DescendantsAndSelf().OfType<MRCShapeElement>().Count() == shapes + 1,
+                        "页面Tab添加矩形没有经过MEM");
+                    Assert(session.Revision > revision, "真实画布操作未增加工程Revision");
+                    int afterAdd = session.Revision;
+                    window.OpenStudioPageDocument(two.Id);
+                    Assert(two.RootContent.DescendantsAndSelf().OfType<MRCShapeElement>().Count() == 0,
+                        "页面一编辑串入页面二");
+                    string xml = window.SerializeStudioLayout();
+                    MainWindow.ValidateStudioLayoutXml(xml);
+                    string path = Path.Combine(Path.GetTempPath(), "cxstudio-r06-" +
+                        Guid.NewGuid().ToString("N") + ".xml");
+                    try
+                    {
+                        window.SaveStudioLayout(path);
+                        window.RestoreStudioLayout(path);
+                        Assert(window.GetStudioContentIds().Contains(first) &&
+                               window.GetStudioContentIds().Contains(second),
+                            "工作区布局恢复丢失了两个页面Tab");
+                        Assert(session.Revision == afterAdd, "恢复布局修改MEM Revision");
+                        string malformed = xml.Replace(second,
+                            "doc.page." + Guid.NewGuid().ToString("N"));
+                        File.WriteAllText(path, malformed, new UTF8Encoding(false));
+                        AssertThrows(() => window.RestoreStudioLayout(path));
+                        Assert(session.Revision == afterAdd, "失效页面布局修改工程");
+                        File.WriteAllText(path, xml, new UTF8Encoding(false));
+                        window.CloseStudioDocument(first);
+                        Assert(!window.GetStudioContentIds().Contains(first) &&
+                            window.GetStudioPageScene(one.Id) == null, "关闭资源Tab未释放Editor");
+                        window.OpenStudioPageDocument(one.Id);
+                        Assert(window.GetStudioContentIds().Count(x => x == first) == 1,
+                            "重开资源Tab重复注册");
+                    }
+                    finally { if (File.Exists(path)) File.Delete(path); }
                 });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;

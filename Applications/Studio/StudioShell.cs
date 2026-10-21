@@ -64,6 +64,8 @@ namespace CxVisual.Studio
             _viewModel.SceneChanged += OnStudioSceneChangedForGraphics;
             RefreshStudioGraphicsTree();
             UpdateStudioGraphicsVisibility();
+            _pageDocumentSession = _viewModel.ProjectSession;
+            _viewModel.SceneChanged += OnStudioPageSourceChanged;
             Loaded += (sender, args) =>
             {
                 if (_studioInitialized) return;
@@ -82,8 +84,10 @@ namespace CxVisual.Studio
 
         private static bool IsKnownContent(string id)
         {
+            Guid pageId;
             return KnownDocuments.Contains(id, StringComparer.Ordinal) ||
-                   KnownTools.Contains(id, StringComparer.Ordinal);
+                   KnownTools.Contains(id, StringComparer.Ordinal) ||
+                   TryParsePageDocumentId(id, out pageId);
         }
 
         private IEnumerable<LayoutContent> ExistingContents()
@@ -108,7 +112,10 @@ namespace CxVisual.Studio
         public void EnsureStudioContentIds()
         {
             string[] ids = GetStudioContentIds();
-            if (ids.Any(id => !IsKnownContent(id)) ||
+            if (ids.Any(id => !IsKnownContent(id) ||
+                (id.StartsWith(PageDocumentPrefix, StringComparison.Ordinal) &&
+                 !(_viewModel.ProjectSession.Find(Guid.ParseExact(
+                    id.Substring(PageDocumentPrefix.Length), "N")) is CxVisual.Mechanism.Core.MEMPage))) ||
                 ids.Distinct(StringComparer.Ordinal).Count() != ids.Length)
                 throw new InvalidDataException("工作区ContentId未知或重复。");
         }
@@ -128,7 +135,8 @@ namespace CxVisual.Studio
 
         private static string DefaultContextFor(string id)
         {
-            if (id == "doc.visual") return "绘图";
+            if (id == "doc.visual" || (id != null &&
+                id.StartsWith(PageDocumentPrefix, StringComparison.Ordinal))) return "绘图";
             if (id == "doc.flow") return "节点";
             if (id == "doc.config") return "配置";
             return "主页";
@@ -136,11 +144,26 @@ namespace CxVisual.Studio
 
         private void SelectStudioContext(string id)
         {
-            if (!KnownDocuments.Contains(id, StringComparer.Ordinal)) return;
+            Guid pageId;
+            if (!KnownDocuments.Contains(id, StringComparer.Ordinal) &&
+                !TryParsePageDocumentId(id, out pageId)) return;
             if (!String.Equals(_activeStudioDocumentId, id, StringComparison.Ordinal))
             {
                 _activeStudioDocumentId = id;
                 _ribbonSelection = DefaultContextFor(id);
+                if (TryParsePageDocumentId(id, out pageId) && !_switchingPageDocument)
+                {
+                    _switchingPageDocument = true;
+                    try
+                    {
+                        CxVisual.Mechanism.Core.MEMPage page =
+                            _viewModel.ProjectSession.Find(pageId) as CxVisual.Mechanism.Core.MEMPage;
+                        if (page != null && (_viewModel.ActivePage == null ||
+                            _viewModel.ActivePage.Id != page.Id))
+                            _viewModel.ActivePage = page;
+                    }
+                    finally { _switchingPageDocument = false; }
+                }
                 UpdateStudioGraphicsVisibility();
                 RefreshStudioGraphicsTree();
             }
@@ -302,7 +325,8 @@ namespace CxVisual.Studio
         {
             if (StudioDynamicMenus == null || StudioRibbonActions == null) return;
             string active = _activeStudioDocumentId;
-            string[] domains = active == "doc.visual"
+            string[] domains = (active == "doc.visual" ||
+                (active != null && active.StartsWith(PageDocumentPrefix, StringComparison.Ordinal)))
                 ? new[] { "绘图", "排列", "图层", "绑定" }
                 : active == "doc.flow"
                     ? new[] { "节点", "连线", "编排", "端口" }
@@ -517,6 +541,7 @@ namespace CxVisual.Studio
             if (!file.Exists || file.Length > LayoutByteLimit) throw new InvalidDataException("布局不存在或超出限制。");
             string xml = File.ReadAllText(path, Encoding.UTF8);
             ValidateStudioLayoutXml(xml);
+            ValidateResourceDocumentLayout(xml);
             string backup = SerializeStudioLayout();
             try { DeserializeStudioLayout(xml); EnsureStudioContentIds(); }
             catch
@@ -525,6 +550,30 @@ namespace CxVisual.Studio
                 catch (Exception recovery)
                 { _viewModel.ReportStudioShellWarning("恢复默认前的工作区失败：" + recovery.Message); }
                 throw;
+            }
+        }
+
+        private void ValidateResourceDocumentLayout(string xml)
+        {
+            // 用户布局仅能引用当前MEM工程真实页面；不接受失效/跨工程DocumentId。
+            XmlReaderSettings settings = new XmlReaderSettings
+            {
+                DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null,
+                MaxCharactersInDocument = LayoutByteLimit, MaxCharactersFromEntities = 0
+            };
+            using (StringReader text = new StringReader(xml))
+            using (XmlReader reader = XmlReader.Create(text, settings))
+            {
+                while (reader.Read())
+                {
+                    if (reader.NodeType != XmlNodeType.Element) continue;
+                    string key = reader.GetAttribute("ContentId");
+                    Guid id;
+                    if (TryParsePageDocumentId(key, out id) &&
+                        !(_viewModel.ProjectSession.Find(id) is
+                            CxVisual.Mechanism.Core.MEMPage))
+                        throw new InvalidDataException("工作区包含失效或跨工程的页面：" + id);
+                }
             }
         }
 
@@ -537,12 +586,36 @@ namespace CxVisual.Studio
             {
                 object view;
                 if (!_studioViews.TryGetValue(args.Model.ContentId, out view))
-                    view = args.Model.ContentId == "doc.config" ? CreateConfigurationDocument() : null;
+                {
+                    Guid pageId;
+                    if (TryParsePageDocumentId(args.Model.ContentId, out pageId))
+                    {
+                        PageDocumentContext context = CreateStudioPageContext(args.Model.ContentId);
+                        view = context.Panel;
+                    }
+                    else
+                        view = args.Model.ContentId == "doc.config" ?
+                            CreateConfigurationDocument() : null;
+                }
                 if (view == null) { args.Cancel = true; return; }
                 _studioViews[args.Model.ContentId] = view;
                 args.Content = view;
+                LayoutDocument pageModel = args.Model as LayoutDocument;
+                if (pageModel != null && pageModel.ContentId.StartsWith(
+                    PageDocumentPrefix, StringComparison.Ordinal))
+                    RegisterStudioPageClosing(pageModel);
             };
             using (StringReader text = new StringReader(xml)) serializer.Deserialize(text);
+            foreach (string key in _pageDocuments.Keys.ToArray())
+            {
+                if (FindStudioContent(key) == null)
+                {
+                    PageDocumentContext orphan = _pageDocuments[key];
+                    _pageDocuments.Remove(key);
+                    _studioViews.Remove(key);
+                    orphan.Dispose();
+                }
+            }
             LayoutDocument active = StudioDock.Layout.ActiveContent as LayoutDocument;
             if (active != null) SelectStudioContext(active.ContentId);
             UpdateStudioGraphicsVisibility();

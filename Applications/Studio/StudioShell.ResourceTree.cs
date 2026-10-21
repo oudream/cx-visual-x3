@@ -144,8 +144,7 @@ namespace CxVisual.Studio
             MEMPage page = selected.Tag as MEMPage;
             if (page != null)
             {
-                _viewModel.ActivePage = page;
-                OpenStudioDocument("doc.visual");
+                OpenStudioPageDocument(page.Id);
                 args.Handled = true;
                 return;
             }

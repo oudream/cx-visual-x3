@@ -24,7 +24,9 @@ namespace CxVisual.Studio
             LayoutAnchorable graphic = ExistingContents().OfType<LayoutAnchorable>()
                 .FirstOrDefault(item => item.ContentId == "tool.graphics");
             if (graphic == null) return;
-            if (_activeStudioDocumentId == "doc.visual")
+            if ((_activeStudioDocumentId == "doc.visual" ||
+                (_activeStudioDocumentId != null &&
+                 _activeStudioDocumentId.StartsWith("doc.page.", StringComparison.Ordinal))))
             {
                 if (!graphic.IsVisible) graphic.Show();
             }
