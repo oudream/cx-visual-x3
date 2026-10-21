@@ -33,6 +33,8 @@ namespace CxVisual.TestCenter.UI
         public int VisibleFigureCount { get; private set; }
         public double Zoom { get { return _zoom; } }
         public TCTGeometryFigure SelectedFigure { get { return _figuresList.SelectedItem as TCTGeometryFigure; } }
+        public IReadOnlyList<TCTGeometryFigure> VerifiedFigures
+        { get { return new List<TCTGeometryFigure>(_figures).AsReadOnly(); } }
         public void SelectFigure(int index)
         {
             if (index < 0 || index >= _figures.Count)
