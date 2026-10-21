@@ -101,6 +101,7 @@ namespace CxVisual.TestCenter.UI
             TextWrapping = TextWrapping.Wrap
         };
         public string SelectedObjectId { get; private set; }
+        public string SelectedObjectDetails { get; private set; }
         private readonly TextBlock _observation = new TextBlock { Margin = new Thickness(12),
             FontFamily = new FontFamily("Consolas"), TextWrapping = TextWrapping.Wrap };
         // 供WPF Smoke核实真实选择链，不通过UI推导Pass/Fail。
@@ -150,6 +151,7 @@ namespace CxVisual.TestCenter.UI
             _artifacts.ItemsSource = null;
             SelectedObservationTitle = null;
             SelectedObjectId = null;
+            SelectedObjectDetails = null;
             _objectDetail.Text = "选择真实工程快照中的节点或引用以查看稳定身份。";
             _tabs.SelectedIndex = 0;
             _observation.Text = "请选择真实观察项以查看Owner、身份与证据引用。";
@@ -169,6 +171,7 @@ namespace CxVisual.TestCenter.UI
             if (result == null) return;
             SelectedObservationTitle = null;
             SelectedObjectId = null;
+            SelectedObjectDetails = null;
             _objectDetail.Text = "选择真实工程快照中的节点或引用以查看稳定身份。";
             _tabs.SelectedIndex = 0;
             _observation.Text = "本Attempt有 " + result.Observations.Count +
@@ -206,8 +209,9 @@ namespace CxVisual.TestCenter.UI
         public void ShowObject(string objectId, string verifiedDetails)
         {
             SelectedObjectId = objectId;
-            _objectDetail.Text = string.IsNullOrWhiteSpace(objectId) ?
+            SelectedObjectDetails = string.IsNullOrWhiteSpace(objectId) ?
                 "未选择工程对象。" : (verifiedDetails ?? objectId);
+            _objectDetail.Text = SelectedObjectDetails;
             _tabs.SelectedItem = _objectTab;
         }
 
