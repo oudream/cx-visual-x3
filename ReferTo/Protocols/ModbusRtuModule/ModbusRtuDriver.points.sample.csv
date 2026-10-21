@@ -1,0 +1,7 @@
+DeviceName,VariableName,Description,CanRead,CanWrite,CanControl,CanEvent,CanAlarm,TagsString,RegisterType,ValueType,Address,ReadInterval
+ResultRequest,Value,Holding register UInt16 read point,True,False,False,False,False,,HoldingRegister,UInt16,5400,200
+BatchId,Value,Holding register UInt32 read point,True,False,False,False,False,,HoldingRegister,UInt32,5402,200
+StartCommand,Value,Coil write point,False,True,False,False,False,,Coil,Bit,0,0
+RunningFeedback,Value,Discrete input read point,True,False,False,False,False,,DiscreteInput,Bit,10,500
+RegisterBitAlarm,Value,Holding register bit read point,True,False,False,True,True,,HoldingRegister,Bit,100.3,500
+AnalogSetpoint,Value,Holding register Float32 write point,False,True,False,False,False,,HoldingRegister,Float32,200,0

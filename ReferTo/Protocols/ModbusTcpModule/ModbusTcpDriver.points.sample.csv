@@ -1,0 +1,7 @@
+DeviceName,VariableName,Description,CanRead,CanWrite,CanControl,CanEvent,CanAlarm,TagsString,RegisterType,ValueType,Address,ReadInterval
+下料口1结果请求,Value,保持寄存器UInt16读点,True,False,False,False,False,,HoldingRegister,UInt16,5400,200
+下料口1批次号,Value,保持寄存器UInt32读点,True,False,False,False,False,,HoldingRegister,UInt32,5402,200
+设备启动命令,Value,线圈写点,False,True,False,False,False,,Coil,Bit,0,0
+设备运行反馈,Value,离散输入读点,True,False,False,False,False,,DiscreteInput,Bit,10,500
+寄存器位报警,Value,保持寄存器内的单bit读点,True,False,False,True,True,,HoldingRegister,Bit,100.3,500
+模拟量设定值,Value,保持寄存器Float32写点,False,True,False,False,False,,HoldingRegister,Float32,200,0

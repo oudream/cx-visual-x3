@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{4A3726C0-F139-4F53-BF48-7298D25A4185}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <RootNamespace>CxECTImageWinForms</RootNamespace>
+    <AssemblyName>CxECTImageWinForms</AssemblyName>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <Deterministic>true</Deterministic>
+    <GenerateResourceUsePreserializedResources>true</GenerateResourceUsePreserializedResources>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>..\..\Deploy\Tools\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>..\..\Deploy\Tools\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="halcondotnetxl">
+      <HintPath>..\..\DLL\halcon\halcondotnetxl.dll</HintPath>
+    </Reference>
+    <Reference Include="hdevenginedotnetxl">
+      <HintPath>..\..\DLL\halcon\hdevenginedotnetxl.dll</HintPath>
+    </Reference>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="System.Data.DataSetExtensions" />
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Net.Http" />
+    <Reference Include="System.Resources.Extensions">
+      <HintPath>..\..\packages\System.Resources.Extensions.4.6.0\lib\netstandard2.0\System.Resources.Extensions.dll</HintPath>
+      <!-- 资源文件中的 PNG 由该程序集读取；必须随控件复制到宿主输出目录。 -->
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="System.Memory">
+      <HintPath>..\..\packages\System.Memory.4.5.5\lib\net461\System.Memory.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Runtime.CompilerServices.Unsafe">
+      <!-- System.Memory 的运行时依赖；资源反序列化会在控件构造阶段使用。 -->
+      <HintPath>..\..\packages\System.Runtime.CompilerServices.Unsafe.6.0.0\lib\net461\System.Runtime.CompilerServices.Unsafe.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="System.Numerics.Vectors">
+      <!-- System.Memory 在 .NET Framework 下的向量化实现依赖。 -->
+      <HintPath>..\..\packages\System.Numerics.Vectors.4.5.0\lib\net46\System.Numerics.Vectors.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="System.Buffers">
+      <HintPath>..\..\packages\System.Buffers.4.5.1\lib\net461\System.Buffers.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Xml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Contracts\IImagePixelSource.cs" />
+    <Compile Include="Controls\ImageViewerControl.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Controls\ImageViewerControl.Designer.cs">
+      <DependentUpon>ImageViewerControl.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Controls\ToolActionPanel.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Controls\ToolActionPanel.Designer.cs">
+      <DependentUpon>ToolActionPanel.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Controls\Visualization\GrayLevelScaleControl.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Controls\Visualization\HistogramPlotControl.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Controls\Visualization\ImageRulerControl.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Controls\Visualization\LineProfilePlotControl.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Halcon\HalconImageCanvas.cs" />
+    <Compile Include="Halcon\ImageFrameStore.cs" />
+    <Compile Include="Halcon\ImagePresentationProcessor.cs" />
+    <Compile Include="Halcon\HalconPixelSource.cs" />
+    <Compile Include="Models\CalibrationState.cs" />
+    <Compile Include="Models\ImageComparisonState.cs" />
+    <Compile Include="Models\ImageDisplayState.cs" />
+    <Compile Include="Models\ImageDocument.cs" />
+    <Compile Include="Models\ImagePoint.cs" />
+    <Compile Include="Models\ImagePixelColor.cs" />
+    <Compile Include="Models\ImageRectangle.cs" />
+    <Compile Include="Models\ImageSize.cs" />
+    <Compile Include="Models\ImageSlot.cs" />
+    <Compile Include="Models\ImageToolMode.cs" />
+    <Compile Include="Models\ImageTransformState.cs" />
+    <Compile Include="Models\ImageViewportState.cs" />
+    <Compile Include="Models\Overlays\ImageOverlayItem.cs" />
+    <Compile Include="Models\Overlays\OverlayColorPalette.cs" />
+    <Compile Include="Models\Overlays\OverlayStore.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Properties\Resources.Designer.cs">
+      <AutoGen>True</AutoGen>
+      <DesignTime>True</DesignTime>
+      <DependentUpon>Resources.resx</DependentUpon>
+    </Compile>
+    <Compile Include="Services\ImageMeasurementService.cs" />
+    <Compile Include="Services\ImageStatisticsService.cs" />
+    <Service Include="{94E38DFF-614B-4cbd-B67C-F211BB35CE8B}" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\Common\CommonInterfaces\CommonInterfaces.csproj">
+      <Project>{a6796b05-97a0-42b0-bfbc-29a5062eec1f}</Project>
+      <Name>CommonInterfaces</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\..\Drivers\HalconDriverModule\HalconDriverModule.csproj">
+      <Project>{2877532c-c31d-4c26-a231-45e4ffe5822b}</Project>
+      <Name>HalconDriverModule</Name>
+    </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Controls\ImageViewerControl.resx">
+      <DependentUpon>ImageViewerControl.cs</DependentUpon>
+      <ManifestResourceName>CxECTImageWinForms.Controls.ImageViewerControl</ManifestResourceName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Controls\ToolActionPanel.resx">
+      <DependentUpon>ToolActionPanel.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Properties\Resources.resx">
+      <Generator>ResXFileCodeGenerator</Generator>
+      <LastGenOutput>Resources.Designer.cs</LastGenOutput>
+      <ManifestResourceName>CxECTImageWinForms.Properties.Resources</ManifestResourceName>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Resources\64px\01_标注\01_点标注_定位准星.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Resources\64px\02_ROI\01_矩形ROI_中心十字准星.png" />
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+</Project>

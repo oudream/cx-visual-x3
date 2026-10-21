@@ -1,0 +1,108 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{9E6C6C33-30EC-4A60-9E3F-2C56516EE42B}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>DeviceInterfaces</RootNamespace>
+    <AssemblyName>DeviceInterfaces</AssemblyName>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <Deterministic>true</Deterministic>
+    <TargetFrameworkProfile />
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>..\..\Deploy\Tools\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>5</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>none</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>..\..\Deploy\Tools\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="System.Data.DataSetExtensions" />
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Net.Http" />
+    <Reference Include="System.Xml" />
+    <Reference Include="YamlDotNet, Version=15.0.0.0, Culture=neutral, PublicKeyToken=ec19458f3c15af5e, processorArchitecture=MSIL">
+      <HintPath>..\..\packages\YamlDotNet.15.1.1\lib\net47\YamlDotNet.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Analog.cs" />
+    <Compile Include="AnalogConfig.cs" />
+    <Compile Include="AxisConfig.cs" />
+    <Compile Include="BitStatusSensorConfig.cs" />
+    <Compile Include="ControllerConfig.cs" />
+    <Compile Include="CoordinateSystem.cs" />
+    <Compile Include="CoordinateSystemConfig.cs" />
+    <Compile Include="CylinderConfig.cs" />
+    <Compile Include="Device.cs" />
+    <Compile Include="DeviceEquipmentList.cs" />
+    <Compile Include="DeviceManager.cs" />
+    <Compile Include="DeviceMethod.cs" />
+    <Compile Include="DeviceTemplate.cs" />
+    <Compile Include="DeviceTemplateManager.cs" />
+    <Compile Include="DriverModuleBase.cs" />
+    <Compile Include="DriverModuleFactoryCenter.cs" />
+    <Compile Include="DriverModuleManager.cs" />
+    <Compile Include="EnumDefine.cs" />
+    <Compile Include="Axis.cs" />
+    <Compile Include="Cylinder.cs" />
+    <Compile Include="Controller.cs" />
+    <Compile Include="BitStatusSensor.cs" />
+    <Compile Include="IIOModule.cs" />
+    <Compile Include="MeasureDouble.cs" />
+    <Compile Include="MeasureDoubleConfig.cs" />
+    <Compile Include="MeasureInteger.cs" />
+    <Compile Include="MeasureIntegerConfig.cs" />
+    <Compile Include="MeasureLong.cs" />
+    <Compile Include="MeasureLongConfig.cs" />
+    <Compile Include="MeasureString.cs" />
+    <Compile Include="MeasureStringConfig.cs" />
+    <Compile Include="Output.cs" />
+    <Compile Include="OutputConfig.cs" />
+    <Compile Include="Point.cs" />
+    <Compile Include="PointSheet.cs" />
+    <Compile Include="Profile.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="UIStructure\DeviceVariableDetail.cs" />
+    <Compile Include="VariableMeasure.cs" />
+    <Compile Include="VariableMeasureBase.cs" />
+    <Compile Include="VariableMeasureCustom.cs" />
+    <Compile Include="VariableTest.cs" />
+    <Compile Include="Vector.cs" />
+    <Compile Include="VectorConfig.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\Common\CommonInterfaces\CommonInterfaces.csproj">
+      <Project>{a6796b05-97a0-42b0-bfbc-29a5062eec1f}</Project>
+      <Name>CommonInterfaces</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\VariableInterfaces\VariableInterfaces.csproj">
+      <Project>{005cbbc5-6e1b-40c7-bf14-f67369914114}</Project>
+      <Name>VariableInterfaces</Name>
+    </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="app.config" />
+    <None Include="packages.config" />
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+</Project>
