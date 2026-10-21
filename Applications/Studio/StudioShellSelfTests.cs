@@ -14,6 +14,7 @@ using CxVisual.Mechanism.Orchestration;
 using CxVisual.Mechanism.Data.Configuration;
 using CxVisual.Professional.Vision;
 using CxVisual.Professional.CT3D;
+using CxVisual.Professional.Automation;
 
 namespace CxVisual.Studio
 {
@@ -1683,6 +1684,54 @@ namespace CxVisual.Studio
                             "stale_engineering_revision"),
                         "过期候选被偷偷降级为普通CPU仿真或错误消费");
                     prepared.SetValue(window,null);
+                });
+                CheckStep("S2/P1 第三专业Schema注册发现与组合编辑去重复用", () =>
+                {
+                    StudioViewModel model=window.DataContext as StudioViewModel;
+                    MEMEngineeringSession session=model.ProjectSession;
+                    int before=session.Revision;
+                    window.OpenStudioDocument("doc.config");
+                    AssertThrows(()=>window.RegisterStudioConfiguration<CxAutomationDeviceOptions>(
+                        "Automation设备配置"));
+                    window.CloseStudioDocument("doc.config");
+                    window.RegisterStudioConfiguration<CxAutomationDeviceOptions>(
+                        "Automation设备配置");
+                    AssertThrows(()=>window.RegisterStudioConfiguration<CxAutomationDeviceOptions>(
+                        "重复Automation"));
+                    window.OpenStudioDocument("doc.config");
+                    LayoutDocument doc=window.StudioDock.Layout.Descendents()
+                        .OfType<LayoutDocument>().Single(x=>x.ContentId=="doc.config");
+                    System.Windows.DependencyObject root=doc.Content as
+                        System.Windows.DependencyObject;
+                    Func<System.Windows.DependencyObject,Type,bool> exists=null;
+                    exists=(parent,type)=>type.IsInstanceOfType(parent)||
+                        System.Windows.LogicalTreeHelper.GetChildren(parent)
+                            .OfType<System.Windows.DependencyObject>()
+                            .Any(child=>exists(child,type));
+                    Assert(root!=null&&
+                        exists(root,typeof(MPWConfigEditorControl<CxAutomationDeviceOptions>))&&
+                        exists(root,typeof(MPWConfigEditorControl<CxVisionInspectionOptions>))&&
+                        exists(root,typeof(MPWConfigEditorControl<CxCtReconstructionOptions>)),
+                        "第三个专业并未通过注册接入同一个真实配置页面");
+                    var panels=new List<System.Windows.Controls.Primitives.UniformGrid>();
+                    Action<System.Windows.DependencyObject> visit=null;
+                    visit=node=>{
+                        var grid=node as System.Windows.Controls.Primitives.UniformGrid;
+                        if(grid!=null)panels.Add(grid);
+                        foreach(var child in System.Windows.LogicalTreeHelper.GetChildren(node)
+                            .OfType<System.Windows.DependencyObject>())visit(child);
+                    };
+                    visit(root);
+                    Assert(panels.Any(g=>g.Children.Count==3&&g.Columns>=1&&g.Columns<=3),
+                        "配置组合未使用可响应布局的统一1/2/3列容器");
+                    string rootDir=System.IO.Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                        "CxVisual","Configs","V24","Projects");
+                    MHSConfigService config=new MHSConfigService(rootDir);
+                    var scope=config.ForProject(session.Project.Id.ToString("N"));
+                    Assert(scope.Open<CxAutomationDeviceOptions>().Identity.ScopeId==
+                        session.Project.Id.ToString("N")&&session.Revision==before,
+                        "第三专业注册后丢失Project隔离或错误修改MEM工程");
                 });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;
