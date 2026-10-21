@@ -71,6 +71,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             G05cWorkflowRetryPolicy();
             G05bStreamBackpressureAndFlow();
             G05dHierarchicalParallelMachine();
+            P03StateMachineGuards();
             V2ExtractLinearContent();
             G07ProjectReleaseLockAndAuthorization();
             G06CpuVisionThroughMOC();
@@ -1891,6 +1892,85 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "G05d state machine undo did not recover event rules");
             }
             finally{session.Close(true);}
+        }
+
+        /// <summary>P0-3：状态机Guard共享MOL标量语义，序列化往返与MRK执行结果正确。</summary>
+        private static void P03StateMachineGuards()
+        {
+            bool invalid=false;
+            try
+            {
+                new MOLStateTransition("Idle","start","Busy",
+                    new MOLExpression(MOLExpressionSource.StepResult,"foreign"));
+            }
+            catch(ArgumentException ex){invalid=ex.Message.Contains("moc.state.guard_source");}
+            Check(invalid,"P0-3 external StepResult guard escaped state-machine declaration");
+
+            var machine=new MOLStateMachineDefinition(new[]{
+                new MOLStateDescriptor("Idle","Unit",initial:true),
+                new MOLStateDescriptor("Busy","Unit")
+            },new[]{
+                new MOLStateTransition("Idle","start","Busy",
+                    MOLExpression.InputTrue("permit"))
+            });
+            var session=MEMEngineering.Create("P0-3 state guards");
+            var page=session.AddPage("Unit");
+            string path=System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                "moc-state-guard-"+Guid.NewGuid().ToString("N")+".cxproj");
+            try
+            {
+                Guid block=Guid.Empty;
+                MOCFlowBuilder.Edit(session,page.RootContent,b=>block=b.AddStateMachine(machine));
+                session.SaveAs(path);
+                using(var opened=MEMEngineering.Open(path))
+                {
+                    var saved=MOLWiringCodec.Get(opened.GetSnapshot().Find(page.RootContent.Id));
+                    var restored=saved.StateMachines[block];
+                    Check(restored.Transitions[0].Guard!=null&&
+                        restored.Transitions[0].Guard.Name=="permit"&&
+                        restored.Transitions[0].Guard.Source==MOLExpressionSource.FlowInput,
+                        "P0-3 Guard lost its schema2 payload/identity in actual project file");
+                    Check(restored.Run(new[]{"start"},new Dictionary<string,object>{
+                        {"permit",false}})["Unit"]=="Idle"&&
+                        restored.Run(new[]{"start"},new Dictionary<string,object>{
+                        {"permit",true}})["Unit"]=="Busy",
+                        "P0-3 Guard did not reject/permit deterministic transition");
+
+                    var build=new MOCBuildService().Build(opened.GetSnapshot(),
+                        page.RootContent.Id,new TestResolver());
+                    Check(build.Succeeded,"P0-3 guarded StateMachine compile failed");
+                    Func<IDictionary<string,object>,string> execute=inputs=>{
+                        var runtime=new MRKExecutionEngine(new FCRWorkerOptions(1,8));
+                        try
+                        {
+                            var handle=runtime.StartFlow(build.Plan.Plan,inputs);
+                            var done=handle.Completion.GetAwaiter().GetResult();
+                            if(done.State!=MRKFlowState.Completed)
+                                return "FAILED";
+                            object value;
+                            if(!handle.Context.TryGetResult("w"+block.ToString("N"),out value))
+                                return "MISSING";
+                            var result=value as IReadOnlyDictionary<string,string>;
+                            return result==null?"INVALID":result["Unit"];
+                        }
+                        finally{runtime.StopAsync(true).GetAwaiter().GetResult();}
+                    };
+                    string eventKey="moc.state.events."+block.ToString("N");
+                    Check(execute(new Dictionary<string,object>{
+                        {eventKey,new[]{"start"}},{"permit",false}})=="Idle"&&
+                        execute(new Dictionary<string,object>{
+                        {eventKey,new[]{"start"}},{"permit",true}})=="Busy"&&
+                        execute(new Dictionary<string,object>{
+                        {eventKey,new[]{"start"}}})=="FAILED",
+                        "P0-3 MRK did not honor Guard or reject missing Guard input");
+                }
+            }
+            finally
+            {
+                session.Close(true);
+                if(System.IO.File.Exists(path))System.IO.File.Delete(path);
+                if(System.IO.File.Exists(path+".cx-lock"))System.IO.File.Delete(path+".cx-lock");
+            }
         }
 
         /// <summary>G05b：真实背压、双向隔离、取消及MOC→MRK Stream Port通信。</summary>

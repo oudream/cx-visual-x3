@@ -125,42 +125,11 @@ namespace CxVisual.Mechanism.Orchestration
                 case MOLExpressionSource.Iteration: actual = iteration; break;
                 default: throw new InvalidOperationException("moc.expression_source");
             }
-            if (expr.Comparison == MOLComparison.Truthy)
-            {
-                if (actual is bool) return (bool)actual;
-                if (actual is string)
-                {
-                    bool value;
-                    if (bool.TryParse((string)actual, out value)) return value;
-                }
-                if (actual is int) return (int)actual != 0;
-                throw new InvalidOperationException("moc.truth_type");
-            }
-            int order = CompareScalar(actual, expr.Expected);
-            switch (expr.Comparison)
-            {
-                case MOLComparison.Equal: return order == 0;
-                case MOLComparison.NotEqual: return order != 0;
-                case MOLComparison.LessThan: return order < 0;
-                case MOLComparison.LessOrEqual: return order <= 0;
-                case MOLComparison.GreaterThan: return order > 0;
-                case MOLComparison.GreaterOrEqual: return order >= 0;
-                default: throw new InvalidOperationException("moc.expression_compare");
-            }
+            return MOLScalarExpression.Evaluate(expr,actual);
         }
-        internal static int CompareScalar(object actual, string expected)
-        {
-            string left = Convert.ToString(actual, CultureInfo.InvariantCulture);
-            bool booleanA, booleanB;
-            if (bool.TryParse(left, out booleanA) && bool.TryParse(expected, out booleanB))
-                return booleanA.CompareTo(booleanB);
-            decimal numberA, numberB;
-            if (decimal.TryParse(left, NumberStyles.Number, CultureInfo.InvariantCulture, out numberA) &&
-                decimal.TryParse(expected, NumberStyles.Number, CultureInfo.InvariantCulture, out numberB))
-                return numberA.CompareTo(numberB);
-            return string.CompareOrdinal(left, expected);
-        }
-
+        internal static int CompareScalar(object actual,string expected)
+        {return MOLScalarExpression.Compare(actual,expected);}
+        
         internal static bool ScalarEquals(object actual, string expected)
         { return CompareScalar(actual, expected) == 0; }
     }
@@ -1311,7 +1280,7 @@ namespace CxVisual.Mechanism.Orchestration
                         if(!ctx.Inputs.TryGetValue(inputName,out events)||
                             !(events is IEnumerable<string>))
                             throw new InvalidOperationException("moc.state.events_input_missing:"+inputName);
-                        return (object)definition.Run((IEnumerable<string>)events);
+                        return (object)definition.Run((IEnumerable<string>)events,ctx.Inputs);
                     },typeof(object));
                 }
                 if(block.CapabilityId.StartsWith("moc.invoke:",StringComparison.Ordinal))

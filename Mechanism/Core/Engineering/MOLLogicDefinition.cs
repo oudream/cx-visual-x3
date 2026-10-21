@@ -45,6 +45,51 @@ namespace CxVisual.Mechanism.Core
         { return new MOLExpression(MOLExpressionSource.Constant, value ? "true" : "false"); }
     }
 
+    /// <summary>跨结构化逻辑与状态机复用的纯标量表达式语义，无运行上下文/设备副作用。</summary>
+    public static class MOLScalarExpression
+    {
+        public static bool Evaluate(MOLExpression expr,object actual)
+        {
+            if(expr==null)return true;
+            if(expr.Comparison==MOLComparison.Truthy)
+            {
+                if(actual is bool)return (bool)actual;
+                if(actual is string)
+                {
+                    bool value;
+                    if(bool.TryParse((string)actual,out value))return value;
+                }
+                if(actual is int)return (int)actual!=0;
+                throw new InvalidOperationException("moc.truth_type");
+            }
+            int order=Compare(actual,expr.Expected);
+            switch(expr.Comparison)
+            {
+                case MOLComparison.Equal:return order==0;
+                case MOLComparison.NotEqual:return order!=0;
+                case MOLComparison.LessThan:return order<0;
+                case MOLComparison.LessOrEqual:return order<=0;
+                case MOLComparison.GreaterThan:return order>0;
+                case MOLComparison.GreaterOrEqual:return order>=0;
+                default:throw new InvalidOperationException("moc.expression_compare");
+            }
+        }
+        public static int Compare(object actual,string expected)
+        {
+            string left=Convert.ToString(actual,CultureInfo.InvariantCulture);
+            bool a,b;
+            if(bool.TryParse(left,out a)&&bool.TryParse(expected,out b))
+                return a.CompareTo(b);
+            decimal x,y;
+            if(decimal.TryParse(left,NumberStyles.Number,CultureInfo.InvariantCulture,out x)&&
+                decimal.TryParse(expected,NumberStyles.Number,CultureInfo.InvariantCulture,out y))
+                return x.CompareTo(y);
+            return string.CompareOrdinal(left,expected);
+        }
+        public static bool EqualsScalar(object actual,string expected)
+        {return Compare(actual,expected)==0;}
+    }
+
     public sealed class MOLBranchCase
     {
         public MOLBranchCase(MOLExpression condition, MOLControlBlock body, string label = null)
@@ -426,15 +471,21 @@ namespace CxVisual.Mechanism.Core
     }
     public sealed class MOLStateTransition
     {
-        public MOLStateTransition(string source,string eventId,string target)
+        public MOLStateTransition(string source,string eventId,string target,
+            MOLExpression guard=null)
         {
             Source=MOLStateDescriptor.Check(source);
             EventId=MOLStateDescriptor.Check(eventId);
             Target=MOLStateDescriptor.Check(target);
+            if(guard!=null&&guard.Source!=MOLExpressionSource.FlowInput&&
+               guard.Source!=MOLExpressionSource.Constant)
+                throw new ArgumentException("moc.state.guard_source");
+            Guard=guard;
         }
         public string Source{get;private set;}
         public string EventId{get;private set;}
         public string Target{get;private set;}
+        public MOLExpression Guard{get;private set;}
     }
     /// <summary>G05d：确定性层级状态及正交Region，同一事件按Region键顺序分别转移。</summary>
     public sealed class MOLStateMachineDefinition
@@ -495,8 +546,23 @@ namespace CxVisual.Mechanism.Core
                 id=initial.Id;
             }
         }
-        /// <summary>每个输入事件严格处理一次；最多1万条事件，取消逐事件可观察。</summary>
+        private static bool GuardSatisfied(MOLExpression guard,IDictionary<string,object> inputs)
+        {
+            if(guard==null)return true;
+            object value;
+            if(guard.Source==MOLExpressionSource.Constant)value=guard.Name;
+            else if(inputs==null||!inputs.TryGetValue(guard.Name,out value))
+                throw new InvalidOperationException("moc.state.guard_input_missing:"+guard.Name);
+            return MOLScalarExpression.Evaluate(guard,value);
+        }
+        /// <summary>保持旧API；需要Guard输入时显式使用新重载。</summary>
         public IReadOnlyDictionary<string,string> Run(IEnumerable<string> events,
+            System.Threading.CancellationToken cancellation=
+                default(System.Threading.CancellationToken))
+        {return Run(events,null,cancellation);}
+        /// <summary>纯状态迁移：每个事件处理一次，不持有Worker或实例运行态。</summary>
+        public IReadOnlyDictionary<string,string> Run(IEnumerable<string> events,
+            IDictionary<string,object> guardInputs,
             System.Threading.CancellationToken cancellation=
                 default(System.Threading.CancellationToken))
         {
@@ -518,7 +584,7 @@ namespace CxVisual.Mechanism.Core
                     while(true)
                     {
                         var rule=Transitions.FirstOrDefault(x=>x.Source==current.Id&&
-                            x.EventId==eventName);
+                            x.EventId==eventName&&GuardSatisfied(x.Guard,guardInputs));
                         if(rule!=null)
                         {
                             active[region]=ResolveLeaf(rule.Target,map);
@@ -884,7 +950,12 @@ namespace CxVisual.Mechanism.Core
                         new XElement("Transitions",item.Value.Transitions.Select(edge=>
                             new XElement("Transition",new XAttribute("from",edge.Source),
                                 new XAttribute("event",edge.EventId),
-                                new XAttribute("to",edge.Target))))))));
+                                new XAttribute("to",edge.Target),
+                                edge.Guard==null?null:new XElement("Guard",
+                                    new XAttribute("source",edge.Guard.Source),
+                                    new XAttribute("name",edge.Guard.Name),
+                                    new XAttribute("compare",edge.Guard.Comparison),
+                                    new XAttribute("expected",edge.Guard.Expected??"")))))))));
             if(def.Policies.Count>0)
                 root.Add(new XElement("Policies",def.Policies.Select(item=>
                     new XElement("Policy",new XAttribute("block",item.Key.ToString("N")),
@@ -1011,9 +1082,25 @@ namespace CxVisual.Mechanism.Core
                         new MOLStateDescriptor((string)state.Attribute("id"),
                             (string)state.Attribute("region"),(string)state.Attribute("parent"),
                             (bool?)state.Attribute("initial")??false)).ToArray();
-                    var transitions=machine.Element("Transitions").Elements("Transition").Select(edge=>
-                        new MOLStateTransition((string)edge.Attribute("from"),
-                            (string)edge.Attribute("event"),(string)edge.Attribute("to"))).ToArray();
+                    var transitions=machine.Element("Transitions").Elements("Transition").Select(edge=>{
+                        if(edge.Elements().Any(x=>x.Name!="Guard")||
+                            edge.Elements("Guard").Count()>1)
+                            throw new InvalidDataException("wiring.state.guard_schema");
+                        XElement guard=edge.Element("Guard");
+                        MOLExpression condition=null;
+                        if(guard!=null)
+                        {
+                            if(guard.Attributes().Count()!=4)
+                                throw new InvalidDataException("wiring.state.guard_fields");
+                            string compare=(string)guard.Attribute("compare");
+                            condition=new MOLExpression(ReadEnum<MOLExpressionSource>(guard,"source"),
+                                (string)guard.Attribute("name"),
+                                ReadEnum<MOLComparison>(guard,"compare"),
+                                compare=="Truthy"?null:(string)guard.Attribute("expected"));
+                        }
+                        return new MOLStateTransition((string)edge.Attribute("from"),
+                            (string)edge.Attribute("event"),(string)edge.Attribute("to"),condition);
+                    }).ToArray();
                     stateMachines.Add(id,new MOLStateMachineDefinition(states,transitions));
                 }
                 Func<string,Dictionary<string,MOLBlockEndpoint>> readPublic=tag=>{
