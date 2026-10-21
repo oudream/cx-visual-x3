@@ -2117,6 +2117,18 @@ EditorDescriptor(ResourceTypeId="ct.volume", EditorKind=ProfessionalViewer)
 - 维持原工程归属和EP01～EP15 / 六角色 / U1～U5；新增N01～N20不与现存E0类型混同。无业务类、解决方案或新项目修改。
 - **Windows构建、WPF STA、真实设备和性能验证本轮未执行**；后续逐包实施须在当前SHA上运行并留可审查日志。
 
+## 44. 工程组织P0-1／工程呈现化P0-2联动实施与职责收敛
+
+| 工作包 | 原Owner与真实交付 | 自动验收 |
+|---|---|---|
+| P0-1影响查询与替换预演 | `Mechanism.Core` 从资源现有依赖/索引求闭包路径，检测Revision，复用MTC事务预览校验参数/Port/连接 | [Windows工程组织39549728186](https://github.com/oudream/cx-visual-x3/actions/runs/39549728186) success |
+| P0-2图元资源多Tab | `CxVisual.Studio` 原MainWindow partial复用R06宿主，Page/Content/Symbol分别用真实CxVisualEditor和SceneView；统一MEM编辑与Undo | [Studio Windows STA 39549457531](https://github.com/oudream/cx-visual-x3/actions/runs/39549457531) 16 PASS / 0 FAIL |
+| P0-2流程资源多Tab | Content拥有独立MOLFlowCanvas，可同一资源同时开图元和流程；V2流程节点移动/多选移动/类型化Port连线由MOCFlowBuilder.Edit提交MEM；跨工程/删除/布局失效拒绝 | 同上，主/AI/CV流程实际WPF画布与资源失效反证 |
+
+必须继续保持：MEM/MRI的对象、引用/版本/事务是工程组织的唯一真源；MOL/MOC的流程/构建和MRK/MDS运行数据属于原体系；Studio只有编辑器组合、UI导航、订阅和操作适配，不造第二树、第二Undo和第二执行器。
+
+**未签收**：复杂设备/专业Schema升级、MOC计划自动失效与重新发布、精细跨Tab Dirty提示、真实鼠标/高DPI/长时间压力、A/B/C最终跨专业和实机验收。阶段二20候选不因本次已有实现而必须逐个新建。
+
 ## 附录 A｜现有源码和记录入口
 
 - 统一实施/验收进度：`DOCS/Implementation/CxVisual_工程呈现化体系_30分钟分轮实施与验收_V1.0.md`。

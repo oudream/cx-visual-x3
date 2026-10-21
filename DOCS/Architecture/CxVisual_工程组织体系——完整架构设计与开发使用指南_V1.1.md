@@ -1560,6 +1560,18 @@ ArchitectureSmoke 在一个 Main 内实际执行包括：ExecutionFlow/Compiler�
 
 历史生产经验按仓库导航中的负责人说明保留；前次静态命中不否定其生产资产身份，也不使新平台自动继承原系统验收。源码路径均相对各历史仓根，只有 x3 的前次运行结果按 §11 认定。
 
+## 13. P0-1 工程依赖影响与版本兼容预演（2026-10-21实证）
+
+> 此节按H01～H06后续真实源码纠正§9.2历史审计状态。MEM工程模型与引用、公开属性/端口、资源信息及事务不迁移Owner。
+
+| 核心能力 | 已有真实API和完整操作 | 自动验证及边界 |
+|---|---|---|
+| 资源依赖与影响 | `MEMEngineeringSession.AnalyzeResourceImpact(Guid,int)` 使用原 `MEMResourceEntry.Dependencies` 派生直接/间接受影响资源的Path/Depth、ProjectId/Revision、需要重构建的ResourceId集合、缺失依赖报告；不存第二个可写图 | 共享算法→工位→HMI、模型资产、Undo、资源删除、保存重开 |
+| 定义/实例兼容预演 | `PreviewRetarget(reference,definition,expectedRevision)` 完全复用 `MTCEditSession.Retarget` 及 `PreviewDraft` 可逆事务，检查公开参数/Port/连接/旧版本；失败无状态副作用 | 兼容/不兼容/过期预演与正式Retarget、Undo继续走原MEM |
+| 编译/测试 | [P0-1依赖提交944a0359](https://github.com/oudream/cx-visual-x3/commit/944a03593983a49f7c9513e60b5c7fd5a34684a3)、[兼容预演9f9d464e](https://github.com/oudream/cx-visual-x3/commit/9f9d464e7453e979953b0a4f0f0187374ba18dc4)、[工程组织Windows CI 39549728186](https://github.com/oudream/cx-visual-x3/actions/runs/39549728186) success | 现场设备/专业插件升级、运行Plan有效性属于各原Owner，尚需联合验证 |
+
+工程组织提供**查询、受控修改与确定版本**；MOC决定计划/SourceMap是否需要重构建；Studio展示影响与返回位置。该报告并不自动发布或执行任何操作。
+
 ## 附录 A. Core/Visual 当前公开声明源级索引
 
 以下索引由审计基线的真实源文件生成，只列工程组织与场景/编辑相关文件；声明位置便于核查，完整行为和可用性仍以正文及实测为准。内部 Attach/Detach 不列为外部 API。
