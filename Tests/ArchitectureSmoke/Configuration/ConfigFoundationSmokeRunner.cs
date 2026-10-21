@@ -3,9 +3,9 @@ using CxVisual.Tests.ArchitectureSmoke;
 
 namespace CxVisual.Tests.ConfigFoundationSmoke
 {
-    internal static class Program
+    internal static class ConfigFoundationSmokeRunner
     {
-        private static int Main(string[] args)
+        internal static int Run(string[] args)
         {
             try
             {

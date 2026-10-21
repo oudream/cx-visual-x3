@@ -5,9 +5,9 @@ using CxVisual.Foundation.Infrastructure.Logging.Sinks;
 using CxVisual.Foundation.Geometry;
 namespace CxVisual.Tests.FoundationSmoke
 {
-    internal static class Program
+    internal static class FoundationSmokeRunner
     {
-        private static int Main(string[] args)
+        internal static int Run(string[] args)
         {
             try
             {

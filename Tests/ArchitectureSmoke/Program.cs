@@ -4,6 +4,8 @@ using System.Reflection;
 using System.IO;
 using CxVisual.Mechanism.Core;
 using CxVisual.Mechanism.Visual;
+using CxVisual.Tests.FoundationSmoke;
+using CxVisual.Tests.ConfigFoundationSmoke;
 
 namespace CxVisual.Tests.ArchitectureSmoke
 {
@@ -13,6 +15,13 @@ namespace CxVisual.Tests.ArchitectureSmoke
         {
             try
             {
+                if (Array.IndexOf(args, "--concurrency") >= 0 ||
+                    Array.IndexOf(args, "--foundation") >= 0)
+                    return FoundationSmokeRunner.Run(args);
+                if (Array.IndexOf(args, "--config-foundation") >= 0 ||
+                    Array.IndexOf(args, "--config-performance-smoke") >= 0 ||
+                    Array.IndexOf(args, "--config-performance-full") >= 0)
+                    return ConfigFoundationSmokeRunner.Run(args);
                 if (Array.IndexOf(args, "--organization-wpf") >= 0) return OrganizationWpfTests.Run();
                 if (Array.IndexOf(args, "--organization") >= 0)
                 {
@@ -68,6 +77,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 HierarchyTransactionPersistence();
                 UndoRedo();
                 RejectedCommand();
+                if (FoundationSmokeRunner.Run(new string[0]) != 0) return 1;
                 Console.WriteLine("PASS architecture tests (UI-free visual editing and contract checks)");
                 return 0;
             }
