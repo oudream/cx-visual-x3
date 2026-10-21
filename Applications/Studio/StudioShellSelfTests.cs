@@ -2010,6 +2010,58 @@ namespace CxVisual.Studio
                     Assert(session.Revision==authRevision,
                         "配置权限拒绝错误地写入工程Revision");
                 });
+                CheckStep("S2/P1 配置Dock关闭阻断未保存草稿并可显式放弃", () =>
+                {
+                    StudioViewModel vm=window.DataContext as StudioViewModel;
+                    MEMEngineeringSession session=vm.ProjectSession;
+                    int before=session.Revision;
+                    MEMContent resource=session.Project.Contents.First(x=>
+                        x.Name=="P1配置资源Content");
+                    window.OpenStudioDocument("doc.config");
+                    LayoutDocument doc=window.StudioDock.Layout.Descendents()
+                        .OfType<LayoutDocument>().Single(x=>x.ContentId=="doc.config");
+                    Func<System.Windows.DependencyObject,System.Windows.Controls.ComboBox> find=null;
+                    find=node=>{
+                        var combo=node as System.Windows.Controls.ComboBox;
+                        if(combo!=null&&combo.Name=="StudioConfigScopeSelector")return combo;
+                        return System.Windows.LogicalTreeHelper.GetChildren(node)
+                            .OfType<System.Windows.DependencyObject>()
+                            .Select(child=>find(child)).FirstOrDefault(x=>x!=null);
+                    };
+                    var selector=find((System.Windows.DependencyObject)doc.Content);
+                    selector.SelectedItem=selector.Items.Cast<object>().First(x=>
+                        x.ToString().Contains(resource.Name));
+                    Func<System.Windows.DependencyObject,MPWConfigEditorControl<CxAutomationDeviceOptions>>
+                        findEditor=null;
+                    findEditor=node=>node as MPWConfigEditorControl<CxAutomationDeviceOptions> ??
+                        System.Windows.LogicalTreeHelper.GetChildren(node)
+                            .OfType<System.Windows.DependencyObject>()
+                            .Select(child=>findEditor(child)).FirstOrDefault(x=>x!=null);
+                    var editorControl=findEditor((System.Windows.DependencyObject)doc.Content);
+                    Assert(editorControl!=null,"授权资源Scope的配置编辑器不存在");
+                    var field=typeof(MPWConfigEditorControl<CxAutomationDeviceOptions>)
+                        .GetField("_editor",System.Reflection.BindingFlags.Instance|
+                            System.Reflection.BindingFlags.NonPublic);
+                    var model=field.GetValue(editorControl) as
+                        MHSConfigEditorModel<CxAutomationDeviceOptions>;
+                    model.SetValue(x=>x.StationId,model.Draft.StationId==3?4:3);
+                    Assert(window.HasStudioUnsavedConfiguration()&&
+                        !window.TryCloseStudioDocument("doc.config")&&
+                        window.GetStudioContentIds().Contains("doc.config")&&
+                        editorControl.HasUnsavedDraft,
+                        "关闭配置页绕过未保存草稿保护");
+                    Assert(window.TryCloseStudioDocument("doc.config",true)&&
+                        !window.GetStudioContentIds().Contains("doc.config")&&
+                        session.Revision==before,
+                        "明确放弃未保存草稿未释放Dock配置Editor或污染MEM");
+                    window.OpenStudioDocument("doc.config");
+                    doc=window.StudioDock.Layout.Descendents()
+                        .OfType<LayoutDocument>().Single(x=>x.ContentId=="doc.config");
+                    Assert(!Object.ReferenceEquals(editorControl,
+                        findEditor((System.Windows.DependencyObject)doc.Content))&&
+                        session.Revision==before,
+                        "重新打开复用了已放弃草稿或产生工程事务");
+                });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;
             }
