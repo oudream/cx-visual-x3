@@ -211,6 +211,15 @@ namespace CxVisual.Studio
                 }
                 doc = new LayoutDocument { ContentId = id, Title = StudioDocumentTitle(id),
                     CanClose = true, CanFloat = true, Content = view };
+                if(id=="doc.config")
+                    doc.Closing+=(sender,args)=>{
+                        if(!_studioConfigForceDiscard && HasStudioUnsavedConfiguration())
+                        {
+                            args.Cancel=true;
+                            _viewModel.ReportStudioShellWarning(
+                                "当前配置有未保存草稿，先保存/撤销，或显式选择放弃修改。");
+                        }
+                    };
                 pane.Children.Add(doc);
             }
             doc.IsActive = true;
@@ -218,23 +227,45 @@ namespace CxVisual.Studio
             RefreshStudioMenus();
         }
 
-        public void CloseStudioDocument(string id)
+        private List<FrameworkElement> _studioConfigEditors=new List<FrameworkElement>();
+        private bool _studioConfigForceDiscard;
+        public bool HasStudioUnsavedConfiguration()
+        {return _studioConfigEditors.OfType<IMPWConfigDraftGuard>().Any(x=>x.HasUnsavedDraft);}
+
+        // 明确的关闭请求语义：仅在显式确认放弃时允许清除未保存草稿。
+        public bool TryCloseStudioDocument(string id,bool discardUnsavedConfiguration=false)
         {
-            LayoutDocument doc = FindStudioContent(id) as LayoutDocument;
-            if (doc == null) return;
-            doc.Content = null; // 下次打开复用同一个真实编辑视图和命令状态
-            if(id=="doc.config")_studioViews.Remove(id); // 真正的MHS编辑控件需重建草稿
-            doc.Close();
-            if (_activeStudioDocumentId == id)
+            LayoutDocument doc=FindStudioContent(id) as LayoutDocument;
+            if(doc==null)return true;
+            if(id=="doc.config"&&HasStudioUnsavedConfiguration()&&!discardUnsavedConfiguration)
             {
-                LayoutDocument next = StudioDock.Layout.ActiveContent as LayoutDocument;
-                if (next == null || next.ContentId == id)
-                    next = ExistingContents().OfType<LayoutDocument>()
-                        .FirstOrDefault(item => item.ContentId != id);
-                SelectStudioContext(next == null ? "doc.home" : next.ContentId);
+                _viewModel.ReportStudioShellWarning(
+                    "配置草稿未保存，不能直接关闭；保存、撤销或明确确认放弃后重试。");
+                return false;
+            }
+            _studioConfigForceDiscard=discardUnsavedConfiguration;
+            try{doc.Close();}
+            finally{_studioConfigForceDiscard=false;}
+            if(FindStudioContent(id) is LayoutDocument)return false;
+            doc.Content=null;
+            if(id=="doc.config")
+            {
+                _studioViews.Remove(id);
+                _studioConfigEditors.Clear();
+            }
+            if(_activeStudioDocumentId==id)
+            {
+                LayoutDocument next=StudioDock.Layout.ActiveContent as LayoutDocument;
+                if(next==null||next.ContentId==id)
+                    next=ExistingContents().OfType<LayoutDocument>()
+                        .FirstOrDefault(item=>item.ContentId!=id);
+                SelectStudioContext(next==null?"doc.home":next.ContentId);
             }
             RefreshStudioMenus();
+            return true;
         }
+        public void CloseStudioDocument(string id)
+        {TryCloseStudioDocument(id,false);}
 
         private static string StudioDocumentTitle(string id)
         {
@@ -542,6 +573,17 @@ namespace CxVisual.Studio
             foreach(StudioConfigurationScopeChoice item in choices)scopeBox.Items.Add(item);
             scopeBox.SelectedItem=selected;
             header.Children.Add(scopeBox);
+            Button closeConfig=new Button {Content="关闭配置页",Margin=new Thickness(4,3,4,3),
+                HorizontalAlignment=HorizontalAlignment.Left,Padding=new Thickness(10,5)};
+            closeConfig.Click+=(sender,args)=>{
+                bool discard=HasStudioUnsavedConfiguration()&&MessageBox.Show(this,
+                    "当前配置仍有未保存的修改，确定放弃草稿并关闭配置页？",
+                    "CxVisual配置",MessageBoxButton.YesNo,MessageBoxImage.Warning)==
+                    MessageBoxResult.Yes;
+                if(!HasStudioUnsavedConfiguration()||discard)
+                    TryCloseStudioDocument("doc.config",discard);
+            };
+            header.Children.Add(closeConfig);
             TextBlock origin=new TextBlock {
                 TextWrapping=TextWrapping.Wrap,Margin=new Thickness(4,3,4,7) };
             header.Children.Add(origin);
@@ -550,6 +592,7 @@ namespace CxVisual.Studio
                 HorizontalScrollBarVisibility=ScrollBarVisibility.Auto };
             UniformGrid grid=new UniformGrid {Columns=2,Rows=0};
             List<FrameworkElement> editors=new List<FrameworkElement>();
+            _studioConfigEditors=editors;
             Action<StudioConfigurationScopeChoice> populate=choice=>
             {
                 foreach(FrameworkElement editor in editors)
