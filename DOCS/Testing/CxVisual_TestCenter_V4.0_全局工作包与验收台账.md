@@ -145,3 +145,18 @@ D. 然后做Suite/Plan最小保存/回放与后续Graph/Channel接入；现场HI
 | Windows UIA | Geometry/Object已过 | Graph/Runtime成功；Channel步骤已过，等待最终Run结论 | **未完成** |
 | 人工界面 | **未签认** | **未签认** | 未签认 |
 | 工业设备/HIL | 不适用 | **Virtual不等于Real/HIL** | 未验收 |
+
+
+## 第二阶段 MRKRuntimeSession 与 Journal 真实观察增量（2026-10-21）
+
+本节是 V4.1/TCT-08/14 现有工作包的实施增量，不改变三阶段目标，不把源码提交与完整验收混同。
+
+- fb429d49：复用原生 MRKRuntimeSessionSnapshot、MRKFlowSnapshot、MRKStepObservation、MRKFileExecutionJournal 与 MRKExecutionGroupSnapshot；通过原 TCT Run/Attempt/SHA256 生成可回放的只读结构化证据，无第二套Runtime。
+- fe818a5e：Runtime Viewer读取真实Session/Flow/Step/Journal/Group并提供Inspector定位；恢复判定为RequiresReconciliation时明确告警。
+- 9fcd094c：扩展实际Windows UIA，以TCT.M3.RUNTIME.001运行原生MRKSession→查看Journal→Invoke→Inspector，新增第八张WPF截图。
+- fb429d49的Windows CI 39621458993首次失败：132个Case中1条因Flow Completion与Session清理回调异步竞态直接读取ActiveFlows=1。失败日志保留。
+- 2a3e6b8d：补有界等待真实清理完成（4秒），超时仍真实报错，不修改生产状态。
+- 04929cab：回放时再次调用生产MRKJournalRecovery.Evaluate，拒绝伪造Closed与跨Flow/乱序/DTD/非法状态；新测试TCT.M3.RUNTIME.001与.002。
+- 最新代码验收依赖 https://github.com/oudream/cx-visual-x3/actions/runs/39622306992 的最终conclusion，当前台账不预先宣称通过。
+
+状态：V4.1设计已定、上述源码已提交；Windows编译/自动用例/UIA按对应最终绿色CI独立判断；人工06界面仍未签认；工业HIL未开始。Stage2更广泛的MRK资源Lease/等待队列、运行时实时刷新、Studio跨体系闭环和Stage3所有正式管理合同继续未完成。

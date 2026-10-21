@@ -128,3 +128,10 @@ $env:TCT_NUNIT_ASSEMBLIES = 'D:\tests\TrustedChecks.dll'
 Window x64 .NET Framework 4.8可使用统一命令 --ui-smoke 或 --ui-automation 做实际WPF验证。后者现覆盖Geometry、Object、Graph、Runtime、Virtual Channel，Actions工件期望工作台/Geometry/Object/Dark/Graph/Runtime/Channel共七张截图；以同Commit的TestCenter Windows Actions最终结论为准。
 
 以上只是阶段二的实际垂直切片：尚缺MRKSession/Resource/Journal全面实时观察、工业设备Protocol/Real、Studio端到端六案例与正式第三阶段Fixture/Golden/八维覆盖/性能/HIL。人工设计04～06视觉验收仍需实际签认。
+
+
+## 第二阶段 RuntimeSession／Journal 实际验证
+
+选择TCT.M3.RUNTIME.001：真实MEM/MOL→MOC Plan→MRKRuntimeSession，测试容量拒绝与结束释放；读取原生MRKFileExecutionJournal的开始、节点、结束和恢复判定；Runtime页只读显示Session/Flow/Step/Journal/Group及Inspector双向定位。
+选择TCT.M3.RUNTIME.002：跨Flow Journal、错误Sequence、假Closed、非法状态与DTD反证，均应在现有TCT框架判为拒绝。
+Windows执行 --ui-automation 验证MRK Journal→Inspector并上传TestCenter-08-RuntimeJournal.png。实际CI以 https://github.com/oudream/cx-visual-x3/actions/runs/39622306992 最终结论为准；UIA不替代人工06设计图或工业HIL验收。
