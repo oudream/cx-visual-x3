@@ -2,56 +2,90 @@
  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
  xmlns:ui="clr-namespace:CxVisual.TestCenter.UI"
- Title="CxVisual · TestCenter — Foundation / Mechanism"
- Width="1550" Height="920" MinWidth="1080" MinHeight="650"
+ Title="CxVisual · TestCenter — 统一测试与质量工作台"
+ Width="1600" Height="960" MinWidth="1100" MinHeight="700"
  WindowStartupLocation="CenterScreen" FontFamily="Segoe UI"
- Background="#EAF0F7">
+ Background="#EEF3F9">
+ <Window.Resources>
+  <Style TargetType="GroupBox">
+   <Setter Property="BorderBrush" Value="#C4D3E4"/>
+   <Setter Property="Margin" Value="2"/>
+   <Setter Property="Padding" Value="3"/>
+  </Style>
+ </Window.Resources>
  <Grid>
   <Grid.RowDefinitions>
-   <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
-   <RowDefinition Height="*"/><RowDefinition Height="5"/><RowDefinition Height="250"/><RowDefinition Height="31"/>
+   <RowDefinition Height="44"/>
+   <RowDefinition Height="31"/>
+   <RowDefinition Height="Auto"/>
+   <RowDefinition Height="*"/>
+   <RowDefinition Height="5"/>
+   <RowDefinition x:Name="BottomRow" Height="255"/>
+   <RowDefinition Height="33"/>
   </Grid.RowDefinitions>
   <Border Grid.Row="0" Background="#17365D" Padding="13,8">
    <DockPanel>
     <TextBlock Text="Cx" Foreground="White" FontSize="20" FontWeight="Bold" Margin="0,0,12,0"/>
-    <TextBlock Text="CxVisual · TestCenter — 公共基础与机制测试"
-     Foreground="White" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center"/>
-    <TextBlock Text="  |  TCT" Foreground="#BAD8F2" VerticalAlignment="Center" Margin="14,0,0,0"/>
+    <TextBlock Text="CxVisual · TestCenter   |   Foundation · Mechanism · Professional"
+     Foreground="White" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
    </DockPanel>
   </Border>
-  <ToolBarTray x:Name="RibbonTray" Grid.Row="1" Background="#E0EDF9"/>
-  <Grid Grid.Row="2" Margin="7">
+  <Menu Grid.Row="1" Background="#F4F7FC" Padding="7,0">
+   <MenuItem Header="文件">
+    <MenuItem x:Name="MenuSaveHistory" Header="归档当前Run"/>
+    <MenuItem x:Name="MenuLoadHistory" Header="查看历史面板"/>
+    <Separator/>
+    <MenuItem x:Name="MenuExportReport" Header="导出报告"/>
+   </MenuItem>
+   <MenuItem Header="测试">
+    <MenuItem x:Name="MenuRunSelected" Header="运行选中"/>
+    <MenuItem x:Name="MenuRunAll" Header="运行全部"/>
+    <MenuItem x:Name="MenuRerunFailed" Header="重跑失败"/>
+    <MenuItem x:Name="MenuCancel" Header="取消"/>
+   </MenuItem>
+   <MenuItem Header="视图">
+    <MenuItem x:Name="MenuRestoreLayout" Header="恢复默认布局"/>
+    <MenuItem x:Name="MenuSaveLayout" Header="保存当前布局"/>
+    <Separator/>
+    <MenuItem x:Name="MenuThemeLight" Header="浅色主题"/>
+    <MenuItem x:Name="MenuThemeDark" Header="深色主题"/>
+   </MenuItem>
+  </Menu>
+  <ToolBarTray x:Name="RibbonTray" Grid.Row="2" Background="#E0EDF9"/>
+  <Grid Grid.Row="3" Margin="5">
    <Grid.ColumnDefinitions>
-    <ColumnDefinition Width="260"/><ColumnDefinition Width="5"/>
-    <ColumnDefinition Width="*"/><ColumnDefinition Width="5"/>
-    <ColumnDefinition Width="320"/>
+    <ColumnDefinition x:Name="LeftColumn" Width="290" MinWidth="190"/>
+    <ColumnDefinition Width="5"/>
+    <ColumnDefinition Width="*" MinWidth="320"/>
+    <ColumnDefinition Width="5"/>
+    <ColumnDefinition x:Name="RightColumn" Width="330" MinWidth="230"/>
    </Grid.ColumnDefinitions>
-   <GroupBox Header="能力 / 测试用例" Grid.Column="0" Background="White">
+   <GroupBox Header="Explorer · 测试资源和能力" Grid.Column="0" Background="White">
     <ui:TCTTestExplorerControl x:Name="Explorer"/>
    </GroupBox>
-   <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch"/>
-   <GroupBox Header="Test Document · 专业观察数据" Grid.Column="2" Background="White">
+   <GridSplitter Grid.Column="1" Width="5" Background="#B8CADA" HorizontalAlignment="Stretch"/>
+   <GroupBox Header="DocumentHost · 专业证据 / Viewer" Grid.Column="2" Background="White">
     <ui:TCTTestDocumentHostControl x:Name="DocumentHost"/>
    </GroupBox>
-   <GridSplitter Grid.Column="3" Width="5" HorizontalAlignment="Stretch"/>
-   <GroupBox Header="属性 / 断言 / 诊断" Grid.Column="4" Background="White">
+   <GridSplitter Grid.Column="3" Width="5" Background="#B8CADA" HorizontalAlignment="Stretch"/>
+   <GroupBox Header="Inspector · 对象 / 断言 / 证据" Grid.Column="4" Background="White">
     <ui:TCTTestInspectorControl x:Name="Inspector"/>
    </GroupBox>
   </Grid>
-  <GridSplitter Grid.Row="3" Height="5" HorizontalAlignment="Stretch" Background="#B8CADA"/>
-  <TabControl Grid.Row="4" Margin="7,0,7,7" Background="White">
-   <TabItem Header="Results · 真实测试结果">
+  <GridSplitter Grid.Row="4" Height="5" HorizontalAlignment="Stretch" Background="#B8CADA"/>
+  <TabControl x:Name="BottomTabs" Grid.Row="5" Margin="5,0,5,5" Background="White">
+   <TabItem Header="Results · 测试执行">
     <ui:TCTTestResultsControl x:Name="Results"/>
    </TabItem>
-   <TabItem Header="Timeline · Worker实时事件">
+   <TabItem Header="Timeline · Attempt事件">
     <ui:TCTTestTimelineControl x:Name="Timeline"/>
    </TabItem>
    <TabItem Header="History · 归档 / 验证 / 重跑">
     <ui:TCTTestHistoryControl x:Name="History"/>
    </TabItem>
   </TabControl>
-  <Border Grid.Row="5" Background="#17365D" Padding="10,5">
-   <TextBlock x:Name="StatusText" Foreground="White" Text="Ready"/>
+  <Border Grid.Row="6" Background="#17365D" Padding="12,6">
+   <TextBlock x:Name="StatusText" Foreground="White" Text="Ready" TextTrimming="CharacterEllipsis"/>
   </Border>
  </Grid>
 </Window>
