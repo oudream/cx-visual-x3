@@ -327,6 +327,14 @@ namespace CxVisual.TestCenter.UI
                             System.Windows.Controls.Primitives.ButtonBase.ClickEvent, zoomIn));
                         if (shapeView.EvidenceCanvas.Zoom <= 1)
                             throw new InvalidOperationException("Geometry zoom UI click failed");
+                        shapeView.EvidenceCanvas.SetLayerVisible("Actual", false);
+                        if (shapeView.EvidenceCanvas.VisibleFigureCount != 3 ||
+                            shapeView.EvidenceCanvas.RenderedFigureCount != 4)
+                            throw new InvalidOperationException("Expected/Actual/Diff layer filter incorrect");
+                        shapeView.EvidenceCanvas.SetLayerVisible("Actual", true);
+                        if (shapeView.EvidenceCanvas.VisibleFigureCount != 4)
+                            throw new InvalidOperationException("Geometry layer restore failed");
+
 
                         // Stage 1: history browser must verify full Attempt/Artifact after live
                         // Worker storage has been removed, with no fabricated outcomes.
