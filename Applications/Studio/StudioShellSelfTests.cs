@@ -1229,6 +1229,47 @@ namespace CxVisual.Studio
                         session.Revision==savedRevision,
                         "重开Tab没有释放旧场景/复用原MEM真源");
                 });
+                CheckStep("P0 多资源Inspector样式与失效选区防串写", () =>
+                {
+                    StudioViewModel model=window.DataContext as StudioViewModel;
+                    MEMEngineeringSession session=model.ProjectSession;
+                    MEMContent content=session.AddContent(session.Project,"P0属性面板Content");
+                    MEMPage other=session.AddPage("P0属性面板隔离Page");
+                    string tab=window.OpenStudioResourceDocument(content.Id,false);
+                    Button rect=window.StudioRibbonActions.Children.OfType<Button>()
+                        .Single(x=>Convert.ToString(x.Content)=="矩形");
+                    rect.RaiseEvent(new System.Windows.RoutedEventArgs(Button.ClickEvent));
+                    MRCShapeElement shape=content.DescendantsAndSelf()
+                        .OfType<MRCShapeElement>().Single();
+                    SceneView scene=window.GetStudioResourceScene(content.Id);
+                    scene.SetSelectedVisualIds(new[]{shape.Id});
+                    model.ActivePage=other;
+                    window.FillColorInput.Text="#FF0088CC";
+                    window.StrokeWidthInput.Text="3";
+                    var apply=typeof(MainWindow).GetMethod("OnApplyVisualStyle",
+                        System.Reflection.BindingFlags.Instance|
+                        System.Reflection.BindingFlags.NonPublic);
+                    Assert(apply!=null,"Studio样式属性按钮不存在");
+                    int before=session.Revision;
+                    apply.Invoke(window,new object[]{window,
+                        new System.Windows.RoutedEventArgs()});
+                    Assert(session.Revision==before+1&&
+                        Math.Abs(MRCVisualAppearance.StyleOf(
+                            session.Find(shape.Id) as MRCVisualItem).StrokeWidth-3)<1e-9&&
+                        !other.RootContent.DescendantsAndSelf().OfType<MRCShapeElement>().Any(),
+                        "属性面板没有根据活动Content真实图元提交或污染旧页面");
+                    scene.SetSelectedVisualIds(new Guid[0]);
+                    int rejected=session.Revision;
+                    apply.Invoke(window,new object[]{window,new System.Windows.RoutedEventArgs()});
+                    Assert(session.Revision==rejected,
+                        "没有活动可视定义的属性按钮错误修改上一个图元");
+                    window.OpenStudioResourceDocument(content.Id,true);
+                    apply.Invoke(window,new object[]{window,new System.Windows.RoutedEventArgs()});
+                    Assert(session.Revision==rejected,
+                        "Flow Tab错把旧选区当成有效可视图元");
+                    window.OpenStudioResourceDocument(content.Id,false);
+                    Assert(window.ActiveStudioDocumentId==tab,"返回图元Tab身份失效");
+                });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;
             }

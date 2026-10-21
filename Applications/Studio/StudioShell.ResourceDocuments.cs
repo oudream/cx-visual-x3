@@ -344,6 +344,26 @@ namespace CxVisual.Studio
                 return Editor.Scene.Any(x=>x.Id==id&&x.IsSelectable)&&
                     Session.Find(id) is MRCVisualItem?(Guid?)id:null;
             }
+            internal Guid? CurrentVisualDefinition()
+            {return SelectedDefinition();}
+            internal bool InsertVisualAsset(string file)
+            {
+                if(!CanEditVisual()||string.IsNullOrWhiteSpace(file)||
+                    !File.Exists(file))return false;
+                string extension=Path.GetExtension(file).ToLowerInvariant();
+                string media=extension==".svg"?"image/svg+xml":
+                    extension==".png"?"image/png":
+                    extension==".jpg"||extension==".jpeg"?"image/jpeg":
+                    extension==".bmp"?"image/bmp":null;
+                if(media==null){Status.Text="不支持的资源格式";return false;}
+                MEMAssetReference asset=Session.AddAsset(Path.GetFileName(file),file,media);
+                MTCEditResult<bool> result=Editor.AddAssetElement(asset.Id,
+                    Path.GetFileNameWithoutExtension(file),extension==".svg",
+                    60+Editor.Scene.Count*11,90+Editor.Scene.Count*8);
+                Status.Text=result.Success?"已加入当前资源（MEM资产与可视图元）":
+                    "加入资产失败："+result.ErrorCode+" "+result.Message;
+                return result.Success;
+            }
             internal bool EditGeometry(double x,double y,double width,double height,double rotation)
             {
                 Guid? id=SelectedDefinition();
@@ -811,6 +831,42 @@ namespace CxVisual.Studio
                 return true;
             }
             execute(context);
+            return true;
+        }
+        // 所有仍使用原VM实现的样式、Widget、绑定/事件入口，
+        // 必须先由活动Tab投影已验证的唯一选区，禁止沿用旧页的残留SelectedId。
+        private bool EnsureStudioVisualInspectorTarget()
+        {
+            Guid id;string kind;
+            if(!TryParseResourceDocumentId(_activeStudioDocumentId,out id,out kind))
+                return true;
+            ResourceDocumentContext context=ActiveStudioResourceContext();
+            if(context==null||context.IsFlow||
+                !ResourceDocumentExists(_activeStudioDocumentId)||
+                !ReferenceEquals(context.Session,_viewModel.ProjectSession))
+            {
+                _viewModel.ReportStudioShellWarning("图元属性操作拒绝：不是有效编辑资源");
+                return false;
+            }
+            Guid? selected=context.CurrentVisualDefinition();
+            if(!selected.HasValue)
+            {
+                _viewModel.ReportStudioShellWarning("图元属性操作拒绝：请在当前画布选择一个图元定义");
+                return false;
+            }
+            _viewModel.Select(selected);
+            return true;
+        }
+        private bool RouteStudioResourceAsset(string file)
+        {
+            Guid id;string kind;
+            if(!TryParseResourceDocumentId(_activeStudioDocumentId,out id,out kind))
+                return false;
+            ResourceDocumentContext context=ActiveStudioResourceContext();
+            if(context==null||context.IsFlow||!ResourceDocumentExists(_activeStudioDocumentId)||
+                !ReferenceEquals(context.Session,_viewModel.ProjectSession))
+                return true;
+            context.InsertVisualAsset(file);
             return true;
         }
         private bool RouteStudioResourceGeometry(double x,double y,double width,

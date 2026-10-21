@@ -313,6 +313,7 @@ namespace CxVisual.Studio
                     CheckFileExists=true
                 };
                 if(dialog.ShowDialog()!=true)return;
+                if(RouteStudioResourceAsset(dialog.FileName))return;
                 _viewModel.AddVisualAsset(dialog.FileName);
                 VisualInfo.Text="工程资源已打包并绑定至当前图元，保存工程后无需原始外部文件";
             }
@@ -322,6 +323,7 @@ namespace CxVisual.Studio
         {
             try
             {
+                if(!EnsureStudioVisualInspectorTarget())return;
                 MTCEditResult<bool> result=_viewModel.ConfigureVisualWidget(
                     WidgetContentInput.Text,WidgetOptionsInput.Text,
                     ReadVisualNumber(WidgetMinInput),ReadVisualNumber(WidgetMaxInput),
@@ -347,6 +349,7 @@ namespace CxVisual.Studio
         {
             try
             {
+                if(!EnsureStudioVisualInspectorTarget())return;
                 _viewModel.BindVisualVariable(VisualBindingPropertyInput.Text,
                     VisualBindingSourceInput.Text);
                 VisualInfo.Text="已保存MDS变量引用；附加运行数据源后预览会实际更新";
@@ -357,6 +360,7 @@ namespace CxVisual.Studio
         {
             try
             {
+                if(!EnsureStudioVisualInspectorTarget())return;
                 _viewModel.AddVisualState(VisualStateInput.Text,VisualStateColorInput.Text);
                 VisualInfo.Text="已保存状态样式，运行态由MDS布尔变量触发";
             }
@@ -366,6 +370,7 @@ namespace CxVisual.Studio
         {
             try
             {
+                if(!EnsureStudioVisualInspectorTarget())return;
                 _viewModel.AddVisualAnimation(VisualAnimationProperty.Text,
                     ReadVisualNumber(VisualAnimationFrom),ReadVisualNumber(VisualAnimationTo),
                     int.Parse(VisualAnimationDuration.Text,
@@ -378,6 +383,7 @@ namespace CxVisual.Studio
         {
             try
             {
+                if(!EnsureStudioVisualInspectorTarget())return;
                 _viewModel.SetFullVisualStyle(VisualStrokeColor.Text,
                     ReadVisualNumber(VisualOpacityInput),ReadVisualNumber(VisualFontSizeInput));
                 VisualInfo.Text="字体、描边、不透明度已保存";
@@ -388,6 +394,7 @@ namespace CxVisual.Studio
         {
             try
             {
+                if(!EnsureStudioVisualInspectorTarget())return;
                 _viewModel.AddSelectedBreathingAnimation();
                 VisualInfo.Text="透明度动画已保存：点击预览交互查看效果；撤销可恢复定义。";
             }
@@ -420,6 +427,7 @@ namespace CxVisual.Studio
         {
             try
             {
+                if(!EnsureStudioVisualInspectorTarget())return;
                 _viewModel.SetSelectedFillColor(FillColorInput.Text,
                     double.Parse(StrokeWidthInput.Text,System.Globalization.CultureInfo.InvariantCulture));
                 VisualInfo.Text="图元样式已提交，可使用撤销/重做和保存工程。";
@@ -430,6 +438,7 @@ namespace CxVisual.Studio
         {
             try
             {
+                if(!EnsureStudioVisualInspectorTarget())return;
                 _viewModel.AppendSelectedEventAction(EventIdInput.Text,ActionIdInput.Text);
                 VisualInfo.Text="事件定义已保存；命令实际执行由运行体系和专业权限负责。";
             }
