@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 using CxVisual.Mechanism.Core;
 using CxVisual.Mechanism.Orchestration;
+using CxVisual.Mechanism.Runtime.Execution;
 using CxVisual.Mechanism.Data.RuntimeData;
 
 namespace CxVisual.Studio
@@ -36,6 +38,14 @@ namespace CxVisual.Studio
         public IReadOnlyList<Guid> CallPath{get;private set;}
         public string State{get;private set;}
         public long Sequence{get;private set;}
+        public bool IsRecoveredSnapshot{get;private set;}
+        internal MOLRunStepSnapshot(Guid flowId,string stepId,MRKStepState state,
+            MOCStepOrigin origin)
+        {
+            FlowId=flowId;StepId=stepId;BlockId=origin.BlockId;
+            ContentAddress=origin.ContentAddress;CallPath=origin.CallPath;
+            State=state.ToString();Sequence=-1;IsRecoveredSnapshot=true;
+        }
     }
 
     public sealed class MOLRuntimeOverlay
@@ -72,6 +82,46 @@ namespace CxVisual.Studio
                     _observedOrder.Enqueue(key);
                 }
                 _observed[key]=new MOLRunStepSnapshot(flowId,ev);
+            }
+        }
+        /// <summary>Trace数据丢失后只用MRK权威Step状态重建，绝不臆造缺失的事件序列。</summary>
+        public void RebuildFromSnapshot(Guid flowId,
+            IDictionary<string,MRKStepState> stepStates,MOCSourceMap source)
+        {
+            if(flowId==Guid.Empty||stepStates==null||source==null)
+                throw new ArgumentException("moc.snapshot_invalid");
+            // 清除该Flow旧快照并重建有限的当前状态，不把别的Flow混入。
+            foreach(string key in new List<string>(_observed.Keys))
+                if(_observed[key].FlowId==flowId)_observed.Remove(key);
+            // 每个Queue key是唯一入队一次；保留合法键，避免长期流切换内存增长。
+            var preserved=new Queue<string>();
+            foreach(string key in _observedOrder)
+                if(_observed.ContainsKey(key))preserved.Enqueue(key);
+            _observedOrder.Clear();
+            foreach(string key in preserved)_observedOrder.Enqueue(key);
+            _states.Clear();
+            foreach(var item in _observed.Values)
+                _states[item.BlockId]=item.State;
+            foreach(var pair in stepStates.OrderBy(x=>x.Key,StringComparer.Ordinal))
+            {
+                MOCStepOrigin origin;
+                if(!source.TryResolve(pair.Key,out origin))
+                {
+                    int dot=pair.Key.LastIndexOf('.');
+                    string local=dot<0?pair.Key:pair.Key.Substring(dot+1);
+                    if(!source.TryResolve(local,out origin))
+                        throw new InvalidOperationException("moc.missing_source:"+pair.Key);
+                }
+                var recovered=new MOLRunStepSnapshot(flowId,pair.Key,pair.Value,origin);
+                string key=Key(flowId,pair.Key);
+                if(!_observed.ContainsKey(key))
+                {
+                    while(_observedOrder.Count>=MaxObservedSteps)
+                        _observed.Remove(_observedOrder.Dequeue());
+                    _observedOrder.Enqueue(key);
+                }
+                _observed[key]=recovered;
+                _states[origin.BlockId]=recovered.State;
             }
         }
         /// <summary>历史可视图元状态（多个Flow时仅为聚合显示，不用于调试定位）。</summary>

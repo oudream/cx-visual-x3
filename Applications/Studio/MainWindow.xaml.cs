@@ -1885,7 +1885,14 @@ namespace CxVisual.Studio
                     cursor=changes.NextCursor;
                     if(changes.LostCount!=0)
                     {
-                        LogicInfo.Text="运行追踪有数据缺口，请用Flow完整快照校准";
+                        // 丢失的事件不补造；从MRK权威状态重取当前Flow快照后再增量观察。
+                        _logicOverlay.RebuildFromSnapshot(_logicFlow.FlowId,
+                            _logicFlow.Context.StatesSnapshot(),compiled.SourceMap);
+                        LogicHost.RuntimeStates=_logicOverlay.Snapshot();
+                        _viewModel.UpdateVisualRuntimeFrame(_flowVisualClock.Elapsed.TotalMilliseconds);
+                        FlowTraceList.ItemsSource=new List<FlowTraceRecord>();
+                        LogicInfo.Text="运行追踪丢失"+changes.LostCount+
+                            "条事件，已用MRK当前Step快照校准；历史丢失事件不可恢复";
                         return;
                     }
                     _logicOverlay.Apply(_logicFlow.FlowId,changes);

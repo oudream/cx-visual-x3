@@ -124,6 +124,23 @@ namespace CxVisual.Tests.ArchitectureSmoke
             }
             Check(gap&&find.Invoke(overlay,new object[]{flowA,"loop.i1.work"})!=null,
                 "P0-4 trace gap silently corrupted the scoped state");
+            var sourceCtor=typeof(MOCSourceMap).GetConstructors(
+                BindingFlags.Instance|BindingFlags.NonPublic).Single();
+            var source=(MOCSourceMap)sourceCtor.Invoke(new object[]{
+                new[]{(MOCStepOrigin)originCtor.Invoke(new object[]{
+                    "work",new MRIObjectAddress(project,content,content,new[]{caller}),
+                    block,new[]{caller},null,"Action"})}});
+            var resync=overlayType.GetMethod("RebuildFromSnapshot");
+            Check(resync!=null,"P0-4 missing MRK authoritative state re-sync");
+            resync.Invoke(overlay,new object[]{flowA,
+                new Dictionary<string,MRKStepState>{
+                    {"loop.i2.work",MRKStepState.Completed}},source});
+            var recovered=find.Invoke(overlay,new object[]{flowA,"loop.i2.work"});
+            Check(recovered!=null&&(bool)Get(recovered,"IsRecoveredSnapshot")&&
+                (string)Get(recovered,"State")=="Completed"&&
+                find.Invoke(overlay,new object[]{flowA,"loop.i1.work"})==null&&
+                find.Invoke(overlay,new object[]{flowB,"loop.i1.work"})!=null,
+                "P0-4 re-sync fabricated lost events or contaminated another Flow");
             overlayType.GetMethod("Clear").Invoke(overlay,null);
             Check(find.Invoke(overlay,new object[]{flowA,"loop.i1.work"})==null,
                 "P0-4 scope cache was not cleared at Flow session reset");
