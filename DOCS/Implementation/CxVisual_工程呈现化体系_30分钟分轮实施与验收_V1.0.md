@@ -183,3 +183,10 @@ R01源码已提交（截止 f6c0dceb7afae75d320f6b442f3a152b11566162）：修改
 - 直接消费既有 `MOCBuildResult.Diagnostics` 的 `ContentId/BlockId`，连同本次MOC构建所用不可变Snapshot的ProjectId/Revision投影到Studio诊断行；不创建诊断数据真源。
 - “定位诊断”保留主流程原有MOL选中路径；当诊断指向其他Content且其MOL V2定义实际包含原Block时，使用同一资源Tab下钻；跨工程或过期构建诊断拒绝错跳并要求重新构建。
 - WPF STA新增跨Content诊断导航、Revision不变和过期诊断拒绝测试（总22项）。这仅是有具体BlockId诊断的UI定位增量；当前MOC某些深层编译异常只返回根Content级错误，无原子块来源时不能虚称能够定位子流程节点。CI证据须按实际提交对应run记录。
+
+### P0-4 当日Windows证据补记（2026-10-21）
+
+- [19b9cf53](https://github.com/oudream/cx-visual-x3/commit/19b9cf53e48e200f0fb9c00fe588abdfad852cbe)：MRK来源行携带MOC Plan工程身份与Revision，拒绝过期源定位。[Studio Windows 39562875531](https://github.com/oudream/cx-visual-x3/actions/runs/39562875531) **success，21/21 STA，Windows x64编译及Owner依赖检查通过**；同SHA工程组织[39562875409](https://github.com/oudream/cx-visual-x3/actions/runs/39562875409)、配置L1[39562875413](https://github.com/oudream/cx-visual-x3/actions/runs/39562875413)、配置公共底座[39562875500](https://github.com/oudream/cx-visual-x3/actions/runs/39562875500)均为**success**。
+- [e56b91b9](https://github.com/oudream/cx-visual-x3/commit/e56b91b94fbe10060ad155bfd1921f6fc9f3c027)：MOC构建诊断带原ContentId/BlockId和Snapshot版本，主流程保留原定位，子流程从已有Tab下钻。初次Windows[Studio 39563392658](https://github.com/oudream/cx-visual-x3/actions/runs/39563392658)为**failure**，原因是新增STA测试同名变量`CS0136`，不宣称当时通过。
+- [b6b43779](https://github.com/oudream/cx-visual-x3/commit/b6b43779173f3d8ec227c798bdab8d82c0c2beb5)：修复`CS0136`且保留全部测试。[Studio Windows 39563632288](https://github.com/oudream/cx-visual-x3/actions/runs/39563632288) **success，22/22 WPF STA，0 FAIL，Windows x64统一解决方案编译及Owner依赖检查通过**。同SHA其他工作流以各自最终状态为准。
+- 这些是P0-4的Studio自动验证切片，不等于完整X-Ray主/AI/CV流程执行、Trace+SourceMap所有路径、发布授权、实体设备或人工DPI验收。并行新master仍需各自同SHA验证。
