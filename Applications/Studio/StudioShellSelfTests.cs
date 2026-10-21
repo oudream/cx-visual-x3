@@ -13,6 +13,7 @@ using AvalonDock.Layout;
 using CxVisual.Mechanism.Presentation.Wpf;
 using CxVisual.Mechanism.Core;
 using CxVisual.Mechanism.Orchestration;
+using CxVisual.Foundation.Data.Configuration;
 using CxVisual.Mechanism.Data.Configuration;
 using CxVisual.Professional.Vision;
 using CxVisual.Professional.CT3D;
@@ -1926,7 +1927,7 @@ namespace CxVisual.Studio
                     MEMEngineeringSession session=vm.ProjectSession;
                     MEMContent resource=session.Project.Contents.First(x=>
                         x.Name=="P1配置资源Content");
-                    int revision=session.Revision;
+                    int authRevision=session.Revision;
                     window.CloseStudioDocument("doc.config");
                     FCMConfigPrincipal principal=new FCMConfigPrincipal(
                         "p1-config-operator",new[]{"p1-editor"});
@@ -1978,7 +1979,7 @@ namespace CxVisual.Studio
                                 resource.Id.ToString("N")));
                     AssertThrows(()=>authorized.TryApplyPendingAtBoundary(
                         FCMConfigApplyPolicy.NextTask));
-                    Assert(session.Revision==revision,
+                    Assert(session.Revision==authRevision,
                         "配置权限拒绝错误地写入工程Revision");
                 });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
