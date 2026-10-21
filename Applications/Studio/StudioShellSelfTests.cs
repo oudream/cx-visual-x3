@@ -295,6 +295,24 @@ namespace CxVisual.Studio
                         window.OpenStudioPageDocument(one.Id);
                         Assert(window.GetStudioContentIds().Count(x => x == first) == 1,
                             "重开资源Tab重复注册");
+                        // 真实工程保存→重新打开：只能释放旧工程页面Tab，不得抢走固定流程文档。
+                        string projectPath = Path.Combine(Path.GetTempPath(),
+                            "cxstudio-r06-project-" + Guid.NewGuid().ToString("N") + ".cxproj");
+                        try
+                        {
+                            session.SaveAs(projectPath);
+                            window.OpenStudioDocument("doc.flow");
+                            Assert(window.StudioDock.Layout.ActiveContent.ContentId == "doc.flow",
+                                "切换工程前流程文档未激活");
+                            model.OpenProject(projectPath, true);
+                            Assert(window.StudioDock.Layout.ActiveContent.ContentId == "doc.flow" &&
+                                window.ActiveStudioDocumentId == "doc.flow",
+                                "更换MEM工程误把固定流程文档切回首页");
+                            Assert(!window.GetStudioContentIds().Contains(first) &&
+                                !window.GetStudioContentIds().Contains(second),
+                                "切换工程后仍保留旧MEM会话页面Tab");
+                        }
+                        finally { if (File.Exists(projectPath)) File.Delete(projectPath); }
                     }
                     finally { if (File.Exists(path)) File.Delete(path); }
                 });

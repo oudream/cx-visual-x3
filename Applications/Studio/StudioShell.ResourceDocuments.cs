@@ -246,7 +246,16 @@ namespace CxVisual.Studio
                     _pageDocumentSession = _viewModel.ProjectSession;
                 }
                 finally { _closingPageDocuments = false; }
-                SelectStudioContext("doc.home");
+                // 新工程应撤销旧工程页面Tab，但不得将当前固定HMI/流程编辑器强行切回主页。
+                // 已关闭的页面Tab则退回通用图元主画布。
+                if (_activeStudioDocumentId != null &&
+                    _activeStudioDocumentId.StartsWith(PageDocumentPrefix, StringComparison.Ordinal))
+                {
+                    LayoutDocument fallback = FindStudioContent("doc.visual") as LayoutDocument;
+                    if (fallback != null) fallback.IsActive = true;
+                    SelectStudioContext("doc.visual");
+                    RefreshStudioMenus();
+                }
             }
             foreach (string id in _pageDocuments.Keys.ToArray())
             {
