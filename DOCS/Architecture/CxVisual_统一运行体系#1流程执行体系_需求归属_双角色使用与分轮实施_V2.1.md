@@ -602,3 +602,10 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 **当前裁决：R08软件内核与背压增量S3通过；整轮仍未封闭。**
 - 已经真实实现并验收：F19有界跨Key优先级公平性、Step/WholeFlow/Stage范围、动态迭代Stage、资源有序租约与异常回滚、生产者可取消容量等待、Stop拒绝未准入请求而排空已准入工作、MRK便捷调用和背压快照；无第二套Worker/工程/运行数据Owner。
 - 剩余独立任务：产品级Drop业务审计与追溯、连续高吞吐真实吞吐量/峰值长稳、资源与队列等待的现场容量标定、MOL/MOC及Studio暴露的专业阶段配额属性和完整工程编辑闭环。**R08未获得生产设备联锁或跨进程资源所有权的证明**；不将上述Windows软件自动测试当成实机安全凭据。
+
+
+### R08 拒绝/Drop原因与FLD重要审计接入（2026-10-21，待CI）
+
+- F19原`FCRWorkResult<T>`增加只读`TerminalReason`，在原`Job<T>`已知终态路径赋值：停止、前置取消、单项预算不可能满足、队列数量/字节超额、生产者等待超限、DropOldest淘汰、排队/停止/等待阶段取消。业务可从相同Handle的最终Result追溯原因，不再根据累计Rejected/Dropped猜测。旧构造签名保留可选Reason默认None。
+- `FCRWorkAudit.LogLoss`复用原F16 `FLDLogService` 的Important Writer。仅允许同一Handle的真实Rejected/Dropped结果，记录WorkId/Key/状态/Reason，传原WorkId作CorrelationId；由Host在F19调度锁外调用，返回false或FLD `Flush`异常不得冒充持久化成功。暂不新增第二套审计线程或文件仓库。
+- 原FoundationSmoke下一批将测试Drop/Reject/Stop不同原因、拒绝冒用其他Handle、重要文件日志及原CorrelationId一致，待固定SHA Windows CI确认。

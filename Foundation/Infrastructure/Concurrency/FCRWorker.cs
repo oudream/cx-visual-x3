@@ -31,7 +31,8 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
                 Source = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
             }
             internal abstract Task InvokeAsync();
-            internal abstract void FinishWithoutRun(FCRWorkState state);
+            internal abstract void FinishWithoutRun(FCRWorkState state,
+                FCRWorkTerminalReason reason = FCRWorkTerminalReason.None);
             // 非泛型排队器不访问Job<T>的Handle；由原Job负责标记准入。
             internal abstract void MarkAccepted();
         }
@@ -51,14 +52,16 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
                 Handle = new FCRWorkHandle<T>(Id, Key, _completion.Task,
                     () => (FCRWorkState)Volatile.Read(ref State), () => owner.RequestCancel(this));
             }
-            private void Finish(FCRWorkState state, T value, Exception error)
+            private void Finish(FCRWorkState state, T value, Exception error,
+                FCRWorkTerminalReason reason = FCRWorkTerminalReason.None)
             {
                 Interlocked.Exchange(ref State, (int)state);
                 _completion.TrySetResult(new FCRWorkResult<T>(
-                    state, value, error, Source.IsCancellationRequested));
+                    state, value, error, Source.IsCancellationRequested, reason));
             }
-            internal override void FinishWithoutRun(FCRWorkState state)
-            { Finish(state, default(T), null); }
+            internal override void FinishWithoutRun(FCRWorkState state,
+                FCRWorkTerminalReason reason = FCRWorkTerminalReason.None)
+            { Finish(state, default(T), null, reason); }
             internal override void MarkAccepted() { Handle.Accepted = true; }
 
             internal override async Task InvokeAsync()
@@ -164,14 +167,16 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
                 if (_stopping)
                 {
                     _rejected++;
-                    job.FinishWithoutRun(FCRWorkState.Rejected);
+                    job.FinishWithoutRun(FCRWorkState.Rejected,
+                        FCRWorkTerminalReason.WorkerStopping);
                     job.Source.Dispose();
                     return job.Handle;
                 }
                 if (cancellation.IsCancellationRequested)
                 {
                     _finished++;
-                    job.FinishWithoutRun(FCRWorkState.Cancelled);
+                    job.FinishWithoutRun(FCRWorkState.Cancelled,
+                        FCRWorkTerminalReason.CancelledBeforeAdmission);
                     job.Source.Dispose();
                     return job.Handle;
                 }
@@ -184,7 +189,8 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
                     if (job.EstimatedBytes > _options.PendingByteBudget)
                     {
                         _rejected++;
-                        job.FinishWithoutRun(FCRWorkState.Rejected);
+                        job.FinishWithoutRun(FCRWorkState.Rejected,
+                        FCRWorkTerminalReason.EstimatedBytesExceedBudget);
                         job.Source.Dispose();
                         LaunchInstance(launch);
                         return job.Handle;
@@ -196,7 +202,8 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
                         if (old == null) break;
                         _pending.Remove(old);
                         _pendingBytes -= old.EstimatedBytes;
-                        old.FinishWithoutRun(FCRWorkState.Dropped);
+                        old.FinishWithoutRun(FCRWorkState.Dropped,
+                            FCRWorkTerminalReason.OldestDroppableEvicted);
                         old.Source.Dispose();
                         _finished++;
                         _dropped++;
@@ -204,7 +211,10 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
                     if (WouldOverflowLocked(job))
                     {
                         _rejected++;
-                        job.FinishWithoutRun(FCRWorkState.Rejected);
+                        job.FinishWithoutRun(FCRWorkState.Rejected,
+                        job.EstimatedBytes > _options.PendingByteBudget - _pendingBytes
+                        ? FCRWorkTerminalReason.PendingByteBudgetExceeded
+                        : FCRWorkTerminalReason.QueueCapacityExceeded);
                         job.Source.Dispose();
                         LaunchInstance(launch);
                         return job.Handle;
@@ -255,7 +265,11 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
                     _waitingProducers.Count >= _options.MaxWaitingProducers)
                 {
                     _rejected++;
-                    job.FinishWithoutRun(FCRWorkState.Rejected);
+                    job.FinishWithoutRun(FCRWorkState.Rejected,
+                        _stopping ? FCRWorkTerminalReason.WorkerStopping :
+                        job.EstimatedBytes > _options.PendingByteBudget ?
+                        FCRWorkTerminalReason.EstimatedBytesExceedBudget :
+                        FCRWorkTerminalReason.WaitingProducerLimitExceeded);
                     job.Source.Dispose();
                     return job.Handle;
                 }
@@ -408,7 +422,8 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
                     ProducerAdmission admission = waiter.Value;
                     _waitingProducers.Remove(waiter);
                     FinishProducerWaitLocked(admission);
-                    job.FinishWithoutRun(FCRWorkState.Cancelled);
+                    job.FinishWithoutRun(FCRWorkState.Cancelled,
+                        FCRWorkTerminalReason.CancelledWhileWaitingAdmission);
                     admission.Admitted.TrySetCanceled();
                     _finished++;
                     launch = PumpLocked();
@@ -421,7 +436,8 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
                 {
                     _pending.Remove(node);
                     _pendingBytes -= job.EstimatedBytes;
-                    job.FinishWithoutRun(FCRWorkState.Cancelled);
+                    job.FinishWithoutRun(FCRWorkState.Cancelled,
+                        FCRWorkTerminalReason.CancelledWhileQueued);
                     _finished++;
                     launch = PumpLocked();
                     SignalStopLocked();
@@ -455,7 +471,8 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
                     _waitingProducers.RemoveFirst();
                     FinishProducerWaitLocked(admission);
                     _rejected++;
-                    admission.Work.FinishWithoutRun(FCRWorkState.Rejected);
+                    admission.Work.FinishWithoutRun(FCRWorkState.Rejected,
+                        FCRWorkTerminalReason.WorkerStopping);
                     admission.Admitted.TrySetResult(false);
                     cancel.Add(admission.Work);
                 }
@@ -466,7 +483,8 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
                         Job j = _pending.First.Value;
                         _pending.RemoveFirst();
                         _pendingBytes -= j.EstimatedBytes;
-                        j.FinishWithoutRun(FCRWorkState.Cancelled);
+                        j.FinishWithoutRun(FCRWorkState.Cancelled,
+                            FCRWorkTerminalReason.CancelledByStop);
                         _finished++;
                         cancel.Add(j);
                     }
