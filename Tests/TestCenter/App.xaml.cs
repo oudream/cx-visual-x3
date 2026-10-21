@@ -345,6 +345,32 @@ namespace CxVisual.TestCenter.UI
                                 archivedGeometry.EvidenceProblem != null)
                                 throw new InvalidOperationException("History geometry viewer lost verified Artifact");
                         }
+                        // Stage 1 integrated visual/object sample: the real CxSceneProjection
+                        // expands a shared Symbol into two separately addressed instances.
+                        ITCTTestCase symbolCase = catalog.Cases.Single(x =>
+                            x.Descriptor.Id == "M-OBJ-007");
+                        TCTTestAttempt symbolAttempt = new TCTTestAttempt(Guid.NewGuid().ToString("N"),
+                            symbolCase.Descriptor.Id, 0, 20261021);
+                        TCTTestArtifactStore symbolStore = new TCTTestArtifactStore(
+                            TCTTestArtifactStore.RunRoot(symbolAttempt.RunId));
+                        TCTTestCaseResult symbolResult = await TCTTestRunner.RunOneAsync(symbolCase,
+                            CancellationToken.None, 20261021, symbolAttempt, symbolStore);
+                        if (symbolResult.Status != TCTTestStatus.Passed ||
+                            TCTObservationReplay.Read(symbolResult, symbolStore).Count != 2)
+                            throw new InvalidOperationException("Real MEM/Symbol/Visual evidence missing");
+                        window.DocumentHost.ShowResult(symbolResult);
+                        if (window.DocumentHost.ViewerCount != 2)
+                            throw new InvalidOperationException("Symbol case must have Geometry and Object evidence");
+                        var symbolTabs = (System.Windows.Controls.TabControl)window.DocumentHost.Content;
+                        var symbolGeometry = symbolTabs.Items.OfType<System.Windows.Controls.TabItem>()
+                            .Select(tab => tab.Content).OfType<TCTGeometryTestView>().Single();
+                        var symbolObject = symbolTabs.Items.OfType<System.Windows.Controls.TabItem>()
+                            .Select(tab => tab.Content).OfType<TCTObjectTestView>().Single();
+                        if (symbolGeometry.VerifiedFigureCount != 4 ||
+                            symbolObject.VerifiedReferenceCount != 2 ||
+                            symbolGeometry.EvidenceProblem != null || symbolObject.EvidenceProblem != null)
+                            throw new InvalidOperationException("Real Symbol instance projection not in both viewers");
+
                         // Suite/Plan is only CaseId selection; Runner and result remain unified.
                         var planUi = new TCTTestPlanControl();
                         planUi.Bind(catalog, () => new[] {
