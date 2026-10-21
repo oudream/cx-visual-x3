@@ -168,13 +168,21 @@ jobs:
               throw "Windows UI Automation failed: $($p.ExitCode)"
           }
           if (-not (Test-Path $screenshot)) { throw 'No actual WPF screenshot produced' }
-          Write-Host 'PASS UIAutomation ValuePattern -> TreeView Selection -> Invoke Run -> verified Geometry'
+          foreach ($name in @('TestCenter-01-Workspace.png','TestCenter-02-Geometry.png',
+                             'TestCenter-03-Object.png','TestCenter-04-Dark.png')) {
+              if (-not (Test-Path (Join-Path (Split-Path $screenshot) $name))) {
+                  throw "Missing real WPF screenshot: $name"
+              }
+          }
+          Write-Host 'PASS UIAutomation ValuePattern -> Selection -> Context Ribbon -> 2 real Owner runs -> 4 screenshots'
       - name: Upload actual TestCenter WPF screenshot
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: TestCenter-WPF-UIA
-          path: Output/Debug/x64/TestCenterUIA.png
+          path: |
+            Output/Debug/x64/TestCenterUIA.png
+            Output/Debug/x64/TestCenter-*.png
           if-no-files-found: ignore
       - name: NUnit Engine real assembly discovery and execution
         shell: powershell
