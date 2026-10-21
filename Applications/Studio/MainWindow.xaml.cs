@@ -1751,7 +1751,7 @@ namespace CxVisual.Studio
             catch(Exception ex){LogicInfo.Text="校验失败: "+ex.Message;}
         }
 
-        private sealed class SimulationResolver : IMRKCapabilityResolver,IMOCCapabilityProvider
+        private sealed class SimulationResolver : IMRKVersionedCapabilityResolver,IMOCCapabilityProvider
         {
             private readonly MOCCapabilityDescriptor[] _definitions={
                 new MOCCapabilityDescriptor("Acquire","采图","X-Ray",
@@ -1773,6 +1773,12 @@ namespace CxVisual.Studio
             {
                 return _definitions.ToDictionary(d=>d.Id,
                     d=>"studio-cpu-v1",StringComparer.Ordinal);
+            }
+            public bool TryGetCapabilityVersion(string id,out string version)
+            {
+                if(_definitions.Any(x=>x.Id==id))
+                {version="studio-cpu-v1";return true;}
+                version=null;return false;
             }
             public bool TryResolve(string id,out MRKResolvedCapability capability)
             {

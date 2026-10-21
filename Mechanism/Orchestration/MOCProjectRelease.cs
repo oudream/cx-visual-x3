@@ -38,7 +38,7 @@ namespace CxVisual.Mechanism.Orchestration
     public static class MOCProjectRelease
     {
         private static void Gather(MEMProjectSnapshot snapshot,Guid contentId,
-            IReadOnlyDictionary<string,string> declared,
+            IReadOnlyDictionary<string,string> declared,IMRKCapabilityResolver resolver,
             SortedDictionary<string,string> capabilities,
             SortedDictionary<string,string> sources,HashSet<Guid> visiting)
         {
@@ -67,7 +67,7 @@ namespace CxVisual.Mechanism.Orchestration
                             !node.References.Any(r=>r.Kind==MRIReferenceKind.Content&&
                                 r.TargetId==target))
                             throw new InvalidOperationException("moc.release.invalid_content_ref");
-                        Gather(snapshot,target,declared,capabilities,sources,visiting);
+                        Gather(snapshot,target,declared,resolver,capabilities,sources,visiting);
                         continue;
                     }
                     string version;
@@ -75,6 +75,15 @@ namespace CxVisual.Mechanism.Orchestration
                         string.IsNullOrWhiteSpace(version)||version.Length>128||
                         version.Any(char.IsControl))
                         throw new InvalidOperationException("moc.release.capability_version_missing:"+capability);
+                    // Provider若支持自证，Host不能把已变更的专业配置或算法仍声明为旧版。
+                    IMRKVersionedCapabilityResolver versioned=
+                        resolver as IMRKVersionedCapabilityResolver;
+                    string actualVersion;
+                    if(versioned!=null&&versioned.TryGetCapabilityVersion(
+                        capability,out actualVersion)&&
+                        !string.Equals(version,actualVersion,StringComparison.Ordinal))
+                        throw new InvalidOperationException(
+                            "moc.release.provider_version_mismatch:"+capability);
                     string old;
                     if(capabilities.TryGetValue(capability,out old)&&old!=version)
                         throw new InvalidOperationException("moc.release.version_conflict");
@@ -85,14 +94,14 @@ namespace CxVisual.Mechanism.Orchestration
         }
 
         private static string ComputeFingerprint(MEMProjectSnapshot snapshot,Guid contentId,
-            IReadOnlyDictionary<string,string> declared,
+            IReadOnlyDictionary<string,string> declared,IMRKCapabilityResolver resolver,
             out IDictionary<string,string> pinned)
         {
             if(snapshot==null||declared==null)
                 throw new ArgumentNullException("snapshot/declared");
             var capabilities=new SortedDictionary<string,string>(StringComparer.Ordinal);
             var contents=new SortedDictionary<string,string>(StringComparer.Ordinal);
-            Gather(snapshot,contentId,declared,capabilities,contents,new HashSet<Guid>());
+            Gather(snapshot,contentId,declared,resolver,capabilities,contents,new HashSet<Guid>());
             var value=new StringBuilder().Append("moc-release-logic-v1\n")
                 .Append(snapshot.ProjectId.ToString("N")).Append('|')
                 .Append(snapshot.Revision.ToString(CultureInfo.InvariantCulture)).Append('|')
@@ -116,7 +125,7 @@ namespace CxVisual.Mechanism.Orchestration
         {
             if(resolver==null)throw new ArgumentNullException("resolver");
             IDictionary<string,string> pinned;
-            string fingerprint=ComputeFingerprint(snapshot,entryContentId,declaredVersions,out pinned);
+            string fingerprint=ComputeFingerprint(snapshot,entryContentId,declaredVersions,resolver,out pinned);
             MOCBuildResult build=new MOCBuildService().Build(snapshot,entryContentId,resolver);
             if(!build.Succeeded)
                 throw new InvalidOperationException("moc.release.build_rejected:"+
@@ -140,7 +149,7 @@ namespace CxVisual.Mechanism.Orchestration
                 throw new InvalidOperationException("moc.release.stale_engineering_revision");
             IDictionary<string,string> actual;
             string fingerprint=ComputeFingerprint(current,candidate.EntryContentId,
-                declaredVersions,out actual);
+                declaredVersions,resolver,out actual);
             if(!string.Equals(fingerprint,candidate.Fingerprint,StringComparison.Ordinal)||
                 actual.Count!=candidate.CapabilityVersions.Count||
                 actual.Any(x=>!candidate.CapabilityVersions.ContainsKey(x.Key)||

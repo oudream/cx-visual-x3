@@ -11,7 +11,7 @@ namespace CxVisual.Professional.Vision
     /// G06：复用本专业已有真实CPU灰度阈值/四邻接检测。MRK只调度/追踪，
     /// 不重新实现图像算法；不假冒硬件采图、AI推理或设备互锁。
     /// </summary>
-    public sealed class CxVisionThresholdProvider : IMRKCapabilityResolver
+    public sealed class CxVisionThresholdProvider : IMRKVersionedCapabilityResolver
     {
         public const string CapabilityId="vision.cpu.threshold.inspect";
         // 专业Owner给Host提供不可变的软件能力+配置Revision标识；不能冒充模型/设备版本。
@@ -40,6 +40,15 @@ namespace CxVisual.Professional.Vision
                     new MRKCapabilityInput("Width",typeof(int)),
                     new MRKCapabilityInput("Height",typeof(int))
                 });
+        }
+
+        public bool TryGetCapabilityVersion(string id,out string version)
+        {
+            if(string.Equals(id,CapabilityId,StringComparison.Ordinal))
+            {version=ReleaseVersion;return true;}
+            IMRKVersionedCapabilityResolver next=_fallback as IMRKVersionedCapabilityResolver;
+            if(next!=null)return next.TryGetCapabilityVersion(id,out version);
+            version=null;return false;
         }
 
         public bool TryResolve(string id,out MRKResolvedCapability result)

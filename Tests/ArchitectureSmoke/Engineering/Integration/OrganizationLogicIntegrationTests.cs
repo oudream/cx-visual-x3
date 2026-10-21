@@ -893,6 +893,16 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     {CxVisionThresholdProvider.CapabilityId,provider.ReleaseVersion}};
                 var candidate=MOCProjectRelease.Prepare(session.GetSnapshot(),
                     page.RootContent.Id,provider,declared);
+                var spoofed=new Dictionary<string,string>(declared,StringComparer.Ordinal);
+                spoofed[CxVisionThresholdProvider.CapabilityId]=
+                    "vision.cpu.threshold.v1/config:999";
+                bool refusedAttestation=false;
+                try{MOCProjectRelease.Prepare(session.GetSnapshot(),
+                    page.RootContent.Id,provider,spoofed);}
+                catch(InvalidOperationException ex)
+                {refusedAttestation=ex.Message.Contains("provider_version_mismatch");}
+                Check(refusedAttestation,
+                    "G06 Provider真实配置版本未拦截Host虚假版本声明");
                 Check(candidate.CapabilityVersions[CxVisionThresholdProvider.CapabilityId]
                     ==provider.ReleaseVersion&&candidate.EngineeringRevision==session.Revision,
                     "G06 professional version was not pinned into genuine MOC release");
@@ -933,9 +943,17 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     }
                     finally{engine.StopAsync(true).GetAwaiter().GetResult();}
                 }
+                var upgradedProvider=new CxVisionThresholdProvider(options,13,sourceResolver);
+                bool refusedStaleProvider=false;
+                try{MOCProjectRelease.Stage(candidate,session.GetSnapshot(),
+                    upgradedProvider,declared,publisher,"release-officer",3);}
+                catch(InvalidOperationException ex)
+                {refusedStaleProvider=ex.Message.Contains("provider_version_mismatch");}
+                Check(refusedStaleProvider&&!publisher.PendingRevision.HasValue,
+                    "G06 Host漏报升级后的真实Vision Provider版本，旧Plan却进入了发布Slot");
                 var changed=new Dictionary<string,string>(declared,StringComparer.Ordinal);
                 changed[CxVisionThresholdProvider.CapabilityId]=
-                    new CxVisionThresholdProvider(options,13).ReleaseVersion;
+                    upgradedProvider.ReleaseVersion;
                 refused=false;
                 try{MOCProjectRelease.Stage(candidate,session.GetSnapshot(),provider,
                     changed,publisher,"release-officer",3);}

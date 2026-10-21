@@ -100,6 +100,15 @@ namespace CxVisual.Mechanism.Runtime.Execution
         bool TryResolve(string capabilityId, out MRKResolvedCapability capability);
     }
 
+    /// <summary>
+    /// 可选版本自证：专业Owner报告自己真正提供的能力版本。
+    /// 发布时由MOC与Host声明比对；未实现时仍沿用原Host声明兼容契约。
+    /// </summary>
+    public interface IMRKVersionedCapabilityResolver : IMRKCapabilityResolver
+    {
+        bool TryGetCapabilityVersion(string capabilityId,out string version);
+    }
+
     /// <summary>一次编译使用的瞬时节点描述，不负责工程保存或CxNode所有权。</summary>
     public sealed class MRKStepCompileRequest
     {

@@ -253,3 +253,9 @@ R01源码已提交（截止 f6c0dceb7afae75d320f6b442f3a152b11566162）：修改
 - 继续复用上轮`MOCProjectRelease.Prepare/Stage`与MRK授权`PlanSlot`；Studio执行前补`EntryContentId`严格匹配活动主流程页面，防止同工程内切页后用原候选执行另一个Root。
 - 真实WPF STA测试直接触发Studio“准备CPU软件发布”事件和`OnRunLogicDemo`，等待MRK CPU异步运行完成，核对FlowTrace实际`SoftwareReleaseFingerprint/PublicationRevision/FlowId/RootContentId`、成功候选清理；同时测试跨Root错用拒绝和工程Revision变化后不隐式降级运行。原测试数量36→37，提交前不冒充CI通过。
 - 本轮仍是无设备CPU仿真软件发布，不代表生产PLC/AI硬件、实际设备Release ACK或硬件安全点签收。
+
+### P0-4 Provider真实版本自证与Host发布声明一致性（2026-10-21，待同SHA CI）
+
+- Mechanism.Runtime在原`IMRKCapabilityResolver`旁增加**可选**`IMRKVersionedCapabilityResolver.TryGetCapabilityVersion`，只提供专业Provider版本查询，不改变MRK执行器。专业Vision阈值Provider返回基于配置Revision的`ReleaseVersion`，Studio本地CPU模拟Resolver返回其真实模拟能力版本。
+- MOC原`Prepare/Stage`递归可达Content的发布指纹计算时，对支持自证的Provider核对Host声明，发现版本不相等拒绝`moc.release.provider_version_mismatch`，不进入标准MRK PlanSlot；旧未实现接口的外部Provider仍可沿用Host声明，但**不等于已自证**。
+- G06在真正CPU图像检测+MRK执行+发布授权测试中增加Host伪版本声明拒绝、Provider配置Rev12→Rev13但Host漏更新拒绝，保证未污染已激活计划。无真实设备配置ACK/跨进程插件签名和机台安全联锁验收，不将此可选软件契约误报为生产级完整自证。
