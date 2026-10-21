@@ -57,7 +57,7 @@ namespace CxVisual.Studio
             public Guid? LinkId{get;set;}
             public string Label{get;set;}
         }
-        private sealed class FlowTraceRecord
+        internal sealed class FlowTraceRecord
         {
             public string StepId{get;set;}
             public Guid BlockId{get;set;}
@@ -66,6 +66,23 @@ namespace CxVisual.Studio
             public int EngineeringRevision{get;set;}
             public IReadOnlyList<Guid> CallPath{get;set;}
             public string Label{get;set;}
+        }
+        /// <summary>使用真实MOC编译源与MRK观测记录创建同一个Studio轨迹投影。</summary>
+        internal static FlowTraceRecord ProjectFlowTrace(MOCCompiledPlan compiled,
+            MOCObservedStep observed)
+        {
+            if(compiled==null)throw new ArgumentNullException("compiled");
+            if(observed==null||observed.Origin==null||observed.Transition==null)
+                throw new ArgumentException("缺少已关联SourceMap的MRK轨迹","observed");
+            return new FlowTraceRecord{
+                StepId=observed.Transition.StepId,
+                BlockId=observed.Origin.BlockId,
+                ContentId=observed.Origin.ContentAddress.ObjectId,
+                ProjectId=compiled.ProjectId,
+                EngineeringRevision=compiled.EngineeringRevision,
+                CallPath=observed.Origin.CallPath,
+                Label=observed.Transition.State+" · "+observed.Origin.BlockId.ToString("N")
+                    .Substring(0,8)+" · "+observed.Transition.StepId};
         }
         private sealed class FlowPortChoice
         {
@@ -1434,6 +1451,12 @@ namespace CxVisual.Studio
             try
             {
                 var trace=FlowTraceList.SelectedItem as FlowTraceRecord;
+                if(trace!=null&&(trace.ProjectId!=_viewModel.ProjectSession.Project.Id||
+                    trace.EngineeringRevision!=_viewModel.ProjectSession.Revision))
+                {
+                    LogicInfo.Text="关联画面来源于过期或其他工程的MRK Plan，请重新构建并运行。";
+                    return;
+                }
                 Guid blockId=trace==null?SelectedFlowBlock():trace.BlockId;
                 Guid? visualId=_viewModel.FindVisualForFlowBlock(blockId);
                 if(!visualId.HasValue)
@@ -1504,6 +1527,12 @@ namespace CxVisual.Studio
         {
             var trace=FlowTraceList.SelectedItem as FlowTraceRecord;
             if(trace==null){LogicInfo.Text="请先选择一条运行轨迹";return;}
+            if(trace.ProjectId!=_viewModel.ProjectSession.Project.Id||
+                trace.EngineeringRevision!=_viewModel.ProjectSession.Revision)
+            {
+                LogicInfo.Text="父流程定位拒绝过期或其他工程的MRK Plan，请重新构建并运行。";
+                return;
+            }
             var wiring=LogicHost.WiringDefinition;
             Guid candidate=trace.BlockId;
             if(wiring!=null&&!wiring.Blocks.Any(b=>b.Id==candidate))
@@ -1640,14 +1669,7 @@ namespace CxVisual.Studio
                     _viewModel.UpdateVisualRuntimeFrame(_flowVisualClock.Elapsed.TotalMilliseconds);
                     var previous=(FlowTraceList.ItemsSource as IEnumerable<FlowTraceRecord>)
                         .ToList();
-                    previous.AddRange(changes.Events.Select(e=>new FlowTraceRecord{
-                        StepId=e.Transition.StepId,
-                        BlockId=e.Origin.BlockId,ContentId=e.Origin.ContentAddress.ObjectId,
-                        ProjectId=compiled.ProjectId,
-                        EngineeringRevision=compiled.EngineeringRevision,
-                        CallPath=e.Origin.CallPath,
-                        Label=e.Transition.State+" · "+e.Origin.BlockId.ToString("N")
-                            .Substring(0,8)+" · "+e.Transition.StepId}));
+                    previous.AddRange(changes.Events.Select(e=>ProjectFlowTrace(compiled,e)));
                     if(previous.Count>500)previous=previous.Skip(previous.Count-500).ToList();
                     FlowTraceList.ItemsSource=previous;
                 };

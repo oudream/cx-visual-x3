@@ -194,3 +194,9 @@ R01源码已提交（截止 f6c0dceb7afae75d320f6b442f3a152b11566162）：修改
 ### P0-S1/S2 统一资源Tab真实图元命令验收（2026-10-21）
 
 - 当前已提交且经Windows验收：[de3a024b](https://github.com/oudream/cx-visual-x3/commit/de3a024b4198e5be2dada7de899f7e5cf566afcc)；[Studio S1 #39564306075](https://github.com/oudream/cx-visual-x3/actions/runs/39564306075) **23/23 WPF STA success**，[工程组织 #39564306081](https://github.com/oudream/cx-visual-x3/actions/runs/39564306081) **success**。补真实Page/Content/Symbol绘图Ribbon与旧工具箱到各独立`CxVisualEditor`，九Shape/Text/Widget只通过MEM事务，保留旧R06活动页面上下文；新增跨资源误写、撤销重做、流程Tab拒绝和Tab复用反证。不是完整EP02/03签收；专业Editor注册、对齐/路径工具、人工鼠键及性能继续开发。
+
+### P0-4 X-Ray真实MOC/MRK来源到Studio联动开发（2026-10-21，待CI）
+
+- 使用Studio现有“创建完整X-Ray双子流程”生成真实MEM主/子Content和HMI，不重造演示工程真源，取原MOCBuildService不可变Plan及CPU仿真Resolver，MRKExecutionEngine执行并用MOCCompiledPlan.ReadTrace读取真实AI/CV子流程执行记录。
+- Studio运行Trace行投影统一复用MainWindow.ProjectFlowTrace(MOCCompiledPlan,MOCObservedStep)，同一编译版ProjectId/Revision/ContentId/BlockId/CallPath用于父流程、子流程及HMI定位；父流程与关联画面导航也拒绝旧工程/过期Revision，防止越过先前只对“跳转子流程源”设置的版本保护。
+- WPF STA新增真实MOC/MRK成功轨迹→主流程调用→AI子流程源→HMI→MEM版本变更拒绝→重新构建的贯通测试，23项扩展为24项。没有实机I/O，也不宣称设备安全和所有故障路径已验收；同SHA CI通过前均记为源码待验收。

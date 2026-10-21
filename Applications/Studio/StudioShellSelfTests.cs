@@ -3,7 +3,10 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading.Tasks;
 using System.Windows.Controls;
+using CxVisual.Foundation.Infrastructure.Concurrency;
+using CxVisual.Mechanism.Runtime.Execution;
 using AvalonDock.Layout;
 using CxVisual.Mechanism.Presentation.Wpf;
 using CxVisual.Mechanism.Core;
@@ -779,6 +782,120 @@ namespace CxVisual.Studio
                     Assert(window.ActiveStudioDocumentId==contentTab&&
                         window.GetStudioContentIds().Count(x=>x==contentTab)==1,
                         "复用图元Tab造成重复Editor或丢失活动身份");
+                });
+                CheckStep("P0-4 X-Ray真实MOC与MRK主子流程Trace到Studio全链定位", () =>
+                {
+                    StudioViewModel vm=window.DataContext as StudioViewModel;
+                    MEMEngineeringSession session=vm.ProjectSession;
+                    MEMPage xrayPage=session.AddPage("P0-4 真实执行XRay");
+                    vm.ActivePage=xrayPage;
+                    window.OpenStudioDocument("doc.flow");
+                    var create=typeof(MainWindow).GetMethod("OnCreateXRayDualSubflowDemo",
+                        System.Reflection.BindingFlags.NonPublic|
+                        System.Reflection.BindingFlags.Instance);
+                    Assert(create!=null,"X-Ray主子流程编辑入口不存在");
+                    create.Invoke(window,new object[]{window,new System.Windows.RoutedEventArgs()});
+                    MEMNodeSnapshot rootSnapshot=session.GetSnapshot().Find(xrayPage.RootContent.Id);
+                    MOLWiringDefinition rootWiring=MOLWiringCodec.Get(rootSnapshot);
+                    Assert(rootWiring!=null&&rootSnapshot.References.Count==2,
+                        "X-Ray入口没有真正创建两份子Content引用");
+                    MRIResourceReference aiReference=rootSnapshot.References.Single(r=>
+                        session.Find(r.TargetId).Name.Contains("AI"));
+                    MRIResourceReference cvReference=rootSnapshot.References.Single(r=>
+                        session.Find(r.TargetId).Name.Contains("传统"));
+                    Guid aiContentId=aiReference.TargetId;
+                    Guid cvContentId=cvReference.TargetId;
+                    Guid aiBlockId=MOLWiringCodec.Get(session.GetSnapshot().Find(aiContentId))
+                        .Blocks.First(b=>b.CapabilityId=="AI").Id;
+                    Guid cvBlockId=MOLWiringCodec.Get(session.GetSnapshot().Find(cvContentId))
+                        .Blocks.First(b=>b.CapabilityId=="CV").Id;
+                    Guid aiCallId=rootWiring.Blocks.Single(b=>
+                        b.CapabilityId=="moc.invoke:"+aiContentId.ToString("N")).Id;
+                    var resolverField=typeof(MainWindow).GetField("_simulation",
+                        System.Reflection.BindingFlags.NonPublic|
+                        System.Reflection.BindingFlags.Instance);
+                    Assert(resolverField!=null,"缺少已注册的CPU仿真Provider");
+                    IMRKCapabilityResolver resolver=(IMRKCapabilityResolver)resolverField.GetValue(window);
+                    MEMProjectSnapshot fixedSnapshot=session.GetSnapshot();
+                    MOCBuildResult checkedBuild=new MOCBuildService().Build(
+                        fixedSnapshot,xrayPage.RootContent.Id,resolver);
+                    Assert(checkedBuild.Succeeded,"真实X-Ray MOC编译未通过: "+
+                        string.Join(";",checkedBuild.Diagnostics.Select(d=>d.Message)));
+                    MOCCompiledPlan compiled=checkedBuild.Plan;
+                    Assert(compiled.ProjectId==session.Project.Id&&
+                        compiled.EngineeringRevision==session.Revision,
+                        "MOC没有固定本次工程来源Revision");
+                    MOCObservedStep observedAI=null;
+                    MOCObservedStep observedCV=null;
+                    var engine=new MRKExecutionEngine(new FCRWorkerOptions(3,64));
+                    try
+                    {
+                        MRKFlowHandle execution=engine.StartFlow(compiled.Plan);
+                        MRKFlowResult completed=execution.Completion.GetAwaiter().GetResult();
+                        MOCTraceView trace=compiled.ReadTrace(execution,0);
+                        observedAI=trace.Events.FirstOrDefault(e=>
+                            e.Origin.ContentAddress.ObjectId==aiContentId&&
+                            e.Origin.BlockId==aiBlockId&&
+                            e.Transition.State==MRKStepState.Completed);
+                        observedCV=trace.Events.FirstOrDefault(e=>
+                            e.Origin.ContentAddress.ObjectId==cvContentId&&
+                            e.Origin.BlockId==cvBlockId&&
+                            e.Transition.State==MRKStepState.Completed);
+                        Assert(completed.State==MRKFlowState.Completed&&
+                            observedAI!=null&&observedCV!=null&&
+                            observedAI.Origin.CallPath.Contains(aiCallId),
+                            "实际MRK执行没有产生含原始Content与调用链的AI/CV Trace");
+                    }
+                    finally{engine.StopAsync(true).GetAwaiter().GetResult();}
+                    MainWindow.FlowTraceRecord line=MainWindow.ProjectFlowTrace(compiled,observedAI);
+                    Assert(line.ContentId==aiContentId&&line.BlockId==aiBlockId&&
+                        line.ProjectId==session.Project.Id&&
+                        line.EngineeringRevision==compiled.EngineeringRevision&&
+                        line.CallPath.Contains(aiCallId),
+                        "Studio轨迹投影丢失真实MOC来源身份");
+                    ComboBox list=window.FindName("FlowTraceList") as ComboBox;
+                    Assert(list!=null,"Studio运行轨迹列表不存在");
+                    list.ItemsSource=new[]{line};list.SelectedIndex=0;
+                    var parent=typeof(MainWindow).GetMethod("OnFlowLocateTrace",
+                        System.Reflection.BindingFlags.NonPublic|
+                        System.Reflection.BindingFlags.Instance);
+                    var source=typeof(MainWindow).GetMethod("OnFlowLocateSourceContent",
+                        System.Reflection.BindingFlags.NonPublic|
+                        System.Reflection.BindingFlags.Instance);
+                    var visual=typeof(MainWindow).GetMethod("OnFlowLocateVisual",
+                        System.Reflection.BindingFlags.NonPublic|
+                        System.Reflection.BindingFlags.Instance);
+                    Assert(parent!=null&&source!=null&&visual!=null,
+                        "Studio运行来源与HMI导航入口未完整接入");
+                    int stableRevision=session.Revision;
+                    window.OpenStudioDocument("doc.flow");
+                    parent.Invoke(window,new object[]{window,new System.Windows.RoutedEventArgs()});
+                    Assert(((MOLFlowCanvas)window.FindName("LogicHost")).SelectedBlockIds
+                        .Contains(aiCallId),"真实Trace未定位主流程AI调用节点");
+                    source.Invoke(window,new object[]{window,new System.Windows.RoutedEventArgs()});
+                    Assert(window.ActiveStudioDocumentId==
+                        "doc.resourceflow."+aiContentId.ToString("N")&&
+                        window.GetStudioResourceFlow(aiContentId).SelectedBlockIds
+                            .Contains(aiBlockId),
+                        "真实Trace未下钻AI原始Content中的执行块");
+                    visual.Invoke(window,new object[]{window,new System.Windows.RoutedEventArgs()});
+                    Assert(window.ActiveStudioDocumentId=="doc.visual"&&
+                        vm.SelectedId.HasValue&&session.Revision==stableRevision,
+                        "真实Trace→HMI定位失败或导航更改了MEM工程");
+                    string active=window.ActiveStudioDocumentId;
+                    session.AddContent(session.Project,"P0-4 重新构建版本反证");
+                    parent.Invoke(window,new object[]{window,new System.Windows.RoutedEventArgs()});
+                    source.Invoke(window,new object[]{window,new System.Windows.RoutedEventArgs()});
+                    visual.Invoke(window,new object[]{window,new System.Windows.RoutedEventArgs()});
+                    Assert(window.ActiveStudioDocumentId==active&&
+                        ((TextBlock)window.FindName("LogicInfo")).Text.Contains("重新构建"),
+                        "旧MOC Plan的父、子、HMI定位没有被工程新Revision拒绝");
+                    MOCBuildResult rebuilt=new MOCBuildService().Build(
+                        session.GetSnapshot(),xrayPage.RootContent.Id,resolver);
+                    Assert(rebuilt.Succeeded&&
+                        rebuilt.Plan.EngineeringRevision==session.Revision&&
+                        rebuilt.Plan.EngineeringRevision!=compiled.EngineeringRevision,
+                        "工程修改后没有产生对应新Revision的可执行Plan");
                 });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;

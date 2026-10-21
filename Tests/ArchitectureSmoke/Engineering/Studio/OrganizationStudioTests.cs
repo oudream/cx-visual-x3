@@ -963,6 +963,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 object traceItem=Activator.CreateInstance(traceType,true);
                 traceType.GetProperty("BlockId").SetValue(traceItem,aiInternal,null);
                 traceType.GetProperty("ContentId").SetValue(traceItem,aiSubflow.TargetId,null);
+                traceType.GetProperty("ProjectId").SetValue(traceItem,xraySession.Project.Id,null);
+                traceType.GetProperty("EngineeringRevision").SetValue(traceItem,xraySession.Revision,null);
                 traceType.GetProperty("CallPath").SetValue(traceItem,
                     new Guid[]{aiCall},null);
                 traceType.GetProperty("Label").SetValue(traceItem,"Completed AI",null);
