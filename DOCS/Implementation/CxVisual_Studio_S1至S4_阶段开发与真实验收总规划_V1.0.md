@@ -252,3 +252,21 @@
 4. P0-4实体机台发布/授权/联锁归后续专业/Runtime安全Owner并设置硬门槛；**软件CPU仿真通过不可转成现场合格**。
 
 **本节最终判定：P0已实现的核心代码与自动测试相当扎实，但“整个P0真正签收完成”仍不成立；需要按上述未验项逐条补证，而不是再增加类似按钮数或盲目提升STA项数。**
+
+## 17. P0流程属性收口与P1首个真实配置双专业场景（2026-10-21）
+
+### 17.1 P0剩余代码漏口：AI/CV Flow Port属性一致性
+
+- 原`MainWindow.SelectedFlowBlock/ApplyFlowProperty/RefreshFlowInspector`继续依赖固定`LogicHost`和`ActivePage.RootContent`，在独立AI/CV Flow Tab使用端口属性时可能错误定位到旧主页面；原“添加Port”Ribbon在非Page Tab又被旧Guard拦截。
+- 本轮[b2791c5](https://github.com/oudream/cx-visual-x3/commit/b2791c5ef64014d5b66be18f9841cb45a486d016)按当前活动Document寻找真实`MOLFlowCanvas`和`MEMContent`，复用既有`MOCFlowBuilder.Edit`、MPM Port契约和MEM事务；把属性列表、节点选择、Port修改与撤销重做指向同一子流程，错误图元Tab拒绝。
+- [Studio S1 Windows 39579075529](https://github.com/oudream/cx-visual-x3/actions/runs/39579075529) **34/34 WPF STA成功**，同源码SHA[Engineering 39579075624](https://github.com/oudream/cx-visual-x3/actions/runs/39579075624)、[Config L1 39579075690](https://github.com/oudream/cx-visual-x3/actions/runs/39579075690)、[配置公共底座 39579075692](https://github.com/oudream/cx-visual-x3/actions/runs/39579075692)均成功。由此**可关闭已规定的P0 Flow-Port软件代码切片**，但人工键鼠/工业设备不视为完成。
+
+### 17.2 P1已真正启动：Studio doc.config双专业Schema组合编辑
+
+- 以已存在的`MPWConfigEditorControl<T>`与`MHSConfigService`实现，移除中央`doc.config`的四块纯说明占位。面向**同一真实MEM ProjectId对应的MHS Project Scope**并列提供Vision.Inspection与CT3D.Reconstruction两栏真实配置控件，不创建Studio第二套Schema、配置缓存、运行堆或历史。
+- 两个专业`CxVisionInspectionOptions`与`CxCtReconstructionOptions`保留各自独立SectionId和字段约束；公共控件负责字段/集合、草稿、预览与校验、Saved/Effective、待生效、历史版本及申请生效。普通配置编辑不会改变MEM工程Revision；Project切换时废弃旧作用域，关闭配置Document后创建新草稿Editor。
+- 代码入口：[1f9136d](https://github.com/oudream/cx-visual-x3/commit/1f9136dcc4e5ca4fc462fc58e254f660aafbb089)、[103639e](https://github.com/oudream/cx-visual-x3/commit/103639e1499011bb597dfae70e152387509b9589)。实测源码[48f190ab](https://github.com/oudream/cx-visual-x3/commit/48f190ab96469c61fd190b9531d47b5d7236c25c)：[Studio Windows 39580735263](https://github.com/oudream/cx-visual-x3/actions/runs/39580735263) **36/36 WPF STA success**，[Engineering 39580735294](https://github.com/oudream/cx-visual-x3/actions/runs/39580735294)、[配置L1 39580735210](https://github.com/oudream/cx-visual-x3/actions/runs/39580735210)、[配置公共底座 39580735249](https://github.com/oudream/cx-visual-x3/actions/runs/39580735249) **同SHA success**。新增STA覆盖两个真实Schema、唯一Project Scope、非MEM Revision、Vision NextTask Saved与Effective分离、非法8-bit阈值拒绝及关闭重开。后续增加的切Tab后草稿保留测试需以其最新CI结果为准，不提前宣称通过。
+- **P1仍未完成**：这里是两个已有真实专业配置模型的公共组合编辑首个场景，不等同任意专业资源自动发现和`CommandDescriptor`完整体系；尚无按资源实例层级动态聚合1/2/3列、自适应权限守卫全链、跨MHS/MEM参数映射及工程编排用户全流程人工签收。下一轮按现有配置V2.4 Owner契约补专业注册与多个Scope选择、来源/生效门禁，不重建基础服务。
+- **现场约束**：软件STA只能验Studio操作契约和MHS保存/生效语义；不能代替运动控制、X-Ray联锁、硬件ACK、生产CT GPU任务、高DPI与长稳的人工作业记录。
+
+**最新阶段判断：P0已定义的软件基础路由与流程Port代码切片均可按SHA+CI关闭；P0-3完整专业发现/统一命令、人工E级、现场F级仍有保留，严禁一笔划掉；P1真实双专业配置UI已开始并通过首轮自动化，但阶段总验收未完成。**
