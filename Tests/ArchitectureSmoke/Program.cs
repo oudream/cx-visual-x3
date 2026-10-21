@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Diagnostics;
 using System.IO;
 using CxVisual.Mechanism.Core;
 using CxVisual.Mechanism.Visual;
@@ -77,7 +78,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 HierarchyTransactionPersistence();
                 UndoRedo();
                 RejectedCommand();
-                if (FoundationSmokeRunner.Run(new string[0]) != 0) return 1;
+                // Foundation原为独立EXE：默认回归仍以子进程隔离静态日志、线程及句柄。
+                if (RunIsolatedFoundationSmoke() != 0) return 1;
                 Console.WriteLine("PASS architecture tests (UI-free visual editing and contract checks)");
                 return 0;
             }
@@ -87,6 +89,28 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 return 1;
             }
         }
+        private static int RunIsolatedFoundationSmoke()
+        {
+            string executable = Process.GetCurrentProcess().MainModule.FileName;
+            ProcessStartInfo start = new ProcessStartInfo(executable, "--foundation")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            using (Process child = Process.Start(start))
+            {
+                if (child == null) throw new InvalidOperationException("Foundation child process failed to start");
+                if (!child.WaitForExit(180000))
+                {
+                    try { child.Kill(); } catch (InvalidOperationException) { }
+                    throw new TimeoutException("Foundation smoke subprocess did not exit");
+                }
+                if (child.ExitCode != 0)
+                    throw new InvalidOperationException("Foundation smoke subprocess failed: " + child.ExitCode);
+                return child.ExitCode;
+            }
+        }
+
         private static void Check(bool ok, string message)
         { if (!ok) throw new InvalidOperationException(message); }
         private static void UiIndependentAssemblies()
