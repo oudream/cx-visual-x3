@@ -1888,7 +1888,7 @@ namespace CxVisual.Studio
                         LogicInfo.Text="运行追踪有数据缺口，请用Flow完整快照校准";
                         return;
                     }
-                    _logicOverlay.Apply(changes);
+                    _logicOverlay.Apply(_logicFlow.FlowId,changes);
                     LogicHost.RuntimeStates=_logicOverlay.Snapshot();
                     _viewModel.UpdateVisualRuntimeFrame(_flowVisualClock.Elapsed.TotalMilliseconds);
                     var previous=(FlowTraceList.ItemsSource as IEnumerable<FlowTraceRecord>)

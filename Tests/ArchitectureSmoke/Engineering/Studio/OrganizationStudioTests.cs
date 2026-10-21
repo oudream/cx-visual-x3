@@ -13,6 +13,8 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using CxVisual.Mechanism.Core;
 using CxVisual.Mechanism.Visual;
+using CxVisual.Mechanism.Orchestration;
+using CxVisual.Mechanism.Runtime.Execution;
 using CxVisual.Foundation.Geometry;
 
 namespace CxVisual.Tests.ArchitectureSmoke
@@ -68,6 +70,65 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 "Studio activity not synchronized: "+contentId);
         }
         private static object Get(object instance,string name){return instance.GetType().GetProperty(name).GetValue(instance,null);}
+        /// <summary>P0-4：同一个Block的两个Flow/不同循环轮次必须可独立定位。</summary>
+        private static void VerifyScopedOverlay(Assembly assembly)
+        {
+            var overlayType=assembly.GetType("CxVisual.Studio.MOLRuntimeOverlay",true);
+            object overlay=Activator.CreateInstance(overlayType);
+            var originCtor=typeof(MOCStepOrigin).GetConstructors(
+                BindingFlags.Instance|BindingFlags.NonPublic).Single();
+            var transitionCtor=typeof(MRKExecutionTransition).GetConstructors(
+                BindingFlags.Instance|BindingFlags.NonPublic).Single();
+            var eventCtor=typeof(MOCObservedStep).GetConstructors(
+                BindingFlags.Instance|BindingFlags.NonPublic).Single();
+            var batchCtor=typeof(MOCTraceView).GetConstructors(
+                BindingFlags.Instance|BindingFlags.NonPublic).Single();
+            Guid project=Guid.NewGuid(),flowA=Guid.NewGuid(),flowB=Guid.NewGuid();
+            Guid content=Guid.NewGuid(),block=Guid.NewGuid(),caller=Guid.NewGuid();
+            Func<string,MRKStepState,long,MOCObservedStep> observed=(step,state,seq)=>{
+                var origin=(MOCStepOrigin)originCtor.Invoke(new object[]{
+                    step,new MRIObjectAddress(project,content,content,new[]{caller}),
+                    block,new[]{caller},null,"Action"});
+                var transition=(MRKExecutionTransition)transitionCtor.Invoke(new object[]{
+                    step,state,seq});
+                return (MOCObservedStep)eventCtor.Invoke(new object[]{transition,origin});
+            };
+            Func<IList<MOCObservedStep>,long,MOCTraceView> batch=(items,lost)=>
+                (MOCTraceView)batchCtor.Invoke(new object[]{items,4L,lost});
+            var apply=overlayType.GetMethod("Apply",new[]{typeof(Guid),typeof(MOCTraceView)});
+            Check(apply!=null,"P0-4 scoped overlay has no FlowId update entry");
+            apply.Invoke(overlay,new object[]{flowA,batch(new[]{
+                observed("loop.i0.work",MRKStepState.Completed,1),
+                observed("loop.i1.work",MRKStepState.Failed,2)},0)});
+            apply.Invoke(overlay,new object[]{flowB,batch(new[]{
+                observed("loop.i1.work",MRKStepState.Completed,3)},0)});
+            var find=overlayType.GetMethod("Find");
+            var a=find.Invoke(overlay,new object[]{flowA,"loop.i1.work"});
+            var b=find.Invoke(overlay,new object[]{flowB,"loop.i1.work"});
+            Check(a!=null&&b!=null&&
+                (string)Get(a,"State")=="Failed"&&
+                (string)Get(b,"State")=="Completed"&&
+                (Guid)Get(a,"BlockId")==block&&
+                ((MRIObjectAddress)Get(a,"ContentAddress")).ObjectId==content,
+                "P0-4 same Block/Iteration from different Flow was overwritten");
+            var snapshot=overlayType.GetMethod("Snapshot",new[]{typeof(Guid)});
+            var first=(IEnumerable)snapshot.Invoke(overlay,new object[]{flowA});
+            Check(first.Cast<object>().Count()==2,
+                "P0-4 two iterations were collapsed to one logical Block");
+            bool gap=false;
+            try{apply.Invoke(overlay,new object[]{flowA,
+                batch(new MOCObservedStep[0],1)});}
+            catch(TargetInvocationException ex){
+                gap=ex.InnerException is InvalidOperationException&&
+                    ex.InnerException.Message=="moc.trace_gap_refresh_required";
+            }
+            Check(gap&&find.Invoke(overlay,new object[]{flowA,"loop.i1.work"})!=null,
+                "P0-4 trace gap silently corrupted the scoped state");
+            overlayType.GetMethod("Clear").Invoke(overlay,null);
+            Check(find.Invoke(overlay,new object[]{flowA,"loop.i1.work"})==null,
+                "P0-4 scope cache was not cleared at Flow session reset");
+        }
+
         internal static void RunOnSta()
         {
             string path=Path.Combine(Path.GetTempPath(),"cx-h06-studio-"+Guid.NewGuid().ToString("N")+".cxproj");
@@ -76,6 +137,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             try
             {
                 var assembly=Assembly.LoadFrom(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"CxVisual.Studio.exe"));
+                VerifyScopedOverlay(assembly);
                 if(Application.Current==null){app=new Application{ShutdownMode=ShutdownMode.OnExplicitShutdown};app.Resources.MergedDictionaries.Add(new ResourceDictionary{Source=new Uri("/CxVisual.Studio;component/Themes/Colors.xaml",UriKind.Relative)});app.Resources.MergedDictionaries.Add(new ResourceDictionary{Source=new Uri("/CxVisual.Studio;component/Styles/Controls.xaml",UriKind.Relative)});}
                 window=(Window)Activator.CreateInstance(assembly.GetType("CxVisual.Studio.MainWindow"));window.Left=-10000;window.Top=-10000;window.ShowInTaskbar=false;window.ShowActivated=false;
                 var vm=window.DataContext;vm.GetType().GetProperty("ConfirmReplace").SetValue(vm,new Func<MEMEngineeringSession,bool>(s=>true),null);window.Show();Pump();
