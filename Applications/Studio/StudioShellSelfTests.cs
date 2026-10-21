@@ -1333,7 +1333,7 @@ namespace CxVisual.Studio
                         System.Reflection.BindingFlags.Instance);
                     vm.ActivePage=other;
                     window.OpenStudioDocument("doc.flow");
-                    int revision=session.Revision;
+                    int traceRevision=session.Revision;
                     parent.Invoke(window,new object[]{window,new System.Windows.RoutedEventArgs()});
                     Assert(vm.ActivePage.Id==original.Id&&window.ActiveStudioDocumentId=="doc.flow"&&
                         ((MOLFlowCanvas)window.FindName("LogicHost")).SelectedBlockIds
@@ -1344,7 +1344,7 @@ namespace CxVisual.Studio
                     visual.Invoke(window,new object[]{window,new System.Windows.RoutedEventArgs()});
                     Assert(vm.ActivePage.Id==original.Id&&
                         window.ActiveStudioDocumentId=="doc.visual"&&
-                        vm.SelectedId.HasValue&&session.Revision==revision,
+                        vm.SelectedId.HasValue&&session.Revision==traceRevision,
                         "切到其他页面后HMI来源被错误解析或写入工程");
                     // 故意破坏根来源，必须拒绝切换，不靠当前打开的同名子流程猜测。
                     first.RootContentId=Guid.NewGuid();
@@ -1355,7 +1355,7 @@ namespace CxVisual.Studio
                     parent.Invoke(window,new object[]{window,new System.Windows.RoutedEventArgs()});
                     visual.Invoke(window,new object[]{window,new System.Windows.RoutedEventArgs()});
                     Assert(vm.ActivePage.Id==other.Id&&
-                        window.ActiveStudioDocumentId==before&&session.Revision==revision,
+                        window.ActiveStudioDocumentId==before&&session.Revision==traceRevision,
                         "不存在的根流程ContentId造成跨页面错跳或工程修改");
                 });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
