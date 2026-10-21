@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Windows;
+using AvalonDock.Layout;
 using CxVisual.TestCenter.Cases;
 using CxVisual.TestCenter.Core;
 using CxVisual.TestCenter.Execution;
