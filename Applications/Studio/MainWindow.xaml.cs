@@ -1816,6 +1816,9 @@ namespace CxVisual.Studio
                 long publicationRevision=0;
                 if(_preparedCpuRelease!=null)
                 {
+                    // 同一工程可能同时打开多个Root Page；候选不能套用到另一个主流程。
+                    if(_preparedCpuRelease.EntryContentId!=page.RootContent.Id)
+                        throw new InvalidOperationException("studio.cpu_release.entry_mismatch");
                     // 候选锁定旧Revision、子Content和Host声明能力版本；
                     // 过期/未授权时绝不自动回退为普通CPU运行。
                     compiled=StageCpuSoftwareRelease(_preparedCpuRelease,runSnapshot,

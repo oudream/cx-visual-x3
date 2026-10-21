@@ -1563,6 +1563,85 @@ namespace CxVisual.Studio
                         session.Revision==p1Revision,
                         "关闭后复用已Dispose的MHS编辑器或配置操作污染MEM历史");
                 });
+                CheckStep("P0-4 Studio真实CPU候选按钮到MRK运行及跨根页面/过期拒绝", () =>
+                {
+                    StudioViewModel vm=window.DataContext as StudioViewModel;
+                    MEMEngineeringSession session=vm.ProjectSession;
+                    MEMPage original=session.Project.Pages.Single(p=>
+                        p.Name=="P0-4 真实执行XRay");
+                    MEMPage secondary=session.AddPage("P0-4 CPU候选跨根页面反证");
+                    MOCFlowBuilder.Edit(session,secondary.RootContent,
+                        flow=>flow.Step("Acquire"));
+                    var prepare=typeof(MainWindow).GetMethod("OnPrepareFlowSoftwareRelease",
+                        System.Reflection.BindingFlags.Instance|
+                        System.Reflection.BindingFlags.NonPublic);
+                    var run=typeof(MainWindow).GetMethod("OnRunLogicDemo",
+                        System.Reflection.BindingFlags.Instance|
+                        System.Reflection.BindingFlags.NonPublic);
+                    var prepared=typeof(MainWindow).GetField("_preparedCpuRelease",
+                        System.Reflection.BindingFlags.Instance|
+                        System.Reflection.BindingFlags.NonPublic);
+                    var running=typeof(MainWindow).GetField("_logicRunning",
+                        System.Reflection.BindingFlags.Instance|
+                        System.Reflection.BindingFlags.NonPublic);
+                    Assert(prepare!=null&&run!=null&&prepared!=null&&running!=null,
+                        "CPU软件发布与仿真运行实际WPF入口不存在");
+                    vm.ActivePage=original;
+                    window.OpenStudioDocument("doc.flow");
+                    prepare.Invoke(window,new object[]{window,
+                        new System.Windows.RoutedEventArgs()});
+                    MOCProjectReleaseCandidate candidate=(MOCProjectReleaseCandidate)
+                        prepared.GetValue(window);
+                    Assert(candidate!=null&&candidate.EntryContentId==original.RootContent.Id,
+                        "Studio真实发布入口没有准备原主流程MOC候选");
+                    vm.ActivePage=secondary;
+                    window.OpenStudioDocument("doc.flow");
+                    run.Invoke(window,new object[]{window,
+                        new System.Windows.RoutedEventArgs()});
+                    Assert(!(bool)running.GetValue(window)&&
+                        ((TextBlock)window.FindName("LogicInfo")).Text.Contains("entry_mismatch")&&
+                        Object.ReferenceEquals(prepared.GetValue(window),candidate),
+                        "切换其他可执行Root后悄悄执行已锁定的旧CPU候选");
+                    vm.ActivePage=original;
+                    window.OpenStudioDocument("doc.flow");
+                    run.Invoke(window,new object[]{window,
+                        new System.Windows.RoutedEventArgs()});
+                    var frame=new System.Windows.Threading.DispatcherFrame();
+                    var clock=System.Diagnostics.Stopwatch.StartNew();
+                    var tick=new System.Windows.Threading.DispatcherTimer{
+                        Interval=TimeSpan.FromMilliseconds(25)};
+                    tick.Tick+=(sender,args)=>{
+                        if(!(bool)running.GetValue(window)||clock.Elapsed>TimeSpan.FromSeconds(12))
+                            frame.Continue=false;
+                    };
+                    tick.Start();
+                    try{System.Windows.Threading.Dispatcher.PushFrame(frame);}
+                    finally{tick.Stop();}
+                    Assert(!(bool)running.GetValue(window)&&
+                        prepared.GetValue(window)==null,
+                        "CPU授权候选没有完成一次真实Studio MRK执行并释放候选");
+                    var traces=(window.FindName("FlowTraceList") as ComboBox)
+                        .ItemsSource as IEnumerable<MainWindow.FlowTraceRecord>;
+                    Assert(traces!=null&&traces.Any(x=>
+                        x.SoftwareReleaseFingerprint==candidate.Fingerprint&&
+                        x.PublicationRevision==1&&x.FlowId!=Guid.Empty&&
+                        x.RootContentId==original.RootContent.Id)&&
+                        ((TextBlock)window.FindName("LogicInfo")).Text.Contains("Completed"),
+                        "真实Studio CPU仿真运行没有携带MOC已授权版本与MRK轨迹");
+                    prepare.Invoke(window,new object[]{window,
+                        new System.Windows.RoutedEventArgs()});
+                    candidate=(MOCProjectReleaseCandidate)prepared.GetValue(window);
+                    Assert(candidate!=null,"新CPU候选准备失败");
+                    session.AddContent(session.Project,"P0-4 CPU授权候选过期反证");
+                    run.Invoke(window,new object[]{window,
+                        new System.Windows.RoutedEventArgs()});
+                    Assert(!(bool)running.GetValue(window)&&
+                        Object.ReferenceEquals(prepared.GetValue(window),candidate)&&
+                        ((TextBlock)window.FindName("LogicInfo")).Text.Contains(
+                            "stale_engineering_revision"),
+                        "过期候选被偷偷降级为普通CPU仿真或错误消费");
+                    prepared.SetValue(window,null);
+                });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;
             }

@@ -247,3 +247,9 @@ R01源码已提交（截止 f6c0dceb7afae75d320f6b442f3a152b11566162）：修改
 - **专业Owner**：`CxVisionThresholdProvider`公布只读`ConfigurationRevision`、`ReleaseVersion`（算法合同版本+配置Revision，非硬件/AI模型版本），Host必须从该Provider取得标识并声明给原`MOCProjectRelease`。G06真实像素链路贯通Prepare、Version锁定、MRK授权Stage/Activate、Slot Plan执行、错误主体/安全点拒绝与配置升级失效反证，不增新Publisher。
 - **Studio CPU仿真**：在原MOL工具栏新增“准备CPU软件发布”，使用既有`MOCProjectRelease.Prepare`锁定主/AI/CV可达子Content及模拟能力版本；运行此候选时经`MOCProjectRelease.Stage`和受保护的`MRKExecutionPlanPublisher/PlanSlot`授权激活才执行，过期Revision/能力版本拒绝且不得悄悄降级为普通运行。Studio本地模拟策略只承认`studio-cpu-simulation`，**绝不用于生产设备授权/联锁**。轨迹补软件候选指纹与发布修订号，原Flow/根Content身份不变。
 - **验收**：原Studio STA总数34→35，新增真实X-Ray Prepare、未授权、Host否决、模拟AI版本变化、工程Revision变更、重新构建发布反证。原G06集成测试追加真实Vision Provider版本锁定→执行。仅在Windows CI证实后计为自动化通过；真正设备版本/发布ACK、高DPI/长时/现场安全未签收。
+
+### P0-4 CPU软件发布与Studio真实仿真执行闭环（2026-10-21，待同SHA CI）
+
+- 继续复用上轮`MOCProjectRelease.Prepare/Stage`与MRK授权`PlanSlot`；Studio执行前补`EntryContentId`严格匹配活动主流程页面，防止同工程内切页后用原候选执行另一个Root。
+- 真实WPF STA测试直接触发Studio“准备CPU软件发布”事件和`OnRunLogicDemo`，等待MRK CPU异步运行完成，核对FlowTrace实际`SoftwareReleaseFingerprint/PublicationRevision/FlowId/RootContentId`、成功候选清理；同时测试跨Root错用拒绝和工程Revision变化后不隐式降级运行。原测试数量36→37，提交前不冒充CI通过。
+- 本轮仍是无设备CPU仿真软件发布，不代表生产PLC/AI硬件、实际设备Release ACK或硬件安全点签收。
