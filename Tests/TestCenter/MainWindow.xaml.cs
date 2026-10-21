@@ -58,6 +58,9 @@ namespace CxVisual.TestCenter.UI
             DocumentHost.ObjectSelected += (objectId, details) => Inspector.ShowObject(objectId, details);
             RibbonTray.ToolBars.Add(_ribbon.Build(OnRunAll, OnRunSelected, OnCancel, OnExport,
                 OnRerunFailed, OnCopyTestId, OnModeSelected));
+            RibbonTray.ToolBars.Add(_ribbon.BuildContext(OnModeSelected,
+                () => Inspector.FocusAssertions(), () => Inspector.FocusSource(),
+                () => ActivateDockPanel("test.history"), () => ActivateDockPanel("test.diff")));
             _ribbon.SetContext(null);
             MenuRunAll.Click += (sender, args) => OnRunAll();
             MenuRunSelected.Click += (sender, args) => OnRunSelected();
