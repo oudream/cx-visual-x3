@@ -12,12 +12,15 @@ namespace CxVisual.Mechanism.Connectivity
     public sealed class MCCChannelFrame
     {
         private readonly byte[] _bytes;
+        private readonly byte[] _payload;
         internal MCCChannelFrame(long sequence, Guid sessionId, string channelId,
-            MCCFrameDirection direction, byte[] data, string correlation, string error)
+            MCCFrameDirection direction, byte[] data, string correlation, string error,
+            byte[] decodedPayload)
         {
             Sequence = sequence; SessionId = sessionId; ChannelId = channelId;
             Direction = direction; TimestampUtc = DateTime.UtcNow;
             _bytes = (byte[])(data ?? new byte[0]).Clone();
+            _payload = decodedPayload == null ? null : (byte[])decodedPayload.Clone();
             CorrelationId = correlation ?? ""; Error = error ?? "";
         }
         public long Sequence { get; private set; }
@@ -28,6 +31,7 @@ namespace CxVisual.Mechanism.Connectivity
         public string CorrelationId { get; private set; }
         public string Error { get; private set; }
         public byte[] Bytes { get { return (byte[])_bytes.Clone(); } }
+        public byte[] DecodedPayload { get { return _payload == null ? null : (byte[])_payload.Clone(); } }
     }
 
     /// <summary>Channel字节行为与协议解码分离；Real适配器必须实现独立IO及安全授权。</summary>
@@ -87,14 +91,14 @@ namespace CxVisual.Mechanism.Connectivity
         { lock (_gate) return _events.ToArray(); }
 
         private void Record(MCCFrameDirection direction, byte[] frame,
-            string correlation, string error = null)
+            string correlation, string error = null, byte[] payload = null)
         {
             MCCChannelFrame record;
             lock (_gate)
             {
                 if (_events.Count >= 10000) _events.RemoveAt(0);
                 record = new MCCChannelFrame(++_sequence, SessionId, Id, direction,
-                    frame, correlation, error);
+                    frame, correlation, error, payload);
                 _events.Add(record);
             }
             Action<MCCChannelFrame> listeners = FrameRecorded;
@@ -134,9 +138,9 @@ namespace CxVisual.Mechanism.Connectivity
             try
             {
                 _parser.PushBytes(chunk);
-                byte[] decoded;
-                while (_parser.TryReadFrame(out decoded))
-                    Record(MCCFrameDirection.Rx, decoded, correlation);
+                byte[] decoded, rawFrame;
+                while (_parser.TryReadFrame(out decoded, out rawFrame))
+                    Record(MCCFrameDirection.Rx, rawFrame, correlation, null, decoded);
             }
             catch (Exception error) when (error is InvalidDataException ||
                 error is InvalidOperationException || error is IOException)

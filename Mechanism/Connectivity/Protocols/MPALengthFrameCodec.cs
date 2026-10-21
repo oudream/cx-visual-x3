@@ -88,9 +88,14 @@ namespace CxVisual.Mechanism.Connectivity
         }
         public bool TryReadFrame(out byte[] payload)
         {
+            byte[] rawFrame;
+            return TryReadFrame(out payload, out rawFrame);
+        }
+        public bool TryReadFrame(out byte[] payload, out byte[] rawFrame)
+        {
             lock (_gate)
             {
-                payload = null;
+                payload = null; rawFrame = null;
                 if (_faulted) throw new InvalidOperationException("protocol.requires_reset");
                 if (_buffer.Count < 4) return false;
                 try
@@ -104,6 +109,7 @@ namespace CxVisual.Mechanism.Connectivity
                     if (_buffer.Count < total) return false;
                     byte[] candidate = _buffer.GetRange(0, total).ToArray();
                     payload = _codec.Decode(candidate);
+                    rawFrame = candidate;
                     _buffer.RemoveRange(0, total);
                     return true;
                 }
