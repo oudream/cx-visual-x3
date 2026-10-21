@@ -1544,6 +1544,20 @@ namespace CxVisual.Studio
                     Assert(exists(root,typeof(MPWConfigEditorControl<CxVisionInspectionOptions>))&&
                         exists(root,typeof(MPWConfigEditorControl<CxCtReconstructionOptions>)),
                         "中央配置仍为模拟占位，没有装载两种专业Schema Editor");
+                    Func<System.Windows.DependencyObject,MPWConfigEditorControl<CxVisionInspectionOptions>>
+                        visionEditor=null;
+                    visionEditor=element=>
+                        element as MPWConfigEditorControl<CxVisionInspectionOptions> ??
+                        System.Windows.LogicalTreeHelper.GetChildren(element)
+                            .OfType<System.Windows.DependencyObject>()
+                            .Select(child=>visionEditor(child)).FirstOrDefault(v=>v!=null);
+                    MPWConfigEditorControl<CxVisionInspectionOptions> live=visionEditor(root);
+                    Assert(live!=null&&live.Draft!=null,
+                        "实际中央Vision Schema Editor草稿未初始化");
+                    window.OpenStudioDocument("doc.visual");
+                    window.OpenStudioDocument("doc.config");
+                    Assert(live.Draft!=null,
+                        "在不同Studio Tab之间切换后原配置草稿被非预期释放");
                     string folder=System.IO.Path.Combine(
                         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                         "CxVisual","Configs","V24","Projects");
