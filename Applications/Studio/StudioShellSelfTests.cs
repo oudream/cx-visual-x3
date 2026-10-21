@@ -1555,6 +1555,34 @@ namespace CxVisual.Studio
                     Assert(vision.Identity.ScopeId==projectId&&ct.Identity.ScopeId==projectId&&
                         vision.Identity.SectionId!=ct.Identity.SectionId&&session.Revision==p1Revision,
                         "Vision/CT配置不属于真实Project Scope或错误修改MEM真源");
+                    // 实际MHS草稿→保存→待生效；软件配置不能偷改MEM Revision或Effective。
+                    int oldEffective=vision.Get().GrayThreshold;
+                    int targetThreshold=oldEffective==2200?2400:2200;
+                    using(MHSConfigEditorModel<CxVisionInspectionOptions> editor=
+                        new MHSConfigEditorModel<CxVisionInspectionOptions>(
+                            vision,"P1 Vision专业配置验收"))
+                    {
+                        editor.SetValue(x=>x.GrayThreshold,targetThreshold);
+                        MHSConfigCommitResult result=editor.CommitAsync(
+                            System.Threading.CancellationToken.None).GetAwaiter().GetResult();
+                        Assert(result.Success&&vision.GetLatestSaved().GrayThreshold==targetThreshold&&
+                            vision.Get().GrayThreshold==oldEffective&&
+                            vision.Revision.IsPending&&session.Revision==p1Revision,
+                            "专业配置保存被错误当作生效或错误触发MEM工程事务");
+                    }
+                    using(MHSConfigEditorModel<CxVisionInspectionOptions> invalid=
+                        new MHSConfigEditorModel<CxVisionInspectionOptions>(
+                            vision,"P1专业配置非法反证"))
+                    {
+                        invalid.SetValue(x=>x.PixelDepth,CxVisionPixelDepth.Bits8);
+                        invalid.SetValue(x=>x.GrayThreshold,1000);
+                        MHSConfigCommitResult refused=invalid.CommitAsync(
+                            System.Threading.CancellationToken.None).GetAwaiter().GetResult();
+                        Assert(!refused.Success&&
+                            vision.GetLatestSaved().GrayThreshold==targetThreshold&&
+                            session.Revision==p1Revision,
+                            "非法Vision配置污染了最近成功Saved或工程Revision");
+                    }
                     window.CloseStudioDocument("doc.config");
                     window.OpenStudioDocument("doc.config");
                     LayoutDocument reopened=window.StudioDock.Layout.Descendents()
