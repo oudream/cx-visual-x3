@@ -125,42 +125,11 @@ namespace CxVisual.Mechanism.Orchestration
                 case MOLExpressionSource.Iteration: actual = iteration; break;
                 default: throw new InvalidOperationException("moc.expression_source");
             }
-            if (expr.Comparison == MOLComparison.Truthy)
-            {
-                if (actual is bool) return (bool)actual;
-                if (actual is string)
-                {
-                    bool value;
-                    if (bool.TryParse((string)actual, out value)) return value;
-                }
-                if (actual is int) return (int)actual != 0;
-                throw new InvalidOperationException("moc.truth_type");
-            }
-            int order = CompareScalar(actual, expr.Expected);
-            switch (expr.Comparison)
-            {
-                case MOLComparison.Equal: return order == 0;
-                case MOLComparison.NotEqual: return order != 0;
-                case MOLComparison.LessThan: return order < 0;
-                case MOLComparison.LessOrEqual: return order <= 0;
-                case MOLComparison.GreaterThan: return order > 0;
-                case MOLComparison.GreaterOrEqual: return order >= 0;
-                default: throw new InvalidOperationException("moc.expression_compare");
-            }
+            return MOLScalarExpression.Evaluate(expr,actual);
         }
-        internal static int CompareScalar(object actual, string expected)
-        {
-            string left = Convert.ToString(actual, CultureInfo.InvariantCulture);
-            bool booleanA, booleanB;
-            if (bool.TryParse(left, out booleanA) && bool.TryParse(expected, out booleanB))
-                return booleanA.CompareTo(booleanB);
-            decimal numberA, numberB;
-            if (decimal.TryParse(left, NumberStyles.Number, CultureInfo.InvariantCulture, out numberA) &&
-                decimal.TryParse(expected, NumberStyles.Number, CultureInfo.InvariantCulture, out numberB))
-                return numberA.CompareTo(numberB);
-            return string.CompareOrdinal(left, expected);
-        }
-
+        internal static int CompareScalar(object actual,string expected)
+        {return MOLScalarExpression.Compare(actual,expected);}
+        
         internal static bool ScalarEquals(object actual, string expected)
         { return CompareScalar(actual, expected) == 0; }
     }
@@ -182,6 +151,15 @@ namespace CxVisual.Mechanism.Orchestration
             _internal.Add(id, new MRKResolvedCapability(
                 (ctx, token) => { token.ThrowIfCancellationRequested(); return Task.FromResult(execute(ctx)); },
                 new MRKExecutionOutput(type, true)));
+            return id;
+        }
+        /// <summary>复用MRK能力编译，等待不占用业务线程且遵从Flow取消。</summary>
+        internal string RegisterAsync(string id,
+            Func<MRKExecutionContext,CancellationToken,Task<object>> run,Type type)
+        {
+            if(_internal.ContainsKey(id))throw new InvalidOperationException("moc.internal_duplicate");
+            _internal.Add(id,new MRKResolvedCapability(run,
+                new MRKExecutionOutput(type,true)));
             return id;
         }
         public bool TryResolve(string capabilityId, out MRKResolvedCapability capability)
@@ -1080,8 +1058,23 @@ namespace CxVisual.Mechanism.Orchestration
                 foreach(var block in wiring.Blocks)
                 {
                     var entering=wiring.Links.Where(l=>l.Target.BlockId==block.Id).ToArray();
-                    if(entering.Any(l=>l.Kind==MPCPortKind.Control&&l.ConditionId.Length>0))
-                        throw new InvalidOperationException("moc.deep.guarded_branch_not_implemented");
+                    var incomingControl=entering.Where(l=>l.Kind==MPCPortKind.Control).ToArray();
+                    Func<MRKExecutionContext,bool> branchCondition=null;
+                    if(incomingControl.Length==1&&incomingControl[0].ConditionId.Length>0)
+                    {
+                        MOLLink guarded=incomingControl[0];
+                        string source=WireId(guarded.Source.BlockId);
+                        string guard=guarded.ConditionId;
+                        var order=wiring.Links.Where(l=>l.Source.BlockId==guarded.Source.BlockId&&
+                            l.Kind==MPCPortKind.Control).ToArray();
+                        string[] earlier=order.TakeWhile(l=>l.Id!=guarded.Id)
+                            .Select(l=>l.ConditionId).ToArray();
+                        string[] alternatives=order.Where(l=>l.ConditionId.StartsWith(
+                            "case:",StringComparison.Ordinal))
+                            .Select(l=>l.ConditionId.Substring(5)).ToArray();
+                        branchCondition=ctx=>EvaluateWiringGuard(ctx,source,guard,earlier,alternatives);
+                    }
+                    bool allowSkippedJoin=incomingControl.Length>1;
                     var dependencies=entering.Select(l=>WireId(l.Source.BlockId))
                         .Distinct(StringComparer.Ordinal).ToArray();
                     var inputs=new List<MRKExecutionInput>();
@@ -1115,9 +1108,10 @@ namespace CxVisual.Mechanism.Orchestration
                     }
                     definitions.Add(childId==null?
                         new MRKStepCompileRequest(WireId(block.Id),block.CapabilityId,dependencies,
-                            inputs,policy:policy,allowSkippedDependencies:
-                            entering.Count(l=>l.Kind==MPCPortKind.Control)>1):
+                            inputs,policy:policy,condition:branchCondition,
+                            allowSkippedDependencies:allowSkippedJoin):
                         new MRKStepCompileRequest(WireId(block.Id),null,dependencies,inputs,
+                            condition:branchCondition,allowSkippedDependencies:allowSkippedJoin,
                             subflowId:childId));
                 }
                 catalog.Add(id,new MRKFlowCompileDefinition(id,definitions,
@@ -1286,7 +1280,7 @@ namespace CxVisual.Mechanism.Orchestration
                         if(!ctx.Inputs.TryGetValue(inputName,out events)||
                             !(events is IEnumerable<string>))
                             throw new InvalidOperationException("moc.state.events_input_missing:"+inputName);
-                        return (object)definition.Run((IEnumerable<string>)events);
+                        return (object)definition.Run((IEnumerable<string>)events,ctx.Inputs);
                     },typeof(object));
                 }
                 if(block.CapabilityId.StartsWith("moc.invoke:",StringComparison.Ordinal))
@@ -1549,6 +1543,18 @@ namespace CxVisual.Mechanism.Orchestration
                         }
                         return new[] {Add(block, owner, calls, scope == null || scope.Index < 0 ? (int?)null : scope.Index,
                             "Action", block.CapabilityId, dependencies, inputs: inputs)};
+                    }
+                    case MOLControlKind.Wait:
+                    {
+                        if(block.Wait==null)throw new InvalidOperationException("moc.wait_missing");
+                        int milliseconds=block.Wait.DurationMilliseconds;
+                        string capability="moc.internal.wait."+NewId(block);
+                        Resolver.RegisterAsync(capability,async (context,token)=>{
+                            await Task.Delay(milliseconds,token).ConfigureAwait(false);
+                            token.ThrowIfCancellationRequested();
+                            return (object)true;
+                        },typeof(bool));
+                        return new[]{Add(block,owner,calls,null,"Wait",capability,before)};
                     }
                     case MOLControlKind.Sequence:
                     {

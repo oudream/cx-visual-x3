@@ -1,4 +1,5 @@
 using System;
+using CxVisual.Foundation.Infrastructure.Logging;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -7,6 +8,15 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
     /// <summary>工作状态；Waiting占有逻辑执行槽，但不表示独占工作线程。</summary>
     public enum FCRWorkState { Queued, Running, Waiting, Completed, Failed, Cancelled, Dropped, Rejected }
     public enum FCROverflowPolicy { RejectNew, DropOldestDroppable }
+    /// <summary>F19业务终态原因，必须依据同一工作最终结果而非队列计数推断。</summary>
+    public enum FCRWorkTerminalReason
+    {
+        None=0, WorkerStopping=1, CancelledBeforeAdmission=2,
+        EstimatedBytesExceedBudget=3, QueueCapacityExceeded=4,
+        PendingByteBudgetExceeded=5, WaitingProducerLimitExceeded=6,
+        OldestDroppableEvicted=7, CancelledWhileQueued=8,
+        CancelledByStop=9, CancelledWhileWaitingAdmission=10
+    }
 
     /// <summary>队列容量仅计算尚未开始的工作，正在运行或异步等待的工作占并发槽。</summary>
     public sealed class FCRWorkerOptions
@@ -40,13 +50,17 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
 
     public sealed class FCRWorkResult<T>
     {
-        internal FCRWorkResult(FCRWorkState state, T value, Exception error, bool cancelRequested)
-        { State = state; Value = value; Error = error; CancellationRequested = cancelRequested || state == FCRWorkState.Cancelled; }
+        internal FCRWorkResult(FCRWorkState state, T value, Exception error, bool cancelRequested,
+            FCRWorkTerminalReason terminalReason = FCRWorkTerminalReason.None)
+        { State = state; Value = value; Error = error;
+          CancellationRequested = cancelRequested || state == FCRWorkState.Cancelled;
+          TerminalReason = terminalReason; }
         public FCRWorkState State { get; private set; }
         public T Value { get; private set; }
         public Exception Error { get; private set; }
         public bool CancellationRequested { get; private set; }
         public bool Succeeded { get { return State == FCRWorkState.Completed; } }
+        public FCRWorkTerminalReason TerminalReason { get; private set; }
     }
 
     /// <summary>等待超时只是观察结果，不改变底层工作状态；设备操作是否执行必须由Provider确认。</summary>
@@ -89,6 +103,35 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
                 timer.Cancel();
                 return new FCRWaitObservation<T>(false, await Completion.ConfigureAwait(false));
             }
+        }
+    }
+
+    /// <summary>
+    /// 复用原F16 FLD重要事件文件Sink，无额外持久库。只能在F19调度锁外
+    /// 由Host对同一WorkHandle已结算的业务丢失/拒绝调用。
+    /// Write=true仅代表日志服务接受，持久化须Flush并确认LastFailure。
+    /// </summary>
+    public static class FCRWorkAudit
+    {
+        public static bool LogLoss<T>(FLDLogService log, FCRWorkHandle<T> handle,
+            FCRWorkResult<T> result, string module = "F19.Worker")
+        {
+            if (log == null) throw new ArgumentNullException("log");
+            if (handle == null) throw new ArgumentNullException("handle");
+            if (result == null) throw new ArgumentNullException("result");
+            if (result.State != FCRWorkState.Dropped && result.State != FCRWorkState.Rejected)
+                throw new ArgumentException("仅真实Drop/Reject可记录为丢失事实", "result");
+            if (!handle.Completion.IsCompleted ||
+                !object.ReferenceEquals(handle.Completion.GetAwaiter().GetResult(), result))
+                throw new ArgumentException("结果不属于原WorkHandle", "result");
+            if (string.IsNullOrWhiteSpace(module))
+                throw new ArgumentException("module不能为空", "module");
+            string message = "WorkId=" + handle.Id.ToString("N") +
+                ";Key=" + handle.Key + ";State=" + result.State +
+                ";Reason=" + result.TerminalReason;
+            return log.Write(new FLDLogRecord(FLDLogLevel.Warning, module,
+                "F19." + result.State, message, null,
+                handle.Id.ToString("N"), true, result.Error));
         }
     }
 

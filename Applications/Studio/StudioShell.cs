@@ -503,15 +503,21 @@ namespace CxVisual.Studio
             string projectId=session.Project.Id.ToString("N");
             choices.Add(new StudioConfigurationScopeChoice("project",projectId,
                 "工程配置 · "+session.Project.Name+" ("+projectId.Substring(0,8)+")",null));
-            // 只从真实MEM资源获取身份；不凭界面名称创造机台、产品或虚构资源。
-            foreach(IMEMResource resource in session.Project.Resources
-                .Where(x=>x is MEMNode)
-                .OrderBy(x=>x.Name,StringComparer.Ordinal))
+            // P1：沿单一MEM工程真树发现包括Page.RootContent、子Content的资源。
+            // 配置Scope使用真实对象稳定Id，不根据同名标签拼造配置身份。
+            // 路径标签只作展示，确保多页面同名嵌入资源可由工程用户区分。
+            foreach(MEMNode node in session.Project.DescendantsAndSelf()
+                .Where(x=>x is IMEMResource)
+                .OrderBy(x=>string.Join("/",x.Ancestors().Reverse()
+                    .Skip(1).Select(a=>a.Name).Concat(new[]{x.Name})),StringComparer.Ordinal))
             {
+                IMEMResource resource=(IMEMResource)node;
                 if(!_studioConfigurations.Values.Any(c=>
                     c.ResourceTypeIds.Contains(resource.TypeId,StringComparer.Ordinal)))continue;
+                string fullPath=string.Join("/",node.Ancestors().Reverse()
+                    .Skip(1).Select(a=>a.Name).Concat(new[]{node.Name}));
                 choices.Add(new StudioConfigurationScopeChoice("resource",
-                    resource.Id.ToString("N"),"资源配置 · "+resource.Name+
+                    resource.Id.ToString("N"),"资源配置 · "+fullPath+
                     " ("+resource.TypeId+")",resource.TypeId));
             }
             choices.AddRange(_studioExtraScopes);

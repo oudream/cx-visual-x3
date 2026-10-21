@@ -1,4 +1,7 @@
 using System;
+using System.IO;
+using System.Linq;
+using CxVisual.Foundation.Infrastructure.Logging;
 using System.Threading;
 using System.Threading.Tasks;
 using CxVisual.Foundation.Infrastructure.Concurrency;
@@ -22,6 +25,7 @@ namespace CxVisual.Tests.FoundationSmoke
             R08_AsyncProducerBackpressureAndKeyFIFO();
             R08_WaiterCancellationAndStopAreBounded();
             R08_ProducerBurstCancelAndDrain();
+            R08_TerminalReasonAndOriginalFLDAudit();
             RandomizedCancellationAndStopStress();
         }
         private static void Check(bool ok, string message)
@@ -636,6 +640,108 @@ namespace CxVisual.Tests.FoundationSmoke
                     "R08 Stop(true)应等非合作工作真实结算后才完成");
             }
             finally{finish.TrySetResult(true);Await(stopWorker.StopAsync(true));}
+        }
+
+        /// <summary>R08：所有损失终态关联原Handle原因，复用FLD重要事件审计落盘。</summary>
+        private static void R08_TerminalReasonAndOriginalFLDAudit()
+        {
+            string folder=Path.Combine(Path.GetTempPath(),
+                "CxVisual-F19-R08-Audit-"+Guid.NewGuid().ToString("N"));
+            TaskCompletionSource<bool> entered=Gate(),release=Gate();
+            FCRWorker worker=new FCRWorker(new FCRWorkerOptions(
+                1,1,FCROverflowPolicy.DropOldestDroppable,
+                pendingByteBudget:10,maxWaitingProducers:1));
+            FCRWorkHandle<int> active=worker.Submit<int>(async ct=>{
+                entered.TrySetResult(true);
+                await release.Task.ConfigureAwait(false);
+                return 1;
+            },"audit-key");
+            try
+            {
+                Await(entered.Task);
+                FCRWorkHandle<int> old=worker.Submit<int>(
+                    ct=>Task.FromResult(2),"audit-key",droppable:true,estimatedBytes:10);
+                FCRWorkHandle<int> queued=worker.Submit<int>(
+                    ct=>Task.FromResult(3),"audit-key",estimatedBytes:3);
+                FCRWorkResult<int> dropped=Await(old.Completion);
+                Check(dropped.State==FCRWorkState.Dropped &&
+                    dropped.TerminalReason==FCRWorkTerminalReason.OldestDroppableEvicted,
+                    "R08 DropOldest未在原业务Handle留下明确淘汰原因");
+                FCRWorkHandle<int> countRejected=worker.Submit<int>(
+                    ct=>Task.FromResult(4),"audit-key",estimatedBytes:1);
+                FCRWorkHandle<int> byteRejected=worker.Submit<int>(
+                    ct=>Task.FromResult(5),"audit-key",estimatedBytes:8);
+                FCRWorkHandle<int> impossible=worker.Submit<int>(
+                    ct=>Task.FromResult(6),"audit-key",estimatedBytes:11);
+                Check(Await(countRejected.Completion).TerminalReason==
+                        FCRWorkTerminalReason.QueueCapacityExceeded &&
+                    Await(byteRejected.Completion).TerminalReason==
+                        FCRWorkTerminalReason.PendingByteBudgetExceeded &&
+                    Await(impossible.Completion).TerminalReason==
+                        FCRWorkTerminalReason.EstimatedBytesExceedBudget,
+                    "R08队列数量/字节预算/不可能入队被错误合并成同一种拒绝");
+                Task<FCRWorkHandle<int>> producer=worker.SubmitWhenCapacityAsync<int>(
+                    ct=>Task.FromResult(7),"audit-key",estimatedBytes:1);
+                FCRWorkHandle<int> producerLimit=Await(worker.SubmitWhenCapacityAsync<int>(
+                    ct=>Task.FromResult(8),"audit-key",estimatedBytes:1));
+                Check(Await(producerLimit.Completion).TerminalReason==
+                    FCRWorkTerminalReason.WaitingProducerLimitExceeded &&
+                    !producer.IsCompleted,"R08等待生产者名额拒绝原因未保留");
+                Task stop=worker.StopAsync(false);
+                FCRWorkHandle<int> stoppedProducer=Await(producer);
+                Check(Await(stoppedProducer.Completion).TerminalReason==
+                    FCRWorkTerminalReason.WorkerStopping &&
+                    !stop.IsCompleted,"R08 Stop拒绝未接纳者与已接纳任务的区别丢失");
+
+                using(FLDLogService log=new FLDLogService(folder))
+                {
+                    FCRWorkHandle<int>[] losses=new[]{
+                        old,countRejected,byteRejected,impossible,producerLimit,stoppedProducer
+                    };
+                    foreach(FCRWorkHandle<int> lost in losses)
+                        Check(FCRWorkAudit.LogLoss(log,lost,Await(lost.Completion)),
+                            "R08现有F16重要事件队列拒绝接纳审计记录");
+                    bool rejectedForgery=false;
+                    try{FCRWorkAudit.LogLoss(log,countRejected,Await(old.Completion));}
+                    catch(ArgumentException){rejectedForgery=true;}
+                    Check(rejectedForgery,"R08日志允许将其他WorkHandle结果伪造为本业务身份");
+                    bool rejectedNormal=false;
+                    try{FCRWorkAudit.LogLoss(log,active,Await(countRejected.Completion));}
+                    catch(ArgumentException){rejectedNormal=true;}
+                    Check(rejectedNormal,"R08日志允许伪造尚未终结任务的Drop/Reject");
+                    log.Flush();
+                    FLDLogRecord[] records=log.Snapshot().Where(x=>
+                        x.ModuleId=="F19.R08.Audit" ||
+                        x.ModuleId=="F19.Worker").ToArray();
+                    Check(records.Length==losses.Length,
+                        "R08日志落盘后重要事件数量与真实损失业务不一致");
+                    foreach(FCRWorkHandle<int> lost in losses)
+                    {
+                        FLDLogRecord record=records.Single(x=>
+                            x.CorrelationId==lost.Id.ToString("N"));
+                        Check(record.IsImportant &&
+                            record.Action=="F19."+Await(lost.Completion).State &&
+                            record.Message.Contains("WorkId="+lost.Id.ToString("N")) &&
+                            record.Message.Contains("Key="+lost.Key) &&
+                            record.Message.Contains("Reason="+Await(lost.Completion).TerminalReason),
+                            "R08重要审计缺失原WorkId、Key或真实拒绝/淘汰原因");
+                    }
+                }
+                Check(Directory.GetFiles(Path.Combine(folder,"Important"),"*.log",
+                    SearchOption.AllDirectories).Length>0,
+                    "R08未写入既有FLD Important滚动文件Sink");
+                release.TrySetResult(true);
+                Await(stop);
+                Check(Await(active.Completion).Succeeded&&
+                    Await(queued.Completion).Succeeded,
+                    "R08增加审计后影响了正常Worker任务执行/排空");
+            }
+            finally
+            {
+                release.TrySetResult(true);
+                Await(worker.StopAsync(true));
+                if(Directory.Exists(folder))Directory.Delete(folder,true);
+            }
         }
 
         private static void RandomizedCancellationAndStopStress()

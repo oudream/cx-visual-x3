@@ -452,34 +452,237 @@ namespace CxVisual.TestCenter.UI
         }
     }
 
-    public sealed class TCTGraphTestView : TCTTestViewBase
+    // Graph/Runtime视图只消费Run/Attempt校验后的生产Owner证据。
+    public abstract class TCTGraphRuntimeViewBase : TCTTestViewBase
+    {
+        public string ArchivedEvidenceRoot { get; set; }
+        public string EvidenceProblem { get; private set; }
+        public int VerifiedItems { get; private set; }
+        public event Action<string, string> SourceSelected;
+
+        public override void Clear()
+        {
+            base.Clear();
+            EvidenceProblem = null; VerifiedItems = 0;
+        }
+        protected void Selected(TCTTestObservation observation, string id, string details)
+        {
+            SelectObservation(observation);
+            if (SourceSelected != null) SourceSelected(id, details);
+        }
+        protected void Count() { VerifiedItems++; }
+        protected abstract void Render(XDocument data, TCTTestObservation observation);
+        protected void RenderEvidence(TCTTestCaseResult result)
+        {
+            foreach (TCTTestObservation observation in result.Observations.Where(o =>
+                string.Equals(o.Kind, Kind, StringComparison.OrdinalIgnoreCase)))
+            {
+                if (observation.Envelope == null || observation.Envelope.PayloadRef == null ||
+                    observation.Envelope.PayloadRef.Mime != TCTGraphRuntimeEvidence.Mime)
+                {
+                    ContentPanel.Children.Add(new TextBlock {
+                        Text = "NoEvidence：没有受支持的GraphRuntime结构化Owner数据 · " +
+                            observation.Title,
+                        Foreground = Brushes.DarkGoldenrod, TextWrapping = TextWrapping.Wrap });
+                    continue;
+                }
+                try
+                {
+                    TCTTestArtifactStore store = new TCTTestArtifactStore(
+                        ArchivedEvidenceRoot ?? TCTTestArtifactStore.RunRoot(result.RunId));
+                    TCTObservationReplay.Read(result, store);
+                    XDocument data = TCTGraphRuntimeEvidence.Read(store.Read(observation.Envelope.PayloadRef));
+                    XElement root = data.Root;
+                    ContentPanel.Children.Add(new TextBlock {
+                        Text = "SHA256/Schema已验证 · Project " + (string)root.Attribute("projectId") +
+                            " · Revision " + (string)root.Attribute("revision") +
+                            " · Flow " + (string)root.Attribute("flowId"),
+                        FontWeight = FontWeights.Bold, Margin = new Thickness(0, 7, 0, 9),
+                        TextWrapping = TextWrapping.Wrap });
+                    Render(data, observation);
+                }
+                catch (Exception ex) when (ex is InvalidDataException || ex is IOException ||
+                    ex is System.Xml.XmlException || ex is UnauthorizedAccessException ||
+                    ex is NotSupportedException)
+                {
+                    EvidenceProblem = ex.Message;
+                    ContentPanel.Children.Add(new TextBlock {
+                        Text = "GraphRuntime证据被拒绝：" + ex.Message,
+                        Foreground = Brushes.DarkRed, TextWrapping = TextWrapping.Wrap });
+                }
+            }
+            Observations(result, Kind);
+            Assertions(result);
+        }
+    }
+
+    public sealed class TCTGraphTestView : TCTGraphRuntimeViewBase
     {
         public override string Kind { get { return "Graph"; } }
         public override void Bind(TCTTestCaseResult result)
         {
-            Clear(); Header("Graph / Port / Connection / Compile",
-                "仅呈现真实验证、编译诊断和图连接事件。不复制Mechanism的Graph定义。");
-            Observations(result, Kind); Assertions(result);
+            Clear(); Header("MOL Definition / MOC Plan / SourceMap",
+                "真实原始Block、已编译Step及依赖，点击定义或编译Step可以定位同一工程地址。");
+            RenderEvidence(result);
+        }
+        protected override void Render(XDocument data, TCTTestObservation observation)
+        {
+            XElement root = data.Root;
+            ContentPanel.Children.Add(new TextBlock { Text = "MOL Definition Tree",
+                FontWeight = FontWeights.Bold, Margin = new Thickness(0, 7, 0, 5) });
+            TreeView definition = new TreeView { MaxHeight = 280 };
+            foreach (XElement block in root.Element("Definition").Elements("Block"))
+                definition.Items.Add(BuildBlock(block, observation));
+            ContentPanel.Children.Add(definition);
+            XElement wiring = root.Element("Definition");
+            if ((string)wiring.Attribute("variant") == "Wiring")
+            {
+                ContentPanel.Children.Add(new TextBlock {
+                    Text = "MOL V2 · MPC Typed Port / Connection（工程真源，非推导依赖）",
+                    FontWeight = FontWeights.Bold, Margin = new Thickness(0, 10, 0, 5) });
+                foreach (XElement link in wiring.Elements("Link"))
+                {
+                    string identity = (string)link.Attribute("id"),
+                        source = (string)link.Attribute("sourceBlock"),
+                        target = (string)link.Attribute("targetBlock");
+                    Button connection = new Button {
+                        Content = (string)link.Attribute("kind") + " · " +
+                            source + "." + (string)link.Attribute("sourcePort") +
+                            " → " + target + "." + (string)link.Attribute("targetPort"),
+                        HorizontalContentAlignment = HorizontalAlignment.Left,
+                        Padding = new Thickness(5, 4, 5, 4), Margin = new Thickness(0, 2, 0, 2)
+                    };
+                    System.Windows.Automation.AutomationProperties.SetAutomationId(connection,
+                        "TCT.Graph.Link." + identity);
+                    connection.Click += (sender, args) => Selected(observation, identity,
+                        "MOL V2 Connection\nLinkId: " + identity +
+                        "\nSource: " + source + "." + (string)link.Attribute("sourcePort") +
+                        "\nTarget: " + target + "." + (string)link.Attribute("targetPort") +
+                        "\nKind: " + (string)link.Attribute("kind"));
+                    ContentPanel.Children.Add(connection);
+                    Count();
+                }
+            }
+            ContentPanel.Children.Add(new TextBlock { Text = "MOC Compiled Step / Dependency → MOL Block",
+                FontWeight = FontWeights.Bold, Margin = new Thickness(0, 10, 0, 5) });
+            Dictionary<string, XElement> map = root.Element("SourceMap").Elements("Map")
+                .ToDictionary(x => (string)x.Attribute("step"), StringComparer.Ordinal);
+            foreach (XElement step in root.Element("Plan").Elements("Step"))
+            {
+                string id = (string)step.Attribute("id");
+                string deps = string.Join(", ", step.Elements("Dependency")
+                    .Select(x => (string)x.Attribute("id")));
+                XElement origin;
+                map.TryGetValue(id, out origin);
+                string block = origin == null ? "Unmapped" : (string)origin.Attribute("block");
+                string address = origin == null ? "" : (string)origin.Attribute("address");
+                Button link = new Button {
+                    Content = id + "  →  " + block + (deps.Length == 0 ? "" : " · depends: " + deps),
+                    HorizontalContentAlignment = HorizontalAlignment.Left,
+                    Padding = new Thickness(5, 4, 5, 4), Margin = new Thickness(0, 2, 0, 2)
+                };
+                System.Windows.Automation.AutomationProperties.SetAutomationId(link,
+                    "TCT.Graph.Step." + id);
+                link.Click += (sender, args) => Selected(observation, block,
+                    "MOC → MOL SourceMap\nCompiledStep: " + id + "\nMOL Block: " + block +
+                    "\nDefinitionAddress: " + address + "\nDependencies: " + deps);
+                ContentPanel.Children.Add(link);
+                Count();
+            }
+        }
+        private TreeViewItem BuildBlock(XElement block, TCTTestObservation observation)
+        {
+            string id = (string)block.Attribute("id");
+            TreeViewItem item = new TreeViewItem {
+                Header = (string)block.Attribute("kind") + " · " +
+                    (string)block.Attribute("capability") + " · " + id, IsExpanded = true };
+            item.Selected += (sender, args) => {
+                if (!object.ReferenceEquals(args.OriginalSource, item)) return;
+                Selected(observation, id, "MOL Definition\nBlockId: " + id +
+                    "\nKind: " + (string)block.Attribute("kind") +
+                    "\nCapability: " + (string)block.Attribute("capability"));
+            };
+            foreach (XElement port in block.Elements("Port"))
+                item.Items.Add(new TreeViewItem {
+                    Header = (string)port.Attribute("direction") + " " +
+                        (string)port.Attribute("member") + " : " + (string)port.Attribute("type") +
+                        " · " + (string)port.Attribute("kind") });
+            foreach (XElement child in block.Elements("Block"))
+                item.Items.Add(BuildBlock(child, observation));
+            return item;
         }
     }
+
     public sealed class TCTChannelTestView : TCTTestViewBase
     {
         public override string Kind { get { return "Channel"; } }
         public override void Bind(TCTTestCaseResult result)
         {
             Clear(); Header("Channel / Protocol / TX-RX",
-                "只显示已采集到的Frame、Session及错误事件。原始报文和解码字段由真实Adapter提供。");
+                "尚未取得真实生产Channel/Codec/Session及Frame证据时不绘制虚构报文。");
             Observations(result, Kind); Assertions(result);
         }
     }
-    public sealed class TCTRuntimeTestView : TCTTestViewBase
+
+    public sealed class TCTRuntimeTestView : TCTGraphRuntimeViewBase
     {
         public override string Kind { get { return "Runtime"; } }
         public override void Bind(TCTTestCaseResult result)
         {
-            Clear(); Header("Execution / Resource / Timeline",
-                "仅显示真实Instance、Lease、WaitingReason、Trace和Timeline事件。");
-            Observations(result, Kind); Assertions(result);
+            Clear(); Header("MRK Flow / StepState / Trace Timeline",
+                "原生MRK运行实例与事件；Unknown、失败、取消只显示实际状态，不以节点颜色猜测。");
+            RenderEvidence(result);
+        }
+        protected override void Render(XDocument data, TCTTestObservation observation)
+        {
+            XElement root = data.Root;
+            string flow = (string)root.Attribute("flowId");
+            ContentPanel.Children.Add(new TextBlock {
+                Text = "Flow " + flow + " · " + (string)root.Attribute("flowState") +
+                    " · Plan " + (string)root.Attribute("planId"),
+                FontWeight = FontWeights.Bold, TextWrapping = TextWrapping.Wrap });
+            Dictionary<string, XElement> map = root.Element("SourceMap").Elements("Map")
+                .ToDictionary(x => (string)x.Attribute("step"), StringComparer.Ordinal);
+            ContentPanel.Children.Add(new TextBlock {
+                Text = "ExecutionInstance / Step States", FontWeight = FontWeights.Bold,
+                Margin = new Thickness(0, 10, 0, 5) });
+            foreach (XElement state in root.Element("Execution").Elements("State"))
+            {
+                string id = (string)state.Attribute("step");
+                XElement origin;
+                map.TryGetValue(id, out origin);
+                string block = origin == null ? "Unmapped" : (string)origin.Attribute("block");
+                Button button = new Button {
+                    Content = (string)state.Attribute("value") + " · " + id + " → " + block,
+                    HorizontalContentAlignment = HorizontalAlignment.Left,
+                    Padding = new Thickness(5, 4, 5, 4), Margin = new Thickness(0, 2, 0, 2) };
+                System.Windows.Automation.AutomationProperties.SetAutomationId(button,
+                    "TCT.Runtime.Step." + id);
+                button.Click += (sender, args) => Selected(observation, block,
+                    "MRK Step → MOL Block\nFlow: " + flow + "\nStep: " + id +
+                    "\nBlock: " + block + "\nState: " + (string)state.Attribute("value"));
+                ContentPanel.Children.Add(button);
+                Count();
+            }
+            ContentPanel.Children.Add(new TextBlock {
+                Text = "MRK Trace / Timeline · Lost=" + (string)root.Element("Timeline").Attribute("lost"),
+                FontWeight = FontWeights.Bold, Margin = new Thickness(0, 10, 0, 5) });
+            foreach (XElement evt in root.Element("Timeline").Elements("Event"))
+            {
+                string block = (string)evt.Attribute("block");
+                string step = (string)evt.Attribute("step");
+                Button button = new Button {
+                    Content = "#" + (string)evt.Attribute("sequence") + " · " +
+                        (string)evt.Attribute("state") + " · " + step,
+                    HorizontalContentAlignment = HorizontalAlignment.Left,
+                    Padding = new Thickness(5, 4, 5, 4), Margin = new Thickness(0, 2, 0, 2) };
+                button.Click += (sender, args) => Selected(observation, block,
+                    "MRK Trace → MOL Block\nFlow: " + flow + "\nStep: " + step +
+                    "\nBlock: " + block + "\nSequence: " + (string)evt.Attribute("sequence") +
+                    "\nUTC: " + (string)evt.Attribute("utc"));
+                ContentPanel.Children.Add(button);
+                Count();
+            }
         }
     }
 
@@ -507,6 +710,10 @@ namespace CxVisual.TestCenter.UI
             {
                 if (ObjectSelected != null) ObjectSelected(id, details);
             };
+            foreach (TCTGraphRuntimeViewBase sourceView in _viewers.OfType<TCTGraphRuntimeViewBase>())
+                sourceView.SourceSelected += (id, details) => {
+                    if (ObjectSelected != null) ObjectSelected(id, details);
+                };
             TCTGeometryTestView geometryViewer = _viewers.OfType<TCTGeometryTestView>().Single();
             geometryViewer.GeometrySelected += (id, details) =>
             {
@@ -568,6 +775,8 @@ namespace CxVisual.TestCenter.UI
                 verifiedArchiveDirectory;
             _viewers.OfType<TCTGeometryTestView>().Single().ArchivedEvidenceRoot =
                 verifiedArchiveDirectory;
+            foreach (TCTGraphRuntimeViewBase ownerView in _viewers.OfType<TCTGraphRuntimeViewBase>())
+                ownerView.ArchivedEvidenceRoot = verifiedArchiveDirectory;
             if (result == null) return;
             _empty.Text = result.Status + " · " + result.Descriptor.Name +
                 "\n观察数：" + result.Observations.Count +

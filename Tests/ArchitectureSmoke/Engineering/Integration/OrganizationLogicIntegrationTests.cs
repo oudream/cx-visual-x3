@@ -63,6 +63,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         internal static void Run()
         {
             SaveLoadAndIdentity();
+            V1WaitDelayCancellationRoundtrip();
             V2WiringRoundtrip();
             V2TypedParameterConfiguration();
             G05aConditionalBranchesAndJoin();
@@ -70,6 +71,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             G05cWorkflowRetryPolicy();
             G05bStreamBackpressureAndFlow();
             G05dHierarchicalParallelMachine();
+            P03StateMachineGuards();
             V2ExtractLinearContent();
             G07ProjectReleaseLockAndAuthorization();
             G06CpuVisionThroughMOC();
@@ -120,6 +122,75 @@ namespace CxVisual.Tests.ArchitectureSmoke
             {
                 session.Close(true);
                 if (System.IO.File.Exists(path)) System.IO.File.Delete(path);
+            }
+        }
+
+        /// <summary>P0-1：V1定时等待写入同一Logic Aspect，MRK异步执行/取消，拒绝坏合同。</summary>
+        private static void V1WaitDelayCancellationRoundtrip()
+        {
+            bool rejected=false;
+            try{new MOLLogicDefinition(new MOLControlBlock(
+                Guid.NewGuid(),MOLControlKind.Wait));}
+            catch(InvalidOperationException ex){rejected=ex.Message=="logic.wait_missing";}
+            Check(rejected,"V1 Wait without a bounded declaration was accepted");
+            rejected=false;
+            try{MOLControlBlock.Delay(600001);}
+            catch(ArgumentOutOfRangeException){rejected=true;}
+            Check(rejected,"V1 Wait accepted an unbounded delay");
+
+            var session=MEMEngineering.Create("P0-1 可取消等待");
+            var page=session.AddPage("Inspect");
+            string path=System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                "moc-wait-"+Guid.NewGuid().ToString("N")+".cxproj");
+            var wait=MOLControlBlock.Delay(20);
+            var action=MOLControlBlock.Action("after.wait");
+            MOLLogicCodec.Set(session,page.RootContent,new MOLLogicDefinition(
+                MOLControlBlock.Sequence(wait,action)));
+            var resolver=new TestResolver().Register("after.wait",(ctx,ct)=>
+                Task.FromResult((object)true));
+            try
+            {
+                session.SaveAs(path);
+                var opened=MEMEngineering.Open(path);
+                try
+                {
+                    var definition=MOLLogicCodec.Get(opened.GetSnapshot().Find(page.RootContent.Id));
+                    Check(definition.Root.Children[0].Wait.DurationMilliseconds==20&&
+                        definition.Root.Children[0].Id==wait.Id,
+                        "V1 Wait schema1/BlockId lost after real disk roundtrip");
+                    var plan=new MOCEngineeringCompiler().Compile(opened.GetSnapshot(),
+                        page.RootContent.Id,resolver);
+                    MOCTraceView trace;
+                    MRKFlowResult done=Execute(plan,null,out trace);
+                    Check(done.State==MRKFlowState.Completed&&
+                        done.StepStates[plan.SourceMap.Find(wait.Id).Single().StepId]==MRKStepState.Completed&&
+                        trace.Events.Any(e=>e.Origin.BlockId==wait.Id),
+                        "V1 Wait did not execute in the existing MRK plan/trace");
+
+                    MOLLogicCodec.Set(opened,opened.Project.Pages[0].RootContent,
+                        new MOLLogicDefinition(MOLControlBlock.Sequence(
+                            MOLControlBlock.Delay(600000),action)));
+                    var slow=new MOCEngineeringCompiler().Compile(opened.GetSnapshot(),
+                        page.RootContent.Id,resolver);
+                    var runtime=new MRKExecutionEngine(new FCRWorkerOptions(2,8));
+                    try
+                    {
+                        MRKFlowHandle handle=runtime.StartFlow(slow.Plan);
+                        handle.RequestCancel();
+                        Check(handle.Completion.Wait(TimeSpan.FromSeconds(5)),
+                            "V1 Wait did not honor MRK cancellation promptly");
+                        var stopped=handle.Completion.GetAwaiter().GetResult();
+                        Check(stopped.State==MRKFlowState.Cancelled,
+                            "V1 Wait cancellation produced a successful flow");
+                    }
+                    finally{runtime.StopAsync(true).GetAwaiter().GetResult();}
+                }
+                finally{opened.Close(true);}
+            }
+            finally
+            {
+                session.Close(true);
+                if(System.IO.File.Exists(path))System.IO.File.Delete(path);
             }
         }
 
@@ -1307,7 +1378,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     e.Reference(mid,leaf,"LeafRef");
                     return true;
                 }).RequireValue();
-                Guid leafStep=Guid.Empty,midCall=Guid.Empty,rootCall=Guid.Empty;
+                Guid leafStep=Guid.Empty,midCall=Guid.Empty,rootCall=Guid.Empty,midGate=Guid.Empty,midRejected=Guid.Empty;
                 MOCFlowBuilder.Edit(session,leaf,b=>{
                     leafStep=b.Step("Double",new[]{
                         new MPCPortDescriptor("N",MPCPortDirection.Input,"int",MPCPortKind.Data,required:true),
@@ -1318,7 +1389,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 });
                 MOCFlowBuilder.Edit(session,mid,b=>{
                     // R06：父Content从真实子Content公开契约推导端口，不再手抄Schema。
+                    midGate=b.Step("MidGate");
                     midCall=b.InvokeContent(leaf);
+                    midRejected=b.Step("MidWrongBranch");
+                    b.ConnectConditional(midGate,"Done",midCall,"Start","bool:true");
+                    b.ConnectConditional(midGate,"Done",midRejected,"Start","bool:false");
                     b.ExposeInput("MidSeed",midCall,"Number");
                     b.ExposeOutput("MidResult",midCall,"LeafValue");
                 });
@@ -1337,11 +1412,20 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     b.ExposeOutput("Final",plus,"Answer");
                 });
                 bool failLeafForR07=false;
+                bool midAccepted=true;
+                int rejectedCalls=0;
+                int executedLeaf=0;
                 var resolver=new TestResolver()
+                    .Register("MidGate",(c,t)=>Task.FromResult((object)midAccepted))
+                    .Register("MidWrongBranch",(c,t)=>{
+                        Interlocked.Increment(ref rejectedCalls);
+                        return Task.FromResult((object)true);
+                    })
                     .RegisterData("Seed",(c,t)=>{
                         c.Data.Return("Value",4);return Task.FromResult((object)true);
                     },new Dictionary<string,Type>{{"Value",typeof(int)}},null)
                     .RegisterData("Double",(c,t)=>{
+                        Interlocked.Increment(ref executedLeaf);
                         if(failLeafForR07)
                             throw new InvalidOperationException("r07.leaf.failure");
                         c.Data.Return("Doubled",c.Data.Get<int>("N")*2);
@@ -1369,6 +1453,18 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Check(result.State==MRKFlowState.Completed&&
                         result.GetCommittedOutput<int>("Final")==9,
                         "three-level actual data return is wrong");
+                    Check(rejectedCalls==0&&
+                        compiled.Plan.SourceMap.Find(midRejected).Count>0,
+                        "nested guarded branch was executed despite its false predicate");
+                    // 未选分支可以Skipped，但公开结果源若Skipped就不能提交半成品。
+                    midAccepted=false;
+                    int leafBefore=executedLeaf;
+                    var denied=Execute(compiled.Plan,null,out trace);
+                    Check(denied.State==MRKFlowState.Failed&&
+                        denied.CommittedOutputs.Count==0&&
+                        executedLeaf==leafBefore&&rejectedCalls==1,
+                        "nested skipped required export falsely committed or executed leaf");
+                    midAccepted=true;
                     Check(result.CommittedOutputs.Count==1&&
                         !result.CommittedOutputs.ContainsKey("LeafValue")&&
                         !result.CommittedOutputs.ContainsKey("MidResult"),
@@ -1808,6 +1904,85 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "G05d state machine undo did not recover event rules");
             }
             finally{session.Close(true);}
+        }
+
+        /// <summary>P0-3：状态机Guard共享MOL标量语义，序列化往返与MRK执行结果正确。</summary>
+        private static void P03StateMachineGuards()
+        {
+            bool invalid=false;
+            try
+            {
+                new MOLStateTransition("Idle","start","Busy",
+                    new MOLExpression(MOLExpressionSource.StepResult,"foreign"));
+            }
+            catch(ArgumentException ex){invalid=ex.Message.Contains("moc.state.guard_source");}
+            Check(invalid,"P0-3 external StepResult guard escaped state-machine declaration");
+
+            var machine=new MOLStateMachineDefinition(new[]{
+                new MOLStateDescriptor("Idle","Unit",initial:true),
+                new MOLStateDescriptor("Busy","Unit")
+            },new[]{
+                new MOLStateTransition("Idle","start","Busy",
+                    MOLExpression.InputTrue("permit"))
+            });
+            var session=MEMEngineering.Create("P0-3 state guards");
+            var page=session.AddPage("Unit");
+            string path=System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                "moc-state-guard-"+Guid.NewGuid().ToString("N")+".cxproj");
+            try
+            {
+                Guid block=Guid.Empty;
+                MOCFlowBuilder.Edit(session,page.RootContent,b=>block=b.AddStateMachine(machine));
+                session.SaveAs(path);
+                using(var opened=MEMEngineering.Open(path))
+                {
+                    var saved=MOLWiringCodec.Get(opened.GetSnapshot().Find(page.RootContent.Id));
+                    var restored=saved.StateMachines[block];
+                    Check(restored.Transitions[0].Guard!=null&&
+                        restored.Transitions[0].Guard.Name=="permit"&&
+                        restored.Transitions[0].Guard.Source==MOLExpressionSource.FlowInput,
+                        "P0-3 Guard lost its schema2 payload/identity in actual project file");
+                    Check(restored.Run(new[]{"start"},new Dictionary<string,object>{
+                        {"permit",false}})["Unit"]=="Idle"&&
+                        restored.Run(new[]{"start"},new Dictionary<string,object>{
+                        {"permit",true}})["Unit"]=="Busy",
+                        "P0-3 Guard did not reject/permit deterministic transition");
+
+                    var build=new MOCBuildService().Build(opened.GetSnapshot(),
+                        page.RootContent.Id,new TestResolver());
+                    Check(build.Succeeded,"P0-3 guarded StateMachine compile failed");
+                    Func<IDictionary<string,object>,string> execute=inputs=>{
+                        var runtime=new MRKExecutionEngine(new FCRWorkerOptions(1,8));
+                        try
+                        {
+                            var handle=runtime.StartFlow(build.Plan.Plan,inputs);
+                            var done=handle.Completion.GetAwaiter().GetResult();
+                            if(done.State!=MRKFlowState.Completed)
+                                return "FAILED";
+                            object value;
+                            if(!handle.Context.TryGetResult("w"+block.ToString("N"),out value))
+                                return "MISSING";
+                            var result=value as IReadOnlyDictionary<string,string>;
+                            return result==null?"INVALID":result["Unit"];
+                        }
+                        finally{runtime.StopAsync(true).GetAwaiter().GetResult();}
+                    };
+                    string eventKey="moc.state.events."+block.ToString("N");
+                    Check(execute(new Dictionary<string,object>{
+                        {eventKey,new[]{"start"}},{"permit",false}})=="Idle"&&
+                        execute(new Dictionary<string,object>{
+                        {eventKey,new[]{"start"}},{"permit",true}})=="Busy"&&
+                        execute(new Dictionary<string,object>{
+                        {eventKey,new[]{"start"}}})=="FAILED",
+                        "P0-3 MRK did not honor Guard or reject missing Guard input");
+                }
+            }
+            finally
+            {
+                session.Close(true);
+                if(System.IO.File.Exists(path))System.IO.File.Delete(path);
+                if(System.IO.File.Exists(path+".cx-lock"))System.IO.File.Delete(path+".cx-lock");
+            }
         }
 
         /// <summary>G05b：真实背压、双向隔离、取消及MOC→MRK Stream Port通信。</summary>

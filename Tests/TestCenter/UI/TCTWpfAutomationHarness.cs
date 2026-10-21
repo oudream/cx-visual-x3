@@ -31,6 +31,10 @@ namespace CxVisual.TestCenter.UI
             SaveScreenshot(window, "TestCenter-02-Geometry.png");
             await Task.Run(() => InteractObject(hwnd, window));
             SaveScreenshot(window, "TestCenter-03-Object.png");
+            await Task.Run(() => InteractGraph(hwnd, window));
+            SaveScreenshot(window, "TestCenter-05-Graph.png");
+            await Task.Run(() => InteractRuntime(hwnd, window));
+            SaveScreenshot(window, "TestCenter-06-Runtime.png");
             window.MenuThemeDark.RaiseEvent(new RoutedEventArgs(
                 System.Windows.Controls.MenuItem.ClickEvent, window.MenuThemeDark));
             SaveScreenshot(window, "TestCenter-04-Dark.png");
@@ -156,6 +160,96 @@ namespace CxVisual.TestCenter.UI
                 Thread.Sleep(200);
             }
             throw new TimeoutException("UIA executed Symbol case but did not display verified Geometry/Object evidence");
+        }
+
+        private static void InteractGraph(IntPtr hwnd, TCTMainWindow window)
+        {
+            AutomationElement root = AutomationElement.FromHandle(hwnd);
+            ValuePattern search = Find(root, "TCT.Explorer.Search")
+                .GetCurrentPattern(ValuePattern.Pattern) as ValuePattern;
+            if (search == null) throw new InvalidOperationException("Graph case search lacks ValuePattern");
+            search.SetValue("TCT.M3.GRAPHRUNTIME.001");
+            AutomationElement item = Find(root, "TCT.Case.TCT.M3.GRAPHRUNTIME.001");
+            SelectionItemPattern selected = item.GetCurrentPattern(SelectionItemPattern.Pattern)
+                as SelectionItemPattern;
+            if (selected == null) throw new InvalidOperationException("Graph case cannot be selected");
+            selected.Select();
+            InvokePattern run = Find(root, "TCT.RunSelected")
+                .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
+            if (run == null) throw new InvalidOperationException("Graph test run command unavailable");
+            run.Invoke();
+            bool ready = false;
+            for (int attempt = 0; attempt < 240; attempt++)
+            {
+                window.Dispatcher.Invoke(new Action(() =>
+                {
+                    var tabs = window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                    if (tabs == null || !window.MenuRunSelected.IsEnabled) return;
+                    TCTGraphTestView graph = tabs.Items.OfType<System.Windows.Controls.TabItem>()
+                        .Select(x => x.Content).OfType<TCTGraphTestView>().FirstOrDefault();
+                    TCTRuntimeTestView runtime = tabs.Items.OfType<System.Windows.Controls.TabItem>()
+                        .Select(x => x.Content).OfType<TCTRuntimeTestView>().FirstOrDefault();
+                    ready = graph != null && runtime != null &&
+                        graph.VerifiedItems > 0 && graph.EvidenceProblem == null &&
+                        runtime.VerifiedItems > 0 && runtime.EvidenceProblem == null;
+                }));
+                if (ready) break;
+                Thread.Sleep(200);
+            }
+            if (!ready) throw new TimeoutException("UIA Graph/MRK test has no verified dual Owner viewers");
+            SelectionItemPattern tab = Find(root, "TCT.Viewer.Graph")
+                .GetCurrentPattern(SelectionItemPattern.Pattern) as SelectionItemPattern;
+            if (tab == null) throw new InvalidOperationException("Graph tab has no UIA selection pattern");
+            tab.Select();
+            InvokeFirstOwnerLink(root, "TCT.Graph.Step.");
+            WaitForInspector(window, "SourceMap", "Graph UIA Step → Inspector/SourceMap");
+        }
+
+        private static void InteractRuntime(IntPtr hwnd, TCTMainWindow window)
+        {
+            AutomationElement root = AutomationElement.FromHandle(hwnd);
+            SelectionItemPattern tab = Find(root, "TCT.Viewer.Runtime")
+                .GetCurrentPattern(SelectionItemPattern.Pattern) as SelectionItemPattern;
+            if (tab == null) throw new InvalidOperationException("Runtime tab lacks UIA selection pattern");
+            tab.Select();
+            InvokeFirstOwnerLink(root, "TCT.Runtime.Step.");
+            WaitForInspector(window, "MRK Step", "Runtime UIA Step → MOL definition");
+        }
+
+        // InvokePattern invokes WPF controls asynchronously. Synchronize on actual Inspector
+        // state rather than treating the first dispatcher snapshot as a completed UI action.
+        private static void WaitForInspector(TCTMainWindow window, string expected, string operation)
+        {
+            string last = null, id = null;
+            for (int attempt = 0; attempt < 50; attempt++)
+            {
+                bool updated = false;
+                window.Dispatcher.Invoke(new Action(() => {
+                    id = window.Inspector.SelectedObjectId;
+                    last = window.Inspector.SelectedObjectDetails;
+                    updated = !string.IsNullOrWhiteSpace(id) && last != null &&
+                        last.Contains(expected);
+                }));
+                if (updated) return;
+                Thread.Sleep(100);
+            }
+            throw new InvalidOperationException(operation + " failed; selected=" +
+                (id ?? "<none>") + "; inspector=" + (last ?? "<none>"));
+        }
+
+        private static void InvokeFirstOwnerLink(AutomationElement root, string prefix)
+        {
+            AutomationElementCollection buttons = root.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button));
+            foreach (AutomationElement element in buttons)
+            {
+                if (!element.Current.AutomationId.StartsWith(prefix, StringComparison.Ordinal)) continue;
+                InvokePattern invoke = element.GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
+                if (invoke == null) throw new InvalidOperationException(prefix + " has no InvokePattern");
+                invoke.Invoke();
+                return;
+            }
+            throw new InvalidOperationException("No verified UIA Owner link found: " + prefix);
         }
 
         private static void SaveScreenshot(TCTMainWindow window, string name)
