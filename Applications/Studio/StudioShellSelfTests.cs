@@ -1695,7 +1695,7 @@ namespace CxVisual.Studio
                         "Automation设备配置"));
                     window.CloseStudioDocument("doc.config");
                     window.RegisterStudioConfiguration<CxAutomationDeviceOptions>(
-                        "Automation设备配置");
+                        "Automation设备配置","core.content");
                     AssertThrows(()=>window.RegisterStudioConfiguration<CxAutomationDeviceOptions>(
                         "重复Automation"));
                     window.OpenStudioDocument("doc.config");
@@ -1732,6 +1732,89 @@ namespace CxVisual.Studio
                     Assert(scope.Open<CxAutomationDeviceOptions>().Identity.ScopeId==
                         session.Project.Id.ToString("N")&&session.Revision==before,
                         "第三专业注册后丢失Project隔离或错误修改MEM工程");
+                });
+                CheckStep("S2/P1 资源及可信机台Scope选择与未保存草稿阻断", () =>
+                {
+                    StudioViewModel model=window.DataContext as StudioViewModel;
+                    MEMEngineeringSession session=model.ProjectSession;
+                    window.CloseStudioDocument("doc.config");
+                    window.RegisterStudioConfigurationScope(
+                        "machine","P1-MACHINE-001","验收机台");
+                    AssertThrows(()=>window.RegisterStudioConfigurationScope(
+                        "machine","P1-MACHINE-001","重复机台"));
+                    AssertThrows(()=>window.RegisterStudioConfigurationScope(
+                        "resource","fake","伪造资源"));
+                    MEMContent content=session.AddContent(session.Project,"P1配置资源Content");
+                    int before=session.Revision;
+                    window.OpenStudioDocument("doc.config");
+                    LayoutDocument document=window.StudioDock.Layout.Descendents()
+                        .OfType<LayoutDocument>().Single(x=>x.ContentId=="doc.config");
+                    System.Windows.DependencyObject root=(System.Windows.DependencyObject)document.Content;
+                    Func<System.Windows.DependencyObject,System.Windows.Controls.ComboBox> findBox=null;
+                    findBox=node=>{
+                        System.Windows.Controls.ComboBox combo=node as System.Windows.Controls.ComboBox;
+                        if(combo!=null&&combo.Name=="StudioConfigScopeSelector")return combo;
+                        return System.Windows.LogicalTreeHelper.GetChildren(node)
+                            .OfType<System.Windows.DependencyObject>()
+                            .Select(child=>findBox(child)).FirstOrDefault(x=>x!=null);
+                    };
+                    var selector=findBox(root);
+                    Assert(selector!=null,"Studio没有真实的配置Scope选择控件");
+                    object project=selector.Items.Cast<object>().First(x=>
+                        x.ToString().StartsWith("工程配置"));
+                    object resource=selector.Items.Cast<object>().First(x=>
+                        x.ToString().Contains(content.Name));
+                    object machine=selector.Items.Cast<object>().First(x=>
+                        x.ToString().Contains("验收机台"));
+                    selector.SelectedItem=resource;
+                    Func<System.Windows.DependencyObject,Type,bool> exists=null;
+                    exists=(node,type)=>type.IsInstanceOfType(node)||
+                        System.Windows.LogicalTreeHelper.GetChildren(node)
+                            .OfType<System.Windows.DependencyObject>()
+                            .Any(child=>exists(child,type));
+                    Assert(exists(root,typeof(MPWConfigEditorControl<CxAutomationDeviceOptions>))&&
+                        !exists(root,typeof(MPWConfigEditorControl<CxVisionInspectionOptions>))&&
+                        !exists(root,typeof(MPWConfigEditorControl<CxCtReconstructionOptions>)),
+                        "资源Scope没有根据声明的core.content类型过滤专业");
+                    Func<System.Windows.DependencyObject,MPWConfigEditorControl<CxAutomationDeviceOptions>>
+                        findAutomation=null;
+                    findAutomation=node=>node as MPWConfigEditorControl<CxAutomationDeviceOptions> ??
+                        System.Windows.LogicalTreeHelper.GetChildren(node)
+                            .OfType<System.Windows.DependencyObject>()
+                            .Select(child=>findAutomation(child)).FirstOrDefault(x=>x!=null);
+                    MPWConfigEditorControl<CxAutomationDeviceOptions> active=findAutomation(root);
+                    Assert(active!=null,"资源Scope没有创建真实Automation Editor");
+                    var field=typeof(MPWConfigEditorControl<CxAutomationDeviceOptions>)
+                        .GetField("_editor",System.Reflection.BindingFlags.Instance|
+                            System.Reflection.BindingFlags.NonPublic);
+                    MHSConfigEditorModel<CxAutomationDeviceOptions> editor=
+                        field.GetValue(active) as MHSConfigEditorModel<CxAutomationDeviceOptions>;
+                    int port=editor.Draft.ControllerPort==1502?1503:1502;
+                    editor.SetValue(x=>x.ControllerPort,port);
+                    Assert(active.HasUnsavedDraft,"配置草稿编辑没有正确标记未保存状态");
+                    selector.SelectedItem=project;
+                    Assert(Object.ReferenceEquals(selector.SelectedItem,resource)&&
+                        active.HasUnsavedDraft,"更换Scope丢弃了未保存的专业编辑草稿");
+                    editor.Undo();
+                    Assert(!active.HasUnsavedDraft,"草稿撤销后仍错误阻断Scope切换");
+                    selector.SelectedItem=project;
+                    Assert(Object.ReferenceEquals(selector.SelectedItem,project)&&
+                        exists(root,typeof(MPWConfigEditorControl<CxVisionInspectionOptions>)),
+                        "切回Project未恢复原配置视图");
+                    selector.SelectedItem=machine;
+                    Assert(Object.ReferenceEquals(selector.SelectedItem,machine)&&
+                        exists(root,typeof(MPWConfigEditorControl<CxCtReconstructionOptions>)),
+                        "可信宿主注册的机台Scope无法加载原公共Schema");
+                    string folder=System.IO.Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                        "CxVisual","Configs","V24","Projects");
+                    MHSConfigService service=new MHSConfigService(folder);
+                    Assert(service.ForScope("resource",content.Id.ToString("N"))
+                        .Open<CxAutomationDeviceOptions>().Identity.ScopeKind=="resource"&&
+                        service.ForScope("machine","P1-MACHINE-001")
+                        .Open<CxAutomationDeviceOptions>().Identity.ScopeId=="P1-MACHINE-001"&&
+                        session.Revision==before,
+                        "Scope选择更改MEM工程Revision或伪造配置实例身份");
                 });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;
