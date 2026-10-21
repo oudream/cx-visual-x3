@@ -13,6 +13,7 @@ using System.Xml;
 using AvalonDock.Layout;
 using AvalonDock.Serializer.Xml;
 using AvalonDock.Themes;
+using CxVisual.Mechanism.Core;
 
 namespace CxVisual.Studio
 {
