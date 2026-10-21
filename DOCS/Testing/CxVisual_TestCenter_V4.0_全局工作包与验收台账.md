@@ -105,3 +105,14 @@ D. 然后做Suite/Plan最小保存/回放与后续Graph/Channel接入；现场HI
 - **测试用例与修复：** `M-OBJ-005` 验证MEM固定快照/非法Owner证据，`M-OBJ-006` 验证基于稳定NodeId的真实Revision变化。由于并行开发已令生产 `CxSceneProjection` 展开Symbol引用实例，旧 `TCT.MVIS.001` 固定场景元素数导致CI失败；现已根据真实Owned图元与Reference实例数量核算，并验证 `MRIObjectAddress.InstancePath`，修正错误的“Content owns Symbol”文本。失败CI归档不删除，最终通过CI如上。
 - **项目与源码：** 新增 `Tests/TestCenter/Models/TCTEngineeringSnapshotCodec.cs`，修订 `CxVisual.TestCenter.csproj`、`Cases/TCTRealCases.cs`、`Cases/TCTMechanismActualCases.cs`、`UI/TCTTestViews.cs`、`UI/TCTControls.cs`、`MainWindow.xaml.cs`、`App.xaml.cs` 及 `README.md`。未创建生产第二套工程树、Graph、Runtime或新的TestCenter项目。
 - **保持未完成：** M2完整Geometry/Content/Symbol的Expected/Actual/Golden Diff、真正动态的Context Ribbon全命令、历史GUI浏览与失败重跑、完整UIA与人工六图验收；M3工程H07→MRK正式翻译/SourceMap及Graph/Runtime/Channel结构化Viewer；M4 Suite/Plan、正式八维覆盖与审签Golden；M5 Benchmark/长跑/专业HIL。不得以这次成功CI冒称这些功能完成。
+
+
+## 第一阶段软件闭环实际验收（2026-10-21）
+
+三阶段重排后的**第一阶段：统一工作台 + Geometry/Object**已完成现有软件实现及对应自动CI验证，人工界面仍待签认。详见：[第一阶段统一工作台与GeometryObject——实现及验收 V1.0](CxVisual_TestCenter_第一阶段统一工作台与GeometryObject——实现及验收_V1.0.md)。
+
+- 代码SHA：`ab4e85c71574a6c3bda911338a749e07621de5fb`；Windows CI：[39591953493](https://github.com/oudream/cx-visual-x3/actions/runs/39591953493) **success**。
+- NUnit/TCT Catalog 125，三轮并发375个Attempt；Owner结构化Artifact/Replay、History双Run Diff、错误证据反证通过。
+- 统一AvalonDock Shell、动态Ribbon、单多选、Suite/Plan最小保存执行、Geometry Expected/Actual/Diff/单位容差、MEM Ownership/Reference/Symbol InstancePath、历史回放、WPF/UIA两Owner真实操作与四张截图已验证。
+- **未完成状态独立保留**：设计01～03人工视觉验收、全DPI键鼠/真实用户验收；阶段二Graph/Channel/Runtime；阶段三正式Golden/八维覆盖/可靠性和专业HIL。
+- 每次后续master变更仍须重新匹配代码SHA与CI，不能把此快照标为永久最新验收。
