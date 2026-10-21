@@ -33,9 +33,64 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 source.Close(true);reject.Close(true);
                 PackagesAndExtraction(dir);
                 RemapperAndRollback();
+                ResourceImpactAndRevision(dir);
                 Console.WriteLine("PASS H05 real cross-project closure/asset import, full identity/endpoint remap, preview, one undo/redo, pin, stale rejection and save/reopen");
             }
             finally{Directory.Delete(dir,true);}
+        }
+        private static void ResourceImpactAndRevision(string dir)
+        {
+            MEMEngineeringSession s=MEMEngineering.Create("P0-1 依赖影响");
+            MEMContent algorithm=s.AddContent(s.Project,"AI算法定义");
+            MEMContent station=s.AddContent(s.Project,"检测工位");
+            MEMPage page=s.AddPage("生产HMI");
+            MRIResourceReference call=s.PlaceContent(station,algorithm,"检测子流程");
+            MRIResourceReference display=s.PlaceContent(page.RootContent,station,"工位引用");
+            // 不通过名称做依赖推测：读取现有ResourceEntry的显式元数据。
+            int original=s.Revision;
+            MRIResourceImpactReport impact=s.AnalyzeResourceImpact(algorithm.Id,original);
+            Check(impact.ProjectId==s.Project.Id&&impact.Revision==original&&
+                impact.ResourceId==algorithm.Id&&!impact.HasMissingDependencies,
+                "影响报告工程/版本身份错误");
+            Check(impact.Affected.Count==2&&impact.Affected[0].ResourceId==station.Id&&
+                impact.Affected[0].Depth==1&&impact.Affected[1].ResourceId==page.Id&&
+                impact.Affected[1].Depth==2&&
+                impact.Affected[1].Path.SequenceEqual(new[]{algorithm.Id,station.Id,page.Id}),
+                "AI→工位→HMI间接依赖路径错误");
+            Check(impact.RebuildResourceIds.SequenceEqual(
+                new[]{algorithm.Id,station.Id,page.Id}),"需重构建范围不完整");
+            Check(s.AnalyzeResourceImpact(algorithm.Id).Affected.Count==2&&
+                s.Revision==original,"影响分析不应修改工程");
+            Check(s.AnalyzeResourceImpact(station.Id).Affected.Single().ResourceId==page.Id,
+                "只读报表向下游查询错误");
+            // 传入内部对象或当前定义也必须归一到资源ID。
+            MEMContent inner=s.AddContent(algorithm,"步骤");
+            Check(s.AnalyzeResourceImpact(inner.Id).ResourceId==algorithm.Id,
+                "内部对象未映射到资源根");
+            Reject(()=>s.AnalyzeResourceImpact(algorithm.Id,original));
+            // 删除引用后报告应立即反映，旧报告仍为不可变快照。
+            s.Remove(display);
+            Check(s.AnalyzeResourceImpact(algorithm.Id).Affected.Single().ResourceId==station.Id,
+                "删除下游调用后仍错误传播");
+            Check(impact.Affected.Count==2,"旧影响报告被可变工程改变");
+            s.Undo().RequireValue();
+            Check(s.AnalyzeResourceImpact(algorithm.Id).Affected.Count==2,
+                "Undo未恢复影响关系");
+            // 资产依赖沿用已有MPM资源绑定路径，不能建立第二套绑定索引。
+            string file=Path.Combine(dir,"p0-impact.bin");File.WriteAllBytes(file,new byte[]{3,1,4});
+            MEMAssetReference asset=s.AddAsset("模型",file);
+            s.DefineProperty(algorithm,new MPMPropertyDescriptor("model",MPMValueKind.Resource,
+                false,true,MPMBinding.Resource(asset.Id)));
+            MRIResourceImpactReport model=s.AnalyzeResourceImpact(asset.Id);
+            Check(model.Affected.Select(x=>x.ResourceId).SequenceEqual(
+                new[]{algorithm.Id,station.Id,page.Id}),"模型资产变化影响链错误");
+            string project=Path.Combine(dir,"impact.cxproj");s.SaveAs(project);s.Close();
+            MEMEngineeringSession reopened=MEMEngineering.Open(project);
+            Check(reopened.AnalyzeResourceImpact(asset.Id).Affected.Count==3,
+                "保存重开后资源影响丢失");
+            Reject(()=>reopened.AnalyzeResourceImpact(Guid.NewGuid()));
+            reopened.Close();
+            Console.WriteLine("PASS P0-1 derived direct/transitive resource impact, revision guard, undo, asset and persistence");
         }
         private sealed class Remapper : IMTIAspectRemapper
         {

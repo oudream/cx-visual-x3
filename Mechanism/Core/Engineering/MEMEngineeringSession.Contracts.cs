@@ -9,6 +9,34 @@ namespace CxVisual.Mechanism.Core
         internal MRIUsage(Guid owner,string kind,string member){OwnerId=owner;Kind=kind;MemberId=member;}
         public Guid OwnerId {get;private set;} public string Kind {get;private set;} public string MemberId {get;private set;}
     }
+    /// <summary>工程依赖链的固定查询结果。Path 从变更资源到受影响资源，所有值均不可编辑。</summary>
+    public sealed class MRIResourceImpact
+    {
+        internal MRIResourceImpact(MEMResourceEntry resource,int depth,IEnumerable<Guid> path)
+        {Resource=resource;Depth=depth;Path=Array.AsReadOnly(path.ToArray());}
+        public MEMResourceEntry Resource {get;private set;}
+        public Guid ResourceId {get{return Resource.Id;}}
+        public int Depth {get;private set;}
+        public IReadOnlyList<Guid> Path {get;private set;}
+    }
+    public sealed class MRIResourceImpactReport
+    {
+        internal MRIResourceImpactReport(Guid source,Guid project,int revision,
+            IEnumerable<MRIResourceImpact> affected,IEnumerable<Guid> missing)
+        {
+            ResourceId=source;ProjectId=project;Revision=revision;
+            Affected=Array.AsReadOnly(affected.ToArray());
+            MissingDependencies=Array.AsReadOnly(missing.Distinct().OrderBy(id=>id).ToArray());
+        }
+        public Guid ResourceId {get;private set;}
+        public Guid ProjectId {get;private set;}
+        public int Revision {get;private set;}
+        public IReadOnlyList<MRIResourceImpact> Affected {get;private set;}
+        public IReadOnlyList<Guid> MissingDependencies {get;private set;}
+        public IReadOnlyList<Guid> RebuildResourceIds
+        {get{return Array.AsReadOnly(new[]{ResourceId}.Concat(Affected.Select(x=>x.ResourceId)).ToArray());}}
+        public bool HasMissingDependencies {get{return MissingDependencies.Count!=0;}}
+    }
     public sealed partial class MEMEngineeringSession
     {
         private readonly Dictionary<Guid,MPCPort> _ports=new Dictionary<Guid,MPCPort>();
@@ -215,6 +243,62 @@ namespace CxVisual.Mechanism.Core
                     foreach(var reference in MRIReferenceList.View(node))pending.Push(Tuple.Create(Find(reference.TargetId),reference));
                 }
                 return new MVEValidationReport(issues);
+            }
+        }
+        /// <summary>
+        /// P0-1：分析共享定义或静态资产变化将影响哪些工程资源。
+        /// 直接和间接依赖由已有资源元数据推导；报告不持有活动MEMNode，
+        /// 不修改Revision/Undo/Plan，执行实际变更前应检查报告Revision。
+        /// </summary>
+        public MRIResourceImpactReport AnalyzeResourceImpact(Guid resourceOrObjectId,
+            int expectedRevision=-1)
+        {
+            DemandAccess(MEMAccessOperation.Read);
+            lock(_gate)
+            {
+                DemandOpen();
+                if(expectedRevision>=0&&expectedRevision!=Revision)
+                    throw new InvalidOperationException("org.impact.version_conflict");
+                MEMNode node;
+                _index.TryGetValue(resourceOrObjectId,out node);
+                Guid resourceId=node==null?resourceOrObjectId:node.ResourceRootId;
+                IMEMResource source=Project.FindResource(resourceId);
+                if(source==null)
+                    throw new InvalidOperationException("org.impact.resource_missing_or_embedded");
+                // 冻结一个Revision的一次性读视图，不额外存储可写依赖图。
+                var resources=Project.Resources.Select(ReadResourceEntryCore)
+                    .ToDictionary(entry=>entry.Id);
+                var reverse=new Dictionary<Guid,List<Guid>>();
+                var missing=new HashSet<Guid>();
+                foreach(MEMResourceEntry entry in resources.Values)
+                    foreach(Guid dep in entry.Dependencies)
+                    {
+                        if(!resources.ContainsKey(dep)){missing.Add(dep);continue;}
+                        List<Guid> uses;
+                        if(!reverse.TryGetValue(dep,out uses))
+                        {uses=new List<Guid>();reverse.Add(dep,uses);}
+                        uses.Add(entry.Id);
+                    }
+                var queue=new Queue<Guid>();queue.Enqueue(resourceId);
+                var discovered=new HashSet<Guid>{resourceId};
+                var paths=new Dictionary<Guid,Guid[]>();
+                paths.Add(resourceId,new[]{resourceId});
+                var affected=new List<MRIResourceImpact>();
+                while(queue.Count!=0)
+                {
+                    Guid current=queue.Dequeue();List<Guid> uses;
+                    if(!reverse.TryGetValue(current,out uses))continue;
+                    foreach(Guid dependent in uses.OrderBy(id=>id))
+                    {
+                        if(!discovered.Add(dependent))continue;
+                        Guid[] path=paths[current].Concat(new[]{dependent}).ToArray();
+                        paths.Add(dependent,path);
+                        affected.Add(new MRIResourceImpact(resources[dependent],path.Length-1,path));
+                        queue.Enqueue(dependent);
+                    }
+                }
+                return new MRIResourceImpactReport(resourceId,Project.Id,Revision,
+                    affected,missing);
             }
         }
         public IReadOnlyList<MRIUsage> FindUsages(Guid id)

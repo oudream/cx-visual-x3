@@ -90,21 +90,49 @@ namespace CxVisual.Mechanism.Core
         public MRIResourceReference FindReference(Guid id) { DemandAccess(MEMAccessOperation.Read);lock (_gate) { DemandOpen(); MRIResourceReference value; return _references.TryGetValue(id, out value) ? value : null; } }
         public MEMResourceEntry GetResourceEntry(Guid id)
         {
-            DemandAccess(MEMAccessOperation.Read);lock(_gate)
+            DemandAccess(MEMAccessOperation.Read);
+            lock(_gate)
             {
-                var resource=Project.FindResource(id,true);if(resource==null)return null;var asset=resource as MEMAssetReference;
-                if(asset!=null)return new MEMResourceEntry(asset,asset.ContentHash,1,new Guid[0]);
-                var node=(MEMNode)resource;var type=FindType(resource.TypeId);var dependencies=new HashSet<Guid>();
-                foreach(var owned in node.DescendantsAndSelf())
-                {
-                    var references=MRIReferenceList.View(owned);foreach(var reference in references)dependencies.Add(reference.TargetId);
-                    var records=new List<object>();records.AddRange(MPMDefinitionState.PropertiesOf(owned));records.AddRange(MPMDefinitionState.PortsOf(owned));records.AddRange(MPMDefinitionState.ConnectionsOf(owned));records.AddRange(MPMDefinitionState.MappingsOf(owned));
-                    records.AddRange(references);
-                    var visual=owned as MRCVisualItem;if(visual!=null&&visual.BindingItems!=null)foreach(var binding in visual.BindingItems)records.Add(Tuple.Create(owned.Id,binding.Key));
-                    foreach(var record in records){Guid[] targets;if(!_declarationDependencies.TryGetValue(record,out targets))continue;foreach(var target in targets){var targetNode=Find(target);if(targetNode!=null&&targetNode.ResourceRootId!=node.ResourceRootId)dependencies.Add(targetNode.ResourceRootId);if(FindAsset(target)!=null)dependencies.Add(target);}}
-                }
-                return new MEMResourceEntry(resource,MEMFileProjectStore.ResourceHash(node),type==null?1:type.SchemaVersion,dependencies.Where(dep=>dep!=resource.Id));
+                DemandOpen();
+                IMEMResource resource=Project.FindResource(id,true);
+                return resource==null?null:ReadResourceEntryCore(resource);
             }
+        }
+        // 在已经持有工程读锁的事务内获取单一资源元数据；复用原依赖规则，不另建图仓。
+        private MEMResourceEntry ReadResourceEntryCore(IMEMResource resource)
+        {
+            var asset=resource as MEMAssetReference;
+            if(asset!=null)return new MEMResourceEntry(asset,asset.ContentHash,1,new Guid[0]);
+            var node=(MEMNode)resource;var type=FindType(resource.TypeId);var dependencies=new HashSet<Guid>();
+            foreach(var owned in node.DescendantsAndSelf())
+            {
+                var references=MRIReferenceList.View(owned);
+                foreach(var reference in references)dependencies.Add(reference.TargetId);
+                var records=new List<object>();
+                records.AddRange(MPMDefinitionState.PropertiesOf(owned));
+                records.AddRange(MPMDefinitionState.PortsOf(owned));
+                records.AddRange(MPMDefinitionState.ConnectionsOf(owned));
+                records.AddRange(MPMDefinitionState.MappingsOf(owned));
+                records.AddRange(references);
+                var visual=owned as MRCVisualItem;
+                if(visual!=null&&visual.BindingItems!=null)
+                    foreach(var binding in visual.BindingItems)
+                        records.Add(Tuple.Create(owned.Id,binding.Key));
+                foreach(var record in records)
+                {
+                    Guid[] targets;
+                    if(!_declarationDependencies.TryGetValue(record,out targets))continue;
+                    foreach(var target in targets)
+                    {
+                        MEMNode targetNode;_index.TryGetValue(target,out targetNode);
+                        if(targetNode!=null&&targetNode.ResourceRootId!=node.ResourceRootId)
+                            dependencies.Add(targetNode.ResourceRootId);
+                        if(FindAsset(target)!=null)dependencies.Add(target);
+                    }
+                }
+            }
+            return new MEMResourceEntry(resource,MEMFileProjectStore.ResourceHash(node),
+                type==null?1:type.SchemaVersion,dependencies.Where(dep=>dep!=resource.Id));
         }
         private static void CheckSupportedType(MEMNode node)
         {
