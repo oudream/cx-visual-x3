@@ -374,10 +374,12 @@ namespace CxVisual.Studio
         {
             internal readonly string SectionId;
             internal readonly string Title;
-            internal readonly Func<MVBConfigScopeResolver,FrameworkElement> Create;
+            internal readonly Func<MVBConfigScopeResolver,MHSConfigAuthorizedSession,
+                string,string,FrameworkElement> Create;
             internal readonly string[] ResourceTypeIds;
             internal StudioConfigurationContribution(string id,string title,
-                Func<MVBConfigScopeResolver,FrameworkElement> create,string[] resourceTypeIds)
+                Func<MVBConfigScopeResolver,MHSConfigAuthorizedSession,
+                    string,string,FrameworkElement> create,string[] resourceTypeIds)
             {SectionId=id;Title=title;Create=create;ResourceTypeIds=resourceTypeIds;}
         }
         private readonly Dictionary<string,StudioConfigurationContribution> _studioConfigurations =
@@ -419,7 +421,10 @@ namespace CxVisual.Studio
             if(resourceTypeIds.Any(x=>string.IsNullOrWhiteSpace(x)||x.Length>128))
                 throw new ArgumentException("资源类型标识无效","resourceTypeIds");
             _studioConfigurations.Add(id,new StudioConfigurationContribution(id,title,
-                scope=>new MPWConfigEditorControl<T>(scope.Open<T>()),
+                (scope,authorized,kind,scopeId)=>authorized==null?
+                    (FrameworkElement)new MPWConfigEditorControl<T>(scope.Open<T>()):
+                    new MPWConfigEditorControl<T>(authorized.Open<T>(
+                        new FCMConfigIdentity(id,kind,scopeId))),
                 resourceTypeIds.Distinct(StringComparer.Ordinal).ToArray()));
         }
 
@@ -453,6 +458,21 @@ namespace CxVisual.Studio
             return contribution.ResourceTypeIds.Contains(scope.ResourceTypeId,
                 StringComparer.Ordinal);
         }
+        private FCMConfigPrincipal _studioConfigPrincipal;
+        private IFCMConfigAccessPolicy _studioConfigAccessPolicy;
+        /// <summary>受信宿主在打开配置窗口前提供当前认证主体与授权策略。
+        /// 之后所有配置Read/Edit/Commit/Apply仍由MHS AuthorizedSession逐操作检查。</summary>
+        public void SetStudioConfigurationAuthorization(
+            FCMConfigPrincipal principal,IFCMConfigAccessPolicy policy)
+        {
+            if(principal==null||policy==null)
+                throw new ArgumentNullException(principal==null?"principal":"policy");
+            if(FindStudioContent("doc.config") is LayoutDocument)
+                throw new InvalidOperationException("配置文档打开时不可切换身份和授权策略");
+            _studioConfigPrincipal=principal;
+            _studioConfigAccessPolicy=policy;
+        }
+
         private FrameworkElement CreateConfigurationDocument()
         {
             EnsureStudioConfigurationDefaults();
@@ -467,6 +487,8 @@ namespace CxVisual.Studio
                 x.Id==_studioConfigurationScopeId)??choices[0];
             string root=Path.Combine(GetDemoDataRoot(),"Configs","V24","Projects");
             MHSConfigService configs=new MHSConfigService(root);
+            MHSConfigAuthorizedSession authorized=_studioConfigPrincipal==null?null:
+                configs.Authorize(_studioConfigPrincipal,_studioConfigAccessPolicy);
 
             DockPanel host=new DockPanel {
                 Background=(Brush)Application.Current.Resources["StudioBackgroundBrush"] };
@@ -506,7 +528,14 @@ namespace CxVisual.Studio
                     .Where(c=>ConfigurationMatchesScope(c,choice))
                     .OrderBy(c=>c.SectionId,StringComparer.Ordinal))
                 {
-                    FrameworkElement editor=item.Create(resolver);
+                    FrameworkElement editor;
+                    try { editor=item.Create(resolver,authorized,choice.Kind,choice.Id); }
+                    catch(UnauthorizedAccessException)
+                    {
+                        // 授权拒绝只显示固定提示，不泄露配置字段、当前值或敏感错误信息。
+                        editor=new TextBlock {Text="当前身份无权编辑此配置范围，请联系授权管理员。",
+                            TextWrapping=TextWrapping.Wrap,Margin=new Thickness(8) };
+                    }
                     editors.Add(editor);
                     Border card=new Border {
                         BorderThickness=new Thickness(1),
