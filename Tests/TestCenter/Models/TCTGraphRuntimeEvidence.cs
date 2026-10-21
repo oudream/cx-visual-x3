@@ -22,6 +22,54 @@ namespace CxVisual.TestCenter.Models
         {
             if (snapshot == null || logic == null || compiled == null || result == null || trace == null)
                 throw new ArgumentNullException("GraphRuntime Owner objects");
+            XElement definition = new XElement("Definition");
+            WriteBlock(definition, logic.Root, 0);
+            return SerializeOwner(snapshot, definition, compiled, result, trace);
+        }
+
+        // MOL V2自由连接Owner，直接读取保存过的MPC端口及MOL Link，不从编译依赖倒推连线。
+        public static byte[] Serialize(MEMProjectSnapshot snapshot, MOLWiringDefinition wiring,
+            MOCCompiledPlan compiled, MRKFlowResult result, MOCTraceView trace)
+        {
+            if (wiring == null) throw new ArgumentNullException("wiring");
+            wiring.ValidateExecutable();
+            XElement definition = new XElement("Definition", new XAttribute("variant", "Wiring"),
+                new XAttribute("entry", wiring.EntryBlockId));
+            foreach (MOLControlBlock block in wiring.Blocks)
+            {
+                XElement node = new XElement("Block", new XAttribute("id", block.Id),
+                    new XAttribute("kind", block.Kind),
+                    new XAttribute("capability", block.CapabilityId ?? ""));
+                foreach (MPCPortDescriptor port in wiring.Ports[block.Id])
+                    node.Add(new XElement("Port", new XAttribute("member", port.MemberId),
+                        new XAttribute("direction", port.Direction),
+                        new XAttribute("type", port.TypeId),
+                        new XAttribute("kind", port.Kind),
+                        new XAttribute("required", port.Required)));
+                MOLBlockPosition position;
+                if (wiring.Positions.TryGetValue(block.Id, out position))
+                {
+                    node.SetAttributeValue("x", position.X.ToString("R", System.Globalization.CultureInfo.InvariantCulture));
+                    node.SetAttributeValue("y", position.Y.ToString("R", System.Globalization.CultureInfo.InvariantCulture));
+                }
+                definition.Add(node);
+            }
+            foreach (MOLLink link in wiring.Links)
+                definition.Add(new XElement("Link", new XAttribute("id", link.Id),
+                    new XAttribute("sourceBlock", link.Source.BlockId),
+                    new XAttribute("sourcePort", link.Source.PortMemberId),
+                    new XAttribute("targetBlock", link.Target.BlockId),
+                    new XAttribute("targetPort", link.Target.PortMemberId),
+                    new XAttribute("kind", link.Kind),
+                    new XAttribute("condition", link.ConditionId ?? "")));
+            return SerializeOwner(snapshot, definition, compiled, result, trace);
+        }
+
+        private static byte[] SerializeOwner(MEMProjectSnapshot snapshot, XElement definition,
+            MOCCompiledPlan compiled, MRKFlowResult result, MOCTraceView trace)
+        {
+            if (snapshot == null || compiled == null || result == null || trace == null)
+                throw new ArgumentNullException("GraphRuntime Owner objects");
             if (compiled.ProjectId != snapshot.ProjectId ||
                 compiled.EngineeringRevision != snapshot.Revision || result.FlowId == Guid.Empty)
                 throw new InvalidDataException("MOC/MEM revision or MRK Flow identity mismatch");
@@ -31,8 +79,6 @@ namespace CxVisual.TestCenter.Models
                 new XAttribute("planId", compiled.Plan.Id),
                 new XAttribute("flowId", result.FlowId),
                 new XAttribute("flowState", result.State));
-            XElement definition = new XElement("Definition");
-            WriteBlock(definition, logic.Root, 0);
             root.Add(definition);
             XElement plan = new XElement("Plan");
             foreach (MRKExecutionStep step in compiled.Plan.Steps)
@@ -116,6 +162,52 @@ namespace CxVisual.TestCenter.Models
                 if (!Guid.TryParse(key, out id) || id == Guid.Empty || !blocks.Add(key))
                     throw new InvalidDataException("Invalid/duplicate MOL Block");
             }
+            if ((string)definition.Attribute("variant") == "Wiring")
+            {
+                var ports = new Dictionary<string, Dictionary<string, XElement>>(StringComparer.Ordinal);
+                foreach (XElement block in definition.Elements("Block"))
+                {
+                    string id = (string)block.Attribute("id");
+                    var members = new Dictionary<string, XElement>(StringComparer.Ordinal);
+                    foreach (XElement port in block.Elements("Port"))
+                    {
+                        string member = (string)port.Attribute("member");
+                        if (string.IsNullOrWhiteSpace(member) || members.ContainsKey(member) ||
+                            string.IsNullOrWhiteSpace((string)port.Attribute("type")) ||
+                            !Enum.IsDefined(typeof(MPCPortDirection), (string)port.Attribute("direction")) ||
+                            !Enum.IsDefined(typeof(MPCPortKind), (string)port.Attribute("kind")))
+                            throw new InvalidDataException("Invalid/duplicate MPC typed Port");
+                        members.Add(member, port);
+                    }
+                    ports.Add(id, members);
+                }
+                var linkIds = new HashSet<Guid>();
+                foreach (XElement link in definition.Elements("Link"))
+                {
+                    Guid id;
+                    string source = (string)link.Attribute("sourceBlock"),
+                        target = (string)link.Attribute("targetBlock"),
+                        a = (string)link.Attribute("sourcePort"),
+                        b = (string)link.Attribute("targetPort");
+                    Dictionary<string, XElement> outputs, inputs;
+                    XElement outPort, inPort;
+                    if (!Guid.TryParse((string)link.Attribute("id"), out id) || id == Guid.Empty ||
+                        !linkIds.Add(id) || !ports.TryGetValue(source, out outputs) ||
+                        !ports.TryGetValue(target, out inputs) ||
+                        !outputs.TryGetValue(a, out outPort) || !inputs.TryGetValue(b, out inPort) ||
+                        (string)outPort.Attribute("direction") != "Output" ||
+                        (string)inPort.Attribute("direction") != "Input" ||
+                        (string)outPort.Attribute("kind") != (string)link.Attribute("kind") ||
+                        (string)inPort.Attribute("kind") != (string)link.Attribute("kind"))
+                        throw new InvalidDataException("MOL link has invalid typed endpoints");
+                }
+                Guid entry;
+                if (!Guid.TryParse((string)definition.Attribute("entry"), out entry) ||
+                    !blocks.Contains(entry.ToString("D")))
+                    throw new InvalidDataException("Missing MOL Wiring entry");
+            }
+            else if (definition.Attribute("variant") != null)
+                throw new InvalidDataException("Unknown MOL Definition variant");
             var steps = new HashSet<string>(StringComparer.Ordinal);
             foreach (XElement step in plan.Elements("Step"))
                 if (string.IsNullOrWhiteSpace((string)step.Attribute("id")) ||

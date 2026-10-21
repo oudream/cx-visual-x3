@@ -534,6 +534,35 @@ namespace CxVisual.TestCenter.UI
             foreach (XElement block in root.Element("Definition").Elements("Block"))
                 definition.Items.Add(BuildBlock(block, observation));
             ContentPanel.Children.Add(definition);
+            XElement wiring = root.Element("Definition");
+            if ((string)wiring.Attribute("variant") == "Wiring")
+            {
+                ContentPanel.Children.Add(new TextBlock {
+                    Text = "MOL V2 · MPC Typed Port / Connection（工程真源，非推导依赖）",
+                    FontWeight = FontWeights.Bold, Margin = new Thickness(0, 10, 0, 5) });
+                foreach (XElement link in wiring.Elements("Link"))
+                {
+                    string identity = (string)link.Attribute("id"),
+                        source = (string)link.Attribute("sourceBlock"),
+                        target = (string)link.Attribute("targetBlock");
+                    Button connection = new Button {
+                        Content = (string)link.Attribute("kind") + " · " +
+                            source + "." + (string)link.Attribute("sourcePort") +
+                            " → " + target + "." + (string)link.Attribute("targetPort"),
+                        HorizontalContentAlignment = HorizontalAlignment.Left,
+                        Padding = new Thickness(5, 4, 5, 4), Margin = new Thickness(0, 2, 0, 2)
+                    };
+                    System.Windows.Automation.AutomationProperties.SetAutomationId(connection,
+                        "TCT.Graph.Link." + identity);
+                    connection.Click += (sender, args) => Selected(observation, identity,
+                        "MOL V2 Connection\nLinkId: " + identity +
+                        "\nSource: " + source + "." + (string)link.Attribute("sourcePort") +
+                        "\nTarget: " + target + "." + (string)link.Attribute("targetPort") +
+                        "\nKind: " + (string)link.Attribute("kind"));
+                    ContentPanel.Children.Add(connection);
+                    Count();
+                }
+            }
             ContentPanel.Children.Add(new TextBlock { Text = "MOC Compiled Step / Dependency → MOL Block",
                 FontWeight = FontWeights.Bold, Margin = new Thickness(0, 10, 0, 5) });
             Dictionary<string, XElement> map = root.Element("SourceMap").Elements("Map")
@@ -573,6 +602,11 @@ namespace CxVisual.TestCenter.UI
                     "\nKind: " + (string)block.Attribute("kind") +
                     "\nCapability: " + (string)block.Attribute("capability"));
             };
+            foreach (XElement port in block.Elements("Port"))
+                item.Items.Add(new TreeViewItem {
+                    Header = (string)port.Attribute("direction") + " " +
+                        (string)port.Attribute("member") + " : " + (string)port.Attribute("type") +
+                        " · " + (string)port.Attribute("kind") });
             foreach (XElement child in block.Elements("Block"))
                 item.Items.Add(BuildBlock(child, observation));
             return item;

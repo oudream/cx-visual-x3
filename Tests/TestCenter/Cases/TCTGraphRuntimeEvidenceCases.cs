@@ -89,6 +89,69 @@ namespace CxVisual.TestCenter.Cases
             finally { session.Close(true); }
         }
 
+        [TCTTest("TCT.M3.GRAPHRUNTIME.003", "MOL V2类型化Port/Link到MOC/MRK结构化Viewer",
+            TCTTestAspect.Mechanism, "Graph / Port", ObjectId = "MOLWiringDefinition")]
+        public static void TypedMpcLinks(TCTTestContext test)
+        {
+            MEMEngineeringSession session = MEMEngineering.Create("M3 Typed Links");
+            try
+            {
+                MEMPage page = session.AddPage("Typed Inspect");
+                Guid first = Guid.Empty, second = Guid.Empty;
+                MOCFlowBuilder.Edit(session, page.RootContent, builder => {
+                    first = builder.Step("tct.m3.capture");
+                    second = builder.Step("tct.m3.inspect");
+                    builder.Connect(first, "Done", second, "Start", MPCPortKind.Control);
+                    builder.Move(first, 40, 60);
+                    builder.Move(second, 350, 60);
+                });
+                MEMProjectSnapshot snapshot = session.GetSnapshot();
+                MOLWiringDefinition wiring = MOLWiringCodec.Get(snapshot.Find(page.RootContent.Id));
+                test.AssertTrue(wiring != null && wiring.Links.Count == 1, "真实MOL V2编辑提交",
+                    true, wiring != null && wiring.Links.Count == 1);
+                CpuResolver resolver = new CpuResolver();
+                MOCBuildResult build = new MOCBuildService().Build(snapshot, page.RootContent.Id, resolver);
+                test.AssertTrue(build.Succeeded, "MPC连接经过原生MOC构建", true, build.Succeeded);
+                if (!build.Succeeded) return;
+                MRKExecutionEngine engine = new MRKExecutionEngine(new FCRWorkerOptions(2, 8));
+                try
+                {
+                    MRKFlowHandle handle = engine.StartFlow(build.Plan.Plan);
+                    if (!handle.Completion.Wait(TimeSpan.FromSeconds(8)))
+                    {
+                        handle.RequestCancel();
+                        throw new TimeoutException("MPC graph run timeout");
+                    }
+                    MRKFlowResult result = handle.Completion.GetAwaiter().GetResult();
+                    test.AssertEqual(MRKFlowState.Completed, result.State, "原生MRK执行成功");
+                    test.AssertEqual(2, resolver.Executed, "两个真实能力由连接约束依次执行");
+                    byte[] raw = TCTGraphRuntimeEvidence.Serialize(snapshot, wiring, build.Plan,
+                        result, build.Plan.ReadTrace(handle, 0));
+                    XDocument evidence = TCTGraphRuntimeEvidence.Read(raw);
+                    XElement link = evidence.Root.Element("Definition").Element("Link");
+                    test.AssertEqual(wiring.Links[0].Id.ToString("D"),
+                        (string)link.Attribute("id"), "证据保留原MOL Link Id");
+                    test.AssertEqual(first.ToString("D"),
+                        (string)link.Attribute("sourceBlock"), "连接源BlockId不被编译Step替换");
+                    test.AssertEqual(second.ToString("D"),
+                        (string)link.Attribute("targetBlock"), "连接目标BlockId保留");
+                    test.AssertTrue(evidence.Root.Element("Definition").Elements("Block")
+                        .SelectMany(x => x.Elements("Port")).Any(), "真实MPC端口采样", true, true);
+                    string owner = snapshot.ProjectId.ToString("D");
+                    string address = session.GetAddress(page.RootContent).ToString();
+                    string flow = result.FlowId.ToString("D");
+                    test.ObserveStructured("Graph", "MOL V2 Port / Connection / MOC SourceMap",
+                        "真实持久化MPC控制端口和Link、MOC编译Step及MRK Trace",
+                        owner, address, flow, raw, TCTGraphRuntimeEvidence.Mime);
+                    test.ObserveStructured("Runtime", "MPC驱动的MRK执行Timeline",
+                        "真实Flow及依赖，不把工程连线和编译依赖混成一套图",
+                        owner, address, flow, raw, TCTGraphRuntimeEvidence.Mime);
+                }
+                finally { engine.StopAsync(true).GetAwaiter().GetResult(); }
+            }
+            finally { session.Close(true); }
+        }
+
         [TCTTest("TCT.M3.GRAPHRUNTIME.002", "GraphRuntime未知Schema及SourceMap篡改拒绝",
             TCTTestAspect.Mechanism, "Graph / Runtime", ObjectId = "TCTGraphRuntimeEvidence")]
         public static void RejectCorruptGraphRuntime(TCTTestContext test)
