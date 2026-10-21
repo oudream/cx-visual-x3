@@ -149,6 +149,33 @@ jobs:
               throw "WPF Shell smoke returned $($p.ExitCode)"
           }
           Write-Host 'PASS WPF Shell binds real TCT result and ordered events'
+      - name: Verify real Windows UI Automation user workflow
+        shell: powershell
+        run: |
+          $exe = (Resolve-Path 'Output/Debug/x64/CxVisual.TestCenter.exe').Path
+          $screenshot = Join-Path (Get-Location) 'Output/Debug/x64/TestCenterUIA.png'
+          if (Test-Path $screenshot) { Remove-Item $screenshot -Force }
+          $p = Start-Process -FilePath $exe -WorkingDirectory (Get-Location).Path -ArgumentList @('--ui-automation') -PassThru
+          try { Wait-Process -Id $p.Id -Timeout 105 -ErrorAction Stop }
+          catch {
+              Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+              throw 'Windows UI Automation TestCenter interaction timed out'
+          }
+          $p.Refresh()
+          if ($p.ExitCode -ne 0) {
+              $err = Join-Path ([System.IO.Path]::GetTempPath()) 'CxVisual-TestCenter-HostError.txt'
+              if (Test-Path $err) { Get-Content $err | Write-Host }
+              throw "Windows UI Automation failed: $($p.ExitCode)"
+          }
+          if (-not (Test-Path $screenshot)) { throw 'No actual WPF screenshot produced' }
+          Write-Host 'PASS UIAutomation ValuePattern -> TreeView Selection -> Invoke Run -> verified Geometry'
+      - name: Upload actual TestCenter WPF screenshot
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: TestCenter-WPF-UIA
+          path: Output/Debug/x64/TestCenterUIA.png
+          if-no-files-found: ignore
       - name: NUnit Engine real assembly discovery and execution
         shell: powershell
         run: |
