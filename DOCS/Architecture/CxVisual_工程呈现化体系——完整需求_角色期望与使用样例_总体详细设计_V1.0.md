@@ -2091,6 +2091,25 @@ EditorDescriptor(ResourceTypeId="ct.volume", EditorKind=ProfessionalViewer)
 | `CxCtReconstructionOptionsRules` | 类 | `CxVisual.Professional.CT3D` | `public IEnumerable<FCMConfigIssue> Validate(CxCtReconstructionOptions value, FCMConfigValidationContext ctx)` | [源码](../../Professional/CT3D/CxCtReconstructionOptions.cs) |
 | `StudioViewModel` | 类 | `CxVisual.Studio` | `public event PropertyChangedEventHandler PropertyChanged`；`public event EventHandler SceneChanged`；`public StudioViewModel()`；`public ICommand NewCommand`；`public ICommand AddCommand`；`public ICommand MoveCommand`；`public ICommand UndoCommand`；`public ICommand RedoCommand`；`public ICommand SaveCommand`；`public ICommand LoadCommand`；`public int Revision`；`public int ElementCount`；另有36项待展开 | [源码](../../Applications/Studio/StudioViewModel.cs) |
 
+### 43.7 批次7（14型）
+
+| 类型 | 形态 | 原Owner | 源码成员摘录（S1） | 来源 |
+|---|---|---|---|---|
+| `StudioPropertyItem` | 类 | `CxVisual.Studio` | `internal Guid OwnerId`；`internal int Revision`；`internal bool Reference,Visual`；`internal MPMValueKind Kind`；`internal MPMPropertyDescriptor Descriptor`；`internal Guid[] BatchOwnerIds`；`public int SelectionCount`；`public bool IsReadOnly`；`public bool IsMixedValue`；`public string MixedValueDescription`；`public IReadOnlyList<IMEMResource> ResourceChoices`；`public IMEMResource SelectedBindingResource`；另有15项待展开 | [源码](../../Applications/Studio/StudioViewModel.Engineering.cs) |
+| `StudioPortItem` | 类 | `CxVisual.Studio` | `internal MPCEndpoint Endpoint` | [源码](../../Applications/Studio/StudioViewModel.Engineering.cs) |
+| `StudioConnectionItem` | 类 | `CxVisual.Studio` | `internal Guid Id` | [源码](../../Applications/Studio/StudioViewModel.Engineering.cs) |
+| `MainWindow` | 类 | `CxVisual.Studio` | `public MainWindow()`；`protected override void OnClosing(System.ComponentModel.CancelEventArgs e)`；`protected override void OnClosed(System.EventArgs e)`；`internal static Guid InsertSelectedJoin(MEMEngineeringSession session, MEMContent content, MOCCapabilityDescriptor capability, IEnumerable<Guid> branchIds)` | [源码](../../Applications/Studio/MainWindow.xaml.cs) |
+| `MOLBlockViewModel` | 类 | `CxVisual.Studio` | `public MOLBlockViewModel(Guid id, string label, MOLControlKind kind)`；`public Guid Id`；`public string Label`；`public MOLControlKind Kind` | [源码](../../Applications/Studio/MOLRuntimeOverlay.cs) |
+| `MOLRuntimeOverlay` | 类 | `CxVisual.Studio` | `public void Clear()`；`public void Apply(MOCTraceView batch)`；`public string StateOf(Guid id)`；`public IDictionary<Guid,string> Snapshot()` | [源码](../../Applications/Studio/MOLRuntimeOverlay.cs) |
+| `MOLVisualTraceBindingResolver` | 类 | `CxVisual.Studio` | `public MOLVisualTraceBindingResolver(Func<Guid,string> stateReader, IMDSExternalBindingResolver existingOwner=null)`；`public static string VariableFor(Guid id,string state)`；`public object Resolve(MDSBindingSource source,string name,Type target)` | [源码](../../Applications/Studio/MOLRuntimeOverlay.cs) |
+| `RelayCommand` | 类 | `CxVisual.Studio` | `public RelayCommand(Action<object> execute)`；`public RelayCommand(Action execute, Func<bool> canExecute = null)`；`public bool CanExecute(object parameter)`；`public void Execute(object parameter)`；`public event EventHandler CanExecuteChanged` | [源码](../../Applications/Studio/RelayCommand.cs) |
+| `StudioDemoConfig` | 类 | `CxVisual.Studio` | `public int CanvasGridSize`；`public bool ShowGrid`；`public string EditorTitle`；`public bool AutoBackup` | [源码](../../Applications/Studio/StudioDemoConfig.cs) |
+| `StudioQuality` | 枚举 | `CxVisual.Studio` | `Fast`；`Balanced`；`Precise` | [源码](../../Applications/Studio/StudioDemoConfig.cs) |
+| `StudioDetectorSetting` | 类 | `CxVisual.Studio` | `public int Gain`；`public bool Enabled` | [源码](../../Applications/Studio/StudioDemoConfig.cs) |
+| `StudioWorkflowStep` | 类 | `CxVisual.Studio` | `public string Name`；`public int TimeoutMs` | [源码](../../Applications/Studio/StudioDemoConfig.cs) |
+| `StudioCalibration` | 类 | `CxVisual.Studio` | `public string Revision` | [源码](../../Applications/Studio/StudioDemoConfig.cs) |
+| `StudioRichConfig` | 类 | `CxVisual.Studio` | `public int ExposureMs`；`public bool PreviewEnabled`；`public StudioQuality Quality`；`public int? Retries`；`public Dictionary<string, StudioDetectorSetting> Detectors`；`public List<StudioWorkflowStep> Steps`；`public HashSet<string> Tags`；`public StudioCalibration Calibration` | [源码](../../Applications/Studio/StudioDemoConfig.cs) |
+
 ## 附录 A｜现有源码和记录入口
 
 - 统一实施/验收进度：`DOCS/Implementation/CxVisual_工程呈现化体系_30分钟分轮实施与验收_V1.0.md`。
