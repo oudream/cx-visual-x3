@@ -20,6 +20,7 @@ namespace CxVisual.TestCenter.UI
         private readonly TCTTestRibbonController _ribbon = new TCTTestRibbonController();
         private CancellationTokenSource _cancel;
         private TCTTestRunSummary _lastRun;
+        private string _activeHistoryDirectory;
 
         public TCTMainWindow()
         {
@@ -27,6 +28,8 @@ namespace CxVisual.TestCenter.UI
             Explorer.Bind(_catalog);
             Explorer.TestSelected += OnTestSelected;
             Results.ResultSelected += OnResultSelected;
+            History.HistoryOpened += OnHistoryOpened;
+            History.RerunRequested += async ids => await RunAsync(false, ids);
             DocumentHost.ObservationSelected += observation => Inspector.ShowObservation(observation);
             DocumentHost.ObjectSelected += (objectId, details) => Inspector.ShowObject(objectId, details);
             RibbonTray.ToolBars.Add(_ribbon.Build(OnRunAll, OnRunSelected, OnCancel, OnExport,
@@ -53,6 +56,25 @@ namespace CxVisual.TestCenter.UI
             else DocumentHost.Clear();
         }
 
+        private void OnHistoryOpened(TCTArchivedTestRun run, string directory)
+        {
+            if (run == null) return;
+            _activeHistoryDirectory = directory;
+            Results.Clear();
+            DocumentHost.Clear();
+            Timeline.Clear();
+            foreach (TCTTestCaseResult attempt in run.Attempts)
+                Results.Add(attempt);
+            if (run.Attempts.Count > 0)
+            {
+                TCTTestCaseResult last = run.Attempts[run.Attempts.Count - 1];
+                Inspector.ShowResult(last);
+                DocumentHost.ShowResult(last, directory);
+            }
+            StatusText.Text = "Verified History " + run.RunId + " · " +
+                run.Attempts.Count + " attempts; Timeline不伪造旧实时事件。";
+        }
+
         private void OnResultSelected(TCTTestCaseResult result)
         {
             if (result != null) ShowResult(result);
@@ -61,7 +83,7 @@ namespace CxVisual.TestCenter.UI
         private void ShowResult(TCTTestCaseResult result)
         {
             Inspector.ShowResult(result);
-            DocumentHost.ShowResult(result);
+            DocumentHost.ShowResult(result, _activeHistoryDirectory);
             Timeline.FocusAttempt(result.AttemptId);
         }
 
@@ -107,6 +129,8 @@ namespace CxVisual.TestCenter.UI
             if (selectedOnly) request.SelectedIds.Add(Explorer.SelectedTest.Descriptor.Id);
             if (explicitIds != null) foreach (string id in explicitIds) request.SelectedIds.Add(id);
             _lastRun = null;
+            _activeHistoryDirectory = null;
+            History.SetCurrent(null);
             Results.Clear(); DocumentHost.Clear(); Timeline.Clear();
             _cancel = new CancellationTokenSource();
             _ribbon.SetRunning(true);
@@ -118,6 +142,7 @@ namespace CxVisual.TestCenter.UI
                         Results.Add(result); ShowResult(result);
                     }),
                     evt => Dispatcher.BeginInvoke(new Action(() => Timeline.AddEvent(evt))));
+                History.SetCurrent(_lastRun);
                 StatusText.Text = "Run " + _lastRun.RunId + " · " + _lastRun.Total + "执行；" +
                     _lastRun.Passed + "通过；" + _lastRun.Failed + "失败/错误；" +
                     _lastRun.Cancelled + "取消；" + _lastRun.Unsupported + "未覆盖";
