@@ -95,4 +95,6 @@
 - 资源导航双击Page打开对应Tab；doc.visual仍保留旧高级图元编辑器，doc.flow仍保留原MOL流程编辑器。更换工程时只清理旧页面Tab，不可把仍在活动的固定流程文档抢回主页。
 - 新资源文档与布局XML联动；反序列化校验当前工程存在Page ID、非法及跨工程ID拒绝。布局选择不修改工程Revision。
 - 本轮源码提交：[773450c7](https://github.com/oudream/cx-visual-x3/commit/773450c7bd76c9c80f6cadfa8876c68c14e6fe09)，[S1 14/14 Windows STA](https://github.com/oudream/cx-visual-x3/actions/runs/39533807317) **success**；[Engineering WPF回归](https://github.com/oudream/cx-visual-x3/actions/runs/39533807345) **success**。
+- **R06补充验收（同SHA 4770a698）**：修复资源树检视页面B、活动Tab仍为A时的动态Ribbon命令错位：真实“圆”操作必须写入A、不得误写B；关闭活动页面Tab保持`LayoutRoot.ActiveContent`与Ribbon上下文一致；切换工程在清理旧Tab之前记录活动文档，防止AvalonDock焦点变化导致错误回退。更新`Applications/Studio/StudioShell.cs`、`StudioShell.ResourceDocuments.cs`和`StudioShellSelfTests.cs`，不改MEM Owner与事务语义。
+- **Windows验收证据**：[修复提交 4770a698](https://github.com/oudream/cx-visual-x3/commit/4770a698b1f89324769914ca8e09bec3af7eb757)，[Studio S1 Windows / 39548325060](https://github.com/oudream/cx-visual-x3/actions/runs/39548325060) **success，14/14 WPF STA通过**；[Engineering Organization Windows / 39548325067](https://github.com/oudream/cx-visual-x3/actions/runs/39548325067) **success，工程组织回归通过**。首轮新增反证曾触发失败，已按真实日志修复并复测；人工键鼠、DPI及全资源Tab仍待验。
 - 剩余P0：Content/Symbol/主子流程按资源独立Tab及完全的Ribbon接入、键鼠/多屏DPI、恢复持久化工程后的全部场景和复杂资源性能。已实现页面型Tab，不将其等同全EP01/R06最终验收。
