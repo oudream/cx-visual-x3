@@ -71,10 +71,10 @@
 
 - [H01实现与验收](Testing/CxVisual_工程组织体系_H01_实现与验收_V1.0.md)：用户已确认MRCVisualItem共同基类；只记录真实模型/编辑/保存加载及兼容回归，完整H03～H07未完成。
 
-- [完整架构设计与开发使用指南 V1.1](Architecture/CxVisual_统一工程组织体系_完整架构设计与开发使用指南_V1.1.md)：保留V1.0六角色、八案例、28项需求、真实API与历史验证；深化两Core项目、正确前缀、资源能力、简单入口与历史继承。目标API尚待实现。
-- [x2 → x3 工程组织复用映射 V1.1](Architecture/CxVisual_统一工程组织体系_x2至x3复用映射_V1.1.md)：固定x2 master源码，R01～R50关键属性/方法/真实测试与复用决策，不把静态审查当成已移植/已复跑。
-- [H00～H07 分阶段实施与验收指导 V1.1](Architecture/CxVisual_统一工程组织体系_H00至H07分阶段实施与验收指导_V1.1.md)：各阶段类型/Owner、依赖/顺序、案例/TDD/客观验收；H01必须真实保存重开，H06/H07保持原Visual/Studio/运行/专业Owner。
-- [H00 架构待裁决清单 V1.1](Architecture/CxVisual_统一工程组织体系_架构待裁决清单_V1.1.md)：D01～D04已于2026-10-17由用户明确确认，采用MRCVisualItem为共同视觉基类、MEMContent/MEMSymbol为资源定义。H01已授权实施；D05～D07扩展不冒充已验收。
+- **当前主规格**：[工程组织体系完整架构设计与开发使用指南 V1.2](Architecture/CxVisual_工程组织体系——完整架构设计与开发使用指南_V1.2.md)：保持六角色、八案例、28项需求与H00～H07历史，正式将MEMContent/MOL逻辑定义归Core唯一真源，MOC编译、MRK执行、MDS数据、Studio投影分工及最新正反例验收；旧[V1.1](Architecture/CxVisual_工程组织体系——完整架构设计与开发使用指南_V1.1.md)保留可追溯。
+- [x2 → x3 工程组织复用映射 V1.1](Architecture/过渡/CxVisual_统一工程组织体系_x2至x3复用映射_V1.1.md)：固定x2 master源码，R01～R50关键属性/方法/真实测试与复用决策，不把静态审查当成已移植/已复跑。
+- [H00～H07 分阶段实施与验收指导 V1.1](Architecture/过渡/CxVisual_统一工程组织体系_H00至H07分阶段实施与验收指导_V1.1.md)：各阶段类型/Owner、依赖/顺序、案例/TDD/客观验收；H01必须真实保存重开，H06/H07保持原Visual/Studio/运行/专业Owner。
+- [H00 架构待裁决清单 V1.1](Architecture/过渡/CxVisual_统一工程组织体系_架构待裁决清单_V1.1.md)：D01～D04已于2026-10-17由用户明确确认，采用MRCVisualItem为共同视觉基类、MEMContent/MEMSymbol为资源定义。H01已授权实施；D05～D07扩展不冒充已验收。
 
 ## 3. 新平台总边界（恢复上下文用）
 
