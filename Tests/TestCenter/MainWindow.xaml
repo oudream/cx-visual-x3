@@ -9,7 +9,7 @@
  <Grid>
   <Grid.RowDefinitions>
    <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
-   <RowDefinition Height="*"/><RowDefinition Height="225"/><RowDefinition Height="31"/>
+   <RowDefinition Height="*"/><RowDefinition Height="5"/><RowDefinition Height="250"/><RowDefinition Height="31"/>
   </Grid.RowDefinitions>
   <Border Grid.Row="0" Background="#17365D" Padding="13,8">
    <DockPanel>
@@ -38,15 +38,19 @@
     <ui:TCTTestInspectorControl x:Name="Inspector"/>
    </GroupBox>
   </Grid>
-  <TabControl Grid.Row="3" Margin="7,0,7,7" Background="White">
+  <GridSplitter Grid.Row="3" Height="5" HorizontalAlignment="Stretch" Background="#B8CADA"/>
+  <TabControl Grid.Row="4" Margin="7,0,7,7" Background="White">
    <TabItem Header="Results · 真实测试结果">
     <ui:TCTTestResultsControl x:Name="Results"/>
    </TabItem>
    <TabItem Header="Timeline · Worker实时事件">
     <ui:TCTTestTimelineControl x:Name="Timeline"/>
    </TabItem>
+   <TabItem Header="History · 归档 / 验证 / 重跑">
+    <ui:TCTTestHistoryControl x:Name="History"/>
+   </TabItem>
   </TabControl>
-  <Border Grid.Row="4" Background="#17365D" Padding="10,5">
+  <Border Grid.Row="5" Background="#17365D" Padding="10,5">
    <TextBlock x:Name="StatusText" Foreground="White" Text="Ready"/>
   </Border>
  </Grid>
