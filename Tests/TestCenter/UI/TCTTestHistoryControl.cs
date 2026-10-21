@@ -34,9 +34,15 @@ namespace CxVisual.TestCenter.UI
         public string LoadedRunId { get { return _loaded == null ? null : _loaded.RunId; } }
         public int HistoryCount { get { return _runs.Items.Count; } }
         public TCTTestHistoryControl()
+            : this(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "CxVisual", "TestCenter", "History"))
         {
-            _root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "CxVisual", "TestCenter", "History");
+        }
+        public TCTTestHistoryControl(string directory)
+        {
+            if (string.IsNullOrWhiteSpace(directory))
+                throw new ArgumentException("History directory required", "directory");
+            _root = Path.GetFullPath(directory);
             _repository = new TCTTestResultRepository(_root);
             _runs.Columns.Add(new DataGridTextColumn { Header = "RunId",
                 Binding = new Binding("RunId"), Width = new DataGridLength(2, DataGridLengthUnitType.Star) });
