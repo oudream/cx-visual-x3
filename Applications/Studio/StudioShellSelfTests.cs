@@ -613,6 +613,54 @@ namespace CxVisual.Studio
                         window.GetStudioContentIds().Contains(flowTab),
                         "原Page下的真实MOL画布被属性编辑破坏");
                 });
+                CheckStep("P0-4 MRK来源身份跳转AI/CV子流程及失效拒绝", () =>
+                {
+                    StudioViewModel vm=window.DataContext as StudioViewModel;
+                    MEMEngineeringSession session=vm.ProjectSession;
+                    MEMPage page=session.AddPage("P0-4 X-Ray主流程");
+                    MEMContent ai=session.AddContent(session.Project,"P0-4 AI子流程");
+                    MEMContent cv=session.AddContent(session.Project,"P0-4 CV子流程");
+                    MOLControlBlock aiBlock=MOLControlBlock.Action("AI");
+                    MOLControlBlock cvBlock=MOLControlBlock.Action("CV");
+                    var aiPorts=new Dictionary<Guid,IEnumerable<MPCPortDescriptor>>{
+                        {aiBlock.Id,new[]{new MPCPortDescriptor("Done",
+                            MPCPortDirection.Output,"signal",MPCPortKind.Control)}}};
+                    var cvPorts=new Dictionary<Guid,IEnumerable<MPCPortDescriptor>>{
+                        {cvBlock.Id,new[]{new MPCPortDescriptor("Done",
+                            MPCPortDirection.Output,"signal",MPCPortKind.Control)}}};
+                    MOLWiringCodec.Set(session,ai,new MOLWiringDefinition(
+                        aiBlock.Id,new[]{aiBlock},aiPorts,new MOLLink[0]));
+                    MOLWiringCodec.Set(session,cv,new MOLWiringDefinition(
+                        cvBlock.Id,new[]{cvBlock},cvPorts,new MOLLink[0]));
+                    session.PlaceContent(page.RootContent,ai,"AI检测调用");
+                    session.PlaceContent(page.RootContent,cv,"CV检测调用");
+                    window.OpenStudioPageDocument(page.Id);
+                    int revision=session.Revision;
+                    Assert(window.LocateStudioFlowSource(ai.Id,aiBlock.Id),
+                        "AI原始来源没有打开子流程Tab");
+                    string aiTab=window.ActiveStudioDocumentId;
+                    MOLFlowCanvas aiCanvas=window.GetStudioResourceFlow(ai.Id);
+                    Assert(aiCanvas!=null&&aiCanvas.SelectedBlockIds.SequenceEqual(
+                        new[]{aiBlock.Id})&&aiTab=="doc.resourceflow."+ai.Id.ToString("N"),
+                        "AI轨迹错误定位到父流程或未选中原块");
+                    Assert(window.LocateStudioFlowSource(cv.Id,cvBlock.Id),
+                        "CV原始来源没有打开子流程Tab");
+                    string cvTab=window.ActiveStudioDocumentId;
+                    Assert(cvTab!=aiTab&&window.GetStudioResourceFlow(cv.Id)
+                        .SelectedBlockIds.Single()==cvBlock.Id,
+                        "AI/CV子流程错误共享节点选择");
+                    Assert(!window.LocateStudioFlowSource(ai.Id,cvBlock.Id)&&
+                        window.ActiveStudioDocumentId==cvTab,
+                        "错误BlockId误切换编辑器");
+                    Assert(!window.LocateStudioFlowSource(Guid.NewGuid(),aiBlock.Id)&&
+                        window.ActiveStudioDocumentId==cvTab,
+                        "跨工程无效来源误切换编辑器");
+                    Assert(session.Revision==revision,
+                        "来源定位错误修改MEM Revision");
+                    session.Remove(cv);
+                    Assert(!window.LocateStudioFlowSource(cv.Id,cvBlock.Id),
+                        "已删除子流程仍能错误导航");
+                });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;
             }

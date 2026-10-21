@@ -1455,6 +1455,19 @@ namespace CxVisual.Studio
             }
             else LogicInfo.Text="当前诊断只定位到Content，缺少BlockId："+item.Label;
         }
+        /// <summary>从MRK原始Content/Block来源定位子流程；与父流程调用定位并存。</summary>
+        private void OnFlowLocateSourceContent(object sender,RoutedEventArgs args)
+        {
+            FlowTraceRecord trace=FlowTraceList.SelectedItem as FlowTraceRecord;
+            if(trace==null){LogicInfo.Text="请先选择一条真实运行轨迹";return;}
+            try
+            {
+                LogicInfo.Text=LocateStudioFlowSource(trace.ContentId,trace.BlockId)?
+                    "已定位真实子流程源节点："+trace.Label:
+                    "源节点已失效或没有V2 MOL定义，未改变当前Tab："+trace.Label;
+            }
+            catch(Exception ex){LogicInfo.Text="定位源节点失败："+ex.Message;}
+        }
         private void OnFlowLocateTrace(object sender,RoutedEventArgs args)
         {
             var trace=FlowTraceList.SelectedItem as FlowTraceRecord;

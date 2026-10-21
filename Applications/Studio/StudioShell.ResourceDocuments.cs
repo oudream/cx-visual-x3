@@ -450,6 +450,24 @@ namespace CxVisual.Studio
             return _pageDocuments.TryGetValue(FlowResourceDocumentPrefix+contentId.ToString("N"),
                 out ctx)?ctx.Flow:null;
         }
+        /// <summary>真实MRK轨迹的ContentId/BlockId下钻原MOL V2定义，失败不切换Tab。</summary>
+        public bool LocateStudioFlowSource(Guid contentId,Guid blockId)
+        {
+            if(contentId==Guid.Empty||blockId==Guid.Empty)return false;
+            MEMEngineeringSession session=_viewModel.ProjectSession;
+            MEMContent content=session.Find(contentId) as MEMContent;
+            if(content==null)return false;
+            MEMNodeSnapshot snapshot=session.GetSnapshot().Find(contentId);
+            if(snapshot==null)return false;
+            MOLWiringDefinition wiring=MOLWiringCodec.Get(snapshot);
+            if(wiring==null||!wiring.Blocks.Any(block=>block.Id==blockId))return false;
+            OpenStudioResourceDocument(contentId,true);
+            MOLFlowCanvas flow=GetStudioResourceFlow(contentId);
+            if(flow==null||flow.WiringDefinition==null)
+                throw new InvalidOperationException("真实MOL画布没有装载源节点");
+            flow.SetSelection(new[]{blockId});
+            return true;
+        }
         private ResourceDocumentContext ActiveStudioResourceContext()
         {
             ResourceDocumentContext ctx;

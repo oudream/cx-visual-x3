@@ -239,6 +239,8 @@
                                 <Button Content="定位诊断" Click="OnFlowLocateDiagnostic"/>
                                 <ComboBox x:Name="FlowDiagnosticList" Width="230" DisplayMemberPath="Label"/>
                                 <Button Content="定位轨迹节点" Click="OnFlowLocateTrace"/>
+                                <Button Content="跳转子流程源" Click="OnFlowLocateSourceContent"
+                                        ToolTip="从MRK轨迹真实ContentId/BlockId下钻AI或CV子流程源定义"/>
                                 <Button Content="定位关联画面" Click="OnFlowLocateVisual"/>
                                 <ComboBox x:Name="FlowTraceList" Width="220" DisplayMemberPath="Label"/>
                             </WrapPanel>
