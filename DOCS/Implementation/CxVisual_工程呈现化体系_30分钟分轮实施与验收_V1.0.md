@@ -60,7 +60,7 @@
 | R03 | EP04 | 属性默认、资源来源与无效引用诊断 | 已提交待CI | c2799d713c27（等待Windows验收） |
 | R04 | EP04 | 定义/实例覆盖、多选混合值/只读约束 | 已提交待CI，范围部分闭环 | 45ff4d1eecc（同定义实例批量、MPM原生ReadOnly；待Windows验证） |
 | R05 | EP01 | 工作区/资源树/实例与定义往返导航 | 部分通过：导航切片同SHA Windows/STA/TestCenter已过 | 56a7a467；[Studio 13 PASS](https://github.com/oudream/cx-visual-x3/actions/runs/39527839595)；[工程WPF回归](https://github.com/oudream/cx-visual-x3/actions/runs/39527839579)；[TestCenter通过](https://github.com/oudream/cx-visual-x3/actions/runs/39527839575) |
-| R06 | EP01 | 多页/多标签/保存重开/未保存提醒/布局恢复 | 未开始 | 待对应源码及Windows证据 |
+| R06 | EP01 | 多页/多标签/保存重开/未保存提醒/布局恢复 | **部分通过：MEMPage多Tab、独立SceneView/事务、布局恢复** | [773450c7](https://github.com/oudream/cx-visual-x3/commit/773450c7bd76c9c80f6cadfa8876c68c14e6fe09)；[S1/14 PASS](https://github.com/oudream/cx-visual-x3/actions/runs/39533807317)；[工程WPF回归成功](https://github.com/oudream/cx-visual-x3/actions/runs/39533807345)。Content/Symbol/流程资源多Tab与外部键鼠仍待完成 |
 | R07 | EP02 | 九Shape精确WPF绘制和文本图片受限SVG回归 | 未开始 | 待对应源码及Windows证据 |
 | R08 | EP02 | 缩放/高DPI/嵌套Group的命中、裁剪、遮挡 | 未开始 | 待对应源码及Windows证据 |
 | R09 | EP03 | 真实鼠标键盘多选、框选、批量拖动原子Undo | 未开始 | 待对应源码及Windows证据 |
@@ -137,3 +137,10 @@ R01源码已提交（截止 f6c0dceb7afae75d320f6b442f3a152b11566162）：修改
 | R05 | 部分通过：局部导航Windows+TestCenter均通过 | 56a7a4674be0bb78a064136e4073d1bd319ed159 | `CxVisualEditor` 的NavFrame保存真实资源及被选实例身份、剔除已删除对象；Studio ViewModel同步恢复；左资源树提供返回入口；Studio Shell测试新增13号“R05 定义与实例往返恢复及失效选择保护”。[S1 Windows CI 39527839595](https://github.com/oudream/cx-visual-x3/actions/runs/39527839595) **success**：2026-10-21日志13 PASS、0 FAIL；[工程组织CI 39527839579](https://github.com/oudream/cx-visual-x3/actions/runs/39527839579) **success**：Windows x64 MSBuild、ArchitectureSmoke --organization-wpf、benchmark和开发者示例均通过；配置两工作流同SHA success；[TestCenter Windows 39527839575](https://github.com/oudream/cx-visual-x3/actions/runs/39527839575) **success**，Windows NUnit/Worker/TestCenter验证成功。 | 全资源任意Tab及布局恢复/未保存提示属R06；跨MOL/SourceMap定位属R32/R43；实机UI手工及性能未验；不能因本轮五条Windows工作流通过就冒称全EP01或A/B/C已签收 |
 
 **2026-10-21 CI事实复核（更新旧结论）**：从 GitHub Actions `push` 运行记录取到了实际证据：集成提交 `0eb5cf69a250cd3c74aa3268de68deef066948ea` 的 [工程组织Windows工作流](https://github.com/oudream/cx-visual-x3/actions/runs/39525077202) **success**，日志显示 Windows 2022 / VS2022 x64 MSBuild、ArchitectureSmoke、`--organization-wpf`、`--organization-benchmark`、开发者示例编译运行成功，且 `PASS H06 Studio real WPF automation` 包含页面、双实例、定义导航、Undo/Redo、保存重开；同SHA的 [Studio S1工作流](https://github.com/oudream/cx-visual-x3/actions/runs/39525077173) **success**，12个Studio Shell STA自测通过。该SHA是在R01～R04源码提交**之后**的集成回归版本，证明其合入代码通过该集成检查；**不是四个原提交各自独立的同SHA CI验收，也不能替代R04跨定义批量、真实设备安全/性能、A/B/C端到端签收**。R01～R04继续记“部分闭环/集成回归已过、具体功能剩余待测”，不得再说完全没有Windows证据。R05提交 `56a7a4674be0bb78a064136e4073d1bd319ed159` 的工程组织/Studio Shell及两项配置Windows CI已经有明确**success**；第13项实际WPF STA自测PASS，错误原实例选择/删除返回两条路径均有反证。[TestCenter Windows 39527839575](https://github.com/oudream/cx-visual-x3/actions/runs/39527839575) 现已 **success**（同SHA `56a7a467`），与工程组织、Studio Shell及两项配置Windows工作流均有真实通过记录。R05最小导航切片Windows门禁已绿；跨专业多资源Tab、独立人工鼠标、DPI/长时间性能及A/B/C最终验收不在本轮签收范围。
+
+### R06 页面型多文档的真实证据与边界（2026-10-21）
+
+- **对应代码**：Applications/Studio/StudioShell.ResourceDocuments.cs，以及 StudioShell、资源树、图形结构树衔接。每个MEMPage一个真实CxVisualEditor与SceneView，画布选择、缩放独立，编辑事务、Revision及Undo/Redo全部共用同一个MEMEngineeringSession。
+- **正反用例**：页面A/B不同Tab及场景实例；真正新增MRCRectangle只改变A；布局可保存/恢复，跨工程或已删除页面ID拒绝；关闭重新打开资源文档无重复；保存工程重开后关闭旧页面Tab，同时原doc.flow仍然激活。
+- **同SHA证据**：[773450c7](https://github.com/oudream/cx-visual-x3/commit/773450c7bd76c9c80f6cadfa8876c68c14e6fe09)；[Studio S1 Windows 39533807317](https://github.com/oudream/cx-visual-x3/actions/runs/39533807317) **success，14/14 STA**；[Engineering Windows 39533807345](https://github.com/oudream/cx-visual-x3/actions/runs/39533807345) **success**，Windows x64编译、工程WPF与开发者示例成功。
+- **仍未验收**：Content、Symbol、MOL资源独立多Tab；九Shape全部在新资源Tab精细编辑；长期鼠标/多屏DPI、完整未保存提醒键鼠验收与TestCenter同SHA。本轮R06为部分通过，不能据此宣称EP01整体完成。

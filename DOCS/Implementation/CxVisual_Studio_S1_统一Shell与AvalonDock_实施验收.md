@@ -1,6 +1,6 @@
 # CxVisual Studio S1：统一 Shell 与 AvalonDock 接入（实施与验收）
 
-> **实测进度（2026-10-21）**：S1 自动验收已通过（12/12，含R07）；同一SHA的 Windows 工程组织回归已通过。以下仅陈述相应 SHA 的真实 CI，人工视觉/浮动/DPI/长稳仍待验证，不能将其等同完整工业Studio交付。
+> **实测进度（2026-10-21）**：S1 自动验收已通过（14/14，含R05/R06/R07）；同一SHA的 Windows 工程组织回归已通过。以下仅陈述相应 SHA 的真实 CI，人工视觉/浮动/DPI/长稳仍待验证，不能将其等同完整工业Studio交付。
 
 ## 1. 依据、范围及事实等级
 
@@ -88,3 +88,11 @@
 - `Hello/AvalonDock` 文档目前记录Windows动态验收待执行；首次正式集成应以本工作流及主程序手测为准。
 - 既有Studio内部仍有历史操作按钮，为防止回归S1未删除全部专业内嵌工具；S2再根据V1.2的Ribbon注册体系逐个收敛。
 - CT/VTK/WinForms/HWND混合Viewer、多屏浮窗未在本阶段完成验证；不得把DockingManager存在视为所有专业已通过。
+
+## 8. R06 页面资源独立Tab（2026-10-21）
+
+- 按MEMPage稳定ID打开唯一的AvalonDock页面Tab，真实SceneView+CxVisualEditor，每个Tab独立场景选择和视口；MEM工程真源、版本、编辑事务、Undo/Redo共享。关闭文档回收Editor订阅，不重建第二套项目。
+- 资源导航双击Page打开对应Tab；doc.visual仍保留旧高级图元编辑器，doc.flow仍保留原MOL流程编辑器。更换工程时只清理旧页面Tab，不可把仍在活动的固定流程文档抢回主页。
+- 新资源文档与布局XML联动；反序列化校验当前工程存在Page ID、非法及跨工程ID拒绝。布局选择不修改工程Revision。
+- 本轮源码提交：[773450c7](https://github.com/oudream/cx-visual-x3/commit/773450c7bd76c9c80f6cadfa8876c68c14e6fe09)，[S1 14/14 Windows STA](https://github.com/oudream/cx-visual-x3/actions/runs/39533807317) **success**；[Engineering WPF回归](https://github.com/oudream/cx-visual-x3/actions/runs/39533807345) **success**。
+- 剩余P0：Content/Symbol/主子流程按资源独立Tab及完全的Ribbon接入、键鼠/多屏DPI、恢复持久化工程后的全部场景和复杂资源性能。已实现页面型Tab，不将其等同全EP01/R06最终验收。
