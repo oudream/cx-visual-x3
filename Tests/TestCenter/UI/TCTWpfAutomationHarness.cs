@@ -25,8 +25,15 @@ namespace CxVisual.TestCenter.UI
             await window.Dispatcher.InvokeAsync(() => window.UpdateLayout());
             IntPtr hwnd = new WindowInteropHelper(window).Handle;
             if (hwnd == IntPtr.Zero) throw new InvalidOperationException("TestCenter has no HWND");
+            SaveScreenshot(window, "TestCenter-01-Workspace.png");
             await Task.Run(() => Interact(hwnd, window));
-            SaveScreenshot(window);
+            SaveScreenshot(window, "TestCenterUIA.png");
+            SaveScreenshot(window, "TestCenter-02-Geometry.png");
+            await Task.Run(() => InteractObject(hwnd, window));
+            SaveScreenshot(window, "TestCenter-03-Object.png");
+            window.MenuThemeDark.RaiseEvent(new RoutedEventArgs(
+                System.Windows.Controls.MenuItem.ClickEvent, window.MenuThemeDark));
+            SaveScreenshot(window, "TestCenter-04-Dark.png");
         }
         private static AutomationElement Find(AutomationElement root, string id)
         {
@@ -75,6 +82,7 @@ namespace CxVisual.TestCenter.UI
                 window.Dispatcher.Invoke(new Action(() => {
                     result = window.Results.ResultCount >= 1 &&
                         window.DocumentHost.ViewerCount >= 1 &&
+                        window.MenuRunSelected.IsEnabled &&
                         window.Inspector.SelectedObservationTitle == null;
                 }));
                 if (result) { observed = true; break; }
@@ -93,7 +101,50 @@ namespace CxVisual.TestCenter.UI
             }));
             if (!proof) throw new InvalidOperationException("UIA ran test but did not show verified geometry");
         }
-        private static void SaveScreenshot(TCTMainWindow window)
+        private static void InteractObject(IntPtr hwnd, TCTMainWindow window)
+        {
+            AutomationElement root = AutomationElement.FromHandle(hwnd);
+            AutomationElement search = Find(root, "TCT.Explorer.Search");
+            ValuePattern input = search.GetCurrentPattern(ValuePattern.Pattern) as ValuePattern;
+            if (input == null) throw new InvalidOperationException("Object search has no ValuePattern");
+            input.SetValue("M-OBJ-007");
+            AutomationElement item = Find(root, "TCT.Case.M-OBJ-007");
+            SelectionItemPattern select = item.GetCurrentPattern(SelectionItemPattern.Pattern)
+                as SelectionItemPattern;
+            if (select == null) throw new InvalidOperationException("Symbol case has no SelectionItemPattern");
+            select.Select();
+            AutomationElement mode = Find(root, "TCT.Context.Object");
+            InvokePattern context = mode.GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
+            if (context == null) throw new InvalidOperationException("Object Ribbon command not accessible");
+            context.Invoke();
+            AutomationElement run = Find(root, "TCT.RunSelected");
+            InvokePattern invoke = run.GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
+            if (invoke == null) throw new InvalidOperationException("TestCenter run command not accessible");
+            invoke.Invoke();
+            for (int attempt = 0; attempt < 240; attempt++)
+            {
+                bool ready = false;
+                window.Dispatcher.Invoke(new Action(() =>
+                {
+                    var tabs = window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                    if (tabs == null || !window.MenuRunSelected.IsEnabled) return;
+                    TCTGeometryTestView geometry = tabs.Items.OfType<System.Windows.Controls.TabItem>()
+                        .Select(tab => tab.Content).OfType<TCTGeometryTestView>().FirstOrDefault();
+                    TCTObjectTestView objects = tabs.Items.OfType<System.Windows.Controls.TabItem>()
+                        .Select(tab => tab.Content).OfType<TCTObjectTestView>().FirstOrDefault();
+                    ready = geometry != null && objects != null &&
+                        geometry.VerifiedFigureCount == 4 && geometry.EvidenceProblem == null &&
+                        objects.VerifiedReferenceCount == 2 && objects.RelationDiagram != null &&
+                        objects.RelationDiagram.VerifiedReferenceLines == 2 &&
+                        objects.EvidenceProblem == null;
+                }));
+                if (ready) return;
+                Thread.Sleep(200);
+            }
+            throw new TimeoutException("UIA executed Symbol case but did not display verified Geometry/Object evidence");
+        }
+
+        private static void SaveScreenshot(TCTMainWindow window, string name)
         {
             window.UpdateLayout();
             int width = (int)Math.Ceiling(window.ActualWidth);
@@ -106,7 +157,7 @@ namespace CxVisual.TestCenter.UI
             PngBitmapEncoder encoder = new PngBitmapEncoder();
             encoder.Frames.Add(BitmapFrame.Create(pixels));
             string path = Path.Combine(Environment.CurrentDirectory, "Output", "Debug", "x64",
-                "TestCenterUIA.png");
+                name);
             Directory.CreateDirectory(Path.GetDirectoryName(path));
             using (FileStream stream = new FileStream(path, FileMode.Create, FileAccess.Write))
                 encoder.Save(stream);
