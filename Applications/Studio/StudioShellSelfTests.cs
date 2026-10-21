@@ -2113,6 +2113,11 @@ namespace CxVisual.Studio
                         embeddedScopePage.RootContent,"P1相机嵌入配置");
                     Guid embeddedStableId=embeddedScopeChild.Id;
                     int embeddedScopeRevision=embeddedSession.Revision;
+                    // P1权限反证：真实新资源不能继承上一资源的已授权身份。
+                    FCMConfigPrincipal embeddedPrincipal=new FCMConfigPrincipal(
+                        "p1-embedded-operator",new[]{"p1-embedded-editor"});
+                    FCMConfigRolePolicy embeddedPolicy=new FCMConfigRolePolicy();
+                    window.SetStudioConfigurationAuthorization(embeddedPrincipal,embeddedPolicy);
                     window.OpenStudioDocument("doc.config");
                     LayoutDocument embeddedScopeDocument=window.StudioDock.Layout.Descendents()
                         .OfType<LayoutDocument>().Single(x=>x.ContentId=="doc.config");
@@ -2138,13 +2143,33 @@ namespace CxVisual.Studio
                         System.Windows.LogicalTreeHelper.GetChildren(node)
                             .OfType<System.Windows.DependencyObject>()
                             .Any(child=>embeddedHasEditor(child,type));
+                    Assert(!embeddedHasEditor(
+                        (System.Windows.DependencyObject)embeddedScopeDocument.Content,
+                        typeof(MPWConfigEditorControl<CxAutomationDeviceOptions>)),
+                        "未经授权的嵌入Content错误开放了专业配置编辑器");
+                    window.TryCloseStudioDocument("doc.config",true);
+                    foreach(FCMConfigAccessAction embeddedAction in new[]{
+                        FCMConfigAccessAction.Read,FCMConfigAccessAction.ReadSensitive,
+                        FCMConfigAccessAction.Edit,FCMConfigAccessAction.Commit,
+                        FCMConfigAccessAction.Audit,FCMConfigAccessAction.Restore})
+                        embeddedPolicy.Grant("p1-embedded-editor",embeddedAction,
+                            "Automation.Device","resource",embeddedStableId.ToString("N"));
+                    window.SetStudioConfigurationAuthorization(embeddedPrincipal,embeddedPolicy);
+                    window.OpenStudioDocument("doc.config");
+                    embeddedScopeDocument=window.StudioDock.Layout.Descendents()
+                        .OfType<LayoutDocument>().Single(x=>x.ContentId=="doc.config");
+                    embeddedSelector=embeddedFindBox(
+                        (System.Windows.DependencyObject)embeddedScopeDocument.Content);
+                    embeddedChoice=embeddedSelector.Items.Cast<object>().Single(x=>
+                        x.ToString().Contains("P1嵌入式配置页面/RootContent/P1相机嵌入配置"));
+                    embeddedSelector.SelectedItem=embeddedChoice;
                     Assert(embeddedHasEditor(
                         (System.Windows.DependencyObject)embeddedScopeDocument.Content,
                         typeof(MPWConfigEditorControl<CxAutomationDeviceOptions>))&&
                         !embeddedHasEditor(
                             (System.Windows.DependencyObject)embeddedScopeDocument.Content,
                             typeof(MPWConfigEditorControl<CxVisionInspectionOptions>)),
-                        "多层资源Scope没有根据真实TypeId注册匹配Automation专业");
+                        "显式授权的多层资源Scope未通过TypeId映射到Automation专业");
                     var embeddedService=new MHSConfigService(System.IO.Path.Combine(
                         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                         "CxVisual","Configs","V24","Projects"));
