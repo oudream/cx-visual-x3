@@ -117,7 +117,10 @@ namespace CxVisual.Studio
         public void RefreshStudioGraphicsTree()
         {
             if (_studioGraphicsRefreshing || _viewModel == null || StudioGraphicsTree == null) return;
-            MEMNode definition = _viewModel.CurrentStudioDefinition;
+            ResourceDocumentContext active=ActiveStudioResourceContext();
+            MEMNode definition=active!=null&&!active.IsFlow
+                ? _viewModel.ProjectSession.Find(active.ResourceId)
+                : _viewModel.CurrentStudioDefinition;
             MEMContent content = definition as MEMContent;
             MEMPage page = definition as MEMPage;
             if (content == null && page != null) content = page.RootContent;
@@ -187,9 +190,18 @@ namespace CxVisual.Studio
             TreeViewItem node = args.NewValue as TreeViewItem;
             MRCVisualItem item = node == null ? null : node.Tag as MRCVisualItem;
             if (item == null || _viewModel.SelectedId == item.Id) return;
-            _viewModel.Select(item.Id);
-            SceneHost.SetSelectedVisualIds(new[] { item.Id });
-            RefreshVisualInspector();
+            ResourceDocumentContext active=ActiveStudioResourceContext();
+            if(active!=null&&!active.IsFlow)
+            {
+                active.Select(item.Id);
+                if(active.Scene!=null)active.Scene.SetSelectedVisualIds(new[]{item.Id});
+            }
+            else
+            {
+                _viewModel.Select(item.Id);
+                SceneHost.SetSelectedVisualIds(new[]{item.Id});
+                RefreshVisualInspector();
+            }
         }
     }
 }

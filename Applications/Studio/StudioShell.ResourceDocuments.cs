@@ -9,278 +9,372 @@ using System.Windows.Input;
 using AvalonDock.Layout;
 using CxVisual.Mechanism.Core;
 using CxVisual.Mechanism.Visual;
+using CxVisual.Mechanism.Orchestration;
 using CxVisual.Mechanism.Presentation.Wpf;
 
 namespace CxVisual.Studio
 {
     /// <summary>
-    /// R06a：一个MEM页面对应一个真实SceneView+CxVisualEditor文档。
-    /// 不克隆MEM资源、历史、Scene数据；每个Tab的选择和视口独立，编辑事务共用MEM。
+    /// R06/P0-2：真正的页面、共享Content/Symbol及Content逻辑编辑Tab。
+    /// 每个Tab有独立视图/选择，始终复用单一MEM工程会话、MOL定义和Undo历史。
     /// </summary>
     public partial class MainWindow
     {
         private const string PageDocumentPrefix = "doc.page.";
-        private readonly Dictionary<string, PageDocumentContext> _pageDocuments =
-            new Dictionary<string, PageDocumentContext>(StringComparer.Ordinal);
+        private const string ContentDocumentPrefix = "doc.content.";
+        private const string SymbolDocumentPrefix = "doc.symbol.";
+        private const string FlowResourceDocumentPrefix = "doc.resourceflow.";
+        private readonly Dictionary<string, ResourceDocumentContext> _pageDocuments =
+            new Dictionary<string, ResourceDocumentContext>(StringComparer.Ordinal);
         private bool _switchingPageDocument;
         private bool _closingPageDocuments;
         private MEMEngineeringSession _pageDocumentSession;
 
-        private sealed class PageDocumentContext : IDisposable
+        private sealed class ResourceDocumentContext : IDisposable
         {
             private readonly MainWindow _owner;
             private bool _disposed;
-            internal readonly Guid PageId;
+            internal readonly Guid ResourceId;
+            internal readonly string Key;
+            internal readonly bool IsFlow;
             internal readonly MEMEngineeringSession Session;
             internal readonly CxVisualEditor Editor;
             internal readonly SceneView Scene;
+            internal readonly MOLFlowCanvas Flow;
             internal readonly DockPanel Panel;
             internal readonly TextBlock Status;
+            private readonly IDisposable _watch;
 
-            internal PageDocumentContext(MainWindow owner, MEMEngineeringSession session, MEMPage page)
+            internal ResourceDocumentContext(MainWindow owner, MEMEngineeringSession session,
+                MEMNode resource,string key,bool flow)
             {
-                _owner = owner;
-                Session = session;
-                PageId = page.Id;
-                Editor = new CxVisualEditor(session);
-                Editor.SetPage(PageId);
-                Scene = new SceneView { Focusable = true };
-                Scene.SetAssetResolver(id => Session.OpenAsset(id));
-                Status = new TextBlock { Margin = new Thickness(6, 4, 6, 3), TextWrapping = TextWrapping.Wrap };
-                Panel = new DockPanel();
-                StackPanel top = new StackPanel { Orientation = Orientation.Vertical };
-                WrapPanel actions = new WrapPanel();
-                actions.Children.Add(Button("添加矩形", () =>
-                {
-                    int count = Editor.Scene.Count + 1;
-                    MTCEditResult<bool> result = Editor.AddRectangle(
-                        "矩形 " + count, 60 + count * 15, 55 + count * 12, 110, 65);
-                    Status.Text = result.Success ? "已由MEM提交矩形，支持统一撤销" :
-                        "添加失败：" + result.ErrorCode + " " + result.Message;
-                }));
-                actions.Children.Add(Button("撤销", () =>
-                {
-                    MTCEditResult<bool> result = Editor.Undo();
-                    Status.Text = result.Success ? "已撤销MEM事务" : "撤销失败：" + result.Message;
-                }));
-                actions.Children.Add(Button("重做", () =>
-                {
-                    MTCEditResult<bool> result = Editor.Redo();
-                    Status.Text = result.Success ? "已重做MEM事务" : "重做失败：" + result.Message;
-                }));
-                actions.Children.Add(Button("完整图元编辑", () =>
-                {
-                    MEMPage actual = Session.Find(PageId) as MEMPage;
-                    if (actual == null) return;
-                    _owner._viewModel.ActivePage = actual;
-                    _owner.OpenStudioDocument("doc.visual");
-                }));
-                top.Children.Add(actions);
-                top.Children.Add(Status);
-                DockPanel.SetDock(top, Dock.Top);
+                _owner=owner;Session=session;ResourceId=resource.Id;Key=key;IsFlow=flow;
+                Panel=new DockPanel();
+                Status=new TextBlock{Margin=new Thickness(6,4,6,3),TextWrapping=TextWrapping.Wrap};
+                StackPanel top=new StackPanel{Orientation=Orientation.Vertical};
+                WrapPanel actions=new WrapPanel();
+                top.Children.Add(actions);top.Children.Add(Status);
+                DockPanel.SetDock(top,Dock.Top);
                 Panel.Children.Add(top);
-                Panel.Children.Add(Scene);
-                Scene.NodeActivated += (sender, args) =>
+                if(flow)
                 {
-                    if (_disposed || !_owner.IsStudioDocumentActive(PageDocumentId(PageId))) return;
-                    Editor.Select(args.Id);
-                    _owner._viewModel.Select(args.Id);
-                };
-                Scene.SelectionSetRequested += ids =>
+                    Flow=new MOLFlowCanvas{Focusable=true,MinHeight=410};
+                    Panel.Children.Add(Flow);
+                    actions.Children.Add(Button("撤销",()=>Undo(false)));
+                    actions.Children.Add(Button("重做",()=>Undo(true)));
+                    actions.Children.Add(Button("打开图元",()=>
+                        _owner.OpenStudioResourceDocument(ResourceId,false)));
+                    Flow.BlockMoveRequested+=(s,e)=>ApplyFlow(
+                        "移动流程节点", b=>b.Move(e.BlockId,e.X,e.Y));
+                    Flow.BlocksMoveRequested+=(s,e)=>ApplyFlow(
+                        "批量移动流程节点",b=>b.MoveMany(e.BlockIds,e.DeltaX,e.DeltaY));
+                    Flow.PortLinkRequested+=(s,e)=>ApplyFlow(
+                        "连接类型化端口",b=>b.Connect(e.SourceBlockId,e.SourcePort,
+                            e.TargetBlockId,e.TargetPort,e.Kind));
+                    Flow.PortLinkRejected+=(s,e)=>Status.Text="端口连线被拒绝："+e.Reason;
+                    _watch=Session.Watch(change=>OnChanged(this,EventArgs.Empty));
+                }
+                else
                 {
-                    if (_disposed || !_owner.IsStudioDocumentActive(PageDocumentId(PageId))) return;
-                    Guid? selected = ids.Count == 1 ? (Guid?)ids[0] : null;
-                    Editor.Select(selected);
-                    _owner._viewModel.Select(selected);
-                    Scene.SetSelectedVisualIds(ids);
-                };
-                Scene.MoveRequested += (sender, args) =>
-                {
-                    if (_disposed || !_owner.IsStudioDocumentActive(PageDocumentId(PageId))) return;
-                    MTCEditResult<bool> result = Editor.Move(args.Id, args.X, args.Y);
-                    if (!result.Success) Status.Text = "拖动失败：" + result.ErrorCode + " " + result.Message;
-                };
-                Editor.Changed += OnEditorChanged;
+                    Editor=new CxVisualEditor(session);
+                    MEMPage page=resource as MEMPage;
+                    if(page!=null)Editor.SetPage(page.Id);
+                    else Editor.OpenDefinition(resource.Id);
+                    Scene=new SceneView{Focusable=true};
+                    Scene.SetAssetResolver(id=>Session.OpenAsset(id));
+                    Panel.Children.Add(Scene);
+                    actions.Children.Add(Button("添加矩形",()=>
+                    {
+                        int count=Editor.Scene.Count+1;
+                        MTCEditResult<bool> result=Editor.AddRectangle(
+                            "矩形 "+count,60+count*15,55+count*12,110,65);
+                        Status.Text=result.Success?"已通过MEM事务添加图元":
+                            "添加失败："+result.ErrorCode+" "+result.Message;
+                    }));
+                    actions.Children.Add(Button("撤销",()=>Undo(false)));
+                    actions.Children.Add(Button("重做",()=>Undo(true)));
+                    MEMContent content=resource as MEMContent;
+                    if(content!=null)
+                        actions.Children.Add(Button("打开流程",()=>
+                            _owner.OpenStudioResourceDocument(ResourceId,true)));
+                    if(page!=null)
+                    {
+                        actions.Children.Add(Button("打开本页流程",()=>
+                            _owner.OpenStudioResourceDocument(page.RootContent.Id,true)));
+                        actions.Children.Add(Button("完整图元编辑",()=>
+                        {
+                            MEMPage actual=Session.Find(ResourceId) as MEMPage;
+                            if(actual==null)return;
+                            _owner._viewModel.ActivePage=actual;
+                            _owner.OpenStudioDocument("doc.visual");
+                        }));
+                    }
+                    Scene.NodeActivated+=(s,e)=>Select(e.Id);
+                    Scene.SelectionSetRequested+=ids=>
+                    {
+                        if(_disposed||!_owner.IsStudioDocumentActive(Key))return;
+                        Guid? selected=ids.Count==1?(Guid?)ids[0]:null;
+                        Select(selected);
+                        Scene.SetSelectedVisualIds(ids);
+                    };
+                    Scene.MoveRequested+=(s,e)=>
+                    {
+                        if(_disposed||!_owner.IsStudioDocumentActive(Key))return;
+                        MTCEditResult<bool> result=Editor.Move(e.Id,e.X,e.Y);
+                        if(!result.Success)Status.Text="拖动失败："+result.ErrorCode+" "+result.Message;
+                    };
+                    Editor.Changed+=OnChanged;
+                }
                 Refresh();
             }
 
-            private static Button Button(string title, Action action)
+            private static Button Button(string title,Action callback)
             {
-                Button b = new Button { Content = title, Padding = new Thickness(9, 5, 9, 5),
-                    Margin = new Thickness(2) };
-                b.Click += (s, e) => action();
-                return b;
+                Button button=new Button{Content=title,Padding=new Thickness(9,5,9,5),
+                    Margin=new Thickness(2)};
+                button.Click+=(s,e)=>callback();
+                return button;
             }
-
-            private void OnEditorChanged(object sender, EventArgs args)
+            internal void Select(Guid? id)
             {
-                if (_disposed) return;
-                if (!_owner.Dispatcher.CheckAccess())
+                if(_disposed||Editor==null||!_owner.IsStudioDocumentActive(Key))return;
+                if(!Editor.Select(id))return;
+                _owner._viewModel.Select(id);
+                _owner.RefreshStudioGraphicsTree();
+            }
+            private void Undo(bool redo)
+            {
+                MTCEditResult<bool> result=redo?Session.Redo():Session.Undo();
+                Status.Text=result.Success?(redo?"已重做MEM事务":"已撤销MEM事务"):
+                    (redo?"重做":"撤销")+"失败："+result.Message;
+                Refresh();
+            }
+            private void ApplyFlow(string operation,Action<MOCFlowBuilder> edit)
+            {
+                if(_disposed||!_owner.IsStudioDocumentActive(Key))return;
+                try
+                {
+                    MEMContent content=Session.Find(ResourceId) as MEMContent;
+                    if(content==null)throw new InvalidOperationException("流程Content已不存在");
+                    MOCFlowBuilder.Edit(Session,content,edit);
+                    Refresh();
+                    Status.Text=operation+"：已提交MEM，支持统一Undo/Redo";
+                }
+                catch(Exception ex){Status.Text=operation+"失败："+ex.Message;}
+            }
+            private void OnChanged(object sender,EventArgs args)
+            {
+                if(_disposed)return;
+                if(!_owner.Dispatcher.CheckAccess())
                 {
                     _owner.Dispatcher.BeginInvoke(new Action(Refresh));
                     return;
                 }
                 Refresh();
             }
-
             internal void Refresh()
             {
-                if (_disposed) return;
-                MEMPage page = Session.Find(PageId) as MEMPage;
-                if (page == null)
+                if(_disposed)return;
+                MEMNode resource=Session.Find(ResourceId);
+                if(resource==null)
                 {
-                    Status.Text = "工程页面已删除，请关闭此文档";
-                    Scene.SetScene(new List<CxSceneItem>(), null);
+                    Status.Text="工程资源已删除，请关闭此文档";
+                    if(Scene!=null)Scene.SetScene(new List<CxSceneItem>(),null);
+                    if(Flow!=null){Flow.Definition=null;Flow.WiringDefinition=null;}
                     return;
                 }
-                Scene.SetScene(Editor.Scene, Editor.SelectedId);
-                Status.Text = page.Name + " | MEM Revision " + Session.Revision +
-                    " | 页面独立视口与选择，Undo/Redo由同一MEM工程持有";
+                if(IsFlow)
+                {
+                    try
+                    {
+                        MEMNodeSnapshot snapshot=Session.GetSnapshot().Find(ResourceId);
+                        Flow.WiringDefinition=MOLWiringCodec.Get(snapshot);
+                        Flow.Definition=Flow.WiringDefinition==null?MOLLogicCodec.Get(snapshot):null;
+                        Flow.RetainValidSelection();
+                        Status.Text=resource.Name+" | MEM Revision "+Session.Revision+
+                            " | 独立流程画布，节点/Port操作走MOC+MEM事务";
+                    }
+                    catch(Exception ex)
+                    {
+                        Flow.WiringDefinition=null;Flow.Definition=null;
+                        Status.Text="流程无法呈现："+ex.Message;
+                    }
+                }
+                else
+                {
+                    Scene.SetScene(Editor.Scene,Editor.SelectedId);
+                    Status.Text=resource.Name+" | MEM Revision "+Session.Revision+
+                        " | 独立视口与选择，统一Undo/Redo";
+                }
             }
-
             public void Dispose()
             {
-                if (_disposed) return;
-                _disposed = true;
-                Editor.Changed -= OnEditorChanged;
-                Editor.Dispose();
-                Scene.SetAssetResolver(null);
+                if(_disposed)return;_disposed=true;
+                if(Editor!=null){Editor.Changed-=OnChanged;Editor.Dispose();}
+                if(_watch!=null)_watch.Dispose();
+                if(Scene!=null)Scene.SetAssetResolver(null);
+                if(Flow!=null){Flow.WiringDefinition=null;Flow.Definition=null;}
             }
         }
 
-        private static string PageDocumentId(Guid id)
+        private static string PageDocumentId(Guid id){return PageDocumentPrefix+id.ToString("N");}
+        private static bool TryParsePageDocumentId(string key,out Guid id)
         {
-            return PageDocumentPrefix + id.ToString("N");
+            string kind;
+            return TryParseResourceDocumentId(key,out id,out kind)&&kind=="page";
         }
-
-        private static bool TryParsePageDocumentId(string key, out Guid pageId)
+        private static bool TryParseResourceDocumentId(string key,out Guid id,out string kind)
         {
-            pageId = Guid.Empty;
-            return key != null && key.StartsWith(PageDocumentPrefix, StringComparison.Ordinal) &&
-                Guid.TryParseExact(key.Substring(PageDocumentPrefix.Length), "N", out pageId) &&
-                pageId != Guid.Empty;
+            id=Guid.Empty;kind=null;
+            if(key==null)return false;
+            string prefix;
+            if(key.StartsWith(PageDocumentPrefix,StringComparison.Ordinal))
+            {prefix=PageDocumentPrefix;kind="page";}
+            else if(key.StartsWith(ContentDocumentPrefix,StringComparison.Ordinal))
+            {prefix=ContentDocumentPrefix;kind="content";}
+            else if(key.StartsWith(SymbolDocumentPrefix,StringComparison.Ordinal))
+            {prefix=SymbolDocumentPrefix;kind="symbol";}
+            else if(key.StartsWith(FlowResourceDocumentPrefix,StringComparison.Ordinal))
+            {prefix=FlowResourceDocumentPrefix;kind="flow";}
+            else return false;
+            if(!Guid.TryParseExact(key.Substring(prefix.Length),"N",out id)||id==Guid.Empty)
+            {kind=null;return false;}
+            return true;
         }
-
-        private PageDocumentContext CreateStudioPageContext(string key)
+        private bool ResourceDocumentExists(string key)
         {
-            Guid id;
-            if (!TryParsePageDocumentId(key, out id))
-                throw new InvalidDataException("页面文档身份无效");
-            MEMPage page = _viewModel.ProjectSession.Find(id) as MEMPage;
-            if (page == null)
-                throw new InvalidDataException("页面文档属于其他工程或页面已删除：" + id);
-            PageDocumentContext existing;
-            if (_pageDocuments.TryGetValue(key, out existing)) return existing;
-            PageDocumentContext context = new PageDocumentContext(this, _viewModel.ProjectSession, page);
-            _pageDocuments.Add(key, context);
-            _studioViews[key] = context.Panel;
-            return context;
+            Guid id;string kind;
+            if(!TryParseResourceDocumentId(key,out id,out kind))return false;
+            MEMNode node=_viewModel.ProjectSession.Find(id);
+            if(kind=="flow")return node is MEMContent;
+            if(kind=="page")return node is MEMPage;
+            IMEMResource standalone=_viewModel.ProjectSession.Project.FindResource(id);
+            return kind=="content"?standalone is MEMContent:standalone is MEMSymbol;
         }
-
+        private static string ResourceDocumentId(MEMNode resource,bool flow)
+        {
+            if(flow)return FlowResourceDocumentPrefix+resource.Id.ToString("N");
+            if(resource is MEMPage)return PageDocumentId(resource.Id);
+            if(resource is MEMSymbol)return SymbolDocumentPrefix+resource.Id.ToString("N");
+            if(resource is MEMContent)return ContentDocumentPrefix+resource.Id.ToString("N");
+            throw new InvalidOperationException("仅支持真实MEM Page/Content/Symbol");
+        }
+        private ResourceDocumentContext CreateStudioPageContext(string key)
+        {
+            if(!ResourceDocumentExists(key))
+                throw new InvalidDataException("失效或跨工程资源文档："+key);
+            ResourceDocumentContext existing;
+            if(_pageDocuments.TryGetValue(key,out existing))return existing;
+            Guid id;string kind;TryParseResourceDocumentId(key,out id,out kind);
+            ResourceDocumentContext ctx=new ResourceDocumentContext(this,
+                _viewModel.ProjectSession,_viewModel.ProjectSession.Find(id),key,kind=="flow");
+            _pageDocuments.Add(key,ctx);_studioViews[key]=ctx.Panel;
+            return ctx;
+        }
         private void RegisterStudioPageClosing(LayoutDocument document)
         {
-            document.Closed += (s, e) =>
+            document.Closed+=(s,e)=>
             {
-                PageDocumentContext context;
-                if (_pageDocuments.TryGetValue(document.ContentId, out context))
+                ResourceDocumentContext context;
+                if(_pageDocuments.TryGetValue(document.ContentId,out context))
                 {
                     _pageDocuments.Remove(document.ContentId);
                     _studioViews.Remove(document.ContentId);
                     context.Dispose();
                 }
-                if (_activeStudioDocumentId == document.ContentId && !_closingPageDocuments)
+                if(_activeStudioDocumentId==document.ContentId&&!_closingPageDocuments)
                 {
-                    // AvalonDock关闭当前Tab后，必须真正激活有效文档，不能只改上下文字符串。
-                    LayoutDocument next = StudioDock.Layout.ActiveContent as LayoutDocument;
-                    if (next == null || next.ContentId == document.ContentId)
-                        OpenStudioDocument("doc.visual");
-                    else
-                    {
-                        SelectStudioContext(next.ContentId);
-                        RefreshStudioMenus();
-                    }
+                    LayoutDocument fallback=StudioDock.Layout.ActiveContent as LayoutDocument;
+                    SelectStudioContext(fallback==null?"doc.visual":fallback.ContentId);
+                    RefreshStudioMenus();
                 }
             };
         }
-
         public SceneView GetStudioPageScene(Guid pageId)
+        {return GetStudioResourceScene(pageId);}
+        public SceneView GetStudioResourceScene(Guid resourceId)
         {
-            PageDocumentContext context;
-            return _pageDocuments.TryGetValue(PageDocumentId(pageId), out context) ? context.Scene : null;
+            MEMNode resource=_viewModel.ProjectSession.Find(resourceId);
+            if(resource==null)return null;
+            ResourceDocumentContext ctx;
+            return _pageDocuments.TryGetValue(ResourceDocumentId(resource,false),out ctx)?ctx.Scene:null;
         }
-
-        public string OpenStudioPageDocument(Guid pageId)
+        public MOLFlowCanvas GetStudioResourceFlow(Guid contentId)
         {
-            string key = PageDocumentId(pageId);
-            if (!(_viewModel.ProjectSession.Find(pageId) is MEMPage))
-                throw new InvalidOperationException("无法打开不属于当前工程的页面");
-            LayoutDocument existing = FindStudioContent(key) as LayoutDocument;
-            if (existing == null)
+            ResourceDocumentContext ctx;
+            return _pageDocuments.TryGetValue(FlowResourceDocumentPrefix+contentId.ToString("N"),
+                out ctx)?ctx.Flow:null;
+        }
+        private ResourceDocumentContext ActiveStudioResourceContext()
+        {
+            ResourceDocumentContext ctx;
+            return _pageDocuments.TryGetValue(_activeStudioDocumentId,out ctx)?ctx:null;
+        }
+        public string OpenStudioPageDocument(Guid pageId)
+        {return OpenStudioResourceDocument(pageId,false);}
+        public string OpenStudioResourceDocument(Guid resourceId,bool flow=false)
+        {
+            MEMNode resource=_viewModel.ProjectSession.Find(resourceId);
+            if(resource==null)
+                throw new InvalidOperationException("工程资源已不存在或来自其他工程");
+            string key=ResourceDocumentId(resource,flow);
+            if(!ResourceDocumentExists(key))
+                throw new InvalidOperationException("该资源类型不支持此编辑器或不是独立资源");
+            LayoutDocument document=FindStudioContent(key) as LayoutDocument;
+            if(document==null)
             {
-                PageDocumentContext context = CreateStudioPageContext(key);
-                LayoutDocumentPane pane = StudioDock.Layout.Descendents().OfType<LayoutDocumentPane>()
+                ResourceDocumentContext context=CreateStudioPageContext(key);
+                LayoutDocumentPane pane=StudioDock.Layout.Descendents().OfType<LayoutDocumentPane>()
                     .FirstOrDefault();
-                if (pane == null) throw new InvalidOperationException("中央工作区已丢失");
-                MEMPage page = _viewModel.ProjectSession.Find(pageId) as MEMPage;
-                existing = new LayoutDocument { ContentId = key,
-                    Title = page.Name + " [设计]", Content = context.Panel,
-                    CanClose = true, CanFloat = false };
-                RegisterStudioPageClosing(existing);
-                pane.Children.Add(existing);
+                if(pane==null)throw new InvalidOperationException("中央工作区已丢失");
+                document=new LayoutDocument{ContentId=key,Title=resource.Name+
+                    (flow?" [流程]":" [设计]"),Content=context.Panel,
+                    CanClose=true,CanFloat=false};
+                RegisterStudioPageClosing(document);pane.Children.Add(document);
             }
-            existing.IsActive = true;
+            document.IsActive=true;
             SelectStudioContext(key);
             RefreshStudioMenus();
             return key;
         }
-
-        private void OnStudioPageSourceChanged(object sender, EventArgs args)
+        private void OnStudioPageSourceChanged(object sender,EventArgs args)
         {
-            if (_viewModel == null || _closingPageDocuments) return;
-            if (!ReferenceEquals(_pageDocumentSession, _viewModel.ProjectSession))
+            if(_viewModel==null||_closingPageDocuments)return;
+            if(!ReferenceEquals(_pageDocumentSession,_viewModel.ProjectSession))
             {
-                // Dock关闭Tab时会同步触发ActiveContentChanged；必须在关闭之前保存原活动身份。
-                // 否则关闭动作自动激活doc.flow/doc.home后，再检查_activeStudioDocumentId将漏掉回退。
-                LayoutDocument activeBefore = StudioDock.Layout.ActiveContent as LayoutDocument;
-                bool wasEditingPage = (_activeStudioDocumentId != null &&
-                    _activeStudioDocumentId.StartsWith(PageDocumentPrefix, StringComparison.Ordinal)) ||
-                    (activeBefore != null && activeBefore.ContentId != null &&
-                     activeBefore.ContentId.StartsWith(PageDocumentPrefix, StringComparison.Ordinal));
-                _closingPageDocuments = true;
+                _closingPageDocuments=true;
                 try
                 {
-                    foreach (string id in _pageDocuments.Keys.ToArray())
+                    foreach(string key in _pageDocuments.Keys.ToArray())
                     {
-                        LayoutDocument doc = FindStudioContent(id) as LayoutDocument;
-                        if (doc != null) { doc.Content = null; doc.Close(); }
-                        PageDocumentContext ctx;
-                        if (_pageDocuments.TryGetValue(id, out ctx)) { ctx.Dispose(); _pageDocuments.Remove(id); }
-                        _studioViews.Remove(id);
+                        LayoutDocument document=FindStudioContent(key) as LayoutDocument;
+                        if(document!=null){document.Content=null;document.Close();}
+                        ResourceDocumentContext ctx;
+                        if(_pageDocuments.TryGetValue(key,out ctx))
+                        {ctx.Dispose();_pageDocuments.Remove(key);}
+                        _studioViews.Remove(key);
                     }
-                    _pageDocumentSession = _viewModel.ProjectSession;
+                    _pageDocumentSession=_viewModel.ProjectSession;
                 }
-                finally { _closingPageDocuments = false; }
-                // 新工程应撤销旧工程页面Tab，但不得将当前固定HMI/流程编辑器强行切回主页。
-                // 已关闭的页面Tab则退回通用图元主画布。
-                if (wasEditingPage)
+                finally{_closingPageDocuments=false;}
+                Guid id;string kind;
+                if(TryParseResourceDocumentId(_activeStudioDocumentId,out id,out kind))
                 {
-                    // 旧页面Tab已释放；即使doc.visual曾被关闭，也必须恢复有效的中央文档。
-                    OpenStudioDocument("doc.visual");
+                    LayoutDocument fallback=FindStudioContent("doc.visual") as LayoutDocument;
+                    if(fallback!=null)fallback.IsActive=true;
+                    SelectStudioContext("doc.visual");RefreshStudioMenus();
                 }
             }
-            foreach (string id in _pageDocuments.Keys.ToArray())
+            foreach(string key in _pageDocuments.Keys.ToArray())
             {
-                PageDocumentContext ctx = _pageDocuments[id];
-                MEMPage page = _viewModel.ProjectSession.Find(ctx.PageId) as MEMPage;
-                LayoutDocument doc = FindStudioContent(id) as LayoutDocument;
-                if (page == null)
-                {
-                    if (doc != null) { doc.Content = null; doc.Close(); }
-                    continue;
-                }
-                if (doc != null) doc.Title = page.Name + (_viewModel.IsDirty ? " *" : "") + " [设计]";
+                ResourceDocumentContext ctx=_pageDocuments[key];
+                MEMNode resource=_viewModel.ProjectSession.Find(ctx.ResourceId);
+                LayoutDocument document=FindStudioContent(key) as LayoutDocument;
+                if(resource==null||!ResourceDocumentExists(key))
+                {if(document!=null){document.Content=null;document.Close();}continue;}
+                if(document!=null)document.Title=resource.Name+
+                    (_viewModel.IsDirty?" *":"")+(ctx.IsFlow?" [流程]":" [设计]");
             }
         }
-
     }
 }

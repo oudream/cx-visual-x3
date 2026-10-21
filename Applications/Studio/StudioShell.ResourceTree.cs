@@ -151,12 +151,12 @@ namespace CxVisual.Studio
             IMEMResource resource = selected.Tag as IMEMResource;
             if (resource == null) return;
             _viewModel.SelectedResource = resource;
-            if (_viewModel.OpenDefinitionCommand.CanExecute(null))
+            MEMNode definition=resource as MEMNode;
+            if(definition!=null)
             {
-                _viewModel.OpenDefinitionCommand.Execute(null);
-                OpenStudioDocument("doc.visual");
+                OpenStudioResourceDocument(definition.Id,false);
+                args.Handled=true;
             }
-            args.Handled = true;
         }
     }
 }

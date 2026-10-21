@@ -353,6 +353,106 @@ namespace CxVisual.Studio
                     }
                     finally { if (File.Exists(path)) File.Delete(path); }
                 });
+                CheckStep("P0-2 Content与Symbol独立资源编辑Tab、实例及工程历史", () =>
+                {
+                    StudioViewModel model=window.DataContext as StudioViewModel;
+                    MEMEngineeringSession session=model.ProjectSession;
+                    MEMContent content=session.AddContent(session.Project,"P0-2 AI共享内容");
+                    MEMSymbol symbol=session.AddSymbol("P0-2 电机组件");
+                    MEMPage page=session.AddPage("P0-2 HMI");
+                    MRIResourceReference use=session.PlaceSymbol(page.RootContent,symbol,"电机A");
+                    string contentTab=window.OpenStudioResourceDocument(content.Id);
+                    string symbolTab=window.OpenStudioResourceDocument(symbol.Id);
+                    string pageTab=window.OpenStudioResourceDocument(page.Id);
+                    Assert(contentTab!=symbolTab&&symbolTab!=pageTab&&
+                        window.GetStudioContentIds().Contains(contentTab)&&
+                        window.GetStudioContentIds().Contains(symbolTab),"真实资源文档未区分身份");
+                    SceneView c=window.GetStudioResourceScene(content.Id);
+                    SceneView m=window.GetStudioResourceScene(symbol.Id);
+                    Assert(c!=null&&m!=null&&!Object.ReferenceEquals(c,m),
+                        "Content与Symbol仍共享一张画布");
+                    c.SetViewport(1.4,0,0);
+                    Assert(Math.Abs(c.Zoom-1.4)<.001&&Math.Abs(m.Zoom-1)<.001,
+                        "跨资源Tab的视口串位");
+                    window.OpenStudioResourceDocument(symbol.Id);
+                    LayoutDocument symbolDoc=window.StudioDock.Layout.Descendents()
+                        .OfType<LayoutDocument>().First(x=>x.ContentId==symbolTab);
+                    DockPanel panel=symbolDoc.Content as DockPanel;
+                    Button add=panel.Children.OfType<StackPanel>().First()
+                        .Children.OfType<WrapPanel>().First().Children.OfType<Button>()
+                        .First(x=>Object.Equals(x.Content,"添加矩形"));
+                    int before=session.Revision;
+                    add.RaiseEvent(new System.Windows.RoutedEventArgs(Button.ClickEvent));
+                    Assert(symbol.RootGroup.DescendantsAndSelf().OfType<MRCRectangle>().Any()&&
+                        !content.DescendantsAndSelf().OfType<MRCRectangle>().Any()&&
+                        session.Revision==before+1,"Symbol图元没有通过唯一MEM事务提交");
+                    session.Undo().RequireValue();
+                    Assert(!symbol.RootGroup.DescendantsAndSelf().OfType<MRCRectangle>().Any(),
+                        "跨资源编辑未使用同一工程Undo");
+                    window.OpenStudioResourceDocument(symbol.Id);
+                    Assert(window.GetStudioContentIds().Count(x=>x==symbolTab)==1,
+                        "重复打开同一个Symbol产生多个Tab");
+                    string layout=Path.Combine(Path.GetTempPath(),"cxstudio-p02-"+
+                        Guid.NewGuid().ToString("N")+".xml");
+                    try
+                    {
+                        window.SaveStudioLayout(layout);
+                        window.RestoreStudioLayout(layout);
+                        Assert(window.GetStudioContentIds().Contains(symbolTab)&&
+                            window.GetStudioContentIds().Contains(contentTab),
+                            "恢复布局丢失共享Content/Symbol真实资源Tab");
+                        string xml=File.ReadAllText(layout);
+                        File.WriteAllText(layout,xml.Replace(symbolTab,
+                            "doc.symbol."+Guid.NewGuid().ToString("N")));
+                        AssertThrows(()=>window.RestoreStudioLayout(layout));
+                    }
+                    finally{if(File.Exists(layout))File.Delete(layout);}
+                    Assert(session.FindReference(use.Id)!=null,"工程实例被UI操作改变");
+                    window.CloseStudioDocument(contentTab);
+                    Assert(window.GetStudioResourceScene(content.Id)==null,
+                        "关闭Content仍持有可编辑视图");
+                    window.OpenStudioResourceDocument(content.Id);
+                });
+                CheckStep("P0-2 主子流程独立MOL画布、真实事务及失效资源清理", () =>
+                {
+                    StudioViewModel model=window.DataContext as StudioViewModel;
+                    MEMEngineeringSession s=model.ProjectSession;
+                    MEMContent main=s.AddContent(s.Project,"P0-2 检测主流程");
+                    MEMContent ai=s.AddContent(s.Project,"P0-2 AI子流程");
+                    MEMContent cv=s.AddContent(s.Project,"P0-2 CV子流程");
+                    MOLLogicDefinition definition=new MOLLogicDefinition(
+                        MOLControlBlock.Sequence(MOLControlBlock.Action("Acquire"),
+                            MOLControlBlock.Action("Check")));
+                    MOLLogicCodec.Set(s,main,definition);
+                    MOLLogicCodec.Set(s,ai,definition);
+                    MOLLogicCodec.Set(s,cv,definition);
+                    int revision=s.Revision;
+                    string m=window.OpenStudioResourceDocument(main.Id,true);
+                    string a=window.OpenStudioResourceDocument(ai.Id,true);
+                    string c=window.OpenStudioResourceDocument(cv.Id,true);
+                    Assert(m!=a&&a!=c&&window.GetStudioContentIds().Contains(m)&&
+                        window.GetStudioContentIds().Contains(a)&&
+                        window.GetStudioContentIds().Contains(c),"主/AI/CV仍共用流程Tab");
+                    MOLFlowCanvas first=window.GetStudioResourceFlow(main.Id);
+                    MOLFlowCanvas second=window.GetStudioResourceFlow(ai.Id);
+                    Assert(first!=null&&second!=null&&first.Definition!=null&&
+                        second.Definition!=null&&!Object.ReferenceEquals(first,second),
+                        "流程Tab未从各自MEM Content中投影真正MOL定义");
+                    window.OpenStudioResourceDocument(main.Id,true);
+                    Assert(window.ActiveStudioDocumentId==m,"打开主流程未激活实际Tab");
+                    Assert(s.Revision==revision,"切换流程资源修改了工程");
+                    string visual=window.OpenStudioResourceDocument(main.Id,false);
+                    Assert(visual!=m&&window.GetStudioResourceScene(main.Id)!=null,
+                        "同一Content缺少独立图元/逻辑编辑模式");
+                    window.OpenStudioResourceDocument(main.Id,true);
+                    s.Remove(cv);
+                    Assert(!window.GetStudioContentIds().Contains(c)&&
+                        window.GetStudioResourceFlow(cv.Id)==null,
+                        "删除子流程仍保留非法编辑文档");
+                    Assert(window.GetStudioContentIds().Contains(m)&&
+                        window.GetStudioContentIds().Contains(a),
+                        "删除CV误关闭了其他合法子流程Tab");
+                });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;
             }

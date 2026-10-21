@@ -85,10 +85,10 @@ namespace CxVisual.Studio
 
         private static bool IsKnownContent(string id)
         {
-            Guid pageId;
+            Guid resourceId;string kind;
             return KnownDocuments.Contains(id, StringComparer.Ordinal) ||
                    KnownTools.Contains(id, StringComparer.Ordinal) ||
-                   TryParsePageDocumentId(id, out pageId);
+                   TryParseResourceDocumentId(id,out resourceId,out kind);
         }
 
         private IEnumerable<LayoutContent> ExistingContents()
@@ -114,13 +114,16 @@ namespace CxVisual.Studio
         {
             string[] ids = GetStudioContentIds();
             if (ids.Any(id => !IsKnownContent(id) ||
-                (id.StartsWith(PageDocumentPrefix, StringComparison.Ordinal) &&
-                 !(_viewModel.ProjectSession.Find(Guid.ParseExact(
-                    id.Substring(PageDocumentPrefix.Length), "N")) is CxVisual.Mechanism.Core.MEMPage))) ||
+                (IsResourceDocumentId(id) && !ResourceDocumentExists(id))) ||
                 ids.Distinct(StringComparer.Ordinal).Count() != ids.Length)
                 throw new InvalidDataException("工作区ContentId未知或重复。");
         }
 
+        private static bool IsResourceDocumentId(string id)
+        {
+            Guid resourceId;string kind;
+            return TryParseResourceDocumentId(id,out resourceId,out kind);
+        }
         private LayoutContent FindStudioContent(string id)
         {
             return ExistingContents().FirstOrDefault(x => x.ContentId == id);
@@ -136,8 +139,10 @@ namespace CxVisual.Studio
 
         private static string DefaultContextFor(string id)
         {
-            if (id == "doc.visual" || (id != null &&
-                id.StartsWith(PageDocumentPrefix, StringComparison.Ordinal))) return "绘图";
+            Guid resourceId;string kind;
+            if(TryParseResourceDocumentId(id,out resourceId,out kind))
+                return kind=="flow"?"节点":"绘图";
+            if (id == "doc.visual") return "绘图";
             if (id == "doc.flow") return "节点";
             if (id == "doc.config") return "配置";
             return "主页";
@@ -145,23 +150,27 @@ namespace CxVisual.Studio
 
         private void SelectStudioContext(string id)
         {
-            Guid pageId;
+            Guid pageId;string kind;
             if (!KnownDocuments.Contains(id, StringComparer.Ordinal) &&
-                !TryParsePageDocumentId(id, out pageId)) return;
+                !TryParseResourceDocumentId(id,out pageId,out kind)) return;
             if (!String.Equals(_activeStudioDocumentId, id, StringComparison.Ordinal))
             {
                 _activeStudioDocumentId = id;
                 _ribbonSelection = DefaultContextFor(id);
-                if (TryParsePageDocumentId(id, out pageId) && !_switchingPageDocument)
+                if (TryParseResourceDocumentId(id,out pageId,out kind) && !_switchingPageDocument)
                 {
                     _switchingPageDocument = true;
                     try
                     {
-                        CxVisual.Mechanism.Core.MEMPage page =
-                            _viewModel.ProjectSession.Find(pageId) as CxVisual.Mechanism.Core.MEMPage;
-                        if (page != null && (_viewModel.ActivePage == null ||
-                            _viewModel.ActivePage.Id != page.Id))
-                            _viewModel.ActivePage = page;
+                        MEMNode resource=_viewModel.ProjectSession.Find(pageId);
+                        MEMPage page=resource as MEMPage;
+                        if(page!=null&&(_viewModel.ActivePage==null||
+                            _viewModel.ActivePage.Id!=page.Id))
+                            _viewModel.ActivePage=page;
+                        IMEMResource definition=resource as IMEMResource;
+                        if(page==null&&definition!=null&&!String.Equals(kind,"flow",
+                            StringComparison.Ordinal))
+                            _viewModel.SelectedResource=definition;
                     }
                     finally { _switchingPageDocument = false; }
                 }
@@ -326,10 +335,12 @@ namespace CxVisual.Studio
         {
             if (StudioDynamicMenus == null || StudioRibbonActions == null) return;
             string active = _activeStudioDocumentId;
+            Guid resourceId;string resourceKind;
+            bool resourceDocument=TryParseResourceDocumentId(active,out resourceId,out resourceKind);
             string[] domains = (active == "doc.visual" ||
-                (active != null && active.StartsWith(PageDocumentPrefix, StringComparison.Ordinal)))
+                (resourceDocument&&resourceKind!="flow"))
                 ? new[] { "绘图", "排列", "图层", "绑定" }
-                : active == "doc.flow"
+                : (active == "doc.flow" || (resourceDocument&&resourceKind=="flow"))
                     ? new[] { "节点", "连线", "编排", "端口" }
                     : active == "doc.config"
                         ? new[] { "配置" }
@@ -373,18 +384,26 @@ namespace CxVisual.Studio
         // 左资源树单击只改变资源检视目标，不能让当前页面Tab的编辑命令误改另一页。
         private bool EnsureActiveStudioPageForRibbon()
         {
-            Guid id;
-            if (!TryParsePageDocumentId(_activeStudioDocumentId, out id)) return true;
-            PageDocumentContext context;
-            MEMPage page = _viewModel.ProjectSession.Find(id) as MEMPage;
-            if (page == null || !_pageDocuments.TryGetValue(_activeStudioDocumentId, out context) ||
-                !ReferenceEquals(context.Session, _viewModel.ProjectSession))
+            Guid id;string kind;
+            if(!TryParseResourceDocumentId(_activeStudioDocumentId,out id,out kind))return true;
+            ResourceDocumentContext context;
+            if(!_pageDocuments.TryGetValue(_activeStudioDocumentId,out context)||
+                !ResourceDocumentExists(_activeStudioDocumentId)||
+                !ReferenceEquals(context.Session,_viewModel.ProjectSession))
             {
                 _viewModel.ReportStudioShellWarning("当前页面文档已失效，已拒绝编辑命令。");
                 return false;
             }
-            if (_viewModel.ActivePage == null || _viewModel.ActivePage.Id != id)
-                _viewModel.ActivePage = page;
+            // 旧Ribbon仍与页面级ViewModel绑定；非页面资源请使用资源Tab工具栏，
+            // 不允许悄悄向另一页面写入图元/流程。
+            if(kind!="page")
+            {
+                _viewModel.ReportStudioShellWarning("当前资源Tab请使用资源编辑器工具栏，已拒绝页面级Ribbon写入。");
+                return false;
+            }
+            MEMPage page=_viewModel.ProjectSession.Find(id) as MEMPage;
+            if(_viewModel.ActivePage==null||_viewModel.ActivePage.Id!=id)
+                _viewModel.ActivePage=page;
             return true;
         }
 
@@ -591,10 +610,9 @@ namespace CxVisual.Studio
                 {
                     if (reader.NodeType != XmlNodeType.Element) continue;
                     string key = reader.GetAttribute("ContentId");
-                    Guid id;
-                    if (TryParsePageDocumentId(key, out id) &&
-                        !(_viewModel.ProjectSession.Find(id) is
-                            CxVisual.Mechanism.Core.MEMPage))
+                    Guid id;string kind;
+                    if (TryParseResourceDocumentId(key,out id,out kind) &&
+                        !ResourceDocumentExists(key))
                         throw new InvalidDataException("工作区包含失效或跨工程的页面：" + id);
                 }
             }
@@ -610,8 +628,8 @@ namespace CxVisual.Studio
                 object view;
                 if (!_studioViews.TryGetValue(args.Model.ContentId, out view))
                 {
-                    Guid pageId;
-                    if (TryParsePageDocumentId(args.Model.ContentId, out pageId))
+                    Guid pageId;string kind;
+                    if (TryParseResourceDocumentId(args.Model.ContentId,out pageId,out kind))
                     {
                         PageDocumentContext context = CreateStudioPageContext(args.Model.ContentId);
                         view = context.Panel;
@@ -624,8 +642,7 @@ namespace CxVisual.Studio
                 _studioViews[args.Model.ContentId] = view;
                 args.Content = view;
                 LayoutDocument pageModel = args.Model as LayoutDocument;
-                if (pageModel != null && pageModel.ContentId.StartsWith(
-                    PageDocumentPrefix, StringComparison.Ordinal))
+                if (pageModel != null && IsResourceDocumentId(pageModel.ContentId))
                     RegisterStudioPageClosing(pageModel);
             };
             using (StringReader text = new StringReader(xml)) serializer.Deserialize(text);
@@ -633,7 +650,7 @@ namespace CxVisual.Studio
             {
                 if (FindStudioContent(key) == null)
                 {
-                    PageDocumentContext orphan = _pageDocuments[key];
+                    ResourceDocumentContext orphan = _pageDocuments[key];
                     _pageDocuments.Remove(key);
                     _studioViews.Remove(key);
                     orphan.Dispose();
