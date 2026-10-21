@@ -262,14 +262,14 @@ namespace CxVisual.Studio
                     Button add = stack.Children.OfType<WrapPanel>().First()
                         .Children.OfType<Button>().First(b =>
                             Object.Equals(b.Content, "添加矩形"));
-                    int shapes = one.RootContent.DescendantsAndSelf().OfType<MRCShapeElement>().Count();
+                    int shapes = one.RootContent.DescendantsAndSelf().OfType<MRCRectangle>().Count();
                     add.RaiseEvent(new System.Windows.RoutedEventArgs(Button.ClickEvent));
-                    Assert(one.RootContent.DescendantsAndSelf().OfType<MRCShapeElement>().Count() == shapes + 1,
+                    Assert(one.RootContent.DescendantsAndSelf().OfType<MRCRectangle>().Count() == shapes + 1,
                         "页面Tab添加矩形没有经过MEM");
                     Assert(session.Revision > initialPageRevision, "真实画布操作未增加工程Revision");
                     int afterAdd = session.Revision;
                     window.OpenStudioPageDocument(two.Id);
-                    Assert(two.RootContent.DescendantsAndSelf().OfType<MRCShapeElement>().Count() == 0,
+                    Assert(two.RootContent.DescendantsAndSelf().OfType<MRCRectangle>().Count() == 0,
                         "页面一编辑串入页面二");
                     string xml = window.SerializeStudioLayout();
                     MainWindow.ValidateStudioLayoutXml(xml);
