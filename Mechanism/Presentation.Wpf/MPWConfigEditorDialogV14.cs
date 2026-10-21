@@ -19,7 +19,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf
     /// the existing MHSConfigEditorModel and its single saved/effective truth.
     /// Never hand a raw Section or this trusted control to untrusted plugins.
     /// </summary>
-    public sealed class MPWConfigEditorControl<T> : UserControl, IDisposable where T : new()
+    /// <summary>通用配置视图的未保存草稿标记，供宿主安全切换上下文。</summary>
+    public interface IMPWConfigDraftGuard { bool HasUnsavedDraft { get; } }
+
+    public sealed class MPWConfigEditorControl<T> : UserControl, IDisposable, IMPWConfigDraftGuard where T : new()
     {
         private readonly MHSConfigSection<T> _section;
         private readonly MHSConfigAuthorizedSection<T> _authorized;
@@ -39,6 +42,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         private readonly Dictionary<string, int> _visibleCounts = new Dictionary<string, int>(StringComparer.Ordinal);
         private const int PageSize = 150;
         public bool WasSaved { get { return _saved; } }
+        public bool HasUnsavedDraft { get { return !_disposed && _editor != null && _editor.CanUndo; } }
         public T Draft { get { EnsureActive(); return _editor.Draft; } }
         public int VisibleEditorCount { get { return _count; } }
         public MPWConfigEditorControl(MHSConfigSection<T> section)
