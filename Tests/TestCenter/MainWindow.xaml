@@ -51,7 +51,7 @@
    </MenuItem>
   </Menu>
   <ToolBarTray x:Name="RibbonTray" Grid.Row="2" Background="#E0EDF9"/>
-  <dock:DockingManager x:Name="TestDock" Grid.Row="3" Grid.RowSpan="3">
+  <dock:DockingManager x:Name="TestDock" Grid.Row="3">
    <dock:LayoutRoot>
     <dock:LayoutPanel Orientation="Vertical">
      <dock:LayoutPanel Orientation="Horizontal">
