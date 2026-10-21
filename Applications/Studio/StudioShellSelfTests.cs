@@ -1816,6 +1816,67 @@ namespace CxVisual.Studio
                         session.Revision==before,
                         "Scope选择更改MEM工程Revision或伪造配置实例身份");
                 });
+                CheckStep("S2/P1 专业ICommand统一CommandId与Ribbon右键快捷键门禁", () =>
+                {
+                    StudioViewModel vm=window.DataContext as StudioViewModel;
+                    MEMEngineeringSession session=vm.ProjectSession;
+                    int before=session.Revision,executed=0;
+                    bool permitted=false;
+                    ICommand owner=new RelayCommand(()=>executed++,()=>permitted);
+                    window.OpenStudioDocument("doc.config");
+                    window.RegisterStudioCommand("p1.verify.scope","验证当前专业配置",
+                        "配置","doc.config",owner,
+                        System.Windows.Input.Key.K,
+                        System.Windows.Input.ModifierKeys.Control|
+                        System.Windows.Input.ModifierKeys.Shift);
+                    AssertThrows(()=>window.RegisterStudioCommand("p1.verify.scope","重复",
+                        "配置","doc.config",owner));
+                    AssertThrows(()=>window.RegisterStudioCommand("p1.conflict","冲突",
+                        "配置","doc.config",owner,
+                        System.Windows.Input.Key.K,
+                        System.Windows.Input.ModifierKeys.Control|
+                        System.Windows.Input.ModifierKeys.Shift));
+                    window.StudioDynamicMenus.Children.OfType<Button>()
+                        .Single(b=>Convert.ToString(b.Content)=="配置")
+                        .RaiseEvent(new System.Windows.RoutedEventArgs(Button.ClickEvent));
+                    Button ribbon=window.StudioRibbonActions.Children.OfType<Button>()
+                        .Single(b=>Convert.ToString(b.Tag)=="p1.verify.scope");
+                    LayoutDocument doc=window.StudioDock.Layout.Descendents()
+                        .OfType<LayoutDocument>().Single(x=>x.ContentId=="doc.config");
+                    FrameworkElement view=doc.Content as FrameworkElement;
+                    var menu=view.ContextMenu.Items.OfType<MenuItem>()
+                        .Single(m=>Convert.ToString(m.Tag)=="p1.verify.scope");
+                    Assert(Object.ReferenceEquals(ribbon.Command,menu.Command)&&
+                        !ribbon.Command.CanExecute(null)&&
+                        !window.HandleStudioRegisteredShortcut(
+                            System.Windows.Input.Key.K,
+                            System.Windows.Input.ModifierKeys.None),
+                        "命令上下文、快捷键或授权状态不一致");
+                    Assert(window.HandleStudioRegisteredShortcut(
+                        System.Windows.Input.Key.K,
+                        System.Windows.Input.ModifierKeys.Control|
+                        System.Windows.Input.ModifierKeys.Shift)&&executed==0,
+                        "不授权专业Command仍被快捷键执行");
+                    permitted=true;
+                    Assert(ribbon.Command.CanExecute(null),"授权后命令无法启用");
+                    ribbon.Command.Execute(null);
+                    menu.Command.Execute(null);
+                    window.HandleStudioRegisteredShortcut(
+                        System.Windows.Input.Key.K,
+                        System.Windows.Input.ModifierKeys.Control|
+                        System.Windows.Input.ModifierKeys.Shift);
+                    Assert(executed==3&&session.Revision==before,
+                        "Ribbon、右键、快捷键没有共享真实ICommand Owner");
+                    window.OpenStudioDocument("doc.visual");
+                    Assert(!ribbon.Command.CanExecute(null)&&
+                        !window.HandleStudioRegisteredShortcut(
+                            System.Windows.Input.Key.K,
+                            System.Windows.Input.ModifierKeys.Control|
+                            System.Windows.Input.ModifierKeys.Shift),
+                        "命令脱离活动配置文档仍可执行");
+                    ribbon.Command.Execute(null);
+                    Assert(executed==3,"失效文档命令仍改变专业状态");
+                });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;
             }
