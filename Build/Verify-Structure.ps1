@@ -16,6 +16,13 @@ foreach ($project in $projects) {
     }
     [xml]$xml = Get-Content -LiteralPath $project.FullName -Raw
     if ($xml.Project.PropertyGroup.TargetFrameworkVersion -notcontains 'v4.8') { throw "Not NET48: $($project.Name)" }
+    # Traditional VS projects must declare configurations in the project itself.
+    foreach ($configuration in @('Debug','Release')) {
+        $condition = "'`$(Configuration)|`$(Platform)' == '$configuration|x64'"
+        if (@($xml.Project.PropertyGroup | Where-Object { $_.Condition -eq $condition }).Count -ne 1) {
+            throw "Missing or duplicate explicit $configuration|x64 configuration: $($project.FullName)"
+        }
+    }
     $assemblyName = @($xml.Project.PropertyGroup | ForEach-Object { $_.AssemblyName } | Where-Object { $_ })[0]
     if ($assemblyName -ne $project.BaseName) { throw "Assembly mismatch: $($project.FullName)" }
     foreach ($group in @($xml.Project.ItemGroup)) {
@@ -43,8 +50,17 @@ foreach ($slnName in @('CxVisual.Unified.sln','CxVisual.Foundation.sln')) {
     $slnPath = Join-Path $root $slnName
     $content = Get-Content -LiteralPath $slnPath
     foreach ($line in $content) {
-        if ($line -match '^Project\("\{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC\}"\).*?, "(?<path>[^\"]+\.csproj)",') {
+        if ($line -match '^Project\("\{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC\}"\).*?, "(?<path>[^\"]+\.csproj)", "(?<guid>\{[^}]+\})"') {
             if (-not (Test-Path -LiteralPath (Join-Path $root $Matches['path']))) { throw "Broken solution project $($Matches['path'])" }
+            $projectGuid = $Matches['guid']
+            foreach ($configuration in @('Debug','Release')) {
+                foreach ($kind in @('ActiveCfg','Build.0')) {
+                    $mapping = "$projectGuid.$configuration|x64.$kind = $configuration|x64"
+                    if (@($content | Where-Object { $_.Trim() -eq $mapping }).Count -ne 1) {
+                        throw "Missing or duplicate build mapping in ${slnName}: $mapping"
+                    }
+                }
+            }
         }
     }
 }
@@ -52,4 +68,4 @@ if (-not (Test-Path -LiteralPath (Join-Path $root '.agents'))) { throw '.agents 
 if (Test-Path -LiteralPath (Join-Path $root '.agents/IMPORT_R2_REQUIRED.md')) {
     Write-Warning 'Codex Skill V1.0 R2 original content has not been imported. Run Build/Import-CodexSkill-R2.ps1 when you have the ZIP.'
 }
-Write-Host 'PASS: 28 projects, short directory names, NET48, project references and solution paths.'
+Write-Host 'PASS: 28 projects, NET48, explicit Debug/Release x64 configurations, solution build mappings, project references and paths.'

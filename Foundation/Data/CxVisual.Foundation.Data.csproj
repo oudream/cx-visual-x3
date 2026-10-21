@@ -9,6 +9,13 @@
     <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
   </PropertyGroup>
+  <!-- Explicit configurations are required by the legacy Visual Studio configuration provider. -->
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|x64'">
+    <DebugType>full</DebugType>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|x64'">
+    <DebugType>pdbonly</DebugType>
+  </PropertyGroup>
   <ItemGroup>
     <Reference Include="System"/>
     <Reference Include="System.Core"/><Reference Include="System.ComponentModel.DataAnnotations"/><Reference Include="System.Web.Extensions"/>

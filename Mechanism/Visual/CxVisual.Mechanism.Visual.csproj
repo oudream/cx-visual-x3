@@ -9,6 +9,13 @@
     <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
   </PropertyGroup>
+  <!-- Explicit configurations are required by the legacy Visual Studio configuration provider. -->
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|x64'">
+    <DebugType>full</DebugType>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|x64'">
+    <DebugType>pdbonly</DebugType>
+  </PropertyGroup>
   <ItemGroup>
     <Compile Include="Editing\MVIVisualEditing.cs"/><Compile Include="Catalog\MVIShapeCatalog.cs"/><Compile Include="Runtime\MVIVisualRuntimeEvaluator.cs"/><Compile Include="Runtime\MVIVisualEventRouter.cs"/><Compile Include="MVIInteractionEventArgs.cs"/>
     <Compile Include="MOLFlowLayout.cs"/>
