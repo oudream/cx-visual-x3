@@ -173,3 +173,11 @@
 - **反证与Windows证据**：[Studio S1 Windows #39564306075](https://github.com/oudream/cx-visual-x3/actions/runs/39564306075) **success，23/23 WPF STA**；[Engineering Organization Windows #39564306081](https://github.com/oudream/cx-visual-x3/actions/runs/39564306081) **success**，同源码SHA真实编译与回归。新增测试验证九Shape、Widget、Content与Symbol编辑隔离、页面VM检视不误写、共享Undo/Redo、MOL流程拒绝及Tab复用；原R06也保留并通过。早期[Studio #39563979491](https://github.com/oudream/cx-visual-x3/actions/runs/39563979491)确实发现原R06上下文兼容失败，随后修复，不能掩盖历史失败。
 - **完成判定**：**P0第一切片通过自动化**，并非S1/S2或完整图元编辑全部完成。现有排列/图层/属性/路径精细编辑及流程Command仍有旧固定Editor依赖；专业命令Descriptor、统一快捷键与右键、真实鼠标DPI、多Tab性能及工程到独立Host尚未完整验收。
 - **下一切片**：在同一活动Editor上下文下继续统一对齐/分布、选择与几何修改命令，保持SceneView与图形结构/属性面板身份一致，不新增第二套Command或Undo；再展开S2完整Schema组合面板。
+
+## 14. P0 S1→S2 第二轮：活动资源多选/排列/图层真实命令（2026-10-21）
+
+- **本轮生产源码SHA**：[a8022b66](https://github.com/oudream/cx-visual-x3/commit/a8022b66975821da39b472baa1e4582e6dc07706)。继续使用`ResourceDocumentContext`与原`CxVisualEditor.Align(IReadOnlyList<Guid>,string)`、`SetZOrder(Guid,bool)`、MEM/MTC事务；没有增加工程树、项目、历史和专业执行Owner。
+- **Studio有效功能**：Page/Content/Symbol活动资源的`SceneView.SelectedVisualIds`成为“排列”“图层”Ribbon的真实命令选区；新增可操作左/顶对齐、水平/垂直居中、水平分布、顶层/底层Z序。普通固定`doc.visual`仍执行原ViewModel路径；MOL Flow、失效资源、单选对齐及Z序非恰好单选均须拒绝，不能错误写入当前工程的其他资源。
+- **完整可重复反证**：多选3图元一次MEM Revision完成对齐，Undo一次恢复原坐标、Redo恢复排列；与其他Page的VM检视状态隔离；层次Z序一次原MEM事务/撤销/重做；单选对齐不改Revision；流程Tab旧按钮不能改工程。同提交保留并行的P0-4真实X-Ray MRK/SourceMap/故障追踪自动回归。
+- **同SHA Windows证据**：[Studio Shell CI 39565771432](https://github.com/oudream/cx-visual-x3/actions/runs/39565771432) **success，26/26 WPF STA**，[Engineering Organization CI 39565771340](https://github.com/oudream/cx-visual-x3/actions/runs/39565771340) **success**，[配置公共底座 39565771331](https://github.com/oudream/cx-visual-x3/actions/runs/39565771331) **success**；其他工作流必须独立核实，不替代同SHA全量Gate。
+- **未签收**：独立Editor的路径节点精编、旋转/尺寸属性、右键/快捷键统一、复杂图层管理、WPF真实鼠键DPI/多显示器、专业资源可发现Command Descriptor，以及S2通用Schema组合编辑/独立Host发布仍未全闭环。下一轮优先补编辑器路径/几何命令和画布/属性上下文，然后验证专业Schema统一配置。

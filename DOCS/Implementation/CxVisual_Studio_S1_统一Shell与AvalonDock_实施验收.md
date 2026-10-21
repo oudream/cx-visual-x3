@@ -110,3 +110,9 @@
 - 源码：[de3a024b](https://github.com/oudream/cx-visual-x3/commit/de3a024b4198e5be2dada7de899f7e5cf566afcc)。Page/Content/Symbol动态Ribbon和原工具箱已路由至各自`CxVisualEditor`，直接使用现有九Shape Catalog、Text和Widget，保留同一MEM/MTC历史；流程Tab与失效资源被拒绝；恢复Page旧ViewModel活动上下文以兼容R06。
 - 同SHA [Studio S1 Windows #39564306075](https://github.com/oudream/cx-visual-x3/actions/runs/39564306075) **success，23/23 WPF STA**；[工程组织Windows #39564306081](https://github.com/oudream/cx-visual-x3/actions/runs/39564306081) **success**。新增用例为“P0 Editor跨资源九Shape/Widget与统一MEM历史路由”，旧R06及其余测试未删除。
 - **仍未完成**：整个九Shape精细操作（多选对齐/节点/图层/快捷键）尚未全面接入各独立资源Editor；完整专业Schema、跨专业命令Descriptor、人工鼠键/DPI/运行调试最终闭环继续按[唯一Studio S1～S4主规划](CxVisual_Studio_S1至S4_阶段开发与真实验收总规划_V1.0.md)推进。
+
+## 11. S1/S2独立编辑器第二轮：多选对齐分布及Z序（2026-10-21）
+
+- [a8022b66](https://github.com/oudream/cx-visual-x3/commit/a8022b66975821da39b472baa1e4582e6dc07706) 从Page/Content/Symbol的真实`SceneView.SelectedVisualIds`调用原`CxVisualEditor.Align/SetZOrder`，动态“排列”“图层”Ribbon支持左/顶对齐、水平/垂直居中、水平分布、置顶/置底；固定`doc.visual`仍沿旧ViewModel。流程Tab及无效选区拒绝写入。
+- [Studio Windows #39565771432](https://github.com/oudream/cx-visual-x3/actions/runs/39565771432) **success，26/26 STA**；[工程组织 #39565771340](https://github.com/oudream/cx-visual-x3/actions/runs/39565771340) **success**；同SHA无新增MEM Owner/项目。新增测试验收一次事务和Undo/Redo/单选拒绝/跨资源隔离，并保持X-Ray P0-4测试。
+- **边界**：这只是多选排列与图层Z序接通，尚未覆盖路径控制柄精修、完整几何编辑、键鼠/DPI及运行态授权、所有专业配置与Viewer。
