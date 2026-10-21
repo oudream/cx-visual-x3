@@ -28,7 +28,7 @@ namespace CxVisual.Tests.FoundationSmoke
         }
 
         // Windows的共享模式是双向约束：活动Writer使用FileShare.Read，
-        // 测试Reader必须允许既有写入句柄，否则File.ReadAllText(FileShare.Read)会误报占用。
+        // 测试Reader必须允许既有写入句柄，否则ReadLogWhileWriterOpen(FileShare.Read)会误报占用。
         private static string ReadLogWhileWriterOpen(string path)
         {
             using (FileStream stream = new FileStream(path, FileMode.Open,
@@ -123,8 +123,8 @@ namespace CxVisual.Tests.FoundationSmoke
                 string next = writer.CurrentFilePath;
                 Check(oldFile != next && File.Exists(oldFile) && File.Exists(next),
                     "Day switch failed");
-                Check(File.ReadAllText(oldFile).Contains("BeforeMidnight") &&
-                    File.ReadAllText(next).Contains("AfterMidnight"), "Cross-day data missing");
+                Check(ReadLogWhileWriterOpen(oldFile).Contains("BeforeMidnight") &&
+                    ReadLogWhileWriterOpen(next).Contains("AfterMidnight"), "Cross-day data missing");
                 using (FileStream exclusive = new FileStream(oldFile, FileMode.Open,
                     FileAccess.ReadWrite, FileShare.None))
                     Check(exclusive.Length > 0, "Old writer still holds open file");
