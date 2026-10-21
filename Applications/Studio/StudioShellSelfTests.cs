@@ -497,6 +497,94 @@ namespace CxVisual.Studio
                     }
                     finally{if(File.Exists(projectFile))File.Delete(projectFile);}
                 });
+                CheckStep("P0-3 真实AI/CV及Symbol资源Schema编辑、失效行拒绝、Undo与持久化", () =>
+                {
+                    StudioViewModel model=window.DataContext as StudioViewModel;
+                    MEMEngineeringSession session=model.ProjectSession;
+                    MEMContent ai=session.AddContent(session.Project,"P0-3 AI算法");
+                    MEMContent cv=session.AddContent(session.Project,"P0-3 CV后处理");
+                    MEMSymbol motor=session.AddSymbol("P0-3 电机");
+                    // 专业对象的数据契约仍使用MEM/MPM原生资源定义；不引入Studio专属Schema。
+                    session.DefineProperty(ai,new MPMPropertyDescriptor("confidence",
+                        MPMValueKind.Number,true,true,
+                        MPMBinding.Literal(MPMValue.Number(0.75)),0,1));
+                    session.DefineProperty(ai,new MPMPropertyDescriptor("modelName",
+                        MPMValueKind.String,false,true,
+                        MPMBinding.Literal(MPMValue.String("AI-model-v1"))));
+                    session.DefineProperty(cv,new MPMPropertyDescriptor("minArea",
+                        MPMValueKind.Integer,true,true,
+                        MPMBinding.Literal(MPMValue.Integer(12)),1,1000));
+                    session.DefineProperty(motor,new MPMPropertyDescriptor("enabled",
+                        MPMValueKind.Boolean,true,true,
+                        MPMBinding.Literal(MPMValue.Boolean(true))));
+                    var logic=new MOLLogicDefinition(MOLControlBlock.Sequence(
+                        MOLControlBlock.Action("Acquire"),MOLControlBlock.Action("Infer")));
+                    MOLLogicCodec.Set(session,ai,logic);
+                    string aiTab=window.OpenStudioResourceDocument(ai.Id,false);
+                    Assert(model.SelectedResource!=null&&model.SelectedResource.Id==ai.Id,
+                        "资源Tab没有定位AI真实Content");
+                    var confidence=model.Properties.Single(x=>x.Member=="confidence");
+                    Assert(confidence.OwnerId==ai.Id&&!confidence.Reference&&
+                        confidence.Kind==MPMValueKind.Number&&confidence.Schema.Contains("范围"),
+                        "未显示资源定义自己的MPM Schema");
+                    int before=session.Revision;
+                    confidence.Text="0.89";
+                    model.ApplyPropertyCommand.Execute(confidence);
+                    Assert(session.Revision==before+1&&
+                        session.FindProperty(ai,"confidence").Binding.Value.AsNumber()==0.89,
+                        "资源Tab的编辑命令没有经过MEM原生属性事务");
+                    session.Undo().RequireValue();
+                    Assert(session.FindProperty(ai,"confidence").Binding.Value.AsNumber()==0.75,
+                        "AI参数属性编辑没有使用统一Undo");
+                    session.Redo().RequireValue();
+                    Assert(session.FindProperty(ai,"confidence").Binding.Value.AsNumber()==0.89,
+                        "AI参数属性编辑没有使用统一Redo");
+                    confidence=model.Properties.Single(x=>x.Member=="confidence");
+                    int rejectRevision=session.Revision;
+                    confidence.Text="1.7";
+                    model.ApplyPropertyCommand.Execute(confidence);
+                    Assert(session.Revision==rejectRevision&&
+                        session.FindProperty(ai,"confidence").Binding.Value.AsNumber()==0.89,
+                        "越界Schema参数错误提交工程");
+                    StudioPropertyItem previous=model.Properties.Single(x=>x.Member=="modelName");
+                    string cvTab=window.OpenStudioResourceDocument(cv.Id,false);
+                    Assert(model.Properties.Any(x=>x.Member=="minArea"&&x.OwnerId==cv.Id)&&
+                        !model.Properties.Any(x=>x.Member=="confidence"),
+                        "切换资源后属性面板仍在显示AI旧Schema");
+                    previous.Text="stale";
+                    model.ApplyPropertyCommand.Execute(previous);
+                    Assert(session.Revision==rejectRevision&&
+                        session.FindProperty(ai,"modelName").Binding.Value.AsString()=="AI-model-v1",
+                        "切换资源Tab后旧属性行仍可误写AI定义");
+                    window.OpenStudioResourceDocument(ai.Id,true);
+                    Assert(model.SelectedResource.Id==ai.Id&&
+                        model.Properties.Any(x=>x.Member=="confidence"),
+                        "切换真实MOL流程Tab未显示关联Content参数");
+                    string motorTab=window.OpenStudioResourceDocument(motor.Id,false);
+                    StudioPropertyItem enabled=model.Properties.Single(x=>x.Member=="enabled");
+                    enabled.Text="false";
+                    model.ApplyPropertyCommand.Execute(enabled);
+                    Assert(session.FindProperty(motor,"enabled").Binding.Value.AsBoolean()==false,
+                        "Symbol Boolean属性没有进入原MEM命令");
+                    string file=Path.Combine(Path.GetTempPath(),"cxstudio-p03-"+
+                        Guid.NewGuid().ToString("N")+".cxproj");
+                    try
+                    {
+                        model.SaveProject(file);
+                        MEMEngineeringSession reopened=MEMEngineering.Open(file);
+                        MEMContent savedAi=reopened.Project.Contents.First(x=>x.Name==ai.Name);
+                        MEMSymbol savedMotor=reopened.Project.Symbols.First(x=>x.Name==motor.Name);
+                        Assert(reopened.FindProperty(savedAi,"confidence").Binding.Value.AsNumber()==0.89&&
+                            !reopened.FindProperty(savedMotor,"enabled").Binding.Value.AsBoolean(),
+                            "资源Schema编辑保存重开后丢失");
+                        reopened.Close();
+                    }
+                    finally{if(File.Exists(file))File.Delete(file);}
+                    Assert(window.GetStudioContentIds().Contains(aiTab)&&
+                        window.GetStudioContentIds().Contains(cvTab)&&
+                        window.GetStudioContentIds().Contains(motorTab),
+                        "Schema应用打断多个资源文档的布局身份");
+                });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;
             }

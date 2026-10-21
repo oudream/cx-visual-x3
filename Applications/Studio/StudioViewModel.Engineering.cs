@@ -172,7 +172,24 @@ namespace CxVisual.Studio
         public MEMPage ActivePage
         {get{return _editor==null||!_editor.CurrentPageId.HasValue?null:_editor.Document.Find(_editor.CurrentPageId.Value) as MEMPage;}set{if(value==null||_editor==null||IsRefreshing)return;_selected=null;_editor.SetPage(value.Id);NotifyScene();}}
         public IMEMResource SelectedResource
-        {get{return !_resourceId.HasValue||_editor==null?null:_editor.Document.Project.FindResource(_resourceId.Value);}set{if(IsRefreshing)return;_resourceId=value==null?(Guid?)null:value.Id;_selected=null;_selection=new Guid[0];_editor.Select(null);Changed("SelectedResource");}}
+        {
+            get{return !_resourceId.HasValue||_editor==null?null:
+                _editor.Document.Project.FindResource(_resourceId.Value);}
+            set
+            {
+                if(IsRefreshing||_editor==null)return;
+                if(value!=null&&ProjectSession.Project.FindResource(value.Id)!=value)
+                    throw new InvalidOperationException("当前资源不属于工程或不是独立资源");
+                _resourceId=value==null?(Guid?)null:value.Id;
+                _selected=null;
+                _selection=new Guid[0];
+                _editor.Select(null);
+                // 资源树单选与资源Tab激活都应立即生成真正MPM Schema属性行。
+                // 不增加MEM Revision，也不创建Studio独立Schema。
+                RefreshEngineering();
+                Changed("SelectedResource");
+            }
+        }
         public string ContextName {get{return _editor.CurrentResourceId.HasValue?(_editor.Document.Find(_editor.CurrentResourceId.Value)?.Name??"已删除上下文"):"请选择页面或资源";}}
         public bool IsDirty {get{return _editor.Document.IsDirty;}}
         public ICommand AddPageCommand {get;private set;}public ICommand AddContentCommand {get;private set;}public ICommand AddSymbolCommand {get;private set;}
@@ -272,13 +289,21 @@ namespace CxVisual.Studio
                     }
                     else PropertySelectionHint="当前选区只读：批量属性编辑仅支持同一Content/Symbol定义的多个实例；不同定义或图元混选不能误改。";
                 }
-                else if(_selected.HasValue)
+                else if(_selected.HasValue||_resourceId.HasValue)
                 {
-                    var reference=ProjectSession.FindReference(_selected.Value);var node=reference==null?ProjectSession.Find(_selected.Value):ProjectSession.Find(reference.TargetId);var definition=node as IMPMDefinition;
+                    MRIResourceReference reference=_selected.HasValue?
+                        ProjectSession.FindReference(_selected.Value):null;
+                    MEMNode node=reference==null?
+                        (_selected.HasValue?ProjectSession.Find(_selected.Value):
+                            ProjectSession.Find(_resourceId.Value)):
+                        ProjectSession.Find(reference.TargetId);
+                    IMPMDefinition definition=node as IMPMDefinition;
                     if(definition!=null)foreach(var property in definition.Properties.Where(p=>reference==null||p.Descriptor.IsPublic))
                     {
                         var binding=reference==null?property.Binding:ProjectSession.ResolveParameter(reference,property.MemberId);
-                        var item=Row(_selected.Value,property.MemberId,property.Descriptor.ValueKind,binding,reference!=null,false,property.Descriptor);
+                        var item=Row(reference!=null?reference.Id:node.Id,
+                            property.MemberId,property.Descriptor.ValueKind,
+                            binding,reference!=null,false,property.Descriptor);
                         var inherited=reference==null?property.Descriptor.DefaultBinding:property.Binding;
                         item.DefaultDescription=(reference==null?"Schema默认：":"继承定义：")+BindingSummary(inherited);
                         item.IsReadOnly=property.Descriptor.IsReadOnly;
@@ -357,8 +382,26 @@ namespace CxVisual.Studio
                 throw new InvalidOperationException("批量属性非公开或Schema已改变");
             return refs;
         }
+        private void VerifyPropertyEditorContext(StudioPropertyItem row)
+        {
+            if(row==null)throw new InvalidOperationException("属性行不存在");
+            // Revision一致也不能跨资源Tab或跨选区使用旧行提交到另一个定义。
+            if(row.BatchOwnerIds!=null&&row.BatchOwnerIds.Length>1)return;
+            Guid? selected=_selected??_resourceId;
+            if(!selected.HasValue||selected.Value!=row.OwnerId)
+                throw new InvalidOperationException("属性来源已切换，请重新选择当前资源/对象");
+            if(row.Reference)
+            {
+                MRIResourceReference reference=ProjectSession.FindReference(row.OwnerId);
+                if(reference==null||ProjectSession.Find(reference.TargetId)==null)
+                    throw new InvalidOperationException("实例或其公开属性定义已失效");
+            }
+            else if(ProjectSession.Find(row.OwnerId)==null)
+                throw new InvalidOperationException("属性所属资源已删除");
+        }
         private void RestorePropertyDefault(StudioPropertyItem row)
         {
+            VerifyPropertyEditorContext(row);
             if(row==null||row.Visual||row.Descriptor==null||row.IsReadOnly)
                 throw new InvalidOperationException("请选择可编辑的工程定义属性或公开实例参数");
             if(row.BatchOwnerIds!=null&&row.BatchOwnerIds.Length>1)
@@ -380,7 +423,7 @@ namespace CxVisual.Studio
         }
         private void ApplyProperty(StudioPropertyItem row)
         {
-            if(row==null)return;
+            VerifyPropertyEditorContext(row);
             if(row.IsReadOnly)throw new InvalidOperationException("当前属性只读");
             // 早期提示拒绝非法数字，最终范围/类型仍由原MEM编辑事务验证；失败绝不写工程历史。
             if(!string.IsNullOrEmpty(row.ValidationMessage))throw new InvalidOperationException(row.ValidationMessage);

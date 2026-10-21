@@ -168,8 +168,7 @@ namespace CxVisual.Studio
                             _viewModel.ActivePage.Id!=page.Id))
                             _viewModel.ActivePage=page;
                         IMEMResource definition=resource as IMEMResource;
-                        if(page==null&&definition!=null&&!String.Equals(kind,"flow",
-                            StringComparison.Ordinal))
+                        if(page==null&&definition!=null)
                             _viewModel.SelectedResource=definition;
                     }
                     finally { _switchingPageDocument = false; }
