@@ -9,7 +9,7 @@ on:
       - 'Mechanism/Runtime/Execution/**'
       - 'Mechanism/Data/Execution/**'
       - 'Applications/Runtime.Host/**'
-            - 'Tests/ArchitectureSmoke/**'
+      - 'Tests/ArchitectureSmoke/**'
       - 'DOCS/Testing/UnifiedExecution_TDD_Matrix_V0.1.md'
       - 'DOCS/Architecture/CxVisual_统一运行体系_开发者简洁入口与编排共源_V0.1.md'
       - 'DOCS/Testing/CxVisual_统一运行体系内核_实现与验收_V0.3.md'
