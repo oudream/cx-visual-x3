@@ -202,11 +202,7 @@ namespace CxVisual.TestCenter.UI
             if (tab == null) throw new InvalidOperationException("Graph tab has no UIA selection pattern");
             tab.Select();
             InvokeFirstOwnerLink(root, "TCT.Graph.Step.");
-            bool linked = false;
-            window.Dispatcher.Invoke(new Action(() =>
-                linked = !string.IsNullOrWhiteSpace(window.Inspector.SelectedObjectId) &&
-                    window.Inspector.SelectedObjectDetails.Contains("SourceMap")));
-            if (!linked) throw new InvalidOperationException("Graph UIA Step → Inspector/SourceMap failed");
+            WaitForInspector(window, "SourceMap", "Graph UIA Step → Inspector/SourceMap");
         }
 
         private static void InteractRuntime(IntPtr hwnd, TCTMainWindow window)
@@ -217,11 +213,28 @@ namespace CxVisual.TestCenter.UI
             if (tab == null) throw new InvalidOperationException("Runtime tab lacks UIA selection pattern");
             tab.Select();
             InvokeFirstOwnerLink(root, "TCT.Runtime.Step.");
-            bool linked = false;
-            window.Dispatcher.Invoke(new Action(() =>
-                linked = !string.IsNullOrWhiteSpace(window.Inspector.SelectedObjectId) &&
-                    window.Inspector.SelectedObjectDetails.Contains("MRK Step")));
-            if (!linked) throw new InvalidOperationException("Runtime UIA Step → MOL definition failed");
+            WaitForInspector(window, "MRK Step", "Runtime UIA Step → MOL definition");
+        }
+
+        // InvokePattern invokes WPF controls asynchronously. Synchronize on actual Inspector
+        // state rather than treating the first dispatcher snapshot as a completed UI action.
+        private static void WaitForInspector(TCTMainWindow window, string expected, string operation)
+        {
+            string last = null, id = null;
+            for (int attempt = 0; attempt < 50; attempt++)
+            {
+                bool updated = false;
+                window.Dispatcher.Invoke(new Action(() => {
+                    id = window.Inspector.SelectedObjectId;
+                    last = window.Inspector.SelectedObjectDetails;
+                    updated = !string.IsNullOrWhiteSpace(id) && last != null &&
+                        last.Contains(expected);
+                }));
+                if (updated) return;
+                Thread.Sleep(100);
+            }
+            throw new InvalidOperationException(operation + " failed; selected=" +
+                (id ?? "<none>") + "; inspector=" + (last ?? "<none>"));
         }
 
         private static void InvokeFirstOwnerLink(AutomationElement root, string prefix)
