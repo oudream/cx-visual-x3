@@ -98,7 +98,7 @@ namespace CxVisual.TestCenter.UI
             _message.Text = "仅展示格式可读的归档目录（最多500条）；打开时还须验证Attempt/Artifact/Schema。";
             _save.IsEnabled = _current != null && _current.Total > 0;
         }
-        private void SaveCurrent()
+        public void SaveCurrent()
         {
             if (_current == null || _current.Total == 0) return;
             try
@@ -150,7 +150,7 @@ namespace CxVisual.TestCenter.UI
             _loadedDirectory = Path.Combine(_root, "Run_" + runId);
             if (HistoryOpened != null) HistoryOpened(loaded, _loadedDirectory);
         }
-        private sealed class HistoryRow
+        public sealed class HistoryRow
         {
             public string RunId { get; set; }
             public string Commit { get; set; }
