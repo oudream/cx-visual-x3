@@ -799,9 +799,9 @@ namespace CxVisual.Studio
                     MOLWiringDefinition rootWiring=MOLWiringCodec.Get(rootSnapshot);
                     Assert(rootWiring!=null&&rootSnapshot.References.Count==2,
                         "X-Ray入口没有真正创建两份子Content引用");
-                    MRIResourceReference aiReference=rootSnapshot.References.Single(r=>
+                    MRIReferenceSnapshot aiReference=rootSnapshot.References.Single(r=>
                         session.Find(r.TargetId).Name.Contains("AI"));
-                    MRIResourceReference cvReference=rootSnapshot.References.Single(r=>
+                    MRIReferenceSnapshot cvReference=rootSnapshot.References.Single(r=>
                         session.Find(r.TargetId).Name.Contains("传统"));
                     Guid aiContentId=aiReference.TargetId;
                     Guid cvContentId=cvReference.TargetId;
