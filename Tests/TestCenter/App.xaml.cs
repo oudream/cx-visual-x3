@@ -426,6 +426,13 @@ namespace CxVisual.TestCenter.UI
                         symbolObject.RelationDiagram.SelectNode(diagramId);
                         if (window.Inspector.SelectedObjectId != diagramId.ToString("D"))
                             throw new InvalidOperationException("Diagram selection did not reach Inspector");
+                        if (symbolObject.RelationDiagram.VerifiedReferenceIds.Count != 2)
+                            throw new InvalidOperationException("MEM relation diagram lost reference identity");
+                        Guid chosenReference = symbolObject.RelationDiagram.VerifiedReferenceIds[0];
+                        symbolObject.RelationDiagram.SelectReference(chosenReference);
+                        if (window.Inspector.SelectedObjectId != chosenReference.ToString("D") ||
+                            !window.Inspector.SelectedObjectDetails.Contains("DefinitionTargetId"))
+                            throw new InvalidOperationException("Reference edge did not locate its verified target");
                         // Two references of the same Symbol definition can overlap geometrically.
                         // The figure list must retain and select their independent InstancePath.
                         var symbolProof = symbolGeometry.EvidenceCanvas;
