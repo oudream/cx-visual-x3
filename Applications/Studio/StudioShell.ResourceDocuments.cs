@@ -442,6 +442,8 @@ namespace CxVisual.Studio
             }
             document.IsActive=true;
             SelectStudioContext(key);
+            // 新打开的同资源另一种编辑器，必须立即继承已有MEM Dirty/影响状态。
+            RefreshStudioResourceCaptions();
             RefreshStudioMenus();
             return key;
         }
