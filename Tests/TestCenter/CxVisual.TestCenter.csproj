@@ -49,6 +49,7 @@
     <Compile Include="UI\TCTControls.cs" />
     <Compile Include="UI\TCTTestTimelineControl.cs" />
     <Compile Include="UI\TCTTestHistoryControl.cs" />
+    <Compile Include="UI\TCTTestDiffControl.cs" />
     <Compile Include="UI\TCTTestPlanControl.cs" />
     <Compile Include="UI\TCTWpfAutomationHarness.cs" />
     <Compile Include="UI\TCTGeometryEvidenceCanvas.cs" />
