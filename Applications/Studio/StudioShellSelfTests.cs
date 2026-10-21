@@ -633,9 +633,9 @@ namespace CxVisual.Studio
                     MOLWiringCodec.Set(session,cv,new MOLWiringDefinition(
                         cvBlock.Id,new[]{cvBlock},cvPorts,new MOLLink[0]));
                     session.PlaceContent(page.RootContent,ai,"AI检测调用");
-                    session.PlaceContent(page.RootContent,cv,"CV检测调用");
+                    MRIResourceReference cvUse=session.PlaceContent(page.RootContent,cv,"CV检测调用");
                     window.OpenStudioPageDocument(page.Id);
-                    int revision=session.Revision;
+                    int traceRevision=session.Revision;
                     Assert(window.LocateStudioFlowSource(ai.Id,aiBlock.Id),
                         "AI原始来源没有打开子流程Tab");
                     string aiTab=window.ActiveStudioDocumentId;
@@ -655,8 +655,12 @@ namespace CxVisual.Studio
                     Assert(!window.LocateStudioFlowSource(Guid.NewGuid(),aiBlock.Id)&&
                         window.ActiveStudioDocumentId==cvTab,
                         "跨工程无效来源误切换编辑器");
-                    Assert(session.Revision==revision,
+                    Assert(session.Revision==traceRevision,
                         "来源定位错误修改MEM Revision");
+                    AssertThrows(()=>session.Remove(cv));
+                    Assert(session.Revision==traceRevision,
+                        "被引用的CV定义非法删除修改了工程");
+                    session.Remove(cvUse);
                     session.Remove(cv);
                     Assert(!window.LocateStudioFlowSource(cv.Id,cvBlock.Id),
                         "已删除子流程仍能错误导航");
