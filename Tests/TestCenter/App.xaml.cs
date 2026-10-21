@@ -426,6 +426,26 @@ namespace CxVisual.TestCenter.UI
                         symbolObject.RelationDiagram.SelectNode(diagramId);
                         if (window.Inspector.SelectedObjectId != diagramId.ToString("D"))
                             throw new InvalidOperationException("Diagram selection did not reach Inspector");
+                        // Two references of the same Symbol definition can overlap geometrically.
+                        // The figure list must retain and select their independent InstancePath.
+                        var symbolProof = symbolGeometry.EvidenceCanvas;
+                        var duplicateOwner = symbolProof.VerifiedFigures.Select((figure, index) =>
+                            new { Figure = figure, Index = index })
+                            .Where(x => !string.IsNullOrEmpty(x.Figure.DefinitionAddress))
+                            .GroupBy(x => x.Figure.SourceObjectId)
+                            .FirstOrDefault(group => group.Select(x => x.Figure.DefinitionAddress)
+                                .Distinct(StringComparer.Ordinal).Count() == 2);
+                        if (duplicateOwner == null)
+                            throw new InvalidOperationException("Symbol instance identities missing from Geometry");
+                        int[] figureIndices = duplicateOwner.Select(x => x.Index).ToArray();
+                        symbolProof.SelectFigure(figureIndices[0]);
+                        string firstAddress = window.Inspector.SelectedObjectDetails;
+                        symbolProof.SelectFigure(figureIndices[1]);
+                        string secondAddress = window.Inspector.SelectedObjectDetails;
+                        if (string.IsNullOrWhiteSpace(firstAddress) ||
+                            string.IsNullOrWhiteSpace(secondAddress) ||
+                            string.Equals(firstAddress, secondAddress, StringComparison.Ordinal))
+                            throw new InvalidOperationException("Overlapping Symbol references cannot be distinguished");
 
                         // Suite/Plan is only CaseId selection; Runner and result remain unified.
                         var planUi = new TCTTestPlanControl();
