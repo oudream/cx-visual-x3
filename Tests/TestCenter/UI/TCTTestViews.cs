@@ -165,13 +165,13 @@ namespace CxVisual.TestCenter.UI
                         FontWeight = FontWeights.Bold, Margin = new Thickness(0, 8, 0, 5) });
                     ContentPanel.Children.Add(proof);
                 }
-                catch (Exception ex) when (ex is InvalidDataException ||
-                    ex is IOException || ex is UnauthorizedAccessException ||
-                    ex is System.Xml.XmlException || ex is NotSupportedException)
+                catch (Exception geometryError) when (geometryError is InvalidDataException ||
+                    geometryError is IOException || geometryError is UnauthorizedAccessException ||
+                    geometryError is System.Xml.XmlException || geometryError is NotSupportedException)
                 {
-                    EvidenceProblem = ex.Message;
+                    EvidenceProblem = geometryError.Message;
                     ContentPanel.Children.Add(new TextBlock { Text = "Geometry证据不可验证：" +
-                        ex.Message, Foreground = Brushes.DarkRed, TextWrapping = TextWrapping.Wrap });
+                        geometryError.Message, Foreground = Brushes.DarkRed, TextWrapping = TextWrapping.Wrap });
                 }
             }
             Observations(result, Kind); Assertions(result);
