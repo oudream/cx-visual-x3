@@ -2078,6 +2078,31 @@ namespace CxVisual.Studio
                         session.Revision==before,
                         "重新打开复用了已放弃草稿或产生工程事务");
                 });
+                CheckStep("S2/P1 工程新建与强制打开均遵守配置草稿前置门禁", () =>
+                {
+                    StudioViewModel vm=window.DataContext as StudioViewModel;
+                    MEMEngineeringSession original=vm.ProjectSession;
+                    int originalRevision=original.Revision;
+                    Func<bool> saved=vm.BeforeProjectReplacement;
+                    int attempts=0;
+                    try
+                    {
+                        vm.BeforeProjectReplacement=()=>{
+                            attempts++;
+                            return false; // 模拟用户拒绝放弃未保存专业配置草稿
+                        };
+                        vm.NewCommand.Execute(null);
+                        Assert(Object.ReferenceEquals(original,vm.ProjectSession)&&
+                            original.Revision==originalRevision,
+                            "新建工程绕过配置草稿确认并替换了MEM真源");
+                        vm.OpenProject(System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                            "missing-p1-should-not-open.cxproj"),true);
+                        Assert(attempts==2&&
+                            Object.ReferenceEquals(original,vm.ProjectSession),
+                            "discardCurrent=true绕过了专业配置草稿保护门禁");
+                    }
+                    finally {vm.BeforeProjectReplacement=saved;}
+                });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;
             }
