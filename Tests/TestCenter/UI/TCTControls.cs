@@ -22,6 +22,7 @@ namespace CxVisual.TestCenter.UI
         public ITCTTestCase SelectedTest { get; private set; }
         public TCTTestExplorerControl()
         {
+            System.Windows.Automation.AutomationProperties.SetAutomationId(_search, "TCT.Explorer.Search");
             DockPanel panel = new DockPanel();
             DockPanel.SetDock(_search, Dock.Top);
             panel.Children.Add(_search); panel.Children.Add(_tree);
@@ -65,8 +66,11 @@ namespace CxVisual.TestCenter.UI
                         };
                         check.Checked += (sender, args) => _checkedIds.Add(id);
                         check.Unchecked += (sender, args) => _checkedIds.Remove(id);
-                        category.Items.Add(new TreeViewItem { Header = check, Tag = test,
-                            ToolTip = test.Descriptor.Id + " / " + test.Descriptor.CapabilityId });
+                        TreeViewItem entry = new TreeViewItem { Header = check, Tag = test,
+                            ToolTip = test.Descriptor.Id + " / " + test.Descriptor.CapabilityId };
+                        System.Windows.Automation.AutomationProperties.SetAutomationId(entry,
+                            "TCT.Case." + id);
+                        category.Items.Add(entry);
                     }
                     root.Items.Add(category);
                 }
@@ -254,6 +258,7 @@ namespace CxVisual.TestCenter.UI
             };
             _grid.ItemsSource = _results; Content = _grid;
         }
+        public int ResultCount { get { return _results.Count; } }
         public void Clear() { _results.Clear(); }
         public void Add(TCTTestCaseResult result)
         {
@@ -282,6 +287,7 @@ namespace CxVisual.TestCenter.UI
             ToolBar ribbon = new ToolBar { Background = Brushes.AliceBlue };
             RunAll = Create("▶ 运行全部", runAll);
             RunSelected = Create("▶ 运行选中", runSelected);
+            System.Windows.Automation.AutomationProperties.SetAutomationId(RunSelected, "TCT.RunSelected");
             Cancel = Create("■ 取消", cancel); Cancel.IsEnabled = false;
             Export = Create("导出报告", export);
             ribbon.Items.Add(RunAll); ribbon.Items.Add(RunSelected);
