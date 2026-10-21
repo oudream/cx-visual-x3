@@ -3,6 +3,10 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Globalization;
+using System.Xml.Linq;
+using System.Windows.Controls;
+using System.Windows.Media;
 using System.Windows;
 using CxVisual.TestCenter.Cases;
 using CxVisual.TestCenter.Core;
@@ -35,6 +39,18 @@ namespace CxVisual.TestCenter.UI
             RibbonTray.ToolBars.Add(_ribbon.Build(OnRunAll, OnRunSelected, OnCancel, OnExport,
                 OnRerunFailed, OnCopyTestId, OnModeSelected));
             _ribbon.SetContext(null);
+            MenuRunAll.Click += (sender, args) => OnRunAll();
+            MenuRunSelected.Click += (sender, args) => OnRunSelected();
+            MenuCancel.Click += (sender, args) => OnCancel();
+            MenuRerunFailed.Click += (sender, args) => OnRerunFailed();
+            MenuExportReport.Click += (sender, args) => OnExport();
+            MenuSaveHistory.Click += (sender, args) => { History.SaveCurrent(); BottomTabs.SelectedIndex = 2; };
+            MenuLoadHistory.Click += (sender, args) => { History.Refresh(); BottomTabs.SelectedIndex = 2; };
+            MenuRestoreLayout.Click += (sender, args) => ResetLayout();
+            MenuSaveLayout.Click += (sender, args) => SaveLayout();
+            MenuThemeLight.Click += (sender, args) => SetTheme(false);
+            MenuThemeDark.Click += (sender, args) => SetTheme(true);
+            if (!IsSmokeProcess()) LoadLayout();
             StatusText.Text = "Ready · " + _catalog.Cases.Count +
                 " 个真实测试用例。默认独立进程隔离；Graph/Channel/Runtime未接入的类型不会伪装通过。";
         }
@@ -134,6 +150,8 @@ namespace CxVisual.TestCenter.UI
             Results.Clear(); DocumentHost.Clear(); Timeline.Clear();
             _cancel = new CancellationTokenSource();
             _ribbon.SetRunning(true);
+            MenuRunAll.IsEnabled = MenuRunSelected.IsEnabled = MenuRerunFailed.IsEnabled = false;
+            MenuCancel.IsEnabled = true;
             StatusText.Text = "Running · 独立TestCenter Worker执行真实测试...";
             try
             {
@@ -156,6 +174,8 @@ namespace CxVisual.TestCenter.UI
             {
                 _cancel.Dispose(); _cancel = null;
                 _ribbon.SetRunning(false);
+                MenuRunAll.IsEnabled = MenuRunSelected.IsEnabled = MenuRerunFailed.IsEnabled = true;
+                MenuCancel.IsEnabled = false;
             }
         }
 
@@ -193,6 +213,86 @@ namespace CxVisual.TestCenter.UI
             }
         }
 
+        private bool _darkTheme;
+        private static bool IsSmokeProcess()
+        {
+            return Environment.GetCommandLineArgs().Any(x =>
+                string.Equals(x, "--ui-smoke", StringComparison.OrdinalIgnoreCase));
+        }
+        private static string LayoutPath()
+        {
+            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "CxVisual", "TestCenter", "workbench.layout.xml");
+        }
+        private void SetTheme(bool dark)
+        {
+            _darkTheme = dark;
+            Background = dark ? new SolidColorBrush(Color.FromRgb(48, 52, 59)) :
+                new SolidColorBrush(Color.FromRgb(238, 243, 249));
+            RibbonTray.Background = dark ? new SolidColorBrush(Color.FromRgb(63, 69, 79)) :
+                new SolidColorBrush(Color.FromRgb(224, 237, 249));
+            // 专业数据控件保持高对比白色画布，深色只应用于Shell层。
+            StatusText.Text = "主题 " + (dark ? "深灰" : "浅色") +
+                " · 数据Viewer颜色不参与Pass/Fail";
+        }
+        private void ResetLayout()
+        {
+            LeftColumn.Width = new GridLength(290);
+            RightColumn.Width = new GridLength(330);
+            BottomRow.Height = new GridLength(255);
+            SetTheme(false);
+        }
+        private void SaveLayout()
+        {
+            try
+            {
+                string path = LayoutPath();
+                Directory.CreateDirectory(Path.GetDirectoryName(path));
+                XElement settings = new XElement("TestCenterLayout", new XAttribute("schema", "1"),
+                    new XAttribute("left", LeftColumn.ActualWidth.ToString("R", CultureInfo.InvariantCulture)),
+                    new XAttribute("right", RightColumn.ActualWidth.ToString("R", CultureInfo.InvariantCulture)),
+                    new XAttribute("bottom", BottomRow.ActualHeight.ToString("R", CultureInfo.InvariantCulture)),
+                    new XAttribute("dark", _darkTheme));
+                string temp = path + ".partial";
+                File.WriteAllText(temp, settings.ToString(SaveOptions.DisableFormatting));
+                if (File.Exists(path)) File.Delete(path);
+                File.Move(temp, path);
+                StatusText.Text = "工作台布局保存成功";
+            }
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+            { StatusText.Text = "布局保存失败：" + ex.Message; }
+        }
+        private void LoadLayout()
+        {
+            string path = LayoutPath();
+            if (!File.Exists(path)) return;
+            try
+            {
+                XDocument settings = XDocument.Load(path);
+                XElement root = settings.Root;
+                if (root == null || root.Name != "TestCenterLayout" ||
+                    (string)root.Attribute("schema") != "1")
+                    throw new InvalidDataException("Unknown layout schema");
+                double left = double.Parse((string)root.Attribute("left"), CultureInfo.InvariantCulture);
+                double right = double.Parse((string)root.Attribute("right"), CultureInfo.InvariantCulture);
+                double bottom = double.Parse((string)root.Attribute("bottom"), CultureInfo.InvariantCulture);
+                if (double.IsNaN(left) || double.IsNaN(right) || double.IsNaN(bottom) ||
+                    left < 190 || left > 650 || right < 230 || right > 650 ||
+                    bottom < 150 || bottom > 550)
+                    throw new InvalidDataException("Invalid layout size");
+                LeftColumn.Width = new GridLength(left);
+                RightColumn.Width = new GridLength(right);
+                BottomRow.Height = new GridLength(bottom);
+                bool dark = (bool?)root.Attribute("dark") ?? false;
+                SetTheme(dark);
+            }
+            catch (Exception ex) when (ex is IOException || ex is InvalidDataException ||
+                ex is System.Xml.XmlException || ex is ArgumentException || ex is FormatException)
+            {
+                ResetLayout();
+                StatusText.Text = "布局无效，已恢复默认值：" + ex.Message;
+            }
+        }
         protected override void OnClosed(EventArgs e)
         {
             if (_cancel != null) _cancel.Cancel();
