@@ -1904,9 +1904,9 @@ namespace CxVisual.Studio
                     selector.SelectedItem=selected;
                     Assert(Object.ReferenceEquals(selector.SelectedItem,selected),
                         "测试未真正选中待删除MEM资源Scope");
-                    int revision=session.Revision;
+                    int removalRevision=session.Revision;
                     session.Remove(resource);
-                    Assert(session.Find(resource.Id)==null&&session.Revision>revision&&
+                    Assert(session.Find(resource.Id)==null&&session.Revision>removalRevision&&
                         !window.GetStudioContentIds().Contains("doc.config"),
                         "资源已删除但仍持有旧MHS资源配置编辑器");
                     Assert(session.Undo().Success&&session.Find(resource.Id)!=null,
