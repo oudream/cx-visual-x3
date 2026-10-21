@@ -126,6 +126,25 @@ namespace CxVisual.Studio
                         "资源导航误混入图元内层");
                     Assert(window.StudioEngineeringRevision == revision, "图形树读取修改MEM Revision");
                 });
+                CheckStep("S1-11 图形树和画布共享MEM选中身份并保持对象节点", () =>
+                {
+                    window.OpenStudioDocument("doc.visual");
+                    window.RefreshStudioGraphicsTree();
+                    TreeViewItem root=window.StudioGraphicsTree.Items.OfType<TreeViewItem>().First();
+                    TreeViewItem node=root.Items.OfType<TreeViewItem>()
+                        .SelectMany(layer=>layer.Items.OfType<TreeViewItem>())
+                        .FirstOrDefault(item=>item.Tag is MRCVisualItem);
+                    Assert(node!=null,"图形结构缺少可选的真实MRCVisualItem");
+                    int unchanged=window.StudioEngineeringRevision;
+                    MRCVisualItem visual=(MRCVisualItem)node.Tag;
+                    // 对象UI投影源于真实MEM Id；测试不允许创建替代对象或暗中提交工程事务。
+                    window.DataContext.GetType().GetMethod("Select")
+                        .Invoke(window.DataContext,new object[]{(Guid?)visual.Id});
+                    window.RefreshStudioGraphicsTree();
+                    TreeViewItem rootAfter=window.StudioGraphicsTree.Items.OfType<TreeViewItem>().First();
+                    Assert(Object.ReferenceEquals(root,rootAfter),"单次选择引起图形结构树整棵重建");
+                    Assert(window.StudioEngineeringRevision==unchanged,"对象选中修改了工程Revision");
+                });
                 CheckStep("R07 同一工程插入Join、保存重开及非法输入回滚", () =>
                 {
                     Assert(window.FlowInsertJoin != null &&

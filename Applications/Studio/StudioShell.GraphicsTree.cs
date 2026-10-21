@@ -15,6 +15,8 @@ namespace CxVisual.Studio
     {
         private bool _studioGraphicsRefreshing;
         private string _studioGraphicsSnapshot;
+        private readonly Dictionary<string, bool> _studioGraphicsExpansion =
+            new Dictionary<string, bool>(StringComparer.Ordinal);
 
         private void UpdateStudioGraphicsVisibility()
         {
@@ -60,6 +62,56 @@ namespace CxVisual.Studio
             return node;
         }
 
+        private static IEnumerable<TreeViewItem> GraphicDescendants(ItemCollection items)
+        {
+            foreach (TreeViewItem node in items.OfType<TreeViewItem>())
+            {
+                yield return node;
+                foreach (TreeViewItem child in GraphicDescendants(node.Items))
+                    yield return child;
+            }
+        }
+
+        private static string GraphicKey(TreeViewItem item)
+        {
+            MRCVisualItem visual = item.Tag as MRCVisualItem;
+            return visual != null ? "item:" + visual.Id.ToString("N") :
+                "layer:" + Convert.ToString(item.Header);
+        }
+
+        private void SyncStudioGraphicsSelection()
+        {
+            if (_studioGraphicsRefreshing || StudioGraphicsTree == null || _viewModel == null)
+                return;
+            Guid? selected = _viewModel.SelectedId;
+            TreeViewItem current = StudioGraphicsTree.SelectedItem as TreeViewItem;
+            MRCVisualItem currentVisual = current == null ? null : current.Tag as MRCVisualItem;
+            if (selected.HasValue && currentVisual != null && currentVisual.Id == selected.Value)
+                return;
+            TreeViewItem match = selected.HasValue
+                ? GraphicDescendants(StudioGraphicsTree.Items)
+                    .FirstOrDefault(node => node.Tag is MRCVisualItem &&
+                        ((MRCVisualItem)node.Tag).Id == selected.Value)
+                : null;
+            _studioGraphicsRefreshing = true;
+            try
+            {
+                if (current != null && current != match) current.IsSelected = false;
+                if (match != null)
+                {
+                    ItemsControl ancestor = ItemsControl.ItemsControlFromItemContainer(match);
+                    while (ancestor is TreeViewItem)
+                    {
+                        TreeViewItem parent = (TreeViewItem)ancestor;
+                        parent.IsExpanded = true;
+                        ancestor = ItemsControl.ItemsControlFromItemContainer(parent);
+                    }
+                    match.IsSelected = true;
+                }
+            }
+            finally { _studioGraphicsRefreshing = false; }
+        }
+
         public void RefreshStudioGraphicsTree()
         {
             if (_studioGraphicsRefreshing || _viewModel == null || StudioGraphicsTree == null) return;
@@ -74,12 +126,18 @@ namespace CxVisual.Studio
                     ? new List<MRCVisualItem> { symbol.RootGroup }
                     : new List<MRCVisualItem>();
             string snapshot = (definition == null ? "" : definition.Id.ToString("N")) + "|" +
-                String.Join(";", CollectGraphicsFingerprint(visuals)) + "|" +
-                (_viewModel.SelectedId.HasValue ? _viewModel.SelectedId.Value.ToString("N") : "");
-            if (String.Equals(_studioGraphicsSnapshot, snapshot, StringComparison.Ordinal)) return;
+                String.Join(";", CollectGraphicsFingerprint(visuals));
+            // 画布选择只移动Outline的选择标记，不删除/重建整个图元树。
+            if (String.Equals(_studioGraphicsSnapshot, snapshot, StringComparison.Ordinal))
+            {
+                SyncStudioGraphicsSelection();
+                return;
+            }
             _studioGraphicsRefreshing = true;
             try
             {
+                foreach (TreeViewItem old in GraphicDescendants(StudioGraphicsTree.Items))
+                    _studioGraphicsExpansion[GraphicKey(old)] = old.IsExpanded;
                 StudioGraphicsTree.Items.Clear();
                 TreeViewItem root = new TreeViewItem
                 {
@@ -96,9 +154,16 @@ namespace CxVisual.Studio
                     root.Items.Add(layerTree);
                 }
                 StudioGraphicsTree.Items.Add(root);
+                foreach (TreeViewItem node in GraphicDescendants(StudioGraphicsTree.Items))
+                {
+                    bool expanded;
+                    if (_studioGraphicsExpansion.TryGetValue(GraphicKey(node), out expanded))
+                        node.IsExpanded = expanded;
+                }
                 _studioGraphicsSnapshot = snapshot;
             }
             finally { _studioGraphicsRefreshing = false; }
+            SyncStudioGraphicsSelection();
         }
 
         private static IEnumerable<string> CollectGraphicsFingerprint(IEnumerable<MRCVisualItem> visuals)
