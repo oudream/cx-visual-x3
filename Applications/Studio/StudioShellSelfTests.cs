@@ -1500,7 +1500,7 @@ namespace CxVisual.Studio
                         candidate,session.GetSnapshot(),resolver,versions,policy);
                     Assert(object.ReferenceEquals(staged,candidate.Plan),
                         "发布过的MOC Plan被Studio替换为另外一次编译结果");
-                    var updated=new Dictionary<string,string>(versions,StringComparer.Ordinal);
+                    var updated=versions.ToDictionary(x=>x.Key,x=>x.Value,StringComparer.Ordinal);
                     updated["AI"]="studio-cpu-v2";
                     denied=false;
                     try{MainWindow.StageCpuSoftwareRelease(candidate,session.GetSnapshot(),
