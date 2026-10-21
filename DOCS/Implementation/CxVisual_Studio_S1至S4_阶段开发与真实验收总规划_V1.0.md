@@ -165,3 +165,11 @@
 - 当前设计方向：**继续**。现有MEM/MTC、MOL/MOC、MRK/MDS是可用基础，应优先组合；不另造并行内核。
 - 当前落地效果：**尚未实现宪法完整工业平台目标**。S1 Shell和部分编辑/构建/模拟执行有真实证据，S2完整配置与低成本专业接入、S3完整同体验、S4生产Release/Target Runtime与全部专业场景仍存在明显差距。
 - 下一轮成功要素：优先统一Editor/Command上下文，再以两专业配置/资源、同一工程跨专业模拟执行与SourceMap定位验证。**不要以S1单项20 PASS或所有现有CI success判定A/B/C、设备权限和整个Studio已完成。**
+
+## 13. P0 S1→S2 第一轮真实开发：资源Tab统一绘图插入（2026-10-21）
+
+- **源代码验收SHA**：[de3a024b](https://github.com/oudream/cx-visual-x3/commit/de3a024b4198e5be2dada7de899f7e5cf566afcc)，承接[29247c13](https://github.com/oudream/cx-visual-x3/commit/29247c13f5cecd01317df358d0da11747734cfb9)（最初实施）及[3e49294d](https://github.com/oudream/cx-visual-x3/commit/3e49294d4454fc17af2480b810a7637f393316cf)（STA编译重名修复）。本轮复用原`CxVisualEditor.AddShape/AddText/AddWidget`、`MVIShapeCatalog.CreateDefault`和MEM/MTC事务，未修改基础/机制工程真源及接口；无新增项目。
+- **真正接入**：`StudioShell.ResourceDocuments.cs`基于当前活动DocumentId，允许Page、Content、Symbol真实独立Editor插入原九Shape、文字、Widget；复用原工具箱`OnInsertShape`与动态Ribbon操作入口。MOL流程Tab/失效资源明确拒绝插图元；Page的旧`StudioViewModel.ActivePage`仍在命令执行前同步，维持原R06业务协议，不误改固定主视图。
+- **反证与Windows证据**：[Studio S1 Windows #39564306075](https://github.com/oudream/cx-visual-x3/actions/runs/39564306075) **success，23/23 WPF STA**；[Engineering Organization Windows #39564306081](https://github.com/oudream/cx-visual-x3/actions/runs/39564306081) **success**，同源码SHA真实编译与回归。新增测试验证九Shape、Widget、Content与Symbol编辑隔离、页面VM检视不误写、共享Undo/Redo、MOL流程拒绝及Tab复用；原R06也保留并通过。早期[Studio #39563979491](https://github.com/oudream/cx-visual-x3/actions/runs/39563979491)确实发现原R06上下文兼容失败，随后修复，不能掩盖历史失败。
+- **完成判定**：**P0第一切片通过自动化**，并非S1/S2或完整图元编辑全部完成。现有排列/图层/属性/路径精细编辑及流程Command仍有旧固定Editor依赖；专业命令Descriptor、统一快捷键与右键、真实鼠标DPI、多Tab性能及工程到独立Host尚未完整验收。
+- **下一切片**：在同一活动Editor上下文下继续统一对齐/分布、选择与几何修改命令，保持SceneView与图形结构/属性面板身份一致，不新增第二套Command或Undo；再展开S2完整Schema组合面板。

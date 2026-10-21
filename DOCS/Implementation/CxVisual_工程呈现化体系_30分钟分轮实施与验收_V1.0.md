@@ -190,3 +190,7 @@ R01源码已提交（截止 f6c0dceb7afae75d320f6b442f3a152b11566162）：修改
 - [e56b91b9](https://github.com/oudream/cx-visual-x3/commit/e56b91b94fbe10060ad155bfd1921f6fc9f3c027)：MOC构建诊断带原ContentId/BlockId和Snapshot版本，主流程保留原定位，子流程从已有Tab下钻。初次Windows[Studio 39563392658](https://github.com/oudream/cx-visual-x3/actions/runs/39563392658)为**failure**，原因是新增STA测试同名变量`CS0136`，不宣称当时通过。
 - [b6b43779](https://github.com/oudream/cx-visual-x3/commit/b6b43779173f3d8ec227c798bdab8d82c0c2beb5)：修复`CS0136`且保留全部测试。[Studio Windows 39563632288](https://github.com/oudream/cx-visual-x3/actions/runs/39563632288) **success，22/22 WPF STA，0 FAIL，Windows x64统一解决方案编译及Owner依赖检查通过**。同SHA其他工作流以各自最终状态为准。
 - 这些是P0-4的Studio自动验证切片，不等于完整X-Ray主/AI/CV流程执行、Trace+SourceMap所有路径、发布授权、实体设备或人工DPI验收。并行新master仍需各自同SHA验证。
+
+### P0-S1/S2 统一资源Tab真实图元命令验收（2026-10-21）
+
+- 当前已提交且经Windows验收：[de3a024b](https://github.com/oudream/cx-visual-x3/commit/de3a024b4198e5be2dada7de899f7e5cf566afcc)；[Studio S1 #39564306075](https://github.com/oudream/cx-visual-x3/actions/runs/39564306075) **23/23 WPF STA success**，[工程组织 #39564306081](https://github.com/oudream/cx-visual-x3/actions/runs/39564306081) **success**。补真实Page/Content/Symbol绘图Ribbon与旧工具箱到各独立`CxVisualEditor`，九Shape/Text/Widget只通过MEM事务，保留旧R06活动页面上下文；新增跨资源误写、撤销重做、流程Tab拒绝和Tab复用反证。不是完整EP02/03签收；专业Editor注册、对齐/路径工具、人工鼠键及性能继续开发。
