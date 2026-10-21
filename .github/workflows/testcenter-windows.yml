@@ -169,12 +169,13 @@ jobs:
           }
           if (-not (Test-Path $screenshot)) { throw 'No actual WPF screenshot produced' }
           foreach ($name in @('TestCenter-01-Workspace.png','TestCenter-02-Geometry.png',
-                             'TestCenter-03-Object.png','TestCenter-04-Dark.png')) {
+                             'TestCenter-03-Object.png','TestCenter-04-Dark.png',
+                              'TestCenter-05-Graph.png','TestCenter-06-Runtime.png')) {
               if (-not (Test-Path (Join-Path (Split-Path $screenshot) $name))) {
                   throw "Missing real WPF screenshot: $name"
               }
           }
-          Write-Host 'PASS UIAutomation ValuePattern -> Selection -> Context Ribbon -> 2 real Owner runs -> 4 screenshots'
+          Write-Host 'PASS UIAutomation ValuePattern -> Selection -> Context Ribbon -> 3 real Owner runs -> 6 screenshots'
       - name: Upload actual TestCenter WPF screenshot
         uses: actions/upload-artifact@v4
         if: always()
