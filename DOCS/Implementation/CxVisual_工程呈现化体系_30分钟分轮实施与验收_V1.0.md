@@ -156,3 +156,18 @@ R01源码已提交（截止 f6c0dceb7afae75d320f6b442f3a152b11566162）：修改
 
 - 规划入口：[Studio S1～S4阶段开发与真实验收总规划](CxVisual_Studio_S1至S4_阶段开发与真实验收总规划_V1.0.md)。继续按S1 Shell、S2配置命令、S3图元和MOL流程、S4运行调试与专业集成推进，同时保留本表EP01～EP15、R01～R48、G1～G6，不为每阶段另建一套R编号。
 - 最新实际源码SHA [a4e94349](https://github.com/oudream/cx-visual-x3/commit/a4e943493e0748b5e8b357dcd1d08a5371f3bfe3) 通过 [Studio S1 Windows 39553816491](https://github.com/oudream/cx-visual-x3/actions/runs/39553816491) **17/17 WPF STA success** 与 [Engineering Organization Windows 39553816541](https://github.com/oudream/cx-visual-x3/actions/runs/39553816541) **success**。保存后Undo删除新增图元及Redo对应Tab直接Dirty、引用影响与无关Tab隔离均由同SHA自动测试证明；人工场景仍待。
+
+
+### P0-1～P0-4 实际进度补充（2026-10-21，不能替代EP全域验收）
+
+| 优先级 | 当前实现与Owner | 实测证据 | 下一步缺口 |
+|---|---|---|---|
+| P0-1 工程组织 | **主要代码闭环**：MEM现有ResourceEntry推导直接/传递依赖影响、Path和Revision；复用MTC事务预演共享定义兼容性、错误回滚。无需第二依赖图 | [工程组织Windows 39549728186](https://github.com/oudream/cx-visual-x3/actions/runs/39549728186) success；源码`944a0359`、`9f9d464e` | MOC已构建计划/SourceMap真实版本失效联动、专业Provider版本与真实设备 |
+| P0-2 统一资源编辑 | **主要代码闭环**：Page/Content/Symbol各有CxVisualEditor+SceneView，Content独立MOLFlowCanvas；资源导航、Dirty/间接受影响提示、关闭重开及布局恢复，共用MEM事务和历史 | [Studio Windows 39553816491](https://github.com/oudream/cx-visual-x3/actions/runs/39553816491) 17/17 STA、[工程Windows 39553816541](https://github.com/oudream/cx-visual-x3/actions/runs/39553816541) success；源码`a4e94349` | 九Shape完整精细编辑、专业Viewer、复杂快捷键、高DPI、多小时/手工验证 |
+| P0-3 统一Schema | **持续实现，未全签收**：资源树与真实资源Tab不再局限选中单图元；Content/Symbol和Page内嵌Content直接投影原MPM Schema，编辑复用ApplyPropertyCommand/MTC校验、Undo/Redo；不同资源旧属性行拒绝 | [Studio Windows 39556251854](https://github.com/oudream/cx-visual-x3/actions/runs/39556251854) 18/18 STA（`cf2b0209`）；[Studio Windows 39556665984](https://github.com/oudream/cx-visual-x3/actions/runs/39556665984) 19/19 STA（`50e07137`） | 实际Vision/CT专业Provider Schema与配置集合适配、统一CommandId多入口/权限/异常、复杂属性类型 |
+| P0-4 X-Ray跨流程 | **首个定位切片通过，整体未验收**：保留父流程调用节点定位，新增“跳转子流程源”，由MRK轨迹ContentId/BlockId仅在MEM实际存在、MOL V2实际包含Block时打开源资源Tab并选中Block；错误/删除目标拒绝，导航不增加MEM Revision | [Studio Windows 39557455651](https://github.com/oudream/cx-visual-x3/actions/runs/39557455651) **20/20 STA**（`2a6a31c3`），[源码`1e246bca`](https://github.com/oudream/cx-visual-x3/commit/1e246bca0184ad46a82a112871bce3f3ddcc12b1) | 使用真实MOC SourceMap+MRK完整执行轨迹做主/AI/CV/诊断→源节点→HMI→修改重构建端到端闭环；设备与权限实测 |
+| P1 后续深化 | 专业底层已有能力，尚无本工作包最终实机/负载验收 | 不以类存在替代通过 | CT3D Viewer、跨工程模板、长期资源/内存与数据观察 |
+
+**同SHA门禁必须区分**：`2a6a31c3` 的 [Studio Windows 39557455651](https://github.com/oudream/cx-visual-x3/actions/runs/39557455651) 20项STA和Windows x64编译成功；同SHA [工程组织Windows 39557455627](https://github.com/oudream/cx-visual-x3/actions/runs/39557455627) 因Foundation同步日志跨进程占用(`System.IO.IOException`)失败，**仓库全CI不能声称绿**。该日志并发故障由Foundation原Owner独立修复/复验，本表保留失败事实，不冒充P0-4功能失败或全平台通过。之后的集成源码继续以各自最新同SHA记录为准。
+
+下一步顺序：先按最新master核实上述失败是否已修复；继续P0-3真实专业Schema+统一命令的跨资源入口；贯通P0-4 X-Ray完整构建→模拟运行→Trace/SourceMap定位→修改重构建；最后联合复核P0-1影响闭包与MOC计划版本。无真实生产设备权限及联锁验证时，只能签仿真/工程测试，不签设备现场验收。
