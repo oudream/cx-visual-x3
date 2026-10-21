@@ -398,7 +398,9 @@ namespace CxVisual.Mechanism.Runtime.Execution
                             context.Data.Return(item.Key, item.Value);
                         return Task.FromResult((object)true);
                     }, inputs: exportInputs, dataOutputs: child.DataExportTypes,
-                    enableDataContext: true));
+                    // 未选中的合法分支可以是Skipped；真正的导出源仍由
+                    // 端口绑定和原子Commit严格验证，缺失时绝不提交半成品。
+                    allowSkippedDependencies: true,enableDataContext: true));
             }
             return list.AsReadOnly();
         }

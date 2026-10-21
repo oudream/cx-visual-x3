@@ -1412,9 +1412,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     b.ExposeOutput("Final",plus,"Answer");
                 });
                 bool failLeafForR07=false;
+                bool midAccepted=true;
                 int rejectedCalls=0;
+                int executedLeaf=0;
                 var resolver=new TestResolver()
-                    .Register("MidGate",(c,t)=>Task.FromResult((object)true))
+                    .Register("MidGate",(c,t)=>Task.FromResult((object)midAccepted))
                     .Register("MidWrongBranch",(c,t)=>{
                         Interlocked.Increment(ref rejectedCalls);
                         return Task.FromResult((object)true);
@@ -1423,6 +1425,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         c.Data.Return("Value",4);return Task.FromResult((object)true);
                     },new Dictionary<string,Type>{{"Value",typeof(int)}},null)
                     .RegisterData("Double",(c,t)=>{
+                        Interlocked.Increment(ref executedLeaf);
                         if(failLeafForR07)
                             throw new InvalidOperationException("r07.leaf.failure");
                         c.Data.Return("Doubled",c.Data.Get<int>("N")*2);
@@ -1453,6 +1456,15 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Check(rejectedCalls==0&&
                         compiled.Plan.SourceMap.Find(midRejected).Count>0,
                         "nested guarded branch was executed despite its false predicate");
+                    // 未选分支可以Skipped，但公开结果源若Skipped就不能提交半成品。
+                    midAccepted=false;
+                    int leafBefore=executedLeaf;
+                    var denied=Execute(compiled.Plan,null,out trace);
+                    Check(denied.State==MRKFlowState.Failed&&
+                        denied.CommittedOutputs.Count==0&&
+                        executedLeaf==leafBefore&&rejectedCalls==1,
+                        "nested skipped required export falsely committed or executed leaf");
+                    midAccepted=true;
                     Check(result.CommittedOutputs.Count==1&&
                         !result.CommittedOutputs.ContainsKey("LeafValue")&&
                         !result.CommittedOutputs.ContainsKey("MidResult"),
