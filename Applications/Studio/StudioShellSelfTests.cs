@@ -754,10 +754,10 @@ namespace CxVisual.Studio
                     window.OpenStudioResourceDocument(symbol.Id,false);
                     Button circle=window.StudioRibbonActions.Children.OfType<Button>()
                         .Single(x=>Convert.ToString(x.Content)=="圆");
-                    int revision=session.Revision;
+                    int symbolRevisionBefore=session.Revision;
                     model.ActivePage=page; // 非活动检视不能取代活动资源Tab身份
                     circle.RaiseEvent(new System.Windows.RoutedEventArgs(Button.ClickEvent));
-                    Assert(session.Revision==revision+1&&
+                    Assert(session.Revision==symbolRevisionBefore+1&&
                         symbol.RootGroup.DescendantsAndSelf().OfType<MRCShapeElement>()
                             .Count(x=>x.Shape.Kind==MRCShapeKind.Circle)==1&&
                         content.DescendantsAndSelf().OfType<MRCShapeElement>().Count()==9&&
