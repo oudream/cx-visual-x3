@@ -196,6 +196,7 @@ namespace CxVisual.TestCenter.UI
         public string EvidenceProblem { get; private set; }
         public string ArchivedEvidenceRoot { get; set; }
         public TreeView OwnershipTree { get; private set; }
+        public TCTObjectReferenceDiagram RelationDiagram { get; private set; }
 
         public override void Clear()
         {
@@ -205,6 +206,7 @@ namespace CxVisual.TestCenter.UI
             VerifiedDiffCount = 0;
             EvidenceProblem = null;
             OwnershipTree = null;
+            RelationDiagram = null;
         }
 
         public override void Bind(TCTTestCaseResult result)
@@ -405,6 +407,24 @@ namespace CxVisual.TestCenter.UI
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto, MaxHeight = 500 };
             Grid.SetColumn(relatedScroll, 1); split.Children.Add(relatedScroll);
             ContentPanel.Children.Add(split);
+            if (nodes.Length <= 500)
+            {
+                TCTObjectReferenceDiagram diagram = new TCTObjectReferenceDiagram();
+                diagram.BindVerifiedSnapshot(snapshot);
+                diagram.ObjectSelected += (id, details) =>
+                {
+                    SelectObservation(observation);
+                    if (ObjectSelected != null) ObjectSelected(id.ToString("D"), details);
+                };
+                RelationDiagram = diagram;
+                ContentPanel.Children.Add(new TextBlock { Text = "Ownership / Reference · 真实只读对象关系图",
+                    FontWeight = FontWeights.Bold, Margin = new Thickness(6, 5, 6, 5) });
+                ContentPanel.Children.Add(diagram);
+            }
+            else
+                ContentPanel.Children.Add(new TextBlock {
+                    Text = "对象图节点超过500，暂仅使用已验证树显示，未虚构关系图。",
+                    Foreground = Brushes.DarkGoldenrod, Margin = new Thickness(7) });
         }
 
         private static TreeViewItem BuildItem(XElement node, Dictionary<Guid, XElement> index)
