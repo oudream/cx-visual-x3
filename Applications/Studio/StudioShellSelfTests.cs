@@ -1191,6 +1191,44 @@ namespace CxVisual.Studio
                         System.Windows.Input.Key.A,System.Windows.Input.ModifierKeys.Control);
                     Assert(canvas.SelectedBlockIds.Count==2,"子流程Ctrl+A未选择真实节点");
                 });
+                CheckStep("P0 资源Tab选择与浮动标志及关闭后编辑器释放重建", () =>
+                {
+                    StudioViewModel model=window.DataContext as StudioViewModel;
+                    MEMEngineeringSession session=model.ProjectSession;
+                    MEMContent content=session.AddContent(session.Project,"P0文档生命周期Content");
+                    string key=window.OpenStudioResourceDocument(content.Id,false);
+                    LayoutDocument doc=window.StudioDock.Layout.Descendents()
+                        .OfType<LayoutDocument>().Single(x=>x.ContentId==key);
+                    Assert(doc.CanFloat&&doc.CanClose,
+                        "独立资源文档被错误禁止浮动/关闭");
+                    SceneView oldScene=window.GetStudioResourceScene(content.Id);
+                    Button rect=window.StudioRibbonActions.Children.OfType<Button>()
+                        .Single(x=>Convert.ToString(x.Content)=="添加矩形");
+                    int before=session.Revision;
+                    rect.RaiseEvent(new System.Windows.RoutedEventArgs(Button.ClickEvent));
+                    Assert(session.Revision==before+1&&
+                        content.DescendantsAndSelf().OfType<MRCShapeElement>().Any(),
+                        "旧矩形Ribbon未路由当前独立资源");
+                    window.HandleStudioResourceShortcut(
+                        System.Windows.Input.Key.A,System.Windows.Input.ModifierKeys.Control);
+                    Assert(oldScene.SelectedVisualIds.Count>0,
+                        "Ctrl+A未选择当前图元Tab的真实元素");
+                    Button select=window.StudioRibbonActions.Children.OfType<Button>()
+                        .Single(x=>Convert.ToString(x.Content)=="选择");
+                    select.RaiseEvent(new System.Windows.RoutedEventArgs(Button.ClickEvent));
+                    Assert(window.ActiveStudioDocumentId==key,
+                        "选择命令错误跳转到固定图元编辑器");
+                    int savedRevision=session.Revision;
+                    window.CloseStudioDocument(key);
+                    Assert(window.GetStudioResourceScene(content.Id)==null&&
+                        session.Revision==savedRevision,
+                        "关闭资源Tab泄漏Editor缓存或修改工程");
+                    window.OpenStudioResourceDocument(content.Id,false);
+                    SceneView rebuilt=window.GetStudioResourceScene(content.Id);
+                    Assert(rebuilt!=null&&!Object.ReferenceEquals(oldScene,rebuilt)&&
+                        session.Revision==savedRevision,
+                        "重开Tab没有释放旧场景/复用原MEM真源");
+                });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;
             }

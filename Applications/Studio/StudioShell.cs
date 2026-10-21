@@ -436,11 +436,18 @@ namespace CxVisual.Studio
             }
             if (group == "绘图")
             {
-                AddRibbonButton("选择", null, (s, e) => OpenStudioDocument("doc.visual"));
+                AddRibbonButton("选择", null, (s, e) =>
+                {
+                    ResourceDocumentContext active=ActiveStudioResourceContext();
+                    if(active!=null&&!active.IsFlow&&active.Scene!=null)
+                        active.Scene.Focus();
+                    else OpenStudioDocument("doc.visual");
+                }, true);
                 AddRibbonButton("添加矩形", null, (s, e) =>
                 {
+                    if(RouteStudioResourceVisualInsertion("Rect"))return;
                     if (_viewModel.AddCommand.CanExecute(null)) _viewModel.AddCommand.Execute(null);
-                });
+                }, true);
                 AddRibbonButton("直线", "Line", OnInsertShape, true);
                 AddRibbonButton("矩形", "Rect", OnInsertShape, true);
                 AddRibbonButton("圆", "Circle", OnInsertShape, true);

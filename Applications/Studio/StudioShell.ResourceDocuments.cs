@@ -468,6 +468,16 @@ namespace CxVisual.Studio
                     "工程历史操作拒绝："+result.ErrorCode+" "+result.Message;
                 return result.Success;
             }
+            internal void SelectAllVisuals()
+            {
+                if(!CanEditVisual())return;
+                Guid[] ids=Editor.Scene.Where(item=>item.IsSelectable)
+                    .Select(item=>item.Id).Distinct().ToArray();
+                _owner._viewModel.Select(null);
+                Editor.Select(null);
+                Scene.SetSelectedVisualIds(ids);
+                _owner.RefreshStudioGraphicsTree();
+            }
             internal void ClearSelection()
             {
                 if(!CanEditVisual())return;
@@ -831,6 +841,7 @@ namespace CxVisual.Studio
                 {context.Flow.SetSelection(new Guid[0]);context.Flow.ResetLinkSelection();return true;}
                 return false;
             }
+            if(control&&key==Key.A){context.SelectAllVisuals();return true;}
             if(modifiers==ModifierKeys.None&&key==Key.Delete)
             {context.DeleteVisualSelection();return true;}
             if(modifiers==ModifierKeys.None&&key==Key.Escape)
@@ -889,7 +900,7 @@ namespace CxVisual.Studio
                 if(pane==null)throw new InvalidOperationException("中央工作区已丢失");
                 document=new LayoutDocument{ContentId=key,Title=resource.Name+
                     (flow?" [流程]":" [设计]"),Content=context.Panel,
-                    CanClose=true,CanFloat=false};
+                    CanClose=true,CanFloat=true};
                 RegisterStudioPageClosing(document);pane.Children.Add(document);
             }
             document.IsActive=true;
