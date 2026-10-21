@@ -667,10 +667,10 @@ namespace CxVisual.Mechanism.Runtime.Execution
                     MRKExecutionContext compensationContext = flow.Context
                         .WithDataScope(null)
                         .WithBoundInputs(MRKExecutionPortBinder.Bind(step, flow.Context));
-                    foreach (string resourceId in step.RequiredResources)
-                        leases.Add(await _resources.AcquireAsync(resourceId,
-                            flow.FlowId.ToString("N") + ":rollback:" + stepId, cancellation)
-                            .ConfigureAwait(false));
+                    leases.AddRange(await _resources.AcquireManyAsync(
+                        step.RequiredResources,
+                        flow.FlowId.ToString("N") + ":rollback:" + stepId, cancellation)
+                        .ConfigureAwait(false));
                     // 已经获准的补偿必须能在Stop的排空阶段提交后续步骤。
                     // DrainAndStop会等待本次补偿完成，才真正停止底层Worker。
                     FCRWorkHandle<bool> job = _worker.Submit<bool>(async token =>
@@ -1165,10 +1165,10 @@ namespace CxVisual.Mechanism.Runtime.Execution
                     if (step.RequiredResources.Count > 0)
                         context.SetState(step.Id, MRKStepState.WaitingResources,
                             string.Join(",", step.RequiredResources));
-                    foreach (string resourceId in step.RequiredResources)
-                        leases.Add(await _resources.AcquireAsync(resourceId,
-                            context.FlowId.ToString("N") + ":" + step.Id, cancellation)
-                            .ConfigureAwait(false));
+                    leases.AddRange(await _resources.AcquireManyAsync(
+                        step.RequiredResources,
+                        context.FlowId.ToString("N") + ":" + step.Id, cancellation)
+                        .ConfigureAwait(false));
 
                     MRKExecutionContext nodeContext = context.WithBoundInputs(
                         MRKExecutionPortBinder.Bind(step, context));

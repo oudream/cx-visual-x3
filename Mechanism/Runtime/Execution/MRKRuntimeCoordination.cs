@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -63,6 +64,39 @@ namespace CxVisual.Mechanism.Runtime.Execution
             lock (_gate) resource.Owner = owner;
             return new MRKResourceLease(resourceId, owner, () => Release(resource));
         }
+        /// <summary>
+        /// 多资源取得使用统一字典序，避免不同节点按相反顺序持有部分租约而死锁。
+        /// 取消或任一申请失败时逆序释放已持有租约；不能把部分成功交给调用者。
+        /// 软件进程内租约不代表设备的真实硬件安全停机。
+        /// </summary>
+        public async Task<IReadOnlyList<MRKResourceLease>> AcquireManyAsync(
+            IEnumerable<string> resourceIds, string owner,
+            CancellationToken cancellation = default(CancellationToken))
+        {
+            if (resourceIds == null) throw new ArgumentNullException("resourceIds");
+            ValidateOwner(owner);
+            string[] requested = resourceIds.ToArray();
+            if (requested.Any(string.IsNullOrWhiteSpace))
+                throw new ArgumentException("资源ID不能为空", "resourceIds");
+            string[] ordered = requested.Distinct(StringComparer.Ordinal)
+                .OrderBy(x => x, StringComparer.Ordinal).ToArray();
+            cancellation.ThrowIfCancellationRequested();
+            List<MRKResourceLease> leases = new List<MRKResourceLease>();
+            try
+            {
+                foreach (string resource in ordered)
+                    leases.Add(await AcquireAsync(resource, owner, cancellation)
+                        .ConfigureAwait(false));
+                return leases.AsReadOnly();
+            }
+            catch
+            {
+                for (int i = leases.Count - 1; i >= 0; i--)
+                    leases[i].Dispose();
+                throw;
+            }
+        }
+
         public MRKResourceLease TryAcquire(string resourceId, string owner)
         {
             ValidateOwner(owner);

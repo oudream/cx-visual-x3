@@ -505,3 +505,10 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 - ArchitectureSmoke: `R08_WholeFlowSerializesAcrossFlowsAndCancelsQueue` 使用真实MRKFlow，验证完整Flow占组、后继Flow排队、第三Flow超组等待容量在任何业务SideEffect前失败、队列取消即时返还组配额且不抢占第一Flow、第一Flow两个同组Step不发生自死锁、释放后新Flow再次可进入。
 - `R08_WholeFlowLoopUsesOneLeaseAndRejectsUnknownInnerGroups` 在单Worker内执行含WholeFlow组的多轮动态Loop，预期循环2次且只在父Flow获取组许可证；嵌套未知组在StartFlow前拒绝、零副作用；非法组Scope拒绝，不将尚未实现的Stage隐式降级。
 - 仍属软件单宿主组机制：此批提交待真实Windows x64工程编译、Runtime、TestCenter及工程组织CI；不代表Stage、资源物理联锁或跨进程独占已完成。
+
+### R08 原资源协调器多资源排序与取消原子回滚（2026-10-21，待Windows CI）
+
+- 仍复用`MRKResourceLeaseCoordinator`：新增`AcquireManyAsync`，全部资源Id先验证、排序去重，按相同次序取得原有`SemaphoreSlim`许可；若排队阶段取消/异常，逆序Dispose已拿到的资源租约，不向调用者公开部分成功。
+- 原MRK Engine的业务Step和显式补偿共用该多资源申请入口，Worker提交时已经持有完整软件租约，尾部任务真正结算之后才逆序释放。无第二套资源服务/组系统；旧单资源AcquireAsync/TryAcquire仍保留。
+- ArchitectureSmoke反证：先已有其他Owner持有B，再按B,A,A申请；验证A先取得并等待B、取消后A归还且B持有者不变；资源A可被新申请者使用；成功申请排序去重；非法资源名在零副作用阶段拒绝。
+- 仍未实现物理设备Owner或硬件停止确认、多进程分布式锁、无限等待的自动公平性证明；本增量按真实Windows CI结果单独验收。

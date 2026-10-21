@@ -12,6 +12,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         internal static void Run()
         {
             T11_ResourceLeaseAndCancellation();
+            R08_MultiResourceCancellationRollsBackAllPartialLeases();
             T12_UnknownOperationLateConfirmationAndIdempotency();
             T17_CorrelatedReplyAndTimeout();
             T18_ImmutablePlanAcrossRuns();
@@ -71,6 +72,49 @@ namespace CxVisual.Tests.ArchitectureSmoke
             }
             Check(coordinator.CurrentOwner("PLC1") == null, "租约释放后Owner仍存在");
         }
+        /// <summary>R08：锁定顺序一致，取消B时撤销已持有的A，不能泄漏给下一Flow。</summary>
+        private static void R08_MultiResourceCancellationRollsBackAllPartialLeases()
+        {
+            MRKResourceLeaseCoordinator coordinator = new MRKResourceLeaseCoordinator();
+            MRKResourceLease heldB = coordinator.TryAcquire("B", "blocking");
+            using (CancellationTokenSource cts = new CancellationTokenSource())
+            {
+                Task<IReadOnlyList<MRKResourceLease>> pending =
+                    coordinator.AcquireManyAsync(new[]{"B","A","A"}, "multi", cts.Token);
+                Check(SpinWait.SpinUntil(() => coordinator.CurrentOwner("A") == "multi", 2500),
+                    "R08固定字典序未先取得A，或者资源租约没有正确登记");
+                Check(!pending.IsCompleted && coordinator.CurrentOwner("B") == "blocking",
+                    "R08多资源请求未在已有资源持有者处异步等待");
+                cts.Cancel();
+                bool cancelled = false;
+                try { Await(pending); }
+                catch (OperationCanceledException) { cancelled = true; }
+                Check(cancelled && coordinator.CurrentOwner("A") == null &&
+                    coordinator.CurrentOwner("B") == "blocking",
+                    "R08部分资源申请取消后未逆序回滚或抢占原持有者");
+                using (MRKResourceLease freeA=coordinator.TryAcquire("A","other"))
+                    Check(freeA!=null,"R08取消后已取得部分资源无法重新使用");
+            }
+            heldB.Dispose();
+            IReadOnlyList<MRKResourceLease> all = Await(coordinator.AcquireManyAsync(
+                new[]{"B","A","A"}, "success"));
+            try
+            {
+                Check(all.Count==2 && all[0].ResourceId=="A" &&
+                    all[1].ResourceId=="B" && coordinator.CurrentOwner("A")=="success" &&
+                    coordinator.CurrentOwner("B")=="success",
+                    "R08多资源排序去重与成功持有者不正确");
+            }
+            finally { for (int i=all.Count-1;i>=0;i--) all[i].Dispose(); }
+            Check(coordinator.CurrentOwner("A")==null && coordinator.CurrentOwner("B")==null,
+                "R08全部结算后资源所有权未归还");
+            bool invalid=false;
+            try{ Await(coordinator.AcquireManyAsync(new[]{"A"," "},"invalid")); }
+            catch(ArgumentException){invalid=true;}
+            Check(invalid && coordinator.CurrentOwner("A")==null,
+                "R08非法资源ID必须在任何资源取得前拒绝");
+        }
+
         private static void T12_UnknownOperationLateConfirmationAndIdempotency()
         {
             MRKExternalOperationTracker tracker = new MRKExternalOperationTracker();
