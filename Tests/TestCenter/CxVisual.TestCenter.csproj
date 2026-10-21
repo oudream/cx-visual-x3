@@ -29,6 +29,7 @@
     <Compile Include="Models\TCTModels.cs" />
     <Compile Include="Models\TCTObservationEnvelope.cs" />
     <Compile Include="Models\TCTEngineeringSnapshotCodec.cs" />
+    <Compile Include="Models\TCTGeometryEvidence.cs" />
     <Compile Include="Models\TCTObservationDiff.cs" />
     <Compile Include="Models\TCTTestSourceLocation.cs" />
     <Compile Include="Fixtures\TCTArtifacts.cs" />
@@ -46,6 +47,7 @@
     <Compile Include="UI\TCTControls.cs" />
     <Compile Include="UI\TCTTestTimelineControl.cs" />
     <Compile Include="UI\TCTTestHistoryControl.cs" />
+    <Compile Include="UI\TCTGeometryEvidenceCanvas.cs" />
     <Compile Include="UI\TCTTestViews.cs" />
     <Compile Include="NUnitIntegration\TCTNUnitEngineProbe.cs" />
     <Compile Include="NUnitIntegration\TCTNUnitFrameworkAdapter.cs" />
