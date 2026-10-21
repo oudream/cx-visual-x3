@@ -342,6 +342,8 @@ namespace CxVisual.Studio
             if(_viewModel==null||_closingPageDocuments)return;
             if(!ReferenceEquals(_pageDocumentSession,_viewModel.ProjectSession))
             {
+                // Docking关闭资源Tab过程中会改变ActiveContent；必须在关闭前保留活动身份。
+                string previouslyActive=_activeStudioDocumentId;
                 _closingPageDocuments=true;
                 try
                 {
@@ -358,7 +360,7 @@ namespace CxVisual.Studio
                 }
                 finally{_closingPageDocuments=false;}
                 Guid id;string kind;
-                if(TryParseResourceDocumentId(_activeStudioDocumentId,out id,out kind))
+                if(TryParseResourceDocumentId(previouslyActive,out id,out kind))
                 {
                     LayoutDocument fallback=FindStudioContent("doc.visual") as LayoutDocument;
                     if(fallback!=null)fallback.IsActive=true;
