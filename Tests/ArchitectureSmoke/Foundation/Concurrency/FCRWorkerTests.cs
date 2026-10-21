@@ -586,6 +586,9 @@ namespace CxVisual.Tests.FoundationSmoke
                     for(int i=6;i<9;i++)
                         Check(Await(Await(waiting[i]).Completion).Succeeded,
                             "R08获得容量的生产者未按原F19 Worker正常执行");
+                    // FCRWorkHandle完成只代表工作结果已确定，原ExecuteAsync的
+                    // finally可能尚在归还Active/Key槽；StopAsync才是完整排空屏障。
+                    Await(worker.StopAsync());
                     FCRWorkerSnapshot final=worker.GetSnapshot();
                     Check(final.Pending==0&&final.Active==0 &&
                         final.WaitingProducers==0&&final.PendingBytes==0 &&

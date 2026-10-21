@@ -565,3 +565,9 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 
 - FoundationSmoke新增8轮重复压力：2个运行中异步工作、3个已排队任务恰好占满30字节、12个异步等待生产者（上限12）、第13名Rejected；取消前6名等待者立即释放Admission、取消原已接纳队列的3个任务后由FIFO前3名生产者准入、取消剩余等待者、释放在途工作并断言Pending/Active/Waiting/Bytes均为0。检查Admitted=3/Rejected=1/Dropped=0，不能将等待生产者混入原队列统计。
 - 增加Stop(true)的非合作在途任务案例：取消已接纳Pending、拒绝尚未接纳的生产者，同时仍等待运行中非合作业务真正返回后才能完成Stop。全部仍采用唯一FCR Worker及原有Token/Handle。待固定SHA真实Windows CI验收。
+
+
+### R08压力回归首轮红灯与真实完成屏障（2026-10-21）
+
+- 固定提交 `7b42a94545e0fe92251e9e35f92f0c331ba99964` 的 Runtime [39576596104](https://github.com/oudream/cx-visual-x3/actions/runs/39576596104) 与工程组织 [39576596130](https://github.com/oudream/cx-visual-x3/actions/runs/39576596130) 失败于新增8轮压力测试的“预算泄漏、误Drop或统计不一致”最终断言；该原断言在只等待业务Handle.Completion后就要求Worker.Active为0，而原Worker将结果写入Handle与`ExecuteAsync`的finally释放Active/Key分为两个先后阶段。
+- 保留8轮全部容量、取消、FIFO、拒绝、Drop和Stop(true)业务反证；在最终Active==0快照前增加`Await(worker.StopAsync())`作为正式排空屏障。若修复SHA仍不成功，应继续排查真实计费/回调竞争，不得删减或弱化压力要求。
