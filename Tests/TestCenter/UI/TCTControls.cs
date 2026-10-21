@@ -201,6 +201,8 @@ namespace CxVisual.TestCenter.UI
                     "\n[Artifact] " + a.RelativePath + " SHA256=" + a.Sha256));
         }
 
+        public void FocusAssertions() { _tabs.SelectedIndex = 1; }
+        public void FocusSource() { _tabs.SelectedIndex = 3; }
         public void ShowObject(string objectId, string verifiedDetails)
         {
             SelectedObjectId = objectId;
@@ -278,6 +280,13 @@ namespace CxVisual.TestCenter.UI
         public Button RerunFailed { get; private set; }
         public Button CopyTestId { get; private set; }
         public ComboBox ModeSelector { get; private set; }
+        private ToolBar _contextActions;
+        private ITCTTestCase _selectedContext;
+        private Action<string> _showContextMode;
+        private Action _showAssertions, _showSource, _showHistory, _showDiff;
+        private readonly List<string> _activeContextCommands = new List<string>();
+        public IReadOnlyList<string> ActiveContextCommands
+        { get { return _activeContextCommands.AsReadOnly(); } }
         private readonly TextBlock _context = new TextBlock { VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(12, 0, 0, 0), Foreground = Brushes.SteelBlue };
         public ToolBar Build(Action runAll, Action runSelected, Action cancel, Action export,
@@ -326,16 +335,67 @@ namespace CxVisual.TestCenter.UI
             ribbon.Items.Add(_context);
             return ribbon;
         }
+        /// <summary>Actual contextual commands; their visibility follows the selected Catalog case.</summary>
+        public ToolBar BuildContext(Action<string> showMode, Action showAssertions,
+            Action showSource, Action showHistory, Action showDiff)
+        {
+            _showContextMode = showMode ?? throw new ArgumentNullException("showMode");
+            _showAssertions = showAssertions ?? throw new ArgumentNullException("showAssertions");
+            _showSource = showSource ?? throw new ArgumentNullException("showSource");
+            _showHistory = showHistory ?? throw new ArgumentNullException("showHistory");
+            _showDiff = showDiff ?? throw new ArgumentNullException("showDiff");
+            _contextActions = new ToolBar { Background = Brushes.AliceBlue };
+            RebuildContextCommands();
+            return _contextActions;
+        }
+        private void AddContextCommand(string id, string text, Action action)
+        {
+            Button button = Create(text, action);
+            System.Windows.Automation.AutomationProperties.SetAutomationId(button, "TCT.Context." + id);
+            _contextActions.Items.Add(button);
+            _activeContextCommands.Add(id);
+        }
+        private void RebuildContextCommands()
+        {
+            if (_contextActions == null) return;
+            _contextActions.Items.Clear();
+            _activeContextCommands.Clear();
+            ITCTTestCase test = _selectedContext;
+            if (test == null)
+            {
+                _contextActions.Items.Add(new TextBlock { Text = "选择用例后显示Geometry/Object等上下文命令",
+                    VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8) });
+                return;
+            }
+            string group = test.Descriptor.Group ?? "";
+            bool geometry = group.IndexOf("Geometry", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                group.IndexOf("Visual", StringComparison.OrdinalIgnoreCase) >= 0;
+            bool objects = group.IndexOf("Object", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                group.IndexOf("Ownership", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                group.IndexOf("Symbol", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                group.IndexOf("Visual", StringComparison.OrdinalIgnoreCase) >= 0;
+            if (geometry)
+                AddContextCommand("Geometry", "Geometry证据", () => _showContextMode("Geometry"));
+            if (objects)
+                AddContextCommand("Object", "Object/Symbol", () => _showContextMode("ObjectTree"));
+            AddContextCommand("Assertions", "定位断言", _showAssertions);
+            AddContextCommand("Source", "源码", _showSource);
+            AddContextCommand("History", "历史", _showHistory);
+            AddContextCommand("Diff", "证据Diff", _showDiff);
+        }
         public void SetContext(ITCTTestCase test)
         {
+            _selectedContext = test;
             if (CopyTestId != null) CopyTestId.IsEnabled = test != null;
             _context.Text = test == null ? "Foundation / Mechanism" :
                 test.Descriptor.Aspect + "  ›  " + test.Descriptor.Group;
+            RebuildContextCommands();
         }
         public void SetRunning(bool running)
         {
             RunAll.IsEnabled = !running; RunSelected.IsEnabled = !running;
             Cancel.IsEnabled = running; Export.IsEnabled = !running;
+            if (_contextActions != null) _contextActions.IsEnabled = !running;
             if (RerunFailed != null) RerunFailed.IsEnabled = !running;
         }
         private static Button Create(string text, Action action)
