@@ -1014,6 +1014,15 @@ namespace CxVisual.Studio
                         {ctx.Dispose();_pageDocuments.Remove(key);}
                         _studioViews.Remove(key);
                     }
+                    // 工程切换时不允许把旧工程的MHS Project Scope视图带到新工程。
+                    if(_studioConfigurationProjectId!=Guid.Empty&&
+                        _studioConfigurationProjectId!=_viewModel.ProjectSession.Project.Id)
+                    {
+                        LayoutDocument config=FindStudioContent("doc.config") as LayoutDocument;
+                        if(config!=null){config.Content=null;config.Close();}
+                        _studioViews.Remove("doc.config");
+                        _studioConfigurationProjectId=Guid.Empty;
+                    }
                     AttachStudioResourceChangeWatch(_viewModel.ProjectSession);
                 }
                 finally{_closingPageDocuments=false;}
