@@ -357,6 +357,32 @@ namespace CxVisual.TestCenter.UI
                             if (archivedGeometry.VerifiedFigureCount != 4 ||
                                 archivedGeometry.EvidenceProblem != null)
                                 throw new InvalidOperationException("History geometry viewer lost verified Artifact");
+
+                            // History compare is a real two-Run owner evidence operation, not a
+                            // pair of verdict strings or mocked screen content.
+                            TCTTestAttempt nextAttempt = new TCTTestAttempt(
+                                Guid.NewGuid().ToString("N"), shapeCase.Descriptor.Id, 0, 20261021);
+                            TCTTestArtifactStore nextStore = new TCTTestArtifactStore(
+                                TCTTestArtifactStore.RunRoot(nextAttempt.RunId));
+                            TCTTestCaseResult nextResult = await TCTTestRunner.RunOneAsync(shapeCase,
+                                CancellationToken.None, 20261021, nextAttempt, nextStore);
+                            if (nextResult.Status != TCTTestStatus.Passed)
+                                throw new InvalidOperationException("Second real geometry run failed");
+                            history.SetCurrent(new TCTTestRunSummary(
+                                new System.Collections.Generic.List<TCTTestCaseResult> { nextResult },
+                                nextAttempt.RunId));
+                            history.SaveCurrent();
+                            string nextLive = TCTTestArtifactStore.RunRoot(nextAttempt.RunId);
+                            if (Directory.Exists(nextLive)) Directory.Delete(nextLive, true);
+                            TCTArchivedRunComparison twoRuns =
+                                history.CompareArchives(shapeAttempt.RunId, nextAttempt.RunId);
+                            var diffView = new TCTTestDiffControl();
+                            diffView.ShowComparison(twoRuns,
+                                Path.Combine(archiveSandbox.Root, "History"));
+                            if (twoRuns.Rows.Count != 1 || twoRuns.ChangedCount != 0 ||
+                                diffView.CurrentComparison != twoRuns ||
+                                diffView.SelectedEvidenceChanges != 0)
+                                throw new InvalidOperationException("WPF historical owner diff is inaccurate");
                         }
                         // Stage 1 integrated visual/object sample: the real CxSceneProjection
                         // expands a shared Symbol into two separately addressed instances.
