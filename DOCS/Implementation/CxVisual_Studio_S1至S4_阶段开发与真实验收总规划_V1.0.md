@@ -286,3 +286,61 @@
 
 - `OnStudioResourceMutation`接收到真实MEM删除时，若当前`StudioConfigScopeSelector`绑定已删除resource ID，关闭配置文档、失效草稿并回到Project Scope；原MHS审计历史不动、工程Undo可恢复同一稳定资源ID。不同MEM工程之间清理旧工程可信机台/产品临时Scope，不默继承旧授权。
 - WPF STA新增资源删除时旧配置Tab关闭和Undo后重新发现的正常/负向场景；工作流按实际`CheckStep`计数修正为41项，保留并行CommandId新增测试。此项为CPU/STA边界，人工多屏DPI/实际PLC ACK仍待验收。
+
+## 19. P1全范围退出审计：注册→资源Scope→授权→Command→生命周期（2026-10-21）
+
+> 对照`CxVisual_Studio_S1至S4_完整阶段任务与新聊天接力_V1.0.md`的**S2.01～S2.12退出条件**，不把“配置中心能展示”冒充P1/S2完成。仍以宪法、配置V2.4、工程组织及F/M/P唯一Owner为约束。以下属于**新增可编译源码与真实自动化测试证据**；Windows人工GUI/实机安全另列未验。
+
+### 19.1 实际源码增量及Owner归属
+
+| 子能力 | 真实实现路径 | 关键不变性 |
+|---|---|---|
+| 注册式专业配置 | `Applications/Studio/StudioShell.cs` 的 `RegisterStudioConfiguration<T>(title,params resourceTypeIds)` 与 `FCMConfigSchemaBuilder.Describe<T>()` | 只登记Schema/Editor贡献，不重建任何字段目录、JSON/历史仓库；同SectionId重复拒绝 |
+| 真实资源发现与Scope | 从`MEMProject.Resources`按稳定ID/TypeId枚举，另由可信宿主`RegisterStudioConfigurationScope(kind,id,title)`加入真实机台/产品 | 资源Scope不能由任意输入框伪造；只有显式声明的资源TypeId才匹配；Project/Resource/Machine配置实例身份互不混用 |
+| Scope来源及自适应组合 | `doc.config`显示ScopeKind/ScopeId与来源，动态1/2/3列；每次变更均由`MHSConfigService.ForScope`创建原MPW Schema Editor | 配置Saved/Effective/待生效、动态集合、历史与审计仍由MHS唯一Owner负责 |
+| 草稿保护 | `IMPWConfigDraftGuard.HasUnsavedDraft` + Scope切换拒绝 + `TryCloseStudioDocument` + Dock Closing保护 | 未保存草稿不允许无提示切换/关闭；明确放弃才释放。MEM资源被删除或工程已替换时旧配置Scope必须强制失效，避免向孤儿资源提交 |
+| 项目切换与关闭确认 | `StudioViewModel.BeforeProjectReplacement` + `MainWindow.ConfirmStudioConfigReplacement` | 新建/打开（含discardCurrent路径）与退出均有确认，MEM Dirty与MHS草稿两个Owner独立验证；不把配置Save当MEM Undo |
+| 软件授权 | `SetStudioConfigurationAuthorization(principal,policy)`→`MHSConfigService.Authorize`→`MHSConfigAuthorizedSection<T>`→`MPWConfigEditorControl<T>` | 授权拒绝不返回原始Section或暴露字段；每次Read/Edit/Commit/Apply由MHS策略动态检查。未配置授权时仅为可信宿主原有模式，不宣称已经存在企业IAM身份验证 |
+| 统一专业Command贡献 | `RegisterStudioCommand(id,label,group,documentId,ownerICommand,key,modifiers)`；Ribbon、右键、快捷键引用同一适配器 | Owner持有真正ICommand；CommandId及快捷键去重；CanExecute与每次Execute检查活动文档。通过`GetStudioCommandContext`在调用时读取MEM ProjectId/Revision、资源与当前配置Scope，不维护第二套工程命令执行器 |
+
+### 19.2 双角色的实际使用示例
+
+**可信专业开发者（只需要现有POCO、MHS Schema/安全策略与Owner ICommand）：**
+
+```csharp
+// 所有专业配置仍复用Foundation的FCMConfig Schema与Mechanism的MHS服务。
+studio.RegisterStudioConfiguration<CxAutomationDeviceOptions>(
+    "Automation设备配置", "core.content");
+studio.RegisterStudioConfigurationScope("machine", verifiedMachineId, "设备机台");
+// principal与policy由真实可信宿主认证/下发；Studio不会代做认证。
+studio.SetStudioConfigurationAuthorization(principal, policy);
+studio.RegisterStudioCommand("automation.config.verify", "验证设备配置",
+    "配置", "doc.config", existingOwnerCommand, Key.K,
+    ModifierKeys.Control | ModifierKeys.Shift);
+```
+
+**工程编排者**：打开同一MEM工程→中央“资源配置”→选择工程/真实Content或已登记机台Scope→看到适配专业配置卡与来源身份→修改真实Schema草稿→验证及保存→区分Saved/Effective/待生效→必要时由经过授权的运行宿主申请生效。未保存修改切换Scope/关闭/换工程时必须确认或被拒；无法从没有授权的机台Scope看到配置值。
+
+### 19.3 S2.01～S2.12逐项判定，禁止以“45项通过”代替退出验收
+
+| 编号 | 判定 | 目前实际证据 | 仍缺少的完整退出条件 |
+|---|---|---|---|
+| S2.01 资源→Editor注册匹配 | **部分T** | Config专用Schema贡献+真实MEM TypeId过滤 | 图元/流程/专业Viewer统一Editor注册/默认候选及四类资源路由仍未全部描述化 |
+| S2.02 稳定DocumentKey | **部分T** | MEM身份、活动资源Tab、跨资源隔离有回归 | 文档键尚未完全显式包含工程、Editor、必要实例路径的多编辑器唯一契约 |
+| S2.03 类型Schema全覆盖 | **部分T** | MHS通用Schema控件原有Scalar/List/Map/校验，MPM工程属性有独立能力 | MPM工程资源Schema与MHS配置的统一选择/深层多类型表单使用尚未覆盖四个工业案例 |
+| S2.04 中央组合编辑 | **基础T** | 真实三专业，响应1～3列，Project/Resource/受信外部Scope | 复杂折叠、搜索、字段来源和混合DPI真实GUI性能与体验待签 |
+| S2.05 多选/Mixed/实例覆盖 | **部分T** | 已有MPM实例多选/Mixed/Revision保护及MEM原子事务 | 四类专业配置及多Scope组合的批量原子编辑/恢复默认和零部分提交用户链待验 |
+| S2.06 分离Owner/权限/生效 | **主要软件T，现场待验** | MHS Save与Effective分离、权限拒绝、错误配置拒绝、草稿保护 | 真实IAM、生产机台应用边界/ACK、跨Provider合成来源/冲突锁定完整演练 |
+| S2.07 命令Id/Owner复用 | **基础T** | 注册Owner ICommand可被Ribbon/右键/快捷键共享，失效拒绝 | 旧硬编码Ribbon/工具箱/所有专业命令全部迁移到一致目录与真实CanExecute状态尚缺 |
+| S2.08 九菜单与上下文Ribbon | **部分T** | 现有九静态菜单、局部动态Ribbon与贡献命令 | V1.2全菜单/模式/权限/右键完整逐条审查，人工键鼠验证未完成 |
+| S2.09 Dirty与Undo | **主要T** | 原MEM/MTC共享事务及Dirty反证、多资源Tab | MHS草稿（不等于MEM Dirty）在全部退出、回收及复杂焦点下的E级验证 |
+| S2.10 生命周期/恢复 | **主要T，人工待验** | 当前Scope切换、Close、Dock取消、工程替换/资源删除失效拦截均有代码/STA | 多显示器、浮窗布局重启、耗时场景、长稳订阅内存泄漏仍须实测 |
+| S2.11 四个典型工业案例 | **未签收** | Vision、CT3D、Automation三种真实Schema及Symbol/Content原有工程编辑测试 | 工业相机/PLC/配方/电机Symbol实例四种从API到真实Studio保存→构建→运行的完整用户Case及失败反证 |
+| S2.12 全量质量与安全 | **未签收** | Windows Studio/配置/工程CI构成基础门禁 | TestCenter同SHA完整矩阵、人工100/150/200%DPI、多屏、性能与实体设备安全授权证据 |
+
+### 19.4 真实CI与严格边界
+
+- **软件增量关键提交**：配置资源Scope[261ae203](https://github.com/oudream/cx-visual-x3/commit/261ae20381e192801858d279331a752d780c2324)、草稿Guard[bd70a108](https://github.com/oudream/cx-visual-x3/commit/bd70a10838fffb6c4f04912b9eb7b4efec3bd228)、统一命令[8d4260cb](https://github.com/oudream/cx-visual-x3/commit/8d4260cbc6e64befd8d5559fa5d41cd3fdb378ba)、MHS授权[990fb474](https://github.com/oudream/cx-visual-x3/commit/990fb4742fab7e6542d1e09d60c2015d1101ed27)、闭包/工程更换与确认[abb3b566](https://github.com/oudream/cx-visual-x3/commit/abb3b566d083744435cef49d4179987174d891a8)。
+- [Studio 44项 Windows STA #39593214170](https://github.com/oudream/cx-visual-x3/actions/runs/39593214170)、[工程组织 #39593214157](https://github.com/oudream/cx-visual-x3/actions/runs/39593214157)、[配置L1 #39593214186](https://github.com/oudream/cx-visual-x3/actions/runs/39593214186)、[公共底座 #39593214275](https://github.com/oudream/cx-visual-x3/actions/runs/39593214275) **均 success，同SHA资源删除草稿隔离之前置基线**。
+- 后继工程替换门禁与第45项STA源码[6e2bab40](https://github.com/oudream/cx-visual-x3/commit/6e2bab4016449ae7b237b2893f36778552414b05)，[Studio Windows #39593698537](https://github.com/oudream/cx-visual-x3/actions/runs/39593698537) **45/45成功**；[配置公共底座 #39593698651](https://github.com/oudream/cx-visual-x3/actions/runs/39593698651) **success**。Config L1同SHA如未最终返回结果，必须继续查实后才标“通过”。
+- **严格总裁决**：此轮已建立P1核心“可注册、可发现、可授权、可保存、可追溯、可安全切换”的**软件基础链**，能够逐项关闭上述明确通过的**代码切片**；但S2.01/S2.02/S2.05/S2.07/S2.08/S2.11/S2.12仍未满足全部正式退出标准，**不得将整个P1标记为已完整验收**。下一步优先完成统一全Editor/Command迁移、四类专业案例与Windows E级操作，不以重复设计基础库替代。
