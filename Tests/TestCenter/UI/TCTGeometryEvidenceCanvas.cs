@@ -23,8 +23,12 @@ namespace CxVisual.TestCenter.UI
         private double _zoom = 1;
         private Point _dragOrigin;
         private bool _panning;
+        private readonly Dictionary<string, CheckBox> _roles =
+            new Dictionary<string, CheckBox>(StringComparer.Ordinal);
+        private IList<TCTGeometryFigure> _figures = new List<TCTGeometryFigure>();
         public event Action<TCTGeometryFigure> FigureSelected;
         public int RenderedFigureCount { get; private set; }
+        public int VisibleFigureCount { get; private set; }
         public double Zoom { get { return _zoom; } }
         public TCTGeometryEvidenceCanvas()
         {
@@ -41,8 +45,22 @@ namespace CxVisual.TestCenter.UI
             StackPanel buttons = new StackPanel { Orientation = Orientation.Horizontal };
             buttons.Children.Add(plus); buttons.Children.Add(minus); buttons.Children.Add(fit);
             buttons.Children.Add(_state);
+            StackPanel layers = new StackPanel { Orientation = Orientation.Horizontal,
+                Margin = new Thickness(6) };
+            foreach (string role in new[] { "Input", "Expected", "Actual", "Diff" })
+            {
+                string capturedRole = role;
+                CheckBox check = new CheckBox { Content = role, IsChecked = true,
+                    Margin = new Thickness(8, 2, 8, 2) };
+                _roles.Add(role, check);
+                check.Checked += (sender, args) => RenderFigures();
+                check.Unchecked += (sender, args) => RenderFigures();
+                layers.Children.Add(check);
+                System.Windows.Automation.AutomationProperties.SetAutomationId(check,
+                    "TCT.Geometry.Layer." + capturedRole);
+            }
             StackPanel panel = new StackPanel();
-            panel.Children.Add(buttons); panel.Children.Add(_canvas);
+            panel.Children.Add(buttons); panel.Children.Add(layers); panel.Children.Add(_canvas);
             Content = panel;
             _canvas.MouseWheel += (s, e) => { SetZoom(_zoom * (e.Delta > 0 ? 1.15 : 1 / 1.15)); e.Handled = true; };
             _canvas.MouseRightButtonDown += (s, e) =>
@@ -68,12 +86,26 @@ namespace CxVisual.TestCenter.UI
             _zoomTransform.ScaleY = _zoom;
             _state.Text = "Zoom " + _zoom.ToString("F2") + "×  ·  滚轮缩放 / 右键平移 / 点击图元查看Owner";
         }
+        public void SetLayerVisible(string role, bool visible)
+        {
+            CheckBox check;
+            if (!_roles.TryGetValue(role ?? "", out check))
+                throw new ArgumentException("Unknown Geometry role", "role");
+            check.IsChecked = visible;
+        }
         public void ShowFigures(IList<TCTGeometryFigure> figures)
         {
             if (figures == null) throw new ArgumentNullException("figures");
+            _figures = figures.ToArray();
+            RenderFigures();
+        }
+        private void RenderFigures()
+        {
             _layer.Children.Clear();
-            RenderedFigureCount = 0;
-            if (figures.Count == 0) return;
+            RenderedFigureCount = _figures.Count;
+            VisibleFigureCount = 0;
+            if (_figures.Count == 0) return;
+            IList<TCTGeometryFigure> figures = _figures;
             double left = figures.Min(f => Math.Min(f.X, f.X + f.Width));
             double top = figures.Min(f => Math.Min(f.Y, f.Y + f.Height));
             double right = figures.Max(f => Math.Max(f.X, f.X + f.Width));
@@ -85,6 +117,7 @@ namespace CxVisual.TestCenter.UI
             Func<double, double> sy = y => 35 + (y - top) * scale;
             foreach (TCTGeometryFigure f in figures)
             {
+                if (_roles[f.Role].IsChecked != true) continue;
                 Brush stroke = f.Role == "Expected" ? Brushes.ForestGreen :
                     f.Role == "Actual" ? Brushes.IndianRed :
                     f.Role == "Diff" ? Brushes.DarkOrange : Brushes.SteelBlue;
@@ -113,7 +146,7 @@ namespace CxVisual.TestCenter.UI
                     e.Handled = true;
                 };
                 _layer.Children.Add(shape);
-                RenderedFigureCount++;
+                VisibleFigureCount++;
                 TextBlock label = new TextBlock { Text = f.Role + ": " + f.Label,
                     Foreground = stroke, FontSize = 11 };
                 Canvas.SetLeft(label, sx(f.X) + 7);
