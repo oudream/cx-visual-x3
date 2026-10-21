@@ -715,12 +715,12 @@ namespace CxVisual.Studio
                         System.Reflection.BindingFlags.NonPublic|
                         System.Reflection.BindingFlags.Instance);
                     Assert(locate!=null,"构建诊断入口缺失");
-                    int revision=session.Revision;
+                    int diagnosticRevision=session.Revision;
                     locate.Invoke(window,new object[]{window,new System.Windows.RoutedEventArgs()});
                     Assert(window.ActiveStudioDocumentId==
                         "doc.resourceflow."+ai.Id.ToString("N")&&
                         window.GetStudioResourceFlow(ai.Id).SelectedBlockIds.Single()==blockId&&
-                        session.Revision==revision,
+                        session.Revision==diagnosticRevision,
                         "构建诊断未正确下钻原AI流程或修改了工程");
                     string active=window.ActiveStudioDocumentId;
                     session.AddContent(session.Project,"P0-4 诊断版本变更");
