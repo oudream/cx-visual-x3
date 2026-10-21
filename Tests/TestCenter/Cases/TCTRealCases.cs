@@ -7,6 +7,7 @@ using System.Xml.Linq;
 using CxVisual.TestCenter.Models;
 using CxVisual.Foundation.Geometry;
 using CxVisual.Mechanism.Core;
+using CxVisual.Mechanism.Visual;
 using CxVisual.TestCenter.Core;
 
 namespace CxVisual.TestCenter.Cases
@@ -47,6 +48,9 @@ namespace CxVisual.TestCenter.Cases
                 "Object / Snapshot", "CA-ORG-01", "CAP-ORG-SNAPSHOT", "MEMProjectSnapshot", SnapshotEvidence);
             Add(catalog, "M-OBJ-006", "MEM已提交Revision对象差异", TCTTestAspect.Mechanism,
                 "Object / Diff", "CA-ORG-01", "CAP-ORG-DIFF", "MEMProjectSnapshot", RevisionDiff);
+            Add(catalog, "M-OBJ-007", "MEM共享Symbol双实例的真实Visual投影和证据",
+                TCTTestAspect.Mechanism, "Visual / Projection", "CA-ORG-01",
+                "CAP-ORG-VISUAL", "CxSceneProjection", SymbolInstancesEvidence);
         }
 
         private static void Add(TCTTestCatalog catalog, string id, string name, TCTTestAspect aspect,
@@ -263,6 +267,47 @@ namespace CxVisual.TestCenter.Cases
                 context.ObserveStructured("ObjectTree", "After Revision", "Revision=" + after.Revision,
                     session.Project.Id.ToString("D"), address, null, right,
                     TCTEngineeringSnapshotCodec.Mime, "After");
+            }
+            finally { session.Close(true); }
+        }
+
+        private static void SymbolInstancesEvidence(TCTTestContext context)
+        {
+            MEMEngineeringSession session = CreateOrganizationSample();
+            try
+            {
+                MEMContent content = session.Project.Pages[0].RootContent;
+                MEMSymbol symbol = session.Project.Symbols[0];
+                session.PlaceSymbol(content, symbol, "Symbol Instance Two");
+                MEMProjectSnapshot snapshot = session.GetSnapshot();
+                IList<CxSceneItem> scene = CxSceneProjection.Project(session);
+                CxSceneItem[] instances = scene.Where(x => x.Address != null &&
+                    x.Address.InstancePath.Count != 0).ToArray();
+                context.AssertEqual(2, instances.Length, "真实Symbol复用有两个不同使用位置");
+                context.AssertEqual(2, instances.Select(x => x.Address.InstancePath[0])
+                    .Distinct().Count(), "两次放置有不同实例路径");
+                context.AssertEqual(4, scene.Count, "两个直属矩形与两个引用矩形均已投影");
+                context.AssertTrue(scene.All(x => x.ElementTypeId == "core.rectangle"),
+                    "当前验收样本全部真实矩形，不代画其它Shape", true,
+                    scene.All(x => x.ElementTypeId == "core.rectangle"));
+                List<TCTGeometryFigure> geometry = new List<TCTGeometryFigure>();
+                foreach (CxSceneItem item in scene)
+                {
+                    geometry.Add(new TCTGeometryFigure("Rectangle", "Actual",
+                        item.Name, item.Id.ToString("D"), item.Bounds.X, item.Bounds.Y,
+                        item.Bounds.Width, item.Bounds.Height));
+                }
+                context.ObserveStructured("Geometry", "真实工程画布与Symbol实例",
+                    "CxSceneProjection.Project(MEMEngineeringSession)，矩形与2个Symbol使用位置",
+                    session.Project.Id.ToString("D"),
+                    session.GetAddress(session.Project).ToString(), null,
+                    TCTGeometryEvidence.Serialize(geometry), TCTGeometryEvidence.Mime);
+                context.ObserveStructured("ObjectTree", "所属与两处引用定义",
+                    "独立Symbol是Reference，不是Content的Owned Child",
+                    session.Project.Id.ToString("D"),
+                    session.GetAddress(session.Project).ToString(), null,
+                    TCTEngineeringSnapshotCodec.Serialize(snapshot),
+                    TCTEngineeringSnapshotCodec.Mime);
             }
             finally { session.Close(true); }
         }
