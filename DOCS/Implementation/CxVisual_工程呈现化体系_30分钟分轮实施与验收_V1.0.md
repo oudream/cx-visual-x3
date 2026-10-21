@@ -2,6 +2,7 @@
 
 > 定案：2026-10-19。仓库：oudream/cx-visual-x3，直接master/中文少量提交，.NET Framework 4.8/WPF，既有28项目优先。分轮立项核查代码基线：cafd52a0cec1d936e79f540ed28f36cc34a14ad4；并行更新可能改变HEAD，任何结果必须使用实际提交SHA。
 > 本文一处维护总功能/实施轮次/验收台账，保留用户原始EP01～EP15编号及全部覆盖范围；本表是原始V1.0需求的便于追踪的归纳，不把缩写当成删除需求。
+> **2026-10-21 已确定架构基线**：`DOCS/Architecture/CxVisual_工程呈现化体系——完整需求_角色期望与使用样例_总体详细设计_V1.0.md`，其中EP01～EP15、六角色/五案例、阶段一305型归属、阶段二复用增强与必要增构、阶段三协同契约与测试矩阵均为后续实现的目标依据；以当前master源码与真实CI判定实际状态。
 
 ## 1. 目标与不可突破边界
 
@@ -58,7 +59,7 @@
 | R02 | EP04 | 根据Schema形成Boolean与Numeric输入控件；拒绝错误类型 | 已提交待CI | f49760aa9d5c（静态结构已核对，Windows待检） |
 | R03 | EP04 | 属性默认、资源来源与无效引用诊断 | 已提交待CI | c2799d713c27（等待Windows验收） |
 | R04 | EP04 | 定义/实例覆盖、多选混合值/只读约束 | 已提交待CI，范围部分闭环 | 45ff4d1eecc（同定义实例批量、MPM原生ReadOnly；待Windows验证） |
-| R05 | EP01 | 工作区/资源树/实例与定义往返导航 | 未开始 | 待对应源码及Windows证据 |
+| R05 | EP01 | 工作区/资源树/实例与定义往返导航 | 已提交待CI，局部导航闭环 | 56a7a467（原实例选择恢复、失效选择清理、资源树返回按钮及第13个Studio STA测试） |
 | R06 | EP01 | 多页/多标签/保存重开/未保存提醒/布局恢复 | 未开始 | 待对应源码及Windows证据 |
 | R07 | EP02 | 九Shape精确WPF绘制和文本图片受限SVG回归 | 未开始 | 待对应源码及Windows证据 |
 | R08 | EP02 | 缩放/高DPI/嵌套Group的命中、裁剪、遮挡 | 未开始 | 待对应源码及Windows证据 |
@@ -133,5 +134,6 @@ R01源码已提交（截止 f6c0dceb7afae75d320f6b442f3a152b11566162）：修改
 | R02 | 已提交待CI | f49760aa9d5c | StudioPropertyItem的INotifyPropertyChanged、Boolean/Number/Integer/Decimal类型投影及格式/范围提示；WPF CheckBox与Numeric TextBox随来源动态切换；OrganizationStudioTests新增非法格式拒绝、Boolean双实例、Undo/Redo、保存重开与变量/常量切换用例。当前已对比GitHub实际3处源码并做XAML标记栈静态核查 | 未有实际Windows构建、WPF STA或同SHA完整CI通过报告；公共XAML结构检查不等于WPF编译，现场设备与外部鼠标注入不适用本轮 |
 | R03 | 已提交待CI | c2799d713c27 | 增加属性独立资源选择、Schema默认恢复、实例覆盖清除及输入提示；WPF回归代码覆盖有效资产、跨工程无效资产、两实例隔离、Undo/Redo、保存重开；源码和XAML结构已核查 | Windows编译、WPF STA、TestCenter及最新同SHA CI均待核实；本轮不能标记验收通过 |
 | R04 | 已提交待CI，范围部分闭环 | 45ff4d1eecc | 同一Content/Symbol定义的多个引用实例通过MPM公共Schema投影共同属性；混合值与Boolean三态、一个MEM事务更新/撤销重做、批量清除覆盖、过期选区拒绝；跨定义/图元混选不降级成最后实例编辑。新增原生MPMPropertyDescriptor.IsReadOnly（旧构造兼容），MTC拒绝设置定义/实例覆盖；两条工程XML持久化、类型Schema比较、工程资源转移同步该标记。Studio按只读禁用。ArchitectureSmoke新增纯Core和WPF STA反证（未经执行）。 | 仍未获得R01～R04同SHA Windows构建/STA/CI验证。跨定义兼容Schema的批量交集、多选性能和真实外部鼠标验证待追加轮次；若有CI失败先修复。 |
+| R05 | 已提交待CI（导航局部闭环） | 56a7a4674be0bb78a064136e4073d1bd319ed159 | `CxVisualEditor` 回退保存资源上下文与实例SelectedId、过滤已删除实例；Studio VM回退恢复选择；左资源树增加返回入口；StudioShellSelfTests增加第13项真实STA测试，GitHub Actions规则同步13 PASS | Windows工程组织、Studio Shell、TestCenter等工作流已触发，须以同SHA结果核验；多资源独立文档Tab、跨专业Flow/SourceMap导航仍归R06/R32/R43，不冒称R05已全面覆盖 |
 
-R01～R04验收判定：目前确认源码/测试写入master，验证仅限文件内容与括号/XAML结构检查；**Windows编译、OrganizationStudioTests的WPF STA、TestCenter和同一最终SHA的Actions仍是待验证**。本次查询GitHub综合Commit Status、PR-run、Actions网页及容器API均未取得R01～R03及本次R04完整push运行日志，不能据此推断成功或失败。现有 .github/workflows/engineering-organization-windows.yml 明确包含Studio/ArchitectureSmoke变更路径，且运行ArchitectureSmoke.exe --organization-wpf，故已确认门禁路由存在，不等于运行通过。若真实CI有失败必须先按日志修复，严禁禁用测试。R04已补原生MPM IsReadOnly并贯通Core/序列化/资源转移/Studio，以及单定义双实例批量；**跨定义兼容属性的安全交集、多选工效及权限类型进一步扩展**作为明确剩余功能。下一任务先复核Windows同SHA CI，再进入R05工作区导航。
+**2026-10-21 CI事实复核（更新旧结论）**：从 GitHub Actions `push` 运行记录取到了实际证据：集成提交 `0eb5cf69a250cd3c74aa3268de68deef066948ea` 的 [工程组织Windows工作流](https://github.com/oudream/cx-visual-x3/actions/runs/39525077202) **success**，日志显示 Windows 2022 / VS2022 x64 MSBuild、ArchitectureSmoke、`--organization-wpf`、`--organization-benchmark`、开发者示例编译运行成功，且 `PASS H06 Studio real WPF automation` 包含页面、双实例、定义导航、Undo/Redo、保存重开；同SHA的 [Studio S1工作流](https://github.com/oudream/cx-visual-x3/actions/runs/39525077173) **success**，12个Studio Shell STA自测通过。该SHA是在R01～R04源码提交**之后**的集成回归版本，证明其合入代码通过该集成检查；**不是四个原提交各自独立的同SHA CI验收，也不能替代R04跨定义批量、真实设备安全/性能、A/B/C端到端签收**。R01～R04继续记“部分闭环/集成回归已过、具体功能剩余待测”，不得再说完全没有Windows证据。R05提交 `56a7a4674be0bb78a064136e4073d1bd319ed159` 的Windows x64、WPF STA及TestCenter已自动触发，**本条书写时仍在运行**；若失败必须优先修复。
