@@ -14,6 +14,10 @@ using AvalonDock.Layout;
 using AvalonDock.Serializer.Xml;
 using AvalonDock.Themes;
 using CxVisual.Mechanism.Core;
+using CxVisual.Mechanism.Data.Configuration;
+using CxVisual.Mechanism.Presentation.Wpf;
+using CxVisual.Professional.Vision;
+using CxVisual.Professional.CT3D;
 
 namespace CxVisual.Studio
 {
@@ -196,7 +200,8 @@ namespace CxVisual.Studio
                     .OfType<LayoutDocumentPane>().FirstOrDefault();
                 if (pane == null) throw new InvalidOperationException("找不到中央文档面板。");
                 object view;
-                if (!_studioViews.TryGetValue(id, out view))
+                // MHS WPF控件在Unloaded时释放草稿/订阅，重新打开不能复用已释放的View。
+                if (id=="doc.config" || !_studioViews.TryGetValue(id, out view))
                 {
                     view = CreateConfigurationDocument();
                     _studioViews[id] = view;
@@ -215,6 +220,7 @@ namespace CxVisual.Studio
             LayoutDocument doc = FindStudioContent(id) as LayoutDocument;
             if (doc == null) return;
             doc.Content = null; // 下次打开复用同一个真实编辑视图和命令状态
+            if(id=="doc.config")_studioViews.Remove(id); // 真正的MHS编辑控件需重建草稿
             doc.Close();
             if (_activeStudioDocumentId == id)
             {
@@ -239,43 +245,52 @@ namespace CxVisual.Studio
             }
         }
 
+        // S2/P1：现有MHS配置服务是真源，MPWConfigEditorControl负责Schema与UI。
+        // 它们按真实MEM工程身份进行Project Scope隔离，不写回MEM运行数据堆。
+        private Guid _studioConfigurationProjectId;
         private FrameworkElement CreateConfigurationDocument()
         {
-            StackPanel content = new StackPanel { Margin = new Thickness(20) };
-            content.Children.Add(new TextBlock { Text = "资源配置", FontSize = 23, FontWeight = FontWeights.SemiBold });
-            content.Children.Add(new TextBlock
-            {
-                Text = "使用现有统一配置服务；本轮不建立Studio私有配置或设备连接。不同专业可按1/2/3列自适应扩展。",
-                TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 9, 0, 15)
-            });
-            UniformGrid grid = new UniformGrid { Columns = 2 };
-            string[] groups = { "基本信息 / Schema", "配置层与来源", "参数验证 / 原子应用", "配置版本 / 发布" };
-            foreach (string group in groups)
-            {
-                Border card = new Border { BorderThickness = new Thickness(1),
-                    BorderBrush = (Brush)Application.Current.Resources["StudioBorderBrush"],
-                    Background = (Brush)Application.Current.Resources["StudioPanelBrush"],
-                    CornerRadius = new CornerRadius(4), Padding = new Thickness(15), Margin = new Thickness(5) };
-                StackPanel column = new StackPanel { MinHeight = 95 };
-                column.Children.Add(new TextBlock { Text = group, FontWeight = FontWeights.SemiBold });
-                if (group.StartsWith("参数验证", StringComparison.Ordinal))
-                {
-                    Button edit = new Button { Content = "打开现有配置编辑", Margin = new Thickness(0, 10, 0, 0) };
-                    edit.Click += OnConfigDemo;
-                    column.Children.Add(edit);
-                }
-                else
-                {
-                    column.Children.Add(new TextBlock
-                    { Text = "此组由专业配置Schema和原配置Owner提供。", TextWrapping = TextWrapping.Wrap,
-                      Margin = new Thickness(0, 9, 0, 0) });
-                }
-                card.Child = column;
-                grid.Children.Add(card);
-            }
-            content.Children.Add(grid);
-            return new ScrollViewer { Content = content, Background =
-                (Brush)Application.Current.Resources["StudioBackgroundBrush"] };
+            MEMEngineeringSession session = _viewModel.ProjectSession;
+            if (session == null || session.Project == null)
+                throw new InvalidOperationException("必须先打开有效工程");
+            Guid projectId = session.Project.Id;
+            string root = Path.Combine(GetDemoDataRoot(), "Configs", "V24", "Projects");
+            MHSConfigService configs = new MHSConfigService(root);
+            MVBConfigScopeResolver scope = configs.ForProject(projectId.ToString("N"));
+            MPWConfigEditorControl<CxVisionInspectionOptions> vision =
+                new MPWConfigEditorControl<CxVisionInspectionOptions>(
+                    scope.Open<CxVisionInspectionOptions>());
+            MPWConfigEditorControl<CxCtReconstructionOptions> ct =
+                new MPWConfigEditorControl<CxCtReconstructionOptions>(
+                    scope.Open<CxCtReconstructionOptions>());
+            DockPanel host = new DockPanel {
+                Background=(Brush)Application.Current.Resources["StudioBackgroundBrush"] };
+            StackPanel caption = new StackPanel { Margin=new Thickness(12,10,12,6) };
+            caption.Children.Add(new TextBlock { Text="真实专业配置 · Vision + CT3D",
+                FontSize=19,FontWeight=FontWeights.SemiBold });
+            caption.Children.Add(new TextBlock {
+                Text="工程 "+projectId.ToString("N").Substring(0,10)+
+                    "  | MHS Project Scope；Saved、Effective、待生效、校验、历史由统一配置服务分别管理。",
+                TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,4,0,0) });
+            DockPanel.SetDock(caption,Dock.Top);host.Children.Add(caption);
+            Grid editorGrid = new Grid { MinWidth=840 };
+            editorGrid.ColumnDefinitions.Add(new ColumnDefinition {
+                Width=new GridLength(1,GridUnitType.Star) });
+            editorGrid.ColumnDefinitions.Add(new ColumnDefinition {
+                Width=new GridLength(1,GridUnitType.Star) });
+            Border left = new Border { Child=vision,BorderThickness=new Thickness(1),
+                BorderBrush=(Brush)Application.Current.Resources["StudioBorderBrush"],
+                Margin=new Thickness(5),Padding=new Thickness(3) };
+            Border right = new Border { Child=ct,BorderThickness=new Thickness(1),
+                BorderBrush=(Brush)Application.Current.Resources["StudioBorderBrush"],
+                Margin=new Thickness(5),Padding=new Thickness(3) };
+            Grid.SetColumn(left,0);Grid.SetColumn(right,1);
+            editorGrid.Children.Add(left);editorGrid.Children.Add(right);
+            host.Children.Add(new ScrollViewer { Content=editorGrid,
+                HorizontalScrollBarVisibility=ScrollBarVisibility.Auto,
+                VerticalScrollBarVisibility=ScrollBarVisibility.Auto });
+            _studioConfigurationProjectId=projectId;
+            return host;
         }
 
         public void ShowStudioTool(string id)
