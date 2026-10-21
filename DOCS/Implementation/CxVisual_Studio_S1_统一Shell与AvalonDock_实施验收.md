@@ -1,6 +1,6 @@
 # CxVisual Studio S1：统一 Shell 与 AvalonDock 接入（实施与验收）
 
-> **实测进度（2026-10-21）**：S1 自动验收已通过（14/14，含R05/R06/R07）；同一SHA的 Windows 工程组织回归已通过。以下仅陈述相应 SHA 的真实 CI，人工视觉/浮动/DPI/长稳仍待验证，不能将其等同完整工业Studio交付。
+> **实测进度（2026-10-21）**：最新源码SHA a4e94349的S1自动验收已通过（17/17，含R05/R06、多资源P0-2）；同一SHA的Windows工程组织回归已通过。以下仅陈述相应 SHA 的真实 CI，人工视觉/浮动/DPI/长稳仍待验证，不能将其等同完整工业Studio交付。
 
 ## 1. 依据、范围及事实等级
 
@@ -97,4 +97,10 @@
 - 本轮源码提交：[773450c7](https://github.com/oudream/cx-visual-x3/commit/773450c7bd76c9c80f6cadfa8876c68c14e6fe09)，[S1 14/14 Windows STA](https://github.com/oudream/cx-visual-x3/actions/runs/39533807317) **success**；[Engineering WPF回归](https://github.com/oudream/cx-visual-x3/actions/runs/39533807345) **success**。
 - **R06补充验收（同SHA 4770a698）**：修复资源树检视页面B、活动Tab仍为A时的动态Ribbon命令错位：真实“圆”操作必须写入A、不得误写B；关闭活动页面Tab保持`LayoutRoot.ActiveContent`与Ribbon上下文一致；切换工程在清理旧Tab之前记录活动文档，防止AvalonDock焦点变化导致错误回退。更新`Applications/Studio/StudioShell.cs`、`StudioShell.ResourceDocuments.cs`和`StudioShellSelfTests.cs`，不改MEM Owner与事务语义。
 - **Windows验收证据**：[修复提交 4770a698](https://github.com/oudream/cx-visual-x3/commit/4770a698b1f89324769914ca8e09bec3af7eb757)，[Studio S1 Windows / 39548325060](https://github.com/oudream/cx-visual-x3/actions/runs/39548325060) **success，14/14 WPF STA通过**；[Engineering Organization Windows / 39548325067](https://github.com/oudream/cx-visual-x3/actions/runs/39548325067) **success，工程组织回归通过**。首轮新增反证曾触发失败，已按真实日志修复并复测；人工键鼠、DPI及全资源Tab仍待验。
-- 剩余P0：Content/Symbol/主子流程按资源独立Tab及完全的Ribbon接入、键鼠/多屏DPI、恢复持久化工程后的全部场景和复杂资源性能。已实现页面型Tab，不将其等同全EP01/R06最终验收。
+- **当前R06范围已扩展**：Page/Content/Symbol以及主/AI/CV子流程多资源Tab均已有真实SceneView/MOLFlowCanvas和MEM事务相关WPF STA回归；但完全统一Ribbon/快捷键、复杂图元完整Editor体验、真实键鼠、多屏DPI及长稳仍未整体签收。不要沿用旧版“只有页面Tab”的状态描述。
+
+## 9. S1～S4实施总规划与最新P0验收
+
+- [S1～S4四阶段开发与真实验收总规划 V1.0](CxVisual_Studio_S1至S4_阶段开发与真实验收总规划_V1.0.md)：四阶段职责、EP/R/G映射、统一Editor交互契约、开发者/编排者与A/B/C场景及继续开发顺序。部分V1.2原稿及第11张设计图待核对，本规划不能替代V1.2原稿。
+- 2026-10-21 源码提交：[a4e94349](https://github.com/oudream/cx-visual-x3/commit/a4e943493e0748b5e8b357dcd1d08a5371f3bfe3)。从真实S1红色CI [39551185708](https://github.com/oudream/cx-visual-x3/actions/runs/39551185708) 中定位 Undo 删除图元丢失归属，保留仅UI用途的变更目标→MEM资源根缓存，补Redo及无关资源不受影响断言。
+- **同源码SHA实测：** [Studio S1 Windows 39553816491](https://github.com/oudream/cx-visual-x3/actions/runs/39553816491) **success，17/17 STA通过**；[Engineering Organization Windows 39553816541](https://github.com/oudream/cx-visual-x3/actions/runs/39553816541) **success**。人工浮动/键鼠/DPI/多屏/实机验收尚待。

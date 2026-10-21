@@ -60,7 +60,7 @@
 | R03 | EP04 | 属性默认、资源来源与无效引用诊断 | 已提交待CI | c2799d713c27（等待Windows验收） |
 | R04 | EP04 | 定义/实例覆盖、多选混合值/只读约束 | 已提交待CI，范围部分闭环 | 45ff4d1eecc（同定义实例批量、MPM原生ReadOnly；待Windows验证） |
 | R05 | EP01 | 工作区/资源树/实例与定义往返导航 | 部分通过：导航切片同SHA Windows/STA/TestCenter已过 | 56a7a467；[Studio 13 PASS](https://github.com/oudream/cx-visual-x3/actions/runs/39527839595)；[工程WPF回归](https://github.com/oudream/cx-visual-x3/actions/runs/39527839579)；[TestCenter通过](https://github.com/oudream/cx-visual-x3/actions/runs/39527839575) |
-| R06 | EP01 | 多页/多标签/保存重开/未保存提醒/布局恢复 | **主要纵向功能已通过：Page/Content/Symbol/Flow真实Tab、独立画布和布局/清理** | [新增cdb6d382](https://github.com/oudream/cx-visual-x3/commit/cdb6d3821a4832b28f95cdffb257aecf14777eab)、[生命周期修复e06c2f26](https://github.com/oudream/cx-visual-x3/commit/e06c2f26d0a39aba2ead3a96deddc04b7b6a7d3d)；[Studio 16 PASS](https://github.com/oudream/cx-visual-x3/actions/runs/39549457531)、[工程Windows success](https://github.com/oudream/cx-visual-x3/actions/runs/39549457123)。每Tab Dirty精细提示、跨资源全部快捷键、DPI和实机仍待最终验收 |
+| R06 | EP01 | 多页/多标签/保存重开/未保存提醒/布局恢复 | **主要纵向功能已验证：Page/Content/Symbol/Flow真实Tab、独立画布、单MEM历史、资源Dirty/引用影响的Undo/Redo反证** | [R06修复a4e94349](https://github.com/oudream/cx-visual-x3/commit/a4e943493e0748b5e8b357dcd1d08a5371f3bfe3)，[Studio 17/17 PASS](https://github.com/oudream/cx-visual-x3/actions/runs/39553816491)，[工程Windows PASS](https://github.com/oudream/cx-visual-x3/actions/runs/39553816541)。编辑器完整命令/快捷键、人工键鼠、DPI与专业Viewer尚待签收 |
 | R07 | EP02 | 九Shape精确WPF绘制和文本图片受限SVG回归 | 未开始 | 待对应源码及Windows证据 |
 | R08 | EP02 | 缩放/高DPI/嵌套Group的命中、裁剪、遮挡 | 未开始 | 待对应源码及Windows证据 |
 | R09 | EP03 | 真实鼠标键盘多选、框选、批量拖动原子Undo | 未开始 | 待对应源码及Windows证据 |
@@ -149,5 +149,10 @@ R01源码已提交（截止 f6c0dceb7afae75d320f6b442f3a152b11566162）：修改
 - **对应代码**：Applications/Studio/StudioShell.ResourceDocuments.cs，以及 StudioShell、资源树、图形结构树衔接。每个MEMPage一个真实CxVisualEditor与SceneView，画布选择、缩放独立，编辑事务、Revision及Undo/Redo全部共用同一个MEMEngineeringSession。
 - **正反用例**：页面A/B不同Tab及场景实例；真正新增MRCRectangle只改变A；布局可保存/恢复，跨工程或已删除页面ID拒绝；关闭重新打开资源文档无重复；保存工程重开后关闭旧页面Tab，同时原doc.flow仍然激活。
 - **同SHA证据**：[773450c7](https://github.com/oudream/cx-visual-x3/commit/773450c7bd76c9c80f6cadfa8876c68c14e6fe09)；[Studio S1 Windows 39533807317](https://github.com/oudream/cx-visual-x3/actions/runs/39533807317) **success，14/14 STA**；[Engineering Windows 39533807345](https://github.com/oudream/cx-visual-x3/actions/runs/39533807345) **success**，Windows x64编译、工程WPF与开发者示例成功。
-- **仍未验收**：Content、Symbol、MOL资源独立多Tab；九Shape全部在新资源Tab精细编辑；长期鼠标/多屏DPI、完整未保存提醒键鼠验收与TestCenter同SHA。本轮R06为部分通过，不能据此宣称EP01整体完成。
+- **已追加验收**：Content、Symbol、MOL流程资源独立多Tab及变更/引用影响Dirty在后续P0-2回归中已有Windows证据（详见下文）；九Shape在资源Tab的完整精细编辑体验、长期键鼠/多屏DPI、完整未保存提醒键鼠验收与TestCenter同SHA仍未最终完成。R06为阶段性闭环，不能宣称EP01整体完成。
 - **R06追加修复实测**：动态Ribbon调用现有Studio ViewModel编辑能力时先同步当前活动页面Tab对应的MEMPage，并在资源失效时拒绝写入；关闭Tab保证AvalonDock中央Document与Ribbon上下文同步；切换工程先保存关闭前活动Document身份，避免关闭事件抢焦点。本次新增“活动A/检视B/点击圆”跨页原子编辑反证、关闭Tab上下文断言以及从活动动态Tab保存重载工程反证。原[24d3c37](https://github.com/oudream/cx-visual-x3/commit/24d3c37f5f40a234fee2fa2cf5eb9b62013f4a6a)的S1 CI确因新发现的活动文档焦点竞态失败，随后修复在[4770a698](https://github.com/oudream/cx-visual-x3/commit/4770a698b1f89324769914ca8e09bec3af7eb757)同SHA的[Studio S1 39548325060](https://github.com/oudream/cx-visual-x3/actions/runs/39548325060)与[工程组织 39548325067](https://github.com/oudream/cx-visual-x3/actions/runs/39548325067)均真实success。新增命令Guard适用于动态Ribbon；既有画布旧操作与人工键鼠链仍需分别核实，不声称全量HMI编辑器合并完成。
+
+### S1～S4规划与P0-Dirty-Undo最新闭环（2026-10-21）
+
+- 规划入口：[Studio S1～S4阶段开发与真实验收总规划](CxVisual_Studio_S1至S4_阶段开发与真实验收总规划_V1.0.md)。继续按S1 Shell、S2配置命令、S3图元和MOL流程、S4运行调试与专业集成推进，同时保留本表EP01～EP15、R01～R48、G1～G6，不为每阶段另建一套R编号。
+- 最新实际源码SHA [a4e94349](https://github.com/oudream/cx-visual-x3/commit/a4e943493e0748b5e8b357dcd1d08a5371f3bfe3) 通过 [Studio S1 Windows 39553816491](https://github.com/oudream/cx-visual-x3/actions/runs/39553816491) **17/17 WPF STA success** 与 [Engineering Organization Windows 39553816541](https://github.com/oudream/cx-visual-x3/actions/runs/39553816541) **success**。保存后Undo删除新增图元及Redo对应Tab直接Dirty、引用影响与无关Tab隔离均由同SHA自动测试证明；人工场景仍待。

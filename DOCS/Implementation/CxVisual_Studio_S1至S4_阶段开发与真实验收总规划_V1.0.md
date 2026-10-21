@@ -69,5 +69,5 @@
 ## 7. 当前执行事实与待更新
 
 - 最新核查基线为aba211cf1640e18b27ccbc421239c972471728f7；e06c2f26的Studio 16/16 STA及Engineering CI曾通过；之后新增P0-2 Dirty单测的007283b0版本Studio工作流[39551185708](https://github.com/oudream/cx-visual-x3/actions/runs/39551185708)实测失败，失败断言为“Undo产生的新Revision未更新引用影响与Dirty提示”，相同SHA的[Engineering Organization](https://github.com/oudream/cx-visual-x3/actions/runs/39551185744)成功。因此**先修P0，不能把历史的16 PASS冒充最新17 PASS**。
-- 本轮源码修复、同SHA Windows CI及文档补充证据以随后的实际提交和任务链接记录；未得到结果前严禁改写“验收通过”。
+- **本轮P0修复已通过（源码SHA a4e94349）**：在Studio层为已提交MTC操作的TargetId保留稳定资源根身份（切换工程清空、最多65536条，超出后保守标记），用于Undo删除当前已不存在图元时定位直接修改Tab及引用受影响Tab；额外补充Redo不污染无关资源的反证。未修改MEM/MTC事务、历史或Revision语义。 [Studio S1 Windows #39553816491](https://github.com/oudream/cx-visual-x3/actions/runs/39553816491) **success，17/17 WPF STA通过**；[工程组织Windows #39553816541](https://github.com/oudream/cx-visual-x3/actions/runs/39553816541) **success**，同一源码SHA完成编译与回归。文档变更的后继提交不改变上述源码验收SHA。
 - V1.2原始全文及用户提及的11张图与仓库内00～09的数量差异仍应后续对照。其缺失不影响沿已确认界面决议修复S1现实回归，但禁止擅自重新设计菜单或主布局。
