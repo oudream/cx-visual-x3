@@ -329,6 +329,9 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
                     _admittedProducers++;
                     admission.Admitted.TrySetResult(true);
                     promoted = true;
+                    // 先通过原调度循环消耗本次容量，再考虑下一位等待者。
+                    // 避免MaxConcurrency尚有空位时一口气准入超额队列。
+                    break;
                 }
                 if (!promoted) break;
             }

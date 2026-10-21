@@ -19,6 +19,8 @@ namespace CxVisual.Tests.FoundationSmoke
             PriorityDoesNotBreakPerKeyFIFO();
             PriorityFairnessBoundedAcrossKeys();
             ByteBudgetAndOverflowAccounting();
+            R08_AsyncProducerBackpressureAndKeyFIFO();
+            R08_WaiterCancellationAndStopAreBounded();
             RandomizedCancellationAndStopStress();
         }
         private static void Check(bool ok, string message)
@@ -362,6 +364,135 @@ namespace CxVisual.Tests.FoundationSmoke
             Check(second.GetSnapshot().PendingBytes == 0, "stop(cancel) leaked byte accounting");
             gate.TrySetResult(true);
             Await(closing);
+        }
+
+
+        /// <summary>R08：异步等待既不Drop现有业务也不突破原字节预算，同Key仍FIFO。</summary>
+        private static void R08_AsyncProducerBackpressureAndKeyFIFO()
+        {
+            FCRWorker worker = new FCRWorker(new FCRWorkerOptions(1,1,
+                FCROverflowPolicy.DropOldestDroppable, pendingByteBudget:8,
+                maxWaitingProducers:2));
+            TaskCompletionSource<bool> entered=Gate(),release=Gate();
+            System.Collections.Generic.List<int> order=new System.Collections.Generic.List<int>();
+            FCRWorkHandle<int> active=worker.Submit<int>(async ct=>{
+                entered.TrySetResult(true);
+                await release.Task.ConfigureAwait(false);
+                order.Add(0);
+                return 0;
+            },"lane");
+            try
+            {
+                Await(entered.Task);
+                FCRWorkHandle<int> queued=worker.Submit<int>(ct=>{
+                    order.Add(1);
+                    return Task.FromResult(1);
+                },"lane",droppable:true,estimatedBytes:8);
+                Task<FCRWorkHandle<int>> first=worker.SubmitWhenCapacityAsync<int>(
+                    ct=>{order.Add(2);return Task.FromResult(2);},
+                    "lane",estimatedBytes:4);
+                Task<FCRWorkHandle<int>> second=worker.SubmitWhenCapacityAsync<int>(
+                    ct=>{order.Add(3);return Task.FromResult(3);},
+                    "lane",estimatedBytes:4);
+                FCRWorkerSnapshot waiting=worker.GetSnapshot();
+                Check(!first.IsCompleted&&!second.IsCompleted &&
+                    waiting.Pending==1 && waiting.PendingBytes==8 &&
+                    waiting.WaitingProducers==2 && waiting.AdmittedProducers==0,
+                    "R08满队列生产者应异步等待，尚未入队不能占用Pending或字节预算");
+                FCRWorkHandle<int> full=Await(worker.SubmitWhenCapacityAsync<int>(
+                    ct=>Task.FromResult(99),"lane",estimatedBytes:2));
+                FCRWorkHandle<int> oversize=Await(worker.SubmitWhenCapacityAsync<int>(
+                    ct=>Task.FromResult(98),"lane",estimatedBytes:9));
+                Check(Await(full.Completion).State==FCRWorkState.Rejected &&
+                    Await(oversize.Completion).State==FCRWorkState.Rejected &&
+                    !queued.Completion.IsCompleted,
+                    "R08等待预算满/单任务过大必须拒绝，不能淘汰已有Droppable业务");
+                Check(queued.RequestCancel(),"R08已排队任务取消未生效");
+                FCRWorkHandle<int> admitted=Await(first);
+                Check(admitted.Accepted && !second.IsCompleted &&
+                    worker.GetSnapshot().PendingBytes==4 &&
+                    worker.GetSnapshot().WaitingProducers==1,
+                    "R08释放容量只应让FIFO第一名生产者原子入队");
+                release.TrySetResult(true);
+                FCRWorkHandle<int> next=Await(second);
+                Check(next.Accepted && Await(active.Completion).Succeeded &&
+                    Await(admitted.Completion).Value==2 &&
+                    Await(next.Completion).Value==3 &&
+                    order.Count==3&&order[0]==0&&order[1]==2&&order[2]==3,
+                    "R08等待者未按原Key FIFO执行或取消的Job被执行");
+                FCRWorkerSnapshot end=worker.GetSnapshot();
+                Check(end.PendingBytes==0&&end.WaitingProducers==0&&
+                    end.AdmittedProducers==2&&end.PeakPendingBytes==8 &&
+                    end.Dropped==0&&end.Rejected==2,
+                    "R08背压统计、峰值字节或Drop被错误修改");
+            }
+            finally
+            {
+                release.TrySetResult(true);
+                Await(worker.StopAsync(true));
+            }
+        }
+
+        private static void R08_WaiterCancellationAndStopAreBounded()
+        {
+            bool invalid=false;
+            try{new FCRWorkerOptions(1,1,maxWaitingProducers:-1);}
+            catch(ArgumentOutOfRangeException){invalid=true;}
+            Check(invalid,"R08非法生产者等待上限必须拒绝");
+            FCRWorker worker=new FCRWorker(new FCRWorkerOptions(1,1,
+                pendingByteBudget:10,maxWaitingProducers:1));
+            TaskCompletionSource<bool> entered=Gate(),release=Gate();
+            FCRWorkHandle<int> active=worker.Submit<int>(async ct=>{
+                entered.TrySetResult(true);
+                await release.Task.ConfigureAwait(false);
+                return 1;
+            },"line");
+            try
+            {
+                Await(entered.Task);
+                FCRWorkHandle<int> queued=worker.Submit<int>(
+                    ct=>Task.FromResult(2),"line",estimatedBytes:10);
+                using(CancellationTokenSource cts=new CancellationTokenSource())
+                {
+                    Task<FCRWorkHandle<int>> waiting=worker.SubmitWhenCapacityAsync<int>(
+                        ct=>Task.FromResult(3),"line",cts.Token,estimatedBytes:1);
+                    Check(worker.GetSnapshot().WaitingProducers==1 &&
+                        !waiting.IsCompleted,"R08等待取消用例未真正排队");
+                    cts.Cancel();
+                    bool cancelled=false;
+                    try
+                    {
+                        Task winner=Task.WhenAny(waiting,Task.Delay(7000)).GetAwaiter().GetResult();
+                        Check(object.ReferenceEquals(winner,waiting),"R08等待生产者取消未及时完成");
+                        waiting.GetAwaiter().GetResult();
+                    }
+                    catch(OperationCanceledException){cancelled=true;}
+                    Check(cancelled&&worker.GetSnapshot().WaitingProducers==0 &&
+                        worker.GetSnapshot().PendingBytes==10,
+                        "R08生产者取消未释放等待名额或篡改已排队工作预算");
+                }
+                Task<FCRWorkHandle<int>> stopWaiter=worker.SubmitWhenCapacityAsync<int>(
+                    ct=>Task.FromResult(4),"line",estimatedBytes:1);
+                Task stop=worker.StopAsync(false);
+                FCRWorkHandle<int> refused=Await(stopWaiter);
+                Check(!refused.Accepted &&
+                    Await(refused.Completion).State==FCRWorkState.Rejected &&
+                    worker.GetSnapshot().WaitingProducers==0 &&
+                    !stop.IsCompleted,"R08 Stop须唤醒生产者但等待已接受工作排空");
+                release.TrySetResult(true);
+                Await(stop);
+                Check(Await(active.Completion).Succeeded &&
+                    Await(queued.Completion).Succeeded &&
+                    worker.GetSnapshot().Pending==0 &&
+                    worker.GetSnapshot().PendingBytes==0 &&
+                    worker.GetSnapshot().WaitingProducers==0,
+                    "R08 Stop(false)结束后背压/队列预算泄漏");
+            }
+            finally
+            {
+                release.TrySetResult(true);
+                Await(worker.StopAsync(true));
+            }
         }
 
         private static void RandomizedCancellationAndStopStress()
