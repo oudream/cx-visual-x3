@@ -285,6 +285,65 @@ namespace CxVisual.TestCenter.UI
                             ((System.Windows.Controls.TabItem)revisionTabs.Items[1]).Content;
                         if (revisionViewer.VerifiedDiffCount != 1 || revisionViewer.EvidenceProblem != null)
                             throw new InvalidOperationException("M2 WPF failed to display actual MEM Revision diff");
+
+                        // Stage 1: real FGERect2D -> versioned GeometryEvidence -> WPF canvas.
+                        ITCTTestCase shapeCase = catalog.Cases.Single(x =>
+                            x.Descriptor.Id == "TCT.M2.GEOMETRY.001");
+                        TCTTestAttempt shapeAttempt = new TCTTestAttempt(Guid.NewGuid().ToString("N"),
+                            shapeCase.Descriptor.Id, 0, 20261021);
+                        TCTTestArtifactStore shapeStore = new TCTTestArtifactStore(
+                            TCTTestArtifactStore.RunRoot(shapeAttempt.RunId));
+                        TCTTestCaseResult shapeResult = await TCTTestRunner.RunOneAsync(shapeCase,
+                            CancellationToken.None, 20261021, shapeAttempt, shapeStore);
+                        if (shapeResult.Status != TCTTestStatus.Passed ||
+                            TCTObservationReplay.Read(shapeResult, shapeStore).Count != 1)
+                            throw new InvalidOperationException("Real geometry owner evidence missing");
+                        window.DocumentHost.ShowResult(shapeResult);
+                        var shapeTabs = (System.Windows.Controls.TabControl)window.DocumentHost.Content;
+                        var shapeView = (TCTGeometryTestView)
+                            ((System.Windows.Controls.TabItem)shapeTabs.Items[1]).Content;
+                        if (shapeView.VerifiedFigureCount != 4 ||
+                            shapeView.EvidenceCanvas == null ||
+                            shapeView.EvidenceProblem != null)
+                            throw new InvalidOperationException("Geometry expected/actual/diff evidence canvas failed");
+                        var buttons = (System.Windows.Controls.StackPanel)shapeView.EvidenceCanvas.Content;
+                        var toolbar = (System.Windows.Controls.StackPanel)buttons.Children[0];
+                        var zoomIn = (System.Windows.Controls.Button)toolbar.Children[0];
+                        zoomIn.RaiseEvent(new RoutedEventArgs(
+                            System.Windows.Controls.Primitives.ButtonBase.ClickEvent, zoomIn));
+                        if (shapeView.EvidenceCanvas.Zoom <= 1)
+                            throw new InvalidOperationException("Geometry zoom UI click failed");
+
+                        // Stage 1: history browser must verify full Attempt/Artifact after live
+                        // Worker storage has been removed, with no fabricated outcomes.
+                        using (TCTTestSandbox archiveSandbox = new TCTTestSandbox())
+                        {
+                            var history = new TCTTestHistoryControl(
+                                System.IO.Path.Combine(archiveSandbox.Root, "History"));
+                            history.SetCurrent(new TCTTestRunSummary(
+                                new System.Collections.Generic.List<TCTTestCaseResult> { shapeResult },
+                                shapeAttempt.RunId));
+                            history.SaveCurrent();
+                            if (history.HistoryCount != 1)
+                                throw new InvalidOperationException("History UI did not catalogue the real Run");
+                            string live = TCTTestArtifactStore.RunRoot(shapeAttempt.RunId);
+                            if (Directory.Exists(live)) Directory.Delete(live, true);
+                            TCTArchivedTestRun reloaded = null;
+                            string location = null;
+                            history.HistoryOpened += (run, directory) =>
+                            { reloaded = run; location = directory; };
+                            history.LoadVerified(shapeAttempt.RunId);
+                            if (reloaded == null || reloaded.Attempts.Count != 1 ||
+                                reloaded.Attempts[0].AttemptId != shapeAttempt.AttemptId)
+                                throw new InvalidOperationException("History GUI lost real Attempt identity");
+                            window.DocumentHost.ShowResult(reloaded.Attempts[0], location);
+                            var archivedTabs = (System.Windows.Controls.TabControl)window.DocumentHost.Content;
+                            var archivedGeometry = (TCTGeometryTestView)
+                                ((System.Windows.Controls.TabItem)archivedTabs.Items[1]).Content;
+                            if (archivedGeometry.VerifiedFigureCount != 4 ||
+                                archivedGeometry.EvidenceProblem != null)
+                                throw new InvalidOperationException("History geometry viewer lost verified Artifact");
+                        }
                         exit = 0;
                     }
                     finally { window.Close(); }
