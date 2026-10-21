@@ -174,11 +174,11 @@ namespace CxVisual.Studio
         public IMEMResource SelectedResource
         {
             get{return !_resourceId.HasValue||_editor==null?null:
-                _editor.Document.Project.FindResource(_resourceId.Value);}
+                _editor.Document.Project.FindResource(_resourceId.Value,true);}
             set
             {
                 if(IsRefreshing||_editor==null)return;
-                if(value!=null&&ProjectSession.Project.FindResource(value.Id)!=value)
+                if(value!=null&&ProjectSession.Project.FindResource(value.Id,true)!=value)
                     throw new InvalidOperationException("当前资源不属于工程或不是独立资源");
                 _resourceId=value==null?(Guid?)null:value.Id;
                 _selected=null;

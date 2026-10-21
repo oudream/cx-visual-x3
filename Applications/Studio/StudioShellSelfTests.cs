@@ -585,6 +585,34 @@ namespace CxVisual.Studio
                         window.GetStudioContentIds().Contains(motorTab),
                         "Schema应用打断多个资源文档的布局身份");
                 });
+                CheckStep("P0-3 页面内嵌Content真实流程Tab属性与公开资源身份", () =>
+                {
+                    StudioViewModel model=window.DataContext as StudioViewModel;
+                    MEMEngineeringSession session=model.ProjectSession;
+                    MEMPage page=session.AddPage("P0-3 主产线");
+                    MEMContent root=page.RootContent;
+                    session.DefineProperty(root,new MPMPropertyDescriptor("limit",
+                        MPMValueKind.Integer,true,true,
+                        MPMBinding.Literal(MPMValue.Integer(5)),1,20));
+                    var modelLogic=new MOLLogicDefinition(MOLControlBlock.Sequence(
+                        MOLControlBlock.Action("Start"),MOLControlBlock.Action("Stop")));
+                    MOLLogicCodec.Set(session,root,modelLogic);
+                    int before=session.Revision;
+                    string flowTab=window.OpenStudioResourceDocument(root.Id,true);
+                    Assert(model.SelectedResource!=null&&model.SelectedResource.Id==root.Id,
+                        "Page.RootContent的真实流程Tab未找到当前工程内嵌定义");
+                    StudioPropertyItem limit=model.Properties.Single(x=>x.Member=="limit");
+                    Assert(limit.OwnerId==root.Id&&!limit.IsReadOnly,
+                        "内嵌流程仍未投影MEM原生Schema");
+                    limit.Text="17";
+                    model.ApplyPropertyCommand.Execute(limit);
+                    Assert(session.Revision==before+1&&
+                        session.FindProperty(root,"limit").Binding.Value.AsInteger()==17,
+                        "Page子Content编辑未通过原工程事务");
+                    Assert(window.GetStudioResourceFlow(root.Id)!=null&&
+                        window.GetStudioContentIds().Contains(flowTab),
+                        "原Page下的真实MOL画布被属性编辑破坏");
+                });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;
             }
