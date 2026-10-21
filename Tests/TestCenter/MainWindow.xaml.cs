@@ -38,6 +38,8 @@ namespace CxVisual.TestCenter.UI
         {
             InitializeComponent();
             Explorer.Bind(_catalog);
+            TestPlan.Bind(_catalog, () => Explorer.CheckedIds);
+            TestPlan.RunRequested += async ids => await RunAsync(false, ids);
             Explorer.TestSelected += OnTestSelected;
             Results.ResultSelected += OnResultSelected;
             History.HistoryOpened += OnHistoryOpened;
@@ -62,7 +64,8 @@ namespace CxVisual.TestCenter.UI
             {
                 { "test.explorer", Explorer }, { "test.documents", DocumentHost },
                 { "test.inspector", Inspector }, { "test.results", Results },
-                { "test.timeline", Timeline }, { "test.history", History }
+                { "test.timeline", Timeline }, { "test.history", History },
+                { "test.plan", TestPlan }
             };
             ApplyTheme(false);
             _defaultDockLayout = SerializeDockLayout();
@@ -142,9 +145,15 @@ namespace CxVisual.TestCenter.UI
         }
         private async void OnRunSelected()
         {
+            string[] checkedIds = Explorer.CheckedIds;
+            if (checkedIds.Length > 0)
+            {
+                await RunAsync(false, checkedIds);
+                return;
+            }
             if (Explorer.SelectedTest == null)
             {
-                MessageBox.Show(this, "请先在左边选中具体测试用例。", "TestCenter");
+                MessageBox.Show(this, "请选择测试用例，或勾选多项进行批量执行。", "TestCenter");
                 return;
             }
             await RunAsync(true);
@@ -279,7 +288,7 @@ namespace CxVisual.TestCenter.UI
                 throw new InvalidDataException("Dock layout missing or oversized");
             HashSet<string> allowed = new HashSet<string>(StringComparer.Ordinal)
             { "test.explorer", "test.documents", "test.inspector",
-                "test.results", "test.timeline", "test.history" };
+                "test.results", "test.timeline", "test.history", "test.plan" };
             HashSet<string> seen = new HashSet<string>(StringComparer.Ordinal);
             XmlReaderSettings settings = new XmlReaderSettings
             {
