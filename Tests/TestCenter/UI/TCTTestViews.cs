@@ -145,6 +145,7 @@ namespace CxVisual.TestCenter.UI
         public int VerifiedReferenceCount { get; private set; }
         public int VerifiedDiffCount { get; private set; }
         public string EvidenceProblem { get; private set; }
+        public string ArchivedEvidenceRoot { get; set; }
         public TreeView OwnershipTree { get; private set; }
 
         public override void Clear()
@@ -182,9 +183,9 @@ namespace CxVisual.TestCenter.UI
                 try
                 {
                     // Validates Evidence envelope, Attempt/Run, Payload inventory and SHA256 first.
-                    TCTObservationReplay.Read(result);
                     TCTTestArtifactStore store = new TCTTestArtifactStore(
-                        TCTTestArtifactStore.RunRoot(result.RunId));
+                        ArchivedEvidenceRoot ?? TCTTestArtifactStore.RunRoot(result.RunId));
+                    TCTObservationReplay.Read(result, store);
                     byte[] bytes = store.Read(observation.Envelope.PayloadRef);
                     XDocument snapshot = TCTEngineeringSnapshotCodec.Deserialize(bytes);
                     BindSnapshot(snapshot, observation);
@@ -479,7 +480,13 @@ namespace CxVisual.TestCenter.UI
 
         public void ShowResult(TCTTestCaseResult result)
         {
+            ShowResult(result, null);
+        }
+        public void ShowResult(TCTTestCaseResult result, string verifiedArchiveDirectory)
+        {
             Clear();
+            _viewers.OfType<TCTObjectTestView>().Single().ArchivedEvidenceRoot =
+                verifiedArchiveDirectory;
             if (result == null) return;
             _empty.Text = result.Status + " · " + result.Descriptor.Name +
                 "\n观察数：" + result.Observations.Count +
