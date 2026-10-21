@@ -38,6 +38,7 @@
     <Compile Include="Models\TCTModels.cs" />
     <Compile Include="Models\TCTObservationEnvelope.cs" />
     <Compile Include="Models\TCTGraphRuntimeEvidence.cs" />
+    <Compile Include="Models\TCTRuntimeOwnerEvidence.cs" />
     <Compile Include="Models\TCTChannelEvidence.cs" />
     <Compile Include="Models\TCTEngineeringSnapshotCodec.cs" />
     <Compile Include="Models\TCTGeometryEvidence.cs" />
