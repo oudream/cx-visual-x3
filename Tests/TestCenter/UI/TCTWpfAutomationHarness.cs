@@ -35,6 +35,8 @@ namespace CxVisual.TestCenter.UI
             SaveScreenshot(window, "TestCenter-05-Graph.png");
             await Task.Run(() => InteractRuntime(hwnd, window));
             SaveScreenshot(window, "TestCenter-06-Runtime.png");
+            await Task.Run(() => InteractChannel(hwnd, window));
+            SaveScreenshot(window, "TestCenter-07-Channel.png");
             window.MenuThemeDark.RaiseEvent(new RoutedEventArgs(
                 System.Windows.Controls.MenuItem.ClickEvent, window.MenuThemeDark));
             SaveScreenshot(window, "TestCenter-04-Dark.png");
@@ -235,6 +237,45 @@ namespace CxVisual.TestCenter.UI
             }
             throw new InvalidOperationException(operation + " failed; selected=" +
                 (id ?? "<none>") + "; inspector=" + (last ?? "<none>"));
+        }
+
+        private static void InteractChannel(IntPtr hwnd, TCTMainWindow window)
+        {
+            AutomationElement root = AutomationElement.FromHandle(hwnd);
+            ValuePattern search = Find(root, "TCT.Explorer.Search")
+                .GetCurrentPattern(ValuePattern.Pattern) as ValuePattern;
+            if (search == null) throw new InvalidOperationException("Channel search has no ValuePattern");
+            search.SetValue("TCT.M3.CHANNEL.001");
+            SelectionItemPattern selected = Find(root, "TCT.Case.TCT.M3.CHANNEL.001")
+                .GetCurrentPattern(SelectionItemPattern.Pattern) as SelectionItemPattern;
+            if (selected == null) throw new InvalidOperationException("Channel case lacks UIA selection");
+            selected.Select();
+            InvokePattern run = Find(root, "TCT.RunSelected")
+                .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
+            if (run == null) throw new InvalidOperationException("Channel run button not invocable");
+            run.Invoke();
+            bool ready = false;
+            for (int attempt = 0; attempt < 240; attempt++)
+            {
+                window.Dispatcher.Invoke(new Action(() => {
+                    var tabs = window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                    if (tabs == null || !window.MenuRunSelected.IsEnabled) return;
+                    TCTChannelTestView channelView = tabs.Items.OfType<System.Windows.Controls.TabItem>()
+                        .Select(x => x.Content).OfType<TCTChannelTestView>().FirstOrDefault();
+                    ready = channelView != null && channelView.VerifiedFrameCount >= 5 &&
+                        channelView.VerifiedErrorCount >= 1 && channelView.EvidenceProblem == null;
+                }));
+                if (ready) break;
+                Thread.Sleep(200);
+            }
+            if (!ready) throw new TimeoutException(
+                "Channel UIA did not verify real TX/RX/error evidence from Connectivity");
+            SelectionItemPattern tab = Find(root, "TCT.Viewer.Channel")
+                .GetCurrentPattern(SelectionItemPattern.Pattern) as SelectionItemPattern;
+            if (tab == null) throw new InvalidOperationException("Channel Viewer tab has no SelectionItemPattern");
+            tab.Select();
+            InvokeFirstOwnerLink(root, "TCT.Channel.Frame.");
+            WaitForInspector(window, "Channel Frame", "Channel UIA Frame → Inspector");
         }
 
         private static void InvokeFirstOwnerLink(AutomationElement root, string prefix)
