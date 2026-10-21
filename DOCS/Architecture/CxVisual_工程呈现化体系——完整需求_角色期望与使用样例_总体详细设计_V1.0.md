@@ -690,7 +690,7 @@ Foundation.Geometry 负责数学/Path/Transform/命中基础；Mechanism.Visual 
 |---|---|---|---|
 | **阶段一：真实现状与归属基线** | 从现有 `.csproj`、源码声明、项目目录对照；核对 **F/M/P/Applications** 唯一 Owner；列工程呈现化关联现有类/接口/枚举及 EP/角色、复用方向，记录缺口和证据等级 | `22～25` 已核查类型台账与覆盖差距，不改代码 | **本轮已完成“关联类型现状审计”**：逐条可回源码；不以阶段一替代全库所有私有辅助类型扫描或 Windows 验收 |
 | **阶段二：缺失/扩展类型反推和归属裁决** | 从 EP01～EP15 × 六角色 × U1～U5 × Studio Shell 的最新源码反推差距；逐项“直接复用/增强/必要新增/重复取消”，定接口、枚举、依赖、关键场景 | §26～34§：原位复用增强表、候选协同类型、明确禁建清单、唯一 Owner/依赖 DAG、场景与需求反证 | **本轮完成架构候选归属裁决**；具体新类型最终签名/可合并性及实际源码实施归第三阶段，Windows测试待验 |
-| **阶段三：全类规格与验收映射** | 为阶段二裁决保留的每个类型补充属性、方法签名、生命周期、错误、安全、线程、序列化；开发者 API 与 Studio 操作双角色样例；类→EP→案例→测试→Windows证据 | 可直接指导 Codex 的完整对象规格和实施/验收矩阵 | **待实施**；仅有文档或源码不得称实际运行通过 |
+| **阶段三：全类规格与验收映射** | 对已核现有关键API与N01～N20新增职责提出属性、方法、生命周期、线程、安全、序列化及测试合同；双角色API/Studio路径和类→EP→案例→验收 | `35～42` 现有真实API抽样+20候选详细契约、去重/依赖、两种角色与15组验收门禁；其余305型全成员级复核另列 | **本轮完成可实施的协同契约和验收矩阵**；现有305全公开重载及专业真机尚待逐项审计/执行，不冒称全类成员已经100%审核 |
 
 ## 22. 阶段一核对方法、项目归属及状态定义
 
@@ -1373,6 +1373,399 @@ Foundation.Geometry 负责数学/Path/Transform/命中基础；Mechanism.Visual 
 
 ---
 
+## 35. 第三阶段执行边界与真实源码新变更
+
+> **第三阶段交付性质**：在第一阶段305项真实类型归属、第二阶段38组复用增强/20候选/12项禁止重复机制的基础上，制定**可实施的全类契约与证据矩阵**。**既有 API** 仅据当前源码陈述；**拟定 API** 是未来开发契约，并非已创建、已编译或验收通过。此阶段不增加项目、不改C#业务源码，不推测尚未获取的Studio V1.2全文。
+
+- **新增源码复核（2026-10-21）**：`Applications/Studio/StudioShell.ResourceTree.cs` 已实现 `MainWindow.RefreshStudioResourceTree()`、搜索/资源选择路由；`StudioShell.GraphicsTree.cs` 已实现 `RefreshStudioGraphicsTree()` 和 `tool.graphics` 独立停靠面板、对象选择及焦点恢复。二者均是**现有MainWindow partial**，不得误写为新的实体类；`StudioShellSelfTests` 是阶段一快照之后新增的真实类（源码存在，Windows测试状态另核）。
+- `StudioShell.cs` 已有 `OpenStudioDocument(string id)`、`CloseStudioDocument(string id)`、`ApplyStudioTheme(bool dark)`、`SerializeStudioLayout()`、`SaveStudioLayout(string path)`、`RestoreStudioLayout(string path)`；当前文档仍应区分基于已知 `ContentId` 的S1入口与任意工程ResourceId的多文档编辑器。
+- **20候选重新判定**：N08 ResourceTree、N09 GraphicsTree 不再默认按新类落码，优先原位增强现有两个 partial 文件；N04/N05、N10/N11、N15 可按实际复杂度合并；N01/N02作为轻量值/枚举而非服务，N16～N20主要扩展原WPF项目。**设计对象数 ≠ 应立即新建的源码类数**。
+- **生命周期**：权威工程状态只有MEM+MTC；当前编辑器、选择、停靠和布局是UI状态；MOC计划/SourceMap是版本化构建成果；MRK会话、MDS帧和Viewer句柄是短生命周期运行态。所有“属性/方法”遵循此划分。
+
+## 36. 现有关键权威 API 的实际签名（源码核实）
+
+> 本节列出决定分层依赖的**已读取源码中的真实入口**；未逐字列出的所有重载以后方 §43§ 逐类型源码契约盘点为准，不得据此推断没有别的现有方法。
+
+| 已有类型/范围 | Owner | 已核实际API（重点入口） | 使用边界 | 依据 |
+|---|---|---|---|---|
+| `MEMEngineering` | Mechanism.Core | `MEMEngineering.Create(string, IMEMProjectStore=null, IMEMAccessPolicy=null): MEMEngineeringSession`；`Open(string, IMEMProjectStore=null, IMEMAccessPolicy=null): MEMEngineeringSession` | 工程会话创建、加载、原始权限 | [源码](../../Mechanism/Core/Engineering/MEMEngineeringSession.cs) |
+| `MEMEngineeringSession` | Mechanism.Core | `Edit<T>(string, int expectedRevision, Func<MTCEditSession,T>):MTCEditResult<T>`；`Undo():MTCEditResult<bool>`；`Redo():MTCEditResult<bool>`；`Watch(Action<MTCChangeSet>):IDisposable`；`SaveAs(string):void` | 唯一事务、历史、回调、保存；Revision不能被运行帧修改 | [源码](../../Mechanism/Core/Engineering/MEMEngineeringSession.cs) |
+| `MEMEngineeringSession（属性合同）` | Mechanism.Core | `DefineProperty(MEMNode, MPMPropertyDescriptor):MPMProperty`；`SetProperty(MEMNode,string,MPMBinding):void`；`SetOverride(MRIResourceReference,string,MPMBinding):void`；`ClearOverride(MRIResourceReference,string):void`；`ResolveParameter(MRIResourceReference,string):MPMBinding` | 定义/实例来源分离；只读校验由MTC/Core执行 | [源码](../../Mechanism/Core/Engineering/MEMEngineeringSession.Contracts.cs) |
+| `MPMPropertyDescriptor` | Mechanism.Core | `MPMPropertyDescriptor(string memberId, MPMValueKind valueKind, bool required=false, bool isPublic=true, MPMBinding defaultBinding=null, double? minimum=null, double? maximum=null, bool isReadOnly=false)` | Schema唯一声明；IsPublic/IsReadOnly不是UI本地标志 | [源码](../../Mechanism/Core/Engineering/MPMValue.cs) |
+| `MPMBinding` | Mechanism.Core | `Literal(MPMValue):MPMBinding`；`Variable(string,string="value"):MPMBinding`；`Resource(Guid):MPMBinding`；`Member(MRIObjectAddress,string):MPMBinding`；`Expression(string):MPMBinding` | 持久绑定意图而非实时数据值 | [源码](../../Mechanism/Core/Engineering/MPMValue.cs) |
+| `CxVisualEditor` | Mechanism.Visual | `OpenDefinition(Guid):void`；`ReturnToPrevious():bool`；`AddShape(string,MRCShapeDefinition,double,double):MTCEditResult<bool>`；`MoveSelection(IReadOnlyList<Guid>,double,double,bool=false):MTCEditResult<bool>` | 复用原MEM事务与历史；新增Studio导航不复制Editor | [源码](../../Mechanism/Visual/CxVisualEditor.cs) |
+| `SceneView` | Mechanism.Presentation.Wpf | `SetSelectedVisualIds(IEnumerable<Guid>):void`；`SetScene(IList<CxSceneItem>,Guid?):void`；`SetViewport(double,double,double):void` | WPF图形输入、选中投影和绘制，Dispatcher线程调用 | [源码](../../Mechanism/Presentation.Wpf/SceneView.cs) |
+| `MOLFlowCanvas` | Mechanism.Presentation.Wpf | `SetSelection(IEnumerable<Guid>):void`；`GetVisiblePorts():IReadOnlyList<MOLPortVisual>` | 流程画布为MOL投影，不持有第二份逻辑定义 | [源码](../../Mechanism/Presentation.Wpf/MOLFlowCanvas.cs) |
+| `MPWConfigEditorControl<T>` | Mechanism.Presentation.Wpf | `SaveDraftAsync(CancellationToken):Task<MHSConfigCommitResult>`；`Dispose():void`；按源码提供受控构造器与UI模板 | 配置受控草稿/提交，不直接修改独立配置存储 | [源码](../../Mechanism/Presentation.Wpf/MPWConfigEditorDialogV14.cs) |
+| `MHSConfigEditorModel<T>` | Mechanism.Data | `DescribeFields(...):IList<MHSConfigEditorField>`；`Preview(...):MHSConfigPreview`；`CommitAsync(...):Task<MHSConfigCommitResult>`；`Undo/Redo`（以源码重载为准） | 层级配置编辑，区别于MPM工程Schema | [源码](../../Mechanism/Data/Configuration/MHSConfigEditorModel.cs) |
+| `MOCBuildService` | Mechanism.Orchestration | `Build(MEMProjectSnapshot, Guid contentId, IMRKCapabilityResolver):MOCBuildResult` | 构建返回Result、Diagnostics、Plan；不直接执行设备 | [源码](../../Mechanism/Orchestration/MOCBuildService.cs) |
+| `MOCSourceMap` | Mechanism.Orchestration | `TryResolve(string compiledStepId, out MOCStepOrigin):bool`；`Find(Guid blockId):IList<MOCStepOrigin>` | 流程构建/执行与原对象定位依据，不按名称猜测 | [源码](../../Mechanism/Orchestration/MOCEngineeringCompiler.cs) |
+| `MRKRuntimeSession` | Mechanism.Runtime | `MRKRuntimeSession(string id,MRKExecutionEngine,MRKExecutionPlanSlot,int maxInFlight=1)`；`Start():void`；`Snapshot():MRKRuntimeSessionSnapshot`；`StopAsync(bool cancel=false):Task` | 会话/计划由MRK持有，不为Studio建立执行器 | [源码](../../Mechanism/Runtime/Execution/MRKRuntimeSession.cs) |
+| `MDSDataBinding` | Mechanism.Data | `MDSDataBinding(MDSBindingSource,Type,string sourceName=null,object constant=null)`；`MDSDataBindingResolver.Resolve<T>(...)`（依源码确切重载） | 变量/运行数据意图与质量标记分离 | [源码](../../Mechanism/Data/RuntimeData/MDSDataBindings.cs) |
+| `MainWindow（Studio Shell）` | CxVisual.Studio | `OpenStudioDocument(string):void`；`GetStudioContentIds():string[]`；`ApplyStudioTheme(bool):void`；`SaveStudioLayout(string):void`；`RestoreStudioLayout(string):void` | 当前S1存在，专业资源文档协调器不得取代其窗口/布局 | [源码](../../Applications/Studio/StudioShell.cs) |
+| `MainWindow（资源/图形结构）` | CxVisual.Studio | `RefreshStudioResourceTree():void`；`RefreshStudioGraphicsTree():void` | 新增partial扩展：资源/图形结构各自投影，未新增独立工程对象 | [源码](../../Applications/Studio/StudioShell.ResourceTree.cs) |
+
+## 37. N01～N20 候选类型的完整契约规格与裁决
+
+> 下表**签名为“设计拟定”，不声称已有源码**。签名展示方法名、主要参数和返回，阶段三已将每项的数据、方法、失败边界、线程及生命周期明确到可实施层级；**源码最终重载应在创建前和实际现有类型/测试做签名冲突校验**。WPF特定的 `FrameworkElement`/`UserControl` 只允许 WPF 工程使用。
+
+### 37.1 N01　`StudioDocumentKey`（struct）
+
+| 项 | 已裁决契约 |
+|---|---|
+| 所属与状态 | `CxVisual.Studio`；**需求保留；未实施**，不是已实施/已验收 |
+| 属性/状态 | ProjectId:Guid; ResourceId:Guid?; ReferenceId:Guid?; EditorKind:StudioEditorKind; StableKey:string（派生） |
+| 核心方法（拟定） | Create(Guid projectId, Guid? resourceId, StudioEditorKind kind, Guid? referenceId=null):StudioDocumentKey; Equals(object):bool; GetHashCode():int |
+| 不变量/异常/版本/线程 | 资源ID必须来自MEM；Home允许空ResourceId；不保存真实工程对象；稳定键不从名称生成；按值相等；跨项目不可复用；UI交互只在WPF Dispatcher，来自MRK/MDS异步数据必须先复制为不可变观察快照后调度 |
+| 对应需求/角色使用 | EP01/EP14；资源Tab去重、定义/实例、关闭重开、非法空或跨工程资源拒绝 |
+| 验收用例ID | `StudioDocuments-01`（Windows STA / Core 组合测试待执行） |
+
+### 37.2 N02　`StudioEditorKind`（enum）
+
+| 项 | 已裁决契约 |
+|---|---|
+| 所属与状态 | `CxVisual.Studio`；**需求保留；未实施**，不是已实施/已验收 |
+| 属性/状态 | Home; Configuration; Visual; Flow; ProfessionalViewer |
+| 核心方法（拟定） | 由已注册资源类型匹配；不得直接根据名字猜。 |
+| 不变量/异常/版本/线程 | UI分类而非MEMNodeKind/MRCShapeKind或专业ResourceKind，不加入MEM存储；未知类型必须给缺编辑器诊断；UI交互只在WPF Dispatcher，来自MRK/MDS异步数据必须先复制为不可变观察快照后调度 |
+| 对应需求/角色使用 | EP01/EP13；三主编辑器+专业Viewer切换 |
+| 验收用例ID | `StudioDocuments-02`（Windows STA / Core 组合测试待执行） |
+
+### 37.3 N03　`StudioDocumentCoordinator`（class）
+
+| 项 | 已裁决契约 |
+|---|---|
+| 所属与状态 | `CxVisual.Studio`；**候选；优先从现有MainWindow提取**，不是已实施/已验收 |
+| 属性/状态 | ProjectSession:MEMEngineeringSession（只读引用）; ActiveKey:StudioDocumentKey?; OpenDocuments:只读集合 |
+| 核心方法（拟定） | Open(StudioDocumentKey key):StudioDocumentKey; Activate(StudioDocumentKey key):bool; Close(StudioDocumentKey key):bool; CloseAll():void; Find(StudioDocumentKey key):编辑器会话? |
+| 不变量/异常/版本/线程 | 复用S1 AvalonDock LayoutDocument、MainWindow.OpenStudioDocument；公开数据不暴露可修改集合；切换/关闭不更改MEM Revision；重复打开同Key只有一个Tab；UI交互只在WPF Dispatcher，来自MRK/MDS异步数据必须先复制为不可变观察快照后调度 |
+| 对应需求/角色使用 | EP01/EP14；任意ResourceId、多个AI/CV子流及同资源复用 |
+| 验收用例ID | `StudioDocuments-03`（Windows STA / Core 组合测试待执行） |
+
+### 37.4 N04　`StudioEditorDescriptor`（class）
+
+| 项 | 已裁决契约 |
+|---|---|
+| 所属与状态 | `CxVisual.Studio`；**候选；可并入Registry**，不是已实施/已验收 |
+| 属性/状态 | EditorKind:StudioEditorKind; ResourceTypeId:string; DisplayName:string; SupportedModes:只读模式集合; Priority:int |
+| 核心方法（拟定） | Matches(string resourceTypeId, StudioEditorKind kind, string mode):bool; Describe():string |
+| 不变量/异常/版本/线程 | 只读描述；不存MOL/MPM定义或Viewer实例；Descriptor冲突按明确优先级裁决，不静默选错专业；UI交互只在WPF Dispatcher，来自MRK/MDS异步数据必须先复制为不可变观察快照后调度 |
+| 对应需求/角色使用 | EP01/EP13/EP14；专业编辑器发现与失败占位 |
+| 验收用例ID | `StudioEditors-01`（Windows STA / Core 组合测试待执行） |
+
+### 37.5 N05　`StudioEditorRegistry`（class）
+
+| 项 | 已裁决契约 |
+|---|---|
+| 所属与状态 | `CxVisual.Studio`；**候选；需要时与N04合并**，不是已实施/已验收 |
+| 属性/状态 | Factories:只读注册目录; Project:现有上下文引用 |
+| 核心方法（拟定） | Register(StudioEditorDescriptor descriptor, IMPWResourceEditorFactory factory):void; Resolve(resourceTypeId:string, mode:string):IMPWResourceEditorFactory?; Unregister(resourceTypeId:string):bool |
+| 不变量/异常/版本/线程 | 重复注册拒绝/明示优先级；只存工厂引用；禁止保存工程字段；Factory失败必须销毁半初始化控件并给出诊断；UI交互只在WPF Dispatcher，来自MRK/MDS异步数据必须先复制为不可变观察快照后调度 |
+| 对应需求/角色使用 | EP01/EP13/EP14；配置、Scene、Flow、CT专业Viewer适配 |
+| 验收用例ID | `StudioEditors-02`（Windows STA / Core 组合测试待执行） |
+
+### 37.6 N06　`StudioSelectionCoordinator`（class）
+
+| 项 | 已裁决契约 |
+|---|---|
+| 所属与状态 | `CxVisual.Studio`；**原位增强优先；独立化待定**，不是已实施/已验收 |
+| 属性/状态 | SelectedResourceId:Guid?; SelectedObjectIds:IReadOnlyList<Guid>; SelectionRevision:int; ActiveDocument:StudioDocumentKey |
+| 核心方法（拟定） | SetSelection(resourceId:Guid, ids:IEnumerable<Guid>, expectedRevision:int):bool; Clear():void; Changed:event |
+| 不变量/异常/版本/线程 | 防重入；更新Canvas/GraphicsTree/Property同一选择；过期ID/跨资源混选拒绝；Selection不写MEM；WPF Dispatcher线程投影；UI交互只在WPF Dispatcher，来自MRK/MDS异步数据必须先复制为不可变观察快照后调度 |
+| 对应需求/角色使用 | EP01/EP03/EP04/EP09；多选同定义属性、结构树/场景双向选中 |
+| 验收用例ID | `StudioSelection-01`（Windows STA / Core 组合测试待执行） |
+
+### 37.7 N07　`StudioNavigationHistory`（class）
+
+| 项 | 已裁决契约 |
+|---|---|
+| 所属与状态 | `CxVisual.Studio`；**候选；优先复用CxVisualEditor内跳转栈**，不是已实施/已验收 |
+| 属性/状态 | Current:StudioDocumentKey; BackEntries/ForwardEntries:只读；目标地址MRIObjectAddress |
+| 核心方法（拟定） | Navigate(StudioDocumentKey key,MRIObjectAddress address):void; Back():bool; Forward():bool; ClearProject():void |
+| 不变量/异常/版本/线程 | 栈只保存ID/视口/焦点，不保存MEMNode副本；若目标失效显示可诊断错误，不跳到同名对象；项目切换清除历史；UI交互只在WPF Dispatcher，来自MRK/MDS异步数据必须先复制为不可变观察快照后调度 |
+| 对应需求/角色使用 | EP01/EP09/EP12；实例→定义→AI子流→父流→HMI工位往返 |
+| 验收用例ID | `StudioNavigation-01`（Windows STA / Core 组合测试待执行） |
+
+### 37.8 N08　`StudioResourceTreeProjection`（class）
+
+| 项 | 已裁决契约 |
+|---|---|
+| 所属与状态 | `CxVisual.Studio`；**并入现有StudioShell.ResourceTree.cs为优先**，不是已实施/已验收 |
+| 属性/状态 | Rows:按MEM资源身份只读生成; Filter:string; ExpandedIds:用户偏好 |
+| 核心方法（拟定） | Project(MEMEngineeringSession session,string filter):只读投影; FindResource(Guid id):树行? |
+| 不变量/异常/版本/线程 | 现有MainWindow.RefreshStudioResourceTree已可用；不复制MEM树，不含Group/Element；独立类只有复杂查询/自动测试证据充分才新增；UI交互只在WPF Dispatcher，来自MRK/MDS异步数据必须先复制为不可变观察快照后调度 |
+| 对应需求/角色使用 | EP01/EP13；工程资源搜索、专业资源分类和引用导航 |
+| 验收用例ID | `StudioTree-01`（Windows STA / Core 组合测试待执行） |
+
+### 37.9 N09　`StudioObjectOutlineProjection`（class）
+
+| 项 | 已裁决契约 |
+|---|---|
+| 所属与状态 | `CxVisual.Studio`；**并入现有StudioShell.GraphicsTree.cs为优先**，不是已实施/已验收 |
+| 属性/状态 | Rows:当前MEM资源内部Group/Element的只读投影; SelectedIds:只读 |
+| 核心方法（拟定） | Project(Guid resourceId):只读对象树; Select(Guid id):bool; Highlight(IEnumerable<Guid>):void |
+| 不变量/异常/版本/线程 | 已有RefreshStudioGraphicsTree和tool.graphics独立停靠面板；不重复造TreeView，不持久化图层；流程Outline节点可单独通过现有MOL视图投影扩充；UI交互只在WPF Dispatcher，来自MRK/MDS异步数据必须先复制为不可变观察快照后调度 |
+| 对应需求/角色使用 | EP01/EP02/EP03/EP09；Layer/Group/Element选择、画布焦点不被工具窗抢占 |
+| 验收用例ID | `StudioTree-02`（Windows STA / Core 组合测试待执行） |
+
+### 37.10 N10　`StudioCommandDescriptor`（class）
+
+| 项 | 已裁决契约 |
+|---|---|
+| 所属与状态 | `CxVisual.Studio`；**拟新增UI层命令描述**，不是已实施/已验收 |
+| 属性/状态 | Id:string; Label:string; Group:string; Scope:Workbench/Resource/Mode; Shortcut:string?; Action:受控委托 |
+| 核心方法（拟定） | CanExecute(只读当前上下文):StudioCommandAvailability; Execute(只读上下文):命令结果（用原Owner返回） |
+| 不变量/异常/版本/线程 | UI描述不包含专业执行逻辑；命令Id稳定、重复拒绝；无权限不执行；不为Run/Debug创建第二运行引擎；UI交互只在WPF Dispatcher，来自MRK/MDS异步数据必须先复制为不可变观察快照后调度 |
+| 对应需求/角色使用 | EP01/EP08/EP14；菜单/Ribbon/右键/快捷键同一命令 |
+| 验收用例ID | `StudioCommands-01`（Windows STA / Core 组合测试待执行） |
+
+### 37.11 N11　`StudioCommandRegistry`（class）
+
+| 项 | 已裁决契约 |
+|---|---|
+| 所属与状态 | `CxVisual.Studio`；**增强MainWindow现有UpdateStudioRibbon，视复杂度分离**，不是已实施/已验收 |
+| 属性/状态 | Commands:只读注册目录; ActiveContext:现有Studio上下文投影 |
+| 核心方法（拟定） | Register(StudioCommandDescriptor command):void; Evaluate(string id):StudioCommandAvailability; Execute(string id):命令结果; GetRibbonGroups():只读集合 |
+| 不变量/异常/版本/线程 | 有且仅有一条执行路径；专业只能贡献命令或绑定原Owner；原S1九菜单仍是UI宿主，不再新增第二套Ribbon；UI交互只在WPF Dispatcher，来自MRK/MDS异步数据必须先复制为不可变观察快照后调度 |
+| 对应需求/角色使用 | EP01/EP08/EP13/EP14；切换HMI/流程/配置时工具与权限自然变化 |
+| 验收用例ID | `StudioCommands-02`（Windows STA / Core 组合测试待执行） |
+
+### 37.12 N12　`StudioCommandAvailability`（struct）
+
+| 项 | 已裁决契约 |
+|---|---|
+| 所属与状态 | `CxVisual.Studio`；**拟新增轻量值对象；可嵌于N10**，不是已实施/已验收 |
+| 属性/状态 | Visible:bool; Enabled:bool; DisabledReason:string; RequiresPermission:bool |
+| 核心方法（拟定） | Allowed():StudioCommandAvailability; Denied(string reason):StudioCommandAvailability |
+| 不变量/异常/版本/线程 | 仅供UI；不代替Core权限验证；DisabledReason需具备可见诊断；不可变值类型；UI交互只在WPF Dispatcher，来自MRK/MDS异步数据必须先复制为不可变观察快照后调度 |
+| 对应需求/角色使用 | EP08/EP15；无权限/工程未构建/无资源时明确禁用原因 |
+| 验收用例ID | `StudioCommands-03`（Windows STA / Core 组合测试待执行） |
+
+### 37.13 N13　`StudioDiagnosticNavigator`（class）
+
+| 项 | 已裁决契约 |
+|---|---|
+| 所属与状态 | `CxVisual.Studio`；**拟新增跨机制UI协调**，不是已实施/已验收 |
+| 属性/状态 | SourceMap:MOCSourceMap（只读引用）; ActiveProjectId:Guid; MappingDiagnostics:只读集合 |
+| 核心方法（拟定） | Navigate(MOCDiagnostic diagnostic):bool; NavigateStep(string compiledStepId):bool; NavigateTrace(运行观察引用):bool |
+| 不变量/异常/版本/线程 | 必须检验计划指纹/RunSession/ResourceId；只通过真实MOC映射定位；映射缺失返回未解析，不按字符串猜测对象；UI交互只在WPF Dispatcher，来自MRK/MDS异步数据必须先复制为不可变观察快照后调度 |
+| 对应需求/角色使用 | EP10/EP12；子流程节点→父流程→HMI，失败可定位 |
+| 验收用例ID | `StudioDiagnostic-01`（Windows STA / Core 组合测试待执行） |
+
+### 37.14 N14　`StudioRuntimeObservationCoordinator`（class）
+
+| 项 | 已裁决契约 |
+|---|---|
+| 所属与状态 | `CxVisual.Studio`；**拟新增跨MRK/MDS的只读投影协调**，不是已实施/已验收 |
+| 属性/状态 | Session:MRKRuntimeSession?; DataContext:IMDSDataContext?; CurrentPlanFingerprint:string?; IsAttached:bool |
+| 核心方法（拟定） | Attach(受控会话与绑定):void; ReadFrame():只读UI快照; PauseObservation():void; Detach():void; Dispose():void |
+| 不变量/异常/版本/线程 | 不得创建MRK执行引擎或MDS Heap；采用有界UI更新/订阅，UI Dispatcher边界清楚；Detach后旧帧不再更新新项目；UI交互只在WPF Dispatcher，来自MRK/MDS异步数据必须先复制为不可变观察快照后调度 |
+| 对应需求/角色使用 | EP07/EP11/EP12；Watch、Flow Overlay、HMI状态联动和断连质量 |
+| 验收用例ID | `StudioObserve-01`（Windows STA / Core 组合测试待执行） |
+
+### 37.15 N15　`StudioViewSubscriptionScope`（class）
+
+| 项 | 已裁决契约 |
+|---|---|
+| 所属与状态 | `CxVisual.Studio`；**拟新增internal聚合器（如现有Dispose覆盖足够可合并）**，不是已实施/已验收 |
+| 属性/状态 | OwnerDocument:StudioDocumentKey; IsDisposed:bool; Subscriptions:私有IDisposable集合 |
+| 核心方法（拟定） | Add(IDisposable subscription):void; Clear():void; Dispose():void |
+| 不变量/异常/版本/线程 | 重复Dispose幂等；添加到已释放作用域须拒绝并即时释放；窗口/Tab关闭和工程切换调用；不持有设备真实资源租约；UI交互只在WPF Dispatcher，来自MRK/MDS异步数据必须先复制为不可变观察快照后调度 |
+| 对应需求/角色使用 | EP07/EP11/EP15；关闭文档后不再响应旧MRK/MDS事件 |
+| 验收用例ID | `StudioObserve-02`（Windows STA / Core 组合测试待执行） |
+
+### 37.16 N16　`MPWConfigCompositePanel`（class）
+
+| 项 | 已裁决契约 |
+|---|---|
+| 所属与状态 | `CxVisual.Mechanism.Presentation.Wpf`；**拟新增可复用UserControl**，不是已实施/已验收 |
+| 属性/状态 | SectionModels:只读组合; Columns:int; LayoutMode:Auto/Single/Double/Triple; IsDirty:bool |
+| 核心方法（拟定） | SetSections(既有受控Config编辑模型集合):void; Reflow(double width):void; ApplyAsync(CancellationToken):Task<受控提交结果>; CancelDraft():void; Dispose():void |
+| 不变量/异常/版本/线程 | 仅组合MPWConfigEditorControl<T>/MHS授权节；不得建立自己的配置字典或Undo；响应式1×N/2×N/3×N；不可吞掉事务失败；UI交互只在WPF Dispatcher，来自MRK/MDS异步数据必须先复制为不可变观察快照后调度 |
+| 对应需求/角色使用 | EP01/EP04/EP13；设备/检测方案多个配置区在中央同时可操作 |
+| 验收用例ID | `WpfConfig-01`（Windows STA / Core 组合测试待执行） |
+
+### 37.17 N17　`IMPWResourceEditorFactory`（interface）
+
+| 项 | 已裁决契约 |
+|---|---|
+| 所属与状态 | `CxVisual.Mechanism.Presentation.Wpf`；**拟新增可扩展WPF界面合同**，不是已实施/已验收 |
+| 属性/状态 | ResourceTypeId:string（只读）; EditorKindId:string（避免依赖Studio枚举） |
+| 核心方法（拟定） | CanCreate(MPWResourceEditorContext context):bool; Create(MPWResourceEditorContext context):FrameworkElement |
+| 不变量/异常/版本/线程 | WPF工程可以引用纯Mechanism资源/Context，但不得引用CxVisual.Studio；专业Viewer通过应用组合根桥接，宿主负责Dispose/异常回滚；UI交互只在WPF Dispatcher，来自MRK/MDS异步数据必须先复制为不可变观察快照后调度 |
+| 对应需求/角色使用 | EP01/EP13/EP14；专业增加Viewer无需修改六套Shell |
+| 验收用例ID | `WpfEditor-01`（Windows STA / Core 组合测试待执行） |
+
+### 37.18 N18　`MPWResourceEditorContext`（class）
+
+| 项 | 已裁决契约 |
+|---|---|
+| 所属与状态 | `CxVisual.Mechanism.Presentation.Wpf`；**拟新增只读受控上下文**，不是已实施/已验收 |
+| 属性/状态 | ProjectId:Guid; ResourceId:Guid?; ReferenceId:Guid?; Engineering:受控只读查询/事务入口; Mode:枚举/字符串适配 |
+| 核心方法（拟定） | DemandValid():void; CreateSubscriptionScope():IDisposable（由宿主提供） |
+| 不变量/异常/版本/线程 | 不能把MainWindow、原生设备会话或可任意修改MEM集合裸传给第三方；WPF专用上下文不进入Core序列化；UI交互只在WPF Dispatcher，来自MRK/MDS异步数据必须先复制为不可变观察快照后调度 |
+| 对应需求/角色使用 | EP01/EP13/EP14；从Vision/CT3D专业Editor查资源/请求受控事务 |
+| 验收用例ID | `WpfEditor-02`（Windows STA / Core 组合测试待执行） |
+
+### 37.19 N19　`MPWSchemaPropertyEditorHost`（class）
+
+| 项 | 已裁决契约 |
+|---|---|
+| 所属与状态 | `CxVisual.Mechanism.Presentation.Wpf`；**拟新增统一类型模板UserControl**，不是已实施/已验收 |
+| 属性/状态 | SchemaSource:MPM或MHS适配器; Items:只读属性投影; SelectionState:只读 |
+| 核心方法（拟定） | SetSchema(只读Schema适配器):void; SetSelection(对象ID集合):void; CommitAsync(CancellationToken):Task<受控结果>; RevertDraft():void |
+| 不变量/异常/版本/线程 | MPM和MHS各保留不同提交/校验Owner；三态Mixed、资源选择、ReadOnly/错误可见；不将枚举/复杂属性降格字符串保存；UI交互只在WPF Dispatcher，来自MRK/MDS异步数据必须先复制为不可变观察快照后调度 |
+| 对应需求/角色使用 | EP04/EP13/EP14；统一右侧属性面板和配置组合区的编辑体验 |
+| 验收用例ID | `WpfSchema-01`（Windows STA / Core 组合测试待执行） |
+
+### 37.20 N20　`IMPWSchemaEditorFactory`（interface）
+
+| 项 | 已裁决契约 |
+|---|---|
+| 所属与状态 | `CxVisual.Mechanism.Presentation.Wpf`；**拟新增专业属性控件注册**，不是已实施/已验收 |
+| 属性/状态 | SupportsValueKind:string/类型标识; Priority:int |
+| 核心方法（拟定） | CanEdit(只读Schema描述,当前模式):bool; CreateEditor(只读属性上下文):FrameworkElement |
+| 不变量/异常/版本/线程 | 不能反向要求Foundation引用WPF；专业受控模板仅处理输入/展示，真实写入回到MPM/MHS；冲突显式诊断；UI交互只在WPF Dispatcher，来自MRK/MDS异步数据必须先复制为不可变观察快照后调度 |
+| 对应需求/角色使用 | EP04/EP13/EP14；Color/Brush/Enum/ROI/CT参数复用受控类型化控件 |
+| 验收用例ID | `WpfSchema-02`（Windows STA / Core 组合测试待执行） |
+
+## 38. 同名重复、项目依赖与类合并裁决
+
+| 裁决项 | 最终安排 | 不能发生的情况 |
+|---|---|---|
+| `MainWindow`与“StudioShell” | 复用现有`MainWindow` partial；分担于`StudioShell.cs`、`StudioShell.ResourceTree.cs`、`StudioShell.GraphicsTree.cs` | 不新增第二个主窗口或同名工程Shell |
+| N08/N09 两个投影类 | **首选合并入现有partial扩展**；除非UI复用和单元测试证明确有独立类收益，暂不计强制新增类型数 | 不能重复绘制第二个资源树/图形结构面板 |
+| N04/N05 | 可以合并为内部注册表/描述条目；保留Resource类型→受控WPF编辑器的单一映射 | 不同时保有StudioRegistry和ProfessionalRegistry两份注册真源 |
+| N10/N11/N12 | 共享同一UI命令ID和路由，描述与可用性可为小值对象；S1菜单/Ribbon只负责可见 UI | 不把设备控制、MOC Build直接硬编码到两个Click路径 |
+| N14/N15 | N15只负责关闭/取消订阅，可内嵌N14或现有ViewModel；保护真实MRK/MDS源 | 不创建第二DataHeap、执行线程池和RunContext仓 |
+| N16/N19/N20 | 统一WPF输入模板/组合容器，分别把提交委托送到MEM/MPM或MHSConfig原Owner | 不复制Schema、设置第二Undo历史或把复合值当纯字符串 |
+| `Mechanism.Presentation.Wpf` ↔ Studio | WPF项目**不引用Studio**，接口只采用FrameworkElement/Resource引用等低层契约；由Studio组合根注册 | Professional Core不得调用MainWindow或WPF具体UI |
+| 6专业 Workbench | 各专业的逻辑与Provider仍驻留Professional；Viewer可由WPF适配、应用注册 | CT3D/AI设备对象不进入Foundation/Visual纯核心 |
+
+### 38.1 依赖规则（不是新增工程引用指令）
+
+```text
+Foundation.Geometry、Foundation.Data（无Mechanism/WPF依赖）
+   ↓
+Mechanism.Core（MEM/MPM/MOL/MTC/MRC）  Mechanism.Data（MDS/MHS）
+   ↓                                     ↓
+Mechanism.Visual / Orchestration / Runtime（依当前项目允许的DAG）
+   ↓
+Mechanism.Presentation.Wpf（Scene / Flow / 配置/属性宿主）
+   ↓
+Applications.Studio（AvalonDock/MainWindow/注册/导航/诊断/观测组合根）
+          ⇐ Professional 的业务能力经现有抽象/受控适配注册
+```
+
+此图是**职责方向示意**，不暗示列出的 Mechanism 项目之间全部可互相引用；具体 `.csproj ProjectReference` 和四大规格DAG需逐引用校验。Professional业务Core不反向依赖Studio；适配UI的技术位置在现有WPF或允许的应用组合根。
+
+## 39. 从类型到完整使用体验：两个角色的可执行与拟定合同
+
+### 39.1 软件开发者：真实已有 API 示例（根据当前Core接口编写，非本环境编译证据）
+
+```csharp
+using System;
+using CxVisual.Mechanism.Core;
+
+// 文件路径由调用者提供。既有 MEM API；源定义与两个实例只有一份工程真源。
+using (MEMEngineeringSession engineering = MEMEngineering.Create("电机产线"))
+{
+    MEMPage page = engineering.AddPage("总览");
+    MEMSymbol symbol = engineering.AddSymbol("电机定义");
+    engineering.DefineProperty(symbol, new MPMPropertyDescriptor(
+        "设备名", MPMValueKind.String, false, true,
+        MPMBinding.Literal(MPMValue.String("未绑定"))));
+    MRIResourceReference motorA = engineering.PlaceSymbol(
+        page.RootContent, symbol, "电机A");
+    MRIResourceReference motorB = engineering.PlaceSymbol(
+        page.RootContent, symbol, "电机B");
+    engineering.Edit("分别覆盖设备名", engineering.Revision, edit =>
+    {
+        edit.SetOverride(motorA, "设备名", MPMBinding.Literal(MPMValue.String("MotorA")));
+        edit.SetOverride(motorB, "设备名", MPMBinding.Literal(MPMValue.String("MotorB")));
+        return true;
+    }).RequireValue();
+    if (!engineering.Validate().IsValid)
+        throw new InvalidOperationException("工程校验失败");
+    engineering.SaveAs(filePath);
+}
+```
+
+**此代码只调用真实已读取的 Core API**；编译/运行/图元画布/用户布局等功能不包含在这个示例，不以其代替 Windows 端到端验收。
+
+### 39.2 专业开发者与Studio的目标适配（设计合同，未实施）
+
+```text
+// 拟议调用链，非当前SDK方法，严禁直接复制为能编译的实现示例。
+EditorDescriptor(ResourceTypeId="ct.volume", EditorKind=ProfessionalViewer)
+  -> Registry.Register(Descriptor, AuthorizedViewerFactory)
+  -> StudioDocumentCoordinator.Open(Project/Resource/EditorKind)
+  -> IMPWResourceEditorFactory.Create(ReadOnlyResourceEditorContext)
+  -> UI通过受控原Owner命令处理，关闭调用SubscriptionScope.Dispose()
+  -> MRK/MDS只读帧->Viewer投影，MEM Revision不变
+```
+
+### 39.3 工程编排用户的真实界面行为链（目标验收脚本）
+
+1. **设备配置**：资源树选择“电机配置”→中央配置组合面板（N16）显示设备、通信、运行绑定的真实Schema；非法值不修改MEM/MHS保存状态。
+2. **图元定义**：进入电机Symbol→`SceneView`图元画布；右侧Schema（N19）编辑定义，进入总览页放A/B两实例并分别配置公开属性；选择同步到`tool.graphics`图形结构和属性，不能错改其他实例。
+3. **专业流程**：检测主流程→AI子流程→CV子流程各有资源Tab；MOLFlowCanvas的节点/Port由真正MOL定义，应用操作走原事务；从子流程回父流程及设备HMI能恢复焦点。
+4. **构建/调试**：MOC真实构建结果、错误、SourceMap经N13定位；MRK真实会话/MDS数据经N14观察，N15在关闭Tab/工程切换时解除订阅；禁止预览发送PLC/曝光/运动指令。
+5. **结束**：Studio保存工程、重开，三类编辑器显示稳定ID；布局另行存储；Undo/Redo和无授权反例在Core和WPF层都能复现。
+
+## 40. 全类契约的生命周期、线程、安全和持久化
+
+| 类型组 | 创建/销毁与所有权 | 线程/并发 | 持久化与版本 | 失败保护 |
+|---|---|---|---|---|
+| MEM/MPM/MTC/MRC | 工程会话拥有真源；事务控制修改；资源ID稳定 | 原事务锁/Revision；UI不得绕过 | 仅MEM工程保存/加载，Dirty/Undo由Core | 失败Edit不部分提交，不可越权清除实例覆盖 |
+| MOL/MOC | MOL随工程定义；MOC构建产出版本化Plan/SourceMap | 后台构建用稳定工程Snapshot，不直接改WPF控件 | Plan指纹对应工程Revision/能力版本 | 错Port/错版本时不发布虚假计划 |
+| MRK/MDS | MRK会话/资源租约及MDS数据上下文独立释放 | 运行线程与WPF Dispatcher隔离，UI帧有界/限频 | MDS快照/日志另行持有，绝不作为工程Undo | 取消、断连、旧Plan重放必须显式处理 |
+| N01～N15（Studio UI协调） | Project/Tab/Window作用域；关闭Tab销毁观测Scope | UI状态在Dispatcher，后台回调调度回UI | Workspace布局持久化独立于MEM；选择和Navigation是会话态 | 旧ResourceId/Revision/Trace映射必须拒绝并诊断 |
+| N16～N20（WPF适配） | 宿主创建控件、Dispose / Unregister；专业Viewer资源受Scope监管 | 只允许在WPF线程操作控件，耗时计算/数据在机制/专业线程 | 仅传Schema与受控提交，不建立第二XML/Json仓 | 类型/权限/质量无效时不写工程/设备，不静默强转类型 |
+
+### 40.1 状态标识（阶段三裁决）
+
+- **E0 源码已存在**：能定位真实声明/版本，未证明完整运行；第一阶段305项及本轮新增的MainWindow partial/SelfTests属此级。
+- **E1 设计拟定**：N01～N20中的候选职责/属性/方法已经写入本文，尚未落码，不得标为E0或“完成”。
+- **E2 测试源码存在**：已经编写用例、能定位文件与预期，仍与Windows运行成功分开。
+- **E3 同SHA Windows通过**：引用运行ID、时间、平台、编译/STA日志；GitHub综合状态空不能替代。
+- **E4 专业/实机验收**：工位、图像/CT实数据、互锁、授权、性能和运维可重复签收；不能由E3自动推出。
+
+## 41. 类/接口→EP→角色→测试分层验收映射
+
+| 用例 | 需求 | 类型/Owner | 角色/案例 | 正向与失败反证 | 证据等级 |
+|---|---|---|---|---|---|
+| T01 | EP01/14 | N01～N05；MainWindow/MEM | R1/R3；U1/U2 | 多Tab同ID只一个实例；旧S1打开/关闭不回退；项目切换不串资源；退出后重启恢复独立布局 | Windows STA+Core |
+| T02 | EP01/02/03 | N06/N08/N09；SceneView/GraphicsTree | R3；U2 | 资源树无Group/Element；图形结构Tree与画布双向选中；Show不得夺焦点；跨资源选择拒绝 | Windows STA |
+| T03 | EP03/04 | MPM/MTC；N19/N20 | R1/R3；U1/U2 | Boolean Mixed三态、合法数值批量事务一次Revision/Undo，越权/过期不修改；配置MHS单独提交 | Core+Windows STA |
+| T04 | EP01/04/13 | N16/N17/N18；MHSConfig | R2/R3；U2/U3 | 1/2/3列组合、字段丢焦点/取消、校验、保存重开、权限不足拒绝、草稿不写工程 | Windows STA+Config |
+| T05 | EP05/06/07 | MRC/MPWWidgetPresenter/N19/N14 | R2/R3/R4；U2 | 两个电机实例不同绑定、真实WPF Widget更新、时间/质量、断线，Preview不改MEM Revision | Windows STA+MRK/MDS |
+| T06 | EP08/15 | N10/N11/N12；MRK/专业策略 | R3/R4/R6；U2/U5 | 九菜单/专业Ribbon同一Command；无权限/联锁不满足禁止设备动作且可见原因 | Windows STA+安全反证 |
+| T07 | EP09/10 | MOLFlowCanvas/MOCBuildService/N07 | R3/R5；U3 | 主流程+AI/CV两个子流程，Port/类型/错循环诊断、资源Tab导航/单步返回 | Core+Windows STA |
+| T08 | EP10/12 | MOCSourceMap/N13/N07 | R3/R5；U3/U5 | 故障AI compiledStep映射到子流、父流程和HMI；错计划/丢SourceMap不得猜测 | Core+Windows STA |
+| T09 | EP11/12 | MRKRuntimeSession/MDS/N14/N15 | R4/R5；U3/U5 | 真实RunSession、Watch/Trace、订阅释放，旧帧不能更新新工程；停止/超时反馈 | MRK+WPF STA |
+| T10 | EP13/14 | N04/N05/N17/N18；专业工作台 | R1/R2/R3；U4 | CT/ROI专业Viewer可注册，缺插件可诊断；巨大Volume不复制进MEM，接口隔离正常 | Windows+专业合同 |
+| T11 | EP02/03/05 | FGE/MRC/Visual/SceneView | R1/R3/R6；A场景 | 九图元/Bezier控制柄、路径段修改、选中/撤销、DPI/资源错误占位和安全SVG | Geometry+WPF STA |
+| T12 | EP01/15 | S1 Shell/N03/N15 | R3/R6；U1/U5 | AvalonDock5.0.1布局重启、反序列化拒绝DTD/超限、深浅VS主题、双屏DPI、循环开关无泄漏 | Windows真实STA+人工 |
+| T13 | EP08/10/11/15 | MOC/MRK/MEMAccessPolicy/Professional.Automation | R4/R6；U3 | Design/Preview不发真实曝光/运动，Run/Debug需权限/联锁；现场操作日志可追溯 | 专业安全/实机，人工签收 |
+| T14 | EP13/15 | Professional.Vision/CT3D/Inspection | R2/R5/R6；U3/U4 | 真实图像ROI、AI/CV检测、重建MPR、结果/高负载生命周期，不能用Demo冒充 | 专业实数据/压力 |
+| T15 | EP01～15 | N01～N20+第一阶段305类型Owner | R1～R6；U1～U5 | API独立示例→Studio同一工程→Build→Runtime→Trace→定位→修改→重构建；全链路不建立第二真源 | Windows CI+端到端/多专业 |
+
+**测试签收规则**：每项需关联具体Commit SHA、Windows Runner/VS版本、真实命令、日志路径、成功/失败与修复记录；设备测试记录另存设备型号、人员授权、联锁条件。已有测试源代码只算E2；若无本次真实日志状态维持待验。
+
+## 42. 第三阶段成果与进入实现的门禁
+
+| 项 | 交付内容 | 审核结论 |
+|---|---|---|
+| 阶段一 | 305现有工程呈现化相关类型、11项目归属、89个源码入口 | 完成当时的**源码声明快照**，不等于全仓所有类/验收 |
+| 阶段二 | 38复用增强组、20拟新增职责、12禁建项、10专项待核；EP01～EP15映射 | 唯一Owner和去重裁决形成；近期S1变更已调整 |
+| 阶段三 | 20候选的项目、状态、属性/方法、线程/生命周期/安全/失败边界；关键已有API真实入口；两角色使用案例；15条验收门禁 | **设计契约已整理**；真实代码尚未按新契约全部实现/编译/验收 |
+| 类级别待实证问题 | 第一阶段其他类型的**完整公共方法签名与所有重载**、全部专业接入代码、Studio V1.2全文、跨项目调用DAG、质量/性能/实机安全 | 需要源码逐类型精确盘点及阶段实现时动态校验，不能把本轮签名概要冒称100%成员级权威合同 |
+| 开发实施方式 | 原位增强优先；先A图元、B双实例、C主/AI/CV专业子流纵向跑通；分包按最少有意义提交 | 各包必须产生真实API + Studio UI + 工程保存/运行/调试 + Windows测试日志；否则只记部分实现 |
+
+**阶段三的完成边界**：本轮完成目标**协同类型契约与需求/用例/Owner/测试全映射**；第一阶段305项的成员级全量自动盘点属于后续可追加核对工作，不将已抽样API表冒充全部305型的全部重载。确认后的具体代码实施由单一分轮台账继续驱动，不能因为本文件新增设计表就将R01～R04或S1标为Windows/现场验收通过。
+
+---
 ## 附录 A｜现有源码和记录入口
 
 - 统一实施/验收进度：`DOCS/Implementation/CxVisual_工程呈现化体系_30分钟分轮实施与验收_V1.0.md`。
@@ -1389,5 +1782,5 @@ Foundation.Geometry 负责数学/Path/Transform/命中基础；Mechanism.Visual 
 
 设计讨论以 `EPxx-yy` 引用需求；工程用户反馈以 `U1～U5` 指向场景；Studio 与工程呈现化协作引用 `§12.1～12.10`；后续全类架构每个类型标记 Owner + 需求 ID + 用例 + 证据状态，区分已定案与待核 V1.1；实现记录仍在原 30 分钟分轮文档统一维护，不复制成多套进度台账。
 
-**本文件统一保存需求、角色/用例、总体设计及三阶段全类架构；第一阶段是可回源码的305型历史基线，第二阶段完成复用、原位增强、必要候选、重复排除和唯一Owner裁决；第三阶段尚需完整API规格和真实Windows/专业验收。**
+**本文件统一保存需求、角色/用例、总体设计及三阶段架构成果：阶段一305现有类型归属、阶段二38复用增强/20候选/12禁建及唯一Owner、阶段三20候选详细契约及15组测试矩阵。现有305类型的逐一完整重载与真实Windows/设备验收尚需源码及执行证据，不能虚报。**
 
