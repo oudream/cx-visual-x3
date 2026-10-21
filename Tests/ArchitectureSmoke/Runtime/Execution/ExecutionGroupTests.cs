@@ -13,6 +13,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
             UnknownGroupRejectedBeforeRunning();
             GroupAndDeviceResourcesHaveUniformOrder();
             R08_GroupCancellationReclaimsWaitingBudget();
+            R08_WholeFlowSerializesAcrossFlowsAndCancelsQueue();
+            R08_WholeFlowLoopUsesOneLeaseAndRejectsUnknownInnerGroups();
         }
         private static void Check(bool condition, string msg)
         { if (!condition) throw new InvalidOperationException("执行组：" + msg); }
@@ -134,6 +136,123 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(groups.Snapshot()[0].Active==0&&groups.Snapshot()[0].Waiting==0&&
                 groups.Snapshot()[0].Rejected==64,
                 "R08组许可与拒绝次数未全部正确结算");
+        }
+
+
+        /// <summary>跨Flow整个组席位不在a/b节点之间释放；失败准入、取消等待均无业务副作用。</summary>
+        private static void R08_WholeFlowSerializesAcrossFlowsAndCancelsQueue()
+        {
+            int startedSecond=0;
+            TaskCompletionSource<bool> entered=new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<bool> release=new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            MRKExecutionPlan plan=new MRKExecutionPlan("r08-whole-flow",new[]{
+                new MRKExecutionStep("a",new string[0],async (ctx,ct)=>{
+                    if((string)ctx.Inputs["instance"]=="first")
+                    {
+                        entered.TrySetResult(true);
+                        await release.Task.ConfigureAwait(false);
+                    }
+                    else Interlocked.Increment(ref startedSecond);
+                    return (object)1;
+                },executionGroup:"whole"),
+                new MRKExecutionStep("b",new[]{"a"},(ctx,ct)=>
+                    Task.FromResult((object)2),executionGroup:"whole")
+            });
+            MRKExecutionEngine engine=new MRKExecutionEngine(new FCRWorkerOptions(1,6),
+                groups:new[]{new MRKExecutionGroupDefinition("whole",1,1,
+                    MRKExecutionGroupScope.WholeFlow)});
+            MRKFlowHandle first=null;
+            try
+            {
+                first=engine.StartFlow(plan,new System.Collections.Generic.Dictionary<string,object>{
+                    {"instance","first"}});
+                Await(entered.Task);
+                Check(engine.GroupSnapshot()[0].Active==1,
+                    "WholeFlow在第一个节点执行时应占一份组席位");
+                MRKFlowHandle waiting=engine.StartFlow(plan,
+                    new System.Collections.Generic.Dictionary<string,object>{{"instance","second"}});
+                Check(engine.GroupSnapshot()[0].Waiting==1 &&
+                    Volatile.Read(ref startedSecond)==0,
+                    "WholeFlow另一Flow应完整排队，而非进入Step");
+                MRKFlowHandle rejected=engine.StartFlow(plan,
+                    new System.Collections.Generic.Dictionary<string,object>{{"instance","rejected"}});
+                Check(Await(rejected.Completion).State==MRKFlowState.Failed &&
+                    engine.GroupSnapshot()[0].Rejected==1 &&
+                    Volatile.Read(ref startedSecond)==0,
+                    "WholeFlow达到MaxWaiting时不能执行任何业务Step");
+                Check(waiting.RequestCancel(),"WholeFlow等待流不可协作取消");
+                Check(Await(waiting.Completion).State==MRKFlowState.Cancelled &&
+                    engine.GroupSnapshot()[0].Waiting==0 &&
+                    engine.GroupSnapshot()[0].Active==1,
+                    "WholeFlow取消等待应释放Waiting，但不夺走现有Holder");
+                release.TrySetResult(true);
+                Check(Await(first.Completion).State==MRKFlowState.Completed,
+                    "WholeFlow相同组跨两个依赖节点发生自死锁");
+                MRKFlowHandle successor=engine.StartFlow(plan,
+                    new System.Collections.Generic.Dictionary<string,object>{{"instance","next"}});
+                Check(Await(successor.Completion).State==MRKFlowState.Completed &&
+                    Volatile.Read(ref startedSecond)==1,
+                    "WholeFlow成功结算后不能重新接纳下一Flow");
+                Check(engine.GroupSnapshot()[0].Active==0 &&
+                    engine.GroupSnapshot()[0].Waiting==0,
+                    "WholeFlow成功、拒绝、取消后许可未完全释放");
+            }
+            finally
+            {
+                release.TrySetResult(true);
+                Await(engine.StopAsync(true));
+            }
+        }
+
+        /// <summary>循环体WholeFlow组必须只在父Flow入口获取一次；未知内部组提前拒绝。</summary>
+        private static void R08_WholeFlowLoopUsesOneLeaseAndRejectsUnknownInnerGroups()
+        {
+            int iterations=0;
+            MRKExecutionStep inner=new MRKExecutionStep("inner",new string[0],
+                (ctx,ct)=>{
+                    Interlocked.Increment(ref iterations);
+                    return Task.FromResult((object)42);
+                },executionGroup:"whole");
+            MRKExecutionPlan body=new MRKExecutionPlan("r08-body",new[]{inner});
+            MRKLoopRegion loop=new MRKLoopRegion(body,2);
+            MRKExecutionStep outer=new MRKExecutionStep("loop",new string[0],
+                (ctx,ct)=>Task.FromResult((object)0),loopRegion:loop);
+            MRKExecutionPlan plan=new MRKExecutionPlan("r08-outer",new[]{outer});
+            MRKExecutionEngine engine=new MRKExecutionEngine(new FCRWorkerOptions(1,4),
+                groups:new[]{new MRKExecutionGroupDefinition("whole",1,0,
+                    MRKExecutionGroupScope.WholeFlow)});
+            try
+            {
+                Check(Await(engine.StartFlow(plan).Completion).State==MRKFlowState.Completed &&
+                    iterations==2 && engine.GroupSnapshot()[0].Active==0,
+                    "嵌套循环WholeFlow应只取得一次许可并完整释放（不得自死锁）");
+                bool badEnum=false;
+                try{new MRKExecutionGroupDefinition("bad",1,0,
+                    (MRKExecutionGroupScope)123);}
+                catch(ArgumentOutOfRangeException){badEnum=true;}
+                Check(badEnum,"未知Stage等未实现组作用域不能降级为Step");
+
+                int sideEffects=0;
+                MRKExecutionPlan unknownBody=new MRKExecutionPlan("invalid-body",new[]{
+                    new MRKExecutionStep("missing",new string[0],(ctx,ct)=>{
+                        Interlocked.Increment(ref sideEffects);
+                        return Task.FromResult((object)1);
+                    },executionGroup:"missing")
+                });
+                MRKExecutionPlan invalid=new MRKExecutionPlan("invalid-outer",new[]{
+                    new MRKExecutionStep("loop",new string[0],
+                        (ctx,ct)=>Task.FromResult((object)0),
+                        loopRegion:new MRKLoopRegion(unknownBody,1))
+                });
+                bool rejected=false;
+                try{engine.StartFlow(invalid);}
+                catch(ArgumentException){rejected=true;}
+                Check(rejected && sideEffects==0,
+                    "未知内部组必须在运行前整体拒绝，不得执行已有业务副作用");
+            }
+            finally{Await(engine.StopAsync(true));}
         }
 
         private static void Await(Task task)

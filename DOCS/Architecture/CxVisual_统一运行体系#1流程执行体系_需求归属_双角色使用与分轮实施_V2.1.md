@@ -499,3 +499,9 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 - 在原MRKExecutionGroupDefinition增加可选Scope，默认Step完全兼容；WholeFlow由原MRKExecutionEngine在任何节点启动之前按GroupId确定顺序取得席位，并保留到全部节点、动态Loop、DataScope与Journal终态结算之后；原Step组按原规则获取，不产生第二套Worker/Session或资源管理器。
 - 动态Loop内部组在正式准入前递归验证及归集，防止Loop内WholeFlow重复获取导致自死锁；未知嵌套组/执行位置在执行副作用之前拒绝。整条Flow等待仍消耗原有ActiveFlow配额且不占Worker线程。取消排队WholeFlow必须即时归还Waiting，不改变已占有者，所有成功/失败/超时/停止出口必须归还Active。
 - 当前仅实现Step和WholeFlow。Stage作用域必须有真实Stage边界/Stage结束信号再独立实现；不得作为Step别名静默接受。跨进程硬件Owner/安全停机不属于软件Group许可证明。
+
+### R08 WholeFlow可执行反证（2026-10-21，待Windows CI）
+
+- ArchitectureSmoke: `R08_WholeFlowSerializesAcrossFlowsAndCancelsQueue` 使用真实MRKFlow，验证完整Flow占组、后继Flow排队、第三Flow超组等待容量在任何业务SideEffect前失败、队列取消即时返还组配额且不抢占第一Flow、第一Flow两个同组Step不发生自死锁、释放后新Flow再次可进入。
+- `R08_WholeFlowLoopUsesOneLeaseAndRejectsUnknownInnerGroups` 在单Worker内执行含WholeFlow组的多轮动态Loop，预期循环2次且只在父Flow获取组许可证；嵌套未知组在StartFlow前拒绝、零副作用；非法组Scope拒绝，不将尚未实现的Stage隐式降级。
+- 仍属软件单宿主组机制：此批提交待真实Windows x64工程编译、Runtime、TestCenter及工程组织CI；不代表Stage、资源物理联锁或跨进程独占已完成。
