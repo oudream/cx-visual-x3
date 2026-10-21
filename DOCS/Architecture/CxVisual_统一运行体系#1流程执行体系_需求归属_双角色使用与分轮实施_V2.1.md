@@ -584,3 +584,21 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 - 原`FCRWorkerSnapshot`新增只读`PeakPending`、`PeakWaitingProducers`、`SettledProducerWaits`、`MaxProducerWaitMilliseconds`，并保留旧Snapshot构造调用的可选尾参数和全部原字段；使用`Stopwatch.GetTimestamp`单调计时，避免系统时钟调整导致负等待时间。
 - 统计由同一Worker锁保护：生产者成功准入、取消等待、Stop拒绝均只计算一次等待结算；即时超额拒绝不伪装成已排队耗时。压力反例同时断言峰值Pending=3、等待者高峰=12、全部等待结算=12、原Admitted=3/Rejected=1/Dropped=0，不以业务Completion之前的Active瞬态判泄漏。
 - 本轮仅为软件调度可观察性，最终通过标准仍为固定SHA Windows Runtime/工程组织/TestCenter/Studio与Config检查；现场吞吐UPH和24小时长稳另行验收。
+
+
+### R08生产者异步背压与可观测性：固定SHA Windows验收（2026-10-21）
+
+本项已从F19底层能力贯通到统一MRK开发者API。所有下述“通过”都来自**对应SHA**的实际Windows工作流，不能将历史单项绿灯替代当前全量状态。
+
+| 固定源码SHA | 源码/测试实际进展 | 固定SHA Windows结论 |
+|---|---|---|
+| `106836f5c0546f9803a64e15349d3b8de6e86bed` | 首版F19有界Waiter与SubmitWhenCapacityAsync | Runtime [39575665045](https://github.com/oudream/cx-visual-x3/actions/runs/39575665045) **失败**：CS1061抽象Job错误访问泛型Handle。保留失败证据。 |
+| `c1410705511713c12594fa15871322adec10260c` | 原Job接口增加类型安全MarkAccepted；保留旧提交/取消/溢出语义；已有基础背压正反例 | Runtime [39576040354](https://github.com/oudream/cx-visual-x3/actions/runs/39576040354)、Studio [39576040381](https://github.com/oudream/cx-visual-x3/actions/runs/39576040381)、TestCenter [39576040522](https://github.com/oudream/cx-visual-x3/actions/runs/39576040522)、Config L1 [39576040321](https://github.com/oudream/cx-visual-x3/actions/runs/39576040321)、配置底座 [39576040765](https://github.com/oudream/cx-visual-x3/actions/runs/39576040765)：**5/5 success**。 |
+| `7b42a94545e0fe92251e9e35f92f0c331ba99964` | 八轮12等待者+3队列满载压力与Stop(true)非合作反证 | Runtime [39576596104](https://github.com/oudream/cx-visual-x3/actions/runs/39576596104) 和工程组织 [39576596130](https://github.com/oudream/cx-visual-x3/actions/runs/39576596130) **失败**：Handle.Completion完成后、Worker finally排空前过早读取Active快照。没有删除测试。 |
+| `cced0bf73de28ee6b53ae96b24630b5f1625da89` | 用原Worker.StopAsync等待实际排空，再验收Pending/Active/Bytes/Waiters及拒绝/Drop | Runtime [39576910724](https://github.com/oudream/cx-visual-x3/actions/runs/39576910724)、工程组织 [39576910476](https://github.com/oudream/cx-visual-x3/actions/runs/39576910476)、Config L1 [39576910612](https://github.com/oudream/cx-visual-x3/actions/runs/39576910612)、配置底座 [39576910746](https://github.com/oudream/cx-visual-x3/actions/runs/39576910746)：**4/4 success**。 |
+| `c8c7aebe0f40a2c223eed24f6a658c85c3382b05` | `IMRKExecutionEngine.SubmitWhenCapacityAsync`复用唯一F19 Worker与原生命周期门闩；MRK Stop唤醒未接纳者 | Runtime [39577236384](https://github.com/oudream/cx-visual-x3/actions/runs/39577236384)、工程组织 [39577236604](https://github.com/oudream/cx-visual-x3/actions/runs/39577236604)、Studio [39577236535](https://github.com/oudream/cx-visual-x3/actions/runs/39577236535)、TestCenter [39577236596](https://github.com/oudream/cx-visual-x3/actions/runs/39577236596)、Config L1 [39577236414](https://github.com/oudream/cx-visual-x3/actions/runs/39577236414)、配置底座 [39577236579](https://github.com/oudream/cx-visual-x3/actions/runs/39577236579)：**6/6 success**。 |
+| `4ac570695e7e4b6c1e522900f2545c7ba3e5a6b3` | 背压诊断加入PeakPending、PeakWaitingProducers、SettledProducerWaits、MaxProducerWaitMilliseconds；原压力测试校验单调统计和最终账务 | Runtime [39577577696](https://github.com/oudream/cx-visual-x3/actions/runs/39577577696)、工程组织 [39577577721](https://github.com/oudream/cx-visual-x3/actions/runs/39577577721)、Studio [39577577717](https://github.com/oudream/cx-visual-x3/actions/runs/39577577717)、TestCenter [39577577650](https://github.com/oudream/cx-visual-x3/actions/runs/39577577650)、Config L1 [39577577769](https://github.com/oudream/cx-visual-x3/actions/runs/39577577769)、配置底座 [39577577840](https://github.com/oudream/cx-visual-x3/actions/runs/39577577840)：**6/6 success**。 |
+
+**当前裁决：R08软件内核与背压增量S3通过；整轮仍未封闭。**
+- 已经真实实现并验收：F19有界跨Key优先级公平性、Step/WholeFlow/Stage范围、动态迭代Stage、资源有序租约与异常回滚、生产者可取消容量等待、Stop拒绝未准入请求而排空已准入工作、MRK便捷调用和背压快照；无第二套Worker/工程/运行数据Owner。
+- 剩余独立任务：产品级Drop业务审计与追溯、连续高吞吐真实吞吐量/峰值长稳、资源与队列等待的现场容量标定、MOL/MOC及Studio暴露的专业阶段配额属性和完整工程编辑闭环。**R08未获得生产设备联锁或跨进程资源所有权的证明**；不将上述Windows软件自动测试当成实机安全凭据。
