@@ -1270,6 +1270,94 @@ namespace CxVisual.Studio
                     window.OpenStudioResourceDocument(content.Id,false);
                     Assert(window.ActiveStudioDocumentId==tab,"返回图元Tab身份失效");
                 });
+                CheckStep("P0-4 跨页面MRK来源恢复与双Flow轨迹身份隔离", () =>
+                {
+                    StudioViewModel vm=window.DataContext as StudioViewModel;
+                    MEMEngineeringSession session=vm.ProjectSession;
+                    MEMPage original=session.Project.Pages.Single(p=>
+                        p.Name=="P0-4 真实执行XRay");
+                    MEMPage other=session.AddPage("P0-4 来源切页反证");
+                    MEMProjectSnapshot snapshot=session.GetSnapshot();
+                    MEMNodeSnapshot root=snapshot.Find(original.RootContent.Id);
+                    MRIReferenceSnapshot ai=root.References.Single(r=>
+                        session.Find(r.TargetId).Name.Contains("AI"));
+                    MOLWiringDefinition rootWiring=MOLWiringCodec.Get(root);
+                    Guid aiBlock=MOLWiringCodec.Get(snapshot.Find(ai.TargetId))
+                        .Blocks.First(x=>x.CapabilityId=="AI").Id;
+                    Guid aiCall=rootWiring.Blocks.Single(x=>
+                        x.CapabilityId=="moc.invoke:"+ai.TargetId.ToString("N")).Id;
+                    var provider=typeof(MainWindow).GetField("_simulation",
+                        System.Reflection.BindingFlags.NonPublic|
+                        System.Reflection.BindingFlags.Instance);
+                    IMRKCapabilityResolver resolver=(IMRKCapabilityResolver)provider.GetValue(window);
+                    MOCBuildResult build=new MOCBuildService().Build(snapshot,
+                        original.RootContent.Id,resolver);
+                    Assert(build.Succeeded,"跨页面定位基于真正可执行MOC Plan");
+                    MainWindow.FlowTraceRecord first=null,second=null;
+                    var engine=new MRKExecutionEngine(new FCRWorkerOptions(4,128));
+                    try
+                    {
+                        MRKFlowHandle flow1=engine.StartFlow(build.Plan.Plan);
+                        MRKFlowHandle flow2=engine.StartFlow(build.Plan.Plan);
+                        MRKFlowResult[] results=Task.WhenAll(flow1.Completion,
+                            flow2.Completion).GetAwaiter().GetResult();
+                        Assert(flow1.FlowId!=flow2.FlowId&&
+                            results.All(x=>x.State==MRKFlowState.Completed),
+                            "相同Plan不同Flow实例执行失败或身份重复");
+                        MOCObservedStep a=build.Plan.ReadTrace(flow1,0).Events.First(x=>
+                            x.Origin.ContentAddress.ObjectId==ai.TargetId&&
+                            x.Origin.BlockId==aiBlock&&
+                            x.Transition.State==MRKStepState.Completed);
+                        MOCObservedStep b=build.Plan.ReadTrace(flow2,0).Events.First(x=>
+                            x.Origin.ContentAddress.ObjectId==ai.TargetId&&
+                            x.Origin.BlockId==aiBlock&&
+                            x.Transition.State==MRKStepState.Completed);
+                        first=MainWindow.ProjectFlowTrace(build.Plan,a,
+                            original.RootContent.Id,flow1.FlowId);
+                        second=MainWindow.ProjectFlowTrace(build.Plan,b,
+                            original.RootContent.Id,flow2.FlowId);
+                    }
+                    finally{engine.StopAsync(true).GetAwaiter().GetResult();}
+                    Assert(first.FlowId!=Guid.Empty&&first.FlowId!=second.FlowId&&
+                        first.RootContentId==original.RootContent.Id&&
+                        second.RootContentId==first.RootContentId&&
+                        first.BlockId==second.BlockId,
+                        "Studio丢弃MRK实例身份或主流程来源");
+                    ComboBox list=window.FindName("FlowTraceList") as ComboBox;
+                    list.ItemsSource=new[]{first,second};list.SelectedIndex=1;
+                    var parent=typeof(MainWindow).GetMethod("OnFlowLocateTrace",
+                        System.Reflection.BindingFlags.NonPublic|
+                        System.Reflection.BindingFlags.Instance);
+                    var visual=typeof(MainWindow).GetMethod("OnFlowLocateVisual",
+                        System.Reflection.BindingFlags.NonPublic|
+                        System.Reflection.BindingFlags.Instance);
+                    vm.ActivePage=other;
+                    window.OpenStudioDocument("doc.flow");
+                    int revision=session.Revision;
+                    parent.Invoke(window,new object[]{window,new System.Windows.RoutedEventArgs()});
+                    Assert(vm.ActivePage.Id==original.Id&&window.ActiveStudioDocumentId=="doc.flow"&&
+                        ((MOLFlowCanvas)window.FindName("LogicHost")).SelectedBlockIds
+                            .Contains(aiCall),
+                        "切到其他页面后运行轨迹未恢复真实主流程调用点");
+                    vm.ActivePage=other;
+                    window.OpenStudioDocument("doc.flow");
+                    visual.Invoke(window,new object[]{window,new System.Windows.RoutedEventArgs()});
+                    Assert(vm.ActivePage.Id==original.Id&&
+                        window.ActiveStudioDocumentId=="doc.visual"&&
+                        vm.SelectedId.HasValue&&session.Revision==revision,
+                        "切到其他页面后HMI来源被错误解析或写入工程");
+                    // 故意破坏根来源，必须拒绝切换，不靠当前打开的同名子流程猜测。
+                    first.RootContentId=Guid.NewGuid();
+                    list.ItemsSource=new[]{first};list.SelectedIndex=0;
+                    vm.ActivePage=other;
+                    window.OpenStudioDocument("doc.flow");
+                    string before=window.ActiveStudioDocumentId;
+                    parent.Invoke(window,new object[]{window,new System.Windows.RoutedEventArgs()});
+                    visual.Invoke(window,new object[]{window,new System.Windows.RoutedEventArgs()});
+                    Assert(vm.ActivePage.Id==other.Id&&
+                        window.ActiveStudioDocumentId==before&&session.Revision==revision,
+                        "不存在的根流程ContentId造成跨页面错跳或工程修改");
+                });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;
             }

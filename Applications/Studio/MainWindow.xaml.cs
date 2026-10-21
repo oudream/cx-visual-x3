@@ -64,12 +64,16 @@ namespace CxVisual.Studio
             public Guid ContentId{get;set;}
             public Guid ProjectId{get;set;}
             public int EngineeringRevision{get;set;}
+            /// <summary>运行入口所在MEM主流程Content，定位不受后来页面切换影响。</summary>
+            public Guid RootContentId{get;set;}
+            /// <summary>原MRK Flow实例，不以相同StepId混同两次运行。</summary>
+            public Guid FlowId{get;set;}
             public IReadOnlyList<Guid> CallPath{get;set;}
             public string Label{get;set;}
         }
         /// <summary>使用真实MOC编译源与MRK观测记录创建同一个Studio轨迹投影。</summary>
         internal static FlowTraceRecord ProjectFlowTrace(MOCCompiledPlan compiled,
-            MOCObservedStep observed)
+            MOCObservedStep observed,Guid rootContentId=default(Guid),Guid flowId=default(Guid))
         {
             if(compiled==null)throw new ArgumentNullException("compiled");
             if(observed==null||observed.Origin==null||observed.Transition==null)
@@ -80,6 +84,7 @@ namespace CxVisual.Studio
                 ContentId=observed.Origin.ContentAddress.ObjectId,
                 ProjectId=compiled.ProjectId,
                 EngineeringRevision=compiled.EngineeringRevision,
+                RootContentId=rootContentId,FlowId=flowId,
                 CallPath=observed.Origin.CallPath,
                 Label=observed.Transition.State+" · "+observed.Origin.BlockId.ToString("N")
                     .Substring(0,8)+" · "+observed.Transition.StepId};
@@ -1481,6 +1486,21 @@ namespace CxVisual.Studio
                     LogicInfo.Text="关联画面来源于过期或其他工程的MRK Plan，请重新构建并运行。";
                     return;
                 }
+                if(trace!=null&&trace.RootContentId!=Guid.Empty)
+                {
+                    MEMPage sourcePage=_viewModel.ProjectSession.Project.Pages
+                        .FirstOrDefault(p=>p.RootContent.Id==trace.RootContentId);
+                    if(sourcePage==null)
+                    {
+                        LogicInfo.Text="轨迹原主流程页面已删除或无效，拒绝关联画面误跳。";
+                        return;
+                    }
+                    if(_viewModel.ActivePage==null||_viewModel.ActivePage.Id!=sourcePage.Id)
+                    {
+                        _viewModel.ActivePage=sourcePage;
+                        RefreshScene();
+                    }
+                }
                 Guid blockId=trace==null?SelectedFlowBlock():trace.BlockId;
                 Guid? visualId=_viewModel.FindVisualForFlowBlock(blockId);
                 if(!visualId.HasValue)
@@ -1557,7 +1577,21 @@ namespace CxVisual.Studio
                 LogicInfo.Text="父流程定位拒绝过期或其他工程的MRK Plan，请重新构建并运行。";
                 return;
             }
-            var wiring=LogicHost.WiringDefinition;
+            MEMPage sourcePage=null;
+            MOLWiringDefinition wiring=LogicHost.WiringDefinition;
+            if(trace.RootContentId!=Guid.Empty)
+            {
+                sourcePage=_viewModel.ProjectSession.Project.Pages.FirstOrDefault(p=>
+                    p.RootContent.Id==trace.RootContentId);
+                if(sourcePage==null)
+                {
+                    LogicInfo.Text="轨迹原主流程页面已删除或无效，拒绝错误定位。";
+                    return;
+                }
+                MEMNodeSnapshot source=_viewModel.ProjectSession.GetSnapshot()
+                    .Find(sourcePage.RootContent.Id);
+                wiring=source==null?null:MOLWiringCodec.Get(source);
+            }
             Guid candidate=trace.BlockId;
             if(wiring!=null&&!wiring.Blocks.Any(b=>b.Id==candidate))
             {
@@ -1570,6 +1604,13 @@ namespace CxVisual.Studio
             if(candidate!=Guid.Empty&&wiring!=null&&
                 wiring.Blocks.Any(b=>b.Id==candidate))
             {
+                if(sourcePage!=null)
+                {
+                    if(_viewModel.ActivePage==null||_viewModel.ActivePage.Id!=sourcePage.Id)
+                        _viewModel.ActivePage=sourcePage;
+                    OpenStudioDocument("doc.flow");
+                    RefreshScene();
+                }
                 LogicHost.SetSelection(new[]{candidate});
                 OnFlowLocate(sender,args);
                 LogicInfo.Text=candidate==trace.BlockId?
@@ -1693,7 +1734,8 @@ namespace CxVisual.Studio
                     _viewModel.UpdateVisualRuntimeFrame(_flowVisualClock.Elapsed.TotalMilliseconds);
                     var previous=(FlowTraceList.ItemsSource as IEnumerable<FlowTraceRecord>)
                         .ToList();
-                    previous.AddRange(changes.Events.Select(e=>ProjectFlowTrace(compiled,e)));
+                    previous.AddRange(changes.Events.Select(e=>ProjectFlowTrace(compiled,e,
+                        page.RootContent.Id,_logicFlow.FlowId)));
                     if(previous.Count>500)previous=previous.Skip(previous.Count-500).ToList();
                     FlowTraceList.ItemsSource=previous;
                 };

@@ -222,3 +222,9 @@ R01源码已提交（截止 f6c0dceb7afae75d320f6b442f3a152b11566162）：修改
 ### Studio P0统一Resource Editor/Command收敛（2026-10-21）
 
 - 最新代码[c696905c](https://github.com/oudream/cx-visual-x3/commit/c696905cc0418b13030a32ebeedafb1defcbdd7a) 对应[Studio Windows 39568829529](https://github.com/oudream/cx-visual-x3/actions/runs/39568829529) **31/31 WPF STA success**、[工程组织39568829447](https://github.com/oudream/cx-visual-x3/actions/runs/39568829447)success。实装四个资源Tab的几何/路径/多选/子流程主命令、属性防串写及Tab浮动/关闭释放的自动化切片。真实操作尚需另行Windows桌面人工记录；详细交叉矩阵统一维护在[Studio S1～S4主规划§15](CxVisual_Studio_S1至S4_阶段开发与真实验收总规划_V1.0.md)。
+
+### P0-4 跨页面主流程恢复与MRK双Flow实例轨迹身份（2026-10-21，待CI）
+
+- Studio的MRK轨迹UI投影补充实际执行入口RootContentId与FlowId（真实MRKFlowHandle），无需新增工程/计划真源。运行时由当前MOC Plan + MRK流实例投影；既有内部旧调用保持兼容。
+- 从Trace定位父Invoke或HMI时，若携带根Content身份，先验证MEM工程中真实Page，基于该页面的MOL定义定位，避免当前活动页面变更造成错跳；非法根身份拒绝。SourceMap原Block/CallPath及项目Revision校验仍保留。
+- Windows WPF STA增加两条真实MRKFlowHandle并发执行的来源隔离、换页后恢复主调用与HMI、无效根拒绝及导航不变更MEM Revision反证。原S1用例数量由31提高为32；同SHA CI通过前仅标记源码已提交，人工高DPI/设备仍未验。
