@@ -22,6 +22,12 @@ namespace CxVisual.TestCenter.Models
         public double Y { get; private set; }
         public double Width { get; private set; }
         public double Height { get; private set; }
+        public string DisplayName
+        {
+            get { return Role + " · " + Kind + " · " + Label +
+                (string.IsNullOrWhiteSpace(DefinitionAddress) ? "" :
+                    " · Instance: " + DefinitionAddress); }
+        }
         public TCTGeometryFigure(string kind, string role, string label, string sourceObjectId,
             double x, double y, double width, double height, string definitionAddress = null)
         {
