@@ -280,6 +280,44 @@ namespace CxVisual.Studio
                 button.Click+=(s,e)=>callback();
                 return button;
             }
+            // 独立资源的绘图命令只使用此Tab自己的Editor与MEM会话。
+            internal bool InsertVisual(string kind)
+            {
+                if(_disposed||Editor==null||!_owner.IsStudioDocumentActive(Key)||
+                    !ReferenceEquals(Session,_owner._viewModel.ProjectSession)||
+                    Session.Find(ResourceId)==null)
+                {
+                    Status.Text="图元资源不可编辑，已拒绝插入";
+                    return false;
+                }
+                int index=Editor.Scene.Count+1;
+                MTCEditResult<bool> result;
+                if(kind=="Text")
+                    result=Editor.AddText("文字 "+index,"双击属性面板修改",
+                        45+index*14,40+index*10);
+                else if(kind=="WidgetButton")
+                    result=Editor.AddWidget("按钮 "+index,"core.widget",
+                        45+index*16,55+index*12);
+                else if(kind!=null&&kind.StartsWith("core.widget.",StringComparison.Ordinal))
+                    result=Editor.AddWidget(kind.Substring(kind.LastIndexOf('.')+1)+" "+index,
+                        kind,45+index*16,55+index*12);
+                else
+                {
+                    MRCShapeKind shapeKind;
+                    if(!Enum.TryParse(kind,out shapeKind)||
+                        !Enum.IsDefined(typeof(MRCShapeKind),shapeKind))
+                    {
+                        Status.Text="不支持的图元类型："+kind;
+                        return false;
+                    }
+                    result=Editor.AddShape(shapeKind+" "+index,
+                        MVIShapeCatalog.CreateDefault(shapeKind),
+                        45+(index%7)*24,55+(index%7)*20);
+                }
+                Status.Text=result.Success?"已通过MEM事务插入："+kind:
+                    "插入失败："+result.ErrorCode+" "+result.Message;
+                return result.Success;
+            }
             internal void Select(Guid? id)
             {
                 if(_disposed||Editor==null||!_owner.IsStudioDocumentActive(Key))return;
@@ -484,6 +522,27 @@ namespace CxVisual.Studio
         {
             ResourceDocumentContext ctx;
             return _pageDocuments.TryGetValue(_activeStudioDocumentId,out ctx)?ctx:null;
+        }
+        // Ribbon和旧工具箱共用真实的活动DocumentId；错误资源不可落到固定页面。
+        private bool RouteStudioResourceVisualInsertion(string kind)
+        {
+            Guid id;string resourceKind;
+            if(!TryParseResourceDocumentId(_activeStudioDocumentId,out id,out resourceKind))
+                return false;
+            ResourceDocumentContext context=ActiveStudioResourceContext();
+            if(context==null||!ResourceDocumentExists(_activeStudioDocumentId)||
+                !ReferenceEquals(context.Session,_viewModel.ProjectSession))
+            {
+                _viewModel.ReportStudioShellWarning("资源文档已失效，拒绝绘图命令。");
+                return true;
+            }
+            if(resourceKind=="flow"||context.IsFlow)
+            {
+                _viewModel.ReportStudioShellWarning("流程画布不能插入图元。");
+                return true;
+            }
+            context.InsertVisual(kind);
+            return true;
         }
         public string OpenStudioPageDocument(Guid pageId)
         {return OpenStudioResourceDocument(pageId,false);}

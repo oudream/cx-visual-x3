@@ -268,6 +268,7 @@ namespace CxVisual.Studio
             {
                 var button=(System.Windows.Controls.Button)sender;
                 string kind=button.Tag.ToString();
+                if(RouteStudioResourceVisualInsertion(kind))return;
                 if(kind=="Text")_viewModel.AddVisualText();
                 else if(kind=="WidgetButton")_viewModel.AddVisualWidget();
                 else if(kind.StartsWith("core.widget.",StringComparison.Ordinal))

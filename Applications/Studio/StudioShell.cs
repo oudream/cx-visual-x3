@@ -406,13 +406,18 @@ namespace CxVisual.Studio
             return true;
         }
 
-        private void AddRibbonButton(string label, string tag, RoutedEventHandler handler)
+        private void AddRibbonButton(string label, string tag, RoutedEventHandler handler,
+            bool visualInsert = false)
         {
             Button button = new Button { Content = label, Tag = tag, Margin = new Thickness(2),
                 Padding = new Thickness(12, 8, 12, 8) };
             button.Click += (sender, args) =>
             {
-                if (EnsureActiveStudioPageForRibbon()) handler(sender, args);
+                // 仅绘图插入路由到资源Editor，其它旧版页面命令保留原Guard。
+                if (visualInsert && IsResourceDocumentId(_activeStudioDocumentId))
+                    handler(sender, args);
+                else if (EnsureActiveStudioPageForRibbon())
+                    handler(sender, args);
             };
             StudioRibbonActions.Children.Add(button);
         }
@@ -436,11 +441,17 @@ namespace CxVisual.Studio
                 {
                     if (_viewModel.AddCommand.CanExecute(null)) _viewModel.AddCommand.Execute(null);
                 });
-                AddRibbonButton("矩形", "Rect", OnInsertShape);
-                AddRibbonButton("圆", "Circle", OnInsertShape);
-                AddRibbonButton("折线", "Polyline", OnInsertShape);
-                AddRibbonButton("自由曲线", "Path", OnInsertShape);
-                AddRibbonButton("文字", "Text", OnInsertShape);
+                AddRibbonButton("直线", "Line", OnInsertShape, true);
+                AddRibbonButton("矩形", "Rect", OnInsertShape, true);
+                AddRibbonButton("圆", "Circle", OnInsertShape, true);
+                AddRibbonButton("椭圆", "Ellipse", OnInsertShape, true);
+                AddRibbonButton("折线", "Polyline", OnInsertShape, true);
+                AddRibbonButton("多边形", "Polygon", OnInsertShape, true);
+                AddRibbonButton("圆弧", "Arc", OnInsertShape, true);
+                AddRibbonButton("贝塞尔", "Bezier", OnInsertShape, true);
+                AddRibbonButton("自由路径", "Path", OnInsertShape, true);
+                AddRibbonButton("文字", "Text", OnInsertShape, true);
+                AddRibbonButton("按钮Widget", "WidgetButton", OnInsertShape, true);
             }
             else if (group == "排列")
             {

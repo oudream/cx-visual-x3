@@ -729,6 +729,57 @@ namespace CxVisual.Studio
                         ((TextBlock)window.FindName("LogicInfo")).Text.Contains("Revision"),
                         "过期构建诊断错误下钻当前工程节点");
                 });
+                CheckStep("P0 Editor跨资源九Shape/Widget与统一MEM历史路由", () =>
+                {
+                    StudioViewModel model=window.DataContext as StudioViewModel;
+                    MEMEngineeringSession session=model.ProjectSession;
+                    MEMContent content=session.AddContent(session.Project,"P0统一图元算法");
+                    MEMSymbol symbol=session.AddSymbol("P0统一电机组件");
+                    MEMPage page=session.AddPage("P0界面验证页");
+                    string contentTab=window.OpenStudioResourceDocument(content.Id,false);
+                    string[] names={"直线","矩形","圆","椭圆","折线","多边形","圆弧","贝塞尔","自由路径"};
+                    foreach(string name in names)
+                        window.StudioRibbonActions.Children.OfType<Button>()
+                            .Single(x=>Convert.ToString(x.Content)==name)
+                            .RaiseEvent(new System.Windows.RoutedEventArgs(Button.ClickEvent));
+                    var shapes=content.DescendantsAndSelf().OfType<MRCShapeElement>().ToArray();
+                    Assert(shapes.Length==9&&Enum.GetValues(typeof(MRCShapeKind))
+                        .Cast<MRCShapeKind>().All(kind=>shapes.Any(x=>x.Shape.Kind==kind)),
+                        "Content资源Tab未使用现有九Shape Catalog及MEM事务");
+                    window.StudioRibbonActions.Children.OfType<Button>()
+                        .Single(x=>Convert.ToString(x.Content)=="按钮Widget")
+                        .RaiseEvent(new System.Windows.RoutedEventArgs(Button.ClickEvent));
+                    Assert(content.DescendantsAndSelf().OfType<MRCWidgetElement>().Count()==1,
+                        "Content资源Tab未插入真正Widget");
+                    window.OpenStudioResourceDocument(symbol.Id,false);
+                    Button circle=window.StudioRibbonActions.Children.OfType<Button>()
+                        .Single(x=>Convert.ToString(x.Content)=="圆");
+                    int revision=session.Revision;
+                    model.ActivePage=page; // 非活动检视不能取代活动资源Tab身份
+                    circle.RaiseEvent(new System.Windows.RoutedEventArgs(Button.ClickEvent));
+                    Assert(session.Revision==revision+1&&
+                        symbol.RootGroup.DescendantsAndSelf().OfType<MRCShapeElement>()
+                            .Count(x=>x.Shape.Kind==MRCShapeKind.Circle)==1&&
+                        content.DescendantsAndSelf().OfType<MRCShapeElement>().Count()==9&&
+                        !page.RootContent.DescendantsAndSelf().OfType<MRCShapeElement>().Any(),
+                        "Ribbon绕过活动资源Tab写错MEM对象");
+                    session.Undo().RequireValue();
+                    Assert(!symbol.RootGroup.DescendantsAndSelf().OfType<MRCShapeElement>().Any(),
+                        "独立资源绘图未共用原MEM Undo");
+                    session.Redo().RequireValue();
+                    Assert(symbol.RootGroup.DescendantsAndSelf().OfType<MRCShapeElement>().Count()==1,
+                        "资源绘图重做没有使用原MEM Redo");
+                    window.OpenStudioResourceDocument(content.Id,true);
+                    int flowRevision=session.Revision;
+                    circle.RaiseEvent(new System.Windows.RoutedEventArgs(Button.ClickEvent));
+                    Assert(session.Revision==flowRevision&&
+                        content.DescendantsAndSelf().OfType<MRCShapeElement>().Count()==9,
+                        "MOL流程Tab的旧Ribbon命令错误修改图元");
+                    window.OpenStudioResourceDocument(content.Id,false);
+                    Assert(window.ActiveStudioDocumentId==contentTab&&
+                        window.GetStudioContentIds().Count(x=>x==contentTab)==1,
+                        "复用图元Tab造成重复Editor或丢失活动身份");
+                });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;
             }
