@@ -1933,6 +1933,22 @@ namespace CxVisual.Studio
                     selector.SelectedItem=selected;
                     Assert(Object.ReferenceEquals(selector.SelectedItem,selected),
                         "测试未真正选中待删除MEM资源Scope");
+                    // 资源被工程事务删除时，即使旧Scope有草稿也绝不能允许继续提交。
+                    Func<System.Windows.DependencyObject,MPWConfigEditorControl<CxAutomationDeviceOptions>>
+                        findEditor=null;
+                    findEditor=node=>node as MPWConfigEditorControl<CxAutomationDeviceOptions> ??
+                        System.Windows.LogicalTreeHelper.GetChildren(node)
+                            .OfType<System.Windows.DependencyObject>()
+                            .Select(child=>findEditor(child)).FirstOrDefault(x=>x!=null);
+                    var active=findEditor((System.Windows.DependencyObject)doc.Content);
+                    var editorField=typeof(MPWConfigEditorControl<CxAutomationDeviceOptions>)
+                        .GetField("_editor",System.Reflection.BindingFlags.Instance|
+                            System.Reflection.BindingFlags.NonPublic);
+                    var draft=editorField.GetValue(active) as
+                        MHSConfigEditorModel<CxAutomationDeviceOptions>;
+                    draft.SetValue(x=>x.StationId,draft.Draft.StationId==7?8:7);
+                    Assert(window.HasStudioUnsavedConfiguration(),
+                        "删除资源反证未建立真实未保存配置草稿");
                     int removalRevision=session.Revision;
                     session.Remove(resource);
                     Assert(session.Find(resource.Id)==null&&session.Revision>removalRevision&&
