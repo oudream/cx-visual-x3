@@ -3,6 +3,12 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Collections.Generic;
+using System.Xml;
+using System.Text;
+using AvalonDock.Layout;
+using AvalonDock.Serializer.Xml;
+using AvalonDock.Themes;
 using System.Globalization;
 using System.Xml.Linq;
 using System.Windows.Controls;
@@ -25,6 +31,8 @@ namespace CxVisual.TestCenter.UI
         private CancellationTokenSource _cancel;
         private TCTTestRunSummary _lastRun;
         private string _activeHistoryDirectory;
+        private string _defaultDockLayout;
+        private Dictionary<string, object> _dockViews;
 
         public TCTMainWindow()
         {
@@ -44,12 +52,20 @@ namespace CxVisual.TestCenter.UI
             MenuCancel.Click += (sender, args) => OnCancel();
             MenuRerunFailed.Click += (sender, args) => OnRerunFailed();
             MenuExportReport.Click += (sender, args) => OnExport();
-            MenuSaveHistory.Click += (sender, args) => { History.SaveCurrent(); BottomTabs.SelectedIndex = 2; };
-            MenuLoadHistory.Click += (sender, args) => { History.Refresh(); BottomTabs.SelectedIndex = 2; };
+            MenuSaveHistory.Click += (sender, args) => { History.SaveCurrent(); ActivateDockPanel("test.history"); };
+            MenuLoadHistory.Click += (sender, args) => { History.Refresh(); ActivateDockPanel("test.history"); };
             MenuRestoreLayout.Click += (sender, args) => ResetLayout();
             MenuSaveLayout.Click += (sender, args) => SaveLayout();
-            MenuThemeLight.Click += (sender, args) => SetTheme(false);
-            MenuThemeDark.Click += (sender, args) => SetTheme(true);
+            MenuThemeLight.Click += (sender, args) => ApplyTheme(false);
+            MenuThemeDark.Click += (sender, args) => ApplyTheme(true);
+            _dockViews = new Dictionary<string, object>(StringComparer.Ordinal)
+            {
+                { "test.explorer", Explorer }, { "test.documents", DocumentHost },
+                { "test.inspector", Inspector }, { "test.results", Results },
+                { "test.timeline", Timeline }, { "test.history", History }
+            };
+            ApplyTheme(false);
+            _defaultDockLayout = SerializeDockLayout();
             if (!IsSmokeProcess()) LoadLayout();
             StatusText.Text = "Ready · " + _catalog.Cases.Count +
                 " 个真实测试用例。默认独立进程隔离；Graph/Channel/Runtime未接入的类型不会伪装通过。";
@@ -214,6 +230,7 @@ namespace CxVisual.TestCenter.UI
         }
 
         private bool _darkTheme;
+        private const int MaxLayoutBytes = 1024 * 1024;
         private static bool IsSmokeProcess()
         {
             return Environment.GetCommandLineArgs().Any(x =>
@@ -224,43 +241,116 @@ namespace CxVisual.TestCenter.UI
             return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "CxVisual", "TestCenter", "workbench.layout.xml");
         }
-        private void SetTheme(bool dark)
+        private void ApplyTheme(bool dark)
         {
             _darkTheme = dark;
+            TestDock.Theme = dark ? (Theme)new Vs2013DarkTheme() : new Vs2013LightTheme();
             Background = dark ? new SolidColorBrush(Color.FromRgb(48, 52, 59)) :
                 new SolidColorBrush(Color.FromRgb(238, 243, 249));
             RibbonTray.Background = dark ? new SolidColorBrush(Color.FromRgb(63, 69, 79)) :
                 new SolidColorBrush(Color.FromRgb(224, 237, 249));
-            // 专业数据控件保持高对比白色画布，深色只应用于Shell层。
-            StatusText.Text = "主题 " + (dark ? "深灰" : "浅色") +
-                " · 数据Viewer颜色不参与Pass/Fail";
+            StatusText.Text = "Theme " + (dark ? "VS Dark" : "Light") +
+                " · 显示主题不影响测试结果";
+        }
+        private void ActivateDockPanel(string id)
+        {
+            LayoutAnchorable panel = TestDock.Layout.Descendents()
+                .OfType<LayoutAnchorable>().FirstOrDefault(x => x.ContentId == id);
+            if (panel == null)
+                throw new InvalidOperationException("Missing TestCenter panel " + id);
+            panel.Show();
+            panel.IsActive = true;
+        }
+        private string SerializeDockLayout()
+        {
+            XmlLayoutSerializer serializer = new XmlLayoutSerializer(TestDock);
+            using (StringWriter writer = new StringWriter(CultureInfo.InvariantCulture))
+            {
+                serializer.Serialize(writer);
+                string xml = writer.ToString();
+                ValidateDockLayout(xml);
+                return xml;
+            }
+        }
+        private static void ValidateDockLayout(string xml)
+        {
+            if (string.IsNullOrWhiteSpace(xml) ||
+                Encoding.UTF8.GetByteCount(xml) > MaxLayoutBytes)
+                throw new InvalidDataException("Dock layout missing or oversized");
+            HashSet<string> allowed = new HashSet<string>(StringComparer.Ordinal)
+            { "test.explorer", "test.documents", "test.inspector",
+                "test.results", "test.timeline", "test.history" };
+            HashSet<string> seen = new HashSet<string>(StringComparer.Ordinal);
+            XmlReaderSettings settings = new XmlReaderSettings
+            {
+                DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null,
+                MaxCharactersInDocument = MaxLayoutBytes, MaxCharactersFromEntities = 0
+            };
+            using (StringReader stream = new StringReader(xml))
+            using (XmlReader reader = XmlReader.Create(stream, settings))
+            {
+                while (reader.Read())
+                {
+                    if (reader.NodeType != XmlNodeType.Element) continue;
+                    string key = reader.GetAttribute("ContentId");
+                    if (string.IsNullOrEmpty(key)) continue;
+                    if (!allowed.Contains(key) || !seen.Add(key))
+                        throw new InvalidDataException("Unknown or duplicated layout ContentId: " + key);
+                }
+            }
+            if (seen.Count != allowed.Count)
+                throw new InvalidDataException("Required TestCenter panels missing from layout");
+        }
+        private void RestoreDockLayout(string xml)
+        {
+            ValidateDockLayout(xml);
+            foreach (LayoutContent element in TestDock.Layout.Descendents().OfType<LayoutContent>().ToArray())
+                element.Content = null;
+            XmlLayoutSerializer serializer = new XmlLayoutSerializer(TestDock);
+            serializer.LayoutSerializationCallback += (sender, args) =>
+            {
+                object view;
+                if (!_dockViews.TryGetValue(args.Model.ContentId, out view))
+                {
+                    args.Cancel = true;
+                    return;
+                }
+                args.Content = view;
+            };
+            using (StringReader text = new StringReader(xml))
+                serializer.Deserialize(text);
         }
         private void ResetLayout()
         {
-            LeftColumn.Width = new GridLength(290);
-            RightColumn.Width = new GridLength(330);
-            BottomRow.Height = new GridLength(255);
-            SetTheme(false);
+            try
+            {
+                if (string.IsNullOrEmpty(_defaultDockLayout))
+                    throw new InvalidOperationException("Default layout unavailable");
+                RestoreDockLayout(_defaultDockLayout);
+                ApplyTheme(false);
+            }
+            catch (Exception ex) { StatusText.Text = "恢复布局失败: " + ex.Message; }
         }
         private void SaveLayout()
         {
             try
             {
+                string xml = SerializeDockLayout();
                 string path = LayoutPath();
                 Directory.CreateDirectory(Path.GetDirectoryName(path));
-                XElement settings = new XElement("TestCenterLayout", new XAttribute("schema", "1"),
-                    new XAttribute("left", LeftColumn.ActualWidth.ToString("R", CultureInfo.InvariantCulture)),
-                    new XAttribute("right", RightColumn.ActualWidth.ToString("R", CultureInfo.InvariantCulture)),
-                    new XAttribute("bottom", BottomRow.ActualHeight.ToString("R", CultureInfo.InvariantCulture)),
-                    new XAttribute("dark", _darkTheme));
-                string temp = path + ".partial";
-                File.WriteAllText(temp, settings.ToString(SaveOptions.DisableFormatting));
-                if (File.Exists(path)) File.Delete(path);
-                File.Move(temp, path);
-                StatusText.Text = "工作台布局保存成功";
+                string temp = path + "." + Guid.NewGuid().ToString("N") + ".partial";
+                try
+                {
+                    File.WriteAllText(temp, xml, new UTF8Encoding(false));
+                    if (File.Exists(path)) File.Replace(temp, path, null);
+                    else File.Move(temp, path);
+                }
+                finally { if (File.Exists(temp)) File.Delete(temp); }
+                StatusText.Text = "AvalonDock工作台布局保存成功";
             }
-            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
-            { StatusText.Text = "布局保存失败：" + ex.Message; }
+            catch (Exception ex) when (ex is IOException || ex is InvalidDataException ||
+                ex is UnauthorizedAccessException || ex is InvalidOperationException)
+            { StatusText.Text = "布局保存失败: " + ex.Message; }
         }
         private void LoadLayout()
         {
@@ -268,30 +358,21 @@ namespace CxVisual.TestCenter.UI
             if (!File.Exists(path)) return;
             try
             {
-                XDocument settings = XDocument.Load(path);
-                XElement root = settings.Root;
-                if (root == null || root.Name != "TestCenterLayout" ||
-                    (string)root.Attribute("schema") != "1")
-                    throw new InvalidDataException("Unknown layout schema");
-                double left = double.Parse((string)root.Attribute("left"), CultureInfo.InvariantCulture);
-                double right = double.Parse((string)root.Attribute("right"), CultureInfo.InvariantCulture);
-                double bottom = double.Parse((string)root.Attribute("bottom"), CultureInfo.InvariantCulture);
-                if (double.IsNaN(left) || double.IsNaN(right) || double.IsNaN(bottom) ||
-                    left < 190 || left > 650 || right < 230 || right > 650 ||
-                    bottom < 150 || bottom > 550)
-                    throw new InvalidDataException("Invalid layout size");
-                LeftColumn.Width = new GridLength(left);
-                RightColumn.Width = new GridLength(right);
-                BottomRow.Height = new GridLength(bottom);
-                bool dark = (bool?)root.Attribute("dark") ?? false;
-                SetTheme(dark);
+                FileInfo info = new FileInfo(path);
+                if (info.Length > MaxLayoutBytes) throw new InvalidDataException("Oversized saved layout");
+                string xml = File.ReadAllText(path, Encoding.UTF8);
+                string backup = SerializeDockLayout();
+                try { RestoreDockLayout(xml); }
+                catch
+                {
+                    RestoreDockLayout(backup);
+                    throw;
+                }
             }
             catch (Exception ex) when (ex is IOException || ex is InvalidDataException ||
-                ex is System.Xml.XmlException || ex is ArgumentException || ex is FormatException)
-            {
-                ResetLayout();
-                StatusText.Text = "布局无效，已恢复默认值：" + ex.Message;
-            }
+                ex is UnauthorizedAccessException || ex is InvalidOperationException ||
+                ex is XmlException || ex is ArgumentException)
+            { StatusText.Text = "布局不可信，使用默认布局：" + ex.Message; }
         }
         protected override void OnClosed(EventArgs e)
         {
