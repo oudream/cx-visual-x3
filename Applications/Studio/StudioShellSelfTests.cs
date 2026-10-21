@@ -1920,6 +1920,67 @@ namespace CxVisual.Studio
                         "Undo恢复后没有从MEM资源重新发现MHS Scope");
                     window.CloseStudioDocument("doc.config");
                 });
+                CheckStep("S2/P1 MHS授权Session在Scope切换与生效操作中拒绝越权", () =>
+                {
+                    StudioViewModel vm=window.DataContext as StudioViewModel;
+                    MEMEngineeringSession session=vm.ProjectSession;
+                    MEMContent resource=session.Project.Contents.First(x=>
+                        x.Name=="P1配置资源Content");
+                    int revision=session.Revision;
+                    window.CloseStudioDocument("doc.config");
+                    FCMConfigPrincipal principal=new FCMConfigPrincipal(
+                        "p1-config-operator",new[]{"p1-editor"});
+                    FCMConfigRolePolicy policy=new FCMConfigRolePolicy();
+                    foreach(FCMConfigAccessAction action in new[]{
+                        FCMConfigAccessAction.Read,FCMConfigAccessAction.ReadSensitive,
+                        FCMConfigAccessAction.Edit,FCMConfigAccessAction.Commit,
+                        FCMConfigAccessAction.Audit,FCMConfigAccessAction.Restore})
+                        policy.Grant("p1-editor",action,"Automation.Device",
+                            "resource",resource.Id.ToString("N"));
+                    window.SetStudioConfigurationAuthorization(principal,policy);
+                    window.OpenStudioDocument("doc.config");
+                    LayoutDocument document=window.StudioDock.Layout.Descendents()
+                        .OfType<LayoutDocument>().Single(x=>x.ContentId=="doc.config");
+                    System.Windows.DependencyObject root=
+                        (System.Windows.DependencyObject)document.Content;
+                    Func<System.Windows.DependencyObject,System.Windows.Controls.ComboBox> find=null;
+                    find=node=>{
+                        var current=node as System.Windows.Controls.ComboBox;
+                        if(current!=null&&current.Name=="StudioConfigScopeSelector")
+                            return current;
+                        return System.Windows.LogicalTreeHelper.GetChildren(node)
+                            .OfType<System.Windows.DependencyObject>()
+                            .Select(child=>find(child)).FirstOrDefault(x=>x!=null);
+                    };
+                    var selector=find(root);
+                    object resourceItem=selector.Items.Cast<object>().First(x=>
+                        x.ToString().Contains(resource.Name));
+                    selector.SelectedItem=resourceItem;
+                    Func<System.Windows.DependencyObject,Type,bool> exists=null;
+                    exists=(node,t)=>t.IsInstanceOfType(node)||
+                        System.Windows.LogicalTreeHelper.GetChildren(node)
+                            .OfType<System.Windows.DependencyObject>()
+                            .Any(child=>exists(child,t));
+                    Assert(exists(root,typeof(MPWConfigEditorControl<CxAutomationDeviceOptions>)),
+                        "已授权资源Scope的实际MHS WPF Editor无法打开");
+                    object project=selector.Items.Cast<object>().First(x=>
+                        x.ToString().StartsWith("工程配置"));
+                    selector.SelectedItem=project;
+                    Assert(!exists(root,typeof(MPWConfigEditorControl<CxVisionInspectionOptions>))&&
+                        !exists(root,typeof(MPWConfigEditorControl<CxCtReconstructionOptions>)),
+                        "无权限Project Scope仍泄露了专业编辑器或配置字段");
+                    string folder=System.IO.Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                        "CxVisual","Configs","V24","Projects");
+                    var authorized=new MHSConfigService(folder).Authorize(principal,policy)
+                        .Open<CxAutomationDeviceOptions>(
+                            new FCMConfigIdentity("Automation.Device","resource",
+                                resource.Id.ToString("N")));
+                    AssertThrows(()=>authorized.TryApplyPendingAtBoundary(
+                        FCMConfigApplyPolicy.NextTask));
+                    Assert(session.Revision==revision,
+                        "配置权限拒绝错误地写入工程Revision");
+                });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;
             }
