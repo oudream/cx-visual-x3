@@ -490,6 +490,10 @@ namespace CxVisual.Studio
                         session.Undo().RequireValue();
                         Assert(title(target).Contains(" *")&&title(user).Contains(" ~"),
                             "Undo产生的新Revision未更新引用影响与Dirty提示");
+                        session.Redo().RequireValue();
+                        Assert(title(target).Contains(" *")&&title(user).Contains(" ~")&&
+                            !title(other).Contains(" *")&&!title(other).Contains(" ~"),
+                            "Redo恢复MEM对象后误丢失受影响资源或污染无关Tab");
                     }
                     finally{if(File.Exists(projectFile))File.Delete(projectFile);}
                 });

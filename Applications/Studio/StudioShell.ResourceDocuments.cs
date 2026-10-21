@@ -33,6 +33,18 @@ namespace CxVisual.Studio
         private IDisposable _resourceDocumentChanges;
         private readonly HashSet<Guid> _resourceChangedRoots=new HashSet<Guid>();
         private readonly HashSet<Guid> _resourceAffectedRoots=new HashSet<Guid>();
+        // 只缓存UI诊断所需的TargetId→MEM资源根身份，用于Undo删除对象后恢复归属。
+        // 工程真源、变更与历史仍由MEM持有；切换工程释放缓存，不持有MEM节点引用。
+        private readonly Dictionary<Guid,Guid> _resourceMutationOwners=new Dictionary<Guid,Guid>();
+        private const int MaxStudioMutationOwners=65536;
+        private void RememberStudioMutationOwner(Guid target,Guid root)
+        {
+            if(target==Guid.Empty||root==Guid.Empty)return;
+            if(_resourceMutationOwners.Count>=MaxStudioMutationOwners &&
+                !_resourceMutationOwners.ContainsKey(target))
+                _resourceMutationOwners.Clear(); // 超限则退化为保守影响提示，绝不回写工程
+            _resourceMutationOwners[target]=root;
+        }
 
         private void AttachStudioResourceChangeWatch(MEMEngineeringSession session)
         {
@@ -40,6 +52,7 @@ namespace CxVisual.Studio
             {_resourceDocumentChanges.Dispose();_resourceDocumentChanges=null;}
             _resourceChangedRoots.Clear();
             _resourceAffectedRoots.Clear();
+            _resourceMutationOwners.Clear();
             _pageDocumentSession=session;
             if(session!=null)
             {
@@ -71,26 +84,50 @@ namespace CxVisual.Studio
                 MEMNode node=observed.Find(operation.TargetId);
                 if(node!=null)
                 {
-                    if(observed.GetAddress(node).ResourceId!=Guid.Empty&&
-                        observed.GetAddress(node).ResourceId!=observed.Project.Id)
-                        changed.Add(observed.GetAddress(node).ResourceId);
+                    Guid root=observed.GetAddress(node).ResourceId;
+                    if(root!=Guid.Empty&&root!=observed.Project.Id)
+                    {
+                        changed.Add(root);
+                        RememberStudioMutationOwner(operation.TargetId,root);
+                    }
                     continue;
                 }
                 MRIResourceReference reference=observed.FindReference(operation.TargetId);
                 if(reference!=null)
                 {
-                    changed.Add(observed.GetAddress(reference.Owner).ResourceId);
+                    Guid root=observed.GetAddress(reference.Owner).ResourceId;
+                    changed.Add(root);
+                    RememberStudioMutationOwner(operation.TargetId,root);
                     continue;
                 }
                 MPCPort port=observed.FindPort(operation.TargetId);
                 if(port!=null)
                 {
                     MEMNode owner=observed.Find(port.OwnerId);
-                    if(owner!=null){changed.Add(observed.GetAddress(owner).ResourceId);continue;}
+                    if(owner!=null)
+                    {
+                        Guid root=observed.GetAddress(owner).ResourceId;
+                        changed.Add(root);
+                        RememberStudioMutationOwner(operation.TargetId,root);
+                        continue;
+                    }
                 }
                 // 已删除的对象失去正向索引时，宁可显示保守提示，不能宣称它们干净。
                 if(observed.GetResourceEntry(operation.TargetId)!=null)
-                {changed.Add(operation.TargetId);continue;}
+                {
+                    changed.Add(operation.TargetId);
+                    RememberStudioMutationOwner(operation.TargetId,operation.TargetId);
+                    continue;
+                }
+                // Undo(Add)/Redo(Remove)之后TargetId不在现行工程索引，但已在前一次
+                // 正向编辑时记录对应的真实MEM资源根。仅用于Studio脏标记的定位。
+                Guid formerRoot;
+                if(_resourceMutationOwners.TryGetValue(operation.TargetId,out formerRoot)&&
+                    observed.Find(formerRoot)!=null)
+                {
+                    changed.Add(formerRoot);
+                    continue;
+                }
                 unresolved=true;
             }
             foreach(Guid root in changed.Where(x=>x!=Guid.Empty))
