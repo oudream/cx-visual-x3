@@ -665,6 +665,33 @@ namespace CxVisual.Studio
                     Assert(!window.LocateStudioFlowSource(cv.Id,cvBlock.Id),
                         "已删除子流程仍能错误导航");
                 });
+                CheckStep("P0-4 运行计划工程身份与Revision失效拒绝", () =>
+                {
+                    StudioViewModel vm=window.DataContext as StudioViewModel;
+                    MEMEngineeringSession session=vm.ProjectSession;
+                    MEMContent ai=session.Project.Contents.Single(x=>x.Name=="P0-4 AI子流程");
+                    MOLWiringDefinition wiring=MOLWiringCodec.Get(
+                        session.GetSnapshot().Find(ai.Id));
+                    Guid originalBlock=wiring.Blocks.Single().Id;
+                    int compiledRevision=session.Revision;
+                    Guid compiledProject=session.Project.Id;
+                    Assert(window.LocateStudioFlowSource(compiledProject,compiledRevision,
+                        ai.Id,originalBlock),"有效MOC版本来源被错误拒绝");
+                    string active=window.ActiveStudioDocumentId;
+                    Assert(!window.LocateStudioFlowSource(Guid.NewGuid(),compiledRevision,
+                        ai.Id,originalBlock)&&window.ActiveStudioDocumentId==active,
+                        "其他工程Plan的来源错误进入当前工程画布");
+                    Assert(!window.LocateStudioFlowSource(compiledProject,
+                        compiledRevision+1,ai.Id,originalBlock)&&
+                        window.ActiveStudioDocumentId==active,
+                        "未来版本Plan的来源错误进入当前工程画布");
+                    session.AddContent(session.Project,"P0-4 Plan版本变更验证");
+                    Assert(session.Revision!=compiledRevision&&
+                        !window.LocateStudioFlowSource(compiledProject,compiledRevision,
+                            ai.Id,originalBlock)&&
+                        window.ActiveStudioDocumentId==active,
+                        "工程修改后旧Plan来源被错误解释为新工程节点");
+                });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;
             }

@@ -59,6 +59,8 @@ namespace CxVisual.Studio
             public string StepId{get;set;}
             public Guid BlockId{get;set;}
             public Guid ContentId{get;set;}
+            public Guid ProjectId{get;set;}
+            public int EngineeringRevision{get;set;}
             public IReadOnlyList<Guid> CallPath{get;set;}
             public string Label{get;set;}
         }
@@ -1462,7 +1464,15 @@ namespace CxVisual.Studio
             if(trace==null){LogicInfo.Text="请先选择一条真实运行轨迹";return;}
             try
             {
-                LogicInfo.Text=LocateStudioFlowSource(trace.ContentId,trace.BlockId)?
+                MEMEngineeringSession current=_viewModel.ProjectSession;
+                if(trace.ProjectId!=current.Project.Id||
+                    trace.EngineeringRevision!=current.Revision)
+                {
+                    LogicInfo.Text="运行轨迹基于其他工程或过期Revision；请重新构建并运行，未切换当前Tab。";
+                    return;
+                }
+                LogicInfo.Text=LocateStudioFlowSource(trace.ProjectId,
+                    trace.EngineeringRevision,trace.ContentId,trace.BlockId)?
                     "已定位真实子流程源节点："+trace.Label:
                     "源节点已失效或没有V2 MOL定义，未改变当前Tab："+trace.Label;
             }
@@ -1608,6 +1618,8 @@ namespace CxVisual.Studio
                     previous.AddRange(changes.Events.Select(e=>new FlowTraceRecord{
                         StepId=e.Transition.StepId,
                         BlockId=e.Origin.BlockId,ContentId=e.Origin.ContentAddress.ObjectId,
+                        ProjectId=compiled.ProjectId,
+                        EngineeringRevision=compiled.EngineeringRevision,
                         CallPath=e.Origin.CallPath,
                         Label=e.Transition.State+" · "+e.Origin.BlockId.ToString("N")
                             .Substring(0,8)+" · "+e.Transition.StepId}));

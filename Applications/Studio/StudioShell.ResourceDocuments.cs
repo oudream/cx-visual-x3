@@ -468,6 +468,18 @@ namespace CxVisual.Studio
             flow.SetSelection(new[]{blockId});
             return true;
         }
+        /// <summary>
+        /// MOC计划Revision/工程身份必须与当前MEM真源一致，才允许按旧MRK来源导航。
+        /// 只校验与投影，不持有Plan、不更改工程、不维护第二套版本仓库。
+        /// </summary>
+        public bool LocateStudioFlowSource(Guid projectId,int planRevision,
+            Guid contentId,Guid blockId)
+        {
+            MEMEngineeringSession session=_viewModel.ProjectSession;
+            if(session==null||projectId==Guid.Empty||
+                session.Project.Id!=projectId||session.Revision!=planRevision)return false;
+            return LocateStudioFlowSource(contentId,blockId);
+        }
         private ResourceDocumentContext ActiveStudioResourceContext()
         {
             ResourceDocumentContext ctx;

@@ -171,3 +171,9 @@ R01源码已提交（截止 f6c0dceb7afae75d320f6b442f3a152b11566162）：修改
 **同SHA门禁必须区分**：`2a6a31c3` 的 [Studio Windows 39557455651](https://github.com/oudream/cx-visual-x3/actions/runs/39557455651) 20项STA和Windows x64编译成功；同SHA [工程组织Windows 39557455627](https://github.com/oudream/cx-visual-x3/actions/runs/39557455627) 因Foundation同步日志跨进程占用(`System.IO.IOException`)失败，**仓库全CI不能声称绿**。该日志并发故障由Foundation原Owner独立修复/复验，本表保留失败事实，不冒充P0-4功能失败或全平台通过。之后的集成源码继续以各自最新同SHA记录为准。
 
 下一步顺序：先按最新master核实上述失败是否已修复；继续P0-3真实专业Schema+统一命令的跨资源入口；贯通P0-4 X-Ray完整构建→模拟运行→Trace/SourceMap定位→修改重构建；最后联合复核P0-1影响闭包与MOC计划版本。无真实生产设备权限及联锁验证时，只能签仿真/工程测试，不签设备现场验收。
+
+### P0-4 运行轨迹与工程版本一致性增量（2026-10-21，待本轮同SHA复核）
+
+- Studio消费现有MOC已编译计划的 `ProjectId`、`EngineeringRevision`，并随现有MRK Trace行携带，不另建Plan/SourceMap/版本数据仓库。
+- “跳转子流程源”在定位前校验当前MEM `Project.Id` 和 `Revision`。跨工程、过期Revision拒绝导航并提示重新构建运行；有效版本仍按原MEM Content和MOL V2 Block定位。旧 `LocateStudioFlowSource(Guid,Guid)` 保留兼容。
+- WPF STA新增独立正/反测试：当前版本、外来工程、未来版本、修改工程后旧Plan版本，检查非法导航不切换Tab；Studio CI断言从20提高到21。这里只记录**源码实施目标**；编译与STA结果以该轮真实commit和Windows Actions为准，未执行之前不宣称通过。
