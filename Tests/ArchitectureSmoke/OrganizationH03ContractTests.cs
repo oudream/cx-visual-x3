@@ -31,9 +31,20 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 var newer=s.AddContent(s.Project,"Motor V2");s.DefineProperty(newer,new MPMPropertyDescriptor("speed",MPMValueKind.Number,true,true,MPMBinding.Literal(MPMValue.Number(50)),0,1000));
                 s.DefinePort(newer,"input",MPCPortDirection.Input,"core.number",MPCPortKind.Data,MPCPortMultiplicity.One,new MTUContractReference("mm","world","utc"),true);
                 s.DefinePort(newer,"output",MPCPortDirection.Output,"core.number",MPCPortKind.Data,MPCPortMultiplicity.Many,new MTUContractReference("mm","world","utc"),true);
+                int previewVersion=s.Revision;
+                Check(s.PreviewRetarget(b,newer,previewVersion).IsValid&&
+                    b.TargetId==motor.Id&&s.FindConnection(cross.Id)==cross&&
+                    s.Revision==previewVersion,"兼容定义预演泄漏工程修改");
                 s.Retarget(b,newer);Check(b.TargetId==newer.Id&&s.FindConnection(cross.Id).Target.Address.ObjectId==newer.Id&&s.Validate().IsValid,"connected retarget did not map public ports");
                 s.Undo().RequireValue();Check(b.TargetId==motor.Id&&s.FindConnection(cross.Id)==cross,"retarget undo did not preserve original connection identity");
-                var wrong=s.AddContent(s.Project,"no ports");int rejectedRevision=s.Revision;Reject(()=>s.Retarget(b,wrong));Check(b.TargetId==motor.Id&&s.FindConnection(cross.Id)==cross&&s.Revision==rejectedRevision,"failed retarget corrupted live graph");
+                var wrong=s.AddContent(s.Project,"no ports");
+                int rejectedRevision=s.Revision;
+                Check(!s.PreviewRetarget(b,wrong,rejectedRevision).IsValid&&
+                    b.TargetId==motor.Id&&s.FindConnection(cross.Id)==cross&&
+                    s.Revision==rejectedRevision,"不兼容端口预演未拒绝或留下副作用");
+                Check(!s.PreviewRetarget(b,newer,rejectedRevision-1).IsValid&&
+                    s.Revision==rejectedRevision,"陈旧工程版本预演未拒绝");
+                Reject(()=>s.Retarget(b,wrong));Check(b.TargetId==motor.Id&&s.FindConnection(cross.Id)==cross&&s.Revision==rejectedRevision,"failed retarget corrupted live graph");
                 s.Rename(a,"Station A");Check(a.Name=="Station A","reference rename");
                 Reject(()=>s.Remove(a));Reject(()=>s.Unexpose(motor,"input",MRCPublicMappingKind.Port));
                 var meter=s.AddContent(motor,"wrong unit");var incompatible=s.DefinePort(meter,"in",MPCPortDirection.Input,"core.number",MPCPortKind.Data,MPCPortMultiplicity.One,new MTUContractReference("m","world","utc"));

@@ -316,6 +316,18 @@ namespace CxVisual.Mechanism.Core
         public void ClearOverride(MRIResourceReference reference,string member){Edit("清除实例参数",e=>e.SetOverride(reference,member,null)).RequireValue();}
         public void SetPlacement(MRIResourceReference reference,MRCTransform transform){Edit("设置实例布局",e=>e.SetPlacement(reference,transform)).RequireValue();}
         public void Rename(MRIResourceReference reference,string name){Edit("重命名实例",e=>e.Rename(reference,name)).RequireValue();}
+        /// <summary>
+        /// 在执行共享定义升级之前，用同一个MTC生产事务预览参数/端口/连接兼容性。
+        /// 不修改Revision、实例覆盖、连接或Undo；陈旧预演显式返回版本冲突。
+        /// </summary>
+        public MVEValidationReport PreviewRetarget(MRIResourceReference reference,
+            MEMNode definition,int expectedRevision=-1)
+        {
+            if(reference==null)throw new ArgumentNullException("reference");
+            if(definition==null)throw new ArgumentNullException("definition");
+            int revision=expectedRevision<0?Revision:expectedRevision;
+            return PreviewDraft(revision,e=>e.Retarget(reference,definition));
+        }
         public void Retarget(MRIResourceReference reference,MEMNode definition){Edit("替换资源定义",e=>e.Retarget(reference,definition)).RequireValue();}
         internal IReadOnlyList<MPCConnection> RetargetConnections(MRIResourceReference reference,MEMNode definition)
         {
