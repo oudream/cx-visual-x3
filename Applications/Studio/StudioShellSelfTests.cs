@@ -1530,7 +1530,7 @@ namespace CxVisual.Studio
                 {
                     StudioViewModel vm=window.DataContext as StudioViewModel;
                     MEMEngineeringSession session=vm.ProjectSession;
-                    int revision=session.Revision;
+                    int p1Revision=session.Revision;
                     window.OpenStudioDocument("doc.config");
                     LayoutDocument doc=window.StudioDock.Layout.Descendents()
                         .OfType<LayoutDocument>().Single(x=>x.ContentId=="doc.config");
@@ -1553,14 +1553,14 @@ namespace CxVisual.Studio
                     MHSConfigSection<CxVisionInspectionOptions> vision=scope.Open<CxVisionInspectionOptions>();
                     MHSConfigSection<CxCtReconstructionOptions> ct=scope.Open<CxCtReconstructionOptions>();
                     Assert(vision.Identity.ScopeId==projectId&&ct.Identity.ScopeId==projectId&&
-                        vision.Identity.SectionId!=ct.Identity.SectionId&&session.Revision==revision,
+                        vision.Identity.SectionId!=ct.Identity.SectionId&&session.Revision==p1Revision,
                         "Vision/CT配置不属于真实Project Scope或错误修改MEM真源");
                     window.CloseStudioDocument("doc.config");
                     window.OpenStudioDocument("doc.config");
                     LayoutDocument reopened=window.StudioDock.Layout.Descendents()
                         .OfType<LayoutDocument>().Single(x=>x.ContentId=="doc.config");
                     Assert(!Object.ReferenceEquals(root,reopened.Content)&&
-                        session.Revision==revision,
+                        session.Revision==p1Revision,
                         "关闭后复用已Dispose的MHS编辑器或配置操作污染MEM历史");
                 });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
