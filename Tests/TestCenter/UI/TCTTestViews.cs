@@ -158,6 +158,8 @@ namespace CxVisual.TestCenter.UI
                                 "\nDefinition/InstanceAddress: " +
                                     (string.IsNullOrWhiteSpace(figure.DefinitionAddress) ?
                                         "未提供" : figure.DefinitionAddress) +
+                                "\n坐标系: " + figure.CoordinateSpace +
+                                "\n单位: " + figure.Unit +
                                 "\n坐标: " + figure.X + ", " + figure.Y +
                                 "\n尺寸/向量: " + figure.Width + ", " + figure.Height);
                     };
