@@ -200,3 +200,9 @@ R01源码已提交（截止 f6c0dceb7afae75d320f6b442f3a152b11566162）：修改
 - 使用Studio现有“创建完整X-Ray双子流程”生成真实MEM主/子Content和HMI，不重造演示工程真源，取原MOCBuildService不可变Plan及CPU仿真Resolver，MRKExecutionEngine执行并用MOCCompiledPlan.ReadTrace读取真实AI/CV子流程执行记录。
 - Studio运行Trace行投影统一复用MainWindow.ProjectFlowTrace(MOCCompiledPlan,MOCObservedStep)，同一编译版ProjectId/Revision/ContentId/BlockId/CallPath用于父流程、子流程及HMI定位；父流程与关联画面导航也拒绝旧工程/过期Revision，防止越过先前只对“跳转子流程源”设置的版本保护。
 - WPF STA新增真实MOC/MRK成功轨迹→主流程调用→AI子流程源→HMI→MEM版本变更拒绝→重新构建的贯通测试，23项扩展为24项。没有实机I/O，也不宣称设备安全和所有故障路径已验收；同SHA CI通过前均记为源码待验收。
+
+### P0-4 AI真实MRK失败反证及工程保存重构建（2026-10-21，待CI）
+
+- 基于上轮同一个真实X-Ray主/AI/CV工程，MOC构建时把AI Provider替换为确定抛出异常的CPU能力实现（只在STA测试中），不连接真实设备、不修改工程逻辑或另建引擎。
+- 通过MRKExecutionEngine真实运行失败Plan、MOCCompiledPlan.ReadTrace定位AI Content/Block的Failed转移，反证失败状态、错误传播、无成功输出泄漏和MEM Revision不变；Studio现有“跳转子流程源”从失败观测来源直接打开AI流程Tab选中原Block。
+- 保存重开后确认AI定义、Block身份和MOC SourceMap可重新构建。本轮新增第25项WPF STA反证；CI的相同SHA验收证据和全量设备验证必须另行记录。

@@ -897,6 +897,86 @@ namespace CxVisual.Studio
                         rebuilt.Plan.EngineeringRevision!=compiled.EngineeringRevision,
                         "工程修改后没有产生对应新Revision的可执行Plan");
                 });
+                CheckStep("P0-4 AI真实MRK失败追溯与保存重开后重构建", () =>
+                {
+                    StudioViewModel vm=window.DataContext as StudioViewModel;
+                    MEMEngineeringSession session=vm.ProjectSession;
+                    MEMPage xray=session.Project.Pages.Single(p=>
+                        p.Name=="P0-4 真实执行XRay");
+                    MEMNodeSnapshot root=session.GetSnapshot().Find(xray.RootContent.Id);
+                    MRIReferenceSnapshot ai=root.References.Single(r=>
+                        session.Find(r.TargetId).Name.Contains("AI"));
+                    Guid aiId=ai.TargetId;
+                    Guid blockId=MOLWiringCodec.Get(session.GetSnapshot().Find(aiId))
+                        .Blocks.First(x=>x.CapabilityId=="AI").Id;
+                    var providerField=typeof(MainWindow).GetField("_simulation",
+                        System.Reflection.BindingFlags.NonPublic|
+                        System.Reflection.BindingFlags.Instance);
+                    IMRKCapabilityResolver normal=(IMRKCapabilityResolver)providerField.GetValue(window);
+                    MEMProjectSnapshot fixedVersion=session.GetSnapshot();
+                    MOCBuildResult failedBuild=new MOCBuildService().Build(
+                        fixedVersion,xray.RootContent.Id,new InjectedXRayFailureResolver(normal));
+                    Assert(failedBuild.Succeeded,"AI异常注入不得破坏静态MOC构建");
+                    int beforeRun=session.Revision;
+                    MRKFlowResult failedResult=null;
+                    MOCObservedStep failedEvent=null;
+                    var engine=new MRKExecutionEngine(new FCRWorkerOptions(3,64));
+                    try
+                    {
+                        MRKFlowHandle job=engine.StartFlow(failedBuild.Plan.Plan);
+                        failedResult=job.Completion.GetAwaiter().GetResult();
+                        MOCTraceView actual=failedBuild.Plan.ReadTrace(job,0);
+                        failedEvent=actual.Events.FirstOrDefault(e=>
+                            e.Origin.ContentAddress.ObjectId==aiId&&
+                            e.Origin.BlockId==blockId&&
+                            e.Transition.State==MRKStepState.Failed);
+                    }
+                    finally{engine.StopAsync(true).GetAwaiter().GetResult();}
+                    Assert(failedResult.State==MRKFlowState.Failed&&failedResult.Error!=null&&
+                        failedResult.Error.ToString().Contains("p04.ai.failure")&&
+                        failedResult.CommittedOutputs.Count==0&&failedEvent!=null&&
+                        session.Revision==beforeRun,
+                        "真实AI执行故障丢失MRK失败来源、泄漏输出或修改MEM工程");
+                    MainWindow.FlowTraceRecord line=MainWindow.ProjectFlowTrace(
+                        failedBuild.Plan,failedEvent);
+                    ComboBox list=window.FindName("FlowTraceList") as ComboBox;
+                    list.ItemsSource=new[]{line};list.SelectedIndex=0;
+                    var source=typeof(MainWindow).GetMethod("OnFlowLocateSourceContent",
+                        System.Reflection.BindingFlags.NonPublic|
+                        System.Reflection.BindingFlags.Instance);
+                    source.Invoke(window,new object[]{window,new System.Windows.RoutedEventArgs()});
+                    Assert(window.ActiveStudioDocumentId=="doc.resourceflow."+aiId.ToString("N")&&
+                        window.GetStudioResourceFlow(aiId).SelectedBlockIds.Single()==blockId&&
+                        session.Revision==beforeRun,
+                        "AI故障诊断无法回到原Content和失败节点");
+                    string file=Path.Combine(Path.GetTempPath(),"CxVisual-XRay-P04-"+
+                        Guid.NewGuid().ToString("N")+".xml");
+                    try
+                    {
+                        session.SaveAs(file);
+                        MEMEngineeringSession reopened=MEMEngineering.Open(file);
+                        try
+                        {
+                            MEMProjectSnapshot saved=reopened.GetSnapshot();
+                            Assert(saved.Find(aiId)!=null&&saved.Find(xray.RootContent.Id)!=null&&
+                                MOLWiringCodec.Get(saved.Find(aiId)).Blocks.Any(x=>x.Id==blockId),
+                                "工程保存重开丢失AI子流程及故障SourceMap稳定身份");
+                            MOCBuildResult restoreBuild=new MOCBuildService().Build(
+                                saved,xray.RootContent.Id,normal);
+                            Assert(restoreBuild.Succeeded&&
+                                restoreBuild.Plan.SourceMap.Find(blockId).Any(x=>
+                                    x.ContentAddress.ObjectId==aiId)&&
+                                restoreBuild.Plan.ProjectId==saved.ProjectId,
+                                "工程重开后不能通过同一MOC编译恢复AI原始来源");
+                        }
+                        finally{reopened.Close(true);}
+                    }
+                    finally
+                    {
+                        if(File.Exists(file))File.Delete(file);
+                        if(File.Exists(file+".cx-lock"))File.Delete(file+".cx-lock");
+                    }
+                });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;
             }
@@ -914,6 +994,23 @@ namespace CxVisual.Studio
                 }
                 catch { /* 由CI检测缺失报告，并报告失败 */ }
                 if (File.Exists(temporary)) File.Delete(temporary);
+            }
+        }
+
+        /// <summary>仅用于WPF STA故障反证，复用真实MRK能力契约，不连接设备。</summary>
+        private sealed class InjectedXRayFailureResolver : IMRKCapabilityResolver
+        {
+            private readonly IMRKCapabilityResolver _normal;
+            internal InjectedXRayFailureResolver(IMRKCapabilityResolver normal)
+            { _normal=normal; }
+            public bool TryResolve(string id,out MRKResolvedCapability capability)
+            {
+                if(id!="AI")return _normal.TryResolve(id,out capability);
+                capability=new MRKResolvedCapability((context,token)=>
+                    Task.FromException<object>(new InvalidOperationException("p04.ai.failure")),
+                    new MRKExecutionOutput(typeof(string)),
+                    inputs:new[]{new MRKCapabilityInput("Image",typeof(string),false)});
+                return true;
             }
         }
 
