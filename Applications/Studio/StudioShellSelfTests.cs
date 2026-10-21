@@ -1879,6 +1879,47 @@ namespace CxVisual.Studio
                     ribbon.Command.Execute(null);
                     Assert(executed==3,"失效文档命令仍改变专业状态");
                 });
+                CheckStep("S2/P1 删除MEM资源使MHS配置页失效且Undo恢复后可发现", () =>
+                {
+                    StudioViewModel vm=window.DataContext as StudioViewModel;
+                    MEMEngineeringSession session=vm.ProjectSession;
+                    MEMContent resource=session.Project.Contents.Single(x=>
+                        x.Name=="P1配置资源Content");
+                    window.CloseStudioDocument("doc.config");
+                    window.OpenStudioDocument("doc.config");
+                    LayoutDocument doc=window.StudioDock.Layout.Descendents()
+                        .OfType<LayoutDocument>().Single(x=>x.ContentId=="doc.config");
+                    Func<System.Windows.DependencyObject,ComboBox> find=null;
+                    find=node=>{
+                        ComboBox box=node as ComboBox;
+                        if(box!=null&&box.Name=="StudioConfigScopeSelector")return box;
+                        return System.Windows.LogicalTreeHelper.GetChildren(node)
+                            .OfType<System.Windows.DependencyObject>()
+                            .Select(c=>find(c)).FirstOrDefault(c=>c!=null);
+                    };
+                    ComboBox selector=find((System.Windows.DependencyObject)doc.Content);
+                    Assert(selector!=null,"配置界面没有真实Scope选择器");
+                    object selected=selector.Items.Cast<object>().Single(x=>
+                        x.ToString().Contains(resource.Name));
+                    selector.SelectedItem=selected;
+                    Assert(Object.ReferenceEquals(selector.SelectedItem,selected),
+                        "测试未真正选中待删除MEM资源Scope");
+                    int revision=session.Revision;
+                    session.Remove(resource);
+                    Assert(session.Find(resource.Id)==null&&session.Revision>revision&&
+                        !window.GetStudioContentIds().Contains("doc.config"),
+                        "资源已删除但仍持有旧MHS资源配置编辑器");
+                    Assert(session.Undo().Success&&session.Find(resource.Id)!=null,
+                        "MEM Undo没能恢复原资源稳定ID");
+                    window.OpenStudioDocument("doc.config");
+                    doc=window.StudioDock.Layout.Descendents()
+                        .OfType<LayoutDocument>().Single(x=>x.ContentId=="doc.config");
+                    selector=find((System.Windows.DependencyObject)doc.Content);
+                    Assert(selector!=null&&selector.Items.Cast<object>().Any(x=>
+                        x.ToString().Contains(resource.Name)),
+                        "Undo恢复后没有从MEM资源重新发现MHS Scope");
+                    window.CloseStudioDocument("doc.config");
+                });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;
             }

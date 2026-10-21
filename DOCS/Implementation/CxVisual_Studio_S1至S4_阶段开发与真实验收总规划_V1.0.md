@@ -281,3 +281,8 @@
 - **阶段门**：此轮可签收**P1注册驱动的专业配置组合编辑基础切片**，**不等于P1完整完成**。当前宿主显式调用注册API，不是按工程资源自动发现Provider/Command Descriptor；Project Scope已有，资源/产品/机台多Scope选取、授权策略重新验证、独立配置来源解释、真正WPF窗口宽度/DPI交互及用户操作均待实现/验收。专业运行时生效仍不能替代设备联锁与物理ACK。
 
 **下一步优先顺序**：①统一工程资源元数据到配置贡献匹配的只读发现入口；②用户显式选择合法Scope与来源说明，保护Draft/Saved/Effective；③统一Command Descriptor接入主Ribbon/快捷键；④真实Windows多窗口/DPI手工验收。禁止复制MHS状态，禁止以模拟CPU发布签设备生产验收。
+
+### 19. S2专业MHS资源配置生命周期/删除失效反证（2026-10-21，待CI）
+
+- `OnStudioResourceMutation`接收到真实MEM删除时，若当前`StudioConfigScopeSelector`绑定已删除resource ID，关闭配置文档、失效草稿并回到Project Scope；原MHS审计历史不动、工程Undo可恢复同一稳定资源ID。不同MEM工程之间清理旧工程可信机台/产品临时Scope，不默继承旧授权。
+- WPF STA新增资源删除时旧配置Tab关闭和Undo后重新发现的正常/负向场景；工作流按实际`CheckStep`计数修正为41项，保留并行CommandId新增测试。此项为CPU/STA边界，人工多屏DPI/实际PLC ACK仍待验收。

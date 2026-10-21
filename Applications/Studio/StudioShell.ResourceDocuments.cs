@@ -71,6 +71,19 @@ namespace CxVisual.Studio
             }
             if(_viewModel==null||_closingPageDocuments||
                 !ReferenceEquals(observed,_viewModel.ProjectSession))return;
+            // 已删除MEM资源不允许继续通过旧Resource Scope的MHS编辑器提交配置。
+            Guid configuredResource;
+            if(_studioConfigurationScopeKind=="resource"&&
+                Guid.TryParseExact(_studioConfigurationScopeId,"N",out configuredResource)&&
+                observed.Find(configuredResource)==null)
+            {
+                LayoutDocument config=FindStudioContent("doc.config") as LayoutDocument;
+                if(config!=null)CloseStudioDocument("doc.config");
+                _studioConfigurationScopeKind="project";
+                _studioConfigurationScopeId=observed.Project.Id.ToString("N");
+                _viewModel.ReportStudioShellWarning(
+                    "配置对应的工程资源已删除，原资源配置文档已经失效。");
+            }
             if(!observed.IsDirty)
             {
                 _resourceChangedRoots.Clear();_resourceAffectedRoots.Clear();
@@ -1013,6 +1026,14 @@ namespace CxVisual.Studio
                         if(_pageDocuments.TryGetValue(key,out ctx))
                         {ctx.Dispose();_pageDocuments.Remove(key);}
                         _studioViews.Remove(key);
+                    }
+                    // 可信宿主贡献的机台/产品Scope不跨MEM工程默继承。
+                    if(_pageDocumentSession!=null&&
+                        _pageDocumentSession.Project.Id!=_viewModel.ProjectSession.Project.Id)
+                    {
+                        _studioExtraScopes.Clear();
+                        _studioConfigurationScopeKind="project";
+                        _studioConfigurationScopeId=null;
                     }
                     // 工程切换时不允许把旧工程的MHS Project Scope视图带到新工程。
                     if(_studioConfigurationProjectId!=Guid.Empty&&
