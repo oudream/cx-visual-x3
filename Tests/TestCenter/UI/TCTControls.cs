@@ -16,6 +16,8 @@ namespace CxVisual.TestCenter.UI
         private readonly TextBox _search = new TextBox { Margin = new Thickness(6), ToolTip = "按ID/名称/能力检索" };
         private readonly TreeView _tree = new TreeView { Margin = new Thickness(5) };
         private TCTTestCatalog _catalog;
+        private readonly HashSet<string> _checkedIds = new HashSet<string>(StringComparer.Ordinal);
+        public string[] CheckedIds { get { return _checkedIds.OrderBy(x => x, StringComparer.Ordinal).ToArray(); } }
         public event Action<ITCTTestCase> TestSelected;
         public ITCTTestCase SelectedTest { get; private set; }
         public TCTTestExplorerControl()
@@ -53,8 +55,19 @@ namespace CxVisual.TestCenter.UI
                 {
                     TreeViewItem category = new TreeViewItem { Header = group.Key, IsExpanded = true };
                     foreach (ITCTTestCase test in group)
-                        category.Items.Add(new TreeViewItem { Header = test.Descriptor.Name,
-                            Tag = test, ToolTip = test.Descriptor.Id + " / " + test.Descriptor.CapabilityId });
+                    {
+                        string id = test.Descriptor.Id;
+                        CheckBox check = new CheckBox
+                        {
+                            Content = test.Descriptor.Name, IsChecked = _checkedIds.Contains(id),
+                            ToolTip = id + " / " + test.Descriptor.CapabilityId,
+                            Margin = new Thickness(0, 2, 0, 2)
+                        };
+                        check.Checked += (sender, args) => _checkedIds.Add(id);
+                        check.Unchecked += (sender, args) => _checkedIds.Remove(id);
+                        category.Items.Add(new TreeViewItem { Header = check, Tag = test,
+                            ToolTip = test.Descriptor.Id + " / " + test.Descriptor.CapabilityId });
+                    }
                     root.Items.Add(category);
                 }
                 if (root.Items.Count > 0) _tree.Items.Add(root);
