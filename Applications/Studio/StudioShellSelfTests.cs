@@ -426,7 +426,7 @@ namespace CxVisual.Studio
                     MOLLogicCodec.Set(s,main,definition);
                     MOLLogicCodec.Set(s,ai,definition);
                     MOLLogicCodec.Set(s,cv,definition);
-                    int revision=s.Revision;
+                    int flowRevision=s.Revision;
                     string m=window.OpenStudioResourceDocument(main.Id,true);
                     string a=window.OpenStudioResourceDocument(ai.Id,true);
                     string c=window.OpenStudioResourceDocument(cv.Id,true);
@@ -440,7 +440,7 @@ namespace CxVisual.Studio
                         "流程Tab未从各自MEM Content中投影真正MOL定义");
                     window.OpenStudioResourceDocument(main.Id,true);
                     Assert(window.ActiveStudioDocumentId==m,"打开主流程未激活实际Tab");
-                    Assert(s.Revision==revision,"切换流程资源修改了工程");
+                    Assert(s.Revision==flowRevision,"切换流程资源修改了工程");
                     string visual=window.OpenStudioResourceDocument(main.Id,false);
                     Assert(visual!=m&&window.GetStudioResourceScene(main.Id)!=null,
                         "同一Content缺少独立图元/逻辑编辑模式");

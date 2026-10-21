@@ -631,7 +631,7 @@ namespace CxVisual.Studio
                     Guid pageId;string kind;
                     if (TryParseResourceDocumentId(args.Model.ContentId,out pageId,out kind))
                     {
-                        PageDocumentContext context = CreateStudioPageContext(args.Model.ContentId);
+                        ResourceDocumentContext context = CreateStudioPageContext(args.Model.ContentId);
                         view = context.Panel;
                     }
                     else
