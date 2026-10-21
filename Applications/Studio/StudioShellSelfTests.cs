@@ -236,7 +236,7 @@ namespace CxVisual.Studio
                     MEMEngineeringSession session = model.ProjectSession;
                     MEMPage one = session.AddPage("R06 一号工位");
                     MEMPage two = session.AddPage("R06 二号工位");
-                    int revision = session.Revision;
+                    int initialPageRevision = session.Revision;
                     string first = window.OpenStudioPageDocument(one.Id);
                     Assert(window.ActiveStudioDocumentId == first, "页面一未成为活动资源文档");
                     string second = window.OpenStudioPageDocument(two.Id);
@@ -253,7 +253,7 @@ namespace CxVisual.Studio
                         "不同页面的独立视口丢失");
                     window.OpenStudioPageDocument(one.Id);
                     Assert(model.ActivePage.Id == one.Id, "Tab激活没有切换真实MEM页面");
-                    Assert(session.Revision == revision, "仅激活页面修改MEM Revision");
+                    Assert(session.Revision == initialPageRevision, "仅激活页面修改MEM Revision");
                     LayoutDocument firstDoc = window.StudioDock.Layout.Descendents()
                         .OfType<LayoutDocument>().First(d => d.ContentId == first);
                     DockPanel panel = firstDoc.Content as DockPanel;
@@ -266,7 +266,7 @@ namespace CxVisual.Studio
                     add.RaiseEvent(new System.Windows.RoutedEventArgs(Button.ClickEvent));
                     Assert(one.RootContent.DescendantsAndSelf().OfType<MRCShapeElement>().Count() == shapes + 1,
                         "页面Tab添加矩形没有经过MEM");
-                    Assert(session.Revision > revision, "真实画布操作未增加工程Revision");
+                    Assert(session.Revision > initialPageRevision, "真实画布操作未增加工程Revision");
                     int afterAdd = session.Revision;
                     window.OpenStudioPageDocument(two.Id);
                     Assert(two.RootContent.DescendantsAndSelf().OfType<MRCShapeElement>().Count() == 0,
