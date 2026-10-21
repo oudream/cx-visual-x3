@@ -26,11 +26,18 @@ namespace CxVisual.TestCenter.UI
         private readonly Button _open = new Button { Content = "打开选中历史", Padding = new Thickness(8, 4, 8, 4) };
         private readonly Button _refresh = new Button { Content = "刷新", Padding = new Thickness(8, 4, 8, 4) };
         private readonly Button _rerun = new Button { Content = "重跑历史所选用例", Padding = new Thickness(8, 4, 8, 4) };
+        private readonly ComboBox _before = new ComboBox { Width = 195, Margin = new Thickness(3),
+            DisplayMemberPath = "RunId", ToolTip = "Before: 已归档运行" };
+        private readonly ComboBox _after = new ComboBox { Width = 195, Margin = new Thickness(3),
+            DisplayMemberPath = "RunId", ToolTip = "After: 已归档运行" };
+        private readonly Button _compare = new Button { Content = "验证并比较两个Run",
+            Margin = new Thickness(3), Padding = new Thickness(8, 4, 8, 4) };
         private TCTTestRunSummary _current;
         private TCTArchivedTestRun _loaded;
         private string _loadedDirectory;
         public event Action<TCTArchivedTestRun, string> HistoryOpened;
         public event Action<string[]> RerunRequested;
+        public event Action<TCTArchivedRunComparison, string> ComparisonOpened;
         public string LoadedRunId { get { return _loaded == null ? null : _loaded.RunId; } }
         public int HistoryCount { get { return _runs.Items.Count; } }
         public TCTTestHistoryControl()
@@ -57,10 +64,20 @@ namespace CxVisual.TestCenter.UI
             {
                 button.Margin = new Thickness(3); buttons.Children.Add(button);
             }
+            StackPanel compareControls = new StackPanel
+            { Orientation = Orientation.Horizontal, Margin = new Thickness(5) };
+            compareControls.Children.Add(new TextBlock { Text = "Before", VerticalAlignment = VerticalAlignment.Center });
+            compareControls.Children.Add(_before);
+            compareControls.Children.Add(new TextBlock { Text = "After", VerticalAlignment = VerticalAlignment.Center });
+            compareControls.Children.Add(_after);
+            compareControls.Children.Add(_compare);
+            StackPanel top = new StackPanel();
+            top.Children.Add(buttons);
+            top.Children.Add(compareControls);
             DockPanel panel = new DockPanel();
-            DockPanel.SetDock(buttons, Dock.Top);
+            DockPanel.SetDock(top, Dock.Top);
             DockPanel.SetDock(_message, Dock.Bottom);
-            panel.Children.Add(buttons);
+            panel.Children.Add(top);
             panel.Children.Add(_message);
             panel.Children.Add(_runs);
             Content = panel;
@@ -68,6 +85,18 @@ namespace CxVisual.TestCenter.UI
             _refresh.Click += (s, e) => Refresh();
             _open.Click += (s, e) => OpenSelected();
             _rerun.Click += (s, e) => RerunSelected();
+            _compare.Click += (s, e) =>
+            {
+                HistoryRow before = _before.SelectedItem as HistoryRow;
+                HistoryRow after = _after.SelectedItem as HistoryRow;
+                if (before == null || after == null)
+                { _message.Text = "请先选择两个不同历史Run"; return; }
+                try { CompareArchives(before.RunId, after.RunId); }
+                catch (Exception error) when (error is IOException || error is InvalidDataException ||
+                    error is UnauthorizedAccessException || error is ArgumentException ||
+                    error is InvalidOperationException)
+                { _message.Text = "比较已拒绝：" + error.Message; }
+            };
             Refresh();
         }
 
@@ -100,8 +129,16 @@ namespace CxVisual.TestCenter.UI
                     catch (KeyNotFoundException) { }
                 }
             }
+            string beforeId = (_before.SelectedItem as HistoryRow)?.RunId;
+            string afterId = (_after.SelectedItem as HistoryRow)?.RunId;
             _runs.ItemsSource = rows;
-            _message.Text = "仅展示格式可读的归档目录（最多500条）；打开时还须验证Attempt/Artifact/Schema。";
+            _before.ItemsSource = rows;
+            _after.ItemsSource = rows;
+            _before.SelectedItem = rows.FirstOrDefault(x => x.RunId == beforeId) ??
+                rows.Skip(1).FirstOrDefault();
+            _after.SelectedItem = rows.FirstOrDefault(x => x.RunId == afterId) ??
+                rows.FirstOrDefault();
+            _message.Text = "列表仅预览摘要。打开或比较前重新核验Attempt/Artifact/SHA256；不同Commit不可声称同环境回归。";
             _save.IsEnabled = _current != null && _current.Total > 0;
         }
         public void SaveCurrent()
@@ -138,6 +175,18 @@ namespace CxVisual.TestCenter.UI
                 _message.Text = "历史验证失败（不会展示旧数据）：" + ex.Message;
             }
         }
+        public TCTArchivedRunComparison CompareArchives(string beforeRunId, string afterRunId)
+        {
+            // Validation is performed by the same repository as ordinary History Replay.
+            // Failure must not replace the current displayed run or fabricate a Diff.
+            TCTArchivedRunComparison result = _repository.CompareArchived(beforeRunId, afterRunId);
+            _message.Text = "已验证对比：" + result.Rows.Count + " 组Attempt；" +
+                result.ChangedCount + " 组结果或Observation变化" +
+                (result.Comparable ? "" : "；不同Commit/OS或未知环境，不算回归结论");
+            if (ComparisonOpened != null) ComparisonOpened(result, _root);
+            return result;
+        }
+
         private void RerunSelected()
         {
             if (_loaded == null || _loaded.Attempts.Count == 0)
