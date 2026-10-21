@@ -512,3 +512,8 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 - 原MRK Engine的业务Step和显式补偿共用该多资源申请入口，Worker提交时已经持有完整软件租约，尾部任务真正结算之后才逆序释放。无第二套资源服务/组系统；旧单资源AcquireAsync/TryAcquire仍保留。
 - ArchitectureSmoke反证：先已有其他Owner持有B，再按B,A,A申请；验证A先取得并等待B、取消后A归还且B持有者不变；资源A可被新申请者使用；成功申请排序去重；非法资源名在零副作用阶段拒绝。
 - 仍未实现物理设备Owner或硬件停止确认、多进程分布式锁、无限等待的自动公平性证明；本增量按真实Windows CI结果单独验收。
+
+### R08 WholeFlow取消后非合作尾部的真实执行边界（2026-10-21）
+
+- 增加`R08_CancelledNonCooperativeWorkRetainsWholeFlowPermit`。一个真实MRK Flow中的Provider忽略CancellationToken，仍异步等待外部终态；用户请求取消后Flow保持在途、组Active=1。此时第二Flow必须处于组Waiting状态，绝不能在前者尾部真正返回前执行。收到迟到成功结果后原Flow应是Cancelled而不是Completed，结算后组许可释放、第二Flow成功进入。
+- 该测试验证软件Worker/Flow生命周期和执行组许可的正确结合，不得解读为真实设备已经安全停止。须以本提交Windows x64 Runtime/Engineering测试结果为准。

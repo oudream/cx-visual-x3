@@ -15,6 +15,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             R08_GroupCancellationReclaimsWaitingBudget();
             R08_WholeFlowSerializesAcrossFlowsAndCancelsQueue();
             R08_WholeFlowLoopUsesOneLeaseAndRejectsUnknownInnerGroups();
+            R08_CancelledNonCooperativeWorkRetainsWholeFlowPermit();
         }
         private static void Check(bool condition, string msg)
         { if (!condition) throw new InvalidOperationException("执行组：" + msg); }
@@ -253,6 +254,61 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "未知内部组必须在运行前整体拒绝，不得执行已有业务副作用");
             }
             finally{Await(engine.StopAsync(true));}
+        }
+
+
+        /// <summary>WholeFlow取消仅发送协作信号，非合作尾部未结算不可释放执行组。</summary>
+        private static void R08_CancelledNonCooperativeWorkRetainsWholeFlowPermit()
+        {
+            TaskCompletionSource<bool> entered = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<bool> externalFinished = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            int nextEntered=0;
+            MRKExecutionPlan plan=new MRKExecutionPlan("r08-noncooperative",new[]{
+                new MRKExecutionStep("external",new string[0],async (ctx,ct)=>{
+                    if ((string)ctx.Inputs["instance"]=="first")
+                    {
+                        entered.TrySetResult(true);
+                        // 故意忽略取消：仿真已发出的不可中断外部设备操作。
+                        await externalFinished.Task.ConfigureAwait(false);
+                    }
+                    else Interlocked.Increment(ref nextEntered);
+                    return (object)1;
+                },executionGroup:"hardware")
+            });
+            MRKExecutionEngine engine=new MRKExecutionEngine(new FCRWorkerOptions(2,4),
+                groups:new[]{new MRKExecutionGroupDefinition("hardware",1,1,
+                    MRKExecutionGroupScope.WholeFlow)});
+            try
+            {
+                MRKFlowHandle first=engine.StartFlow(plan,
+                    new System.Collections.Generic.Dictionary<string,object>{
+                        {"instance","first"}});
+                Await(entered.Task);
+                Check(first.RequestCancel(),"R08非合作外部Flow无法请求取消");
+                MRKFlowHandle successor=engine.StartFlow(plan,
+                    new System.Collections.Generic.Dictionary<string,object>{
+                        {"instance","second"}});
+                Check(engine.GroupSnapshot()[0].Active==1 &&
+                    engine.GroupSnapshot()[0].Waiting==1 &&
+                    !first.Completion.IsCompleted && Volatile.Read(ref nextEntered)==0,
+                    "R08取消尚未结算的外部操作不应释放WholeFlow许可");
+                externalFinished.TrySetResult(true);
+                Check(Await(first.Completion).State==MRKFlowState.Cancelled,
+                    "R08非合作外部操作迟到成功不可把已取消Flow判为成功");
+                Check(Await(successor.Completion).State==MRKFlowState.Completed &&
+                    Volatile.Read(ref nextEntered)==1,
+                    "R08尾部结算释放后应允许后继Flow实际开始");
+                Check(engine.GroupSnapshot()[0].Active==0 &&
+                    engine.GroupSnapshot()[0].Waiting==0,
+                    "R08非合作尾部结算后执行组许可泄漏");
+            }
+            finally
+            {
+                externalFinished.TrySetResult(true);
+                Await(engine.StopAsync(true));
+            }
         }
 
         private static void Await(Task task)
