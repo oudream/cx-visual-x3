@@ -228,3 +228,10 @@ R01源码已提交（截止 f6c0dceb7afae75d320f6b442f3a152b11566162）：修改
 - Studio的MRK轨迹UI投影补充实际执行入口RootContentId与FlowId（真实MRKFlowHandle），无需新增工程/计划真源。运行时由当前MOC Plan + MRK流实例投影；既有内部旧调用保持兼容。
 - 从Trace定位父Invoke或HMI时，若携带根Content身份，先验证MEM工程中真实Page，基于该页面的MOL定义定位，避免当前活动页面变更造成错跳；非法根身份拒绝。SourceMap原Block/CallPath及项目Revision校验仍保留。
 - Windows WPF STA增加两条真实MRKFlowHandle并发执行的来源隔离、换页后恢复主调用与HMI、无效根拒绝及导航不变更MEM Revision反证。原S1用例数量由31提高为32；同SHA CI通过前仅标记源码已提交，人工高DPI/设备仍未验。
+
+### P0-4 跨页面双Flow真实Windows结果补录（2026-10-21）
+
+- [102579e1](https://github.com/oudream/cx-visual-x3/commit/102579e183d2f4a4033c43272994708a8b9898ca)：Studio Trace投影新增来自MRKFlowHandle的FlowId与本次主MOC运行RootContentId；父Invoke及关联HMI导航先恢复有效根MEM Page并按原MOL定义定位，不因用户切到另一页面而误跳。首次同SHA Windows发现新测试的局部`revision`命名与外层冲突：`CS0136`，记录失败、不冒充通过。
+- [17324d18](https://github.com/oudream/cx-visual-x3/commit/17324d184a0fa765ea9497a741092ef26a9c7fc1)修复测试变量名；但并行R08的F19提交暴露`FCRWorker.Job`访问泛型`Handle`导致`CS1061`，统一构建再次失败。工程组织与Studio这时不能签收。
+- [c1410705](https://github.com/oudream/cx-visual-x3/commit/c1410705511713c12594fa15871322adec10260c)：遵守F19原Owner，在非泛型Job抽象添加MarkAccepted并由泛型Job<T>实现，修复异步准入编译，不重建队列。该SHA的[Studio Windows #39576040381](https://github.com/oudream/cx-visual-x3/actions/runs/39576040381) **success，32/32 WPF STA，0 FAIL，Windows x64统一解决方案编译及Owner依赖检查均通过**。新增真实双MRK Flow同Plan运行、不同FlowId、跨页面父Invoke/HMI恢复、无效根身份拒绝、工程Revision不变均PASS；同SHA[Unified Runtime TDD #39576040354](https://github.com/oudream/cx-visual-x3/actions/runs/39576040354) **success**，配置公共底座[39576040765](https://github.com/oudream/cx-visual-x3/actions/runs/39576040765) **success**。Config L1和TestCenter同SHA在本条写入时仍有运行，需各自核验。
+- 此闭环只证明CPU仿真+WPF STA的身份导航与隔离，不证明专业Provider发布版本门禁、真实硬件联锁、多监视端或人工长期DPI验收。并行新master若扩展Studio功能，其新SHA需重新验收。
