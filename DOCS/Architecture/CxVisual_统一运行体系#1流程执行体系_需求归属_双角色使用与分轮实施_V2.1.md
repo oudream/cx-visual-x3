@@ -609,3 +609,9 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 - F19原`FCRWorkResult<T>`增加只读`TerminalReason`，在原`Job<T>`已知终态路径赋值：停止、前置取消、单项预算不可能满足、队列数量/字节超额、生产者等待超限、DropOldest淘汰、排队/停止/等待阶段取消。业务可从相同Handle的最终Result追溯原因，不再根据累计Rejected/Dropped猜测。旧构造签名保留可选Reason默认None。
 - `FCRWorkAudit.LogLoss`复用原F16 `FLDLogService` 的Important Writer。仅允许同一Handle的真实Rejected/Dropped结果，记录WorkId/Key/状态/Reason，传原WorkId作CorrelationId；由Host在F19调度锁外调用，返回false或FLD `Flush`异常不得冒充持久化成功。暂不新增第二套审计线程或文件仓库。
 - 原FoundationSmoke下一批将测试Drop/Reject/Stop不同原因、拒绝冒用其他Handle、重要文件日志及原CorrelationId一致，待固定SHA Windows CI确认。
+
+
+### R08 F19终态审计真实可执行反证（2026-10-21，待CI）
+
+- 新`R08_TerminalReasonAndOriginalFLDAudit()`采用现有单FCRWorker、既有DropOldest策略：一个运行中任务+满队列，验证淘汰原业务Handle、队列数量拒绝、Pending字节超预算、单项超整体字节预算、生产者名额拒绝以及Stop等待者拒绝各自的Term​​inalReason。日志通过原F16 `FLDLogService` 的Important Sink写文件，并Flush核验原WorkId/Key/关联ID/最终Reason和审计条数。
+- 反例拒绝把其它Handle完成结果冒用该WorkId；所有审计在Worker调度锁外执行，不影响原业务正常排空。重要事件`Write`返回false必须被Host视为审计未接纳，不得误作成功。仍需固定SHA Windows CI验收。
