@@ -577,3 +577,10 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 
 - `IMRKExecutionEngine` 与原实现增加 `SubmitWhenCapacityAsync<T>(action, serialKey, cancellation, priority, estimatedBytes)`，仅转发到现有F19 Worker并受原Runtime`_lifecycleGate`停止接单约束；普通`Submit`仍即刻受理/拒绝，没有第二套Executor和状态仓库。等待准入与Worker最终完成分成两段，开发者收到`FCRWorkHandle<T>`后按原`Completion`获取真实结果。
 - ArchitectureSmoke执行反证：底层单线程/单队列/4字节预算时，已有运行工作+待执行任务占住槽位，第三个通过MRK开发者异步API等待；Engine.Stop(false)唤醒第三名返回Rejected，同时等待前两项真实完成；停止后再提交明确拒绝，最终Pending与Bytes归零。按新提交SHA真实Windows验收，不以源码声明代替测试。
+
+
+### R08背压峰值与等待耗时统计（2026-10-21，待CI）
+
+- 原`FCRWorkerSnapshot`新增只读`PeakPending`、`PeakWaitingProducers`、`SettledProducerWaits`、`MaxProducerWaitMilliseconds`，并保留旧Snapshot构造调用的可选尾参数和全部原字段；使用`Stopwatch.GetTimestamp`单调计时，避免系统时钟调整导致负等待时间。
+- 统计由同一Worker锁保护：生产者成功准入、取消等待、Stop拒绝均只计算一次等待结算；即时超额拒绝不伪装成已排队耗时。压力反例同时断言峰值Pending=3、等待者高峰=12、全部等待结算=12、原Admitted=3/Rejected=1/Dropped=0，不以业务Completion之前的Active瞬态判泄漏。
+- 本轮仅为软件调度可观察性，最终通过标准仍为固定SHA Windows Runtime/工程组织/TestCenter/Studio与Config检查；现场吞吐UPH和24小时长稳另行验收。

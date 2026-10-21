@@ -96,11 +96,16 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
     {
         internal FCRWorkerSnapshot(int pending, int active, long finished,
             long rejected, long dropped, bool stopping, long pendingBytes, long byteBudget,
-            int waitingProducers = 0, long admittedProducers = 0, long peakPendingBytes = 0)
+            int waitingProducers = 0, long admittedProducers = 0, long peakPendingBytes = 0,
+            int peakPending = 0, int peakWaitingProducers = 0,
+            long settledProducerWaits = 0, double maxProducerWaitMilliseconds = 0)
         { Pending = pending; Active = active; Finished = finished; Rejected = rejected;
           Dropped = dropped; Stopping = stopping; PendingBytes = pendingBytes;
           PendingByteBudget = byteBudget; WaitingProducers = waitingProducers;
-          AdmittedProducers = admittedProducers; PeakPendingBytes = peakPendingBytes; }
+          AdmittedProducers = admittedProducers; PeakPendingBytes = peakPendingBytes;
+          PeakPending = peakPending; PeakWaitingProducers = peakWaitingProducers;
+          SettledProducerWaits = settledProducerWaits;
+          MaxProducerWaitMilliseconds = maxProducerWaitMilliseconds; }
         public int Pending { get; private set; }
         public long PendingBytes { get; private set; }
         public long PendingByteBudget { get; private set; }
@@ -108,6 +113,11 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
         public int WaitingProducers { get; private set; }
         public long AdmittedProducers { get; private set; }
         public long PeakPendingBytes { get; private set; }
+        public int PeakPending { get; private set; }
+        public int PeakWaitingProducers { get; private set; }
+        /// <summary>正式准入、等待取消、Stop拒绝合计次数；不含未等待的即时拒绝。</summary>
+        public long SettledProducerWaits { get; private set; }
+        public double MaxProducerWaitMilliseconds { get; private set; }
         /// <summary>活动的逻辑工作数，包括异步等待；不等于正在运行的线程数。</summary>
         public int Active { get; private set; }
         public long Finished { get; private set; }

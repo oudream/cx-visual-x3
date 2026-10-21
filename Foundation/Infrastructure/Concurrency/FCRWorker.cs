@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -87,6 +88,7 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
             internal readonly Job Work;
             internal readonly TaskCompletionSource<bool> Admitted =
                 new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            internal readonly long Started=Stopwatch.GetTimestamp();
             internal ProducerAdmission(Job work) { Work = work; }
         }
 
@@ -101,6 +103,9 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
         private int _priorityOvertakes;
         private long _finished, _rejected, _dropped, _pendingBytes;
         private long _admittedProducers, _peakPendingBytes;
+        private int _peakWaitingProducers, _peakPending;
+        private long _settledProducerWaits;
+        private double _maxProducerWaitMilliseconds;
         private bool _stopping;
         private TaskCompletionSource<bool> _stopped;
 
@@ -138,7 +143,9 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
             lock (_gate)
                 return new FCRWorkerSnapshot(_pending.Count, _active, _finished,
                     _rejected, _dropped, _stopping, _pendingBytes, _options.PendingByteBudget,
-                    _waitingProducers.Count, _admittedProducers, _peakPendingBytes);
+                    _waitingProducers.Count, _admittedProducers, _peakPendingBytes,
+                    _peakPending, _peakWaitingProducers, _settledProducerWaits,
+                    _maxProducerWaitMilliseconds);
         }
 
         /// <summary>高Priority先执行不同Key的待执行工作；同Key始终维持原提交顺序。</summary>
@@ -204,6 +211,7 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
                     }
                 }
                 _pending.AddLast(job);
+                if (_pending.Count > _peakPending) _peakPending = _pending.Count;
                 _pendingBytes = checked(_pendingBytes + job.EstimatedBytes);
                 if (_pendingBytes > _peakPendingBytes) _peakPendingBytes = _pendingBytes;
                 job.Handle.Accepted = true;
@@ -252,6 +260,8 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
                     return job.Handle;
                 }
                 _waitingProducers.AddLast(admission);
+                if (_waitingProducers.Count > _peakWaitingProducers)
+                    _peakWaitingProducers = _waitingProducers.Count;
                 launch = PumpLocked();
             }
             // 外部取消回调须在门闩之外注册，否则已取消Token可能同步重入。
@@ -278,6 +288,17 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
             for (LinkedListNode<Job> node = _pending.First; node != null; node = node.Next)
                 if (node.Value.Droppable) return node.Value;
             return null;
+        }
+
+        // Gate保护全部统计；Stopwatch单调计时，系统时钟调整不会改变等待耗时。
+        private void FinishProducerWaitLocked(ProducerAdmission admission)
+        {
+            long elapsed = Stopwatch.GetTimestamp() - admission.Started;
+            double milliseconds = Math.Max(0.0,
+                (double)elapsed * 1000.0 / Stopwatch.Frequency);
+            _settledProducerWaits++;
+            if (milliseconds > _maxProducerWaitMilliseconds)
+                _maxProducerWaitMilliseconds = milliseconds;
         }
 
         private List<Job> PumpLocked()
@@ -324,7 +345,9 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
                     if (!CanStartImmediatelyLocked(job) && WouldOverflowLocked(job))
                         break;
                     _waitingProducers.RemoveFirst();
+                    FinishProducerWaitLocked(admission);
                     _pending.AddLast(job);
+                    if (_pending.Count > _peakPending) _peakPending = _pending.Count;
                     _pendingBytes = checked(_pendingBytes + job.EstimatedBytes);
                     if (_pendingBytes > _peakPendingBytes)
                         _peakPendingBytes = _pendingBytes;
@@ -384,6 +407,7 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
                 {
                     ProducerAdmission admission = waiter.Value;
                     _waitingProducers.Remove(waiter);
+                    FinishProducerWaitLocked(admission);
                     job.FinishWithoutRun(FCRWorkState.Cancelled);
                     admission.Admitted.TrySetCanceled();
                     _finished++;
@@ -429,6 +453,7 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
                 {
                     ProducerAdmission admission = _waitingProducers.First.Value;
                     _waitingProducers.RemoveFirst();
+                    FinishProducerWaitLocked(admission);
                     _rejected++;
                     admission.Work.FinishWithoutRun(FCRWorkState.Rejected);
                     admission.Admitted.TrySetResult(false);

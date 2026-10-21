@@ -592,7 +592,10 @@ namespace CxVisual.Tests.FoundationSmoke
                     FCRWorkerSnapshot final=worker.GetSnapshot();
                     Check(final.Pending==0&&final.Active==0 &&
                         final.WaitingProducers==0&&final.PendingBytes==0 &&
-                        final.AdmittedProducers==3&&final.Rejected==1&&final.Dropped==0,
+                        final.AdmittedProducers==3&&final.Rejected==1&&final.Dropped==0&&
+                        final.PeakPending==3&&final.PeakWaitingProducers==12&&
+                        final.SettledProducerWaits==12&&
+                        final.MaxProducerWaitMilliseconds>=0,
                         "R08生产者压力场景存在预算泄漏、误Drop或统计不一致");
                 }
                 finally
