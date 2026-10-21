@@ -653,9 +653,34 @@ namespace CxVisual.TestCenter.UI
                     TCTObservationReplay.Read(result, store);
                     XDocument verified = TCTChannelEvidence.Read(store.Read(observation.Envelope.PayloadRef));
                     ContentPanel.Children.Add(new TextBlock {
-                        Text = "SHA256已验证 · " + (string)verified.Root.Attribute("mode") +
-                            " · " + verified.Root.Elements("Frame").Count() + " 条Owner TX/RX/Error记录",
-                        FontWeight = FontWeights.Bold, Margin = new Thickness(0, 8, 0, 7) });
+                        Text = "TX / RX Frame Timeline  ·  SHA256已验证  ·  " +
+                            (string)verified.Root.Attribute("mode") + "  ·  " +
+                            verified.Root.Elements("Frame").Count() + " 条真实Owner收发记录",
+                        FontSize = 15, Foreground = Brushes.MidnightBlue,
+                        FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 8, 0, 8) });
+                    Border tableSurface = new Border {
+                        BorderBrush = new SolidColorBrush(Color.FromRgb(200, 218, 237)),
+                        BorderThickness = new Thickness(1), Background = Brushes.White };
+                    StackPanel timeline = new StackPanel();
+                    timeline.Children.Add(ChannelRow("时间 (UTC)", "方向", "Channel",
+                        "序号", "原始 HEX", "解码 / 异常", true));
+                    tableSurface.Child = timeline;
+                    ContentPanel.Children.Add(tableSurface);
+                    Border detailSurface = new Border {
+                        BorderBrush = new SolidColorBrush(Color.FromRgb(200, 218, 237)),
+                        BorderThickness = new Thickness(1), Background = Brushes.White,
+                        Margin = new Thickness(0, 13, 0, 8), Padding = new Thickness(12, 9, 12, 9) };
+                    TextBlock hexDetail = new TextBlock {
+                        Text = "从上方选择真实TX/RX帧查看原始字节与解码内容。",
+                        FontFamily = new FontFamily("Consolas"), TextWrapping = TextWrapping.Wrap,
+                        Foreground = Brushes.SteelBlue };
+                    detailSurface.Child = hexDetail;
+                    ContentPanel.Children.Add(new TextBlock {
+                        Text = "选中帧解析 / Verified Frame", FontSize = 14,
+                        FontWeight = FontWeights.SemiBold, Foreground = Brushes.MidnightBlue,
+                        Margin = new Thickness(0, 10, 0, 2) });
+                    ContentPanel.Children.Add(detailSurface);
+                    int frameIndex = 0;
                     foreach (XElement frame in verified.Root.Elements("Frame"))
                     {
                         string channel = (string)frame.Attribute("channel");
@@ -676,20 +701,29 @@ namespace CxVisual.TestCenter.UI
                             "\nOriginal raw HEX: " + hex +
                             (payload.Length == 0 ? "" : "\nDecoded payload HEX: " + payload) +
                             (problem.Length == 0 ? "" : "\nError: " + problem);
+                        string utc = (string)frame.Attribute("utc") ?? "";
+                        string decoded = problem.Length > 0 ? "ERROR: " + problem :
+                            payload.Length == 0 ? "等待解码" : payload;
+                        Grid row = ChannelRow(utc, direction, channel, sequence, hex, decoded, false);
                         Button frameLink = new Button {
-                            Content = direction + " · " + channel + " #" + sequence + " · " +
-                                correlation + (problem.Length == 0 ? "" : " · ERROR"),
-                            HorizontalContentAlignment = HorizontalAlignment.Left,
-                            Padding = new Thickness(6, 4, 6, 4), Margin = new Thickness(0, 3, 0, 3)
+                            Content = row, HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                            Background = frameIndex % 2 == 0 ? Brushes.White :
+                                new SolidColorBrush(Color.FromRgb(242, 247, 253)),
+                            BorderThickness = new Thickness(0), Padding = new Thickness(0),
+                            ToolTip = correlation + " · " + details,
+                            Cursor = System.Windows.Input.Cursors.Hand
                         };
                         System.Windows.Automation.AutomationProperties.SetAutomationId(frameLink,
                             "TCT.Channel.Frame." + channel + "." + sequence);
                         frameLink.Click += (sender, args) => {
+                            hexDetail.Text = details;
                             SelectObservation(observation);
                             if (FrameSelected != null)
                                 FrameSelected(channel + ":" + sequence, details);
                         };
-                        ContentPanel.Children.Add(frameLink);
+                        timeline.Children.Add(frameLink);
+                        if (frameIndex == 0) hexDetail.Text = details;
+                        frameIndex++;
                         if (direction == "Error") VerifiedErrorCount++;
                         VerifiedFrameCount++;
                     }
@@ -705,6 +739,35 @@ namespace CxVisual.TestCenter.UI
                 }
             }
             Observations(result, Kind); Assertions(result);
+        }
+
+        private static Grid ChannelRow(string utc, string direction, string channel,
+            string sequence, string hex, string decoded, bool header)
+        {
+            Grid row = new Grid { Height = 33, Margin = new Thickness(0) };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(145) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(64) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(104) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(62) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            if (header) row.Background = new SolidColorBrush(Color.FromRgb(219, 235, 250));
+            string[] values = { utc, direction, channel, sequence, hex, decoded };
+            for (int i = 0; i < values.Length; i++)
+            {
+                TextBlock text = new TextBlock {
+                    Text = values[i], TextTrimming = TextTrimming.CharacterEllipsis,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(9, 0, 7, 0),
+                    FontFamily = i == 4 && !header ? new FontFamily("Consolas") : new FontFamily("Segoe UI"),
+                    FontWeight = header ? FontWeights.SemiBold : FontWeights.Normal,
+                    Foreground = !header && direction == "Error" ? Brushes.Firebrick :
+                        header ? Brushes.MidnightBlue : Brushes.DarkSlateGray,
+                    ToolTip = values[i] };
+                Grid.SetColumn(text, i);
+                row.Children.Add(text);
+            }
+            return row;
         }
     }
 
