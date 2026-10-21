@@ -344,6 +344,46 @@ namespace CxVisual.TestCenter.UI
                                 archivedGeometry.EvidenceProblem != null)
                                 throw new InvalidOperationException("History geometry viewer lost verified Artifact");
                         }
+                        // Suite/Plan is only CaseId selection; Runner and result remain unified.
+                        var planUi = new TCTTestPlanControl();
+                        planUi.Bind(catalog, () => new[] {
+                            shapeCase.Descriptor.Id, owner.Descriptor.Id });
+                        planUi.CaptureFromExplorer();
+                        if (planUi.CaseCount != 2)
+                            throw new InvalidOperationException("M2 plan selection did not preserve CaseIds");
+                        using (TCTTestSandbox planSandbox = new TCTTestSandbox())
+                        {
+                            string planFile = Path.Combine(planSandbox.Root, "case.tctplan");
+                            planUi.SaveTo(planFile);
+                            planUi.Bind(catalog, () => new[] { shapeCase.Descriptor.Id });
+                            planUi.LoadFrom(planFile);
+                            if (planUi.CaseCount != 2 ||
+                                !planUi.CaseIds.Contains(owner.Descriptor.Id))
+                                throw new InvalidOperationException("Saved Plan failed roundtrip");
+                            string[] requested = null;
+                            planUi.RunRequested += ids => requested = ids;
+                            planUi.Run();
+                            if (requested == null || requested.Length != 2)
+                                throw new InvalidOperationException("Plan execution event missing real CaseIds");
+                            string xml = File.ReadAllText(planFile);
+                            File.WriteAllText(planFile, xml.Replace("schema=\"1\"", "schema=\"88\""));
+                            bool blocked = false;
+                            try { planUi.LoadFrom(planFile); }
+                            catch (InvalidDataException) { blocked = true; }
+                            if (!blocked || planUi.CaseCount != 2)
+                                throw new InvalidOperationException("Invalid Plan damaged current selection");
+                        }
+                        if (window.TestDock.Layout.Descendents()
+                                .OfType<AvalonDock.Layout.LayoutContent>().Count() < 7)
+                            throw new InvalidOperationException("Expected seven real docked TestCenter panes");
+                        window.MenuThemeDark.RaiseEvent(new RoutedEventArgs(
+                            System.Windows.Controls.MenuItem.ClickEvent, window.MenuThemeDark));
+                        if (!(window.TestDock.Theme is AvalonDock.Themes.Vs2013DarkTheme))
+                            throw new InvalidOperationException("TestCenter VS dark theme failed");
+                        window.MenuRestoreLayout.RaiseEvent(new RoutedEventArgs(
+                            System.Windows.Controls.MenuItem.ClickEvent, window.MenuRestoreLayout));
+                        if (!(window.TestDock.Theme is AvalonDock.Themes.Vs2013LightTheme))
+                            throw new InvalidOperationException("TestCenter default layout/theme restore failed");
                         exit = 0;
                     }
                     finally { window.Close(); }
