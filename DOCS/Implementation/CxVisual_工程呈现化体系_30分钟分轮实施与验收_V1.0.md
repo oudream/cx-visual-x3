@@ -280,3 +280,8 @@ R01源码已提交（截止 f6c0dceb7afae75d320f6b442f3a152b11566162）：修改
 **当前已按真实Windows自动验收收敛的纵向切片**：P0-1 工程依赖/引用及版本预演；P0-2 Page/Content/Symbol/Flow多Tab与MEM历史；P0-3 通用MPM Schema及Vision/CT3D MHS Project Scope两个真实专业配置编辑视图；P0-4 真实X-Ray主+AI/CV子流程、MOC构建、MRK成功/失败Trace、主/子流程/HMI定位、双Flow隔离、保存重开、版本失效、CPU软件发布授权与专业版本自证。以上不同功能有不同提交/CI证据，**不等于四个工作包100%完成**。
 
 **继续受阻或尚未实测**：所有专业资源实例的可发现Schema/统一Command Descriptor，任意多页长期负载与高DPI/多屏键鼠，CT3D真三维Viewer及真实GPU/体数据压力，Provider跨机部署/模型签名/远程审批，机台PLC联锁/运动控制/实机权限与安全点、生产发布ACK、工业性能和多小时运行。这些不能仅靠35/37项Studio STA证明，后续须按既有Studio S2～S4和EP/R条目补生产环境及人工证据，不能强行标绿。
+
+### P0-4 从MHS真实Effective配置到Vision Provider版本闭环（2026-10-21，待同SHA CI）
+
+- 专业Vision Owner新增`CxVisionThresholdProvider.FromEffectiveConfiguration(MHSConfigSection<CxVisionInspectionOptions>, fallback)`；使用现有`CaptureForTask`读取Effective不可变快照，从MHS`vN`得到真实配置Revision，复制并释放快照；不自动Apply、不以Saved为Effective，不引入第二配置仓库。
+- G06真实工程集成测试新增MHS Project Scope编辑、NextTask Saved/Effective分离、Effective CPU像素MRK执行、任务边界升级、旧候选`MOCProjectRelease.Stage`因版本自证拒绝、PlanSlot当前软件Revision不受污染、新候选指纹改变。此为软件版本/配置闭环；物理设备配置ACK与机台联锁继续未验。

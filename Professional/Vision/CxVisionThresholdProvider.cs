@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using CxVisual.Mechanism.Runtime.Execution;
+using CxVisual.Mechanism.Data.Configuration;
 
 namespace CxVisual.Professional.Vision
 {
@@ -23,6 +24,29 @@ namespace CxVisual.Professional.Vision
         private readonly long _configRevision;
         private readonly IMRKCapabilityResolver _fallback;
         private readonly MRKResolvedCapability _capability;
+
+        /// <summary>
+        /// 从唯一MHS真源的Effective配置快照构造CPU Provider。
+        /// 不使用Saved候选，不触发Apply；新任务边界的生效由MHS/专业Host负责。
+        /// 复制配置后释放快照，Provider在本次Plan生命周期内保持固定版本和算法实例。
+        /// </summary>
+        public static CxVisionThresholdProvider FromEffectiveConfiguration(
+            MHSConfigSection<CxVisionInspectionOptions> section,
+            IMRKCapabilityResolver fallback=null)
+        {
+            if(section==null)throw new ArgumentNullException("section");
+            using(MHSConfigSnapshot<CxVisionInspectionOptions> snapshot=
+                section.CaptureForTask("vision-cpu-provider-"+Guid.NewGuid().ToString("N")))
+            {
+                string version=snapshot.Version;
+                long revision;
+                if(string.IsNullOrEmpty(version)||version[0]!='v'||
+                    !long.TryParse(version.Substring(1),NumberStyles.None,
+                        CultureInfo.InvariantCulture,out revision)||revision<0)
+                    throw new InvalidOperationException("vision.provider.invalid_effective_version");
+                return new CxVisionThresholdProvider(snapshot.Get(),revision,fallback);
+            }
+        }
 
         public CxVisionThresholdProvider(CxVisionInspectionOptions options,long configRevision,
             IMRKCapabilityResolver fallback=null)

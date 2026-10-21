@@ -8,6 +8,7 @@ using CxVisual.Foundation.Infrastructure.Concurrency;
 using CxVisual.Mechanism.Core;
 using CxVisual.Mechanism.Orchestration;
 using CxVisual.Mechanism.Data.RuntimeData;
+using CxVisual.Mechanism.Data.Configuration;
 using CxVisual.Mechanism.Runtime.Execution;
 using CxVisual.Professional.Vision;
 
@@ -830,6 +831,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
             var page=session.AddPage("在线阈值检测");
             string filename=System.IO.Path.Combine(System.IO.Path.GetTempPath(),
                 "moc-vision-"+Guid.NewGuid().ToString("N")+".cxproj");
+            string configDirectory=System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                "mhs-vision-provider-"+Guid.NewGuid().ToString("N"));
             try
             {
                 Guid source=Guid.Empty,inspect=Guid.Empty;
@@ -961,6 +964,83 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(refused&&!publisher.PendingRevision.HasValue&&
                     publisher.ActiveRevision==2,
                     "G06 provider config update staged stale plan or contaminated active version");
+
+                // 真实MHS Saved/Effective → 专业Provider快照 → MOC→MRK发布。
+                // 不允许业务层手抄配置Revision，避免Saved误当Effective。
+                var configService=new MHSConfigService(configDirectory);
+                MHSConfigSection<CxVisionInspectionOptions> config=
+                    configService.ForProject(session.Project.Id.ToString("N"))
+                        .Open<CxVisionInspectionOptions>();
+                MHSConfigCommitResult initialSaved=config.UpdateAsync(c=>{
+                    c.PixelDepth=CxVisionPixelDepth.Bits8;
+                    c.GrayThreshold=200;
+                    c.MinDefectArea=2;
+                    c.MaxDefectArea=100;
+                    c.UseAi=false;
+                },"G06准备真实MHS八位检测配置",CancellationToken.None)
+                    .GetAwaiter().GetResult();
+                Check(initialSaved.Success,"G06 MHS有效配置初次保存失败");
+                if(config.HasPendingApply)
+                    Check(config.ApplyPendingAtTaskBoundary(),
+                        "G06 MHS NextTask有效配置未能在任务边界生效");
+                var effectiveProvider=CxVisionThresholdProvider.FromEffectiveConfiguration(
+                    config,sourceResolver);
+                long effectiveVersion=long.Parse(config.EffectiveVersion.Substring(1),
+                    System.Globalization.CultureInfo.InvariantCulture);
+                Check(effectiveProvider.ConfigurationRevision==effectiveVersion&&
+                    effectiveProvider.ReleaseVersion.EndsWith("config:"+effectiveVersion,
+                        StringComparison.Ordinal),
+                    "G06 Provider未从MHS Effective真源取得实际配置Revision");
+                var effectiveVersions=new Dictionary<string,string>(
+                    StringComparer.Ordinal){
+                    {"vision.test.source","g06.source.v1"},
+                    {CxVisionThresholdProvider.CapabilityId,effectiveProvider.ReleaseVersion}};
+                MOCProjectReleaseCandidate effectiveCandidate=MOCProjectRelease.Prepare(
+                    session.GetSnapshot(),page.RootContent.Id,effectiveProvider,effectiveVersions);
+                MOCTraceView effectiveTrace;
+                MRKFlowResult effectiveResult=Execute(effectiveCandidate.Plan,
+                    effectiveCandidate.Plan.InputDefaults.ToDictionary(x=>x.Key,x=>x.Value),
+                    out effectiveTrace);
+                var actualImage=effectiveResult.Results["w"+inspect.ToString("N")]
+                    as CxVisionInspectionResult;
+                Check(effectiveResult.State==MRKFlowState.Completed&&
+                    actualImage!=null&&actualImage.ConfigRevision==effectiveVersion&&
+                    actualImage.ThresholdPixelCount==4,
+                    "G06 MHS Effective配置没有实际用于MRK图像检测");
+                MHSConfigCommitResult savedOnly=config.UpdateAsync(c=>{
+                    c.GrayThreshold=220;
+                },"G06下一任务候选阈值",CancellationToken.None)
+                    .GetAwaiter().GetResult();
+                Check(savedOnly.Success&&config.HasPendingApply&&
+                    config.EffectiveVersion!=config.SavedVersion,
+                    "G06 NextTask阈值没有保持Saved/Effective分离");
+                var currentBeforeApply=CxVisionThresholdProvider.FromEffectiveConfiguration(
+                    config,sourceResolver);
+                Check(currentBeforeApply.ReleaseVersion==effectiveProvider.ReleaseVersion,
+                    "G06 未生效Saved版本污染了正在使用的Provider软件版本");
+                Check(config.ApplyPendingAtTaskBoundary(),
+                    "G06 Pending NextTask配置未在任务边界生效");
+                var nextProvider=CxVisionThresholdProvider.FromEffectiveConfiguration(
+                    config,sourceResolver);
+                Check(nextProvider.ConfigurationRevision>effectiveVersion&&
+                    nextProvider.ReleaseVersion!=effectiveProvider.ReleaseVersion,
+                    "G06 配置任务边界版本未触发新Provider身份");
+                bool staleRejected=false;
+                try{MOCProjectRelease.Stage(effectiveCandidate,session.GetSnapshot(),
+                    nextProvider,effectiveVersions,publisher,"release-officer",3);}
+                catch(InvalidOperationException ex)
+                {staleRejected=ex.Message.Contains("provider_version_mismatch");}
+                Check(staleRejected&&publisher.ActiveRevision==2&&
+                    !publisher.PendingRevision.HasValue,
+                    "G06 MHS新Effective版本未阻断旧发布候选或污染当前Plan");
+                var nextVersions=new Dictionary<string,string>(effectiveVersions,
+                    StringComparer.Ordinal);
+                nextVersions[CxVisionThresholdProvider.CapabilityId]=
+                    nextProvider.ReleaseVersion;
+                var nextCandidate=MOCProjectRelease.Prepare(session.GetSnapshot(),
+                    page.RootContent.Id,nextProvider,nextVersions);
+                Check(nextCandidate.Fingerprint!=effectiveCandidate.Fingerprint,
+                    "G06新MHS Effective配置没有产生不同软件发布指纹");
                 session.SaveAs(filename);
                 using(var reopened=MEMEngineering.Open(filename))
                 {
@@ -992,6 +1072,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 if(System.IO.File.Exists(filename))System.IO.File.Delete(filename);
                 if(System.IO.File.Exists(filename+".cx-lock"))
                     System.IO.File.Delete(filename+".cx-lock");
+                if(System.IO.Directory.Exists(configDirectory))
+                    System.IO.Directory.Delete(configDirectory,true);
             }
         }
 
