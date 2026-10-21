@@ -574,7 +574,7 @@ namespace CxVisual.Studio
             scopeBox.SelectedItem=selected;
             header.Children.Add(scopeBox);
             Button closeConfig=new Button {Content="关闭配置页",Margin=new Thickness(4,3,4,3),
-                HorizontalAlignment=HorizontalAlignment.Left,Padding=new Thickness(10,5)};
+                HorizontalAlignment=HorizontalAlignment.Left,Padding=new Thickness(10,5,10,5)};
             closeConfig.Click+=(sender,args)=>{
                 bool discard=HasStudioUnsavedConfiguration()&&MessageBox.Show(this,
                     "当前配置仍有未保存的修改，确定放弃草稿并关闭配置页？",
