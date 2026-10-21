@@ -387,6 +387,78 @@ namespace CxVisual.Studio
                 }
                 return result.Success;
             }
+            private bool CanEditFlow()
+            {return !_disposed&&IsFlow&&Flow!=null&&
+                _owner.IsStudioDocumentActive(Key)&&
+                ReferenceEquals(Session,_owner._viewModel.ProjectSession)&&
+                Session.Find(ResourceId) is MEMContent;}
+            internal bool AddFlowCapability(MOCCapabilityDescriptor capability)
+            {
+                if(!CanEditFlow()||capability==null)return false;
+                try
+                {
+                    Guid created=Guid.Empty;
+                    MEMContent content=Session.Find(ResourceId) as MEMContent;
+                    MOCFlowBuilder.Edit(Session,content,b=>created=b.Step(capability));
+                    Refresh();
+                    Flow.SetSelection(new[]{created});
+                    Status.Text="已在当前子流程添加能力："+capability.Id;
+                    return true;
+                }
+                catch(Exception ex){Status.Text="添加子流程能力拒绝："+ex.Message;return false;}
+            }
+            internal bool JoinFlowBranches(MOCCapabilityDescriptor capability)
+            {
+                if(!CanEditFlow()||capability==null||Flow.SelectedBlockIds.Count<2)return false;
+                try
+                {
+                    MEMContent content=Session.Find(ResourceId) as MEMContent;
+                    Guid joined=MainWindow.InsertSelectedJoin(Session,content,capability,
+                        Flow.SelectedBlockIds.ToArray());
+                    Refresh();Flow.SetSelection(new[]{joined});
+                    Status.Text="当前子流程Join已提交为单一MEM事务";
+                    return true;
+                }
+                catch(Exception ex){Status.Text="子流程Join拒绝："+ex.Message;return false;}
+            }
+            internal bool ArrangeFlow()
+            {
+                if(!CanEditFlow()||Flow.SelectedBlockIds.Count==0)return false;
+                try
+                {
+                    Guid[] ids=Flow.SelectedBlockIds.ToArray();
+                    MEMContent content=Session.Find(ResourceId) as MEMContent;
+                    MOCFlowBuilder.Edit(Session,content,b=>b.ArrangeGrid(ids));
+                    Refresh();
+                    Status.Text="当前子流程已自动排列："+ids.Length+"个节点";
+                    return true;
+                }
+                catch(Exception ex){Status.Text="子流程排列拒绝："+ex.Message;return false;}
+            }
+            internal bool DeleteFlowSelection()
+            {
+                if(!CanEditFlow()||Flow.SelectedBlockIds.Count==0)return false;
+                try
+                {
+                    Guid[] ids=Flow.SelectedBlockIds.Distinct().ToArray();
+                    MEMContent content=Session.Find(ResourceId) as MEMContent;
+                    MOCFlowBuilder.Edit(Session,content,b=>{
+                        foreach(Guid id in ids)b.Remove(id);
+                    });
+                    Flow.SetSelection(new Guid[0]);Refresh();
+                    Status.Text="当前子流程删除"+ids.Length+"个节点（一次MEM事务）";
+                    return true;
+                }
+                catch(Exception ex){Status.Text="子流程删除拒绝："+ex.Message;return false;}
+            }
+            internal bool ToggleFlowWiring()
+            {
+                if(!CanEditFlow())return false;
+                Flow.IsConnectMode=!Flow.IsConnectMode;
+                Flow.ResetLinkSelection();
+                Status.Text=Flow.IsConnectMode?"当前子流程已开启端口连线":"当前子流程已退出连线";
+                return true;
+            }
             internal bool ApplyHistory(bool redo)
             {
                 if(_disposed||!_owner.IsStudioDocumentActive(Key)||
@@ -750,12 +822,53 @@ namespace CxVisual.Studio
             bool control=(modifiers&ModifierKeys.Control)!=0;
             if(control&&key==Key.Z){context.ApplyHistory(false);return true;}
             if(control&&key==Key.Y){context.ApplyHistory(true);return true;}
-            if(context.IsFlow)return false; // 保留现有MOL流程键鼠Owner，不交旧固定流程编辑器
+            if(context.IsFlow)
+            {
+                if(control&&key==Key.A){context.Flow.SelectAll();return true;}
+                if(modifiers==ModifierKeys.None&&key==Key.Delete)
+                {context.DeleteFlowSelection();return true;}
+                if(modifiers==ModifierKeys.None&&key==Key.Escape)
+                {context.Flow.SetSelection(new Guid[0]);context.Flow.ResetLinkSelection();return true;}
+                return false;
+            }
             if(modifiers==ModifierKeys.None&&key==Key.Delete)
             {context.DeleteVisualSelection();return true;}
             if(modifiers==ModifierKeys.None&&key==Key.Escape)
             {context.ClearSelection();return true;}
             return false;
+        }
+        // 旧固定doc.flow与资源Flow Tab共用MOC Builder/Capability目录，
+        // 只切换操作所属Content；不另存Studio专属流程图。
+        private bool RouteStudioResourceFlowCommand(string command)
+        {
+            Guid id;string kind;
+            if(!TryParseResourceDocumentId(_activeStudioDocumentId,out id,out kind))
+                return false;
+            if(kind!="flow")return false;
+            ResourceDocumentContext context=ActiveStudioResourceContext();
+            if(context==null||!ResourceDocumentExists(_activeStudioDocumentId)||
+                !ReferenceEquals(context.Session,_viewModel.ProjectSession))
+            {
+                _viewModel.ReportStudioShellWarning("失效子流程拒绝命令："+command);
+                return true;
+            }
+            if(command=="wiring"){context.ToggleFlowWiring();return true;}
+            if(command=="arrange"){context.ArrangeFlow();return true;}
+            if(command=="action"||command=="join")
+            {
+                string capability=command=="join"?"Judge":
+                    (FlowActionCapability.Text??"").Trim();
+                MOCCapabilityCatalogItem entry=CurrentCatalog().Find(capability);
+                if(entry==null||!entry.RuntimeAvailable)
+                {
+                    _viewModel.ReportStudioShellWarning("未注册或未实现运行能力："+capability);
+                    return true;
+                }
+                if(command=="action")context.AddFlowCapability(entry.Definition);
+                else context.JoinFlowBranches(entry.Definition);
+                return true;
+            }
+            return true;
         }
         public string OpenStudioPageDocument(Guid pageId)
         {return OpenStudioResourceDocument(pageId,false);}

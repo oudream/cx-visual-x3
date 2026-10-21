@@ -469,14 +469,14 @@ namespace CxVisual.Studio
             else if (group == "绑定") AddRibbonButton("绑定变量", null, OnApplyVisualBinding);
             else if (group == "节点")
             {
-                AddRibbonButton("添加流程能力", null, OnAddWiringAction);
-                AddRibbonButton("插入分支Join", null, OnInsertSelectedJoin);
+                AddRibbonButton("添加流程能力", null, OnAddWiringAction, true);
+                AddRibbonButton("插入分支Join", null, OnInsertSelectedJoin, true);
             }
-            else if (group == "连线") AddRibbonButton("开始连线", null, OnToggleWiring);
+            else if (group == "连线") AddRibbonButton("开始连线", null, OnToggleWiring, true);
             else if (group == "编排")
             {
                 AddRibbonButton("校验编排", null, OnValidateWiring);
-                AddRibbonButton("自动布局", null, OnFlowArrange);
+                AddRibbonButton("自动布局", null, OnFlowArrange, true);
                 AddRibbonButton("仿真执行", null, OnRunLogicDemo);
             }
             else if (group == "端口") AddRibbonButton("添加Port", null, OnFlowAddPort);

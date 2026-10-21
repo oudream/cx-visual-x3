@@ -1131,6 +1131,66 @@ namespace CxVisual.Studio
                     Assert(session.Revision==flow,
                         "Flow Tab错误继承视觉Delete快捷键");
                 });
+                CheckStep("P0 独立MOL子流程Ribbon能力Join布局与快捷键统一MEM历史", () =>
+                {
+                    StudioViewModel vm=window.DataContext as StudioViewModel;
+                    MEMEngineeringSession session=vm.ProjectSession;
+                    MEMContent ai=session.AddContent(session.Project,"P0 Flow动态AI");
+                    MEMPage parent=session.AddPage("P0 Flow其他活动页面");
+                    window.OpenStudioResourceDocument(ai.Id,true);
+                    window.FlowActionCapability.Text="AI";
+                    int before=session.Revision;
+                    Button action=window.StudioRibbonActions.Children.OfType<Button>()
+                        .Single(x=>Convert.ToString(x.Content)=="添加流程能力");
+                    action.RaiseEvent(new System.Windows.RoutedEventArgs(Button.ClickEvent));
+                    MOLFlowCanvas canvas=window.GetStudioResourceFlow(ai.Id);
+                    Assert(session.Revision==before+1&&canvas.WiringDefinition!=null&&
+                        canvas.WiringDefinition.Blocks.Count==1&&
+                        canvas.WiringDefinition.Blocks[0].CapabilityId=="AI",
+                        "子流程节点Ribbon没调用当前Content的MOC Builder");
+                    vm.ActivePage=parent;
+                    window.FlowActionCapability.Text="CV";
+                    action.RaiseEvent(new System.Windows.RoutedEventArgs(Button.ClickEvent));
+                    Assert(canvas.WiringDefinition.Blocks.Count==2&&
+                        !parent.RootContent.DescendantsAndSelf().OfType<MRCShapeElement>().Any(),
+                        "子流程能力错误落到旧活动Page");
+                    canvas.SelectAll();
+                    window.StudioDynamicMenus.Children.OfType<Button>()
+                        .Single(x=>Convert.ToString(x.Content)=="编排")
+                        .RaiseEvent(new System.Windows.RoutedEventArgs(Button.ClickEvent));
+                    Button arrange=window.StudioRibbonActions.Children.OfType<Button>()
+                        .Single(x=>Convert.ToString(x.Content)=="自动布局");
+                    int layoutBefore=session.Revision;
+                    arrange.RaiseEvent(new System.Windows.RoutedEventArgs(Button.ClickEvent));
+                    Assert(session.Revision==layoutBefore+1,
+                        "当前MOL Tab自动布局未原子提交");
+                    window.StudioDynamicMenus.Children.OfType<Button>()
+                        .Single(x=>Convert.ToString(x.Content)=="节点")
+                        .RaiseEvent(new System.Windows.RoutedEventArgs(Button.ClickEvent));
+                    Button join=window.StudioRibbonActions.Children.OfType<Button>()
+                        .Single(x=>Convert.ToString(x.Content)=="插入分支Join");
+                    canvas.SelectAll();
+                    int joinBefore=session.Revision;
+                    join.RaiseEvent(new System.Windows.RoutedEventArgs(Button.ClickEvent));
+                    Assert(session.Revision==joinBefore+1&&canvas.WiringDefinition.Blocks.Count==3,
+                        "Join没有复用当前子Content的类型化Port/MOC事务");
+                    int deleteBefore=session.Revision;
+                    Assert(window.HandleStudioResourceShortcut(
+                        System.Windows.Input.Key.Delete,System.Windows.Input.ModifierKeys.None)&&
+                        session.Revision==deleteBefore+1&&canvas.WiringDefinition.Blocks.Count==2,
+                        "子流程Delete没有按当前MOL选区删除或Undo不是单一事务");
+                    Assert(window.HandleStudioResourceShortcut(
+                        System.Windows.Input.Key.Z,System.Windows.Input.ModifierKeys.Control)&&
+                        canvas.WiringDefinition.Blocks.Count==3,
+                        "子流程Ctrl+Z未恢复当前资源的删除");
+                    Assert(window.HandleStudioResourceShortcut(
+                        System.Windows.Input.Key.Y,System.Windows.Input.ModifierKeys.Control)&&
+                        canvas.WiringDefinition.Blocks.Count==2,
+                        "子流程Ctrl+Y未恢复相同工程修改");
+                    window.HandleStudioResourceShortcut(
+                        System.Windows.Input.Key.A,System.Windows.Input.ModifierKeys.Control);
+                    Assert(canvas.SelectedBlockIds.Count==2,"子流程Ctrl+A未选择真实节点");
+                });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;
             }

@@ -730,6 +730,7 @@ namespace CxVisual.Studio
         private void OnAddWiringAction(object sender,RoutedEventArgs args)
         {
             if(_logicRunning)return;
+            if(RouteStudioResourceFlowCommand("action"))return;
             try
             {
                 var page=_viewModel.ActivePage;
@@ -782,6 +783,7 @@ namespace CxVisual.Studio
         private void OnInsertSelectedJoin(object sender,RoutedEventArgs args)
         {
             if(_logicRunning)return;
+            if(RouteStudioResourceFlowCommand("join"))return;
             try
             {
                 var page=_viewModel.ActivePage;
@@ -827,6 +829,7 @@ namespace CxVisual.Studio
         }
         private void OnToggleWiring(object sender,RoutedEventArgs args)
         {
+            if(RouteStudioResourceFlowCommand("wiring"))return;
             LogicHost.IsConnectMode=!LogicHost.IsConnectMode;
             LogicHost.ResetLinkSelection();
             FlowWireMode.Content=LogicHost.IsConnectMode?"结束连线":"开始连线";
@@ -1252,6 +1255,7 @@ namespace CxVisual.Studio
         private void OnFlowArrange(object sender,RoutedEventArgs args)
         {
             if(_logicRunning)return;
+            if(RouteStudioResourceFlowCommand("arrange"))return;
             try
             {
                 var page=_viewModel.ActivePage;
