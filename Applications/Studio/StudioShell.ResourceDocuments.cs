@@ -264,9 +264,20 @@ namespace CxVisual.Studio
                     };
                     Scene.MoveRequested+=(s,e)=>
                     {
-                        if(_disposed||!_owner.IsStudioDocumentActive(Key))return;
-                        MTCEditResult<bool> result=Editor.Move(e.Id,e.X,e.Y);
+                        if(!CanEditVisual())return;
+                        IReadOnlyList<Guid> ids=Scene.SelectedVisualIds;
+                        MTCEditResult<bool> result=ids.Count>1&&ids.Contains(e.Id)?
+                            Editor.MoveSelection(ids,e.WorldDeltaX,e.WorldDeltaY,Scene.SnapToGrid):
+                            Editor.Move(e.Id,e.X,e.Y);
                         if(!result.Success)Status.Text="拖动失败："+result.ErrorCode+" "+result.Message;
+                    };
+                    Scene.HandleEditRequested+=(s,e)=>
+                    {
+                        if(!CanEditVisual())return;
+                        MTCEditResult<bool> result=Editor.EditHandle(
+                            e.Handle,e.WorldX,e.WorldY);
+                        Status.Text=result.Success?"控制柄修改已提交MEM事务":
+                            "控制柄修改拒绝："+result.ErrorCode+" "+result.Message;
                     };
                     Editor.Changed+=OnChanged;
                 }
@@ -320,6 +331,79 @@ namespace CxVisual.Studio
             }
             // 使用真实活动Tab的多选结果，而不是旧固定页面ViewModel的_selection。
             // 真正的几何坐标变换、可选择权限与事务全部归CxVisualEditor/MEM。
+            private bool CanEditVisual()
+            {
+                return !_disposed&&Editor!=null&&_owner.IsStudioDocumentActive(Key)&&
+                    ReferenceEquals(Session,_owner._viewModel.ProjectSession)&&
+                    Session.Find(ResourceId)!=null;
+            }
+            private Guid? SelectedDefinition()
+            {
+                if(!CanEditVisual()||Scene.SelectedVisualIds.Count!=1)return null;
+                Guid id=Scene.SelectedVisualIds[0];
+                return Editor.Scene.Any(x=>x.Id==id&&x.IsSelectable)&&
+                    Session.Find(id) is MRCVisualItem?(Guid?)id:null;
+            }
+            internal bool EditGeometry(double x,double y,double width,double height,double rotation)
+            {
+                Guid? id=SelectedDefinition();
+                if(!id.HasValue){Status.Text="请选择当前图元定义，禁止跨资源或多选修改几何";return false;}
+                MTCEditResult<bool> result=Editor.SetGeometry(id.Value,x,y,width,height,rotation);
+                Status.Text=result.Success?"几何属性已提交MEM事务":
+                    "几何属性拒绝："+result.ErrorCode+" "+result.Message;
+                return result.Success;
+            }
+            internal bool EditPath(int index,string operation)
+            {
+                Guid? id=SelectedDefinition();
+                if(!id.HasValue){Status.Text="请选择当前路径定义";return false;}
+                MTCEditResult<bool> result=Editor.EditPathSegment(id.Value,index,operation);
+                Status.Text=result.Success?"路径操作已提交MEM事务":
+                    "路径修改拒绝："+result.ErrorCode+" "+result.Message;
+                return result.Success;
+            }
+            internal bool ChangeLayer(string layer,bool toFront)
+            {
+                Guid? id=SelectedDefinition();
+                if(!id.HasValue){Status.Text="图层修改只允许选择一个当前资源定义";return false;}
+                MTCEditResult<bool> result=Editor.SetLayer(id.Value,layer,toFront);
+                Status.Text=result.Success?"图层属性已提交MEM事务":
+                    "图层属性拒绝："+result.ErrorCode+" "+result.Message;
+                return result.Success;
+            }
+            internal bool DeleteVisualSelection()
+            {
+                Guid? id=SelectedDefinition();
+                if(!id.HasValue){Status.Text="删除只允许选择当前可编辑图元定义";return false;}
+                MTCEditResult<bool> result=Editor.Remove(id.Value);
+                Status.Text=result.Success?"已通过MEM事务删除当前图元":
+                    "删除拒绝："+result.ErrorCode+" "+result.Message;
+                if(result.Success)
+                {
+                    Scene.SetSelectedVisualIds(new Guid[0]);
+                    Editor.Select(null);
+                    _owner._viewModel.Select(null);
+                    _owner.RefreshStudioGraphicsTree();
+                }
+                return result.Success;
+            }
+            internal bool ApplyHistory(bool redo)
+            {
+                if(_disposed||!_owner.IsStudioDocumentActive(Key)||
+                    !ReferenceEquals(Session,_owner._viewModel.ProjectSession))return false;
+                MTCEditResult<bool> result=redo?Session.Redo():Session.Undo();
+                Status.Text=result.Success?(redo?"已重做MEM工程事务":"已撤销MEM工程事务"):
+                    "工程历史操作拒绝："+result.ErrorCode+" "+result.Message;
+                return result.Success;
+            }
+            internal void ClearSelection()
+            {
+                if(!CanEditVisual())return;
+                Scene.SetSelectedVisualIds(new Guid[0]);
+                Editor.Select(null);
+                _owner._viewModel.Select(null);
+                _owner.RefreshStudioGraphicsTree();
+            }
             internal bool AlignVisuals(string mode)
             {
                 if(_disposed||Editor==null||!_owner.IsStudioDocumentActive(Key)||
@@ -349,9 +433,15 @@ namespace CxVisual.Studio
             }
             internal void Select(Guid? id)
             {
-                if(_disposed||Editor==null||!_owner.IsStudioDocumentActive(Key))return;
+                if(!CanEditVisual())return;
+                if(id.HasValue&&!Editor.Scene.Any(x=>x.Id==id.Value&&x.IsSelectable))
+                {
+                    Status.Text="选择拒绝：图元不属于当前可编辑资源";
+                    return;
+                }
                 if(!Editor.Select(id))return;
                 _owner._viewModel.Select(id);
+                _owner.RefreshVisualInspector();
                 _owner.RefreshStudioGraphicsTree();
             }
             private void Undo(bool redo)
@@ -383,6 +473,8 @@ namespace CxVisual.Studio
                     return;
                 }
                 Refresh();
+                if(_owner.IsStudioDocumentActive(Key)&&Editor!=null)
+                    _owner.RefreshStudioGraphicsTree();
             }
             internal void Refresh()
             {
@@ -414,7 +506,9 @@ namespace CxVisual.Studio
                 }
                 else
                 {
+                    Guid[] selected=Scene.SelectedVisualIds.ToArray();
                     Scene.SetScene(Editor.Scene,Editor.SelectedId);
+                    if(selected.Length>1)Scene.SetSelectedVisualIds(selected);
                     Status.Text=resource.Name+" | MEM Revision "+Session.Revision+
                         " | 独立视口与选择，统一Undo/Redo";
                 }
@@ -615,6 +709,50 @@ namespace CxVisual.Studio
             }
             context.ChangeVisualZOrder(toFront);
             return true;
+        }
+        // 右侧属性、画布路径工具和快捷键只路由当前资源Tab，
+        // 固定doc.visual继续沿原有ViewModel路径；非法Flow/过期资源拒绝。
+        private bool RouteStudioResourceVisualEdit(
+            Func<ResourceDocumentContext,bool> execute,string description)
+        {
+            Guid id;string kind;
+            if(!TryParseResourceDocumentId(_activeStudioDocumentId,out id,out kind))return false;
+            ResourceDocumentContext context=ActiveStudioResourceContext();
+            if(context==null||context.IsFlow||
+                !ResourceDocumentExists(_activeStudioDocumentId)||
+                !ReferenceEquals(context.Session,_viewModel.ProjectSession))
+            {
+                _viewModel.ReportStudioShellWarning(description+"：活动资源无效或不是图元编辑器");
+                return true;
+            }
+            execute(context);
+            return true;
+        }
+        private bool RouteStudioResourceGeometry(double x,double y,double width,
+            double height,double rotation)
+        {return RouteStudioResourceVisualEdit(c=>c.EditGeometry(x,y,width,height,rotation),"几何修改");}
+        private bool RouteStudioResourcePath(int index,string operation)
+        {return RouteStudioResourceVisualEdit(c=>c.EditPath(index,operation),"路径修改");}
+        private bool RouteStudioResourceLayer(string layer,bool toFront)
+        {return RouteStudioResourceVisualEdit(c=>c.ChangeLayer(layer,toFront),"图层属性");}
+        // 可在WPF STA中调用的实际键盘命令路径，只有活动文档能消费。
+        internal bool HandleStudioResourceShortcut(Key key,ModifierKeys modifiers)
+        {
+            Guid id;string kind;
+            if(!TryParseResourceDocumentId(_activeStudioDocumentId,out id,out kind))
+                return false;
+            ResourceDocumentContext context=ActiveStudioResourceContext();
+            if(context==null||!ResourceDocumentExists(_activeStudioDocumentId)||
+                !ReferenceEquals(context.Session,_viewModel.ProjectSession))return true;
+            bool control=(modifiers&ModifierKeys.Control)!=0;
+            if(control&&key==Key.Z){context.ApplyHistory(false);return true;}
+            if(control&&key==Key.Y){context.ApplyHistory(true);return true;}
+            if(context.IsFlow)return false; // 保留现有MOL流程键鼠Owner，不交旧固定流程编辑器
+            if(modifiers==ModifierKeys.None&&key==Key.Delete)
+            {context.DeleteVisualSelection();return true;}
+            if(modifiers==ModifierKeys.None&&key==Key.Escape)
+            {context.ClearSelection();return true;}
+            return false;
         }
         public string OpenStudioPageDocument(Guid pageId)
         {return OpenStudioResourceDocument(pageId,false);}

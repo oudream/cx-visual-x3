@@ -239,6 +239,7 @@ namespace CxVisual.Studio
                 int index=int.Parse(PathCommandIndex.Text,
                     System.Globalization.CultureInfo.InvariantCulture);
                 string op=((Button)sender).Tag.ToString();
+                if(RouteStudioResourcePath(index,op))return;
                 MTCEditResult<bool> result=_viewModel.EditVisualPath(index,op);
                 VisualInfo.Text=result.Success?"路径操作已保存："+op:
                     result.ErrorCode+" "+result.Message;
@@ -249,10 +250,13 @@ namespace CxVisual.Studio
         {
             try
             {
+                double x=ReadVisualNumber(VisualXInput),y=ReadVisualNumber(VisualYInput);
+                double width=ReadVisualNumber(VisualWidthInput);
+                double height=ReadVisualNumber(VisualHeightInput);
+                double angle=ReadVisualNumber(VisualRotationInput);
+                if(RouteStudioResourceGeometry(x,y,width,height,angle))return;
                 MTCEditResult<bool> result=_viewModel.EditVisualGeometry(
-                    ReadVisualNumber(VisualXInput),ReadVisualNumber(VisualYInput),
-                    ReadVisualNumber(VisualWidthInput),ReadVisualNumber(VisualHeightInput),
-                    ReadVisualNumber(VisualRotationInput));
+                    x,y,width,height,angle);
                 VisualInfo.Text=result.Success?"已提交几何位置/尺寸/旋转":
                     result.ErrorCode+" "+result.Message;
             }
@@ -263,6 +267,7 @@ namespace CxVisual.Studio
             try
             {
                 if(toFront&&RouteStudioResourceVisualZOrder(true))return;
+                if(!toFront&&RouteStudioResourceLayer(VisualLayerInput.Text,false))return;
                 MTCEditResult<bool> result=_viewModel.EditVisualLayer(VisualLayerInput.Text,toFront);
                 VisualInfo.Text=result.Success?"图层修改已提交":
                     result.ErrorCode+" "+result.Message;
@@ -1329,8 +1334,11 @@ namespace CxVisual.Studio
         }
         private void OnFlowShortcuts(object sender,KeyEventArgs args)
         {
-            if(!IsStudioDocumentActive("doc.flow")||_logicRunning)return;
+            // 画布快捷键不能抢走文本输入、配置表单或运行态焦点。
             if(args.OriginalSource is TextBoxBase||args.OriginalSource is ComboBox)return;
+            if(HandleStudioResourceShortcut(args.Key,Keyboard.Modifiers))
+            {args.Handled=true;return;}
+            if(!IsStudioDocumentActive("doc.flow")||_logicRunning)return;
             bool control=(Keyboard.Modifiers&ModifierKeys.Control)!=0;
             if(control&&args.Key==Key.A)OnFlowSelectAll(sender,new RoutedEventArgs());
             else if(control&&args.Key==Key.C)OnFlowCopy(sender,new RoutedEventArgs());

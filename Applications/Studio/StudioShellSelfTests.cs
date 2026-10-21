@@ -1048,6 +1048,89 @@ namespace CxVisual.Studio
                     window.OpenStudioResourceDocument(content.Id,false);
                     Assert(window.ActiveStudioDocumentId==tab,"返回图元Tab丢失稳定资源身份");
                 });
+                CheckStep("P0 独立资源几何属性路径及失效图元拒绝与撤销", () =>
+                {
+                    StudioViewModel model=window.DataContext as StudioViewModel;
+                    MEMEngineeringSession session=model.ProjectSession;
+                    MEMContent content=session.AddContent(session.Project,"P0精细几何Content");
+                    MEMPage other=session.AddPage("P0几何其他Page");
+                    string key=window.OpenStudioResourceDocument(content.Id,false);
+                    Button shapeButton=window.StudioRibbonActions.Children.OfType<Button>()
+                        .Single(b=>Convert.ToString(b.Content)=="自由路径");
+                    shapeButton.RaiseEvent(new System.Windows.RoutedEventArgs(Button.ClickEvent));
+                    MRCShapeElement path=content.DescendantsAndSelf().OfType<MRCShapeElement>()
+                        .Single(x=>x.Shape.Kind==MRCShapeKind.Path);
+                    SceneView canvas=window.GetStudioResourceScene(content.Id);
+                    canvas.SetSelectedVisualIds(new[]{path.Id});
+                    model.ActivePage=other;
+                    var geo=typeof(MainWindow).GetMethod("RouteStudioResourceGeometry",
+                        System.Reflection.BindingFlags.Instance|
+                        System.Reflection.BindingFlags.NonPublic);
+                    var editPath=typeof(MainWindow).GetMethod("RouteStudioResourcePath",
+                        System.Reflection.BindingFlags.Instance|
+                        System.Reflection.BindingFlags.NonPublic);
+                    Assert(geo!=null&&editPath!=null,"Studio缺失统一几何/路径路由");
+                    int start=session.Revision;
+                    Assert((bool)geo.Invoke(window,new object[]{128d,92d,170d,106d,25d})&&
+                        session.Revision==start+1&&
+                        Math.Abs((session.Find(path.Id) as MRCShapeElement).X-128)<1e-8&&
+                        !other.RootContent.DescendantsAndSelf().OfType<MRCShapeElement>().Any(),
+                        "独立Content几何修改没有通过MEM事务或误改其他Page");
+                    session.Undo().RequireValue();
+                    Assert(Math.Abs((session.Find(path.Id) as MRCShapeElement).X-128)>1e-8,
+                        "几何属性无法单步撤销");
+                    session.Redo().RequireValue();
+                    int pathRevision=session.Revision;
+                    Assert((bool)editPath.Invoke(window,new object[]{1,"split"})&&
+                        session.Revision==pathRevision+1,
+                        "路径分段操作未通过当前资源原MEM事务");
+                    session.Undo().RequireValue();
+                    canvas.SetSelectedVisualIds(new[]{Guid.NewGuid()});
+                    int reject=session.Revision;
+                    geo.Invoke(window,new object[]{22d,30d,50d,50d,0d});
+                    Assert(session.Revision==reject,"失效选中图元错误提交几何");
+                    window.OpenStudioResourceDocument(content.Id,true);
+                    geo.Invoke(window,new object[]{22d,30d,50d,50d,0d});
+                    editPath.Invoke(window,new object[]{1,"delete"});
+                    Assert(session.Revision==reject,
+                        "流程Tab错误继承可视编辑命令");
+                    window.OpenStudioResourceDocument(content.Id,false);
+                    Assert(window.ActiveStudioDocumentId==key,"重入几何资源Tab丢失身份");
+                });
+                CheckStep("P0 独立图元快捷键遵守真实Tab焦点与MEM历史", () =>
+                {
+                    StudioViewModel model=window.DataContext as StudioViewModel;
+                    MEMEngineeringSession session=model.ProjectSession;
+                    MEMSymbol symbol=session.AddSymbol("P0快捷键Symbol");
+                    window.OpenStudioResourceDocument(symbol.Id,false);
+                    Button rect=window.StudioRibbonActions.Children.OfType<Button>()
+                        .Single(b=>Convert.ToString(b.Content)=="矩形");
+                    rect.RaiseEvent(new System.Windows.RoutedEventArgs(Button.ClickEvent));
+                    MRCShapeElement shape=symbol.RootGroup.DescendantsAndSelf()
+                        .OfType<MRCShapeElement>().Single();
+                    SceneView canvas=window.GetStudioResourceScene(symbol.Id);
+                    canvas.SetSelectedVisualIds(new[]{shape.Id});
+                    int before=session.Revision;
+                    Assert(window.HandleStudioResourceShortcut(
+                        System.Windows.Input.Key.Delete,System.Windows.Input.ModifierKeys.None)&&
+                        session.Revision==before+1&&session.Find(shape.Id)==null,
+                        "Delete没有删除活动Symbol图元");
+                    Assert(window.HandleStudioResourceShortcut(
+                        System.Windows.Input.Key.Z,System.Windows.Input.ModifierKeys.Control)&&
+                        session.Find(shape.Id)!=null,
+                        "Ctrl+Z没用MEM历史撤销活动资源删除");
+                    Assert(window.HandleStudioResourceShortcut(
+                        System.Windows.Input.Key.Y,System.Windows.Input.ModifierKeys.Control)&&
+                        session.Find(shape.Id)==null,
+                        "Ctrl+Y没用MEM历史重做删除");
+                    MEMContent flowContent=session.AddContent(session.Project,"P0快捷键Flow");
+                    window.OpenStudioResourceDocument(flowContent.Id,true);
+                    int flow=session.Revision;
+                    window.HandleStudioResourceShortcut(
+                        System.Windows.Input.Key.Delete,System.Windows.Input.ModifierKeys.None);
+                    Assert(session.Revision==flow,
+                        "Flow Tab错误继承视觉Delete快捷键");
+                });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;
             }
