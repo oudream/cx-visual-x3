@@ -270,3 +270,14 @@
 - **现场约束**：软件STA只能验Studio操作契约和MHS保存/生效语义；不能代替运动控制、X-Ray联锁、硬件ACK、生产CT GPU任务、高DPI与长稳的人工作业记录。
 
 **最新阶段判断：P0已定义的软件基础路由与流程Port代码切片均可按SHA+CI关闭；P0-3完整专业发现/统一命令、人工E级、现场F级仍有保留，严禁一笔划掉；P1真实双专业配置UI已开始并通过首轮自动化，但阶段总验收未完成。**
+
+## 18. P1专业Schema配置动态注册与真实三专业验收（2026-10-21）
+
+### 18.1 Owner及可用开发者API
+- **实际实现**：`Applications/Studio/StudioShell.cs`继续复用`MHSConfigService`、`MVBConfigScopeResolver`、`MPWConfigEditorControl<T>`，增加`MainWindow.RegisterStudioConfiguration<T>(string title)`（可信宿主使用，`where T:new()`）。注册时通过现有`FCMConfigSchemaBuilder.Describe<T>().SectionId`确定稳定身份，SectionId重复拒绝；开放配置文档期间拒绝新增贡献，避免丢失未保存草稿；允许首次打开前注册，自动建立现有两个默认入口。
+- **UI真实效果**：`doc.config`不再固定构造Vision/CT两种控件实例，而是遍历已注册专业贡献创建同一Project Scope下的MHS配置编辑控件；`UniformGrid`依据中央宽度采用**1/2/3列自适应**（源码实现，实际多显示器/混合DPI仍需人工）。出厂注册Vision.Inspection及CT3D.Reconstruction；测试由相同公共API额外接入**Automation设备配置**，证明第三专业无须修改组合UI。未新增项目或第二配置库。
+- **真实源码**：[af4ae614](https://github.com/oudream/cx-visual-x3/commit/af4ae614239c5d28b3b0ffaaddf4d619315573bc)、[510ff332](https://github.com/oudream/cx-visual-x3/commit/510ff332a8eca4e72353079902fb738dad5623c7)（Automation第三专业WPF回归）、[c8daa186](https://github.com/oudream/cx-visual-x3/commit/c8daa186affd77bc5d8d2df87856de9bc7bb7ca3)（首次打开前注册默认Schema的初始化顺序）。
+- **同一源码SHA Windows验证**：[Studio #39586341224](https://github.com/oudream/cx-visual-x3/actions/runs/39586341224) **38/38 WPF STA成功**；[Engineering #39586341221](https://github.com/oudream/cx-visual-x3/actions/runs/39586341221) **success**；[Config L1 #39586341312](https://github.com/oudream/cx-visual-x3/actions/runs/39586341312) **success**；[配置公共底座 #39586341234](https://github.com/oudream/cx-visual-x3/actions/runs/39586341234) **success**。新增用例验证Automation第三模型同Project Scope、去重、编辑文档打开时的注册拒绝、动态编辑器真正载入及组合容器；历史37项保留。
+- **阶段门**：此轮可签收**P1注册驱动的专业配置组合编辑基础切片**，**不等于P1完整完成**。当前宿主显式调用注册API，不是按工程资源自动发现Provider/Command Descriptor；Project Scope已有，资源/产品/机台多Scope选取、授权策略重新验证、独立配置来源解释、真正WPF窗口宽度/DPI交互及用户操作均待实现/验收。专业运行时生效仍不能替代设备联锁与物理ACK。
+
+**下一步优先顺序**：①统一工程资源元数据到配置贡献匹配的只读发现入口；②用户显式选择合法Scope与来源说明，保护Draft/Saved/Effective；③统一Command Descriptor接入主Ribbon/快捷键；④真实Windows多窗口/DPI手工验收。禁止复制MHS状态，禁止以模拟CPU发布签设备生产验收。
