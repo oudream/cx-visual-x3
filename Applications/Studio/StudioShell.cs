@@ -323,6 +323,16 @@ namespace CxVisual.Studio
             StudioResourceDocumentIdentity identity=
                 GetStudioResourceDocumentIdentity(_activeStudioDocumentId);
             Guid? resourceId=identity==null?null:(Guid?)identity.ResourceId;
+            // doc.config共享一个工作区，但真实Resource Scope必须向Owner命令
+            // 同时提供MEM身份；外部机台/产品Scope不能伪造工程资源。
+            if(_activeStudioDocumentId=="doc.config"&&
+                _studioConfigurationScopeKind=="resource")
+            {
+                Guid scoped;
+                if(Guid.TryParseExact(_studioConfigurationScopeId,"N",out scoped)&&
+                    session.Find(scoped) is IMEMResource)
+                    resourceId=scoped;
+            }
             MEMNode resource=resourceId.HasValue?session.Find(resourceId.Value):null;
             return new StudioCommandContext(session.Project.Id,session.Revision,
                 _activeStudioDocumentId,resourceId,resource==null?null:resource.TypeId,
