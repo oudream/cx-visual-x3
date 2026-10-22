@@ -370,3 +370,9 @@ studio.RegisterStudioCommand("automation.config.verify", "验证设备配置",
 - 资源树叶节点右键按当前MEM ProjectId/ResourceId即刻发现图元、MOL流程及全部注册专业Viewer；候选从既有`GetStudioResourceEditors`投影，显示默认Editor，不建设第二套资源目录或业务命令真源。
 - 专业Viewer晚注册后旧资源右键即时更新；双击仍走默认Editor。右键执行前重复校验当前Session/Project/Resource/Editor，工程切换、删除、过期菜单一律拒绝。S2.01新增第50项Windows STA菜单操作、旧菜单失效和零Revision验证。
 - 当前仅补齐资源树右键候选可操作切片；类型Schema全覆盖、真正四专业案例、权限/手工Dock/DPI/多屏仍按照S2.03～12审计，不能签收整个P1。
+
+### 20.4 S2.03/S2.05/S2.11工业资源SDK与Studio软件闭环（2026-10-22，Windows待验）
+
+- 新增真实WPF STA工业案例：专业开发者通过既有`IMPMTypeProvider/MPMTypeDescriptor`声明相机/PLC/产品配方Content及电机Symbol，不增加新的持久化资源或第二套Schema。以四类真正MEM资源TypeId驱动Editor候选、专业WPF Viewer工厂，并由原`StudioViewModel` Schema属性控件和MTC事务写入工程。
+- 工程用户场景覆盖相机增益范围拒绝、PLC整数配置、只读Serial、配方ProductCode、电机双实例Mixed与单Undo原子覆盖、非法批量零部分提交，真实cxproj文件保存重开确保Schema与覆盖依旧存在；同SHA Windows STA门槛增至51项。
+- **未声明全S2.11完成**：该切片是软件/CPU工厂/文件验收，不连接PLC、相机，不证明MOC/MRK真实机台设备运行与ACK联锁；专业配置MHS Saved/Effective依旧由其单独Owner处理，设备联锁/配置应用/人工交互归后续S2.06/S4现场门禁。

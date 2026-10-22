@@ -2422,6 +2422,122 @@ namespace CxVisual.Studio
                         window.GetStudioResourceDocumentIdentity(plcKey)==null,
                         "删除资源的旧右键菜单仍可复用过期的DocumentKey");
                 });
+                CheckStep("S2/P1 四工业MPM类型与Studio属性编辑批量Undo保存重开", () =>
+                {
+                    StudioViewModel vm=window.DataContext as StudioViewModel;
+                    MEMEngineeringSession session=vm.ProjectSession;
+                    session.RegisterTypes(new StudioP1IndustrialTypes());
+                    MEMContent camera=session.AddTypedContent(session.Project,
+                        "相机A","studio.p1.camera");
+                    MEMContent plc=session.AddTypedContent(session.Project,
+                        "PLC-A","studio.p1.plc");
+                    MEMContent recipe=session.AddTypedContent(session.Project,
+                        "产品配方A","studio.p1.recipe");
+                    MEMSymbol motor=session.AddTypedSymbol("电机Symbol","studio.p1.motor");
+                    MEMPage page=session.AddPage("P1工业站点");
+                    MRIResourceReference first=session.PlaceSymbol(page.RootContent,motor,"电机一");
+                    MRIResourceReference second=session.PlaceSymbol(page.RootContent,motor,"电机二");
+                    window.RegisterStudioResourceViewer("vision.p1.camera","工业相机",
+                        identity=>new TextBlock {Text="相机工作台 · "+identity.ResourceId},
+                        true,"studio.p1.camera");
+                    Assert(window.GetStudioResourceEditors(camera.Id).First().EditorId==
+                        "vision.p1.camera"&&
+                        !window.GetStudioResourceEditors(plc.Id).Any(x=>
+                            x.EditorId=="vision.p1.camera"),
+                        "专业Editor未依据自定义MPM资源TypeId正确匹配");
+                    string cameraTab=window.OpenStudioResourceEditor(camera.Id);
+                    Assert(window.GetStudioResourceDocumentIdentity(cameraTab).ResourceId==
+                        camera.Id,"工业相机资源未通过Studio专业工厂打开");
+                    vm.SelectedResource=camera;
+                    StudioPropertyItem gain=vm.Properties.Single(x=>x.Member=="Gain");
+                    Assert(gain.Schema.Contains("0")&&gain.Schema.Contains("10")&&
+                        gain.Mode=="常量"&&!gain.IsReadOnly,
+                        "相机数值范围和MPM来源未投影至Studio");
+                    int beforeGain=session.Revision;
+                    gain.Text="5.5";vm.ApplyPropertyCommand.Execute(gain);
+                    Assert(session.Revision==beforeGain+1&&
+                        ((IMPMDefinition)camera).Properties.Single(x=>x.MemberId=="Gain")
+                            .Binding.Value.AsNumber()==5.5,
+                        "工业相机真实MPM值未通过Studio应用");
+                    gain=vm.Properties.Single(x=>x.Member=="Gain");
+                    gain.Text="99";
+                    int rejectedGain=session.Revision;
+                    vm.ApplyPropertyCommand.Execute(gain);
+                    Assert(session.Revision==rejectedGain&&
+                        ((IMPMDefinition)camera).Properties.Single(x=>x.MemberId=="Gain")
+                            .Binding.Value.AsNumber()==5.5,
+                        "非法相机增益导致部分工程提交");
+                    vm.SelectedResource=plc;
+                    StudioPropertyItem port=vm.Properties.Single(x=>x.Member=="ControllerPort");
+                    port.Text="1502";int beforePlc=session.Revision;
+                    vm.ApplyPropertyCommand.Execute(port);
+                    Assert(session.Revision==beforePlc+1&&
+                        ((IMPMDefinition)plc).Properties.Single(x=>
+                            x.MemberId=="ControllerPort").Binding.Value.AsInteger()==1502,
+                        "PLC配置未由MPM Schema落地或错用了MHS配置仓库");
+                    StudioPropertyItem serial=vm.Properties.Single(x=>x.Member=="Serial");
+                    int beforeSerial=session.Revision;
+                    serial.Text="禁止修改";vm.ApplyPropertyCommand.Execute(serial);
+                    Assert(session.Revision==beforeSerial&&
+                        ((IMPMDefinition)plc).Properties.Single(x=>x.MemberId=="Serial")
+                            .Binding.Value.AsString()=="PLC-A",
+                        "MPM只读属性被Studio非法修改");
+                    vm.SelectedResource=recipe;
+                    StudioPropertyItem product=vm.Properties.Single(x=>x.Member=="ProductCode");
+                    product.Text="XRay-2026";vm.ApplyPropertyCommand.Execute(product);
+                    Assert(((IMPMDefinition)recipe).Properties.Single(x=>
+                        x.MemberId=="ProductCode").Binding.Value.AsString()=="XRay-2026",
+                        "产品配方未真实写入工程定义");
+                    // 两电机实例不同覆盖；Studio Mixed不可回退成最后实例。
+                    session.SetOverride(first,"Speed",
+                        MPMBinding.Literal(MPMValue.Number(900)));
+                    vm.SetSelection(new[]{first.Id,second.Id});
+                    StudioPropertyItem mixed=vm.Properties.Single(x=>x.Member=="Speed");
+                    Assert(mixed.SelectionCount==2&&mixed.IsMixedValue&&
+                        mixed.BatchOwnerIds.Length==2,
+                        "电机实例选区未正确显示Mixed/类型一致性");
+                    mixed.Text="1600";
+                    int beforeBatch=session.Revision;
+                    vm.ApplyPropertyCommand.Execute(mixed);
+                    Assert(session.Revision==beforeBatch+1&&
+                        session.ResolveParameter(first,"Speed").Value.AsNumber()==1600&&
+                        session.ResolveParameter(second,"Speed").Value.AsNumber()==1600,
+                        "电机多实例没有以单一MEM事务同步覆盖");
+                    session.Undo().RequireValue();
+                    Assert(session.ResolveParameter(first,"Speed").Value.AsNumber()==900&&
+                        session.ResolveParameter(second,"Speed").Value.AsNumber()==1200,
+                        "电机批量提交需要超过一次Undo或破坏继承默认");
+                    session.Redo().RequireValue();
+                    vm.SetSelection(new[]{first.Id,second.Id});
+                    StudioPropertyItem bad=vm.Properties.Single(x=>x.Member=="Speed");
+                    bad.Text="5000";
+                    int beforeInvalidBatch=session.Revision;
+                    vm.ApplyPropertyCommand.Execute(bad);
+                    Assert(session.Revision==beforeInvalidBatch&&
+                        session.ResolveParameter(first,"Speed").Value.AsNumber()==1600&&
+                        session.ResolveParameter(second,"Speed").Value.AsNumber()==1600,
+                        "非法电机批量输入造成部分覆盖/错误Revision");
+                    string file=Path.Combine(Path.GetTempPath(),
+                        "cxstudio-p1-industrial-"+Guid.NewGuid().ToString("N")+".cxproj");
+                    try
+                    {
+                        session.SaveAs(file);
+                        using(MEMEngineeringSession reopened=MEMEngineering.Open(file))
+                        {
+                            Assert(reopened.FindType("studio.p1.camera")!=null&&
+                                reopened.FindType("studio.p1.plc")!=null&&
+                                reopened.FindType("studio.p1.recipe")!=null&&
+                                reopened.FindType("studio.p1.motor")!=null&&
+                                reopened.ResolveParameter(reopened.FindReference(first.Id),"Speed")
+                                    .Value.AsNumber()==1600&&
+                                reopened.ResolveParameter(reopened.FindReference(second.Id),"Speed")
+                                    .Value.AsNumber()==1600,
+                                "真实工程保存重开丢失工业类型Schema或实例覆盖");
+                        }
+                    }
+                    finally {if(File.Exists(file))File.Delete(file);}
+                    window.TryCloseStudioDocument(cameraTab);
+                });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;
             }
@@ -2439,6 +2555,43 @@ namespace CxVisual.Studio
                 }
                 catch { /* 由CI检测缺失报告，并报告失败 */ }
                 if (File.Exists(temporary)) File.Delete(temporary);
+            }
+        }
+
+        /// <summary>专业SDK示例：四类工业资源只声明MPM语义类型，仍由MEM保存。</summary>
+        private sealed class StudioP1IndustrialTypes : IMPMTypeProvider
+        {
+            public IEnumerable<MPMTypeDescriptor> DescribeTypes()
+            {
+                yield return new MPMTypeDescriptor("studio.p1.camera",1,MEMNodeKind.Content,
+                    new[]{
+                        new MPMPropertyDescriptor("Gain",MPMValueKind.Number,true,true,
+                            MPMBinding.Literal(MPMValue.Number(2)),0,10),
+                        new MPMPropertyDescriptor("Triggered",MPMValueKind.Boolean,false,true,
+                            MPMBinding.Literal(MPMValue.Boolean(true)))
+                    });
+                yield return new MPMTypeDescriptor("studio.p1.plc",1,MEMNodeKind.Content,
+                    new[]{
+                        new MPMPropertyDescriptor("ControllerPort",MPMValueKind.Integer,true,true,
+                            MPMBinding.Literal(MPMValue.Integer(502)),1,65535),
+                        new MPMPropertyDescriptor("Serial",MPMValueKind.String,true,true,
+                            MPMBinding.Literal(MPMValue.String("PLC-A")),
+                            isReadOnly:true)
+                    });
+                yield return new MPMTypeDescriptor("studio.p1.recipe",1,MEMNodeKind.Content,
+                    new[]{
+                        new MPMPropertyDescriptor("ProductCode",MPMValueKind.String,true,true,
+                            MPMBinding.Literal(MPMValue.String("DefaultRecipe"))),
+                        new MPMPropertyDescriptor("Confidence",MPMValueKind.Number,true,true,
+                            MPMBinding.Literal(MPMValue.Number(0.75)),0,1)
+                    });
+                yield return new MPMTypeDescriptor("studio.p1.motor",1,MEMNodeKind.Symbol,
+                    new[]{
+                        new MPMPropertyDescriptor("Speed",MPMValueKind.Number,true,true,
+                            MPMBinding.Literal(MPMValue.Number(1200)),0,3000),
+                        new MPMPropertyDescriptor("Enabled",MPMValueKind.Boolean,false,true,
+                            MPMBinding.Literal(MPMValue.Boolean(false)))
+                    });
             }
         }
 
