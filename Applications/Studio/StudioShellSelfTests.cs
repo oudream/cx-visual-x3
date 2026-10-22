@@ -2323,7 +2323,7 @@ namespace CxVisual.Studio
                     Assert(executed==1&&executedResource==b.Id,
                         "专业命令误用了上一个资源Tab的身份");
                     window.OpenStudioResourceEditor(a.Id,"vision.camera.commands");
-                    menu.Command.Execute(null);
+                    menu.Command.Execute(menu.CommandParameter);
                     Assert(executed==1,"旧Tab右键菜单可在非活动资源上执行命令");
                     window.HandleStudioRegisteredShortcut(System.Windows.Input.Key.L,
                         System.Windows.Input.ModifierKeys.Control|

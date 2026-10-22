@@ -355,12 +355,29 @@ namespace CxVisual.Studio
                     if(_documentId.StartsWith("doc.editor.",StringComparison.Ordinal)&&
                         !_host.IsStudioCustomEditorDocument(_documentId))return false;
                 }
-                return _owner.CanExecute(parameter??_host.GetStudioCommandContext());
+                StudioResourceDocumentIdentity caller=
+                    parameter as StudioResourceDocumentIdentity;
+                if(caller!=null)
+                {
+                    StudioResourceDocumentIdentity current=
+                        _host.GetStudioResourceDocumentIdentity(_host._activeStudioDocumentId);
+                    // WPF ContextMenu仍保留同一ICommand，但旧Tab菜单不能写到新活动资源。
+                    if(current==null||current.ProjectId!=caller.ProjectId||
+                        current.ResourceId!=caller.ResourceId||
+                        current.EditorId!=caller.EditorId||
+                        current.ContentId!=caller.ContentId||
+                        current.InstanceId!=caller.InstanceId)return false;
+                }
+                return _owner.CanExecute(caller!=null?
+                    _host.GetStudioCommandContext():
+                    parameter??_host.GetStudioCommandContext());
             }
             public void Execute(object parameter)
             {
                 if(CanExecute(parameter))
-                    _owner.Execute(parameter??_host.GetStudioCommandContext());
+                    _owner.Execute(parameter is StudioResourceDocumentIdentity?
+                        _host.GetStudioCommandContext():
+                        parameter??_host.GetStudioCommandContext());
             }
             public event EventHandler CanExecuteChanged
             {
@@ -440,7 +457,8 @@ namespace CxVisual.Studio
                 .Where(x=>MatchesStudioCommandDocument(x.DocumentId,id))
                 .OrderBy(x=>x.Id,StringComparer.Ordinal))
                 menu.Items.Add(new MenuItem {Header=item.Label,Tag=item.Id,
-                    Command=item.Adapter});
+                    Command=item.Adapter,
+                    CommandParameter=GetStudioResourceDocumentIdentity(id)});
             host.ContextMenu=menu.Items.Count>0?menu:null;
         }
         internal bool HandleStudioRegisteredShortcut(Key key,ModifierKeys modifiers)
