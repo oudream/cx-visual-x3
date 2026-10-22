@@ -354,3 +354,8 @@ studio.RegisterStudioCommand("automation.config.verify", "验证设备配置",
 - 仍需：真实专业Viewer功能、内置Document ContentId迁移/布局向后兼容、复杂实例属性与配置UI衔接、人工Dock/DPI/双屏/长稳。按现有S2.01～S2.12状态继续追踪。
 
 - P1-A增补：专业Viewer布局恢复保留同一视图与身份、静态XML格式校验与活工程身份校验分离；新增实际MEM Undo删除临时资源后自动失效反证。CI需以最终SHA为准。
+
+### 20.1 S2.07 Editor级Owner ICommand切片（2026-10-22，待同SHA CI）
+
+- 在既有`RegisterStudioCommand`目录中增加`editor:<EditorId>`作用域与`RegisterStudioResourceEditorCommand`，对现有`ICommand`只包装一个活动Document身份校验适配器；同一专业Viewer的不同MEM资源Tab复用统一命令，Ribbon/右键/快捷键动态读取活动ResourceId/Revision，不建立第二套Command真源。
+- 追加WPF STA正反场景：两相机实例、未授权CanExecute、快捷键禁用、旧Tab右键调用、Tab切换、主页失焦隔离与关闭。门槛同步为48项；代码/CI自动结果与E级人工/真实设备操作仍独立。

@@ -337,13 +337,24 @@ namespace CxVisual.Studio
             {_host=host;_documentId=doc;_owner=owner;}
             public bool CanExecute(object parameter)
             {
-                if(_host._activeStudioDocumentId!=_documentId||
-                    _host.FindStudioContent(_documentId)==null)return false;
-                Guid resource;string kind;
-                if(TryParseResourceDocumentId(_documentId,out resource,out kind)&&
-                    !_host.ResourceDocumentExists(_documentId))return false;
-                if(_documentId.StartsWith("doc.editor.",StringComparison.Ordinal)&&
-                    !_host.IsStudioCustomEditorDocument(_documentId))return false;
+                if(_documentId.StartsWith("editor:",StringComparison.Ordinal))
+                {
+                    StudioResourceDocumentIdentity identity=
+                        _host.GetStudioResourceDocumentIdentity(_host._activeStudioDocumentId);
+                    if(identity==null||identity.EditorId!=_documentId.Substring(7)||
+                        _host.FindStudioContent(_host._activeStudioDocumentId)==null)
+                        return false;
+                }
+                else
+                {
+                    if(_host._activeStudioDocumentId!=_documentId||
+                        _host.FindStudioContent(_documentId)==null)return false;
+                    Guid resource;string kind;
+                    if(TryParseResourceDocumentId(_documentId,out resource,out kind)&&
+                        !_host.ResourceDocumentExists(_documentId))return false;
+                    if(_documentId.StartsWith("doc.editor.",StringComparison.Ordinal)&&
+                        !_host.IsStudioCustomEditorDocument(_documentId))return false;
+                }
                 return _owner.CanExecute(parameter??_host.GetStudioCommandContext());
             }
             public void Execute(object parameter)
@@ -367,7 +378,8 @@ namespace CxVisual.Studio
             if(string.IsNullOrWhiteSpace(id)||id.Length>128||
                 id.Any(c=>!char.IsLetterOrDigit(c)&&c!='.'&&c!='-'&&c!='_')||
                 string.IsNullOrWhiteSpace(label)||string.IsNullOrWhiteSpace(group)||
-                !IsKnownContent(documentId)||command==null)
+                !(IsKnownContent(documentId)||IsKnownStudioEditorScope(documentId))||
+                command==null)
                 throw new ArgumentException("无效专业命令描述");
             if(_studioCommands.ContainsKey(id))
                 throw new InvalidOperationException("CommandId重复："+id);
@@ -382,6 +394,40 @@ namespace CxVisual.Studio
             FrameworkElement view=GetStudioCommandDocumentView(documentId);
             if(view!=null)RefreshStudioCommandContextMenu(view,documentId);
         }
+        private bool IsKnownStudioEditorScope(string scope)
+        {
+            if(scope==null||!scope.StartsWith("editor:",StringComparison.Ordinal))return false;
+            string editorId=scope.Substring(7);
+            return editorId=="mem.visual"||editorId=="mol.flow"||
+                _studioViewerRegistry.ContainsKey(editorId);
+        }
+
+        private bool MatchesStudioCommandDocument(string commandDocument,string actualDocument)
+        {
+            if(commandDocument==actualDocument)return true;
+            if(!IsKnownStudioEditorScope(commandDocument))return false;
+            StudioResourceDocumentIdentity identity=
+                GetStudioResourceDocumentIdentity(actualDocument);
+            return identity!=null&&commandDocument.Substring(7)==identity.EditorId;
+        }
+
+        /// <summary>同类资源任意Tab共享一个Owner ICommand，执行时始终读取活动MEM身份。</summary>
+        public void RegisterStudioResourceEditorCommand(string editorId,string id,
+            string label,string group,ICommand owner,
+            Key key=Key.None,ModifierKeys modifiers=ModifierKeys.None)
+        {
+            string scope="editor:"+editorId;
+            if(!IsKnownStudioEditorScope(scope))
+                throw new ArgumentException("Editor尚未注册："+editorId);
+            RegisterStudioCommand(id,label,group,scope,owner,key,modifiers);
+            foreach(LayoutDocument doc in ExistingContents().OfType<LayoutDocument>())
+            {
+                FrameworkElement view=doc.Content as FrameworkElement;
+                if(view!=null&&MatchesStudioCommandDocument(scope,doc.ContentId))
+                    RefreshStudioCommandContextMenu(view,doc.ContentId);
+            }
+        }
+
         private FrameworkElement GetStudioCommandDocumentView(string id)
         {
             LayoutDocument doc=FindStudioContent(id) as LayoutDocument;
@@ -391,7 +437,8 @@ namespace CxVisual.Studio
         {
             ContextMenu menu=new ContextMenu();
             foreach(StudioCommandContribution item in _studioCommands.Values
-                .Where(x=>x.DocumentId==id).OrderBy(x=>x.Id,StringComparer.Ordinal))
+                .Where(x=>MatchesStudioCommandDocument(x.DocumentId,id))
+                .OrderBy(x=>x.Id,StringComparer.Ordinal))
                 menu.Items.Add(new MenuItem {Header=item.Label,Tag=item.Id,
                     Command=item.Adapter});
             host.ContextMenu=menu.Items.Count>0?menu:null;
@@ -399,7 +446,7 @@ namespace CxVisual.Studio
         internal bool HandleStudioRegisteredShortcut(Key key,ModifierKeys modifiers)
         {
             StudioCommandContribution command=_studioCommands.Values.FirstOrDefault(x=>
-                x.DocumentId==_activeStudioDocumentId&&
+                MatchesStudioCommandDocument(x.DocumentId,_activeStudioDocumentId)&&
                 x.ShortcutKey!=Key.None&&x.ShortcutKey==key&&
                 x.ShortcutModifiers==modifiers);
             if(command==null)return false;
@@ -908,7 +955,8 @@ namespace CxVisual.Studio
             else if (group == "帮助") AddRibbonButton("文档入口", null, (s,e)=>
                 MessageBox.Show(this, "开发入口：DOCS/00_CxVisual_协同开发入口与七仓复用基线.md\n设计规范：DOCS/界面设计。", "CxVisual帮助"));
                     foreach(StudioCommandContribution registered in _studioCommands.Values
-                .Where(x=>x.DocumentId==_activeStudioDocumentId&&x.Group==group)
+                .Where(x=>MatchesStudioCommandDocument(x.DocumentId,_activeStudioDocumentId)&&
+                    x.Group==group)
                 .OrderBy(x=>x.Id,StringComparer.Ordinal))
                 StudioRibbonActions.Children.Add(new Button {
                     Content=registered.Label,Tag=registered.Id,Command=registered.Adapter,

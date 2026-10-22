@@ -2276,6 +2276,69 @@ namespace CxVisual.Studio
                     window.TryCloseStudioDocument(viewer);
                     window.TryCloseStudioDocument(instanceTab);
                 });
+                CheckStep("S2/P1 Editor级Owner ICommand跨资源Tab与快捷键状态隔离", () =>
+                {
+                    StudioViewModel vm=window.DataContext as StudioViewModel;
+                    MEMEngineeringSession session=vm.ProjectSession;
+                    MEMContent a=session.AddContent(session.Project,"P1相机A");
+                    MEMContent b=session.AddContent(session.Project,"P1相机B");
+                    window.RegisterStudioResourceViewer("vision.camera.commands","相机控制台",
+                        identity=>new TextBlock {Text="相机："+identity.ResourceId},
+                        false,"core.content");
+                    int executed=0;
+                    Guid executedResource=Guid.Empty;
+                    bool permitted=false;
+                    ICommand owner=new RelayCommand(()=>{
+                        executed++;
+                        MainWindow.StudioCommandContext ctx=window.GetStudioCommandContext();
+                        executedResource=ctx.ResourceId.HasValue?ctx.ResourceId.Value:Guid.Empty;
+                    },()=>permitted);
+                    window.RegisterStudioResourceEditorCommand("vision.camera.commands",
+                        "vision.camera.check","校验相机参数","资源",owner,
+                        System.Windows.Input.Key.L,
+                        System.Windows.Input.ModifierKeys.Control|
+                        System.Windows.Input.ModifierKeys.Shift);
+                    AssertThrows(()=>window.RegisterStudioResourceEditorCommand("missing.viewer",
+                        "vision.camera.bad","无效","资源",owner));
+                    string first=window.OpenStudioResourceEditor(a.Id,"vision.camera.commands");
+                    string second=window.OpenStudioResourceEditor(b.Id,"vision.camera.commands");
+                    Assert(first!=second&&window.ActiveStudioDocumentId==second&&
+                        window.GetStudioCommandContext().ResourceId==b.Id,
+                        "同类专业Viewer不同资源共用了DocumentKey或命令身份");
+                    Button ribbon=window.StudioRibbonActions.Children.OfType<Button>()
+                        .Single(x=>Convert.ToString(x.Tag)=="vision.camera.check");
+                    LayoutDocument doc=window.StudioDock.Layout.Descendents()
+                        .OfType<LayoutDocument>().Single(x=>x.ContentId==second);
+                    MenuItem menu=((FrameworkElement)doc.Content).ContextMenu.Items.OfType<MenuItem>()
+                        .Single(x=>Convert.ToString(x.Tag)=="vision.camera.check");
+                    Assert(Object.ReferenceEquals(ribbon.Command,menu.Command)&&
+                        !ribbon.Command.CanExecute(null),
+                        "跨Tab专业命令没有复用唯一Owner适配器或未严格禁用");
+                    Assert(window.HandleStudioRegisteredShortcut(System.Windows.Input.Key.L,
+                        System.Windows.Input.ModifierKeys.Control|
+                        System.Windows.Input.ModifierKeys.Shift)&&executed==0,
+                        "禁用的专业快捷键仍执行了Owner");
+                    permitted=true;
+                    ribbon.Command.Execute(null);
+                    Assert(executed==1&&executedResource==b.Id,
+                        "专业命令误用了上一个资源Tab的身份");
+                    window.OpenStudioResourceEditor(a.Id,"vision.camera.commands");
+                    menu.Command.Execute(null);
+                    Assert(executed==1,"旧Tab右键菜单可在非活动资源上执行命令");
+                    window.HandleStudioRegisteredShortcut(System.Windows.Input.Key.L,
+                        System.Windows.Input.ModifierKeys.Control|
+                        System.Windows.Input.ModifierKeys.Shift);
+                    Assert(executed==2&&executedResource==a.Id,
+                        "快捷键未重新绑定当前活动MEM资源");
+                    window.OpenStudioDocument("doc.home");
+                    Assert(!ribbon.Command.CanExecute(null)&&
+                        !window.HandleStudioRegisteredShortcut(System.Windows.Input.Key.L,
+                            System.Windows.Input.ModifierKeys.Control|
+                            System.Windows.Input.ModifierKeys.Shift),
+                        "切换到主页后专业命令仍可在错误上下文执行");
+                    window.TryCloseStudioDocument(first);
+                    window.TryCloseStudioDocument(second);
+                });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;
             }
