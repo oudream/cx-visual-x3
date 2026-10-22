@@ -2564,6 +2564,7 @@ namespace CxVisual.Studio
                     MainWindow.StudioCommandContext context=window.GetStudioCommandContext();
                     Assert(config=="doc.config"&&context.ConfigScopeKind=="resource"&&
                         context.ConfigScopeId==first.Id.ToString("N")&&
+                        context.ResourceId==first.Id&&context.ResourceTypeId==first.TypeId&&
                         session.Revision==before,
                         "资源Editor打开错误MHS Scope或修改MEM工程Revision");
                     AssertThrows(()=>window.OpenStudioResourceEditor(first.Id,
@@ -2594,6 +2595,8 @@ namespace CxVisual.Studio
                     Assert(!editor.HasUnsavedDraft,"配置草稿Undo后仍被错误标记Dirty");
                     window.OpenStudioResourceEditor(second.Id,"mhs.config");
                     Assert(window.GetStudioCommandContext().ConfigScopeId==second.Id.ToString("N")&&
+                        window.GetStudioCommandContext().ResourceId==second.Id&&
+                        window.GetStudioCommandContext().ResourceTypeId==second.TypeId&&
                         session.Revision==before,
                         "切换资源配置Scope未重新选择正确的MHS身份");
                     window.TryCloseStudioDocument("doc.config",true);
