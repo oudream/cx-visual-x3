@@ -162,6 +162,22 @@ namespace CxVisual.Studio
             if (!KnownDocuments.Contains(id, StringComparer.Ordinal) &&
                 !TryParseResourceDocumentId(id,out pageId,out kind) &&
                 !IsStudioCustomEditorDocument(id)) return;
+            // 专业Viewer获焦时，右侧MPM属性面板必须切换到对应MEM资源。
+            // 重复激活同一个Tab也需重新投影，防止用户先在资源树选择了别的对象。
+            // 严禁让旧Viewer残留的属性行继续写入另一个资源。
+            if(IsStudioCustomEditorDocument(id)&&!_switchingPageDocument)
+            {
+                StudioViewerDocument viewer=_studioViewerDocuments[id];
+                IMEMResource target=_viewModel.ProjectSession.Project.FindResource(
+                    viewer.Identity.ResourceId,true);
+                if(target!=null&&(_viewModel.SelectedResource==null||
+                    _viewModel.SelectedResource.Id!=target.Id))
+                {
+                    _switchingPageDocument=true;
+                    try{_viewModel.SelectedResource=target;}
+                    finally{_switchingPageDocument=false;}
+                }
+            }
             if (!String.Equals(_activeStudioDocumentId, id, StringComparison.Ordinal))
             {
                 _activeStudioDocumentId = id;

@@ -2598,6 +2598,51 @@ namespace CxVisual.Studio
                         "切换资源配置Scope未重新选择正确的MHS身份");
                     window.TryCloseStudioDocument("doc.config",true);
                 });
+                CheckStep("S2/P1 专业Viewer跨Tab同步MPM检视及旧属性行拒绝", () =>
+                {
+                    StudioViewModel vm=window.DataContext as StudioViewModel;
+                    MEMEngineeringSession session=vm.ProjectSession;
+                    MEMContent activeA=session.AddContent(session.Project,"P1 Viewer选区A");
+                    MEMContent activeB=session.AddContent(session.Project,"P1 Viewer选区B");
+                    var descriptor=new MPMPropertyDescriptor("Gain",MPMValueKind.Number,
+                        true,true,MPMBinding.Literal(MPMValue.Number(1)),0,10);
+                    session.DefineProperty(activeA,descriptor);
+                    session.DefineProperty(activeB,descriptor);
+                    string tabA=window.OpenStudioResourceEditor(activeA.Id,
+                        "vision.camera.commands");
+                    Assert(vm.SelectedResource!=null&&vm.SelectedResource.Id==activeA.Id&&
+                        vm.Properties.Any(x=>x.Member=="Gain"),
+                        "打开专业Viewer未将MPM Inspector投影至真实MEM资源A");
+                    StudioPropertyItem stale=vm.Properties.Single(x=>x.Member=="Gain");
+                    string tabB=window.OpenStudioResourceEditor(activeB.Id,
+                        "vision.camera.commands");
+                    Assert(vm.SelectedResource!=null&&vm.SelectedResource.Id==activeB.Id&&
+                        vm.Properties.Single(x=>x.Member=="Gain").OwnerId==activeB.Id,
+                        "切换专业Viewer未同步资源B或沿用A的Schema行");
+                    int before=session.Revision;
+                    stale.Text="7";
+                    vm.ApplyPropertyCommand.Execute(stale);
+                    Assert(session.Revision==before&&
+                        ((IMPMDefinition)activeA).Properties.Single(x=>x.MemberId=="Gain")
+                            .Binding.Value.AsNumber()==1&&
+                        ((IMPMDefinition)activeB).Properties.Single(x=>x.MemberId=="Gain")
+                            .Binding.Value.AsNumber()==1,
+                        "旧Viewer属性行可在B的活动Tab跨资源写入A");
+                    StudioPropertyItem current=vm.Properties.Single(x=>x.Member=="Gain");
+                    current.Text="6";vm.ApplyPropertyCommand.Execute(current);
+                    Assert(session.Revision==before+1&&
+                        ((IMPMDefinition)activeB).Properties.Single(x=>x.MemberId=="Gain")
+                            .Binding.Value.AsNumber()==6&&
+                        ((IMPMDefinition)activeA).Properties.Single(x=>x.MemberId=="Gain")
+                            .Binding.Value.AsNumber()==1,
+                        "新活动Viewer属性编辑未提交B或误写共享资源A");
+                    session.Undo().RequireValue();
+                    Assert(((IMPMDefinition)activeB).Properties.Single(x=>x.MemberId=="Gain")
+                        .Binding.Value.AsNumber()==1,
+                        "Viewer属性操作没有落在统一MEM Undo历史");
+                    window.TryCloseStudioDocument(tabA);
+                    window.TryCloseStudioDocument(tabB);
+                });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;
             }

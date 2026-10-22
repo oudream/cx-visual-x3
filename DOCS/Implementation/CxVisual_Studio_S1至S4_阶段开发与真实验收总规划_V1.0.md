@@ -382,3 +382,8 @@ studio.RegisterStudioCommand("automation.config.verify", "验证设备配置",
 - 资源Editor候选新增受限`mhs.config`（仅在真实资源TypeId有已注册专业Schema时存在），右键可直接切换至`doc.config`并选择对应MEM Resource Scope。Config仍为原MHS/MPW工作区与Owner，不新增配置库，也不让资源实例伪造Scope。
 - 若Config已有未保存草稿，切换另一资源必须通过原`TryCloseStudioDocument`门禁，拒绝时保持原Scope/草稿/工程Revision；Schema草稿Undo后才允许换资源。相同资源Scope复用已有配置Tab。第52项STA包含真实MHS授权/草稿/非法实例/跨资源反证。
 - 配置中心继续保留`doc.config`这个单工作区ContentId，资源/配置身份通过`GetStudioCommandContext`中的真实ScopeKind/ScopeId区分；不宣称所有内置Editor已迁移到四分量DocumentKey。机器实际Effective应用及PLC ACK依旧现场待验。
+
+### 20.6 S2.03/S2.09专业Viewer活动资源MPM Inspector身份同步（2026-10-22，Windows待验）
+
+- 修复专业Viewer打开/切换后右侧MPM属性面板可能仍指向旧资源：`SelectStudioContext`在真实Viewer身份获焦（含同Tab再次激活）时从当前MEM资源唯一索引更新`StudioViewModel.SelectedResource`；不复制MPM属性仓库、不写Revision。
+- Windows STA增第53项：两Camera Content拥有同Schema但不同稳定Id；打开A查看属性、切换B、拿旧A行尝试提交必须拒绝且零Revision；当前B新行实际提交+Undo只影响B。人工Viewer/多显示器焦点一致性另待验。
