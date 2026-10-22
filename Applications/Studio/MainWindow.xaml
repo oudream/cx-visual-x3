@@ -385,7 +385,7 @@
                                     <Button Content="重置视口" Tag="reset" Click="OnVisualZoom"/>
                                 </StackPanel>
                             </DockPanel>
-                            <Expander Header="更多图元、路径、动画与排列工具" IsExpanded="False" Margin="1,0,1,3"
+                            <Expander x:Name="StudioVisualAdvancedTools" Header="更多图元、路径、动画与排列工具" IsExpanded="False" Margin="1,0,1,3"
                                       ToolTip="高级功能完整保留；折叠以扩大中央画布">
                                 <WrapPanel>
                                 <Button Content="直线" Tag="Line" Click="OnInsertShape"/>
@@ -446,7 +446,7 @@
                                             Style="{StaticResource StudioPrimaryButtonStyle}"/>
                                 </StackPanel>
                             </DockPanel>
-                            <Expander Header="高级编排 · 能力、端口、连线、布局与调试"
+                            <Expander x:Name="StudioFlowAdvancedTools" Header="高级编排 · 能力、端口、连线、布局与调试"
                                       IsExpanded="False" Margin="7,0,7,4"
                                       ToolTip="全部高级工作功能保留，并可按需展开">
                                 <StackPanel>

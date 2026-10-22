@@ -2701,6 +2701,46 @@ namespace CxVisual.Studio
                     Assert(window.StudioEngineeringRevision==sourceRevision,
                         "WPF界面截图或主题切换错误地修改了工程Revision");
                 });
+                CheckStep("S1圆角Ribbon真实矢量及HMI/MOL工具折叠", () =>
+                {
+                    int rev=window.StudioEngineeringRevision;
+                    window.OpenStudioDocument("doc.visual");
+                    Expander hmi=window.FindName("StudioVisualAdvancedTools") as Expander;
+                    Assert(hmi!=null,"HMI高级工具Expander未创建");
+                    hmi.IsExpanded=false;
+                    Button ribbon=window.StudioRibbonActions.Children.OfType<Button>()
+                        .FirstOrDefault(b=>Convert.ToString(b.Content)=="矩形");
+                    Assert(ribbon!=null,"HMI矩形Ribbon真实按钮缺失");
+                    ribbon.ApplyTemplate();
+                    Border tile=ribbon.Template.FindName("RibbonTile",ribbon) as Border;
+                    Assert(tile!=null&&tile.CornerRadius.TopLeft>=6,
+                        "图标Ribbon仍是方形控件模板");
+                    Func<DependencyObject,bool> hasVector=null;
+                    hasVector=node=>{
+                        if(node is System.Windows.Shapes.Path)return true;
+                        for(int i=0;i<System.Windows.Media.VisualTreeHelper.GetChildrenCount(node);i++)
+                            if(hasVector(System.Windows.Media.VisualTreeHelper.GetChild(node,i)))
+                                return true;
+                        return false;
+                    };
+                    window.UpdateLayout();
+                    Assert(hasVector(ribbon),
+                        "缺少与系统图标字体无关的WPF Path矢量图标");
+                    hmi.IsExpanded=true;
+                    Assert(window.FindName("PathCommandIndex") is TextBox,
+                        "折叠后无法打开原有路径编辑能力");
+                    hmi.IsExpanded=false;
+                    window.OpenStudioDocument("doc.flow");
+                    Expander flow=window.FindName("StudioFlowAdvancedTools") as Expander;
+                    Assert(flow!=null,"MOL高级工具Expander未创建");
+                    flow.IsExpanded=true;
+                    Assert(window.FindName("FlowExistingLinks") is ComboBox&&
+                        window.FindName("FlowInspectorValue") is TextBox,
+                        "MOL折叠布局破坏Port与参数原有编辑能力");
+                    flow.IsExpanded=false;
+                    Assert(window.StudioEngineeringRevision==rev,
+                        "Ribbon模板/高级工具展开折叠修改了工程Revision");
+                });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;
             }

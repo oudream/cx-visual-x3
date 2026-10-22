@@ -25,6 +25,34 @@ namespace CxVisual.Tests.ArchitectureSmoke
         private static IEnumerable<DependencyObject> Descendants(DependencyObject root)
         {yield return root;for(int i=0;i<VisualTreeHelper.GetChildrenCount(root);i++)foreach(var child in Descendants(VisualTreeHelper.GetChild(root,i)))yield return child;}
         private static void Pump(){Dispatcher.CurrentDispatcher.Invoke(new Action(()=>{}),DispatcherPriority.ApplicationIdle);}
+        /// <summary>
+        /// 新Ribbon保持旧业务入口；高级工具通过真实WPF UI Automation展开，
+        /// 不删减旧H01/H06断言，继续覆盖完整路径、端口与调试命令。
+        /// </summary>
+        private static void ExpandStudioAdvancedTools(Window window)
+        {
+            for(int pass=0;pass<3;pass++)
+            {
+                window.UpdateLayout();
+                var panels=Descendants(window).OfType<Expander>()
+                    .Where(e=>e.Header is string&&
+                        (((string)e.Header).StartsWith("更多图元",StringComparison.Ordinal)||
+                         ((string)e.Header).StartsWith("高级编排",StringComparison.Ordinal)||
+                         ((string)e.Header).StartsWith("节点参数",StringComparison.Ordinal)))
+                    .Where(e=>!e.IsExpanded).ToArray();
+                if(panels.Length==0)break;
+                foreach(Expander panel in panels)
+                {
+                    var peer=new ExpanderAutomationPeer(panel);
+                    var pattern=peer.GetPattern(PatternInterface.ExpandCollapse) as IExpandCollapseProvider;
+                    if(pattern==null)throw new InvalidOperationException(
+                        "Studio高级工具不是可操作的真实WPF Expander");
+                    pattern.Expand();
+                }
+                Pump();
+            }
+        }
+
         private static void Click(Window window,string label)
         {
             window.UpdateLayout();
@@ -50,6 +78,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     button=buttons.FirstOrDefault(b=>Object.Equals(b.Content,label));
                 }
             }
+            if(button==null)
+            {
+                ExpandStudioAdvancedTools(window);
+                buttons=Descendants(window).OfType<Button>().ToArray();
+                button=buttons.FirstOrDefault(b=>Object.Equals(b.Content,label));
+            }
             if(button==null)throw new InvalidOperationException("Missing Studio button '"+label+
                 "'; visible controls: "+string.Join(" | ",buttons.Select(b=>b.Content==null?"(none)":b.Content.ToString())));
             Console.WriteLine("STUDIO-WPF before click: "+label);
@@ -64,6 +98,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Console.WriteLine("STUDIO-WPF activating: "+contentId);
             method.Invoke(window,new object[]{contentId});
             Pump();
+            ExpandStudioAdvancedTools(window);
             window.UpdateLayout();
             var active=window.GetType().GetProperty("ActiveStudioDocumentId");
             Check(active!=null&&Object.Equals(active.GetValue(window,null),contentId),
