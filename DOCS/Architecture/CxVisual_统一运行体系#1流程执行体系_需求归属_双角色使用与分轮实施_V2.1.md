@@ -654,3 +654,9 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 
 - 使用原Studio V2逻辑面板新增运行组ID输入、应用和清除控件，选中的独立Content Tab通过`ApplyFlowProperty`调用唯一`MOCFlowBuilder.SetExecutionGroup`/MEM事务，刷新面板读原Wiring.Policies而非另建Studio缓存。用户填写的是已由Host配置的组ID，Step/Stage/WholeFlow额度与MaxWaiting仍由现有MRKGroup定义管理。
 - `StudioShellSelfTests`补真实WPF点击反证：活动独立AI Content而旧ActivePage无关、MEM Revision恰好增加一次、Undo/Redo、非法超长组ID零修改及清空撤回。源码不能直接证明所有工业配置UI已经完成，仍以同SHA Studio Windows STA为准。
+
+
+### R08 Studio 57项真实STA测试与CI门禁计数修复（2026-10-22）
+
+- 固定提交`40fae6cff93eb4a4b7e476b90f9deb9fd84f79e3`的Studio [39719825990](https://github.com/oudream/cx-visual-x3/actions/runs/39719825990) **57 PASS/0 FAIL**，含新R08活动Content执行组编辑、Undo/Redo和非法组ID拒绝；工作流由于期待旧的56 PASS而判失败。保留这条失败证据。
+- 本次仅将`studio-shell-windows.yml`的严格成功数提升至57，仍要求`FAIL=0`，不删除WPF用例，也不降级源码构建/主题/布局门禁。待修复SHA的真实Windows成功证明。
