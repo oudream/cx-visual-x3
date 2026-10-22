@@ -94,16 +94,23 @@ namespace CxVisual.TestCenter.UI
                 .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
             if (send == null) throw new InvalidOperationException("Channel Send has no InvokePattern");
             send.Invoke();
+            // WPF UIAutomation InvokePattern may return before the Dispatcher has
+            // completed the button action. Observe the production Owner state with
+            // a bounded wait; never manufacture a receive event or pass result.
             bool verified = false;
-            window.Dispatcher.Invoke(new Action(() =>
+            for (int attempt = 0; attempt < 50 && !verified; attempt++)
             {
-                System.Windows.Controls.TabControl tabs =
-                    window.DocumentHost.Content as System.Windows.Controls.TabControl;
-                TCTManualChannelFrame page = tabs == null ? null : tabs.Items
-                    .OfType<System.Windows.Controls.TabItem>().Select(t => t.Content)
-                    .OfType<TCTManualChannelFrame>().FirstOrDefault();
-                verified = page != null && page.IsConnected && page.FrameCount >= 2;
-            }));
+                window.Dispatcher.Invoke(new Action(() =>
+                {
+                    System.Windows.Controls.TabControl tabs =
+                        window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                    TCTManualChannelFrame page = tabs == null ? null : tabs.Items
+                        .OfType<System.Windows.Controls.TabItem>().Select(t => t.Content)
+                        .OfType<TCTManualChannelFrame>().FirstOrDefault();
+                    verified = page != null && page.IsConnected && page.FrameCount >= 2;
+                }));
+                if (!verified) Thread.Sleep(100);
+            }
             if (!verified) throw new InvalidOperationException(
                 "Manual Virtual Channel did not capture real production TX/RX");
             InvokePattern disconnect = Find(root, "TCT.Manual.Action.disconnect")
@@ -111,15 +118,19 @@ namespace CxVisual.TestCenter.UI
             if (disconnect == null) throw new InvalidOperationException("Disconnect unavailable");
             disconnect.Invoke();
             bool closed = false;
-            window.Dispatcher.Invoke(new Action(() =>
+            for (int attempt = 0; attempt < 50 && !closed; attempt++)
             {
-                System.Windows.Controls.TabControl tabs =
-                    window.DocumentHost.Content as System.Windows.Controls.TabControl;
-                TCTManualChannelFrame page = tabs == null ? null : tabs.Items
-                    .OfType<System.Windows.Controls.TabItem>().Select(t => t.Content)
-                    .OfType<TCTManualChannelFrame>().FirstOrDefault();
-                closed = page != null && !page.IsConnected && page.FrameCount >= 2;
-            }));
+                window.Dispatcher.Invoke(new Action(() =>
+                {
+                    System.Windows.Controls.TabControl tabs =
+                        window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                    TCTManualChannelFrame page = tabs == null ? null : tabs.Items
+                        .OfType<System.Windows.Controls.TabItem>().Select(t => t.Content)
+                        .OfType<TCTManualChannelFrame>().FirstOrDefault();
+                    closed = page != null && !page.IsConnected && page.FrameCount >= 2;
+                }));
+                if (!closed) Thread.Sleep(100);
+            }
             if (!closed) throw new InvalidOperationException("Manual disconnect did not close Owner");
         }
         private static void VerifyOverview(IntPtr hwnd, TCTMainWindow window)
