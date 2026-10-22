@@ -271,7 +271,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Check(Math.Abs(shape.Width-(oldWidth+15))<1e-5&&
                         doc.Revision==beforeResizeRevision+1,
                         "left-middle resize did not update width in one MEM transaction");
-                    CxSceneItem leftResized=editor.Scene.Single(x=>x.Id==shape.Id);
+                    MVISceneItem leftResized=editor.Scene.Single(x=>x.Id==shape.Id);
                     FGEPoint2D rightAfter=leftResized.WorldTransform.ToGeometry()
                         .TransformPoint(new FGEPoint2D(shape.Width,shape.Height/2));
                     Check(Near(rightBefore,rightAfter),
