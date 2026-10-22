@@ -306,3 +306,16 @@ R01源码已提交（截止 f6c0dceb7afae75d320f6b442f3a152b11566162）：修改
 **本次可关闭的自动化切片**：MHS Effective配置→Vision真实CPU Provider构造和版本锁定→MRK真实图像运算→下一任务边界配置生效→旧发布候选失效→授权PlanSlot切换（无生产设备）。相关工程身份、配置修订和发布声明使用既有MEM/MHS/MOC/MRK Owner。若外部进程独立修改MHS文件或另有Provider持有不同Scope，依然需要运行Host跨进程一致性/发布ACK机制，当前测试不能签收。
 
 **尚未收敛**：工程资源自动选择对应多Scope专业Schema与命令Descriptor、Studio完整可发现命令/Ribbon上下文、人工作业与DPI、真实CT三维Viewer负载及GPU、PLC/机台联锁/专业Provider生产发布ACK、长时间稳定性。此条只关闭明确具备同SHA CI的软件测试切片，保留EP/R、S1～S4原有未验条目。
+
+
+### Studio P1/S2回写原R01～R04、R45～R46证据（2026-10-22）
+
+以下仅补充原有EP/R/G台账中的真实源码与Windows证据，不创设新的实施轮次：
+
+| 对应原轮次 | 已验证软件纵向切片 | 剩余退出边界 |
+|---|---|---|
+| R01～R04：S2.03、S2.05 | [fe89f25e](https://github.com/oudream/cx-visual-x3/commit/fe89f25e0bb71a66f28b4f190db8e4893a8dcb34)：四类工业MEM/MPM类型、范围/只读拒绝、电机Symbol双实例Mixed、批量单事务/Undo、cxproj保存重开。[Studio 51/51](https://github.com/oudream/cx-visual-x3/actions/runs/39709452698)及Engineering/Config L1/配置底座/TestCenter同SHA success | 复杂List/Map、类型化外观、跨Schema批量交集、人工桌面和性能 |
+| R45：S2.01、S2.02、S2.06 | [6f15d4b9](https://github.com/oudream/cx-visual-x3/commit/6f15d4b9c7f530d5a7b7fe84ad26233d2cead140)资源树动态Editor右键候选/失效拒绝，[Studio 50/50](https://github.com/oudream/cx-visual-x3/actions/runs/39709124908) success；[f344fce1](https://github.com/oudream/cx-visual-x3/commit/f344fce10df588989d7f20d6c8892dfbc434a5bf)直达MHS Resource Scope/草稿授权保护，[Studio 52/52](https://github.com/oudream/cx-visual-x3/actions/runs/39709837763) success；其余四CI同SHA success | 专业Viewer真实业务、Config与内置文档完整强DocumentKey、现场生效 |
+| R46：S2.07、S2.09 | [7fe786eb](https://github.com/oudream/cx-visual-x3/commit/7fe786eb19e2595cc09311d305ff38529d23fd95)专业Viewer活动MPM Inspector与旧属性行跨资源写入拒绝，[Studio 53/53](https://github.com/oudream/cx-visual-x3/actions/runs/39710177670)、[Engineering](https://github.com/oudream/cx-visual-x3/actions/runs/39710177693)、[Config L1](https://github.com/oudream/cx-visual-x3/actions/runs/39710177685)、[配置底座](https://github.com/oudream/cx-visual-x3/actions/runs/39710177668)、[TestCenter](https://github.com/oudream/cx-visual-x3/actions/runs/39710177649)同SHA success | 九菜单与旧Ribbon全面Owner命令化、全部开发者SDK示例及专业机台运行 |
+
+后继`doc.config`活动Resource Scope命令上下文返回真正MEM ResourceId/TypeId的修复须按新源码SHA独立Windows验收。所有自动化证据仅代表相应软件切片；S2/P1、EP01～EP15、G1～G6和A/B/C最终验收仍未全部关闭。设备授权、PLC联锁/ACK、100/150/200% DPI、混合多屏及长时间运行均保留独立现场/人工待验。
