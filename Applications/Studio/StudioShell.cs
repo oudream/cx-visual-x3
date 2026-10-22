@@ -8,6 +8,7 @@ using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Data;
 using System.Windows.Media;
 using System.Windows.Input;
 using System.Xml;
@@ -23,6 +24,37 @@ using CxVisual.Professional.CT3D;
 
 namespace CxVisual.Studio
 {
+    /// <summary>Ribbon图标纯呈现：根据原按钮Label选择Segoe MDL2字符，不更改Command/Tag。</summary>
+    public sealed class StudioRibbonGlyphConverter : IValueConverter
+    {
+        public object Convert(object value,Type targetType,object parameter,CultureInfo culture)
+        {
+            string label=System.Convert.ToString(value,CultureInfo.InvariantCulture)??"";
+            if(label.Contains("工程")||label.Contains("页面")||label.Contains("内容"))
+                return "\uE8A5";
+            if(label.Contains("保存")||label.Contains("导出"))return "\uE74E";
+            if(label.Contains("打开")||label.Contains("导入"))return "\uE8E5";
+            if(label.Contains("撤销"))return "\uE7A7";
+            if(label.Contains("重做"))return "\uE7A6";
+            if(label.Contains("流程")||label.Contains("编排")||label.Contains("连线"))
+                return "\uE8F1";
+            if(label.Contains("仿真")||label.Contains("运行"))return "\uE768";
+            if(label.Contains("配置")||label.Contains("属性"))return "\uE713";
+            if(label.Contains("资源")||label.Contains("组件"))return "\uE8B7";
+            if(label.Contains("删除"))return "\uE74D";
+            if(label.Contains("圆")||label.Contains("图元")||label.Contains("直线")||
+               label.Contains("矩形")||label.Contains("路径"))return "\uE790";
+            if(label.Contains("对齐")||label.Contains("分布"))return "\uE8A1";
+            if(label.Contains("发布"))return "\uE898";
+            if(label.Contains("调试")||label.Contains("暂停")||label.Contains("单步"))
+                return "\uE7F4";
+            if(label.Contains("帮助")||label.Contains("文档"))return "\uE897";
+            return "\uE10F";
+        }
+        public object ConvertBack(object value,Type targetType,object parameter,CultureInfo culture)
+        {throw new NotSupportedException();}
+    }
+
     /// <summary>
     /// S1：统一Studio壳。AvalonDock只管理视图及用户布局；工程定义、事务和运行仍由原Owner持有。
     /// 本类是原MainWindow的增量实现，不引入演示版工程状态或第二套业务文档。
@@ -865,7 +897,8 @@ namespace CxVisual.Studio
             foreach (string name in domains)
             {
                 Button tab = new Button { Content = name, Tag = name,
-                    Padding = new Thickness(11, 5, 11, 5), Margin = new Thickness(1, 0, 0, 0) };
+                    Style=(Style)FindResource("StudioMenuTabStyle"),
+                    Margin=new Thickness(1,0,0,0) };
                 tab.Click += OnStudioMenuClick;
                 StudioDynamicMenus.Children.Add(tab);
             }
@@ -1031,6 +1064,10 @@ namespace CxVisual.Studio
                 StudioRibbonActions.Children.Add(new Button {
                     Content=registered.Label,Tag=registered.Id,Command=registered.Adapter,
                     Margin=new Thickness(2),Padding=new Thickness(12,8,12,8) });
+            // 样式仅投影所有Ribbon动作的Icon/Label，不替换Owner ICommand/Tag。
+            Style ribbonStyle=(Style)FindResource("StudioRibbonActionStyle");
+            foreach(Button action in StudioRibbonActions.Children.OfType<Button>())
+                action.Style=ribbonStyle;
 }
 
         private void SafeStudioAction(Action command)
@@ -1055,6 +1092,11 @@ namespace CxVisual.Studio
             SetStudioColor("StudioSurfaceBrush", dark ? "#333337" : "#E9EFF7");
             SetStudioColor("StudioBorderBrush", dark ? "#49494F" : "#D2DDEA");
             SetStudioColor("StudioAccentBrush", dark ? "#80B9FF" : "#1969C5");
+            SetStudioColor("StudioMutedTextBrush", dark ? "#A0A7B5" : "#647999");
+            SetStudioColor("StudioHoverBrush", dark ? "#3B3E45" : "#E9F3FF");
+            SetStudioColor("StudioSelectionBrush", dark ? "#354B68" : "#DCEBFF");
+            SetStudioColor("StudioPrimaryActionBrush", dark ? "#236ED5" : "#146FF4");
+            SetStudioColor("StudioCardTintBrush", dark ? "#333946" : "#F3F8FF");
         }
 
         private static void SetStudioColor(string key, string hex)

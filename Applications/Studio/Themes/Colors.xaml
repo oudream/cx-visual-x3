@@ -6,4 +6,9 @@
     <SolidColorBrush x:Key="StudioSurfaceBrush" Color="#E9EFF7"/>
     <SolidColorBrush x:Key="StudioBorderBrush" Color="#D2DDEA"/>
     <SolidColorBrush x:Key="StudioAccentBrush" Color="#1969C5"/>
+    <SolidColorBrush x:Key="StudioMutedTextBrush" Color="#647999"/>
+    <SolidColorBrush x:Key="StudioHoverBrush" Color="#E9F3FF"/>
+    <SolidColorBrush x:Key="StudioSelectionBrush" Color="#DCEBFF"/>
+    <SolidColorBrush x:Key="StudioPrimaryActionBrush" Color="#146FF4"/>
+    <SolidColorBrush x:Key="StudioCardTintBrush" Color="#F3F8FF"/>
 </ResourceDictionary>
