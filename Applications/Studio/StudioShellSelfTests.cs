@@ -2538,6 +2538,66 @@ namespace CxVisual.Studio
                     finally {if(File.Exists(file))File.Delete(file);}
                     window.TryCloseStudioDocument(cameraTab);
                 });
+                CheckStep("S2/P1 资源Editor候选直接进入MHS Scope及未保存草稿保护", () =>
+                {
+                    StudioViewModel vm=window.DataContext as StudioViewModel;
+                    MEMEngineeringSession session=vm.ProjectSession;
+                    MEMContent first=session.AddContent(session.Project,"P1相机参数资源一");
+                    MEMContent second=session.AddContent(session.Project,"P1相机参数资源二");
+                    window.TryCloseStudioDocument("doc.config",true);
+                    var principal=new FCMConfigPrincipal("p1-editor-scope",
+                        new[]{"p1-editor-scope-role"});
+                    var policy=new FCMConfigRolePolicy();
+                    foreach(MEMContent owner in new[]{first,second})
+                        foreach(FCMConfigAccessAction action in new[]{
+                            FCMConfigAccessAction.Read,FCMConfigAccessAction.ReadSensitive,
+                            FCMConfigAccessAction.Edit,FCMConfigAccessAction.Commit,
+                            FCMConfigAccessAction.Audit,FCMConfigAccessAction.Restore})
+                            policy.Grant("p1-editor-scope-role",action,"Automation.Device",
+                                "resource",owner.Id.ToString("N"));
+                    window.SetStudioConfigurationAuthorization(principal,policy);
+                    Assert(window.GetStudioResourceEditors(first.Id).Any(x=>
+                        x.EditorId=="mhs.config"),
+                        "已注册Automation配置未成为真实core.content的Editor候选");
+                    int before=session.Revision;
+                    string config=window.OpenStudioResourceEditor(first.Id,"mhs.config");
+                    MainWindow.StudioCommandContext context=window.GetStudioCommandContext();
+                    Assert(config=="doc.config"&&context.ConfigScopeKind=="resource"&&
+                        context.ConfigScopeId==first.Id.ToString("N")&&
+                        session.Revision==before,
+                        "资源Editor打开错误MHS Scope或修改MEM工程Revision");
+                    AssertThrows(()=>window.OpenStudioResourceEditor(first.Id,
+                        "mhs.config",Guid.NewGuid()));
+                    LayoutDocument document=window.StudioDock.Layout.Descendents()
+                        .OfType<LayoutDocument>().Single(x=>x.ContentId=="doc.config");
+                    Func<DependencyObject,MPWConfigEditorControl<CxAutomationDeviceOptions>>
+                        findEditor=null;
+                    findEditor=node=>node as MPWConfigEditorControl<CxAutomationDeviceOptions> ??
+                        System.Windows.LogicalTreeHelper.GetChildren(node)
+                            .OfType<DependencyObject>()
+                            .Select(child=>findEditor(child)).FirstOrDefault(x=>x!=null);
+                    MPWConfigEditorControl<CxAutomationDeviceOptions> editor=
+                        findEditor((DependencyObject)document.Content);
+                    Assert(editor!=null,"未能加载已授权的真实Automation Schema Editor");
+                    var field=typeof(MPWConfigEditorControl<CxAutomationDeviceOptions>)
+                        .GetField("_editor",System.Reflection.BindingFlags.NonPublic|
+                            System.Reflection.BindingFlags.Instance);
+                    var model=field.GetValue(editor) as MHSConfigEditorModel<CxAutomationDeviceOptions>;
+                    int port=model.Draft.ControllerPort==1502?1503:1502;
+                    model.SetValue(x=>x.ControllerPort,port);
+                    Assert(editor.HasUnsavedDraft,"配置字段修改后未形成MHS草稿");
+                    AssertThrows(()=>window.OpenStudioResourceEditor(second.Id,"mhs.config"));
+                    Assert(window.GetStudioCommandContext().ConfigScopeId==first.Id.ToString("N")&&
+                        editor.HasUnsavedDraft&&session.Revision==before,
+                        "未保存MHS草稿被跨资源Editor切换悄悄丢弃");
+                    model.Undo();
+                    Assert(!editor.HasUnsavedDraft,"配置草稿Undo后仍被错误标记Dirty");
+                    window.OpenStudioResourceEditor(second.Id,"mhs.config");
+                    Assert(window.GetStudioCommandContext().ConfigScopeId==second.Id.ToString("N")&&
+                        session.Revision==before,
+                        "切换资源配置Scope未重新选择正确的MHS身份");
+                    window.TryCloseStudioDocument("doc.config",true);
+                });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;
             }

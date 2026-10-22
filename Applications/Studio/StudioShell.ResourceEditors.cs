@@ -80,7 +80,7 @@ namespace CxVisual.Studio
         {
             if(string.IsNullOrWhiteSpace(editorId)||editorId.Length>96||
                 editorId.Any(c=>!char.IsLetterOrDigit(c)&&c!='.'&&c!='_'&&c!='-')||
-                editorId=="mem.visual"||editorId=="mol.flow"||
+                editorId=="mem.visual"||editorId=="mol.flow"||editorId=="mhs.config"||
                 string.IsNullOrWhiteSpace(title)||factory==null||
                 resourceTypeIds==null||resourceTypeIds.Length==0||
                 resourceTypeIds.Any(x=>string.IsNullOrWhiteSpace(x)||x.Length>128))
@@ -110,6 +110,10 @@ namespace CxVisual.Studio
                 result.Add(new StudioResourceEditorInfo("mem.visual","图元编辑",true));
             if(resource is MEMContent)
                 result.Add(new StudioResourceEditorInfo("mol.flow","流程编排",false));
+            EnsureStudioConfigurationDefaults();
+            if(_studioConfigurations.Values.Any(x=>
+                x.ResourceTypeIds.Contains(resource.TypeId,StringComparer.Ordinal)))
+                result.Add(new StudioResourceEditorInfo("mhs.config","专业资源配置",false));
             foreach(StudioViewerRegistration item in _studioViewerRegistry.Values
                 .Where(x=>x.TypeIds.Contains(resource.TypeId,StringComparer.Ordinal)))
                 result.Add(new StudioResourceEditorInfo(item.Id,item.Title,item.Default));
@@ -134,6 +138,26 @@ namespace CxVisual.Studio
                 if(instanceId.HasValue)
                     throw new InvalidOperationException("内置编辑器不支持实例化的DocumentKey");
                 return OpenStudioResourceDocument(resourceId,chosen.EditorId=="mol.flow");
+            }
+            if(chosen.EditorId=="mhs.config")
+            {
+                if(instanceId.HasValue)
+                    throw new InvalidOperationException("MHS配置Scope不允许伪造图元实例身份");
+                // 仍使用唯一doc.config与原MHS Scope/授权/草稿；不创建每个资源的配置仓库。
+                string targetId=resourceId.ToString("N");
+                LayoutDocument opened=FindStudioContent("doc.config") as LayoutDocument;
+                bool sameScope=_studioConfigurationScopeKind=="resource"&&
+                    _studioConfigurationScopeId==targetId&&
+                    _studioConfigurationProjectId==session.Project.Id;
+                if(opened!=null&&!sameScope)
+                {
+                    if(!TryCloseStudioDocument("doc.config"))
+                        throw new InvalidOperationException("原MHS配置草稿尚未保存，不允许切换资源Scope");
+                }
+                _studioConfigurationScopeKind="resource";
+                _studioConfigurationScopeId=targetId;
+                OpenStudioDocument("doc.config");
+                return "doc.config";
             }
             if(instanceId.HasValue&&instanceId.Value==Guid.Empty)
                 throw new ArgumentException("实例身份不能为空Guid","instanceId");

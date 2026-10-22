@@ -376,3 +376,9 @@ studio.RegisterStudioCommand("automation.config.verify", "验证设备配置",
 - 新增真实WPF STA工业案例：专业开发者通过既有`IMPMTypeProvider/MPMTypeDescriptor`声明相机/PLC/产品配方Content及电机Symbol，不增加新的持久化资源或第二套Schema。以四类真正MEM资源TypeId驱动Editor候选、专业WPF Viewer工厂，并由原`StudioViewModel` Schema属性控件和MTC事务写入工程。
 - 工程用户场景覆盖相机增益范围拒绝、PLC整数配置、只读Serial、配方ProductCode、电机双实例Mixed与单Undo原子覆盖、非法批量零部分提交，真实cxproj文件保存重开确保Schema与覆盖依旧存在；同SHA Windows STA门槛增至51项。
 - **未声明全S2.11完成**：该切片是软件/CPU工厂/文件验收，不连接PLC、相机，不证明MOC/MRK真实机台设备运行与ACK联锁；专业配置MHS Saved/Effective依旧由其单独Owner处理，设备联锁/配置应用/人工交互归后续S2.06/S4现场门禁。
+
+### 20.5 S2.01/S2.06资源Editor候选关联已有MHS配置中心（2026-10-22，Windows待验）
+
+- 资源Editor候选新增受限`mhs.config`（仅在真实资源TypeId有已注册专业Schema时存在），右键可直接切换至`doc.config`并选择对应MEM Resource Scope。Config仍为原MHS/MPW工作区与Owner，不新增配置库，也不让资源实例伪造Scope。
+- 若Config已有未保存草稿，切换另一资源必须通过原`TryCloseStudioDocument`门禁，拒绝时保持原Scope/草稿/工程Revision；Schema草稿Undo后才允许换资源。相同资源Scope复用已有配置Tab。第52项STA包含真实MHS授权/草稿/非法实例/跨资源反证。
+- 配置中心继续保留`doc.config`这个单工作区ContentId，资源/配置身份通过`GetStudioCommandContext`中的真实ScopeKind/ScopeId区分；不宣称所有内置Editor已迁移到四分量DocumentKey。机器实际Effective应用及PLC ACK依旧现场待验。
