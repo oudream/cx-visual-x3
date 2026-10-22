@@ -91,9 +91,9 @@ Tests/
 
 普通新增测试在 `Tests/TestCenter/Cases/` 中首选 NUnit `[Test] / [TestCase]`；需要真实 Owner 结构化证据时使用已有 TCT Context，详见 [TestCenter 开发者 README](TestCenter/README.md)。
 
-**新目标（未实现）**：同一 TestCenter Shell 增加独立“专项交互实验台”入口与工作区，支持持续人工会话及专业操作。必须遵守 [《主界面与专项交互实验台设计讨论 V0.1》](TestCenter/ManualWorkbench_主界面与专项交互实验台_设计讨论_V0.1.md)。该草案用于 UI/代码实施前讨论，**不是 TestCenter V4.1 技术规范的隐式修订**。
+**交互实验台目标（部分源码已出现、尚未完成主窗口集成）**：已有工作区注册表与 Virtual Channel 试验页源码；完整双工作区和人工操作闭环仍需按 [《主界面与专项交互实验台设计讨论 V0.1》](TestCenter/ManualWorkbench_主界面与专项交互实验台_设计讨论_V0.1.md) 验证。该草案不替代 V4.1 主规格。
 
-**已确认的界面实现任务**：见 [《TestCenter 统一主界面与工作区Frame注册——开发任务与验收 V1.0》](TestCenter/CxVisual_TestCenter_统一主界面与工作区Frame注册——开发任务与验收_V1.0.md)。优先采用清爽浅色风格、四区布局、无大按钮 Ribbon、右侧统一操作中心、四个分类根节点和根/子页注册导航；这是**后续实现任务**而非现有功能。
+**已确认的界面实现任务**：见 [《TestCenter 统一主界面与工作区Frame注册——开发任务与验收 V1.0》](TestCenter/CxVisual_TestCenter_统一主界面与工作区Frame注册——开发任务与验收_V1.0.md)。清爽浅色四区、无大 Ribbon、右侧统一操作；**四根平级且各自有图标与总界面；自动测试子节点统一复用 AutoTestFrame（按 Catalog Scope/Case 切换）**。尚待完成的实现不能当作已验收。
 
 ## 05. 新测试到底放在哪里：判定规则
 
