@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using CxVisual.TestCenter.Core;
+using CxVisual.TestCenter.Discovery;
 using CxVisual.TestCenter.UI;
 using CxVisual.Mechanism.Connectivity;
 
