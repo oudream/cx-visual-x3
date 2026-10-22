@@ -635,3 +635,10 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 - 原FoundationSmoke增加`R08_HostAutoAuditDropRejectAndDurableStop`：唯一F19 Worker注入FLD后无需Host逐项LogLoss，真正Drop/Reject两项、正常业务两项，Stop等待审计完成+Flush，证据在原F16 Important滚动文件及WorkId关联中一致。
 - `R08_AuditWriterFailureRejectsLaterSubmissions`通过实际Dispose现有FLD来注入日志不可用，观察`AuditFailure`，证明普通Submit和异步SubmitWhenCapacityAsync都拒绝下一条工作；Stop仍真正排空既有任务，但以IOException明确拒绝报告“审计已经可靠完成”。
 - MRK ArchitectureSmoke新增`R08_RuntimeAuditUsesTheSameF19WorkerAndStopBarrier`验证原运行引擎传入F16实例后自动记录原WorkId及Stop异步排空，不建立第二个Worker。以上需要新固定SHA的Windows CI实际成功方能记已验证。
+
+
+### R08 MOL/MOC执行组ID在统一工程中的保存、编译与运行（2026-10-22，待CI）
+
+- 原`MOLStepPolicy`增加可选`ExecutionGroup`字符串，保留重试/超时等已有策略属性；原V2 `MOLWiringCodec` 的`Policy`可选`group`属性完成向后兼容保存/读取，旧V2有效载荷没有该属性时仍按未配置处理。不构建第二份工程组树。
+- 原`MOCFlowBuilder.SetExecutionGroup(Guid,string)`按原MEM事务操作节点Policy，清除空值/无其他策略后删除记录；MOC普通节点、嵌套V2 Content编译传入原`MRKStepCompileRequest.executionGroup`，实际Step/WholeFlow/Stage容量仍由原MRKExecutionGroups拥有，不从节点中复制。
+- ArchitectureSmoke新增`R08_EngineeringStageGroupIdentitySurvivesBuildAndReload`：真MEM创建/编辑/保存重开，V2Codec身份与MOC Plan组名一致，真实MRK Stage Flow运行并释放许可、非法组ID事务零修改、清除与Undo恢复。Stage配额工程级全定义和Studio可视编辑仍是R08下一增量，不可凭这次组ID持久化宣称完整编辑器已完成。

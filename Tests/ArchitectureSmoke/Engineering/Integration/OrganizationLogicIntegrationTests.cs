@@ -70,6 +70,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             G05aConditionalBranchesAndJoin();
             R02V1V2SwitchBranchParity();
             G05cWorkflowRetryPolicy();
+            R08_EngineeringStageGroupIdentitySurvivesBuildAndReload();
             G05bStreamBackpressureAndFlow();
             G05dHierarchicalParallelMachine();
             P03StateMachineGuards();
@@ -2296,6 +2297,78 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     .Policies.ContainsKey(block),"G05c policy Undo not restored");
             }
             finally{session.Close(true);}
+        }
+
+        private static void R08_EngineeringStageGroupIdentitySurvivesBuildAndReload()
+        {
+            var session=MEMEngineering.Create("R08执行组保存编译");
+            var page=session.AddPage("Stage");
+            string path=System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                "cxvisual-r08-stage-"+Guid.NewGuid().ToString("N")+".cxproj");
+            try
+            {
+                Guid block=Guid.Empty;
+                MOCFlowBuilder.Edit(session,page.RootContent,b=>{
+                    block=b.Step("stage.work");
+                    b.SetExecutionGroup(block,"vision-stage");
+                });
+                var persisted=MOLWiringCodec.Get(
+                    session.GetSnapshot().Find(page.RootContent.Id));
+                Check(persisted.Policies[block].ExecutionGroup=="vision-stage" &&
+                    MOLWiringCodec.Deserialize(MOLWiringCodec.Serialize(persisted))
+                        .Policies[block].ExecutionGroup=="vision-stage",
+                    "R08 Stage组身份没有保存在原V2 Logic Codec");
+                session.SaveAs(path);
+                var reopened=MEMEngineering.Open(path);
+                try
+                {
+                    var saved=MOLWiringCodec.Get(
+                        reopened.GetSnapshot().Find(page.RootContent.Id));
+                    Check(saved.Policies[block].ExecutionGroup=="vision-stage",
+                        "R08工程保存/重开丢失Stage组ID");
+                    var resolver=new TestResolver().Register("stage.work",
+                        (ctx,ct)=>Task.FromResult((object)7));
+                    var build=new MOCBuildService().Build(
+                        reopened.GetSnapshot(),page.RootContent.Id,resolver);
+                    Check(build.Succeeded&&build.Plan.Steps.Count==1&&
+                        build.Plan.Steps[0].ExecutionGroup=="vision-stage",
+                        "R08 MOC编译未将原工程Stage组ID传入MRK Plan");
+                    var engine=new MRKExecutionEngine(new FCRWorkerOptions(1,4),
+                        groups:new[]{new MRKExecutionGroupDefinition(
+                            "vision-stage",1,1,MRKExecutionGroupScope.Stage)});
+                    try
+                    {
+                        MRKFlowResult result=engine.StartFlow(build.Plan).Completion
+                            .GetAwaiter().GetResult();
+                        Check(result.State==MRKFlowState.Completed,
+                            "R08工程Stage配置未被原MRK真实执行");
+                        engine.StopAsync().GetAwaiter().GetResult();
+                        Check(engine.GroupSnapshot()[0].Active==0,
+                            "R08工程Stage运行后组许可证未归还");
+                    }
+                    finally{engine.StopAsync(true).GetAwaiter().GetResult();}
+                }
+                finally{reopened.Close(true);}
+                long version=session.Revision;
+                bool invalid=false;
+                try{MOCFlowBuilder.Edit(session,page.RootContent,b=>
+                    b.SetExecutionGroup(block,new string('X',129)));}
+                catch(ArgumentException){invalid=true;}
+                Check(invalid&&session.Revision==version,
+                    "R08非法组ID错误提交MEM工程版本");
+                MOCFlowBuilder.Edit(session,page.RootContent,b=>b.SetExecutionGroup(block,null));
+                Check(!MOLWiringCodec.Get(session.GetSnapshot().Find(page.RootContent.Id))
+                    .Policies.ContainsKey(block),"R08清除组配置没有还原原策略缺省");
+                Check(session.Undo().Success&&
+                    MOLWiringCodec.Get(session.GetSnapshot().Find(page.RootContent.Id))
+                        .Policies[block].ExecutionGroup=="vision-stage",
+                    "R08执行组配置的撤销没有恢复原工程状态");
+            }
+            finally
+            {
+                session.Close(true);
+                if(System.IO.File.Exists(path))System.IO.File.Delete(path);
+            }
         }
 
         /// <summary>G05a Control分支实际执行与Join：不能用编排图或源码存在替代结果。</summary>

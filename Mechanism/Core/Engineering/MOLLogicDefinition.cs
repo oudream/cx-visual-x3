@@ -652,18 +652,25 @@ namespace CxVisual.Mechanism.Core
     public sealed class MOLStepPolicy
     {
         public MOLStepPolicy(int maxAttempts=1,int retryDelayMs=0,int timeoutMs=0,
-            bool idempotent=false)
+            bool idempotent=false, string executionGroup=null)
         {
             if(maxAttempts<1||maxAttempts>10||retryDelayMs<0||retryDelayMs>60000||
                 timeoutMs<0||timeoutMs>600000||(maxAttempts>1&&!idempotent))
                 throw new ArgumentException("wiring.invalid_workflow_policy");
+            if(executionGroup!=null &&
+                (executionGroup.Length>128 ||
+                (executionGroup.Length>0 && string.IsNullOrWhiteSpace(executionGroup))))
+                throw new ArgumentException("wiring.execution_group_invalid","executionGroup");
             MaxAttempts=maxAttempts;RetryDelayMs=retryDelayMs;TimeoutMs=timeoutMs;
             Idempotent=idempotent;
+            ExecutionGroup=string.IsNullOrEmpty(executionGroup)?"" : executionGroup.Trim();
         }
         public int MaxAttempts{get;private set;}
         public int RetryDelayMs{get;private set;}
         public int TimeoutMs{get;private set;}
         public bool Idempotent{get;private set;}
+        /// <summary>原MRK执行组身份；组容量/作用域只由运行期组定义管理。</summary>
+        public string ExecutionGroup{get;private set;}
     }
 
     public sealed class MOLWiringDefinition
@@ -1011,7 +1018,9 @@ namespace CxVisual.Mechanism.Core
                         new XAttribute("attempts",item.Value.MaxAttempts),
                         new XAttribute("delay",item.Value.RetryDelayMs),
                         new XAttribute("timeout",item.Value.TimeoutMs),
-                        new XAttribute("idempotent",item.Value.Idempotent)))));
+                        new XAttribute("idempotent",item.Value.Idempotent),
+                        item.Value.ExecutionGroup.Length==0?null:
+                            new XAttribute("group",item.Value.ExecutionGroup)))));
             if(def.Parameters.Count>0)
                 root.Add(new XElement("Parameters",def.Parameters.Select(group=>
                     new XElement("Block",new XAttribute("id",group.Key.ToString("N")),
@@ -1116,7 +1125,8 @@ namespace CxVisual.Mechanism.Core
                         int.Parse((string)policy.Attribute("attempts"),CultureInfo.InvariantCulture),
                         int.Parse((string)policy.Attribute("delay"),CultureInfo.InvariantCulture),
                         int.Parse((string)policy.Attribute("timeout"),CultureInfo.InvariantCulture),
-                        bool.Parse((string)policy.Attribute("idempotent")));
+                        bool.Parse((string)policy.Attribute("idempotent")),
+                        (string)policy.Attribute("group"));
                     policies.Add(id,instance);
                 }
                 var stateMachines=new Dictionary<Guid,MOLStateMachineDefinition>();

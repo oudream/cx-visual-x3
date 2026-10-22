@@ -481,6 +481,27 @@ namespace CxVisual.Mechanism.Orchestration
                 throw new InvalidOperationException("moc.wiring.block_missing");
             _policies[blockId]=policy;
         }
+        /// <summary>
+        /// 统一工程逻辑Aspect保存的组引用，和重试/超时策略采用相同MEM事务；
+        /// 仅存原组ID，Stage/WholeFlow/Step容量定义不复制到节点。
+        /// </summary>
+        public void SetExecutionGroup(Guid blockId,string groupId)
+        {
+            if(!_blocks.Any(b=>b.Id==blockId))
+                throw new InvalidOperationException("moc.wiring.block_missing");
+            MOLStepPolicy current;
+            _policies.TryGetValue(blockId,out current);
+            MOLStepPolicy updated=new MOLStepPolicy(
+                current==null?1:current.MaxAttempts,
+                current==null?0:current.RetryDelayMs,
+                current==null?0:current.TimeoutMs,
+                current!=null&&current.Idempotent,groupId);
+            if(updated.ExecutionGroup.Length==0&&updated.MaxAttempts==1&&
+                updated.RetryDelayMs==0&&updated.TimeoutMs==0&&!updated.Idempotent)
+                _policies.Remove(blockId);
+            else _policies[blockId]=updated;
+        }
+
         public void ClearWorkflowPolicy(Guid blockId)
         {
             if(!_policies.Remove(blockId))
@@ -1108,10 +1129,12 @@ namespace CxVisual.Mechanism.Orchestration
                     }
                     definitions.Add(childId==null?
                         new MRKStepCompileRequest(WireId(block.Id),block.CapabilityId,dependencies,
-                            inputs,policy:policy,condition:branchCondition,
+                            inputs,executionGroup:stepPolicy==null?null:stepPolicy.ExecutionGroup,
+                            policy:policy,condition:branchCondition,
                             allowSkippedDependencies:allowSkippedJoin):
                         new MRKStepCompileRequest(WireId(block.Id),null,dependencies,inputs,
                             condition:branchCondition,allowSkippedDependencies:allowSkippedJoin,
+                            executionGroup:stepPolicy==null?null:stepPolicy.ExecutionGroup,
                             subflowId:childId));
                 }
                 catalog.Add(id,new MRKFlowCompileDefinition(id,definitions,
@@ -1363,7 +1386,8 @@ namespace CxVisual.Mechanism.Orchestration
                             return new MRKStepCompileRequest("w"+b.Id.ToString("N"),
                                 b.CapabilityId,nested.Links.Where(l=>l.Target.BlockId==b.Id)
                                     .Select(l=>"w"+l.Source.BlockId.ToString("N")),
-                                inputs:innerInputs,policy:policy);
+                                inputs:innerInputs,policy:policy,
+                                executionGroup:stepPolicy==null?null:stepPolicy.ExecutionGroup);
                         }).ToArray();
                         subflowDefinitions.Add(childId,
                             new MRKFlowCompileDefinition(childId,innerSteps,
@@ -1403,10 +1427,12 @@ namespace CxVisual.Mechanism.Orchestration
                 requests.Add(childId==null?
                     new MRKStepCompileRequest(stepIds[block.Id],executeCapability,
                         depends,inputs,condition:branchCondition,
-                        allowSkippedDependencies:allowSkippedJoin,policy:executionPolicy):
+                        allowSkippedDependencies:allowSkippedJoin,policy:executionPolicy,
+                        executionGroup:configuration==null?null:configuration.ExecutionGroup):
                     new MRKStepCompileRequest(stepIds[block.Id],null,
                         depends,inputs,condition:branchCondition,
-                        allowSkippedDependencies:allowSkippedJoin,subflowId:childId));
+                        allowSkippedDependencies:allowSkippedJoin,subflowId:childId,
+                        executionGroup:configuration==null?null:configuration.ExecutionGroup));
                 origins.Add(new MOCStepOrigin(stepIds[block.Id],
                     new MRIObjectAddress(snapshot.ProjectId,entry.StorageRootId,entry.Id,instancePath),
                     block.Id,new Guid[0],null,
