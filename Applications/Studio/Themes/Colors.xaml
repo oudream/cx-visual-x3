@@ -15,4 +15,14 @@
         <GradientStop Color="#E8F3FF" Offset="0"/>
         <GradientStop Color="#F9FCFF" Offset="1"/>
     </LinearGradientBrush>
+    <LinearGradientBrush x:Key="StudioHeroBrush" StartPoint="0,0" EndPoint="1,0">
+        <GradientStop Color="#D7EDFF" Offset="0"/>
+        <GradientStop Color="#BCDDFC" Offset="0.55"/>
+        <GradientStop Color="#EAF5FF" Offset="1"/>
+    </LinearGradientBrush>
+    <SolidColorBrush x:Key="StudioHeroTextBrush" Color="#103B7C"/>
+    <SolidColorBrush x:Key="StudioHeroSubtextBrush" Color="#315F98"/>
+    <SolidColorBrush x:Key="StudioHeroValueBrush" Color="#1264D8"/>
+    <SolidColorBrush x:Key="StudioHeroCardBrush" Color="#F3FAFF"/>
+    <SolidColorBrush x:Key="StudioHeroBorderBrush" Color="#C8DFFA"/>
 </ResourceDictionary>

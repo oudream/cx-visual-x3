@@ -155,15 +155,9 @@
                                 <StackPanel x:Name="StudioHomeWorkArea" Margin="12">
                                     <!-- 上方欢迎横幅：浅蓝工业工作台视觉，数据来自当前MEM工程。 -->
                                     <Border CornerRadius="10" BorderBrush="{DynamicResource StudioBorderBrush}"
-                                            BorderThickness="1" Height="162" Margin="0,0,0,11"
+                                            BorderThickness="1" Height="180" Margin="0,0,0,11"
+                                            Background="{DynamicResource StudioHeroBrush}"
                                             ClipToBounds="True">
-                                        <Border.Background>
-                                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-                                                <GradientStop Color="#D7EDFF" Offset="0"/>
-                                                <GradientStop Color="#B5D8FC" Offset="0.53"/>
-                                                <GradientStop Color="#EAF5FF" Offset="1"/>
-                                            </LinearGradientBrush>
-                                        </Border.Background>
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="43*"/>
@@ -171,51 +165,51 @@
                                             </Grid.ColumnDefinitions>
                                             <StackPanel Grid.Column="0" Margin="19,12,8,11" VerticalAlignment="Center">
                                                 <TextBlock Text="欢迎使用 CxVisual" FontWeight="Bold" FontSize="23"
-                                                           Foreground="#103B7C" Margin="0,0,0,4"/>
+                                                           Foreground="{DynamicResource StudioHeroTextBrush}" Margin="0,0,0,4"/>
                                                 <TextBlock Text="统一工业工程 · 让工程设计与执行更高效"
-                                                           FontSize="12" Foreground="#315F98" TextWrapping="Wrap"/>
+                                                           FontSize="12" Foreground="{DynamicResource StudioHeroSubtextBrush}" TextWrapping="Wrap"/>
                                                 <TextBlock Text="当前工程" Margin="0,12,0,3"
-                                                           FontSize="11" Foreground="#315F98"/>
+                                                           FontSize="11" Foreground="{DynamicResource StudioHeroSubtextBrush}"/>
                                                 <TextBlock Text="{Binding StudioProjectTitle}" FontSize="15"
-                                                           FontWeight="SemiBold" Foreground="#103B7C"
+                                                           FontWeight="SemiBold" Foreground="{DynamicResource StudioHeroTextBrush}"
                                                            TextTrimming="CharacterEllipsis" MaxWidth="350"/>
                                             </StackPanel>
                                             <UniformGrid Grid.Column="1" Columns="2" Rows="2"
                                                          Margin="2,12,13,12">
-                                                <Border Background="#F3FAFF" CornerRadius="8"
-                                                        Margin="4" Padding="9,7" BorderBrush="#C8DFFA" BorderThickness="1">
+                                                <Border Background="{DynamicResource StudioHeroCardBrush}" CornerRadius="8"
+                                                        Margin="4" Padding="9,7" BorderBrush="{DynamicResource StudioHeroBorderBrush}" BorderThickness="1">
                                                     <StackPanel>
-                                                        <TextBlock Text="资源定义" FontSize="11" Foreground="#345884"/>
+                                                        <TextBlock Text="资源定义" FontSize="11" Foreground="{DynamicResource StudioHeroSubtextBrush}"/>
                                                         <TextBlock Text="{Binding Resources.Count}" FontSize="19"
-                                                                   FontWeight="Bold" Foreground="#1264D8"/>
-                                                        <TextBlock Text="来自当前MEM工程" FontSize="10" Foreground="#6785A9"/>
+                                                                   FontWeight="Bold" Foreground="{DynamicResource StudioHeroValueBrush}"/>
+                                                        <TextBlock Text="来自当前MEM工程" FontSize="10" Foreground="{DynamicResource StudioHeroSubtextBrush}"/>
                                                     </StackPanel>
                                                 </Border>
-                                                <Border Background="#F3FAFF" CornerRadius="8"
-                                                        Margin="4" Padding="9,7" BorderBrush="#C8DFFA" BorderThickness="1">
+                                                <Border Background="{DynamicResource StudioHeroCardBrush}" CornerRadius="8"
+                                                        Margin="4" Padding="9,7" BorderBrush="{DynamicResource StudioHeroBorderBrush}" BorderThickness="1">
                                                     <StackPanel>
-                                                        <TextBlock Text="页面数量" FontSize="11" Foreground="#345884"/>
+                                                        <TextBlock Text="页面数量" FontSize="11" Foreground="{DynamicResource StudioHeroSubtextBrush}"/>
                                                         <TextBlock Text="{Binding Pages.Count}" FontSize="19"
-                                                                   FontWeight="Bold" Foreground="#1264D8"/>
-                                                        <TextBlock Text="HMI工程页面" FontSize="10" Foreground="#6785A9"/>
+                                                                   FontWeight="Bold" Foreground="{DynamicResource StudioHeroValueBrush}"/>
+                                                        <TextBlock Text="HMI工程页面" FontSize="10" Foreground="{DynamicResource StudioHeroSubtextBrush}"/>
                                                     </StackPanel>
                                                 </Border>
-                                                <Border Background="#F3FAFF" CornerRadius="8"
-                                                        Margin="4" Padding="9,7" BorderBrush="#C8DFFA" BorderThickness="1">
+                                                <Border Background="{DynamicResource StudioHeroCardBrush}" CornerRadius="8"
+                                                        Margin="4" Padding="9,7" BorderBrush="{DynamicResource StudioHeroBorderBrush}" BorderThickness="1">
                                                     <StackPanel>
-                                                        <TextBlock Text="工程Revision" FontSize="11" Foreground="#345884"/>
+                                                        <TextBlock Text="工程Revision" FontSize="11" Foreground="{DynamicResource StudioHeroSubtextBrush}"/>
                                                         <TextBlock Text="{Binding Revision}" FontSize="19"
-                                                                   FontWeight="Bold" Foreground="#1264D8"/>
-                                                        <TextBlock Text="MEM版本序号" FontSize="10" Foreground="#6785A9"/>
+                                                                   FontWeight="Bold" Foreground="{DynamicResource StudioHeroValueBrush}"/>
+                                                        <TextBlock Text="MEM版本序号" FontSize="10" Foreground="{DynamicResource StudioHeroSubtextBrush}"/>
                                                     </StackPanel>
                                                 </Border>
-                                                <Border Background="#F3FAFF" CornerRadius="8"
-                                                        Margin="4" Padding="9,7" BorderBrush="#C8DFFA" BorderThickness="1">
+                                                <Border Background="{DynamicResource StudioHeroCardBrush}" CornerRadius="8"
+                                                        Margin="4" Padding="9,7" BorderBrush="{DynamicResource StudioHeroBorderBrush}" BorderThickness="1">
                                                     <StackPanel>
-                                                        <TextBlock Text="修改状态" FontSize="11" Foreground="#345884"/>
+                                                        <TextBlock Text="修改状态" FontSize="11" Foreground="{DynamicResource StudioHeroSubtextBrush}"/>
                                                         <TextBlock Text="{Binding IsDirty, StringFormat=Dirty: {0}}"
-                                                                   FontSize="14" FontWeight="Bold" Foreground="#1264D8"/>
-                                                        <TextBlock Text="提交后可保存工程" FontSize="10" Foreground="#6785A9"/>
+                                                                   FontSize="14" FontWeight="Bold" Foreground="{DynamicResource StudioHeroValueBrush}"/>
+                                                        <TextBlock Text="提交后可保存工程" FontSize="10" Foreground="{DynamicResource StudioHeroSubtextBrush}"/>
                                                     </StackPanel>
                                                 </Border>
                                             </UniformGrid>
@@ -376,8 +370,24 @@
 
                 <dock:LayoutDocument ContentId="doc.visual" Title="HMI图元与Symbol [设计]" CanClose="True" CanFloat="True">
                     <DockPanel>
-                        <StackPanel DockPanel.Dock="Top" Margin="4,2,4,6">
-                            <WrapPanel>
+                        <StackPanel DockPanel.Dock="Top" Margin="7,3,7,5">
+                            <DockPanel Margin="0,1,0,4">
+                                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
+                                    <TextBlock Text="HMI 图元工作台" FontSize="13" FontWeight="SemiBold"
+                                               VerticalAlignment="Center" Margin="5,0,10,0"/>
+                                    <TextBlock Text="工具箱 / Ribbon 提供日常操作" FontSize="11"
+                                               Foreground="{DynamicResource StudioMutedTextBrush}"
+                                               VerticalAlignment="Center"/>
+                                </StackPanel>
+                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                    <Button Content="放大" Tag="in" Click="OnVisualZoom"/>
+                                    <Button Content="缩小" Tag="out" Click="OnVisualZoom"/>
+                                    <Button Content="重置视口" Tag="reset" Click="OnVisualZoom"/>
+                                </StackPanel>
+                            </DockPanel>
+                            <Expander Header="更多图元、路径、动画与排列工具" IsExpanded="False" Margin="1,0,1,3"
+                                      ToolTip="高级功能完整保留；折叠以扩大中央画布">
+                                <WrapPanel>
                                 <Button Content="直线" Tag="Line" Click="OnInsertShape"/>
                                 <Button Content="矩形Shape" Tag="Rect" Click="OnInsertShape"/>
                                 <Button Content="圆形" Tag="Circle" Click="OnInsertShape"/>
@@ -414,7 +424,8 @@
                                 <Button Content="添加呼吸动画" Click="OnAddBreathingAnimation"/>
                                 <Button x:Name="VisualPreviewButton" Content="预览交互" Click="OnToggleVisualPreview"/>
                             </WrapPanel>
-                            <TextBlock x:Name="VisualInfo" Text="选择图元后拖动白色锚点/黄色曲线控制点；紫色缩放、橙色旋转；松开提交、Esc取消、支持撤销重做。"
+                            </Expander>
+                            <TextBlock x:Name="VisualInfo" Text="图元可在工具箱与Ribbon创建；按需展开更多路径、动画及排列工具。"
                                 Margin="4,3,0,0" FontSize="11" Foreground="#45617C"/>
                         </StackPanel>
                         <Border CornerRadius="8" Background="{DynamicResource StudioPanelBrush}" BorderBrush="{DynamicResource StudioBorderBrush}" BorderThickness="1" ClipToBounds="True">
@@ -425,7 +436,21 @@
                 <dock:LayoutDocument ContentId="doc.flow" Title="主流程编排 [设计]" CanClose="True" CanFloat="True">
                     <DockPanel Background="{DynamicResource StudioPanelBrush}">
                         <StackPanel DockPanel.Dock="Top">
-                            <WrapPanel Margin="10,8">
+                            <DockPanel Margin="9,5,9,5">
+                                <TextBlock DockPanel.Dock="Left" Text="MOL 流程工作台" FontSize="13"
+                                           FontWeight="SemiBold" Margin="5,0,8,0" VerticalAlignment="Center"/>
+                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                    <Button Content="创建X-Ray双子流程" Click="OnCreateXRayDualSubflowDemo"/>
+                                    <Button Content="校验编排" Click="OnValidateWiring"/>
+                                    <Button Content="CPU仿真" Click="OnRunLogicDemo"
+                                            Style="{StaticResource StudioPrimaryButtonStyle}"/>
+                                </StackPanel>
+                            </DockPanel>
+                            <Expander Header="高级编排 · 能力、端口、连线、布局与调试"
+                                      IsExpanded="False" Margin="7,0,7,4"
+                                      ToolTip="全部高级工作功能保留，并可按需展开">
+                                <StackPanel>
+                                    <WrapPanel Margin="10,8">
                                 <Button Content="创建 X-Ray 逻辑示例" Click="OnCreateLogicDemo"/>
                                 <Button Content="创建自由连接示例" Click="OnCreateWiringDemo"/>
                                 <Button Content="创建完整X-Ray双子流程" Click="OnCreateXRayDualSubflowDemo" ToolTip="同一页面：HMI电机状态图元 + 采图、AI与传统算法两个可执行Content子流程 + MOC/MRK"/>
@@ -491,7 +516,7 @@
                                 <Button Content="定位关联画面" Click="OnFlowLocateVisual"/>
                                 <ComboBox x:Name="FlowTraceList" Width="220" DisplayMemberPath="Label"/>
                             </WrapPanel>
-                            <Expander Header="G04-E 节点参数与Port" Margin="10,0,10,7" IsExpanded="True">
+                            <Expander Header="节点参数与Port" Margin="10,0,10,7" IsExpanded="False">
                                 <StackPanel Margin="5">
                                     <WrapPanel Margin="0,3">
                                         <TextBlock Text="能力ID" VerticalAlignment="Center"/>
@@ -539,7 +564,9 @@
                                     </WrapPanel>
                                 </StackPanel>
                             </Expander>
-                            <TextBlock x:Name="LogicInfo" Margin="12,0,12,10"
+                                </StackPanel>
+                            </Expander>
+                            <TextBlock x:Name="LogicInfo" Margin="12,0,12,5"
                                 Text="使用 Content Logic Aspect 保存编排；从运行轨迹点击定位逻辑块。此处为 CPU 仿真，不连接生产设备。"
                                 TextWrapping="Wrap" Foreground="#45617C"/>
                         </StackPanel>

@@ -24,32 +24,46 @@ using CxVisual.Professional.CT3D;
 
 namespace CxVisual.Studio
 {
-    /// <summary>Ribbon图标纯呈现：根据原按钮Label选择Segoe MDL2字符，不更改Command/Tag。</summary>
+    /// <summary>使用WPF Geometry替代Segoe图标字体；CI/现场缺字体时仍然渲染真正矢量。</summary>
     public sealed class StudioRibbonGlyphConverter : IValueConverter
     {
         public object Convert(object value,Type targetType,object parameter,CultureInfo culture)
         {
             string label=System.Convert.ToString(value,CultureInfo.InvariantCulture)??"";
+            string path;
             if(label.Contains("工程")||label.Contains("页面")||label.Contains("内容"))
-                return "\uE8A5";
-            if(label.Contains("保存")||label.Contains("导出"))return "\uE74E";
-            if(label.Contains("打开")||label.Contains("导入"))return "\uE8E5";
-            if(label.Contains("撤销"))return "\uE7A7";
-            if(label.Contains("重做"))return "\uE7A6";
-            if(label.Contains("流程")||label.Contains("编排")||label.Contains("连线"))
-                return "\uE8F1";
-            if(label.Contains("仿真")||label.Contains("运行"))return "\uE768";
-            if(label.Contains("配置")||label.Contains("属性"))return "\uE713";
-            if(label.Contains("资源")||label.Contains("组件"))return "\uE8B7";
-            if(label.Contains("删除"))return "\uE74D";
-            if(label.Contains("圆")||label.Contains("图元")||label.Contains("直线")||
-               label.Contains("矩形")||label.Contains("路径"))return "\uE790";
-            if(label.Contains("对齐")||label.Contains("分布"))return "\uE8A1";
-            if(label.Contains("发布"))return "\uE898";
-            if(label.Contains("调试")||label.Contains("暂停")||label.Contains("单步"))
-                return "\uE7F4";
-            if(label.Contains("帮助")||label.Contains("文档"))return "\uE897";
-            return "\uE10F";
+                path="M5,3 L15,3 20,8 20,21 5,21 Z M15,3 L15,8 20,8";
+            else if(label.Contains("保存")||label.Contains("导出"))
+                path="M4,3 L18,3 21,6 21,21 3,21 3,3 Z M7,3 L7,10 17,10 17,3 M7,21 L7,14 17,14 17,21";
+            else if(label.Contains("打开")||label.Contains("导入"))
+                path="M3,19 L3,6 10,6 12,9 21,9 21,19 Z M6,13 L18,13";
+            else if(label.Contains("撤销"))
+                path="M9,7 L4,12 9,17 M4,12 L15,12 C19,12 21,14 21,18";
+            else if(label.Contains("重做"))
+                path="M15,7 L20,12 15,17 M20,12 L9,12 C5,12 3,14 3,18";
+            else if(label.Contains("流程")||label.Contains("编排")||label.Contains("连线"))
+                path="M3,5 L10,5 10,10 3,10 Z M15,14 L22,14 22,19 15,19 Z M10,7 L16,7 16,16 15,16";
+            else if(label.Contains("仿真")||label.Contains("运行"))
+                path="M5,3 L19,12 5,21 Z";
+            else if(label.Contains("配置")||label.Contains("属性"))
+                path="M4,6 L20,6 M4,12 L20,12 M4,18 L20,18 M9,4 L9,8 M16,10 L16,14 M9,16 L9,20";
+            else if(label.Contains("资源")||label.Contains("组件"))
+                path="M3,7 L9,7 11,10 21,10 21,20 3,20 Z M3,7 L3,5 10,5 12,7";
+            else if(label.Contains("删除"))
+                path="M4,6 L20,6 M8,6 L8,20 16,20 16,6 M9,4 L15,4 M11,10 L11,17 M14,10 L14,17";
+            else if(label.Contains("圆")||label.Contains("图元")||label.Contains("直线")||
+                    label.Contains("矩形")||label.Contains("路径"))
+                path="M4,5 L20,5 20,19 4,19 Z M4,15 L10,10 15,15 20,8";
+            else if(label.Contains("对齐")||label.Contains("分布"))
+                path="M4,4 L4,20 M8,7 L17,7 L17,11 8,11 Z M8,14 L21,14 L21,18 8,18 Z";
+            else if(label.Contains("发布"))
+                path="M12,3 L12,16 M7,8 L12,3 17,8 M4,15 L4,21 20,21 20,15";
+            else if(label.Contains("调试")||label.Contains("暂停")||label.Contains("单步"))
+                path="M5,4 L10,4 10,20 5,20 Z M14,4 L19,4 19,20 14,20 Z";
+            else if(label.Contains("帮助")||label.Contains("文档"))
+                path="M8,8 C8,3 18,3 18,9 C18,13 12,12 12,16 M12,20 L12,21";
+            else path="M4,4 L20,4 20,20 4,20 Z M12,7 L12,17 M7,12 L17,12";
+            return Geometry.Parse(path);
         }
         public object ConvertBack(object value,Type targetType,object parameter,CultureInfo culture)
         {throw new NotSupportedException();}
@@ -1097,6 +1111,20 @@ namespace CxVisual.Studio
             SetStudioColor("StudioSelectionBrush", dark ? "#354B68" : "#DCEBFF");
             SetStudioColor("StudioPrimaryActionBrush", dark ? "#236ED5" : "#146FF4");
             SetStudioColor("StudioCardTintBrush", dark ? "#333946" : "#F3F8FF");
+            Application.Current.Resources["StudioHeroBrush"]=new LinearGradientBrush(
+                new GradientStopCollection{
+                    new GradientStop((Color)ColorConverter.ConvertFromString(
+                        dark?"#203856":"#D7EDFF"),0),
+                    new GradientStop((Color)ColorConverter.ConvertFromString(
+                        dark?"#2B4C6B":"#BCDDFC"),0.55),
+                    new GradientStop((Color)ColorConverter.ConvertFromString(
+                        dark?"#203A57":"#EAF5FF"),1)},
+                new Point(0,0),new Point(1,0));
+            SetStudioColor("StudioHeroTextBrush",dark?"#E9F3FF":"#103B7C");
+            SetStudioColor("StudioHeroSubtextBrush",dark?"#AACAE8":"#315F98");
+            SetStudioColor("StudioHeroValueBrush",dark?"#80B9FF":"#1264D8");
+            SetStudioColor("StudioHeroCardBrush",dark?"#2B425F":"#F3FAFF");
+            SetStudioColor("StudioHeroBorderBrush",dark?"#446587":"#C8DFFA");
             Application.Current.Resources["StudioHeaderBrush"]=new LinearGradientBrush(
                 new GradientStopCollection{
                     new GradientStop((Color)ColorConverter.ConvertFromString(
