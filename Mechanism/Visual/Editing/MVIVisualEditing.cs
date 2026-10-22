@@ -95,6 +95,90 @@ namespace CxVisual.Mechanism.Visual
             return result.AsReadOnly();
         }
 
+
+        /// <summary>编辑视图使用互斥的控制柄组；旧Handles(item)仅为已有SDK/测试保留。</summary>
+        public static IReadOnlyList<MVIVisualHandle> Handles(CxSceneItem item,bool geometryEditing,double zoom)
+        {
+            if(item==null)throw new ArgumentNullException("item");
+            if(double.IsNaN(zoom)||double.IsInfinity(zoom)||zoom<=0)
+                throw new ArgumentOutOfRangeException("zoom");
+            var result=new List<MVIVisualHandle>();
+            if(!item.IsSelectable)return result.AsReadOnly();
+            if(geometryEditing)
+            {
+                foreach(MVIVisualHandle h in Handles(item))
+                    if(h.Kind!=MVIVisualHandleKind.Resize&&h.Kind!=MVIVisualHandleKind.Rotate)
+                        result.Add(h);
+                return result.AsReadOnly();
+            }
+            // Eight local bounds handles, transformed by the same matrix as the shape.
+            double w=item.LocalWidth,h=item.LocalHeight;
+            double[] xs={0,w/2,w,w,w,w/2,0,0};
+            double[] ys={0,0,0,h/2,h,h,h,h/2};
+            FGETransform2D transform=item.WorldTransform.ToGeometry();
+            for(int i=0;i<8;i++)
+                result.Add(new MVIVisualHandle(item.Id,MVIVisualHandleKind.Resize,i,
+                    transform.TransformPoint(new FGEPoint2D(xs[i],ys[i]))));
+            FGEPoint2D corner=transform.TransformPoint(new FGEPoint2D(w,0));
+            FGEPoint2D center=transform.TransformPoint(new FGEPoint2D(w/2,h/2));
+            double vx=corner.X-center.X,vy=corner.Y-center.Y;
+            double length=Math.Sqrt(vx*vx+vy*vy);
+            if(length<1e-8){vx=1;vy=-1;length=Math.Sqrt(2);}
+            double offset=28/zoom;
+            result.Add(new MVIVisualHandle(item.Id,MVIVisualHandleKind.Rotate,-1,
+                new FGEPoint2D(corner.X+vx*offset/length,corner.Y+vy*offset/length)));
+            return result.AsReadOnly();
+        }
+
+        public static MVIVisualHandle HitHandle(CxSceneItem item,double x,double y,
+            double radius,bool geometryEditing,double zoom)
+        {
+            if(radius<=0||double.IsInfinity(radius)||double.IsNaN(radius))
+                throw new ArgumentOutOfRangeException("radius");
+            MVIVisualHandle closest=null;
+            double distanceMin=radius*radius;
+            foreach(MVIVisualHandle h in Handles(item,geometryEditing,zoom))
+            {
+                double dx=h.WorldPoint.X-x,dy=h.WorldPoint.Y-y;
+                double distance=dx*dx+dy*dy;
+                if(distance<=distanceMin){closest=h;distanceMin=distance;}
+            }
+            return closest;
+        }
+
+        /// <summary>八点缩放保持相对边/角在世界空间稳定；不允许宽高穿零。</summary>
+        private static MRCTransform ResizeFromHandle(MRCVisualItem item,CxSceneItem projected,
+            int position,double worldX,double worldY,out double width,out double height)
+        {
+            FGEPoint2D local=projected.WorldTransform.ToGeometry().Inverse()
+                .TransformPoint(new FGEPoint2D(worldX,worldY));
+            double oldW=item.Width,oldH=item.Height;
+            bool left=position==0||position==6||position==7;
+            bool right=position==2||position==3||position==4;
+            bool top=position==0||position==1||position==2;
+            bool bottom=position==4||position==5||position==6;
+            double x0=left?Math.Min(local.X,oldW-1):0;
+            double x1=right?Math.Max(local.X,1):oldW;
+            double y0=top?Math.Min(local.Y,oldH-1):0;
+            double y1=bottom?Math.Max(local.Y,1):oldH;
+            width=x1-x0;height=y1-y0;
+            MRCShapeElement shape=item as MRCShapeElement;
+            if(shape!=null&&shape.Shape.Kind==MRCShapeKind.Circle)
+            {
+                double size=(left||right)&&(top||bottom)?
+                    Math.Max(width,height):(left||right?width:height);
+                if(left)x0=x1-size;
+                else if(!right)x0=(oldW-size)/2;
+                if(top)y0=y1-size;
+                else if(!bottom)y0=(oldH-size)/2;
+                width=size;height=size;
+            }
+            MRCTransform previous=item.Transform;
+            return new MRCTransform(previous.M11,previous.M12,previous.M21,previous.M22,
+                previous.X+previous.M11*x0+previous.M12*y0,
+                previous.Y+previous.M21*x0+previous.M22*y0);
+        }
+
         public static MVIVisualHandle HitHandle(CxSceneItem item,double x,double y,double radius=8)
         {
             if(radius<=0||double.IsInfinity(radius)||double.IsNaN(radius))
@@ -129,16 +213,31 @@ namespace CxVisual.Mechanism.Visual
 
             if(handle.Kind==MVIVisualHandleKind.Resize)
             {
+                if(handle.CommandIndex>=0&&handle.CommandIndex<=7)
+                {
+                    double w,h;
+                    MRCTransform moved=ResizeFromHandle(item,projected,handle.CommandIndex,
+                        worldX,worldY,out w,out h);
+                    return editor.Document.Edit("八点缩放图元",revision,e=>
+                    {
+                        e.Resize(item,w,h);
+                        e.SetTransform(item,moved);
+                        return true;
+                    });
+                }
+                if(handle.CommandIndex!=-1)
+                    return MTCEditResult<bool>.Rejected(revision,"visual.resize.invalid_handle",
+                        "Unsupported resize handle");
+                // 兼容旧版本SDK：右下外侧唯一缩放柄偏移(12,12)。
                 FGETransform2D inv=item.Transform.ToGeometry().Inverse();
-                // Canvas world -> current parent -> element local, never use AABB to resize a rotated shape.
                 FGETransform2D parent=projected.WorldTransform.ToGeometry()
                     .Compose(item.Transform.ToGeometry().Inverse());
                 FGEPoint2D point=parent.Inverse().TransformPoint(
                     new FGEPoint2D(worldX-12,worldY-12));
                 FGEPoint2D local=inv.TransformPoint(point);
-                double w=Math.Max(1,local.X),h=Math.Max(1,local.Y);
+                double legacyW=Math.Max(1,local.X),legacyH=Math.Max(1,local.Y);
                 return editor.Document.Edit("缩放可视图元",revision,e=>
-                {e.Resize(item,w,h);return true;});
+                {e.Resize(item,legacyW,legacyH);return true;});
             }
             if(handle.Kind==MVIVisualHandleKind.Rotate)
             {

@@ -42,6 +42,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         private bool _marquee;
         private Point _marqueeStart,_marqueeEnd;
         public event Action<IReadOnlyList<Guid>> SelectionSetRequested;
+        // 几何节点编辑与对象外框变换互斥，双击Shape进入；Esc退出。
+        private bool _geometryEditMode;
+        public bool IsGeometryEditMode { get { return _geometryEditMode; } }
         private MVIVisualHandle _activeHandle;
         private bool _handleDragging;
         private Point _handlePointer;
@@ -167,6 +170,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 // 否则变量失联返回null时旧的运行态值会遗留在重用的TextBox/CheckBox中。
                 if(!_designMode&&value)_resetWidgetLayerOnNextScene=true;
                 _designMode=value;
+                if(!value){CancelInteraction();_geometryEditMode=false;}
                 foreach(UIElement element in _widgetCanvas.Children)
                     element.IsHitTestVisible=!_designMode;
             }
@@ -233,7 +237,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             if(items!=null)_items.AddRange(items);
             // 外部切换选择时清除旧高亮；鼠标本地维护多选时不被场景重投影覆盖。
             bool changedSelection=_selection!=selected;
-            if(changedSelection)_selectedItems.Clear();
+            if(changedSelection){_selectedItems.Clear();_geometryEditMode=false;}
             _selection=selected;
             if(changedSelection&&selected.HasValue)_selectedItems.Add(selected.Value);
             _selectedItems.RemoveWhere(id=>!_items.Exists(item=>item.Id==id));
@@ -343,7 +347,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 CxSceneItem edited=_items.Find(i=>i.Id==_selection.Value);
                 if(edited!=null)
                 {
-                    foreach(MVIVisualHandle handle in MVIVisualEditing.Handles(edited))
+                    foreach(MVIVisualHandle handle in MVIVisualEditing.Handles(edited,_geometryEditMode,_zoom))
                     {
                         bool moving=_handleDragging&&_activeHandle!=null&&
                             handle.Kind==_activeHandle.Kind&&
@@ -410,13 +414,24 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             Focus();
             Point point = WorldPoint(e.GetPosition(this));
             if(!_designMode)return;
+            if(e.ClickCount>=2&&_selection.HasValue&&
+                (Keyboard.Modifiers&(ModifierKeys.Control|ModifierKeys.Shift))==0)
+            {
+                CxSceneItem current=_items.Find(i=>i.Id==_selection.Value);
+                if(current!=null&&current.Shape!=null&&current.Contains(point.X,point.Y))
+                {
+                    _geometryEditMode=!_geometryEditMode;
+                    _dragging=false;
+                    InvalidateVisual();e.Handled=true;return;
+                }
+            }
             if(_designMode&&_selection.HasValue&&
                 (Keyboard.Modifiers&(ModifierKeys.Control|ModifierKeys.Shift))==0)
             {
                 CxSceneItem selected=_items.Find(i=>i.Id==_selection.Value);
                 if(selected!=null)
                 {
-                    MVIVisualHandle handle=MVIVisualEditing.HitHandle(selected,point.X,point.Y,8/_zoom);
+                    MVIVisualHandle handle=MVIVisualEditing.HitHandle(selected,point.X,point.Y,8/_zoom,_geometryEditMode,_zoom);
                     if(handle!=null)
                     {
                         _activeHandle=handle;
@@ -449,6 +464,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 intendedSelection=SelectedVisualIds;
             }
             else intendedSelection=ApplyPointerSelection(hit,extend);
+            if(!hit.HasValue||!_selection.HasValue||hit.Value!=_selection.Value)
+                _geometryEditMode=false;
             if(hit==null)
             {
                 _marquee=true;_marqueeStart=point;_marqueeEnd=point;
@@ -557,7 +574,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         {_dragging=false;_marquee=false;_handleDragging=false;_activeHandle=null;_panning=false;_dragX=0;_dragY=0;
             if(IsMouseCaptured)ReleaseMouseCapture();
             UpdateWidgetDragPreview();InvalidateVisual();}
-        protected override void OnKeyDown(KeyEventArgs e){if(e.Key==Key.Escape){CancelInteraction();e.Handled=true;}base.OnKeyDown(e);}
+        protected override void OnKeyDown(KeyEventArgs e){if(e.Key==Key.Escape){if(_geometryEditMode&&!_dragging&&!_handleDragging){_geometryEditMode=false;InvalidateVisual();}else CancelInteraction();e.Handled=true;}base.OnKeyDown(e);}
         protected override void OnLostMouseCapture(MouseEventArgs e){if(_dragging||_handleDragging)CancelInteraction();base.OnLostMouseCapture(e);}
     }
 }

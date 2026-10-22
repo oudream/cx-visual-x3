@@ -242,6 +242,21 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Check(Near(editor.Scene.Single(x=>x.Id==id).GeometryToWorld.TransformPoint(
                         shape.Shape.Geometry.Commands[2].Control1),target),"redo did not restore geometry");
 
+                    // UI变换态必须恰好八点缩放+右上旋转，内部几何态不得混入变换柄。
+                    var objectHandles=MVIVisualEditing.Handles(edited,false,1);
+                    Check(objectHandles.Count(h=>h.Kind==MVIVisualHandleKind.Resize)==8&&
+                        objectHandles.Count(h=>h.Kind==MVIVisualHandleKind.Rotate)==1&&
+                        !objectHandles.Any(h=>h.Kind==MVIVisualHandleKind.Anchor),
+                        "transform mode must show eight resize and one rotate only");
+                    var geometryHandles=MVIVisualEditing.Handles(edited,true,1);
+                    Check(geometryHandles.Any(h=>h.Kind==MVIVisualHandleKind.Anchor)&&
+                        !geometryHandles.Any(h=>h.Kind==MVIVisualHandleKind.Resize||
+                            h.Kind==MVIVisualHandleKind.Rotate),
+                        "geometry mode must not show object transform handles");
+                    Check(objectHandles.Where(h=>h.Kind==MVIVisualHandleKind.Resize)
+                        .Select(h=>h.CommandIndex).Distinct().Count()==8,
+                        "eight resize handles must have distinct semantic positions");
+
                     // 缩放：鼠标传入真正世界位置，允许对象处于两级旋转父子变换中。
                     edited=editor.Scene.Single(x=>x.Id==id);
                     var resize=MVIVisualEditing.Handles(edited).Single(x=>x.Kind==MVIVisualHandleKind.Resize);
