@@ -257,6 +257,28 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         .Select(h=>h.CommandIndex).Distinct().Count()==8,
                         "eight resize handles must have distinct semantic positions");
 
+                    // 左中缩放柄按旋转后的本地X轴拖动，固定右侧世界位置，并可单步撤销。
+                    var leftHandle=objectHandles.Single(x=>
+                        x.Kind==MVIVisualHandleKind.Resize&&x.CommandIndex==7);
+                    double oldWidth=shape.Width;
+                    FGEPoint2D rightBefore=edited.WorldTransform.ToGeometry()
+                        .TransformPoint(new FGEPoint2D(shape.Width,shape.Height/2));
+                    FGEPoint2D leftTarget=edited.WorldTransform.ToGeometry()
+                        .TransformPoint(new FGEPoint2D(-15,shape.Height/2));
+                    int beforeResizeRevision=doc.Revision;
+                    Check(editor.EditHandle(leftHandle,leftTarget.X,leftTarget.Y).Success,
+                        "left-middle resize handle rejected");
+                    Check(Math.Abs(shape.Width-(oldWidth+15))<1e-5&&
+                        doc.Revision==beforeResizeRevision+1,
+                        "left-middle resize did not update width in one MEM transaction");
+                    CxSceneItem leftResized=editor.Scene.Single(x=>x.Id==shape.Id);
+                    FGEPoint2D rightAfter=leftResized.WorldTransform.ToGeometry()
+                        .TransformPoint(new FGEPoint2D(shape.Width,shape.Height/2));
+                    Check(Near(rightBefore,rightAfter),
+                        "left-edge drag moved the opposite world anchor");
+                    Check(editor.Undo().Success&&Math.Abs(shape.Width-oldWidth)<1e-5,
+                        "left-edge resize should be undone in one step");
+
                     // 缩放：鼠标传入真正世界位置，允许对象处于两级旋转父子变换中。
                     edited=editor.Scene.Single(x=>x.Id==id);
                     var resize=MVIVisualEditing.Handles(edited).Single(x=>x.Kind==MVIVisualHandleKind.Resize);

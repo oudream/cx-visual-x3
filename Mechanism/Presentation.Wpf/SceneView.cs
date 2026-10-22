@@ -354,10 +354,27 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                             handle.CommandIndex==_activeHandle.CommandIndex;
                         Point center=moving?_handlePointer:
                             new Point(handle.WorldPoint.X,handle.WorldPoint.Y);
-                        Brush fill=handle.Kind==MVIVisualHandleKind.Rotate?Brushes.Orange:
-                            handle.Kind==MVIVisualHandleKind.Resize?Brushes.MediumPurple:
-                            handle.Kind==MVIVisualHandleKind.Anchor?Brushes.White:Brushes.Gold;
-                        dc.DrawEllipse(fill,new Pen(Brushes.DodgerBlue,1.5/_zoom),center,5/_zoom,5/_zoom);
+                        if(handle.Kind==MVIVisualHandleKind.Rotate)
+                        {
+                            // 单独的右上旋转图标，不与缩放圆点和路径锚点混用。
+                            dc.DrawEllipse(null,new Pen(Brushes.DodgerBlue,2/_zoom),
+                                center,7/_zoom,7/_zoom);
+                            Point tip=new Point(center.X+7/_zoom,center.Y-3/_zoom);
+                            dc.DrawLine(new Pen(Brushes.DodgerBlue,2/_zoom),tip,
+                                new Point(tip.X-5/_zoom,tip.Y-2/_zoom));
+                            dc.DrawLine(new Pen(Brushes.DodgerBlue,2/_zoom),tip,
+                                new Point(tip.X-1/_zoom,tip.Y+5/_zoom));
+                        }
+                        else
+                        {
+                            Brush fill=handle.Kind==MVIVisualHandleKind.Resize?
+                                Brushes.DodgerBlue:
+                                handle.Kind==MVIVisualHandleKind.Anchor?Brushes.White:Brushes.Gold;
+                            Pen pen=handle.Kind==MVIVisualHandleKind.Resize?
+                                new Pen(Brushes.White,1.5/_zoom):
+                                new Pen(Brushes.DodgerBlue,1.5/_zoom);
+                            dc.DrawEllipse(fill,pen,center,5/_zoom,5/_zoom);
+                        }
                         if(moving)
                             dc.DrawLine(new Pen(Brushes.DodgerBlue,1/_zoom){DashStyle=DashStyles.Dash},
                                 new Point(handle.WorldPoint.X,handle.WorldPoint.Y),center);
@@ -452,6 +469,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 if (item.Contains(point.X, point.Y))
                 { hit = item.Id; break; }
             }
+            Guid? previousSelection=_selection;
             bool extend=(Keyboard.Modifiers&ModifierKeys.Control)!=0||
                 (Keyboard.Modifiers&ModifierKeys.Shift)!=0;
             // 选中的多个对象拖动时保留选区；点击其他对象才清除原选区。
@@ -464,7 +482,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 intendedSelection=SelectedVisualIds;
             }
             else intendedSelection=ApplyPointerSelection(hit,extend);
-            if(!hit.HasValue||!_selection.HasValue||hit.Value!=_selection.Value)
+            if(extend||!hit.HasValue||!previousSelection.HasValue||
+                hit.Value!=previousSelection.Value)
                 _geometryEditMode=false;
             if(hit==null)
             {
