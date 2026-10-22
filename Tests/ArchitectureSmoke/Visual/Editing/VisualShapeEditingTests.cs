@@ -358,6 +358,41 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Check(Math.Abs(editor.Scene.Single(x=>x.Id==neighbor.Id).Bounds.Left-
                         beforeAlignB.Bounds.Left)<1e-6,"alignment Undo did not restore original");
                     Check(editor.Redo().Success,"alignment redo failed");
+                    // 真正的视觉连接使用现有MPCPortKind.Visual与MPCConnection。
+                    int beforeVisualLink=doc.Revision;
+                    Check(editor.ConnectVisual(shape.Id,"east",neighbor.Id,"west").Success&&
+                        doc.Revision==beforeVisualLink+1,
+                        "visual link should be one engineering transaction");
+                    MVISceneItem linkScene=editor.Scene.Single(x=>
+                        x.ElementTypeId=="core.visual.connector");
+                    MVISceneItem srcScene=editor.Scene.Single(x=>x.Id==shape.Id);
+                    MVISceneItem dstScene=editor.Scene.Single(x=>x.Id==neighbor.Id);
+                    Check(Near(linkScene.GeometryToWorld.TransformPoint(
+                            linkScene.Shape.Geometry.Commands[0].End),
+                            MVIVisualAnchors.At(srcScene,"east"))&&
+                        Near(linkScene.GeometryToWorld.TransformPoint(
+                            linkScene.Shape.Geometry.Commands[1].End),
+                            MVIVisualAnchors.At(dstScene,"west")),
+                        "link endpoints should follow real source/target anchors");
+                    Check(!editor.ConnectVisual(shape.Id,"east",neighbor.Id,"west").Success&&
+                        doc.Revision==beforeVisualLink+1,
+                        "duplicate visual link must be rejected atomically");
+                    FGEPoint2D oldTarget=MVIVisualAnchors.At(dstScene,"west");
+                    doc.Move(neighbor,neighbor.X+30,neighbor.Y+10);
+                    MVISceneItem movedLine=editor.Scene.Single(x=>
+                        x.ElementTypeId=="core.visual.connector");
+                    MVISceneItem movedTarget=editor.Scene.Single(x=>x.Id==neighbor.Id);
+                    Check(Near(movedLine.GeometryToWorld.TransformPoint(
+                            movedLine.Shape.Geometry.Commands[1].End),
+                            MVIVisualAnchors.At(movedTarget,"west"))&&
+                        !Near(oldTarget,MVIVisualAnchors.At(movedTarget,"west")),
+                        "nested target movement should update visual connector projection");
+                    Check(editor.Undo().Success&&editor.Undo().Success&&
+                        !editor.Scene.Any(x=>x.ElementTypeId=="core.visual.connector"),
+                        "Undo must remove both independent move and visual connection");
+                    Check(editor.Redo().Success&&editor.Redo().Success&&
+                        editor.Scene.Count(x=>x.ElementTypeId=="core.visual.connector")==1,
+                        "Redo should restore stable attached visual connector");
                     doc.SaveAs(filename);
                 }
                 doc.Close();
@@ -369,6 +404,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Check(Math.Abs(shapeBack.Width-shape.Width)<1e-6&&
                         Math.Abs(shapeBack.Rotation-shape.Rotation)<1e-6,
                         "layout transform not persisted");
+                    Check(MVISceneProjection.Project(restored).Count(x=>
+                        x.ElementTypeId=="core.visual.connector")==1,
+                        "visual connector not restored on disk roundtrip");
                 }
                 Console.WriteLine("PASS Visual editing A: quadratic/cubic handles, nested transforms, world geometry stability, resize/rotate, 1-step Undo, Redo and disk reopen");
             }

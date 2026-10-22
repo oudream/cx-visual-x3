@@ -128,6 +128,58 @@ namespace CxVisual.Mechanism.Visual
                 return true;
             });
         }
+        /// <summary>视觉连接复用Core的Visual Port与MPCConnection，不创建第二份Graph。</summary>
+        public MTCEditResult<bool> ConnectVisual(Guid sourceId,string sourceSide,
+            Guid targetId,string targetSide)
+        {
+            Demand();
+            int revision=Document.Revision;
+            if(sourceId==targetId||sourceId==Guid.Empty||targetId==Guid.Empty)
+                return MTCEditResult<bool>.Rejected(revision,"visual.connection.invalid_pair",
+                    "Distinct visual elements are required");
+            string sourceMember=MVIVisualAnchors.MemberName(sourceSide);
+            string targetMember=MVIVisualAnchors.MemberName(targetSide);
+            MRCElement source=Document.Find(sourceId) as MRCElement;
+            MRCElement target=Document.Find(targetId) as MRCElement;
+            if(source==null||target==null)
+                return MTCEditResult<bool>.Rejected(revision,"visual.connection.definition_required",
+                    "Open the visual definition; instance connectors require explicit public ports");
+            MVISceneItem sourceScene=Scene.FirstOrDefault(i=>i.Id==sourceId);
+            MVISceneItem targetScene=Scene.FirstOrDefault(i=>i.Id==targetId);
+            if(sourceScene==null||targetScene==null||!sourceScene.IsSelectable||
+                !targetScene.IsSelectable||sourceScene.Address.InstancePath.Count!=0||
+                targetScene.Address.InstancePath.Count!=0)
+                return MTCEditResult<bool>.Rejected(revision,"visual.connection.not_editable",
+                    "Both endpoints must be editable definitions in the current scene");
+            MEMNode resource=CurrentResourceId.HasValue?Document.Find(CurrentResourceId.Value):null;
+            MEMNode owner=resource is MEMPage?((MEMPage)resource).RootContent:resource;
+            if(!(owner is IMPMDefinition))
+                return MTCEditResult<bool>.Rejected(revision,"visual.connection.invalid_scope",
+                    "Open a Page, Content or Symbol definition before connecting");
+            if(!Route(MVIInteractionKind.Move,sourceId)||
+                !Route(MVIInteractionKind.Move,targetId))
+                return MTCEditResult<bool>.Rejected(revision,"visual.default_prevented",
+                    "Visual connection prevented by engineering policy");
+            MRIObjectAddress sourceAddress=Document.GetAddress(source);
+            MRIObjectAddress targetAddress=Document.GetAddress(target);
+            return Document.Edit("连接可视图元",revision,e=>
+            {
+                MPCPort first=source.Ports.FirstOrDefault(p=>p.MemberId==sourceMember);
+                MPCPort last=target.Ports.FirstOrDefault(p=>p.MemberId==targetMember);
+                if(first==null)first=e.DefinePort(source,sourceMember,
+                    MPCPortDirection.InOut,"core.visual.anchor",MPCPortKind.Visual);
+                if(last==null)last=e.DefinePort(target,targetMember,
+                    MPCPortDirection.InOut,"core.visual.anchor",MPCPortKind.Visual);
+                if(first.Kind!=MPCPortKind.Visual||last.Kind!=MPCPortKind.Visual||
+                    first.Direction==MPCPortDirection.Input||
+                    last.Direction==MPCPortDirection.Output)
+                    throw new InvalidOperationException("visual.connection.port_conflict");
+                e.Connect(owner,new MPCEndpoint(sourceAddress,first.Id),
+                    new MPCEndpoint(targetAddress,last.Id));
+                return true;
+            });
+        }
+
         /// <summary>图元新增只通过原MEM工程事务提交，一次Undo即可撤销。</summary>
         public MTCEditResult<bool> AddShape(string name,MRCShapeDefinition shape,double x,double y)
         {

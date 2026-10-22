@@ -30,6 +30,7 @@ namespace CxVisual.Mechanism.Visual
         {
             if(session==null)throw new ArgumentNullException("session");var snapshot=session.GetSnapshot();var projection=new Projection(snapshot,runtimeSource,elapsedMilliseconds,runtimeEnabled);
             foreach(var page in snapshot.Nodes.Where(n=>n.Kind==MEMNodeKind.Page&&(!pageId.HasValue||n.Id==pageId.Value)))projection.Collect(page,MRCTransform.Identity,new Guid[0],false,null,MRCTransform.Identity);
+            projection.AddVisualConnections();
             return projection.Items.AsReadOnly();
         }
         public static Guid? HitTest(IList<MVISceneItem> items, FGEPoint2D point)
@@ -51,7 +52,9 @@ namespace CxVisual.Mechanism.Visual
             double elapsedMilliseconds,bool runtimeEnabled)
         {
             var snapshot=session.GetSnapshot(resourceId,true);var root=snapshot.Find(resourceId);if(root==null)throw new InvalidOperationException("Missing projection root");var projection=new Projection(snapshot,runtimeSource,elapsedMilliseconds,runtimeEnabled);
-            projection.Collect(root,MRCTransform.Identity,new Guid[0],false,null,MRCTransform.Identity);return projection.Items.AsReadOnly();
+            projection.Collect(root,MRCTransform.Identity,new Guid[0],false,null,MRCTransform.Identity);
+            projection.AddVisualConnections();
+            return projection.Items.AsReadOnly();
         }
         private sealed class Projection
         {
@@ -62,6 +65,49 @@ namespace CxVisual.Mechanism.Visual
             private readonly double _elapsedMilliseconds;
             private readonly bool _runtimeEnabled;
             private int _expanded;
+            /// <summary>投影现有MPC Visual连接；边不另存几何，随两端图元变换更新。</summary>
+            internal void AddVisualConnections()
+            {
+                var links=new List<MVISceneItem>();
+                foreach(MEMNodeSnapshot owner in _snapshot.Nodes)
+                foreach(MPCConnection connection in owner.Connections)
+                {
+                    // 本阶段只处理同一编辑定义内的直接图元。实例连接走公共端口映射。
+                    if(connection.Source.Address.InstancePath.Count!=0||
+                        connection.Target.Address.InstancePath.Count!=0)continue;
+                    MEMNodeSnapshot first=_snapshot.Find(connection.Source.Address.ObjectId);
+                    MEMNodeSnapshot last=_snapshot.Find(connection.Target.Address.ObjectId);
+                    if(first==null||last==null)continue;
+                    MPCPort a=first.Ports.FirstOrDefault(p=>p.Id==connection.Source.PortId);
+                    MPCPort b=last.Ports.FirstOrDefault(p=>p.Id==connection.Target.PortId);
+                    if(a==null||b==null||a.Kind!=MPCPortKind.Visual||
+                        b.Kind!=MPCPortKind.Visual||
+                        !MVIVisualAnchors.IsVisualMember(a.MemberId)||
+                        !MVIVisualAnchors.IsVisualMember(b.MemberId))continue;
+                    MVISceneItem source=Items.FirstOrDefault(i=>i.Address!=null&&
+                        i.Address.ObjectId==first.Id&&i.Address.InstancePath.Count==0);
+                    MVISceneItem target=Items.FirstOrDefault(i=>i.Address!=null&&
+                        i.Address.ObjectId==last.Id&&i.Address.InstancePath.Count==0);
+                    if(source==null||target==null)continue;
+                    FGEPoint2D start=MVIVisualAnchors.At(source,
+                        a.MemberId.Substring("visual.".Length));
+                    FGEPoint2D end=MVIVisualAnchors.At(target,
+                        b.MemberId.Substring("visual.".Length));
+                    double x=Math.Min(start.X,end.X),y=Math.Min(start.Y,end.Y);
+                    var line=MRCShapeDefinition.Line(
+                        new FGEPoint2D(start.X-x,start.Y-y),
+                        new FGEPoint2D(end.X-x,end.Y-y));
+                    var transform=new MRCTransform(1,0,0,1,x,y);
+                    var style=new MRCVisualStyle(MRCBrushDefinition.None(),
+                        MRCBrushDefinition.Solid(MRCColor.FromRgb(55,122,199)),1.7);
+                    links.Add(new MVISceneItem(connection.Id,"Visual connector",null,
+                        transform,Math.Max(1,Math.Abs(start.X-end.X)),
+                        Math.Max(1,Math.Abs(start.Y-end.Y)),false,MRCTransform.Identity,
+                        x,y,"core.visual.connector",line,style));
+                }
+                Items.InsertRange(0,links);
+            }
+
             internal Projection(MEMProjectSnapshot snapshot,IMDSExternalBindingResolver runtimeSource,
                 double elapsedMilliseconds,bool runtimeEnabled)
             {
