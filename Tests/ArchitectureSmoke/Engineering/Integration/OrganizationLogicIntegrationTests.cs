@@ -64,6 +64,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         {
             SaveLoadAndIdentity();
             V1WaitDelayCancellationRoundtrip();
+            P01EventAwaitTimeoutCancellationRoundtrip();
             V2WiringRoundtrip();
             V2TypedParameterConfiguration();
             G05aConditionalBranchesAndJoin();
@@ -191,6 +192,103 @@ namespace CxVisual.Tests.ArchitectureSmoke
             {
                 session.Close(true);
                 if(System.IO.File.Exists(path))System.IO.File.Delete(path);
+            }
+        }
+
+        /// <summary>P0-1：真实MRK事件异步唤醒、有界超时与取消；输入不是事件时必须失败。</summary>
+        private static void P01EventAwaitTimeoutCancellationRoundtrip()
+        {
+            bool rejected=false;
+            try{MOLControlBlock.AwaitEvent("inspection.ready",0);}
+            catch(ArgumentOutOfRangeException){rejected=true;}
+            Check(rejected,"P0-1 accepted an unbounded event wait");
+            rejected=false;
+            try{MOLControlBlock.AwaitEvent(" ",50);}
+            catch(ArgumentException){rejected=true;}
+            Check(rejected,"P0-1 accepted empty event source");
+
+            var session=MEMEngineering.Create("P0-1 外部事件等待");
+            var page=session.AddPage("Inspection");
+            var wait=MOLControlBlock.AwaitEvent("inspection.ready",3000);
+            var action=MOLControlBlock.Action("inspection.after_event");
+            int invoked=0;
+            var resolver=new TestResolver().Register("inspection.after_event",(ctx,ct)=>{
+                System.Threading.Interlocked.Increment(ref invoked);
+                return Task.FromResult((object)true);
+            });
+            MOLLogicCodec.Set(session,page.RootContent,new MOLLogicDefinition(
+                MOLControlBlock.Sequence(wait,action)));
+            string path=System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                "moc-event-wait-"+Guid.NewGuid().ToString("N")+".cxproj");
+            try
+            {
+                session.SaveAs(path);
+                using(var opened=MEMEngineering.Open(path))
+                {
+                    var restored=MOLLogicCodec.Get(opened.GetSnapshot().Find(page.RootContent.Id));
+                    Check(restored.Root.Children[0].Id==wait.Id&&
+                        restored.Root.Children[0].Wait.EventInput=="inspection.ready"&&
+                        restored.Root.Children[0].Wait.DurationMilliseconds==3000,
+                        "P0-1 event contract or BlockId lost during project Save/Open");
+                    var compiled=new MOCEngineeringCompiler().Compile(opened.GetSnapshot(),
+                        page.RootContent.Id,resolver);
+                    var engine=new MRKExecutionEngine(new FCRWorkerOptions(2,16));
+                    try
+                    {
+                        var ready=new TaskCompletionSource<bool>(
+                            TaskCreationOptions.RunContinuationsAsynchronously);
+                        var running=engine.StartFlow(compiled.Plan,
+                            new Dictionary<string,object>{{"inspection.ready",ready.Task}});
+                        Check(!running.Completion.Wait(TimeSpan.FromMilliseconds(40))&&
+                            System.Threading.Volatile.Read(ref invoked)==0,
+                            "P0-1 event wait ran downstream action before the signal");
+                        ready.SetResult(true);
+                        Check(running.Completion.Wait(TimeSpan.FromSeconds(5))&&
+                            running.Completion.Result.State==MRKFlowState.Completed&&
+                            System.Threading.Volatile.Read(ref invoked)==1,
+                            "P0-1 actual MRK Flow did not resume on event");
+
+                        var missing=engine.StartFlow(compiled.Plan);
+                        Check(missing.Completion.Wait(TimeSpan.FromSeconds(5))&&
+                            missing.Completion.Result.State==MRKFlowState.Failed&&
+                            System.Threading.Volatile.Read(ref invoked)==1,
+                            "P0-1 missing event Task incorrectly succeeded");
+                        var wrongType=engine.StartFlow(compiled.Plan,
+                            new Dictionary<string,object>{{"inspection.ready","signaled"}});
+                        Check(wrongType.Completion.Wait(TimeSpan.FromSeconds(5))&&
+                            wrongType.Completion.Result.State==MRKFlowState.Failed&&
+                            System.Threading.Volatile.Read(ref invoked)==1,
+                            "P0-1 non-Task event source incorrectly succeeded");
+
+                        MOLLogicCodec.Set(opened,opened.Project.Pages[0].RootContent,
+                            new MOLLogicDefinition(MOLControlBlock.Sequence(
+                                MOLControlBlock.AwaitEvent("inspection.ready",60),action)));
+                        var timed=new MOCEngineeringCompiler().Compile(opened.GetSnapshot(),
+                            page.RootContent.Id,resolver);
+                        var pending=new TaskCompletionSource<bool>(
+                            TaskCreationOptions.RunContinuationsAsynchronously);
+                        var timeout=engine.StartFlow(timed.Plan,
+                            new Dictionary<string,object>{{"inspection.ready",pending.Task}});
+                        Check(timeout.Completion.Wait(TimeSpan.FromSeconds(5))&&
+                            timeout.Completion.Result.State==MRKFlowState.Failed&&
+                            System.Threading.Volatile.Read(ref invoked)==1,
+                            "P0-1 event timeout was not a failed MRK Flow");
+                        var cancelled=engine.StartFlow(compiled.Plan,
+                            new Dictionary<string,object>{{"inspection.ready",pending.Task}});
+                        cancelled.RequestCancel();
+                        Check(cancelled.Completion.Wait(TimeSpan.FromSeconds(5))&&
+                            cancelled.Completion.Result.State==MRKFlowState.Cancelled&&
+                            System.Threading.Volatile.Read(ref invoked)==1,
+                            "P0-1 event cancellation ran downstream action or hung");
+                    }
+                    finally{engine.StopAsync(true).GetAwaiter().GetResult();}
+                }
+            }
+            finally
+            {
+                session.Close(true);
+                if(System.IO.File.Exists(path))System.IO.File.Delete(path);
+                if(System.IO.File.Exists(path+".cx-lock"))System.IO.File.Delete(path+".cx-lock");
             }
         }
 

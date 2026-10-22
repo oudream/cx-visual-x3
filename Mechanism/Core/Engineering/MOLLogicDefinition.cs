@@ -118,7 +118,7 @@ namespace CxVisual.Mechanism.Core
         public string CollectionInput { get; private set; }
     }
 
-    /// <summary>工程逻辑中的可取消定时等待声明；实际计时与取消由MRK执行。</summary>
+    /// <summary>工程等待声明：定时或有界外部事件；实际等待、取消由MRK执行。</summary>
     public sealed class MOLWaitDefinition
     {
         public MOLWaitDefinition(int durationMilliseconds)
@@ -126,8 +126,20 @@ namespace CxVisual.Mechanism.Core
             if(durationMilliseconds<0||durationMilliseconds>600000)
                 throw new ArgumentOutOfRangeException("durationMilliseconds");
             DurationMilliseconds=durationMilliseconds;
+            EventInput="";
+        }
+        /// <summary>事件输入为本次Flow提供的Task；超时不可为零，不能无限等待。</summary>
+        public MOLWaitDefinition(string eventInput,int timeoutMilliseconds)
+        {
+            if(string.IsNullOrWhiteSpace(eventInput)||eventInput.Length>128)
+                throw new ArgumentException("logic.wait_event_input","eventInput");
+            if(timeoutMilliseconds<1||timeoutMilliseconds>600000)
+                throw new ArgumentOutOfRangeException("timeoutMilliseconds");
+            EventInput=eventInput.Trim();
+            DurationMilliseconds=timeoutMilliseconds;
         }
         public int DurationMilliseconds{get;private set;}
+        public string EventInput{get;private set;}
     }
 
     public sealed class MOLControlBlock
@@ -157,6 +169,9 @@ namespace CxVisual.Mechanism.Core
         public static MOLControlBlock Delay(int durationMilliseconds)
         {return new MOLControlBlock(Guid.NewGuid(),MOLControlKind.Wait,
             wait:new MOLWaitDefinition(durationMilliseconds));}
+        public static MOLControlBlock AwaitEvent(string eventInput,int timeoutMilliseconds)
+        {return new MOLControlBlock(Guid.NewGuid(),MOLControlKind.Wait,
+            wait:new MOLWaitDefinition(eventInput,timeoutMilliseconds));}
         public static MOLControlBlock Action(string capability)
         { return new MOLControlBlock(Guid.NewGuid(), MOLControlKind.Action, capability); }
         public static MOLControlBlock Sequence(params MOLControlBlock[] children)
@@ -324,8 +339,14 @@ namespace CxVisual.Mechanism.Core
                 new XAttribute("kind", b.Kind), new XAttribute("cap", b.CapabilityId),
                 new XAttribute("target", b.TargetFlow), new XAttribute("exit", b.ExitKind));
             if (b.Condition != null) e.Add(new XElement("Guard", WriteExpression(b.Condition)));
-            if (b.Wait != null) e.Add(new XElement("Wait",
-                new XAttribute("durationMs",b.Wait.DurationMilliseconds)));
+            if (b.Wait != null)
+            {
+                var wait=new XElement("Wait",
+                    new XAttribute("durationMs",b.Wait.DurationMilliseconds));
+                if(!string.IsNullOrEmpty(b.Wait.EventInput))
+                    wait.Add(new XAttribute("eventInput",b.Wait.EventInput));
+                e.Add(wait);
+            }
             foreach (var c in b.Children) e.Add(WriteBlock(c));
             foreach (var c in b.Cases)
             {
@@ -374,11 +395,13 @@ namespace CxVisual.Mechanism.Core
             if(waitElement!=null)
             {
                 int duration;
-                if(waitElement.Attributes().Count()!=1||
+                string eventInput=(string)waitElement.Attribute("eventInput");
+                if(waitElement.Attributes().Count()!=(eventInput==null?1:2)||
                    !int.TryParse((string)waitElement.Attribute("durationMs"),
                        NumberStyles.None,CultureInfo.InvariantCulture,out duration))
                     throw new InvalidDataException("logic.wait_payload");
-                wait=new MOLWaitDefinition(duration);
+                wait=eventInput==null?new MOLWaitDefinition(duration):
+                    new MOLWaitDefinition(eventInput,duration);
             }
             return new MOLControlBlock(id, kind, (string)e.Attribute("cap"), blocks, cases,
                 loop, ReadExpression(e.Element("Guard") == null ? null : e.Element("Guard").Element("Expression")),

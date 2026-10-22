@@ -1559,11 +1559,33 @@ namespace CxVisual.Mechanism.Orchestration
                     {
                         if(block.Wait==null)throw new InvalidOperationException("moc.wait_missing");
                         int milliseconds=block.Wait.DurationMilliseconds;
+                        string eventInput=block.Wait.EventInput;
                         string capability="moc.internal.wait."+NewId(block);
                         Resolver.RegisterAsync(capability,async (context,token)=>{
-                            await Task.Delay(milliseconds,token).ConfigureAwait(false);
-                            token.ThrowIfCancellationRequested();
-                            return (object)true;
+                            if(string.IsNullOrEmpty(eventInput))
+                            {
+                                await Task.Delay(milliseconds,token).ConfigureAwait(false);
+                                token.ThrowIfCancellationRequested();
+                                return (object)true;
+                            }
+                            object source;
+                            if(!context.Inputs.TryGetValue(eventInput,out source)||
+                                !(source is Task))
+                                throw new InvalidOperationException(
+                                    "moc.wait.event_input_missing_or_invalid:"+eventInput);
+                            Task signal=(Task)source;
+                            using(var linked=CancellationTokenSource.CreateLinkedTokenSource(token))
+                            {
+                                Task limit=Task.Delay(milliseconds,linked.Token);
+                                Task winner=await Task.WhenAny(signal,limit).ConfigureAwait(false);
+                                token.ThrowIfCancellationRequested();
+                                if(winner!=signal)
+                                    throw new TimeoutException("moc.wait.event_timeout:"+eventInput);
+                                linked.Cancel();
+                                await signal.ConfigureAwait(false);
+                                token.ThrowIfCancellationRequested();
+                                return (object)true;
+                            }
                         },typeof(bool));
                         return new[]{Add(block,owner,calls,null,"Wait",capability,before)};
                     }
