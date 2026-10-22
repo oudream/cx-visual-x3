@@ -43,10 +43,16 @@ Tests/
 │   └── Visual/
 └── TestCenter/
     ├── CxVisual.TestCenter.csproj     ← WPF + CLI + Worker
-    ├── README.md                      ← TestCenter开发者快速上手
-    ├── Cases/ Core/ Discovery/ Execution/
-    ├── Diagnostics/ Fixtures/ Models/
-    ├── NUnitIntegration/ Reports/ UI/
+    ├── README.md                      ← 目录结构、职责与开发者使用
+    ├── Common/                        ← Frame/Navigation/Shell/Operations共享界面层
+    ├── Automated/                     ← 自动Catalog/Worker/Run/Attempt体系
+    │   ├── Cases/ Core/ Discovery/ Execution/ Fixtures/
+    │   ├── Models/ NUnitIntegration/ Diagnostics/ Reports/
+    │   └── UI/                        ← 自动测试结果Viewer与计划/总览
+    ├── Manual/                        ← 人工专项实验台（Virtual Channel）
+    ├── Scenarios/                     ← 场景案例；真实Owner待接入
+    ├── ReportCenter/                  ← 统一报告界面（History/Diff）
+    ├── Verification/                  ← WPF/UIAutomation验收
     └── CxVisual_TestCenter_统一主界面与工作区Frame注册——完整设计与验收_V1.1.md
 ~~~
 
