@@ -667,3 +667,9 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 - `MRKCodeRuntimeBuilder.ExecutionGroup(id,maxConcurrency,maxWaiting,scope)`直接注册原`MRKExecutionGroupDefinition`；`MRKCodeFlowBuilder.StepInGroup`使用原`MRKStepCompileRequest.ExecutionGroup`而非第二套编排图。`Freeze`构建的Blueprint保留不可变执行组注册表并在运行前拒绝所有未知组；`BuildForDevelopment`将同一组配置传给原`MRKExecutionEngine`，实际按Step/Stage/WholeFlow仲裁。
 - ArchitectureSmoke真实两Flow流水反证：Stage组容量1，同组两个连续节点不会自己排队死锁，Stage结束但第一个Flow尚在执行无组尾部时，第二个Flow可完整进入并完成；重复组ID拒绝、未知组Freeze前拒绝、冻结后Builder新注册组不修改已有Blueprint。
 - 仅为开发者与CPU仿真的运行组配置；生产级Host设备容量必须独立授权，MOL/MOC现有工程组引用与Studio运行预览接入仍需专项。不以新增开发者API代替工程持久化或Studio控件交互验收。
+
+
+### R08 MOC编译产物与Host真实执行组定义核对（2026-10-22，待Windows CI）
+
+- `MOCCompiledPlan.RequireExecutionGroups(IEnumerable<MRKExecutionGroupDefinition>)`对MOC发布候选在执行前校验全部静态/动态子计划的ExecutionGroup引用，空组配置、未知组、重复组/空定义必须明确拒绝；使用原MRK组定义，不在MOL/MOC保存第二份容量或作用域。返回原MOCCompiledPlan对象身份，不能通过验证偷换Plan/SourceMap。
+- 原`R08_EngineeringStageGroupIdentitySurvivesBuildAndReload`扩展：真实MEM工程设置Stage组ID、保存重开与MOC编译后，用Host注册表拒绝未知组、重复定义，再凭正确MRK组定义批准，最后由原MRK真实执行并释放许可证。此门禁仅为MOC发布前可选显式核对：全平台生产Publisher/RuntimeAccess与Studio UI将其接入的覆盖仍需独立验证。

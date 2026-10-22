@@ -2333,6 +2333,32 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Check(build.Succeeded&&build.Plan.Plan.Steps.Count==1&&
                         build.Plan.Plan.Steps[0].ExecutionGroup=="vision-stage",
                         "R08 MOC编译未将原工程Stage组ID传入MRK Plan");
+                    // 工程保存仅携带组身份；必须与Host的真实MRK配额配置核对，
+                    // 不能因Studio页面填了名字就在生产环境发出未知组指令。
+                    bool missingGroup=false;
+                    try { build.Plan.RequireExecutionGroups(
+                        new MRKExecutionGroupDefinition[0]); }
+                    catch (InvalidOperationException error)
+                    {
+                        missingGroup=error.Message.Contains(
+                            "moc.execution_group_unregistered:");
+                    }
+                    Check(missingGroup,"R08未知Host执行组没有在工程编译后发布前拒绝");
+                    bool duplicateGroup=false;
+                    try
+                    {
+                        var group=new MRKExecutionGroupDefinition("vision-stage",1,1,
+                            MRKExecutionGroupScope.Stage);
+                        build.Plan.RequireExecutionGroups(new[]{group,group});
+                    }
+                    catch(ArgumentException){duplicateGroup=true;}
+                    Check(duplicateGroup,"R08 Host重复组定义未明确拒绝");
+                    var approved=new MRKExecutionGroupDefinition("vision-stage",1,1,
+                        MRKExecutionGroupScope.Stage);
+                    Check(object.ReferenceEquals(build.Plan,
+                        build.Plan.RequireExecutionGroups(new[]{approved})) &&
+                        build.Plan.Plan.Steps[0].ExecutionGroup=="vision-stage",
+                        "R08校验不应另建MRK Plan或修改原MOL工程组引用");
                     var engine=new MRKExecutionEngine(new FCRWorkerOptions(1,4),
                         groups:new[]{new MRKExecutionGroupDefinition(
                             "vision-stage",1,1,MRKExecutionGroupScope.Stage)});

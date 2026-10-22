@@ -81,6 +81,44 @@ namespace CxVisual.Mechanism.Orchestration
         public MOCSourceMap SourceMap { get; private set; }
         public Guid ProjectId { get; private set; }
         public int EngineeringRevision { get; private set; }
+
+        /// <summary>
+        /// R08：工程已编译Plan在发布/模拟执行前核对Host实际注册的原MRK执行组。
+        /// 不把组容量复制进MOL节点或MOC Plan；Host仍拥有真实组容量及作用域。
+        /// </summary>
+        public MOCCompiledPlan RequireExecutionGroups(
+            IEnumerable<MRKExecutionGroupDefinition> registered)
+        {
+            if (registered == null) throw new ArgumentNullException("registered");
+            var groups = new Dictionary<string, MRKExecutionGroupDefinition>(StringComparer.Ordinal);
+            foreach (MRKExecutionGroupDefinition definition in registered)
+            {
+                if (definition == null)
+                    throw new ArgumentException("moc.execution_group_null", "registered");
+                if (groups.ContainsKey(definition.Id))
+                    throw new ArgumentException(
+                        "moc.execution_group_duplicate:" + definition.Id, "registered");
+                groups.Add(definition.Id, definition);
+            }
+            ValidateExecutionGroups(Plan, groups);
+            return this;
+        }
+
+        private static void ValidateExecutionGroups(MRKExecutionPlan plan,
+            IDictionary<string, MRKExecutionGroupDefinition> groups)
+        {
+            foreach (MRKExecutionStep step in plan.Steps)
+            {
+                if (!string.IsNullOrWhiteSpace(step.ExecutionGroup) &&
+                    !groups.ContainsKey(step.ExecutionGroup))
+                    throw new InvalidOperationException(
+                        "moc.execution_group_unregistered:" + step.Id + ":" +
+                        step.ExecutionGroup);
+                if (step.LoopRegion != null)
+                    ValidateExecutionGroups(step.LoopRegion.Body, groups);
+            }
+        }
+
         public MOCTraceView ReadTrace(MRKFlowHandle handle, long afterSequence)
         {
             if (handle == null) throw new ArgumentNullException("handle");
