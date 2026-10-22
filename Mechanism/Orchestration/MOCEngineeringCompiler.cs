@@ -1273,6 +1273,7 @@ namespace CxVisual.Mechanism.Orchestration
                     if(!wiring.StateMachines.TryGetValue(block.Id,out machine))
                         throw new InvalidOperationException("moc.state.missing_definition");
                     string inputName="moc.state.events."+block.Id.ToString("N");
+                    string checkpointName="moc.state.checkpoint."+block.Id.ToString("N");
                     executeCapability="moc.internal.state."+block.Id.ToString("N");
                     var definition=machine;
                     transientResolver.Register(executeCapability,ctx=>{
@@ -1280,7 +1281,17 @@ namespace CxVisual.Mechanism.Orchestration
                         if(!ctx.Inputs.TryGetValue(inputName,out events)||
                             !(events is IEnumerable<string>))
                             throw new InvalidOperationException("moc.state.events_input_missing:"+inputName);
-                        return (object)definition.Run((IEnumerable<string>)events,ctx.Inputs);
+                        object previous;
+                        IReadOnlyDictionary<string,string> checkpoint=null;
+                        if(ctx.Inputs.TryGetValue(checkpointName,out previous))
+                        {
+                            checkpoint=previous as IReadOnlyDictionary<string,string>;
+                            if(checkpoint==null)
+                                throw new InvalidOperationException(
+                                    "moc.state.invalid_checkpoint_type:"+checkpointName);
+                        }
+                        return (object)definition.Run((IEnumerable<string>)events,
+                            ctx.Inputs,checkpoint);
                     },typeof(object));
                 }
                 if(block.CapabilityId.StartsWith("moc.invoke:",StringComparison.Ordinal))

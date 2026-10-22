@@ -1920,10 +1920,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
 
             var machine=new MOLStateMachineDefinition(new[]{
                 new MOLStateDescriptor("Idle","Unit",initial:true),
-                new MOLStateDescriptor("Busy","Unit")
+                new MOLStateDescriptor("Busy","Unit"),
+                new MOLStateDescriptor("Finished","Unit")
             },new[]{
                 new MOLStateTransition("Idle","start","Busy",
-                    MOLExpression.InputTrue("permit"))
+                    MOLExpression.InputTrue("permit")),
+                new MOLStateTransition("Busy","finish","Finished")
             });
             var session=MEMEngineering.Create("P0-3 state guards");
             var page=session.AddPage("Unit");
@@ -1968,6 +1970,24 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         finally{runtime.StopAsync(true).GetAwaiter().GetResult();}
                     };
                     string eventKey="moc.state.events."+block.ToString("N");
+                    string checkpointKey="moc.state.checkpoint."+block.ToString("N");
+                    var pureCheckpoint=restored.Run(new[]{"start"},
+                        new Dictionary<string,object>{{"permit",true}});
+                    Check(restored.Run(new[]{"finish"},null,pureCheckpoint)["Unit"]=="Finished"&&
+                        restored.Run(new[]{"finish"})["Unit"]=="Idle",
+                        "P0-3 pure transition did not resume from a validated snapshot");
+                    bool invalidCheckpoint=false;
+                    try{restored.Run(new[]{"finish"},null,
+                        new Dictionary<string,string>{{"Unit","Ghost"}});}
+                    catch(InvalidOperationException ex)
+                    {invalidCheckpoint=ex.Message.Contains("moc.state.invalid_checkpoint");}
+                    Check(invalidCheckpoint,"P0-3 accepted unknown checkpoint state");
+                    invalidCheckpoint=false;
+                    try{restored.Run(new[]{"finish"},null,
+                        new Dictionary<string,string>());}
+                    catch(InvalidOperationException ex)
+                    {invalidCheckpoint=ex.Message.Contains("moc.state.invalid_checkpoint");}
+                    Check(invalidCheckpoint,"P0-3 accepted missing checkpoint region");
                     Check(execute(new Dictionary<string,object>{
                         {eventKey,new[]{"start"}},{"permit",false}})=="Idle"&&
                         execute(new Dictionary<string,object>{
@@ -1975,6 +1995,22 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         execute(new Dictionary<string,object>{
                         {eventKey,new[]{"start"}}})=="FAILED",
                         "P0-3 MRK did not honor Guard or reject missing Guard input");
+                    string firstFlow=execute(new Dictionary<string,object>{
+                        {eventKey,new[]{"start"}},{"permit",true}});
+                    var fromFirstFlow=new Dictionary<string,string>{{"Unit",firstFlow}};
+                    Check(firstFlow=="Busy"&&
+                        execute(new Dictionary<string,object>{
+                            {eventKey,new[]{"finish"}},
+                            {checkpointKey,fromFirstFlow}})=="Finished"&&
+                        execute(new Dictionary<string,object>{
+                            {eventKey,new[]{"finish"}}})=="Idle"&&
+                        execute(new Dictionary<string,object>{
+                            {eventKey,new[]{"finish"}},
+                            {checkpointKey,new Dictionary<string,string>{{"Unit","Ghost"}}}})=="FAILED"&&
+                        execute(new Dictionary<string,object>{
+                            {eventKey,new[]{"finish"}},
+                            {checkpointKey,"invalid"}})=="FAILED",
+                        "P0-3 MRK checkpoint resume/rejection or fresh Flow isolation failed");
                 }
             }
             finally

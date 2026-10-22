@@ -565,6 +565,16 @@ namespace CxVisual.Mechanism.Core
             IDictionary<string,object> guardInputs,
             System.Threading.CancellationToken cancellation=
                 default(System.Threading.CancellationToken))
+        {return Run(events,guardInputs,null,cancellation);}
+        /// <summary>
+        /// 从调用方提供的只读状态快照继续计算。只接受完整且与当前定义一致的叶状态；
+        /// 这是无状态迁移入口，不替代MRK实例生命周期或持久Checkpoint。
+        /// </summary>
+        public IReadOnlyDictionary<string,string> Run(IEnumerable<string> events,
+            IDictionary<string,object> guardInputs,
+            IReadOnlyDictionary<string,string> checkpoint,
+            System.Threading.CancellationToken cancellation=
+                default(System.Threading.CancellationToken))
         {
             if(events==null)throw new ArgumentNullException("events");
             var map=States.ToDictionary(s=>s.Id,StringComparer.Ordinal);
@@ -572,6 +582,22 @@ namespace CxVisual.Mechanism.Core
             foreach(var region in States.GroupBy(s=>s.Region,StringComparer.Ordinal))
                 active.Add(region.Key,ResolveLeaf(region.Single(s=>
                     s.ParentId.Length==0&&s.Initial).Id,map));
+            if(checkpoint!=null)
+            {
+                if(checkpoint.Count!=active.Count)
+                    throw new InvalidOperationException("moc.state.invalid_checkpoint");
+                foreach(string region in active.Keys.ToArray())
+                {
+                    string resumed;
+                    MOLStateDescriptor candidate;
+                    if(!checkpoint.TryGetValue(region,out resumed)||
+                        !map.TryGetValue(resumed??"",out candidate)||
+                        candidate.Region!=region||
+                        States.Any(s=>s.ParentId==resumed))
+                        throw new InvalidOperationException("moc.state.invalid_checkpoint:"+region);
+                    active[region]=resumed;
+                }
+            }
             int count=0;
             foreach(string eventId in events)
             {
