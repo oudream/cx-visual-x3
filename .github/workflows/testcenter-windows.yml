@@ -5,6 +5,7 @@ on:
     branches: [master]
     paths:
       - 'Tests/TestCenter/**'
+      - 'Applications/Studio/**'
       - 'Foundation/**'
       - 'Mechanism/**'
       - 'CxVisual.Unified.sln'
