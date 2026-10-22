@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using CxVisual.Foundation.Infrastructure.Logging;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -51,6 +53,7 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
                 _action = action;
                 Handle = new FCRWorkHandle<T>(Id, Key, _completion.Task,
                     () => (FCRWorkState)Volatile.Read(ref State), () => owner.RequestCancel(this));
+                owner.TrackAudit(Handle);
             }
             private void Finish(FCRWorkState state, T value, Exception error,
                 FCRWorkTerminalReason reason = FCRWorkTerminalReason.None)
@@ -101,6 +104,12 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
         private readonly LinkedList<Job> _pending = new LinkedList<Job>();
         private readonly HashSet<string> _activeKeys = new HashSet<string>(StringComparer.Ordinal);
         private readonly FCRWorkerOptions _options;
+        private readonly FLDLogService _auditLog;
+        private readonly object _auditGate = new object();
+        private TaskCompletionSource<bool> _auditIdle;
+        private int _auditPending;
+        private Exception _auditFailure;
+        private long _auditLosses;
         private int _active;
         // R08：跨Key高优先级可优先，但不能永久压制排队更久的任务。
         private int _priorityOvertakes;
@@ -112,8 +121,73 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
         private bool _stopping;
         private TaskCompletionSource<bool> _stopped;
 
-        public FCRWorker(FCRWorkerOptions options)
-        { _options = options ?? throw new ArgumentNullException("options"); }
+        public FCRWorker(FCRWorkerOptions options, FLDLogService auditLog = null)
+        {
+            _options = options ?? throw new ArgumentNullException("options");
+            _auditLog = auditLog;
+            _auditIdle = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            _auditIdle.TrySetResult(true);
+        }
+        public Exception AuditFailure { get { lock (_auditGate) return _auditFailure; } }
+        public long AuditedLosses { get { lock (_auditGate) return _auditLosses; } }
+        public int PendingAudits { get { lock (_auditGate) return _auditPending; } }
+
+        private void TrackAudit<T>(FCRWorkHandle<T> handle)
+        {
+            if (_auditLog == null) return;
+            lock (_auditGate)
+                if (_auditPending++ == 0)
+                    _auditIdle = new TaskCompletionSource<bool>(
+                        TaskCreationOptions.RunContinuationsAsynchronously);
+            // 捕获原Handle终态（包含DropOldest旧工作），不在Worker锁内同步写重要日志。
+            Task unused = handle.Completion.ContinueWith(completed =>
+            {
+                try
+                {
+                    FCRWorkResult<T> result = completed.GetAwaiter().GetResult();
+                    if (result.State == FCRWorkState.Dropped ||
+                        result.State == FCRWorkState.Rejected)
+                    {
+                        if (!FCRWorkAudit.LogLoss(_auditLog, handle, result))
+                            throw new IOException("F19重要事件队列未接受损失审计");
+                        lock (_auditGate) _auditLosses++;
+                    }
+                }
+                catch (Exception error)
+                {
+                    lock (_auditGate)
+                        if (_auditFailure == null) _auditFailure = error;
+                }
+                finally
+                {
+                    lock (_auditGate)
+                        if (--_auditPending == 0) _auditIdle.TrySetResult(true);
+                }
+            }, CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
+        }
+        private void RequireHealthyAudit()
+        {
+            Exception error = AuditFailure;
+            if (error != null)
+                throw new InvalidOperationException(
+                    "F19重要事件审计失败，禁止继续接单", error);
+        }
+        private async Task CompleteAuditStopAsync(Task workerStop)
+        {
+            await workerStop.ConfigureAwait(false);
+            Task audits;
+            lock (_auditGate) audits = _auditIdle.Task;
+            await audits.ConfigureAwait(false);
+            try { await Task.Run(() => _auditLog.Flush()).ConfigureAwait(false); }
+            catch (Exception error)
+            {
+                lock (_auditGate)
+                    if (_auditFailure == null) _auditFailure = error;
+            }
+            if (AuditFailure != null)
+                throw new IOException("F19重要事件审计未可靠落盘", AuditFailure);
+        }
 
         /// <summary>便捷提交同步业务函数；执行在线程池Worker上，异常仍可从Handle结果查看。</summary>
         public FCRWorkHandle<bool> Post(Action action, string key = null,
@@ -159,6 +233,7 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
         {
             if (action == null) throw new ArgumentNullException("action");
             if (estimatedBytes < 0) throw new ArgumentOutOfRangeException("estimatedBytes");
+            RequireHealthyAudit();
             Job<T> job = new Job<T>(this, key, droppable, priority, estimatedBytes,
                 cancellation, action);
             List<Job> launch;
@@ -255,6 +330,7 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
             if (action == null) throw new ArgumentNullException("action");
             if (estimatedBytes < 0) throw new ArgumentOutOfRangeException("estimatedBytes");
             cancellation.ThrowIfCancellationRequested();
+            RequireHealthyAudit();
             Job<T> job = new Job<T>(this, key, false, priority, estimatedBytes,
                 cancellation, action);
             ProducerAdmission admission = new ProducerAdmission(job);
@@ -497,7 +573,7 @@ namespace CxVisual.Foundation.Infrastructure.Concurrency
                 try { job.Source.Cancel(); } catch (ObjectDisposedException) { }
                 job.Source.Dispose();
             }
-            return completion;
+            return _auditLog == null ? completion : CompleteAuditStopAsync(completion);
         }
 
         private void SignalStopLocked()

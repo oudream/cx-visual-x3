@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CxVisual.Foundation.Infrastructure.Concurrency;
+using CxVisual.Foundation.Infrastructure.Logging;
 using CxVisual.Foundation.Data.Execution;
 using CxVisual.Mechanism.Data.RuntimeData;
 using CxVisual.Foundation.Data.Types;
@@ -652,14 +653,14 @@ namespace CxVisual.Mechanism.Runtime.Execution
             IMRKExecutionJournal journal = null,
             IDictionary<string, FCRDedicatedExecutor> dedicatedExecutors = null,
             int traceCapacity = 2048, int maxActiveFlows = int.MaxValue,
-            long dataPayloadBudgetBytes = 0)
+            long dataPayloadBudgetBytes = 0, FLDLogService auditLog = null)
         {
             if (maxActiveFlows < 1) throw new ArgumentOutOfRangeException("maxActiveFlows");
             if (dataPayloadBudgetBytes < 0)
                 throw new ArgumentOutOfRangeException("dataPayloadBudgetBytes");
             _maxActiveFlows = maxActiveFlows;
             _dataPayloadBudgetBytes = dataPayloadBudgetBytes;
-            _worker = new FCRWorker(options);
+            _worker = new FCRWorker(options, auditLog);
             _resources = coordinator ?? new MRKResourceLeaseCoordinator();
             _groups = new MRKExecutionGroups(groups);
             if (traceCapacity < 1) throw new ArgumentOutOfRangeException("traceCapacity");
@@ -675,6 +676,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 }
         }
         public IList<MRKExecutionGroupSnapshot> GroupSnapshot() { return _groups.Snapshot(); }
+        public Exception AuditFailure { get { return _worker.AuditFailure; } }
+        public long AuditedLosses { get { return _worker.AuditedLosses; } }
         public FCRWorkHandle<T> Submit<T>(Func<CancellationToken, Task<T>> action,
             string serialKey = null, bool droppable = false,
             CancellationToken cancellation = default(CancellationToken))

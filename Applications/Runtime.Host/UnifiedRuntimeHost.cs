@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CxVisual.Foundation.Infrastructure.Concurrency;
+using CxVisual.Foundation.Infrastructure.Logging;
 using CxVisual.Mechanism.Runtime.Execution;
 
 namespace CxVisual.Runtime.Host
@@ -40,6 +41,7 @@ namespace CxVisual.Runtime.Host
     internal sealed class MRHUnifiedRuntimeHost : IDisposable
     {
         private readonly MRKFileExecutionJournal _journal;
+        private readonly FLDLogService _audit;
         private readonly MRKExecutionEngine _engine;
         private readonly MRKRuntimeSession _session;
         private readonly MRKRuntimeAccessGateway _access;
@@ -49,8 +51,9 @@ namespace CxVisual.Runtime.Host
         private bool _stopped;
         private MRHUnifiedRuntimeHost(MRKFileExecutionJournal journal,
             MRKExecutionEngine engine, MRKRuntimeSession session,
-            MRKRuntimeAccessGateway access)
-        { _journal = journal; _engine = engine; _session = session; _access = access; }
+            MRKRuntimeAccessGateway access, FLDLogService audit)
+        { _journal = journal; _engine = engine; _session = session; _access = access;
+          _audit = audit; }
 
         internal static MRHUnifiedRuntimeHost Open(string journalPath)
         {
@@ -59,6 +62,7 @@ namespace CxVisual.Runtime.Host
             string path = Path.GetFullPath(journalPath);
             Directory.CreateDirectory(Path.GetDirectoryName(path));
             MRKFileExecutionJournal journal = new MRKFileExecutionJournal(path);
+            FLDLogService audit = null;
             try
             {
                 IList<MRKJournalRecord> history = journal.ReadAll();
@@ -98,21 +102,26 @@ namespace CxVisual.Runtime.Host
                     "local-simulation", "host-simulation", blueprint, 2);
                 if (!receipt.Accepted || !publisher.TryActivate("local-simulation"))
                     throw new InvalidOperationException("Host模拟计划发布未通过安全验证");
+                audit = new FLDLogService(Path.Combine(Path.GetDirectoryName(path),
+                    "F19-Audit"));
                 MRKExecutionEngine engine =
-                    new MRKExecutionEngine(new FCRWorkerOptions(2,16), journal:journal);
+                    new MRKExecutionEngine(new FCRWorkerOptions(2,16),
+                        journal:journal, auditLog:audit);
                 MRKRuntimeSession session =
                     new MRKRuntimeSession("host-simulation",engine,slot,maxInFlight:4);
                 session.Start();
                 MRKRuntimeAccessGateway gateway=new MRKRuntimeAccessGateway(
                     engine,session,new MRHSimulationAccessPolicy());
-                return new MRHUnifiedRuntimeHost(journal,engine,session,gateway);
+                return new MRHUnifiedRuntimeHost(journal,engine,session,gateway,audit);
             }
-            catch { journal.Dispose(); throw; }
+            catch { if (audit != null) audit.Dispose(); journal.Dispose(); throw; }
         }
 
         internal MRKRuntimeFlowTicket Start()
         {
             if (_stopped) throw new InvalidOperationException("Host已停止");
+            if (_engine.AuditFailure != null)
+                throw new InvalidOperationException("Host重要审计故障，拒绝新Flow", _engine.AuditFailure);
             MRKRuntimeFlowTicket flow = _access.TryStart("local-simulation",
                 correlationId: Guid.NewGuid().ToString("N"));
             if (flow == null) throw new InvalidOperationException("Session拒绝新Flow");
@@ -142,8 +151,12 @@ namespace CxVisual.Runtime.Host
         {
             if (_stopped) return;
             _stopped = true;
-            await _access.StopSessionAsync("local-simulation",cancel).ConfigureAwait(false);
-            await _engine.StopAsync(cancel).ConfigureAwait(false);
+            try { await _access.StopSessionAsync("local-simulation",cancel).ConfigureAwait(false); }
+            finally
+            {
+                try { await _engine.StopAsync(cancel).ConfigureAwait(false); }
+                finally { _audit.Dispose(); }
+            }
         }
         public void Dispose()
         {

@@ -622,3 +622,9 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 - **源码提交`74a7348903fdd80b19f0eda3ff2fc7367fab931d`**：FCRWorkResult<T>真实终态原因、FCRWorkAudit.LogLoss接入原FLD重要文件日志；同SHA Windows Runtime [39595012557](https://github.com/oudream/cx-visual-x3/actions/runs/39595012557)、Studio S1 [39595012615](https://github.com/oudream/cx-visual-x3/actions/runs/39595012615)、TestCenter [39595012619](https://github.com/oudream/cx-visual-x3/actions/runs/39595012619)、Config L1 [39595012591](https://github.com/oudream/cx-visual-x3/actions/runs/39595012591)、配置公共底座 [39595012613](https://github.com/oudream/cx-visual-x3/actions/runs/39595012613)，**5/5 success**。
 - **真实落盘回归提交`1f08a9b73a0a6fa59c23adc6857daa89fbf07036`**：原F19 Worker中真实Dropped/Rejected、排队数量/字节/等待名额、停止及越界估算分别保留原因；真实FLD重要文件Flush与CorrelationId/WorkId/Key/原因一致，并拒绝把其他WorkHandle结果冒用当前身份。同SHA Windows Runtime [39595270550](https://github.com/oudream/cx-visual-x3/actions/runs/39595270550)、工程组织 [39595270169](https://github.com/oudream/cx-visual-x3/actions/runs/39595270169)、Config L1 [39595270321](https://github.com/oudream/cx-visual-x3/actions/runs/39595270321)、配置公共底座 [39595270341](https://github.com/oudream/cx-visual-x3/actions/runs/39595270341)，**4/4 success**。该SHA仅修改ArchitectureSmoke/文档，Studio/TestCenter路径过滤未单独触发，不能冒称已运行。
 - **边界**：审计仍由Host显式调用`FCRWorkAudit.LogLoss`，返回true仅表示原F16日志队列接纳；持久化须Flush并核实LastFailure。Host自动调用/失败闭环、专业Drop策略审批、连续生产长稳、MOL/MOC与Studio组配额完整编辑、硬件安全均未由本次软件验收证明，**R08整轮未封闭**。
+
+
+### R08 Host自动审计与故障拒绝（2026-10-22，待Windows验收）
+
+- 现有Runtime.Host创建唯一F16 `FLDLogService`并注入原MRK/F19执行体系；FCRWorker每个Job在创建时订阅原Handle.Completion，异步写入Dropped/Rejected到原F16 Important Sink，含被后续Submit淘汰的旧业务。无第二个Worker或审计Writer。
+- 原Worker调度锁之外运行审计回调，保留首个审计失败原因，后续Submit/SubmitWhenCapacityAsync及Host新Flow明确拒绝；`Worker.StopAsync`在原Worker排空后等待已注册回调、F16 Flush并将日志异常抛出，旧无审计实例流程兼容。`AuditFailure`与`AuditedLosses`可观测；不能把业务已完成视为重要审计已经落盘。须对本提交补正反例与固定SHA Windows CI。
