@@ -71,6 +71,7 @@ namespace CxVisual.Studio
             }
             if(_viewModel==null||_closingPageDocuments||
                 !ReferenceEquals(observed,_viewModel.ProjectSession))return;
+            InvalidateStudioViewerDocuments(observed,false);
             // 已删除MEM资源不允许继续通过旧Resource Scope的MHS编辑器提交配置。
             Guid configuredResource;
             if(_studioConfigurationScopeKind=="resource"&&
@@ -1024,6 +1025,7 @@ namespace CxVisual.Studio
                 _closingPageDocuments=true;
                 try
                 {
+                    InvalidateStudioViewerDocuments(_viewModel.ProjectSession,true);
                     foreach(string key in _pageDocuments.Keys.ToArray())
                     {
                         LayoutDocument document=FindStudioContent(key) as LayoutDocument;

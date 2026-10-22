@@ -144,7 +144,7 @@ namespace CxVisual.Studio
             MEMPage page = selected.Tag as MEMPage;
             if (page != null)
             {
-                OpenStudioPageDocument(page.Id);
+                OpenStudioResourceEditor(page.Id);
                 args.Handled = true;
                 return;
             }
@@ -154,7 +154,7 @@ namespace CxVisual.Studio
             MEMNode definition=resource as MEMNode;
             if(definition!=null)
             {
-                OpenStudioResourceDocument(definition.Id,false);
+                OpenStudioResourceEditor(definition.Id);
                 args.Handled=true;
             }
         }

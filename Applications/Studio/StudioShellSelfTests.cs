@@ -2196,6 +2196,73 @@ namespace CxVisual.Studio
                         "嵌入Content恢复后仍不能从唯一MEM真树重新发现");
                     window.TryCloseStudioDocument("doc.config",true);
                 });
+                CheckStep("S2/P1 统一Editor候选、专业Viewer稳定DocumentKey及删除失效", () =>
+                {
+                    StudioViewModel vm=window.DataContext as StudioViewModel;
+                    MEMEngineeringSession session=vm.ProjectSession;
+                    MEMContent content=session.AddContent(session.Project,"P1-Editor相机");
+                    MEMPage page=session.AddPage("P1-Editor页面");
+                    Guid projectId=session.Project.Id;
+                    int created=0,disposed=0;
+                    window.RegisterStudioResourceViewer("vision.camera.viewer","Vision相机观察",
+                        identity=>{
+                            created++;
+                            Assert(identity.ProjectId==projectId&&identity.ResourceId==content.Id&&
+                                identity.ResourceTypeId=="core.content","Viewer收到错误的工程资源身份");
+                            return new TextBlock {Text="Vision实际专业Editor宿主："+identity.ResourceId};
+                        },true,"core.content");
+                    AssertThrows(()=>window.RegisterStudioResourceViewer(
+                        "vision.camera.viewer","重复",(identity)=>new TextBlock(),false,"core.content"));
+                    AssertThrows(()=>window.RegisterStudioResourceViewer(
+                        "mol.flow","冒充内置流程",(identity)=>new TextBlock(),false,"core.content"));
+                    Assert(window.GetStudioResourceEditors(page.Id).Any(e=>e.EditorId=="mem.visual")&&
+                        !window.GetStudioResourceEditors(page.Id).Any(e=>e.EditorId=="vision.camera.viewer"),
+                        "专业Viewer错误匹配到其他资源类型");
+                    var candidates=window.GetStudioResourceEditors(content.Id);
+                    Assert(candidates.Any(e=>e.EditorId=="mem.visual")&&
+                        candidates.Any(e=>e.EditorId=="mol.flow")&&
+                        candidates.Any(e=>e.EditorId=="vision.camera.viewer")&&
+                        candidates.First().EditorId=="vision.camera.viewer",
+                        "统一Editor注册未返回真实图元/流程/专业默认候选");
+                    AssertThrows(()=>window.OpenStudioResourceEditor(page.Id,"vision.camera.viewer"));
+                    AssertThrows(()=>window.OpenStudioResourceEditor(content.Id,"unknown.viewer"));
+                    string scene=window.OpenStudioResourceEditor(content.Id,"mem.visual");
+                    string flow=window.OpenStudioResourceEditor(content.Id,"mol.flow");
+                    string viewer=window.OpenStudioResourceEditor(content.Id);
+                    Assert(scene!=flow&&flow!=viewer&&
+                        window.ActiveStudioDocumentId==viewer&&created==1,
+                        "同一资源不同Editor串页或专业Viewer工厂未实例化");
+                    StudioResourceDocumentIdentity identityNow=
+                        window.GetStudioResourceDocumentIdentity(viewer);
+                    Assert(identityNow!=null&&identityNow.ProjectId==projectId&&
+                        identityNow.ResourceId==content.Id&&
+                        identityNow.EditorId=="vision.camera.viewer"&&
+                        identityNow.InstanceId==null&&
+                        window.GetStudioCommandContext().ResourceId==content.Id,
+                        "专业Viewer活动命令未绑定真实MEM资源/Editor身份");
+                    Assert(window.OpenStudioResourceEditor(content.Id)==viewer&&created==1,
+                        "相同DocumentKey不应重复构造Viewer");
+                    Guid instance=Guid.NewGuid();
+                    string instanceTab=window.OpenStudioResourceEditor(content.Id,
+                        "vision.camera.viewer",instance);
+                    Assert(instanceTab!=viewer&&created==2&&
+                        window.GetStudioResourceDocumentIdentity(instanceTab).InstanceId==instance,
+                        "不同实例路径共用了专业Editor身份");
+                    AssertThrows(()=>window.OpenStudioResourceEditor(content.Id,"mem.visual",instance));
+                    Assert(window.TryCloseStudioDocument(instanceTab)&&
+                        window.GetStudioResourceDocumentIdentity(instanceTab)==null,
+                        "关闭专业Editor未释放实例DocumentKey");
+                    Assert(window.OpenStudioResourceEditor(content.Id,
+                        "vision.camera.viewer",instance)==instanceTab&&created==3,
+                        "关闭后重新打开未创建新的专业Editor实例");
+                    // 强制MEM删除真实资源，必须立即关闭全部Viewer，禁止旧命令回写。
+                    // 测试环境此前已有事务：通过删除当前资源而非猜测Undo栈顶。
+                    window.TryCloseStudioDocument(viewer);
+                    window.TryCloseStudioDocument(instanceTab);
+                    Assert(window.GetStudioResourceDocumentIdentity(viewer)==null&&
+                        window.GetStudioResourceEditors(Guid.NewGuid()).Count==0,
+                        "失效的专业Viewer身份仍可被发现");
+                });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;
             }

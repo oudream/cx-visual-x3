@@ -90,12 +90,13 @@ namespace CxVisual.Studio
             };
         }
 
-        private static bool IsKnownContent(string id)
+        private bool IsKnownContent(string id)
         {
             Guid resourceId;string kind;
             return KnownDocuments.Contains(id, StringComparer.Ordinal) ||
                    KnownTools.Contains(id, StringComparer.Ordinal) ||
-                   TryParseResourceDocumentId(id,out resourceId,out kind);
+                   TryParseResourceDocumentId(id,out resourceId,out kind) ||
+                   IsStudioCustomEditorDocument(id);
         }
 
         private IEnumerable<LayoutContent> ExistingContents()
@@ -159,11 +160,12 @@ namespace CxVisual.Studio
         {
             Guid pageId;string kind;
             if (!KnownDocuments.Contains(id, StringComparer.Ordinal) &&
-                !TryParseResourceDocumentId(id,out pageId,out kind)) return;
+                !TryParseResourceDocumentId(id,out pageId,out kind) &&
+                !IsStudioCustomEditorDocument(id)) return;
             if (!String.Equals(_activeStudioDocumentId, id, StringComparison.Ordinal))
             {
                 _activeStudioDocumentId = id;
-                _ribbonSelection = DefaultContextFor(id);
+                _ribbonSelection = IsStudioCustomEditorDocument(id)?"资源":DefaultContextFor(id);
                 if (TryParseResourceDocumentId(id,out pageId,out kind) && !_switchingPageDocument)
                 {
                     _switchingPageDocument = true;
@@ -302,8 +304,9 @@ namespace CxVisual.Studio
         {
             MEMEngineeringSession session=_viewModel.ProjectSession;
             Guid id;string kind;
-            Guid? resourceId=TryParseResourceDocumentId(_activeStudioDocumentId,out id,out kind)
-                ?(Guid?)id:null;
+            StudioResourceDocumentIdentity identity=
+                GetStudioResourceDocumentIdentity(_activeStudioDocumentId);
+            Guid? resourceId=identity==null?null:(Guid?)identity.ResourceId;
             MEMNode resource=resourceId.HasValue?session.Find(resourceId.Value):null;
             return new StudioCommandContext(session.Project.Id,session.Revision,
                 _activeStudioDocumentId,resourceId,resource==null?null:resource.TypeId,
@@ -339,6 +342,8 @@ namespace CxVisual.Studio
                 Guid resource;string kind;
                 if(TryParseResourceDocumentId(_documentId,out resource,out kind)&&
                     !_host.ResourceDocumentExists(_documentId))return false;
+                if(_documentId.StartsWith("doc.editor.",StringComparison.Ordinal)&&
+                    !_host.IsStudioCustomEditorDocument(_documentId))return false;
                 return _owner.CanExecute(parameter??_host.GetStudioCommandContext());
             }
             public void Execute(object parameter)

@@ -23,6 +23,7 @@
     <Compile Include="StudioShell.cs"/>
     <Compile Include="StudioShell.ResourceTree.cs"/>
     <Compile Include="StudioShell.ResourceDocuments.cs"/>
+    <Compile Include="StudioShell.ResourceEditors.cs"/>
     <Compile Include="StudioShell.GraphicsTree.cs"/>
     <Compile Include="StudioShellSelfTests.cs"/>
     <Compile Include="StudioViewModel.Shell.cs"/>

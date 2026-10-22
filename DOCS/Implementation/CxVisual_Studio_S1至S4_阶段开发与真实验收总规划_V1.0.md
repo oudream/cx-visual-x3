@@ -344,3 +344,11 @@ studio.RegisterStudioCommand("automation.config.verify", "验证设备配置",
 - [Studio 44项 Windows STA #39593214170](https://github.com/oudream/cx-visual-x3/actions/runs/39593214170)、[工程组织 #39593214157](https://github.com/oudream/cx-visual-x3/actions/runs/39593214157)、[配置L1 #39593214186](https://github.com/oudream/cx-visual-x3/actions/runs/39593214186)、[公共底座 #39593214275](https://github.com/oudream/cx-visual-x3/actions/runs/39593214275) **均 success，同SHA资源删除草稿隔离之前置基线**。
 - 后继工程替换门禁与第45项STA源码[6e2bab40](https://github.com/oudream/cx-visual-x3/commit/6e2bab4016449ae7b237b2893f36778552414b05)，[Studio Windows #39593698537](https://github.com/oudream/cx-visual-x3/actions/runs/39593698537) **45/45成功**；[配置公共底座 #39593698651](https://github.com/oudream/cx-visual-x3/actions/runs/39593698651) **success**。Config L1同SHA如未最终返回结果，必须继续查实后才标“通过”。
 - **严格总裁决**：此轮已建立P1核心“可注册、可发现、可授权、可保存、可追溯、可安全切换”的**软件基础链**，能够逐项关闭上述明确通过的**代码切片**；但S2.01/S2.02/S2.05/S2.07/S2.08/S2.11/S2.12仍未满足全部正式退出标准，**不得将整个P1标记为已完整验收**。下一步优先完成统一全Editor/Command迁移、四类专业案例与Windows E级操作，不以重复设计基础库替代。
+
+
+## 20. P1-A资源→Editor统一发现与DocumentKey软件切片（2026-10-22，待同SHA Windows CI）
+
+- 新增 `StudioShell.ResourceEditors.cs`，通过当前MEM真实资源身份提供 `GetStudioResourceEditors`、`OpenStudioResourceEditor`、`RegisterStudioResourceViewer`。内置Page/Content/Symbol设计与Content流程继续使用原CxVisualEditor/MOLFlowCanvas，不复制工程真源。受信Professional Viewer使用工厂贡献，只持有视图和公开MEM身份，业务状态仍归专业Owner。
+- 专业Viewer的DocumentKey显式包括ProjectId、ResourceId、EditorId和可选InstanceId；现存内置Page/Content/Flow旧ContentId为布局兼容保留，同时通过`GetStudioResourceDocumentIdentity`暴露等价强身份。不同Editor/实例不共用视图，关闭后释放可重新打开，工程切换及MEM资源失效立即回收；树双击采用统一候选默认选择。
+- WPF STA新增资源/编辑器匹配、非法EditorId、Viewer重复注册、不同实例隔离、活动命令资源身份、关闭重开验证，原46项不移除。**此节为开发记录，Windows构建/测试尚待CI实际回报；不能据此将S2.01/S2.02全部签收。**
+- 仍需：真实专业Viewer功能、内置Document ContentId迁移/布局向后兼容、复杂实例属性与配置UI衔接、人工Dock/DPI/双屏/长稳。按现有S2.01～S2.12状态继续追踪。
