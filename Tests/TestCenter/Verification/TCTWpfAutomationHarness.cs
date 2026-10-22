@@ -53,6 +53,65 @@ namespace CxVisual.TestCenter.UI
                 if (!window.DocumentHost.CloseWorkspace("manual.channel"))
                     throw new InvalidOperationException("Manual Channel tab could not close/dispose");
             }));
+            await Task.Run(() => InteractArchitectureSmoke(hwnd, window));
+            SaveScreenshot(window, "TestCenter-11-ArchitectureSmoke.png");
+            window.Dispatcher.Invoke(new Action(() => {
+                if (!window.DocumentHost.CloseWorkspace("auto.architecture-smoke"))
+                    throw new InvalidOperationException("ArchitectureSmoke tab was not disposable");
+            }));
+        }
+        private static void InteractArchitectureSmoke(IntPtr hwnd, TCTMainWindow window)
+        {
+            AutomationElement root = AutomationElement.FromHandle(hwnd);
+            ValuePattern search = Find(root, "TCT.Explorer.Search")
+                .GetCurrentPattern(ValuePattern.Pattern) as ValuePattern;
+            if (search == null) throw new InvalidOperationException("Explorer Search missing");
+            search.SetValue("");
+            SelectionItemPattern select = Find(root, "TCT.Workspace.auto.architecture-smoke")
+                .GetCurrentPattern(SelectionItemPattern.Pattern) as SelectionItemPattern;
+            if (select == null) throw new InvalidOperationException(
+                "ArchitectureSmoke is not registered under Automated root");
+            select.Select();
+            bool ready = false;
+            window.Dispatcher.Invoke(new Action(() => {
+                System.Windows.Controls.TabControl tabs =
+                    window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                TCTArchitectureSmokeFrame frame = tabs == null ? null : tabs.Items
+                    .OfType<System.Windows.Controls.TabItem>().Select(t => t.Content)
+                    .OfType<TCTArchitectureSmokeFrame>().FirstOrDefault();
+                if (frame == null) throw new InvalidOperationException(
+                    "ArchitectureSmoke frame did not open");
+                frame.SelectProfile("config-wpf");
+                ready = !frame.IsRunning && frame.CurrentProfileId == "config-wpf";
+            }));
+            if (!ready) throw new InvalidOperationException("ArchitectureSmoke CLI mode not selected");
+            InvokePattern run = Find(root, "TCT.Automated.Action.architecture.run")
+                .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
+            if (run == null) throw new InvalidOperationException("ArchitectureSmoke Run button missing");
+            run.Invoke();
+            bool completed = false, succeeded = false;
+            string details = "";
+            for (int attempt = 0; attempt < 450 && !completed; attempt++)
+            {
+                window.Dispatcher.Invoke(new Action(() => {
+                    System.Windows.Controls.TabControl tabs =
+                        window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                    TCTArchitectureSmokeFrame frame = tabs == null ? null : tabs.Items
+                        .OfType<System.Windows.Controls.TabItem>().Select(t => t.Content)
+                        .OfType<TCTArchitectureSmokeFrame>().FirstOrDefault();
+                    if (frame == null) throw new InvalidOperationException("ArchitectureSmoke frame disappeared");
+                    if (!frame.IsRunning && frame.LastResult != null)
+                    {
+                        completed = true;
+                        succeeded = frame.LastResult.Succeeded && frame.LastResult.ExitCode == 0;
+                        details = frame.LastResult.Failure ?? "ExitCode=" + frame.LastResult.ExitCode;
+                    }
+                }));
+                if (!completed) Thread.Sleep(100);
+            }
+            if (!completed || !succeeded)
+                throw new InvalidOperationException("ArchitectureSmoke real CLI run failed: " +
+                    (completed ? details : "no verified exit code within 45 seconds"));
         }
         private static void InteractManualRoot(IntPtr hwnd, TCTMainWindow window)
         {
