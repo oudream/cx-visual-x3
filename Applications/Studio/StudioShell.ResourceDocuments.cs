@@ -203,7 +203,7 @@ namespace CxVisual.Studio
             internal readonly string Key;
             internal readonly bool IsFlow;
             internal readonly MEMEngineeringSession Session;
-            internal readonly CxVisualEditor Editor;
+            internal readonly MVIVisualEditor Editor;
             internal readonly SceneView Scene;
             internal readonly MOLFlowCanvas Flow;
             internal readonly DockPanel Panel;
@@ -245,7 +245,7 @@ namespace CxVisual.Studio
                 }
                 else
                 {
-                    Editor=new CxVisualEditor(session);
+                    Editor=new MVIVisualEditor(session);
                     MEMPage page=resource as MEMPage;
                     if(page!=null)Editor.SetPage(page.Id);
                     else Editor.OpenDefinition(resource.Id);
@@ -354,7 +354,7 @@ namespace CxVisual.Studio
                 return result.Success;
             }
             // 使用真实活动Tab的多选结果，而不是旧固定页面ViewModel的_selection。
-            // 真正的几何坐标变换、可选择权限与事务全部归CxVisualEditor/MEM。
+            // 真正的几何坐标变换、可选择权限与事务全部归MVIVisualEditor/MEM。
             private bool CanEditVisual()
             {
                 return !_disposed&&Editor!=null&&_owner.IsStudioDocumentActive(Key)&&
@@ -609,7 +609,7 @@ namespace CxVisual.Studio
                 if(resource==null)
                 {
                     Status.Text="工程资源已删除，请关闭此文档";
-                    if(Scene!=null)Scene.SetScene(new List<CxSceneItem>(),null);
+                    if(Scene!=null)Scene.SetScene(new List<MVISceneItem>(),null);
                     if(Flow!=null){Flow.Definition=null;Flow.WiringDefinition=null;}
                     return;
                 }

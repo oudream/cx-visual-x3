@@ -21,7 +21,7 @@ namespace CxVisual.Mechanism.Visual
     public static class MVIVisualEditing
     {
         /// <summary>输出世界坐标Handle，同样适用于嵌套Group和旋转/剪切后的Path。</summary>
-        public static IReadOnlyList<MVIVisualHandle> Handles(CxSceneItem item)
+        public static IReadOnlyList<MVIVisualHandle> Handles(MVISceneItem item)
         {
             if(item==null)throw new ArgumentNullException("item");
             var result=new List<MVIVisualHandle>();
@@ -97,7 +97,7 @@ namespace CxVisual.Mechanism.Visual
 
 
         /// <summary>编辑视图使用互斥的控制柄组；旧Handles(item)仅为已有SDK/测试保留。</summary>
-        public static IReadOnlyList<MVIVisualHandle> Handles(CxSceneItem item,bool geometryEditing,double zoom)
+        public static IReadOnlyList<MVIVisualHandle> Handles(MVISceneItem item,bool geometryEditing,double zoom)
         {
             if(item==null)throw new ArgumentNullException("item");
             if(double.IsNaN(zoom)||double.IsInfinity(zoom)||zoom<=0)
@@ -112,15 +112,15 @@ namespace CxVisual.Mechanism.Visual
                 return result.AsReadOnly();
             }
             // Eight local bounds handles, transformed by the same matrix as the shape.
-            double w=item.LocalWidth,h=item.LocalHeight;
+            double w=item.LocalWidth,visualHeight=item.LocalHeight;
             double[] xs={0,w/2,w,w,w,w/2,0,0};
-            double[] ys={0,0,0,h/2,h,h,h,h/2};
+            double[] ys={0,0,0,visualHeight/2,visualHeight,visualHeight,visualHeight,visualHeight/2};
             FGETransform2D transform=item.WorldTransform.ToGeometry();
             for(int i=0;i<8;i++)
                 result.Add(new MVIVisualHandle(item.Id,MVIVisualHandleKind.Resize,i,
                     transform.TransformPoint(new FGEPoint2D(xs[i],ys[i]))));
             FGEPoint2D corner=transform.TransformPoint(new FGEPoint2D(w,0));
-            FGEPoint2D center=transform.TransformPoint(new FGEPoint2D(w/2,h/2));
+            FGEPoint2D center=transform.TransformPoint(new FGEPoint2D(w/2,visualHeight/2));
             double vx=corner.X-center.X,vy=corner.Y-center.Y;
             double length=Math.Sqrt(vx*vx+vy*vy);
             if(length<1e-8){vx=1;vy=-1;length=Math.Sqrt(2);}
@@ -130,7 +130,7 @@ namespace CxVisual.Mechanism.Visual
             return result.AsReadOnly();
         }
 
-        public static MVIVisualHandle HitHandle(CxSceneItem item,double x,double y,
+        public static MVIVisualHandle HitHandle(MVISceneItem item,double x,double y,
             double radius,bool geometryEditing,double zoom)
         {
             if(radius<=0||double.IsInfinity(radius)||double.IsNaN(radius))
@@ -147,7 +147,7 @@ namespace CxVisual.Mechanism.Visual
         }
 
         /// <summary>八点缩放保持相对边/角在世界空间稳定；不允许宽高穿零。</summary>
-        private static MRCTransform ResizeFromHandle(MRCVisualItem item,CxSceneItem projected,
+        private static MRCTransform ResizeFromHandle(MRCVisualItem item,MVISceneItem projected,
             int position,double worldX,double worldY,out double width,out double height)
         {
             FGEPoint2D local=projected.WorldTransform.ToGeometry().Inverse()
@@ -179,7 +179,7 @@ namespace CxVisual.Mechanism.Visual
                 previous.Y+previous.M21*x0+previous.M22*y0);
         }
 
-        public static MVIVisualHandle HitHandle(CxSceneItem item,double x,double y,double radius=8)
+        public static MVIVisualHandle HitHandle(MVISceneItem item,double x,double y,double radius=8)
         {
             if(radius<=0||double.IsInfinity(radius)||double.IsNaN(radius))
                 throw new ArgumentOutOfRangeException("radius");
@@ -194,7 +194,7 @@ namespace CxVisual.Mechanism.Visual
             return closest;
         }
 
-        public static MTCEditResult<bool> Edit(CxVisualEditor editor,MVIVisualHandle handle,
+        public static MTCEditResult<bool> Edit(MVIVisualEditor editor,MVIVisualHandle handle,
             double worldX,double worldY)
         {
             if(editor==null)throw new ArgumentNullException("editor");
@@ -205,8 +205,8 @@ namespace CxVisual.Mechanism.Visual
             if(item==null)
                 return MTCEditResult<bool>.Rejected(revision,"visual.definition_required",
                     "Open the Symbol definition before editing its geometry");
-            CxSceneItem projected=null;
-            foreach(CxSceneItem scene in editor.Scene)
+            MVISceneItem projected=null;
+            foreach(MVISceneItem scene in editor.Scene)
                 if(scene.Id==handle.ElementId){projected=scene;break;}
             if(projected==null||!projected.IsSelectable)
                 return MTCEditResult<bool>.Rejected(revision,"visual.not_editable","Selected visual item is hidden or locked");
@@ -344,7 +344,7 @@ namespace CxVisual.Mechanism.Visual
         }
 
         /// <summary>修改任意路径命令后，重算布局并保留未修改端点世界坐标。</summary>
-        public static MTCEditResult<bool> CommitGeometry(CxVisualEditor editor,
+        public static MTCEditResult<bool> CommitGeometry(MVIVisualEditor editor,
             MRCShapeElement item,FGEPath2D newPath)
         {
             if(editor==null||item==null||newPath==null)throw new ArgumentNullException(

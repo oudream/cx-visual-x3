@@ -222,8 +222,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "Studio path close button didn't restore closed path");
                 // 实际Studio ViewModel从当前WPF场景世界坐标提交Bezier控制柄事务。
                 Guid bezierId=gallery[7].Id;
-                var visualRows=(IEnumerable<CxSceneItem>)Get(vm,"Items");
-                CxSceneItem bezierScene=visualRows.First(x=>x.Id==bezierId);
+                var visualRows=(IEnumerable<MVISceneItem>)Get(vm,"Items");
+                MVISceneItem bezierScene=visualRows.First(x=>x.Id==bezierId);
                 MVIVisualHandle studioHandle=MVIVisualEditing.Handles(bezierScene)
                     .First(x=>x.Kind==MVIVisualHandleKind.Control1);
                 var oldControl=gallery[7].Shape.Geometry.Commands[1].Control1;
@@ -264,7 +264,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Click(window,"预览交互");
                 var vmType=vm.GetType();
                 vmType.GetMethod("UpdateVisualRuntimeFrame").Invoke(vm,new object[]{450.0});
-                var runtimeItems=(IEnumerable<CxVisual.Mechanism.Visual.CxSceneItem>)Get(vm,"Items");
+                var runtimeItems=(IEnumerable<CxVisual.Mechanism.Visual.MVISceneItem>)Get(vm,"Items");
                 var rendered=runtimeItems.First(x=>x.Id==animated.Id);
                 Check(Math.Abs(rendered.Style.Opacity-0.575)<1e-6,
                     "Studio animation evaluation frame missing");
@@ -273,7 +273,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Click(window,"返回设计");
                 Check(session.Revision==beforePreviewRevision,
                     "Leaving runtime preview committed an edit transaction");
-                var editorItems=(IEnumerable<CxVisual.Mechanism.Visual.CxSceneItem>)Get(vm,"Items");
+                var editorItems=(IEnumerable<CxVisual.Mechanism.Visual.MVISceneItem>)Get(vm,"Items");
                 Check(Math.Abs(editorItems.First(x=>x.Id==animated.Id).Style.Opacity-1)<1e-9,
                     "Studio returned to design but retained animation frame appearance");
                 Click(window,"文字图元");
@@ -1020,7 +1020,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 var resolver=(CxVisual.Mechanism.Data.RuntimeData.IMDSExternalBindingResolver)
                     Activator.CreateInstance(bridgeType,new object[]{
                         new Func<Guid,string>(id=>id==sourceBlock?"Running":null),null});
-                CxSceneItem runningScene=CxSceneProjection.Project(finalSession,
+                MVISceneItem runningScene=MVISceneProjection.Project(finalSession,
                     active.Id,resolver,20).First(x=>x.Id==flowLamp.Id);
                 Check(runningScene.Style.Fill.Color.Equals(MRCColor.Parse("#FF2778D7"))&&
                     finalSession.Revision==runtimeRevision,

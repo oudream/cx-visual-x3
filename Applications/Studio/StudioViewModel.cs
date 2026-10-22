@@ -14,7 +14,7 @@ namespace CxVisual.Studio
 {
     public sealed partial class StudioViewModel : INotifyPropertyChanged, IDisposable
     {
-        private CxVisualEditor _editor;
+        private MVIVisualEditor _editor;
         private Guid? _selected;
         private string _status;
         private readonly string _defaultPath;
@@ -54,7 +54,7 @@ namespace CxVisual.Studio
                 return node != null ? node.Name + " / " + node.Id.ToString("N").Substring(0, 8) : "（已删除）";
             }
         }
-        public ReadOnlyCollection<CxSceneItem> Items { get { return _editor.Scene; } }
+        public ReadOnlyCollection<MVISceneItem> Items { get { return _editor.Scene; } }
         public Guid? SelectedId { get { return _selected; } }
 
         public void Select(Guid? id)
@@ -320,7 +320,7 @@ namespace CxVisual.Studio
             string running=MOLVisualTraceBindingResolver.VariableFor(blockId,"Running");
             string completed=MOLVisualTraceBindingResolver.VariableFor(blockId,"Completed");
             string failed=MOLVisualTraceBindingResolver.VariableFor(blockId,"Failed");
-            foreach(CxSceneItem scene in Items)
+            foreach(MVISceneItem scene in Items)
             {
                 if(scene.Address==null)continue;
                 MRCVisualItem visual=ProjectSession.Find(scene.Address.ObjectId) as MRCVisualItem;

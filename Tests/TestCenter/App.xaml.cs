@@ -392,7 +392,7 @@ namespace CxVisual.TestCenter.UI
                                 diffView.SelectedEvidenceChanges != 0)
                                 throw new InvalidOperationException("WPF historical owner diff is inaccurate");
                         }
-                        // Stage 1 integrated visual/object sample: the real CxSceneProjection
+                        // Stage 1 integrated visual/object sample: the real MVISceneProjection
                         // expands a shared Symbol into two separately addressed instances.
                         ITCTTestCase symbolCase = catalog.Cases.Single(x =>
                             x.Descriptor.Id == "M-OBJ-007");

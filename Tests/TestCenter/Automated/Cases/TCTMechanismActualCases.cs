@@ -27,11 +27,11 @@ namespace CxVisual.TestCenter.Cases
         }
 
         [TCTTest("TCT.MVIS.001", "Visual投影与命中必须跟随Document事务", TCTTestAspect.Mechanism,
-            "Visual / Projection", ObjectId = "CxSceneProjection")]
+            "Visual / Projection", ObjectId = "MVISceneProjection")]
         public static void ProjectionAndHitTest(TCTTestContext context)
         {
             MEMEngineeringSession document = TCTRealCases.CreateOrganizationSample();
-            IList<CxSceneItem> scene = CxSceneProjection.Project(document);
+            IList<MVISceneItem> scene = MVISceneProjection.Project(document);
             int ownedElements = document.Project.Pages
                 .SelectMany(page => page.DescendantsAndSelf()).OfType<MRCElement>().Count();
             MEMContent content = document.Project.Pages[0].RootContent;
@@ -40,7 +40,7 @@ namespace CxVisual.TestCenter.Cases
                 symbol.RootGroup.DescendantsAndSelf().OfType<MRCElement>().Count();
             context.AssertEqual(ownedElements + referencedElements, scene.Count,
                 "真实场景包含页面拥有元素及Symbol引用展开实例");
-            CxSceneItem instance = scene.Single(x => x.Name.StartsWith("Symbol Instance / ",
+            MVISceneItem instance = scene.Single(x => x.Name.StartsWith("Symbol Instance / ",
                 StringComparison.Ordinal));
             context.AssertTrue(instance.Address != null &&
                 instance.Address.InstancePath.Count == 1 &&
@@ -49,17 +49,17 @@ namespace CxVisual.TestCenter.Cases
                 "Symbol实例选择身份必须含使用路径", true,
                 instance.Address == null ? "Missing" : instance.Address.ToString());
             Guid detector = scene.First(x => x.Name == "Detector").Id;
-            Guid? hit = CxSceneProjection.HitTest(scene, new FGEPoint2D(60, 75));
+            Guid? hit = MVISceneProjection.HitTest(scene, new FGEPoint2D(60, 75));
             context.AssertEqual((Guid?)detector, hit, "原位置命中真实元素");
 
-            CxVisualEditor editor = new CxVisualEditor(document);
+            MVIVisualEditor editor = new MVIVisualEditor(document);
             MTCEditResult<bool> moved = editor.Move(detector, 500, 500);
             context.AssertTrue(moved.Success, "工程Move已提交", true, moved.Success);
-            IList<CxSceneItem> updated = editor.Scene;
+            IList<MVISceneItem> updated = editor.Scene;
             context.AssertEqual((Guid?)null,
-                CxSceneProjection.HitTest(updated, new FGEPoint2D(60, 75)), "旧位置不再命中");
+                MVISceneProjection.HitTest(updated, new FGEPoint2D(60, 75)), "旧位置不再命中");
             context.AssertEqual((Guid?)detector,
-                CxSceneProjection.HitTest(updated, new FGEPoint2D(510, 510)), "新位置命中");
+                MVISceneProjection.HitTest(updated, new FGEPoint2D(510, 510)), "新位置命中");
             context.Observe("Geometry", "真实Visual投影",
                 "DocumentRevision=" + document.Revision + "; Detector moved (50,65) => (500,500)");
             context.Observe("ObjectTree", "场景对象归属",
@@ -69,11 +69,11 @@ namespace CxVisual.TestCenter.Cases
         }
 
         [TCTTest("TCT.MVIS.002", "Visual编辑撤销重做与工程Revision保持一致", TCTTestAspect.Mechanism,
-            "Visual / Editing", ObjectId = "CxVisualEditor")]
+            "Visual / Editing", ObjectId = "MVIVisualEditor")]
         public static void UndoRedoAndRevision(TCTTestContext context)
         {
             MEMEngineeringSession document = TCTRealCases.CreateOrganizationSample();
-            CxVisualEditor editor = new CxVisualEditor(document);
+            MVIVisualEditor editor = new MVIVisualEditor(document);
             int initial = editor.Scene.Count;
             int initialRevision = document.Revision;
             MTCEditResult<bool> add = editor.AddRectangle("TCT-Rectangle", 450, 20, 30, 40);
@@ -109,7 +109,7 @@ namespace CxVisual.TestCenter.Cases
                         new FGEPoint2D(0,0),new FGEPoint2D(30,75),
                         new FGEPoint2D(80,80),new FGEPoint2D(130,10))),35,50);
                 Guid id=shape.Id;project.ClearHistory();
-                using(var editor=new CxVisualEditor(project))
+                using(var editor=new MVIVisualEditor(project))
                 {
                     var scene=editor.Scene.Single(x=>x.Id==id);
                     var handle=MVIVisualEditing.Handles(scene).First(x=>
@@ -176,7 +176,7 @@ namespace CxVisual.TestCenter.Cases
                 });
                 context.AssertTrue(result.Success,"Widget配置事务",true,result.Success);
                 context.AssertEqual(before+1,project.Revision,"一次Widget配置Revision");
-                CxSceneItem item=CxSceneProjection.Project(project,page.Id).Single(x=>x.Id==id);
+                MVISceneItem item=MVISceneProjection.Project(project,page.Id).Single(x=>x.Id==id);
                 context.AssertEqual("运行|停止|维护",
                     item.WidgetSettings["options"].AsString(),"工程Widget选项投影");
                 context.AssertEqual(90d,item.WidgetSettings["maximum"].AsNumber(),
@@ -184,7 +184,7 @@ namespace CxVisual.TestCenter.Cases
                 context.AssertEqual("运行",item.RuntimeValue.AsString(),
                     "Widget值为只读场景快照");
                 int readRevision=project.Revision;
-                CxSceneProjection.Project(project,page.Id);
+                MVISceneProjection.Project(project,page.Id);
                 context.AssertEqual(readRevision,project.Revision,"场景投影不得污染工程Revision");
                 context.AssertTrue(project.Undo().Success,"一键撤销Widget属性",true,true);
                 context.AssertTrue(widget.GetBinding("options")==null,"撤销一次恢复所有属性",
@@ -196,7 +196,7 @@ namespace CxVisual.TestCenter.Cases
                 project.Close();
                 using(var restored=MEMEngineering.Open(path))
                 {
-                    CxSceneItem replay=CxSceneProjection.Project(restored,page.Id)
+                    MVISceneItem replay=MVISceneProjection.Project(restored,page.Id)
                         .Single(x=>x.Id==id);
                     context.AssertEqual("运行|停止|维护",
                         replay.WidgetSettings["options"].AsString(),"工程打包重开Widget选项");
@@ -230,10 +230,10 @@ namespace CxVisual.TestCenter.Cases
                 Guid pageId=page.Id;
                 Guid buttonId=button.Id;
                 int revision=project.Revision;
-                var scene=CxSceneProjection.Project(project,pageId);
+                var scene=MVISceneProjection.Project(project,pageId);
                 context.AssertEqual(2,scene.Count,"两个Symbol实例展开为两个真实控件");
                 int invocationCount=0;
-                foreach(CxSceneItem item in scene)
+                foreach(MVISceneItem item in scene)
                 {
                     context.AssertEqual(buttonId,item.Address.ObjectId,"共享控件定义身份");
                     context.AssertTrue(item.Address.InstancePath.Count==1,
@@ -260,7 +260,7 @@ namespace CxVisual.TestCenter.Cases
                 project.Close();
                 using(var reopened=MEMEngineering.Open(file))
                 {
-                    var restored=CxSceneProjection.Project(reopened,pageId);
+                    var restored=MVISceneProjection.Project(reopened,pageId);
                     context.AssertEqual(2,restored.Count,"保存后仍有两个实例");
                     context.AssertTrue(restored.Select(x=>x.Address.InstancePath[0])
                         .Distinct().Count()==2,"工程重开后实例地址保持独立",

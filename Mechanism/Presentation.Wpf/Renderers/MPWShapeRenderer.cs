@@ -12,7 +12,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
     public static class MPWShapeRenderer
     {
         private static Point PointOf(FGEPoint2D p){return new Point(p.X,p.Y);}
-        public static Geometry BuildGeometry(CxSceneItem item)
+        public static Geometry BuildGeometry(MVISceneItem item)
         {
             if(item==null||item.Shape==null)throw new ArgumentException("Scene Shape required.","item");
             return BuildGeometry(item.Shape.Geometry,item.GeometryToWorld);
@@ -104,7 +104,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 default:throw new InvalidOperationException("visual.brush.invalid_kind");
             }
         }
-        public static void Draw(DrawingContext dc,CxSceneItem item,double dx=0,double dy=0,
+        public static void Draw(DrawingContext dc,MVISceneItem item,double dx=0,double dy=0,
             Func<string,Brush> resourceResolver=null)
         {
             if(dc==null)throw new ArgumentNullException("dc");

@@ -60,7 +60,7 @@ namespace CxVisual.Runtime.Host
                 {
                     MEMEngineeringSession document = MEMEngineering.Open(args[1]);
                     Console.WriteLine("Project=" + document.Project.Name + ", revision=" + document.Revision);
-                    Show(CxSceneProjection.Project(document));
+                    Show(MVISceneProjection.Project(document));
                     return 0;
                 }
                 Console.WriteLine("Usage: CxVisual.Runtime.Host.exe [runtime-run <journal> | runtime-recover <journal> | runtime-serve <journal> | demo | vision-demo | save <file.cxproj> | load <file.cxproj> | vision-inspect <configRoot> <machineId> <rawFile> <width> <height> <8|16>]");
@@ -140,14 +140,14 @@ namespace CxVisual.Runtime.Host
         private static int Demo()
         {
             MEMEngineeringSession document = CreateSample();
-            CxVisualEditor visual = new CxVisualEditor(document);
+            MVIVisualEditor visual = new MVIVisualEditor(document);
             Console.WriteLine("CxVisual unified engineering demo — no external device or driver");
             using (FLDFileLogSink logger = new FLDFileLogSink(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Logs", "runtime-host.log")))
                 logger.Write(new FLDLogRecord("RuntimeHost", "Demo", "Engineering demo started"));
             Show(visual.Scene);
             MTCEditResult<bool> added = visual.AddRectangle("ROI", 450, 65, 95, 95);
             if (!added.Success) throw new InvalidOperationException(added.ErrorCode);
-            CxSceneItem item = visual.Scene[visual.Scene.Count - 1];
+            MVISceneItem item = visual.Scene[visual.Scene.Count - 1];
             MTCEditResult<bool> moved = visual.Move(item.Id, 470, 75);
             MTCEditResult<bool> undone = visual.Undo();
             MTCEditResult<bool> redone = visual.Redo();
@@ -157,9 +157,9 @@ namespace CxVisual.Runtime.Host
             Show(visual.Scene);
             return 0;
         }
-        private static void Show(IList<CxSceneItem> items)
+        private static void Show(IList<MVISceneItem> items)
         {
-            foreach (CxSceneItem x in items)
+            foreach (MVISceneItem x in items)
                 Console.WriteLine("  " + x.Name + " (" + x.Bounds.X + "," + x.Bounds.Y + ") size=" + x.Bounds.Width + "x" + x.Bounds.Height);
         }
     }

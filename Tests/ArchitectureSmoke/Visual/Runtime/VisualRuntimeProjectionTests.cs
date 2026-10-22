@@ -55,12 +55,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 doc.SetBinding(shape,"visible",MPMBinding.Variable("Motor.Ready"));
                 var source=new LiveSource();
                 int revision=doc.Revision;
-                var defaultScene=CxSceneProjection.Project(doc,page.Id);
+                var defaultScene=MVISceneProjection.Project(doc,page.Id);
                 Check(defaultScene.Count==1&&Math.Abs(defaultScene[0].Bounds.X-10)<1e-9,
                     "design mode fallback");
                 Check(Math.Abs(defaultScene[0].Style.Opacity-1)<1e-9,
                     "static design must not run animation at t=0");
-                var scene=CxSceneProjection.Project(doc,page.Id,source,500);
+                var scene=MVISceneProjection.Project(doc,page.Id,source,500);
                 Check(scene.Count==1&&Math.Abs(scene[0].Bounds.X-56)<1e-9,
                     "runtime variable position");
                 Check(Math.Abs(scene[0].Style.Opacity-0.5)<1e-9,"runtime easing at midpoint");
@@ -72,20 +72,20 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "runtime X animation did not produce the correct timed value");
                 Check(doc.Revision==revision,"runtime animation calculation committed engineering data");
                 source.Fault=true;
-                scene=CxSceneProjection.Project(doc,page.Id,source,250);
+                scene=MVISceneProjection.Project(doc,page.Id,source,250);
                 Check(scene[0].Style.Fill.Color.Equals(MRCColor.Parse("#FFE02020")),
                     "dynamic fault state style");
                 source.Ready=false;
-                Check(CxSceneProjection.Project(doc,page.Id,source,500).Count==0,
+                Check(MVISceneProjection.Project(doc,page.Id,source,500).Count==0,
                     "live visibility did not remove shape");
                 Check(doc.Revision==revision,"runtime updates changed engineering Revision");
                 source.Ready=true;source.InvalidValue=true;
                 bool rejected=false;
-                try{CxSceneProjection.Project(doc,page.Id,source,0);}
+                try{MVISceneProjection.Project(doc,page.Id,source,0);}
                 catch(InvalidCastException){rejected=true;}
                 Check(rejected,"binding wrong type silently accepted");
                 source.InvalidValue=false;
-                using(var editor=new CxVisualEditor(doc))
+                using(var editor=new MVIVisualEditor(doc))
                 {
                     editor.SetRuntimeFrame(source,750);
                     Check(editor.Scene.Count==1&&Math.Abs(editor.Scene[0].Bounds.X-56)<1e-9,
@@ -124,7 +124,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     request=>{invoked++;return true;})==0&&invoked==1,
                     "hidden shape must never dispatch visual actions");
                 doc.RegisterTypes(new CustomWidgets());
-                using(var customEditor=new CxVisualEditor(doc))
+                using(var customEditor=new MVIVisualEditor(doc))
                 {
                     MTCEditResult<bool> invalid=customEditor.AddWidget("Unregistered",
                         "core.widget.unregistered",15,20);
@@ -162,17 +162,17 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     motors.SetOverride(second,"Online",MPMBinding.Variable("Motor.B.Ready"));
                     var source=new LiveSource();
                     int revision=motors.Revision;
-                    var visible=CxSceneProjection.Project(motors,page.Id,source,0);
+                    var visible=MVISceneProjection.Project(motors,page.Id,source,0);
                     Check(visible.Count==1&&visible[0].Id==first.Id&&
                         visible[0].Address.InstancePath.Single()==first.Id,
                         "Motor-A did not resolve its own MDS instance override");
                     source.MotorAReady=false;source.MotorBReady=true;
-                    visible=CxSceneProjection.Project(motors,page.Id,source,40);
+                    visible=MVISceneProjection.Project(motors,page.Id,source,40);
                     Check(visible.Count==1&&visible[0].Id==second.Id&&
                         visible[0].Address.InstancePath.Single()==second.Id,
                         "Motor-B runtime value leaked from another symbol instance");
                     source.MotorAReady=true;
-                    visible=CxSceneProjection.Project(motors,page.Id,source,80);
+                    visible=MVISceneProjection.Project(motors,page.Id,source,80);
                     Check(visible.Count==2&&visible.Select(x=>x.Id).Distinct().Count()==2&&
                         motors.Revision==revision,
                         "runtime source refresh mutated MEM or merged separate instances");
@@ -184,7 +184,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         Check(a!=null&&b!=null&&a.TargetId==b.TargetId,
                             "shared definition was not preserved by project Save/Open");
                         source.MotorBReady=false;
-                        visible=CxSceneProjection.Project(restored,page.Id,source,120);
+                        visible=MVISceneProjection.Project(restored,page.Id,source,120);
                         Check(visible.Count==1&&visible[0].Id==first.Id&&
                             restored.ResolveParameter(a,"Online").Kind==MPMBindingKind.Variable&&
                             restored.ResolveParameter(b,"Online").Kind==MPMBindingKind.Variable,
@@ -210,7 +210,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 var second=instanceEvents.PlaceSymbol(page.RootContent,symbol,"Motor-B");
                 instanceEvents.SetPlacement(first,new MRCTransform(1,0,0,1,30,30));
                 instanceEvents.SetPlacement(second,new MRCTransform(1,0,0,1,180,30));
-                var scene=CxSceneProjection.Project(instanceEvents,page.Id);
+                var scene=MVISceneProjection.Project(instanceEvents,page.Id);
                 Check(scene.Count==2&&scene.All(x=>x.Address.ObjectId==button.Id)&&
                     scene.Select(x=>x.Address.InstancePath[0]).Distinct().Count()==2,
                     "Widget instance address missing in Scene projection");

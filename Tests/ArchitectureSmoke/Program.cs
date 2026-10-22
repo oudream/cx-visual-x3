@@ -119,7 +119,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         { if (!ok) throw new InvalidOperationException(message); }
         private static void UiIndependentAssemblies()
         {
-            Assembly[] assemblies = { typeof(MEMEngineeringSession).Assembly, typeof(CxVisualEditor).Assembly };
+            Assembly[] assemblies = { typeof(MEMEngineeringSession).Assembly, typeof(MVIVisualEditor).Assembly };
             foreach (Assembly assembly in assemblies)
                 foreach (AssemblyName reference in assembly.GetReferencedAssemblies())
                 {
@@ -181,7 +181,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         }
         private static void UndoRedo()
         {
-            var editor = new CxVisualEditor(CreateSample());
+            var editor = new MVIVisualEditor(CreateSample());
             int count = editor.Scene.Count;
             Check(editor.AddRectangle("New", 10, 20, 30, 40).Success, "Add failed");
             Check(editor.Scene.Count == count + 1 && editor.CanUndo, "Add not recorded");
@@ -201,7 +201,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         }
         private static void RejectedCommand()
         {
-            var editor = new CxVisualEditor(CreateSample());
+            var editor = new MVIVisualEditor(CreateSample());
             int revision = editor.Document.Revision;
             var result = editor.Move(Guid.NewGuid(), 20, 30);
             Check(!result.Success, "Unknown element moved");

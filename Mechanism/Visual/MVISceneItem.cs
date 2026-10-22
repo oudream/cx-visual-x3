@@ -7,12 +7,12 @@ using CxVisual.Mechanism.Core;
 namespace CxVisual.Mechanism.Visual
 {
     /// <summary>一次工程快照投影所得的技术无关场景项；保留定义身份及实例地址。</summary>
-    public sealed class CxSceneItem
+    public sealed class MVISceneItem
     {
         private MRCTransform _world, _moveParent;
         private double _width, _height, _moveX, _moveY;
 
-        public CxSceneItem(MRCElement source)
+        public MVISceneItem(MRCElement source)
         {
             if(source==null)throw new ArgumentNullException("source");
             double x,y,xx,xy,yx,yy;
@@ -28,7 +28,7 @@ namespace CxVisual.Mechanism.Visual
                 source.TypeId,shape==null?null:shape.Shape,
                 MRCVisualAppearance.StyleOf(source),text==null?"":text.Text,null,null,null,null);
         }
-        internal CxSceneItem(Guid selectionId,string name,MRIObjectAddress address,
+        internal MVISceneItem(Guid selectionId,string name,MRIObjectAddress address,
             MRCTransform world,double width,double height,bool selectable,
             MRCTransform moveParent,double moveX,double moveY,
             string typeId=null,MRCShapeDefinition shape=null,MRCVisualStyle style=null,string text=null,

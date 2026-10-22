@@ -50,7 +50,7 @@ namespace CxVisual.TestCenter.Cases
                 "Object / Diff", "CA-ORG-01", "CAP-ORG-DIFF", "MEMProjectSnapshot", RevisionDiff);
             Add(catalog, "M-OBJ-007", "MEM共享Symbol双实例的真实Visual投影和证据",
                 TCTTestAspect.Mechanism, "Visual / Projection", "CA-ORG-01",
-                "CAP-ORG-VISUAL", "CxSceneProjection", SymbolInstancesEvidence);
+                "CAP-ORG-VISUAL", "MVISceneProjection", SymbolInstancesEvidence);
         }
 
         private static void Add(TCTTestCatalog catalog, string id, string name, TCTTestAspect aspect,
@@ -280,8 +280,8 @@ namespace CxVisual.TestCenter.Cases
                 MEMSymbol symbol = session.Project.Symbols[0];
                 session.PlaceSymbol(content, symbol, "Symbol Instance Two");
                 MEMProjectSnapshot snapshot = session.GetSnapshot();
-                IList<CxSceneItem> scene = CxSceneProjection.Project(session);
-                CxSceneItem[] instances = scene.Where(x => x.Address != null &&
+                IList<MVISceneItem> scene = MVISceneProjection.Project(session);
+                MVISceneItem[] instances = scene.Where(x => x.Address != null &&
                     x.Address.InstancePath.Count != 0).ToArray();
                 context.AssertEqual(2, instances.Length, "真实Symbol复用有两个不同使用位置");
                 context.AssertEqual(2, instances.Select(x => x.Address.InstancePath[0])
@@ -291,7 +291,7 @@ namespace CxVisual.TestCenter.Cases
                     "当前验收样本全部真实矩形，不代画其它Shape", true,
                     scene.All(x => x.ElementTypeId == "core.rectangle"));
                 List<TCTGeometryFigure> geometry = new List<TCTGeometryFigure>();
-                foreach (CxSceneItem item in scene)
+                foreach (MVISceneItem item in scene)
                 {
                     geometry.Add(new TCTGeometryFigure("Rectangle", "Actual",
                         item.Name,
@@ -310,7 +310,7 @@ namespace CxVisual.TestCenter.Cases
                     .Select(x => x.DefinitionAddress).Distinct(StringComparer.Ordinal).Count(),
                     "两处Symbol使用必须在几何证据中保留不同InstancePath");
                 context.ObserveStructured("Geometry", "真实工程画布与Symbol实例",
-                    "CxSceneProjection.Project(MEMEngineeringSession)，矩形与2个Symbol使用位置",
+                    "MVISceneProjection.Project(MEMEngineeringSession)，矩形与2个Symbol使用位置",
                     session.Project.Id.ToString("D"),
                     session.GetAddress(session.Project).ToString(), null,
                     geometryEvidence, TCTGeometryEvidence.Mime);

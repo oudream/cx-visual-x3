@@ -16,7 +16,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
     /// <summary>WPF技术适配层：只负责输入和投影绘制，不拥有工程真值或历史。</summary>
     public sealed class SceneView : FrameworkElement
     {
-        private readonly List<CxSceneItem> _items = new List<CxSceneItem>();
+        private readonly List<MVISceneItem> _items = new List<MVISceneItem>();
         private Guid? _selection;
         private Point _dragStart;
         private double _dragX;
@@ -60,7 +60,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             _assetResolver=resolver;
             _assetCache.Clear();_assetErrors.Clear();InvalidateVisual();
         }
-        private ImageSource AssetImage(CxSceneItem item)
+        private ImageSource AssetImage(MVISceneItem item)
         {
             if(!item.AssetId.HasValue||_assetResolver==null)return null;
             Guid id=item.AssetId.Value;
@@ -179,7 +179,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         private void BuildWidgetLayer()
         {
             _widgetCanvas.Children.Clear();
-            foreach(CxSceneItem item in _items)
+            foreach(MVISceneItem item in _items)
             {
                 FrameworkElement widget=MPWWidgetPresenter.Create(item,OnWidgetEvent);
                 if(widget==null)continue;
@@ -194,7 +194,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         {
             if(!_designMode)return;
             int index=0;
-            foreach(CxSceneItem item in _items)
+            foreach(MVISceneItem item in _items)
             {
                 if(!MPWWidgetPresenter.Supports(item.ElementTypeId))continue;
                 if(index>=_widgetCanvas.Children.Count)break;
@@ -214,22 +214,22 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             if(callback!=null)callback(this,args);
         }
 
-        public event EventHandler<CxNodeEventArgs> NodeActivated;
-        public event EventHandler<CxMoveEventArgs> MoveRequested;
-        private bool CanReuseWidgets(IList<CxSceneItem> next)
+        public event EventHandler<MPWNodeEventArgs> NodeActivated;
+        public event EventHandler<MPWMoveEventArgs> MoveRequested;
+        private bool CanReuseWidgets(IList<MVISceneItem> next)
         {
             if(next==null||next.Count!=_items.Count)return false;
             int widgetCount=0;
             for(int i=0;i<next.Count;i++)
             {
-                CxSceneItem before=_items[i],after=next[i];
+                MVISceneItem before=_items[i],after=next[i];
                 if(before.Id!=after.Id||before.ElementTypeId!=after.ElementTypeId)
                     return false;
                 if(MPWWidgetPresenter.Supports(after.ElementTypeId))widgetCount++;
             }
             return widgetCount==_widgetCanvas.Children.Count;
         }
-        public void SetScene(IList<CxSceneItem> items, Guid? selected)
+        public void SetScene(IList<MVISceneItem> items, Guid? selected)
         {
             bool reuse=!_resetWidgetLayerOnNextScene&&CanReuseWidgets(items);
             _resetWidgetLayerOnNextScene=false;
@@ -245,7 +245,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             else
             {
                 int index=0;
-                foreach(CxSceneItem item in _items)
+                foreach(MVISceneItem item in _items)
                     if(MPWWidgetPresenter.Supports(item.ElementTypeId))
                         MPWWidgetPresenter.UpdateAppearance(
                             (FrameworkElement)_widgetCanvas.Children[index++],item);
@@ -261,7 +261,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             for (double x = 0; x < ActualWidth; x += 25) dc.DrawLine(gridPen, new Point(x, 0), new Point(x, ActualHeight));
             for (double y = 0; y < ActualHeight; y += 25) dc.DrawLine(gridPen, new Point(0, y), new Point(ActualWidth, y));
             dc.PushTransform(new MatrixTransform(new Matrix(_zoom,0,0,_zoom,_panX,_panY)));
-            foreach (CxSceneItem item in _items)
+            foreach (MVISceneItem item in _items)
             {
                 bool selected = _selectedItems.Contains(item.Id)||
                     (_selection.HasValue&&_selection.Value==item.Id);
@@ -344,7 +344,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             }
             if(IsDesignMode&&_selection.HasValue)
             {
-                CxSceneItem edited=_items.Find(i=>i.Id==_selection.Value);
+                MVISceneItem edited=_items.Find(i=>i.Id==_selection.Value);
                 if(edited!=null)
                 {
                     foreach(MVIVisualHandle handle in MVIVisualEditing.Handles(edited,_geometryEditMode,_zoom))
@@ -417,7 +417,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             if(e.ClickCount>=2&&_selection.HasValue&&
                 (Keyboard.Modifiers&(ModifierKeys.Control|ModifierKeys.Shift))==0)
             {
-                CxSceneItem current=_items.Find(i=>i.Id==_selection.Value);
+                MVISceneItem current=_items.Find(i=>i.Id==_selection.Value);
                 if(current!=null&&current.Shape!=null&&current.Contains(point.X,point.Y))
                 {
                     _geometryEditMode=!_geometryEditMode;
@@ -428,7 +428,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             if(_designMode&&_selection.HasValue&&
                 (Keyboard.Modifiers&(ModifierKeys.Control|ModifierKeys.Shift))==0)
             {
-                CxSceneItem selected=_items.Find(i=>i.Id==_selection.Value);
+                MVISceneItem selected=_items.Find(i=>i.Id==_selection.Value);
                 if(selected!=null)
                 {
                     MVIVisualHandle handle=MVIVisualEditing.HitHandle(selected,point.X,point.Y,8/_zoom,_geometryEditMode,_zoom);
@@ -448,7 +448,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             Guid? hit = null;
             for (int i = _items.Count - 1; i >= 0; i--)
             {
-                CxSceneItem item = _items[i];
+                MVISceneItem item = _items[i];
                 if (item.Contains(point.X, point.Y))
                 { hit = item.Id; break; }
             }
@@ -476,8 +476,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             // 增减选择不能再触发单选NodeActivated，否则Studio回写会抹掉集合。
             _dragging = hit.HasValue&&!extend&&_selectedItems.Contains(hit.Value);
             if (_dragging) CaptureMouse();
-            EventHandler<CxNodeEventArgs> activated = NodeActivated;
-            if (!extend&&!moveGroup&&activated != null) activated(this, new CxNodeEventArgs(hit));
+            EventHandler<MPWNodeEventArgs> activated = NodeActivated;
+            if (!extend&&!moveGroup&&activated != null) activated(this, new MPWNodeEventArgs(hit));
             if(hit.HasValue&&!moveGroup&&SelectionSetRequested!=null)
                 SelectionSetRequested(intendedSelection);
             InvalidateVisual();
@@ -522,7 +522,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 FGEPoint2D a=new FGEPoint2D(_marqueeStart.X,_marqueeStart.Y);
                 FGEPoint2D b=new FGEPoint2D(_marqueeEnd.X,_marqueeEnd.Y);
                 FGERect2D selection=FGERect2D.FromPoints(a,b);
-                foreach(CxSceneItem item in _items)
+                foreach(MVISceneItem item in _items)
                     if(item.IsSelectable&&(selection.Intersects(item.Bounds)||
                         selection.Contains(new FGEPoint2D(item.Bounds.X,item.Bounds.Y))))
                         _selectedItems.Add(item.Id);
@@ -557,13 +557,13 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             if (IsMouseCaptured) ReleaseMouseCapture();
             if (_selection.HasValue && (Math.Abs(_dragX) > 1 || Math.Abs(_dragY) > 1))
             {
-                CxSceneItem original = _items.Find(x => x.Id == _selection.Value);
-                EventHandler<CxMoveEventArgs> moved = MoveRequested;
+                MVISceneItem original = _items.Find(x => x.Id == _selection.Value);
+                EventHandler<MPWMoveEventArgs> moved = MoveRequested;
                 if (original != null && moved != null)
                 {
                     double x, y; original.PositionAfterWorldDelta(_dragX, _dragY, out x, out y);
                     if(_gridSnap){x=Math.Round(x/25)*25;y=Math.Round(y/25)*25;}
-                    moved(this, new CxMoveEventArgs(original.Id, x, y, _dragX, _dragY));
+                    moved(this, new MPWMoveEventArgs(original.Id, x, y, _dragX, _dragY));
                 }
             }
             _dragX = 0; _dragY = 0;

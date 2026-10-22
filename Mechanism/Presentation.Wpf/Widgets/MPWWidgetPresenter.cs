@@ -30,7 +30,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 Ends(typeId,".checkbox")||Ends(typeId,".slider")||Ends(typeId,".progressbar")||
                 Ends(typeId,".combobox");
         }
-        public static FrameworkElement Create(CxSceneItem item,Action<MPWWidgetEventArgs> callback)
+        public static FrameworkElement Create(MVISceneItem item,Action<MPWWidgetEventArgs> callback)
         {
             if(item==null)throw new ArgumentNullException("item");
             if(!Supports(item.ElementTypeId))return null;
@@ -88,23 +88,23 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             UpdateAppearance(control,item);
             return control;
         }
-        private static MPMValue Setting(CxSceneItem item,string name)
+        private static MPMValue Setting(MVISceneItem item,string name)
         {
             MPMValue value;
             return item.WidgetSettings.TryGetValue(name,out value)?value:null;
         }
-        private static string Text(CxSceneItem item,string name,string fallback)
+        private static string Text(MVISceneItem item,string name,string fallback)
         {
             MPMValue value=Setting(item,name);
             return value==null?fallback:value.AsString();
         }
-        private static double Number(CxSceneItem item,string name,double fallback)
+        private static double Number(MVISceneItem item,string name,double fallback)
         {
             MPMValue value=Setting(item,name);
             return value==null?fallback:value.AsNumber();
         }
         /// <summary>帧刷新复用活动控件：不重建Button/TextBox，保护焦点和文本输入态。</summary>
-        public static void UpdateAppearance(FrameworkElement widget,CxSceneItem item)
+        public static void UpdateAppearance(FrameworkElement widget,MVISceneItem item)
         {
             if(widget==null||item==null)throw new ArgumentNullException(
                 widget==null?"widget":"item");
@@ -207,7 +207,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             }
             finally{control.Tag=appearanceTag;}
         }
-        private static void Emit(Action<MPWWidgetEventArgs> callback,CxSceneItem item,string name,string value)
+        private static void Emit(Action<MPWWidgetEventArgs> callback,MVISceneItem item,string name,string value)
         {
             if(callback!=null)callback(new MPWWidgetEventArgs(
                 item.Id,item.Address,name,value));

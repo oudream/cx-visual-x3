@@ -47,10 +47,10 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     var group = session.AddGroup(page.RootContent, "G"); session.Move(group, 100, 100); session.Rotate(group, 45);
                     var rectangle = session.AddRectangle(group, "R", 0, 0, 100, 50);
                     var symbol = session.AddSymbol("库定义"); session.AddRectangle(symbol.RootGroup, "不直接投影", 200, 20);
-                    var scene = CxSceneProjection.Project(session);
+                    var scene = MVISceneProjection.Project(session);
                     Check(scene.Count == 1 && scene[0].Id == rectangle.Id, "shared library definition leaked into page scene");
-                    Check(CxSceneProjection.HitTest(scene, new CxVisual.Foundation.Geometry.FGEPoint2D(70, 108)) == null, "AABB false hit");
-                    Check(CxSceneProjection.HitTest(scene, new CxVisual.Foundation.Geometry.FGEPoint2D(105, 140)) == rectangle.Id, "rotated hit missing");
+                    Check(MVISceneProjection.HitTest(scene, new CxVisual.Foundation.Geometry.FGEPoint2D(70, 108)) == null, "AABB false hit");
+                    Check(MVISceneProjection.HitTest(scene, new CxVisual.Foundation.Geometry.FGEPoint2D(105, 140)) == rectangle.Id, "rotated hit missing");
                     double localX, localY; scene[0].PositionAfterWorldDelta(10, 0, out localX, out localY);
                     Check(Math.Abs(localX - Math.Sqrt(50)) < 1e-8 && Math.Abs(localY + Math.Sqrt(50)) < 1e-8, "world drag was not converted to parent coordinates");
                     var view = new SceneView { Width = 300, Height = 300 }; view.SetScene(scene, null);
@@ -91,7 +91,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                             MRCBrushDefinition.Solid(MRCColor.Parse("#FF176DAD")),2));
                     }
                     session.AddText(shapeGroup,"Title","真实Shape与Text",20,480);
-                    var shapeScene=CxSceneProjection.Project(session,shapePage.Id);
+                    var shapeScene=MVISceneProjection.Project(session,shapePage.Id);
                     Check(shapeScene.Count==10&&shapeScene.Count(i=>i.Shape!=null)==9,
                         "nine shape definitions not projected");
                     var shapeView=new SceneView{Width=650,Height=555};
@@ -119,13 +119,13 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         Check(MPWShapeRenderer.BuildGeometry(item) is StreamGeometry,
                             "renderer fell back to rectangle for "+item.Shape.Kind);
                     // UI层真的绘制了可交互控制柄，不仅是Visual内部计算了位置。
-                    CxSceneItem bezierScene=shapeScene.First(x=>x.Shape!=null&&
+                    MVISceneItem bezierScene=shapeScene.First(x=>x.Shape!=null&&
                         x.Shape.Kind==MRCShapeKind.Bezier);
                     shapeView.SetScene(shapeScene,bezierScene.Id);
                     Check(shapeView.SelectedVisualIds.Count==1&&
                         shapeView.SelectedVisualIds[0]==bezierScene.Id,
                         "select one Bezier item");
-                    CxSceneItem another=shapeScene.First(x=>x.Shape!=null&&
+                    MVISceneItem another=shapeScene.First(x=>x.Shape!=null&&
                         x.Id!=bezierScene.Id);
                     shapeView.SetScene(shapeScene,another.Id);
                     Check(shapeView.SelectedVisualIds.Count==1&&
@@ -197,7 +197,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         Left=-10000,Top=-10000,ShowInTaskbar=false,ShowActivated=false};
                     try
                     {
-                        themeView.SetScene(CxSceneProjection.Project(session,themePage.Id),null);
+                        themeView.SetScene(MVISceneProjection.Project(session,themePage.Id),null);
                         themeWindow.Show();
                         themeView.Measure(new Size(260,150));
                         themeView.Arrange(new Rect(0,0,260,150));themeView.UpdateLayout();
@@ -227,7 +227,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                             "</svg>");
                         MEMAssetReference rasterAsset=session.AddAsset("Raster Image",pixelPath,"image/png");
                         MEMAssetReference svgAsset=session.AddAsset("Vector Image",svgPath,"image/svg+xml");
-                        using(var assetEditor=new CxVisualEditor(session))
+                        using(var assetEditor=new MVIVisualEditor(session))
                         {
                             int beforeInvalid=session.Revision;
                             Check(!assetEditor.AddAssetElement(svgAsset.Id,"wrong bitmap",
@@ -242,7 +242,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         MRCSvgElement vector=session.AddSvg(assetsGroup,"SVG",145,20,100,65);
                         session.SetBinding(image,"source",MPMBinding.Resource(rasterAsset.Id));
                         session.SetBinding(vector,"source",MPMBinding.Resource(svgAsset.Id));
-                        var assetScene=CxSceneProjection.Project(session,pageAsset.Id);
+                        var assetScene=MVISceneProjection.Project(session,pageAsset.Id);
                         Check(assetScene.Count==2&&assetScene.All(x=>x.AssetId.HasValue),
                             "MEM source asset ID not projected");
                         var assetView=new SceneView{Width=310,Height=145};
@@ -265,7 +265,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         var data=new WidgetData();
                         int emitted=0;
                         assetView.WidgetEventRequested+=(sender,args)=>emitted++;
-                        assetView.SetScene(CxSceneProjection.Project(session,pageAsset.Id,data,0),null);
+                        assetView.SetScene(MVISceneProjection.Project(session,pageAsset.Id,data,0),null);
                         var assetWidgets=(System.Windows.Controls.Canvas)
                             VisualTreeHelper.GetChild(assetView,0);
                         var checkbox=assetWidgets.Children.OfType<System.Windows.Controls.CheckBox>()
@@ -273,7 +273,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         Check(checkbox.IsChecked==true&&emitted==0,
                             "MDS runtime Boolean did not update real WPF checkbox safely");
                         data.Ready=false;
-                        assetView.SetScene(CxSceneProjection.Project(session,pageAsset.Id,data,10),null);
+                        assetView.SetScene(MVISceneProjection.Project(session,pageAsset.Id,data,10),null);
                         Check(object.ReferenceEquals(checkbox,
                             assetWidgets.Children.OfType<System.Windows.Controls.CheckBox>().Single())&&
                             checkbox.IsChecked==false&&emitted==0,
@@ -288,13 +288,13 @@ namespace CxVisual.Tests.ArchitectureSmoke
                             MPMValue.String("运行")));
                         session.SetBinding(comboModel,"tooltip",MPMBinding.Literal(
                             MPMValue.String("运行模式")));
-                        assetView.SetScene(CxSceneProjection.Project(session,pageAsset.Id,data,12),null);
+                        assetView.SetScene(MVISceneProjection.Project(session,pageAsset.Id,data,12),null);
                         var combo=assetWidgets.Children.OfType<System.Windows.Controls.ComboBox>()
                             .Single();
                         Check(combo.Items.Count==3&&combo.SelectedItem as string=="运行"&&
                             combo.ToolTip as string=="运行模式"&&emitted==0,
                             "Widget MPM options/value/tooltip did not reach real WPF ComboBox");
-                        assetView.SetScene(CxSceneProjection.Project(session,pageAsset.Id,data,14),null);
+                        assetView.SetScene(MVISceneProjection.Project(session,pageAsset.Id,data,14),null);
                         Check(object.ReferenceEquals(combo,
                             assetWidgets.Children.OfType<System.Windows.Controls.ComboBox>().Single())&&
                             emitted==0,"reused ComboBox generated a user event during frame update");
@@ -313,7 +313,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                             MPMBinding.Literal(MPMValue.Number(45)));
                         session.SetBinding(sliderModel,"enabled",
                             MPMBinding.Literal(MPMValue.Boolean(false)));
-                        assetView.SetScene(CxSceneProjection.Project(session,pageAsset.Id,data,16),null);
+                        assetView.SetScene(MVISceneProjection.Project(session,pageAsset.Id,data,16),null);
                         var slider=assetWidgets.Children.OfType<System.Windows.Controls.Slider>()
                             .Single();
                         Check(slider.Minimum==20&&slider.Maximum==80&&slider.Value==45&&
@@ -324,16 +324,16 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         assetView.IsDesignMode=false;
                         session.SetBinding(sliderModel,"minimum",MPMBinding.Literal(
                             MPMValue.Number(70)));
-                        assetView.SetScene(CxSceneProjection.Project(session,pageAsset.Id,data,17),null);
+                        assetView.SetScene(MVISceneProjection.Project(session,pageAsset.Id,data,17),null);
                         Check(slider.Value==70&&emitted==1,
                             "programmatic slider range coercion emitted an unauthorized event");
                         data.Ready=true;
-                        assetView.SetScene(CxSceneProjection.Project(session,pageAsset.Id,data,18),null);
+                        assetView.SetScene(MVISceneProjection.Project(session,pageAsset.Id,data,18),null);
                         Check(assetWidgets.Children.OfType<System.Windows.Controls.CheckBox>()
                             .Single().IsChecked==true,
                             "runtime checkbox did not reflect new MDS frame");
                         assetView.IsDesignMode=true;
-                        assetView.SetScene(CxSceneProjection.Project(session,pageAsset.Id),null);
+                        assetView.SetScene(MVISceneProjection.Project(session,pageAsset.Id),null);
                         Check(assetWidgets.Children.OfType<System.Windows.Controls.CheckBox>()
                             .Single().IsChecked==false&&emitted==1,
                             "returning to design kept a stale runtime checkbox value");
@@ -420,7 +420,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                             "Widget host event identity wrong");
                         events++;
                     };
-                    widgetView.SetScene(CxSceneProjection.Project(session,widgetPage.Id),null);
+                    widgetView.SetScene(MVISceneProjection.Project(session,widgetPage.Id),null);
                     var widgetWindow=new Window{Content=widgetView,Width=320,Height=200,
                         Left=-10000,Top=-10000,ShowInTaskbar=false,ShowActivated=false,
                         WindowStartupLocation=WindowStartupLocation.Manual};
@@ -453,7 +453,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Check(Math.Abs(widgetRestored.OffsetX-widgetBase.OffsetX)<1e-6&&
                         Math.Abs(widgetRestored.OffsetY-widgetBase.OffsetY)<1e-6,
                         "cancelling WPF Widget drag left stale transforms");
-                    widgetView.SetScene(CxSceneProjection.Project(session,widgetPage.Id),null);
+                    widgetView.SetScene(MVISceneProjection.Project(session,widgetPage.Id),null);
                     Check(object.ReferenceEquals(widgetButton,widgetCanvas.Children[0]),
                         "visual frame update rebuilt live WPF Widget");
                     widgetButton.RaiseEvent(new RoutedEventArgs(
@@ -512,7 +512,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Check(VisualTreeHelper.GetDrawing(wiredView)!=null&&wiredView.IsVisible,
                         "V2 wiring WPF canvas did not render");
                     wiredWindow.Close();
-                    session.SetVisibility(group, false, true); Check(CxSceneProjection.Project(session,page.Id).Count == 0, "hidden group projected descendants");
+                    session.SetVisibility(group, false, true); Check(MVISceneProjection.Project(session,page.Id).Count == 0, "hidden group projected descendants");
                     session.Close(true);
                     OrganizationStudioTests.RunOnSta();
                     Console.WriteLine("PASS H01 WPF real STA layout/retained polygon, precise hit test, drag conversion, resource visibility and hidden-group projection");

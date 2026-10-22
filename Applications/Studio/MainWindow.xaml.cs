@@ -246,9 +246,9 @@ namespace CxVisual.Studio
             RefreshScene();
             InitializeStudioShell();
         }
-        private void OnActivated(object sender, CxNodeEventArgs args)
+        private void OnActivated(object sender, MPWNodeEventArgs args)
         { _viewModel.Select(args.Id); RefreshVisualInspector(); }
-        private void OnMove(object sender,CxMoveEventArgs args)
+        private void OnMove(object sender,MPWMoveEventArgs args)
         {
             IReadOnlyList<Guid> ids=SceneHost.SelectedVisualIds;
             if(ids.Count>1&&ids.Contains(args.Id))
@@ -514,7 +514,7 @@ namespace CxVisual.Studio
             catch(Exception ex){VisualInfo.Text="事件定义失败: "+ex.Message;}
         }
         private void OnVisualSelectionChanged(object sender,System.Windows.Controls.SelectionChangedEventArgs args)
-        {if(_viewModel==null||_viewModel.IsRefreshing)return;var list=(System.Windows.Controls.ListBox)sender;_viewModel.SetSelection(list.SelectedItems.OfType<CxVisual.Mechanism.Visual.CxSceneItem>().Select(i=>i.Id));}
+        {if(_viewModel==null||_viewModel.IsRefreshing)return;var list=(System.Windows.Controls.ListBox)sender;_viewModel.SetSelection(list.SelectedItems.OfType<CxVisual.Mechanism.Visual.MVISceneItem>().Select(i=>i.Id));}
         private bool ConfirmProjectReplacement(MEMEngineeringSession session)
         {
             var choice=MessageBox.Show(this,"当前工程有未保存修改。是否先保存？","工程修改",MessageBoxButton.YesNoCancel,MessageBoxImage.Question);

@@ -249,7 +249,7 @@ namespace CxVisual.Studio
         private void AttachSession(MEMEngineeringSession session)
         {
             if(_editor!=null){_editor.Changed-=EditorChanged;_editor.Dispose();_editor.Document.Close(true);}
-            _editor=new CxVisualEditor(session);_editor.Changed+=EditorChanged;_selected=null;_resourceId=null;
+            _editor=new MVIVisualEditor(session);_editor.Changed+=EditorChanged;_selected=null;_resourceId=null;
         }
         public void OpenProject(string path,bool discardCurrent=false)
         {

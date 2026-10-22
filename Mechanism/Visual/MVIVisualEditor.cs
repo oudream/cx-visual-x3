@@ -8,7 +8,7 @@ using CxVisual.Mechanism.Data.RuntimeData;
 namespace CxVisual.Mechanism.Visual
 {
     /// <summary>Presentation commands share the document session history; there is no private replay stack.</summary>
-    public sealed class CxVisualEditor : IDisposable
+    public sealed class MVIVisualEditor : IDisposable
     {
         private readonly MEMEngineeringSession _session;
         private readonly IDisposable _watch;
@@ -24,7 +24,7 @@ namespace CxVisual.Mechanism.Visual
         public bool CanReturnToPrevious { get { Demand();return _contexts.Count>0; } }
         private Guid? _resource;
         private bool _disposed;
-        private ReadOnlyCollection<CxSceneItem> _scene;
+        private ReadOnlyCollection<MVISceneItem> _scene;
         private int _sceneRevision=-1;
         private IMDSExternalBindingResolver _runtimeSource;
         private double _runtimeElapsedMs;
@@ -49,7 +49,7 @@ namespace CxVisual.Mechanism.Visual
         }
 
         private Guid? _sceneRoot;
-        public CxVisualEditor(MEMEngineeringSession session)
+        public MVIVisualEditor(MEMEngineeringSession session)
         {
             _session=session??throw new ArgumentNullException("session");CurrentPageId=session.Project.Pages.Count==0?(Guid?)null:session.Project.Pages[0].Id;
             _watch=session.Watch(change=>RaiseChanged());
@@ -59,7 +59,7 @@ namespace CxVisual.Mechanism.Visual
         public Guid? CurrentPageId {get;private set;}
         public Guid? CurrentResourceId {get{return _resource??CurrentPageId;}}
         public Guid? SelectedId {get;private set;}
-        private void Demand(){if(_disposed)throw new ObjectDisposedException("CxVisualEditor");}
+        private void Demand(){if(_disposed)throw new ObjectDisposedException("MVIVisualEditor");}
         private void RaiseChanged(){if(_disposed)return;var handler=Changed;if(handler!=null)handler(this,EventArgs.Empty);}
         public void SetPage(Guid id){Demand();if(!(Document.Find(id) is MEMPage))throw new InvalidOperationException("Missing page");CurrentPageId=id;_resource=null;_contexts.Clear();SelectedId=null;RaiseChanged();}
         public void OpenDefinition(Guid id)
@@ -96,13 +96,13 @@ namespace CxVisual.Mechanism.Visual
         public MEMEngineeringSession Document { get { return _session; } }
         public bool CanUndo { get { return Document.CanUndo; } }
         public bool CanRedo { get { return Document.CanRedo; } }
-        public ReadOnlyCollection<CxSceneItem> Scene
+        public ReadOnlyCollection<MVISceneItem> Scene
         {get{Demand();if(_scene==null||_sceneRevision!=Document.Revision||_sceneRoot!=CurrentResourceId){_sceneRoot=CurrentResourceId;int revision=Document.Revision;_scene=CurrentResourceId.HasValue?
                 (_runtimeEnabled?
-                    CxSceneProjection.ProjectResource(Document,CurrentResourceId.Value,
+                    MVISceneProjection.ProjectResource(Document,CurrentResourceId.Value,
                         _runtimeSource,_runtimeElapsedMs):
-                    CxSceneProjection.ProjectResource(Document,CurrentResourceId.Value)):
-                new List<CxSceneItem>().AsReadOnly();_sceneRevision=revision;}return _scene;}}
+                    MVISceneProjection.ProjectResource(Document,CurrentResourceId.Value)):
+                new List<MVISceneItem>().AsReadOnly();_sceneRevision=revision;}return _scene;}}
         public bool Select(Guid? id){Demand();if(id.HasValue&&!Route(MVIInteractionKind.Select,id.Value))return false;SelectedId=id;RaiseChanged();return true;}
         private bool Route(MVIInteractionKind kind,Guid target)
         {
@@ -263,7 +263,7 @@ namespace CxVisual.Mechanism.Visual
                 selection.Any(x=>Document.Find(x.Id) as MRCVisualItem==null))
                 return MTCEditResult<bool>.Rejected(revision,"visual.align.definition",
                     "Select editable definitions, not reference instances");
-            foreach(CxSceneItem item in selection)
+            foreach(MVISceneItem item in selection)
                 if(!Route(MVIInteractionKind.Move,item.Id))
                     return MTCEditResult<bool>.Rejected(revision,"visual.default_prevented",
                         "Alignment blocked by interaction policy");
@@ -278,7 +278,7 @@ namespace CxVisual.Mechanism.Visual
             {
                 for(int i=0;i<selection.Length;i++)
                 {
-                    CxSceneItem item=selection[i];
+                    MVISceneItem item=selection[i];
                     double dx=0,dy=0;
                     if(mode=="left")dx=targetLeft-item.Bounds.Left;
                     if(mode=="top")dy=targetTop-item.Bounds.Top;
@@ -366,7 +366,7 @@ namespace CxVisual.Mechanism.Visual
             if(selected.Length!=ids.Count)
                 return MTCEditResult<bool>.Rejected(revision,"visual.move.inaccessible",
                     "Selection contains hidden, locked or missing items");
-            foreach(CxSceneItem item in selected)
+            foreach(MVISceneItem item in selected)
             {
                 if(Document.Find(item.Id) as MRCVisualItem==null&&
                     Document.FindReference(item.Id)==null)
@@ -378,7 +378,7 @@ namespace CxVisual.Mechanism.Visual
             }
             return Document.Edit("批量移动可视对象",revision,e=>
             {
-                foreach(CxSceneItem scene in selected)
+                foreach(MVISceneItem scene in selected)
                 {
                     double x,y;
                     scene.PositionAfterWorldDelta(worldDx,worldDy,out x,out y);

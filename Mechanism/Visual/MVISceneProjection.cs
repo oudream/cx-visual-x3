@@ -7,7 +7,7 @@ using CxVisual.Mechanism.Core;
 using CxVisual.Mechanism.Data.RuntimeData;
 namespace CxVisual.Mechanism.Visual
 {
-    public static class CxSceneProjection
+    public static class MVISceneProjection
     {
         private static bool IsWidgetType(string type)
         {
@@ -18,35 +18,35 @@ namespace CxVisual.Mechanism.Visual
                 type.EndsWith(".progressbar",StringComparison.OrdinalIgnoreCase)||
                 type.EndsWith(".combobox",StringComparison.OrdinalIgnoreCase);
         }
-        public static ReadOnlyCollection<CxSceneItem> Project(MEMEngineeringSession session){return Project(session,null);}
-        public static ReadOnlyCollection<CxSceneItem> Project(MEMEngineeringSession session,Guid? pageId)
+        public static ReadOnlyCollection<MVISceneItem> Project(MEMEngineeringSession session){return Project(session,null);}
+        public static ReadOnlyCollection<MVISceneItem> Project(MEMEngineeringSession session,Guid? pageId)
         {return ProjectCore(session,pageId,null,0,false);}
         /// <summary>可注入既有MDS/专业数据源；时间采样不修改工程Revision。</summary>
-        public static ReadOnlyCollection<CxSceneItem> Project(MEMEngineeringSession session,Guid? pageId,
+        public static ReadOnlyCollection<MVISceneItem> Project(MEMEngineeringSession session,Guid? pageId,
             IMDSExternalBindingResolver runtimeSource,double elapsedMilliseconds=0)
         {return ProjectCore(session,pageId,runtimeSource,elapsedMilliseconds,true);}
-        private static ReadOnlyCollection<CxSceneItem> ProjectCore(MEMEngineeringSession session,
+        private static ReadOnlyCollection<MVISceneItem> ProjectCore(MEMEngineeringSession session,
             Guid? pageId,IMDSExternalBindingResolver runtimeSource,double elapsedMilliseconds,bool runtimeEnabled)
         {
             if(session==null)throw new ArgumentNullException("session");var snapshot=session.GetSnapshot();var projection=new Projection(snapshot,runtimeSource,elapsedMilliseconds,runtimeEnabled);
             foreach(var page in snapshot.Nodes.Where(n=>n.Kind==MEMNodeKind.Page&&(!pageId.HasValue||n.Id==pageId.Value)))projection.Collect(page,MRCTransform.Identity,new Guid[0],false,null,MRCTransform.Identity);
             return projection.Items.AsReadOnly();
         }
-        public static Guid? HitTest(IList<CxSceneItem> items, FGEPoint2D point)
+        public static Guid? HitTest(IList<MVISceneItem> items, FGEPoint2D point)
         {
             if (items == null) return null;
             for (int i = items.Count - 1; i >= 0; i--)
                 if (items[i].Contains(point.X, point.Y)) return items[i].Id;
             return null;
         }
-        public static ReadOnlyCollection<CxSceneItem> ProjectResource(MEMEngineeringSession session,Guid resourceId)
+        public static ReadOnlyCollection<MVISceneItem> ProjectResource(MEMEngineeringSession session,Guid resourceId)
         {
             return ProjectResourceCore(session,resourceId,null,0,false);
         }
-        public static ReadOnlyCollection<CxSceneItem> ProjectResource(MEMEngineeringSession session,Guid resourceId,
+        public static ReadOnlyCollection<MVISceneItem> ProjectResource(MEMEngineeringSession session,Guid resourceId,
             IMDSExternalBindingResolver runtimeSource,double elapsedMilliseconds=0)
         {return ProjectResourceCore(session,resourceId,runtimeSource,elapsedMilliseconds,true);}
-        private static ReadOnlyCollection<CxSceneItem> ProjectResourceCore(
+        private static ReadOnlyCollection<MVISceneItem> ProjectResourceCore(
             MEMEngineeringSession session,Guid resourceId,IMDSExternalBindingResolver runtimeSource,
             double elapsedMilliseconds,bool runtimeEnabled)
         {
@@ -55,7 +55,7 @@ namespace CxVisual.Mechanism.Visual
         }
         private sealed class Projection
         {
-            internal readonly List<CxSceneItem> Items=new List<CxSceneItem>();
+            internal readonly List<MVISceneItem> Items=new List<MVISceneItem>();
             private readonly MEMProjectSnapshot _snapshot;
             private readonly Dictionary<Guid,MRIReferenceSnapshot> _refs;
             private readonly IMDSExternalBindingResolver _runtimeSource;
@@ -199,7 +199,7 @@ namespace CxVisual.Mechanism.Visual
                             if(runtimeValue!=null&&runtimeValue.Kind!=kind)
                                 throw new InvalidOperationException("visual.widget.value_kind_mismatch");
                         }
-                        Items.Add(new CxSceneItem(first==null?node.Id:first.Id,
+                        Items.Add(new MVISceneItem(first==null?node.Id:first.Id,
                             first==null?node.Name:first.Name+" / "+node.Name,address,world,
                             width,height,selectable,first==null?parent:firstParent,
                             first==null?x:first.Placement.X,first==null?y:first.Placement.Y,

@@ -33,7 +33,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     var b=doc.AddRectangle(secondGroup,"B",15,20,40,30);
                     var c=doc.AddRectangle(firstGroup,"C",60,5,30,20);
                     doc.ClearHistory();
-                    using(var editor=new CxVisualEditor(doc))
+                    using(var editor=new MVIVisualEditor(doc))
                     {
                         Check(firstGroup.Children.First().Id==a.Id,
                             "A initial draw order unexpectedly changed");
@@ -71,7 +71,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 }
                 using(var reopened=MEMEngineering.Open(path))
                 {
-                    var scene=CxSceneProjection.Project(reopened);
+                    var scene=MVISceneProjection.Project(reopened);
                     Check(scene.Count>=2,"batch move save/open lost the shapes");
                 }
             }
@@ -196,9 +196,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 doc.ClearHistory();
 
                 Guid id=shape.Id;
-                using(var editor=new CxVisualEditor(doc))
+                using(var editor=new MVIVisualEditor(doc))
                 {
-                    CxSceneItem projected=editor.Scene.Single(x=>x.Id==id);
+                    MVISceneItem projected=editor.Scene.Single(x=>x.Id==id);
                     var handles=MVIVisualEditing.Handles(projected);
                     Check(handles.Any(x=>x.Kind==MVIVisualHandleKind.Anchor)&&
                           handles.Any(x=>x.Kind==MVIVisualHandleKind.Control1)&&
@@ -227,7 +227,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     editor.Interaction-=deny;
                     Check(editor.EditHandle(selected,target.X,target.Y).Success,"control handle edit failed");
                     Check(doc.Revision==baseRevision+1,"edit should be a single MEM transaction");
-                    CxSceneItem edited=editor.Scene.Single(x=>x.Id==id);
+                    MVISceneItem edited=editor.Scene.Single(x=>x.Id==id);
                     FGEPoint2D controlAfter=edited.GeometryToWorld.TransformPoint(
                         shape.Shape.Geometry.Commands[2].Control1);
                     FGEPoint2D otherAfter=edited.GeometryToWorld.TransformPoint(
@@ -304,12 +304,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
 
                     // 多层旋转组合中的两个图元对齐，必须使用世界坐标而非局部X。
                     var neighbor=doc.AddRectangle(group,"Neighbor",330,140,50,40);
-                    CxSceneItem beforeAlignA=editor.Scene.Single(x=>x.Id==shape.Id);
-                    CxSceneItem beforeAlignB=editor.Scene.Single(x=>x.Id==neighbor.Id);
+                    MVISceneItem beforeAlignA=editor.Scene.Single(x=>x.Id==shape.Id);
+                    MVISceneItem beforeAlignB=editor.Scene.Single(x=>x.Id==neighbor.Id);
                     Check(editor.Align(new[]{shape.Id,neighbor.Id},"left").Success,
                         "world-space multi-selection alignment failed");
-                    CxSceneItem afterAlignA=editor.Scene.Single(x=>x.Id==shape.Id);
-                    CxSceneItem afterAlignB=editor.Scene.Single(x=>x.Id==neighbor.Id);
+                    MVISceneItem afterAlignA=editor.Scene.Single(x=>x.Id==shape.Id);
+                    MVISceneItem afterAlignB=editor.Scene.Single(x=>x.Id==neighbor.Id);
                     Check(Math.Abs(afterAlignA.Bounds.Left-afterAlignB.Bounds.Left)<1e-6,
                         "alignment did not match left edge in world coordinates");
                     Check(editor.Undo().Success,"alignment undo failed");

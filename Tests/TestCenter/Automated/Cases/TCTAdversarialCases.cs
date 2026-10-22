@@ -85,11 +85,11 @@ namespace CxVisual.TestCenter.Cases
         }
 
         [TCTTest("TCT.MVIS.003", "Undo后新事务须截断旧Redo分支", TCTTestAspect.Mechanism,
-            "Visual / Editing", ObjectId = "CxVisualEditor")]
+            "Visual / Editing", ObjectId = "MVIVisualEditor")]
         public static void RedoBranchInvalidation(TCTTestContext context)
         {
             MEMEngineeringSession document = TCTRealCases.CreateOrganizationSample();
-            CxVisualEditor editor = new CxVisualEditor(document);
+            MVIVisualEditor editor = new MVIVisualEditor(document);
             int initialRevision = document.Revision;
             context.AssertTrue(editor.AddRectangle("A", 10, 10, 20, 20).Success, "新增A", true, true);
             context.AssertTrue(editor.AddRectangle("B", 50, 10, 20, 20).Success, "新增B", true, true);
