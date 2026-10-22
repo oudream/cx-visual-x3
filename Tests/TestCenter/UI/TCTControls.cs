@@ -366,6 +366,7 @@ namespace CxVisual.TestCenter.UI
         public Button CopyTestId { get; private set; }
         public ComboBox ModeSelector { get; private set; }
         private ToolBar _contextActions;
+        private WrapPanel _sideContexts;
         private ITCTTestCase _selectedContext;
         private Action<string> _showContextMode;
         private Action _showAssertions, _showSource, _showHistory, _showDiff;
@@ -374,26 +375,46 @@ namespace CxVisual.TestCenter.UI
         { get { return _activeContextCommands.AsReadOnly(); } }
         private readonly TextBlock _context = new TextBlock { VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(12, 0, 0, 0), Foreground = Brushes.SteelBlue };
+        public FrameworkElement BuildSideActions(Action runAll, Action runSelected, Action cancel,
+            Action export, Action rerunFailed, Action copyId, Action<string> mode)
+        {
+            ToolBar built = Build(runAll, runSelected, cancel, export, rerunFailed, copyId, mode);
+            WrapPanel panel = new WrapPanel();
+            foreach (UIElement item in built.Items.OfType<UIElement>().ToArray())
+            {
+                built.Items.Remove(item);
+                if (!(item is Separator)) panel.Children.Add(item);
+            }
+            return panel;
+        }
+        public FrameworkElement BuildSideContexts(Action<string> mode, Action assertions,
+            Action source, Action history, Action diff)
+        {
+            BuildContext(mode, assertions, source, history, diff);
+            _sideContexts = new WrapPanel();
+            RebuildContextCommands();
+            return _sideContexts;
+        }
         public ToolBar Build(Action runAll, Action runSelected, Action cancel, Action export,
             Action rerunFailed = null, Action copyTestId = null,
             Action<string> showMode = null)
         {
             ToolBar ribbon = new ToolBar { Background = Brushes.White, Band = 0, BandIndex = 0, Padding = new Thickness(5, 3, 5, 3) };
-            RunAll = Create("▶ 运行全部", runAll);
-            RunSelected = Create("▶ 运行选中", runSelected);
+            RunAll = Create("▶ 运行全部", runAll, true);
+            RunSelected = Create("▶ 运行选中", runSelected, true);
             System.Windows.Automation.AutomationProperties.SetAutomationId(RunSelected, "TCT.RunSelected");
-            Cancel = Create("■ 取消", cancel); Cancel.IsEnabled = false;
-            Export = Create("导出报告", export);
+            Cancel = Create("■ 取消", cancel, true); Cancel.IsEnabled = false;
+            Export = Create("导出报告", export, true);
             ribbon.Items.Add(RunAll); ribbon.Items.Add(RunSelected);
             ribbon.Items.Add(Cancel); ribbon.Items.Add(Export);
             if (rerunFailed != null)
             {
-                RerunFailed = Create("↻ 重跑未通过", rerunFailed);
+                RerunFailed = Create("↻ 重跑未通过", rerunFailed, true);
                 ribbon.Items.Add(RerunFailed);
             }
             if (copyTestId != null)
             {
-                CopyTestId = Create("复制TestId", copyTestId);
+                CopyTestId = Create("复制TestId", copyTestId, true);
                 CopyTestId.IsEnabled = false;
                 ribbon.Items.Add(CopyTestId);
             }
@@ -438,19 +459,23 @@ namespace CxVisual.TestCenter.UI
         {
             Button button = Create(text, action, true);
             System.Windows.Automation.AutomationProperties.SetAutomationId(button, "TCT.Context." + id);
-            _contextActions.Items.Add(button);
+            if (_sideContexts == null) _contextActions.Items.Add(button);
+            else _sideContexts.Children.Add(button);
             _activeContextCommands.Add(id);
         }
         private void RebuildContextCommands()
         {
             if (_contextActions == null) return;
             _contextActions.Items.Clear();
+            if (_sideContexts != null) _sideContexts.Children.Clear();
             _activeContextCommands.Clear();
             ITCTTestCase test = _selectedContext;
             if (test == null)
             {
-                _contextActions.Items.Add(new TextBlock { Text = "选择用例后显示Geometry/Object等上下文命令",
-                    VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8) });
+                TextBlock empty = new TextBlock { Text = "选择用例后显示上下文命令",
+                    VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8) };
+                if (_sideContexts == null) _contextActions.Items.Add(empty);
+                else _sideContexts.Children.Add(empty);
                 return;
             }
             string group = test.Descriptor.Group ?? "";
@@ -482,6 +507,7 @@ namespace CxVisual.TestCenter.UI
             RunAll.IsEnabled = !running; RunSelected.IsEnabled = !running;
             Cancel.IsEnabled = running; Export.IsEnabled = !running;
             if (_contextActions != null) _contextActions.IsEnabled = !running;
+            if (_sideContexts != null) _sideContexts.IsEnabled = !running;
             if (RerunFailed != null) RerunFailed.IsEnabled = !running;
         }
         private static Button Create(string text, Action action, bool compact = false)
