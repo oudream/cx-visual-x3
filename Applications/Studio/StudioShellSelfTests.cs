@@ -2675,6 +2675,15 @@ namespace CxVisual.Studio
                             "主页打开真实工作区时没有激活目标Tab或修改了MEM工程");
                     }
                     window.OpenStudioDocument("doc.home");
+                    TextBox globalSearch=window.FindName("StudioGlobalResourceSearch") as TextBox;
+                    Assert(globalSearch!=null,"顶部缺少真实资源搜索控件");
+                    globalSearch.Text="P0";
+                    Assert(window.StudioResourceSearch.Text=="P0"&&
+                        vm.ProjectSession.Revision==before,
+                        "顶部搜索未路由到原资源树筛选或错误修改MEM工程");
+                    globalSearch.Text="";
+                    Assert(window.StudioResourceSearch.Text=="",
+                        "清除全局搜索未恢复左侧资源树");
                     vm.ProjectSession.Rename(vm.ProjectSession.Project,"P1 Studio新工程标题");
                     Assert(vm.StudioProjectTitle=="P1 Studio新工程标题"&&
                         ((TextBlock)window.FindName("StudioHeaderProjectName")).Text==

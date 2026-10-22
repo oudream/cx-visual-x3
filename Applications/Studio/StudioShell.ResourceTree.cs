@@ -34,6 +34,15 @@ namespace CxVisual.Studio
             if (_viewModel != null) RefreshStudioResourceTree();
         }
 
+        // 顶部搜索与左侧资源树只共享过滤字串，不创建第二份工程索引。
+        private void OnStudioGlobalResourceSearchChanged(object sender, TextChangedEventArgs args)
+        {
+            if(StudioResourceSearch==null)return;
+            TextBox global=sender as TextBox;
+            if(global!=null&&StudioResourceSearch.Text!=global.Text)
+                StudioResourceSearch.Text=global.Text;
+        }
+
         private bool ResourceMatches(string value)
         {
             string term = StudioResourceSearch == null ? "" : StudioResourceSearch.Text.Trim();

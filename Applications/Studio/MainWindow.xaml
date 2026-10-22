@@ -13,6 +13,13 @@
                 BorderBrush="{DynamicResource StudioBorderBrush}" BorderThickness="0,0,0,1">
             <DockPanel LastChildFill="True">
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <DockPanel Margin="0,0,9,0" VerticalAlignment="Center">
+                        <TextBlock Text="搜索资源" VerticalAlignment="Center" Margin="0,0,6,0"
+                                   FontSize="11" Foreground="{DynamicResource StudioMutedTextBrush}"/>
+                        <TextBox x:Name="StudioGlobalResourceSearch" Width="190"
+                                 ToolTip="搜索当前MEM工程的页面、Content和Symbol；与左侧资源树同一过滤条件"
+                                 TextChanged="OnStudioGlobalResourceSearchChanged"/>
+                    </DockPanel>
                     <TextBlock Text="统一工程工作区" FontSize="11" Margin="0,0,12,0" VerticalAlignment="Center"
                                Foreground="{DynamicResource StudioAccentBrush}"/>
                     <Button Content="切换浅色 / 深色" Click="OnStudioThemeClick" Padding="11,5"
