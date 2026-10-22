@@ -59,6 +59,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         public MPCPortKind Kind {get{return Descriptor.Kind;}}
         public MPCPortDirection Direction {get;private set;}
         public Point Center {get;private set;}
+        /// <summary>可连接输出端口的快捷箭头中心（画布局部DIP）。</summary>
+        public Point QuickArrowCenter
+        {get{return new Point(Center.X+16,Center.Y);}}
     }
 
     public sealed class MOLPortLinkRequestedEventArgs : EventArgs
@@ -111,6 +114,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         {get{return (MOLWiringDefinition)GetValue(WiringDefinitionProperty);}
          set{SetValue(WiringDefinitionProperty,value);}}
         private MOLPortVisual _dragSource;
+        private Guid? _hoverBlockId;
         private MOLPortVisual _dragTarget;
         private bool _dragTargetValid;
         private Point _dragPointer;
@@ -210,7 +214,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         public void ResetLinkSelection()
         {
             _sourceForLink=null;_dragSource=null;_dragTarget=null;
-            _dragTargetValid=false;_movingBlockId=null;
+            _hoverBlockId=null;_dragTargetValid=false;_movingBlockId=null;
             _movingIds=new Guid[0];_marqueeActive=false;_moveDelta=new Point();
             if(IsMouseCaptured)ReleaseMouseCapture();
             InvalidateVisual();
@@ -240,6 +244,63 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 }
             }
             return result.AsReadOnly();
+        }
+
+
+        /// <summary>按当前悬停块显示出端口箭头；不修改工程和逻辑连线。</summary>
+        public IReadOnlyList<MOLPortVisual> GetQuickConnectPorts()
+        {
+            if(!_hoverBlockId.HasValue||WiringDefinition==null||
+                _dragSource!=null||_movingBlockId.HasValue||_marqueeActive)
+                return Array.AsReadOnly(new MOLPortVisual[0]);
+            return GetVisiblePorts().Where(p=>p.BlockId==_hoverBlockId.Value&&
+                p.Direction==MPCPortDirection.Output).ToArray();
+        }
+
+        /// <summary>从图元移向外侧箭头时保持悬停，避免进入箭头前提前消失。</summary>
+        public bool UpdateQuickConnectHover(Point position)
+        {
+            if(WiringDefinition==null||_dragSource!=null||
+                _movingBlockId.HasValue||_marqueeActive)
+            {
+                if(_hoverBlockId.HasValue){_hoverBlockId=null;InvalidateVisual();}
+                return false;
+            }
+            Guid? block=null;
+            for(int i=_layout.Count-1;i>=0;i--)
+            {
+                MOLBlockLayout item=_layout[i];
+                if(position.X>=item.X&&position.X<=item.X+item.Width&&
+                    position.Y>=item.Y&&position.Y<=item.Y+item.Height)
+                {block=item.BlockId;break;}
+            }
+            // 端口到箭头之间建立连续的悬停走廊，允许用户水平移动鼠标。
+            if(!block.HasValue&&_hoverBlockId.HasValue)
+            {
+                foreach(MOLPortVisual p in GetVisiblePorts().Where(p=>
+                    p.BlockId==_hoverBlockId.Value&&
+                    p.Direction==MPCPortDirection.Output))
+                {
+                    if(position.X>=p.Center.X-8&&
+                        position.X<=p.QuickArrowCenter.X+10&&
+                        Math.Abs(position.Y-p.Center.Y)<=12)
+                    {block=_hoverBlockId;break;}
+                }
+            }
+            if(block!=_hoverBlockId){_hoverBlockId=block;InvalidateVisual();}
+            return _hoverBlockId.HasValue;
+        }
+
+        /// <summary>快捷箭头是Port拖线入口，不生成第二套Link或虚构端口语义。</summary>
+        public bool BeginQuickPortDrag(Point position)
+        {
+            MOLPortVisual selected=GetQuickConnectPorts().FirstOrDefault(p=>
+                Math.Abs(p.QuickArrowCenter.X-position.X)<=9&&
+                Math.Abs(p.QuickArrowCenter.Y-position.Y)<=9);
+            if(selected==null)return false;
+            bool started=BeginPortDrag(selected.Center);
+            if(started) _hoverBlockId=null;
+            return started;
         }
 
         /// <summary>块拖动与鼠标事件共用此入口；结束时才提交工程事务。</summary>
@@ -476,6 +537,23 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 }
                 if(isPreview)dc.Pop();
             }
+            foreach(MOLPortVisual quick in GetQuickConnectPorts())
+            {
+                Point center=quick.QuickArrowCenter;
+                var arrow=new StreamGeometry();
+                using(StreamGeometryContext g=arrow.Open())
+                {
+                    g.BeginFigure(new Point(center.X+7,center.Y),true,true);
+                    g.LineTo(new Point(center.X-5,center.Y-6),true,false);
+                    g.LineTo(new Point(center.X-5,center.Y+6),true,false);
+                }
+                arrow.Freeze();
+                Brush arrowColor=quick.Kind==MPCPortKind.Data?Brushes.DarkOrange:
+                    Brushes.DodgerBlue;
+                dc.DrawLine(new Pen(arrowColor,1.5),quick.Center,
+                    new Point(center.X-6,center.Y));
+                dc.DrawGeometry(arrowColor,new Pen(Brushes.White,1),arrow);
+            }
             foreach(var port in visiblePorts)
             {
                 Brush brush=port.Kind==MPCPortKind.Data?Brushes.DarkOrange:Brushes.SteelBlue;
@@ -516,6 +594,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         {
             base.OnMouseLeftButtonDown(e);
             Point p=e.GetPosition(this);
+            if(BeginQuickPortDrag(p))
+            {
+                CaptureMouse();e.Handled=true;return;
+            }
             if(BeginPortDrag(p))
             {
                 CaptureMouse();e.Handled=true;return;
@@ -580,6 +662,13 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             {UpdateBlockDrag(e.GetPosition(this));e.Handled=true;}
             else if(_marqueeActive)
             {UpdateMarquee(e.GetPosition(this));e.Handled=true;}
+            else UpdateQuickConnectHover(e.GetPosition(this));
+        }
+        protected override void OnMouseLeave(MouseEventArgs e)
+        {
+            base.OnMouseLeave(e);
+            if(_hoverBlockId.HasValue&&!IsMouseCaptured)
+            {_hoverBlockId=null;InvalidateVisual();}
         }
         protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
         {
@@ -600,7 +689,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             base.OnLostMouseCapture(e);
             if(_dragSource!=null||_movingBlockId.HasValue||_marqueeActive)
             {_dragSource=null;_dragTarget=null;_dragTargetValid=false;
-             _movingBlockId=null;_movingIds=new Guid[0];
+             _hoverBlockId=null;_movingBlockId=null;_movingIds=new Guid[0];
              _marqueeActive=false;_moveDelta=new Point();InvalidateVisual();}
         }
     }

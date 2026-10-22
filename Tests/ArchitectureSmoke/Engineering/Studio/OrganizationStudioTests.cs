@@ -659,6 +659,24 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     p.MemberId=="Done"&&p.Direction==MPCPortDirection.Output);
                 var toPort=endpoints.Single(p=>p.BlockId==detached.Blocks[1].Id&&
                     p.MemberId=="Start"&&p.Direction==MPCPortDirection.Input);
+                // draw.io式可连接提示只出现在悬停块的合法输出端口上。
+                var fromBlock=MOLFlowLayout.Build(flowCanvas.WiringDefinition)
+                    .Single(b=>b.BlockId==fromPort.BlockId);
+                Check(flowCanvas.UpdateQuickConnectHover(new Point(
+                    fromBlock.X+fromBlock.Width/2,fromBlock.Y+12))&&
+                    flowCanvas.GetQuickConnectPorts().Any(p=>
+                        p.BlockId==fromPort.BlockId&&p.MemberId=="Done"),
+                    "hovered block should expose quick-arrow only for output ports");
+                int beforeQuick=reopened.Revision;
+                Check(flowCanvas.BeginQuickPortDrag(fromPort.QuickArrowCenter),
+                    "quick connection arrow didn't start typed port drag");
+                Check(flowCanvas.UpdatePortDrag(toPort.Center)&&
+                    reopened.Revision==beforeQuick,
+                    "quick arrow hover must not create an engineering link");
+                flowCanvas.ResetLinkSelection();
+                Check(MOLWiringCodec.Get(reopened.GetSnapshot().Find(active.RootContent.Id))
+                        .Links.Count==0,
+                    "cancelled quick arrow drag left an unexpected connection");
                 Check(!flowCanvas.BeginPortDrag(toPort.Center),
                     "Input Port incorrectly allowed as mouse drag source");
                 // Escape/ResetLinkSelection只能取消预览，不能残留提交边。
