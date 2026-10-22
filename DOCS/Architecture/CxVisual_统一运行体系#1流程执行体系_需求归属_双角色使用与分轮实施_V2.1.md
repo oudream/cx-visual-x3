@@ -660,3 +660,10 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 
 - 固定提交`40fae6cff93eb4a4b7e476b90f9deb9fd84f79e3`的Studio [39719825990](https://github.com/oudream/cx-visual-x3/actions/runs/39719825990) **57 PASS/0 FAIL**，含新R08活动Content执行组编辑、Undo/Redo和非法组ID拒绝；工作流由于期待旧的56 PASS而判失败。保留这条失败证据。
 - 本次仅将`studio-shell-windows.yml`的严格成功数提升至57，仍要求`FAIL=0`，不删除WPF用例，也不降级源码构建/主题/布局门禁。待修复SHA的真实Windows成功证明。
+
+
+### R08 代码编排执行组配置闭环（2026-10-22，待Windows CI）
+
+- `MRKCodeRuntimeBuilder.ExecutionGroup(id,maxConcurrency,maxWaiting,scope)`直接注册原`MRKExecutionGroupDefinition`；`MRKCodeFlowBuilder.StepInGroup`使用原`MRKStepCompileRequest.ExecutionGroup`而非第二套编排图。`Freeze`构建的Blueprint保留不可变执行组注册表并在运行前拒绝所有未知组；`BuildForDevelopment`将同一组配置传给原`MRKExecutionEngine`，实际按Step/Stage/WholeFlow仲裁。
+- ArchitectureSmoke真实两Flow流水反证：Stage组容量1，同组两个连续节点不会自己排队死锁，Stage结束但第一个Flow尚在执行无组尾部时，第二个Flow可完整进入并完成；重复组ID拒绝、未知组Freeze前拒绝、冻结后Builder新注册组不修改已有Blueprint。
+- 仅为开发者与CPU仿真的运行组配置；生产级Host设备容量必须独立授权，MOL/MOC现有工程组引用与Studio运行预览接入仍需专项。不以新增开发者API代替工程持久化或Studio控件交互验收。

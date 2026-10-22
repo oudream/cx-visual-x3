@@ -25,6 +25,16 @@ namespace CxVisual.Mechanism.Runtime.Execution
         {
             return Add(new MRKStepCompileRequest(id, capabilityId, after));
         }
+        /// <summary>便捷绑定已经注册的执行组，不新建第二份组定义或执行器。</summary>
+        public MRKCodeFlowBuilder StepInGroup(string id, string capabilityId,
+            string groupId, params string[] after)
+        {
+            if (string.IsNullOrWhiteSpace(groupId))
+                throw new ArgumentException("组ID不能为空", "groupId");
+            return Add(new MRKStepCompileRequest(id, capabilityId, after,
+                executionGroup: groupId));
+        }
+
         public MRKCodeFlowBuilder Subflow(string id, string flowId,
             params string[] after)
         {
@@ -91,6 +101,23 @@ namespace CxVisual.Mechanism.Runtime.Execution
             new Dictionary<string, MRKResolvedCapability>(StringComparer.Ordinal);
         private readonly Dictionary<string, MRKFlowCompileDefinition> _flows =
             new Dictionary<string, MRKFlowCompileDefinition>(StringComparer.Ordinal);
+        private readonly Dictionary<string, MRKExecutionGroupDefinition> _executionGroups =
+            new Dictionary<string, MRKExecutionGroupDefinition>(StringComparer.Ordinal);
+
+        /// <summary>
+        /// 仅注册原MRK执行组容量，Step/Stage/WholeFlow沿用一个MRKExecutionGroups。
+        /// 这是开发/CPU仿真运行配置；生产仍必须由授权Host自行批准容量。
+        /// </summary>
+        public MRKCodeRuntimeBuilder ExecutionGroup(string id, int maxConcurrency,
+            int maxWaiting, MRKExecutionGroupScope scope = MRKExecutionGroupScope.Step)
+        {
+            MRKExecutionGroupDefinition definition =
+                new MRKExecutionGroupDefinition(id, maxConcurrency, maxWaiting, scope);
+            if (_executionGroups.ContainsKey(id))
+                throw new ArgumentException("重复执行组：" + id, "id");
+            _executionGroups.Add(id, definition);
+            return this;
+        }
 
         public MRKCodeRuntimeBuilder Capability(string id,
             Func<MRKExecutionContext, CancellationToken, Task<object>> action,
@@ -168,7 +195,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
         /// <summary>冻结一次定义，供开发执行和正式授权发布共用。</summary>
         public MRKCodeRuntimeBlueprint Freeze()
         {
-            return new MRKCodeRuntimeBlueprint(_flows, _capabilities);
+            return new MRKCodeRuntimeBlueprint(_flows, _capabilities, _executionGroups);
         }
 
         public MRKDevelopmentRuntime Build(FCRWorkerOptions options = null)
@@ -187,10 +214,12 @@ namespace CxVisual.Mechanism.Runtime.Execution
         private readonly IDictionary<string, MRKFlowCompileDefinition> _definitions;
         private readonly IDictionary<string, MRKResolvedCapability> _capabilities;
         private readonly IDictionary<string, MRKExecutionPlan> _plans;
+        private readonly IReadOnlyDictionary<string, MRKExecutionGroupDefinition> _executionGroups;
 
         internal MRKCodeRuntimeBlueprint(
             IDictionary<string, MRKFlowCompileDefinition> definitions,
-            IDictionary<string, MRKResolvedCapability> capabilities)
+            IDictionary<string, MRKResolvedCapability> capabilities,
+            IDictionary<string, MRKExecutionGroupDefinition> executionGroups)
         {
             if (definitions.Count == 0)
                 throw new InvalidOperationException("至少注册一个流程");
@@ -212,8 +241,31 @@ namespace CxVisual.Mechanism.Runtime.Execution
                     throw new MRKCodeRuntimeBuildException(id, result.Diagnostics);
                 plans.Add(id, result.Plan);
             }
+            _executionGroups = new ReadOnlyDictionary<string, MRKExecutionGroupDefinition>(
+                new Dictionary<string, MRKExecutionGroupDefinition>(executionGroups,
+                    StringComparer.Ordinal));
+            // 所有组引用必须在Freeze期通过验证，未知组不能在运行产生副作用后才报错。
+            foreach (KeyValuePair<string, MRKExecutionPlan> flow in plans)
+                ValidateRegisteredGroups(flow.Key, flow.Value);
             _plans = new ReadOnlyDictionary<string, MRKExecutionPlan>(plans);
         }
+
+        private void ValidateRegisteredGroups(string flowId, MRKExecutionPlan plan)
+        {
+            foreach (MRKExecutionStep step in plan.Steps)
+            {
+                if (!string.IsNullOrWhiteSpace(step.ExecutionGroup) &&
+                    !_executionGroups.ContainsKey(step.ExecutionGroup))
+                    throw new InvalidOperationException(
+                        "runtime.unknown_execution_group:" + flowId + ":" +
+                        step.Id + ":" + step.ExecutionGroup);
+                if (step.LoopRegion != null)
+                    ValidateRegisteredGroups(flowId, step.LoopRegion.Body);
+            }
+        }
+
+        public IReadOnlyDictionary<string, MRKExecutionGroupDefinition> ExecutionGroups
+        { get { return _executionGroups; } }
 
         public IList<string> FlowIds
         { get { return new ReadOnlyCollection<string>(_plans.Keys.OrderBy(x => x,
@@ -228,7 +280,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
         public MRKDevelopmentRuntime BuildForDevelopment(FCRWorkerOptions options = null)
         {
             return new MRKDevelopmentRuntime(new MRKExecutionEngine(
-                options ?? new FCRWorkerOptions(2, 64)), _plans);
+                options ?? new FCRWorkerOptions(2, 64),
+                groups: _executionGroups.Values), _plans);
         }
     }
 

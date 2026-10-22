@@ -18,6 +18,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             OneBlueprintBothDevelopmentAndAuthorizedProductionPublication();
             NaturalTypedBusinessRequest();
             TypedOutputRunValue();
+            R08_CodeGroupsFreezeValidateAndShareRuntimeQuota();
         }
 
         private static void Check(bool condition, string message)
@@ -37,6 +38,81 @@ namespace CxVisual.Tests.ArchitectureSmoke
             if (!object.ReferenceEquals(first, task))
                 throw new TimeoutException("Runtime简洁API测试超时");
             task.GetAwaiter().GetResult();
+        }
+
+        /// <summary>R08：代码编排登记真实MRK组定义，冻结后不可更改；Stage完整执行不自锁。</summary>
+        private static void R08_CodeGroupsFreezeValidateAndShareRuntimeQuota()
+        {
+            bool invalid=false;
+            try
+            {
+                new MRKCodeRuntimeBuilder()
+                    .Capability<int>("Work",(ctx,ct)=>Task.FromResult(1))
+                    .Flow("Missing",flow=>flow.StepInGroup("step","Work","unknown"))
+                    .Freeze();
+            }
+            catch(InvalidOperationException error)
+            { invalid=error.Message.Contains("runtime.unknown_execution_group:Missing:step:unknown"); }
+            Check(invalid,"未知执行组未在冻结Blueprint时拒绝");
+
+            MRKCodeRuntimeBuilder builder = new MRKCodeRuntimeBuilder()
+                .ExecutionGroup("inspection",1,1,MRKExecutionGroupScope.Stage);
+            bool duplicate=false;
+            try{builder.ExecutionGroup("inspection",2,0);}
+            catch(ArgumentException){duplicate=true;}
+            Check(duplicate,"重复执行组ID未拒绝");
+            TaskCompletionSource<bool> firstFinishedStage =
+                new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<bool> releaseTail =
+                new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            int secondStarted=0;
+            builder.Capability<int>("Acquire",(ctx,ct)=>{
+                if ((string)ctx.Inputs["lane"]=="second")
+                    Interlocked.Increment(ref secondStarted);
+                return Task.FromResult(1);
+            }).Capability<int>("Analyze",(ctx,ct)=>Task.FromResult(2))
+              .Capability<int>("Store",async (ctx,ct)=>{
+                  if((string)ctx.Inputs["lane"]=="first")
+                  {
+                      firstFinishedStage.TrySetResult(true);
+                      await releaseTail.Task.ConfigureAwait(false);
+                  }
+                  return 3;
+              }).Flow("Inspect",flow=>flow
+                  .StepInGroup("acquire","Acquire","inspection")
+                  .StepInGroup("analyze","Analyze","inspection","acquire")
+                  .Step("store","Store","analyze"));
+            MRKCodeRuntimeBlueprint blueprint=builder.Freeze();
+            Check(blueprint.ExecutionGroups.Count==1 &&
+                blueprint.ExecutionGroups["inspection"].MaxConcurrency==1 &&
+                blueprint.ExecutionGroups["inspection"].Scope==MRKExecutionGroupScope.Stage,
+                "冻结Blueprint的执行组容量/作用域未保持真实定义");
+            builder.ExecutionGroup("later",5,0);
+            Check(blueprint.ExecutionGroups.Count==1,
+                "冻结后Builder变更污染已编译组配置");
+            MRKDevelopmentRuntime runtime=blueprint.BuildForDevelopment(
+                new FCRWorkerOptions(2,8));
+            try
+            {
+                Task<MRKFlowResult> first=runtime.RunAsync("Inspect",
+                    new Dictionary<string,object>{{"lane","first"}});
+                Wait(firstFinishedStage.Task);
+                Check(!first.IsCompleted,
+                    "第一个Flow的非组尾部应在真实等待中");
+                Task<MRKFlowResult> second=runtime.RunAsync("Inspect",
+                    new Dictionary<string,object>{{"lane","second"}});
+                Check(Wait(second).State==MRKFlowState.Completed &&
+                    Volatile.Read(ref secondStarted)==1 && !first.IsCompleted,
+                    "Stage完成后未释放组席位供后续Flow进场");
+                releaseTail.TrySetResult(true);
+                Check(Wait(first).State==MRKFlowState.Completed,
+                    "同Stage两节点共享一份许可证发生自锁或尾部未结算");
+            }
+            finally
+            {
+                releaseTail.TrySetResult(true);
+                Wait(runtime.StopAsync(true));
+            }
         }
 
         private static void MinimalRunAndTypedRequest()
