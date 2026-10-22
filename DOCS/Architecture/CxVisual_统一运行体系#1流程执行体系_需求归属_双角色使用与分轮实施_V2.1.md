@@ -648,3 +648,9 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 
 - 固定SHA `414f72ef74e200c5a8fd8b4f6908be232e244a54` 首次Windows Runtime [39719145827](https://github.com/oudream/cx-visual-x3/actions/runs/39719145827)、工程组织 [39719145808](https://github.com/oudream/cx-visual-x3/actions/runs/39719145808) 因测试错将`MOCBuildResult.Plan`（类型`MOCCompiledPlan`）直接传给MRKEngine并读取Steps，产生CS1061/CS1503。旧MOCCompiledPlan真正可执行计划是`build.Plan.Plan`。仅修正测试取值路径，不弱化保存重开、真实Stage执行、Undo及非法组身份反例。
 - 此错误是实际Windows CI红灯，不能将上一提交标为编译通过；须在本修复SHA重新取得Windows x64实际成功证据。
+
+
+### R08 Studio独立MOL Inspector执行组编辑（2026-10-22，待Windows CI）
+
+- 使用原Studio V2逻辑面板新增运行组ID输入、应用和清除控件，选中的独立Content Tab通过`ApplyFlowProperty`调用唯一`MOCFlowBuilder.SetExecutionGroup`/MEM事务，刷新面板读原Wiring.Policies而非另建Studio缓存。用户填写的是已由Host配置的组ID，Step/Stage/WholeFlow额度与MaxWaiting仍由现有MRKGroup定义管理。
+- `StudioShellSelfTests`补真实WPF点击反证：活动独立AI Content而旧ActivePage无关、MEM Revision恰好增加一次、Undo/Redo、非法超长组ID零修改及清空撤回。源码不能直接证明所有工业配置UI已经完成，仍以同SHA Studio Windows STA为准。

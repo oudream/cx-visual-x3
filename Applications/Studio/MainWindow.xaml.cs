@@ -981,6 +981,10 @@ namespace CxVisual.Studio
                 canvas.SelectedBlockIds[0]:Guid.Empty;
             var block=wiring==null?null:wiring.Blocks.FirstOrDefault(b=>b.Id==id);
             FlowInspectorCapability.Text=block==null?"":block.CapabilityId;
+            MOLStepPolicy groupPolicy;
+            FlowInspectorExecutionGroup.Text=block!=null&&
+                wiring.Policies.TryGetValue(id,out groupPolicy)?
+                groupPolicy.ExecutionGroup:"";
             FlowInspectorPorts.ItemsSource=block==null?null:wiring.Ports[id];
             if(block!=null&&wiring.Ports[id].Count>0)FlowInspectorPorts.SelectedIndex=0;
             else FlowInspectorValue.Text="";
@@ -1073,6 +1077,28 @@ namespace CxVisual.Studio
                 ApplyFlowProperty(b=>b.SetCapability(id,entry.Definition.Id),"节点能力ID已更新");
             }
             catch(Exception ex){LogicInfo.Text="能力修改拒绝："+ex.Message;}
+        }
+        private void OnFlowSetExecutionGroup(object sender,RoutedEventArgs args)
+        {
+            try
+            {
+                Guid id=SelectedFlowBlock();
+                string group=FlowInspectorExecutionGroup.Text.Trim();
+                ApplyFlowProperty(b=>b.SetExecutionGroup(id,group),
+                    group.Length==0?"已清除执行组":"已保存执行组ID："+group+
+                        "；实际容量与作用域由运行Host组配置控制");
+            }
+            catch(Exception ex){LogicInfo.Text="执行组编辑拒绝："+ex.Message;}
+        }
+        private void OnFlowClearExecutionGroup(object sender,RoutedEventArgs args)
+        {
+            try
+            {
+                Guid id=SelectedFlowBlock();
+                ApplyFlowProperty(b=>b.SetExecutionGroup(id,null),
+                    "已清除执行组引用；保留重试/超时策略");
+            }
+            catch(Exception ex){LogicInfo.Text="执行组清除拒绝："+ex.Message;}
         }
         private void OnFlowSetEntry(object sender,RoutedEventArgs args)
         {

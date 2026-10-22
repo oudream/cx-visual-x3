@@ -534,6 +534,15 @@
                                         <Button Content="设为流程入口" Click="OnFlowSetEntry"/>
                                     </WrapPanel>
                                     <WrapPanel Margin="0,3">
+                                        <TextBlock Text="运行执行组 ID" VerticalAlignment="Center"/>
+                                        <TextBox x:Name="FlowInspectorExecutionGroup" Width="170" Margin="5,0"
+                                                 ToolTip="填写运行Host已配置的组ID；保存在当前Content原V2 Logic策略"/>
+                                        <Button x:Name="FlowApplyExecutionGroup" Content="应用执行组" Click="OnFlowSetExecutionGroup"/>
+                                        <Button Content="清除执行组" Click="OnFlowClearExecutionGroup"/>
+                                        <TextBlock Text="组容量与Step/Stage/WholeFlow作用域由运行Host配置" 
+                                                   Foreground="#45617C" Margin="8,0" VerticalAlignment="Center"/>
+                                    </WrapPanel>
+                                    <WrapPanel Margin="0,3">
                                         <TextBlock Text="Port名" VerticalAlignment="Center"/>
                                         <TextBox x:Name="FlowInspectorPortName" Width="85" Margin="5,0"/>
                                         <TextBlock Text="类型" VerticalAlignment="Center"/>

@@ -2710,6 +2710,51 @@ namespace CxVisual.Studio
                     Assert(window.StudioEngineeringRevision==sourceRevision,
                         "WPF界面截图或主题切换错误地修改了工程Revision");
                 });
+                CheckStep("R08 Studio执行组参数编辑通过活动Content而非旧Page", () =>
+                {
+                    StudioViewModel vm=window.DataContext as StudioViewModel;
+                    MEMEngineeringSession session=vm.ProjectSession;
+                    MEMPage oldPage=session.AddPage("R08执行组旧页面");
+                    MEMContent content=session.AddContent(session.Project,"R08独立Stage流程");
+                    string tab=window.OpenStudioResourceDocument(content.Id,true);
+                    Guid node=Guid.Empty;
+                    MOCFlowBuilder.Edit(session,content,b=>node=b.Step("AI"));
+                    MOLFlowCanvas canvas=window.GetStudioResourceFlow(content.Id);
+                    canvas.SetSelection(new[]{node});
+                    vm.ActivePage=oldPage;
+                    Expander expander=window.FindName("StudioFlowAdvancedTools") as Expander;
+                    Assert(expander!=null&&window.FlowApplyExecutionGroup!=null,
+                        "Studio没有真实Stage组输入和点击按钮");
+                    expander.IsExpanded=true;
+                    window.FlowInspectorExecutionGroup.Text="vision-stage";
+                    int before=session.Revision;
+                    window.FlowApplyExecutionGroup.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    MOLWiringDefinition result=MOLWiringCodec.Get(
+                        session.GetSnapshot().Find(content.Id));
+                    Assert(session.Revision==before+1&&
+                        result.Policies.ContainsKey(node)&&
+                        result.Policies[node].ExecutionGroup=="vision-stage"&&
+                        window.ActiveStudioDocumentId==tab,
+                        "执行组输入未写入当前Flow原工程事务");
+                    session.Undo().RequireValue();
+                    Assert(!MOLWiringCodec.Get(session.GetSnapshot().Find(content.Id))
+                        .Policies.ContainsKey(node),"Stage组撤销没有恢复工程定义");
+                    session.Redo().RequireValue();
+                    Assert(MOLWiringCodec.Get(session.GetSnapshot().Find(content.Id))
+                        .Policies[node].ExecutionGroup=="vision-stage",
+                        "Stage组重做未恢复身份");
+                    before=session.Revision;
+                    window.FlowInspectorExecutionGroup.Text=new string('X',129);
+                    window.FlowApplyExecutionGroup.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    Assert(session.Revision==before&&
+                        MOLWiringCodec.Get(session.GetSnapshot().Find(content.Id))
+                            .Policies[node].ExecutionGroup=="vision-stage",
+                        "非法Stage组ID污染原工程Revision");
+                    window.FlowInspectorExecutionGroup.Text="";
+                    window.FlowApplyExecutionGroup.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    Assert(!MOLWiringCodec.Get(session.GetSnapshot().Find(content.Id))
+                        .Policies.ContainsKey(node),"清空Stage组ID未移除缺省策略");
+                });
                 CheckStep("S1圆角Ribbon真实矢量及HMI/MOL工具折叠", () =>
                 {
                     int rev=window.StudioEngineeringRevision;
