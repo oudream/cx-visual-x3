@@ -51,6 +51,8 @@ namespace CxVisual.TestCenter.UI
         private bool _running;
         private bool _closed;
         private int _messageCount;
+        private int _runGeneration;
+        private bool _truncated;
 
         public string WorkspaceId { get { return "auto.architecture-smoke"; } }
         public bool IsRunning { get { return _running; } }
@@ -154,18 +156,21 @@ namespace CxVisual.TestCenter.UI
         private void OnProcessOutput(string line, bool stderr)
         {
             if (_closed) return;
+            int generation = Volatile.Read(ref _runGeneration);
             Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() => {
-                if (_closed || !_running) return;
-                if (_messageCount >= 2500) return;
-                _messageCount++;
+                // Async stdout events can arrive just before exit but render after
+                // the exit result. Preserve those real lines, without mixing runs.
+                if (_closed || generation != _runGeneration || _truncated) return;
+                if (_messageCount >= 2500) { _truncated = true; return; }
                 string entry = DateTime.UtcNow.ToString("HH:mm:ss.fff") +
                     (stderr ? " [stderr] " : " [stdout] ") + line + Environment.NewLine;
                 if (_output.Text.Length + entry.Length > MaxDisplayCharacters)
                 {
-                    if (_output.Text.Length < MaxDisplayCharacters)
-                        _output.AppendText("[View limit reached; output truncated in this UI]" + Environment.NewLine);
+                    _truncated = true;
+                    _output.AppendText("[View limit reached; output truncated in this UI]" + Environment.NewLine);
                     return;
                 }
+                _messageCount++;
                 _output.AppendText(entry);
                 _output.ScrollToEnd();
             }));
@@ -183,6 +188,8 @@ namespace CxVisual.TestCenter.UI
             }
             _cancel = new CancellationTokenSource();
             _running = true;
+            Interlocked.Increment(ref _runGeneration);
+            _truncated = false;
             _scope.IsEnabled = false;
             LastResult = null;
             _messageCount = 0;
