@@ -962,6 +962,14 @@ namespace CxVisual.Studio
 
         public static void ValidateStudioLayoutXml(string xml)
         {
+            ValidateStudioLayoutXmlCore(xml,id=>
+                KnownDocuments.Contains(id,StringComparer.Ordinal)||
+                KnownTools.Contains(id,StringComparer.Ordinal)||
+                IsResourceDocumentId(id));
+        }
+
+        private static void ValidateStudioLayoutXmlCore(string xml,Func<string,bool> isKnown)
+        {
             if (string.IsNullOrWhiteSpace(xml) ||
                 Encoding.UTF8.GetByteCount(xml) > LayoutByteLimit)
                 throw new InvalidDataException("布局文件为空或超过1MB上限。");
@@ -979,7 +987,7 @@ namespace CxVisual.Studio
                     if (reader.NodeType != XmlNodeType.Element) continue;
                     string id = reader.GetAttribute("ContentId");
                     if (id == null || id.Length == 0) continue;
-                    if (!IsKnownContent(id) || !seen.Add(id))
+                    if (!isKnown(id) || !seen.Add(id))
                         throw new InvalidDataException("布局含未知或重复ContentId：" + id);
                 }
             }
@@ -988,7 +996,7 @@ namespace CxVisual.Studio
         public void SaveStudioLayout(string path)
         {
             string xml = SerializeStudioLayout();
-            ValidateStudioLayoutXml(xml);
+            ValidateStudioLayoutXmlCore(xml,IsKnownContent);
             string directory = Path.GetDirectoryName(path);
             if (string.IsNullOrWhiteSpace(directory)) throw new InvalidOperationException("布局路径无效。");
             Directory.CreateDirectory(directory);
@@ -1007,7 +1015,7 @@ namespace CxVisual.Studio
             FileInfo file = new FileInfo(path);
             if (!file.Exists || file.Length > LayoutByteLimit) throw new InvalidDataException("布局不存在或超出限制。");
             string xml = File.ReadAllText(path, Encoding.UTF8);
-            ValidateStudioLayoutXml(xml);
+            ValidateStudioLayoutXmlCore(xml,IsKnownContent);
             ValidateResourceDocumentLayout(xml);
             string backup = SerializeStudioLayout();
             try { DeserializeStudioLayout(xml); EnsureStudioContentIds(); }
@@ -1045,7 +1053,7 @@ namespace CxVisual.Studio
 
         private void DeserializeStudioLayout(string xml)
         {
-            ValidateStudioLayoutXml(xml);
+            ValidateStudioLayoutXmlCore(xml,IsKnownContent);
             foreach (LayoutContent item in ExistingContents().ToArray()) item.Content = null;
             XmlLayoutSerializer serializer = new XmlLayoutSerializer(StudioDock);
             serializer.LayoutSerializationCallback += (sender, args) =>
