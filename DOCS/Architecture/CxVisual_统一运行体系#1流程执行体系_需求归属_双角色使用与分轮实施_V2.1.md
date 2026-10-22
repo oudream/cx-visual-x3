@@ -628,3 +628,10 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 
 - 现有Runtime.Host创建唯一F16 `FLDLogService`并注入原MRK/F19执行体系；FCRWorker每个Job在创建时订阅原Handle.Completion，异步写入Dropped/Rejected到原F16 Important Sink，含被后续Submit淘汰的旧业务。无第二个Worker或审计Writer。
 - 原Worker调度锁之外运行审计回调，保留首个审计失败原因，后续Submit/SubmitWhenCapacityAsync及Host新Flow明确拒绝；`Worker.StopAsync`在原Worker排空后等待已注册回调、F16 Flush并将日志异常抛出，旧无审计实例流程兼容。`AuditFailure`与`AuditedLosses`可观测；不能把业务已完成视为重要审计已经落盘。须对本提交补正反例与固定SHA Windows CI。
+
+
+### R08 自动审计与故障保护执行反证（2026-10-22，待Windows CI）
+
+- 原FoundationSmoke增加`R08_HostAutoAuditDropRejectAndDurableStop`：唯一F19 Worker注入FLD后无需Host逐项LogLoss，真正Drop/Reject两项、正常业务两项，Stop等待审计完成+Flush，证据在原F16 Important滚动文件及WorkId关联中一致。
+- `R08_AuditWriterFailureRejectsLaterSubmissions`通过实际Dispose现有FLD来注入日志不可用，观察`AuditFailure`，证明普通Submit和异步SubmitWhenCapacityAsync都拒绝下一条工作；Stop仍真正排空既有任务，但以IOException明确拒绝报告“审计已经可靠完成”。
+- MRK ArchitectureSmoke新增`R08_RuntimeAuditUsesTheSameF19WorkerAndStopBarrier`验证原运行引擎传入F16实例后自动记录原WorkId及Stop异步排空，不建立第二个Worker。以上需要新固定SHA的Windows CI实际成功方能记已验证。

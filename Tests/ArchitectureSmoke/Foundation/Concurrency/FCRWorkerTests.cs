@@ -26,6 +26,8 @@ namespace CxVisual.Tests.FoundationSmoke
             R08_WaiterCancellationAndStopAreBounded();
             R08_ProducerBurstCancelAndDrain();
             R08_TerminalReasonAndOriginalFLDAudit();
+            R08_HostAutoAuditDropRejectAndDurableStop();
+            R08_AuditWriterFailureRejectsLaterSubmissions();
             RandomizedCancellationAndStopStress();
         }
         private static void Check(bool ok, string message)
@@ -740,6 +742,114 @@ namespace CxVisual.Tests.FoundationSmoke
             {
                 release.TrySetResult(true);
                 Await(worker.StopAsync(true));
+                if(Directory.Exists(folder))Directory.Delete(folder,true);
+            }
+        }
+
+        private static void R08_HostAutoAuditDropRejectAndDurableStop()
+        {
+            string folder=Path.Combine(Path.GetTempPath(),
+                "CxVisual-F19-auto-audit-"+Guid.NewGuid().ToString("N"));
+            TaskCompletionSource<bool> entered=Gate(),release=Gate();
+            try
+            {
+                using(FLDLogService audit=new FLDLogService(folder))
+                {
+                    FCRWorker worker=new FCRWorker(new FCRWorkerOptions(
+                        1,1,FCROverflowPolicy.DropOldestDroppable),audit);
+                    FCRWorkHandle<int> running=worker.Submit<int>(async ct=>{
+                        entered.TrySetResult(true);
+                        await release.Task.ConfigureAwait(false);
+                        return 10;
+                    },"audit-host");
+                    try
+                    {
+                        Await(entered.Task);
+                        FCRWorkHandle<int> evicted=worker.Submit<int>(
+                            ct=>Task.FromResult(11),"audit-host",droppable:true);
+                        FCRWorkHandle<int> replacement=worker.Submit<int>(
+                            ct=>Task.FromResult(12),"audit-host");
+                        FCRWorkHandle<int> refused=worker.Submit<int>(
+                            ct=>Task.FromResult(13),"audit-host");
+                        Check(Await(evicted.Completion).State==FCRWorkState.Dropped &&
+                            Await(refused.Completion).State==FCRWorkState.Rejected,
+                            "R08 Host自动审计原业务必须先真实Drop/Reject");
+                        release.TrySetResult(true);
+                        Await(worker.StopAsync(false)); // 同时等待Worker排空、审计回调及FLD Flush。
+                        Check(Await(running.Completion).Succeeded &&
+                            Await(replacement.Completion).Succeeded &&
+                            worker.AuditedLosses==2 && worker.PendingAudits==0 &&
+                            worker.AuditFailure==null,
+                            "R08自动审计Stop后两项损失未处理或错误污染正常业务");
+                        FLDLogRecord[] records=audit.Snapshot().Where(x=>
+                            x.ModuleId=="F19.Worker").ToArray();
+                        Check(records.Length==2 && records.All(x=>x.IsImportant) &&
+                            records.Any(x=>x.CorrelationId==evicted.Id.ToString("N") &&
+                                x.Message.Contains("OldestDroppableEvicted")) &&
+                            records.Any(x=>x.CorrelationId==refused.Id.ToString("N") &&
+                                x.Message.Contains("QueueCapacityExceeded")),
+                            "R08自动审计未持久化两条原始WorkId的独立损失事实");
+                    }
+                    finally{release.TrySetResult(true);Await(worker.StopAsync(true));}
+                }
+                Check(Directory.GetFiles(Path.Combine(folder,"Important"),"*.log",
+                    SearchOption.AllDirectories).Length>0,
+                    "R08自动审计未复用F16 Important滚动文件");
+            }
+            finally
+            {
+                release.TrySetResult(true);
+                if(Directory.Exists(folder))Directory.Delete(folder,true);
+            }
+        }
+
+        private static void R08_AuditWriterFailureRejectsLaterSubmissions()
+        {
+            string folder=Path.Combine(Path.GetTempPath(),
+                "CxVisual-F19-audit-failure-"+Guid.NewGuid().ToString("N"));
+            TaskCompletionSource<bool> entered=Gate(),release=Gate();
+            try
+            {
+                FLDLogService audit=new FLDLogService(folder);
+                FCRWorker worker=new FCRWorker(new FCRWorkerOptions(1,1),audit);
+                FCRWorkHandle<int> active=worker.Submit<int>(async ct=>{
+                    entered.TrySetResult(true);
+                    await release.Task.ConfigureAwait(false);
+                    return 1;
+                },"failure");
+                Await(entered.Task);
+                FCRWorkHandle<int> queued=worker.Submit<int>(
+                    ct=>Task.FromResult(2),"failure");
+                audit.Dispose(); // 故障注入：F16服务提前断开，不是假设日志成功。
+                FCRWorkHandle<int> rejected=worker.Submit<int>(
+                    ct=>Task.FromResult(3),"failure");
+                Check(Await(rejected.Completion).TerminalReason==
+                    FCRWorkTerminalReason.QueueCapacityExceeded,
+                    "R08故障注入未制造真实损失工作");
+                Check(SpinWait.SpinUntil(()=>worker.AuditFailure!=null,5000),
+                    "R08审计服务失效没有产生可观察Host故障");
+                bool synchronousBlocked=false;
+                try{worker.Submit<int>(ct=>Task.FromResult(4),"failure");}
+                catch(InvalidOperationException){synchronousBlocked=true;}
+                Check(synchronousBlocked,"R08审计异常后普通Submit仍可继续接单");
+                bool asynchronousBlocked=false;
+                try{worker.SubmitWhenCapacityAsync<int>(
+                    ct=>Task.FromResult(5),"failure").GetAwaiter().GetResult();}
+                catch(InvalidOperationException){asynchronousBlocked=true;}
+                Check(asynchronousBlocked,"R08审计异常后异步生产者仍可继续接单");
+                release.TrySetResult(true);
+                bool stopFailed=false;
+                try{worker.StopAsync(false).GetAwaiter().GetResult();}
+                catch(IOException){stopFailed=true;}
+                Check(stopFailed && worker.PendingAudits==0 &&
+                    worker.AuditFailure!=null && worker.AuditedLosses==0 &&
+                    Await(active.Completion).Succeeded &&
+                    Await(queued.Completion).Succeeded,
+                    "R08日志故障Stop没有明确报错或破坏原任务真实排空");
+            }
+            finally
+            {
+                release.TrySetResult(true);
                 if(Directory.Exists(folder))Directory.Delete(folder,true);
             }
         }

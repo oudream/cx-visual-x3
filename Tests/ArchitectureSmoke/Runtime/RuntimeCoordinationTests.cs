@@ -1,5 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using CxVisual.Foundation.Infrastructure.Logging;
 using System.Threading;
 using System.Threading.Tasks;
 using CxVisual.Mechanism.Runtime.Execution;
@@ -32,6 +35,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             R07_SkippedAndFailedBranchesRemainDifferent();
             R07_LateCancelledFlowDoesNotPublishToAnotherFlow();
             R08_RuntimeDeveloperBackpressureRespectsEngineStop();
+            R08_RuntimeAuditUsesTheSameF19WorkerAndStopBarrier();
         }
         private static void Check(bool ok, string message)
         { if (!ok) throw new InvalidOperationException("Runtime协作测试: " + message); }
@@ -97,6 +101,54 @@ namespace CxVisual.Tests.ArchitectureSmoke
             {
                 release.TrySetResult(true);
                 Await(engine.StopAsync(true));
+            }
+        }
+
+        private static void R08_RuntimeAuditUsesTheSameF19WorkerAndStopBarrier()
+        {
+            string folder=Path.Combine(Path.GetTempPath(),
+                "CxVisual-R08-MRK-Audit-"+Guid.NewGuid().ToString("N"));
+            TaskCompletionSource<bool> running=new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<bool> release=new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            try
+            {
+                using(FLDLogService audit=new FLDLogService(folder))
+                {
+                    MRKExecutionEngine engine=new MRKExecutionEngine(
+                        new CxVisual.Foundation.Infrastructure.Concurrency.FCRWorkerOptions(1,1),
+                        auditLog:audit);
+                    var active=engine.Submit<int>(async ct=>{
+                        running.TrySetResult(true);
+                        await release.Task.ConfigureAwait(false);
+                        return 1;
+                    },"runtime-audit");
+                    try
+                    {
+                        Await(running.Task);
+                        var queued=engine.Submit<int>(ct=>Task.FromResult(2),"runtime-audit");
+                        var rejected=engine.Submit<int>(ct=>Task.FromResult(3),"runtime-audit");
+                        Check(Await(rejected.Completion).TerminalReason==
+                            CxVisual.Foundation.Infrastructure.Concurrency.FCRWorkTerminalReason.QueueCapacityExceeded,
+                            "R08 MRK没有复用F19真实损失终态");
+                        release.TrySetResult(true);
+                        Await(engine.StopAsync(false));
+                        Check(engine.AuditFailure==null && engine.AuditedLosses==1 &&
+                            Await(active.Completion).Succeeded && Await(queued.Completion).Succeeded,
+                            "R08 MRK未等待唯一F19重要审计Flush与原任务排空");
+                        FLDLogRecord[] log=audit.Snapshot().Where(x=>x.IsImportant).ToArray();
+                        Check(log.Length==1&&
+                            log[0].CorrelationId==rejected.Id.ToString("N"),
+                            "R08 MRK日志相关身份不是业务真实F19 WorkId");
+                    }
+                    finally{release.TrySetResult(true);Await(engine.StopAsync(true));}
+                }
+            }
+            finally
+            {
+                release.TrySetResult(true);
+                if(Directory.Exists(folder))Directory.Delete(folder,true);
             }
         }
 
