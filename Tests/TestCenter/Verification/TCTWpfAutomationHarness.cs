@@ -100,7 +100,8 @@ namespace CxVisual.TestCenter.UI
                         .OfType<System.Windows.Controls.TabItem>().Select(t => t.Content)
                         .OfType<TCTArchitectureSmokeFrame>().FirstOrDefault();
                     if (frame == null) throw new InvalidOperationException("ArchitectureSmoke frame disappeared");
-                    if (!frame.IsRunning && frame.LastResult != null)
+                    if (!frame.IsRunning && frame.LastResult != null &&
+                        frame.MessageCount > 0)
                     {
                         completed = true;
                         succeeded = frame.LastResult.Succeeded && frame.LastResult.ExitCode == 0;
@@ -111,7 +112,7 @@ namespace CxVisual.TestCenter.UI
             }
             if (!completed || !succeeded)
                 throw new InvalidOperationException("ArchitectureSmoke real CLI run failed: " +
-                    (completed ? details : "no verified exit code within 45 seconds"));
+                    (completed ? details : "no verified exit code and actual stdout/stderr within 45 seconds"));
         }
         private static void InteractManualRoot(IntPtr hwnd, TCTMainWindow window)
         {
