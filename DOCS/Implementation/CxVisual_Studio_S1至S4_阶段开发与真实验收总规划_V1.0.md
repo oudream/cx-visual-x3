@@ -400,3 +400,28 @@ studio.RegisterStudioCommand("automation.config.verify", "验证设备配置",
 
 - 后继修复：共享`doc.config`处于真实MEM Resource Scope时，`GetStudioCommandContext`提供经MEM确认的ResourceId、ResourceTypeId；Project/Machine等Scope不伪造工程资源。第52项STA已加正反资源身份断言，需以该次源码SHA的CI另行验收。
 - 保持第19.3节S2.01～S2.12完整退出审计：上述为可自动验收的软件切片，尚缺完整MPM/Schema深类型/多Schema组合、旧Ribbon全面Descriptor、四工业案例的真实Provider构建运行、人工Dock/DPI/多屏/长稳及PLC机台安全ACK。
+
+
+## 21. Studio真实WPF界面向DOCS/界面设计00～09对齐（2026-10-22）
+
+本节承接S1～S4既有交付台账，不新立阶段体系。**目标图与真实WPF截图必须并排比对**，不能用旧演示图片、XAML属性存在或自动测试数量宣称界面视觉一致。设计基准为`DOCS/界面设计/00～09`；实际照片可从Studio Actions的`Studio-WPF-Visual-Review`工作流附件取回。默认截图受Windows CI桌面1024×768限制，不等于1920×1080或多DPI人工验收。
+
+### 21.1 本轮可验证的实际UI代码
+
+- [a68e9b01](https://github.com/oudream/cx-visual-x3/commit/a68e9b01203945be5bcd19c359db3f7cb05682e8)：`Styles/Controls.xaml`统一圆角Button、一级菜单、Ribbon Tile、焦点/悬停/禁用状态和树/输入控件配色；`Themes/Colors.xaml`为浅色/VS深色提供动态资源；原Owner命令、AvalonDock、工程保存历史保持原样。
+- [7e18b77c](https://github.com/oudream/cx-visual-x3/commit/7e18b77ce0a83cba2c97ddfc73d32d69f97676d2)：01主页渐变欢迎区、真实MEM工程指标、圆角快捷卡、MHS/工程/运行入口及真实资源列表；深色配套独立Hero配色。避免虚构模板、日期、历史记录。
+- [893d976d](https://github.com/oudream/cx-visual-x3/commit/893d976d9179e83e8eeeba070d5355d219ecd8e2)：Ribbon字体图标替换为WPF Path Geometry，规避无Segoe图标字体时空框；02 HMI/03 MOL高级编辑命令按需Expander展开，扩大中央实际画布，不删已有Port/路径/调试事件。
+- [4e379dad](https://github.com/oudream/cx-visual-x3/commit/4e379dadbeb0146b467b9a5ce72ce685446db927)：扩展STA对真实圆角模板、矢量Path和可展开操作验证；工程组织H01/H06 UIA按新交互通过`ExpandCollapsePattern`展开工具，原有断言保留。
+- [96eba0f8](https://github.com/oudream/cx-visual-x3/commit/96eba0f8105aa2021bca7ba6040a22e8bd38df1a)：顶部资源搜索真正委托给已有MEM资源树筛选，同一次输入不建第二资源索引。对应Windows同SHA：[Studio 56/56](https://github.com/oudream/cx-visual-x3/actions/runs/39719679378)、[Engineering](https://github.com/oudream/cx-visual-x3/actions/runs/39719679393)、[Config L1](https://github.com/oudream/cx-visual-x3/actions/runs/39719679394)、[配置底座](https://github.com/oudream/cx-visual-x3/actions/runs/39719679390)、[TestCenter](https://github.com/oudream/cx-visual-x3/actions/runs/39719679338) **均 success**。
+
+### 21.2 明确未达到设计一致性的部分
+
+| 原图 | 现状和真实差距 | 优先落地 |
+|---|---|---|
+| 00 文件工程管理 | 尚无原图的独立后台式文件工作区、模板选择/最近工程及右侧工程详情；不得凭静态虚构文件填充 | 实现复用既有New/Load/Save/MEM项目身份的文件工作区，真实历史来源可用前不造示例数据 |
+| 01 主页与总览 | 已有Hero、指标/圆角入口和真实资源；缺原稿工业主视觉、横向密度、模板缩略图、最近项目表与右侧帮助/信息 | 优化可用大屏结构、真实资源统计与帮助区；只有可信工程模板/最近项目源时才显示 |
+| 02 HMI/Symbol | Ribbon矢量化与画布扩容；尚缺全部图标精修、网格/工具布局、层面板统一和工程级完成视觉 | 共性Ribbon组/工具箱/属性细节统一；必须继续真实工具操作验证 |
+| 03/04 主与子流程 | MOL画布扩容、命令可展开；尚缺设计图中的工具分组与模块/参数侧栏布局、流程来源导航完整视觉 | 一套MOL编辑器样式复用主子流程，不另建Editor |
+| 05～09 专业页 | 仍按现有S3/S4目标，部分专业工作区和TestCenter有各自布局；本轮未逐图视觉签收 | 先统一Shell视觉token再逐专业改造，提供同SHA真实WPF图片 |
+
+**验收层级**：本轮完成源码/Windows STA软件切片（T），不是01～09十页逐像素一致，更不是实际键鼠、AvalonDock混合DPI双屏、长时间运行和现场设备安全的人工E/F级签收。后续先把00和01两页做成可讨论的高保真真实界面，再按02/03/04逐页推进。
