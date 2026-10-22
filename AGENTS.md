@@ -14,6 +14,14 @@ This repository uses the approved CxVisual F/M/P architecture and engineering st
 
 See `.agents/skills/cxvisual-engineering/SKILL.md` for the task-specific process.
 
+## ReferTo 参考源码复用规则
+
+- 开发相关功能前，优先检查 `ReferTo/` 是否存在可复用实现。
+- 先对照当前 Foundation / Mechanism / Professional 的职责与真实代码，避免重复开发。
+- 参考代码须经分析、适配、测试与验收后才能纳入正式体系。
+- 不直接引入旧工程架构，不建立重复的工程、数据、执行或通信体系。
+- `ReferTo/` 默认作为参考源码保留，不代表已实现或已通过验证。
+
 ## Historical codebase dossiers and entry maintenance
 
 - Source audit navigation: [01_ccxx.md](DOCS/Codebases/01_ccxx.md) (cross-platform C++ foundations), [02_device_communicator.md](DOCS/Codebases/02_device_communicator.md) (IoT model, point sheets, protocol sessions and monitoring), [03_gcl3.md](DOCS/Codebases/03_gcl3.md) (distributed ICS/SCADA). Select the dossier relevant to the active task; inspect real source and version before reuse. Do not treat dossier proposals as approved architecture, implemented APIs, or tests.

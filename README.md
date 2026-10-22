@@ -30,6 +30,12 @@
 
 - **六角色差距审计与运行内核V0.6.1**：[逐项需求、新增执行概念、未闭合契约及下一轮测试](DOCS/Architecture/CxVisual_统一运行体系_六角色差距审计与内核增构_V0.5.md)。实际新增ExecutionGroup、端口绑定、Flow身份/Session、条件Join、计划编译、作用域数据、Journal、预计字节背压与专用SDK线程；保留正式发布、持久恢复、跨进程和授权差距。
 
+### ReferTo — 历史与参考源码
+
+[`ReferTo/`](ReferTo/) 存放已有项目的参考源码，涵盖 Channels、Protocols、DeviceVariable、CommonInterfaces、Vision（2D/3D图像与体数据可视化）等能力。
+
+这些代码供 CxVisual 架构设计、功能实现和代码复用参考，不属于当前平台的正式实现。
+
 ## 了解入口
 ```text
 我们开始继续开发 **CxVisual**。
