@@ -364,3 +364,9 @@ studio.RegisterStudioCommand("automation.config.verify", "验证设备配置",
 
 - 基于原`MHSConfigService`与`MPWConfigEditorControl<T>`，在`doc.config`增加按专业标题/SectionId的即时筛选、配置卡原生`Expander`折叠及显示数量，保持项目/资源/机台Scope、Saved/Effective、草稿/授权不变。筛选只操作WPF可见性；不会重建Editor或写MEM Revision。
 - 追加WPF STA大小写搜索、可见性、折叠持久状态、文档身份和Revision反证，第49项；混合DPI/大Schema列表仍需真实桌面性能验收。
+
+### 20.3 P1-A/S2.01资源树真实Editor候选入口（2026-10-22，Windows待验）
+
+- 资源树叶节点右键按当前MEM ProjectId/ResourceId即刻发现图元、MOL流程及全部注册专业Viewer；候选从既有`GetStudioResourceEditors`投影，显示默认Editor，不建设第二套资源目录或业务命令真源。
+- 专业Viewer晚注册后旧资源右键即时更新；双击仍走默认Editor。右键执行前重复校验当前Session/Project/Resource/Editor，工程切换、删除、过期菜单一律拒绝。S2.01新增第50项Windows STA菜单操作、旧菜单失效和零Revision验证。
+- 当前仅补齐资源树右键候选可操作切片；类型Schema全覆盖、真正四专业案例、权限/手工Dock/DPI/多屏仍按照S2.03～12审计，不能签收整个P1。

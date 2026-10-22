@@ -51,9 +51,67 @@ namespace CxVisual.Studio
             };
         }
 
-        private static TreeViewItem CreateResourceLeaf(string title, object definition)
+        /// <summary>
+        /// S2.01：Editor候选由真实MEM身份及现有专业Viewer注册动态生成；
+        /// 菜单是一次性WPF投影，不保存第二份资源或Editor定义。
+        /// 资源删除、工程切换及晚注册专业Editor时均在菜单打开瞬间重新检查。
+        /// </summary>
+        internal ContextMenu CreateStudioResourceEditorMenu(MEMNode resource)
         {
-            return new TreeViewItem { Header = title, Tag = definition };
+            if(resource==null)throw new ArgumentNullException("resource");
+            MEMEngineeringSession origin=_viewModel.ProjectSession;
+            Guid projectId=origin.Project.Id;
+            Guid resourceId=resource.Id;
+            ContextMenu menu=new ContextMenu();
+            Action refresh=()=>
+            {
+                menu.Items.Clear();
+                if(!ReferenceEquals(_viewModel.ProjectSession,origin)||
+                    origin.Project.Id!=projectId||origin.Find(resourceId)==null)
+                {
+                    menu.Items.Add(new MenuItem {Header="资源已失效，无法打开",IsEnabled=false});
+                    return;
+                }
+                StudioResourceEditorInfo[] candidates=
+                    GetStudioResourceEditors(resourceId).ToArray();
+                if(candidates.Length==0)
+                {
+                    menu.Items.Add(new MenuItem {Header="没有可用的编辑器",IsEnabled=false});
+                    return;
+                }
+                foreach(StudioResourceEditorInfo candidate in candidates)
+                {
+                    string editorId=candidate.EditorId;
+                    MenuItem item=new MenuItem {
+                        Header="以"+candidate.Title+"打开"+(candidate.IsDefault?"（默认）":""),
+                        Tag=editorId };
+                    item.Click+=(sender,args)=>
+                    {
+                        // 菜单可能在工程切换或Undo后才执行；再次检查Owner身份。
+                        if(!ReferenceEquals(_viewModel.ProjectSession,origin)||
+                            origin.Project.Id!=projectId||origin.Find(resourceId)==null||
+                            !GetStudioResourceEditors(resourceId).Any(x=>x.EditorId==editorId))
+                        {
+                            _viewModel.ReportStudioShellWarning("资源或Editor已失效，拒绝旧菜单操作");
+                            return;
+                        }
+                        SafeStudioAction(()=>{OpenStudioResourceEditor(resourceId,editorId);});
+                    };
+                    menu.Items.Add(item);
+                }
+            };
+            menu.Opened+=(sender,args)=>refresh();
+            refresh();
+            return menu;
+        }
+
+        private TreeViewItem CreateResourceLeaf(string title,object definition)
+        {
+            TreeViewItem leaf=new TreeViewItem {Header=title,Tag=definition};
+            MEMNode resource=definition as MEMNode;
+            if(resource!=null)
+                leaf.ContextMenu=CreateStudioResourceEditorMenu(resource);
+            return leaf;
         }
 
         public void RefreshStudioResourceTree()

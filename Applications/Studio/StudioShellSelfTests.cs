@@ -2378,6 +2378,50 @@ namespace CxVisual.Studio
                         "折叠与搜索修改了配置Editor身份或MEM工程Revision");
                     window.TryCloseStudioDocument("doc.config",true);
                 });
+                CheckStep("S2/P1 工程资源树右键动态Editor候选与过期资源拒绝", () =>
+                {
+                    StudioViewModel vm=window.DataContext as StudioViewModel;
+                    MEMEngineeringSession session=vm.ProjectSession;
+                    MEMContent content=session.AddContent(session.Project,"P1资源树动态Editor");
+                    int revision=session.Revision;
+                    ContextMenu menu=window.CreateStudioResourceEditorMenu(content);
+                    MenuItem[] candidates=menu.Items.OfType<MenuItem>().ToArray();
+                    Assert(candidates.Any(x=>Convert.ToString(x.Tag)=="mem.visual")&&
+                        candidates.Any(x=>Convert.ToString(x.Tag)=="mol.flow")&&
+                        candidates.Any(x=>Convert.ToString(x.Tag)=="vision.camera.viewer"),
+                        "Content右键未发现图元/流程/已注册专业Viewer三个真实Editor");
+                    MenuItem flow=candidates.Single(x=>Convert.ToString(x.Tag)=="mol.flow");
+                    flow.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+                    Assert(window.GetStudioResourceFlow(content.Id)!=null&&
+                        window.GetStudioResourceDocumentIdentity(window.ActiveStudioDocumentId)
+                            .EditorId=="mol.flow",
+                        "资源右键流程入口没有打开真实MOL Content画布");
+                    MenuItem visual=candidates.Single(x=>Convert.ToString(x.Tag)=="mem.visual");
+                    visual.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+                    Assert(window.GetStudioResourceScene(content.Id)!=null&&
+                        window.GetStudioResourceDocumentIdentity(window.ActiveStudioDocumentId)
+                            .EditorId=="mem.visual"&&session.Revision==revision,
+                        "资源右键图元入口未打开真实MEM Editor或修改了工程Revision");
+                    // 同一右键菜单晚注册后必须能重新发现专业工厂。
+                    window.RegisterStudioResourceViewer("automation.plc.viewer",
+                        "PLC专业观察",identity=>new TextBlock {Text="PLC "+identity.ResourceId},
+                        false,"core.content");
+                    menu.RaiseEvent(new RoutedEventArgs(ContextMenu.OpenedEvent));
+                    MenuItem plc=menu.Items.OfType<MenuItem>()
+                        .Single(x=>Convert.ToString(x.Tag)=="automation.plc.viewer");
+                    plc.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+                    string plcKey=window.ActiveStudioDocumentId;
+                    Assert(window.GetStudioResourceDocumentIdentity(plcKey).ResourceId==content.Id&&
+                        window.GetStudioResourceDocumentIdentity(plcKey).EditorId=="automation.plc.viewer",
+                        "晚注册PLC专业Viewer未通过真实资源菜单打开");
+                    // 删除工程资源后，过期菜单不允许再次进入旧资源和旧Viewer。
+                    session.Undo().RequireValue();
+                    Assert(session.Find(content.Id)==null,"Undo没有删除最后创建的资源");
+                    menu.RaiseEvent(new RoutedEventArgs(ContextMenu.OpenedEvent));
+                    Assert(menu.Items.OfType<MenuItem>().All(x=>!x.IsEnabled)&&
+                        window.GetStudioResourceDocumentIdentity(plcKey)==null,
+                        "删除资源的旧右键菜单仍可复用过期的DocumentKey");
+                });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;
             }
