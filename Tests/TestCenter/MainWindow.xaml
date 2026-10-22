@@ -90,7 +90,7 @@
       <dock:LayoutAnchorablePane DockWidth="330">
        <dock:LayoutAnchorable ContentId="test.inspector" Title="操作中心"
          CanClose="False" CanFloat="True" CanHide="True" CanAutoHide="True">
-        <DockPanel Background="#FFFFFF">
+        <DockPanel x:Name="OperationDock" Background="#FFFFFF">
          <ScrollViewer DockPanel.Dock="Top" MaxHeight="250"
             VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
           <StackPanel Margin="9,8,7,6">
