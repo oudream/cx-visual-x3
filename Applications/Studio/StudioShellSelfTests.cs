@@ -2383,7 +2383,7 @@ namespace CxVisual.Studio
                     StudioViewModel vm=window.DataContext as StudioViewModel;
                     MEMEngineeringSession session=vm.ProjectSession;
                     MEMContent content=session.AddContent(session.Project,"P1资源树动态Editor");
-                    int revision=session.Revision;
+                    int editorMenuRevision=session.Revision;
                     ContextMenu menu=window.CreateStudioResourceEditorMenu(content);
                     MenuItem[] candidates=menu.Items.OfType<MenuItem>().ToArray();
                     Assert(candidates.Any(x=>Convert.ToString(x.Tag)=="mem.visual")&&
@@ -2400,7 +2400,7 @@ namespace CxVisual.Studio
                     visual.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
                     Assert(window.GetStudioResourceScene(content.Id)!=null&&
                         window.GetStudioResourceDocumentIdentity(window.ActiveStudioDocumentId)
-                            .EditorId=="mem.visual"&&session.Revision==revision,
+                            .EditorId=="mem.visual"&&session.Revision==editorMenuRevision,
                         "资源右键图元入口未打开真实MEM Editor或修改了工程Revision");
                     // 同一右键菜单晚注册后必须能重新发现专业工厂。
                     window.RegisterStudioResourceViewer("automation.plc.viewer",
