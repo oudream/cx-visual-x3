@@ -88,6 +88,19 @@ namespace CxVisual.Studio
             Select(id);
             Execute(() => _editor.Move(id, x, y));
         }
+        /// <summary>四向可视连接经由现有MPC Visual端口与工程事务保存。</summary>
+        public MTCEditResult<bool> ConnectVisual(Guid from,string fromSide,
+            Guid to,string toSide)
+        {
+            MTCEditResult<bool> result=_editor.ConnectVisual(from,fromSide,to,toSide);
+            _logger.Write(new FLDLogRecord("VisualConnection",
+                result.Success?"Committed":result.ErrorCode,result.Message));
+            Status=result.Success?"已连接可视图元 | Revision "+result.Revision:
+                "连接被拒绝："+result.ErrorCode+" "+result.Message;
+            if(result.Success)NotifyScene();
+            return result;
+        }
+
         /// <summary>路径、缩放和旋转统一提交到MEM事务；失败时不修改工程状态。</summary>
         public MTCEditResult<bool> EditVisualHandle(MVIVisualHandle handle,double worldX,double worldY)
         {

@@ -37,6 +37,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 if(_selectedItems.Add(id))last=id;
             }
             _selection=last;
+            if(_selection.HasValue&&_selection==_hoverConnectId)_hoverConnectId=null;
             InvalidateVisual();
         }
         private bool _marquee;
@@ -44,6 +45,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         public event Action<IReadOnlyList<Guid>> SelectionSetRequested;
         // 几何节点编辑与对象外框变换互斥，双击Shape进入；Esc退出。
         private bool _geometryEditMode;
+        private Guid? _hoverConnectId,_connectSourceId,_connectTargetId;
+        private string _connectSourceSide,_connectTargetSide;
+        private bool _connectDragging;
+        private Point _connectPointer;
+        /// <summary>可视锚点拖线完成事件，由宿主调用既有MEM/MPC事务。</summary>
+        public event Action<Guid,string,Guid,string> ConnectRequested;
         public bool IsGeometryEditMode { get { return _geometryEditMode; } }
         private MVIVisualHandle _activeHandle;
         private bool _handleDragging;
@@ -114,6 +121,93 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         {return new Point((screen.X-_panX)/_zoom,(screen.Y-_panY)/_zoom);}
         private Point ScreenPoint(Point world)
         {return new Point(world.X*_zoom+_panX,world.Y*_zoom+_panY);}
+        private static readonly string[] ConnectionSides=
+            {"north","east","south","west"};
+        private MVISceneItem Connectable(Guid id)
+        {
+            MVISceneItem item=_items.Find(x=>x.Id==id);
+            return item!=null&&item.IsSelectable&&item.Address!=null&&
+                item.Address.InstancePath.Count==0&&
+                item.ElementTypeId!="core.visual.connector"?item:null;
+        }
+        /// <summary>端口位置与核心MVIVisualAnchors使用同一几何计算；偏移采用DIP。</summary>
+        private Point QuickArrowPoint(MVISceneItem item,string side)
+        {
+            FGEPoint2D anchor=MVIVisualAnchors.At(item,side);
+            FGEPoint2D middle=item.WorldTransform.ToGeometry().TransformPoint(
+                new FGEPoint2D(item.LocalWidth/2,item.LocalHeight/2));
+            double dx=anchor.X-middle.X,dy=anchor.Y-middle.Y;
+            double length=Math.Sqrt(dx*dx+dy*dy);
+            if(length<1e-8){dx=1;dy=0;length=1;}
+            return new Point(anchor.X+dx*22/(_zoom*length),
+                anchor.Y+dy*22/(_zoom*length));
+        }
+        private bool TryHitQuickArrow(Point point,out Guid id,out string side)
+        {
+            id=Guid.Empty;side=null;
+            if(!_designMode||ConnectRequested==null||!_hoverConnectId.HasValue||
+                _selectedItems.Contains(_hoverConnectId.Value))return false;
+            MVISceneItem item=Connectable(_hoverConnectId.Value);
+            if(item==null)return false;
+            foreach(string candidate in ConnectionSides)
+            {
+                Point arrow=QuickArrowPoint(item,candidate);
+                double dx=point.X-arrow.X,dy=point.Y-arrow.Y;
+                if(dx*dx+dy*dy<=100/(_zoom*_zoom))
+                {id=item.Id;side=candidate;return true;}
+            }
+            return false;
+        }
+        private void UpdateConnectionHover(Point point)
+        {
+            Guid? next=null;
+            if(_designMode&&ConnectRequested!=null&&!_geometryEditMode)
+            {
+                for(int i=_items.Count-1;i>=0;i--)
+                {
+                    MVISceneItem item=_items[i];
+                    if(Connectable(item.Id)!=null&&
+                        !_selectedItems.Contains(item.Id)&&
+                        item.Bounds.Contains(new FGEPoint2D(point.X,point.Y)))
+                    {next=item.Id;break;}
+                }
+                if(!next.HasValue&&_hoverConnectId.HasValue)
+                {
+                    MVISceneItem existing=Connectable(_hoverConnectId.Value);
+                    if(existing!=null&&!_selectedItems.Contains(existing.Id))
+                        foreach(string candidate in ConnectionSides)
+                        {
+                            FGEPoint2D anchor=MVIVisualAnchors.At(existing,candidate);
+                            double dx=point.X-anchor.X,dy=point.Y-anchor.Y;
+                            if(dx*dx+dy*dy<=(34/_zoom)*(34/_zoom))
+                            {next=existing.Id;break;}
+                        }
+                }
+            }
+            if(next!=_hoverConnectId){_hoverConnectId=next;InvalidateVisual();}
+        }
+        private void UpdateConnectionDrag(Point pointer)
+        {
+            _connectPointer=pointer;
+            _connectTargetId=null;_connectTargetSide=null;
+            for(int i=_items.Count-1;i>=0;i--)
+            {
+                MVISceneItem item=_items[i];
+                if(Connectable(item.Id)==null||item.Id==_connectSourceId||
+                    !item.Bounds.Contains(new FGEPoint2D(pointer.X,pointer.Y)))continue;
+                double best=double.PositiveInfinity;
+                foreach(string side in ConnectionSides)
+                {
+                    FGEPoint2D anchor=MVIVisualAnchors.At(item,side);
+                    double dx=pointer.X-anchor.X,dy=pointer.Y-anchor.Y;
+                    double dist=dx*dx+dy*dy;
+                    if(dist<best)
+                    {best=dist;_connectTargetId=item.Id;_connectTargetSide=side;}
+                }
+                break;
+            }
+            InvalidateVisual();
+        }
         protected override void OnMouseWheel(MouseWheelEventArgs e)
         {
             if(!IsDesignMode){base.OnMouseWheel(e);return;}
@@ -237,7 +331,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             if(items!=null)_items.AddRange(items);
             // 外部切换选择时清除旧高亮；鼠标本地维护多选时不被场景重投影覆盖。
             bool changedSelection=_selection!=selected;
-            if(changedSelection){_selectedItems.Clear();_geometryEditMode=false;}
+            if(changedSelection){_selectedItems.Clear();_geometryEditMode=false;_hoverConnectId=null;}
             _selection=selected;
             if(changedSelection&&selected.HasValue)_selectedItems.Add(selected.Value);
             _selectedItems.RemoveWhere(id=>!_items.Exists(item=>item.Id==id));
@@ -361,6 +455,65 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                     FlowDirection.LeftToRight, new Typeface("Segoe UI"), 13, Brushes.MidnightBlue, 1.0);
                 dc.DrawText(name, new Point(bounds.Left + 12, bounds.Top + 12));
             }
+            // draw.io式图元快捷连接提示：悬停态只显示固定锚点与四向箭头。
+            if(_designMode&&!_connectDragging&&ConnectRequested!=null&&
+                _hoverConnectId.HasValue)
+            {
+                MVISceneItem hover=Connectable(_hoverConnectId.Value);
+                if(hover!=null&&!_selectedItems.Contains(hover.Id))
+                    foreach(string side in ConnectionSides)
+                    {
+                        FGEPoint2D anchor=MVIVisualAnchors.At(hover,side);
+                        Point quick=QuickArrowPoint(hover,side);
+                        double vx=quick.X-anchor.X,vy=quick.Y-anchor.Y;
+                        double length=Math.Sqrt(vx*vx+vy*vy);
+                        if(length<1e-8)continue;
+                        vx/=length;vy/=length;
+                        Point fixedPort=new Point(anchor.X,anchor.Y);
+                        double d=3/_zoom;
+                        var pin=new Pen(Brushes.DeepSkyBlue,1.4/_zoom);
+                        dc.DrawLine(pin,new Point(fixedPort.X-d,fixedPort.Y-d),
+                            new Point(fixedPort.X+d,fixedPort.Y+d));
+                        dc.DrawLine(pin,new Point(fixedPort.X+d,fixedPort.Y-d),
+                            new Point(fixedPort.X-d,fixedPort.Y+d));
+                        dc.DrawLine(new Pen(Brushes.SteelBlue,1.3/_zoom),fixedPort,
+                            new Point(quick.X-vx*6/_zoom,quick.Y-vy*6/_zoom));
+                        double tip=7/_zoom,half=5/_zoom;
+                        var arrow=new StreamGeometry();
+                        using(StreamGeometryContext g=arrow.Open())
+                        {
+                            g.BeginFigure(new Point(quick.X+vx*tip,quick.Y+vy*tip),
+                                true,true);
+                            g.LineTo(new Point(quick.X-vx*half-vy*half,
+                                quick.Y-vy*half+vx*half),true,false);
+                            g.LineTo(new Point(quick.X-vx*half+vy*half,
+                                quick.Y-vy*half-vx*half),true,false);
+                        }
+                        arrow.Freeze();
+                        dc.DrawGeometry(Brushes.SteelBlue,
+                            new Pen(Brushes.White,1/_zoom),arrow);
+                    }
+            }
+            if(_connectDragging&&_connectSourceId.HasValue)
+            {
+                MVISceneItem source=Connectable(_connectSourceId.Value);
+                if(source!=null)
+                {
+                    FGEPoint2D anchor=MVIVisualAnchors.At(source,_connectSourceSide);
+                    Point target=_connectPointer;
+                    MVISceneItem candidate=_connectTargetId.HasValue?
+                        Connectable(_connectTargetId.Value):null;
+                    if(candidate!=null)
+                    {
+                        FGEPoint2D point=MVIVisualAnchors.At(candidate,_connectTargetSide);
+                        target=new Point(point.X,point.Y);
+                        dc.DrawEllipse(null,new Pen(Brushes.DodgerBlue,2/_zoom),
+                            target,8/_zoom,8/_zoom);
+                    }
+                    dc.DrawLine(new Pen(Brushes.DodgerBlue,2/_zoom)
+                        {DashStyle=DashStyles.Dash},new Point(anchor.X,anchor.Y),target);
+                }
+            }
             if(IsDesignMode&&_selection.HasValue)
             {
                 MVISceneItem edited=_items.Find(i=>i.Id==_selection.Value);
@@ -463,6 +616,14 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             Focus();
             Point point = WorldPoint(e.GetPosition(this));
             if(!_designMode)return;
+            Guid quickId;string quickSide;
+            if(TryHitQuickArrow(point,out quickId,out quickSide))
+            {
+                _connectDragging=true;_connectSourceId=quickId;_connectSourceSide=quickSide;
+                _connectTargetId=null;_connectTargetSide=null;
+                _connectPointer=point;_hoverConnectId=null;
+                CaptureMouse();InvalidateVisual();e.Handled=true;return;
+            }
             if(e.ClickCount>=2&&_selection.HasValue&&
                 (Keyboard.Modifiers&(ModifierKeys.Control|ModifierKeys.Shift))==0)
             {
@@ -537,6 +698,11 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         protected override void OnMouseMove(MouseEventArgs e)
         {
             base.OnMouseMove(e);
+            if(_connectDragging)
+            {
+                UpdateConnectionDrag(WorldPoint(e.GetPosition(this)));
+                e.Handled=true;return;
+            }
             if(_marquee)
             {
                 _marqueeEnd=WorldPoint(e.GetPosition(this));
@@ -561,7 +727,11 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 InvalidateVisual();
                 return;
             }
-            if (!_dragging) return;
+            if (!_dragging)
+            {
+                UpdateConnectionHover(WorldPoint(e.GetPosition(this)));
+                return;
+            }
             Point point = WorldPoint(e.GetPosition(this));
             _dragX = point.X - _dragStart.X;
             _dragY = point.Y - _dragStart.Y;
@@ -571,6 +741,18 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
         {
             base.OnMouseLeftButtonUp(e);
+            if(_connectDragging)
+            {
+                UpdateConnectionDrag(WorldPoint(e.GetPosition(this)));
+                Guid source=_connectSourceId??Guid.Empty,target=_connectTargetId??Guid.Empty;
+                string sourceSide=_connectSourceSide,targetSide=_connectTargetSide;
+                _connectDragging=false;_connectSourceId=null;_connectTargetId=null;
+                _connectSourceSide=null;_connectTargetSide=null;_hoverConnectId=null;
+                if(IsMouseCaptured)ReleaseMouseCapture();
+                if(source!=Guid.Empty&&target!=Guid.Empty&&ConnectRequested!=null)
+                    ConnectRequested(source,sourceSide,target,targetSide);
+                InvalidateVisual();e.Handled=true;return;
+            }
             if(_marquee)
             {
                 _marquee=false;
@@ -634,9 +816,17 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         }
         public void CancelInteraction()
         {_dragging=false;_marquee=false;_handleDragging=false;_activeHandle=null;_panning=false;_dragX=0;_dragY=0;
+            _connectDragging=false;_connectSourceId=null;_connectTargetId=null;
+            _connectSourceSide=null;_connectTargetSide=null;_hoverConnectId=null;
             if(IsMouseCaptured)ReleaseMouseCapture();
             UpdateWidgetDragPreview();InvalidateVisual();}
         protected override void OnKeyDown(KeyEventArgs e){if(e.Key==Key.Escape){if(_geometryEditMode&&!_dragging&&!_handleDragging){_geometryEditMode=false;InvalidateVisual();}else CancelInteraction();e.Handled=true;}base.OnKeyDown(e);}
-        protected override void OnLostMouseCapture(MouseEventArgs e){if(_dragging||_handleDragging)CancelInteraction();base.OnLostMouseCapture(e);}
+        protected override void OnLostMouseCapture(MouseEventArgs e){if(_dragging||_handleDragging||_connectDragging)CancelInteraction();base.OnLostMouseCapture(e);}
+        protected override void OnMouseLeave(MouseEventArgs e)
+        {
+            base.OnMouseLeave(e);
+            if(!_connectDragging&&_hoverConnectId.HasValue&&!IsMouseCaptured)
+            {_hoverConnectId=null;InvalidateVisual();}
+        }
     }
 }

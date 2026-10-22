@@ -193,6 +193,19 @@ namespace CxVisual.Studio
                 VisualInfo.Text="场景选中 "+ids.Count+" 个对象，可用原工程成组操作";
             };
             SceneHost.MoveRequested += OnMove;
+            SceneHost.ConnectRequested += (source,sourceSide,target,targetSide)=>
+            {
+                try
+                {
+                    MTCEditResult<bool> result=_viewModel.ConnectVisual(
+                        source,sourceSide,target,targetSide);
+                    VisualInfo.Text=result.Success?
+                        "可视连接已保存 | Revision "+result.Revision+
+                            "（图元移动后自动保持附着，可撤销）":
+                        "可视连接被拒绝："+result.ErrorCode+" "+result.Message;
+                }
+                catch(Exception ex){VisualInfo.Text="可视连接失败："+ex.Message;}
+            };
             SceneHost.HandleEditRequested += (sender,edit)=>
             {
                 try

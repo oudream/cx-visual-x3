@@ -183,6 +183,35 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         1,FGEPathHandleKind.Control1,new FGEPoint2D(21,95));
                     Check(MPWShapeRenderer.BuildGeometry(previewPath,bezierScene.GeometryToWorld)
                         is StreamGeometry,"drag preview did not use the WPF path renderer");
+                    // 通用画布四向快捷连线：只有注册真实工程提交处理器才显示可点击箭头。
+                    shapeView.ConnectRequested+=(from,fromSide,to,toSide)=>{};
+                    MVISceneItem rectScene=shapeScene.First(x=>x.Shape!=null&&
+                        x.Shape.Kind==MRCShapeKind.Rect);
+                    shapeView.SetScene(shapeScene,null);
+                    var hoverMethod=typeof(SceneView).GetMethod("UpdateConnectionHover",
+                        System.Reflection.BindingFlags.Instance|
+                        System.Reflection.BindingFlags.NonPublic);
+                    var arrowMethod=typeof(SceneView).GetMethod("QuickArrowPoint",
+                        System.Reflection.BindingFlags.Instance|
+                        System.Reflection.BindingFlags.NonPublic);
+                    var hitArrow=typeof(SceneView).GetMethod("TryHitQuickArrow",
+                        System.Reflection.BindingFlags.Instance|
+                        System.Reflection.BindingFlags.NonPublic);
+                    Check(hoverMethod!=null&&arrowMethod!=null&&hitArrow!=null,
+                        "visual quick-link interaction was not wired to the real WPF view");
+                    FGEPoint2D rectMiddle=rectScene.WorldTransform.ToGeometry()
+                        .TransformPoint(new FGEPoint2D(rectScene.LocalWidth/2,
+                            rectScene.LocalHeight/2));
+                    hoverMethod.Invoke(shapeView,new object[]{
+                        new Point(rectMiddle.X,rectMiddle.Y)});
+                    Point quickArrow=(Point)arrowMethod.Invoke(shapeView,
+                        new object[]{rectScene,"east"});
+                    object[] arrowArgs={quickArrow,Guid.Empty,null};
+                    Check((bool)hitArrow.Invoke(shapeView,arrowArgs)&&
+                        (Guid)arrowArgs[1]==rectScene.Id&&
+                        (string)arrowArgs[2]=="east",
+                        "hovered visual source should expose a distinct east quick-link arrow");
+                    shapeView.SetScene(shapeScene,bezierScene.Id);
                     shapeWindow.Close();
                     // B：真实WPF SceneView从授权本地Theme Provider解析工程资源画刷，
                     // 不由Designer读取URI或第二份Style存储。
