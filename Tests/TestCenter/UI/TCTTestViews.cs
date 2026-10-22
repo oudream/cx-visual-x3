@@ -359,6 +359,7 @@ namespace CxVisual.TestCenter.UI
 
             Grid split = new Grid { Margin = new Thickness(0, 0, 0, 12) };
             split.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(3, GridUnitType.Star) });
+            split.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(3, GridUnitType.Star) });
             split.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2, GridUnitType.Star) });
             TreeView tree = new TreeView
             {
@@ -400,7 +401,8 @@ namespace CxVisual.TestCenter.UI
                 SelectObservation(observation);
                 if (ObjectSelected != null) ObjectSelected(id.ToString("D"), detail);
             };
-            Grid.SetColumn(tree, 0); split.Children.Add(tree);
+            Border ownershipPanel = ObjectPanel("Ownership / 父子对象树", tree);
+            Grid.SetColumn(ownershipPanel, 0); split.Children.Add(ownershipPanel);
 
             StackPanel related = new StackPanel { Margin = new Thickness(10, 0, 0, 0) };
             related.Children.Add(new TextBlock { Text = "关联 / 声明总览", FontWeight = FontWeights.Bold,
@@ -453,7 +455,8 @@ namespace CxVisual.TestCenter.UI
             }
             ScrollViewer relatedScroll = new ScrollViewer { Content = related,
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto, MaxHeight = 500 };
-            Grid.SetColumn(relatedScroll, 1); split.Children.Add(relatedScroll);
+            Border attributesPanel = ObjectPanel("Object / Property / Port / Connection", relatedScroll);
+            Grid.SetColumn(attributesPanel, 2); split.Children.Add(attributesPanel);
             ContentPanel.Children.Add(split);
             if (nodes.Length <= 500)
             {
@@ -465,16 +468,32 @@ namespace CxVisual.TestCenter.UI
                     if (ObjectSelected != null) ObjectSelected(id.ToString("D"), details);
                 };
                 RelationDiagram = diagram;
-                ContentPanel.Children.Add(new TextBlock { Text = "Ownership / Reference · 真实只读对象关系图",
-                    FontWeight = FontWeights.Bold, Margin = new Thickness(6, 5, 6, 5) });
-                ContentPanel.Children.Add(diagram);
+                Border referencePanel = ObjectPanel("Reference / Mapping · 已验证只读关系图", diagram);
+                Grid.SetColumn(referencePanel, 1); split.Children.Add(referencePanel);
             }
             else
-                ContentPanel.Children.Add(new TextBlock {
-                    Text = "对象图节点超过500，暂仅使用已验证树显示，未虚构关系图。",
-                    Foreground = Brushes.DarkGoldenrod, Margin = new Thickness(7) });
+            {
+                Border referenceFallback = ObjectPanel("Reference / Mapping",
+                    new TextBlock {
+                        Text = "对象图节点超过500，暂仅展示真实对象树。引用图不绘制虚拟节点。",
+                        Foreground = Brushes.DarkGoldenrod, TextWrapping = TextWrapping.Wrap });
+                Grid.SetColumn(referenceFallback, 1); split.Children.Add(referenceFallback);
+            }
         }
 
+        private static Border ObjectPanel(string title, UIElement content)
+        {
+            DockPanel body = new DockPanel();
+            TextBlock heading = new TextBlock {
+                Text = title, FontSize = 13, FontWeight = FontWeights.SemiBold,
+                Foreground = Brushes.MidnightBlue, Background = Brushes.AliceBlue,
+                Padding = new Thickness(8, 6, 8, 6), Margin = new Thickness(0, 0, 0, 6) };
+            DockPanel.SetDock(heading, Dock.Top);
+            body.Children.Add(heading); body.Children.Add(content);
+            return new Border { Child = body, Margin = new Thickness(0, 0, 8, 0),
+                Background = Brushes.White, BorderBrush = Brushes.LightSteelBlue,
+                BorderThickness = new Thickness(1), Padding = new Thickness(8) };
+        }
         private static TreeViewItem BuildItem(XElement node, Dictionary<Guid, XElement> index)
         {
             TreeViewItem item = new TreeViewItem
