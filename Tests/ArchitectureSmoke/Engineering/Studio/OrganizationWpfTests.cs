@@ -211,6 +211,35 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         (Guid)arrowArgs[1]==rectScene.Id&&
                         (string)arrowArgs[2]=="east",
                         "hovered visual source should expose a distinct east quick-link arrow");
+                    // D：真实WPF场景选中MPC可视连接后，只显示两个端点，不允许八点外框缩放。
+                    using(var visualEditor=new MVIVisualEditor(session))
+                    {
+                        visualEditor.SetPage(shapePage.Id);
+                        var circleScene=shapeScene.Single(i=>i.Shape!=null&&
+                            i.Shape.Kind==MRCShapeKind.Circle);
+                        Check(visualEditor.ConnectVisual(rectScene.Id,"east",
+                            circleScene.Id,"west").Success,
+                            "real visual connector could not be created through engineering editor");
+                        MVISceneItem lineScene=visualEditor.Scene.Single(i=>
+                            i.ElementTypeId=="core.visual.connector");
+                        shapeView.SetScene(visualEditor.Scene,lineScene.Id);
+                        shapeView.UpdateLayout();
+                        var lineGeometry=DeepGeometries(VisualTreeHelper.GetDrawing(shapeView))
+                            .Where(d=>d.Geometry is EllipseGeometry).ToArray();
+                        Check(lineGeometry.Length==2,
+                            "selected visual connector must render exactly two endpoint handles");
+                        var endpointHit=typeof(SceneView).GetMethod("TryHitConnectionEnd",
+                            System.Reflection.BindingFlags.Instance|
+                            System.Reflection.BindingFlags.NonPublic);
+                        Check(endpointHit!=null,
+                            "connector endpoint hit testing is missing from real SceneView");
+                        var start=lineScene.GeometryToWorld.TransformPoint(
+                            lineScene.Shape.Geometry.Commands[0].End);
+                        object[] hitArgs={new Point(start.X,start.Y),Guid.Empty,false};
+                        Check((bool)endpointHit.Invoke(shapeView,hitArgs)&&
+                            (Guid)hitArgs[1]==lineScene.Id&&(bool)hitArgs[2],
+                            "first visible endpoint must be hit-testable as source");
+                    }
                     shapeView.SetScene(shapeScene,bezierScene.Id);
                     shapeWindow.Close();
                     // B：真实WPF SceneView从授权本地Theme Provider解析工程资源画刷，
