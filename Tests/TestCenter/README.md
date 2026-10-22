@@ -1,10 +1,90 @@
-# CxVisual.TestCenter 开发者快速使用（依据唯一主规格 V4.1）
+# CxVisual.TestCenter 目录架构与开发规则（2026-10-22）
+
+**当前单一项目**：`Tests/TestCenter/CxVisual.TestCenter.csproj`，WPF + .NET Framework 4.8。  
+**架构划分**：一个公共基础 `Common`、四大工作区 `Manual / Automated / Scenarios / ReportCenter`、自验证 `Verification`。  
+**此段描述已执行的物理目录归位**；未落地的专业页面不伪造源码或功能。完整功能/验收基线仍参照[统一主界面与Frame注册 V1.1](CxVisual_TestCenter_统一主界面与工作区Frame注册——完整设计与验收_V1.1.md)。
+
+## 1. 目录总览
+
+```text
+Tests/TestCenter/
+├─ App.xaml / App.xaml.cs             唯一应用入口及CLI/Worker入口
+├─ MainWindow.xaml / MainWindow.xaml.cs  唯一WPF主窗口
+├─ CxVisual.TestCenter.csproj         唯一测试中心工程
+├─ Common/                           四个工作区共享的基础能力
+│  ├─ Framework/                     WorkspaceDescriptor、Registry、Contracts
+│  ├─ Navigation/                    统一Explorer/测试项目树
+│  ├─ Shell/                         DocumentHost、统一根总界面
+│  ├─ Operations/                    右侧上下文操作中心
+│  └─ Controls/                      公用Inspector等UI
+├─ Automated/                        自动测试体系（真实NUnit/TCT）
+│  ├─ Core/                          ITCTTestCase、Assert、Catalog、Run、Runner
+│  ├─ Cases/                         自动测试用例（MSBuild递归通配）
+│  ├─ Discovery/                     NUnit/TCT发现注册
+│  ├─ Execution/                     Child Worker、调度、结果收集、事件
+│  ├─ Fixtures/                      Fixture、Artifact、Golden（自动Attempt专属）
+│  ├─ Models/                        Run/Attempt/Observation/Evidence模型
+│  ├─ NUnitIntegration/              NUnit正式引擎适配
+│  ├─ Diagnostics/                   现有TCT TestObserverHub
+│  ├─ Reports/                       自动Run结果存储、历史、导出真源
+│  └─ UI/
+│     ├─ Overview/                   自动测试总览
+│     ├─ Plans/                      Suite/Plan界面
+│     ├─ Results/                    Results与Attempt Timeline
+│     └─ Viewers/                    经过Owner证据核验的只读显示
+│        ├─ Shared/                  Viewer基础及GraphRuntime公用行为
+│        ├─ Geometry/ Object/ Graph/ Channel/ Runtime/
+├─ Manual/                           专有测试（人工操作）工作区
+│  └─ Channel/                       已实现Virtual收发操作页（非真实TCP）
+├─ Scenarios/                        场景案例工作区，目前仅规划/目录说明
+├─ ReportCenter/                     结果报告工作区UI（不重复存储）
+│  ├─ History/                       真实历史运行查看
+│  └─ Diff/                          已归档Run/Attempt对比
+└─ Verification/                     TestCenter自身WPF/UIAutomation
+```
+
+**四根界面映射**：专有测试→`Manual`；自动测试→`Automated`；场景案例→`Scenarios`；结果报告→`ReportCenter`。四根使用同一`Common/Framework`注册机制、`Common/Navigation`树和`Common/Shell`工作区；**树节点不等于一份新的业务工程，也不要求一叶一Frame类**。
+
+**未来按需建立，不冒充已实现**：`Common/Diagnostics`（跨工作区诊断合同）；`Manual/Overview、Sessions、Protocol、Graphics、CT3D`；`Scenarios/Overview、Catalog、Details`；`ReportCenter/Overview、Automated、Manual、Scenarios`。相应真实Owner、权限和证据具备时再新增类与目录。
+
+## 2. Common 与四大工作区的边界
+
+| 目录 | 职责 | 不负责 |
+|---|---|---|
+| `Common` | Frame描述/注册、导航、Shell、文档Tab、操作命令、通用Inspector；AvalonDock共用 | 自动Catalog、Worker、测试断言、ManualSession、工程定义 |
+| `Automated` | 唯一TCT/NUnit Catalog/Runner/Run/Attempt、Fixture、Artifact、Golden、自动报告及只读专业Viewer | 人工收发、实时设备控制和第二套工程 |
+| `Manual` | 各专业可操作的人工测试页、独立ManualSession与操作观察；优先调用生产Owner | 以人工操作成功伪造NUnit Passed或Golden |
+| `Scenarios` | 真实场景目录、工程/运行绑定、受控验证入口（后续完善） | 无Owner时制造“已通过”或伪设备行为 |
+| `ReportCenter` | 统一报告类型/索引/历史/差异的UI展示 | 再建一份Run/Attempt结果数据库 |
+| `Verification` | WPF/UIA、交互及视觉验收脚本 | 测试平台业务的独立Runner |
+
+现有`TCTTestArtifactStore`依赖Run/Attempt，仍归`Automated/Fixtures`。要支持人工证据，应先设计独立ManualSession身份及跨体系证据合同，不得直接把它“搬到Common”并共享可变状态。
+
+## 3. 文件拆分与命名空间政策
+
+- 旧`UI/TCTControls.cs`→ `Common/Navigation` Explorer、`Common/Operations` RibbonController、`Common/Controls` Inspector、`Automated/UI/Results` Results。
+- 旧`UI/TCTWorkspaceFrames.cs`→ `Common/Framework` Descriptor/Registry/Contracts、`Common/Shell` RootFrame、`Manual/Channel` ChannelFrame。
+- 旧`UI/TCTTestViews.cs`→ `Common/Shell` DocumentHost、`Automated/UI/Viewers`下各专业Viewer与共享基类。
+- History/Diff视图位于`ReportCenter`，自动报告生成与历史归档真源仍位于`Automated/Reports`；WPF UIA在`Verification`。
+- **本轮保持原C#命名空间和公开类型名不变**（如`CxVisual.TestCenter.UI`、`CxVisual.TestCenter.Core`），避免纯目录迁移同时修改WPF XAML `clr-namespace`、反射发现、已有接口及自动测试身份。未来若规范要求命名空间随目录调整，应分独立兼容任务实施。
+
+## 4. 新增源码及构建规则
+
+1. 所有新NUnit/TCT测试源文件放`Tests/TestCenter/Automated/Cases/`（可分子目录）；传统`.csproj`用`Automated\\Cases\\**\\*.cs`编译通配，**不需要逐个新增项目项**。
+2. UI及其他非Cases的C#文件使用显式`<Compile Include="..."/>`；新增/移动必须同步`.csproj`，避免Visual Studio出现CS0246。
+3. Windows CI会在`Automated/Cases/`动态生成NUnit/TCT测试源码后全量重建；不准在旧`Tests/TestCenter/Cases/`手工复制同名测试。
+4. App/MainWindow XAML保留根目录，工作区`ContentId`、AutomationId、Frame/Case ID及Layout序列化合同应保持兼容。
+5. 状态以**对应SHA**的Windows构建、NUnit/TCT、WPF UIA及人工界面分别验收；Windows自动通过不等于DPI/视觉签认或实体设备HIL。旧设计/开发记录中引用`UI/TCTTestViews.cs`等历史路径时，以本节和.csproj现行路径为准。
+
+---
+
+## 5. 开发者快速使用（依据唯一主规格 V4.1）
 
 这是给开发者使用的**一页说明**，不是另一本技术规格；所有设计和 F/M/P Owner 归属仍以[《CxVisual.TestCenter 统一测试体系完整规格 V4.1》](../../DOCS/Architecture/CxVisual_测试体系——完整规格%20V4.1.md)为准。开发者无需手动注册 Catalog、Runner 或 Worker，也不需要修改生产项目引用。
 
 ## 最常见：新增一个测试
 
-在本工程 `Tests/TestCenter/Cases/` 或其子目录新建 `TCTMyChecks.cs`：
+在本工程 `Tests/TestCenter/Automated/Cases/` 或其子目录新建 `TCTMyChecks.cs`：
 
 ```csharp
 using NUnit.Framework;
@@ -23,7 +103,7 @@ public sealed class TCTMyChecks
 }
 ```
 
-`Cases\**\*.cs` 在现有 `CxVisual.TestCenter.csproj` 自动包含新文件。无需新建项目，不修改生产 Foundation/Mechanism Owner。
+`Automated\\Cases\\**\\*.cs` 在现有 `CxVisual.TestCenter.csproj` 自动包含新文件。无需新建项目，不修改生产 Foundation/Mechanism Owner。
 
 在 Windows x64 下构建当前 `CxVisual.Unified.sln`（.NET Framework 4.8）后：
 
