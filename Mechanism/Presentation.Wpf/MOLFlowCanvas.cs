@@ -111,6 +111,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         {get{return (MOLWiringDefinition)GetValue(WiringDefinitionProperty);}
          set{SetValue(WiringDefinitionProperty,value);}}
         private MOLPortVisual _dragSource;
+        private MOLPortVisual _dragTarget;
+        private bool _dragTargetValid;
         private Point _dragPointer;
         private Guid? _movingBlockId;
         private Point _moveOrigin,_moveBase,_moveDelta;
@@ -207,7 +209,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         private Guid? _sourceForLink;
         public void ResetLinkSelection()
         {
-            _sourceForLink=null;_dragSource=null;_movingBlockId=null;
+            _sourceForLink=null;_dragSource=null;_dragTarget=null;
+            _dragTargetValid=false;_movingBlockId=null;
             _movingIds=new Guid[0];_marqueeActive=false;_moveDelta=new Point();
             if(IsMouseCaptured)ReleaseMouseCapture();
             InvalidateVisual();
@@ -302,26 +305,27 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             _dragSource=null;
             var port=HitTestPort(position);
             if(port==null||port.Direction!=MPCPortDirection.Output)return false;
-            _dragSource=port;_dragPointer=port.Center;InvalidateVisual();
+            _dragSource=port;_dragTarget=null;_dragTargetValid=false;
+            _dragPointer=port.Center;InvalidateVisual();
             return true;
         }
 
-        public bool CompletePortDrag(Point position)
+        /// <summary>悬停/拖拽只做真实Core规则预验证；不会写回MOL或MEM。</summary>
+        private bool ValidateLink(MOLPortVisual source,MOLPortVisual target,out string reason)
         {
-            var source=_dragSource;
-            _dragSource=null;InvalidateVisual();
-            if(source==null||WiringDefinition==null)return false;
-            var target=HitTestPort(position);
-            if(target==null)return false;
-            if(target.Direction!=MPCPortDirection.Input)
-            {RejectPortLink("目标必须是输入Port");return false;}
-            if(source.Kind!=target.Kind||source.Descriptor.TypeId!=target.Descriptor.TypeId||
+            reason=null;
+            if(source==null||target==null||WiringDefinition==null)
+            {reason="未命中可连接端口";return false;}
+            if(source.Direction!=MPCPortDirection.Output||
+                target.Direction!=MPCPortDirection.Input)
+            {reason="必须从输出Port连接到输入Port";return false;}
+            if(source.Kind!=target.Kind||
+                source.Descriptor.TypeId!=target.Descriptor.TypeId||
                 !object.Equals(source.Descriptor.Contract,target.Descriptor.Contract)||
                 (source.Kind!=MPCPortKind.Control&&source.Kind!=MPCPortKind.Data))
-            {RejectPortLink("Port种类、数据类型或数据契约不匹配");return false;}
+            {reason="Port种类、数据类型或数据契约不匹配";return false;}
             try
             {
-                // 复用Core唯一的方向、重边、多重度、环路规则，不添加WPF独立校验真源。
                 var link=new MOLLink(Guid.NewGuid(),
                     new MOLBlockEndpoint(source.BlockId,source.MemberId),
                     new MOLBlockEndpoint(target.BlockId,target.MemberId),source.Kind);
@@ -329,8 +333,34 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                     pair=>pair.Key,pair=>(IEnumerable<MPCPortDescriptor>)pair.Value);
                 new MOLWiringDefinition(WiringDefinition.EntryBlockId,
                     WiringDefinition.Blocks,schemas,WiringDefinition.Links.Concat(new[]{link}));
+                return true;
             }
-            catch(Exception ex){RejectPortLink(ex.Message);return false;}
+            catch(Exception ex){reason=ex.Message;return false;}
+        }
+
+        /// <summary>从真实鼠标Move及Studio自动化测试共用的目标端口预览入口。</summary>
+        public bool UpdatePortDrag(Point position)
+        {
+            if(_dragSource==null)return false;
+            _dragPointer=position;
+            _dragTarget=HitTestPort(position);
+            string problem;
+            _dragTargetValid=ValidateLink(_dragSource,_dragTarget,out problem);
+            InvalidateVisual();
+            return _dragTargetValid;
+        }
+
+        public bool CompletePortDrag(Point position)
+        {
+            MOLPortVisual source=_dragSource;
+            MOLPortVisual target=HitTestPort(position);
+            _dragSource=null;_dragTarget=null;_dragTargetValid=false;
+            InvalidateVisual();
+            if(source==null||WiringDefinition==null)return false;
+            if(target==null)return false;
+            string reason;
+            if(!ValidateLink(source,target,out reason))
+            {RejectPortLink(reason);return false;}
             var requested=PortLinkRequested;
             if(requested!=null)requested(this,new MOLPortLinkRequestedEventArgs(source,target));
             return true;
@@ -449,6 +479,17 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             foreach(var port in visiblePorts)
             {
                 Brush brush=port.Kind==MPCPortKind.Data?Brushes.DarkOrange:Brushes.SteelBlue;
+                bool candidate=_dragTarget!=null&&
+                    port.BlockId==_dragTarget.BlockId&&
+                    port.MemberId==_dragTarget.MemberId&&
+                    port.Direction==_dragTarget.Direction;
+                if(candidate)
+                {
+                    Brush status=_dragTargetValid?Brushes.MediumSeaGreen:Brushes.IndianRed;
+                    dc.DrawEllipse(null,new Pen(status,2.5),
+                        port.Center,9,9);
+                    brush=status;
+                }
                 dc.DrawEllipse(Brushes.White,new Pen(brush,2),port.Center,5,5);
                 var label=Text(port.MemberId,brush);
                 double x=port.Direction==MPCPortDirection.Input?
@@ -456,8 +497,11 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 dc.DrawText(label,new Point(x,port.Center.Y-8));
             }
             if(_dragSource!=null)
-                dc.DrawLine(new Pen(Brushes.DarkSlateBlue,2){DashStyle=DashStyles.Dash},
-                    _dragSource.Center,_dragPointer);
+                dc.DrawLine(new Pen(_dragTarget==null?Brushes.DarkSlateBlue:
+                    (_dragTargetValid?Brushes.MediumSeaGreen:Brushes.IndianRed),2)
+                    {DashStyle=DashStyles.Dash},
+                    _dragSource.Center,_dragTargetValid&&_dragTarget!=null?
+                    _dragTarget.Center:_dragPointer);
             if(_marqueeActive)
             {
                 var area=MarqueeRect();
@@ -531,7 +575,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         {
             base.OnMouseMove(e);
             if(_dragSource!=null)
-            {_dragPointer=e.GetPosition(this);InvalidateVisual();e.Handled=true;}
+            {UpdatePortDrag(e.GetPosition(this));e.Handled=true;}
             else if(_movingBlockId.HasValue)
             {UpdateBlockDrag(e.GetPosition(this));e.Handled=true;}
             else if(_marqueeActive)
@@ -555,7 +599,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         {
             base.OnLostMouseCapture(e);
             if(_dragSource!=null||_movingBlockId.HasValue||_marqueeActive)
-            {_dragSource=null;_movingBlockId=null;_movingIds=new Guid[0];
+            {_dragSource=null;_dragTarget=null;_dragTargetValid=false;
+             _movingBlockId=null;_movingIds=new Guid[0];
              _marqueeActive=false;_moveDelta=new Point();InvalidateVisual();}
         }
     }

@@ -670,10 +670,21 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     .Links.Count==0,"cancelled port drag unexpectedly committed a link");
                 Check(flowCanvas.BeginPortDrag(fromPort.Center),
                     "Output Port geometry was not hit-testable");
+                int previewRevision=reopened.Revision;
+                Check(!flowCanvas.UpdatePortDrag(fromPort.Center)&&
+                    reopened.Revision==previewRevision,
+                    "hover over an output port must reject without changing the MEM revision");
                 Check(!flowCanvas.CompletePortDrag(fromPort.Center),
                     "Output-to-output connection was incorrectly accepted");
-                Check(flowCanvas.BeginPortDrag(fromPort.Center)&&
-                    flowCanvas.CompletePortDrag(toPort.Center),
+                Check(flowCanvas.BeginPortDrag(fromPort.Center),
+                    "Output Port drag entry failed");
+                int beforeHover=reopened.Revision;
+                Check(flowCanvas.UpdatePortDrag(toPort.Center)&&
+                    reopened.Revision==beforeHover&&
+                    MOLWiringCodec.Get(reopened.GetSnapshot().Find(active.RootContent.Id))
+                        .Links.Count==0,
+                    "valid hover must preview but never create an engineering link");
+                Check(flowCanvas.CompletePortDrag(toPort.Center),
                     "Port drag did not reach Studio engineering transaction");
                 var dragCommitted=MOLWiringCodec.Get(reopened.GetSnapshot().Find(active.RootContent.Id));
                 Check(dragCommitted.Links.Count==1&&
