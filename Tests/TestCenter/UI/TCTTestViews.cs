@@ -803,10 +803,32 @@ namespace CxVisual.TestCenter.UI
                     XElement root = evidence.Root;
                     string flow = (string)root.Attribute("flow");
                     XElement session = root.Element("Session"), flowInfo = root.Element("Flow");
+                    // 三分区对应Runtime设计稿：实例树 / 资源与状态 / 真实Journal时间线。
+                    Grid runtimeDashboard = new Grid { Margin = new Thickness(0, 7, 0, 10) };
+                    runtimeDashboard.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2, GridUnitType.Star) });
+                    runtimeDashboard.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(3, GridUnitType.Star) });
+                    StackPanel instancePanel = new StackPanel();
+                    StackPanel resourcePanel = new StackPanel();
+                    TreeView instanceTree = new TreeView { MinHeight = 190, MaxHeight = 340,
+                        Background = Brushes.White, BorderThickness = new Thickness(0) };
+                    TreeViewItem flowNode = new TreeViewItem {
+                        Header = "Flow " + flow + " [" + (string)root.Attribute("state") + "]",
+                        IsExpanded = true, FontWeight = FontWeights.SemiBold };
+                    instanceTree.Items.Add(flowNode);
+                    instancePanel.Children.Add(instanceTree);
+                    Border instancesCard = RuntimeCard("Execution Instance Tree / MRK Steps", instancePanel);
+                    Border resourceCard = RuntimeCard("Selected Flow / Resource & Wait Queue", resourcePanel);
+                    Grid.SetColumn(instancesCard, 0);
+                    Grid.SetColumn(resourceCard, 1);
+                    runtimeDashboard.Children.Add(instancesCard);
+                    runtimeDashboard.Children.Add(resourceCard);
+                    ContentPanel.Children.Add(runtimeDashboard);
+                    StackPanel journalPanel = new StackPanel();
+                    ContentPanel.Children.Add(RuntimeCard("MRK Journal / Timeline · 原生顺序事件", journalPanel));
                     ContentPanel.Children.Add(new TextBlock {
                         Text = "SHA256已验证 · MRKRuntimeSession / MRKFileExecutionJournal",
                         FontWeight = FontWeights.Bold, Margin = new Thickness(0, 12, 0, 6) });
-                    ContentPanel.Children.Add(new TextBlock {
+                    resourcePanel.Children.Add(new TextBlock {
                         Text = "Session: " + (string)session.Attribute("id") + " · State: " +
                             (string)session.Attribute("activeState") + " → " +
                             (string)session.Attribute("endState") + " · Active: " +
@@ -821,14 +843,14 @@ namespace CxVisual.TestCenter.UI
                             " · Failed: " + (string)flowInfo.Attribute("failed"),
                         TextWrapping = TextWrapping.Wrap });
                     string recovery = (string)root.Attribute("recovery");
-                    ContentPanel.Children.Add(new TextBlock {
+                    resourcePanel.Children.Add(new TextBlock {
                         Text = "Journal Recovery: " + recovery +
                             (recovery == "Closed" ? "（流程终态已闭合）" :
                              "（须由实际Owner核对，不能自动重播）"),
                         FontWeight = FontWeights.Bold,
                         Foreground = recovery == "Closed" ? Brushes.DarkGreen : Brushes.DarkRed,
                         Margin = new Thickness(0, 8, 0, 6) });
-                    ContentPanel.Children.Add(new TextBlock {
+                    instancePanel.Children.Add(new TextBlock {
                         Text = "Step · MRKStepObservation / Definition Address",
                         FontWeight = FontWeights.Bold, Margin = new Thickness(0, 8, 0, 4) });
                     foreach (XElement step in root.Element("Observations").Elements("Step"))
@@ -849,10 +871,10 @@ namespace CxVisual.TestCenter.UI
                             "\nWait/Failure Reason: " + (string)step.Attribute("reason") +
                             "\nInvocation: " + (string)step.Attribute("invocation") +
                             "\nDefinitionAddress: " + (string)step.Attribute("address"));
-                        ContentPanel.Children.Add(select);
+                        flowNode.Items.Add(new TreeViewItem { Header = select });
                         Count();
                     }
-                    ContentPanel.Children.Add(new TextBlock {
+                    journalPanel.Children.Add(new TextBlock {
                         Text = "Journal · 原生顺序记录，不回放设备副作用",
                         FontWeight = FontWeights.Bold, Margin = new Thickness(0, 10, 0, 4) });
                     foreach (XElement entry in root.Element("Journal").Elements("Entry"))
@@ -872,14 +894,14 @@ namespace CxVisual.TestCenter.UI
                             "\nCorrelation: " + (string)entry.Attribute("correlation") +
                             "\nOperationId: " + (string)entry.Attribute("operation") +
                             "\nUTC: " + (string)entry.Attribute("utc"));
-                        ContentPanel.Children.Add(select);
+                        journalPanel.Children.Add(select);
                         VerifiedJournalCount++; Count();
                     }
-                    ContentPanel.Children.Add(new TextBlock {
+                    resourcePanel.Children.Add(new TextBlock {
                         Text = "MRK ExecutionGroup · 运行时实际配额快照",
                         FontWeight = FontWeights.Bold, Margin = new Thickness(0, 10, 0, 4) });
                     foreach (XElement group in root.Element("Groups").Elements("Group"))
-                        ContentPanel.Children.Add(new TextBlock {
+                        resourcePanel.Children.Add(new TextBlock {
                             Text = (string)group.Attribute("id") + " · Active=" +
                                 (string)group.Attribute("active") + " · Waiting=" +
                                 (string)group.Attribute("waiting") + " · Rejected=" +
@@ -897,6 +919,23 @@ namespace CxVisual.TestCenter.UI
                 }
             }
         }
+        private static Border RuntimeCard(string title, UIElement content)
+        {
+            DockPanel panel = new DockPanel();
+            TextBlock heading = new TextBlock {
+                Text = title, FontSize = 14, FontWeight = FontWeights.SemiBold,
+                Foreground = new SolidColorBrush(Color.FromRgb(28, 67, 111)),
+                Background = new SolidColorBrush(Color.FromRgb(235, 245, 255)),
+                Padding = new Thickness(8, 7, 8, 7), Margin = new Thickness(0, 0, 0, 8) };
+            DockPanel.SetDock(heading, Dock.Top);
+            panel.Children.Add(heading); panel.Children.Add(content);
+            return new Border {
+                Child = panel, Padding = new Thickness(9, 8, 9, 10),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(200, 220, 238)),
+                BorderThickness = new Thickness(1), Background = Brushes.White,
+                Margin = new Thickness(0, 0, 9, 10), CornerRadius = new CornerRadius(3) };
+        }
+
         protected override void Render(XDocument data, TCTTestObservation observation)
         {
             XElement root = data.Root;
