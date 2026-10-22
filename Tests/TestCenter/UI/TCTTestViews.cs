@@ -133,7 +133,29 @@ namespace CxVisual.TestCenter.UI
                     Foreground = Brushes.DimGray };
                 Canvas.SetLeft(hint, 75); Canvas.SetTop(hint, 100); canvas.Children.Add(hint);
             }
-            ContentPanel.Children.Add(canvas);
+            Grid geometryLayout = new Grid { Margin = new Thickness(0, 5, 0, 12) };
+            geometryLayout.ColumnDefinitions.Add(new ColumnDefinition {
+                Width = new GridLength(3, GridUnitType.Star) });
+            geometryLayout.ColumnDefinitions.Add(new ColumnDefinition {
+                Width = new GridLength(2, GridUnitType.Star) });
+            Border coordinateCard = GeometryCard("坐标系 / Expected vs Actual · 真实断言", canvas);
+            Grid.SetColumn(coordinateCard, 0);
+            geometryLayout.Children.Add(coordinateCard);
+            StackPanel comparison = new StackPanel();
+            comparison.Children.Add(GeometryRow("Test ID", result.Descriptor.Id));
+            comparison.Children.Add(GeometryRow("Expected X", ax == null ? "NoEvidence" : ax.Expected));
+            comparison.Children.Add(GeometryRow("Actual X", ax == null ? "NoEvidence" : ax.Actual));
+            comparison.Children.Add(GeometryRow("Expected Y", ay == null ? "NoEvidence" : ay.Expected));
+            comparison.Children.Add(GeometryRow("Actual Y", ay == null ? "NoEvidence" : ay.Actual));
+            comparison.Children.Add(GeometryRow("Assertions",
+                result.Assertions.Count(x => x.Passed) + " / " + result.Assertions.Count + " Pass"));
+            comparison.Children.Add(new TextBlock {
+                Text = "详细几何仅使用SHA256核验后的Owner Figure；此卡只显示本次实际Assertion。",
+                Foreground = Brushes.SlateGray, TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(8, 10, 8, 0) });
+            Border comparisonCard = GeometryCard("输入 / 预期 / 实际 / 误差依据", comparison);
+            Grid.SetColumn(comparisonCard, 1); geometryLayout.Children.Add(comparisonCard);
+            ContentPanel.Children.Add(geometryLayout);
             foreach (TCTTestObservation observation in result.Observations.Where(o =>
                 string.Equals(o.Kind, Kind, StringComparison.OrdinalIgnoreCase) &&
                 o.Envelope != null && o.Envelope.PayloadRef != null &&
@@ -168,7 +190,8 @@ namespace CxVisual.TestCenter.UI
                     ContentPanel.Children.Add(new TextBlock { Text = "SHA256已验证 · " +
                         observation.Title + " · " + proof.RenderedFigureCount + " 项真实几何",
                         FontWeight = FontWeights.Bold, Margin = new Thickness(0, 8, 0, 5) });
-                    ContentPanel.Children.Add(proof);
+                    ContentPanel.Children.Add(GeometryCard(
+                        "SHA256 Verified Geometry · Input / Expected / Actual", proof));
                 }
                 catch (Exception geometryError) when (geometryError is InvalidDataException ||
                     geometryError is IOException || geometryError is UnauthorizedAccessException ||
@@ -180,6 +203,26 @@ namespace CxVisual.TestCenter.UI
                 }
             }
             Observations(result, Kind); Assertions(result);
+        }
+        private static Border GeometryCard(string title, UIElement body)
+        {
+            DockPanel layout = new DockPanel();
+            TextBlock header = new TextBlock {
+                Text = title, FontWeight = FontWeights.SemiBold,
+                Foreground = Brushes.MidnightBlue, Background = Brushes.AliceBlue,
+                Padding = new Thickness(8, 7, 8, 7), Margin = new Thickness(0, 0, 0, 8) };
+            DockPanel.SetDock(header, Dock.Top); layout.Children.Add(header);
+            layout.Children.Add(body);
+            return new Border { Child = layout, Padding = new Thickness(8),
+                Background = Brushes.White, Margin = new Thickness(0, 0, 10, 0),
+                BorderBrush = Brushes.LightSteelBlue, BorderThickness = new Thickness(1) };
+        }
+        private static TextBlock GeometryRow(string name, string value)
+        {
+            return new TextBlock { Text = name + ":  " + value,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                ToolTip = name + ": " + value, Margin = new Thickness(8, 7, 8, 2),
+                Foreground = Brushes.DarkSlateGray };
         }
         private static void DrawPoint(Canvas canvas, double x, double y, Brush color, string label)
         {
