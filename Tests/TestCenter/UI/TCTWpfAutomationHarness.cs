@@ -223,6 +223,9 @@ namespace CxVisual.TestCenter.UI
                 .GetCurrentPattern(SelectionItemPattern.Pattern) as SelectionItemPattern;
             if (tab == null) throw new InvalidOperationException("Graph tab has no UIA selection pattern");
             tab.Select();
+            // Graph可视节点必须取自真实MOL；节点和编译Step均可双向定位Owner。
+            InvokeFirstOwnerLink(root, "TCT.Graph.Block.");
+            WaitForInspector(window, "MOL Definition Block", "Graph可视节点 → MOL Definition");
             InvokeFirstOwnerLink(root, "TCT.Graph.Step.");
             WaitForInspector(window, "SourceMap", "Graph UIA Step → Inspector/SourceMap");
         }
