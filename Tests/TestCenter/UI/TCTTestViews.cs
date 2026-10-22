@@ -148,7 +148,7 @@ namespace CxVisual.TestCenter.UI
             comparison.Children.Add(GeometryRow("Expected Y", ay == null ? "NoEvidence" : ay.Expected));
             comparison.Children.Add(GeometryRow("Actual Y", ay == null ? "NoEvidence" : ay.Actual));
             comparison.Children.Add(GeometryRow("Assertions",
-                result.Assertions.Count(x => x.Passed) + " / " + result.Assertions.Count + " Pass"));
+                result.Assertions.Count(assertion => assertion.Passed) + " / " + result.Assertions.Count + " Pass"));
             comparison.Children.Add(new TextBlock {
                 Text = "详细几何仅使用SHA256核验后的Owner Figure；此卡只显示本次实际Assertion。",
                 Foreground = Brushes.SlateGray, TextWrapping = TextWrapping.Wrap,

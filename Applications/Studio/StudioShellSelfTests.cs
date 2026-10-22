@@ -2343,7 +2343,7 @@ namespace CxVisual.Studio
                 {
                     window.TryCloseStudioDocument("doc.config",true);
                     StudioViewModel vm=window.DataContext as StudioViewModel;
-                    int revision=vm.ProjectSession.Revision;
+                    int schemaRevision=vm.ProjectSession.Revision;
                     window.OpenStudioDocument("doc.config");
                     LayoutDocument config=window.StudioDock.Layout.Descendents()
                         .OfType<LayoutDocument>().Single(x=>x.ContentId=="doc.config");
@@ -2374,7 +2374,7 @@ namespace CxVisual.Studio
                         vision.Visibility==Visibility.Visible&&
                         !ctSection.IsExpanded&&
                         window.GetStudioContentIds().Length==count&&
-                        vm.ProjectSession.Revision==revision,
+                        vm.ProjectSession.Revision==schemaRevision,
                         "折叠与搜索修改了配置Editor身份或MEM工程Revision");
                     window.TryCloseStudioDocument("doc.config",true);
                 });
