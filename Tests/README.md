@@ -89,7 +89,7 @@ Tests/
 .\Output\Release\x64\CxVisual.TestCenter.exe --ui-automation
 ~~~
 
-普通新增测试在 `Tests/TestCenter/Cases/` 中首选 NUnit `[Test] / [TestCase]`；需要真实 Owner 结构化证据时使用已有 TCT Context，详见 [TestCenter 开发者 README](TestCenter/README.md)。
+普通新增测试在 `Tests/TestCenter/Automated/Cases/` 中首选 NUnit `[Test] / [TestCase]`；需要真实 Owner 结构化证据时使用已有 TCT Context，详见 [TestCenter 开发者 README](TestCenter/README.md)。
 
 **唯一界面设计与验收入口**：[《TestCenter 统一主界面与工作区Frame注册·完整设计与验收 V1.1》](TestCenter/CxVisual_TestCenter_统一主界面与工作区Frame注册——完整设计与验收_V1.1.md)。四根平级、各有图标和总页；自动测试统一复用同一界面按 Catalog Scope/Case 切换；人工专业操作页独立扩展，右侧统一操作、浅色简洁布局。**已有注册/Virtual Channel 源码，全面完成情况以同 SHA 编译和验收为准**。
 

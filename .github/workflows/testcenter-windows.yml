@@ -52,7 +52,7 @@ jobs:
                   }
               }
           }
-          '@ | Set-Content -LiteralPath 'Tests/TestCenter/Cases/TCTAutodiscoveredCases.generated.cs' -Encoding UTF8
+          '@ | Set-Content -LiteralPath 'Tests/TestCenter/Automated/Cases/TCTAutodiscoveredCases.generated.cs' -Encoding UTF8
           Write-Host 'Created .cs source after checkout; project file unchanged'
           @'
           using System.Threading.Tasks;
@@ -76,7 +76,7 @@ jobs:
                   }
               }
           }
-          '@ | Set-Content -LiteralPath 'Tests/TestCenter/Cases/TCTNewNUnit.generated.cs' -Encoding UTF8
+          '@ | Set-Content -LiteralPath 'Tests/TestCenter/Automated/Cases/TCTNewNUnit.generated.cs' -Encoding UTF8
           Write-Host 'Created native NUnit async/parameterized source after checkout; csproj unchanged'
       - name: Build all solution projects
         shell: powershell
