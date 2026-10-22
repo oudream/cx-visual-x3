@@ -47,6 +47,19 @@ Tests/TestCenter/
 
 **未来按需建立，不冒充已实现**：`Common/Diagnostics`（跨工作区诊断合同）；`Manual/Overview、Sessions、Protocol、Graphics、CT3D`；`Scenarios/Overview、Catalog、Details`；`ReportCenter/Overview、Automated、Manual、Scenarios`。相应真实Owner、权限和证据具备时再新增类与目录。
 
+## ArchitectureSmoke 独立程序接入（保持原程序兼容）
+
+在 TestCenter 左侧的 **自动测试 → ArchitectureSmoke（独立架构回归）** 打开调用工作区。
+中央选择原程序实际支持的命令预设，包括默认回归、Foundation、Concurrency、Engineering Organization、
+Config Foundation/WPF 与已实现的性能回归；右侧操作中心有 **运行当前范围 / 停止执行 / 清空本页输出**。
+页面实时显示原 `CxVisual.Tests.ArchitectureSmoke.exe` 的 stdout、stderr、退出码、耗时和异常。
+退出码为0只表示 **ArchitectureSmoke 进程整体成功**，没有逐条结果协议时不会虚构NUnit/TCT Attempt、覆盖率或报告。
+
+- **源程序不变**：`Tests/ArchitectureSmoke/Program.cs` 仍支持单独命令行运行，TestCenter仅以受控子进程调用。
+- **进程路径**：与 `CxVisual.TestCenter.exe` 同输出目录的 `CxVisual.Tests.ArchitectureSmoke.exe`。未编译或缺失时显示Unsupported并禁用运行；不读取用户输入作为可执行命令。
+- **隔离和安全**：`UseShellExecute=false`，stdout/stderr异步读取，固定模式与有界超时；停止时结束受控进程及其子进程。不自动运行真实设备，也不合并两套执行器。
+- **证据边界**：当前页面输出在会话内有界显示，不自动把ArchitectureSmoke日志写成TestCenter Run/Attempt或Golden。
+
 ## 2. Common 与四大工作区的边界
 
 | 目录 | 职责 | 不负责 |

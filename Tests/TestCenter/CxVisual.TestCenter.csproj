@@ -66,6 +66,8 @@
     <Compile Include="Common\Shell\TCTWorkspaceRootFrame.cs" />
     <Compile Include="Manual\Channel\TCTManualChannelFrame.cs" />
     <Compile Include="Automated\UI\Overview\TCTTestOverviewControl.cs" />
+    <Compile Include="Automated\UI\ArchitectureSmoke\TCTArchitectureSmokeProcessRunner.cs" />
+    <Compile Include="Automated\UI\ArchitectureSmoke\TCTArchitectureSmokeFrame.cs" />
     <Compile Include="Automated\UI\Results\TCTTestTimelineControl.cs" />
     <Compile Include="ReportCenter\History\TCTTestHistoryControl.cs" />
     <Compile Include="ReportCenter\Diff\TCTTestDiffControl.cs" />

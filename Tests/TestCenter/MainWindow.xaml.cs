@@ -164,7 +164,8 @@ namespace CxVisual.TestCenter.UI
                     Margin = new Thickness(3, 2, 3, 7), Padding = new Thickness(9, 6, 9, 6),
                     Background = Brushes.AliceBlue, BorderBrush = Brushes.LightSteelBlue };
                 System.Windows.Automation.AutomationProperties.SetAutomationId(button,
-                    "TCT.Manual.Action." + action.Id);
+                    action.Id.StartsWith("architecture.", StringComparison.Ordinal) ?
+                    "TCT.Automated.Action." + action.Id : "TCT.Manual.Action." + action.Id);
                 button.Click += (sender, args) =>
                 {
                     if (!action.CanExecute()) return;

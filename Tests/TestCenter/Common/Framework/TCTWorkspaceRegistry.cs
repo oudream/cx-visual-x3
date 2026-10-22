@@ -66,6 +66,10 @@ namespace CxVisual.TestCenter.UI
             registry.Register(new TCTWorkspaceDescriptor("reports.root", null, "结果报告",
                 "自动Run报告、人工操作记录与历史索引分离",
                 TCTWorkspaceNodeKind.Root, () => rootFactory("reports.root")));
+            registry.Register(new TCTWorkspaceDescriptor("auto.architecture-smoke", "auto.root",
+                "ArchitectureSmoke（独立架构回归）",
+                "调用原有ArchitectureSmoke.exe；保持原CLI独立可运行，展示真实进程输出与退出码",
+                TCTWorkspaceNodeKind.Leaf, () => new TCTArchitectureSmokeFrame()));
             registry.Register(new TCTWorkspaceDescriptor("manual.channel", "manual.root", "通道测试",
                 "现有生产MCCVirtualChannel的可操作点对点收发，不是真TCP",
                 TCTWorkspaceNodeKind.Leaf, () => new TCTManualChannelFrame()));
