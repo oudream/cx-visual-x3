@@ -60,6 +60,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 RuntimeDataLifecycleTests.Run();
                 RuntimeDataStorageTests.Run();
                 RuntimeVisionDataFlowTests.Run();
+                ModuleArchitectureReviewTests.Run();
                 RuntimeDataHardeningTests.Run();
                 ExecutionJournalTests.Run();
                 ExecutionControlTests.Run();

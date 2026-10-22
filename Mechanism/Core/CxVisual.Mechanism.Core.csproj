@@ -17,7 +17,7 @@
     <DebugType>pdbonly</DebugType>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="Engineering\MTCEditDraft.cs"/>
+    <Compile Include="Modules\MFMModuleContracts.cs"/><Compile Include="Engineering\MTCEditDraft.cs"/>
     <Compile Include="Engineering\MOLLogicDefinition.cs"/>
     <Compile Include="Engineering\MRCTransform.cs"/>
     <Compile Include="Engineering\MPMValue.cs"/>
