@@ -19,6 +19,8 @@ namespace CxVisual.TestCenter.UI
             ToolTip = "按ID/名称/能力检索" };
         private readonly TreeView _tree = new TreeView { Margin = new Thickness(5) };
         private TCTTestCatalog _catalog;
+        private TCTWorkspaceRegistry _workspaceRegistry;
+        public event Action<TCTWorkspaceDescriptor> WorkspaceSelected;
         private readonly HashSet<string> _checkedIds = new HashSet<string>(StringComparer.Ordinal);
         public string[] CheckedIds { get { return _checkedIds.OrderBy(x => x, StringComparer.Ordinal).ToArray(); } }
         public event Action<ITCTTestCase> TestSelected;
@@ -42,17 +44,81 @@ namespace CxVisual.TestCenter.UI
             _tree.SelectedItemChanged += (s, e) =>
             {
                 TreeViewItem item = _tree.SelectedItem as TreeViewItem;
-                SelectedTest = item == null ? null : item.Tag as ITCTTestCase;
-                if (TestSelected != null) TestSelected(SelectedTest);
+                if (item == null) return;
+                TCTWorkspaceDescriptor workspace = item.Tag as TCTWorkspaceDescriptor;
+                if (workspace != null)
+                {
+                    SelectedTest = null;
+                    if (WorkspaceSelected != null) WorkspaceSelected(workspace);
+                    return;
+                }
+                ITCTTestCase test = item.Tag as ITCTTestCase;
+                if (test != null)
+                {
+                    SelectedTest = test;
+                    if (TestSelected != null) TestSelected(test);
+                }
             };
         }
         public void Bind(TCTTestCatalog catalog) { _catalog = catalog; Refresh(); }
+        public void BindWorkspaces(TCTWorkspaceRegistry registry)
+        { _workspaceRegistry = registry; Refresh(); }
+        public void SelectWorkspace(string id)
+        {
+            foreach (TreeViewItem root in _tree.Items.OfType<TreeViewItem>())
+            {
+                TreeViewItem match = FindWorkspace(root, id);
+                if (match == null) continue;
+                match.IsSelected = true;
+                match.BringIntoView();
+                return;
+            }
+        }
+        private static TreeViewItem FindWorkspace(TreeViewItem parent, string id)
+        {
+            TCTWorkspaceDescriptor descriptor = parent.Tag as TCTWorkspaceDescriptor;
+            if (descriptor != null && descriptor.WorkspaceId == id) return parent;
+            foreach (TreeViewItem child in parent.Items.OfType<TreeViewItem>())
+            {
+                TreeViewItem result = FindWorkspace(child, id);
+                if (result != null) return result;
+            }
+            return null;
+        }
+        private TreeViewItem WorkspaceItem(TCTWorkspaceDescriptor descriptor)
+        {
+            TreeViewItem item = new TreeViewItem { Header = descriptor.Title,
+                Tag = descriptor, IsExpanded = true,
+                ToolTip = descriptor.Description +
+                    (descriptor.Factory == null ? " · Unsupported / 待接入" : "") };
+            System.Windows.Automation.AutomationProperties.SetAutomationId(item,
+                "TCT.Workspace." + descriptor.WorkspaceId);
+            return item;
+        }
         private void Refresh()
         {
             _tree.Items.Clear();
             SelectedTest = null;
-            if (_catalog == null) return;
             string filter = _search.Text.Trim();
+            TreeViewItem autoRoot = null;
+            if (_workspaceRegistry != null)
+            {
+                foreach (TCTWorkspaceDescriptor descriptor in _workspaceRegistry.Items.Where(
+                    item => item.Kind == TCTWorkspaceNodeKind.Root))
+                {
+                    TreeViewItem root = WorkspaceItem(descriptor);
+                    foreach (TCTWorkspaceDescriptor child in _workspaceRegistry.Children(descriptor.WorkspaceId))
+                    {
+                        if (filter.Length == 0 || descriptor.WorkspaceId == "auto.root" ||
+                            child.Title.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                            child.WorkspaceId.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0)
+                            root.Items.Add(WorkspaceItem(child));
+                    }
+                    _tree.Items.Add(root);
+                    if (descriptor.WorkspaceId == "auto.root") autoRoot = root;
+                }
+            }
+            if (_catalog == null) return;
             foreach (TCTTestAspect aspect in new[] { TCTTestAspect.Foundation, TCTTestAspect.Mechanism, TCTTestAspect.Integration })
             {
                 var items = _catalog.Cases.Where(t => t.Descriptor.Aspect == aspect &&
@@ -85,7 +151,11 @@ namespace CxVisual.TestCenter.UI
                     }
                     root.Items.Add(category);
                 }
-                if (root.Items.Count > 0) _tree.Items.Add(root);
+                if (root.Items.Count > 0)
+                {
+                    if (autoRoot != null) autoRoot.Items.Add(root);
+                    else _tree.Items.Add(root);
+                }
             }
         }
     }
