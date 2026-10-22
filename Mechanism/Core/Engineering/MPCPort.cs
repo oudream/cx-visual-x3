@@ -44,6 +44,13 @@ namespace CxVisual.Mechanism.Core
         internal MPCConnection(Guid id,Guid ownerId,MPCEndpoint source,MPCEndpoint target){if(id==Guid.Empty||ownerId==Guid.Empty||source==null||target==null)throw new ArgumentException("Connection identity/endpoints required");Id=id;OwnerId=ownerId;Source=source;Target=target;}
         public Guid Id {get;private set;} public Guid OwnerId {get;private set;}
         public MPCEndpoint Source {get;private set;} public MPCEndpoint Target {get;private set;}
+        /// <summary>仅通过MTC事务修改端点，保留原连接身份。</summary>
+        internal void SetEndpoints(MPCEndpoint source,MPCEndpoint target)
+        {
+            if(source==null||target==null)throw new ArgumentNullException(
+                source==null?"source":"target");
+            Source=source;Target=target;
+        }
     }
     public enum MRCPublicMappingKind {Property=1,Port=2}
     public sealed class MRCPublicMapping

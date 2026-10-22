@@ -89,6 +89,29 @@ namespace CxVisual.Mechanism.Core
             var state=Definition(owner);_session.CheckConnection(owner,source,target);var connection=new MPCConnection(Guid.NewGuid(),owner.Id,source,target);
             Change(()=>{if(state.ConnectionItems==null)state.ConnectionItems=new List<MPCConnection>();_session.IndexConnection(connection);state.ConnectionItems.Add(connection);},()=>{state.ConnectionItems.Remove(connection);_session.UnindexConnection(connection);},MTCChangeKind.Connection,connection.Id);return connection;
         }
+        /// <summary>同一MPCConnection身份下原子变更端点，旧/新索引参与工程Undo。</summary>
+        public void Reconnect(MPCConnection connection,MPCEndpoint source,MPCEndpoint target)
+        {
+            Demand();
+            if(connection==null||_session.FindConnection(connection.Id)!=connection)
+                throw new InvalidOperationException("org.connection.foreign_or_missing");
+            MEMNode owner=_session.Find(connection.OwnerId);
+            Definition(owner);
+            if(connection.Source.Equals(source)&&connection.Target.Equals(target))return;
+            _session.CheckConnection(owner,source,target,connection);
+            MPCEndpoint beforeSource=connection.Source,beforeTarget=connection.Target;
+            Change(()=>
+            {
+                _session.UnindexConnection(connection);
+                connection.SetEndpoints(source,target);
+                _session.IndexConnection(connection);
+            },()=>
+            {
+                _session.UnindexConnection(connection);
+                connection.SetEndpoints(beforeSource,beforeTarget);
+                _session.IndexConnection(connection);
+            },MTCChangeKind.Connection,connection.Id);
+        }
         public void Disconnect(MPCConnection connection)
         {
             Demand();if(connection==null||_session.FindConnection(connection.Id)!=connection)throw new InvalidOperationException("org.connection.foreign_or_missing");var state=Definition(_session.Find(connection.OwnerId));int index=state.ConnectionItems.IndexOf(connection);

@@ -103,11 +103,29 @@ namespace CxVisual.Mechanism.Visual
                         _runtimeSource,_runtimeElapsedMs):
                     MVISceneProjection.ProjectResource(Document,CurrentResourceId.Value)):
                 new List<MVISceneItem>().AsReadOnly();_sceneRevision=revision;}return _scene;}}
-        public bool Select(Guid? id){Demand();if(id.HasValue&&!Route(MVIInteractionKind.Select,id.Value))return false;SelectedId=id;RaiseChanged();return true;}
+        public bool Select(Guid? id)
+        {
+            Demand();
+            if(id.HasValue&&!Route(MVIInteractionKind.Select,id.Value))return false;
+            SelectedId=id;RaiseChanged();return true;
+        }
         private bool Route(MVIInteractionKind kind,Guid target)
         {
-            Demand();var node=Document.Find(target);var reference=Document.FindReference(target);if(node==null&&reference==null)throw new InvalidOperationException("Missing interaction target");
-            var route=(node??reference.Owner).Ancestors().Reverse().Select(n=>n.Id).ToList();route.Add((node??reference.Owner).Id);if(reference!=null)route.Add(target);
+            Demand();
+            MEMNode node=Document.Find(target);
+            MRIResourceReference reference=Document.FindReference(target);
+            MPCConnection connector=node==null&&reference==null?
+                Document.FindConnection(target):null;
+            if(node==null&&reference==null&&connector==null)
+                throw new InvalidOperationException("Missing interaction target");
+            if(connector!=null&&!Scene.Any(x=>x.Id==connector.Id&&
+                x.ElementTypeId=="core.visual.connector"&&x.IsSelectable))
+                throw new InvalidOperationException("Visual connection is not in the active scene");
+            MEMNode baseNode=connector==null?(node??reference.Owner):
+                Document.Find(connector.OwnerId);
+            var route=baseNode.Ancestors().Reverse().Select(n=>n.Id).ToList();
+            route.Add(baseNode.Id);
+            if(reference!=null||connector!=null)route.Add(target);
             var args=new MVIInteractionEventArgs(kind,target,route.AsReadOnly());
             for(int i=0;i<route.Count-1&&!args.PropagationStopped;i++)Dispatch(args,MVIEventPhase.Capture,route[i]);
             if(!args.PropagationStopped)Dispatch(args,MVIEventPhase.Target,target);
@@ -176,6 +194,47 @@ namespace CxVisual.Mechanism.Visual
                     throw new InvalidOperationException("visual.connection.port_conflict");
                 e.Connect(owner,new MPCEndpoint(sourceAddress,first.Id),
                     new MPCEndpoint(targetAddress,last.Id));
+                return true;
+            });
+        }
+
+        /// <summary>重连保持MPCConnection.Id不变；仅改指定一端的真实Visual端口。</summary>
+        public MTCEditResult<bool> ReconnectVisual(Guid connectionId,bool editSource,
+            Guid newElementId,string side)
+        {
+            Demand();
+            int revision=Document.Revision;
+            MPCConnection connection=Document.FindConnection(connectionId);
+            if(connection==null||!Scene.Any(x=>x.Id==connectionId&&
+                x.ElementTypeId=="core.visual.connector"))
+                return MTCEditResult<bool>.Rejected(revision,
+                    "visual.connection.not_found","The visual connection is not in the active scene");
+            MRCElement element=Document.Find(newElementId) as MRCElement;
+            MVISceneItem scene=Scene.FirstOrDefault(x=>x.Id==newElementId);
+            if(element==null||scene==null||!scene.IsSelectable||
+                scene.Address==null||scene.Address.InstancePath.Count!=0)
+                return MTCEditResult<bool>.Rejected(revision,
+                    "visual.connection.target_not_editable","Target must be an editable visual definition");
+            string member=MVIVisualAnchors.MemberName(side);
+            MPCEndpoint kept=editSource?connection.Target:connection.Source;
+            if(kept.Address.ObjectId==newElementId)
+                return MTCEditResult<bool>.Rejected(revision,"visual.connection.self_link",
+                    "A visual connection cannot attach to itself");
+            if(!Route(MVIInteractionKind.Move,connectionId))
+                return MTCEditResult<bool>.Rejected(revision,"visual.default_prevented",
+                    "Reconnection rejected by the interaction policy");
+            MRIObjectAddress newAddress=Document.GetAddress(element);
+            return Document.Edit("调整可视连接端点",revision,e=>
+            {
+                MPCPort port=element.Ports.FirstOrDefault(x=>x.MemberId==member);
+                if(port==null)
+                    port=e.DefinePort(element,member,MPCPortDirection.InOut,
+                        "core.visual.anchor",MPCPortKind.Visual);
+                if(port.Kind!=MPCPortKind.Visual||port.Direction==MPCPortDirection.Input&&editSource||
+                    port.Direction==MPCPortDirection.Output&&!editSource)
+                    throw new InvalidOperationException("visual.connection.port_conflict");
+                MPCEndpoint changed=new MPCEndpoint(newAddress,port.Id);
+                e.Reconnect(connection,editSource?changed:kept,editSource?kept:changed);
                 return true;
             });
         }
@@ -460,7 +519,33 @@ namespace CxVisual.Mechanism.Visual
             return Document.Edit("移动可视对象",revision,e=>{var reference=Document.FindReference(id);if(reference==null)e.Move(RequireVisual(id),x,y);else{var p=reference.Placement;e.SetPlacement(reference,new MRCTransform(p.M11,p.M12,p.M21,p.M22,x,y));}return true;});
         }
         public MTCEditResult<bool> Remove(Guid id)
-        {int revision=Document.Revision;if(!Route(MVIInteractionKind.Delete,id))return MTCEditResult<bool>.Rejected(Document.Revision,"visual.default_prevented","Delete canceled before commit");return Document.Edit("删除可视对象",revision,e=>{var reference=Document.FindReference(id);if(reference==null)e.Remove(RequireVisual(id));else e.Remove(reference);return true;});}
+        {
+            int revision=Document.Revision;
+            MPCConnection connection=Document.FindConnection(id);
+            if(connection!=null)
+            {
+                if(!Scene.Any(x=>x.Id==id&&x.ElementTypeId=="core.visual.connector"))
+                    return MTCEditResult<bool>.Rejected(revision,
+                        "visual.connection.not_in_scene","Connection is outside the active visual resource");
+                if(!Route(MVIInteractionKind.Delete,id))
+                    return MTCEditResult<bool>.Rejected(revision,
+                        "visual.default_prevented","Delete canceled before commit");
+                return Document.Edit("删除可视连接",revision,e=>
+                {e.Disconnect(connection);return true;});
+            }
+            if(Document.Find(id)==null&&Document.FindReference(id)==null)
+                return MTCEditResult<bool>.Rejected(revision,
+                    "visual.target_not_found","Visual object is missing");
+            if(!Route(MVIInteractionKind.Delete,id))
+                return MTCEditResult<bool>.Rejected(revision,
+                    "visual.default_prevented","Delete canceled before commit");
+            return Document.Edit("删除可视对象",revision,e=>
+            {
+                var reference=Document.FindReference(id);
+                if(reference==null)e.Remove(RequireVisual(id));else e.Remove(reference);
+                return true;
+            });
+        }
         private MRCVisualItem RequireVisual(Guid id) { var item = Document.Find(id) as MRCVisualItem; if (item == null) throw new InvalidOperationException("Missing visual item"); return item; }
         public MTCEditResult<bool> Undo() { return Document.Undo(); }
         public MTCEditResult<bool> Redo() { return Document.Redo(); }

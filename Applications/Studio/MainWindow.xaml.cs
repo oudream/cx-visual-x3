@@ -206,6 +206,30 @@ namespace CxVisual.Studio
                 }
                 catch(Exception ex){VisualInfo.Text="可视连接失败："+ex.Message;}
             };
+            SceneHost.ReconnectRequested += (link,source,target,side)=>
+            {
+                try
+                {
+                    MTCEditResult<bool> result=_viewModel.ReconnectVisual(
+                        link,source,target,side);
+                    VisualInfo.Text=result.Success?
+                        "连接端点已更新 | Revision "+result.Revision+
+                            "（原连接Id保留，可撤销）":
+                        "端点重新连接被拒绝："+result.ErrorCode+" "+result.Message;
+                }
+                catch(Exception ex){VisualInfo.Text="端点调整失败："+ex.Message;}
+            };
+            SceneHost.DeleteConnectionRequested += link=>
+            {
+                try
+                {
+                    MTCEditResult<bool> result=_viewModel.DeleteVisualConnection(link);
+                    VisualInfo.Text=result.Success?
+                        "可视连接已删除 | Revision "+result.Revision+"（可撤销）":
+                        "删除连接失败："+result.ErrorCode+" "+result.Message;
+                }
+                catch(Exception ex){VisualInfo.Text="删除连接失败："+ex.Message;}
+            };
             SceneHost.HandleEditRequested += (sender,edit)=>
             {
                 try
@@ -283,7 +307,12 @@ namespace CxVisual.Studio
             if(!_viewModel.SelectedId.HasValue)return;
             MRCVisualItem item=_viewModel.ProjectSession.Find(
                 _viewModel.SelectedId.Value) as MRCVisualItem;
-            if(item==null)return;
+            if(item==null)
+            {
+                if(_viewModel.ProjectSession.FindConnection(_viewModel.SelectedId.Value)!=null)
+                    VisualInfo.Text="已选中连接线：拖动两端圆柄可重新附着，Delete删除，Ctrl+Z撤销。";
+                return;
+            }
             VisualXInput.Text=item.X.ToString("R",System.Globalization.CultureInfo.InvariantCulture);
             VisualYInput.Text=item.Y.ToString("R",System.Globalization.CultureInfo.InvariantCulture);
             VisualWidthInput.Text=item.Width.ToString("R",System.Globalization.CultureInfo.InvariantCulture);

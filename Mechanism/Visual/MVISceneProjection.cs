@@ -102,7 +102,7 @@ namespace CxVisual.Mechanism.Visual
                         MRCBrushDefinition.Solid(MRCColor.FromRgb(55,122,199)),1.7);
                     links.Add(new MVISceneItem(connection.Id,"Visual connector",null,
                         transform,Math.Max(1,Math.Abs(start.X-end.X)),
-                        Math.Max(1,Math.Abs(start.Y-end.Y)),false,MRCTransform.Identity,
+                        Math.Max(1,Math.Abs(start.Y-end.Y)),true,MRCTransform.Identity,
                         x,y,"core.visual.connector",line,style));
                 }
                 Items.InsertRange(0,links);

@@ -393,6 +393,54 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Check(editor.Redo().Success&&editor.Redo().Success&&
                         editor.Scene.Count(x=>x.ElementTypeId=="core.visual.connector")==1,
                         "Redo should restore stable attached visual connector");
+                    // 连接线具有独立可选身份，但不属于普通MRC图元；修改端点必须保留连接Id。
+                    Guid visualConnectionId=editor.Scene.Single(x=>
+                        x.ElementTypeId=="core.visual.connector").Id;
+                    MVISceneItem selectedLine=editor.Scene.Single(x=>x.Id==visualConnectionId);
+                    Check(selectedLine.IsSelectable&&
+                        selectedLine.Contains(
+                            (MVIVisualAnchors.At(editor.Scene.Single(x=>x.Id==shape.Id),
+                                "east").X+
+                             MVIVisualAnchors.At(editor.Scene.Single(x=>x.Id==neighbor.Id),
+                                "west").X)/2,
+                            (MVIVisualAnchors.At(editor.Scene.Single(x=>x.Id==shape.Id),
+                                "east").Y+
+                             MVIVisualAnchors.At(editor.Scene.Single(x=>x.Id==neighbor.Id),
+                                "west").Y)/2),
+                        "visual connector must be selectable by actual line stroke");
+                    Check(editor.Select(visualConnectionId),
+                        "visual connector cannot enter the unified selection context");
+                    int revisionBeforeRewire=doc.Revision;
+                    Check(editor.ReconnectVisual(visualConnectionId,false,neighbor.Id,"north").Success&&
+                        doc.Revision==revisionBeforeRewire+1&&
+                        doc.FindConnection(visualConnectionId)!=null,
+                        "endpoint reattachment must preserve identity and use one transaction");
+                    string newTargetPort=doc.FindPort(
+                        doc.FindConnection(visualConnectionId).Target.PortId).MemberId;
+                    Check(newTargetPort=="visual.north",
+                        "reattachment did not persist chosen fixed anchor");
+                    int beforeInvalidRewire=doc.Revision;
+                    Check(!editor.ReconnectVisual(visualConnectionId,false,shape.Id,"west").Success&&
+                        doc.Revision==beforeInvalidRewire,
+                        "self-link should reject without engineering mutation");
+                    Check(editor.Undo().Success&&doc.FindConnection(visualConnectionId)!=null&&
+                        doc.FindPort(doc.FindConnection(visualConnectionId).Target.PortId)
+                            .MemberId=="visual.west",
+                        "rewire Undo failed to recover old endpoint under same connection Id");
+                    Check(editor.Redo().Success&&doc.FindConnection(visualConnectionId)!=null&&
+                        doc.FindPort(doc.FindConnection(visualConnectionId).Target.PortId)
+                            .MemberId=="visual.north",
+                        "rewire Redo failed to recover new endpoint");
+                    int beforeVisualDelete=doc.Revision;
+                    Check(editor.Remove(visualConnectionId).Success&&
+                        doc.Revision==beforeVisualDelete+1&&
+                        doc.FindConnection(visualConnectionId)==null&&
+                        !editor.Scene.Any(x=>x.Id==visualConnectionId),
+                        "connector deletion must update MEM and scene in one transaction");
+                    Check(editor.Undo().Success&&
+                        doc.FindConnection(visualConnectionId)!=null&&
+                        editor.Scene.Any(x=>x.Id==visualConnectionId),
+                        "connector deletion Undo must restore original stable identity");
                     doc.SaveAs(filename);
                 }
                 doc.Close();

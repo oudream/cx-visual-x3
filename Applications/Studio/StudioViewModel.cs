@@ -51,7 +51,10 @@ namespace CxVisual.Studio
             {
                 if (!_selected.HasValue) return "（未选中）";
                 MEMNode node = _editor.Document.Find(_selected.Value);
-                return node != null ? node.Name + " / " + node.Id.ToString("N").Substring(0, 8) : "（已删除）";
+                if(node!=null)return node.Name+" / "+node.Id.ToString("N").Substring(0,8);
+                return _editor.Document.FindConnection(_selected.Value)!=null?
+                    "视觉连接 / "+_selected.Value.ToString("N").Substring(0,8):
+                    "（已删除）";
             }
         }
         public ReadOnlyCollection<MVISceneItem> Items { get { return _editor.Scene; } }
@@ -98,6 +101,30 @@ namespace CxVisual.Studio
             Status=result.Success?"已连接可视图元 | Revision "+result.Revision:
                 "连接被拒绝："+result.ErrorCode+" "+result.Message;
             if(result.Success)NotifyScene();
+            return result;
+        }
+
+        /// <summary>连接线端点调整经原MPC连接完成，保留连接身份及MEM Undo。</summary>
+        public MTCEditResult<bool> ReconnectVisual(Guid link,bool source,
+            Guid target,string side)
+        {
+            MTCEditResult<bool> result=_editor.ReconnectVisual(link,source,target,side);
+            Status=result.Success?"可视连接端点已更新 | Revision "+result.Revision:
+                "端点修改失败："+result.ErrorCode+" "+result.Message;
+            if(result.Success)NotifyScene();
+            return result;
+        }
+
+        public MTCEditResult<bool> DeleteVisualConnection(Guid link)
+        {
+            MTCEditResult<bool> result=_editor.Remove(link);
+            Status=result.Success?"已删除可视连接 | Revision "+result.Revision:
+                "删除连接失败："+result.ErrorCode+" "+result.Message;
+            if(result.Success)
+            {
+                _selected=null;_selection=new Guid[0];_editor.Select(null);
+                NotifyScene();
+            }
             return result;
         }
 
