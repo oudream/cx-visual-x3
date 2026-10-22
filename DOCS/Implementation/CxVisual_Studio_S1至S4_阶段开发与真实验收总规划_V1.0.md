@@ -387,3 +387,16 @@ studio.RegisterStudioCommand("automation.config.verify", "验证设备配置",
 
 - 修复专业Viewer打开/切换后右侧MPM属性面板可能仍指向旧资源：`SelectStudioContext`在真实Viewer身份获焦（含同Tab再次激活）时从当前MEM资源唯一索引更新`StudioViewModel.SelectedResource`；不复制MPM属性仓库、不写Revision。
 - Windows STA增第53项：两Camera Content拥有同Schema但不同稳定Id；打开A查看属性、切换B、拿旧A行尝试提交必须拒绝且零Revision；当前B新行实际提交+Undo只影响B。人工Viewer/多显示器焦点一致性另待验。
+
+
+### 20.7 S2/P1截至2026-10-22的Windows软件证据（仍非全量退出）
+
+| 功能SHA | Studio STA | 其他Windows CI | 真实范围 |
+|---|---|---|---|
+| [6f15d4b9](https://github.com/oudream/cx-visual-x3/commit/6f15d4b9c7f530d5a7b7fe84ad26233d2cead140) | [50/50 success](https://github.com/oudream/cx-visual-x3/actions/runs/39709124908) | Engineering/Config L1/底座/TestCenter同SHA success | MEM资源树动态Editor右键候选、旧菜单失效拒绝 |
+| [fe89f25e](https://github.com/oudream/cx-visual-x3/commit/fe89f25e0bb71a66f28b4f190db8e4893a8dcb34) | [51/51 success](https://github.com/oudream/cx-visual-x3/actions/runs/39709452698) | 其余四项同SHA success | 相机/PLC/配方/电机原生MPM类型、Studio编辑、Mixed、批量Undo、真实工程保存重开 |
+| [f344fce1](https://github.com/oudream/cx-visual-x3/commit/f344fce10df588989d7f20d6c8892dfbc434a5bf) | [52/52 success](https://github.com/oudream/cx-visual-x3/actions/runs/39709837763) | 其余四项同SHA success | MHS资源配置入口与草稿/Scope/授权拒绝 |
+| [7fe786eb](https://github.com/oudream/cx-visual-x3/commit/7fe786eb19e2595cc09311d305ff38529d23fd95) | [53/53 success](https://github.com/oudream/cx-visual-x3/actions/runs/39710177670) | [Engineering](https://github.com/oudream/cx-visual-x3/actions/runs/39710177693)、[Config L1](https://github.com/oudream/cx-visual-x3/actions/runs/39710177685)、[底座](https://github.com/oudream/cx-visual-x3/actions/runs/39710177668)、[TestCenter](https://github.com/oudream/cx-visual-x3/actions/runs/39710177649) success | 专业Viewer→MPM Inspector活动身份同步、旧属性行跨资源拒绝 |
+
+- 后继修复：共享`doc.config`处于真实MEM Resource Scope时，`GetStudioCommandContext`提供经MEM确认的ResourceId、ResourceTypeId；Project/Machine等Scope不伪造工程资源。第52项STA已加正反资源身份断言，需以该次源码SHA的CI另行验收。
+- 保持第19.3节S2.01～S2.12完整退出审计：上述为可自动验收的软件切片，尚缺完整MPM/Schema深类型/多Schema组合、旧Ribbon全面Descriptor、四工业案例的真实Provider构建运行、人工Dock/DPI/多屏/长稳及PLC机台安全ACK。
