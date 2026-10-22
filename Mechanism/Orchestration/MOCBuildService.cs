@@ -32,8 +32,13 @@ namespace CxVisual.Mechanism.Orchestration
     /// <summary>无副作用构建预检查，复用现有MOC→MRK编译器并保留工程定位。</summary>
     public sealed class MOCBuildService
     {
+        /// <summary>
+        /// 由Host提供实际运行组清单时，构建即核对原MOL组引用；省略则保持旧纯逻辑
+        /// 编译契约，不伪造任何容量/作用域。生产发布须显式传入已授权Host组配置。
+        /// </summary>
         public MOCBuildResult Build(MEMProjectSnapshot snapshot,Guid contentId,
-            IMRKCapabilityResolver resolver)
+            IMRKCapabilityResolver resolver,
+            IEnumerable<MRKExecutionGroupDefinition> authorizedGroups=null)
         {
             if(snapshot==null||resolver==null)throw new ArgumentNullException("snapshot/resolver");
             var errors=new List<MOCDiagnostic>();
@@ -104,6 +109,22 @@ namespace CxVisual.Mechanism.Orchestration
             try
             {
                 var plan=new MOCEngineeringCompiler().Compile(snapshot,contentId,resolver);
+                if(authorizedGroups!=null)
+                {
+                    try { plan.RequireExecutionGroups(authorizedGroups); }
+                    catch(InvalidOperationException ex)
+                    {
+                        errors.Add(new MOCDiagnostic(MOCDiagnosticSeverity.Error,
+                            "MOC_EXECUTION_GROUP_INVALID",ex.Message,contentId));
+                        return new MOCBuildResult(null,errors);
+                    }
+                    catch(ArgumentException ex)
+                    {
+                        errors.Add(new MOCDiagnostic(MOCDiagnosticSeverity.Error,
+                            "MOC_EXECUTION_GROUP_INVALID",ex.Message,contentId));
+                        return new MOCBuildResult(null,errors);
+                    }
+                }
                 return new MOCBuildResult(plan,errors);
             }
             catch(InvalidOperationException ex)

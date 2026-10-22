@@ -673,3 +673,9 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 
 - `MOCCompiledPlan.RequireExecutionGroups(IEnumerable<MRKExecutionGroupDefinition>)`对MOC发布候选在执行前校验全部静态/动态子计划的ExecutionGroup引用，空组配置、未知组、重复组/空定义必须明确拒绝；使用原MRK组定义，不在MOL/MOC保存第二份容量或作用域。返回原MOCCompiledPlan对象身份，不能通过验证偷换Plan/SourceMap。
 - 原`R08_EngineeringStageGroupIdentitySurvivesBuildAndReload`扩展：真实MEM工程设置Stage组ID、保存重开与MOC编译后，用Host注册表拒绝未知组、重复定义，再凭正确MRK组定义批准，最后由原MRK真实执行并释放许可证。此门禁仅为MOC发布前可选显式核对：全平台生产Publisher/RuntimeAccess与Studio UI将其接入的覆盖仍需独立验证。
+
+
+### R08 MOCBuildService提供Host授权组配置构建门禁（2026-10-22，待CI）
+
+- 将原`MOCBuildService.Build`加入可选`authorizedGroups`参数；用户未传时保持纯编排构建既有行为，Host/Studio要执行或发布带组的Plan时显式传入由原`MRKExecutionGroupDefinition`组成的配置。MOC编译完成即复用`MOCCompiledPlan.RequireExecutionGroups`，未知/非法组转成`MOC_EXECUTION_GROUP_INVALID`、空Plan和Content定位诊断，避免运行中才出现未知组错误；正确组不产生第二份Plan。
+- 原MOL/MOC工程集成反证增加已保存重开的执行组：Host未注册时Build.Succeeded=false、Plan=null、专门诊断；Host注册正确Stage组后Build成功并保持组ID，实际执行由原MRK许可证完成。未提供组清单的既有API保持兼容，但不代表自动具备生产授权。

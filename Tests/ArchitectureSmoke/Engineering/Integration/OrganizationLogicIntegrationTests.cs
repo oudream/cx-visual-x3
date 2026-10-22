@@ -2355,6 +2355,19 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Check(duplicateGroup,"R08 Host重复组定义未明确拒绝");
                     var approved=new MRKExecutionGroupDefinition("vision-stage",1,1,
                         MRKExecutionGroupScope.Stage);
+                    var deniedBuild=new MOCBuildService().Build(
+                        reopened.GetSnapshot(),page.RootContent.Id,resolver,
+                        new MRKExecutionGroupDefinition[0]);
+                    Check(!deniedBuild.Succeeded && deniedBuild.Plan==null &&
+                        deniedBuild.Diagnostics.Any(x=>
+                            x.Code=="MOC_EXECUTION_GROUP_INVALID"),
+                        "R08未授权运行组不应生成可发布MOC Plan");
+                    var authorizedBuild=new MOCBuildService().Build(
+                        reopened.GetSnapshot(),page.RootContent.Id,resolver,
+                        new[]{approved});
+                    Check(authorizedBuild.Succeeded&&authorizedBuild.Plan!=null &&
+                        authorizedBuild.Plan.Plan.Steps[0].ExecutionGroup=="vision-stage",
+                        "R08已授权真实Host组配置未完成构建");
                     Check(object.ReferenceEquals(build.Plan,
                         build.Plan.RequireExecutionGroups(new[]{approved})) &&
                         build.Plan.Plan.Steps[0].ExecutionGroup=="vision-stage",
