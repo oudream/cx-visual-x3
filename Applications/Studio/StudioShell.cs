@@ -667,6 +667,37 @@ namespace CxVisual.Studio
                 VerticalScrollBarVisibility=ScrollBarVisibility.Auto,
                 HorizontalScrollBarVisibility=ScrollBarVisibility.Auto };
             UniformGrid grid=new UniformGrid {Columns=2,Rows=0};
+            TextBox sectionSearch=new TextBox {
+                Name="StudioConfigSectionSearch",MinWidth=260,MaxWidth=760,
+                Margin=new Thickness(4,5,4,3),
+                ToolTip="按专业名称或配置SectionId筛选，不改变配置草稿" };
+            header.Children.Add(new TextBlock {Text="查找配置项",Margin=new Thickness(4,3,4,0)});
+            header.Children.Add(sectionSearch);
+            TextBlock filterStatus=new TextBlock {
+                TextWrapping=TextWrapping.Wrap,Margin=new Thickness(4,0,4,3) };
+            header.Children.Add(filterStatus);
+            Action reflow=()=>{
+                int visible=grid.Children.OfType<Border>()
+                    .Count(card=>card.Visibility==Visibility.Visible);
+                int cols=host.ActualWidth<900?1:host.ActualWidth<1500?2:3;
+                grid.Columns=Math.Max(1,Math.Min(cols,Math.Max(1,visible)));
+            };
+            Action applySearch=()=>{
+                string term=(sectionSearch.Text??"").Trim();
+                foreach(Border card in grid.Children.OfType<Border>())
+                {
+                    string title=card.Tag as string??"";
+                    card.Visibility=term.Length==0||title.IndexOf(
+                        term,StringComparison.OrdinalIgnoreCase)>=0?
+                        Visibility.Visible:Visibility.Collapsed;
+                }
+                int visible=grid.Children.OfType<Border>()
+                    .Count(card=>card.Visibility==Visibility.Visible);
+                filterStatus.Text="显示 "+visible+" / "+grid.Children.Count+
+                    " 个配置项；筛选和折叠不会丢弃草稿。";
+                reflow();
+            };
+            sectionSearch.TextChanged+=(sender,args)=>applySearch();
             List<FrameworkElement> editors=new List<FrameworkElement>();
             _studioConfigEditors=editors;
             Action<StudioConfigurationScopeChoice> populate=choice=>
@@ -695,19 +726,20 @@ namespace CxVisual.Studio
                         BorderThickness=new Thickness(1),
                         BorderBrush=(Brush)Application.Current.Resources["StudioBorderBrush"],
                         Margin=new Thickness(5),Padding=new Thickness(3) };
-                    DockPanel panel=new DockPanel();
-                    TextBlock title=new TextBlock {
-                        Text=item.Title+" · "+item.SectionId,
-                        FontWeight=FontWeights.SemiBold,
-                        Margin=new Thickness(8,6,8,6) };
-                    DockPanel.SetDock(title,Dock.Top);panel.Children.Add(title);
-                    panel.Children.Add(editor);card.Child=panel;grid.Children.Add(card);
+                    card.Tag=item.Title+" "+item.SectionId;
+                    Expander section=new Expander {
+                        Header=item.Title+" · "+item.SectionId,
+                        Tag=item.SectionId,IsExpanded=true,
+                        FontWeight=FontWeights.SemiBold };
+                    section.Content=editor;
+                    card.Child=section;grid.Children.Add(card);
                 }
                 origin.Text="配置来源："+choice.Label+
                     "；ScopeKind="+choice.Kind+"；ScopeId="+choice.Id+
                     "。Saved与Effective由MHS独立管理，选择Scope不触发设备生效。";
                 _studioConfigurationScopeKind=choice.Kind;
                 _studioConfigurationScopeId=choice.Id;
+                applySearch();
             };
             scopeBox.SelectionChanged+=(sender,args)=>
             {
@@ -729,13 +761,7 @@ namespace CxVisual.Studio
                 populate(choice);
             };
             populate(selected);
-            host.SizeChanged+=(sender,args)=>
-            {
-                int max=Math.Min(3,grid.Children.Count);
-                int cols=args.NewSize.Width<900?1:
-                    args.NewSize.Width<1500?2:3;
-                grid.Columns=Math.Max(1,Math.Min(max,cols));
-            };
+            host.SizeChanged+=(sender,args)=>reflow();
             scroller.Content=grid;host.Children.Add(scroller);
             RefreshStudioCommandContextMenu(host,"doc.config");
             _studioConfigurationProjectId=projectId;

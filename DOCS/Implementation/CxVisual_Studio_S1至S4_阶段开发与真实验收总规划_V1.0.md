@@ -359,3 +359,8 @@ studio.RegisterStudioCommand("automation.config.verify", "验证设备配置",
 
 - 在既有`RegisterStudioCommand`目录中增加`editor:<EditorId>`作用域与`RegisterStudioResourceEditorCommand`，对现有`ICommand`只包装一个活动Document身份校验适配器；同一专业Viewer的不同MEM资源Tab复用统一命令，Ribbon/右键/快捷键动态读取活动ResourceId/Revision，不建立第二套Command真源。
 - 追加WPF STA正反场景：两相机实例、未授权CanExecute、快捷键禁用、旧Tab右键调用、Tab切换、主页失焦隔离与关闭。门槛同步为48项；代码/CI自动结果与E级人工/真实设备操作仍独立。
+
+### 20.2 S2.04真实配置组合搜索/折叠（2026-10-22，待同SHA CI）
+
+- 基于原`MHSConfigService`与`MPWConfigEditorControl<T>`，在`doc.config`增加按专业标题/SectionId的即时筛选、配置卡原生`Expander`折叠及显示数量，保持项目/资源/机台Scope、Saved/Effective、草稿/授权不变。筛选只操作WPF可见性；不会重建Editor或写MEM Revision。
+- 追加WPF STA大小写搜索、可见性、折叠持久状态、文档身份和Revision反证，第49项；混合DPI/大Schema列表仍需真实桌面性能验收。

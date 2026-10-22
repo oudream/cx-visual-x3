@@ -2339,6 +2339,45 @@ namespace CxVisual.Studio
                     window.TryCloseStudioDocument(first);
                     window.TryCloseStudioDocument(second);
                 });
+                CheckStep("S2/P1 真实Schema组合搜索折叠不改变草稿与工程Revision", () =>
+                {
+                    window.TryCloseStudioDocument("doc.config",true);
+                    StudioViewModel vm=window.DataContext as StudioViewModel;
+                    int revision=vm.ProjectSession.Revision;
+                    window.OpenStudioDocument("doc.config");
+                    LayoutDocument config=window.StudioDock.Layout.Descendents()
+                        .OfType<LayoutDocument>().Single(x=>x.ContentId=="doc.config");
+                    Func<DependencyObject,IEnumerable<DependencyObject>> walk=null;
+                    walk=root=>new[]{root}.Concat(
+                        System.Windows.LogicalTreeHelper.GetChildren(root)
+                            .OfType<DependencyObject>().SelectMany(child=>walk(child)));
+                    DependencyObject[] all=walk((DependencyObject)config.Content).ToArray();
+                    TextBox search=all.OfType<TextBox>().Single(x=>
+                        x.Name=="StudioConfigSectionSearch");
+                    Border vision=all.OfType<Border>().Single(x=>
+                        Convert.ToString(x.Tag).Contains("Vision.Inspection"));
+                    Border ct=all.OfType<Border>().Single(x=>
+                        Convert.ToString(x.Tag).Contains("CT3D.Reconstruction"));
+                    Expander ctSection=all.OfType<Expander>().Single(x=>
+                        Convert.ToString(x.Tag)=="CT3D.Reconstruction");
+                    Assert(vision.Visibility==Visibility.Visible&&
+                        ct.Visibility==Visibility.Visible&&ctSection.IsExpanded,
+                        "默认组合页未展开真实Schema配置卡");
+                    int count=window.GetStudioContentIds().Length;
+                    search.Text="ct3d";
+                    Assert(vision.Visibility==Visibility.Collapsed&&
+                        ct.Visibility==Visibility.Visible,
+                        "配置搜索未按SectionId及大小写过滤");
+                    ctSection.IsExpanded=false;
+                    search.Text="";
+                    Assert(ct.Visibility==Visibility.Visible&&
+                        vision.Visibility==Visibility.Visible&&
+                        !ctSection.IsExpanded&&
+                        window.GetStudioContentIds().Length==count&&
+                        vm.ProjectSession.Revision==revision,
+                        "折叠与搜索修改了配置Editor身份或MEM工程Revision");
+                    window.TryCloseStudioDocument("doc.config",true);
+                });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;
             }
