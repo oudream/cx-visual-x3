@@ -2646,6 +2646,39 @@ namespace CxVisual.Studio
                     window.TryCloseStudioDocument(tabA);
                     window.TryCloseStudioDocument(tabB);
                 });
+                CheckStep("S1界面设计00/01主页工程概览与真实工作区入口", () =>
+                {
+                    StudioViewModel vm=window.DataContext as StudioViewModel;
+                    window.OpenStudioDocument("doc.home");
+                    int before=vm.ProjectSession.Revision;
+                    Assert(window.FindName("StudioHomeWorkArea") is StackPanel&&
+                        window.FindName("StudioHomeWorkflows") is WrapPanel&&
+                        window.FindName("StudioHeaderProjectName") is TextBlock&&
+                        ((TextBlock)window.FindName("StudioHeaderProjectName")).Text==
+                            vm.ProjectSession.Project.Name,
+                        "主页工作区卡片/动态工程标题缺失或仍显示演示名称");
+                    var homeButtons=new[]{
+                        Tuple.Create("StudioHomeHmiOpen","doc.visual"),
+                        Tuple.Create("StudioHomeFlowOpen","doc.flow"),
+                        Tuple.Create("StudioHomeConfigOpen","doc.config")};
+                    foreach(var entry in homeButtons)
+                    {
+                        window.OpenStudioDocument("doc.home");
+                        Button button=window.FindName(entry.Item1) as Button;
+                        Assert(button!=null&&Convert.ToString(button.Tag)==entry.Item2,
+                            "主页入口无法定位真实Studio文档："+entry.Item1);
+                        button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                        Assert(window.ActiveStudioDocumentId==entry.Item2&&
+                            vm.ProjectSession.Revision==before,
+                            "主页打开真实工作区时没有激活目标Tab或修改了MEM工程");
+                    }
+                    window.OpenStudioDocument("doc.home");
+                    vm.ProjectSession.Rename(vm.ProjectSession.Project,"P1 Studio新工程标题");
+                    Assert(vm.StudioProjectTitle=="P1 Studio新工程标题"&&
+                        ((TextBlock)window.FindName("StudioHeaderProjectName")).Text==
+                            "P1 Studio新工程标题",
+                        "实际MEM工程重命名后顶部标题未实时更新");
+                });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;
             }

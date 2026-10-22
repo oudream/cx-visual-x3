@@ -459,7 +459,7 @@ namespace CxVisual.Studio
         private void NotifyScene()
         {
             if(_notifying)return;_notifying=true;
-            try{RefreshEngineering();Changed("Revision");Changed("ElementCount");Changed("SelectedName");Changed("Items");FireSceneChanged();CommandManager.InvalidateRequerySuggested();}
+            try{RefreshEngineering();Changed("StudioProjectTitle");Changed("Revision");Changed("ElementCount");Changed("SelectedName");Changed("Items");FireSceneChanged();CommandManager.InvalidateRequerySuggested();}
             finally{_notifying=false;}
         }
         private void FireSceneChanged()
