@@ -1038,13 +1038,17 @@ namespace CxVisual.TestCenter.UI
                     }
                     journalPanel.Children.Add(new TextBlock {
                         Text = "Journal · 原生顺序记录，不回放设备副作用",
-                        FontWeight = FontWeights.Bold, Margin = new Thickness(0, 10, 0, 4) });
+                        FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 4, 0, 8) });
+                    journalPanel.Children.Add(RuntimeTimelineRow(
+                        "Sequence", "UTC", "Event kind", "Step", "State", true));
                     foreach (XElement entry in root.Element("Journal").Elements("Entry"))
                     {
                         string sequence = (string)entry.Attribute("seq"), stepId = (string)entry.Attribute("step");
                         Button select = new Button {
-                            Content = "#" + sequence + " " + (string)entry.Attribute("kind") +
-                                " · " + (string)entry.Attribute("state") + " · " + stepId,
+                            Content = RuntimeTimelineRow(sequence,
+                                (string)entry.Attribute("utc"),
+                                (string)entry.Attribute("kind"), stepId,
+                                (string)entry.Attribute("state"), false),
                             HorizontalContentAlignment = HorizontalAlignment.Left,
                             Margin = new Thickness(0, 2, 0, 2), Padding = new Thickness(5, 4, 5, 4) };
                         System.Windows.Automation.AutomationProperties.SetAutomationId(select,
@@ -1062,13 +1066,27 @@ namespace CxVisual.TestCenter.UI
                     resourcePanel.Children.Add(new TextBlock {
                         Text = "MRK ExecutionGroup · 运行时实际配额快照",
                         FontWeight = FontWeights.Bold, Margin = new Thickness(0, 10, 0, 4) });
-                    foreach (XElement group in root.Element("Groups").Elements("Group"))
+                    XElement[] groups = root.Element("Groups").Elements("Group").ToArray();
+                    if (groups.Length == 0)
                         resourcePanel.Children.Add(new TextBlock {
-                            Text = (string)group.Attribute("id") + " · Active=" +
-                                (string)group.Attribute("active") + " · Waiting=" +
-                                (string)group.Attribute("waiting") + " · Rejected=" +
-                                (string)group.Attribute("rejected"),
-                            Margin = new Thickness(0, 2, 0, 2) });
+                            Text = "NoEvidence：本次MRK快照没有执行组或资源配额信息。",
+                            Foreground = Brushes.DarkGoldenrod, TextWrapping = TextWrapping.Wrap });
+                    foreach (XElement group in groups)
+                    {
+                        resourcePanel.Children.Add(new TextBlock {
+                            Text = (string)group.Attribute("id"),
+                            FontWeight = FontWeights.SemiBold, Foreground = Brushes.MidnightBlue,
+                            Margin = new Thickness(0, 9, 0, 3) });
+                        resourcePanel.Children.Add(new TextBlock {
+                            Text = "Active: " + (string)group.Attribute("active") +
+                                "   Waiting: " + (string)group.Attribute("waiting") +
+                                "   Rejected: " + (string)group.Attribute("rejected"),
+                            Foreground = Brushes.DarkSlateGray });
+                    }
+                    resourcePanel.Children.Add(new TextBlock {
+                        Text = "Lease Owner / 等待者身份：本次证据未包含时不推断；仅展示MRK实际Group Snapshot和Step等待原因。",
+                        FontSize = 11, Foreground = Brushes.SlateGray,
+                        TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 9, 0, 0) });
                 }
                 catch (Exception ex) when (ex is InvalidDataException || ex is IOException ||
                     ex is System.Xml.XmlException || ex is UnauthorizedAccessException ||
@@ -1080,6 +1098,32 @@ namespace CxVisual.TestCenter.UI
                         Foreground = Brushes.DarkRed, TextWrapping = TextWrapping.Wrap });
                 }
             }
+        }
+        private static Grid RuntimeTimelineRow(string sequence, string utc, string kind,
+            string step, string state, bool header)
+        {
+            Grid row = new Grid { Height = 34 };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(85) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            if (header) row.Background = new SolidColorBrush(Color.FromRgb(220, 234, 250));
+            string[] labels = { sequence, utc, kind, step, state };
+            for (int i = 0; i < labels.Length; i++)
+            {
+                TextBlock value = new TextBlock {
+                    Text = labels[i] ?? "", TextTrimming = TextTrimming.CharacterEllipsis,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    FontSize = 12, Margin = new Thickness(8, 0, 4, 0),
+                    Foreground = header ? Brushes.MidnightBlue :
+                        (state != null && state.IndexOf("Fail", StringComparison.OrdinalIgnoreCase) >= 0
+                            ? Brushes.Firebrick : Brushes.DarkSlateGray),
+                    FontWeight = header ? FontWeights.SemiBold : FontWeights.Normal,
+                    ToolTip = labels[i] };
+                Grid.SetColumn(value, i); row.Children.Add(value);
+            }
+            return row;
         }
         private static Border RuntimeCard(string title, UIElement content)
         {
