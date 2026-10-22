@@ -679,3 +679,21 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 
 - 将原`MOCBuildService.Build`加入可选`authorizedGroups`参数；用户未传时保持纯编排构建既有行为，Host/Studio要执行或发布带组的Plan时显式传入由原`MRKExecutionGroupDefinition`组成的配置。MOC编译完成即复用`MOCCompiledPlan.RequireExecutionGroups`，未知/非法组转成`MOC_EXECUTION_GROUP_INVALID`、空Plan和Content定位诊断，避免运行中才出现未知组错误；正确组不产生第二份Plan。
 - 原MOL/MOC工程集成反证增加已保存重开的执行组：Host未注册时Build.Succeeded=false、Plan=null、专门诊断；Host注册正确Stage组后Build成功并保持组ID，实际执行由原MRK许可证完成。未提供组清单的既有API保持兼容，但不代表自动具备生产授权。
+
+
+### R08 Host自动审计与代码、MOC组构建门禁：Windows固定SHA验收（2026-10-22）
+
+**已执行的代码与自动测试**（均为实际Windows .NET Framework 4.8工作流，不以聊天记忆推定）：
+
+| 固定源码SHA | 经证实的闭环 | Windows CI |
+|---|---|---|
+| `5bd0490baef424a7ee35cd9033a6a46d8702b8eb` | Runtime.Host接入原FLD Important日志；F19按原WorkHandle最终Dropped/Rejected自动写审计；Stop在原Worker排空后等待审计并Flush，审计失败不允许继续接单 | Runtime [39718275227](https://github.com/oudream/cx-visual-x3/actions/runs/39718275227)、Studio [39718275241](https://github.com/oudream/cx-visual-x3/actions/runs/39718275241)、TestCenter [39718275232](https://github.com/oudream/cx-visual-x3/actions/runs/39718275232)、Config L1 [39718275186](https://github.com/oudream/cx-visual-x3/actions/runs/39718275186)、配置底座 [39718275281](https://github.com/oudream/cx-visual-x3/actions/runs/39718275281)：**5/5 success** |
+| `14ed507d48895acd9ea945bf1fc8c849bcb5adb1` | Foundation/Runtime架构反证：不手工调用LogLoss也记录两项真实损失；Writer被Dispose后拒绝普通/异步生产者；Host Stop失败显式暴露但仍排空在途工作；关联ID及文件落盘 | Runtime [39718511018](https://github.com/oudream/cx-visual-x3/actions/runs/39718511018)、工程组织 [39718511070](https://github.com/oudream/cx-visual-x3/actions/runs/39718511070)、Config L1 [39718511021](https://github.com/oudream/cx-visual-x3/actions/runs/39718511021)、配置底座 [39718511095](https://github.com/oudream/cx-visual-x3/actions/runs/39718511095)：**4/4 success** |
+| `e608776cce4e807ce83a061dd7195d7550528014` | MRKCodeRuntimeBuilder直接登记原MRKExecutionGroupDefinition；StepInGroup编译复用同一计划；Freeze时拒绝未知组；真实Stage两Flow流水与快照隔离 | Runtime [39745625894](https://github.com/oudream/cx-visual-x3/actions/runs/39745625894)、工程组织 [39745625762](https://github.com/oudream/cx-visual-x3/actions/runs/39745625762)、Studio [39745625787](https://github.com/oudream/cx-visual-x3/actions/runs/39745625787)、TestCenter [39745625751](https://github.com/oudream/cx-visual-x3/actions/runs/39745625751)、Config L1 [39745625677](https://github.com/oudream/cx-visual-x3/actions/runs/39745625677)、配置底座 [39745625735](https://github.com/oudream/cx-visual-x3/actions/runs/39745625735)：**6/6 success** |
+| `58352ab4cddadff9c8878fdb1bd286fae8af99ee` | 原MOL V2逻辑组ID保存重开→MOC编译Plan→RequireExecutionGroups对照Host真实组，拒绝未知/重复组，正确组不更换原Plan身份 | Runtime [39746215026](https://github.com/oudream/cx-visual-x3/actions/runs/39746215026)、工程组织 [39746215021](https://github.com/oudream/cx-visual-x3/actions/runs/39746215021)、Studio [39746215142](https://github.com/oudream/cx-visual-x3/actions/runs/39746215142)、TestCenter [39746215229](https://github.com/oudream/cx-visual-x3/actions/runs/39746215229)、Config L1 [39746215122](https://github.com/oudream/cx-visual-x3/actions/runs/39746215122)、配置底座 [39746214938](https://github.com/oudream/cx-visual-x3/actions/runs/39746214938)：**6/6 success** |
+| `53bea1a83d11dc1e7fcaefd7be9bd1a3e4070ab0` | MOCBuildService.Build可选接收Host真实组配置；未知组在构建阶段返回MOC_EXECUTION_GROUP_INVALID、Plan=null及工程定位，合法Stage组可构建并实际执行；旧纯编译API兼容 | Runtime [39746547941](https://github.com/oudream/cx-visual-x3/actions/runs/39746547941)、工程组织 [39746547971](https://github.com/oudream/cx-visual-x3/actions/runs/39746547971)、Studio [39746548073](https://github.com/oudream/cx-visual-x3/actions/runs/39746548073)、TestCenter [39746548060](https://github.com/oudream/cx-visual-x3/actions/runs/39746548060)、Config L1 [39746548055](https://github.com/oudream/cx-visual-x3/actions/runs/39746548055)、配置底座 [39746547954](https://github.com/oudream/cx-visual-x3/actions/runs/39746547954)：**6/6 success** |
+
+**作用域：R08 软件内核/开发者API/工程组引用和MOC构建验证进展通过，不是整个R08封轮。**
+- 保留单一MRKExecutionEngine/F19调度、原FLD重要文件和MOL Logic/MOC Plan，不复制执行图或组容量Owner。
+- Studio已能编辑并保存MOL ExecutionGroup ID，但**完整的组容量/Step、Stage、WholeFlow专业编辑及对生产Host已授权配置的实际交接尚未完成**；不能把开发者代码Builder的成功冒充Studio工程用户全部可配置。
+- 后续R08需完成Host生产级自动审计失败策略/恢复后的授权校验、规模化长稳与背压SLA、Studio专业组配置预览和保存后的发布检查。真实硬件联锁、跨进程资源独占与未知外部动作恢复仍须单独验收；Windows模拟不代表物理安全状态确认。
