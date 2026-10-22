@@ -165,9 +165,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     var zoomHandles=DeepGeometries(VisualTreeHelper.GetDrawing(shapeView))
                         .Where(x=>x.Geometry is EllipseGeometry)
                         .Select(x=>(EllipseGeometry)x.Geometry).ToArray();
-                    Check(zoomHandles.Length>=5&&
-                        zoomHandles.All(x=>Math.Abs(x.RadiusX-1.25)<1e-6),
-                        "zoom changed visual handle on-screen radius");
+                    // 8个蓝色缩放圆柄半径5 DIP；右上旋转环半径7 DIP，
+                    // 在4倍缩放下对应世界半径1.25和1.75（画面半径仍固定）。
+                    Check(zoomHandles.Count(x=>Math.Abs(x.RadiusX-1.25)<1e-6)==8&&
+                        zoomHandles.Count(x=>Math.Abs(x.RadiusX-1.75)<1e-6)==1&&
+                        zoomHandles.Length==9,
+                        "zoom must retain eight 5-DIP resize handles and one 7-DIP rotation ring");
                     shapeView.SetViewport(1,0,0);
                     Check(DeepGeometries(handleDrawing).Count(x=>
                         x.Geometry is EllipseGeometry)>=5,
