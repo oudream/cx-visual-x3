@@ -702,7 +702,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             }
             if(e.ClickCount>=2&&_selection.HasValue&&
                 (Keyboard.Modifiers&(ModifierKeys.Control|ModifierKeys.Shift))==0&&
-                !_items.Any(x=>x.Id==_selection.Value&&
+                !_items.Exists(x=>x.Id==_selection.Value&&
                     x.ElementTypeId=="core.visual.connector"))
             {
                 MVISceneItem current=_items.Find(i=>i.Id==_selection.Value);
@@ -765,7 +765,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             _dragX = 0; _dragY = 0;
             // 增减选择不能再触发单选NodeActivated，否则Studio回写会抹掉集合。
             _dragging = hit.HasValue&&!extend&&_selectedItems.Contains(hit.Value)&&
-                !_items.Any(x=>x.Id==hit.Value&&x.ElementTypeId=="core.visual.connector");
+                !_items.Exists(x=>x.Id==hit.Value&&x.ElementTypeId=="core.visual.connector");
             if (_dragging) CaptureMouse();
             EventHandler<MPWNodeEventArgs> activated = NodeActivated;
             if (!extend&&!moveGroup&&activated != null) activated(this, new MPWNodeEventArgs(hit));
@@ -930,7 +930,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 e.Handled=true;
             }
             else if(_designMode&&e.Key==Key.Delete&&_selection.HasValue&&
-                _items.Any(x=>x.Id==_selection.Value&&
+                _items.Exists(x=>x.Id==_selection.Value&&
                     x.ElementTypeId=="core.visual.connector")&&
                 DeleteConnectionRequested!=null)
             {
