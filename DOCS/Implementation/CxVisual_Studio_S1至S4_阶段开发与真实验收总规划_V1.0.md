@@ -352,3 +352,5 @@ studio.RegisterStudioCommand("automation.config.verify", "验证设备配置",
 - 专业Viewer的DocumentKey显式包括ProjectId、ResourceId、EditorId和可选InstanceId；现存内置Page/Content/Flow旧ContentId为布局兼容保留，同时通过`GetStudioResourceDocumentIdentity`暴露等价强身份。不同Editor/实例不共用视图，关闭后释放可重新打开，工程切换及MEM资源失效立即回收；树双击采用统一候选默认选择。
 - WPF STA新增资源/编辑器匹配、非法EditorId、Viewer重复注册、不同实例隔离、活动命令资源身份、关闭重开验证，原46项不移除。**此节为开发记录，Windows构建/测试尚待CI实际回报；不能据此将S2.01/S2.02全部签收。**
 - 仍需：真实专业Viewer功能、内置Document ContentId迁移/布局向后兼容、复杂实例属性与配置UI衔接、人工Dock/DPI/双屏/长稳。按现有S2.01～S2.12状态继续追踪。
+
+- P1-A增补：专业Viewer布局恢复保留同一视图与身份、静态XML格式校验与活工程身份校验分离；新增实际MEM Undo删除临时资源后自动失效反证。CI需以最终SHA为准。

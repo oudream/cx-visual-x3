@@ -2203,11 +2203,11 @@ namespace CxVisual.Studio
                     MEMContent content=session.AddContent(session.Project,"P1-Editor相机");
                     MEMPage page=session.AddPage("P1-Editor页面");
                     Guid projectId=session.Project.Id;
-                    int created=0,disposed=0;
+                    int created=0;
                     window.RegisterStudioResourceViewer("vision.camera.viewer","Vision相机观察",
                         identity=>{
                             created++;
-                            Assert(identity.ProjectId==projectId&&identity.ResourceId==content.Id&&
+                            Assert(identity.ProjectId==projectId&&session.Find(identity.ResourceId)!=null&&
                                 identity.ResourceTypeId=="core.content","Viewer收到错误的工程资源身份");
                             return new TextBlock {Text="Vision实际专业Editor宿主："+identity.ResourceId};
                         },true,"core.content");
@@ -2242,6 +2242,11 @@ namespace CxVisual.Studio
                         "专业Viewer活动命令未绑定真实MEM资源/Editor身份");
                     Assert(window.OpenStudioResourceEditor(content.Id)==viewer&&created==1,
                         "相同DocumentKey不应重复构造Viewer");
+                    window.SaveStudioLayout(temporary);
+                    window.RestoreStudioLayout(temporary);
+                    Assert(window.GetStudioResourceDocumentIdentity(viewer)!=null&&
+                        window.GetStudioContentIds().Contains(viewer)&&created==1,
+                        "布局保存重开未恢复同一专业Editor资源身份与视图");
                     Guid instance=Guid.NewGuid();
                     string instanceTab=window.OpenStudioResourceEditor(content.Id,
                         "vision.camera.viewer",instance);
@@ -2255,13 +2260,21 @@ namespace CxVisual.Studio
                     Assert(window.OpenStudioResourceEditor(content.Id,
                         "vision.camera.viewer",instance)==instanceTab&&created==3,
                         "关闭后重新打开未创建新的专业Editor实例");
-                    // 强制MEM删除真实资源，必须立即关闭全部Viewer，禁止旧命令回写。
-                    // 测试环境此前已有事务：通过删除当前资源而非猜测Undo栈顶。
+                    MEMContent transient=session.AddContent(session.Project,"P1-删除失效资源");
+                    string transientTab=window.OpenStudioResourceEditor(
+                        transient.Id,"vision.camera.viewer");
+                    Assert(window.GetStudioContentIds().Contains(transientTab),
+                        "资源刚创建时专业Viewer无法打开");
+                    session.Undo().RequireValue();
+                    Assert(session.Find(transient.Id)==null&&
+                        window.GetStudioResourceDocumentIdentity(transientTab)==null&&
+                        !window.GetStudioContentIds().Contains(transientTab),
+                        "撤销删除MEM资源后旧Viewer仍可提交或占用Dock");
+                    Assert(window.GetStudioResourceEditors(transient.Id).Count==0&&
+                        window.GetStudioResourceEditors(Guid.NewGuid()).Count==0,
+                        "已删除/非当前工程资源仍被发现");
                     window.TryCloseStudioDocument(viewer);
                     window.TryCloseStudioDocument(instanceTab);
-                    Assert(window.GetStudioResourceDocumentIdentity(viewer)==null&&
-                        window.GetStudioResourceEditors(Guid.NewGuid()).Count==0,
-                        "失效的专业Viewer身份仍可被发现");
                 });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;

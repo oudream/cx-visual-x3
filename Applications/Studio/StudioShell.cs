@@ -1047,6 +1047,9 @@ namespace CxVisual.Studio
                     if (TryParseResourceDocumentId(key,out id,out kind) &&
                         !ResourceDocumentExists(key))
                         throw new InvalidDataException("工作区包含失效或跨工程的页面：" + id);
+                    if(key!=null&&key.StartsWith("doc.editor.",StringComparison.Ordinal)&&
+                        !IsStudioCustomEditorDocument(key))
+                        throw new InvalidDataException("工作区包含失效或跨工程的专业Editor："+key);
                 }
             }
         }
@@ -1077,6 +1080,11 @@ namespace CxVisual.Studio
                 LayoutDocument pageModel = args.Model as LayoutDocument;
                 if (pageModel != null && IsResourceDocumentId(pageModel.ContentId))
                     RegisterStudioPageClosing(pageModel);
+                if(pageModel!=null&&IsStudioCustomEditorDocument(pageModel.ContentId))
+                {
+                    string viewerKey=pageModel.ContentId;
+                    pageModel.Closed+=(s,e)=>ReleaseStudioViewerDocument(viewerKey);
+                }
             };
             using (StringReader text = new StringReader(xml)) serializer.Deserialize(text);
             foreach (string key in _pageDocuments.Keys.ToArray())
@@ -1089,6 +1097,8 @@ namespace CxVisual.Studio
                     orphan.Dispose();
                 }
             }
+            foreach(string key in _studioViewerDocuments.Keys.ToArray())
+                if(FindStudioContent(key)==null)ReleaseStudioViewerDocument(key);
             LayoutDocument active = StudioDock.Layout.ActiveContent as LayoutDocument;
             if (active != null) SelectStudioContext(active.ContentId);
             UpdateStudioGraphicsVisibility();

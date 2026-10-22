@@ -158,6 +158,7 @@ namespace CxVisual.Studio
                     Content=view,CanClose=true,CanFloat=true};
                 document.Closed+=(sender,args)=>ReleaseStudioViewerDocument(key);
                 _studioViewerDocuments.Add(key,owned);
+                _studioViews.Add(key,view);
                 try
                 {
                     RefreshStudioCommandContextMenu(view,key);
@@ -166,6 +167,7 @@ namespace CxVisual.Studio
                 catch
                 {
                     _studioViewerDocuments.Remove(key);
+                    _studioViews.Remove(key);
                     owned.Dispose();
                     throw;
                 }
@@ -182,6 +184,7 @@ namespace CxVisual.Studio
             StudioViewerDocument entry;
             if(!_studioViewerDocuments.TryGetValue(key,out entry))return;
             _studioViewerDocuments.Remove(key);
+            _studioViews.Remove(key);
             entry.Dispose();
             if(_activeStudioDocumentId==key)
             {
