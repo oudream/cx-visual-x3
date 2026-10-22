@@ -146,13 +146,51 @@ namespace CxVisual.Mechanism.Visual
             return closest;
         }
 
-        /// <summary>八点缩放保持相对边/角在世界空间稳定；不允许宽高穿零。</summary>
-        private static MRCTransform ResizeFromHandle(MRCVisualItem item,MVISceneItem projected,
-            int position,double worldX,double worldY,out double width,out double height)
+        /// <summary>计算图元实时变换预览；不修改工程Revision。</summary>
+        public static MVISceneItem PreviewTransform(MVISceneItem projected,
+            MVIVisualHandle handle,double worldX,double worldY)
         {
+            if(projected==null||handle==null)throw new ArgumentNullException(
+                projected==null?"projected":"handle");
+            if(projected.Id!=handle.ElementId||!projected.IsSelectable)
+                throw new InvalidOperationException("visual.preview.target_mismatch");
+            FGEValidation.Finite(worldX,"worldX");FGEValidation.Finite(worldY,"worldY");
+            if(handle.Kind==MVIVisualHandleKind.Resize&&
+                handle.CommandIndex>=0&&handle.CommandIndex<=7)
+            {
+                double localX,localY,width,height;
+                ResizeCoordinates(projected,handle.CommandIndex,worldX,worldY,
+                    out localX,out localY,out width,out height);
+                MRCTransform world=projected.WorldTransform;
+                MRCTransform shifted=new MRCTransform(world.M11,world.M12,
+                    world.M21,world.M22,
+                    world.X+world.M11*localX+world.M12*localY,
+                    world.Y+world.M21*localX+world.M22*localY);
+                return projected.WithVisualLayout(shifted,width,height);
+            }
+            if(handle.Kind==MVIVisualHandleKind.Rotate)
+            {
+                FGETransform2D parent=projected.ParentWorldTransform.ToGeometry();
+                MRCTransform local=MRCTransform.FromGeometry(parent.Inverse()
+                    .Compose(projected.WorldTransform.ToGeometry()));
+                MRCTransform rotated=RotateFromHandle(local,parent,
+                    projected.LocalWidth,projected.LocalHeight,handle,worldX,worldY);
+                return projected.WithVisualLayout(
+                    MRCTransform.FromGeometry(parent.Compose(rotated.ToGeometry())),
+                    projected.LocalWidth,projected.LocalHeight);
+            }
+            throw new ArgumentException("visual.preview.unsupported_handle","handle");
+        }
+
+        /// <summary>预览与提交共用同一局部几何计算，支持旋转/嵌套Group。</summary>
+        private static void ResizeCoordinates(MVISceneItem projected,int position,
+            double worldX,double worldY,out double localX,out double localY,
+            out double width,out double height)
+        {
+            if(position<0||position>7)throw new ArgumentOutOfRangeException("position");
             FGEPoint2D local=projected.WorldTransform.ToGeometry().Inverse()
                 .TransformPoint(new FGEPoint2D(worldX,worldY));
-            double oldW=item.Width,oldH=item.Height;
+            double oldW=projected.LocalWidth,oldH=projected.LocalHeight;
             bool left=position==0||position==6||position==7;
             bool right=position==2||position==3||position==4;
             bool top=position==0||position==1||position==2;
@@ -162,8 +200,7 @@ namespace CxVisual.Mechanism.Visual
             double y0=top?Math.Min(local.Y,oldH-1):0;
             double y1=bottom?Math.Max(local.Y,1):oldH;
             width=x1-x0;height=y1-y0;
-            MRCShapeElement shape=item as MRCShapeElement;
-            if(shape!=null&&shape.Shape.Kind==MRCShapeKind.Circle)
+            if(projected.Shape!=null&&projected.Shape.Kind==MRCShapeKind.Circle)
             {
                 double size=(left||right)&&(top||bottom)?
                     Math.Max(width,height):(left||right?width:height);
@@ -173,10 +210,39 @@ namespace CxVisual.Mechanism.Visual
                 else if(!bottom)y0=(oldH-size)/2;
                 width=size;height=size;
             }
+            localX=x0;localY=y0;
+        }
+
+        private static MRCTransform ResizeFromHandle(MRCVisualItem item,
+            MVISceneItem projected,int position,double worldX,double worldY,
+            out double width,out double height)
+        {
+            double localX,localY;
+            ResizeCoordinates(projected,position,worldX,worldY,
+                out localX,out localY,out width,out height);
             MRCTransform previous=item.Transform;
             return new MRCTransform(previous.M11,previous.M12,previous.M21,previous.M22,
-                previous.X+previous.M11*x0+previous.M12*y0,
-                previous.Y+previous.M21*x0+previous.M22*y0);
+                previous.X+previous.M11*localX+previous.M12*localY,
+                previous.Y+previous.M21*localX+previous.M22*localY);
+        }
+
+        private static MRCTransform RotateFromHandle(MRCTransform local,
+            FGETransform2D parent,double width,double height,MVIVisualHandle handle,
+            double worldX,double worldY)
+        {
+            FGETransform2D inverse=parent.Inverse();
+            FGEPoint2D target=inverse.TransformPoint(new FGEPoint2D(worldX,worldY));
+            FGEPoint2D initial=inverse.TransformPoint(handle.WorldPoint);
+            FGEPoint2D center=local.ToGeometry().TransformPoint(
+                new FGEPoint2D(width/2,height/2));
+            double a0=Math.Atan2(initial.Y-center.Y,initial.X-center.X);
+            double a1=Math.Atan2(target.Y-center.Y,target.X-center.X);
+            double radians=a1-a0,c=Math.Cos(radians),s=Math.Sin(radians);
+            double m11=c*local.M11-s*local.M21,m12=c*local.M12-s*local.M22;
+            double m21=s*local.M11+c*local.M21,m22=s*local.M12+c*local.M22;
+            double x=center.X-m11*width/2-m12*height/2;
+            double y=center.Y-m21*width/2-m22*height/2;
+            return new MRCTransform(m11,m12,m21,m22,x,y);
         }
 
         public static MVIVisualHandle HitHandle(MVISceneItem item,double x,double y,double radius=8)
@@ -243,21 +309,8 @@ namespace CxVisual.Mechanism.Visual
             {
                 FGETransform2D parent=projected.WorldTransform.ToGeometry()
                     .Compose(item.Transform.ToGeometry().Inverse());
-                FGETransform2D inverse=parent.Inverse();
-                FGEPoint2D worldTarget=new FGEPoint2D(worldX,worldY);
-                FGEPoint2D target=inverse.TransformPoint(worldTarget);
-                FGEPoint2D initial=inverse.TransformPoint(handle.WorldPoint);
-                FGEPoint2D center=item.Transform.ToGeometry().TransformPoint(
-                    new FGEPoint2D(item.Width/2,item.Height/2));
-                double a0=Math.Atan2(initial.Y-center.Y,initial.X-center.X);
-                double a1=Math.Atan2(target.Y-center.Y,target.X-center.X);
-                double radians=a1-a0,c=Math.Cos(radians),s=Math.Sin(radians);
-                MRCTransform m=item.Transform;
-                double m11=c*m.M11-s*m.M21,m12=c*m.M12-s*m.M22;
-                double m21=s*m.M11+c*m.M21,m22=s*m.M12+c*m.M22;
-                double x=center.X-m11*item.Width/2-m12*item.Height/2;
-                double y=center.Y-m21*item.Width/2-m22*item.Height/2;
-                MRCTransform rotated=new MRCTransform(m11,m12,m21,m22,x,y);
+                MRCTransform rotated=RotateFromHandle(item.Transform,parent,
+                    item.Width,item.Height,handle,worldX,worldY);
                 return editor.Document.Edit("旋转可视图元",revision,e=>
                 {e.SetTransform(item,rotated);return true;});
             }

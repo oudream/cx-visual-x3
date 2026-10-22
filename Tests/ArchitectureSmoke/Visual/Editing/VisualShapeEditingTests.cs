@@ -266,6 +266,14 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     FGEPoint2D leftTarget=edited.WorldTransform.ToGeometry()
                         .TransformPoint(new FGEPoint2D(-15,shape.Height/2));
                     int beforeResizeRevision=doc.Revision;
+                    MVISceneItem leftPreview=MVIVisualEditing.PreviewTransform(
+                        edited,leftHandle,leftTarget.X,leftTarget.Y);
+                    Check(doc.Revision==beforeResizeRevision&&
+                        Math.Abs(shape.Width-oldWidth)<1e-6,
+                        "preview must not mutate the engineering definition or revision");
+                    Check(Near(leftPreview.WorldTransform.ToGeometry().TransformPoint(
+                        new FGEPoint2D(leftPreview.LocalWidth,leftPreview.LocalHeight/2)),
+                        rightBefore),"left resize preview moved opposite anchor");
                     Check(editor.EditHandle(leftHandle,leftTarget.X,leftTarget.Y).Success,
                         "left-middle resize handle rejected");
                     Check(Math.Abs(shape.Width-(oldWidth+15))<1e-5&&
@@ -276,6 +284,10 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         .TransformPoint(new FGEPoint2D(shape.Width,shape.Height/2));
                     Check(Near(rightBefore,rightAfter),
                         "left-edge drag moved the opposite world anchor");
+                    Check(Math.Abs(leftPreview.LocalWidth-leftResized.LocalWidth)<1e-5&&
+                        Near(leftPreview.TopLeft,leftResized.TopLeft)&&
+                        Near(leftPreview.BottomRight,leftResized.BottomRight),
+                        "final resize differs from preview");
                     Check(editor.Undo().Success&&Math.Abs(shape.Width-oldWidth)<1e-5,
                         "left-edge resize should be undone in one step");
 
@@ -295,7 +307,15 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         new FGEPoint2D(shape.Width/2,shape.Height/2));
                     var rotate=MVIVisualEditing.Handles(edited).Single(x=>x.Kind==MVIVisualHandleKind.Rotate);
                     double dx=rotate.WorldPoint.X-center.X,dy=rotate.WorldPoint.Y-center.Y;
+                    MVISceneItem rotatedPreview=MVIVisualEditing.PreviewTransform(edited,rotate,
+                        center.X-dy,center.Y+dx);
+                    int beforeRotateRevision=doc.Revision;
                     Check(editor.EditHandle(rotate,center.X-dy,center.Y+dx).Success,"rotate failed");
+                    MVISceneItem rotatedScene=editor.Scene.Single(x=>x.Id==id);
+                    Check(doc.Revision==beforeRotateRevision+1&&
+                        Near(rotatedPreview.TopLeft,rotatedScene.TopLeft)&&
+                        Near(rotatedPreview.BottomRight,rotatedScene.BottomRight),
+                        "rotation preview and final commit must be identical");
                     FGEPoint2D centerAfter=editor.Scene.Single(x=>x.Id==id).WorldTransform
                         .ToGeometry().TransformPoint(new FGEPoint2D(shape.Width/2,shape.Height/2));
                     Check(Near(centerAfter,center),"rotation moved the visual center");

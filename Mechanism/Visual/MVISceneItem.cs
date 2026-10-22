@@ -62,6 +62,14 @@ namespace CxVisual.Mechanism.Visual
                 Math.Max(Math.Max(y1,y2),Math.Max(y3,y4))-top);
         }
         internal static MRCTransform Inverse(MRCTransform transform){return transform.Inverse();}
+        /// <summary>预览只创建新的场景投影，不修改工程模型。</summary>
+        internal MVISceneItem WithVisualLayout(MRCTransform world,double width,double height)
+        {
+            return new MVISceneItem(Id,Name,Address,world,width,height,IsSelectable,
+                _moveParent,_moveX,_moveY,ElementTypeId,Shape,Style,Text,AssetId,MediaType,
+                RuntimeValue,WidgetSettings);
+        }
+        internal MRCTransform ParentWorldTransform {get{return _moveParent;}}
         public Guid Id{get;private set;}
         public string Name{get;private set;}
         public MRIObjectAddress Address{get;private set;}

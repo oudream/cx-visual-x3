@@ -261,19 +261,38 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             for (double x = 0; x < ActualWidth; x += 25) dc.DrawLine(gridPen, new Point(x, 0), new Point(x, ActualHeight));
             for (double y = 0; y < ActualHeight; y += 25) dc.DrawLine(gridPen, new Point(0, y), new Point(ActualWidth, y));
             dc.PushTransform(new MatrixTransform(new Matrix(_zoom,0,0,_zoom,_panX,_panY)));
+            MVISceneItem transformPreview=null;
+            if(_handleDragging&&_activeHandle!=null&&
+                (_activeHandle.Kind==MVIVisualHandleKind.Resize||
+                 _activeHandle.Kind==MVIVisualHandleKind.Rotate))
+            {
+                MVISceneItem current=_items.Find(x=>x.Id==_activeHandle.ElementId);
+                if(current!=null)
+                {
+                    try
+                    {
+                        transformPreview=MVIVisualEditing.PreviewTransform(current,_activeHandle,
+                            _handlePointer.X,_handlePointer.Y);
+                    }
+                    catch(InvalidOperationException){/* 退化矩阵时不显示无效预览 */}
+                    catch(ArgumentException){/* 非法控制柄不触发工程修改 */}
+                }
+            }
             foreach (MVISceneItem item in _items)
             {
                 bool selected = _selectedItems.Contains(item.Id)||
                     (_selection.HasValue&&_selection.Value==item.Id);
                 if(item.Shape!=null)
                 {
-                    MPWShapeRenderer.Draw(dc,item,selected&&_dragging?_dragX:0,
+                    MVISceneItem shown=transformPreview!=null&&transformPreview.Id==item.Id?
+                        transformPreview:item;
+                    MPWShapeRenderer.Draw(dc,shown,selected&&_dragging?_dragX:0,
                         selected&&_dragging?_dragY:0,ResolveStyleBrush);
                     if(selected)
                     {
-                        Rect highlight=new Rect(item.Bounds.X+( _dragging?_dragX:0),
-                            item.Bounds.Y+(_dragging?_dragY:0),
-                            Math.Max(1,item.Bounds.Width),Math.Max(1,item.Bounds.Height));
+                        Rect highlight=new Rect(shown.Bounds.X+( _dragging?_dragX:0),
+                            shown.Bounds.Y+(_dragging?_dragY:0),
+                            Math.Max(1,shown.Bounds.Width),Math.Max(1,shown.Bounds.Height));
                         dc.DrawRectangle(null,new Pen(Brushes.DodgerBlue,0.8){DashStyle=DashStyles.Dash},highlight);
                     }
                     continue;
@@ -347,12 +366,15 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 MVISceneItem edited=_items.Find(i=>i.Id==_selection.Value);
                 if(edited!=null)
                 {
-                    foreach(MVIVisualHandle handle in MVIVisualEditing.Handles(edited,_geometryEditMode,_zoom))
+                    MVISceneItem shown=transformPreview!=null&&transformPreview.Id==edited.Id?
+                        transformPreview:edited;
+                    // 全部变换柄与绘制图元使用同一预览矩阵，曲线柄独立预览。
+                    foreach(MVIVisualHandle handle in MVIVisualEditing.Handles(shown,_geometryEditMode,_zoom))
                     {
                         bool moving=_handleDragging&&_activeHandle!=null&&
                             handle.Kind==_activeHandle.Kind&&
                             handle.CommandIndex==_activeHandle.CommandIndex;
-                        Point center=moving?_handlePointer:
+                        Point center=moving&&_geometryEditMode?_handlePointer:
                             new Point(handle.WorldPoint.X,handle.WorldPoint.Y);
                         if(handle.Kind==MVIVisualHandleKind.Rotate)
                         {
@@ -378,6 +400,16 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                         if(moving)
                             dc.DrawLine(new Pen(Brushes.DodgerBlue,1/_zoom){DashStyle=DashStyles.Dash},
                                 new Point(handle.WorldPoint.X,handle.WorldPoint.Y),center);
+                    }
+                    // 非Shape先预览变换外框；后续由控件适配器提供内容级同步预览。
+                    if(transformPreview!=null&&transformPreview.Id==edited.Id&&edited.Shape==null)
+                    {
+                        FGEPoint2D[] corners={shown.TopLeft,shown.TopRight,
+                            shown.BottomRight,shown.BottomLeft,shown.TopLeft};
+                        Pen dashed=new Pen(Brushes.DodgerBlue,1.5/_zoom){DashStyle=DashStyles.Dash};
+                        for(int i=0;i<4;i++)
+                            dc.DrawLine(dashed,new Point(corners[i].X,corners[i].Y),
+                                new Point(corners[i+1].X,corners[i+1].Y));
                     }
                     // 鼠标按住时直接预览整条Bezier/Path，不污染MEM Revision；
                     // 松开后由统一EditHandle事务一次性提交精确曲线。
@@ -520,7 +552,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             }
             if(_handleDragging)
             {
-                _handlePointer=WorldPoint(e.GetPosition(this));
+                Point current=WorldPoint(e.GetPosition(this));
+                if(_gridSnap&&_activeHandle!=null&&
+                    _activeHandle.Kind==MVIVisualHandleKind.Resize)
+                    current=new Point(Math.Round(current.X/25)*25,
+                        Math.Round(current.Y/25)*25);
+                _handlePointer=current;
                 InvalidateVisual();
                 return;
             }
@@ -556,12 +593,18 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             if(_handleDragging)
             {
                 MVIVisualHandle handle=_activeHandle;
-                Point current=WorldPoint(e.GetPosition(this));
+                Point raw=WorldPoint(e.GetPosition(this));
+                bool changed=handle!=null&&(Math.Abs(raw.X-handle.WorldPoint.X)>0.8||
+                    Math.Abs(raw.Y-handle.WorldPoint.Y)>0.8);
+                Point current=raw;
+                if(changed&&_gridSnap&&handle!=null&&
+                    handle.Kind==MVIVisualHandleKind.Resize)
+                    current=new Point(Math.Round(raw.X/25)*25,
+                        Math.Round(raw.Y/25)*25);
                 _activeHandle=null;
                 _handleDragging=false;
                 if(IsMouseCaptured)ReleaseMouseCapture();
-                if(handle!=null&&(Math.Abs(current.X-handle.WorldPoint.X)>0.8||
-                    Math.Abs(current.Y-handle.WorldPoint.Y)>0.8))
+                if(changed)
                 {
                     EventHandler<MPWVisualHandleEventArgs> edited=HandleEditRequested;
                     if(edited!=null)edited(this,
