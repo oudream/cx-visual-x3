@@ -47,7 +47,7 @@ Tests/
     ├── Cases/ Core/ Discovery/ Execution/
     ├── Diagnostics/ Fixtures/ Models/
     ├── NUnitIntegration/ Reports/ UI/
-    └── ManualWorkbench_主界面与专项交互实验台_设计讨论_V0.1.md
+    └── CxVisual_TestCenter_统一主界面与工作区Frame注册——完整设计与验收_V1.1.md
 ~~~
 
 构建生成的 `obj/`、`bin/` 不属于源码架构。当前正式测试项目保持 **2 个**，整个解决方案保持既定 **28 个项目**。源代码文件与 UI 子目录可按需要组织，但不得“每个子方面一个 csproj”。
@@ -91,9 +91,7 @@ Tests/
 
 普通新增测试在 `Tests/TestCenter/Cases/` 中首选 NUnit `[Test] / [TestCase]`；需要真实 Owner 结构化证据时使用已有 TCT Context，详见 [TestCenter 开发者 README](TestCenter/README.md)。
 
-**交互实验台目标（部分源码已出现、尚未完成主窗口集成）**：已有工作区注册表与 Virtual Channel 试验页源码；完整双工作区和人工操作闭环仍需按 [《主界面与专项交互实验台设计讨论 V0.1》](TestCenter/ManualWorkbench_主界面与专项交互实验台_设计讨论_V0.1.md) 验证。该草案不替代 V4.1 主规格。
-
-**已确认的界面实现任务**：见 [《TestCenter 统一主界面与工作区Frame注册——开发任务与验收 V1.0》](TestCenter/CxVisual_TestCenter_统一主界面与工作区Frame注册——开发任务与验收_V1.0.md)。清爽浅色四区、无大 Ribbon、右侧统一操作；**四根平级且各自有图标与总界面；自动测试子节点统一复用 AutoTestFrame（按 Catalog Scope/Case 切换）**。尚待完成的实现不能当作已验收。
+**唯一界面设计与验收入口**：[《TestCenter 统一主界面与工作区Frame注册·完整设计与验收 V1.1》](TestCenter/CxVisual_TestCenter_统一主界面与工作区Frame注册——完整设计与验收_V1.1.md)。四根平级、各有图标和总页；自动测试统一复用同一界面按 Catalog Scope/Case 切换；人工专业操作页独立扩展，右侧统一操作、浅色简洁布局。**已有注册/Virtual Channel 源码，全面完成情况以同 SHA 编译和验收为准**。
 
 ## 05. 新测试到底放在哪里：判定规则
 
@@ -128,23 +126,9 @@ Tests/
 
 **独立进程/项目的例外**：只有确有原生 SDK 位数或运行时不兼容、崩溃隔离、独立部署、长期后台运行/高性能资源约束等真实证据，且经 Owner、依赖、交互与结果协议评审后才考虑；即使另起进程，也应优先让 TestCenter 作为入口和观察/证据层，不能直接复制第二套框架。**本轮不审批新 csproj。**
 
-## 07. 专项交互实验台主界面（目标设计，不是已实现）
+## 07. 主界面设计与专项交互
 
-主界面应首先把 **自动化验收** 与 **专项交互测试** 两条任务路径清楚区分。进入专项实验台后使用独立的资源导航/操作/诊断布局，而非只读 Case/Result 浏览页面。以下为概要，详细布局、操作流程和验收见 [设计讨论稿](TestCenter/ManualWorkbench_主界面与专项交互实验台_设计讨论_V0.1.md)。
-
-~~~text
-CxVisual · TestCenter
-[首页] [自动化测试] [专项交互实验台] [报告与历史]     浅色/深色
-  专项交互实验台   |   Virtual / Replay / Real (授权)   |   Session状态
-┌──────────────┬───────────────────────────────────────────┬──────────────┐
-│ 左侧专业导航 │ 中央文档Tab：Channel / Protocol / Graphics │ 右侧上下文配置 │
-│ 最近使用工具 │ 专项工具自己的可操作视图及上下文Ribbon       │ 参数/实时状态   │
-├──────────────┴───────────────────────────────────────────┴──────────────┤
-│ 底部诊断：TX/RX | Timeline | 错误 | 数据帧 | 性能 | 操作记录 | 证据         │
-└──────────────────────────────────────────────────────────────────────────┘
-~~~
-
-关键不变量：**人能方便地操作和观察；平台能正确记录和清理；手工操作不能篡改自动 Run 结果；所有专业能力仍由真实 Owner 提供。**
+统一界面、四根测试项目树、Frame 生命周期、Channel/Protocol/Graphics/CT3D 人工操作、ManualSession 与结果证据边界及完整验收，**统一查阅 [V1.1 设计与验收](TestCenter/CxVisual_TestCenter_统一主界面与工作区Frame注册——完整设计与验收_V1.1.md)**。本 README 不再重复主窗口布局及旧双入口方案。
 
 ## 08. 各体系测试边界
 
@@ -170,16 +154,7 @@ CxVisual · TestCenter
 
 ## 10. 当前状态与后续工作
 
-| 项目 | 截至核查基线状态 |
-|---|---|
-| ArchitectureSmoke 多领域测试、多个 CLI 专项入口 | **已有源码**；具体 Windows 结果需按目标提交查询 |
-| TestCenter 统一 NUnit/TCT、Worker、WPF、真实 Viewer、结果/历史 | **已有源码及历史 CI 记录**；专业/人工覆盖不等于全部完成 |
-| Channel/Geometry/Graph/Runtime 结果观察 Viewer | **已有部分实现**，主要只读，不是完整手工操作实验台 |
-| TestCenter 一级“专项交互实验台”与可操作 Channel/Protocol/Graphics 工具 | **设计目标，尚未实现、构建或验收** |
-| TestCenter 直接纳管 ArchitectureSmoke 逐条结果 | **可选后续适配，尚未实现** |
-| 全量工业 HIL、手工签认、长稳/性能预算 | **按项目专项验收，不因 CI 绿自动认定** |
-
-**后续优先次序建议**：先在现有 TestCenter Shell 加“自动化测试 / 专项交互实验台”的一级导航和空态，不破坏原测试；再完成 Channel Virtual/Replay 人工连接与收发；然后独立 Protocol 编解码/异常测试；随后 Graphics 精细交互；最后接证据保存、正式 Case 升级、更多专业工具与授权实机验证。
+已存在 TestCenter NUnit/TCT、WPF Shell、AvalonDock、四根工作区注册及 Virtual P2P Channel 人工试验源码。**当前 Virtual P2P 不等于真实 TCP/UDP/Serial**；统一自动测试 Frame、人工 Protocol/Graphics/CT3D、报告与场景专项交互仍需根据真实代码及证据逐项实现与验收。具体模块差距及已知 Windows 编译阻断见 [V1.1 第 05～06 章](TestCenter/CxVisual_TestCenter_统一主界面与工作区Frame注册——完整设计与验收_V1.1.md)。
 
 ---
 **维护说明**：本文件只维护 Test 目录的长期职责与入口；实施报告/CI 仍在 `DOCS/Testing/`，完整 TestCenter 合同只在 V4.1 主规格。对本草案中新的设计决策必须评审后更新权威规格，再进入实际代码开发。
