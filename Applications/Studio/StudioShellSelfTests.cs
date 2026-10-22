@@ -2355,9 +2355,9 @@ namespace CxVisual.Studio
                     TextBox search=all.OfType<TextBox>().Single(x=>
                         x.Name=="StudioConfigSectionSearch");
                     Border vision=all.OfType<Border>().Single(x=>
-                        Convert.ToString(x.Tag).Contains("Vision.Inspection"));
+                        (Convert.ToString(x.Tag)??"").Contains("Vision.Inspection"));
                     Border ct=all.OfType<Border>().Single(x=>
-                        Convert.ToString(x.Tag).Contains("CT3D.Reconstruction"));
+                        (Convert.ToString(x.Tag)??"").Contains("CT3D.Reconstruction"));
                     Expander ctSection=all.OfType<Expander>().Single(x=>
                         Convert.ToString(x.Tag)=="CT3D.Reconstruction");
                     Assert(vision.Visibility==Visibility.Visible&&
