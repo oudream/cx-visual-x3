@@ -425,3 +425,11 @@ studio.RegisterStudioCommand("automation.config.verify", "验证设备配置",
 | 05～09 专业页 | 仍按现有S3/S4目标，部分专业工作区和TestCenter有各自布局；本轮未逐图视觉签收 | 先统一Shell视觉token再逐专业改造，提供同SHA真实WPF图片 |
 
 **验收层级**：本轮完成源码/Windows STA软件切片（T），不是01～09十页逐像素一致，更不是实际键鼠、AvalonDock混合DPI双屏、长时间运行和现场设备安全的人工E/F级签收。后续先把00和01两页做成可讨论的高保真真实界面，再按02/03/04逐页推进。
+
+### 21.3 统一视觉一轮集中开发：输入/Ribbon/菜单（2026-10-22，同SHA Windows待验）
+
+- 保留原Studio项目、AvalonDock主题、Owner ICommand与MEM工程身份。WPF根窗口启用ClearType/Display模式及像素对齐；不在工程上保存任何视觉状态。
+- `Styles/Controls.xaml`：输入框新`ControlTemplate`内为6px圆角Border，保留唯一`PART_ContentHost`实现IME、光标、选区、键盘焦点和Validation。Ribbon图标放进39×35/6px圆角细线IconBox，WPF矢量路径而非字体图标；点击、焦点/悬停态与浅深主题联动。
+- `StudioShell.cs`：不改变原`StudioRibbonActions.Children.OfType<Button>()`直接命令入口，通过一层可见竖线Separator和Canvas组名呈现真正Ribbon逻辑分组；静态/动态选中菜单用蓝色底线+较深字重。控件分组只是WPF投影，既有Command/Tag/CanExecute完全复用。
+- 58项STA新增圆角输入文本选择、工程资源搜索过滤、活动菜单底线、图标圆角、Ribbon分组和深色文字/零工程Revision反证；须独立核查当前SHA CI日志和生成的WPF照片。
+- **仍待目标签收**：AvalonDock文档Tab/停靠面板专属视觉模板、专业子流程04布局（工具箱、属性右分页、缩略图）、输入ComboBox完整模板、多分辨率截图/人工DPI及与指定效果图视觉对照。只凭这次新增的视觉切片不能宣称全图一致。

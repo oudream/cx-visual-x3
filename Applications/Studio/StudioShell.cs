@@ -83,6 +83,14 @@ namespace CxVisual.Studio
         private bool _studioDark;
         private bool _studioInitialized;
         private string _ribbonSelection = "主页";
+        private sealed class StudioRibbonVisualGroup
+        {
+            public string Name;
+            public FrameworkElement First;
+            public FrameworkElement Last;
+        }
+        private readonly List<StudioRibbonVisualGroup> _ribbonVisualGroups =
+            new List<StudioRibbonVisualGroup>();
         private string _activeStudioDocumentId = "doc.home";
         private static readonly string[] KnownDocuments =
             { "doc.home", "doc.visual", "doc.flow", "doc.config" };
@@ -1082,7 +1090,111 @@ namespace CxVisual.Studio
             Style ribbonStyle=(Style)FindResource("StudioRibbonActionStyle");
             foreach(Button action in StudioRibbonActions.Children.OfType<Button>())
                 action.Style=ribbonStyle;
-}
+            ArrangeStudioRibbonVisualGroups();
+            PaintStudioMenuSelection();
+        }
+
+        /// <summary>视觉分组不改变Owner命令、Tag或直系Ribbon Button，旧UIA继续可发现。</summary>
+        private static string StudioRibbonVisualGroupName(string active,UIElement item)
+        {
+            Button button=item as Button;
+            string label=button==null?"":Convert.ToString(button.Content,CultureInfo.InvariantCulture);
+            if(active=="绘图")
+            {
+                if(new[]{"选择","添加矩形","直线","矩形","圆","椭圆"}.Contains(label))return "基础图元";
+                if(new[]{"折线","多边形","圆弧","贝塞尔","自由路径"}.Contains(label))return "路径图元";
+                return "文本与控件";
+            }
+            if(active=="主页"||active=="资源")
+            {
+                string legacy=RibbonGroupOf(item);
+                if(legacy=="文件")return "文件";
+                if(legacy=="工程")return "工程资源";
+                return "工作区";
+            }
+            if(active=="节点")return label=="添加流程能力"?"流程能力":"分支与归并";
+            if(active=="编排")return label=="仿真执行"?"运行验证":"编排与布局";
+            if(active=="视图")return label.Contains("布局")?"工作区布局":"工具面板";
+            if(active=="调试")return "执行调试";
+            if(active=="运行")return "运行与监控";
+            if(active=="文件")return label.Contains("导")?"导入与导出":"工程文件";
+            return active=="配置"?"专业配置":active;
+        }
+
+        private void ArrangeStudioRibbonVisualGroups()
+        {
+            if(StudioRibbonActions==null||StudioRibbonGroupCaptions==null)return;
+            UIElement[] commands=StudioRibbonActions.Children.Cast<UIElement>().ToArray();
+            StudioRibbonActions.Children.Clear();
+            StudioRibbonGroupCaptions.Children.Clear();
+            _ribbonVisualGroups.Clear();
+            StudioRibbonVisualGroup current=null;
+            foreach(UIElement command in commands)
+            {
+                FrameworkElement element=command as FrameworkElement;
+                if(element==null)continue;
+                string section=StudioRibbonVisualGroupName(_ribbonSelection,command);
+                if(current==null||!String.Equals(current.Name,section,StringComparison.Ordinal))
+                {
+                    if(current!=null)
+                    {
+                        Border divider=new Border{Width=1,Height=51,
+                            Margin=new Thickness(9,6,9,4),VerticalAlignment=VerticalAlignment.Center};
+                        divider.SetResourceReference(Border.BackgroundProperty,"StudioBorderBrush");
+                        StudioRibbonActions.Children.Add(divider);
+                    }
+                    current=new StudioRibbonVisualGroup{Name=section,First=element,Last=element};
+                    _ribbonVisualGroups.Add(current);
+                }
+                current.Last=element;
+                StudioRibbonActions.Children.Add(command);
+            }
+            Dispatcher.BeginInvoke(new Action(RenderStudioRibbonGroupCaptions),
+                System.Windows.Threading.DispatcherPriority.Loaded);
+        }
+
+        private void RenderStudioRibbonGroupCaptions()
+        {
+            if(StudioRibbonActions==null||StudioRibbonGroupCaptions==null||
+                !StudioRibbonActions.IsLoaded)return;
+            StudioRibbonGroupCaptions.Children.Clear();
+            StudioRibbonGroupCaptions.Width=StudioRibbonActions.ActualWidth;
+            foreach(StudioRibbonVisualGroup group in _ribbonVisualGroups)
+            {
+                if(group.First.ActualWidth<=0||group.Last.ActualWidth<=0)continue;
+                Point begin=group.First.TranslatePoint(new Point(0,0),StudioRibbonActions);
+                Point end=group.Last.TranslatePoint(new Point(group.Last.ActualWidth,0),
+                    StudioRibbonActions);
+                TextBlock caption=new TextBlock{Text=group.Name,FontSize=10.5,
+                    FontWeight=FontWeights.Medium};
+                caption.SetResourceReference(TextBlock.ForegroundProperty,"StudioMutedTextBrush");
+                caption.Measure(new Size(Double.PositiveInfinity,Double.PositiveInfinity));
+                double center=(begin.X+end.X-caption.DesiredSize.Width)/2;
+                Canvas.SetLeft(caption,Math.Max(0,center));
+                Canvas.SetTop(caption,0);
+                StudioRibbonGroupCaptions.Children.Add(caption);
+            }
+        }
+
+        /// <summary>菜单激活态有蓝色下划线和字重，静态/动态菜单一致。</summary>
+        private void PaintStudioMenuSelection()
+        {
+            if(StudioStaticMenus==null||StudioDynamicMenus==null)return;
+            foreach(Button tab in StudioStaticMenus.Children.OfType<Button>()
+                .Concat(StudioDynamicMenus.Children.OfType<Button>()))
+            {
+                bool selected=String.Equals(Convert.ToString(tab.Tag),
+                    _ribbonSelection,StringComparison.Ordinal);
+                tab.SetResourceReference(Control.ForegroundProperty,
+                    selected?"StudioAccentBrush":"StudioTextBrush");
+                if(selected)tab.SetResourceReference(Control.BackgroundProperty,
+                    "StudioSelectionBrush");
+                else tab.Background=Brushes.Transparent;
+                tab.BorderThickness=selected?new Thickness(0,0,0,2):new Thickness(0);
+                tab.SetResourceReference(Control.BorderBrushProperty,"StudioAccentBrush");
+                tab.FontWeight=selected?FontWeights.Bold:FontWeights.SemiBold;
+            }
+        }
 
         private void SafeStudioAction(Action command)
         {

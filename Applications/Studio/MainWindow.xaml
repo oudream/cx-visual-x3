@@ -5,7 +5,10 @@
         xmlns:dock="https://github.com/Dirkster99/AvalonDock"
         Title="CxVisual Studio" Width="1560" Height="940"
         MinWidth="1024" MinHeight="680" WindowStartupLocation="CenterScreen"
-        Background="{DynamicResource StudioBackgroundBrush}" Foreground="{DynamicResource StudioTextBrush}" FontFamily="Segoe UI">
+        Background="{DynamicResource StudioBackgroundBrush}" Foreground="{DynamicResource StudioTextBrush}"
+        FontFamily="Microsoft YaHei UI, Segoe UI" FontSize="12.5"
+        TextOptions.TextFormattingMode="Display" TextOptions.TextRenderingMode="ClearType"
+        UseLayoutRounding="True" SnapsToDevicePixels="True">
     <DockPanel LastChildFill="True">
         <!-- 应用与工程身份：动态取当前MEM项目，不再写死Demo_Project，也不展示假的搜索入口。 -->
         <Border DockPanel.Dock="Top" Padding="14,7"
@@ -57,7 +60,8 @@
         </Border>
         <Border DockPanel.Dock="Top" Background="{DynamicResource StudioPanelBrush}" Padding="6,3" BorderBrush="{DynamicResource StudioBorderBrush}" BorderThickness="0,0,0,1">
             <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
-                <StackPanel x:Name="StudioRibbonActions" Orientation="Horizontal" VerticalAlignment="Center">
+                <StackPanel Orientation="Vertical">
+                    <StackPanel x:Name="StudioRibbonActions" Orientation="Horizontal" VerticalAlignment="Center">
                 <Button Command="{Binding NewCommand}" Content="新建工程"/>
                 <Button Command="{Binding AddCommand}" Content="添加矩形"/>
                 <Button Command="{Binding MoveCommand}" Content="右移20"/>
@@ -89,6 +93,9 @@
                 <Button Click="OnIndependentLayerDemo" Content="独立层配置"/>
                 <Button Click="OnPublishConfigDemo" Content="发布示例配置 (L4)"/>
                 <Button Click="OnRollbackConfigDemo" Content="回滚发布"/>
+                    </StackPanel>
+                    <Canvas x:Name="StudioRibbonGroupCaptions" Height="18" Background="Transparent"
+                            IsHitTestVisible="False"/>
                 </StackPanel>
             </ScrollViewer>
         </Border>

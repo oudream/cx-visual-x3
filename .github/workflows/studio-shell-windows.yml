@@ -47,7 +47,7 @@ jobs:
           if (-not (Test-Path $report)) { throw "Missing StudioShellSelfTest.txt" }
           $pass = @(Select-String -Path $report -Pattern '^PASS:').Count
           $fail = @(Select-String -Path $report -Pattern '^FAIL:').Count
-          if ($pass -ne 57 -or $fail -ne 0) { throw "Expected 56 PASS and 0 FAIL; actual $pass PASS / $fail FAIL" }
+          if ($pass -ne 58 -or $fail -ne 0) { throw "Expected 58 PASS and 0 FAIL; actual $pass PASS / $fail FAIL" }
       - name: Upload real Studio WPF visual previews
         if: always()
         uses: actions/upload-artifact@v4

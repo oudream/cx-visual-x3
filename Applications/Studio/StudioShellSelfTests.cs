@@ -2795,6 +2795,49 @@ namespace CxVisual.Studio
                     Assert(window.StudioEngineeringRevision==rev,
                         "Ribbon模板/高级工具展开折叠修改了工程Revision");
                 });
+                CheckStep("S1视觉一体化圆角输入与Ribbon分组及活动菜单", () =>
+                {
+                    int before=window.StudioEngineeringRevision;
+                    TextBox search=window.StudioGlobalResourceSearch;
+                    search.ApplyTemplate();
+                    Border inputBorder=search.Template.FindName("StudioInputSurface",search) as Border;
+                    ScrollViewer contentHost=search.Template.FindName("PART_ContentHost",search)
+                        as ScrollViewer;
+                    Assert(inputBorder!=null&&inputBorder.CornerRadius.TopLeft>=6&&
+                        contentHost!=null,"圆角输入框未保留真实TextBox编辑部件");
+                    search.Text="中文ABC";
+                    search.Select(2,3);
+                    Assert(search.SelectedText=="ABC"&&
+                        window.StudioResourceSearch.Text=="中文ABC",
+                        "圆角输入模板丢失文本选择或旧MEM树过滤");
+                    search.Text="";
+                    window.OpenStudioDocument("doc.visual");
+                    Button selectedMenu=window.StudioDynamicMenus.Children.OfType<Button>()
+                        .FirstOrDefault(b=>Convert.ToString(b.Content)=="绘图");
+                    Assert(selectedMenu!=null&&selectedMenu.BorderThickness.Bottom>=2,
+                        "绘图动态菜单缺选中底线");
+                    Button action=window.StudioRibbonActions.Children.OfType<Button>()
+                        .FirstOrDefault(b=>Convert.ToString(b.Content)=="矩形");
+                    Assert(action!=null,"圆角Ribbon更改后原矩形Owner命令不可发现");
+                    action.ApplyTemplate();
+                    Border iconBox=action.Template.FindName("StudioRibbonIconBox",action) as Border;
+                    Assert(iconBox!=null&&iconBox.CornerRadius.TopLeft>=6&&
+                        window.StudioRibbonActions.Children.OfType<Border>().Count()>=2&&
+                        window.StudioRibbonGroupCaptions!=null,
+                        "Ribbon图标框或基础/路径/文本分组竖线缺失");
+                    window.OpenStudioDocument("doc.flow");
+                    Assert(window.StudioDynamicMenus.Children.OfType<Button>()
+                        .Any(b=>Convert.ToString(b.Content)=="节点"),
+                        "流程工作台菜单切换后无法发现节点命令");
+                    window.ApplyStudioTheme(true);
+                    Assert(window.StudioDarkTheme&&
+                        ((SolidColorBrush)Application.Current.Resources["StudioTextBrush"])
+                            .Color.R>150,
+                        "深色主题文字没有足够的基础亮度");
+                    window.ApplyStudioTheme(false);
+                    Assert(window.StudioEngineeringRevision==before,
+                        "纯视觉/搜索/主题操作修改了MEM工程Revision");
+                });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;
             }

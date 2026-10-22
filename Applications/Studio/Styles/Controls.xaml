@@ -73,7 +73,7 @@
     <!-- 真实Owner Command仍在Button上，模板只增加图标与两行视觉层次。 -->
     <Style x:Key="StudioRibbonActionStyle" TargetType="{x:Type Button}" BasedOn="{StaticResource {x:Type Button}}">
         <Setter Property="MinWidth" Value="79"/>
-        <Setter Property="Height" Value="62"/>
+        <Setter Property="Height" Value="69"/>
         <Setter Property="Margin" Value="3,3"/>
         <Setter Property="Padding" Value="6,4"/>
         <Setter Property="BorderThickness" Value="0"/>
@@ -88,13 +88,18 @@
                             BorderThickness="{TemplateBinding BorderThickness}"
                             Padding="{TemplateBinding Padding}">
                         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                            <Path Data="{Binding Content, RelativeSource={RelativeSource TemplatedParent},
-                                                 Converter={StaticResource StudioRibbonGlyphConverter}}"
-                                  Height="21" Width="21" Stretch="Uniform" Margin="0,0,0,4"
-                                  StrokeThickness="1.75" StrokeStartLineCap="Round"
-                                  StrokeEndLineCap="Round" StrokeLineJoin="Round"
-                                  Stroke="{DynamicResource StudioAccentBrush}" Fill="Transparent"
-                                  HorizontalAlignment="Center"/>
+                            <Border x:Name="StudioRibbonIconBox" Width="39" Height="35"
+                                    CornerRadius="6" Margin="0,0,0,4"
+                                    BorderThickness="1" BorderBrush="{DynamicResource StudioBorderBrush}"
+                                    Background="{DynamicResource StudioCardTintBrush}">
+                                <Path Data="{Binding Content, RelativeSource={RelativeSource TemplatedParent},
+                                                    Converter={StaticResource StudioRibbonGlyphConverter}}"
+                                      Height="21" Width="21" Stretch="Uniform"
+                                      StrokeThickness="1.65" StrokeStartLineCap="Round"
+                                      StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                      Stroke="{DynamicResource StudioAccentBrush}" Fill="Transparent"
+                                      HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
                             <ContentPresenter Content="{TemplateBinding Content}"
                                               HorizontalAlignment="Center"
                                               RecognizesAccessKey="True"/>
@@ -106,6 +111,12 @@
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
                             <Setter TargetName="RibbonTile" Property="Background" Value="{DynamicResource StudioSelectionBrush}"/>
+                            <Setter TargetName="StudioRibbonIconBox" Property="BorderBrush"
+                                    Value="{DynamicResource StudioAccentBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="StudioRibbonIconBox" Property="BorderBrush"
+                                    Value="{DynamicResource StudioAccentBrush}"/>
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Opacity" Value="0.45"/>
@@ -118,18 +129,51 @@
 
     <Style TargetType="{x:Type TextBlock}">
         <Setter Property="Foreground" Value="{DynamicResource StudioTextBrush}"/>
+        <Setter Property="TextOptions.TextFormattingMode" Value="Display"/>
+        <Setter Property="TextOptions.TextRenderingMode" Value="ClearType"/>
     </Style>
+    <!-- 标准PART_ContentHost保持IME、Caret、Selection、绑定与UIA；圆角只属于视觉模板。 -->
     <Style TargetType="{x:Type TextBox}">
+        <Setter Property="MinHeight" Value="30"/>
         <Setter Property="Background" Value="{DynamicResource StudioPanelBrush}"/>
         <Setter Property="Foreground" Value="{DynamicResource StudioTextBrush}"/>
         <Setter Property="BorderBrush" Value="{DynamicResource StudioBorderBrush}"/>
         <Setter Property="BorderThickness" Value="1"/>
-        <Setter Property="Padding" Value="7,5"/>
-        <Style.Triggers>
-            <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                <Setter Property="BorderBrush" Value="{DynamicResource StudioAccentBrush}"/>
-            </Trigger>
-        </Style.Triggers>
+        <Setter Property="Padding" Value="9,5"/>
+        <Setter Property="SelectionBrush" Value="{DynamicResource StudioSelectionBrush}"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type TextBox}">
+                    <Border x:Name="StudioInputSurface" CornerRadius="6" SnapsToDevicePixels="True"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            Padding="{TemplateBinding Padding}">
+                        <ScrollViewer x:Name="PART_ContentHost" Focusable="False"
+                                      HorizontalScrollBarVisibility="Hidden"
+                                      VerticalScrollBarVisibility="Hidden"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="StudioInputSurface" Property="BorderBrush"
+                                    Value="{DynamicResource StudioAccentBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                            <Setter TargetName="StudioInputSurface" Property="BorderBrush"
+                                    Value="{DynamicResource StudioAccentBrush}"/>
+                            <Setter TargetName="StudioInputSurface" Property="BorderThickness" Value="1.5"/>
+                        </Trigger>
+                        <Trigger Property="Validation.HasError" Value="True">
+                            <Setter TargetName="StudioInputSurface" Property="BorderBrush" Value="#D64242"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.55"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
     <Style TargetType="{x:Type ComboBox}">
         <Setter Property="Background" Value="{DynamicResource StudioPanelBrush}"/>
