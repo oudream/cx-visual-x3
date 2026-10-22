@@ -59,6 +59,15 @@ jobs:
             Output/Release/x64/Studio-02-HMI-Light.png
             Output/Release/x64/Studio-03-Flow-Light.png
             Output/Release/x64/Studio-04-Home-Dark.png
+      # 原稿单独打包；与真实WPF截图分开，便于逐页视觉差异审查。
+      - name: Upload approved Studio 00-09 design references
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Studio-Reference-Design-00-09
+          if-no-files-found: error
+          path: |
+            DOCS/界面设计/*.png
       - name: Guard architecture dependencies
         shell: pwsh
         run: |

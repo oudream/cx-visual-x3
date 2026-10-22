@@ -19,4 +19,15 @@
         <Setter Property="Foreground" Value="{DynamicResource StudioTextBrush}"/>
         <Setter Property="BorderBrush" Value="{DynamicResource StudioBorderBrush}"/>
     </Style>
+    <!-- 深色VS主题必须覆盖TreeView原生白底，资源树只投影MEM，不改工程数据。 -->
+    <Style TargetType="TreeView">
+        <Setter Property="Background" Value="{DynamicResource StudioPanelBrush}"/>
+        <Setter Property="Foreground" Value="{DynamicResource StudioTextBrush}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource StudioBorderBrush}"/>
+        <Setter Property="BorderThickness" Value="0"/>
+    </Style>
+    <Style TargetType="TreeViewItem">
+        <Setter Property="Foreground" Value="{DynamicResource StudioTextBrush}"/>
+        <Setter Property="Background" Value="Transparent"/>
+    </Style>
 </ResourceDictionary>
