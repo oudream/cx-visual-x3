@@ -28,6 +28,8 @@ namespace CxVisual.TestCenter.UI
         private readonly TCTTestCatalog _catalog = TCTRegistration.CreateCatalog(includeNUnit: true);
         private readonly TCTTestExecutionCoordinator _coordinator = new TCTTestExecutionCoordinator();
         private readonly TCTTestRibbonController _ribbon = new TCTTestRibbonController();
+        private TCTWorkspaceRegistry _workspaces;
+        private ITCTWorkspaceFrame _currentFrame;
         private CancellationTokenSource _cancel;
         private TCTTestRunSummary _lastRun;
         private TCTTestRunSummary _displayedRun;
@@ -39,7 +41,18 @@ namespace CxVisual.TestCenter.UI
         public TCTMainWindow()
         {
             InitializeComponent();
+            _workspaces = TCTWorkspaceRegistry.CreateDefaults(id =>
+            {
+                TCTWorkspaceRootFrame root = new TCTWorkspaceRootFrame(
+                    _workspaces, id, _catalog.Cases.Count);
+                root.OpenRequested += child => OpenRegisteredWorkspace(_workspaces.Find(child));
+                return root;
+            });
             Explorer.Bind(_catalog);
+            Explorer.BindWorkspaces(_workspaces);
+            Explorer.WorkspaceSelected += OpenRegisteredWorkspace;
+            DocumentHost.WorkspaceActivated += OnWorkspaceActivated;
+            Closed += (sender, args) => DocumentHost.CloseAllWorkspaces();
             DocumentHost.Overview.Update(_catalog, null, null);
             DocumentHost.Overview.RunAllRequested += OnRunAll;
             DocumentHost.Overview.RunSelectedRequested += OnRunSelected;
@@ -61,9 +74,10 @@ namespace CxVisual.TestCenter.UI
             History.RerunRequested += async ids => await RunAsync(false, ids);
             DocumentHost.ObservationSelected += observation => Inspector.ShowObservation(observation);
             DocumentHost.ObjectSelected += (objectId, details) => Inspector.ShowObject(objectId, details);
-            RibbonTray.ToolBars.Add(_ribbon.Build(OnRunAll, OnRunSelected, OnCancel, OnExport,
+            AutoActionHost.Children.Add(_ribbon.BuildSideActions(
+                OnRunAll, OnRunSelected, OnCancel, OnExport,
                 OnRerunFailed, OnCopyTestId, OnModeSelected));
-            RibbonTray.ToolBars.Add(_ribbon.BuildContext(OnModeSelected,
+            AutoActionHost.Children.Add(_ribbon.BuildSideContexts(OnModeSelected,
                 () => Inspector.FocusAssertions(), () => Inspector.FocusSource(),
                 () => ActivateDockPanel("test.history"), () => ActivateDockPanel("test.diff")));
             _ribbon.SetContext(null);
@@ -92,6 +106,75 @@ namespace CxVisual.TestCenter.UI
                 " 个真实测试用例。默认独立进程隔离；Graph/Channel/Runtime未接入的类型不会伪装通过。";
         }
 
+        private void OpenRegisteredWorkspace(TCTWorkspaceDescriptor descriptor)
+        {
+            if (descriptor == null) return;
+            if (descriptor.Factory == null)
+            {
+                StatusText.Text = descriptor.Title + " · Unsupported：没有真实专业Frame工厂，未打开虚构页面";
+                return;
+            }
+            try
+            {
+                DocumentHost.OpenWorkspace(descriptor);
+                WorkspaceTitle.Text = descriptor.Title;
+                StatusText.Text = descriptor.Title + " · 已打开注册工作区（非自动Passed）";
+            }
+            catch (Exception error)
+            {
+                StatusText.Text = descriptor.WorkspaceId + " · Frame创建失败：" + error.Message;
+            }
+        }
+        private void OnWorkspaceActivated(TCTWorkspaceDescriptor descriptor)
+        {
+            if (_currentFrame != null) _currentFrame.StateChanged -= RefreshWorkspaceCommands;
+            _currentFrame = null;
+            ManualActionHost.Children.Clear();
+            if (descriptor == null)
+            {
+                AutoActionHost.Visibility = Visibility.Visible;
+                ManualActionHost.Visibility = Visibility.Collapsed;
+                return;
+            }
+            AutoActionHost.Visibility = Visibility.Collapsed;
+            ManualActionHost.Visibility = Visibility.Visible;
+            Explorer.SelectWorkspace(descriptor.WorkspaceId);
+            ITCTWorkspaceFrame frame = (DocumentHost.Content as TabControl)
+                ?.SelectedItem is TabItem ? ((TabItem)((TabControl)DocumentHost.Content).SelectedItem)
+                .Content as ITCTWorkspaceFrame : null;
+            _currentFrame = frame;
+            if (_currentFrame != null) _currentFrame.StateChanged += RefreshWorkspaceCommands;
+            RefreshWorkspaceCommands();
+            WorkspaceTitle.Text = descriptor.Title;
+        }
+        private void RefreshWorkspaceCommands()
+        {
+            ManualActionHost.Children.Clear();
+            if (_currentFrame == null || !_currentFrame.Commands.Any())
+            {
+                ManualActionHost.Children.Add(new TextBlock {
+                    Text = "本分类无主动设备操作；可从左侧注册树或中央列表打开工具。",
+                    Foreground = Brushes.SlateGray, TextWrapping = TextWrapping.Wrap });
+                return;
+            }
+            foreach (TCTWorkspaceAction action in _currentFrame.Commands)
+            {
+                Button button = new Button {
+                    Content = action.Label, IsEnabled = action.CanExecute(),
+                    Margin = new Thickness(3, 2, 3, 7), Padding = new Thickness(9, 6, 9, 6),
+                    Background = Brushes.AliceBlue, BorderBrush = Brushes.LightSteelBlue };
+                System.Windows.Automation.AutomationProperties.SetAutomationId(button,
+                    "TCT.Manual.Action." + action.Id);
+                button.Click += (sender, args) =>
+                {
+                    if (!action.CanExecute()) return;
+                    try { action.Execute(); }
+                    catch (Exception error) { StatusText.Text = "人工操作失败：" + error.Message; }
+                    RefreshWorkspaceCommands();
+                };
+                ManualActionHost.Children.Add(button);
+            }
+        }
         private void OnModeSelected(string mode)
         {
             DocumentHost.ShowMode(mode);
@@ -102,6 +185,8 @@ namespace CxVisual.TestCenter.UI
 
         private void OnTestSelected(ITCTTestCase test)
         {
+            AutoActionHost.Visibility = Visibility.Visible;
+            ManualActionHost.Visibility = Visibility.Collapsed;
             _ribbon.SetContext(test);
             WorkspaceTitle.Text = test == null ? "测试主界面 / Overview" :
                 test.Descriptor.Aspect + " / " + test.Descriptor.Group + " / " + test.Descriptor.Name;
@@ -288,7 +373,10 @@ namespace CxVisual.TestCenter.UI
         {
             _darkTheme = dark;
             HeaderBand.Background = dark ? new SolidColorBrush(Color.FromRgb(34, 38, 44)) :
-                new SolidColorBrush(Color.FromRgb(23, 54, 93));
+                new SolidColorBrush(Color.FromRgb(242, 246, 251));
+            ProductNameText.Foreground = dark ? Brushes.WhiteSmoke :
+                new SolidColorBrush(Color.FromRgb(36, 68, 103));
+            ProjectLabelText.Foreground = dark ? Brushes.Gainsboro : Brushes.SlateGray;
             BreadcrumbBand.Background = dark ? new SolidColorBrush(Color.FromRgb(56, 63, 74)) :
                 new SolidColorBrush(Color.FromRgb(219, 234, 248));
             WorkspaceTitle.Foreground = dark ? Brushes.WhiteSmoke :
@@ -298,8 +386,7 @@ namespace CxVisual.TestCenter.UI
             TestDock.Theme = dark ? (Theme)new Vs2013DarkTheme() : new Vs2013LightTheme();
             Background = dark ? new SolidColorBrush(Color.FromRgb(48, 52, 59)) :
                 new SolidColorBrush(Color.FromRgb(238, 243, 249));
-            RibbonTray.Background = dark ? new SolidColorBrush(Color.FromRgb(63, 69, 79)) :
-                new SolidColorBrush(Color.FromRgb(224, 237, 249));
+
             StatusText.Text = "Theme " + (dark ? "VS Dark" : "Light") +
                 " · 显示主题不影响测试结果";
         }

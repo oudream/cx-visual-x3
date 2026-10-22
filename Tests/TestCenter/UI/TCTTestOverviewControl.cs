@@ -68,7 +68,7 @@ namespace CxVisual.TestCenter.UI
                 () => { if (HistoryRequested != null) HistoryRequested(); }));
             actions.Children.Add(ActionCard("▣", "查看测试报告", "从真实执行结果生成报告", false,
                 () => { if (ReportRequested != null) ReportRequested(); }));
-            content.Children.Add(actions);
+            // 顶部/中部不再复制命令，统一由右侧OperationCenter实际提供。
             UniformGrid stats = new UniformGrid { Columns = 4, Margin = new Thickness(0, 0, 0, 17) };
             stats.Children.Add(Metric("已发现用例", _discovered, Blue, "当前 Catalog · 非能力完成率"));
             stats.Children.Add(Metric("通过", _passed, Green, "当前显示 Run 的 Attempt"));

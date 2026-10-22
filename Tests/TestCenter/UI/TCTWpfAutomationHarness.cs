@@ -49,7 +49,7 @@ namespace CxVisual.TestCenter.UI
             AutomationElement root = AutomationElement.FromHandle(hwnd);
             if (root == null) throw new InvalidOperationException("Overview HWND unavailable");
             AutomationElement discovered = Find(root, "TCT.Overview.Discovered");
-            AutomationElement action = Find(root, "TCT.Overview.Action.运行选中测试");
+            AutomationElement action = Find(root, "TCT.RunSelected");
             if (action.GetCurrentPattern(InvokePattern.Pattern) == null)
                 throw new InvalidOperationException("Overview action lacks real InvokePattern");
             // UIAutomation COM属性必须留在UIA工作线程读取；放进Dispatcher会自锁至超时。

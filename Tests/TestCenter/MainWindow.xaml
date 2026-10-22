@@ -25,20 +25,20 @@
   <Grid.RowDefinitions>
    <RowDefinition Height="45"/>
    <RowDefinition Height="31"/>
-   <RowDefinition Height="Auto"/>
+   <RowDefinition Height="0"/>
    <RowDefinition Height="34"/>
    <RowDefinition Height="*"/>
    <RowDefinition Height="29"/>
   </Grid.RowDefinitions>
-  <Border x:Name="HeaderBand" Grid.Row="0" Background="#17365D" Padding="13,8">
+  <Border x:Name="HeaderBand" Grid.Row="0" Background="#F2F6FB" Padding="13,8">
    <DockPanel>
     <Border Background="#237CCB" CornerRadius="3" Padding="6,2" Margin="0,0,11,0">
      <TextBlock Text="Cx" Foreground="White" FontSize="17" FontWeight="Bold"/>
     </Border>
-    <TextBlock Text="CxVisual 工业可视化组态平台  ·  Platform Test Center"
-     Foreground="White" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center"/>
-    <TextBlock Text="测试工程：CxVisual.TestCenter  ·  .NET Framework 4.8" DockPanel.Dock="Right"
-     Foreground="#D5E5F9" FontSize="12" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="30,0,0,0"/>
+    <TextBlock x:Name="ProductNameText" Text="CxVisual 工业可视化组态平台  ·  Platform Test Center"
+     Foreground="#244467" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center"/>
+    <TextBlock x:Name="ProjectLabelText" Text="测试工程：CxVisual.TestCenter  ·  .NET Framework 4.8" DockPanel.Dock="Right"
+     Foreground="#6D85A0" FontSize="12" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="30,0,0,0"/>
    </DockPanel>
   </Border>
   <Menu Grid.Row="1" Background="#F4F7FC" Padding="7,0">
@@ -62,8 +62,8 @@
     <MenuItem x:Name="MenuThemeDark" Header="深色主题"/>
    </MenuItem>
   </Menu>
-  <ToolBarTray x:Name="RibbonTray" Grid.Row="2" Background="#E0EDF9"/>
-  <Border x:Name="BreadcrumbBand" Grid.Row="3" Background="#DBEAF8" BorderBrush="#C4D8ED" BorderThickness="0,1,0,1">
+
+  <Border x:Name="BreadcrumbBand" Grid.Row="3" Background="#F2F6FB" BorderBrush="#C4D8ED" BorderThickness="0,1,0,1">
    <DockPanel Margin="15,0" LastChildFill="True">
     <TextBlock x:Name="EnvironmentText" DockPanel.Dock="Right" Text="环境：本地  ·  SIMULATE  ·  Target: .NET Framework 4.8"
      Foreground="#637D98" FontSize="12" VerticalAlignment="Center" Margin="16,0,0,0"/>
@@ -88,9 +88,20 @@
        </dock:LayoutDocument>
       </dock:LayoutDocumentPane>
       <dock:LayoutAnchorablePane DockWidth="330">
-       <dock:LayoutAnchorable ContentId="test.inspector" Title="测试属性 / 断言"
+       <dock:LayoutAnchorable ContentId="test.inspector" Title="操作中心"
          CanClose="False" CanFloat="True" CanHide="True" CanAutoHide="True">
-        <ui:TCTTestInspectorControl x:Name="Inspector"/>
+        <DockPanel Background="#FFFFFF">
+         <ScrollViewer DockPanel.Dock="Top" MaxHeight="250"
+            VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Margin="9,8,7,6">
+           <TextBlock Text="操作中心 / Operations" FontWeight="SemiBold"
+             Foreground="#244467" FontSize="15" Margin="4,3,2,10"/>
+           <StackPanel x:Name="AutoActionHost"/>
+           <StackPanel x:Name="ManualActionHost" Visibility="Collapsed"/>
+          </StackPanel>
+         </ScrollViewer>
+         <ui:TCTTestInspectorControl x:Name="Inspector"/>
+        </DockPanel>
        </dock:LayoutAnchorable>
       </dock:LayoutAnchorablePane>
      </dock:LayoutPanel>
