@@ -642,3 +642,9 @@ CI：\`.github/workflows/unified-runtime-windows.yml\` 记录必须对应本轮�
 - 原`MOLStepPolicy`增加可选`ExecutionGroup`字符串，保留重试/超时等已有策略属性；原V2 `MOLWiringCodec` 的`Policy`可选`group`属性完成向后兼容保存/读取，旧V2有效载荷没有该属性时仍按未配置处理。不构建第二份工程组树。
 - 原`MOCFlowBuilder.SetExecutionGroup(Guid,string)`按原MEM事务操作节点Policy，清除空值/无其他策略后删除记录；MOC普通节点、嵌套V2 Content编译传入原`MRKStepCompileRequest.executionGroup`，实际Step/WholeFlow/Stage容量仍由原MRKExecutionGroups拥有，不从节点中复制。
 - ArchitectureSmoke新增`R08_EngineeringStageGroupIdentitySurvivesBuildAndReload`：真MEM创建/编辑/保存重开，V2Codec身份与MOC Plan组名一致，真实MRK Stage Flow运行并释放许可、非法组ID事务零修改、清除与Undo恢复。Stage配额工程级全定义和Studio可视编辑仍是R08下一增量，不可凭这次组ID持久化宣称完整编辑器已完成。
+
+
+### R08 MOC编译自测首次Windows构建失败与修复（2026-10-22）
+
+- 固定SHA `414f72ef74e200c5a8fd8b4f6908be232e244a54` 首次Windows Runtime [39719145827](https://github.com/oudream/cx-visual-x3/actions/runs/39719145827)、工程组织 [39719145808](https://github.com/oudream/cx-visual-x3/actions/runs/39719145808) 因测试错将`MOCBuildResult.Plan`（类型`MOCCompiledPlan`）直接传给MRKEngine并读取Steps，产生CS1061/CS1503。旧MOCCompiledPlan真正可执行计划是`build.Plan.Plan`。仅修正测试取值路径，不弱化保存重开、真实Stage执行、Undo及非法组身份反例。
+- 此错误是实际Windows CI红灯，不能将上一提交标为编译通过；须在本修复SHA重新取得Windows x64实际成功证据。

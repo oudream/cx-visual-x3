@@ -2330,15 +2330,15 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         (ctx,ct)=>Task.FromResult((object)7));
                     var build=new MOCBuildService().Build(
                         reopened.GetSnapshot(),page.RootContent.Id,resolver);
-                    Check(build.Succeeded&&build.Plan.Steps.Count==1&&
-                        build.Plan.Steps[0].ExecutionGroup=="vision-stage",
+                    Check(build.Succeeded&&build.Plan.Plan.Steps.Count==1&&
+                        build.Plan.Plan.Steps[0].ExecutionGroup=="vision-stage",
                         "R08 MOC编译未将原工程Stage组ID传入MRK Plan");
                     var engine=new MRKExecutionEngine(new FCRWorkerOptions(1,4),
                         groups:new[]{new MRKExecutionGroupDefinition(
                             "vision-stage",1,1,MRKExecutionGroupScope.Stage)});
                     try
                     {
-                        MRKFlowResult result=engine.StartFlow(build.Plan).Completion
+                        MRKFlowResult result=engine.StartFlow(build.Plan.Plan).Completion
                             .GetAwaiter().GetResult();
                         Check(result.State==MRKFlowState.Completed,
                             "R08工程Stage配置未被原MRK真实执行");
