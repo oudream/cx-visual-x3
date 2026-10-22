@@ -97,7 +97,7 @@ CxVisual.Unified/
 
 ## Exactly which projects have behavior in this sample?
 
-- `CxVisual.Foundation.Core`: pure stable identifier / numeric guard.
+- `CxVisual.Foundation.Core`: F01 `FOIStableId` 非空 Guid 稳定身份、解析与值语义；不再保留预览期的 `CxStableId` / `CxNumericGuard`。
 - `CxVisual.Foundation.Geometry`: rectangle and 2D affine operations.
 - `CxVisual.Foundation.Infrastructure`: categorized instance-based log sinks.
 - `CxVisual.Mechanism.Core`: **canonical engineering tree, atomic batch, revision conflict and XML roundtrip**.

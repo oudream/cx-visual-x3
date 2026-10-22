@@ -20,9 +20,19 @@ namespace CxVisual.Tests.FoundationSmoke
                     Console.WriteLine("PASS F19 concurrency tests");
                     return 0;
                 }
-                CxStableId id = CxStableId.NewId();
-                if (id.Value == Guid.Empty || !id.Equals(new CxStableId(id.Value)))
+                FOIStableId id = FOIStableId.NewId();
+                FOIStableId parsed;
+                if (id.Value == Guid.Empty ||
+                    !id.Equals(new FOIStableId(id.Value)) ||
+                    !FOIStableId.TryParse(id.ToString(), out parsed) ||
+                    !parsed.Equals(id))
                     throw new InvalidOperationException("Identity value semantics failed");
+                if (FOIStableId.TryParse(Guid.Empty.ToString(), out parsed))
+                    throw new InvalidOperationException("Empty identity was accepted");
+                try { new FOIStableId(Guid.Empty); throw new InvalidOperationException("Empty identity was accepted"); }
+                catch (ArgumentException) { }
+                try { var invalidId = default(FOIStableId).Value; throw new InvalidOperationException("Uninitialized identity was accepted"); }
+                catch (InvalidOperationException ex) { if (ex.Message != "Uninitialized identity") throw; }
                 FGERect2D r = new FGERect2D(10, 20, 20, 30);
                 if (!r.Contains(new FGEPoint2D(15, 25)) || r.Contains(new FGEPoint2D(50, 25)))
                     throw new InvalidOperationException("Hit testing failed");
@@ -30,9 +40,6 @@ namespace CxVisual.Tests.FoundationSmoke
                     throw new InvalidOperationException("Rectangle intersection failed");
                 FGEPoint2D t = new FGETransform2D(1, 0, 0, 1, 30, 40).Transform(new FGEPoint2D(2, 4));
                 if (t.X != 32 || t.Y != 44) throw new InvalidOperationException("Transform failed");
-                try { CxNumericGuard.RequireFinite(double.NaN, "value");
-                    throw new InvalidOperationException("NaN check was not enforced"); }
-                catch (ArgumentOutOfRangeException) { }
                 FLDMemoryLogSink logs = new FLDMemoryLogSink();
                 logs.Write(new FLDLogRecord("Foundation", "Smoke", "Checked"));
                 if (logs.Count != 1 || logs.Get(0).Category != "Foundation")
