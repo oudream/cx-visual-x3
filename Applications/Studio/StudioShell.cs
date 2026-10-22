@@ -118,6 +118,10 @@ namespace CxVisual.Studio
                 _studioViews[item.ContentId] = item.Content;
             }
             _legacyRibbonActions.AddRange(StudioRibbonActions.Children.Cast<UIElement>());
+            // 初次加载时Ribbon尚未完成Measure；Loaded后计算组名位置。
+            StudioRibbonActions.Loaded+=(sender,args)=>Dispatcher.BeginInvoke(
+                new Action(RenderStudioRibbonGroupCaptions),
+                System.Windows.Threading.DispatcherPriority.ContextIdle);
             PreviewKeyDown+=OnStudioRegisteredShortcut;
             ApplyStudioTheme(false);
             RefreshStudioMenus();
