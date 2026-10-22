@@ -173,7 +173,8 @@ jobs:
                              'TestCenter-03-Object.png','TestCenter-04-Dark.png',
                               'TestCenter-05-Graph.png','TestCenter-06-Runtime.png',
                               'TestCenter-07-Channel.png',
-                              'TestCenter-08-RuntimeJournal.png')) {
+                              'TestCenter-08-RuntimeJournal.png',
+                              'TestCenter-09-ManualRoot.png','TestCenter-10-ManualChannel.png')) {
               if (-not (Test-Path (Join-Path (Split-Path $screenshot) $name))) {
                   throw "Missing real WPF screenshot: $name"
               }

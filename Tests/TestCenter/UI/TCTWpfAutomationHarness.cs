@@ -43,6 +43,84 @@ namespace CxVisual.TestCenter.UI
             window.MenuThemeDark.RaiseEvent(new RoutedEventArgs(
                 System.Windows.Controls.MenuItem.ClickEvent, window.MenuThemeDark));
             SaveScreenshot(window, "TestCenter-04-Dark.png");
+            window.MenuThemeLight.RaiseEvent(new RoutedEventArgs(
+                System.Windows.Controls.MenuItem.ClickEvent, window.MenuThemeLight));
+            await Task.Run(() => InteractManualRoot(hwnd, window));
+            SaveScreenshot(window, "TestCenter-09-ManualRoot.png");
+            await Task.Run(() => InteractManualChannel(hwnd, window));
+            SaveScreenshot(window, "TestCenter-10-ManualChannel.png");
+            window.Dispatcher.Invoke(new Action(() => {
+                if (!window.DocumentHost.CloseWorkspace("manual.channel"))
+                    throw new InvalidOperationException("Manual Channel tab could not close/dispose");
+            }));
+        }
+        private static void InteractManualRoot(IntPtr hwnd, TCTMainWindow window)
+        {
+            AutomationElement root = AutomationElement.FromHandle(hwnd);
+            ValuePattern search = Find(root, "TCT.Explorer.Search")
+                .GetCurrentPattern(ValuePattern.Pattern) as ValuePattern;
+            if (search == null) throw new InvalidOperationException("Workspace search unavailable");
+            search.SetValue("");
+            SelectionItemPattern select = Find(root, "TCT.Workspace.manual.root")
+                .GetCurrentPattern(SelectionItemPattern.Pattern) as SelectionItemPattern;
+            if (select == null) throw new InvalidOperationException("Manual root does not select");
+            select.Select();
+            bool visible = false;
+            window.Dispatcher.Invoke(new Action(() =>
+            {
+                System.Windows.Controls.TabControl tabs =
+                    window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                visible = tabs != null && tabs.Items.OfType<System.Windows.Controls.TabItem>()
+                    .Any(t => t.Content is TCTWorkspaceRootFrame &&
+                        ((TCTWorkspaceRootFrame)t.Content).WorkspaceId == "manual.root");
+            }));
+            if (!visible) throw new InvalidOperationException("Root registration did not open a real page");
+            if (Find(root, "TCT.Workspace.Entry.manual.channel")
+                .GetCurrentPattern(InvokePattern.Pattern) == null)
+                throw new InvalidOperationException("Channel entry was not interactive");
+        }
+        private static void InteractManualChannel(IntPtr hwnd, TCTMainWindow window)
+        {
+            AutomationElement root = AutomationElement.FromHandle(hwnd);
+            SelectionItemPattern selected = Find(root, "TCT.Workspace.manual.channel")
+                .GetCurrentPattern(SelectionItemPattern.Pattern) as SelectionItemPattern;
+            if (selected == null) throw new InvalidOperationException("Channel registry leaf cannot select");
+            selected.Select();
+            InvokePattern connect = Find(root, "TCT.Manual.Action.connect")
+                .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
+            if (connect == null) throw new InvalidOperationException("Channel Connect has no InvokePattern");
+            connect.Invoke();
+            InvokePattern send = Find(root, "TCT.Manual.Action.send")
+                .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
+            if (send == null) throw new InvalidOperationException("Channel Send has no InvokePattern");
+            send.Invoke();
+            bool verified = false;
+            window.Dispatcher.Invoke(new Action(() =>
+            {
+                System.Windows.Controls.TabControl tabs =
+                    window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                TCTManualChannelFrame page = tabs == null ? null : tabs.Items
+                    .OfType<System.Windows.Controls.TabItem>().Select(t => t.Content)
+                    .OfType<TCTManualChannelFrame>().FirstOrDefault();
+                verified = page != null && page.IsConnected && page.FrameCount >= 2;
+            }));
+            if (!verified) throw new InvalidOperationException(
+                "Manual Virtual Channel did not capture real production TX/RX");
+            InvokePattern disconnect = Find(root, "TCT.Manual.Action.disconnect")
+                .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
+            if (disconnect == null) throw new InvalidOperationException("Disconnect unavailable");
+            disconnect.Invoke();
+            bool closed = false;
+            window.Dispatcher.Invoke(new Action(() =>
+            {
+                System.Windows.Controls.TabControl tabs =
+                    window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                TCTManualChannelFrame page = tabs == null ? null : tabs.Items
+                    .OfType<System.Windows.Controls.TabItem>().Select(t => t.Content)
+                    .OfType<TCTManualChannelFrame>().FirstOrDefault();
+                closed = page != null && !page.IsConnected && page.FrameCount >= 2;
+            }));
+            if (!closed) throw new InvalidOperationException("Manual disconnect did not close Owner");
         }
         private static void VerifyOverview(IntPtr hwnd, TCTMainWindow window)
         {
