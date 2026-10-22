@@ -1198,6 +1198,9 @@ namespace CxVisual.TestCenter.UI
     public sealed class TCTTestDocumentHostControl : UserControl
     {
         private readonly TabControl _tabs = new TabControl();
+        private readonly Dictionary<string, TabItem> _workspaceTabs =
+            new Dictionary<string, TabItem>(StringComparer.Ordinal);
+        public event Action<TCTWorkspaceDescriptor> WorkspaceActivated;
         private readonly TCTTestOverviewControl _overview = new TCTTestOverviewControl();
         public TCTTestOverviewControl Overview { get { return _overview; } }
         private readonly List<ITCTTestViewer> _viewers = new List<ITCTTestViewer> {
@@ -1232,13 +1235,60 @@ namespace CxVisual.TestCenter.UI
                 if (ObjectSelected != null) ObjectSelected(id, details);
             };
             Content = _tabs;
+            _tabs.SelectionChanged += (sender, args) =>
+            {
+                if (!object.ReferenceEquals(args.OriginalSource, _tabs)) return;
+                TabItem current = _tabs.SelectedItem as TabItem;
+                if (WorkspaceActivated != null)
+                    WorkspaceActivated(current == null ? null : current.Tag as TCTWorkspaceDescriptor);
+            };
             Clear();
+        }
+        public UserControl OpenWorkspace(TCTWorkspaceDescriptor descriptor)
+        {
+            if (descriptor == null || descriptor.Factory == null)
+                throw new InvalidOperationException("Unsupported workspace factory");
+            TabItem tab;
+            if (!_workspaceTabs.TryGetValue(descriptor.WorkspaceId, out tab))
+            {
+                UserControl content = descriptor.Factory();
+                if (content == null) throw new InvalidOperationException(
+                    "Workspace factory returned null: " + descriptor.WorkspaceId);
+                tab = new TabItem { Header = descriptor.Title, Tag = descriptor, Content = content };
+                System.Windows.Automation.AutomationProperties.SetAutomationId(tab,
+                    "TCT.Workspace.Tab." + descriptor.WorkspaceId);
+                MenuItem close = new MenuItem { Header = "关闭工作区" };
+                close.Click += (sender, args) => CloseWorkspace(descriptor.WorkspaceId);
+                ContextMenu menu = new ContextMenu(); menu.Items.Add(close);
+                tab.ContextMenu = menu;
+                _workspaceTabs.Add(descriptor.WorkspaceId, tab);
+                _tabs.Items.Add(tab);
+            }
+            _tabs.SelectedItem = tab;
+            return (UserControl)tab.Content;
+        }
+        public bool CloseWorkspace(string id)
+        {
+            TabItem tab;
+            if (!_workspaceTabs.TryGetValue(id, out tab)) return false;
+            ITCTWorkspaceFrame frame = tab.Content as ITCTWorkspaceFrame;
+            if (frame != null) frame.OnWorkspaceClosed();
+            _tabs.Items.Remove(tab);
+            _workspaceTabs.Remove(id);
+            return true;
+        }
+        public void CloseAllWorkspaces()
+        {
+            foreach (string id in _workspaceTabs.Keys.ToArray())
+                CloseWorkspace(id);
         }
         public void Clear()
         {
+            TabItem[] saved = _workspaceTabs.Values.ToArray();
             _tabs.Items.Clear();
             foreach (ITCTTestViewer viewer in _viewers) viewer.Clear();
             _tabs.Items.Add(new TabItem { Header = "概览", Content = _overview });
+            foreach (TabItem workspace in saved) _tabs.Items.Add(workspace);
         }
         public string ActiveMode
         {
@@ -1301,7 +1351,9 @@ namespace CxVisual.TestCenter.UI
                     "TCT.Viewer." + viewer.Kind);
                 _tabs.Items.Add(tab);
             }
-            if (_tabs.Items.Count > 1) _tabs.SelectedIndex = 1;
+            TabItem firstViewer = _tabs.Items.OfType<TabItem>()
+                .FirstOrDefault(t => t.Content is ITCTTestViewer);
+            if (firstViewer != null) _tabs.SelectedItem = firstViewer;
         }
     }
 }
