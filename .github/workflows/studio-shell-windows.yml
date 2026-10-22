@@ -47,7 +47,18 @@ jobs:
           if (-not (Test-Path $report)) { throw "Missing StudioShellSelfTest.txt" }
           $pass = @(Select-String -Path $report -Pattern '^PASS:').Count
           $fail = @(Select-String -Path $report -Pattern '^FAIL:').Count
-          if ($pass -ne 54 -or $fail -ne 0) { throw "Expected 54 PASS and 0 FAIL; actual $pass PASS / $fail FAIL" }
+          if ($pass -ne 55 -or $fail -ne 0) { throw "Expected 55 PASS and 0 FAIL; actual $pass PASS / $fail FAIL" }
+      - name: Upload real Studio WPF visual previews
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Studio-WPF-Visual-Review
+          if-no-files-found: warn
+          path: |
+            Output/Release/x64/Studio-01-Home-Light.png
+            Output/Release/x64/Studio-02-HMI-Light.png
+            Output/Release/x64/Studio-03-Flow-Light.png
+            Output/Release/x64/Studio-04-Home-Dark.png
       - name: Guard architecture dependencies
         shell: pwsh
         run: |

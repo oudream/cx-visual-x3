@@ -7,6 +7,8 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Controls;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using CxVisual.Foundation.Infrastructure.Concurrency;
 using CxVisual.Mechanism.Runtime.Execution;
 using AvalonDock.Layout;
@@ -2679,6 +2681,26 @@ namespace CxVisual.Studio
                             "P1 Studio新工程标题",
                         "实际MEM工程重命名后顶部标题未实时更新");
                 });
+                CheckStep("S1界面设计真实WPF浅深主题和中央工作区截图", () =>
+                {
+                    int sourceRevision=window.StudioEngineeringRevision;
+                    string dir=Path.GetDirectoryName(report);
+                    string[] ids={"doc.home","doc.visual","doc.flow"};
+                    string[] names={"Studio-01-Home-Light.png",
+                        "Studio-02-HMI-Light.png","Studio-03-Flow-Light.png"};
+                    window.ApplyStudioTheme(false);
+                    for(int i=0;i<ids.Length;i++)
+                    {
+                        window.OpenStudioDocument(ids[i]);
+                        CaptureStudioWpf(window,Path.Combine(dir,names[i]));
+                    }
+                    window.OpenStudioDocument("doc.home");
+                    window.ApplyStudioTheme(true);
+                    CaptureStudioWpf(window,Path.Combine(dir,"Studio-04-Home-Dark.png"));
+                    window.ApplyStudioTheme(false);
+                    Assert(window.StudioEngineeringRevision==sourceRevision,
+                        "WPF界面截图或主题切换错误地修改了工程Revision");
+                });
                 Results.Add("NOTE: 浮动、自动隐藏鼠标操作、多显示器、100/150/200%DPI、Viewer互操作尚需Windows桌面人工验收。");
                 return true;
             }
@@ -2697,6 +2719,23 @@ namespace CxVisual.Studio
                 catch { /* 由CI检测缺失报告，并报告失败 */ }
                 if (File.Exists(temporary)) File.Delete(temporary);
             }
+        }
+
+        /// <summary>使用显示中的真实WPF Visual导出讨论稿，非设计图替代或人工DPI验收。</summary>
+        private static void CaptureStudioWpf(Window window,string path)
+        {
+            window.UpdateLayout();
+            double w=window.ActualWidth,h=window.ActualHeight;
+            if(w<800||h<600||double.IsNaN(w)||double.IsNaN(h))
+                throw new InvalidOperationException("Studio实际窗口尺寸不适合截图");
+            RenderTargetBitmap bitmap=new RenderTargetBitmap(
+                (int)Math.Ceiling(w),(int)Math.Ceiling(h),96,96,PixelFormats.Pbgra32);
+            bitmap.Render(window);
+            PngBitmapEncoder encoder=new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(bitmap));
+            using(FileStream stream=File.Create(path))encoder.Save(stream);
+            if(new FileInfo(path).Length<4096)
+                throw new InvalidOperationException("Studio WPF截图为空或不完整："+path);
         }
 
         /// <summary>专业SDK示例：四类工业资源只声明MPM语义类型，仍由MEM保存。</summary>
