@@ -11,4 +11,8 @@
     <SolidColorBrush x:Key="StudioSelectionBrush" Color="#DCEBFF"/>
     <SolidColorBrush x:Key="StudioPrimaryActionBrush" Color="#146FF4"/>
     <SolidColorBrush x:Key="StudioCardTintBrush" Color="#F3F8FF"/>
+    <LinearGradientBrush x:Key="StudioHeaderBrush" StartPoint="0,0" EndPoint="1,0">
+        <GradientStop Color="#E8F3FF" Offset="0"/>
+        <GradientStop Color="#F9FCFF" Offset="1"/>
+    </LinearGradientBrush>
 </ResourceDictionary>

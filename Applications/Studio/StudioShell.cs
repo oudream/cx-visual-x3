@@ -1097,6 +1097,13 @@ namespace CxVisual.Studio
             SetStudioColor("StudioSelectionBrush", dark ? "#354B68" : "#DCEBFF");
             SetStudioColor("StudioPrimaryActionBrush", dark ? "#236ED5" : "#146FF4");
             SetStudioColor("StudioCardTintBrush", dark ? "#333946" : "#F3F8FF");
+            Application.Current.Resources["StudioHeaderBrush"]=new LinearGradientBrush(
+                new GradientStopCollection{
+                    new GradientStop((Color)ColorConverter.ConvertFromString(
+                        dark?"#282B34":"#E8F3FF"),0),
+                    new GradientStop((Color)ColorConverter.ConvertFromString(
+                        dark?"#33353C":"#F9FCFF"),1)},
+                new Point(0,0),new Point(1,0));
         }
 
         private static void SetStudioColor(string key, string hex)

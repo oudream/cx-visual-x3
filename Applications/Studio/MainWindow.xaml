@@ -9,13 +9,8 @@
     <DockPanel LastChildFill="True">
         <!-- 应用与工程身份：动态取当前MEM项目，不再写死Demo_Project，也不展示假的搜索入口。 -->
         <Border DockPanel.Dock="Top" Padding="14,7"
+                Background="{DynamicResource StudioHeaderBrush}"
                 BorderBrush="{DynamicResource StudioBorderBrush}" BorderThickness="0,0,0,1">
-            <Border.Background>
-                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-                    <GradientStop Color="#E7F3FF" Offset="0"/>
-                    <GradientStop Color="#F8FBFF" Offset="1"/>
-                </LinearGradientBrush>
-            </Border.Background>
             <DockPanel LastChildFill="True">
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock Text="统一工程工作区" FontSize="11" Margin="0,0,12,0" VerticalAlignment="Center"
@@ -153,100 +148,228 @@
                     </dock:LayoutAnchorablePane>
                     <dock:LayoutDocumentPane>
                         <dock:LayoutDocument ContentId="doc.home" Title="主页" CanClose="True" CanFloat="True">
-                            <!-- 首轮界面呈现：工程总览 + 真正可操作的编辑入口，不构建第二份工程数据。 -->
-                            <ScrollViewer Background="{DynamicResource StudioBackgroundBrush}" VerticalScrollBarVisibility="Auto">
-                                <StackPanel x:Name="StudioHomeWorkArea" Margin="26">
-                                    <TextBlock Text="工程工作区" FontSize="12" FontWeight="SemiBold"
-                                               Foreground="{DynamicResource StudioAccentBrush}"/>
-                                    <TextBlock Text="项目总览" FontSize="27" FontWeight="SemiBold" Margin="0,4,0,5"/>
-                                    <TextBlock Text="在同一工程中管理资源、编辑图元、编排流程和配置专业能力。"
-                                               FontSize="13" Margin="0,0,0,16" TextWrapping="Wrap"/>
-                                    <Border Background="{DynamicResource StudioPanelBrush}"
-                                            BorderBrush="{DynamicResource StudioBorderBrush}" BorderThickness="1"
-                                            CornerRadius="9" Padding="18" Margin="0,0,0,15">
-                                        <StackPanel>
-                                            <DockPanel LastChildFill="True">
-                                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                                                    <Button Content="新建工程" Command="{Binding NewCommand}" Padding="13,7"/>
-                                                    <Button Content="打开工程" Command="{Binding LoadCommand}" Padding="13,7"/>
-                                                    <Button Content="保存工程" Command="{Binding SaveCommand}" Padding="13,7"/>
-                                                </StackPanel>
-                                                <StackPanel>
-                                                    <TextBlock Text="当前MEM工程" FontSize="11"
-                                                               Foreground="{DynamicResource StudioAccentBrush}"/>
-                                                    <TextBlock Text="{Binding StudioProjectTitle}" FontSize="19"
-                                                               FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
-                                                </StackPanel>
-                                            </DockPanel>
-                                            <Separator Margin="0,12,0,12"/>
-                                            <WrapPanel>
-                                                <StackPanel Width="160" Margin="0,0,14,4">
-                                                    <TextBlock Text="工程修订" FontSize="11"/>
-                                                    <TextBlock Text="{Binding Revision}" FontSize="19"
-                                                               Foreground="{DynamicResource StudioAccentBrush}"/>
-                                                </StackPanel>
-                                                <StackPanel Width="160" Margin="0,0,14,4">
-                                                    <TextBlock Text="图元数量" FontSize="11"/>
-                                                    <TextBlock Text="{Binding ElementCount}" FontSize="19"
-                                                               Foreground="{DynamicResource StudioAccentBrush}"/>
-                                                </StackPanel>
-                                                <StackPanel Width="165" Margin="0,0,14,4">
-                                                    <TextBlock Text="工程是否修改" FontSize="11"/>
-                                                    <TextBlock Text="{Binding IsDirty}" FontSize="19"
-                                                               Foreground="{DynamicResource StudioAccentBrush}"/>
-                                                </StackPanel>
-                                            </WrapPanel>
-                                        </StackPanel>
+
+                            <!-- DOCS/界面设计 01：首页作为真正MEM工程总览，不是模拟项目/假模板。 -->
+                            <ScrollViewer Background="{DynamicResource StudioBackgroundBrush}" VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled">
+                                <StackPanel x:Name="StudioHomeWorkArea" Margin="12">
+                                    <!-- 上方欢迎横幅：浅蓝工业工作台视觉，数据来自当前MEM工程。 -->
+                                    <Border CornerRadius="10" BorderBrush="{DynamicResource StudioBorderBrush}"
+                                            BorderThickness="1" Height="162" Margin="0,0,0,11"
+                                            ClipToBounds="True">
+                                        <Border.Background>
+                                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                                <GradientStop Color="#D7EDFF" Offset="0"/>
+                                                <GradientStop Color="#B5D8FC" Offset="0.53"/>
+                                                <GradientStop Color="#EAF5FF" Offset="1"/>
+                                            </LinearGradientBrush>
+                                        </Border.Background>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="43*"/>
+                                                <ColumnDefinition Width="57*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0" Margin="19,12,8,11" VerticalAlignment="Center">
+                                                <TextBlock Text="欢迎使用 CxVisual" FontWeight="Bold" FontSize="23"
+                                                           Foreground="#103B7C" Margin="0,0,0,4"/>
+                                                <TextBlock Text="统一工业工程 · 让工程设计与执行更高效"
+                                                           FontSize="12" Foreground="#315F98" TextWrapping="Wrap"/>
+                                                <TextBlock Text="当前工程" Margin="0,12,0,3"
+                                                           FontSize="11" Foreground="#315F98"/>
+                                                <TextBlock Text="{Binding StudioProjectTitle}" FontSize="15"
+                                                           FontWeight="SemiBold" Foreground="#103B7C"
+                                                           TextTrimming="CharacterEllipsis" MaxWidth="350"/>
+                                            </StackPanel>
+                                            <UniformGrid Grid.Column="1" Columns="2" Rows="2"
+                                                         Margin="2,12,13,12">
+                                                <Border Background="#F3FAFF" CornerRadius="8"
+                                                        Margin="4" Padding="9,7" BorderBrush="#C8DFFA" BorderThickness="1">
+                                                    <StackPanel>
+                                                        <TextBlock Text="资源定义" FontSize="11" Foreground="#345884"/>
+                                                        <TextBlock Text="{Binding Resources.Count}" FontSize="19"
+                                                                   FontWeight="Bold" Foreground="#1264D8"/>
+                                                        <TextBlock Text="来自当前MEM工程" FontSize="10" Foreground="#6785A9"/>
+                                                    </StackPanel>
+                                                </Border>
+                                                <Border Background="#F3FAFF" CornerRadius="8"
+                                                        Margin="4" Padding="9,7" BorderBrush="#C8DFFA" BorderThickness="1">
+                                                    <StackPanel>
+                                                        <TextBlock Text="页面数量" FontSize="11" Foreground="#345884"/>
+                                                        <TextBlock Text="{Binding Pages.Count}" FontSize="19"
+                                                                   FontWeight="Bold" Foreground="#1264D8"/>
+                                                        <TextBlock Text="HMI工程页面" FontSize="10" Foreground="#6785A9"/>
+                                                    </StackPanel>
+                                                </Border>
+                                                <Border Background="#F3FAFF" CornerRadius="8"
+                                                        Margin="4" Padding="9,7" BorderBrush="#C8DFFA" BorderThickness="1">
+                                                    <StackPanel>
+                                                        <TextBlock Text="工程Revision" FontSize="11" Foreground="#345884"/>
+                                                        <TextBlock Text="{Binding Revision}" FontSize="19"
+                                                                   FontWeight="Bold" Foreground="#1264D8"/>
+                                                        <TextBlock Text="MEM版本序号" FontSize="10" Foreground="#6785A9"/>
+                                                    </StackPanel>
+                                                </Border>
+                                                <Border Background="#F3FAFF" CornerRadius="8"
+                                                        Margin="4" Padding="9,7" BorderBrush="#C8DFFA" BorderThickness="1">
+                                                    <StackPanel>
+                                                        <TextBlock Text="修改状态" FontSize="11" Foreground="#345884"/>
+                                                        <TextBlock Text="{Binding IsDirty, StringFormat=Dirty: {0}}"
+                                                                   FontSize="14" FontWeight="Bold" Foreground="#1264D8"/>
+                                                        <TextBlock Text="提交后可保存工程" FontSize="10" Foreground="#6785A9"/>
+                                                    </StackPanel>
+                                                </Border>
+                                            </UniformGrid>
+                                        </Grid>
                                     </Border>
-                                    <TextBlock Text="工作区入口" FontSize="17" FontWeight="SemiBold" Margin="2,4,0,10"/>
-                                    <WrapPanel x:Name="StudioHomeWorkflows">
-                                        <Border Width="275" Background="{DynamicResource StudioPanelBrush}"
+                                    <!-- 新建/打开/模板等入口与原设计图同位置；只暴露实际可运行能力。 -->
+                                    <WrapPanel x:Name="StudioHomeWorkflows" Margin="0,0,0,7">
+                                        <Border Width="215" Background="{DynamicResource StudioPanelBrush}"
                                                 BorderBrush="{DynamicResource StudioBorderBrush}" BorderThickness="1"
-                                                CornerRadius="9" Padding="15" Margin="0,0,12,12">
+                                                CornerRadius="9" Padding="12" Margin="0,0,9,9">
                                             <StackPanel>
-                                                <TextBlock Text="HMI · 图元与Symbol" FontSize="15" FontWeight="SemiBold"/>
-                                                <TextBlock Text="页面、基础图元、Widget、可复用组件。"
-                                                           TextWrapping="Wrap" Margin="0,7,0,14" FontSize="12"/>
-                                                <Button x:Name="StudioHomeHmiOpen" Content="进入 HMI 编辑器"
-                                                        Tag="doc.visual" Click="OnStudioOpenDocumentClick"
-                                                        HorizontalAlignment="Left" Padding="13,7"/>
+                                                <TextBlock Text="&#xE710;" FontFamily="Segoe MDL2 Assets" FontSize="24"
+                                                           Foreground="{DynamicResource StudioAccentBrush}"/>
+                                                <TextBlock Text="新建工程" FontSize="15" FontWeight="SemiBold" Margin="0,5,0,3"/>
+                                                <TextBlock Text="创建统一MEM工程" FontSize="11" Foreground="{DynamicResource StudioMutedTextBrush}"/>
+                                                <Button Content="新建工程  →" Command="{Binding NewCommand}"
+                                                        Style="{StaticResource StudioPrimaryButtonStyle}"
+                                                        HorizontalAlignment="Left" Margin="0,10,0,0"/>
                                             </StackPanel>
                                         </Border>
-                                        <Border Width="275" Background="{DynamicResource StudioPanelBrush}"
+                                        <Border Width="215" Background="{DynamicResource StudioPanelBrush}"
                                                 BorderBrush="{DynamicResource StudioBorderBrush}" BorderThickness="1"
-                                                CornerRadius="9" Padding="15" Margin="0,0,12,12">
+                                                CornerRadius="9" Padding="12" Margin="0,0,9,9">
                                             <StackPanel>
-                                                <TextBlock Text="流程 · MOL 编排" FontSize="15" FontWeight="SemiBold"/>
-                                                <TextBlock Text="主流程、专业子流程、能力与端口连线。"
-                                                           TextWrapping="Wrap" Margin="0,7,0,14" FontSize="12"/>
-                                                <Button x:Name="StudioHomeFlowOpen" Content="进入流程编辑器"
-                                                        Tag="doc.flow" Click="OnStudioOpenDocumentClick"
-                                                        HorizontalAlignment="Left" Padding="13,7"/>
+                                                <TextBlock Text="&#xE8E5;" FontFamily="Segoe MDL2 Assets" FontSize="24"
+                                                           Foreground="{DynamicResource StudioAccentBrush}"/>
+                                                <TextBlock Text="打开工程" FontSize="15" FontWeight="SemiBold" Margin="0,5,0,3"/>
+                                                <TextBlock Text="加载已有的工程定义" FontSize="11" Foreground="{DynamicResource StudioMutedTextBrush}"/>
+                                                <Button Content="选择工程  →" Command="{Binding LoadCommand}"
+                                                        HorizontalAlignment="Left" Margin="0,10,0,0"/>
                                             </StackPanel>
                                         </Border>
-                                        <Border Width="275" Background="{DynamicResource StudioPanelBrush}"
+                                        <Border Width="215" Background="{DynamicResource StudioPanelBrush}"
                                                 BorderBrush="{DynamicResource StudioBorderBrush}" BorderThickness="1"
-                                                CornerRadius="9" Padding="15" Margin="0,0,12,12">
+                                                CornerRadius="9" Padding="12" Margin="0,0,9,9">
                                             <StackPanel>
-                                                <TextBlock Text="专业 · 资源配置" FontSize="15" FontWeight="SemiBold"/>
-                                                <TextBlock Text="按Schema编辑工程、资源及可信机台配置。"
-                                                           TextWrapping="Wrap" Margin="0,7,0,14" FontSize="12"/>
-                                                <Button x:Name="StudioHomeConfigOpen" Content="进入配置中心"
-                                                        Tag="doc.config" Click="OnStudioOpenDocumentClick"
-                                                        HorizontalAlignment="Left" Padding="13,7"/>
+                                                <TextBlock Text="&#xE790;" FontFamily="Segoe MDL2 Assets" FontSize="24"
+                                                           Foreground="{DynamicResource StudioAccentBrush}"/>
+                                                <TextBlock Text="HMI / 图元" FontSize="15" FontWeight="SemiBold" Margin="0,5,0,3"/>
+                                                <TextBlock Text="编辑页面与可复用Symbol" FontSize="11" Foreground="{DynamicResource StudioMutedTextBrush}"/>
+                                                <Button x:Name="StudioHomeHmiOpen" Content="进入 HMI  →" Tag="doc.visual"
+                                                        Click="OnStudioOpenDocumentClick" HorizontalAlignment="Left"
+                                                        Margin="0,10,0,0"/>
+                                            </StackPanel>
+                                        </Border>
+                                        <Border Width="215" Background="{DynamicResource StudioPanelBrush}"
+                                                BorderBrush="{DynamicResource StudioBorderBrush}" BorderThickness="1"
+                                                CornerRadius="9" Padding="12" Margin="0,0,9,9">
+                                            <StackPanel>
+                                                <TextBlock Text="&#xE8F1;" FontFamily="Segoe MDL2 Assets" FontSize="24"
+                                                           Foreground="{DynamicResource StudioAccentBrush}"/>
+                                                <TextBlock Text="流程编排" FontSize="15" FontWeight="SemiBold" Margin="0,5,0,3"/>
+                                                <TextBlock Text="编辑真实MOL流程与子流程" FontSize="11" Foreground="{DynamicResource StudioMutedTextBrush}"/>
+                                                <Button x:Name="StudioHomeFlowOpen" Content="进入流程  →" Tag="doc.flow"
+                                                        Click="OnStudioOpenDocumentClick" HorizontalAlignment="Left"
+                                                        Margin="0,10,0,0"/>
                                             </StackPanel>
                                         </Border>
                                     </WrapPanel>
-                                    <Border Background="{DynamicResource StudioPanelBrush}"
-                                            BorderBrush="{DynamicResource StudioBorderBrush}" BorderThickness="1"
-                                            CornerRadius="8" Padding="15" Margin="0,3,0,0">
-                                        <StackPanel>
-                                            <TextBlock Text="工程动态与诊断" FontSize="15" FontWeight="SemiBold"/>
-                                            <TextBlock Text="{Binding Status}" TextWrapping="Wrap" Margin="0,7,0,5"/>
-                                            <TextBlock Text="左侧资源树管理真实MEM资源；右侧属性面板按活动编辑器与选区更新。"
-                                                       TextWrapping="Wrap" FontSize="11"/>
-                                        </StackPanel>
-                                    </Border>
+                                    <Grid Margin="0,0,0,9">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="专业工作区" FontWeight="SemiBold" FontSize="16" Margin="1,4,0,5"/>
+                                        <TextBlock Grid.Column="1" Text="复用已有公共Editor / Provider"
+                                                   FontSize="11" Foreground="{DynamicResource StudioMutedTextBrush}"
+                                                   VerticalAlignment="Center"/>
+                                    </Grid>
+                                    <WrapPanel Margin="0,0,0,10">
+                                        <Border Width="235" CornerRadius="9" Padding="14" Margin="0,0,9,9"
+                                                Background="{DynamicResource StudioCardTintBrush}"
+                                                BorderBrush="{DynamicResource StudioBorderBrush}" BorderThickness="1">
+                                            <StackPanel>
+                                                <TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="26"
+                                                           Foreground="{DynamicResource StudioAccentBrush}"/>
+                                                <TextBlock Text="资源配置 / MHS" FontSize="13" FontWeight="SemiBold" Margin="0,6,0,3"/>
+                                                <TextBlock Text="按Schema编辑、保存与授权生效" FontSize="11" TextWrapping="Wrap"
+                                                           Foreground="{DynamicResource StudioMutedTextBrush}"/>
+                                                <Button x:Name="StudioHomeConfigOpen" Content="打开配置中心"
+                                                        Tag="doc.config" Click="OnStudioOpenDocumentClick"
+                                                        HorizontalAlignment="Left" Margin="0,9,0,0"/>
+                                            </StackPanel>
+                                        </Border>
+                                        <Border Width="235" CornerRadius="9" Padding="14" Margin="0,0,9,9"
+                                                Background="{DynamicResource StudioCardTintBrush}"
+                                                BorderBrush="{DynamicResource StudioBorderBrush}" BorderThickness="1">
+                                            <StackPanel>
+                                                <TextBlock Text="&#xE8A5;" FontFamily="Segoe MDL2 Assets" FontSize="26"
+                                                           Foreground="{DynamicResource StudioAccentBrush}"/>
+                                                <TextBlock Text="工程资源" FontSize="13" FontWeight="SemiBold" Margin="0,6,0,3"/>
+                                                <TextBlock Text="资源树、Page、Content、Symbol" FontSize="11" TextWrapping="Wrap"
+                                                           Foreground="{DynamicResource StudioMutedTextBrush}"/>
+                                                <TextBlock Text="{Binding Resources.Count, StringFormat=资源项：{0}}"
+                                                           FontSize="12" FontWeight="SemiBold" Margin="0,9,0,0"/>
+                                            </StackPanel>
+                                        </Border>
+                                        <Border Width="235" CornerRadius="9" Padding="14" Margin="0,0,9,9"
+                                                Background="{DynamicResource StudioCardTintBrush}"
+                                                BorderBrush="{DynamicResource StudioBorderBrush}" BorderThickness="1">
+                                            <StackPanel>
+                                                <TextBlock Text="&#xE768;" FontFamily="Segoe MDL2 Assets" FontSize="26"
+                                                           Foreground="{DynamicResource StudioAccentBrush}"/>
+                                                <TextBlock Text="构建与运行" FontSize="13" FontWeight="SemiBold" Margin="0,6,0,3"/>
+                                                <TextBlock Text="MOC验证、MRK仿真与Trace" FontSize="11" TextWrapping="Wrap"
+                                                           Foreground="{DynamicResource StudioMutedTextBrush}"/>
+                                                <Button Content="前往流程构建" Tag="doc.flow" Click="OnStudioOpenDocumentClick"
+                                                        HorizontalAlignment="Left" Margin="0,9,0,0"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </WrapPanel>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="3*"/>
+                                            <ColumnDefinition Width="2*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Border Grid.Column="0" CornerRadius="9" Padding="13"
+                                                Margin="0,0,9,0"
+                                                Background="{DynamicResource StudioPanelBrush}"
+                                                BorderBrush="{DynamicResource StudioBorderBrush}" BorderThickness="1">
+                                            <StackPanel>
+                                                <TextBlock Text="当前工程 · 资源列表" FontSize="14" FontWeight="SemiBold"
+                                                           Margin="0,0,0,9"/>
+                                                <ItemsControl ItemsSource="{Binding Resources}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Border BorderBrush="{DynamicResource StudioBorderBrush}"
+                                                                    BorderThickness="0,0,0,1" Padding="4,5">
+                                                                <DockPanel>
+                                                                    <TextBlock Text="&#xE8B7;" FontFamily="Segoe MDL2 Assets"
+                                                                               FontSize="13" Foreground="{DynamicResource StudioAccentBrush}"
+                                                                               Margin="0,0,8,0"/>
+                                                                    <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"/>
+                                                                </DockPanel>
+                                                            </Border>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </StackPanel>
+                                        </Border>
+                                        <Border Grid.Column="1" CornerRadius="9" Padding="13"
+                                                Background="{DynamicResource StudioPanelBrush}"
+                                                BorderBrush="{DynamicResource StudioBorderBrush}" BorderThickness="1">
+                                            <StackPanel>
+                                                <TextBlock Text="工程动态与诊断" FontSize="14" FontWeight="SemiBold"
+                                                           Margin="0,0,0,9"/>
+                                                <TextBlock Text="{Binding Status}" TextWrapping="Wrap" FontSize="12"/>
+                                                <Separator Margin="0,12,0,10"/>
+                                                <TextBlock Text="资源与图元结构在左侧工具窗管理，属性和运行信息随活动工作区更新。"
+                                                           TextWrapping="Wrap" FontSize="11"
+                                                           Foreground="{DynamicResource StudioMutedTextBrush}"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </Grid>
                                 </StackPanel>
                             </ScrollViewer>
                         </dock:LayoutDocument>
