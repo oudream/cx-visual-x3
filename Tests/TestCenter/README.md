@@ -135,3 +135,30 @@ Window x64 .NET Framework 4.8可使用统一命令 --ui-smoke 或 --ui-automatio
 选择TCT.M3.RUNTIME.001：真实MEM/MOL→MOC Plan→MRKRuntimeSession，测试容量拒绝与结束释放；读取原生MRKFileExecutionJournal的开始、节点、结束和恢复判定；Runtime页只读显示Session/Flow/Step/Journal/Group及Inspector双向定位。
 选择TCT.M3.RUNTIME.002：跨Flow Journal、错误Sequence、假Closed、非法状态与DTD反证，均应在现有TCT框架判为拒绝。
 Windows执行 --ui-automation 验证MRK Journal→Inspector并上传TestCenter-08-RuntimeJournal.png。实际CI以 https://github.com/oudream/cx-visual-x3/actions/runs/39622306992 最终结论为准；UIA不替代人工06设计图或工业HIL验收。
+## Visual Studio 本地同步与编译排错（2026-10-22）
+
+如果更新了 `TCTTestViews.cs`，却在 Visual Studio 中出现 3 条
+`CS0246: 找不到 TCTTestOverviewControl`，应先核对工作区**文件与项目清单是否处于同一 Commit**。
+`TCTTestOverviewControl` 的唯一源文件是
+`Tests/TestCenter/UI/TCTTestOverviewControl.cs`，对应
+`CxVisual.TestCenter.csproj` 的 `<Compile Include="UI\\TCTTestOverviewControl.cs" />`。
+**不要**在 `TCTTestViews.cs` 临时复制一个同名类，也不要仅下载单个新文件替代完整源码更新。
+
+在仓库根目录的 PowerShell 终端检查：
+
+```powershell
+git status --short
+git fetch origin master
+git pull --ff-only origin master
+Test-Path .\Tests\TestCenter\UI\TCTTestOverviewControl.cs
+Select-String -Path .\Tests\TestCenter\CxVisual.TestCenter.csproj -Pattern 'TCTTestOverviewControl.cs'
+```
+
+如 `git pull --ff-only` 因本地未提交修改、分叉而失败，**先保留并整理本地修改，不要强制 reset/clean 丢失代码**；
+必须确保 `.csproj` 与 `UI/` 源码来自同一提交。之后右击 Visual Studio 的
+`CxVisual.TestCenter` →「重新加载项目」，执行「重新生成解决方案」。
+最新远端 `master` 已包含此类及编译项；远端 Windows x64/.NET48 完整编译通过并不能替代本地工作区同步。
+
+界面验收另外以 `DOCS/Architecture/TestCenter/` 六张 2560×1440 稿为视觉基准。
+Geometry、ObjectTree、Graph、Channel、Runtime 专业页只消费真实 Owner 的
+Run/Attempt/证据快照；NoEvidence、需要人工审签、资源 Lease 未暴露等待者身份等状态不允许伪造。
