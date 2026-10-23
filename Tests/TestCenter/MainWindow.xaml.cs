@@ -210,10 +210,8 @@ namespace CxVisual.TestCenter.UI
             StackPanel body = new StackPanel { Margin = new Thickness(22) };
             body.Children.Add(new TextBlock { Text = record.Title, FontSize = 22,
                 FontWeight = FontWeights.SemiBold, Foreground = Brushes.DarkSlateBlue });
-            bool report = record.TemplateId.StartsWith("reports.", StringComparison.Ordinal);
             body.Children.Add(new TextBlock {
-                Text = report ? "本页只使用统一Results/History保存的真实运行证据。" :
-                  "已创建工作区。该类型目前尚未绑定可执行的正式专业Owner，不显示虚假Passed。",
+                Text = "已创建工作区。该类型目前尚未绑定可执行的正式专业Owner，不显示虚假Passed。",
                 Margin = new Thickness(0, 12, 0, 14),
                 Foreground = Brushes.DarkGoldenrod, TextWrapping = TextWrapping.Wrap });
             return new UserControl { Content = body };
