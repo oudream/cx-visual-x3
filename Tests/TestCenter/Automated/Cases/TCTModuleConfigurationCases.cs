@@ -301,6 +301,91 @@ namespace CxVisual.TestCenter.Cases
                 "RS-485为共享物理通道，站号应由规约点表管理", true, true);
         }
 
+        [TCTTest("TCT.MODULE.CONFIG.005",
+            "正式MPW/MHS集合编辑路径：规约点和映射增删、持久化重开及悬空引用反证",
+            TCTTestAspect.Integration, "TestCenter / Manual / Protocol",
+            ObjectId = "MHSConfigEditorModel")]
+        public static void ProtocolSchemaCollectionsPersist(TCTTestContext test)
+        {
+            string root = Path.Combine(Path.GetTempPath(), "TCT-PointMapping-" +
+                Guid.NewGuid().ToString("N"));
+            try
+            {
+                MHSConfigService service = OpenService(root);
+                MHSConfigSection<MCNConnectorConfiguration> section =
+                    service.ForScope("module", "PointMappingP0").Open<MCNConnectorConfiguration>();
+                using (MHSConfigEditorModel<MCNConnectorConfiguration> editor =
+                    new MHSConfigEditorModel<MCNConnectorConfiguration>(section, "TestCenter P0集合操作"))
+                {
+                    editor.InsertListItem("Protocol.Points", 0,
+                        FCMJsonValueCodec.Serialize(new MPAPointDefinition {
+                            Name = "temperature", Address = "holding:100",
+                            StationAddress = "7", ValueType = "UInt16", CanWrite = true }));
+                    editor.InsertListItem("Protocol.Mappings", 0,
+                        FCMJsonValueCodec.Serialize(new MPADataMapping {
+                            PointRef = "temperature", TargetRef = "line/temperature",
+                            TargetKind = MPADataTargetKind.Variable,
+                            Direction = MPADataDirection.Inbound,
+                            Operation = MPADataOperation.WriteValue }));
+                    test.AssertTrue(editor.Draft.Protocol.Points.Count == 1 &&
+                        editor.Draft.Protocol.Mappings.Count == 1,
+                        "正式Schema路径新增PointTable和DataMapping", true, true);
+                    MHSConfigCommitResult committed =
+                        editor.CommitAsync(CancellationToken.None).GetAwaiter().GetResult();
+                    test.AssertTrue(committed.Success, "正式MHS事务校验并保存", true, committed.Success);
+                }
+                MHSConfigService reopened = OpenService(root);
+                MCNConnectorConfiguration persisted =
+                    reopened.ForScope("module", "PointMappingP0")
+                        .Open<MCNConnectorConfiguration>().GetLatestSaved();
+                test.AssertTrue(persisted.Protocol.Points.Single().Name == "temperature" &&
+                    persisted.Protocol.Mappings.Single().PointRef == "temperature",
+                    "重开后点表与映射保留同一正式Protocol引用", true, true);
+
+                MHSConfigSection<MCNConnectorConfiguration> saved =
+                    reopened.ForScope("module", "PointMappingP0").Open<MCNConnectorConfiguration>();
+                using (MHSConfigEditorModel<MCNConnectorConfiguration> editor =
+                    new MHSConfigEditorModel<MCNConnectorConfiguration>(saved, "删除与无效路径反证"))
+                {
+                    editor.RemoveListItem("Protocol.Mappings", 0);
+                    editor.RemoveListItem("Protocol.Points", 0);
+                    MHSConfigCommitResult removed =
+                        editor.CommitAsync(CancellationToken.None).GetAwaiter().GetResult();
+                    test.AssertTrue(removed.Success, "正式集合路径删除并保存", true, removed.Success);
+                }
+                reopened = OpenService(root);
+                persisted = reopened.ForScope("module", "PointMappingP0")
+                    .Open<MCNConnectorConfiguration>().GetLatestSaved();
+                test.AssertTrue(persisted.Protocol.Points.Count == 0 &&
+                    persisted.Protocol.Mappings.Count == 0,
+                    "删除后重新打开无幽灵点表或映射", true, true);
+
+                using (MHSConfigEditorModel<MCNConnectorConfiguration> editor =
+                    new MHSConfigEditorModel<MCNConnectorConfiguration>(
+                        reopened.ForScope("module", "PointMappingP0")
+                            .Open<MCNConnectorConfiguration>(), "悬空映射反证"))
+                {
+                    editor.InsertListItem("Protocol.Mappings", 0,
+                        FCMJsonValueCodec.Serialize(new MPADataMapping {
+                            PointRef = "not-found", TargetRef = "line/temperature" }));
+                    MHSConfigCommitResult invalid =
+                        editor.CommitAsync(CancellationToken.None).GetAwaiter().GetResult();
+                    test.AssertTrue(!invalid.Success,
+                        "不存在的PointRef不能持久化为合法配置", true, !invalid.Success);
+                }
+                reopened = OpenService(root);
+                persisted = reopened.ForScope("module", "PointMappingP0")
+                    .Open<MCNConnectorConfiguration>().GetLatestSaved();
+                test.AssertTrue(persisted.Protocol.Mappings.Count == 0,
+                    "被拒绝的提交不得污染最新Saved版本", true, true);
+            }
+            finally
+            {
+                try { if (Directory.Exists(root)) Directory.Delete(root, true); }
+                catch (IOException) { }
+            }
+        }
+
         [TCTTest("TCT.MODULE.CONFIG.002",
             "Connector 缺少 Channel/Protocol 与无效点映射必须拒绝",
             TCTTestAspect.Integration, "TestCenter / Manual / Module",
