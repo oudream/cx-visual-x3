@@ -100,7 +100,8 @@ namespace CxVisual.Mechanism.Visual
                         item.Address!=null&&source.Address!=null&&
                         item.Address.ResourceId==source.Address.ResourceId&&
                         item.ElementTypeId!="core.visual.connector"&&
-                        (item.Shape!=null||item.ElementTypeId=="core.text"||
+                        (item.Shape!=null||item.ElementTypeId=="core.rectangle"||
+                         item.ElementTypeId=="core.text"||
                          item.ElementTypeId=="core.image"||item.ElementTypeId=="core.svg"||
                          item.ElementTypeId.StartsWith("core.widget",StringComparison.Ordinal))&&
                         item.Bounds.Width>0&&item.Bounds.Height>0)
