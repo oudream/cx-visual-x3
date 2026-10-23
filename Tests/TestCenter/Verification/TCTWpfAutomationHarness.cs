@@ -266,7 +266,7 @@ namespace CxVisual.TestCenter.UI
                         throw new InvalidOperationException("完成真实PointRef和TargetRef后仍无法通过Schema校验：" +
                             frame.StatusMessage);
                 }));
-                SaveScreenshot(window, "TestCenter-Protocol-P0-PointMapping.png");
+                window.Dispatcher.Invoke(new Action(() => SaveScreenshot(window, "TestCenter-Protocol-P0-PointMapping.png")));
                 window.Dispatcher.Invoke(new Action(() => {
                     System.Windows.Controls.TabControl tabs =
                         window.DocumentHost.Content as System.Windows.Controls.TabControl;
@@ -663,7 +663,7 @@ namespace CxVisual.TestCenter.UI
                 if (!page.LastDiagnostic.Contains("旧代次"))
                     throw new InvalidOperationException("MultiPeer失效路由反证未运行");
             }));
-            SaveScreenshot(window, "TestCenter-Channel-P0-Multi.png");
+            window.Dispatcher.Invoke(new Action(() => SaveScreenshot(window, "TestCenter-Channel-P0-Multi.png")));
             window.Dispatcher.Invoke(new Action(() => {
                 System.Windows.Controls.TabControl tabs =
                     window.DocumentHost.Content as System.Windows.Controls.TabControl;
@@ -733,7 +733,7 @@ namespace CxVisual.TestCenter.UI
             }));
             if (Find(root, "TCT.Manual.Action.connect").Current.IsEnabled)
                 throw new InvalidOperationException("未授权TCPClient不应显示可连接");
-            SaveScreenshot(window, "TestCenter-Channel-P0-SharedBus.png");
+            window.Dispatcher.Invoke(new Action(() => SaveScreenshot(window, "TestCenter-Channel-P0-SharedBus.png")));
         }
         private static void VerifyOverview(IntPtr hwnd, TCTMainWindow window)
         {
