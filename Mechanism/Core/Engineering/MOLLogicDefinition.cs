@@ -575,7 +575,8 @@ namespace CxVisual.Mechanism.Core
                 a.Kind == MPMAspectKind.Logic && a.ProviderId == ProviderId);
             if (aspect == null) return null;
             if(aspect.SchemaVersion==MOLWiringCodec.SchemaVersion||
-               aspect.SchemaVersion==MOLWiringCodec.ExtendedSchemaVersion)return null;
+               aspect.SchemaVersion==MOLWiringCodec.ExtendedSchemaVersion||
+               aspect.SchemaVersion==MOLWiringCodec.CompoundSchemaVersion)return null;
             if((aspect.SchemaVersion!=SchemaVersion&&aspect.SchemaVersion!=ExtendedSchemaVersion)||
                aspect.RequiresRemap)
                 throw new InvalidDataException("logic.unsupported_schema_or_remap");
