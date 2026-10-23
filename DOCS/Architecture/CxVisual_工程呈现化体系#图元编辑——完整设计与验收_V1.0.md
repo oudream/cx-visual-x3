@@ -2,7 +2,7 @@
 
 > **文件定位**：图元编辑的交互语义、工程行为、用户体验及可执行验收主规格（**设计与验收基线，不是“全部实现证明”**）。  
 > **编制/融合**：2026-10-23。由此前《CxVisual-架构（图元）》的交互讨论、2026-10-22 图元示意图与 draw.io 对照、后续 P0/P1 开发讨论及本仓真实源码重新整理；**此前未落库的同名原稿未能逐字恢复，本文不冒称原稿原文**。  
-> **源码审计基线**：\`cx-visual-x3\` / \`master\` / \`602fa7fdabfa0eb9c2407498af940943ed2eac78\`。该 SHA 是本文编制前的**阅读快照**，不是文档提交 SHA。并行提交后的真实状态、CI 必须按最新 SHA 重新核验。  
+> **源码审计基线**：`cx-visual-x3` / `master` / `602fa7fdabfa0eb9c2407498af940943ed2eac78`。该 SHA 是本文编制前的**阅读快照**，不是文档提交 SHA。并行提交后的真实状态、CI 必须按最新 SHA 重新核验。  
 > **源头对照**：[图元体系架构与类归属](./CxVisual_工程呈现化体系%23图元体系——完整架构类归属与验收现状_V1.0.md)、[工程呈现化 EP01～EP15 总规范](./CxVisual_工程呈现化体系——完整需求_角色期望与使用样例_总体详细设计_V1.0.md)、[A/B/C 源码审计](../Implementation/CxVisual_工程可视化_ABC_源码与Windows验收审计_V1.0.md)、[A+B 实施验收](../Implementation/CxVisual_工程可视化_工作包A+B_完整实现与真实验收.md)。  
 > **图示界限**：聊天中的三栏 A/B/C《CxVisual Studio 图元编辑示意》是**拟采用设计图**，不是现有 X3 可运行界面截图，也不是任何交互已完成的证据。
 
@@ -16,7 +16,7 @@
 
 核心原则：**各方面都尽能力展现，便捷友好尽支撑各专业达到目标。** 共性足够强、使用足够轻，专业只加专业语义。
 
-**证据标签**：\`[目标]\`、\`[已有源码]\`、\`[自动测试]\`、\`[需实鼠验收]\`、\`[需专业/实机验收]\`。设计示例里的“应/必须”不表示现有实现；“已有源码”不代表 Studio 全流程完成；CI Success 只代表相应 SHA 和运行的测试范围。
+**证据标签**：`[目标]`、`[已有源码]`、`[自动测试]`、`[需实鼠验收]`、`[需专业/实机验收]`。设计示例里的“应/必须”不表示现有实现；“已有源码”不代表 Studio 全流程完成；CI Success 只代表相应 SHA 和运行的测试范围。
 
 ## 01. 范围、编辑对象与唯一 Owner
 
@@ -31,16 +31,16 @@
 
 | Owner | 正式职责 | 禁止 |
 |---|---|---|
-| \`Foundation.Geometry / FGE\` | 点/矩形/仿射、路径/曲线、几何命中、纯坐标运算与参数编辑 | 引入 WPF、MEM、设备或 Studio 状态 |
-| \`Mechanism.Core / MRC\` | 形状/视觉对象/样式/状态定义、Group/资源及稳定身份 | 在 WPF 另写持久化对象类型 |
-| \`Mechanism.Core / MEM、MTC\` | 唯一工程、草稿事务、Revision、批处理、Undo/Redo、保存重开、复制重映射 | 第二 Document/Undo 栈 |
-| \`Mechanism.Core / MPC\` | \`MPCPortKind.Visual\`、\`MPCPort\`、\`MPCConnection\`、视觉人工路线 | 再建 VisualEdge/Graph 存储 |
-| \`Mechanism.Visual / MVI\` | 场景只读投影、选区计算、世界坐标变换、吸附、连接编辑/路由/诊断、交互意图 | 保存 UI 控件或专业设备状态 |
-| \`Mechanism.Presentation.Wpf / MPW\` | 命中反馈、手柄/辅助线绘制、鼠标/键盘、捕获/预览、DIP 转换 | 定义工程事实、建立自己的历史 |
-| \`Applications.Studio\` | 资源编辑器、工具箱、上下文 Ribbon、树与属性面板、命令授权与用户操作路径 | 在 MainWindow 堆另一套几何/模型规则 |
-| \`Professional\` | HMI、MOL、Vision ROI、CT3D Overlay 等专业语义和 Viewer 行为 | 复制基础选择/连接/撤销框架 |
+| `Foundation.Geometry / FGE` | 点/矩形/仿射、路径/曲线、几何命中、纯坐标运算与参数编辑 | 引入 WPF、MEM、设备或 Studio 状态 |
+| `Mechanism.Core / MRC` | 形状/视觉对象/样式/状态定义、Group/资源及稳定身份 | 在 WPF 另写持久化对象类型 |
+| `Mechanism.Core / MEM、MTC` | 唯一工程、草稿事务、Revision、批处理、Undo/Redo、保存重开、复制重映射 | 第二 Document/Undo 栈 |
+| `Mechanism.Core / MPC` | `MPCPortKind.Visual`、`MPCPort`、`MPCConnection`、视觉人工路线 | 再建 VisualEdge/Graph 存储 |
+| `Mechanism.Visual / MVI` | 场景只读投影、选区计算、世界坐标变换、吸附、连接编辑/路由/诊断、交互意图 | 保存 UI 控件或专业设备状态 |
+| `Mechanism.Presentation.Wpf / MPW` | 命中反馈、手柄/辅助线绘制、鼠标/键盘、捕获/预览、DIP 转换 | 定义工程事实、建立自己的历史 |
+| `Applications.Studio` | 资源编辑器、工具箱、上下文 Ribbon、树与属性面板、命令授权与用户操作路径 | 在 MainWindow 堆另一套几何/模型规则 |
+| `Professional` | HMI、MOL、Vision ROI、CT3D Overlay 等专业语义和 Viewer 行为 | 复制基础选择/连接/撤销框架 |
 
-**重要区别**：图元之间的视觉连接使用 MPC Visual 端口/连接。MOL 的逻辑端口、\`MOLLink\` 与流程执行语义继续由 MOL 自身负责；两者可以共享鼠标/绘制技术，不可合并为同一个逻辑模型。
+**重要区别**：图元之间的视觉连接使用 MPC Visual 端口/连接。MOL 的逻辑端口、`MOLLink` 与流程执行语义继续由 MOL 自身负责；两者可以共享鼠标/绘制技术，不可合并为同一个逻辑模型。
 
 ## 02. draw.io 对照后的六类标记：各司其职
 
@@ -63,7 +63,7 @@ draw.io 官方对照（参考 UX，而非 X3 当前承诺）：
 - [线段与 Waypoint](https://www.drawio.com/docs/manual/connectors/waypoints-connectors/)。
 
 **两项必须禁止的交互误解**：
-1. **固定连接点不是缩放柄**；固定端口不改变形状的宽高，缩放柄不创建 \`MPCConnection\`。浮动连接也不等于固定端口。
+1. **固定连接点不是缩放柄**；固定端口不改变形状的宽高，缩放柄不创建 `MPCConnection`。浮动连接也不等于固定端口。
 2. **快捷方向箭头不是缩放柄或固定点**；它是“开始连接/快捷新建并连接”的动作入口。固定/浮动的附着方式在**落点**处决定，不由箭头外观决定。
 
 补充：draw.io 的中心缩放常使用 Ctrl/Cmd；当前 X3 变换代码已有 Shift 等比、Alt 中心及 Shift 旋转吸附参数。**本稿不擅自把参考产品快捷键覆盖现有热键**，冲突要通过 Studio 统一快捷键表与实鼠验收后定案。
@@ -104,22 +104,22 @@ draw.io 官方对照（参考 UX，而非 X3 当前承诺）：
 
 ### 3.4 状态机（行为规格，优先沿用现有 SceneView 字段）
 
-\`Idle → HoverConnect → DragNewConnection → Commit/Cancel → Idle\`  
-\`Idle → SelectedTransform → DragMove/DragResize/DragRotate → Commit/Cancel → SelectedTransform\`  
-\`SelectedTransform → GeometryEdit → DragAnchor/DragControl → Commit/Cancel → GeometryEdit\`  
-\`Idle/SelectedTransform → ConnectorEdit → DragEndpoint/DragWaypoint → Commit/Cancel → ConnectorEdit\`
+`Idle → HoverConnect → DragNewConnection → Commit/Cancel → Idle`  
+`Idle → SelectedTransform → DragMove/DragResize/DragRotate → Commit/Cancel → SelectedTransform`  
+`SelectedTransform → GeometryEdit → DragAnchor/DragControl → Commit/Cancel → GeometryEdit`  
+`Idle/SelectedTransform → ConnectorEdit → DragEndpoint/DragWaypoint → Commit/Cancel → ConnectorEdit`
 
 - 同时只可有一种**主动拖动捕获**，悬停反馈是派生态而非第二持久交互会话。
-- 专业工作模式 \`Design / Preview / Run / Debug\` 是更上层的授权/显示模式，与上述**图元编辑瞬时状态正交**；运行态必须禁止无授权工程修改/现场命令。
+- 专业工作模式 `Design / Preview / Run / Debug` 是更上层的授权/显示模式，与上述**图元编辑瞬时状态正交**；运行态必须禁止无授权工程修改/现场命令。
 - WPF 先按**活动拖动句柄 → 连接端点/路径节点 → 已选对象控制柄 → 固定端口/快捷连接 → 图形本体 → 空白画布**计算命中，冲突优先级应以真实源码调用链核定并有覆盖测试；这是目标规则，不是目前已验证的完整命中顺序。
 - 任何 Esc、CaptureLost、切换 Tab/页面、窗口失焦、工程关闭，必须取消 preview、释放鼠标捕获并恢复合法状态。不能在 LostCapture 误提交。
-- 不应引入一个新的“第二状态机框架”。先集中已有 \`SceneView\` 的零散布尔状态判定与冲突规则；仅在复杂度已被测试证明不可维护时提取轻量无状态协调器。
+- 不应引入一个新的“第二状态机框架”。先集中已有 `SceneView` 的零散布尔状态判定与冲突规则；仅在复杂度已被测试证明不可维护时提取轻量无状态协调器。
 
 ## 04. 图元绘制、几何精细编辑与变换契约
 
 ### 4.1 基础编辑共同能力
 
-\`Create → Select → Move/Resize/Rotate → Align/Distribute → Group/Symbol/Layer → Style/Binding → Save/Open\`。
+`Create → Select → Move/Resize/Rotate → Align/Distribute → Group/Symbol/Layer → Style/Binding → Save/Open`。
 
 共同的算法语义不应该在 Rect、Bezier、Widget、Group 分别实现一份。各 Shape 的参数化编辑分两类：
 - **对象变换模式**：改变整体世界变换与尺寸，统一选区外框控制柄。
@@ -134,15 +134,15 @@ draw.io 官方对照（参考 UX，而非 X3 当前承诺）：
 ### 4.2 多选、Group、旋转的矩阵规则
 
 - 用户拖动、选区吸附、参考线均在**世界坐标**定义；提交前转换到每个对象的父节点局部坐标；旋转 Group 不允许直接用父局部坐标分别取整造成成员相对间距漂移。
-- \`MVISelectionTransform\` 作为共用变换求解源；WPF 预览和 \`MVIVisualEditor.TransformSelection\` 以相同输入生成变换。缩放负倍率/退化零宽高须有明确策略；**默认不能无提示把反向拖动转换为镜像**。
+- `MVISelectionTransform` 作为共用变换求解源；WPF 预览和 `MVIVisualEditor.TransformSelection` 以相同输入生成变换。缩放负倍率/退化零宽高须有明确策略；**默认不能无提示把反向拖动转换为镜像**。
 - 父子不能同时作为独立选区成员被重复变换；锁定、隐藏、跨不可编辑定义、来源失效应**整组拒绝**，不能只移动可编辑子集。
 - Ctrl/Shift 多选、框选、对象树同步、跨 Tab 旧选区拒绝、右侧混合值编辑等不能各保存另一份权威 SelectedIds。
-- 智能参考线 \`MVIVisualSnapping\` 只计算场景投影的吸附位移与辅助线，不写 MEM；网格显示必须和世界网格同源，DIP 容差随 Zoom 换算。现有实现是初阶对齐吸附，未验证 1000 图元时的成本。
+- 智能参考线 `MVIVisualSnapping` 只计算场景投影的吸附位移与辅助线，不写 MEM；网格显示必须和世界网格同源，DIP 容差随 Zoom 换算。现有实现是初阶对齐吸附，未验证 1000 图元时的成本。
 - 预览一帧可重新计算，但只有一次用户确认写入 MEM；若位移为零或取消，Revision 不应增加。
 
 ### 4.3 命令与右键行为
 
-设计统一**意图/命令语义**，而不是要求强行新增“命令总线项目”。一项功能可以由顶部 Ribbon、右键菜单、键盘、属性面板调用同一 \`MVIVisualEditor\`/\`MTC\` 编辑操作，并共享启用条件、锁定与错误提示。保留现有 Studio 命令体系，逐项消灭重复调用路径。
+设计统一**意图/命令语义**，而不是要求强行新增“命令总线项目”。一项功能可以由顶部 Ribbon、右键菜单、键盘、属性面板调用同一 `MVIVisualEditor`/`MTC` 编辑操作，并共享启用条件、锁定与错误提示。保留现有 Studio 命令体系，逐项消灭重复调用路径。
 
 第一批：删除、复制/剪切/粘贴、Duplicate、Undo/Redo、Move/Nudge、Align/Distribute、BringFront/SendBack、Group/Ungroup、Lock/Hide、EditGeometry、EditConnection、EditConnectionPoints。所有项均需实际 Studio 鼠标/键盘测试。
 
@@ -150,34 +150,34 @@ draw.io 官方对照（参考 UX，而非 X3 当前承诺）：
 
 ### 5.1 五个不同的概念
 
-1. **端口定义**：\`MPCPortKind.Visual\`、\`MPCPort\`，归属工程对象/实例关系。
-2. **连接身份**：\`MPCConnection\` 保持 ID 与来源/目标，撤销及保存重开不变。
+1. **端口定义**：`MPCPortKind.Visual`、`MPCPort`，归属工程对象/实例关系。
+2. **连接身份**：`MPCConnection` 保持 ID 与来源/目标，撤销及保存重开不变。
 3. **附着策略**：固定（指定端口/位置）与浮动（轮廓上随布局自动计算的锚点）。**后者为目标扩展，现有四向固定点不等于已完成浮动边缘附着**。
 4. **线路由**：Straight / Orthogonal / Manual；自动场景点是投影计算结果，人工 Waypoint 是工程编辑约束。
 5. **UI 状态**：连接悬停、正在拖线、端点重附着、连线路径编辑、显示错误告警，全都是投影与输入状态。
 
 ### 5.2 从用户操作到工程提交
 
-\`指向连接点/箭头 → 拖出临时线 → 目标几何命中/附着候选 → 语义校验 → MVI编辑 → MEM/MPC事务 → 投影刷新\`。
+`指向连接点/箭头 → 拖出临时线 → 目标几何命中/附着候选 → 语义校验 → MVI编辑 → MEM/MPC事务 → 投影刷新`。
 
 - 悬停非法对象（类型不允许、锁定、跨不可连上下文、循环/专业约束不通过）必须反馈且不得私自创建匿名端口。
 - 拖动端点只**重附着同一条**连接；不得删旧线建新线冒充原操作。
-- 所有“插点”必须读取实际场景渲染的 \`VisibleConnectionPoints\` 顺序；不允许在 UI 点中一段而核心重新按另一折线计算后插错位置。
-- 自动路由失败不能静默走穿障碍：\`VisualRouteDiagnostic\` 为只读场景诊断，WPF 视觉警示+属性/日志具体原因，诊断不写 MEM Revision。
+- 所有“插点”必须读取实际场景渲染的 `VisibleConnectionPoints` 顺序；不允许在 UI 点中一段而核心重新按另一折线计算后插错位置。
+- 自动路由失败不能静默走穿障碍：`VisualRouteDiagnostic` 为只读场景诊断，WPF 视觉警示+属性/日志具体原因，诊断不写 MEM Revision。
 - 自动模式下用户改折点，须显式转为 Manual 或保存为明确的人工约束；不允许用户修改马上被下帧自动重算覆盖却无提示。
-- 拥挤线路的交叉数、间距、通道、端口出入方向和性能需单独验收。现有 \`MVIOrthogonalRouter\` 的障碍回避和有限搜索不是“全局最优布线”证明。
+- 拥挤线路的交叉数、间距、通道、端口出入方向和性能需单独验收。现有 `MVIOrthogonalRouter` 的障碍回避和有限搜索不是“全局最优布线”证明。
 - 自动路线、人工折点、Group 旋转、端点移动、窗口 Zoom/平移必须共享**同一场景几何真相**，避免渲染/命中/插点不同步。
 
 ### 5.3 专业边界
 
-MOL 流程图中的语义连线由 \`MOLLink\`、专业端口与编排合法性支配；可以选择共享几何路由/连接呈现，但不应把 \`MOLLink\` 改为 \`MPCConnection\` 或让普通连接意图绕过 MOL 流程编译规则。
+MOL 流程图中的语义连线由 `MOLLink`、专业端口与编排合法性支配；可以选择共享几何路由/连接呈现，但不应把 `MOLLink` 改为 `MPCConnection` 或让普通连接意图绕过 MOL 流程编译规则。
 
 ## 06. Group、Symbol、Layer 与实例编辑的真实闭环
 
-- **Group/Ungroup**：复用 \`MTCEditSession.Visual\` 已有事务。Group 是 \`MRCVisualItem\`，不从 \`MRCElement\` 派生；支持进入/退出子编辑上下文、不同变换级别、嵌套、旋转、多选、对象树双向定位。
+- **Group/Ungroup**：复用 `MTCEditSession.Visual` 已有事务。Group 是 `MRCVisualItem`，不从 `MRCElement` 派生；支持进入/退出子编辑上下文、不同变换级别、嵌套、旋转、多选、对象树双向定位。
 - **Symbol**：由工程定义/资源引用组成，不另建“绘图 Symbol 库”。定义编辑与实例编辑区分，至少两个实例能独立覆盖属性与 MDS 绑定；从实例跳回定义且返回时保留选区定位。
 - **Layer/ZOrder**：图层的可见/可选/锁定以及同级对象绘制次序要一致；对象树与实际绘制前后关系同步。跨层迁移必须保留连接和关联 ID 或明确拒绝并给出原因。
-- **复制/剪切/粘贴/Duplicate**：Core 已有 \`MEMEngineeringSession.PreviewDuplicate\` / \`Import\` / \`MTITransferPlan\`。应先审计其视觉对象、Group 子树、引用、端口、内部连接、外部连接策略、坐标平移与安全性，再让 Studio 提供剪贴板和粘贴落点。**MOL 的逻辑片段剪贴板不是视觉复制实现**。不得私下逐属性 new 一个 Shape 代替完整引用重映射。
+- **复制/剪切/粘贴/Duplicate**：Core 已有 `MEMEngineeringSession.PreviewDuplicate` / `Import` / `MTITransferPlan`。应先审计其视觉对象、Group 子树、引用、端口、内部连接、外部连接策略、坐标平移与安全性，再让 Studio 提供剪贴板和粘贴落点。**MOL 的逻辑片段剪贴板不是视觉复制实现**。不得私下逐属性 new 一个 Shape 代替完整引用重映射。
 - **剪切与粘贴**须明确是否原子跨作用域、失败回退及历史边界；不支持时诚实拒绝，不能留下半复制/半删除的工程。
 
 ## 07. Studio 用户体验合同
@@ -204,13 +204,13 @@ MOL 流程图中的语义连线由 \`MOLLink\`、专业端口与编排合法性�
 
 ### 8.1 软件开发者（目标用法，依当前真实 API 收敛）
 
-最少自然调用链：通过 MEM 创建工程/页面/九 Shape 与资源定义；\`MVIVisualEditor\` 获取场景并调用 Move/Transform/Align/ConnectVisual/SetVisualRoute/折点操作；依赖 MEM 单一 Edit/Undo/Redo/Save/Open；查询只读场景和诊断。不能为了实现一个拖动动作同时手改 WPF 控件位置与持久工程坐标。
+最少自然调用链：通过 MEM 创建工程/页面/九 Shape 与资源定义；`MVIVisualEditor` 获取场景并调用 Move/Transform/Align/ConnectVisual/SetVisualRoute/折点操作；依赖 MEM 单一 Edit/Undo/Redo/Save/Open；查询只读场景和诊断。不能为了实现一个拖动动作同时手改 WPF 控件位置与持久工程坐标。
 
 **已存在的实际 API 代表**：
-- \`MEMEngineering.Create(...)\`、\`AddPage(...)\`、\`AddRectangle(...)\`；
-- \`MVIVisualEditor.SetPage(...)\`、\`MoveSelection(ids,worldDx,worldDy,snapToGrid)\`、\`TransformSelection(...)\`；
-- \`MVIVisualSnapping.Resolve(...)\`（纯求解）；
-- \`MEMEngineeringSession.PreviewDuplicate(...)\` / \`Import(...)\`。
+- `MEMEngineering.Create(...)`、`AddPage(...)`、`AddRectangle(...)`；
+- `MVIVisualEditor.SetPage(...)`、`MoveSelection(ids,worldDx,worldDy,snapToGrid)`、`TransformSelection(...)`；
+- `MVIVisualSnapping.Resolve(...)`（纯求解）；
+- `MEMEngineeringSession.PreviewDuplicate(...)` / `Import(...)`。
 
 这些只是当前关键入口实例，**不是复制/浮动端点等尚未实现能力的虚构 API 承诺**；签名、Owner 和兼容性以最新源码为准。
 
@@ -218,7 +218,7 @@ MOL 流程图中的语义连线由 \`MOLLink\`、专业端口与编排合法性�
 
 打开工程 → 打开某 Page/Content 编辑标签 → 工具箱拖九 Shape → A 悬停显示合适的连接提示 → B 选中变换/对齐/Group → C 选线重连/折点 → 保存重开 → Undo/Redo → 定义 Symbol 并在另一 Page 放两个实例 → 配置不同属性绑定 → 预览/运行/调试定位。
 
-用户不必理解 \`MPCPort\`、\`MRCTransform\` 或自己输入 GUID、折点索引；这些属于内部实现。**不能用 API 测试成功替代上述鼠标完成路径**。
+用户不必理解 `MPCPort`、`MRCTransform` 或自己输入 GUID、折点索引；这些属于内部实现。**不能用 API 测试成功替代上述鼠标完成路径**。
 
 ## 09. 代表性完整案例与验收反证
 
@@ -246,16 +246,16 @@ MOL 主流程+Vision/AI/传统子流程和 HMI 视觉对象共享工程身份与
 
 | 能力 | 当前证据入口 | 谨慎结论 |
 |---|---|---|
-| 九 Shape/Path/Bezier/Arc 编辑 | \`MRCShapes.cs\`、\`FGEPathEditing.cs\`、\`MVIVisualEditing.cs\`、\`VisualShapeEditingTests.cs\` | **已有源码/部分自动测试**；完整 Shape 专有柄和极端路径仍需验收 |
-| 单选/多选、共用柄、旋转/吸附、键盘精调 | \`MVISelectionTransform\`、\`MVIVisualEditor\`、\`MVIVisualSnapping\`、\`SceneView\` | **已有源码与相应回归**；全量实鼠、DPI、复杂反向与混合选区未签收 |
-| 连接端点/重附着/可见折线路径、人工折点 | \`MPCPort.cs\`、\`MVIVisualEditor\`、\`MVISceneProjection\` | **核心机制已存在**；浮动端口、任意自定义点、复杂协同路由未完成 |
-| 正交避障和失败显式警告 | \`MVIOrthogonalRouter\`、\`VisualRouteDiagnostic\`、\`SceneView\` | **已有代码与专项测试**；全局最优/所有无解分类不可宣称 |
-| Group/Ungroup/Layer/ZOrder、基础 Symbol | \`MTCEditSession.Visual.cs\`、\`StudioViewModel.Engineering.cs\`、\`StudioShell\` | **工程与部分 UI 有基础**；定义/实例/混合锁定/剪贴板端到端不完整 |
-| 复制/剪切/粘贴 | Core \`PreviewDuplicate/Import\`；MOL 有独立逻辑片段复制 | **可复用内核已存在**；图元 Studio 复制的合法选择/偏移/关系闭环待做 |
+| 九 Shape/Path/Bezier/Arc 编辑 | `MRCShapes.cs`、`FGEPathEditing.cs`、`MVIVisualEditing.cs`、`VisualShapeEditingTests.cs` | **已有源码/部分自动测试**；完整 Shape 专有柄和极端路径仍需验收 |
+| 单选/多选、共用柄、旋转/吸附、键盘精调 | `MVISelectionTransform`、`MVIVisualEditor`、`MVIVisualSnapping`、`SceneView` | **已有源码与相应回归**；全量实鼠、DPI、复杂反向与混合选区未签收 |
+| 连接端点/重附着/可见折线路径、人工折点 | `MPCPort.cs`、`MVIVisualEditor`、`MVISceneProjection` | **核心机制已存在**；浮动端口、任意自定义点、复杂协同路由未完成 |
+| 正交避障和失败显式警告 | `MVIOrthogonalRouter`、`VisualRouteDiagnostic`、`SceneView` | **已有代码与专项测试**；全局最优/所有无解分类不可宣称 |
+| Group/Ungroup/Layer/ZOrder、基础 Symbol | `MTCEditSession.Visual.cs`、`StudioViewModel.Engineering.cs`、`StudioShell` | **工程与部分 UI 有基础**；定义/实例/混合锁定/剪贴板端到端不完整 |
+| 复制/剪切/粘贴 | Core `PreviewDuplicate/Import`；MOL 有独立逻辑片段复制 | **可复用内核已存在**；图元 Studio 复制的合法选择/偏移/关系闭环待做 |
 | A/B/C 三栏拟议界面 | 聊天中的设计示意图 | **设计目标，不是软件截图** |
 | HMI/Vision/CT3D 全用户闭环和性能 | EP01～EP15、相关专业与 TestCenter 文档 | **尚未最终签收** |
 
-**基线 CI 事实**：\`602fa7fd\` 编写时，Engineering Organization、Studio S1、Config L1、配置底座已成功，TestCenter 尚在执行；该 SHA 未列出同次 Runtime 工作流。本文件提交后只能依新 SHA 重新审计。CI 编译/单测与真实系统级鼠标注入测试是不同证据。
+**基线 CI 事实**：`602fa7fd` 编写时，Engineering Organization、Studio S1、Config L1、配置底座已成功，TestCenter 尚在执行；该 SHA 未列出同次 Runtime 工作流。本文件提交后只能依新 SHA 重新审计。CI 编译/单测与真实系统级鼠标注入测试是不同证据。
 
 ## 11. 开发顺序：复用优先、轻架构持续闭环
 
@@ -267,7 +267,7 @@ MOL 主流程+Vision/AI/传统子流程和 HMI 视觉对象共享工程身份与
 
 ### P1-1：成熟基本图元编辑
 
-\`[优先]\` **真正统一选择、吸附、命中与预览/提交一致性** → 完成对齐/均匀分布/智能参考线 → 基于 MEM Transfer 的复制剪贴板 → Shift/Alt/DPI、极小与镜像策略 → 编辑态快捷键、右键/上下文属性联动 → Bezier/Path 特殊几何控制柄。
+`[优先]` **真正统一选择、吸附、命中与预览/提交一致性** → 完成对齐/均匀分布/智能参考线 → 基于 MEM Transfer 的复制剪贴板 → Shift/Alt/DPI、极小与镜像策略 → 编辑态快捷键、右键/上下文属性联动 → Bezier/Path 特殊几何控制柄。
 
 ### P1-2：Group/Symbol/Layer 编辑
 
@@ -279,7 +279,7 @@ MOL 主流程+Vision/AI/传统子流程和 HMI 视觉对象共享工程身份与
 
 ### P1-4：Studio 统一体验
 
-工具箱、中央画布、属性/Schema、Ribbon、菜单与对象树共用命令语义；状态提示一致。优先从过大的 \`SceneView\` 中下沉可复用、无状态的几何/命中/交互规则，但**不为“架构好看”拆很多接口或推倒重写**。
+工具箱、中央画布、属性/Schema、Ribbon、菜单与对象树共用命令语义；状态提示一致。优先从过大的 `SceneView` 中下沉可复用、无状态的几何/命中/交互规则，但**不为“架构好看”拆很多接口或推倒重写**。
 
 ### P1-5：完整 Windows UI 和性能
 
@@ -325,7 +325,7 @@ MOL 主流程+Vision/AI/传统子流程和 HMI 视觉对象共享工程身份与
 以下方案默认拒绝：
 1. 给 SceneView 再写一套世界坐标路由/几何数值算法；
 2. 每个 Shape/每个 Professional 自带 Undo、Selection、Clipboard Graph；
-3. 为浮动连接新建永久 \`VisualEdge\`、或把 \`MOLLink\` 冒充通用 Visual Connection；
+3. 为浮动连接新建永久 `VisualEdge`、或把 `MOLLink` 冒充通用 Visual Connection；
 4. 每添一个 Ribbon 按钮就复制一遍工程事务；
 5. 为“完成功能数”空建 Interface/Manager/Registry 或新增项目；
 6. 用固定矩形控制柄模拟连接点、用普通折点模拟 Geometry 参数柄；
@@ -336,10 +336,10 @@ MOL 主流程+Vision/AI/传统子流程和 HMI 视觉对象共享工程身份与
 
 ## 14. 继续开发入口及维护约束
 
-1. 进入仓库先读 \`AGENTS.md\`、\`.agents/skills/cxvisual-engineering/SKILL.md\`、\`DOCS/00_CxVisual_协同开发入口与七仓复用基线.md\` 和 \`DOCS/01～04\` 的相应 Owner 规格。
+1. 进入仓库先读 `AGENTS.md`、`.agents/skills/cxvisual-engineering/SKILL.md`、`DOCS/00_CxVisual_协同开发入口与七仓复用基线.md` 和 `DOCS/01～04` 的相应 Owner 规格。
 2. 同时读本文（交互规范）、《#图元体系》（Owner/现状）、EP 主文档（上位需求）、A+B/ABC（真实历史审计）；按当前任务核对 ReferTo 相关源码。
-3. 重新检查 \`master\` SHA、目标代码、当前 CI。当前项目直接在 \`master\`、少量中文 Commit、增改代码有准确中文注释；并行提交须做非强制更新与冲突核对。
+3. 重新检查 `master` SHA、目标代码、当前 CI。当前项目直接在 `master`、少量中文 Commit、增改代码有准确中文注释；并行提交须做非强制更新与冲突核对。
 4. 每轮报告“已有/新改/已实际跑过/未验收”，失效回滚与异常反证，不在本规范记成无据的功能百分比。
-5. 本文维护交互合同与 GE-01～GE-15 验收规范；\`#图元体系\` 维护结构与 Owner；实施记录维护 SHA、测试和状态。**任何修改都不得制造两份互相矛盾的主规格。**
+5. 本文维护交互合同与 GE-01～GE-15 验收规范；`#图元体系` 维护结构与 Owner；实施记录维护 SHA、测试和状态。**任何修改都不得制造两份互相矛盾的主规格。**
 
 **本 V1.0 定位：给图元编辑一个清晰、完整、可落地的交互基线，并把前一聊天讨论成果真正融进仓库；不是宣告 GE-01～GE-15 已完成。**
