@@ -192,14 +192,16 @@ namespace CxVisual.TestCenter.UI
                 menu.Items.Add(open);
                 MenuItem start = new MenuItem { Header = "启动 / 运行",
                     IsEnabled = descriptor.TemplateId == "auto.architecture-smoke" ||
-                        descriptor.TemplateId == "manual.channel" };
+                        descriptor.TemplateId == "manual.channel" ||
+                        descriptor.TemplateId == "auto.catalog" };
                 start.Click += (sender, args) => {
                     if (StartRequested != null) StartRequested(descriptor.WorkspaceId);
                 };
                 menu.Items.Add(start);
                 MenuItem stop = new MenuItem { Header = "停止",
                     IsEnabled = descriptor.TemplateId == "auto.architecture-smoke" ||
-                        descriptor.TemplateId == "manual.channel" };
+                        descriptor.TemplateId == "manual.channel" ||
+                        descriptor.TemplateId == "auto.catalog" };
                 stop.Click += (sender, args) => {
                     if (StopRequested != null) StopRequested(descriptor.WorkspaceId);
                 };

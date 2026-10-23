@@ -289,9 +289,15 @@ namespace CxVisual.TestCenter.UI
             TabItem tab = (DocumentHost.Content as TabControl)?.SelectedItem as TabItem;
             ITCTWorkspaceFrame frame = tab?.Content as ITCTWorkspaceFrame;
             if (frame == null) return;
+            if (instance.TemplateId == "auto.catalog" && !start)
+            {
+                OnCancel();
+                return;
+            }
             string actionId = instance.TemplateId == "auto.architecture-smoke" ?
                 (start ? "architecture.run" : "architecture.stop") :
-                instance.TemplateId == "manual.channel" ? (start ? "connect" : "disconnect") : "";
+                instance.TemplateId == "manual.channel" ? (start ? "connect" : "disconnect") :
+                instance.TemplateId == "auto.catalog" ? "plan.run" : "";
             TCTWorkspaceAction action = frame.Commands.FirstOrDefault(x => x.Id == actionId);
             if (action == null || !action.CanExecute())
             {

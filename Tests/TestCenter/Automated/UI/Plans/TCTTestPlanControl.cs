@@ -35,7 +35,12 @@ namespace CxVisual.TestCenter.UI
         {
             get {
                 return new[] {
-                    new TCTWorkspaceAction("plan.run", "运行所选真实测试", Run, () => _selected.Count > 0),
+                    new TCTWorkspaceAction("plan.run", "运行计划勾选的测试", Run, () => _selected.Count > 0),
+                    new TCTWorkspaceAction("plan.runselected", "运行当前选中的用例",
+                        () => {
+                            if (SelectedTest != null && RunRequested != null)
+                                RunRequested(new[] { SelectedTest.Descriptor.Id });
+                        }, () => SelectedTest != null),
                     new TCTWorkspaceAction("plan.clear", "清空选择", ClearCases,
                         () => _selected.Count > 0)
                 };
@@ -162,6 +167,7 @@ namespace CxVisual.TestCenter.UI
                             if (!ReferenceEquals(args.OriginalSource, item)) return;
                             SelectedTest = test;
                             if (TestSelected != null) TestSelected(test);
+                            if (StateChanged != null) StateChanged();
                         };
                         groupNode.Items.Add(item);
                     }

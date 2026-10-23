@@ -516,7 +516,7 @@ namespace CxVisual.TestCenter.UI
             AutomationElement source = Find(root, "TCT.Context.Source");
             if (source.GetCurrentPattern(InvokePattern.Pattern) == null)
                 throw new InvalidOperationException("Contextual source navigation missing");
-            AutomationElement run = Find(root, "TCT.RunSelected");
+            AutomationElement run = Find(root, "TCT.Manual.Action.plan.runselected");
             InvokePattern invoke = run.GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
             if (invoke == null) throw new InvalidOperationException("Run Selected invoke pattern missing");
             invoke.Invoke();
@@ -564,7 +564,7 @@ namespace CxVisual.TestCenter.UI
             InvokePattern context = mode.GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
             if (context == null) throw new InvalidOperationException("Object Ribbon command not accessible");
             context.Invoke();
-            AutomationElement run = Find(root, "TCT.RunSelected");
+            AutomationElement run = Find(root, "TCT.Manual.Action.plan.runselected");
             InvokePattern invoke = run.GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
             if (invoke == null) throw new InvalidOperationException("TestCenter run command not accessible");
             invoke.Invoke();
@@ -618,7 +618,7 @@ namespace CxVisual.TestCenter.UI
                 as SelectionItemPattern;
             if (selected == null) throw new InvalidOperationException("Graph case cannot be selected");
             selected.Select();
-            InvokePattern run = Find(root, "TCT.RunSelected")
+            InvokePattern run = Find(root, "TCT.Manual.Action.plan.runselected")
                 .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
             if (run == null) throw new InvalidOperationException("Graph test run command unavailable");
             run.Invoke();
@@ -675,7 +675,7 @@ namespace CxVisual.TestCenter.UI
                 .GetCurrentPattern(SelectionItemPattern.Pattern) as SelectionItemPattern;
             if (selected == null) throw new InvalidOperationException("MRK session test not selectable");
             selected.Select();
-            InvokePattern run = Find(root, "TCT.RunSelected")
+            InvokePattern run = Find(root, "TCT.Manual.Action.plan.runselected")
                 .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
             if (run == null) throw new InvalidOperationException("MRK Owner run command not invocable");
             run.Invoke();
@@ -736,7 +736,7 @@ namespace CxVisual.TestCenter.UI
                 .GetCurrentPattern(SelectionItemPattern.Pattern) as SelectionItemPattern;
             if (selected == null) throw new InvalidOperationException("Channel case lacks UIA selection");
             selected.Select();
-            InvokePattern run = Find(root, "TCT.RunSelected")
+            InvokePattern run = Find(root, "TCT.Manual.Action.plan.runselected")
                 .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
             if (run == null) throw new InvalidOperationException("Channel run button not invocable");
             run.Invoke();
