@@ -62,6 +62,8 @@ namespace CxVisual.TestCenter.UI
         public int FrameCount { get { return _frames.Count; } }
         public int PeerCount { get { return _peers.Count; } }
         public int StationCount { get { return _stations.Count; } }
+        public MCCSubChannelAddress SelectedPeerAddress
+        { get { return (_peerList.SelectedItem as TCTPeerRow)?.Address; } }
         public string StatusMessage { get { return _state.Text; } }
         public string LastDiagnostic { get { return _lastDiagnostic; } }
         public MCCChannelKind SelectedChannelKind { get { return _selectedKind; } }

@@ -514,6 +514,99 @@ namespace CxVisual.TestCenter.UI
                 if (!closed) Thread.Sleep(100);
             }
             if (!closed) throw new InvalidOperationException("Manual disconnect did not close Owner");
+            // 与真实右侧操作中心连通的三拓扑P0验收，不打开未经授权的物理Socket。
+            MCCSubChannelAddress savedPeer = null;
+            window.Dispatcher.Invoke(new Action(() => {
+                System.Windows.Controls.TabControl tabs =
+                    window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                TCTManualChannelFrame page = tabs.Items.OfType<System.Windows.Controls.TabItem>()
+                    .Select(x => x.Content).OfType<TCTManualChannelFrame>().Single();
+                page.SelectChannelKind(MCCChannelKind.TcpServer);
+                page.SetPeerInput("client01", "127.0.0.1:10001");
+                if (page.SelectedTopology != MCCChannelTopology.MultiPeer ||
+                    Find(root, "TCT.Channel.Kind").Current.ControlType != ControlType.ComboBox)
+                    throw new InvalidOperationException("MultiPeer Channel类型选择不可用");
+            }));
+            InvokePattern register = Find(root, "TCT.Manual.Action.channel.register-peer")
+                .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
+            if (register == null) throw new InvalidOperationException("SubChannel register不可操作");
+            register.Invoke();
+            window.Dispatcher.Invoke(new Action(() => {
+                System.Windows.Controls.TabControl tabs =
+                    window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                TCTManualChannelFrame page = tabs.Items.OfType<System.Windows.Controls.TabItem>()
+                    .Select(x => x.Content).OfType<TCTManualChannelFrame>().Single();
+                savedPeer = page.SelectedPeerAddress;
+                if (savedPeer == null || page.PeerCount != 1 || !page.IsLiveSubChannel(savedPeer))
+                    throw new InvalidOperationException("生产SubChannel目录未登记真实代次");
+                bool duplicateRejected = false;
+                try { page.RegisterSubChannel(); }
+                catch (InvalidOperationException) { duplicateRejected = true; }
+                if (!duplicateRejected || page.PeerCount != 1)
+                    throw new InvalidOperationException("重复对端Id未按真实目录约束拒绝");
+            }));
+            InvokePattern remove = Find(root, "TCT.Manual.Action.channel.remove-peer")
+                .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
+            if (remove == null) throw new InvalidOperationException("SubChannel Remove不可操作");
+            remove.Invoke();
+            window.Dispatcher.Invoke(new Action(() => {
+                System.Windows.Controls.TabControl tabs =
+                    window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                TCTManualChannelFrame page = tabs.Items.OfType<System.Windows.Controls.TabItem>()
+                    .Select(x => x.Content).OfType<TCTManualChannelFrame>().Single();
+                if (page.PeerCount != 0 || page.IsLiveSubChannel(savedPeer))
+                    throw new InvalidOperationException("移除对端后旧Generation仍可寻址");
+                page.VerifyInvalidOperation();
+                if (!page.LastDiagnostic.Contains("旧代次"))
+                    throw new InvalidOperationException("MultiPeer失效路由反证未运行");
+            }));
+            SaveScreenshot(window, "TestCenter-Channel-P0-Multi.png");
+            window.Dispatcher.Invoke(new Action(() => {
+                System.Windows.Controls.TabControl tabs =
+                    window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                TCTManualChannelFrame page = tabs.Items.OfType<System.Windows.Controls.TabItem>()
+                    .Select(x => x.Content).OfType<TCTManualChannelFrame>().Single();
+                page.SelectChannelKind(MCCChannelKind.Serial);
+                page.SetStationInput("7");
+                if (page.SelectedTopology != MCCChannelTopology.SharedBus)
+                    throw new InvalidOperationException("Serial拓扑不是SharedBus");
+            }));
+            InvokePattern addStation = Find(root, "TCT.Manual.Action.channel.add-station")
+                .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
+            if (addStation == null) throw new InvalidOperationException("SharedBus站号编辑不可用");
+            addStation.Invoke();
+            window.Dispatcher.Invoke(new Action(() => {
+                System.Windows.Controls.TabControl tabs =
+                    window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                TCTManualChannelFrame page = tabs.Items.OfType<System.Windows.Controls.TabItem>()
+                    .Select(x => x.Content).OfType<TCTManualChannelFrame>().Single();
+                if (page.StationCount != 1 || page.PeerCount != 0)
+                    throw new InvalidOperationException("RS485站号错误创建为Socket子通道");
+                page.SetStationInput("248");
+                bool invalidRejected = false;
+                try { page.AddStation(); }
+                catch (ArgumentException) { invalidRejected = true; }
+                if (!invalidRejected || page.StationCount != 1)
+                    throw new InvalidOperationException("无效Modbus站号未拒绝或修改了合法点表");
+            }));
+            InvokePattern removeStation = Find(root, "TCT.Manual.Action.channel.remove-station")
+                .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
+            if (removeStation == null) throw new InvalidOperationException("站号删除操作缺失");
+            removeStation.Invoke();
+            window.Dispatcher.Invoke(new Action(() => {
+                System.Windows.Controls.TabControl tabs =
+                    window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                TCTManualChannelFrame page = tabs.Items.OfType<System.Windows.Controls.TabItem>()
+                    .Select(x => x.Content).OfType<TCTManualChannelFrame>().Single();
+                if (page.StationCount != 0) throw new InvalidOperationException("删除协议站号失败");
+                page.VerifyInvalidOperation();
+                page.SelectChannelKind(MCCChannelKind.TcpClient);
+                if (page.IsConnected || page.SelectedTopology != MCCChannelTopology.SinglePeer)
+                    throw new InvalidOperationException("TCPClient不得假装已联机");
+            }));
+            if (Find(root, "TCT.Manual.Action.connect").Current.IsEnabled)
+                throw new InvalidOperationException("未授权TCPClient不应显示可连接");
+            SaveScreenshot(window, "TestCenter-Channel-P0-SharedBus.png");
         }
         private static void VerifyOverview(IntPtr hwnd, TCTMainWindow window)
         {
