@@ -28,6 +28,42 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         private readonly MHSConfigAuthorizedSection<T> _authorized;
         private MHSConfigEditorModel<T> _editor;
         private readonly StackPanel _form = new StackPanel();
+        private StackPanel _shellHeading;
+        private WrapPanel _shellCommands;
+        private TabControl _shellTabs;
+        private bool _workspaceCompact;
+        private HashSet<string> _visibleRootFields;
+        private HashSet<string> _nestedCategories;
+        /// <summary>
+        /// Schema-only presentation projection for embedded workspaces.
+        /// Values and edits still belong to this one MHSConfigEditorModel.
+        /// </summary>
+        public void ConfigureWorkspaceProjection(IEnumerable<string> rootFields,
+            IEnumerable<string> nestedCategories = null, bool compact = true)
+        {
+            EnsureActive();
+            _visibleRootFields = rootFields == null ? null :
+                new HashSet<string>(rootFields, StringComparer.Ordinal);
+            _nestedCategories = nestedCategories == null ? null :
+                new HashSet<string>(nestedCategories, StringComparer.Ordinal);
+            _workspaceCompact = compact;
+            if (_shellHeading != null) _shellHeading.Visibility =
+                compact ? Visibility.Collapsed : Visibility.Visible;
+            if (_shellCommands != null) _shellCommands.Visibility =
+                compact ? Visibility.Collapsed : Visibility.Visible;
+            if (_issues != null) _issues.Visibility =
+                compact ? Visibility.Collapsed : Visibility.Visible;
+            if (_shellTabs != null)
+            {
+                _shellTabs.TabStripPlacement = compact ? Dock.Bottom : Dock.Top;
+                if (_shellTabs.Items.Count > 1)
+                    ((TabItem)_shellTabs.Items[1]).Visibility =
+                        compact ? Visibility.Collapsed : Visibility.Visible;
+                _shellTabs.SelectedIndex = 0;
+            }
+            RefreshAll();
+        }
+        public int VisibleWorkspaceEditorCount { get { return _count; } }
         private readonly TextBlock _status = new TextBlock { TextWrapping = TextWrapping.Wrap };
         private readonly TextBlock _issues = new TextBlock { TextWrapping = TextWrapping.Wrap, Foreground = Brushes.Firebrick };
         private readonly ComboBox _boundaries = new ComboBox { Width = 120, Margin = new Thickness(5) };
@@ -115,6 +151,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         {
             DockPanel root = new DockPanel { Margin = new Thickness(12) };
             StackPanel header = new StackPanel { Margin = new Thickness(0, 0, 0, 8) };
+            _shellHeading = header;
             header.Children.Add(new TextBlock { Text = FCMConfigSchemaBuilder.Describe<T>().SectionId,
                 FontSize = 19, FontWeight = FontWeights.SemiBold, Foreground = Brushes.DarkSlateBlue });
             header.Children.Add(_status);
@@ -122,6 +159,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             root.Children.Add(header);
 
             WrapPanel commands = new WrapPanel { Margin = new Thickness(0, 6, 0, 8) };
+            _shellCommands = commands;
             commands.Children.Add(MakeButton("撤销", () => Execute(() => _editor.Undo())));
             commands.Children.Add(MakeButton("重做", () => Execute(() => _editor.Redo())));
             commands.Children.Add(MakeButton("预览与验证", () => PreviewAsync()));
@@ -140,6 +178,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             root.Children.Add(_issues);
 
             TabControl tabs = new TabControl();
+            _shellTabs = tabs;
             tabs.Items.Add(new TabItem { Header = "参数及动态集合", Content = new ScrollViewer {
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = _form } });
             StackPanel detail = new StackPanel { Margin = new Thickness(12) };
@@ -243,7 +282,62 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         private void RenderObject(Panel host, Type type, object model, string parent, int depth, bool hidden)
         {
             if (depth > 24) { host.Children.Add(new TextBlock { Text = "嵌套深度超过编辑限制" }); return; }
-            foreach (FCMConfigMemberDescriptor member in FCMConfigSchemaBuilder.Members(type))
+            FCMConfigMemberDescriptor[] members = FCMConfigSchemaBuilder.Members(type)
+                .Where(member => (parent.Length != 0 || _visibleRootFields == null ||
+                    _visibleRootFields.Contains(member.Name)) &&
+                    (parent.Length == 0 || _nestedCategories == null ||
+                    _nestedCategories.Contains((member.Property.GetCustomAttributes(
+                        typeof(FCMConfigItemAttribute), true).FirstOrDefault()
+                        as FCMConfigItemAttribute)?.Category ?? "")))
+                .ToArray();
+            // Presentation-only: the real Channel configuration schema supplies all fields,
+            // annotation labels and validation. Group them into the three requested panels.
+            // There is no second Channel editor, converter or mutable view-model.
+            if (_workspaceCompact && type.Name == "MCCChannelConfiguration" &&
+                parent.Length > 0 && members.Length > 0)
+            {
+                Grid group = new Grid { Margin = new Thickness(2, 6, 2, 8) };
+                for (int column = 0; column < 3; column++)
+                    group.ColumnDefinitions.Add(new ColumnDefinition {
+                        Width = new GridLength(1, GridUnitType.Star),
+                        MinWidth = 220 });
+                string[] titles = { "通道类型 / 身份与子通道", "网络配置 / 串口", "数据配置 / 执行与重连" };
+                for (int column = 0; column < 3; column++)
+                {
+                    StackPanel panel = new StackPanel();
+                    Border card = new Border {
+                        Background = Brushes.White,
+                        BorderBrush = new SolidColorBrush(Color.FromRgb(204, 221, 239)),
+                        BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(3),
+                        Margin = new Thickness(0, 0, 9, 5), Padding = new Thickness(10) };
+                    StackPanel items = new StackPanel();
+                    items.Children.Add(new TextBlock {
+                        Text = titles[column], FontSize = 14,
+                        FontWeight = FontWeights.SemiBold, Foreground = Brushes.MidnightBlue,
+                        Background = Brushes.AliceBlue, Padding = new Thickness(7, 7, 7, 7),
+                        Margin = new Thickness(0, 0, 0, 10) });
+                    foreach (FCMConfigMemberDescriptor member in members)
+                    {
+                        FCMConfigItemAttribute attr = member.Property.GetCustomAttributes(
+                            typeof(FCMConfigItemAttribute), true).FirstOrDefault() as FCMConfigItemAttribute;
+                        string category = attr == null ? "" : attr.Category;
+                        int assigned = category == "身份" || category == "子通道" ? 0 :
+                            category == "网络" || category == "串口" ? 1 : 2;
+                        if (assigned != column) continue;
+                        string path = parent + "." + member.Name;
+                        object value = model == null ? null : member.Property.GetValue(model, null);
+                        RenderValue(panel, member.MemberType, value, path, member.Label,
+                            depth, hidden || member.Property.IsDefined(
+                                typeof(FCMConfigSensitiveAttribute), true) ||
+                            FCMConfigSensitivity.ContainsSensitive(member.MemberType), member.Unit);
+                    }
+                    items.Children.Add(panel); card.Child = items;
+                    Grid.SetColumn(card, column); group.Children.Add(card);
+                }
+                host.Children.Add(group);
+                return;
+            }
+            foreach (FCMConfigMemberDescriptor member in members)
             {
                 string path = parent.Length == 0 ? member.Name : parent + "." + member.Name;
                 bool isSecret = hidden || member.Property.IsDefined(typeof(FCMConfigSensitiveAttribute), true) ||
