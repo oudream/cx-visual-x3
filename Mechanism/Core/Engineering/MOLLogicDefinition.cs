@@ -204,6 +204,35 @@ namespace CxVisual.Mechanism.Core
         public string CollectionInput { get; private set; }
     }
 
+    public enum MOLEventSource { FlowInput=1, Channel=2 }
+    /// <summary>事件只声明来源、关联与负载类型；订阅/投递/持久消费归MRK。</summary>
+    public sealed class MOLEventContract
+    {
+        public MOLEventContract(string id,MOLEventSource source=MOLEventSource.FlowInput,
+            string payloadTypeId=null,string correlationInput=null)
+        {
+            if(!Enum.IsDefined(typeof(MOLEventSource),source))
+                throw new ArgumentException("logic.event_source");
+            Id=Check(id,"logic.event_id");
+            Source=source;
+            PayloadTypeId=string.IsNullOrEmpty(payloadTypeId)?"":Check(payloadTypeId,"logic.event_type");
+            CorrelationInput=string.IsNullOrEmpty(correlationInput)?"":
+                Check(correlationInput,"logic.event_correlation");
+        }
+        private static string Check(string v,string code)
+        {
+            if(string.IsNullOrWhiteSpace(v)||v.Length>128||v.Any(char.IsControl))
+                throw new ArgumentException(code);
+            return v.Trim();
+        }
+        public string Id{get;private set;}
+        public MOLEventSource Source{get;private set;}
+        public string PayloadTypeId{get;private set;}
+        public string CorrelationInput{get;private set;}
+        public bool IsLegacyTask
+        {get{return Source==MOLEventSource.FlowInput&&
+            PayloadTypeId.Length==0&&CorrelationInput.Length==0;}}
+    }
     /// <summary>工程等待声明：定时或有界外部事件；实际等待、取消由MRK执行。</summary>
     public sealed class MOLWaitDefinition
     {
@@ -212,20 +241,22 @@ namespace CxVisual.Mechanism.Core
             if(durationMilliseconds<0||durationMilliseconds>600000)
                 throw new ArgumentOutOfRangeException("durationMilliseconds");
             DurationMilliseconds=durationMilliseconds;
-            EventInput="";
+            EventInput="";Event=null;
         }
-        /// <summary>事件输入为本次Flow提供的Task；超时不可为零，不能无限等待。</summary>
+        /// <summary>保留旧Task输入合同。</summary>
         public MOLWaitDefinition(string eventInput,int timeoutMilliseconds)
+            :this(new MOLEventContract(eventInput),timeoutMilliseconds){}
+        public MOLWaitDefinition(MOLEventContract eventContract,int timeoutMilliseconds)
         {
-            if(string.IsNullOrWhiteSpace(eventInput)||eventInput.Length>128)
-                throw new ArgumentException("logic.wait_event_input","eventInput");
+            if(eventContract==null)throw new ArgumentNullException("eventContract");
             if(timeoutMilliseconds<1||timeoutMilliseconds>600000)
                 throw new ArgumentOutOfRangeException("timeoutMilliseconds");
-            EventInput=eventInput.Trim();
+            Event=eventContract;EventInput=eventContract.Id;
             DurationMilliseconds=timeoutMilliseconds;
         }
         public int DurationMilliseconds{get;private set;}
         public string EventInput{get;private set;}
+        public MOLEventContract Event{get;private set;}
     }
 
     /// <summary>具名错误处理声明，错误码来自原Capability合同；不保存CLR异常类型。</summary>
@@ -301,6 +332,9 @@ namespace CxVisual.Mechanism.Core
         public static MOLControlBlock AwaitEvent(string eventInput,int timeoutMilliseconds)
         {return new MOLControlBlock(Guid.NewGuid(),MOLControlKind.Wait,
             wait:new MOLWaitDefinition(eventInput,timeoutMilliseconds));}
+        public static MOLControlBlock AwaitEvent(MOLEventContract contract,int timeoutMilliseconds)
+        {return new MOLControlBlock(Guid.NewGuid(),MOLControlKind.Wait,
+            wait:new MOLWaitDefinition(contract,timeoutMilliseconds));}
         public static MOLControlBlock TryCatchFinally(MOLControlBlock body,
             MOLControlBlock catchBody=null,MOLControlBlock finallyBody=null,
             IEnumerable<MOLCatchClause> catches=null)
@@ -486,7 +520,8 @@ namespace CxVisual.Mechanism.Core
         {
             Func<MOLExpression,bool> composite=e=>
                 e!=null&&e.Operator!=MOLLogicalOperator.Scalar;
-            return composite(b.Condition)||
+            return (b.Wait!=null&&b.Wait.Event!=null&&!b.Wait.Event.IsLegacyTask)||
+                composite(b.Condition)||
                 b.Cases.Any(c=>composite(c.Condition)||HasComposition(c.Body))||
                 (b.Loop!=null&&(composite(b.Loop.Condition)||HasComposition(b.Loop.Body)))||
                 b.Children.Any(HasComposition)||
@@ -667,6 +702,14 @@ namespace CxVisual.Mechanism.Core
                     new XAttribute("durationMs",b.Wait.DurationMilliseconds));
                 if(!string.IsNullOrEmpty(b.Wait.EventInput))
                     wait.Add(new XAttribute("eventInput",b.Wait.EventInput));
+                if(b.Wait.Event!=null&&!b.Wait.Event.IsLegacyTask)
+                {
+                    wait.Add(new XAttribute("source",b.Wait.Event.Source));
+                    if(b.Wait.Event.PayloadTypeId.Length>0)
+                        wait.Add(new XAttribute("payloadType",b.Wait.Event.PayloadTypeId));
+                    if(b.Wait.Event.CorrelationInput.Length>0)
+                        wait.Add(new XAttribute("correlation",b.Wait.Event.CorrelationInput));
+                }
                 e.Add(wait);
             }
             if(b.TryRegion!=null)
@@ -751,12 +794,28 @@ namespace CxVisual.Mechanism.Core
             {
                 int duration;
                 string eventInput=(string)waitElement.Attribute("eventInput");
-                if(waitElement.Attributes().Count()!=(eventInput==null?1:2)||
-                   !int.TryParse((string)waitElement.Attribute("durationMs"),
-                       NumberStyles.None,CultureInfo.InvariantCulture,out duration))
+                CheckSchema(waitElement,new[]{"durationMs","eventInput","source",
+                    "payloadType","correlation"},new string[0]);
+                if(!int.TryParse((string)waitElement.Attribute("durationMs"),
+                    NumberStyles.None,CultureInfo.InvariantCulture,out duration))
                     throw new InvalidDataException("logic.wait_payload");
-                wait=eventInput==null?new MOLWaitDefinition(duration):
-                    new MOLWaitDefinition(eventInput,duration);
+                if(eventInput==null)
+                {
+                    if(waitElement.Attributes().Count()!=1)
+                        throw new InvalidDataException("logic.wait_payload");
+                    wait=new MOLWaitDefinition(duration);
+                }
+                else
+                {
+                    MOLEventSource source=MOLEventSource.FlowInput;
+                    string declared=(string)waitElement.Attribute("source");
+                    if(declared!=null&&(!Enum.TryParse(declared,false,out source)||
+                        !Enum.IsDefined(typeof(MOLEventSource),source)))
+                        throw new InvalidDataException("logic.event_source");
+                    wait=new MOLWaitDefinition(new MOLEventContract(eventInput,source,
+                        (string)waitElement.Attribute("payloadType"),
+                        (string)waitElement.Attribute("correlation")),duration);
+                }
             }
             MOLTryDefinition tryDefinition=null;
             XElement region=e.Element("TryRegion");
