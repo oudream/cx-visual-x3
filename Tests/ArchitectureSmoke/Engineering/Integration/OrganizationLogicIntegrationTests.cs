@@ -65,6 +65,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             SaveLoadAndIdentity();
             V1WaitDelayCancellationRoundtrip();
             P01EventAwaitTimeoutCancellationRoundtrip();
+            P01TryCatchFinallyRoundtrip();
             V2WiringRoundtrip();
             V2TypedParameterConfiguration();
             G05aConditionalBranchesAndJoin();
@@ -194,6 +195,145 @@ namespace CxVisual.Tests.ArchitectureSmoke
             {
                 session.Close(true);
                 if(System.IO.File.Exists(path))System.IO.File.Delete(path);
+            }
+        }
+
+
+        /// <summary>P0-1：MOL逻辑唯一保存，MOC编译到MRK同引擎，成功/捕获/传播/取消均执行Finally。</summary>
+        private static void P01TryCatchFinallyRoundtrip()
+        {
+            bool rejected=false;
+            try{MOLControlBlock.TryCatchFinally(MOLControlBlock.Action("work"));}
+            catch(ArgumentException ex)
+            {rejected=ex.Message.Contains("logic.try_requires_handler_or_finally");}
+            Check(rejected,"Try with no Catch/Finally was accepted");
+            rejected=false;
+            try{new MOLLogicDefinition(new MOLControlBlock(Guid.NewGuid(),MOLControlKind.Try));}
+            catch(InvalidOperationException ex){rejected=ex.Message=="logic.try_missing";}
+            Check(rejected,"Try without definition was accepted");
+
+            var calls=new System.Collections.Concurrent.ConcurrentQueue<string>();
+            bool fail=false,failFinally=false;
+            var resolver=new TestResolver()
+                .Register("try.work",(ctx,ct)=>{
+                    calls.Enqueue("try");
+                    return fail?Task.FromException<object>(
+                        new InvalidOperationException("inspection.failed")):
+                        Task.FromResult((object)true);
+                })
+                .Register("try.catch",(ctx,ct)=>{
+                    calls.Enqueue("catch");return Task.FromResult((object)true);
+                })
+                .Register("try.finally",(ctx,ct)=>{
+                    calls.Enqueue("finally");
+                    return failFinally?Task.FromException<object>(
+                        new InvalidOperationException("cleanup.failed")):
+                        Task.FromResult((object)true);
+                })
+                .Register("try.after",(ctx,ct)=>{
+                    calls.Enqueue("after");return Task.FromResult((object)true);
+                });
+            var work=MOLControlBlock.Action("try.work");
+            var handler=MOLControlBlock.Action("try.catch");
+            var cleanup=MOLControlBlock.Action("try.finally");
+            var region=MOLControlBlock.TryCatchFinally(work,handler,cleanup);
+            var session=MEMEngineering.Create("P0-1 Try Catch Finally");
+            var page=session.AddPage("Inspection");
+            string path=System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                "moc-try-"+Guid.NewGuid().ToString("N")+".cxproj");
+            MOLLogicCodec.Set(session,page.RootContent,new MOLLogicDefinition(
+                MOLControlBlock.Sequence(region,MOLControlBlock.Action("try.after"))));
+            try
+            {
+                session.SaveAs(path);
+                using(var opened=MEMEngineering.Open(path))
+                {
+                    var logic=MOLLogicCodec.Get(opened.GetSnapshot().Find(page.RootContent.Id));
+                    Check(logic.Root.Children[0].Id==region.Id&&
+                        logic.Root.Children[0].TryRegion.TryBody.Id==work.Id&&
+                        logic.Root.Children[0].TryRegion.CatchBody.Id==handler.Id&&
+                        logic.Root.Children[0].TryRegion.FinallyBody.Id==cleanup.Id,
+                        "Try/Catch/Finally IDs changed after real MEM Save/Open");
+                    var build=new MOCEngineeringCompiler().Compile(opened.GetSnapshot(),
+                        page.RootContent.Id,resolver);
+                    MOCTraceView trace;
+                    var success=Execute(build,null,out trace);
+                    Check(success.State==MRKFlowState.Completed&&
+                        string.Join(",",calls.ToArray())=="try,finally,after"&&
+                        trace.Events.Any(x=>x.Origin.BlockId==cleanup.Id)&&
+                        trace.Events.Any(x=>x.Origin.BlockId==work.Id),
+                        "MRK successful Try skipped Finally or lost SourceMap");
+                    calls=new System.Collections.Concurrent.ConcurrentQueue<string>();
+                    fail=true;
+                    var handled=Execute(build,null,out trace);
+                    Check(handled.State==MRKFlowState.Completed&&
+                        string.Join(",",calls.ToArray())=="try,catch,finally,after"&&
+                        trace.Events.Any(x=>x.Origin.BlockId==handler.Id),
+                        "MRK failed Try did not run Catch/Finally in order");
+                    calls=new System.Collections.Concurrent.ConcurrentQueue<string>();
+                    failFinally=true;
+                    var broken=Execute(build,null,out trace);
+                    Check(broken.State==MRKFlowState.Failed&&
+                        string.Join(",",calls.ToArray())=="try,catch,finally"&&
+                        broken.Error!=null,
+                        "MRK Finally failure must fail Flow and skip downstream");
+                    failFinally=false;
+
+                    var uncaught=MOLControlBlock.TryCatchFinally(
+                        MOLControlBlock.Action("try.work"),finallyBody:
+                        MOLControlBlock.Action("try.finally"));
+                    MOLLogicCodec.Set(opened,opened.Project.Pages[0].RootContent,
+                        new MOLLogicDefinition(uncaught));
+                    var direct=new MOCEngineeringCompiler().Compile(opened.GetSnapshot(),
+                        page.RootContent.Id,resolver);
+                    calls=new System.Collections.Concurrent.ConcurrentQueue<string>();
+                    var propagated=Execute(direct,null,out trace);
+                    Check(propagated.State==MRKFlowState.Failed&&
+                        string.Join(",",calls.ToArray())=="try,finally"&&
+                        propagated.Error!=null,
+                        "Uncaught Try error was swallowed instead of rethrown after Finally");
+
+                    var awaited=MOLControlBlock.AwaitEvent("ready",600000);
+                    var cancelRegion=MOLControlBlock.TryCatchFinally(awaited,
+                        MOLControlBlock.Action("try.catch"),
+                        MOLControlBlock.Action("try.finally"));
+                    MOLLogicCodec.Set(opened,opened.Project.Pages[0].RootContent,
+                        new MOLLogicDefinition(cancelRegion));
+                    var cancelBuild=new MOCEngineeringCompiler().Compile(opened.GetSnapshot(),
+                        page.RootContent.Id,resolver);
+                    var gate=new TaskCompletionSource<bool>();
+                    calls=new System.Collections.Concurrent.ConcurrentQueue<string>();
+                    var engine=new MRKExecutionEngine(new FCRWorkerOptions(1,16));
+                    try
+                    {
+                        var handle=engine.StartFlow(cancelBuild.Plan,
+                            new Dictionary<string,object>{{"ready",gate.Task}});
+                        string waitingId=cancelBuild.SourceMap.Find(awaited.Id).Single().StepId;
+                        bool entered=false;
+                        for(int i=0;i<200;i++)
+                        {
+                            if(handle.Context.Trace.Snapshot().Any(x=>
+                                x.StepId.EndsWith(waitingId,StringComparison.Ordinal)&&
+                                x.State==MRKStepState.Running)){entered=true;break;}
+                            System.Threading.Thread.Sleep(10);
+                        }
+                        Check(entered,"Test did not enter protected Wait before cancellation");
+                        handle.RequestCancel();
+                        Check(handle.Completion.Wait(TimeSpan.FromSeconds(5)),
+                            "Cancelled Try did not finish with bounded Finally");
+                        var cancelled=handle.Completion.GetAwaiter().GetResult();
+                        Check(cancelled.State==MRKFlowState.Cancelled&&
+                            string.Join(",",calls.ToArray())=="finally",
+                            "Cancel must skip Catch but run Finally and cancel Flow");
+                    }
+                    finally{engine.StopAsync(true).GetAwaiter().GetResult();}
+                }
+            }
+            finally
+            {
+                session.Close(true);
+                if(System.IO.File.Exists(path))System.IO.File.Delete(path);
+                if(System.IO.File.Exists(path+".cx-lock"))System.IO.File.Delete(path+".cx-lock");
             }
         }
 
