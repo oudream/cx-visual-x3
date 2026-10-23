@@ -66,6 +66,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             MOLDefinitionEditingClosure();
             MOLScalarTypeSafety();
             MOLTypedDefinitionContracts();
+            MOLThrowDefinitionContracts();
             MOLLosslessSchemaConversion();
             V1WaitDelayCancellationRoundtrip();
             P01EventAwaitTimeoutCancellationRoundtrip();
@@ -448,6 +449,56 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     var read=MOLLogicCodec.Get(opened.GetSnapshot().Find(page.RootContent.Id));
                     Check(read.Root.Id==complex.Root.Id&&read.Root.Children.Count==2,
                         "Rejected migration changed persisted complex V1 logic");
+                }
+                finally{opened.Close(true);}
+            }
+            finally
+            {
+                session.Close(true);
+                if(System.IO.File.Exists(path))System.IO.File.Delete(path);
+                if(System.IO.File.Exists(path+".cx-lock"))System.IO.File.Delete(path+".cx-lock");
+            }
+        }
+
+
+        /// <summary>D1：Throw作为Exit类型声明，不得被MOC误当Return。</summary>
+        private static void MOLThrowDefinitionContracts()
+        {
+            var thrown=MOLControlBlock.Throw("inspect.defect");
+            var def=new MOLLogicDefinition(thrown);
+            var copy=MOLLogicCodec.Deserialize(MOLLogicCodec.Serialize(def));
+            Check(copy.Root.Id==thrown.Id&&copy.Root.ExitKind==MOLExitKind.Throw&&
+                copy.Root.ErrorCode=="inspect.defect",
+                "MOL Throw lost error identity or schema roundtrip");
+            bool rejected=false;
+            try{MOLControlBlock.Throw(" ");}catch(ArgumentException){rejected=true;}
+            Check(rejected,"MOL Throw accepted empty error code");
+            rejected=false;
+            try{new MOLLogicDefinition(new MOLControlBlock(Guid.NewGuid(),
+                MOLControlKind.Exit,exitKind:MOLExitKind.Throw));}
+            catch(InvalidOperationException ex)
+            {rejected=ex.Message=="logic.throw_bad_error_code";}
+            Check(rejected,"MOL Throw accepted missing error code");
+            var session=MEMEngineering.Create("MOL Throw声明");
+            var page=session.AddPage("Main");
+            string path=System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                "mol-throw-"+Guid.NewGuid().ToString("N")+".cxproj");
+            try
+            {
+                MOLLogicCodec.Set(session,page.RootContent,def);
+                session.SaveAs(path);
+                var opened=MEMEngineering.Open(path);
+                try
+                {
+                    var read=MOLLogicCodec.Get(opened.GetSnapshot().Find(page.RootContent.Id));
+                    Check(read.Root.ExitKind==MOLExitKind.Throw&&
+                        read.Root.ErrorCode=="inspect.defect","MOL Throw lost Save/Open");
+                    rejected=false;
+                    try{new MOCEngineeringCompiler().Compile(
+                        opened.GetSnapshot(),page.RootContent.Id,new TestResolver());}
+                    catch(InvalidOperationException ex)
+                    {rejected=ex.Message.Contains("moc.throw_not_supported");}
+                    Check(rejected,"MOC quietly converted Throw to Return");
                 }
                 finally{opened.Close(true);}
             }
