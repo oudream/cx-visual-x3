@@ -657,6 +657,13 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 wiring.Blocks[0].Id==action.Id&&
                 wiring.Blocks[0].CapabilityId=="Inspect"&&wiring.Links.Count==0,
                 "Single Action conversion V1 to V2 was not lossless");
+            int blockedRevision=session.Revision;
+            bool blocked=false;
+            try{MOLLogicCodec.Set(session,page.RootContent,new MOLLogicDefinition(action));}
+            catch(InvalidOperationException ex)
+            {blocked=ex.Message=="logic.set.requires_explicit_conversion";}
+            Check(blocked&&session.Revision==blockedRevision,
+                "MOL V1 Set silently overwrote V2 without migration");
             Check(session.Undo().Success&&
                 MOLLogicCodec.Get(session.GetSnapshot().Find(page.RootContent.Id))
                     .Root.Id==action.Id,
@@ -668,6 +675,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
             MOLLogicCodec.ConvertFromV2(session,page.RootContent);
             Check(MOLLogicCodec.Get(session.GetSnapshot().Find(page.RootContent.Id))
                 .Root.Id==action.Id,"V2 to V1 converted different identity");
+            blockedRevision=session.Revision;blocked=false;
+            try{MOLWiringCodec.Set(session,page.RootContent,wiring);}
+            catch(InvalidOperationException ex)
+            {blocked=ex.Message=="wiring.set.requires_explicit_conversion";}
+            Check(blocked&&session.Revision==blockedRevision,
+                "MOL V2 Set silently overwrote V1 without migration");
 
             var complex=new MOLLogicDefinition(MOLControlBlock.Sequence(
                 MOLControlBlock.Action("Acquire"),MOLControlBlock.Action("Detect")));
