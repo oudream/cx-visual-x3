@@ -1465,11 +1465,21 @@ namespace CxVisual.Tests.ArchitectureSmoke
             MEMContent child=session.AddContent(session.Project,"Shared");
             var internalStep=MOLControlBlock.Action("work");
             MOLLogicCodec.Set(session, child, new MOLLogicDefinition(internalStep));
-            var call=new MOLControlBlock(Guid.NewGuid(), MOLControlKind.Invoke, targetFlow:child.Id.ToString("N"));
+            var call=MOLControlBlock.InvokeContent(child.Id);
             MOLLogicCodec.Set(session, page.RootContent, new MOLLogicDefinition(call));
             int calls=0;
             var resolver=new TestResolver().Register("work", (c,t) =>
             { Interlocked.Increment(ref calls); return Task.FromResult((object)1); });
+            bool missingReference=false;
+            try{new MOCEngineeringCompiler().Compile(session.GetSnapshot(),
+                page.RootContent.Id,resolver);}
+            catch(InvalidOperationException ex)
+            {missingReference=ex.Message=="moc.invoke_missing_content_ref";}
+            Check(missingReference,
+                "V1 Invoke without MEM ContentReference unexpectedly compiled");
+            session.Edit("引用结构化子逻辑",e=>{
+                e.Reference(page.RootContent,child,"Shared");return true;
+            }).RequireValue();
             var plan=new MOCEngineeringCompiler().Compile(session.GetSnapshot(),page.RootContent.Id,resolver);
             MOCTraceView trace;
             var result=Execute(plan,null,out trace);
