@@ -70,6 +70,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             MOLTypedDefinitionContracts();
             MOLThrowDefinitionContracts();
             MOLLosslessSchemaConversion();
+            MOLCrossSchemaContentDeclaration();
             V1WaitDelayCancellationRoundtrip();
             P01EventAwaitTimeoutCancellationRoundtrip();
             P01TryCatchFinallyRoundtrip();
@@ -662,6 +663,61 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Check(rejected,"MOC quietly converted Throw to Return");
                 }
                 finally{opened.Close(true);}
+            }
+            finally
+            {
+                session.Close(true);
+                if(System.IO.File.Exists(path))System.IO.File.Delete(path);
+                if(System.IO.File.Exists(path+".cx-lock"))System.IO.File.Delete(path+".cx-lock");
+            }
+        }
+
+
+        /// <summary>同一MEM引用可组合V1结构化Content和V2调用图，不复制定义。</summary>
+        private static void MOLCrossSchemaContentDeclaration()
+        {
+            var session=MEMEngineering.Create("MOL cross schema");
+            var page=session.AddPage("Main");
+            var child=session.AddContent(session.Project,"LegacyLogic");
+            var inner=new MOLLogicDefinition(MOLControlBlock.Sequence(
+                MOLControlBlock.Action("LegacyCapture"),MOLControlBlock.Action("LegacyInspect")));
+            MOLLogicCodec.Set(session,child,inner);
+            session.Edit("引用V1内容",e=>{
+                e.Reference(page.RootContent,child,"Legacy");return true;
+            }).RequireValue();
+            Guid invoke=Guid.Empty;
+            MOCFlowBuilder.Edit(session,page.RootContent,flow=>{
+                invoke=flow.InvokeContent(child);
+                Guid after=flow.Step("Aggregate");
+                flow.Connect(invoke,"Done",after,"Start");
+            });
+            var parent=MOLWiringCodec.Get(session.GetSnapshot().Find(page.RootContent.Id));
+            Check(parent.Blocks.Any(b=>b.Id==invoke&&
+                b.CapabilityId=="moc.invoke:"+child.Id.ToString("N"))&&
+                parent.Ports[invoke].All(x=>x.Kind==MPCPortKind.Control)&&
+                session.GetSnapshot().Find(page.RootContent.Id).References
+                    .Any(x=>x.TargetId==child.Id),
+                "V2 caller did not declare unique reference to V1 Content");
+            string path=System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                "mol-cross-"+Guid.NewGuid().ToString("N")+".cxproj");
+            try
+            {
+                session.SaveAs(path);
+                var reopened=MEMEngineering.Open(path);
+                try
+                {
+                    var v1=MOLLogicCodec.Get(reopened.GetSnapshot().Find(child.Id));
+                    var v2=MOLWiringCodec.Get(reopened.GetSnapshot().Find(page.RootContent.Id));
+                    Check(v1.Root.Id==inner.Root.Id&&v2.Blocks.Any(b=>b.Id==invoke),
+                        "V1/V2 Content reference lost on MEM Save/Open");
+                    bool rejected=false;
+                    try{new MOCEngineeringCompiler().Compile(reopened.GetSnapshot(),
+                        page.RootContent.Id,new TestResolver());}
+                    catch(InvalidOperationException ex)
+                    {rejected=ex.Message.Contains("moc.invoke.requires_v2");}
+                    Check(rejected,"MOC silently substituted V1 child for V2 execution graph");
+                }
+                finally{reopened.Close(true);}
             }
             finally
             {
