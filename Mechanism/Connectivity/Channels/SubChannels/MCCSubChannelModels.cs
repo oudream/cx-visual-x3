@@ -52,6 +52,34 @@ namespace CxVisual.Mechanism.Connectivity
         public DateTime CreatedUtc { get; private set; }
     }
 
+    // SubChannel 是父通道的运行期对端视图；不持有第二份 Socket/注册表。
+    public sealed class MCCSubChannel
+    {
+        private readonly IMCCMultiPeerChannel _owner;
+        public MCCSubChannel(IMCCMultiPeerChannel owner, MCCSubChannelAddress address)
+        {
+            _owner = owner ?? throw new ArgumentNullException("owner");
+            Address = address ?? throw new ArgumentNullException("address");
+            if (!address.HasSubChannel || _owner.FindSubChannel(address) == null)
+                throw new ArgumentException("子通道必须属于一个存活的 MultiPeer Channel");
+        }
+        public MCCSubChannelAddress Address { get; private set; }
+        public MCCSubChannelInfo Info
+        {
+            get { return _owner.FindSubChannel(Address); }
+        }
+        public MCCSubChannelState State
+        {
+            get { MCCSubChannelInfo info = Info; return info == null ? MCCSubChannelState.Closed : info.State; }
+        }
+        public System.Threading.Tasks.Task SendAsync(byte[] data, System.Threading.CancellationToken cancellationToken)
+        {
+            if (State != MCCSubChannelState.Open)
+                throw new InvalidOperationException("子通道已断开或路由代次过期");
+            return _owner.SendAsync(data, Address, cancellationToken);
+        }
+    }
+
     // 通道内部使用的线程安全子通道表：不是新的全局 Manager。
     public sealed class MCCSubChannelDirectory : IMCCSubChannelAware
     {
@@ -79,6 +107,7 @@ namespace CxVisual.Mechanism.Connectivity
                 return item;
             }
         }
+        public MCCSubChannelInfo Find(MCCSubChannelAddress address) { return FindSubChannel(address); }
         public MCCSubChannelInfo FindSubChannel(MCCSubChannelAddress address)
         {
             if (address == null || !string.Equals(address.ChannelId, ParentChannelId, StringComparison.Ordinal)) return null;

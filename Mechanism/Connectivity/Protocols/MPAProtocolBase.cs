@@ -8,10 +8,12 @@ using System.Threading.Tasks;
 namespace CxVisual.Mechanism.Connectivity
 {
     // 一个 Connector 一个 Protocol 定义；多对端用 SessionId/SubChannel 区分运行态。
-    public interface IMPAProtocol : IMPAProtocolDefinition
+    public interface IMPAProtocol : IMPAProtocolDefinition, IMPAProtocolReader, IMPAProtocolWriter, IMPAProtocolSender
     {
         byte[] PrepareSend(byte[] payload, MPAProtocolContext context);
         IReadOnlyList<byte[]> ProcessReceived(MCCChannelReceiveContext data, MPAProtocolContext context);
+        // 完整操作面：Read/Write 为 CxVisual 数据映射的读写，不代表设备已响应。
+        // 设备级请求/响应由专业规约会话明确实现。
     }
 
     public abstract class MPAProtocolBase : IMPAProtocol
@@ -25,6 +27,45 @@ namespace CxVisual.Mechanism.Connectivity
             if (payload == null) throw new ArgumentNullException("payload");
             return (byte[])payload.Clone();
         }
+        public virtual async Task<MPAProtocolOperationResult> ReadAsync(
+            MPAProtocolOperationRequest request, MPAProtocolContext context, CancellationToken ct)
+        {
+            if (request == null || request.Kind != MPAProtocolOperationKind.Read || request.Target == null)
+                throw new ArgumentException("Read 要求有效目标点");
+            EnsureMappingContext(context);
+            object value = await new MPADataMappingExecutor(context.DataAccess)
+                .ReadOutboundAsync(context.Configuration, request.Target.Value, ct).ConfigureAwait(false);
+            return new MPAProtocolOperationResult(MPAProtocolOperationStage.Completed, value);
+        }
+        public virtual async Task<MPAProtocolOperationResult> WriteAsync(
+            MPAProtocolOperationRequest request, MPAProtocolContext context, CancellationToken ct)
+        {
+            if (request == null || request.Kind != MPAProtocolOperationKind.Write ||
+                request.Target == null) throw new ArgumentException("Write 要求有效目标点");
+            EnsureMappingContext(context);
+            await new MPADataMappingExecutor(context.DataAccess)
+                .ApplyInboundAsync(context.Configuration, request.Target.Value, request.Value, ct).ConfigureAwait(false);
+            return new MPAProtocolOperationResult(MPAProtocolOperationStage.Completed);
+        }
+        public virtual async Task<MPAProtocolOperationResult> SendAsync(
+            MPAProtocolOperationRequest request, MPAProtocolContext context, CancellationToken ct)
+        {
+            if (request == null || request.Kind != MPAProtocolOperationKind.Send ||
+                !(request.Value is byte[])) throw new ArgumentException("Send 需要字节数据");
+            if (context == null || context.Transport == null || context.ChannelAddress == null)
+                throw new NotSupportedException("必须提供有效的 Channel/子通道发送上下文");
+            ct.ThrowIfCancellationRequested();
+            byte[] packet = PrepareSend((byte[])request.Value, context);
+            await context.Transport.SendAsync(packet, context.ChannelAddress, ct).ConfigureAwait(false);
+            // 网络发送不代表接收者处理完毕，更不代表命令完成。
+            return new MPAProtocolOperationResult(MPAProtocolOperationStage.Sent);
+        }
+        private static void EnsureMappingContext(MPAProtocolContext context)
+        {
+            if (context == null || context.Configuration == null || context.DataAccess == null)
+                throw new NotSupportedException("映射读写必须引用正式配置及 MDS/授权 Owner");
+        }
+
         public abstract IReadOnlyList<byte[]> ProcessReceived(MCCChannelReceiveContext data, MPAProtocolContext context);
     }
 

@@ -225,6 +225,45 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 "Empty Protocol transparently passes data, not an Empty Channel");
             emptyModule.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
             emptyPair[1].Close();
+            // Modbus TCP/RTU 的实际帧校验：TCP 半包，RTU 站号和 CRC16。
+            MPAProtocolContext mbCtx = new MPAProtocolContext("modbus", "session",
+                new MCCSubChannelAddress("raw-rx"), protocolAddress: new MPAProtocolAddress("3"));
+            MPAModbusTcpProtocol mbTcp = new MPAModbusTcpProtocol();
+            byte[] tcpResponse = mbTcp.PrepareSend(new byte[] { 3, 2, 0, 5 }, mbCtx);
+            byte[] headHalf = tcpResponse.Take(5).ToArray();
+            byte[] tailHalf = tcpResponse.Skip(5).ToArray();
+            Check(mbTcp.ProcessReceived(new MCCChannelReceiveContext(
+                new MCCSubChannelAddress("raw-rx"), headHalf), mbCtx).Count == 0,
+                "Modbus TCP 半包暂不输出");
+            IReadOnlyList<byte[]> mbTcpFrames = mbTcp.ProcessReceived(
+                new MCCChannelReceiveContext(new MCCSubChannelAddress("raw-rx"), tailHalf), mbCtx);
+            Check(mbTcpFrames.Count == 1 && mbTcpFrames[0].SequenceEqual(new byte[] { 3, 2, 0, 5 }),
+                "Modbus TCP MBAP 粘包解析与读寄存器响应");
+            MPAModbusRtuProtocol mbRtu = new MPAModbusRtuProtocol();
+            byte[] rtuResponse = mbRtu.PrepareSend(new byte[] { 3, 2, 0, 5 }, mbCtx);
+            IReadOnlyList<byte[]> mbRtuFrames = mbRtu.ProcessReceived(
+                new MCCChannelReceiveContext(new MCCSubChannelAddress("raw-rx"), rtuResponse), mbCtx);
+            Check(mbRtuFrames.Count == 1 && mbRtuFrames[0].SequenceEqual(new byte[] { 3, 2, 0, 5 }),
+                "Modbus RTU CRC16/站号/帧处理");
+            byte[] badCrc = (byte[])rtuResponse.Clone(); badCrc[badCrc.Length - 1] ^= 1;
+            Reject<System.IO.InvalidDataException>(() => mbRtu.ProcessReceived(
+                new MCCChannelReceiveContext(new MCCSubChannelAddress("raw-rx"), badCrc), mbCtx));
+            MPAProtocolConfiguration collectionConfig = new MPAProtocolConfiguration();
+            collectionConfig.Points.Add(new MPAPointDefinition("sensor", "raw:1", typeof(int)));
+            MPADataMappingCollection collection = new MPADataMappingCollection(collectionConfig);
+            MPADataMapping mapped = new MPADataMapping {
+                PointRef = "sensor", TargetRef = "scope/reading",
+                TargetKind = MPADataTargetKind.Variable, Operation = MPADataOperation.WriteValue,
+                Transform = MPADataTransformKind.Int32
+            };
+            collection.Add(mapped);
+            Check(collection.Find("sensor").Count == 1 &&
+                (int)MPADataValueTransform.Apply("42", MPADataTransformKind.Int32) == 42,
+                "Mapping 集合与实际转换语义");
+            Reject<ArgumentException>(() => collection.Add(new MPADataMapping {
+                PointRef = "not-found", TargetRef = "scope/missing" }));
+            Check(collection.Remove(mapped), "Mapping 删除与唯一正式配置");
+
             MDSVariableRegistry registry = new MDSVariableRegistry();
             MDSVariableTable variables = new MDSVariableTable("plc01");
             registry.Register(variables);

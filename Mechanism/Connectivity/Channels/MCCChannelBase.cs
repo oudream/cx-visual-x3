@@ -12,9 +12,6 @@ namespace CxVisual.Mechanism.Connectivity
     {
         MCCChannelTopology Topology { get; }
         event Action<MCCChannelReceiveContext> Received;
-        Task OpenAsync(CancellationToken cancellationToken);
-        Task CloseAsync(CancellationToken cancellationToken);
-        Task SendAsync(byte[] data, MCCSubChannelAddress address, CancellationToken cancellationToken);
     }
     public interface IMCCMultiPeerChannel : IMCCChannelTransport, IMCCSubChannelAware
     {
@@ -129,7 +126,7 @@ namespace CxVisual.Mechanism.Connectivity
         { _peers = new MCCSubChannelDirectory(id); }
         public MCCSubChannelInfo RegisterPeer(string peerId, string endpoint)
         { return _peers.Register(peerId, endpoint); }
-        public bool RemovePeer(MCCSubChannelAddress address) { return _peers.Remove(address); }
+        public virtual bool RemovePeer(MCCSubChannelAddress address) { return _peers.Remove(address); }
         public MCCSubChannelInfo FindSubChannel(MCCSubChannelAddress address) { return _peers.FindSubChannel(address); }
         public MCCSubChannelInfo[] SnapshotSubChannels() { return _peers.SnapshotSubChannels(); }
         protected void ReceiveFrom(MCCSubChannelAddress address, byte[] data, string correlation = null)

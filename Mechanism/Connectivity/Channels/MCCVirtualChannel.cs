@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace CxVisual.Mechanism.Connectivity
 {
@@ -42,6 +44,9 @@ namespace CxVisual.Mechanism.Connectivity
         MCCChannelState State { get; }
         void Open();
         void Close();
+        Task OpenAsync(CancellationToken ct);
+        Task CloseAsync(CancellationToken ct);
+        Task SendAsync(byte[] bytes, MCCSubChannelAddress address, CancellationToken ct);
         void Send(byte[] bytes, string correlationId = null, int segmentBytes = 0);
         IList<MCCChannelFrame> ReadFrames();
     }
@@ -87,6 +92,20 @@ namespace CxVisual.Mechanism.Connectivity
             }
         }
         public void Close() { lock (_gate) _state = MCCChannelState.Closed; }
+        // 历史自描述 Virtual 通道兼容入口；新正式透传走 MCCVirtualRawChannel。
+        public Task OpenAsync(CancellationToken ct)
+        { ct.ThrowIfCancellationRequested(); Open(); return Task.CompletedTask; }
+        public Task CloseAsync(CancellationToken ct)
+        { ct.ThrowIfCancellationRequested(); Close(); return Task.CompletedTask; }
+        public Task SendAsync(byte[] bytes, MCCSubChannelAddress address, CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (address == null || address.ChannelId != Id || address.HasSubChannel)
+                throw new ArgumentException("Legacy Virtual 必须指定本通道的一对一地址");
+            Send(bytes);
+            return Task.CompletedTask;
+        }
+
         public IList<MCCChannelFrame> ReadFrames()
         { lock (_gate) return _events.ToArray(); }
 

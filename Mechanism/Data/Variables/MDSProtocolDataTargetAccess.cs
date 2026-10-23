@@ -18,14 +18,16 @@ namespace CxVisual.Mechanism.Data
         private readonly IMDSDataContext _frame;
         private readonly Func<string, object, CancellationToken, Task> _publish;
         private readonly Func<string, object, CancellationToken, Task> _invoke;
+        private readonly Func<string, object, bool> _authorizeCommand;
 
         public MDSProtocolDataTargetAccess(MDSVariableRegistry variables = null,
             MDSDataHeap heap = null, IMDSDataContext frame = null,
             Func<string, object, CancellationToken, Task> publish = null,
-            Func<string, object, CancellationToken, Task> invoke = null)
+            Func<string, object, CancellationToken, Task> invoke = null,
+            Func<string, object, bool> authorizeCommand = null)
         {
             _variables = variables; _heap = heap; _frame = frame;
-            _publish = publish; _invoke = invoke;
+            _publish = publish; _invoke = invoke; _authorizeCommand = authorizeCommand;
         }
         public Task<object> ReadAsync(MPADataTargetKind kind, string targetRef, CancellationToken ct)
         {
@@ -83,7 +85,10 @@ namespace CxVisual.Mechanism.Data
         public Task InvokeAsync(string targetRef, object value, CancellationToken ct)
         {
             ct.ThrowIfCancellationRequested();
-            if (_invoke == null) throw new NotSupportedException("Command Owner 尚未接入/授权");
+            if (_invoke == null || _authorizeCommand == null)
+                throw new NotSupportedException("命令执行要求真实 Owner 与显式授权回调");
+            if (!_authorizeCommand(targetRef, value))
+                throw new UnauthorizedAccessException("当前执行上下文未获命令授权：" + targetRef);
             return _invoke(targetRef, value, ct);
         }
         private MDSVariableTable FindVariable(string targetRef, out string name)

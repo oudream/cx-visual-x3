@@ -114,7 +114,7 @@ namespace CxVisual.Mechanism.Connectivity
                     return new MCCChannelTypeDescriptor("tcp.server", MCCChannelTopology.MultiPeer,
                         MCCIOCapabilities.ByteStream | MCCIOCapabilities.Listener);
                 case MCCChannelKind.Udp:
-                    return new MCCChannelTypeDescriptor("udp", MCCChannelTopology.MultiPeer, MCCIOCapabilities.Datagram);
+                    return new MCCChannelTypeDescriptor("udp", MCCChannelTopology.SinglePeer, MCCIOCapabilities.Datagram);
                 case MCCChannelKind.UdpServer:
                     return new MCCChannelTypeDescriptor("udp.server", MCCChannelTopology.MultiPeer, MCCIOCapabilities.Datagram);
                 case MCCChannelKind.Serial:

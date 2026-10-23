@@ -37,3 +37,11 @@
 ## 4. 版本迁移要求
 
 旧 CxVisual.Module.Connector SchemaVersion 1 的 Channels/Protocols/Points 集合与新 SchemaVersion 2 的 Channel/Protocol 单数配置不自动兼容。必须明确多组旧数据拆分策略；不可静默丢失或自动假成功。不得建立长期 EditableConfig/LegacyAdapter。旧 MCCVirtualChannel 内含长度帧解析的测试兼容路径须另行迁移后删除；正式新测试路径用纯传输 MCCVirtualRawChannel + MPALengthFrameProtocol。
+
+## 5. 传输实例的增量实装（Windows CI/HIL 分级）
+
+- 新增 MCCTcpClientChannel、MCCTcpServerChannel：TcpClient、TcpListener/NetworkStream 异步收发；Server 为一个父 Channel + N 个 Generation 子通道，断线移除，不为每个对端创造 Connector。
+- 新增 MCCUdpChannel、MCCUdpServerChannel：UdpClient、数据报边界、远端 Endpoint 对应逻辑子通道；UDP 不模拟 TCP Accept。
+- 新增 MCCSerialChannel：SerialPort 单物理总线，读写与 Protocol StationAddress 分开；需要设备现场与驱动权限回归。
+- Connector 通过实例真实类型与配置 Kind 对应，运行时 StartAsync/StopAsync、PayloadReceived、SendPayloadAsync 支持按实际 SubChannel 路由；没有专业规约的读写行为不能凭空宣称已实现。
+- ArchitectureSmoke 增加 TCP、UDP loopback 真 Socket 正反测试（多对端、路由、旧 Generation）。**Loopback != 工厂 PLC、RS-485、采图设备 HIL**；全部以最新 SHA 的 Windows 工作流结果为准。

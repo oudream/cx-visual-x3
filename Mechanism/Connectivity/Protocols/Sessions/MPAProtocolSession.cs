@@ -61,16 +61,28 @@ namespace CxVisual.Mechanism.Connectivity
     public sealed class MPAProtocolContext
     {
         public MPAProtocolContext(string bindingId, string sessionId,
-            MCCSubChannelAddress channelAddress = null, string correlationId = null)
+            MCCSubChannelAddress channelAddress = null, string correlationId = null,
+            MPAProtocolConfiguration configuration = null, IMPADataTargetAccess dataAccess = null,
+            IMCCChannelTransport transport = null, string dataScopeId = null,
+            MPAProtocolAddress protocolAddress = null)
         {
             if (string.IsNullOrWhiteSpace(bindingId)) throw new ArgumentException("BindingId 必填");
             BindingId = bindingId.Trim(); SessionId = sessionId;
             ChannelAddress = channelAddress; CorrelationId = correlationId;
+            Configuration = configuration; DataAccess = dataAccess; Transport = transport; DataScopeId = dataScopeId;
+            ProtocolAddress = protocolAddress;
         }
         public string BindingId { get; private set; }
         public string SessionId { get; private set; }
         public MCCSubChannelAddress ChannelAddress { get; private set; }
         public string CorrelationId { get; private set; }
-        // MDS、未来消息/命令 Owner 在调用边界解析，不由此持有数据仓库。
+        public string ChannelId { get { return ChannelAddress == null ? null : ChannelAddress.ChannelId; } }
+        public string SubChannelId { get { return ChannelAddress == null ? null : ChannelAddress.SubChannelId; } }
+        public MPAProtocolConfiguration Configuration { get; private set; }
+        public IMPADataTargetAccess DataAccess { get; private set; }
+        public IMCCChannelTransport Transport { get; private set; }
+        public string DataScopeId { get; private set; }
+        public MPAProtocolAddress ProtocolAddress { get; private set; }
+        // Owner 是依赖引用，不是 Protocol 自己维护数据仓库或消息中心。
     }
 }

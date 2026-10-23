@@ -29,12 +29,20 @@ namespace CxVisual.Mechanism.Connectivity
                 protocol.Descriptor.Id != protocol.Id)
                 throw new ArgumentException("Protocol 类型与唯一配置不匹配");
             configuration.Protocol.ValidateCompatibility(protocol.Descriptor, configuration.Channel.DescribeType());
-            // 没有完成工业设备 Provider 的时候不允许把配置声明冒充真实连接。
-            if (configuration.Channel.Kind != MCCChannelKind.Virtual)
-                throw new NotSupportedException("物理 Channel 尚未迁入正式 Provider，不得冒充装配成功");
-            if (!(channel is MCCVirtualChannel) && !(channel is MCCVirtualRawChannel))
-                throw new NotSupportedException("Virtual 配置必须匹配已验证的 Virtual Channel");
-
+            // 直接装配已经实现的正式 Channel 类型，严禁把配置字符串冒充硬件已连接。
+            bool typeMatch = false;
+            switch (configuration.Channel.Kind)
+            {
+                case MCCChannelKind.Virtual:
+                    typeMatch = channel is MCCVirtualRawChannel || channel is MCCVirtualChannel; break;
+                case MCCChannelKind.TcpClient: typeMatch = channel is MCCTcpClientChannel; break;
+                case MCCChannelKind.TcpServer: typeMatch = channel is MCCTcpServerChannel; break;
+                case MCCChannelKind.Udp: typeMatch = channel is MCCUdpChannel; break;
+                case MCCChannelKind.UdpServer: typeMatch = channel is MCCUdpServerChannel; break;
+                case MCCChannelKind.Serial: typeMatch = channel is MCCSerialChannel; break;
+            }
+            if (!typeMatch)
+                throw new NotSupportedException("通道实例与已实现的类型不匹配或尚无真实 Provider");
             Descriptor = descriptor; Configuration = configuration;
             Channel = channel; Protocol = protocol;
             Points = new ReadOnlyCollection<MPAPointDefinition>(configuration.Protocol.Points.ToArray());
@@ -95,15 +103,21 @@ namespace CxVisual.Mechanism.Connectivity
             }
         }
 
-        public async Task SendPayloadAsync(byte[] payload, CancellationToken ct)
+        public Task SendPayloadAsync(byte[] payload, CancellationToken ct)
+        { return SendPayloadAsync(payload, new MCCSubChannelAddress(Channel.Id), ct); }
+
+        // MultiPeer Channel 需要明确的运行期 SubChannel 地址，绝不广播到未知客户端。
+        public async Task SendPayloadAsync(byte[] payload, MCCSubChannelAddress destination, CancellationToken ct)
         {
             IMPAProtocol processor = Protocol as IMPAProtocol;
             IMCCChannelTransport channel = Channel as IMCCChannelTransport;
             if (processor == null || channel == null) throw new NotSupportedException("不支持实时规约收发");
             if (!IsStarted) throw new InvalidOperationException("Connector 尚未启动");
+            if (destination == null || destination.ChannelId != Channel.Id)
+                throw new ArgumentException("目标不属于本 Connector Channel");
             byte[] bytes = processor.PrepareSend(payload, new MPAProtocolContext(
-                Configuration.Protocol.Id, Channel.SessionId.ToString("N")));
-            await channel.SendAsync(bytes, new MCCSubChannelAddress(Channel.Id), ct).ConfigureAwait(false);
+                Configuration.Protocol.Id, Channel.SessionId.ToString("N"), destination));
+            await channel.SendAsync(bytes, destination, ct).ConfigureAwait(false);
         }
 
         public Task ApplyPointValueAsync(string point, object value, IMPADataTargetAccess access, CancellationToken ct)
