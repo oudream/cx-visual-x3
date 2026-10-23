@@ -241,15 +241,28 @@ namespace CxVisual.TestCenter.UI
                 ValuePattern refValue = pointReference.GetCurrentPattern(ValuePattern.Pattern) as ValuePattern;
                 if (refValue == null)
                     throw new InvalidOperationException("PointRef不存在可编辑的正式点表候选");
-                pointReference.SetFocus();
-                refValue.SetValue("point01");
-                AutomationElement targetRef = Find(root, "MPW.Edit.Protocol.Mappings[0].TargetRef");
-                targetRef.SetFocus();
-                ValuePattern targetValue = targetRef.GetCurrentPattern(ValuePattern.Pattern) as ValuePattern;
-                if (targetValue == null)
-                    throw new InvalidOperationException("DataMapping目标引用不能编辑");
-                targetValue.SetValue("line/temperature");
-                Find(root, "MPW.Edit.Protocol.Mappings[0].Required").SetFocus();
+                // ComboBox/TextBox的焦点事件交给WPF UI线程，以免UIA COM调用过程中
+                // MPW重新投影销毁被自动化操作的控件，导致线程互等/超时。
+                window.Dispatcher.Invoke(new Action(() => {
+                    System.Windows.Controls.ComboBox combo = FindWpfByAutomationId<System.Windows.Controls.ComboBox>(
+                        window, "MPW.Reference.Protocol.Mappings[0].PointRef");
+                    if (combo == null || !combo.IsEditable)
+                        throw new InvalidOperationException("MPW PointRef不是可编辑正式点候选");
+                    combo.Focus();
+                    combo.Text = "point01";
+                    System.Windows.Controls.TextBox next = FindWpfByAutomationId<System.Windows.Controls.TextBox>(
+                        window, "MPW.Edit.Protocol.Mappings[0].TargetRef");
+                    if (next == null) throw new InvalidOperationException("Mapping目标字段未渲染");
+                    next.Focus(); // 触发正式MPW的LostKeyboardFocus写回MHS草稿
+                    next = FindWpfByAutomationId<System.Windows.Controls.TextBox>(
+                        window, "MPW.Edit.Protocol.Mappings[0].TargetRef");
+                    if (next == null) throw new InvalidOperationException("Mapping写回后目标字段消失");
+                    next.Text = "line/temperature";
+                    System.Windows.Controls.CheckBox other = FindWpfByAutomationId<System.Windows.Controls.CheckBox>(
+                        window, "MPW.Edit.Protocol.Mappings[0].Required");
+                    if (other == null) throw new InvalidOperationException("Mapping Required未渲染");
+                    other.Focus(); // 触发正式MPW的LostFocus写回
+                }));
                 window.Dispatcher.Invoke(new Action(() => {
                     System.Windows.Controls.TabControl tabs =
                         window.DocumentHost.Content as System.Windows.Controls.TabControl;
@@ -853,6 +866,20 @@ namespace CxVisual.TestCenter.UI
                 if (dpi.DpiScaleX < 0.95 || dpi.DpiScaleY < 0.95)
                     throw new InvalidOperationException("Invalid WPF DPI scale");
             }));
+        }
+        private static T FindWpfByAutomationId<T>(DependencyObject element, string id)
+            where T : FrameworkElement
+        {
+            T candidate = element as T;
+            if (candidate != null &&
+                System.Windows.Automation.AutomationProperties.GetAutomationId(candidate) == id)
+                return candidate;
+            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(element); i++)
+            {
+                T result = FindWpfByAutomationId<T>(VisualTreeHelper.GetChild(element, i), id);
+                if (result != null) return result;
+            }
+            return null;
         }
         private static AutomationElement Find(AutomationElement root, string id)
         {
