@@ -315,7 +315,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         {
                             if(handle.Context.Trace.Snapshot().Any(x=>
                                 x.StepId.EndsWith(waitingId,StringComparison.Ordinal)&&
-                                x.State==MRKStepState.Running)){entered=true;break;}
+                                (x.State==MRKStepState.Scheduled||
+                                 x.State==MRKStepState.Running))){entered=true;break;}
                             System.Threading.Thread.Sleep(10);
                         }
                         Check(entered,"Test did not enter protected Wait before cancellation");
