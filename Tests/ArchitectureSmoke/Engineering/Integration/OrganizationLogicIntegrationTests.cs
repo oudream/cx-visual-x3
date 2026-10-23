@@ -696,6 +696,51 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 System.Linq.Enumerable.SequenceEqual(original,MOLLogicCodec.Serialize(unchanged)),
                 "Complex V1 schema conversion silently lost logic or changed Revision");
 
+            // 单动作也可能携带MEM公开端口合同；此时转换为空端口图不是无损。
+            var publicContract=MEMEngineering.Create("公开端口无损拒绝");
+            var publicPage=publicContract.AddPage("Main");
+            try
+            {
+                var single=MOLControlBlock.Action("Inspect");
+                MOLLogicCodec.Set(publicContract,publicPage.RootContent,
+                    new MOLLogicDefinition(single));
+                publicContract.DefinePort(publicPage.RootContent,"Detected",
+                    MPCPortDirection.Output,"bool",isPublic:true);
+                int beforePublic=publicContract.Revision;
+                rejected=false;
+                try{MOLWiringCodec.ConvertFromV1(publicContract,publicPage.RootContent);}
+                catch(InvalidOperationException ex)
+                {rejected=ex.Message=="wiring.convert.not_lossless";}
+                Check(rejected&&publicContract.Revision==beforePublic&&
+                    MOLLogicCodec.Get(publicContract.GetSnapshot().Find(
+                        publicPage.RootContent.Id)).Root.Id==single.Id,
+                    "MOL conversion discarded a MEM public port declaration");
+            }
+            finally{publicContract.Close(true);}
+
+            var reversePublic=MEMEngineering.Create("反向公开端口无损拒绝");
+            var reversePage=reversePublic.AddPage("Main");
+            try
+            {
+                var single=MOLControlBlock.Action("Inspect");
+                var schema=new Dictionary<Guid,IEnumerable<MPCPortDescriptor>>{
+                    {single.Id,new MPCPortDescriptor[0]}};
+                MOLWiringCodec.Set(reversePublic,reversePage.RootContent,
+                    new MOLWiringDefinition(single.Id,new[]{single},schema,new MOLLink[0]));
+                reversePublic.DefinePort(reversePage.RootContent,"Detected",
+                    MPCPortDirection.Output,"bool",isPublic:true);
+                int beforePublic=reversePublic.Revision;
+                rejected=false;
+                try{MOLLogicCodec.ConvertFromV2(reversePublic,reversePage.RootContent);}
+                catch(InvalidOperationException ex)
+                {rejected=ex.Message=="logic.convert.not_lossless";}
+                Check(rejected&&reversePublic.Revision==beforePublic&&
+                    MOLWiringCodec.Get(reversePublic.GetSnapshot().Find(
+                        reversePage.RootContent.Id)).EntryBlockId==single.Id,
+                    "MOL reverse conversion discarded a MEM public port declaration");
+            }
+            finally{reversePublic.Close(true);}
+
             var other=MEMEngineering.Create("V2复杂拒绝");
             MEMPage otherPage=other.AddPage("Main");
             try
