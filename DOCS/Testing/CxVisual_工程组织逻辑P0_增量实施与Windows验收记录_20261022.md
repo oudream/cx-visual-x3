@@ -55,3 +55,14 @@
 - **实际工程/执行反证**：`OrganizationLogicIntegrationTests.P03GuardPriorityAndOrthogonalRegions` 验证 Camera/Motion 正交 Region、父状态 Reset、跨调用者 Checkpoint、MEM SaveAs/Open、错误优先级 XML、MOC Build、MRK Flow 成功及失败路径。不将静态单元断言冒充真实 Flow。
 - **固定 SHA Windows S3**：`e57c18e5bf8472052863eb1e3060f1aa8350df7c`：工程组织 [39896367291](https://github.com/oudream/cx-visual-x3/actions/runs/39896367291)、统一运行 [39896367324](https://github.com/oudream/cx-visual-x3/actions/runs/39896367324)、Config L1 [39896367409](https://github.com/oudream/cx-visual-x3/actions/runs/39896367409)、配置公共底座 [39896367288](https://github.com/oudream/cx-visual-x3/actions/runs/39896367288) 均成功；工程组织 Job 包含 Windows x64 完整编译、Engineering/执行回归与开发者实例。不能外推专业实机 S4。
 - **V1.2 LOG 对应**：LOG-01（新增 Schema2 字段向后兼容与损坏拒绝）、LOG-08（受控多 Guard 确定性迁移、正交 Region 与校验）、LOG-13（同 SHA Windows CI）；LOG-02 的 Studio 工程用户可视优先级编辑与 LOG-10 的逐迁移 Trace/Watch **尚未完成**。持续事件队列/去重、长期 MRK 状态机实例、Journal 恢复、取消与现场安全语义仍按 P0-3 缺口推进；本阶段不能宣告 P0-3 整包完成。
+
+
+## 5. 2026-10-23：P0-1结构化Try/Catch/Finally与动态Foreach真实执行
+
+- **MOL Owner**：复用 `MOLControlKind.Try`；新增 `MOLTryDefinition`、`MOLControlBlock.TryCatchFinally()` 和 Schema1 `TryRegion/TryBody/CatchBody/FinallyBody` 安全持久化。只属于原 MEMContent Logic Aspect，拒绝无Catch/Finally及非法结构。
+- **MOC Owner**：Try/Catch/Finally分别编译为原 `MRKExecutionPlan` 嵌套Plan，共享原CapabilityResolver与SourceMap；Loop/Foreach在内层按当前Invocation导入Index/Item Gate，修复跨计划依赖。
+- **MRK/MDS**：新增原执行计划内的 `MRKTryRegion`，复用 `MRKExecutionEngine.RunStepAsync`、F19 Work、MDS Frame与Trace。Try成功跳过Catch但执行Finally；失败用Catch-all处理，未捕获传播；取消不进Catch、独立最长10秒清理令牌执行Finally；Finally错误不隐瞒。
+- **ArchitectureSmoke**：`P01TryCatchFinallyRoundtrip` 覆盖非法定义、MEM保存重开、正常/已捕获/未捕获异常、Finally故障、真实Trace/SourceMap、异步等待取消、动态Foreach三轮（中间轮异常，逐轮传递iteration/item）。
+- **历史红灯及修复**：首轮CI发现执行组foreach花括号作用域错误，`ddd1012f`修复；测试脏工程Dispose被MEM正常拒绝，`fbd05b6d`修正显式Close(true)；Wait真实轨迹是Scheduled而非Running，`8ba30de0`纠正断言。失败记录不是成功证据。
+- **固定SHA Windows S3**：`b58776165ec5b3ca7b8deb8cd01df5e934f363b6`；工程组织 [39904735742](https://github.com/oudream/cx-visual-x3/actions/runs/39904735742)、Runtime [39904735623](https://github.com/oudream/cx-visual-x3/actions/runs/39904735623)、Config L1 [39904735584](https://github.com/oudream/cx-visual-x3/actions/runs/39904735584)、配置底座 [39904735670](https://github.com/oudream/cx-visual-x3/actions/runs/39904735670) 均成功。并行提交后的Studio/TestCenter须按自身同SHA重新核实。
+- **P0-1仍未整包完成**：缺多Catch异常类型匹配、Throw/Retry受控定义、持久事件恢复、复杂Return/Break/Continue/异常组合、设备补偿及Studio完整异常区编辑。LOG-09仅增量覆盖，LOG-10/13综合与专业S4不冒称已完成。
