@@ -88,3 +88,4 @@ namespace CxVisual.Mechanism.Visual
             return new MVIVisualSnapResult(dx,dy,guideX,guideY);
         }
     }
+}
