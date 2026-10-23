@@ -80,3 +80,25 @@
 - **定义领域尚未整包收口**：完整事件/触发源合同、复合表达式/短路、跨Schema复杂子 Content 公开端口与版本映射、C#与Studio高级定义同源操作没有达到全量验收。不能用这里的代码量、若干绿灯或“已有Enum”宣布D1～D4全部完成。
 
 **2026-10-23 D1～D4 最终代码固定SHA更新**：`96c71ea82b9c99c71c383028f527415b0692b5bc` 的 [工程组织 Windows Acceptance](https://github.com/oudream/cx-visual-x3/actions/runs/39917578173)、[Studio S1 Windows](https://github.com/oudream/cx-visual-x3/actions/runs/39917578073)、[TestCenter Windows .NET48](https://github.com/oudream/cx-visual-x3/actions/runs/39917578286)、[Config L1 Windows](https://github.com/oudream/cx-visual-x3/actions/runs/39917577976) 和 [配置底座](https://github.com/oudream/cx-visual-x3/actions/runs/39917578067) 均为 `success/completed`。本轮仅证明这五条真实工作流的测试范围及已覆盖定义合同；具名 Catch/Throw/State Action 的真正 MRK 执行、跨Schema复杂 Content、完整事件/组合表达式和高级 Studio 编排仍未完成，不能从 S3 外推出 S4 或整包完成。
+
+## 7. 2026-10-23 MOL定义体系D1～D4 V1.0收口（固定SHA）
+
+**本节只认定义侧 S3，不冒称MOC/MRK全部执行或实机S4。** 代码固定SHA：`dff37fbc0e3d5ef8f6a9b1c677dce87d71f2b5a1`；检查后续master的 Core MOL、MOC、Studio入口、ArchitectureSmoke定义测试和WPF测试文件Blob仍与该SHA一致。
+
+| 四方面 | 实现、可验证拒绝、当前Owner |
+|---|---|
+| D1 类型 | 原MOLControlBlock可声明Try/多具名Catch、Throw/Exit、循环/调用、Wait/有类型事件契约、State EntryExit能力；原MOLExpression支持All/Any/Not与纯标量严格类型/有界短路，同一表达式用于V1条件和V2状态迁移Guard。复杂度、非法参数、缺输入、版本降级均有反证。Owner：MOL Core。 |
+| D2 关系 | 嵌套/Case/循环出口作用域校验，V1/V2跨Content引用经MEM Reference，V1 Content公开端口直接来自MEM已有MPCPort，不造另一端口表。缺Reference/非法端口/循环外BreakContinue均拒绝；跨Schema可声明但真实执行能力未支持时MOC明确拒绝。 |
+| D3 管理 | 原MEMSession Revision乐观编辑、不可变ReplaceBlock/Undo/Redo/Save/Open；Schema1/4结构、Schema2/3/5自由连线；畸形字段/降级读取拒绝；仅单Action且无MEM公共端口/映射/连接可原子转换；两侧Set拒绝跨Schema直接覆盖和RequiresRemap。 |
+| D4 API | MOLExpression.InputCompare/All/Any/Not，MOLControlBlock.Action/Branch/InvokeContent/Exit/Throw/TryCatchFinally/AwaitEvent，MOLLogicCodec.Edit与ReplaceBlock，V2沿用MOCFlowBuilder.Edit/InvokeContent；不新造Builder或运行引擎。 |
+
+**主要真实测试入口**：OrganizationLogicIntegrationTests中的MOLDefinitionEditingClosure、MOLScalarTypeSafety、MOLCompoundConditions、MOLCompoundStateGuards、MOLEventDeclarationContracts、MOLTypedDefinitionContracts、MOLThrowDefinitionContracts、MOLLosslessSchemaConversion、MOLCrossSchemaContentDeclaration、InvokedContentAndInvalidSource；OrganizationWpfTests用不同Content保留V1/V2两套画布。
+
+**固定SHA Windows实测**：
+- 工程组织 Windows Acceptance：[39924666837](https://github.com/oudream/cx-visual-x3/actions/runs/39924666837)，成功，包含Windows x64编译、真实Engineering/ArchitectureSmoke/WPF STA回归。
+- Studio S1 Shell Acceptance：[39924666809](https://github.com/oudream/cx-visual-x3/actions/runs/39924666809)，成功。
+- Config L1 Windows Build and Smoke：[39924666768](https://github.com/oudream/cx-visual-x3/actions/runs/39924666768)，成功。
+- 配置公共底座：[39924666830](https://github.com/oudream/cx-visual-x3/actions/runs/39924666830)，成功。
+- TestCenter Windows .NET48：[39924666747](https://github.com/oudream/cx-visual-x3/actions/runs/39924666747)，**失败**，Windows编译与前序用例成功，失败位于MCCChannelConfiguration三列表Schema WPF UI Automation呈现；属于TestCenter/配置GUI的独立缺口，不能冒充MOL回归失败或强行报TestCenter全绿。并行TestCenter修复提交需要另一固定SHA复验。
+
+**定义侧收口判定**：D1～D4的平台核心定义能力及代码侧验收满足S3；不把高级可视编辑完整度、跨Schema结构化子流程真正编译执行、多Catch实际分派、Throw执行、状态动作执行、事件队列投递/恢复、工业设备安全归到MOL定义。上述运行/界面专业缺口依旧按MOC/MRK/MDS/Studio/TestCenter原Owner推进。
