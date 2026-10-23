@@ -1117,6 +1117,9 @@ namespace CxVisual.Mechanism.Orchestration
                 var wiring=MOLWiringCodec.Get(content);
                 if(wiring==null)throw new InvalidOperationException("moc.subflow.requires_v2");
                 wiring.ValidateExecutable();
+                if(wiring.StateMachines.Values.Any(m=>m.States.Any(st=>
+                    st.EntryCapability.Length>0||st.ExitCapability.Length>0)))
+                    throw new InvalidOperationException("moc.state_actions_not_supported");
                 // Nested defaults are not silently hoisted into unrelated caller scopes.
                 // Existing G04-F direct subflows retain their isolated typed defaults.
                 if(wiring.Parameters.Count!=0)
