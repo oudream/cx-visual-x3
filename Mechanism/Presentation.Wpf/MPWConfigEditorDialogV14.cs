@@ -519,8 +519,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 AddFieldDetails(host, path);
                 return;
             }
-            Expander expander = new Expander { Header = label + "  [" + path + "]", IsExpanded = depth < 2,
+            Expander expander = new Expander { Header = label + "  [" + path + "]",
+                IsExpanded = depth < 2 || (_workspaceCompact && path.IndexOf('[', StringComparison.Ordinal) >= 0 && depth <= 4),
                 Margin = new Thickness(4, 6, 4, 2), Padding = new Thickness(8, 5, 3, 5) };
+            System.Windows.Automation.AutomationProperties.SetAutomationId(expander, "MPW.Node." + path);
             StackPanel inner = new StackPanel();
             expander.Content = inner;
             host.Children.Add(expander);

@@ -175,6 +175,14 @@ namespace CxVisual.TestCenter.UI
         public MFMModuleKind? ActiveModuleKind { get { return _activeKind; } }
         public bool IsBusy { get { return _opening || _busy; } }
         public string SavedAndEffectiveVersions { get { return _versions == null ? "" : _versions(); } }
+        // 只读当前正式MHS编辑草稿克隆，用于统一测试平台验证真实值与保存重开。
+        public MCNConnectorConfiguration ConnectorDraftSnapshot()
+        {
+            MPWConfigEditorControl<MCNConnectorConfiguration> editor =
+                _activeEditor as MPWConfigEditorControl<MCNConnectorConfiguration>;
+            if (editor == null) throw new InvalidOperationException("当前不是Connector正式配置");
+            return editor.Draft;
+        }
         public string StatusMessage { get { return _status.Text; } }
         public void SelectModuleKind(MFMModuleKind kind)
         {
