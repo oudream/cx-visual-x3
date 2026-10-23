@@ -159,9 +159,10 @@ namespace CxVisual.Tests.ArchitectureSmoke
             {rejected=ex.Message=="logic.edit.identity_changed";}
             Check(rejected,"MOL replace accepted changed block identity");
             rejected=false;
-            try{definition.ReplaceBlock(Guid.NewGuid(),MOLControlBlock.Action("Missing"));}
+            var missing=MOLControlBlock.Action("Missing");
+            try{definition.ReplaceBlock(missing.Id,missing);}
             catch(InvalidOperationException ex)
-            {rejected=ex.Message=="logic.edit.identity_changed";}
+            {rejected=ex.Message=="logic.edit.block_not_found";}
             Check(rejected,"MOL replace accepted nonexistent block identity");
 
             MOLLogicCodec.Edit(session,page.RootContent,d=>d.ReplaceBlock(check.Id,change));
