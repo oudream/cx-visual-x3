@@ -1854,6 +1854,8 @@ namespace CxVisual.Mechanism.Orchestration
                     }
                     case MOLControlKind.Exit:
                     {
+                        if(block.ExitKind==MOLExitKind.Throw)
+                            throw new InvalidOperationException("moc.throw_not_supported");
                         string signal=block.ExitKind==MOLExitKind.Break?"break":
                             block.ExitKind==MOLExitKind.Continue?"continue":"return";
                         string marker="moc.internal.exit."+NewId(block);
