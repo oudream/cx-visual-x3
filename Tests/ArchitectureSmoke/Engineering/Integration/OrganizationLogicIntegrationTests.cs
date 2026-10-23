@@ -453,6 +453,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     var restored=MOLWiringCodec.Get(opened.GetSnapshot().Find(page.RootContent.Id));
                     Check(restored.StateMachines[id].Transitions[0].Guard.Operator==
                         MOLLogicalOperator.All,"Compound state Guard lost on Save/Open");
+                    Check(MOLLogicCodec.Get(opened.GetSnapshot().Find(page.RootContent.Id))==null,
+                        "Schema5 Wiring incorrectly appeared as parallel V1 definition");
                     var compiled=new MOCEngineeringCompiler().Compile(
                         opened.GetSnapshot(),page.RootContent.Id,new TestResolver());
                     MOCTraceView trace;
