@@ -74,6 +74,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             G05bStreamBackpressureAndFlow();
             G05dHierarchicalParallelMachine();
             P03StateMachineGuards();
+            P03GuardPriorityAndOrthogonalRegions();
             V2ExtractLinearContent();
             G07ProjectReleaseLockAndAuthorization();
             G06CpuVisionThroughMOC();
@@ -2112,6 +2113,128 @@ namespace CxVisual.Tests.ArchitectureSmoke
                             {eventKey,new[]{"finish"}},
                             {checkpointKey,"invalid"}})=="FAILED",
                         "P0-3 MRK checkpoint resume/rejection or fresh Flow isolation failed");
+                }
+            }
+            finally
+            {
+                session.Close(true);
+                if(System.IO.File.Exists(path))System.IO.File.Delete(path);
+                if(System.IO.File.Exists(path+".cx-lock"))System.IO.File.Delete(path+".cx-lock");
+            }
+        }
+
+
+        /// <summary>P0-3：多Guard优先级、正交Region、快照、保存重开与真实MRK反证。</summary>
+        private static void P03GuardPriorityAndOrthogonalRegions()
+        {
+            var states=new[]{
+                new MOLStateDescriptor("CameraRoot","Camera",initial:true),
+                new MOLStateDescriptor("CameraIdle","Camera","CameraRoot",true),
+                new MOLStateDescriptor("CameraAccepted","Camera","CameraRoot"),
+                new MOLStateDescriptor("CameraDeferred","Camera","CameraRoot"),
+                new MOLStateDescriptor("CameraDenied","Camera","CameraRoot"),
+                new MOLStateDescriptor("MotionIdle","Motion",initial:true),
+                new MOLStateDescriptor("MotionBusy","Motion")
+            };
+            var transitions=new[]{
+                new MOLStateTransition("CameraIdle","start","CameraAccepted",
+                    MOLExpression.InputTrue("approve"),30),
+                new MOLStateTransition("CameraIdle","start","CameraDeferred",
+                    MOLExpression.InputTrue("defer"),20),
+                new MOLStateTransition("CameraIdle","start","CameraDenied"),
+                new MOLStateTransition("MotionIdle","start","MotionBusy",
+                    MOLExpression.InputTrue("motion"),3),
+                new MOLStateTransition("CameraRoot","reset","CameraIdle"),
+                new MOLStateTransition("MotionBusy","reset","MotionIdle")
+            };
+            bool invalid=false;
+            try{new MOLStateMachineDefinition(states,new[]{
+                transitions[0],new MOLStateTransition("CameraIdle","start",
+                    "CameraDeferred",MOLExpression.InputTrue("defer"),30)});}
+            catch(InvalidOperationException ex)
+            {invalid=ex.Message.Contains("moc.state.invalid_transition");}
+            Check(invalid,"P0-3 same-priority conflict not rejected");
+            invalid=false;
+            try{new MOLStateTransition("CameraIdle","start","CameraAccepted",
+                MOLExpression.Always(true),1001);}
+            catch(ArgumentOutOfRangeException){invalid=true;}
+            Check(invalid,"P0-3 invalid priority budget not rejected");
+
+            var machine=new MOLStateMachineDefinition(states,transitions);
+            var both=new Dictionary<string,object>{
+                {"approve",true},{"defer",true},{"motion",true}};
+            var deferred=new Dictionary<string,object>{
+                {"approve",false},{"defer",true},{"motion",false}};
+            var denied=new Dictionary<string,object>{
+                {"approve",false},{"defer",false},{"motion",false}};
+            var accepted=machine.Run(new[]{"start"},both);
+            Check(accepted["Camera"]=="CameraAccepted"&&
+                accepted["Motion"]=="MotionBusy"&&
+                machine.Run(new[]{"start"},deferred)["Camera"]=="CameraDeferred"&&
+                machine.Run(new[]{"start"},denied)["Camera"]=="CameraDenied",
+                "P0-3 guarded priority, fallback or orthogonal region incorrect");
+            var resumed=machine.Run(new[]{"reset"},both,accepted);
+            Check(resumed["Camera"]=="CameraIdle"&&resumed["Motion"]=="MotionIdle",
+                "P0-3 checkpoint or hierarchical transition incorrect");
+            invalid=false;
+            try{machine.Run(new[]{"start"},new Dictionary<string,object>{
+                {"defer",true},{"motion",true}});}
+            catch(InvalidOperationException ex)
+            {invalid=ex.Message.Contains("moc.state.guard_input_missing:approve");}
+            Check(invalid,"P0-3 missing priority input silently fell back");
+            var session=MEMEngineering.Create("P0-3 Guard优先级");
+            var page=session.AddPage("检测工位");
+            string path=System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                "moc-state-priority-"+Guid.NewGuid().ToString("N")+".cxproj");
+            try
+            {
+                Guid id=Guid.Empty;
+                MOCFlowBuilder.Edit(session,page.RootContent,b=>id=b.AddStateMachine(machine));
+                session.SaveAs(path);
+                using(var opened=MEMEngineering.Open(path))
+                {
+                    var saved=MOLWiringCodec.Get(opened.GetSnapshot().Find(page.RootContent.Id));
+                    var restored=saved.StateMachines[id];
+                    Check(restored.Transitions[0].Priority==30&&
+                        restored.Transitions[1].Priority==20&&
+                        restored.Transitions[2].Priority==0&&
+                        restored.Run(new[]{"start"},both)["Camera"]=="CameraAccepted",
+                        "P0-3 priority lost after Save/Open");
+                    string xml=MOLWiringCodec.Serialize(saved);
+                    Check(xml.Contains("priority=\"30\""),"P0-3 priority schema missing");
+                    bool schemaInvalid=false;
+                    try{MOLWiringCodec.Deserialize(xml.Replace(
+                        "priority=\"30\"","priority=\"1001\""));}
+                    catch(System.IO.InvalidDataException ex)
+                    {schemaInvalid=ex.Message.Contains("wiring.state.priority");}
+                    Check(schemaInvalid,"P0-3 malformed priority schema accepted");
+                    var build=new MOCBuildService().Build(opened.GetSnapshot(),
+                        page.RootContent.Id,new TestResolver());
+                    Check(build.Succeeded,"P0-3 guarded build failed: "+
+                        string.Join(",",build.Diagnostics.Select(d=>d.Code)));
+                    string eventKey="moc.state.events."+id.ToString("N");
+                    var engine=new MRKExecutionEngine(new FCRWorkerOptions(1,8));
+                    try
+                    {
+                        var input=new Dictionary<string,object>(both){
+                            {eventKey,new[]{"start"}}};
+                        var good=engine.StartFlow(build.Plan.Plan,input);
+                        var result=good.Completion.GetAwaiter().GetResult();
+                        object output;
+                        var active=good.Context.TryGetResult("w"+id.ToString("N"),
+                            out output)?output as IReadOnlyDictionary<string,string>:null;
+                        Check(result.State==MRKFlowState.Completed&&active!=null&&
+                            active["Camera"]=="CameraAccepted"&&
+                            active["Motion"]=="MotionBusy",
+                            "P0-3 MOC/MRK priority or Region result incorrect");
+                        var missing=new Dictionary<string,object>{
+                            {eventKey,new[]{"start"}},{"defer",true},{"motion",true}};
+                        var bad=engine.StartFlow(build.Plan.Plan,missing);
+                        Check(bad.Completion.GetAwaiter().GetResult().State==
+                            MRKFlowState.Failed,
+                            "P0-3 MRK missing Guard input did not fail");
+                    }
+                    finally{engine.StopAsync(true).GetAwaiter().GetResult();}
                 }
             }
             finally
