@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CxVisual.Mechanism.Core.Modules;
@@ -169,8 +170,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
             MCCVirtualRawChannel[] raw = MCCVirtualRawChannel.CreatePair("raw-tx", "raw-rx");
             MPALengthFrameProtocol framed = new MPALengthFrameProtocol();
             List<byte[]> parsed = new List<byte[]>();
-            raw[1].Received += received => {
-                foreach (byte[] payload in framed.ProcessReceived(received,
+            raw[1].Received += receivedChunk => {
+                foreach (byte[] payload in framed.ProcessReceived(receivedChunk,
                     new MPAProtocolContext("length", "session")))
                     parsed.Add(payload);
             };
@@ -189,8 +190,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
             registry.Register(variables);
             variables.Define(new MDSVariableDefinition("temperature", typeof(double), "C"));
             Check(registry.Find("plc01") == variables, "MDS scope ownership");
-            double empty;
-            Check(!variables.TryGet<double>("temperature", out empty), "Uninitialized variables must not be successful");
+            double emptyValue;
+            Check(!variables.TryGet<double>("temperature", out emptyValue), "Uninitialized variables must not be successful");
             int changed = 0; variables.VariableChanged += name => { if (name == "temperature") changed++; };
             variables.Update<double>("temperature", 25.5);
             Check(changed == 1 && variables.Get<double>("temperature") == 25.5 &&

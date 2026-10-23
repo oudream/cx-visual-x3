@@ -166,7 +166,7 @@ namespace CxVisual.TestCenter.Cases
             try
             {
                 new MCNConnectorModule(identity, config,
-                    new IMCCChannel[] { pair[0] }, new IMPAProtocolDefinition[] { protocol });
+                    pair[0], protocol);
             }
             catch (NotSupportedException) { physicalRejected = true; }
             test.AssertTrue(physicalRejected, "非Virtual物理Provider未接线时必须拒绝装配", true, physicalRejected);
