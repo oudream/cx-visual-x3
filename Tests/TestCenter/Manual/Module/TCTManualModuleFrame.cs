@@ -71,10 +71,6 @@ namespace CxVisual.TestCenter.UI
                 ModulePage[] pages;
                 switch (kind)
                 {
-                    case MFMModuleKind.Driver:
-                        Attach(_service.ForScope("module", id).Open<MFMDriverModuleConfiguration>(), id, kind,
-                            model => { model.Validate(); return "Driver 设备驱动配置合法（未启动设备）"; });
-                        break;
                     case MFMModuleKind.Connector:
                         pages = new[] {
                             new ModulePage("identity", "模块信息",
@@ -321,7 +317,7 @@ namespace CxVisual.TestCenter.UI
                 if (!saved.Kind.HasValue)
                 {
                     MHSConfigCommitResult result = await identity.UpdateAsync(
-                        model => model.Kind = kind, "创建四类模块配置身份", CancellationToken.None);
+                        model => model.Kind = kind, "创建五类模块配置身份", CancellationToken.None);
                     if (!result.Success)
                     {
                         UpdateStatus("模块身份提交失败：" + (result.ErrorCode ?? "CONFIG_COMMIT_REJECTED"));
@@ -330,6 +326,10 @@ namespace CxVisual.TestCenter.UI
                 }
                 switch (kind)
                 {
+                    case MFMModuleKind.Driver:
+                        Attach(_service.ForScope("module", id).Open<MFMDriverModuleConfiguration>(), id, kind,
+                            model => { model.Validate(); return "Driver 设备驱动配置合法（未启动设备）"; });
+                        break;
                     case MFMModuleKind.Connector:
                         Attach(_service.ForScope("module", id).Open<MCNConnectorConfiguration>(), id, kind,
                             model => "Channel " + model.Channels.Count + " / Protocol " + model.Protocols.Count +
