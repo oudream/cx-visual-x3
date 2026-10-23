@@ -352,6 +352,21 @@ namespace CxVisual.TestCenter.UI
             Func<T, string> extra) where T : MFMModuleConfiguration, new()
         {
             MPWConfigEditorControl<T> next = new MPWConfigEditorControl<T>(section);
+            if (typeof(T) == typeof(MCNConnectorConfiguration))
+                next.ConfigureReferenceChoices(path => {
+                    // 候选始终从当前正式Connector配置草稿计算，没有TestCenter点表副本。
+                    MCNConnectorConfiguration draft = (object)next.Draft as MCNConnectorConfiguration;
+                    if (draft == null) return null;
+                    if (path.StartsWith("Protocols[", StringComparison.Ordinal) &&
+                        path.EndsWith("].ChannelRef", StringComparison.Ordinal))
+                        return draft.Channels.Where(channel => channel != null)
+                            .Select(channel => channel.Id);
+                    if (path.StartsWith("Points[", StringComparison.Ordinal) &&
+                        path.EndsWith("].ProtocolRef", StringComparison.Ordinal))
+                        return draft.Protocols.Where(protocol => protocol != null)
+                            .Select(protocol => protocol.Id);
+                    return null;
+                });
             IDisposable old = _activeEditor;
             _activeEditor = next;
             _draftGuard = next;

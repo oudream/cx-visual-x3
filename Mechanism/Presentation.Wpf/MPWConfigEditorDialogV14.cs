@@ -74,6 +74,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         private readonly ComboBox _history = new ComboBox { Width = 110, Margin = new Thickness(5) };
         private readonly Dictionary<string, Func<string, Action<string>, FrameworkElement>> _custom =
             new Dictionary<string, Func<string, Action<string>, FrameworkElement>>(StringComparer.Ordinal);
+        // 宿主只提供候选引用；原FCM Schema、草稿验证和MHS写入仍唯一。
+        // null表示该字段不需要选择器，空集合表示可输入但无有效候选。
+        private Func<string, IEnumerable<string>> _choiceSource;
         private bool _disposed;
         private bool _working;
         private bool _saved;
@@ -139,6 +142,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         }
         /// <summary>Professional editors return a WPF element and accept a JSON setter.
         /// The setter still performs typed validation and edits only the current draft.</summary>
+        public void ConfigureReferenceChoices(Func<string, IEnumerable<string>> choiceSource)
+        {
+            EnsureActive();
+            _choiceSource = choiceSource;
+            RefreshAll();
+        }
         public void RegisterEditor(string path, Func<string, Action<string>, FrameworkElement> factory)
         {
             EnsureActive();
@@ -444,14 +453,39 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 }
                 else
                 {
-                    TextBox box = new TextBox {
-                        Width = _workspaceCompact ? double.NaN : 250, MinHeight = 35,
-                        MaxWidth = _workspaceCompact ? 420 : double.PositiveInfinity,
-                        HorizontalAlignment = _workspaceCompact ? HorizontalAlignment.Stretch : HorizontalAlignment.Left,
-                        Text = Format(value), Padding = new Thickness(5, 3, 5, 3) };
-                    box.LostFocus += (s, e) => Execute(() => _editor.SetPathJson(path,
-                        ToConfigJson(box.Text, type)));
-                    line.Children.Add(box);
+                    IEnumerable<string> offered = actual == typeof(string) && _choiceSource != null
+                        ? _choiceSource(path) : null;
+                    if (offered != null)
+                    {
+                        string[] options = offered.Where(x => !string.IsNullOrWhiteSpace(x))
+                            .Distinct(StringComparer.Ordinal).OrderBy(x => x, StringComparer.Ordinal).ToArray();
+                        ComboBox choice = new ComboBox {
+                            IsEditable = true, IsTextSearchEnabled = true, ItemsSource = options,
+                            Text = Format(value),
+                            Width = _workspaceCompact ? double.NaN : 250, MinHeight = 35,
+                            MaxWidth = _workspaceCompact ? 420 : double.PositiveInfinity,
+                            HorizontalAlignment = _workspaceCompact ? HorizontalAlignment.Stretch : HorizontalAlignment.Left,
+                            ToolTip = "来自当前正式配置草稿的引用候选；仍可输入值，由FCM验证有效性" };
+                        System.Windows.Automation.AutomationProperties.SetAutomationId(choice,
+                            "MPW.Reference." + path);
+                        choice.LostKeyboardFocus += (s, e) => {
+                            if (!string.Equals(choice.Text, Format(value), StringComparison.Ordinal))
+                                Execute(() => _editor.SetPathJson(path,
+                                    FCMJsonValueCodec.Serialize(choice.Text)));
+                        };
+                        line.Children.Add(choice);
+                    }
+                    else
+                    {
+                        TextBox box = new TextBox {
+                            Width = _workspaceCompact ? double.NaN : 250, MinHeight = 35,
+                            MaxWidth = _workspaceCompact ? 420 : double.PositiveInfinity,
+                            HorizontalAlignment = _workspaceCompact ? HorizontalAlignment.Stretch : HorizontalAlignment.Left,
+                            Text = Format(value), Padding = new Thickness(5, 3, 5, 3) };
+                        box.LostFocus += (s, e) => Execute(() => _editor.SetPathJson(path,
+                            ToConfigJson(box.Text, type)));
+                        line.Children.Add(box);
+                    }
                     if (Nullable.GetUnderlyingType(type) != null)
                         line.Children.Add(MakeButton("置空", () => Execute(() => _editor.SetPathJson(path, "null"))));
                 }

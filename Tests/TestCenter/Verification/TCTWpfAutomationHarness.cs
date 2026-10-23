@@ -140,6 +140,27 @@ namespace CxVisual.TestCenter.UI
                 }
                 if (!rendered) throw new InvalidOperationException(
                     "MCCChannelConfiguration three-column Schema editor not rendered");
+                // 同一通用MPW可编辑规约的Channel引用，候选来自正式Channels。
+                window.Dispatcher.Invoke(new Action(() => {
+                    System.Windows.Controls.TabControl tabs =
+                        window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                    tabs.Items.OfType<System.Windows.Controls.TabItem>().Select(x => x.Content)
+                        .OfType<TCTManualModuleFrame>().Single().SelectModulePage("protocols");
+                }));
+                InvokePattern addProtocol = Find(root, "MPW.Collection.Add.Protocols")
+                    .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
+                if (addProtocol == null) throw new InvalidOperationException(
+                    "正式Protocol列表不能添加配置");
+                addProtocol.Invoke();
+                AutomationElement choices = Find(root, "MPW.Reference.Protocols[0].ChannelRef");
+                if (choices.Current.ControlType != ControlType.ComboBox)
+                    throw new InvalidOperationException("通道引用未提供正式草稿的动态可编辑选择器");
+                window.Dispatcher.Invoke(new Action(() => {
+                    System.Windows.Controls.TabControl tabs =
+                        window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                    tabs.Items.OfType<System.Windows.Controls.TabItem>().Select(x => x.Content)
+                        .OfType<TCTManualModuleFrame>().Single().SelectModulePage("channels");
+                }));
                 // 旧1180×788截图里模块表单被标题和底栏挤出；存在控件不等于用户可见。
                 if (cards.Current.IsOffscreen || cards.Current.BoundingRectangle.IsEmpty)
                     throw new InvalidOperationException(
