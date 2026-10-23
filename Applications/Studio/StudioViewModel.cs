@@ -115,6 +115,39 @@ namespace CxVisual.Studio
             return result;
         }
 
+        public MTCEditResult<bool> SetVisualRoute(Guid link,MPCVisualRouteKind kind)
+        {
+            MTCEditResult<bool> result=_editor.SetVisualRoute(link,kind);
+            Status=result.Success?"连线布线已更新 | Revision "+result.Revision:
+                "设置布线失败："+result.ErrorCode+" "+result.Message;
+            if(result.Success)NotifyScene();
+            return result;
+        }
+        public MTCEditResult<bool> InsertVisualWaypoint(Guid link,int segment,double x,double y)
+        {
+            MTCEditResult<bool> result=_editor.InsertVisualWaypoint(link,segment,x,y);
+            Status=result.Success?"已插入连接折点 | Revision "+result.Revision:
+                "插点失败："+result.ErrorCode+" "+result.Message;
+            if(result.Success)NotifyScene();
+            return result;
+        }
+        public MTCEditResult<bool> MoveVisualWaypoint(Guid link,int index,double x,double y)
+        {
+            MTCEditResult<bool> result=_editor.MoveVisualWaypoint(link,index,x,y);
+            Status=result.Success?"已移动连接折点 | Revision "+result.Revision:
+                "折点移动失败："+result.ErrorCode+" "+result.Message;
+            if(result.Success)NotifyScene();
+            return result;
+        }
+        public MTCEditResult<bool> RemoveVisualWaypoint(Guid link,int index)
+        {
+            MTCEditResult<bool> result=_editor.RemoveVisualWaypoint(link,index);
+            Status=result.Success?"已删除连接折点 | Revision "+result.Revision:
+                "删除折点失败："+result.ErrorCode+" "+result.Message;
+            if(result.Success)NotifyScene();
+            return result;
+        }
+
         public MTCEditResult<bool> DeleteVisualConnection(Guid link)
         {
             MTCEditResult<bool> result=_editor.Remove(link);

@@ -219,6 +219,46 @@ namespace CxVisual.Studio
                 }
                 catch(Exception ex){VisualInfo.Text="端点调整失败："+ex.Message;}
             };
+            SceneHost.VisualRouteRequested += (link,kind)=>
+            {
+                try
+                {
+                    MTCEditResult<bool> result=_viewModel.SetVisualRoute(link,kind);
+                    VisualInfo.Text=result.Success?"连线路由已更新（O=正交、L=直线）":
+                        "路由设置失败："+result.ErrorCode+" "+result.Message;
+                }
+                catch(Exception ex){VisualInfo.Text="路由编辑失败："+ex.Message;}
+            };
+            SceneHost.InsertWaypointRequested += (link,segment,x,y)=>
+            {
+                try
+                {
+                    MTCEditResult<bool> result=_viewModel.InsertVisualWaypoint(link,segment,x,y);
+                    VisualInfo.Text=result.Success?"折点已插入，拖动黄色方点可修改；Shift+点击可删除":
+                        "插入折点失败："+result.ErrorCode+" "+result.Message;
+                }
+                catch(Exception ex){VisualInfo.Text="插入折点失败："+ex.Message;}
+            };
+            SceneHost.MoveWaypointRequested += (link,index,x,y)=>
+            {
+                try
+                {
+                    MTCEditResult<bool> result=_viewModel.MoveVisualWaypoint(link,index,x,y);
+                    VisualInfo.Text=result.Success?"折点移动已提交（可Undo）":
+                        "折点移动失败："+result.ErrorCode+" "+result.Message;
+                }
+                catch(Exception ex){VisualInfo.Text="折点移动失败："+ex.Message;}
+            };
+            SceneHost.RemoveWaypointRequested += (link,index)=>
+            {
+                try
+                {
+                    MTCEditResult<bool> result=_viewModel.RemoveVisualWaypoint(link,index);
+                    VisualInfo.Text=result.Success?"折点已删除（可Undo）":
+                        "删除折点失败："+result.ErrorCode+" "+result.Message;
+                }
+                catch(Exception ex){VisualInfo.Text="删除折点失败："+ex.Message;}
+            };
             SceneHost.DeleteConnectionRequested += link=>
             {
                 try
@@ -310,7 +350,7 @@ namespace CxVisual.Studio
             if(item==null)
             {
                 if(_viewModel.ProjectSession.FindConnection(_viewModel.SelectedId.Value)!=null)
-                    VisualInfo.Text="已选中连接线：拖动两端圆柄可重新附着，Delete删除，Ctrl+Z撤销。";
+                    VisualInfo.Text="已选中连接：拖端点重连，双击线段插折点，拖黄色方点调整、Shift+点删除；O正交/L直线，Delete删除，Ctrl+Z撤销。";
                 return;
             }
             VisualXInput.Text=item.X.ToString("R",System.Globalization.CultureInfo.InvariantCulture);

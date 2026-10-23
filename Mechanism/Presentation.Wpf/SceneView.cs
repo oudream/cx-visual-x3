@@ -54,6 +54,14 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         /// <summary>拖动可视连接端点；原MPC连接Id保持不变。</summary>
         public event Action<Guid,bool,Guid,string> ReconnectRequested;
         public event Action<Guid> DeleteConnectionRequested;
+        public event Action<Guid,int,double,double> InsertWaypointRequested;
+        public event Action<Guid,int,double,double> MoveWaypointRequested;
+        public event Action<Guid,int> RemoveWaypointRequested;
+        public event Action<Guid,MPCVisualRouteKind> VisualRouteRequested;
+        private bool _waypointDragging;
+        private Guid? _waypointConnectionId;
+        private int _waypointIndex;
+        private Point _waypointStart,_waypointPointer;
         private bool _rewireDragging,_rewireSource;
         private Guid? _rewireConnectionId;
         private Point _rewirePointer;
@@ -148,6 +156,49 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             return new Point(anchor.X+dx*22/(_zoom*length),
                 anchor.Y+dy*22/(_zoom*length));
         }
+        /// <summary>中间顶点命中；首尾端点属于重连，不属于折点。</summary>
+        private bool TryHitConnectionWaypoint(Point point,out Guid id,out int index)
+        {
+            id=Guid.Empty;index=-1;
+            if(!_selection.HasValue)return false;
+            MVISceneItem item=_items.Find(x=>x.Id==_selection.Value&&
+                x.ElementTypeId=="core.visual.connector"&&x.IsSelectable);
+            if(item==null||item.Shape==null)return false;
+            var commands=item.Shape.Geometry.Commands;
+            double radius2=64/(_zoom*_zoom);
+            for(int i=1;i<commands.Count-1;i++)
+            {
+                FGEPoint2D p=item.GeometryToWorld.TransformPoint(commands[i].End);
+                double dx=p.X-point.X,dy=p.Y-point.Y;
+                if(dx*dx+dy*dy<=radius2)
+                {id=item.Id;index=i-1;return true;}
+            }
+            return false;
+        }
+        /// <summary>真实路径段命中；不使用外框冒充连接线路径。</summary>
+        private bool TryHitConnectorSegment(Point point,out Guid id,out int index)
+        {
+            id=Guid.Empty;index=-1;
+            if(!_selection.HasValue)return false;
+            MVISceneItem item=_items.Find(x=>x.Id==_selection.Value&&
+                x.ElementTypeId=="core.visual.connector"&&x.IsSelectable);
+            if(item==null||item.Shape==null)return false;
+            var commands=item.Shape.Geometry.Commands;
+            double best=49/(_zoom*_zoom);
+            for(int i=0;i<commands.Count-1;i++)
+            {
+                FGEPoint2D a=item.GeometryToWorld.TransformPoint(commands[i].End);
+                FGEPoint2D b=item.GeometryToWorld.TransformPoint(commands[i+1].End);
+                double dx=b.X-a.X,dy=b.Y-a.Y;
+                double length2=dx*dx+dy*dy;
+                double t=length2<=1e-16?0:Math.Max(0,Math.Min(1,
+                    ((point.X-a.X)*dx+(point.Y-a.Y)*dy)/length2));
+                double ex=a.X+t*dx-point.X,ey=a.Y+t*dy-point.Y;
+                double d=ex*ex+ey*ey;
+                if(d<=best){best=d;id=item.Id;index=i;}
+            }
+            return index>=0;
+        }
         private bool TryHitConnectionEnd(Point p,out Guid connector,out bool source)
         {
             connector=Guid.Empty;source=false;
@@ -159,7 +210,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             FGEPoint2D first=current.GeometryToWorld.TransformPoint(
                 current.Shape.Geometry.Commands[0].End);
             FGEPoint2D last=current.GeometryToWorld.TransformPoint(
-                current.Shape.Geometry.Commands[1].End);
+                current.Shape.Geometry.Commands[
+                    current.Shape.Geometry.Commands.Count-1].End);
             double threshold=9/_zoom;
             double a=Math.Pow(first.X-p.X,2)+Math.Pow(first.Y-p.Y,2);
             double b=Math.Pow(last.X-p.X,2)+Math.Pow(last.Y-p.Y,2);
@@ -555,7 +607,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                     FGEPoint2D start=edited.GeometryToWorld.TransformPoint(
                         edited.Shape.Geometry.Commands[0].End);
                     FGEPoint2D end=edited.GeometryToWorld.TransformPoint(
-                        edited.Shape.Geometry.Commands[1].End);
+                        edited.Shape.Geometry.Commands[
+                            edited.Shape.Geometry.Commands.Count-1].End);
                     FGEPoint2D[] points={start,end};
                     for(int i=0;i<points.Length;i++)
                     {
@@ -563,6 +616,28 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                         dc.DrawEllipse(Brushes.White,
                             new Pen(Brushes.DodgerBlue,2/_zoom),
                             center,5/_zoom,5/_zoom);
+                    }
+                    var commands=edited.Shape.Geometry.Commands;
+                    for(int index=1;index<commands.Count-1;index++)
+                    {
+                        FGEPoint2D p=edited.GeometryToWorld.TransformPoint(commands[index].End);
+                        Point center=new Point(p.X,p.Y);
+                        if(_waypointDragging&&_waypointConnectionId==edited.Id&&
+                            _waypointIndex==index-1)center=_waypointPointer;
+                        double radius=5/_zoom;
+                        dc.DrawRectangle(Brushes.Gold,new Pen(Brushes.DodgerBlue,1.5/_zoom),
+                            new Rect(center.X-radius,center.Y-radius,radius*2,radius*2));
+                    }
+                    if(_waypointDragging&&_waypointConnectionId==edited.Id)
+                    {
+                        FGEPoint2D previous=edited.GeometryToWorld.TransformPoint(
+                            commands[_waypointIndex].End);
+                        FGEPoint2D next=edited.GeometryToWorld.TransformPoint(
+                            commands[_waypointIndex+2].End);
+                        Pen dashed=new Pen(Brushes.DodgerBlue,1.5/_zoom)
+                            {DashStyle=DashStyles.Dash};
+                        dc.DrawLine(dashed,new Point(previous.X,previous.Y),_waypointPointer);
+                        dc.DrawLine(dashed,_waypointPointer,new Point(next.X,next.Y));
                     }
                     if(_rewireDragging&&_rewireConnectionId==edited.Id)
                     {
@@ -682,6 +757,29 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             Focus();
             Point point = WorldPoint(e.GetPosition(this));
             if(!_designMode)return;
+            Guid waypointLink;int waypointIndex;
+            if(e.ClickCount>=2&&InsertWaypointRequested!=null&&
+                TryHitConnectorSegment(point,out waypointLink,out waypointIndex))
+            {
+                InsertWaypointRequested(waypointLink,waypointIndex,point.X,point.Y);
+                e.Handled=true;return;
+            }
+            if(TryHitConnectionWaypoint(point,out waypointLink,out waypointIndex))
+            {
+                if((Keyboard.Modifiers&ModifierKeys.Shift)!=0&&
+                    RemoveWaypointRequested!=null)
+                {
+                    RemoveWaypointRequested(waypointLink,waypointIndex);
+                    e.Handled=true;return;
+                }
+                if(MoveWaypointRequested!=null)
+                {
+                    _waypointDragging=true;_waypointConnectionId=waypointLink;
+                    _waypointIndex=waypointIndex;_waypointStart=point;
+                    _waypointPointer=point;CaptureMouse();
+                    e.Handled=true;return;
+                }
+            }
             Guid link;bool sourceEnd;
             if(ReconnectRequested!=null&&
                 TryHitConnectionEnd(point,out link,out sourceEnd))
@@ -777,6 +875,14 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         protected override void OnMouseMove(MouseEventArgs e)
         {
             base.OnMouseMove(e);
+            if(_waypointDragging)
+            {
+                Point point=WorldPoint(e.GetPosition(this));
+                _waypointPointer=_gridSnap?
+                    new Point(Math.Round(point.X/25)*25,
+                        Math.Round(point.Y/25)*25):point;
+                InvalidateVisual();e.Handled=true;return;
+            }
             if(_rewireDragging)
             {
                 _rewirePointer=WorldPoint(e.GetPosition(this));
@@ -826,6 +932,22 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
         {
             base.OnMouseLeftButtonUp(e);
+            if(_waypointDragging)
+            {
+                Point raw=WorldPoint(e.GetPosition(this));
+                Point target=_gridSnap?
+                    new Point(Math.Round(raw.X/25)*25,
+                        Math.Round(raw.Y/25)*25):raw;
+                Guid link=_waypointConnectionId??Guid.Empty;
+                int index=_waypointIndex;
+                bool moved=Math.Abs(raw.X-_waypointStart.X)>2/_zoom||
+                    Math.Abs(raw.Y-_waypointStart.Y)>2/_zoom;
+                _waypointDragging=false;_waypointConnectionId=null;
+                if(IsMouseCaptured)ReleaseMouseCapture();
+                if(moved&&link!=Guid.Empty&&MoveWaypointRequested!=null)
+                    MoveWaypointRequested(link,index,target.X,target.Y);
+                InvalidateVisual();e.Handled=true;return;
+            }
             if(_rewireDragging)
             {
                 UpdateConnectionDrag(WorldPoint(e.GetPosition(this)));
@@ -915,6 +1037,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         }
         public void CancelInteraction()
         {_dragging=false;_marquee=false;_handleDragging=false;_activeHandle=null;_panning=false;_dragX=0;_dragY=0;
+            _waypointDragging=false;_waypointConnectionId=null;
             _connectDragging=false;_connectSourceId=null;_connectTargetId=null;
             _connectSourceSide=null;_connectTargetSide=null;_hoverConnectId=null;
             _rewireDragging=false;_rewireConnectionId=null;
@@ -929,6 +1052,16 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 else CancelInteraction();
                 e.Handled=true;
             }
+            else if(_designMode&&_selection.HasValue&&VisualRouteRequested!=null&&
+                _items.Exists(x=>x.Id==_selection.Value&&
+                    x.ElementTypeId=="core.visual.connector")&&
+                (e.Key==Key.O||e.Key==Key.L)&&
+                Keyboard.Modifiers==ModifierKeys.None)
+            {
+                VisualRouteRequested(_selection.Value,
+                    e.Key==Key.O?MPCVisualRouteKind.Orthogonal:MPCVisualRouteKind.Straight);
+                e.Handled=true;
+            }
             else if(_designMode&&e.Key==Key.Delete&&_selection.HasValue&&
                 _items.Exists(x=>x.Id==_selection.Value&&
                     x.ElementTypeId=="core.visual.connector")&&
@@ -939,7 +1072,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             }
             base.OnKeyDown(e);
         }
-        protected override void OnLostMouseCapture(MouseEventArgs e){if(_dragging||_handleDragging||_connectDragging||_rewireDragging)CancelInteraction();base.OnLostMouseCapture(e);}
+        protected override void OnLostMouseCapture(MouseEventArgs e){if(_dragging||_handleDragging||_connectDragging||_rewireDragging||
+            _waypointDragging)CancelInteraction();base.OnLostMouseCapture(e);}
         protected override void OnMouseLeave(MouseEventArgs e)
         {
             base.OnMouseLeave(e);

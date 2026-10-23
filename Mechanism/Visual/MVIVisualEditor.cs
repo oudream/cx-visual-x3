@@ -288,8 +288,7 @@ namespace CxVisual.Mechanism.Visual
         {
             Demand();int revision=Document.Revision;
             MPCConnection connection=CurrentVisualConnection(connectionId);
-            if(connection==null||connection.VisualRouteKind!=MPCVisualRouteKind.Manual||
-                index<0||index>=connection.VisualWaypoints.Count)
+            if(connection==null||index<0)
                 return MTCEditResult<bool>.Rejected(revision,
                     "visual.route.invalid_waypoint","No editable manual waypoint at index");
             FGEValidation.Finite(x,"x");FGEValidation.Finite(y,"y");
@@ -297,7 +296,20 @@ namespace CxVisual.Mechanism.Visual
                 return MTCEditResult<bool>.Rejected(revision,
                     "visual.default_prevented","Waypoint editing blocked");
             FGEPoint2D[] ends=VisualConnectionAnchors(connection);
-            var all=connection.VisualWaypoints.ToList();
+            IReadOnlyList<FGEPoint2D> rendered=MVIVisualRouting.Points(
+                connection,ends[0],ends[1]);
+            int count=rendered.Count-2;
+            if(index>=count)
+                return MTCEditResult<bool>.Rejected(revision,
+                    "visual.route.invalid_waypoint","Waypoint index is out of range");
+            var all=new List<MPCVisualWaypoint>();
+            for(int i=0;i<count;i++)
+            {
+                if(connection.VisualRouteKind==MPCVisualRouteKind.Manual)
+                    all.Add(connection.VisualWaypoints[i]);
+                else all.Add(MVIVisualRouting.WaypointAt(rendered[i+1],
+                    ends[0],ends[1],(i+1.0)/(count+1)));
+            }
             all[index]=MVIVisualRouting.WaypointAt(new FGEPoint2D(x,y),
                 ends[0],ends[1],all[index].Fraction);
             return Document.Edit("调整连接线折点",revision,e=>

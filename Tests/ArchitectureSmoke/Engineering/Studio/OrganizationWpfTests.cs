@@ -239,6 +239,46 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         Check((bool)endpointHit.Invoke(shapeView,hitArgs)&&
                             (Guid)hitArgs[1]==lineScene.Id&&(bool)hitArgs[2],
                             "first visible endpoint must be hit-testable as source");
+                        FGEPoint2D first=lineScene.GeometryToWorld.TransformPoint(
+                            lineScene.Shape.Geometry.Commands[0].End);
+                        FGEPoint2D last=lineScene.GeometryToWorld.TransformPoint(
+                            lineScene.Shape.Geometry.Commands[
+                                lineScene.Shape.Geometry.Commands.Count-1].End);
+                        double bendX=(first.X+last.X)/2+25;
+                        double bendY=(first.Y+last.Y)/2+15;
+                        Check(visualEditor.InsertVisualWaypoint(lineScene.Id,0,
+                            bendX,bendY).Success,
+                            "WPF connector waypoint insert failed in real engineering editor");
+                        MVISceneItem bending=visualEditor.Scene.Single(x=>
+                            x.Id==lineScene.Id);
+                        shapeView.SetScene(visualEditor.Scene,bending.Id);
+                        shapeView.UpdateLayout();
+                        Check(VisualTreeHelper.GetDrawing(shapeView)!=null&&
+                            bending.Shape.Geometry.Commands.Count==3,
+                            "manual connector WPF scene missing waypoint path");
+                        var waypointHit=typeof(SceneView).GetMethod(
+                            "TryHitConnectionWaypoint",
+                            System.Reflection.BindingFlags.Instance|
+                            System.Reflection.BindingFlags.NonPublic);
+                        Check(waypointHit!=null,"WPF connector waypoint hit API missing");
+                        object[] waypointArgs={new Point(bendX,bendY),Guid.Empty,-1};
+                        Check((bool)waypointHit.Invoke(shapeView,waypointArgs)&&
+                            (Guid)waypointArgs[1]==bending.Id&&(int)waypointArgs[2]==0,
+                            "manual bend cannot be directly hit on WPF canvas");
+                        var segmentHit=typeof(SceneView).GetMethod(
+                            "TryHitConnectorSegment",
+                            System.Reflection.BindingFlags.Instance|
+                            System.Reflection.BindingFlags.NonPublic);
+                        FGEPoint2D bend=bending.GeometryToWorld.TransformPoint(
+                            bending.Shape.Geometry.Commands[1].End);
+                        object[] segmentArgs={
+                            new Point((first.X+bend.X)/2,(first.Y+bend.Y)/2),
+                            Guid.Empty,-1};
+                        Check(segmentHit!=null&&
+                            (bool)segmentHit.Invoke(shapeView,segmentArgs)&&
+                            (Guid)segmentArgs[1]==bending.Id&&
+                            (int)segmentArgs[2]==0,
+                            "connector segment double-click target not hit-testable");
                     }
                     shapeView.SetScene(shapeScene,bezierScene.Id);
                     shapeWindow.Close();
