@@ -82,6 +82,25 @@ namespace CxVisual.TestCenter.UI
                 return;
             }
         }
+        // Windows UIA使用实际WPF菜单项的Click路由；不调用另建的TestCenter创建引擎。
+        internal void InvokeCreateContextMenuForVerification(string templateId)
+        {
+            TreeViewItem target = null;
+            foreach (TreeViewItem root in _tree.Items.OfType<TreeViewItem>())
+            {
+                target = FindWorkspace(root, templateId);
+                if (target != null) break;
+            }
+            if (target == null || target.ContextMenu == null)
+                throw new InvalidOperationException("找不到可见资源类型：" + templateId);
+            string action = "TCT.Workspace.Create." + templateId;
+            MenuItem menu = target.ContextMenu.Items.OfType<MenuItem>().FirstOrDefault(x =>
+                System.Windows.Automation.AutomationProperties.GetAutomationId(x) == action);
+            if (menu == null || !menu.IsEnabled)
+                throw new InvalidOperationException("没有可用的真实创建菜单：" + templateId);
+            menu.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent, menu));
+        }
+
         private static TreeViewItem FindWorkspace(TreeViewItem parent, string id)
         {
             TCTWorkspaceDescriptor descriptor = parent.Tag as TCTWorkspaceDescriptor;
@@ -221,6 +240,14 @@ namespace CxVisual.TestCenter.UI
                 menu.Items.Add(remove);
             }
             item.ContextMenu = menu;
+            if (descriptor.IsCreatedInstance)
+            {
+                // 用户关了Tab但树节点仍处于选中状态：再次单击也必须重新打开。
+                item.PreviewMouseLeftButtonDown += (sender, args) => {
+                    if (item.IsSelected && WorkspaceSelected != null)
+                        WorkspaceSelected(descriptor);
+                };
+            }
             System.Windows.Automation.AutomationProperties.SetAutomationId(item,
                 "TCT.Workspace." + descriptor.WorkspaceId);
             return item;

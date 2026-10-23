@@ -28,7 +28,7 @@ namespace CxVisual.TestCenter.UI
             await Task.Run(() => VerifyOverview(hwnd, window));
             SaveScreenshot(window, "TestCenter-01-Workspace.png");
             window.Dispatcher.Invoke(new Action(() =>
-                window.CreateWorkspaceInstance("auto.catalog")));
+                window.Explorer.InvokeCreateContextMenuForVerification("auto.catalog")));
             await Task.Run(() => Interact(hwnd, window));
             SaveScreenshot(window, "TestCenterUIA.png");
             SaveScreenshot(window, "TestCenter-02-Geometry.png");
@@ -95,7 +95,9 @@ namespace CxVisual.TestCenter.UI
             AutomationElement root = AutomationElement.FromHandle(hwnd);
             TCTWorkspaceDescriptor created = null;
             window.Dispatcher.Invoke(new Action(() => {
-                created = window.CreateWorkspaceInstance(
+                window.Explorer.InvokeCreateContextMenuForVerification(
+                    "manual.module." + kind.ToString().ToLowerInvariant());
+                created = window.FindOpenCreatedInstance(
                     "manual.module." + kind.ToString().ToLowerInvariant());
             }));
             if (created == null) throw new InvalidOperationException("Module create action failed");
@@ -275,7 +277,8 @@ namespace CxVisual.TestCenter.UI
             AutomationElement root = AutomationElement.FromHandle(hwnd);
             TCTWorkspaceDescriptor instance = null;
             window.Dispatcher.Invoke(new Action(() => {
-                instance = window.CreateWorkspaceInstance("manual.module.connector");
+                window.Explorer.InvokeCreateContextMenuForVerification("manual.module.connector");
+                instance = window.FindOpenCreatedInstance("manual.module.connector");
             }));
             if (instance == null) throw new InvalidOperationException("Module instance was not created");
             string actualId = null;
@@ -321,7 +324,8 @@ namespace CxVisual.TestCenter.UI
             search.SetValue("");
             TCTWorkspaceDescriptor smoke = null;
             window.Dispatcher.Invoke(new Action(() => {
-                smoke = window.CreateWorkspaceInstance("auto.architecture-smoke");
+                window.Explorer.InvokeCreateContextMenuForVerification("auto.architecture-smoke");
+                smoke = window.FindOpenCreatedInstance("auto.architecture-smoke");
             }));
             if (smoke == null) throw new InvalidOperationException("ArchitectureSmoke instance not created");
             SelectionItemPattern select = Find(root, "TCT.Workspace." + smoke.WorkspaceId)
@@ -388,8 +392,9 @@ namespace CxVisual.TestCenter.UI
                 if (tabs.Items.OfType<System.Windows.Controls.TabItem>()
                     .Any(t => (t.Tag as TCTWorkspaceDescriptor)?.WorkspaceId == "manual.root"))
                     throw new InvalidOperationException("根分类不能自动创建工作区Tab");
-                if (window.CreateWorkspaceInstance("manual.channel") == null)
-                    throw new InvalidOperationException("人工Channel实例创建失败");
+                window.Explorer.InvokeCreateContextMenuForVerification("manual.channel");
+                if (window.FindOpenCreatedInstance("manual.channel") == null)
+                    throw new InvalidOperationException("人工Channel右键创建失败");
             }));
             TCTWorkspaceDescriptor created = null;
             window.Dispatcher.Invoke(new Action(() =>
