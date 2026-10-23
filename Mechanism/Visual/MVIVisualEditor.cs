@@ -198,6 +198,135 @@ namespace CxVisual.Mechanism.Visual
             });
         }
 
+        private MPCConnection CurrentVisualConnection(Guid id)
+        {
+            MPCConnection connection=Document.FindConnection(id);
+            if(connection==null||!Scene.Any(x=>x.Id==id&&
+                x.ElementTypeId=="core.visual.connector"&&x.IsSelectable))
+                return null;
+            return connection;
+        }
+
+        /// <summary>直线/自动正交布线：无人工点，始终由端点当前几何重算。</summary>
+        public MTCEditResult<bool> SetVisualRoute(Guid connectionId,
+            MPCVisualRouteKind kind)
+        {
+            Demand();int revision=Document.Revision;
+            MPCConnection connection=CurrentVisualConnection(connectionId);
+            if(connection==null)return MTCEditResult<bool>.Rejected(revision,
+                "visual.route.not_found","Connection not editable in current resource");
+            if(kind!=MPCVisualRouteKind.Straight&&kind!=MPCVisualRouteKind.Orthogonal)
+                return MTCEditResult<bool>.Rejected(revision,
+                    "visual.route.unsupported_mode","Use waypoint editing for manual routes");
+            if(!Route(MVIInteractionKind.Move,connectionId))
+                return MTCEditResult<bool>.Rejected(revision,
+                    "visual.default_prevented","Visual route blocked");
+            return Document.Edit("设置连接线自动布线",revision,e=>
+            {
+                e.SetVisualRoute(connection,kind,new MPCVisualWaypoint[0]);
+                return true;
+            });
+        }
+
+        private FGEPoint2D[] VisualConnectionAnchors(MPCConnection connection)
+        {
+            var projected=Scene;
+            Func<MPCEndpoint,FGEPoint2D> locate=endpoint=>
+            {
+                MPCPort port=Document.FindPort(endpoint.PortId);
+                MVISceneItem scene=projected.FirstOrDefault(x=>
+                    x.Address!=null&&x.Address.ObjectId==endpoint.Address.ObjectId&&
+                    x.Address.InstancePath.Count==0);
+                if(port==null||scene==null||
+                    !MVIVisualAnchors.IsVisualMember(port.MemberId))
+                    throw new InvalidOperationException("visual.route.missing_anchor");
+                return MVIVisualAnchors.At(scene,port.MemberId.Substring(7));
+            };
+            return new[]{locate(connection.Source),locate(connection.Target)};
+        }
+
+        /// <summary>双击某线段插点；自动折线转换为等效手动点，不丢失已有路径。</summary>
+        public MTCEditResult<bool> InsertVisualWaypoint(Guid connectionId,
+            int segmentIndex,double x,double y)
+        {
+            Demand();int revision=Document.Revision;
+            MPCConnection connection=CurrentVisualConnection(connectionId);
+            if(connection==null)return MTCEditResult<bool>.Rejected(revision,
+                "visual.route.not_found","Connection not in active scene");
+            FGEValidation.Finite(x,"x");FGEValidation.Finite(y,"y");
+            FGEPoint2D[] ends=VisualConnectionAnchors(connection);
+            IReadOnlyList<FGEPoint2D> points=MVIVisualRouting.Points(connection,ends[0],ends[1]);
+            int count=points.Count-2;
+            if(segmentIndex<0||segmentIndex>count||count>=64)
+                return MTCEditResult<bool>.Rejected(revision,
+                    "visual.route.invalid_segment","Invalid segment or too many waypoints");
+            if(!Route(MVIInteractionKind.Move,connectionId))
+                return MTCEditResult<bool>.Rejected(revision,
+                    "visual.default_prevented","Waypoint editing blocked");
+            var manual=new List<MPCVisualWaypoint>();
+            for(int i=0;i<count;i++)
+            {
+                if(connection.VisualRouteKind==MPCVisualRouteKind.Manual)
+                    manual.Add(connection.VisualWaypoints[i]);
+                else
+                    manual.Add(MVIVisualRouting.WaypointAt(points[i+1],
+                        ends[0],ends[1],(i+1.0)/(count+1)));
+            }
+            double prior=segmentIndex==0?0:manual[segmentIndex-1].Fraction;
+            double next=segmentIndex==count?1:manual[segmentIndex].Fraction;
+            manual.Insert(segmentIndex,MVIVisualRouting.WaypointAt(
+                new FGEPoint2D(x,y),ends[0],ends[1],(prior+next)/2));
+            return Document.Edit("插入连接线折点",revision,e=>
+            {
+                e.SetVisualRoute(connection,MPCVisualRouteKind.Manual,manual);
+                return true;
+            });
+        }
+
+        public MTCEditResult<bool> MoveVisualWaypoint(Guid connectionId,int index,
+            double x,double y)
+        {
+            Demand();int revision=Document.Revision;
+            MPCConnection connection=CurrentVisualConnection(connectionId);
+            if(connection==null||connection.VisualRouteKind!=MPCVisualRouteKind.Manual||
+                index<0||index>=connection.VisualWaypoints.Count)
+                return MTCEditResult<bool>.Rejected(revision,
+                    "visual.route.invalid_waypoint","No editable manual waypoint at index");
+            FGEValidation.Finite(x,"x");FGEValidation.Finite(y,"y");
+            if(!Route(MVIInteractionKind.Move,connectionId))
+                return MTCEditResult<bool>.Rejected(revision,
+                    "visual.default_prevented","Waypoint editing blocked");
+            FGEPoint2D[] ends=VisualConnectionAnchors(connection);
+            var all=connection.VisualWaypoints.ToList();
+            all[index]=MVIVisualRouting.WaypointAt(new FGEPoint2D(x,y),
+                ends[0],ends[1],all[index].Fraction);
+            return Document.Edit("调整连接线折点",revision,e=>
+            {
+                e.SetVisualRoute(connection,MPCVisualRouteKind.Manual,all);
+                return true;
+            });
+        }
+
+        public MTCEditResult<bool> RemoveVisualWaypoint(Guid connectionId,int index)
+        {
+            Demand();int revision=Document.Revision;
+            MPCConnection connection=CurrentVisualConnection(connectionId);
+            if(connection==null||connection.VisualRouteKind!=MPCVisualRouteKind.Manual||
+                index<0||index>=connection.VisualWaypoints.Count)
+                return MTCEditResult<bool>.Rejected(revision,
+                    "visual.route.invalid_waypoint","No manual waypoint at index");
+            if(!Route(MVIInteractionKind.Delete,connectionId))
+                return MTCEditResult<bool>.Rejected(revision,
+                    "visual.default_prevented","Waypoint deletion blocked");
+            var all=connection.VisualWaypoints.ToList();all.RemoveAt(index);
+            return Document.Edit("删除连接线折点",revision,e=>
+            {
+                e.SetVisualRoute(connection,all.Count==0?
+                    MPCVisualRouteKind.Straight:MPCVisualRouteKind.Manual,all);
+                return true;
+            });
+        }
+
         /// <summary>重连保持MPCConnection.Id不变；仅改指定一端的真实Visual端口。</summary>
         public MTCEditResult<bool> ReconnectVisual(Guid connectionId,bool editSource,
             Guid newElementId,string side)

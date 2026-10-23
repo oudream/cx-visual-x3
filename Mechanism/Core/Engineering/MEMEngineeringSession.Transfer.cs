@@ -94,7 +94,7 @@ namespace CxVisual.Mechanism.Core
             }
             foreach(var n in plan.Source.Nodes.Where(n=>plan.Included.Contains(n.Id)))foreach(var c in n.Connections)
             {
-                var owner=_session.Find(plan.Map(n.Id));AddTransferredConnection(new MPCConnection(plan.Map(c.Id),owner.Id,plan.Map(c.Source),plan.Map(c.Target)));
+                var owner=_session.Find(plan.Map(n.Id));AddTransferredConnection(new MPCConnection(plan.Map(c.Id),owner.Id,plan.Map(c.Source),plan.Map(c.Target)).CopyRouteFrom(c));
             }
             foreach(var n in plan.Source.Nodes.Where(n=>plan.Included.Contains(n.Id)&&n.Visual!=null&&n.Visual.IsLocked).Reverse())SetLocked((MRCVisualItem)_session.Find(plan.Map(n.Id)),true);
             var report=_session.Validate();if(!report.IsValid)throw new InvalidOperationException(string.Join(";",report.Issues));

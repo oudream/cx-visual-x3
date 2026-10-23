@@ -93,16 +93,18 @@ namespace CxVisual.Mechanism.Visual
                         a.MemberId.Substring("visual.".Length));
                     FGEPoint2D end=MVIVisualAnchors.At(target,
                         b.MemberId.Substring("visual.".Length));
-                    double x=Math.Min(start.X,end.X),y=Math.Min(start.Y,end.Y);
-                    var line=MRCShapeDefinition.Line(
-                        new FGEPoint2D(start.X-x,start.Y-y),
-                        new FGEPoint2D(end.X-x,end.Y-y));
+                    IReadOnlyList<FGEPoint2D> points=MVIVisualRouting.Points(
+                        connection,start,end);
+                    double x=points.Min(p=>p.X),y=points.Min(p=>p.Y);
+                    var line=MRCShapeDefinition.Polyline(points.Select(p=>
+                        new FGEPoint2D(p.X-x,p.Y-y)));
+                    double width=points.Max(p=>p.X)-x;
+                    double height=points.Max(p=>p.Y)-y;
                     var transform=new MRCTransform(1,0,0,1,x,y);
                     var style=new MRCVisualStyle(MRCBrushDefinition.None(),
                         MRCBrushDefinition.Solid(MRCColor.FromRgb(55,122,199)),1.7);
                     links.Add(new MVISceneItem(connection.Id,"Visual connector",null,
-                        transform,Math.Max(1,Math.Abs(start.X-end.X)),
-                        Math.Max(1,Math.Abs(start.Y-end.Y)),true,MRCTransform.Identity,
+                        transform,width,height,true,MRCTransform.Identity,
                         x,y,"core.visual.connector",line,style));
                 }
                 Items.InsertRange(0,links);

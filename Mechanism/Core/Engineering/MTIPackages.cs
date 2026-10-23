@@ -63,7 +63,7 @@ namespace CxVisual.Mechanism.Core
                 if(!inside(endpoint))return endpoint;string member;
                 if(!publicPorts.TryGetValue(endpoint,out member)){member="p_"+publicPorts.Count.ToString(System.Globalization.CultureInfo.InvariantCulture);ExposePort(definition,member,plan.Map(endpoint));publicPorts.Add(endpoint,member);}return _session.Endpoint(use,member);
             };
-            foreach(var wire in wires)AddTransferredConnection(new MPCConnection(wire.Id,wire.OwnerId,endpointMap(wire.Source),endpointMap(wire.Target)));
+            foreach(var wire in wires)AddTransferredConnection(new MPCConnection(wire.Id,wire.OwnerId,endpointMap(wire.Source),endpointMap(wire.Target)).CopyRouteFrom(wire));
             foreach(var id in plan.SelectedRoots)Remove(_session.Find(id));return use;
         }
     }

@@ -341,7 +341,7 @@ namespace CxVisual.Mechanism.Core
                 if(port==null||port.Direction!=old.Direction||port.Kind!=old.Kind||port.TypeId!=old.TypeId||port.Multiplicity!=old.Multiplicity||!port.Contract.Equals(old.Contract))throw new InvalidOperationException("org.retarget.public_port_mismatch");
                 return new MPCEndpoint(new MRIObjectAddress(Project.Id,definition.ResourceRootId,definition.Id,endpoint.Address.InstancePath),port.Id);
             };
-            return records.Cast<MPCConnection>().Select(c=>new MPCConnection(c.Id,c.OwnerId,remap(c.Source),remap(c.Target))).ToList().AsReadOnly();
+            return records.Cast<MPCConnection>().Select(c=>new MPCConnection(c.Id,c.OwnerId,remap(c.Source),remap(c.Target)).CopyRouteFrom(c)).ToList().AsReadOnly();
         }
         public MPCPort DefinePort(MEMNode owner,string member,MPCPortDirection direction,string typeId,MPCPortKind kind=MPCPortKind.Data,MPCPortMultiplicity multiplicity=MPCPortMultiplicity.Many,MTUContractReference contract=null,bool isPublic=false,bool required=false)
         {return Edit("声明端口",e=>e.DefinePort(owner,member,direction,typeId,kind,multiplicity,contract,isPublic,required)).RequireValue();}

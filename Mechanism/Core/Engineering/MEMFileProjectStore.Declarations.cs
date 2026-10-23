@@ -77,7 +77,22 @@ namespace CxVisual.Mechanism.Core
                 w.WriteAttributeString("unit64",Encode(port.Contract.UnitId));w.WriteAttributeString("frame64",Encode(port.Contract.CoordinateFrameId));w.WriteAttributeString("time64",Encode(port.Contract.TimeBaseId));if(port.Contract.Calibration!=null)w.WriteAttributeString("calibration",port.Contract.Calibration.ToString());w.WriteEndElement();
             }
             foreach(var connection in MPMDefinitionState.ConnectionsOf(owner))
-            {w.WriteStartElement("Connection");w.WriteAttributeString("id",connection.Id.ToString("D"));WriteEndpoint(w,"source",connection.Source);WriteEndpoint(w,"target",connection.Target);w.WriteEndElement();}
+            {
+                w.WriteStartElement("Connection");
+                w.WriteAttributeString("id",connection.Id.ToString("D"));
+                WriteEndpoint(w,"source",connection.Source);WriteEndpoint(w,"target",connection.Target);
+                if(connection.VisualRouteKind!=MPCVisualRouteKind.Straight)
+                    w.WriteAttributeString("visualRoute",connection.VisualRouteKind.ToString());
+                foreach(MPCVisualWaypoint point in connection.VisualWaypoints)
+                {
+                    w.WriteStartElement("Waypoint");
+                    Number(w,"fraction",point.Fraction);
+                    Number(w,"offsetX",point.OffsetX);
+                    Number(w,"offsetY",point.OffsetY);
+                    w.WriteEndElement();
+                }
+                w.WriteEndElement();
+            }
             foreach(var mapping in MPMDefinitionState.MappingsOf(owner))
             {
                 w.WriteStartElement("Mapping");w.WriteAttributeString("kind",mapping.Kind.ToString());w.WriteAttributeString("member",mapping.MemberId);w.WriteAttributeString("target",mapping.TargetAddress.ToString());
@@ -107,7 +122,29 @@ namespace CxVisual.Mechanism.Core
                     var port=new MPCPort(Guid.Parse(XRequired(e,"id")),owner.Id,XRequired(e,"member"),XEnum<MPCPortDirection>(e,"direction"),XRequired(e,"typeId"),XEnum<MPCPortKind>(e,"kind"),XEnum<MPCPortMultiplicity>(e,"multiplicity"),contract,XBool(e,"public"),XBool(e,"required"));
                     if(state.PortItems==null)state.PortItems=new List<MPCPort>();if(state.PortItems.Any(p=>p.MemberId==port.MemberId))throw new InvalidDataException("Duplicate port member");state.PortItems.Add(port);break;
                 case "Connection":
-                    XFields(e,"id source sourcePort target targetPort");if(state.ConnectionItems==null)state.ConnectionItems=new List<MPCConnection>();state.ConnectionItems.Add(new MPCConnection(Guid.Parse(XRequired(e,"id")),owner.Id,ReadEndpoint(e,"source"),ReadEndpoint(e,"target")));break;
+                    XFields(e,"id source sourcePort target targetPort visualRoute");
+                    if(e.Elements().Any(x=>x.Name.LocalName!="Waypoint")||
+                        e.Elements().Count()>64)
+                        throw new InvalidDataException("Invalid visual waypoint payload");
+                    var visualRoute=e.Attribute("visualRoute")==null?
+                        MPCVisualRouteKind.Straight:XEnum<MPCVisualRouteKind>(e,"visualRoute");
+                    var waypoints=new List<MPCVisualWaypoint>();
+                    foreach(XElement waypoint in e.Elements("Waypoint"))
+                    {
+                        XFields(waypoint,"fraction offsetX offsetY");
+                        if(waypoint.Elements().Any())
+                            throw new InvalidDataException("Nested waypoint is not allowed");
+                        waypoints.Add(new MPCVisualWaypoint(
+                            double.Parse(XRequired(waypoint,"fraction"),Invariant),
+                            double.Parse(XRequired(waypoint,"offsetX"),Invariant),
+                            double.Parse(XRequired(waypoint,"offsetY"),Invariant)));
+                    }
+                    var wire=new MPCConnection(Guid.Parse(XRequired(e,"id")),owner.Id,
+                        ReadEndpoint(e,"source"),ReadEndpoint(e,"target"));
+                    wire.SetVisualRoute(visualRoute,waypoints);
+                    if(state.ConnectionItems==null)state.ConnectionItems=new List<MPCConnection>();
+                    state.ConnectionItems.Add(wire);
+                    break;
                 case "Mapping":
                     var kind=XEnum<MRCPublicMappingKind>(e,"kind");XFields(e,"kind member target "+(kind==MRCPublicMappingKind.Property?"targetMember":"publicPort targetPort"));var address=MRIObjectAddress.Parse(XRequired(e,"target"));
                     var mapping=kind==MRCPublicMappingKind.Property?new MRCPublicMapping(owner.Id,XRequired(e,"member"),address,XRequired(e,"targetMember")):new MRCPublicMapping(owner.Id,XRequired(e,"member"),Guid.Parse(XRequired(e,"publicPort")),new MPCEndpoint(address,Guid.Parse(XRequired(e,"targetPort"))));

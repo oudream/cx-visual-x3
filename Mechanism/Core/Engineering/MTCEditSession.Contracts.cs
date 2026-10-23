@@ -112,6 +112,35 @@ namespace CxVisual.Mechanism.Core
                 _session.IndexConnection(connection);
             },MTCChangeKind.Connection,connection.Id);
         }
+        /// <summary>视觉折点和布线策略归原连接所有；一次Change支持Undo/Redo。</summary>
+        public void SetVisualRoute(MPCConnection connection,MPCVisualRouteKind kind,
+            IEnumerable<MPCVisualWaypoint> waypoints)
+        {
+            Demand();
+            if(connection==null||_session.FindConnection(connection.Id)!=connection)
+                throw new InvalidOperationException("org.connection.foreign_or_missing");
+            Definition(_session.Find(connection.OwnerId));
+            MPCPort source=_session.FindPort(connection.Source.PortId);
+            MPCPort target=_session.FindPort(connection.Target.PortId);
+            if(source==null||target==null||source.Kind!=MPCPortKind.Visual||
+                target.Kind!=MPCPortKind.Visual)
+                throw new InvalidOperationException("visual.route.requires_visual_ports");
+            var next=new MPCConnection(connection.Id,connection.OwnerId,
+                connection.Source,connection.Target);
+            next.SetVisualRoute(kind,waypoints);
+            if(kind==connection.VisualRouteKind&&
+                next.VisualWaypoints.Count==connection.VisualWaypoints.Count&&
+                !next.VisualWaypoints.Where((p,i)=>
+                    p.Fraction!=connection.VisualWaypoints[i].Fraction||
+                    p.OffsetX!=connection.VisualWaypoints[i].OffsetX||
+                    p.OffsetY!=connection.VisualWaypoints[i].OffsetY).Any())return;
+            MPCVisualRouteKind before=connection.VisualRouteKind;
+            MPCVisualWaypoint[] beforePoints=connection.VisualWaypoints.ToArray();
+            MPCVisualWaypoint[] nextPoints=next.VisualWaypoints.ToArray();
+            Change(()=>connection.SetVisualRoute(kind,nextPoints),
+                ()=>connection.SetVisualRoute(before,beforePoints),
+                MTCChangeKind.Connection,connection.Id);
+        }
         public void Disconnect(MPCConnection connection)
         {
             Demand();if(connection==null||_session.FindConnection(connection.Id)!=connection)throw new InvalidOperationException("org.connection.foreign_or_missing");var state=Definition(_session.Find(connection.OwnerId));int index=state.ConnectionItems.IndexOf(connection);

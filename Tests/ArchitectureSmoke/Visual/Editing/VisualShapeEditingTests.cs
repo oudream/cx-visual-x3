@@ -441,6 +441,87 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         doc.FindConnection(visualConnectionId)!=null&&
                         editor.Scene.Any(x=>x.Id==visualConnectionId),
                         "connector deletion Undo must restore original stable identity");
+                    // V1路径：自动正交线无需存几何；人工折点持久化为端点相对偏移。
+                    int beforeRoute=doc.Revision;
+                    Check(editor.SetVisualRoute(visualConnectionId,
+                        MPCVisualRouteKind.Orthogonal).Success&&
+                        doc.Revision==beforeRoute+1&&
+                        doc.FindConnection(visualConnectionId).VisualRouteKind==
+                            MPCVisualRouteKind.Orthogonal,
+                        "automatic orthogonal routing must commit as one edit");
+                    MVISceneItem orthogonal=editor.Scene.Single(x=>x.Id==visualConnectionId);
+                    FGEPoint2D autoStart=orthogonal.GeometryToWorld.TransformPoint(
+                        orthogonal.Shape.Geometry.Commands[0].End);
+                    FGEPoint2D autoEnd=orthogonal.GeometryToWorld.TransformPoint(
+                        orthogonal.Shape.Geometry.Commands[
+                            orthogonal.Shape.Geometry.Commands.Count-1].End);
+                    Check(Near(autoStart,MVIVisualAnchors.At(
+                            editor.Scene.Single(x=>x.Id==shape.Id),"east"))&&
+                        Near(autoEnd,MVIVisualAnchors.At(
+                            editor.Scene.Single(x=>x.Id==neighbor.Id),"north")),
+                        "automatic route endpoints must stay attached");
+                    double bendX=(autoStart.X+autoEnd.X)/2+12;
+                    double bendY=(autoStart.Y+autoEnd.Y)/2+17;
+                    int beforeInsert=doc.Revision;
+                    Check(editor.InsertVisualWaypoint(visualConnectionId,0,bendX,bendY).Success&&
+                        doc.Revision==beforeInsert+1&&
+                        doc.FindConnection(visualConnectionId).VisualRouteKind==
+                            MPCVisualRouteKind.Manual,
+                        "insert waypoint did not convert auto route to saved manual route");
+                    MPCConnection manualLink=doc.FindConnection(visualConnectionId);
+                    int waypointCount=manualLink.VisualWaypoints.Count;
+                    Check(waypointCount>=1&&
+                        editor.Scene.Single(x=>x.Id==visualConnectionId).Shape.Geometry
+                            .Commands.Count==waypointCount+2,
+                        "manual route scene has wrong number of waypoint vertices");
+                    MVISceneItem manualScene=editor.Scene.Single(x=>x.Id==visualConnectionId);
+                    FGEPoint2D firstWaypoint=manualScene.GeometryToWorld.TransformPoint(
+                        manualScene.Shape.Geometry.Commands[1].End);
+                    FGEPoint2D movePoint=new FGEPoint2D(firstWaypoint.X+13,firstWaypoint.Y-9);
+                    int beforeMoveWaypoint=doc.Revision;
+                    Check(editor.MoveVisualWaypoint(visualConnectionId,0,
+                        movePoint.X,movePoint.Y).Success&&
+                        doc.Revision==beforeMoveWaypoint+1,
+                        "dragging a waypoint should create one transaction");
+                    MVISceneItem adjusted=editor.Scene.Single(x=>x.Id==visualConnectionId);
+                    Check(Near(adjusted.GeometryToWorld.TransformPoint(
+                        adjusted.Shape.Geometry.Commands[1].End),movePoint),
+                        "manual waypoint projection differs from intended world coordinate");
+                    Check(editor.Undo().Success&&Near(
+                        editor.Scene.Single(x=>x.Id==visualConnectionId)
+                            .GeometryToWorld.TransformPoint(
+                                editor.Scene.Single(x=>x.Id==visualConnectionId)
+                                    .Shape.Geometry.Commands[1].End),firstWaypoint),
+                        "waypoint movement Undo failed");
+                    Check(editor.Redo().Success&&Near(
+                        editor.Scene.Single(x=>x.Id==visualConnectionId)
+                            .GeometryToWorld.TransformPoint(
+                                editor.Scene.Single(x=>x.Id==visualConnectionId)
+                                    .Shape.Geometry.Commands[1].End),movePoint),
+                        "waypoint movement Redo failed");
+                    FGEPoint2D priorEnd=MVIVisualAnchors.At(
+                        editor.Scene.Single(x=>x.Id==neighbor.Id),"north");
+                    doc.Move(neighbor,neighbor.X+26,neighbor.Y+18);
+                    FGEPoint2D nextEnd=MVIVisualAnchors.At(
+                        editor.Scene.Single(x=>x.Id==neighbor.Id),"north");
+                    FGEPoint2D movedWaypoint=editor.Scene.Single(x=>
+                        x.Id==visualConnectionId).GeometryToWorld.TransformPoint(
+                            editor.Scene.Single(x=>x.Id==visualConnectionId)
+                                .Shape.Geometry.Commands[1].End);
+                    double fraction=doc.FindConnection(visualConnectionId)
+                        .VisualWaypoints[0].Fraction;
+                    Check(Near(movedWaypoint,new FGEPoint2D(
+                        movePoint.X+(nextEnd.X-priorEnd.X)*fraction,
+                        movePoint.Y+(nextEnd.Y-priorEnd.Y)*fraction)),
+                        "manual waypoint failed to follow endpoint movement proportionally");
+                    Check(editor.RemoveVisualWaypoint(visualConnectionId,0).Success&&
+                        doc.FindConnection(visualConnectionId).VisualWaypoints.Count==
+                            waypointCount-1,
+                        "remove waypoint failed");
+                    Check(editor.Undo().Success&&
+                        doc.FindConnection(visualConnectionId).VisualWaypoints.Count==
+                            waypointCount,
+                        "remove waypoint Undo failed");
                     doc.SaveAs(filename);
                 }
                 doc.Close();
@@ -455,6 +536,14 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Check(MVISceneProjection.Project(restored).Count(x=>
                         x.ElementTypeId=="core.visual.connector")==1,
                         "visual connector not restored on disk roundtrip");
+                    MPCConnection savedVisual=restored.GetSnapshot().Nodes
+                        .SelectMany(n=>n.Connections).Single(c=>
+                            c.VisualRouteKind==MPCVisualRouteKind.Manual);
+                    Check(savedVisual.VisualWaypoints.Count>=1&&
+                        MVISceneProjection.Project(restored).Single(x=>
+                            x.Id==savedVisual.Id).Shape.Geometry.Commands.Count==
+                                savedVisual.VisualWaypoints.Count+2,
+                        "saved waypoint route was not restored from MEM project");
                 }
                 Console.WriteLine("PASS Visual editing A: quadratic/cubic handles, nested transforms, world geometry stability, resize/rotate, 1-step Undo, Redo and disk reopen");
             }
