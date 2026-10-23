@@ -117,7 +117,39 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         .GetAwaiter().GetResult();
                     Check(replied.Wait(3000) && outbound.SequenceEqual(new byte[] { 4, 5 }),
                         "TCP Server reply must use selected SubChannel");
-                    Check(server.RemovePeer(sub), "TCP peer remove");
+                    MCCSubChannelAddress originalPeer = sub;
+                    MCCTcpClientChannel second = new MCCTcpClientChannel(
+                        new MCCChannelConfiguration { Id = "tcp-client-test2",
+                            Kind = MCCChannelKind.TcpClient, Host = "127.0.0.1", Port = port });
+                    using (ManualResetEventSlim secondArrived = new ManualResetEventSlim(false))
+                    using (ManualResetEventSlim secondReplied = new ManualResetEventSlim(false))
+                    {
+                        MCCSubChannelAddress secondAddress = null;
+                        byte[] secondReply = null;
+                        server.Received += msg => {
+                            if (msg.Data.Length == 1 && msg.Data[0] == 6)
+                            {
+                                secondAddress = msg.Address;
+                                secondArrived.Set();
+                            }
+                        };
+                        second.Received += msg => { secondReply = msg.Data; secondReplied.Set(); };
+                        try
+                        {
+                            second.Open(); second.Send(new byte[] { 6 });
+                            Check(secondArrived.Wait(3000) && secondAddress != null &&
+                                !secondAddress.Equals(originalPeer) &&
+                                server.SnapshotSubChannels().Length == 2,
+                                "TCP Server 一个父通道应同时接受两个独立 SubChannel");
+                            server.SendAsync(new byte[] { 7 }, secondAddress, CancellationToken.None)
+                                .GetAwaiter().GetResult();
+                            Check(secondReplied.Wait(3000) &&
+                                secondReply.SequenceEqual(new byte[] { 7 }),
+                                "TCP Server 第二对端定向响应");
+                        }
+                        finally { second.Close(); }
+                    }
+                    Check(server.RemovePeer(originalPeer), "TCP peer remove");
                     bool rejected = false;
                     try { server.SendAsync(new byte[] { 9 }, sub, CancellationToken.None).GetAwaiter().GetResult(); }
                     catch (InvalidOperationException) { rejected = true; }
@@ -153,7 +185,36 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     server.SendAsync(new byte[] { 44 }, sub, CancellationToken.None).GetAwaiter().GetResult();
                     Check(replied.Wait(3000) && outbound.SequenceEqual(new byte[] { 44 }),
                         "UDP Server reply to exact endpoint");
-                    Check(server.RemovePeer(sub), "UDP remove endpoint");
+                    MCCSubChannelAddress originalPeer = sub;
+                    MCCUdpChannel second = new MCCUdpChannel(
+                        new MCCChannelConfiguration { Id = "udp-client-test2",
+                            Kind = MCCChannelKind.Udp, Host = "127.0.0.1", Port = port });
+                    using (ManualResetEventSlim secondArrived = new ManualResetEventSlim(false))
+                    using (ManualResetEventSlim secondReplied = new ManualResetEventSlim(false))
+                    {
+                        MCCSubChannelAddress secondAddress = null;
+                        byte[] secondReply = null;
+                        server.Received += msg => {
+                            if (msg.Data.Length == 1 && msg.Data[0] == 66)
+                            { secondAddress = msg.Address; secondArrived.Set(); }
+                        };
+                        second.Received += msg => { secondReply = msg.Data; secondReplied.Set(); };
+                        try
+                        {
+                            second.Open(); second.Send(new byte[] { 66 });
+                            Check(secondArrived.Wait(3000) && secondAddress != null &&
+                                !secondAddress.Equals(originalPeer) &&
+                                server.SnapshotSubChannels().Length == 2,
+                                "UDP Server 一个父通道应区分两个来源 Endpoint");
+                            server.SendAsync(new byte[] { 77 }, secondAddress, CancellationToken.None)
+                                .GetAwaiter().GetResult();
+                            Check(secondReplied.Wait(3000) &&
+                                secondReply.SequenceEqual(new byte[] { 77 }),
+                                "UDP Server 第二逻辑对端定向响应");
+                        }
+                        finally { second.Close(); }
+                    }
+                    Check(server.RemovePeer(originalPeer), "UDP remove endpoint");
                     bool rejected = false;
                     try { server.SendAsync(new byte[] { 55 }, sub, CancellationToken.None)
                         .GetAwaiter().GetResult(); }

@@ -83,3 +83,11 @@
 - TCP Server 的 `RemovePeer` 必须同步移除代次路由和关闭原 Socket；一个客户端断开不应该导致整个监听通道进入 Faulted。
 - UDP Server 按远端 Endpoint 创建逻辑 SubChannel，不模拟 TCP Accept，并使用 `MaxClients` 限制新对端数量；移除后旧 `Generation` 不能继续路由。
 - `ModuleChannelTransportSmokeTests` 新增打开过程首包、异常清理和故障恢复反例；TCP/UDP Loopback 只验证本机通信，不代表现场设备 HIL。
+
+
+## 子通道与规约会话生命周期收敛
+
+- MultiPeer Channel `PeerRemoved` 向 Connector 通知被移除的具体 `MCCSubChannelAddress`（含 Generation），由唯一 Protocol 按地址 Reset 分帧缓存；Connector Stop 时统一 ResetAll。
+- Connector 通过 `PayloadReceivedFrom` 同时提供来源地址与解码数据，允许 Server 依据 SubChannel 定向响应；旧无地址 `PayloadReceived` 仍提供兼容观察，但不作为多对端定向业务依据。
+- `MPALengthFrameProtocol`、`MPAModbusTcpProtocol`、`MPAModbusRtuProtocol` 实现 `IMPAProtocolSessionCleanup`；RTU 作为 SharedBus 使用整体清空，不人为创造多个站号子通道。
+- OS TCP/UDP Loopback 加强为一个 Server 同时接入两个 Client 的验证，并验证不同 Endpoint / SubChannel 及准确回送；这仍不是外部工业设备/高并发/长时压力验收。
