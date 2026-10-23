@@ -14,7 +14,7 @@ namespace CxVisual.Mechanism.Core
     public enum MOLControlKind { Action=1, Sequence=2, Branch=3, Loop=4, ForEach=5, Parallel=6, Invoke=7, Wait=8, Try=9, Exit=10 }
     public enum MOLBranchMode { If=1, Switch=2 }
     public enum MOLLoopMode { For=1, While=2, DoWhile=3 }
-    public enum MOLExitKind { Break=1, Continue=2, Return=3 }
+    public enum MOLExitKind { Break=1, Continue=2, Return=3, Throw=4 }
     public enum MOLExpressionSource { Constant=1, FlowInput=2, StepResult=3, Iteration=4 }
     public enum MOLComparison { Truthy=1, Equal=2, NotEqual=3, LessThan=4, LessOrEqual=5, GreaterThan=6, GreaterOrEqual=7 }
 
@@ -217,13 +217,13 @@ namespace CxVisual.Mechanism.Core
             IEnumerable<MOLControlBlock> children = null, IEnumerable<MOLBranchCase> cases = null,
             MOLLoopDefinition loop = null, MOLExpression condition = null, string targetFlow = null,
             MOLExitKind exitKind = MOLExitKind.Return, MOLWaitDefinition wait = null,
-            MOLTryDefinition tryDefinition = null)
+            MOLTryDefinition tryDefinition = null,string errorCode=null)
         {
             if (id == Guid.Empty || !Enum.IsDefined(typeof(MOLControlKind), kind))
                 throw new ArgumentException("Invalid logical block identity");
             Id = id; Kind = kind; CapabilityId = capabilityId ?? ""; Condition = condition;
             TargetFlow = targetFlow ?? ""; ExitKind = exitKind; Loop = loop; Wait = wait;
-            TryRegion=tryDefinition;
+            TryRegion=tryDefinition;ErrorCode=errorCode??"";
             Children = Array.AsReadOnly((children ?? new MOLControlBlock[0]).ToArray());
             Cases = Array.AsReadOnly((cases ?? new MOLBranchCase[0]).ToArray());
         }
@@ -236,6 +236,8 @@ namespace CxVisual.Mechanism.Core
         public MOLWaitDefinition Wait { get; private set; }
         public MOLTryDefinition TryRegion { get; private set; }
         public MOLExitKind ExitKind { get; private set; }
+        /// <summary>Throw专用错误码，属于定义；实际异常与Trace归MRK。</summary>
+        public string ErrorCode{get;private set;}
         public IReadOnlyList<MOLControlBlock> Children { get; private set; }
         public IReadOnlyList<MOLBranchCase> Cases { get; private set; }
         public static MOLControlBlock Delay(int durationMilliseconds)
@@ -251,6 +253,14 @@ namespace CxVisual.Mechanism.Core
             tryDefinition:new MOLTryDefinition(body,catchBody,finallyBody,catches));}
         public static MOLControlBlock Action(string capability)
         { return new MOLControlBlock(Guid.NewGuid(), MOLControlKind.Action, capability); }
+        public static MOLControlBlock Throw(string errorCode)
+        {
+            if(string.IsNullOrWhiteSpace(errorCode)||errorCode.Length>128||
+                errorCode.Any(char.IsControl))
+                throw new ArgumentException("logic.throw_bad_error_code","errorCode");
+            return new MOLControlBlock(Guid.NewGuid(),MOLControlKind.Exit,
+                exitKind:MOLExitKind.Throw,errorCode:errorCode.Trim());
+        }
         public static MOLControlBlock Sequence(params MOLControlBlock[] children)
         { return new MOLControlBlock(Guid.NewGuid(), MOLControlKind.Sequence, children: children); }
         public static MOLControlBlock Parallel(params MOLControlBlock[] children)
@@ -306,7 +316,7 @@ namespace CxVisual.Mechanism.Core
                         b.TryRegion.Catches.Select(c=>
                             new MOLCatchClause(c.ErrorCode,walk(c.Body))));
                 return new MOLControlBlock(b.Id,b.Kind,b.CapabilityId,children,cases,
-                    loop,b.Condition,b.TargetFlow,b.ExitKind,b.Wait,region);
+                    loop,b.Condition,b.TargetFlow,b.ExitKind,b.Wait,region,b.ErrorCode);
             };
             MOLControlBlock result=walk(Root);
             if(!found)throw new InvalidOperationException("logic.edit.block_not_found");
@@ -385,8 +395,17 @@ namespace CxVisual.Mechanism.Core
                     case MOLControlKind.Exit:
                         if(!Enum.IsDefined(typeof(MOLExitKind),block.ExitKind))
                             throw new InvalidOperationException("logic.exit_unknown");
-                        if(block.ExitKind!=MOLExitKind.Return&&loopDepth==0)
+                        if((block.ExitKind==MOLExitKind.Break||
+                            block.ExitKind==MOLExitKind.Continue)&&loopDepth==0)
                             throw new InvalidOperationException("logic.exit_outside_loop");
+                        if(block.ExitKind==MOLExitKind.Throw)
+                        {
+                            if(string.IsNullOrWhiteSpace(block.ErrorCode)||
+                                block.ErrorCode.Length>128||block.ErrorCode.Any(char.IsControl))
+                                throw new InvalidOperationException("logic.throw_bad_error_code");
+                        }
+                        else if(block.ErrorCode.Length!=0)
+                            throw new InvalidOperationException("logic.unexpected_error_code");
                         break;
                 }
                 foreach (var child in block.Children) walk(child, depth + 1,loopDepth);
@@ -525,7 +544,8 @@ namespace CxVisual.Mechanism.Core
         {
             var e = new XElement("Block", new XAttribute("id", b.Id.ToString("N")),
                 new XAttribute("kind", b.Kind), new XAttribute("cap", b.CapabilityId),
-                new XAttribute("target", b.TargetFlow), new XAttribute("exit", b.ExitKind));
+                new XAttribute("target", b.TargetFlow), new XAttribute("exit", b.ExitKind),
+                b.ErrorCode.Length==0?null:new XAttribute("error",b.ErrorCode));
             if (b.Condition != null) e.Add(new XElement("Guard", WriteExpression(b.Condition)));
             if (b.Wait != null)
             {
@@ -569,7 +589,7 @@ namespace CxVisual.Mechanism.Core
         private static MOLControlBlock ReadBlock(XElement e, int depth)
         {
             if (depth > 32 || e.Name != "Block") throw new InvalidDataException("logic.depth_or_type");
-            CheckSchema(e,new[]{"id","kind","cap","target","exit"},
+            CheckSchema(e,new[]{"id","kind","cap","target","exit","error"},
                 new[]{"Block","Case","Loop","Guard","Wait","TryRegion"});
             foreach(var guard in e.Elements("Guard"))
             {
@@ -655,7 +675,8 @@ namespace CxVisual.Mechanism.Core
             return new MOLControlBlock(id, kind, (string)e.Attribute("cap"), blocks, cases,
                 loop, ReadExpression(e.Element("Guard") == null ? null : e.Element("Guard").Element("Expression")),
                 (string)e.Attribute("target"), (MOLExitKind)Enum.Parse(typeof(MOLExitKind),
-                    (string)e.Attribute("exit")),wait,tryDefinition);
+                    (string)e.Attribute("exit")),wait,tryDefinition,
+                (string)e.Attribute("error"));
         }
     }
 
