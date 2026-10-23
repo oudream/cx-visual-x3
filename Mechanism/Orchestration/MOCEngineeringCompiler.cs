@@ -1907,6 +1907,9 @@ namespace CxVisual.Mechanism.Orchestration
                         var content=_snapshot.Find(target);
                         if(content==null||content.Kind!=MEMNodeKind.Content)
                             throw new InvalidOperationException("moc.invoke_missing_content");
+                        if(!owner.References.Any(r=>r.Kind==MRIReferenceKind.Content&&
+                            r.TargetId==target))
+                            throw new InvalidOperationException("moc.invoke_missing_content_ref");
                         var nextCalls=calls.Concat(new[]{block.Id}).ToArray();
                         return EmitContent(content,before,nextCalls,scope,depth+1);
                     }
