@@ -70,9 +70,14 @@ namespace CxVisual.TestCenter.UI
                 "ArchitectureSmoke（独立架构回归）",
                 "调用原有ArchitectureSmoke.exe；保持原CLI独立可运行，展示真实进程输出与退出码",
                 TCTWorkspaceNodeKind.Leaf, () => new TCTArchitectureSmokeFrame()));
-            registry.Register(new TCTWorkspaceDescriptor("manual.module", "manual.root", "模块创建与配置",
-                "四种模块配置：FCM 注解 Schema + MHS 实例 + MPW 自动编辑器；不伪装真实设备连接",
-                TCTWorkspaceNodeKind.Leaf, () => new TCTManualModuleFrame()));
+            registry.Register(new TCTWorkspaceDescriptor("manual.module", "manual.root", "模块测试",
+                "Connector、Compute、Simulation、Service 共用同一模块测试 Frame",
+                TCTWorkspaceNodeKind.Group, () => new TCTManualModuleFrame()));
+            foreach (string kind in new[] { "Connector", "Compute", "Simulation", "Service" })
+                registry.Register(new TCTWorkspaceDescriptor("manual.module." + kind.ToLowerInvariant(),
+                    "manual.module", kind + " 模块",
+                    "在唯一Module Frame中切换正式" + kind + "配置类型（非独立测试引擎）",
+                    TCTWorkspaceNodeKind.Leaf));
             registry.Register(new TCTWorkspaceDescriptor("manual.channel", "manual.root", "通道测试",
                 "现有生产MCCVirtualChannel的可操作点对点收发，不是真TCP",
                 TCTWorkspaceNodeKind.Leaf, () => new TCTManualChannelFrame()));

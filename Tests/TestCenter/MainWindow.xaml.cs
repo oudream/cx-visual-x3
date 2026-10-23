@@ -19,6 +19,7 @@ using CxVisual.TestCenter.Core;
 using CxVisual.TestCenter.Execution;
 using CxVisual.TestCenter.Reports;
 using CxVisual.TestCenter.Models;
+using CxVisual.Mechanism.Core.Modules;
 using Microsoft.Win32;
 
 namespace CxVisual.TestCenter.UI
@@ -30,6 +31,7 @@ namespace CxVisual.TestCenter.UI
         private readonly TCTTestRibbonController _ribbon = new TCTTestRibbonController();
         private TCTWorkspaceRegistry _workspaces;
         private ITCTWorkspaceFrame _currentFrame;
+        private bool _openingWorkspace;
         private CancellationTokenSource _cancel;
         private TCTTestRunSummary _lastRun;
         private TCTTestRunSummary _displayedRun;
@@ -108,7 +110,36 @@ namespace CxVisual.TestCenter.UI
 
         private void OpenRegisteredWorkspace(TCTWorkspaceDescriptor descriptor)
         {
-            if (descriptor == null) return;
+            if (descriptor == null || _openingWorkspace) return;
+            _openingWorkspace = true;
+            try
+            {
+                if (descriptor.WorkspaceId.StartsWith("manual.module.", StringComparison.Ordinal))
+                {
+                    TCTWorkspaceDescriptor host = _workspaces.Find("manual.module");
+                    TCTManualModuleFrame module = DocumentHost.OpenWorkspace(host)
+                        as TCTManualModuleFrame;
+                    if (module == null) throw new InvalidOperationException("模块公用Frame未注册");
+                    MFMModuleKind selected;
+                    if (!Enum.TryParse(descriptor.WorkspaceId.Substring("manual.module.".Length),
+                        true, out selected))
+                        throw new InvalidOperationException("未注册模块类别：" + descriptor.WorkspaceId);
+                    module.SelectModuleKind(selected);
+                    module.SetModuleId("Module" + selected + "01");
+                    module.OpenSelected();
+                    WorkspaceTitle.Text = "模块测试 / " + selected;
+                    return;
+                }
+                OpenWorkspaceCore(descriptor);
+            }
+            catch (Exception error)
+            {
+                StatusText.Text = "切换模块工作区失败：" + error.Message;
+            }
+            finally { _openingWorkspace = false; }
+        }
+        private void OpenWorkspaceCore(TCTWorkspaceDescriptor descriptor)
+        {
             if (descriptor.Factory == null)
             {
                 StatusText.Text = descriptor.Title + " · Unsupported：没有真实专业Frame工厂，未打开虚构页面";
@@ -138,7 +169,7 @@ namespace CxVisual.TestCenter.UI
             }
             AutoActionHost.Visibility = Visibility.Collapsed;
             ManualActionHost.Visibility = Visibility.Visible;
-            Explorer.SelectWorkspace(descriptor.WorkspaceId);
+            if (!_openingWorkspace) Explorer.SelectWorkspace(descriptor.WorkspaceId);
             ITCTWorkspaceFrame frame = (DocumentHost.Content as TabControl)
                 ?.SelectedItem is TabItem ? ((TabItem)((TabControl)DocumentHost.Content).SelectedItem)
                 .Content as ITCTWorkspaceFrame : null;

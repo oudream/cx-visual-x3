@@ -90,10 +90,26 @@ namespace CxVisual.TestCenter.UI
             TreeViewItem item = new TreeViewItem { Header = descriptor.Title,
                 Tag = descriptor, IsExpanded = true,
                 ToolTip = descriptor.Description +
-                    (descriptor.Factory == null ? " · Unsupported / 待接入" : "") };
+                    (descriptor.Factory == null &&
+                     !descriptor.WorkspaceId.StartsWith("manual.module.", StringComparison.Ordinal)
+                     ? " · Unsupported / 待接入" : "") };
             System.Windows.Automation.AutomationProperties.SetAutomationId(item,
                 "TCT.Workspace." + descriptor.WorkspaceId);
             return item;
+        }
+        private TreeViewItem BuildWorkspaceItem(TCTWorkspaceDescriptor descriptor, string filter)
+        {
+            TreeViewItem item = WorkspaceItem(descriptor);
+            foreach (TCTWorkspaceDescriptor child in _workspaceRegistry.Children(descriptor.WorkspaceId))
+            {
+                TreeViewItem nested = BuildWorkspaceItem(child, filter);
+                if (nested != null) item.Items.Add(nested);
+            }
+            bool matches = filter.Length == 0 ||
+                descriptor.Title.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                descriptor.WorkspaceId.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0;
+            return matches || item.Items.Count > 0 ||
+                descriptor.Kind == TCTWorkspaceNodeKind.Root ? item : null;
         }
         private void Refresh()
         {
@@ -106,14 +122,7 @@ namespace CxVisual.TestCenter.UI
                 foreach (TCTWorkspaceDescriptor descriptor in _workspaceRegistry.Items.Where(
                     item => item.Kind == TCTWorkspaceNodeKind.Root))
                 {
-                    TreeViewItem root = WorkspaceItem(descriptor);
-                    foreach (TCTWorkspaceDescriptor child in _workspaceRegistry.Children(descriptor.WorkspaceId))
-                    {
-                        if (filter.Length == 0 || descriptor.WorkspaceId == "auto.root" ||
-                            child.Title.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0 ||
-                            child.WorkspaceId.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0)
-                            root.Items.Add(WorkspaceItem(child));
-                    }
+                    TreeViewItem root = BuildWorkspaceItem(descriptor, filter);
                     _tree.Items.Add(root);
                     if (descriptor.WorkspaceId == "auto.root") autoRoot = root;
                 }
