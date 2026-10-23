@@ -17,6 +17,8 @@ namespace CxVisual.Mechanism.Core
     public enum MOLExitKind { Break=1, Continue=2, Return=3, Throw=4 }
     public enum MOLExpressionSource { Constant=1, FlowInput=2, StepResult=3, Iteration=4 }
     public enum MOLComparison { Truthy=1, Equal=2, NotEqual=3, LessThan=4, LessOrEqual=5, GreaterThan=6, GreaterOrEqual=7 }
+    // 不是另一套规则图：布尔组合仍属于MOLExpression本身的不可变值语义。
+    public enum MOLLogicalOperator { Scalar=0, All=1, Any=2, Not=3 }
 
     public sealed class MOLExpression
     {
@@ -32,7 +34,37 @@ namespace CxVisual.Mechanism.Core
             if (comparison != MOLComparison.Truthy && expected == null)
                 throw new ArgumentException("Comparison requires an expected value");
             Source = source; Name = name ?? ""; Comparison = comparison; Expected = expected;
+            Operator=MOLLogicalOperator.Scalar;
+            Terms=Array.AsReadOnly(new MOLExpression[0]);
         }
+        private MOLExpression(MOLLogicalOperator operation,IEnumerable<MOLExpression> children)
+        {
+            MOLExpression[] values=(children??Enumerable.Empty<MOLExpression>()).ToArray();
+            if((operation==MOLLogicalOperator.Not&&values.Length!=1)||
+                ((operation==MOLLogicalOperator.All||operation==MOLLogicalOperator.Any)&&
+                (values.Length<2||values.Length>16))||
+                values.Any(x=>x==null))
+                throw new ArgumentException("logic.expression_group_invalid");
+            Operator=operation;Terms=Array.AsReadOnly(values);
+            Source=MOLExpressionSource.Constant;Name="";
+            Comparison=MOLComparison.Truthy;
+            ValidateComplexity(this,0,new int[1]);
+        }
+        internal static void ValidateComplexity(MOLExpression expr,int depth,int[] count)
+        {
+            if(depth>16||++count[0]>128)
+                throw new InvalidOperationException("logic.expression_complexity");
+            foreach(MOLExpression term in expr.Terms)
+                ValidateComplexity(term,depth+1,count);
+        }
+        public MOLLogicalOperator Operator {get;private set;}
+        public IReadOnlyList<MOLExpression> Terms{get;private set;}
+        public static MOLExpression All(params MOLExpression[] terms)
+        {return new MOLExpression(MOLLogicalOperator.All,terms);}
+        public static MOLExpression Any(params MOLExpression[] terms)
+        {return new MOLExpression(MOLLogicalOperator.Any,terms);}
+        public static MOLExpression Not(MOLExpression term)
+        {return new MOLExpression(MOLLogicalOperator.Not,new[]{term});}
         public MOLExpressionSource Source { get; private set; }
         public string Name { get; private set; }
         public MOLComparison Comparison { get; private set; }
@@ -78,6 +110,29 @@ namespace CxVisual.Mechanism.Core
         /// 以实际标量类型为准：数值是数值，字符串是字符串；不在类型冲突时偷偷退化为字典序。
         /// 保留旧MOLExpression声明格式，供V1分支、V2 Guard和状态迁移共用。
         /// </summary>
+        /// <summary>短路且有界；所有叶子沿用同一纯标量合同，外部只负责按声明取值。</summary>
+        public static bool EvaluateTree(MOLExpression expr,Func<MOLExpression,object> resolve)
+        {
+            if(expr==null)return true;
+            if(resolve==null)throw new ArgumentNullException("resolve");
+            MOLExpression.ValidateComplexity(expr,0,new int[1]);
+            Func<MOLExpression,bool> walk=null;
+            walk=e=>{
+                switch(e.Operator)
+                {
+                    case MOLLogicalOperator.Scalar:return Evaluate(e,resolve(e));
+                    case MOLLogicalOperator.All:
+                        foreach(MOLExpression t in e.Terms)if(!walk(t))return false;
+                        return true;
+                    case MOLLogicalOperator.Any:
+                        foreach(MOLExpression t in e.Terms)if(walk(t))return true;
+                        return false;
+                    case MOLLogicalOperator.Not:return !walk(e.Terms[0]);
+                    default:throw new InvalidOperationException("logic.expression_operator");
+                }
+            };
+            return walk(expr);
+        }
         public static int Compare(object actual,string expected)
         {
             if(actual==null||expected==null)
