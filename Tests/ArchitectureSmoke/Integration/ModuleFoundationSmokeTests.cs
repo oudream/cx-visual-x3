@@ -410,6 +410,22 @@ namespace CxVisual.Tests.ArchitectureSmoke
                        .GetAwaiter().GetResult() == 17, "MDS DataStack frame mapping actual read/write");
             }
 
+            // 外部接入报文绝不能跳过正式命令授权。
+            bool invokedUnsafeDeviceCommand = false;
+            MDSProtocolDataTargetAccess deniedCommands = new MDSProtocolDataTargetAccess(
+                invoke: (commandId, value, ct) => {
+                    invokedUnsafeDeviceCommand = true;
+                    return Task.CompletedTask;
+                },
+                authorizeCommand: (commandId, value) => false);
+            Reject<UnauthorizedAccessException>(() => deniedCommands.InvokeAsync(
+                "Device.Stop", 1, CancellationToken.None).GetAwaiter().GetResult());
+            Check(!invokedUnsafeDeviceCommand,
+                "未授权命令不得调用真实 Owner");
+            MDSProtocolDataTargetAccess noCommands = new MDSProtocolDataTargetAccess();
+            Reject<NotSupportedException>(() => noCommands.InvokeAsync(
+                "Device.Stop", 1, CancellationToken.None).GetAwaiter().GetResult());
+
             MFMModuleDescriptor driverDescriptor =
                 new MFMModuleDescriptor("camera01", "X-Ray Camera", MFMModuleKind.Driver);
             Check(driverDescriptor.Kind == MFMModuleKind.Driver, "Fifth Driver module kind");
