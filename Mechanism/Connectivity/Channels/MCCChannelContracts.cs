@@ -5,7 +5,8 @@ using System.Threading.Tasks;
 
 namespace CxVisual.Mechanism.Connectivity
 {
-    public enum MCCChannelState { Closed, Open, Faulted }
+    // 附加状态而非改动旧枚举数值，旧 Closed/Open/Faulted 配置与日志保持兼容。
+    public enum MCCChannelState { Closed, Open, Faulted, Opening, Closing }
     public enum MCCFrameDirection { Tx, Rx, Error }
 
     /// <summary>生产机制层字节收发记录，Virtual不是Real物理设备。</summary>

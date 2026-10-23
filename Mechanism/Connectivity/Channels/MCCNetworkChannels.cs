@@ -40,7 +40,8 @@ namespace CxVisual.Mechanism.Connectivity
         protected override async Task OnOpenAsync(CancellationToken ct)
         {
             TcpClient client = new TcpClient();
-            CancellationTokenSource shutdown = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            // 连接超时/取消只作用于 Open，不应把启动时调用方 Token 当作长期运行 Token。
+            CancellationTokenSource shutdown = new CancellationTokenSource();
             try
             {
                 using (ct.Register(() => client.Close()))
@@ -164,6 +165,21 @@ namespace CxVisual.Mechanism.Connectivity
                 lock (_gate) _clients.Remove(address.ToString());
                 RemovePeer(address); client.Close();
             }
+        }
+        public override bool RemovePeer(MCCSubChannelAddress address)
+        {
+            if (address == null) return false;
+            TcpClient connection;
+            lock (_gate)
+            {
+                if (!base.RemovePeer(address)) return false;
+                if (_clients.TryGetValue(address.ToString(), out connection))
+                    _clients.Remove(address.ToString());
+                else connection = null;
+            }
+            // 移除逻辑路由的同时释放真实 Socket，禁止后台接收再接纳旧代次数据。
+            if (connection != null) connection.Close();
+            return true;
         }
         protected override async Task SendToPeerAsync(byte[] bytes, MCCSubChannelAddress address, CancellationToken ct)
         {
@@ -294,6 +310,8 @@ namespace CxVisual.Mechanism.Connectivity
                     {
                         if (!_addresses.TryGetValue(endpoint, out address))
                         {
+                            // UDP 没有 TCP Accept；仍须限制逻辑对端数量，防止任意源地址耗尽内存。
+                            if (_addresses.Count >= _config.MaxClients) continue;
                             address = RegisterPeer(endpoint, endpoint).Address;
                             _addresses.Add(endpoint, address);
                         }

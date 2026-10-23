@@ -41,16 +41,54 @@ namespace CxVisual.Mechanism.Connectivity
         public async Task OpenAsync(CancellationToken ct)
         {
             ct.ThrowIfCancellationRequested();
-            lock (_gate) if (_state != MCCChannelState.Closed)
-                throw new InvalidOperationException("通道不是 Closed");
-            try { await OnOpenAsync(ct).ConfigureAwait(false); lock (_gate) _state = MCCChannelState.Open; }
-            catch { lock (_gate) _state = MCCChannelState.Faulted; throw; }
+            lock (_gate)
+            {
+                if (_state != MCCChannelState.Closed)
+                    throw new InvalidOperationException("通道只能从 Closed 打开");
+                // 先改变状态，再启动异步接收，避免高速回环包在 Closed 状态被丢弃。
+                _state = MCCChannelState.Opening;
+            }
+            try
+            {
+                await OnOpenAsync(ct).ConfigureAwait(false);
+                ct.ThrowIfCancellationRequested();
+                lock (_gate)
+                {
+                    if (_state != MCCChannelState.Opening)
+                        throw new IOException("通道打开期间收发任务已发生故障");
+                    _state = MCCChannelState.Open;
+                }
+            }
+            catch
+            {
+                // 打开部分成功时也必须释放监听 Socket、串口与后台任务。
+                lock (_gate) _state = MCCChannelState.Faulted;
+                try { await OnCloseAsync(CancellationToken.None).ConfigureAwait(false); }
+                catch { /* 保留最初的 Open 异常，不覆盖诊断根因 */ }
+                throw;
+            }
         }
         public async Task CloseAsync(CancellationToken ct)
         {
-            // Faulted 仍需执行 Close 清理，不能把 Faulted 当作关闭成功。
-            await OnCloseAsync(ct).ConfigureAwait(false);
-            lock (_gate) _state = MCCChannelState.Closed;
+            ct.ThrowIfCancellationRequested();
+            lock (_gate)
+            {
+                if (_state == MCCChannelState.Closed) return;
+                if (_state == MCCChannelState.Opening || _state == MCCChannelState.Closing)
+                    throw new InvalidOperationException("通道正在生命周期转换中");
+                // 允许 Faulted 通道清理与恢复，而非卡死在永久 Faulted。
+                _state = MCCChannelState.Closing;
+            }
+            try
+            {
+                await OnCloseAsync(ct).ConfigureAwait(false);
+                lock (_gate) _state = MCCChannelState.Closed;
+            }
+            catch
+            {
+                lock (_gate) _state = MCCChannelState.Faulted;
+                throw;
+            }
         }
         public void Send(byte[] bytes, string correlationId = null, int segmentBytes = 0)
         {
@@ -81,7 +119,9 @@ namespace CxVisual.Mechanism.Connectivity
         }
         protected void ReceiveBytes(MCCSubChannelAddress address, byte[] bytes, string correlationId = null)
         {
-            if (State != MCCChannelState.Open) throw new IOException("接收通道未打开");
+            MCCChannelState current = State;
+            if (current != MCCChannelState.Open && current != MCCChannelState.Opening)
+                throw new IOException("接收通道未打开");
             if (address == null || address.ChannelId != Id) throw new ArgumentException("接收地址不属于本通道");
             MCCChannelReceiveContext context = new MCCChannelReceiveContext(address, bytes, correlationId);
             Record(MCCFrameDirection.Rx, bytes, correlationId, null);

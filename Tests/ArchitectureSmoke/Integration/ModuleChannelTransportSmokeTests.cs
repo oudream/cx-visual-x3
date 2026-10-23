@@ -3,6 +3,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
+using System.Threading.Tasks;
 using CxVisual.Mechanism.Connectivity;
 
 namespace CxVisual.Tests.ArchitectureSmoke
@@ -13,6 +14,57 @@ namespace CxVisual.Tests.ArchitectureSmoke
         private static void Check(bool condition, string why)
         {
             if (!condition) throw new InvalidOperationException("CHANNEL.TRANSPORT " + why);
+        }
+        private sealed class StartupReceiveChannel : MCCSingleChannelBase
+        {
+            internal bool ClosedResources;
+            internal StartupReceiveChannel(string id) : base(id) { }
+            protected override Task OnOpenAsync(CancellationToken ct)
+            {
+                // 用确定性时序覆盖 Opening 状态中的第一次收包。
+                Receive(new byte[] { 88 });
+                return Task.CompletedTask;
+            }
+            protected override Task OnCloseAsync(CancellationToken ct)
+            {
+                ClosedResources = true;
+                return Task.CompletedTask;
+            }
+            protected override Task OnSendAsync(byte[] payload, MCCSubChannelAddress address, CancellationToken ct)
+            { return Task.CompletedTask; }
+        }
+        private sealed class FailingOpenChannel : MCCSingleChannelBase
+        {
+            internal bool CleanupCalled;
+            internal FailingOpenChannel() : base("failure") { }
+            protected override Task OnOpenAsync(CancellationToken ct)
+            { throw new IOException("打开设备失败"); }
+            protected override Task OnCloseAsync(CancellationToken ct)
+            { CleanupCalled = true; return Task.CompletedTask; }
+            protected override Task OnSendAsync(byte[] data, MCCSubChannelAddress target, CancellationToken ct)
+            { return Task.CompletedTask; }
+        }
+        private static void LifecycleStateMachine()
+        {
+            StartupReceiveChannel early = new StartupReceiveChannel("early");
+            byte[] first = null;
+            early.Received += data => first = data.Data;
+            early.Open();
+            Check(early.State == MCCChannelState.Open && first != null &&
+                first.SequenceEqual(new byte[] { 88 }),
+                "OpenAsync 中的第一包应接纳，不能因后台接收快于状态切换而失败");
+            early.Close();
+            Check(early.ClosedResources && early.State == MCCChannelState.Closed,
+                "关闭必须释放资源");
+            early.Close();
+            FailingOpenChannel fail = new FailingOpenChannel();
+            bool rejected = false;
+            try { fail.Open(); } catch (IOException) { rejected = true; }
+            Check(rejected && fail.CleanupCalled && fail.State == MCCChannelState.Faulted,
+                "Open 失败要清理已创建资源并报告 Faulted");
+            fail.Close();
+            Check(fail.State == MCCChannelState.Closed,
+                "Faulted 关闭后可回到 Closed");
         }
         private static int FreePort(bool udp)
         {
@@ -29,6 +81,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
 
         public static void Run()
         {
+            LifecycleStateMachine();
             TcpLoopback();
             UdpLoopback();
             Console.WriteLine("CHANNEL.TRANSPORT: TCP/UDP loopback MultiPeer and stale generation PASS");

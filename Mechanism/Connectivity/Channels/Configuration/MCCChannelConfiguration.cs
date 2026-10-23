@@ -92,7 +92,7 @@ namespace CxVisual.Mechanism.Connectivity
             }
             if (Kind == MCCChannelKind.TcpClient && ConnectTimeoutMs < 1)
                 throw new ArgumentException("连接超时必须大于零");
-            if (Kind == MCCChannelKind.TcpServer && MaxClients < 1)
+            if ((Kind == MCCChannelKind.TcpServer || Kind == MCCChannelKind.UdpServer) && MaxClients < 1)
                 throw new ArgumentException("最大连接数必须大于零");
             if (Kind == MCCChannelKind.Serial &&
                 (string.IsNullOrWhiteSpace(PortName) || BaudRate < 1 || DataBits < 5 || DataBits > 8 ||

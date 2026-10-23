@@ -74,3 +74,12 @@
 ## 7. 虚拟通道最终收敛
 
 正式类 MCCVirtualChannel 继承 MCCSingleChannelBase，只支持原始字节传输。MCCChannelContracts 单独负责 IMCCChannel、MCCChannelState 和 MCCChannelFrame。旧 MCCVirtualRawChannel 冗余命名和 MCCCxChannelSession 中的旧规约兼容路径均已删除。长度帧解析及 CRC 错误归 Protocol，Channel 在协议 CRC 错误时保持正常连接。TestCenter 自动测试、人工 Virtual 通道界面均复用此新语义，不产生第二份通道生命周期。
+
+
+## 运行期安全收敛补充：Channel 生命周期与多对端
+
+- `MCCChannelState` 保留旧 `Closed/Open/Faulted` 枚举值，追加 `Opening/Closing`。Channel 在启动接收任务前进入 Opening；Opening 内到达的第一包可以被接纳。Open 异常必须清理已经打开的资源，Faulted 状态允许通过 Close 恢复到 Closed。
+- 网络 Open 的取消只用于连接阶段：不能把外部调用方的 `CancellationToken` 作为 Socket 整个使用周期的关闭 Token。后台接收使用通道自己的生命周期取消源。
+- TCP Server 的 `RemovePeer` 必须同步移除代次路由和关闭原 Socket；一个客户端断开不应该导致整个监听通道进入 Faulted。
+- UDP Server 按远端 Endpoint 创建逻辑 SubChannel，不模拟 TCP Accept，并使用 `MaxClients` 限制新对端数量；移除后旧 `Generation` 不能继续路由。
+- `ModuleChannelTransportSmokeTests` 新增打开过程首包、异常清理和故障恢复反例；TCP/UDP Loopback 只验证本机通信，不代表现场设备 HIL。
