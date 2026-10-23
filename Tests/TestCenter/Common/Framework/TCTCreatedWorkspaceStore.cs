@@ -16,6 +16,15 @@ namespace CxVisual.TestCenter.UI
         public string TemplateId { get; private set; }
         public string Title { get; private set; }
         public string ConfigurationId { get; private set; }
+        private string[] _caseIds = new string[0];
+        public string[] CaseIds { get { return (string[])_caseIds.Clone(); } }
+        internal void SetCases(IEnumerable<string> ids)
+        {
+            string[] items = ids.Distinct(StringComparer.Ordinal).ToArray();
+            if (items.Length > 5000 || items.Any(x => string.IsNullOrWhiteSpace(x) || x.Length > 200))
+                throw new InvalidDataException("用例引用不合法");
+            _caseIds = items;
+        }
         internal TCTCreatedWorkspace(string id, string template, string title, string configurationId)
         {
             if (!Guid.TryParseExact(id, "N", out Guid ignored) ||
@@ -49,6 +58,15 @@ namespace CxVisual.TestCenter.UI
             try { Save(); }
             catch { _items.Remove(item); throw; }
             return item;
+        }
+        public void UpdateCases(string instanceId, IEnumerable<string> ids)
+        {
+            TCTCreatedWorkspace record = _items.FirstOrDefault(x => x.Id == instanceId);
+            if (record == null) throw new InvalidOperationException("测试计划实例不存在");
+            string[] previous = record.CaseIds;
+            record.SetCases(ids);
+            try { Save(); }
+            catch { record.SetCases(previous); throw; }
         }
         public bool Delete(string id)
         {
@@ -86,6 +104,10 @@ namespace CxVisual.TestCenter.UI
                     (string)e.Attribute("title"), (string)e.Attribute("configuration"));
                 if (!allowed.Contains(item.TemplateId) || loaded.Any(x => x.Id == item.Id))
                     throw new InvalidDataException("工作区引用非法或ID重复");
+                XElement[] cases = e.Elements().ToArray();
+                if (cases.Any(x => x.Name != "Case"))
+                    throw new InvalidDataException("未知的工作区子记录");
+                item.SetCases(cases.Select(x => (string)x.Attribute("id")));
                 loaded.Add(item);
             }
             _items.AddRange(loaded);
@@ -94,10 +116,15 @@ namespace CxVisual.TestCenter.UI
         {
             XElement root = new XElement("TCTCreatedWorkspaces", new XAttribute("version", "1"));
             foreach (TCTCreatedWorkspace entry in _items)
-                root.Add(new XElement("Workspace", new XAttribute("id", entry.Id),
+            {
+                XElement workspace = new XElement("Workspace", new XAttribute("id", entry.Id),
                     new XAttribute("template", entry.TemplateId),
                     new XAttribute("title", entry.Title),
-                    new XAttribute("configuration", entry.ConfigurationId)));
+                    new XAttribute("configuration", entry.ConfigurationId));
+                foreach (string caseId in entry.CaseIds)
+                    workspace.Add(new XElement("Case", new XAttribute("id", caseId)));
+                root.Add(workspace);
+            }
             Directory.CreateDirectory(Path.GetDirectoryName(_path));
             string tmp = _path + "." + Guid.NewGuid().ToString("N") + ".partial";
             try

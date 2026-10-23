@@ -205,8 +205,10 @@ namespace CxVisual.TestCenter.UI
                     if (descriptor.WorkspaceId == "auto.root") autoRoot = root;
                 }
             }
+            // Catalog定义在用户创建的NUnit/TCT计划页选择，不混入资源实例树。
+            // 仍保持独立Catalog/Run Owner，既有结果/历史不会被改变。
             if (_catalog == null) return;
-            foreach (TCTTestAspect aspect in new[] { TCTTestAspect.Foundation, TCTTestAspect.Mechanism, TCTTestAspect.Integration })
+            if (false) foreach (TCTTestAspect aspect in new[] { TCTTestAspect.Foundation, TCTTestAspect.Mechanism, TCTTestAspect.Integration })
             {
                 var items = _catalog.Cases.Where(t => t.Descriptor.Aspect == aspect &&
                     (filter.Length == 0 ||

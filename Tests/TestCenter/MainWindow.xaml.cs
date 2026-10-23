@@ -27,6 +27,7 @@ namespace CxVisual.TestCenter.UI
     public partial class TCTMainWindow : Window
     {
         private readonly TCTTestCatalog _catalog = TCTRegistration.CreateCatalog(includeNUnit: true);
+        private ITCTTestCase _selectedCatalogTest;
         private readonly TCTTestExecutionCoordinator _coordinator = new TCTTestExecutionCoordinator();
         private readonly TCTTestRibbonController _ribbon = new TCTTestRibbonController();
         private TCTWorkspaceRegistry _workspaces;
@@ -179,8 +180,15 @@ namespace CxVisual.TestCenter.UI
             if (record.TemplateId == "auto.catalog")
             {
                 TCTTestPlanControl plan = new TCTTestPlanControl();
-                plan.Bind(_catalog, () => Explorer.CheckedIds);
+                plan.Bind(_catalog, () => plan.CaseIds);
+                plan.AssignCases(record.CaseIds);
+                plan.CaseIdsChanged += ids => {
+                    _createdWorkspaces.UpdateCases(record.Id, ids);
+                    RefreshWorkspaceCommands();
+                };
+                plan.TestSelected += OnTestSelected;
                 plan.RunRequested += async ids => await RunAsync(false, ids);
+                plan.SetEmbeddedWorkspace(true);
                 return plan;
             }
             if (template.Factory != null && template.Kind != TCTWorkspaceNodeKind.Root)
@@ -331,6 +339,7 @@ namespace CxVisual.TestCenter.UI
 
         private void OnTestSelected(ITCTTestCase test)
         {
+            _selectedCatalogTest = test;
             AutoActionHost.Visibility = Visibility.Visible;
             ManualActionHost.Visibility = Visibility.Collapsed;
             _ribbon.SetContext(test);
@@ -392,8 +401,8 @@ namespace CxVisual.TestCenter.UI
         }
         private void OnCopyTestId()
         {
-            if (Explorer.SelectedTest != null)
-                Clipboard.SetText(Explorer.SelectedTest.Descriptor.Id);
+            if (_selectedCatalogTest != null)
+                Clipboard.SetText(_selectedCatalogTest.Descriptor.Id);
         }
         private async void OnRunAll()
         {
@@ -401,13 +410,16 @@ namespace CxVisual.TestCenter.UI
         }
         private async void OnRunSelected()
         {
-            string[] checkedIds = Explorer.CheckedIds;
+            TCTTestPlanControl plan = (DocumentHost.Content as TabControl)?.Items
+                .OfType<TabItem>().Where(x => x.IsSelected)
+                .Select(x => x.Content).OfType<TCTTestPlanControl>().FirstOrDefault();
+            string[] checkedIds = plan == null ? Explorer.CheckedIds : plan.CaseIds;
             if (checkedIds.Length > 0)
             {
                 await RunAsync(false, checkedIds);
                 return;
             }
-            if (Explorer.SelectedTest == null)
+            if (_selectedCatalogTest == null)
             {
                 MessageBox.Show(this, "请选择测试用例，或勾选多项进行批量执行。", "TestCenter");
                 return;
@@ -423,7 +435,7 @@ namespace CxVisual.TestCenter.UI
                 Isolation = TCTTestIsolation.ChildProcess,
                 Timeout = TimeSpan.FromSeconds(30)
             };
-            if (selectedOnly) request.SelectedIds.Add(Explorer.SelectedTest.Descriptor.Id);
+            if (selectedOnly) request.SelectedIds.Add(_selectedCatalogTest.Descriptor.Id);
             if (explicitIds != null) foreach (string id in explicitIds) request.SelectedIds.Add(id);
             _lastRun = null;
             _displayedRun = null;
