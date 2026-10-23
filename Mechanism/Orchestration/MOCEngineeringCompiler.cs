@@ -398,7 +398,13 @@ namespace CxVisual.Mechanism.Orchestration
                 MOLLogicDefinition structured=MOLLogicCodec.Get(target);
                 if(structured==null)
                     throw new InvalidOperationException("moc.invoke.missing_logic");
-                return Step("moc.invoke:"+content.Id.ToString("N"));
+                // 公共端口的唯一真源是MEMContent已有MPCPort声明，不复制到V1 Logic。
+                var declared=target.Ports.Where(x=>x.IsPublic&&
+                    (x.Kind==MPCPortKind.Data||x.Kind==MPCPortKind.Stream))
+                    .Select(x=>new MPCPortDescriptor(x.MemberId,x.Direction,
+                        x.TypeId,x.Kind,x.Multiplicity,x.Contract,required:x.Required))
+                    .ToArray();
+                return Step("moc.invoke:"+content.Id.ToString("N"),declared);
             }
             definition.ValidateExecutable();
             var published=new List<MPCPortDescriptor>();
