@@ -64,6 +64,16 @@ namespace CxVisual.Mechanism.Visual
             return result.AsReadOnly();
         }
 
+        /// <summary>为自动正交连线计算障碍避让；手动折点/直线完全保留原语义。</summary>
+        public static IReadOnlyList<FGEPoint2D> Points(MPCConnection connection,
+            FGEPoint2D start,FGEPoint2D end,IEnumerable<FGERect2D> obstacles)
+        {
+            if(connection==null)throw new ArgumentNullException("connection");
+            if(connection.VisualRouteKind==MPCVisualRouteKind.Orthogonal)
+                return MVIOrthogonalRouter.Route(start,end,obstacles);
+            return Points(connection,start,end);
+        }
+
         public static MPCVisualWaypoint WaypointAt(FGEPoint2D position,
             FGEPoint2D start,FGEPoint2D end,double fraction)
         {

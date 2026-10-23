@@ -14,6 +14,106 @@ namespace CxVisual.Tests.ArchitectureSmoke
         {if(!valid)throw new InvalidOperationException("Visual editing A: "+context);}
         private static bool Near(FGEPoint2D a,FGEPoint2D b,double eps=1e-6)
         {return a.DistanceTo(b)<eps;}
+        private static FGEPoint2D[] RouteVertices(MVISceneItem line)
+        {
+            return line.Shape.Geometry.Commands.Select(command=>
+                line.GeometryToWorld.TransformPoint(command.End)).ToArray();
+        }
+
+        private static bool RouteAvoids(FGEPoint2D[] route,FGERect2D shapeBounds)
+        {
+            // 8个世界单位是路由目标；这里保守检查7.5单位的实体间距。
+            FGERect2D obstacle=shapeBounds.Inflate(7.5);
+            for(int i=1;i<route.Length;i++)
+            {
+                FGEPoint2D a=route[i-1],b=route[i];
+                if(Math.Abs(a.X-b.X)<1e-6)
+                {
+                    if(a.X>obstacle.Left&&a.X<obstacle.Right&&
+                        Math.Min(a.Y,b.Y)<obstacle.Bottom&&
+                        Math.Max(a.Y,b.Y)>obstacle.Top)return false;
+                }
+                else if(Math.Abs(a.Y-b.Y)<1e-6)
+                {
+                    if(a.Y>obstacle.Top&&a.Y<obstacle.Bottom&&
+                        Math.Min(a.X,b.X)<obstacle.Right&&
+                        Math.Max(a.X,b.X)>obstacle.Left)return false;
+                }
+                else return false;
+            }
+            return true;
+        }
+
+        /// <summary>绕开实体、障碍移动自动重排、Undo/Redo及持久化均依赖同一个MPC身份。</summary>
+        private static void ObstacleRoutingTests()
+        {
+            string file=Path.Combine(Path.GetTempPath(),
+                "cxvisual-route-obstacle-"+Guid.NewGuid().ToString("N")+".cxproj");
+            try
+            {
+                using(var doc=MEMEngineering.Create("Obstacle routing"))
+                {
+                    var page=doc.AddPage("Page");
+                    var source=doc.AddRectangle(page.RootContent,"Source",0,20,40,40);
+                    var target=doc.AddRectangle(page.RootContent,"Target",260,20,40,40);
+                    var blocker=doc.AddRectangle(page.RootContent,"Obstacle",125,5,50,70);
+                    using(var editor=new MVIVisualEditor(doc))
+                    {
+                        editor.SetPage(page.Id);
+                        Check(editor.ConnectVisual(source.Id,"east",target.Id,"west").Success,
+                            "visual connection cannot be created for obstacle routing");
+                        Guid wire=editor.Scene.Single(item=>
+                            item.ElementTypeId=="core.visual.connector").Id;
+                        int before=doc.Revision;
+                        Check(editor.SetVisualRoute(wire,MPCVisualRouteKind.Orthogonal).Success&&
+                            doc.Revision==before+1,
+                            "obstacle route mode should commit one MEM transaction");
+                        MVISceneItem obstacle=editor.Scene.Single(x=>x.Id==blocker.Id);
+                        FGEPoint2D[] route=RouteVertices(editor.Scene.Single(x=>x.Id==wire));
+                        Check(route.Length>=4&&RouteAvoids(route,obstacle.Bounds),
+                            "orthogonal connector must detour around occupied body with clearance");
+                        Check(Near(route[0],MVIVisualAnchors.At(
+                            editor.Scene.Single(x=>x.Id==source.Id),"east"))&&
+                            Near(route[route.Length-1],MVIVisualAnchors.At(
+                                editor.Scene.Single(x=>x.Id==target.Id),"west")),
+                            "obstacle detour changed persisted port anchors");
+                        int routeRevision=doc.Revision;
+                        FGEPoint2D[] repeat=RouteVertices(editor.Scene.Single(x=>x.Id==wire));
+                        Check(repeat.Length==route.Length&&
+                            Enumerable.Range(0,route.Length).All(i=>Near(route[i],repeat[i]))&&
+                            doc.Revision==routeRevision,
+                            "re-projection must be deterministic and read-only");
+                        doc.Move(blocker,125,170);
+                        FGEPoint2D[] cleared=RouteVertices(editor.Scene.Single(x=>x.Id==wire));
+                        Check(cleared.Length==2&&doc.FindConnection(wire).VisualRouteKind==
+                            MPCVisualRouteKind.Orthogonal,
+                            "moving blocker away should automatically straighten the same connection");
+                        Check(editor.Undo().Success&&
+                            RouteVertices(editor.Scene.Single(x=>x.Id==wire)).Length>=4,
+                            "obstacle move Undo failed to re-route");
+                        Check(editor.Redo().Success&&
+                            RouteVertices(editor.Scene.Single(x=>x.Id==wire)).Length==2,
+                            "obstacle move Redo failed to re-route");
+                        doc.SaveAs(file);
+                    }
+                    doc.Close();
+                }
+                using(var reopened=MEMEngineering.Open(file))
+                {
+                    var wire=reopened.GetSnapshot().Nodes.SelectMany(n=>n.Connections)
+                        .Single(x=>x.VisualRouteKind==MPCVisualRouteKind.Orthogonal);
+                    Check(RouteVertices(MVISceneProjection.Project(reopened).Single(x=>
+                        x.Id==wire.Id)).Length==2,
+                        "save/reopen must recompute orthogonal path from live geometry");
+                }
+            }
+            finally
+            {
+                if(File.Exists(file))File.Delete(file);
+                if(File.Exists(file+".cx-lock"))File.Delete(file+".cx-lock");
+            }
+        }
+
         private static void BatchVisualMoveTests()
         {
             string path=Path.Combine(Path.GetTempPath(),
@@ -84,6 +184,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         public static void Run()
         {
             BatchVisualMoveTests();
+            ObstacleRoutingTests();
             var plain=new FGEPath2D(new[]{
                 FGEPathCommand.Move(new FGEPoint2D(0,0)),
                 FGEPathCommand.Quadratic(new FGEPoint2D(10,25),new FGEPoint2D(40,10)),

@@ -93,8 +93,20 @@ namespace CxVisual.Mechanism.Visual
                         a.MemberId.Substring("visual.".Length));
                     FGEPoint2D end=MVIVisualAnchors.At(target,
                         b.MemberId.Substring("visual.".Length));
+                    // 自动路由根据当前视图中真实图元的AABB计算，不保存缓存折线。
+                    // Group只是容器，不以容器外框作为实体障碍；其他资源不跨页相互阻挡。
+                    var obstacles=Items.Where(item=>
+                        item.Id!=source.Id&&item.Id!=target.Id&&
+                        item.Address!=null&&source.Address!=null&&
+                        item.Address.ResourceId==source.Address.ResourceId&&
+                        item.ElementTypeId!="core.visual.connector"&&
+                        (item.Shape!=null||item.ElementTypeId=="core.text"||
+                         item.ElementTypeId=="core.image"||item.ElementTypeId=="core.svg"||
+                         item.ElementTypeId.StartsWith("core.widget",StringComparison.Ordinal))&&
+                        item.Bounds.Width>0&&item.Bounds.Height>0)
+                        .Select(item=>item.Bounds);
                     IReadOnlyList<FGEPoint2D> points=MVIVisualRouting.Points(
-                        connection,start,end);
+                        connection,start,end,obstacles);
                     double x=points.Min(p=>p.X),y=points.Min(p=>p.Y);
                     var line=MRCShapeDefinition.Polyline(points.Select(p=>
                         new FGEPoint2D(p.X-x,p.Y-y)));
