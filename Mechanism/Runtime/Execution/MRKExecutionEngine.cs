@@ -83,6 +83,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
         private readonly bool _insideParallelLoop;
         private readonly MRKIterationSignal _iterationSignal;
         private readonly MRKFlowReturnSignal _returnSignal=new MRKFlowReturnSignal();
+        private bool _cleanupRegion;
         private readonly MRKInvocationContext _invocation;
         private readonly ConcurrentQueue<string> _completedOrder = new ConcurrentQueue<string>();
         internal MRKExecutionContext(string planId, IDictionary<string, object> inputs,
@@ -125,9 +126,17 @@ namespace CxVisual.Mechanism.Runtime.Execution
             _returnSignal=parent._returnSignal;
             _boundInputs = parent._boundInputs;
             _completedOrder = parent._completedOrder;
+            _cleanupRegion=parent._cleanupRegion;
         }
         internal MRKExecutionContext ForSubflow(string prefix)
         { return new MRKExecutionContext(this, prefix); }
+        internal MRKExecutionContext ForCleanup(string prefix)
+        {
+            var result=new MRKExecutionContext(this,prefix);
+            result._cleanupRegion=true;
+            return result;
+        }
+        internal bool IsCleanupRegion{get{return _cleanupRegion;}}
         private MRKExecutionContext(MRKExecutionContext parent,string prefix,int iteration,
             bool parallel)
             : this(parent,prefix)
@@ -978,6 +987,14 @@ namespace CxVisual.Mechanism.Runtime.Execution
             foreach(MRKExecutionStep step in plan.Steps)
                 if(step.LoopRegion!=null)
                     ValidateExecutionGroups(step.LoopRegion.Body,wholeFlow,activeStages);
+                if(step.TryRegion!=null)
+                {
+                    ValidateExecutionGroups(step.TryRegion.Body,wholeFlow,activeStages);
+                    if(step.TryRegion.CatchBody!=null)
+                        ValidateExecutionGroups(step.TryRegion.CatchBody,wholeFlow,activeStages);
+                    if(step.TryRegion.FinallyBody!=null)
+                        ValidateExecutionGroups(step.TryRegion.FinallyBody,wholeFlow,activeStages);
+                }
         }
 
         private async Task<MRKFlowResult> RunFlowAsync(MRKExecutionPlan plan, MRKFlowHandle flow, MRKExecutionDebugController control)
@@ -1070,6 +1087,63 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 for (int i = wholeFlowLeases.Count - 1; i >= 0; i--)
                     wholeFlowLeases[i].Dispose();
             }
+        }
+
+        /// <summary>统一MRK执行受保护区域；先排空Try内工作，再选择Catch，Finally即使取消亦有界运行。</summary>
+        private async Task ExecuteTryRegionAsync(MRKTryRegion region,
+            MRKExecutionContext parent,CancellationToken cancellation,
+            MRKExecutionDebugController control)
+        {
+            string prefix=parent.Invocation.StepId.Substring(
+                parent.Invocation.StepId.LastIndexOf('.')+1)+".";
+            Exception error=null;
+            try
+            {
+                try
+                {
+                    await ExecuteLoopBodyAsync(region.Body,parent.ForSubflow(prefix+"try."),
+                        cancellation,control).ConfigureAwait(false);
+                }
+                catch(Exception ex)
+                {
+                    if(cancellation.IsCancellationRequested||region.CatchBody==null)
+                        error=ex;
+                    else
+                    {
+                        try
+                        {
+                            await ExecuteLoopBodyAsync(region.CatchBody,
+                                parent.ForSubflow(prefix+"catch."),cancellation,control)
+                                .ConfigureAwait(false);
+                        }
+                        catch(Exception caught){error=caught;}
+                    }
+                }
+            }
+            finally
+            {
+                if(region.FinallyBody!=null)
+                {
+                    // 受控清理不沿用已取消的Flow令牌；10秒预算防止无期限挂起。
+                    using(var cleanup=new CancellationTokenSource(TimeSpan.FromSeconds(10)))
+                    {
+                        try
+                        {
+                            await ExecuteLoopBodyAsync(region.FinallyBody,
+                                parent.ForCleanup(prefix+"finally."),cleanup.Token,control)
+                                .ConfigureAwait(false);
+                        }
+                        catch(Exception ex)
+                        {
+                            error=error==null?ex:
+                                new AggregateException("mrk.try.finally_failed",error,ex);
+                        }
+                    }
+                }
+            }
+            if(error!=null)
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(error).Throw();
+            cancellation.ThrowIfCancellationRequested();
         }
 
         private async Task<int> ExecuteLoopRegionAsync(MRKLoopRegion loop,
@@ -1213,7 +1287,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
                     throw;
                 }
                 cancellation.ThrowIfCancellationRequested();
-                if(context.LoopExit!=0||context.FlowReturnRequested)
+                if(!context.IsCleanupRegion&&
+                    (context.LoopExit!=0||context.FlowReturnRequested))
                 {
                     context.SetState(step.Id,MRKStepState.Skipped,"loop.exit_requested");
                     return null;
@@ -1243,6 +1318,15 @@ namespace CxVisual.Mechanism.Runtime.Execution
                         context.QualifiedStepId(step.Id), cancellation);
                     if (!checkpoint.IsCompleted) context.SetState(step.Id, MRKStepState.Paused, "breakpoint");
                     await checkpoint.ConfigureAwait(false);
+                }
+                if(step.TryRegion!=null)
+                {
+                    context.SetState(step.Id,MRKStepState.Running,"try.region");
+                    await ExecuteTryRegionAsync(step.TryRegion,context,cancellation,control)
+                        .ConfigureAwait(false);
+                    context.SetResult(step.Id,true);
+                    context.SetState(step.Id,MRKStepState.Completed,"try.completed");
+                    return true;
                 }
                 if(step.LoopRegion!=null)
                 {
