@@ -495,7 +495,7 @@ namespace CxVisual.Mechanism.Core
     public sealed class MOLStateTransition
     {
         public MOLStateTransition(string source,string eventId,string target,
-            MOLExpression guard=null)
+            MOLExpression guard=null,int priority=0)
         {
             Source=MOLStateDescriptor.Check(source);
             EventId=MOLStateDescriptor.Check(eventId);
@@ -503,12 +503,16 @@ namespace CxVisual.Mechanism.Core
             if(guard!=null&&guard.Source!=MOLExpressionSource.FlowInput&&
                guard.Source!=MOLExpressionSource.Constant)
                 throw new ArgumentException("moc.state.guard_source");
-            Guard=guard;
+            if(priority<0||priority>1000)
+                throw new ArgumentOutOfRangeException("priority","moc.state.priority_range");
+            Guard=guard;Priority=priority;
         }
         public string Source{get;private set;}
         public string EventId{get;private set;}
         public string Target{get;private set;}
         public MOLExpression Guard{get;private set;}
+        /// <summary>同源同事件多条候选按优先级降序求值；同优先级冲突应拒绝。</summary>
+        public int Priority{get;private set;}
     }
     /// <summary>G05d：确定性层级状态及正交Region，同一事件按Region键顺序分别转移。</summary>
     public sealed class MOLStateMachineDefinition
@@ -555,7 +559,8 @@ namespace CxVisual.Mechanism.Core
                 MOLStateDescriptor from,to;
                 if(!lookup.TryGetValue(edge.Source,out from)||
                     !lookup.TryGetValue(edge.Target,out to)||from.Region!=to.Region||
-                    !transitionKeys.Add(edge.Source+"\u001f"+edge.EventId))
+                    !transitionKeys.Add(edge.Source+"\u001f"+edge.EventId+"\u001f"+
+                        edge.Priority.ToString(CultureInfo.InvariantCulture)))
                     throw new InvalidOperationException("moc.state.invalid_transition");
             }
             States=Array.AsReadOnly(entries);Transitions=Array.AsReadOnly(edges);
@@ -621,6 +626,10 @@ namespace CxVisual.Mechanism.Core
                     active[region]=resumed;
                 }
             }
+            var rules=Transitions.GroupBy(
+                x=>x.Source+"\u001f"+x.EventId,StringComparer.Ordinal)
+                .ToDictionary(g=>g.Key,g=>g.OrderByDescending(x=>x.Priority).ToArray(),
+                    StringComparer.Ordinal);
             int count=0;
             foreach(string eventId in events)
             {
@@ -632,13 +641,19 @@ namespace CxVisual.Mechanism.Core
                     var current=map[active[region]];
                     while(true)
                     {
-                        var rule=Transitions.FirstOrDefault(x=>x.Source==current.Id&&
-                            x.EventId==eventName&&GuardSatisfied(x.Guard,guardInputs));
-                        if(rule!=null)
+                        MOLStateTransition[] candidates;
+                        bool transitioned=false;
+                        if(rules.TryGetValue(current.Id+"\u001f"+eventName,out candidates))
                         {
-                            active[region]=ResolveLeaf(rule.Target,map);
-                            break;
+                            foreach(var rule in candidates)
+                            {
+                                if(!GuardSatisfied(rule.Guard,guardInputs))continue;
+                                active[region]=ResolveLeaf(rule.Target,map);
+                                transitioned=true;
+                                break;
+                            }
                         }
+                        if(transitioned)break;
                         if(current.ParentId.Length==0)break;
                         current=map[current.ParentId];
                     }
@@ -1007,6 +1022,7 @@ namespace CxVisual.Mechanism.Core
                             new XElement("Transition",new XAttribute("from",edge.Source),
                                 new XAttribute("event",edge.EventId),
                                 new XAttribute("to",edge.Target),
+                                edge.Priority==0?null:new XAttribute("priority",edge.Priority),
                                 edge.Guard==null?null:new XElement("Guard",
                                     new XAttribute("source",edge.Guard.Source),
                                     new XAttribute("name",edge.Guard.Name),
@@ -1157,8 +1173,16 @@ namespace CxVisual.Mechanism.Core
                                 ReadEnum<MOLComparison>(guard,"compare"),
                                 compare=="Truthy"?null:(string)guard.Attribute("expected"));
                         }
+                        int priority=0;
+                        XAttribute rawPriority=edge.Attribute("priority");
+                        if(rawPriority!=null&&
+                            (!int.TryParse(rawPriority.Value,NumberStyles.Integer,
+                                CultureInfo.InvariantCulture,out priority)||
+                                priority<0||priority>1000))
+                            throw new InvalidDataException("wiring.state.priority");
                         return new MOLStateTransition((string)edge.Attribute("from"),
-                            (string)edge.Attribute("event"),(string)edge.Attribute("to"),condition);
+                            (string)edge.Attribute("event"),(string)edge.Attribute("to"),
+                            condition,priority);
                     }).ToArray();
                     stateMachines.Add(id,new MOLStateMachineDefinition(states,transitions));
                 }
