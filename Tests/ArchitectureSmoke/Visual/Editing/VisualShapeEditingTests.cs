@@ -14,6 +14,53 @@ namespace CxVisual.Tests.ArchitectureSmoke
         {if(!valid)throw new InvalidOperationException("Visual editing A: "+context);}
         private static bool Near(FGEPoint2D a,FGEPoint2D b,double eps=1e-6)
         {return a.DistanceTo(b)<eps;}
+        /// <summary>
+        /// 共性吸附不修改工程Revision：单选、多选、网格、世界参考线和Zoom共用一次纯计算。
+        /// 特别验证预览所得位移可直接提交MEM而不再次网格量化。
+        /// </summary>
+        private static void CheckUnifiedSnapping()
+        {
+            var session=MEMEngineering.Create("图元统一吸附测试");
+            try
+            {
+                var page=session.AddPage("P");
+                var a=session.AddRectangle(page.RootContent,"A",12,16,80,40);
+                var b=session.AddRectangle(page.RootContent,"B",180,16,80,40);
+                var c=session.AddRectangle(page.RootContent,"C",10,220,80,40);
+                var scene=MVISceneProjection.Project(session,page.Id);
+                int revision=session.Revision;
+                MVIVisualSnapResult guides=MVIVisualSnapping.Resolve(scene,
+                    new[]{a.Id},87,0,1,false,true);
+                Check(Math.Abs(guides.WorldDx-88)<1e-9&&
+                    guides.GuideX.HasValue&&Math.Abs(guides.GuideX.Value-180)<1e-9,
+                    "P1 smart reference line failed to align right-to-left edges");
+                MVIVisualSnapResult zoom=MVIVisualSnapping.Resolve(scene,
+                    new[]{a.Id},84,0,2,false,true);
+                Check(Math.Abs(zoom.WorldDx-84)<1e-9&&!zoom.GuideX.HasValue,
+                    "P1 reference-line tolerance must be in screen DIP, not world units");
+                MVIVisualSnapResult grid=MVIVisualSnapping.Resolve(scene,
+                    new[]{a.Id},11,0,1,true,false);
+                Check(Math.Abs(grid.WorldDx-13)<1e-9&&
+                    !grid.GuideX.HasValue,
+                    "P1 grid did not snap the same world-space selection left edge");
+                MVIVisualSnapResult multi=MVIVisualSnapping.Resolve(scene,
+                    new[]{a.Id,c.Id},11,0,1,true,false);
+                Check(Math.Abs(multi.WorldDx-13)<1e-9,
+                    "P1 multi-selection grid must keep relative distances");
+                MVIVisualSnapResult priority=MVIVisualSnapping.Resolve(scene,
+                    new[]{a.Id},87,0,1,true,true);
+                Check(Math.Abs(priority.WorldDx-88)<1e-9&&priority.GuideX.HasValue,
+                    "P1 object guide must take precedence over grid on the same axis");
+                Check(session.Revision==revision,
+                    "P1 visual snap helper must not modify engineering revision");
+            }
+            finally
+            {
+                session.DiscardChanges();
+                session.Dispose();
+            }
+        }
+
         /// <summary>不经过WPF的选区修饰键正反测试；预览与提交共用MVI变换计算。</summary>
         private static void CheckConstrainedSelectionTransform()
         {
@@ -437,6 +484,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         }
         public static void Run()
         {
+            CheckUnifiedSnapping();
             CheckConstrainedSelectionTransform();
             BatchVisualMoveTests();
             ObstacleRoutingTests();

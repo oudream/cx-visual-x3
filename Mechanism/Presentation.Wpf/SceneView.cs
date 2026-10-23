@@ -118,6 +118,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         private double _zoom=1,_panX,_panY;
         private bool _panning;private Point _panPointer;
         private bool _gridSnap;
+        private bool _smartGuides=true;
+        private MVIVisualSnapResult _dragSnap;
+        /// <summary>智能参考线仅在当前拖动中计算，不构成任何MEM工程状态。</summary>
+        public bool SmartGuides {get{return _smartGuides;}set{_smartGuides=value;InvalidateVisual();}}
         public double Zoom{get{return _zoom;}}
         public bool SnapToGrid{get{return _gridSnap;}set{_gridSnap=value;}}
         /// <summary>资源画刷仅从宿主WPF主题或授权的本地Provider获取，绝不从ResourceKey加载外部地址。</summary>
@@ -143,6 +147,15 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         {return new Point((screen.X-_panX)/_zoom,(screen.Y-_panY)/_zoom);}
         private Point ScreenPoint(Point world)
         {return new Point(world.X*_zoom+_panX,world.Y*_zoom+_panY);}
+        /// <summary>预览和鼠标松开的提交共用同一世界位移，避免吸附后图元跳动。</summary>
+        private MVIVisualSnapResult ResolveDrag(double dx,double dy)
+        {
+            MVISceneItem[] selected=EditableSelection();
+            if(selected.Length==0||selected.Length!=_selectedItems.Count)
+                return new MVIVisualSnapResult(dx,dy,null,null);
+            return MVIVisualSnapping.Resolve(_items,
+                selected.Select(item=>item.Id),dx,dy,_zoom,_gridSnap,_smartGuides);
+        }
         private static readonly string[] ConnectionSides=
             {"north","east","south","west"};
         private MVISceneItem Connectable(Guid id)
@@ -460,9 +473,19 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         {
             base.OnRender(dc);
             dc.DrawRectangle(Brushes.White, null, new Rect(new Point(0, 0), RenderSize));
-            Pen gridPen = new Pen(new SolidColorBrush(Color.FromRgb(237, 241, 247)), 1);
-            for (double x = 0; x < ActualWidth; x += 25) dc.DrawLine(gridPen, new Point(x, 0), new Point(x, ActualHeight));
-            for (double y = 0; y < ActualHeight; y += 25) dc.DrawLine(gridPen, new Point(0, y), new Point(ActualWidth, y));
+            // 网格与吸附共用世界原点；显示平移、Zoom时仍然严格重合。
+            // 很小Zoom隐藏过密网格，避免在高数量级视野内逐线绘制。
+            double gridStep=25*_zoom;
+            if(gridStep>=6)
+            {
+                Pen gridPen=new Pen(new SolidColorBrush(Color.FromRgb(237,241,247)),1);
+                double startX=((_panX%gridStep)+gridStep)%gridStep;
+                double startY=((_panY%gridStep)+gridStep)%gridStep;
+                for(double x=startX;x<ActualWidth;x+=gridStep)
+                    dc.DrawLine(gridPen,new Point(x,0),new Point(x,ActualHeight));
+                for(double y=startY;y<ActualHeight;y+=gridStep)
+                    dc.DrawLine(gridPen,new Point(0,y),new Point(ActualWidth,y));
+            }
             dc.PushTransform(new MatrixTransform(new Matrix(_zoom,0,0,_zoom,_panX,_panY)));
             MVISceneItem transformPreview=null;
             if(_handleDragging&&_activeHandle!=null&&
@@ -774,6 +797,24 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                     }
                 }
             }
+            // 参考线来自同一只读吸附结果，既不保存，也不单独实现对齐算法。
+            if(_dragging&&_dragSnap!=null)
+            {
+                Pen guidePen=new Pen(Brushes.DeepSkyBlue,1/_zoom)
+                    {DashStyle=DashStyles.Dash};
+                if(_dragSnap.GuideX.HasValue)
+                {
+                    double x=_dragSnap.GuideX.Value;
+                    dc.DrawLine(guidePen,new Point(x,(-_panY)/_zoom),
+                        new Point(x,(ActualHeight-_panY)/_zoom));
+                }
+                if(_dragSnap.GuideY.HasValue)
+                {
+                    double y=_dragSnap.GuideY.Value;
+                    dc.DrawLine(guidePen,new Point((-_panX)/_zoom,y),
+                        new Point((ActualWidth-_panX)/_zoom,y));
+                }
+            }
             // 共性选区使用一个外框与九个变换控制柄，避免每个对象各出现九个重叠控制柄。
             MVISceneItem[] multi=EditableSelection();
             if(multi.Length>1&&SelectionTransformRequested!=null)
@@ -956,7 +997,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 CaptureMouse();
             }
             _dragStart = point;
-            _dragX = 0; _dragY = 0;
+            _dragX = 0; _dragY = 0;_dragSnap=null;
             // 增减选择不能再触发单选NodeActivated，否则Studio回写会抹掉集合。
             _dragging = hit.HasValue&&!extend&&_selectedItems.Contains(hit.Value)&&
                 !_items.Exists(x=>x.Id==hit.Value&&x.ElementTypeId=="core.visual.connector");
@@ -1028,8 +1069,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 return;
             }
             Point point = WorldPoint(e.GetPosition(this));
-            _dragX = point.X - _dragStart.X;
-            _dragY = point.Y - _dragStart.Y;
+            _dragSnap=ResolveDrag(point.X-_dragStart.X,point.Y-_dragStart.Y);
+            _dragX=_dragSnap.WorldDx;
+            _dragY=_dragSnap.WorldDy;
             UpdateWidgetDragPreview();
             InvalidateVisual();
         }
@@ -1141,35 +1183,33 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 return;
             }
             if (!_dragging) return;
+            Point raw=WorldPoint(e.GetPosition(this));
+            double rawDx=raw.X-_dragStart.X,rawDy=raw.Y-_dragStart.Y;
+            MVIVisualSnapResult snapped=ResolveDrag(rawDx,rawDy);
             _dragging = false;
             if (IsMouseCaptured) ReleaseMouseCapture();
-            if (_selection.HasValue && (Math.Abs(_dragX) > 1 || Math.Abs(_dragY) > 1))
+            // 判断是否拖动要用实际鼠标距离，而不是吸附后位移；
+            // 用户移动不足1 DIP或吸附回原位时，都不创建无意义的MEM事务。
+            if (_selection.HasValue&&
+                (Math.Abs(rawDx)>1/_zoom||Math.Abs(rawDy)>1/_zoom)&&
+                (Math.Abs(snapped.WorldDx)>1e-9||Math.Abs(snapped.WorldDy)>1e-9))
             {
-                MVISceneItem original = _items.Find(x => x.Id == _selection.Value);
-                EventHandler<MPWMoveEventArgs> moved = MoveRequested;
-                if (original != null && moved != null)
+                MVISceneItem original=_items.Find(item=>item.Id==_selection.Value);
+                EventHandler<MPWMoveEventArgs> moved=MoveRequested;
+                if(original!=null&&moved!=null)
                 {
-                    // 多选吸附由MVI按整组选区统一确定世界位移；
-                    // 单选也在世界空间吸附，再换算父容器局部坐标。
-                    double dx=_dragX,dy=_dragY;
-                    if(_gridSnap&&_selectedItems.Count<=1)
-                    {
-                        dx=Math.Round((original.Bounds.Left+dx)/25)*25-
-                            original.Bounds.Left;
-                        dy=Math.Round((original.Bounds.Top+dy)/25)*25-
-                            original.Bounds.Top;
-                    }
                     double x,y;
-                    original.PositionAfterWorldDelta(dx,dy,out x,out y);
-                    moved(this,new MPWMoveEventArgs(original.Id,x,y,dx,dy));
+                    original.PositionAfterWorldDelta(snapped.WorldDx,snapped.WorldDy,out x,out y);
+                    moved(this,new MPWMoveEventArgs(original.Id,x,y,
+                        snapped.WorldDx,snapped.WorldDy));
                 }
             }
-            _dragX = 0; _dragY = 0;
+            _dragX=0;_dragY=0;_dragSnap=null;
             UpdateWidgetDragPreview();
             InvalidateVisual();
         }
         public void CancelInteraction()
-        {_dragging=false;_marquee=false;_handleDragging=false;_activeHandle=null;_panning=false;_dragX=0;_dragY=0;
+        {_dragging=false;_marquee=false;_handleDragging=false;_activeHandle=null;_panning=false;_dragX=0;_dragY=0;_dragSnap=null;
             _waypointDragging=false;_waypointConnectionId=null;
             _selectionTransformDragging=false;
             _connectDragging=false;_connectSourceId=null;_connectTargetId=null;

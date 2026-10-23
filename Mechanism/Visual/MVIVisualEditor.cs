@@ -696,13 +696,13 @@ namespace CxVisual.Mechanism.Visual
                     return MTCEditResult<bool>.Rejected(revision,"visual.default_prevented",
                         "Selected visual disallowed the move");
             }
-            // 吸附必须在世界空间对整个选区确定唯一位移；
-            // 禁止对每个旋转Group中的局部X/Y分别取整，防止对象间距被破坏。
+            // API的可选网格吸附与Studio预览共用一个纯计算入口。
+            // 其他调用者若已拿到吸附位移，可传snapToGrid=false防止重复取整。
             if(snapToGrid)
             {
-                FGERect2D box=MVISelectionTransform.Bounds(selected);
-                worldDx=Math.Round((box.Left+worldDx)/25)*25-box.Left;
-                worldDy=Math.Round((box.Top+worldDy)/25)*25-box.Top;
+                MVIVisualSnapResult snapped=MVIVisualSnapping.Resolve(
+                    Scene,ids,worldDx,worldDy,1,true,false);
+                worldDx=snapped.WorldDx;worldDy=snapped.WorldDy;
             }
             return Document.Edit("批量移动可视对象",revision,e=>
             {

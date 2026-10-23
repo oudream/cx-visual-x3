@@ -355,7 +355,7 @@ namespace CxVisual.Studio
             if(ids.Count>1&&ids.Contains(args.Id))
             {
                 MTCEditResult<bool> result=_viewModel.DragVisualSelection(ids,
-                    args.WorldDeltaX,args.WorldDeltaY,SceneHost.SnapToGrid);
+                    args.WorldDeltaX,args.WorldDeltaY,false);
                 VisualInfo.Text=result.Success?"整体拖动已提交一个可撤销事务":
                     result.ErrorCode+" "+result.Message;
             }
