@@ -278,6 +278,9 @@ namespace CxVisual.TestCenter.UI
                 instance = window.CreateWorkspaceInstance("manual.module.connector");
             }));
             if (instance == null) throw new InvalidOperationException("Module instance was not created");
+            string actualId = null;
+            window.Dispatcher.Invoke(new Action(() =>
+                actualId = window.CreatedConfigurationId(instance.WorkspaceId)));
             SelectionItemPattern selected = Find(root, "TCT.Workspace." + instance.WorkspaceId)
                 .GetCurrentPattern(SelectionItemPattern.Pattern) as SelectionItemPattern;
             if (selected == null) throw new InvalidOperationException("Module instance is not selectable");
@@ -297,7 +300,7 @@ namespace CxVisual.TestCenter.UI
                         .OfType<TCTManualModuleFrame>().FirstOrDefault();
                     created = frame != null && frame.HasOpenedConfiguration &&
                         frame.ActiveModuleKind == CxVisual.Mechanism.Core.Modules.MFMModuleKind.Connector &&
-                        frame.ActiveModuleId == "ModuleConnector01";
+                        frame.ActiveModuleId == actualId;
                 }));
                 if (!created) Thread.Sleep(100);
             }
