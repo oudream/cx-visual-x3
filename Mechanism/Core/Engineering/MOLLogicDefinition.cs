@@ -1255,8 +1255,17 @@ namespace CxVisual.Mechanism.Core
     public static class MOLWiringCodec
     {
         public const int SchemaVersion=2;
+        // 同一V2连线表示的扩展版本，不创建第三种工程Graph。
+        public const int ExtendedSchemaVersion=3;
+        private static bool NeedsExtendedSchema(MOLWiringDefinition definition)
+        {
+            return definition.StateMachines.Values.Any(m=>m.States.Any(s=>
+                s.EntryCapability.Length>0||s.ExitCapability.Length>0));
+        }
         public static MPMAspect CreateAspect(MOLWiringDefinition definition)
-        {return new MPMAspect(MPMAspectKind.Logic,MOLLogicCodec.ProviderId,2,Serialize(definition));}
+        {return new MPMAspect(MPMAspectKind.Logic,MOLLogicCodec.ProviderId,
+            NeedsExtendedSchema(definition)?ExtendedSchemaVersion:SchemaVersion,
+            Serialize(definition));}
         /// <summary>仅无损转换单一V1 Action；复杂结构返回明确信息并保持原定义。</summary>
         public static void ConvertFromV1(MEMEngineeringSession session,MEMContent content)
         {
@@ -1290,13 +1299,17 @@ namespace CxVisual.Mechanism.Core
             if(node==null)throw new ArgumentNullException("node");
             var found=node.Aspects.SingleOrDefault(x=>x.Kind==MPMAspectKind.Logic&&x.ProviderId==MOLLogicCodec.ProviderId);
             if(found==null||found.SchemaVersion==1)return null;
-            if(found.SchemaVersion!=2||found.RequiresRemap)throw new InvalidDataException("wiring.unknown_schema");
-            return Deserialize(found.Payload);
+            if((found.SchemaVersion!=SchemaVersion&&
+                found.SchemaVersion!=ExtendedSchemaVersion)||found.RequiresRemap)
+                throw new InvalidDataException("wiring.unknown_schema");
+            return Deserialize(found.Payload,found.SchemaVersion);
         }
         public static byte[] Serialize(MOLWiringDefinition def)
         {
             if(def==null)throw new ArgumentNullException("def");def.Validate();
-            var root=new XElement("MOL",new XAttribute("v",2),new XAttribute("entry",def.EntryBlockId.ToString("N")),
+            var root=new XElement("MOL",
+                new XAttribute("v",NeedsExtendedSchema(def)?ExtendedSchemaVersion:SchemaVersion),
+                new XAttribute("entry",def.EntryBlockId.ToString("N")),
                 new XElement("Blocks",def.Blocks.Select(b=>new XElement("Block",
                     new XAttribute("id",b.Id.ToString("N")),new XAttribute("cap",b.CapabilityId),
                     def.Positions.ContainsKey(b.Id)?
@@ -1374,14 +1387,20 @@ namespace CxVisual.Mechanism.Core
             if(bytes.Length>4*1024*1024)throw new InvalidDataException("wiring.payload_budget");
             return bytes;
         }
-        public static MOLWiringDefinition Deserialize(byte[] bytes)
+        public static MOLWiringDefinition Deserialize(byte[] bytes,int expectedSchema=0)
         {
+            if(expectedSchema!=0&&expectedSchema!=SchemaVersion&&
+                expectedSchema!=ExtendedSchemaVersion)
+                throw new InvalidDataException("wiring.unknown_schema");
             if(bytes==null||bytes.Length<1||bytes.Length>4*1024*1024)throw new InvalidDataException("wiring.payload_invalid");
             var settings=new XmlReaderSettings{DtdProcessing=DtdProcessing.Prohibit,XmlResolver=null,MaxCharactersInDocument=4*1024*1024};
             using(var memory=new MemoryStream(bytes))using(var reader=XmlReader.Create(memory,settings))
             {
                 var root=XDocument.Load(reader).Root;
-                if(root==null||root.Name!="MOL"||(string)root.Attribute("v")!="2"||
+                string version=root==null?null:(string)root.Attribute("v");
+                if(root==null||root.Name!="MOL"||
+                    (version!="2"&&version!="3")||
+                    (expectedSchema!=0&&version!=expectedSchema.ToString(CultureInfo.InvariantCulture))||
                     root.Element("Blocks")==null||root.Element("Links")==null||
                     root.Elements().Count()<2||root.Elements().Count()>8||
                     root.Elements().Any(x=>x.Name!="Blocks"&&x.Name!="Links"&&
@@ -1465,12 +1484,16 @@ namespace CxVisual.Mechanism.Core
                         machine.Elements().Count()!=2)
                         throw new InvalidDataException("wiring.state_machine_schema");
                     Guid id=ReadGuid(machine,"block");
-                    var states=machine.Element("States").Elements("State").Select(state=>
-                        new MOLStateDescriptor((string)state.Attribute("id"),
+                    var states=machine.Element("States").Elements("State").Select(state=>{
+                        if(version=="2"&&(state.Attribute("onEntry")!=null||
+                            state.Attribute("onExit")!=null))
+                            throw new InvalidDataException("wiring.state_action_requires_v3");
+                        return new MOLStateDescriptor((string)state.Attribute("id"),
                             (string)state.Attribute("region"),(string)state.Attribute("parent"),
                             (bool?)state.Attribute("initial")??false,
                             (string)state.Attribute("onEntry"),
-                            (string)state.Attribute("onExit"))).ToArray();
+                            (string)state.Attribute("onExit"));
+                    }).ToArray();
                     var transitions=machine.Element("Transitions").Elements("Transition").Select(edge=>{
                         if(edge.Elements().Any(x=>x.Name!="Guard")||
                             edge.Elements("Guard").Count()>1)
