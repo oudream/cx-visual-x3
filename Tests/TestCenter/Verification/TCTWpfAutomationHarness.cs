@@ -55,6 +55,17 @@ namespace CxVisual.TestCenter.UI
             }));
             await Task.Run(() => InteractManualModule(hwnd, window));
             SaveScreenshot(window, "TestCenter-12-ModuleConfig.png");
+            foreach (CxVisual.Mechanism.Core.Modules.MFMModuleKind kind in
+                new[] {
+                    CxVisual.Mechanism.Core.Modules.MFMModuleKind.Connector,
+                    CxVisual.Mechanism.Core.Modules.MFMModuleKind.Compute,
+                    CxVisual.Mechanism.Core.Modules.MFMModuleKind.Simulation,
+                    CxVisual.Mechanism.Core.Modules.MFMModuleKind.Service
+                })
+            {
+                await Task.Run(() => InteractModuleKind(hwnd, window, kind));
+                SaveScreenshot(window, "TestCenter-Module-" + kind + ".png");
+            }
             window.Dispatcher.Invoke(new Action(() => {
                 if (!window.DocumentHost.CloseWorkspace("manual.module"))
                     throw new InvalidOperationException("Module configuration workspace did not close");
@@ -65,6 +76,78 @@ namespace CxVisual.TestCenter.UI
                 if (!window.DocumentHost.CloseWorkspace("auto.architecture-smoke"))
                     throw new InvalidOperationException("ArchitectureSmoke tab was not disposable");
             }));
+        }
+        private static void InteractModuleKind(IntPtr hwnd, TCTMainWindow window,
+            CxVisual.Mechanism.Core.Modules.MFMModuleKind kind)
+        {
+            AutomationElement root = AutomationElement.FromHandle(hwnd);
+            string id = "TCT.Workspace.manual.module." + kind.ToString().ToLowerInvariant();
+            SelectionItemPattern node = Find(root, id)
+                .GetCurrentPattern(SelectionItemPattern.Pattern) as SelectionItemPattern;
+            if (node == null) throw new InvalidOperationException("Missing module tree type " + kind);
+            node.Select();
+            string moduleId = "Module" + kind + "01";
+            bool opened = false;
+            for (int attempt = 0; attempt < 100 && !opened; attempt++)
+            {
+                window.Dispatcher.Invoke(new Action(() => {
+                    System.Windows.Controls.TabControl tabs =
+                        window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                    TCTManualModuleFrame frame = tabs == null ? null : tabs.Items
+                        .OfType<System.Windows.Controls.TabItem>().Select(x => x.Content)
+                        .OfType<TCTManualModuleFrame>().FirstOrDefault();
+                    opened = frame != null && !frame.IsBusy && frame.HasOpenedConfiguration &&
+                        frame.ActiveModuleKind == kind && frame.ActiveModuleId == moduleId;
+                }));
+                if (!opened) Thread.Sleep(100);
+            }
+            if (!opened) throw new InvalidOperationException("FCM/MPW typed module editor did not load: " + kind);
+            InvokePattern save = Find(root, "TCT.Manual.Action.module.save")
+                .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
+            if (save == null) throw new InvalidOperationException("MHS Save command unavailable for " + kind);
+            save.Invoke();
+            bool saved = false;
+            for (int attempt = 0; attempt < 100 && !saved; attempt++)
+            {
+                window.Dispatcher.Invoke(new Action(() => {
+                    System.Windows.Controls.TabControl tabs =
+                        window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                    TCTManualModuleFrame frame = tabs == null ? null : tabs.Items
+                        .OfType<System.Windows.Controls.TabItem>().Select(x => x.Content)
+                        .OfType<TCTManualModuleFrame>().FirstOrDefault();
+                    if (frame == null) throw new InvalidOperationException("Module editor vanished");
+                    if (!frame.IsBusy && frame.StatusMessage.Contains("配置未保存"))
+                        throw new InvalidOperationException("MHS rejected " + kind + ": " + frame.StatusMessage);
+                    saved = !frame.IsBusy && frame.StatusMessage.StartsWith("配置已保存",
+                        StringComparison.Ordinal) && !string.IsNullOrWhiteSpace(frame.SavedAndEffectiveVersions);
+                }));
+                if (!saved) Thread.Sleep(100);
+            }
+            if (!saved) throw new InvalidOperationException("MHS did not save real " + kind + " configuration");
+            InvokePattern reopen = Find(root, "TCT.Manual.Action.module.reopen")
+                .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
+            if (reopen == null) throw new InvalidOperationException("Module Reopen action unavailable");
+            reopen.Invoke();
+            bool reloaded = false;
+            for (int attempt = 0; attempt < 100 && !reloaded; attempt++)
+            {
+                window.Dispatcher.Invoke(new Action(() => {
+                    System.Windows.Controls.TabControl tabs =
+                        window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                    TCTManualModuleFrame frame = tabs == null ? null : tabs.Items
+                        .OfType<System.Windows.Controls.TabItem>().Select(x => x.Content)
+                        .OfType<TCTManualModuleFrame>().FirstOrDefault();
+                    reloaded = frame != null && !frame.IsBusy && frame.HasOpenedConfiguration &&
+                        frame.ActiveModuleKind == kind && frame.ActiveModuleId == moduleId &&
+                        frame.StatusMessage.StartsWith("已创建/打开配置范围", StringComparison.Ordinal);
+                }));
+                if (!reloaded) Thread.Sleep(100);
+            }
+            if (!reloaded) throw new InvalidOperationException("MHS re-open verification failed: " + kind);
+            InvokePattern validate = Find(root, "TCT.Manual.Action.module.validate")
+                .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
+            if (validate == null) throw new InvalidOperationException("Module validation unavailable");
+            validate.Invoke();
         }
         private static void InteractManualModule(IntPtr hwnd, TCTMainWindow window)
         {
