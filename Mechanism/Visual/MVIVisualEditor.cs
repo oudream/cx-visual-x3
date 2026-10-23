@@ -245,6 +245,21 @@ namespace CxVisual.Mechanism.Visual
             return new[]{locate(connection.Source),locate(connection.Target)};
         }
 
+        /// <summary>
+        /// 当前场景显示什么路径，编辑就使用什么顶点与段索引。
+        /// 自动避障分支、端口出入线和人工折点均从同一GeometryToWorld还原世界坐标；
+        /// 禁止再次构造旧的中线简化路径，避免用户点击某段却编辑另一段。
+        /// </summary>
+        private IReadOnlyList<FGEPoint2D> VisibleConnectionPoints(Guid connectionId)
+        {
+            MVISceneItem line=Scene.FirstOrDefault(x=>x.Id==connectionId&&
+                x.ElementTypeId=="core.visual.connector");
+            if(line==null||line.Shape==null)
+                throw new InvalidOperationException("visual.route.scene_not_found");
+            return line.Shape.Geometry.Commands.Select(c=>
+                line.GeometryToWorld.TransformPoint(c.End)).ToArray();
+        }
+
         /// <summary>双击某线段插点；自动折线转换为等效手动点，不丢失已有路径。</summary>
         public MTCEditResult<bool> InsertVisualWaypoint(Guid connectionId,
             int segmentIndex,double x,double y)
@@ -255,7 +270,7 @@ namespace CxVisual.Mechanism.Visual
                 "visual.route.not_found","Connection not in active scene");
             FGEValidation.Finite(x,"x");FGEValidation.Finite(y,"y");
             FGEPoint2D[] ends=VisualConnectionAnchors(connection);
-            IReadOnlyList<FGEPoint2D> points=MVIVisualRouting.Points(connection,ends[0],ends[1]);
+            IReadOnlyList<FGEPoint2D> points=VisibleConnectionPoints(connectionId);
             int count=points.Count-2;
             if(segmentIndex<0||segmentIndex>count||count>=64)
                 return MTCEditResult<bool>.Rejected(revision,
@@ -296,8 +311,7 @@ namespace CxVisual.Mechanism.Visual
                 return MTCEditResult<bool>.Rejected(revision,
                     "visual.default_prevented","Waypoint editing blocked");
             FGEPoint2D[] ends=VisualConnectionAnchors(connection);
-            IReadOnlyList<FGEPoint2D> rendered=MVIVisualRouting.Points(
-                connection,ends[0],ends[1]);
+            IReadOnlyList<FGEPoint2D> rendered=VisibleConnectionPoints(connectionId);
             int count=rendered.Count-2;
             if(index>=count)
                 return MTCEditResult<bool>.Rejected(revision,
