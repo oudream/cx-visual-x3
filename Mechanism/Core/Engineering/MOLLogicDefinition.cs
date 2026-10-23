@@ -1488,6 +1488,56 @@ namespace CxVisual.Mechanism.Core
                 throw new InvalidDataException("wiring.unknown_schema");
             return Deserialize(found.Payload,found.SchemaVersion);
         }
+        private static XElement WriteStateGuard(MOLExpression expr)
+        {
+            if(expr.Operator!=MOLLogicalOperator.Scalar)
+                return new XElement("Guard",new XAttribute("op",expr.Operator),
+                    expr.Terms.Select(WriteStateGuard));
+            return new XElement("Guard",new XAttribute("source",expr.Source),
+                new XAttribute("name",expr.Name),
+                new XAttribute("compare",expr.Comparison),
+                new XAttribute("expected",expr.Expected??""));
+        }
+        private static MOLExpression ReadStateGuard(XElement guard,int depth)
+        {
+            if(depth>16||guard.Name!="Guard")
+                throw new InvalidDataException("wiring.state.guard_depth");
+            XAttribute op=guard.Attribute("op");
+            if(op==null)
+            {
+                if(guard.HasElements||guard.Attributes().Count()!=4||
+                    guard.Attributes().Any(a=>a.Name!="source"&&a.Name!="name"&&
+                        a.Name!="compare"&&a.Name!="expected"))
+                    throw new InvalidDataException("wiring.state.guard_fields");
+                string compare=(string)guard.Attribute("compare");
+                return new MOLExpression(ReadEnum<MOLExpressionSource>(guard,"source"),
+                    (string)guard.Attribute("name"),
+                    ReadEnum<MOLComparison>(guard,"compare"),
+                    compare=="Truthy"?null:(string)guard.Attribute("expected"));
+            }
+            if(guard.Attributes().Count()!=1||
+                guard.Elements().Any(x=>x.Name!="Guard"))
+                throw new InvalidDataException("wiring.state.guard_schema");
+            MOLLogicalOperator kind;
+            if(!Enum.TryParse(op.Value,false,out kind)||
+                (kind!=MOLLogicalOperator.All&&kind!=MOLLogicalOperator.Any&&
+                 kind!=MOLLogicalOperator.Not))
+                throw new InvalidDataException("wiring.state.guard_operator");
+            MOLExpression[] terms=guard.Elements("Guard").Select(x=>
+                ReadStateGuard(x,depth+1)).ToArray();
+            try
+            {
+                if(kind==MOLLogicalOperator.Not)
+                {
+                    if(terms.Length!=1)throw new InvalidDataException("wiring.state.guard_arity");
+                    return MOLExpression.Not(terms[0]);
+                }
+                return kind==MOLLogicalOperator.All?
+                    MOLExpression.All(terms):MOLExpression.Any(terms);
+            }
+            catch(ArgumentException ex)
+            {throw new InvalidDataException("wiring.state.guard_arity",ex);}
+        }
         public static byte[] Serialize(MOLWiringDefinition def)
         {
             if(def==null)throw new ArgumentNullException("def");def.Validate();
@@ -1532,11 +1582,7 @@ namespace CxVisual.Mechanism.Core
                                 new XAttribute("event",edge.EventId),
                                 new XAttribute("to",edge.Target),
                                 edge.Priority==0?null:new XAttribute("priority",edge.Priority),
-                                edge.Guard==null?null:new XElement("Guard",
-                                    new XAttribute("source",edge.Guard.Source),
-                                    new XAttribute("name",edge.Guard.Name),
-                                    new XAttribute("compare",edge.Guard.Comparison),
-                                    new XAttribute("expected",edge.Guard.Expected??"")))))))));
+                                edge.Guard==null?null:WriteStateGuard(edge.Guard))))))));
             if(def.Policies.Count>0)
                 root.Add(new XElement("Policies",def.Policies.Select(item=>
                     new XElement("Policy",new XAttribute("block",item.Key.ToString("N")),
@@ -1690,13 +1736,9 @@ namespace CxVisual.Mechanism.Core
                         MOLExpression condition=null;
                         if(guard!=null)
                         {
-                            if(guard.Attributes().Count()!=4)
-                                throw new InvalidDataException("wiring.state.guard_fields");
-                            string compare=(string)guard.Attribute("compare");
-                            condition=new MOLExpression(ReadEnum<MOLExpressionSource>(guard,"source"),
-                                (string)guard.Attribute("name"),
-                                ReadEnum<MOLComparison>(guard,"compare"),
-                                compare=="Truthy"?null:(string)guard.Attribute("expected"));
+                            if(version!="5"&&guard.Attribute("op")!=null)
+                                throw new InvalidDataException("wiring.state.guard_requires_v5");
+                            condition=ReadStateGuard(guard,0);
                         }
                         int priority=0;
                         XAttribute rawPriority=edge.Attribute("priority");
