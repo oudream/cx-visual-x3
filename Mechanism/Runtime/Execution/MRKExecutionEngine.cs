@@ -985,6 +985,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 StringComparer.Ordinal);
             activeStages.UnionWith(localStages);
             foreach(MRKExecutionStep step in plan.Steps)
+            {
                 if(step.LoopRegion!=null)
                     ValidateExecutionGroups(step.LoopRegion.Body,wholeFlow,activeStages);
                 if(step.TryRegion!=null)
@@ -995,6 +996,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
                     if(step.TryRegion.FinallyBody!=null)
                         ValidateExecutionGroups(step.TryRegion.FinallyBody,wholeFlow,activeStages);
                 }
+            }
         }
 
         private async Task<MRKFlowResult> RunFlowAsync(MRKExecutionPlan plan, MRKFlowHandle flow, MRKExecutionDebugController control)
