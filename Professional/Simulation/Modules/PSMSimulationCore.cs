@@ -6,22 +6,6 @@ namespace CxVisual.Professional.Simulation.Modules
     // Simulation 的模型状态与模拟时间归专业 Owner；外部 MRK/F19 决定推进何时发生。
     public enum PSMSimulationRunMode { Step, Realtime, Accelerated, Replay }
 
-    public sealed class PSMSimulationDefinition
-    {
-        public PSMSimulationDefinition(string modelId, TimeSpan fixedStep, int seed = 1,
-            PSMSimulationRunMode mode = PSMSimulationRunMode.Step)
-        {
-            if (string.IsNullOrWhiteSpace(modelId)) throw new ArgumentException("仿真模型 Id 必填");
-            if (fixedStep <= TimeSpan.Zero || !Enum.IsDefined(typeof(PSMSimulationRunMode), mode))
-                throw new ArgumentException("仿真步长/运行模式无效");
-            ModelId = modelId.Trim(); FixedStep = fixedStep; Seed = seed; Mode = mode;
-        }
-        public string ModelId { get; private set; }
-        public TimeSpan FixedStep { get; private set; }
-        public int Seed { get; private set; }
-        public PSMSimulationRunMode Mode { get; private set; }
-    }
-
     public interface IPSMSimulationModel
     {
         string ModelId { get; }
@@ -57,22 +41,23 @@ namespace CxVisual.Professional.Simulation.Modules
         private bool _initialized;
 
         public PSMSimulationModule(MFMModuleDescriptor descriptor,
-            PSMSimulationDefinition definition, IPSMSimulationModel model)
+            PSMSimulationModuleConfiguration definition, IPSMSimulationModel model)
         {
             if (descriptor == null || definition == null || model == null) throw new ArgumentNullException("descriptor/definition/model");
             if (descriptor.Kind != MFMModuleKind.Simulation ||
                 !string.Equals(model.ModelId, definition.ModelId, StringComparison.Ordinal))
                 throw new ArgumentException("仿真类型/模型身份不匹配");
-            Descriptor = descriptor; Definition = definition; _model = model;
+            definition.Validate();
+            Descriptor = descriptor; Configuration = definition; _model = model;
         }
         public MFMModuleDescriptor Descriptor { get; private set; }
-        public PSMSimulationDefinition Definition { get; private set; }
+        public PSMSimulationModuleConfiguration Configuration { get; private set; }
         public TimeSpan SimulatedTime { get { return _clock.Elapsed; } }
         public void Initialize()
         {
             lock (_gate)
             {
-                _model.Initialize(Definition.Seed);
+                _model.Initialize(Configuration.Seed);
                 _clock.Reset(); _initialized = true;
             }
         }

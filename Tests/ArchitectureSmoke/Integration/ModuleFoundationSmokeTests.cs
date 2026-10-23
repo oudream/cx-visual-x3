@@ -59,18 +59,17 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 new[] { new MFMComponentReference(MFMComponentRole.Channel, "X"),
                     new MFMComponentReference(MFMComponentRole.Channel, "X") }));
 
-            MCCChannelTypeDescriptor tcp = new MCCChannelTypeDescriptor("tcp.client",
-                MCCChannelTopology.SinglePeer, MCCIOCapabilities.ByteStream);
-            MCCChannelConfiguration channel = new MCCChannelConfiguration(
-                new MCCChannelProfile("tcp01", "tcp.client"), tcp,
-                new MCCTcpClientOptions { Host = "127.0.0.1", Port = 502 });
+            MCCChannelConfiguration channel = new MCCChannelConfiguration {
+                Id = "tcp01", Kind = MCCChannelKind.TcpClient, Host = "127.0.0.1", Port = 502
+            };
             channel.Validate();
-            Reject<ArgumentException>(() => new MCCChannelConfiguration(
-                new MCCChannelProfile("bad", "tcp.client"),
-                new MCCChannelTypeDescriptor("tcp.client", MCCChannelTopology.MultiPeer, MCCIOCapabilities.ByteStream),
-                new MCCTcpClientOptions { Host = "localhost", Port = 502 }));
-            Reject<ArgumentException>(() => new MCCTcpClientOptions { Host = "host", Port = 0 }.Validate());
-            Reject<ArgumentException>(() => new MCCChannelExecutionOptions { ReceiveQueueCapacity = 0 }.Validate());
+            MCCChannelTypeDescriptor tcp = channel.DescribeType();
+            Check(tcp.IO == MCCIOCapabilities.ByteStream &&
+                  tcp.Topology == MCCChannelTopology.SinglePeer, "Channel metadata");
+            Reject<ArgumentException>(() => new MCCChannelConfiguration {
+                Id = "bad", Kind = MCCChannelKind.TcpClient, Port = 0 }.Validate());
+            Reject<ArgumentException>(() => new MCCChannelConfiguration {
+                QueueCapacity = 0 }.Validate());
 
             MCCSubChannelDirectory directory = new MCCSubChannelDirectory("server01");
             MCCSubChannelAddress first = directory.Register("peer01", "127.0.0.1:9000").Address;
@@ -97,8 +96,10 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Reject<ArgumentException>(() => new MPAProtocolBinding("bad", "modbus.tcp", null, "peer01"));
             Reject<ArgumentException>(() => new MPAProtocolBinding("bad", "modbus.tcp").
                 ValidateCompatibility(modbus, null));
-            Reject<ArgumentException>(() => new MPAProtocolDispatchOptions
-                { Mode = MPAProtocolProcessingMode.Serial, MaxConcurrency = 2 }.Validate());
+            Reject<ArgumentException>(() => new MPAProtocolBinding {
+                Id = "bad", Kind = MPAProtocolKind.ModbusTcpDraft,
+                ChannelRef = "tcp01", ProcessingMode = MPAProtocolProcessingMode.Serial,
+                MaxConcurrency = 2 }.Validate());
             MPAProtocolSession session = new MPAProtocolSession(binding, new MCCSubChannelAddress("tcp01"));
             Check(session.State == MPAProtocolSessionState.Created, "Session created");
             session.Start(); Check(session.State == MPAProtocolSessionState.Active, "Session start");
@@ -110,20 +111,34 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 "Sent must not be treated as completed");
 
             MCNPointTable table = new MCNPointTable();
-            table.Add(new MCNPointDefinition("temperature", "holding:100", typeof(ushort)));
-            Reject<ArgumentException>(() => table.Add(new MCNPointDefinition("temperature", "holding:200", typeof(ushort))));
-            MCNPointBinding pointBinding = new MCNPointBinding("temperature", MCNPointTargetKind.Variable, "PLC01.T");
-            MCNConnectorConfiguration connector = new MCNConnectorConfiguration("plc",
-                new[] { channel }, new[] { binding }, table, new[] { pointBinding });
+            MCNPointDefinition point = new MCNPointDefinition("temperature", "holding:100", typeof(ushort)) {
+                ProtocolRef = "mod01", TargetKind = MCNPointTargetKind.Variable, TargetRef = "PLC01.T"
+            };
+            table.Add(point);
+            Reject<ArgumentException>(() => table.Add(
+                new MCNPointDefinition("temperature", "holding:200", typeof(ushort))));
+            MCNConnectorConfiguration connector = new MCNConnectorConfiguration {
+                DisplayName = "PLC", Channels = new List<MCCChannelConfiguration> { channel },
+                Protocols = new List<MPAProtocolBinding> { binding },
+                Points = new List<MCNPointDefinition> { point }
+            };
+            connector.Validate();
             connector.ValidateProtocolCapabilities(new Dictionary<string, MPAProtocolDescriptor>
                 { { "modbus.tcp", modbus } });
-            Reject<ArgumentException>(() => new MCNConnectorConfiguration("broken",
-                new MCCChannelConfiguration[0], new[] { binding }));
-            Reject<ArgumentException>(() => new MCNConnectorConfiguration("broken",
-                new[] { channel }, new[] { binding }, table,
-                new[] { new MCNPointBinding("missing", MCNPointTargetKind.Variable, "PLC01.X") }));
-            MCNConnectorConfiguration noChannel = new MCNConnectorConfiguration("sdk",
-                null, new[] { new MPAProtocolBinding("sdk-protocol", "internal") });
+            Reject<ArgumentException>(() => new MCNConnectorConfiguration {
+                Protocols = new List<MPAProtocolBinding> { binding } }.Validate());
+            Reject<ArgumentException>(() => new MCNConnectorConfiguration {
+                Channels = new List<MCCChannelConfiguration> { channel },
+                Protocols = new List<MPAProtocolBinding> { binding },
+                Points = new List<MCNPointDefinition> {
+                    new MCNPointDefinition { Name="missing", ProtocolRef="notfound",
+                        Address="holding:1",TargetRef="PLC.X" }
+                }}.Validate());
+            MCNConnectorConfiguration noChannel = new MCNConnectorConfiguration {
+                Protocols = new List<MPAProtocolBinding> {
+                    new MPAProtocolBinding("sdk-protocol", "internal")
+                }
+            };
             noChannel.ValidateProtocolCapabilities(new Dictionary<string, MPAProtocolDescriptor>
                 { { "internal", new MPAProtocolDescriptor("internal", "Internal", 1, MPAProtocolCapabilities.Interpret) } });
             Reject<InvalidOperationException>(() => noChannel.ValidateProtocolCapabilities(
@@ -154,12 +169,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
             MFMModuleDescriptor computeDescriptor = new MFMModuleDescriptor("calc", "Calc", MFMModuleKind.Compute);
             PVCComputeModuleProfile compute = new PVCComputeModuleProfile(computeDescriptor);
             Check(compute.Descriptor.Kind == MFMModuleKind.Compute && new Increment().Execute(7) == 8, "Compute");
-            Reject<ArgumentException>(() => new PVCComputeExecutionOptions { MaxConcurrency = 0 }.Validate());
+            Reject<ArgumentException>(() => new PVCComputeModuleConfiguration { MaxConcurrency = 0 }.Validate());
 
             MFMModuleDescriptor simulationDescriptor = new MFMModuleDescriptor("sim", "Sim", MFMModuleKind.Simulation);
             CounterModel model = new CounterModel();
             PSMSimulationModule simulation = new PSMSimulationModule(simulationDescriptor,
-                new PSMSimulationDefinition("axis", TimeSpan.FromMilliseconds(1), 17), model);
+                new PSMSimulationModuleConfiguration { ModelId = "axis", StepMilliseconds = 1, Seed = 17 }, model);
             Reject<InvalidOperationException>(() => simulation.Advance(TimeSpan.FromMilliseconds(1)));
             simulation.Initialize();
             simulation.Advance(TimeSpan.FromMilliseconds(1));

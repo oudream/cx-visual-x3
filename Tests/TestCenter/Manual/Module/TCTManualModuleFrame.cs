@@ -65,10 +65,10 @@ namespace CxVisual.TestCenter.UI
             _service = new MHSConfigService(root);
             // 原服务的 RegisterAssembly 是真实 Schema 注册与冲突检测，非新增模块 Catalog。
             _service.RegisterAssembly(typeof(MFMModuleIdentityConfig).Assembly);
-            _service.RegisterAssembly(typeof(MCNConnectorEditableConfig).Assembly);
-            _service.RegisterAssembly(typeof(PVCComputeEditableConfig).Assembly);
-            _service.RegisterAssembly(typeof(PSMSimulationEditableConfig).Assembly);
-            _service.RegisterAssembly(typeof(MLCServiceEditableConfig).Assembly);
+            _service.RegisterAssembly(typeof(MCNConnectorConfiguration).Assembly);
+            _service.RegisterAssembly(typeof(PVCComputeModuleConfiguration).Assembly);
+            _service.RegisterAssembly(typeof(PSMSimulationModuleConfiguration).Assembly);
+            _service.RegisterAssembly(typeof(MLCServiceModuleConfiguration).Assembly);
             _moduleKind.ItemsSource = Enum.GetValues(typeof(MFMModuleKind));
             _moduleKind.SelectedItem = MFMModuleKind.Connector;
 
@@ -166,21 +166,21 @@ namespace CxVisual.TestCenter.UI
                 switch (kind)
                 {
                     case MFMModuleKind.Connector:
-                        Attach(_service.ForScope("module", id).Open<MCNConnectorEditableConfig>(), id, kind,
+                        Attach(_service.ForScope("module", id).Open<MCNConnectorConfiguration>(), id, kind,
                             model => "Channel " + model.Channels.Count + " / Protocol " + model.Protocols.Count +
                                 " / Points " + model.Points.Count);
                         break;
                     case MFMModuleKind.Compute:
-                        Attach(_service.ForScope("module", id).Open<PVCComputeEditableConfig>(), id, kind,
-                            model => { model.ToOptions(); return "Compute 资源配置合法"; });
+                        Attach(_service.ForScope("module", id).Open<PVCComputeModuleConfiguration>(), id, kind,
+                            model => { model.Validate(); return "Compute 资源配置合法"; });
                         break;
                     case MFMModuleKind.Simulation:
-                        Attach(_service.ForScope("module", id).Open<PSMSimulationEditableConfig>(), id, kind,
-                            model => { model.ToDefinition(); return "Simulation 模型定义合法"; });
+                        Attach(_service.ForScope("module", id).Open<PSMSimulationModuleConfiguration>(), id, kind,
+                            model => { model.Validate(); return "Simulation 模型定义合法"; });
                         break;
                     case MFMModuleKind.Service:
-                        Attach(_service.ForScope("module", id).Open<MLCServiceEditableConfig>(), id, kind,
-                            model => { model.ToOptions(); return "Service 生命周期配置合法"; });
+                        Attach(_service.ForScope("module", id).Open<MLCServiceModuleConfiguration>(), id, kind,
+                            model => { model.Validate(); return "Service 生命周期配置合法"; });
                         break;
                     default:
                         throw new InvalidOperationException("未知模块分类");
@@ -199,7 +199,7 @@ namespace CxVisual.TestCenter.UI
         }
 
         private void Attach<T>(MHSConfigSection<T> section, string id, MFMModuleKind kind,
-            Func<T, string> extra) where T : MFMModuleEditableConfig, new()
+            Func<T, string> extra) where T : MFMModuleConfiguration, new()
         {
             MPWConfigEditorControl<T> next = new MPWConfigEditorControl<T>(section);
             IDisposable old = _activeEditor;

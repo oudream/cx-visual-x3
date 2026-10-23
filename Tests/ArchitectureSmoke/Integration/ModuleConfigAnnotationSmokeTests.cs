@@ -19,7 +19,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         {
             if (!condition) throw new InvalidOperationException("MODULE.CONFIG " + reason);
         }
-        private static void CheckIssue(MCNConnectorEditableConfig model, string code)
+        private static void CheckIssue(MCNConnectorConfiguration model, string code)
         {
             FCMConfigValidationReport report = FCMConfigValidationEngine.Validate(model, "test");
             Check(!report.IsValid && report.Issues.Any(x => x.Code == code),
@@ -28,8 +28,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
 
         public static void Run()
         {
-            Type[] types = { typeof(MFMModuleIdentityConfig), typeof(MCNConnectorEditableConfig),
-                typeof(PVCComputeEditableConfig), typeof(PSMSimulationEditableConfig), typeof(MLCServiceEditableConfig) };
+            Type[] types = { typeof(MFMModuleIdentityConfig), typeof(MCNConnectorConfiguration),
+                typeof(PVCComputeModuleConfiguration), typeof(PSMSimulationModuleConfiguration), typeof(MLCServiceModuleConfiguration) };
             HashSet<string> sectionIds = new HashSet<string>(StringComparer.Ordinal);
             foreach (Type type in types)
             {
@@ -42,32 +42,38 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "No auto-editor metadata for: " + type);
             }
 
-            MCNConnectorEditableConfig connector = new MCNConnectorEditableConfig {
+            MCNConnectorConfiguration connector = new MCNConnectorConfiguration {
                 DisplayName = "PLC 接入",
-                Channels = new List<MCNEditableChannel> {
-                    new MCNEditableChannel { Id = "tcp01", Kind = MCNEditableChannelKind.TcpClient,
+                Channels = new List<MCCChannelConfiguration> {
+                    new MCCChannelConfiguration { Id = "tcp01", Kind = MCCChannelConfigurationKind.TcpClient,
                         Host = "127.0.0.1", Port = 502 }
                 },
-                Protocols = new List<MCNEditableProtocol> {
-                    new MCNEditableProtocol { Id = "mod01", Kind = MCNEditableProtocolKind.ModbusTcpDraft,
+                Protocols = new List<MPAProtocolBinding> {
+                    new MPAProtocolBinding { Id = "mod01", Kind = MPAProtocolBindingKind.ModbusTcpDraft,
                         ChannelRef = "tcp01" }
                 },
-                Points = new List<MCNEditablePoint> {
-                    new MCNEditablePoint { Name = "T", ProtocolRef = "mod01", Address = "holding:100",
+                Points = new List<MCNPointDefinition> {
+                    new MCNPointDefinition { Name = "T", ProtocolRef = "mod01", Address = "holding:100",
                         TargetRef = "PLC.T" }
                 }
             };
             Check(FCMConfigValidationEngine.Validate(connector, "test").IsValid,
                 "Valid connector must pass the same schema validator as UI");
-            connector.Channels.Add(new MCNEditableChannel { Id = "tcp01" });
+            // UI 与运行读取的是同一正式配置类，不存在 EditableXXX -> Options 的转换。
+            Check(connector.Channels[0].DescribeType().IO == MCCIOCapabilities.ByteStream,
+                "Channel config directly provides runtime metadata");
+            Check(connector.Protocols[0].ProtocolTypeId == "modbus.tcp" &&
+                  connector.Points[0].ValueType == "UInt16", "Protocol/Point single config");
+
+            connector.Channels.Add(new MCCChannelConfiguration { Id = "tcp01" });
             CheckIssue(connector, "CHANNEL_DUPLICATE_OR_EMPTY");
             connector.Channels.RemoveAt(1);
             connector.Protocols[0].ChannelRef = "missing";
             CheckIssue(connector, "CHANNEL_REFERENCE");
             connector.Protocols[0].ChannelRef = "tcp01";
-            connector.Protocols[0].Kind = MCNEditableProtocolKind.ModbusRtuDraft;
+            connector.Protocols[0].Kind = MPAProtocolBindingKind.ModbusRtuDraft;
             CheckIssue(connector, "PROTOCOL_IO_MISMATCH");
-            connector.Protocols[0].Kind = MCNEditableProtocolKind.ModbusTcpDraft;
+            connector.Protocols[0].Kind = MPAProtocolBindingKind.ModbusTcpDraft;
             connector.Points[0].ProtocolRef = "missing";
             CheckIssue(connector, "POINT_PROTOCOL_MISSING");
             connector.Points[0].ProtocolRef = "mod01";
@@ -79,10 +85,10 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 string scopeId = "module-test-" + Guid.NewGuid().ToString("N");
                 MHSConfigService service = new MHSConfigService(root);
                 service.RegisterAssembly(typeof(MFMModuleIdentityConfig).Assembly);
-                service.RegisterAssembly(typeof(MCNConnectorEditableConfig).Assembly);
-                service.RegisterAssembly(typeof(PVCComputeEditableConfig).Assembly);
-                service.RegisterAssembly(typeof(PSMSimulationEditableConfig).Assembly);
-                service.RegisterAssembly(typeof(MLCServiceEditableConfig).Assembly);
+                service.RegisterAssembly(typeof(MCNConnectorConfiguration).Assembly);
+                service.RegisterAssembly(typeof(PVCComputeModuleConfiguration).Assembly);
+                service.RegisterAssembly(typeof(PSMSimulationModuleConfiguration).Assembly);
+                service.RegisterAssembly(typeof(MLCServiceModuleConfiguration).Assembly);
                 Check(service.FindRegisteredSection("CxVisual.Module.Connector") != null,
                     "Module schema registration");
                 MHSConfigSection<MFMModuleIdentityConfig> identity =
@@ -92,8 +98,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     .GetAwaiter().GetResult();
                 Check(record.Success && identity.GetLatestSaved().Kind == MFMModuleKind.Connector,
                     "Module kind persistence");
-                MHSConfigSection<MCNConnectorEditableConfig> module =
-                    service.ForScope("module", scopeId).Open<MCNConnectorEditableConfig>();
+                MHSConfigSection<MCNConnectorConfiguration> module =
+                    service.ForScope("module", scopeId).Open<MCNConnectorConfiguration>();
                 MHSConfigCommitResult saved = module.UpdateAsync(model => {
                     model.DisplayName = connector.DisplayName;
                     model.Channels = connector.Channels;
@@ -104,8 +110,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "MHS persisted annotated module options");
                 // 从新 MHS 服务重新打开真实磁盘修订，确保没有额外 ModuleConfigStore。
                 MHSConfigService reopened = new MHSConfigService(root);
-                MCNConnectorEditableConfig restored = reopened.ForScope("module", scopeId)
-                    .Open<MCNConnectorEditableConfig>().GetLatestSaved();
+                MCNConnectorConfiguration restored = reopened.ForScope("module", scopeId)
+                    .Open<MCNConnectorConfiguration>().GetLatestSaved();
                 Check(restored.Channels.Count == 1 && restored.Protocols.Count == 1 &&
                     restored.Points.Count == 1 && restored.Points[0].TargetRef == "PLC.T",
                     "Module configuration disk roundtrip");
@@ -116,18 +122,18 @@ namespace CxVisual.Tests.ArchitectureSmoke
             {
                 if (Directory.Exists(root)) Directory.Delete(root, true);
             }
-            PVCComputeEditableConfig compute = new PVCComputeEditableConfig { MaxConcurrency = 3 };
-            Check(compute.ToOptions().MaxConcurrency == 3, "Compute options");
+            PVCComputeModuleConfiguration compute = new PVCComputeModuleConfiguration { MaxConcurrency = 3 };
+            Check(compute.MaxConcurrency == 3, "Compute options");
             Check(FCMConfigValidationEngine.Validate(compute, "test").IsValid, "Compute schema");
             compute.MaxConcurrency = 0;
             Check(!FCMConfigValidationEngine.Validate(compute, "test").IsValid, "Compute Range");
 
-            PSMSimulationEditableConfig simulation = new PSMSimulationEditableConfig();
-            Check(simulation.ToDefinition().FixedStep == TimeSpan.FromMilliseconds(10), "Simulation definition");
+            PSMSimulationModuleConfiguration simulation = new PSMSimulationModuleConfiguration();
+            Check(TimeSpan.FromMilliseconds(simulation.StepMilliseconds) == TimeSpan.FromMilliseconds(10), "Simulation definition");
             Check(FCMConfigValidationEngine.Validate(simulation, "test").IsValid, "Simulation schema");
 
-            MLCServiceEditableConfig serviceConfig = new MLCServiceEditableConfig();
-            Check(serviceConfig.ToOptions().MaxConcurrentRequests == 1, "Service options");
+            MLCServiceModuleConfiguration serviceConfig = new MLCServiceModuleConfiguration();
+            Check(serviceConfig.MaxConcurrentRequests == 1, "Service options");
             Check(FCMConfigValidationEngine.Validate(serviceConfig, "test").IsValid, "Service schema");
 
             Console.WriteLine("MODULE.CONFIG: annotated schema/editor metadata + MHS persisted roundtrip PASS");

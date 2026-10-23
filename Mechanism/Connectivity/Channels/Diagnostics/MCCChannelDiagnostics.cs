@@ -49,22 +49,4 @@ namespace CxVisual.Mechanism.Connectivity
         public string LastError { get; private set; }
     }
 
-    public sealed class MCCReconnectPolicy
-    {
-        public int MaxAttempts { get; set; } = 10;
-        public TimeSpan InitialDelay { get; set; } = TimeSpan.FromMilliseconds(250);
-        public double Backoff { get; set; } = 2.0;
-        public TimeSpan MaxDelay { get; set; } = TimeSpan.FromSeconds(30);
-        public void Validate()
-        {
-            if (MaxAttempts < 0 || InitialDelay < TimeSpan.Zero || MaxDelay < InitialDelay ||
-                Backoff < 1 || double.IsNaN(Backoff) || double.IsInfinity(Backoff))
-                throw new ArgumentException("重连策略无效");
-        }
-        public bool ShouldRetry(int attemptsMade)
-        {
-            if (attemptsMade < 0) throw new ArgumentOutOfRangeException("attemptsMade");
-            return MaxAttempts == 0 || attemptsMade < MaxAttempts;
-        }
-    }
 }

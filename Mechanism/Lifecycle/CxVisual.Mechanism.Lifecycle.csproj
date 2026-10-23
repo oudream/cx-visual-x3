@@ -22,7 +22,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Modules\MLCServiceModuleContracts.cs"/><Compile Include="Modules\MLCServiceModuleBase.cs"/><Compile Include="Properties\AssemblyInfo.cs"/>
-    <Compile Include="Modules\MLCServiceEditableConfig.cs" /></ItemGroup>
+    <Compile Include="Modules\MLCServiceModuleConfiguration.cs" /></ItemGroup>
   <ItemGroup>
 
     <ProjectReference Include="..\..\Mechanism\Core\CxVisual.Mechanism.Core.csproj"><Project>{0822C861-81CD-5615-9428-D7AD3CC83AF1}</Project><Name>CxVisual.Mechanism.Core</Name></ProjectReference>

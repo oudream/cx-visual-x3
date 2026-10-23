@@ -47,7 +47,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Modules\MFMModuleComposition.cs"/><Compile Include="Properties\AssemblyInfo.cs"/>
-    <Compile Include="Modules\MFMModuleEditableConfig.cs" />
+    <Compile Include="Modules\MFMModuleConfiguration.cs" />
     <Compile Include="Modules\MFMModuleIdentityConfig.cs" /><Compile Include="Engineering\MEMNode.cs"/><Compile Include="Engineering\MRCVisualItem.cs"/><Compile Include="Engineering\MEMEngineeringSession.cs"/><Compile Include="Engineering\MTCEditSession.cs"/><Compile Include="Engineering\MEMFileProjectStore.cs"/></ItemGroup>
   <ItemGroup>
 

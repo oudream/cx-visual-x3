@@ -35,25 +35,4 @@ namespace CxVisual.Mechanism.Connectivity
         public bool Supports(MPAProtocolCapabilities flag) { return (Capabilities & flag) == flag; }
     }
 
-    public sealed class MPAProtocolDispatchOptions
-    {
-        public MPAProtocolProcessingMode Mode { get; set; } = MPAProtocolProcessingMode.Serial;
-        public MPAProtocolSessionScope SessionScope { get; set; } = MPAProtocolSessionScope.Binding;
-        public int MaxConcurrency { get; set; } = 1;
-        public int QueueCapacity { get; set; } = 128;
-        public int QueuedBytesLimit { get; set; } = 4 * 1024 * 1024;
-        public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(5);
-        public string ExecutionGroupRef { get; set; }
-        public void Validate()
-        {
-            if (!Enum.IsDefined(typeof(MPAProtocolProcessingMode), Mode) ||
-                !Enum.IsDefined(typeof(MPAProtocolSessionScope), SessionScope) ||
-                MaxConcurrency < 1 || QueueCapacity < 1 || QueuedBytesLimit < 1 || Timeout <= TimeSpan.Zero)
-                throw new ArgumentException("规约处理执行策略无效");
-            if ((Mode == MPAProtocolProcessingMode.Serial || Mode == MPAProtocolProcessingMode.Inline) &&
-                MaxConcurrency != 1) throw new ArgumentException("Inline/Serial 不允许声明多实例并发");
-            if (Mode == MPAProtocolProcessingMode.Runtime && string.IsNullOrWhiteSpace(ExecutionGroupRef))
-                throw new ArgumentException("Runtime 处理模式必须指定已有执行组");
-        }
-    }
 }

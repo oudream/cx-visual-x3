@@ -1,21 +1,23 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using CxVisual.Foundation.Data.Configuration;
 
 namespace CxVisual.Mechanism.Core.Modules
 {
-    // 模块配置元数据直接使用现有 FCM/MHS 的 POCO + Attribute。
-    // ModuleId 来自 MHS ScopeId/MEM 工程身份，不在配置里复制第二份 Id。
-    public abstract class MFMModuleEditableConfig
+    // 唯一模块配置基类：FCM/MHS/MPW 和运行模块读取同一配置定义。
+    // ModuleId 使用 MEM/MHS Scope 身份，不在此维护第二个 Id。
+    public abstract class MFMModuleConfiguration
     {
         [FCMConfigItem("模块显示名称", Order = 1, Category = "基本信息")]
+        [Required]
         public string DisplayName { get; set; } = "新模块";
 
         [FCMConfigItem("启用", Order = 2, Category = "基本信息")]
         public bool Enabled { get; set; } = true;
 
         [FCMConfigItem("能力 Id 列表", Order = 3, Category = "基本信息",
-            Description = "引用已有 MOC Capability；不会建立第二个模块能力目录")]
+            Description = "引用现有 MOC Capability；无独立 ModuleCatalog")]
         public List<string> CapabilityIds { get; set; } = new List<string>();
 
         public MFMModuleDescriptor Describe(string moduleId, MFMModuleKind kind)
