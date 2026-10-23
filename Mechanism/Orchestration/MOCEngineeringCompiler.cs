@@ -1697,6 +1697,8 @@ namespace CxVisual.Mechanism.Orchestration
                     case MOLControlKind.Wait:
                     {
                         if(block.Wait==null)throw new InvalidOperationException("moc.wait_missing");
+                        if(block.Wait.Event!=null&&!block.Wait.Event.IsLegacyTask)
+                            throw new InvalidOperationException("moc.event_delivery_not_supported");
                         int milliseconds=block.Wait.DurationMilliseconds;
                         string eventInput=block.Wait.EventInput;
                         string capability="moc.internal.wait."+NewId(block);
