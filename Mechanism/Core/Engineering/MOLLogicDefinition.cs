@@ -1617,6 +1617,45 @@ namespace CxVisual.Mechanism.Core
             if(bytes.Length>4*1024*1024)throw new InvalidDataException("wiring.payload_budget");
             return bytes;
         }
+        /// <summary>只消费定义Schema列明的属性，禁止旧读取器把新语义静默丢弃。</summary>
+        private static void ValidateSchemaFields(XElement root)
+        {
+            foreach(XElement e in root.DescendantsAndSelf())
+            {
+                string parent=e.Parent==null?"":e.Parent.Name.LocalName;
+                string[] fields;
+                switch(e.Name.LocalName)
+                {
+                    case "MOL":fields=new[]{"v","entry"};break;
+                    case "Blocks":case "Links":case "Ports":case "StateMachines":
+                    case "States":case "Transitions":case "Policies":case "Parameters":
+                    case "Groups":case "FlowInputs":case "FlowOutputs":
+                        fields=new string[0];break;
+                    case "Block":fields=parent=="Parameters"?
+                        new[]{"id"}:new[]{"id","cap","x","y"};break;
+                    case "Port":fields=parent=="Ports"?
+                        new[]{"id","dir","type","kind","mul","required","unit","frame","time"}:
+                        new[]{"name","block","member"};break;
+                    case "Link":fields=new[]{"id","kind","source","out","target","in",
+                        "condition","order"};break;
+                    case "Machine":fields=new[]{"block"};break;
+                    case "State":fields=new[]{"id","region","parent","initial","onEntry","onExit"};break;
+                    case "Transition":fields=new[]{"from","event","to","priority"};break;
+                    case "Guard":fields=e.Attribute("op")!=null?
+                        new[]{"op"}:new[]{"source","name","compare","expected"};break;
+                    case "Policy":fields=new[]{"block","attempts","delay","timeout",
+                        "idempotent","group"};break;
+                    case "Value":fields=new[]{"port","text"};break;
+                    case "Group":fields=new[]{"id","name"};break;
+                    case "Member":fields=new[]{"id"};break;
+                    default:throw new InvalidDataException("wiring.unknown_field:"+e.Name.LocalName);
+                }
+                if(e.Name.NamespaceName.Length!=0||e.Attributes().Any(a=>
+                    a.Name.NamespaceName.Length!=0||
+                    !fields.Contains(a.Name.LocalName,StringComparer.Ordinal)))
+                    throw new InvalidDataException("wiring.unknown_field:"+e.Name.LocalName);
+            }
+        }
         public static MOLWiringDefinition Deserialize(byte[] bytes,int expectedSchema=0)
         {
             if(expectedSchema!=0&&expectedSchema!=SchemaVersion&&
@@ -1638,6 +1677,7 @@ namespace CxVisual.Mechanism.Core
                         x.Name!="StateMachines"&&x.Name!="FlowInputs"&&x.Name!="FlowOutputs")||
                     root.Elements().GroupBy(x=>x.Name).Any(x=>x.Count()!=1))
                     throw new InvalidDataException("wiring.schema");
+                ValidateSchemaFields(root);
                 string rawEntry=(string)root.Attribute("entry");
                 Guid entry=root.Element("Blocks").Elements("Block").Any()?
                     ReadGuid(root,"entry"):
@@ -1769,8 +1809,11 @@ namespace CxVisual.Mechanism.Core
                     }
                     return result;
                 };
-                return new MOLWiringDefinition(entry,blocks,ports,links,positions,groups,parameters,
-                    policies,stateMachines,readPublic("FlowInputs"),readPublic("FlowOutputs"));
+                var definition=new MOLWiringDefinition(entry,blocks,ports,links,positions,groups,
+                    parameters,policies,stateMachines,readPublic("FlowInputs"),readPublic("FlowOutputs"));
+                if(Version(definition)!=int.Parse(version,CultureInfo.InvariantCulture))
+                    throw new InvalidDataException("wiring.schema_semantics_mismatch");
+                return definition;
             }
         }
         private static Guid ReadGuid(XElement x,string name)
