@@ -246,7 +246,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
             try
             {
                 session.SaveAs(path);
-                using(var opened=MEMEngineering.Open(path))
+                var opened=MEMEngineering.Open(path);
+                try
                 {
                     var logic=MOLLogicCodec.Get(opened.GetSnapshot().Find(page.RootContent.Id));
                     Check(logic.Root.Children[0].Id==region.Id&&
@@ -328,6 +329,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     }
                     finally{engine.StopAsync(true).GetAwaiter().GetResult();}
                 }
+                finally{opened.Close(true);}
             }
             finally
             {
