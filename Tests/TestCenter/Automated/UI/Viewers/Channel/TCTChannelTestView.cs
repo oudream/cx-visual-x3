@@ -32,7 +32,7 @@ namespace CxVisual.TestCenter.UI
         {
             Clear();
             Header("Channel / Protocol / TX-RX / Virtual Session",
-                "经Run/Attempt及SHA256核验的生产Connectivity原始帧、CRC解码、错误和重连记录。仅Virtual模式，非Real设备。");
+                "经Run/Attempt及SHA256核验的Connectivity原始帧、发送错误与断线记录。CRC与分帧归Protocol测试，不再由Channel提供解码副本。非Real设备。");
             foreach (TCTTestObservation observation in result.Observations.Where(o =>
                 string.Equals(o.Kind, Kind, StringComparison.OrdinalIgnoreCase)))
             {
@@ -101,7 +101,7 @@ namespace CxVisual.TestCenter.UI
                             (problem.Length == 0 ? "" : "\nError: " + problem);
                         string utc = (string)frame.Attribute("utc") ?? "";
                         string decoded = problem.Length > 0 ? "ERROR: " + problem :
-                            payload.Length == 0 ? "等待解码" : payload;
+                            payload.Length == 0 ? "原始传输（Protocol独立解析）" : payload;
                         Grid row = ChannelRow(utc, direction, channel, sequence, hex, decoded, false);
                         Button frameLink = new Button {
                             Content = row, HorizontalContentAlignment = HorizontalAlignment.Stretch,

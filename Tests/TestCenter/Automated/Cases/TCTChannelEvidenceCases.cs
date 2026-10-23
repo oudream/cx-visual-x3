@@ -109,7 +109,7 @@ namespace CxVisual.TestCenter.Cases
             byte[] proof = TCTChannelEvidence.Serialize(
                 pair.SelectMany(x => x.ReadFrames()).ToArray());
             XDocument forged = XDocument.Parse(Encoding.UTF8.GetString(proof));
-            forged.Root.SetAttributeValue("schema", 2);
+            forged.Root.SetAttributeValue("schema", 99);
             test.AssertThrows<InvalidDataException>(() =>
                 TCTChannelEvidence.Read(Encoding.UTF8.GetBytes(forged.ToString())),
                 "未知Channel证据Schema拒绝");

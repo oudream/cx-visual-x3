@@ -23,8 +23,11 @@ namespace CxVisual.TestCenter.Models
                 .ThenBy(x => x.Sequence).ToArray();
             if (items.Length == 0 || items.Length > 5000)
                 throw new InvalidDataException("Empty/oversized Channel evidence");
+            // v2：Channel只保留原始IO和错误记录；Protocol独立解析。
+            if (items.Any(x => x.DecodedPayload != null))
+                throw new InvalidDataException("Channel原始证据不允许保存Protocol解码副本");
             XElement root = new XElement("ChannelEvidence",
-                new XAttribute("schema", 1), new XAttribute("mode", "Virtual"));
+                new XAttribute("schema", 2), new XAttribute("mode", "RawChannel"));
             foreach (MCCChannelFrame frame in items)
                 root.Add(new XElement("Frame",
                     new XAttribute("session", frame.SessionId),
@@ -34,9 +37,7 @@ namespace CxVisual.TestCenter.Models
                     new XAttribute("direction", frame.Direction),
                     new XAttribute("correlation", frame.CorrelationId),
                     new XAttribute("error", frame.Error),
-                    new XAttribute("raw", Convert.ToBase64String(frame.Bytes)),
-                    frame.DecodedPayload == null ? null :
-                        new XAttribute("decoded", Convert.ToBase64String(frame.DecodedPayload))));
+                    new XAttribute("raw", Convert.ToBase64String(frame.Bytes))));
             byte[] bytes = Encoding.UTF8.GetBytes(new XDocument(root).ToString(SaveOptions.DisableFormatting));
             Read(bytes);
             return bytes;
@@ -53,9 +54,13 @@ namespace CxVisual.TestCenter.Models
                 MaxCharactersInDocument = MaxBytes, IgnoreWhitespace = true }))
                 doc = XDocument.Load(reader);
             XElement root = doc.Root;
-            if (root == null || root.Name != "ChannelEvidence" ||
-                (string)root.Attribute("schema") != "1" ||
-                (string)root.Attribute("mode") != "Virtual")
+            bool rawV2 = root != null && root.Name == "ChannelEvidence" &&
+                (string)root.Attribute("schema") == "2" &&
+                (string)root.Attribute("mode") == "RawChannel";
+            bool legacyV1 = root != null && root.Name == "ChannelEvidence" &&
+                (string)root.Attribute("schema") == "1" &&
+                (string)root.Attribute("mode") == "Virtual";
+            if (!rawV2 && !legacyV1)
                 throw new InvalidDataException("Unknown Channel evidence schema/mode");
             XElement[] frames = root.Elements("Frame").ToArray();
             if (frames.Length == 0 || frames.Length > 5000 || root.Elements().Count() != frames.Length)
@@ -90,15 +95,17 @@ namespace CxVisual.TestCenter.Models
                         payload = Convert.FromBase64String((string)frame.Attribute("decoded"));
                 }
                 catch (FormatException error) { throw new InvalidDataException("Invalid Channel byte encoding", error); }
-                if (data.Length == 0 || data.Length > 65536)
+                if ((data.Length == 0 && direction != "Error") || data.Length > 65536)
                     throw new InvalidDataException("Invalid Channel byte budget");
-                if (direction == "Rx")
+                if (rawV2 && payload != null)
+                    throw new InvalidDataException("原始 Channel 证据不得包含协议解码数据");
+                if (legacyV1 && direction == "Rx")
                 {
                     if (payload == null || !codec.Decode(data).SequenceEqual(payload))
-                        throw new InvalidDataException("RX payload mismatches production codec");
+                        throw new InvalidDataException("Legacy RX 解码负载不匹配");
                 }
                 else if (payload != null)
-                    throw new InvalidDataException("Only verified RX may contain decoded payload");
+                    throw new InvalidDataException("Only legacy verified RX may contain decoded payload");
                 if (direction == "Error" && string.IsNullOrWhiteSpace((string)frame.Attribute("error")))
                     throw new InvalidDataException("Error frame cannot be missing error details");
             }
