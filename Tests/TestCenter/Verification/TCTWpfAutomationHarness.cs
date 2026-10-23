@@ -204,8 +204,13 @@ namespace CxVisual.TestCenter.UI
                 }));
                 // 空集合没有标量字段，但“添加规约点”必须是真正可操作的MPW集合命令。
                 AutomationElement pointAdd = Find(root, "MPW.Collection.Add.Protocol.Points");
-                if (pointAdd.GetCurrentPattern(InvokePattern.Pattern) == null)
+                InvokePattern insertPoint = pointAdd.GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
+                if (insertPoint == null)
                     throw new InvalidOperationException("PointTable 正式集合新增命令不可操作");
+                insertPoint.Invoke();
+                AutomationElement pointName = Find(root, "MPW.Edit.Protocol.Points[0].Name");
+                if (pointName.GetCurrentPattern(ValuePattern.Pattern) == null)
+                    throw new InvalidOperationException("新增点表后Name没有真实可编辑输入框");
                 window.Dispatcher.Invoke(new Action(() => {
                     System.Windows.Controls.TabControl tabs =
                         window.DocumentHost.Content as System.Windows.Controls.TabControl;
@@ -217,8 +222,51 @@ namespace CxVisual.TestCenter.UI
                         throw new InvalidOperationException("DataMapping 分页未被选中");
                 }));
                 AutomationElement mappingAdd = Find(root, "MPW.Collection.Add.Protocol.Mappings");
-                if (mappingAdd.GetCurrentPattern(InvokePattern.Pattern) == null)
+                InvokePattern insertMapping = mappingAdd.GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
+                if (insertMapping == null)
                     throw new InvalidOperationException("DataMapping 正式集合新增命令不可操作");
+                insertMapping.Invoke();
+                // 缺失PointRef/TargetRef时正式FCM校验必须拒绝，不能保存空映射。
+                window.Dispatcher.Invoke(new Action(() => {
+                    System.Windows.Controls.TabControl tabs =
+                        window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                    TCTManualModuleFrame frame = tabs.Items
+                        .OfType<System.Windows.Controls.TabItem>().Select(x => x.Content)
+                        .OfType<TCTManualModuleFrame>().Single();
+                    frame.ValidateCurrent();
+                    if (!frame.StatusMessage.Contains("配置存在"))
+                        throw new InvalidOperationException("空DataMapping没有被正式FCM拒绝");
+                }));
+                AutomationElement pointReference = Find(root, "MPW.Reference.Protocol.Mappings[0].PointRef");
+                ValuePattern refValue = pointReference.GetCurrentPattern(ValuePattern.Pattern) as ValuePattern;
+                if (refValue == null)
+                    throw new InvalidOperationException("PointRef不存在可编辑的正式点表候选");
+                pointReference.SetFocus();
+                refValue.SetValue("point01");
+                AutomationElement targetRef = Find(root, "MPW.Edit.Protocol.Mappings[0].TargetRef");
+                targetRef.SetFocus();
+                ValuePattern targetValue = targetRef.GetCurrentPattern(ValuePattern.Pattern) as ValuePattern;
+                if (targetValue == null)
+                    throw new InvalidOperationException("DataMapping目标引用不能编辑");
+                targetValue.SetValue("line/temperature");
+                Find(root, "MPW.Edit.Protocol.Mappings[0].Required").SetFocus();
+                window.Dispatcher.Invoke(new Action(() => {
+                    System.Windows.Controls.TabControl tabs =
+                        window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                    TCTManualModuleFrame frame = tabs.Items
+                        .OfType<System.Windows.Controls.TabItem>().Select(x => x.Content)
+                        .OfType<TCTManualModuleFrame>().Single();
+                    MCNConnectorConfiguration draft = frame.ConnectorDraftSnapshot();
+                    if (draft.Protocol.Points.Count != 1 || draft.Protocol.Mappings.Count != 1 ||
+                        draft.Protocol.Mappings[0].PointRef != "point01" ||
+                        draft.Protocol.Mappings[0].TargetRef != "line/temperature")
+                        throw new InvalidOperationException("MPW编辑后的映射未进入同一MHS草稿");
+                    frame.ValidateCurrent();
+                    if (frame.StatusMessage.Contains("配置存在"))
+                        throw new InvalidOperationException("完成真实PointRef和TargetRef后仍无法通过Schema校验：" +
+                            frame.StatusMessage);
+                }));
+                SaveScreenshot(window, "TestCenter-Protocol-P0-PointMapping.png");
                 window.Dispatcher.Invoke(new Action(() => {
                     System.Windows.Controls.TabControl tabs =
                         window.DocumentHost.Content as System.Windows.Controls.TabControl;
@@ -299,6 +347,20 @@ namespace CxVisual.TestCenter.UI
                 if (!reloaded) Thread.Sleep(100);
             }
             if (!reloaded) throw new InvalidOperationException("MHS re-open verification failed: " + kind);
+            if (kind == CxVisual.Mechanism.Core.Modules.MFMModuleKind.Connector)
+                window.Dispatcher.Invoke(new Action(() => {
+                    System.Windows.Controls.TabControl tabs =
+                        window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                    TCTManualModuleFrame frame = tabs.Items
+                        .OfType<System.Windows.Controls.TabItem>().Select(x => x.Content)
+                        .OfType<TCTManualModuleFrame>().Single();
+                    MCNConnectorConfiguration snapshot = frame.ConnectorDraftSnapshot();
+                    if (snapshot.Protocol.Points.Count != 1 ||
+                        snapshot.Protocol.Mappings.Count != 1 ||
+                        snapshot.Protocol.Mappings[0].PointRef != "point01" ||
+                        snapshot.Protocol.Mappings[0].TargetRef != "line/temperature")
+                        throw new InvalidOperationException("真实MHS保存重开未保留PointTable/DataMapping");
+                }));
             if (kind == CxVisual.Mechanism.Core.Modules.MFMModuleKind.Connector)
                 window.Dispatcher.Invoke(new Action(() => {
                     System.Windows.Controls.TabControl tabs =
