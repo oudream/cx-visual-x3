@@ -91,3 +91,11 @@
 - Connector 通过 `PayloadReceivedFrom` 同时提供来源地址与解码数据，允许 Server 依据 SubChannel 定向响应；旧无地址 `PayloadReceived` 仍提供兼容观察，但不作为多对端定向业务依据。
 - `MPALengthFrameProtocol`、`MPAModbusTcpProtocol`、`MPAModbusRtuProtocol` 实现 `IMPAProtocolSessionCleanup`；RTU 作为 SharedBus 使用整体清空，不人为创造多个站号子通道。
 - OS TCP/UDP Loopback 加强为一个 Server 同时接入两个 Client 的验证，并验证不同 Endpoint / SubChannel 及准确回送；这仍不是外部工业设备/高并发/长时压力验收。
+
+
+## 8. Channel 有界诊断证据（本轮源码增量，CI 以对应 SHA 为准）
+
+- `MCCChannelBase` 的 `ReadFrames()` 是诊断证据缓存，不是生产接收队列。之前仅限制 10000 帧，无累计字节上限；单条大报文会导致诊断缓存扩张。
+- 统一基类使用 FIFO 有界证据队列，最多 10000 帧、保留字节合计最多 4 MiB；单条报文超过 256 KiB 时，仅省略诊断载荷副本，`MCCChannelFrame.Error` 显式附带原始长度及省略原因，不改动 `Received` 事件和真实发包内容。
+- `ModuleChannelTransportSmokeTests.BoundedEvidence` 增加大报文原样接收、元数据省略、连续收包后累计留存上限与最新帧保留反证。该测试为进程内机制回归，不代表实际 2D/CT 图像大数据通道性能或硬件 HIL；使用大型图像时仍应走既有数据 Handle 与背压约束。
+- 本轮只收敛诊断留存内存边界；`QueueCapacity` / `ReceiveByteBudget` 对生产收包背压的实际契约、`ConnectTimeoutMs` 的运行应用、Serial 设备 HIL 和完整 Modbus 事务均未因本改动宣称完成。

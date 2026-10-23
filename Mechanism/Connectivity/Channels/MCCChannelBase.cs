@@ -22,7 +22,13 @@ namespace CxVisual.Mechanism.Connectivity
     public abstract class MCCChannelBase : IMCCChannelTransport
     {
         private readonly object _gate = new object();
-        private readonly List<MCCChannelFrame> _frames = new List<MCCChannelFrame>();
+        // 通道只保存有限的诊断证据，不占用生产接收队列或协议缓存。
+        // 大报文仍完整进入收发及上层事件，超过单条证据上限时仅省略诊断副本。
+        private const int MaxEvidenceFrames = 10000;
+        private const int MaxEvidencePayloadBytes = 256 * 1024;
+        private const int MaxEvidenceBytes = 4 * 1024 * 1024;
+        private readonly Queue<MCCChannelFrame> _frames = new Queue<MCCChannelFrame>();
+        private int _retainedEvidenceBytes;
         private long _sequence;
         private MCCChannelState _state = MCCChannelState.Closed;
         protected MCCChannelBase(string id, MCCChannelTopology topology)
@@ -136,13 +142,28 @@ namespace CxVisual.Mechanism.Connectivity
         }
         private void Record(MCCFrameDirection direction, byte[] bytes, string correlation, string error)
         {
+            byte[] evidence = bytes ?? new byte[0];
+            if (evidence.Length > MaxEvidencePayloadBytes)
+            {
+                // 只限制留存证据，不改变真实网络/串口/虚拟通道的字节数据。
+                string omission = "诊断载荷超限，仅保留元数据；原始字节数=" + evidence.Length;
+                error = string.IsNullOrEmpty(error) ? omission : error + "；" + omission;
+                evidence = new byte[0];
+            }
             MCCChannelFrame entry;
             lock (_gate)
             {
-                entry = new MCCChannelFrame(++_sequence, SessionId, Id, direction, bytes,
+                entry = new MCCChannelFrame(++_sequence, SessionId, Id, direction, evidence,
                     correlation, error, null);
-                if (_frames.Count == 10000) _frames.RemoveAt(0);
-                _frames.Add(entry);
+                while (_frames.Count > 0 &&
+                       (_frames.Count >= MaxEvidenceFrames ||
+                        _retainedEvidenceBytes + entry.StoredByteCount > MaxEvidenceBytes))
+                {
+                    MCCChannelFrame removed = _frames.Dequeue();
+                    _retainedEvidenceBytes -= removed.StoredByteCount;
+                }
+                _frames.Enqueue(entry);
+                _retainedEvidenceBytes += entry.StoredByteCount;
             }
             Action<MCCChannelFrame> handler = FrameRecorded;
             if (handler != null) handler(entry);

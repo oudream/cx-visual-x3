@@ -31,6 +31,8 @@ namespace CxVisual.Mechanism.Connectivity
         public DateTime TimestampUtc { get; private set; }
         public string CorrelationId { get; private set; }
         public string Error { get; private set; }
+        // 内部统计不应通过 Bytes 公共防护副本再分配大数组。
+        internal int StoredByteCount { get { return _bytes.Length; } }
         public byte[] Bytes { get { return (byte[])_bytes.Clone(); } }
         public byte[] DecodedPayload { get { return _payload == null ? null : (byte[])_payload.Clone(); } }
     }

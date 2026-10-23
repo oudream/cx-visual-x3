@@ -20,6 +20,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         {
             internal bool ClosedResources;
             internal StartupReceiveChannel(string id) : base(id) { }
+            internal void InjectReceived(byte[] data) { Receive(data); }
             protected override Task OnOpenAsync(CancellationToken ct)
             {
                 // 用确定性时序覆盖 Opening 状态中的第一次收包。
@@ -83,10 +84,41 @@ namespace CxVisual.Tests.ArchitectureSmoke
         public static void Run()
         {
             LifecycleStateMachine();
+            BoundedEvidence();
             TcpLoopback();
             UdpLoopback();
             Console.WriteLine("CHANNEL.TRANSPORT: TCP/UDP loopback MultiPeer and stale generation PASS");
         }
+        // 大数据仍应完整传给上层；证据只能有界留存，并明确记录省略原因。
+        private static void BoundedEvidence()
+        {
+            StartupReceiveChannel channel = new StartupReceiveChannel("evidence-budget");
+            int lastReceivedLength = 0;
+            channel.Received += data => lastReceivedLength = data.Data.Length;
+            try
+            {
+                channel.Open();
+                byte[] oversized = new byte[5 * 1024 * 1024];
+                oversized[0] = 0x5a;
+                channel.InjectReceived(oversized);
+                MCCChannelFrame metadata = channel.ReadFrames().Last();
+                Check(lastReceivedLength == oversized.Length,
+                    "超大接收数据不得被诊断证据预算截断");
+                Check(metadata.Direction == MCCFrameDirection.Rx && metadata.Bytes.Length == 0 &&
+                    metadata.Error.Contains("原始字节数=" + oversized.Length),
+                    "超大报文诊断副本必须省略并保留长度与原因，不可静默丢字节");
+
+                byte[] chunk = new byte[128 * 1024];
+                for (int i = 0; i < 40; i++) channel.InjectReceived(chunk);
+                System.Collections.Generic.IList<MCCChannelFrame> frames = channel.ReadFrames();
+                long total = frames.Sum(frame => (long)frame.Bytes.Length);
+                Check(total <= 4L * 1024 * 1024 && frames.Count < 42 &&
+                    frames.Last().Bytes.Length == chunk.Length,
+                    "诊断证据累计字节数必须有界且保留最新收包");
+            }
+            finally { channel.Close(); }
+        }
+
         private static void TcpLoopback()
         {
             int port = FreePort(false);
