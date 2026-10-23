@@ -86,10 +86,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
                             (route[insertion].X+route[insertion+1].X)/2,
                             (route[insertion].Y+route[insertion+1].Y)/2);
                         int beforeInsert=doc.Revision;
-                        Check(editor.InsertVisualWaypoint(wire,insertion,
-                            targetPoint.X,targetPoint.Y).Success&&
-                            doc.Revision==beforeInsert+1,
-                            "P0 visible auto-routed last segment cannot be edited");
+                        MTCEditResult<bool> inserted=editor.InsertVisualWaypoint(wire,
+                            insertion,targetPoint.X,targetPoint.Y);
+                        Check(inserted.Success&&doc.Revision==beforeInsert+1,
+                            "P0 visible auto-routed last segment cannot be edited: "+
+                            inserted.ErrorCode+" "+inserted.Message);
                         MPCConnection manual=doc.FindConnection(wire);
                         Check(manual.VisualRouteKind==MPCVisualRouteKind.Manual&&
                             manual.VisualWaypoints.Count==route.Length-1,
