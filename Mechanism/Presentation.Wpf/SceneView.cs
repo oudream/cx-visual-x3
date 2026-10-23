@@ -1184,8 +1184,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 return;
             }
             if (!_dragging) return;
-            Point raw=WorldPoint(e.GetPosition(this));
-            double rawDx=raw.X-_dragStart.X,rawDy=raw.Y-_dragStart.Y;
+            Point releasePointer=WorldPoint(e.GetPosition(this));
+            double rawDx=releasePointer.X-_dragStart.X;
+            double rawDy=releasePointer.Y-_dragStart.Y;
             MVIVisualSnapResult snapped=ResolveDrag(rawDx,rawDy);
             _dragging = false;
             if (IsMouseCaptured) ReleaseMouseCapture();
