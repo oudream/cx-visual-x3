@@ -163,6 +163,7 @@ namespace CxVisual.TestCenter.UI
         public string WorkspaceId { get { return "manual.module"; } }
         public event Action StateChanged;
         public bool HasOpenedConfiguration { get { return _activeEditor != null; } }
+        public bool HasUnsavedDraft { get { return _draftGuard != null && _draftGuard.HasUnsavedDraft; } }
         public string ActiveModuleId { get { return _activeId; } }
         public MFMModuleKind? ActiveModuleKind { get { return _activeKind; } }
         public bool IsBusy { get { return _opening || _busy; } }

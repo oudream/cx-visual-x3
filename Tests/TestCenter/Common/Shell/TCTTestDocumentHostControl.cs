@@ -102,6 +102,13 @@ namespace CxVisual.TestCenter.UI
         {
             TabItem tab;
             if (!_workspaceTabs.TryGetValue(id, out tab)) return false;
+            TCTManualModuleFrame module = tab.Content as TCTManualModuleFrame;
+            if (module != null && module.HasUnsavedDraft)
+            {
+                MessageBox.Show("当前模块有未保存草稿，保存后才能关闭分页。",
+                    "TestCenter", MessageBoxButton.OK, MessageBoxImage.Information);
+                return false;
+            }
             ITCTWorkspaceFrame frame = tab.Content as ITCTWorkspaceFrame;
             if (frame != null) frame.OnWorkspaceClosed();
             _tabs.Items.Remove(tab);

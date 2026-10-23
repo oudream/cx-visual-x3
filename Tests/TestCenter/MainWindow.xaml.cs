@@ -30,6 +30,7 @@ namespace CxVisual.TestCenter.UI
         private readonly TCTTestExecutionCoordinator _coordinator = new TCTTestExecutionCoordinator();
         private readonly TCTTestRibbonController _ribbon = new TCTTestRibbonController();
         private TCTWorkspaceRegistry _workspaces;
+        private TCTCreatedWorkspaceStore _createdWorkspaces;
         private ITCTWorkspaceFrame _currentFrame;
         private bool _openingWorkspace;
         private CancellationTokenSource _cancel;
@@ -50,9 +51,26 @@ namespace CxVisual.TestCenter.UI
                 root.OpenRequested += child => OpenRegisteredWorkspace(_workspaces.Find(child));
                 return root;
             });
+            _createdWorkspaces = new TCTCreatedWorkspaceStore(Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "CxVisual", "TestCenter", "CreatedWorkspaces.v1.xml"));
+            try
+            {
+                _createdWorkspaces.Load(_workspaces.Items.Select(x => x.WorkspaceId));
+                foreach (TCTCreatedWorkspace existing in _createdWorkspaces.Items)
+                    RegisterCreatedWorkspace(existing);
+            }
+            catch (Exception error) when (error is IOException || error is InvalidDataException ||
+                error is System.Xml.XmlException || error is UnauthorizedAccessException)
+            { StatusText.Text = "实例恢复失败；原记录仍保留：" + error.Message; }
             Explorer.Bind(_catalog);
             Explorer.BindWorkspaces(_workspaces);
             Explorer.WorkspaceSelected += OpenRegisteredWorkspace;
+            Explorer.CreateRequested += id => CreateWorkspaceInstance(id);
+            Explorer.DeleteRequested += DeleteWorkspaceInstance;
+            Explorer.CloseRequested += id => DocumentHost.CloseWorkspace(id);
+            Explorer.StartRequested += id => ExecuteWorkspaceAction(id, true);
+            Explorer.StopRequested += id => ExecuteWorkspaceAction(id, false);
             DocumentHost.WorkspaceActivated += OnWorkspaceActivated;
             Closed += (sender, args) => DocumentHost.CloseAllWorkspaces();
             DocumentHost.Overview.Update(_catalog, null, null);
@@ -108,54 +126,145 @@ namespace CxVisual.TestCenter.UI
                 " 个真实测试用例。默认独立进程隔离；Graph/Channel/Runtime未接入的类型不会伪装通过。";
         }
 
-        private void OpenRegisteredWorkspace(TCTWorkspaceDescriptor descriptor)
+        // 类型节点仅供右键创建；创建后的实例才有独立页面和稳定身份。
+        public TCTWorkspaceDescriptor CreateWorkspaceInstance(string templateId)
         {
-            if (descriptor == null || _openingWorkspace) return;
-            _openingWorkspace = true;
-            try
+            TCTWorkspaceDescriptor template = _workspaces.Find(templateId);
+            if (template == null || template.IsCreatedInstance ||
+                template.Kind == TCTWorkspaceNodeKind.Group ||
+                (template.Kind == TCTWorkspaceNodeKind.Root &&
+                 templateId != "scenes.root" && templateId != "reports.root"))
             {
-                if (descriptor.WorkspaceId.StartsWith("manual.module.", StringComparison.Ordinal))
-                {
-                    TCTWorkspaceDescriptor host = _workspaces.Find("manual.module");
-                    TCTManualModuleFrame module = DocumentHost.OpenWorkspace(host)
-                        as TCTManualModuleFrame;
-                    if (module == null) throw new InvalidOperationException("模块公用Frame未注册");
-                    MFMModuleKind selected;
-                    if (!Enum.TryParse(descriptor.WorkspaceId.Substring("manual.module.".Length),
-                        true, out selected))
-                        throw new InvalidOperationException("未注册模块类别：" + descriptor.WorkspaceId);
-                    module.SelectModuleKind(selected);
-                    module.SetModuleId("Module" + selected + "01");
-                    module.OpenSelected();
-                    WorkspaceTitle.Text = "模块测试 / " + selected;
-                    return;
-                }
-                OpenWorkspaceCore(descriptor);
+                StatusText.Text = "请在可创建的类型节点上点右键";
+                return null;
             }
-            catch (Exception error)
+            int suffix = 1;
+            while (_createdWorkspaces.Items.Any(x => x.TemplateId == templateId &&
+                x.Title == template.Title + " " + suffix.ToString("D2", CultureInfo.InvariantCulture)))
+                suffix++;
+            string name = template.Title + " " + suffix.ToString("D2", CultureInfo.InvariantCulture);
+            string configId = "";
+            if (templateId.StartsWith("manual.module.", StringComparison.Ordinal))
             {
-                StatusText.Text = "切换模块工作区失败：" + error.Message;
+                string kind = templateId.Substring("manual.module.".Length);
+                configId = "Module" + char.ToUpperInvariant(kind[0]) + kind.Substring(1) +
+                    suffix.ToString("D2", CultureInfo.InvariantCulture);
             }
-            finally { _openingWorkspace = false; }
+            TCTCreatedWorkspace record = _createdWorkspaces.Create(templateId, name, configId);
+            TCTWorkspaceDescriptor instance = RegisterCreatedWorkspace(record);
+            Explorer.RefreshWorkspaces();
+            OpenRegisteredWorkspace(instance);
+            Explorer.SelectWorkspace(instance.WorkspaceId);
+            return instance;
         }
-        private void OpenWorkspaceCore(TCTWorkspaceDescriptor descriptor)
+
+        private TCTWorkspaceDescriptor RegisterCreatedWorkspace(TCTCreatedWorkspace record)
+        { return _workspaces.RegisterCreated(record, () => CreateInstanceFrame(record)); }
+
+        private UserControl CreateInstanceFrame(TCTCreatedWorkspace record)
         {
-            if (descriptor.Factory == null)
+            TCTWorkspaceDescriptor template = _workspaces.Find(record.TemplateId);
+            if (template == null) throw new InvalidOperationException("工作区类型不存在");
+            if (record.TemplateId.StartsWith("manual.module.", StringComparison.Ordinal))
             {
-                StatusText.Text = descriptor.Title + " · Unsupported：没有真实专业Frame工厂，未打开虚构页面";
+                MFMModuleKind kind;
+                if (!Enum.TryParse(record.TemplateId.Substring("manual.module.".Length),
+                    true, out kind)) throw new InvalidOperationException("模块分类不合法");
+                TCTManualModuleFrame frame = new TCTManualModuleFrame();
+                frame.SelectModuleKind(kind);
+                frame.SetModuleId(record.ConfigurationId);
+                frame.OpenSelected();
+                return frame;
+            }
+            if (record.TemplateId == "auto.catalog")
+            {
+                TCTTestPlanControl plan = new TCTTestPlanControl();
+                plan.Bind(_catalog, () => Explorer.CheckedIds);
+                plan.RunRequested += async ids => await RunAsync(false, ids);
+                return plan;
+            }
+            if (template.Factory != null && template.Kind != TCTWorkspaceNodeKind.Root)
+                return template.Factory();
+            StackPanel body = new StackPanel { Margin = new Thickness(22) };
+            body.Children.Add(new TextBlock { Text = record.Title, FontSize = 22,
+                FontWeight = FontWeights.SemiBold, Foreground = Brushes.DarkSlateBlue });
+            bool report = record.TemplateId.StartsWith("reports.", StringComparison.Ordinal);
+            body.Children.Add(new TextBlock {
+                Text = report ? "本页只使用统一Results/History保存的真实运行证据。" :
+                  "已创建工作区。该类型目前尚未绑定可执行的正式专业Owner，不显示虚假Passed。",
+                Margin = new Thickness(0, 12, 0, 14),
+                Foreground = Brushes.DarkGoldenrod, TextWrapping = TextWrapping.Wrap });
+            if (report)
+            {
+                Button view = new Button { Content = "打开真实历史与结果",
+                    Padding = new Thickness(12, 8, 12, 8),
+                    HorizontalAlignment = HorizontalAlignment.Left };
+                view.Click += (sender, args) => {
+                    History.Refresh(); ActivateDockPanel("test.history");
+                };
+                body.Children.Add(view);
+            }
+            return new UserControl { Content = body };
+        }
+
+        private void DeleteWorkspaceInstance(string instanceId)
+        {
+            TCTWorkspaceDescriptor entry = _workspaces.Find(instanceId);
+            if (entry == null || !entry.IsCreatedInstance) return;
+            TabControl tabs = DocumentHost.Content as TabControl;
+            TCTManualModuleFrame module = tabs == null ? null : tabs.Items
+                .OfType<TabItem>().Where(x =>
+                    (x.Tag as TCTWorkspaceDescriptor)?.WorkspaceId == instanceId)
+                .Select(x => x.Content).OfType<TCTManualModuleFrame>().FirstOrDefault();
+            if (module != null && module.HasUnsavedDraft)
+            {
+                StatusText.Text = "草稿未保存，删除被阻止。请先保存模块配置";
                 return;
             }
+            if (!_createdWorkspaces.Delete(instanceId)) return;
+            DocumentHost.CloseWorkspace(instanceId);
+            _workspaces.RemoveCreated(instanceId);
+            Explorer.RefreshWorkspaces();
+            StatusText.Text = "删除实例 " + entry.Title +
+                "（不删除MHS正式配置和既有Run/Attempt证据）";
+        }
+
+        private void ExecuteWorkspaceAction(string id, bool start)
+        {
+            TCTWorkspaceDescriptor instance = _workspaces.Find(id);
+            if (instance == null || !instance.IsCreatedInstance) return;
+            OpenRegisteredWorkspace(instance);
+            TabItem tab = (DocumentHost.Content as TabControl)?.SelectedItem as TabItem;
+            ITCTWorkspaceFrame frame = tab?.Content as ITCTWorkspaceFrame;
+            if (frame == null) return;
+            string actionId = instance.TemplateId == "auto.architecture-smoke" ?
+                (start ? "architecture.run" : "architecture.stop") :
+                instance.TemplateId == "manual.channel" ? (start ? "connect" : "disconnect") : "";
+            TCTWorkspaceAction action = frame.Commands.FirstOrDefault(x => x.Id == actionId);
+            if (action == null || !action.CanExecute())
+            {
+                StatusText.Text = "正式Owner操作当前不可用：" + actionId;
+                return;
+            }
+            action.Execute();
+            RefreshWorkspaceCommands();
+        }
+
+        private void OpenRegisteredWorkspace(TCTWorkspaceDescriptor descriptor)
+        {
+            if (descriptor == null || !descriptor.IsCreatedInstance || _openingWorkspace) return;
+            _openingWorkspace = true;
             try
             {
                 DocumentHost.OpenWorkspace(descriptor);
                 WorkspaceTitle.Text = descriptor.Title;
-                StatusText.Text = descriptor.Title + " · 已打开注册工作区（非自动Passed）";
+                StatusText.Text = descriptor.Title + " · 已打开实例分页（不表示测试通过）";
             }
             catch (Exception error)
-            {
-                StatusText.Text = descriptor.WorkspaceId + " · Frame创建失败：" + error.Message;
-            }
+            { StatusText.Text = descriptor.WorkspaceId + " · 打开失败：" + error.Message; }
+            finally { _openingWorkspace = false; }
         }
+
         private void OnWorkspaceActivated(TCTWorkspaceDescriptor descriptor)
         {
             if (_currentFrame != null) _currentFrame.StateChanged -= RefreshWorkspaceCommands;
@@ -226,7 +335,7 @@ namespace CxVisual.TestCenter.UI
             TCTTestCaseResult result = test == null ? null :
                 _visibleResults.LastOrDefault(r => r.Descriptor.Id == test.Descriptor.Id);
             if (result != null) ShowResult(result);
-            else DocumentHost.Clear();
+            // 选中Catalog定义不销毁用户已创建的实例Tab。
         }
 
         private void OnHistoryOpened(TCTArchivedTestRun run, string directory)
