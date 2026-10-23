@@ -112,7 +112,7 @@ namespace CxVisual.TestCenter.UI
                 }));
                 AutomationElement cards = root.FindFirst(TreeScope.Descendants,
                     new PropertyCondition(AutomationElement.AutomationIdProperty,
-                        "MPW.Channel.SchemaCards"));
+                        "MPW.Channel.SchemaCards.0"));
                 if (cards == null)
                 {
                     InvokePattern add = Find(root, "MPW.Collection.Add.Channels")
@@ -125,7 +125,7 @@ namespace CxVisual.TestCenter.UI
                 {
                     cards = root.FindFirst(TreeScope.Descendants,
                         new PropertyCondition(AutomationElement.AutomationIdProperty,
-                            "MPW.Channel.SchemaCards"));
+                            "MPW.Channel.SchemaCards.0"));
                     if (cards != null)
                         window.Dispatcher.Invoke(new Action(() => {
                             System.Windows.Controls.TabControl tabs =
