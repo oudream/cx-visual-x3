@@ -198,11 +198,32 @@ namespace CxVisual.TestCenter.UI
                     if (frame.SelectedModulePage != "protocols" || frame.VisibleSchemaEditorCount < 3)
                         throw new InvalidOperationException("Protocol 身份配置 Schema 未显示");
                     frame.SelectModulePage("points");
-                    if (frame.SelectedModulePage != "points" || frame.VisibleSchemaEditorCount < 1)
-                        throw new InvalidOperationException("PointTable 配置应独立显示");
+                    if (frame.SelectedModulePage != "points")
+                        throw new InvalidOperationException("PointTable 分页未被选中");
+                }));
+                // 空集合没有标量字段，但“添加规约点”必须是真正可操作的MPW集合命令。
+                AutomationElement pointAdd = Find(root, "MPW.Collection.Add.Protocol.Points");
+                if (pointAdd.GetCurrentPattern(InvokePattern.Pattern) == null)
+                    throw new InvalidOperationException("PointTable 正式集合新增命令不可操作");
+                window.Dispatcher.Invoke(new Action(() => {
+                    System.Windows.Controls.TabControl tabs =
+                        window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                    TCTManualModuleFrame frame = tabs.Items
+                        .OfType<System.Windows.Controls.TabItem>().Select(x => x.Content)
+                        .OfType<TCTManualModuleFrame>().Single();
                     frame.SelectModulePage("mapping");
-                    if (frame.SelectedModulePage != "mapping" || frame.VisibleSchemaEditorCount < 1)
-                        throw new InvalidOperationException("DataMapping 配置应独立显示");
+                    if (frame.SelectedModulePage != "mapping")
+                        throw new InvalidOperationException("DataMapping 分页未被选中");
+                }));
+                AutomationElement mappingAdd = Find(root, "MPW.Collection.Add.Protocol.Mappings");
+                if (mappingAdd.GetCurrentPattern(InvokePattern.Pattern) == null)
+                    throw new InvalidOperationException("DataMapping 正式集合新增命令不可操作");
+                window.Dispatcher.Invoke(new Action(() => {
+                    System.Windows.Controls.TabControl tabs =
+                        window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                    TCTManualModuleFrame frame = tabs.Items
+                        .OfType<System.Windows.Controls.TabItem>().Select(x => x.Content)
+                        .OfType<TCTManualModuleFrame>().Single();
                     frame.SelectModulePage("runtime");
                     if (frame.SelectedModulePage != "runtime" || frame.VisibleSchemaEditorCount < 6)
                         throw new InvalidOperationException("Protocol执行策略分页未展示完整Schema");
