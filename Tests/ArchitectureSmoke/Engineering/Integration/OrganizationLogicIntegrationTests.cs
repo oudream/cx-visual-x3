@@ -66,6 +66,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             MOLDefinitionEditingClosure();
             MOLScalarTypeSafety();
             MOLCompoundConditions();
+            MOLCompoundStateGuards();
             MOLEventDeclarationContracts();
             MOLTypedDefinitionContracts();
             MOLThrowDefinitionContracts();
@@ -371,6 +372,88 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     catch(InvalidOperationException ex)
                     {rejected=ex.Message.Contains("moc.event_delivery_not_supported");}
                     Check(rejected,"MOC silently treated event channel as an input Task");
+                }
+                finally{opened.Close(true);}
+            }
+            finally
+            {
+                session.Close(true);
+                if(System.IO.File.Exists(file))System.IO.File.Delete(file);
+                if(System.IO.File.Exists(file+".cx-lock"))System.IO.File.Delete(file+".cx-lock");
+            }
+        }
+
+
+        /// <summary>同一MOLExpression语义在V2状态迁移中仍可短路、保存及真实执行。</summary>
+        private static void MOLCompoundStateGuards()
+        {
+            MOLExpression condition=MOLExpression.All(
+                MOLExpression.InputTrue("ready"),
+                MOLExpression.Not(MOLExpression.InputTrue("blocked")));
+            var machine=new MOLStateMachineDefinition(new[]{
+                new MOLStateDescriptor("Idle","Capture",initial:true),
+                new MOLStateDescriptor("Busy","Capture")},new[]{
+                new MOLStateTransition("Idle","start","Busy",condition)});
+            var inputs=new Dictionary<string,object>{{"ready",false}};
+            Check(machine.Run(new[]{"start"},inputs)["Capture"]=="Idle",
+                "State Guard failed to short-circuit false condition");
+            inputs["ready"]=true;inputs["blocked"]=false;
+            Check(machine.Run(new[]{"start"},inputs)["Capture"]=="Busy",
+                "State Guard compound successful transition failed");
+            inputs.Remove("blocked");
+            bool rejected=false;
+            try{machine.Run(new[]{"start"},inputs);}
+            catch(InvalidOperationException ex)
+            {rejected=ex.Message=="moc.state.guard_input_missing:blocked";}
+            Check(rejected,"State compound Guard silently ignored missing input");
+            rejected=false;
+            try{new MOLStateTransition("Idle","start","Busy",
+                MOLExpression.All(MOLExpression.InputTrue("ready"),
+                    new MOLExpression(MOLExpressionSource.StepResult,
+                        Guid.NewGuid().ToString("N"))));}
+            catch(ArgumentException){rejected=true;}
+            Check(rejected,"State Guard allowed MRK StepResult in pure state definition");
+
+            var session=MEMEngineering.Create("Compound state");
+            var page=session.AddPage("Main");
+            Guid id=Guid.Empty;
+            MOCFlowBuilder.Edit(session,page.RootContent,b=>id=b.AddStateMachine(machine));
+            var before=MOLWiringCodec.Get(session.GetSnapshot().Find(page.RootContent.Id));
+            var bytes=MOLWiringCodec.Serialize(before);
+            var xml=System.Text.Encoding.UTF8.GetString(bytes);
+            Check(xml.StartsWith("<MOL v=\"5\"")&&
+                MOLWiringCodec.CreateAspect(before).SchemaVersion==
+                    MOLWiringCodec.CompoundSchemaVersion,
+                "Compound state Guard must use Schema5");
+            rejected=false;
+            try{MOLWiringCodec.Deserialize(System.Text.Encoding.UTF8.GetBytes(
+                xml.Replace("v=\"5\"","v=\"2\"")));}
+            catch(System.IO.InvalidDataException){rejected=true;}
+            Check(rejected,"Legacy Wiring Schema2 swallowed compound Guard");
+            string file=System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                "mol-state-compound-"+Guid.NewGuid().ToString("N")+".cxproj");
+            try
+            {
+                session.SaveAs(file);
+                var opened=MEMEngineering.Open(file);
+                try
+                {
+                    var restored=MOLWiringCodec.Get(opened.GetSnapshot().Find(page.RootContent.Id));
+                    Check(restored.StateMachines[id].Transitions[0].Guard.Operator==
+                        MOLLogicalOperator.All,"Compound state Guard lost on Save/Open");
+                    var compiled=new MOCEngineeringCompiler().Compile(
+                        opened.GetSnapshot(),page.RootContent.Id,new TestResolver());
+                    MOCTraceView trace;
+                    var data=new Dictionary<string,object>{
+                        {"moc.state.events."+id.ToString("N"),new[]{"start"}},
+                        {"ready",true},{"blocked",false}};
+                    var result=Execute(compiled,data,out trace);
+                    Check(result.State==MRKFlowState.Completed,
+                        "MRK failed real compound state Guard execution");
+                    data["ready"]=false;data.Remove("blocked");
+                    result=Execute(compiled,data,out trace);
+                    Check(result.State==MRKFlowState.Completed,
+                        "MRK evaluated missing input despite false short-circuit");
                 }
                 finally{opened.Close(true);}
             }
