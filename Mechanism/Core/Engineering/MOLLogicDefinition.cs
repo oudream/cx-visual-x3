@@ -481,6 +481,22 @@ namespace CxVisual.Mechanism.Core
     {
         public const string ProviderId = "cx.logic.structured";
         public const int SchemaVersion = 1;
+        public const int ExtendedSchemaVersion=4;
+        private static bool HasComposition(MOLControlBlock b)
+        {
+            Func<MOLExpression,bool> composite=e=>
+                e!=null&&e.Operator!=MOLLogicalOperator.Scalar;
+            return composite(b.Condition)||
+                b.Cases.Any(c=>composite(c.Condition)||HasComposition(c.Body))||
+                (b.Loop!=null&&(composite(b.Loop.Condition)||HasComposition(b.Loop.Body)))||
+                b.Children.Any(HasComposition)||
+                (b.TryRegion!=null&&(HasComposition(b.TryRegion.TryBody)||
+                 (b.TryRegion.CatchBody!=null&&HasComposition(b.TryRegion.CatchBody))||
+                 (b.TryRegion.FinallyBody!=null&&HasComposition(b.TryRegion.FinallyBody))||
+                 b.TryRegion.Catches.Any(c=>HasComposition(c.Body))));
+        }
+        private static int Version(MOLLogicDefinition d)
+        {return HasComposition(d.Root)?ExtendedSchemaVersion:SchemaVersion;}
         /// <summary>仅转换无端口、连线和策略的V2单一Action；不做有损Graph降级。</summary>
         public static void ConvertFromV2(MEMEngineeringSession session,MEMContent content)
         {
@@ -515,7 +531,7 @@ namespace CxVisual.Mechanism.Core
             if (session == null || content == null || definition == null)
                 throw new ArgumentNullException("session/content/definition");
             session.SetAspect(content, new MPMAspect(MPMAspectKind.Logic, ProviderId,
-                SchemaVersion, Serialize(definition)));
+                Version(definition), Serialize(definition)));
         }
         public static MOLLogicDefinition Get(MEMNodeSnapshot content)
         {
@@ -523,9 +539,12 @@ namespace CxVisual.Mechanism.Core
             var aspect = content.Aspects.SingleOrDefault(a =>
                 a.Kind == MPMAspectKind.Logic && a.ProviderId == ProviderId);
             if (aspect == null) return null;
-            if (aspect.SchemaVersion != SchemaVersion || aspect.RequiresRemap)
+            if(aspect.SchemaVersion==MOLWiringCodec.SchemaVersion||
+               aspect.SchemaVersion==MOLWiringCodec.ExtendedSchemaVersion)return null;
+            if((aspect.SchemaVersion!=SchemaVersion&&aspect.SchemaVersion!=ExtendedSchemaVersion)||
+               aspect.RequiresRemap)
                 throw new InvalidDataException("logic.unsupported_schema_or_remap");
-            return Deserialize(aspect.Payload);
+            return Deserialize(aspect.Payload,aspect.SchemaVersion);
         }
         /// <summary>结构化V1使用原MEM事务编辑；绝不静默覆盖V2或坏Schema。</summary>
         public static void Edit(MEMEngineeringSession session,MEMContent content,
@@ -544,7 +563,7 @@ namespace CxVisual.Mechanism.Core
             byte[] payload=Serialize(modified);
             session.Edit("编辑结构化逻辑",revision,e=>{
                 e.SetAspect(content,new MPMAspect(MPMAspectKind.Logic,
-                    ProviderId,SchemaVersion,payload));
+                    ProviderId,Version(modified),payload));
                 return true;
             }).RequireValue();
         }
@@ -552,13 +571,16 @@ namespace CxVisual.Mechanism.Core
         {
             if (definition == null) throw new ArgumentNullException("definition");
             definition.Validate();
-            var root = new XElement("MOL", new XAttribute("v", SchemaVersion), WriteBlock(definition.Root));
+            var root = new XElement("MOL", new XAttribute("v", Version(definition)), WriteBlock(definition.Root));
             var bytes = Encoding.UTF8.GetBytes(root.ToString(SaveOptions.DisableFormatting));
             if (bytes.Length > 4 * 1024 * 1024) throw new InvalidDataException("logic.payload_too_large");
             return bytes;
         }
-        public static MOLLogicDefinition Deserialize(byte[] payload)
+        public static MOLLogicDefinition Deserialize(byte[] payload,int expectedSchema=0)
         {
+            if(expectedSchema!=0&&expectedSchema!=SchemaVersion&&
+                expectedSchema!=ExtendedSchemaVersion)
+                throw new InvalidDataException("logic.unsupported_schema");
             if (payload == null || payload.Length == 0 || payload.Length > 4 * 1024 * 1024)
                 throw new InvalidDataException("logic.invalid_payload");
             var settings = new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit,
@@ -567,13 +589,18 @@ namespace CxVisual.Mechanism.Core
             using (var reader = XmlReader.Create(input, settings))
             {
                 var root = XDocument.Load(reader).Root;
-                if (root == null || root.Name != "MOL" || (string)root.Attribute("v") != "1")
+                string version=root==null?null:(string)root.Attribute("v");
+                if(root==null||root.Name!="MOL"||(version!="1"&&version!="4")||
+                   (expectedSchema!=0&&version!=expectedSchema.ToString(CultureInfo.InvariantCulture)))
                     throw new InvalidDataException("logic.unsupported_schema");
                 CheckSchema(root,new[]{"v"},new[]{"Block"});
-                var blocks = root.Elements("Block").ToArray();
-                if (blocks.Length != 1 || root.Elements().Count() != 1)
+                var blocks=root.Elements("Block").ToArray();
+                if(blocks.Length!=1||root.Elements().Count()!=1)
                     throw new InvalidDataException("logic.invalid_root");
-                return new MOLLogicDefinition(ReadBlock(blocks[0], 0));
+                MOLLogicDefinition d=new MOLLogicDefinition(ReadBlock(blocks[0],0));
+                if(Version(d)!=int.Parse(version,CultureInfo.InvariantCulture))
+                    throw new InvalidDataException("logic.expression_requires_v4");
+                return d;
             }
         }
         /// <summary>旧Schema仍允许已定义的可选字段；未知字段拒绝而非丢弃。</summary>
@@ -588,6 +615,9 @@ namespace CxVisual.Mechanism.Core
         private static XElement WriteExpression(MOLExpression value)
         {
             if (value == null) return null;
+            if(value.Operator!=MOLLogicalOperator.Scalar)
+                return new XElement("Expression",new XAttribute("op",value.Operator),
+                    value.Terms.Select(WriteExpression));
             return new XElement("Expression", new XAttribute("source", value.Source),
                 new XAttribute("name", value.Name), new XAttribute("compare", value.Comparison),
                 new XAttribute("expected", value.Expected ?? ""));
@@ -596,6 +626,28 @@ namespace CxVisual.Mechanism.Core
         {
             if (node == null) return null;
             if(node.Name!="Expression")throw new InvalidDataException("logic.expression_schema");
+            XAttribute op=node.Attribute("op");
+            if(op!=null)
+            {
+                CheckSchema(node,new[]{"op"},new[]{"Expression"});
+                MOLLogicalOperator kind;
+                if(!Enum.TryParse(op.Value,false,out kind)||
+                   (kind!=MOLLogicalOperator.All&&kind!=MOLLogicalOperator.Any&&
+                    kind!=MOLLogicalOperator.Not))
+                    throw new InvalidDataException("logic.expression_operator");
+                MOLExpression[] children=node.Elements("Expression").Select(ReadExpression).ToArray();
+                try
+                {
+                    if(kind==MOLLogicalOperator.Not)
+                    {
+                        if(children.Length!=1)throw new InvalidDataException("logic.expression_arity");
+                        return MOLExpression.Not(children[0]);
+                    }
+                    return kind==MOLLogicalOperator.All?
+                        MOLExpression.All(children):MOLExpression.Any(children);
+                }
+                catch(ArgumentException ex){throw new InvalidDataException("logic.expression_arity",ex);}
+            }
             CheckSchema(node,new[]{"source","name","compare","expected"},new string[0]);
             return new MOLExpression((MOLExpressionSource)Enum.Parse(typeof(MOLExpressionSource),
                 (string)node.Attribute("source")), (string)node.Attribute("name"),
@@ -1356,7 +1408,8 @@ namespace CxVisual.Mechanism.Core
         {
             if(node==null)throw new ArgumentNullException("node");
             var found=node.Aspects.SingleOrDefault(x=>x.Kind==MPMAspectKind.Logic&&x.ProviderId==MOLLogicCodec.ProviderId);
-            if(found==null||found.SchemaVersion==1)return null;
+            if(found==null||found.SchemaVersion==MOLLogicCodec.SchemaVersion||
+                found.SchemaVersion==MOLLogicCodec.ExtendedSchemaVersion)return null;
             if((found.SchemaVersion!=SchemaVersion&&
                 found.SchemaVersion!=ExtendedSchemaVersion)||found.RequiresRemap)
                 throw new InvalidDataException("wiring.unknown_schema");
