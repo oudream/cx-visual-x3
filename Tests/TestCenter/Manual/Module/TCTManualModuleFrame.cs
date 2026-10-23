@@ -76,9 +76,16 @@ namespace CxVisual.TestCenter.UI
                             new ModulePage("identity", "模块信息",
                                 new[] { "DisplayName", "Enabled", "CapabilityIds" }),
                             new ModulePage("channels", "通道配置", new[] { "Channel" }),
-                            new ModulePage("protocols", "规约配置", new[] { "Protocol" }),
-                            new ModulePage("points", "点表与数据映射", new[] { "Protocol" }),
-                            new ModulePage("runtime", "运行参数", new[] { "Channel", "Protocol" })
+                            new ModulePage("protocols", "规约配置", new[] {
+                                "Protocol.Id", "Protocol.Kind", "Protocol.CustomTypeId",
+                                "Protocol.ProtocolAddress" }),
+                            new ModulePage("points", "规约点表", new[] { "Protocol.Points" }),
+                            new ModulePage("mapping", "数据映射", new[] { "Protocol.Mappings" }),
+                            new ModulePage("runtime", "运行参数", new[] {
+                                "Protocol.ProcessingMode", "Protocol.SessionScope",
+                                "Protocol.MaxConcurrency", "Protocol.QueueCapacity",
+                                "Protocol.QueuedBytesLimit", "Protocol.TimeoutMs",
+                                "Protocol.ExecutionGroupRef" })
                         };
                         break;
                     case MFMModuleKind.Driver:
@@ -364,7 +371,19 @@ namespace CxVisual.TestCenter.UI
             Func<T, string> extra) where T : MFMModuleConfiguration, new()
         {
             MPWConfigEditorControl<T> next = new MPWConfigEditorControl<T>(section);
-            // Connector 严格一通道一规约，Point 属于 Protocol；不存在 ChannelRef/ProtocolRef 选择器。
+            // Connector 严格一通道一规约；映射PointRef引用同一正式Protocol点表。
+            // 动态候选属于现有MPW的Schema投影，不在TestCenter再建配置选择器。
+            if (typeof(T) == typeof(MCNConnectorConfiguration))
+                next.ConfigureReferenceChoices(path => {
+                    if (!path.StartsWith("Protocol.Mappings[", StringComparison.Ordinal) ||
+                        !path.EndsWith("].PointRef", StringComparison.Ordinal))
+                        return null;
+                    MCNConnectorConfiguration connector = next.Draft as MCNConnectorConfiguration;
+                    return connector == null || connector.Protocol == null || connector.Protocol.Points == null
+                        ? new string[0] :
+                        connector.Protocol.Points.Where(point => point != null)
+                            .Select(point => point.Name);
+                });
             IDisposable old = _activeEditor;
             _activeEditor = next;
             _draftGuard = next;

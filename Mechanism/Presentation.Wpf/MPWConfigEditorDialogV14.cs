@@ -297,13 +297,26 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             type = Nullable.GetUnderlyingType(type) ?? type;
             return FCMConfigSchemaBuilder.IsScalar(type);
         }
+        // 统一MPW的Schema路径投影：允许 Protocol.Points、Protocol.Mappings 等专业分页。
+        // 只过滤显示，不新增配置模型、字段副本或保存路径；集合条目仍使用原MHS编辑器。
+        private bool IsProjectedMember(string parent, string memberName)
+        {
+            if (_visibleRootFields == null) return true;
+            string path = parent.Length == 0 ? memberName : parent.TrimStart('.') + "." + memberName;
+            return _visibleRootFields.Any(selected =>
+                string.Equals(selected, path, StringComparison.Ordinal) ||
+                selected.StartsWith(path + ".", StringComparison.Ordinal) ||
+                selected.StartsWith(path + "[", StringComparison.Ordinal) ||
+                path.StartsWith(selected + ".", StringComparison.Ordinal) ||
+                path.StartsWith(selected + "[", StringComparison.Ordinal));
+        }
+
         private void RenderObject(Panel host, Type type, object model, string parent, int depth, bool hidden)
         {
             if (depth > 24) { host.Children.Add(new TextBlock { Text = "嵌套深度超过编辑限制" }); return; }
             FCMConfigMemberDescriptor[] members = FCMConfigSchemaBuilder.Members(type)
-                .Where(member => (parent.Length != 0 || _visibleRootFields == null ||
-                    _visibleRootFields.Contains(member.Name)) &&
-                    (parent.Length == 0 || _nestedCategories == null ||
+                .Where(member => IsProjectedMember(parent, member.Name) &&
+                    (parent.Length != 0 || _nestedCategories == null ||
                     _nestedCategories.Contains((member.Property.GetCustomAttributes(
                         typeof(FCMConfigItemAttribute), true).FirstOrDefault()
                         as FCMConfigItemAttribute)?.Category ?? "")))

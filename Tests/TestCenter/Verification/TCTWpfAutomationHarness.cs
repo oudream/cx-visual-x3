@@ -166,13 +166,8 @@ namespace CxVisual.TestCenter.UI
                 AutomationElement cards = root.FindFirst(TreeScope.Descendants,
                     new PropertyCondition(AutomationElement.AutomationIdProperty,
                         "MPW.Channel.SchemaCards.0"));
-                if (cards == null)
-                {
-                    InvokePattern add = Find(root, "MPW.Collection.Add.Channels")
-                        .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
-                    if (add == null) throw new InvalidOperationException("MPW channel Add not invokable");
-                    add.Invoke();
-                }
+                if (cards == null) throw new InvalidOperationException(
+                    "新版Connector必须显示唯一Channel配置；旧Channels集合入口不能作为替代");
                 bool rendered = false;
                 for (int attempt = 0; attempt < 60 && !rendered; attempt++)
                 {
@@ -201,7 +196,16 @@ namespace CxVisual.TestCenter.UI
                         .OfType<TCTManualModuleFrame>().Single();
                     frame.SelectModulePage("protocols");
                     if (frame.SelectedModulePage != "protocols" || frame.VisibleSchemaEditorCount < 3)
-                        throw new InvalidOperationException("Protocol 配置 Schema 未显示");
+                        throw new InvalidOperationException("Protocol 身份配置 Schema 未显示");
+                    frame.SelectModulePage("points");
+                    if (frame.SelectedModulePage != "points" || frame.VisibleSchemaEditorCount < 1)
+                        throw new InvalidOperationException("PointTable 配置应独立显示");
+                    frame.SelectModulePage("mapping");
+                    if (frame.SelectedModulePage != "mapping" || frame.VisibleSchemaEditorCount < 1)
+                        throw new InvalidOperationException("DataMapping 配置应独立显示");
+                    frame.SelectModulePage("runtime");
+                    if (frame.SelectedModulePage != "runtime" || frame.VisibleSchemaEditorCount < 6)
+                        throw new InvalidOperationException("Protocol执行策略分页未展示完整Schema");
                     frame.SelectModulePage("channels");
                 }));
                 // MPW按Tab动态投影重新生成控件，切换后必须重新获取本页的UIA元素。
