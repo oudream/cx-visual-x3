@@ -394,6 +394,35 @@ namespace CxVisual.Mechanism.Core
     {
         public const string ProviderId = "cx.logic.structured";
         public const int SchemaVersion = 1;
+        /// <summary>仅转换无端口、连线和策略的V2单一Action；不做有损Graph降级。</summary>
+        public static void ConvertFromV2(MEMEngineeringSession session,MEMContent content)
+        {
+            if(session==null||content==null)throw new ArgumentNullException("session/content");
+            int revision=session.Revision;
+            MEMNodeSnapshot node=session.GetSnapshot().Find(content.Id);
+            if(node==null||node.Kind!=MEMNodeKind.Content)
+                throw new InvalidOperationException("logic.convert.foreign_content");
+            MOLWiringDefinition wired=MOLWiringCodec.Get(node);
+            if(wired==null)throw new InvalidOperationException("logic.convert.requires_v2");
+            if(wired.Blocks.Count!=1||wired.Links.Count!=0||wired.Positions.Count!=0||
+                wired.Groups.Count!=0||wired.Parameters.Count!=0||wired.Policies.Count!=0||
+                wired.StateMachines.Count!=0||wired.FlowInputs.Count!=0||wired.FlowOutputs.Count!=0||
+                wired.EntryBlockId!=wired.Blocks[0].Id||
+                wired.Ports[wired.Blocks[0].Id].Count!=0)
+                throw new InvalidOperationException("logic.convert.not_lossless");
+            var action=wired.Blocks[0];
+            if(action.Kind!=MOLControlKind.Action||action.Condition!=null||
+                action.TargetFlow.Length!=0||action.ExitKind!=MOLExitKind.Return||
+                action.Loop!=null||action.Wait!=null||action.TryRegion!=null||
+                action.Children.Count!=0||action.Cases.Count!=0)
+                throw new InvalidOperationException("logic.convert.not_lossless");
+            var translated=new MOLLogicDefinition(action);
+            byte[] payload=Serialize(translated);
+            session.Edit("V2单动作无损转换到V1",revision,e=>{
+                e.SetAspect(content,new MPMAspect(MPMAspectKind.Logic,
+                    ProviderId,SchemaVersion,payload));return true;
+            }).RequireValue();
+        }
         public static void Set(MEMEngineeringSession session, MEMContent content, MOLLogicDefinition definition)
         {
             if (session == null || content == null || definition == null)
@@ -1194,6 +1223,31 @@ namespace CxVisual.Mechanism.Core
         public const int SchemaVersion=2;
         public static MPMAspect CreateAspect(MOLWiringDefinition definition)
         {return new MPMAspect(MPMAspectKind.Logic,MOLLogicCodec.ProviderId,2,Serialize(definition));}
+        /// <summary>仅无损转换单一V1 Action；复杂结构返回明确信息并保持原定义。</summary>
+        public static void ConvertFromV1(MEMEngineeringSession session,MEMContent content)
+        {
+            if(session==null||content==null)throw new ArgumentNullException("session/content");
+            int revision=session.Revision;
+            MEMNodeSnapshot node=session.GetSnapshot().Find(content.Id);
+            if(node==null||node.Kind!=MEMNodeKind.Content)
+                throw new InvalidOperationException("wiring.convert.foreign_content");
+            MOLLogicDefinition structured=MOLLogicCodec.Get(node);
+            if(structured==null)throw new InvalidOperationException("wiring.convert.requires_v1");
+            MOLControlBlock action=structured.Root;
+            if(action.Kind!=MOLControlKind.Action||action.Condition!=null||
+                action.TargetFlow.Length!=0||action.ExitKind!=MOLExitKind.Return||
+                action.Loop!=null||action.Wait!=null||action.TryRegion!=null||
+                action.Children.Count!=0||action.Cases.Count!=0)
+                throw new InvalidOperationException("wiring.convert.not_lossless");
+            var schema=new Dictionary<Guid,IEnumerable<MPCPortDescriptor>>{
+                {action.Id,new MPCPortDescriptor[0]}};
+            var wired=new MOLWiringDefinition(action.Id,new[]{action},schema,new MOLLink[0]);
+            byte[] payload=Serialize(wired);
+            session.Edit("V1单动作无损转换到V2",revision,e=>{
+                e.SetAspect(content,new MPMAspect(MPMAspectKind.Logic,
+                    MOLLogicCodec.ProviderId,SchemaVersion,payload));return true;
+            }).RequireValue();
+        }
         public static void Set(MEMEngineeringSession session,MEMContent content,MOLWiringDefinition definition)
         {if(session==null||content==null)throw new ArgumentNullException("session/content");
          session.SetAspect(content,CreateAspect(definition));}
