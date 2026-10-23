@@ -239,13 +239,13 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         Check((bool)endpointHit.Invoke(shapeView,hitArgs)&&
                             (Guid)hitArgs[1]==lineScene.Id&&(bool)hitArgs[2],
                             "first visible endpoint must be hit-testable as source");
-                        FGEPoint2D first=lineScene.GeometryToWorld.TransformPoint(
+                        FGEPoint2D routeStart=lineScene.GeometryToWorld.TransformPoint(
                             lineScene.Shape.Geometry.Commands[0].End);
                         FGEPoint2D last=lineScene.GeometryToWorld.TransformPoint(
                             lineScene.Shape.Geometry.Commands[
                                 lineScene.Shape.Geometry.Commands.Count-1].End);
-                        double bendX=(first.X+last.X)/2+25;
-                        double bendY=(first.Y+last.Y)/2+15;
+                        double bendX=(routeStart.X+last.X)/2+25;
+                        double bendY=(routeStart.Y+last.Y)/2+15;
                         Check(visualEditor.InsertVisualWaypoint(lineScene.Id,0,
                             bendX,bendY).Success,
                             "WPF connector waypoint insert failed in real engineering editor");
@@ -272,7 +272,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         FGEPoint2D bend=bending.GeometryToWorld.TransformPoint(
                             bending.Shape.Geometry.Commands[1].End);
                         object[] segmentArgs={
-                            new Point((first.X+bend.X)/2,(first.Y+bend.Y)/2),
+                            new Point((routeStart.X+bend.X)/2,(routeStart.Y+bend.Y)/2),
                             Guid.Empty,-1};
                         Check(segmentHit!=null&&
                             (bool)segmentHit.Invoke(shapeView,segmentArgs)&&
