@@ -45,11 +45,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
             MCNConnectorConfiguration connector = new MCNConnectorConfiguration {
                 DisplayName = "PLC 接入",
                 Channels = new List<MCCChannelConfiguration> {
-                    new MCCChannelConfiguration { Id = "tcp01", Kind = MCCChannelConfigurationKind.TcpClient,
+                    new MCCChannelConfiguration { Id = "tcp01", Kind = MCCChannelKind.TcpClient,
                         Host = "127.0.0.1", Port = 502 }
                 },
                 Protocols = new List<MPAProtocolBinding> {
-                    new MPAProtocolBinding { Id = "mod01", Kind = MPAProtocolBindingKind.ModbusTcpDraft,
+                    new MPAProtocolBinding { Id = "mod01", Kind = MPAProtocolKind.ModbusTcpDraft,
                         ChannelRef = "tcp01" }
                 },
                 Points = new List<MCNPointDefinition> {
@@ -71,9 +71,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
             connector.Protocols[0].ChannelRef = "missing";
             CheckIssue(connector, "CHANNEL_REFERENCE");
             connector.Protocols[0].ChannelRef = "tcp01";
-            connector.Protocols[0].Kind = MPAProtocolBindingKind.ModbusRtuDraft;
+            connector.Protocols[0].Kind = MPAProtocolKind.ModbusRtuDraft;
             CheckIssue(connector, "PROTOCOL_IO_MISMATCH");
-            connector.Protocols[0].Kind = MPAProtocolBindingKind.ModbusTcpDraft;
+            connector.Protocols[0].Kind = MPAProtocolKind.ModbusTcpDraft;
             connector.Points[0].ProtocolRef = "missing";
             CheckIssue(connector, "POINT_PROTOCOL_MISSING");
             connector.Points[0].ProtocolRef = "mod01";
