@@ -115,6 +115,13 @@ namespace CxVisual.Mechanism.Connectivity
     public abstract class MCCSingleChannelBase : MCCChannelBase
     {
         protected MCCSingleChannelBase(string id) : base(id, MCCChannelTopology.SinglePeer) { }
+        // 重连为显式生命周期操作；退避/重试计划仍由 MRK/F19 与正式配置策略管理。
+        public async Task ReconnectAsync(CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+            await CloseAsync(ct).ConfigureAwait(false);
+            await OpenAsync(ct).ConfigureAwait(false);
+        }
         protected void Receive(byte[] bytes, string correlation = null)
         { ReceiveBytes(new MCCSubChannelAddress(Id), bytes, correlation); }
     }

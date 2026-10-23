@@ -119,6 +119,23 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(session.State == MPAProtocolSessionState.Created, "Session created");
             session.Start(); Check(session.State == MPAProtocolSessionState.Active, "Session start");
             Reject<InvalidOperationException>(() => session.Start());
+            Task<object> pendingResponse = session.WaitResponseAsync("modbus-request-01",
+                TimeSpan.FromSeconds(1), CancellationToken.None);
+            Check(session.PendingRequests == 1 &&
+                session.CompleteResponse("modbus-request-01", new byte[] { 3, 2, 0, 5 }) &&
+                ((byte[])pendingResponse.GetAwaiter().GetResult()).SequenceEqual(new byte[] { 3, 2, 0, 5 }) &&
+                session.PendingRequests == 0, "规约会话 CorrelationId 关联并返回完整响应");
+            Check(!session.CompleteResponse("unknown", null), "未知请求不能伪造成功");
+            Task<object> timeoutResponse = session.WaitResponseAsync("short-timeout",
+                TimeSpan.FromMilliseconds(1), CancellationToken.None);
+            Reject<TimeoutException>(() => timeoutResponse.GetAwaiter().GetResult());
+            using (CancellationTokenSource cancelled = new CancellationTokenSource())
+            {
+                Task<object> cancelledResponse = session.WaitResponseAsync("cancel-request",
+                    TimeSpan.FromSeconds(10), cancelled.Token);
+                cancelled.Cancel();
+                Reject<OperationCanceledException>(() => cancelledResponse.GetAwaiter().GetResult());
+            }
             session.Stop(); session.Dispose();
             Reject<ObjectDisposedException>(() => session.Start());
             Reject<ArgumentException>(() => new MPAProtocolOperationResult(MPAProtocolOperationStage.Failed));
@@ -305,9 +322,24 @@ namespace CxVisual.Tests.ArchitectureSmoke
             mapping.ApplyInboundAsync(mapProtocol, "speed", 55.0, CancellationToken.None)
                 .GetAwaiter().GetResult();
             Check(variables.Get<double>("temperature") == 55.0, "Point mapped to real MDS variable");
+            MPAProtocolContext mappingContext = new MPAProtocolContext("mapping", "m-session",
+                configuration: mapProtocol, dataAccess: new MDSProtocolDataTargetAccess(registry));
+            MPAEmptyProtocol emptyProtocol = new MPAEmptyProtocol();
+            MPAProtocolOperationResult mappedRead = emptyProtocol.ReadAsync(
+                new MPAProtocolOperationRequest(MPAProtocolOperationKind.Read,
+                    new MPAProtocolAddress("speed")), mappingContext, CancellationToken.None)
+                .GetAwaiter().GetResult();
+            Check(mappedRead.IsCompleted && (double)mappedRead.Value == 55.0,
+                "IMPAProtocol.ReadAsync 读取真实 MDS 数据");
+            MPAProtocolOperationResult mappedWrite = emptyProtocol.WriteAsync(
+                new MPAProtocolOperationRequest(MPAProtocolOperationKind.Write,
+                    new MPAProtocolAddress("speed"), 57.0),
+                mappingContext, CancellationToken.None).GetAwaiter().GetResult();
+            Check(mappedWrite.IsCompleted && variables.Get<double>("temperature") == 57.0,
+                "IMPAProtocol.WriteAsync 写入真实 MDS 数据");
             object outbound = mapping.ReadOutboundAsync(mapProtocol, "speed", CancellationToken.None)
                 .GetAwaiter().GetResult();
-            Check((double)outbound == 55.0, "Outbound reads actual MDS variable");
+            Check((double)outbound == 57.0, "Outbound reads actual MDS variable");
             mapProtocol.Mappings.Add(new MPADataMapping {
                 PointRef = "speed", TargetKind = MPADataTargetKind.Message,
                 TargetRef = "Alarm", Operation = MPADataOperation.PublishMessage

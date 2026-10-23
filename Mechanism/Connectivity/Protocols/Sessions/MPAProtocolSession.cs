@@ -1,5 +1,6 @@
 using System;
 using System.Threading;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace CxVisual.Mechanism.Connectivity
@@ -22,6 +23,8 @@ namespace CxVisual.Mechanism.Connectivity
         private readonly object _gate = new object();
         private MPAProtocolSessionState _state;
         private bool _disposed;
+        private readonly Dictionary<string, TaskCompletionSource<object>> _pending =
+            new Dictionary<string, TaskCompletionSource<object>>(StringComparer.Ordinal);
         public MPAProtocolSession(MPAProtocolConfiguration binding, MCCSubChannelAddress channelAddress = null)
         {
             if (binding == null) throw new ArgumentNullException("binding");
@@ -50,11 +53,80 @@ namespace CxVisual.Mechanism.Connectivity
             {
                 if (_disposed) throw new ObjectDisposedException("MPAProtocolSession");
                 if (_state == MPAProtocolSessionState.Active) _state = MPAProtocolSessionState.Stopped;
+                CancelPending("规约会话已停止");
             }
         }
+        // 请求/响应关联只保存待完成事务，不接管 MRK/F19 调度或创建工作线程。
+        public Task<object> WaitResponseAsync(string correlationId, TimeSpan timeout, CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(correlationId)) throw new ArgumentException("CorrelationId 必填");
+            if (timeout <= TimeSpan.Zero) throw new ArgumentOutOfRangeException("timeout");
+            ct.ThrowIfCancellationRequested();
+            TaskCompletionSource<object> pending = new TaskCompletionSource<object>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            lock (_gate)
+            {
+                if (_disposed) throw new ObjectDisposedException("MPAProtocolSession");
+                if (_state != MPAProtocolSessionState.Active)
+                    throw new InvalidOperationException("规约会话没有运行");
+                if (_pending.ContainsKey(correlationId))
+                    throw new ArgumentException("重复请求关联 Id：" + correlationId);
+                _pending.Add(correlationId, pending);
+            }
+            return AwaitCompletionAsync(correlationId, pending, timeout, ct);
+        }
+        private async Task<object> AwaitCompletionAsync(string key,
+            TaskCompletionSource<object> completion, TimeSpan timeout, CancellationToken ct)
+        {
+            using (CancellationTokenSource delayCancel = CancellationTokenSource.CreateLinkedTokenSource(ct))
+            {
+                try
+                {
+                    Task delay = Task.Delay(timeout, delayCancel.Token);
+                    Task finished = await Task.WhenAny(completion.Task, delay).ConfigureAwait(false);
+                    if (finished == delay)
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        throw new TimeoutException("规约请求响应超时：" + key);
+                    }
+                    return await completion.Task.ConfigureAwait(false);
+                }
+                finally
+                {
+                    lock (_gate)
+                    {
+                        TaskCompletionSource<object> existing;
+                        if (_pending.TryGetValue(key, out existing) && ReferenceEquals(existing, completion))
+                            _pending.Remove(key);
+                    }
+                    delayCancel.Cancel();
+                }
+            }
+        }
+        public bool CompleteResponse(string correlationId, object value)
+        {
+            if (string.IsNullOrWhiteSpace(correlationId)) return false;
+            TaskCompletionSource<object> pending;
+            lock (_gate)
+            {
+                if (_state != MPAProtocolSessionState.Active ||
+                    !_pending.TryGetValue(correlationId, out pending)) return false;
+                _pending.Remove(correlationId);
+            }
+            return pending.TrySetResult(value is byte[] ? ((byte[])value).Clone() : value);
+        }
+        public int PendingRequests { get { lock (_gate) return _pending.Count; } }
+        private void CancelPending(string reason)
+        {
+            foreach (TaskCompletionSource<object> item in _pending.Values)
+                item.TrySetException(new InvalidOperationException(reason));
+            _pending.Clear();
+        }
+
         public void Dispose()
         {
-            lock (_gate) { _state = MPAProtocolSessionState.Stopped; _disposed = true; }
+            lock (_gate) { _state = MPAProtocolSessionState.Stopped; _disposed = true;
+                CancelPending("规约会话已经释放"); }
         }
     }
 

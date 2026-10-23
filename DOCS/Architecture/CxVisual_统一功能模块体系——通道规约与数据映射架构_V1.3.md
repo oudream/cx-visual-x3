@@ -45,3 +45,28 @@
 - 新增 MCCSerialChannel：SerialPort 单物理总线，读写与 Protocol StationAddress 分开；需要设备现场与驱动权限回归。
 - Connector 通过实例真实类型与配置 Kind 对应，运行时 StartAsync/StopAsync、PayloadReceived、SendPayloadAsync 支持按实际 SubChannel 路由；没有专业规约的读写行为不能凭空宣称已实现。
 - ArchitectureSmoke 增加 TCP、UDP loopback 真 Socket 正反测试（多对端、路由、旧 Generation）。**Loopback != 工厂 PLC、RS-485、采图设备 HIL**；全部以最新 SHA 的 Windows 工作流结果为准。
+
+## 6. 对照架构表的实际类与行为（V1.3 实施增补）
+
+| 分类 | 正式对象 | 代码情况与约束 |
+|---|---|---|
+| Channel | IMCCChannel, IMCCChannelTransport, MCCChannelBase | 同步兼容 + OpenAsync/CloseAsync/SendAsync、接收事件、生命周期、帧证据；真实网络使用新基类 |
+| Channel | MCCSingleChannelBase | 单目标 Send/Receive，显式 ReconnectAsync；重试/退避按 MRK 现有能力执行 |
+| Channel | MCCMultiChannelBase, IMCCMultiPeerChannel | 多对端登记、移除、按精确 Generation 路由，拒绝陈旧地址 |
+| Channel | MCCTcpClientChannel, MCCTcpServerChannel | .NET TcpClient/TcpListener + 异步流收发；Server 一条父通道、多 TcpClient |
+| Channel | MCCUdpChannel, MCCUdpServerChannel | 保留 UDP 报文边界；多 Endpoint 归属同一父通道和 SubChannel |
+| Channel | MCCSerialChannel | SerialPort 单一共享总线；多站号配置归 Protocol |
+| Channel | MCCVirtualRawChannel | 原始数据透传；旧 MCCVirtualChannel 仍是历史自描述帧证据路径，后续合并删旧 |
+| Channel | MCCSubChannel, MCCSubChannelAddress, MCCSubChannelDirectory | 子通道活动状态、引用、SendAsync 和 Register/Find/Remove；不拥有第二套 Socket |
+| Protocol | IMPAProtocol, MPAProtocolBase | 统一 ProcessReceived / PrepareSend / ReadAsync / WriteAsync / SendAsync；Read/Write 是映射的数据行为，不代表远端 Modbus 已响应 |
+| Protocol | MPAEmptyProtocol, MPALengthFrameProtocol | 真透传或按 SubChannel 的分帧解析和 CRC16 |
+| Protocol | MPAModbusTcpProtocol, MPAModbusRtuProtocol, MPAModbusRegisterOperations | MBAP/RTU 请求帧构建、03/06 响应分帧与校验、站号、CRC16；其他功能码和完整事务轮询待专项完成 |
+| Protocol | MPAProtocolSession, MPAProtocolContext | 生命周期、CorrelationId 关联、请求 Timeout/Cancel、子通道路由、数据作用域引用 |
+| Protocol | MPAProtocolConfiguration, MPAPointDefinition, MPAPointTable | 唯一规约配置及点地址、站号、数据类型、读写属性；点表为运行索引 |
+| Mapping | MPADataMapping, MPADataMappingCollection, MPADataValueTransform | 单点多映射、来源/目标、读写方向与操作、类型转换、查找/增删/校验 |
+| Mapping | MPADataMappingExecutor, IMPADataTargetAccess | 入站多目标操作、出站唯一数据源、严格异常传播与必要性策略 |
+| MDS | MDSProtocolDataTargetAccess | Variable/Heap/节点 Frame 真读写；Message/Command 挂接实际 Owner 回调，Command 额外要求显式授权检查；无 Owner 时拒绝 |
+| Connector | MCNConnectorModule | 一个 Channel/Protocol，Start/Stop、SendPayloadAsync、按 SubChannel 发送、解析接收通知、映射数据操作 |
+
+**证据口径：** 内存虚拟与 Windows Socket Loopback 只能证明本地协议及传输行为，不能替代 PLC/串口工业规约完整主站轮询、X-Ray 厂商 SDK 实机采图和工业设备安全联锁认证。Message/Command 尚待正式统一体系 Owner 装配；未装配返回 NotSupported，授权失败返回 UnauthorizedAccessException。
+
