@@ -173,20 +173,42 @@ namespace CxVisual.Mechanism.Core
         public string EventInput{get;private set;}
     }
 
+    /// <summary>具名错误处理声明，错误码来自原Capability合同；不保存CLR异常类型。</summary>
+    public sealed class MOLCatchClause
+    {
+        public MOLCatchClause(string errorCode,MOLControlBlock body)
+        {
+            if(string.IsNullOrWhiteSpace(errorCode)||errorCode.Length>128||
+                errorCode.Any(char.IsControl)||errorCode=="*")
+                throw new ArgumentException("logic.catch_invalid_code","errorCode");
+            ErrorCode=errorCode.Trim();Body=body??throw new ArgumentNullException("body");
+        }
+        public string ErrorCode{get;private set;}
+        public MOLControlBlock Body{get;private set;}
+    }
+
     /// <summary>受保护的结构化控制区：定义归MOL，捕获/清理及实际执行归MRK。</summary>
     public sealed class MOLTryDefinition
     {
         public MOLTryDefinition(MOLControlBlock tryBody,
-            MOLControlBlock catchBody=null,MOLControlBlock finallyBody=null)
+            MOLControlBlock catchBody=null,MOLControlBlock finallyBody=null,
+            IEnumerable<MOLCatchClause> catches=null)
         {
             if(tryBody==null)throw new ArgumentNullException("tryBody");
-            if(catchBody==null&&finallyBody==null)
+            MOLCatchClause[] clauses=(catches??Enumerable.Empty<MOLCatchClause>()).ToArray();
+            if(clauses.Length>32||clauses.Any(x=>x==null)||
+               clauses.Select(x=>x.ErrorCode).Distinct(StringComparer.Ordinal).Count()!=clauses.Length)
+                throw new ArgumentException("logic.catch_duplicate_or_budget");
+            if(catchBody==null&&finallyBody==null&&clauses.Length==0)
                 throw new ArgumentException("logic.try_requires_handler_or_finally");
             TryBody=tryBody;CatchBody=catchBody;FinallyBody=finallyBody;
+            Catches=Array.AsReadOnly(clauses);
         }
         public MOLControlBlock TryBody{get;private set;}
+        /// <summary>原无条件Catch，始终排在具名Catch之后；历史工程合同保持不变。</summary>
         public MOLControlBlock CatchBody{get;private set;}
         public MOLControlBlock FinallyBody{get;private set;}
+        public IReadOnlyList<MOLCatchClause> Catches{get;private set;}
     }
 
     public sealed class MOLControlBlock
@@ -223,9 +245,10 @@ namespace CxVisual.Mechanism.Core
         {return new MOLControlBlock(Guid.NewGuid(),MOLControlKind.Wait,
             wait:new MOLWaitDefinition(eventInput,timeoutMilliseconds));}
         public static MOLControlBlock TryCatchFinally(MOLControlBlock body,
-            MOLControlBlock catchBody=null,MOLControlBlock finallyBody=null)
+            MOLControlBlock catchBody=null,MOLControlBlock finallyBody=null,
+            IEnumerable<MOLCatchClause> catches=null)
         {return new MOLControlBlock(Guid.NewGuid(),MOLControlKind.Try,
-            tryDefinition:new MOLTryDefinition(body,catchBody,finallyBody));}
+            tryDefinition:new MOLTryDefinition(body,catchBody,finallyBody,catches));}
         public static MOLControlBlock Action(string capability)
         { return new MOLControlBlock(Guid.NewGuid(), MOLControlKind.Action, capability); }
         public static MOLControlBlock Sequence(params MOLControlBlock[] children)
@@ -279,7 +302,9 @@ namespace CxVisual.Mechanism.Core
                 MOLTryDefinition region=b.TryRegion==null?null:
                     new MOLTryDefinition(walk(b.TryRegion.TryBody),
                         b.TryRegion.CatchBody==null?null:walk(b.TryRegion.CatchBody),
-                        b.TryRegion.FinallyBody==null?null:walk(b.TryRegion.FinallyBody));
+                        b.TryRegion.FinallyBody==null?null:walk(b.TryRegion.FinallyBody),
+                        b.TryRegion.Catches.Select(c=>
+                            new MOLCatchClause(c.ErrorCode,walk(c.Body))));
                 return new MOLControlBlock(b.Id,b.Kind,b.CapabilityId,children,cases,
                     loop,b.Condition,b.TargetFlow,b.ExitKind,b.Wait,region);
             };
@@ -346,6 +371,8 @@ namespace CxVisual.Mechanism.Core
                         walk(block.TryRegion.TryBody,depth+1);
                         if(block.TryRegion.CatchBody!=null)
                             walk(block.TryRegion.CatchBody,depth+1);
+                        foreach(var clause in block.TryRegion.Catches)
+                            walk(clause.Body,depth+1);
                         if(block.TryRegion.FinallyBody!=null)
                             walk(block.TryRegion.FinallyBody,depth+1);
                         break;
@@ -477,6 +504,9 @@ namespace CxVisual.Mechanism.Core
             {
                 var region=new XElement("TryRegion",
                     new XElement("TryBody",WriteBlock(b.TryRegion.TryBody)));
+                foreach(var clause in b.TryRegion.Catches)
+                    region.Add(new XElement("Catch",new XAttribute("code",clause.ErrorCode),
+                        WriteBlock(clause.Body)));
                 if(b.TryRegion.CatchBody!=null)
                     region.Add(new XElement("CatchBody",WriteBlock(b.TryRegion.CatchBody)));
                 if(b.TryRegion.FinallyBody!=null)
@@ -564,22 +594,28 @@ namespace CxVisual.Mechanism.Core
             if(region!=null)
             {
                 CheckSchema(region,new string[0],
-                    new[]{"TryBody","CatchBody","FinallyBody"});
-                if(region.Elements().Count()<1||region.Elements().Count()>3||
-                    region.Elements().Any(x=>x.Name!="TryBody"&&
+                    new[]{"TryBody","Catch","CatchBody","FinallyBody"});
+                if(region.Elements().Count()<1||region.Elements("Catch").Count()>32||
+                    region.Elements().Any(x=>x.Name!="TryBody"&&x.Name!="Catch"&&
                         x.Name!="CatchBody"&&x.Name!="FinallyBody")||
                     region.Elements("TryBody").Count()!=1||
                     region.Elements("CatchBody").Count()>1||
                     region.Elements("FinallyBody").Count()>1||
-                    region.Elements().Any(x=>x.Attributes().Any()||
+                    region.Elements().Any(x=>
+                        (x.Name=="Catch"?
+                            x.Attributes().Count()!=1||x.Attribute("code")==null:
+                            x.Attributes().Any())||
                         x.Elements("Block").Count()!=1||x.Elements().Count()!=1))
                     throw new InvalidDataException("logic.try_schema");
                 Func<string,MOLControlBlock> readPart=name=>{
                     XElement part=region.Element(name);
                     return part==null?null:ReadBlock(part.Element("Block"),depth+1);
                 };
+                MOLCatchClause[] clauses=region.Elements("Catch").Select(c=>
+                    new MOLCatchClause((string)c.Attribute("code"),
+                        ReadBlock(c.Element("Block"),depth+1))).ToArray();
                 tryDefinition=new MOLTryDefinition(readPart("TryBody"),
-                    readPart("CatchBody"),readPart("FinallyBody"));
+                    readPart("CatchBody"),readPart("FinallyBody"),clauses);
             }
             return new MOLControlBlock(id, kind, (string)e.Attribute("cap"), blocks, cases,
                 loop, ReadExpression(e.Element("Guard") == null ? null : e.Element("Guard").Element("Expression")),
