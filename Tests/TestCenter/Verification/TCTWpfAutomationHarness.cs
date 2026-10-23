@@ -102,6 +102,45 @@ namespace CxVisual.TestCenter.UI
                 if (!opened) Thread.Sleep(100);
             }
             if (!opened) throw new InvalidOperationException("FCM/MPW typed module editor did not load: " + kind);
+            if (kind == CxVisual.Mechanism.Core.Modules.MFMModuleKind.Connector)
+            {
+                window.Dispatcher.Invoke(new Action(() => {
+                    System.Windows.Controls.TabControl tabs =
+                        window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                    tabs.Items.OfType<System.Windows.Controls.TabItem>().Select(x => x.Content)
+                        .OfType<TCTManualModuleFrame>().Single().SelectModulePage("channels");
+                }));
+                AutomationElement cards = root.FindFirst(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.AutomationIdProperty,
+                        "MPW.Channel.SchemaCards"));
+                if (cards == null)
+                {
+                    InvokePattern add = Find(root, "MPW.Collection.Add.Channels")
+                        .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
+                    if (add == null) throw new InvalidOperationException("MPW channel Add not invokable");
+                    add.Invoke();
+                }
+                bool rendered = false;
+                for (int attempt = 0; attempt < 60 && !rendered; attempt++)
+                {
+                    cards = root.FindFirst(TreeScope.Descendants,
+                        new PropertyCondition(AutomationElement.AutomationIdProperty,
+                            "MPW.Channel.SchemaCards"));
+                    if (cards != null)
+                        window.Dispatcher.Invoke(new Action(() => {
+                            System.Windows.Controls.TabControl tabs =
+                                window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                            TCTManualModuleFrame frame = tabs.Items
+                                .OfType<System.Windows.Controls.TabItem>().Select(x => x.Content)
+                                .OfType<TCTManualModuleFrame>().Single();
+                            rendered = frame.SelectedModulePage == "channels" &&
+                                frame.VisibleSchemaEditorCount > 10;
+                        }));
+                    if (!rendered) Thread.Sleep(100);
+                }
+                if (!rendered) throw new InvalidOperationException(
+                    "MCCChannelConfiguration three-column Schema editor not rendered");
+            }
             InvokePattern save = Find(root, "TCT.Manual.Action.module.save")
                 .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
             if (save == null) throw new InvalidOperationException("MHS Save command unavailable for " + kind);
@@ -144,6 +183,13 @@ namespace CxVisual.TestCenter.UI
                 if (!reloaded) Thread.Sleep(100);
             }
             if (!reloaded) throw new InvalidOperationException("MHS re-open verification failed: " + kind);
+            if (kind == CxVisual.Mechanism.Core.Modules.MFMModuleKind.Connector)
+                window.Dispatcher.Invoke(new Action(() => {
+                    System.Windows.Controls.TabControl tabs =
+                        window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                    tabs.Items.OfType<System.Windows.Controls.TabItem>().Select(x => x.Content)
+                        .OfType<TCTManualModuleFrame>().Single().SelectModulePage("channels");
+                }));
             InvokePattern validate = Find(root, "TCT.Manual.Action.module.validate")
                 .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
             if (validate == null) throw new InvalidOperationException("Module validation unavailable");
