@@ -178,6 +178,25 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Check(!(bool)dragFlag.GetValue(shapeView)&&
                         session.Revision==beforeCancelRevision,
                         "P0 Esc cancellation must release preview without changing engineering");
+                    // P1：真实WPF Routed KeyDown需正确传出完整选区和1世界单位微调；
+                    // WPF不直接编辑MEM，也不能在这里只改变Revision。
+                    int nudgeCalls=0;
+                    shapeView.NudgeSelectionRequested+=(ids,dx,dy)=>
+                    {
+                        Check(ids.Count==2&&ids.Contains(bezierScene.Id)&&
+                            ids.Contains(another.Id)&&Math.Abs(dx-1)<1e-9&&Math.Abs(dy)<1e-9,
+                            "P1 WPF Right arrow nudge payload incorrect");
+                        nudgeCalls++;
+                    };
+                    var keySource=PresentationSource.FromVisual(shapeView);
+                    Check(keySource!=null,"P1 WPF keyboard presentation source missing");
+                    var arrow=new System.Windows.Input.KeyEventArgs(
+                        System.Windows.Input.InputManager.Current.PrimaryKeyboardDevice,
+                        keySource,Environment.TickCount,System.Windows.Input.Key.Right);
+                    arrow.RoutedEvent=System.Windows.Input.Keyboard.KeyDownEvent;
+                    shapeView.RaiseEvent(arrow);
+                    Check(nudgeCalls==1&&arrow.Handled&&session.Revision==beforeCancelRevision,
+                        "P1 WPF keyboard nudge did not route without changing MEM");
                     shapeView.SetSelectedVisualIds(new[]{bezierScene.Id});
                     shapeView.UpdateLayout();
                     System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(new Action(()=>{}),

@@ -205,6 +205,17 @@ namespace CxVisual.Studio
                 }
                 catch(Exception ex){VisualInfo.Text="多选变换失败："+ex.Message;}
             };
+            SceneHost.NudgeSelectionRequested += (ids,dx,dy)=>
+            {
+                try
+                {
+                    MTCEditResult<bool> result=_viewModel.NudgeVisualSelection(ids,dx,dy);
+                    VisualInfo.Text=result.Success?
+                        "方向键微调已保存（Shift=10单位，单次Undo）":
+                        "方向键微调被拒绝："+result.ErrorCode+" "+result.Message;
+                }
+                catch(Exception ex){VisualInfo.Text="方向键微调失败："+ex.Message;}
+            };
             SceneHost.MoveRequested += OnMove;
             SceneHost.ConnectRequested += (source,sourceSide,target,targetSide)=>
             {

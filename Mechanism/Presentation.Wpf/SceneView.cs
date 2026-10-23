@@ -43,6 +43,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         private bool _marquee;
         private Point _marqueeStart,_marqueeEnd;
         public event Action<IReadOnlyList<Guid>> SelectionSetRequested;
+        /// <summary>方向键请求仅携带稳定选区Id与世界位移；MVI决定实际MEM提交和拒绝。</summary>
+        public event Action<IReadOnlyList<Guid>,double,double> NudgeSelectionRequested;
         // 几何节点编辑与对象外框变换互斥，双击Shape进入；Esc退出。
         private bool _geometryEditMode;
         private Guid? _hoverConnectId,_connectSourceId,_connectTargetId;
@@ -1187,6 +1189,25 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 {_geometryEditMode=false;InvalidateVisual();}
                 else CancelInteraction();
                 e.Handled=true;
+            }
+            else if(_designMode&&!_geometryEditMode&&!_dragging&&!_handleDragging&&
+                !_selectionTransformDragging&&!_waypointDragging&&!_connectDragging&&
+                !_rewireDragging&&!_marquee&&NudgeSelectionRequested!=null&&
+                (e.Key==Key.Left||e.Key==Key.Right||e.Key==Key.Up||e.Key==Key.Down)&&
+                (Keyboard.Modifiers&(ModifierKeys.Control|ModifierKeys.Alt))==0&&
+                object.ReferenceEquals(e.OriginalSource,this))
+            {
+                // Ctrl/Alt保留给Studio与专业输入；Shift将单次微调由1扩至10世界单位。
+                // 只要选区含连接线、隐藏或锁定元素，就整体拒绝，不移动剩余部分。
+                MVISceneItem[] editable=EditableSelection();
+                if(editable.Length>0&&editable.Length==_selectedItems.Count)
+                {
+                    double step=(Keyboard.Modifiers&ModifierKeys.Shift)!=0?10:1;
+                    double dx=e.Key==Key.Left?-step:e.Key==Key.Right?step:0;
+                    double dy=e.Key==Key.Up?-step:e.Key==Key.Down?step:0;
+                    NudgeSelectionRequested(new List<Guid>(_selectedItems).AsReadOnly(),dx,dy);
+                    e.Handled=true;
+                }
             }
             else if(_designMode&&_selection.HasValue&&VisualRouteRequested!=null&&
                 _items.Exists(x=>x.Id==_selection.Value&&

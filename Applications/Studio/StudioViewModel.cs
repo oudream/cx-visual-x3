@@ -99,6 +99,35 @@ namespace CxVisual.Studio
             if(result.Success)NotifyScene();
             return result;
         }
+        /// <summary>
+        /// 键盘微调不使用25世界单位的鼠标网格吸附；单选按父坐标换算，
+        /// 多选沿用MVI原子事务，保留嵌套Group、Symbol实例与Undo语义。
+        /// </summary>
+        public MTCEditResult<bool> NudgeVisualSelection(IReadOnlyList<Guid> ids,
+            double worldDx,double worldDy)
+        {
+            if(ids==null||ids.Count==0||ids.Distinct().Count()!=ids.Count)
+                return MTCEditResult<bool>.Rejected(_editor.Document.Revision,
+                    "visual.nudge.selection","Invalid keyboard selection");
+            MTCEditResult<bool> result;
+            if(ids.Count>1)
+                result=_editor.MoveSelection(ids,worldDx,worldDy,false);
+            else
+            {
+                MVISceneItem item=_editor.Scene.FirstOrDefault(x=>
+                    x.Id==ids[0]&&x.IsSelectable&&x.ElementTypeId!="core.visual.connector");
+                if(item==null)
+                    return MTCEditResult<bool>.Rejected(_editor.Document.Revision,
+                        "visual.nudge.locked_or_hidden","Keyboard move requires editable visual");
+                double x,y;
+                item.PositionAfterWorldDelta(worldDx,worldDy,out x,out y);
+                result=_editor.Move(item.Id,x,y);
+            }
+            Status=result.Success?"方向键微调已保存（一次Undo） | Revision "+result.Revision:
+                "微调失败："+result.ErrorCode+" "+result.Message;
+            if(result.Success)NotifyScene();
+            return result;
+        }
         public void Drag(Guid id, double x, double y)
         {
             Select(id);
