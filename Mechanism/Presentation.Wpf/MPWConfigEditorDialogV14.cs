@@ -180,7 +180,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             TabControl tabs = new TabControl();
             _shellTabs = tabs;
             tabs.Items.Add(new TabItem { Header = "参数及动态集合", Content = new ScrollViewer {
-                VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = _form } });
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, Content = _form } });
             StackPanel detail = new StackPanel { Margin = new Thickness(12) };
             detail.Children.Add(new TextBlock { Text = "Saved / Effective / 审计诊断",
                 FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 0, 8) });
@@ -371,9 +372,14 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             }
             if (IsScalar(type))
             {
-                StackPanel line = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(4, 5, 4, 5) };
+                StackPanel line = new StackPanel {
+                    Orientation = _workspaceCompact ? Orientation.Vertical : Orientation.Horizontal,
+                    Margin = new Thickness(4, 5, 4, 7) };
                 TextBlock caption = new TextBlock { Text = label + (string.IsNullOrEmpty(unit) ? "" : " (" + unit + ")"),
-                    Width = 190, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+                    Width = _workspaceCompact ? double.NaN : 190,
+                    FontSize = _workspaceCompact ? 13 : 12,
+                    Margin = _workspaceCompact ? new Thickness(0, 0, 0, 4) : new Thickness(0),
+                    VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
                 line.Children.Add(caption);
                 Func<string, Action<string>, FrameworkElement> custom;
                 if (_custom.TryGetValue(path, out custom))
@@ -451,14 +457,16 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 (state.IsModified ? "  [未保存草稿]" : "");
             host.Children.Add(new TextBlock {
                 Text = summary, FontSize = 11, Foreground = Brushes.SlateGray,
-                Margin = new Thickness(196, 0, 3, 3), TextWrapping = TextWrapping.Wrap
+                Margin = _workspaceCompact ? new Thickness(6, 0, 3, 3) :
+                    new Thickness(196, 0, 3, 3), TextWrapping = TextWrapping.Wrap
             });
             if (state.Issues.Any(x => x.Severity == FCMConfigIssueSeverity.Error))
                 host.Children.Add(new TextBlock {
                     Text = "校验: " + string.Join(" / ",
                         state.Issues.Where(x => x.Severity == FCMConfigIssueSeverity.Error)
                             .Select(x => x.Code).Distinct()),
-                    Foreground = Brushes.Firebrick, Margin = new Thickness(196, 0, 3, 5),
+                    Foreground = Brushes.Firebrick, Margin = _workspaceCompact ?
+                        new Thickness(6, 0, 3, 5) : new Thickness(196, 0, 3, 5),
                     TextWrapping = TextWrapping.Wrap
                 });
         }
