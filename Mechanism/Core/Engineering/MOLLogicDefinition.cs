@@ -316,8 +316,8 @@ namespace CxVisual.Mechanism.Core
         {
             var ids = new HashSet<Guid>();
             int count = 0;
-            Action<MOLControlBlock, int> walk = null;
-            walk = (block, depth) =>
+            Action<MOLControlBlock,int,int> walk = null;
+            walk = (block, depth, loopDepth) =>
             {
                 if (block == null || depth > 32 || ++count > 4096 || !ids.Add(block.Id))
                     throw new InvalidOperationException("logic.invalid_tree_or_identity");
@@ -352,7 +352,7 @@ namespace CxVisual.Mechanism.Core
                             if (block.Cases[i] == null) throw new InvalidOperationException("logic.null_case");
                             if (block.Cases[i].Condition == null && (++defaults > 1 || i != block.Cases.Count - 1))
                                 throw new InvalidOperationException("logic.default_must_be_last");
-                            walk(block.Cases[i].Body, depth + 1);
+                            walk(block.Cases[i].Body, depth + 1,loopDepth);
                         }
                         break;
                     case MOLControlKind.Loop:
@@ -363,18 +363,18 @@ namespace CxVisual.Mechanism.Core
                             throw new InvalidOperationException("logic.while_needs_condition");
                         if (block.Kind == MOLControlKind.ForEach && string.IsNullOrWhiteSpace(block.Loop.CollectionInput))
                             throw new InvalidOperationException("logic.collection_missing");
-                        walk(block.Loop.Body, depth + 1);
+                        walk(block.Loop.Body, depth + 1,loopDepth+1);
                         break;
                     case MOLControlKind.Try:
                         if(block.TryRegion==null)
                             throw new InvalidOperationException("logic.try_missing");
-                        walk(block.TryRegion.TryBody,depth+1);
+                        walk(block.TryRegion.TryBody,depth+1,loopDepth);
                         if(block.TryRegion.CatchBody!=null)
-                            walk(block.TryRegion.CatchBody,depth+1);
+                            walk(block.TryRegion.CatchBody,depth+1,loopDepth);
                         foreach(var clause in block.TryRegion.Catches)
-                            walk(clause.Body,depth+1);
+                            walk(clause.Body,depth+1,loopDepth);
                         if(block.TryRegion.FinallyBody!=null)
-                            walk(block.TryRegion.FinallyBody,depth+1);
+                            walk(block.TryRegion.FinallyBody,depth+1,loopDepth);
                         break;
                     case MOLControlKind.Wait:
                         if(block.Wait==null)throw new InvalidOperationException("logic.wait_missing");
@@ -382,10 +382,16 @@ namespace CxVisual.Mechanism.Core
                     case MOLControlKind.Invoke:
                         if (string.IsNullOrWhiteSpace(block.TargetFlow)) throw new InvalidOperationException("logic.invoke_missing");
                         break;
+                    case MOLControlKind.Exit:
+                        if(!Enum.IsDefined(typeof(MOLExitKind),block.ExitKind))
+                            throw new InvalidOperationException("logic.exit_unknown");
+                        if(block.ExitKind!=MOLExitKind.Return&&loopDepth==0)
+                            throw new InvalidOperationException("logic.exit_outside_loop");
+                        break;
                 }
-                foreach (var child in block.Children) walk(child, depth + 1);
+                foreach (var child in block.Children) walk(child, depth + 1,loopDepth);
             };
-            walk(Root, 0);
+            walk(Root, 0,0);
         }
     }
 
