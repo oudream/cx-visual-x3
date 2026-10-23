@@ -1140,9 +1140,19 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 EventHandler<MPWMoveEventArgs> moved = MoveRequested;
                 if (original != null && moved != null)
                 {
-                    double x, y; original.PositionAfterWorldDelta(_dragX, _dragY, out x, out y);
-                    if(_gridSnap){x=Math.Round(x/25)*25;y=Math.Round(y/25)*25;}
-                    moved(this, new MPWMoveEventArgs(original.Id, x, y, _dragX, _dragY));
+                    // 多选吸附由MVI按整组选区统一确定世界位移；
+                    // 单选也在世界空间吸附，再换算父容器局部坐标。
+                    double dx=_dragX,dy=_dragY;
+                    if(_gridSnap&&_selectedItems.Count<=1)
+                    {
+                        dx=Math.Round((original.Bounds.Left+dx)/25)*25-
+                            original.Bounds.Left;
+                        dy=Math.Round((original.Bounds.Top+dy)/25)*25-
+                            original.Bounds.Top;
+                    }
+                    double x,y;
+                    original.PositionAfterWorldDelta(dx,dy,out x,out y);
+                    moved(this,new MPWMoveEventArgs(original.Id,x,y,dx,dy));
                 }
             }
             _dragX = 0; _dragY = 0;
