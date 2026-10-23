@@ -61,7 +61,7 @@
 
 - **MOL Owner**：复用 `MOLControlKind.Try`；新增 `MOLTryDefinition`、`MOLControlBlock.TryCatchFinally()` 和 Schema1 `TryRegion/TryBody/CatchBody/FinallyBody` 安全持久化。只属于原 MEMContent Logic Aspect，拒绝无Catch/Finally及非法结构。
 - **MOC Owner**：Try/Catch/Finally分别编译为原 `MRKExecutionPlan` 嵌套Plan，共享原CapabilityResolver与SourceMap；Loop/Foreach在内层按当前Invocation导入Index/Item Gate，修复跨计划依赖。
-- **MRK/MDS**：新增原执行计划内的 `MRKTryRegion`，复用 `MRKExecutionEngine.RunStepAsync`、F19 Work、MDS Frame与Trace。Try成功跳过Catch但执行Finally；失败用Catch-all处理，未捕获传播；取消不进Catch、独立最长10秒清理令牌执行Finally；Finally错误不隐瞒。
+- **MRK/MDS**：新增原执行计划内的 `MRKTryRegion`，复用 `MRKExecutionEngine.RunStepAsync`、F19 Work、MDS Frame与Trace。Try成功跳过Catch但执行Finally；失败用Catch-all处理，未捕获传播；取消不进Catch、独立10秒协作取消预算尝试执行Finally（无法强制中止不合作SDK，安全停机归专业Owner）；Finally错误不隐瞒。
 - **ArchitectureSmoke**：`P01TryCatchFinallyRoundtrip` 覆盖非法定义、MEM保存重开、正常/已捕获/未捕获异常、Finally故障、真实Trace/SourceMap、异步等待取消、动态Foreach三轮（中间轮异常，逐轮传递iteration/item）。
 - **历史红灯及修复**：首轮CI发现执行组foreach花括号作用域错误，`ddd1012f`修复；测试脏工程Dispose被MEM正常拒绝，`fbd05b6d`修正显式Close(true)；Wait真实轨迹是Scheduled而非Running，`8ba30de0`纠正断言。失败记录不是成功证据。
 - **固定SHA Windows S3**：`b58776165ec5b3ca7b8deb8cd01df5e934f363b6`；工程组织 [39904735742](https://github.com/oudream/cx-visual-x3/actions/runs/39904735742)、Runtime [39904735623](https://github.com/oudream/cx-visual-x3/actions/runs/39904735623)、Config L1 [39904735584](https://github.com/oudream/cx-visual-x3/actions/runs/39904735584)、配置底座 [39904735670](https://github.com/oudream/cx-visual-x3/actions/runs/39904735670) 均成功。并行提交后的Studio/TestCenter须按自身同SHA重新核实。
