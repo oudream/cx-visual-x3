@@ -565,6 +565,14 @@ namespace CxVisual.Mechanism.Core
         {
             if (session == null || content == null || definition == null)
                 throw new ArgumentNullException("session/content/definition");
+            MEMNodeSnapshot current=session.GetSnapshot().Find(content.Id);
+            if(current==null||current.Kind!=MEMNodeKind.Content)
+                throw new InvalidOperationException("logic.set.foreign_content");
+            MPMAspect prior=current.Aspects.SingleOrDefault(a=>
+                a.Kind==MPMAspectKind.Logic&&a.ProviderId==ProviderId);
+            if(prior!=null&&(prior.SchemaVersion!=SchemaVersion&&
+                prior.SchemaVersion!=ExtendedSchemaVersion))
+                throw new InvalidOperationException("logic.set.requires_explicit_conversion");
             session.SetAspect(content, new MPMAspect(MPMAspectKind.Logic, ProviderId,
                 Version(definition), Serialize(definition)));
         }
@@ -1475,8 +1483,20 @@ namespace CxVisual.Mechanism.Core
             }).RequireValue();
         }
         public static void Set(MEMEngineeringSession session,MEMContent content,MOLWiringDefinition definition)
-        {if(session==null||content==null)throw new ArgumentNullException("session/content");
-         session.SetAspect(content,CreateAspect(definition));}
+        {
+            if(session==null||content==null||definition==null)
+                throw new ArgumentNullException("session/content/definition");
+            MEMNodeSnapshot current=session.GetSnapshot().Find(content.Id);
+            if(current==null||current.Kind!=MEMNodeKind.Content)
+                throw new InvalidOperationException("wiring.set.foreign_content");
+            MPMAspect prior=current.Aspects.SingleOrDefault(a=>
+                a.Kind==MPMAspectKind.Logic&&a.ProviderId==MOLLogicCodec.ProviderId);
+            if(prior!=null&&prior.SchemaVersion!=SchemaVersion&&
+                prior.SchemaVersion!=ExtendedSchemaVersion&&
+                prior.SchemaVersion!=CompoundSchemaVersion)
+                throw new InvalidOperationException("wiring.set.requires_explicit_conversion");
+            session.SetAspect(content,CreateAspect(definition));
+        }
         public static MOLWiringDefinition Get(MEMNodeSnapshot node)
         {
             if(node==null)throw new ArgumentNullException("node");
