@@ -9,6 +9,64 @@ namespace CxVisual.TestCenter.Cases
 {
     public static class TCTWorkspaceRegistrationCases
     {
+        [TCTTest("TCT.UI.WORKSPACE.002",
+            "创建实例独立ID、保存重开、计划选择隔离与删除后不误复用模块MHS配置",
+            TCTTestAspect.Integration, "TestCenter / Workspace / Instances",
+            ObjectId = "TCTCreatedWorkspaceStore")]
+        public static void CreatedWorkspaceLifecycle(TCTTestContext test)
+        {
+            string directory = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                "tct-workspaces-" + Guid.NewGuid().ToString("N"));
+            string file = System.IO.Path.Combine(directory, "sessions.xml");
+            try
+            {
+                TCTCreatedWorkspaceStore original = new TCTCreatedWorkspaceStore(file);
+                TCTCreatedWorkspace a = original.Create(
+                    "manual.module.connector", "Connector 01", "ModuleConnector01");
+                TCTCreatedWorkspace b = original.Create(
+                    "manual.module.connector", "Connector 02", "ModuleConnector02");
+                TCTCreatedWorkspace plan = original.Create("auto.catalog", "回归计划01", "");
+                original.UpdateCases(plan.Id, new[] { "TCT.M2.GEOMETRY.001", "M-OBJ-007" });
+                test.AssertTrue(a.Id != b.Id && a.ConfigurationId != b.ConfigurationId,
+                    "不同实例有独立身份与MHS Scope", true, true);
+
+                TCTCreatedWorkspaceStore reopened = new TCTCreatedWorkspaceStore(file);
+                reopened.Load(new[] { "manual.module.connector", "auto.catalog" });
+                test.AssertTrue(reopened.Items.Count == 3 &&
+                    reopened.Items.Single(x => x.Id == plan.Id).CaseIds.Length == 2,
+                    "关闭重开后仍保留模块及计划CaseId", true, true);
+
+                TCTWorkspaceRegistry registry = TCTWorkspaceRegistry.CreateDefaults(
+                    id => { throw new InvalidOperationException("分类Factory不得隐式调用"); });
+                foreach (TCTCreatedWorkspace item in reopened.Items)
+                    registry.RegisterCreated(item, () => new System.Windows.Controls.UserControl());
+                registry.Validate();
+                test.AssertTrue(registry.Children("manual.module.connector").Count() == 2 &&
+                    registry.Children("auto.catalog").Count() == 1,
+                    "四根树之下的类型节点保有对应实例叶节点", true, true);
+                test.AssertTrue(!registry.RemoveCreated("manual.module.connector") &&
+                    registry.RemoveCreated(a.Id),
+                    "不得删除模块类别但允许删除已创建实例", true, true);
+
+                reopened.Delete(a.Id);
+                TCTCreatedWorkspace replacement = reopened.Create(
+                    "manual.module.connector", "Connector 01", "ModuleConnector01");
+                test.AssertTrue(replacement.Id != a.Id &&
+                    replacement.ConfigurationId != a.ConfigurationId,
+                    "删除再创建不能复用旧MHS实例身份", true, true);
+
+                bool rejected = false;
+                try { new TCTCreatedWorkspaceStore(file).Load(new[] { "auto.catalog" }); }
+                catch (System.IO.InvalidDataException) { rejected = true; }
+                test.AssertTrue(rejected, "缺失模板注册时拒绝悄悄创建悬空实例", true, rejected);
+            }
+            finally
+            {
+                try { if (System.IO.Directory.Exists(directory)) System.IO.Directory.Delete(directory, true); }
+                catch (System.IO.IOException) { }
+            }
+        }
+
         [TCTTest("TCT.UI.WORKSPACE.001", "四根注册树、重复与循环父节点拒绝、生产Virtual收发",
             TCTTestAspect.Integration, "TestCenter / Workspace / Manual", ObjectId = "TCTWorkspaceRegistry")]
         public static void RegistryAndVirtualOwner(TCTTestContext test)

@@ -193,6 +193,20 @@ namespace CxVisual.TestCenter.UI
             }
             if (template.Factory != null && template.Kind != TCTWorkspaceNodeKind.Root)
                 return template.Factory();
+            if (record.TemplateId.StartsWith("reports.", StringComparison.Ordinal) ||
+                record.TemplateId == "reports.root")
+            {
+                // 共用唯一TCT历史仓库与校验器；每个Tab独立浏览状态，不复制Run/Attempt。
+                TCTTestHistoryControl report = new TCTTestHistoryControl();
+                report.SetCurrent(_displayedRun);
+                report.HistoryOpened += OnHistoryOpened;
+                report.ComparisonOpened += (comparison, root) => {
+                    Diff.ShowComparison(comparison, root);
+                    ActivateDockPanel("test.diff");
+                };
+                report.RerunRequested += async ids => await RunAsync(false, ids);
+                return report;
+            }
             StackPanel body = new StackPanel { Margin = new Thickness(22) };
             body.Children.Add(new TextBlock { Text = record.Title, FontSize = 22,
                 FontWeight = FontWeights.SemiBold, Foreground = Brushes.DarkSlateBlue });
@@ -202,16 +216,6 @@ namespace CxVisual.TestCenter.UI
                   "已创建工作区。该类型目前尚未绑定可执行的正式专业Owner，不显示虚假Passed。",
                 Margin = new Thickness(0, 12, 0, 14),
                 Foreground = Brushes.DarkGoldenrod, TextWrapping = TextWrapping.Wrap });
-            if (report)
-            {
-                Button view = new Button { Content = "打开真实历史与结果",
-                    Padding = new Thickness(12, 8, 12, 8),
-                    HorizontalAlignment = HorizontalAlignment.Left };
-                view.Click += (sender, args) => {
-                    History.Refresh(); ActivateDockPanel("test.history");
-                };
-                body.Children.Add(view);
-            }
             return new UserControl { Content = body };
         }
 
@@ -255,8 +259,22 @@ namespace CxVisual.TestCenter.UI
                 StatusText.Text = "草稿未保存，删除被阻止。请先保存模块配置";
                 return;
             }
+            TCTArchitectureSmokeFrame smoke = tabs == null ? null : tabs.Items
+                .OfType<TabItem>().Where(x =>
+                    (x.Tag as TCTWorkspaceDescriptor)?.WorkspaceId == instanceId)
+                .Select(x => x.Content).OfType<TCTArchitectureSmokeFrame>().FirstOrDefault();
+            if (smoke != null && smoke.IsRunning)
+            {
+                StatusText.Text = "独立架构回归正在执行，请先停止再删除";
+                return;
+            }
+            if (module != null && DocumentHost.HasWorkspace(instanceId) &&
+                !DocumentHost.CloseWorkspace(instanceId)) return;
+            if (smoke != null && DocumentHost.HasWorkspace(instanceId))
+                DocumentHost.CloseWorkspace(instanceId);
             if (!_createdWorkspaces.Delete(instanceId)) return;
-            DocumentHost.CloseWorkspace(instanceId);
+            if (DocumentHost.HasWorkspace(instanceId))
+                DocumentHost.CloseWorkspace(instanceId);
             _workspaces.RemoveCreated(instanceId);
             Explorer.RefreshWorkspaces();
             StatusText.Text = "删除实例 " + entry.Title +
@@ -361,8 +379,11 @@ namespace CxVisual.TestCenter.UI
         private void OnTestSelected(ITCTTestCase test)
         {
             _selectedCatalogTest = test;
-            AutoActionHost.Visibility = Visibility.Visible;
-            ManualActionHost.Visibility = Visibility.Collapsed;
+            // Catalog用例选择只更新Inspector/上下文，不抢走已打开计划的操作中心。
+            TabItem activeTab = (DocumentHost.Content as TabControl)?.SelectedItem as TabItem;
+            bool insideCreatedPlan = activeTab != null && activeTab.Content is TCTTestPlanControl;
+            AutoActionHost.Visibility = insideCreatedPlan ? Visibility.Collapsed : Visibility.Visible;
+            ManualActionHost.Visibility = insideCreatedPlan ? Visibility.Visible : Visibility.Collapsed;
             _ribbon.SetContext(test);
             WorkspaceTitle.Text = test == null ? "测试主界面 / Overview" :
                 test.Descriptor.Aspect + " / " + test.Descriptor.Group + " / " + test.Descriptor.Name;
@@ -483,6 +504,11 @@ namespace CxVisual.TestCenter.UI
                 _displayedRun = _lastRun;
                 DocumentHost.Overview.Update(_catalog, _visibleResults, _lastRun.RunId);
                 History.SetCurrent(_lastRun);
+                TabControl tabs = DocumentHost.Content as TabControl;
+                if (tabs != null)
+                    foreach (TCTTestHistoryControl report in tabs.Items
+                        .OfType<TabItem>().Select(x => x.Content).OfType<TCTTestHistoryControl>())
+                    { report.SetCurrent(_lastRun); report.Refresh(); }
                 StatusText.Text = "Run " + _lastRun.RunId + " · " + _lastRun.Total + "执行；" +
                     _lastRun.Passed + "通过；" + _lastRun.Failed + "失败/错误；" +
                     _lastRun.Cancelled + "取消；" + _lastRun.Unsupported + "未覆盖";
