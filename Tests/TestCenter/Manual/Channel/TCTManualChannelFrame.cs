@@ -50,7 +50,7 @@ namespace CxVisual.TestCenter.UI
         private readonly StackPanel _busPanel = new StackPanel();
         private readonly StackPanel _singlePanel = new StackPanel();
         private MCCVirtualChannel[] _pair;
-        private MCCSubChannelDirectory _directory;
+        private MCCMultiChannelBase _multiChannel;
         private readonly MPAProtocolConfiguration _stationProtocol =
             new MPAProtocolConfiguration { Id = "manual-modbus-rtu",
                 Kind = MPAProtocolKind.ModbusRtuDraft };
@@ -64,6 +64,8 @@ namespace CxVisual.TestCenter.UI
         public int StationCount { get { return _stations.Count; } }
         public MCCSubChannelAddress SelectedPeerAddress
         { get { return (_peerList.SelectedItem as TCTPeerRow)?.Address; } }
+        public MCCChannelState MultiChannelState
+        { get { return _multiChannel == null ? MCCChannelState.Closed : _multiChannel.State; } }
         public string StatusMessage { get { return _state.Text; } }
         public string LastDiagnostic { get { return _lastDiagnostic; } }
         public MCCChannelKind SelectedChannelKind { get { return _selectedKind; } }
@@ -213,13 +215,19 @@ namespace CxVisual.TestCenter.UI
         {
             if (kind == MCCChannelKind.Custom || !Enum.IsDefined(typeof(MCCChannelKind), kind))
                 throw new ArgumentOutOfRangeException("kind", "自定义通道需要已注册的专业TypeDescriptor");
-            if (kind == _selectedKind && _directory != null &&
+            if (kind == _selectedKind && _multiChannel != null &&
                 kind != MCCChannelKind.Virtual) { UpdateTopology(); return; }
             if (IsConnected) Disconnect();
             _selectedKind = kind;
             if (!object.Equals(_channelKind.SelectedItem, kind)) _channelKind.SelectedItem = kind;
-            _directory = new MCCChannelConfiguration { Kind = kind }.DescribeType().Topology ==
-                MCCChannelTopology.MultiPeer ? new MCCSubChannelDirectory("Manual-Multi") : null;
+            // 直接实例化已有正式MultiPeer Channel；只用其生产目录，不执行OpenAsync，
+            // 因而不会在测试界面无授权时创建监听Socket或冒充设备连接。
+            MCCChannelConfiguration configuration = new MCCChannelConfiguration {
+                Id = "Manual-Multi", Kind = kind };
+            _multiChannel = kind == MCCChannelKind.TcpServer
+                ? (MCCMultiChannelBase)new MCCTcpServerChannel(configuration) :
+                kind == MCCChannelKind.UdpServer
+                ? (MCCMultiChannelBase)new MCCUdpServerChannel(configuration) : null;
             _peers.Clear();
             _stationProtocol.Points.Clear();
             _stations.Clear();
@@ -244,11 +252,11 @@ namespace CxVisual.TestCenter.UI
         public void SetStationInput(string station) { _station.Text = station ?? ""; }
         public MCCSubChannelAddress RegisterSubChannel()
         {
-            if (SelectedTopology != MCCChannelTopology.MultiPeer || _directory == null)
-                throw new InvalidOperationException("只有MultiPeer支持子通道登记");
+            if (SelectedTopology != MCCChannelTopology.MultiPeer || _multiChannel == null)
+                throw new InvalidOperationException("只有已创建的真实MultiPeer Channel支持子通道登记");
             try
             {
-                MCCSubChannelInfo peer = _directory.Register(_peerId.Text, _endpoint.Text);
+                MCCSubChannelInfo peer = _multiChannel.RegisterPeer(_peerId.Text, _endpoint.Text);
                 _peers.Add(new TCTPeerRow { Address = peer.Address,
                     Label = peer.Address + "  →  " + peer.RemoteEndpoint });
                 _peerList.SelectedIndex = _peers.Count - 1;
@@ -267,8 +275,8 @@ namespace CxVisual.TestCenter.UI
         public void RemoveSelectedSubChannel()
         {
             TCTPeerRow selected = _peerList.SelectedItem as TCTPeerRow;
-            if (selected == null || _directory == null ||
-                !_directory.Remove(selected.Address))
+            if (selected == null || _multiChannel == null ||
+                !_multiChannel.RemovePeer(selected.Address))
                 throw new InvalidOperationException("没有可移除的存活SubChannel");
             _peers.Remove(selected);
             _lastDiagnostic = "已移除对端；旧代次路由失效：" + selected.Address;
@@ -280,7 +288,7 @@ namespace CxVisual.TestCenter.UI
             _peerList.SelectedItem = item;
         }
         public bool IsLiveSubChannel(MCCSubChannelAddress address)
-        { return _directory != null && _directory.FindSubChannel(address) != null; }
+        { return _multiChannel != null && _multiChannel.FindSubChannel(address) != null; }
         public void AddStation()
         {
             if (SelectedTopology != MCCChannelTopology.SharedBus)
@@ -329,11 +337,11 @@ namespace CxVisual.TestCenter.UI
                 }
                 else if (SelectedTopology == MCCChannelTopology.MultiPeer)
                 {
-                    MCCSubChannelDirectory directory = _directory ??
-                        new MCCSubChannelDirectory("Manual-Multi");
-                    MCCSubChannelInfo peer = directory.Register("rejection-peer", "offline");
-                    directory.Remove(peer.Address);
-                    if (directory.FindSubChannel(peer.Address) == null)
+                    MCCMultiChannelBase channel = _multiChannel;
+                    if (channel == null) throw new InvalidOperationException("没有已构造的正式MultiPeer Channel");
+                    MCCSubChannelInfo peer = channel.RegisterPeer("rejection-peer", "offline");
+                    channel.RemovePeer(peer.Address);
+                    if (channel.FindSubChannel(peer.Address) == null)
                     { _lastDiagnostic = "已验证：离线SubChannel旧代次不能重新寻址"; UpdateState(); return; }
                 }
                 else
@@ -389,7 +397,9 @@ namespace CxVisual.TestCenter.UI
             _state.Text = "ManualSession " + ManualSessionId.ToString("D") +
                 " · " + (IsConnected ? "Open (Virtual)" : "Closed / 不连接实际设备") +
                 " · Frames " + _frames.Count +
-                " · SubChannel " + _peers.Count + " · Protocol Station " + _stations.Count +
+                " · SubChannel " + _peers.Count +
+                " · MultiOwner " + (_multiChannel == null ? "N/A" : _multiChannel.State.ToString()) +
+                " · Protocol Station " + _stations.Count +
                 (string.IsNullOrEmpty(_lastDiagnostic) ? "" : "\n" + _lastDiagnostic);
             NotifyState();
         }
