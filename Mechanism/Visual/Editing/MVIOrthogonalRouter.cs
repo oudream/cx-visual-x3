@@ -65,6 +65,50 @@ namespace CxVisual.Mechanism.Visual
             return detour??center;
         }
 
+        /// <summary>
+        /// 按源/目标固定端口的外法线出入线。传入的障碍物不含源/目标图元，
+        /// 本方法把两端图元也加入寻路障碍，防止正交路径从节点内部穿越。
+        /// 自动路由不改变MPCConnection；人工折点不经过此方法。
+        /// </summary>
+        internal static IReadOnlyList<FGEPoint2D> RouteWithPorts(
+            FGEPoint2D start,FGEPoint2D end,IEnumerable<FGERect2D> obstacles,
+            FGERect2D sourceBounds,FGERect2D targetBounds,
+            FGEPoint2D sourceNormal,FGEPoint2D targetNormal)
+        {
+            if(obstacles==null)throw new ArgumentNullException("obstacles");
+            // 出口在放大包围盒之外，再由Hanan网格计算中间路线；
+            // 这样无需把源/目标图元当作可以任意穿越的特殊障碍。
+            FGEPoint2D exitSource=Outlet(start,sourceBounds,sourceNormal);
+            FGEPoint2D exitTarget=Outlet(end,targetBounds,targetNormal);
+            var all=new List<FGERect2D>(obstacles){sourceBounds,targetBounds};
+            IReadOnlyList<FGEPoint2D> middle=Route(exitSource,exitTarget,all);
+            var vertices=new List<FGEPoint2D>{start};
+            foreach(FGEPoint2D point in middle)vertices.Add(point);
+            vertices.Add(end);
+            return Compact(vertices);
+        }
+
+        /// <summary>
+        /// 世界法线选择占优坐标轴：正交折线只能水平/竖直出线。
+        /// 对旋转图元采用外接AABB做保守出口，首段不会指向节点中心。
+        /// </summary>
+        private static FGEPoint2D Outlet(FGEPoint2D anchor,
+            FGERect2D bounds,FGEPoint2D normal)
+        {
+            double nx=normal.X,ny=normal.Y;
+            if(Math.Abs(nx)<Epsilon&&Math.Abs(ny)<Epsilon)
+                throw new ArgumentException("visual.route.zero_port_normal","normal");
+            // 多出1个世界单位，避免边界浮点误差把出口当成障碍内部。
+            double spacing=Clearance+1.0;
+            if(Math.Abs(nx)>=Math.Abs(ny))
+                return new FGEPoint2D(nx>=0?
+                    Math.Max(anchor.X,bounds.Right+spacing):
+                    Math.Min(anchor.X,bounds.Left-spacing),anchor.Y);
+            return new FGEPoint2D(anchor.X,ny>=0?
+                Math.Max(anchor.Y,bounds.Bottom+spacing):
+                Math.Min(anchor.Y,bounds.Top-spacing));
+        }
+
         private static bool Inside(FGERect2D r,FGEPoint2D p)
         {return p.X>r.Left+Epsilon&&p.X<r.Right-Epsilon&&
                 p.Y>r.Top+Epsilon&&p.Y<r.Bottom-Epsilon;}
