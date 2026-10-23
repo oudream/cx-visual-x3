@@ -66,6 +66,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             MOLDefinitionEditingClosure();
             MOLScalarTypeSafety();
             MOLCompoundConditions();
+            MOLEventDeclarationContracts();
             MOLTypedDefinitionContracts();
             MOLThrowDefinitionContracts();
             MOLLosslessSchemaConversion();
@@ -311,6 +312,64 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         {"ready",true},{"approved",false},{"blocked",true}},out trace);
                     Check(result.State==MRKFlowState.Completed&&observed=="fail",
                         "MOC/MRK composite Not branch was incorrectly true");
+                }
+                finally{opened.Close(true);}
+            }
+            finally
+            {
+                session.Close(true);
+                if(System.IO.File.Exists(file))System.IO.File.Delete(file);
+                if(System.IO.File.Exists(file+".cx-lock"))System.IO.File.Delete(file+".cx-lock");
+            }
+        }
+
+
+        /// <summary>事件来源与关联声明只保存定义；未接入MRK消息队列时不能冒充Task运行。</summary>
+        private static void MOLEventDeclarationContracts()
+        {
+            var evt=new MOLEventContract("camera.ready",MOLEventSource.Channel,
+                payloadTypeId:"frame.metadata",correlationInput:"imageId");
+            var wait=MOLControlBlock.AwaitEvent(evt,2000);
+            var definition=new MOLLogicDefinition(wait);
+            byte[] bytes=MOLLogicCodec.Serialize(definition);
+            string xml=System.Text.Encoding.UTF8.GetString(bytes);
+            Check(xml.StartsWith("<MOL v=\"4\""),"Extended event contract must use schema4");
+            var copied=MOLLogicCodec.Deserialize(bytes);
+            Check(copied.Root.Id==wait.Id&&
+                copied.Root.Wait.Event.Source==MOLEventSource.Channel&&
+                copied.Root.Wait.Event.PayloadTypeId=="frame.metadata"&&
+                copied.Root.Wait.Event.CorrelationInput=="imageId",
+                "MOL event declaration was lost on serialization");
+            bool rejected=false;
+            try{new MOLEventContract("bad\nname");}
+            catch(ArgumentException){rejected=true;}
+            Check(rejected,"MOL accepted invalid event identity");
+            rejected=false;
+            try{MOLLogicCodec.Deserialize(System.Text.Encoding.UTF8.GetBytes(
+                xml.Replace("v=\"4\"","v=\"1\"")));}
+            catch(System.IO.InvalidDataException){rejected=true;}
+            Check(rejected,"Schema1 silently consumed extended event declaration");
+
+            var session=MEMEngineering.Create("MOL Event");
+            var page=session.AddPage("Main");
+            string file=System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                "mol-event-contract-"+Guid.NewGuid().ToString("N")+".cxproj");
+            try
+            {
+                MOLLogicCodec.Set(session,page.RootContent,definition);
+                session.SaveAs(file);
+                var opened=MEMEngineering.Open(file);
+                try
+                {
+                    var read=MOLLogicCodec.Get(opened.GetSnapshot().Find(page.RootContent.Id));
+                    Check(read.Root.Wait.Event.CorrelationInput=="imageId",
+                        "MOL event correlation lost during MEM Save/Open");
+                    rejected=false;
+                    try{new MOCEngineeringCompiler().Compile(opened.GetSnapshot(),
+                        page.RootContent.Id,new TestResolver());}
+                    catch(InvalidOperationException ex)
+                    {rejected=ex.Message.Contains("moc.event_delivery_not_supported");}
+                    Check(rejected,"MOC silently treated event channel as an input Task");
                 }
                 finally{opened.Close(true);}
             }
