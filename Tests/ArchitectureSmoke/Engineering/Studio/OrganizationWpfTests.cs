@@ -643,7 +643,14 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         new MOLBlockEndpoint(first.Id,"Done"),
                         new MOLBlockEndpoint(second.Id,"Start"),MPCPortKind.Control);
                     var wired=new MOLWiringDefinition(first.Id,new[]{first,second},schemas,new[]{link});
-                    MOLWiringCodec.Set(session,page.RootContent,wired);
+                    // 同一工程中V1/V2各属于自己的Content；禁止用Set覆盖V1主定义。
+                    var wiringContent=session.AddContent(session.Project,"WPF自由连线案例");
+                    MOLWiringCodec.Set(session,wiringContent,wired);
+                    Check(MOLLogicCodec.Get(session.GetSnapshot().Find(page.RootContent.Id))
+                            .Root.Id==logic.Root.Id&&
+                        MOLWiringCodec.Get(session.GetSnapshot().Find(wiringContent.Id))
+                            .EntryBlockId==first.Id,
+                        "WPF test must preserve both definitions without cross-schema overwrite");
                     Check(MOLFlowLayout.Build(wired).Count==2,"V2 wiring layout lost blocks");
                     var wiredView=new MOLFlowCanvas{WiringDefinition=wired,
                         RuntimeStates=new System.Collections.Generic.Dictionary<Guid,string>{
