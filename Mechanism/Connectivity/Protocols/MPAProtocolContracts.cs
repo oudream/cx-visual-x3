@@ -13,4 +13,23 @@ namespace CxVisual.Mechanism.Connectivity
     {
         IMPAProtocolCodec Codec { get; }
     }
+
+    /// <summary>
+    /// 自描述长度帧的真实规约定义：复用MPALengthFrameCodec，不另造收发或调度引擎。
+    /// 仅声明LengthFrame协议能力，不冒充Modbus/TCP设备驱动。
+    /// </summary>
+    public sealed class MPALengthFrameDefinition : IMPAEncodedProtocolDefinition
+    {
+        public MPALengthFrameDefinition()
+        {
+            Descriptor = new MPAProtocolDescriptor("length.frame", "Length Frame + CRC16", 1,
+                MPAProtocolCapabilities.Interpret | MPAProtocolCapabilities.Send |
+                MPAProtocolCapabilities.Stream, MCCIOCapabilities.ByteStream);
+            Codec = new MPALengthFrameCodec();
+        }
+
+        public string Id { get { return Descriptor.Id; } }
+        public MPAProtocolDescriptor Descriptor { get; private set; }
+        public IMPAProtocolCodec Codec { get; private set; }
+    }
 }

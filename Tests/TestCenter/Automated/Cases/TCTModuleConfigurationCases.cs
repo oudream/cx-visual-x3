@@ -98,6 +98,67 @@ namespace CxVisual.TestCenter.Cases
             test.AssertTrue(report.IsValid, label + "正式FCM校验", true, report.IsValid);
         }
 
+        [TCTTest("TCT.MODULE.ASSEMBLY.001",
+            "生产Connector Owner引用装配和Virtual真实收发及拒绝路径",
+            TCTTestAspect.Integration, "TestCenter / Manual / Module",
+            ObjectId = "MCNConnectorModule")]
+        public static void ProductionConnectorVirtualAssembly(TCTTestContext test)
+        {
+            MCNConnectorConfiguration config = new MCNConnectorConfiguration {
+                DisplayName = "Virtual Connector",
+                Channels = new System.Collections.Generic.List<MCCChannelConfiguration> {
+                    new MCCChannelConfiguration { Id = "virtual01", Kind = MCCChannelKind.Virtual }
+                },
+                Protocols = new System.Collections.Generic.List<MPAProtocolBinding> {
+                    new MPAProtocolBinding {
+                        Id = "length01", Kind = MPAProtocolKind.LengthFrame, ChannelRef = "virtual01"
+                    }
+                }
+            };
+            MFMModuleDescriptor identity = config.Describe("ModuleVirtual01", MFMModuleKind.Connector);
+            MCCVirtualChannel[] pair = MCCVirtualChannel.CreatePair("virtual01", "virtualPeer");
+            MPALengthFrameDefinition protocol = new MPALengthFrameDefinition();
+            MCNConnectorModule module = new MCNConnectorModule(identity, config,
+                new IMCCChannel[] { pair[0] }, new IMPAProtocolDefinition[] { protocol });
+            test.AssertTrue(module.Descriptor.Id == "ModuleVirtual01" &&
+                module.Channels.Count == 1 && module.Protocols.Count == 1 &&
+                module.Points.Count == 0 && pair[0].State == MCCChannelState.Closed,
+                "装配只绑定正式生产实例，不会提前启动或生成点表值", true, true);
+
+            try
+            {
+                pair[0].Open(); pair[1].Open();
+                byte[] raw = protocol.Codec.Encode(new byte[] { 0x11, 0x22, 0x33 });
+                pair[0].Send(raw, "testcenter-mt02", 2);
+                MCCChannelFrame observed = pair[1].ReadFrames()
+                    .Single(x => x.Direction == MCCFrameDirection.Rx);
+                test.AssertTrue(observed.DecodedPayload.SequenceEqual(new byte[] { 0x11, 0x22, 0x33 }) &&
+                    observed.CorrelationId == "testcenter-mt02" &&
+                    pair[0].ReadFrames().Any(x => x.Direction == MCCFrameDirection.Tx),
+                    "正式Virtual Channel/LengthFrame产生真实TX-RX观察", true, true);
+            }
+            finally { pair[0].Close(); pair[1].Close(); }
+
+            bool missingRejected = false;
+            try
+            {
+                new MCNConnectorModule(identity, config,
+                    new IMCCChannel[0], new IMPAProtocolDefinition[] { protocol });
+            }
+            catch (InvalidOperationException) { missingRejected = true; }
+            test.AssertTrue(missingRejected, "缺失Channel Provider必须拒绝装配", true, missingRejected);
+
+            bool physicalRejected = false;
+            config.Channels[0].Kind = MCCChannelKind.TcpClient;
+            try
+            {
+                new MCNConnectorModule(identity, config,
+                    new IMCCChannel[] { pair[0] }, new IMPAProtocolDefinition[] { protocol });
+            }
+            catch (NotSupportedException) { physicalRejected = true; }
+            test.AssertTrue(physicalRejected, "非Virtual物理Provider未接线时必须拒绝装配", true, physicalRejected);
+        }
+
         [TCTTest("TCT.MODULE.CONFIG.002",
             "Connector悬空点引用与重复通道Id不能通过生产Validator",
             TCTTestAspect.Integration, "TestCenter / Manual / Module",
