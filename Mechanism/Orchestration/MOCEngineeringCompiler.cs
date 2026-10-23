@@ -116,6 +116,14 @@ namespace CxVisual.Mechanism.Orchestration
                         step.ExecutionGroup);
                 if (step.LoopRegion != null)
                     ValidateExecutionGroups(step.LoopRegion.Body, groups);
+                if(step.TryRegion!=null)
+                {
+                    ValidateExecutionGroups(step.TryRegion.Body,groups);
+                    if(step.TryRegion.CatchBody!=null)
+                        ValidateExecutionGroups(step.TryRegion.CatchBody,groups);
+                    if(step.TryRegion.FinallyBody!=null)
+                        ValidateExecutionGroups(step.TryRegion.FinallyBody,groups);
+                }
             }
         }
 
@@ -1579,6 +1587,25 @@ namespace CxVisual.Mechanism.Orchestration
                 return action.StepId;
             }
 
+            /// <summary>把Try/Catch/Finally分别编译为不可编辑的MRK嵌套Plan；共用同一Resolver/SourceMap。</summary>
+            private MRKExecutionPlan CompileProtectedBody(MOLControlBlock body,
+                MEMNodeSnapshot owner,Guid[] calls,int depth,string regionId)
+            {
+                if(body==null)return null;
+                int first=Steps.Count,firstRegion=Regions.Count;
+                Emit(body,owner,new string[0],calls,null,depth+1);
+                MRKStepCompileRequest[] requests=Steps.Skip(first).ToArray();
+                MRKControlRegion[] nested=Regions.Skip(firstRegion).ToArray();
+                Steps.RemoveRange(first,Steps.Count-first);
+                Regions.RemoveRange(firstRegion,Regions.Count-firstRegion);
+                var compiled=new MRKExecutionPlanCompiler().Compile(
+                    regionId,requests,Resolver,regions:nested);
+                if(!compiled.Succeeded)
+                    throw new InvalidOperationException("moc.try_body_compile:"+
+                        string.Join(";",compiled.Diagnostics.Select(
+                            d=>d.Code+":"+d.Message)));
+                return compiled.Plan;
+            }
             private static string[] Merge(IEnumerable<string> first, IEnumerable<string> second)
             { return first.Concat(second).Distinct(StringComparer.Ordinal).ToArray(); }
             internal string[] EmitContent(MEMNodeSnapshot content, string[] after,
@@ -1705,6 +1732,31 @@ namespace CxVisual.Mechanism.Orchestration
                         Regions.Add(new MRKControlRegion(regionId,entry,exit,
                             Steps.Skip(first).Select(step=>step.Id)));
                         return new[]{exit};
+                    }
+                    case MOLControlKind.Try:
+                    {
+                        if(block.TryRegion==null)
+                            throw new InvalidOperationException("moc.try_missing_definition");
+                        // 迭代内Try要求显式跨区域索引端口；未完成之前拒绝编译而非丢弃数据。
+                        if(scope!=null)
+                            throw new InvalidOperationException("moc.try_iteration_scope_pending");
+                        string baseId="moc.try."+block.Id.ToString("N");
+                        MRKExecutionPlan tryBody=CompileProtectedBody(
+                            block.TryRegion.TryBody,owner,calls,depth,baseId+".body");
+                        MRKExecutionPlan catchBody=CompileProtectedBody(
+                            block.TryRegion.CatchBody,owner,calls,depth,baseId+".catch");
+                        MRKExecutionPlan finallyBody=CompileProtectedBody(
+                            block.TryRegion.FinallyBody,owner,calls,depth,baseId+".finally");
+                        var region=new MRKTryRegion(tryBody,catchBody,finallyBody);
+                        string id=NewId(block);
+                        string capability="moc.internal.try."+id;
+                        Resolver.Register(capability,ctx=>(object)true,typeof(bool));
+                        Steps.Add(new MRKStepCompileRequest(id,capability,before,
+                            tryRegion:region));
+                        Origins.Add(new MOCStepOrigin(id,new MRIObjectAddress(
+                            _snapshot.ProjectId,owner.StorageRootId,owner.Id,_instances),
+                            block.Id,calls,null,"TryRegion"));
+                        return new[]{id};
                     }
                     case MOLControlKind.Loop:
                     case MOLControlKind.ForEach:
