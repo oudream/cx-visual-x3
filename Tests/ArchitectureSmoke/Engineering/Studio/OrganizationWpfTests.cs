@@ -153,6 +153,30 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     shapeView.SetSelectedVisualIds(new[]{bezierScene.Id,another.Id});
                     Check(shapeView.SelectedVisualIds.Count==2,
                         "multi-selection was lost across scene re-projection");
+                    // P0：真实WPF共用选区的右下缩放柄必须可命中；
+                    // Esc/CaptureLost取消只作用于预览，不能修改MEM Revision。
+                    shapeView.SelectionTransformRequested+=(ids,handle,x,y,zoom)=>{};
+                    shapeView.SetSelectedVisualIds(new[]{bezierScene.Id,another.Id});
+                    var selectionBounds=MVISelectionTransform.Bounds(
+                        new[]{bezierScene,another});
+                    FGEPoint2D unionHandle=MVISelectionTransform.Handle(selectionBounds,4,1);
+                    var unionHit=typeof(SceneView).GetMethod("TryHitSelectionHandle",
+                        System.Reflection.BindingFlags.Instance|
+                        System.Reflection.BindingFlags.NonPublic);
+                    object[] unionArgs={new Point(unionHandle.X,unionHandle.Y),-1};
+                    Check(unionHit!=null&&(bool)unionHit.Invoke(shapeView,unionArgs)&&
+                        (int)unionArgs[1]==4,
+                        "P0 WPF common selection resize handle is not hit-testable");
+                    int beforeCancelRevision=session.Revision;
+                    var dragFlag=typeof(SceneView).GetField("_selectionTransformDragging",
+                        System.Reflection.BindingFlags.Instance|
+                        System.Reflection.BindingFlags.NonPublic);
+                    Check(dragFlag!=null,"P0 WPF selection drag state was not created");
+                    dragFlag.SetValue(shapeView,true);
+                    shapeView.CancelInteraction();
+                    Check(!(bool)dragFlag.GetValue(shapeView)&&
+                        session.Revision==beforeCancelRevision,
+                        "P0 Esc cancellation must release preview without changing engineering");
                     shapeView.SetSelectedVisualIds(new[]{bezierScene.Id});
                     shapeView.UpdateLayout();
                     System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(new Action(()=>{}),
