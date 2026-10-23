@@ -523,10 +523,11 @@ namespace CxVisual.TestCenter.UI
                     .Select(x => x.Content).OfType<TCTManualChannelFrame>().Single();
                 page.SelectChannelKind(MCCChannelKind.TcpServer);
                 page.SetPeerInput("client01", "127.0.0.1:10001");
-                if (page.SelectedTopology != MCCChannelTopology.MultiPeer ||
-                    Find(root, "TCT.Channel.Kind").Current.ControlType != ControlType.ComboBox)
+                if (page.SelectedTopology != MCCChannelTopology.MultiPeer)
                     throw new InvalidOperationException("MultiPeer Channel类型选择不可用");
             }));
+            if (Find(root, "TCT.Channel.Kind").Current.ControlType != ControlType.ComboBox)
+                throw new InvalidOperationException("Channel类型选择器必须可由UIA访问");
             InvokePattern register = Find(root, "TCT.Manual.Action.channel.register-peer")
                 .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
             if (register == null) throw new InvalidOperationException("SubChannel register不可操作");
