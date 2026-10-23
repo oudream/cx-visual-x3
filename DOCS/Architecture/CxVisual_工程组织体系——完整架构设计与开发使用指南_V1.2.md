@@ -1090,6 +1090,27 @@ MOL 的 API 先保持工厂与原工程编辑入口，不额外叠一层“统�
 
 **完工规则**：D0 四方面架构合同已收口，D1～D4 代码增量已有，但高级事件/规则、跨版本复杂 Content 组合和双角色 API 验收尚未完成。必须保持“功能确实可声明”和“可以 MOC/MRK 真实执行”两个状态分开，不靠多添类或简单 CI 来宣布整包完成。
 
+#### 7.4.14 MOL 定义体系 V1.0 收口与独立验收判定
+
+> **定义侧收口，不是运行/界面侧偷换完成。** 本节落实 §7.4.12 的四视角，而非再增加四层项目。MEMContent 的单一 Logic Aspect 仍是工程真源；MRK 不参与 MOL 的定义可用性判断。
+
+| 范围 | 当前可提交的定义合同 | 证明完成的测试/拒绝行为 |
+|---|---|---|
+| D1 类型 | 控制/分支/循环/Exit(含Throw)/Try及有序具名Catch、事件Wait(含Source/Payload/Correlation)、状态Region/Transition/Guard/EntryExit Capability、数据与策略声明；原 MOLExpression 支持类型安全标量与有界 All/Any/Not 短路 | MOLCompoundConditions、MOLCompoundStateGuards、MOLEventDeclarationContracts、MOLTypedDefinitionContracts、MOLThrowDefinitionContracts；不合法源码、缺输入、越限表达式和旧版降级拒绝 |
+| D2 关系 | V1 Children/Case/Loop/Try 持结构；V2 Link/Port 持连线；MEMContent/Reference 持跨资源关系；V1 子Content的公开端口直接消费已有 MEM MPCPort，不建立第二端口表；分支工厂先验局部规则，完整定义校验祖先作用域 | MOLCrossSchemaContentDeclaration、InvokedContentAndInvalidSource、MOLLosslessSchemaConversion；Break/Continue 越界、缺 MEM ContentRef、非法端口/关系均拒绝。跨Schema真实执行尚归MOC待接入 |
+| D3 管理 | V1 Schema1/4、V2 Schema2/3/5 互斥载荷；新语义提升版本，旧版保留；读取禁止未知字段/版本错配；原 MEM Revision/事务/Undo/Redo/Save/Open；低层 Set 也不能直接跨 Schema 覆盖；仅单 Action 且无 MEM 公共端口/映射/连接允许无损迁移 | MOLDefinitionEditingClosure、MOLLosslessSchemaConversion 及 Schema 降级/畸形反证；Reject 不改 Revision/原字节和对象身份；WPF两套画布改为两个Content，绝不静默替换 |
+| D4 API | 创建用原 MOLControlBlock / MOLExpression 工厂，包括 InvokeContent/Exit/InputCompare/All/Any/Not；修改用 ReplaceBlock 和 MOLLogicCodec.Edit；V2 使用 MOCFlowBuilder.Edit；Studio 调用同一MEM事务，不能独立维护第二份模型 | C#开发者在 ArchitectureSmoke 中用同一公共 API 创建、编辑、组合、复用、Undo/Redo、保存重开；Studio S1 和 WPF STA 仅验证其已接入的画布，**高级图形编辑完成度另验** |
+
+**Schema兼容矩阵**：V1结构化简单表达为1、带事件/布尔组合为4；V2纯Wiring为2、含State Entry/Exit引用为3、含复合State Guard为5。不同表示仍属同一 `cx.logic.structured` Provider/同一 Logic Aspect，不能同Content并存两份。旧载荷读取不自动升级，新语义改写须在MEM事务中明确提交。V1↔V2 不强制广义转换，只有真实等价子集可以原子迁移。
+
+**错误归属**：MOL承担静态类型、结构、范围、版本与身份；MOC负责能力解析和执行可行性。例如MOL已经能准确声明具名Catch、Throw、State Action、通道事件、V1→V2 Content引用，但对应MRK执行尚未适配时MOC分别定向拒绝。不可把“目前不能执行”改写成“无法定义”，也不能借定义收口宣告设备场景完成。
+
+**唯一实现底座**：Mechanism/Core/Engineering/MOLLogicDefinition.cs + 原MEMEngineeringSession；Mechanism/Orchestration/MOCEngineeringCompiler.cs只读消费；Applications/Studio复用MEM；Tests/ArchitectureSmoke/Engineering/Integration/OrganizationLogicIntegrationTests.cs做正反例，Studio/WPF测试检查两种表示不发生有损覆盖。无新增工程、运行器、持久Graph、仓库或重复Undo。
+
+**收口后的扩展规则**：专业能力一律优先经Capability/Content/Port/MEM公开引用配置，新的逻辑声明只有在现有值对象无法准确表达且有真实反证时才扩展，且必须确定 Schema/拒绝门/保存重开/Undo/Redo。后续MOC-MRK事件队列与跨Schema执行、Studio高级交互、TestCenter/实机S4归各体系实施，不重新打开MOL核心架构。
+
+**当前证据边界**：D1～D4 的定义侧功能与测试源码已经提交；正式 S3 结项只以该组变更固定 SHA 的 Windows 工程组织、Runtime、Studio及TestCenter对应工作流实际 `success` 为准。若某工作流未触发或尚未结束，需明确列为未核实，不能由旧SHA代替。
+
 ## 8. 八个完整使用案例
 
 各案例都给出目标、结构、过程、API 分类和运行/持久化边界。当前 API 的完整程序标记 `REAL-*`，建议 API 明确标注；测试结果统一记录在 §11，不能仅因代码位于本章就视作已验证。
