@@ -877,10 +877,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             base.OnMouseMove(e);
             if(_waypointDragging)
             {
-                Point point=WorldPoint(e.GetPosition(this));
+                Point pointerWorld=WorldPoint(e.GetPosition(this));
                 _waypointPointer=_gridSnap?
-                    new Point(Math.Round(point.X/25)*25,
-                        Math.Round(point.Y/25)*25):point;
+                    new Point(Math.Round(pointerWorld.X/25)*25,
+                        Math.Round(pointerWorld.Y/25)*25):pointerWorld;
                 InvalidateVisual();e.Handled=true;return;
             }
             if(_rewireDragging)
