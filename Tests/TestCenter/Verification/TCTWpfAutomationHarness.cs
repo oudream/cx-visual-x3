@@ -390,6 +390,99 @@ namespace CxVisual.TestCenter.UI
                     throw new InvalidOperationException(
                         "切换工作区后通用MPW配置编辑器失效：" + frame.StatusMessage);
             }));
+            if (kind == CxVisual.Mechanism.Core.Modules.MFMModuleKind.Connector)
+                VerifyProtocolCollectionRemoval(root, window, moduleId);
+        }
+
+        // 通过实际MPW删除按钮删除正式Point与映射，再次保存、重开，检验不存在影子集合。
+        private static void VerifyProtocolCollectionRemoval(AutomationElement root,
+            TCTMainWindow window, string moduleId)
+        {
+            window.Dispatcher.Invoke(new Action(() => {
+                System.Windows.Controls.TabControl tabs =
+                    window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                tabs.Items.OfType<System.Windows.Controls.TabItem>().Select(x => x.Content)
+                    .OfType<TCTManualModuleFrame>().Single().SelectModulePage("points");
+            }));
+            InvokePattern removePoint = Find(root, "MPW.Collection.Remove.Protocol.Points[0]")
+                .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
+            if (removePoint == null) throw new InvalidOperationException("Point删除按钮不可访问");
+            removePoint.Invoke();
+            window.Dispatcher.Invoke(new Action(() => {
+                System.Windows.Controls.TabControl tabs =
+                    window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                TCTManualModuleFrame frame = tabs.Items.OfType<System.Windows.Controls.TabItem>()
+                    .Select(x => x.Content).OfType<TCTManualModuleFrame>().Single();
+                frame.ValidateCurrent();
+                if (frame.ConnectorDraftSnapshot().Protocol.Points.Count != 0 ||
+                    !frame.StatusMessage.Contains("配置存在"))
+                    throw new InvalidOperationException("删除被引用Point时必须保持无效映射并显示校验问题");
+                frame.SelectModulePage("mapping");
+            }));
+            InvokePattern removeMapping = Find(root, "MPW.Collection.Remove.Protocol.Mappings[0]")
+                .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
+            if (removeMapping == null) throw new InvalidOperationException("Mapping删除按钮不可访问");
+            removeMapping.Invoke();
+            window.Dispatcher.Invoke(new Action(() => {
+                System.Windows.Controls.TabControl tabs =
+                    window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                TCTManualModuleFrame frame = tabs.Items.OfType<System.Windows.Controls.TabItem>()
+                    .Select(x => x.Content).OfType<TCTManualModuleFrame>().Single();
+                MCNConnectorConfiguration draft = frame.ConnectorDraftSnapshot();
+                if (draft.Protocol.Points.Count != 0 || draft.Protocol.Mappings.Count != 0)
+                    throw new InvalidOperationException("删除DataMapping后同一MHS草稿仍有遗留");
+                frame.ValidateCurrent();
+                if (frame.StatusMessage.Contains("配置存在"))
+                    throw new InvalidOperationException("删除悬空映射后应恢复正式校验合法");
+            }));
+            window.Dispatcher.Invoke(new Action(() =>
+                SaveScreenshot(window, "TestCenter-Protocol-P0-Deleted.png")));
+            InvokePattern save = Find(root, "TCT.Manual.Action.module.save")
+                .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
+            if (save == null) throw new InvalidOperationException("映射删除后的保存命令缺失");
+            save.Invoke();
+            bool saved = false;
+            for (int attempt = 0; attempt < 100 && !saved; attempt++)
+            {
+                window.Dispatcher.Invoke(new Action(() => {
+                    System.Windows.Controls.TabControl tabs =
+                        window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                    TCTManualModuleFrame frame = tabs.Items.OfType<System.Windows.Controls.TabItem>()
+                        .Select(x => x.Content).OfType<TCTManualModuleFrame>().Single();
+                    if (!frame.IsBusy && (frame.StatusMessage.Contains("配置未保存") ||
+                        frame.StatusMessage.Contains("保存操作失败")))
+                        throw new InvalidOperationException("删除后MHS拒绝保存：" + frame.StatusMessage);
+                    saved = !frame.IsBusy && frame.StatusMessage.StartsWith("配置已保存",
+                        StringComparison.Ordinal);
+                }));
+                if (!saved) Thread.Sleep(100);
+            }
+            if (!saved) throw new InvalidOperationException("点表映射删除后保存超时");
+            InvokePattern reopen = Find(root, "TCT.Manual.Action.module.reopen")
+                .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
+            if (reopen == null) throw new InvalidOperationException("删除后重新打开命令缺失");
+            reopen.Invoke();
+            bool checkedAgain = false;
+            for (int attempt = 0; attempt < 100 && !checkedAgain; attempt++)
+            {
+                window.Dispatcher.Invoke(new Action(() => {
+                    System.Windows.Controls.TabControl tabs =
+                        window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                    TCTManualModuleFrame frame = tabs.Items.OfType<System.Windows.Controls.TabItem>()
+                        .Select(x => x.Content).OfType<TCTManualModuleFrame>().Single();
+                    if (!frame.IsBusy && frame.StatusMessage.StartsWith("已创建/打开配置范围",
+                        StringComparison.Ordinal))
+                    {
+                        MCNConnectorConfiguration savedConfig = frame.ConnectorDraftSnapshot();
+                        checkedAgain = frame.ActiveModuleId == moduleId &&
+                            savedConfig.Protocol.Points.Count == 0 &&
+                            savedConfig.Protocol.Mappings.Count == 0;
+                    }
+                }));
+                if (!checkedAgain) Thread.Sleep(100);
+            }
+            if (!checkedAgain) throw new InvalidOperationException(
+                "真实MHS删除后重开，仍出现已删除的规约点或映射");
         }
         private static void InteractManualModule(IntPtr hwnd, TCTMainWindow window)
         {
