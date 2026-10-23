@@ -65,6 +65,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             SaveLoadAndIdentity();
             MOLDefinitionEditingClosure();
             MOLScalarTypeSafety();
+            MOLTypedDefinitionContracts();
             V1WaitDelayCancellationRoundtrip();
             P01EventAwaitTimeoutCancellationRoundtrip();
             P01TryCatchFinallyRoundtrip();
@@ -255,6 +256,108 @@ namespace CxVisual.Tests.ArchitectureSmoke
             try{MOLScalarExpression.Compare(double.NaN,"1");}
             catch(InvalidOperationException){bad=true;}
             Check(bad,"MOL nonfinite number silently accepted");
+        }
+
+
+        /// <summary>D1：只扩最小声明合同；尚无执行语义必须被MOC明确拒绝。</summary>
+        private static void MOLTypedDefinitionContracts()
+        {
+            var body=MOLControlBlock.Action("Inspect");
+            var handler=MOLControlBlock.Action("HandleDefect");
+            var cleanup=MOLControlBlock.Action("Release");
+            var named=new MOLCatchClause("inspect.defect",handler);
+            var protectedBlock=MOLControlBlock.TryCatchFinally(body,
+                finallyBody:cleanup,catches:new[]{named});
+            var original=new MOLLogicDefinition(protectedBlock);
+            var restored=MOLLogicCodec.Deserialize(MOLLogicCodec.Serialize(original));
+            Check(restored.Root.TryRegion.Catches.Count==1&&
+                restored.Root.TryRegion.Catches[0].ErrorCode=="inspect.defect"&&
+                restored.Root.TryRegion.Catches[0].Body.Id==handler.Id&&
+                restored.Root.TryRegion.FinallyBody.Id==cleanup.Id,
+                "MOL typed Catch lost definition identity on roundtrip");
+            bool rejected=false;
+            try{new MOLTryDefinition(body,catches:new[]{
+                new MOLCatchClause("repeat",handler),
+                new MOLCatchClause("repeat",cleanup)});}
+            catch(ArgumentException ex)
+            {rejected=ex.Message.Contains("logic.catch_duplicate_or_budget");}
+            Check(rejected,"MOL duplicate typed Catch not rejected");
+            rejected=false;
+            try{new MOLCatchClause("*",handler);}
+            catch(ArgumentException){rejected=true;}
+            Check(rejected,"MOL typed Catch allows ambiguous wildcard");
+
+            var edit=MEMEngineering.Create("MOL具名Catch");
+            var page=edit.AddPage("Main");
+            MOLLogicCodec.Set(edit,page.RootContent,original);
+            string path=System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                "mol-contract-"+Guid.NewGuid().ToString("N")+".cxproj");
+            try
+            {
+                edit.SaveAs(path);
+                var opened=MEMEngineering.Open(path);
+                try
+                {
+                    var copy=MOLLogicCodec.Get(opened.GetSnapshot().Find(page.RootContent.Id));
+                    Check(copy.Root.TryRegion.Catches[0].ErrorCode=="inspect.defect",
+                        "MOL named Catch not preserved by MEM Save/Open");
+                    rejected=false;
+                    try{new MOCEngineeringCompiler().Compile(
+                        opened.GetSnapshot(),page.RootContent.Id,new TestResolver());}
+                    catch(InvalidOperationException ex)
+                    {rejected=ex.Message.Contains("moc.try_typed_catch_not_supported");}
+                    Check(rejected,"MOC silently downgraded typed Catch to Catch-all");
+                }
+                finally{opened.Close(true);}
+            }
+            finally
+            {
+                edit.Close(true);
+                if(System.IO.File.Exists(path))System.IO.File.Delete(path);
+                if(System.IO.File.Exists(path+".cx-lock"))System.IO.File.Delete(path+".cx-lock");
+            }
+
+            var machine=new MOLStateMachineDefinition(new[]{
+                new MOLStateDescriptor("Idle","Scanner",initial:true,
+                    entryCapability:"Activate",exitCapability:"Deactivate"),
+                new MOLStateDescriptor("Running","Scanner")},new[]{
+                new MOLStateTransition("Idle","start","Running")});
+            Check(machine.States[0].EntryCapability=="Activate"&&
+                machine.States[0].ExitCapability=="Deactivate",
+                "MOL state action capability contract missing");
+            var stateSession=MEMEngineering.Create("StateAction");
+            var statePage=stateSession.AddPage("Main");
+            string stateFile=System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                "mol-state-action-"+Guid.NewGuid().ToString("N")+".cxproj");
+            try
+            {
+                Guid id=Guid.Empty;
+                MOCFlowBuilder.Edit(stateSession,statePage.RootContent,
+                    b=>id=b.AddStateMachine(machine));
+                stateSession.SaveAs(stateFile);
+                var opened=MEMEngineering.Open(stateFile);
+                try
+                {
+                    var read=MOLWiringCodec.Get(opened.GetSnapshot().Find(
+                        statePage.RootContent.Id));
+                    Check(read.StateMachines[id].States[0].EntryCapability=="Activate"&&
+                        read.StateMachines[id].States[0].ExitCapability=="Deactivate",
+                        "MOL State Entry/Exit contract lost on Save/Open");
+                    rejected=false;
+                    try{new MOCEngineeringCompiler().Compile(
+                        opened.GetSnapshot(),statePage.RootContent.Id,new TestResolver());}
+                    catch(InvalidOperationException ex)
+                    {rejected=ex.Message.Contains("moc.state_actions_not_supported");}
+                    Check(rejected,"MOC silently ignored unimplemented State Action");
+                }
+                finally{opened.Close(true);}
+            }
+            finally
+            {
+                stateSession.Close(true);
+                if(System.IO.File.Exists(stateFile))System.IO.File.Delete(stateFile);
+                if(System.IO.File.Exists(stateFile+".cx-lock"))System.IO.File.Delete(stateFile+".cx-lock");
+            }
         }
 
         /// <summary>P0-1：V1定时等待写入同一Logic Aspect，MRK异步执行/取消，拒绝坏合同。</summary>
