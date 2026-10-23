@@ -1,7 +1,9 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
 using CxVisual.Foundation.Data.Configuration;
 using CxVisual.Mechanism.Core.Modules;
 using CxVisual.Mechanism.Data.Configuration;
@@ -182,6 +184,121 @@ namespace CxVisual.TestCenter.Cases
             }
             catch (NotSupportedException) { physicalRejected = true; }
             test.AssertTrue(physicalRejected, "非Virtual物理Provider未接线时必须拒绝装配", true, physicalRejected);
+        }
+
+        // 仅用于测试IMPADataTargetAccess调用语义，不替代生产MDS、消息或命令Owner。
+        private sealed class RecordingDataTarget : IMPADataTargetAccess
+        {
+            public MPADataTargetKind WrittenKind;
+            public string WrittenReference;
+            public object WrittenValue;
+            public int Reads;
+            public Task<object> ReadAsync(MPADataTargetKind kind, string targetRef, CancellationToken ct)
+            {
+                ct.ThrowIfCancellationRequested();
+                Reads++;
+                return Task.FromResult((object)42);
+            }
+            public Task WriteAsync(MPADataTargetKind kind, string targetRef, object value, CancellationToken ct)
+            {
+                ct.ThrowIfCancellationRequested();
+                WrittenKind = kind; WrittenReference = targetRef; WrittenValue = value;
+                return Task.CompletedTask;
+            }
+            public Task PublishAsync(string messageRef, object value, CancellationToken ct)
+            { throw new InvalidOperationException("当前用例不允许发布消息"); }
+            public Task InvokeAsync(string commandRef, object value, CancellationToken ct)
+            { throw new InvalidOperationException("当前用例不允许执行设备命令"); }
+        }
+
+        [TCTTest("TCT.MODULE.PROTOCOL.003",
+            "正式PointTable与DataMapping的入站/出站语义及非法映射反证",
+            TCTTestAspect.Integration, "TestCenter / Manual / Protocol",
+            ObjectId = "MPADataMappingExecutor")]
+        public static void ProductionPointTableAndMapping(TCTTestContext test)
+        {
+            MPAProtocolConfiguration protocol = new MPAProtocolConfiguration {
+                Id = "modbus-profile",
+                Kind = MPAProtocolKind.ModbusRtuDraft,
+                Points = new List<MPAPointDefinition> {
+                    new MPAPointDefinition {
+                        Name = "temperature", Address = "holding:100",
+                        StationAddress = "7", ValueType = "UInt16",
+                        CanRead = true, CanWrite = true }
+                },
+                Mappings = new List<MPADataMapping> {
+                    new MPADataMapping {
+                        PointRef = "temperature", TargetKind = MPADataTargetKind.Variable,
+                        TargetRef = "line/temperature", Direction = MPADataDirection.Inbound,
+                        Operation = MPADataOperation.WriteValue,
+                        Transform = MPADataTransformKind.Int32
+                    },
+                    new MPADataMapping {
+                        PointRef = "temperature", TargetKind = MPADataTargetKind.DataHeap,
+                        TargetRef = "line/command-temperature",
+                        Direction = MPADataDirection.Outbound,
+                        Operation = MPADataOperation.ReadValue
+                    }
+                }
+            };
+            protocol.Validate();
+            RecordingDataTarget observer = new RecordingDataTarget();
+            MPADataMappingExecutor executor = new MPADataMappingExecutor(observer);
+            executor.ApplyInboundAsync(protocol, "temperature", (ushort)19, CancellationToken.None)
+                .GetAwaiter().GetResult();
+            test.AssertTrue(observer.WrittenKind == MPADataTargetKind.Variable &&
+                observer.WrittenReference == "line/temperature" &&
+                observer.WrittenValue is int && (int)observer.WrittenValue == 19,
+                "入站点值按正式Mapping交给外部Variable Owner", true, true);
+            object outbound = executor.ReadOutboundAsync(protocol, "temperature", CancellationToken.None)
+                .GetAwaiter().GetResult();
+            test.AssertTrue(observer.Reads == 1 && outbound is int && (int)outbound == 42,
+                "出站点通过正式DataHeap读取接口，不能用固定测试值代替实际Owner调用", true, true);
+
+            protocol.Points[0].StationAddress = "248";
+            bool stationRejected = false;
+            try { protocol.Validate(); } catch (ArgumentException) { stationRejected = true; }
+            test.AssertTrue(stationRejected, "Modbus多站号点表拒绝越界站号", true, stationRejected);
+            protocol.Points[0].StationAddress = "7";
+
+            protocol.Mappings[1].Operation = MPADataOperation.WriteValue;
+            bool wrongDirection = false;
+            try { protocol.Validate(); } catch (ArgumentException) { wrongDirection = true; }
+            test.AssertTrue(wrongDirection, "映射出站方向与操作不兼容必须拒绝", true, wrongDirection);
+            protocol.Mappings[1].Operation = MPADataOperation.ReadValue;
+
+            protocol.Mappings[1].PointRef = "missing";
+            bool missingPoint = false;
+            try { protocol.Validate(); } catch (ArgumentException) { missingPoint = true; }
+            test.AssertTrue(missingPoint, "映射不得指向不存在的Point", true, missingPoint);
+        }
+
+        [TCTTest("TCT.MODULE.CHANNEL.004",
+            "Channel Single/Multi/SharedBus正式拓扑与IO能力声明",
+            TCTTestAspect.Integration, "TestCenter / Manual / Channel",
+            ObjectId = "MCCChannelConfiguration")]
+        public static void ChannelTopologies(TCTTestContext test)
+        {
+            MCCChannelTypeDescriptor single = new MCCChannelConfiguration {
+                Kind = MCCChannelKind.TcpClient }.DescribeType();
+            MCCChannelTypeDescriptor multi = new MCCChannelConfiguration {
+                Kind = MCCChannelKind.TcpServer }.DescribeType();
+            MCCChannelTypeDescriptor udp = new MCCChannelConfiguration {
+                Kind = MCCChannelKind.UdpServer }.DescribeType();
+            MCCChannelTypeDescriptor serial = new MCCChannelConfiguration {
+                Kind = MCCChannelKind.Serial }.DescribeType();
+            test.AssertTrue(single.Topology == MCCChannelTopology.SinglePeer &&
+                (single.IO & MCCIOCapabilities.ByteStream) != 0,
+                "TCP Client是单对端ByteStream", true, true);
+            test.AssertTrue(multi.Topology == MCCChannelTopology.MultiPeer &&
+                (multi.IO & MCCIOCapabilities.Listener) != 0,
+                "TCP Server按MultiPeer及Listener能力声明", true, true);
+            test.AssertTrue(udp.Topology == MCCChannelTopology.MultiPeer &&
+                (udp.IO & MCCIOCapabilities.Datagram) != 0,
+                "UDP Server采用多对端Datagram，不冒充TCP字节流", true, true);
+            test.AssertTrue(serial.Topology == MCCChannelTopology.SharedBus &&
+                (serial.IO & MCCIOCapabilities.ByteStream) != 0,
+                "RS-485为共享物理通道，站号应由规约点表管理", true, true);
         }
 
         [TCTTest("TCT.MODULE.CONFIG.002",
