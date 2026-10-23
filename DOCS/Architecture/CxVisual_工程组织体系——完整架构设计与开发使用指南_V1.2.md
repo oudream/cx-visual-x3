@@ -1069,6 +1069,27 @@ MOL 的 API 先保持工厂与原工程编辑入口，不额外叠一层“统�
 **后续每次发现缺口先回答两问**：能否用现有 Block/Expression/Link/Policy/Content 组合？能否由 MOC 只读适配？只有两者确实无法完成，且有可复现反例时，才允许修改 MOL 公开类型。这是“轻巧架构味”的实施门槛。
 
 
+#### 7.4.13 D1～D4 定义收口真实源码增量（2026-10-23）
+
+> 本节是代码事实、验收事实与剩余边界，不用代码行数或类型数冒充架构完整。沿用唯一 MEMContent Logic Aspect、原 MOC/MRK/MDS Owner、原项目布局；没有新增 Graph/Workflow/RuleEngine、Undo 栈或 csproj。
+
+| 视角 | 实际已做的轻量增量 | 已拒绝而非降级 | 仍未闭合 |
+|---|---|---|---|
+| D1 类型 | Try 使用一个 MOLCatchClause 值记录补具名错误；Throw 复用既有 MOLExitKind+错误码；State Entry/Exit 仅存 Capability 引用；MOLScalarExpression 比较数值、布尔、字符串按实际类型校验 | 重复错误码、空 Throw、非法比较拒绝；MOC 尚无具名Catch/Throw/State Action 时明确报不支持，不得改成 Catch-all/Return/空动作 | 复杂组合表达式/短路、完整事件来源与触发、专业错误码统一合同，新增声明的实际编译/执行适配 |
+| D2 关系 | MOLLogicDefinition 检查 Break/Continue 的真实循环祖先；Branch 工厂仅校验自身 Case，允许子树先构建后组合；V1 嵌套与 V2 Wiring 关系仍各司其职 | 根部或非循环中的退出非法；复杂结构不得丢语义转换为 Action DAG | 跨 V1/V2 Content 的公开端口调用，复杂条件/作用域/引用组合及高级 Region 的 V2 编辑 |
+| D3 管理 | MOLLogicCodec.Edit 走原 MEM Revision 事务；Schema1 拒绝未知字段；纯单 Action 可在 V1/V2 间原子无损转换、保留 ID/Undo；State Action 使用同一 V2 表示的扩展 Schema3，普通 V2 仍存 Schema2 | 复杂转换 not_lossless 不改原载荷/Revision；旧 Schema2 不接受新 State Action 属性；未知版本/RequiresRemap 拒绝 | 更广的可证明等价子集、迁移并发和坏文件/保存中断等完整兼容验证 |
+| D4 API | 原 MOLControlBlock 工厂 + 新 ReplaceBlock 不可变局部替换 + MOLLogicCodec.Edit 单事务提交；V2 沿用 MOCFlowBuilder.Edit | 目标不存在、ID 改变、null 编辑结果、非法定义拒绝；不建立万能 Builder | 全部高级定义编辑任务的易用性、Studio 与 C# 同源操作及诊断 |
+
+**源码唯一 Owner**：Mechanism/Core/Engineering/MOLLogicDefinition.cs（值声明、关系、Codec、纯比较）；Mechanism/Orchestration/MOCEngineeringCompiler.cs（合法语义编译与未支持语义的明确拒绝）；Tests/ArchitectureSmoke/Engineering/Integration/OrganizationLogicIntegrationTests.cs（正反例）。
+
+**测试入口**：MOLDefinitionEditingClosure、MOLScalarTypeSafety、MOLTypedDefinitionContracts、MOLLosslessSchemaConversion、MOLThrowDefinitionContracts，以及原 H02/H04、R05、P0 工程回归。
+
+**固定 SHA 证据**：17c5c6685d8e43fbadcc78429379ce9399e380ff、1deb0aa3fdf9d751e27709db93345df2920ead2c 的工程组织/Runtime/Config L1/配置底座四项 Windows CI 已成功；后续全部新增声明和 Schema3 的最新固定 SHA 尚须独立验收。不能将旧绿灯挪为新结果。
+
+**真实红灯与修复**：418893da 的 ArchitectureSmoke 因 Branch() 提前以独立根树验证子树 Break/Continue，误拒“先构造Branch、后嵌入Loop”；fd47c090 将构造期局部 Case 校验与定义期全树作用域校验分开，未删除作用域保护。
+
+**完工规则**：D0 四方面架构合同已收口，D1～D4 代码增量已有，但高级事件/规则、跨版本复杂 Content 组合和双角色 API 验收尚未完成。必须保持“功能确实可声明”和“可以 MOC/MRK 真实执行”两个状态分开，不靠多添类或简单 CI 来宣布整包完成。
+
 ## 8. 八个完整使用案例
 
 各案例都给出目标、结构、过程、API 分类和运行/持久化边界。当前 API 的完整程序标记 `REAL-*`，建议 API 明确标注；测试结果统一记录在 §11，不能仅因代码位于本章就视作已验证。
