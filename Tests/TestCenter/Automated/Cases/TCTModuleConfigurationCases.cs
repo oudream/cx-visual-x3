@@ -21,16 +21,18 @@ namespace CxVisual.TestCenter.Cases
     public static class TCTModuleConfigurationCases
     {
         [TCTTest("TCT.MODULE.CONFIG.001",
-            "四类模块唯一配置Schema的保存、重开、范围隔离",
+            "五类模块唯一配置Schema的保存、重开、范围隔离",
             TCTTestAspect.Integration, "TestCenter / Manual / Module",
             ObjectId = "MHSConfigService")]
-        public static void FourProductionConfigSectionsRoundTrip(TCTTestContext test)
+        public static void FiveProductionConfigSectionsRoundTrip(TCTTestContext test)
         {
             string root = Path.Combine(Path.GetTempPath(),
                 "TCTModule-" + Guid.NewGuid().ToString("N"));
             try
             {
                 MHSConfigService first = OpenService(root);
+                CheckSection<MFMDriverModuleConfiguration>(
+                    first, "DriverTest", "Driver", MFMModuleKind.Driver, test);
                 CheckSection<MCNConnectorConfiguration>(
                     first, "ConnectorTest", "Connector", MFMModuleKind.Connector, test);
                 CheckSection<PVCComputeModuleConfiguration>(
@@ -41,6 +43,7 @@ namespace CxVisual.TestCenter.Cases
                     first, "ServiceTest", "Service", MFMModuleKind.Service, test);
 
                 MHSConfigService reopened = OpenService(root);
+                CheckReopened<MFMDriverModuleConfiguration>(reopened, "DriverTest", "Driver", test);
                 CheckReopened<MCNConnectorConfiguration>(reopened, "ConnectorTest", "Connector", test);
                 CheckReopened<PVCComputeModuleConfiguration>(reopened, "ComputeTest", "Compute", test);
                 CheckReopened<PSMSimulationModuleConfiguration>(reopened, "SimulationTest", "Simulation", test);
@@ -57,6 +60,7 @@ namespace CxVisual.TestCenter.Cases
         {
             MHSConfigService service = new MHSConfigService(root);
             service.RegisterAssembly(typeof(MFMModuleIdentityConfig).Assembly);
+            service.RegisterAssembly(typeof(MFMDriverModuleConfiguration).Assembly);
             service.RegisterAssembly(typeof(MCNConnectorConfiguration).Assembly);
             service.RegisterAssembly(typeof(PVCComputeModuleConfiguration).Assembly);
             service.RegisterAssembly(typeof(PSMSimulationModuleConfiguration).Assembly);
@@ -77,7 +81,16 @@ namespace CxVisual.TestCenter.Cases
 
             MHSConfigSection<T> section = service.ForScope("module", id).Open<T>();
             MHSConfigCommitResult result = section.UpdateAsync(
-                model => model.DisplayName = label + " production config",
+                model => {
+                    model.DisplayName = label + " production config";
+                    MFMDriverModuleConfiguration driver = model as MFMDriverModuleConfiguration;
+                    if (driver != null)
+                    {
+                        driver.DriverTypeId = "test.detector.sdk";
+                        driver.Backend = MFMDriverBackendKind.Sdk;
+                        driver.DeviceRef = "test.detector01";
+                    }
+                },
                 "保存生产正式配置", CancellationToken.None).GetAwaiter().GetResult();
             test.AssertTrue(result.Success, label + "真实MHS保存", true, result.Success);
             test.AssertTrue(section.GetLatestSaved().DisplayName ==
@@ -91,6 +104,12 @@ namespace CxVisual.TestCenter.Cases
             MFMModuleIdentityConfig identity =
                 service.ForScope("module", id).Open<MFMModuleIdentityConfig>().GetLatestSaved();
             test.AssertTrue(identity.Kind.HasValue, label + "真实身份重开", true, identity.Kind.HasValue);
+            MFMDriverModuleConfiguration driver = value as MFMDriverModuleConfiguration;
+            if (driver != null)
+                test.AssertTrue(driver.DriverTypeId == "test.detector.sdk" &&
+                    driver.Backend == MFMDriverBackendKind.Sdk &&
+                    driver.InternalResourceRefs.Count == 0,
+                    "Driver持久化后仍不要求EmptyChannel", true, true);
             test.AssertTrue(value.DisplayName == label + " production config",
                 label + "已保存配置重新打开", true, true);
             FCMConfigValidationReport report =
