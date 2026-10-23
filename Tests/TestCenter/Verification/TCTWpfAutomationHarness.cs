@@ -102,7 +102,9 @@ namespace CxVisual.TestCenter.UI
                 .GetCurrentPattern(SelectionItemPattern.Pattern) as SelectionItemPattern;
             if (node == null) throw new InvalidOperationException("Missing module tree type " + kind);
             node.Select();
-            string moduleId = "Module" + kind + "01";
+            string moduleId = null;
+            window.Dispatcher.Invoke(new Action(() =>
+                moduleId = window.CreatedConfigurationId(created.WorkspaceId)));
             bool opened = false;
             for (int attempt = 0; attempt < 100 && !opened; attempt++)
             {

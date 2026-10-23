@@ -215,6 +215,11 @@ namespace CxVisual.TestCenter.UI
             return new UserControl { Content = body };
         }
 
+        public string CreatedConfigurationId(string instanceId)
+        {
+            TCTCreatedWorkspace record = _createdWorkspaces.Items.FirstOrDefault(x => x.Id == instanceId);
+            return record == null ? null : record.ConfigurationId;
+        }
         public TCTWorkspaceDescriptor FindCreatedInstance(string templateId)
         {
             return _workspaces.Items.FirstOrDefault(x => x.IsCreatedInstance &&
