@@ -142,17 +142,35 @@ namespace CxVisual.Mechanism.Core
         public string EventInput{get;private set;}
     }
 
+    /// <summary>受保护的结构化控制区：定义归MOL，捕获/清理及实际执行归MRK。</summary>
+    public sealed class MOLTryDefinition
+    {
+        public MOLTryDefinition(MOLControlBlock tryBody,
+            MOLControlBlock catchBody=null,MOLControlBlock finallyBody=null)
+        {
+            if(tryBody==null)throw new ArgumentNullException("tryBody");
+            if(catchBody==null&&finallyBody==null)
+                throw new ArgumentException("logic.try_requires_handler_or_finally");
+            TryBody=tryBody;CatchBody=catchBody;FinallyBody=finallyBody;
+        }
+        public MOLControlBlock TryBody{get;private set;}
+        public MOLControlBlock CatchBody{get;private set;}
+        public MOLControlBlock FinallyBody{get;private set;}
+    }
+
     public sealed class MOLControlBlock
     {
         public MOLControlBlock(Guid id, MOLControlKind kind, string capabilityId = null,
             IEnumerable<MOLControlBlock> children = null, IEnumerable<MOLBranchCase> cases = null,
             MOLLoopDefinition loop = null, MOLExpression condition = null, string targetFlow = null,
-            MOLExitKind exitKind = MOLExitKind.Return, MOLWaitDefinition wait = null)
+            MOLExitKind exitKind = MOLExitKind.Return, MOLWaitDefinition wait = null,
+            MOLTryDefinition tryDefinition = null)
         {
             if (id == Guid.Empty || !Enum.IsDefined(typeof(MOLControlKind), kind))
                 throw new ArgumentException("Invalid logical block identity");
             Id = id; Kind = kind; CapabilityId = capabilityId ?? ""; Condition = condition;
             TargetFlow = targetFlow ?? ""; ExitKind = exitKind; Loop = loop; Wait = wait;
+            TryRegion=tryDefinition;
             Children = Array.AsReadOnly((children ?? new MOLControlBlock[0]).ToArray());
             Cases = Array.AsReadOnly((cases ?? new MOLBranchCase[0]).ToArray());
         }
@@ -163,6 +181,7 @@ namespace CxVisual.Mechanism.Core
         public MOLExpression Condition { get; private set; }
         public MOLLoopDefinition Loop { get; private set; }
         public MOLWaitDefinition Wait { get; private set; }
+        public MOLTryDefinition TryRegion { get; private set; }
         public MOLExitKind ExitKind { get; private set; }
         public IReadOnlyList<MOLControlBlock> Children { get; private set; }
         public IReadOnlyList<MOLBranchCase> Cases { get; private set; }
@@ -172,6 +191,10 @@ namespace CxVisual.Mechanism.Core
         public static MOLControlBlock AwaitEvent(string eventInput,int timeoutMilliseconds)
         {return new MOLControlBlock(Guid.NewGuid(),MOLControlKind.Wait,
             wait:new MOLWaitDefinition(eventInput,timeoutMilliseconds));}
+        public static MOLControlBlock TryCatchFinally(MOLControlBlock body,
+            MOLControlBlock catchBody=null,MOLControlBlock finallyBody=null)
+        {return new MOLControlBlock(Guid.NewGuid(),MOLControlKind.Try,
+            tryDefinition:new MOLTryDefinition(body,catchBody,finallyBody));}
         public static MOLControlBlock Action(string capability)
         { return new MOLControlBlock(Guid.NewGuid(), MOLControlKind.Action, capability); }
         public static MOLControlBlock Sequence(params MOLControlBlock[] children)
@@ -221,6 +244,8 @@ namespace CxVisual.Mechanism.Core
                     throw new InvalidOperationException("logic.unexpected_children");
                 if (block.Kind != MOLControlKind.Branch && block.Cases.Count != 0)
                     throw new InvalidOperationException("logic.unexpected_cases");
+                if(block.Kind!=MOLControlKind.Try&&block.TryRegion!=null)
+                    throw new InvalidOperationException("logic.unexpected_try");
                 if(block.Kind!=MOLControlKind.Wait&&block.Wait!=null)
                     throw new InvalidOperationException("logic.unexpected_wait");
                 if (block.Kind != MOLControlKind.Loop && block.Kind != MOLControlKind.ForEach &&
@@ -255,6 +280,15 @@ namespace CxVisual.Mechanism.Core
                         if (block.Kind == MOLControlKind.ForEach && string.IsNullOrWhiteSpace(block.Loop.CollectionInput))
                             throw new InvalidOperationException("logic.collection_missing");
                         walk(block.Loop.Body, depth + 1);
+                        break;
+                    case MOLControlKind.Try:
+                        if(block.TryRegion==null)
+                            throw new InvalidOperationException("logic.try_missing");
+                        walk(block.TryRegion.TryBody,depth+1);
+                        if(block.TryRegion.CatchBody!=null)
+                            walk(block.TryRegion.CatchBody,depth+1);
+                        if(block.TryRegion.FinallyBody!=null)
+                            walk(block.TryRegion.FinallyBody,depth+1);
                         break;
                     case MOLControlKind.Wait:
                         if(block.Wait==null)throw new InvalidOperationException("logic.wait_missing");
@@ -347,6 +381,16 @@ namespace CxVisual.Mechanism.Core
                     wait.Add(new XAttribute("eventInput",b.Wait.EventInput));
                 e.Add(wait);
             }
+            if(b.TryRegion!=null)
+            {
+                var region=new XElement("TryRegion",
+                    new XElement("TryBody",WriteBlock(b.TryRegion.TryBody)));
+                if(b.TryRegion.CatchBody!=null)
+                    region.Add(new XElement("CatchBody",WriteBlock(b.TryRegion.CatchBody)));
+                if(b.TryRegion.FinallyBody!=null)
+                    region.Add(new XElement("FinallyBody",WriteBlock(b.TryRegion.FinallyBody)));
+                e.Add(region);
+            }
             foreach (var c in b.Children) e.Add(WriteBlock(c));
             foreach (var c in b.Cases)
             {
@@ -369,9 +413,11 @@ namespace CxVisual.Mechanism.Core
         {
             if (depth > 32 || e.Name != "Block") throw new InvalidDataException("logic.depth_or_type");
             if (e.Elements().Any(x => x.Name != "Block" && x.Name != "Case" &&
-                x.Name != "Loop" && x.Name != "Guard" && x.Name != "Wait"))
+                x.Name != "Loop" && x.Name != "Guard" && x.Name != "Wait" &&
+                x.Name != "TryRegion"))
                 throw new InvalidDataException("logic.unknown_field");
-            if (e.Elements("Loop").Count() > 1 || e.Elements("Guard").Count() > 1 || e.Elements("Wait").Count()>1)
+            if (e.Elements("Loop").Count() > 1 || e.Elements("Guard").Count() > 1 || e.Elements("Wait").Count()>1 ||
+                e.Elements("TryRegion").Count()>1)
                 throw new InvalidDataException("logic.duplicate_field");
             Guid id;
             if (!Guid.TryParseExact((string)e.Attribute("id"), "N", out id))
@@ -403,10 +449,30 @@ namespace CxVisual.Mechanism.Core
                 wait=eventInput==null?new MOLWaitDefinition(duration):
                     new MOLWaitDefinition(eventInput,duration);
             }
+            MOLTryDefinition tryDefinition=null;
+            XElement region=e.Element("TryRegion");
+            if(region!=null)
+            {
+                if(region.Elements().Count()<1||region.Elements().Count()>3||
+                    region.Elements().Any(x=>x.Name!="TryBody"&&
+                        x.Name!="CatchBody"&&x.Name!="FinallyBody")||
+                    region.Elements("TryBody").Count()!=1||
+                    region.Elements("CatchBody").Count()>1||
+                    region.Elements("FinallyBody").Count()>1||
+                    region.Elements().Any(x=>x.Attributes().Any()||
+                        x.Elements("Block").Count()!=1||x.Elements().Count()!=1))
+                    throw new InvalidDataException("logic.try_schema");
+                Func<string,MOLControlBlock> readPart=name=>{
+                    XElement part=region.Element(name);
+                    return part==null?null:ReadBlock(part.Element("Block"),depth+1);
+                };
+                tryDefinition=new MOLTryDefinition(readPart("TryBody"),
+                    readPart("CatchBody"),readPart("FinallyBody"));
+            }
             return new MOLControlBlock(id, kind, (string)e.Attribute("cap"), blocks, cases,
                 loop, ReadExpression(e.Element("Guard") == null ? null : e.Element("Guard").Element("Expression")),
                 (string)e.Attribute("target"), (MOLExitKind)Enum.Parse(typeof(MOLExitKind),
-                    (string)e.Attribute("exit")),wait);
+                    (string)e.Attribute("exit")),wait,tryDefinition);
         }
     }
 
