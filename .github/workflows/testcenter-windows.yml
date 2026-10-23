@@ -175,12 +175,17 @@ jobs:
                               'TestCenter-07-Channel.png',
                               'TestCenter-08-RuntimeJournal.png',
                               'TestCenter-09-ManualRoot.png','TestCenter-10-ManualChannel.png',
-                              'TestCenter-11-ArchitectureSmoke.png')) {
+                              'TestCenter-11-ArchitectureSmoke.png',
+                              'TestCenter-12-ModuleConfig.png',
+                              'TestCenter-Module-Connector.png',
+                              'TestCenter-Module-Compute.png',
+                              'TestCenter-Module-Simulation.png',
+                              'TestCenter-Module-Service.png')) {
               if (-not (Test-Path (Join-Path (Split-Path $screenshot) $name))) {
                   throw "Missing real WPF screenshot: $name"
               }
           }
-          Write-Host 'PASS UIAutomation Owner checks + real ArchitectureSmoke --config-wpf process + 11 screenshots'
+          Write-Host 'PASS UIAutomation Owner checks + four real MHS module saves/reopens + ArchitectureSmoke + 16 screenshots'
       - name: Upload actual TestCenter WPF screenshot
         uses: actions/upload-artifact@v4
         if: always()
