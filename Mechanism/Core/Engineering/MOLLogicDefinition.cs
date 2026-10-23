@@ -74,17 +74,48 @@ namespace CxVisual.Mechanism.Core
                 default:throw new InvalidOperationException("moc.expression_compare");
             }
         }
+        /// <summary>
+        /// 以实际标量类型为准：数值是数值，字符串是字符串；不在类型冲突时偷偷退化为字典序。
+        /// 保留旧MOLExpression声明格式，供V1分支、V2 Guard和状态迁移共用。
+        /// </summary>
         public static int Compare(object actual,string expected)
         {
-            string left=Convert.ToString(actual,CultureInfo.InvariantCulture);
-            bool a,b;
-            if(bool.TryParse(left,out a)&&bool.TryParse(expected,out b))
-                return a.CompareTo(b);
-            decimal x,y;
-            if(decimal.TryParse(left,NumberStyles.Number,CultureInfo.InvariantCulture,out x)&&
-                decimal.TryParse(expected,NumberStyles.Number,CultureInfo.InvariantCulture,out y))
-                return x.CompareTo(y);
-            return string.CompareOrdinal(left,expected);
+            if(actual==null||expected==null)
+                throw new InvalidOperationException("moc.expression_null");
+            TypeCode code=Type.GetTypeCode(actual.GetType());
+            switch(code)
+            {
+                case TypeCode.Boolean:
+                    bool value;
+                    if(!bool.TryParse(expected,out value))
+                        throw new InvalidOperationException("moc.expression_type");
+                    return ((bool)actual).CompareTo(value);
+                case TypeCode.String:
+                    return string.CompareOrdinal((string)actual,expected);
+                case TypeCode.Single:
+                case TypeCode.Double:
+                    double real=Convert.ToDouble(actual,CultureInfo.InvariantCulture),target;
+                    if(double.IsNaN(real)||double.IsInfinity(real)||
+                       !double.TryParse(expected,NumberStyles.Float,
+                           CultureInfo.InvariantCulture,out target)||
+                       double.IsNaN(target)||double.IsInfinity(target))
+                        throw new InvalidOperationException("moc.expression_type");
+                    return real.CompareTo(target);
+                case TypeCode.SByte: case TypeCode.Byte:
+                case TypeCode.Int16: case TypeCode.UInt16:
+                case TypeCode.Int32: case TypeCode.UInt32:
+                case TypeCode.Int64: case TypeCode.UInt64:
+                case TypeCode.Decimal:
+                    decimal number,expectedNumber;
+                    try{number=Convert.ToDecimal(actual,CultureInfo.InvariantCulture);}
+                    catch(Exception ex)when(ex is InvalidCastException||ex is OverflowException)
+                    {throw new InvalidOperationException("moc.expression_type",ex);}
+                    if(!decimal.TryParse(expected,NumberStyles.Float,
+                        CultureInfo.InvariantCulture,out expectedNumber))
+                        throw new InvalidOperationException("moc.expression_type");
+                    return number.CompareTo(expectedNumber);
+                default:throw new InvalidOperationException("moc.expression_type");
+            }
         }
         public static bool EqualsScalar(object actual,string expected)
         {return Compare(actual,expected)==0;}
