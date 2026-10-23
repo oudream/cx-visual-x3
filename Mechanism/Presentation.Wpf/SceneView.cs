@@ -644,7 +644,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                         {DashStyle=DashStyles.Dash},new Point(anchor.X,anchor.Y),target);
                 }
             }
-            if(IsDesignMode&&_selection.HasValue)
+            if(IsDesignMode&&_selection.HasValue&&EditableSelection().Length<2)
             {
                 MVISceneItem edited=_items.Find(i=>i.Id==_selection.Value);
                 if(edited!=null&&edited.ElementTypeId=="core.visual.connector"&&
@@ -901,7 +901,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                     InvalidateVisual();e.Handled=true;return;
                 }
             }
-            if(_designMode&&_selection.HasValue&&
+            if(_designMode&&_selection.HasValue&&EditableSelection().Length<2&&
                 (Keyboard.Modifiers&(ModifierKeys.Control|ModifierKeys.Shift))==0)
             {
                 MVISceneItem selected=_items.Find(i=>i.Id==_selection.Value);
