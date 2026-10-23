@@ -109,8 +109,10 @@ namespace CxVisual.Mechanism.Visual
                         .Select(item=>item.Bounds);
                     // 自动正交线须遵守起点向外出线、终点沿外法线方向进入；
                     // 自动避障在MVI场景计算，绝不写回MPC连接或覆盖手动折点。
+                    bool collision;
                     IReadOnlyList<FGEPoint2D> points=MVIVisualRouting.Points(
-                        connection,start,end,obstacles,source,sourceSide,target,targetSide);
+                        connection,start,end,obstacles,source,sourceSide,target,targetSide,
+                        out collision);
                     double x=points.Min(p=>p.X),y=points.Min(p=>p.Y);
                     var line=MRCShapeDefinition.Polyline(points.Select(p=>
                         new FGEPoint2D(p.X-x,p.Y-y)));
@@ -121,7 +123,8 @@ namespace CxVisual.Mechanism.Visual
                         MRCBrushDefinition.Solid(MRCColor.FromRgb(55,122,199)),1.7);
                     links.Add(new MVISceneItem(connection.Id,"Visual connector",null,
                         transform,width,height,true,MRCTransform.Identity,
-                        x,y,"core.visual.connector",line,style));
+                        x,y,"core.visual.connector",line,style,
+                        visualRouteDiagnostic:collision?"visual.route.obstacle_collision":null));
                 }
                 Items.InsertRange(0,links);
             }

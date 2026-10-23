@@ -192,6 +192,18 @@ namespace CxVisual.Studio
                 RefreshVisualInspector();
                 VisualInfo.Text="场景选中 "+ids.Count+" 个对象，可用原工程成组操作";
             };
+            SceneHost.SelectionTransformRequested += (ids,handle,x,y,zoom)=>
+            {
+                try
+                {
+                    MTCEditResult<bool> result=_viewModel.TransformVisualSelection(
+                        ids,handle,x,y,zoom);
+                    VisualInfo.Text=result.Success?
+                        "多选变换已提交：共用选区、统一坐标、一次Undo":
+                        "多选变换被拒绝："+result.ErrorCode+" "+result.Message;
+                }
+                catch(Exception ex){VisualInfo.Text="多选变换失败："+ex.Message;}
+            };
             SceneHost.MoveRequested += OnMove;
             SceneHost.ConnectRequested += (source,sourceSide,target,targetSide)=>
             {
@@ -350,7 +362,14 @@ namespace CxVisual.Studio
             if(item==null)
             {
                 if(_viewModel.ProjectSession.FindConnection(_viewModel.SelectedId.Value)!=null)
-                    VisualInfo.Text="已选中连接：拖端点重连，双击线段插折点，拖黄色方点调整、Shift+点删除；O正交/L直线，Delete删除，Ctrl+Z撤销。";
+                {
+                    MVISceneItem projected=_viewModel.Items.FirstOrDefault(i=>
+                        i.Id==_viewModel.SelectedId.Value);
+                    VisualInfo.Text=projected!=null&&
+                        !string.IsNullOrEmpty(projected.VisualRouteDiagnostic)?
+                        "自动布线警告：线路与障碍物冲突；请移动障碍、调整端口或采用人工折点。":
+                        "已选中连接：拖端点重连，双击线段插折点，拖黄色方点调整、Shift+点删除；O正交/L直线，Delete删除，Ctrl+Z撤销。";
+                }
                 return;
             }
             VisualXInput.Text=item.X.ToString("R",System.Globalization.CultureInfo.InvariantCulture);

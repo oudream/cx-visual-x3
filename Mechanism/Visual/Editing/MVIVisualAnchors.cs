@@ -104,11 +104,29 @@ namespace CxVisual.Mechanism.Visual
             if(connection==null)throw new ArgumentNullException("connection");
             if(source==null||target==null)
                 throw new ArgumentNullException(source==null?"source":"target");
+            bool collision;
+            return Points(connection,start,end,obstacles,source,sourceSide,target,targetSide,
+                out collision);
+        }
+
+        /// <summary>
+        /// 完整路由与可诊断状态共享同一算法；collision代表避障未成功，不代表连接身份失效。
+        /// WPF不得据此修改工程，Studio应明确提示用户调整图元或改用人工折点。
+        /// </summary>
+        public static IReadOnlyList<FGEPoint2D> Points(MPCConnection connection,
+            FGEPoint2D start,FGEPoint2D end,IEnumerable<FGERect2D> obstacles,
+            MVISceneItem source,string sourceSide,MVISceneItem target,string targetSide,
+            out bool collision)
+        {
+            if(connection==null)throw new ArgumentNullException("connection");
+            if(source==null||target==null)
+                throw new ArgumentNullException(source==null?"source":"target");
+            collision=false;
             if(connection.VisualRouteKind!=MPCVisualRouteKind.Orthogonal)
                 return Points(connection,start,end);
             return MVIOrthogonalRouter.RouteWithPorts(start,end,obstacles,
-                source.Bounds,target.Bounds, MVIVisualAnchors.OutwardNormal(source,sourceSide),
-                MVIVisualAnchors.OutwardNormal(target,targetSide));
+                source.Bounds,target.Bounds,MVIVisualAnchors.OutwardNormal(source,sourceSide),
+                MVIVisualAnchors.OutwardNormal(target,targetSide),out collision);
         }
 
         public static MPCVisualWaypoint WaypointAt(FGEPoint2D position,

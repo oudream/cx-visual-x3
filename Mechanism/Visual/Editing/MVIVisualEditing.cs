@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using CxVisual.Foundation.Geometry;
 using CxVisual.Mechanism.Core;
 
@@ -426,4 +427,62 @@ namespace CxVisual.Mechanism.Visual
             });
         }
     }
+    /// <summary>
+    /// 多选共享世界变换：画布控制柄、实时预览与最终MEM提交均使用此计算，
+    /// 不在WPF内另存一套缩放/旋转规则。变换直接作用于每个对象的世界矩阵。
+    /// </summary>
+    public static class MVISelectionTransform
+    {
+        public static FGERect2D Bounds(IEnumerable<MVISceneItem> items)
+        {
+            if(items==null)throw new ArgumentNullException("items");
+            MVISceneItem[] selected=items.Where(x=>x!=null&&x.IsSelectable).ToArray();
+            if(selected.Length==0)throw new ArgumentException("visual.selection.empty","items");
+            return new FGERect2D(selected.Min(x=>x.Bounds.Left),
+                selected.Min(x=>x.Bounds.Top),
+                selected.Max(x=>x.Bounds.Right)-selected.Min(x=>x.Bounds.Left),
+                selected.Max(x=>x.Bounds.Bottom)-selected.Min(x=>x.Bounds.Top));
+        }
+        public static FGEPoint2D Handle(FGERect2D box,int index,double zoom)
+        {
+            if(index<0||index>8||zoom<=0)throw new ArgumentOutOfRangeException("index");
+            double[] xs={box.Left,(box.Left+box.Right)/2,box.Right,box.Right,
+                box.Right,(box.Left+box.Right)/2,box.Left,box.Left};
+            double[] ys={box.Top,box.Top,box.Top,(box.Top+box.Bottom)/2,
+                box.Bottom,box.Bottom,box.Bottom,(box.Top+box.Bottom)/2};
+            if(index==8)return new FGEPoint2D(box.Right+28/zoom,box.Top-28/zoom);
+            return new FGEPoint2D(xs[index],ys[index]);
+        }
+        public static MRCTransform Delta(FGERect2D box,int index,
+            FGEPoint2D point,double zoom)
+        {
+            if(index<0||index>8)throw new ArgumentOutOfRangeException("index");
+            FGEValidation.Finite(point.X,"x");FGEValidation.Finite(point.Y,"y");
+            if(index==8)
+            {
+                FGEPoint2D original=Handle(box,8,zoom);
+                double cx=(box.Left+box.Right)/2,cy=(box.Top+box.Bottom)/2;
+                double angle=Math.Atan2(point.Y-cy,point.X-cx)-
+                    Math.Atan2(original.Y-cy,original.X-cx);
+                double c=Math.Cos(angle),s=Math.Sin(angle);
+                return new MRCTransform(c,-s,s,c,cx-c*cx+s*cy,cy-s*cx-c*cy);
+            }
+            bool left=index==0||index==6||index==7;
+            bool right=index==2||index==3||index==4;
+            bool top=index==0||index==1||index==2;
+            bool bottom=index==4||index==5||index==6;
+            double px=left?box.Right:right?box.Left:0;
+            double py=top?box.Bottom:bottom?box.Top:0;
+            FGEPoint2D originalPoint=Handle(box,index,zoom);
+            double sx=left||right?Math.Max(.01,
+                (point.X-px)/(originalPoint.X-px)):1;
+            double sy=top||bottom?Math.Max(.01,
+                (point.Y-py)/(originalPoint.Y-py)):1;
+            // 零宽/零高选区不允许缩放退化为奇异矩阵。
+            if((left||right)&&Math.Abs(originalPoint.X-px)<1e-9)sx=1;
+            if((top||bottom)&&Math.Abs(originalPoint.Y-py)<1e-9)sy=1;
+            return new MRCTransform(sx,0,0,sy,px*(1-sx),py*(1-sy));
+        }
+    }
+
 }

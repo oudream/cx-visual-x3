@@ -33,10 +33,12 @@ namespace CxVisual.Mechanism.Visual
             MRCTransform moveParent,double moveX,double moveY,
             string typeId=null,MRCShapeDefinition shape=null,MRCVisualStyle style=null,string text=null,
             Guid? assetId=null,string mediaType=null,MPMValue runtimeValue=null,
-            IReadOnlyDictionary<string,MPMValue> widgetSettings=null)
+            IReadOnlyDictionary<string,MPMValue> widgetSettings=null,
+            string visualRouteDiagnostic=null)
         {
             Initialize(selectionId,name,address,world,width,height,selectable,moveParent,
                 moveX,moveY,typeId,shape,style,text,assetId,mediaType,runtimeValue,widgetSettings);
+            VisualRouteDiagnostic=visualRouteDiagnostic;
         }
         private void Initialize(Guid id,string name,MRIObjectAddress address,MRCTransform world,
             double width,double height,bool selectable,MRCTransform moveParent,
@@ -67,13 +69,15 @@ namespace CxVisual.Mechanism.Visual
         {
             return new MVISceneItem(Id,Name,Address,world,width,height,IsSelectable,
                 _moveParent,_moveX,_moveY,ElementTypeId,Shape,Style,Text,AssetId,MediaType,
-                RuntimeValue,WidgetSettings);
+                RuntimeValue,WidgetSettings,VisualRouteDiagnostic);
         }
         internal MRCTransform ParentWorldTransform {get{return _moveParent;}}
         public Guid Id{get;private set;}
         public string Name{get;private set;}
         public MRIObjectAddress Address{get;private set;}
         public bool IsSelectable{get;private set;}
+        /// <summary>仅属于本次场景投影的可视路由诊断；null表示没有已知自动路由冲突。</summary>
+        public string VisualRouteDiagnostic{get;private set;}
         public double LocalWidth{get{return _width;}}
         public double LocalHeight{get{return _height;}}
         public string ElementTypeId{get;private set;}

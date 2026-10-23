@@ -79,6 +79,34 @@ namespace CxVisual.Tests.ArchitectureSmoke
                             Near(route[route.Length-1],MVIVisualAnchors.At(
                                 editor.Scene.Single(x=>x.Id==target.Id),"west")),
                             "obstacle detour changed persisted port anchors");
+                        // P0：画面上真正的自动避障折线必须能按任意可见线段索引插点，
+                        // 而不是编辑器内部重新计算出的简化三段直线。
+                        int insertion=route.Length-2;
+                        FGEPoint2D targetPoint=new FGEPoint2D(
+                            (route[insertion].X+route[insertion+1].X)/2,
+                            (route[insertion].Y+route[insertion+1].Y)/2);
+                        int beforeInsert=doc.Revision;
+                        Check(editor.InsertVisualWaypoint(wire,insertion,
+                            targetPoint.X,targetPoint.Y).Success&&
+                            doc.Revision==beforeInsert+1,
+                            "P0 visible auto-routed last segment cannot be edited");
+                        MPCConnection manual=doc.FindConnection(wire);
+                        Check(manual.VisualRouteKind==MPCVisualRouteKind.Manual&&
+                            manual.VisualWaypoints.Count==route.Length-1,
+                            "P0 conversion to manual route lost visible bend points");
+                        FGEPoint2D[] afterInsert=RouteVertices(editor.Scene.Single(x=>x.Id==wire));
+                        Check(afterInsert.Length==route.Length+1&&
+                            Near(afterInsert[insertion+1],targetPoint),
+                            "P0 clicked visible segment created the waypoint at wrong position");
+                        Check(editor.Undo().Success&&
+                            doc.FindConnection(wire).VisualRouteKind==
+                                MPCVisualRouteKind.Orthogonal,
+                            "P0 auto-route conversion Undo did not restore original strategy");
+                        Check(editor.Redo().Success&&
+                            doc.FindConnection(wire).VisualWaypoints.Count==route.Length-1,
+                            "P0 auto-route conversion Redo lost the visible route");
+                        Check(editor.Undo().Success,
+                            "P0 failed to restore orthogonal mode before dynamic route tests");
                         int routeRevision=doc.Revision;
                         FGEPoint2D[] repeat=RouteVertices(editor.Scene.Single(x=>x.Id==wire));
                         Check(repeat.Length==route.Length&&
@@ -96,6 +124,25 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         Check(editor.Redo().Success&&
                             RouteVertices(editor.Scene.Single(x=>x.Id==wire)).Length==2,
                             "obstacle move Redo failed to re-route");
+                        // P0：障碍恰好覆盖源端口出口时允许显示退化线路，
+                        // 但必须有可查询诊断，且不能污染MEM Revision或持久化连接。
+                        var crowded=doc.AddRectangle(page.RootContent,"Blocked exit",38,32,30,16);
+                        MVISceneItem conflict=editor.Scene.Single(x=>x.Id==wire);
+                        Check(conflict.VisualRouteDiagnostic=="visual.route.obstacle_collision",
+                            "P0 collision fallback was silently displayed as successful routing");
+                        int diagnosticRevision=doc.Revision;
+                        Check(editor.Scene.Single(x=>x.Id==wire).VisualRouteDiagnostic!=null&&
+                            doc.Revision==diagnosticRevision,
+                            "P0 routing diagnostics must be read-only scene metadata");
+                        doc.Move(crowded,80,190);
+                        Check(editor.Scene.Single(x=>x.Id==wire).VisualRouteDiagnostic==null,
+                            "P0 route diagnostic did not clear after obstacle moved away");
+                        Check(editor.Undo().Success&&
+                            editor.Scene.Single(x=>x.Id==wire).VisualRouteDiagnostic!=null,
+                            "P0 diagnostic must follow MEM undo of obstacle position");
+                        Check(editor.Redo().Success&&
+                            editor.Scene.Single(x=>x.Id==wire).VisualRouteDiagnostic==null,
+                            "P0 diagnostic must follow MEM redo");
                         doc.SaveAs(file);
                     }
                     doc.Close();
@@ -266,6 +313,47 @@ namespace CxVisual.Tests.ArchitectureSmoke
                             Math.Abs(editor.Scene.Single(x=>x.Id==b.Id).Bounds.Top-originB.Top)<1e-5,
                             "multi select must restore all items with one Undo");
                         Check(editor.Redo().Success,"multi select Redo rejected");
+                        // P0：跨不同旋转Group的两个对象共享选区缩放/旋转，
+                        // 各自父矩阵回推且仅一次事务；锁定对象必须拒绝且不可局部修改。
+                        MVISceneItem sceneA=editor.Scene.Single(x=>x.Id==a.Id);
+                        MVISceneItem sceneB=editor.Scene.Single(x=>x.Id==b.Id);
+                        FGERect2D selectedBounds=MVISelectionTransform.Bounds(
+                            new[]{sceneA,sceneB});
+                        int beforeScale=doc.Revision;
+                        Check(editor.TransformSelection(new[]{a.Id,b.Id},4,
+                            selectedBounds.Right+35,selectedBounds.Bottom+20,1).Success&&
+                            doc.Revision==beforeScale+1,
+                            "P0 multi-selection resize was not one MEM revision");
+                        FGERect2D resizedA=editor.Scene.Single(x=>x.Id==a.Id).Bounds;
+                        Check(resizedA.Width>sceneA.Bounds.Width&&
+                            resizedA.Height>sceneA.Bounds.Height,
+                            "P0 group child did not scale through world transform");
+                        Check(editor.Undo().Success&&
+                            Math.Abs(editor.Scene.Single(x=>x.Id==a.Id).Bounds.Left-
+                                sceneA.Bounds.Left)<1e-5&&
+                            Math.Abs(editor.Scene.Single(x=>x.Id==b.Id).Bounds.Top-
+                                sceneB.Bounds.Top)<1e-5,
+                            "P0 group scale Undo did not restore both objects");
+                        Check(editor.Redo().Success,"P0 group scale Redo failed");
+                        selectedBounds=MVISelectionTransform.Bounds(new[]{
+                            editor.Scene.Single(x=>x.Id==a.Id),
+                            editor.Scene.Single(x=>x.Id==b.Id)});
+                        FGEPoint2D rotateHandle=MVISelectionTransform.Handle(
+                            selectedBounds,8,1);
+                        int beforeRotate=doc.Revision;
+                        Check(editor.TransformSelection(new[]{a.Id,b.Id},8,
+                            rotateHandle.X+30,rotateHandle.Y+50,1).Success&&
+                            doc.Revision==beforeRotate+1,
+                            "P0 multi-selection rotate must be one transaction");
+                        Check(editor.Undo().Success,"P0 multi-rotation Undo failed");
+                        Check(editor.Redo().Success,"P0 multi-rotation Redo failed");
+                        doc.SetLocked(a,true);
+                        int lockedRevision=doc.Revision;
+                        Check(!editor.TransformSelection(new[]{a.Id,b.Id},4,
+                            selectedBounds.Right+10,selectedBounds.Bottom+10,1).Success&&
+                            doc.Revision==lockedRevision,
+                            "P0 locked child must reject entire multi-transform without partial edit");
+                        doc.SetLocked(a,false);
                         doc.SaveAs(path);
                     }
                 }

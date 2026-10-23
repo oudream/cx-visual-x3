@@ -604,6 +604,57 @@ namespace CxVisual.Mechanism.Visual
             return Document.Edit("调整图元绘制顺序",revision,e=>
             {e.Reparent(item,item.Parent,index);return true;});
         }
+        /// <summary>
+        /// 选区级旋转/八点缩放：世界空间统一计算，逐对象还原各自父级局部矩阵；
+        /// 变更在同一个MTC事务内提交，Undo仅一步。拒绝父子同选、锁定和实例不可达。
+        /// </summary>
+        public MTCEditResult<bool> TransformSelection(IReadOnlyList<Guid> ids,
+            int handleIndex,double worldX,double worldY,double zoom)
+        {
+            Demand();
+            int revision=Document.Revision;
+            FGEValidation.Finite(worldX,"worldX");FGEValidation.Finite(worldY,"worldY");
+            if(ids==null||ids.Count<2||ids.Count!=ids.Distinct().Count()||
+                handleIndex<0||handleIndex>8||zoom<=0)
+                return MTCEditResult<bool>.Rejected(revision,
+                    "visual.transform.selection","Invalid multi-selection transform");
+            MVISceneItem[] selection=Scene.Where(x=>ids.Contains(x.Id)&&
+                x.ElementTypeId!="core.visual.connector"&&x.IsSelectable).ToArray();
+            if(selection.Length!=ids.Count)
+                return MTCEditResult<bool>.Rejected(revision,
+                    "visual.transform.locked_or_hidden","All items must be editable and visible");
+            var selectedIds=new HashSet<Guid>(ids);
+            foreach(MVISceneItem item in selection)
+            {
+                MRCVisualItem definition=Document.Find(item.Id) as MRCVisualItem;
+                MRIResourceReference reference=Document.FindReference(item.Id);
+                if(definition==null&&reference==null)
+                    return MTCEditResult<bool>.Rejected(revision,
+                        "visual.transform.definition","Unknown edit target");
+                if(definition!=null&&definition.Ancestors().Any(a=>selectedIds.Contains(a.Id)))
+                    return MTCEditResult<bool>.Rejected(revision,
+                        "visual.transform.ancestor_selected","Select parent or child, not both");
+                if(!Route(MVIInteractionKind.Move,item.Id))
+                    return MTCEditResult<bool>.Rejected(revision,
+                        "visual.default_prevented","A selected element rejected the transform");
+            }
+            MRCTransform delta=MVISelectionTransform.Delta(
+                MVISelectionTransform.Bounds(selection),handleIndex,
+                new FGEPoint2D(worldX,worldY),zoom);
+            return Document.Edit("选区整体缩放或旋转",revision,e=>
+            {
+                foreach(MVISceneItem item in selection)
+                {
+                    MRCTransform world=delta.Compose(item.WorldTransform);
+                    MRCTransform local=item.ParentWorldTransform.Inverse().Compose(world);
+                    MRIResourceReference reference=Document.FindReference(item.Id);
+                    if(reference!=null)e.SetPlacement(reference,local);
+                    else e.SetTransform((MRCVisualItem)Document.Find(item.Id),local);
+                }
+                return true;
+            });
+        }
+
         public MTCEditResult<bool> MoveSelection(IReadOnlyList<Guid> ids,
             double worldDx,double worldDy,bool snapToGrid=false)
         {

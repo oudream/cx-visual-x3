@@ -75,13 +75,32 @@ namespace CxVisual.Mechanism.Visual
             FGERect2D sourceBounds,FGERect2D targetBounds,
             FGEPoint2D sourceNormal,FGEPoint2D targetNormal)
         {
+            bool collision;
+            return RouteWithPorts(start,end,obstacles,sourceBounds,targetBounds,
+                sourceNormal,targetNormal,out collision);
+        }
+
+        /// <summary>安全状态只属于本次计算；路径搜索降级时必须向场景和用户显式报告。</summary>
+        internal static IReadOnlyList<FGEPoint2D> RouteWithPorts(
+            FGEPoint2D start,FGEPoint2D end,IEnumerable<FGERect2D> obstacles,
+            FGERect2D sourceBounds,FGERect2D targetBounds,
+            FGEPoint2D sourceNormal,FGEPoint2D targetNormal,out bool collision)
+        {
             if(obstacles==null)throw new ArgumentNullException("obstacles");
             // 出口在放大包围盒之外，再由Hanan网格计算中间路线；
             // 这样无需把源/目标图元当作可以任意穿越的特殊障碍。
             FGEPoint2D exitSource=Outlet(start,sourceBounds,sourceNormal);
             FGEPoint2D exitTarget=Outlet(end,targetBounds,targetNormal);
-            var all=new List<FGERect2D>(obstacles){sourceBounds,targetBounds};
+            var other=new List<FGERect2D>(obstacles);
+            var all=new List<FGERect2D>(other){sourceBounds,targetBounds};
             IReadOnlyList<FGEPoint2D> middle=Route(exitSource,exitTarget,all);
+            // 不能把“有限寻路未找到路径而回退”当作安全成功。
+            // 端点出口若被其他实体遮住，同样标记为冲突，而不是跳过该障碍。
+            var expanded=other.Where(r=>r.Width>Epsilon&&r.Height>Epsilon)
+                .Select(r=>r.Inflate(Clearance)).ToList();
+            collision=!Clear(middle,expanded)||
+                !SegmentClear(start,exitSource,expanded)||
+                !SegmentClear(exitTarget,end,expanded);
             var vertices=new List<FGEPoint2D>{start};
             foreach(FGEPoint2D point in middle)vertices.Add(point);
             vertices.Add(end);
