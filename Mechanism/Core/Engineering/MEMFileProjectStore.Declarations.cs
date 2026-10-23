@@ -122,7 +122,7 @@ namespace CxVisual.Mechanism.Core
                     var port=new MPCPort(Guid.Parse(XRequired(e,"id")),owner.Id,XRequired(e,"member"),XEnum<MPCPortDirection>(e,"direction"),XRequired(e,"typeId"),XEnum<MPCPortKind>(e,"kind"),XEnum<MPCPortMultiplicity>(e,"multiplicity"),contract,XBool(e,"public"),XBool(e,"required"));
                     if(state.PortItems==null)state.PortItems=new List<MPCPort>();if(state.PortItems.Any(p=>p.MemberId==port.MemberId))throw new InvalidDataException("Duplicate port member");state.PortItems.Add(port);break;
                 case "Connection":
-                    XFields(e,"id source sourcePort target targetPort visualRoute");
+                    XFields(e,"id source sourcePort target targetPort visualRoute",true);
                     if(e.Elements().Any(x=>x.Name.LocalName!="Waypoint")||
                         e.Elements().Count()>64)
                         throw new InvalidDataException("Invalid visual waypoint payload");
