@@ -79,9 +79,11 @@ namespace CxVisual.Studio
         }
         /// <summary>多选八点缩放及整体旋转；委托MVI而非WPF自行修改工程。</summary>
         public MTCEditResult<bool> TransformVisualSelection(IReadOnlyList<Guid> ids,
-            int handle,double x,double y,double zoom)
+            int handle,double x,double y,double zoom,bool keepAspect=false,
+            bool resizeFromCenter=false,bool snapRotation=false)
         {
-            MTCEditResult<bool> result=_editor.TransformSelection(ids,handle,x,y,zoom);
+            MTCEditResult<bool> result=_editor.TransformSelection(ids,handle,x,y,zoom,
+                keepAspect,resizeFromCenter,snapRotation);
             Status=result.Success?"多选变换已提交（一次Undo） | Revision "+result.Revision:
                 "多选变换被拒绝："+result.ErrorCode+" "+result.Message;
             if(result.Success)NotifyScene();

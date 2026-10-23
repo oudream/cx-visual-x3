@@ -14,6 +14,33 @@ namespace CxVisual.Tests.ArchitectureSmoke
         {if(!valid)throw new InvalidOperationException("Visual editing A: "+context);}
         private static bool Near(FGEPoint2D a,FGEPoint2D b,double eps=1e-6)
         {return a.DistanceTo(b)<eps;}
+        /// <summary>不经过WPF的选区修饰键正反测试；预览与提交共用MVI变换计算。</summary>
+        private static void CheckConstrainedSelectionTransform()
+        {
+            FGERect2D box=new FGERect2D(10,20,100,50);
+            MRCTransform aspect=MVISelectionTransform.Delta(box,4,
+                new FGEPoint2D(160,90),1,true,false,false);
+            Check(Math.Abs(aspect.M11-1.5)<1e-9&&Math.Abs(aspect.M22-1.5)<1e-9,
+                "P1 Shift corner resize did not preserve proportions");
+            MRCTransform center=MVISelectionTransform.Delta(box,4,
+                new FGEPoint2D(135,85),1,true,true,false);
+            Check(Near(center.ToGeometry().TransformPoint(new FGEPoint2D(60,45)),
+                new FGEPoint2D(60,45))&&Math.Abs(center.M11-center.M22)<1e-9,
+                "P1 Alt+Shift resize must preserve center and aspect");
+            FGEPoint2D h=MVISelectionTransform.Handle(box,8,1);
+            double theta=17*Math.PI/180,dx=h.X-60,dy=h.Y-45;
+            FGEPoint2D target=new FGEPoint2D(60+dx*Math.Cos(theta)-dy*Math.Sin(theta),
+                45+dx*Math.Sin(theta)+dy*Math.Cos(theta));
+            MRCTransform snapped=MVISelectionTransform.Delta(box,8,
+                target,1,false,false,true);
+            Check(Math.Abs(snapped.M11-Math.Cos(Math.PI/12))<1e-9&&
+                Math.Abs(snapped.M21-Math.Sin(Math.PI/12))<1e-9,
+                "P1 Shift rotation not snapped to 15 degrees");
+            MRCTransform backwards=MVISelectionTransform.Delta(box,4,
+                new FGEPoint2D(-200,-200),1,true,false,false);
+            Check(backwards.M11>=.01&&backwards.M22>=.01,
+                "P1 reverse drag must not silently mirror selection");
+        }
         private static FGEPoint2D[] RouteVertices(MVISceneItem line)
         {
             return line.Shape.Geometry.Commands.Select(command=>
@@ -348,6 +375,18 @@ namespace CxVisual.Tests.ArchitectureSmoke
                             "P0 multi-selection rotate must be one transaction");
                         Check(editor.Undo().Success,"P0 multi-rotation Undo failed");
                         Check(editor.Redo().Success,"P0 multi-rotation Redo failed");
+                        // P1：等比缩放作用于跨Group选区，MEM提交/Undo仍只有一个事务。
+                        var constrainedBox=MVISelectionTransform.Bounds(new[]{
+                            editor.Scene.Single(x=>x.Id==a.Id),
+                            editor.Scene.Single(x=>x.Id==b.Id)});
+                        int beforeConstrained=doc.Revision;
+                        Check(editor.TransformSelection(new[]{a.Id,b.Id},4,
+                            constrainedBox.Right+24,constrainedBox.Bottom+10,1,
+                            true,false,false).Success&&doc.Revision==beforeConstrained+1,
+                            "P1 Shift multi-scale was not a single MEM transaction");
+                        Check(editor.Undo().Success,"P1 Shift multi-scale Undo failed");
+                        Check(editor.Redo().Success,"P1 Shift multi-scale Redo failed");
+                        Check(editor.Undo().Success,"P1 Shift multi-scale cleanup failed");
                         doc.SetLocked(a,true);
                         int lockedRevision=doc.Revision;
                         Check(!editor.TransformSelection(new[]{a.Id,b.Id},4,
@@ -398,6 +437,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         }
         public static void Run()
         {
+            CheckConstrainedSelectionTransform();
             BatchVisualMoveTests();
             ObstacleRoutingTests();
             DirectionalMultiObstacleRoutingTests();

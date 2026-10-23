@@ -59,7 +59,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         public event Action<Guid,int> RemoveWaypointRequested;
         public event Action<Guid,MPCVisualRouteKind> VisualRouteRequested;
         /// <summary>多对象控制柄只提交一次MEM事务；拖动仅产生画布预览。</summary>
-        public event Action<IReadOnlyList<Guid>,int,double,double,double> SelectionTransformRequested;
+        public event Action<IReadOnlyList<Guid>,int,double,double,double,bool,bool,bool>
+            SelectionTransformRequested;
         private bool _selectionTransformDragging;
         private int _selectionHandleIndex;
         private Point _selectionHandleStart,_selectionHandlePointer;
@@ -780,7 +781,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 if(_selectionTransformDragging)
                     preview=MVISelectionTransform.Delta(bounds,_selectionHandleIndex,
                         new FGEPoint2D(_selectionHandlePointer.X,_selectionHandlePointer.Y),
-                        _zoom);
+                        _zoom,
+                        (Keyboard.Modifiers&ModifierKeys.Shift)!=0,
+                        (Keyboard.Modifiers&ModifierKeys.Alt)!=0,
+                        (Keyboard.Modifiers&ModifierKeys.Shift)!=0);
                 FGEPoint2D[] corners={
                     new FGEPoint2D(bounds.Left,bounds.Top),
                     new FGEPoint2D(bounds.Right,bounds.Top),
@@ -1043,7 +1047,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 _selectionTransformDragging=false;
                 if(IsMouseCaptured)ReleaseMouseCapture();
                 if(moved&&SelectionTransformRequested!=null)
-                    SelectionTransformRequested(ids,handle,target.X,target.Y,_zoom);
+                    SelectionTransformRequested(ids,handle,target.X,target.Y,_zoom,
+                        (Keyboard.Modifiers&ModifierKeys.Shift)!=0,
+                        (Keyboard.Modifiers&ModifierKeys.Alt)!=0,
+                        (Keyboard.Modifiers&ModifierKeys.Shift)!=0);
                 InvalidateVisual();e.Handled=true;return;
             }
             if(_waypointDragging)
@@ -1170,6 +1177,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             UpdateWidgetDragPreview();InvalidateVisual();}
         protected override void OnKeyDown(KeyEventArgs e)
         {
+            if(_selectionTransformDragging&&
+                (e.Key==Key.LeftShift||e.Key==Key.RightShift||
+                 e.Key==Key.LeftAlt||e.Key==Key.RightAlt||e.Key==Key.System))
+                InvalidateVisual();
             if(e.Key==Key.Escape)
             {
                 if(_geometryEditMode&&!_dragging&&!_handleDragging)
@@ -1196,6 +1207,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 e.Handled=true;
             }
             base.OnKeyDown(e);
+        }
+        /// <summary>释放修饰键须立即刷新选区预览，但不能影响MEM Revision。</summary>
+        protected override void OnKeyUp(KeyEventArgs e)
+        {
+            if(_selectionTransformDragging)InvalidateVisual();
+            base.OnKeyUp(e);
         }
         protected override void OnLostMouseCapture(MouseEventArgs e){if(_dragging||_handleDragging||_connectDragging||_rewireDragging||
             _waypointDragging||_selectionTransformDragging)CancelInteraction();base.OnLostMouseCapture(e);}

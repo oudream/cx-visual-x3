@@ -192,12 +192,13 @@ namespace CxVisual.Studio
                 RefreshVisualInspector();
                 VisualInfo.Text="场景选中 "+ids.Count+" 个对象，可用原工程成组操作";
             };
-            SceneHost.SelectionTransformRequested += (ids,handle,x,y,zoom)=>
+            SceneHost.SelectionTransformRequested +=
+                (ids,handle,x,y,zoom,keepAspect,fromCenter,snapRotation)=>
             {
                 try
                 {
                     MTCEditResult<bool> result=_viewModel.TransformVisualSelection(
-                        ids,handle,x,y,zoom);
+                        ids,handle,x,y,zoom,keepAspect,fromCenter,snapRotation);
                     VisualInfo.Text=result.Success?
                         "多选变换已提交：共用选区、统一坐标、一次Undo":
                         "多选变换被拒绝："+result.ErrorCode+" "+result.Message;

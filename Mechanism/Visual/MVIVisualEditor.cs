@@ -623,13 +623,15 @@ namespace CxVisual.Mechanism.Visual
         /// 变更在同一个MTC事务内提交，Undo仅一步。拒绝父子同选、锁定和实例不可达。
         /// </summary>
         public MTCEditResult<bool> TransformSelection(IReadOnlyList<Guid> ids,
-            int handleIndex,double worldX,double worldY,double zoom)
+            int handleIndex,double worldX,double worldY,double zoom,
+            bool keepAspect=false,bool resizeFromCenter=false,bool snapRotation=false)
         {
             Demand();
             int revision=Document.Revision;
             FGEValidation.Finite(worldX,"worldX");FGEValidation.Finite(worldY,"worldY");
             if(ids==null||ids.Count<2||ids.Count!=ids.Distinct().Count()||
-                handleIndex<0||handleIndex>8||zoom<=0)
+                handleIndex<0||handleIndex>8||zoom<=0||
+                double.IsNaN(zoom)||double.IsInfinity(zoom))
                 return MTCEditResult<bool>.Rejected(revision,
                     "visual.transform.selection","Invalid multi-selection transform");
             MVISceneItem[] selection=Scene.Where(x=>ids.Contains(x.Id)&&
@@ -654,7 +656,8 @@ namespace CxVisual.Mechanism.Visual
             }
             MRCTransform delta=MVISelectionTransform.Delta(
                 MVISelectionTransform.Bounds(selection),handleIndex,
-                new FGEPoint2D(worldX,worldY),zoom);
+                new FGEPoint2D(worldX,worldY),zoom,
+                keepAspect,resizeFromCenter,snapRotation);
             return Document.Edit("选区整体缩放或旋转",revision,e=>
             {
                 foreach(MVISceneItem item in selection)

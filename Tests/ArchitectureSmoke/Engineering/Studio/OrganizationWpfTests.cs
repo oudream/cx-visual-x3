@@ -155,7 +155,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         "multi-selection was lost across scene re-projection");
                     // P0：真实WPF共用选区的右下缩放柄必须可命中；
                     // Esc/CaptureLost取消只作用于预览，不能修改MEM Revision。
-                    shapeView.SelectionTransformRequested+=(ids,handle,x,y,zoom)=>{};
+                    shapeView.SelectionTransformRequested+=
+                        (ids,handle,x,y,zoom,keepAspect,fromCenter,snapRotation)=>{};
                     shapeView.SetSelectedVisualIds(new[]{bezierScene.Id,another.Id});
                     var selectionBounds=MVISelectionTransform.Bounds(
                         new[]{bezierScene,another});

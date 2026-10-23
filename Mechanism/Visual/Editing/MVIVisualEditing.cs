@@ -445,7 +445,8 @@ namespace CxVisual.Mechanism.Visual
         }
         public static FGEPoint2D Handle(FGERect2D box,int index,double zoom)
         {
-            if(index<0||index>8||zoom<=0)throw new ArgumentOutOfRangeException("index");
+            if(index<0||index>8||zoom<=0||double.IsNaN(zoom)||double.IsInfinity(zoom))
+                throw new ArgumentOutOfRangeException("zoom");
             double[] xs={box.Left,(box.Left+box.Right)/2,box.Right,box.Right,
                 box.Right,(box.Left+box.Right)/2,box.Left,box.Left};
             double[] ys={box.Top,box.Top,box.Top,(box.Top+box.Bottom)/2,
@@ -453,17 +454,30 @@ namespace CxVisual.Mechanism.Visual
             if(index==8)return new FGEPoint2D(box.Right+28/zoom,box.Top-28/zoom);
             return new FGEPoint2D(xs[index],ys[index]);
         }
+        /// <summary>
+        /// P1：共用选区在世界坐标中缩放或旋转。Shift等比缩放/15度旋转吸附，
+        /// Alt绕选区中心缩放；反向拖动不得隐式镜像或制造奇异矩阵。
+        /// 预览和最终MEM事务调用同一函数，消除视觉与工程结果的分歧。
+        /// </summary>
         public static MRCTransform Delta(FGERect2D box,int index,
-            FGEPoint2D point,double zoom)
+            FGEPoint2D point,double zoom,bool keepAspect=false,
+            bool resizeFromCenter=false,bool snapRotation=false)
         {
-            if(index<0||index>8)throw new ArgumentOutOfRangeException("index");
+            if(index<0||index>8||zoom<=0||double.IsNaN(zoom)||double.IsInfinity(zoom))
+                throw new ArgumentOutOfRangeException("zoom");
             FGEValidation.Finite(point.X,"x");FGEValidation.Finite(point.Y,"y");
+            double cx=(box.Left+box.Right)/2,cy=(box.Top+box.Bottom)/2;
             if(index==8)
             {
                 FGEPoint2D original=Handle(box,8,zoom);
-                double cx=(box.Left+box.Right)/2,cy=(box.Top+box.Bottom)/2;
                 double angle=Math.Atan2(point.Y-cy,point.X-cx)-
                     Math.Atan2(original.Y-cy,original.X-cx);
+                if(snapRotation)
+                {
+                    // 按鼠标相对初始旋转柄的角度增量吸附，而不是覆盖对象已有角度。
+                    double step=Math.PI/12;
+                    angle=Math.Round(angle/step)*step;
+                }
                 double c=Math.Cos(angle),s=Math.Sin(angle);
                 return new MRCTransform(c,-s,s,c,cx-c*cx+s*cy,cy-s*cx-c*cy);
             }
@@ -471,16 +485,26 @@ namespace CxVisual.Mechanism.Visual
             bool right=index==2||index==3||index==4;
             bool top=index==0||index==1||index==2;
             bool bottom=index==4||index==5||index==6;
-            double px=left?box.Right:right?box.Left:0;
-            double py=top?box.Bottom:bottom?box.Top:0;
-            FGEPoint2D originalPoint=Handle(box,index,zoom);
-            double sx=left||right?Math.Max(.01,
-                (point.X-px)/(originalPoint.X-px)):1;
-            double sy=top||bottom?Math.Max(.01,
-                (point.Y-py)/(originalPoint.Y-py)):1;
-            // 零宽/零高选区不允许缩放退化为奇异矩阵。
-            if((left||right)&&Math.Abs(originalPoint.X-px)<1e-9)sx=1;
-            if((top||bottom)&&Math.Abs(originalPoint.Y-py)<1e-9)sy=1;
+            bool horizontal=left||right,vertical=top||bottom;
+            // 边中点等比缩放：只取当前拖动轴的倍率，非拖动轴绕自身中心伸展。
+            double px=resizeFromCenter?cx:left?box.Right:right?box.Left:cx;
+            double py=resizeFromCenter?cy:top?box.Bottom:bottom?box.Top:cy;
+            FGEPoint2D start=Handle(box,index,zoom);
+            double dx=start.X-px,dy=start.Y-py;
+            double sx=horizontal&&Math.Abs(dx)>1e-9?
+                Math.Max(.01,(point.X-px)/dx):1;
+            double sy=vertical&&Math.Abs(dy)>1e-9?
+                Math.Max(.01,(point.Y-py)/dy):1;
+            if(keepAspect)
+            {
+                double scale=horizontal&&!vertical?sx:
+                    vertical&&!horizontal?sy:
+                    Math.Abs(sx-1)>=Math.Abs(sy-1)?sx:sy;
+                // 选区某一轴宽高为0时，禁止该轴驱动等比奇异变换。
+                if((horizontal&&Math.Abs(dx)<1e-9)||
+                   (vertical&&Math.Abs(dy)<1e-9))scale=1;
+                sx=scale;sy=scale;
+            }
             return new MRCTransform(sx,0,0,sy,px*(1-sx),py*(1-sy));
         }
     }
