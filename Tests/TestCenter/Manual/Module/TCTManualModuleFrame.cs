@@ -79,7 +79,7 @@ namespace CxVisual.TestCenter.UI
                 Foreground = Brushes.DarkSlateBlue, FontWeight = FontWeights.SemiBold
             });
             header.Children.Add(new TextBlock {
-                Text = "选模块类型、输入模块 Id，再从右侧操作中心创建/打开配置。参数表单来自 FCM Attribute + MHS + MPW，未复制第二套编辑器。",
+                Text = "选模块类型、输入模块 Id，再从右侧操作中心创建/打开。FCM 直接编辑四种模块的正式配置类，由 MHS 保存、MPW 生成界面；没有额外的 EditableConfig 或转换层。",
                 Foreground = Brushes.SlateGray, Margin = new Thickness(0, 7, 0, 7),
                 TextWrapping = TextWrapping.Wrap
             });
