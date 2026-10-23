@@ -532,6 +532,8 @@ namespace CxVisual.Mechanism.Core
             XElement region=e.Element("TryRegion");
             if(region!=null)
             {
+                CheckSchema(region,new string[0],
+                    new[]{"TryBody","CatchBody","FinallyBody"});
                 if(region.Elements().Count()<1||region.Elements().Count()>3||
                     region.Elements().Any(x=>x.Name!="TryBody"&&
                         x.Name!="CatchBody"&&x.Name!="FinallyBody")||
