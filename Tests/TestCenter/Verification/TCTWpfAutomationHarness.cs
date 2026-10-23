@@ -50,11 +50,17 @@ namespace CxVisual.TestCenter.UI
             await Task.Run(() => InteractManualChannel(hwnd, window));
             SaveScreenshot(window, "TestCenter-10-ManualChannel.png");
             window.Dispatcher.Invoke(new Action(() => {
-                if (!window.DocumentHost.CloseWorkspace("manual.channel"))
-                    throw new InvalidOperationException("Manual Channel tab could not close/dispose");
+                TCTWorkspaceDescriptor channel = window.FindCreatedInstance("manual.channel");
+                if (channel == null || !window.DocumentHost.CloseWorkspace(channel.WorkspaceId))
+                    throw new InvalidOperationException("Manual Channel instance tab could not close");
             }));
             await Task.Run(() => InteractManualModule(hwnd, window));
             SaveScreenshot(window, "TestCenter-12-ModuleConfig.png");
+            window.Dispatcher.Invoke(new Action(() => {
+                TCTWorkspaceDescriptor first = window.FindCreatedInstance("manual.module.connector");
+                if (first != null && window.DocumentHost.HasWorkspace(first.WorkspaceId))
+                    window.DocumentHost.CloseWorkspace(first.WorkspaceId);
+            }));
             foreach (CxVisual.Mechanism.Core.Modules.MFMModuleKind kind in
                 new[] {
                     CxVisual.Mechanism.Core.Modules.MFMModuleKind.Connector,
@@ -66,23 +72,32 @@ namespace CxVisual.TestCenter.UI
             {
                 await Task.Run(() => InteractModuleKind(hwnd, window, kind));
                 SaveScreenshot(window, "TestCenter-Module-" + kind + ".png");
+                window.Dispatcher.Invoke(new Action(() => {
+                    TCTWorkspaceDescriptor item = window.FindCreatedInstance(
+                        "manual.module." + kind.ToString().ToLowerInvariant());
+                    if (item == null || !window.DocumentHost.CloseWorkspace(item.WorkspaceId))
+                        throw new InvalidOperationException("Module instance tab did not close");
+                }));
             }
-            window.Dispatcher.Invoke(new Action(() => {
-                if (!window.DocumentHost.CloseWorkspace("manual.module"))
-                    throw new InvalidOperationException("Module configuration workspace did not close");
-            }));
             await Task.Run(() => InteractArchitectureSmoke(hwnd, window));
             SaveScreenshot(window, "TestCenter-11-ArchitectureSmoke.png");
             window.Dispatcher.Invoke(new Action(() => {
-                if (!window.DocumentHost.CloseWorkspace("auto.architecture-smoke"))
-                    throw new InvalidOperationException("ArchitectureSmoke tab was not disposable");
+                TCTWorkspaceDescriptor item = window.FindCreatedInstance("auto.architecture-smoke");
+                if (item == null || !window.DocumentHost.CloseWorkspace(item.WorkspaceId))
+                    throw new InvalidOperationException("ArchitectureSmoke instance tab did not close");
             }));
         }
         private static void InteractModuleKind(IntPtr hwnd, TCTMainWindow window,
             CxVisual.Mechanism.Core.Modules.MFMModuleKind kind)
         {
             AutomationElement root = AutomationElement.FromHandle(hwnd);
-            string id = "TCT.Workspace.manual.module." + kind.ToString().ToLowerInvariant();
+            TCTWorkspaceDescriptor created = null;
+            window.Dispatcher.Invoke(new Action(() => {
+                created = window.CreateWorkspaceInstance(
+                    "manual.module." + kind.ToString().ToLowerInvariant());
+            }));
+            if (created == null) throw new InvalidOperationException("Module create action failed");
+            string id = "TCT.Workspace." + created.WorkspaceId;
             SelectionItemPattern node = Find(root, id)
                 .GetCurrentPattern(SelectionItemPattern.Pattern) as SelectionItemPattern;
             if (node == null) throw new InvalidOperationException("Missing module tree type " + kind);
@@ -254,9 +269,14 @@ namespace CxVisual.TestCenter.UI
         private static void InteractManualModule(IntPtr hwnd, TCTMainWindow window)
         {
             AutomationElement root = AutomationElement.FromHandle(hwnd);
-            SelectionItemPattern selected = Find(root, "TCT.Workspace.manual.module")
+            TCTWorkspaceDescriptor instance = null;
+            window.Dispatcher.Invoke(new Action(() => {
+                instance = window.CreateWorkspaceInstance("manual.module.connector");
+            }));
+            if (instance == null) throw new InvalidOperationException("Module instance was not created");
+            SelectionItemPattern selected = Find(root, "TCT.Workspace." + instance.WorkspaceId)
                 .GetCurrentPattern(SelectionItemPattern.Pattern) as SelectionItemPattern;
-            if (selected == null) throw new InvalidOperationException("Module test workspace is not registered");
+            if (selected == null) throw new InvalidOperationException("Module instance is not selectable");
             selected.Select();
             InvokePattern open = Find(root, "TCT.Manual.Action.module.open")
                 .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
@@ -273,7 +293,7 @@ namespace CxVisual.TestCenter.UI
                         .OfType<TCTManualModuleFrame>().FirstOrDefault();
                     created = frame != null && frame.HasOpenedConfiguration &&
                         frame.ActiveModuleKind == CxVisual.Mechanism.Core.Modules.MFMModuleKind.Connector &&
-                        frame.ActiveModuleId == "Module01";
+                        frame.ActiveModuleId == "ModuleConnector01";
                 }));
                 if (!created) Thread.Sleep(100);
             }
@@ -292,10 +312,14 @@ namespace CxVisual.TestCenter.UI
                 .GetCurrentPattern(ValuePattern.Pattern) as ValuePattern;
             if (search == null) throw new InvalidOperationException("Explorer Search missing");
             search.SetValue("");
-            SelectionItemPattern select = Find(root, "TCT.Workspace.auto.architecture-smoke")
+            TCTWorkspaceDescriptor smoke = null;
+            window.Dispatcher.Invoke(new Action(() => {
+                smoke = window.CreateWorkspaceInstance("auto.architecture-smoke");
+            }));
+            if (smoke == null) throw new InvalidOperationException("ArchitectureSmoke instance not created");
+            SelectionItemPattern select = Find(root, "TCT.Workspace." + smoke.WorkspaceId)
                 .GetCurrentPattern(SelectionItemPattern.Pattern) as SelectionItemPattern;
-            if (select == null) throw new InvalidOperationException(
-                "ArchitectureSmoke is not registered under Automated root");
+            if (select == null) throw new InvalidOperationException("ArchitectureSmoke instance not selectable");
             select.Select();
             bool ready = false;
             window.Dispatcher.Invoke(new Action(() => {
@@ -350,24 +374,29 @@ namespace CxVisual.TestCenter.UI
                 .GetCurrentPattern(SelectionItemPattern.Pattern) as SelectionItemPattern;
             if (select == null) throw new InvalidOperationException("Manual root does not select");
             select.Select();
-            bool visible = false;
-            window.Dispatcher.Invoke(new Action(() =>
-            {
+            // 分类节点不能隐式生成Tab；从右键“创建实例”才建立持久化树子节点。
+            window.Dispatcher.Invoke(new Action(() => {
                 System.Windows.Controls.TabControl tabs =
                     window.DocumentHost.Content as System.Windows.Controls.TabControl;
-                visible = tabs != null && tabs.Items.OfType<System.Windows.Controls.TabItem>()
-                    .Any(t => t.Content is TCTWorkspaceRootFrame &&
-                        ((TCTWorkspaceRootFrame)t.Content).WorkspaceId == "manual.root");
+                if (tabs.Items.OfType<System.Windows.Controls.TabItem>()
+                    .Any(t => (t.Tag as TCTWorkspaceDescriptor)?.WorkspaceId == "manual.root"))
+                    throw new InvalidOperationException("根分类不能自动创建工作区Tab");
+                if (window.CreateWorkspaceInstance("manual.channel") == null)
+                    throw new InvalidOperationException("人工Channel实例创建失败");
             }));
-            if (!visible) throw new InvalidOperationException("Root registration did not open a real page");
-            if (Find(root, "TCT.Workspace.Entry.manual.channel")
-                .GetCurrentPattern(InvokePattern.Pattern) == null)
-                throw new InvalidOperationException("Channel entry was not interactive");
+            TCTWorkspaceDescriptor created = null;
+            window.Dispatcher.Invoke(new Action(() =>
+                created = window.FindCreatedInstance("manual.channel")));
+            if (created == null || Find(root, "TCT.Workspace." + created.WorkspaceId) == null)
+                throw new InvalidOperationException("创建的人工Channel未保留在树中");
         }
         private static void InteractManualChannel(IntPtr hwnd, TCTMainWindow window)
         {
             AutomationElement root = AutomationElement.FromHandle(hwnd);
-            SelectionItemPattern selected = Find(root, "TCT.Workspace.manual.channel")
+            TCTWorkspaceDescriptor created = null;
+            window.Dispatcher.Invoke(new Action(() =>
+                created = window.FindCreatedInstance("manual.channel")));
+            SelectionItemPattern selected = Find(root, "TCT.Workspace." + created.WorkspaceId)
                 .GetCurrentPattern(SelectionItemPattern.Pattern) as SelectionItemPattern;
             if (selected == null) throw new InvalidOperationException("Channel registry leaf cannot select");
             selected.Select();

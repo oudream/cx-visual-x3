@@ -207,6 +207,11 @@ namespace CxVisual.TestCenter.UI
             return new UserControl { Content = body };
         }
 
+        public TCTWorkspaceDescriptor FindCreatedInstance(string templateId)
+        {
+            return _workspaces.Items.FirstOrDefault(x => x.IsCreatedInstance &&
+                x.TemplateId == templateId);
+        }
         private void DeleteWorkspaceInstance(string instanceId)
         {
             TCTWorkspaceDescriptor entry = _workspaces.Find(instanceId);
