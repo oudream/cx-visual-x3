@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -36,6 +37,10 @@ namespace CxVisual.TestCenter.UI
         private IMPWConfigDraftGuard _draftGuard;
         private IDisposable _activeEditor;
         private Func<string> _validate;
+        private Func<CancellationToken, Task<MHSConfigCommitResult>> _saveDraft;
+        private Func<FCMConfigApplyPolicy, MHSConfigApplyResult> _applySaved;
+        private Func<string> _versions;
+        private bool _busy;
         private string _activeId;
         private MFMModuleKind? _activeKind;
         private bool _opening;
@@ -45,15 +50,39 @@ namespace CxVisual.TestCenter.UI
         public bool HasOpenedConfiguration { get { return _activeEditor != null; } }
         public string ActiveModuleId { get { return _activeId; } }
         public MFMModuleKind? ActiveModuleKind { get { return _activeKind; } }
+        public bool IsBusy { get { return _opening || _busy; } }
+        public string SavedAndEffectiveVersions { get { return _versions == null ? "" : _versions(); } }
+        public string StatusMessage { get { return _status.Text; } }
+        public void SelectModuleKind(MFMModuleKind kind)
+        {
+            if (_opening || _busy) throw new InvalidOperationException("当前模块操作尚未结束");
+            if (!Enum.IsDefined(typeof(MFMModuleKind), kind))
+                throw new ArgumentOutOfRangeException("kind");
+            _moduleKind.SelectedItem = kind;
+            UpdateStatus("选择 " + kind + "，请创建/打开相应正式配置；已有草稿不会自动丢弃。");
+        }
+        public void SetModuleId(string id)
+        {
+            if (_opening || _busy) throw new InvalidOperationException("当前模块操作尚未结束");
+            _moduleId.Text = RequireId(id);
+        }
 
         public System.Collections.Generic.IEnumerable<TCTWorkspaceAction> Commands
         {
             get
             {
                 return new [] {
-                    new TCTWorkspaceAction("module.open", "创建 / 打开模块配置", OpenSelected, () => !_opening),
+                    new TCTWorkspaceAction("module.open", "创建 / 打开模块配置", OpenSelected,
+                        () => !IsBusy),
                     new TCTWorkspaceAction("module.validate", "验证当前模块配置", ValidateCurrent,
-                        () => HasOpenedConfiguration)
+                        () => HasOpenedConfiguration && !IsBusy),
+                    new TCTWorkspaceAction("module.save", "校验并保存", SaveCurrent,
+                        () => HasOpenedConfiguration && !IsBusy),
+                    new TCTWorkspaceAction("module.apply", "申请在下一任务边界生效", ApplyCurrent,
+                        () => HasOpenedConfiguration && !IsBusy),
+                    new TCTWorkspaceAction("module.reopen", "重开已保存配置", ReopenCurrent,
+                        () => HasOpenedConfiguration && !IsBusy && (_draftGuard == null || !_draftGuard.HasUnsavedDraft))
+
                 };
             }
         }
@@ -105,6 +134,9 @@ namespace CxVisual.TestCenter.UI
             Content = rootPanel;
             UpdateStatus("请选择模块类型和 Id，然后创建配置实例。");
             System.Windows.Automation.AutomationProperties.SetAutomationId(this, "TCT.Manual.Module");
+            System.Windows.Automation.AutomationProperties.SetAutomationId(_moduleKind, "TCT.Module.Kind");
+            System.Windows.Automation.AutomationProperties.SetAutomationId(_moduleId, "TCT.Module.Id");
+            System.Windows.Automation.AutomationProperties.SetAutomationId(_status, "TCT.Module.Status");
         }
 
         private void UpdateStatus(string message)
@@ -127,7 +159,11 @@ namespace CxVisual.TestCenter.UI
         // 右侧操作入口是同步 Action；该方法自行捕获异步错误并向 Frame 状态报告。
         public async void OpenSelected()
         {
-            if (_opening) return;
+            await OpenSelectedAsync(false);
+        }
+        private async Task OpenSelectedAsync(bool forceReopen)
+        {
+            if (_opening || _busy) return;
             _opening = true;
             try
             {
@@ -139,7 +175,7 @@ namespace CxVisual.TestCenter.UI
                     UpdateStatus("当前表单存在未保存草稿，请先保存或处理草稿，再切换模块。");
                     return;
                 }
-                if (_activeEditor != null && _activeId == id && _activeKind == kind)
+                if (!forceReopen && _activeEditor != null && _activeId == id && _activeKind == kind)
                 {
                     UpdateStatus("已打开当前模块配置；可以直接编辑。");
                     return;
@@ -205,6 +241,10 @@ namespace CxVisual.TestCenter.UI
             IDisposable old = _activeEditor;
             _activeEditor = next;
             _draftGuard = next;
+            _saveDraft = token => next.SaveDraftAsync(token);
+            _applySaved = boundary => next.ApplySaved(boundary);
+            _versions = () => "Saved: " + section.Revision.Saved +
+                " / Effective: " + section.Revision.Effective;
             _validate = () => {
                 T draft = next.Draft;
                 FCMConfigValidationReport report = FCMConfigValidationEngine.Validate(draft, "module:" + id);
@@ -221,7 +261,57 @@ namespace CxVisual.TestCenter.UI
             _editorHost.Content = next;
             if (old != null) old.Dispose();
             UpdateStatus("已创建/打开配置范围 module/" + id + "，类型 " + kind +
-                "。通用表单负责校验、保存、生效与版本；并非已经创建运行实例。");
+                " · " + _versions() + "。通用表单负责草稿、版本；并非已经创建运行实例。");
+        }
+
+        public async Task<MHSConfigCommitResult> SaveCurrentAsync()
+        {
+            if (_saveDraft == null || IsBusy)
+                throw new InvalidOperationException("没有可保存的模块配置或当前操作繁忙");
+            _busy = true;
+            UpdateStatus("正在通过现有 MHS 编辑器验证并提交配置…");
+            try
+            {
+                MHSConfigCommitResult commit = await _saveDraft(CancellationToken.None);
+                UpdateStatus(commit.Success
+                    ? "配置已保存为 " + commit.Revision + " · " + _versions() +
+                      "。未自动装配或启动模块。"
+                    : "配置未保存：" + commit.ErrorCode +
+                      "；请检查原FCM配置Schema与约束。");
+                return commit;
+            }
+            finally
+            {
+                _busy = false;
+                UpdateStatus(_status.Text);
+            }
+        }
+        private async void SaveCurrent()
+        {
+            try { await SaveCurrentAsync(); }
+            catch (Exception error) { UpdateStatus("保存操作失败：" + error.Message); }
+        }
+        public void ApplyCurrent()
+        {
+            if (_applySaved == null || IsBusy) return;
+            try
+            {
+                MHSConfigApplyResult applied = _applySaved(FCMConfigApplyPolicy.NextTask);
+                UpdateStatus(applied.Applied
+                    ? "配置已按MHS边界生效：" + applied.EffectiveVersion + "；非模块运行成功"
+                    : "尚未生效：" + applied.Status + "；运行/任务边界或约束未满足");
+            }
+            catch (Exception error) { UpdateStatus("MHS生效申请失败：" + error.Message); }
+        }
+        public async void ReopenCurrent()
+        {
+            if (_opening || _busy || !HasOpenedConfiguration) return;
+            if (_draftGuard != null && _draftGuard.HasUnsavedDraft)
+            {
+                UpdateStatus("有未保存草稿；先保存或通过原MPW编辑器处理，不允许静默丢弃。");
+                return;
+            }
+            await OpenSelectedAsync(true);
         }
 
         public void ValidateCurrent()
@@ -236,6 +326,7 @@ namespace CxVisual.TestCenter.UI
             if (_activeEditor != null) _activeEditor.Dispose();
             _editorHost.Content = null;
             _activeEditor = null; _draftGuard = null; _validate = null;
+            _saveDraft = null; _applySaved = null; _versions = null;
             _activeId = null; _activeKind = null;
         }
     }
