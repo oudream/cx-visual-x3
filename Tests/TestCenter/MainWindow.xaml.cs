@@ -215,6 +215,17 @@ namespace CxVisual.TestCenter.UI
             return new UserControl { Content = body };
         }
 
+        public void FocusAutomatedTest(string testId)
+        {
+            TCTWorkspaceDescriptor suite = _workspaces.Items.FirstOrDefault(x =>
+                x.IsCreatedInstance && x.TemplateId == "auto.catalog");
+            if (suite == null) suite = CreateWorkspaceInstance("auto.catalog");
+            else OpenRegisteredWorkspace(suite);
+            TabItem tab = (DocumentHost.Content as TabControl)?.SelectedItem as TabItem;
+            TCTTestPlanControl plan = tab?.Content as TCTTestPlanControl;
+            if (plan == null) throw new InvalidOperationException("自动测试计划Frame未打开");
+            plan.FocusCase(testId);
+        }
         public string CreatedConfigurationId(string instanceId)
         {
             TCTCreatedWorkspace record = _createdWorkspaces.Items.FirstOrDefault(x => x.Id == instanceId);

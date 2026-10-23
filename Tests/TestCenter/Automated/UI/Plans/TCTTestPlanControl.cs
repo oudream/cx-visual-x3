@@ -170,6 +170,23 @@ namespace CxVisual.TestCenter.UI
                 _available.Items.Add(groupRoot);
             }
         }
+        // 展开真实Catalog层级。UIA仍使用SelectionItemPattern验证用户可选用例。
+        public void FocusCase(string id)
+        {
+            foreach (TreeViewItem aspect in _available.Items.OfType<TreeViewItem>())
+                foreach (TreeViewItem group in aspect.Items.OfType<TreeViewItem>())
+                    foreach (TreeViewItem item in group.Items.OfType<TreeViewItem>())
+                    {
+                        ITCTTestCase test = item.Tag as ITCTTestCase;
+                        if (test == null || test.Descriptor.Id != id) continue;
+                        aspect.IsExpanded = true;
+                        group.IsExpanded = true;
+                        item.IsSelected = true;
+                        item.BringIntoView();
+                        return;
+                    }
+            throw new InvalidOperationException("Catalog测试定义不存在：" + id);
+        }
         private void ChangeCaseChoice(string id, bool selected)
         {
             if (_changing) return;

@@ -27,6 +27,8 @@ namespace CxVisual.TestCenter.UI
             if (hwnd == IntPtr.Zero) throw new InvalidOperationException("TestCenter has no HWND");
             await Task.Run(() => VerifyOverview(hwnd, window));
             SaveScreenshot(window, "TestCenter-01-Workspace.png");
+            window.Dispatcher.Invoke(new Action(() =>
+                window.CreateWorkspaceInstance("auto.catalog")));
             await Task.Run(() => Interact(hwnd, window));
             SaveScreenshot(window, "TestCenterUIA.png");
             SaveScreenshot(window, "TestCenter-02-Geometry.png");
@@ -490,6 +492,7 @@ namespace CxVisual.TestCenter.UI
         }
         private static void Interact(IntPtr hwnd, TCTMainWindow window)
         {
+            window.Dispatcher.Invoke(new Action(() => window.FocusAutomatedTest("TCT.M2.GEOMETRY.001")));
             AutomationElement root = AutomationElement.FromHandle(hwnd);
             if (root == null) throw new InvalidOperationException("UIA HWND not available");
             AutomationElement search = Find(root, "TCT.Explorer.Search");
@@ -543,6 +546,7 @@ namespace CxVisual.TestCenter.UI
         }
         private static void InteractObject(IntPtr hwnd, TCTMainWindow window)
         {
+            window.Dispatcher.Invoke(new Action(() => window.FocusAutomatedTest("M-OBJ-007")));
             AutomationElement root = AutomationElement.FromHandle(hwnd);
             AutomationElement search = Find(root, "TCT.Explorer.Search");
             ValuePattern input = search.GetCurrentPattern(ValuePattern.Pattern) as ValuePattern;
@@ -600,6 +604,7 @@ namespace CxVisual.TestCenter.UI
 
         private static void InteractGraph(IntPtr hwnd, TCTMainWindow window)
         {
+            window.Dispatcher.Invoke(new Action(() => window.FocusAutomatedTest("TCT.M3.GRAPHRUNTIME.001")));
             AutomationElement root = AutomationElement.FromHandle(hwnd);
             ValuePattern search = Find(root, "TCT.Explorer.Search")
                 .GetCurrentPattern(ValuePattern.Pattern) as ValuePattern;
@@ -657,6 +662,7 @@ namespace CxVisual.TestCenter.UI
 
         private static void InteractRuntimeJournal(IntPtr hwnd, TCTMainWindow window)
         {
+            window.Dispatcher.Invoke(new Action(() => window.FocusAutomatedTest("TCT.M3.RUNTIME.001")));
             AutomationElement root = AutomationElement.FromHandle(hwnd);
             ValuePattern search = Find(root, "TCT.Explorer.Search")
                 .GetCurrentPattern(ValuePattern.Pattern) as ValuePattern;
@@ -717,6 +723,7 @@ namespace CxVisual.TestCenter.UI
 
         private static void InteractChannel(IntPtr hwnd, TCTMainWindow window)
         {
+            window.Dispatcher.Invoke(new Action(() => window.FocusAutomatedTest("TCT.M3.CHANNEL.001")));
             AutomationElement root = AutomationElement.FromHandle(hwnd);
             ValuePattern search = Find(root, "TCT.Explorer.Search")
                 .GetCurrentPattern(ValuePattern.Pattern) as ValuePattern;

@@ -205,47 +205,7 @@ namespace CxVisual.TestCenter.UI
                     if (descriptor.WorkspaceId == "auto.root") autoRoot = root;
                 }
             }
-            // Catalog定义在用户创建的NUnit/TCT计划页选择，不混入资源实例树。
-            // 仍保持独立Catalog/Run Owner，既有结果/历史不会被改变。
-            if (_catalog == null) return;
-            if (false) foreach (TCTTestAspect aspect in new[] { TCTTestAspect.Foundation, TCTTestAspect.Mechanism, TCTTestAspect.Integration })
-            {
-                var items = _catalog.Cases.Where(t => t.Descriptor.Aspect == aspect &&
-                    (filter.Length == 0 ||
-                     t.Descriptor.Id.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0 ||
-                     t.Descriptor.Name.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0 ||
-                     t.Descriptor.CapabilityAreaId.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0 ||
-                     t.Descriptor.Group.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0))
-                     .GroupBy(t => t.Descriptor.Group).ToList();
-                TreeViewItem root = new TreeViewItem { Header = aspect.ToString(), IsExpanded = true };
-                foreach (var group in items)
-                {
-                    TreeViewItem category = new TreeViewItem { Header = group.Key, IsExpanded = true };
-                    foreach (ITCTTestCase test in group)
-                    {
-                        string id = test.Descriptor.Id;
-                        CheckBox check = new CheckBox
-                        {
-                            Content = test.Descriptor.Name, IsChecked = _checkedIds.Contains(id),
-                            ToolTip = id + " / " + test.Descriptor.CapabilityId,
-                            Margin = new Thickness(0, 2, 0, 2)
-                        };
-                        check.Checked += (sender, args) => _checkedIds.Add(id);
-                        check.Unchecked += (sender, args) => _checkedIds.Remove(id);
-                        TreeViewItem entry = new TreeViewItem { Header = check, Tag = test,
-                            ToolTip = test.Descriptor.Id + " / " + test.Descriptor.CapabilityId };
-                        System.Windows.Automation.AutomationProperties.SetAutomationId(entry,
-                            "TCT.Case." + id);
-                        category.Items.Add(entry);
-                    }
-                    root.Items.Add(category);
-                }
-                if (root.Items.Count > 0)
-                {
-                    if (autoRoot != null) autoRoot.Items.Add(root);
-                    else _tree.Items.Add(root);
-                }
-            }
+            // 用例目录仅在创建的NUnit/TCT计划页中展示，资源树只存实例。
         }
     }
 }
