@@ -153,25 +153,33 @@ namespace CxVisual.Mechanism.Orchestration
     // Evaluates only typed, bounded declarative operands. Never compiles user text as C#.
     internal static class MOCExpressions
     {
-        internal static bool Evaluate(MOLExpression expr, MRKExecutionContext context, int iteration, string resolvedStepId = null)
+        internal static bool Evaluate(MOLExpression expr,MRKExecutionContext context,
+            int iteration,string resolvedStepId=null)
         {
-            if (expr == null) return true;
-            object actual = null;
-            switch (expr.Source)
-            {
-                case MOLExpressionSource.Constant: actual = expr.Name; break;
-                case MOLExpressionSource.FlowInput:
-                    if (!context.Inputs.TryGetValue(expr.Name, out actual))
-                        throw new InvalidOperationException("moc.input_missing:" + expr.Name);
-                    break;
-                case MOLExpressionSource.StepResult:
-                    if (resolvedStepId == null || !context.TryGetScopedResult(resolvedStepId, out actual))
-                        throw new InvalidOperationException("moc.step_result_missing:" + expr.Name);
-                    break;
-                case MOLExpressionSource.Iteration: actual = iteration; break;
-                default: throw new InvalidOperationException("moc.expression_source");
-            }
-            return MOLScalarExpression.Evaluate(expr,actual);
+            return Evaluate(expr,context,iteration,leaf=>resolvedStepId);
+        }
+        internal static bool Evaluate(MOLExpression expr,MRKExecutionContext context,
+            int iteration,Func<MOLExpression,string> resolvedStep)
+        {
+            if(expr==null)return true;
+            return MOLScalarExpression.EvaluateTree(expr,leaf=>{
+                object actual;
+                switch(leaf.Source)
+                {
+                    case MOLExpressionSource.Constant:return leaf.Name;
+                    case MOLExpressionSource.FlowInput:
+                        if(!context.Inputs.TryGetValue(leaf.Name,out actual))
+                            throw new InvalidOperationException("moc.input_missing:"+leaf.Name);
+                        return actual;
+                    case MOLExpressionSource.StepResult:
+                        string id=resolvedStep==null?null:resolvedStep(leaf);
+                        if(id==null||!context.TryGetScopedResult(id,out actual))
+                            throw new InvalidOperationException("moc.step_result_missing:"+leaf.Name);
+                        return actual;
+                    case MOLExpressionSource.Iteration:return iteration;
+                    default:throw new InvalidOperationException("moc.expression_source");
+                }
+            });
         }
         internal static int CompareScalar(object actual,string expected)
         {return MOLScalarExpression.Compare(actual,expected);}
@@ -1560,23 +1568,33 @@ namespace CxVisual.Mechanism.Orchestration
                 Origins.Add(new MOCStepOrigin(id, address, block.Id, calls, iteration, role));
                 return id;
             }
-            private Func<MRKExecutionContext, bool> Predicate(MOLExpression expression, int iteration)
+            private Func<MRKExecutionContext,bool> Predicate(MOLExpression expression,int iteration)
             {
-                if (expression == null) return ctx => true;
-                string resolved = null;
-                if (expression.Source == MOLExpressionSource.StepResult)
-                {
+                if(expression==null)return ctx=>true;
+                var stepIds=new Dictionary<MOLExpression,string>();
+                Action<MOLExpression> bind=null;
+                bind=expr=>{
+                    if(expr.Operator!=MOLLogicalOperator.Scalar)
+                    {
+                        foreach(MOLExpression term in expr.Terms)bind(term);
+                        return;
+                    }
+                    if(expr.Source!=MOLExpressionSource.StepResult)return;
                     Guid id;
-                    if (!Guid.TryParse(expression.Name, out id))
+                    if(!Guid.TryParse(expr.Name,out id))
                         throw new InvalidOperationException("moc.step_result_requires_block_id");
-                    var origin = Origins.LastOrDefault(o => o.BlockId == id && o.Role == "Action");
-                    if (origin == null)
-                        throw new InvalidOperationException("moc.step_result_not_preceding:" + expression.Name);
-                    resolved = origin.StepId;
-                }
-                string stepId = resolved;
-                return ctx => MOCExpressions.Evaluate(expression, ctx,
-                    iteration<0?ctx.IterationIndex:iteration, stepId);
+                    var origin=Origins.LastOrDefault(o=>o.BlockId==id&&o.Role=="Action");
+                    if(origin==null)
+                        throw new InvalidOperationException("moc.step_result_not_preceding:"+expr.Name);
+                    stepIds.Add(expr,origin.StepId);
+                };
+                bind(expression);
+                return ctx=>MOCExpressions.Evaluate(expression,ctx,
+                    iteration<0?ctx.IterationIndex:iteration,
+                    leaf=>{
+                        string id;
+                        return stepIds.TryGetValue(leaf,out id)?id:null;
+                    });
             }
             private string ResolveLoopConditionStepId(MOLExpression expression)
             {
