@@ -114,8 +114,9 @@ namespace CxVisual.Studio
                 result=_editor.MoveSelection(ids,worldDx,worldDy,false);
             else
             {
-                MVISceneItem item=_editor.Scene.FirstOrDefault(x=>
-                    x.Id==ids[0]&&x.IsSelectable&&x.ElementTypeId!="core.visual.connector");
+                MVISceneItem item=_editor.Scene.FirstOrDefault(sceneItem=>
+                    sceneItem.Id==ids[0]&&sceneItem.IsSelectable&&
+                    sceneItem.ElementTypeId!="core.visual.connector");
                 if(item==null)
                     return MTCEditResult<bool>.Rejected(_editor.Document.Revision,
                         "visual.nudge.locked_or_hidden","Keyboard move requires editable visual");
