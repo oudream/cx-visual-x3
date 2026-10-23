@@ -49,7 +49,7 @@ Tests/TestCenter/
 
 ## ArchitectureSmoke 独立程序接入（保持原程序兼容）
 
-在 TestCenter 左侧的 **自动测试 → ArchitectureSmoke（独立架构回归）** 打开调用工作区。
+在 TestCenter 左侧的 **自动测试 → ArchitectureSmoke（独立架构回归）** 类型节点点击右键并选择**创建实例**，生成独立实例叶节点及可关闭的中央Tab，再在已创建实例中执行原程序。仅选中类型节点不会启动或打开测试工作区。
 中央选择原程序实际支持的命令预设，包括默认回归、Foundation、Concurrency、Engineering Organization、
 Config Foundation/WPF 与已实现的性能回归；右侧操作中心有 **运行当前范围 / 停止执行 / 清空本页输出**。
 页面实时显示原 `CxVisual.Tests.ArchitectureSmoke.exe` 的 stdout、stderr、退出码、耗时和异常。
@@ -164,7 +164,7 @@ $env:TCT_NUNIT_ASSEMBLIES = 'D:\tests\TrustedChecks.dll'
 
 ## M2：工程组织快照与六场景界面
 
-在现有 `CxVisual.TestCenter` WPF 应用中直接运行或选择 `M-OBJ-001`（真实工程Ownership）与 `M-OBJ-005`（快照安全性），进入 `ObjectTree` 页。WPF工具栏“场景”可选择 **概览 / Geometry / ObjectTree / Graph / Channel / Runtime**；当前Attempt没有相应专业观察时只显示 `NoEvidence`，不合成虚假执行图。
+在 TestCenter 的自动测试根上右键创建 **NUnit/TCT测试计划**，在该计划页的 Catalog 树中选择 `M-OBJ-001`（真实工程Ownership）与 `M-OBJ-005`（快照安全性），运行后进入有真实证据的 `ObjectTree` 页。WPF工具栏“场景”可选择 **概览 / Geometry / ObjectTree / Graph / Channel / Runtime**；当前Attempt没有相应专业观察时只显示 `NoEvidence`，不合成虚假执行图。
 
 `TCTRealCases` 使用 `MEMEngineering.Create()` 创建真实组织、`MEMEngineeringSession.GetSnapshot()` 读取已提交版本；`TCTEngineeringSnapshotCodec.Serialize` 仅投影 `MEMProjectSnapshot` 到只读XML证据负载，通过 `context.ObserveStructured("ObjectTree",...,payload,Mime)` 存入每次Attempt的内容寻址Artifact。UI在显示树前调用 `TCTObservationReplay.Read` 核对Envelope/Run/Attempt/Artifact，再读取负载及拒绝非法Parent/Child/Reference/环与DTD；失效或缺失时显示错误，绝不解析 `Observation.Details` 冒充权威组织树。
 
@@ -194,7 +194,7 @@ $env:TCT_NUNIT_ASSEMBLIES = 'D:\tests\TrustedChecks.dll'
 在Windows x64构建通过后运行 `Output/Debug/x64/CxVisual.TestCenter.exe`。与
 `DOCS/Architecture/TestCenter/01～03` 三张设计图逐项核对：
 
-1. **01 工作台**：Explorer筛选/勾选两条真实Case→运行、取消与重跑；Results选择Attempt后Timeline、Inspector必须指向同一Run/Attempt；布局停靠浮动、保存重开及浅深主题；History验证两次真实Run并显示Diff，错误SHA不能打开。
+1. **01 工作台**：Explorer右键创建NUnit/TCT测试计划，在新建计划页勾选两条真实Case→运行、取消与重跑；Results选择Attempt后Timeline、Inspector必须指向同一Run/Attempt；布局停靠浮动、保存重开及浅深主题；History验证两次真实Run并显示Diff，错误SHA不能打开。
 2. **02 Geometry**：选择`TCT.M2.GEOMETRY.001`，检查Input/Expected/Actual/Diff独立图层、真实坐标系/单位/容差、缩放平移和图元→Inspector；不同单位无变换时不得显示可比较成功。
 3. **03 MEM Object/Symbol**：运行`M-OBJ-007`与`M-OBJ-006`，验证两个共享Symbol的不同InstancePath、Ownership实线/Reference虚线、引用边点击定位、双Revision Diff、图元重叠时仍可从证据列表选不同实例。
 4. **反证与证据**：无Owner数据必须NoEvidence；超时/取消/失败不得变绿；归档损坏、跨Attempt引用、非法Schema须显式拒绝；导出与History来源一致。
@@ -211,7 +211,7 @@ $env:TCT_NUNIT_ASSEMBLIES = 'D:\tests\TrustedChecks.dll'
 
 ## 第二阶段：真实Graph/Runtime及Virtual Channel开发者使用
 
-使用现有TestCenter Shell，在Explorer输入以下TestId后运行并打开实际专业Viewer：
+先在自动测试根右键创建NUnit/TCT测试计划，在其中央Catalog树内查找并选择下列TestId，执行后打开实际专业Viewer：
 
 - TCT.M3.GRAPHRUNTIME.001：真实MEM/MOL→MOC SourceMap→MRK Flow/Trace，Graph树及Runtime Timeline的CompiledStep/Block定位。
 - TCT.M3.GRAPHRUNTIME.003：真实MOL V2 MPC端口/控制连线，保留工程Link身份；与编译Step依赖分开呈现。
@@ -225,16 +225,16 @@ Window x64 .NET Framework 4.8可使用统一命令 --ui-smoke 或 --ui-automatio
 
 ## 第二阶段 RuntimeSession／Journal 实际验证
 
-选择TCT.M3.RUNTIME.001：真实MEM/MOL→MOC Plan→MRKRuntimeSession，测试容量拒绝与结束释放；读取原生MRKFileExecutionJournal的开始、节点、结束和恢复判定；Runtime页只读显示Session/Flow/Step/Journal/Group及Inspector双向定位。
-选择TCT.M3.RUNTIME.002：跨Flow Journal、错误Sequence、假Closed、非法状态与DTD反证，均应在现有TCT框架判为拒绝。
+在已创建的NUnit/TCT计划页选择TCT.M3.RUNTIME.001：真实MEM/MOL→MOC Plan→MRKRuntimeSession，测试容量拒绝与结束释放；读取原生MRKFileExecutionJournal的开始、节点、结束和恢复判定；Runtime页只读显示Session/Flow/Step/Journal/Group及Inspector双向定位。
+在同一计划页选择TCT.M3.RUNTIME.002：跨Flow Journal、错误Sequence、假Closed、非法状态与DTD反证，均应在现有TCT框架判为拒绝。
 Windows执行 --ui-automation 验证MRK Journal→Inspector并上传TestCenter-08-RuntimeJournal.png。实际CI以 https://github.com/oudream/cx-visual-x3/actions/runs/39622306992 最终结论为准；UIA不替代人工06设计图或工业HIL验收。
 ## Visual Studio 本地同步与编译排错（2026-10-22）
 
 如果更新了 `TCTTestViews.cs`，却在 Visual Studio 中出现 3 条
 `CS0246: 找不到 TCTTestOverviewControl`，应先核对工作区**文件与项目清单是否处于同一 Commit**。
 `TCTTestOverviewControl` 的唯一源文件是
-`Tests/TestCenter/UI/TCTTestOverviewControl.cs`，对应
-`CxVisual.TestCenter.csproj` 的 `<Compile Include="UI\\TCTTestOverviewControl.cs" />`。
+`Tests/TestCenter/Automated/UI/Overview/TCTTestOverviewControl.cs`，对应
+`CxVisual.TestCenter.csproj` 的 `<Compile Include="Automated\\UI\\Overview\\TCTTestOverviewControl.cs" />`。
 **不要**在 `TCTTestViews.cs` 临时复制一个同名类，也不要仅下载单个新文件替代完整源码更新。
 
 在仓库根目录的 PowerShell 终端检查：
@@ -255,3 +255,16 @@ Select-String -Path .\Tests\TestCenter\CxVisual.TestCenter.csproj -Pattern 'TCTT
 界面验收另外以 `DOCS/Architecture/TestCenter/` 六张 2560×1440 稿为视觉基准。
 Geometry、ObjectTree、Graph、Channel、Runtime 专业页只消费真实 Owner 的
 Run/Attempt/证据快照；NoEvidence、需要人工审签、资源 Lease 未暴露等待者身份等状态不允许伪造。
+
+## 2026-10-23：四根统一实例树与右键创建（UI版本）
+
+本轮以**用户创建的工作区实例**为左侧子叶的唯一交互对象，四根仍是 `Manual / Automated / Scenarios / ReportCenter`，不增加第五根。所有根和注册类型是**模板**，单击只选中类别；必须右键“新建...”或在模块分组右键“创建具体模块”，才生成实例身份、左侧子叶、右侧Tab。实例节点单击/右键“打开”会选中已有Tab，关闭Tab**不删除**树实例；右键“删除实例”删除导航实例而不擅自清理MHS正式配置、Run/Attempt或证据。关闭后相同实例可再次打开，不要用固定编号推断模块身份。
+
+- **专有测试**：Connector、Driver、Compute、Simulation、Service 五类模板共享正式 `TCTManualModuleFrame`、FCM/MPW/MHS Schema和统一操作中心；实际模块草稿不可丢失，未保存时拒绝直接关闭。Channel页面连接/断开只操作真实MCC Virtual。无真实专业Owner的类型只能创建标记“待接入”的工作区，绝不显示模拟成功。
+- **自动测试**：ArchitectureSmoke是自动测试根的类型入口，右键创建**独立调用实例**后才有执行页；运行/停止仍来自原进程Owner。NUnit/TCT也须右键创建**计划实例**，中央计划页才显示 Foundation / Mechanism / Integration 的真实Catalog树；每个实例的勾选CaseId单独保存。右侧提供运行当前选中用例/运行勾选计划，实际执行继续用同一TCT Worker/Run/Attempt。
+- **场景案例**：右键新建场景实例保留树与Tab；真实场景Owner未绑定前禁止运行、不得假装已验收。
+- **结果报告**：右键创建报告实例展示正式TCT History/已归档证据浏览，不新造报告数据库；没有历史Run不能生成假结果。
+- **实例与持久化**：仅TestCenter窗口导航元数据写入 `%LOCALAPPDATA%/CxVisual/TestCenter/CreatedWorkspaces.v1.xml`。已创建实例的稳定GUID、正式模块MHS配置ID和计划CaseId均与模板身份分离；配置仍归正式MHS，不将实例列表当第二套工程或Catalog。坏XML/非法模板/重复实例ID会拒绝加载，恢复失败禁止自动覆盖原文件。
+- **右键状态**：仅已有正式功能可运行/停止；驱动与真实现场能力未授权时禁用，不生成假的ManualSession Passed。删除运行中的自动计划/Smoke前必须先停止，并拒绝误丢未保存模块配置。
+
+**自动验证**：`TCT.UI.WORKSPACE.001/002` 覆盖四根、唯一注册、实例保存重开、独立配置ID、CaseId隔离、删除与错误文件防覆盖；Windows `--ui-automation` 验证实际WPF菜单Click路径、实例Tab打开/关闭/重开/删除、五种模块、Smoke真实EXE、场景与报告独立Tab及History Owner。相应CI截图与人工Windows实测分别签认；即使CI通过也不能代替100%/125%/150% DPI与视觉/设备HIL人工验收。

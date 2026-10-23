@@ -16,7 +16,7 @@ namespace CxVisual.TestCenter.UI
         private readonly TextBox _search = new TextBox { Margin = new Thickness(7, 5, 7, 7),
             Padding = new Thickness(10, 7, 10, 7), MinHeight = 38,
             BorderBrush = new SolidColorBrush(Color.FromRgb(195, 215, 235)),
-            ToolTip = "按ID/名称/能力检索" };
+            ToolTip = "查找已注册工作区类型及已创建实例；具体测试用例在NUnit/TCT计划页查询" };
         private readonly TreeView _tree = new TreeView { Margin = new Thickness(5) };
         private TCTTestCatalog _catalog;
         private TCTWorkspaceRegistry _workspaceRegistry;
@@ -37,7 +37,7 @@ namespace CxVisual.TestCenter.UI
             StackPanel searchPanel = new StackPanel { Background =
                 new SolidColorBrush(Color.FromRgb(246, 250, 254)) };
             searchPanel.Children.Add(new TextBlock {
-                Text = "搜索测试 / Capability / ObjectId", FontSize = 14,
+                Text = "搜索资源 / 类型 / 实例", FontSize = 14,
                 Foreground = new SolidColorBrush(Color.FromRgb(108, 131, 156)),
                 Margin = new Thickness(10, 10, 0, 1) });
             searchPanel.Children.Add(_search);
