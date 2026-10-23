@@ -765,6 +765,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
             var inner=new MOLLogicDefinition(MOLControlBlock.Sequence(
                 MOLControlBlock.Action("LegacyCapture"),MOLControlBlock.Action("LegacyInspect")));
             MOLLogicCodec.Set(session,child,inner);
+            // 公共合同来自MEM Content，不另存一份V1 Port Graph。
+            session.DefinePort(child,"BatchId",MPCPortDirection.Input,
+                "string",isPublic:true,required:false);
+            session.DefinePort(child,"DefectFlag",MPCPortDirection.Output,
+                "bool",isPublic:true);
             session.Edit("引用V1内容",e=>{
                 e.Reference(page.RootContent,child,"Legacy");return true;
             }).RequireValue();
@@ -777,7 +782,10 @@ namespace CxVisual.Tests.ArchitectureSmoke
             var parent=MOLWiringCodec.Get(session.GetSnapshot().Find(page.RootContent.Id));
             Check(parent.Blocks.Any(b=>b.Id==invoke&&
                 b.CapabilityId=="moc.invoke:"+child.Id.ToString("N"))&&
-                parent.Ports[invoke].All(x=>x.Kind==MPCPortKind.Control)&&
+                parent.Ports[invoke].Any(x=>x.MemberId=="BatchId"&&
+                    x.Direction==MPCPortDirection.Input&&x.TypeId=="string")&&
+                parent.Ports[invoke].Any(x=>x.MemberId=="DefectFlag"&&
+                    x.Direction==MPCPortDirection.Output&&x.TypeId=="bool")&&
                 session.GetSnapshot().Find(page.RootContent.Id).References
                     .Any(x=>x.TargetId==child.Id),
                 "V2 caller did not declare unique reference to V1 Content");
@@ -791,8 +799,10 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 {
                     var v1=MOLLogicCodec.Get(reopened.GetSnapshot().Find(child.Id));
                     var v2=MOLWiringCodec.Get(reopened.GetSnapshot().Find(page.RootContent.Id));
-                    Check(v1.Root.Id==inner.Root.Id&&v2.Blocks.Any(b=>b.Id==invoke),
-                        "V1/V2 Content reference lost on MEM Save/Open");
+                    Check(v1.Root.Id==inner.Root.Id&&v2.Blocks.Any(b=>b.Id==invoke)&&
+                        v2.Ports[invoke].Any(p=>p.MemberId=="DefectFlag"&&
+                            p.Direction==MPCPortDirection.Output),
+                        "V1/V2 MEM public port contract or reference lost on Save/Open");
                     bool rejected=false;
                     try{new MOCEngineeringCompiler().Compile(reopened.GetSnapshot(),
                         page.RootContent.Id,new TestResolver());}
