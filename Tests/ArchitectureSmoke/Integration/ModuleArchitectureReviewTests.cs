@@ -20,6 +20,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             catch (ArgumentException) { rejected=true; }
             if (!rejected) throw new InvalidOperationException("重复能力 Id 应拒绝");
             ModuleFoundationSmokeTests.Run();
+            ModuleConfigAnnotationSmokeTests.Run();
         }
     }
 }

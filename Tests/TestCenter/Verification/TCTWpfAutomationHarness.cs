@@ -53,6 +53,12 @@ namespace CxVisual.TestCenter.UI
                 if (!window.DocumentHost.CloseWorkspace("manual.channel"))
                     throw new InvalidOperationException("Manual Channel tab could not close/dispose");
             }));
+            await Task.Run(() => InteractManualModule(hwnd, window));
+            SaveScreenshot(window, "TestCenter-12-ModuleConfig.png");
+            window.Dispatcher.Invoke(new Action(() => {
+                if (!window.DocumentHost.CloseWorkspace("manual.module"))
+                    throw new InvalidOperationException("Module configuration workspace did not close");
+            }));
             await Task.Run(() => InteractArchitectureSmoke(hwnd, window));
             SaveScreenshot(window, "TestCenter-11-ArchitectureSmoke.png");
             window.Dispatcher.Invoke(new Action(() => {
@@ -60,6 +66,40 @@ namespace CxVisual.TestCenter.UI
                     throw new InvalidOperationException("ArchitectureSmoke tab was not disposable");
             }));
         }
+        private static void InteractManualModule(IntPtr hwnd, TCTMainWindow window)
+        {
+            AutomationElement root = AutomationElement.FromHandle(hwnd);
+            SelectionItemPattern selected = Find(root, "TCT.Workspace.manual.module")
+                .GetCurrentPattern(SelectionItemPattern.Pattern) as SelectionItemPattern;
+            if (selected == null) throw new InvalidOperationException("Module test workspace is not registered");
+            selected.Select();
+            InvokePattern open = Find(root, "TCT.Manual.Action.module.open")
+                .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
+            if (open == null) throw new InvalidOperationException("Module configuration create action not available");
+            open.Invoke();
+            bool created = false;
+            for (int attempt = 0; attempt < 90 && !created; attempt++)
+            {
+                window.Dispatcher.Invoke(new Action(() => {
+                    System.Windows.Controls.TabControl tabs =
+                        window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                    TCTManualModuleFrame frame = tabs == null ? null : tabs.Items
+                        .OfType<System.Windows.Controls.TabItem>().Select(x => x.Content)
+                        .OfType<TCTManualModuleFrame>().FirstOrDefault();
+                    created = frame != null && frame.HasOpenedConfiguration &&
+                        frame.ActiveModuleKind == CxVisual.Mechanism.Core.Modules.MFMModuleKind.Connector &&
+                        frame.ActiveModuleId == "Module01";
+                }));
+                if (!created) Thread.Sleep(100);
+            }
+            if (!created) throw new InvalidOperationException(
+                "Real MHS module configuration / MPW automatic editor did not open");
+            InvokePattern validate = Find(root, "TCT.Manual.Action.module.validate")
+                .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
+            if (validate == null) throw new InvalidOperationException("Module validation action unavailable");
+            validate.Invoke();
+        }
+
         private static void InteractArchitectureSmoke(IntPtr hwnd, TCTMainWindow window)
         {
             AutomationElement root = AutomationElement.FromHandle(hwnd);
