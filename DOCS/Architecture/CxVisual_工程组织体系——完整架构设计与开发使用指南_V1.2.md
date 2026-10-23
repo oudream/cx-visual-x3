@@ -998,6 +998,77 @@ MOCFlowBuilder.Edit(session, page.RootContent, b => {
 - **缺口处理**：对于 V1↔V2 区域/状态机/复杂异常/规则等不支持的语义，MOC 必须明确标记或拒绝，不可静默重写成无条件 DAG；运行时异常必须能追溯原 Content/Block 和可区分的调用实例。
 
 
+
+#### 7.4.12 MOL 逻辑定义四方面架构收口（2026-10-23 定案）
+
+> **本节是架构、Owner 和语义合同收口；不等于代码功能全部交付。** 承接本章 7.4.1～7.4.11 的唯一 Logic Aspect、MEM/MOL/MOC/MRK/MDS/Studio 边界。以组合代替堆类型；不新增同级规格、不新建项目、不复制 Graph。
+
+**最小核心：MEMContent 的一个 Logic Aspect，四个职责视角。** 四方面不是四套模块/模型/Builder：
+
+| 四方面 | 现有类型与收口职责 | 不能承担 |
+|---|---|---|
+| ① 完整定义类型 | MOLControlBlock 定义动作和控制组合；MOLExpression 定义无副作用条件；MOLStateMachineDefinition 定义状态迁移；MOLWaitDefinition 定义等待/事件；MOLStepPolicy 定义策略 | Worker、当前状态、设备执行、运行数据 |
+| ② 完整定义关系 | V1 Children/Case/Loop/Try 表达嵌套；V2 MOLLink/MOLBlockEndpoint/MPCPortDescriptor 表达依赖、端口和数据流；MEM Content/Reference 表达拥有与复用；参数与作用域是声明 | 第二棵工程树、把 UI 坐标当执行顺序、保存 Frame |
+| ③ 完整定义管理 | MEMEngineeringSession 统一创建、修改、事务、Revision、Undo/Redo、Save/Open；MOLLogicCodec/MOLWiringCodec 读写同一 Logic Aspect 的不同 Schema | 新建 MOL Repository、Undo 栈、运行态持久化仓 |
+| ④ 开发者使用接口 | 沿用 MOLControlBlock 工厂 + MOLLogicCodec.Set/Get（V1）；MOCFlowBuilder.Edit + MOLWiringCodec（V2）；业务只传必要参数 | 大量包装类、手写 XML、重复输入内部身份 |
+
+**定义类型以已有语义组合，不为每个关键词建一个类：**
+
+1. **控制骨架**：Action、Sequence、Branch、Loop/ForEach、Parallel、Invoke、Wait、Try、Exit。If/ElseIf/Switch 复用 Branch+Case；For/While/DoWhile 复用 Loop；Break/Continue/Return 复用 Exit；Try/Catch/Finally 是一个受保护区域合同，非三套执行器。
+2. **条件/规则**：MOLExpression 是只读、可序列化、无副作用的条件声明；分支 Condition、Wiring Guard、状态迁移 Guard 必须逐步收敛为**同一类型/空值/比较/错误语义**。现有 MOLScalarExpression 与 MOC 求值有部分共享，但未完成跨位置一致性反证；暂不新增 Rule Graph。
+3. **数据**：Port（方向/类型/必需/基数）+ Link（Control/Data/Stream）+ 参数来源 + 公开 Input/Output 是静态声明，MDS 才持有 Heap/Stack/Frame、运行值及大对象生命周期。一个关系只存一份定义。
+4. **事件/状态**：事件只定义标识、来源、输入与触发条件，实际订阅/投递/重放归 MRK；State/Region/Transition/Guard 等由已有状态机值对象表达。Entry/Exit Action、生命周期和恢复策略仅在证明现有类型表达不足时增添**最小字段/值记录**，不能将 MRK 状态实例放进 Core。
+5. **调用/异常/策略**：复用 MEM Content/Reference 做逻辑组合与多实例复用，沿用公开端口与参数映射；Retry/Timeout 优先复用 MOLStepPolicy，补偿交给原 MRK/专业能力。Throw、多 Catch 错误匹配若当前 Catch-all 不足，再定义必要的错误类别/匹配合同，不先生成多组空类。
+
+**V1/V2 定案：两种互斥载荷，一套逻辑语义，而非第三个中间持久 Graph。**
+
+- V1 MOLLogicDefinition（schema1）适合结构化组合；V2 MOLWiringDefinition（schema2）适合自由连线、端口及图形编排。相同 MEMContent 仅保存**一份** Logic Aspect，按版本选择表示，不存两份可同时修改的镜像，也不需要双向实时同步服务。
+- 现有 V2 Validate 中的 wiring.action_only 是**当前公开合同**，不能为了“支持完整逻辑”直接删除，然后把 V1 的全部 Children/Case/Try 任意塞进 V2 Blocks，制造结构与连线双重顺序。V2 普通 Block 继续保留轻量的 Action/Capability/Port Graph。
+- 高级结构优先复用已有 V1 逻辑定义和 MEM Content/Reference 做**组合**。需要从 V2 调用 V1 Content 时，MOC 必须增加只读消费该 Content 公共声明的适配及正确性测试；目前 MOCFlowBuilder.InvokeContent 仍要求 V2，属于明确的桥接缺口，**不可报告已可用**。
+- 只有当“在同一 V2 画布内原位编辑结构化区域”是确切需求，且 Content 引用组合无法满足时，才评估**一个受保护 Region 的类型化声明**；绝不把可编辑结构树和可编辑连线树复制到同一 Block 中。
+- V1↔V2 转换只支持已证明身份/结构/端口/分支语义等价的子集。遇到不支持，明确返回 ContentId、BlockId、字段和原因，保留原数据/Revision；不能静默改写为 Action DAG。允许转换时必须走 MEM 事务、ID Map、Undo/Redo、保存重开及双向反证。
+- V2 未完成草稿可保存，但不代表可编译；运行前仍经 ValidateExecutable 和 MOC 明确校验，不用默认节点掩盖缺定义。
+
+**两条现有开发者路径（不是新 API 提案）：**
+
+    // V1 结构化逻辑：只保存一个 Logic Aspect
+    MOLLogicDefinition definition = new MOLLogicDefinition(
+        MOLControlBlock.Sequence(
+            MOLControlBlock.Action("Inspect"),
+            MOLControlBlock.If(MOLExpression.InputTrue("isNG"),
+                MOLControlBlock.TryCatchFinally(
+                    MOLControlBlock.Action("Review"),
+                    MOLControlBlock.Action("RecordFault"),
+                    MOLControlBlock.Action("Release")))));
+    MOLLogicCodec.Set(session, content, definition);
+
+    // V2 自由连线：在另一个 V2 Content 上使用已有统一编辑事务
+    MOCFlowBuilder.Edit(session, graphContent, b => { /* Step / Link / Expose... */ });
+
+MOL 的 API 先保持工厂与原工程编辑入口，不额外叠一层“统一万能 DSL”；Studio 使用相同事务，不持有自己的工程定义。
+
+**五条架构不变量：**
+
+1. **唯一真源**：MEMContent/Logic Aspect 拥有定义；Block/Port/Link/Reference 稳定身份不得与运行 Flow/Invocation/Frame 混用。
+2. **关系正交**：包含表示结构，Link 表示依赖，Port 表示合同，参数表示来源，布局表示呈现；不要重复编码一件事。
+3. **统一提交**：创建、变更、组合、复用、校验、持久化都遵守 MEM Session/Revision/Undo/Redo；没有第二个事务根。
+4. **专业开放**：以 Capability/TypeId/配置扩展业务；不因 Vision/CT/IoT 新需求增一个 MOL 子项目或复制执行器。
+5. **先静态后编译**：MOL 自己可离线验证结构、身份、已知纯语义；能力解析、执行计划和外部依赖由 MOC 验证，实际调度与数据归 MRK/MDS。错误必须定位到原定义。
+
+**仅保留四个真正需要落代码/验收的定义收尾包，不再做一轮大架构重写：**
+
+| 收口项 | 改什么、明确拒绝什么 | 通过条件 |
+|---|---|---|
+| **D1 类型** | 对照控制、条件、循环、异常、事件、状态机、调用、数据、规则逐项核对**必要字段**；只补确实无法组合表达的语义；空字段、错误类型不可默认通过 | 每个约定语义都有唯一现有 Owner/值合同，或有明确的缺口和诊断 |
+| **D2 关系** | 核对嵌套/连接/端口/作用域/引用/参数、身份与来源；不支持跨 Schema 组合或转换就精准拒绝，不转换为无条件 DAG | 正反例验证环、跨作用域、类型冲突、身份保真和转换拒绝 |
+| **D3 管理** | 用原 MEM 完成创建→编辑→验证→保存→重开→Undo/Redo、并发/坏版本/回滚 | 同一 Logic Aspect 身份、Revision、Schema 和未知字段处理一致 |
+| **D4 API** | 以 C# 开发者与 Studio 工程编排者真实任务审查工厂和 Edit 入口，不增加冗余代理 | 用户能用少量自然 API 创建/组合/验证逻辑，无须碰 XML 或运行 Frame |
+
+**完工措辞必须分清**：本节是 **D0 架构裁决收口**，尚不是 D1～D4 的功能完成。D1～D4 正反例及固定 SHA Windows CI 达到 S3 后，才宣布“MOL 逻辑定义合同完整”；长期状态机、持久事件恢复、Studio 复杂 UI、设备 S4 各由自己的 Owner 验收，不能反向迫使 MOL 模型膨胀。
+
+**后续每次发现缺口先回答两问**：能否用现有 Block/Expression/Link/Policy/Content 组合？能否由 MOC 只读适配？只有两者确实无法完成，且有可复现反例时，才允许修改 MOL 公开类型。这是“轻巧架构味”的实施门槛。
+
+
 ## 8. 八个完整使用案例
 
 各案例都给出目标、结构、过程、API 分类和运行/持久化边界。当前 API 的完整程序标记 `REAL-*`，建议 API 明确标注；测试结果统一记录在 §11，不能仅因代码位于本章就视作已验证。
