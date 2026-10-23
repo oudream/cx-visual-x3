@@ -386,6 +386,56 @@ namespace CxVisual.TestCenter.Cases
             }
         }
 
+        [TCTTest("TCT.MODULE.CHANNEL.006",
+            "生产TCP/UDP Server的MultiPeer子通道代次、重注册和断开反证（不开Socket）",
+            TCTTestAspect.Integration, "TestCenter / Manual / Channel",
+            ObjectId = "MCCMultiChannelBase")]
+        public static void ActualMultiPeerChannelTopology(TCTTestContext test)
+        {
+            MCCMultiChannelBase[] channels = {
+                new MCCTcpServerChannel(new MCCChannelConfiguration {
+                    Id = "P0-TCP-Server", Kind = MCCChannelKind.TcpServer }),
+                new MCCUdpServerChannel(new MCCChannelConfiguration {
+                    Id = "P0-UDP-Server", Kind = MCCChannelKind.UdpServer })
+            };
+            foreach (MCCMultiChannelBase channel in channels)
+            {
+                test.AssertTrue(channel.Topology == MCCChannelTopology.MultiPeer &&
+                    channel.State == MCCChannelState.Closed,
+                    "实际Server Owner实例处于Closed，未偷开监听Socket：" + channel.Id,
+                    true, channel.State == MCCChannelState.Closed);
+                MCCSubChannelInfo first = channel.RegisterPeer("client01", "127.0.0.1:13001");
+                MCCSubChannelInfo second = channel.RegisterPeer("client02", "127.0.0.1:13002");
+                MCCSubChannel left = new MCCSubChannel(channel, first.Address);
+                test.AssertTrue(channel.SnapshotSubChannels().Length == 2 &&
+                    left.State == MCCSubChannelState.Open,
+                    "正式MultiPeer登记两个不同运行对端：" + channel.Id, true, true);
+                bool duplicate = false;
+                try { channel.RegisterPeer("client01", "127.0.0.1:13001"); }
+                catch (InvalidOperationException) { duplicate = true; }
+                test.AssertTrue(duplicate, "相同在线对端不得重复登记：" + channel.Id,
+                    true, duplicate);
+                test.AssertTrue(channel.RemovePeer(first.Address) &&
+                    channel.FindSubChannel(first.Address) == null &&
+                    left.State == MCCSubChannelState.Closed,
+                    "移除对端后原代次即刻失效：" + channel.Id, true, true);
+                MCCSubChannelInfo newPeer = channel.RegisterPeer("client01", "127.0.0.1:13003");
+                bool oldRejected = false;
+                try { new MCCSubChannel(channel, first.Address); }
+                catch (ArgumentException) { oldRejected = true; }
+                test.AssertTrue(oldRejected &&
+                    newPeer.Address.Generation > first.Address.Generation &&
+                    channel.FindSubChannel(newPeer.Address) != null,
+                    "重连使用新Generation，旧地址不能代替新身份：" + channel.Id,
+                    true, oldRejected);
+                channel.RemovePeer(newPeer.Address);
+                channel.RemovePeer(second.Address);
+                test.AssertTrue(channel.SnapshotSubChannels().Length == 0 &&
+                    channel.State == MCCChannelState.Closed,
+                    "清理全部对端而不启动或关闭真实Socket：" + channel.Id, true, true);
+            }
+        }
+
         [TCTTest("TCT.MODULE.CONFIG.002",
             "Connector 缺少 Channel/Protocol 与无效点映射必须拒绝",
             TCTTestAspect.Integration, "TestCenter / Manual / Module",
