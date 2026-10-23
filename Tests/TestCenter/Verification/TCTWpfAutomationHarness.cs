@@ -55,6 +55,20 @@ namespace CxVisual.TestCenter.UI
                 TCTWorkspaceDescriptor channel = window.FindCreatedInstance("manual.channel");
                 if (channel == null || !window.DocumentHost.CloseWorkspace(channel.WorkspaceId))
                     throw new InvalidOperationException("Manual Channel instance tab could not close");
+                // 关闭Tab后类型/已创建实例树都必须保留，右键“打开”重用同一实例。
+                if (window.FindCreatedInstance("manual.channel") == null ||
+                    window.DocumentHost.HasWorkspace(channel.WorkspaceId))
+                    throw new InvalidOperationException("关闭Tab误删实例或页面未关");
+                window.Explorer.InvokeInstanceContextMenuForVerification(
+                    channel.WorkspaceId, "打开");
+                if (!window.DocumentHost.HasWorkspace(channel.WorkspaceId))
+                    throw new InvalidOperationException("右键打开未恢复已创建实例");
+                if (!window.DocumentHost.CloseWorkspace(channel.WorkspaceId))
+                    throw new InvalidOperationException("重新打开的Tab无法关闭");
+                window.Explorer.InvokeInstanceContextMenuForVerification(
+                    channel.WorkspaceId, "删除实例");
+                if (window.FindCreatedInstance("manual.channel") != null)
+                    throw new InvalidOperationException("右键删除没有移除左树实例");
             }));
             await Task.Run(() => InteractManualModule(hwnd, window));
             SaveScreenshot(window, "TestCenter-12-ModuleConfig.png");
@@ -87,7 +101,24 @@ namespace CxVisual.TestCenter.UI
                 TCTWorkspaceDescriptor item = window.FindCreatedInstance("auto.architecture-smoke");
                 if (item == null || !window.DocumentHost.CloseWorkspace(item.WorkspaceId))
                     throw new InvalidOperationException("ArchitectureSmoke instance tab did not close");
+                // 四大根的场景/报告也必须从右键创建实例，且留在左树和Tab中。
+                window.Explorer.InvokeCreateContextMenuForVerification("scenes.root");
+                window.Explorer.InvokeCreateContextMenuForVerification("reports.root");
+                TCTWorkspaceDescriptor scene = window.FindOpenCreatedInstance("scenes.root");
+                TCTWorkspaceDescriptor report = window.FindOpenCreatedInstance("reports.root");
+                if (scene == null || report == null ||
+                    !window.DocumentHost.HasWorkspace(scene.WorkspaceId) ||
+                    !window.DocumentHost.HasWorkspace(report.WorkspaceId))
+                    throw new InvalidOperationException("场景或报告创建未保留独立工作区");
+                // Report必须是正式的历史Owner组件，不能是伪造的空白结果。
+                System.Windows.Controls.TabControl tabs =
+                    window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                if (!tabs.Items.OfType<System.Windows.Controls.TabItem>()
+                    .Any(x => (x.Tag as TCTWorkspaceDescriptor)?.WorkspaceId ==
+                        report.WorkspaceId && x.Content is TCTTestHistoryControl))
+                    throw new InvalidOperationException("报告页没有挂接真实History");
             }));
+            SaveScreenshot(window, "TestCenter-13-ScenarioReport.png");
         }
         private static void InteractModuleKind(IntPtr hwnd, TCTMainWindow window,
             CxVisual.Mechanism.Core.Modules.MFMModuleKind kind)

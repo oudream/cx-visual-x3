@@ -101,6 +101,23 @@ namespace CxVisual.TestCenter.UI
             menu.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent, menu));
         }
 
+        internal void InvokeInstanceContextMenuForVerification(string instanceId, string label)
+        {
+            TreeViewItem item = null;
+            foreach (TreeViewItem root in _tree.Items.OfType<TreeViewItem>())
+            {
+                item = FindWorkspace(root, instanceId);
+                if (item != null) break;
+            }
+            if (item == null || item.ContextMenu == null)
+                throw new InvalidOperationException("实例子叶没有右键菜单：" + instanceId);
+            MenuItem command = item.ContextMenu.Items.OfType<MenuItem>()
+                .FirstOrDefault(x => (string)x.Header == label);
+            if (command == null || !command.IsEnabled)
+                throw new InvalidOperationException("实例右键命令不可用：" + label);
+            command.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent, command));
+        }
+
         private static TreeViewItem FindWorkspace(TreeViewItem parent, string id)
         {
             TCTWorkspaceDescriptor descriptor = parent.Tag as TCTWorkspaceDescriptor;
