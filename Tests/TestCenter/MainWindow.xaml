@@ -77,7 +77,7 @@
    <dock:LayoutRoot>
     <dock:LayoutPanel Orientation="Vertical">
      <dock:LayoutPanel Orientation="Horizontal">
-      <dock:LayoutAnchorablePane DockWidth="350">
+      <dock:LayoutAnchorablePane DockWidth="260">
        <dock:LayoutAnchorable ContentId="test.explorer" Title="测试资源浏览器 / Explorer"
          CanClose="False" CanFloat="True" CanHide="True" CanAutoHide="True">
         <ui:TCTTestExplorerControl x:Name="Explorer"/>
@@ -89,7 +89,7 @@
         <ui:TCTTestDocumentHostControl x:Name="DocumentHost"/>
        </dock:LayoutDocument>
       </dock:LayoutDocumentPane>
-      <dock:LayoutAnchorablePane DockWidth="365">
+      <dock:LayoutAnchorablePane DockWidth="300">
        <dock:LayoutAnchorable ContentId="test.inspector" Title="操作中心"
          CanClose="False" CanFloat="True" CanHide="True" CanAutoHide="True">
         <DockPanel x:Name="OperationDock" Background="#FFFFFF">
@@ -107,7 +107,7 @@
        </dock:LayoutAnchorable>
       </dock:LayoutAnchorablePane>
      </dock:LayoutPanel>
-     <dock:LayoutAnchorablePane DockHeight="215">
+     <dock:LayoutAnchorablePane DockHeight="155">
       <dock:LayoutAnchorable ContentId="test.results" Title="测试结果 / Results"
         CanClose="False" CanFloat="True" CanHide="True" CanAutoHide="True">
        <ui:TCTTestResultsControl x:Name="Results"/>

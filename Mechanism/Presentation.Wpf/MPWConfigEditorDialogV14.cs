@@ -31,6 +31,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         private StackPanel _shellHeading;
         private WrapPanel _shellCommands;
         private TabControl _shellTabs;
+        private ScrollViewer _formScroll;
         private bool _workspaceCompact;
         private HashSet<string> _visibleRootFields;
         private HashSet<string> _nestedCategories;
@@ -47,6 +48,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             _nestedCategories = nestedCategories == null ? null :
                 new HashSet<string>(nestedCategories, StringComparer.Ordinal);
             _workspaceCompact = compact;
+            if (_formScroll != null)
+                _formScroll.HorizontalScrollBarVisibility = compact
+                    ? ScrollBarVisibility.Disabled : ScrollBarVisibility.Auto;
             if (_shellHeading != null) _shellHeading.Visibility =
                 compact ? Visibility.Collapsed : Visibility.Visible;
             if (_shellCommands != null) _shellCommands.Visibility =
@@ -179,9 +183,11 @@ namespace CxVisual.Mechanism.Presentation.Wpf
 
             TabControl tabs = new TabControl();
             _shellTabs = tabs;
-            tabs.Items.Add(new TabItem { Header = "参数及动态集合", Content = new ScrollViewer {
+            _formScroll = new ScrollViewer {
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-                HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, Content = _form } });
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+                CanContentScroll = false, Content = _form };
+            tabs.Items.Add(new TabItem { Header = "参数及动态集合", Content = _formScroll });
             StackPanel detail = new StackPanel { Margin = new Thickness(12) };
             detail.Children.Add(new TextBlock { Text = "Saved / Effective / 审计诊断",
                 FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 0, 8) });
@@ -299,10 +305,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             {
                 Grid group = new Grid { Margin = new Thickness(2, 6, 2, 8) };
                 System.Windows.Automation.AutomationProperties.SetAutomationId(group, "MPW.Channel.SchemaCards");
-                for (int column = 0; column < 3; column++)
-                    group.ColumnDefinitions.Add(new ColumnDefinition {
-                        Width = new GridLength(1, GridUnitType.Star),
-                        MinWidth = 275 });
+
                 string[] titles = { "通道类型 / 身份与子通道", "网络配置 / 串口", "数据配置 / 执行与重连" };
                 for (int column = 0; column < 3; column++)
                 {
@@ -337,8 +340,15 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                             FCMConfigSensitivity.ContainsSensitive(member.MemberType), member.Unit);
                     }
                     items.Children.Add(panel); card.Child = items;
-                    Grid.SetColumn(card, column); group.Children.Add(card);
+                    group.Children.Add(card);
                 }
+                ArrangeChannelCards(group, 1);
+                group.SizeChanged += (sender, args) => {
+                    int columns = args.NewSize.Width >= 900 ? 3 :
+                        args.NewSize.Width >= 575 ? 2 : 1;
+                    if (columns != group.ColumnDefinitions.Count)
+                        ArrangeChannelCards(group, columns);
+                };
                 host.Children.Add(group);
                 return;
             }
@@ -351,6 +361,23 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 RenderValue(host, member.MemberType, value, path, member.Label, depth, isSecret, member.Unit);
             }
         }
+        // 与宿主中央宽度自适应：宽屏三栏，窄工作区折为两栏/单栏，正式Schema字段不变。
+        private static void ArrangeChannelCards(Grid group, int columns)
+        {
+            group.ColumnDefinitions.Clear();
+            group.RowDefinitions.Clear();
+            for (int i = 0; i < columns; i++)
+                group.ColumnDefinitions.Add(new ColumnDefinition {
+                    Width = new GridLength(1, GridUnitType.Star) });
+            for (int i = 0; i < (group.Children.Count + columns - 1) / columns; i++)
+                group.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            for (int i = 0; i < group.Children.Count; i++)
+            {
+                Grid.SetColumn(group.Children[i], i % columns);
+                Grid.SetRow(group.Children[i], i / columns);
+            }
+        }
+
         private void RenderValue(Panel host, Type type, object value, string path,
             string label, int depth, bool hidden, string unit)
         {
@@ -401,7 +428,11 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 }
                 else if (actual.IsEnum)
                 {
-                    ComboBox box = new ComboBox { Width = 235, MinHeight = 35, ItemsSource = Enum.GetNames(actual),
+                    ComboBox box = new ComboBox {
+                        Width = _workspaceCompact ? double.NaN : 235, MinHeight = 35,
+                        MaxWidth = _workspaceCompact ? 420 : double.PositiveInfinity,
+                        HorizontalAlignment = _workspaceCompact ? HorizontalAlignment.Stretch : HorizontalAlignment.Left,
+                        ItemsSource = Enum.GetNames(actual),
                         SelectedItem = value == null ? null : value.ToString() };
                     box.SelectionChanged += (s, e) => {
                         if (box.SelectedItem != null) Execute(() => _editor.SetPathJson(path,
@@ -411,7 +442,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 }
                 else
                 {
-                    TextBox box = new TextBox { Width = 250, MinHeight = 35,
+                    TextBox box = new TextBox {
+                        Width = _workspaceCompact ? double.NaN : 250, MinHeight = 35,
+                        MaxWidth = _workspaceCompact ? 420 : double.PositiveInfinity,
+                        HorizontalAlignment = _workspaceCompact ? HorizontalAlignment.Stretch : HorizontalAlignment.Left,
                         Text = Format(value), Padding = new Thickness(5, 3, 5, 3) };
                     box.LostFocus += (s, e) => Execute(() => _editor.SetPathJson(path,
                         ToConfigJson(box.Text, type)));

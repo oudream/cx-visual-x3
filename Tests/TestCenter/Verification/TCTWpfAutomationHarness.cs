@@ -140,6 +140,10 @@ namespace CxVisual.TestCenter.UI
                 }
                 if (!rendered) throw new InvalidOperationException(
                     "MCCChannelConfiguration three-column Schema editor not rendered");
+                // 旧1180×788截图里模块表单被标题和底栏挤出；存在控件不等于用户可见。
+                if (cards.Current.IsOffscreen || cards.Current.BoundingRectangle.IsEmpty)
+                    throw new InvalidOperationException(
+                        "Connector配置Schema已创建，但通道配置入口不可见");
             }
             InvokePattern save = Find(root, "TCT.Manual.Action.module.save")
                 .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;

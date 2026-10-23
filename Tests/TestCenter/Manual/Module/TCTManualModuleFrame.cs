@@ -31,7 +31,7 @@ namespace CxVisual.TestCenter.UI
         };
         private readonly ContentControl _editorHost = new ContentControl();
         private readonly TabControl _pages = new TabControl {
-            MinHeight = 49, Margin = new Thickness(0, 13, 0, 9),
+            MinHeight = 44, Margin = new Thickness(0, 4, 0, 3),
             Background = Brushes.White, BorderThickness = new Thickness(0) };
         private Action<string[], string[]> _project;
         private Func<int> _visibleSchemaEditors;
@@ -123,7 +123,7 @@ namespace CxVisual.TestCenter.UI
                 foreach (ModulePage page in pages)
                 {
                     TabItem tab = new TabItem { Header = page.Label, Tag = page,
-                        Padding = new Thickness(20, 10, 20, 10), FontSize = 16 };
+                        Padding = new Thickness(12, 7, 12, 7), FontSize = 16 };
                     System.Windows.Automation.AutomationProperties.SetAutomationId(tab,
                         "TCT.Module.Page." + page.Id);
                     _pages.Items.Add(tab);
@@ -142,7 +142,7 @@ namespace CxVisual.TestCenter.UI
 
         private readonly TextBlock _status = new TextBlock {
             Foreground = Brushes.SlateGray, TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(0, 7, 0, 6)
+            Margin = new Thickness(0, 3, 0, 3), MaxHeight = 24, TextTrimming = TextTrimming.CharacterEllipsis
         };
         private IMPWConfigDraftGuard _draftGuard;
         private IDisposable _activeEditor;
@@ -215,19 +215,15 @@ namespace CxVisual.TestCenter.UI
                     ProjectSelectedPage();
             };
 
-            DockPanel rootPanel = new DockPanel { Margin = new Thickness(15, 12, 13, 12),
+            DockPanel rootPanel = new DockPanel { Margin = new Thickness(9, 6, 9, 7),
                 Background = Brushes.White };
             StackPanel header = new StackPanel();
             header.Children.Add(new TextBlock {
-                Text = "模块配置 / Module Workspace", FontSize = 24,
+                Text = "模块配置 / Module Workspace", FontSize = 20,
                 Foreground = new SolidColorBrush(Color.FromRgb(30, 68, 112)),
                 FontWeight = FontWeights.SemiBold
             });
-            header.Children.Add(new TextBlock {
-                Text = "同一个模块工作区，四种正式配置类型。中央按配置主题分页，右侧统一负责创建、校验、保存、生效和重开；不复制配置模型。",
-                Foreground = Brushes.SlateGray, Margin = new Thickness(0, 7, 0, 7),
-                TextWrapping = TextWrapping.Wrap
-            });
+            header.ToolTip = "四类模块复用正式 FCM Schema、MPW 编辑器及 MHS Saved/Effective；右侧统一管理配置操作。";
             WrapPanel picker = new WrapPanel { Orientation = Orientation.Horizontal };
             picker.Children.Add(new TextBlock { Text = "模块类型", VerticalAlignment = VerticalAlignment.Center });
             picker.Children.Add(_moduleKind);
@@ -235,11 +231,7 @@ namespace CxVisual.TestCenter.UI
             picker.Children.Add(_moduleId);
             header.Children.Add(picker);
             header.Children.Add(_status);
-            header.Children.Add(new TextBlock {
-                Text = "配置真源：正式 FCM Schema → MPW 自动编辑 → MHS Saved/Effective。通道、规约、点表参数均来自生产配置定义；尚未装配或运行的 Owner 不显示成功。",
-                Foreground = Brushes.SlateGray, TextWrapping = TextWrapping.Wrap,
-                FontSize = 15, Margin = new Thickness(0, 6, 0, 8)
-            });
+
             DockPanel.SetDock(header, Dock.Top);
             rootPanel.Children.Add(header);
             DockPanel.SetDock(_pages, Dock.Top);
@@ -263,6 +255,7 @@ namespace CxVisual.TestCenter.UI
         private void UpdateStatus(string message)
         {
             _status.Text = message;
+            _status.ToolTip = message;
             Action state = StateChanged;
             if (state != null) state();
         }
