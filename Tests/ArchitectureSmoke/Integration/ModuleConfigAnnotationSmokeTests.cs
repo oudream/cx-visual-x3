@@ -44,39 +44,36 @@ namespace CxVisual.Tests.ArchitectureSmoke
 
             MCNConnectorConfiguration connector = new MCNConnectorConfiguration {
                 DisplayName = "PLC 接入",
-                Channels = new List<MCCChannelConfiguration> {
-                    new MCCChannelConfiguration { Id = "tcp01", Kind = MCCChannelKind.TcpClient,
-                        Host = "127.0.0.1", Port = 502 }
-                },
-                Protocols = new List<MPAProtocolBinding> {
-                    new MPAProtocolBinding { Id = "mod01", Kind = MPAProtocolKind.ModbusTcpDraft,
-                        ChannelRef = "tcp01" }
-                },
-                Points = new List<MCNPointDefinition> {
-                    new MCNPointDefinition { Name = "T", ProtocolRef = "mod01", Address = "holding:100",
-                        TargetRef = "PLC.T" }
+                Channel = new MCCChannelConfiguration { Id = "tcp01", Kind = MCCChannelKind.TcpClient,
+                    Host = "127.0.0.1", Port = 502 },
+                Protocol = new MPAProtocolConfiguration {
+                    Id = "mod01", Kind = MPAProtocolKind.ModbusTcpDraft,
+                    Points = new List<MPAPointDefinition> {
+                        new MPAPointDefinition { Name = "T", Address = "holding:100",
+                            StationAddress = "1", ValueType = "UInt16", CanWrite = true }
+                    },
+                    Mappings = new List<MPADataMapping> {
+                        new MPADataMapping { PointRef = "T", TargetKind = MPADataTargetKind.Variable,
+                            TargetRef = "plc/T", Operation = MPADataOperation.WriteValue }
+                    }
                 }
             };
             Check(FCMConfigValidationEngine.Validate(connector, "test").IsValid,
-                "Valid connector must pass the same schema validator as UI");
-            // UI 与运行读取的是同一正式配置类，不存在 EditableXXX -> Options 的转换。
-            Check(connector.Channels[0].DescribeType().IO == MCCIOCapabilities.ByteStream,
-                "Channel config directly provides runtime metadata");
-            Check(connector.Protocols[0].ProtocolTypeId == "modbus.tcp" &&
-                  connector.Points[0].ValueType == "UInt16", "Protocol/Point single config");
-
-            connector.Channels.Add(new MCCChannelConfiguration { Id = "tcp01" });
-            CheckIssue(connector, "CHANNEL_DUPLICATE_OR_EMPTY");
-            connector.Channels.RemoveAt(1);
-            connector.Protocols[0].ChannelRef = "missing";
-            CheckIssue(connector, "CHANNEL_REFERENCE");
-            connector.Protocols[0].ChannelRef = "tcp01";
-            connector.Protocols[0].Kind = MPAProtocolKind.ModbusRtuDraft;
+                "Single Channel/Protocol annotated model valid");
+            Check(connector.Channel.DescribeType().IO == MCCIOCapabilities.ByteStream &&
+                  connector.Protocol.Points.Count == 1, "Single configuration source");
+            connector.Channel = null;
+            CheckIssue(connector, "CHANNEL_REQUIRED");
+            connector.Channel = new MCCChannelConfiguration { Id = "tcp01", Kind = MCCChannelKind.TcpClient };
+            connector.Protocol.Kind = MPAProtocolKind.ModbusRtuDraft;
             CheckIssue(connector, "PROTOCOL_IO_MISMATCH");
-            connector.Protocols[0].Kind = MPAProtocolKind.ModbusTcpDraft;
-            connector.Points[0].ProtocolRef = "missing";
-            CheckIssue(connector, "POINT_PROTOCOL_MISSING");
-            connector.Points[0].ProtocolRef = "mod01";
+            connector.Protocol.Kind = MPAProtocolKind.ModbusTcpDraft;
+            connector.Protocol.Points[0].StationAddress = "256";
+            CheckIssue(connector, "PROTOCOL_INVALID");
+            connector.Protocol.Points[0].StationAddress = "1";
+            connector.Protocol.Mappings[0].PointRef = "missing";
+            CheckIssue(connector, "PROTOCOL_INVALID");
+            connector.Protocol.Mappings[0].PointRef = "T";
             Check(FCMConfigValidationEngine.Validate(connector, "test").IsValid, "Recovered connector");
 
             string root = Path.Combine(Path.GetTempPath(), "cxvisual-module-config-" + Guid.NewGuid().ToString("N"));
@@ -102,18 +99,17 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     service.ForScope("module", scopeId).Open<MCNConnectorConfiguration>();
                 MHSConfigCommitResult saved = module.UpdateAsync(model => {
                     model.DisplayName = connector.DisplayName;
-                    model.Channels = connector.Channels;
-                    model.Protocols = connector.Protocols;
-                    model.Points = connector.Points;
+                    model.Channel = connector.Channel;
+                    model.Protocol = connector.Protocol;
                 }, "首次模块配置", CancellationToken.None).GetAwaiter().GetResult();
-                Check(saved.Success && module.GetLatestSaved().Channels.Count == 1,
+                Check(saved.Success && module.GetLatestSaved().Channel.Id == "tcp01",
                     "MHS persisted annotated module options");
                 // 从新 MHS 服务重新打开真实磁盘修订，确保没有额外 ModuleConfigStore。
                 MHSConfigService reopened = new MHSConfigService(root);
                 MCNConnectorConfiguration restored = reopened.ForScope("module", scopeId)
                     .Open<MCNConnectorConfiguration>().GetLatestSaved();
-                Check(restored.Channels.Count == 1 && restored.Protocols.Count == 1 &&
-                    restored.Points.Count == 1 && restored.Points[0].TargetRef == "PLC.T",
+                Check(restored.Channel.Id == "tcp01" && restored.Protocol.Points.Count == 1 &&
+                    restored.Protocol.Mappings.Count == 1 && restored.Protocol.Mappings[0].TargetRef == "plc/T",
                     "Module configuration disk roundtrip");
                 Check(reopened.ForScope("module", scopeId).Open<MFMModuleIdentityConfig>()
                     .GetLatestSaved().Kind == MFMModuleKind.Connector, "Identity roundtrip");

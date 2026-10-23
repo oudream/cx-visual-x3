@@ -74,16 +74,11 @@ namespace CxVisual.TestCenter.UI
                     case MFMModuleKind.Connector:
                         pages = new[] {
                             new ModulePage("identity", "模块信息",
-                                new[] { "DisplayName", "Enabled", "CapabilityIds", "CompositionMode" }),
-                            new ModulePage("channels", "通道配置", new[] { "Channels" }),
-                            new ModulePage("protocols", "规约配置", new[] { "Protocols" }),
-                            new ModulePage("points", "变量与点表", new[] { "Points" }),
-                            new ModulePage("runtime", "运行参数",
-                                new[] { "Channels", "Protocols" },
-                                new[] { "身份", "执行" }),
-                            new ModulePage("advanced", "高级选项",
-                                new[] { "Channels", "Protocols" },
-                                new[] { "身份", "重连", "串口", "子通道", "绑定" })
+                                new[] { "DisplayName", "Enabled", "CapabilityIds" }),
+                            new ModulePage("channels", "通道配置", new[] { "Channel" }),
+                            new ModulePage("protocols", "规约配置", new[] { "Protocol" }),
+                            new ModulePage("points", "点表与数据映射", new[] { "Protocol" }),
+                            new ModulePage("runtime", "运行参数", new[] { "Channel", "Protocol" })
                         };
                         break;
                     case MFMModuleKind.Driver:
@@ -332,8 +327,9 @@ namespace CxVisual.TestCenter.UI
                         break;
                     case MFMModuleKind.Connector:
                         Attach(_service.ForScope("module", id).Open<MCNConnectorConfiguration>(), id, kind,
-                            model => "Channel " + model.Channels.Count + " / Protocol " + model.Protocols.Count +
-                                " / Points " + model.Points.Count);
+                            model => "Channel " + model.Channel.Id + " / Protocol " + model.Protocol.ProtocolTypeId +
+                                " / Points " + model.Protocol.Points.Count +
+                                " / Mappings " + model.Protocol.Mappings.Count);
                         break;
                     case MFMModuleKind.Compute:
                         Attach(_service.ForScope("module", id).Open<PVCComputeModuleConfiguration>(), id, kind,
@@ -367,21 +363,7 @@ namespace CxVisual.TestCenter.UI
             Func<T, string> extra) where T : MFMModuleConfiguration, new()
         {
             MPWConfigEditorControl<T> next = new MPWConfigEditorControl<T>(section);
-            if (typeof(T) == typeof(MCNConnectorConfiguration))
-                next.ConfigureReferenceChoices(path => {
-                    // 候选始终从当前正式Connector配置草稿计算，没有TestCenter点表副本。
-                    MCNConnectorConfiguration draft = (object)next.Draft as MCNConnectorConfiguration;
-                    if (draft == null) return null;
-                    if (path.StartsWith("Protocols[", StringComparison.Ordinal) &&
-                        path.EndsWith("].ChannelRef", StringComparison.Ordinal))
-                        return draft.Channels.Where(channel => channel != null)
-                            .Select(channel => channel.Id);
-                    if (path.StartsWith("Points[", StringComparison.Ordinal) &&
-                        path.EndsWith("].ProtocolRef", StringComparison.Ordinal))
-                        return draft.Protocols.Where(protocol => protocol != null)
-                            .Select(protocol => protocol.Id);
-                    return null;
-                });
+            // Connector 严格一通道一规约，Point 属于 Protocol；不存在 ChannelRef/ProtocolRef 选择器。
             IDisposable old = _activeEditor;
             _activeEditor = next;
             _draftGuard = next;

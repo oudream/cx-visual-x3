@@ -22,13 +22,11 @@ namespace CxVisual.Mechanism.Connectivity
         private readonly object _gate = new object();
         private MPAProtocolSessionState _state;
         private bool _disposed;
-        public MPAProtocolSession(MPAProtocolBinding binding, MCCSubChannelAddress channelAddress = null)
+        public MPAProtocolSession(MPAProtocolConfiguration binding, MCCSubChannelAddress channelAddress = null)
         {
             if (binding == null) throw new ArgumentNullException("binding");
             binding.Validate();
-            if (channelAddress != null && (!binding.RequiresChannel ||
-                !string.Equals(binding.ChannelRef, channelAddress.ChannelId, StringComparison.Ordinal)))
-                throw new ArgumentException("规约会话的 Channel 路由与绑定不一致");
+            // Connector 唯一绑定 Channel，Session 仅保留其运行地址；配置不保存第二份 ChannelRef。
             BindingId = binding.Id; ChannelAddress = channelAddress;
             SessionId = Guid.NewGuid().ToString("N"); _state = MPAProtocolSessionState.Created;
         }

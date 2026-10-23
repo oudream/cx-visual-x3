@@ -5,6 +5,8 @@ using System.Threading.Tasks;
 using CxVisual.Mechanism.Core.Modules;
 using CxVisual.Mechanism.Connectivity;
 using CxVisual.Mechanism.Data.Variables;
+using CxVisual.Mechanism.Data;
+using CxVisual.Mechanism.Data.RuntimeData;
 using CxVisual.Mechanism.Lifecycle.Modules;
 using CxVisual.Professional.Vision.Modules;
 using CxVisual.Professional.Simulation.Modules;
@@ -105,14 +107,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 MPAProtocolCapabilities.Interpret | MPAProtocolCapabilities.Read |
                 MPAProtocolCapabilities.Write | MPAProtocolCapabilities.RequestResponse,
                 MCCIOCapabilities.ByteStream);
-            MPAProtocolBinding binding = new MPAProtocolBinding("mod01", "modbus.tcp", "tcp01");
+            MPAProtocolConfiguration binding = new MPAProtocolConfiguration("mod01", "modbus.tcp");
             binding.ValidateCompatibility(modbus, tcp);
-            Reject<ArgumentException>(() => new MPAProtocolBinding("bad", "modbus.tcp", null, "peer01"));
-            Reject<ArgumentException>(() => new MPAProtocolBinding("bad", "modbus.tcp").
-                ValidateCompatibility(modbus, null));
-            Reject<ArgumentException>(() => new MPAProtocolBinding {
+            Reject<ArgumentException>(() => binding.ValidateCompatibility(modbus, null));
+            Reject<ArgumentException>(() => new MPAProtocolConfiguration {
                 Id = "bad", Kind = MPAProtocolKind.ModbusTcpDraft,
-                ChannelRef = "tcp01", ProcessingMode = MPAProtocolProcessingMode.Serial,
+                ProcessingMode = MPAProtocolProcessingMode.Serial,
                 MaxConcurrency = 2 }.Validate());
             MPAProtocolSession session = new MPAProtocolSession(binding, new MCCSubChannelAddress("tcp01"));
             Check(session.State == MPAProtocolSessionState.Created, "Session created");
@@ -124,76 +124,66 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(!new MPAProtocolOperationResult(MPAProtocolOperationStage.Sent).IsCompleted,
                 "Sent must not be treated as completed");
 
-            MCNPointTable table = new MCNPointTable();
-            MCNPointDefinition point = new MCNPointDefinition("temperature", "holding:100", typeof(ushort)) {
-                ProtocolRef = "mod01", TargetKind = MCNPointTargetKind.Variable, TargetRef = "PLC01.T"
-            };
-            table.Add(point);
-            Reject<ArgumentException>(() => table.Add(
-                new MCNPointDefinition("temperature", "holding:200", typeof(ushort))));
+            MPAPointTable pointTable = new MPAPointTable();
+            MPAPointDefinition point = new MPAPointDefinition("temperature", "holding:100", typeof(ushort))
+                { CanWrite = true, StationAddress = "1" };
+            pointTable.Add(point);
+            Reject<ArgumentException>(() => pointTable.Add(
+                new MPAPointDefinition("temperature", "holding:200", typeof(ushort))));
             MCNConnectorConfiguration connector = new MCNConnectorConfiguration {
-                DisplayName = "PLC", Channels = new List<MCCChannelConfiguration> { channel },
-                Protocols = new List<MPAProtocolBinding> { binding },
-                Points = new List<MCNPointDefinition> { point }
-            };
-            connector.Validate();
-            Check(connector.CompositionMode == MCNConnectorCompositionMode.Standard,
-                "Connector defaults to one Channel and one Protocol");
-            MCNConnectorConfiguration complex = new MCNConnectorConfiguration {
-                Channels = new List<MCCChannelConfiguration> {
-                    channel, new MCCChannelConfiguration { Id = "tcp02", Kind = MCCChannelKind.TcpClient }
-                },
-                Protocols = new List<MPAProtocolBinding> { binding }
-            };
-            Reject<ArgumentException>(() => complex.Validate());
-            complex.CompositionMode = MCNConnectorCompositionMode.Advanced;
-            complex.Validate();
-            complex.Protocols.Add(new MPAProtocolBinding("duplicate-route", "modbus.tcp", "tcp01"));
-            Reject<ArgumentException>(() => complex.Validate()); // 同一路径双规约不能争抢收包
-            complex.Protocols[1].ChannelRef = "tcp02";
-            complex.Validate();
-            connector.ValidateProtocolCapabilities(new Dictionary<string, MPAProtocolDescriptor>
-                { { "modbus.tcp", modbus } });
-            Reject<ArgumentException>(() => new MCNConnectorConfiguration {
-                Protocols = new List<MPAProtocolBinding> { binding } }.Validate());
-            Reject<ArgumentException>(() => new MCNConnectorConfiguration {
-                Channels = new List<MCCChannelConfiguration> { channel },
-                Protocols = new List<MPAProtocolBinding> { binding },
-                Points = new List<MCNPointDefinition> {
-                    new MCNPointDefinition { Name="missing", ProtocolRef="notfound",
-                        Address="holding:1",TargetRef="PLC.X" }
-                }}.Validate());
-            MCNConnectorConfiguration noChannel = new MCNConnectorConfiguration {
-                Protocols = new List<MPAProtocolBinding> {
-                    new MPAProtocolBinding("sdk-protocol", "internal")
+                DisplayName = "PLC", Channel = channel,
+                Protocol = new MPAProtocolConfiguration("mod01", "modbus.tcp") {
+                    Points = new List<MPAPointDefinition> { point }
                 }
             };
-            noChannel.ValidateProtocolCapabilities(new Dictionary<string, MPAProtocolDescriptor>
-                { { "internal", new MPAProtocolDescriptor("internal", "Internal", 1, MPAProtocolCapabilities.Interpret) } });
-            Reject<InvalidOperationException>(() => noChannel.ValidateProtocolCapabilities(
-                new Dictionary<string, MPAProtocolDescriptor>()));
+            connector.Validate();
+            Check(connector.Channel == channel && connector.Protocol.Points.Count == 1,
+                "Connector has one Channel and one Protocol");
+            connector.ValidateProtocolCapabilities(new Dictionary<string, MPAProtocolDescriptor>
+                { { "modbus.tcp", modbus } });
+            Reject<ArgumentException>(() => new MCNConnectorConfiguration { Channel = null }.Validate());
+            Reject<ArgumentException>(() => new MCNConnectorConfiguration { Protocol = null }.Validate());
+            MCNConnectorConfiguration empty = new MCNConnectorConfiguration();
+            empty.ValidateProtocolCapabilities(new Dictionary<string, MPAProtocolDescriptor>
+                { { "empty", new MPAEmptyProtocol().Descriptor } });
 
-            MCNPointDefinition stationOne = new MCNPointDefinition("reg1", "holding:1", typeof(ushort))
-                { ProtocolRef = "rtu", TargetRef = "device.1", StationAddress = "1" };
-            MCNPointDefinition stationTwo = new MCNPointDefinition("reg2", "holding:1", typeof(ushort))
-                { ProtocolRef = "rtu", TargetRef = "device.2", StationAddress = "2" };
+            MPAPointDefinition stationOne = new MPAPointDefinition("reg1", "holding:1", typeof(ushort))
+                { StationAddress = "1" };
+            MPAPointDefinition stationTwo = new MPAPointDefinition("reg2", "holding:1", typeof(ushort))
+                { StationAddress = "2" };
             MCNConnectorConfiguration multiStation = new MCNConnectorConfiguration {
-                Channels = new List<MCCChannelConfiguration> {
-                    new MCCChannelConfiguration { Id = "bus", Kind = MCCChannelKind.Serial, PortName = "COM3" }
-                },
-                Protocols = new List<MPAProtocolBinding> {
-                    new MPAProtocolBinding("rtu", "modbus.rtu", "bus")
-                },
-                Points = new List<MCNPointDefinition> { stationOne, stationTwo }
+                Channel = new MCCChannelConfiguration { Id = "bus", Kind = MCCChannelKind.Serial, PortName = "COM3" },
+                Protocol = new MPAProtocolConfiguration("rtu", "modbus.rtu") {
+                    Points = new List<MPAPointDefinition> { stationOne, stationTwo }
+                }
             };
             multiStation.Validate();
-            Check(multiStation.Channels.Count == 1 && multiStation.Protocols.Count == 1 &&
-                  multiStation.Points[0].StationAddress != multiStation.Points[1].StationAddress,
-                  "Two RS-485 stations stay in one Protocol PointTable");
+            Check(multiStation.Protocol.Points.Count == 2 &&
+                  multiStation.Protocol.Points[0].StationAddress != multiStation.Protocol.Points[1].StationAddress,
+                  "Multiple Modbus station addresses belong to a single Protocol PointTable");
             stationTwo.StationAddress = "256";
             Reject<ArgumentException>(() => multiStation.Validate());
             stationTwo.StationAddress = "2";
 
+            // 实际纯传输 Virtual 不解释长度帧：由独立 Protocol 解析拆分数据。
+            MCCVirtualRawChannel[] raw = MCCVirtualRawChannel.CreatePair("raw-tx", "raw-rx");
+            MPALengthFrameProtocol framed = new MPALengthFrameProtocol();
+            List<byte[]> parsed = new List<byte[]>();
+            raw[1].Received += received => {
+                foreach (byte[] payload in framed.ProcessReceived(received,
+                    new MPAProtocolContext("length", "session")))
+                    parsed.Add(payload);
+            };
+            raw[0].Open(); raw[1].Open();
+            byte[] encoded = framed.PrepareSend(new byte[] { 10, 20, 30 }, null);
+            raw[0].SendAsync(encoded.Take(3).ToArray(),
+                new MCCSubChannelAddress("raw-tx"), CancellationToken.None).GetAwaiter().GetResult();
+            raw[0].SendAsync(encoded.Skip(3).ToArray(),
+                new MCCSubChannelAddress("raw-tx"), CancellationToken.None).GetAwaiter().GetResult();
+            Check(parsed.Count == 1 && parsed[0].SequenceEqual(new byte[] { 10, 20, 30 }) &&
+                  raw[1].ReadFrames().All(x => x.DecodedPayload == null),
+                "Protocol owns frame parsing; Channel only transports raw chunks");
+            raw[0].Close(); raw[1].Close();
             MDSVariableRegistry registry = new MDSVariableRegistry();
             MDSVariableTable variables = new MDSVariableTable("plc01");
             registry.Register(variables);
@@ -215,6 +205,82 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(variables.Get<byte[]>("bytes")[0] == 5 && variables.Get<byte[]>("bytes")[1] == 6,
                 "Byte array variable isolation");
             Reject<ArgumentException>(() => registry.Register(variables));
+
+            MPAProtocolConfiguration mapProtocol = new MPAProtocolConfiguration {
+                Kind = MPAProtocolKind.Empty,
+                Points = new List<MPAPointDefinition> {
+                    new MPAPointDefinition("speed", "speed", typeof(double)) { CanWrite = true }
+                },
+                Mappings = new List<MPADataMapping> {
+                    new MPADataMapping { PointRef = "speed", TargetKind = MPADataTargetKind.Variable,
+                        TargetRef = "plc01/temperature", Operation = MPADataOperation.WriteValue,
+                        Direction = MPADataDirection.Inbound },
+                    new MPADataMapping { PointRef = "speed", TargetKind = MPADataTargetKind.Variable,
+                        TargetRef = "plc01/temperature", Operation = MPADataOperation.ReadValue,
+                        Direction = MPADataDirection.Outbound }
+                }
+            };
+            MPADataMappingExecutor mapping = new MPADataMappingExecutor(
+                new MDSProtocolDataTargetAccess(registry));
+            mapping.ApplyInboundAsync(mapProtocol, "speed", 55.0, CancellationToken.None)
+                .GetAwaiter().GetResult();
+            Check(variables.Get<double>("temperature") == 55.0, "Point mapped to real MDS variable");
+            object outbound = mapping.ReadOutboundAsync(mapProtocol, "speed", CancellationToken.None)
+                .GetAwaiter().GetResult();
+            Check((double)outbound == 55.0, "Outbound reads actual MDS variable");
+            mapProtocol.Mappings.Add(new MPADataMapping {
+                PointRef = "speed", TargetKind = MPADataTargetKind.Message,
+                TargetRef = "Alarm", Operation = MPADataOperation.PublishMessage
+            });
+            Reject<NotSupportedException>(() => mapping.ApplyInboundAsync(mapProtocol, "speed", 56.0,
+                CancellationToken.None).GetAwaiter().GetResult());
+
+            using (MDSDataHeap heap = new MDSDataHeap())
+            {
+                MPAProtocolConfiguration heapProtocol = new MPAProtocolConfiguration {
+                    Points = new List<MPAPointDefinition> { new MPAPointDefinition {
+                        Name = "heapValue", Address = "heap:1", CanWrite = true
+                    }},
+                    Mappings = new List<MPADataMapping> {
+                        new MPADataMapping { PointRef = "heapValue", TargetKind = MPADataTargetKind.DataHeap,
+                            TargetRef = "Run.Quality", Operation = MPADataOperation.WriteValue },
+                        new MPADataMapping { PointRef = "heapValue", TargetKind = MPADataTargetKind.DataHeap,
+                            TargetRef = "Run.Quality", Direction = MPADataDirection.Outbound,
+                            Operation = MPADataOperation.ReadValue }
+                    }
+                };
+                MPADataMappingExecutor heapMap = new MPADataMappingExecutor(
+                    new MDSProtocolDataTargetAccess(heap: heap));
+                heapMap.ApplyInboundAsync(heapProtocol, "heapValue", 42, CancellationToken.None)
+                    .GetAwaiter().GetResult();
+                Check(heap.Get<int>("Run.Quality") == 42 &&
+                    (int)heapMap.ReadOutboundAsync(heapProtocol, "heapValue", CancellationToken.None)
+                       .GetAwaiter().GetResult() == 42, "MDS Heap mapping actual read/write");
+            }
+            using (CxVisual.Mechanism.Data.Execution.MDEExecutionDataScope scope =
+                CxVisual.Mechanism.Data.Execution.MDEExecutionDataScope.CreateRoot("mapping-root"))
+            {
+                MDSDataContext frameContext = new MDSDataContext(scope);
+                MPAProtocolConfiguration stackProtocol = new MPAProtocolConfiguration {
+                    Points = new List<MPAPointDefinition> { new MPAPointDefinition {
+                        Name = "stackValue", Address = "stack:1", CanWrite = true
+                    }},
+                    Mappings = new List<MPADataMapping> {
+                        new MPADataMapping { PointRef = "stackValue", TargetKind = MPADataTargetKind.DataStack,
+                            TargetRef = "Node.Speed", Operation = MPADataOperation.WriteValue },
+                        new MPADataMapping { PointRef = "stackValue", TargetKind = MPADataTargetKind.DataStack,
+                            TargetRef = "Node.Speed", Direction = MPADataDirection.Outbound,
+                            Operation = MPADataOperation.ReadValue }
+                    }
+                };
+                MPADataMappingExecutor stackMap = new MPADataMappingExecutor(
+                    new MDSProtocolDataTargetAccess(frame: frameContext));
+                stackMap.ApplyInboundAsync(stackProtocol, "stackValue", 17, CancellationToken.None)
+                    .GetAwaiter().GetResult();
+                Check(frameContext.Get<int>("Node.Speed") == 17 &&
+                    (int)stackMap.ReadOutboundAsync(stackProtocol, "stackValue", CancellationToken.None)
+                       .GetAwaiter().GetResult() == 17, "MDS DataStack frame mapping actual read/write");
+            }
 
             MFMModuleDescriptor driverDescriptor =
                 new MFMModuleDescriptor("camera01", "X-Ray Camera", MFMModuleKind.Driver);

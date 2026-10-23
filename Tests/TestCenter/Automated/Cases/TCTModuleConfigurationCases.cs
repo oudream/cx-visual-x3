@@ -125,22 +125,16 @@ namespace CxVisual.TestCenter.Cases
         {
             MCNConnectorConfiguration config = new MCNConnectorConfiguration {
                 DisplayName = "Virtual Connector",
-                Channels = new System.Collections.Generic.List<MCCChannelConfiguration> {
-                    new MCCChannelConfiguration { Id = "virtual01", Kind = MCCChannelKind.Virtual }
-                },
-                Protocols = new System.Collections.Generic.List<MPAProtocolBinding> {
-                    new MPAProtocolBinding {
-                        Id = "length01", Kind = MPAProtocolKind.LengthFrame, ChannelRef = "virtual01"
-                    }
-                }
+                Channel = new MCCChannelConfiguration { Id = "virtual01", Kind = MCCChannelKind.Virtual },
+                Protocol = new MPAProtocolConfiguration { Id = "length01", Kind = MPAProtocolKind.LengthFrame }
             };
             MFMModuleDescriptor identity = config.Describe("ModuleVirtual01", MFMModuleKind.Connector);
             MCCVirtualChannel[] pair = MCCVirtualChannel.CreatePair("virtual01", "virtualPeer");
             MPALengthFrameDefinition protocol = new MPALengthFrameDefinition();
             MCNConnectorModule module = new MCNConnectorModule(identity, config,
-                new IMCCChannel[] { pair[0] }, new IMPAProtocolDefinition[] { protocol });
+                pair[0], protocol);
             test.AssertTrue(module.Descriptor.Id == "ModuleVirtual01" &&
-                module.Channels.Count == 1 && module.Protocols.Count == 1 &&
+                module.Channel == pair[0] && module.Protocol == protocol &&
                 module.Points.Count == 0 && pair[0].State == MCCChannelState.Closed,
                 "装配只绑定正式生产实例，不会提前启动或生成点表值", true, true);
 
@@ -162,13 +156,13 @@ namespace CxVisual.TestCenter.Cases
             try
             {
                 new MCNConnectorModule(identity, config,
-                    new IMCCChannel[0], new IMPAProtocolDefinition[] { protocol });
+                    null, protocol);
             }
-            catch (InvalidOperationException) { missingRejected = true; }
+            catch (ArgumentNullException) { missingRejected = true; }
             test.AssertTrue(missingRejected, "缺失Channel Provider必须拒绝装配", true, missingRejected);
 
             bool physicalRejected = false;
-            config.Channels[0].Kind = MCCChannelKind.TcpClient;
+            config.Channel.Kind = MCCChannelKind.TcpClient;
             try
             {
                 new MCNConnectorModule(identity, config,
@@ -179,19 +173,27 @@ namespace CxVisual.TestCenter.Cases
         }
 
         [TCTTest("TCT.MODULE.CONFIG.002",
-            "Connector悬空点引用与重复通道Id不能通过生产Validator",
+            "Connector 缺少 Channel/Protocol 与无效点映射必须拒绝",
             TCTTestAspect.Integration, "TestCenter / Manual / Module",
             ObjectId = "MCNConnectorConfiguration")]
         public static void ConnectorRejection(TCTTestContext test)
         {
             MCNConnectorConfiguration config = new MCNConnectorConfiguration();
-            config.Channels.Add(new MCCChannelConfiguration { Id = "C1" });
-            config.Channels.Add(new MCCChannelConfiguration { Id = "C1" });
-            FCMConfigValidationReport result =
-                FCMConfigValidationEngine.Validate(config, "module:invalid");
-            bool duplicate = result.Issues.Any(x => x.Code == "CHANNEL_DUPLICATE_OR_EMPTY");
-            test.AssertTrue(!result.IsValid && duplicate,
-                "FCM正式Validator拒绝重复通道", true, duplicate);
+            config.Channel = null;
+            FCMConfigValidationReport invalid = FCMConfigValidationEngine.Validate(config, "module:invalid");
+            bool noChannel = invalid.Issues.Any(x => x.Code == "CHANNEL_REQUIRED");
+            test.AssertTrue(!invalid.IsValid && noChannel,
+                "必须配置单一 Channel", true, noChannel);
+            config.Channel = new MCCChannelConfiguration();
+            config.Protocol.Points.Add(new MPAPointDefinition { Name = "alarm", Address = "alarm" });
+            config.Protocol.Mappings.Add(new MPADataMapping {
+                PointRef = "missing", TargetRef = "plc/alarm",
+                TargetKind = MPADataTargetKind.Variable, Operation = MPADataOperation.WriteValue
+            });
+            invalid = FCMConfigValidationEngine.Validate(config, "module:invalid");
+            bool noPoint = invalid.Issues.Any(x => x.Code == "PROTOCOL_INVALID");
+            test.AssertTrue(!invalid.IsValid && noPoint,
+                "映射点引用不存在应拒绝", true, noPoint);
         }
     }
 }
