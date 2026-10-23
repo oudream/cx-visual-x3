@@ -208,9 +208,14 @@ namespace CxVisual.TestCenter.UI
                 if (insertPoint == null)
                     throw new InvalidOperationException("PointTable 正式集合新增命令不可操作");
                 insertPoint.Invoke();
-                AutomationElement pointName = Find(root, "MPW.Edit.Protocol.Points[0].Name");
-                if (pointName.GetCurrentPattern(ValuePattern.Pattern) == null)
-                    throw new InvalidOperationException("新增点表后Name没有真实可编辑输入框");
+                window.Dispatcher.Invoke(new Action(() => {
+                    System.Windows.Controls.TextBox pointName =
+                        FindWpfByAutomationId<System.Windows.Controls.TextBox>(
+                            window, "MPW.Edit.Protocol.Points[0].Name");
+                    if (pointName == null || !pointName.IsEnabled)
+                        throw new InvalidOperationException("新增点表后缺少真实Name输入框");
+                    SaveScreenshot(window, "TestCenter-Protocol-P0-PointAdded.png");
+                }));
                 window.Dispatcher.Invoke(new Action(() => {
                     System.Windows.Controls.TabControl tabs =
                         window.DocumentHost.Content as System.Windows.Controls.TabControl;
@@ -237,10 +242,14 @@ namespace CxVisual.TestCenter.UI
                     if (!frame.StatusMessage.Contains("配置存在"))
                         throw new InvalidOperationException("空DataMapping没有被正式FCM拒绝");
                 }));
-                AutomationElement pointReference = Find(root, "MPW.Reference.Protocol.Mappings[0].PointRef");
-                ValuePattern refValue = pointReference.GetCurrentPattern(ValuePattern.Pattern) as ValuePattern;
-                if (refValue == null)
-                    throw new InvalidOperationException("PointRef不存在可编辑的正式点表候选");
+                window.Dispatcher.Invoke(new Action(() => {
+                    System.Windows.Controls.ComboBox reference =
+                        FindWpfByAutomationId<System.Windows.Controls.ComboBox>(
+                            window, "MPW.Reference.Protocol.Mappings[0].PointRef");
+                    if (reference == null || !reference.IsEditable)
+                        throw new InvalidOperationException("PointRef没有正式点表候选ComboBox");
+                    SaveScreenshot(window, "TestCenter-Protocol-P0-MappingAdded.png");
+                }));
                 // ComboBox/TextBox的焦点事件交给WPF UI线程，以免UIA COM调用过程中
                 // MPW重新投影销毁被自动化操作的控件，导致线程互等/超时。
                 window.Dispatcher.Invoke(new Action(() => {
