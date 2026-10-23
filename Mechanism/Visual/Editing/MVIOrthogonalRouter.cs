@@ -16,7 +16,7 @@ namespace CxVisual.Mechanism.Visual
         // 每增加一次水平/竖直转弯的代价，优先减少过密折角。
         private const double BendCost=12.0;
         private const double Epsilon=1e-7;
-        private const int MaxRoutingObstacles=32;
+        private const int MaxRoutingObstacles=48;
         // 防止在鼠标拖动/场景重投影时构造无限大的搜索空间。
         private const int MaxGridNodes=20000;
 
@@ -180,10 +180,24 @@ namespace CxVisual.Mechanism.Visual
         private static IReadOnlyList<FGEPoint2D> Find(FGEPoint2D start,
             FGEPoint2D end,List<FGERect2D> all)
         {
-            // 明确有界：避免复杂工程中每一帧因过量网格路由而冻结UI。
+            // 先使用走廊附近24个障碍，候选路径仍须校验全部障碍。
+            // 遇到被漏选的障碍则扩到48个，兼顾大量图元场景的性能。
             var sorted=all.OrderBy(r=>DistanceToCorridor(r,start,end))
-                .ThenBy(r=>r.Left).ThenBy(r=>r.Top).ToList();
-            var active=sorted.Take(MaxRoutingObstacles).ToList();
+                .ThenBy(r=>r.Left).ThenBy(r=>r.Top)
+                .ThenBy(r=>r.Right).ThenBy(r=>r.Bottom).ToList();
+            foreach(int limit in new[]{24,MaxRoutingObstacles})
+            {
+                var candidate=FindGrid(start,end,sorted.Take(limit).ToList());
+                if(candidate!=null&&Clear(candidate,all))return candidate;
+                if(limit>=all.Count)break;
+            }
+            return null;
+        }
+
+        /// <summary>有限网格Dijkstra搜索；状态包含进入方向，距离与转弯代价共同决定优先级。</summary>
+        private static IReadOnlyList<FGEPoint2D> FindGrid(FGEPoint2D start,
+            FGEPoint2D end,List<FGERect2D> active)
+        {
             var xs=new SortedSet<double>{start.X,end.X,(start.X+end.X)/2};
             var ys=new SortedSet<double>{start.Y,end.Y,(start.Y+end.Y)/2};
             foreach(FGERect2D r in active)
@@ -246,8 +260,8 @@ namespace CxVisual.Mechanism.Visual
             }
             reverse.Reverse();
             IReadOnlyList<FGEPoint2D> answer=Compact(reverse);
-            // 即使启用了有界候选集，也不得穿过被截去的真实障碍物。
-            return Clear(answer,all)?answer:null;
+            // 调用方再次与所有障碍复核，当前层只负责候选路径的几何寻路。
+            return answer;
         }
     }
 }
