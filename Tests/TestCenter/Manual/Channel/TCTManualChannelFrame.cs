@@ -83,7 +83,7 @@ namespace CxVisual.TestCenter.UI
                     new TCTWorkspaceAction("send", "发送Virtual数据", Send, () => IsConnected),
                     new TCTWorkspaceAction("channel.validate", "检查正式Channel拓扑", ValidateTopology),
                     new TCTWorkspaceAction("channel.register-peer", "登记离线SubChannel",
-                        RegisterSubChannel, () => SelectedTopology == MCCChannelTopology.MultiPeer),
+                        () => { RegisterSubChannel(); }, () => SelectedTopology == MCCChannelTopology.MultiPeer),
                     new TCTWorkspaceAction("channel.remove-peer", "移除所选SubChannel",
                         RemoveSelectedSubChannel, () => SelectedTopology == MCCChannelTopology.MultiPeer &&
                             _peerList.SelectedItem != null),
