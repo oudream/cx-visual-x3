@@ -556,6 +556,8 @@ namespace CxVisual.Mechanism.Core
             MEMNodeSnapshot node=session.GetSnapshot().Find(content.Id);
             if(node==null||node.Kind!=MEMNodeKind.Content)
                 throw new InvalidOperationException("logic.convert.foreign_content");
+            if(node.Ports.Count!=0||node.PublicMappings.Count!=0||node.Connections.Count!=0)
+                throw new InvalidOperationException("logic.convert.not_lossless");
             MOLWiringDefinition wired=MOLWiringCodec.Get(node);
             if(wired==null)throw new InvalidOperationException("logic.convert.requires_v2");
             if(wired.Blocks.Count!=1||wired.Links.Count!=0||wired.Positions.Count!=0||
@@ -1481,6 +1483,8 @@ namespace CxVisual.Mechanism.Core
             MEMNodeSnapshot node=session.GetSnapshot().Find(content.Id);
             if(node==null||node.Kind!=MEMNodeKind.Content)
                 throw new InvalidOperationException("wiring.convert.foreign_content");
+            if(node.Ports.Count!=0||node.PublicMappings.Count!=0||node.Connections.Count!=0)
+                throw new InvalidOperationException("wiring.convert.not_lossless");
             MOLLogicDefinition structured=MOLLogicCodec.Get(node);
             if(structured==null)throw new InvalidOperationException("wiring.convert.requires_v1");
             MOLControlBlock action=structured.Root;
