@@ -365,6 +365,27 @@ namespace CxVisual.Tests.ArchitectureSmoke
         /// <summary>D2/D3：最小等价子集可转换；有关系的复杂工程必须保持原载荷。</summary>
         private static void MOLLosslessSchemaConversion()
         {
+            // D2：Break/Continue是循环作用域的声明，不可从根或任意分支逃逸。
+            bool outOfScope=false;
+            try{new MOLLogicDefinition(new MOLControlBlock(Guid.NewGuid(),
+                MOLControlKind.Exit,exitKind:MOLExitKind.Break));}
+            catch(InvalidOperationException ex)
+            {outOfScope=ex.Message=="logic.exit_outside_loop";}
+            Check(outOfScope,"MOL accepted Break outside any loop");
+            outOfScope=false;
+            try{new MOLLogicDefinition(MOLControlBlock.If(
+                MOLExpression.Always(true),
+                new MOLControlBlock(Guid.NewGuid(),MOLControlKind.Exit,
+                    exitKind:MOLExitKind.Continue)));}
+            catch(InvalidOperationException ex)
+            {outOfScope=ex.Message=="logic.exit_outside_loop";}
+            Check(outOfScope,"MOL accepted Continue outside loop from a branch");
+            new MOLLogicDefinition(MOLControlBlock.Each("samples",3,
+                MOLControlBlock.TryCatchFinally(
+                    new MOLControlBlock(Guid.NewGuid(),MOLControlKind.Exit,
+                        exitKind:MOLExitKind.Break),
+                    finallyBody:MOLControlBlock.Action("Release"))));
+
             var session=MEMEngineering.Create("MOL无损Schema迁移");
             MEMPage page=session.AddPage("Main");
             MOLControlBlock action=MOLControlBlock.Action("Inspect");
