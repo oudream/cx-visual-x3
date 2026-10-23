@@ -434,6 +434,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                     FontSize = _workspaceCompact ? 16 : 15,
                     Margin = _workspaceCompact ? new Thickness(0, 0, 0, 4) : new Thickness(0),
                     VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+                System.Windows.Automation.AutomationProperties.SetAutomationId(caption, "MPW.Label." + path);
                 line.Children.Add(caption);
                 Func<string, Action<string>, FrameworkElement> custom;
                 if (_custom.TryGetValue(path, out custom))
@@ -446,6 +447,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 {
                     CheckBox box = new CheckBox { IsChecked = value == null ? (bool?)null : (bool)value,
                         IsThreeState = Nullable.GetUnderlyingType(type) != null, VerticalAlignment = VerticalAlignment.Center };
+                    System.Windows.Automation.AutomationProperties.SetAutomationId(box, "MPW.Edit." + path);
                     box.Click += (s, e) => Execute(() => _editor.SetPathJson(path,
                         box.IsChecked.HasValue ? (box.IsChecked.Value ? "true" : "false") : "null"));
                     line.Children.Add(box);
@@ -458,6 +460,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                         HorizontalAlignment = _workspaceCompact ? HorizontalAlignment.Stretch : HorizontalAlignment.Left,
                         ItemsSource = Enum.GetNames(actual),
                         SelectedItem = value == null ? null : value.ToString() };
+                    System.Windows.Automation.AutomationProperties.SetAutomationId(box, "MPW.Edit." + path);
                     box.SelectionChanged += (s, e) => {
                         if (box.SelectedItem != null) Execute(() => _editor.SetPathJson(path,
                             FCMJsonValueCodec.Serialize((string)box.SelectedItem)));
@@ -481,6 +484,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                             ToolTip = "来自当前正式配置草稿的引用候选；仍可输入值，由FCM验证有效性" };
                         System.Windows.Automation.AutomationProperties.SetAutomationId(choice,
                             "MPW.Reference." + path);
+                        choice.SelectionChanged += (s, e) => {
+                            if (choice.SelectedItem != null &&
+                                !string.Equals((string)choice.SelectedItem, Format(value), StringComparison.Ordinal))
+                                Execute(() => _editor.SetPathJson(path,
+                                    FCMJsonValueCodec.Serialize((string)choice.SelectedItem)));
+                        };
                         choice.LostKeyboardFocus += (s, e) => {
                             if (!string.Equals(choice.Text, Format(value), StringComparison.Ordinal))
                                 Execute(() => _editor.SetPathJson(path,
@@ -495,8 +504,11 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                             MaxWidth = _workspaceCompact ? 420 : double.PositiveInfinity,
                             HorizontalAlignment = _workspaceCompact ? HorizontalAlignment.Stretch : HorizontalAlignment.Left,
                             Text = Format(value), Padding = new Thickness(5, 3, 5, 3) };
-                        box.LostFocus += (s, e) => Execute(() => _editor.SetPathJson(path,
-                            ToConfigJson(box.Text, type)));
+                        System.Windows.Automation.AutomationProperties.SetAutomationId(box, "MPW.Edit." + path);
+                        box.LostFocus += (s, e) => {
+                            if (!string.Equals(box.Text, Format(value), StringComparison.Ordinal))
+                                Execute(() => _editor.SetPathJson(path, ToConfigJson(box.Text, type)));
+                        };
                         line.Children.Add(box);
                     }
                     if (Nullable.GetUnderlyingType(type) != null)
@@ -664,8 +676,11 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                         _editor.MoveListItem(path, index, Math.Max(0, index - 1)))));
                     actions.Children.Add(MakeButton("↓", () => Execute(() =>
                         _editor.MoveListItem(path, index, Math.Min(list.Count - 1, index + 1)))));
-                    actions.Children.Add(MakeButton("删除", () => Execute(() =>
-                        _editor.RemoveListItem(path, index))));
+                    Button remove = MakeButton("删除", () => Execute(() =>
+                        _editor.RemoveListItem(path, index)));
+                    System.Windows.Automation.AutomationProperties.SetAutomationId(remove,
+                        "MPW.Collection.Remove." + child);
+                    actions.Children.Add(remove);
                     host.Children.Add(actions);
                 }
                 RenderValue(host, args[0], list[i], child, "第 " + i + " 项", depth, false, null);
