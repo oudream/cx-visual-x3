@@ -1263,9 +1263,12 @@ namespace CxVisual.Mechanism.Core
                 s.EntryCapability.Length>0||s.ExitCapability.Length>0));
         }
         public static MPMAspect CreateAspect(MOLWiringDefinition definition)
-        {return new MPMAspect(MPMAspectKind.Logic,MOLLogicCodec.ProviderId,
+        {
+            if(definition==null)throw new ArgumentNullException("definition");
+            return new MPMAspect(MPMAspectKind.Logic,MOLLogicCodec.ProviderId,
             NeedsExtendedSchema(definition)?ExtendedSchemaVersion:SchemaVersion,
-            Serialize(definition));}
+            Serialize(definition));
+        }
         /// <summary>仅无损转换单一V1 Action；复杂结构返回明确信息并保持原定义。</summary>
         public static void ConvertFromV1(MEMEngineeringSession session,MEMContent content)
         {
@@ -1485,6 +1488,10 @@ namespace CxVisual.Mechanism.Core
                         throw new InvalidDataException("wiring.state_machine_schema");
                     Guid id=ReadGuid(machine,"block");
                     var states=machine.Element("States").Elements("State").Select(state=>{
+                        if(state.Attributes().Any(a=>a.Name!="id"&&a.Name!="region"&&
+                           a.Name!="parent"&&a.Name!="initial"&&
+                           a.Name!="onEntry"&&a.Name!="onExit"))
+                            throw new InvalidDataException("wiring.state.unknown_field");
                         if(version=="2"&&(state.Attribute("onEntry")!=null||
                             state.Attribute("onExit")!=null))
                             throw new InvalidDataException("wiring.state_action_requires_v3");
