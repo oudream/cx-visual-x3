@@ -355,6 +355,32 @@ namespace CxVisual.Tests.ArchitectureSmoke
                             doc.Revision==lockedRevision,
                             "P0 locked child must reject entire multi-transform without partial edit");
                         doc.SetLocked(a,false);
+                        // P0：旋转Group中的两个对象须以选区世界坐标为基准吸附，
+                        // 不能分别吸附各自的局部X/Y，否则相互距离会被改变。
+                        var snapBeforeA=editor.Scene.Single(x=>x.Id==a.Id).Bounds;
+                        var snapBeforeB=editor.Scene.Single(x=>x.Id==b.Id).Bounds;
+                        var snapBox=MVISelectionTransform.Bounds(new[]{
+                            editor.Scene.Single(x=>x.Id==a.Id),
+                            editor.Scene.Single(x=>x.Id==b.Id)});
+                        double expectedDx=Math.Round((snapBox.Left+33)/25)*25-snapBox.Left;
+                        double expectedDy=Math.Round((snapBox.Top+19)/25)*25-snapBox.Top;
+                        int beforeSnap=doc.Revision;
+                        Check(editor.MoveSelection(new[]{a.Id,b.Id},33,19,true).Success&&
+                            doc.Revision==beforeSnap+1,
+                            "P0 world-snap group move must be one transaction");
+                        var snapAfterA=editor.Scene.Single(x=>x.Id==a.Id).Bounds;
+                        var snapAfterB=editor.Scene.Single(x=>x.Id==b.Id).Bounds;
+                        Check(Math.Abs(snapAfterA.Left-snapBeforeA.Left-expectedDx)<1e-5&&
+                            Math.Abs(snapAfterB.Left-snapBeforeB.Left-expectedDx)<1e-5&&
+                            Math.Abs(snapAfterA.Top-snapBeforeA.Top-expectedDy)<1e-5&&
+                            Math.Abs(snapAfterB.Top-snapBeforeB.Top-expectedDy)<1e-5,
+                            "P0 rotation Group world snap changed inter-object distance");
+                        Check(editor.Undo().Success&&
+                            Math.Abs(editor.Scene.Single(x=>x.Id==a.Id).Bounds.Left-
+                                snapBeforeA.Left)<1e-5&&
+                            Math.Abs(editor.Scene.Single(x=>x.Id==b.Id).Bounds.Top-
+                                snapBeforeB.Top)<1e-5,
+                            "P0 world snapping must Undo both rotated children together");
                         doc.SaveAs(path);
                     }
                 }
