@@ -231,6 +231,11 @@ namespace CxVisual.TestCenter.UI
             TCTCreatedWorkspace record = _createdWorkspaces.Items.FirstOrDefault(x => x.Id == instanceId);
             return record == null ? null : record.ConfigurationId;
         }
+        public TCTWorkspaceDescriptor FindOpenCreatedInstance(string templateId)
+        {
+            return _workspaces.Items.LastOrDefault(x => x.IsCreatedInstance &&
+                x.TemplateId == templateId && DocumentHost.HasWorkspace(x.WorkspaceId));
+        }
         public TCTWorkspaceDescriptor FindCreatedInstance(string templateId)
         {
             return _workspaces.Items.FirstOrDefault(x => x.IsCreatedInstance &&

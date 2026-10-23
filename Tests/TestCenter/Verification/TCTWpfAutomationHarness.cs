@@ -75,7 +75,7 @@ namespace CxVisual.TestCenter.UI
                 await Task.Run(() => InteractModuleKind(hwnd, window, kind));
                 SaveScreenshot(window, "TestCenter-Module-" + kind + ".png");
                 window.Dispatcher.Invoke(new Action(() => {
-                    TCTWorkspaceDescriptor item = window.FindCreatedInstance(
+                    TCTWorkspaceDescriptor item = window.FindOpenCreatedInstance(
                         "manual.module." + kind.ToString().ToLowerInvariant());
                     if (item == null || !window.DocumentHost.CloseWorkspace(item.WorkspaceId))
                         throw new InvalidOperationException("Module instance tab did not close");
