@@ -313,11 +313,14 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                         BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(3),
                         Margin = new Thickness(0, 0, 9, 5), Padding = new Thickness(10) };
                     StackPanel items = new StackPanel();
-                    items.Children.Add(new TextBlock {
+                    TextBlock title = new TextBlock {
                         Text = titles[column], FontSize = 14,
                         FontWeight = FontWeights.SemiBold, Foreground = Brushes.MidnightBlue,
                         Background = Brushes.AliceBlue, Padding = new Thickness(7, 7, 7, 7),
-                        Margin = new Thickness(0, 0, 0, 10) });
+                        Margin = new Thickness(0, 0, 0, 10) };
+                    System.Windows.Automation.AutomationProperties.SetAutomationId(title,
+                        "MPW.Channel.SchemaCards." + column);
+                    items.Children.Add(title);
                     foreach (FCMConfigMemberDescriptor member in members)
                     {
                         FCMConfigItemAttribute attr = member.Property.GetCustomAttributes(
