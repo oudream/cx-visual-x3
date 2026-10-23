@@ -185,6 +185,46 @@ namespace CxVisual.Tests.ArchitectureSmoke
                   raw[1].ReadFrames().All(x => x.DecodedPayload == null),
                 "Protocol owns frame parsing; Channel only transports raw chunks");
             raw[0].Close(); raw[1].Close();
+
+            // Connector 实例与纯传输 Channel / Protocol 的实际入站闭环。
+            MCNConnectorConfiguration streamConfig = new MCNConnectorConfiguration {
+                DisplayName = "分帧连接",
+                Channel = new MCCChannelConfiguration { Id = "raw-tx", Kind = MCCChannelKind.Virtual },
+                Protocol = new MPAProtocolConfiguration { Kind = MPAProtocolKind.LengthFrame }
+            };
+            MCNConnectorModule streamModule = new MCNConnectorModule(
+                streamConfig.Describe("stream", MFMModuleKind.Connector), streamConfig,
+                raw[0], new MPALengthFrameProtocol());
+            List<byte[]> assembled = new List<byte[]>();
+            streamModule.PayloadReceived += x => assembled.Add(x);
+            raw[1].Open();
+            streamModule.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
+            byte[] dataFrame = new MPALengthFrameProtocol().PrepareSend(new byte[] { 7, 8 }, null);
+            raw[1].SendAsync(dataFrame, new MCCSubChannelAddress("raw-rx"),
+                CancellationToken.None).GetAwaiter().GetResult();
+            Check(assembled.Count == 1 && assembled[0].SequenceEqual(new byte[] { 7, 8 }),
+                "Connector receives and delegates parsing to Protocol");
+            streamModule.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+            raw[1].Close();
+
+            MCCVirtualRawChannel[] emptyPair = MCCVirtualRawChannel.CreatePair("empty-tx", "empty-rx");
+            MCNConnectorConfiguration emptyCfg = new MCNConnectorConfiguration {
+                Channel = new MCCChannelConfiguration { Id = "empty-tx", Kind = MCCChannelKind.Virtual },
+                Protocol = new MPAProtocolConfiguration { Kind = MPAProtocolKind.Empty }
+            };
+            MCNConnectorModule emptyModule = new MCNConnectorModule(
+                emptyCfg.Describe("pass", MFMModuleKind.Connector), emptyCfg,
+                emptyPair[0], new MPAEmptyProtocol());
+            byte[] passthrough = null;
+            emptyModule.PayloadReceived += x => passthrough = x;
+            emptyPair[1].Open();
+            emptyModule.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
+            emptyPair[1].SendAsync(new byte[] { 3, 4, 5 }, new MCCSubChannelAddress("empty-rx"),
+                CancellationToken.None).GetAwaiter().GetResult();
+            Check(passthrough != null && passthrough.SequenceEqual(new byte[] { 3, 4, 5 }),
+                "Empty Protocol transparently passes data, not an Empty Channel");
+            emptyModule.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+            emptyPair[1].Close();
             MDSVariableRegistry registry = new MDSVariableRegistry();
             MDSVariableTable variables = new MDSVariableTable("plc01");
             registry.Register(variables);

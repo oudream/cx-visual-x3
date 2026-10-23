@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using CxVisual.Mechanism.Core.Modules;
 
 namespace CxVisual.Mechanism.Connectivity
@@ -42,6 +44,74 @@ namespace CxVisual.Mechanism.Connectivity
         public IMCCChannel Channel { get; private set; }
         public IMPAProtocolDefinition Protocol { get; private set; }
         public IReadOnlyList<MPAPointDefinition> Points { get; private set; }
+        private readonly object _lifecycleGate = new object();
+        private bool _started;
+        public event Action<byte[]> PayloadReceived;
+        public bool IsStarted { get { lock (_lifecycleGate) return _started; } }
+
+        // 不创建私有线程或运行队列；直接调已装配的 Channel/Protocol Owner。
+        public async Task StartAsync(CancellationToken ct)
+        {
+            IMCCChannelTransport transport = Channel as IMCCChannelTransport;
+            if (transport == null || !(Protocol is IMPAProtocol))
+                throw new NotSupportedException("尚未装配可执行的 Channel/Protocol 组合");
+            lock (_lifecycleGate)
+            {
+                if (_started) throw new InvalidOperationException("Connector 已经启动");
+                _started = true;
+            }
+            transport.Received += HandleReceived;
+            try { await transport.OpenAsync(ct).ConfigureAwait(false); }
+            catch
+            {
+                transport.Received -= HandleReceived;
+                lock (_lifecycleGate) _started = false;
+                throw;
+            }
+        }
+
+        public async Task StopAsync(CancellationToken ct)
+        {
+            IMCCChannelTransport transport = Channel as IMCCChannelTransport;
+            if (transport == null) throw new NotSupportedException("通道不支持生命周期");
+            lock (_lifecycleGate)
+            {
+                if (!_started) throw new InvalidOperationException("Connector 尚未启动");
+                _started = false;
+            }
+            transport.Received -= HandleReceived;
+            await transport.CloseAsync(ct).ConfigureAwait(false);
+        }
+
+        private void HandleReceived(MCCChannelReceiveContext received)
+        {
+            IMPAProtocol processor = (IMPAProtocol)Protocol;
+            var context = new MPAProtocolContext(Configuration.Protocol.Id, Channel.SessionId.ToString("N"),
+                received.Address, received.CorrelationId);
+            foreach (byte[] payload in processor.ProcessReceived(received, context))
+            {
+                Action<byte[]> handler = PayloadReceived;
+                if (handler != null) handler((byte[])payload.Clone());
+            }
+        }
+
+        public async Task SendPayloadAsync(byte[] payload, CancellationToken ct)
+        {
+            IMPAProtocol processor = Protocol as IMPAProtocol;
+            IMCCChannelTransport channel = Channel as IMCCChannelTransport;
+            if (processor == null || channel == null) throw new NotSupportedException("不支持实时规约收发");
+            if (!IsStarted) throw new InvalidOperationException("Connector 尚未启动");
+            byte[] bytes = processor.PrepareSend(payload, new MPAProtocolContext(
+                Configuration.Protocol.Id, Channel.SessionId.ToString("N")));
+            await channel.SendAsync(bytes, new MCCSubChannelAddress(Channel.Id), ct).ConfigureAwait(false);
+        }
+
+        public Task ApplyPointValueAsync(string point, object value, IMPADataTargetAccess access, CancellationToken ct)
+        { return new MPADataMappingExecutor(access).ApplyInboundAsync(Configuration.Protocol, point, value, ct); }
+
+        public Task<object> ReadPointValueAsync(string point, IMPADataTargetAccess access, CancellationToken ct)
+        { return new MPADataMappingExecutor(access).ReadOutboundAsync(Configuration.Protocol, point, ct); }
+
         public void SendPayload(byte[] payload, string correlationId = null)
         {
             IMPAProtocol processor = Protocol as IMPAProtocol;

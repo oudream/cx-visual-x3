@@ -141,26 +141,16 @@ namespace CxVisual.TestCenter.UI
                 }
                 if (!rendered) throw new InvalidOperationException(
                     "MCCChannelConfiguration three-column Schema editor not rendered");
-                // 同一通用MPW可编辑规约的Channel引用，候选来自正式Channels。
                 window.Dispatcher.Invoke(new Action(() => {
                     System.Windows.Controls.TabControl tabs =
                         window.DocumentHost.Content as System.Windows.Controls.TabControl;
-                    tabs.Items.OfType<System.Windows.Controls.TabItem>().Select(x => x.Content)
-                        .OfType<TCTManualModuleFrame>().Single().SelectModulePage("protocols");
-                }));
-                InvokePattern addProtocol = Find(root, "MPW.Collection.Add.Protocols")
-                    .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
-                if (addProtocol == null) throw new InvalidOperationException(
-                    "正式Protocol列表不能添加配置");
-                addProtocol.Invoke();
-                AutomationElement choices = Find(root, "MPW.Reference.Protocols[0].ChannelRef");
-                if (choices.Current.ControlType != ControlType.ComboBox)
-                    throw new InvalidOperationException("通道引用未提供正式草稿的动态可编辑选择器");
-                window.Dispatcher.Invoke(new Action(() => {
-                    System.Windows.Controls.TabControl tabs =
-                        window.DocumentHost.Content as System.Windows.Controls.TabControl;
-                    tabs.Items.OfType<System.Windows.Controls.TabItem>().Select(x => x.Content)
-                        .OfType<TCTManualModuleFrame>().Single().SelectModulePage("channels");
+                    TCTManualModuleFrame frame = tabs.Items
+                        .OfType<System.Windows.Controls.TabItem>().Select(x => x.Content)
+                        .OfType<TCTManualModuleFrame>().Single();
+                    frame.SelectModulePage("protocols");
+                    if (frame.SelectedModulePage != "protocols" || frame.VisibleSchemaEditorCount < 3)
+                        throw new InvalidOperationException("Protocol 配置 Schema 未显示");
+                    frame.SelectModulePage("channels");
                 }));
                 // MPW按Tab动态投影重新生成控件，切换后必须重新获取本页的UIA元素。
                 // 旧Tab已卸载的卡片对象可能返回IsOffscreen，不能误报为布局回退。

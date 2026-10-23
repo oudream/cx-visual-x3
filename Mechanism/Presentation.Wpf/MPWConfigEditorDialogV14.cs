@@ -625,8 +625,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             if (mutable)
             {
                 Button add = MakeButton(path == "Channels" ? "添加真实通道配置" :
-                    path == "Protocols" ? "添加规约绑定" :
-                    path == "Points" ? "添加点表项" : "追加一项",
+                    path == "Protocol.Points" ? "添加规约点" :
+                    path == "Protocol.Mappings" ? "添加数据映射" : "追加一项",
                     () => Execute(() => _editor.InsertListItem(
                         path, list.Count, DefaultJson(args[0]))));
                 System.Windows.Automation.AutomationProperties.SetAutomationId(add, "MPW.Collection.Add." + path);
