@@ -27,7 +27,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
             Func<MRKExecutionContext, CancellationToken, object> synchronousSdk = null,
             int priority = 0, long estimatedPendingBytes = 0,
             IDictionary<string, Type> dataOutputs = null, bool enableDataContext = false,
-            string subflowAccessGroup = null, MRKLoopRegion loopRegion = null)
+            string subflowAccessGroup = null, MRKLoopRegion loopRegion = null,
+            MRKTryRegion tryRegion = null)
         {
             if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("Step ID required", "id");
             if (executeAsync == null) throw new ArgumentNullException("executeAsync");
@@ -59,7 +60,13 @@ namespace CxVisual.Mechanism.Runtime.Execution
             DataOutputs = new ReadOnlyDictionary<string, Type>(declaredData);
             EnableDataContext = enableDataContext || declaredData.Count != 0;
             SubflowAccessGroup = subflowAccessGroup;
-            LoopRegion = loopRegion;
+            LoopRegion = loopRegion;TryRegion=tryRegion;
+            if(loopRegion!=null&&tryRegion!=null)
+                throw new ArgumentException("mrk.control_region_conflict");
+            if(tryRegion!=null&&(declaredData.Count!=0||
+                (requiredResources!=null&&requiredResources.Any())||
+                dedicatedExecutorId!=null))
+                throw new ArgumentException("mrk.try_control_step_requires_no_resources");
             if(loopRegion!=null&&(declaredData.Count!=0||
                 (requiredResources!=null&&requiredResources.Any())||
                 dedicatedExecutorId!=null))
@@ -97,6 +104,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
         public Func<MRKExecutionContext, CancellationToken, object> SynchronousSdk { get; private set; }
         public MRKExecutionPolicy Policy { get; private set; }
         public MRKLoopRegion LoopRegion {get;private set;}
+        public MRKTryRegion TryRegion {get;private set;}
         /// <summary>显式声明的可安全调用补偿动作；绝不会在失败后默认执行。</summary>
         public Func<MRKExecutionContext, CancellationToken, Task> CompensateAsync { get; private set; }
         public IList<string> RequiredResources { get; private set; }
@@ -108,6 +116,21 @@ namespace CxVisual.Mechanism.Runtime.Execution
     /// R05：不可变的编译后循环区域；循环体只含一份已编译MRK Plan。
     /// 每轮由原MRKExecutionEngine调度同一个F19 Worker，数据继续归MDS。
     /// </summary>
+    /// <summary>由MOC编译的受保护区域，仍由同一MRK和F19 Worker执行，不建立第二个运行时。</summary>
+    public sealed class MRKTryRegion
+    {
+        public MRKTryRegion(MRKExecutionPlan body,MRKExecutionPlan catchBody,
+            MRKExecutionPlan finallyBody)
+        {
+            if(body==null||body.Steps.Count==0||(catchBody==null&&finallyBody==null))
+                throw new ArgumentException("mrk.try_invalid_region");
+            Body=body;CatchBody=catchBody;FinallyBody=finallyBody;
+        }
+        public MRKExecutionPlan Body{get;private set;}
+        public MRKExecutionPlan CatchBody{get;private set;}
+        public MRKExecutionPlan FinallyBody{get;private set;}
+    }
+
     public sealed class MRKLoopRegion
     {
         public MRKLoopRegion(MRKExecutionPlan body,int maxIterations,
