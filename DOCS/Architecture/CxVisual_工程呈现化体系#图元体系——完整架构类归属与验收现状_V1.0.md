@@ -187,7 +187,7 @@ Group、Symbol、Layer 等有 Core 定义及部分 Studio 结构与测试基础�
 - `DOCS/Architecture/CxVisual_工程组织体系——完整架构设计与开发使用指南_V1.2.md`：组织身份、Group/Symbol/引用与 Core Owner。
 - `DOCS/Implementation/CxVisual_工程可视化_ABC_源码与Windows验收审计_V1.0.md`
 - `DOCS/Implementation/CxVisual_工程可视化_工作包A+B_完整实现与真实验收.md`
-- [`#图元编辑——完整设计与验收 V1.1`](./CxVisual_工程呈现化体系%23图元编辑——完整设计与验收_V1.1.md)：**六类控制柄、A/B/C 状态、用户操作合同及 GE-01～GE-15 验收**；本文件继续负责类归属与实际现状，不互相复制状态台账。
+- [`#图元编辑——完整设计与验收 V1.2`](./CxVisual_工程呈现化体系%23图元编辑——完整设计与验收_V1.2.md)：**十四章、四附录、A～F 操作图、完整几何/连接/事务合同及 GE-01～GE-15 验收**；本文件继续负责类归属与实际现状，不互相复制状态台账。
 - `Tests/ArchitectureSmoke/Visual/Editing/VisualShapeEditingTests.cs`
 - `Tests/ArchitectureSmoke/Engineering/Studio/OrganizationWpfTests.cs`
 - `Mechanism/Visual/`、`Mechanism/Presentation.Wpf/SceneView.cs`、`Applications/Studio/`
