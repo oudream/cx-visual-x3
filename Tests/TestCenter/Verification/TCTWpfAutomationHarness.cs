@@ -208,14 +208,29 @@ namespace CxVisual.TestCenter.UI
                 if (insertPoint == null)
                     throw new InvalidOperationException("PointTable 正式集合新增命令不可操作");
                 insertPoint.Invoke();
-                window.Dispatcher.Invoke(new Action(() => {
-                    System.Windows.Controls.TextBox pointName =
-                        FindWpfByAutomationId<System.Windows.Controls.TextBox>(
-                            window, "MPW.Edit.Protocol.Points[0].Name");
-                    if (pointName == null || !pointName.IsEnabled)
-                        throw new InvalidOperationException("新增点表后缺少真实Name输入框");
-                    SaveScreenshot(window, "TestCenter-Protocol-P0-PointAdded.png");
-                }));
+                bool pointReady = false;
+                int countObserved = -1;
+                for (int attempt = 0; attempt < 60 && !pointReady; attempt++)
+                {
+                    window.Dispatcher.Invoke(new Action(() => {
+                        System.Windows.Controls.TabControl tabs =
+                            window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                        TCTManualModuleFrame frame = tabs.Items
+                            .OfType<System.Windows.Controls.TabItem>().Select(x => x.Content)
+                            .OfType<TCTManualModuleFrame>().Single();
+                        countObserved = frame.ConnectorDraftSnapshot().Protocol.Points.Count;
+                        System.Windows.Controls.TextBox pointName =
+                            FindWpfByAutomationId<System.Windows.Controls.TextBox>(
+                                window, "MPW.Edit.Protocol.Points[0].Name");
+                        pointReady = countObserved == 1 && pointName != null && pointName.IsEnabled;
+                    }));
+                    if (!pointReady) Thread.Sleep(100);
+                }
+                if (!pointReady)
+                    throw new InvalidOperationException("新增点表后没有可编辑Name字段；草稿PointCount=" +
+                        countObserved);
+                window.Dispatcher.Invoke(new Action(() =>
+                    SaveScreenshot(window, "TestCenter-Protocol-P0-PointAdded.png")));
                 window.Dispatcher.Invoke(new Action(() => {
                     System.Windows.Controls.TabControl tabs =
                         window.DocumentHost.Content as System.Windows.Controls.TabControl;
@@ -231,6 +246,26 @@ namespace CxVisual.TestCenter.UI
                 if (insertMapping == null)
                     throw new InvalidOperationException("DataMapping 正式集合新增命令不可操作");
                 insertMapping.Invoke();
+                bool mappingReady = false;
+                int mappingObserved = -1;
+                for (int attempt = 0; attempt < 60 && !mappingReady; attempt++)
+                {
+                    window.Dispatcher.Invoke(new Action(() => {
+                        System.Windows.Controls.TabControl tabs =
+                            window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                        TCTManualModuleFrame frame = tabs.Items
+                            .OfType<System.Windows.Controls.TabItem>().Select(x => x.Content)
+                            .OfType<TCTManualModuleFrame>().Single();
+                        mappingObserved = frame.ConnectorDraftSnapshot().Protocol.Mappings.Count;
+                        mappingReady = mappingObserved == 1 &&
+                            FindWpfByAutomationId<System.Windows.Controls.ComboBox>(
+                                window, "MPW.Reference.Protocol.Mappings[0].PointRef") != null;
+                    }));
+                    if (!mappingReady) Thread.Sleep(100);
+                }
+                if (!mappingReady)
+                    throw new InvalidOperationException("新增DataMapping未显示PointRef候选；草稿MappingCount=" +
+                        mappingObserved);
                 // 缺失PointRef/TargetRef时正式FCM校验必须拒绝，不能保存空映射。
                 window.Dispatcher.Invoke(new Action(() => {
                     System.Windows.Controls.TabControl tabs =
