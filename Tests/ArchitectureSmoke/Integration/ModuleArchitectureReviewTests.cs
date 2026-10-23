@@ -19,6 +19,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             try { new MFMModuleDescriptor("m","m",MFMModuleKind.Compute,1,new[]{"same","same"}); }
             catch (ArgumentException) { rejected=true; }
             if (!rejected) throw new InvalidOperationException("重复能力 Id 应拒绝");
+            ModuleFoundationSmokeTests.Run();
         }
     }
 }
