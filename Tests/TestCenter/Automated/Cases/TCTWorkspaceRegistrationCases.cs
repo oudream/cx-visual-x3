@@ -113,18 +113,26 @@ namespace CxVisual.TestCenter.Cases
             catch (InvalidOperationException) { cycleRejected = true; }
             test.AssertTrue(cycleRejected, "父子环必须拒绝", true, cycleRejected);
 
-            // Manual UI与本用例共用同一个生产Owner。Virtual不是TCP/PLC，也不写Manual Passed。
+            // 生产 Virtual 只负责原始传输；Protocol独立解析内容。
             MCCVirtualChannel[] pair = MCCVirtualChannel.CreatePair("workspace-tx", "workspace-rx");
-            MPALengthFrameCodec codec = new MPALengthFrameCodec();
+            MPALengthFrameProtocol protocol = new MPALengthFrameProtocol();
+            byte[] decoded = null;
+            pair[1].Received += chunk => {
+                foreach (byte[] value in protocol.ProcessReceived(chunk,
+                    new MPAProtocolContext("length", "workspace")))
+                    decoded = value;
+            };
             pair[0].Open(); pair[1].Open();
             byte[] payload = new byte[] { 0x01, 0x02, 0xC5, 0x3A, 0x7F };
-            pair[0].Send(codec.Encode(payload), "manual-positive", 2);
-            MCCChannelFrame receive = pair[1].ReadFrames().Single(x => x.Direction == MCCFrameDirection.Rx);
-            test.AssertTrue(receive.DecodedPayload.SequenceEqual(payload),
-                "Owner虚拟通道分片解析还原原始负载", true, true);
+            byte[] encoded = protocol.PrepareSend(payload, null);
+            pair[0].Send(encoded.Take(2).ToArray());
+            pair[0].Send(encoded.Skip(2).ToArray());
+            test.AssertTrue(decoded != null && decoded.SequenceEqual(payload) &&
+                pair[1].ReadFrames().All(x => x.DecodedPayload == null),
+                "Virtual只收发字节，Protocol解帧还原Payload", true, true);
             pair[1].Close();
             bool peerClosedRejected = false;
-            try { pair[0].Send(codec.Encode(payload), "manual-negative"); }
+            try { pair[0].Send(protocol.PrepareSend(payload, null)); }
             catch (System.IO.IOException) { peerClosedRejected = true; }
             test.AssertTrue(peerClosedRejected, "虚拟接收端关闭后不能伪造RX", true, peerClosedRejected);
             pair[0].Close();

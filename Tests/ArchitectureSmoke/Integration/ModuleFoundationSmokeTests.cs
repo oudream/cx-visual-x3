@@ -184,7 +184,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             stationTwo.StationAddress = "2";
 
             // 实际纯传输 Virtual 不解释长度帧：由独立 Protocol 解析拆分数据。
-            MCCVirtualRawChannel[] raw = MCCVirtualRawChannel.CreatePair("raw-tx", "raw-rx");
+            MCCVirtualChannel[] raw = MCCVirtualChannel.CreatePair("raw-tx", "raw-rx");
             MPALengthFrameProtocol framed = new MPALengthFrameProtocol();
             List<byte[]> parsed = new List<byte[]>();
             raw[1].Received += receivedChunk => {
@@ -224,7 +224,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             streamModule.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
             raw[1].Close();
 
-            MCCVirtualRawChannel[] emptyPair = MCCVirtualRawChannel.CreatePair("empty-tx", "empty-rx");
+            MCCVirtualChannel[] emptyPair = MCCVirtualChannel.CreatePair("empty-tx", "empty-rx");
             MCNConnectorConfiguration emptyCfg = new MCNConnectorConfiguration {
                 Channel = new MCCChannelConfiguration { Id = "empty-tx", Kind = MCCChannelKind.Virtual },
                 Protocol = new MPAProtocolConfiguration { Kind = MPAProtocolKind.Empty }

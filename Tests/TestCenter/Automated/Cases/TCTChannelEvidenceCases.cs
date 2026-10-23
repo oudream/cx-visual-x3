@@ -18,46 +18,62 @@ namespace CxVisual.TestCenter.Cases
         public static void RealVirtualFrames(TCTTestContext test)
         {
             MCCVirtualChannel[] pair = MCCVirtualChannel.CreatePair("Virtual-A", "Virtual-B");
-            var codec = new MPALengthFrameCodec();
-            var source = new MCCCxChannelSession(pair[0], codec);
-            var receiver = new MCCCxChannelSession(pair[1], codec);
-            source.Open(); receiver.Open();
-            byte[] payload = new byte[] { 0x01, 0x03, 0xA5, 0xFF };
-            source.SendPayload(payload, "request-001", 2);
-            MCCChannelFrame tx = pair[0].ReadFrames().Single(x => x.Direction == MCCFrameDirection.Tx);
-            MCCChannelFrame rx = pair[1].ReadFrames().Single(x => x.Direction == MCCFrameDirection.Rx);
-            test.AssertTrue(codec.Decode(tx.Bytes).SequenceEqual(payload) &&
-                rx.DecodedPayload.SequenceEqual(payload) && rx.Bytes.SequenceEqual(tx.Bytes),
-                "真实分包TX/RX字节与解码一致", true, true);
-            test.AssertEqual("request-001", rx.CorrelationId, "真实Frame Correlation");
-            byte[] corrupt = codec.Encode(new byte[] { 0x0A, 0x0B });
-            corrupt[4] ^= 0xFF;
-            test.AssertThrows<InvalidDataException>(() => pair[0].Send(corrupt, "bad-CRC", 3),
-                "CRC错误必须真实触发生产Parser异常");
-            test.AssertEqual(MCCChannelState.Faulted, receiver.State, "故障接收方进入Faulted");
-            test.AssertEqual(1, receiver.Snapshot().Count(x => x.Direction == MCCFrameDirection.Error),
-                "故障实际留存Frame错误");
-            receiver.Open();
-            source.SendPayload(new byte[] { 0x12, 0x34 }, "request-002", 1);
-            test.AssertEqual(2, receiver.Snapshot().Count(x => x.Direction == MCCFrameDirection.Rx),
-                "Reset后真实再次完成RX");
-            receiver.Close();
-            test.AssertThrows<IOException>(() => source.SendPayload(new byte[] { 0x99 }, "closed"),
+            MPALengthFrameProtocol protocol = new MPALengthFrameProtocol();
+            MCCSubChannelAddress receiverAddress = new MCCSubChannelAddress(pair[1].Id);
+            List<byte[]> decoded = new List<byte[]>();
+            pair[1].Received += incoming => {
+                foreach (byte[] payload in protocol.ProcessReceived(incoming,
+                    new MPAProtocolContext("length-frame", "virtual-session")))
+                    decoded.Add(payload);
+            };
+            pair[0].Open(); pair[1].Open();
+            byte[] payload1 = new byte[] { 0x01, 0x03, 0xA5, 0xFF };
+            byte[] frame = protocol.PrepareSend(payload1, null);
+            for (int offset = 0; offset < frame.Length; offset += 2)
+            {
+                int length = Math.Min(2, frame.Length - offset);
+                byte[] chunk = new byte[length];
+                Buffer.BlockCopy(frame, offset, chunk, 0, length);
+                pair[0].Send(chunk);
+            }
+            test.AssertTrue(decoded.Count == 1 && decoded[0].SequenceEqual(payload1),
+                "Protocol 真正拼接Channel分片并解释CRC16", true, true);
+            MCCChannelFrame[] tx = pair[0].ReadFrames()
+                .Where(x => x.Direction == MCCFrameDirection.Tx).ToArray();
+            MCCChannelFrame[] rx = pair[1].ReadFrames()
+                .Where(x => x.Direction == MCCFrameDirection.Rx).ToArray();
+            test.AssertTrue(tx.Length == rx.Length && rx.All(x => x.DecodedPayload == null) &&
+                tx.SelectMany(x => x.Bytes).SequenceEqual(rx.SelectMany(x => x.Bytes)),
+                "Channel只有原始IO，不再混入协议解码", true, true);
+
+            byte[] corrupt = protocol.PrepareSend(new byte[] { 0x0A, 0x0B }, null);
+            corrupt[4] ^= 0xff;
+            test.AssertThrows<InvalidDataException>(() => pair[0].Send(corrupt),
+                "CRC错误由正式Protocol拒绝，而不是通道伪装解析");
+            test.AssertEqual(MCCChannelState.Open, pair[1].State,
+                "规约数据CRC错误不会使物理通道错误断开");
+            protocol.Reset(receiverAddress);
+            byte[] payload2 = new byte[] { 0x12, 0x34 };
+            pair[0].Send(protocol.PrepareSend(payload2, null));
+            test.AssertTrue(decoded.Count == 2 && decoded[1].SequenceEqual(payload2),
+                "Protocol Reset后恢复正常，不重建Channel", true, true);
+            pair[1].Close();
+            test.AssertThrows<IOException>(() => pair[0].Send(new byte[] { 0x99 }),
                 "断开的Virtual接收方拒绝投递");
-            source.Close();
+            pair[0].Close();
             test.AssertThrows<InvalidOperationException>(() =>
-                source.SendPayload(new byte[] { 0x01 }, "after-close"),
-                "关闭的Virtual发送方拒绝写入");
+                pair[0].Send(new byte[] { 0x01 }), "发送方关闭后不得继续发包");
             MCCChannelFrame[] all = pair.SelectMany(x => x.ReadFrames()).ToArray();
             byte[] evidence = TCTChannelEvidence.Serialize(all);
             XDocument restored = TCTChannelEvidence.Read(evidence);
             test.AssertEqual(all.Length, restored.Root.Elements("Frame").Count(),
-                "真实Owner Frame及错误回放完整");
+                "Owner原始通道事件证据回放完整");
             test.AssertTrue(restored.Root.Elements("Frame")
-                .Any(x => (string)x.Attribute("direction") == "Error"), "错误不得回放为成功", true, true);
-            test.ObserveStructured("Channel", "Virtual Channel TX/RX / CRC / Recover",
-                "生产Connectivity Owner处理真实字节、分包、错误与再连接；非Real设备HIL",
-                pair[0].Id, "Virtual/" + pair[0].Id, source.SessionId.ToString("D"),
+                .Any(x => (string)x.Attribute("direction") == "Error"),
+                "通道发送拒绝应保留错误证据", true, true);
+            test.ObserveStructured("Channel", "Virtual纯传输 + Protocol CRC16/分片",
+                "Connectivity Channel记录原始收发；Protocol完成分包、CRC和错误恢复；非真实PLC/HIL",
+                pair[0].Id, "Virtual/" + pair[0].Id, pair[0].SessionId.ToString("D"),
                 evidence, TCTChannelEvidence.Mime);
         }
 

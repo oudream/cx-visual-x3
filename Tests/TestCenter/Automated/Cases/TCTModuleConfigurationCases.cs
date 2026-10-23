@@ -130,7 +130,7 @@ namespace CxVisual.TestCenter.Cases
             };
             MFMModuleDescriptor identity = config.Describe("ModuleVirtual01", MFMModuleKind.Connector);
             MCCVirtualChannel[] pair = MCCVirtualChannel.CreatePair("virtual01", "virtualPeer");
-            MPALengthFrameDefinition protocol = new MPALengthFrameDefinition();
+            MPALengthFrameProtocol protocol = new MPALengthFrameProtocol();
             MCNConnectorModule module = new MCNConnectorModule(identity, config,
                 pair[0], protocol);
             test.AssertTrue(module.Descriptor.Id == "ModuleVirtual01" &&
@@ -138,19 +138,31 @@ namespace CxVisual.TestCenter.Cases
                 module.Points.Count == 0 && pair[0].State == MCCChannelState.Closed,
                 "装配只绑定正式生产实例，不会提前启动或生成点表值", true, true);
 
+            byte[] decoded = null;
+            MPALengthFrameProtocol receiverProtocol = new MPALengthFrameProtocol();
+            pair[1].Received += received => {
+                foreach (byte[] result in receiverProtocol.ProcessReceived(received,
+                    new MPAProtocolContext("length", "testcenter", received.Address)))
+                    decoded = result;
+            };
             try
             {
-                pair[0].Open(); pair[1].Open();
-                byte[] raw = protocol.Codec.Encode(new byte[] { 0x11, 0x22, 0x33 });
-                pair[0].Send(raw, "testcenter-mt02", 2);
+                pair[1].Open();
+                module.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
+                module.SendPayloadAsync(new byte[] { 0x11, 0x22, 0x33 },
+                    CancellationToken.None).GetAwaiter().GetResult();
                 MCCChannelFrame observed = pair[1].ReadFrames()
                     .Single(x => x.Direction == MCCFrameDirection.Rx);
-                test.AssertTrue(observed.DecodedPayload.SequenceEqual(new byte[] { 0x11, 0x22, 0x33 }) &&
-                    observed.CorrelationId == "testcenter-mt02" &&
+                test.AssertTrue(decoded != null && decoded.SequenceEqual(new byte[] { 0x11, 0x22, 0x33 }) &&
+                    observed.DecodedPayload == null &&
                     pair[0].ReadFrames().Any(x => x.Direction == MCCFrameDirection.Tx),
-                    "正式Virtual Channel/LengthFrame产生真实TX-RX观察", true, true);
+                    "Virtual纯传输、正式Protocol独立解析并产生实际TX/RX观察", true, true);
             }
-            finally { pair[0].Close(); pair[1].Close(); }
+            finally
+            {
+                if (module.IsStarted) module.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+                pair[1].Close();
+            }
 
             bool missingRejected = false;
             try

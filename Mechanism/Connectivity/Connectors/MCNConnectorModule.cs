@@ -34,7 +34,7 @@ namespace CxVisual.Mechanism.Connectivity
             switch (configuration.Channel.Kind)
             {
                 case MCCChannelKind.Virtual:
-                    typeMatch = channel is MCCVirtualRawChannel || channel is MCCVirtualChannel; break;
+                    typeMatch = channel is MCCVirtualChannel; break;
                 case MCCChannelKind.TcpClient: typeMatch = channel is MCCTcpClientChannel; break;
                 case MCCChannelKind.TcpServer: typeMatch = channel is MCCTcpServerChannel; break;
                 case MCCChannelKind.Udp: typeMatch = channel is MCCUdpChannel; break;

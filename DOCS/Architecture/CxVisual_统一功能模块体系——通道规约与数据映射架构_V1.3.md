@@ -36,7 +36,7 @@
 
 ## 4. 版本迁移要求
 
-旧 CxVisual.Module.Connector SchemaVersion 1 的 Channels/Protocols/Points 集合与新 SchemaVersion 2 的 Channel/Protocol 单数配置不自动兼容。必须明确多组旧数据拆分策略；不可静默丢失或自动假成功。不得建立长期 EditableConfig/LegacyAdapter。旧 MCCVirtualChannel 内含长度帧解析的测试兼容路径须另行迁移后删除；正式新测试路径用纯传输 MCCVirtualRawChannel + MPALengthFrameProtocol。
+旧 CxVisual.Module.Connector SchemaVersion 1 的 Channels/Protocols/Points 集合与新 SchemaVersion 2 的 Channel/Protocol 单数配置不自动兼容。必须明确多组旧数据拆分策略；不可静默丢失或自动假成功。不得建立长期 EditableConfig/LegacyAdapter。旧 Virtual 内部长度帧解析已经迁移到 MPALengthFrameProtocol；TestCenter 与 ArchitectureSmoke 均采用唯一的纯传输 MCCVirtualChannel，不保留第二个 Virtual 类或 MCCCxChannelSession。
 
 ## 5. 传输实例的增量实装（Windows CI/HIL 分级）
 
@@ -56,7 +56,7 @@
 | Channel | MCCTcpClientChannel, MCCTcpServerChannel | .NET TcpClient/TcpListener + 异步流收发；Server 一条父通道、多 TcpClient |
 | Channel | MCCUdpChannel, MCCUdpServerChannel | 保留 UDP 报文边界；多 Endpoint 归属同一父通道和 SubChannel |
 | Channel | MCCSerialChannel | SerialPort 单一共享总线；多站号配置归 Protocol |
-| Channel | MCCVirtualRawChannel | 原始数据透传；旧 MCCVirtualChannel 仍是历史自描述帧证据路径，后续合并删旧 |
+| Channel | MCCVirtualChannel | 原始数据透传；旧内置长度帧解析已直接迁出到 MPALengthFrameProtocol，不再保留第二个 Virtual |
 | Channel | MCCSubChannel, MCCSubChannelAddress, MCCSubChannelDirectory | 子通道活动状态、引用、SendAsync 和 Register/Find/Remove；不拥有第二套 Socket |
 | Protocol | IMPAProtocol, MPAProtocolBase | 统一 ProcessReceived / PrepareSend / ReadAsync / WriteAsync / SendAsync；Read/Write 是映射的数据行为，不代表远端 Modbus 已响应 |
 | Protocol | MPAEmptyProtocol, MPALengthFrameProtocol | 真透传或按 SubChannel 的分帧解析和 CRC16 |
@@ -70,3 +70,7 @@
 
 **证据口径：** 内存虚拟与 Windows Socket Loopback 只能证明本地协议及传输行为，不能替代 PLC/串口工业规约完整主站轮询、X-Ray 厂商 SDK 实机采图和工业设备安全联锁认证。Message/Command 尚待正式统一体系 Owner 装配；未装配返回 NotSupported，授权失败返回 UnauthorizedAccessException。
 
+
+## 7. 虚拟通道最终收敛
+
+正式类 MCCVirtualChannel 继承 MCCSingleChannelBase，只支持原始字节传输。MCCChannelContracts 单独负责 IMCCChannel、MCCChannelState 和 MCCChannelFrame。旧 MCCVirtualRawChannel 冗余命名和 MCCCxChannelSession 中的旧规约兼容路径均已删除。长度帧解析及 CRC 错误归 Protocol，Channel 在协议 CRC 错误时保持正常连接。TestCenter 自动测试、人工 Virtual 通道界面均复用此新语义，不产生第二份通道生命周期。

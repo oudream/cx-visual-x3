@@ -20,7 +20,7 @@ namespace CxVisual.TestCenter.UI
         private readonly TextBlock _state = new TextBlock { Foreground = Brushes.SteelBlue,
             Margin = new Thickness(0, 8, 0, 8) };
         private MCCVirtualChannel[] _pair;
-        private readonly MPALengthFrameCodec _codec = new MPALengthFrameCodec();
+        private readonly MPALengthFrameProtocol _protocol = new MPALengthFrameProtocol();
         public string WorkspaceId { get { return "manual.channel"; } }
         public Guid ManualSessionId { get; private set; }
         public int FrameCount { get { return _frames.Count; } }
@@ -45,7 +45,7 @@ namespace CxVisual.TestCenter.UI
             options.Children.Add(new TextBlock { Text = "通道测试 / Channel Manual Lab", FontSize = 21,
                 FontWeight = FontWeights.SemiBold, Foreground = Brushes.DarkSlateBlue });
             options.Children.Add(new TextBlock {
-                Text = "模式：Virtual P2P · MCCVirtualChannel + MPALengthFrameCodec；不是TCP/UDP/串口设备。",
+                Text = "模式：Virtual P2P · MCCVirtualChannel + MPALengthFrameProtocol；不是TCP/UDP/串口设备。",
                 Foreground = Brushes.DarkGoldenrod, Margin = new Thickness(0, 9, 0, 7),
                 TextWrapping = TextWrapping.Wrap });
             options.Children.Add(new TextBlock { Text = "发送内容（UTF-8）：" });
@@ -84,6 +84,25 @@ namespace CxVisual.TestCenter.UI
                     frame.DecodedPayload == null ? "" : Encoding.UTF8.GetString(frame.DecodedPayload)
             });
         }
+        // Channel 先记录原始帧，再由 Protocol 完成解帧，并更新显示行。
+        private void ReceiveForProtocol(MCCChannelReceiveContext received)
+        {
+            foreach (byte[] decoded in _protocol.ProcessReceived(received,
+                new MPAProtocolContext("length", ManualSessionId.ToString("N"), received.Address)))
+            {
+                for (int i = _frames.Count - 1; i >= 0; i--)
+                {
+                    TCTManualFrameRow old = _frames[i];
+                    if (old.Channel != received.Address.ChannelId || old.Direction != "Rx") continue;
+                    _frames[i] = new TCTManualFrameRow {
+                        Timestamp = old.Timestamp, Direction = old.Direction,
+                        Channel = old.Channel, RawHex = old.RawHex,
+                        Decoded = Encoding.UTF8.GetString(decoded)
+                    };
+                    break;
+                }
+            }
+        }
         private void UpdateState()
         {
             _state.Text = "ManualSessionId: " + ManualSessionId.ToString("D") +
@@ -98,6 +117,8 @@ namespace CxVisual.TestCenter.UI
             _pair = MCCVirtualChannel.CreatePair("Manual-TX", "Manual-RX");
             _pair[0].FrameRecorded += Record;
             _pair[1].FrameRecorded += Record;
+            _pair[1].Received += ReceiveForProtocol;
+            _protocol.Reset(new MCCSubChannelAddress(_pair[1].Id));
             try { _pair[0].Open(); _pair[1].Open(); }
             catch { Disconnect(); throw; }
             UpdateState();
@@ -108,7 +129,17 @@ namespace CxVisual.TestCenter.UI
             byte[] bytes = Encoding.UTF8.GetBytes(_payload.Text ?? "");
             if (bytes.Length < 1 || bytes.Length > 4096)
                 throw new ArgumentException("Payload must be 1..4096 bytes");
-            try { _pair[0].Send(_codec.Encode(bytes), Guid.NewGuid().ToString("N"), 3); }
+            try
+            {
+                byte[] encoded = _protocol.PrepareSend(bytes, null);
+                for (int start = 0; start < encoded.Length; start += 3)
+                {
+                    int size = Math.Min(3, encoded.Length - start);
+                    byte[] chunk = new byte[size];
+                    Buffer.BlockCopy(encoded, start, chunk, 0, size);
+                    _pair[0].Send(chunk);
+                }
+            }
             finally { UpdateState(); }
         }
         public void Disconnect()
@@ -118,6 +149,7 @@ namespace CxVisual.TestCenter.UI
                 _pair[0].Close(); _pair[1].Close();
                 _pair[0].FrameRecorded -= Record;
                 _pair[1].FrameRecorded -= Record;
+                _pair[1].Received -= ReceiveForProtocol;
                 _pair = null;
             }
             UpdateState();
