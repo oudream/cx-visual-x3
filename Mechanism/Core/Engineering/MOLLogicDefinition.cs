@@ -71,6 +71,8 @@ namespace CxVisual.Mechanism.Core
         public string Expected { get; private set; }
         public static MOLExpression InputEquals(string input, string value)
         { return new MOLExpression(MOLExpressionSource.FlowInput, input, MOLComparison.Equal, value); }
+        public static MOLExpression InputCompare(string input,MOLComparison op,string value)
+        {return new MOLExpression(MOLExpressionSource.FlowInput,input,op,value);}
         public static MOLExpression InputTrue(string input)
         { return new MOLExpression(MOLExpressionSource.FlowInput, input); }
         public static MOLExpression Always(bool value)
@@ -342,6 +344,20 @@ namespace CxVisual.Mechanism.Core
             tryDefinition:new MOLTryDefinition(body,catchBody,finallyBody,catches));}
         public static MOLControlBlock Action(string capability)
         { return new MOLControlBlock(Guid.NewGuid(), MOLControlKind.Action, capability); }
+        /// <summary>复用MEMContent身份，调用必须同时在工程中声明ContentReference。</summary>
+        public static MOLControlBlock InvokeContent(Guid contentId)
+        {
+            if(contentId==Guid.Empty)throw new ArgumentException("logic.invoke_missing");
+            return new MOLControlBlock(Guid.NewGuid(),MOLControlKind.Invoke,
+                targetFlow:contentId.ToString("N"));
+        }
+        public static MOLControlBlock Exit(MOLExitKind kind)
+        {
+            if(kind!=MOLExitKind.Break&&kind!=MOLExitKind.Continue&&
+                kind!=MOLExitKind.Return)
+                throw new ArgumentException("logic.exit_requires_kind_or_error");
+            return new MOLControlBlock(Guid.NewGuid(),MOLControlKind.Exit,exitKind:kind);
+        }
         public static MOLControlBlock Throw(string errorCode)
         {
             if(string.IsNullOrWhiteSpace(errorCode)||errorCode.Length>128||
