@@ -1589,11 +1589,36 @@ namespace CxVisual.Mechanism.Orchestration
 
             /// <summary>把Try/Catch/Finally分别编译为不可编辑的MRK嵌套Plan；共用同一Resolver/SourceMap。</summary>
             private MRKExecutionPlan CompileProtectedBody(MOLControlBlock body,
-                MEMNodeSnapshot owner,Guid[] calls,int depth,string regionId)
+                MEMNodeSnapshot owner,Guid[] calls,int depth,string regionId,
+                IterationScope outerScope)
             {
                 if(body==null)return null;
                 int first=Steps.Count,firstRegion=Regions.Count;
-                Emit(body,owner,new string[0],calls,null,depth+1);
+                IterationScope localScope=null;
+                string[] dependencies=new string[0];
+                if(outerScope!=null)
+                {
+                    // Try内部Plan不得依赖不在自己Plan内的Step。重建轻量迭代入口，
+                    // 从当前MRK Invocation读取Index/Item，仍归同一MDS作用域。
+                    string indexCapability="moc.internal.try.index."+NewId(body);
+                    Resolver.Register(indexCapability,ctx=>ctx.IterationIndex,typeof(int));
+                    string indexStep=Add(body,owner,calls,null,"TryIterationIndex",
+                        indexCapability,new string[0]);
+                    string itemStep=null;
+                    if(outerScope.ItemStep!=null)
+                    {
+                        string input=outerScope.Input;
+                        string itemCapability="moc.internal.try.item."+NewId(body);
+                        Resolver.Register(itemCapability,ctx=>
+                            ((IList)ctx.Inputs[input])[ctx.IterationIndex],typeof(object));
+                        itemStep=Add(body,owner,calls,null,"TryIterationItem",
+                            itemCapability,new[]{indexStep});
+                    }
+                    localScope=new IterationScope{Index=-1,IndexStep=indexStep,
+                        ItemStep=itemStep,Input=outerScope.Input};
+                    dependencies=itemStep==null?new[]{indexStep}:new[]{itemStep};
+                }
+                Emit(body,owner,dependencies,calls,localScope,depth+1);
                 MRKStepCompileRequest[] requests=Steps.Skip(first).ToArray();
                 MRKControlRegion[] nested=Regions.Skip(firstRegion).ToArray();
                 Steps.RemoveRange(first,Steps.Count-first);
@@ -1737,16 +1762,13 @@ namespace CxVisual.Mechanism.Orchestration
                     {
                         if(block.TryRegion==null)
                             throw new InvalidOperationException("moc.try_missing_definition");
-                        // 迭代内Try要求显式跨区域索引端口；未完成之前拒绝编译而非丢弃数据。
-                        if(scope!=null)
-                            throw new InvalidOperationException("moc.try_iteration_scope_pending");
                         string baseId="moc.try."+block.Id.ToString("N");
                         MRKExecutionPlan tryBody=CompileProtectedBody(
-                            block.TryRegion.TryBody,owner,calls,depth,baseId+".body");
+                            block.TryRegion.TryBody,owner,calls,depth,baseId+".body",scope);
                         MRKExecutionPlan catchBody=CompileProtectedBody(
-                            block.TryRegion.CatchBody,owner,calls,depth,baseId+".catch");
+                            block.TryRegion.CatchBody,owner,calls,depth,baseId+".catch",scope);
                         MRKExecutionPlan finallyBody=CompileProtectedBody(
-                            block.TryRegion.FinallyBody,owner,calls,depth,baseId+".finally");
+                            block.TryRegion.FinallyBody,owner,calls,depth,baseId+".finally",scope);
                         var region=new MRKTryRegion(tryBody,catchBody,finallyBody);
                         string id=NewId(block);
                         string capability="moc.internal.try."+id;
