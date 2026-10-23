@@ -6,12 +6,19 @@ using CxVisual.Mechanism.Core.Modules;
 
 namespace CxVisual.Mechanism.Connectivity
 {
+    // Connector 默认只描述一条独立接入链路；确实需要冗余/复合时显式使用高级组合。
+    public enum MCNConnectorCompositionMode { Standard, Advanced }
+
     // 唯一 Connector 配置定义；FCM/MHS/MPW、验证、运行装配使用相同的类型。
     // 不再存在 EditableConfig 或只读配置镜像，ModuleId 来自 MEM/MHS 资源 Scope。
     [FCMConfigSection("CxVisual.Module.Connector", SchemaVersion = 1)]
     [FCMConfigValidator(typeof(MCNConnectorConfigurationValidator))]
     public sealed class MCNConnectorConfiguration : MFMModuleConfiguration
     {
+        [FCMConfigItem("接入组合模式", Order = 5, Category = "基本信息",
+            Description = "默认单通道/单规约；冗余等特殊需求才使用高级多组件组合")]
+        public MCNConnectorCompositionMode CompositionMode { get; set; } = MCNConnectorCompositionMode.Standard;
+
         [FCMConfigItem("通道列表", Order = 10, Category = "通道")]
         public List<MCCChannelConfiguration> Channels { get; set; } = new List<MCCChannelConfiguration>();
 
@@ -64,6 +71,12 @@ namespace CxVisual.Mechanism.Connectivity
                 issues.Add(FCMConfigIssue.Error("", "COLLECTION_NULL", "组件集合不能为空"));
                 return issues;
             }
+            if (!Enum.IsDefined(typeof(MCNConnectorCompositionMode), config.CompositionMode))
+                issues.Add(FCMConfigIssue.Error("CompositionMode", "CONNECTOR_MODE_INVALID", "未知 Connector 组合模式"));
+            if (config.CompositionMode == MCNConnectorCompositionMode.Standard &&
+                (config.Channels.Count > 1 || config.Protocols.Count > 1))
+                issues.Add(FCMConfigIssue.Error("CompositionMode", "CONNECTOR_ADVANCED_REQUIRED",
+                    "多个父通道或多个规约必须显式启用高级组合；多客户端/多站号不应创建多个父通道或规约"));
             HashSet<string> channels = new HashSet<string>(StringComparer.Ordinal);
             for (int i = 0; i < config.Channels.Count; i++)
             {
@@ -85,7 +98,7 @@ namespace CxVisual.Mechanism.Connectivity
                 if (channel.Kind == MCCChannelKind.Custom && string.IsNullOrWhiteSpace(channel.CustomTypeId))
                     issues.Add(FCMConfigIssue.Error(path + ".CustomTypeId", "CHANNEL_TYPE_REQUIRED", "专业通道必须指定 TypeId"));
                 if ((channel.Kind == MCCChannelKind.TcpClient || channel.Kind == MCCChannelKind.TcpServer ||
-                    channel.Kind == MCCChannelKind.Udp) &&
+                    channel.Kind == MCCChannelKind.Udp || channel.Kind == MCCChannelKind.UdpServer) &&
                     (string.IsNullOrWhiteSpace(channel.Host) || channel.Port < 1 || channel.Port > 65535))
                     issues.Add(FCMConfigIssue.Error(path + ".Port", "CHANNEL_ENDPOINT", "网络通道地址/端口无效"));
             }
@@ -133,6 +146,17 @@ namespace CxVisual.Mechanism.Connectivity
                 }
             }
 
+            // 高级组合时规约不可争抢同一个接收路径，必须给出可区分的子通道选择规则。
+            HashSet<string> activeRoutes = new HashSet<string>(StringComparer.Ordinal);
+            foreach (MPAProtocolBinding protocol in config.Protocols)
+            {
+                if (protocol == null || !protocol.RequiresChannel ||
+                    string.IsNullOrWhiteSpace(protocol.ChannelRef)) continue;
+                string route = protocol.ChannelRef + "/" + (protocol.SubChannelSelector ?? "");
+                if (!activeRoutes.Add(route))
+                    issues.Add(FCMConfigIssue.Error("Protocols", "PROTOCOL_ROUTE_CONFLICT",
+                        "多个规约不能抢读同一 Channel/SubChannel；需要唯一绑定或由专业 Driver 自行处理分流"));
+            }
             HashSet<string> points = new HashSet<string>(StringComparer.Ordinal);
             for (int i = 0; i < config.Points.Count; i++)
             {
@@ -148,6 +172,18 @@ namespace CxVisual.Mechanism.Connectivity
                     issues.Add(FCMConfigIssue.Error(path + ".ProtocolRef", "POINT_PROTOCOL_MISSING", "点引用的规约不存在"));
                 if (string.IsNullOrWhiteSpace(point.Address) || string.IsNullOrWhiteSpace(point.TargetRef))
                     issues.Add(FCMConfigIssue.Error(path, "POINT_TARGET_MISSING", "外部地址与数据目标必须指定"));
+                MPAProtocolBinding pointProtocol = config.Protocols.FirstOrDefault(p => p != null &&
+                    string.Equals(p.Id, point.ProtocolRef, StringComparison.Ordinal));
+                if (pointProtocol != null &&
+                    (pointProtocol.Kind == MPAProtocolKind.ModbusRtuDraft ||
+                     pointProtocol.Kind == MPAProtocolKind.ModbusTcpDraft) &&
+                    !string.IsNullOrWhiteSpace(point.StationAddress))
+                {
+                    int station;
+                    if (!int.TryParse(point.StationAddress, out station) || station < 1 || station > 247)
+                        issues.Add(FCMConfigIssue.Error(path + ".StationAddress", "POINT_STATION_INVALID",
+                            "Modbus 站号应在 1～247 范围；它属于规约点表，不是 SubChannel"));
+                }
                 try { point.Validate(); }
                 catch (ArgumentException error)
                 {

@@ -71,9 +71,9 @@ namespace CxVisual.TestCenter.UI
                 "调用原有ArchitectureSmoke.exe；保持原CLI独立可运行，展示真实进程输出与退出码",
                 TCTWorkspaceNodeKind.Leaf, () => new TCTArchitectureSmokeFrame()));
             registry.Register(new TCTWorkspaceDescriptor("manual.module", "manual.root", "模块测试",
-                "Connector、Compute、Simulation、Service 共用同一模块测试 Frame",
+                "Connector、Driver、Compute、Simulation、Service 共用同一模块测试 Frame",
                 TCTWorkspaceNodeKind.Group, () => new TCTManualModuleFrame()));
-            foreach (string kind in new[] { "Connector", "Compute", "Simulation", "Service" })
+            foreach (string kind in new[] { "Connector", "Driver", "Compute", "Simulation", "Service" })
                 registry.Register(new TCTWorkspaceDescriptor("manual.module." + kind.ToLowerInvariant(),
                     "manual.module", kind + " 模块",
                     "在唯一Module Frame中切换正式" + kind + "配置类型（非独立测试引擎）",

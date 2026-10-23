@@ -60,7 +60,8 @@ namespace CxVisual.TestCenter.UI
                     CxVisual.Mechanism.Core.Modules.MFMModuleKind.Connector,
                     CxVisual.Mechanism.Core.Modules.MFMModuleKind.Compute,
                     CxVisual.Mechanism.Core.Modules.MFMModuleKind.Simulation,
-                    CxVisual.Mechanism.Core.Modules.MFMModuleKind.Service
+                    CxVisual.Mechanism.Core.Modules.MFMModuleKind.Service,
+                     CxVisual.Mechanism.Core.Modules.MFMModuleKind.Driver
                 })
             {
                 await Task.Run(() => InteractModuleKind(hwnd, window, kind));
@@ -168,6 +169,25 @@ namespace CxVisual.TestCenter.UI
                 if (cards.Current.IsOffscreen || cards.Current.BoundingRectangle.IsEmpty)
                     throw new InvalidOperationException(
                         "Connector当前通道配置入口不在可视区域");
+            }
+            if (kind == CxVisual.Mechanism.Core.Modules.MFMModuleKind.Driver)
+            {
+                // 不存在真实 Provider 时，驱动配置不许假成功；仍应展示 FCM 注解字段。
+                window.Dispatcher.Invoke(new Action(() => {
+                    System.Windows.Controls.TabControl tabs =
+                        window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                    TCTManualModuleFrame frame = tabs.Items
+                        .OfType<System.Windows.Controls.TabItem>().Select(x => x.Content)
+                        .OfType<TCTManualModuleFrame>().Single();
+                    frame.SelectModulePage("provider");
+                    if (frame.VisibleSchemaEditorCount < 1)
+                        throw new InvalidOperationException("Driver Provider 正式 FCM 配置没有显示");
+                    frame.ValidateCurrent();
+                    if (!frame.StatusMessage.Contains("DRIVER_PROVIDER_REQUIRED") &&
+                        !frame.StatusMessage.Contains("DriverTypeId"))
+                        throw new InvalidOperationException("Driver 没有 Provider 不应通过验证");
+                }));
+                return;
             }
             InvokePattern save = Find(root, "TCT.Manual.Action.module.save")
                 .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;

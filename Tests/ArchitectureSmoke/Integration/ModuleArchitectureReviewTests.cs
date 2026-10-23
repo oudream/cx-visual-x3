@@ -13,7 +13,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 MFMModuleDescriptor descriptor = new MFMModuleDescriptor(
                     "review."+kind, kind.ToString(), kind, 1, new [] { "capability."+kind });
                 if (descriptor.Kind != kind || descriptor.CapabilityIds.Count != 1)
-                    throw new InvalidOperationException("四类模块合同描述错误");
+                    throw new InvalidOperationException("五类模块合同描述错误");
             }
             bool rejected=false;
             try { new MFMModuleDescriptor("m","m",MFMModuleKind.Compute,1,new[]{"same","same"}); }

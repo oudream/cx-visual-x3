@@ -30,6 +30,10 @@ namespace CxVisual.Mechanism.Connectivity
         [Required]
         public string TargetRef { get; set; } = "PLC01.Temperature";
 
+        [FCMConfigItem("站号/规约设备地址", Order = 6, Category = "地址",
+            Description = "适用于共享 RS-485 等多站号点表；不创建第二个 Serial/Protocol 或 SubChannel")]
+        public string StationAddress { get; set; } = "";
+
         [FCMConfigItem("允许读取", Order = 7, Category = "权限")]
         public bool CanRead { get; set; } = true;
 

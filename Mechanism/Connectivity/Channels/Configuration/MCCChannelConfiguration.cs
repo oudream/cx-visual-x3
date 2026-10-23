@@ -5,7 +5,7 @@ using CxVisual.Foundation.Data.Configuration;
 namespace CxVisual.Mechanism.Connectivity
 {
     // 通道身份、专有参数、执行策略的唯一配置模型，不再拆 Profile/Options/EditableChannel。
-    public enum MCCChannelKind { Virtual, TcpClient, TcpServer, Udp, Serial, Custom }
+    public enum MCCChannelKind { Virtual, TcpClient, TcpServer, Udp, Serial, Custom, UdpServer }
 
     public sealed class MCCChannelConfiguration
     {
@@ -85,7 +85,7 @@ namespace CxVisual.Mechanism.Connectivity
             if (Kind == MCCChannelKind.Custom && string.IsNullOrWhiteSpace(CustomTypeId))
                 throw new ArgumentException("Custom Channel 需要 TypeId");
             if (Kind == MCCChannelKind.TcpClient || Kind == MCCChannelKind.TcpServer ||
-                Kind == MCCChannelKind.Udp)
+                Kind == MCCChannelKind.Udp || Kind == MCCChannelKind.UdpServer)
             {
                 if (string.IsNullOrWhiteSpace(Host) || Port < 1 || Port > 65535)
                     throw new ArgumentException("网络通道地址和端口无效");
@@ -115,6 +115,8 @@ namespace CxVisual.Mechanism.Connectivity
                         MCCIOCapabilities.ByteStream | MCCIOCapabilities.Listener);
                 case MCCChannelKind.Udp:
                     return new MCCChannelTypeDescriptor("udp", MCCChannelTopology.MultiPeer, MCCIOCapabilities.Datagram);
+                case MCCChannelKind.UdpServer:
+                    return new MCCChannelTypeDescriptor("udp.server", MCCChannelTopology.MultiPeer, MCCIOCapabilities.Datagram);
                 case MCCChannelKind.Serial:
                     return new MCCChannelTypeDescriptor("serial", MCCChannelTopology.SharedBus, MCCIOCapabilities.ByteStream);
                 default:

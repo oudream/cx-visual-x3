@@ -117,6 +117,33 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "Module configuration disk roundtrip");
                 Check(reopened.ForScope("module", scopeId).Open<MFMModuleIdentityConfig>()
                     .GetLatestSaved().Kind == MFMModuleKind.Connector, "Identity roundtrip");
+
+                string driverScope = scopeId + ".camera";
+                MHSConfigSection<MFMModuleIdentityConfig> driverIdentity =
+                    service.ForScope("module", driverScope).Open<MFMModuleIdentityConfig>();
+                Check(driverIdentity.UpdateAsync(
+                    x => x.Kind = MFMModuleKind.Driver, "登记设备驱动分类", CancellationToken.None)
+                    .GetAwaiter().GetResult().Success, "Driver identity persisted");
+                MHSConfigSection<MFMDriverModuleConfiguration> driverSection =
+                    service.ForScope("module", driverScope).Open<MFMDriverModuleConfiguration>();
+                Check(driverSection.UpdateAsync(x => {
+                    x.DisplayName = "探测器 SDK";
+                    x.DriverTypeId = "detector.sdk";
+                    x.Backend = MFMDriverBackendKind.Sdk;
+                    x.DeviceRef = "device.detector.01";
+                }, "保存驱动配置", CancellationToken.None).GetAwaiter().GetResult().Success,
+                    "Driver FCM/MHS persistence");
+                MHSConfigService driverReopened = new MHSConfigService(root);
+                MFMDriverModuleConfiguration persistedDriver =
+                    driverReopened.ForScope("module", driverScope)
+                        .Open<MFMDriverModuleConfiguration>().GetLatestSaved();
+                Check(persistedDriver.DriverTypeId == "detector.sdk" &&
+                      persistedDriver.Backend == MFMDriverBackendKind.Sdk &&
+                      persistedDriver.InternalResourceRefs.Count == 0 &&
+                      driverReopened.ForScope("module", driverScope).Open<MFMModuleIdentityConfig>()
+                        .GetLatestSaved().Kind == MFMModuleKind.Driver,
+                    "Driver configuration and identity disk roundtrip without Channel");
+
             }
             finally
             {

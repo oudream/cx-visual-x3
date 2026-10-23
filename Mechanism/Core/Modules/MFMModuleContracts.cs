@@ -4,8 +4,8 @@ using System.Collections.ObjectModel;
 using System.Linq;
 namespace CxVisual.Mechanism.Core.Modules
 {
-    // 四种模块是功能分类，不是四套执行器；普通函数无需创建模块实例。
-    public enum MFMModuleKind { Connector, Compute, Simulation, Service }
+    // 五种模块是功能分类，不是四套执行器；普通函数无需创建模块实例。
+    public enum MFMModuleKind { Connector, Compute, Simulation, Service, Driver }
     public sealed class MFMModuleDescriptor
     {
         public MFMModuleDescriptor(string id, string name, MFMModuleKind kind, int version = 1, IEnumerable<string> capabilityIds = null)

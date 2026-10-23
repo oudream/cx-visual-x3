@@ -150,3 +150,10 @@
 - [统一配置 V2.4 阶段 B 实现与验收](Implementation/CxVisual_统一配置体系_V2.4_阶段B开发者API与动态编辑验收矩阵.md)：类型安全原子组、动态集合操作与条目、真实 CI 证据、阶段 C/D 限制。
 
 - [统一配置体系 V2.4 阶段 C/D 实施与复核验收](Implementation/CxVisual_统一配置体系_V2.4_阶段C与D实施和复核验收矩阵.md)：十二项 UI、独立 Windows D 压测、CI 证据和未验证边界。
+
+
+## 统一功能模块体系 V1.2（2026-10-23）
+
+- [五类模块与设备驱动架构裁决 V1.2](Architecture/CxVisual_统一功能模块体系——五类模块与设备驱动架构裁决_V1.2.md)：原四类扩为 Connector/Driver/Compute/Simulation/Service；默认一组接入，Advanced 才允许多 Channel/Protocol；TcpServer/UdpServer 属于一对多父通道，RS-485 多站号属于 Protocol 点表；设备 SDK/采图归专业 Driver。
+- 本次变化仅增加既有 Mechanism.Core 的 Driver 正式 FCM 配置及对应 TestCenter/ArchitectureSmoke；不新增项目、第二配置库、Channel Adapter、任务调度器或消息/数据仓库。
+- **证据分级**：配置与源码可按 Windows CI 验收；真实 TCP/UDP Server、Modbus RTU 多站和 X-Ray 厂商采图需要正式驱动迁入与 HIL，不以配置存在冒充设备通过。

@@ -71,6 +71,20 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Reject<ArgumentException>(() => new MCCChannelConfiguration {
                 QueueCapacity = 0 }.Validate());
 
+            MCCChannelTypeDescriptor tcpServer = new MCCChannelConfiguration
+                { Kind = MCCChannelKind.TcpServer, Port = 9000 }.DescribeType();
+            MCCChannelTypeDescriptor udpServer = new MCCChannelConfiguration
+                { Kind = MCCChannelKind.UdpServer, Port = 9001 }.DescribeType();
+            Check(tcpServer.Topology == MCCChannelTopology.MultiPeer &&
+                  (tcpServer.IO & MCCIOCapabilities.Listener) != 0 &&
+                  udpServer.Topology == MCCChannelTopology.MultiPeer &&
+                  udpServer.IO == MCCIOCapabilities.Datagram,
+                "TCP/UDP Server manage multiple peers inside one parent Channel");
+            MCCChannelTypeDescriptor serial = new MCCChannelConfiguration
+                { Kind = MCCChannelKind.Serial, PortName = "COM5" }.DescribeType();
+            Check(serial.Topology == MCCChannelTopology.SharedBus,
+                "RS-485 shares a Serial Channel, stations belong to Protocol points");
+
             MCCSubChannelDirectory directory = new MCCSubChannelDirectory("server01");
             MCCSubChannelAddress first = directory.Register("peer01", "127.0.0.1:9000").Address;
             Check(directory.FindSubChannel(first) != null && directory.SnapshotSubChannels().Length == 1,
@@ -123,6 +137,21 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Points = new List<MCNPointDefinition> { point }
             };
             connector.Validate();
+            Check(connector.CompositionMode == MCNConnectorCompositionMode.Standard,
+                "Connector defaults to one Channel and one Protocol");
+            MCNConnectorConfiguration complex = new MCNConnectorConfiguration {
+                Channels = new List<MCCChannelConfiguration> {
+                    channel, new MCCChannelConfiguration { Id = "tcp02", Kind = MCCChannelKind.TcpClient }
+                },
+                Protocols = new List<MPAProtocolBinding> { binding }
+            };
+            Reject<ArgumentException>(() => complex.Validate());
+            complex.CompositionMode = MCNConnectorCompositionMode.Advanced;
+            complex.Validate();
+            complex.Protocols.Add(new MPAProtocolBinding("duplicate-route", "modbus.tcp", "tcp01"));
+            Reject<ArgumentException>(() => complex.Validate()); // 同一路径双规约不能争抢收包
+            complex.Protocols[1].ChannelRef = "tcp02";
+            complex.Validate();
             connector.ValidateProtocolCapabilities(new Dictionary<string, MPAProtocolDescriptor>
                 { { "modbus.tcp", modbus } });
             Reject<ArgumentException>(() => new MCNConnectorConfiguration {
@@ -143,6 +172,27 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 { { "internal", new MPAProtocolDescriptor("internal", "Internal", 1, MPAProtocolCapabilities.Interpret) } });
             Reject<InvalidOperationException>(() => noChannel.ValidateProtocolCapabilities(
                 new Dictionary<string, MPAProtocolDescriptor>()));
+
+            MCNPointDefinition stationOne = new MCNPointDefinition("reg1", "holding:1", typeof(ushort))
+                { ProtocolRef = "rtu", TargetRef = "device.1", StationAddress = "1" };
+            MCNPointDefinition stationTwo = new MCNPointDefinition("reg2", "holding:1", typeof(ushort))
+                { ProtocolRef = "rtu", TargetRef = "device.2", StationAddress = "2" };
+            MCNConnectorConfiguration multiStation = new MCNConnectorConfiguration {
+                Channels = new List<MCCChannelConfiguration> {
+                    new MCCChannelConfiguration { Id = "bus", Kind = MCCChannelKind.Serial, PortName = "COM3" }
+                },
+                Protocols = new List<MPAProtocolBinding> {
+                    new MPAProtocolBinding("rtu", "modbus.rtu", "bus")
+                },
+                Points = new List<MCNPointDefinition> { stationOne, stationTwo }
+            };
+            multiStation.Validate();
+            Check(multiStation.Channels.Count == 1 && multiStation.Protocols.Count == 1 &&
+                  multiStation.Points[0].StationAddress != multiStation.Points[1].StationAddress,
+                  "Two RS-485 stations stay in one Protocol PointTable");
+            stationTwo.StationAddress = "256";
+            Reject<ArgumentException>(() => multiStation.Validate());
+            stationTwo.StationAddress = "2";
 
             MDSVariableRegistry registry = new MDSVariableRegistry();
             MDSVariableTable variables = new MDSVariableTable("plc01");
@@ -165,6 +215,22 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(variables.Get<byte[]>("bytes")[0] == 5 && variables.Get<byte[]>("bytes")[1] == 6,
                 "Byte array variable isolation");
             Reject<ArgumentException>(() => registry.Register(variables));
+
+            MFMModuleDescriptor driverDescriptor =
+                new MFMModuleDescriptor("camera01", "X-Ray Camera", MFMModuleKind.Driver);
+            Check(driverDescriptor.Kind == MFMModuleKind.Driver, "Fifth Driver module kind");
+            MFMDriverModuleConfiguration sdk = new MFMDriverModuleConfiguration {
+                DisplayName = "采图驱动", DriverTypeId = "vision.xray.sdk",
+                Backend = MFMDriverBackendKind.Sdk, DeviceRef = "camera.01"
+            };
+            sdk.Validate();
+            Check(sdk.InternalResourceRefs.Count == 0,
+                "SDK driver does not require EmptyChannel or a Connector instance");
+            Reject<ArgumentException>(() => new MFMDriverModuleConfiguration
+                { DriverTypeId = "" }.Validate());
+            Reject<ArgumentException>(() => new MFMDriverModuleConfiguration {
+                DriverTypeId = "vision.xray", InternalResourceRefs = new List<string> { "tcp", "tcp" }
+            }.Validate());
 
             MFMModuleDescriptor computeDescriptor = new MFMModuleDescriptor("calc", "Calc", MFMModuleKind.Compute);
             PVCComputeModuleProfile compute = new PVCComputeModuleProfile(computeDescriptor);
@@ -189,7 +255,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             service.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
             Check(!service.IsReady && service.Stops == 1 && service.State == MLCServiceModuleState.Stopped,
                 "Service stop");
-            Console.WriteLine("FM.FOUNDATION: module/channel/protocol/point/variable/compute/sim/service PASS");
+            Console.WriteLine("FM.FOUNDATION: driver/module/channel/protocol/point/variable/compute/sim/service PASS");
         }
     }
 }

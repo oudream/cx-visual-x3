@@ -71,10 +71,14 @@ namespace CxVisual.TestCenter.UI
                 ModulePage[] pages;
                 switch (kind)
                 {
+                    case MFMModuleKind.Driver:
+                        Attach(_service.ForScope("module", id).Open<MFMDriverModuleConfiguration>(), id, kind,
+                            model => { model.Validate(); return "Driver 设备驱动配置合法（未启动设备）"; });
+                        break;
                     case MFMModuleKind.Connector:
                         pages = new[] {
                             new ModulePage("identity", "模块信息",
-                                new[] { "DisplayName", "Enabled", "CapabilityIds" }),
+                                new[] { "DisplayName", "Enabled", "CapabilityIds", "CompositionMode" }),
                             new ModulePage("channels", "通道配置", new[] { "Channels" }),
                             new ModulePage("protocols", "规约配置", new[] { "Protocols" }),
                             new ModulePage("points", "变量与点表", new[] { "Points" }),
@@ -84,6 +88,16 @@ namespace CxVisual.TestCenter.UI
                             new ModulePage("advanced", "高级选项",
                                 new[] { "Channels", "Protocols" },
                                 new[] { "身份", "重连", "串口", "子通道", "绑定" })
+                        };
+                        break;
+                    case MFMModuleKind.Driver:
+                        pages = new[] {
+                            new ModulePage("identity", "模块信息",
+                                new[] { "DisplayName", "Enabled", "CapabilityIds" }),
+                            new ModulePage("provider", "设备驱动",
+                                new[] { "DriverTypeId", "DeviceRef", "Backend" }),
+                            new ModulePage("resources", "内部资源引用",
+                                new[] { "InternalResourceRefs" })
                         };
                         break;
                     case MFMModuleKind.Compute:
@@ -204,6 +218,7 @@ namespace CxVisual.TestCenter.UI
             _service = new MHSConfigService(root);
             // 原服务的 RegisterAssembly 是真实 Schema 注册与冲突检测，非新增模块 Catalog。
             _service.RegisterAssembly(typeof(MFMModuleIdentityConfig).Assembly);
+            _service.RegisterAssembly(typeof(MFMDriverModuleConfiguration).Assembly);
             _service.RegisterAssembly(typeof(MCNConnectorConfiguration).Assembly);
             _service.RegisterAssembly(typeof(PVCComputeModuleConfiguration).Assembly);
             _service.RegisterAssembly(typeof(PSMSimulationModuleConfiguration).Assembly);
@@ -223,7 +238,7 @@ namespace CxVisual.TestCenter.UI
                 Foreground = new SolidColorBrush(Color.FromRgb(30, 68, 112)),
                 FontWeight = FontWeights.SemiBold
             });
-            header.ToolTip = "四类模块复用正式 FCM Schema、MPW 编辑器及 MHS Saved/Effective；右侧统一管理配置操作。";
+            header.ToolTip = "五类模块复用正式 FCM Schema、MPW 编辑器及 MHS Saved/Effective；右侧统一管理配置操作。";
             WrapPanel picker = new WrapPanel { Orientation = Orientation.Horizontal };
             picker.Children.Add(new TextBlock { Text = "模块类型", VerticalAlignment = VerticalAlignment.Center });
             picker.Children.Add(_moduleKind);
