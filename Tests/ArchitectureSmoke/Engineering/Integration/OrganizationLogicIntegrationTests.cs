@@ -2200,11 +2200,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         restored.Transitions[2].Priority==0&&
                         restored.Run(new[]{"start"},both)["Camera"]=="CameraAccepted",
                         "P0-3 priority lost after Save/Open");
-                    string xml=MOLWiringCodec.Serialize(saved);
+                    byte[] serialized=MOLWiringCodec.Serialize(saved);
+                    string xml=System.Text.Encoding.UTF8.GetString(serialized);
                     Check(xml.Contains("priority=\"30\""),"P0-3 priority schema missing");
                     bool schemaInvalid=false;
-                    try{MOLWiringCodec.Deserialize(xml.Replace(
-                        "priority=\"30\"","priority=\"1001\""));}
+                    try{MOLWiringCodec.Deserialize(System.Text.Encoding.UTF8.GetBytes(
+                        xml.Replace("priority=\"30\"","priority=\"1001\"")));}
                     catch(System.IO.InvalidDataException ex)
                     {schemaInvalid=ex.Message.Contains("wiring.state.priority");}
                     Check(schemaInvalid,"P0-3 malformed priority schema accepted");
