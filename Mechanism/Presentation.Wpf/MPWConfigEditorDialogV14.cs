@@ -297,6 +297,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 parent.Length > 0 && members.Length > 0)
             {
                 Grid group = new Grid { Margin = new Thickness(2, 6, 2, 8) };
+                System.Windows.Automation.AutomationProperties.SetAutomationId(group, "MPW.Channel.SchemaCards");
                 for (int column = 0; column < 3; column++)
                     group.ColumnDefinitions.Add(new ColumnDefinition {
                         Width = new GridLength(1, GridUnitType.Star),
@@ -541,8 +542,20 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             IList list = (IList)value;
             bool mutable = !type.IsArray;
             if (mutable)
-                host.Children.Add(MakeButton("追加一项", () =>
-                    Execute(() => _editor.InsertListItem(path, list.Count, DefaultJson(args[0])))));
+            {
+                Button add = MakeButton(path == "Channels" ? "添加真实通道配置" :
+                    path == "Protocols" ? "添加规约绑定" :
+                    path == "Points" ? "添加点表项" : "追加一项",
+                    () => Execute(() => _editor.InsertListItem(
+                        path, list.Count, DefaultJson(args[0]))));
+                System.Windows.Automation.AutomationProperties.SetAutomationId(add, "MPW.Collection.Add." + path);
+                host.Children.Add(add);
+                if (list.Count == 0 && path == "Channels")
+                    host.Children.Add(new TextBlock {
+                        Text = "当前没有通道。新增后显示正式Virtual/TCP/UDP/Serial、网络及执行字段。新增只是配置草稿，不代表已连接设备。",
+                        Foreground = Brushes.SlateGray, TextWrapping = TextWrapping.Wrap,
+                        Margin = new Thickness(5, 6, 6, 12) });
+            }
             int shownList = Math.Min(list.Count, VisibleCount(path));
             for (int i = 0; i < shownList; i++)
             {
