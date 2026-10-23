@@ -46,11 +46,20 @@ namespace CxVisual.TestCenter.UI
     {
         private readonly string _path;
         private readonly List<TCTCreatedWorkspace> _items = new List<TCTCreatedWorkspace>();
+        private bool _writesBlocked;
+        public bool IsRecoveryBlocked { get { return _writesBlocked; } }
+        private void EnsureWritable()
+        {
+            if (_writesBlocked)
+                throw new InvalidOperationException(
+                    "原工作区记录校验失败，已禁止覆盖；请备份并修复原文件后重开");
+        }
         public IReadOnlyList<TCTCreatedWorkspace> Items { get { return _items.AsReadOnly(); } }
         public TCTCreatedWorkspaceStore(string path)
         { _path = Path.GetFullPath(path ?? throw new ArgumentNullException("path")); }
         public TCTCreatedWorkspace Create(string templateId, string title, string configId)
         {
+            EnsureWritable();
             if (_items.Count >= 2000) throw new InvalidOperationException("工作区实例超过上限");
             string unique = Guid.NewGuid().ToString("N");
             // 模块MHS Scope绝不按可复用的显示序号命名，避免删除后重新创建误用旧配置。
@@ -65,6 +74,7 @@ namespace CxVisual.TestCenter.UI
         }
         public void UpdateCases(string instanceId, IEnumerable<string> ids)
         {
+            EnsureWritable();
             TCTCreatedWorkspace record = _items.FirstOrDefault(x => x.Id == instanceId);
             if (record == null) throw new InvalidOperationException("测试计划实例不存在");
             string[] previous = record.CaseIds;
@@ -74,6 +84,7 @@ namespace CxVisual.TestCenter.UI
         }
         public bool Delete(string id)
         {
+            EnsureWritable();
             TCTCreatedWorkspace item = _items.FirstOrDefault(x => x.Id == id);
             if (item == null) return false;
             _items.Remove(item);
@@ -83,8 +94,10 @@ namespace CxVisual.TestCenter.UI
         }
         public void Load(IEnumerable<string> allowedTemplates)
         {
+            // 成功完成严格校验前始终禁止写回，防止破坏待取证的原文件。
+            _writesBlocked = true;
             _items.Clear();
-            if (!File.Exists(_path)) return;
+            if (!File.Exists(_path)) { _writesBlocked = false; return; }
             if (new FileInfo(_path).Length > 512 * 1024)
                 throw new InvalidDataException("工作区列表超出安全长度");
             HashSet<string> allowed = new HashSet<string>(allowedTemplates, StringComparer.Ordinal);
@@ -115,9 +128,11 @@ namespace CxVisual.TestCenter.UI
                 loaded.Add(item);
             }
             _items.AddRange(loaded);
+            _writesBlocked = false;
         }
         private void Save()
         {
+            EnsureWritable();
             XElement root = new XElement("TCTCreatedWorkspaces", new XAttribute("version", "1"));
             foreach (TCTCreatedWorkspace entry in _items)
             {

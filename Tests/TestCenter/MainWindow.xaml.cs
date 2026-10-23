@@ -67,8 +67,20 @@ namespace CxVisual.TestCenter.UI
             Explorer.Bind(_catalog);
             Explorer.BindWorkspaces(_workspaces);
             Explorer.WorkspaceSelected += OpenRegisteredWorkspace;
-            Explorer.CreateRequested += id => CreateWorkspaceInstance(id);
-            Explorer.DeleteRequested += DeleteWorkspaceInstance;
+            Explorer.CreateRequested += id => {
+                try { CreateWorkspaceInstance(id); }
+                catch (Exception error) when (error is IOException ||
+                    error is InvalidOperationException || error is UnauthorizedAccessException ||
+                    error is InvalidDataException)
+                { StatusText.Text = "创建实例失败：" + error.Message; }
+            };
+            Explorer.DeleteRequested += id => {
+                try { DeleteWorkspaceInstance(id); }
+                catch (Exception error) when (error is IOException ||
+                    error is InvalidOperationException || error is UnauthorizedAccessException ||
+                    error is InvalidDataException)
+                { StatusText.Text = "删除实例失败：" + error.Message; }
+            };
             Explorer.CloseRequested += id => DocumentHost.CloseWorkspace(id);
             Explorer.StartRequested += id => ExecuteWorkspaceAction(id, true);
             Explorer.StopRequested += id => ExecuteWorkspaceAction(id, false);
@@ -247,6 +259,11 @@ namespace CxVisual.TestCenter.UI
         {
             TCTWorkspaceDescriptor entry = _workspaces.Find(instanceId);
             if (entry == null || !entry.IsCreatedInstance) return;
+            if (entry.TemplateId == "auto.catalog" && _cancel != null)
+            {
+                StatusText.Text = "自动测试Worker正在运行，不能删除计划实例；请先停止";
+                return;
+            }
             TabControl tabs = DocumentHost.Content as TabControl;
             TCTManualModuleFrame module = tabs == null ? null : tabs.Items
                 .OfType<TabItem>().Where(x =>

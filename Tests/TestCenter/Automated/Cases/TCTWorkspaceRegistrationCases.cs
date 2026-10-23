@@ -59,6 +59,15 @@ namespace CxVisual.TestCenter.Cases
                 try { new TCTCreatedWorkspaceStore(file).Load(new[] { "auto.catalog" }); }
                 catch (System.IO.InvalidDataException) { rejected = true; }
                 test.AssertTrue(rejected, "缺失模板注册时拒绝悄悄创建悬空实例", true, rejected);
+                TCTCreatedWorkspaceStore unsafeStore = new TCTCreatedWorkspaceStore(file);
+                bool failedRead = false, deniedOverwrite = false;
+                try { unsafeStore.Load(new[] { "auto.catalog" }); }
+                catch (System.IO.InvalidDataException) { failedRead = true; }
+                try { unsafeStore.Create("auto.catalog", "禁止覆盖", ""); }
+                catch (InvalidOperationException) { deniedOverwrite = true; }
+                test.AssertTrue(failedRead && deniedOverwrite && unsafeStore.IsRecoveryBlocked,
+                    "坏实例文件恢复失败后禁止用空数据覆盖旧文件", true,
+                    failedRead && deniedOverwrite);
             }
             finally
             {
