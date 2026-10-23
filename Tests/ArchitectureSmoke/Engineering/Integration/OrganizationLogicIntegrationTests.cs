@@ -66,6 +66,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             MOLDefinitionEditingClosure();
             MOLScalarTypeSafety();
             MOLTypedDefinitionContracts();
+            MOLLosslessSchemaConversion();
             V1WaitDelayCancellationRoundtrip();
             P01EventAwaitTimeoutCancellationRoundtrip();
             P01TryCatchFinallyRoundtrip();
@@ -357,6 +358,83 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 stateSession.Close(true);
                 if(System.IO.File.Exists(stateFile))System.IO.File.Delete(stateFile);
                 if(System.IO.File.Exists(stateFile+".cx-lock"))System.IO.File.Delete(stateFile+".cx-lock");
+            }
+        }
+
+
+        /// <summary>D2/D3：最小等价子集可转换；有关系的复杂工程必须保持原载荷。</summary>
+        private static void MOLLosslessSchemaConversion()
+        {
+            var session=MEMEngineering.Create("MOL无损Schema迁移");
+            MEMPage page=session.AddPage("Main");
+            MOLControlBlock action=MOLControlBlock.Action("Inspect");
+            MOLLogicCodec.Set(session,page.RootContent,new MOLLogicDefinition(action));
+            int rev=session.Revision;
+            MOLWiringCodec.ConvertFromV1(session,page.RootContent);
+            var wiring=MOLWiringCodec.Get(session.GetSnapshot().Find(page.RootContent.Id));
+            Check(session.Revision==rev+1&&wiring.Blocks.Count==1&&
+                wiring.Blocks[0].Id==action.Id&&
+                wiring.Blocks[0].CapabilityId=="Inspect"&&wiring.Links.Count==0,
+                "Single Action conversion V1 to V2 was not lossless");
+            Check(session.Undo().Success&&
+                MOLLogicCodec.Get(session.GetSnapshot().Find(page.RootContent.Id))
+                    .Root.Id==action.Id,
+                "V1/V2 conversion lost MEM Undo");
+            Check(session.Redo().Success&&
+                MOLWiringCodec.Get(session.GetSnapshot().Find(page.RootContent.Id))
+                    .EntryBlockId==action.Id,
+                "V1/V2 conversion lost MEM Redo");
+            MOLLogicCodec.ConvertFromV2(session,page.RootContent);
+            Check(MOLLogicCodec.Get(session.GetSnapshot().Find(page.RootContent.Id))
+                .Root.Id==action.Id,"V2 to V1 converted different identity");
+
+            var complex=new MOLLogicDefinition(MOLControlBlock.Sequence(
+                MOLControlBlock.Action("Acquire"),MOLControlBlock.Action("Detect")));
+            MOLLogicCodec.Set(session,page.RootContent,complex);
+            int current=session.Revision;
+            byte[] original=MOLLogicCodec.Serialize(complex);
+            bool rejected=false;
+            try{MOLWiringCodec.ConvertFromV1(session,page.RootContent);}
+            catch(InvalidOperationException ex)
+            {rejected=ex.Message=="wiring.convert.not_lossless";}
+            var unchanged=MOLLogicCodec.Get(session.GetSnapshot().Find(page.RootContent.Id));
+            Check(rejected&&session.Revision==current&&
+                System.Linq.Enumerable.SequenceEqual(original,MOLLogicCodec.Serialize(unchanged)),
+                "Complex V1 schema conversion silently lost logic or changed Revision");
+
+            var other=MEMEngineering.Create("V2复杂拒绝");
+            MEMPage otherPage=other.AddPage("Main");
+            try
+            {
+                MOCFlowBuilder.Edit(other,otherPage.RootContent,b=>b.Step("Inspect"));
+                current=other.Revision;rejected=false;
+                try{MOLLogicCodec.ConvertFromV2(other,otherPage.RootContent);}
+                catch(InvalidOperationException ex)
+                {rejected=ex.Message=="logic.convert.not_lossless";}
+                Check(rejected&&other.Revision==current&&
+                    MOLWiringCodec.Get(other.GetSnapshot().Find(otherPage.RootContent.Id))!=null,
+                    "V2 conversion dropped port Graph or committed rejected edit");
+            }
+            finally{other.Close(true);}
+            string path=System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                "mol-schema-"+Guid.NewGuid().ToString("N")+".cxproj");
+            try
+            {
+                session.SaveAs(path);
+                var opened=MEMEngineering.Open(path);
+                try
+                {
+                    var read=MOLLogicCodec.Get(opened.GetSnapshot().Find(page.RootContent.Id));
+                    Check(read.Root.Id==complex.Root.Id&&read.Root.Children.Count==2,
+                        "Rejected migration changed persisted complex V1 logic");
+                }
+                finally{opened.Close(true);}
+            }
+            finally
+            {
+                session.Close(true);
+                if(System.IO.File.Exists(path))System.IO.File.Delete(path);
+                if(System.IO.File.Exists(path+".cx-lock"))System.IO.File.Delete(path+".cx-lock");
             }
         }
 
