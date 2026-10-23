@@ -18,7 +18,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="System"/>
-    <Reference Include="System.Core"/>
+    <Reference Include="System.Core"/><Reference Include="System.ComponentModel.DataAnnotations"/>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Protocols\MPAProtocolContracts.cs"/><Compile Include="Connectors\MCNConnectorContracts.cs"/><Compile Include="Channels\IO\MCCIOContracts.cs"/><Compile Include="Channels\SubChannels\MCCSubChannelModels.cs"/><Compile Include="Channels\Configuration\MCCChannelConfiguration.cs"/><Compile Include="Channels\Diagnostics\MCCChannelDiagnostics.cs"/><Compile Include="Protocols\MPAProtocolDescription.cs"/><Compile Include="Protocols\Routing\MPAProtocolBinding.cs"/><Compile Include="Protocols\Sessions\MPAProtocolSession.cs"/><Compile Include="Protocols\Operations\MPAProtocolOperations.cs"/><Compile Include="Protocols\Operations\MPAProtocolExtensions.cs"/><Compile Include="Connectors\Points\MCNPointTable.cs"/><Compile Include="Connectors\Configuration\MCNConnectorConfiguration.cs"/><Compile Include="Properties\AssemblyInfo.cs"/>
