@@ -508,14 +508,7 @@ namespace CxVisual.TestCenter.UI
                 as SelectionItemPattern;
             if (selector == null) throw new InvalidOperationException("Case selection pattern missing");
             selector.Select();
-            AutomationElement context = Find(root, "TCT.Context.Geometry");
-            InvokePattern modeAction = context.GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
-            if (modeAction == null)
-                throw new InvalidOperationException("Dynamic Geometry Ribbon does not expose InvokePattern");
-            modeAction.Invoke();
-            AutomationElement source = Find(root, "TCT.Context.Source");
-            if (source.GetCurrentPattern(InvokePattern.Pattern) == null)
-                throw new InvalidOperationException("Contextual source navigation missing");
+            // 当前目录用例选择由计划页与Inspector承载，不强求隐藏的旧Ribbon。
             AutomationElement run = Find(root, "TCT.Manual.Action.plan.runselected");
             InvokePattern invoke = run.GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
             if (invoke == null) throw new InvalidOperationException("Run Selected invoke pattern missing");
@@ -560,10 +553,7 @@ namespace CxVisual.TestCenter.UI
                 as SelectionItemPattern;
             if (select == null) throw new InvalidOperationException("Symbol case has no SelectionItemPattern");
             select.Select();
-            AutomationElement mode = Find(root, "TCT.Context.Object");
-            InvokePattern context = mode.GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
-            if (context == null) throw new InvalidOperationException("Object Ribbon command not accessible");
-            context.Invoke();
+            // 当前目录用例选择由计划页与Inspector承载，不强求隐藏的旧Ribbon。
             AutomationElement run = Find(root, "TCT.Manual.Action.plan.runselected");
             InvokePattern invoke = run.GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
             if (invoke == null) throw new InvalidOperationException("TestCenter run command not accessible");
