@@ -133,7 +133,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             _boundaries.SelectedItem = FCMConfigApplyPolicy.NextTask;
             BuildShell();
             RefreshAll();
-            Unloaded += (s, e) => Dispose();
+            // Tab切换、Dock隐藏与DPI重排均可能临时Unloaded，
+            // 不能在此处销毁尚未提交的配置草稿。
+            // 由明确的宿主关闭/替换动作和Dialog using调用Dispose。
         }
         /// <summary>Professional editors return a WPF element and accept a JSON setter.
         /// The setter still performs typed validation and edits only the current draft.</summary>

@@ -198,6 +198,24 @@ namespace CxVisual.TestCenter.UI
                 .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
             if (validate == null) throw new InvalidOperationException("Module validation unavailable");
             validate.Invoke();
+            // 真实WPF Tab切换会Unloaded临时内容；回来后配置编辑器必须仍可读取
+            // 同一MHS草稿，不得在离开页面时Dispose或另建第二套Editor。
+            window.Dispatcher.Invoke(new Action(() => {
+                System.Windows.Controls.TabControl tabs =
+                    window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                System.Windows.Controls.TabItem active = tabs.SelectedItem as System.Windows.Controls.TabItem;
+                if (active == null || !(active.Content is TCTManualModuleFrame))
+                    throw new InvalidOperationException("模块页在验证前丢失");
+                tabs.SelectedIndex = 0;
+                tabs.UpdateLayout();
+                tabs.SelectedItem = active;
+                tabs.UpdateLayout();
+                TCTManualModuleFrame frame = (TCTManualModuleFrame)active.Content;
+                frame.ValidateCurrent();
+                if (frame.StatusMessage.StartsWith("模块结构校验失败", StringComparison.Ordinal))
+                    throw new InvalidOperationException(
+                        "切换工作区后通用MPW配置编辑器失效：" + frame.StatusMessage);
+            }));
         }
         private static void InteractManualModule(IntPtr hwnd, TCTMainWindow window)
         {
