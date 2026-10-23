@@ -1126,7 +1126,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
             {
                 if(region.FinallyBody!=null)
                 {
-                    // 受控清理不沿用已取消的Flow令牌；10秒预算防止无期限挂起。
+                    // 受控清理不沿用已取消的Flow令牌；10秒只发出协作取消，
+                    // 不承诺强制中止无响应的设备SDK/Worker，须由专业安全层处置。
                     using(var cleanup=new CancellationTokenSource(TimeSpan.FromSeconds(10)))
                     {
                         try
