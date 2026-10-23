@@ -430,6 +430,18 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 xml.Replace("v=\"5\"","v=\"2\"")));}
             catch(System.IO.InvalidDataException){rejected=true;}
             Check(rejected,"Legacy Wiring Schema2 swallowed compound Guard");
+            foreach(string malformed in new[]{
+                xml.Replace("<MOL v=\"5\"","<MOL v=\"5\" extra=\"ignore\""),
+                xml.Replace("<Guard op=\"All\"","<Guard op=\"All\" extra=\"ignore\""),
+                xml.Replace("<Transition from=","<Transition extra=\"ignore\" from="),
+                xml.Replace("v=\"5\"","v=\"3\"")
+            })
+            {
+                rejected=false;
+                try{MOLWiringCodec.Deserialize(System.Text.Encoding.UTF8.GetBytes(malformed));}
+                catch(System.IO.InvalidDataException){rejected=true;}
+                Check(rejected,"Wiring silently ignored malformed or downgraded compound schema");
+            }
             string file=System.IO.Path.Combine(System.IO.Path.GetTempPath(),
                 "mol-state-compound-"+Guid.NewGuid().ToString("N")+".cxproj");
             try
