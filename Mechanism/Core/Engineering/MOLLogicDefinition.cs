@@ -949,9 +949,15 @@ namespace CxVisual.Mechanism.Core
             Source=MOLStateDescriptor.Check(source);
             EventId=MOLStateDescriptor.Check(eventId);
             Target=MOLStateDescriptor.Check(target);
-            if(guard!=null&&guard.Source!=MOLExpressionSource.FlowInput&&
-               guard.Source!=MOLExpressionSource.Constant)
-                throw new ArgumentException("moc.state.guard_source");
+            Action<MOLExpression> validate=null;
+            validate=e=>{
+                if(e==null)return;
+                if(e.Operator!=MOLLogicalOperator.Scalar)
+                {foreach(var t in e.Terms)validate(t);return;}
+                if(e.Source!=MOLExpressionSource.FlowInput&&e.Source!=MOLExpressionSource.Constant)
+                    throw new ArgumentException("moc.state.guard_source");
+            };
+            validate(guard);
             if(priority<0||priority>1000)
                 throw new ArgumentOutOfRangeException("priority","moc.state.priority_range");
             Guard=guard;Priority=priority;
@@ -1025,12 +1031,13 @@ namespace CxVisual.Mechanism.Core
         }
         private static bool GuardSatisfied(MOLExpression guard,IDictionary<string,object> inputs)
         {
-            if(guard==null)return true;
-            object value;
-            if(guard.Source==MOLExpressionSource.Constant)value=guard.Name;
-            else if(inputs==null||!inputs.TryGetValue(guard.Name,out value))
-                throw new InvalidOperationException("moc.state.guard_input_missing:"+guard.Name);
-            return MOLScalarExpression.Evaluate(guard,value);
+            return MOLScalarExpression.EvaluateTree(guard,leaf=>{
+                if(leaf.Source==MOLExpressionSource.Constant)return leaf.Name;
+                object value;
+                if(inputs==null||!inputs.TryGetValue(leaf.Name,out value))
+                    throw new InvalidOperationException("moc.state.guard_input_missing:"+leaf.Name);
+                return value;
+            });
         }
         /// <summary>保持旧API；需要Guard输入时显式使用新重载。</summary>
         public IReadOnlyDictionary<string,string> Run(IEnumerable<string> events,
@@ -1423,6 +1430,13 @@ namespace CxVisual.Mechanism.Core
         public const int SchemaVersion=2;
         // 同一V2连线表示的扩展版本，不创建第三种工程Graph。
         public const int ExtendedSchemaVersion=3;
+        public const int CompoundSchemaVersion=5;
+        private static bool NeedsCompoundSchema(MOLWiringDefinition definition)
+        {return definition.StateMachines.Values.Any(m=>m.Transitions.Any(t=>
+            t.Guard!=null&&t.Guard.Operator!=MOLLogicalOperator.Scalar));}
+        private static int Version(MOLWiringDefinition definition)
+        {return NeedsCompoundSchema(definition)?CompoundSchemaVersion:
+            NeedsExtendedSchema(definition)?ExtendedSchemaVersion:SchemaVersion;}
         private static bool NeedsExtendedSchema(MOLWiringDefinition definition)
         {
             return definition.StateMachines.Values.Any(m=>m.States.Any(s=>
@@ -1432,8 +1446,7 @@ namespace CxVisual.Mechanism.Core
         {
             if(definition==null)throw new ArgumentNullException("definition");
             return new MPMAspect(MPMAspectKind.Logic,MOLLogicCodec.ProviderId,
-            NeedsExtendedSchema(definition)?ExtendedSchemaVersion:SchemaVersion,
-            Serialize(definition));
+            Version(definition),Serialize(definition));
         }
         /// <summary>仅无损转换单一V1 Action；复杂结构返回明确信息并保持原定义。</summary>
         public static void ConvertFromV1(MEMEngineeringSession session,MEMContent content)
@@ -1470,7 +1483,8 @@ namespace CxVisual.Mechanism.Core
             if(found==null||found.SchemaVersion==MOLLogicCodec.SchemaVersion||
                 found.SchemaVersion==MOLLogicCodec.ExtendedSchemaVersion)return null;
             if((found.SchemaVersion!=SchemaVersion&&
-                found.SchemaVersion!=ExtendedSchemaVersion)||found.RequiresRemap)
+                found.SchemaVersion!=ExtendedSchemaVersion&&
+                found.SchemaVersion!=CompoundSchemaVersion)||found.RequiresRemap)
                 throw new InvalidDataException("wiring.unknown_schema");
             return Deserialize(found.Payload,found.SchemaVersion);
         }
@@ -1478,7 +1492,7 @@ namespace CxVisual.Mechanism.Core
         {
             if(def==null)throw new ArgumentNullException("def");def.Validate();
             var root=new XElement("MOL",
-                new XAttribute("v",NeedsExtendedSchema(def)?ExtendedSchemaVersion:SchemaVersion),
+                new XAttribute("v",Version(def)),
                 new XAttribute("entry",def.EntryBlockId.ToString("N")),
                 new XElement("Blocks",def.Blocks.Select(b=>new XElement("Block",
                     new XAttribute("id",b.Id.ToString("N")),new XAttribute("cap",b.CapabilityId),
@@ -1560,7 +1574,7 @@ namespace CxVisual.Mechanism.Core
         public static MOLWiringDefinition Deserialize(byte[] bytes,int expectedSchema=0)
         {
             if(expectedSchema!=0&&expectedSchema!=SchemaVersion&&
-                expectedSchema!=ExtendedSchemaVersion)
+                expectedSchema!=ExtendedSchemaVersion&&expectedSchema!=CompoundSchemaVersion)
                 throw new InvalidDataException("wiring.unknown_schema");
             if(bytes==null||bytes.Length<1||bytes.Length>4*1024*1024)throw new InvalidDataException("wiring.payload_invalid");
             var settings=new XmlReaderSettings{DtdProcessing=DtdProcessing.Prohibit,XmlResolver=null,MaxCharactersInDocument=4*1024*1024};
@@ -1569,7 +1583,7 @@ namespace CxVisual.Mechanism.Core
                 var root=XDocument.Load(reader).Root;
                 string version=root==null?null:(string)root.Attribute("v");
                 if(root==null||root.Name!="MOL"||
-                    (version!="2"&&version!="3")||
+                    (version!="2"&&version!="3"&&version!="5")||
                     (expectedSchema!=0&&version!=expectedSchema.ToString(CultureInfo.InvariantCulture))||
                     root.Element("Blocks")==null||root.Element("Links")==null||
                     root.Elements().Count()<2||root.Elements().Count()>8||
