@@ -65,6 +65,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             SaveLoadAndIdentity();
             MOLDefinitionEditingClosure();
             MOLScalarTypeSafety();
+            MOLCompoundConditions();
             MOLTypedDefinitionContracts();
             MOLThrowDefinitionContracts();
             MOLLosslessSchemaConversion();
@@ -230,6 +231,96 @@ namespace CxVisual.Tests.ArchitectureSmoke
             }
         }
 
+
+
+        /// <summary>MOL纯值复合规则：短路、原Schema扩展、同一MRK条件执行路径。</summary>
+        private static void MOLCompoundConditions()
+        {
+            MOLExpression condition=MOLExpression.All(MOLExpression.InputTrue("ready"),
+                MOLExpression.Any(MOLExpression.InputTrue("approved"),
+                    MOLExpression.Not(MOLExpression.InputTrue("blocked"))));
+            var values=new Dictionary<string,object>{
+                {"ready",false},{"approved",true},{"blocked",false}};
+            int reads=0;
+            Check(!MOLScalarExpression.EvaluateTree(condition,leaf=>{
+                reads++;return values[leaf.Name];
+            })&&reads==1,"MOL All did not short circuit");
+            values["ready"]=true;values["approved"]=true;reads=0;
+            Check(MOLScalarExpression.EvaluateTree(condition,leaf=>{
+                reads++;return values[leaf.Name];
+            })&&reads==2,"MOL Any did not short circuit");
+            values["approved"]=false;values["blocked"]=true;reads=0;
+            Check(!MOLScalarExpression.EvaluateTree(condition,leaf=>{
+                reads++;return values[leaf.Name];
+            })&&reads==3,"MOL Not/Any semantics incorrect");
+            bool invalid=false;
+            try{MOLExpression.Not(null);}
+            catch(ArgumentException){invalid=true;}
+            Check(invalid,"MOL compound accepted a null child");
+
+            var succeed=MOLControlBlock.Action("compound.pass");
+            var fail=MOLControlBlock.Action("compound.fail");
+            var definition=new MOLLogicDefinition(MOLControlBlock.If(condition,succeed,fail));
+            byte[] serialized=MOLLogicCodec.Serialize(definition);
+            string xml=System.Text.Encoding.UTF8.GetString(serialized);
+            Check(xml.StartsWith("<MOL v=\"4\"")&&
+                MOLLogicCodec.Deserialize(serialized).Root.Cases[0].Condition.Operator==
+                    MOLLogicalOperator.All,
+                "Compound MOL Expression schema4 roundtrip failed");
+            invalid=false;
+            try{MOLLogicCodec.Deserialize(System.Text.Encoding.UTF8.GetBytes(
+                xml.Replace("v=\"4\"","v=\"1\"")));}
+            catch(System.IO.InvalidDataException){invalid=true;}
+            Check(invalid,"Legacy schema1 consumed compound expression without explicit upgrade");
+
+            var session=MEMEngineering.Create("MOL Compound");
+            var page=session.AddPage("Main");
+            string file=System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                "mol-compound-"+Guid.NewGuid().ToString("N")+".cxproj");
+            string observed="";
+            var resolver=new TestResolver()
+                .Register("compound.pass",(ctx,ct)=>{
+                    observed="pass";return Task.FromResult((object)true);})
+                .Register("compound.fail",(ctx,ct)=>{
+                    observed="fail";return Task.FromResult((object)true);});
+            MOLLogicCodec.Set(session,page.RootContent,definition);
+            try
+            {
+                session.SaveAs(file);
+                var opened=MEMEngineering.Open(file);
+                try
+                {
+                    var copied=MOLLogicCodec.Get(opened.GetSnapshot().Find(page.RootContent.Id));
+                    Check(copied.Root.Id==definition.Root.Id&&
+                        copied.Root.Cases[0].Condition.Terms.Count==2,
+                        "MEM lost composite logic on Save/Open");
+                    var compiled=new MOCEngineeringCompiler().Compile(opened.GetSnapshot(),
+                        page.RootContent.Id,resolver);
+                    MOCTraceView trace;
+                    var result=Execute(compiled,new Dictionary<string,object>{
+                        {"ready",true},{"approved",true}},out trace);
+                    Check(result.State==MRKFlowState.Completed&&observed=="pass",
+                        "MOC/MRK did not apply short circuit for composite guard");
+                    observed="";
+                    result=Execute(compiled,new Dictionary<string,object>{
+                        {"ready",false}},out trace);
+                    Check(result.State==MRKFlowState.Completed&&observed=="fail",
+                        "MOC/MRK false composite branch not taken");
+                    observed="";
+                    result=Execute(compiled,new Dictionary<string,object>{
+                        {"ready",true},{"approved",false},{"blocked",true}},out trace);
+                    Check(result.State==MRKFlowState.Completed&&observed=="fail",
+                        "MOC/MRK composite Not branch was incorrectly true");
+                }
+                finally{opened.Close(true);}
+            }
+            finally
+            {
+                session.Close(true);
+                if(System.IO.File.Exists(file))System.IO.File.Delete(file);
+                if(System.IO.File.Exists(file+".cx-lock"))System.IO.File.Delete(file+".cx-lock");
+            }
+        }
 
         /// <summary>D1：统一Guard/分支/状态机可复用的纯标量类型合同。</summary>
         private static void MOLScalarTypeSafety()
