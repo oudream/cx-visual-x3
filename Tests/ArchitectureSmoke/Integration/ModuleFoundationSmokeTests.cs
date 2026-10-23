@@ -49,6 +49,72 @@ namespace CxVisual.Tests.ArchitectureSmoke
             protected override Task OnStopAsync(CancellationToken ct) { Stops++; return Task.CompletedTask; }
         }
 
+        private static void ModbusTcpTransactionSmoke()
+        {
+            MCCVirtualChannel[] pair = MCCVirtualChannel.CreatePair("mb-request", "mb-device");
+            MPAModbusTcpProtocol protocol = new MPAModbusTcpProtocol();
+            MPAProtocolConfiguration config = new MPAProtocolConfiguration("mb-request-config", "modbus.tcp");
+            config.TimeoutMs = 70;
+            MPAProtocolContext context = new MPAProtocolContext(config.Id, "virtual-request",
+                new MCCSubChannelAddress("mb-request"), configuration: config, transport: pair[0]);
+            int behavior = 0;
+            pair[0].Received += received => protocol.ProcessReceived(received, context);
+            pair[1].Received += received =>
+            {
+                byte[] frame = received.Data;
+                if (behavior == 4) return; // 故意无响应，用于真实超时
+                byte[] pdu = behavior == 2 ? new byte[] { 0x83, 0x02 } :
+                    (frame[7] == 3 ? new byte[] { 3, 2, 0, 42 } :
+                    frame.Skip(7).Take(5).ToArray());
+                byte[] reply = new byte[pdu.Length + 7];
+                reply[0] = frame[0]; reply[1] = frame[1]; // 保留实际 TransactionId
+                reply[5] = (byte)(pdu.Length + 1);
+                reply[6] = (byte)(behavior == 3 ? frame[6] + 1 : frame[6]);
+                Buffer.BlockCopy(pdu, 0, reply, 7, pdu.Length);
+                pair[1].SendAsync(reply, new MCCSubChannelAddress("mb-device"),
+                    CancellationToken.None).GetAwaiter().GetResult();
+            };
+            pair[0].Open(); pair[1].Open();
+            try
+            {
+                MPAProtocolOperationResult read = protocol.RequestAsync(
+                    new MPAProtocolOperationRequest(MPAProtocolOperationKind.Request,
+                        new MPAProtocolAddress("3"), MPAModbusRegisterOperations.ReadHolding(100, 1)),
+                    context, CancellationToken.None).GetAwaiter().GetResult();
+                Check(read.IsCompleted && ((byte[])read.Value).SequenceEqual(new byte[] { 3, 2, 0, 42 }),
+                    "Modbus TCP 实际发送并关联 TransactionId 的 03 响应");
+                behavior = 1;
+                MPAProtocolOperationResult write = protocol.RequestAsync(
+                    new MPAProtocolOperationRequest(MPAProtocolOperationKind.Request,
+                        new MPAProtocolAddress("3"), MPAModbusRegisterOperations.WriteSingle(100, 42)),
+                    context, CancellationToken.None).GetAwaiter().GetResult();
+                Check(write.IsCompleted && ((byte[])write.Value)[0] == 6,
+                    "Modbus TCP 06 写入必须等待回显确认");
+                behavior = 2;
+                Reject<System.IO.InvalidDataException>(() => protocol.RequestAsync(
+                    new MPAProtocolOperationRequest(MPAProtocolOperationKind.Request,
+                        new MPAProtocolAddress("3"), MPAModbusRegisterOperations.ReadHolding(100, 1)),
+                    context, CancellationToken.None).GetAwaiter().GetResult());
+                behavior = 3;
+                Reject<System.IO.InvalidDataException>(() => protocol.RequestAsync(
+                    new MPAProtocolOperationRequest(MPAProtocolOperationKind.Request,
+                        new MPAProtocolAddress("3"), MPAModbusRegisterOperations.ReadHolding(100, 1)),
+                    context, CancellationToken.None).GetAwaiter().GetResult());
+                behavior = 4;
+                Reject<TimeoutException>(() => protocol.RequestAsync(
+                    new MPAProtocolOperationRequest(MPAProtocolOperationKind.Request,
+                        new MPAProtocolAddress("3"), MPAModbusRegisterOperations.ReadHolding(100, 1)),
+                    context, CancellationToken.None).GetAwaiter().GetResult());
+                Reject<NotSupportedException>(() => protocol.RequestAsync(
+                    new MPAProtocolOperationRequest(MPAProtocolOperationKind.Request,
+                        new MPAProtocolAddress("3"), new byte[] { 16, 0, 1, 0, 1 }),
+                    context, CancellationToken.None).GetAwaiter().GetResult());
+                Check(pair[0].State == MCCChannelState.Open, "异常响应/超时不能错误关闭 Channel");
+                protocol.ResetAll();
+            }
+            finally { pair[0].Close(); pair[1].Close(); }
+        }
+
         public static void Run()
         {
             MFMModuleComposition module = new MFMModuleComposition("PLC01", new[]
@@ -246,6 +312,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 "Empty Protocol transparently passes data, not an Empty Channel");
             emptyModule.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
             emptyPair[1].Close();
+            ModbusTcpTransactionSmoke();
             // Modbus TCP/RTU 的实际帧校验：TCP 半包，RTU 站号和 CRC16。
             // 按代次清理半包：旧客户端遗留字节不能污染新的 ProtocolSession。
             MPALengthFrameProtocol cleanupParser = new MPALengthFrameProtocol();

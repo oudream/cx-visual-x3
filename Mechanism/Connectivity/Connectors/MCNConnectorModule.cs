@@ -142,6 +142,25 @@ namespace CxVisual.Mechanism.Connectivity
             await channel.SendAsync(bytes, destination, ct).ConfigureAwait(false);
         }
 
+        // Connector 唯一的物理事务入口：复用当前 Channel 接收事件驱动 Protocol，
+        // 不为每个请求另订阅 Received、不创建第二个 Connector 或 Socket。
+        public Task<MPAProtocolOperationResult> RequestAsync(
+            MPAProtocolOperationRequest request, MCCSubChannelAddress destination, CancellationToken ct)
+        {
+            IMPAProtocolRequester requester = Protocol as IMPAProtocolRequester;
+            IMCCChannelTransport transport = Channel as IMCCChannelTransport;
+            if (requester == null || transport == null)
+                throw new NotSupportedException("当前 Protocol 未实现设备级请求响应");
+            if (!IsStarted || transport.State != MCCChannelState.Open)
+                throw new InvalidOperationException("Connector 尚未启动或通道不可用");
+            if (destination == null || destination.ChannelId != Channel.Id)
+                throw new ArgumentException("请求目标不属于 Connector Channel");
+            return requester.RequestAsync(request, new MPAProtocolContext(
+                Configuration.Protocol.Id, Channel.SessionId.ToString("N"),
+                destination, request == null ? null : request.CorrelationId,
+                configuration: Configuration.Protocol, transport: transport), ct);
+        }
+
         public Task ApplyPointValueAsync(string point, object value, IMPADataTargetAccess access, CancellationToken ct)
         { return new MPADataMappingExecutor(access).ApplyInboundAsync(Configuration.Protocol, point, value, ct); }
 

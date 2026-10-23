@@ -99,3 +99,12 @@
 - 统一基类使用 FIFO 有界证据队列，最多 10000 帧、保留字节合计最多 4 MiB；单条报文超过 256 KiB 时，仅省略诊断载荷副本，`MCCChannelFrame.Error` 显式附带原始长度及省略原因，不改动 `Received` 事件和真实发包内容。
 - `ModuleChannelTransportSmokeTests.BoundedEvidence` 增加大报文原样接收、元数据省略、连续收包后累计留存上限与最新帧保留反证。该测试为进程内机制回归，不代表实际 2D/CT 图像大数据通道性能或硬件 HIL；使用大型图像时仍应走既有数据 Handle 与背压约束。
 - 本轮只收敛诊断留存内存边界；`QueueCapacity` / `ReceiveByteBudget` 对生产收包背压的实际契约、`ConnectTimeoutMs` 的运行应用、Serial 设备 HIL 和完整 Modbus 事务均未因本改动宣称完成。
+
+
+## 9. Modbus TCP 请求—响应事务增量（提交后以对应 SHA 的 CI 为准）
+
+- `MPAModbusTcpProtocol` 正式实现 `IMPAProtocolRequester.RequestAsync`：仅支持已明确验证的 03 读保持寄存器与 06 写单寄存器 PDU，不把发出报文当作执行成功。按 `ChannelAddress`（含 Generation）+ MBAP `TransactionId` 寻址，再经现有 `MPAProtocolSession` 的 `CorrelationId`、超时与取消返回任务结果；校验 Unit、功能码、03 数据长度与 06 回显，Modbus 异常响应及时失败。
+- `MCNConnectorModule.RequestAsync` 使用现有唯一 Channel 的接收订阅及 Protocol，不创建每次请求的新 Socket/Adapter。直接使用 Protocol 时，调用方必须将 Channel 的 Received 交给 `ProcessReceived`；Connector 启动后已统一接管。
+- `Reset(address)`、`ResetAll()` 对失败、断线及停止时清理待处理会话，旧子通道代次不可借新连接完成旧事务；超时、断开、响应不合法均不能返回 Completed。
+- `ModuleFoundationSmokeTests.ModbusTcpTransactionSmoke` 使用正式 Virtual 纯传输双端，完成 03/06 发送确认、异常码、错误 Unit、超时和不支持功能码反证；这不等于外部 PLC 或 RS-485 HIL。
+- **尚未完成**：PointTable 驱动的自动寄存器值转换、03/06 到 MDS 的自动映射、更多 Modbus 功能码、RTU SharedBus 排队与 T3.5 静默间隔、工业 HIL/压力；并未借本轮冒充全部 P2/P3 达标。

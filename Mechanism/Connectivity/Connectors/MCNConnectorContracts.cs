@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using CxVisual.Mechanism.Core.Modules;
 
 namespace CxVisual.Mechanism.Connectivity
@@ -9,5 +11,7 @@ namespace CxVisual.Mechanism.Connectivity
         IMCCChannel Channel { get; }
         IMPAProtocolDefinition Protocol { get; }
         IReadOnlyList<MPAPointDefinition> Points { get; }
+        Task<MPAProtocolOperationResult> RequestAsync(
+            MPAProtocolOperationRequest request, MCCSubChannelAddress destination, CancellationToken ct);
     }
 }

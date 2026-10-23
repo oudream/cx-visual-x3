@@ -115,6 +115,20 @@ namespace CxVisual.Mechanism.Connectivity
             }
             return pending.TrySetResult(value is byte[] ? ((byte[])value).Clone() : value);
         }
+        // 无效设备响应也必须唤醒原请求，而不能让其一直等到超时。
+        public bool FailResponse(string correlationId, Exception error)
+        {
+            if (string.IsNullOrWhiteSpace(correlationId)) return false;
+            if (error == null) throw new ArgumentNullException("error");
+            TaskCompletionSource<object> pending;
+            lock (_gate)
+            {
+                if (_state != MPAProtocolSessionState.Active ||
+                    !_pending.TryGetValue(correlationId, out pending)) return false;
+                _pending.Remove(correlationId);
+            }
+            return pending.TrySetException(error);
+        }
         public int PendingRequests { get { lock (_gate) return _pending.Count; } }
         private void CancelPending(string reason)
         {
