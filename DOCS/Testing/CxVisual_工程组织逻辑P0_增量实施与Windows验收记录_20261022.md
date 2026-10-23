@@ -45,3 +45,13 @@
 ## 3. 不变量与下一开发增量
 
 保持 Logic Aspect 唯一工程真源，不增加项目、不复制 Graph、MRK 或 MDS。后续优先将 P0-1 Try/Catch/Finally 定义、编译、运行、异常与取消成组闭环；再做 P0-3 持续实例/事件时序/Checkpoint；P0-2 混合嵌套反例与 P0-4 调试导航依真实源码逐项完成。各项都必须提交前重新检查 master HEAD 和目标文件；只有新 SHA 的 Windows CI 成功才提升到 S3。
+
+
+## 4. 2026-10-23：P0-3 多 Guard 显式优先级与 Windows 反证
+
+- **代码修订**：Core 提交 `0eb04106b5cff52661f7c93eb33189fb548c7891`；ArchitectureSmoke 新反证 `e17aa5855eec15775418fa31d75a48ab5a326960`；测试中错误地将 `MOLWiringCodec.Serialize()` 的 `byte[]` 当作字符串，修复提交 `e57c18e5bf8472052863eb1e3060f1aa8350df7c`。**只有修复后的固定 SHA 可以作为本子项 S3 证据**，首次红灯不隐瞒。
+- **定义与 Schema**：`MOLStateTransition(..., MOLExpression guard=null, int priority=0)` 保持原无优先级调用的默认语义；同 `Source + Event` 按 `Priority` 降序选取首个 Guard 成立的迁移，冲突的同级候选以及越界优先级明确拒绝。Schema2 为非零优先级追加可选 `priority` 属性；旧字段/未指定字段按 0 读取，恶意/损坏的非法取值拒绝。MOL 仍是唯一持久 Logic Aspect，MOC 继续交给原 MRK 执行。
+- **开发者 API 正反例**：`new MOLStateTransition("CameraIdle","start","CameraAccepted", MOLExpression.InputTrue("approve"),30)`；较低的 `defer` 候选优先级 20、无 Guard 默认候选 0。两条同时 True 时明确先选 30；30 为 False 时才选 20；两条 False 时选默认；同优先级重复、优先级超限、缺少必需 `approve` 输入均定向失败。
+- **实际工程/执行反证**：`OrganizationLogicIntegrationTests.P03GuardPriorityAndOrthogonalRegions` 验证 Camera/Motion 正交 Region、父状态 Reset、跨调用者 Checkpoint、MEM SaveAs/Open、错误优先级 XML、MOC Build、MRK Flow 成功及失败路径。不将静态单元断言冒充真实 Flow。
+- **固定 SHA Windows S3**：`e57c18e5bf8472052863eb1e3060f1aa8350df7c`：工程组织 [39896367291](https://github.com/oudream/cx-visual-x3/actions/runs/39896367291)、统一运行 [39896367324](https://github.com/oudream/cx-visual-x3/actions/runs/39896367324)、Config L1 [39896367409](https://github.com/oudream/cx-visual-x3/actions/runs/39896367409)、配置公共底座 [39896367288](https://github.com/oudream/cx-visual-x3/actions/runs/39896367288) 均成功；工程组织 Job 包含 Windows x64 完整编译、Engineering/执行回归与开发者实例。不能外推专业实机 S4。
+- **V1.2 LOG 对应**：LOG-01（新增 Schema2 字段向后兼容与损坏拒绝）、LOG-08（受控多 Guard 确定性迁移、正交 Region 与校验）、LOG-13（同 SHA Windows CI）；LOG-02 的 Studio 工程用户可视优先级编辑与 LOG-10 的逐迁移 Trace/Watch **尚未完成**。持续事件队列/去重、长期 MRK 状态机实例、Journal 恢复、取消与现场安全语义仍按 P0-3 缺口推进；本阶段不能宣告 P0-3 整包完成。
