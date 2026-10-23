@@ -1341,6 +1341,8 @@ namespace CxVisual.Mechanism.Orchestration
                     MOLStateMachineDefinition machine;
                     if(!wiring.StateMachines.TryGetValue(block.Id,out machine))
                         throw new InvalidOperationException("moc.state.missing_definition");
+                    if(machine.States.Any(x=>x.EntryCapability.Length>0||x.ExitCapability.Length>0))
+                        throw new InvalidOperationException("moc.state_actions_not_supported");
                     string inputName="moc.state.events."+block.Id.ToString("N");
                     string checkpointName="moc.state.checkpoint."+block.Id.ToString("N");
                     executeCapability="moc.internal.state."+block.Id.ToString("N");
