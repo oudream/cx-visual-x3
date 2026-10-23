@@ -1762,6 +1762,10 @@ namespace CxVisual.Mechanism.Orchestration
                     {
                         if(block.TryRegion==null)
                             throw new InvalidOperationException("moc.try_missing_definition");
+                        // MOL可声明具名错误；MRK当前只支持Catch-all。
+                        // 未获得类型化错误分派合同前明确拒绝，不能悄悄忽略具名Catch。
+                        if(block.TryRegion.Catches.Count>0)
+                            throw new InvalidOperationException("moc.try_typed_catch_not_supported");
                         string baseId="moc.try."+block.Id.ToString("N");
                         MRKExecutionPlan tryBody=CompileProtectedBody(
                             block.TryRegion.TryBody,owner,calls,depth,baseId+".body",scope);
