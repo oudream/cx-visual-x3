@@ -106,7 +106,55 @@ namespace CxVisual.TestCenter.UI
             ContextMenu menu = new ContextMenu();
             if (!descriptor.IsCreatedInstance)
             {
-                if (descriptor.Kind == TCTWorkspaceNodeKind.Group)
+                if (descriptor.Kind == TCTWorkspaceNodeKind.Root)
+                {
+                    // 根是分类；右键按已注册的类型创建实例，不自动打开根页。
+                    if (descriptor.WorkspaceId == "scenes.root" ||
+                        descriptor.WorkspaceId == "reports.root")
+                    {
+                        string rootId = descriptor.WorkspaceId;
+                        MenuItem create = new MenuItem { Header = "新建" + descriptor.Title };
+                        System.Windows.Automation.AutomationProperties.SetAutomationId(create,
+                            "TCT.Workspace.Create." + rootId);
+                        create.Click += (sender, args) => {
+                            if (CreateRequested != null) CreateRequested(rootId);
+                        };
+                        menu.Items.Add(create);
+                    }
+                    foreach (TCTWorkspaceDescriptor child in
+                        _workspaceRegistry.Children(descriptor.WorkspaceId)
+                        .Where(x => !x.IsCreatedInstance))
+                    {
+                        if (child.Kind == TCTWorkspaceNodeKind.Group)
+                        {
+                            MenuItem sub = new MenuItem { Header = "新建" + child.Title };
+                            foreach (TCTWorkspaceDescriptor choice in
+                                _workspaceRegistry.Children(child.WorkspaceId)
+                                .Where(x => !x.IsCreatedInstance))
+                            {
+                                string templateId = choice.WorkspaceId;
+                                MenuItem entry = new MenuItem { Header = choice.Title };
+                                entry.Click += (sender, args) => {
+                                    if (CreateRequested != null) CreateRequested(templateId);
+                                };
+                                sub.Items.Add(entry);
+                            }
+                            menu.Items.Add(sub);
+                        }
+                        else
+                        {
+                            string templateId = child.WorkspaceId;
+                            MenuItem entry = new MenuItem { Header = "新建" + child.Title };
+                            System.Windows.Automation.AutomationProperties.SetAutomationId(entry,
+                                "TCT.Workspace.Create." + templateId);
+                            entry.Click += (sender, args) => {
+                                if (CreateRequested != null) CreateRequested(templateId);
+                            };
+                            menu.Items.Add(entry);
+                        }
+                    }
+                }
+                else if (descriptor.Kind == TCTWorkspaceNodeKind.Group)
                 {
                     // 父分类直接创建其下模板，不把父分类误当运行实例。
                     foreach (TCTWorkspaceDescriptor child in _workspaceRegistry.Children(descriptor.WorkspaceId)

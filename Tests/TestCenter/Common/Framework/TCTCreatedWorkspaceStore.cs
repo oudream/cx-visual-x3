@@ -52,8 +52,12 @@ namespace CxVisual.TestCenter.UI
         public TCTCreatedWorkspace Create(string templateId, string title, string configId)
         {
             if (_items.Count >= 2000) throw new InvalidOperationException("工作区实例超过上限");
-            TCTCreatedWorkspace item = new TCTCreatedWorkspace(Guid.NewGuid().ToString("N"),
-                templateId, title, configId);
+            string unique = Guid.NewGuid().ToString("N");
+            // 模块MHS Scope绝不按可复用的显示序号命名，避免删除后重新创建误用旧配置。
+            string uniqueConfigId = string.IsNullOrWhiteSpace(configId)
+                ? "" : configId + "_" + unique.Substring(0, 12);
+            TCTCreatedWorkspace item = new TCTCreatedWorkspace(unique,
+                templateId, title, uniqueConfigId);
             _items.Add(item);
             try { Save(); }
             catch { _items.Remove(item); throw; }
