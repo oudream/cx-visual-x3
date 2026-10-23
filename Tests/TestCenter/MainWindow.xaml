@@ -107,7 +107,7 @@
        </dock:LayoutAnchorable>
       </dock:LayoutAnchorablePane>
      </dock:LayoutPanel>
-     <dock:LayoutAnchorablePane DockHeight="155">
+     <dock:LayoutAnchorablePane DockHeight="110">
       <dock:LayoutAnchorable ContentId="test.results" Title="测试结果 / Results"
         CanClose="False" CanFloat="True" CanHide="True" CanAutoHide="True">
        <ui:TCTTestResultsControl x:Name="Results"/>

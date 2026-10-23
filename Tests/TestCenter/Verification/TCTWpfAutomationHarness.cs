@@ -161,10 +161,13 @@ namespace CxVisual.TestCenter.UI
                     tabs.Items.OfType<System.Windows.Controls.TabItem>().Select(x => x.Content)
                         .OfType<TCTManualModuleFrame>().Single().SelectModulePage("channels");
                 }));
-                // 旧1180×788截图里模块表单被标题和底栏挤出；存在控件不等于用户可见。
+                // MPW按Tab动态投影重新生成控件，切换后必须重新获取本页的UIA元素。
+                // 旧Tab已卸载的卡片对象可能返回IsOffscreen，不能误报为布局回退。
+                window.Dispatcher.Invoke(new Action(() => window.UpdateLayout()));
+                cards = Find(root, "MPW.Channel.SchemaCards.0");
                 if (cards.Current.IsOffscreen || cards.Current.BoundingRectangle.IsEmpty)
                     throw new InvalidOperationException(
-                        "Connector配置Schema已创建，但通道配置入口不可见");
+                        "Connector当前通道配置入口不在可视区域");
             }
             InvokePattern save = Find(root, "TCT.Manual.Action.module.save")
                 .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
