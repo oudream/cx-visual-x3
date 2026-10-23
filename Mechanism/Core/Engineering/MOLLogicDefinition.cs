@@ -688,12 +688,15 @@ namespace CxVisual.Mechanism.Core
     /// <summary>状态及分区是同一Logic Aspect中的值对象，不是第二棵CxNode树。</summary>
     public sealed class MOLStateDescriptor
     {
-        public MOLStateDescriptor(string id,string region,string parent=null,bool initial=false)
+        public MOLStateDescriptor(string id,string region,string parent=null,bool initial=false,
+            string entryCapability=null,string exitCapability=null)
         {
             Id=Check(id);Region=Check(region);
             ParentId=string.IsNullOrEmpty(parent)?"":Check(parent);
             if(Id==ParentId)throw new ArgumentException("moc.state.self_parent");
             Initial=initial;
+            EntryCapability=string.IsNullOrEmpty(entryCapability)?"":Check(entryCapability);
+            ExitCapability=string.IsNullOrEmpty(exitCapability)?"":Check(exitCapability);
         }
         internal static string Check(string input)
         {
@@ -705,6 +708,9 @@ namespace CxVisual.Mechanism.Core
         public string Region{get;private set;}
         public string ParentId{get;private set;}
         public bool Initial{get;private set;}
+        /// <summary>这里只存Capability身份；实际进入退出执行与失败处理属于MRK。</summary>
+        public string EntryCapability{get;private set;}
+        public string ExitCapability{get;private set;}
     }
     public sealed class MOLStateTransition
     {
@@ -1231,7 +1237,11 @@ namespace CxVisual.Mechanism.Core
                             new XElement("State",new XAttribute("id",state.Id),
                                 new XAttribute("region",state.Region),
                                 new XAttribute("parent",state.ParentId),
-                                new XAttribute("initial",state.Initial)))),
+                                new XAttribute("initial",state.Initial),
+                                state.EntryCapability.Length==0?null:
+                                    new XAttribute("onEntry",state.EntryCapability),
+                                state.ExitCapability.Length==0?null:
+                                    new XAttribute("onExit",state.ExitCapability)))),
                         new XElement("Transitions",item.Value.Transitions.Select(edge=>
                             new XElement("Transition",new XAttribute("from",edge.Source),
                                 new XAttribute("event",edge.EventId),
@@ -1370,7 +1380,9 @@ namespace CxVisual.Mechanism.Core
                     var states=machine.Element("States").Elements("State").Select(state=>
                         new MOLStateDescriptor((string)state.Attribute("id"),
                             (string)state.Attribute("region"),(string)state.Attribute("parent"),
-                            (bool?)state.Attribute("initial")??false)).ToArray();
+                            (bool?)state.Attribute("initial")??false,
+                            (string)state.Attribute("onEntry"),
+                            (string)state.Attribute("onExit"))).ToArray();
                     var transitions=machine.Element("Transitions").Elements("Transition").Select(edge=>{
                         if(edge.Elements().Any(x=>x.Name!="Guard")||
                             edge.Elements("Guard").Count()>1)
