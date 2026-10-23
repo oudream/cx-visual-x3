@@ -21,6 +21,11 @@ namespace CxVisual.TestCenter.UI
         private TCTTestCatalog _catalog;
         private TCTWorkspaceRegistry _workspaceRegistry;
         public event Action<TCTWorkspaceDescriptor> WorkspaceSelected;
+        public event Action<string> CreateRequested;
+        public event Action<string> DeleteRequested;
+        public event Action<string> CloseRequested;
+        public event Action<string> StartRequested;
+        public event Action<string> StopRequested;
         private readonly HashSet<string> _checkedIds = new HashSet<string>(StringComparer.Ordinal);
         public string[] CheckedIds { get { return _checkedIds.OrderBy(x => x, StringComparer.Ordinal).ToArray(); } }
         public event Action<ITCTTestCase> TestSelected;
@@ -49,7 +54,9 @@ namespace CxVisual.TestCenter.UI
                 if (workspace != null)
                 {
                     SelectedTest = null;
-                    if (WorkspaceSelected != null) WorkspaceSelected(workspace);
+                    // 分类节点只用于选择/右键创建，不直接创建Frame或隐式打开Tab。
+                    if (workspace.IsCreatedInstance && WorkspaceSelected != null)
+                        WorkspaceSelected(workspace);
                     return;
                 }
                 ITCTTestCase test = item.Tag as ITCTTestCase;
@@ -63,6 +70,7 @@ namespace CxVisual.TestCenter.UI
         public void Bind(TCTTestCatalog catalog) { _catalog = catalog; Refresh(); }
         public void BindWorkspaces(TCTWorkspaceRegistry registry)
         { _workspaceRegistry = registry; Refresh(); }
+        public void RefreshWorkspaces() { Refresh(); }
         public void SelectWorkspace(string id)
         {
             foreach (TreeViewItem root in _tree.Items.OfType<TreeViewItem>())
@@ -87,12 +95,82 @@ namespace CxVisual.TestCenter.UI
         }
         private TreeViewItem WorkspaceItem(TCTWorkspaceDescriptor descriptor)
         {
-            TreeViewItem item = new TreeViewItem { Header = descriptor.Title,
-                Tag = descriptor, IsExpanded = true,
+            TreeViewItem item = new TreeViewItem {
+                Header = descriptor.IsCreatedInstance ? "▣  " + descriptor.Title : descriptor.Title,
+                Tag = descriptor, IsExpanded = descriptor.Kind == TCTWorkspaceNodeKind.Root ||
+                    descriptor.WorkspaceId == "manual.module",
+                FontWeight = descriptor.IsCreatedInstance ? FontWeights.Medium : FontWeights.Normal,
                 ToolTip = descriptor.Description +
-                    (descriptor.Factory == null &&
-                     !descriptor.WorkspaceId.StartsWith("manual.module.", StringComparison.Ordinal)
-                     ? " · Unsupported / 待接入" : "") };
+                    (descriptor.IsCreatedInstance ? " · 单击打开；关闭Tab不删除实例" :
+                        " · 右键创建实例；选择类别不会打开新Tab") };
+            ContextMenu menu = new ContextMenu();
+            if (!descriptor.IsCreatedInstance)
+            {
+                if (descriptor.Kind == TCTWorkspaceNodeKind.Group)
+                {
+                    // 父分类直接创建其下模板，不把父分类误当运行实例。
+                    foreach (TCTWorkspaceDescriptor child in _workspaceRegistry.Children(descriptor.WorkspaceId)
+                        .Where(x => !x.IsCreatedInstance))
+                    {
+                        string templateId = child.WorkspaceId;
+                        MenuItem createChild = new MenuItem { Header = "创建 " + child.Title };
+                        createChild.Click += (sender, args) => {
+                            if (CreateRequested != null) CreateRequested(templateId);
+                        };
+                        menu.Items.Add(createChild);
+                    }
+                }
+                else
+                {
+                    MenuItem create = new MenuItem {
+                        Header = "创建实例",
+                        IsEnabled = descriptor.Kind != TCTWorkspaceNodeKind.Root ||
+                            descriptor.WorkspaceId == "scenes.root" ||
+                            descriptor.WorkspaceId == "reports.root" };
+                    System.Windows.Automation.AutomationProperties.SetAutomationId(create,
+                        "TCT.Workspace.Create." + descriptor.WorkspaceId);
+                    create.Click += (sender, args) => {
+                        if (CreateRequested != null) CreateRequested(descriptor.WorkspaceId);
+                    };
+                    menu.Items.Add(create);
+                }
+            }
+            else
+            {
+                MenuItem open = new MenuItem { Header = "打开" };
+                open.Click += (sender, args) => {
+                    if (WorkspaceSelected != null) WorkspaceSelected(descriptor);
+                };
+                menu.Items.Add(open);
+                MenuItem start = new MenuItem { Header = "启动 / 运行",
+                    IsEnabled = descriptor.TemplateId == "auto.architecture-smoke" ||
+                        descriptor.TemplateId == "manual.channel" };
+                start.Click += (sender, args) => {
+                    if (StartRequested != null) StartRequested(descriptor.WorkspaceId);
+                };
+                menu.Items.Add(start);
+                MenuItem stop = new MenuItem { Header = "停止",
+                    IsEnabled = descriptor.TemplateId == "auto.architecture-smoke" ||
+                        descriptor.TemplateId == "manual.channel" };
+                stop.Click += (sender, args) => {
+                    if (StopRequested != null) StopRequested(descriptor.WorkspaceId);
+                };
+                menu.Items.Add(stop);
+                MenuItem close = new MenuItem { Header = "关闭分页（保留实例）" };
+                close.Click += (sender, args) => {
+                    if (CloseRequested != null) CloseRequested(descriptor.WorkspaceId);
+                };
+                menu.Items.Add(close);
+                menu.Items.Add(new Separator());
+                MenuItem remove = new MenuItem { Header = "删除实例" };
+                System.Windows.Automation.AutomationProperties.SetAutomationId(remove,
+                    "TCT.Workspace.Delete." + descriptor.WorkspaceId);
+                remove.Click += (sender, args) => {
+                    if (DeleteRequested != null) DeleteRequested(descriptor.WorkspaceId);
+                };
+                menu.Items.Add(remove);
+            }
+            item.ContextMenu = menu;
             System.Windows.Automation.AutomationProperties.SetAutomationId(item,
                 "TCT.Workspace." + descriptor.WorkspaceId);
             return item;

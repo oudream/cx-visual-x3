@@ -27,6 +27,14 @@ namespace CxVisual.TestCenter.UI
                 throw new InvalidOperationException("Duplicate WorkspaceId: " + item.WorkspaceId);
             _items.Add(item.WorkspaceId, item);
         }
+        // 只删除用户创建的叶实例；不得删除四大根或类型注册。
+        public bool RemoveCreated(string id)
+        {
+            TCTWorkspaceDescriptor found = Find(id);
+            if (found == null || !found.IsCreatedInstance || Children(id).Any())
+                return false;
+            return _items.Remove(id);
+        }
         public void Validate()
         {
             foreach (TCTWorkspaceDescriptor entry in _items.Values)
@@ -50,6 +58,19 @@ namespace CxVisual.TestCenter.UI
         {
             return _items.Values.Where(x => string.Equals(x.ParentId, parentId, StringComparison.Ordinal));
         }
+        // 页面被关闭不移除注册；类型节点和已经创建的节点始终可区分。
+        public TCTWorkspaceDescriptor RegisterCreated(TCTCreatedWorkspace item, Func<UserControl> factory)
+        {
+            if (item == null || factory == null) throw new ArgumentNullException("item/factory");
+            TCTWorkspaceDescriptor template = Find(item.TemplateId);
+            if (template == null || template.IsCreatedInstance)
+                throw new InvalidOperationException("找不到有效工作区类型：" + item.TemplateId);
+            TCTWorkspaceDescriptor created = new TCTWorkspaceDescriptor(
+                item.Id, item.TemplateId, item.Title, template.Description,
+                TCTWorkspaceNodeKind.Leaf, factory, TCTWorkspaceOpenPolicy.SingleInstance, item.TemplateId);
+            Register(created);
+            return created;
+        }
         public static TCTWorkspaceRegistry CreateDefaults(Func<string, UserControl> rootFactory)
         {
             if (rootFactory == null) throw new ArgumentNullException("rootFactory");
@@ -66,6 +87,10 @@ namespace CxVisual.TestCenter.UI
             registry.Register(new TCTWorkspaceDescriptor("reports.root", null, "结果报告",
                 "自动Run报告、人工操作记录与历史索引分离",
                 TCTWorkspaceNodeKind.Root, () => rootFactory("reports.root")));
+            registry.Register(new TCTWorkspaceDescriptor("auto.catalog", "auto.root",
+                "NUnit/TCT 测试计划",
+                "通过创建的计划页选择真实Catalog用例、运行并保存计划",
+                TCTWorkspaceNodeKind.Leaf));
             registry.Register(new TCTWorkspaceDescriptor("auto.architecture-smoke", "auto.root",
                 "ArchitectureSmoke（独立架构回归）",
                 "调用原有ArchitectureSmoke.exe；保持原CLI独立可运行，展示真实进程输出与退出码",

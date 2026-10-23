@@ -21,6 +21,8 @@ namespace CxVisual.TestCenter.UI
         private readonly Dictionary<string, TabItem> _workspaceTabs =
             new Dictionary<string, TabItem>(StringComparer.Ordinal);
         public event Action<TCTWorkspaceDescriptor> WorkspaceActivated;
+        public event Action<string> WorkspaceClosed;
+        public bool HasWorkspace(string id) { return id != null && _workspaceTabs.ContainsKey(id); }
         private readonly TCTTestOverviewControl _overview = new TCTTestOverviewControl();
         public TCTTestOverviewControl Overview { get { return _overview; } }
         private readonly List<ITCTTestViewer> _viewers = new List<ITCTTestViewer> {
@@ -74,7 +76,16 @@ namespace CxVisual.TestCenter.UI
                 UserControl content = descriptor.Factory();
                 if (content == null) throw new InvalidOperationException(
                     "Workspace factory returned null: " + descriptor.WorkspaceId);
-                tab = new TabItem { Header = descriptor.Title, Tag = descriptor, Content = content };
+                DockPanel header = new DockPanel { LastChildFill = false };
+                TextBlock caption = new TextBlock { Text = descriptor.Title,
+                    VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
+                Button closeTab = new Button {
+                    Content = "×", FontSize = 16, FontWeight = FontWeights.SemiBold,
+                    MinWidth = 25, Height = 24, Padding = new Thickness(3, 0, 3, 0),
+                    ToolTip = "关闭分页（实例继续保留在左侧）" };
+                closeTab.Click += (sender, args) => CloseWorkspace(descriptor.WorkspaceId);
+                header.Children.Add(caption); header.Children.Add(closeTab);
+                tab = new TabItem { Header = header, Tag = descriptor, Content = content };
                 System.Windows.Automation.AutomationProperties.SetAutomationId(tab,
                     "TCT.Workspace.Tab." + descriptor.WorkspaceId);
                 MenuItem close = new MenuItem { Header = "关闭工作区" };
@@ -95,6 +106,7 @@ namespace CxVisual.TestCenter.UI
             if (frame != null) frame.OnWorkspaceClosed();
             _tabs.Items.Remove(tab);
             _workspaceTabs.Remove(id);
+            if (WorkspaceClosed != null) WorkspaceClosed(id);
             return true;
         }
         public void CloseAllWorkspaces()
@@ -112,7 +124,12 @@ namespace CxVisual.TestCenter.UI
         }
         public string ActiveMode
         {
-            get { return _tabs.SelectedItem is TabItem ? ((TabItem)_tabs.SelectedItem).Header.ToString() : ""; }
+            get {
+                TabItem selected = _tabs.SelectedItem as TabItem;
+                if (selected == null) return "";
+                TCTWorkspaceDescriptor workspace = selected.Tag as TCTWorkspaceDescriptor;
+                return workspace == null ? (selected.Header as string ?? "") : workspace.Title;
+            }
         }
 
         public void ShowMode(string mode)

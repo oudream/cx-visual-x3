@@ -63,6 +63,7 @@
     <Compile Include="Common\Operations\TCTTestRibbonController.cs" />
     <Compile Include="Common\Framework\TCTWorkspaceDescriptor.cs" />
     <Compile Include="Common\Framework\TCTWorkspaceRegistry.cs" />
+    <Compile Include="Common\Framework\TCTCreatedWorkspaceStore.cs" />
     <Compile Include="Common\Framework\TCTWorkspaceContracts.cs" />
     <Compile Include="Common\Shell\TCTWorkspaceRootFrame.cs" />
     <Compile Include="Manual\Channel\TCTManualChannelFrame.cs" />
