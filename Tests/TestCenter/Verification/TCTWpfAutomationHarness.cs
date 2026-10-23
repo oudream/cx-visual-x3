@@ -610,7 +610,22 @@ namespace CxVisual.TestCenter.UI
                 if (!peerRegistered) Thread.Sleep(100);
             }
             if (!peerRegistered)
-                throw new InvalidOperationException("正式SubChannel登记命令未执行或没有返回存活代次");
+            {
+                string diagnostic = "";
+                window.Dispatcher.Invoke(new Action(() => {
+                    System.Windows.Controls.TabControl tabs =
+                        window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                    TCTManualChannelFrame page = tabs.Items.OfType<System.Windows.Controls.TabItem>()
+                        .Select(x => x.Content).OfType<TCTManualChannelFrame>().Single();
+                    diagnostic = " Kind=" + page.SelectedChannelKind +
+                        " Topology=" + page.SelectedTopology + " PeerCount=" + page.PeerCount +
+                        " Selected=" + (page.SelectedPeerAddress == null ? "null" :
+                            page.SelectedPeerAddress.ToString()) +
+                        " Status=" + page.StatusMessage;
+                }));
+                throw new InvalidOperationException(
+                    "正式SubChannel登记命令未执行或没有返回存活代次：" + diagnostic);
+            }
             window.Dispatcher.Invoke(new Action(() => {
                 System.Windows.Controls.TabControl tabs =
                     window.DocumentHost.Content as System.Windows.Controls.TabControl;
