@@ -151,7 +151,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     }
                     Check(server.RemovePeer(originalPeer), "TCP peer remove");
                     bool rejected = false;
-                    try { server.SendAsync(new byte[] { 9 }, sub, CancellationToken.None).GetAwaiter().GetResult(); }
+                    try { server.SendAsync(new byte[] { 9 }, originalPeer, CancellationToken.None).GetAwaiter().GetResult(); }
                     catch (InvalidOperationException) { rejected = true; }
                     Check(rejected, "TCP stale SubChannel must be rejected");
                 }
@@ -216,7 +216,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     }
                     Check(server.RemovePeer(originalPeer), "UDP remove endpoint");
                     bool rejected = false;
-                    try { server.SendAsync(new byte[] { 55 }, sub, CancellationToken.None)
+                    try { server.SendAsync(new byte[] { 55 }, originalPeer, CancellationToken.None)
                         .GetAwaiter().GetResult(); }
                     catch (InvalidOperationException) { rejected = true; }
                     Check(rejected, "UDP stale generation cannot route");
