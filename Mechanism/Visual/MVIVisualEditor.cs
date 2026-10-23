@@ -693,17 +693,20 @@ namespace CxVisual.Mechanism.Visual
                     return MTCEditResult<bool>.Rejected(revision,"visual.default_prevented",
                         "Selected visual disallowed the move");
             }
+            // 吸附必须在世界空间对整个选区确定唯一位移；
+            // 禁止对每个旋转Group中的局部X/Y分别取整，防止对象间距被破坏。
+            if(snapToGrid)
+            {
+                FGERect2D box=MVISelectionTransform.Bounds(selected);
+                worldDx=Math.Round((box.Left+worldDx)/25)*25-box.Left;
+                worldDy=Math.Round((box.Top+worldDy)/25)*25-box.Top;
+            }
             return Document.Edit("批量移动可视对象",revision,e=>
             {
                 foreach(MVISceneItem scene in selected)
                 {
                     double x,y;
                     scene.PositionAfterWorldDelta(worldDx,worldDy,out x,out y);
-                    if(snapToGrid)
-                    {
-                        x=Math.Round(x/25)*25;
-                        y=Math.Round(y/25)*25;
-                    }
                     MRIResourceReference reference=Document.FindReference(scene.Id);
                     if(reference!=null)
                     {
