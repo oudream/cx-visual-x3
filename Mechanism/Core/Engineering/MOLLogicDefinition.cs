@@ -228,6 +228,34 @@ namespace CxVisual.Mechanism.Core
         public MOLLogicDefinition(MOLControlBlock root)
         { Root = root ?? throw new ArgumentNullException("root"); Validate(); }
         public MOLControlBlock Root { get; private set; }
+        /// <summary>不可变替换一个逻辑块。保留其他块与关系的ID，结果整体重新校验。</summary>
+        public MOLLogicDefinition ReplaceBlock(Guid id,MOLControlBlock replacement)
+        {
+            if(id==Guid.Empty||replacement==null)
+                throw new ArgumentException("logic.edit.invalid_replacement");
+            if(id!=replacement.Id)
+                throw new InvalidOperationException("logic.edit.identity_changed");
+            bool found=false;
+            Func<MOLControlBlock,MOLControlBlock> walk=null;
+            walk=b=>{
+                if(b.Id==id){found=true;return replacement;}
+                var children=b.Children.Select(walk).ToArray();
+                var cases=b.Cases.Select(c=>new MOLBranchCase(
+                    c.Condition,walk(c.Body),c.Label)).ToArray();
+                MOLLoopDefinition loop=b.Loop==null?null:
+                    new MOLLoopDefinition(b.Loop.Mode,b.Loop.MaxIterations,
+                        walk(b.Loop.Body),b.Loop.Condition,b.Loop.CollectionInput);
+                MOLTryDefinition region=b.TryRegion==null?null:
+                    new MOLTryDefinition(walk(b.TryRegion.TryBody),
+                        b.TryRegion.CatchBody==null?null:walk(b.TryRegion.CatchBody),
+                        b.TryRegion.FinallyBody==null?null:walk(b.TryRegion.FinallyBody));
+                return new MOLControlBlock(b.Id,b.Kind,b.CapabilityId,children,cases,
+                    loop,b.Condition,b.TargetFlow,b.ExitKind,b.Wait,region);
+            };
+            MOLControlBlock result=walk(Root);
+            if(!found)throw new InvalidOperationException("logic.edit.block_not_found");
+            return new MOLLogicDefinition(result);
+        }
         public void Validate()
         {
             var ids = new HashSet<Guid>();
@@ -325,6 +353,27 @@ namespace CxVisual.Mechanism.Core
                 throw new InvalidDataException("logic.unsupported_schema_or_remap");
             return Deserialize(aspect.Payload);
         }
+        /// <summary>结构化V1使用原MEM事务编辑；绝不静默覆盖V2或坏Schema。</summary>
+        public static void Edit(MEMEngineeringSession session,MEMContent content,
+            Func<MOLLogicDefinition,MOLLogicDefinition> change)
+        {
+            if(session==null||content==null||change==null)
+                throw new ArgumentNullException("session/content/change");
+            int revision=session.Revision;
+            MEMNodeSnapshot node=session.GetSnapshot().Find(content.Id);
+            if(node==null||node.Kind!=MEMNodeKind.Content)
+                throw new InvalidOperationException("logic.edit.foreign_content");
+            MOLLogicDefinition current=Get(node);
+            if(current==null)throw new InvalidOperationException("logic.edit.definition_missing");
+            MOLLogicDefinition modified=change(current);
+            if(modified==null)throw new InvalidOperationException("logic.edit.null_definition");
+            byte[] payload=Serialize(modified);
+            session.Edit("编辑结构化逻辑",revision,e=>{
+                e.SetAspect(content,new MPMAspect(MPMAspectKind.Logic,
+                    ProviderId,SchemaVersion,payload));
+                return true;
+            }).RequireValue();
+        }
         public static byte[] Serialize(MOLLogicDefinition definition)
         {
             if (definition == null) throw new ArgumentNullException("definition");
@@ -346,11 +395,21 @@ namespace CxVisual.Mechanism.Core
                 var root = XDocument.Load(reader).Root;
                 if (root == null || root.Name != "MOL" || (string)root.Attribute("v") != "1")
                     throw new InvalidDataException("logic.unsupported_schema");
+                CheckSchema(root,new[]{"v"},new[]{"Block"});
                 var blocks = root.Elements("Block").ToArray();
                 if (blocks.Length != 1 || root.Elements().Count() != 1)
                     throw new InvalidDataException("logic.invalid_root");
                 return new MOLLogicDefinition(ReadBlock(blocks[0], 0));
             }
+        }
+        /// <summary>旧Schema仍允许已定义的可选字段；未知字段拒绝而非丢弃。</summary>
+        private static void CheckSchema(XElement element,string[] attributes,string[] children)
+        {
+            if(element.Attributes().Any(a=>a.Name.NamespaceName.Length!=0||
+                    !attributes.Contains(a.Name.LocalName,StringComparer.Ordinal))||
+                element.Elements().Any(e=>e.Name.NamespaceName.Length!=0||
+                    !children.Contains(e.Name.LocalName,StringComparer.Ordinal)))
+                throw new InvalidDataException("logic.unknown_field");
         }
         private static XElement WriteExpression(MOLExpression value)
         {
@@ -362,6 +421,8 @@ namespace CxVisual.Mechanism.Core
         private static MOLExpression ReadExpression(XElement node)
         {
             if (node == null) return null;
+            if(node.Name!="Expression")throw new InvalidDataException("logic.expression_schema");
+            CheckSchema(node,new[]{"source","name","compare","expected"},new string[0]);
             return new MOLExpression((MOLExpressionSource)Enum.Parse(typeof(MOLExpressionSource),
                 (string)node.Attribute("source")), (string)node.Attribute("name"),
                 (MOLComparison)Enum.Parse(typeof(MOLComparison), (string)node.Attribute("compare")),
@@ -412,10 +473,28 @@ namespace CxVisual.Mechanism.Core
         private static MOLControlBlock ReadBlock(XElement e, int depth)
         {
             if (depth > 32 || e.Name != "Block") throw new InvalidDataException("logic.depth_or_type");
-            if (e.Elements().Any(x => x.Name != "Block" && x.Name != "Case" &&
-                x.Name != "Loop" && x.Name != "Guard" && x.Name != "Wait" &&
-                x.Name != "TryRegion"))
-                throw new InvalidDataException("logic.unknown_field");
+            CheckSchema(e,new[]{"id","kind","cap","target","exit"},
+                new[]{"Block","Case","Loop","Guard","Wait","TryRegion"});
+            foreach(var guard in e.Elements("Guard"))
+            {
+                CheckSchema(guard,new string[0],new[]{"Expression"});
+                if(guard.Elements("Expression").Count()!=1)
+                    throw new InvalidDataException("logic.guard_schema");
+            }
+            foreach(var item in e.Elements("Case"))
+            {
+                CheckSchema(item,new[]{"label"},new[]{"Block","Expression"});
+                if(item.Elements("Block").Count()!=1||item.Elements("Expression").Count()>1)
+                    throw new InvalidDataException("logic.case_schema");
+            }
+            foreach(var loopNode in e.Elements("Loop"))
+            {
+                CheckSchema(loopNode,new[]{"mode","max","collection"},
+                    new[]{"Block","Expression"});
+                if(loopNode.Elements("Block").Count()!=1||
+                    loopNode.Elements("Expression").Count()>1)
+                    throw new InvalidDataException("logic.loop_schema");
+            }
             if (e.Elements("Loop").Count() > 1 || e.Elements("Guard").Count() > 1 || e.Elements("Wait").Count()>1 ||
                 e.Elements("TryRegion").Count()>1)
                 throw new InvalidDataException("logic.duplicate_field");
