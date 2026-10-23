@@ -392,7 +392,14 @@ namespace CxVisual.Mechanism.Orchestration
                 throw new InvalidOperationException("moc.invoke.foreign_content");
             MOLWiringDefinition definition=MOLWiringCodec.Get(target);
             if(definition==null)
-                throw new InvalidOperationException("moc.invoke.requires_v2");
+            {
+                // 结构化V1没有自由连线公开端口，不复制V1树为另一份图。
+                // 允许声明零端口Content引用；MOC未支持的跨Schema执行须明确拒绝。
+                MOLLogicDefinition structured=MOLLogicCodec.Get(target);
+                if(structured==null)
+                    throw new InvalidOperationException("moc.invoke.missing_logic");
+                return Step("moc.invoke:"+content.Id.ToString("N"));
+            }
             definition.ValidateExecutable();
             var published=new List<MPCPortDescriptor>();
             foreach(var pair in definition.FlowInputs.OrderBy(x=>x.Key,StringComparer.Ordinal))
