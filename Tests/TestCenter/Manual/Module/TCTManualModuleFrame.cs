@@ -30,6 +30,116 @@ namespace CxVisual.TestCenter.UI
             Margin = new Thickness(6, 0, 0, 0)
         };
         private readonly ContentControl _editorHost = new ContentControl();
+        private readonly TabControl _pages = new TabControl {
+            Height = 40, Margin = new Thickness(0, 12, 0, 5),
+            Background = Brushes.White, BorderThickness = new Thickness(0) };
+        private Action<string[], string[]> _project;
+        private Func<int> _visibleSchemaEditors;
+        private bool _buildingPages;
+        private sealed class ModulePage
+        {
+            internal readonly string Id;
+            internal readonly string Label;
+            internal readonly string[] Fields;
+            internal readonly string[] Categories;
+            internal ModulePage(string id, string label, string[] fields,
+                string[] categories = null)
+            { Id = id; Label = label; Fields = fields; Categories = categories; }
+        }
+        public string SelectedModulePage
+        {
+            get {
+                ModulePage page = (_pages.SelectedItem as TabItem)?.Tag as ModulePage;
+                return page == null ? "" : page.Id;
+            }
+        }
+        public int VisibleSchemaEditorCount
+        { get { return _visibleSchemaEditors == null ? 0 : _visibleSchemaEditors(); } }
+        public void SelectModulePage(string pageId)
+        {
+            TabItem tab = _pages.Items.OfType<TabItem>().FirstOrDefault(item =>
+                ((ModulePage)item.Tag).Id == pageId);
+            if (tab == null) throw new ArgumentException("当前模块不支持该分页：" + pageId);
+            _pages.SelectedItem = tab;
+        }
+        private void RebuildPages(MFMModuleKind kind)
+        {
+            _buildingPages = true;
+            try
+            {
+                _pages.Items.Clear();
+                ModulePage[] pages;
+                switch (kind)
+                {
+                    case MFMModuleKind.Connector:
+                        pages = new[] {
+                            new ModulePage("identity", "模块信息",
+                                new[] { "DisplayName", "Enabled", "CapabilityIds" }),
+                            new ModulePage("channels", "通道配置", new[] { "Channels" }),
+                            new ModulePage("protocols", "规约配置", new[] { "Protocols" }),
+                            new ModulePage("points", "变量与点表", new[] { "Points" }),
+                            new ModulePage("runtime", "运行参数",
+                                new[] { "Channels", "Protocols" },
+                                new[] { "身份", "执行" }),
+                            new ModulePage("advanced", "高级选项",
+                                new[] { "Channels", "Protocols" },
+                                new[] { "身份", "重连", "串口", "子通道", "绑定" })
+                        };
+                        break;
+                    case MFMModuleKind.Compute:
+                        pages = new[] {
+                            new ModulePage("identity", "模块信息",
+                                new[] { "DisplayName", "Enabled", "CapabilityIds" }),
+                            new ModulePage("provider", "计算能力",
+                                new[] { "ProviderTypeId", "Device" }),
+                            new ModulePage("parameters", "运行参数",
+                                new[] { "MaxConcurrency", "MemoryBudgetMb",
+                                    "TimeoutMs", "ExecutionGroupRef" })
+                        };
+                        break;
+                    case MFMModuleKind.Simulation:
+                        pages = new[] {
+                            new ModulePage("identity", "模块信息",
+                                new[] { "DisplayName", "Enabled", "CapabilityIds" }),
+                            new ModulePage("model", "仿真模型",
+                                new[] { "ModelId", "ProviderTypeId", "ConnectorRef" }),
+                            new ModulePage("clock", "时钟与运行模式",
+                                new[] { "Mode", "StepMilliseconds", "Seed" })
+                        };
+                        break;
+                    case MFMModuleKind.Service:
+                        pages = new[] {
+                            new ModulePage("identity", "模块信息",
+                                new[] { "DisplayName", "Enabled", "CapabilityIds" }),
+                            new ModulePage("provider", "服务能力与依赖",
+                                new[] { "ProviderTypeId", "DependencyRefs" }),
+                            new ModulePage("lifecycle", "生命周期与并发",
+                                new[] { "StartupTimeoutMs", "ShutdownTimeoutMs",
+                                    "MaxConcurrentRequests" })
+                        };
+                        break;
+                    default: throw new InvalidOperationException("未知模块类型");
+                }
+                foreach (ModulePage page in pages)
+                {
+                    TabItem tab = new TabItem { Header = page.Label, Tag = page,
+                        Padding = new Thickness(16, 7, 16, 7), FontSize = 14 };
+                    System.Windows.Automation.AutomationProperties.SetAutomationId(tab,
+                        "TCT.Module.Page." + page.Id);
+                    _pages.Items.Add(tab);
+                }
+                _pages.SelectedIndex = 0;
+            }
+            finally { _buildingPages = false; }
+            ProjectSelectedPage();
+        }
+        private void ProjectSelectedPage()
+        {
+            if (_buildingPages || _project == null) return;
+            ModulePage page = (_pages.SelectedItem as TabItem)?.Tag as ModulePage;
+            if (page != null) _project(page.Fields, page.Categories);
+        }
+
         private readonly TextBlock _status = new TextBlock {
             Foreground = Brushes.SlateGray, TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 7, 0, 6)
@@ -100,15 +210,21 @@ namespace CxVisual.TestCenter.UI
             _service.RegisterAssembly(typeof(MLCServiceModuleConfiguration).Assembly);
             _moduleKind.ItemsSource = Enum.GetValues(typeof(MFMModuleKind));
             _moduleKind.SelectedItem = MFMModuleKind.Connector;
+            _pages.SelectionChanged += (sender, args) => {
+                if (ReferenceEquals(args.OriginalSource, _pages))
+                    ProjectSelectedPage();
+            };
 
-            DockPanel rootPanel = new DockPanel { Margin = new Thickness(16) };
+            DockPanel rootPanel = new DockPanel { Margin = new Thickness(15, 12, 13, 12),
+                Background = Brushes.White };
             StackPanel header = new StackPanel();
             header.Children.Add(new TextBlock {
-                Text = "模块创建与配置 / 统一配置体系", FontSize = 20,
-                Foreground = Brushes.DarkSlateBlue, FontWeight = FontWeights.SemiBold
+                Text = "模块配置 / Module Workspace", FontSize = 21,
+                Foreground = new SolidColorBrush(Color.FromRgb(30, 68, 112)),
+                FontWeight = FontWeights.SemiBold
             });
             header.Children.Add(new TextBlock {
-                Text = "选模块类型、输入模块 Id，再从右侧操作中心创建/打开。FCM 直接编辑四种模块的正式配置类，由 MHS 保存、MPW 生成界面；没有额外的 EditableConfig 或转换层。",
+                Text = "同一个模块工作区，四种正式配置类型。中央按配置主题分页，右侧统一负责创建、校验、保存、生效和重开；不复制配置模型。",
                 Foreground = Brushes.SlateGray, Margin = new Thickness(0, 7, 0, 7),
                 TextWrapping = TextWrapping.Wrap
             });
@@ -120,18 +236,23 @@ namespace CxVisual.TestCenter.UI
             header.Children.Add(picker);
             header.Children.Add(_status);
             header.Children.Add(new TextBlock {
-                Text = "当前验证：配置 Schema、组件列表与约束、Saved/Effective/版本。创建配置 ≠ 启动设备、构建工程或通过自动测试。",
-                Foreground = Brushes.DarkGoldenrod, TextWrapping = TextWrapping.Wrap,
-                Margin = new Thickness(0, 0, 0, 7)
+                Text = "配置真源：正式 FCM Schema → MPW 自动编辑 → MHS Saved/Effective。通道、规约、点表参数均来自生产配置定义；尚未装配或运行的 Owner 不显示成功。",
+                Foreground = Brushes.SlateGray, TextWrapping = TextWrapping.Wrap,
+                FontSize = 12, Margin = new Thickness(0, 3, 0, 4)
             });
             DockPanel.SetDock(header, Dock.Top);
             rootPanel.Children.Add(header);
+            DockPanel.SetDock(_pages, Dock.Top);
+            rootPanel.Children.Add(_pages);
             _editorHost.Content = new TextBlock {
                 Text = "右侧操作中心 → 创建 / 打开模块配置", Foreground = Brushes.Gray,
                 Margin = new Thickness(14, 22, 14, 0)
             };
             rootPanel.Children.Add(_editorHost);
             Content = rootPanel;
+            RebuildPages(MFMModuleKind.Connector);
+            System.Windows.Automation.AutomationProperties.SetAutomationId(_pages,
+                "TCT.Module.Pages");
             UpdateStatus("请选择模块类型和 Id，然后创建配置实例。");
             System.Windows.Automation.AutomationProperties.SetAutomationId(this, "TCT.Manual.Module");
             System.Windows.Automation.AutomationProperties.SetAutomationId(_moduleKind, "TCT.Module.Kind");
@@ -241,6 +362,9 @@ namespace CxVisual.TestCenter.UI
             IDisposable old = _activeEditor;
             _activeEditor = next;
             _draftGuard = next;
+            _project = (fields, categories) =>
+                next.ConfigureWorkspaceProjection(fields, categories, true);
+            _visibleSchemaEditors = () => next.VisibleWorkspaceEditorCount;
             _saveDraft = token => next.SaveDraftAsync(token);
             _applySaved = boundary => next.ApplySaved(boundary);
             _versions = () => "Saved: " + section.Revision.Saved +
@@ -259,6 +383,7 @@ namespace CxVisual.TestCenter.UI
             };
             _activeId = id; _activeKind = kind;
             _editorHost.Content = next;
+            RebuildPages(kind);
             if (old != null) old.Dispose();
             UpdateStatus("已创建/打开配置范围 module/" + id + "，类型 " + kind +
                 " · " + _versions() + "。通用表单负责草稿、版本；并非已经创建运行实例。");
@@ -327,6 +452,7 @@ namespace CxVisual.TestCenter.UI
             _editorHost.Content = null;
             _activeEditor = null; _draftGuard = null; _validate = null;
             _saveDraft = null; _applySaved = null; _versions = null;
+            _project = null; _visibleSchemaEditors = null;
             _activeId = null; _activeKind = null;
         }
     }
