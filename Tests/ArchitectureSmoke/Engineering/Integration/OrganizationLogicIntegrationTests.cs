@@ -294,6 +294,50 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         propagated.Error!=null,
                         "Uncaught Try error was swallowed instead of rethrown after Finally");
 
+                    // Foreach中独立Try区域保留IterationIndex与item绑定，不构造第二执行器。
+                    resolver.Register("try.iter.work",(ctx,ct)=>{
+                        object item;
+                        Check(ctx.BoundInputs.TryGetValue("item",out item)&&
+                            Convert.ToInt32(item)==(ctx.IterationIndex+1)*10,
+                            "Try Foreach item/iteration input was lost");
+                        calls.Enqueue("work"+ctx.IterationIndex);
+                        return ctx.IterationIndex==1?Task.FromException<object>(
+                            new InvalidOperationException("middle.failed")):
+                            Task.FromResult((object)true);
+                    });
+                    resolver.Register("try.iter.catch",(ctx,ct)=>{
+                        calls.Enqueue("catch"+ctx.IterationIndex);
+                        return Task.FromResult((object)true);
+                    });
+                    resolver.Register("try.iter.finally",(ctx,ct)=>{
+                        object item;
+                        Check(ctx.BoundInputs.TryGetValue("item",out item)&&
+                            Convert.ToInt32(item)==(ctx.IterationIndex+1)*10,
+                            "Foreach Finally lost item binding");
+                        calls.Enqueue("finally"+ctx.IterationIndex);
+                        return Task.FromResult((object)true);
+                    });
+                    var iterFinally=MOLControlBlock.Action("try.iter.finally");
+                    var iterative=MOLControlBlock.Each("samples",4,
+                        MOLControlBlock.TryCatchFinally(
+                            MOLControlBlock.Action("try.iter.work"),
+                            MOLControlBlock.Action("try.iter.catch"),iterFinally));
+                    var serial=MOLLogicCodec.Deserialize(MOLLogicCodec.Serialize(
+                        new MOLLogicDefinition(iterative)));
+                    Check(serial.Root.Loop.Body.TryRegion!=null,
+                        "Try inside Foreach lost structured definition on roundtrip");
+                    MOLLogicCodec.Set(opened,opened.Project.Pages[0].RootContent,serial);
+                    var iterBuild=new MOCEngineeringCompiler().Compile(opened.GetSnapshot(),
+                        page.RootContent.Id,resolver);
+                    calls=new System.Collections.Concurrent.ConcurrentQueue<string>();
+                    var iterResult=Execute(iterBuild,new Dictionary<string,object>{
+                        {"samples",new int[]{10,20,30}}},out trace);
+                    Check(iterResult.State==MRKFlowState.Completed&&
+                        string.Join(",",calls.ToArray())==
+                            "work0,finally0,work1,catch1,finally1,work2,finally2"&&
+                        trace.Events.Any(x=>x.Origin.BlockId==iterFinally.Id),
+                        "Dynamic Foreach nested Try/Catch/Finally lost MDS data or SourceMap");
+
                     var awaited=MOLControlBlock.AwaitEvent("ready",600000);
                     var cancelRegion=MOLControlBlock.TryCatchFinally(awaited,
                         MOLControlBlock.Action("try.catch"),
