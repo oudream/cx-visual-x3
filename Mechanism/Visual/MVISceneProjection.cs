@@ -89,10 +89,11 @@ namespace CxVisual.Mechanism.Visual
                     MVISceneItem target=Items.FirstOrDefault(i=>i.Address!=null&&
                         i.Address.ObjectId==last.Id&&i.Address.InstancePath.Count==0);
                     if(source==null||target==null)continue;
-                    FGEPoint2D start=MVIVisualAnchors.At(source,
-                        a.MemberId.Substring("visual.".Length));
-                    FGEPoint2D end=MVIVisualAnchors.At(target,
-                        b.MemberId.Substring("visual.".Length));
+                    // MPC只保存固定Port身份：每一帧从图元仿射矩阵反算锚点和外法线。
+                    string sourceSide=a.MemberId.Substring("visual.".Length);
+                    string targetSide=b.MemberId.Substring("visual.".Length);
+                    FGEPoint2D start=MVIVisualAnchors.At(source,sourceSide);
+                    FGEPoint2D end=MVIVisualAnchors.At(target,targetSide);
                     // 自动路由根据当前视图中真实图元的AABB计算，不保存缓存折线。
                     // Group只是容器，不以容器外框作为实体障碍；其他资源不跨页相互阻挡。
                     var obstacles=Items.Where(item=>
@@ -103,11 +104,13 @@ namespace CxVisual.Mechanism.Visual
                         (item.Shape!=null||item.ElementTypeId=="core.rectangle"||
                          item.ElementTypeId=="core.text"||
                          item.ElementTypeId=="core.image"||item.ElementTypeId=="core.svg"||
-                         item.ElementTypeId.StartsWith("core.widget",StringComparison.Ordinal))&&
+                         IsWidgetType(item.ElementTypeId))&&
                         item.Bounds.Width>0&&item.Bounds.Height>0)
                         .Select(item=>item.Bounds);
+                    // 自动正交线须遵守起点向外出线、终点沿外法线方向进入；
+                    // 自动避障在MVI场景计算，绝不写回MPC连接或覆盖手动折点。
                     IReadOnlyList<FGEPoint2D> points=MVIVisualRouting.Points(
-                        connection,start,end,obstacles);
+                        connection,start,end,obstacles,source,sourceSide,target,targetSide);
                     double x=points.Min(p=>p.X),y=points.Min(p=>p.Y);
                     var line=MRCShapeDefinition.Polyline(points.Select(p=>
                         new FGEPoint2D(p.X-x,p.Y-y)));

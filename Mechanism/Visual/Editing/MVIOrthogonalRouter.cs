@@ -11,12 +11,16 @@ namespace CxVisual.Mechanism.Visual
     /// </summary>
     internal static class MVIOrthogonalRouter
     {
+        // 世界空间安全边距，和缩放比例无关；UI可以另行提供屏幕像素缩放。
         private const double Clearance=8.0;
+        // 每增加一次水平/竖直转弯的代价，优先减少过密折角。
         private const double BendCost=12.0;
         private const double Epsilon=1e-7;
         private const int MaxRoutingObstacles=32;
+        // 防止在鼠标拖动/场景重投影时构造无限大的搜索空间。
         private const int MaxGridNodes=20000;
 
+        /// <summary>稳定优先队列元素；序列号保证等代价情况下选路可重复。</summary>
         private sealed class QueueItem : IComparable<QueueItem>
         {
             internal double Cost;
@@ -65,6 +69,7 @@ namespace CxVisual.Mechanism.Visual
         {return p.X>r.Left+Epsilon&&p.X<r.Right-Epsilon&&
                 p.Y>r.Top+Epsilon&&p.Y<r.Bottom-Epsilon;}
 
+        /// <summary>仅接受正交线段；障碍膨胀后的边界允许贴边通过。</summary>
         private static bool SegmentClear(FGEPoint2D a,FGEPoint2D b,
             IList<FGERect2D> obstacles)
         {
@@ -95,6 +100,7 @@ namespace CxVisual.Mechanism.Visual
             return true;
         }
 
+        /// <summary>删除重复顶点及共线中间点，不改变几何轨迹。</summary>
         private static IReadOnlyList<FGEPoint2D> Compact(IEnumerable<FGEPoint2D> points)
         {
             var result=new List<FGEPoint2D>();

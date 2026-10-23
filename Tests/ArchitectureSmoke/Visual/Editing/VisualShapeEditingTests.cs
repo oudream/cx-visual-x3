@@ -123,6 +123,97 @@ namespace CxVisual.Tests.ArchitectureSmoke
             }
         }
 
+        /// <summary>
+        /// 多障碍物及固定端口方向验证：东侧输出必须向东离开源，
+        /// 东侧输入则须从目标东侧进入，线路不能为了求最短路穿过端点所属图元。
+        /// 同时检查旋转图元的世界法线占优方向。
+        /// </summary>
+        private static void DirectionalMultiObstacleRoutingTests()
+        {
+            using(var doc=MEMEngineering.Create("Directional multi-obstacle routing"))
+            {
+                try
+                {
+                    MEMPage page=doc.AddPage("Ports");
+                    var source=doc.AddRectangle(page.RootContent,"Source",0,20,40,40);
+                    var target=doc.AddRectangle(page.RootContent,"Target",240,20,40,40);
+                    var blocker1=doc.AddRectangle(page.RootContent,"Blocker1",85,10,35,65);
+                    var blocker2=doc.AddRectangle(page.RootContent,"Blocker2",143,0,33,80);
+                    var blocker3=doc.AddRectangle(page.RootContent,"Blocker3",193,15,30,65);
+                    using(var editor=new MVIVisualEditor(doc))
+                    {
+                        editor.SetPage(page.Id);
+                        Check(editor.ConnectVisual(source.Id,"east",target.Id,"east").Success,
+                            "east-to-east fixed port connection failed");
+                        Guid wire=editor.Scene.Single(x=>x.ElementTypeId==
+                            "core.visual.connector").Id;
+                        int before=doc.Revision;
+                        Check(editor.SetVisualRoute(wire,MPCVisualRouteKind.Orthogonal).Success&&
+                            doc.Revision==before+1,
+                            "directional route must commit a single MEM transaction");
+                        FGEPoint2D[] points=RouteVertices(editor.Scene.Single(x=>x.Id==wire));
+                        Check(points.Length>=4&&
+                            Near(points[0],MVIVisualAnchors.At(
+                                editor.Scene.Single(x=>x.Id==source.Id),"east"))&&
+                            Near(points[points.Length-1],MVIVisualAnchors.At(
+                                editor.Scene.Single(x=>x.Id==target.Id),"east")),
+                            "auto route lost real fixed source or target port");
+                        Check(points[1].X>points[0].X+7&&
+                            Math.Abs(points[1].Y-points[0].Y)<1e-6,
+                            "east source port did not initially route outward");
+                        Check(points[points.Length-2].X>points[points.Length-1].X+7&&
+                            Math.Abs(points[points.Length-2].Y-
+                                points[points.Length-1].Y)<1e-6,
+                            "east target port must be approached from outside its right side");
+                        Check(RouteAvoids(points,editor.Scene.Single(x=>x.Id==blocker1.Id).Bounds)&&
+                            RouteAvoids(points,editor.Scene.Single(x=>x.Id==blocker2.Id).Bounds)&&
+                            RouteAvoids(points,editor.Scene.Single(x=>x.Id==blocker3.Id).Bounds),
+                            "multi-obstacle route intersects expanded visual obstacle");
+
+                        // 改变中间图元的位置只影响下一次场景投影，不改变连接身份/Revision。
+                        int revision=doc.Revision;
+                        var original=RouteVertices(editor.Scene.Single(x=>x.Id==wire));
+                        Check(doc.FindConnection(wire).VisualRouteKind==
+                            MPCVisualRouteKind.Orthogonal,
+                            "orthogonal route unexpectedly stored manual points");
+                        Check(original.Length==RouteVertices(editor.Scene.Single(x=>x.Id==wire)).Length&&
+                            doc.Revision==revision,
+                            "repeated route projection mutated engineering revision");
+
+                        var rotated=doc.AddRectangle(page.RootContent,"Rotated",20,230,50,30);
+                        var destination=doc.AddRectangle(page.RootContent,"Destination",270,250,40,40);
+                        double angle=Math.PI/3;
+                        doc.SetTransform(rotated,new MRCTransform(Math.Cos(angle),
+                            -Math.Sin(angle),Math.Sin(angle),Math.Cos(angle),20,230));
+                        Check(editor.ConnectVisual(rotated.Id,"east",
+                            destination.Id,"west").Success,
+                            "rotated shape connector was not accepted");
+                        Guid rotationWire=editor.Scene.Where(x=>x.ElementTypeId==
+                            "core.visual.connector").Select(x=>x.Id)
+                            .Single(x=>x!=wire);
+                        Check(editor.SetVisualRoute(rotationWire,
+                            MPCVisualRouteKind.Orthogonal).Success,
+                            "rotated connector routing rejected");
+                        FGEPoint2D[] rotatedPath=RouteVertices(editor.Scene.Single(x=>
+                            x.Id==rotationWire));
+                        FGEPoint2D normal=MVIVisualAnchors.OutwardNormal(
+                            editor.Scene.Single(x=>x.Id==rotated.Id),"east");
+                        double dx=rotatedPath[1].X-rotatedPath[0].X;
+                        double dy=rotatedPath[1].Y-rotatedPath[0].Y;
+                        Check(dx*normal.X+dy*normal.Y>0&&
+                            Math.Abs(dx)<1e-6&&dy>0,
+                            "rotated east port must exit along positive world normal");
+                    }
+                    doc.Close(true);
+                }
+                catch
+                {
+                    doc.Close(true);
+                    throw;
+                }
+            }
+        }
+
         private static void BatchVisualMoveTests()
         {
             string path=Path.Combine(Path.GetTempPath(),
@@ -194,6 +285,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         {
             BatchVisualMoveTests();
             ObstacleRoutingTests();
+            DirectionalMultiObstacleRoutingTests();
             var plain=new FGEPath2D(new[]{
                 FGEPathCommand.Move(new FGEPoint2D(0,0)),
                 FGEPathCommand.Quadratic(new FGEPoint2D(10,25),new FGEPoint2D(40,10)),

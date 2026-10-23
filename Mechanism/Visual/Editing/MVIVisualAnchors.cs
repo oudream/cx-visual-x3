@@ -21,6 +21,10 @@ namespace CxVisual.Mechanism.Visual
             return "visual."+side;
         }
 
+        /// <summary>
+        /// 固定视觉端口在图元局部矩形的四条边中点；
+        /// 出线锚点始终由当前WorldTransform计算，不向MPC重复保存坐标。
+        /// </summary>
         public static FGEPoint2D At(MVISceneItem item,string side)
         {
             if(item==null)throw new ArgumentNullException("item");
@@ -30,6 +34,20 @@ namespace CxVisual.Mechanism.Visual
             double y=side=="south"?item.LocalHeight:
                 side=="north"?0:item.LocalHeight/2;
             return item.WorldTransform.ToGeometry().TransformPoint(new FGEPoint2D(x,y));
+        }
+        /// <summary>
+        /// 取得四向端口变换后的外法线方向。返回未归一化向量：
+        /// 绕障算法只需判断占优正交方向，兼容旋转/非等比缩放图元。
+        /// </summary>
+        public static FGEPoint2D OutwardNormal(MVISceneItem item,string side)
+        {
+            if(item==null)throw new ArgumentNullException("item");
+            MemberName(side);
+            MRCTransform matrix=item.WorldTransform;
+            if(side=="east")return new FGEPoint2D(matrix.M11,matrix.M21);
+            if(side=="west")return new FGEPoint2D(-matrix.M11,-matrix.M21);
+            if(side=="south")return new FGEPoint2D(matrix.M12,matrix.M22);
+            return new FGEPoint2D(-matrix.M12,-matrix.M22);
         }
     }
 
@@ -72,6 +90,25 @@ namespace CxVisual.Mechanism.Visual
             if(connection.VisualRouteKind==MPCVisualRouteKind.Orthogonal)
                 return MVIOrthogonalRouter.Route(start,end,obstacles);
             return Points(connection,start,end);
+        }
+
+        /// <summary>
+        /// 工程投影统一入口：自动正交模式考虑两端固定端口方向和实体障碍；
+        /// 直线与人工折点保持原语义，不能被自动寻路改写。
+        /// 所有几何结果仅属于本次场景投影，不改变MEM Revision。
+        /// </summary>
+        public static IReadOnlyList<FGEPoint2D> Points(MPCConnection connection,
+            FGEPoint2D start,FGEPoint2D end,IEnumerable<FGERect2D> obstacles,
+            MVISceneItem source,string sourceSide,MVISceneItem target,string targetSide)
+        {
+            if(connection==null)throw new ArgumentNullException("connection");
+            if(source==null||target==null)
+                throw new ArgumentNullException(source==null?"source":"target");
+            if(connection.VisualRouteKind!=MPCVisualRouteKind.Orthogonal)
+                return Points(connection,start,end);
+            return MVIOrthogonalRouter.RouteWithPorts(start,end,obstacles,
+                source.Bounds,target.Bounds, MVIVisualAnchors.OutwardNormal(source,sourceSide),
+                MVIVisualAnchors.OutwardNormal(target,targetSide));
         }
 
         public static MPCVisualWaypoint WaypointAt(FGEPoint2D position,
