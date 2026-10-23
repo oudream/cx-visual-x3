@@ -63,6 +63,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         internal static void Run()
         {
             SaveLoadAndIdentity();
+            MOLDefinitionEditingClosure();
             V1WaitDelayCancellationRoundtrip();
             P01EventAwaitTimeoutCancellationRoundtrip();
             P01TryCatchFinallyRoundtrip();
@@ -126,6 +127,101 @@ namespace CxVisual.Tests.ArchitectureSmoke
             {
                 session.Close(true);
                 if (System.IO.File.Exists(path)) System.IO.File.Delete(path);
+            }
+        }
+
+
+        /// <summary>D2～D4：不增第二树，以MEM事务编辑原逻辑；坏Schema不得静默丢弃。</summary>
+        private static void MOLDefinitionEditingClosure()
+        {
+            var session=MEMEngineering.Create("MOL定义四方面收口");
+            MEMPage page=session.AddPage("Main");
+            MOLControlBlock before=MOLControlBlock.Action("Inspect");
+            MOLControlBlock check=MOLControlBlock.Action("Check");
+            MOLControlBlock clean=MOLControlBlock.Action("Cleanup");
+            MOLControlBlock region=MOLControlBlock.TryCatchFinally(check,finallyBody:clean);
+            var definition=new MOLLogicDefinition(MOLControlBlock.Sequence(before,region));
+            MOLLogicCodec.Set(session,page.RootContent,definition);
+            int revision=session.Revision;
+            var change=new MOLControlBlock(check.Id,MOLControlKind.Action,"CheckV2");
+            var modified=definition.ReplaceBlock(check.Id,change);
+            Check(modified.Root.Id==definition.Root.Id&&
+                modified.Root.Children[0].Id==before.Id&&
+                modified.Root.Children[1].Id==region.Id&&
+                modified.Root.Children[1].TryRegion.TryBody.Id==check.Id&&
+                modified.Root.Children[1].TryRegion.FinallyBody.Id==clean.Id&&
+                definition.Root.Children[1].TryRegion.TryBody.CapabilityId=="Check",
+                "MOL replace affected unrelated identity or mutated old definition");
+
+            bool rejected=false;
+            try{definition.ReplaceBlock(check.Id,MOLControlBlock.Action("Other"));}
+            catch(InvalidOperationException ex)
+            {rejected=ex.Message=="logic.edit.identity_changed";}
+            Check(rejected,"MOL replace accepted changed block identity");
+            rejected=false;
+            try{definition.ReplaceBlock(Guid.NewGuid(),MOLControlBlock.Action("Missing"));}
+            catch(InvalidOperationException ex)
+            {rejected=ex.Message=="logic.edit.identity_changed";}
+            Check(rejected,"MOL replace accepted nonexistent block identity");
+
+            MOLLogicCodec.Edit(session,page.RootContent,d=>d.ReplaceBlock(check.Id,change));
+            Check(session.Revision==revision+1&&
+                MOLLogicCodec.Get(session.GetSnapshot().Find(page.RootContent.Id))
+                    .Root.Children[1].TryRegion.TryBody.CapabilityId=="CheckV2",
+                "MOL edit did not atomically commit changed inner block");
+            Check(session.Undo().Success&&
+                MOLLogicCodec.Get(session.GetSnapshot().Find(page.RootContent.Id))
+                    .Root.Children[1].TryRegion.TryBody.CapabilityId=="Check",
+                "MOL edit did not reuse MEM Undo");
+            Check(session.Redo().Success&&
+                MOLLogicCodec.Get(session.GetSnapshot().Find(page.RootContent.Id))
+                    .Root.Children[1].TryRegion.TryBody.CapabilityId=="CheckV2",
+                "MOL edit did not reuse MEM Redo");
+
+            revision=session.Revision;
+            rejected=false;
+            try{MOLLogicCodec.Edit(session,page.RootContent,d=>null);}
+            catch(InvalidOperationException ex)
+            {rejected=ex.Message=="logic.edit.null_definition";}
+            Check(rejected&&session.Revision==revision,
+                "Null edit unexpectedly committed or changed revision");
+
+            byte[] bytes=MOLLogicCodec.Serialize(modified);
+            string xml=System.Text.Encoding.UTF8.GetString(bytes);
+            foreach(string bad in new[]{
+                xml.Replace("<MOL v=\"1\"","<MOL v=\"1\" lost=\"true\""),
+                xml.Replace("kind=\"Action\"","kind=\"Action\" bad=\"x\""),
+                xml.Replace("cap=\"CheckV2\"","cap=\"CheckV2\" unsupported=\"x\""),
+                xml.Replace("<TryRegion>","<TryRegion unsupported=\"yes\">")
+            })
+            {
+                rejected=false;
+                try{MOLLogicCodec.Deserialize(System.Text.Encoding.UTF8.GetBytes(bad));}
+                catch(System.IO.InvalidDataException){rejected=true;}
+                Check(rejected,"Malformed MOL definition silently accepted an unknown field");
+            }
+            string file=System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                "mol-closure-"+Guid.NewGuid().ToString("N")+".cxproj");
+            try
+            {
+                session.SaveAs(file);
+                var restored=MEMEngineering.Open(file);
+                try
+                {
+                    var read=MOLLogicCodec.Get(restored.GetSnapshot().Find(page.RootContent.Id));
+                    Check(read.Root.Id==definition.Root.Id&&
+                        read.Root.Children[1].Id==region.Id&&
+                        read.Root.Children[1].TryRegion.TryBody.CapabilityId=="CheckV2"&&
+                        read.Root.Children[1].TryRegion.FinallyBody.Id==clean.Id,
+                        "MOL edit not retained across MEM Save/Open");
+                }
+                finally{restored.Close(true);}
+            }
+            finally
+            {
+                session.Close(true);
+                if(System.IO.File.Exists(file))System.IO.File.Delete(file);
+                if(System.IO.File.Exists(file+".cx-lock"))System.IO.File.Delete(file+".cx-lock");
             }
         }
 
