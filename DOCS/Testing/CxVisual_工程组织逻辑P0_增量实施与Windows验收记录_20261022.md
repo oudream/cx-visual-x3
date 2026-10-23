@@ -66,3 +66,15 @@
 - **历史红灯及修复**：首轮CI发现执行组foreach花括号作用域错误，`ddd1012f`修复；测试脏工程Dispose被MEM正常拒绝，`fbd05b6d`修正显式Close(true)；Wait真实轨迹是Scheduled而非Running，`8ba30de0`纠正断言。失败记录不是成功证据。
 - **固定SHA Windows S3**：`b58776165ec5b3ca7b8deb8cd01df5e934f363b6`；工程组织 [39904735742](https://github.com/oudream/cx-visual-x3/actions/runs/39904735742)、Runtime [39904735623](https://github.com/oudream/cx-visual-x3/actions/runs/39904735623)、Config L1 [39904735584](https://github.com/oudream/cx-visual-x3/actions/runs/39904735584)、配置底座 [39904735670](https://github.com/oudream/cx-visual-x3/actions/runs/39904735670) 均成功。并行提交后的Studio/TestCenter须按自身同SHA重新核实。
 - **P0-1仍未整包完成**：缺多Catch异常类型匹配、Throw/Retry受控定义、持久事件恢复、复杂Return/Break/Continue/异常组合、设备补偿及Studio完整异常区编辑。LOG-09仅增量覆盖，LOG-10/13综合与专业S4不冒称已完成。
+
+## 6. 2026-10-23 MOL D1～D4 定义侧轻量增构与Windows验收
+
+- **唯一真源没有改变**：D1 在 MOLControlBlock/MOLTryDefinition/MOLStateDescriptor 原值体系里补必要声明；D2 使用 MOLLogicDefinition 上下文验证；D3 在原 MEMEngineeringSession/Logic Aspect 完成原子更新；D4 复用工厂 + MOLLogicCodec.Edit + ReplaceBlock，不建新 Graph/Engine/Undo/项目。
+- **源码路径**：Mechanism/Core/Engineering/MOLLogicDefinition.cs；Mechanism/Orchestration/MOCEngineeringCompiler.cs（新声明不支持时明确拒绝）；Tests/ArchitectureSmoke/Engineering/Integration/OrganizationLogicIntegrationTests.cs。
+- **测试入口**：MOLDefinitionEditingClosure（不可变替换/撤销重做/文件往返/坏Schema）、MOLScalarTypeSafety（数字布尔字符串精确比较及类型拒绝）、MOLTypedDefinitionContracts（具名Catch、State Entry/Exit声明及MOC拒绝）、MOLLosslessSchemaConversion（仅单动作V1/V2无损迁移、复杂转换原子拒绝）、MOLThrowDefinitionContracts（Throw错误码、往返及MOC拒绝）、原 R05 循环退出组合回归。
+- **兼容约束**：V1旧Catch-all及无 Throw 定义原格式保留；V2普通项目 Schema2 保留；带 Entry/Exit State Action 时 V2 连线载荷采用扩展 Schema3，旧读取器需拒绝，不能忽略声明。无法证明等价的迁移不做，保持原 ID/Revision/载荷。
+- **运行边界**：新具名Catch、Throw、StateAction目前是定义合同，MOC明确报未实现，不可在MRK误按Catch-all/Return/空状态动作执行。这些能力的真正可运行性属于后续 MOC/MRK 工作包，不把它回填进MEM的值模型。
+- **已通过固定SHA**：17c5c6685d8e43fbadcc78429379ce9399e380ff 和 1deb0aa3fdf9d751e27709db93345df2920ead2c 对应的工程组织/统一运行/Config L1/配置底座四项CI成功；fd47c09070d02547ccc7b8cbf3ca25f927a6d8e0 的 Studio S1、工程组织、TestCenter、Config L1、配置底座CI成功；c9e9bbadc0a1529e679568830b59e0b6420e39c2 的工程组织/统一运行/Config L1/配置底座CI成功。
+- **一次真实失败不隐瞒**：418893da 的 ArchitectureSmoke 报 logic.exit_outside_loop，原因是 Branch() 工厂过早按完整根检查未挂接Loop的子树；fd47c090 改成本地Case规则先验、完整MOLDefinition在真正祖先上下文后验，保留对根部非法Break/Continue的拒绝。
+- **最新代码SHA核实状态**：96c71ea82b9c99c71c383028f527415b0692b5bc 的工程组织 Windows、Studio S1、配置底座成功，其余工作流需按最终实际日志再升S3；后续 docs commit不能替代这次代码SHA的测试。
+- **定义领域尚未整包收口**：完整事件/触发源合同、复合表达式/短路、跨Schema复杂子 Content 公开端口与版本映射、C#与Studio高级定义同源操作没有达到全量验收。不能用这里的代码量、若干绿灯或“已有Enum”宣布D1～D4全部完成。
