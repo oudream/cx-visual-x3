@@ -78,3 +78,5 @@
 - **一次真实失败不隐瞒**：418893da 的 ArchitectureSmoke 报 logic.exit_outside_loop，原因是 Branch() 工厂过早按完整根检查未挂接Loop的子树；fd47c090 改成本地Case规则先验、完整MOLDefinition在真正祖先上下文后验，保留对根部非法Break/Continue的拒绝。
 - **最新代码SHA核实状态**：96c71ea82b9c99c71c383028f527415b0692b5bc 的工程组织 Windows、Studio S1、配置底座成功，其余工作流需按最终实际日志再升S3；后续 docs commit不能替代这次代码SHA的测试。
 - **定义领域尚未整包收口**：完整事件/触发源合同、复合表达式/短路、跨Schema复杂子 Content 公开端口与版本映射、C#与Studio高级定义同源操作没有达到全量验收。不能用这里的代码量、若干绿灯或“已有Enum”宣布D1～D4全部完成。
+
+**2026-10-23 D1～D4 最终代码固定SHA更新**：`96c71ea82b9c99c71c383028f527415b0692b5bc` 的 [工程组织 Windows Acceptance](https://github.com/oudream/cx-visual-x3/actions/runs/39917578173)、[Studio S1 Windows](https://github.com/oudream/cx-visual-x3/actions/runs/39917578073)、[TestCenter Windows .NET48](https://github.com/oudream/cx-visual-x3/actions/runs/39917578286)、[Config L1 Windows](https://github.com/oudream/cx-visual-x3/actions/runs/39917577976) 和 [配置底座](https://github.com/oudream/cx-visual-x3/actions/runs/39917578067) 均为 `success/completed`。本轮仅证明这五条真实工作流的测试范围及已覆盖定义合同；具名 Catch/Throw/State Action 的真正 MRK 执行、跨Schema复杂 Content、完整事件/组合表达式和高级 Studio 编排仍未完成，不能从 S3 外推出 S4 或整包完成。
