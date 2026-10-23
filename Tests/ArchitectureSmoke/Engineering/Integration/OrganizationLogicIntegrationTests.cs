@@ -64,6 +64,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         {
             SaveLoadAndIdentity();
             MOLDefinitionEditingClosure();
+            MOLScalarTypeSafety();
             V1WaitDelayCancellationRoundtrip();
             P01EventAwaitTimeoutCancellationRoundtrip();
             P01TryCatchFinallyRoundtrip();
@@ -224,6 +225,36 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 if(System.IO.File.Exists(file))System.IO.File.Delete(file);
                 if(System.IO.File.Exists(file+".cx-lock"))System.IO.File.Delete(file+".cx-lock");
             }
+        }
+
+
+        /// <summary>D1：统一Guard/分支/状态机可复用的纯标量类型合同。</summary>
+        private static void MOLScalarTypeSafety()
+        {
+            Check(MOLScalarExpression.Compare(20,"3")>0,
+                "MOL numeric comparison fell back to lexical order");
+            Check(MOLScalarExpression.Compare("20","3")<0,
+                "MOL string comparison did not retain string semantics");
+            Check(MOLScalarExpression.Compare(true,"true")==0,
+                "MOL boolean comparison incorrect");
+            Check(MOLScalarExpression.Compare(1.5d,"1.4")>0,
+                "MOL floating comparison incorrect");
+            Check(MOLScalarExpression.Compare(20m,"3")>0,
+                "MOL decimal comparison incorrect");
+            Check(MOLScalarExpression.Evaluate(new MOLExpression(
+                MOLExpressionSource.FlowInput,"value",MOLComparison.GreaterThan,"3"),20),
+                "MOL numeric Guard semantics incorrect");
+            foreach(object actual in new object[]{20,true,1.0d,null})
+            {
+                bool rejected=false;
+                try{MOLScalarExpression.Compare(actual,"not_a_number");}
+                catch(InvalidOperationException){rejected=true;}
+                Check(rejected,"MOL incompatible type silently compared as string");
+            }
+            bool bad=false;
+            try{MOLScalarExpression.Compare(double.NaN,"1");}
+            catch(InvalidOperationException){bad=true;}
+            Check(bad,"MOL nonfinite number silently accepted");
         }
 
         /// <summary>P0-1：V1定时等待写入同一Logic Aspect，MRK异步执行/取消，拒绝坏合同。</summary>
