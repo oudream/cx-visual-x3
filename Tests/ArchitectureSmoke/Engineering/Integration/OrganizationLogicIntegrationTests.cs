@@ -345,6 +345,17 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Check(read.StateMachines[id].States[0].EntryCapability=="Activate"&&
                         read.StateMachines[id].States[0].ExitCapability=="Deactivate",
                         "MOL State Entry/Exit contract lost on Save/Open");
+                    var stateAspect=MOLWiringCodec.CreateAspect(read);
+                    Check(stateAspect.SchemaVersion==MOLWiringCodec.ExtendedSchemaVersion,
+                        "MOL extended state action must use distinct forward-incompatible schema");
+                    string badV2=System.Text.Encoding.UTF8.GetString(stateAspect.Payload)
+                        .Replace("v=\"3\"","v=\"2\"");
+                    rejected=false;
+                    try{MOLWiringCodec.Deserialize(
+                        System.Text.Encoding.UTF8.GetBytes(badV2));}
+                    catch(System.IO.InvalidDataException ex)
+                    {rejected=ex.Message.Contains("wiring.state_action_requires_v3");}
+                    Check(rejected,"MOL legacy V2 payload silently consumed state actions");
                     rejected=false;
                     try{new MOCEngineeringCompiler().Compile(
                         opened.GetSnapshot(),statePage.RootContent.Id,new TestResolver());}
