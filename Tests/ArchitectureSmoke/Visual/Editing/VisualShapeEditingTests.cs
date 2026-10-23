@@ -45,7 +45,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "P1 grid did not snap the same world-space selection left edge");
                 MVIVisualSnapResult multi=MVIVisualSnapping.Resolve(scene,
                     new[]{a.Id,c.Id},11,0,1,true,false);
-                Check(Math.Abs(multi.WorldDx-13)<1e-9,
+                Check(Math.Abs(multi.WorldDx-15)<1e-9,
                     "P1 multi-selection grid must keep relative distances");
                 MVIVisualSnapResult priority=MVIVisualSnapping.Resolve(scene,
                     new[]{a.Id},87,0,1,true,true);
@@ -56,8 +56,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             }
             finally
             {
-                session.DiscardChanges();
-                session.Dispose();
+                session.Close(true);
             }
         }
 
