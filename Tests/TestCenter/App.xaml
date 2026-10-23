@@ -4,10 +4,42 @@
   <Application.Resources>
     <SolidColorBrush x:Key="TCTPrimary" Color="#17365D" />
     <SolidColorBrush x:Key="TCTAccent" Color="#2477BE" />
-    <Style TargetType="Button">
+    <!-- 显示清晰度基线：较大的正文、整像素布局、原生Display字体栅格化 -->
+    <Style TargetType="{x:Type TextBlock}">
+      <Setter Property="FontSize" Value="16"/>
+      <Setter Property="TextOptions.TextFormattingMode" Value="Display"/>
+      <Setter Property="TextOptions.TextRenderingMode" Value="ClearType"/>
+      <Setter Property="SnapsToDevicePixels" Value="True"/>
+    </Style>
+    <Style TargetType="{x:Type TreeView}">
+      <Setter Property="FontSize" Value="16"/>
+      <Setter Property="SnapsToDevicePixels" Value="True"/>
+    </Style>
+    <Style TargetType="{x:Type TreeViewItem}">
+      <Setter Property="FontSize" Value="16"/>
+      <Setter Property="MinHeight" Value="29"/>
+      <Setter Property="Padding" Value="3,4"/>
+    </Style>
+    <Style TargetType="{x:Type TextBox}">
+      <Setter Property="FontSize" Value="16"/>
+      <Setter Property="MinHeight" Value="33"/>
+      <Setter Property="Padding" Value="8,5"/>
+    </Style>
+    <Style TargetType="{x:Type ComboBox}">
+      <Setter Property="FontSize" Value="16"/>
+      <Setter Property="MinHeight" Value="33"/>
+    </Style>
+    <Style TargetType="{x:Type DataGrid}">
+      <Setter Property="FontSize" Value="15"/>
+      <Setter Property="RowHeight" Value="31"/>
+      <Setter Property="ColumnHeaderHeight" Value="34"/>
+    </Style>
+    <Style TargetType="{x:Type Button}">
       <Setter Property="Margin" Value="3" />
-      <Setter Property="Padding" Value="13,7" />
+      <Setter Property="Padding" Value="14,8" />
       <Setter Property="MinWidth" Value="90" />
+      <Setter Property="MinHeight" Value="35" />
+      <Setter Property="FontSize" Value="16" />
     </Style>
   </Application.Resources>
 </Application>

@@ -14,7 +14,7 @@ namespace CxVisual.TestCenter.UI
     public sealed class TCTTestExplorerControl : UserControl
     {
         private readonly TextBox _search = new TextBox { Margin = new Thickness(7, 5, 7, 7),
-            Padding = new Thickness(7, 5, 7, 5), MinHeight = 31,
+            Padding = new Thickness(10, 7, 10, 7), MinHeight = 38,
             BorderBrush = new SolidColorBrush(Color.FromRgb(195, 215, 235)),
             ToolTip = "按ID/名称/能力检索" };
         private readonly TreeView _tree = new TreeView { Margin = new Thickness(5) };
@@ -32,9 +32,9 @@ namespace CxVisual.TestCenter.UI
             StackPanel searchPanel = new StackPanel { Background =
                 new SolidColorBrush(Color.FromRgb(246, 250, 254)) };
             searchPanel.Children.Add(new TextBlock {
-                Text = "搜索测试 / Capability / ObjectId", FontSize = 11,
+                Text = "搜索测试 / Capability / ObjectId", FontSize = 14,
                 Foreground = new SolidColorBrush(Color.FromRgb(108, 131, 156)),
-                Margin = new Thickness(9, 9, 0, 0) });
+                Margin = new Thickness(10, 10, 0, 1) });
             searchPanel.Children.Add(_search);
             DockPanel.SetDock(searchPanel, Dock.Top);
             panel.Children.Add(searchPanel);

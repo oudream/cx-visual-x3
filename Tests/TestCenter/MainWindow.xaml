@@ -5,15 +5,17 @@
  xmlns:dock="https://github.com/Dirkster99/AvalonDock"
  Title="CxVisual · TestCenter — 统一测试与质量工作台"
  Width="1800" Height="1020" MinWidth="1180" MinHeight="760"
- WindowStartupLocation="CenterScreen" FontFamily="Segoe UI"
+ WindowStartupLocation="CenterScreen" FontFamily="Microsoft YaHei UI"
+ FontSize="16" UseLayoutRounding="True" SnapsToDevicePixels="True"
+ TextOptions.TextFormattingMode="Display" TextOptions.TextRenderingMode="ClearType"
  Background="#EEF3F9">
  <Window.Resources>
   <Style TargetType="TabItem">
-   <Setter Property="Padding" Value="14,6"/>
-   <Setter Property="FontSize" Value="13"/>
+   <Setter Property="Padding" Value="17,8"/>
+   <Setter Property="FontSize" Value="16"/>
   </Style>
   <Style TargetType="MenuItem">
-   <Setter Property="FontSize" Value="13"/>
+   <Setter Property="FontSize" Value="16"/>
   </Style>
   <Style TargetType="GroupBox">
    <Setter Property="BorderBrush" Value="#C4D3E4"/>
@@ -23,22 +25,22 @@
  </Window.Resources>
  <Grid>
   <Grid.RowDefinitions>
-   <RowDefinition Height="45"/>
-   <RowDefinition Height="31"/>
+   <RowDefinition Height="55"/>
+   <RowDefinition Height="39"/>
    <RowDefinition Height="0"/>
-   <RowDefinition Height="34"/>
+   <RowDefinition Height="43"/>
    <RowDefinition Height="*"/>
-   <RowDefinition Height="29"/>
+   <RowDefinition Height="37"/>
   </Grid.RowDefinitions>
   <Border x:Name="HeaderBand" Grid.Row="0" Background="#F2F6FB" Padding="13,8">
    <DockPanel>
     <Border Background="#237CCB" CornerRadius="3" Padding="6,2" Margin="0,0,11,0">
-     <TextBlock Text="Cx" Foreground="White" FontSize="17" FontWeight="Bold"/>
+     <TextBlock Text="Cx" Foreground="White" FontSize="20" FontWeight="Bold"/>
     </Border>
     <TextBlock x:Name="ProductNameText" Text="CxVisual 工业可视化组态平台  ·  Platform Test Center"
-     Foreground="#244467" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center"/>
+     Foreground="#244467" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center"/>
     <TextBlock x:Name="ProjectLabelText" Text="测试工程：CxVisual.TestCenter  ·  .NET Framework 4.8" DockPanel.Dock="Right"
-     Foreground="#6D85A0" FontSize="12" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="30,0,0,0"/>
+     Foreground="#6D85A0" FontSize="14" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="30,0,0,0"/>
    </DockPanel>
   </Border>
   <Menu Grid.Row="1" Background="#F4F7FC" Padding="7,0">
@@ -66,16 +68,16 @@
   <Border x:Name="BreadcrumbBand" Grid.Row="3" Background="#F2F6FB" BorderBrush="#C4D8ED" BorderThickness="0,1,0,1">
    <DockPanel Margin="15,0" LastChildFill="True">
     <TextBlock x:Name="EnvironmentText" DockPanel.Dock="Right" Text="环境：本地  ·  SIMULATE  ·  Target: .NET Framework 4.8"
-     Foreground="#637D98" FontSize="12" VerticalAlignment="Center" Margin="16,0,0,0"/>
+     Foreground="#637D98" FontSize="14" VerticalAlignment="Center" Margin="16,0,0,0"/>
     <TextBlock x:Name="WorkspaceTitle" Text="测试主界面 / Overview"
-     Foreground="#17365D" FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center"/>
+     Foreground="#17365D" FontWeight="SemiBold" FontSize="17" VerticalAlignment="Center"/>
    </DockPanel>
   </Border>
   <dock:DockingManager x:Name="TestDock" Grid.Row="4">
    <dock:LayoutRoot>
     <dock:LayoutPanel Orientation="Vertical">
      <dock:LayoutPanel Orientation="Horizontal">
-      <dock:LayoutAnchorablePane DockWidth="290">
+      <dock:LayoutAnchorablePane DockWidth="350">
        <dock:LayoutAnchorable ContentId="test.explorer" Title="测试资源浏览器 / Explorer"
          CanClose="False" CanFloat="True" CanHide="True" CanAutoHide="True">
         <ui:TCTTestExplorerControl x:Name="Explorer"/>
@@ -87,7 +89,7 @@
         <ui:TCTTestDocumentHostControl x:Name="DocumentHost"/>
        </dock:LayoutDocument>
       </dock:LayoutDocumentPane>
-      <dock:LayoutAnchorablePane DockWidth="330">
+      <dock:LayoutAnchorablePane DockWidth="365">
        <dock:LayoutAnchorable ContentId="test.inspector" Title="操作中心"
          CanClose="False" CanFloat="True" CanHide="True" CanAutoHide="True">
         <DockPanel x:Name="OperationDock" Background="#FFFFFF">
@@ -95,7 +97,7 @@
             VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
           <StackPanel Margin="9,8,7,6">
            <TextBlock Text="操作中心 / Operations" FontWeight="SemiBold"
-             Foreground="#244467" FontSize="15" Margin="4,3,2,10"/>
+             Foreground="#244467" FontSize="18" Margin="4,3,2,10"/>
            <StackPanel x:Name="AutoActionHost"/>
            <StackPanel x:Name="ManualActionHost" Visibility="Collapsed"/>
           </StackPanel>
@@ -105,7 +107,7 @@
        </dock:LayoutAnchorable>
       </dock:LayoutAnchorablePane>
      </dock:LayoutPanel>
-     <dock:LayoutAnchorablePane DockHeight="195">
+     <dock:LayoutAnchorablePane DockHeight="215">
       <dock:LayoutAnchorable ContentId="test.results" Title="测试结果 / Results"
         CanClose="False" CanFloat="True" CanHide="True" CanAutoHide="True">
        <ui:TCTTestResultsControl x:Name="Results"/>
