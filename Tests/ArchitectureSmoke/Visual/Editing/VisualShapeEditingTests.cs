@@ -53,6 +53,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
             {
                 using(var doc=MEMEngineering.Create("Obstacle routing"))
                 {
+                    try
+                    {
                     var page=doc.AddPage("Page");
                     var source=doc.AddRectangle(page.RootContent,"Source",0,20,40,40);
                     var target=doc.AddRectangle(page.RootContent,"Target",260,20,40,40);
@@ -97,6 +99,13 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         doc.SaveAs(file);
                     }
                     doc.Close();
+                    }
+                    catch
+                    {
+                        // 测试中途断言失败时显式放弃临时工程，保留原异常堆栈。
+                        doc.Close(true);
+                        throw;
+                    }
                 }
                 using(var reopened=MEMEngineering.Open(file))
                 {
