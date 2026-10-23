@@ -31,7 +31,7 @@ namespace CxVisual.TestCenter.UI
         };
         private readonly ContentControl _editorHost = new ContentControl();
         private readonly TabControl _pages = new TabControl {
-            Height = 40, Margin = new Thickness(0, 12, 0, 5),
+            MinHeight = 49, Margin = new Thickness(0, 13, 0, 9),
             Background = Brushes.White, BorderThickness = new Thickness(0) };
         private Action<string[], string[]> _project;
         private Func<int> _visibleSchemaEditors;
@@ -123,7 +123,7 @@ namespace CxVisual.TestCenter.UI
                 foreach (ModulePage page in pages)
                 {
                     TabItem tab = new TabItem { Header = page.Label, Tag = page,
-                        Padding = new Thickness(16, 7, 16, 7), FontSize = 14 };
+                        Padding = new Thickness(20, 10, 20, 10), FontSize = 16 };
                     System.Windows.Automation.AutomationProperties.SetAutomationId(tab,
                         "TCT.Module.Page." + page.Id);
                     _pages.Items.Add(tab);
@@ -219,7 +219,7 @@ namespace CxVisual.TestCenter.UI
                 Background = Brushes.White };
             StackPanel header = new StackPanel();
             header.Children.Add(new TextBlock {
-                Text = "模块配置 / Module Workspace", FontSize = 21,
+                Text = "模块配置 / Module Workspace", FontSize = 24,
                 Foreground = new SolidColorBrush(Color.FromRgb(30, 68, 112)),
                 FontWeight = FontWeights.SemiBold
             });
@@ -238,7 +238,7 @@ namespace CxVisual.TestCenter.UI
             header.Children.Add(new TextBlock {
                 Text = "配置真源：正式 FCM Schema → MPW 自动编辑 → MHS Saved/Effective。通道、规约、点表参数均来自生产配置定义；尚未装配或运行的 Owner 不显示成功。",
                 Foreground = Brushes.SlateGray, TextWrapping = TextWrapping.Wrap,
-                FontSize = 12, Margin = new Thickness(0, 3, 0, 4)
+                FontSize = 15, Margin = new Thickness(0, 6, 0, 8)
             });
             DockPanel.SetDock(header, Dock.Top);
             rootPanel.Children.Add(header);

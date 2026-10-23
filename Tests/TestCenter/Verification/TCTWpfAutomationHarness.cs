@@ -676,12 +676,15 @@ namespace CxVisual.TestCenter.UI
         private static void SaveScreenshot(TCTMainWindow window, string name)
         {
             window.UpdateLayout();
-            int width = (int)Math.Ceiling(window.ActualWidth);
-            int height = (int)Math.Ceiling(window.ActualHeight);
-            if (width < 500 || height < 350 || width > 4096 || height > 4096)
-                throw new InvalidOperationException("UIA screenshot viewport invalid");
-            RenderTargetBitmap pixels = new RenderTargetBitmap(width, height, 96, 96,
-                PixelFormats.Pbgra32);
+            DpiScale dpi = VisualTreeHelper.GetDpi(window);
+            // RenderTargetBitmap takes physical pixel dimensions. Passing logical
+            // WPF DIPs with hardcoded 96 DPI makes high-DPI screenshots blurry.
+            int width = (int)Math.Ceiling(window.ActualWidth * dpi.DpiScaleX);
+            int height = (int)Math.Ceiling(window.ActualHeight * dpi.DpiScaleY);
+            if (width < 500 || height < 350 || width > 8192 || height > 8192)
+                throw new InvalidOperationException("UIA screenshot physical viewport invalid");
+            RenderTargetBitmap pixels = new RenderTargetBitmap(width, height,
+                96 * dpi.DpiScaleX, 96 * dpi.DpiScaleY, PixelFormats.Pbgra32);
             pixels.Render(window);
             PngBitmapEncoder encoder = new PngBitmapEncoder();
             encoder.Frames.Add(BitmapFrame.Create(pixels));

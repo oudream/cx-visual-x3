@@ -143,7 +143,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         private static Button MakeButton(string title, Action action)
         {
             Button button = new Button { Content = title, Padding = new Thickness(9, 5, 9, 5),
-                Margin = new Thickness(3), MinHeight = 27 };
+                Margin = new Thickness(4), MinHeight = 35 };
             button.Click += (s, e) => action();
             return button;
         }
@@ -302,7 +302,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 for (int column = 0; column < 3; column++)
                     group.ColumnDefinitions.Add(new ColumnDefinition {
                         Width = new GridLength(1, GridUnitType.Star),
-                        MinWidth = 220 });
+                        MinWidth = 275 });
                 string[] titles = { "通道类型 / 身份与子通道", "网络配置 / 串口", "数据配置 / 执行与重连" };
                 for (int column = 0; column < 3; column++)
                 {
@@ -314,7 +314,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                         Margin = new Thickness(0, 0, 9, 5), Padding = new Thickness(10) };
                     StackPanel items = new StackPanel();
                     TextBlock title = new TextBlock {
-                        Text = titles[column], FontSize = 14,
+                        Text = titles[column], FontSize = 17,
                         FontWeight = FontWeights.SemiBold, Foreground = Brushes.MidnightBlue,
                         Background = Brushes.AliceBlue, Padding = new Thickness(7, 7, 7, 7),
                         Margin = new Thickness(0, 0, 0, 10) };
@@ -380,7 +380,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                     Margin = new Thickness(4, 5, 4, 7) };
                 TextBlock caption = new TextBlock { Text = label + (string.IsNullOrEmpty(unit) ? "" : " (" + unit + ")"),
                     Width = _workspaceCompact ? double.NaN : 190,
-                    FontSize = _workspaceCompact ? 13 : 12,
+                    FontSize = _workspaceCompact ? 16 : 15,
                     Margin = _workspaceCompact ? new Thickness(0, 0, 0, 4) : new Thickness(0),
                     VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
                 line.Children.Add(caption);
@@ -401,7 +401,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 }
                 else if (actual.IsEnum)
                 {
-                    ComboBox box = new ComboBox { Width = 210, ItemsSource = Enum.GetNames(actual),
+                    ComboBox box = new ComboBox { Width = 235, MinHeight = 35, ItemsSource = Enum.GetNames(actual),
                         SelectedItem = value == null ? null : value.ToString() };
                     box.SelectionChanged += (s, e) => {
                         if (box.SelectedItem != null) Execute(() => _editor.SetPathJson(path,
@@ -411,7 +411,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 }
                 else
                 {
-                    TextBox box = new TextBox { Width = 230, MinHeight = 26,
+                    TextBox box = new TextBox { Width = 250, MinHeight = 35,
                         Text = Format(value), Padding = new Thickness(5, 3, 5, 3) };
                     box.LostFocus += (s, e) => Execute(() => _editor.SetPathJson(path,
                         ToConfigJson(box.Text, type)));
@@ -459,7 +459,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 "  Effective: " + (state.EffectiveJson ?? "(缺失)") +
                 (state.IsModified ? "  [未保存草稿]" : "");
             host.Children.Add(new TextBlock {
-                Text = summary, FontSize = 11, Foreground = Brushes.SlateGray,
+                Text = summary, FontSize = 13, Foreground = Brushes.SlateGray,
                 Margin = _workspaceCompact ? new Thickness(6, 0, 3, 3) :
                     new Thickness(196, 0, 3, 3), TextWrapping = TextWrapping.Wrap
             });
