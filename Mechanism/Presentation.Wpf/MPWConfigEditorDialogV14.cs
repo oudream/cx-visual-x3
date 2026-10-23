@@ -245,6 +245,24 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         }
         private void EnsureActive()
         { if (_disposed) throw new ObjectDisposedException("MPWConfigEditorControl"); }
+        // 焦点/选择事件内同步RefreshAll会移除正在触发事件的输入控件，
+        // 在Windows UIAutomation或中文输入法下可能造成重入和跨线程等待。
+        // 将真正的写入排到同一UI Dispatcher下一轮；保存按钮Input事件到达前
+        // 以Normal优先级提交，仍由现有MHS Editor执行唯一草稿事务。
+        private void QueueEditorValue(string path, string json)
+        {
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Normal,
+                new Action(() => {
+                    if (_disposed || _working) return;
+                    try
+                    {
+                        if (string.Equals(_editor.ReadDraftJson(path), json,
+                            StringComparison.Ordinal)) return;
+                        Execute(() => _editor.SetPathJson(path, json));
+                    }
+                    catch (Exception ex) { ShowError(ex); }
+                }));
+        }
         private void Execute(Action action)
         {
             if (_disposed || _working) return;
@@ -487,13 +505,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                         choice.SelectionChanged += (s, e) => {
                             if (choice.SelectedItem != null &&
                                 !string.Equals((string)choice.SelectedItem, Format(value), StringComparison.Ordinal))
-                                Execute(() => _editor.SetPathJson(path,
-                                    FCMJsonValueCodec.Serialize((string)choice.SelectedItem)));
+                                QueueEditorValue(path,
+                                    FCMJsonValueCodec.Serialize((string)choice.SelectedItem));
                         };
                         choice.LostKeyboardFocus += (s, e) => {
                             if (!string.Equals(choice.Text, Format(value), StringComparison.Ordinal))
-                                Execute(() => _editor.SetPathJson(path,
-                                    FCMJsonValueCodec.Serialize(choice.Text)));
+                                QueueEditorValue(path, FCMJsonValueCodec.Serialize(choice.Text));
                         };
                         line.Children.Add(choice);
                     }
@@ -507,7 +524,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                         System.Windows.Automation.AutomationProperties.SetAutomationId(box, "MPW.Edit." + path);
                         box.LostFocus += (s, e) => {
                             if (!string.Equals(box.Text, Format(value), StringComparison.Ordinal))
-                                Execute(() => _editor.SetPathJson(path, ToConfigJson(box.Text, type)));
+                                QueueEditorValue(path, ToConfigJson(box.Text, type));
                         };
                         line.Children.Add(box);
                     }
