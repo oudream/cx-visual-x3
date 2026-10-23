@@ -213,12 +213,16 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 streamConfig.Describe("stream", MFMModuleKind.Connector), streamConfig,
                 raw[0], new MPALengthFrameProtocol());
             List<byte[]> assembled = new List<byte[]>();
+            MCCSubChannelAddress lastSource = null;
             streamModule.PayloadReceived += x => assembled.Add(x);
+            streamModule.PayloadReceivedFrom += (source, x) => lastSource = source;
             raw[1].Open();
             streamModule.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
             byte[] dataFrame = new MPALengthFrameProtocol().PrepareSend(new byte[] { 7, 8 }, null);
             raw[1].SendAsync(dataFrame, new MCCSubChannelAddress("raw-rx"),
                 CancellationToken.None).GetAwaiter().GetResult();
+            Check(lastSource != null && lastSource.ChannelId == "raw-tx",
+                "Connector inbound event preserves Channel/SubChannel route");
             Check(assembled.Count == 1 && assembled[0].SequenceEqual(new byte[] { 7, 8 }),
                 "Connector receives and delegates parsing to Protocol");
             streamModule.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
@@ -243,6 +247,18 @@ namespace CxVisual.Tests.ArchitectureSmoke
             emptyModule.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
             emptyPair[1].Close();
             // Modbus TCP/RTU 的实际帧校验：TCP 半包，RTU 站号和 CRC16。
+            // 按代次清理半包：旧客户端遗留字节不能污染新的 ProtocolSession。
+            MPALengthFrameProtocol cleanupParser = new MPALengthFrameProtocol();
+            byte[] wrapped = cleanupParser.PrepareSend(new byte[] { 9, 8, 7 }, null);
+            MCCSubChannelAddress former = new MCCSubChannelAddress("server", "peer", 1);
+            Check(cleanupParser.ProcessReceived(new MCCChannelReceiveContext(former,
+                wrapped.Take(2).ToArray()), new MPAProtocolContext("length", "one")).Count == 0,
+                "单个子通道半包保留在规约解析状态");
+            ((IMPAProtocolSessionCleanup)cleanupParser).Reset(former);
+            Check(cleanupParser.ProcessReceived(new MCCChannelReceiveContext(former,
+                wrapped), new MPAProtocolContext("length", "one")).Count == 1,
+                "断开后清理半包，再收到整帧必须独立解析");
+            ((IMPAProtocolSessionCleanup)cleanupParser).ResetAll();
             MPAProtocolContext mbCtx = new MPAProtocolContext("modbus", "session",
                 new MCCSubChannelAddress("raw-rx"), protocolAddress: new MPAProtocolAddress("3"));
             MPAModbusTcpProtocol mbTcp = new MPAModbusTcpProtocol();

@@ -16,6 +16,13 @@ namespace CxVisual.Mechanism.Connectivity
         // 设备级请求/响应由专业规约会话明确实现。
     }
 
+    // 运行期 SubChannel 断开/重连必须清理解析缓存；不另建会话仓库。
+    public interface IMPAProtocolSessionCleanup
+    {
+        void Reset(MCCSubChannelAddress address);
+        void ResetAll();
+    }
+
     public abstract class MPAProtocolBase : IMPAProtocol
     {
         protected MPAProtocolBase(MPAProtocolDescriptor descriptor)
@@ -82,7 +89,7 @@ namespace CxVisual.Mechanism.Connectivity
     }
 
     // 每个 SubChannel 维护独立长度帧解码状态；Channel 无权决定 Frame 边界。
-    public sealed class MPALengthFrameProtocol : MPAProtocolBase, IMPAEncodedProtocolDefinition
+    public sealed class MPALengthFrameProtocol : MPAProtocolBase, IMPAEncodedProtocolDefinition, IMPAProtocolSessionCleanup
     {
         private readonly object _gate = new object();
         private readonly Dictionary<string, MPALengthFrameParser> _parsers =
@@ -117,6 +124,10 @@ namespace CxVisual.Mechanism.Connectivity
         {
             if (address == null) throw new ArgumentNullException("address");
             lock (_gate) _parsers.Remove(address.ToString());
+        }
+        public void ResetAll()
+        {
+            lock (_gate) _parsers.Clear();
         }
     }
 }

@@ -44,7 +44,7 @@ namespace CxVisual.Mechanism.Connectivity
 
     // 已有 ReferTo 的 Modbus Frame/Station 原理直接收敛到 Protocol Owner，
     // 不重新引入 ReferTo IProtocol/CxChannel adapter。
-    public sealed class MPAModbusTcpProtocol : MPAProtocolBase
+    public sealed class MPAModbusTcpProtocol : MPAProtocolBase, IMPAProtocolSessionCleanup
     {
         private readonly object _gate = new object();
         private readonly Dictionary<string, List<byte>> _buffers =
@@ -105,9 +105,10 @@ namespace CxVisual.Mechanism.Connectivity
         public void Reset(MCCSubChannelAddress address)
         { if (address == null) throw new ArgumentNullException("address");
           lock (_gate) _buffers.Remove(address.ToString()); }
+        public void ResetAll() { lock (_gate) _buffers.Clear(); }
     }
 
-    public sealed class MPAModbusRtuProtocol : MPAProtocolBase
+    public sealed class MPAModbusRtuProtocol : MPAProtocolBase, IMPAProtocolSessionCleanup
     {
         private readonly object _gate = new object();
         private readonly List<byte> _buffer = new List<byte>();
@@ -172,6 +173,13 @@ namespace CxVisual.Mechanism.Connectivity
             }
         }
         public void Reset() { lock (_gate) _buffer.Clear(); }
+        public void Reset(MCCSubChannelAddress address)
+        {
+            if (address == null) throw new ArgumentNullException("address");
+            // RTU 为 SharedBus，不按子通道分离，清理当前总线事务解析缓存。
+            Reset();
+        }
+        public void ResetAll() { Reset(); }
         private static ushort Crc16(byte[] buffer, int count)
         {
             ushort crc = 0xffff;

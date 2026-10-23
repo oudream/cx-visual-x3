@@ -169,11 +169,19 @@ namespace CxVisual.Mechanism.Connectivity
     public abstract class MCCMultiChannelBase : MCCChannelBase, IMCCMultiPeerChannel
     {
         private readonly MCCSubChannelDirectory _peers;
+        public event Action<MCCSubChannelAddress> PeerRemoved;
         protected MCCMultiChannelBase(string id) : base(id, MCCChannelTopology.MultiPeer)
         { _peers = new MCCSubChannelDirectory(id); }
         public MCCSubChannelInfo RegisterPeer(string peerId, string endpoint)
         { return _peers.Register(peerId, endpoint); }
-        public virtual bool RemovePeer(MCCSubChannelAddress address) { return _peers.Remove(address); }
+        public virtual bool RemovePeer(MCCSubChannelAddress address)
+        {
+            if (!_peers.Remove(address)) return false;
+            // 同步通知唯一 Protocol 清理分帧/事务状态，防止断线重连继承旧半包。
+            Action<MCCSubChannelAddress> listener = PeerRemoved;
+            if (listener != null) listener(address);
+            return true;
+        }
         public MCCSubChannelInfo FindSubChannel(MCCSubChannelAddress address) { return _peers.FindSubChannel(address); }
         public MCCSubChannelInfo[] SnapshotSubChannels() { return _peers.SnapshotSubChannels(); }
         protected void ReceiveFrom(MCCSubChannelAddress address, byte[] data, string correlation = null)

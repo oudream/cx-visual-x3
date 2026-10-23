@@ -55,6 +55,8 @@ namespace CxVisual.Mechanism.Connectivity
         private readonly object _lifecycleGate = new object();
         private bool _started;
         public event Action<byte[]> PayloadReceived;
+        // 一对多连接需要把来源 SubChannel 交还调用者，以便定向响应与变量作用域隔离。
+        public event Action<MCCSubChannelAddress, byte[]> PayloadReceivedFrom;
         public bool IsStarted { get { lock (_lifecycleGate) return _started; } }
 
         // 不创建私有线程或运行队列；直接调已装配的 Channel/Protocol Owner。
@@ -69,10 +71,15 @@ namespace CxVisual.Mechanism.Connectivity
                 _started = true;
             }
             transport.Received += HandleReceived;
+            MCCMultiChannelBase multiPeer = transport as MCCMultiChannelBase;
+            if (multiPeer != null) multiPeer.PeerRemoved += HandlePeerRemoved;
             try { await transport.OpenAsync(ct).ConfigureAwait(false); }
             catch
             {
                 transport.Received -= HandleReceived;
+                if (multiPeer != null) multiPeer.PeerRemoved -= HandlePeerRemoved;
+                IMPAProtocolSessionCleanup cleanup = Protocol as IMPAProtocolSessionCleanup;
+                if (cleanup != null) cleanup.ResetAll();
                 lock (_lifecycleGate) _started = false;
                 throw;
             }
@@ -88,9 +95,22 @@ namespace CxVisual.Mechanism.Connectivity
                 _started = false;
             }
             transport.Received -= HandleReceived;
-            await transport.CloseAsync(ct).ConfigureAwait(false);
+            MCCMultiChannelBase multiPeer = transport as MCCMultiChannelBase;
+            if (multiPeer != null) multiPeer.PeerRemoved -= HandlePeerRemoved;
+            try { await transport.CloseAsync(ct).ConfigureAwait(false); }
+            finally
+            {
+                // 单对端重新连接、多个客户端重连都不继承旧 Parser 和待处理报文。
+                IMPAProtocolSessionCleanup cleanup = Protocol as IMPAProtocolSessionCleanup;
+                if (cleanup != null) cleanup.ResetAll();
+            }
         }
 
+        private void HandlePeerRemoved(MCCSubChannelAddress address)
+        {
+            IMPAProtocolSessionCleanup cleanup = Protocol as IMPAProtocolSessionCleanup;
+            if (cleanup != null) cleanup.Reset(address);
+        }
         private void HandleReceived(MCCChannelReceiveContext received)
         {
             IMPAProtocol processor = (IMPAProtocol)Protocol;
@@ -98,6 +118,8 @@ namespace CxVisual.Mechanism.Connectivity
                 received.Address, received.CorrelationId);
             foreach (byte[] payload in processor.ProcessReceived(received, context))
             {
+                Action<MCCSubChannelAddress, byte[]> routed = PayloadReceivedFrom;
+                if (routed != null) routed(received.Address, (byte[])payload.Clone());
                 Action<byte[]> handler = PayloadReceived;
                 if (handler != null) handler((byte[])payload.Clone());
             }
