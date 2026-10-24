@@ -4,7 +4,7 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using CxVisual.Mechanism.Logic.Commands;
+using CxVisual.Foundation.Data.Commands;
 using CxVisual.Foundation.Data.Commands;
 using CxVisual.Foundation.Data.Types;
 
@@ -33,7 +33,7 @@ namespace CxVisual.Mechanism.Runtime.Commands
 
     public sealed class MRKCommandDescriptor
     {
-        public MRKCommandDescriptor(string target, MCECommandDefinition definition,
+        public MRKCommandDescriptor(string target, FDCCommandDefinition definition,
             MRKCommandKind kind = MRKCommandKind.Module, MRKCommandPolicy policy = null,
             IEnumerable<string> capabilities = null)
         {
@@ -46,7 +46,7 @@ namespace CxVisual.Mechanism.Runtime.Commands
             Capabilities = Array.AsReadOnly(items);
         }
         public string Target { get; private set; }
-        public MCECommandDefinition Definition { get; private set; }
+        public FDCCommandDefinition Definition { get; private set; }
         public MRKCommandKind Kind { get; private set; }
         public MRKCommandPolicy Policy { get; private set; }
         public IReadOnlyList<string> Capabilities { get; private set; }

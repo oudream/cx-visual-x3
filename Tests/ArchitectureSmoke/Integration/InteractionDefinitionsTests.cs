@@ -2,7 +2,7 @@ using CxVisual.Foundation.Data.Messages;
 using System;
 using System.Collections.Generic;
 using CxVisual.Mechanism.Data.Messages;
-using CxVisual.Mechanism.Logic.Commands;
+using CxVisual.Foundation.Data.Commands;
 
 namespace CxVisual.Tests.ArchitectureSmoke
 {
@@ -80,19 +80,19 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Reject<ArgumentException>(() => new MNMTopicFilter("/machine/1201/app/XRay/**"));
             Reject<ArgumentException>(() => MNMTopicFilter.ValidateTopic("/machine/1201/app/XRay/module/Camera/message/+"));
 
-            MCECommandParameterDefinition position = new MCECommandParameterDefinition(
+            FDCCommandParameterDefinition position = new FDCCommandParameterDefinition(
                 "Position", typeof(double), true, unit: "mm",
                 minValue: 0.0, maxValue: 200.0);
-            MCECommandParameterDefinition velocity = new MCECommandParameterDefinition(
+            FDCCommandParameterDefinition velocity = new FDCCommandParameterDefinition(
                 "Velocity", typeof(double), false, true, 20.0,
                 unit: "mm/s", description: "速度",
                 minValue: 1.0, maxValue: 100.0);
-            MCECommandParameterDefinition enabled = new MCECommandParameterDefinition(
+            FDCCommandParameterDefinition enabled = new FDCCommandParameterDefinition(
                 "Enable", typeof(bool), false, true, true);
-            MCECommandDefinition command = new MCECommandDefinition(
+            FDCCommandDefinition command = new FDCCommandDefinition(
                 91001, "MoveAbs", "绝对运动",
                 new[] { position, velocity, enabled },
-                new[] { new MCECommandParameterDefinition("ActualPosition", typeof(double), true) },
+                new[] { new FDCCommandParameterDefinition("ActualPosition", typeof(double), true) },
                 schemaVersion: 2, description: "运动轴绝对移动",
                 permissionKey: "axis.move", timeoutMilliseconds: 10000);
             Check(command.SchemaVersion == 2 &&
@@ -109,9 +109,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 new Dictionary<string, object> { { "Position", 3.0 }, { "Velocity", 0.0 } }));
             Reject<ArgumentException>(() => command.BindInputs(
                 new Dictionary<string, object> { { "Position", double.NaN } }));
-            Reject<ArgumentException>(() => new MCECommandParameterDefinition(
+            Reject<ArgumentException>(() => new FDCCommandParameterDefinition(
                 "Velocity", typeof(double), false, true, 0.0, minValue: 1.0));
-            Reject<ArgumentException>(() => new MCECommandParameterDefinition(
+            Reject<ArgumentException>(() => new FDCCommandParameterDefinition(
                 "Position", typeof(double), true, minValue: 20.0, maxValue: 10.0));
             Check(command.ValidateOutputs(new Dictionary<string, object> {
                 { "ActualPosition", 100.0 } }).Count == 1, "typed output");

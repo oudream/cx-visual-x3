@@ -6,7 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CxVisual.Foundation.Data.Commands;
 using CxVisual.Foundation.Data.Types;
-using CxVisual.Mechanism.Logic.Commands;
+using CxVisual.Foundation.Data.Commands;
 using CxVisual.Mechanism.Runtime.Execution;
 
 namespace CxVisual.Mechanism.Runtime.Commands

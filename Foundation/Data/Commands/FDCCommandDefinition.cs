@@ -4,17 +4,17 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using System.Text.RegularExpressions;
 using CxVisual.Foundation.Data.Types;
-namespace CxVisual.Mechanism.Logic.Commands
+namespace CxVisual.Foundation.Data.Commands
 {
-    /// <summary>IoT风格的输入/输出参数契约：类型、必填、默认、单位与范围。</summary>
-    public sealed class MCECommandParameterDefinition
+    /// <summary>命令基础输入/输出参数契约，复用统一Foundation数据类型。</summary>
+    public sealed class FDCCommandParameterDefinition
     {
-        public MCECommandParameterDefinition(string code, Type dataType, bool required,
+        public FDCCommandParameterDefinition(string code, Type dataType, bool required,
             bool hasDefaultValue = false, object defaultValue = null,
             string unit = null, string description = null,
             object minValue = null, object maxValue = null,
             bool? allowNull = null, bool readOnly = false, string formatPattern = null,
-            IEnumerable<MCECommandParameterDefinition> children = null)
+            IEnumerable<FDCCommandParameterDefinition> children = null)
         {
             CheckCode(code);
             if (dataType == null || dataType == typeof(void) || dataType.IsPointer ||
@@ -35,8 +35,8 @@ namespace CxVisual.Mechanism.Logic.Commands
                 if (formatPattern.Length > 256) throw new ArgumentException("格式模式过长");
                 new Regex(formatPattern, RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(50));
             }
-            MCECommandParameterDefinition[] nested =
-                (children ?? Enumerable.Empty<MCECommandParameterDefinition>()).ToArray();
+            FDCCommandParameterDefinition[] nested =
+                (children ?? Enumerable.Empty<FDCCommandParameterDefinition>()).ToArray();
             if (nested.Any(c => c == null) ||
                 nested.GroupBy(c => c.Code, StringComparer.Ordinal).Any(g => g.Count() > 1))
                 throw new ArgumentException("结构化参数包含空成员或重复成员名称");
@@ -74,7 +74,7 @@ namespace CxVisual.Mechanism.Logic.Commands
         /// <summary>Studio编辑权限元数据，生产阶段还须由接收Host授权。</summary>
         public bool ReadOnly { get; private set; }
         public string FormatPattern { get; private set; }
-        public IReadOnlyList<MCECommandParameterDefinition> Children { get; private set; }
+        public IReadOnlyList<FDCCommandParameterDefinition> Children { get; private set; }
         internal static void CheckCode(string code)
         {
             if (string.IsNullOrWhiteSpace(code) || code.Length > 64 || code == "." || code == "..")
@@ -137,7 +137,7 @@ namespace CxVisual.Mechanism.Logic.Commands
                         throw new ArgumentException("未知结构成员: " + Code + "." + item.Key);
                     nestedValues.Add(item.Key, item.Value);
                 }
-                foreach (MCECommandParameterDefinition child in Children)
+                foreach (FDCCommandParameterDefinition child in Children)
                 {
                     object childValue;
                     if (nestedValues.TryGetValue(child.Code, out childValue))
@@ -153,22 +153,22 @@ namespace CxVisual.Mechanism.Logic.Commands
         }
     }
     /// <summary>命令静态定义，不保存执行者、RequestId或MRK Operation状态。</summary>
-    public sealed class MCECommandDefinition
+    public sealed class FDCCommandDefinition
     {
-        private readonly ReadOnlyCollection<MCECommandParameterDefinition> _inputs;
-        private readonly ReadOnlyCollection<MCECommandParameterDefinition> _outputs;
-        public MCECommandDefinition(long id, string code, string name,
-            IEnumerable<MCECommandParameterDefinition> inputs,
-            IEnumerable<MCECommandParameterDefinition> outputs, int schemaVersion = 1,
+        private readonly ReadOnlyCollection<FDCCommandParameterDefinition> _inputs;
+        private readonly ReadOnlyCollection<FDCCommandParameterDefinition> _outputs;
+        public FDCCommandDefinition(long id, string code, string name,
+            IEnumerable<FDCCommandParameterDefinition> inputs,
+            IEnumerable<FDCCommandParameterDefinition> outputs, int schemaVersion = 1,
             string description = null, string permissionKey = null, int timeoutMilliseconds = 0)
         {
             if (id <= 0) throw new ArgumentOutOfRangeException("id");
-            MCECommandParameterDefinition.CheckCode(code);
+            FDCCommandParameterDefinition.CheckCode(code);
             if (string.IsNullOrWhiteSpace(name)) throw new ArgumentException("显示名无效", "name");
             if (schemaVersion < 1) throw new ArgumentOutOfRangeException("schemaVersion");
             if (timeoutMilliseconds < 0) throw new ArgumentOutOfRangeException("timeoutMilliseconds");
-            MCECommandParameterDefinition[] ins = (inputs ?? Enumerable.Empty<MCECommandParameterDefinition>()).ToArray();
-            MCECommandParameterDefinition[] outs = (outputs ?? Enumerable.Empty<MCECommandParameterDefinition>()).ToArray();
+            FDCCommandParameterDefinition[] ins = (inputs ?? Enumerable.Empty<FDCCommandParameterDefinition>()).ToArray();
+            FDCCommandParameterDefinition[] outs = (outputs ?? Enumerable.Empty<FDCCommandParameterDefinition>()).ToArray();
             if (ins.Concat(outs).Any(x => x == null) ||
                 ins.GroupBy(x => x.Code, StringComparer.Ordinal).Any(g => g.Count() > 1) ||
                 outs.GroupBy(x => x.Code, StringComparer.Ordinal).Any(g => g.Count() > 1))
@@ -186,24 +186,24 @@ namespace CxVisual.Mechanism.Logic.Commands
         public string PermissionKey { get; private set; }
         /// <summary>0意味着继承Host默认超时，不代表无限等待。</summary>
         public int TimeoutMilliseconds { get; private set; }
-        public IReadOnlyList<MCECommandParameterDefinition> Inputs { get { return _inputs; } }
-        public IReadOnlyList<MCECommandParameterDefinition> Outputs { get { return _outputs; } }
+        public IReadOnlyList<FDCCommandParameterDefinition> Inputs { get { return _inputs; } }
+        public IReadOnlyList<FDCCommandParameterDefinition> Outputs { get { return _outputs; } }
         public IReadOnlyDictionary<string, object> BindInputs(IReadOnlyDictionary<string, object> values)
         { return Bind(_inputs, values, true); }
         public IReadOnlyDictionary<string, object> ValidateOutputs(IReadOnlyDictionary<string, object> values)
         { return Bind(_outputs, values, false); }
         private static IReadOnlyDictionary<string, object> Bind(
-            IEnumerable<MCECommandParameterDefinition> definitions,
+            IEnumerable<FDCCommandParameterDefinition> definitions,
             IReadOnlyDictionary<string, object> values, bool defaults)
         {
-            MCECommandParameterDefinition[] ds = definitions.ToArray();
+            FDCCommandParameterDefinition[] ds = definitions.ToArray();
             IReadOnlyDictionary<string, object> provided = values ??
                 new ReadOnlyDictionary<string, object>(new Dictionary<string, object>());
             Dictionary<string, object> result = new Dictionary<string, object>(StringComparer.Ordinal);
             foreach (KeyValuePair<string, object> pair in provided)
                 if (!ds.Any(d => string.Equals(d.Code, pair.Key, StringComparison.Ordinal)))
                     throw new ArgumentException("未知参数: " + pair.Key);
-            foreach (MCECommandParameterDefinition d in ds)
+            foreach (FDCCommandParameterDefinition d in ds)
             {
                 object value;
                 if (provided.TryGetValue(d.Code, out value))

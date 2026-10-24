@@ -5,7 +5,7 @@
 ## 1. Owner 与现存代码
 
 - Foundation.Data/Commands：`IFDCCommandValueBinding`、`FDCCommandValueSnapshot`，复用 `FDTDataTypeDescriptor`、`FDTDataValueSafety`，不另建一个参数数据仓库。
-- Mechanism.Logic/Commands：`MCECommandDefinition`、`MCECommandParameterDefinition`、`MCECommandDefinitionCatalog` 是静态命令定义与输入/输出契约。不能把编辑器Definition混成运行中Request。
+- Foundation.Data/Commands：`FDCCommandDefinition`、`FDCCommandParameterDefinition`、`FDCCommandDefinitionCatalog` 是静态命令定义与输入/输出契约。不能把编辑器Definition混成运行中Request。
 - Mechanism.Runtime/Commands：`MRKCommandCenter`、`MRKCommandRegistry`、`MRKCommandRouter`、`IMRKCommandHandler`、`MRKCommandExecution` 是一次命令的正式运行入口/跟踪。
 - Mechanism.Data：现有 MDS/变量 Owner 通过 `IFDCCommandValueBinding` 提供参数源/输出映射，不新造数据堆。
 - Mechanism.Runtime.Execution：复用 `MRKExternalOperationTracker`、`MRKResourceLeaseCoordinator` 管理运行账本与资源租约，不复制流程调度器。
@@ -14,10 +14,10 @@
 ## 2. 典型调用
 
 ```csharp
-MCECommandDefinition definition = new MCECommandDefinition(
+FDCCommandDefinition definition = new FDCCommandDefinition(
     1001, "Calculate", "计算",
-    new[] { new MCECommandParameterDefinition("Input", typeof(double), true) },
-    new[] { new MCECommandParameterDefinition("Output", typeof(double), true) });
+    new[] { new FDCCommandParameterDefinition("Input", typeof(double), true) },
+    new[] { new FDCCommandParameterDefinition("Output", typeof(double), true) });
 using (MRKCommandCenter center = new MRKCommandCenter())
 using (center.Register(new MRKCommandDescriptor("algorithm", definition),
     new MRKDelegateCommandHandler((ctx, input, ct) =>
@@ -69,13 +69,13 @@ CI状态以对应提交的实际工作流结论为准，未核实结果不写“
 
 ## 6. 正式MDS绑定适配器（增量）
 
-`Mechanism/Data/Variables/MDSCommandValueBinding.cs` 新增生产级薄适配器，复用 `MDSVariableTable`、`IMDSDataContext`，提供 `BindVariable<T>`、`BindNode<T>`、`BindHeap<T>`、`Unbind`。地址只作命令入/出参别名；MDS中的变量、节点作用域、堆、类型与读写权限仍然由其现有Owner管理。绑定生命周期与数据Owner生命周期独立；Unbind/Dispose仅释放地址索引。
+`Mechanism/Data/Variables/MRKCommandMdsBinding.cs` 新增生产级薄适配器，复用 `MDSVariableTable`、`IMDSDataContext`，提供 `BindVariable<T>`、`BindNode<T>`、`BindHeap<T>`、`Unbind`。地址只作命令入/出参别名；MDS中的变量、节点作用域、堆、类型与读写权限仍然由其现有Owner管理。绑定生命周期与数据Owner生命周期独立；Unbind/Dispose仅释放地址索引。
 
 测试用正式 `MDSVariableTable` 检查进出参数映射、只读拒绝、重复地址拒绝、类型不符拒绝、解绑后不存在拒绝。节点与Heap直接使用各自 `IMDSDataContext`，仍需对应运行Session更完整的集成场景。
 
 ## 7. 结构化参数 Schema 验证（增量）
 
-`MCECommandParameterDefinition` 保持向后兼容的构造函数，新增长尾可选参数 `allowNull`、`readOnly`、`formatPattern`、`children`。使用同一个输入/输出描述对象，嵌套的命名Map支持递归必填、类型、数值范围、字符串Regex（限50ms）及未知成员拒绝，输出同样校验。安全快照仍由Foundation.Data统一处理，深度/容量受到限制。
+`FDCCommandParameterDefinition` 保持向后兼容的构造函数，新增长尾可选参数 `allowNull`、`readOnly`、`formatPattern`、`children`。使用同一个输入/输出描述对象，嵌套的命名Map支持递归必填、类型、数值范围、字符串Regex（限50ms）及未知成员拒绝，输出同样校验。安全快照仍由Foundation.Data统一处理，深度/容量受到限制。
 
 `ReadOnly` 是Studio呈现元数据，不能代替目标侧认证；自定义DTO跨PC序列化以及复杂Graph Schema、数组元素Schema、数据单位转换仍属后续专门验收。新增的CommandCenterTests覆盖嵌套正常/超范围/格式/必填/未知键/结果隔离六种路径。
 
@@ -87,7 +87,7 @@ CI状态以对应提交的实际工作流结论为准，未核实结果不写“
 
 ```mermaid
 classDiagram
-    class MCECommandDefinition {
+    class FDCCommandDefinition {
       +CommandId
       +CommandCode
       +SchemaVersion
@@ -96,7 +96,7 @@ classDiagram
       +BindInputs(values)
       +ValidateOutputs(values)
     }
-    class MCECommandParameterDefinition {
+    class FDCCommandParameterDefinition {
       +Code
       +DataType
       +AllowNull
@@ -134,19 +134,19 @@ classDiagram
       +ReadAsync(address)
       +WriteAsync(address,value)
     }
-    class MDSCommandValueBinding {
+    class MRKCommandMdsBinding {
       +BindVariable()
       +BindNode()
       +BindHeap()
       +Unbind()
     }
-    MCECommandDefinition "1" o-- "*" MCECommandParameterDefinition
+    FDCCommandDefinition "1" o-- "*" FDCCommandParameterDefinition
     MRKCommandCenter --> MRKCommandRegistry
     MRKCommandRegistry --> IMRKCommandHandler
-    MRKCommandRegistry --> MCECommandDefinition
+    MRKCommandRegistry --> FDCCommandDefinition
     MRKCommandCenter --> MRKCommandExecution
     MRKCommandCenter ..> IFDCCommandValueBinding
-    MDSCommandValueBinding ..|> IFDCCommandValueBinding
+    MRKCommandMdsBinding ..|> IFDCCommandValueBinding
 ```
 
 ### 命令时序
@@ -155,7 +155,7 @@ classDiagram
 sequenceDiagram
     participant Studio as SDK或Studio/MOL
     participant Center as MRKCommandCenter
-    participant Schema as MCECommandDefinition
+    participant Schema as FDCCommandDefinition
     participant Registry as MRKCommandRegistry
     participant Owner as MDS绑定Owner
     participant Handler as Professional Handler
@@ -180,3 +180,5 @@ sequenceDiagram
 **流程场景**：`MOL` 运行节点编译为MRK调用目标Command，参数从节点Input/FlowHeap映射，结果通过MDS返回；不得构造第二套Graph Executor。
 
 这些为正式API使用方式与待覆盖场景边界，未完成的专业设备/实际Studio拖拽操作不得冒称已HIL验收。
+
+> **2026-10-24 新Owner裁决**：命令相关代码正式收敛至 `Foundation.Data.Commands`（FDC参数/定义/契约）与 `Mechanism.Runtime.Commands`（MRK中心/执行/MDS适配）两个已有项目；历史M12/MCE归属不再是当前实现。详见 `DOCS/Decisions/CxVisual_统一命令中心双项目归属裁决_V1.0.md`。

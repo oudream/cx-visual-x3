@@ -1,5 +1,7 @@
 # CxVisual P0 第一阶段全类架构落位与验收台账 V1.0
 
+> **2026-10-24 新Owner裁决**：命令相关代码正式收敛至 `Foundation.Data.Commands`（FDC参数/定义/契约）与 `Mechanism.Runtime.Commands`（MRK中心/执行/MDS适配）两个已有项目；历史M12/MCE归属不再是当前实现。详见 `DOCS/Decisions/CxVisual_统一命令中心双项目归属裁决_V1.0.md`。
+
 > 2026-10-24；基线主规格：统一交互 V1.4；本轮只落第一阶段，不冒充 P0-3 Message 分发和 P0-4 Command 执行已完成。
 
 ## 源码落位（28 项目不增加项目）
@@ -27,3 +29,5 @@
 
 ## 验收入口
 `CxVisual.Tests.ArchitectureSmoke.exe --interaction-stage1`；再运行默认回归与 `--concurrency`。必须覆盖重复 Worker、时钟回拨、路径非法、双地址同Owner、跨Run、失效令牌、强类型消息校验、命令默认值及0/false、缺失/多余/错型参数、定义重复。
+
+> **2026-10-24 新Owner裁决**：命令相关代码正式收敛至 `Foundation.Data.Commands`（FDC参数/定义/契约）与 `Mechanism.Runtime.Commands`（MRK中心/执行/MDS适配）两个已有项目；历史M12/MCE归属不再是当前实现。详见 `DOCS/Decisions/CxVisual_统一命令中心双项目归属裁决_V1.0.md`。

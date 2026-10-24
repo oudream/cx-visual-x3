@@ -5,14 +5,15 @@ using System.Threading;
 using System.Threading.Tasks;
 using CxVisual.Foundation.Data.Commands;
 using CxVisual.Mechanism.Data.RuntimeData;
+using CxVisual.Mechanism.Data.Variables;
 
-namespace CxVisual.Mechanism.Data.Variables
+namespace CxVisual.Mechanism.Runtime.Commands
 {
     /// <summary>
     /// 命令入参与出参到正式MDS变量、节点数据、FlowHeap的轻量地址适配。
     /// 只管理地址→访问委托；数据、生命周期、读写权限均由原MDS Owner控制。
     /// </summary>
-    public sealed class MDSCommandValueBinding : IFDCCommandValueBinding, IDisposable
+    public sealed class MRKCommandMdsBinding : IFDCCommandValueBinding, IDisposable
     {
         private sealed class Entry
         {
@@ -30,7 +31,7 @@ namespace CxVisual.Mechanism.Data.Variables
             if (read == null) throw new ArgumentNullException("read");
             lock (_gate)
             {
-                if (_disposed) throw new ObjectDisposedException("MDSCommandValueBinding");
+                if (_disposed) throw new ObjectDisposedException("MRKCommandMdsBinding");
                 if (_entries.ContainsKey(address)) throw new ArgumentException("重复绑定地址：" + address);
                 _entries.Add(address, new Entry { Read = read, Write = write });
             }
@@ -85,7 +86,7 @@ namespace CxVisual.Mechanism.Data.Variables
             if (string.IsNullOrWhiteSpace(address)) throw new ArgumentException("绑定地址不能为空");
             lock (_gate)
             {
-                if (_disposed) throw new ObjectDisposedException("MDSCommandValueBinding");
+                if (_disposed) throw new ObjectDisposedException("MRKCommandMdsBinding");
                 Entry entry;
                 if (!_entries.TryGetValue(address, out entry))
                     throw new KeyNotFoundException("MDS命令地址未绑定：" + address);
@@ -116,7 +117,7 @@ namespace CxVisual.Mechanism.Data.Variables
         {
             lock (_gate)
             {
-                if (_disposed) throw new ObjectDisposedException("MDSCommandValueBinding");
+                if (_disposed) throw new ObjectDisposedException("MRKCommandMdsBinding");
                 return _entries.Remove(address);
             }
         }

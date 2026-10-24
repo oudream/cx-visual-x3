@@ -5,20 +5,20 @@
 
 ## 1. 设计裁决：不建第二套命令/执行/数据体系
 
-- 唯一**命令定义**：`Mechanism.Logic.Commands/MCECommandDefinition`，含稳定命令 ID、Code、名称、版本、输入/输出 Schema、权限、默认超时。MCECommandParameterDefinition 是输入输出的同一种参数定义；所在 Inputs/Outputs 决定方向。新增 TypeDescriptor 来自已有 `FDTDataTypeDescriptor`，不再建立 TypeRegistry。
+- 唯一**命令定义**：`Foundation.Data.Commands/FDCCommandDefinition`，含稳定命令 ID、Code、名称、版本、输入/输出 Schema、权限、默认超时。FDCCommandParameterDefinition 是输入输出的同一种参数定义；所在 Inputs/Outputs 决定方向。新增 TypeDescriptor 来自已有 `FDTDataTypeDescriptor`，不再建立 TypeRegistry。
 - **通用数据边界**：`Foundation.Data.Commands/FDCCommandValueSnapshot` 与 `IFDCCommandValueBinding`。快照依托已存在的 `FDTDataValueSafety/FDTDataAdapterRegistry`；在一次操作受理前深复制受支持的值，拒绝没有安全复制机制的 DTO 或原生指针；绑定接口由 MDS/专业 Owner 提供真实读写。
 - **运行命令 Owner**：`Mechanism.Runtime.Commands`，命令注册与对象发现、发起、结果、操作跟踪、资源/容量仲裁及取消；已有 `MRKExternalOperationTracker`、`MRKResourceLeaseCoordinator` 被复用。一个 Host 内实例化、`IDisposable` 生命周期；不设静态全局中心。
 - **专业 Handler**：由 Automation / Vision / CT3D / Inspection / HMI / Simulation 或宿主注册。通用层不调用厂商 SDK，不隐式执行硬实时或安全动作。
 - **消息 M36**：只通知/订阅，不可因订阅一个名字相同的 Topic 而执行命令。MDS 数据/变量仍属于 MDS；MPA Mapping 的 Invoke 仍依靠宿主显式装配回调和授权，当前不增加新的适配仓库。
 - **可扩展性**：P0 `Options.Remote=true` 明确拒绝；后续在 Runtime.Host 侧实现经过认证的 IPC/Transport，不能将请求在同进程假处理来宣称远程支持。
 
-## 2. 类与职责（现有 MCE 类保留，新增类在两个文件中）
+## 2. 类与职责（现有 MCE 类保留，新增类复用已存在两个 Owner 项目）
 
 | 类/接口 | 唯一Owner | 核心成员/行为 |
 |---|---|---|
-| MCECommandDefinition | Mechanism.Logic/M12 | CommandId、CommandCode、Name、SchemaVersion、Inputs/Outputs、PermissionKey、TimeoutMilliseconds、BindInputs、ValidateOutputs |
-| MCECommandParameterDefinition | Mechanism.Logic/M12 | Code、DataType、TypeDescriptor、Required、HasDefaultValue、DefaultValue、Unit、MinValue、MaxValue、ValidateValue |
-| MCECommandDefinitionCatalog | Mechanism.Logic/M12 | 只读定义快照，Find(id/code)、Snapshot |
+| FDCCommandDefinition | Foundation.Data/Commands | CommandId、CommandCode、Name、SchemaVersion、Inputs/Outputs、PermissionKey、TimeoutMilliseconds、BindInputs、ValidateOutputs |
+| FDCCommandParameterDefinition | Foundation.Data/Commands | Code、DataType、TypeDescriptor、Required、HasDefaultValue、DefaultValue、Unit、MinValue、MaxValue、ValidateValue |
+| FDCCommandDefinitionCatalog | Foundation.Data/Commands | 只读定义快照，Find(id/code)、Snapshot |
 | FDCCommandValueSnapshot | Foundation.Data | Capture(values, adapters)：有界递归防可变引用泄漏 |
 | IFDCCommandValueBinding | Foundation.Data | ReadAsync(address,ct)、WriteAsync(address,value,ct)：由现有数据Owner实现 |
 | MRKCommandDescriptor | Mechanism.Runtime | Target、Definition、Kind、Policy、Capabilities |
@@ -37,7 +37,7 @@
 | MRKCommandParameterBinding | Mechanism.Runtime | Parameter、DataAddress，连接真实数据 Owner |
 | IMRKCommandInterceptor | Mechanism.Runtime | BeforeAsync、AfterAsync；日志/审计/仪表授权等可插拔钩子 |
 
-Command / Input / Output / Dispatcher / Executor / Validator 的逻辑角色并未另行各复制一份业务状态：定义与参数由 MCE 提供；请求/响应由 MRKCommandRequest/Response 提供；分发与执行由 MRKCommandCenter 管线、Router、MRK ResourceLease、Handler 提供；验证由 MCE BindInputs/ValidateOutputs 与 FDT Capture 提供。未来有独立策略或线程变化点时，再从管线提取类型，不为满足模式数量制造空壳。
+Command / Input / Output / Dispatcher / Executor / Validator 的逻辑角色并未另行各复制一份业务状态：定义与参数由 FDC 提供；请求/响应由 MRKCommandRequest/Response 提供；分发与执行由 MRKCommandCenter 管线、Router、MRK ResourceLease、Handler 提供；验证由 FDC BindInputs/ValidateOutputs 与 FDT Capture 提供。未来有独立策略或线程变化点时，再从管线提取类型，不为满足模式数量制造空壳。
 
 ## 3. 生命周期及调用关系
 
@@ -45,7 +45,7 @@ Command / Input / Output / Dispatcher / Executor / Validator 的逻辑角色并�
 flowchart LR
   Dev[SDK / Studio / MOL / MPA] --> Request[CommandRequest]
   Request --> Center[MRKCommandCenter]
-  Def[MCECommandDefinition / FDT Schema] --> Center
+  Def[FDCCommandDefinition / FDT Schema] --> Center
   Center --> Registry[Registry / Router]
   Registry --> Handler[Professional Handler]
   Center --> Guard[Validation / Copy / Authorization]
@@ -93,15 +93,15 @@ sequenceDiagram
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using CxVisual.Mechanism.Logic.Commands;
+using CxVisual.Foundation.Data.Commands;
 using CxVisual.Mechanism.Runtime.Commands;
 
-MCECommandDefinition definition = new MCECommandDefinition(1001, "Add", "加法",
+FDCCommandDefinition definition = new FDCCommandDefinition(1001, "Add", "加法",
     new[] {
-        new MCECommandParameterDefinition("A", typeof(double), true),
-        new MCECommandParameterDefinition("B", typeof(double), false, true, 2.0)
+        new FDCCommandParameterDefinition("A", typeof(double), true),
+        new FDCCommandParameterDefinition("B", typeof(double), false, true, 2.0)
     },
-    new[] { new MCECommandParameterDefinition("Sum", typeof(double), true) });
+    new[] { new FDCCommandParameterDefinition("Sum", typeof(double), true) });
 using (MRKCommandCenter center = new MRKCommandCenter())
 using (center.Register(new MRKCommandDescriptor("algorithm/math", definition,
     MRKCommandKind.Module, new MRKCommandPolicy(maxConcurrent: 4)),
@@ -125,7 +125,7 @@ using (center.Register(new MRKCommandDescriptor("algorithm/math", definition,
 
 ## 5. 入参、出参、复杂数据、数据映射
 
-- 无参数/单参数/多参数：`MCECommandDefinition.Inputs/Outputs` 为独立 Schema；Missing 与显式 0/false/null 区分，范围/Type/必填等先校验。
+- 无参数/单参数/多参数：`FDCCommandDefinition.Inputs/Outputs` 为独立 Schema；Missing 与显式 0/false/null 区分，范围/Type/必填等先校验。
 - 嵌套：字典 `Dictionary<string,object>`、`List<object>`、一维数组及简单值支持有界安全副本；专业DTO必须在单个 Host/Flow 的 `FDTDataAdapterRegistry` 注册深复制/冻结规则。禁止将 Image/Volume/SDK句柄直接当可复制参数，使用正式 MDS DataHandle/受控引用。
 - 参数所有权：中心取得入参快照；Handler 输出先校验再复制，返回值通过 ReadOnlyDictionary 观察。数组快照不与调用方共享可变内存。当前不提供统一跨进程序列化器；外部序列化须采用稳定 TypeId/SchemaVersion/Codec，不以 CLR Type.Name 充当 wire protocol。
 - `InvokeBoundAsync` 的参数地址由宿主实现 `IFDCCommandValueBinding`，用已有 MDSVariableTable / Heap / Frame、MOL 端口；执行完成时才向输出地址写入。数据回写失败会抛错，但**不能将已经发生的业务副作用解释为未执行**；未来需要专门 MappingResult、事务/补偿闭环。
@@ -157,3 +157,5 @@ using (center.Register(new MRKCommandDescriptor("algorithm/math", definition,
 - C：设备Provider确认、超时Unknown对账、不支持取消设备的补偿；真实HIL/断线恢复。
 - D：经鉴权的IPC/远端桥接、稳定Codec、协议版本及跨PC异常/网络分区测试。
 - E：具名受控广播/队列调度、可停止/暂停长流程只通过对应MRK已存在能力组合，不在命令中心造平行Runner。
+
+> **2026-10-24 新Owner裁决**：命令相关代码正式收敛至 `Foundation.Data.Commands`（FDC参数/定义/契约）与 `Mechanism.Runtime.Commands`（MRK中心/执行/MDS适配）两个已有项目；历史M12/MCE归属不再是当前实现。详见 `DOCS/Decisions/CxVisual_统一命令中心双项目归属裁决_V1.0.md`。

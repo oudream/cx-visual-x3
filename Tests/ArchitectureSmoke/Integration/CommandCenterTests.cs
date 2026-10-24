@@ -6,7 +6,7 @@ using CxVisual.Foundation.Data.Commands;
 using CxVisual.Mechanism.Data.Variables;
 using CxVisual.Mechanism.Data.RuntimeData;
 using CxVisual.Mechanism.Data.Execution;
-using CxVisual.Mechanism.Logic.Commands;
+using CxVisual.Foundation.Data.Commands;
 using CxVisual.Mechanism.Runtime.Commands;
 
 namespace CxVisual.Tests.ArchitectureSmoke
@@ -16,14 +16,14 @@ namespace CxVisual.Tests.ArchitectureSmoke
         private static void Check(bool ok, string message)
         { if (!ok) throw new InvalidOperationException("BUS-CMD: " + message); }
         private static readonly string Target = "/machine/1201/app/XRay/module/Algorithm/command";
-        private static MCECommandDefinition Definition(string code = "Calculate")
+        private static FDCCommandDefinition Definition(string code = "Calculate")
         {
-            return new MCECommandDefinition(5183, code, "计算",
+            return new FDCCommandDefinition(5183, code, "计算",
                 new[] {
-                    new MCECommandParameterDefinition("Input", typeof(double), true, minValue: -1000.0, maxValue: 1000.0),
-                    new MCECommandParameterDefinition("Factor", typeof(double), false, true, 2.0)
+                    new FDCCommandParameterDefinition("Input", typeof(double), true, minValue: -1000.0, maxValue: 1000.0),
+                    new FDCCommandParameterDefinition("Factor", typeof(double), false, true, 2.0)
                 },
-                new[] { new MCECommandParameterDefinition("Output", typeof(double), true) });
+                new[] { new FDCCommandParameterDefinition("Output", typeof(double), true) });
         }
         private static MRKDelegateCommandHandler Handler(Func<double, double> fn)
         {
@@ -56,7 +56,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         // 进阶正反：注册热替换、过滤发现、操作身份、快照与执行隔离。
         private static void ExtendedRun()
         {
-            MCECommandDefinition broadcastDefinition = Definition();
+            FDCCommandDefinition broadcastDefinition = Definition();
             using (MRKCommandCenter center = new MRKCommandCenter())
             using (center.Register(new MRKCommandDescriptor("line1", broadcastDefinition),
                 Handler(x => x)))
@@ -92,19 +92,19 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "explicit device broadcast still uses target-side authorization");
             }
 
-            MCECommandDefinition hierarchical = new MCECommandDefinition(7003, "Nested", "复杂参数",
-                new[] { new MCECommandParameterDefinition("Spec",
+            FDCCommandDefinition hierarchical = new FDCCommandDefinition(7003, "Nested", "复杂参数",
+                new[] { new FDCCommandParameterDefinition("Spec",
                     typeof(Dictionary<string, object>), true,
                     children: new[] {
-                        new MCECommandParameterDefinition("Threshold", typeof(double), true,
+                        new FDCCommandParameterDefinition("Threshold", typeof(double), true,
                             minValue: 0.0, maxValue: 1.0),
-                        new MCECommandParameterDefinition("Label", typeof(string), true,
+                        new FDCCommandParameterDefinition("Label", typeof(string), true,
                             formatPattern: "^[A-Z]+$")
                     }) },
-                new[] { new MCECommandParameterDefinition("Result",
+                new[] { new FDCCommandParameterDefinition("Result",
                     typeof(Dictionary<string, object>), true,
                     children: new[] {
-                        new MCECommandParameterDefinition("OK", typeof(bool), true)
+                        new FDCCommandParameterDefinition("OK", typeof(bool), true)
                     }) });
             int handled = 0;
             using (MRKCommandCenter nested = new MRKCommandCenter())
@@ -155,7 +155,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             {
                 root.Put("incoming", 6.0);
                 MDSDataContext context = new MDSDataContext(root);
-                using (MDSCommandValueBinding addresses = new MDSCommandValueBinding())
+                using (MRKCommandMdsBinding addresses = new MRKCommandMdsBinding())
                 using (MRKCommandCenter center = new MRKCommandCenter())
                 using (center.Register(new MRKCommandDescriptor(Target, Definition()),
                     Handler(x => x)))
@@ -184,7 +184,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             variableTable.Define(new MDSVariableDefinition("out", typeof(double)));
             variableTable.Define(new MDSVariableDefinition("readonly", typeof(double), writable: false));
             variableTable.Update("in", 9.0);
-            using (MDSCommandValueBinding bindings = new MDSCommandValueBinding())
+            using (MRKCommandMdsBinding bindings = new MRKCommandMdsBinding())
             using (MRKCommandCenter center = new MRKCommandCenter())
             using (center.Register(new MRKCommandDescriptor(Target, Definition()),
                 Handler(x => x)))
@@ -246,9 +246,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 updated.Dispose();
                 Check(center.Router.Discover().Count == 0, "replacement token must unregister generation");
             }
-            MCECommandDefinition bytes = new MCECommandDefinition(6302, "ArrayCommand", "数组安全",
-                new[] { new MCECommandParameterDefinition("Data", typeof(byte[]), true) },
-                new[] { new MCECommandParameterDefinition("Result", typeof(byte[]), true) });
+            FDCCommandDefinition bytes = new FDCCommandDefinition(6302, "ArrayCommand", "数组安全",
+                new[] { new FDCCommandParameterDefinition("Data", typeof(byte[]), true) },
+                new[] { new FDCCommandParameterDefinition("Result", typeof(byte[]), true) });
             int count = 0;
             using (MRKCommandCenter center = new MRKCommandCenter())
             using (center.Register(new MRKCommandDescriptor("array", bytes),
@@ -420,9 +420,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "late completion must remain queryable");
             }
             // 调用时复制byte[]，禁止调用方改写正在执行的参数。
-            MCECommandDefinition bytes = new MCECommandDefinition(6301, "Copy", "快照",
-                new[] { new MCECommandParameterDefinition("Data", typeof(byte[]), true) },
-                new[] { new MCECommandParameterDefinition("First", typeof(int), true) });
+            FDCCommandDefinition bytes = new FDCCommandDefinition(6301, "Copy", "快照",
+                new[] { new FDCCommandParameterDefinition("Data", typeof(byte[]), true) },
+                new[] { new FDCCommandParameterDefinition("First", typeof(int), true) });
             using (MRKCommandCenter copied = new MRKCommandCenter())
             {
                 TaskCompletionSource<bool> gate = new TaskCompletionSource<bool>(
