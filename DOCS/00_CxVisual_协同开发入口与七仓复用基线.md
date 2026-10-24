@@ -158,6 +158,13 @@
 - 本次变化仅增加既有 Mechanism.Core 的 Driver 正式 FCM 配置及对应 TestCenter/ArchitectureSmoke；不新增项目、第二配置库、Channel Adapter、任务调度器或消息/数据仓库。
 - **证据分级**：配置与源码可按 Windows CI 验收；真实 TCP/UDP Server、Modbus RTU 多站和 X-Ray 厂商采图需要正式驱动迁入与 HIL，不以配置存在冒充设备通过。
 
+## 统一消息中心 M36 V1.0（2026-10-24）
+
+- [统一消息中心完整设计与全类API V1.0](Architecture/CxVisual_公共机制体系%23消息中心——完整设计与全类API_V1.0.md)：对照MQTT Topic与进程内Queue/Shared/QoS/Retain/Request-Reply语义，逐类列明Owner、对象关系、真实API、异常与线程模型。
+- [统一消息中心实施与Windows验收台账 V1.0](Implementation/CxVisual_公共机制体系%23消息中心——实施与Windows验收台账_V1.0.md)：源码落位、运行命令、可用与未实现边界、CI证据。
+- [统一消息中心功能并发异常测试矩阵 V1.0](Testing/CxVisual_公共机制体系%23消息中心——功能并发异常验收矩阵_V1.0.md)：20项分级验收，源码单元、并发、UI及性能分开记录。
+- **实际Owner**：M36位于 Mechanism.Data；当前P0不需要Broker，不能代替M09变量/MDS数据Owner/M12命令或MRK执行。消息中心发布订阅的真实验收以具体提交的Windows CI为准。
+
 ## 统一交互机制 V1.5（2026-10-24）
 
 - [四大能力与双层总线完整设计及验收 V1.5](Architecture/CxVisual_公共机制体系%23统一交互——四大能力与双层总线完整设计及验收_V1.5.md)：变量高速、消息轻巧、命令受控执行、运行数据与大数据；进程内逻辑总线先行，进程外 MQTT/SHM/文件服务按需桥接；双寻址、分层订阅、Owner、反馈语义；**V1.3 明确 MQTT/IoT 风格消息/命令；V1.4 追加41个对象职责角色及OO/GoF/AOP、管理者和流转生命周期完整设计（不意味着新增41个类）；**V1.5 定案消息 Topic、Payload 四类、MQTT 原生 `+/#` 过滤，以及命令参数范围、单位和默认超时的源码契约**。

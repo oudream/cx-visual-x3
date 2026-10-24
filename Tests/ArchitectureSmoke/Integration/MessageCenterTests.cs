@@ -1,0 +1,297 @@
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using CxVisual.Mechanism.Data.Messages;
+
+namespace CxVisual.Tests.ArchitectureSmoke
+{
+    internal static class MessageCenterTests
+    {
+        private const string Camera = "/machine/1201/app/XRay/module/Camera/message/Captured";
+        private const string Ai = "/machine/1201/app/XRay/module/AI/message/Completed";
+        private const string Reply = "/machine/1201/app/XRay/module/Camera/message/Reply";
+        private const string Fault = "/machine/1201/app/XRay/module/Camera/message/Faulted";
+
+        private static void Check(bool value, string message)
+        {
+            if (!value) throw new InvalidOperationException("BUS.M36: " + message);
+        }
+        private static void Expect<T>(Action a) where T : Exception
+        {
+            bool got = false;
+            try { a(); } catch (T) { got=true; }
+            Check(got,"expected "+typeof(T).Name);
+        }
+        private static async Task ExpectAsync<T>(Func<Task> a) where T : Exception
+        {
+            bool got = false;
+            try { await a().ConfigureAwait(false); } catch(T) { got = true; }
+            Check(got,"expected async "+typeof(T).Name);
+        }
+
+        public static void Run()
+        {
+            RunAsync().GetAwaiter().GetResult();
+            Console.WriteLine("PASS BUS.M36 Message Center sync/async/wildcards/shared/QoS/retained/request/overflow/lifecycle");
+        }
+
+        private static async Task RunAsync()
+        {
+            await TestBasicAsync().ConfigureAwait(false);
+            await TestSharedAsync().ConfigureAwait(false);
+            await TestRetentionAndFilterAsync().ConfigureAwait(false);
+            await TestOverflowAndStopAsync().ConfigureAwait(false);
+            await TestRetriesAsync().ConfigureAwait(false);
+            await TestRequestResponseAsync().ConfigureAwait(false);
+            await TestConcurrencyAsync().ConfigureAwait(false);
+            await TestSecurityAsync().ConfigureAwait(false);
+        }
+
+        private static async Task TestBasicAsync()
+        {
+            using (MNMMessageCenter bus = new MNMMessageCenter())
+            {
+                int first=0, second=0, duplicate=0;
+                IDisposable a=bus.Subscribe<string>(
+                    "/machine/1201/app/XRay/module/+/message/Captured",ctx =>
+                    {
+                        Check(ctx.Payload=="Image001","payload"); Interlocked.Increment(ref first);
+                    },new MNMSubscriptionOptions{SubscriberId="camera-reader"});
+                IDisposable b=bus.Subscribe<string>(Camera,ctx => Interlocked.Increment(ref second),
+                    new MNMSubscriptionOptions{SubscriberId="second-reader"});
+                IDisposable overlap=bus.Subscribe<string>(Camera,ctx => Interlocked.Increment(ref duplicate),
+                    new MNMSubscriptionOptions{SubscriberId="camera-reader"});
+                // 重叠过滤对同一SubscriberId仅投递一次。
+                MNMPublishReceipt receipt=await bus.PublishAsync(Camera,"Image001").ConfigureAwait(false);
+                Check(receipt.Stage==MNMPublishStage.Delivered &&
+                    receipt.MatchedCount==2 && receipt.DeliveredCount==2,"fanout and dedup");
+                Check(first+duplicate==1 && second==1,"overlap exactly one per subscriber");
+                a.Dispose(); overlap.Dispose(); b.Dispose();
+                receipt=await bus.PublishAsync(Camera,"Image002").ConfigureAwait(false);
+                Check(receipt.MatchedCount==0 && receipt.Stage==MNMPublishStage.Accepted,"zero subscriber");
+                receipt=await bus.PublishAsync(Camera,"Image003",
+                    new MNMPublishOptions{RequireSubscriber=true}).ConfigureAwait(false);
+                Check(receipt.Stage==MNMPublishStage.Rejected,"require subscriber rejection");
+
+                IDisposable scoped=bus.Subscribe<int>(Fault,ctx=>Interlocked.Increment(ref first));
+                receipt=bus.Publish(Fault,1,new MNMPublishOptions{DispatchMode=MNMDispatchMode.Inline});
+                Check(receipt.Stage==MNMPublishStage.Delivered,"inline publish");
+                scoped.Dispose();
+
+                byte[] original={1,2,3};
+                byte[] observed=null;
+                using(bus.Subscribe<byte[]>(Camera,ctx=>observed=ctx.Payload))
+                {
+                    receipt=bus.Publish(Camera,original,
+                        new MNMPublishOptions{DispatchMode=MNMDispatchMode.Inline});
+                    Check(receipt.Stage==MNMPublishStage.Delivered,"binary publish");
+                    original[0]=99;
+                    Check(observed[0]==1,"binary copy prevents alias mutation");
+                }
+
+                bus.RegisterType(new MNMMessageTypeDefinition(
+                    "Camera.Captured",1,typeof(string),topic:Camera));
+                receipt=await bus.PublishAsync(Camera,"abc",
+                    new MNMPublishOptions{TypeId="Camera.Captured"}).ConfigureAwait(false);
+                Check(receipt.Stage==MNMPublishStage.Accepted,"registered schema publish");
+                Expect<ArgumentException>(()=>bus.Publish(Camera,123,
+                    new MNMPublishOptions{TypeId="Camera.Captured"}));
+                Expect<InvalidOperationException>(()=>bus.RegisterType(new MNMMessageTypeDefinition(
+                    "Camera.Captured",1,typeof(string),topic:Camera)));
+                Check(bus.Metrics().SubscriptionCount==0,"subscription dispose");
+            }
+        }
+
+        private static async Task TestSharedAsync()
+        {
+            using(MNMMessageCenter bus = new MNMMessageCenter())
+            {
+                int a=0,b=0,observer=0;
+                string shared="$share/workers/"+Camera;
+                using(bus.Subscribe<int>(shared,ctx=>Interlocked.Increment(ref a),
+                    new MNMSubscriptionOptions{SubscriberId="a"}))
+                using(bus.Subscribe<int>(shared,ctx=>Interlocked.Increment(ref b),
+                    new MNMSubscriptionOptions{SubscriberId="b"}))
+                using(bus.Subscribe<int>(Camera,ctx=>Interlocked.Increment(ref observer)))
+                {
+                    for(int k=0;k<10;k++)
+                    {
+                        MNMPublishReceipt rc=await bus.PublishAsync(Camera,k).ConfigureAwait(false);
+                        Check(rc.MatchedCount==2 && rc.DeliveredCount==2,"one per shared group");
+                    }
+                    Check(a==5 && b==5 && observer==10,"shared round robin and broadcast");
+                }
+            }
+        }
+
+        private static async Task TestRetentionAndFilterAsync()
+        {
+            using(MNMMessageCenter bus = new MNMMessageCenter(new MNMMessageOptions{
+                RetainedCapacity=2 }))
+            {
+                await bus.PublishAsync(Camera,4300,
+                    new MNMPublishOptions{Retain=true}).ConfigureAwait(false);
+                int matched=0, filtered=0;
+                using(bus.Subscribe<int>("/machine/1201/app/XRay/#",
+                    ctx=>Interlocked.Increment(ref matched)))
+                using(bus.Subscribe<int>("/machine/1201/app/XRay/#",
+                    ctx=>Interlocked.Increment(ref filtered),
+                    new MNMSubscriptionOptions{Predicate=m=> (int)m.Payload.Value>5000}))
+                {
+                    Check(SpinWait.SpinUntil(()=>Volatile.Read(ref matched)==1,4000),"retained replay");
+                    Check(filtered==0,"predicate filters retained");
+                    MNMPublishReceipt rc=await bus.PublishAsync(Camera,5500).ConfigureAwait(false);
+                    Check(rc.DeliveredCount==2 && filtered==1,"predicate delivered");
+                }
+                int local=0;
+                using(bus.Subscribe<int>(Camera,ctx=>Interlocked.Increment(ref local),
+                    new MNMSubscriptionOptions{SourceId="self",NoLocal=true,ReplayRetained=false}))
+                {
+                    await bus.PublishAsync(Camera,2,
+                        new MNMPublishOptions{SourceId="self"}).ConfigureAwait(false);
+                    Check(local==0,"no-local filter");
+                    await bus.PublishAsync(Camera,2,
+                        new MNMPublishOptions{SourceId="other"}).ConfigureAwait(false);
+                    Check(local==1,"other source allowed");
+                }
+            }
+        }
+
+        private static async Task TestOverflowAndStopAsync()
+        {
+            using(MNMMessageCenter bus = new MNMMessageCenter(
+                new MNMMessageOptions{QueueCapacity=1}))
+            {
+                int observed=0;
+                using(bus.Subscribe<int>(Camera,ctx=>Interlocked.Increment(ref observed)))
+                {
+                    bus.Pause();
+                    MNMPublishReceipt accepted=bus.Publish(Camera,1);
+                    MNMPublishReceipt rejected=bus.Publish(Camera,2);
+                    Check(accepted.Stage==MNMPublishStage.Accepted &&
+                        rejected.Stage==MNMPublishStage.Rejected,"bounded queue");
+                    bus.Resume();
+                    Check(SpinWait.SpinUntil(()=>observed==1,4000),"resume flush");
+                    await bus.StopAsync().ConfigureAwait(false);
+                    Check(bus.State==MNMMessageState.Stopped,"stopped state");
+                    Expect<ObjectDisposedException>(()=>bus.Publish(Camera,3));
+                }
+            }
+            using(MNMMessageCenter bus = new MNMMessageCenter(
+                new MNMMessageOptions{QueueCapacity=1,
+                    OverflowPolicy=MNMOverflowPolicy.DropOldest}))
+            {
+                bus.Pause();
+                MNMPublishReceipt oldest=bus.Publish(Camera,1);
+                MNMPublishReceipt latest=bus.Publish(Camera,2);
+                Check(oldest.Stage==MNMPublishStage.Rejected &&
+                    latest.Stage==MNMPublishStage.Accepted,"drop oldest");
+                bus.Resume();
+                await bus.StopAsync().ConfigureAwait(false);
+            }
+        }
+
+        private static async Task TestRetriesAsync()
+        {
+            using(MNMMessageCenter bus = new MNMMessageCenter(new MNMMessageOptions{
+                MaxAttempts=3,RetryDelayMilliseconds=1,DeadLetterCapacity=2}))
+            {
+                int attempts=0;
+                using(bus.SubscribeAsync<int>(Camera,ctx=>{
+                    if(Interlocked.Increment(ref attempts)<3)
+                        throw new InvalidOperationException("temporary");
+                    return Task.CompletedTask;
+                }))
+                {
+                    MNMPublishReceipt receipt=await bus.PublishAsync(Camera,10,
+                        new MNMPublishOptions{QoS=MNMMessageQoS.AtLeastOnceInProcess}).ConfigureAwait(false);
+                    Check(receipt.DeliveredCount==1 && attempts==3,"QoS1 in process retry");
+                    Check(bus.Metrics().Retried==2,"retry metrics");
+                }
+                using(bus.SubscribeAsync<int>(Camera,ctx=>{
+                    throw new InvalidOperationException("always fail");
+                }))
+                {
+                    MNMPublishReceipt receipt=await bus.PublishAsync(Camera,11,
+                        new MNMPublishOptions{QoS=MNMMessageQoS.AtLeastOnceInProcess}).ConfigureAwait(false);
+                    Check(receipt.Stage==MNMPublishStage.Failed && receipt.FailedCount==1,"permanent error");
+                    Check(bus.DeadLetters().Length==1 && bus.Metrics().Failed==1,"deadletter");
+                }
+                using(bus.SubscribeAsync<int>(Camera,ctx=>{
+                    throw new InvalidOperationException("QoS0 fail");
+                }))
+                {
+                    int before=bus.DeadLetters().Length;
+                    MNMPublishReceipt result=await bus.PublishAsync(Camera,12,
+                        new MNMPublishOptions{QoS=MNMMessageQoS.AtMostOnce}).ConfigureAwait(false);
+                    Check(result.FailedCount==1 &&
+                        bus.DeadLetters().Length==before+1,"QoS0 once");
+                }
+            }
+        }
+
+        private static async Task TestRequestResponseAsync()
+        {
+            using(MNMMessageCenter bus=new MNMMessageCenter())
+            using(bus.SubscribeAsync<int>(Camera,ctx =>
+                ctx.ReplyAsync("ok:"+ctx.Payload).ContinueWith(t=>{
+                    if(t.IsFaulted) throw t.Exception;
+                })))
+            {
+                MNMMessageContext<string> reply=await bus.RequestAsync<int,string>(
+                    Camera,42,Reply,TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+                Check(reply.Payload=="ok:42" && reply.Header.CorrelationId!=Guid.Empty,
+                    "request response linked");
+                using (bus.Subscribe<int>(Ai,ctx => { /* 有消费者，但故意不回复 */ }))
+                {
+                    await ExpectAsync<TimeoutException>(async()=>
+                        await bus.RequestAsync<int,string>(Ai,55,Reply,
+                            TimeSpan.FromMilliseconds(40)).ConfigureAwait(false)).ConfigureAwait(false);
+                }
+            }
+        }
+
+        private static async Task TestConcurrencyAsync()
+        {
+            using(MNMMessageCenter bus=new MNMMessageCenter(
+                new MNMMessageOptions{QueueCapacity=2048}))
+            {
+                int seen=0;
+                using(bus.Subscribe<int>(Camera,ctx=>Interlocked.Increment(ref seen)))
+                {
+                    Stopwatch sw=Stopwatch.StartNew();
+                    Task<MNMPublishReceipt>[] jobs=Enumerable.Range(0,400).
+                        Select(k=>bus.PublishAsync(Camera,k)).ToArray();
+                    await Task.WhenAll(jobs).ConfigureAwait(false);
+                    sw.Stop();
+                    Check(seen==400 && jobs.All(k=>k.Result.DeliveredCount==1),
+                        "400 concurrent sends delivered once");
+                    Check(bus.Metrics().QueueDepth==0,"queue drained");
+                    Console.WriteLine("M36 sampled throughput messages/s="+
+                        (400.0/Math.Max(0.001,sw.Elapsed.TotalSeconds)).ToString("F0"));
+                }
+            }
+        }
+
+        private static async Task TestSecurityAsync()
+        {
+            using(MNMMessageCenter bus=new MNMMessageCenter(new MNMMessageOptions{
+                AuthorizePublish=(src,topic)=>src=="trusted",
+                AuthorizeSubscribe=(subscriber,topic)=>subscriber!="blocked"}))
+            {
+                Expect<UnauthorizedAccessException>(()=>bus.Subscribe<int>(Camera,ctx=>{},
+                    new MNMSubscriptionOptions{SubscriberId="blocked"}));
+                using(bus.Subscribe<int>(Camera,ctx=>{}))
+                {
+                    Expect<UnauthorizedAccessException>(()=>bus.Publish(Camera,5));
+                    MNMPublishReceipt rc=await bus.PublishAsync(Camera,5,
+                        new MNMPublishOptions{SourceId="trusted"}).ConfigureAwait(false);
+                    Check(rc.DeliveredCount==1,"allowed source");
+                }
+            }
+        }
+    }
+}
