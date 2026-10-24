@@ -107,8 +107,10 @@ namespace CxVisual.Mechanism.Connectivity
 
     public sealed class MCCChannelConfigurationConverter : IFCMConfigValueConverter<MCCChannelConfiguration>
     {
-        private sealed class KindProbe
-        { public MCCChannelKind Kind { get; set; } = MCCChannelKind.Virtual; }
+        public sealed class KindProbe
+        {
+            public KindProbe() { }
+            public MCCChannelKind Kind { get; set; } = MCCChannelKind.Virtual; }
         public string Write(MCCChannelConfiguration value)
         {
             if (value == null) return "null";
