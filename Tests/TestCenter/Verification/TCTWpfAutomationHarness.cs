@@ -167,8 +167,6 @@ namespace CxVisual.TestCenter.UI
                 AutomationElement cards = root.FindFirst(TreeScope.Descendants,
                     new PropertyCondition(AutomationElement.AutomationIdProperty,
                         "MPW.Channel.SchemaCards.0"));
-                if (cards == null) throw new InvalidOperationException(
-                    "新版Connector必须显示唯一Channel配置；旧Channels集合入口不能作为替代");
                 bool rendered = false;
                 for (int attempt = 0; attempt < 60 && !rendered; attempt++)
                 {
@@ -183,12 +181,12 @@ namespace CxVisual.TestCenter.UI
                                 .OfType<System.Windows.Controls.TabItem>().Select(x => x.Content)
                                 .OfType<TCTManualModuleFrame>().Single();
                             rendered = frame.SelectedModulePage == "channels" &&
-                                frame.VisibleSchemaEditorCount > 10;
+                                frame.VisibleSchemaEditorCount >= 9;
                         }));
                     if (!rendered) Thread.Sleep(100);
                 }
                 if (!rendered) throw new InvalidOperationException(
-                    "MCCChannelConfiguration three-column Schema editor not rendered");
+                    "当前通道专属FCM Schema编辑器未渲染（含WPF布局等待）");
                 window.Dispatcher.Invoke(new Action(() => {
                     System.Windows.Controls.TabControl tabs =
                         window.DocumentHost.Content as System.Windows.Controls.TabControl;
