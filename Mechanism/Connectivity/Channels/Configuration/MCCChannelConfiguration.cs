@@ -5,7 +5,7 @@ using CxVisual.Foundation.Data.Configuration;
 namespace CxVisual.Mechanism.Connectivity
 {
     // 通道身份、专有参数、执行策略的唯一配置模型，不再拆 Profile/Options/EditableChannel。
-    public enum MCCChannelKind { Virtual, TcpClient, TcpServer, Udp, Serial, Custom, UdpServer }
+    public enum MCCChannelKind { Virtual, TcpClient, TcpServer, Udp, Serial, Custom, UdpServer, HttpClient }
 
     [FCMConfigConverter(typeof(MCCChannelConfigurationConverter))]
     public abstract class MCCChannelConfiguration : IFCMConfigVariantSelector
@@ -97,6 +97,9 @@ namespace CxVisual.Mechanism.Connectivity
                     return new MCCChannelTypeDescriptor("udp.server", MCCChannelTopology.MultiPeer, MCCIOCapabilities.Datagram);
                 case MCCChannelKind.Serial:
                     return new MCCChannelTypeDescriptor("serial", MCCChannelTopology.SharedBus, MCCIOCapabilities.ByteStream);
+                case MCCChannelKind.HttpClient:
+                    return new MCCChannelTypeDescriptor("http.client", MCCChannelTopology.SinglePeer,
+                        MCCIOCapabilities.Message | MCCIOCapabilities.RequestResponse);
                 default:
                     // 专业 Channel 尚未提供已注册的 I/O 能力元数据，不得假装兼容。
                     throw new NotSupportedException("自定义 Channel 需由专业 TypeDescriptor 提供能力");
@@ -118,6 +121,7 @@ namespace CxVisual.Mechanism.Connectivity
                 case MCCChannelKind.UdpServer: return typeof(MCCUdpServerChannelConfiguration);
                 case MCCChannelKind.Serial: return typeof(MCCSerialChannelConfiguration);
                 case MCCChannelKind.Custom: return typeof(MCCCustomChannelConfiguration);
+                case MCCChannelKind.HttpClient: return typeof(MCCHttpClientChannelConfiguration);
                 default: throw new ArgumentOutOfRangeException("kind");
             }
         }

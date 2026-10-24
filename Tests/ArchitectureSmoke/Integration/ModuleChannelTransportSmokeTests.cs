@@ -92,9 +92,25 @@ namespace CxVisual.Tests.ArchitectureSmoke
             TcpLoopback();
             ConnectorModbusTcpLoopback();
             UdpLoopback();
+            HttpConfigurationSmoke();
             Console.WriteLine("CHANNEL.TRANSPORT: TCP/UDP loopback MultiPeer and stale generation PASS");
         }
         // 大数据仍应完整传给上层；证据只能有界留存，并明确记录省略原因。
+        private static void HttpConfigurationSmoke()
+        {
+            MCCHttpClientChannelConfiguration config = new MCCHttpClientChannelConfiguration {
+                Id = "http-client-test", Url = "http://127.0.0.1:8080/"
+            };
+            Check(config.DescribeType().IO == (MCCIOCapabilities.Message | MCCIOCapabilities.RequestResponse),
+                "HTTP Client capabilities");
+            MCCHttpClientChannel client = new MCCHttpClientChannel(config);
+            Check(client.State == MCCChannelState.Closed, "HTTP Client constructed without network side effects");
+            bool rejected = false;
+            try { new MCCHttpClientChannelConfiguration { Url = "ftp://localhost/a" }.Validate(); }
+            catch (ArgumentException) { rejected = true; }
+            Check(rejected, "Reject non-http channel URL");
+        }
+
         private static void BoundedEvidence()
         {
             StartupReceiveChannel channel = new StartupReceiveChannel("evidence-budget");
