@@ -63,6 +63,13 @@ namespace CxVisual.Foundation.Data.Configuration
             if (depth > 64) throw new InvalidOperationException("Config nesting exceeds limit");
             if (FCMJsonValueCodec.Serialize(a) == FCMJsonValueCodec.Serialize(b)) return;
             if (a == null || b == null) { output.Add(path); return; }
+            // 同一配置位置可由 Virtual 切换成 TCP/Serial 等受控子类型。
+            // 不能拿新类型的 PropertyInfo 去读取旧类型，否则反射抛 TargetException。
+            if (a.GetType() != b.GetType())
+            {
+                output.Add(path);
+                return;
+            }
             Type type = b.GetType();
             if (FCMConfigSchemaBuilder.IsScalar(type)) { output.Add(path); return; }
             IDictionary left = a as IDictionary, right = b as IDictionary;
