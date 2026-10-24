@@ -369,7 +369,8 @@ namespace CxVisual.Mechanism.Runtime.Commands
             string caller = null, bool allowDeviceBroadcast = false,
             CancellationToken cancellation = default(CancellationToken))
         {
-            MCECommandParameterDefinition.CheckCode(commandCode);
+            if (string.IsNullOrWhiteSpace(commandCode))
+                throw new ArgumentException("命令编码不能为空", "commandCode");
             MRKCommandDescriptor[] descriptors = Router.Discover(kind: kind,
                 capability: capability, commandCode: commandCode).ToArray();
             if (descriptors.Length > 256)
