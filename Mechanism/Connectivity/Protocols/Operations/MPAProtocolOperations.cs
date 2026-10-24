@@ -62,6 +62,15 @@ namespace CxVisual.Mechanism.Connectivity
         Task<MPAProtocolOperationResult> RequestAsync(MPAProtocolOperationRequest request,
             MPAProtocolContext context, CancellationToken cancellationToken);
     }
+    // 可选点表设备操作能力：由具体工业 Protocol 解释地址和数据类型，
+    // Connector 只负责装配和传递正式配置与 MDS 数据 Owner。
+    public interface IMPAProtocolPointAccess
+    {
+        Task<object> ReadDevicePointAsync(string pointName,
+            MPAProtocolContext context, CancellationToken cancellationToken);
+        Task<MPAProtocolOperationResult> WriteDevicePointAsync(string pointName,
+            MPAProtocolContext context, CancellationToken cancellationToken);
+    }
     public interface IMPAProtocolReceiver
     {
         void HandleReceived(MCCChannelReceiveContext received, MPAProtocolContext context);

@@ -13,5 +13,9 @@ namespace CxVisual.Mechanism.Connectivity
         IReadOnlyList<MPAPointDefinition> Points { get; }
         Task<MPAProtocolOperationResult> RequestAsync(
             MPAProtocolOperationRequest request, MCCSubChannelAddress destination, CancellationToken ct);
+        Task<object> ReadDevicePointAsync(
+            string pointName, IMPADataTargetAccess access, MCCSubChannelAddress destination, CancellationToken ct);
+        Task<MPAProtocolOperationResult> WriteDevicePointAsync(
+            string pointName, IMPADataTargetAccess access, MCCSubChannelAddress destination, CancellationToken ct);
     }
 }

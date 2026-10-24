@@ -112,3 +112,11 @@
 - 有效数据事件额外收敛：已匹配待处理事务但校验失败的 Modbus TCP 响应，只经 `MPAProtocolSession.FailResponse` 让请求失败，不再进入 Connector 的成功 Payload 观察事件。正反测试明确验证错误 Unit/异常码不增加已接受 Payload 数量。
 
 - Socket 级集成反证：`ModuleChannelTransportSmokeTests.ConnectorModbusTcpLoopback` 直接装配正式 `MCNConnectorModule` + `MCCTcpClientChannel` + `MPAModbusTcpProtocol`，真实 Windows TCP Server 回送同一 MBAP TransactionId/Unit，检查 03 请求完成与点值 PDU，不以 Virtual 单元测试替代 OS Socket 收发。服务端只是本机受控模拟设备，G2 仍未验证。
+
+
+## 10. 16 位 Holding Point → MDS 数据映射闭环（阶段性支持）
+
+- Modbus TCP 具体规约实现可选 `IMPAProtocolPointAccess`，从 `MPAProtocolConfiguration.Points` 解析 `StationAddress`、`holding:地址`、`ValueType` 与 CanRead/CanWrite；只对 `UInt16/Int16` 的单寄存器 03/06 提供显式 `ReadDevicePointAsync` / `WriteDevicePointAsync`，超出范围返回 NotSupported，不把未知类型随意编码。
+- 接收 03 响应先核对 MBAP 事务/数量，再按点类型解释 16 位数据，经既有 `MPADataMappingExecutor.ApplyInboundAsync` 更新多个正式 MDS 目标；向设备写入时从唯一 Outbound `ReadValue` 目标读取数据，按 point 地址发起 06，请求获得合法设备回显后才返回 Completed。
+- `MCNConnectorModule` 只是对唯一 Protocol PointAccess 注入现有 Channel、正式配置和 MDS Owner，未重新实现变量管理、寄存器表或调度。Windows ArchitectureSmoke 的 TCP Socket Loopback 验证一对多 MDS 写入、出站变量发送、真实设备确认与 CanWrite 拒绝。
+- 本增量不代表完整 Modbus（01/02/04/05/10、32 位寄存器顺序、轮询计划、RTU SharedBus、现场授权/HIL 均仍待分阶段实装）。

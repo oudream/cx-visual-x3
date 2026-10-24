@@ -45,7 +45,7 @@ namespace CxVisual.Mechanism.Connectivity
 
     // 已有 ReferTo 的 Modbus Frame/Station 原理直接收敛到 Protocol Owner，
     // 不重新引入 ReferTo IProtocol/CxChannel adapter。
-    public sealed class MPAModbusTcpProtocol : MPAProtocolBase, IMPAProtocolSessionCleanup, IMPAProtocolRequester
+    public sealed class MPAModbusTcpProtocol : MPAProtocolBase, IMPAProtocolSessionCleanup, IMPAProtocolRequester, IMPAProtocolPointAccess
     {
         private readonly object _gate = new object();
         private readonly Dictionary<string, List<byte>> _buffers =
@@ -185,6 +185,69 @@ namespace CxVisual.Mechanism.Connectivity
                         requests.Remove(transactionId);
                 }
             }
+        }
+
+        // PointTable 是外部寻址真源；只支持已明确实现的单个 16 位 Holding Register。
+        private static MPAPointDefinition ResolveHoldingPoint(string pointName,
+            MPAProtocolContext context, bool write, out ushort registerAddress)
+        {
+            if (context == null || context.Configuration == null)
+                throw new NotSupportedException("点操作必须绑定正式规约配置");
+            context.Configuration.Validate();
+            MPAPointDefinition point = context.Configuration.Points.Find(
+                p => string.Equals(p.Name, pointName, StringComparison.Ordinal));
+            if (point == null || (write ? !point.CanWrite : !point.CanRead))
+                throw new InvalidOperationException("点不存在或缺少读写权限：" + pointName);
+            if (point.Address == null || !point.Address.StartsWith("holding:", StringComparison.OrdinalIgnoreCase) ||
+                !ushort.TryParse(point.Address.Substring("holding:".Length), out registerAddress))
+                throw new NotSupportedException("本阶段只支持 holding:0～65535 寄存器地址");
+            if (point.ValueType != "UInt16" && point.ValueType != "Int16")
+                throw new NotSupportedException("本阶段只支持 UInt16/Int16 单寄存器：" + point.ValueType);
+            return point;
+        }
+        private static MPAProtocolAddress PointUnit(MPAPointDefinition point, MPAProtocolContext context)
+        {
+            string address = !string.IsNullOrWhiteSpace(point.StationAddress) ? point.StationAddress :
+                (!string.IsNullOrWhiteSpace(context.Configuration.ProtocolAddress) ?
+                    context.Configuration.ProtocolAddress : "1");
+            return new MPAProtocolAddress(address);
+        }
+
+        public async Task<object> ReadDevicePointAsync(
+            string pointName, MPAProtocolContext context, CancellationToken ct)
+        {
+            ushort address;
+            MPAPointDefinition point = ResolveHoldingPoint(pointName, context, false, out address);
+            if (context.DataAccess == null)
+                throw new NotSupportedException("需要 MDS 数据 Owner 才能提交点映射");
+            MPAProtocolOperationResult response = await RequestAsync(
+                new MPAProtocolOperationRequest(MPAProtocolOperationKind.Request,
+                    PointUnit(point, context), MPAModbusRegisterOperations.ReadHolding(address, 1)),
+                context, ct).ConfigureAwait(false);
+            byte[] pdu = (byte[])response.Value;
+            if (pdu.Length != 4 || pdu[0] != 3 || pdu[1] != 2)
+                throw new InvalidDataException("单寄存器响应 PDU 不合法");
+            ushort raw = (ushort)((pdu[2] << 8) | pdu[3]);
+            object value = point.ValueType == "Int16" ? (object)unchecked((short)raw) : raw;
+            await new MPADataMappingExecutor(context.DataAccess).ApplyInboundAsync(
+                context.Configuration, pointName, value, ct).ConfigureAwait(false);
+            return value;
+        }
+
+        public async Task<MPAProtocolOperationResult> WriteDevicePointAsync(
+            string pointName, MPAProtocolContext context, CancellationToken ct)
+        {
+            ushort address;
+            MPAPointDefinition point = ResolveHoldingPoint(pointName, context, true, out address);
+            if (context.DataAccess == null)
+                throw new NotSupportedException("需要 MDS 数据 Owner 才能读取出站映射");
+            object value = await new MPADataMappingExecutor(context.DataAccess).ReadOutboundAsync(
+                context.Configuration, pointName, ct).ConfigureAwait(false);
+            ushort registerValue = point.ValueType == "Int16"
+                ? unchecked((ushort)Convert.ToInt16(value)) : Convert.ToUInt16(value);
+            return await RequestAsync(new MPAProtocolOperationRequest(MPAProtocolOperationKind.Request,
+                PointUnit(point, context), MPAModbusRegisterOperations.WriteSingle(address, registerValue)),
+                context, ct).ConfigureAwait(false);
         }
 
         public override IReadOnlyList<byte[]> ProcessReceived(

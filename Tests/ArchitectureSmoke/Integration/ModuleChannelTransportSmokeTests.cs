@@ -8,6 +8,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using CxVisual.Mechanism.Connectivity;
 using CxVisual.Mechanism.Core.Modules;
+using CxVisual.Mechanism.Data;
+using CxVisual.Mechanism.Data.Variables;
 
 namespace CxVisual.Tests.ArchitectureSmoke
 {
@@ -210,12 +212,35 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Host = "127.0.0.1", Port = port
                 },
                 Protocol = new MPAProtocolConfiguration {
-                    Id = "mb-loopback-protocol", Kind = MPAProtocolKind.ModbusTcpDraft, TimeoutMs = 3000
+                    Id = "mb-loopback-protocol", Kind = MPAProtocolKind.ModbusTcpDraft, TimeoutMs = 3000,
+                    Points = new List<MPAPointDefinition> {
+                        new MPAPointDefinition("temperature", "holding:100", typeof(ushort)) {
+                            StationAddress = "3", CanRead = true, CanWrite = true
+                        }
+                    },
+                    Mappings = new List<MPADataMapping> {
+                        new MPADataMapping { PointRef = "temperature",
+                            TargetKind = MPADataTargetKind.Variable, TargetRef = "plc/temperature",
+                            Direction = MPADataDirection.Inbound, Operation = MPADataOperation.WriteValue },
+                        new MPADataMapping { PointRef = "temperature",
+                            TargetKind = MPADataTargetKind.Variable, TargetRef = "plc/mirror",
+                            Direction = MPADataDirection.Inbound, Operation = MPADataOperation.WriteValue },
+                        new MPADataMapping { PointRef = "temperature",
+                            TargetKind = MPADataTargetKind.Variable, TargetRef = "plc/temperature",
+                            Direction = MPADataDirection.Outbound, Operation = MPADataOperation.ReadValue }
+                    }
                 }
             };
             MCNConnectorModule connector = new MCNConnectorModule(
                 config.Describe("mb-loopback", MFMModuleKind.Connector), config,
                 new MCCTcpClientChannel(config.Channel), new MPAModbusTcpProtocol());
+            MDSVariableRegistry registry = new MDSVariableRegistry();
+            MDSVariableTable variables = new MDSVariableTable("plc");
+            registry.Register(variables);
+            variables.Define(new MDSVariableDefinition("temperature", typeof(ushort)));
+            variables.Define(new MDSVariableDefinition("mirror", typeof(ushort)));
+            MDSProtocolDataTargetAccess mds = new MDSProtocolDataTargetAccess(registry);
+            ushort lastWritten = 0;
             List<byte> requestBuffer = new List<byte>();
             server.Received += received =>
             {
@@ -225,9 +250,16 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     if (requestBuffer.Count < 7) return;
                     int size = 6 + (requestBuffer[4] << 8 | requestBuffer[5]);
                     if (requestBuffer.Count < size) return;
-                    // 回送同一 MBAP TransactionId 与 Unit，03 一条寄存器=42。
-                    byte[] response = { requestBuffer[0], requestBuffer[1], 0, 0, 0, 5,
-                        requestBuffer[6], 3, 2, 0, 42 };
+                    // 回送同一 MBAP TransactionId/Unit；03 返回42，06 回显请求值。
+                    byte[] response;
+                    if (requestBuffer[7] == 6)
+                    {
+                        lastWritten = (ushort)((requestBuffer[10] << 8) | requestBuffer[11]);
+                        response = requestBuffer.Take(size).ToArray();
+                    }
+                    else
+                        response = new byte[] { requestBuffer[0], requestBuffer[1], 0, 0, 0, 5,
+                            requestBuffer[6], 3, 2, 0, 42 };
                     requestBuffer.RemoveRange(0, size);
                     server.SendAsync(response, received.Address, CancellationToken.None)
                         .GetAwaiter().GetResult();
@@ -245,6 +277,23 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     .GetAwaiter().GetResult();
                 Check(result.IsCompleted && ((byte[])result.Value).SequenceEqual(new byte[] { 3, 2, 0, 42 }),
                     "Connector RequestAsync 必须通过真实 TCP 收发并完成 03 事务确认");
+                MCCSubChannelAddress destination = new MCCSubChannelAddress(config.Channel.Id);
+                object pointValue = connector.ReadDevicePointAsync("temperature", mds, destination,
+                    CancellationToken.None).GetAwaiter().GetResult();
+                Check((ushort)pointValue == 42 && variables.Get<ushort>("temperature") == 42 &&
+                    variables.Get<ushort>("mirror") == 42,
+                    "PointTable holding:100 读值必须一对多写入真实 MDS Variable");
+                variables.Update<ushort>("temperature", 55);
+                MPAProtocolOperationResult confirmed = connector.WriteDevicePointAsync(
+                    "temperature", mds, destination, CancellationToken.None).GetAwaiter().GetResult();
+                Check(confirmed.IsCompleted && lastWritten == 55,
+                    "MDS Outbound 变量必须经 PointTable 发送06并等设备确认");
+                config.Protocol.Points[0].CanWrite = false;
+                bool denied = false;
+                try { connector.WriteDevicePointAsync("temperature", mds, destination,
+                    CancellationToken.None).GetAwaiter().GetResult(); }
+                catch (InvalidOperationException) { denied = true; }
+                Check(denied, "PointTable 禁止写入的点不得发出设备命令");
             }
             finally
             {

@@ -161,6 +161,37 @@ namespace CxVisual.Mechanism.Connectivity
                 configuration: Configuration.Protocol, transport: transport), ct);
         }
 
+        public Task<object> ReadDevicePointAsync(
+            string pointName, IMPADataTargetAccess access, MCCSubChannelAddress destination, CancellationToken ct)
+        {
+            IMPAProtocolPointAccess protocol = Protocol as IMPAProtocolPointAccess;
+            IMCCChannelTransport transport = Channel as IMCCChannelTransport;
+            if (protocol == null || transport == null)
+                throw new NotSupportedException("当前规约没有设备点表读取能力");
+            if (!IsStarted || transport.State != MCCChannelState.Open)
+                throw new InvalidOperationException("Connector 未启动");
+            if (destination == null || destination.ChannelId != Channel.Id)
+                throw new ArgumentException("点操作目标 Channel 不匹配");
+            return protocol.ReadDevicePointAsync(pointName, new MPAProtocolContext(
+                Configuration.Protocol.Id, Channel.SessionId.ToString("N"), destination,
+                configuration: Configuration.Protocol, dataAccess: access, transport: transport), ct);
+        }
+        public Task<MPAProtocolOperationResult> WriteDevicePointAsync(
+            string pointName, IMPADataTargetAccess access, MCCSubChannelAddress destination, CancellationToken ct)
+        {
+            IMPAProtocolPointAccess protocol = Protocol as IMPAProtocolPointAccess;
+            IMCCChannelTransport transport = Channel as IMCCChannelTransport;
+            if (protocol == null || transport == null)
+                throw new NotSupportedException("当前规约没有设备点表写入能力");
+            if (!IsStarted || transport.State != MCCChannelState.Open)
+                throw new InvalidOperationException("Connector 未启动");
+            if (destination == null || destination.ChannelId != Channel.Id)
+                throw new ArgumentException("点操作目标 Channel 不匹配");
+            return protocol.WriteDevicePointAsync(pointName, new MPAProtocolContext(
+                Configuration.Protocol.Id, Channel.SessionId.ToString("N"), destination,
+                configuration: Configuration.Protocol, dataAccess: access, transport: transport), ct);
+        }
+
         public Task ApplyPointValueAsync(string point, object value, IMPADataTargetAccess access, CancellationToken ct)
         { return new MPADataMappingExecutor(access).ApplyInboundAsync(Configuration.Protocol, point, value, ct); }
 
