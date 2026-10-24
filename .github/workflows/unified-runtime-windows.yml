@@ -40,6 +40,8 @@ jobs:
         run: |
           & .\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe --concurrency
           if ($LASTEXITCODE -ne 0) { throw "F19 concurrency tests failed" }
+          & .\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe --command-center
+          if ($LASTEXITCODE -ne 0) { throw 'CommandCenter P0 tests failed' }
           & .\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe
           if ($LASTEXITCODE -ne 0) { throw "Unified Execution architecture tests failed" }
       - name: Execute compiled subflow, authorized publication and durable host recovery
