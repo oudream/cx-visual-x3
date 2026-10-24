@@ -5,7 +5,7 @@ using CxVisual.Foundation.Data.Configuration;
 namespace CxVisual.Mechanism.Connectivity
 {
     // 通道身份、专有参数、执行策略的唯一配置模型，不再拆 Profile/Options/EditableChannel。
-    public enum MCCChannelKind { Virtual, TcpClient, TcpServer, Udp, Serial, Custom, UdpServer, HttpClient, NamedPipeClient, NamedPipeServer, WebSocketClient }
+    public enum MCCChannelKind { Virtual, TcpClient, TcpServer, Udp, Serial, Custom, UdpServer, HttpClient, NamedPipeClient, NamedPipeServer, WebSocketClient, Replay }
 
     [FCMConfigConverter(typeof(MCCChannelConfigurationConverter))]
     public abstract class MCCChannelConfiguration : IFCMConfigVariantSelector
@@ -109,6 +109,9 @@ namespace CxVisual.Mechanism.Connectivity
                 case MCCChannelKind.WebSocketClient:
                     return new MCCChannelTypeDescriptor("websocket.client", MCCChannelTopology.SinglePeer,
                         MCCIOCapabilities.Message);
+                case MCCChannelKind.Replay:
+                    return new MCCChannelTypeDescriptor("replay", MCCChannelTopology.SinglePeer,
+                        MCCIOCapabilities.Message);
                 default:
                     // 专业 Channel 尚未提供已注册的 I/O 能力元数据，不得假装兼容。
                     throw new NotSupportedException("自定义 Channel 需由专业 TypeDescriptor 提供能力");
@@ -134,6 +137,7 @@ namespace CxVisual.Mechanism.Connectivity
                 case MCCChannelKind.NamedPipeClient: return typeof(MCCNamedPipeClientChannelConfiguration);
                 case MCCChannelKind.NamedPipeServer: return typeof(MCCNamedPipeServerChannelConfiguration);
                 case MCCChannelKind.WebSocketClient: return typeof(MCCWebSocketClientChannelConfiguration);
+                case MCCChannelKind.Replay: return typeof(MCCReplayChannelConfiguration);
                 default: throw new ArgumentOutOfRangeException("kind");
             }
         }

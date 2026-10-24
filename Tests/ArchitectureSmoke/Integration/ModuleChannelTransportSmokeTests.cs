@@ -96,6 +96,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             NamedPipeLoopback();
             WebSocketConfigSmoke();
             WebSocketLoopback();
+            ReplayFileLoopback();
             HttpLoopback();
             Console.WriteLine("CHANNEL.TRANSPORT: TCP/UDP loopback MultiPeer and stale generation PASS");
         }
@@ -267,6 +268,56 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 }
                 finally { client.Close(); listener.Stop(); }
             }
+        }
+
+        private static void ReplayFileLoopback()
+        {
+            string file = Path.Combine(Path.GetTempPath(),
+                "cx-replay-" + Guid.NewGuid().ToString("N") + ".bin");
+            try
+            {
+                using (FileStream stream = File.Create(file))
+                using (BinaryWriter writer = new BinaryWriter(stream))
+                {
+                    writer.Write(System.Text.Encoding.ASCII.GetBytes("MCCRPL01"));
+                    writer.Write(3);
+                    writer.Write(new byte[] { 3, 5, 7 });
+                    writer.Write(2);
+                    writer.Write(new byte[] { 9, 11 });
+                }
+                MCCReplayChannel channel = new MCCReplayChannel(
+                    new MCCReplayChannelConfiguration { Id = "replay-test", FilePath = file });
+                List<byte[]> messages = new List<byte[]>();
+                using (ManualResetEventSlim delivered = new ManualResetEventSlim(false))
+                {
+                    channel.Received += item => {
+                        lock (messages)
+                        {
+                            messages.Add(item.Data);
+                            if (messages.Count == 2) delivered.Set();
+                        }
+                    };
+                    try
+                    {
+                        channel.Open();
+                        Check(delivered.Wait(TimeSpan.FromSeconds(5)), "Replay 文件逐记录实际接收");
+                        lock (messages)
+                            Check(messages[0].SequenceEqual(new byte[] { 3, 5, 7 }) &&
+                                messages[1].SequenceEqual(new byte[] { 9, 11 }),
+                                "Replay 保留两个报文的原始内容和边界");
+                        bool sendRejected = false;
+                        try
+                        {
+                            channel.SendAsync(new byte[] { 1 }, new MCCSubChannelAddress(channel.Id),
+                                CancellationToken.None).GetAwaiter().GetResult();
+                        }
+                        catch (NotSupportedException) { sendRejected = true; }
+                        Check(sendRejected, "Replay 明确拒绝伪造设备发送成功");
+                    }
+                    finally { channel.Close(); }
+                }
+            }
+            finally { if (File.Exists(file)) File.Delete(file); }
         }
 
         private static void WebSocketConfigSmoke()
