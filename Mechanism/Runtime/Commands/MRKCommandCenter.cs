@@ -289,6 +289,10 @@ namespace CxVisual.Mechanism.Runtime.Commands
                 request.ExpectedSchemaVersion != entry.Descriptor.Definition.SchemaVersion)
                 return new MRKCommandSubmission(Reject(request, "SchemaVersionMismatch",
                     "请求版本与目标已发布命令Schema不一致"), null);
+            if (entry.Descriptor.Kind == MRKCommandKind.Device &&
+                entry.Descriptor.Policy.RetryPolicy.MaxAttempts > 1)
+                return new MRKCommandSubmission(Reject(request, "DeviceAutoRetryForbidden",
+                    "设备副作用命令禁止本地自动重试；必须通过专业Provider重新确认状态"), null);
             IReadOnlyDictionary<string, object> inputs;
             try
             {

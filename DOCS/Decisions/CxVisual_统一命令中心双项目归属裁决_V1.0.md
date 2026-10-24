@@ -86,3 +86,7 @@ using (center.Register(new MRKCommandDescriptor("algorithm", definition),
 ## 十、请求同时支持Code和稳定ID
 
 运行请求仍属于 `Mechanism.Runtime.Commands`：支持 `Target+Code`、`Target+CommandId`、以及二者同给时一致性校验。基础的 `FDCCommandDefinition` 继续作为唯一 ID/Code/Version 真源。不新增独立命令目录或目标数据仓库。
+
+## 十一、重试复用既有MRK执行策略
+
+`MRKCommandPolicy.RetryPolicy` 使用已有 `Mechanism.Runtime.Execution.MRKExecutionPolicy`，避免复制另一套RetryPolicy类。命令运行针对Handler异常执行有限重试，Device类型默认并明确禁止机制层自动重发；所有代码仍处于 `Mechanism.Runtime.Commands`，基础Schema不迁移。

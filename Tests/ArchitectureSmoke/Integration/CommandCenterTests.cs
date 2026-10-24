@@ -8,6 +8,7 @@ using CxVisual.Mechanism.Data.RuntimeData;
 using CxVisual.Mechanism.Data.Execution;
 using CxVisual.Foundation.Data.Commands;
 using CxVisual.Mechanism.Runtime.Commands;
+using CxVisual.Mechanism.Runtime.Execution;
 
 namespace CxVisual.Tests.ArchitectureSmoke
 {
@@ -53,6 +54,71 @@ namespace CxVisual.Tests.ArchitectureSmoke
             { cancellation.ThrowIfCancellationRequested(); _variables.Update<double>(name, (double)value); return Task.CompletedTask; }
         }
 
+
+        /// <summary>复用MRK统一幂等重试Policy，仅Handler异常可重试，禁止设备副作用自动重发。</summary>
+        private static void RetryRun()
+        {
+            int attempts = 0;
+            MRKExecutionPolicy retry = new MRKExecutionPolicy(
+                maxAttempts: 3, idempotent: true,
+                retryCondition: ex => ex is InvalidOperationException);
+            MRKCommandPolicy policy = new MRKCommandPolicy(retryPolicy: retry);
+            using (MRKCommandCenter center = new MRKCommandCenter())
+            using (center.Register(new MRKCommandDescriptor("retry", Definition(),
+                policy: policy), new MRKDelegateCommandHandler((ctx, inputs, token) =>
+                {
+                    if (Interlocked.Increment(ref attempts) < 3)
+                        throw new InvalidOperationException("模拟瞬时算法异常");
+                    return Task.FromResult(new MRKCommandHandlerResult(
+                        new Dictionary<string, object> { { "Output", 12.0 } }));
+                })))
+            {
+                MRKCommandSubmission submission = center.Submit(new MRKCommandRequest(
+                    "retry", "Calculate", new Dictionary<string, object> { { "Input", 1.0 } }));
+                Check(submission.Operation.Completion.Wait(TimeSpan.FromSeconds(5)) &&
+                    submission.Operation.Snapshot().State == MRKCommandState.Completed &&
+                    submission.Operation.AttemptCount == 3 && attempts == 3,
+                    "idempotent handler allowed bounded exception retry");
+            }
+
+            int timeoutCount = 0;
+            using (MRKCommandCenter center = new MRKCommandCenter())
+            using (center.Register(new MRKCommandDescriptor("no-timeout-retry", Definition(),
+                policy: policy), new MRKDelegateCommandHandler((ctx, inputs, token) =>
+                {
+                    Interlocked.Increment(ref timeoutCount);
+                    throw new TimeoutException("模拟未知设备应答");
+                })))
+            {
+                MRKCommandSubmission submission = center.Submit(new MRKCommandRequest(
+                    "no-timeout-retry", "Calculate",
+                    new Dictionary<string, object> { { "Input", 1.0 } }));
+                Check(submission.Operation.Completion.Wait(TimeSpan.FromSeconds(5)) &&
+                    submission.Operation.Snapshot().State == MRKCommandState.Failed &&
+                    timeoutCount == 1 && submission.Operation.AttemptCount == 1,
+                    "timeout may be unknown side effect and must never automatically retry");
+            }
+            bool invalid = false;
+            try { new MRKExecutionPolicy(maxAttempts: 2, idempotent: false); }
+            catch (ArgumentException) { invalid = true; }
+            Check(invalid, "non-idempotent retries rejected by MRK policy");
+
+            int invoked = 0;
+            using (MRKCommandCenter device = new MRKCommandCenter(authorize: ctx => true))
+            using (device.Register(new MRKCommandDescriptor("axis", Definition(),
+                MRKCommandKind.Device, policy), Handler(x =>
+                {
+                    Interlocked.Increment(ref invoked); return x;
+                })))
+            {
+                MRKCommandResponse rejected = device.InvokeAsync(new MRKCommandRequest(
+                    "axis", "Calculate", new Dictionary<string, object> { { "Input", 1.0 } }))
+                    .GetAwaiter().GetResult();
+                Check(rejected.Stage == MRKCommandStage.Rejected &&
+                    rejected.ErrorCode == "DeviceAutoRetryForbidden" && invoked == 0,
+                    "device side-effect automatic retry must fail closed");
+            }
+        }
 
         /// <summary>正式ID寻址与Code/ID双身份验证；ID调用仍共用注册与MDS绑定。</summary>
         private static void CommandIdRun()
@@ -773,6 +839,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             LongTaskRun();
             OutputMappingRun();
             CommandIdRun();
+            RetryRun();
             ExtendedRun();
             Console.WriteLine("PASS BUS-CMD CommandCenter: registration/router/authorization/MDSSchema/mapping/batch/concurrency/timeout/snapshot/replacement/replay/copy");
         }

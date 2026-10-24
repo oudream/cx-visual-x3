@@ -70,12 +70,36 @@ namespace CxVisual.Mechanism.Runtime.Commands
                     await interceptor.BeforeAsync(context,
                         FDCCommandValueSnapshot.Capture(operation.Inputs, _adapters),
                         operation.Cancellation.Token).ConfigureAwait(false);
-                Task<MRKCommandHandlerResult> pending = entry.Handler.ExecuteAsync(context,
-                    FDCCommandValueSnapshot.Capture(operation.Inputs, _adapters),
-                    operation.Cancellation.Token);
-                if (pending == null) throw new InvalidOperationException("Handler返回空Task");
-                MRKCommandHandlerResult result = await pending.ConfigureAwait(false);
-                if (result == null) throw new InvalidOperationException("Handler未返回业务结果");
+                // 使用MRK已有幂等重试策略；Handler失败且未发布Final输出才可重试。
+                // Timeout、取消和授权失败禁止自动重试；设备命令由Center拒绝任何自动重试。
+                MRKExecutionPolicy retry = operation.Descriptor.Policy.RetryPolicy;
+                MRKCommandHandlerResult result = null;
+                for (int attempt = 1; attempt <= retry.MaxAttempts; attempt++)
+                {
+                    operation.MarkAttempt(attempt);
+                    try
+                    {
+                        operation.Cancellation.Token.ThrowIfCancellationRequested();
+                        Task<MRKCommandHandlerResult> pending = entry.Handler.ExecuteAsync(context,
+                            FDCCommandValueSnapshot.Capture(operation.Inputs, _adapters),
+                            operation.Cancellation.Token);
+                        if (pending == null)
+                            throw new InvalidOperationException("Handler返回空Task");
+                        result = await pending.ConfigureAwait(false);
+                        if (result == null)
+                            throw new InvalidOperationException("Handler未返回业务结果");
+                        break;
+                    }
+                    catch (Exception ex) when (attempt < retry.MaxAttempts && retry.Idempotent &&
+                        !(ex is TimeoutException) && !(ex is OperationCanceledException) &&
+                        !(ex is UnauthorizedAccessException) &&
+                        (retry.RetryCondition == null || retry.RetryCondition(ex)))
+                    {
+                        if (retry.RetryDelay > TimeSpan.Zero)
+                            await Task.Delay(retry.RetryDelay, operation.Cancellation.Token)
+                                .ConfigureAwait(false);
+                    }
+                }
                 IReadOnlyDictionary<string, object> outputs =
                     operation.Descriptor.Definition.ValidateOutputs(result.Outputs);
                 response = new MRKCommandResponse(request.RequestId, operation.OperationId,

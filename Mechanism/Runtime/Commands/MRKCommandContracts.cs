@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CxVisual.Foundation.Data.Commands;
 using CxVisual.Foundation.Data.Types;
+using CxVisual.Mechanism.Runtime.Execution;
 
 namespace CxVisual.Mechanism.Runtime.Commands
 {
@@ -19,15 +20,21 @@ namespace CxVisual.Mechanism.Runtime.Commands
     {
         public MRKCommandPolicy(int maxConcurrent = 1, string resourceId = null,
             MRKCommandDispatch dispatch = MRKCommandDispatch.ThreadPool, bool supportsCancellation = true,
-            bool supportsPause = false)
+            bool supportsPause = false, MRKExecutionPolicy retryPolicy = null)
         {
             if (maxConcurrent < 1 || maxConcurrent > 1024) throw new ArgumentOutOfRangeException("maxConcurrent");
             if (dispatch == MRKCommandDispatch.Queued && maxConcurrent != 1)
                 throw new ArgumentException("Queued对同一目标按Key串行；MaxConcurrent必须为1", "maxConcurrent");
+            MRKExecutionPolicy selected = retryPolicy ?? new MRKExecutionPolicy();
+            if (selected.MaxAttempts > 5) throw new ArgumentOutOfRangeException("retryPolicy", "命令重试最多5次");
+            if (selected.Timeout.HasValue) throw new ArgumentException("命令超时请使用MRKCommandOptions，不能叠加两个超时语义", "retryPolicy");
+            RetryPolicy = selected;
             MaxConcurrent = maxConcurrent; ResourceId = resourceId; Dispatch = dispatch;
             SupportsCancellation = supportsCancellation; SupportsPause = supportsPause;
         }
         public bool SupportsPause { get; private set; }
+        /// <summary>复用MRK统一幂等重试策略配置；命令Handler只在明确允许时重试。</summary>
+        public MRKExecutionPolicy RetryPolicy { get; private set; }
         public int MaxConcurrent { get; private set; }
         public string ResourceId { get; private set; }
         public MRKCommandDispatch Dispatch { get; private set; }
@@ -303,6 +310,7 @@ namespace CxVisual.Mechanism.Runtime.Commands
         internal readonly FDTDataAdapterRegistry Adapters;
         private MRKCommandResponse _latest;
         private double _progress;
+        private int _attemptCount;
         private string _message = string.Empty;
         private IReadOnlyDictionary<string, object> _intermediateOutputs;
         private bool _pauseRequested;
@@ -321,6 +329,7 @@ namespace CxVisual.Mechanism.Runtime.Commands
         public Task<MRKCommandResponse> Completion { get { return _completion.Task; } }
         public bool IsCompleted { get { return Completion.IsCompleted; } }
         public double Progress { get { lock (_gate) return _progress; } }
+        public int AttemptCount { get { return Volatile.Read(ref _attemptCount); } }
         public string ProgressMessage { get { lock (_gate) return _message; } }
         public IReadOnlyDictionary<string, object> IntermediateOutputs
         {
@@ -344,6 +353,8 @@ namespace CxVisual.Mechanism.Runtime.Commands
             lock (_gate) _latest = new MRKCommandResponse(Request.RequestId, OperationId,
                 MRKCommandStage.Accepted, MRKCommandState.Running);
         }
+        internal void MarkAttempt(int attempt)
+        { Interlocked.Exchange(ref _attemptCount, attempt); }
         internal void Report(double percent, string message)
         { lock (_gate) { if (!IsCompleted) { _progress = percent; _message = message; } } }
         internal void ReportIntermediate(IReadOnlyDictionary<string, object> values)

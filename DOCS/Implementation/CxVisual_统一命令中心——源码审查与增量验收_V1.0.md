@@ -253,3 +253,13 @@ Handler可调用 `ReportProgress` 和 `ReportIntermediate`；Execution暴露最�
 Operation账本继续以OperationId去重，同一OperationId的身份比较包括CommandId，避免调用方更换寻址身份后错配。F19排队Key使用**已解析命令Code**而不是空的ID-only请求Code；ID-only命令的 `InvokeBoundResultAsync` 同样通过正式Router匹配参数契约，不复制定义。
 
 专项反例：ID-only成功、Code/ID冲突、未知ID、ID-only绑定读写。跨进程稳定ID注册/SchemaWire、版本协商仍需真实Transport验收。
+
+## 15. 复用MRKExecutionPolicy的受控重试
+
+命令策略 `MRKCommandPolicy(retryPolicy: MRKExecutionPolicy)` 复用已有MRK重试约束，不新增第二套 RetryPolicy。默认 `MaxAttempts=1`；只有明确 `Idempotent=true` 才允许超过一次，命令最多5次。每次Handler尝试都使用新输入快照；`MRKCommandExecution.AttemptCount` 可观察实际次数。
+
+重试仅针对Handler抛出的、符合RetryCondition的普通异常，不重复调用前置授权/BeforeHook，不重发最终结果映射，不重试 `TimeoutException`、`OperationCanceledException`、`UnauthorizedAccessException`，后置拦截器故障也不重试。原Handler可有外部副作用，故只有专业明确宣告幂等才可启用。
+
+**设备命令明确禁止机制层自动重试**：任何 `MRKCommandKind.Device` 配置 `MaxAttempts>1`，在执行前返回 `Rejected/DeviceAutoRetryForbidden`。设备断线/应答丢失应由专业Provider读取真实状态、确认安全之后人工或业务显式重发，不因网络Unknown直接再次发运动命令。
+
+本轮专项验收：算法故障两次→第三次成功、尝试数3；Timeout不重试；非幂等构造直接拒绝；设备命令即使Host授权也拒绝自动重试。跨Host幂等、审计落盘、持久去重、补偿与硬件状态核对仍未完成。
