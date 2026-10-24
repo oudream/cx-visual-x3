@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CxVisual.Foundation.Data.Commands;
 using CxVisual.Mechanism.Data.Variables;
+using CxVisual.Mechanism.Data.RuntimeData;
 using CxVisual.Mechanism.Logic.Commands;
 using CxVisual.Mechanism.Runtime.Commands;
 
@@ -54,6 +55,47 @@ namespace CxVisual.Tests.ArchitectureSmoke
         // 进阶正反：注册热替换、过滤发现、操作身份、快照与执行隔离。
         private static void ExtendedRun()
         {
+            // 正式适配器复用MDS变量真源，而不是测试中自造存取委托。
+            MDSVariableTable variableTable = new MDSVariableTable("command-binding");
+            variableTable.Define(new MDSVariableDefinition("in", typeof(double)));
+            variableTable.Define(new MDSVariableDefinition("out", typeof(double)));
+            variableTable.Define(new MDSVariableDefinition("readonly", typeof(double), writable: false));
+            variableTable.Update("in", 9.0);
+            using (MDSCommandValueBinding bindings = new MDSCommandValueBinding())
+            using (MRKCommandCenter center = new MRKCommandCenter())
+            using (center.Register(new MRKCommandDescriptor(Target, Definition()),
+                Handler(x => x)))
+            {
+                bindings.BindVariable<double>("input-address", variableTable, "in");
+                bindings.BindVariable<double>("output-address", variableTable, "out");
+                bindings.BindVariable<double>("readonly-address", variableTable, "readonly");
+                MRKCommandResponse mapped = center.InvokeBoundAsync(
+                    new MRKCommandRequest(Target, "Calculate"), bindings,
+                    new[] { new MRKCommandParameterBinding("Input", "input-address") },
+                    new[] { new MRKCommandParameterBinding("Output", "output-address") })
+                    .GetAwaiter().GetResult();
+                Check(mapped.State == MRKCommandState.Completed &&
+                    variableTable.Get<double>("out") == 18.0, "real MDS adapter mapping");
+                bool readOnly = false;
+                try { bindings.WriteAsync("readonly-address", 1.0, CancellationToken.None)
+                    .GetAwaiter().GetResult(); }
+                catch (UnauthorizedAccessException) { readOnly = true; }
+                Check(readOnly, "readonly MDS binding must fail closed");
+                bool duplicate = false;
+                try { bindings.BindVariable<double>("input-address", variableTable, "in"); }
+                catch (ArgumentException) { duplicate = true; }
+                Check(duplicate, "duplicate MDS alias must reject");
+                bool mismatched = false;
+                try { bindings.BindVariable<int>("wrong", variableTable, "in"); }
+                catch (InvalidCastException) { mismatched = true; }
+                Check(mismatched, "MDS binding type mismatch must reject");
+                Check(bindings.Unbind("input-address"), "unbind address");
+                bool missing = false;
+                try { bindings.ReadAsync("input-address", CancellationToken.None)
+                    .GetAwaiter().GetResult(); }
+                catch (KeyNotFoundException) { missing = true; }
+                Check(missing, "unbound address must reject");
+            }
             using (MRKCommandCenter center = new MRKCommandCenter())
             {
                 IDisposable old = center.Register(new MRKCommandDescriptor(Target, Definition()),
