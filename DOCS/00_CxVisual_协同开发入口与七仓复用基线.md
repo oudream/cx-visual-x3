@@ -158,11 +158,11 @@
 - 本次变化仅增加既有 Mechanism.Core 的 Driver 正式 FCM 配置及对应 TestCenter/ArchitectureSmoke；不新增项目、第二配置库、Channel Adapter、任务调度器或消息/数据仓库。
 - **证据分级**：配置与源码可按 Windows CI 验收；真实 TCP/UDP Server、Modbus RTU 多站和 X-Ray 厂商采图需要正式驱动迁入与 HIL，不以配置存在冒充设备通过。
 
-## 统一交互机制 V1.2（2026-10-24）
+## 统一交互机制 V1.3（2026-10-24）
 
-- [四大能力与双层总线完整设计及验收 V1.2](Architecture/CxVisual_公共机制体系%23统一交互——四大能力与双层总线完整设计及验收_V1.2.md)：变量高速、消息轻巧、命令受控执行、运行数据与大数据；进程内逻辑总线先行，进程外 MQTT/SHM/文件服务按需桥接；双寻址、分层订阅、Owner、反馈语义及未来验收。
-- [进程内总线分阶段实施与源码台账 V1.1](Implementation/CxVisual_公共机制体系%23统一交互——进程内总线分阶段实施与源码台账_V1.1.md)：P0 各阶段源码对照、已实现与未实现差距，不把接口候选当已交付。
-- [TestCenter与Windows验收矩阵 V1.1](Testing/CxVisual_公共机制体系%23统一交互——TestCenter与Windows验收矩阵_V1.1.md)：正反例、并发和可靠性测试计划；尚未声明测试已通过。
+- [四大能力与双层总线完整设计及验收 V1.3](Architecture/CxVisual_公共机制体系%23统一交互——四大能力与双层总线完整设计及验收_V1.3.md)：变量高速、消息轻巧、命令受控执行、运行数据与大数据；进程内逻辑总线先行，进程外 MQTT/SHM/文件服务按需桥接；双寻址、分层订阅、Owner、反馈语义；**V1.3 明确 MQTT 风格 Topic+Payload 消息和 IoT 风格 CommandId/Code+Inputs/Outputs 命令定义、完整调用与结果闭环**。
+- [进程内总线分阶段实施与源码台账 V1.2](Implementation/CxVisual_公共机制体系%23统一交互——进程内总线分阶段实施与源码台账_V1.2.md)：P0 各阶段源码对照、已实现与未实现差距，不把接口候选当已交付。
+- [TestCenter与Windows验收矩阵 V1.2](Testing/CxVisual_公共机制体系%23统一交互——TestCenter与Windows验收矩阵_V1.2.md)：正反例、并发和可靠性测试计划，现为 117 条候选验收；尚未声明测试已通过。
 - [V1.1审查与V1.2修订报告](Architecture/CxVisual_公共机制体系%23统一交互——V1.1文档审查与V1.2修订报告.md)：历史问题、修订原因及待复核事项。
 
 > 当前文档是设计与实施基线，尚需结合 DOCS/02～04 细核 Owner/API；不代表进程内功能、跨进程通信或现场设备验证已完成。
