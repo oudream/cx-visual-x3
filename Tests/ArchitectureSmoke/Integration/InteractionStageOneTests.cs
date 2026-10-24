@@ -51,12 +51,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
             }
             MNMMessageTypeDefinition type=new MNMMessageTypeDefinition("Camera.Captured",1,typeof(string));
             type.Validate("image1");Reject<ArgumentException>(()=>type.Validate(123));
-            MLGCommandParameterDefinition pos=new MLGCommandParameterDefinition("Position",typeof(double),true);
-            MLGCommandParameterDefinition vel=new MLGCommandParameterDefinition("Velocity",typeof(double),false,true,20.0);
-            MLGCommandParameterDefinition enable=new MLGCommandParameterDefinition("Enable",typeof(bool),false,true,true);
-            MLGCommandDefinition cmd=new MLGCommandDefinition(1001,"MoveAbs","绝对移动",
+            MCECommandParameterDefinition pos=new MCECommandParameterDefinition("Position",typeof(double),true);
+            MCECommandParameterDefinition vel=new MCECommandParameterDefinition("Velocity",typeof(double),false,true,20.0);
+            MCECommandParameterDefinition enable=new MCECommandParameterDefinition("Enable",typeof(bool),false,true,true);
+            MCECommandDefinition cmd=new MCECommandDefinition(1001,"MoveAbs","绝对移动",
                 new[]{pos,vel,enable},
-                new[]{new MLGCommandParameterDefinition("ActualPosition",typeof(double),true)});
+                new[]{new MCECommandParameterDefinition("ActualPosition",typeof(double),true)});
             IReadOnlyDictionary<string,object> inputs=cmd.BindInputs(
                 new Dictionary<string,object>{{"Position",0.0},{"Enable",false}});
             Check((double)inputs["Position"]==0.0 && !(bool)inputs["Enable"] &&
@@ -65,9 +65,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Reject<ArgumentException>(()=>cmd.BindInputs(new Dictionary<string,object>{{"Position","wrong"}}));
             Reject<ArgumentException>(()=>cmd.BindInputs(new Dictionary<string,object>{{"Position",1.0},{"Bad",2}}));
             Reject<ArgumentException>(()=>cmd.ValidateOutputs(new Dictionary<string,object>{{"ActualPosition","wrong"}}));
-            MLGCommandDefinitionCatalog catalog=new MLGCommandDefinitionCatalog(new[]{cmd});
+            MCECommandDefinitionCatalog catalog=new MCECommandDefinitionCatalog(new[]{cmd});
             Check(object.ReferenceEquals(catalog.Find(1001),catalog.Find("MoveAbs")),"definition catalog");
-            Reject<ArgumentException>(()=>new MLGCommandDefinitionCatalog(new[]{cmd,cmd}));
+            Reject<ArgumentException>(()=>new MCECommandDefinitionCatalog(new[]{cmd,cmd}));
             Console.WriteLine("PASS BUS.P0-1 ID / endpoint / schema / catalog");
         }
     }

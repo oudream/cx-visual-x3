@@ -5,9 +5,9 @@ using System.Linq;
 namespace CxVisual.Mechanism.Logic.Commands
 {
     /// <summary>命令参数定义，区分缺失、0、false和显式null；不复制FCM参数库。</summary>
-    public sealed class MLGCommandParameterDefinition
+    public sealed class MCECommandParameterDefinition
     {
-        public MLGCommandParameterDefinition(string code,Type dataType,bool required,
+        public MCECommandParameterDefinition(string code,Type dataType,bool required,
             bool hasDefaultValue=false,object defaultValue=null)
         {
             CheckCode(code);
@@ -47,20 +47,20 @@ namespace CxVisual.Mechanism.Logic.Commands
     }
 
     /// <summary>命令定义只描述输入输出Schema，不持有请求/运行状态。</summary>
-    public sealed class MLGCommandDefinition
+    public sealed class MCECommandDefinition
     {
-        private readonly ReadOnlyCollection<MLGCommandParameterDefinition> _inputs;
-        private readonly ReadOnlyCollection<MLGCommandParameterDefinition> _outputs;
-        public MLGCommandDefinition(long id,string code,string name,
-            IEnumerable<MLGCommandParameterDefinition> inputs,
-            IEnumerable<MLGCommandParameterDefinition> outputs,int schemaVersion=1)
+        private readonly ReadOnlyCollection<MCECommandParameterDefinition> _inputs;
+        private readonly ReadOnlyCollection<MCECommandParameterDefinition> _outputs;
+        public MCECommandDefinition(long id,string code,string name,
+            IEnumerable<MCECommandParameterDefinition> inputs,
+            IEnumerable<MCECommandParameterDefinition> outputs,int schemaVersion=1)
         {
             if(id<=0)throw new ArgumentOutOfRangeException("id");
-            MLGCommandParameterDefinition.CheckCode(code);
+            MCECommandParameterDefinition.CheckCode(code);
             if(string.IsNullOrWhiteSpace(name))throw new ArgumentException("显示名无效","name");
             if(schemaVersion<1)throw new ArgumentOutOfRangeException("schemaVersion");
-            MLGCommandParameterDefinition[] ins=(inputs??Enumerable.Empty<MLGCommandParameterDefinition>()).ToArray();
-            MLGCommandParameterDefinition[] outs=(outputs??Enumerable.Empty<MLGCommandParameterDefinition>()).ToArray();
+            MCECommandParameterDefinition[] ins=(inputs??Enumerable.Empty<MCECommandParameterDefinition>()).ToArray();
+            MCECommandParameterDefinition[] outs=(outputs??Enumerable.Empty<MCECommandParameterDefinition>()).ToArray();
             if(ins.Concat(outs).Any(x=>x==null)||
                 ins.GroupBy(x=>x.Code,StringComparer.Ordinal).Any(g=>g.Count()>1)||
                 outs.GroupBy(x=>x.Code,StringComparer.Ordinal).Any(g=>g.Count()>1))
@@ -72,24 +72,24 @@ namespace CxVisual.Mechanism.Logic.Commands
         public string CommandCode{get;private set;}
         public string Name{get;private set;}
         public int SchemaVersion{get;private set;}
-        public IReadOnlyList<MLGCommandParameterDefinition> Inputs{get{return _inputs;}}
-        public IReadOnlyList<MLGCommandParameterDefinition> Outputs{get{return _outputs;}}
+        public IReadOnlyList<MCECommandParameterDefinition> Inputs{get{return _inputs;}}
+        public IReadOnlyList<MCECommandParameterDefinition> Outputs{get{return _outputs;}}
         public IReadOnlyDictionary<string,object> BindInputs(IReadOnlyDictionary<string,object> values)
         {return Bind(_inputs,values,true);}
         public IReadOnlyDictionary<string,object> ValidateOutputs(IReadOnlyDictionary<string,object> values)
         {return Bind(_outputs,values,false);}
         private static IReadOnlyDictionary<string,object> Bind(
-            IEnumerable<MLGCommandParameterDefinition> definitions,
+            IEnumerable<MCECommandParameterDefinition> definitions,
             IReadOnlyDictionary<string,object> values,bool defaults)
         {
-            MLGCommandParameterDefinition[] ds=definitions.ToArray();
+            MCECommandParameterDefinition[] ds=definitions.ToArray();
             IReadOnlyDictionary<string,object> provided=values ??
                 new ReadOnlyDictionary<string,object>(new Dictionary<string,object>());
             Dictionary<string,object> result=new Dictionary<string,object>(StringComparer.Ordinal);
             foreach(KeyValuePair<string,object> pair in provided)
                 if(!ds.Any(d=>d.Code==pair.Key))
                     throw new ArgumentException("未知命令参数: "+pair.Key);
-            foreach(MLGCommandParameterDefinition d in ds)
+            foreach(MCECommandParameterDefinition d in ds)
             {
                 object value;
                 if(provided.TryGetValue(d.Code,out value))

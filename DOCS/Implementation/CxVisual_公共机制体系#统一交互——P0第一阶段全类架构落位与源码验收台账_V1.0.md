@@ -6,7 +6,7 @@
 - Foundation.Core：FOIInteractionIdGenerator（41+10+12雪花码、进程内Worker租约、回拨/溢出拒绝）、FOIInteractionEndpointAddress（8段路径、数字ID、Run/Generation）。
 - Mechanism.Core：MRIEndpointRegistry / MRIEndpointRegistration（进程内Scoped双索引，Path/ID同一地址，注销防误删、跨Run拒绝）。
 - Mechanism.Data M36：MNMMessageTypeDefinition（可选强类型消息Schema校验）。
-- Mechanism.Logic M12：MLGCommandParameterDefinition、MLGCommandDefinition、MLGCommandDefinitionCatalog（类型/必填/默认值/未知字段与重复定义校验、只读运行目录；不新增工程持久真源）。
+- Mechanism.Logic M12：MCECommandParameterDefinition、MCECommandDefinition、MCECommandDefinitionCatalog（类型/必填/默认值/未知字段与重复定义校验、只读运行目录；不新增工程持久真源）。
 - ArchitectureSmoke：Integration/InteractionStageOneTests.cs；独立入口 `--interaction-stage1`，默认回归也运行。
 
 ## 设计/实现区别
@@ -16,6 +16,14 @@
 - Snowflake 只防本进程内 Worker 冲突，跨进程 WorkerId 必须由部署端保障。
 - DOCS/04 的正式对象编号及命名冻结需与本轮源码逐类复核；基于 ProjectCatalog 与实际 csproj 不新增项目。
 - Windows VS2022/.NET 4.8 编译与测试结果以本提交关联的 GitHub Actions 为准；在没有执行日志前不声称 PASS。
+
+## DOCS/04 对照与复用裁决（2026-10-24）
+
+已实际读取 `DOCS/04_CxVisual Foundation与Mechanism 统一架构与对象API设计规格 V6.4.xlsx` 的对应工作表，并查重：
+- F01 历史候选 `FOISnowflake` / `FOISnowflakeManager` 为旧源码待核；当前 `FOIInteractionIdGenerator` 是限定进程内唯一 Worker 的替代目标，不照搬静态 Manager。
+- M36 历史候选 `MNMMessageTopic`、`MNMNotificationService` 等为增构候选；当前 `MNMMessageTypeDefinition` 只承担强类型消息定义，不声称实现 Topic Registry 或 MessageManager。
+- M12 旧候选 `MCECxCommandContract` / `MCECxCommandBus` / `MCECommandRequest<T>` 等是迁移对象，当前 `.csproj` 中没有其正式实现；本阶段使用 **MCECommandDefinition / MCECommandParameterDefinition / MCECommandDefinitionCatalog** 三种职责，将旧命令契约作为待迁移适配源，不另外移植整个旧 `CxCommandBus`。
+- 本轮 `MLG` 前缀与 DOCS/04 M12 的 `MCE` 不一致，已改为 `MCE`。正式 Owner 仍为 `CxVisual.Mechanism.Logic`。
 
 ## 验收入口
 `CxVisual.Tests.ArchitectureSmoke.exe --interaction-stage1`；再运行默认回归与 `--concurrency`。必须覆盖重复 Worker、时钟回拨、路径非法、双地址同Owner、跨Run、失效令牌、强类型消息校验、命令默认值及0/false、缺失/多余/错型参数、定义重复。

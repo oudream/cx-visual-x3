@@ -21,6 +21,6 @@
     <Reference Include="System.Core"/>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Properties\AssemblyInfo.cs"/><Compile Include="Commands\MLGCommandDefinitionCatalog.cs"/><Compile Include="Commands\MLGCommandDefinition.cs"/></ItemGroup>
+    <Compile Include="Properties\AssemblyInfo.cs"/><Compile Include="Commands\MCECommandDefinitionCatalog.cs"/><Compile Include="Commands\MCECommandDefinition.cs"/></ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets"/>
 </Project>
