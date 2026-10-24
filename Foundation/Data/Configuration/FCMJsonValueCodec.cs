@@ -166,7 +166,18 @@ namespace CxVisual.Foundation.Data.Configuration
             {
                 Type contract = typeof(IFCMConfigValueConverter<>).MakeGenericType(t);
                 if (!contract.IsAssignableFrom(converter.ConverterType)) throw new InvalidOperationException("Invalid converter for " + t.FullName);
-                return contract.GetMethod("Read").Invoke(Activator.CreateInstance(converter.ConverterType), new object[] { raw });
+                try
+                {
+                    return contract.GetMethod("Read").Invoke(
+                        Activator.CreateInstance(converter.ConverterType), new object[] { raw });
+                }
+                catch (TargetInvocationException e)
+                {
+                    // 保留可信配置转换器的原始验证异常；避免泄露不稳定的反射包装。
+                    if (e.InnerException != null)
+                        System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(e.InnerException).Throw();
+                    throw;
+                }
             }
             if (t == typeof(string) || t == typeof(char) || t == typeof(Guid) || t == typeof(DateTimeOffset) ||
                 t == typeof(DateTime) || t == typeof(TimeSpan) || t == typeof(Uri) || t == typeof(Version) || t.IsEnum)
