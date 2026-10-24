@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CxVisual.Mechanism.Data.Messages;
+using CxVisual.Mechanism.Data;
 
 namespace CxVisual.Tests.ArchitectureSmoke
 {
@@ -54,6 +55,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             await TestParallelAndOptionsSnapshotAsync().ConfigureAwait(false);
             TestCodecAndLatency();
             await TestRetainedRoutingAndInterceptorsAsync().ConfigureAwait(false);
+            await TestMpaMessageMappingAsync().ConfigureAwait(false);
         }
 
 
@@ -267,6 +269,62 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 await bus.StopAsync(true).ConfigureAwait(false);
             }
             Console.WriteLine("PASS BUS.M36 retained ACL-shaped filters, interceptor lifecycle and isolation");
+        }
+
+
+        /// <summary>
+        /// MPA DataMapping的真实消息发送映射：复用MDSProtocolDataTargetAccess的
+        /// 既有publish注入，不增加一套消息管理器，不将Accepted冒充实际投递完成。
+        /// </summary>
+        private static async Task TestMpaMessageMappingAsync()
+        {
+            const string mapped="/machine/1201/app/XRay/module/Camera/message/Captured";
+            int observed=0;
+            using (MNMMessageCenter bus=new MNMMessageCenter())
+            {
+                Func<string,object,CancellationToken,Task> binding=async (target,payload,ct)=>
+                {
+                    MNMPublishReceipt receipt=await bus.PublishAsync<object>(
+                        target,payload,
+                        new MNMPublishOptions{RequireSubscriber=true},
+                        ct).ConfigureAwait(false);
+                    if(receipt.Stage!=MNMPublishStage.Delivered || receipt.DeliveredCount==0)
+                        throw new InvalidOperationException(
+                            "MPA消息目标未真正完成订阅投递: "+receipt.Stage);
+                };
+                MDSProtocolDataTargetAccess mpa=new MDSProtocolDataTargetAccess(publish:binding);
+                using(bus.Subscribe<string>(mapped,ctx=>
+                {
+                    Check(ctx.Payload=="Image001","MPA message payload");
+                    Interlocked.Increment(ref observed);
+                }))
+                {
+                    await mpa.PublishAsync(mapped,"Image001",CancellationToken.None)
+                        .ConfigureAwait(false);
+                    Check(observed==1,"MPA actual injected M36 delivery");
+                    await ExpectAsync<ArgumentException>(async()=>await mpa.PublishAsync(
+                        "/machine/1201/app/XRay/module/Camera/message/+",
+                        "Image001",CancellationToken.None).ConfigureAwait(false))
+                        .ConfigureAwait(false);
+                    using(CancellationTokenSource cancel=new CancellationTokenSource())
+                    {
+                        cancel.Cancel();
+                        await ExpectAsync<OperationCanceledException>(async()=>await
+                            mpa.PublishAsync(mapped,"Image001",cancel.Token)
+                            .ConfigureAwait(false)).ConfigureAwait(false);
+                    }
+                    Check(observed==1,"MPA rejected/aborted operations have no side effect");
+                }
+                await ExpectAsync<InvalidOperationException>(async()=>await
+                    mpa.PublishAsync(mapped,"Image002",CancellationToken.None)
+                    .ConfigureAwait(false)).ConfigureAwait(false);
+                Check(observed==1,"MPA no subscribers must fail instead of fake success");
+                await bus.StopAsync(true).ConfigureAwait(false);
+            }
+            MDSProtocolDataTargetAccess absent=new MDSProtocolDataTargetAccess();
+            Expect<NotSupportedException>(()=>absent.PublishAsync(
+                mapped,"Image001",CancellationToken.None));
+            Console.WriteLine("PASS BUS.M36 MPA data mapping / real delivery and reject semantics");
         }
 
         private static async Task TestBasicAsync()
