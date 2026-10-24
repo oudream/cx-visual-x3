@@ -93,9 +93,50 @@ namespace CxVisual.Tests.ArchitectureSmoke
             ConnectorModbusTcpLoopback();
             UdpLoopback();
             HttpConfigurationSmoke();
+            NamedPipeLoopback();
             Console.WriteLine("CHANNEL.TRANSPORT: TCP/UDP loopback MultiPeer and stale generation PASS");
         }
         // 大数据仍应完整传给上层；证据只能有界留存，并明确记录省略原因。
+        private static void NamedPipeLoopback()
+        {
+            string pipeName = "CxVisualSmoke-" + Guid.NewGuid().ToString("N");
+            MCCNamedPipeServerChannel server = new MCCNamedPipeServerChannel(
+                new MCCNamedPipeServerChannelConfiguration { Id = "pipeserver", PipeName = pipeName });
+            MCCNamedPipeClientChannel client = new MCCNamedPipeClientChannel(
+                new MCCNamedPipeClientChannelConfiguration { Id = "pipeclient", PipeName = pipeName });
+            byte[] received = null, reply = null;
+            MCCSubChannelAddress source = null;
+            using (ManualResetEventSlim first = new ManualResetEventSlim(false))
+            using (ManualResetEventSlim second = new ManualResetEventSlim(false))
+            {
+                server.Received += packet => {
+                    received = packet.Data; source = packet.Address; first.Set();
+                };
+                client.Received += packet => { reply = packet.Data; second.Set(); };
+                try
+                {
+                    server.Open();
+                    client.Open();
+                    client.SendAsync(new byte[] { 9, 8, 7 },
+                        new MCCSubChannelAddress(client.Id), CancellationToken.None)
+                        .GetAwaiter().GetResult();
+                    Check(first.Wait(TimeSpan.FromSeconds(5)) &&
+                        received.SequenceEqual(new byte[] { 9, 8, 7 }) &&
+                        source.HasSubChannel, "NamedPipe client -> server");
+                    server.SendAsync(new byte[] { 1, 2 }, source, CancellationToken.None)
+                        .GetAwaiter().GetResult();
+                    Check(second.Wait(TimeSpan.FromSeconds(5)) &&
+                        reply.SequenceEqual(new byte[] { 1, 2 }),
+                        "NamedPipe server -> client");
+                }
+                finally
+                {
+                    client.Close();
+                    server.Close();
+                }
+            }
+        }
+
         private static void HttpConfigurationSmoke()
         {
             MCCHttpClientChannelConfiguration config = new MCCHttpClientChannelConfiguration {
