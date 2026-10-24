@@ -108,9 +108,21 @@ namespace CxVisual.Mechanism.Logic.Commands
         {
             ValidateType(value);
             if (value == null) return;
-            if (FormatPattern != null && !Regex.IsMatch((string)value, FormatPattern,
-                RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(50)))
-                throw new ArgumentException("参数格式不符合要求: " + Code);
+            if (FormatPattern != null)
+            {
+                bool matches;
+                try
+                {
+                    matches = Regex.IsMatch((string)value, FormatPattern,
+                        RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(50));
+                }
+                catch (RegexMatchTimeoutException)
+                {
+                    // 用户可控输入不允许把正则超时异常冲出命令受理边界。
+                    throw new ArgumentException("参数格式校验超时: " + Code);
+                }
+                if (!matches) throw new ArgumentException("参数格式不符合要求: " + Code);
+            }
             if (Children.Count > 0)
             {
                 IEnumerable<KeyValuePair<string, object>> pairs =
