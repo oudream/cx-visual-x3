@@ -55,6 +55,8 @@ namespace CxVisual.Mechanism.Data.Messages
         public string SubscriberId { get; set; }
         public bool ReplayRetained { get; set; } = true;
         public string SourceId { get; set; }
+        /// <summary>仅接收特定发布来源。SourceFilter不是授权证明。</summary>
+        public string SourceFilter { get; set; }
         public string TypeId { get; set; }
         public bool NoLocal { get; set; }
         public Func<MNMMessage, bool> Predicate { get; set; }

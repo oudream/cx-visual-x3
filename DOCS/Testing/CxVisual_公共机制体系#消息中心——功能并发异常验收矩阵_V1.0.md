@@ -1,4 +1,4 @@
-# CxVisual 统一消息中心 M36——功能、并发、异常验收矩阵 V1.0
+# CxVisual 统一消息中心 M36——功能、并发、异常验收矩阵 V1.1
 
 > 对应 M36 MessageCenter 进程内实现。**测试用例是否 PASS 以最终提交 SHA 的真实 Windows CI 与Console日志为准；目前默认 NOT_RUN。**
 
@@ -26,3 +26,14 @@
 | MC-20 | MPA适配与未来桥接 | 保持旧MPA签名、Host可注入消息调用 | 不编造MQTT Broker、网络QoS与硬件通过 | NOT_RUN |
 
 **测试入口**：`CxVisual.Tests.ArchitectureSmoke.exe --message-center`，及默认架构回归。实际源码中的回归覆盖 MC-01～16 的主要正反场景；MC-17～20 属后续集成/UI/性能专项验收，不能因当前基础测试PASS而标成PASS。
+
+
+## 2. V1.1 增强专项
+
+| CaseId | 内容 | 通过标准 | 初始状态 |
+|---|---|---|---|
+| MC-21 | 点对点与来源过滤 | TargetId指定SubscriberId不广播；SourceFilter不匹配无接收 | NOT_RUN |
+| MC-22 | 嵌套异步发布 | Handler内部await PublishAsync不会把单Worker卡死，返回真实Delivery | NOT_RUN |
+| MC-23 | 超时包含请求发送等待 | 慢请求处理者下超时按整个RequestAsync窗口生效、订阅释放 | NOT_RUN |
+
+共23条分级验收，用例未执行前不能标PASS。

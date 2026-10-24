@@ -1,4 +1,4 @@
-# CxVisual 公共机制体系 # 消息中心——完整设计与全类 API V1.0
+# CxVisual 公共机制体系 # 消息中心——完整设计与全类 API V1.1
 
 > 2026-10-24；适用 CxVisual.NET Framework 4.8 / Mechanism.Data M36；父规格：统一交互 V1.5。  
 > 宗旨：**各方面都尽能力展现，便捷友好尽支撑各专业达到目标。**  
@@ -239,3 +239,11 @@ classDiagram
 1–5：总体目标与进程内交互；6–10：Header/Payload、Topic、注册、发布、路由；11–12：同步/队列/SyncContext及广播/共享/请求响应；13–14：进程内QoS0/QoS1、保留/TTL、有限队列；15–18：顺序/背压、类型/来源/内容过滤、Correlation与超时、重试和死信；19–20：Pause/Resume/Stop及指标；21：Codec/Bridge及中间件扩展位置留明示待增强；22–30：模型、接口、经理/处理/策略对象及生命周期的逐类归属见§3；31–34：分层、Owner复用、两幅Mermaid图；35–38：工业场景、真实示例、承诺和不承诺的边界；39–40：Tests/ArchitectureSmoke与Windows真实CI为唯一交付证据。
 
 **必须诚实保留的范围**：跨进程/跨PC、多进程持久QoS1、外部MQTT broker、Web Studio操作界面、外部设备HIL均不在进程内中心本轮实际代码内；完整投产前需分阶段实现并验收。
+
+
+## 11. V1.1 真实路由与嵌套请求修订
+
+- `MNMMessageRouter` 已成为独立内部协作类，只读取 Center 的订阅表快照，按 `Topic + Type + SubscriberId + SourceFilter + TargetId + SharedGroup` 精确解析；**不建立第二个订阅仓库**。
+- `TargetId` 绑定订阅者 ID 后为点对点，不会泄漏给其他订阅者；`SourceFilter` 是可选来源过滤，**不是可信身份认证**。
+- `RequestAsync` 从发布请求开始计算超时，覆盖请求处理与响应等待；超时只结束调用方的等待，不撤销已开始的业务动作。
+- 单 Worker 的回调内嵌套 `PublishAsync` 采用受限（16层）内联分发，避免等待自身队列造成死锁。**这种嵌套消息会先于外层队列后续消息到达，不能再宣称绝对全局FIFO；普通非嵌套发送仍保持入队先后顺序**。

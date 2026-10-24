@@ -48,6 +48,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
             await TestRequestResponseAsync().ConfigureAwait(false);
             await TestConcurrencyAsync().ConfigureAwait(false);
             await TestSecurityAsync().ConfigureAwait(false);
+            await TestTargetAndSourceAsync().ConfigureAwait(false);
+            await TestNestedAsyncPublishAsync().ConfigureAwait(false);
         }
 
         private static async Task TestBasicAsync()
@@ -291,6 +293,61 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         new MNMPublishOptions{SourceId="trusted"}).ConfigureAwait(false);
                     Check(rc.DeliveredCount==1,"allowed source");
                 }
+            }
+        }
+        private static async Task TestTargetAndSourceAsync()
+        {
+            using(MNMMessageCenter bus=new MNMMessageCenter())
+            {
+                int a=0,b=0;
+                using(bus.Subscribe<int>(Camera,ctx=>Interlocked.Increment(ref a),
+                    new MNMSubscriptionOptions{SubscriberId="AI",SourceFilter="Camera"}))
+                using(bus.Subscribe<int>(Camera,ctx=>Interlocked.Increment(ref b),
+                    new MNMSubscriptionOptions{SubscriberId="HMI"}))
+                {
+                    MNMPublishReceipt first=await bus.PublishAsync(Camera,1,
+                        new MNMPublishOptions{SourceId="Camera",TargetId="AI"}).ConfigureAwait(false);
+                    Check(first.MatchedCount==1 && a==1 && b==0,"point-to-point AI only");
+                    MNMPublishReceipt second=await bus.PublishAsync(Camera,2,
+                        new MNMPublishOptions{SourceId="Unknown",TargetId="AI"}).ConfigureAwait(false);
+                    Check(second.MatchedCount==0 && a==1,"source filter");
+                    MNMPublishReceipt third=await bus.PublishAsync(Camera,3,
+                        new MNMPublishOptions{SourceId="Camera"}).ConfigureAwait(false);
+                    Check(third.MatchedCount==2 && a==2 && b==1,"broadcast remains");
+                }
+            }
+        }
+        private static async Task TestNestedAsyncPublishAsync()
+        {
+            using(MNMMessageCenter bus=new MNMMessageCenter())
+            {
+                int nested=0;
+                using(bus.Subscribe<string>(Ai,ctx=>Interlocked.Increment(ref nested)))
+                using(bus.SubscribeAsync<int>(Camera,async ctx=>
+                {
+                    MNMPublishReceipt reply=await bus.PublishAsync(Ai,"done").ConfigureAwait(false);
+                    Check(reply.DeliveredCount==1,"nested callback publish");
+                }))
+                {
+                    MNMPublishReceipt rc=await bus.PublishAsync(Camera,99).ConfigureAwait(false);
+                    Check(rc.DeliveredCount==1 && nested==1,
+                        "nested PublishAsync cannot deadlock single consumer");
+                }
+
+                bool slowHandlerCompleted = false;
+                using(bus.SubscribeAsync<int>(Fault,async ctx=>
+                {
+                    await Task.Delay(300).ConfigureAwait(false);
+                    slowHandlerCompleted = true;
+                }))
+                {
+                    await ExpectAsync<TimeoutException>(async() =>
+                        await bus.RequestAsync<int,string>(Fault,1,Reply,
+                            TimeSpan.FromMilliseconds(20)).ConfigureAwait(false)).ConfigureAwait(false);
+                    Check(!slowHandlerCompleted,
+                        "timeout applies during slow request handler, not only after send");
+                }
+                await bus.StopAsync().ConfigureAwait(false);
             }
         }
     }

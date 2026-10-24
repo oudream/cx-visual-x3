@@ -1,4 +1,4 @@
-# CxVisual 统一消息中心 M36——真实实现、回归与验收台账 V1.0
+# CxVisual 统一消息中心 M36——真实实现、回归与验收台账 V1.1
 
 > 2026-10-24；对应主规格：`DOCS/Architecture/CxVisual_公共机制体系#消息中心——完整设计与全类API_V1.0.md`。
 > 本台账登记实际文件与验收方法，**是否 PASS 只以本提交 SHA 的 Windows CI 真实结果为准**。
@@ -49,3 +49,11 @@ Tests\ArchitectureSmoke\bin\Release\CxVisual.Tests.ArchitectureSmoke.exe --concu
 **安全性质**：PublishOptions.SourceId 目前是来源标签，不具备认证完整性；AuthorizeSubscribe/Publish 是可注入拦截点，不能取代现有M28身份Owner。跨进程桥接前必须可信Host绑定Caller与Scope。
 
 本轮应继续将待优化项记录为具体缺口，后续根据真实测试拆出MessageRouter/Dispatcher/Queue/Scheduler独立类，不为了类表数量增壳。
+
+
+## 5. V1.1 路由、安全边界与时序增强
+
+- 新增 `Messages/MNMMessageRouter.cs`：`TargetId` 精确投递、`SourceFilter` 与 `TypeId` 匹配、NoLocal/SharedGroup竞争消费；Center 始终是 Subscription 的唯一 Owner。
+- 异步回调内嵌套 `PublishAsync` 以受限内联避免单消费者队列自等待死锁；超过16层明确拒绝。
+- `RequestAsync` 计时覆盖请求发送和响应等待，超时是观察 Unknown，不自动重试设备动作。
+- 新增目标路由、嵌套发布、发送阶段超时的正反测试，正式 Windows 证据须对应新提交 SHA。

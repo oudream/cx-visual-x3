@@ -63,8 +63,7 @@ namespace CxVisual.Mechanism.Data.Messages
         private readonly List<MNMMessageSubscription> _subs = new List<MNMMessageSubscription>();
         private readonly Dictionary<string, MNMMessageTypeDefinition> _types =
             new Dictionary<string, MNMMessageTypeDefinition>(StringComparer.Ordinal);
-        private readonly Dictionary<string, int> _roundRobin =
-            new Dictionary<string, int>(StringComparer.Ordinal);
+        private readonly MNMMessageRouter _router = new MNMMessageRouter();
         private readonly Queue<MNMDeliveryWork> _queue = new Queue<MNMDeliveryWork>();
         private readonly Dictionary<string, MNMMessage> _retained =
             new Dictionary<string, MNMMessage>(StringComparer.Ordinal);
@@ -75,6 +74,7 @@ namespace CxVisual.Mechanism.Data.Messages
         private readonly Task _worker;
         private MNMMessageState _state = MNMMessageState.Running;
         private long _published, _accepted, _delivered, _failed, _retried, _rejected, _dropped;
+        private readonly AsyncLocal<int> _dispatchDepth = new AsyncLocal<int>();
 
         public MNMMessageCenter(MNMMessageOptions options = null)
         {
@@ -219,7 +219,7 @@ namespace CxVisual.Mechanism.Data.Messages
             if (opt.DispatchMode == MNMDispatchMode.Inline)
             {
                 lock(_gate) { _accepted++; if (work.Retain) Retain(work.Message); }
-                return DeliverAsync(work).GetAwaiter().GetResult();
+                return DispatchWithDepthAsync(work).GetAwaiter().GetResult();
             }
             Enqueue(work);
             return work.Receipt;
@@ -232,10 +232,11 @@ namespace CxVisual.Mechanism.Data.Messages
             MNMPublishOptions opt = options ?? new MNMPublishOptions();
             MNMDeliveryWork work = Prepare(topic,payload,opt);
             if (work.Receipt.Stage == MNMPublishStage.Rejected) return work.Receipt;
-            if (opt.DispatchMode == MNMDispatchMode.Inline)
+            if (opt.DispatchMode == MNMDispatchMode.Inline || _dispatchDepth.Value > 0)
             {
+                // 消息Handler中await嵌套PublishAsync时，不能排队等待唯一Worker自己。
                 lock(_gate) { _accepted++; if (work.Retain) Retain(work.Message); }
-                return await DeliverAsync(work).ConfigureAwait(false);
+                return await DispatchWithDepthAsync(work).ConfigureAwait(false);
             }
             Enqueue(work);
             using (cancellationToken.Register(() => work.Completed.TrySetCanceled()))
@@ -280,7 +281,7 @@ namespace CxVisual.Mechanism.Data.Messages
             {
                 DemandOpen();
                 _published++;
-                receivers = ResolveSubscriptions(message);
+                receivers = _router.Resolve(_subs,message);
             }
             MNMDeliveryWork work = NewWork(message,receivers);
             if (options.RequireSubscriber && receivers.Length == 0)
@@ -306,41 +307,6 @@ namespace CxVisual.Mechanism.Data.Messages
 
         private static bool IsExpired(MNMMessage m)
         { return m.Header.ExpiresUtc.HasValue && m.Header.ExpiresUtc.Value <= DateTime.UtcNow; }
-
-        private MNMMessageSubscription[] ResolveSubscriptions(MNMMessage m)
-        {
-            var normal = new List<MNMMessageSubscription>();
-            var shared = new Dictionary<string,List<MNMMessageSubscription>>(StringComparer.Ordinal);
-            var already = new HashSet<string>(StringComparer.Ordinal);
-            foreach (MNMMessageSubscription s in _subs)
-            {
-                if (!s.IsActive || !s.TopicFilter.Matches(m.Header.Topic) ||
-                    !s.PayloadType.IsAssignableFrom(m.Payload.PayloadType) ||
-                    (s.Options.NoLocal && s.Options.SourceId == m.Header.SourceId) ||
-                    (!string.IsNullOrWhiteSpace(s.Options.TypeId) && s.Options.TypeId != m.Header.TypeId))
-                    continue;
-                if (s.SharedGroup == null)
-                {
-                    if (already.Add(s.SubscriberId)) normal.Add(s);
-                }
-                else
-                {
-                    string key = s.SharedGroup + "|" + s.Filter;
-                    List<MNMMessageSubscription> list;
-                    if (!shared.TryGetValue(key,out list))
-                    { list=new List<MNMMessageSubscription>(); shared.Add(key,list); }
-                    list.Add(s);
-                }
-            }
-            foreach (var group in shared.OrderBy(x => x.Key,StringComparer.Ordinal))
-            {
-                int next;
-                if (!_roundRobin.TryGetValue(group.Key,out next)) next = 0;
-                normal.Add(group.Value[next % group.Value.Count]);
-                _roundRobin[group.Key] = (next + 1) % group.Value.Count;
-            }
-            return normal.ToArray();
-        }
 
         private static MNMDeliveryWork NewWork(MNMMessage message,MNMMessageSubscription[] subs)
         {
@@ -427,8 +393,17 @@ namespace CxVisual.Mechanism.Data.Messages
                     }
                     work = _queue.Dequeue();
                 }
-                await DeliverAsync(work).ConfigureAwait(false);
+                await DispatchWithDepthAsync(work).ConfigureAwait(false);
             }
+        }
+
+        private async Task<MNMPublishReceipt> DispatchWithDepthAsync(MNMDeliveryWork work)
+        {
+            int previous = _dispatchDepth.Value;
+            if (previous >= 16) throw new InvalidOperationException("嵌套消息深度超过16，拒绝无限递归");
+            _dispatchDepth.Value = previous + 1;
+            try { return await DeliverAsync(work).ConfigureAwait(false); }
+            finally { _dispatchDepth.Value = previous; }
         }
 
         private async Task<MNMPublishReceipt> DeliverAsync(MNMDeliveryWork work)
@@ -611,14 +586,22 @@ namespace CxVisual.Mechanism.Data.Messages
                 if (ctx.Header.CorrelationId == correlation) pending.TrySetResult(ctx);
             },new MNMSubscriptionOptions { ReplayRetained=false }))
             {
-                MNMPublishReceipt sent = await PublishAsync(requestTopic,payload,
+                // 超时从发送开始计时，覆盖发布处理及回复等待，取消只是停止观察。
+                Task timeoutTask = Task.Delay(timeout,cancellationToken);
+                Task<MNMPublishReceipt> sending = PublishAsync(requestTopic,payload,
                     new MNMPublishOptions { CorrelationId=correlation,ReplyTo=responseTopic,
                         QoS=MNMMessageQoS.AtLeastOnceInProcess,RequireSubscriber=true },
-                    cancellationToken).ConfigureAwait(false);
+                    cancellationToken);
+                Task first = await Task.WhenAny(sending,timeoutTask).ConfigureAwait(false);
+                if (first != sending)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    throw new TimeoutException("消息请求发送等待超时；副作用状态未知");
+                }
+                MNMPublishReceipt sent = await sending.ConfigureAwait(false);
                 if (sent.Stage == MNMPublishStage.Rejected || sent.Stage == MNMPublishStage.Failed)
                     throw new InvalidOperationException("请求发送失败：" + sent.Error);
-                Task delay = Task.Delay(timeout,cancellationToken);
-                Task done = await Task.WhenAny(pending.Task,delay).ConfigureAwait(false);
+                Task done = await Task.WhenAny(pending.Task,timeoutTask).ConfigureAwait(false);
                 if (done == pending.Task) return await pending.Task.ConfigureAwait(false);
                 cancellationToken.ThrowIfCancellationRequested();
                 throw new TimeoutException("等待消息请求响应超时，不能推断业务动作未发生");
