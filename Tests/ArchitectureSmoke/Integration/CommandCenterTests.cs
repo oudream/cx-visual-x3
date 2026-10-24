@@ -56,6 +56,41 @@ namespace CxVisual.Tests.ArchitectureSmoke
         // 进阶正反：注册热替换、过滤发现、操作身份、快照与执行隔离。
         private static void ExtendedRun()
         {
+
+            // 稳定命令ID与已发布Schema版本都能用于目标发现；版本不符不得触发Handler。
+            int versionInvoked = 0;
+            using (MRKCommandCenter versioned = new MRKCommandCenter())
+            using (versioned.Register(new MRKCommandDescriptor("versioned", Definition()),
+                Handler(x => { Interlocked.Increment(ref versionInvoked); return x; })))
+            {
+                Check(versioned.Router.ResolveById("versioned", 5183) != null &&
+                    versioned.Router.ResolveById("versioned", 9999) == null &&
+                    versioned.Router.Discover(commandId: 5183, schemaVersion: 1).Count == 1 &&
+                    versioned.Router.Discover(commandId: 5183, schemaVersion: 2).Count == 0,
+                    "command ID and exact published schema discovery");
+                MRKCommandRequest stale = new MRKCommandRequest("versioned", "Calculate",
+                    new Dictionary<string, object> { { "Input", 3.0 } },
+                    expectedSchemaVersion: 2);
+                MRKCommandResponse rejected = versioned.InvokeAsync(stale).GetAwaiter().GetResult();
+                Check(rejected.Stage == MRKCommandStage.Rejected &&
+                    rejected.ErrorCode == "SchemaVersionMismatch" && versionInvoked == 0,
+                    "stale schema must not perform side effects");
+                MRKCommandRequest match = new MRKCommandRequest("versioned", "Calculate",
+                    new Dictionary<string, object> { { "Input", 3.0 } },
+                    expectedSchemaVersion: 1);
+                MRKCommandResponse accepted = versioned.InvokeAsync(match).GetAwaiter().GetResult();
+                Check(accepted.State == MRKCommandState.Completed && versionInvoked == 1,
+                    "matching schema should execute once");
+                bool duplicateId = false;
+                try
+                {
+                    using (versioned.Register(new MRKCommandDescriptor("versioned",
+                        Definition("AnotherCommand")), Handler(x => x))) { }
+                }
+                catch (InvalidOperationException) { duplicateId = true; }
+                Check(duplicateId && versioned.Router.Discover(target: "versioned").Count == 1,
+                    "same target cannot register same CommandId with different command codes");
+            }
             FDCCommandDefinition broadcastDefinition = Definition();
             using (MRKCommandCenter center = new MRKCommandCenter())
             using (center.Register(new MRKCommandDescriptor("line1", broadcastDefinition),

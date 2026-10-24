@@ -165,6 +165,11 @@
 - [统一消息中心功能并发异常测试矩阵 V1.3](Testing/CxVisual_公共机制体系%23消息中心——功能并发异常验收矩阵_V1.3.md)：36项分级候选验收，V1.3明确Foundation.Data和Mechanism.Data两个既有项目归属，同时覆盖有界ThreadPool分发、参数快照、Codec和延迟指标；源码单元/并发、UI及性能分开记录。
 - **实际Owner**：M36位于 Mechanism.Data；当前P0不需要Broker，不能代替M09变量/MDS数据Owner/M12命令或MRK执行。消息中心发布订阅的真实验收以具体提交的Windows CI为准。
 
+## 统一命令中心 双项目归属（2026-10-24）
+
+- [命令中心双项目Owner裁决 V1.0](Decisions/CxVisual_统一命令中心双项目归属裁决_V1.0.md)：命令基础定义、参数Schema、快照统一在 `Foundation.Data.Commands`；命令运行机制、MDS绑定适配统一在 `Mechanism.Runtime.Commands`。原Logic/MCE及Mechanism.Data命令专属文件已物理迁出，不建立额外项目。
+- [命令中心实现与验收](Implementation/CxVisual_公共机制体系%23命令中心——进程内实现与验收_V1.0.md)：进程内实现、调用示例、Windows专项验收与明确未完成的跨进程及硬件边界。
+
 ## 统一交互机制 V1.5（2026-10-24）
 
 - [四大能力与双层总线完整设计及验收 V1.5](Architecture/CxVisual_公共机制体系%23统一交互——四大能力与双层总线完整设计及验收_V1.5.md)：变量高速、消息轻巧、命令受控执行、运行数据与大数据；进程内逻辑总线先行，进程外 MQTT/SHM/文件服务按需桥接；双寻址、分层订阅、Owner、反馈语义；**V1.3 明确 MQTT/IoT 风格消息/命令；V1.4 追加41个对象职责角色及OO/GoF/AOP、管理者和流转生命周期完整设计（不意味着新增41个类）；**V1.5 定案消息 Topic、Payload 四类、MQTT 原生 `+/#` 过滤，以及命令参数范围、单位和默认超时的源码契约**。

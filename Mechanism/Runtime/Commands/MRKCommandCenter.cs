@@ -6,7 +6,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using CxVisual.Foundation.Data.Commands;
 using CxVisual.Foundation.Data.Types;
-using CxVisual.Foundation.Data.Commands;
 using CxVisual.Mechanism.Runtime.Execution;
 
 namespace CxVisual.Mechanism.Runtime.Commands
@@ -58,6 +57,10 @@ namespace CxVisual.Mechanism.Runtime.Commands
                 if (_disposed) throw new ObjectDisposedException("MRKCommandRegistry");
                 string key = Key(descriptor.Target, descriptor.Definition.CommandCode);
                 if (_entries.ContainsKey(key)) throw new InvalidOperationException("命令处理器重复注册：" + key);
+                if (_entries.Values.Any(e => e.Descriptor.Target == descriptor.Target &&
+                    e.Descriptor.Definition.CommandId == descriptor.Definition.CommandId))
+                    throw new InvalidOperationException("同一目标的命令ID必须唯一：" +
+                        descriptor.Definition.CommandId);
                 Entry item = new Entry(descriptor, handler); _entries.Add(key, item);
                 return new Registration(this, item);
             }
@@ -74,6 +77,10 @@ namespace CxVisual.Mechanism.Runtime.Commands
                 Entry previous;
                 if (!_entries.TryGetValue(key, out previous))
                     throw new KeyNotFoundException("待更新命令不存在：" + key);
+                if (_entries.Values.Any(e => !object.ReferenceEquals(e, previous) &&
+                    e.Descriptor.Target == descriptor.Target &&
+                    e.Descriptor.Definition.CommandId == descriptor.Definition.CommandId))
+                    throw new InvalidOperationException("更新后命令ID与现有目标命令冲突");
                 Entry updated = new Entry(descriptor, handler);
                 previous.Enabled = false;
                 _entries[key] = updated;
@@ -91,16 +98,31 @@ namespace CxVisual.Mechanism.Runtime.Commands
         }
         public MRKCommandDescriptor Find(string target, string code)
         { Entry e = Resolve(target, code); return e == null ? null : e.Descriptor; }
+        public MRKCommandDescriptor FindById(string target, long commandId)
+        {
+            if (string.IsNullOrWhiteSpace(target)) throw new ArgumentException("目标不能为空", "target");
+            if (commandId <= 0) throw new ArgumentOutOfRangeException("commandId");
+            lock (_gate)
+            {
+                if (_disposed) return null;
+                Entry found = _entries.Values.FirstOrDefault(e => e.Enabled &&
+                    e.Descriptor.Target == target && e.Descriptor.Definition.CommandId == commandId);
+                return found == null ? null : found.Descriptor;
+            }
+        }
         public IReadOnlyList<MRKCommandDescriptor> Discover(string target = null,
             MRKCommandKind? kind = null, string capability = null,
-            string name = null, string commandCode = null)
+            string name = null, string commandCode = null,
+            long? commandId = null, int? schemaVersion = null)
         {
             lock (_gate) return Array.AsReadOnly(_entries.Values.Where(e => e.Enabled &&
                 (target == null || e.Descriptor.Target == target) &&
                 (!kind.HasValue || e.Descriptor.Kind == kind.Value) &&
                 (capability == null || e.Descriptor.Capabilities.Contains(capability)) &&
                 (name == null || e.Descriptor.Definition.Name == name) &&
-                (commandCode == null || e.Descriptor.Definition.CommandCode == commandCode))
+                (commandCode == null || e.Descriptor.Definition.CommandCode == commandCode) &&
+                (!commandId.HasValue || e.Descriptor.Definition.CommandId == commandId.Value) &&
+                (!schemaVersion.HasValue || e.Descriptor.Definition.SchemaVersion == schemaVersion.Value))
                 .Select(e => e.Descriptor).OrderBy(d => d.Target, StringComparer.Ordinal)
                 .ThenBy(d => d.Definition.CommandCode, StringComparer.Ordinal).ToArray());
         }
@@ -143,14 +165,17 @@ namespace CxVisual.Mechanism.Runtime.Commands
         { _registry = registry ?? throw new ArgumentNullException("registry"); }
         public MRKCommandDescriptor Resolve(string target, string code)
         { return _registry.Find(target, code); }
+        public MRKCommandDescriptor ResolveById(string target, long commandId)
+        { return _registry.FindById(target, commandId); }
         public IReadOnlyList<MRKCommandDescriptor> Discover(string target = null,
             MRKCommandKind? kind = null, string capability = null,
-            string name = null, string commandCode = null)
-        { return _registry.Discover(target, kind, capability, name, commandCode); }
+            string name = null, string commandCode = null,
+            long? commandId = null, int? schemaVersion = null)
+        { return _registry.Discover(target, kind, capability, name, commandCode, commandId, schemaVersion); }
     }
 
     /// <summary>
-    /// MRK命令入口：MCE为唯一静态定义、MRK Tracker/Lease管理副作用及资源，
+    /// MRK命令入口：Foundation.Data.Commands为唯一静态定义、MRK Tracker/Lease管理副作用及资源，
     /// 本地有界受理、不建第二流程执行引擎、不通过MessageBus隐式执行设备命令。
     /// </summary>
     public sealed class MRKCommandCenter : IDisposable
@@ -234,6 +259,10 @@ namespace CxVisual.Mechanism.Runtime.Commands
             MRKCommandRegistry.Entry entry = _registry.Resolve(request.Target, request.CommandCode);
             if (entry == null)
                 return new MRKCommandSubmission(Reject(request, "HandlerNotFound", "处理器未注册或已禁用"), null);
+            if (request.ExpectedSchemaVersion > 0 &&
+                request.ExpectedSchemaVersion != entry.Descriptor.Definition.SchemaVersion)
+                return new MRKCommandSubmission(Reject(request, "SchemaVersionMismatch",
+                    "请求版本与目标已发布命令Schema不一致"), null);
             IReadOnlyDictionary<string, object> inputs;
             try
             {
@@ -412,7 +441,8 @@ namespace CxVisual.Mechanism.Runtime.Commands
                 values.Add(binding.Parameter, await owner.ReadAsync(binding.DataAddress, cancellation).ConfigureAwait(false));
             }
             MRKCommandRequest actual = new MRKCommandRequest(request.Target, request.CommandCode, values,
-                request.Caller, request.OperationId, request.RequestId, request.Options);
+                request.Caller, request.OperationId, request.RequestId, request.Options,
+                request.ExpectedSchemaVersion);
             MRKCommandResponse response = await InvokeAsync(actual, cancellation).ConfigureAwait(false);
             if (response.State == MRKCommandState.Completed)
                 foreach (MRKCommandParameterBinding binding in outputs)

@@ -5,7 +5,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CxVisual.Foundation.Data.Commands;
-using CxVisual.Foundation.Data.Commands;
 using CxVisual.Foundation.Data.Types;
 
 namespace CxVisual.Mechanism.Runtime.Commands
@@ -70,8 +69,9 @@ namespace CxVisual.Mechanism.Runtime.Commands
         public MRKCommandRequest(string target, string commandCode,
             IReadOnlyDictionary<string, object> inputs = null, string caller = null,
             Guid operationId = default(Guid), Guid requestId = default(Guid),
-            MRKCommandOptions options = null)
+            MRKCommandOptions options = null, int expectedSchemaVersion = 0)
         {
+            if (expectedSchemaVersion < 0) throw new ArgumentOutOfRangeException("expectedSchemaVersion");
             if (string.IsNullOrWhiteSpace(target) || string.IsNullOrWhiteSpace(commandCode))
                 throw new ArgumentException("命令目标和编码不能为空");
             Target = target; CommandCode = commandCode; Inputs = inputs;
@@ -79,7 +79,9 @@ namespace CxVisual.Mechanism.Runtime.Commands
             OperationId = operationId == Guid.Empty ? Guid.NewGuid() : operationId;
             RequestId = requestId == Guid.Empty ? Guid.NewGuid() : requestId;
             Options = options ?? new MRKCommandOptions();
+            ExpectedSchemaVersion = expectedSchemaVersion;
         }
+        public int ExpectedSchemaVersion { get; private set; }
         public string Target { get; private set; }
         public string CommandCode { get; private set; }
         public IReadOnlyDictionary<string, object> Inputs { get; private set; }

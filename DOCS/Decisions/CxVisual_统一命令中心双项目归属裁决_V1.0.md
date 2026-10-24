@@ -66,3 +66,7 @@ using (center.Register(new MRKCommandDescriptor("algorithm", definition),
 ## 五、后续路线
 
 先完成本次两项目归一及CI稳定，再基于 `Mechanism.Runtime.Commands` 继续抽取确有独立价值的 Dispatcher/Executor、可靠生命周期与多场景使用入口，保持数据/工程/运行唯一真源。
+
+## 六、双项目稳定后继续补齐的命令发现与版本门禁
+
+命令专属代码依然只在两个既有项目内。Registry 对同一 Target 的 CommandId 强制唯一；Router 支持 `ResolveById(Target,CommandId)` 和 `Discover(commandId:, schemaVersion:)`。MRKCommandRequest 追加可选 `expectedSchemaVersion=0`（0 为兼容原默认、不执行版本检查；大于0时必须与发布的 FDCCommandDefinition.SchemaVersion 一致）。版本不符在 Handler 执行前返回 `Rejected/SchemaVersionMismatch`，`InvokeBoundAsync` 也透传版本约束。不把这个进程内契约检查称为已实现跨进程协商。
