@@ -42,6 +42,37 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "No auto-editor metadata for: " + type);
             }
 
+            // 每种专属 Channel 配置必须保留具体 CLR 类型且往返不混入别种通道参数。
+            foreach (MCCChannelKind kind in new[] { MCCChannelKind.Virtual, MCCChannelKind.TcpClient,
+                MCCChannelKind.TcpServer, MCCChannelKind.Udp, MCCChannelKind.UdpServer, MCCChannelKind.Serial })
+            {
+                MCCChannelConfiguration selected = MCCChannelConfigurations.Create(kind);
+                selected.Id = "typed-" + kind;
+                string stored = FCMConfigValueCodec.Serialize(selected);
+                MCCChannelConfiguration restoredChannel = (MCCChannelConfiguration)
+                    FCMConfigValueCodec.Deserialize(stored, typeof(MCCChannelConfiguration));
+                Check(restoredChannel.Kind == kind && restoredChannel.GetType() == selected.GetType() &&
+                      restoredChannel.Id == selected.Id,
+                    "Specialized Channel roundtrip: " + kind);
+            }
+            // 历史平铺配置可迁移有效字段；不能悄悄吃掉未知/冲突字段。
+            string legacy = "{\"Id\":\"oldtcp\",\"Kind\":\"TcpClient\",\"Host\":\"10.0.0.2\",\"Port\":1502,\"PortName\":\"COM1\"}";
+            MCCChannelConfiguration migrated = (MCCChannelConfiguration)
+                FCMConfigValueCodec.Deserialize(legacy, typeof(MCCChannelConfiguration));
+            MCCTcpClientChannelConfiguration migratedTcp = migrated as MCCTcpClientChannelConfiguration;
+            Check(migratedTcp != null && migratedTcp.Host == "10.0.0.2" &&
+                  migratedTcp.Port == 1502 && migratedTcp.Id == "oldtcp",
+                "Legacy flattened TCP migration");
+            bool legacyConflictRejected = false;
+            try
+            {
+                FCMConfigValueCodec.Deserialize(
+                    "{\"Id\":\"old\",\"Kind\":\"TcpClient\",\"PortName\":\"COM9\"}",
+                    typeof(MCCChannelConfiguration));
+            }
+            catch (FormatException) { legacyConflictRejected = true; }
+            Check(legacyConflictRejected, "Reject conflicting old Channel settings");
+
             MCNConnectorConfiguration connector = new MCNConnectorConfiguration {
                 DisplayName = "PLC 接入",
                 Channel = new MCCTcpClientChannelConfiguration { Id = "tcp01", Kind = MCCChannelKind.TcpClient,
