@@ -128,10 +128,10 @@ namespace CxVisual.Tests.ArchitectureSmoke
         {
             int port = FreePort(false);
             MCCTcpServerChannel server = new MCCTcpServerChannel(
-                new MCCChannelConfiguration { Id = "tcp-server-test", Kind = MCCChannelKind.TcpServer,
+                new MCCTcpServerChannelConfiguration { Id = "tcp-server-test", Kind = MCCChannelKind.TcpServer,
                     Host = "127.0.0.1", Port = port });
             MCCTcpClientChannel client = new MCCTcpClientChannel(
-                new MCCChannelConfiguration { Id = "tcp-client-test", Kind = MCCChannelKind.TcpClient,
+                new MCCTcpClientChannelConfiguration { Id = "tcp-client-test", Kind = MCCChannelKind.TcpClient,
                     Host = "127.0.0.1", Port = port });
             byte[] inbound = null, outbound = null;
             MCCSubChannelAddress sub = null;
@@ -156,7 +156,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         "TCP Server reply must use selected SubChannel");
                     MCCSubChannelAddress originalPeer = sub;
                     MCCTcpClientChannel second = new MCCTcpClientChannel(
-                        new MCCChannelConfiguration { Id = "tcp-client-test2",
+                        new MCCTcpClientChannelConfiguration { Id = "tcp-client-test2",
                             Kind = MCCChannelKind.TcpClient, Host = "127.0.0.1", Port = port });
                     using (ManualResetEventSlim secondArrived = new ManualResetEventSlim(false))
                     using (ManualResetEventSlim secondReplied = new ManualResetEventSlim(false))
@@ -201,13 +201,13 @@ namespace CxVisual.Tests.ArchitectureSmoke
         private static void ConnectorModbusTcpLoopback()
         {
             int port = FreePort(false);
-            MCCTcpServerChannel server = new MCCTcpServerChannel(new MCCChannelConfiguration {
+            MCCTcpServerChannel server = new MCCTcpServerChannel(new MCCTcpServerChannelConfiguration {
                 Id = "mb-loopback-server", Kind = MCCChannelKind.TcpServer,
                 Host = "127.0.0.1", Port = port
             });
             MCNConnectorConfiguration config = new MCNConnectorConfiguration {
                 DisplayName = "Modbus TCP Loopback",
-                Channel = new MCCChannelConfiguration {
+                Channel = new MCCTcpClientChannelConfiguration {
                     Id = "mb-loopback-client", Kind = MCCChannelKind.TcpClient,
                     Host = "127.0.0.1", Port = port
                 },
@@ -307,10 +307,10 @@ namespace CxVisual.Tests.ArchitectureSmoke
         {
             int port = FreePort(true);
             MCCUdpServerChannel server = new MCCUdpServerChannel(
-                new MCCChannelConfiguration { Id = "udp-server-test", Kind = MCCChannelKind.UdpServer,
+                new MCCUdpServerChannelConfiguration { Id = "udp-server-test", Kind = MCCChannelKind.UdpServer,
                     Host = "127.0.0.1", Port = port });
             MCCUdpChannel client = new MCCUdpChannel(
-                new MCCChannelConfiguration { Id = "udp-client-test", Kind = MCCChannelKind.Udp,
+                new MCCUdpChannelConfiguration { Id = "udp-client-test", Kind = MCCChannelKind.Udp,
                     Host = "127.0.0.1", Port = port });
             MCCSubChannelAddress sub = null;
             byte[] outbound = null;
@@ -331,7 +331,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         "UDP Server reply to exact endpoint");
                     MCCSubChannelAddress originalPeer = sub;
                     MCCUdpChannel second = new MCCUdpChannel(
-                        new MCCChannelConfiguration { Id = "udp-client-test2",
+                        new MCCUdpChannelConfiguration { Id = "udp-client-test2",
                             Kind = MCCChannelKind.Udp, Host = "127.0.0.1", Port = port });
                     using (ManualResetEventSlim secondArrived = new ManualResetEventSlim(false))
                     using (ManualResetEventSlim secondReplied = new ManualResetEventSlim(false))

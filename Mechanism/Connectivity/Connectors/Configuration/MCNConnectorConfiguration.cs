@@ -13,7 +13,7 @@ namespace CxVisual.Mechanism.Connectivity
     public sealed class MCNConnectorConfiguration : MFMModuleConfiguration
     {
         [FCMConfigItem("通道", Order = 10, Category = "通道")]
-        public MCCChannelConfiguration Channel { get; set; } = new MCCChannelConfiguration();
+        public MCCChannelConfiguration Channel { get; set; } = new MCCVirtualChannelConfiguration();
 
         [FCMConfigItem("规约", Order = 20, Category = "规约")]
         public MPAProtocolConfiguration Protocol { get; set; } = new MPAProtocolConfiguration();

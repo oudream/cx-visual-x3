@@ -348,4 +348,18 @@ namespace CxVisual.Foundation.Data.Configuration
             return b.ToString();
         }
     }
+    public static class FCMConfigValueCodec
+    {
+        public static string Serialize(object value) { return FCMJsonValueCodec.Serialize(value); }
+        public static T Deserialize<T>(string json) { return FCMJsonValueCodec.Deserialize<T>(json); }
+        public static object Deserialize(string json, Type type)
+        { return FCMJsonValueCodec.Deserialize(json, type); }
+        public static string[] GetObjectPropertyNames(string json)
+        {
+            FCMJsonNode node = FCMJsonReader.Parse(json);
+            if (node.Kind != '{') throw new FormatException("Expected JSON object");
+            return node.Properties.Select(x => x.Name).ToArray();
+        }
+    }
+
 }

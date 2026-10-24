@@ -44,7 +44,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
 
             MCNConnectorConfiguration connector = new MCNConnectorConfiguration {
                 DisplayName = "PLC 接入",
-                Channel = new MCCChannelConfiguration { Id = "tcp01", Kind = MCCChannelKind.TcpClient,
+                Channel = new MCCTcpClientChannelConfiguration { Id = "tcp01", Kind = MCCChannelKind.TcpClient,
                     Host = "127.0.0.1", Port = 502 },
                 Protocol = new MPAProtocolConfiguration {
                     Id = "mod01", Kind = MPAProtocolKind.ModbusTcpDraft,
@@ -64,7 +64,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                   connector.Protocol.Points.Count == 1, "Single configuration source");
             connector.Channel = null;
             CheckIssue(connector, "CHANNEL_REQUIRED");
-            connector.Channel = new MCCChannelConfiguration { Id = "tcp01", Kind = MCCChannelKind.TcpClient };
+            connector.Channel = new MCCTcpClientChannelConfiguration { Id = "tcp01", Kind = MCCChannelKind.TcpClient };
             connector.Protocol.Kind = MPAProtocolKind.ModbusRtuDraft;
             CheckIssue(connector, "PROTOCOL_IO_MISMATCH");
             connector.Protocol.Kind = MPAProtocolKind.ModbusTcpDraft;

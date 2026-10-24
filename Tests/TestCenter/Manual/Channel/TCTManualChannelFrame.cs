@@ -71,7 +71,7 @@ namespace CxVisual.TestCenter.UI
         public MCCChannelKind SelectedChannelKind { get { return _selectedKind; } }
         public MCCChannelTopology SelectedTopology
         {
-            get { return new MCCChannelConfiguration { Kind = _selectedKind }.DescribeType().Topology; }
+            get { return MCCChannelConfigurations.Create(_selectedKind).DescribeType().Topology; }
         }
         public bool IsConnected { get { return _pair != null &&
             _pair[0].State == MCCChannelState.Open && _pair[1].State == MCCChannelState.Open; } }
@@ -199,8 +199,7 @@ namespace CxVisual.TestCenter.UI
         }
         private void UpdateTopology()
         {
-            MCCChannelTypeDescriptor type = new MCCChannelConfiguration {
-                Kind = _selectedKind }.DescribeType();
+            MCCChannelTypeDescriptor type = MCCChannelConfigurations.Create(_selectedKind).DescribeType();
             _topology.Text = "正式类型：" + type.TypeId + "    拓扑：" + type.Topology +
                 "    I/O：" + type.IO;
             _singlePanel.Visibility = type.Topology == MCCChannelTopology.SinglePeer ?
@@ -222,8 +221,7 @@ namespace CxVisual.TestCenter.UI
             if (!object.Equals(_channelKind.SelectedItem, kind)) _channelKind.SelectedItem = kind;
             // 直接实例化已有正式MultiPeer Channel；只用其生产目录，不执行OpenAsync，
             // 因而不会在测试界面无授权时创建监听Socket或冒充设备连接。
-            MCCChannelConfiguration configuration = new MCCChannelConfiguration {
-                Id = "Manual-Multi", Kind = kind };
+            MCCChannelConfiguration configuration = MCCChannelConfigurations.Create(kind);
             _multiChannel = kind == MCCChannelKind.TcpServer
                 ? (MCCMultiChannelBase)new MCCTcpServerChannel(configuration) :
                 kind == MCCChannelKind.UdpServer
@@ -238,7 +236,7 @@ namespace CxVisual.TestCenter.UI
         {
             try
             {
-                MCCChannelConfiguration config = new MCCChannelConfiguration { Kind = _selectedKind };
+                MCCChannelConfiguration config = MCCChannelConfigurations.Create(_selectedKind);
                 config.Validate();
                 MCCChannelTypeDescriptor descriptor = config.DescribeType();
                 _lastDiagnostic = "正式类型校验通过：" + descriptor.TypeId + " / " +

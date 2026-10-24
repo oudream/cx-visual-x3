@@ -132,28 +132,28 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 new[] { new MFMComponentReference(MFMComponentRole.Channel, "X"),
                     new MFMComponentReference(MFMComponentRole.Channel, "X") }));
 
-            MCCChannelConfiguration channel = new MCCChannelConfiguration {
+            MCCChannelConfiguration channel = new MCCTcpClientChannelConfiguration {
                 Id = "tcp01", Kind = MCCChannelKind.TcpClient, Host = "127.0.0.1", Port = 502
             };
             channel.Validate();
             MCCChannelTypeDescriptor tcp = channel.DescribeType();
             Check(tcp.IO == MCCIOCapabilities.ByteStream &&
                   tcp.Topology == MCCChannelTopology.SinglePeer, "Channel metadata");
-            Reject<ArgumentException>(() => new MCCChannelConfiguration {
+            Reject<ArgumentException>(() => new MCCTcpClientChannelConfiguration {
                 Id = "bad", Kind = MCCChannelKind.TcpClient, Port = 0 }.Validate());
-            Reject<ArgumentException>(() => new MCCChannelConfiguration {
+            Reject<ArgumentException>(() => new MCCVirtualChannelConfiguration {
                 QueueCapacity = 0 }.Validate());
 
-            MCCChannelTypeDescriptor tcpServer = new MCCChannelConfiguration
+            MCCChannelTypeDescriptor tcpServer = new MCCTcpServerChannelConfiguration
                 { Kind = MCCChannelKind.TcpServer, Port = 9000 }.DescribeType();
-            MCCChannelTypeDescriptor udpServer = new MCCChannelConfiguration
+            MCCChannelTypeDescriptor udpServer = new MCCUdpServerChannelConfiguration
                 { Kind = MCCChannelKind.UdpServer, Port = 9001 }.DescribeType();
             Check(tcpServer.Topology == MCCChannelTopology.MultiPeer &&
                   (tcpServer.IO & MCCIOCapabilities.Listener) != 0 &&
                   udpServer.Topology == MCCChannelTopology.MultiPeer &&
                   udpServer.IO == MCCIOCapabilities.Datagram,
                 "TCP/UDP Server manage multiple peers inside one parent Channel");
-            MCCChannelTypeDescriptor serial = new MCCChannelConfiguration
+            MCCChannelTypeDescriptor serial = new MCCSerialChannelConfiguration
                 { Kind = MCCChannelKind.Serial, PortName = "COM5" }.DescribeType();
             Check(serial.Topology == MCCChannelTopology.SharedBus,
                 "RS-485 shares a Serial Channel, stations belong to Protocol points");
@@ -240,7 +240,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             MPAPointDefinition stationTwo = new MPAPointDefinition("reg2", "holding:1", typeof(ushort))
                 { StationAddress = "2" };
             MCNConnectorConfiguration multiStation = new MCNConnectorConfiguration {
-                Channel = new MCCChannelConfiguration { Id = "bus", Kind = MCCChannelKind.Serial, PortName = "COM3" },
+                Channel = new MCCSerialChannelConfiguration { Id = "bus", Kind = MCCChannelKind.Serial, PortName = "COM3" },
                 Protocol = new MPAProtocolConfiguration("rtu", "modbus.rtu") {
                     Points = new List<MPAPointDefinition> { stationOne, stationTwo }
                 }
@@ -276,7 +276,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             // Connector 实例与纯传输 Channel / Protocol 的实际入站闭环。
             MCNConnectorConfiguration streamConfig = new MCNConnectorConfiguration {
                 DisplayName = "分帧连接",
-                Channel = new MCCChannelConfiguration { Id = "raw-tx", Kind = MCCChannelKind.Virtual },
+                Channel = new MCCVirtualChannelConfiguration { Id = "raw-tx", Kind = MCCChannelKind.Virtual },
                 Protocol = new MPAProtocolConfiguration { Kind = MPAProtocolKind.LengthFrame }
             };
             MCNConnectorModule streamModule = new MCNConnectorModule(
@@ -300,7 +300,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
 
             MCCVirtualChannel[] emptyPair = MCCVirtualChannel.CreatePair("empty-tx", "empty-rx");
             MCNConnectorConfiguration emptyCfg = new MCNConnectorConfiguration {
-                Channel = new MCCChannelConfiguration { Id = "empty-tx", Kind = MCCChannelKind.Virtual },
+                Channel = new MCCVirtualChannelConfiguration { Id = "empty-tx", Kind = MCCChannelKind.Virtual },
                 Protocol = new MPAProtocolConfiguration { Kind = MPAProtocolKind.Empty }
             };
             MCNConnectorModule emptyModule = new MCNConnectorModule(

@@ -10,7 +10,7 @@ namespace CxVisual.Mechanism.Connectivity
     // 直接使用 ReferTo Serial/RS485 的串行读写思路，避免引入新 Porting Adapter。
     public sealed class MCCSerialChannel : MCCChannelBase
     {
-        private readonly MCCChannelConfiguration _config;
+        private readonly MCCSerialChannelConfiguration _config;
         private readonly SemaphoreSlim _writer = new SemaphoreSlim(1, 1);
         private SerialPort _port;
         private CancellationTokenSource _stop;
@@ -22,7 +22,7 @@ namespace CxVisual.Mechanism.Connectivity
             configuration.Validate();
             if (configuration.Kind != MCCChannelKind.Serial)
                 throw new ArgumentException("必须提供 Serial 通道配置");
-            _config = configuration;
+            _config = configuration as MCCSerialChannelConfiguration ?? throw new ArgumentException("要求 MCCSerialChannelConfiguration");
         }
         protected override Task OnOpenAsync(CancellationToken ct)
         {

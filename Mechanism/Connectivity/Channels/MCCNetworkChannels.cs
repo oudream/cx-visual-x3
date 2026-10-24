@@ -26,7 +26,7 @@ namespace CxVisual.Mechanism.Connectivity
 
     public sealed class MCCTcpClientChannel : MCCSingleChannelBase
     {
-        private readonly MCCChannelConfiguration _config;
+        private readonly MCCTcpClientChannelConfiguration _config;
         private TcpClient _tcp;
         private CancellationTokenSource _shutdown;
         private Task _receiveTask;
@@ -35,7 +35,7 @@ namespace CxVisual.Mechanism.Connectivity
         {
             configuration.Validate();
             if (configuration.Kind != MCCChannelKind.TcpClient) throw new ArgumentException("不是 TCP Client 配置");
-            _config = configuration;
+            _config = configuration as MCCTcpClientChannelConfiguration ?? throw new ArgumentException("要求 MCCTcpClientChannelConfiguration");
         }
         protected override async Task OnOpenAsync(CancellationToken ct)
         {
@@ -94,7 +94,7 @@ namespace CxVisual.Mechanism.Connectivity
 
     public sealed class MCCTcpServerChannel : MCCMultiChannelBase
     {
-        private readonly MCCChannelConfiguration _config;
+        private readonly MCCTcpServerChannelConfiguration _config;
         private readonly object _gate = new object();
         private readonly Dictionary<string, TcpClient> _clients = new Dictionary<string, TcpClient>(StringComparer.Ordinal);
         private TcpListener _listener;
@@ -106,7 +106,7 @@ namespace CxVisual.Mechanism.Connectivity
         {
             configuration.Validate();
             if (configuration.Kind != MCCChannelKind.TcpServer) throw new ArgumentException("不是 TCP Server 配置");
-            _config = configuration;
+            _config = configuration as MCCTcpServerChannelConfiguration ?? throw new ArgumentException("要求 MCCTcpServerChannelConfiguration");
         }
         protected override Task OnOpenAsync(CancellationToken ct)
         {
@@ -208,7 +208,7 @@ namespace CxVisual.Mechanism.Connectivity
 
     public sealed class MCCUdpChannel : MCCSingleChannelBase
     {
-        private readonly MCCChannelConfiguration _config;
+        private readonly MCCUdpChannelConfiguration _config;
         private UdpClient _udp;
         private CancellationTokenSource _shutdown;
         private Task _receiveTask;
@@ -217,7 +217,7 @@ namespace CxVisual.Mechanism.Connectivity
         {
             configuration.Validate();
             if (configuration.Kind != MCCChannelKind.Udp) throw new ArgumentException("不是 UDP 单对端配置");
-            _config = configuration;
+            _config = configuration as MCCUdpChannelConfiguration ?? throw new ArgumentException("要求 MCCUdpChannelConfiguration");
         }
         protected override Task OnOpenAsync(CancellationToken ct)
         {
@@ -263,7 +263,7 @@ namespace CxVisual.Mechanism.Connectivity
     // UDP Server 的 SubChannel 是远端 Endpoint 的逻辑身份，不存在 TCP Accept。
     public sealed class MCCUdpServerChannel : MCCMultiChannelBase
     {
-        private readonly MCCChannelConfiguration _config;
+        private readonly MCCUdpServerChannelConfiguration _config;
         private readonly object _gate = new object();
         private readonly Dictionary<string, MCCSubChannelAddress> _addresses =
             new Dictionary<string, MCCSubChannelAddress>(StringComparer.Ordinal);
@@ -275,7 +275,7 @@ namespace CxVisual.Mechanism.Connectivity
         {
             configuration.Validate();
             if (configuration.Kind != MCCChannelKind.UdpServer) throw new ArgumentException("不是 UDP Server 配置");
-            _config = configuration;
+            _config = configuration as MCCUdpServerChannelConfiguration ?? throw new ArgumentException("要求 MCCUdpServerChannelConfiguration");
         }
         protected override Task OnOpenAsync(CancellationToken ct)
         {

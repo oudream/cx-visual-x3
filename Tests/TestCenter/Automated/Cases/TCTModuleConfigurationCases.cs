@@ -127,7 +127,7 @@ namespace CxVisual.TestCenter.Cases
         {
             MCNConnectorConfiguration config = new MCNConnectorConfiguration {
                 DisplayName = "Virtual Connector",
-                Channel = new MCCChannelConfiguration { Id = "virtual01", Kind = MCCChannelKind.Virtual },
+                Channel = new MCCVirtualChannelConfiguration { Id = "virtual01", Kind = MCCChannelKind.Virtual },
                 Protocol = new MPAProtocolConfiguration { Id = "length01", Kind = MPAProtocolKind.LengthFrame }
             };
             MFMModuleDescriptor identity = config.Describe("ModuleVirtual01", MFMModuleKind.Connector);
@@ -176,7 +176,7 @@ namespace CxVisual.TestCenter.Cases
             test.AssertTrue(missingRejected, "缺失Channel Provider必须拒绝装配", true, missingRejected);
 
             bool physicalRejected = false;
-            config.Channel.Kind = MCCChannelKind.TcpClient;
+            config.Channel = new MCCTcpClientChannelConfiguration { Id = config.Channel.Id };
             try
             {
                 new MCNConnectorModule(identity, config,
@@ -279,13 +279,13 @@ namespace CxVisual.TestCenter.Cases
             ObjectId = "MCCChannelConfiguration")]
         public static void ChannelTopologies(TCTTestContext test)
         {
-            MCCChannelTypeDescriptor single = new MCCChannelConfiguration {
+            MCCChannelTypeDescriptor single = new MCCTcpClientChannelConfiguration {
                 Kind = MCCChannelKind.TcpClient }.DescribeType();
-            MCCChannelTypeDescriptor multi = new MCCChannelConfiguration {
+            MCCChannelTypeDescriptor multi = new MCCTcpServerChannelConfiguration {
                 Kind = MCCChannelKind.TcpServer }.DescribeType();
-            MCCChannelTypeDescriptor udp = new MCCChannelConfiguration {
+            MCCChannelTypeDescriptor udp = new MCCUdpServerChannelConfiguration {
                 Kind = MCCChannelKind.UdpServer }.DescribeType();
-            MCCChannelTypeDescriptor serial = new MCCChannelConfiguration {
+            MCCChannelTypeDescriptor serial = new MCCSerialChannelConfiguration {
                 Kind = MCCChannelKind.Serial }.DescribeType();
             test.AssertTrue(single.Topology == MCCChannelTopology.SinglePeer &&
                 (single.IO & MCCIOCapabilities.ByteStream) != 0,
@@ -393,9 +393,9 @@ namespace CxVisual.TestCenter.Cases
         public static void ActualMultiPeerChannelTopology(TCTTestContext test)
         {
             MCCMultiChannelBase[] channels = {
-                new MCCTcpServerChannel(new MCCChannelConfiguration {
+                new MCCTcpServerChannel(new MCCTcpServerChannelConfiguration {
                     Id = "P0-TCP-Server", Kind = MCCChannelKind.TcpServer }),
-                new MCCUdpServerChannel(new MCCChannelConfiguration {
+                new MCCUdpServerChannel(new MCCUdpServerChannelConfiguration {
                     Id = "P0-UDP-Server", Kind = MCCChannelKind.UdpServer })
             };
             foreach (MCCMultiChannelBase channel in channels)
@@ -448,7 +448,7 @@ namespace CxVisual.TestCenter.Cases
             bool noChannel = invalid.Issues.Any(x => x.Code == "CHANNEL_REQUIRED");
             test.AssertTrue(!invalid.IsValid && noChannel,
                 "必须配置单一 Channel", true, noChannel);
-            config.Channel = new MCCChannelConfiguration();
+            config.Channel = new MCCVirtualChannelConfiguration();
             config.Protocol.Points.Add(new MPAPointDefinition { Name = "alarm", Address = "alarm" });
             config.Protocol.Mappings.Add(new MPADataMapping {
                 PointRef = "missing", TargetRef = "plc/alarm",

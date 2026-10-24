@@ -7,43 +7,15 @@ namespace CxVisual.Mechanism.Connectivity
     // 通道身份、专有参数、执行策略的唯一配置模型，不再拆 Profile/Options/EditableChannel。
     public enum MCCChannelKind { Virtual, TcpClient, TcpServer, Udp, Serial, Custom, UdpServer }
 
-    public sealed class MCCChannelConfiguration
+    [FCMConfigConverter(typeof(MCCChannelConfigurationConverter))]
+    public abstract class MCCChannelConfiguration
     {
         [FCMConfigItem("通道 Id", Order = 1, Category = "身份")]
         [Required]
         public string Id { get; set; } = "channel01";
         [FCMConfigItem("通道类型", Order = 2, Category = "身份")]
         public MCCChannelKind Kind { get; set; } = MCCChannelKind.Virtual;
-        [FCMConfigItem("自定义通道 TypeId", Order = 3, Category = "身份")]
-        public string CustomTypeId { get; set; } = "";
 
-        [FCMConfigItem("主机/监听地址", Order = 10, Category = "网络")]
-        public string Host { get; set; } = "127.0.0.1";
-        [FCMConfigItem("网络端口", Order = 11, Category = "网络")]
-        [Range(0, 65535)]
-        public int Port { get; set; } = 502;
-        [FCMConfigItem("连接超时", Order = 12, Category = "网络", Unit = "ms")]
-        [Range(1, 3600000)]
-        public int ConnectTimeoutMs { get; set; } = 5000;
-        [FCMConfigItem("最大连接客户端", Order = 13, Category = "网络")]
-        [Range(1, 1000000)]
-        public int MaxClients { get; set; } = 128;
-
-        [FCMConfigItem("串口名称", Order = 20, Category = "串口")]
-        public string PortName { get; set; } = "COM1";
-        [FCMConfigItem("波特率", Order = 21, Category = "串口")]
-        [Range(1, 10000000)]
-        public int BaudRate { get; set; } = 9600;
-        [FCMConfigItem("数据位", Order = 22, Category = "串口")]
-        [Range(5, 8)]
-        public int DataBits { get; set; } = 8;
-        [FCMConfigItem("校验位", Order = 23, Category = "串口")]
-        public string Parity { get; set; } = "None";
-        [FCMConfigItem("停止位", Order = 24, Category = "串口")]
-        public string StopBits { get; set; } = "One";
-
-        [FCMConfigItem("子通道路由策略", Order = 30, Category = "子通道")]
-        public string SubChannelRule { get; set; } = "";
         [FCMConfigItem("通信 I/O 方式", Order = 40, Category = "执行")]
         public MCCChannelIOMode IoMode { get; set; } = MCCChannelIOMode.AsyncIO;
         [FCMConfigItem("接收队列容量", Order = 41, Category = "执行")]
@@ -73,7 +45,8 @@ namespace CxVisual.Mechanism.Connectivity
             return ReconnectMaxAttempts == 0 || attemptsMade < ReconnectMaxAttempts;
         }
 
-        public void Validate()
+        protected MCCChannelConfiguration(MCCChannelKind kind) { Kind = kind; }
+        public virtual void Validate()
         {
             if (string.IsNullOrWhiteSpace(Id) || !Enum.IsDefined(typeof(MCCChannelKind), Kind) ||
                 !Enum.IsDefined(typeof(MCCChannelIOMode), IoMode) ||
@@ -81,24 +54,9 @@ namespace CxVisual.Mechanism.Connectivity
                 ReconnectMaxAttempts < 0 || ReconnectInitialDelayMs < 0 ||
                 ReconnectMaxDelayMs < ReconnectInitialDelayMs ||
                 ReconnectBackoff < 1 || double.IsNaN(ReconnectBackoff) || double.IsInfinity(ReconnectBackoff))
-                throw new ArgumentException("Channel 身份/执行选项不合法");
-            if (Kind == MCCChannelKind.Custom && string.IsNullOrWhiteSpace(CustomTypeId))
-                throw new ArgumentException("Custom Channel 需要 TypeId");
-            if (Kind == MCCChannelKind.TcpClient || Kind == MCCChannelKind.TcpServer ||
-                Kind == MCCChannelKind.Udp || Kind == MCCChannelKind.UdpServer)
-            {
-                if (string.IsNullOrWhiteSpace(Host) || Port < 1 || Port > 65535)
-                    throw new ArgumentException("网络通道地址和端口无效");
-            }
-            if (Kind == MCCChannelKind.TcpClient && ConnectTimeoutMs < 1)
-                throw new ArgumentException("连接超时必须大于零");
-            if ((Kind == MCCChannelKind.TcpServer || Kind == MCCChannelKind.UdpServer) && MaxClients < 1)
-                throw new ArgumentException("最大连接数必须大于零");
-            if (Kind == MCCChannelKind.Serial &&
-                (string.IsNullOrWhiteSpace(PortName) || BaudRate < 1 || DataBits < 5 || DataBits > 8 ||
-                 !new[] { "None", "Even", "Odd", "Mark", "Space" }.ContainsValue(Parity) ||
-                 !new[] { "One", "OnePointFive", "Two" }.ContainsValue(StopBits)))
-                throw new ArgumentException("串口参数无效");
+                throw new ArgumentException("Channel 身份与执行预算无效");
+            if (GetType() != MCCChannelConfigurations.TypeOf(Kind))
+                throw new ArgumentException("Kind 与专用配置类型不一致");
         }
 
         public MCCChannelTypeDescriptor DescribeType()
@@ -126,11 +84,50 @@ namespace CxVisual.Mechanism.Connectivity
         }
     }
 
-    internal static class MCCConfigurationArrayExtensions
+    // 仅白名单中的正式 Channel 配置可加载；不使用任意 CLR 类型名。
+    public static class MCCChannelConfigurations
     {
-        public static bool ContainsValue(this string[] values, string value)
+        public static Type TypeOf(MCCChannelKind kind)
         {
-            return Array.IndexOf(values, value) >= 0;
+            switch (kind)
+            {
+                case MCCChannelKind.Virtual: return typeof(MCCVirtualChannelConfiguration);
+                case MCCChannelKind.TcpClient: return typeof(MCCTcpClientChannelConfiguration);
+                case MCCChannelKind.TcpServer: return typeof(MCCTcpServerChannelConfiguration);
+                case MCCChannelKind.Udp: return typeof(MCCUdpChannelConfiguration);
+                case MCCChannelKind.UdpServer: return typeof(MCCUdpServerChannelConfiguration);
+                case MCCChannelKind.Serial: return typeof(MCCSerialChannelConfiguration);
+                case MCCChannelKind.Custom: return typeof(MCCCustomChannelConfiguration);
+                default: throw new ArgumentOutOfRangeException("kind");
+            }
+        }
+        public static MCCChannelConfiguration Create(MCCChannelKind kind)
+        { return (MCCChannelConfiguration)Activator.CreateInstance(TypeOf(kind)); }
+    }
+
+    public sealed class MCCChannelConfigurationConverter : IFCMConfigValueConverter<MCCChannelConfiguration>
+    {
+        private sealed class KindProbe
+        { public MCCChannelKind Kind { get; set; } = MCCChannelKind.Virtual; }
+        public string Write(MCCChannelConfiguration value)
+        {
+            if (value == null) return "null";
+            value.Validate();
+            return FCMConfigValueCodec.Serialize(value);
+        }
+        public MCCChannelConfiguration Read(string json)
+        {
+            MCCChannelKind kind = FCMConfigValueCodec.Deserialize<KindProbe>(json).Kind;
+            Type type = MCCChannelConfigurations.TypeOf(kind);
+            var allowed = new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
+            foreach (FCMConfigMemberDescriptor member in FCMConfigSchemaBuilder.Members(type))
+                allowed.Add(member.Name);
+            foreach (string key in FCMConfigValueCodec.GetObjectPropertyNames(json))
+                if (!allowed.Contains(key))
+                    throw new FormatException("CHANNEL_LEGACY_MIGRATION_REQUIRED: " + key);
+            MCCChannelConfiguration value = (MCCChannelConfiguration)FCMConfigValueCodec.Deserialize(json, type);
+            value.Validate();
+            return value;
         }
     }
 
