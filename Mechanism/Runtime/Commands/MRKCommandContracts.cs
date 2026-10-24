@@ -74,22 +74,36 @@ namespace CxVisual.Mechanism.Runtime.Commands
 
     public sealed class MRKCommandRequest
     {
+        /// <summary>兼容Code调用，也可以附加CommandId同时校验两种身份。</summary>
         public MRKCommandRequest(string target, string commandCode,
             IReadOnlyDictionary<string, object> inputs = null, string caller = null,
             Guid operationId = default(Guid), Guid requestId = default(Guid),
-            MRKCommandOptions options = null, int expectedSchemaVersion = 0)
+            MRKCommandOptions options = null, int expectedSchemaVersion = 0,
+            long commandId = 0)
         {
             if (expectedSchemaVersion < 0) throw new ArgumentOutOfRangeException("expectedSchemaVersion");
-            if (string.IsNullOrWhiteSpace(target) || string.IsNullOrWhiteSpace(commandCode))
-                throw new ArgumentException("命令目标和编码不能为空");
-            Target = target; CommandCode = commandCode; Inputs = inputs;
+            if (commandId < 0) throw new ArgumentOutOfRangeException("commandId");
+            if (string.IsNullOrWhiteSpace(target) ||
+                (string.IsNullOrWhiteSpace(commandCode) && commandId == 0))
+                throw new ArgumentException("必须提供目标和命令Code或CommandId");
+            Target = target; CommandCode = commandCode ?? string.Empty;
+            CommandId = commandId; Inputs = inputs;
             Caller = caller ?? string.Empty;
             OperationId = operationId == Guid.Empty ? Guid.NewGuid() : operationId;
             RequestId = requestId == Guid.Empty ? Guid.NewGuid() : requestId;
             Options = options ?? new MRKCommandOptions();
             ExpectedSchemaVersion = expectedSchemaVersion;
         }
+        /// <summary>仅通过稳定CommandId寻址；目标仍必须是明确Target。</summary>
+        public MRKCommandRequest(string target, long commandId,
+            IReadOnlyDictionary<string, object> inputs = null, string caller = null,
+            Guid operationId = default(Guid), Guid requestId = default(Guid),
+            MRKCommandOptions options = null, int expectedSchemaVersion = 0)
+            : this(target, string.Empty, inputs, caller, operationId, requestId,
+                options, expectedSchemaVersion, commandId)
+        { }
         public int ExpectedSchemaVersion { get; private set; }
+        public long CommandId { get; private set; }
         public string Target { get; private set; }
         public string CommandCode { get; private set; }
         public IReadOnlyDictionary<string, object> Inputs { get; private set; }

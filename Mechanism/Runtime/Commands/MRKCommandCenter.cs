@@ -99,17 +99,21 @@ namespace CxVisual.Mechanism.Runtime.Commands
         }
         public MRKCommandDescriptor Find(string target, string code)
         { Entry e = Resolve(target, code); return e == null ? null : e.Descriptor; }
-        public MRKCommandDescriptor FindById(string target, long commandId)
+        internal Entry ResolveById(string target, long commandId)
         {
             if (string.IsNullOrWhiteSpace(target)) throw new ArgumentException("目标不能为空", "target");
             if (commandId <= 0) throw new ArgumentOutOfRangeException("commandId");
             lock (_gate)
             {
                 if (_disposed) return null;
-                Entry found = _entries.Values.FirstOrDefault(e => e.Enabled &&
+                return _entries.Values.FirstOrDefault(e => e.Enabled &&
                     e.Descriptor.Target == target && e.Descriptor.Definition.CommandId == commandId);
-                return found == null ? null : found.Descriptor;
             }
+        }
+        public MRKCommandDescriptor FindById(string target, long commandId)
+        {
+            Entry found = ResolveById(target, commandId);
+            return found == null ? null : found.Descriptor;
         }
         public IReadOnlyList<MRKCommandDescriptor> Discover(string target = null,
             MRKCommandKind? kind = null, string capability = null,
@@ -272,9 +276,15 @@ namespace CxVisual.Mechanism.Runtime.Commands
             if (request.Options.Remote)
                 return new MRKCommandSubmission(Reject(request, "RemoteUnsupported",
                     "跨进程/跨PC transport尚未接入，拒绝伪装为本地成功"), null);
-            MRKCommandRegistry.Entry entry = _registry.Resolve(request.Target, request.CommandCode);
+            MRKCommandRegistry.Entry entry = string.IsNullOrWhiteSpace(request.CommandCode)
+                ? _registry.ResolveById(request.Target, request.CommandId)
+                : _registry.Resolve(request.Target, request.CommandCode);
             if (entry == null)
                 return new MRKCommandSubmission(Reject(request, "HandlerNotFound", "处理器未注册或已禁用"), null);
+            if (request.CommandId > 0 &&
+                entry.Descriptor.Definition.CommandId != request.CommandId)
+                return new MRKCommandSubmission(Reject(request, "CommandIdentityMismatch",
+                    "CommandId与命令Code解析出的正式命令不一致"), null);
             if (request.ExpectedSchemaVersion > 0 &&
                 request.ExpectedSchemaVersion != entry.Descriptor.Definition.SchemaVersion)
                 return new MRKCommandSubmission(Reject(request, "SchemaVersionMismatch",
@@ -311,6 +321,7 @@ namespace CxVisual.Mechanism.Runtime.Commands
                     if (operation.Request.Caller != request.Caller ||
                         operation.Request.Target != request.Target ||
                         operation.Request.CommandCode != request.CommandCode ||
+                        operation.Request.CommandId != request.CommandId ||
                         !EqualInputs(operation.Inputs, inputs))
                         return new MRKCommandSubmission(Reject(request, "OperationConflict",
                             "OperationId已经绑定不同调用身份、目标或参数"), null);
@@ -323,7 +334,7 @@ namespace CxVisual.Mechanism.Runtime.Commands
                 if (!queued && !entry.TryEnter())
                     return new MRKCommandSubmission(Reject(request, "Busy", "命令并发容量已满"), null);
                 operation = new MRKCommandExecution(request, entry.Descriptor, inputs,
-                    request.Target + "\n" + request.CommandCode, _adapters);
+                    request.Target + "\n" + entry.Descriptor.Definition.CommandCode, _adapters);
                 _operations.Add(request.OperationId, operation);
                 if (queued)
                 {
@@ -519,7 +530,9 @@ namespace CxVisual.Mechanism.Runtime.Commands
                 outputs.GroupBy(b => b.Parameter, StringComparer.Ordinal).Any(g => g.Count() > 1) ||
                 outputs.GroupBy(b => b.DataAddress, StringComparer.Ordinal).Any(g => g.Count() > 1))
                 throw new ArgumentException("输出参数或目标地址重复/无效");
-            MRKCommandDescriptor expected = Router.Resolve(request.Target, request.CommandCode);
+            MRKCommandDescriptor expected = string.IsNullOrWhiteSpace(request.CommandCode)
+                ? Router.ResolveById(request.Target, request.CommandId)
+                : Router.Resolve(request.Target, request.CommandCode);
             if (expected != null)
                 foreach (MRKCommandParameterBinding binding in outputs)
                     if (!expected.Definition.Outputs.Any(p => p.Code == binding.Parameter))
@@ -538,7 +551,7 @@ namespace CxVisual.Mechanism.Runtime.Commands
             }
             MRKCommandRequest actual = new MRKCommandRequest(request.Target, request.CommandCode,
                 values, request.Caller, request.OperationId, request.RequestId, request.Options,
-                request.ExpectedSchemaVersion);
+                request.ExpectedSchemaVersion, request.CommandId);
             MRKCommandResponse response = await InvokeAsync(actual, cancellation).ConfigureAwait(false);
             if (response.State != MRKCommandState.Completed)
                 return new MRKCommandBindingResult(response, false, false, null);

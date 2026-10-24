@@ -245,3 +245,11 @@ Handler可调用 `ReportProgress` 和 `ReportIntermediate`；Execution暴露最�
 输出字段在首次写入之前全部检查是否存在，防止“缺字段”造成一半写回；但对真实MDS、PLC或多数据Owner写回仍不承诺跨目标事务。旧 `InvokeBoundAsync` 继续返回 `MRKCommandResponse`；写回失败时抛 `MRKCommandOutputMappingException`，异常内携带同一 `MRKCommandBindingResult`，调用者仍能明确知道命令已经执行成功。
 
 验收：模拟输出第一个写回成功、第二个写回异常时，`Execution.Completed`、`MappedAddresses`保留第一目标、执行账本仍可查询完成；若可选输出未返回，任何写回之前拒绝并报告 `OutputMissing`。**不能因输出映射失败重发设备命令**，重新映射需要独立受控恢复策略。
+
+## 14. 稳定CommandId与CommandCode双寻址
+
+`MRKCommandRequest` 保留原Code构造函数并追加可选 `commandId`，另提供 `MRKCommandRequest(Target,long CommandId,...)` 的ID-only入口。Controller/Registry将 `Target + CommandId` 解析为已有唯一的正式Handler；同时给出Code+ID时二者必须匹配，否则在执行前返回 `Rejected/CommandIdentityMismatch`。不存在的ID返回 `HandlerNotFound`；版本仍通过 `ExpectedSchemaVersion` 校验。
+
+Operation账本继续以OperationId去重，同一OperationId的身份比较包括CommandId，避免调用方更换寻址身份后错配。F19排队Key使用**已解析命令Code**而不是空的ID-only请求Code；ID-only命令的 `InvokeBoundResultAsync` 同样通过正式Router匹配参数契约，不复制定义。
+
+专项反例：ID-only成功、Code/ID冲突、未知ID、ID-only绑定读写。跨进程稳定ID注册/SchemaWire、版本协商仍需真实Transport验收。

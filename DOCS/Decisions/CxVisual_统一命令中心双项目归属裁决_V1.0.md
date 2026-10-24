@@ -82,3 +82,7 @@ using (center.Register(new MRKCommandDescriptor("algorithm", definition),
 ## 九、输出映射Owner与执行结果分离
 
 `MRKCommandBindingResult`、`MRKCommandOutputMappingException`、`InvokeBoundResultAsync` 完全归 `Mechanism.Runtime.Commands`，映射继续通过 `Foundation.Data.Commands.IFDCCommandValueBinding` 访问正式MDS/数据Owner。写回失败不是执行失败，且不默认重试设备动作。可跨设备事务/多Host恢复待专门设计与验收。
+
+## 十、请求同时支持Code和稳定ID
+
+运行请求仍属于 `Mechanism.Runtime.Commands`：支持 `Target+Code`、`Target+CommandId`、以及二者同给时一致性校验。基础的 `FDCCommandDefinition` 继续作为唯一 ID/Code/Version 真源。不新增独立命令目录或目标数据仓库。

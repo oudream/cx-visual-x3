@@ -54,6 +54,43 @@ namespace CxVisual.Tests.ArchitectureSmoke
         }
 
 
+        /// <summary>正式ID寻址与Code/ID双身份验证；ID调用仍共用注册与MDS绑定。</summary>
+        private static void CommandIdRun()
+        {
+            int invoked = 0;
+            using (MRKCommandCenter center = new MRKCommandCenter())
+            using (center.Register(new MRKCommandDescriptor("identity", Definition()),
+                Handler(x => { Interlocked.Increment(ref invoked); return x; })))
+            {
+                MRKCommandResponse byId = center.InvokeAsync(new MRKCommandRequest(
+                    "identity", 5183, new Dictionary<string, object> { { "Input", 2.0 } },
+                    expectedSchemaVersion: 1)).GetAwaiter().GetResult();
+                Check(byId.State == MRKCommandState.Completed &&
+                    (double)byId.Outputs["Output"] == 4.0 && invoked == 1,
+                    "stable CommandId-only routing executes selected handler");
+                MRKCommandResponse mismatch = center.InvokeAsync(new MRKCommandRequest(
+                    "identity", "Calculate",
+                    new Dictionary<string, object> { { "Input", 1.0 } },
+                    commandId: 9999)).GetAwaiter().GetResult();
+                Check(mismatch.ErrorCode == "CommandIdentityMismatch" && invoked == 1,
+                    "Code/Id conflict must not call handler");
+                MRKCommandResponse unknown = center.InvokeAsync(new MRKCommandRequest(
+                    "identity", 9999)).GetAwaiter().GetResult();
+                Check(unknown.ErrorCode == "HandlerNotFound" && invoked == 1,
+                    "unknown CommandId must not resolve another command");
+                FaultingCommandBinding binding = new FaultingCommandBinding();
+                MRKCommandBindingResult mapped = center.InvokeBoundResultAsync(
+                    new MRKCommandRequest("identity", 5183, expectedSchemaVersion: 1),
+                    binding,
+                    new[] { new MRKCommandParameterBinding("Input", "read") },
+                    new[] { new MRKCommandParameterBinding("Output", "ok") })
+                    .GetAwaiter().GetResult();
+                Check(mapped.Execution.State == MRKCommandState.Completed &&
+                    mapped.MappingSucceeded && binding.Writes.Count == 1 && invoked == 2,
+                    "ID-only command must preserve MDS input/output binding");
+            }
+        }
+
         /// <summary>命令业务已完成而输出写回失败时不得丢失执行回执或隐藏局部写入。</summary>
         private static void OutputMappingRun()
         {
@@ -735,6 +772,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             QueuedRun();
             LongTaskRun();
             OutputMappingRun();
+            CommandIdRun();
             ExtendedRun();
             Console.WriteLine("PASS BUS-CMD CommandCenter: registration/router/authorization/MDSSchema/mapping/batch/concurrency/timeout/snapshot/replacement/replay/copy");
         }
