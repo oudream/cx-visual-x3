@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CxVisual.Foundation.Data.Commands;
 using CxVisual.Foundation.Data.Types;
+using CxVisual.Foundation.Infrastructure.Concurrency;
 using CxVisual.Mechanism.Runtime.Execution;
 
 namespace CxVisual.Mechanism.Runtime.Commands
@@ -186,6 +187,9 @@ namespace CxVisual.Mechanism.Runtime.Commands
         private readonly MRKCommandRegistry _registry = new MRKCommandRegistry();
         private readonly MRKExternalOperationTracker _tracker;
         private readonly MRKResourceLeaseCoordinator _leases;
+        private readonly MRKCommandExecutor _executor;
+        private readonly MRKCommandDispatcher _dispatcher;
+        private readonly bool _ownsDispatcher;
         private readonly Func<MRKCommandContext, bool> _authorize;
         private readonly FDTDataAdapterRegistry _adapters;
         private readonly List<IMRKCommandInterceptor> _interceptors =
@@ -197,7 +201,9 @@ namespace CxVisual.Mechanism.Runtime.Commands
             MRKResourceLeaseCoordinator leases = null,
             Func<MRKCommandContext, bool> authorize = null,
             FDTDataAdapterRegistry adapters = null,
-            int maxOperations = 4096, int defaultTimeoutMilliseconds = 30000)
+            int maxOperations = 4096, int defaultTimeoutMilliseconds = 30000,
+            MRKCommandDispatcher dispatcher = null,
+            int queuedConcurrency = 4, int queueCapacity = 64)
         {
             if (maxOperations < 1 || defaultTimeoutMilliseconds < 1)
                 throw new ArgumentOutOfRangeException("maxOperations/defaultTimeoutMilliseconds");
@@ -206,9 +212,16 @@ namespace CxVisual.Mechanism.Runtime.Commands
             _authorize = authorize; _adapters = adapters;
             _maxOperations = maxOperations; _hostTimeoutMs = defaultTimeoutMilliseconds;
             Router = new MRKCommandRouter(_registry);
+            _dispatcher = dispatcher ?? new MRKCommandDispatcher(queuedConcurrency, queueCapacity);
+            _ownsDispatcher = dispatcher == null;
+            _executor = new MRKCommandExecutor(_tracker, _leases, _adapters,
+                () => { lock (_gate) return _interceptors.ToArray(); });
         }
         public MRKCommandRegistry Registry { get { return _registry; } }
         public MRKCommandRouter Router { get; private set; }
+        public FCRWorkerSnapshot GetQueueSnapshot() { return _dispatcher.Snapshot(); }
+        public Task StopQueueAsync(bool cancelPending = false)
+        { return _dispatcher.StopAsync(cancelPending); }
         public IDisposable Register(MRKCommandDescriptor descriptor, IMRKCommandHandler handler)
         { return _registry.Register(descriptor, handler); }
         public IDisposable Replace(MRKCommandDescriptor descriptor, IMRKCommandHandler handler)
@@ -228,6 +241,7 @@ namespace CxVisual.Mechanism.Runtime.Commands
                     switch (operation.Snapshot().State)
                     {
                         case MRKCommandState.Pending: ++metrics.Pending; break;
+                        case MRKCommandState.Queued: ++metrics.Queued; break;
                         case MRKCommandState.Running: ++metrics.Running; break;
                         case MRKCommandState.Completed: ++metrics.Completed; break;
                         case MRKCommandState.Failed: ++metrics.Failed; break;
@@ -285,6 +299,8 @@ namespace CxVisual.Mechanism.Runtime.Commands
             catch (Exception ex)
             { return new MRKCommandSubmission(Reject(request, "AuthorizationError", ex.Message), null); }
             MRKCommandExecution operation;
+            FCRWorkHandle<bool> queuedHandle = null;
+            TaskCompletionSource<bool> queueReady = null;
             lock (_gate)
             {
                 if (_disposed) throw new ObjectDisposedException("MRKCommandCenter");
@@ -301,11 +317,45 @@ namespace CxVisual.Mechanism.Runtime.Commands
                 if (_operations.Count >= _maxOperations)
                     return new MRKCommandSubmission(Reject(request, "HistoryFull",
                         "进程内操作记录容量已满，请完成受控归档后重建Host"), null);
-                if (!entry.TryEnter())
+                bool queued = entry.Descriptor.Policy.Dispatch == MRKCommandDispatch.Queued;
+                if (!queued && !entry.TryEnter())
                     return new MRKCommandSubmission(Reject(request, "Busy", "命令并发容量已满"), null);
                 operation = new MRKCommandExecution(request, entry.Descriptor, inputs,
                     request.Target + "\n" + request.CommandCode, _adapters);
                 _operations.Add(request.OperationId, operation);
+                if (queued)
+                {
+                    operation.Queued();
+                    // 队列作业在MRK Tracker完成注册前不允许调用Handler。
+                    queueReady = new TaskCompletionSource<bool>(
+                        TaskCreationOptions.RunContinuationsAsynchronously);
+                    Task ready = queueReady.Task;
+                    try
+                    {
+                        queuedHandle = _dispatcher.Enqueue(async token =>
+                        {
+                            await ready.ConfigureAwait(false);
+                            token.ThrowIfCancellationRequested();
+                            if (!entry.TryEnter())
+                                throw new InvalidOperationException("队列串行槽异常：命令仍在执行");
+                            await _executor.ExecuteAsync(operation, entry).ConfigureAwait(false);
+                            return true;
+                        }, operation.Key, request.Options.Priority, operation.Cancellation.Token);
+                    }
+                    catch (Exception ex)
+                    {
+                        _operations.Remove(request.OperationId);
+                        queueReady.TrySetCanceled();
+                        return new MRKCommandSubmission(Reject(request, "DispatchFailure", ex.Message), null);
+                    }
+                    if (!queuedHandle.Accepted)
+                    {
+                        _operations.Remove(request.OperationId);
+                        queueReady.TrySetCanceled();
+                        return new MRKCommandSubmission(Reject(request, "QueueFull",
+                            "F19命令队列已停止或达到有界容量"), null);
+                    }
+                }
                 bool created;
                 try
                 {
@@ -314,16 +364,26 @@ namespace CxVisual.Mechanism.Runtime.Commands
                 }
                 catch
                 {
-                    _operations.Remove(request.OperationId); entry.Exit(); throw;
+                    _operations.Remove(request.OperationId);
+                    if (queued)
+                    {
+                        operation.Cancellation.Cancel();
+                        queueReady.TrySetCanceled();
+                    }
+                    else entry.Exit();
+                    throw;
                 }
             }
-            // ThreadPool只负责异步发起；资源/并发由正式MRK ResourceLease和Entry控制。
-            if (entry.Descriptor.Policy.Dispatch == MRKCommandDispatch.ThreadPool)
-                Task.Run(() => ExecuteAsync(operation, entry));
+            if (queuedHandle != null)
+            {
+                queueReady.TrySetResult(true);
+                Task observer = ObserveQueuedAsync(operation, queuedHandle);
+            }
+            else if (entry.Descriptor.Policy.Dispatch == MRKCommandDispatch.ThreadPool)
+                Task.Run(() => _executor.ExecuteAsync(operation, entry));
             else
             {
-                // Direct同样保证异步结果；同步阻塞Handler由专业Owner自行承担。
-                Task pending = ExecuteAsync(operation, entry);
+                Task pending = _executor.ExecuteAsync(operation, entry);
             }
             return new MRKCommandSubmission(operation.Snapshot(), operation);
         }
@@ -455,72 +515,33 @@ namespace CxVisual.Mechanism.Runtime.Commands
             return response;
         }
 
-        private async Task ExecuteAsync(MRKCommandExecution operation, MRKCommandRegistry.Entry entry)
+        /// <summary>F19结算未执行的排队命令；不留下永久Queued票据。</summary>
+        private async Task ObserveQueuedAsync(MRKCommandExecution operation, FCRWorkHandle<bool> queued)
         {
-            MRKCommandRequest request = operation.Request;
-            MRKCommandContext context = new MRKCommandContext(request, operation.Descriptor, operation.Report);
-            MRKCommandResponse response;
-            MRKResourceLease lease = null;
-            bool handlerCompleted = false;
-            try
-            {
-                operation.Cancellation.Token.ThrowIfCancellationRequested();
-                if (!string.IsNullOrWhiteSpace(operation.Descriptor.Policy.ResourceId))
-                    lease = await _leases.AcquireAsync(operation.Descriptor.Policy.ResourceId,
-                        operation.OperationId.ToString("N"), operation.Cancellation.Token).ConfigureAwait(false);
-                operation.Running();
-                IMRKCommandInterceptor[] interceptors;
-                lock (_gate) interceptors = _interceptors.ToArray();
-                // 拦截器与Handler只得到隔离副本，不允许修改幂等指纹的唯一输入快照。
-                foreach (IMRKCommandInterceptor interceptor in interceptors)
-                    await interceptor.BeforeAsync(context,
-                        FDCCommandValueSnapshot.Capture(operation.Inputs, _adapters),
-                        operation.Cancellation.Token).ConfigureAwait(false);
-                Task<MRKCommandHandlerResult> pending = entry.Handler.ExecuteAsync(context,
-                    FDCCommandValueSnapshot.Capture(operation.Inputs, _adapters),
-                    operation.Cancellation.Token);
-                if (pending == null) throw new InvalidOperationException("Handler返回空Task");
-                MRKCommandHandlerResult result = await pending.ConfigureAwait(false);
-                if (result == null) throw new InvalidOperationException("Handler未返回业务结果");
-                IReadOnlyDictionary<string, object> outputs =
-                    operation.Descriptor.Definition.ValidateOutputs(result.Outputs);
-                response = new MRKCommandResponse(request.RequestId, operation.OperationId,
-                    MRKCommandStage.Accepted, MRKCommandState.Completed,
-                    outputs, result.BusinessSuccess, result.BusinessCode,
-                    durationMs: operation.DurationMs, adapters: _adapters);
-                handlerCompleted = true;
-                // 完成拦截器故障不可误称设备未动作：返回Unknown供上层独立核对。
-                foreach (IMRKCommandInterceptor interceptor in interceptors)
-                    await interceptor.AfterAsync(context, response).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (operation.Cancellation.IsCancellationRequested)
-            {
-                response = new MRKCommandResponse(request.RequestId, operation.OperationId,
-                    MRKCommandStage.Accepted, MRKCommandState.Cancelled,
-                    errorCode: "Cancelled", error: "Handler协作取消；设备状态须另外确认",
-                    durationMs: operation.DurationMs);
-            }
+            FCRWorkResult<bool> result;
+            try { result = await queued.Completion.ConfigureAwait(false); }
             catch (Exception ex)
             {
-                response = new MRKCommandResponse(request.RequestId, operation.OperationId,
-                    MRKCommandStage.Accepted,
-                    handlerCompleted ? MRKCommandState.Unknown : MRKCommandState.Failed,
-                    errorCode: handlerCompleted ? "PostExecutionHookFailure" :
-                        (ex is UnauthorizedAccessException ? "Unauthorized" : "HandlerFailure"),
-                    error: ex.Message, durationMs: operation.DurationMs);
+                FinishQueuedWithoutHandler(operation, MRKCommandState.Failed,
+                    "QueueFailure", ex.Message);
+                return;
             }
-            finally
-            {
-                if (lease != null) lease.Dispose();
-                entry.Exit();
-            }
-            operation.Finish(response);
+            if (operation.IsCompleted) return;
+            bool cancelled = result.State == FCRWorkState.Cancelled;
+            FinishQueuedWithoutHandler(operation,
+                cancelled ? MRKCommandState.Cancelled : MRKCommandState.Failed,
+                cancelled ? "CancelledBeforeExecute" : "QueueExecutionFailure",
+                result.Error == null ? result.TerminalReason.ToString() : result.Error.Message);
+        }
+        private void FinishQueuedWithoutHandler(MRKCommandExecution operation, MRKCommandState state,
+            string errorCode, string message)
+        {
+            if (operation.IsCompleted) return;
+            operation.Finish(new MRKCommandResponse(operation.Request.RequestId,
+                operation.OperationId, MRKCommandStage.Accepted, state,
+                errorCode: errorCode, error: message, durationMs: operation.DurationMs));
             MRKExternalOperation tracked;
-            if (_tracker.TryGet(operation.OperationId, out tracked))
-            {
-                if (response.State == MRKCommandState.Completed) tracked.Confirm();
-                else if (response.State != MRKCommandState.Unknown) tracked.Fail(); // MRK.Failed为Provider结算，不等于现场安全停止。
-            }
+            if (_tracker.TryGet(operation.OperationId, out tracked)) tracked.Fail();
         }
 
         private static bool EqualInputs(IReadOnlyDictionary<string, object> a,
@@ -570,6 +591,11 @@ namespace CxVisual.Mechanism.Runtime.Commands
             // 对外Cancellation回调不允许在中心锁内执行。
             foreach (MRKCommandExecution operation in pending)
                 operation.Cancellation.Cancel();
+            if (_ownsDispatcher)
+            {
+                // 已执行的设备动作只发协作取消；不能在Dispose中阻塞调用者。
+                Task stopping = _dispatcher.StopAsync(true);
+            }
         }
     }
 }

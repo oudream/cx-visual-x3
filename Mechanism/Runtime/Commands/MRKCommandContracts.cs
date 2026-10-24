@@ -11,8 +11,8 @@ namespace CxVisual.Mechanism.Runtime.Commands
 {
     public enum MRKCommandKind { System, Module, Object, Device }
     public enum MRKCommandStage { Rejected, Accepted }
-    public enum MRKCommandState { Pending, Running, Completed, Failed, Cancelled, Unknown }
-    public enum MRKCommandDispatch { Direct, ThreadPool }
+    public enum MRKCommandState { Pending, Running, Completed, Failed, Cancelled, Unknown, Queued }
+    public enum MRKCommandDispatch { Direct, ThreadPool, Queued }
 
     /// <summary>描述执行约束而不是复制MCE参数Schema。MaxConcurrent是拒绝式容量，不使用无限队列。</summary>
     public sealed class MRKCommandPolicy
@@ -21,6 +21,8 @@ namespace CxVisual.Mechanism.Runtime.Commands
             MRKCommandDispatch dispatch = MRKCommandDispatch.ThreadPool, bool supportsCancellation = true)
         {
             if (maxConcurrent < 1 || maxConcurrent > 1024) throw new ArgumentOutOfRangeException("maxConcurrent");
+            if (dispatch == MRKCommandDispatch.Queued && maxConcurrent != 1)
+                throw new ArgumentException("Queued对同一目标按Key串行；MaxConcurrent必须为1", "maxConcurrent");
             MaxConcurrent = maxConcurrent; ResourceId = resourceId; Dispatch = dispatch;
             SupportsCancellation = supportsCancellation;
         }
@@ -53,15 +55,19 @@ namespace CxVisual.Mechanism.Runtime.Commands
 
     public sealed class MRKCommandOptions
     {
-        public MRKCommandOptions(int timeoutMilliseconds = 0, bool remote = false)
+        public MRKCommandOptions(int timeoutMilliseconds = 0, bool remote = false, int priority = 0)
         {
             if (timeoutMilliseconds < 0) throw new ArgumentOutOfRangeException("timeoutMilliseconds");
-            TimeoutMilliseconds = timeoutMilliseconds; Remote = remote;
+            if (priority < -1000 || priority > 1000)
+                throw new ArgumentOutOfRangeException("priority");
+            TimeoutMilliseconds = timeoutMilliseconds; Remote = remote; Priority = priority;
         }
         /// <summary>0取Definition默认值，仍为0则取Host默认值。</summary>
         public int TimeoutMilliseconds { get; private set; }
         /// <summary>预留桥接。P0不把同进程调用冒充IPC。</summary>
         public bool Remote { get; private set; }
+        /// <summary>仅Queued分发读取本优先级；不同Target按优先级调度，同Target保持提交顺序。</summary>
+        public int Priority { get; private set; }
     }
 
     public sealed class MRKCommandRequest
@@ -146,6 +152,7 @@ namespace CxVisual.Mechanism.Runtime.Commands
         public int Registered { get; internal set; }
         public int TotalOperations { get; internal set; }
         public int Pending { get; internal set; }
+        public int Queued { get; internal set; }
         public int Running { get; internal set; }
         public int Completed { get; internal set; }
         public int Failed { get; internal set; }
@@ -247,6 +254,11 @@ namespace CxVisual.Mechanism.Runtime.Commands
         public MRKCommandResponse Snapshot()
         { lock (_gate) return _latest.Copy(Adapters); }
         internal double DurationMs { get { return (DateTime.UtcNow - _created).TotalMilliseconds; } }
+        internal void Queued()
+        {
+            lock (_gate) _latest = new MRKCommandResponse(Request.RequestId, OperationId,
+                MRKCommandStage.Accepted, MRKCommandState.Queued);
+        }
         internal void Running()
         {
             lock (_gate) _latest = new MRKCommandResponse(Request.RequestId, OperationId,

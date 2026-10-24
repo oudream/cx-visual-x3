@@ -189,3 +189,36 @@ sequenceDiagram
 - Router.ResolveById 与 Discover(commandId:,schemaVersion:) 可用于Studio发布前查找及能力筛选。
 - MRKCommandRequest.expectedSchemaVersion>0 时执行前校验目标 SchemaVersion，版本不符返回 SchemaVersionMismatch 且 Handler 未执行；绑定调用透传该值。
 - ArchitectureSmoke专项新增正反断言。远程Transport、版本迁移和多版本并存仍未实现。
+
+## 11. F19驱动的正式Dispatcher / Executor（增量P1）
+
+新增 `Mechanism/Runtime/Commands/MRKCommandDispatching.cs`，仍属 `CxVisual.Mechanism.Runtime`（没有第三个命令项目）。
+
+- `MRKCommandDispatcher` 只包裹已有 `FCRWorker`：`Enqueue`、`Snapshot`、`StopAsync`，不实现新的Queue/优先级/线程池。Host可以注入共享Dispatcher，也可以由Center持有其生命周期。
+- `MRKCommandExecutor` 从原Center抽取真正的Handler执行管线，保留MRK ResourceLease、MRK Tracker、输入隔离、Before/After拦截、业务结果与执行状态、异常/取消。
+- `MRKCommandDispatch` 追加 `Queued`（旧枚举值保持）；`MRKCommandOptions(priority)` 控制F19跨目标调度优先级，限定[-1000,1000]。`Queued` 对同一Target+Code严格FIFO、`MaxConcurrent=1`，不同命令可跨Key并行；不作为高实时PLC运动控制的替代品。
+- `MRKCommandCenter(queuedConcurrency, queueCapacity, dispatcher)` 控制Host有界容量。排队满即 `Rejected/QueueFull`，不进入执行账本/Tracker；受理为 `Accepted/Queued`，未运行取消经F19结算为 `CancelledBeforeExecute`，若开始则进 `Running`。
+- 超时只是调用观察Unknown，底层的实际操作仍保持OperationId查询；设备停止仍由Professional设备联锁/反馈确认。
+- `GetQueueSnapshot` 返回F19已有快照，`StopQueueAsync` 支持关闭排队；`Dispose` 协作取消且不阻塞调用者等待危险硬件操作。
+
+### 示例
+
+```csharp
+MRKCommandPolicy policy = new MRKCommandPolicy(dispatch: MRKCommandDispatch.Queued);
+using (MRKCommandCenter center = new MRKCommandCenter(
+    queuedConcurrency: 2, queueCapacity: 32))
+using (center.Register(new MRKCommandDescriptor("algorithm/modelA", definition,
+    policy: policy), handler))
+{
+    MRKCommandRequest request = new MRKCommandRequest("algorithm/modelA", "Detect",
+        inputs, options: new MRKCommandOptions(priority: 20));
+    MRKCommandResponse response = await center.InvokeAsync(request);
+    // 若Accepted + Unknown必须用OperationId继续查询，禁止据此认为设备已停止。
+}
+```
+
+`definition/handler/inputs` 必须来自正式注册与专业模块，例子不是伪造设备SDK。
+
+### 本轮仍未实现的完整要求
+
+跨PC Transport、真实权限身份/安全联锁、持久化队列/掉电恢复、命令暂停恢复（需要Handler协作契约）、长任务流式中间结果、跨目标原子事务、Studio可视化命令属性面板、通用可配置重试均未完成；不能因调度接口存在而冒称已通过现场验收。

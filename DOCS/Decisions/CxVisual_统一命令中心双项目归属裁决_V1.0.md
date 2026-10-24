@@ -70,3 +70,7 @@ using (center.Register(new MRKCommandDescriptor("algorithm", definition),
 ## 六、双项目稳定后继续补齐的命令发现与版本门禁
 
 命令专属代码依然只在两个既有项目内。Registry 对同一 Target 的 CommandId 强制唯一；Router 支持 `ResolveById(Target,CommandId)` 和 `Discover(commandId:, schemaVersion:)`。MRKCommandRequest 追加可选 `expectedSchemaVersion=0`（0 为兼容原默认、不执行版本检查；大于0时必须与发布的 FDCCommandDefinition.SchemaVersion 一致）。版本不符在 Handler 执行前返回 `Rejected/SchemaVersionMismatch`，`InvokeBoundAsync` 也透传版本约束。不把这个进程内契约检查称为已实现跨进程协商。
+
+## 七、Dispatcher与Executor均已按两个项目归属实现
+
+`MRKCommandDispatcher`、`MRKCommandExecutor` 的正式实现新增于 `Mechanism.Runtime.Commands/MRKCommandDispatching.cs`，其中队列直接复用F19 `FCRWorker`，不会新建消息中心/线程池/数据堆。参数 Schema 和绑定接口仍在Foundation.Data；命令运行/适配仍在Mechanism.Runtime。此项实现完成度以专项Windows CI和正反用例为准。

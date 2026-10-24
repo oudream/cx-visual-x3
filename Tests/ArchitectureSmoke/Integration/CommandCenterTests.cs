@@ -53,6 +53,95 @@ namespace CxVisual.Tests.ArchitectureSmoke
             { cancellation.ThrowIfCancellationRequested(); _variables.Update<double>(name, (double)value); return Task.CompletedTask; }
         }
 
+
+        /// <summary>F19正式有界队列：优先级、同目标FIFO、未执行取消、溢出反证。</summary>
+        private static void QueuedRun()
+        {
+            TaskCompletionSource<bool> started = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<bool> release = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            List<string> order = new List<string>();
+            int cancelledInvocations = 0;
+            FDCCommandDefinition definition = Definition();
+            MRKCommandPolicy queued = new MRKCommandPolicy(
+                dispatch: MRKCommandDispatch.Queued);
+            Func<string, int, MRKCommandRequest> makeRequest = (target, priority) =>
+                new MRKCommandRequest(target, "Calculate",
+                    new Dictionary<string, object> { { "Input", 1.0 } },
+                    options: new MRKCommandOptions(priority: priority));
+            using (MRKCommandCenter center = new MRKCommandCenter(
+                queuedConcurrency: 1, queueCapacity: 3))
+            using (center.Register(new MRKCommandDescriptor("first", definition,
+                policy: queued), new MRKDelegateCommandHandler(async (ctx, input, ct) =>
+                {
+                    started.TrySetResult(true);
+                    await release.Task.ConfigureAwait(false);
+                    lock (order) order.Add("first");
+                    return new MRKCommandHandlerResult(
+                        new Dictionary<string, object> { { "Output", 1.0 } });
+                })))
+            using (center.Register(new MRKCommandDescriptor("low", definition,
+                policy: queued), new MRKDelegateCommandHandler((ctx, input, ct) =>
+                {
+                    lock (order) order.Add("low");
+                    return Task.FromResult(new MRKCommandHandlerResult(
+                        new Dictionary<string, object> { { "Output", 2.0 } }));
+                })))
+            using (center.Register(new MRKCommandDescriptor("high", definition,
+                policy: queued), new MRKDelegateCommandHandler((ctx, input, ct) =>
+                {
+                    lock (order) order.Add("high");
+                    return Task.FromResult(new MRKCommandHandlerResult(
+                        new Dictionary<string, object> { { "Output", 3.0 } }));
+                })))
+            using (center.Register(new MRKCommandDescriptor("cancelled", definition,
+                policy: queued), new MRKDelegateCommandHandler((ctx, input, ct) =>
+                {
+                    Interlocked.Increment(ref cancelledInvocations);
+                    return Task.FromResult(new MRKCommandHandlerResult(
+                        new Dictionary<string, object> { { "Output", 4.0 } }));
+                })))
+            {
+                MRKCommandSubmission first = center.Submit(makeRequest("first", 0));
+                Check(first.Operation != null && started.Task.Wait(TimeSpan.FromSeconds(5)),
+                    "first queue command starts");
+                MRKCommandSubmission low = center.Submit(makeRequest("low", -10));
+                MRKCommandSubmission high = center.Submit(makeRequest("high", 10));
+                MRKCommandSubmission cancelled = center.Submit(makeRequest("cancelled", 0));
+                Check(low.Operation != null && high.Operation != null &&
+                    cancelled.Operation != null && center.GetMetrics().Queued == 3,
+                    "queued state and bounded pending");
+                MRKCommandSubmission full = center.Submit(makeRequest("overflow", 20));
+                Check(full.Operation == null && full.Response.ErrorCode == "HandlerNotFound",
+                    "unregistered target must reject before queue allocation");
+                MRKCommandSubmission fullTarget = center.Submit(makeRequest("high", 20));
+                Check(fullTarget.Operation == null && fullTarget.Response.ErrorCode == "QueueFull",
+                    "queue at capacity must reject without ledger allocation");
+                Check(center.Cancel(cancelled.Operation.OperationId), "queued cancellation requested");
+                Check(cancelled.Operation.Completion.Wait(TimeSpan.FromSeconds(5)) &&
+                    cancelled.Operation.Snapshot().State == MRKCommandState.Cancelled &&
+                    cancelledInvocations == 0, "cancelled queued command must never invoke Handler");
+                release.TrySetResult(true);
+                Check(first.Operation.Completion.Wait(TimeSpan.FromSeconds(5)) &&
+                    low.Operation.Completion.Wait(TimeSpan.FromSeconds(5)) &&
+                    high.Operation.Completion.Wait(TimeSpan.FromSeconds(5)),
+                    "queued work must drain");
+                lock (order)
+                    Check(order.Count == 3 && order[0] == "first" &&
+                        order[1] == "high" && order[2] == "low",
+                        "high priority must precede lower priority across distinct targets");
+                Check(center.GetMetrics().Completed == 3 &&
+                    center.GetMetrics().Cancelled == 1 &&
+                    center.GetQueueSnapshot().Pending == 0,
+                    "queue metrics and cleanup");
+            }
+            bool rejectInvalidPolicy = false;
+            try { new MRKCommandPolicy(2, dispatch: MRKCommandDispatch.Queued); }
+            catch (ArgumentException) { rejectInvalidPolicy = true; }
+            Check(rejectInvalidPolicy, "same key queue must be serial");
+        }
+
         // 进阶正反：注册热替换、过滤发现、操作身份、快照与执行隔离。
         private static void ExtendedRun()
         {
@@ -479,6 +568,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         "byte array snapshot safety");
                 }
             }
+            QueuedRun();
             ExtendedRun();
             Console.WriteLine("PASS BUS-CMD CommandCenter: registration/router/authorization/MDSSchema/mapping/batch/concurrency/timeout/snapshot/replacement/replay/copy");
         }
