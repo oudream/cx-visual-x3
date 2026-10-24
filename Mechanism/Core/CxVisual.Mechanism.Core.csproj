@@ -39,7 +39,7 @@
     <Compile Include="Engineering\MTCEditSession.Visual.cs"/>
     <Compile Include="Engineering\MEMEngineeringSession.Editing.cs"/>
     <Compile Include="Engineering\MEMProjectSnapshot.cs"/>
-    <Compile Include="Engineering\MRIObjectAddress.cs"/>
+    <Compile Include="Engineering\MRIObjectAddress.cs"/><Compile Include="Engineering\MRIEndpointRegistry.cs"/>
     <Reference Include="System"/>
     <Reference Include="System.Core"/><Reference Include="System.ComponentModel.DataAnnotations"/>
     <Reference Include="System.IO.Compression"/><Reference Include="System.IO.Compression.FileSystem"/><Reference Include="System.Xml"/>

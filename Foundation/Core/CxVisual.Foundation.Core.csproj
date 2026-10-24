@@ -21,6 +21,6 @@
     <Reference Include="System.Core"/>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Properties\AssemblyInfo.cs"/><Compile Include="FOIStableId.cs"/></ItemGroup>
+    <Compile Include="Properties\AssemblyInfo.cs"/><Compile Include="FOIStableId.cs"/><Compile Include="FOIInteractionEndpointAddress.cs"/><Compile Include="FOIInteractionIdGenerator.cs"/></ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets"/>
 </Project>

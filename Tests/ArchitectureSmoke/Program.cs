@@ -23,6 +23,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Array.IndexOf(args, "--config-performance-smoke") >= 0 ||
                     Array.IndexOf(args, "--config-performance-full") >= 0)
                     return ConfigFoundationSmokeRunner.Run(args);
+                if (Array.IndexOf(args, "--interaction-stage1") >= 0) { InteractionStageOneTests.Run(); return 0; }
                 if (Array.IndexOf(args, "--organization-wpf") >= 0) return OrganizationWpfTests.Run();
                 if (Array.IndexOf(args, "--organization") >= 0)
                 {
@@ -61,6 +62,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 RuntimeDataStorageTests.Run();
                 RuntimeVisionDataFlowTests.Run();
                 ModuleArchitectureReviewTests.Run();
+                InteractionStageOneTests.Run();
                 RuntimeDataHardeningTests.Run();
                 ExecutionJournalTests.Run();
                 ExecutionControlTests.Run();
