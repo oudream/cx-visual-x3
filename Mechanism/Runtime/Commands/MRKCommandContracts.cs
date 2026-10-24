@@ -242,6 +242,39 @@ namespace CxVisual.Mechanism.Runtime.Commands
         public string DataAddress { get; private set; }
     }
 
+    /// <summary>将设备/算法执行结算与数据Owner回写结算分开，不混淆业务副作用。</summary>
+    public sealed class MRKCommandBindingResult
+    {
+        internal MRKCommandBindingResult(MRKCommandResponse execution, bool mappingAttempted,
+            bool mappingSucceeded, IEnumerable<string> mappedAddresses,
+            string mappingErrorCode = null, string mappingError = null)
+        {
+            Execution = execution ?? throw new ArgumentNullException("execution");
+            MappingAttempted = mappingAttempted; MappingSucceeded = mappingSucceeded;
+            MappedAddresses = Array.AsReadOnly((mappedAddresses ??
+                Enumerable.Empty<string>()).ToArray());
+            MappingErrorCode = mappingErrorCode ?? string.Empty;
+            MappingError = mappingError ?? string.Empty;
+        }
+        public MRKCommandResponse Execution { get; private set; }
+        /// <summary>只有Execution.Completed才会进行Output绑定；Unknown时绝不可假设未执行。</summary>
+        public bool MappingAttempted { get; private set; }
+        public bool MappingSucceeded { get; private set; }
+        /// <summary>已经成功写入的地址，后续地址失败时不隐式回滚前面的副作用。</summary>
+        public IReadOnlyList<string> MappedAddresses { get; private set; }
+        public string MappingErrorCode { get; private set; }
+        public string MappingError { get; private set; }
+    }
+
+    /// <summary>兼容旧InvokeBoundAsync异常模式，同时将已经完成的执行回执携带给调用方。</summary>
+    public sealed class MRKCommandOutputMappingException : Exception
+    {
+        public MRKCommandOutputMappingException(MRKCommandBindingResult result)
+            : base(result == null ? "命令输出映射异常" : result.MappingError)
+        { Result = result ?? throw new ArgumentNullException("result"); }
+        public MRKCommandBindingResult Result { get; private set; }
+    }
+
     /// <summary>单次操作的可查询票据。超时仅为调用方Unknown；底层Operation继续保留直至结算。</summary>
     public sealed class MRKCommandExecution
     {

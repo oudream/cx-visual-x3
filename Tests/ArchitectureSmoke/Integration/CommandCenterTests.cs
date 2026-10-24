@@ -54,6 +54,83 @@ namespace CxVisual.Tests.ArchitectureSmoke
         }
 
 
+        /// <summary>命令业务已完成而输出写回失败时不得丢失执行回执或隐藏局部写入。</summary>
+        private static void OutputMappingRun()
+        {
+            FDCCommandDefinition definition = new FDCCommandDefinition(8808, "Produce", "生成",
+                new FDCCommandParameterDefinition[0],
+                new[] {
+                    new FDCCommandParameterDefinition("First", typeof(double), true),
+                    new FDCCommandParameterDefinition("Second", typeof(double), false)
+                });
+            MRKCommandParameterBinding[] bindings = new[] {
+                new MRKCommandParameterBinding("First", "ok"),
+                new MRKCommandParameterBinding("Second", "fail")
+            };
+            int invoked = 0;
+            using (MRKCommandCenter center = new MRKCommandCenter())
+            using (center.Register(new MRKCommandDescriptor("mapper", definition),
+                new MRKDelegateCommandHandler((context, inputs, ct) =>
+                {
+                    Interlocked.Increment(ref invoked);
+                    return Task.FromResult(new MRKCommandHandlerResult(
+                        new Dictionary<string, object> { { "First", 10.0 }, { "Second", 20.0 } }));
+                })))
+            {
+                FaultingCommandBinding owner = new FaultingCommandBinding();
+                MRKCommandRequest request = new MRKCommandRequest("mapper", "Produce");
+                MRKCommandBindingResult result = center.InvokeBoundResultAsync(request, owner,
+                    null, bindings).GetAwaiter().GetResult();
+                Check(result.Execution.State == MRKCommandState.Completed &&
+                    result.MappingAttempted && !result.MappingSucceeded &&
+                    result.MappingErrorCode == "OutputMappingFailed" &&
+                    result.MappedAddresses.Count == 1 &&
+                    result.MappedAddresses[0] == "ok" && owner.Writes.Count == 1 &&
+                    center.Query(request.OperationId).State == MRKCommandState.Completed,
+                    "partial output mapping must preserve successful command execution receipt");
+                bool caught = false;
+                try
+                {
+                    center.InvokeBoundAsync(new MRKCommandRequest("mapper", "Produce"),
+                        new FaultingCommandBinding(), null, bindings).GetAwaiter().GetResult();
+                }
+                catch (MRKCommandOutputMappingException ex)
+                {
+                    caught = ex.Result.Execution.State == MRKCommandState.Completed &&
+                        ex.Result.MappedAddresses.Count == 1;
+                }
+                Check(caught && invoked == 2, "legacy caller must receive structured failure");
+            }
+            using (MRKCommandCenter center = new MRKCommandCenter())
+            using (center.Register(new MRKCommandDescriptor("missing", definition),
+                new MRKDelegateCommandHandler((context, inputs, ct) =>
+                    Task.FromResult(new MRKCommandHandlerResult(
+                        new Dictionary<string, object> { { "First", 10.0 } })))))
+            {
+                FaultingCommandBinding owner = new FaultingCommandBinding();
+                MRKCommandBindingResult result = center.InvokeBoundResultAsync(
+                    new MRKCommandRequest("missing", "Produce"), owner,
+                    null, bindings).GetAwaiter().GetResult();
+                Check(result.Execution.State == MRKCommandState.Completed &&
+                    result.MappingErrorCode == "OutputMissing" &&
+                    !result.MappingSucceeded && owner.Writes.Count == 0,
+                    "missing optional mapping port must reject before any output write");
+            }
+        }
+        private sealed class FaultingCommandBinding : IFDCCommandValueBinding
+        {
+            internal readonly List<string> Writes = new List<string>();
+            public Task<object> ReadAsync(string address, CancellationToken cancellation)
+            { return Task.FromResult((object)1.0); }
+            public Task WriteAsync(string address, object value, CancellationToken cancellation)
+            {
+                cancellation.ThrowIfCancellationRequested();
+                if (address == "fail") throw new InvalidOperationException("模拟MDS写回故障");
+                Writes.Add(address);
+                return Task.CompletedTask;
+            }
+        }
+
         /// <summary>PauseRequested != Paused；中间值是快照且协作取消可打断暂停点。</summary>
         private static void LongTaskRun()
         {
@@ -657,6 +734,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             }
             QueuedRun();
             LongTaskRun();
+            OutputMappingRun();
             ExtendedRun();
             Console.WriteLine("PASS BUS-CMD CommandCenter: registration/router/authorization/MDSSchema/mapping/batch/concurrency/timeout/snapshot/replacement/replay/copy");
         }

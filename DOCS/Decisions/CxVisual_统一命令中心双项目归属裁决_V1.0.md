@@ -78,3 +78,7 @@ using (center.Register(new MRKCommandDescriptor("algorithm", definition),
 ## 八、长任务控制Owner不变
 
 `MRKCommandContext.WaitWhilePausedAsync`、`ReportIntermediate`、`MRKCommandExecution.TryPause/TryResume` 与公开 `MRKCommandCenter.Pause/Resume` 均属于 `Mechanism.Runtime.Commands`。Foundation.Data只提供参数值快照；实体硬件暂停、急停或复位依然由Professional负责并需现场确认。
+
+## 九、输出映射Owner与执行结果分离
+
+`MRKCommandBindingResult`、`MRKCommandOutputMappingException`、`InvokeBoundResultAsync` 完全归 `Mechanism.Runtime.Commands`，映射继续通过 `Foundation.Data.Commands.IFDCCommandValueBinding` 访问正式MDS/数据Owner。写回失败不是执行失败，且不默认重试设备动作。可跨设备事务/多Host恢复待专门设计与验收。

@@ -487,7 +487,25 @@ namespace CxVisual.Mechanism.Runtime.Commands
         }
 
         /// <summary>由现有MDS/变量/端口Owner提供读写，不复制Heap或变量表；只在成功执行后映射输出。</summary>
+        /// <summary>兼容旧调用；若执行已经完成但输出写回失败，异常携带独立执行回执。</summary>
         public async Task<MRKCommandResponse> InvokeBoundAsync(MRKCommandRequest request,
+            IFDCCommandValueBinding owner,
+            IEnumerable<MRKCommandParameterBinding> inputBindings,
+            IEnumerable<MRKCommandParameterBinding> outputBindings,
+            CancellationToken cancellation = default(CancellationToken))
+        {
+            MRKCommandBindingResult result = await InvokeBoundResultAsync(request, owner,
+                inputBindings, outputBindings, cancellation).ConfigureAwait(false);
+            if (!string.IsNullOrEmpty(result.MappingErrorCode))
+                throw new MRKCommandOutputMappingException(result);
+            return result.Execution;
+        }
+
+        /// <summary>
+        /// 结果分层：Execution已完成≠数据Owner写回成功；任何局部写入均显式回报地址。
+        /// 输出映射无法跨多个外部Owner提供事务回滚，严禁无条件自动重试设备动作。
+        /// </summary>
+        public async Task<MRKCommandBindingResult> InvokeBoundResultAsync(MRKCommandRequest request,
             IFDCCommandValueBinding owner,
             IEnumerable<MRKCommandParameterBinding> inputBindings,
             IEnumerable<MRKCommandParameterBinding> outputBindings,
@@ -513,22 +531,45 @@ namespace CxVisual.Mechanism.Runtime.Commands
                 Enumerable.Empty<MRKCommandParameterBinding>())
             {
                 if (binding == null) throw new ArgumentException("输入绑定不能为空");
-                if (values.ContainsKey(binding.Parameter)) throw new ArgumentException("输入参数绑定重复：" + binding.Parameter);
-                values.Add(binding.Parameter, await owner.ReadAsync(binding.DataAddress, cancellation).ConfigureAwait(false));
+                if (values.ContainsKey(binding.Parameter))
+                    throw new ArgumentException("输入参数绑定重复：" + binding.Parameter);
+                values.Add(binding.Parameter,
+                    await owner.ReadAsync(binding.DataAddress, cancellation).ConfigureAwait(false));
             }
-            MRKCommandRequest actual = new MRKCommandRequest(request.Target, request.CommandCode, values,
-                request.Caller, request.OperationId, request.RequestId, request.Options,
+            MRKCommandRequest actual = new MRKCommandRequest(request.Target, request.CommandCode,
+                values, request.Caller, request.OperationId, request.RequestId, request.Options,
                 request.ExpectedSchemaVersion);
             MRKCommandResponse response = await InvokeAsync(actual, cancellation).ConfigureAwait(false);
-            if (response.State == MRKCommandState.Completed)
-                foreach (MRKCommandParameterBinding binding in outputs)
+            if (response.State != MRKCommandState.Completed)
+                return new MRKCommandBindingResult(response, false, false, null);
+
+            IReadOnlyDictionary<string, object> final = response.Outputs;
+            List<object> readyValues = new List<object>(outputs.Length);
+            foreach (MRKCommandParameterBinding binding in outputs)
+            {
+                object value;
+                if (!final.TryGetValue(binding.Parameter, out value))
+                    return new MRKCommandBindingResult(response, true, false, null,
+                        "OutputMissing", "命令已执行，但结果未包含映射端口：" + binding.Parameter);
+                readyValues.Add(value);
+            }
+            List<string> mapped = new List<string>();
+            for (int i = 0; i < outputs.Length; i++)
+            {
+                try
                 {
-                    object value;
-                    if (!response.Outputs.TryGetValue(binding.Parameter, out value))
-                        throw new ArgumentException("未返回指定输出：" + binding.Parameter);
-                    await owner.WriteAsync(binding.DataAddress, value, cancellation).ConfigureAwait(false);
+                    await owner.WriteAsync(outputs[i].DataAddress, readyValues[i], cancellation)
+                        .ConfigureAwait(false);
+                    mapped.Add(outputs[i].DataAddress);
                 }
-            return response;
+                catch (Exception ex)
+                {
+                    return new MRKCommandBindingResult(response, true, false, mapped,
+                        ex is OperationCanceledException ? "OutputMappingCancelled" : "OutputMappingFailed",
+                        "命令已执行，输出地址写回失败：" + outputs[i].DataAddress + ": " + ex.Message);
+                }
+            }
+            return new MRKCommandBindingResult(response, true, true, mapped);
         }
 
         /// <summary>F19结算未执行的排队命令；不留下永久Queued票据。</summary>

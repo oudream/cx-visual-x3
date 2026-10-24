@@ -232,3 +232,16 @@ Handler可调用 `ReportProgress` 和 `ReportIntermediate`；Execution暴露最�
 专项正反测试覆盖：请求与确认状态区分、Resume后继续同一次命令、byte[]中间值快照隔离、暂停中协作取消、未声明暂停能力时拒绝控制。
 
 **未完成**：真实设备暂停/恢复驱动回执、跨进程任务恢复、持久化进度/状态、流式多帧历史、Studio Watch同步、暂停时安全联锁以及在执行前主动暂停排队的策略。
+
+## 13. 执行完成与输出映射结果明确分层
+
+新增 `MRKCommandCenter.InvokeBoundResultAsync` 返回 `MRKCommandBindingResult`：
+
+- `Execution`：原命令受理、执行状态、业务结果与最终输出；**不因写回失败而改写**。
+- `MappingAttempted`、`MappingSucceeded`：是否尝试写回及是否全部写回成功。
+- `MappedAddresses`：确实已经成功写入的地址集合，便于运维查询局部副作用。
+- `MappingErrorCode`、`MappingError`：区分未找到所需输出、数据Owner写入失败、取消等。
+
+输出字段在首次写入之前全部检查是否存在，防止“缺字段”造成一半写回；但对真实MDS、PLC或多数据Owner写回仍不承诺跨目标事务。旧 `InvokeBoundAsync` 继续返回 `MRKCommandResponse`；写回失败时抛 `MRKCommandOutputMappingException`，异常内携带同一 `MRKCommandBindingResult`，调用者仍能明确知道命令已经执行成功。
+
+验收：模拟输出第一个写回成功、第二个写回异常时，`Execution.Completed`、`MappedAddresses`保留第一目标、执行账本仍可查询完成；若可选输出未返回，任何写回之前拒绝并报告 `OutputMissing`。**不能因输出映射失败重发设备命令**，重新映射需要独立受控恢复策略。
