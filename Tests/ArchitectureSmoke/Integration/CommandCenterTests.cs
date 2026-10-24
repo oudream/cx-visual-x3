@@ -55,6 +55,41 @@ namespace CxVisual.Tests.ArchitectureSmoke
         // 进阶正反：注册热替换、过滤发现、操作身份、快照与执行隔离。
         private static void ExtendedRun()
         {
+            MCECommandDefinition broadcastDefinition = Definition();
+            using (MRKCommandCenter center = new MRKCommandCenter())
+            using (center.Register(new MRKCommandDescriptor("line1", broadcastDefinition),
+                Handler(x => x)))
+            using (center.Register(new MRKCommandDescriptor("line2", broadcastDefinition),
+                Handler(x => x + 1)))
+            {
+                IReadOnlyList<MRKCommandResponse> results = center.InvokeBroadcastAsync(
+                    "Calculate", new Dictionary<string, object> { { "Input", 1.0 } })
+                    .GetAwaiter().GetResult();
+                Check(results.Count == 2 &&
+                    (double)results[0].Outputs["Output"] == 2.0 &&
+                    (double)results[1].Outputs["Output"] == 3.0 &&
+                    results[0].OperationId != results[1].OperationId,
+                    "broadcast must independently dispatch and correlate responses");
+                MRKCommandResponse sync = center.Invoke(new MRKCommandRequest(
+                    "line1", "Calculate", new Dictionary<string, object> { { "Input", 4.0 } }));
+                Check(sync.State == MRKCommandState.Completed &&
+                    (double)sync.Outputs["Output"] == 8.0, "sync SDK call");
+            }
+            using (MRKCommandCenter devices = new MRKCommandCenter(
+                authorize: ctx => true))
+            using (devices.Register(new MRKCommandDescriptor("axis1", Definition("MoveAbs"),
+                MRKCommandKind.Device), Handler(x => x)))
+            {
+                bool blocked = false;
+                try { devices.InvokeBroadcastAsync("MoveAbs").GetAwaiter().GetResult(); }
+                catch (UnauthorizedAccessException) { blocked = true; }
+                Check(blocked, "device broadcast must fail closed even if center has authorize delegate");
+                IReadOnlyList<MRKCommandResponse> allowed = devices.InvokeBroadcastAsync("MoveAbs",
+                    new Dictionary<string, object> { { "Input", 1.0 } },
+                    allowDeviceBroadcast: true).GetAwaiter().GetResult();
+                Check(allowed.Count == 1 && allowed[0].State == MRKCommandState.Completed,
+                    "explicit device broadcast still uses target-side authorization");
+            }
 
             MCECommandDefinition hierarchical = new MCECommandDefinition(7003, "Nested", "复杂参数",
                 new[] { new MCECommandParameterDefinition("Spec",

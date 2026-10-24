@@ -354,6 +354,32 @@ namespace CxVisual.Mechanism.Runtime.Commands
                 .ConfigureAwait(false));
         }
 
+        /// <summary>同步调用只适用于无UI线程等待的SDK调用者；后台/Studio应优先使用InvokeAsync。</summary>
+        public MRKCommandResponse Invoke(MRKCommandRequest request,
+            CancellationToken cancellation = default(CancellationToken))
+        { return InvokeAsync(request, cancellation).GetAwaiter().GetResult(); }
+
+        /// <summary>
+        /// 根据当前启用的正式Registry枚举目标进行显式广播。
+        /// 默认禁止设备广播，避免把单点运动命令无意变成群控；所有目标独立OperationId与结果。
+        /// </summary>
+        public Task<IReadOnlyList<MRKCommandResponse>> InvokeBroadcastAsync(
+            string commandCode, IReadOnlyDictionary<string, object> inputs = null,
+            MRKCommandKind? kind = null, string capability = null,
+            string caller = null, bool allowDeviceBroadcast = false,
+            CancellationToken cancellation = default(CancellationToken))
+        {
+            MCECommandParameterDefinition.CheckCode(commandCode);
+            MRKCommandDescriptor[] descriptors = Router.Discover(kind: kind,
+                capability: capability, commandCode: commandCode).ToArray();
+            if (descriptors.Length > 256)
+                throw new ArgumentException("广播命令目标超过256，需分批处理");
+            if (!allowDeviceBroadcast && descriptors.Any(d => d.Kind == MRKCommandKind.Device))
+                throw new UnauthorizedAccessException("设备广播必须显式启用并经过逐目标授权");
+            return InvokeBatchAsync(descriptors.Select(d => new MRKCommandRequest(
+                d.Target, commandCode, inputs, caller)), cancellation);
+        }
+
         /// <summary>由现有MDS/变量/端口Owner提供读写，不复制Heap或变量表；只在成功执行后映射输出。</summary>
         public async Task<MRKCommandResponse> InvokeBoundAsync(MRKCommandRequest request,
             IFDCCommandValueBinding owner,

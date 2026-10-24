@@ -78,3 +78,105 @@ CI状态以对应提交的实际工作流结论为准，未核实结果不写“
 `MCECommandParameterDefinition` 保持向后兼容的构造函数，新增长尾可选参数 `allowNull`、`readOnly`、`formatPattern`、`children`。使用同一个输入/输出描述对象，嵌套的命名Map支持递归必填、类型、数值范围、字符串Regex（限50ms）及未知成员拒绝，输出同样校验。安全快照仍由Foundation.Data统一处理，深度/容量受到限制。
 
 `ReadOnly` 是Studio呈现元数据，不能代替目标侧认证；自定义DTO跨PC序列化以及复杂Graph Schema、数组元素Schema、数据单位转换仍属后续专门验收。新增的CommandCenterTests覆盖嵌套正常/超范围/格式/必填/未知键/结果隔离六种路径。
+
+## 8. 同步与广播调用（进程内正式增量）
+
+`MRKCommandCenter.Invoke` 是SDK的同步等待入口，UI线程不可调用此阻塞入口；`InvokeBroadcastAsync` 使用唯一Registry发现并逐目标创建独立请求（最多256），复用 `InvokeBatchAsync` 和各目标受理、授权、限流、超时语义。默认禁止任何设备广播，显式开启也必须逐目标通过Host授权，不允许以广播规避安全门禁。没有订阅目标时返回零项，不伪造成功目标。
+
+### 运行关系与类图
+
+```mermaid
+classDiagram
+    class MCECommandDefinition {
+      +CommandId
+      +CommandCode
+      +SchemaVersion
+      +Inputs
+      +Outputs
+      +BindInputs(values)
+      +ValidateOutputs(values)
+    }
+    class MCECommandParameterDefinition {
+      +Code
+      +DataType
+      +AllowNull
+      +FormatPattern
+      +Children
+      +ValidateValue(value)
+    }
+    class MRKCommandCenter {
+      +Register(descriptor,handler)
+      +Replace(descriptor,handler)
+      +InvokeAsync(request)
+      +InvokeBroadcastAsync(code,inputs)
+      +InvokeBoundAsync(request,binding)
+      +Query(operationId)
+      +Cancel(operationId)
+      +GetMetrics()
+    }
+    class MRKCommandRegistry {
+      +Register()
+      +Replace()
+      +Find()
+      +Discover()
+      +SetEnabled()
+    }
+    class MRKCommandExecution {
+      +OperationId
+      +Completion
+      +Progress
+      +Snapshot()
+    }
+    class IMRKCommandHandler {
+      +ExecuteAsync(context,inputs,ct)
+    }
+    class IFDCCommandValueBinding {
+      +ReadAsync(address)
+      +WriteAsync(address,value)
+    }
+    class MDSCommandValueBinding {
+      +BindVariable()
+      +BindNode()
+      +BindHeap()
+      +Unbind()
+    }
+    MCECommandDefinition "1" o-- "*" MCECommandParameterDefinition
+    MRKCommandCenter --> MRKCommandRegistry
+    MRKCommandRegistry --> IMRKCommandHandler
+    MRKCommandRegistry --> MCECommandDefinition
+    MRKCommandCenter --> MRKCommandExecution
+    MRKCommandCenter ..> IFDCCommandValueBinding
+    MDSCommandValueBinding ..|> IFDCCommandValueBinding
+```
+
+### 命令时序
+
+```mermaid
+sequenceDiagram
+    participant Studio as SDK或Studio/MOL
+    participant Center as MRKCommandCenter
+    participant Schema as MCECommandDefinition
+    participant Registry as MRKCommandRegistry
+    participant Owner as MDS绑定Owner
+    participant Handler as Professional Handler
+    Studio->>Center: InvokeBoundAsync(Request)
+    Center->>Owner: ReadAsync(绑定参数)
+    Owner-->>Center: 输入值快照
+    Center->>Registry: Resolve(Target,CommandCode)
+    Center->>Schema: BindInputs + Validate
+    Center->>Center: 权限/并发/Operation去重
+    Center-->>Studio: Submit时Accepted，Invoke时等待
+    Center->>Handler: ExecuteAsync(隔离输入)
+    Handler-->>Center: BusinessResult + Outputs
+    Center->>Schema: ValidateOutputs
+    Center->>Owner: WriteAsync(输出映射)
+    Center-->>Studio: Completed/Failed/Unknown + OperationId
+```
+
+**设备场景**：`Automation` 注册轴移动Handler，固定的Definition指定位置/速度约束，Host必须注入授权和专业安全校验。不能把超时、取消视为轴停止。
+
+**算法场景**：`Vision` 可注册图像检测/参数化计算Handler，返回缺陷/分数或受控Handle，图片或大数据不能当作普通可变对象随意深拷贝。
+
+**流程场景**：`MOL` 运行节点编译为MRK调用目标Command，参数从节点Input/FlowHeap映射，结果通过MDS返回；不得构造第二套Graph Executor。
+
+这些为正式API使用方式与待覆盖场景边界，未完成的专业设备/实际Studio拖拽操作不得冒称已HIL验收。
