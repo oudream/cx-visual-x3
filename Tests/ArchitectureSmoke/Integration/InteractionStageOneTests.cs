@@ -17,7 +17,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         }
         public static void Run()
         {
-            const long epoch=1704067200000L;
+            long epoch=new DateTime(2024,1,1,0,0,0,DateTimeKind.Utc).Ticks/TimeSpan.TicksPerMillisecond;
             long time=epoch+12345L;
             long first;
             using(FOIInteractionIdGenerator id=new FOIInteractionIdGenerator(947,()=>time))
