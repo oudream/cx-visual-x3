@@ -50,6 +50,82 @@ namespace CxVisual.Tests.ArchitectureSmoke
             public Task WriteAsync(string name, object value, CancellationToken cancellation)
             { cancellation.ThrowIfCancellationRequested(); _variables.Update<double>(name, (double)value); return Task.CompletedTask; }
         }
+
+        // 进阶正反：注册热替换、过滤发现、操作身份、快照与执行隔离。
+        private static void ExtendedRun()
+        {
+            using (MRKCommandCenter center = new MRKCommandCenter())
+            {
+                IDisposable old = center.Register(new MRKCommandDescriptor(Target, Definition()),
+                    Handler(x => x));
+                IDisposable updated = center.Replace(new MRKCommandDescriptor(Target, Definition()),
+                    Handler(x => x + 10));
+                old.Dispose();
+                Check(center.Router.Discover(name: "计算", commandCode: "Calculate").Count == 1,
+                    "discover by name and code");
+                Check(center.Router.Discover(name: "wrong").Count == 0,
+                    "nonexistent name must not match");
+                MRKCommandResponse newer = center.InvokeAsync(Request(2)).GetAwaiter().GetResult();
+                Check((double)newer.Outputs["Output"] == 14.0,
+                    "replace must route to new generation after old token disposed");
+                Guid operation = Guid.NewGuid();
+                MRKCommandRequest a = Request(4, operation);
+                MRKCommandResponse first = center.InvokeAsync(a).GetAwaiter().GetResult();
+                MRKCommandRequest b = Request(4, operation);
+                MRKCommandResponse replay = center.InvokeAsync(b).GetAwaiter().GetResult();
+                Check(first.RequestId == a.RequestId && replay.RequestId == b.RequestId &&
+                    replay.OperationId == first.OperationId, "deduplicated response must keep caller RequestId");
+                MRKCommandMetrics metrics = center.GetMetrics();
+                Check(metrics.Registered == 1 && metrics.Completed == 2 &&
+                    metrics.TotalOperations == 2, "metrics must only account for unique operations");
+                updated.Dispose();
+                Check(center.Router.Discover().Count == 0, "replacement token must unregister generation");
+            }
+            MCECommandDefinition bytes = new MCECommandDefinition(6302, "ArrayCommand", "数组安全",
+                new[] { new MCECommandParameterDefinition("Data", typeof(byte[]), true) },
+                new[] { new MCECommandParameterDefinition("Result", typeof(byte[]), true) });
+            int count = 0;
+            using (MRKCommandCenter center = new MRKCommandCenter())
+            using (center.Register(new MRKCommandDescriptor("array", bytes),
+                new MRKDelegateCommandHandler((ctx, inputs, ct) =>
+                {
+                    byte[] source = (byte[])inputs["Data"];
+                    Interlocked.Increment(ref count);
+                    byte firstValue = source[0];
+                    source[0] = 77;
+                    return Task.FromResult(new MRKCommandHandlerResult(
+                        new Dictionary<string, object> { { "Result", new byte[] { firstValue, 2 } } }));
+                })))
+            {
+                Guid op = Guid.NewGuid();
+                MRKCommandRequest firstRequest = new MRKCommandRequest("array", "ArrayCommand",
+                    new Dictionary<string, object> { { "Data", new byte[] { 3, 4 } } },
+                    operationId: op);
+                MRKCommandResponse result = center.InvokeAsync(firstRequest).GetAwaiter().GetResult();
+                Check(((byte[])result.Outputs["Result"])[0] == 3, "handler input isolation");
+                ((byte[])result.Outputs["Result"])[0] = 99;
+                Check(((byte[])result.Outputs["Result"])[0] == 3 &&
+                    ((byte[])center.Query(op).Outputs["Result"])[0] == 3,
+                    "response nested mutable output must be defensive copy");
+                MRKCommandRequest same = new MRKCommandRequest("array", "ArrayCommand",
+                    new Dictionary<string, object> { { "Data", new byte[] { 3, 4 } } },
+                    operationId: op);
+                MRKCommandResponse replay = center.InvokeAsync(same).GetAwaiter().GetResult();
+                Check(count == 1 && replay.RequestId == same.RequestId &&
+                    ((byte[])replay.Outputs["Result"])[0] == 3,
+                    "handler mutation must not break operation deduplication");
+                bool rejected = false;
+                try
+                {
+                    center.InvokeBoundAsync(same, new MdsBinding(new MDSVariableTable("unused")),
+                        null, new[] { new MRKCommandParameterBinding("Typo", "somewhere") })
+                        .GetAwaiter().GetResult();
+                }
+                catch (ArgumentException) { rejected = true; }
+                Check(rejected, "invalid output binding must fail before executing");
+                Check(count == 1, "invalid binding must cause zero additional side effects");
+            }
+        }
         public static void Run()
         {
             int count = 0;
@@ -203,7 +279,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         "byte array snapshot safety");
                 }
             }
-            Console.WriteLine("PASS BUS-CMD CommandCenter: registration/router/authorization/MDSSchema/mapping/batch/concurrency/timeout/snapshot");
+            ExtendedRun();
+            Console.WriteLine("PASS BUS-CMD CommandCenter: registration/router/authorization/MDSSchema/mapping/batch/concurrency/timeout/snapshot/replacement/replay/copy");
         }
     }
 }

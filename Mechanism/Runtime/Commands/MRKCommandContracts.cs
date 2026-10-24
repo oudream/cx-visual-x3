@@ -113,7 +113,8 @@ namespace CxVisual.Mechanism.Runtime.Commands
             FDTDataAdapterRegistry adapters = null)
         {
             RequestId = requestId; OperationId = operationId; Stage = stage; State = state;
-            Outputs = FDCCommandValueSnapshot.Capture(outputs, adapters);
+            _adapters = adapters;
+            _outputs = FDCCommandValueSnapshot.Capture(outputs, adapters);
             BusinessSuccess = businessSuccess; BusinessCode = businessCode ?? string.Empty;
             ErrorCode = errorCode ?? string.Empty; Error = error ?? string.Empty;
             DurationMilliseconds = durationMs;
@@ -122,7 +123,11 @@ namespace CxVisual.Mechanism.Runtime.Commands
         public Guid OperationId { get; private set; }
         public MRKCommandStage Stage { get; private set; }
         public MRKCommandState State { get; private set; }
-        public IReadOnlyDictionary<string, object> Outputs { get; private set; }
+        private readonly IReadOnlyDictionary<string, object> _outputs;
+        private readonly FDTDataAdapterRegistry _adapters;
+        /// <summary>每次读取返回隔离快照，禁止消费者修改集合或数组污染后续Query/重放。</summary>
+        public IReadOnlyDictionary<string, object> Outputs
+        { get { return FDCCommandValueSnapshot.Capture(_outputs, _adapters); } }
         public bool? BusinessSuccess { get; private set; }
         public string BusinessCode { get; private set; }
         public string ErrorCode { get; private set; }
@@ -131,6 +136,19 @@ namespace CxVisual.Mechanism.Runtime.Commands
         internal MRKCommandResponse Copy(FDTDataAdapterRegistry adapters, Guid? requestId = null)
         { return new MRKCommandResponse(requestId ?? RequestId, OperationId, Stage, State, Outputs,
             BusinessSuccess, BusinessCode, ErrorCode, Error, DurationMilliseconds, adapters); }
+    }
+
+    /// <summary>进程内有界操作账本的只读统计，不表示远程设备已经安全停止。</summary>
+    public sealed class MRKCommandMetrics
+    {
+        public int Registered { get; internal set; }
+        public int TotalOperations { get; internal set; }
+        public int Pending { get; internal set; }
+        public int Running { get; internal set; }
+        public int Completed { get; internal set; }
+        public int Failed { get; internal set; }
+        public int Cancelled { get; internal set; }
+        public int Unknown { get; internal set; }
     }
 
     public sealed class MRKCommandContext
@@ -205,14 +223,17 @@ namespace CxVisual.Mechanism.Runtime.Commands
         internal readonly MRKCommandDescriptor Descriptor;
         internal readonly IReadOnlyDictionary<string, object> Inputs;
         internal readonly string Key;
+        internal readonly FDTDataAdapterRegistry Adapters;
         private MRKCommandResponse _latest;
         private double _progress;
         private string _message = string.Empty;
         private readonly DateTime _created = DateTime.UtcNow;
         internal MRKCommandExecution(MRKCommandRequest request,
-            MRKCommandDescriptor descriptor, IReadOnlyDictionary<string, object> inputs, string key)
+            MRKCommandDescriptor descriptor, IReadOnlyDictionary<string, object> inputs,
+            string key, FDTDataAdapterRegistry adapters)
         {
             Request = request; Descriptor = descriptor; Inputs = inputs; Key = key;
+            Adapters = adapters;
             _latest = new MRKCommandResponse(request.RequestId, request.OperationId,
                 MRKCommandStage.Accepted, MRKCommandState.Pending);
         }
@@ -222,7 +243,7 @@ namespace CxVisual.Mechanism.Runtime.Commands
         public double Progress { get { lock (_gate) return _progress; } }
         public string ProgressMessage { get { lock (_gate) return _message; } }
         public MRKCommandResponse Snapshot()
-        { lock (_gate) return _latest; }
+        { lock (_gate) return _latest.Copy(Adapters); }
         internal double DurationMs { get { return (DateTime.UtcNow - _created).TotalMilliseconds; } }
         internal void Running()
         {

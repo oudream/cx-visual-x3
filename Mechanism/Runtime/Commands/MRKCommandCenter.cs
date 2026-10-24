@@ -62,6 +62,24 @@ namespace CxVisual.Mechanism.Runtime.Commands
                 return new Registration(this, item);
             }
         }
+        /// <summary>热更新代次：旧受理调用继续使用旧Handler，旧注册令牌不得注销新代次。</summary>
+        public IDisposable Replace(MRKCommandDescriptor descriptor, IMRKCommandHandler handler)
+        {
+            if (descriptor == null) throw new ArgumentNullException("descriptor");
+            if (handler == null) throw new ArgumentNullException("handler");
+            lock (_gate)
+            {
+                if (_disposed) throw new ObjectDisposedException("MRKCommandRegistry");
+                string key = Key(descriptor.Target, descriptor.Definition.CommandCode);
+                Entry previous;
+                if (!_entries.TryGetValue(key, out previous))
+                    throw new KeyNotFoundException("待更新命令不存在：" + key);
+                Entry updated = new Entry(descriptor, handler);
+                previous.Enabled = false;
+                _entries[key] = updated;
+                return new Registration(this, updated);
+            }
+        }
         internal Entry Resolve(string target, string code)
         {
             lock (_gate)
@@ -74,12 +92,15 @@ namespace CxVisual.Mechanism.Runtime.Commands
         public MRKCommandDescriptor Find(string target, string code)
         { Entry e = Resolve(target, code); return e == null ? null : e.Descriptor; }
         public IReadOnlyList<MRKCommandDescriptor> Discover(string target = null,
-            MRKCommandKind? kind = null, string capability = null)
+            MRKCommandKind? kind = null, string capability = null,
+            string name = null, string commandCode = null)
         {
             lock (_gate) return Array.AsReadOnly(_entries.Values.Where(e => e.Enabled &&
                 (target == null || e.Descriptor.Target == target) &&
                 (!kind.HasValue || e.Descriptor.Kind == kind.Value) &&
-                (capability == null || e.Descriptor.Capabilities.Contains(capability)))
+                (capability == null || e.Descriptor.Capabilities.Contains(capability)) &&
+                (name == null || e.Descriptor.Definition.Name == name) &&
+                (commandCode == null || e.Descriptor.Definition.CommandCode == commandCode))
                 .Select(e => e.Descriptor).OrderBy(d => d.Target, StringComparer.Ordinal)
                 .ThenBy(d => d.Definition.CommandCode, StringComparer.Ordinal).ToArray());
         }
@@ -123,8 +144,9 @@ namespace CxVisual.Mechanism.Runtime.Commands
         public MRKCommandDescriptor Resolve(string target, string code)
         { return _registry.Find(target, code); }
         public IReadOnlyList<MRKCommandDescriptor> Discover(string target = null,
-            MRKCommandKind? kind = null, string capability = null)
-        { return _registry.Discover(target, kind, capability); }
+            MRKCommandKind? kind = null, string capability = null,
+            string name = null, string commandCode = null)
+        { return _registry.Discover(target, kind, capability, name, commandCode); }
     }
 
     /// <summary>
@@ -164,6 +186,33 @@ namespace CxVisual.Mechanism.Runtime.Commands
         public MRKCommandRouter Router { get; private set; }
         public IDisposable Register(MRKCommandDescriptor descriptor, IMRKCommandHandler handler)
         { return _registry.Register(descriptor, handler); }
+        public IDisposable Replace(MRKCommandDescriptor descriptor, IMRKCommandHandler handler)
+        { return _registry.Replace(descriptor, handler); }
+        /// <summary>统计来自唯一运行操作账本；不额外保存业务结果或日志。</summary>
+        public MRKCommandMetrics GetMetrics()
+        {
+            lock (_gate)
+            {
+                MRKCommandMetrics metrics = new MRKCommandMetrics
+                {
+                    Registered = _registry.Discover().Count,
+                    TotalOperations = _operations.Count
+                };
+                foreach (MRKCommandExecution operation in _operations.Values)
+                {
+                    switch (operation.Snapshot().State)
+                    {
+                        case MRKCommandState.Pending: ++metrics.Pending; break;
+                        case MRKCommandState.Running: ++metrics.Running; break;
+                        case MRKCommandState.Completed: ++metrics.Completed; break;
+                        case MRKCommandState.Failed: ++metrics.Failed; break;
+                        case MRKCommandState.Cancelled: ++metrics.Cancelled; break;
+                        default: ++metrics.Unknown; break;
+                    }
+                }
+                return metrics;
+            }
+        }
         public void AddInterceptor(IMRKCommandInterceptor interceptor)
         {
             if (interceptor == null) throw new ArgumentNullException("interceptor");
@@ -226,7 +275,7 @@ namespace CxVisual.Mechanism.Runtime.Commands
                 if (!entry.TryEnter())
                     return new MRKCommandSubmission(Reject(request, "Busy", "命令并发容量已满"), null);
                 operation = new MRKCommandExecution(request, entry.Descriptor, inputs,
-                    request.Target + "\n" + request.CommandCode);
+                    request.Target + "\n" + request.CommandCode, _adapters);
                 _operations.Add(request.OperationId, operation);
                 bool created;
                 try
@@ -265,7 +314,7 @@ namespace CxVisual.Mechanism.Runtime.Commands
                 Task delay = Task.Delay(timeout, wait.Token);
                 Task winner = await Task.WhenAny(operation.Completion, delay).ConfigureAwait(false);
                 if (winner == operation.Completion || operation.IsCompleted)
-                { wait.Cancel(); return (await operation.Completion.ConfigureAwait(false)).Copy(_adapters); }
+                { wait.Cancel(); return (await operation.Completion.ConfigureAwait(false)).Copy(_adapters, request.RequestId); }
                 if (operation.Descriptor.Policy.SupportsCancellation) operation.Cancellation.Cancel();
                 return new MRKCommandResponse(request.RequestId, request.OperationId,
                     MRKCommandStage.Accepted, MRKCommandState.Unknown,
@@ -284,14 +333,15 @@ namespace CxVisual.Mechanism.Runtime.Commands
         }
         public bool Cancel(Guid operationId)
         {
+            MRKCommandExecution operation;
             lock (_gate)
             {
-                MRKCommandExecution operation;
                 if (!_operations.TryGetValue(operationId, out operation) || operation.IsCompleted ||
                     !operation.Descriptor.Policy.SupportsCancellation) return false;
-                operation.Cancellation.Cancel();
-                return true;
             }
+            // 不在中心锁内运行外部Cancellation回调；取消是请求，不是物理安全停机。
+            operation.Cancellation.Cancel();
+            return true;
         }
 
         public async Task<IReadOnlyList<MRKCommandResponse>> InvokeBatchAsync(
@@ -311,13 +361,26 @@ namespace CxVisual.Mechanism.Runtime.Commands
             IEnumerable<MRKCommandParameterBinding> outputBindings,
             CancellationToken cancellation = default(CancellationToken))
         {
+            if (request == null) throw new ArgumentNullException("request");
             if (owner == null) throw new ArgumentNullException("owner");
+            MRKCommandParameterBinding[] outputs = (outputBindings ??
+                Enumerable.Empty<MRKCommandParameterBinding>()).ToArray();
+            if (outputs.Any(b => b == null) ||
+                outputs.GroupBy(b => b.Parameter, StringComparer.Ordinal).Any(g => g.Count() > 1) ||
+                outputs.GroupBy(b => b.DataAddress, StringComparer.Ordinal).Any(g => g.Count() > 1))
+                throw new ArgumentException("输出参数或目标地址重复/无效");
+            MRKCommandDescriptor expected = Router.Resolve(request.Target, request.CommandCode);
+            if (expected != null)
+                foreach (MRKCommandParameterBinding binding in outputs)
+                    if (!expected.Definition.Outputs.Any(p => p.Code == binding.Parameter))
+                        throw new ArgumentException("未声明的命令输出：" + binding.Parameter);
             Dictionary<string, object> values = new Dictionary<string, object>(StringComparer.Ordinal);
             if (request.Inputs != null)
                 foreach (KeyValuePair<string, object> pair in request.Inputs) values.Add(pair.Key, pair.Value);
             foreach (MRKCommandParameterBinding binding in inputBindings ??
                 Enumerable.Empty<MRKCommandParameterBinding>())
             {
+                if (binding == null) throw new ArgumentException("输入绑定不能为空");
                 if (values.ContainsKey(binding.Parameter)) throw new ArgumentException("输入参数绑定重复：" + binding.Parameter);
                 values.Add(binding.Parameter, await owner.ReadAsync(binding.DataAddress, cancellation).ConfigureAwait(false));
             }
@@ -325,8 +388,7 @@ namespace CxVisual.Mechanism.Runtime.Commands
                 request.Caller, request.OperationId, request.RequestId, request.Options);
             MRKCommandResponse response = await InvokeAsync(actual, cancellation).ConfigureAwait(false);
             if (response.State == MRKCommandState.Completed)
-                foreach (MRKCommandParameterBinding binding in outputBindings ??
-                    Enumerable.Empty<MRKCommandParameterBinding>())
+                foreach (MRKCommandParameterBinding binding in outputs)
                 {
                     object value;
                     if (!response.Outputs.TryGetValue(binding.Parameter, out value))
@@ -352,11 +414,14 @@ namespace CxVisual.Mechanism.Runtime.Commands
                 operation.Running();
                 IMRKCommandInterceptor[] interceptors;
                 lock (_gate) interceptors = _interceptors.ToArray();
+                // 拦截器与Handler只得到隔离副本，不允许修改幂等指纹的唯一输入快照。
                 foreach (IMRKCommandInterceptor interceptor in interceptors)
-                    await interceptor.BeforeAsync(context, operation.Inputs, operation.Cancellation.Token)
-                        .ConfigureAwait(false);
+                    await interceptor.BeforeAsync(context,
+                        FDCCommandValueSnapshot.Capture(operation.Inputs, _adapters),
+                        operation.Cancellation.Token).ConfigureAwait(false);
                 Task<MRKCommandHandlerResult> pending = entry.Handler.ExecuteAsync(context,
-                    operation.Inputs, operation.Cancellation.Token);
+                    FDCCommandValueSnapshot.Capture(operation.Inputs, _adapters),
+                    operation.Cancellation.Token);
                 if (pending == null) throw new InvalidOperationException("Handler返回空Task");
                 MRKCommandHandlerResult result = await pending.ConfigureAwait(false);
                 if (result == null) throw new InvalidOperationException("Handler未返回业务结果");
@@ -437,13 +502,17 @@ namespace CxVisual.Mechanism.Runtime.Commands
 
         public void Dispose()
         {
+            MRKCommandExecution[] pending;
             lock (_gate)
             {
                 if (_disposed) return;
-                _disposed = true; _registry.Dispose();
-                foreach (MRKCommandExecution operation in _operations.Values)
-                    if (!operation.IsCompleted) operation.Cancellation.Cancel();
+                _disposed = true;
+                _registry.Dispose();
+                pending = _operations.Values.Where(o => !o.IsCompleted).ToArray();
             }
+            // 对外Cancellation回调不允许在中心锁内执行。
+            foreach (MRKCommandExecution operation in pending)
+                operation.Cancellation.Cancel();
         }
     }
 }
