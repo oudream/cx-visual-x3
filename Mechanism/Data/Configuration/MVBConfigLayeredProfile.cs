@@ -583,7 +583,15 @@ namespace CxVisual.Mechanism.Data.Configuration
                         throw new InvalidOperationException("Unknown or readonly config member " + key);
                     type = p.PropertyType;
                 }
-                if (instance != null) instance = Read(instance, key);
+                if (instance != null)
+                {
+                    try { instance = Read(instance, key); }
+                    // 设置尚不存在的合法字典键时，类型由 Dictionary<string,T> 决定，
+                    // 此时无需（也不能）读取该键的当前值。
+                    catch (KeyNotFoundException) { instance = null; }
+                    catch (ArgumentOutOfRangeException) { instance = null; }
+                    catch (IndexOutOfRangeException) { instance = null; }
+                }
             }
             return type;
         }
