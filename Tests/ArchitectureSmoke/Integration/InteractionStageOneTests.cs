@@ -68,6 +68,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             MCECommandDefinitionCatalog catalog=new MCECommandDefinitionCatalog(new[]{cmd});
             Check(object.ReferenceEquals(catalog.Find(1001),catalog.Find("MoveAbs")),"definition catalog");
             Reject<ArgumentException>(()=>new MCECommandDefinitionCatalog(new[]{cmd,cmd}));
+            InteractionDefinitionsTests.Run();
             Console.WriteLine("PASS BUS.P0-1 ID / endpoint / schema / catalog");
         }
     }
