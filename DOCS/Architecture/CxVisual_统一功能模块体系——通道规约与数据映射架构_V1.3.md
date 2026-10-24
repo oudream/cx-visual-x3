@@ -110,3 +110,5 @@
 - **尚未完成**：PointTable 驱动的自动寄存器值转换、03/06 到 MDS 的自动映射、更多 Modbus 功能码、RTU SharedBus 排队与 T3.5 静默间隔、工业 HIL/压力；并未借本轮冒充全部 P2/P3 达标。
 
 - 有效数据事件额外收敛：已匹配待处理事务但校验失败的 Modbus TCP 响应，只经 `MPAProtocolSession.FailResponse` 让请求失败，不再进入 Connector 的成功 Payload 观察事件。正反测试明确验证错误 Unit/异常码不增加已接受 Payload 数量。
+
+- Socket 级集成反证：`ModuleChannelTransportSmokeTests.ConnectorModbusTcpLoopback` 直接装配正式 `MCNConnectorModule` + `MCCTcpClientChannel` + `MPAModbusTcpProtocol`，真实 Windows TCP Server 回送同一 MBAP TransactionId/Unit，检查 03 请求完成与点值 PDU，不以 Virtual 单元测试替代 OS Socket 收发。服务端只是本机受控模拟设备，G2 仍未验证。

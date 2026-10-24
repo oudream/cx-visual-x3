@@ -1,11 +1,13 @@
 using System;
 using System.IO;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using CxVisual.Mechanism.Connectivity;
+using CxVisual.Mechanism.Core.Modules;
 
 namespace CxVisual.Tests.ArchitectureSmoke
 {
@@ -86,6 +88,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             LifecycleStateMachine();
             BoundedEvidence();
             TcpLoopback();
+            ConnectorModbusTcpLoopback();
             UdpLoopback();
             Console.WriteLine("CHANNEL.TRANSPORT: TCP/UDP loopback MultiPeer and stale generation PASS");
         }
@@ -188,6 +191,66 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Check(rejected, "TCP stale SubChannel must be rejected");
                 }
                 finally { client.Close(); server.Close(); }
+            }
+        }
+
+        // 与纯 Virtual 请求测试互补：Connector + 正式 TCP Client / Server + Modbus Protocol。
+        // 服务端为本机可控的模拟端点，不能当成 PLC 硬件 HIL。
+        private static void ConnectorModbusTcpLoopback()
+        {
+            int port = FreePort(false);
+            MCCTcpServerChannel server = new MCCTcpServerChannel(new MCCChannelConfiguration {
+                Id = "mb-loopback-server", Kind = MCCChannelKind.TcpServer,
+                Host = "127.0.0.1", Port = port
+            });
+            MCNConnectorConfiguration config = new MCNConnectorConfiguration {
+                DisplayName = "Modbus TCP Loopback",
+                Channel = new MCCChannelConfiguration {
+                    Id = "mb-loopback-client", Kind = MCCChannelKind.TcpClient,
+                    Host = "127.0.0.1", Port = port
+                },
+                Protocol = new MPAProtocolConfiguration {
+                    Id = "mb-loopback-protocol", Kind = MPAProtocolKind.ModbusTcpDraft, TimeoutMs = 3000
+                }
+            };
+            MCNConnectorModule connector = new MCNConnectorModule(
+                config.Describe("mb-loopback", MFMModuleKind.Connector), config,
+                new MCCTcpClientChannel(config.Channel), new MPAModbusTcpProtocol());
+            List<byte> requestBuffer = new List<byte>();
+            server.Received += received =>
+            {
+                lock (requestBuffer)
+                {
+                    requestBuffer.AddRange(received.Data);
+                    if (requestBuffer.Count < 7) return;
+                    int size = 6 + (requestBuffer[4] << 8 | requestBuffer[5]);
+                    if (requestBuffer.Count < size) return;
+                    // 回送同一 MBAP TransactionId 与 Unit，03 一条寄存器=42。
+                    byte[] response = { requestBuffer[0], requestBuffer[1], 0, 0, 0, 5,
+                        requestBuffer[6], 3, 2, 0, 42 };
+                    requestBuffer.RemoveRange(0, size);
+                    server.SendAsync(response, received.Address, CancellationToken.None)
+                        .GetAwaiter().GetResult();
+                }
+            };
+            try
+            {
+                server.Open();
+                connector.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
+                MPAProtocolOperationRequest request = new MPAProtocolOperationRequest(
+                    MPAProtocolOperationKind.Request, new MPAProtocolAddress("3"),
+                    MPAModbusRegisterOperations.ReadHolding(100, 1));
+                MPAProtocolOperationResult result = connector.RequestAsync(
+                    request, new MCCSubChannelAddress(config.Channel.Id), CancellationToken.None)
+                    .GetAwaiter().GetResult();
+                Check(result.IsCompleted && ((byte[])result.Value).SequenceEqual(new byte[] { 3, 2, 0, 42 }),
+                    "Connector RequestAsync 必须通过真实 TCP 收发并完成 03 事务确认");
+            }
+            finally
+            {
+                if (connector.IsStarted)
+                    connector.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+                server.Close();
             }
         }
 
