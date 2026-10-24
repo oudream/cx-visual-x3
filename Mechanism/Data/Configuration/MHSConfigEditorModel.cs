@@ -253,7 +253,7 @@ namespace CxVisual.Mechanism.Data.Configuration
         {
             EnsureOpen();
             if (string.IsNullOrWhiteSpace(path) || json == null) throw new ArgumentException("Path and JSON required");
-            MVBConfigLayerPath.Validate<T>(path, json);
+            MVBConfigLayerPath.Validate(_edit.WorkingCopy, path, json);
             Modify(x => MVBConfigLayerPath.Apply(x, path, json));
         }
         public string ReadDraftJson(string path)
