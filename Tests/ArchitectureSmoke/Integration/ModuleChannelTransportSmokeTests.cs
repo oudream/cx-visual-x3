@@ -94,6 +94,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
             UdpLoopback();
             HttpConfigurationSmoke();
             NamedPipeLoopback();
+            WebSocketConfigSmoke();
+            HttpLoopback();
             Console.WriteLine("CHANNEL.TRANSPORT: TCP/UDP loopback MultiPeer and stale generation PASS");
         }
         // 大数据仍应完整传给上层；证据只能有界留存，并明确记录省略原因。
@@ -135,6 +137,66 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     server.Close();
                 }
             }
+        }
+
+        // 不使用 HttpListener ACL/URL Reservation，直接走真实 OS TCP Socket 的 HTTP/1.1 回环。
+        private static void HttpLoopback()
+        {
+            int port = FreePort(false);
+            TcpListener listener = new TcpListener(IPAddress.Loopback, port);
+            listener.Start();
+            Task serverTask = Task.Run(async () => {
+                using (TcpClient socket = await listener.AcceptTcpClientAsync().ConfigureAwait(false))
+                using (NetworkStream stream = socket.GetStream())
+                using (StreamReader reader = new StreamReader(stream, System.Text.Encoding.ASCII,
+                    false, 1024, true))
+                {
+                    string requestLine = await reader.ReadLineAsync().ConfigureAwait(false);
+                    if (requestLine == null || !requestLine.StartsWith("POST /", StringComparison.Ordinal))
+                        throw new IOException("HTTP 未接收到 POST 请求");
+                    string line;
+                    do
+                    {
+                        line = await reader.ReadLineAsync().ConfigureAwait(false);
+                        if (line == null) throw new IOException("HTTP 请求头未完整接收");
+                    } while (line.Length != 0);
+                    byte[] response = System.Text.Encoding.ASCII.GetBytes(
+                        "HTTP/1.1 200 OK\r\nContent-Length: 3\r\nConnection: close\r\n\r\nACK");
+                    await stream.WriteAsync(response, 0, response.Length).ConfigureAwait(false);
+                    await stream.FlushAsync().ConfigureAwait(false);
+                }
+            });
+            MCCHttpClientChannel client = new MCCHttpClientChannel(
+                new MCCHttpClientChannelConfiguration { Id = "http-loopback",
+                    Url = "http://127.0.0.1:" + port + "/" });
+            byte[] reply = null;
+            client.Received += received => reply = received.Data;
+            try
+            {
+                client.Open();
+                client.SendAsync(new byte[] { 1, 2, 3 },
+                    new MCCSubChannelAddress(client.Id), CancellationToken.None)
+                    .GetAwaiter().GetResult();
+                Check(reply != null && reply.SequenceEqual(System.Text.Encoding.ASCII.GetBytes("ACK")),
+                    "HTTP Client 真正收到 OS Socket 上的字节响应");
+                Check(serverTask.Wait(TimeSpan.FromSeconds(5)), "HTTP server 处理请求");
+            }
+            finally { client.Close(); listener.Stop(); }
+        }
+
+        private static void WebSocketConfigSmoke()
+        {
+            MCCWebSocketClientChannelConfiguration config =
+                new MCCWebSocketClientChannelConfiguration { Id = "ws-client",
+                    Url = "ws://127.0.0.1:8080/ws" };
+            Check(config.DescribeType().IO == MCCIOCapabilities.Message,
+                "WebSocket 保持完整 Message 边界");
+            Check(new MCCWebSocketClientChannel(config).State == MCCChannelState.Closed,
+                "WebSocket 构造不得发生联网副作用");
+            bool rejected = false;
+            try { new MCCWebSocketClientChannelConfiguration { Url = "http://localhost/ws" }.Validate(); }
+            catch (ArgumentException) { rejected = true; }
+            Check(rejected, "WebSocket 不接受 HTTP URL");
         }
 
         private static void HttpConfigurationSmoke()
