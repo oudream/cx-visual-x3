@@ -212,9 +212,9 @@ namespace CxVisual.Mechanism.Connectivity
                     ushort transactionId = (ushort)((pending[0] << 8) | pending[1]);
                     byte unit = pending[6];
                     byte[] pdu = pending.GetRange(7, length - 1).ToArray();
-                    Dictionary<ushort, PendingModbusRequest> transactions;
-                    PendingModbusRequest transaction;
-                    MPAProtocolSession session;
+                    Dictionary<ushort, PendingModbusRequest> transactions = null;
+                    PendingModbusRequest transaction = null;
+                    MPAProtocolSession session = null;
                     bool matched = _transactions.TryGetValue(peer, out transactions) &&
                         transactions.TryGetValue(transactionId, out transaction) &&
                         _sessions.TryGetValue(peer, out session);
