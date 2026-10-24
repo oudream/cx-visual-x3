@@ -105,12 +105,37 @@ namespace CxVisual.Mechanism.Connectivity
         { return (MCCChannelConfiguration)Activator.CreateInstance(TypeOf(kind)); }
     }
 
+    // 旧 Schema v2 的平铺字段仅作为一次性迁移输入，不参与新配置编辑/保存。
     public sealed class MCCChannelConfigurationConverter : IFCMConfigValueConverter<MCCChannelConfiguration>
     {
         public sealed class KindProbe
         {
             public KindProbe() { }
-            public MCCChannelKind Kind { get; set; } = MCCChannelKind.Virtual; }
+            public MCCChannelKind Kind { get; set; } = MCCChannelKind.Virtual;
+        }
+        public sealed class LegacyFlat
+        {
+            public string Id { get; set; } = "channel01";
+            public MCCChannelKind Kind { get; set; } = MCCChannelKind.Virtual;
+            public string CustomTypeId { get; set; } = "";
+            public string Host { get; set; } = "127.0.0.1";
+            public int Port { get; set; } = 502;
+            public int ConnectTimeoutMs { get; set; } = 5000;
+            public int MaxClients { get; set; } = 128;
+            public string PortName { get; set; } = "COM1";
+            public int BaudRate { get; set; } = 9600;
+            public int DataBits { get; set; } = 8;
+            public string Parity { get; set; } = "None";
+            public string StopBits { get; set; } = "One";
+            public string SubChannelRule { get; set; } = "";
+            public MCCChannelIOMode IoMode { get; set; } = MCCChannelIOMode.AsyncIO;
+            public int QueueCapacity { get; set; } = 128;
+            public int ReceiveByteBudget { get; set; } = 4 * 1024 * 1024;
+            public int ReconnectMaxAttempts { get; set; } = 10;
+            public int ReconnectInitialDelayMs { get; set; } = 250;
+            public double ReconnectBackoff { get; set; } = 2.0;
+            public int ReconnectMaxDelayMs { get; set; } = 30000;
+        }
         public string Write(MCCChannelConfiguration value)
         {
             if (value == null) return "null";
@@ -124,12 +149,76 @@ namespace CxVisual.Mechanism.Connectivity
             var allowed = new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
             foreach (FCMConfigMemberDescriptor member in FCMConfigSchemaBuilder.Members(type))
                 allowed.Add(member.Name);
-            foreach (string key in FCMConfigValueCodec.GetObjectPropertyNames(json))
-                if (!allowed.Contains(key))
-                    throw new FormatException("CHANNEL_LEGACY_MIGRATION_REQUIRED: " + key);
-            MCCChannelConfiguration value = (MCCChannelConfiguration)FCMConfigValueCodec.Deserialize(json, type);
-            value.Validate();
-            return value;
+            string[] keys = FCMConfigValueCodec.GetObjectPropertyNames(json);
+            bool legacy = false;
+            foreach (string key in keys) if (!allowed.Contains(key)) legacy = true;
+            MCCChannelConfiguration result;
+            if (!legacy)
+                result = (MCCChannelConfiguration)FCMConfigValueCodec.Deserialize(json, type);
+            else
+            {
+                // 既要恢复旧版参数，也不能静默删除无关类别的非默认字段。
+                var known = new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
+                foreach (FCMConfigMemberDescriptor item in FCMConfigSchemaBuilder.Members(typeof(LegacyFlat)))
+                    known.Add(item.Name);
+                foreach (string key in keys) if (!known.Contains(key))
+                    throw new FormatException("CHANNEL_LEGACY_UNKNOWN_FIELD: " + key);
+                result = Migrate(FCMConfigValueCodec.Deserialize<LegacyFlat>(json));
+            }
+            result.Validate();
+            return result;
+        }
+        private static MCCChannelConfiguration Migrate(LegacyFlat source)
+        {
+            MCCChannelConfiguration target = MCCChannelConfigurations.Create(source.Kind);
+            target.Id = source.Id;
+            target.IoMode = source.IoMode;
+            target.QueueCapacity = source.QueueCapacity;
+            target.ReceiveByteBudget = source.ReceiveByteBudget;
+            target.ReconnectMaxAttempts = source.ReconnectMaxAttempts;
+            target.ReconnectInitialDelayMs = source.ReconnectInitialDelayMs;
+            target.ReconnectBackoff = source.ReconnectBackoff;
+            target.ReconnectMaxDelayMs = source.ReconnectMaxDelayMs;
+
+            MCCTcpClientChannelConfiguration tcpClient = target as MCCTcpClientChannelConfiguration;
+            MCCTcpServerChannelConfiguration tcpServer = target as MCCTcpServerChannelConfiguration;
+            MCCUdpChannelConfiguration udp = target as MCCUdpChannelConfiguration;
+            MCCUdpServerChannelConfiguration udpServer = target as MCCUdpServerChannelConfiguration;
+            MCCSerialChannelConfiguration serial = target as MCCSerialChannelConfiguration;
+            MCCCustomChannelConfiguration custom = target as MCCCustomChannelConfiguration;
+            if (tcpClient != null)
+            {
+                tcpClient.Host = source.Host; tcpClient.Port = source.Port;
+                tcpClient.ConnectTimeoutMs = source.ConnectTimeoutMs;
+            }
+            if (tcpServer != null)
+            {
+                tcpServer.Host = source.Host; tcpServer.Port = source.Port;
+                tcpServer.MaxClients = source.MaxClients; tcpServer.SubChannelRule = source.SubChannelRule;
+            }
+            if (udp != null) { udp.Host = source.Host; udp.Port = source.Port; }
+            if (udpServer != null)
+            {
+                udpServer.Host = source.Host; udpServer.Port = source.Port;
+                udpServer.MaxClients = source.MaxClients; udpServer.SubChannelRule = source.SubChannelRule;
+            }
+            if (serial != null)
+            {
+                serial.PortName = source.PortName; serial.BaudRate = source.BaudRate;
+                serial.DataBits = source.DataBits; serial.Parity = source.Parity;
+                serial.StopBits = source.StopBits;
+            }
+            if (custom != null) custom.CustomTypeId = source.CustomTypeId;
+            bool network = tcpClient != null || tcpServer != null || udp != null || udpServer != null;
+            bool server = tcpServer != null || udpServer != null;
+            if ((!network && (source.Host != "127.0.0.1" || source.Port != 502)) ||
+                (tcpClient == null && source.ConnectTimeoutMs != 5000) ||
+                (!server && (source.MaxClients != 128 || source.SubChannelRule != "")) ||
+                (serial == null && (source.PortName != "COM1" || source.BaudRate != 9600 ||
+                    source.DataBits != 8 || source.Parity != "None" || source.StopBits != "One")) ||
+                (custom == null && source.CustomTypeId != ""))
+                throw new FormatException("CHANNEL_LEGACY_CONFLICT: 旧配置含与当前通道类型无关的非默认设置，需人工裁决");
+            return target;
         }
     }
 
