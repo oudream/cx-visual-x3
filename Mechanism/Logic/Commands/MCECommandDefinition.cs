@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Text.RegularExpressions;
 using CxVisual.Foundation.Data.Types;
 namespace CxVisual.Mechanism.Logic.Commands
 {
@@ -11,7 +12,9 @@ namespace CxVisual.Mechanism.Logic.Commands
         public MCECommandParameterDefinition(string code, Type dataType, bool required,
             bool hasDefaultValue = false, object defaultValue = null,
             string unit = null, string description = null,
-            object minValue = null, object maxValue = null)
+            object minValue = null, object maxValue = null,
+            bool? allowNull = null, bool readOnly = false, string formatPattern = null,
+            IEnumerable<MCECommandParameterDefinition> children = null)
         {
             CheckCode(code);
             if (dataType == null || dataType == typeof(void) || dataType.IsPointer ||
@@ -21,6 +24,28 @@ namespace CxVisual.Mechanism.Logic.Commands
             Code = code; DataType = dataType; TypeDescriptor = FDTDataTypeDescriptor.Describe(dataType); Required = required; HasDefaultValue = hasDefaultValue;
             Unit = unit; Description = description ?? string.Empty;
             MinValue = minValue; MaxValue = maxValue;
+            AllowNull = allowNull ?? (!required && TypeDescriptor.IsNullable);
+            ReadOnly = readOnly;
+            FormatPattern = formatPattern;
+            if (AllowNull && !TypeDescriptor.IsNullable)
+                throw new ArgumentException("非空值类型不能设置可空", "allowNull");
+            if (formatPattern != null)
+            {
+                if (dataType != typeof(string)) throw new ArgumentException("仅字符串允许格式模式");
+                if (formatPattern.Length > 256) throw new ArgumentException("格式模式过长");
+                new Regex(formatPattern, RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(50));
+            }
+            MCECommandParameterDefinition[] nested =
+                (children ?? Enumerable.Empty<MCECommandParameterDefinition>()).ToArray();
+            if (nested.Any(c => c == null) ||
+                nested.GroupBy(c => c.Code, StringComparer.Ordinal).Any(g => g.Count() > 1))
+                throw new ArgumentException("结构化参数包含空成员或重复成员名称");
+            if (nested.Length > 0 &&
+                dataType != typeof(Dictionary<string, object>) &&
+                dataType != typeof(IDictionary<string, object>) &&
+                dataType != typeof(IReadOnlyDictionary<string, object>))
+                throw new ArgumentException("嵌套子参数仅适用于命名对象Map");
+            Children = Array.AsReadOnly(nested);
             if (minValue != null) ValidateType(minValue);
             if (maxValue != null) ValidateType(maxValue);
             if (minValue != null && maxValue != null && Compare(minValue, maxValue) > 0)
@@ -45,6 +70,11 @@ namespace CxVisual.Mechanism.Logic.Commands
         public string Description { get; private set; }
         public object MinValue { get; private set; }
         public object MaxValue { get; private set; }
+        public bool AllowNull { get; private set; }
+        /// <summary>Studio编辑权限元数据，生产阶段还须由接收Host授权。</summary>
+        public bool ReadOnly { get; private set; }
+        public string FormatPattern { get; private set; }
+        public IReadOnlyList<MCECommandParameterDefinition> Children { get; private set; }
         internal static void CheckCode(string code)
         {
             if (string.IsNullOrWhiteSpace(code) || code.Length > 64 || code == "." || code == "..")
@@ -58,7 +88,7 @@ namespace CxVisual.Mechanism.Logic.Commands
         {
             if (value == null)
             {
-                if (Required || (DataType.IsValueType && Nullable.GetUnderlyingType(DataType) == null))
+                if (!AllowNull)
                     throw new ArgumentException("参数不能为空: " + Code);
                 return;
             }
@@ -78,6 +108,32 @@ namespace CxVisual.Mechanism.Logic.Commands
         {
             ValidateType(value);
             if (value == null) return;
+            if (FormatPattern != null && !Regex.IsMatch((string)value, FormatPattern,
+                RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(50)))
+                throw new ArgumentException("参数格式不符合要求: " + Code);
+            if (Children.Count > 0)
+            {
+                IEnumerable<KeyValuePair<string, object>> pairs =
+                    value as IDictionary<string, object>;
+                if (pairs == null)
+                    pairs = value as IReadOnlyDictionary<string, object>;
+                if (pairs == null) throw new ArgumentException("结构参数必须是命名对象: " + Code);
+                Dictionary<string, object> nestedValues = new Dictionary<string, object>(StringComparer.Ordinal);
+                foreach (KeyValuePair<string, object> item in pairs)
+                {
+                    if (string.IsNullOrWhiteSpace(item.Key) || !Children.Any(c => c.Code == item.Key))
+                        throw new ArgumentException("未知结构成员: " + Code + "." + item.Key);
+                    nestedValues.Add(item.Key, item.Value);
+                }
+                foreach (MCECommandParameterDefinition child in Children)
+                {
+                    object childValue;
+                    if (nestedValues.TryGetValue(child.Code, out childValue))
+                        child.ValidateValue(childValue);
+                    else if (child.Required)
+                        throw new ArgumentException("缺少必填结构成员: " + Code + "." + child.Code);
+                }
+            }
             if (MinValue != null && Compare(value, MinValue) < 0)
                 throw new ArgumentOutOfRangeException(Code, "参数小于下限");
             if (MaxValue != null && Compare(value, MaxValue) > 0)

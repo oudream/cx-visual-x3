@@ -55,6 +55,64 @@ namespace CxVisual.Tests.ArchitectureSmoke
         // 进阶正反：注册热替换、过滤发现、操作身份、快照与执行隔离。
         private static void ExtendedRun()
         {
+
+            MCECommandDefinition hierarchical = new MCECommandDefinition(7003, "Nested", "复杂参数",
+                new[] { new MCECommandParameterDefinition("Spec",
+                    typeof(Dictionary<string, object>), true,
+                    children: new[] {
+                        new MCECommandParameterDefinition("Threshold", typeof(double), true,
+                            minValue: 0.0, maxValue: 1.0),
+                        new MCECommandParameterDefinition("Label", typeof(string), true,
+                            formatPattern: "^[A-Z]+$")
+                    }) },
+                new[] { new MCECommandParameterDefinition("Result",
+                    typeof(Dictionary<string, object>), true,
+                    children: new[] {
+                        new MCECommandParameterDefinition("OK", typeof(bool), true)
+                    }) });
+            int handled = 0;
+            using (MRKCommandCenter nested = new MRKCommandCenter())
+            using (nested.Register(new MRKCommandDescriptor("nested", hierarchical),
+                new MRKDelegateCommandHandler((context, inputs, ct) =>
+                {
+                    ++handled;
+                    Dictionary<string, object> nestedInput = (Dictionary<string, object>)inputs["Spec"];
+                    Check((double)nestedInput["Threshold"] == 0.5 &&
+                        (string)nestedInput["Label"] == "VALID", "nested input values");
+                    return Task.FromResult(new MRKCommandHandlerResult(
+                        new Dictionary<string, object> {
+                            { "Result", new Dictionary<string, object> { { "OK", true } } }
+                        }));
+                })))
+            {
+                Func<object, MRKCommandResponse> invoke = spec => nested.InvokeAsync(
+                    new MRKCommandRequest("nested", "Nested",
+                        new Dictionary<string, object> { { "Spec", spec } }))
+                    .GetAwaiter().GetResult();
+                MRKCommandResponse good = invoke(new Dictionary<string, object> {
+                    { "Threshold", 0.5 }, { "Label", "VALID" } });
+                Check(good.State == MRKCommandState.Completed && handled == 1,
+                    "structured input and output success");
+                MRKCommandResponse tooHigh = invoke(new Dictionary<string, object> {
+                    { "Threshold", 1.5 }, { "Label", "VALID" } });
+                Check(tooHigh.ErrorCode == "InvalidInput" && handled == 1,
+                    "nested range fail closed");
+                MRKCommandResponse badFormat = invoke(new Dictionary<string, object> {
+                    { "Threshold", 0.5 }, { "Label", "bad" } });
+                Check(badFormat.ErrorCode == "InvalidInput" && handled == 1,
+                    "nested format fail closed");
+                MRKCommandResponse missing = invoke(new Dictionary<string, object> {
+                    { "Threshold", 0.5 } });
+                Check(missing.ErrorCode == "InvalidInput" && handled == 1,
+                    "nested required fail closed");
+                MRKCommandResponse extra = invoke(new Dictionary<string, object> {
+                    { "Threshold", 0.5 }, { "Label", "VALID" }, { "Unknown", 3 } });
+                Check(extra.ErrorCode == "InvalidInput" && handled == 1,
+                    "nested unknown member fail closed");
+                ((Dictionary<string, object>)good.Outputs["Result"])["OK"] = false;
+                Check((bool)((Dictionary<string, object>)nested.Query(good.OperationId)
+                    .Outputs["Result"])["OK"], "nested response snapshot remains immutable externally");
+            }
             // 正式适配器复用MDS变量真源，而不是测试中自造存取委托。
             MDSVariableTable variableTable = new MDSVariableTable("command-binding");
             variableTable.Define(new MDSVariableDefinition("in", typeof(double)));
