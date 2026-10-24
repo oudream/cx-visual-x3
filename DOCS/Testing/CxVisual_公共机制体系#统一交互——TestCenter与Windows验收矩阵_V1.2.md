@@ -158,7 +158,7 @@
 |---|---|---|---|
 | BUS-MSG-15 | P0-3/U | 普通消息仅给 Topic + Payload 就可 Publish/Subscribe，内部自动保存 MessageId/来源 | 不强迫普通开发者手写整套 Envelope |
 | BUS-MSG-16 | P0-3/U | Topic 与 EndpointAddress 关联但不等同，同一 Camera 能发 Captured/Faulted | MessageId、TopicId 不可互换 |
-| BUS-MSG-17 | P0-3/U | Path 精确匹配、分层 \`*/**\` 与 NumericId 路由一致 | 通配命中仅用于观察，不能执行命令 |
+| BUS-MSG-17 | P0-3/U | Path 精确匹配、分层 `*/**` 与 NumericId 路由一致 | 通配命中仅用于观察，不能执行命令 |
 | BUS-MSG-18 | P0-3/U | 临时轻消息可省持久类型定义，声明 TypeId/SchemaVersion 的消息要校验 | 类型/版本错误不得被当作有效强类型事件 |
 | BUS-MSG-19 | P0-3/U | Publish 收到 Stage/Outcome/MatchedCount；零订阅默认可受理且计0 | 无订阅不能伪造 Delivered；RequiresSubscriber 才拒绝 |
 | BUS-MSG-20 | P0-3/I | 两真实订阅者各收到一次；同一 SubscriberId 的重叠订阅按策略去重 | 订阅重复不能触发隐藏的第二业务处理 |

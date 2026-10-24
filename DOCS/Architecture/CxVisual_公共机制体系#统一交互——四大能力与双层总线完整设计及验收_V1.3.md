@@ -183,7 +183,7 @@ MQTT Broker 停机，不妨碍本地变量、命令、Heap、流程继续执行�
 
 ### 6.4 消息最小可用模型：MQTT 风格 Topic + Payload（V1.3 收敛）
 
-**决议：普通开发者只面对 \`Topic + Payload + Publish/Subscribe\`；定义/版本、来源、发送状态等作为运行层元数据自动附着，不强制用户构造巨大 MessageEnvelope。** 内核可保留第6.1节的标准包络，但简洁接口是第一公民。
+**决议：普通开发者只面对 `Topic + Payload + Publish/Subscribe`；定义/版本、来源、发送状态等作为运行层元数据自动附着，不强制用户构造巨大 MessageEnvelope。** 内核可保留第6.1节的标准包络，但简洁接口是第一公民。
 
 | 层次 | 必需 | 可选/自动完成 | Owner |
 |---|---|---|---|
@@ -193,9 +193,9 @@ MQTT Broker 停机，不妨碍本地变量、命令、Heap、流程继续执行�
 | 订阅 | Subscribe(topicPattern,callback) → IDisposable | SubscriberId、过滤、接收方式、背压策略由订阅选项提供 | M36 |
 | 反馈 | 发布受理阶段/结果与匹配数量 | 按需接收 ACK；缺少 ACK 不能说 Delivered | M36 |
 
-**Topic 与 EndpointAddress 的关系**：Topic 是消息的路由键，也可以采用第10章的规范化层级路径；EndpointAddress 是发布者/拥有者的对象地址。两者可有关联，**但不必是同一个对象**：一台相机可以发布 \`Captured\`、\`Faulted\` 多个 Topic。Path 是层级查询的依据，Snowflake NumericId 是已注册 Topic/端点的精确别名；**MessageId（一次发布）不等于 TopicId（主题身份）**。
+**Topic 与 EndpointAddress 的关系**：Topic 是消息的路由键，也可以采用第10章的规范化层级路径；EndpointAddress 是发布者/拥有者的对象地址。两者可有关联，**但不必是同一个对象**：一台相机可以发布 `Captured`、`Faulted` 多个 Topic。Path 是层级查询的依据，Snowflake NumericId 是已注册 Topic/端点的精确别名；**MessageId（一次发布）不等于 TopicId（主题身份）**。
 
-推荐示例主题：\`/machine/1201/app/XRay/module/Camera/message/Captured\`。P0 采用当前统一地址路径规范及 \`*\` 单层、\`**\` 多层内部匹配语义；未来 MQTT Bridge 负责转换成 MQTT 的单层 \`+\` 和多层 \`#\` 规则，不把 MQTT 通配符直接放入内核以产生两套含义。
+推荐示例主题：`/machine/1201/app/XRay/module/Camera/message/Captured`。P0 采用当前统一地址路径规范及 `*` 单层、`**` 多层内部匹配语义；未来 MQTT Bridge 负责转换成 MQTT 的单层 `+` 和多层 `#` 规则，不把 MQTT 通配符直接放入内核以产生两套含义。
 
 **进程内调用示意（目标 API，非已存在可编译代码）：**
 
@@ -210,7 +210,7 @@ PublishReceipt receipt = bus.Publish(
 sub.Dispose();
 ~~~
 
-上例 \`CameraCaptured\`、\`PublishReceipt\` 与 \`bus\` 均为**目标使用体验示意**，正式类名应先查重 DOCS/04 与现有源码。镜像/CT 数据仅发元信息与受控定位，不复制大载荷。
+上例 `CameraCaptured`、`PublishReceipt` 与 `bus` 均为**目标使用体验示意**，正式类名应先查重 DOCS/04 与现有源码。镜像/CT 数据仅发元信息与受控定位，不复制大载荷。
 
 ### 6.5 消息完整闭环、异常和边界
 
@@ -225,7 +225,7 @@ sub.Dispose();
 - **默认轻量**：不必先创建工程资源才能发一条进程内通知；必须注册、持久化或跨域共享的消息类型才记录稳定 Schema/版本，并遵守权限与配置。事件（Event）有明确类型和不可变事实身份；普通消息允许最小结构。
 - **一个消费者、多个重叠订阅**：根据 SubscriberId+MessageId 去重同一次投递；两个不同消费者应各收到一次。不能将第11章的 SubscriptionToken 当作消费者身份。
 - **队列不能无界**：Publish 要么被有界队列接纳，要么给出 Backpressured/Rejected/Failed；处理回调失败不得让发布者误判已成功处理。允许零订阅者时返回 MatchedCount=0；可选 RequiresSubscriber 策略才拒绝。
-- **同 Scope 的消息分发不触发任何命令**：订阅到名为 \`MoveAbs\` 的消息只表示读到了信息；执行动作必须经过 CommandHandler 的精确路由、参数/授权检查。不得通过 wildcard Message.Subscribe 隐式控制设备。
+- **同 Scope 的消息分发不触发任何命令**：订阅到名为 `MoveAbs` 的消息只表示读到了信息；执行动作必须经过 CommandHandler 的精确路由、参数/授权检查。不得通过 wildcard Message.Subscribe 隐式控制设备。
 - **保留给未来 MQTT**：Topic+Payload 映射 MQTT 发布订阅；QoS/Retain、应用级 ACK、Bridge/重连与离线重放必须分开配置，不因 MQTT Broker 接受而宣称业务执行完成。P0 完全不依赖 Broker。
 
 ## 7. 命令与操作（M12，MRK执行，专业 Owner）
@@ -261,12 +261,12 @@ sub.Dispose();
 
 ### 7.5 IoT 物模型风格的**轻量命令定义**（V1.3 正式收敛）
 
-**决议：命令定义只回答“有什么命令、要什么输入、返回什么输出”；请求 ID、执行 ID、排队、可靠性、审计由平台按需自动提供。** 借鉴 IoT 物模型的 \`service_id + command_name + paras/response\` 思路，**不照搬 IoT 的设备/服务强制层级**，因为 Vision、CT、Inspection 和普通模块同样需要命令。
+**决议：命令定义只回答“有什么命令、要什么输入、返回什么输出”；请求 ID、执行 ID、排队、可靠性、审计由平台按需自动提供。** 借鉴 IoT 物模型的 `service_id + command_name + paras/response` 思路，**不照搬 IoT 的设备/服务强制层级**，因为 Vision、CT、Inspection 和普通模块同样需要命令。
 
 | 命令定义字段 | 必需/可选 | 准确含义 |
 |---|---|---|
 | **CommandId** | 必需 | 统一地址 Registry 中该**命令定义**的稳定数字身份（Snowflake）；与工程 MEM 资源 GUID 建映射，不覆盖工程真源 |
-| **CommandCode** | 必需 | Owner 内唯一、稳定的命令编码，如 \`MoveAbs\`，不把显示名称作为调用键 |
+| **CommandCode** | 必需 | Owner 内唯一、稳定的命令编码，如 `MoveAbs`，不把显示名称作为调用键 |
 | **Name** | 必需 | 给 Studio/用户看的命令名称，如“绝对运动” |
 | **Inputs** | 必需（可为空集） | 输入参数描述集合：名称、类型、必填性、默认值及必要校验 |
 | **Outputs** | 必需（可为空集） | 输出参数描述集合：名称、类型、说明，供调用与 MOL 端口生成 |
@@ -275,9 +275,9 @@ sub.Dispose();
 | Group/ServiceCode | 可选 | 需要物模型分组时由既有 AppCode/ModuleCode/Capability 提供；**不新增强制的 IoT ServiceManager** |
 | ExecutionPolicy / Permission | 按需 | 可取消性、资源串行、现场确认、授权要求；默认继承专业 Owner 与现有配置/安全机制 |
 
-**每个输入参数**最小形式为 \`Code + DataType + Required\`；\`DefaultValue、Min/Max、Unit、Description\` 按需填写。默认值仅在参数**未传且允许缺省**时使用；显式提供的 \`0/false/空串\` 不得错认成“缺省”。类型与取值校验在调用业务 Handler **之前**完成，不能让错误参数驱动真实设备。持久化配置复用现有 FCM/类型描述和 MOL 端口 Schema，不建设另一套配置或参数库。
+**每个输入参数**最小形式为 `Code + DataType + Required`；`DefaultValue、Min/Max、Unit、Description` 按需填写。默认值仅在参数**未传且允许缺省**时使用；显式提供的 `0/false/空串` 不得错认成“缺省”。类型与取值校验在调用业务 Handler **之前**完成，不能让错误参数驱动真实设备。持久化配置复用现有 FCM/类型描述和 MOL 端口 Schema，不建设另一套配置或参数库。
 
-**唯一性**：\`CommandCode\` 在确定的 Owner/Module 下唯一，完整命令端点由 \`Scope + TargetOwnerAddress + CommandCode\` 精确定位，也可通过稳定 CommandId 查到**同一命令定义**。显示名允许修改；命令编码或参数不兼容改动必须有版本/迁移计划。若命令定义属于可持久工程资源，保持稳定 ID；运行实例的 Handler 另有 RunId/Generation，禁止旧请求误打到新实例。
+**唯一性**：`CommandCode` 在确定的 Owner/Module 下唯一，完整命令端点由 `Scope + TargetOwnerAddress + CommandCode` 精确定位，也可通过稳定 CommandId 查到**同一命令定义**。显示名允许修改；命令编码或参数不兼容改动必须有版本/迁移计划。若命令定义属于可持久工程资源，保持稳定 ID；运行实例的 Handler 另有 RunId/Generation，禁止旧请求误打到新实例。
 
 **实例示例——Axis.MoveAbs（文档契约，非现有 API）：**
 
@@ -343,7 +343,7 @@ CommandResult<MoveResult> result = await bus.InvokeAsync<MoveArgs, MoveResult>(
 // 停止等待、请求取消和实际停止三者是不同的事实。
 ~~~
 
-\`MoveArgs\`、\`MoveResult\`、\`CommandResult<T>\`、\`bus\` 均为**使用体验原型而非仓库已有类型**。命令执行者实现归专业 Provider；MRK 已有 OperationTracker/CorrelationWaiter/ResourceLease 优先复用。**Command 层只做轻量受控调度入口，不另建任务执行器。**
+`MoveArgs`、`MoveResult`、`CommandResult<T>`、`bus` 均为**使用体验原型而非仓库已有类型**。命令执行者实现归专业 Provider；MRK 已有 OperationTracker/CorrelationWaiter/ResourceLease 优先复用。**Command 层只做轻量受控调度入口，不另建任务执行器。**
 
 ### 7.7 从定义到结果的**完整闭环**与异常规则
 
@@ -370,12 +370,12 @@ CommandResult<MoveResult> result = await bus.InvokeAsync<MoveArgs, MoveResult>(
 规范细则：
 
 1. **Handler 唯一**：同一 Scope/实例/命令只允许一个执行 Owner；重复注册、过期 Generation、无 Handler、无权限都明确拒绝；广播消息订阅者永远不是命令执行者。
-2. **失败可诊断**：至少区分 \`UnknownCommand / InvalidArguments / SchemaMismatch / Unauthorized / Busy / ExecutionFailed / Cancelled / TimedOutUnknown\` 等稳定原因。未进入 Handler 的拒绝不伪称失败执行。
-3. **短任务易用，长任务可追踪**：\`InvokeAsync\` 可等候业务结果；需要进度/超时恢复时，复用 MRK 的 OperationId 与查询；不强迫所有简单命令申请持久化任务。
-4. **结构化 Outputs**：与定义一一对应，完成时校验输出类型；失败时 ErrorCode/Message 独立于业务输出，不能把 \`Success=false\` 当作唯一错误通道；现场确认属于附加证据，不强制计算类命令配置。
+2. **失败可诊断**：至少区分 `UnknownCommand / InvalidArguments / SchemaMismatch / Unauthorized / Busy / ExecutionFailed / Cancelled / TimedOutUnknown` 等稳定原因。未进入 Handler 的拒绝不伪称失败执行。
+3. **短任务易用，长任务可追踪**：`InvokeAsync` 可等候业务结果；需要进度/超时恢复时，复用 MRK 的 OperationId 与查询；不强迫所有简单命令申请持久化任务。
+4. **结构化 Outputs**：与定义一一对应，完成时校验输出类型；失败时 ErrorCode/Message 独立于业务输出，不能把 `Success=false` 当作唯一错误通道；现场确认属于附加证据，不强制计算类命令配置。
 5. **重试安全**：RequestId 只关联一次请求，OperationId 表示一次副作用；重入时核验目标、调用者与参数指纹，时间超时/调用取消不能断言设备没有动作，严禁盲目重发。崩溃后持久幂等属于后续扩展，不伪称 P0 已有。
 6. **定义装配**：编辑态的命令参数/说明/版本属于既有 MEM/FCM/Capability/专业定义；Studio 由 Schema 自动生成输入界面、MOL 从相同契约生成输入输出端口；运行态只是对已批准定义绑定 Handler，不创建第二套持久工程真源。
-7. **与已有 MPA 映射兼容**：现有 \`IMPADataTargetAccess.InvokeAsync(string,object,ct):Task\` 只有执行入口、没有强类型结果；P0 以**适配器/兼容扩展**接入真实 Handler，不能直接破坏现有 Connector/Protocol 调用签名，也不能把 \`Task\` 完成自动宣称现场确认。业务结果走正式 Command Result/Operation 查询链。
+7. **与已有 MPA 映射兼容**：现有 `IMPADataTargetAccess.InvokeAsync(string,object,ct):Task` 只有执行入口、没有强类型结果；P0 以**适配器/兼容扩展**接入真实 Handler，不能直接破坏现有 Connector/Protocol 调用签名，也不能把 `Task` 完成自动宣称现场确认。业务结果走正式 Command Result/Operation 查询链。
 8. **未来 MQTT 桥接**：请求 Topic + 编码后的 Arguments；回复 Topic + 关联标识 + 执行结果（MQTT 5 可以利用 Response Topic/Correlation Data）。这些只是传输映射，MQTT 发布 QoS ACK ≠ Handler Accepted/Completed；P0 无需 Broker。
 
 ### 7.8 最简可交付面与不该新增的复杂度
@@ -682,11 +682,11 @@ Task<CommandStatus> QueryOperationAsync(Guid operationId, CancellationToken ct);
 
 | 对外概念 | 默认调用面 | 归属/实现边界 | 现状 |
 |---|---|---|---|
-| Message Topic/Type | \`Publish(Topic,Payload)\`、\`Subscribe(Topic,callback)\` | M36 分发；消息事件类型遵守 M12 既有身份 | P：示意调用面 |
+| Message Topic/Type | `Publish(Topic,Payload)`、`Subscribe(Topic,callback)` | M36 分发；消息事件类型遵守 M12 既有身份 | P：示意调用面 |
 | 消息实例与发布回执 | MessageId/Origin/Payload、Stage+Outcome+MatchedCount | M36 内部封装，调用者不必显式 new Envelope | P |
 | CommandDefinition | CommandId、CommandCode、Name、Inputs、Outputs、Description/Version | 既有 MEM/FCM/Capability/专业定义，M12 公共契约，不复制配置源 | P：需 DOCS/04 查重 |
-| Command Handler 登记 | \`RegisterCommand\` | M12 轻量路由，真实执行由专业 Provider/MRK | P |
-| Command Request/Result | \`InvokeAsync\`、输出类型、ErrorCode、OperationId | M12 请求入口；MRK 状态/关联/资源，M28 授权 | P：部分 MRK 基础 I |
+| Command Handler 登记 | `RegisterCommand` | M12 轻量路由，真实执行由专业 Provider/MRK | P |
+| Command Request/Result | `InvokeAsync`、输出类型、ErrorCode、OperationId | M12 请求入口；MRK 状态/关联/资源，M28 授权 | P：部分 MRK 基础 I |
 | 进程外适配 | MQTT Topic/Payload 与 Reply/Correlation 映射 | M13/M14/Bridge，P1+ 实施 | E |
 
 **命名裁决顺序**：先从 DOCS/04 找正式 TypeId/Owner，再从源码查找既有接口，最后才允许增构；本节列的是**功能合同而非一次批准六个新类**。
@@ -791,7 +791,7 @@ public static class OperationApiExample
    消息推送失败不倒写“采图命令已成功”；设备动作是否发生以专业证据为准。
 ~~~
 
-第4步 Command 返回结果，第5步 Message 另行发布，两者可关联 \`CorrelationId\`，但**并不互相替代**。进程内 ImageName 必须受 Owner/Run/Generation/Type 校验；不能裸用同名字符串在跨 Scope 任意取图。
+第4步 Command 返回结果，第5步 Message 另行发布，两者可关联 `CorrelationId`，但**并不互相替代**。进程内 ImageName 必须受 Owner/Run/Generation/Type 校验；不能裸用同名字符串在跨 Scope 任意取图。
 
 ## 18. 工程编排用户的 Studio 使用指南（目标体验）
 
