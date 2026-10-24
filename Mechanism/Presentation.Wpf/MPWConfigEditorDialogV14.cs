@@ -249,6 +249,26 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         // 在Windows UIAutomation或中文输入法下可能造成重入和跨线程等待。
         // 将真正的写入排到同一UI Dispatcher下一轮；保存按钮Input事件到达前
         // 以Normal优先级提交，仍由现有MHS Editor执行唯一草稿事务。
+        private void SetConfiguredValue(string path, string json)
+        {
+            // 通道种类是受控多态配置：Kind 改变意味着整体 Channel 实例变化。
+            // FCM 持久化仍只有一个 Channel，不能只更改旧类型实例的 Kind 字段。
+            if (string.Equals(path, "Channel.Kind", StringComparison.Ordinal))
+            {
+                System.Reflection.PropertyInfo member = typeof(T).GetProperty("Channel");
+                object current = member == null ? null : member.GetValue(_editor.Draft, null);
+                IFCMConfigVariantSelector selector = current as IFCMConfigVariantSelector;
+                if (selector != null)
+                {
+                    string chosen = FCMJsonValueCodec.Deserialize<string>(json);
+                    object next = selector.SelectVariant("Kind", chosen);
+                    _editor.SetPathJson("Channel", FCMJsonValueCodec.Serialize(next));
+                    return;
+                }
+            }
+            _editor.SetPathJson(path, json);
+        }
+
         private void QueueEditorValue(string path, string json)
         {
             Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Normal,
@@ -484,7 +504,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                         SelectedItem = value == null ? null : value.ToString() };
                     System.Windows.Automation.AutomationProperties.SetAutomationId(box, "MPW.Edit." + path);
                     box.SelectionChanged += (s, e) => {
-                        if (box.SelectedItem != null) Execute(() => _editor.SetPathJson(path,
+                        if (box.SelectedItem != null) Execute(() => SetConfiguredValue(path,
                             FCMJsonValueCodec.Serialize((string)box.SelectedItem)));
                     };
                     line.Children.Add(box);

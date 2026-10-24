@@ -8,7 +8,7 @@ namespace CxVisual.Mechanism.Connectivity
     public enum MCCChannelKind { Virtual, TcpClient, TcpServer, Udp, Serial, Custom, UdpServer }
 
     [FCMConfigConverter(typeof(MCCChannelConfigurationConverter))]
-    public abstract class MCCChannelConfiguration
+    public abstract class MCCChannelConfiguration : IFCMConfigVariantSelector
     {
         [FCMConfigItem("通道 Id", Order = 1, Category = "身份")]
         [Required]
@@ -57,6 +57,26 @@ namespace CxVisual.Mechanism.Connectivity
                 throw new ArgumentException("Channel 身份与执行预算无效");
             if (GetType() != MCCChannelConfigurations.TypeOf(Kind))
                 throw new ArgumentException("Kind 与专用配置类型不一致");
+        }
+
+        public object SelectVariant(string discriminator, string value)
+        {
+            if (discriminator != "Kind") throw new ArgumentException("不支持的配置类型字段");
+            MCCChannelKind nextKind;
+            if (!Enum.TryParse(value, false, out nextKind) ||
+                !Enum.IsDefined(typeof(MCCChannelKind), nextKind))
+                throw new ArgumentException("通道类型非法");
+            MCCChannelConfiguration next = MCCChannelConfigurations.Create(nextKind);
+            next.Id = Id;
+            next.IoMode = IoMode;
+            next.QueueCapacity = QueueCapacity;
+            next.ReceiveByteBudget = ReceiveByteBudget;
+            next.ReconnectMaxAttempts = ReconnectMaxAttempts;
+            next.ReconnectInitialDelayMs = ReconnectInitialDelayMs;
+            next.ReconnectBackoff = ReconnectBackoff;
+            next.ReconnectMaxDelayMs = ReconnectMaxDelayMs;
+            next.Validate();
+            return next;
         }
 
         public MCCChannelTypeDescriptor DescribeType()

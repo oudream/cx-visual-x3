@@ -69,6 +69,12 @@ namespace CxVisual.Foundation.Data.Configuration
         public FCMConfigConverterAttribute(Type converterType) { ConverterType = converterType; }
         public Type ConverterType { get; private set; }
     }
+    // FCM 编辑器切换受控配置子类型时使用，仍由唯一配置对象提供新实例。
+    public interface IFCMConfigVariantSelector
+    {
+        object SelectVariant(string discriminator, string value);
+    }
+
     public interface IFCMConfigValueConverter<T>
     {
         string Write(T value);
