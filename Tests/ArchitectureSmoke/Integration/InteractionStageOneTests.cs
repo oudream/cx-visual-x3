@@ -1,3 +1,4 @@
+using CxVisual.Foundation.Data.Messages;
 using System;
 using System.Collections.Generic;
 using CxVisual.Foundation.Core;

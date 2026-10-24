@@ -23,6 +23,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         }
         public static void Run()
         {
+            FoundationMessageContractsTests.Run();
             const string captured = "/machine/1201/app/XRay/module/Camera/message/Captured";
             const string faulted = "/machine/1201/app/XRay/module/Camera/message/Faulted";
             const string anotherMachine = "/machine/1202/app/XRay/module/Camera/message/Captured";

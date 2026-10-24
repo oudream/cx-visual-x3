@@ -1,7 +1,7 @@
 using System;
 using System.Text;
 
-namespace CxVisual.Mechanism.Data.Messages
+namespace CxVisual.Foundation.Data.Messages
 {
     /// <summary>
     /// Payload在应用层的形态。与传输编码(ContentType/Codec)分离。

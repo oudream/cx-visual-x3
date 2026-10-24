@@ -1,5 +1,5 @@
 using System;
-namespace CxVisual.Mechanism.Data.Messages
+namespace CxVisual.Foundation.Data.Messages
 {
     /// <summary>MQTT风格的Topic过滤表达式：+匹配一层，#只能位于末尾并匹配零或多层。</summary>
     public sealed class MNMTopicFilter

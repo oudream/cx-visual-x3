@@ -4,6 +4,8 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
+using CxVisual.Foundation.Data.Messages;
+
 namespace CxVisual.Mechanism.Data.Messages
 {
     /// <summary>订阅注册令牌：释放后不再进入新消息的订阅快照。</summary>

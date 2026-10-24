@@ -3,16 +3,10 @@ using System.IO;
 using System.Runtime.Serialization.Json;
 using System.Text;
 
+using CxVisual.Foundation.Data.Messages;
+
 namespace CxVisual.Mechanism.Data.Messages
 {
-    /// <summary>消息Payload的编码策略；不同Codec不改变M36内存分发语义。</summary>
-    public interface IMNMMessageCodec
-    {
-        string ContentType { get; }
-        byte[] Encode(object payload, Type declaredType);
-        object Decode(byte[] bytes, Type declaredType);
-    }
-
     /// <summary>严格UTF-8文本Codec，使用替换异常回退以拒绝无效字节。</summary>
     public sealed class MNMTextMessageCodec : IMNMMessageCodec
     {

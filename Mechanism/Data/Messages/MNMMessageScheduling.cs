@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
+using CxVisual.Foundation.Data.Messages;
+
 namespace CxVisual.Mechanism.Data.Messages
 {
     /// <summary>
