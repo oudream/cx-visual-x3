@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using CxVisual.Foundation.Data.Commands;
 using CxVisual.Mechanism.Data.Variables;
 using CxVisual.Mechanism.Data.RuntimeData;
+using CxVisual.Mechanism.Data.Execution;
 using CxVisual.Mechanism.Logic.Commands;
 using CxVisual.Mechanism.Runtime.Commands;
 
@@ -147,6 +148,35 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 ((Dictionary<string, object>)good.Outputs["Result"])["OK"] = false;
                 Check((bool)((Dictionary<string, object>)nested.Query(good.OperationId)
                     .Outputs["Result"])["OK"], "nested response snapshot remains immutable externally");
+            }
+
+            // 真正的节点DataContext输入/输出使用正式MDS作用域，不另造Heap或Frame。
+            using (MDEExecutionDataScope root = MDEExecutionDataScope.CreateRoot("cmd-node"))
+            {
+                root.Put("incoming", 6.0);
+                MDSDataContext context = new MDSDataContext(root);
+                using (MDSCommandValueBinding addresses = new MDSCommandValueBinding())
+                using (MRKCommandCenter center = new MRKCommandCenter())
+                using (center.Register(new MRKCommandDescriptor(Target, Definition()),
+                    Handler(x => x)))
+                {
+                    addresses.BindNode<double>("node.input", context, "incoming");
+                    addresses.BindNode<double>("node.output", context, "result", true);
+                    MRKCommandResponse response = center.InvokeBoundAsync(
+                        new MRKCommandRequest(Target, "Calculate"), addresses,
+                        new[] { new MRKCommandParameterBinding("Input", "node.input") },
+                        new[] { new MRKCommandParameterBinding("Output", "node.output") })
+                        .GetAwaiter().GetResult();
+                    Check(response.State == MRKCommandState.Completed &&
+                        context.Get<double>("result") == 12.0,
+                        "MDS node context input/output mapping");
+                    bool writeDenied = false;
+                    try { addresses.WriteAsync("node.input", 99.0, CancellationToken.None)
+                        .GetAwaiter().GetResult(); }
+                    catch (UnauthorizedAccessException) { writeDenied = true; }
+                    Check(writeDenied && context.Get<double>("incoming") == 6.0,
+                        "node input remains readonly through command binding");
+                }
             }
             // 正式适配器复用MDS变量真源，而不是测试中自造存取委托。
             MDSVariableTable variableTable = new MDSVariableTable("command-binding");
