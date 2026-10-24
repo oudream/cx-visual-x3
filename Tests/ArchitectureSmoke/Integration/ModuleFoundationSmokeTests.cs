@@ -58,7 +58,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
             MPAProtocolContext context = new MPAProtocolContext(config.Id, "virtual-request",
                 new MCCSubChannelAddress("mb-request"), configuration: config, transport: pair[0]);
             int behavior = 0;
-            pair[0].Received += received => protocol.ProcessReceived(received, context);
+            int acceptedResponseCount = 0;
+            pair[0].Received += received =>
+                acceptedResponseCount += protocol.ProcessReceived(received, context).Count;
             pair[1].Received += received =>
             {
                 byte[] frame = received.Data;
@@ -100,6 +102,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     new MPAProtocolOperationRequest(MPAProtocolOperationKind.Request,
                         new MPAProtocolAddress("3"), MPAModbusRegisterOperations.ReadHolding(100, 1)),
                     context, CancellationToken.None).GetAwaiter().GetResult());
+                Check(acceptedResponseCount == 2,
+                    "错误功能码及Unit的事务响应不可作为有效Payload发布");
                 behavior = 4;
                 Reject<TimeoutException>(() => protocol.RequestAsync(
                     new MPAProtocolOperationRequest(MPAProtocolOperationKind.Request,

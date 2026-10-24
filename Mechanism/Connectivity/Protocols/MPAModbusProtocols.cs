@@ -223,16 +223,21 @@ namespace CxVisual.Mechanism.Connectivity
                         try
                         {
                             ValidateResponse(transaction, unit, pdu);
-                            session.CompleteResponse(transaction.CorrelationId, pdu);
+                            // 仅把有真实存活请求且通过全部校验的响应交给上层观察者。
+                            if (session.CompleteResponse(transaction.CorrelationId, pdu))
+                                frames.Add(pdu);
                         }
                         catch (Exception error)
                         {
-                            // 有匹配事务的非法帧立即失败，不假装成功或污染其他对端会话。
+                            // 非法响应不能流入 Connector.PayloadReceived，再被误当作有效点值。
                             session.FailResponse(transaction.CorrelationId, error);
                         }
                     }
-                    else MPAModbusRegisterOperations.CheckResponsePdu(pdu);
-                    frames.Add(pdu);
+                    else
+                    {
+                        MPAModbusRegisterOperations.CheckResponsePdu(pdu);
+                        frames.Add(pdu);
+                    }
                     pending.RemoveRange(0, 6 + length);
                 }
                 return frames;

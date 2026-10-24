@@ -108,3 +108,5 @@
 - `Reset(address)`、`ResetAll()` 对失败、断线及停止时清理待处理会话，旧子通道代次不可借新连接完成旧事务；超时、断开、响应不合法均不能返回 Completed。
 - `ModuleFoundationSmokeTests.ModbusTcpTransactionSmoke` 使用正式 Virtual 纯传输双端，完成 03/06 发送确认、异常码、错误 Unit、超时和不支持功能码反证；这不等于外部 PLC 或 RS-485 HIL。
 - **尚未完成**：PointTable 驱动的自动寄存器值转换、03/06 到 MDS 的自动映射、更多 Modbus 功能码、RTU SharedBus 排队与 T3.5 静默间隔、工业 HIL/压力；并未借本轮冒充全部 P2/P3 达标。
+
+- 有效数据事件额外收敛：已匹配待处理事务但校验失败的 Modbus TCP 响应，只经 `MPAProtocolSession.FailResponse` 让请求失败，不再进入 Connector 的成功 Payload 观察事件。正反测试明确验证错误 Unit/异常码不增加已接受 Payload 数量。
