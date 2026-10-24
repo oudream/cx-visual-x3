@@ -95,6 +95,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             HttpConfigurationSmoke();
             NamedPipeLoopback();
             WebSocketConfigSmoke();
+            WebSocketLoopback();
             HttpLoopback();
             Console.WriteLine("CHANNEL.TRANSPORT: TCP/UDP loopback MultiPeer and stale generation PASS");
         }
@@ -182,6 +183,90 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(serverTask.Wait(TimeSpan.FromSeconds(5)), "HTTP server 处理请求");
             }
             finally { client.Close(); listener.Stop(); }
+        }
+
+        private static byte[] ReadExactly(NetworkStream stream, int count)
+        {
+            byte[] bytes = new byte[count];
+            for (int offset = 0; offset < count;)
+            {
+                int n = stream.Read(bytes, offset, count - offset);
+                if (n < 1) throw new IOException("WebSocket 测试对端提前关闭");
+                offset += n;
+            }
+            return bytes;
+        }
+
+        // 本机真实 TCP 连接上的 RFC6455 Upgrade 与掩码二进制消息，避免HttpListener ACL依赖。
+        private static void WebSocketLoopback()
+        {
+            int port = FreePort(false);
+            TcpListener listener = new TcpListener(IPAddress.Loopback, port);
+            listener.Start();
+            Task echo = Task.Run(() => {
+                using (TcpClient tcp = listener.AcceptTcpClient())
+                using (NetworkStream stream = tcp.GetStream())
+                using (StreamReader reader = new StreamReader(
+                    stream, System.Text.Encoding.ASCII, false, 1024, true))
+                {
+                    tcp.ReceiveTimeout = 5000;
+                    tcp.SendTimeout = 5000;
+                    string first = reader.ReadLine();
+                    if (first == null || !first.StartsWith("GET /ws", StringComparison.Ordinal))
+                        throw new IOException("WebSocket 客户端 Upgrade 请求错误");
+                    string key = null;
+                    string line;
+                    while (!string.IsNullOrEmpty(line = reader.ReadLine()))
+                        if (line.StartsWith("Sec-WebSocket-Key:", StringComparison.OrdinalIgnoreCase))
+                            key = line.Substring("Sec-WebSocket-Key:".Length).Trim();
+                    if (string.IsNullOrEmpty(key)) throw new IOException("WebSocket 握手密钥不存在");
+                    string source = key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+                    string accept;
+                    using (System.Security.Cryptography.SHA1 sha1 = System.Security.Cryptography.SHA1.Create())
+                        accept = Convert.ToBase64String(sha1.ComputeHash(
+                            System.Text.Encoding.ASCII.GetBytes(source)));
+                    byte[] handshake = System.Text.Encoding.ASCII.GetBytes(
+                        "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: "
+                        + accept + "\r\n\r\n");
+                    stream.Write(handshake, 0, handshake.Length);
+                    stream.Flush();
+                    byte[] header = ReadExactly(stream, 2);
+                    if (header[0] != 0x82 || (header[1] & 0x80) == 0 ||
+                        (header[1] & 0x7f) != 3)
+                        throw new IOException("WebSocket 客户端未发送带掩码的二进制单消息");
+                    byte[] mask = ReadExactly(stream, 4);
+                    byte[] data = ReadExactly(stream, 3);
+                    for (int i = 0; i < data.Length; i++) data[i] ^= mask[i % 4];
+                    if (!data.SequenceEqual(new byte[] { 7, 8, 9 }))
+                        throw new IOException("WebSocket 二进制请求正文错误");
+                    byte[] reply = new byte[] { 0x82, 0x03, 0x21, 0x22, 0x23 };
+                    stream.Write(reply, 0, reply.Length);
+                    stream.Flush();
+                    // 确保客户端实际有机会接收响应后再断开本机测试Socket。
+                    Thread.Sleep(150);
+                }
+            });
+            MCCWebSocketClientChannel client = new MCCWebSocketClientChannel(
+                new MCCWebSocketClientChannelConfiguration {
+                    Id = "ws-real-loopback",
+                    Url = "ws://127.0.0.1:" + port + "/ws" });
+            byte[] observed = null;
+            using (ManualResetEventSlim received = new ManualResetEventSlim(false))
+            {
+                client.Received += incoming => { observed = incoming.Data; received.Set(); };
+                try
+                {
+                    client.Open();
+                    client.SendAsync(new byte[] { 7, 8, 9 },
+                        new MCCSubChannelAddress(client.Id), CancellationToken.None)
+                        .GetAwaiter().GetResult();
+                    Check(received.Wait(TimeSpan.FromSeconds(5)) &&
+                        observed.SequenceEqual(new byte[] { 0x21, 0x22, 0x23 }),
+                        "WebSocket 二进制消息真正完成握手、掩码与接收");
+                    Check(echo.Wait(TimeSpan.FromSeconds(5)), "WebSocket 服务端验证");
+                }
+                finally { client.Close(); listener.Stop(); }
+            }
         }
 
         private static void WebSocketConfigSmoke()
