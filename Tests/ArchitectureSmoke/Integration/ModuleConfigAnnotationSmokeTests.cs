@@ -44,7 +44,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
 
             // 每种专属 Channel 配置必须保留具体 CLR 类型且往返不混入别种通道参数。
             foreach (MCCChannelKind kind in new[] { MCCChannelKind.Virtual, MCCChannelKind.TcpClient,
-                MCCChannelKind.TcpServer, MCCChannelKind.Udp, MCCChannelKind.UdpServer, MCCChannelKind.Serial })
+                MCCChannelKind.TcpServer, MCCChannelKind.Udp, MCCChannelKind.UdpServer, MCCChannelKind.Serial,
+                MCCChannelKind.HttpClient, MCCChannelKind.WebSocketClient, MCCChannelKind.NamedPipeClient,
+                MCCChannelKind.NamedPipeServer, MCCChannelKind.Replay, MCCChannelKind.UdpMulticast })
             {
                 MCCChannelConfiguration selected = MCCChannelConfigurations.Create(kind);
                 selected.Id = "typed-" + kind;

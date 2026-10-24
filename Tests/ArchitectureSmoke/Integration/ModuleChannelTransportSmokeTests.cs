@@ -97,6 +97,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             WebSocketConfigSmoke();
             WebSocketLoopback();
             ReplayFileLoopback();
+            MulticastConfigurationSmoke();
             HttpLoopback();
             Console.WriteLine("CHANNEL.TRANSPORT: TCP/UDP loopback MultiPeer and stale generation PASS");
         }
@@ -268,6 +269,24 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 }
                 finally { client.Close(); listener.Stop(); }
             }
+        }
+
+        private static void MulticastConfigurationSmoke()
+        {
+            MCCUdpMulticastChannelConfiguration config = new MCCUdpMulticastChannelConfiguration {
+                Id = "udp-multicast-test", GroupAddress = "239.3.7.11", Port = 30001,
+                Loopback = false, TimeToLive = 2
+            };
+            Check(config.DescribeType().Topology == MCCChannelTopology.SharedBus &&
+                config.DescribeType().IO == MCCIOCapabilities.Datagram,
+                "组播是共享总线数据报，非TCP多Peer");
+            Check(new MCCUdpMulticastChannel(config).State == MCCChannelState.Closed,
+                "组播通道构建时不能提前绑定网络Socket");
+            bool rejected = false;
+            try { new MCCUdpMulticastChannelConfiguration {
+                    GroupAddress = "192.168.1.1" }.Validate(); }
+            catch (ArgumentException) { rejected = true; }
+            Check(rejected, "非组播地址必须拒绝");
         }
 
         private static void ReplayFileLoopback()
