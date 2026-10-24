@@ -169,6 +169,7 @@
 
 - [命令中心双项目Owner裁决 V1.0](Decisions/CxVisual_统一命令中心双项目归属裁决_V1.0.md)：命令基础定义、参数Schema、快照统一在 `Foundation.Data.Commands`；命令运行机制、MDS绑定适配统一在 `Mechanism.Runtime.Commands`。原Logic/MCE及Mechanism.Data命令专属文件已物理迁出，不建立额外项目。
 - [命令中心实现与验收](Implementation/CxVisual_公共机制体系%23命令中心——进程内实现与验收_V1.0.md)：进程内实现、调用示例、Windows专项验收与明确未完成的跨进程及硬件边界。
+- [统一命令中心完整类架构与功能验收 V1.0](Architecture/CxVisual_统一命令中心——完整类架构与功能验收_V1.0.md)：统一类图、时序、两个项目归属、真实API、设备/算法/流程用法及原60项需求的实现/待验收对应表，禁止以源码存在冒充实机或远程验收。
 
 ## 统一交互机制 V1.5（2026-10-24）
 
