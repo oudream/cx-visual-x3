@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using CxVisual.Foundation.Data.Types;
 namespace CxVisual.Mechanism.Logic.Commands
 {
     /// <summary>IoT风格的输入/输出参数契约：类型、必填、默认、单位与范围。</summary>
@@ -17,7 +18,7 @@ namespace CxVisual.Mechanism.Logic.Commands
                 dataType.ContainsGenericParameters) throw new ArgumentException("无效参数类型", "dataType");
             if (required && hasDefaultValue) throw new ArgumentException("必填参数不可指定默认值");
             if (unit != null && unit.Length > 32) throw new ArgumentException("单位过长", "unit");
-            Code = code; DataType = dataType; Required = required; HasDefaultValue = hasDefaultValue;
+            Code = code; DataType = dataType; TypeDescriptor = FDTDataTypeDescriptor.Describe(dataType); Required = required; HasDefaultValue = hasDefaultValue;
             Unit = unit; Description = description ?? string.Empty;
             MinValue = minValue; MaxValue = maxValue;
             if (minValue != null) ValidateType(minValue);
@@ -36,6 +37,7 @@ namespace CxVisual.Mechanism.Logic.Commands
         }
         public string Code { get; private set; }
         public Type DataType { get; private set; }
+        public FDTDataTypeDescriptor TypeDescriptor { get; private set; }
         public bool Required { get; private set; }
         public bool HasDefaultValue { get; private set; }
         public object DefaultValue { get; private set; }
