@@ -49,6 +49,7 @@ namespace CxVisual.Mechanism.Data.Messages
         internal MNMMessageSubscription[] Subscriptions;
         internal MNMPublishReceipt Receipt;
         internal bool Retain;
+        internal IMNMMessageInterceptor[] Interceptors = new IMNMMessageInterceptor[0];
         internal TaskCompletionSource<MNMPublishReceipt> Completed =
             new TaskCompletionSource<MNMPublishReceipt>(TaskCreationOptions.RunContinuationsAsynchronously);
     }
@@ -66,6 +67,11 @@ namespace CxVisual.Mechanism.Data.Messages
         private readonly Dictionary<string, MNMMessageTypeDefinition> _types =
             new Dictionary<string, MNMMessageTypeDefinition>(StringComparer.Ordinal);
         private readonly MNMMessageRouter _router = new MNMMessageRouter();
+        private readonly Dictionary<Guid,IMNMMessageInterceptor> _interceptors =
+            new Dictionary<Guid,IMNMMessageInterceptor>();
+        private long _interceptorFailures;
+        private readonly DateTime _startedUtc = DateTime.UtcNow;
+        public event Action<Exception> InterceptorError;
         private readonly MNMMessageRetryPolicy _retry;
         private readonly MNMMessageThreadPoolScheduler _parallel;
         private readonly Queue<MNMDeliveryWork> _queue = new Queue<MNMDeliveryWork>();
@@ -142,6 +148,54 @@ namespace CxVisual.Mechanism.Data.Messages
         }
         public MNMMessageState State { get { lock(_gate) return _state; } }
 
+
+        private sealed class InterceptorRegistration : IDisposable
+        {
+            private MNMMessageCenter _owner;
+            private readonly Guid _id;
+            internal InterceptorRegistration(MNMMessageCenter owner,Guid id)
+            { _owner=owner; _id=id; }
+            public void Dispose()
+            {
+                MNMMessageCenter owner=Interlocked.Exchange(ref _owner,null);
+                if(owner != null) owner.RemoveInterceptor(_id);
+            }
+        }
+
+        /// <summary>进程内可选AOP扩展。注册时确定顺序；Dispose不撤销在途快照。</summary>
+        public IDisposable AddInterceptor(IMNMMessageInterceptor interceptor)
+        {
+            if(interceptor==null)throw new ArgumentNullException("interceptor");
+            lock(_gate)
+            {
+                DemandOpen();
+                Guid id=Guid.NewGuid();
+                _interceptors.Add(id,interceptor);
+                return new InterceptorRegistration(this,id);
+            }
+        }
+
+        private void RemoveInterceptor(Guid id)
+        {
+            lock(_gate) _interceptors.Remove(id);
+        }
+
+        private void NotifyAfterDelivery(MNMDeliveryWork work)
+        {
+            foreach(IMNMMessageInterceptor interceptor in work.Interceptors)
+            {
+                try { interceptor.AfterDelivery(work.Message,work.Receipt); }
+                catch(Exception error)
+                {
+                    lock(_gate) ++_interceptorFailures;
+                    Action<Exception> callback=InterceptorError;
+                    if(callback!=null)
+                        try { callback(error); }
+                        catch(Exception ignored) { /* 诊断钩子不改变已完成的业务回执 */ }
+                }
+            }
+        }
+
         public void RegisterType(MNMMessageTypeDefinition definition)
         {
             if (definition == null) throw new ArgumentNullException("definition");
@@ -190,6 +244,8 @@ namespace CxVisual.Mechanism.Data.Messages
         {
             if (handler == null) throw new ArgumentNullException("handler");
             MNMSubscriptionOptions opt = CaptureSubscription(options);
+            if (opt.NoLocal && string.IsNullOrWhiteSpace(opt.SourceId))
+                throw new ArgumentException("NoLocal需要明确的订阅者SourceId", "options");
             string shared, filter;
             ParseShared(topicFilter,opt,out filter,out shared);
             MNMTopicFilter parsed = new MNMTopicFilter(filter);
@@ -233,7 +289,7 @@ namespace CxVisual.Mechanism.Data.Messages
                 _subs.Add(sub);
                 replay = opt.ReplayRetained && shared == null ?
                     _retained.Values.Where(m => !IsExpired(m) &&
-                    parsed.Matches(m.Header.Topic) && typeof(T).IsAssignableFrom(m.Payload.PayloadType)).
+                    MNMMessageRouter.MatchesSubscription(sub,m)).
                     ToArray() : new MNMMessage[0];
             }
             foreach (MNMMessage message in replay)
@@ -257,13 +313,13 @@ namespace CxVisual.Mechanism.Data.Messages
         public MNMPublishReceipt Publish<T>(string topic, T payload, MNMPublishOptions options = null)
         {
             MNMPublishOptions opt = CapturePublish(options);
+            if (opt.DispatchMode == MNMDispatchMode.Inline && SynchronizationContext.Current != null)
+                throw new InvalidOperationException("UI上下文中不能同步Inline等待；请使用PublishAsync或Queued");
             MNMDeliveryWork work = Prepare(topic,payload,opt);
             if (work == null) throw new InvalidOperationException("构造消息工作项失败");
             if (work.Receipt.Stage == MNMPublishStage.Rejected) return work.Receipt;
             if (opt.DispatchMode == MNMDispatchMode.Inline)
             {
-                if (SynchronizationContext.Current != null)
-                    throw new InvalidOperationException("在UI/自定义同步上下文不能同步Inline等待回调；请使用PublishAsync或Queued");
                 lock(_gate) { _accepted++; if (work.Retain) Retain(work.Message); }
                 return DispatchWithDepthAsync(work).GetAwaiter().GetResult();
             }
@@ -330,6 +386,11 @@ namespace CxVisual.Mechanism.Data.Messages
                     throw new InvalidOperationException("未注册强类型消息：" + options.TypeId);
             }
             MNMMessage message = new MNMMessage(topic,payload,options,definition);
+            IMNMMessageInterceptor[] hooks;
+            lock(_gate) { DemandOpen(); hooks=_interceptors.Values.ToArray(); }
+            // 先校验拦截器，再接受入队。异常向调用方传播，不伪造Accepted。
+            foreach(IMNMMessageInterceptor interceptor in hooks)
+                interceptor.BeforePublish(message);
             MNMMessageSubscription[] receivers;
             lock(_gate)
             {
@@ -338,6 +399,7 @@ namespace CxVisual.Mechanism.Data.Messages
                 receivers = _router.Resolve(_subs,message);
             }
             MNMDeliveryWork work = NewWork(message,receivers);
+            work.Interceptors = hooks;
             if (options.RequireSubscriber && receivers.Length == 0)
             {
                 work.Receipt.Stage = MNMPublishStage.Rejected;
@@ -496,6 +558,7 @@ namespace CxVisual.Mechanism.Data.Messages
                 work.Receipt.Error = "消息在消费前过期";
                 lock(_gate) _failed += work.Subscriptions.Length;
                 RecordDeliveryLatency(work.Message);
+                NotifyAfterDelivery(work);
                 work.Completed.TrySetResult(work.Receipt);
                 return work.Receipt;
             }
@@ -544,6 +607,7 @@ namespace CxVisual.Mechanism.Data.Messages
                 work.Receipt.Stage = MNMPublishStage.Delivered;
             // 零接收方、被过滤或订阅已注销时仅是Accepted，不伪造Delivered。
             RecordDeliveryLatency(work.Message);
+            NotifyAfterDelivery(work);
             work.Completed.TrySetResult(work.Receipt);
             return work.Receipt;
         }
@@ -592,6 +656,8 @@ namespace CxVisual.Mechanism.Data.Messages
                 double sum=0; foreach(double x in sample) sum+=x;
                 return new MNMMessageMetrics
                 {
+                    MeanPublishPerSecond=_published/Math.Max(0.001,(DateTime.UtcNow-_startedUtc).TotalSeconds),
+                    InterceptorFailures=_interceptorFailures,
                     LatencySamples=sample.Length,
                     MeanDeliveryMilliseconds=sample.Length==0?0:sum/sample.Length,
                     P95DeliveryMilliseconds=sample.Length==0?0:sample[(int)Math.Ceiling(sample.Length*0.95)-1],
@@ -653,6 +719,7 @@ namespace CxVisual.Mechanism.Data.Messages
                 _subs.Clear();
                 _retained.Clear();
                 _deadLetters.Clear();
+                _interceptors.Clear();
             }
         }
 
@@ -669,6 +736,7 @@ namespace CxVisual.Mechanism.Data.Messages
                 _subs.Clear();
                 _retained.Clear();
                 _deadLetters.Clear();
+                _interceptors.Clear();
                 _signal.Release();
             }
         }

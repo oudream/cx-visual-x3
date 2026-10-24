@@ -15,28 +15,41 @@ namespace CxVisual.Mechanism.Data.Messages
         private readonly Dictionary<string,int> _roundRobin =
             new Dictionary<string,int>(StringComparer.Ordinal);
 
+        /// <summary>正常Publish与Retain replay共用过滤规则，避免历史定向/来源消息越界重放。</summary>
+        internal static bool MatchesSubscription(MNMMessageSubscription s,MNMMessage message,string[] validatedTopicSegments = null)
+        {
+            if (!s.IsActive ||
+                !(validatedTopicSegments == null
+                    ? s.TopicFilter.Matches(message.Header.Topic)
+                    : s.TopicFilter.MatchesValidatedSegments(validatedTopicSegments)) ||
+                !s.PayloadType.IsAssignableFrom(message.Payload.PayloadType))
+                return false;
+            if (s.Options.NoLocal &&
+                !string.IsNullOrWhiteSpace(s.Options.SourceId) &&
+                string.Equals(s.Options.SourceId,message.Header.SourceId,StringComparison.Ordinal))
+                return false;
+            if (!string.IsNullOrWhiteSpace(s.Options.SourceFilter) &&
+                !string.Equals(s.Options.SourceFilter,message.Header.SourceId,StringComparison.Ordinal))
+                return false;
+            if (!string.IsNullOrWhiteSpace(s.Options.TypeId) &&
+                !string.Equals(s.Options.TypeId,message.Header.TypeId,StringComparison.Ordinal))
+                return false;
+            if (!string.IsNullOrWhiteSpace(message.Header.TargetId) &&
+                !string.Equals(s.SubscriberId,message.Header.TargetId,StringComparison.Ordinal))
+                return false;
+            return true;
+        }
+
         internal MNMMessageSubscription[] Resolve(IList<MNMMessageSubscription> subscriptions,MNMMessage message)
         {
+            // MessageHeader已经验证了具体Topic，避免每位订阅者都重新Split与Validate。
+            string[] segments=message.Header.Topic.Substring(1).Split('/');
             var normal=new List<MNMMessageSubscription>();
             var shared=new Dictionary<string,List<MNMMessageSubscription>>(StringComparer.Ordinal);
             var already=new HashSet<string>(StringComparer.Ordinal);
             foreach(MNMMessageSubscription s in subscriptions)
             {
-                if(!s.IsActive || !s.TopicFilter.Matches(message.Header.Topic) ||
-                    !s.PayloadType.IsAssignableFrom(message.Payload.PayloadType))
-                    continue;
-                if (s.Options.NoLocal && s.Options.SourceId == message.Header.SourceId)
-                    continue;
-                if (!string.IsNullOrWhiteSpace(s.Options.SourceFilter) &&
-                    !string.Equals(s.Options.SourceFilter,message.Header.SourceId,StringComparison.Ordinal))
-                    continue;
-                if (!string.IsNullOrWhiteSpace(s.Options.TypeId) &&
-                    s.Options.TypeId != message.Header.TypeId)
-                    continue;
-                // TargetId 精确对应 SubscriberId；不得把点对点默默广播给其它订阅者。
-                if (!string.IsNullOrWhiteSpace(message.Header.TargetId) &&
-                    !string.Equals(s.SubscriberId,message.Header.TargetId,StringComparison.Ordinal))
-                    continue;
+                if (!MatchesSubscription(s,message,segments)) continue;
                 if(s.SharedGroup == null || !string.IsNullOrWhiteSpace(message.Header.TargetId))
                 {
                     if(already.Add(s.SubscriberId)) normal.Add(s);

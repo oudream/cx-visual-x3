@@ -189,12 +189,22 @@ namespace CxVisual.Foundation.Data.Messages
         public int QueueDepth { get; internal set; }
         public int ParallelInFlight { get; internal set; }
         public int LatencySamples { get; internal set; }
+        /// <summary>Center启动以来的平均发布吞吐，不是瞬时速率或产线SLA。</summary>
+        public double MeanPublishPerSecond { get; internal set; }
+        public long InterceptorFailures { get; internal set; }
         public double MeanDeliveryMilliseconds { get; internal set; }
         public double P95DeliveryMilliseconds { get; internal set; }
         public double P99DeliveryMilliseconds { get; internal set; }
         public int SubscriptionCount { get; internal set; }
         public int RetainedCount { get; internal set; }
         public int DeadLetterCount { get; internal set; }
+    }
+
+    /// <summary>进程内诊断/校验扩展：发布前异常拒绝、投递后异常隔离；不提供外部设备执行权。</summary>
+    public interface IMNMMessageInterceptor
+    {
+        void BeforePublish(MNMMessage message);
+        void AfterDelivery(MNMMessage message, MNMPublishReceipt receipt);
     }
 
     public interface IMNMMessagePublisher

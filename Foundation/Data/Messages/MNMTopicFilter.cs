@@ -61,7 +61,11 @@ namespace CxVisual.Foundation.Data.Messages
         }
         public bool Matches(string topic)
         {
-            string[] p = ValidateTopic(topic).Substring(1).Split('/');
+            return MatchesValidatedSegments(ValidateTopic(topic).Substring(1).Split('/'));
+        }
+        /// <summary>供已验证的消息Header路由复用，不在每名订阅者匹配时重新解析Topic。</summary>
+        internal bool MatchesValidatedSegments(string[] p)
+        {
             for (int i = 0; i < _parts.Length; ++i)
             {
                 if (_parts[i] == "#") return true;

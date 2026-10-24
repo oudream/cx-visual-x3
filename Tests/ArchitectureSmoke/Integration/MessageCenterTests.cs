@@ -53,6 +53,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             await TestNestedAsyncPublishAsync().ConfigureAwait(false);
             await TestParallelAndOptionsSnapshotAsync().ConfigureAwait(false);
             TestCodecAndLatency();
+            await TestRetainedRoutingAndInterceptorsAsync().ConfigureAwait(false);
         }
 
 
@@ -172,6 +173,100 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     metrics.P95DeliveryMilliseconds>=0,
                     "bounded latency diagnostics");
             }
+        }
+
+
+        private sealed class ProbeInterceptor : IMNMMessageInterceptor
+        {
+            internal int Publishing;
+            internal int Delivered;
+            internal bool RejectBefore;
+            internal bool ThrowAfter;
+            public void BeforePublish(MNMMessage message)
+            {
+                Interlocked.Increment(ref Publishing);
+                if (RejectBefore) throw new InvalidOperationException("blocked by interceptor");
+            }
+            public void AfterDelivery(MNMMessage message, MNMPublishReceipt receipt)
+            {
+                Interlocked.Increment(ref Delivered);
+                if (ThrowAfter) throw new InvalidOperationException("diagnostic observer failure");
+            }
+        }
+
+        private static async Task TestRetainedRoutingAndInterceptorsAsync()
+        {
+            using (MNMMessageCenter bus=new MNMMessageCenter())
+            {
+                bus.RegisterType(new MNMMessageTypeDefinition(
+                    "Camera.Captured",1,typeof(int),topic:Camera));
+                MNMPublishReceipt sent=await bus.PublishAsync(Camera,4300,new MNMPublishOptions {
+                    TypeId="Camera.Captured",SourceId="Camera",TargetId="HMI",Retain=true
+                }).ConfigureAwait(false);
+                Check(sent.Stage==MNMPublishStage.Accepted,"retained targeted publish accepted");
+                int received=0;
+
+                // 历史定向消息不能重放给其他订阅者。
+                using (bus.Subscribe<int>(Camera,ctx=>Interlocked.Increment(ref received),
+                    new MNMSubscriptionOptions {SubscriberId="AI"}))
+                    Check(bus.Metrics().QueueDepth==0 && received==0,"retained TargetId isolation");
+
+                // 即使Topic匹配，SourceFilter/TypeId/NoLocal不满足，也不能历史重放。
+                using (bus.Subscribe<int>(Camera,ctx=>Interlocked.Increment(ref received),
+                    new MNMSubscriptionOptions {SubscriberId="HMI",SourceFilter="Other"}))
+                    Check(bus.Metrics().QueueDepth==0 && received==0,"retained SourceFilter isolation");
+                using (bus.Subscribe<int>(Camera,ctx=>Interlocked.Increment(ref received),
+                    new MNMSubscriptionOptions {SubscriberId="HMI",TypeId="Camera.Unrelated"}))
+                    Check(bus.Metrics().QueueDepth==0 && received==0,"retained TypeId isolation");
+                using (bus.Subscribe<int>(Camera,ctx=>Interlocked.Increment(ref received),
+                    new MNMSubscriptionOptions {SubscriberId="HMI",NoLocal=true,SourceId="Camera"}))
+                    Check(bus.Metrics().QueueDepth==0 && received==0,"retained NoLocal isolation");
+                Expect<ArgumentException>(()=>bus.Subscribe<int>(Camera,ctx=>{},
+                    new MNMSubscriptionOptions{NoLocal=true}));
+
+                using (bus.Subscribe<int>(Camera,ctx=>Interlocked.Increment(ref received),
+                    new MNMSubscriptionOptions {
+                        SubscriberId="HMI",SourceFilter="Camera",TypeId="Camera.Captured"
+                    }))
+                {
+                    Check(SpinWait.SpinUntil(()=>Volatile.Read(ref received)==1,4000),
+                        "valid retained replay delivered once");
+                }
+                await bus.StopAsync(true).ConfigureAwait(false);
+            }
+
+            using (MNMMessageCenter bus=new MNMMessageCenter())
+            {
+                int handled=0;
+                int errorCount=0;
+                bus.InterceptorError += error=>Interlocked.Increment(ref errorCount);
+                ProbeInterceptor probe=new ProbeInterceptor();
+                IDisposable lease=bus.AddInterceptor(probe);
+                using (bus.Subscribe<int>(Camera,ctx=>Interlocked.Increment(ref handled)))
+                {
+                    MNMPublishReceipt first=await bus.PublishAsync(Camera,1).ConfigureAwait(false);
+                    Check(first.Stage==MNMPublishStage.Delivered &&
+                        probe.Publishing==1 && probe.Delivered==1,
+                        "interceptor before/after");
+                    probe.RejectBefore=true;
+                    Expect<InvalidOperationException>(()=>bus.Publish(Camera,2));
+                    Check(bus.Metrics().Published==1 && handled==1 && probe.Delivered==1,
+                        "pre-publish interceptor fail-closed without phantom published");
+                    probe.RejectBefore=false;
+                    probe.ThrowAfter=true;
+                    MNMPublishReceipt observed=await bus.PublishAsync(Camera,3).ConfigureAwait(false);
+                    Check(observed.Stage==MNMPublishStage.Delivered &&
+                        handled==2 && bus.Metrics().InterceptorFailures==1 &&
+                        errorCount==1,"post-delivery observer failure isolated");
+                    Check(bus.Metrics().MeanPublishPerSecond>0,"published throughput metric");
+                    lease.Dispose();
+                    await bus.PublishAsync(Camera,4).ConfigureAwait(false);
+                    Check(probe.Publishing==3 && probe.Delivered==2,
+                        "disposed interceptor not called on later publish");
+                }
+                await bus.StopAsync(true).ConfigureAwait(false);
+            }
+            Console.WriteLine("PASS BUS.M36 retained ACL-shaped filters, interceptor lifecycle and isolation");
         }
 
         private static async Task TestBasicAsync()
