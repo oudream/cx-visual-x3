@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace CxVisual.Mechanism.Data.Messages
 {
-    public enum MNMDispatchMode { Inline, Queued }
+    public enum MNMDispatchMode { Inline, Queued, ThreadPool }
     public enum MNMMessageQoS { AtMostOnce = 0, AtLeastOnceInProcess = 1 }
     public enum MNMOverflowPolicy { Reject, DropOldest }
     public enum MNMMessageState { Running, Paused, Stopped }
@@ -17,6 +17,8 @@ namespace CxVisual.Mechanism.Data.Messages
     public sealed class MNMMessageOptions
     {
         public int QueueCapacity { get; set; } = 1024;
+        /// <summary>额外的无序线程池投递并发上限。默认Queue仍是单FIFO。</summary>
+        public int MaxParallelDispatches { get; set; } = 8;
         public int RetainedCapacity { get; set; } = 256;
         public int DeadLetterCapacity { get; set; } = 256;
         public int MaxAttempts { get; set; } = 3;
@@ -26,7 +28,8 @@ namespace CxVisual.Mechanism.Data.Messages
         public Func<string, string, bool> AuthorizeSubscribe { get; set; }
         public void Validate()
         {
-            if (QueueCapacity < 1 || RetainedCapacity < 0 || DeadLetterCapacity < 0 ||
+            if (QueueCapacity < 1 || MaxParallelDispatches < 1 || MaxParallelDispatches > 1024 ||
+                RetainedCapacity < 0 || DeadLetterCapacity < 0 ||
                 MaxAttempts < 1 || MaxAttempts > 100 || RetryDelayMilliseconds < 0)
                 throw new ArgumentOutOfRangeException("MNMMessageOptions");
             if (!Enum.IsDefined(typeof(MNMOverflowPolicy), OverflowPolicy))
@@ -207,6 +210,11 @@ namespace CxVisual.Mechanism.Data.Messages
         public long Rejected { get; internal set; }
         public long Dropped { get; internal set; }
         public int QueueDepth { get; internal set; }
+        public int ParallelInFlight { get; internal set; }
+        public int LatencySamples { get; internal set; }
+        public double MeanDeliveryMilliseconds { get; internal set; }
+        public double P95DeliveryMilliseconds { get; internal set; }
+        public double P99DeliveryMilliseconds { get; internal set; }
         public int SubscriptionCount { get; internal set; }
         public int RetainedCount { get; internal set; }
         public int DeadLetterCount { get; internal set; }

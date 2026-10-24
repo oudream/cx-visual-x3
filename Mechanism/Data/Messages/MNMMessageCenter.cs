@@ -64,6 +64,8 @@ namespace CxVisual.Mechanism.Data.Messages
         private readonly Dictionary<string, MNMMessageTypeDefinition> _types =
             new Dictionary<string, MNMMessageTypeDefinition>(StringComparer.Ordinal);
         private readonly MNMMessageRouter _router = new MNMMessageRouter();
+        private readonly MNMMessageRetryPolicy _retry;
+        private readonly MNMMessageThreadPoolScheduler _parallel;
         private readonly Queue<MNMDeliveryWork> _queue = new Queue<MNMDeliveryWork>();
         private readonly Dictionary<string, MNMMessage> _retained =
             new Dictionary<string, MNMMessage>(StringComparer.Ordinal);
@@ -74,14 +76,54 @@ namespace CxVisual.Mechanism.Data.Messages
         private readonly Task _worker;
         private MNMMessageState _state = MNMMessageState.Running;
         private long _published, _accepted, _delivered, _failed, _retried, _rejected, _dropped;
+        // 最近1024次交付耗时，非持久化性能SLA；容量固定，避免热路径无限分配。
+        private readonly double[] _deliveryDurations = new double[1024];
+        private int _deliveryCount;
+        private int _deliveryWrite;
         private readonly AsyncLocal<int> _dispatchDepth = new AsyncLocal<int>();
 
         public MNMMessageCenter(MNMMessageOptions options = null)
         {
-            _options = options ?? new MNMMessageOptions();
+            _options = CaptureOptions(options);
             _options.Validate();
+            _retry = new MNMMessageRetryPolicy(_options.MaxAttempts,_options.RetryDelayMilliseconds);
+            _parallel = new MNMMessageThreadPoolScheduler(_options.MaxParallelDispatches);
             _resume = NewCompleted();
             _worker = Task.Run((Func<Task>)RunWorkerAsync);
+        }
+
+        private static MNMMessageOptions CaptureOptions(MNMMessageOptions supplied)
+        {
+            MNMMessageOptions src = supplied ?? new MNMMessageOptions();
+            return new MNMMessageOptions {
+                QueueCapacity=src.QueueCapacity, MaxParallelDispatches=src.MaxParallelDispatches,
+                RetainedCapacity=src.RetainedCapacity, DeadLetterCapacity=src.DeadLetterCapacity,
+                MaxAttempts=src.MaxAttempts, RetryDelayMilliseconds=src.RetryDelayMilliseconds,
+                OverflowPolicy=src.OverflowPolicy, AuthorizePublish=src.AuthorizePublish,
+                AuthorizeSubscribe=src.AuthorizeSubscribe
+            };
+        }
+
+        private static MNMSubscriptionOptions CaptureSubscription(MNMSubscriptionOptions supplied)
+        {
+            MNMSubscriptionOptions src = supplied ?? new MNMSubscriptionOptions();
+            return new MNMSubscriptionOptions {
+                SubscriberId=src.SubscriberId, ReplayRetained=src.ReplayRetained,
+                SourceId=src.SourceId,SourceFilter=src.SourceFilter,TypeId=src.TypeId,
+                NoLocal=src.NoLocal,Predicate=src.Predicate,
+                SynchronizationContext=src.SynchronizationContext
+            };
+        }
+
+        private static MNMPublishOptions CapturePublish(MNMPublishOptions supplied)
+        {
+            MNMPublishOptions src = supplied ?? new MNMPublishOptions();
+            return new MNMPublishOptions {
+                SourceId=src.SourceId,TargetId=src.TargetId,TypeId=src.TypeId,
+                DispatchMode=src.DispatchMode,QoS=src.QoS,Retain=src.Retain,
+                RequireSubscriber=src.RequireSubscriber,TimeToLive=src.TimeToLive,
+                CorrelationId=src.CorrelationId,ReplyTo=src.ReplyTo,Headers=src.Headers
+            };
         }
 
         private static TaskCompletionSource<bool> NewCompleted()
@@ -145,7 +187,7 @@ namespace CxVisual.Mechanism.Data.Messages
             MNMSubscriptionOptions options = null)
         {
             if (handler == null) throw new ArgumentNullException("handler");
-            MNMSubscriptionOptions opt = options ?? new MNMSubscriptionOptions();
+            MNMSubscriptionOptions opt = CaptureSubscription(options);
             string shared, filter;
             ParseShared(topicFilter,opt,out filter,out shared);
             MNMTopicFilter parsed = new MNMTopicFilter(filter);
@@ -212,14 +254,21 @@ namespace CxVisual.Mechanism.Data.Messages
 
         public MNMPublishReceipt Publish<T>(string topic, T payload, MNMPublishOptions options = null)
         {
-            MNMPublishOptions opt = options ?? new MNMPublishOptions();
+            MNMPublishOptions opt = CapturePublish(options);
             MNMDeliveryWork work = Prepare(topic,payload,opt);
             if (work == null) throw new InvalidOperationException("构造消息工作项失败");
             if (work.Receipt.Stage == MNMPublishStage.Rejected) return work.Receipt;
             if (opt.DispatchMode == MNMDispatchMode.Inline)
             {
+                if (SynchronizationContext.Current != null)
+                    throw new InvalidOperationException("在UI/自定义同步上下文不能同步Inline等待回调；请使用PublishAsync或Queued");
                 lock(_gate) { _accepted++; if (work.Retain) Retain(work.Message); }
                 return DispatchWithDepthAsync(work).GetAwaiter().GetResult();
+            }
+            if (opt.DispatchMode == MNMDispatchMode.ThreadPool)
+            {
+                DispatchParallel(work);
+                return work.Receipt;
             }
             Enqueue(work);
             return work.Receipt;
@@ -229,7 +278,7 @@ namespace CxVisual.Mechanism.Data.Messages
             MNMPublishOptions options = null, CancellationToken cancellationToken = default(CancellationToken))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            MNMPublishOptions opt = options ?? new MNMPublishOptions();
+            MNMPublishOptions opt = CapturePublish(options);
             MNMDeliveryWork work = Prepare(topic,payload,opt);
             if (work.Receipt.Stage == MNMPublishStage.Rejected) return work.Receipt;
             if (opt.DispatchMode == MNMDispatchMode.Inline || _dispatchDepth.Value > 0)
@@ -238,7 +287,10 @@ namespace CxVisual.Mechanism.Data.Messages
                 lock(_gate) { _accepted++; if (work.Retain) Retain(work.Message); }
                 return await DispatchWithDepthAsync(work).ConfigureAwait(false);
             }
-            Enqueue(work);
+            if (opt.DispatchMode == MNMDispatchMode.ThreadPool)
+                DispatchParallel(work);
+            else
+                Enqueue(work);
             using (cancellationToken.Register(() => work.Completed.TrySetCanceled()))
                 return await work.Completed.Task.ConfigureAwait(false);
         }
@@ -291,7 +343,8 @@ namespace CxVisual.Mechanism.Data.Messages
                 lock(_gate) _rejected++;
                 work.Completed.TrySetResult(work.Receipt);
             }
-            else if (options.DispatchMode == MNMDispatchMode.Inline && State == MNMMessageState.Paused)
+            else if ((options.DispatchMode == MNMDispatchMode.Inline ||
+                options.DispatchMode == MNMDispatchMode.ThreadPool) && State == MNMMessageState.Paused)
             {
                 work.Receipt.Stage = MNMPublishStage.Rejected;
                 work.Receipt.Error = "已暂停消息分发，Inline被拒绝";
@@ -332,6 +385,32 @@ namespace CxVisual.Mechanism.Data.Messages
             {
                 if (_retainedOrder.Count == 0) break;
                 _retained.Remove(_retainedOrder.Dequeue());
+            }
+        }
+
+        private void DispatchParallel(MNMDeliveryWork work)
+        {
+            lock (_gate)
+            {
+                if (_state == MNMMessageState.Stopped)
+                { Reject(work,"消息中心已停止"); return; }
+                if (_state == MNMMessageState.Paused)
+                { Reject(work,"暂停时不能提交ThreadPool分发"); return; }
+                if (!_parallel.TrySchedule(async () =>
+                {
+                    try { await DispatchWithDepthAsync(work).ConfigureAwait(false); }
+                    catch (Exception error)
+                    {
+                        work.Receipt.Stage = MNMPublishStage.Failed;
+                        work.Receipt.Error = error.GetType().Name + ": " + error.Message;
+                        work.Receipt.FailedCount = work.Subscriptions.Length;
+                        lock (_gate) _failed += work.Subscriptions.Length;
+                        work.Completed.TrySetResult(work.Receipt);
+                    }
+                }))
+                { Reject(work,"ThreadPool并发额度已满"); return; }
+                ++_accepted;
+                if (work.Retain) Retain(work.Message);
             }
         }
 
@@ -414,6 +493,7 @@ namespace CxVisual.Mechanism.Data.Messages
                 work.Receipt.FailedCount = work.Subscriptions.Length;
                 work.Receipt.Error = "消息在消费前过期";
                 lock(_gate) _failed += work.Subscriptions.Length;
+                RecordDeliveryLatency(work.Message);
                 work.Completed.TrySetResult(work.Receipt);
                 return work.Receipt;
             }
@@ -432,8 +512,7 @@ namespace CxVisual.Mechanism.Data.Messages
                     if (!passes) continue;
                 }
                 Exception last = null;
-                int attempts = work.Message.Header.QoS == MNMMessageQoS.AtLeastOnceInProcess ?
-                    _options.MaxAttempts : 1;
+                int attempts = _retry.Attempts(work.Message.Header.QoS);
                 for (int i = 0; i < attempts; ++i)
                 {
                     if (!s.IsActive || IsExpired(work.Message)) break;
@@ -451,8 +530,7 @@ namespace CxVisual.Mechanism.Data.Messages
                         if (i < attempts-1)
                         {
                             lock(_gate) ++_retried;
-                            if (_options.RetryDelayMilliseconds > 0)
-                                await Task.Delay(_options.RetryDelayMilliseconds).ConfigureAwait(false);
+                            await _retry.BackoffAsync().ConfigureAwait(false);
                         }
                     }
                 }
@@ -463,8 +541,20 @@ namespace CxVisual.Mechanism.Data.Messages
             else if (work.Receipt.DeliveredCount > 0)
                 work.Receipt.Stage = MNMPublishStage.Delivered;
             // 零接收方、被过滤或订阅已注销时仅是Accepted，不伪造Delivered。
+            RecordDeliveryLatency(work.Message);
             work.Completed.TrySetResult(work.Receipt);
             return work.Receipt;
+        }
+
+        private void RecordDeliveryLatency(MNMMessage message)
+        {
+            double ms=(DateTime.UtcNow-message.Header.CreatedUtc).TotalMilliseconds;
+            lock(_gate)
+            {
+                _deliveryDurations[_deliveryWrite]=Math.Max(0,ms);
+                _deliveryWrite=(_deliveryWrite+1)%_deliveryDurations.Length;
+                if (_deliveryCount<_deliveryDurations.Length) ++_deliveryCount;
+            }
         }
 
         private void RecordFailure(MNMDeliveryWork work,MNMMessageSubscription s,Exception error)
@@ -494,11 +584,20 @@ namespace CxVisual.Mechanism.Data.Messages
         {
             lock(_gate)
             {
+                double[] sample = new double[_deliveryCount];
+                Array.Copy(_deliveryDurations,sample,_deliveryCount);
+                Array.Sort(sample);
+                double sum=0; foreach(double x in sample) sum+=x;
                 return new MNMMessageMetrics
                 {
+                    LatencySamples=sample.Length,
+                    MeanDeliveryMilliseconds=sample.Length==0?0:sum/sample.Length,
+                    P95DeliveryMilliseconds=sample.Length==0?0:sample[(int)Math.Ceiling(sample.Length*0.95)-1],
+                    P99DeliveryMilliseconds=sample.Length==0?0:sample[(int)Math.Ceiling(sample.Length*0.99)-1],
                     Published=_published,Accepted=_accepted,Delivered=_delivered,Failed=_failed,
                     Retried=_retried,Rejected=_rejected,Dropped=_dropped,
-                    QueueDepth=_queue.Count,SubscriptionCount=_subs.Count,
+                    QueueDepth=_queue.Count,ParallelInFlight=_parallel.InFlight,
+                    SubscriptionCount=_subs.Count,
                     RetainedCount=_retained.Count,DeadLetterCount=_deadLetters.Count
                 };
             }
@@ -545,6 +644,7 @@ namespace CxVisual.Mechanism.Data.Messages
                 }
             }
             await _worker.ConfigureAwait(false);
+            await _parallel.DrainAsync().ConfigureAwait(false);
             lock(_gate)
             {
                 foreach(MNMMessageSubscription s in _subs) s.Deactivate();

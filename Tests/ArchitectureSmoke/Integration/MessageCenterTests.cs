@@ -50,6 +50,127 @@ namespace CxVisual.Tests.ArchitectureSmoke
             await TestSecurityAsync().ConfigureAwait(false);
             await TestTargetAndSourceAsync().ConfigureAwait(false);
             await TestNestedAsyncPublishAsync().ConfigureAwait(false);
+            await TestParallelAndOptionsSnapshotAsync().ConfigureAwait(false);
+            TestCodecAndLatency();
+        }
+
+
+        private static async Task TestParallelAndOptionsSnapshotAsync()
+        {
+            const string slow="/machine/1201/app/XRay/module/Camera/message/Slow";
+            const string fast="/machine/1201/app/XRay/module/Camera/message/Fast";
+            MNMMessageOptions host=new MNMMessageOptions {QueueCapacity=1,MaxParallelDispatches=2};
+            using (MNMMessageCenter bus=new MNMMessageCenter(host))
+            {
+                host.MaxParallelDispatches=1; // Host配置应在Center构造时复制。
+                TaskCompletionSource<bool> entered=new TaskCompletionSource<bool>(
+                    TaskCreationOptions.RunContinuationsAsynchronously);
+                TaskCompletionSource<bool> release=new TaskCompletionSource<bool>(
+                    TaskCreationOptions.RunContinuationsAsynchronously);
+                int observed=0;
+                MNMSubscriptionOptions subscribe=new MNMSubscriptionOptions {
+                    SubscriberId="original",SourceFilter="sourceA"};
+                using(bus.SubscribeAsync<int>(slow,async ctx=>
+                {
+                    entered.TrySetResult(true);
+                    await release.Task.ConfigureAwait(false);
+                    Interlocked.Increment(ref observed);
+                },subscribe))
+                using(bus.Subscribe<string>(fast,ctx=>Interlocked.Increment(ref observed)))
+                {
+                    subscribe.SourceFilter="other"; // 不得改变现有Subscription匹配。
+                    MNMPublishReceipt first=bus.Publish(slow,1,new MNMPublishOptions {
+                        DispatchMode=MNMDispatchMode.ThreadPool,SourceId="sourceA"});
+                    Check(first.Accepted,"ThreadPool accepted");
+                    Task started=await Task.WhenAny(entered.Task,Task.Delay(4000)).ConfigureAwait(false);
+                    Check(started==entered.Task,"ThreadPool started");
+                    MNMPublishReceipt fastResult=await bus.PublishAsync(fast,"fast",
+                        new MNMPublishOptions{DispatchMode=MNMDispatchMode.ThreadPool}).ConfigureAwait(false);
+                    Check(fastResult.Stage==MNMPublishStage.Delivered &&
+                        observed==1,"slow topic cannot block independent ThreadPool work");
+                    Check(bus.Metrics().ParallelInFlight>=1,"in-flight metric");
+                    release.TrySetResult(true);
+                    await bus.StopAsync(true).ConfigureAwait(false);
+                    Check(observed==2,"parallel in-flight drained before StopAsync return");
+                }
+            }
+
+            using(MNMMessageCenter bus=new MNMMessageCenter(new MNMMessageOptions {
+                MaxParallelDispatches=1}))
+            {
+                TaskCompletionSource<bool> entered=new TaskCompletionSource<bool>(
+                    TaskCreationOptions.RunContinuationsAsynchronously);
+                TaskCompletionSource<bool> release=new TaskCompletionSource<bool>(
+                    TaskCreationOptions.RunContinuationsAsynchronously);
+                using(bus.SubscribeAsync<int>(slow,async ctx=>
+                { entered.TrySetResult(true); await release.Task.ConfigureAwait(false); }))
+                {
+                    bus.Publish(slow,1,new MNMPublishOptions{DispatchMode=MNMDispatchMode.ThreadPool});
+                    Task started=await Task.WhenAny(entered.Task,Task.Delay(4000)).ConfigureAwait(false);
+                    Check(started==entered.Task,"capacity test callback started");
+                    MNMPublishReceipt rejected=bus.Publish(slow,2,new MNMPublishOptions {
+                        DispatchMode=MNMDispatchMode.ThreadPool});
+                    Check(rejected.Stage==MNMPublishStage.Rejected,
+                        "bounded ThreadPool over-capacity must reject");
+                    release.TrySetResult(true);
+                    await bus.StopAsync(true).ConfigureAwait(false);
+                }
+            }
+        }
+
+
+        [System.Runtime.Serialization.DataContract]
+        private sealed class SimpleInspectionDto
+        {
+            [System.Runtime.Serialization.DataMember]
+            public string ImageRef { get; set; }
+            [System.Runtime.Serialization.DataMember]
+            public int Width { get; set; }
+        }
+
+        private static void TestCodecAndLatency()
+        {
+            MNMMessageSerialization codecs = new MNMMessageSerialization();
+            MNMMessageTypeDefinition textType = new MNMMessageTypeDefinition(
+                "Camera.Text",1,typeof(string),maxPayloadBytes:6);
+            byte[] encodedText=codecs.Serialize(textType,"Hi");
+            Check((string)codecs.Deserialize(textType,encodedText)=="Hi","text codec");
+            Expect<ArgumentOutOfRangeException>(()=>codecs.Serialize(textType,"你好世界"));
+
+            MNMMessageTypeDefinition binaryType = new MNMMessageTypeDefinition(
+                "Camera.Binary",1,typeof(byte[]),maxPayloadBytes:3);
+            byte[] original={1,2,3};
+            byte[] encoded=codecs.Serialize(binaryType,original);
+            original[0]=88;
+            byte[] restored=(byte[])codecs.Deserialize(binaryType,encoded);
+            Check(restored[0]==1,"binary encode/decode copies");
+            encoded[0]=99;
+            Check(restored[0]==1,"binary decode returns independent buffer");
+
+            MNMMessageTypeDefinition structured = new MNMMessageTypeDefinition(
+                "Vision.Result",1,typeof(SimpleInspectionDto),
+                contentType:"application/json",maxPayloadBytes:1024);
+            byte[] json=codecs.Serialize(structured,
+                new SimpleInspectionDto{ImageRef="Image001",Width=4300});
+            SimpleInspectionDto dto=(SimpleInspectionDto)codecs.Deserialize(structured,json);
+            Check(dto.ImageRef=="Image001"&&dto.Width==4300,"structured json codec");
+            Expect<NotSupportedException>(()=>codecs.Serialize(
+                new MNMMessageTypeDefinition("Vision.NoCodec",1,typeof(SimpleInspectionDto)),dto));
+
+            using(MNMMessageCenter bus = new MNMMessageCenter())
+            {
+                using(bus.Subscribe<int>(Camera,ctx=>{}))
+                {
+                    MNMPublishReceipt receipt=bus.Publish(Camera,1,
+                        new MNMPublishOptions{DispatchMode=MNMDispatchMode.Inline});
+                    Check(receipt.DeliveredCount==1,"latency completion");
+                }
+                MNMMessageMetrics metrics=bus.Metrics();
+                Check(metrics.LatencySamples>=1 &&
+                    metrics.P99DeliveryMilliseconds>=metrics.P95DeliveryMilliseconds &&
+                    metrics.P95DeliveryMilliseconds>=0,
+                    "bounded latency diagnostics");
+            }
         }
 
         private static async Task TestBasicAsync()
