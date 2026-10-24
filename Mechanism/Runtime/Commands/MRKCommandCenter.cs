@@ -242,6 +242,8 @@ namespace CxVisual.Mechanism.Runtime.Commands
                     {
                         case MRKCommandState.Pending: ++metrics.Pending; break;
                         case MRKCommandState.Queued: ++metrics.Queued; break;
+                        case MRKCommandState.PauseRequested: ++metrics.PauseRequested; break;
+                        case MRKCommandState.Paused: ++metrics.Paused; break;
                         case MRKCommandState.Running: ++metrics.Running; break;
                         case MRKCommandState.Completed: ++metrics.Completed; break;
                         case MRKCommandState.Failed: ++metrics.Failed; break;
@@ -420,6 +422,20 @@ namespace CxVisual.Mechanism.Runtime.Commands
                 return _operations.TryGetValue(operationId, out execution) ? execution.Snapshot().Copy(_adapters) : null;
             }
         }
+        /// <summary>仅请求协作暂停；状态PauseRequested不是设备安全停止。Paused表示Handler确实到达检查点。</summary>
+        public bool Pause(Guid operationId)
+        {
+            MRKCommandExecution operation;
+            lock (_gate) if (!_operations.TryGetValue(operationId, out operation)) return false;
+            return operation.TryPause();
+        }
+        public bool Resume(Guid operationId)
+        {
+            MRKCommandExecution operation;
+            lock (_gate) if (!_operations.TryGetValue(operationId, out operation)) return false;
+            return operation.TryResume();
+        }
+
         public bool Cancel(Guid operationId)
         {
             MRKCommandExecution operation;

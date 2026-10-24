@@ -52,7 +52,8 @@ namespace CxVisual.Mechanism.Runtime.Commands
         internal async Task ExecuteAsync(MRKCommandExecution operation, MRKCommandRegistry.Entry entry)
         {
             MRKCommandRequest request = operation.Request;
-            MRKCommandContext context = new MRKCommandContext(request, operation.Descriptor, operation.Report);
+            MRKCommandContext context = new MRKCommandContext(request, operation.Descriptor, operation.Report,
+                operation.WaitWhilePausedAsync, operation.ReportIntermediate);
             MRKCommandResponse response;
             MRKResourceLease lease = null;
             bool handlerCompleted = false;

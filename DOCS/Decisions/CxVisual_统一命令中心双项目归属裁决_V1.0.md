@@ -74,3 +74,7 @@ using (center.Register(new MRKCommandDescriptor("algorithm", definition),
 ## 七、Dispatcher与Executor均已按两个项目归属实现
 
 `MRKCommandDispatcher`、`MRKCommandExecutor` 的正式实现新增于 `Mechanism.Runtime.Commands/MRKCommandDispatching.cs`，其中队列直接复用F19 `FCRWorker`，不会新建消息中心/线程池/数据堆。参数 Schema 和绑定接口仍在Foundation.Data；命令运行/适配仍在Mechanism.Runtime。此项实现完成度以专项Windows CI和正反用例为准。
+
+## 八、长任务控制Owner不变
+
+`MRKCommandContext.WaitWhilePausedAsync`、`ReportIntermediate`、`MRKCommandExecution.TryPause/TryResume` 与公开 `MRKCommandCenter.Pause/Resume` 均属于 `Mechanism.Runtime.Commands`。Foundation.Data只提供参数值快照；实体硬件暂停、急停或复位依然由Professional负责并需现场确认。

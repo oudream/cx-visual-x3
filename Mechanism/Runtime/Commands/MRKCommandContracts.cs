@@ -11,21 +11,23 @@ namespace CxVisual.Mechanism.Runtime.Commands
 {
     public enum MRKCommandKind { System, Module, Object, Device }
     public enum MRKCommandStage { Rejected, Accepted }
-    public enum MRKCommandState { Pending, Running, Completed, Failed, Cancelled, Unknown, Queued }
+    public enum MRKCommandState { Pending, Running, Completed, Failed, Cancelled, Unknown, Queued, PauseRequested, Paused }
     public enum MRKCommandDispatch { Direct, ThreadPool, Queued }
 
     /// <summary>描述执行约束而不是复制MCE参数Schema。MaxConcurrent是拒绝式容量，不使用无限队列。</summary>
     public sealed class MRKCommandPolicy
     {
         public MRKCommandPolicy(int maxConcurrent = 1, string resourceId = null,
-            MRKCommandDispatch dispatch = MRKCommandDispatch.ThreadPool, bool supportsCancellation = true)
+            MRKCommandDispatch dispatch = MRKCommandDispatch.ThreadPool, bool supportsCancellation = true,
+            bool supportsPause = false)
         {
             if (maxConcurrent < 1 || maxConcurrent > 1024) throw new ArgumentOutOfRangeException("maxConcurrent");
             if (dispatch == MRKCommandDispatch.Queued && maxConcurrent != 1)
                 throw new ArgumentException("Queued对同一目标按Key串行；MaxConcurrent必须为1", "maxConcurrent");
             MaxConcurrent = maxConcurrent; ResourceId = resourceId; Dispatch = dispatch;
-            SupportsCancellation = supportsCancellation;
+            SupportsCancellation = supportsCancellation; SupportsPause = supportsPause;
         }
+        public bool SupportsPause { get; private set; }
         public int MaxConcurrent { get; private set; }
         public string ResourceId { get; private set; }
         public MRKCommandDispatch Dispatch { get; private set; }
@@ -153,6 +155,8 @@ namespace CxVisual.Mechanism.Runtime.Commands
         public int TotalOperations { get; internal set; }
         public int Pending { get; internal set; }
         public int Queued { get; internal set; }
+        public int PauseRequested { get; internal set; }
+        public int Paused { get; internal set; }
         public int Running { get; internal set; }
         public int Completed { get; internal set; }
         public int Failed { get; internal set; }
@@ -163,13 +167,18 @@ namespace CxVisual.Mechanism.Runtime.Commands
     public sealed class MRKCommandContext
     {
         internal MRKCommandContext(MRKCommandRequest request, MRKCommandDescriptor descriptor,
-            Action<double, string> report)
+            Action<double, string> report,
+            Func<CancellationToken, Task> checkpoint = null,
+            Action<IReadOnlyDictionary<string, object>> intermediate = null)
         {
             RequestId = request.RequestId; OperationId = request.OperationId;
             Caller = request.Caller; Target = request.Target;
             Descriptor = descriptor; _report = report;
+            _checkpoint = checkpoint; _intermediate = intermediate;
         }
         private readonly Action<double, string> _report;
+        private readonly Func<CancellationToken, Task> _checkpoint;
+        private readonly Action<IReadOnlyDictionary<string, object>> _intermediate;
         public Guid RequestId { get; private set; }
         public Guid OperationId { get; private set; }
         public string Caller { get; private set; }
@@ -180,6 +189,18 @@ namespace CxVisual.Mechanism.Runtime.Commands
             if (double.IsNaN(percent) || percent < 0 || percent > 100)
                 throw new ArgumentOutOfRangeException("percent");
             _report(percent, message ?? string.Empty);
+        }
+        /// <summary>仅协作式暂停：Handler主动到达检查点才视为Paused，不代表硬件停止。</summary>
+        public Task WaitWhilePausedAsync(CancellationToken cancellation = default(CancellationToken))
+        {
+            if (_checkpoint == null) { cancellation.ThrowIfCancellationRequested(); return Task.CompletedTask; }
+            return _checkpoint(cancellation);
+        }
+        /// <summary>最新中间值快照；不改变Final Outputs与业务执行结果。</summary>
+        public void ReportIntermediate(IReadOnlyDictionary<string, object> outputs)
+        {
+            if (_intermediate == null) throw new NotSupportedException("当前上下文不支持中间值");
+            _intermediate(outputs);
         }
     }
 
@@ -236,6 +257,9 @@ namespace CxVisual.Mechanism.Runtime.Commands
         private MRKCommandResponse _latest;
         private double _progress;
         private string _message = string.Empty;
+        private IReadOnlyDictionary<string, object> _intermediateOutputs;
+        private bool _pauseRequested;
+        private TaskCompletionSource<bool> _resumeSignal;
         private readonly DateTime _created = DateTime.UtcNow;
         internal MRKCommandExecution(MRKCommandRequest request,
             MRKCommandDescriptor descriptor, IReadOnlyDictionary<string, object> inputs,
@@ -251,6 +275,15 @@ namespace CxVisual.Mechanism.Runtime.Commands
         public bool IsCompleted { get { return Completion.IsCompleted; } }
         public double Progress { get { lock (_gate) return _progress; } }
         public string ProgressMessage { get { lock (_gate) return _message; } }
+        public IReadOnlyDictionary<string, object> IntermediateOutputs
+        {
+            get
+            {
+                IReadOnlyDictionary<string, object> value;
+                lock (_gate) value = _intermediateOutputs;
+                return FDCCommandValueSnapshot.Capture(value, Adapters);
+            }
+        }
         public MRKCommandResponse Snapshot()
         { lock (_gate) return _latest.Copy(Adapters); }
         internal double DurationMs { get { return (DateTime.UtcNow - _created).TotalMilliseconds; } }
@@ -265,7 +298,61 @@ namespace CxVisual.Mechanism.Runtime.Commands
                 MRKCommandStage.Accepted, MRKCommandState.Running);
         }
         internal void Report(double percent, string message)
-        { lock (_gate) { _progress = percent; _message = message; } }
+        { lock (_gate) { if (!IsCompleted) { _progress = percent; _message = message; } } }
+        internal void ReportIntermediate(IReadOnlyDictionary<string, object> values)
+        {
+            IReadOnlyDictionary<string, object> snapshot = FDCCommandValueSnapshot.Capture(values, Adapters);
+            lock (_gate) if (!IsCompleted) _intermediateOutputs = snapshot;
+        }
+        internal bool TryPause()
+        {
+            lock (_gate)
+            {
+                if (!Descriptor.Policy.SupportsPause || _pauseRequested ||
+                    _latest.State != MRKCommandState.Running) return false;
+                _pauseRequested = true;
+                _resumeSignal = new TaskCompletionSource<bool>(
+                    TaskCreationOptions.RunContinuationsAsynchronously);
+                _latest = new MRKCommandResponse(Request.RequestId, OperationId,
+                    MRKCommandStage.Accepted, MRKCommandState.PauseRequested);
+                return true;
+            }
+        }
+        internal bool TryResume()
+        {
+            TaskCompletionSource<bool> resume;
+            lock (_gate)
+            {
+                if (!_pauseRequested ||
+                    (_latest.State != MRKCommandState.PauseRequested &&
+                     _latest.State != MRKCommandState.Paused)) return false;
+                _pauseRequested = false; resume = _resumeSignal; _resumeSignal = null;
+                _latest = new MRKCommandResponse(Request.RequestId, OperationId,
+                    MRKCommandStage.Accepted, MRKCommandState.Running);
+            }
+            resume.TrySetResult(true);
+            return true;
+        }
+        internal async Task WaitWhilePausedAsync(CancellationToken cancellation)
+        {
+            cancellation.ThrowIfCancellationRequested();
+            Task gate;
+            lock (_gate)
+            {
+                if (!_pauseRequested) return;
+                _latest = new MRKCommandResponse(Request.RequestId, OperationId,
+                    MRKCommandStage.Accepted, MRKCommandState.Paused);
+                gate = _resumeSignal.Task;
+            }
+            TaskCompletionSource<bool> stopped = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            using (cancellation.Register(() => stopped.TrySetResult(true)))
+            {
+                Task finished = await Task.WhenAny(gate, stopped.Task).ConfigureAwait(false);
+                if (finished == stopped.Task) cancellation.ThrowIfCancellationRequested();
+                await gate.ConfigureAwait(false);
+            }
+        }
         internal void Finish(MRKCommandResponse response)
         {
             lock (_gate) _latest = response;

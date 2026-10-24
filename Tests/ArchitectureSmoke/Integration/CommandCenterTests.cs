@@ -54,6 +54,93 @@ namespace CxVisual.Tests.ArchitectureSmoke
         }
 
 
+        /// <summary>PauseRequested != Paused；中间值是快照且协作取消可打断暂停点。</summary>
+        private static void LongTaskRun()
+        {
+            TaskCompletionSource<bool> entered = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<bool> checkpoint = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            MRKCommandPolicy pausable = new MRKCommandPolicy(supportsPause: true);
+            using (MRKCommandCenter center = new MRKCommandCenter())
+            using (center.Register(new MRKCommandDescriptor("longjob", Definition(),
+                policy: pausable), new MRKDelegateCommandHandler(async (ctx, inputs, token) =>
+                {
+                    entered.TrySetResult(true);
+                    await checkpoint.Task.ConfigureAwait(false);
+                    ctx.ReportProgress(25, "开始检查点");
+                    ctx.ReportIntermediate(new Dictionary<string, object> {
+                        { "Partial", new byte[] { 8, 9 } } });
+                    await ctx.WaitWhilePausedAsync(token).ConfigureAwait(false);
+                    ctx.ReportProgress(100, "完成");
+                    return new MRKCommandHandlerResult(
+                        new Dictionary<string, object> { { "Output", 42.0 } });
+                })))
+            {
+                MRKCommandSubmission pending = center.Submit(new MRKCommandRequest(
+                    "longjob", "Calculate",
+                    new Dictionary<string, object> { { "Input", 1.0 } }));
+                Check(pending.Operation != null && entered.Task.Wait(TimeSpan.FromSeconds(5)),
+                    "long command entered handler");
+                Check(center.Pause(pending.Operation.OperationId) &&
+                    center.Query(pending.Operation.OperationId).State ==
+                        MRKCommandState.PauseRequested, "pause request must not claim Paused");
+                checkpoint.TrySetResult(true);
+                Check(SpinWait.SpinUntil(() => center.Query(pending.Operation.OperationId).State ==
+                    MRKCommandState.Paused, 5000), "handler must acknowledge checkpoint");
+                Check(center.GetMetrics().Paused == 1 && pending.Operation.Progress == 25,
+                    "paused and progress visible");
+                byte[] partial = (byte[])pending.Operation.IntermediateOutputs["Partial"];
+                partial[0] = 99;
+                Check(((byte[])pending.Operation.IntermediateOutputs["Partial"])[0] == 8,
+                    "intermediate output must be isolated");
+                Check(center.Resume(pending.Operation.OperationId), "resume paused handler");
+                Check(pending.Operation.Completion.Wait(TimeSpan.FromSeconds(5)) &&
+                    pending.Operation.Snapshot().State == MRKCommandState.Completed &&
+                    pending.Operation.Progress == 100, "resume completes original task");
+                Check(!center.Pause(pending.Operation.OperationId) &&
+                    !center.Resume(pending.Operation.OperationId),
+                    "completed job must reject pause/resume");
+            }
+
+            TaskCompletionSource<bool> began = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<bool> proceed = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            using (MRKCommandCenter center = new MRKCommandCenter())
+            using (center.Register(new MRKCommandDescriptor("cancel-pause", Definition(),
+                policy: pausable), new MRKDelegateCommandHandler(async (ctx, inputs, token) =>
+                {
+                    began.TrySetResult(true);
+                    await proceed.Task.ConfigureAwait(false);
+                    await ctx.WaitWhilePausedAsync(token).ConfigureAwait(false);
+                    return new MRKCommandHandlerResult(
+                        new Dictionary<string, object> { { "Output", 1.0 } });
+                })))
+            {
+                MRKCommandSubmission job = center.Submit(new MRKCommandRequest(
+                    "cancel-pause", "Calculate",
+                    new Dictionary<string, object> { { "Input", 1.0 } }));
+                Check(began.Task.Wait(TimeSpan.FromSeconds(5)) &&
+                    center.Pause(job.Operation.OperationId), "second job pause requested");
+                proceed.TrySetResult(true);
+                Check(SpinWait.SpinUntil(() => center.Query(job.Operation.OperationId).State ==
+                    MRKCommandState.Paused, 5000), "second handler reached pause");
+                Check(center.Cancel(job.Operation.OperationId), "cancel while paused requested");
+                Check(job.Operation.Completion.Wait(TimeSpan.FromSeconds(5)) &&
+                    job.Operation.Snapshot().State == MRKCommandState.Cancelled,
+                    "cancellation must interrupt cooperative pause");
+            }
+            using (MRKCommandCenter center = new MRKCommandCenter())
+            using (center.Register(new MRKCommandDescriptor("plain", Definition()), Handler(x => x)))
+            {
+                MRKCommandSubmission job = center.Submit(new MRKCommandRequest(
+                    "plain", "Calculate", new Dictionary<string, object> { { "Input", 1.0 } }));
+                Check(!center.Pause(job.Operation.OperationId),
+                    "pause unsupported handler must fail explicitly");
+            }
+        }
+
         /// <summary>F19正式有界队列：优先级、同目标FIFO、未执行取消、溢出反证。</summary>
         private static void QueuedRun()
         {
@@ -569,6 +656,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 }
             }
             QueuedRun();
+            LongTaskRun();
             ExtendedRun();
             Console.WriteLine("PASS BUS-CMD CommandCenter: registration/router/authorization/MDSSchema/mapping/batch/concurrency/timeout/snapshot/replacement/replay/copy");
         }
