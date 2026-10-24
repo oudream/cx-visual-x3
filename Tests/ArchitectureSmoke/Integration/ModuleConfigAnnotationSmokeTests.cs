@@ -135,6 +135,31 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 }, "首次模块配置", CancellationToken.None).GetAwaiter().GetResult();
                 Check(saved.Success && module.GetLatestSaved().Channel.Id == "tcp01",
                     "MHS persisted annotated module options");
+                // 同一正式编辑器：通过具体运行类型修改专有字段，类型变更作为一个原子 Undo 步骤。
+                using (MHSConfigEditorModel<MCNConnectorConfiguration> editor =
+                    new MHSConfigEditorModel<MCNConnectorConfiguration>(module, "通道专有配置编辑"))
+                {
+                    editor.SetPathJson("Channel.Port", "1502");
+                    Check(((MCCTcpClientChannelConfiguration)editor.Draft.Channel).Port == 1502,
+                        "TCP 专属 Port 路径编辑");
+                    MCCChannelConfiguration serial =
+                        (MCCChannelConfiguration)editor.Draft.Channel.SelectVariant("Kind", "Serial");
+                    editor.SetPathJson("Channel", FCMJsonValueCodec.Serialize(serial));
+                    Check(editor.Draft.Channel is MCCSerialChannelConfiguration &&
+                          editor.Draft.Channel.Id == "tcp01", "切换到串口保留公共身份");
+                    editor.SetPathJson("Channel.PortName", "\"COM7\"");
+                    Check(((MCCSerialChannelConfiguration)editor.Draft.Channel).PortName == "COM7",
+                        "串口专属字段路径编辑");
+                    editor.Undo();
+                    Check(((MCCSerialChannelConfiguration)editor.Draft.Channel).PortName == "COM1",
+                        "串口字段 Undo");
+                    editor.Undo();
+                    Check(editor.Draft.Channel is MCCTcpClientChannelConfiguration &&
+                          ((MCCTcpClientChannelConfiguration)editor.Draft.Channel).Port == 1502,
+                        "通道子类型切换 Undo");
+                    editor.Redo();
+                    Check(editor.Draft.Channel is MCCSerialChannelConfiguration, "通道子类型切换 Redo");
+                }
                 // 从新 MHS 服务重新打开真实磁盘修订，确保没有额外 ModuleConfigStore。
                 MHSConfigService reopened = new MHSConfigService(root);
                 MCNConnectorConfiguration restored = reopened.ForScope("module", scopeId)

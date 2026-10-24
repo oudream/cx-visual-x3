@@ -137,7 +137,7 @@ namespace CxVisual.Mechanism.Data.Configuration
             if (selector == null) throw new ArgumentNullException("selector");
             string path = FCMConfigPathUtil.FromExpression(selector);
             string json = FCMJsonValueCodec.Serialize(value);
-            MVBConfigLayerPath.Validate<T>(path, json);
+            MVBConfigLayerPath.Validate(_edit.WorkingCopy, path, json);
             Modify(x => MVBConfigLayerPath.Apply(x, path, json));
         }
 

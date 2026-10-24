@@ -517,6 +517,12 @@ namespace CxVisual.Mechanism.Data.Configuration
         internal static int Depth(string path) { return Split(path).Count; }
         internal static void Validate<T>(string path, string json)
         { Validate(typeof(T), path, json); }
+        // 专用 Channel 等合法多态节点的路径类型，必须从当前配置实例而非声明基类解析。
+        internal static void Validate<T>(T model, string path, string json)
+        {
+            if (model == null) throw new ArgumentNullException("model");
+            FCMJsonValueCodec.Deserialize(json, TargetType(typeof(T), Split(path), model));
+        }
         internal static void Validate(Type modelType, string path, string json)
         { FCMJsonValueCodec.Deserialize(json, TargetType(modelType, Split(path))); }
         internal static void Apply<T>(T model, string path, string json)
@@ -524,7 +530,7 @@ namespace CxVisual.Mechanism.Data.Configuration
         internal static void Apply(object model, Type modelType, string path, string json)
         {
             List<object> keys = Split(path);
-            Type target = TargetType(modelType, keys);
+            Type target = TargetType(modelType, keys, model);
             object value = FCMJsonValueCodec.Deserialize(json, target);
             object parent = model;
             for (int i = 0; i < keys.Count - 1; i++) parent = Read(parent, keys[i]);
@@ -552,10 +558,11 @@ namespace CxVisual.Mechanism.Data.Configuration
             if (prop == null || !prop.CanRead) throw new InvalidOperationException("Invalid config member " + key);
             return prop.GetValue(owner, null);
         }
-        private static Type TargetType(Type type, IList<object> keys)
+        private static Type TargetType(Type type, IList<object> keys, object instance = null)
         {
             foreach (object key in keys)
             {
+                if (instance != null) type = instance.GetType();
                 if (key is int)
                 {
                     if (type.IsArray) type = type.GetElementType();
@@ -576,6 +583,7 @@ namespace CxVisual.Mechanism.Data.Configuration
                         throw new InvalidOperationException("Unknown or readonly config member " + key);
                     type = p.PropertyType;
                 }
+                if (instance != null) instance = Read(instance, key);
             }
             return type;
         }

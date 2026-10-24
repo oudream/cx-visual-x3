@@ -466,7 +466,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 _count++;
                 return;
             }
-            if (IsScalar(type))
+            if (IsScalar(type) && !(value is IFCMConfigVariantSelector))
             {
                 StackPanel line = new StackPanel {
                     Orientation = _workspaceCompact ? Orientation.Vertical : Orientation.Horizontal,
