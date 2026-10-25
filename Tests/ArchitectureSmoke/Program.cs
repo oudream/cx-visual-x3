@@ -27,7 +27,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     return ConfigFoundationSmokeRunner.Run(args);
                 if (Array.IndexOf(args, "--interaction-stage1") >= 0) { InteractionStageOneTests.Run(); return 0; }
                 if (Array.IndexOf(args, "--command-center") >= 0) { CommandCenterTests.Run(); return 0; }
-                if (Array.IndexOf(args, "--imaging") >= 0) { FIMImagingTests.Run(); return 0; }
+                if (Array.IndexOf(args, "--imaging") >= 0) { FIMImagingTests.Run(); MVIImageSessionTests.Run(); return 0; }
                 if (Array.IndexOf(args, "--message-center") >= 0) { MessageCenterTests.Run(); return 0; }
                 if (Array.IndexOf(args, "--organization-wpf") >= 0) return OrganizationWpfTests.Run();
                 if (Array.IndexOf(args, "--organization") >= 0)
@@ -71,6 +71,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 CommandCenterTests.Run();
                 MessageCenterTests.Run();
                 FIMImagingTests.Run();
+                MVIImageSessionTests.Run();
                 RuntimeDataHardeningTests.Run();
                 ExecutionJournalTests.Run();
                 ExecutionControlTests.Run();
