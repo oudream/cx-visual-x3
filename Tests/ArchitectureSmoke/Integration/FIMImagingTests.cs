@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using CxVisual.Foundation.Imaging;
+using CxVisual.Foundation.Geometry;
 
 namespace CxVisual.Tests.ArchitectureSmoke
 {
@@ -55,6 +56,24 @@ namespace CxVisual.Tests.ArchitectureSmoke
             var cancel = new CancellationTokenSource();
             cancel.Cancel();
             Throws<OperationCanceledException>(() => FIMImageAnalyzer.Calculate(image, null, cancel.Token), "取消");
+            FGEPoint2D a = new FGEPoint2D(0, 0);
+            FGEPoint2D b = new FGEPoint2D(3, 4);
+            FIMPixelSpacing spacing = new FIMPixelSpacing(0.2, 0.4);
+            Assert(Near(FIMImageMeasurement.GetDistancePixels(a, b), 5), "像素距离");
+            Assert(Near(FIMImageMeasurement.GetDistanceMillimeters(a, b, spacing).Value,
+                Math.Sqrt(9 * 0.04 + 16 * 0.16)), "非等距标定测量");
+            Assert(!FIMImageMeasurement.GetDistanceMillimeters(a, b, null).HasValue,
+                "未标定不造物理量");
+            Assert(Near(FIMImageMeasurement.GetAngleDegrees(
+                new FGEPoint2D(1, 0), a, new FGEPoint2D(0, 1)), 90), "直角测量");
+            Assert(FIMImageMeasurement.GetAreaPixels(new FIMPixelRegion(0, 0, 1, 1)) == 4,
+                "闭区间面积");
+            Assert(Near(FIMImageMeasurement.GetAreaSquareMillimeters(
+                new FIMPixelRegion(0, 0, 1, 1), spacing).Value, 0.32), "物理面积");
+            Assert(!FIMImageMeasurement.GetAreaSquareMillimeters(
+                new FIMPixelRegion(0, 0, 1, 1), null).HasValue, "无标定面积为空");
+            Throws<ArgumentOutOfRangeException>(() => new FIMPixelSpacing(0, 0.1), "非法间距");
+            Throws<ArgumentException>(() => FIMImageMeasurement.GetAngleDegrees(a, a, b), "退化角度");
             Console.WriteLine("PASS FIM Imaging 像素/ROI/统计/五区域/裁剪/异常");
         }
 
