@@ -32,6 +32,7 @@
     <Compile Include="Processing\FIMFiveRegionResult.cs"/>
     <Compile Include="Processing\FIMImageAnalyzer.cs"/>
     <Compile Include="Processing\FIMImageOperations.cs"/>
+    <Compile Include="Processing\FIMImageFilters.cs"/>
     <Compile Include="Images\FIMPixelSpacing.cs"/>
     <Compile Include="Processing\FIMImageMeasurement.cs"/></ItemGroup>
 <ItemGroup>

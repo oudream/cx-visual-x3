@@ -142,6 +142,25 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Throws<ArgumentException>(() =>
                 FIMImageOperations.DifferenceGray(gray16,small), "差分尺寸位深不同");
             Assert(small.GetGrayValue(0,0) == 1, "几何变换不修改原图");
+            FIMImageBuffer impulse = new FIMImageBuffer(3, 3, FIMPixelFormat.Gray8,
+                new byte[] { 0,0,0, 0,90,0, 0,0,0 });
+            FIMImageBuffer mean = FIMImageFilters.Apply(impulse, FIMNeighborhoodFilter.Mean, 1);
+            FIMImageBuffer median = FIMImageFilters.Apply(impulse, FIMNeighborhoodFilter.Median, 1);
+            FIMImageBuffer maxFilter = FIMImageFilters.Apply(impulse, FIMNeighborhoodFilter.Maximum, 1);
+            Assert(mean.GetGrayValue(1,1) == 10 && median.GetGrayValue(1,1) == 0 &&
+                maxFilter.GetGrayValue(0,0) == 90, "去噪均值中值与膨胀");
+            FIMImageBuffer blurred = FIMImageFilters.GaussianBlur(impulse, 1.0, 1);
+            Assert(blurred.GetGrayValue(1,1) < 90 && blurred.GetGrayValue(1,1) > 0,
+                "高斯卷积");
+            FIMImageBuffer sharp = FIMImageFilters.UnsharpMask(blurred, 1.0, 1, 0.5);
+            Assert(sharp.GetGrayValue(1,1) >= blurred.GetGrayValue(1,1), "锐化");
+            Assert(impulse.GetGrayValue(1,1) == 90, "滤波保持源不变");
+            Throws<ArgumentOutOfRangeException>(() =>
+                FIMImageFilters.GaussianBlur(impulse, 0, 1), "非法高斯参数");
+            Throws<NotSupportedException>(() =>
+                FIMImageFilters.Apply(red, FIMNeighborhoodFilter.Mean, 1), "彩色未支持拒绝");
+            Throws<ArgumentOutOfRangeException>(() =>
+                FIMImageFilters.Apply(impulse, FIMNeighborhoodFilter.Mean, 20), "非法大半径");
             Console.WriteLine("PASS FIM Imaging 像素/ROI/统计/五区域/裁剪/异常");
         }
 
