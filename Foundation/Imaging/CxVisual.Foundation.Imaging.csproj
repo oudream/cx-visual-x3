@@ -21,6 +21,11 @@
     <Reference Include="System.Core"/>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Properties\AssemblyInfo.cs"/></ItemGroup>
+    <Compile Include="Properties\AssemblyInfo.cs"/>
+    <Compile Include="Pixels\FIMPixelFormat.cs"/>
+    <Compile Include="Pixels\FIMImageBuffer.cs"/>
+    <Compile Include="Regions\FIMPixelRegion.cs"/>
+    <Compile Include="Processing\FIMImageAnalysis.cs"/>
+    <Compile Include="Processing\FIMImageOperations.cs"/></ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets"/>
 </Project>

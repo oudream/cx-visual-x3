@@ -1,0 +1,73 @@
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using CxVisual.Foundation.Imaging;
+
+namespace CxVisual.Tests.ArchitectureSmoke
+{
+    internal static class FIMImagingTests
+    {
+        public static void Run()
+        {
+            byte[] source = { 1,2,3,4, 5,6,7,8, 9,10,11,12, 13,14,15,16 };
+            FIMImageBuffer image = new FIMImageBuffer(4, 4, FIMPixelFormat.Gray8, source);
+            source[0] = 90;
+            Assert(image.GetGrayValue(0, 0) == 1, "输入缓冲所有权");
+            byte[] copy = image.CopyPixels();
+            copy[1] = 80;
+            Assert(image.GetGrayValue(1, 0) == 2, "复制结果隔离");
+            FIMImageAnalysisResult stats = FIMImageAnalyzer.Analyze(image, 16);
+            Assert(stats.Statistics.PixelCount == 16 && stats.Statistics.Min == 1 &&
+                stats.Statistics.Max == 16 && Near(stats.Statistics.Mean, 8.5), "原始统计");
+            Assert(Near(stats.Statistics.StandardDeviation, Math.Sqrt(21.25)), "Welford方差");
+            long total = 0;
+            foreach (long count in stats.Histogram.Bins) total += count;
+            Assert(total == 16 && stats.Histogram.Bins[0] == 1 &&
+                stats.Histogram.Bins[15] == 1, "直方图末区间");
+            FIMImageBuffer constant = new FIMImageBuffer(2, 2, FIMPixelFormat.Gray8, new byte[] { 5, 5, 5, 5 });
+            Assert(FIMImageAnalyzer.GetHistogram(constant, 4).Bins[0] == 4, "常量直方图");
+            FIMImageStatistics roi = FIMImageAnalyzer.Calculate(image, new FIMPixelRegion(1, 1, 2, 2));
+            Assert(roi.PixelCount == 4 && Near(roi.Mean, 8.5), "离散ROI");
+            Assert(new FIMPixelRegion(3, 3, 9, 9).ClipTo(image).Width == 1, "ROI裁剪");
+            FIMFiveRegionResult five = FIMImageAnalyzer.CalculateFiveRegions(image, 1, 1, 0);
+            Assert(five.Means[0] == 1 && five.Means[1] == 4 && five.Means[2] == 13 &&
+                five.Means[3] == 16 && five.Means[4] == 6, "HALCON五区域顺序");
+            IReadOnlyList<double> line = FIMImageAnalyzer.GetLineProfile(image, 0, 0, 3, 0);
+            Assert(line.Count == 4 && line[3] == 4, "灰度剖面");
+            FIMImageBuffer crop = FIMImageOperations.Crop(image, new FIMPixelRegion(1, 1, 2, 2));
+            Assert(crop.Width == 2 && crop.Height == 2 &&
+                crop.GetGrayValue(0, 0) == 6 && crop.GetGrayValue(1, 1) == 11, "裁剪");
+            FIMImageBuffer merged = FIMImageOperations.MergeVertically(FIMImageOperations.SplitVertically(image, 3));
+            Assert(merged.Height == 4 && merged.GetGrayValue(3, 3) == 16, "余数行拼接");
+            FIMImageBuffer gray16 = new FIMImageBuffer(2, 1, FIMPixelFormat.Gray16, new byte[] { 0, 0, 0, 4 });
+            Assert(gray16.GetGrayValue(1, 0) == 1024 &&
+                FIMImageOperations.WindowToGray8(gray16, 0, 1024).GetGrayValue(1, 0) == 255 &&
+                gray16.GetGrayValue(1, 0) == 1024, "16位数据与窗口隔离");
+            FIMImageBuffer padded = new FIMImageBuffer(2, 2, FIMPixelFormat.Gray8, new byte[] { 1,2,0,3,4,0 }, 3);
+            Assert(Near(FIMImageAnalyzer.Calculate(padded).Mean, 2.5), "Stride");
+            FIMImageBuffer red = new FIMImageBuffer(1, 1, FIMPixelFormat.Bgr24, new byte[] { 0, 0, 255 });
+            Assert(Near(red.GetGrayValue(0, 0), 76.245), "BGR亮度顺序");
+            FIMImageBuffer nan = new FIMImageBuffer(1, 1, FIMPixelFormat.GrayFloat32, BitConverter.GetBytes(float.NaN));
+            Throws<InvalidOperationException>(() => FIMImageAnalyzer.Calculate(nan), "NaN");
+            Throws<ArgumentOutOfRangeException>(() => FIMImageAnalyzer.Analyze(image, 0), "非法bin");
+            Throws<ArgumentOutOfRangeException>(() => FIMImageAnalyzer.Calculate(image, new FIMPixelRegion(8, 8, 9, 9)), "越界ROI");
+            Throws<ArgumentException>(() => new FIMImageBuffer(2, 2, FIMPixelFormat.Gray8, new byte[3]), "短缓冲");
+            var cancel = new CancellationTokenSource();
+            cancel.Cancel();
+            Throws<OperationCanceledException>(() => FIMImageAnalyzer.Calculate(image, null, cancel.Token), "取消");
+            Console.WriteLine("PASS FIM Imaging 像素/ROI/统计/五区域/裁剪/异常");
+        }
+
+        private static bool Near(double x, double y) { return Math.Abs(x - y) < 0.0000001; }
+        private static void Assert(bool condition, string name)
+        {
+            if (!condition) throw new InvalidOperationException("FIM失败：" + name);
+        }
+        private static void Throws<T>(Action action, string name) where T : Exception
+        {
+            try { action(); }
+            catch (T) { return; }
+            throw new InvalidOperationException("FIM未触发预期异常：" + name);
+        }
+    }
+}
