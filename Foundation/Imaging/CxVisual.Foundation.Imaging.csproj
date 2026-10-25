@@ -24,6 +24,7 @@
     <Compile Include="Properties\AssemblyInfo.cs"/>
     <Compile Include="Pixels\FIMPixelFormat.cs"/>
     <Compile Include="Pixels\FIMImageBuffer.cs"/>
+    <Compile Include="IO\FIMRawImageReader.cs"/>
     <Compile Include="Regions\FIMPixelRegion.cs"/>
         <Compile Include="Processing\FIMImageStatistics.cs"/>
     <Compile Include="Processing\FIMImageHistogram.cs"/>

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Threading;
 using CxVisual.Foundation.Imaging;
 using CxVisual.Foundation.Geometry;
@@ -97,6 +98,29 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Throws<ArgumentException>(() => FIMImageMeasurement.GetAngleDegrees(a, a, b), "退化角度");
             Throws<ArgumentOutOfRangeException>(() => FIMImageMeasurement.GetDistanceMillimeters(a, b, default(FIMPixelSpacing)), "default标定间距");
             Throws<ArgumentOutOfRangeException>(() => FIMImageMeasurement.GetAreaSquareMillimeters(new FIMPixelRegion(0, 0, 1, 1), default(FIMPixelSpacing)), "default面积标定");
+            // 工业RAW负例：长度、位深、大端、非Seek流边界
+            using (MemoryStream raw16 = new MemoryStream(new byte[] { 1, 0, 0, 4 }))
+            {
+                FIMImageBuffer rawImage = FIMRawImageReader.Load(raw16, 2, 1, FIMPixelFormat.Gray16);
+                Assert(rawImage.GetGrayValue(0, 0) == 1 && rawImage.GetGrayValue(1, 0) == 1024,
+                    "RAW16保留原精度");
+            }
+            using (MemoryStream bigEndian = new MemoryStream(new byte[] { 0, 1, 4, 0 }))
+            {
+                FIMImageBuffer rawImage = FIMRawImageReader.Load(bigEndian, 2, 1,
+                    FIMPixelFormat.Gray16, 0, true);
+                Assert(rawImage.GetGrayValue(0, 0) == 1 && rawImage.GetGrayValue(1, 0) == 1024,
+                    "大端RAW16转换");
+            }
+            Throws<InvalidDataException>(() =>
+                FIMRawImageReader.Load(new MemoryStream(new byte[5]), 2, 1, FIMPixelFormat.Gray16),
+                "RAW多余字节");
+            Throws<InvalidDataException>(() =>
+                FIMRawImageReader.Load(new MemoryStream(new byte[3]), 2, 1, FIMPixelFormat.Gray16),
+                "RAW短文件");
+            Throws<ArgumentOutOfRangeException>(() =>
+                FIMRawImageReader.Load(new MemoryStream(new byte[4]), 2, 1, FIMPixelFormat.Gray16, 3),
+                "RAW错误Stride");
             Console.WriteLine("PASS FIM Imaging 像素/ROI/统计/五区域/裁剪/异常");
         }
 
