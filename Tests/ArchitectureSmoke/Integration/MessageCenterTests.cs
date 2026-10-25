@@ -54,6 +54,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             await TestNestedAsyncPublishAsync().ConfigureAwait(false);
             await TestParallelAndOptionsSnapshotAsync().ConfigureAwait(false);
             TestCodecAndLatency();
+            await TestRetainExpiryAndClearAsync().ConfigureAwait(false);
             await TestRetainedRoutingAndInterceptorsAsync().ConfigureAwait(false);
             await TestMpaMessageMappingAsync().ConfigureAwait(false);
         }
@@ -325,6 +326,84 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Expect<NotSupportedException>(()=>absent.PublishAsync(
                 mapped,"Image001",CancellationToken.None));
             Console.WriteLine("PASS BUS.M36 MPA data mapping / real delivery and reject semantics");
+        }
+
+
+        /// <summary>Retain额度不会被已过期消息挤占；显式清理后同Topic再保留不会污染FIFO索引。</summary>
+        private static async Task TestRetainExpiryAndClearAsync()
+        {
+            using (MNMMessageCenter bus=new MNMMessageCenter(
+                new MNMMessageOptions { RetainedCapacity=2 }))
+            {
+                await bus.PublishAsync(Camera,"live-A",
+                    new MNMPublishOptions{Retain=true}).ConfigureAwait(false);
+                await bus.PublishAsync(Ai,"expired-B",
+                    new MNMPublishOptions { Retain=true,
+                        TimeToLive=TimeSpan.FromMilliseconds(75) }).ConfigureAwait(false);
+                await Task.Delay(170).ConfigureAwait(false);
+                await bus.PublishAsync(Fault,"live-C",
+                    new MNMPublishOptions{Retain=true}).ConfigureAwait(false);
+                Check(bus.Metrics().RetainedCount==2,
+                    "expired Retain must not consume finite capacity");
+
+                int a=0,b=0,c=0;
+                using(bus.Subscribe<string>("/machine/1201/app/XRay/#",ctx=>
+                {
+                    if(ctx.Header.Topic==Camera) Interlocked.Increment(ref a);
+                    if(ctx.Header.Topic==Ai) Interlocked.Increment(ref b);
+                    if(ctx.Header.Topic==Fault) Interlocked.Increment(ref c);
+                }))
+                {
+                    Check(SpinWait.SpinUntil(()=>Volatile.Read(ref a)==1 &&
+                        Volatile.Read(ref c)==1,4000),
+                        "Retain replay preserves older valid entry and newer valid entry");
+                    Check(b==0,"expired newest retained item not replayed");
+                }
+
+                Check(bus.ClearRetained(Camera),"clear existing retained Topic");
+                Check(!bus.ClearRetained(Camera),"clearing again returns false");
+                await bus.PublishAsync(Camera,"new-A",
+                    new MNMPublishOptions{Retain=true}).ConfigureAwait(false);
+                await bus.PublishAsync(Ai,"new-B",
+                    new MNMPublishOptions{Retain=true}).ConfigureAwait(false);
+                Check(bus.Metrics().RetainedCount==2,
+                    "clear/republish/overflow retains exactly two topics");
+
+                int afterA=0,afterB=0,afterC=0;
+                using(bus.Subscribe<string>("/machine/1201/app/XRay/#",ctx=>
+                {
+                    if(ctx.Header.Topic==Camera) Interlocked.Increment(ref afterA);
+                    if(ctx.Header.Topic==Ai) Interlocked.Increment(ref afterB);
+                    if(ctx.Header.Topic==Fault) Interlocked.Increment(ref afterC);
+                }))
+                {
+                    Check(SpinWait.SpinUntil(()=>Volatile.Read(ref afterA)==1 &&
+                        Volatile.Read(ref afterB)==1,4000),
+                        "oldest correct topic evicted after clear+republish");
+                    Check(afterC==0,"stale FIFO keys cannot evict re-published topic");
+                }
+
+                await bus.StopAsync(true).ConfigureAwait(false);
+                Expect<ObjectDisposedException>(()=>bus.ClearRetained(Camera));
+            }
+
+            using (MNMMessageCenter guarded=new MNMMessageCenter(
+                new MNMMessageOptions {
+                    AuthorizePublish=(sender,topic)=>sender=="trusted"
+                }))
+            {
+                await guarded.PublishAsync(Camera,"state",
+                    new MNMPublishOptions {
+                        SourceId="trusted",Retain=true
+                    }).ConfigureAwait(false);
+                Expect<UnauthorizedAccessException>(()=>guarded.ClearRetained(Camera,"intruder"));
+                Check(guarded.Metrics().RetainedCount==1,
+                    "unauthorized Retain clear must not change cache");
+                Check(guarded.ClearRetained(Camera,"trusted"),
+                    "authorized Retain clear");
+                Check(guarded.Metrics().RetainedCount==0,"clear reflected in metrics");
+            }
+            Console.WriteLine("PASS BUS.M36 retain TTL reclamation, clear/re-publish index, authorized removal");
         }
 
         private static async Task TestBasicAsync()

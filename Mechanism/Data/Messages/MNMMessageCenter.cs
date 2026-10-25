@@ -287,6 +287,7 @@ namespace CxVisual.Mechanism.Data.Messages
                 foreach (MNMMessageSubscription item in old)
                 { item.Deactivate(); _subs.Remove(item); }
                 _subs.Add(sub);
+                PruneRetained();
                 replay = opt.ReplayRetained && shared == null ?
                     _retained.Values.Where(m => !IsExpired(m) &&
                     MNMMessageRouter.MatchesSubscription(sub,m)).
@@ -439,9 +440,34 @@ namespace CxVisual.Mechanism.Data.Messages
             };
         }
 
+        /// <summary>
+        /// 在_retained/_retainedOrder同一把锁下维护缓存：TTL过期的旧消息
+        /// 不能占掉后续状态消息的Retain额度。
+        /// </summary>
+        private void PruneRetained()
+        {
+            bool changed = false;
+            foreach (KeyValuePair<string,MNMMessage> entry in _retained.ToArray())
+            {
+                if (!IsExpired(entry.Value)) continue;
+                _retained.Remove(entry.Key);
+                changed = true;
+            }
+            if (changed) RebuildRetainedOrder();
+        }
+
+        private void RebuildRetainedOrder()
+        {
+            string[] live = _retainedOrder.Where(key => _retained.ContainsKey(key))
+                .Distinct(StringComparer.Ordinal).ToArray();
+            _retainedOrder.Clear();
+            foreach (string key in live) _retainedOrder.Enqueue(key);
+        }
+
         private void Retain(MNMMessage message)
         {
-            if (_options.RetainedCapacity == 0) return;
+            if (_options.RetainedCapacity == 0 || IsExpired(message)) return;
+            PruneRetained();
             if (!_retained.ContainsKey(message.Header.Topic))
                 _retainedOrder.Enqueue(message.Header.Topic);
             _retained[message.Header.Topic]=message;
@@ -449,6 +475,26 @@ namespace CxVisual.Mechanism.Data.Messages
             {
                 if (_retainedOrder.Count == 0) break;
                 _retained.Remove(_retainedOrder.Dequeue());
+            }
+        }
+
+        /// <summary>
+        /// 显式撤销指定Topic保留值；不是删除历史业务数据，也不是发送MQTT空Payload。
+        /// 遵从现有Publish授权回调；返回是否实际清除了一个保留值。
+        /// </summary>
+        public bool ClearRetained(string topic,string sourceId = null)
+        {
+            MNMTopicFilter.ValidateTopic(topic);
+            if (_options.AuthorizePublish != null &&
+                !_options.AuthorizePublish(sourceId,topic))
+                throw new UnauthorizedAccessException("当前发布者无权清理Retain: " + topic);
+            lock (_gate)
+            {
+                DemandOpen();
+                PruneRetained();
+                if (!_retained.Remove(topic)) return false;
+                RebuildRetainedOrder();
+                return true;
             }
         }
 
@@ -650,6 +696,7 @@ namespace CxVisual.Mechanism.Data.Messages
         {
             lock(_gate)
             {
+                PruneRetained();
                 double[] sample = new double[_deliveryCount];
                 Array.Copy(_deliveryDurations,sample,_deliveryCount);
                 Array.Sort(sample);
