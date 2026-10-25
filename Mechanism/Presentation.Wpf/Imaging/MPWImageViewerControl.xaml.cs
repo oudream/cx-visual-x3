@@ -26,7 +26,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         private FIMImageBuffer _overlayOriginal;
         private BitmapSource _bitmap;
         private FIMImageBuffer _shownImage;
-        private bool _dragging, _selecting, _pendingFit = true;
+        private bool _dragging, _selecting, _moving, _pendingFit = true;
+        private MVIImageOverlayItem _movingOverlay;
+        private FGEPoint2D _moveAnchor;
         private Point _startPointer;
         private int _selectionX, _selectionY, _lastSelectionX, _lastSelectionY;
         private MVIImageOverlayKind _selectionKind = MVIImageOverlayKind.RectangleRoi;
@@ -63,7 +65,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 if (!Enum.IsDefined(typeof(MVIImageToolMode), value))
                     throw new ArgumentOutOfRangeException("value");
                 _toolMode = value;
-                _dragging = _selecting = false;
+                _dragging = _selecting = _moving = false;
+                _movingOverlay = null;
                 _polygonDraft.Clear();
                 DrawSelection();
             }
@@ -551,6 +554,81 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             if (ActiveImage != null && (_pendingFit || _viewport.IsFit)) FitToWindow();
         }
 
+        /// <summary>在原图像素坐标执行形状命中，反向迭代保证顶层覆盖项优先。</summary>
+        public MVIImageOverlayItem HitTestOverlay(double imageX, double imageY)
+        {
+            VerifyAccess();
+            FGEPoint2D p = new FGEPoint2D(imageX, imageY);
+            IReadOnlyList<MVIImageOverlayItem> items = _overlays.GetVisibleItems();
+            double tolerance = Math.Max(0.4, 6.0 / Math.Max(0.01, _viewport.Scale));
+            for (int i = items.Count - 1; i >= 0; i--)
+            {
+                MVIImageOverlayItem item = items[i];
+                if (IsHit(item, p, tolerance)) return item;
+            }
+            return null;
+        }
+
+        private static bool IsHit(MVIImageOverlayItem item, FGEPoint2D p, double tolerance)
+        {
+            if (item.Kind == MVIImageOverlayKind.PointAnnotation)
+            {
+                FGEPoint2D center = item.Points.Count > 0 ? item.Points[0] :
+                    new FGEPoint2D(item.Bounds.X, item.Bounds.Y);
+                return p.DistanceTo(center) <= tolerance;
+            }
+            if (item.Kind == MVIImageOverlayKind.PolygonRoi ||
+                item.Kind == MVIImageOverlayKind.PolygonAnnotation)
+                return item.Points.Count >= 3 && FGEGeometry2D.PointInPolygon(p, item.Points);
+            if (item.Kind == MVIImageOverlayKind.EllipseRoi ||
+                item.Kind == MVIImageOverlayKind.CircleRoi ||
+                item.Kind == MVIImageOverlayKind.DiameterMeasurement)
+            {
+                if (item.Bounds.Width <= 0 || item.Bounds.Height <= 0) return false;
+                double cx = item.Bounds.X + item.Bounds.Width / 2.0;
+                double cy = item.Bounds.Y + item.Bounds.Height / 2.0;
+                double dx = (p.X - cx) / (item.Bounds.Width / 2.0);
+                double dy = (p.Y - cy) / (item.Bounds.Height / 2.0);
+                return dx * dx + dy * dy <= 1.0;
+            }
+            if (item.Points.Count >= 2)
+            {
+                for (int i = 1; i < item.Points.Count; i++)
+                {
+                    if (DistanceToSegment(p, item.Points[i-1], item.Points[i]) <= tolerance)
+                        return true;
+                }
+                return false;
+            }
+            return item.Bounds.Contains(p);
+        }
+
+        private static double DistanceToSegment(FGEPoint2D p, FGEPoint2D a, FGEPoint2D b)
+        {
+            double dx = b.X - a.X, dy = b.Y - a.Y;
+            double lengthSquared = dx * dx + dy * dy;
+            if (lengthSquared <= 0) return p.DistanceTo(a);
+            double t = Math.Max(0, Math.Min(1,
+                ((p.X - a.X) * dx + (p.Y - a.Y) * dy) / lengthSquared));
+            double x = a.X + t * dx, y = a.Y + t * dy;
+            double px = p.X - x, py = p.Y - y;
+            return Math.Sqrt(px * px + py * py);
+        }
+
+        private void UpdateMovedOverlay(Point pointer)
+        {
+            if (!_moving || _movingOverlay == null || ActiveImage == null) return;
+            double x = _viewport.ImageX(pointer.X), y = _viewport.ImageY(pointer.Y);
+            if (!IsFinite(x) || !IsFinite(y)) return;
+            double dx = x - _moveAnchor.X, dy = y - _moveAnchor.Y;
+            // 移动鼠标不能把图中标注悄悄移入无限画布；保持当前Bounds在图像内。
+            dx = Math.Max(-_movingOverlay.Bounds.Left,
+                Math.Min(ActiveImage.Width - _movingOverlay.Bounds.Right, dx));
+            dy = Math.Max(-_movingOverlay.Bounds.Top,
+                Math.Min(ActiveImage.Height - _movingOverlay.Bounds.Bottom, dy));
+            _overlays.Replace(_movingOverlay.Translate(dx, dy));
+        }
+
         private static MVIImageOverlayKind GetDrawingKind(MVIImageToolMode mode)
         {
             switch (mode)
@@ -572,6 +650,32 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             if (ActiveImage == null) return;
             Point pointer = e.GetPosition(ViewportRoot);
             int x,y;
+            if (_toolMode == MVIImageToolMode.MoveOverlay ||
+                _toolMode == MVIImageToolMode.DeleteOverlay)
+            {
+                if (!TryImagePoint(pointer,out x,out y)) return;
+                MVIImageOverlayItem hit = HitTestOverlay(x + 0.5, y + 0.5);
+                if (hit == null) return;
+                if (_toolMode == MVIImageToolMode.DeleteOverlay)
+                {
+                    _overlays.Remove(hit.Id);
+                    _region = null;
+                    DrawSelection();
+                }
+                else
+                {
+                    _moving = true;
+                    _movingOverlay = hit;
+                    _moveAnchor = new FGEPoint2D(_viewport.ImageX(pointer.X),
+                        _viewport.ImageY(pointer.Y));
+                    _region = null;
+                    DrawSelection();
+                    ViewportRoot.CaptureMouse();
+                }
+                RaiseSelectionChanged();
+                e.Handled = true;
+                return;
+            }
             if (_toolMode != MVIImageToolMode.Navigate)
             {
                 if (!TryImagePoint(pointer, out x, out y)) return;
@@ -599,7 +703,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 UpdateDraftSelection(pointer);
                 CompleteDraw();
             }
-            _dragging = _selecting = false;
+            if (_moving) UpdateMovedOverlay(e.GetPosition(ViewportRoot));
+            _dragging = _selecting = _moving = false;
+            _movingOverlay = null;
             if (ViewportRoot.IsMouseCaptured) ViewportRoot.ReleaseMouseCapture();
         }
 
@@ -630,6 +736,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             }
             else if (_selecting && e.LeftButton == MouseButtonState.Pressed)
                 UpdateDraftSelection(pointer);
+            else if (_moving && e.LeftButton == MouseButtonState.Pressed)
+                UpdateMovedOverlay(pointer);
             int px,py;
             if (TryImagePoint(pointer,out px,out py))
             {
