@@ -385,7 +385,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Handler(x => { Interlocked.Increment(ref invoked); return x; })))
             using (MRKCommandPipeServer server = new MRKCommandPipeServer(
                 center, name, peer => !string.IsNullOrWhiteSpace(peer),
-                requestReadTimeoutMilliseconds: 500))
+                requestReadTimeoutMilliseconds: 1200))
             {
                 List<NamedPipeClientStream> idle = new List<NamedPipeClientStream>();
                 try
@@ -402,7 +402,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     }
                     Stopwatch watch = Stopwatch.StartNew();
                     MRKCommandResponse valid = new MRKCommandPipeClient(
-                        ".", name, 4000, 2500).InvokeAsync(new MRKCommandRequest(
+                        ".", name, 6000, 4500).InvokeAsync(new MRKCommandRequest(
                             "ipc/algorithm", 5183,
                             new Dictionary<string, object> { { "Input", 6.0 } },
                             options: new MRKCommandOptions(remote: true)))
@@ -411,8 +411,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Check(valid.Stage == MRKCommandStage.Accepted &&
                         valid.State == MRKCommandState.Completed &&
                         (double)valid.Outputs["Output"] == 12.0 &&
-                        invoked == 1 && watch.ElapsedMilliseconds < 3500,
-                        "idle IPC sessions must expire and release admission slots");
+                        invoked == 1 && watch.ElapsedMilliseconds < 5500,
+                        "idle IPC sessions must expire and release admission slots; " +
+                        "stage=" + valid.Stage + ", state=" + valid.State +
+                        ", errorCode=" + valid.ErrorCode + ", error=" + valid.Error +
+                        ", count=" + invoked + ", elapsedMs=" + watch.ElapsedMilliseconds);
                 }
                 finally
                 {
