@@ -21,6 +21,7 @@
     <Compile Include="MOLFlowLayout.cs"/>
     <Compile Include="Imaging\MVIImageSlot.cs"/>
     <Compile Include="Imaging\MVIImageSession.cs"/>
+    <Compile Include="Imaging\MVIImageViewport.cs"/>
     <Reference Include="System"/>
     <Reference Include="System.Core"/>
   </ItemGroup>
