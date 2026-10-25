@@ -8,8 +8,10 @@ using System.Windows.Media.Imaging;
 using CxVisual.Foundation.Imaging;
 using CxVisual.Foundation.Geometry;
 using System.Collections.Generic;
-using System.Windows.Shapes;
-using WpfShape = System.Windows.Shapes.Shape;
+using Ellipse = System.Windows.Shapes.Ellipse;
+using Line = System.Windows.Shapes.Line;
+using Polygon = System.Windows.Shapes.Polygon;
+using Rectangle = System.Windows.Shapes.Rectangle;
 using CxVisual.Mechanism.Visual;
 using Microsoft.Win32;
 
