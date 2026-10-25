@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -57,6 +58,88 @@ namespace CxVisual.Tests.ArchitectureSmoke
             { cancellation.ThrowIfCancellationRequested(); _variables.Update<double>(name, (double)value); return Task.CompletedTask; }
         }
 
+
+        /// <summary>ArchitectureSmoke的另一个EXE进程独立运行真实MRK IPC Host。</summary>
+        internal static int RunPipeChild(string pipeName)
+        {
+            using (MRKCommandCenter center = new MRKCommandCenter())
+            using (center.Register(new MRKCommandDescriptor("child/algorithm", Definition()),
+                Handler(x => x)))
+            using (MRKCommandPipeServer server = new MRKCommandPipeServer(
+                center, pipeName, peer => !string.IsNullOrWhiteSpace(peer)))
+            {
+                server.Start();
+                Console.WriteLine("IPC_CHILD_READY");
+                Console.Out.Flush();
+                // 测试控制平面只负责退出；正式命令仍只走Windows操作系统管道。
+                Console.ReadLine();
+                server.StopAsync().GetAwaiter().GetResult();
+            }
+            return 0;
+        }
+
+        private static void SeparateProcessPipeRun()
+        {
+            string pipe = "CxVisual.Child." + Guid.NewGuid().ToString("N");
+            string executable = Process.GetCurrentProcess().MainModule.FileName;
+            ProcessStartInfo start = new ProcessStartInfo(executable,
+                "--command-pipe-child " + pipe)
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+            using (Process child = Process.Start(start))
+            {
+                if (child == null)
+                    throw new InvalidOperationException("独立IPC子进程启动失败");
+                try
+                {
+                    Task<string> ready = child.StandardOutput.ReadLineAsync();
+                    Task winner = Task.WhenAny(ready, Task.Delay(7000))
+                        .GetAwaiter().GetResult();
+                    Check(object.ReferenceEquals(winner, ready) &&
+                        ready.GetAwaiter().GetResult() == "IPC_CHILD_READY",
+                        "独立IPC进程没有按时完成服务端启动");
+                    Guid op = Guid.NewGuid();
+                    MRKCommandPipeClient client = new MRKCommandPipeClient(".", pipe, 5000);
+                    MRKCommandRequest request = new MRKCommandRequest(
+                        "child/algorithm", 5183,
+                        new Dictionary<string, object> { { "Input", 7.0 } },
+                        operationId: op,
+                        options: new MRKCommandOptions(remote: true,
+                            timeoutMilliseconds: 2000),
+                        expectedSchemaVersion: 1);
+                    MRKCommandResponse result = client.InvokeAsync(request)
+                        .GetAwaiter().GetResult();
+                    Check(result.Stage == MRKCommandStage.Accepted &&
+                        result.State == MRKCommandState.Completed &&
+                        result.OperationId == op && result.RequestId == request.RequestId &&
+                        (double)result.Outputs["Output"] == 14.0,
+                        "两个独立Windows进程未能通过真实IPC返回命令结果");
+                    MRKCommandResponse queried = client.QueryAsync(op)
+                        .GetAwaiter().GetResult();
+                    Check(queried.State == MRKCommandState.Completed &&
+                        (double)queried.Outputs["Output"] == 14.0,
+                        "跨进程OperationId查询失败");
+                }
+                finally
+                {
+                    try { child.StandardInput.WriteLine(); child.StandardInput.Flush(); }
+                    catch (IOException) { }
+                    if (!child.WaitForExit(10000))
+                    {
+                        try { child.Kill(); } catch (InvalidOperationException) { }
+                        throw new TimeoutException("独立IPC测试子进程无法退出");
+                    }
+                    string stderr = child.StandardError.ReadToEnd();
+                    Check(child.ExitCode == 0,
+                        "独立IPC测试子进程非零退出：" + child.ExitCode + "/" + stderr);
+                }
+            }
+        }
 
         /// <summary>真实Windows命名管道：认证Host、IPC调用、目标关联与相同OperationId重放。</summary>
         private static void NamedPipeRun()
@@ -1169,6 +1252,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             }
             WireCodecRun();
             NamedPipeRun();
+            SeparateProcessPipeRun();
             QueuedRun();
             ConfiguredBindingRun();
             DedicatedCommandRun();

@@ -313,3 +313,9 @@ Operation账本继续以OperationId去重，同一OperationId的身份比较包�
 - 现有WireCodec暂不支持任意CLR DTO/Enum/Native资源Handle通过网络，失败要提前拒绝；图像/CT大数据应使用受控共享内存或文件/体数据传输，不经4MiB命令值帧。
 
 专项测试在 `CommandCenterTests.NamedPipeRun` 中使用**真实Windows系统命名管道**并在同一测试进程启动服务端与客户端验证：IPC调用、真实系统调用方覆盖伪造Caller、同OperationId重放去重、同Id参数冲突、未知目标拒绝、按Caller查询和未经授权会话拒绝。**这不等于两个独立进程或两台PC已实测成功**；下一阶段需增加独立进程互操作测试并落地专业Host的认证部署配置。
+
+## 19. 真实独立Windows进程IPC验收增量
+
+`Tests/ArchitectureSmoke/Program.cs` 增加专用 `--command-pipe-child <name>` 子进程入口。CommandCenter专项通过 `System.Diagnostics.Process` 启动第二个完全独立的ArchitectureSmoke.exe，子进程自己创建CommandCenter、注册算法Handler、启动带Windows当前用户ACL的命名管道服务，父进程通过真正的系统管道发送 `Target+CommandId` 请求并单独查询 `OperationId`，检查业务结果、请求关联及子进程正常退出。测试进程控制用stdin/stdout仅启动/停止Host，命令请求和业务结果严格通过管道。
+
+这比同进程的OS命名管道回环更强，可以作为**本机双进程真实IPC**证据；仍不是跨PC两台主机、域用户/SMB网络、工控设备HIL、现场运行与长期掉线恢复的验收。只有对应新Git SHA Windows CI真的PASS后，才把该条记为自动测试通过。

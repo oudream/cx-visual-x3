@@ -16,6 +16,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
         {
             try
             {
+                if (args != null && args.Length == 2 && args[0] == "--command-pipe-child")
+                    return CommandCenterTests.RunPipeChild(args[1]);
                 if (Array.IndexOf(args, "--concurrency") >= 0 ||
                     Array.IndexOf(args, "--foundation") >= 0)
                     return FoundationSmokeRunner.Run(args);
