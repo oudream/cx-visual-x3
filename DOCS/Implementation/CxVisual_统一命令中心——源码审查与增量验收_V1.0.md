@@ -351,3 +351,82 @@ Operation账本继续以OperationId去重，同一OperationId的身份比较包�
 - 新增反例检查：未声明输出和缺失Owner都不得调用外部表达式解析器或远端Handler。
 
 该项是命令运行时来源与输出绑定的防御性约束，不新建数据管理/Schema项目。
+
+
+## 23. 2026-10-25 服务端IPC慢帧占用防护（本轮增量）
+
+- 既有PipeClient已有Connect/Exchange独立截止时间，但PipeServer认证后读取请求头/帧原先没有独立截止时间；8个已连接不写入的客户端可以长期占满8个并发会话槽位。
+- 在原`MRKCommandPipeServer`构造函数末尾添加兼容性可选参数`requestReadTimeoutMilliseconds=5000`（1～600000毫秒），对从连接认证后到读完整帧采用绝对截止时间，不以收到部分字节重复续期。
+- 请求读入超时直接释放OS Pipe会话和槽位，未建立操作时不执行Handler、不写入Operation、更不伪造设备失败回执。接收时限仅限制请求帧输入，不限制已被正式受理的Handler业务运行。
+- 对.NET Framework 4.8异步PipeStream可能忽略Token取消的边界，使用WhenAny防止会话任务永久等待、释放Stream并观测迟到IO异常。
+- `CommandCenterTests.PipeIdleSessionBudgetRun` 采用8个真实Windows命名管道空闲连接、随后第9个有效命令验证会话恢复，校验仅执行一次、服务端停止可排空，另验证非法读时限参数拒绝。
+- **验证纪律**：本段描述为新增源码与测试意图；只有本次提交SHA的Windows x64 Rebuild、`--command-center`和默认回归真实成功后才能上升为CI通过。此项不等于跨PC现场、网络隔离、恶意高压攻击或真实设备HIL验证。
+
+## 24. 60项需求逐项源码核对矩阵（当前代码事实与剩余边界）
+
+> 本表以现行主规格§6的编号区间逐项展开；条目短名是核对索引，而非重新发明原始需求定义。`源码+命令专项`表示当前有对应实现和命令专项覆盖路径，不代表每一条都有独立用例；`部分实现/待闭环`表示剩余专业/可靠性/远程/可视化验收；`未验收`不代表完全没有相关共性机制。固定SHA运行证据必须另查GitHub Actions。
+
+| 序号 | 需求核对点 | 当前正式Owner/API/证据入口 | 状态 |
+|---:|---|---|---|
+| 1 | Command/Handler机制 | `FDCCommandDefinition；MRKCommandCenter/Handler` | 源码+命令专项 |
+| 2 | 进程内、跨进程、跨PC | `Center；PipeClient/Server；本机双进程` | 部分实现/待闭环 |
+| 3 | 同步异步与请求响应 | `Center.Invoke/InvokeAsync` | 源码+命令专项 |
+| 4 | 批量与远程 | `InvokeBatchAsync/Broadcast；PipeClient` | 部分实现/待闭环 |
+| 5 | 高性能、线程安全、低耦合 | `F19 Worker、MRK Policy、双项目` | 部分实现/待闭环 |
+| 6 | 稳定ID及Code | `FDCCommandDefinition；MRKCommandRequest` | 源码+命令专项 |
+| 7 | 名称、版本、描述 | `FDCCommandDefinition；SchemaVersion` | 源码+命令专项 |
+| 8 | 系统/模块/对象/设备分类 | `MRKCommandKind/Descriptor` | 源码+命令专项 |
+| 9 | 目标寻址 | `MRKCommandRouter.Resolve/ResolveById` | 源码+命令专项 |
+| 10 | 注册、注销与代次更新 | `MRKCommandRegistry.Register/Replace` | 源码+命令专项 |
+| 11 | 发现枚举与能力查找 | `Registry.Discover；Catalog.Snapshot` | 源码+命令专项 |
+| 12 | 启停、生命周期、权限、超时 | `SetEnabled；Policy；Center.InvokeAsync` | 部分实现/待闭环 |
+| 13 | 输入统一参数Schema | `FDCCommandParameterDefinition` | 源码+命令专项 |
+| 14 | 基础数值字符串等值类型 | `FDT类型体系；FDCCommandValueCodec` | 源码+命令专项 |
+| 15 | 数组和列表 | `FDCCommandValueSnapshot/Codec` | 源码+命令专项 |
+| 16 | 复杂对象/嵌套/分组 | `FDC参数Children；受限命名Map` | 部分实现/待闭环 |
+| 17 | 必填与默认值 | `FDCCommandDefinition.BindInputs` | 源码+命令专项 |
+| 18 | 单位、范围、格式等约束 | `FDCCommandParameterDefinition.ValidateValue` | 部分实现/待闭环 |
+| 19 | 类型转换和自定义Adapter | `FDTDataAdapterRegistry；Schema验证` | 部分实现/待闭环 |
+| 20 | 稳定序列化/反序列化 | `FDCCommandValueCodec安全值帧V1` | 部分实现/待闭环 |
+| 21 | 变量点表、MDS绑定 | `MRKCommandMdsBinding；MDSVariableTable` | 源码+命令专项 |
+| 22 | 表达式、端口、来源快照 | `MRKCommandInputSource；MDSDataBindingResolver` | 部分实现/待闭环 |
+| 23 | Output共用参数Schema | `FDCCommandDefinition.Outputs` | 源码+命令专项 |
+| 24 | 无返回与单返回 | `MRKCommandHandlerResult/Response` | 源码+命令专项 |
+| 25 | 多返回与复杂结构 | `Outputs字典；FDC快照/Codec` | 部分实现/待闭环 |
+| 26 | 输出类型验证 | `FDCCommandDefinition.ValidateOutputs` | 源码+命令专项 |
+| 27 | 同步异步结果交付 | `Center.Invoke/InvokeAsync` | 源码+命令专项 |
+| 28 | 进度 | `MRKCommandContext.ReportProgress` | 源码+命令专项 |
+| 29 | 中间结果 | `ReportIntermediate；Execution.IntermediateOutputs` | 源码+命令专项 |
+| 30 | 结果映射回MDS | `InvokeBoundResultAsync/ConfiguredResultAsync` | 部分实现/待闭环 |
+| 31 | 业务成功与执行失败独立 | `Response.BusinessSuccess/State；MappingResult` | 源码+命令专项 |
+| 32 | 结果事件与实时推送 | `现有M36只负责Pub/Sub；未统一推送` | 未验收 |
+| 33 | 请求响应受理 | `Center.Submit/InvokeAsync` | 源码+命令专项 |
+| 34 | 路由与目标分发 | `MRKCommandRouter/Registry` | 源码+命令专项 |
+| 35 | 专业Handler调用 | `IMRKCommandHandler` | 源码+命令专项 |
+| 36 | Dispatcher | `MRKCommandDispatcher` | 源码+命令专项 |
+| 37 | Executor | `MRKCommandExecutor` | 源码+命令专项 |
+| 38 | 指定线程、线程池 | `FCRDedicatedExecutor；MRKDedicatedCommandHandler` | 部分实现/待闭环 |
+| 39 | 队列与优先级 | `MRKCommandDispatching；FCRWorker` | 源码+命令专项 |
+| 40 | 并发与顺序限制 | `MRKCommandPolicy/ResourceLease` | 部分实现/待闭环 |
+| 41 | 暂停、恢复、取消、超时 | `Center.Pause/Resume/Cancel；Context等待` | 部分实现/待闭环 |
+| 42 | RequestId/OperationId关联 | `MRKCommandRequest/Execution；IPC Query` | 部分实现/待闭环 |
+| 43 | 异常与有条件重试 | `Executor；MRKExecutionPolicy` | 部分实现/待闭环 |
+| 44 | 幂等与重复拒绝 | `Center OperationId去重；设备禁自动重试` | 部分实现/待闭环 |
+| 45 | 身份和权限控制 | `Host授权；Pipe OS身份/ACL` | 部分实现/待闭环 |
+| 46 | 拦截审计与监控 | `IMRKCommandInterceptor；GetMetrics` | 部分实现/待闭环 |
+| 47 | Command与Descriptor | `FDCCommandDefinition；MRKCommandDescriptor` | 源码+命令专项 |
+| 48 | ParameterSchema/Validator | `FDCCommandParameterDefinition.ValidateValue` | 源码+命令专项 |
+| 49 | Request/Options | `MRKCommandRequest/Options` | 源码+命令专项 |
+| 50 | Response/Result | `MRKCommandResponse/BindingResult` | 源码+命令专项 |
+| 51 | Center/Registry | `MRKCommandCenter/Registry` | 源码+命令专项 |
+| 52 | Router/Handler | `MRKCommandRouter/IMRKCommandHandler` | 源码+命令专项 |
+| 53 | Dispatcher/Executor | `MRKCommandDispatcher/Executor` | 源码+命令专项 |
+| 54 | Context/Execution/Target | `MRKCommandContext/Execution/Descriptor.Target` | 源码+命令专项 |
+| 55 | Metrics/Policy/Binding/Interceptor | `MRKCommandMetrics/Policy/MdsBinding/Interceptor` | 源码+命令专项 |
+| 56 | 正式双项目源码与csproj | `Foundation.Data/Commands；Mechanism.Runtime/Commands` | 源码+命令专项 |
+| 57 | 设备/算法/流程案例 | `ArchitectureSmoke算法/MDS；真机与Studio待验` | 部分实现/待闭环 |
+| 58 | Windows编译/并发异常测试 | `unified-runtime-windows.yml；--command-center` | 部分实现/待闭环 |
+| 59 | Studio可视化使用 | `应用/Studio完整命令编辑执行闭环` | 未验收 |
+| 60 | IPC跨PC/设备/性能资源验收 | `本机命名管道；跨PC/HIL/长稳未验` | 部分实现/待闭环 |
+
+**P0/P1优先级**：P0当前服务端慢帧会话资源耗尽与TestCenter UIA超时；P1跨Host发现/稳定Schema协议/认证与审计、远端控制及查询可靠性、MOL/Studio真正可视闭环；P2跨PC认证/Host重启后的持续幂等恢复；P3设备HIL、长稳与性能。所有远端设备动作必须由接收端实际安全控制确认，Unknown不可自动重发。

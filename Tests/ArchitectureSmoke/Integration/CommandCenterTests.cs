@@ -371,6 +371,71 @@ namespace CxVisual.Tests.ArchitectureSmoke
             }
         }
 
+
+        /// <summary>
+        /// 多个认证后空连接不能长期占用全部Pipe会话；读取时限只管帧输入，不是设备执行超时。
+        /// 使用真实Windows OS命名管道验证名额回收、有效请求和零非法副作用。
+        /// </summary>
+        private static void PipeIdleSessionBudgetRun()
+        {
+            string name = "CxVisual.Idle." + Guid.NewGuid().ToString("N");
+            int invoked = 0;
+            using (MRKCommandCenter center = new MRKCommandCenter())
+            using (center.Register(new MRKCommandDescriptor("ipc/algorithm", Definition()),
+                Handler(x => { Interlocked.Increment(ref invoked); return x; })))
+            using (MRKCommandPipeServer server = new MRKCommandPipeServer(
+                center, name, peer => !string.IsNullOrWhiteSpace(peer),
+                requestReadTimeoutMilliseconds: 500))
+            {
+                List<NamedPipeClientStream> idle = new List<NamedPipeClientStream>();
+                try
+                {
+                    server.Start();
+                    // 服务端上限8：全部连接后不写入任何帧。
+                    for (int i = 0; i < 8; ++i)
+                    {
+                        NamedPipeClientStream client = new NamedPipeClientStream(
+                            ".", name, PipeDirection.InOut, PipeOptions.Asynchronous,
+                            System.Security.Principal.TokenImpersonationLevel.Identification);
+                        idle.Add(client);
+                        client.Connect(4000);
+                    }
+                    Stopwatch watch = Stopwatch.StartNew();
+                    MRKCommandResponse valid = new MRKCommandPipeClient(
+                        ".", name, 4000, 2500).InvokeAsync(new MRKCommandRequest(
+                            "ipc/algorithm", 5183,
+                            new Dictionary<string, object> { { "Input", 6.0 } },
+                            options: new MRKCommandOptions(remote: true)))
+                        .GetAwaiter().GetResult();
+                    watch.Stop();
+                    Check(valid.Stage == MRKCommandStage.Accepted &&
+                        valid.State == MRKCommandState.Completed &&
+                        (double)valid.Outputs["Output"] == 12.0 &&
+                        invoked == 1 && watch.ElapsedMilliseconds < 3500,
+                        "idle IPC sessions must expire and release admission slots");
+                }
+                finally
+                {
+                    foreach (NamedPipeClientStream client in idle) client.Dispose();
+                    Task stop = server.StopAsync();
+                    Task finished = Task.WhenAny(stop, Task.Delay(5000))
+                        .GetAwaiter().GetResult();
+                    Check(object.ReferenceEquals(finished, stop),
+                        "IPC server must drain timed-out idle sessions");
+                    stop.GetAwaiter().GetResult();
+                }
+            }
+            bool badTimeoutRejected = false;
+            try
+            {
+                using (MRKCommandCenter center = new MRKCommandCenter())
+                using (MRKCommandPipeServer bad = new MRKCommandPipeServer(
+                    center, name, peer => true, requestReadTimeoutMilliseconds: 0)) { }
+            }
+            catch (ArgumentOutOfRangeException) { badTimeoutRejected = true; }
+            Check(badTimeoutRejected, "server must reject zero request frame deadline");
+        }
+
         /// <summary>命令值Wire V1：跨进程白名单值的版本、长度、嵌套、数组与污染反证。</summary>
         private static void WireCodecRun()
         {
@@ -1391,6 +1456,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             WireCodecRun();
             NamedPipeRun();
             PipeSilentPeerRun();
+            PipeIdleSessionBudgetRun();
             SeparateProcessPipeRun();
             QueuedRun();
             ConfiguredBindingRun();

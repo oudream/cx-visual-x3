@@ -283,6 +283,7 @@ namespace CxVisual.Mechanism.Runtime.Commands
         private readonly MRKCommandCenter _center;
         private readonly string _name;
         private readonly Func<string, bool> _authorizePeer;
+        private readonly int _requestReadTimeoutMilliseconds;
         private readonly CancellationTokenSource _stop = new CancellationTokenSource();
         private readonly List<Task> _sessions = new List<Task>();
         private readonly SemaphoreSlim _slots = new SemaphoreSlim(8, 8);
@@ -290,12 +291,15 @@ namespace CxVisual.Mechanism.Runtime.Commands
         private Task _accept;
         private bool _started;
         public MRKCommandPipeServer(MRKCommandCenter center, string name,
-            Func<string, bool> authorizePeer)
+            Func<string, bool> authorizePeer, int requestReadTimeoutMilliseconds = 5000)
         {
             _center = center ?? throw new ArgumentNullException("center");
             MRKCommandPipeWire.ValidatePipeName(name);
             _name = name;
             _authorizePeer = authorizePeer ?? throw new ArgumentNullException("authorizePeer");
+            if (requestReadTimeoutMilliseconds < 1 || requestReadTimeoutMilliseconds > 600000)
+                throw new ArgumentOutOfRangeException("requestReadTimeoutMilliseconds");
+            _requestReadTimeoutMilliseconds = requestReadTimeoutMilliseconds;
         }
 
         private NamedPipeServerStream NewPipe()
@@ -373,8 +377,29 @@ namespace CxVisual.Mechanism.Runtime.Commands
                         // 不回送任何Handler数据；客户端只能得到拒绝或未知。
                         return;
                     }
-                    byte[] bytes = await MRKCommandPipeWire.ReadAsync(pipe, _stop.Token)
-                        .ConfigureAwait(false);
+                    // 完整请求帧必须在规定时间内收到；空连接/慢速半帧不能永久占用8个会话名额。
+                    // .NET48底层PipeStream不总是及时响应CancellationToken，
+                    // 因此以WhenAny独立限定等待，并在外层using中主动释放管道。
+                    byte[] bytes;
+                    using (CancellationTokenSource readDeadline =
+                        CancellationTokenSource.CreateLinkedTokenSource(_stop.Token))
+                    {
+                        Task<byte[]> read = MRKCommandPipeWire.ReadAsync(pipe, readDeadline.Token);
+                        Task deadline = Task.Delay(_requestReadTimeoutMilliseconds, readDeadline.Token);
+                        if (await Task.WhenAny(read, deadline).ConfigureAwait(false) != read)
+                        {
+                            readDeadline.Cancel();
+                            // 连接即将Dispose；仍需观察可能延迟产生的IO异常。
+                            Task observed = read.ContinueWith(t =>
+                            {
+                                if (t.IsFaulted) { AggregateException ignored = t.Exception; }
+                            }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously,
+                                TaskScheduler.Default);
+                            return;
+                        }
+                        bytes = await read.ConfigureAwait(false);
+                        readDeadline.Cancel();
+                    }
                     MRKCommandResponse response;
                     string kind = MRKCommandPipeWire.ReadKind(bytes);
                     if (kind == "request")
