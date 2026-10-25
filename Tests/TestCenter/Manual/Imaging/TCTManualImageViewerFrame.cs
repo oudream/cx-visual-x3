@@ -171,7 +171,7 @@ namespace CxVisual.TestCenter.UI
         private static string BoundsText(FIMPixelRegion r)
         { return "(" + r.Left + "," + r.Top + ") - (" + r.Right + "," + r.Bottom + ")"; }
 
-        private static Button AddButton(Panel host, string label, string id, Action action)
+        private Button AddButton(Panel host, string label, string id, Action action)
         {
             Button button = new Button { Content = label, Margin = new Thickness(3),
                 Padding = new Thickness(9, 5, 9, 5), MinHeight = 29,
@@ -182,6 +182,7 @@ namespace CxVisual.TestCenter.UI
                 try { action(); }
                 catch (Exception error)
                 {
+                    Show("操作失败 [" + id + "]：" + error.Message);
                     MessageBox.Show(error.Message, "图像操作失败", MessageBoxButton.OK, MessageBoxImage.Warning);
                 }
             };
@@ -215,7 +216,7 @@ namespace CxVisual.TestCenter.UI
             return LoadAsync(path, () => FIMRawImageReader.LoadFile(path, width, height, format, 0, bigEndian));
         }
 
-        private async void OpenRawWithDialog()
+        private void OpenRawWithDialog()
         {
             int width, height;
             if (!int.TryParse(_rawWidth.Text, out width) || width <= 0 ||
@@ -226,7 +227,7 @@ namespace CxVisual.TestCenter.UI
                 Filter = "RAW图像|*.raw;*.bin;*.dat|所有文件|*.*",
                 Title = "打开原始图像（需已指定宽高和格式）" };
             if (dialog.ShowDialog() == true)
-                await OpenRawAsync(dialog.FileName, width, height, format, _bigEndian.IsChecked == true);
+                OpenRawAsync(dialog.FileName, width, height, format, _bigEndian.IsChecked == true);
         }
 
         private async Task<bool> LoadAsync(string path, Func<FIMImageBuffer> read)
