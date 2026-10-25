@@ -30,3 +30,13 @@
 - 加入独立Host进程启动与停止控制（基于已有正式Host而非在TestCenter复制Server机制），断线/拒绝/跨主机的正反例矩阵。
 - 进度、中间结果实时刷新、Operation多行状态列表与完整操作回放；此阶段保留最新值和单次人工会话，不伪装持久审计。
 - 将新增页纳入TestCenter统一视觉与全界面UIA；原UIA死锁/超时须以对应Windows日志修复，而不是延长等待冒充成功。
+
+## 增量：现有ArchitectureSmoke独立IPC Host可视验证
+
+右侧操作中心新增「启动独立Windows IPC测试Host」「停止独立测试Host」；调用既有 `CxVisual.Tests.ArchitectureSmoke.exe --command-pipe-child <PipeName>`，绝不在TestCenter增加第二套命令Server。
+
+- 测试Host的正式发布身份是 `Target=child/algorithm`、`CommandId=5183`、`Code=Calculate`、`SchemaVersion=1`、`Input/Factor` 与 `Output`。UI通过 `FDCCommandDefinition` 显示已知发布的测试合同，**不称为远端自动发现**。
+- 点击「启动」后建立与本工作区绑定的独立子进程，并等待真实 `IPC_CHILD_READY`，自动切换到 Windows Pipe 目标。之后通过原 `MRKCommandPipeClient` + `MRKCommandCenter` 调用、Query及MDS写回；并非进程内假执行。
+- 点击「停止」向测试子进程控制stdin请求退出；异常时回收子进程。操作记录仅说明测试Host关停，不代表PLC/设备安全停止。
+- `--command-ui-smoke` 增加独立进程Host → 真实OS管道 → 命令结果/Operation Query反证。测试Host必须是编译输出目录下的正式ArchitectureSmoke程序；找不到程序就报错，绝不返回演示成功。
+- 该流程是**本机双进程IPC**；跨PC网络ACL/凭据/防火墙、真实硬件Provider和Host重启后Operation持久恢复仍未验收。

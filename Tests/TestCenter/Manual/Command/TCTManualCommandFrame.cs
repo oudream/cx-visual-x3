@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -35,6 +36,8 @@ namespace CxVisual.TestCenter.UI
         }
 
         private readonly MRKCommandCenter _local = new MRKCommandCenter();
+        private readonly MRKCommandDescriptor _childContract = PublishedChildContract();
+        private Process _childHost;
         private readonly MDSVariableTable _variables = new MDSVariableTable("TestCenter.Command.Manual");
         private readonly MRKCommandMdsBinding _binding = new MRKCommandMdsBinding();
         private readonly List<IDisposable> _registrations = new List<IDisposable>();
@@ -92,6 +95,10 @@ namespace CxVisual.TestCenter.UI
                     new TCTWorkspaceAction("command.resume", "恢复运行", () => Run(ResumeAsync), () => !_closed && _activeOperation != Guid.Empty),
                     new TCTWorkspaceAction("command.cancel", "请求取消（非急停）", () => Run(CancelAsync), () => !_closed && _activeOperation != Guid.Empty),
                     new TCTWorkspaceAction("command.export", "导出本次人工会话记录", Export, () => !_closed && _history.Count > 0),
+                    new TCTWorkspaceAction("command.host.start", "启动独立Windows IPC测试Host", () => Run(StartChildHostAsync),
+                        () => !_closed && (_childHost == null || _childHost.HasExited)),
+                    new TCTWorkspaceAction("command.host.stop", "停止独立测试Host", StopChildHost,
+                        () => !_closed && _childHost != null && !_childHost.HasExited),
                     new TCTWorkspaceAction("command.refresh", "刷新命令目录", RefreshCatalog, () => !_closed)
                 };
             }
@@ -228,6 +235,83 @@ namespace CxVisual.TestCenter.UI
                 new[] { new FDCCommandParameterDefinition("Output", typeof(double), true) },
                 description: "TestCenter虚拟算法Provider，无PLC/机械动作", timeoutMilliseconds: 8000);
         }
+        private static MRKCommandDescriptor PublishedChildContract()
+        {
+            // 与现有ArchitectureSmoke.exe --command-pipe-child发布定义一致。
+            // 这是本地已知示例Contract，不等于远端Schema发现。
+            FDCCommandDefinition definition = new FDCCommandDefinition(5183, "Calculate",
+                "独立Windows进程算法测试", new[] {
+                    new FDCCommandParameterDefinition("Input", typeof(double), true,
+                        minValue: -1000.0, maxValue: 1000.0),
+                    new FDCCommandParameterDefinition("Factor", typeof(double), false, true, 2.0)
+                }, new[] { new FDCCommandParameterDefinition("Output", typeof(double), true) },
+                description: "ArchitectureSmoke正式IPC测试Host；非工厂PLC或真实设备");
+            return new MRKCommandDescriptor("child/algorithm", definition);
+        }
+
+        /// <summary>启动已有ArchitectureSmoke独立进程Host；请求和结果真正通过OS Pipe。</summary>
+        public async Task StartChildHostAsync()
+        {
+            if (_closed) throw new ObjectDisposedException("TCTManualCommandFrame");
+            if (_childHost != null && !_childHost.HasExited)
+                throw new InvalidOperationException("独立测试Host已经运行");
+            string executable = Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
+                "CxVisual.Tests.ArchitectureSmoke.exe");
+            if (!File.Exists(executable))
+                throw new FileNotFoundException("ArchitectureSmoke未编译，不能伪造独立Host", executable);
+            string name = "CxVisual.TCT.Child." + Guid.NewGuid().ToString("N");
+            ProcessStartInfo info = new ProcessStartInfo(executable,
+                "--command-pipe-child " + name) {
+                UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true,
+                RedirectStandardOutput = true, RedirectStandardError = true };
+            _childHost = Process.Start(info);
+            if (_childHost == null) throw new InvalidOperationException("独立测试Host无法启动");
+            try
+            {
+                Task<string> ready = _childHost.StandardOutput.ReadLineAsync();
+                Task signal = await Task.WhenAny(ready, Task.Delay(7000)).ConfigureAwait(true);
+                if (signal != ready || await ready.ConfigureAwait(true) != "IPC_CHILD_READY")
+                    throw new TimeoutException("独立IPC Host没有按时完成真实管道启动");
+                _host.Text = "."; _pipe.Text = name; _transport.SelectedIndex = 1;
+                SelectCommand(_childContract);
+                Log("IPC.Host.Start", Guid.Empty, "Ready", "独立进程PID=" + _childHost.Id);
+                Show("已启动真实独立Windows测试Host PID=" + _childHost.Id +
+                    "，选择了已发布示例Schema；不代表远程发现或设备联锁");
+            }
+            catch
+            {
+                StopChildHost();
+                throw;
+            }
+        }
+        public void StopChildHost()
+        {
+            Process child = _childHost;
+            _childHost = null;
+            if (child == null) return;
+            int processId = 0;
+            try
+            {
+                processId = child.Id;
+                if (!child.HasExited)
+                {
+                    try { child.StandardInput.WriteLine(); child.StandardInput.Flush(); }
+                    catch (IOException) { }
+                    if (!child.WaitForExit(3000))
+                    {
+                        child.Kill();
+                        child.WaitForExit(3000);
+                    }
+                }
+                if (!_closed)
+                {
+                    Log("IPC.Host.Stop", Guid.Empty, "Stopped",
+                        "测试Host PID=" + processId + "（未执行设备急停）");
+                    Show("独立测试Host已关闭，原远端操作不能继续假设可查询");
+                }
+            }
+            finally { child.Dispose(); Changed(); }
+        }
         public void RegisterDemo()
         {
             if (_closed || _registrations.Count > 0) return;
@@ -284,8 +368,15 @@ namespace CxVisual.TestCenter.UI
                 }
                 _commands.Items.Add(target);
             }
+            // 本地已发布的独立IPC测试契约，不加到本地MRK Registry中。
+            // 避免把CLI测试Host误认作本地Handler或自动发现的专业设备。
+            TreeViewItem remoteGroup = new TreeViewItem {
+                Header = "已知测试Host契约（非远程发现）", IsExpanded = true };
+            remoteGroup.Items.Add(new TreeViewItem {
+                Header = "child/algorithm · Calculate v1", Tag = _childContract });
+            _commands.Items.Add(remoteGroup);
             if (found.Length > 0) SelectCommand(found[0]);
-            else { _selected = null; _descriptor.Text = "未注册命令。"; _parameterGrid.Children.Clear(); }
+            else SelectCommand(_childContract);
             Changed();
         }
         private void SelectCommand(MRKCommandDescriptor descriptor)
@@ -549,6 +640,7 @@ namespace CxVisual.TestCenter.UI
             foreach (IDisposable token in _registrations) token.Dispose();
             _registrations.Clear();
             if (_remote != null) _remote.Dispose();
+            StopChildHost();
             _binding.Dispose();
             _local.Dispose();
         }
@@ -603,6 +695,21 @@ namespace CxVisual.TestCenter.UI
                     }
                     finally { await server.StopAsync().ConfigureAwait(true); }
                 }
+                // 现有ArchitectureSmoke.exe独立进程是真实的OS Host，
+                // 不使用TestCenter进程内Server来冒充跨进程证明。
+                await frame.StartChildHostAsync().ConfigureAwait(true);
+                try
+                {
+                    MRKCommandResponse independent = await frame.InvokeSelectedAsync()
+                        .ConfigureAwait(true);
+                    MRKCommandResponse confirmed = await frame.QueryAsync().ConfigureAwait(true);
+                    if (independent.State != MRKCommandState.Completed ||
+                        confirmed.State != MRKCommandState.Completed ||
+                        confirmed.OperationId != independent.OperationId ||
+                        (double)independent.Outputs["Output"] != 6.0)
+                        throw new InvalidOperationException("独立进程IPC命令未形成实际闭环");
+                }
+                finally { frame.StopChildHost(); }
                 frame._transport.SelectedIndex = 0;
                 frame.UnregisterDemo();
                 if (frame._local.Router.Discover().Count != 0)
