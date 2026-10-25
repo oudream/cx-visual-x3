@@ -121,6 +121,27 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Throws<ArgumentOutOfRangeException>(() =>
                 FIMRawImageReader.Load(new MemoryStream(new byte[4]), 2, 1, FIMPixelFormat.Gray16, 3),
                 "RAW错误Stride");
+            FIMImageBuffer small = new FIMImageBuffer(2, 2, FIMPixelFormat.Gray8,
+                new byte[] { 1,2,3,4 });
+            FIMImageBuffer rotated = FIMImageOperations.Rotate90Clockwise(small);
+            Assert(rotated.GetGrayValue(0,0) == 3 && rotated.GetGrayValue(1,0) == 1 &&
+                rotated.GetGrayValue(0,1) == 4, "顺时针旋转映射");
+            FIMImageBuffer restored = FIMImageOperations.Rotate90Counterclockwise(rotated);
+            Assert(restored.GetGrayValue(0,0) == 1 && restored.GetGrayValue(1,1) == 4,
+                "顺逆变换");
+            Assert(FIMImageOperations.FlipHorizontal(small).GetGrayValue(0,0) == 2 &&
+                FIMImageOperations.FlipVertical(small).GetGrayValue(0,0) == 3,
+                "双轴镜像");
+            FIMImageBuffer mask = FIMImageOperations.Threshold(gray16, 1024, 1024);
+            Assert(mask.GetGrayValue(0,0) == 0 && mask.GetGrayValue(1,0) == 255,
+                "16位原灰度阈值");
+            FIMImageBuffer difference = FIMImageOperations.DifferenceGray(gray16,
+                new FIMImageBuffer(2,1,FIMPixelFormat.Gray16,new byte[] { 0,0,255,3 }));
+            Assert(difference.PixelFormat == FIMPixelFormat.Gray16 &&
+                difference.GetGrayValue(1,0) == 1, "16位图差分");
+            Throws<ArgumentException>(() =>
+                FIMImageOperations.DifferenceGray(gray16,small), "差分尺寸位深不同");
+            Assert(small.GetGrayValue(0,0) == 1, "几何变换不修改原图");
             Console.WriteLine("PASS FIM Imaging 像素/ROI/统计/五区域/裁剪/异常");
         }
 

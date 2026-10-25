@@ -93,6 +93,94 @@ namespace CxVisual.Foundation.Imaging
             return FIMImageBuffer.FromOwnedArray(first.Width, first.Height, first.PixelFormat, result, stride);
         }
 
+        /// <summary>按像素变换缓冲，适用于全部已支持的位深/通道，不改变原图。</summary>
+        public static FIMImageBuffer Rotate90Clockwise(FIMImageBuffer image)
+        {
+            if (image == null) throw new ArgumentNullException("image");
+            return Remap(image, image.Height, image.Width, 1);
+        }
+        public static FIMImageBuffer Rotate90Counterclockwise(FIMImageBuffer image)
+        {
+            if (image == null) throw new ArgumentNullException("image");
+            return Remap(image, image.Height, image.Width, 2);
+        }
+        public static FIMImageBuffer FlipHorizontal(FIMImageBuffer image)
+        {
+            if (image == null) throw new ArgumentNullException("image");
+            return Remap(image, image.Width, image.Height, 3);
+        }
+        public static FIMImageBuffer FlipVertical(FIMImageBuffer image)
+        {
+            if (image == null) throw new ArgumentNullException("image");
+            return Remap(image, image.Width, image.Height, 4);
+        }
+
+        private static FIMImageBuffer Remap(FIMImageBuffer image, int newWidth, int newHeight, int kind)
+        {
+            int bytes = image.BytesPerPixel;
+            int stride = checked(newWidth * bytes);
+            byte[] source = image.CopyPixels();
+            byte[] target = new byte[checked(stride * newHeight)];
+            for (int y = 0; y < image.Height; y++)
+                for (int x = 0; x < image.Width; x++)
+                {
+                    int nx = x, ny = y;
+                    if (kind == 1) { nx = image.Height - y - 1; ny = x; }
+                    else if (kind == 2) { nx = y; ny = image.Width - x - 1; }
+                    else if (kind == 3) { nx = image.Width - x - 1; }
+                    else if (kind == 4) { ny = image.Height - y - 1; }
+                    Buffer.BlockCopy(source, y * image.Stride + x * bytes,
+                        target, ny * stride + nx * bytes, bytes);
+                }
+            return FIMImageBuffer.FromOwnedArray(newWidth, newHeight,
+                image.PixelFormat, target, stride);
+        }
+
+        /// <summary>原始灰度阈值范围，返回0/255的独立Gray8掩码。</summary>
+        public static FIMImageBuffer Threshold(FIMImageBuffer image, double low, double high)
+        {
+            if (image == null) throw new ArgumentNullException("image");
+            if (double.IsNaN(low) || double.IsInfinity(low) ||
+                double.IsNaN(high) || double.IsInfinity(high) || high < low)
+                throw new ArgumentOutOfRangeException("high");
+            byte[] result = new byte[checked(image.Width * image.Height)];
+            int index = 0;
+            for (int y = 0; y < image.Height; y++)
+                for (int x = 0; x < image.Width; x++)
+                {
+                    double value = image.GetGrayValue(x, y);
+                    result[index++] = !double.IsNaN(value) && value >= low && value <= high ?
+                        (byte)255 : (byte)0;
+                }
+            return FIMImageBuffer.FromOwnedArray(image.Width, image.Height,
+                FIMPixelFormat.Gray8, result, image.Width);
+        }
+
+        /// <summary>同位深Gray8/Gray16图像绝对差分，不丢失16位原始动态范围。</summary>
+        public static FIMImageBuffer DifferenceGray(FIMImageBuffer original, FIMImageBuffer result)
+        {
+            if (original == null) throw new ArgumentNullException("original");
+            if (result == null) throw new ArgumentNullException("result");
+            if ((original.PixelFormat != FIMPixelFormat.Gray8 &&
+                 original.PixelFormat != FIMPixelFormat.Gray16) ||
+                original.PixelFormat != result.PixelFormat ||
+                original.Width != result.Width || original.Height != result.Height)
+                throw new ArgumentException("差分图必须同尺寸、同Gray8或Gray16格式。", "result");
+            int bpp = original.BytesPerPixel;
+            int stride = checked(original.Width * bpp);
+            byte[] output = new byte[checked(stride * original.Height)];
+            for (int y = 0; y < original.Height; y++)
+                for (int x = 0; x < original.Width; x++)
+                {
+                    int delta = (int)Math.Abs(original.GetGrayValue(x,y) - result.GetGrayValue(x,y));
+                    int i = y * stride + x * bpp;
+                    output[i] = (byte)(delta & 255);
+                    if (bpp == 2) output[i+1] = (byte)(delta >> 8);
+                }
+            return FIMImageBuffer.FromOwnedArray(original.Width, original.Height,
+                original.PixelFormat, output, stride);
+        }
+
         public static FIMImageBuffer Crop(FIMImageBuffer image, FIMPixelRegion region)
         {
             if (image == null) throw new ArgumentNullException("image");
