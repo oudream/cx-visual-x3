@@ -64,3 +64,10 @@ if ($LASTEXITCODE -ne 0) { throw 'Default smoke failed' }
 - MVI视图Pan/Zoom/ROI手势、Overlay/Undo统一集成；FVO RAW/体素/斜切；TCT两个真正可用的原生WPF Viewer/四视图/图形界面与UIA。
 - 当前连接未返回上述源码提交的任何Windows工作流运行，不能将Git提交、源码路径或自带的断言视为Windows构建/运行已通过。
 - `ReferTo/CommonInterfaces` 不属于S0当时213文件统计；其中`BufferHelper` 等通用工具仍须按Foundation.Data/Transport/Infrastructure原Owner审计，不能因为引用视觉工具而整包迁FIM。
+
+## 6. 本轮追加优化记录（2026-10-25）
+
+- **`7bcafde`**：将原 `FIMImageAnalysis.cs` 中多个公开类型拆为 `FIMImageStatistics.cs`、`FIMImageHistogram.cs`、`FIMImageAnalysisResult.cs`、`FIMFiveRegionResult.cs` 与 `FIMImageAnalyzer.cs`；旧合并文件已从Git实际删除，`.csproj`指向五个新文件，避免两套重复定义。
+- 对 `FIMPixelSpacing` 的 `default(FIMPixelSpacing)` 值增补防御：未初始化却以nullable有值传入时，物理长度/面积计算必须抛出异常，不得悄然返回0；异常反证已写入 `FIMImagingTests.cs`。
+- 当前源码入口对应提交：`7bcafde8225cf56a765faff0d399715238d9c552`；专项Windows工作流在 `5920c173` 提交创建。
+- **核验状态**：GitHub已确认代码和传统`.csproj`文件路径存在、旧合并文件已删除、`--imaging`与默认回归均包含两类测试；仓库当前尚未返回对应提交的任何 GitHub Actions 运行记录。静态存在性检查不等于C#真实编译，最终验收继续待Windows runner或Windows开发机执行。
