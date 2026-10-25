@@ -44,3 +44,14 @@
 ## 命令工作区专项 Windows UI Automation 验证
 
 新增 `CxVisual.TestCenter.exe --command-ui-automation`：打开真实WPF Shell，通过 Windows UIAutomation `Tree`/文本框`ValuePattern`/右侧按钮`InvokePattern` 输入 `Input=4` 并执行，检查正式MRK返回 `Output=8`，然后实际点击Query并检查人工会话日志DataGrid。这是交互路径验证而不是直接调用Frame API的替代品。独立 `testcenter-command-windows.yml` 同时覆盖WPF直接冒烟、真实UIA和原命令机制专项。仍不替代整套TestCenter 16张截图/各Owner UIA验收。
+
+## 增量：真实执行观测（进度 / 中间值 / 最终结果三态分离）
+
+- `MRKCommandExecution.Snapshot` 在原有 `_gate` 内原子组合当前状态、`ProgressPercent`（可空）、`ProgressMessage` 及 `IntermediateOutputs`。没有Handler上报时返回null而**不是100%**；执行Completed也不能伪造进度100%。
+- `MRKCommandResponse` 保留最终 `Outputs` 与进度/中间值分开，返回的复杂值仍由现有 `FDCCommandValueSnapshot` 隔离，任何观察者不得修改原操作或其他观察者的内容。
+- IPC复用既有Windows NamedPipe安全白名单 `FDCCommandValueCodec`；Query返回附加的 `progress`、`progressMessage`、`intermediate` 字段。老帧缺少扩展字段时解析为空，不猜测；非法百分比/中间值结构拒绝。它是现有Query扩展，**不是额外命令或新状态仓**。
+- TestCenter工作区「执行监视」新增真实进度条、Handler进度描述与最新中间值。提交Operation后按本地90ms、远程350ms的有界异步Query采样；仅新增变化观察记录，不重新发Invoke，不把查询/IPC中断误报为设备失败。
+- 测试用 `ProcessSteps` Handler每步调用正式 `ReportProgress` / `ReportIntermediate`（30步）。`--command-ui-smoke` 等待实际运行中进度小于100、中间值Step可见，再验证最终100及Output，不允许只显示最终完成伪造实时监视。
+- `--command-center` 覆盖真正Windows Pipe运行态Query、恶意修改byte[]反证、完成后保留实际25%而不假设100%、没有进度上报时为null。全部以对应SHA Windows CI为准。
+
+尚未实现正式Operation多任务历史仓与事件Push订阅；目前显示当前工作区选中的Operation并保留人工观察行（非正式NUnit/TCT Run）。跨PC/HIL仍不可据此标为已验收。

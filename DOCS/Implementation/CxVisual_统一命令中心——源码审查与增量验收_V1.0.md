@@ -494,3 +494,15 @@ sequenceDiagram
 - 进度/中间结果跨IPC主动推送（当前仍是操作最终结果/Query），Studio具体界面与MOL/MOC实际编排落地。
 - 真机HIL、急停/安全联锁、执行暂停后的设备安全确认，均归Professional/设备控制系统，不能由Command消息进行承诺。
 - 高并发多主机控制冲突、全链路正式审计、跨版本协议握手及容量长期压测。
+
+## 26. MRK命令Query观测扩展及TestCenter实时进度（2026-10-25）
+
+**Owner**：`Mechanism/Runtime/Commands/MRKCommandContracts.cs` 的 `MRKCommandResponse` 新增只读`ProgressPercent?`、`ProgressMessage`、`IntermediateOutputs`；`MRKCommandExecution.Snapshot()` 锁内读取当前执行态+观测值。没有Handler进度报告时仍为null（即使Completed）。Final Outputs和IntermediateOutputs严格隔离，均复用Foundation.Data的防引用逃逸值快照。
+
+**传输**：`MRKCommandPipeWire.ResponseFrame/ParseResponse` 沿用V1安全值帧，添加可选progress/message/intermediate字段，缺失扩展时后向兼容返回未报告；进度0..100且非NaN/Inf、中间值必须命名Map、进度文字有长度约束。调用者RequestId/OperationId关联和Windows Peer授权不变；轮询只用Query，不发第二次业务Invoke。
+
+**GUI**：`TCTManualCommandFrame` 扩展执行监视面板；长任务 `ProcessSteps` 通过原正式Handler协作点上报真实进度/中间值；UI按操作归属和模式Query，异步采样、关闭取消，记录有界观察行与最终结果。阶段性观察结果和最终业务回执不能互相覆盖。
+
+**证据门槛**：`CommandCenterTests.ProgressObservationRun` 在本机真实OS Pipe通过操作尚未结算时的查询证明进度与中间值、字节数组防污染、执行Completed后仍保持真实25%及未上报为null反例；`TCTManualCommandFrame.VerifyLocalAsync` 验证运行中出现0<进度<100且Step中间值、最终输出和100%进度。具体CI结果只能用本次新提交SHA的`--command-center`、`--command-ui-smoke`认定，不复用其他提交成功证明。
+
+**未完成**：远程Schema自动发现与完整握手、持久历史及完整操作回放、任意专业Handler订阅推送、跨PC认证和真实设备HIL。当前仅在明确已发布进度的示例长任务上显示数字百分比，实际设备状态必须由专业Owner提供。

@@ -57,6 +57,12 @@ namespace CxVisual.TestCenter.UI
             FontSize = 14, TextWrapping = TextWrapping.Wrap };
         private readonly TextBlock _progress = new TextBlock { Text = "进度尚未开始",
             Foreground = Brushes.SlateGray };
+        private readonly ProgressBar _progressBar = new ProgressBar { Minimum = 0, Maximum = 100,
+            Height = 17, Margin = new Thickness(3, 10, 3, 7) };
+        private readonly TextBlock _intermediate = new TextBlock {
+            Text = "没有中间结果", TextWrapping = TextWrapping.Wrap,
+            Foreground = Brushes.SlateGray, Margin = new Thickness(3, 6, 3, 9) };
+        private double? _observedProgress;
         private readonly CheckBox _writeBack = new CheckBox { Content = "将 Output 映射到真实MDS变量 LastOutput",
             IsChecked = true, Margin = new Thickness(4, 9, 4, 9) };
         private readonly ComboBox _transport = new ComboBox { Width = 240,
@@ -79,6 +85,8 @@ namespace CxVisual.TestCenter.UI
         public int HistoryCount { get { return _history.Count; } }
         public MRKCommandResponse LastResponse { get { return _last; } }
         public string StatusSummary { get { return _status.Text; } }
+        public double? ObservedProgressPercent { get { return _observedProgress; } }
+        public string ObservedIntermediateSummary { get { return _intermediate.Text; } }
 
         public IEnumerable<TCTWorkspaceAction> Commands
         {
@@ -176,7 +184,12 @@ namespace CxVisual.TestCenter.UI
             monitor.Children.Add(Caption("OperationId、受理/执行/业务状态彼此独立；Unknown不能作为失败或安全停机证据。"));
             monitor.Children.Add(_operation);
             monitor.Children.Add(_progress);
+            monitor.Children.Add(_progressBar);
+            monitor.Children.Add(Caption("最新中间结果（与最终 Outputs 分离）"));
+            monitor.Children.Add(_intermediate);
             monitor.Children.Add(_results);
+            AutomationProperties.SetAutomationId(_progressBar, "TCT.Command.Monitor.Progress");
+            AutomationProperties.SetAutomationId(_intermediate, "TCT.Command.Monitor.Intermediate");
             tabs.Items.Add(Tab("执行监视", monitor));
 
             StackPanel ipc = new StackPanel { Margin = new Thickness(13) };
@@ -338,6 +351,11 @@ namespace CxVisual.TestCenter.UI
                                 cancellation.ThrowIfCancellationRequested();
                                 await context.WaitWhilePausedAsync(cancellation).ConfigureAwait(false);
                                 context.ReportProgress((i + 1) * 100.0 / 30, "演示处理");
+                                context.ReportIntermediate(new Dictionary<string, object> {
+                                    { "Step", i + 1 }, { "Partial",
+                                        (double)values["Input"] * (double)values["Factor"] *
+                                        (i + 1) / 30.0 }
+                                });
                                 await Task.Delay(60, cancellation).ConfigureAwait(false);
                             }
                         else context.ReportProgress(100, "演示完成");
@@ -504,12 +522,76 @@ namespace CxVisual.TestCenter.UI
             }
             return _remote;
         }
+        private void DisplayObservation(MRKCommandResponse response)
+        {
+            if (response == null || response.OperationId != _activeOperation || _closed)
+                return;
+            if (response.ProgressPercent.HasValue)
+            {
+                _observedProgress = response.ProgressPercent.Value;
+                _progressBar.Value = response.ProgressPercent.Value;
+                _progress.Text = "真实Handler进度：" +
+                    response.ProgressPercent.Value.ToString("F1", CultureInfo.InvariantCulture) +
+                    "% · " + response.ProgressMessage + " · " + response.State;
+            }
+            else _progress.Text = "状态：" + response.State + " · Handler未报告进度";
+            IReadOnlyDictionary<string, object> intermediate = response.IntermediateOutputs;
+            _intermediate.Text = intermediate.Count == 0 ? "未报告中间结果" :
+                string.Join("  |  ", intermediate.Select(x => x.Key + "=" +
+                    Convert.ToString(x.Value, CultureInfo.InvariantCulture)));
+        }
+
+        private async Task ObserveOperationAsync(MRKCommandCenter center, Guid operationId,
+            bool remote, CancellationToken cancellation)
+        {
+            string lastEvidence = null;
+            bool loggedError = false;
+            try
+            {
+                while (!cancellation.IsCancellationRequested && !_closed &&
+                    operationId == _activeOperation)
+                {
+                    // 有界采样，不创建第二个事件/状态仓。所有观察经正式Query路径。
+                    await Task.Delay(remote ? 350 : 90, cancellation).ConfigureAwait(true);
+                    MRKCommandResponse observed = remote
+                        ? await center.QueryRemoteAsync(operationId, cancellation).ConfigureAwait(true)
+                        : center.Query(operationId);
+                    if (observed == null || observed.Stage != MRKCommandStage.Accepted ||
+                        observed.OperationId != operationId) continue;
+                    DisplayObservation(observed);
+                    string snapshot = observed.State + "/" +
+                        (observed.ProgressPercent.HasValue ?
+                            ((int)observed.ProgressPercent.Value / 10).ToString(
+                                CultureInfo.InvariantCulture) : "-");
+                    if (snapshot != lastEvidence)
+                    {
+                        Log("Observe", operationId, snapshot,
+                            "真实MRK Query / " + observed.ProgressMessage);
+                        lastEvidence = snapshot;
+                    }
+                    if (observed.State == MRKCommandState.Completed ||
+                        observed.State == MRKCommandState.Cancelled ||
+                        observed.State == MRKCommandState.Failed) break;
+                }
+            }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+            { }
+            catch (Exception error)
+            {
+                if (!loggedError && !_closed) Log("Observe", operationId, "ObservationUnknown",
+                    "观察链路失败，不能推断Handler失败：" + error.Message);
+                loggedError = true;
+            }
+        }
+
         public async Task<MRKCommandResponse> InvokeSelectedAsync()
         {
             if (_closed) throw new ObjectDisposedException("TCTManualCommandFrame");
             if (_busy) throw new InvalidOperationException("已有命令正在等待应答");
             if (_selected == null) throw new InvalidOperationException("未选择已注册的命令");
             _busy = true; Changed();
+            CancellationTokenSource observationCancellation = null;
+            Task observationTask = null;
             try
             {
                 List<MRKCommandParameterBinding> sources = new List<MRKCommandParameterBinding>();
@@ -530,6 +612,11 @@ namespace CxVisual.TestCenter.UI
                     outputs.Add(new MRKCommandParameterBinding("Output", "mds.output"));
                 Log("Invoke", id, "Requested", "Target=" + request.Target +
                     "; Code=" + request.CommandCode + "; Remote=" + IsRemote);
+                _observedProgress = null; _progressBar.Value = 0;
+                _progress.Text = "请求已提交，等待真实MRK状态"; _intermediate.Text = "未报告中间结果";
+                observationCancellation = new CancellationTokenSource();
+                observationTask = ObserveOperationAsync(center, id, IsRemote,
+                    observationCancellation.Token);
                 MRKCommandBindingResult result = await center.InvokeBoundResultAsync(request,
                     _binding, sources, outputs).ConfigureAwait(true);
                 _last = result.Execution;
@@ -545,7 +632,16 @@ namespace CxVisual.TestCenter.UI
                 Show("参数预检或命令调用失败：" + error.Message);
                 throw;
             }
-            finally { _busy = false; Changed(); }
+            finally
+            {
+                if (observationCancellation != null)
+                {
+                    observationCancellation.Cancel();
+                    try { if (observationTask != null) await observationTask.ConfigureAwait(true); }
+                    finally { observationCancellation.Dispose(); }
+                }
+                _busy = false; Changed();
+            }
         }
         private void DisplayResponse(string action, MRKCommandResponse response, string note = "")
         {
@@ -558,7 +654,7 @@ namespace CxVisual.TestCenter.UI
                 string.Join(", ", response.Outputs.Select(x => x.Key + "=" +
                     Convert.ToString(x.Value, CultureInfo.InvariantCulture))) +
                 "\n" + note + "  Duration=" + response.DurationMilliseconds.ToString("F0") + "ms";
-            _progress.Text = "当前状态：" + response.State;
+            DisplayObservation(response);
             Log(action, response.OperationId, response.Stage + "/" + response.State,
                 response.ErrorCode + " " + note);
             Show(action + "：" + response.State + "（业务与设备安全结果分别确认）");
@@ -580,12 +676,6 @@ namespace CxVisual.TestCenter.UI
                 _local.Query(_activeOperation);
             if (reply == null) throw new KeyNotFoundException("Operation不存在或已离开本地账本");
             DisplayResponse("Query", reply);
-            if (!IsRemote)
-            {
-                MRKCommandMetrics metrics = _local.GetMetrics();
-                _progress.Text = "统计：Running=" + metrics.Running +
-                    " / Completed=" + metrics.Completed + " / Cancelled=" + metrics.Cancelled;
-            }
             return reply;
         }
         public async Task<MRKCommandResponse> PauseAsync()
@@ -680,6 +770,31 @@ namespace CxVisual.TestCenter.UI
                 catch (ArgumentException) { rejected = true; }
                 if (!rejected) throw new InvalidOperationException("嵌套对象非法成员未拒绝");
                 frame._editors["Options"].Text = "{\"Label\":\"Demo\",\"Enabled\":true}";
+                // 实际长任务按 MRK Query 采样进度与最新中间值；不能直接虚填进度条。
+                MRKCommandDescriptor steps = frame._local.Router.Discover().First(
+                    x => x.Definition.CommandCode == "ProcessSteps");
+                frame.SelectCommand(steps);
+                Task<MRKCommandResponse> running = frame.InvokeSelectedAsync();
+                bool observedDuringRun = false;
+                for (int i = 0; i < 70 && !running.IsCompleted; i++)
+                {
+                    await Task.Delay(35).ConfigureAwait(true);
+                    double? current = frame.ObservedProgressPercent;
+                    if (current.HasValue && current.Value > 0 && current.Value < 100 &&
+                        frame.ObservedIntermediateSummary.Contains("Step="))
+                    { observedDuringRun = true; break; }
+                }
+                if (!observedDuringRun)
+                    throw new InvalidOperationException("长任务运行期间未显示真实MRK进度和中间值");
+                MRKCommandResponse finishedLong = await running.ConfigureAwait(true);
+                MRKCommandResponse observedFinal = await frame.QueryAsync().ConfigureAwait(true);
+                if (finishedLong.State != MRKCommandState.Completed ||
+                    observedFinal.ProgressPercent != 100 ||
+                    frame._progressBar.Value != 100 ||
+                    (double)observedFinal.Outputs["Output"] != 6.0)
+                    throw new InvalidOperationException("长任务最终输出/观察进度没有形成闭环");
+                frame.SelectCommand(frame._local.Router.Discover().First(
+                    x => x.Definition.CommandCode == "Multiply"));
                 // 本机真实Windows OS Pipe；不冒充双进程或跨PC。
                 string pipeName = "CxVisual.TCT.Command." + Guid.NewGuid().ToString("N");
                 using (MRKCommandPipeServer server = new MRKCommandPipeServer(

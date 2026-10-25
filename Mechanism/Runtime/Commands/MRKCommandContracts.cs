@@ -142,7 +142,9 @@ namespace CxVisual.Mechanism.Runtime.Commands
             IReadOnlyDictionary<string, object> outputs = null,
             bool? businessSuccess = null, string businessCode = null,
             string errorCode = null, string error = null, double durationMs = 0,
-            FDTDataAdapterRegistry adapters = null)
+            FDTDataAdapterRegistry adapters = null,
+            double? progressPercent = null, string progressMessage = null,
+            IReadOnlyDictionary<string, object> intermediateOutputs = null)
         {
             RequestId = requestId; OperationId = operationId; Stage = stage; State = state;
             _adapters = adapters;
@@ -150,6 +152,13 @@ namespace CxVisual.Mechanism.Runtime.Commands
             BusinessSuccess = businessSuccess; BusinessCode = businessCode ?? string.Empty;
             ErrorCode = errorCode ?? string.Empty; Error = error ?? string.Empty;
             DurationMilliseconds = durationMs;
+            if (progressPercent.HasValue &&
+                (double.IsNaN(progressPercent.Value) || double.IsInfinity(progressPercent.Value) ||
+                 progressPercent.Value < 0 || progressPercent.Value > 100))
+                throw new ArgumentOutOfRangeException("progressPercent");
+            ProgressPercent = progressPercent;
+            ProgressMessage = progressMessage ?? string.Empty;
+            _intermediateOutputs = FDCCommandValueSnapshot.Capture(intermediateOutputs, adapters);
         }
         public Guid RequestId { get; private set; }
         public Guid OperationId { get; private set; }
@@ -165,9 +174,17 @@ namespace CxVisual.Mechanism.Runtime.Commands
         public string ErrorCode { get; private set; }
         public string Error { get; private set; }
         public double DurationMilliseconds { get; private set; }
+        /// <summary>仅Query快照报告Handler的进度；null表示从未上报，不可推断100%。</summary>
+        public double? ProgressPercent { get; private set; }
+        public string ProgressMessage { get; private set; }
+        private readonly IReadOnlyDictionary<string, object> _intermediateOutputs;
+        /// <summary>与最终Outputs完全分离，读取返回可变对象的防污染快照。</summary>
+        public IReadOnlyDictionary<string, object> IntermediateOutputs
+        { get { return FDCCommandValueSnapshot.Capture(_intermediateOutputs, _adapters); } }
         internal MRKCommandResponse Copy(FDTDataAdapterRegistry adapters, Guid? requestId = null)
         { return new MRKCommandResponse(requestId ?? RequestId, OperationId, Stage, State, Outputs,
-            BusinessSuccess, BusinessCode, ErrorCode, Error, DurationMilliseconds, adapters); }
+            BusinessSuccess, BusinessCode, ErrorCode, Error, DurationMilliseconds, adapters,
+            ProgressPercent, ProgressMessage, IntermediateOutputs); }
     }
 
     /// <summary>进程内有界操作账本的只读统计，不表示远程设备已经安全停止。</summary>
@@ -311,6 +328,7 @@ namespace CxVisual.Mechanism.Runtime.Commands
         internal readonly FDTDataAdapterRegistry Adapters;
         private MRKCommandResponse _latest;
         private double _progress;
+        private bool _hasReportedProgress;
         private int _attemptCount;
         private string _message = string.Empty;
         private IReadOnlyDictionary<string, object> _intermediateOutputs;
@@ -342,7 +360,16 @@ namespace CxVisual.Mechanism.Runtime.Commands
             }
         }
         public MRKCommandResponse Snapshot()
-        { lock (_gate) return _latest.Copy(Adapters); }
+        {
+            // 同一Gate获取状态、进度和最新中间值，避免混合不同Handler时刻。
+            lock (_gate)
+                return new MRKCommandResponse(Request.RequestId, OperationId,
+                    _latest.Stage, _latest.State, _latest.Outputs, _latest.BusinessSuccess,
+                    _latest.BusinessCode, _latest.ErrorCode, _latest.Error,
+                    _latest.DurationMilliseconds, Adapters,
+                    _hasReportedProgress ? (double?)_progress : null, _message,
+                    _intermediateOutputs);
+        }
         internal double DurationMs { get { return (DateTime.UtcNow - _created).TotalMilliseconds; } }
         internal void Queued()
         {
@@ -357,7 +384,9 @@ namespace CxVisual.Mechanism.Runtime.Commands
         internal void MarkAttempt(int attempt)
         { Interlocked.Exchange(ref _attemptCount, attempt); }
         internal void Report(double percent, string message)
-        { lock (_gate) { if (!IsCompleted) { _progress = percent; _message = message; } } }
+        { lock (_gate) { if (!IsCompleted) {
+            _progress = percent; _message = message; _hasReportedProgress = true;
+        } } }
         internal void ReportIntermediate(IReadOnlyDictionary<string, object> values)
         {
             IReadOnlyDictionary<string, object> snapshot = FDCCommandValueSnapshot.Capture(values, Adapters);

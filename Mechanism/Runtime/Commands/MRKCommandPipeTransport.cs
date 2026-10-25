@@ -115,6 +115,9 @@ namespace CxVisual.Mechanism.Runtime.Commands
             IReadOnlyDictionary<string, object> values = response.Outputs;
             Dictionary<string, object> result = new Dictionary<string, object>(StringComparer.Ordinal);
             foreach (KeyValuePair<string, object> item in values) result.Add(item.Key, item.Value);
+            Dictionary<string, object> intermediate = new Dictionary<string, object>(StringComparer.Ordinal);
+            foreach (KeyValuePair<string, object> item in response.IntermediateOutputs)
+                intermediate.Add(item.Key, item.Value);
             return FDCCommandValueCodec.Encode(new Dictionary<string, object> {
                 { "kind", "response" }, { "requestId", response.RequestId },
                 { "operationId", response.OperationId },
@@ -123,7 +126,11 @@ namespace CxVisual.Mechanism.Runtime.Commands
                     (object)response.BusinessSuccess.Value : null },
                 { "businessCode", response.BusinessCode }, { "errorCode", response.ErrorCode },
                 { "error", response.Error }, { "duration", response.DurationMilliseconds },
-                { "outputs", result }
+                { "outputs", result },
+                { "progress", response.ProgressPercent.HasValue ?
+                    (object)response.ProgressPercent.Value : null },
+                { "progressMessage", response.ProgressMessage },
+                { "intermediate", intermediate }
             });
         }
         internal static MRKCommandResponse ParseResponse(byte[] frame,
@@ -141,13 +148,37 @@ namespace CxVisual.Mechanism.Runtime.Commands
             IReadOnlyDictionary<string, object> outputs =
                 values["outputs"] as IReadOnlyDictionary<string, object>;
             if (outputs == null) throw new InvalidDataException("远程输出不是命名对象");
+            // V1老Host不携带观测扩展字段时仍能解析，且不推断100%成功。
+            object progressValue;
+            double? progress = null;
+            if (values.TryGetValue("progress", out progressValue) && progressValue != null)
+            {
+                if (!(progressValue is double) ||
+                    double.IsNaN((double)progressValue) || double.IsInfinity((double)progressValue) ||
+                    (double)progressValue < 0 || (double)progressValue > 100)
+                    throw new InvalidDataException("远程进度不是合法0~100百分比");
+                progress = (double)progressValue;
+            }
+            object messageValue;
+            string progressMessage = values.TryGetValue("progressMessage", out messageValue) &&
+                messageValue is string ? (string)messageValue : string.Empty;
+            if (progressMessage.Length > 1024)
+                throw new InvalidDataException("远程进度描述超长");
+            object intermediateValue;
+            IReadOnlyDictionary<string, object> intermediate = null;
+            if (values.TryGetValue("intermediate", out intermediateValue))
+            {
+                intermediate = intermediateValue as IReadOnlyDictionary<string, object>;
+                if (intermediate == null)
+                    throw new InvalidDataException("远程中间值不是命名对象");
+            }
             return new MRKCommandResponse(expectedRequestId, expectedOperationId,
                 (MRKCommandStage)stage, (MRKCommandState)state, outputs,
                 values["businessSuccess"] == null ? (bool?)null :
                     (bool)values["businessSuccess"],
                 StringValue(values, "businessCode"),
                 StringValue(values, "errorCode"), StringValue(values, "error"),
-                (double)values["duration"]);
+                (double)values["duration"], null, progress, progressMessage, intermediate);
         }
         internal static async Task WriteAsync(Stream stream, byte[] frame,
             CancellationToken cancellation)

@@ -142,6 +142,100 @@ namespace CxVisual.Tests.ArchitectureSmoke
             }
         }
 
+        /// <summary>
+        /// 同一MRK Operation原子读取执行态/进度/中间值；Windows真实Pipe透传，
+        /// 快照不可污染，未上报的进度不允许由UI或IPC推断为100%。
+        /// </summary>
+        private static void ProgressObservationRun()
+        {
+            string name = "CxVisual.Progress." + Guid.NewGuid().ToString("N");
+            TaskCompletionSource<bool> began = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<bool> release = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            int invokes = 0;
+            using (MRKCommandCenter center = new MRKCommandCenter())
+            using (center.Register(new MRKCommandDescriptor("ipc/progress", Definition()),
+                new MRKDelegateCommandHandler(async (context, values, cancellation) =>
+                {
+                    Interlocked.Increment(ref invokes);
+                    context.ReportProgress(25, "Phase 1");
+                    byte[] raw = new byte[] { 7, 8 };
+                    context.ReportIntermediate(new Dictionary<string, object> {
+                        { "Step", 1 }, { "Bytes", raw }
+                    });
+                    raw[0] = 99;
+                    began.TrySetResult(true);
+                    await release.Task.ConfigureAwait(false);
+                    return new MRKCommandHandlerResult(new Dictionary<string, object> {
+                        { "Output", (double)values["Input"] * 2.0 }
+                    });
+                })))
+            using (MRKCommandPipeServer server = new MRKCommandPipeServer(
+                center, name, peer => !string.IsNullOrWhiteSpace(peer)))
+            {
+                server.Start();
+                Guid op = Guid.NewGuid();
+                MRKCommandPipeClient client = new MRKCommandPipeClient(".", name, 3000, 7000);
+                Task<MRKCommandResponse> pending = client.InvokeAsync(new MRKCommandRequest(
+                    "ipc/progress", 5183,
+                    new Dictionary<string, object> { { "Input", 4.0 } },
+                    operationId: op, expectedSchemaVersion: 1,
+                    options: new MRKCommandOptions(remote: true, timeoutMilliseconds: 6000)));
+                try
+                {
+                    Check(began.Task.Wait(TimeSpan.FromSeconds(3)),
+                        "progress handler did not begin");
+                    MRKCommandResponse local = center.Query(op);
+                    MRKCommandResponse remote = client.QueryAsync(op).GetAwaiter().GetResult();
+                    Check(local != null && local.State == MRKCommandState.Running &&
+                        local.ProgressPercent == 25 &&
+                        remote.Stage == MRKCommandStage.Accepted &&
+                        remote.ProgressPercent == 25 &&
+                        remote.ProgressMessage == "Phase 1" &&
+                        (int)remote.IntermediateOutputs["Step"] == 1 &&
+                        ((byte[])remote.IntermediateOutputs["Bytes"])[0] == 7,
+                        "Query must expose actual progress and intermediate snapshot over OS pipe");
+                    byte[] stolen = (byte[])remote.IntermediateOutputs["Bytes"];
+                    stolen[0] = 23;
+                    byte[] stolenLocal = (byte[])local.IntermediateOutputs["Bytes"];
+                    stolenLocal[0] = 44;
+                    Check(((byte[])center.Query(op).IntermediateOutputs["Bytes"])[0] == 7 &&
+                        ((byte[])client.QueryAsync(op).GetAwaiter()
+                            .GetResult().IntermediateOutputs["Bytes"])[0] == 7,
+                        "local and IPC observation must defend against mutable aliasing");
+                    Check(local.Outputs.Count == 0 && remote.Outputs.Count == 0,
+                        "intermediate values must not be mistaken for final outputs");
+                }
+                finally { release.TrySetResult(true); }
+                MRKCommandResponse completed = pending.GetAwaiter().GetResult();
+                MRKCommandResponse observed = client.QueryAsync(op).GetAwaiter().GetResult();
+                Check(invokes == 1 && completed.State == MRKCommandState.Completed &&
+                    (double)completed.Outputs["Output"] == 8.0 &&
+                    observed.ProgressPercent == 25 &&
+                    observed.State == MRKCommandState.Completed &&
+                    (double)observed.Outputs["Output"] == 8.0,
+                    "completed result must retain the actual 25% observation, never fabricate 100%");
+                server.StopAsync().GetAwaiter().GetResult();
+            }
+            // 没有上报进度时，进度值应为null，不因执行Completed而自行设为100。
+            using (MRKCommandCenter center = new MRKCommandCenter())
+            using (center.Register(new MRKCommandDescriptor("progress/none", Definition()),
+                new MRKDelegateCommandHandler((ctx, input, ct) =>
+                    Task.FromResult(new MRKCommandHandlerResult(
+                        new Dictionary<string, object> { { "Output", 6.0 } })))))
+            {
+                MRKCommandRequest req = new MRKCommandRequest("progress/none", 5183,
+                    new Dictionary<string, object> { { "Input", 3.0 } });
+                MRKCommandResponse completed = center.InvokeAsync(req).GetAwaiter().GetResult();
+                MRKCommandResponse observed = center.Query(req.OperationId);
+                Check(completed.State == MRKCommandState.Completed && observed != null &&
+                    !observed.ProgressPercent.HasValue &&
+                    observed.IntermediateOutputs.Count == 0,
+                    "Completed must not fabricate Handler progress or intermediate results");
+            }
+        }
+
         /// <summary>真实Windows命名管道：认证Host、IPC调用、目标关联与相同OperationId重放。</summary>
         private static void NamedPipeRun()
         {
@@ -1621,6 +1715,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             PipeSilentPeerRun();
             PipeIdleSessionBudgetRun();
             RemoteOperationControlRun();
+            ProgressObservationRun();
             SeparateProcessPipeRun();
             QueuedRun();
             ConfiguredBindingRun();
