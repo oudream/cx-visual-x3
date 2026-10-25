@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
@@ -33,6 +34,9 @@ namespace CxVisual.TestCenter.UI
         private readonly TextBox _rawHeight = new TextBox { Width = 65, Text = "1024", Margin = new Thickness(2) };
         private readonly ComboBox _rawFormat = new ComboBox { Width = 122, Margin = new Thickness(2) };
         private readonly CheckBox _bigEndian = new CheckBox { Content = "大端字节序", Margin = new Thickness(8, 4, 8, 4) };
+        private readonly ComboBox _filterRadius = new ComboBox { Width = 66, Margin = new Thickness(3) };
+        private readonly TextBox _sigma = new TextBox { Width = 58, Text = "1.0", Margin = new Thickness(3) };
+        private readonly TextBox _amount = new TextBox { Width = 58, Text = "0.8", Margin = new Thickness(3) };
         private readonly TextBox _low = new TextBox { Width = 74, Text = "0", Margin = new Thickness(2) };
         private readonly TextBox _high = new TextBox { Width = 82, Text = "65535", Margin = new Thickness(2) };
         private readonly CheckBox _roiTool = new CheckBox { Content = "ROI框选", Margin = new Thickness(10, 3, 8, 3),
@@ -74,6 +78,20 @@ namespace CxVisual.TestCenter.UI
             toolbar.Children.Add(_roiTool);
             AddButton(toolbar, "裁剪为结果", "Crop", CropSelection);
             AddButton(toolbar, "归一化结果", "Normalize", Normalize);
+            toolbar.Children.Add(new TextBlock { Text = "滤波半径", VerticalAlignment = VerticalAlignment.Center });
+            _filterRadius.Items.Add(1); _filterRadius.Items.Add(2); _filterRadius.Items.Add(3);
+            _filterRadius.SelectedItem = 1;
+            toolbar.Children.Add(_filterRadius);
+            AddButton(toolbar, "均值", "Mean", () => Filter(FIMNeighborhoodFilter.Mean));
+            AddButton(toolbar, "中值", "Median", () => Filter(FIMNeighborhoodFilter.Median));
+            AddButton(toolbar, "腐蚀", "Erode", () => Filter(FIMNeighborhoodFilter.Minimum));
+            AddButton(toolbar, "膨胀", "Dilate", () => Filter(FIMNeighborhoodFilter.Maximum));
+            toolbar.Children.Add(new TextBlock { Text = "Sigma", VerticalAlignment = VerticalAlignment.Center });
+            toolbar.Children.Add(_sigma);
+            AddButton(toolbar, "高斯降噪", "Gaussian", Gaussian);
+            toolbar.Children.Add(new TextBlock { Text = "锐化量", VerticalAlignment = VerticalAlignment.Center });
+            toolbar.Children.Add(_amount);
+            AddButton(toolbar, "锐化", "Sharpen", Sharpen);
             AddButton(toolbar, "旋转90°", "Rotate", () => ProcessImage(
                 image => FIMImageOperations.Rotate90Clockwise(image), "旋转90°"));
             AddButton(toolbar, "水平镜像", "FlipHorizontal", () => ProcessImage(
@@ -214,6 +232,7 @@ namespace CxVisual.TestCenter.UI
         private async Task<bool> LoadAsync(string path, Func<FIMImageBuffer> read)
         {
             long version = _viewer.Session.BeginOriginalLoad();
+            Stopwatch elapsed = Stopwatch.StartNew();
             Show("正在读取：" + System.IO.Path.GetFileName(path));
             try
             {
@@ -226,7 +245,9 @@ namespace CxVisual.TestCenter.UI
                 _viewer.ClearSelection();
                 _viewer.SetDisplayWindow(null, null);
                 _viewer.FitToWindow();
-                Show("已加载：" + image.Width + "×" + image.Height + " " + image.PixelFormat);
+                elapsed.Stop();
+                Show("已加载：" + image.Width + "×" + image.Height + " " + image.PixelFormat +
+                    "；读取耗时 " + elapsed.ElapsedMilliseconds + " ms");
                 return true;
             }
             catch (Exception error)
@@ -248,14 +269,48 @@ namespace CxVisual.TestCenter.UI
             Show("裁剪结果：" + cropped.Width + "×" + cropped.Height + "；原图仍保留");
         }
 
+        private int FilterRadius()
+        {
+            return _filterRadius.SelectedItem == null ? 1 : (int)_filterRadius.SelectedItem;
+        }
+
+        private double FloatParameter(TextBox field, string name)
+        {
+            double value;
+            if (!double.TryParse(field.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out value))
+                throw new ArgumentException(name + "必须是有限数值。");
+            return value;
+        }
+
+        private void Filter(FIMNeighborhoodFilter kind)
+        {
+            ProcessImage(image => FIMImageFilters.Apply(image, kind, FilterRadius()), kind.ToString());
+        }
+
+        private void Gaussian()
+        {
+            double sigma = FloatParameter(_sigma, "Sigma");
+            ProcessImage(image => FIMImageFilters.GaussianBlur(image, sigma, FilterRadius()), "高斯降噪");
+        }
+
+        private void Sharpen()
+        {
+            double sigma = FloatParameter(_sigma, "Sigma");
+            double amount = FloatParameter(_amount, "锐化量");
+            ProcessImage(image => FIMImageFilters.UnsharpMask(image, sigma, FilterRadius(), amount), "锐化");
+        }
+
         private void ProcessImage(Func<FIMImageBuffer, FIMImageBuffer> operation, string title)
         {
             if (_viewer.ActiveImage == null) throw new InvalidOperationException("未加载图像。");
+            Stopwatch elapsed = Stopwatch.StartNew();
             FIMImageBuffer result = operation(_viewer.ActiveImage);
+            elapsed.Stop();
             _viewer.ClearSelection();
             _viewer.ShowResult(result);
             _viewer.FitToWindow();
-            Show(title + "处理结果已显示，原图仍保持不变");
+            Show(title + "处理结果已显示，原图仍保持不变；CPU耗时 " +
+                elapsed.ElapsedMilliseconds + " ms");
         }
 
         private void Difference()
