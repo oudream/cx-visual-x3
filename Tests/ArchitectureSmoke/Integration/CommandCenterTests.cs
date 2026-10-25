@@ -212,6 +212,104 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     noTarget.ErrorCode == "HandlerNotFound" && calls == 1,
                     "IPC remote unknown target must be rejected");
 
+                // 远程配置命令并不要求本地注册Handler，只引用已发布定义。
+                MDSVariableTable localVariables = new MDSVariableTable("ipc-client");
+                localVariables.Define(new MDSVariableDefinition("Factor", typeof(double)));
+                localVariables.Define(new MDSVariableDefinition("Answer", typeof(double)));
+                localVariables.Update("Factor", 2.0);
+                using (MDEExecutionDataScope scope = MDEExecutionDataScope.CreateRoot("ipc-client"))
+                using (MRKCommandMdsBinding outputOwner = new MRKCommandMdsBinding())
+                {
+                    scope.Put("InputPort", 4.0);
+                    MDSDataContext data = new MDSDataContext(scope);
+                    outputOwner.BindVariable<double>("answer", localVariables, "Answer");
+                    CommandExpressionResolver resolver = new CommandExpressionResolver(localVariables);
+                    MRKCommandInputSource[] sources = new[] {
+                        new MRKCommandInputSource("Input",
+                            new MDSDataBinding(MDSBindingSource.CurrentSlot, typeof(double),
+                                sourceName: "InputPort")),
+                        new MRKCommandInputSource("Factor",
+                            new MDSDataBinding(MDSBindingSource.Expression, typeof(double),
+                                sourceName: "gain*2"))
+                    };
+                    MRKCommandRequest configured = new MRKCommandRequest("ipc/algorithm", 5183,
+                        options: new MRKCommandOptions(remote: true));
+                    MRKCommandBindingResult remoteMapped = caller.InvokeConfiguredResultAsync(
+                        configured, data, sources, outputOwner,
+                        new[] { new MRKCommandParameterBinding("Output", "answer") },
+                        resolver, publishedRemoteDefinition: Definition())
+                        .GetAwaiter().GetResult();
+                    Check(remoteMapped.Execution.State == MRKCommandState.Completed &&
+                        remoteMapped.MappingAttempted && remoteMapped.MappingSucceeded &&
+                        (double)remoteMapped.Execution.Outputs["Output"] == 8.0 &&
+                        localVariables.Get<double>("Answer") == 8.0 &&
+                        resolver.Calls == 1 && calls == 2,
+                        "remote command must bind local MDS port and map output after IPC execution");
+                    MRKCommandResponse mappedQuery = client.QueryAsync(configured.OperationId)
+                        .GetAwaiter().GetResult();
+                    Check(mappedQuery.State == MRKCommandState.Completed &&
+                        (double)mappedQuery.Outputs["Output"] == 8.0 && calls == 2,
+                        "remote output mapping must keep one server-side operation");
+
+                    MRKCommandBindingResult missingDefinition = caller.InvokeConfiguredResultAsync(
+                        new MRKCommandRequest("ipc/algorithm", 5183,
+                            options: new MRKCommandOptions(remote: true)),
+                        data, sources, external: resolver)
+                        .GetAwaiter().GetResult();
+                    Check(missingDefinition.Execution.Stage == MRKCommandStage.Rejected &&
+                        missingDefinition.Execution.ErrorCode == "RemoteDefinitionRequired" &&
+                        resolver.Calls == 1 && calls == 2,
+                        "remote config without published definition must reject before evaluating inputs");
+
+                    MRKCommandBindingResult staleVersion = caller.InvokeConfiguredResultAsync(
+                        new MRKCommandRequest("ipc/algorithm", 5183,
+                            options: new MRKCommandOptions(remote: true), expectedSchemaVersion: 23),
+                        data, sources, external: resolver,
+                        publishedRemoteDefinition: Definition()).GetAwaiter().GetResult();
+                    Check(staleVersion.Execution.ErrorCode == "SchemaVersionMismatch" &&
+                        resolver.Calls == 1 && calls == 2,
+                        "stale remote contract must reject before reading MDS");
+
+                    MRKCommandBindingResult identityConflict = caller.InvokeConfiguredResultAsync(
+                        new MRKCommandRequest("ipc/algorithm", 9999,
+                            options: new MRKCommandOptions(remote: true)),
+                        data, sources, external: resolver,
+                        publishedRemoteDefinition: Definition()).GetAwaiter().GetResult();
+                    Check(identityConflict.Execution.ErrorCode == "CommandIdentityMismatch" &&
+                        resolver.Calls == 1 && calls == 2,
+                        "remote mismatched CommandId must reject without invoking Handler");
+
+                    bool invalidOutput = false;
+                    try
+                    {
+                        caller.InvokeConfiguredResultAsync(
+                            new MRKCommandRequest("ipc/algorithm", 5183,
+                                options: new MRKCommandOptions(remote: true)),
+                            data, sources, outputOwner,
+                            new[] { new MRKCommandParameterBinding("Undeclared", "answer") },
+                            resolver, publishedRemoteDefinition: Definition())
+                            .GetAwaiter().GetResult();
+                    }
+                    catch (ArgumentException) { invalidOutput = true; }
+                    Check(invalidOutput && calls == 2,
+                        "remote output binding must validate declared schema before IPC execution");
+
+                    // Handler完成但调用方MDS写回失败：原Operation成功，不自动重发设备/算法。
+                    MRKCommandRequest failedWrite = new MRKCommandRequest("ipc/algorithm", 5183,
+                        options: new MRKCommandOptions(remote: true));
+                    MRKCommandBindingResult mappingFailed = caller.InvokeConfiguredResultAsync(
+                        failedWrite, data, sources, new FaultingCommandBinding(),
+                        new[] { new MRKCommandParameterBinding("Output", "fail") },
+                        resolver, publishedRemoteDefinition: Definition())
+                        .GetAwaiter().GetResult();
+                    Check(mappingFailed.Execution.State == MRKCommandState.Completed &&
+                        mappingFailed.MappingErrorCode == "OutputMappingFailed" &&
+                        !mappingFailed.MappingSucceeded && calls == 3 &&
+                        client.QueryAsync(failedWrite.OperationId).GetAwaiter().GetResult().State ==
+                            MRKCommandState.Completed,
+                        "local mapping failure must not rewrite remote executed status or repeat Handler");
+                }
+
                 server.StopAsync().GetAwaiter().GetResult();
                 }
             }

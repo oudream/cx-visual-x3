@@ -255,3 +255,9 @@ P1已新增命令运行时MDS表达式/Port输入绑定与专用线程同步SDK 
 ## 11. 两个独立Windows进程的命名管道协议测试
 
 专项新增独立进程Host（ArchitectureSmoke.exe `--command-pipe-child`）：父进程/子进程经Windows命名管道完成带SchemaVersion的算法请求、结果关联和OperationId查询，避免仅用同进程回环代替IPC证明。交付证据依赖对应SHA的Windows CI。跨PC Windows域/SMB网络配置、硬件授权与重启持久化仍未验收。
+
+## 10. 远程参数绑定的运行时契约
+
+`InvokeConfiguredResultAsync` 支持 `Remote=true` + 注入真实`MRKCommandPipeClient` + `publishedRemoteDefinition`。不再要求客户端注册复制的Handler，也不为远端另建CommandRegistry。客户端以发布定义完成CommandId/Code/Schema和MDS输入/输出预检；入参复用MDS Owner，结果经IPC回来后写回本地MDS Owner；服务端以自己的正式定义和授权为唯一执行裁决。缺Transport或缺远程定义均拒绝，不通过消息中心广播或伪造本地运行冒充远程成功。
+
+本机OS IPC通过及跨PC现场认证/断线设备状态追踪/Studio UI全闭环是不同验收等级；本轮测试以具体Windows CI SHA为准。

@@ -625,26 +625,47 @@ namespace CxVisual.Mechanism.Runtime.Commands
             IFDCCommandValueBinding outputOwner = null,
             IEnumerable<MRKCommandParameterBinding> outputBindings = null,
             IMDSExternalBindingResolver external = null,
-            CancellationToken cancellation = default(CancellationToken))
+            CancellationToken cancellation = default(CancellationToken),
+            FDCCommandDefinition publishedRemoteDefinition = null)
         {
             if (request == null) throw new ArgumentNullException("request");
             if (data == null) throw new ArgumentNullException("data");
             cancellation.ThrowIfCancellationRequested();
-            // 先查正式Command定义/版本；无效目标或远程请求不得触发表达式解析。
+            // 远程没有本地Handler Registry。必须携带已发布契约进行参数预检，
+            // 但它只是本地编辑/映射依据，服务端永远使用自己的Schema和授权。
+            FDCCommandDefinition definition;
+            int expectedVersion = request.ExpectedSchemaVersion;
             if (request.Options.Remote)
-                return new MRKCommandBindingResult(Reject(request, "RemoteUnsupported",
-                    "远程Transport尚未接入，不允许本地代执行"), false, false, null);
-            MRKCommandDescriptor descriptor = string.IsNullOrWhiteSpace(request.CommandCode)
-                ? Router.ResolveById(request.Target, request.CommandId)
-                : Router.Resolve(request.Target, request.CommandCode);
-            if (descriptor == null)
-                return new MRKCommandBindingResult(Reject(request, "HandlerNotFound",
-                    "命令未注册或已禁用"), false, false, null);
-            if (request.CommandId > 0 && request.CommandId != descriptor.Definition.CommandId)
+            {
+                if (_remoteClient == null)
+                    return new MRKCommandBindingResult(Reject(request, "RemoteUnsupported",
+                        "未注入可信命令Transport，不会本地代执行"), false, false, null);
+                if (publishedRemoteDefinition == null)
+                    return new MRKCommandBindingResult(Reject(request, "RemoteDefinitionRequired",
+                        "远程参数绑定需要已发布的命令定义"), false, false, null);
+                definition = publishedRemoteDefinition;
+                // 远程不接受无版本的配置调用：即使调用方未显式传版本，也自动固定到定义版本。
+                if (expectedVersion == 0) expectedVersion = definition.SchemaVersion;
+            }
+            else
+            {
+                if (publishedRemoteDefinition != null)
+                    throw new ArgumentException("本地调用不允许外部远程定义覆盖Registry", 
+                        "publishedRemoteDefinition");
+                MRKCommandDescriptor descriptor = string.IsNullOrWhiteSpace(request.CommandCode)
+                    ? Router.ResolveById(request.Target, request.CommandId)
+                    : Router.Resolve(request.Target, request.CommandCode);
+                if (descriptor == null)
+                    return new MRKCommandBindingResult(Reject(request, "HandlerNotFound",
+                        "命令未注册或已禁用"), false, false, null);
+                definition = descriptor.Definition;
+            }
+            if (request.CommandId > 0 && request.CommandId != definition.CommandId ||
+                !string.IsNullOrWhiteSpace(request.CommandCode) &&
+                request.CommandCode != definition.CommandCode)
                 return new MRKCommandBindingResult(Reject(request, "CommandIdentityMismatch",
-                    "CommandId与命令Code不一致"), false, false, null);
-            if (request.ExpectedSchemaVersion > 0 &&
-                request.ExpectedSchemaVersion != descriptor.Definition.SchemaVersion)
+                    "Code/Id与已发布的命令定义不一致"), false, false, null);
+            if (expectedVersion > 0 && expectedVersion != definition.SchemaVersion)
                 return new MRKCommandBindingResult(Reject(request, "SchemaVersionMismatch",
                     "请求版本与命令Schema不一致"), false, false, null);
             IReadOnlyDictionary<string, object> direct =
@@ -661,7 +682,7 @@ namespace CxVisual.Mechanism.Runtime.Commands
                 if (source == null) throw new ArgumentException("输入绑定不得为空", "inputSources");
                 if (!names.Add(source.Parameter) || values.ContainsKey(source.Parameter))
                     throw new ArgumentException("输入端口重复绑定：" + source.Parameter, "inputSources");
-                FDCCommandParameterDefinition parameter = descriptor.Definition.Inputs
+                FDCCommandParameterDefinition parameter = definition.Inputs
                     .FirstOrDefault(p => p.Code == source.Parameter);
                 if (parameter == null)
                     throw new ArgumentException("未声明的命令输入端口：" + source.Parameter, "inputSources");
@@ -675,12 +696,24 @@ namespace CxVisual.Mechanism.Runtime.Commands
                     source.Binding, external);
                 values.Add(source.Parameter, value);
             }
-            // 原Center统一做最终Schema校验、授权、幂等去重以及输出映射。
+            MRKCommandParameterBinding[] destinations = (outputBindings ??
+                Enumerable.Empty<MRKCommandParameterBinding>()).ToArray();
+            if (destinations.Any(x => x == null) ||
+                destinations.GroupBy(x => x.Parameter, StringComparer.Ordinal).Any(g => g.Count() > 1) ||
+                destinations.GroupBy(x => x.DataAddress, StringComparer.Ordinal).Any(g => g.Count() > 1))
+                throw new ArgumentException("输出绑定存在空值、重复参数或目标地址", "outputBindings");
+            foreach (MRKCommandParameterBinding mapping in destinations)
+                if (!definition.Outputs.Any(p => p.Code == mapping.Parameter))
+                    throw new ArgumentException("命令输出未声明：" + mapping.Parameter, "outputBindings");
+            // 远程先在客户端按已发布契约完成输入校验，接收Host仍二次验证Schema/授权。
+            // 所有来源和映射均属于调用方MDS Owner，绝不在远端写入客户端内存引用。
+            IReadOnlyDictionary<string, object> frozen = request.Options.Remote
+                ? definition.BindInputs(values) : values;
             MRKCommandRequest resolved = new MRKCommandRequest(request.Target,
-                request.CommandCode, values, request.Caller, request.OperationId, request.RequestId,
-                request.Options, request.ExpectedSchemaVersion, request.CommandId);
+                request.CommandCode, frozen, request.Caller, request.OperationId, request.RequestId,
+                request.Options, expectedVersion, request.CommandId);
             return await InvokeBoundResultAsync(resolved, outputOwner, null,
-                outputBindings, cancellation).ConfigureAwait(false);
+                destinations, cancellation).ConfigureAwait(false);
         }
 
         /// <summary>F19结算未执行的排队命令；不留下永久Queued票据。</summary>

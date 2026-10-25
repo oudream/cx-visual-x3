@@ -319,3 +319,15 @@ Operation账本继续以OperationId去重，同一OperationId的身份比较包�
 `Tests/ArchitectureSmoke/Program.cs` 增加专用 `--command-pipe-child <name>` 子进程入口。CommandCenter专项通过 `System.Diagnostics.Process` 启动第二个完全独立的ArchitectureSmoke.exe，子进程自己创建CommandCenter、注册算法Handler、启动带Windows当前用户ACL的命名管道服务，父进程通过真正的系统管道发送 `Target+CommandId` 请求并单独查询 `OperationId`，检查业务结果、请求关联及子进程正常退出。测试进程控制用stdin/stdout仅启动/停止Host，命令请求和业务结果严格通过管道。
 
 这比同进程的OS命名管道回环更强，可以作为**本机双进程真实IPC**证据；仍不是跨PC两台主机、域用户/SMB网络、工控设备HIL、现场运行与长期掉线恢复的验收。只有对应新Git SHA Windows CI真的PASS后，才把该条记为自动测试通过。
+
+## 20. 远程命令复用本地MDS/流程Port绑定（双项目连续增量）
+
+`MRKCommandCenter.InvokeConfiguredResultAsync` 增加**末尾可选参数** `FDCCommandDefinition publishedRemoteDefinition = null`，兼容此前全部本地调用（无破坏性签名移动）。远程调用要求：
+1. `request.Options.Remote=true`、Center显式注入真实 `MRKCommandPipeClient`；无Transport原样返回 `Rejected/RemoteUnsupported`，绝不降级为本地执行。
+2. 必须传入Studio/MOC/工程已发布的`FDCCommandDefinition`作**调用方预检**；缺失时 `RemoteDefinitionRequired`，Code/Id/版本不一致时执行前拒绝。未指定ExpectedSchemaVersion时自动固定为定义版本。此定义不拥有远程Handler；**服务端仍独立验证自己的Registry、Schema及身份授权**。
+3. 保留原 `MDSDataBindingResolver` 数据来源类型、引用和表达式Owner，检查所有输入端口身份/类型后再解析来源；输出映射先检查定义内声明的端口，结果返回独立的 `MRKCommandBindingResult`。
+4. 远端Handler完成而调用方输出MDS写回失败，`Execution.Completed`与`MappingErrorCode`分开回报；可以用`MRKCommandPipeClient.QueryAsync(OperationId)`核对原Operation，**不得重发有副作用命令**。
+
+专项测试增加 Windows真实命名管道：没有本地Handler的Center + 调用方MDS端口和Expression -> 远程Handler -> 调用方MDS变量写回；以及缺定义、旧版本、错误ID、未声明输出和映射失败反例。它复用此前已通过的两个独立进程真实IPC基础，但这批配置绑定反例目前仍在同一台Windows主机测试，不代表跨PC或PLC现场运行。
+
+源代码只修改 `Mechanism.Runtime.Commands/MRKCommandCenter.cs` 和既有 `Tests/ArchitectureSmoke`，无新第三项目和第二套数据层。
