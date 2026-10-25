@@ -4,56 +4,7 @@ using System.Threading;
 
 namespace CxVisual.Foundation.Imaging
 {
-    public sealed class FIMImageStatistics
-    {
-        internal FIMImageStatistics(long count, double min, double max, double mean, double deviation)
-        {
-            PixelCount = count; Min = min; Max = max;
-            Mean = mean; StandardDeviation = deviation;
-        }
-        public long PixelCount { get; private set; }
-        public double Min { get; private set; }
-        public double Max { get; private set; }
-        public double Mean { get; private set; }
-        public double StandardDeviation { get; private set; }
-    }
-
-    public sealed class FIMImageHistogram
-    {
-        internal FIMImageHistogram(double min, double max, long[] bins)
-        {
-            Minimum = min; Maximum = max; Bins = Array.AsReadOnly(bins);
-        }
-        public double Minimum { get; private set; }
-        public double Maximum { get; private set; }
-        public IReadOnlyList<long> Bins { get; private set; }
-    }
-
-    public sealed class FIMImageAnalysisResult
-    {
-        internal FIMImageAnalysisResult(FIMImageStatistics statistics, FIMImageHistogram histogram)
-        {
-            Statistics = statistics; Histogram = histogram;
-        }
-        public FIMImageStatistics Statistics { get; private set; }
-        public FIMImageHistogram Histogram { get; private set; }
-    }
-
-    public sealed class FIMFiveRegionResult
-    {
-        internal FIMFiveRegionResult(FIMPixelRegion[] regions, double[] means)
-        {
-            Regions = Array.AsReadOnly(regions);
-            Means = Array.AsReadOnly(means);
-        }
-        public IReadOnlyList<FIMPixelRegion> Regions { get; private set; }
-        public IReadOnlyList<double> Means { get; private set; }
-    }
-
-    /// <summary>
-    /// 从旧ImageStatisticsService与HALCON Calc5BoxMeanGray提炼纯像素计算。
-    /// Welford总体方差避免大灰度平方和的数值抵消。
-    /// </summary>
+    /// <summary>原始像素统计、直方图、灰度剖面与五区域灰度值。</summary>
     public static class FIMImageAnalyzer
     {
         public static FIMImageStatistics Calculate(FIMImageBuffer image, FIMPixelRegion? roi = null,

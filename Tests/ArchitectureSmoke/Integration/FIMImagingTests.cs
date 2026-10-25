@@ -74,6 +74,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 new FIMPixelRegion(0, 0, 1, 1), null).HasValue, "无标定面积为空");
             Throws<ArgumentOutOfRangeException>(() => new FIMPixelSpacing(0, 0.1), "非法间距");
             Throws<ArgumentException>(() => FIMImageMeasurement.GetAngleDegrees(a, a, b), "退化角度");
+            Throws<ArgumentOutOfRangeException>(() => FIMImageMeasurement.GetDistanceMillimeters(a, b, default(FIMPixelSpacing)), "default标定间距");
+            Throws<ArgumentOutOfRangeException>(() => FIMImageMeasurement.GetAreaSquareMillimeters(new FIMPixelRegion(0, 0, 1, 1), default(FIMPixelSpacing)), "default面积标定");
             Console.WriteLine("PASS FIM Imaging 像素/ROI/统计/五区域/裁剪/异常");
         }
 

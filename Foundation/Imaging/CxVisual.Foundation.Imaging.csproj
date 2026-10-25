@@ -25,7 +25,11 @@
     <Compile Include="Pixels\FIMPixelFormat.cs"/>
     <Compile Include="Pixels\FIMImageBuffer.cs"/>
     <Compile Include="Regions\FIMPixelRegion.cs"/>
-    <Compile Include="Processing\FIMImageAnalysis.cs"/>
+        <Compile Include="Processing\FIMImageStatistics.cs"/>
+    <Compile Include="Processing\FIMImageHistogram.cs"/>
+    <Compile Include="Processing\FIMImageAnalysisResult.cs"/>
+    <Compile Include="Processing\FIMFiveRegionResult.cs"/>
+    <Compile Include="Processing\FIMImageAnalyzer.cs"/>
     <Compile Include="Processing\FIMImageOperations.cs"/>
     <Compile Include="Images\FIMPixelSpacing.cs"/>
     <Compile Include="Processing\FIMImageMeasurement.cs"/></ItemGroup>

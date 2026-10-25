@@ -9,6 +9,17 @@ namespace CxVisual.Foundation.Imaging
     /// </summary>
     public static class FIMImageMeasurement
     {
+        private static void ValidateSpacing(FIMPixelSpacing spacing)
+        {
+            if (double.IsNaN(spacing.MillimetersPerPixelX) ||
+                double.IsInfinity(spacing.MillimetersPerPixelX) ||
+                spacing.MillimetersPerPixelX <= 0 ||
+                double.IsNaN(spacing.MillimetersPerPixelY) ||
+                double.IsInfinity(spacing.MillimetersPerPixelY) ||
+                spacing.MillimetersPerPixelY <= 0)
+                throw new ArgumentOutOfRangeException("spacing", "默认或无效像素间距不能用于物理测量。");
+        }
+
         public static double GetDistancePixels(FGEPoint2D first, FGEPoint2D second)
         {
             double dx = second.X - first.X;
@@ -20,6 +31,7 @@ namespace CxVisual.Foundation.Imaging
             FIMPixelSpacing? spacing)
         {
             if (!spacing.HasValue) return null;
+            ValidateSpacing(spacing.Value);
             double dx = (second.X - first.X) * spacing.Value.MillimetersPerPixelX;
             double dy = (second.Y - first.Y) * spacing.Value.MillimetersPerPixelY;
             return Math.Sqrt(dx * dx + dy * dy);
@@ -46,6 +58,7 @@ namespace CxVisual.Foundation.Imaging
         public static double? GetAreaSquareMillimeters(FIMPixelRegion region, FIMPixelSpacing? spacing)
         {
             if (!spacing.HasValue) return null;
+            ValidateSpacing(spacing.Value);
             return GetAreaPixels(region) *
                 spacing.Value.MillimetersPerPixelX * spacing.Value.MillimetersPerPixelY;
         }
