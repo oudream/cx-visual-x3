@@ -58,6 +58,8 @@ Mechanism/Runtime/Commands/                 -> CxVisual.Mechanism.Runtime.dll
 | `MRKCommandMetrics` | Registered、TotalOperations、Queued、Pending、Running、PauseRequested、Paused、Completed、Failed、Cancelled、Unknown | 进程内账本快照，不是跨进程持久指标 |
 | `IMRKCommandInterceptor` | BeforeAsync、AfterAsync | 可插入授权外额外审计/日志，后处理异常以Unknown暴露 |
 | `MRKCommandMdsBinding` | BindVariable<T>、BindNode<T>、BindHeap<T>、ReadAsync、WriteAsync、Unbind、Dispose | 数据Owner仍是原MDS和VariableTable，本类仅地址映射 |
+| `MRKCommandInputSource` | Parameter、Binding(MDSDataBinding) | 不复制数据类型，引用既有可配置MDS来源，预检后解析 |
+| `MRKDedicatedCommandHandler` | ExecuteAsync + FCRDedicatedExecutor | 同步SDK固定线程调用、Host管理线程生命周期，不模拟异步线程亲和 |
 
 > `Command` 是 Definition 与一次 Request/Execution 的逻辑总称；`CommandInput/Output` 是 Schema 与绑定后的字典值。**不为满足名称数目再创建两个重复数据容器**。
 
@@ -230,4 +232,12 @@ using (center.Register(new MRKCommandDescriptor("Vision/Detector", def),
 
 ### 下一步建议
 
-P1优先：命令绑定的表达式/Port适配、专用线程同步SDK Adapter与Studio可视调用；P2：可信身份/认证Transport与稳定序列化、远程恢复/持久审计；P3：跨专业、长稳、设备安全验收。**不拆散这两个命令项目**。
+P1已新增命令运行时MDS表达式/Port输入绑定与专用线程同步SDK Adapter（须以Windows对应SHA测试为准）；后续优先推进Studio真正可视调用；P2：可信身份/认证Transport与稳定序列化、远程恢复/持久审计；P3：跨专业、长稳、设备安全验收。**不拆散这两个命令项目**。
+
+## 8. 后续增量：运行时MDS来源绑定与SDK同步线程亲和
+
+新增的 `InvokeConfiguredResultAsync` 使用已有 `MDSDataBindingResolver` 将常量、节点Port、FlowHeap、变量、表达式及工程资源接到同一个命令Input Schema；通过现有 `IMDSExternalBindingResolver` 接入表达式和变量Owner。完整参数预检发生在外部解析器之前，防止错误端口触发副作用；输入和输出沿用既有快照和OutputMappingResult机制。空输出绑定无需虚构写回Owner。
+
+`MRKDedicatedCommandHandler` 使用已有 F19 `FCRDedicatedExecutor` 执行同步工业SDK委托；只保证同步调用所在线程，取消不会强杀正在执行的设备动作，外部Host负责Executor关闭。两类适配均在 `Mechanism.Runtime.Commands`，不新增项目。
+
+**仍然不是** Studio端到端参数面板、真实PLC采图与跨PC远程命令。相关测试只覆盖运行时源绑定与固定线程模拟SDK；实际结果以 Windows CI 为准。

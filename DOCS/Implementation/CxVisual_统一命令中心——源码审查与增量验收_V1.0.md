@@ -263,3 +263,30 @@ Operation账本继续以OperationId去重，同一OperationId的身份比较包�
 **设备命令明确禁止机制层自动重试**：任何 `MRKCommandKind.Device` 配置 `MaxAttempts>1`，在执行前返回 `Rejected/DeviceAutoRetryForbidden`。设备断线/应答丢失应由专业Provider读取真实状态、确认安全之后人工或业务显式重发，不因网络Unknown直接再次发运动命令。
 
 本轮专项验收：算法故障两次→第三次成功、尝试数3；Timeout不重试；非幂等构造直接拒绝；设备命令即使Host授权也拒绝自动重试。跨Host幂等、审计落盘、持久去重、补偿与硬件状态核对仍未完成。
+
+## 16. MDS可配置入参来源 + F19专用线程同步SDK适配（本轮）
+
+归属仍是两个已定案项目，不增加 `.csproj`；只新增机制层 `Mechanism/Runtime/Commands/MRKCommandAdapters.cs`。
+
+### 16.1 统一可配置来源，不写第二套表达式引擎
+
+- `MRKCommandInputSource(Parameter, MDSDataBinding)` 直接复用 `Mechanism.Data.RuntimeData.MDSDataBinding` 的 `Constant`、`CurrentSlot`、`NodeOutput`、`FlowHeap`、`Variable`、`EngineeringResource`、`Expression` 来源类型、声明Type和常量值隔离。
+- `MRKCommandCenter.InvokeConfiguredResultAsync(request, data, inputSources, outputOwner, outputBindings, external, cancellation)` 先验证正式 Command Target/ID/Code/Schema、端口名称与类型、重复绑定，再经**现有** `MDSDataBindingResolver.Resolve<object>` 解析来源；表达式和变量仍委托 `IMDSExternalBindingResolver` 的已授权Owner，**不执行任意脚本**。
+- 不向Handler暴露可变MDS引用：直传输入先经 FDCCommandValueSnapshot.Capture，来源使用MDS自己的值快照，最终请求仍通过CommandCenter统一参数Schema验证与授权。
+- 继续复用 `InvokeBoundResultAsync` 进行最终输出写回与局部失败追踪；无任何输出绑定时允许 `outputOwner=null`，结果 `MappingAttempted=false`、`MappingSucceeded=true`。如果执行尚未完成/被拒绝，均不执行输出映射。
+- 当前MDS中的 `NodeOutput` 已有MRK端口/作用域可见性边界，但完整Studio流程端口Selector以及表达式编辑和发布仍待专业集成；这里实现的是**运行时来源绑定**，不是一套新的MOL编译器。
+
+### 16.2 指定线程亲和的同步设备SDK
+
+- `MRKDedicatedCommandHandler(FCRDedicatedExecutor, syncHandler)` 实现已有 `IMRKCommandHandler`，只将**同步**SDK委托提交给F19 `FCRDedicatedExecutor` 的固定 MTA/STA 专用线程，不重建线程池或队列，Token取消未启动工作，不在运行中的同步SDK内强制停止线程。
+- SDK所属Executor的`StopAsync`仍由创建它的Host负责，Handler不会擅自释放共享线程；F19的自调用死锁检测、队列有界容量、失败隔离仍原样生效。
+- 对异步的 `await` 续体**不保证**线程亲和；WPF UI线程应使用WPF Dispatcher，不应将此适配当作UI Dispatcher或硬件急停。
+
+### 16.3 正反验收
+
+`Tests/ArchitectureSmoke/Integration/CommandCenterTests.cs` 新增：
+- 真MDS Scope → 命令输入Port + 已授权表达式 → 真变量写回，返回ExpectedSchemaVersion验证；
+- Constant/Variable双来源，错误端口、重复静态与动态参数、缺少表达式Resolver、过期版本在解析外部来源前拒绝；
+- 真实FCRDedicatedExecutor同线程连续调用、一次SDK同步异常后仍能恢复执行、Stop后拒绝新工作。
+
+**验收证据分类**：编译与测试结果仅引用本次实际Git SHA的Windows CI；未有真实工业设备SDK、Studio UI操作或跨PC Transport，不得称这些场景已验收。

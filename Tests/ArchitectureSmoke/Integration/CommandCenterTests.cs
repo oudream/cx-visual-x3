@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using CxVisual.Foundation.Data.Commands;
 using CxVisual.Mechanism.Data.Variables;
 using CxVisual.Mechanism.Data.RuntimeData;
+using CxVisual.Foundation.Infrastructure.Concurrency;
 using CxVisual.Mechanism.Data.Execution;
 using CxVisual.Foundation.Data.Commands;
 using CxVisual.Mechanism.Runtime.Commands;
@@ -54,6 +55,178 @@ namespace CxVisual.Tests.ArchitectureSmoke
             { cancellation.ThrowIfCancellationRequested(); _variables.Update<double>(name, (double)value); return Task.CompletedTask; }
         }
 
+
+        private sealed class CommandExpressionResolver : IMDSExternalBindingResolver
+        {
+            internal int Calls;
+            internal readonly MDSVariableTable Variables;
+            internal CommandExpressionResolver(MDSVariableTable variables)
+            { Variables = variables; }
+            public object Resolve(MDSBindingSource source, string sourceName, Type targetType)
+            {
+                Interlocked.Increment(ref Calls);
+                if (source == MDSBindingSource.Expression && sourceName == "gain*2")
+                    return 2.0;
+                if (source == MDSBindingSource.Variable && sourceName == "Factor")
+                    return Variables.Get<double>("Factor");
+                throw new KeyNotFoundException("来源未授权或未定义：" + sourceName);
+            }
+        }
+
+        /// <summary>使用MDS已有绑定类型，实现常量、端口、变量、表达式来源与输出写回。</summary>
+        private static void ConfiguredBindingRun()
+        {
+            MDSVariableTable table = new MDSVariableTable("command-config");
+            table.Define(new MDSVariableDefinition("Factor", typeof(double)));
+            table.Define(new MDSVariableDefinition("Answer", typeof(double)));
+            table.Update("Factor", 3.0);
+            int invoked = 0;
+            using (MDEExecutionDataScope scope = MDEExecutionDataScope.CreateRoot("cmd-config"))
+            {
+                scope.Put("SourcePort", 4.0);
+                MDSDataContext context = new MDSDataContext(scope);
+                CommandExpressionResolver external = new CommandExpressionResolver(table);
+                using (MRKCommandMdsBinding owner = new MRKCommandMdsBinding())
+                using (MRKCommandCenter center = new MRKCommandCenter())
+                using (center.Register(new MRKCommandDescriptor("configured", Definition()),
+                    Handler(x => { Interlocked.Increment(ref invoked); return x; })))
+                {
+                    owner.BindVariable<double>("answer", table, "Answer");
+                    MRKCommandInputSource[] sources = new[] {
+                        new MRKCommandInputSource("Input",
+                            new MDSDataBinding(MDSBindingSource.CurrentSlot, typeof(double),
+                                sourceName: "SourcePort")),
+                        new MRKCommandInputSource("Factor",
+                            new MDSDataBinding(MDSBindingSource.Expression, typeof(double),
+                                sourceName: "gain*2"))
+                    };
+                    MRKCommandBindingResult result = center.InvokeConfiguredResultAsync(
+                        new MRKCommandRequest("configured", 5183, expectedSchemaVersion: 1),
+                        context, sources, owner,
+                        new[] { new MRKCommandParameterBinding("Output", "answer") },
+                        external).GetAwaiter().GetResult();
+                    Check(result.Execution.State == MRKCommandState.Completed &&
+                        result.MappingSucceeded && table.Get<double>("Answer") == 8.0 &&
+                        external.Calls == 1 && invoked == 1,
+                        "MDS port plus expression input and real variable output");
+
+                    MRKCommandInputSource[] constant = new[] {
+                        new MRKCommandInputSource("Input",
+                            new MDSDataBinding(MDSBindingSource.Constant, typeof(double),
+                                constant: 5.0)),
+                        new MRKCommandInputSource("Factor",
+                            new MDSDataBinding(MDSBindingSource.Variable, typeof(double),
+                                sourceName: "Factor"))
+                    };
+                    MRKCommandBindingResult variable = center.InvokeConfiguredResultAsync(
+                        new MRKCommandRequest("configured", "Calculate"), context, constant,
+                        external: external).GetAwaiter().GetResult();
+                    Check(variable.Execution.State == MRKCommandState.Completed &&
+                        (double)variable.Execution.Outputs["Output"] == 15.0 &&
+                        !variable.MappingAttempted && invoked == 2 && external.Calls == 2,
+                        "constant and actual MDS variable resolved by existing external owner");
+
+                    MRKCommandBindingResult versionRejected = center.InvokeConfiguredResultAsync(
+                        new MRKCommandRequest("configured", 5183, expectedSchemaVersion: 999),
+                        context, sources, external: external).GetAwaiter().GetResult();
+                    Check(versionRejected.Execution.Stage == MRKCommandStage.Rejected &&
+                        versionRejected.Execution.ErrorCode == "SchemaVersionMismatch" &&
+                        external.Calls == 2 && invoked == 2,
+                        "outdated Schema must reject before evaluating expressions");
+
+                    bool duplicate = false;
+                    try
+                    {
+                        center.InvokeConfiguredResultAsync(
+                            new MRKCommandRequest("configured", "Calculate",
+                                new Dictionary<string, object> { { "Input", 12.0 } }),
+                            context, sources, external: external).GetAwaiter().GetResult();
+                    }
+                    catch (ArgumentException) { duplicate = true; }
+                    Check(duplicate && invoked == 2 && external.Calls == 2,
+                        "duplicate static and dynamic inputs rejected before owner resolution");
+
+                    bool noResolver = false;
+                    try
+                    {
+                        center.InvokeConfiguredResultAsync(
+                            new MRKCommandRequest("configured", "Calculate"),
+                            context, sources).GetAwaiter().GetResult();
+                    }
+                    catch (InvalidOperationException) { noResolver = true; }
+                    Check(noResolver && invoked == 2,
+                        "expression without authorized MDS resolver must fail closed");
+
+                    bool wrongPort = false;
+                    try
+                    {
+                        center.InvokeConfiguredResultAsync(new MRKCommandRequest(
+                            "configured", "Calculate"), context,
+                            new[] { new MRKCommandInputSource("Unregistered",
+                                new MDSDataBinding(MDSBindingSource.Expression,
+                                    typeof(double), "gain*2")) }, external: external)
+                            .GetAwaiter().GetResult();
+                    }
+                    catch (ArgumentException) { wrongPort = true; }
+                    Check(wrongPort && external.Calls == 2 && invoked == 2,
+                        "unknown port must reject before expression evaluation or side effects");
+                }
+            }
+        }
+
+        /// <summary>同步设备SDK运行于唯一F19专用线程，不声称异步续体具有线程亲和。</summary>
+        private static void DedicatedCommandRun()
+        {
+            FCRDedicatedExecutor thread = new FCRDedicatedExecutor("BUS-CMD-SDK", 2);
+            try
+            {
+                int count = 0;
+                int actualThread = 0;
+                using (MRKCommandCenter center = new MRKCommandCenter())
+                using (center.Register(new MRKCommandDescriptor("sdk", Definition()),
+                    new MRKDedicatedCommandHandler(thread, (ctx, inputs, token) =>
+                    {
+                        token.ThrowIfCancellationRequested();
+                        Interlocked.Increment(ref count);
+                        int identity = Thread.CurrentThread.ManagedThreadId;
+                        if (actualThread == 0) actualThread = identity;
+                        Check(identity == actualThread, "SDK thread affinity lost");
+                        double n = (double)inputs["Input"];
+                        if (n == -1.0) throw new InvalidOperationException("模拟SDK单次异常");
+                        return new MRKCommandHandlerResult(new Dictionary<string, object> {
+                            { "Output", n * (double)inputs["Factor"] } });
+                    })))
+                {
+                    MRKCommandResponse first = center.InvokeAsync(new MRKCommandRequest(
+                        "sdk", "Calculate",
+                        new Dictionary<string, object> { { "Input", 2.0 } }))
+                        .GetAwaiter().GetResult();
+                    MRKCommandResponse failure = center.InvokeAsync(new MRKCommandRequest(
+                        "sdk", "Calculate",
+                        new Dictionary<string, object> { { "Input", -1.0 } }))
+                        .GetAwaiter().GetResult();
+                    MRKCommandResponse recovered = center.InvokeAsync(new MRKCommandRequest(
+                        "sdk", "Calculate",
+                        new Dictionary<string, object> { { "Input", 3.0 } }))
+                        .GetAwaiter().GetResult();
+                    Check(first.State == MRKCommandState.Completed &&
+                        failure.State == MRKCommandState.Failed &&
+                        recovered.State == MRKCommandState.Completed &&
+                        actualThread == thread.ThreadId &&
+                        thread.ThreadId != Thread.CurrentThread.ManagedThreadId &&
+                        (double)recovered.Outputs["Output"] == 6.0 && count == 3,
+                        "dedicated SDK thread must survive one Handler failure");
+                }
+            }
+            finally { thread.StopAsync().GetAwaiter().GetResult(); }
+            bool refused = false;
+            try
+            {
+                thread.InvokeAsync(token => 1).GetAwaiter().GetResult();
+            }
+            catch (InvalidOperationException) { refused = true; }
+            Check(refused, "stopped SDK executor must reject new calls");
+        }
 
         /// <summary>复用MRK统一幂等重试Policy，仅Handler异常可重试，禁止设备副作用自动重发。</summary>
         private static void RetryRun()
@@ -836,6 +1009,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 }
             }
             QueuedRun();
+            ConfiguredBindingRun();
+            DedicatedCommandRun();
             LongTaskRun();
             OutputMappingRun();
             CommandIdRun();

@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using CxVisual.Foundation.Data.Commands;
 using CxVisual.Foundation.Data.Types;
 using CxVisual.Foundation.Infrastructure.Concurrency;
+using CxVisual.Mechanism.Data.RuntimeData;
 using CxVisual.Mechanism.Runtime.Execution;
 
 namespace CxVisual.Mechanism.Runtime.Commands
@@ -527,9 +528,12 @@ namespace CxVisual.Mechanism.Runtime.Commands
             CancellationToken cancellation = default(CancellationToken))
         {
             if (request == null) throw new ArgumentNullException("request");
-            if (owner == null) throw new ArgumentNullException("owner");
+            MRKCommandParameterBinding[] inputs = (inputBindings ??
+                Enumerable.Empty<MRKCommandParameterBinding>()).ToArray();
             MRKCommandParameterBinding[] outputs = (outputBindings ??
                 Enumerable.Empty<MRKCommandParameterBinding>()).ToArray();
+            if (owner == null && (inputs.Length > 0 || outputs.Length > 0))
+                throw new ArgumentNullException("owner", "存在数据地址映射时必须提供正式数据Owner");
             if (outputs.Any(b => b == null) ||
                 outputs.GroupBy(b => b.Parameter, StringComparer.Ordinal).Any(g => g.Count() > 1) ||
                 outputs.GroupBy(b => b.DataAddress, StringComparer.Ordinal).Any(g => g.Count() > 1))
@@ -544,8 +548,7 @@ namespace CxVisual.Mechanism.Runtime.Commands
             Dictionary<string, object> values = new Dictionary<string, object>(StringComparer.Ordinal);
             if (request.Inputs != null)
                 foreach (KeyValuePair<string, object> pair in request.Inputs) values.Add(pair.Key, pair.Value);
-            foreach (MRKCommandParameterBinding binding in inputBindings ??
-                Enumerable.Empty<MRKCommandParameterBinding>())
+            foreach (MRKCommandParameterBinding binding in inputs)
             {
                 if (binding == null) throw new ArgumentException("输入绑定不能为空");
                 if (values.ContainsKey(binding.Parameter))
@@ -559,6 +562,8 @@ namespace CxVisual.Mechanism.Runtime.Commands
             MRKCommandResponse response = await InvokeAsync(actual, cancellation).ConfigureAwait(false);
             if (response.State != MRKCommandState.Completed)
                 return new MRKCommandBindingResult(response, false, false, null);
+            if (outputs.Length == 0)
+                return new MRKCommandBindingResult(response, false, true, null);
 
             IReadOnlyDictionary<string, object> final = response.Outputs;
             List<object> readyValues = new List<object>(outputs.Length);
@@ -587,6 +592,75 @@ namespace CxVisual.Mechanism.Runtime.Commands
                 }
             }
             return new MRKCommandBindingResult(response, true, true, mapped);
+        }
+
+        /// <summary>
+        /// 已有 MDS 绑定描述直接映射到命令参数：Constant/CurrentSlot/NodeOutput/
+        /// FlowHeap/Variable/EngineeringResource/Expression；表达式由已有Resolver解释，
+        /// 不执行字符串代码，也不创建新的参数仓库。无输出映射时outputOwner可为null。
+        /// </summary>
+        public async Task<MRKCommandBindingResult> InvokeConfiguredResultAsync(
+            MRKCommandRequest request, IMDSDataContext data,
+            IEnumerable<MRKCommandInputSource> inputSources,
+            IFDCCommandValueBinding outputOwner = null,
+            IEnumerable<MRKCommandParameterBinding> outputBindings = null,
+            IMDSExternalBindingResolver external = null,
+            CancellationToken cancellation = default(CancellationToken))
+        {
+            if (request == null) throw new ArgumentNullException("request");
+            if (data == null) throw new ArgumentNullException("data");
+            cancellation.ThrowIfCancellationRequested();
+            // 先查正式Command定义/版本；无效目标或远程请求不得触发表达式解析。
+            if (request.Options.Remote)
+                return new MRKCommandBindingResult(Reject(request, "RemoteUnsupported",
+                    "远程Transport尚未接入，不允许本地代执行"), false, false, null);
+            MRKCommandDescriptor descriptor = string.IsNullOrWhiteSpace(request.CommandCode)
+                ? Router.ResolveById(request.Target, request.CommandId)
+                : Router.Resolve(request.Target, request.CommandCode);
+            if (descriptor == null)
+                return new MRKCommandBindingResult(Reject(request, "HandlerNotFound",
+                    "命令未注册或已禁用"), false, false, null);
+            if (request.CommandId > 0 && request.CommandId != descriptor.Definition.CommandId)
+                return new MRKCommandBindingResult(Reject(request, "CommandIdentityMismatch",
+                    "CommandId与命令Code不一致"), false, false, null);
+            if (request.ExpectedSchemaVersion > 0 &&
+                request.ExpectedSchemaVersion != descriptor.Definition.SchemaVersion)
+                return new MRKCommandBindingResult(Reject(request, "SchemaVersionMismatch",
+                    "请求版本与命令Schema不一致"), false, false, null);
+            IReadOnlyDictionary<string, object> direct =
+                FDCCommandValueSnapshot.Capture(request.Inputs, _adapters);
+            Dictionary<string, object> values = new Dictionary<string, object>(StringComparer.Ordinal);
+            foreach (KeyValuePair<string, object> item in direct) values.Add(item.Key, item.Value);
+            // 先完整预检所有端口，再调用任何外部变量/表达式解析器。
+            MRKCommandInputSource[] sources = (inputSources ??
+                Enumerable.Empty<MRKCommandInputSource>()).ToArray();
+            HashSet<string> names = new HashSet<string>(StringComparer.Ordinal);
+            foreach (MRKCommandInputSource source in sources)
+            {
+                cancellation.ThrowIfCancellationRequested();
+                if (source == null) throw new ArgumentException("输入绑定不得为空", "inputSources");
+                if (!names.Add(source.Parameter) || values.ContainsKey(source.Parameter))
+                    throw new ArgumentException("输入端口重复绑定：" + source.Parameter, "inputSources");
+                FDCCommandParameterDefinition parameter = descriptor.Definition.Inputs
+                    .FirstOrDefault(p => p.Code == source.Parameter);
+                if (parameter == null)
+                    throw new ArgumentException("未声明的命令输入端口：" + source.Parameter, "inputSources");
+                if (!parameter.DataType.IsAssignableFrom(source.Binding.ValueType))
+                    throw new InvalidCastException("命令输入类型与MDS来源类型不兼容：" + source.Parameter);
+            }
+            foreach (MRKCommandInputSource source in sources)
+            {
+                cancellation.ThrowIfCancellationRequested();
+                object value = MDSDataBindingResolver.Resolve<object>(data,
+                    source.Binding, external);
+                values.Add(source.Parameter, value);
+            }
+            // 原Center统一做最终Schema校验、授权、幂等去重以及输出映射。
+            MRKCommandRequest resolved = new MRKCommandRequest(request.Target,
+                request.CommandCode, values, request.Caller, request.OperationId, request.RequestId,
+                request.Options, request.ExpectedSchemaVersion, request.CommandId);
+            return await InvokeBoundResultAsync(resolved, outputOwner, null,
+                outputBindings, cancellation).ConfigureAwait(false);
         }
 
         /// <summary>F19结算未执行的排队命令；不留下永久Queued票据。</summary>
