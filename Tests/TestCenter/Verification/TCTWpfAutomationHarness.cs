@@ -642,6 +642,74 @@ namespace CxVisual.TestCenter.UI
                     (completed ? details : "no verified exit code and actual stdout/stderr within 45 seconds"));
         }
         /// <summary>Independent real HWND/UIA M36 acceptance; no unrelated lengthy Studio/NUnit screens.</summary>
+        /// <summary>
+        /// 命令工作区独立UIA验收：通过真实AutomationElement填写参数和点击右侧按钮，
+        /// 验证Owner命令实际执行及历史观察，不用WPF直接调用模拟UI点击。
+        /// </summary>
+        public static async Task RunCommandAsync(TCTMainWindow window)
+        {
+            if (window == null) throw new ArgumentNullException("window");
+            window.Show();
+            await window.Dispatcher.InvokeAsync(() => window.UpdateLayout());
+            TCTWorkspaceDescriptor created = window.CreateWorkspaceInstance("manual.command");
+            if (created == null) throw new InvalidOperationException("命令页不能创建实例");
+            System.Windows.Controls.TabControl tabs =
+                window.DocumentHost.Content as System.Windows.Controls.TabControl;
+            TCTManualCommandFrame frame =
+                (tabs.SelectedItem as System.Windows.Controls.TabItem)?.Content
+                    as TCTManualCommandFrame;
+            if (frame == null) throw new InvalidOperationException("命令Frame未装配到中央Tab");
+            IntPtr hwnd = new WindowInteropHelper(window).Handle;
+            if (hwnd == IntPtr.Zero) throw new InvalidOperationException("TestCenter无UIA HWND");
+
+            await Task.Run(() =>
+            {
+                AutomationElement root = AutomationElement.FromHandle(hwnd);
+                AutomationElement tree = Find(root, "TCT.Command.Catalog");
+                if (tree.Current.ControlType != ControlType.Tree)
+                    throw new InvalidOperationException("命令目标目录未暴露正式UIA Tree");
+                AutomationElement input = Find(root, "TCT.Command.Input.Input");
+                ValuePattern value = input.GetCurrentPattern(ValuePattern.Pattern) as ValuePattern;
+                if (value == null) throw new InvalidOperationException("命令Input未暴露ValuePattern");
+                value.SetValue("4");
+                AutomationElement invoke = Find(root, "TCT.Manual.Action.command.invoke");
+                InvokePattern action = invoke.GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
+                if (action == null) throw new InvalidOperationException("Command Invoke按钮无法UIA操作");
+                action.Invoke();
+            }).ConfigureAwait(true);
+
+            bool completed = false;
+            for (int i = 0; i < 120; i++)
+            {
+                CxVisual.Mechanism.Runtime.Commands.MRKCommandResponse actual = frame.LastResponse;
+                if (actual != null && actual.State ==
+                    CxVisual.Mechanism.Runtime.Commands.MRKCommandState.Completed &&
+                    actual.Outputs.ContainsKey("Output") &&
+                    (double)actual.Outputs["Output"] == 8.0)
+                { completed = true; break; }
+                await Task.Delay(25).ConfigureAwait(true);
+            }
+            if (!completed) throw new InvalidOperationException(
+                "UIA输入并调用后，没有拿到正式CommandCenter的Output=8");
+            int initial = frame.HistoryCount;
+            await Task.Run(() =>
+            {
+                AutomationElement root = AutomationElement.FromHandle(hwnd);
+                AutomationElement query = Find(root, "TCT.Manual.Action.command.query");
+                InvokePattern pattern = query.GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
+                if (pattern == null) throw new InvalidOperationException("远程/本地Query操作按钮缺少UIA");
+                pattern.Invoke();
+                AutomationElement table = Find(root, "TCT.Command.History");
+                if (table.Current.ControlType != ControlType.DataGrid)
+                    throw new InvalidOperationException("真实人工会话记录未呈现在DataGrid");
+            }).ConfigureAwait(true);
+            for (int i = 0; i < 100 && frame.HistoryCount <= initial; i++)
+                await Task.Delay(20).ConfigureAwait(true);
+            if (frame.HistoryCount <= initial)
+                throw new InvalidOperationException("UIA Query没有追加真实Operation观察记录");
+            Console.WriteLine("PASS TestCenter Command UIA: tree/ValuePattern/InvokePattern/MRK result/Query/history");
+        }
+
         public static async Task RunMessageAsync(TCTMainWindow window)
         {
             if(window==null)throw new ArgumentNullException("window");

@@ -40,3 +40,7 @@
 - 点击「停止」向测试子进程控制stdin请求退出；异常时回收子进程。操作记录仅说明测试Host关停，不代表PLC/设备安全停止。
 - `--command-ui-smoke` 增加独立进程Host → 真实OS管道 → 命令结果/Operation Query反证。测试Host必须是编译输出目录下的正式ArchitectureSmoke程序；找不到程序就报错，绝不返回演示成功。
 - 该流程是**本机双进程IPC**；跨PC网络ACL/凭据/防火墙、真实硬件Provider和Host重启后Operation持久恢复仍未验收。
+
+## 命令工作区专项 Windows UI Automation 验证
+
+新增 `CxVisual.TestCenter.exe --command-ui-automation`：打开真实WPF Shell，通过 Windows UIAutomation `Tree`/文本框`ValuePattern`/右侧按钮`InvokePattern` 输入 `Input=4` 并执行，检查正式MRK返回 `Output=8`，然后实际点击Query并检查人工会话日志DataGrid。这是交互路径验证而不是直接调用Frame API的替代品。独立 `testcenter-command-windows.yml` 同时覆盖WPF直接冒烟、真实UIA和原命令机制专项。仍不替代整套TestCenter 16张截图/各Owner UIA验收。

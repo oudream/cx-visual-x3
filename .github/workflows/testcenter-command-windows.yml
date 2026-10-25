@@ -35,6 +35,23 @@ jobs:
           $exe = (Resolve-Path 'Output/Debug/x64/CxVisual.TestCenter.exe').Path
           $p = Start-Process -FilePath $exe -ArgumentList @('--command-ui-smoke') -PassThru -Wait
           if ($p.ExitCode -ne 0) { throw "TestCenter command workspace smoke failed: $($p.ExitCode)" }
+      - name: Verify command page real Windows UI Automation operations
+        shell: pwsh
+        timeout-minutes: 4
+        run: |
+          $exe = (Resolve-Path 'Output/Debug/x64/CxVisual.TestCenter.exe').Path
+          $p = Start-Process -FilePath $exe -ArgumentList @('--command-ui-automation') -PassThru
+          try { Wait-Process -Id $p.Id -Timeout 120 -ErrorAction Stop }
+          catch {
+            Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+            throw 'Command UIA ValuePattern/InvokePattern timed out'
+          }
+          $p.Refresh()
+          if ($p.ExitCode -ne 0) {
+            $err = Join-Path ([System.IO.Path]::GetTempPath()) 'CxVisual-TestCenter-HostError.txt'
+            if (Test-Path $err) { Get-Content $err | Write-Host }
+            throw "Command UIA failed with exit code $($p.ExitCode)"
+          }
       - name: Verify command center formal execution contracts
         shell: pwsh
         timeout-minutes: 5
