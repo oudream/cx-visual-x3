@@ -55,25 +55,45 @@ namespace CxVisual.Mechanism.Runtime.Commands
             IReadOnlyDictionary<string, object> envelope = FDCCommandValueCodec.Decode(frame);
             return StringValue(envelope, "kind");
         }
-        internal static byte[] QueryFrame(Guid requestId, Guid operationId)
+        private static bool IsOperationAction(string action)
         {
+            return action == "query" || action == "cancel" ||
+                action == "pause" || action == "resume";
+        }
+        private static byte[] OperationFrame(string action, Guid requestId, Guid operationId)
+        {
+            if (!IsOperationAction(action))
+                throw new ArgumentException("未知命令操作动作", "action");
             if (requestId == Guid.Empty || operationId == Guid.Empty)
-                throw new ArgumentException("查询请求身份不能为空");
+                throw new ArgumentException("命令操作关联身份不能为空");
             return FDCCommandValueCodec.Encode(new Dictionary<string, object> {
-                { "kind", "query" }, { "requestId", requestId },
+                { "kind", action }, { "requestId", requestId },
                 { "operationId", operationId }
             });
         }
-        internal static void ParseQuery(byte[] frame, out Guid requestId, out Guid operationId)
+        internal static byte[] QueryFrame(Guid requestId, Guid operationId)
+        { return OperationFrame("query", requestId, operationId); }
+        internal static byte[] ControlFrame(string action, Guid requestId, Guid operationId)
         {
+            if (action != "cancel" && action != "pause" && action != "resume")
+                throw new ArgumentException("不支持的远程控制动作", "action");
+            return OperationFrame(action, requestId, operationId);
+        }
+        internal static void ParseOperationFrame(byte[] frame, string action,
+            out Guid requestId, out Guid operationId)
+        {
+            if (!IsOperationAction(action))
+                throw new InvalidDataException("非法命令操作类型");
             IReadOnlyDictionary<string, object> envelope = FDCCommandValueCodec.Decode(frame);
-            if (StringValue(envelope, "kind") != "query")
-                throw new InvalidDataException("非Operation查询帧");
+            if (StringValue(envelope, "kind") != action)
+                throw new InvalidDataException("命令操作帧动作不匹配");
             requestId = GuidValue(envelope, "requestId");
             operationId = GuidValue(envelope, "operationId");
             if (requestId == Guid.Empty || operationId == Guid.Empty)
-                throw new InvalidDataException("Operation查询身份不能为空");
+                throw new InvalidDataException("命令操作关联身份不能为空");
         }
+        internal static void ParseQuery(byte[] frame, out Guid requestId, out Guid operationId)
+        { ParseOperationFrame(frame, "query", out requestId, out operationId); }
         internal static MRKCommandRequest ParseRequest(byte[] frame, string trustedCaller)
         {
             IReadOnlyDictionary<string, object> values = FDCCommandValueCodec.Decode(frame);
@@ -207,6 +227,25 @@ namespace CxVisual.Mechanism.Runtime.Commands
             if (operationId == Guid.Empty) throw new ArgumentException("操作ID不能为空", "operationId");
             Guid requestId = Guid.NewGuid();
             return RoundTripAsync(MRKCommandPipeWire.QueryFrame(requestId, operationId),
+                requestId, operationId, cancellation);
+        }
+        /// <summary>远程取消仅请求Handler协作停止，不能替代工业设备安全联锁。</summary>
+        public Task<MRKCommandResponse> CancelAsync(Guid operationId,
+            CancellationToken cancellation = default(CancellationToken))
+        { return SendControlAsync("cancel", operationId, cancellation); }
+        public Task<MRKCommandResponse> PauseAsync(Guid operationId,
+            CancellationToken cancellation = default(CancellationToken))
+        { return SendControlAsync("pause", operationId, cancellation); }
+        public Task<MRKCommandResponse> ResumeAsync(Guid operationId,
+            CancellationToken cancellation = default(CancellationToken))
+        { return SendControlAsync("resume", operationId, cancellation); }
+        private Task<MRKCommandResponse> SendControlAsync(string action, Guid operationId,
+            CancellationToken cancellation)
+        {
+            if (operationId == Guid.Empty)
+                throw new ArgumentException("操作ID不能为空", "operationId");
+            Guid requestId = Guid.NewGuid();
+            return RoundTripAsync(MRKCommandPipeWire.ControlFrame(action, requestId, operationId),
                 requestId, operationId, cancellation);
         }
         private static bool IsBusyConnectionError(IOException error)
@@ -462,6 +501,14 @@ namespace CxVisual.Mechanism.Runtime.Commands
                                 errorCode: "OperationNotFoundOrUnauthorized",
                                 error: "无权限查询或操作不存在")
                             : observed.Copy(null, requestId);
+                    }
+                    else if (kind == "cancel" || kind == "pause" || kind == "resume")
+                    {
+                        Guid requestId, operationId;
+                        MRKCommandPipeWire.ParseOperationFrame(bytes, kind,
+                            out requestId, out operationId);
+                        // Host基于OS认证Caller裁决；Payload无权指定要控制的调用方。
+                        response = _center.ControlForCaller(operationId, peer, kind, requestId);
                     }
                     else throw new InvalidDataException("未知远程命令请求类型");
                     await MRKCommandPipeWire.WriteAsync(pipe,

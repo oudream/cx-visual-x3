@@ -439,6 +439,166 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(badTimeoutRejected, "server must reject zero request frame deadline");
         }
 
+        /// <summary>
+        /// 真实OS命名管道远程控制：状态查询、暂停检查点、恢复、取消；
+        /// 无权/不存在、未声明能力、完成后重控与未装配远程客户端的反例。
+        /// </summary>
+        private static void RemoteOperationControlRun()
+        {
+            string pipe = "CxVisual.Control." + Guid.NewGuid().ToString("N");
+            Guid operationId = Guid.NewGuid();
+            int calls = 0;
+            TaskCompletionSource<bool> started = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            using (MRKCommandCenter host = new MRKCommandCenter())
+            using (host.Register(new MRKCommandDescriptor("ipc/controlled", Definition(),
+                policy: new MRKCommandPolicy(1, supportsCancellation: true, supportsPause: true)),
+                new MRKDelegateCommandHandler(async (context, inputs, cancellation) =>
+                {
+                    Interlocked.Increment(ref calls);
+                    started.TrySetResult(true);
+                    while (true)
+                    {
+                        await context.WaitWhilePausedAsync(cancellation).ConfigureAwait(false);
+                        await Task.Delay(15, cancellation).ConfigureAwait(false);
+                    }
+                })))
+            using (MRKCommandPipeServer server = new MRKCommandPipeServer(
+                host, pipe, peer => !string.IsNullOrWhiteSpace(peer)))
+            {
+                server.Start();
+                MRKCommandPipeClient client = new MRKCommandPipeClient(".", pipe, 5000, 6000);
+                using (MRKCommandCenter remote = new MRKCommandCenter(remoteClient: client))
+                {
+                    MRKCommandRequest request = new MRKCommandRequest("ipc/controlled", 5183,
+                        new Dictionary<string, object> { { "Input", 2.0 } },
+                        caller: "cannot-forge-windows-principal", operationId: operationId,
+                        options: new MRKCommandOptions(remote: true, timeoutMilliseconds: 5000));
+                    Task<MRKCommandResponse> invocation = remote.InvokeAsync(request);
+                    try
+                    {
+                        Check(started.Task.Wait(TimeSpan.FromSeconds(3)),
+                            "remote cancellable Handler must start on actual IPC host");
+                        MRKCommandResponse paused = remote.PauseRemoteAsync(operationId)
+                            .GetAwaiter().GetResult();
+                        Check(paused.Stage == MRKCommandStage.Accepted &&
+                            paused.BusinessSuccess == true &&
+                            paused.OperationId == operationId &&
+                            (paused.State == MRKCommandState.PauseRequested ||
+                             paused.State == MRKCommandState.Paused),
+                            "remote pause only acknowledges cooperative pause request");
+
+                        MRKCommandResponse observed = null;
+                        for (int i = 0; i < 75; ++i)
+                        {
+                            observed = remote.QueryRemoteAsync(operationId)
+                                .GetAwaiter().GetResult();
+                            if (observed.State == MRKCommandState.Paused) break;
+                            Thread.Sleep(20);
+                        }
+                        Check(observed != null && observed.State == MRKCommandState.Paused,
+                            "remote Paused requires actual Handler checkpoint");
+                        MRKCommandResponse resumed = remote.ResumeRemoteAsync(operationId)
+                            .GetAwaiter().GetResult();
+                        Check(resumed.Stage == MRKCommandStage.Accepted &&
+                            resumed.BusinessSuccess == true &&
+                            resumed.State == MRKCommandState.Running,
+                            "remote resume must release Handler checkpoint");
+
+                        MRKCommandResponse cancelled = remote.CancelRemoteAsync(operationId)
+                            .GetAwaiter().GetResult();
+                        Check(cancelled.Stage == MRKCommandStage.Accepted &&
+                            cancelled.BusinessSuccess == true && cancelled.RequestId != Guid.Empty &&
+                            cancelled.OperationId == operationId,
+                            "remote cancel is authenticated control request, not equipment stop");
+                        MRKCommandResponse result = invocation.GetAwaiter().GetResult();
+                        MRKCommandResponse final = client.QueryAsync(operationId)
+                            .GetAwaiter().GetResult();
+                        Check(result.State == MRKCommandState.Cancelled &&
+                            final.State == MRKCommandState.Cancelled && calls == 1,
+                            "remote cancellation must settle original Operation without re-execute");
+
+                        MRKCommandResponse repeated = remote.CancelRemoteAsync(operationId)
+                            .GetAwaiter().GetResult();
+                        Check(repeated.Stage == MRKCommandStage.Rejected &&
+                            repeated.ErrorCode == "ControlNotSupportedOrInvalidState",
+                            "completed operation must reject repeated control");
+                        MRKCommandResponse nonexistent = remote.PauseRemoteAsync(Guid.NewGuid())
+                            .GetAwaiter().GetResult();
+                        Check(nonexistent.Stage == MRKCommandStage.Rejected &&
+                            nonexistent.ErrorCode == "OperationNotFoundOrUnauthorized",
+                            "unknown OperationId cannot control any Handler");
+                    }
+                    finally
+                    {
+                        host.Cancel(operationId);
+                        // 每个远程测试用例都要确保Handler结束，避免CI残留服务会话。
+                        Task finished = Task.WhenAny(invocation, Task.Delay(6000))
+                            .GetAwaiter().GetResult();
+                        Check(object.ReferenceEquals(finished, invocation),
+                            "remote control Handler failed to settle during cleanup");
+                        server.StopAsync().GetAwaiter().GetResult();
+                    }
+                }
+            }
+
+            string limitedPipe = "CxVisual.Limited." + Guid.NewGuid().ToString("N");
+            TaskCompletionSource<bool> release = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<bool> entered = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            using (MRKCommandCenter host = new MRKCommandCenter())
+            using (host.Register(new MRKCommandDescriptor("ipc/limited", Definition(),
+                policy: new MRKCommandPolicy(1,
+                    supportsCancellation: false, supportsPause: false)),
+                new MRKDelegateCommandHandler(async (context, inputs, cancellation) =>
+                {
+                    entered.TrySetResult(true);
+                    await release.Task.ConfigureAwait(false);
+                    return new MRKCommandHandlerResult(
+                        new Dictionary<string, object> { { "Output", 4.0 } });
+                })))
+            using (MRKCommandPipeServer server = new MRKCommandPipeServer(
+                host, limitedPipe, peer => !string.IsNullOrWhiteSpace(peer)))
+            {
+                server.Start();
+                MRKCommandPipeClient client = new MRKCommandPipeClient(".", limitedPipe);
+                Guid id = Guid.NewGuid();
+                Task<MRKCommandResponse> request = client.InvokeAsync(new MRKCommandRequest(
+                    "ipc/limited", 5183,
+                    new Dictionary<string, object> { { "Input", 2.0 } },
+                    operationId: id, options: new MRKCommandOptions(remote: true)));
+                try
+                {
+                    Check(entered.Task.Wait(TimeSpan.FromSeconds(3)),
+                        "noncontrollable remote operation must start");
+                    MRKCommandResponse noPause = client.PauseAsync(id).GetAwaiter().GetResult();
+                    MRKCommandResponse noCancel = client.CancelAsync(id).GetAwaiter().GetResult();
+                    Check(noPause.Stage == MRKCommandStage.Rejected &&
+                        noCancel.Stage == MRKCommandStage.Rejected &&
+                        noPause.ErrorCode == "ControlNotSupportedOrInvalidState" &&
+                        noCancel.ErrorCode == "ControlNotSupportedOrInvalidState",
+                        "remote control cannot bypass published operation capabilities");
+                }
+                finally
+                {
+                    release.TrySetResult(true);
+                    Check(request.GetAwaiter().GetResult().State == MRKCommandState.Completed,
+                        "unsupported remote control must not affect original execution");
+                    server.StopAsync().GetAwaiter().GetResult();
+                }
+            }
+
+            using (MRKCommandCenter withoutRemote = new MRKCommandCenter())
+            {
+                MRKCommandResponse refused = withoutRemote.CancelRemoteAsync(Guid.NewGuid())
+                    .GetAwaiter().GetResult();
+                Check(refused.Stage == MRKCommandStage.Rejected &&
+                    refused.ErrorCode == "RemoteUnsupported",
+                    "center without remote client must not silently control local operations");
+            }
+        }
+
         /// <summary>命令值Wire V1：跨进程白名单值的版本、长度、嵌套、数组与污染反证。</summary>
         private static void WireCodecRun()
         {
@@ -1460,6 +1620,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             NamedPipeRun();
             PipeSilentPeerRun();
             PipeIdleSessionBudgetRun();
+            RemoteOperationControlRun();
             SeparateProcessPipeRun();
             QueuedRun();
             ConfiguredBindingRun();

@@ -436,3 +436,61 @@ Windows对8个命名管道实例全部被占用的情况，可能直接抛出IOE
 | 60 | IPC跨PC/设备/性能资源验收 | `本机命名管道；跨PC/HIL/长稳未验` | 部分实现/待闭环 |
 
 **P0/P1优先级**：P0当前服务端慢帧会话资源耗尽与TestCenter UIA超时；P1跨Host发现/稳定Schema协议/认证与审计、远端控制及查询可靠性、MOL/Studio真正可视闭环；P2跨PC认证/Host重启后的持续幂等恢复；P3设备HIL、长稳与性能。所有远端设备动作必须由接收端实际安全控制确认，Unknown不可自动重发。
+
+
+## 25. 命令远程协作控制：已认证Query/Cancel/Pause/Resume
+
+> 本节仅说明本次源码增量和测试合同；自动测试等级必须由本次提交SHA的真实Windows CI证明。**软件控制回执不等于PLC/运控/曝光等工业硬件完成安全动作。**
+
+### 唯一Owner与新增公共API
+
+- `Mechanism.Runtime.Commands.MRKCommandPipeClient`：`CancelAsync(Guid, CancellationToken)`、`PauseAsync(Guid, CancellationToken)`、`ResumeAsync(Guid, CancellationToken)`，复用已有 `QueryAsync`、单次管道连接和有界安全Codec，不建立新的控制协议库。
+- `MRKCommandCenter`：`QueryRemoteAsync`、`CancelRemoteAsync`、`PauseRemoteAsync`、`ResumeRemoteAsync`，复用构造时已经显式注入的`MRKCommandPipeClient`。无Transport返回`Rejected/RemoteUnsupported`，绝不转本地控制。
+- 目标Host仍通过 `MRKCommandPipeServer` 获取 Windows OS Peer，且必须先通过 `authorizePeer`。内部 `MRKCommandCenter.ControlForCaller` 复用唯一 `_operations` 账本，通过当前已认证的Peer与受理时 `Request.Caller` 一致性校验，不以请求端伪造的 `Caller` 字段授权。
+- `MRKCommandExecution.TryPause/TryResume`、`Policy.SupportsCancellation/SupportsPause`、`CancellationTokenSource` 是已有能力，本轮复用，未建立额外Command任务执行器/状态仓。新的控制帧 `cancel/pause/resume` 和既有 `query` 统一经 `FDCCommandValueCodec` 受限白名单帧传输，控制帧只包含Kind、RequestId、OperationId；非法动作/空身份拒绝。
+- 接受的控制回应使用 `MRKCommandStage.Accepted`、当前Operation状态和 `BusinessCode=cancelRequested/pauseRequested/resumeRequested`。`BusinessSuccess=true` 仅指控制请求已处理；`Paused` 状态必须是Handler主动到达暂停检查点。操作不存在或跨Caller控制：`OperationNotFoundOrUnauthorized`，策略不允许/操作已结束：`ControlNotSupportedOrInvalidState`。若底层取消回调抛异常而效果未知，必须返回 `Unknown/ControlUnknown`，不可伪报未执行或设备失败。
+- 远程控制的请求/响应有独立 RequestId，保留原 OperationId；RPC回复交叉关联校验沿用 `MRKCommandPipeWire.ParseResponse`，连接/交换异常沿用 `RemoteUnknown`/超时语义，**不会重新发送业务Command**。
+
+### 真实Windows正反验收（同PC OS Pipe，不冒充跨PC）
+
+`Tests/ArchitectureSmoke/Integration/CommandCenterTests.cs` 的 `RemoteOperationControlRun()` 必须由 `--command-center` 与默认回归触发。覆盖：
+
+1. 真实已启动的远程Handler、Query状态、协作PauseRequested → Handler检查点Paused → Resume Running → Cancel原Operation结算为Cancelled，原Handler只执行一次。
+2. 已完成后再次Cancel拒绝；未知OperationId不允许Pause；缺RemoteClient的Center拒绝远程控制。
+3. 明确声明不支持Pause/Cancellation的远程Handler，不能被控制帧越权暂停或取消，释放阻塞后仍可正常完成。
+4. 出错/取消的cleanup确保Handler完成与Pipe会话关闭；受限Windows Peer由先前 `NamedPipeRun` 权限反例验收，本轮不伪称实现跨Windows身份域的互相隔离测试。
+
+### 时序（控制不重新执行命令）
+
+```mermaid
+sequenceDiagram
+    participant Studio as SDK/Studio/MOL
+    participant Client as MRKCommandPipeClient
+    participant Host as IPC Host/OS Caller
+    participant Center as MRKCommandCenter
+    participant Handler as Professional Handler
+    Studio->>Client: InvokeAsync(Request, OperationId)
+    Client->>Host: request(已认证Peer)
+    Host->>Center: InvokeAsync(已替换可信Caller)
+    Center->>Handler: ExecuteAsync
+    Studio->>Client: PauseAsync(OperationId)
+    Client->>Host: pause(RequestId2, OperationId)
+    Host->>Center: ControlForCaller(Peer, pause)
+    Center-->>Studio: Accepted/PauseRequested
+    Handler->>Center: WaitWhilePausedAsync
+    Studio->>Client: QueryAsync(OperationId)
+    Client-->>Studio: Paused
+    Studio->>Client: ResumeAsync(OperationId)
+    Studio->>Client: CancelAsync(OperationId)
+    Handler-->>Center: OperationCanceledException
+    Studio->>Client: QueryAsync(OperationId)
+    Client-->>Studio: Cancelled
+```
+
+### 尚未实现/验收
+
+- 跨PC实际Windows域/凭据/ACL网络验证；单一Windows用户下的不同进程无法区分为不同OS主体，仍须由专业Host配置更细粒度权限策略。
+- 客户端断线但服务端仍在执行时，未知状态的操作持久化、跨Host重启后查询、离线队列及幂等恢复。
+- 进度/中间结果跨IPC主动推送（当前仍是操作最终结果/Query），Studio具体界面与MOL/MOC实际编排落地。
+- 真机HIL、急停/安全联锁、执行暂停后的设备安全确认，均归Professional/设备控制系统，不能由Command消息进行承诺。
+- 高并发多主机控制冲突、全链路正式审计、跨版本协议握手及容量长期压测。

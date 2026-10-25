@@ -458,6 +458,97 @@ namespace CxVisual.Mechanism.Runtime.Commands
                 return operation.Snapshot().Copy(_adapters);
             }
         }
+        /// <summary>
+        /// 已认证IPC Host专用操作控制：必须与最初的Windows调用者身份一致。
+        /// 成功仅代表协作控制请求已受理，不代表设备已经物理停止。
+        /// </summary>
+        internal MRKCommandResponse ControlForCaller(Guid operationId, string trustedCaller,
+            string action, Guid controlRequestId)
+        {
+            MRKCommandExecution operation;
+            lock (_gate)
+            {
+                if (_disposed || string.IsNullOrWhiteSpace(trustedCaller) ||
+                    !_operations.TryGetValue(operationId, out operation) ||
+                    !string.Equals(operation.Request.Caller, trustedCaller,
+                        StringComparison.OrdinalIgnoreCase))
+                    return new MRKCommandResponse(controlRequestId, operationId,
+                        MRKCommandStage.Rejected, MRKCommandState.Failed,
+                        errorCode: "OperationNotFoundOrUnauthorized",
+                        error: "操作不存在或调用者没有控制权限");
+            }
+            bool accepted;
+            try
+            {
+                switch (action)
+                {
+                    case "cancel":
+                        accepted = !operation.IsCompleted &&
+                            operation.Descriptor.Policy.SupportsCancellation;
+                        if (accepted) operation.Cancellation.Cancel();
+                        break;
+                    case "pause":
+                        accepted = operation.TryPause();
+                        break;
+                    case "resume":
+                        accepted = operation.TryResume();
+                        break;
+                    default:
+                        return new MRKCommandResponse(controlRequestId, operationId,
+                            MRKCommandStage.Rejected, MRKCommandState.Failed,
+                            errorCode: "InvalidControlAction", error: "未知操作控制类型");
+                }
+            }
+            catch (Exception ex)
+            {
+                // 取消回调可能已执行；不可虚报动作没有产生副作用。
+                return new MRKCommandResponse(controlRequestId, operationId,
+                    MRKCommandStage.Unknown, MRKCommandState.Unknown,
+                    errorCode: "ControlUnknown",
+                    error: "控制动作是否完成尚不能确认，请Query核对：" + ex.Message);
+            }
+            if (!accepted)
+                return new MRKCommandResponse(controlRequestId, operationId,
+                    MRKCommandStage.Rejected, MRKCommandState.Failed,
+                    errorCode: "ControlNotSupportedOrInvalidState",
+                    error: "操作已结束、目标不支持该控制或当前状态不允许");
+            MRKCommandResponse observed = operation.Snapshot();
+            return new MRKCommandResponse(controlRequestId, operationId,
+                MRKCommandStage.Accepted, observed.State,
+                businessSuccess: true, businessCode: action + "Requested",
+                durationMs: observed.DurationMilliseconds);
+        }
+
+        private Task<MRKCommandResponse> ForwardRemoteAsync(Guid operationId,
+            Func<MRKCommandPipeClient, Guid, CancellationToken, Task<MRKCommandResponse>> forward,
+            CancellationToken cancellation)
+        {
+            if (operationId == Guid.Empty)
+                throw new ArgumentException("操作ID不能为空", "operationId");
+            if (_remoteClient == null)
+                return Task.FromResult(new MRKCommandResponse(Guid.NewGuid(), operationId,
+                    MRKCommandStage.Rejected, MRKCommandState.Failed,
+                    errorCode: "RemoteUnsupported", error: "未装配远程命令客户端"));
+            return forward(_remoteClient, operationId, cancellation);
+        }
+        /// <summary>Studio/MOL使用同一Center远程查询原Operation，而非重发设备命令。</summary>
+        public Task<MRKCommandResponse> QueryRemoteAsync(Guid operationId,
+            CancellationToken cancellation = default(CancellationToken))
+        { return ForwardRemoteAsync(operationId, (client, id, ct) =>
+            client.QueryAsync(id, ct), cancellation); }
+        public Task<MRKCommandResponse> CancelRemoteAsync(Guid operationId,
+            CancellationToken cancellation = default(CancellationToken))
+        { return ForwardRemoteAsync(operationId, (client, id, ct) =>
+            client.CancelAsync(id, ct), cancellation); }
+        public Task<MRKCommandResponse> PauseRemoteAsync(Guid operationId,
+            CancellationToken cancellation = default(CancellationToken))
+        { return ForwardRemoteAsync(operationId, (client, id, ct) =>
+            client.PauseAsync(id, ct), cancellation); }
+        public Task<MRKCommandResponse> ResumeRemoteAsync(Guid operationId,
+            CancellationToken cancellation = default(CancellationToken))
+        { return ForwardRemoteAsync(operationId, (client, id, ct) =>
+            client.ResumeAsync(id, ct), cancellation); }
+
         /// <summary>仅请求协作暂停；状态PauseRequested不是设备安全停止。Paused表示Handler确实到达检查点。</summary>
         public bool Pause(Guid operationId)
         {
