@@ -13,6 +13,8 @@ namespace CxVisual.Mechanism.Visual
         Point,
         Text,
         Arrow,
-        DefectBox
+        DefectBox,
+        MoveOverlay,
+        DeleteOverlay
     }
 }

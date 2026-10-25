@@ -39,6 +39,10 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Ensure(translated.Points[0].X == 1 && translated.Points[0].Y == 2 &&
                 polygon.Points[0].X == 0, "移动顶点不破坏原图坐标");
             Ensure(overlays.Replace(translated), "更新多边形");
+            MVIImageOverlayItem scaled = translated.WithBounds(new FGERect2D(1,2,16,16));
+            Ensure(scaled.Id == translated.Id && scaled.Points[1].X == 17 &&
+                scaled.Points[2].Y == 18 &&
+                translated.Points[1].X == 9, "缩放同步顶点，不改变原模型");
 
             MVIImageOverlayItem defect = overlays.Add(new MVIImageOverlayItem(
                 MVIImageOverlayKind.DefectBox, MVIImageOverlayLayer.Defect,

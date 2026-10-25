@@ -60,9 +60,15 @@ namespace CxVisual.Mechanism.Visual
         public double LineWidth { get; private set; }
         public bool IsVisible { get; private set; }
 
+        /// <summary>按原图坐标缩放边界与顶点，不能只改Bounds而令测量线/多边形顶点停在原位。</summary>
         public MVIImageOverlayItem WithBounds(FGERect2D bounds)
         {
-            return new MVIImageOverlayItem(Kind, Layer, bounds, _points, Text, ExternalId,
+            double scaleX = Bounds.Width <= 0 ? 1 : bounds.Width / Bounds.Width;
+            double scaleY = Bounds.Height <= 0 ? 1 : bounds.Height / Bounds.Height;
+            FGEPoint2D[] points = _points.Select(p => new FGEPoint2D(
+                bounds.X + (p.X - Bounds.X) * scaleX,
+                bounds.Y + (p.Y - Bounds.Y) * scaleY)).ToArray();
+            return new MVIImageOverlayItem(Kind, Layer, bounds, points, Text, ExternalId,
                 Argb, LineWidth, Id, IsVisible);
         }
         public MVIImageOverlayItem WithVisibility(bool visible)
