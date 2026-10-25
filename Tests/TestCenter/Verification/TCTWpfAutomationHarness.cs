@@ -71,8 +71,6 @@ namespace CxVisual.TestCenter.UI
                 if (window.FindCreatedInstance("manual.channel") != null)
                     throw new InvalidOperationException("右键删除没有移除左树实例");
             }));
-            await Task.Run(() => InteractManualMessage(hwnd, window));
-            SaveScreenshot(window, "TestCenter-13-Message.png");
             await Task.Run(() => InteractManualModule(hwnd, window));
             SaveScreenshot(window, "TestCenter-12-ModuleConfig.png");
             window.Dispatcher.Invoke(new Action(() => {
@@ -643,6 +641,24 @@ namespace CxVisual.TestCenter.UI
                 throw new InvalidOperationException("ArchitectureSmoke real CLI run failed: " +
                     (completed ? details : "no verified exit code and actual stdout/stderr within 45 seconds"));
         }
+        /// <summary>Independent real HWND/UIA M36 acceptance; no unrelated lengthy Studio/NUnit screens.</summary>
+        public static async Task RunMessageAsync(TCTMainWindow window)
+        {
+            if(window==null)throw new ArgumentNullException("window");
+            window.Show();
+            await window.Dispatcher.InvokeAsync(() => window.UpdateLayout());
+            IntPtr hwnd=new WindowInteropHelper(window).Handle;
+            if(hwnd==IntPtr.Zero)throw new InvalidOperationException("Message TestCenter HWND absent");
+            await Task.Run(() => InteractManualMessage(hwnd,window));
+            SaveScreenshot(window,"TestCenter-13-Message.png");
+            window.Dispatcher.Invoke(new Action(() =>
+            {
+                TCTWorkspaceDescriptor message=window.FindCreatedInstance("manual.message");
+                if(message==null || !window.DocumentHost.CloseWorkspace(message.WorkspaceId))
+                    throw new InvalidOperationException("Message instance did not release its Tab");
+            }));
+        }
+
         private static void InteractManualMessage(IntPtr hwnd, TCTMainWindow window)
         {
             window.Dispatcher.Invoke(new Action(() =>
@@ -688,11 +704,6 @@ namespace CxVisual.TestCenter.UI
             if(!delivered)throw new InvalidOperationException(
                 "Message TestCenter UIA did not actually deliver message via M36 Owner");
 
-            window.Dispatcher.Invoke(new Action(() =>
-            {
-                if(!window.DocumentHost.CloseWorkspace(created.WorkspaceId))
-                    throw new InvalidOperationException("Message workspace could not close");
-            }));
         }
 
         private static void InteractManualRoot(IntPtr hwnd, TCTMainWindow window)

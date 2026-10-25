@@ -1,0 +1,60 @@
+name: TestCenter M36 Message UI Windows Acceptance
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'Tests/TestCenter/Manual/Message/**'
+      - 'Tests/TestCenter/Verification/TCTWpfAutomationHarness.cs'
+      - 'Tests/TestCenter/Common/Framework/TCTWorkspaceRegistry.cs'
+      - 'Tests/TestCenter/App.xaml.cs'
+      - 'Tests/TestCenter/CxVisual.TestCenter.csproj'
+      - '.github/workflows/testcenter-message-windows.yml'
+jobs:
+  testcenter-m36-ui:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - name: Restore pinned NUnit and AvalonDock dependencies
+        shell: pwsh
+        run: |
+          $msbuild=(Get-Command msbuild.exe -ErrorAction Stop).Source
+          & $msbuild .\Tests\TestCenter\CxVisual.TestCenter.csproj /t:Restore /p:Configuration=Debug /p:Platform=x64 /nologo /v:minimal
+          if($LASTEXITCODE -ne 0){throw 'TestCenter package restore failed'}
+          & $msbuild .\Applications\Studio\CxVisual.Studio.csproj /t:Restore /p:Configuration=Debug /p:Platform=x64 /nologo /v:minimal
+          if($LASTEXITCODE -ne 0){throw 'Studio restore failed'}
+      - name: Windows .NET Framework 4.8 x64 full compile
+        shell: pwsh
+        run: |
+          $msbuild=(Get-Command msbuild.exe -ErrorAction Stop).Source
+          & $msbuild .\CxVisual.Unified.sln /m:1 /t:Rebuild /p:Configuration=Debug /p:Platform=x64 /nologo /v:minimal
+          if($LASTEXITCODE -ne 0){throw 'Full solution build failed'}
+      - name: Real MessageCenter interactive UI Automation
+        shell: pwsh
+        run: |
+          $exe=(Resolve-Path '.\Output\Debug\x64\CxVisual.TestCenter.exe').Path
+          $screenshot=Join-Path (Get-Location) 'Output/Debug/x64/TestCenter-13-Message.png'
+          if(Test-Path $screenshot){Remove-Item $screenshot -Force}
+          $process=Start-Process -FilePath $exe -WorkingDirectory (Get-Location).Path -ArgumentList @('--message-ui-automation') -PassThru
+          try{Wait-Process -Id $process.Id -Timeout 65 -ErrorAction Stop}
+          catch{
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            throw 'M36 independent WPF UI Automation timed out'
+          }
+          $process.Refresh()
+          if($process.ExitCode -ne 0){
+            $errorFile=Join-Path ([System.IO.Path]::GetTempPath()) 'CxVisual-TestCenter-HostError.txt'
+            if(Test-Path $errorFile){Get-Content $errorFile | Write-Host}
+            throw "M36 WPF UI Automation failed: $($process.ExitCode)"
+          }
+          if(-not (Test-Path $screenshot)){throw 'Real message UI screenshot missing'}
+          Write-Host 'PASS M36 WPF UIA create, subscribe, publish, observe actual delivery, close'
+      - name: Upload actual message UI screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: TestCenter-M36-Message-UI
+          path: Output/Debug/x64/TestCenter-13-Message.png
+          if-no-files-found: ignore
