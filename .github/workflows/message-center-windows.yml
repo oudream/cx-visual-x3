@@ -1,0 +1,43 @@
+name: CxVisual M36 Message Center Windows Acceptance
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'Foundation/Data/Messages/**'
+      - 'Mechanism/Data/Messages/**'
+      - 'Foundation/Data/CxVisual.Foundation.Data.csproj'
+      - 'Mechanism/Data/CxVisual.Mechanism.Data.csproj'
+      - 'Tests/ArchitectureSmoke/Integration/MessageCenterTests.cs'
+      - 'Tests/ArchitectureSmoke/Integration/InteractionDefinitionsTests.cs'
+      - 'Tests/ArchitectureSmoke/Integration/FoundationMessageContractsTests.cs'
+      - 'Tests/ArchitectureSmoke/Program.cs'
+      - '.github/workflows/message-center-windows.yml'
+jobs:
+  m36-message-center:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - name: Restore NUnit and WPF package dependencies
+        shell: pwsh
+        run: |
+          $msbuild = (Get-Command msbuild.exe -ErrorAction Stop).Source
+          & $msbuild .\Tests\TestCenter\CxVisual.TestCenter.csproj /t:Restore /p:Configuration=Release /p:Platform=x64 /nologo /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw "TestCenter NUnit restore failed" }
+          & $msbuild .\Applications\Studio\CxVisual.Studio.csproj /t:Restore /p:Configuration=Release /p:Platform=x64 /nologo /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw "Studio AvalonDock restore failed" }
+      - name: Build existing 28-project solution
+        shell: pwsh
+        run: |
+          $msbuild = (Get-Command msbuild.exe -ErrorAction Stop).Source
+          & $msbuild .\CxVisual.Unified.sln /m:1 /t:Rebuild /p:Configuration=Release /p:Platform=x64 /nologo /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw "CxVisual Windows x64 .NET48 build failed" }
+      - name: Execute independent M36 MessageCenter regression
+        shell: pwsh
+        run: |
+          $exe = '.\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe'
+          & $exe --message-center
+          if ($LASTEXITCODE -ne 0) { throw "M36 MessageCenter regression failed" }
+          Write-Host 'PASS M36 MessageCenter independently of M12 CommandCenter and WPF UI tests'

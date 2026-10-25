@@ -117,3 +117,12 @@ Tests\ArchitectureSmoke\bin\Release\CxVisual.Tests.ArchitectureSmoke.exe --concu
 | `Tests/ArchitectureSmoke/Integration/MessageCenterTests.cs` | TestRequestStopAndCallbackStopGuardAsync | Stop/Dispose时30秒请求快速退出；取消释放临时订阅；Queued和ThreadPool Handler内Stop不死锁、Host外部Stop仍可用 |
 
 **本轮新增代码未扩充项目**。测试必须以对应Commit SHA的Windows CI日志为证据，不能因旧V1.6 PASS就标记最新V1.7已验收。
+
+
+## 12. V1.7 独立Windows验收链（避免被M12并发任务阻断）
+
+- 新增 `.github/workflows/message-center-windows.yml`，沿用现有Windows 2022 Runner、VS MSBuild、.NET Framework 4.8、Release x64完整构建。
+- **唯一业务验收入口**：`Output/Release/x64/CxVisual.Tests.ArchitectureSmoke.exe --message-center`，单独跑 M36 的所有同步/异步、通配过滤、共享订阅、ReqReply/Stop、QoS、Retain、MPA集成与异常测试。
+- 触发范围限于M36基础/机制源码和相关ArchitectureSmoke入口；不会因为新增命令IPC测试恰好失败就把M36误判失败。共同SLN构建依然保留跨项目依赖验证。
+- 2026-10-25前一版本统一运行时 CI 在`--command-center`阶段报`BUS-CMD idle IPC sessions`失败，默认测试未执行到M36；这**不是**M36通过或失败的独立证据。
+- Workflow将本SHA构建结果与`--message-center`输出绑定；WindowsCI仍是软件仿真，不包含外部MQTT Broker、PLC/相机、真实硬件ACK和Studio用户操作。
