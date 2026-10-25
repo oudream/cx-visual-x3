@@ -22,6 +22,9 @@
     <Compile Include="Imaging\MVIImageSlot.cs"/>
     <Compile Include="Imaging\MVIImageSession.cs"/>
     <Compile Include="Imaging\MVIImageViewport.cs"/>
+    <Compile Include="Imaging\Overlays\MVIImageOverlayKind.cs"/>
+    <Compile Include="Imaging\Overlays\MVIImageOverlayItem.cs"/>
+    <Compile Include="Imaging\Overlays\MVIImageOverlayStore.cs"/>
     <Reference Include="System"/>
     <Reference Include="System.Core"/>
   </ItemGroup>
