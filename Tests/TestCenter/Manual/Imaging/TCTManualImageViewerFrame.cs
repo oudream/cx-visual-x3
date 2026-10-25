@@ -9,6 +9,7 @@ using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Media;
 using CxVisual.Foundation.Imaging;
+using CxVisual.Foundation.Geometry;
 using CxVisual.Mechanism.Presentation.Wpf.Imaging;
 using CxVisual.Mechanism.Visual;
 using Microsoft.Win32;
@@ -39,8 +40,13 @@ namespace CxVisual.TestCenter.UI
         private readonly TextBox _amount = new TextBox { Width = 58, Text = "0.8", Margin = new Thickness(3) };
         private readonly TextBox _low = new TextBox { Width = 74, Text = "0", Margin = new Thickness(2) };
         private readonly TextBox _high = new TextBox { Width = 82, Text = "65535", Margin = new Thickness(2) };
-        private readonly CheckBox _roiTool = new CheckBox { Content = "ROI框选", Margin = new Thickness(10, 3, 8, 3),
-            VerticalAlignment = VerticalAlignment.Center };
+        private readonly ComboBox _imageTool = new ComboBox {
+            MinWidth = 144, Margin = new Thickness(3) };
+        private readonly TextBox _annotationText = new TextBox {
+            Width = 95, Text = "标注", Margin = new Thickness(2) };
+        private readonly ListBox _overlayList = new ListBox {
+            Height = 142, Margin = new Thickness(5),
+            FontSize = 12, Background = Brushes.White };
         private readonly CheckBox _withRoi = new CheckBox { Content = "ROI分析", IsChecked = true,
             Margin = new Thickness(6), VerticalAlignment = VerticalAlignment.Center };
 
@@ -75,7 +81,12 @@ namespace CxVisual.TestCenter.UI
             AddButton(toolbar, "1:1", "Actual", () => _viewer.ActualSize());
             AddButton(toolbar, "放大", "ZoomIn", () => _viewer.Zoom(1.25));
             AddButton(toolbar, "缩小", "ZoomOut", () => _viewer.Zoom(0.8));
-            toolbar.Children.Add(_roiTool);
+            toolbar.Children.Add(new TextBlock { Text = "交互工具", VerticalAlignment = VerticalAlignment.Center });
+            foreach (MVIImageToolMode mode in Enum.GetValues(typeof(MVIImageToolMode)))
+                _imageTool.Items.Add(new ComboBoxItem { Content = ToolTitle(mode), Tag = mode });
+            _imageTool.SelectedIndex = 0;
+            toolbar.Children.Add(_imageTool);
+            toolbar.Children.Add(_annotationText);
             AddButton(toolbar, "裁剪为结果", "Crop", CropSelection);
             AddButton(toolbar, "归一化结果", "Normalize", Normalize);
             toolbar.Children.Add(new TextBlock { Text = "滤波半径", VerticalAlignment = VerticalAlignment.Center });
@@ -148,6 +159,14 @@ namespace CxVisual.TestCenter.UI
                 FontWeight = FontWeights.SemiBold, Margin = new Thickness(8),
                 Foreground = Brushes.DarkSlateBlue };
             DockPanel.SetDock(summary, Dock.Top); side.Children.Add(summary);
+            DockPanel.SetDock(_overlayList, Dock.Top); side.Children.Add(_overlayList);
+            WrapPanel overlayButtons = new WrapPanel { Margin = new Thickness(3) };
+            AddButton(overlayButtons, "删除选中", "DeleteOverlay", DeleteSelectedOverlay);
+            AddButton(overlayButtons, "左移1px", "MoveOverlay", () => MoveSelectedOverlay(-1, 0));
+            AddButton(overlayButtons, "隐藏/显示层", "LayerVisibility", ToggleSelectedLayer);
+            AddButton(overlayButtons, "显示所有层", "ShowAllLayers", ShowAllLayers);
+            AddButton(overlayButtons, "清空标注", "ClearOverlays", () => _viewer.ClearOverlays());
+            DockPanel.SetDock(overlayButtons, Dock.Top); side.Children.Add(overlayButtons);
             side.Children.Add(_info);
             Grid.SetColumn(side, 1); body.Children.Add(side);
             Grid.SetRow(body, 3); root.Children.Add(body);
@@ -158,14 +177,102 @@ namespace CxVisual.TestCenter.UI
             Grid.SetRow(footer, 4); root.Children.Add(footer);
             Content = root;
             AutomationProperties.SetAutomationId(this, "TCT.Imaging.Workbench");
-            _roiTool.Checked += (s,e) => { _viewer.IsRegionTool = true; Show("框选工具已启用：拖动鼠标选择像素ROI"); };
-            _roiTool.Unchecked += (s,e) => { _viewer.IsRegionTool = false; Show("鼠标左键平移、滚轮缩放"); };
+            _imageTool.SelectionChanged += (sender,args) =>
+            {
+                ComboBoxItem selected = _imageTool.SelectedItem as ComboBoxItem;
+                if (selected == null) return;
+                _viewer.ToolMode = (MVIImageToolMode)selected.Tag;
+                _viewer.AnnotationText = _annotationText.Text;
+                Show("交互工具：" + selected.Content + "；鼠标左键绘制/拖动，滚轮缩放");
+            };
+            _annotationText.TextChanged += (sender,args) =>
+                _viewer.AnnotationText = _annotationText.Text;
+            _viewer.Overlays.Changed += (sender,args) => RefreshOverlayList();
             _viewer.SelectionChanged += (s,e) =>
             {
                 if (_viewer.SelectedRegion.HasValue)
                     _status.Text = "当前ROI：" + BoundsText(_viewer.SelectedRegion.Value);
                 if (StateChanged != null) StateChanged();
             };
+        }
+
+        private static string ToolTitle(MVIImageToolMode mode)
+        {
+            switch (mode)
+            {
+                case MVIImageToolMode.Navigate: return "导航/平移";
+                case MVIImageToolMode.RectangleRoi: return "矩形ROI";
+                case MVIImageToolMode.CircleRoi: return "圆形ROI";
+                case MVIImageToolMode.EllipseRoi: return "椭圆ROI";
+                case MVIImageToolMode.Distance: return "两点距离";
+                case MVIImageToolMode.Point: return "点标注";
+                case MVIImageToolMode.Text: return "文字标注";
+                case MVIImageToolMode.Arrow: return "箭头标注";
+                case MVIImageToolMode.DefectBox: return "缺陷框";
+                default: return mode.ToString();
+            }
+        }
+
+        private Guid? SelectedOverlayId()
+        {
+            ListBoxItem selected = _overlayList.SelectedItem as ListBoxItem;
+            return selected == null ? (Guid?)null : (Guid)selected.Tag;
+        }
+
+        private void RefreshOverlayList()
+        {
+            Guid? keep = SelectedOverlayId();
+            _overlayList.Items.Clear();
+            foreach (MVIImageOverlayItem item in _viewer.Overlays.Items)
+            {
+                string visibility = item.IsVisible &&
+                    _viewer.Overlays.IsLayerVisible(item.Layer) ? "●" : "○";
+                ListBoxItem row = new ListBoxItem { Tag = item.Id,
+                    Content = visibility + " " + item.Layer + " / " + item.Kind +
+                        (string.IsNullOrEmpty(item.Text) ? "" : " · " + item.Text),
+                    ToolTip = "ID: " + item.Id };
+                _overlayList.Items.Add(row);
+                if (keep.HasValue && keep.Value == item.Id) _overlayList.SelectedItem = row;
+            }
+            if (StateChanged != null) StateChanged();
+        }
+
+        private MVIImageOverlayItem RequireSelectedOverlay()
+        {
+            Guid? id = SelectedOverlayId();
+            if (!id.HasValue) throw new InvalidOperationException("请在右侧列表选中叠加项。");
+            MVIImageOverlayItem item = _viewer.Overlays.Find(id.Value);
+            if (item == null) throw new InvalidOperationException("叠加项不存在或已删除。");
+            return item;
+        }
+
+        private void DeleteSelectedOverlay()
+        {
+            MVIImageOverlayItem item = RequireSelectedOverlay();
+            _viewer.Overlays.Remove(item.Id);
+            Show("已删除叠加项：" + item.Kind);
+        }
+
+        private void MoveSelectedOverlay(double deltaX, double deltaY)
+        {
+            MVIImageOverlayItem item = RequireSelectedOverlay();
+            _viewer.Overlays.Replace(item.Translate(deltaX, deltaY));
+            Show("叠加项已在原图像素坐标系平移：" + deltaX + "," + deltaY);
+        }
+
+        private void ToggleSelectedLayer()
+        {
+            MVIImageOverlayItem item = RequireSelectedOverlay();
+            bool visible = !_viewer.Overlays.IsLayerVisible(item.Layer);
+            _viewer.SetOverlayLayerVisible(item.Layer, visible);
+            Show(item.Layer + " 图层：" + (visible ? "显示" : "隐藏"));
+        }
+
+        private void ShowAllLayers()
+        {
+            foreach (MVIImageOverlayLayer layer in Enum.GetValues(typeof(MVIImageOverlayLayer)))
+                _viewer.SetOverlayLayerVisible(layer, true);
+            Show("全部ROI/测量/标注/缺陷图层已显示");
         }
 
         private static string BoundsText(FIMPixelRegion r)
