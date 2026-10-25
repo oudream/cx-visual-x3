@@ -202,7 +202,13 @@ namespace CxVisual.TestCenter.UI
             Content = main;
         }
         private static TabItem Tab(string name, object content)
-        { return new TabItem { Header = name, Content = content, Padding = new Thickness(12, 7, 12, 7) }; }
+        {
+            TabItem tab = new TabItem { Header = name, Content = content,
+                Padding = new Thickness(12, 7, 12, 7) };
+            if (name == "人工会话证据")
+                AutomationProperties.SetAutomationId(tab, "TCT.Command.Tab.History");
+            return tab;
+        }
         private void Changed()
         { Action handler = StateChanged; if (handler != null) handler(); }
         private void Show(string text) { _status.Text = text; Changed(); }

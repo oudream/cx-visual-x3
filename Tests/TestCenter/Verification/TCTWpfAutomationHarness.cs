@@ -699,6 +699,14 @@ namespace CxVisual.TestCenter.UI
                 InvokePattern pattern = query.GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
                 if (pattern == null) throw new InvalidOperationException("远程/本地Query操作按钮缺少UIA");
                 pattern.Invoke();
+                // WPF仅为当前选中Tab实例化可见内容。必须由真实UIA选择历史页，
+                // 不能在尚未展开的Tab中虚构可访问的DataGrid。
+                AutomationElement historyTab = Find(root, "TCT.Command.Tab.History");
+                SelectionItemPattern select = historyTab.GetCurrentPattern(
+                    SelectionItemPattern.Pattern) as SelectionItemPattern;
+                if (select == null)
+                    throw new InvalidOperationException("人工证据Tab不支持UIA SelectionItemPattern");
+                select.Select();
                 AutomationElement table = Find(root, "TCT.Command.History");
                 if (table.Current.ControlType != ControlType.DataGrid)
                     throw new InvalidOperationException("真实人工会话记录未呈现在DataGrid");
