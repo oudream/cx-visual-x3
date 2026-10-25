@@ -81,6 +81,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             set { VerifyAccess(); _annotationText = value ?? string.Empty; }
         }
         public int VisibleOverlayCount { get { return _overlays.GetVisibleItems().Count; } }
+        public int OverlayVisualCount { get { return OverlayCanvas.Children.Count; } }
         public event EventHandler SelectionChanged;
         public event EventHandler PixelInspected;
 
@@ -159,6 +160,26 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             if (_bitmap == null) throw new InvalidOperationException("尚无可导出图像。");
             PngBitmapEncoder encoder = new PngBitmapEncoder();
             encoder.Frames.Add(BitmapFrame.Create(_bitmap));
+            using (FileStream stream = new FileStream(path, FileMode.Create, FileAccess.Write))
+                encoder.Save(stream);
+        }
+
+        /// <summary>导出当前WPF视口截图，包含ROI、测量、标注与缺陷图层；不同于仅原像素的SavePng。</summary>
+        public void SaveViewPng(string path)
+        {
+            VerifyAccess();
+            if (ActiveImage == null) throw new InvalidOperationException("没有可导出的图像视口。");
+            if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException("输出路径不能为空。", "path");
+            int width = (int)Math.Ceiling(ViewportRoot.ActualWidth);
+            int height = (int)Math.Ceiling(ViewportRoot.ActualHeight);
+            if (width < 1 || height < 1 || (long)width * height * 4 > 512L * 1024 * 1024)
+                throw new InvalidOperationException("视口尚未布置或导出尺寸过大。");
+            RenderTargetBitmap snapshot = new RenderTargetBitmap(width, height, 96, 96,
+                PixelFormats.Pbgra32);
+            snapshot.Render(ViewportRoot);
+            snapshot.Freeze();
+            PngBitmapEncoder encoder = new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(snapshot));
             using (FileStream stream = new FileStream(path, FileMode.Create, FileAccess.Write))
                 encoder.Save(stream);
         }

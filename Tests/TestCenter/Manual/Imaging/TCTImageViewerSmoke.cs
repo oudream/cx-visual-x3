@@ -2,6 +2,8 @@ using System;
 using System.IO;
 using System.Windows;
 using CxVisual.Foundation.Imaging;
+using CxVisual.Foundation.Geometry;
+using CxVisual.Mechanism.Visual;
 
 namespace CxVisual.TestCenter.UI
 {
@@ -18,6 +20,8 @@ namespace CxVisual.TestCenter.UI
                 WindowStyle = WindowStyle.ToolWindow, ShowInTaskbar = false, Content = frame };
             string file = Path.Combine(Path.GetTempPath(),
                 "CxVisual-Imaging-Wpf-"+Guid.NewGuid().ToString("N")+".png");
+            string screenshot = Path.Combine(Path.GetTempPath(),
+                "CxVisual-Imaging-Overlay-"+Guid.NewGuid().ToString("N")+".png");
             try
             {
                 window.Show();
@@ -47,12 +51,49 @@ namespace CxVisual.TestCenter.UI
                 FIMImageStatistics stats = FIMImageAnalyzer.Calculate(frame.Viewer.ActiveImage);
                 if (stats.PixelCount != 16 || Math.Abs(stats.Mean - 8.5) > 1e-9)
                     throw new InvalidOperationException("Raw pixel statistics changed after windowing");
+                // 程序化创建真实叠加项，让MPW的WPF Canvas实际绘制，并检查层级隐藏/删除。
+                MVIImageOverlayItem rect = frame.Viewer.AddOverlay(new MVIImageOverlayItem(
+                    MVIImageOverlayKind.RectangleRoi, MVIImageOverlayLayer.Roi,
+                    new FGERect2D(0, 0, 2, 2)));
+                MVIImageOverlayItem distance = frame.Viewer.AddOverlay(new MVIImageOverlayItem(
+                    MVIImageOverlayKind.DistanceMeasurement, MVIImageOverlayLayer.Measurement,
+                    new FGERect2D(0, 0, 3, 3),
+                    new [] { new FGEPoint2D(0.5,0.5), new FGEPoint2D(3.5,3.5) }));
+                MVIImageOverlayItem polygon = frame.Viewer.AddOverlay(new MVIImageOverlayItem(
+                    MVIImageOverlayKind.PolygonRoi, MVIImageOverlayLayer.Roi,
+                    new FGERect2D(0, 0, 3, 3),
+                    new [] { new FGEPoint2D(0,0), new FGEPoint2D(3,0),
+                             new FGEPoint2D(2,3) }));
+                MVIImageOverlayItem defect = frame.Viewer.AddOverlay(new MVIImageOverlayItem(
+                    MVIImageOverlayKind.DefectBox, MVIImageOverlayLayer.Defect,
+                    new FGERect2D(1,1,2,2), text:"D-01"));
+                if (frame.Viewer.VisibleOverlayCount != 4 || frame.Viewer.OverlayVisualCount < 4)
+                    throw new InvalidOperationException("Expected overlay geometries not drawn by native WPF Canvas");
+                frame.Viewer.SetOverlayLayerVisible(MVIImageOverlayLayer.Roi, false);
+                if (frame.Viewer.VisibleOverlayCount != 2 || frame.Viewer.OverlayVisualCount < 2)
+                    throw new InvalidOperationException("ROI layer hide did not preserve measurement/defect");
+                frame.Viewer.SetOverlayLayerVisible(MVIImageOverlayLayer.Roi, true);
+                frame.Viewer.Overlays.Replace(rect.Translate(1, 0));
+                if (frame.Viewer.Overlays.Find(rect.Id).Bounds.Left != 1)
+                    throw new InvalidOperationException("Overlay move did not update original coordinates");
+                window.UpdateLayout();
+                frame.Viewer.SaveViewPng(screenshot);
+                if (!File.Exists(screenshot) || new FileInfo(screenshot).Length <= 0)
+                    throw new InvalidOperationException("WPF viewport with overlays not exported");
+                if (!frame.Viewer.Overlays.Remove(distance.Id) ||
+                    frame.Viewer.VisibleOverlayCount != 3)
+                    throw new InvalidOperationException("Overlay delete/repaint not reflected");
+                frame.Viewer.ClearOverlays();
+                if (frame.Viewer.VisibleOverlayCount != 0 || frame.Viewer.OverlayVisualCount != 0)
+                    throw new InvalidOperationException("Overlay clear must remove all native WPF shapes");
+                Console.WriteLine("PASS TCT WPF overlays: rectangle/line/polygon/defect, layer hide, move, screenshot and release");
                 Console.WriteLine("PASS TCT WPF ImageViewer: real control/layout, 16-bit, ROI, zoom, window, PNG and FIM/MVI");
             }
             finally
             {
                 window.Close();
                 if (File.Exists(file)) File.Delete(file);
+                if (File.Exists(screenshot)) File.Delete(screenshot);
             }
         }
     }
