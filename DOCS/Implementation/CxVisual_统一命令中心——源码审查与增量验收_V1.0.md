@@ -298,3 +298,18 @@ Operation账本继续以OperationId去重，同一OperationId的身份比较包�
 白名单涵盖：null、bool、整数(int/long/short/byte/uint/ulong/ushort/sbyte)、float/double/decimal、string、byte[]、Guid、DateTime、一维基础类型数组、`Dictionary<string,object>` 嵌套和 `List<object>`。Map按Ordinals排序编码，易于确定性比对。严禁BinaryFormatter、反射加载任意Type或Native Handle传输，未声明DTO/Enum需未来可信Schema与Adapter才允许远程通信。帧最多4MiB、Binary最多2MiB、文本最多64KiB、集合最多10000项、嵌套最多16层；读取验证版本、类型Tag、截断、重复Key与尾随字节。
 
 专项新增：值/嵌套/类型化数组回环、确定性Map编码、调用方修改byte[]后的隔离、截断帧/无效Header/未知Tag拒绝、体积上限和未知CLR对象拒绝。此项只解决 **远程的安全值格式基础**，跨进程命令请求/响应帧、身份授权、Transport路由与ACK/Query协议仍是未完成阶段。
+
+## 18. Windows真实命名管道IPC命令通道（受约束P2首阶段）
+
+在 **Mechanism.Runtime.Commands** 新增 `MRKCommandPipeTransport.cs`，正式 `MRKCommandPipeClient/Server`；读取/写入 `Foundation.Data.Commands.FDCCommandValueCodec` 的有界值帧，使用 Windows `System.IO.Pipes` 真正OS管道，并非进程内委托假装IPC。
+
+- 客户端需使用 `MRKCommandRequest(options: new MRKCommandOptions(remote:true))`；既可直接 `PipeClient.InvokeAsync`，也可在 `new MRKCommandCenter(remoteClient:client)` 上统一 `InvokeAsync`。没有显式注入Transport的Center仍按原规则返回 `RemoteUnsupported`。
+- 服务端：创建当前Windows用户专属ACL（PipeSecurity，禁止无权用户），额外 **必须** 注入 `Func<string,bool> authorizePeer`。服务端读取 OS 提供的 `GetImpersonationUserName()` 替代请求中可伪造的Caller；目标侧MRK授权器仍独立检查设备/权限命令。
+- 独立RequestId与OperationId经过线协议保留并校验，服务端复用原Handler、SchemaVersion、授权、幂等Operation账本；一个管道连接只允许一个请求/应答；最多8个会话，传输总帧4MiB上限，拒绝未知Tag与错误关联。
+- `PipeClient.QueryAsync(OperationId)` 使用全新RequestId查询原操作，服务端 **按认证后的原Caller匹配**，不允许任意用户窥探其他操作。命令受理、设备动作、异步应答依旧可通过原 `MRKCommandResponse` 区分。
+- 无回应/流断开/超时/取消时返回 **`MRKCommandStage.Unknown` + `MRKCommandState.Unknown`**，不伪称 Rejected（肯定没受理）或 Completed（肯定完成）。严禁对设备自动重发，需要携OperationId核对。
+- `Server.StopAsync` 请求停止监听并等待已接受会话结算，不强杀Handler/真实硬件。测试并行上限/认证策略/用户权限由Host配置，不把自定义Caller字符串当认证。
+- Windows命名管道可在受控Windows LAN跨机器使用，但 **当前没有完成跨PC SMB/Kerberos/防火墙/凭据/域ACL现场验收**，因此只能宣称 OS IPC 接口代码和 Windows本机管道通信；不宣称外网、TLS或跨平台传输。
+- 现有WireCodec暂不支持任意CLR DTO/Enum/Native资源Handle通过网络，失败要提前拒绝；图像/CT大数据应使用受控共享内存或文件/体数据传输，不经4MiB命令值帧。
+
+专项测试在 `CommandCenterTests.NamedPipeRun` 中使用**真实Windows系统命名管道**并在同一测试进程启动服务端与客户端验证：IPC调用、真实系统调用方覆盖伪造Caller、同OperationId重放去重、同Id参数冲突、未知目标拒绝、按Caller查询和未经授权会话拒绝。**这不等于两个独立进程或两台PC已实测成功**；下一阶段需增加独立进程互操作测试并落地专业Host的认证部署配置。

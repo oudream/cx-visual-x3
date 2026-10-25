@@ -11,7 +11,8 @@ using CxVisual.Mechanism.Runtime.Execution;
 namespace CxVisual.Mechanism.Runtime.Commands
 {
     public enum MRKCommandKind { System, Module, Object, Device }
-    public enum MRKCommandStage { Rejected, Accepted }
+    /// <summary>Unknown表示请求可能已送达远程Host，但无法确定是否受理；不得自动重发。</summary>
+    public enum MRKCommandStage { Rejected, Accepted, Unknown }
     public enum MRKCommandState { Pending, Running, Completed, Failed, Cancelled, Unknown, Queued, PauseRequested, Paused }
     public enum MRKCommandDispatch { Direct, ThreadPool, Queued }
 

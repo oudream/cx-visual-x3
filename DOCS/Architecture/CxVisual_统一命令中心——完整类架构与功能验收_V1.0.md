@@ -245,3 +245,9 @@ P1已新增命令运行时MDS表达式/Port输入绑定与专用线程同步SDK 
 ## 9. Foundation.Data安全命令值格式
 
 正式新增 `FDCCommandValueCodec`，提供受限 `Encode/Decode` 白名单值帧，拒绝任意CLR DTO和Native句柄反序列化。此类属于Foundation.Data.Commands，和MRK命令机制项目仍严格两项目归属；目前还没有实际跨进程/跨PC传输，也不得将wire值格式写为已完成远程命令。
+
+## 10. 真实Windows IPC实现与能力边界
+
+`MRKCommandPipeClient` + `MRKCommandPipeServer` 位于 `Mechanism.Runtime.Commands`，通过 `FDCCommandValueCodec` 定义的有界、安全白名单值帧传输Request/Response；服务端要求Windows当前用户ACL与另一个明确的OS调用者策略，禁止Caller字段伪造。命令中心配置 `remoteClient` 时 `InvokeAsync` 可选远程；`Submit` 仍仅本地同步受理，不静默转远程。支持远程 `QueryAsync(OperationId)` 并按原可信调用者授权。
+
+`MRKCommandStage.Unknown` 是不可确认远端是否受理的新状态，防止连接故障被误认为拒绝或已完成。已加入真实命名管道回环专项（客户端/服务端在同一Windows测试进程中，使用OS管道）。**尚未验证两个独立进程、跨PC域/SMB认证、安全防火墙、远程持久状态/设备现场、任意自定义类型/大数据传输**；不得把这些写为完成项。

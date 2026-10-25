@@ -58,6 +58,98 @@ namespace CxVisual.Tests.ArchitectureSmoke
         }
 
 
+        /// <summary>真实Windows命名管道：认证Host、IPC调用、目标关联与相同OperationId重放。</summary>
+        private static void NamedPipeRun()
+        {
+            string name = "CxVisual.Command." + Guid.NewGuid().ToString("N");
+            int calls = 0;
+            string actualCaller = null;
+            using (MRKCommandCenter center = new MRKCommandCenter())
+            using (center.Register(new MRKCommandDescriptor("ipc/algorithm", Definition()),
+                new MRKDelegateCommandHandler((ctx, inputs, ct) =>
+                {
+                    Interlocked.Increment(ref calls);
+                    actualCaller = ctx.Caller;
+                    double value = (double)inputs["Input"] * (double)inputs["Factor"];
+                    return Task.FromResult(new MRKCommandHandlerResult(
+                        new Dictionary<string, object> { { "Output", value } }));
+                })))
+            using (MRKCommandPipeServer server = new MRKCommandPipeServer(
+                center, name, peer => !string.IsNullOrWhiteSpace(peer)))
+            {
+                server.Start();
+                MRKCommandPipeClient client = new MRKCommandPipeClient(".", name);
+                using (MRKCommandCenter caller = new MRKCommandCenter(remoteClient: client))
+                {
+                Guid operation = Guid.NewGuid();
+                MRKCommandRequest first = new MRKCommandRequest("ipc/algorithm", 5183,
+                    new Dictionary<string, object> { { "Input", 4.0 } },
+                    caller: "forged-request-caller", operationId: operation,
+                    options: new MRKCommandOptions(remote: true, timeoutMilliseconds: 2000),
+                    expectedSchemaVersion: 1);
+                MRKCommandResponse result = caller.InvokeAsync(first).GetAwaiter().GetResult();
+                Check(result.RequestId == first.RequestId &&
+                    result.OperationId == operation &&
+                    result.State == MRKCommandState.Completed &&
+                    (double)result.Outputs["Output"] == 8.0 &&
+                    calls == 1 && !string.IsNullOrWhiteSpace(actualCaller) &&
+                    actualCaller != "forged-request-caller",
+                    "IPC must execute with trusted pipe peer instead of forged Caller");
+                MRKCommandResponse status = client.QueryAsync(operation).GetAwaiter().GetResult();
+                Check(status.State == MRKCommandState.Completed &&
+                    status.OperationId == operation &&
+                    (double)status.Outputs["Output"] == 8.0 && calls == 1,
+                    "IPC Query must return original operation without repeat execution");
+
+                MRKCommandRequest again = new MRKCommandRequest("ipc/algorithm", 5183,
+                    new Dictionary<string, object> { { "Input", 4.0 } },
+                    caller: "another-forged-user", operationId: operation,
+                    options: new MRKCommandOptions(remote: true, timeoutMilliseconds: 2000),
+                    expectedSchemaVersion: 1);
+                MRKCommandResponse replay = client.InvokeAsync(again).GetAwaiter().GetResult();
+                Check(replay.RequestId == again.RequestId &&
+                    replay.OperationId == result.OperationId &&
+                    replay.State == MRKCommandState.Completed && calls == 1,
+                    "remote duplicate OperationId must not re-execute Handler");
+
+                MRKCommandRequest conflict = new MRKCommandRequest("ipc/algorithm", 5183,
+                    new Dictionary<string, object> { { "Input", 5.0 } },
+                    operationId: operation,
+                    options: new MRKCommandOptions(remote: true, timeoutMilliseconds: 2000),
+                    expectedSchemaVersion: 1);
+                MRKCommandResponse denied = client.InvokeAsync(conflict).GetAwaiter().GetResult();
+                Check(denied.Stage == MRKCommandStage.Rejected &&
+                    denied.ErrorCode == "OperationConflict" && calls == 1,
+                    "remote replay input conflict must fail before side effects");
+
+                MRKCommandRequest unknown = new MRKCommandRequest("ipc/unknown", 5183,
+                    options: new MRKCommandOptions(remote: true, timeoutMilliseconds: 2000));
+                MRKCommandResponse noTarget = client.InvokeAsync(unknown).GetAwaiter().GetResult();
+                Check(noTarget.Stage == MRKCommandStage.Rejected &&
+                    noTarget.ErrorCode == "HandlerNotFound" && calls == 1,
+                    "IPC remote unknown target must be rejected");
+
+                server.StopAsync().GetAwaiter().GetResult();
+                }
+            }
+            string deniedName = "CxVisual.Denied." + Guid.NewGuid().ToString("N");
+            using (MRKCommandCenter center = new MRKCommandCenter())
+            using (MRKCommandPipeServer server = new MRKCommandPipeServer(center,
+                deniedName, peer => false))
+            {
+                server.Start();
+                MRKCommandResponse result = new MRKCommandPipeClient(".", deniedName)
+                    .InvokeAsync(new MRKCommandRequest("ipc/algorithm", 5183,
+                        options: new MRKCommandOptions(remote: true)))
+                    .GetAwaiter().GetResult();
+                Check(result.State == MRKCommandState.Unknown &&
+                    result.Stage == MRKCommandStage.Unknown &&
+                    result.ErrorCode == "RemoteUnknown",
+                    "rejected pipe connection must not impersonate an accepted command");
+                server.StopAsync().GetAwaiter().GetResult();
+            }
+        }
+
         /// <summary>命令值Wire V1：跨进程白名单值的版本、长度、嵌套、数组与污染反证。</summary>
         private static void WireCodecRun()
         {
@@ -1076,6 +1168,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 }
             }
             WireCodecRun();
+            NamedPipeRun();
             QueuedRun();
             ConfiguredBindingRun();
             DedicatedCommandRun();

@@ -195,6 +195,7 @@ namespace CxVisual.Mechanism.Runtime.Commands
         private readonly MRKCommandExecutor _executor;
         private readonly MRKCommandDispatcher _dispatcher;
         private readonly bool _ownsDispatcher;
+        private readonly MRKCommandPipeClient _remoteClient;
         private readonly Func<MRKCommandContext, bool> _authorize;
         private readonly FDTDataAdapterRegistry _adapters;
         private readonly List<IMRKCommandInterceptor> _interceptors =
@@ -208,7 +209,8 @@ namespace CxVisual.Mechanism.Runtime.Commands
             FDTDataAdapterRegistry adapters = null,
             int maxOperations = 4096, int defaultTimeoutMilliseconds = 30000,
             MRKCommandDispatcher dispatcher = null,
-            int queuedConcurrency = 4, int queueCapacity = 64)
+            int queuedConcurrency = 4, int queueCapacity = 64,
+            MRKCommandPipeClient remoteClient = null)
         {
             if (maxOperations < 1 || defaultTimeoutMilliseconds < 1)
                 throw new ArgumentOutOfRangeException("maxOperations/defaultTimeoutMilliseconds");
@@ -219,6 +221,7 @@ namespace CxVisual.Mechanism.Runtime.Commands
             Router = new MRKCommandRouter(_registry);
             _dispatcher = dispatcher ?? new MRKCommandDispatcher(queuedConcurrency, queueCapacity);
             _ownsDispatcher = dispatcher == null;
+            _remoteClient = remoteClient;
             _executor = new MRKCommandExecutor(_tracker, _leases, _adapters,
                 () => { lock (_gate) return _interceptors.ToArray(); });
         }
@@ -409,6 +412,10 @@ namespace CxVisual.Mechanism.Runtime.Commands
         public async Task<MRKCommandResponse> InvokeAsync(MRKCommandRequest request,
             CancellationToken cancellation = default(CancellationToken))
         {
+            if (request == null) throw new ArgumentNullException("request");
+            // 真实IPC仅走显式注入的客户端；无Transport仍保持原RemoteUnsupported拒绝。
+            if (request.Options.Remote && _remoteClient != null)
+                return await _remoteClient.InvokeAsync(request, cancellation).ConfigureAwait(false);
             MRKCommandSubmission submitted = Submit(request);
             if (submitted.Operation == null) return submitted.Response;
             MRKCommandExecution operation = submitted.Operation;
@@ -436,6 +443,19 @@ namespace CxVisual.Mechanism.Runtime.Commands
             {
                 MRKCommandExecution execution;
                 return _operations.TryGetValue(operationId, out execution) ? execution.Snapshot().Copy(_adapters) : null;
+            }
+        }
+        /// <summary>只供认证过的IPC Host桥接调用；原请求Caller为Windows实际对等身份。</summary>
+        internal MRKCommandResponse QueryForCaller(Guid operationId, string trustedCaller)
+        {
+            if (string.IsNullOrWhiteSpace(trustedCaller)) return null;
+            lock (_gate)
+            {
+                MRKCommandExecution operation;
+                if (!_operations.TryGetValue(operationId, out operation) ||
+                    !string.Equals(operation.Request.Caller, trustedCaller,
+                        StringComparison.OrdinalIgnoreCase)) return null;
+                return operation.Snapshot().Copy(_adapters);
             }
         }
         /// <summary>仅请求协作暂停；状态PauseRequested不是设备安全停止。Paused表示Handler确实到达检查点。</summary>
