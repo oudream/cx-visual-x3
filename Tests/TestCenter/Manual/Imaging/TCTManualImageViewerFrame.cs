@@ -29,6 +29,10 @@ namespace CxVisual.TestCenter.UI
             AcceptsReturn = true, TextWrapping = TextWrapping.Wrap,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             Background = Brushes.White, Margin = new Thickness(5) };
+        private readonly TextBox _rawWidth = new TextBox { Width = 65, Text = "1024", Margin = new Thickness(2) };
+        private readonly TextBox _rawHeight = new TextBox { Width = 65, Text = "1024", Margin = new Thickness(2) };
+        private readonly ComboBox _rawFormat = new ComboBox { Width = 122, Margin = new Thickness(2) };
+        private readonly CheckBox _bigEndian = new CheckBox { Content = "大端字节序", Margin = new Thickness(8, 4, 8, 4) };
         private readonly TextBox _low = new TextBox { Width = 74, Text = "0", Margin = new Thickness(2) };
         private readonly TextBox _high = new TextBox { Width = 82, Text = "65535", Margin = new Thickness(2) };
         private readonly CheckBox _roiTool = new CheckBox { Content = "ROI框选", Margin = new Thickness(10, 3, 8, 3),
@@ -54,6 +58,7 @@ namespace CxVisual.TestCenter.UI
         public TCTManualImageViewerFrame()
         {
             Grid root = new Grid { Background = Brushes.White };
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
@@ -88,6 +93,24 @@ namespace CxVisual.TestCenter.UI
             AddButton(analysis, "清除ROI", "RemoveRoi", () => _viewer.ClearSelection());
             Grid.SetRow(analysis, 1); root.Children.Add(analysis);
 
+            WrapPanel rawInput = new WrapPanel { Margin = new Thickness(3),
+                Background = new SolidColorBrush(Color.FromRgb(247,249,252)) };
+            rawInput.Children.Add(new TextBlock { Text = "RAW  宽", VerticalAlignment = VerticalAlignment.Center });
+            rawInput.Children.Add(_rawWidth);
+            rawInput.Children.Add(new TextBlock { Text = "高", VerticalAlignment = VerticalAlignment.Center });
+            rawInput.Children.Add(_rawHeight);
+            foreach (FIMPixelFormat format in new[] { FIMPixelFormat.Gray8,
+                FIMPixelFormat.Gray16, FIMPixelFormat.GrayFloat32,
+                FIMPixelFormat.Bgr24, FIMPixelFormat.Bgra32 })
+                _rawFormat.Items.Add(format);
+            _rawFormat.SelectedItem = FIMPixelFormat.Gray16;
+            rawInput.Children.Add(_rawFormat);
+            rawInput.Children.Add(_bigEndian);
+            AddButton(rawInput, "打开RAW", "RawOpen", () => OpenRawWithDialog());
+            rawInput.Children.Add(new TextBlock { Text = "严格按宽高/格式检查字节数（≤512MiB）",
+                VerticalAlignment = VerticalAlignment.Center, Foreground = Brushes.DimGray });
+            Grid.SetRow(rawInput, 2); root.Children.Add(rawInput);
+
             Grid body = new Grid();
             body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(260) });
@@ -101,12 +124,12 @@ namespace CxVisual.TestCenter.UI
             DockPanel.SetDock(summary, Dock.Top); side.Children.Add(summary);
             side.Children.Add(_info);
             Grid.SetColumn(side, 1); body.Children.Add(side);
-            Grid.SetRow(body, 2); root.Children.Add(body);
+            Grid.SetRow(body, 3); root.Children.Add(body);
 
             Border footer = new Border { Background = Brushes.AliceBlue,
                 BorderThickness = new Thickness(0,1,0,0), BorderBrush = Brushes.LightSteelBlue,
                 Child = _status };
-            Grid.SetRow(footer, 3); root.Children.Add(footer);
+            Grid.SetRow(footer, 4); root.Children.Add(footer);
             Content = root;
             AutomationProperties.SetAutomationId(this, "TCT.Imaging.Workbench");
             _roiTool.Checked += (s,e) => { _viewer.IsRegionTool = true; Show("框选工具已启用：拖动鼠标选择像素ROI"); };
@@ -155,22 +178,47 @@ namespace CxVisual.TestCenter.UI
             await OpenFileAsync(dialog.FileName);
         }
 
-        public async Task<bool> OpenFileAsync(string path)
+        public Task<bool> OpenFileAsync(string path)
+        {
+            return LoadAsync(path, () => MPWImageViewerControl.ReadImageFile(path));
+        }
+
+        public Task<bool> OpenRawAsync(string path, int width, int height,
+            FIMPixelFormat format, bool bigEndian)
+        {
+            return LoadAsync(path, () => FIMRawImageReader.LoadFile(path, width, height, format, 0, bigEndian));
+        }
+
+        private async void OpenRawWithDialog()
+        {
+            int width, height;
+            if (!int.TryParse(_rawWidth.Text, out width) || width <= 0 ||
+                !int.TryParse(_rawHeight.Text, out height) || height <= 0)
+                throw new ArgumentException("RAW宽高必须是正整数。");
+            FIMPixelFormat format = (FIMPixelFormat)_rawFormat.SelectedItem;
+            OpenFileDialog dialog = new OpenFileDialog {
+                Filter = "RAW图像|*.raw;*.bin;*.dat|所有文件|*.*",
+                Title = "打开原始图像（需已指定宽高和格式）" };
+            if (dialog.ShowDialog() == true)
+                await OpenRawAsync(dialog.FileName, width, height, format, _bigEndian.IsChecked == true);
+        }
+
+        private async Task<bool> LoadAsync(string path, Func<FIMImageBuffer> read)
         {
             long version = _viewer.Session.BeginOriginalLoad();
             Show("正在读取：" + System.IO.Path.GetFileName(path));
             try
             {
-                FIMImageBuffer image = await Task.Run(() => MPWImageViewerControl.ReadImageFile(path));
+                FIMImageBuffer image = await Task.Run(read);
                 if (!_viewer.Session.TryCompleteOriginalLoad(version, image))
                 {
-                    Show("新的图像加载已覆盖此任务，旧图丢弃");
+                    Show("新任务已取代该次加载，过期图像不会覆盖当前显示");
                     return false;
                 }
                 _viewer.ClearSelection();
                 _viewer.SetDisplayWindow(null, null);
                 _viewer.FitToWindow();
-                Show("图像已加载：" + image.Width + "×" + image.Height + " " + image.PixelFormat);
+                Show("已加载：" + image.Width + "×" + image.Height + " " + image.PixelFormat);
                 return true;
             }
             catch (Exception error)

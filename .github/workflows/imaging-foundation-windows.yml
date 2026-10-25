@@ -11,6 +11,12 @@ on:
       - 'Tests/ArchitectureSmoke/Integration/FIMImagingTests.cs'
       - 'Tests/ArchitectureSmoke/Integration/MVIImageSessionTests.cs'
       - 'Tests/ArchitectureSmoke/Program.cs'
+      - 'Mechanism/Presentation.Wpf/Imaging/**'
+      - 'Mechanism/Presentation.Wpf/CxVisual.Mechanism.Presentation.Wpf.csproj'
+      - 'Tests/TestCenter/Manual/Imaging/**'
+      - 'Tests/TestCenter/Common/Framework/TCTWorkspaceRegistry.cs'
+      - 'Tests/TestCenter/App.xaml.cs'
+      - 'Tests/TestCenter/CxVisual.TestCenter.csproj'
       - '.github/workflows/imaging-foundation-windows.yml'
 jobs:
   imaging-foundation:
@@ -37,9 +43,9 @@ jobs:
         shell: pwsh
         run: |
           & .\Build\Verify-Structure.ps1
-          if ($LASTEXITCODE -ne 0) { throw 'Structure verification failed' }
+          if (-not $?) { throw 'Structure verification failed' }
           & .\Build\Verify-OwnerDependencies.ps1
-          if ($LASTEXITCODE -ne 0) { throw 'Owner dependency verification failed' }
+          if (-not $?) { throw 'Owner dependency verification failed' }
       - name: Execute FIM MVI standalone and default smoke
         shell: pwsh
         run: |
@@ -48,3 +54,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'FIM/MVI --imaging regression failed' }
           & $exe
           if ($LASTEXITCODE -ne 0) { throw 'Default architecture regression failed' }
+      - name: Execute real WPF ImageViewer headless window and PNG roundtrip
+        shell: pwsh
+        run: |
+          $exe = '.\Output\Release\x64\CxVisual.TestCenter.exe'
+          & $exe --imaging-viewer-smoke
+          if ($LASTEXITCODE -ne 0) {
+            $errorFile = Join-Path ([System.IO.Path]::GetTempPath()) 'CxVisual-Imaging-Viewer-Error.txt'
+            if (Test-Path $errorFile) { Get-Content $errorFile }
+            throw 'TestCenter native WPF ImageViewer smoke failed'
+          }
