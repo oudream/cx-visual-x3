@@ -145,9 +145,13 @@ namespace CxVisual.TestCenter.UI
             _replyTopic.MinWidth=275; settings2.Children.Add(_replyTopic);
             top.Children.Add(settings2);
             top.Children.Add(_localResponder);
-            top.Children.Add(new TextBlock {
-                Text = "操作命令位于右侧「操作中心」：订阅、发布、请求响应、暂停与刷新指标。",
-                Foreground = Brushes.SlateGray, FontSize = 13, Margin = new Thickness(4, 5, 4, 5) });
+            StackPanel actions = Horizontal();
+            actions.Children.Add(ActionButton("订阅", "TCT.Message.Subscribe", Subscribe));
+            actions.Children.Add(ActionButton("取消订阅", "TCT.Message.Unsubscribe", Unsubscribe));
+            actions.Children.Add(ActionButton("发布", "TCT.Message.Publish", () => RunCommand(PublishLocalAsync)));
+            actions.Children.Add(ActionButton("请求响应", "TCT.Message.Request", () => RunCommand(RequestLocalAsync)));
+            actions.Children.Add(ActionButton("刷新指标", "TCT.Message.Metrics", RefreshMetrics));
+            top.Children.Add(actions);
             top.Children.Add(_status);
             root.Children.Add(top);
 
