@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Pipes;
@@ -208,6 +209,50 @@ namespace CxVisual.Mechanism.Runtime.Commands
             return RoundTripAsync(MRKCommandPipeWire.QueryFrame(requestId, operationId),
                 requestId, operationId, cancellation);
         }
+        private static bool IsBusyConnectionError(IOException error)
+        {
+            // Win32 ERROR_SEM_TIMEOUT(121) / ERROR_PIPE_BUSY(231)：尚未建立连接，
+            // 因而尚未发送任何命令帧，可在连接预算内安全地再次尝试连接。
+            int nativeCode = error.HResult & 0xFFFF;
+            return nativeCode == 121 || nativeCode == 231;
+        }
+
+        private async Task<NamedPipeClientStream> ConnectWithBusyRetryAsync(
+            CancellationToken cancellation)
+        {
+            Stopwatch budget = Stopwatch.StartNew();
+            while (true)
+            {
+                cancellation.ThrowIfCancellationRequested();
+                int remaining = _connectTimeout - (int)budget.ElapsedMilliseconds;
+                if (remaining <= 0)
+                    throw new TimeoutException("IPC连接预算耗尽，尚未交付命令请求");
+                NamedPipeClientStream client = new NamedPipeClientStream(
+                    _host, _pipe, PipeDirection.InOut, PipeOptions.Asynchronous,
+                    TokenImpersonationLevel.Identification);
+                try
+                {
+                    await client.ConnectAsync(remaining, cancellation).ConfigureAwait(false);
+                    return client;
+                }
+                catch (IOException error) when (IsBusyConnectionError(error) &&
+                    budget.ElapsedMilliseconds < _connectTimeout)
+                {
+                    client.Dispose();
+                    // 仅OS连接阶段重试。连接成功后交付请求失败不能自动重新执行。
+                    remaining = _connectTimeout - (int)budget.ElapsedMilliseconds;
+                    if (remaining > 0)
+                        await Task.Delay(Math.Min(50, remaining), cancellation)
+                            .ConfigureAwait(false);
+                }
+                catch
+                {
+                    client.Dispose();
+                    throw;
+                }
+            }
+        }
+
         private static async Task<MRKCommandResponse> ExchangeAsync(NamedPipeClientStream client,
             byte[] frame, Guid requestId, Guid operationId, CancellationToken cancellation)
         {
@@ -221,13 +266,11 @@ namespace CxVisual.Mechanism.Runtime.Commands
         {
             try
             {
-                using (NamedPipeClientStream client = new NamedPipeClientStream(
-                    _host, _pipe, PipeDirection.InOut, PipeOptions.Asynchronous,
-                    TokenImpersonationLevel.Identification))
                 using (CancellationTokenSource wait = CancellationTokenSource
                     .CreateLinkedTokenSource(cancellation))
+                using (NamedPipeClientStream client =
+                    await ConnectWithBusyRetryAsync(wait.Token).ConfigureAwait(false))
                 {
-                    await client.ConnectAsync(_connectTimeout, wait.Token).ConfigureAwait(false);
                     // .NET48部分驱动的PipeStream异步读取不一定及时响应Token取消。
                     // Task.WhenAny保证本端不会因对端已连接但不应答而无限挂起。
                     Task<MRKCommandResponse> exchange = ExchangeAsync(client, frame,

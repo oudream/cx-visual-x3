@@ -362,6 +362,12 @@ Operation账本继续以OperationId去重，同一OperationId的身份比较包�
 - `CommandCenterTests.PipeIdleSessionBudgetRun` 采用8个真实Windows命名管道空闲连接、随后第9个有效命令验证会话恢复，校验仅执行一次、服务端停止可排空，另验证非法读时限参数拒绝。
 - **验证纪律**：本段描述为新增源码与测试意图；只有本次提交SHA的Windows x64 Rebuild、`--command-center`和默认回归真实成功后才能上升为CI通过。此项不等于跨PC现场、网络隔离、恶意高压攻击或真实设备HIL验证。
 
+### Windows饱和连接反例修正：连接前的可识别繁忙重试
+
+Windows对8个命名管道实例全部被占用的情况，可能直接抛出IOException / Win32 121 (ERROR_SEM_TIMEOUT) 或231 (ERROR_PIPE_BUSY)，而不按ConnectAsync传入的完整超时继续等待。初次提交`f69cfb8e`的真实CI就观察到约60ms的`RemoteUnknown`，0次Handler执行，并非执行侧未知。因此客户端在 **确认尚未连接且从未发送请求帧时**，仅对这两个OS繁忙代码做最多到`connectTimeoutMilliseconds`为止的短延时重新Connect，每次尝试使用全新PipeStream；连接成功后严格保持只发送一次，交换超时仍返回Unknown且禁止设备自动重发。其他IOException、ACL拒绝、取消不进入繁忙重试。
+
+此项与服务端绝对读帧时限组合，可让8个空闲Pipe会话释放后正常用户请求恢复接入；真实结果仍必须看修复提交SHA的Windows CI。不能将连接前重试误描述为命令幂等重试或远端设备动作补偿。
+
 ## 24. 60项需求逐项源码核对矩阵（当前代码事实与剩余边界）
 
 > 本表以现行主规格§6的编号区间逐项展开；条目短名是核对索引，而非重新发明原始需求定义。`源码+命令专项`表示当前有对应实现和命令专项覆盖路径，不代表每一条都有独立用例；`部分实现/待闭环`表示剩余专业/可靠性/远程/可视化验收；`未验收`不代表完全没有相关共性机制。固定SHA运行证据必须另查GitHub Actions。
