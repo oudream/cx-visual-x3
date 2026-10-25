@@ -241,3 +241,7 @@ P1已新增命令运行时MDS表达式/Port输入绑定与专用线程同步SDK 
 `MRKDedicatedCommandHandler` 使用已有 F19 `FCRDedicatedExecutor` 执行同步工业SDK委托；只保证同步调用所在线程，取消不会强杀正在执行的设备动作，外部Host负责Executor关闭。两类适配均在 `Mechanism.Runtime.Commands`，不新增项目。
 
 **仍然不是** Studio端到端参数面板、真实PLC采图与跨PC远程命令。相关测试只覆盖运行时源绑定与固定线程模拟SDK；实际结果以 Windows CI 为准。
+
+## 9. Foundation.Data安全命令值格式
+
+正式新增 `FDCCommandValueCodec`，提供受限 `Encode/Decode` 白名单值帧，拒绝任意CLR DTO和Native句柄反序列化。此类属于Foundation.Data.Commands，和MRK命令机制项目仍严格两项目归属；目前还没有实际跨进程/跨PC传输，也不得将wire值格式写为已完成远程命令。

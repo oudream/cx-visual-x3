@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CxVisual.Foundation.Data.Commands;
@@ -55,6 +57,71 @@ namespace CxVisual.Tests.ArchitectureSmoke
             { cancellation.ThrowIfCancellationRequested(); _variables.Update<double>(name, (double)value); return Task.CompletedTask; }
         }
 
+
+        /// <summary>命令值Wire V1：跨进程白名单值的版本、长度、嵌套、数组与污染反证。</summary>
+        private static void WireCodecRun()
+        {
+            Guid identity = Guid.NewGuid();
+            Dictionary<string, object> tree = new Dictionary<string, object> {
+                { "Guid", identity },
+                { "Text", "检测完成" },
+                { "Number", 2.5 },
+                { "Integers", new int[] { 1, 3, 5 } },
+                { "Bytes", new byte[] { 7, 9 } },
+                { "Time", new DateTime(2026, 10, 25, 10, 0, 0, DateTimeKind.Utc) },
+                { "Nested", new Dictionary<string, object> {
+                    { "Result", true },
+                    { "Scores", new List<object> { 3.0, 5.0, null } }
+                } }
+            };
+            byte[] frame = FDCCommandValueCodec.Encode(tree);
+            byte[] alternative = FDCCommandValueCodec.Encode(
+                tree.OrderByDescending(x => x.Key, StringComparer.Ordinal)
+                    .ToDictionary(x => x.Key, x => x.Value));
+            Check(frame.SequenceEqual(alternative), "wire encoding must not depend on map insertion order");
+            ((byte[])tree["Bytes"])[0] = 99;
+            IReadOnlyDictionary<string, object> decoded = FDCCommandValueCodec.Decode(frame);
+            Check((double)decoded["Number"] == 2.5 &&
+                ((int[])decoded["Integers"])[2] == 5 &&
+                ((byte[])decoded["Bytes"])[0] == 7 &&
+                ((Guid)decoded["Guid"]) == identity &&
+                ((DateTime)decoded["Time"]).Kind == DateTimeKind.Utc &&
+                ((bool)((Dictionary<string, object>)decoded["Nested"])["Result"]) &&
+                ((List<object>)((Dictionary<string, object>)decoded["Nested"])["Scores"]).Count == 3,
+                "wire typed values/array/nested map roundtrip");
+
+            bool truncated = false;
+            try { FDCCommandValueCodec.Decode(frame.Take(frame.Length - 1).ToArray()); }
+            catch (EndOfStreamException) { truncated = true; }
+            catch (InvalidDataException) { truncated = true; }
+            Check(truncated, "truncated wire frame must reject");
+            byte[] badHeader = (byte[])frame.Clone();
+            badHeader[0] ^= 0x40;
+            bool invalidHeader = false;
+            try { FDCCommandValueCodec.Decode(badHeader); }
+            catch (InvalidDataException) { invalidHeader = true; }
+            Check(invalidHeader, "wire version/header mismatch must reject");
+            bool unknownTag = false;
+            byte[] simple = FDCCommandValueCodec.Encode(new Dictionary<string, object> {
+                { "x", 17 }
+            });
+            simple[14] = 255; // Header(5)+Count(4)+NameLen(4)+Name(1)后的Tag
+            try { FDCCommandValueCodec.Decode(simple); }
+            catch (InvalidDataException) { unknownTag = true; }
+            Check(unknownTag, "unknown wire tag must fail closed");
+            bool huge = false;
+            try { FDCCommandValueCodec.Encode(new Dictionary<string, object> {
+                { "payload", new byte[2 * 1024 * 1024 + 1] }
+            }); }
+            catch (ArgumentException) { huge = true; }
+            Check(huge, "binary payload over configured limit must reject");
+            bool unsupported = false;
+            try { FDCCommandValueCodec.Encode(new Dictionary<string, object> {
+                { "ArbitraryObject", new object() }
+            }); }
+            catch (NotSupportedException) { unsupported = true; }
+            Check(unsupported, "arbitrary CLR DTO deserialization must fail closed");
+        }
 
         private sealed class CommandExpressionResolver : IMDSExternalBindingResolver
         {
@@ -1008,6 +1075,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         "byte array snapshot safety");
                 }
             }
+            WireCodecRun();
             QueuedRun();
             ConfiguredBindingRun();
             DedicatedCommandRun();

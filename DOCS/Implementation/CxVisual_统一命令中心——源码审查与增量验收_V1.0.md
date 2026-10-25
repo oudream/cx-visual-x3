@@ -290,3 +290,11 @@ Operation账本继续以OperationId去重，同一OperationId的身份比较包�
 - 真实FCRDedicatedExecutor同线程连续调用、一次SDK同步异常后仍能恢复执行、Stop后拒绝新工作。
 
 **验收证据分类**：编译与测试结果仅引用本次实际Git SHA的Windows CI；未有真实工业设备SDK、Studio UI操作或跨PC Transport，不得称这些场景已验收。
+
+## 17. Foundation.Data 命令值Wire V1（真实安全序列化契约）
+
+`Foundation/Data/Commands/FDCCommandValueCodec.cs` 定义 `FDCCommandValueCodec.Encode/Decode` 的稳定二进制值帧（Header=`CMD1`，版本1），复用 `FDCCommandValueSnapshot.Capture`；没有网络、身份认证或设备执行入口，不能据此称远程调用已完成。
+
+白名单涵盖：null、bool、整数(int/long/short/byte/uint/ulong/ushort/sbyte)、float/double/decimal、string、byte[]、Guid、DateTime、一维基础类型数组、`Dictionary<string,object>` 嵌套和 `List<object>`。Map按Ordinals排序编码，易于确定性比对。严禁BinaryFormatter、反射加载任意Type或Native Handle传输，未声明DTO/Enum需未来可信Schema与Adapter才允许远程通信。帧最多4MiB、Binary最多2MiB、文本最多64KiB、集合最多10000项、嵌套最多16层；读取验证版本、类型Tag、截断、重复Key与尾随字节。
+
+专项新增：值/嵌套/类型化数组回环、确定性Map编码、调用方修改byte[]后的隔离、截断帧/无效Header/未知Tag拒绝、体积上限和未知CLR对象拒绝。此项只解决 **远程的安全值格式基础**，跨进程命令请求/响应帧、身份授权、Transport路由与ACK/Query协议仍是未完成阶段。
