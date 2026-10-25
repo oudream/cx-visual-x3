@@ -74,6 +74,13 @@ namespace CxVisual.TestCenter.UI
             toolbar.Children.Add(_roiTool);
             AddButton(toolbar, "裁剪为结果", "Crop", CropSelection);
             AddButton(toolbar, "归一化结果", "Normalize", Normalize);
+            AddButton(toolbar, "旋转90°", "Rotate", () => ProcessImage(
+                image => FIMImageOperations.Rotate90Clockwise(image), "旋转90°"));
+            AddButton(toolbar, "水平镜像", "FlipHorizontal", () => ProcessImage(
+                image => FIMImageOperations.FlipHorizontal(image), "水平镜像"));
+            AddButton(toolbar, "垂直镜像", "FlipVertical", () => ProcessImage(
+                image => FIMImageOperations.FlipVertical(image), "垂直镜像"));
+            AddButton(toolbar, "差分图", "Difference", Difference);
             AddButton(toolbar, "原图", "Original", () => _viewer.SelectOriginal());
             AddButton(toolbar, "结果图", "Result", () => _viewer.SelectResult());
             AddButton(toolbar, "清空", "Clear", () => _viewer.Clear());
@@ -90,6 +97,7 @@ namespace CxVisual.TestCenter.UI
             AddButton(analysis, "还原显示", "ResetWindow", () => _viewer.SetDisplayWindow(null, null));
             analysis.Children.Add(_withRoi);
             AddButton(analysis, "灰度统计/直方图", "Analyze", Calculate);
+            AddButton(analysis, "阈值掩码", "Threshold", Threshold);
             AddButton(analysis, "清除ROI", "RemoveRoi", () => _viewer.ClearSelection());
             Grid.SetRow(analysis, 1); root.Children.Add(analysis);
 
@@ -238,6 +246,36 @@ namespace CxVisual.TestCenter.UI
             _viewer.ShowResult(cropped);
             _viewer.FitToWindow();
             Show("裁剪结果：" + cropped.Width + "×" + cropped.Height + "；原图仍保留");
+        }
+
+        private void ProcessImage(Func<FIMImageBuffer, FIMImageBuffer> operation, string title)
+        {
+            if (_viewer.ActiveImage == null) throw new InvalidOperationException("未加载图像。");
+            FIMImageBuffer result = operation(_viewer.ActiveImage);
+            _viewer.ClearSelection();
+            _viewer.ShowResult(result);
+            _viewer.FitToWindow();
+            Show(title + "处理结果已显示，原图仍保持不变");
+        }
+
+        private void Difference()
+        {
+            FIMImageBuffer original = _viewer.Session.Original;
+            FIMImageBuffer result = _viewer.Session.Result;
+            if (original == null || result == null)
+                throw new InvalidOperationException("差分需要同时加载原图和结果图。");
+            FIMImageBuffer difference = FIMImageOperations.DifferenceGray(original, result);
+            _viewer.ShowResult(difference);
+            Show("已生成原图与结果图的绝对差分（保留原图）。");
+        }
+
+        private void Threshold()
+        {
+            double low, high;
+            if (!double.TryParse(_low.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out low) ||
+                !double.TryParse(_high.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out high))
+                throw new ArgumentException("阈值范围必须是有效数字。");
+            ProcessImage(image => FIMImageOperations.Threshold(image, low, high), "阈值");
         }
 
         private void Normalize()

@@ -58,8 +58,9 @@ jobs:
         shell: pwsh
         run: |
           $exe = '.\Output\Release\x64\CxVisual.TestCenter.exe'
-          & $exe --imaging-viewer-smoke
-          if ($LASTEXITCODE -ne 0) {
+          # TestCenter is WinExe: PowerShell's '&' is nonblocking and $LASTEXITCODE may be null.
+          $process = Start-Process -FilePath (Resolve-Path $exe).Path -ArgumentList '--imaging-viewer-smoke' -Wait -PassThru
+          if ($process.ExitCode -ne 0) {
             $errorFile = Join-Path ([System.IO.Path]::GetTempPath()) 'CxVisual-Imaging-Viewer-Error.txt'
             if (Test-Path $errorFile) { Get-Content $errorFile }
             throw 'TestCenter native WPF ImageViewer smoke failed'
