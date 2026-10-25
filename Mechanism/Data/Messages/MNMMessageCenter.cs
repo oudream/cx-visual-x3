@@ -80,6 +80,9 @@ namespace CxVisual.Mechanism.Data.Messages
         private readonly Queue<string> _retainedOrder = new Queue<string>();
         private readonly Queue<MNMDeadLetter> _deadLetters = new Queue<MNMDeadLetter>();
         private readonly SemaphoreSlim _signal = new SemaphoreSlim(0);
+        // 中心关闭时唤醒所有等待ReplyTo/CorrelationId的临时请求。
+        private readonly TaskCompletionSource<bool> _shutdownSignal =
+            new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         private TaskCompletionSource<bool> _resume;
         private readonly Task _worker;
         private MNMMessageState _state = MNMMessageState.Running;
@@ -740,11 +743,16 @@ namespace CxVisual.Mechanism.Data.Messages
 
         public async Task StopAsync(bool drain = true)
         {
+            // 当前回调若同步等待包含自身的Worker/Pool排空，会形成自等待死锁。
+            // 禁止这种调用；Host可在回调外发起StopAsync，回调内可使用Dispose作非等待式关闭。
+            if (_dispatchDepth.Value > 0)
+                throw new InvalidOperationException("不能在消息Handler内等待MessageCenter.StopAsync；请交给Host关闭");
             lock(_gate)
             {
                 if (_state != MNMMessageState.Stopped)
                 {
                     _state=MNMMessageState.Stopped;
+                    _shutdownSignal.TrySetResult(true);
                     _resume.TrySetResult(true);
                     if (!drain)
                     {
@@ -777,6 +785,7 @@ namespace CxVisual.Mechanism.Data.Messages
             {
                 if (_state == MNMMessageState.Stopped) return;
                 _state=MNMMessageState.Stopped;
+                _shutdownSignal.TrySetResult(true);
                 _resume.TrySetResult(true);
                 while(_queue.Count > 0) Reject(_queue.Dequeue(),"Dispose取消队列中的消息");
                 foreach(MNMMessageSubscription s in _subs) s.Deactivate();
@@ -793,35 +802,56 @@ namespace CxVisual.Mechanism.Data.Messages
             CancellationToken cancellationToken=default(CancellationToken))
         {
             if (timeout <= TimeSpan.Zero) throw new ArgumentOutOfRangeException("timeout");
+            cancellationToken.ThrowIfCancellationRequested();
             MNMTopicFilter.ValidateTopic(responseTopic);
+            lock (_gate) DemandOpen();
             Guid correlation = Guid.NewGuid();
             TaskCompletionSource<MNMMessageContext<TResponse>> pending =
                 new TaskCompletionSource<MNMMessageContext<TResponse>>(
                     TaskCreationOptions.RunContinuationsAsynchronously);
+            // 用临时CorrelationId订阅等待回复；完成/超时/取消/Stop均及时注销。
             using (Subscribe<TResponse>(responseTopic,ctx =>
             {
                 if (ctx.Header.CorrelationId == correlation) pending.TrySetResult(ctx);
             },new MNMSubscriptionOptions { ReplayRetained=false }))
+            using (CancellationTokenSource deadline =
+                CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
             {
-                // 超时从发送开始计时，覆盖发布处理及回复等待，取消只是停止观察。
-                Task timeoutTask = Task.Delay(timeout,cancellationToken);
-                Task<MNMPublishReceipt> sending = PublishAsync(requestTopic,payload,
-                    new MNMPublishOptions { CorrelationId=correlation,ReplyTo=responseTopic,
-                        QoS=MNMMessageQoS.AtLeastOnceInProcess,RequireSubscriber=true },
-                    cancellationToken);
-                Task first = await Task.WhenAny(sending,timeoutTask).ConfigureAwait(false);
-                if (first != sending)
+                // 取消deadline以撤销长超时的Timer；取消本身只停止等待，不推断业务动作未发生。
+                try
                 {
+                    Task timeoutTask = Task.Delay(timeout,deadline.Token);
+                    Task<MNMPublishReceipt> sending = PublishAsync(requestTopic,payload,
+                        new MNMPublishOptions { CorrelationId=correlation,ReplyTo=responseTopic,
+                            QoS=MNMMessageQoS.AtLeastOnceInProcess,RequireSubscriber=true },
+                        cancellationToken);
+                    Task first = await Task.WhenAny(sending,timeoutTask,_shutdownSignal.Task)
+                        .ConfigureAwait(false);
+                    if (_shutdownSignal.Task.IsCompleted)
+                        throw new ObjectDisposedException("MNMMessageCenter",
+                            "请求发送过程中消息中心已停止，业务副作用状态未知");
+                    if (first != sending)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        throw new TimeoutException("消息请求发送等待超时；副作用状态未知");
+                    }
+                    MNMPublishReceipt sent = await sending.ConfigureAwait(false);
+                    if (sent.Stage == MNMPublishStage.Rejected || sent.Stage == MNMPublishStage.Failed)
+                        throw new InvalidOperationException("请求发送失败：" + sent.Error);
+                    Task done = await Task.WhenAny(pending.Task,timeoutTask,_shutdownSignal.Task)
+                        .ConfigureAwait(false);
+                    if (_shutdownSignal.Task.IsCompleted)
+                        throw new ObjectDisposedException("MNMMessageCenter",
+                            "等待回复过程中消息中心已停止，业务副作用状态未知");
+                    if (done == pending.Task)
+                        return await pending.Task.ConfigureAwait(false);
                     cancellationToken.ThrowIfCancellationRequested();
-                    throw new TimeoutException("消息请求发送等待超时；副作用状态未知");
+                    throw new TimeoutException("等待消息请求响应超时，不能推断业务动作未发生");
                 }
-                MNMPublishReceipt sent = await sending.ConfigureAwait(false);
-                if (sent.Stage == MNMPublishStage.Rejected || sent.Stage == MNMPublishStage.Failed)
-                    throw new InvalidOperationException("请求发送失败：" + sent.Error);
-                Task done = await Task.WhenAny(pending.Task,timeoutTask).ConfigureAwait(false);
-                if (done == pending.Task) return await pending.Task.ConfigureAwait(false);
-                cancellationToken.ThrowIfCancellationRequested();
-                throw new TimeoutException("等待消息请求响应超时，不能推断业务动作未发生");
+                finally
+                {
+                    deadline.Cancel();
+                }
             }
         }
     }

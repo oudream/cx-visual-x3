@@ -48,6 +48,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             await TestOverflowAndStopAsync().ConfigureAwait(false);
             await TestRetriesAsync().ConfigureAwait(false);
             await TestRequestResponseAsync().ConfigureAwait(false);
+            await TestRequestStopAndCallbackStopGuardAsync().ConfigureAwait(false);
             await TestConcurrencyAsync().ConfigureAwait(false);
             await TestSecurityAsync().ConfigureAwait(false);
             await TestTargetAndSourceAsync().ConfigureAwait(false);
@@ -404,6 +405,81 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(guarded.Metrics().RetainedCount==0,"clear reflected in metrics");
             }
             Console.WriteLine("PASS BUS.M36 retain TTL reclamation, clear/re-publish index, authorized removal");
+        }
+
+
+        /// <summary>
+        /// Stop/Dispose必须立即唤醒正在等待ReplyTo的请求；
+        /// Handler不得等待包含自身的Worker/ThreadPool Drain。
+        /// </summary>
+        private static async Task TestRequestStopAndCallbackStopGuardAsync()
+        {
+            using (MNMMessageCenter bus=new MNMMessageCenter())
+            using (bus.Subscribe<int>(Camera,ctx=>{ /* 故意不回复 */ }))
+            {
+                Task<MNMMessageContext<string>> pending=bus.RequestAsync<int,string>(
+                    Camera,1,Reply,TimeSpan.FromSeconds(30));
+                Check(SpinWait.SpinUntil(()=>bus.Metrics().SubscriptionCount==2,4000),
+                    "request installs temporary response subscriber");
+                await bus.StopAsync(false).ConfigureAwait(false);
+                await ExpectAsync<ObjectDisposedException>(async()=>
+                    await pending.ConfigureAwait(false)).ConfigureAwait(false);
+                Check(bus.Metrics().SubscriptionCount==0,
+                    "request and Stop release subscriptions");
+            }
+
+            using (MNMMessageCenter bus=new MNMMessageCenter())
+            using (bus.Subscribe<int>(Camera,ctx=>{ /* 故意不回复 */ }))
+            {
+                Task<MNMMessageContext<string>> pending=bus.RequestAsync<int,string>(
+                    Camera,2,Reply,TimeSpan.FromSeconds(30));
+                Check(SpinWait.SpinUntil(()=>bus.Metrics().SubscriptionCount==2,4000),
+                    "Dispose request subscriber installed");
+                bus.Dispose();
+                await ExpectAsync<ObjectDisposedException>(async()=>
+                    await pending.ConfigureAwait(false)).ConfigureAwait(false);
+            }
+
+            foreach (MNMDispatchMode mode in new [] { MNMDispatchMode.Queued, MNMDispatchMode.ThreadPool })
+            {
+                using (MNMMessageCenter bus=new MNMMessageCenter())
+                {
+                    int stoppedRejected=0;
+                    using(bus.SubscribeAsync<int>(Camera,async ctx=>
+                    {
+                        try { await bus.StopAsync().ConfigureAwait(false); }
+                        catch (InvalidOperationException)
+                        {
+                            Interlocked.Increment(ref stoppedRejected);
+                        }
+                    }))
+                    {
+                        MNMPublishReceipt result=await bus.PublishAsync(Camera,5,
+                            new MNMPublishOptions{DispatchMode=mode}).ConfigureAwait(false);
+                        Check(result.Stage==MNMPublishStage.Delivered && stoppedRejected==1,
+                            "callback StopAsync self-deadlock guarded for "+mode);
+                    }
+                    await bus.StopAsync(true).ConfigureAwait(false);
+                    Check(bus.State==MNMMessageState.Stopped,"Host can stop outside callback");
+                }
+            }
+
+            using (MNMMessageCenter bus=new MNMMessageCenter())
+            using (bus.Subscribe<int>(Camera,ctx=>{ /* 故意不回复 */ }))
+            using (CancellationTokenSource cancelled=new CancellationTokenSource())
+            {
+                Task<MNMMessageContext<string>> pending=bus.RequestAsync<int,string>(
+                    Camera,3,Reply,TimeSpan.FromSeconds(30),cancelled.Token);
+                Check(SpinWait.SpinUntil(()=>bus.Metrics().SubscriptionCount==2,4000),
+                    "cancelled request subscriber installed");
+                cancelled.Cancel();
+                await ExpectAsync<OperationCanceledException>(async()=>
+                    await pending.ConfigureAwait(false)).ConfigureAwait(false);
+                Check(bus.Metrics().SubscriptionCount==1,
+                    "cancelled request releases temporary subscription");
+                await bus.StopAsync(true).ConfigureAwait(false);
+            }
+            Console.WriteLine("PASS BUS.M36 ReqReply cancellation/stop wakeup and callback Stop guard");
         }
 
         private static async Task TestBasicAsync()
