@@ -265,6 +265,15 @@ namespace CxVisual.TestCenter.UI
                 return;
             }
             TabControl tabs = DocumentHost.Content as TabControl;
+            TCTManualCommandFrame command = tabs == null ? null : tabs.Items
+                .OfType<TabItem>().Where(x =>
+                    (x.Tag as TCTWorkspaceDescriptor)?.WorkspaceId == instanceId)
+                .Select(x => x.Content).OfType<TCTManualCommandFrame>().FirstOrDefault();
+            if (command != null && command.IsExecuting)
+            {
+                StatusText.Text = "命令仍在等待回执，不能删除工作区。请先取消或等待结算。";
+                return;
+            }
             TCTManualModuleFrame module = tabs == null ? null : tabs.Items
                 .OfType<TabItem>().Where(x =>
                     (x.Tag as TCTWorkspaceDescriptor)?.WorkspaceId == instanceId)

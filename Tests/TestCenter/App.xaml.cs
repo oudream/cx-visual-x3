@@ -111,6 +111,30 @@ namespace CxVisual.TestCenter.UI
                     TCTWireCodec.Write(e.Args[2], result);
                     exit = 0; // 结果状态在结构化文件内，不能用退出码代替断言状态。
                 }
+                else if (command == "--command-ui-smoke")
+                {
+                    if (e.Args.Length != 1)
+                        throw new ArgumentException("--command-ui-smoke takes no arguments");
+                    TCTMainWindow window = new TCTMainWindow();
+                    MainWindow = window;
+                    try
+                    {
+                        TCTWorkspaceDescriptor created = window.CreateWorkspaceInstance("manual.command");
+                        if (created == null || !window.DocumentHost.HasWorkspace(created.WorkspaceId))
+                            throw new InvalidOperationException("命令工作区未按正式树注册并打开");
+                        System.Windows.Controls.TabControl tabs =
+                            window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                        TCTManualCommandFrame frame =
+                            (tabs.SelectedItem as System.Windows.Controls.TabItem)?.Content
+                                as TCTManualCommandFrame;
+                        if (frame == null || !frame.Commands.Any(x => x.Id == "command.invoke"))
+                            throw new InvalidOperationException("命令工作区缺失真实操作入口");
+                        await TCTManualCommandFrame.VerifyLocalAsync();
+                        Console.WriteLine("PASS TCT.MANUAL.COMMAND Registry/Workspace/FDC/MRK/MDS/WPF");
+                        exit = 0;
+                    }
+                    finally { window.Close(); }
+                }
                 else if (command == "--message-ui-automation")
                 {
                     if (e.Args.Length != 1)

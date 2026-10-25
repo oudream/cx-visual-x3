@@ -102,6 +102,13 @@ namespace CxVisual.TestCenter.UI
         {
             TabItem tab;
             if (!_workspaceTabs.TryGetValue(id, out tab)) return false;
+            TCTManualCommandFrame command = tab.Content as TCTManualCommandFrame;
+            if (command != null && command.IsExecuting)
+            {
+                MessageBox.Show("命令调用仍在等待结果，请先等待应答或进行协作取消。关闭页面并非设备急停。",
+                    "TestCenter", MessageBoxButton.OK, MessageBoxImage.Information);
+                return false;
+            }
             TCTManualModuleFrame module = tab.Content as TCTManualModuleFrame;
             if (module != null && module.HasUnsavedDraft)
             {

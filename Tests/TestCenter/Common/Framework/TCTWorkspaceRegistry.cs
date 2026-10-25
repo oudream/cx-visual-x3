@@ -109,6 +109,9 @@ namespace CxVisual.TestCenter.UI
             registry.Register(new TCTWorkspaceDescriptor("manual.message", "manual.root", "消息中心测试",
                 "真实M36进程内Topic发布、订阅过滤、ReqReply、Retain和消息诊断；不是远程MQTT Broker",
                 TCTWorkspaceNodeKind.Leaf, () => new TCTManualMessageFrame()));
+            registry.Register(new TCTWorkspaceDescriptor("manual.command", "manual.root", "命令中心测试",
+                "真实MRKCommandCenter、FDC Schema、MDS参数、Operation控制与Windows命名管道",
+                TCTWorkspaceNodeKind.Leaf, () => new TCTManualCommandFrame()));
             registry.Register(new TCTWorkspaceDescriptor("manual.protocol", "manual.root", "规约测试",
                 "人工构帧及异常注入：待接入", TCTWorkspaceNodeKind.Leaf));
             registry.Register(new TCTWorkspaceDescriptor("manual.graphics", "manual.root", "图元绘制测试",

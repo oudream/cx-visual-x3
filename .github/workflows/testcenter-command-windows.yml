@@ -1,0 +1,43 @@
+name: TestCenter Command Workspace Windows Acceptance
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'Tests/TestCenter/**'
+      - 'Foundation/Data/Commands/**'
+      - 'Mechanism/Runtime/Commands/**'
+      - '.github/workflows/testcenter-command-windows.yml'
+
+jobs:
+  command-workspace-windows:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - name: Restore TestCenter and Studio references
+        shell: pwsh
+        run: |
+          & msbuild 'Tests/TestCenter/CxVisual.TestCenter.csproj' /t:Restore /p:Configuration=Debug /p:Platform=x64 /nologo /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw 'TestCenter restore failed' }
+          & msbuild 'Applications/Studio/CxVisual.Studio.csproj' /t:Restore /p:Configuration=Debug /p:Platform=x64 /nologo /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw 'Studio restore failed' }
+      - name: Rebuild full CxVisual x64
+        shell: pwsh
+        run: |
+          & msbuild 'CxVisual.Unified.sln' /t:Rebuild /m:1 /p:Configuration=Debug /p:Platform=x64 /nologo /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw 'Full solution x64 Rebuild failed' }
+      - name: Verify command workspace WPF and real MRK/MDS/NamedPipe
+        shell: pwsh
+        timeout-minutes: 4
+        run: |
+          $exe = (Resolve-Path 'Output/Debug/x64/CxVisual.TestCenter.exe').Path
+          $p = Start-Process -FilePath $exe -ArgumentList @('--command-ui-smoke') -PassThru -Wait
+          if ($p.ExitCode -ne 0) { throw "TestCenter command workspace smoke failed: $($p.ExitCode)" }
+      - name: Verify command center formal execution contracts
+        shell: pwsh
+        timeout-minutes: 5
+        run: |
+          & './Output/Debug/x64/CxVisual.Tests.ArchitectureSmoke.exe' --command-center
+          if ($LASTEXITCODE -ne 0) { throw 'Formal CommandCenter architecture tests failed' }
