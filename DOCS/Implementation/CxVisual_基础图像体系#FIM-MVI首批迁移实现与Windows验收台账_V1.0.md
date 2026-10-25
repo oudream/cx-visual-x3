@@ -71,3 +71,13 @@ if ($LASTEXITCODE -ne 0) { throw 'Default smoke failed' }
 - 对 `FIMPixelSpacing` 的 `default(FIMPixelSpacing)` 值增补防御：未初始化却以nullable有值传入时，物理长度/面积计算必须抛出异常，不得悄然返回0；异常反证已写入 `FIMImagingTests.cs`。
 - 当前源码入口对应提交：`7bcafde8225cf56a765faff0d399715238d9c552`；专项Windows工作流在 `5920c173` 提交创建。
 - **核验状态**：GitHub已确认代码和传统`.csproj`文件路径存在、旧合并文件已删除、`--imaging`与默认回归均包含两类测试；仓库当前尚未返回对应提交的任何 GitHub Actions 运行记录。静态存在性检查不等于C#真实编译，最终验收继续待Windows runner或Windows开发机执行。
+
+## 7. HALCON/OpenCV基础算法首批扩充（2026-10-25）
+
+- 来源：`ReferTo/Vision/Halcon/HalconHelper_Base.cs` 中的 `ImageToRGB`、`Gray16ToRgb8`、`ScaleImageMax/ConvertTo8Bit`、`OverlayImage2/OverlayImage3`。已核对原方法语义：RGB三通道复制、灰度范围拉伸及多图像均值融合。
+- `FIMImageOperations.NormalizeToGray8`：单通道Gray8/Gray16/Float32最小最大值归一化，常量图安全输出全零；不隐式修改原图。
+- `Gray8ToBgr24` 与 `Gray16ToBgr24`：直接生成独立BGR24像素缓冲（区别于HALCON内部的Planar RGB布局），没有额外Adapter。
+- `AverageGray`：同尺寸Gray8/Gray16多图融合，使用double累计与显式舍入，保留原输入位深。
+- 反向测试：输入格式/尺寸不一致、常量图除零风险、16位保持原值、归一化端点与三通道亮度。
+- **仍待同样本真实对比**：HALCON `ScaleImageMax` 的内部取整/饱和规则及 `OverlayImage2/3`的量化舍入不保证逐bit相等；先保证定义明确与通用像素结果正确，不把“算法语义提炼”等同“运行结果已验收”。
+- **OpenCV/HALCON共享内存风险**：旧 `HObjectToMat` 使用指向HObject的数据指针创建Mat；`MatToHObject`也涉及临时Mat与GenImage原生指针。这两处须明确源数据生存期/Copy语义后才能迁移，不直接照搬到FIM，更不为之发明多层Adapter。

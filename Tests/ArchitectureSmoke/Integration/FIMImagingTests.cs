@@ -44,6 +44,27 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Assert(gray16.GetGrayValue(1, 0) == 1024 &&
                 FIMImageOperations.WindowToGray8(gray16, 0, 1024).GetGrayValue(1, 0) == 255 &&
                 gray16.GetGrayValue(1, 0) == 1024, "16位数据与窗口隔离");
+            FIMImageBuffer normalized = FIMImageOperations.NormalizeToGray8(gray16);
+            Assert(normalized.GetGrayValue(0, 0) == 0 && normalized.GetGrayValue(1, 0) == 255,
+                "Gray16全范围归一化");
+            FIMImageBuffer bgr = FIMImageOperations.Gray16ToBgr24(gray16);
+            Assert(bgr.PixelFormat == FIMPixelFormat.Bgr24 && bgr.GetGrayValue(1, 0) == 255,
+                "Gray16转BGR24");
+            FIMImageBuffer mono = FIMImageOperations.Gray8ToBgr24(
+                new FIMImageBuffer(1, 1, FIMPixelFormat.Gray8, new byte[] { 27 }));
+            Assert(Near(mono.GetGrayValue(0, 0), 27), "Gray8三通道复制");
+            FIMImageBuffer allSame = FIMImageOperations.NormalizeToGray8(constant);
+            Assert(allSame.GetGrayValue(0, 0) == 0, "常量图不除零");
+            FIMImageBuffer gray1000 = new FIMImageBuffer(1, 1, FIMPixelFormat.Gray16, new byte[] { 232, 3 });
+            FIMImageBuffer gray2000 = new FIMImageBuffer(1, 1, FIMPixelFormat.Gray16, new byte[] { 208, 7 });
+            FIMImageBuffer averaged = FIMImageOperations.AverageGray(new[] { gray1000, gray2000 });
+            Assert(averaged.PixelFormat == FIMPixelFormat.Gray16 && averaged.GetGrayValue(0, 0) == 1500,
+                "Gray16均值融合保留位深");
+            Throws<ArgumentException>(() => FIMImageOperations.AverageGray(new[] { gray16, gray1000 }),
+                "均值融合尺寸不一致");
+            Assert(gray1000.GetGrayValue(0, 0) == 1000 && gray2000.GetGrayValue(0, 0) == 2000,
+                "图像融合不修改输入");
+
             FIMImageBuffer padded = new FIMImageBuffer(2, 2, FIMPixelFormat.Gray8, new byte[] { 1,2,0,3,4,0 }, 3);
             Assert(Near(FIMImageAnalyzer.Calculate(padded).Mean, 2.5), "Stride");
             FIMImageBuffer red = new FIMImageBuffer(1, 1, FIMPixelFormat.Bgr24, new byte[] { 0, 0, 255 });
