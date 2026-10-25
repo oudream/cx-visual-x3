@@ -179,3 +179,10 @@
 - [V1.1审查与V1.2修订报告](Architecture/CxVisual_公共机制体系%23统一交互——V1.1文档审查与V1.2修订报告.md)：历史问题、修订原因及待复核事项。
 
 > 当前文档是设计与实施基线，尚需结合 DOCS/02～04 细核 Owner/API；不代表进程内功能、跨进程通信或现场设备验证已完成。
+
+
+## 基础图像与体数据成熟源码迁移（2026-10-25）
+
+- [FIM/FVO/MVI成熟源码复用与OOP-GoF-AOP实施规范 V1.0](Architecture/CxVisual_基础图像与体数据体系%23成熟源码复用与OOP-GoF-AOP实施规范_V1.0.md)：全局Owner、前缀、HALCON/OpenCV/CommonInterfaces通用算法提取、GoF/AOP门禁、TCT双Viewer路线。
+- [FIM/MVI首批实现与Windows验收台账 V1.0](Implementation/CxVisual_基础图像体系%23FIM-MVI首批迁移实现与Windows验收台账_V1.0.md)：`60849f9`、`1b1eafe`、`3d9be3b` 真实源码，`--imaging`和默认回归，未通过项不冒充成功。
+- [S0六工程213文件逐文件迁移台账](Migration/CxVisual_基础图像与体数据体系%23成熟源码迁移——S0主体归属与逐文件台账_V1.0.md)：ReferTo只读，历史快照，不包含额外CommonInterfaces文件。

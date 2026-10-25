@@ -1,0 +1,50 @@
+name: CxVisual FIM MVI Imaging Windows Acceptance
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'Foundation/Imaging/**'
+      - 'Foundation/Geometry/**'
+      - 'Mechanism/Visual/Imaging/**'
+      - 'Mechanism/Visual/CxVisual.Mechanism.Visual.csproj'
+      - 'Tests/ArchitectureSmoke/Integration/FIMImagingTests.cs'
+      - 'Tests/ArchitectureSmoke/Integration/MVIImageSessionTests.cs'
+      - 'Tests/ArchitectureSmoke/Program.cs'
+      - '.github/workflows/imaging-foundation-windows.yml'
+jobs:
+  imaging-foundation:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - name: Restore package references
+        shell: pwsh
+        run: |
+          $msbuild = (Get-Command msbuild.exe -ErrorAction Stop).Source
+          & $msbuild .\Tests\TestCenter\CxVisual.TestCenter.csproj /t:Restore /p:Configuration=Release /p:Platform=x64 /nologo /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw 'TestCenter dependency restore failed' }
+          & $msbuild .\Applications\Studio\CxVisual.Studio.csproj /t:Restore /p:Configuration=Release /p:Platform=x64 /nologo /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw 'Studio dependency restore failed' }
+      - name: Build all existing projects on Windows x64
+        shell: pwsh
+        run: |
+          $msbuild = (Get-Command msbuild.exe -ErrorAction Stop).Source
+          & $msbuild .\CxVisual.Unified.sln /t:Restore,Build /m:1 /nr:false /p:Configuration=Release /p:Platform=x64 /nologo /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw 'Windows .NET Framework 4.8 x64 build failed' }
+      - name: Verify structure and dependency DAG
+        shell: pwsh
+        run: |
+          & .\Build\Verify-Structure.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Structure verification failed' }
+          & .\Build\Verify-OwnerDependencies.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Owner dependency verification failed' }
+      - name: Execute FIM MVI standalone and default smoke
+        shell: pwsh
+        run: |
+          $exe = '.\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe'
+          & $exe --imaging
+          if ($LASTEXITCODE -ne 0) { throw 'FIM/MVI --imaging regression failed' }
+          & $exe
+          if ($LASTEXITCODE -ne 0) { throw 'Default architecture regression failed' }

@@ -131,7 +131,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         { if (!ok) throw new InvalidOperationException(message); }
         private static void UiIndependentAssemblies()
         {
-            Assembly[] assemblies = { typeof(MEMEngineeringSession).Assembly, typeof(MVIVisualEditor).Assembly };
+            Assembly[] assemblies = { typeof(MEMEngineeringSession).Assembly, typeof(MVIVisualEditor).Assembly, typeof(CxVisual.Foundation.Imaging.FIMImageBuffer).Assembly };
             foreach (Assembly assembly in assemblies)
                 foreach (AssemblyName reference in assembly.GetReferencedAssemblies())
                 {
