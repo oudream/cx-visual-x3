@@ -261,3 +261,7 @@ P1已新增命令运行时MDS表达式/Port输入绑定与专用线程同步SDK 
 `InvokeConfiguredResultAsync` 支持 `Remote=true` + 注入真实`MRKCommandPipeClient` + `publishedRemoteDefinition`。不再要求客户端注册复制的Handler，也不为远端另建CommandRegistry。客户端以发布定义完成CommandId/Code/Schema和MDS输入/输出预检；入参复用MDS Owner，结果经IPC回来后写回本地MDS Owner；服务端以自己的正式定义和授权为唯一执行裁决。缺Transport或缺远程定义均拒绝，不通过消息中心广播或伪造本地运行冒充远程成功。
 
 本机OS IPC通过及跨PC现场认证/断线设备状态追踪/Studio UI全闭环是不同验收等级；本轮测试以具体Windows CI SHA为准。
+
+## 11. 远程连接的连接超时与消息交换超时分离
+
+命名管道远程客户端具有`connectTimeoutMilliseconds`和`exchangeTimeoutMilliseconds`两个不同语义：前者约束连接建立，后者约束连接后发送帧和等待完整应答。失去应答统一视为`RemoteUnknown`或`RemoteExchangeTimeout`，不是命令失败或设备停机；远端继续由其Host、Tracker和设备回读确定真实状态，不经网络层盲目重发。测试覆盖远程“连接成功但保持沉默”的异常反证。

@@ -172,15 +172,20 @@ namespace CxVisual.Mechanism.Runtime.Commands
         private readonly string _host;
         private readonly string _pipe;
         private readonly int _connectTimeout;
+        private readonly int _exchangeTimeout;
         public MRKCommandPipeClient(string serverName, string pipeName,
-            int connectTimeoutMilliseconds = 5000)
+            int connectTimeoutMilliseconds = 5000, int exchangeTimeoutMilliseconds = 30000)
         {
             if (string.IsNullOrWhiteSpace(serverName))
                 throw new ArgumentException("服务器名不能为空", "serverName");
             MRKCommandPipeWire.ValidatePipeName(pipeName);
             if (connectTimeoutMilliseconds < 1 || connectTimeoutMilliseconds > 60000)
                 throw new ArgumentOutOfRangeException("connectTimeoutMilliseconds");
-            _host = serverName; _pipe = pipeName; _connectTimeout = connectTimeoutMilliseconds;
+            if (exchangeTimeoutMilliseconds < 1 || exchangeTimeoutMilliseconds > 600000)
+                throw new ArgumentOutOfRangeException("exchangeTimeoutMilliseconds");
+            _host = serverName; _pipe = pipeName;
+            _connectTimeout = connectTimeoutMilliseconds;
+            _exchangeTimeout = exchangeTimeoutMilliseconds;
         }
         public Task<MRKCommandResponse> InvokeAsync(MRKCommandRequest request,
             CancellationToken cancellation = default(CancellationToken))
@@ -203,6 +208,14 @@ namespace CxVisual.Mechanism.Runtime.Commands
             return RoundTripAsync(MRKCommandPipeWire.QueryFrame(requestId, operationId),
                 requestId, operationId, cancellation);
         }
+        private static async Task<MRKCommandResponse> ExchangeAsync(NamedPipeClientStream client,
+            byte[] frame, Guid requestId, Guid operationId, CancellationToken cancellation)
+        {
+            await MRKCommandPipeWire.WriteAsync(client, frame, cancellation).ConfigureAwait(false);
+            byte[] response = await MRKCommandPipeWire.ReadAsync(client, cancellation)
+                .ConfigureAwait(false);
+            return MRKCommandPipeWire.ParseResponse(response, requestId, operationId);
+        }
         private async Task<MRKCommandResponse> RoundTripAsync(byte[] frame,
             Guid requestId, Guid operationId, CancellationToken cancellation)
         {
@@ -211,13 +224,35 @@ namespace CxVisual.Mechanism.Runtime.Commands
                 using (NamedPipeClientStream client = new NamedPipeClientStream(
                     _host, _pipe, PipeDirection.InOut, PipeOptions.Asynchronous,
                     TokenImpersonationLevel.Identification))
+                using (CancellationTokenSource wait = CancellationTokenSource
+                    .CreateLinkedTokenSource(cancellation))
                 {
-                    await client.ConnectAsync(_connectTimeout, cancellation).ConfigureAwait(false);
-                    await MRKCommandPipeWire.WriteAsync(client, frame, cancellation)
-                        .ConfigureAwait(false);
-                    byte[] response = await MRKCommandPipeWire.ReadAsync(client, cancellation)
-                        .ConfigureAwait(false);
-                    return MRKCommandPipeWire.ParseResponse(response, requestId, operationId);
+                    await client.ConnectAsync(_connectTimeout, wait.Token).ConfigureAwait(false);
+                    // .NET48部分驱动的PipeStream异步读取不一定及时响应Token取消。
+                    // Task.WhenAny保证本端不会因对端已连接但不应答而无限挂起。
+                    Task<MRKCommandResponse> exchange = ExchangeAsync(client, frame,
+                        requestId, operationId, wait.Token);
+                    Task timeout = Task.Delay(_exchangeTimeout, wait.Token);
+                    Task winner = await Task.WhenAny(exchange, timeout).ConfigureAwait(false);
+                    if (winner != exchange)
+                    {
+                        wait.Cancel();
+                        client.Dispose(); // 主动释放受阻ReadAsync，不强制终止远端业务操作。
+                        // 操作取消后未必马上退出；观测可能延迟抛出的底层IOException。
+                        Task observe = exchange.ContinueWith(t =>
+                        {
+                            if (t.IsFaulted) { AggregateException ignored = t.Exception; }
+                        }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously,
+                            TaskScheduler.Default);
+                        return new MRKCommandResponse(requestId, operationId,
+                            MRKCommandStage.Unknown, MRKCommandState.Unknown,
+                            errorCode: cancellation.IsCancellationRequested
+                                ? "CallerCancelled" : "RemoteExchangeTimeout",
+                            error: "远程通道应答中断或超时，外部副作用尚不能确认；必须Query核对");
+                    }
+                    MRKCommandResponse response = await exchange.ConfigureAwait(false);
+                    wait.Cancel();
+                    return response;
                 }
             }
             catch (UnauthorizedAccessException ex)

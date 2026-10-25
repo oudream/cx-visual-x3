@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.IO.Pipes;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -328,6 +329,31 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     result.ErrorCode == "RemoteUnknown",
                     "rejected pipe connection must not impersonate an accepted command");
                 server.StopAsync().GetAwaiter().GetResult();
+            }
+        }
+
+        /// <summary>对端已连接但不应答：必须按IO时限返回Unknown，绝不能阻塞Studio。</summary>
+        private static void PipeSilentPeerRun()
+        {
+            string pipe = "CxVisual.Silent." + Guid.NewGuid().ToString("N");
+            using (NamedPipeServerStream silent = new NamedPipeServerStream(pipe,
+                PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous))
+            {
+                Task accepted = silent.WaitForConnectionAsync();
+                MRKCommandPipeClient client = new MRKCommandPipeClient(".", pipe,
+                    connectTimeoutMilliseconds: 2000, exchangeTimeoutMilliseconds: 250);
+                Stopwatch watch = Stopwatch.StartNew();
+                MRKCommandResponse result = client.InvokeAsync(new MRKCommandRequest(
+                    "silent/algorithm", 5183,
+                    options: new MRKCommandOptions(remote: true)))
+                    .GetAwaiter().GetResult();
+                watch.Stop();
+                Check(accepted.Wait(TimeSpan.FromSeconds(3)) &&
+                    result.Stage == MRKCommandStage.Unknown &&
+                    result.State == MRKCommandState.Unknown &&
+                    result.ErrorCode == "RemoteExchangeTimeout" &&
+                    watch.ElapsedMilliseconds < 2500,
+                    "silent connected remote peer must not cause unbounded command wait");
             }
         }
 
@@ -1350,6 +1376,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             }
             WireCodecRun();
             NamedPipeRun();
+            PipeSilentPeerRun();
             SeparateProcessPipeRun();
             QueuedRun();
             ConfiguredBindingRun();

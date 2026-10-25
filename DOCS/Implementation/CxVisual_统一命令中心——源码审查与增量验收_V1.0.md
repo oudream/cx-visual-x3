@@ -331,3 +331,13 @@ Operation账本继续以OperationId去重，同一OperationId的身份比较包�
 专项测试增加 Windows真实命名管道：没有本地Handler的Center + 调用方MDS端口和Expression -> 远程Handler -> 调用方MDS变量写回；以及缺定义、旧版本、错误ID、未声明输出和映射失败反例。它复用此前已通过的两个独立进程真实IPC基础，但这批配置绑定反例目前仍在同一台Windows主机测试，不代表跨PC或PLC现场运行。
 
 源代码只修改 `Mechanism.Runtime.Commands/MRKCommandCenter.cs` 和既有 `Tests/ArchitectureSmoke`，无新第三项目和第二套数据层。
+
+## 21. Windows命名管道请求/查询IO端到端时限
+
+`MRKCommandPipeClient(serverName, pipeName, connectTimeoutMilliseconds=5000, exchangeTimeoutMilliseconds=30000)` 保留旧构造兼容参数；新增**独立读写/应答最大等待时限**（1ms～10分钟，默认30秒）。只设Connect超时不足以防止服务已建立连接但对端无响应。现在Connect结束后，使用`Task.WhenAny`对发送和响应整体约束时限，且释放未完成的PipeStream，避免.NET48异步PipeStream某些情况下忽略Token取消而永久阻塞UI/流程调用线程。保留异常观测，防止取消后延迟IOException成为未观测任务异常。
+
+- 对端无回应：`MRKCommandStage.Unknown/MRKCommandState.Unknown/RemoteExchangeTimeout`，**绝不报告Handler失败或自动重发设备命令**。
+- 用户取消：`CallerCancelled`，远端状态同样未知；应使用`QueryAsync(OperationId)`核实执行结果。
+- 在测试中增加已连接不应答的真实Windows系统命名管道反例，要求限定时间内返回Unknown，不要求可强制终止已执行的远端业务。
+
+跨主机带宽、设备指令执行时间以及双向认证仍需独立测试，不以当前本机测试替代。
