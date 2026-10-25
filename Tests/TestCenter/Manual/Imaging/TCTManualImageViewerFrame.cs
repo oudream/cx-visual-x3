@@ -209,6 +209,8 @@ namespace CxVisual.TestCenter.UI
                 case MVIImageToolMode.Text: return "文字标注";
                 case MVIImageToolMode.Arrow: return "箭头标注";
                 case MVIImageToolMode.DefectBox: return "缺陷框";
+                case MVIImageToolMode.MoveOverlay: return "移动叠加项";
+                case MVIImageToolMode.DeleteOverlay: return "点击删除";
                 default: return mode.ToString();
             }
         }
