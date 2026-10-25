@@ -106,6 +106,9 @@ namespace CxVisual.TestCenter.UI
             registry.Register(new TCTWorkspaceDescriptor("manual.channel", "manual.root", "通道测试",
                 "现有生产MCCVirtualChannel的可操作点对点收发，不是真TCP",
                 TCTWorkspaceNodeKind.Leaf, () => new TCTManualChannelFrame()));
+            registry.Register(new TCTWorkspaceDescriptor("manual.message", "manual.root", "消息中心测试",
+                "真实M36进程内Topic发布、订阅过滤、ReqReply、Retain和消息诊断；不是远程MQTT Broker",
+                TCTWorkspaceNodeKind.Leaf, () => new TCTManualMessageFrame()));
             registry.Register(new TCTWorkspaceDescriptor("manual.protocol", "manual.root", "规约测试",
                 "人工构帧及异常注入：待接入", TCTWorkspaceNodeKind.Leaf));
             registry.Register(new TCTWorkspaceDescriptor("manual.graphics", "manual.root", "图元绘制测试",

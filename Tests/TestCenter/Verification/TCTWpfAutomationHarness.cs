@@ -71,6 +71,8 @@ namespace CxVisual.TestCenter.UI
                 if (window.FindCreatedInstance("manual.channel") != null)
                     throw new InvalidOperationException("右键删除没有移除左树实例");
             }));
+            await Task.Run(() => InteractManualMessage(hwnd, window));
+            SaveScreenshot(window, "TestCenter-13-Message.png");
             await Task.Run(() => InteractManualModule(hwnd, window));
             SaveScreenshot(window, "TestCenter-12-ModuleConfig.png");
             window.Dispatcher.Invoke(new Action(() => {
@@ -641,6 +643,58 @@ namespace CxVisual.TestCenter.UI
                 throw new InvalidOperationException("ArchitectureSmoke real CLI run failed: " +
                     (completed ? details : "no verified exit code and actual stdout/stderr within 45 seconds"));
         }
+        private static void InteractManualMessage(IntPtr hwnd, TCTMainWindow window)
+        {
+            window.Dispatcher.Invoke(new Action(() =>
+            {
+                window.Explorer.InvokeCreateContextMenuForVerification("manual.message");
+                if (window.FindOpenCreatedInstance("manual.message") == null)
+                    throw new InvalidOperationException("Manual message workspace not created");
+            }));
+            TCTWorkspaceDescriptor created=null;
+            window.Dispatcher.Invoke(new Action(() =>
+                created=window.FindCreatedInstance("manual.message")));
+            if(created==null) throw new InvalidOperationException("Message workspace missing stable instance");
+            AutomationElement root=AutomationElement.FromHandle(hwnd);
+            SelectionItemPattern select=Find(root,"TCT.Workspace."+created.WorkspaceId)
+                .GetCurrentPattern(SelectionItemPattern.Pattern) as SelectionItemPattern;
+            if(select==null)throw new InvalidOperationException("Message instance selection unavailable");
+            select.Select();
+            InvokePattern subscribe=Find(root,"TCT.Manual.Action.message.subscribe")
+                .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
+            if(subscribe==null)throw new InvalidOperationException("Message subscribe operation unavailable");
+            subscribe.Invoke();
+            InvokePattern publish=Find(root,"TCT.Manual.Action.message.publish")
+                .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
+            if(publish==null)throw new InvalidOperationException("Message publish operation unavailable");
+            publish.Invoke();
+
+            bool delivered=false;
+            for(int attempt=0;attempt<50&&!delivered;attempt++)
+            {
+                window.Dispatcher.Invoke(new Action(() =>
+                {
+                    System.Windows.Controls.TabControl tabs=
+                        window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                    TCTManualMessageFrame page=tabs==null?null:tabs.Items
+                        .OfType<System.Windows.Controls.TabItem>()
+                        .Where(x=>(x.Tag as TCTWorkspaceDescriptor)?.WorkspaceId==created.WorkspaceId)
+                        .Select(x=>x.Content).OfType<TCTManualMessageFrame>().FirstOrDefault();
+                    delivered=page!=null&&page.ObservedCount>=2&&
+                        page.StatusSummary.Contains("Delivered");
+                }));
+                if(!delivered)Thread.Sleep(100);
+            }
+            if(!delivered)throw new InvalidOperationException(
+                "Message TestCenter UIA did not actually deliver message via M36 Owner");
+
+            window.Dispatcher.Invoke(new Action(() =>
+            {
+                if(!window.DocumentHost.CloseWorkspace(created.WorkspaceId))
+                    throw new InvalidOperationException("Message workspace could not close");
+            }));
+        }
+
         private static void InteractManualRoot(IntPtr hwnd, TCTMainWindow window)
         {
             AutomationElement root = AutomationElement.FromHandle(hwnd);
