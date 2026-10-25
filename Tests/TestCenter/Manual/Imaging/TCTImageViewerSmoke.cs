@@ -69,7 +69,13 @@ namespace CxVisual.TestCenter.UI
                     new FGERect2D(1,1,2,2), text:"D-01"));
                 if (frame.Viewer.VisibleOverlayCount != 4 || frame.Viewer.OverlayVisualCount < 4)
                     throw new InvalidOperationException("Expected overlay geometries not drawn by native WPF Canvas");
+                if (frame.Viewer.HitTestOverlay(2.5, 2.5).Kind != MVIImageOverlayKind.DefectBox)
+                    throw new InvalidOperationException("Topmost defect hit testing failed");
+                if (frame.Viewer.HitTestOverlay(-20, -20) != null)
+                    throw new InvalidOperationException("Out-of-image point must not select overlay");
                 frame.Viewer.SetOverlayLayerVisible(MVIImageOverlayLayer.Roi, false);
+                if (frame.Viewer.HitTestOverlay(0.5, 0.5).Kind != MVIImageOverlayKind.DistanceMeasurement)
+                    throw new InvalidOperationException("Hidden ROI layer must be excluded from hit test");
                 if (frame.Viewer.VisibleOverlayCount != 2 || frame.Viewer.OverlayVisualCount < 2)
                     throw new InvalidOperationException("ROI layer hide did not preserve measurement/defect");
                 frame.Viewer.SetOverlayLayerVisible(MVIImageOverlayLayer.Roi, true);
