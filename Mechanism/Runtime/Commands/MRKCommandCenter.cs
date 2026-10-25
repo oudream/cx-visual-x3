@@ -689,13 +689,6 @@ namespace CxVisual.Mechanism.Runtime.Commands
                 if (!parameter.DataType.IsAssignableFrom(source.Binding.ValueType))
                     throw new InvalidCastException("命令输入类型与MDS来源类型不兼容：" + source.Parameter);
             }
-            foreach (MRKCommandInputSource source in sources)
-            {
-                cancellation.ThrowIfCancellationRequested();
-                object value = MDSDataBindingResolver.Resolve<object>(data,
-                    source.Binding, external);
-                values.Add(source.Parameter, value);
-            }
             MRKCommandParameterBinding[] destinations = (outputBindings ??
                 Enumerable.Empty<MRKCommandParameterBinding>()).ToArray();
             if (destinations.Any(x => x == null) ||
@@ -705,6 +698,17 @@ namespace CxVisual.Mechanism.Runtime.Commands
             foreach (MRKCommandParameterBinding mapping in destinations)
                 if (!definition.Outputs.Any(p => p.Code == mapping.Parameter))
                     throw new ArgumentException("命令输出未声明：" + mapping.Parameter, "outputBindings");
+            // 输出意图也要在调用外部变量/表达式Owner之前完全预检。
+            if (destinations.Length != 0 && outputOwner == null)
+                throw new ArgumentNullException("outputOwner",
+                    "已声明输出映射，但没有调用方MDS写回Owner");
+            foreach (MRKCommandInputSource source in sources)
+            {
+                cancellation.ThrowIfCancellationRequested();
+                object value = MDSDataBindingResolver.Resolve<object>(data,
+                    source.Binding, external);
+                values.Add(source.Parameter, value);
+            }
             // 远程先在客户端按已发布契约完成输入校验，接收Host仍二次验证Schema/授权。
             // 所有来源和映射均属于调用方MDS Owner，绝不在远端写入客户端内存引用。
             IReadOnlyDictionary<string, object> frozen = request.Options.Remote

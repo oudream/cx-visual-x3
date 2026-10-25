@@ -292,8 +292,22 @@ namespace CxVisual.Tests.ArchitectureSmoke
                             .GetAwaiter().GetResult();
                     }
                     catch (ArgumentException) { invalidOutput = true; }
-                    Check(invalidOutput && calls == 2,
-                        "remote output binding must validate declared schema before IPC execution");
+                    Check(invalidOutput && calls == 2 && resolver.Calls == 1,
+                        "remote output binding must be validated before invoking expression resolver");
+                    bool missingOutputOwner = false;
+                    try
+                    {
+                        caller.InvokeConfiguredResultAsync(
+                            new MRKCommandRequest("ipc/algorithm", 5183,
+                                options: new MRKCommandOptions(remote: true)),
+                            data, sources, outputBindings:
+                                new[] { new MRKCommandParameterBinding("Output", "answer") },
+                            external: resolver, publishedRemoteDefinition: Definition())
+                            .GetAwaiter().GetResult();
+                    }
+                    catch (ArgumentNullException) { missingOutputOwner = true; }
+                    Check(missingOutputOwner && resolver.Calls == 1 && calls == 2,
+                        "missing write Owner must be rejected before reading external binding source");
 
                     // Handler完成但调用方MDS写回失败：原Operation成功，不自动重发设备/算法。
                     MRKCommandRequest failedWrite = new MRKCommandRequest("ipc/algorithm", 5183,
