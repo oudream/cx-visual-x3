@@ -186,3 +186,5 @@
 - [FIM/FVO/MVI成熟源码复用与OOP-GoF-AOP实施规范 V1.0](Architecture/CxVisual_基础图像与体数据体系%23成熟源码复用与OOP-GoF-AOP实施规范_V1.0.md)：全局Owner、前缀、HALCON/OpenCV/CommonInterfaces通用算法提取、GoF/AOP门禁、TCT双Viewer路线。
 - [FIM/MVI首批实现与Windows验收台账 V1.0](Implementation/CxVisual_基础图像体系%23FIM-MVI首批迁移实现与Windows验收台账_V1.0.md)：`60849f9`、`1b1eafe`、`3d9be3b` 真实源码，`--imaging`和默认回归，未通过项不冒充成功。
 - [S0六工程213文件逐文件迁移台账](Migration/CxVisual_基础图像与体数据体系%23成熟源码迁移——S0主体归属与逐文件台账_V1.0.md)：ReferTo只读，历史快照，不包含额外CommonInterfaces文件。
+
+- [二维工业视觉工作台完整功能架构与实施验收 V1.0](Architecture/CxVisual_专业视觉体系%23通用二维视觉工作台——完整功能架构与实施验收_V1.0.md)：按用户60项需求跟踪FIM/MVI/MPW/PVC/TCT实际实现、旧类功能迁移、UI/API/Windows CI证据及剩余P2～P6工作包；当前首批WPF可运行链不等于完整工业交付。
