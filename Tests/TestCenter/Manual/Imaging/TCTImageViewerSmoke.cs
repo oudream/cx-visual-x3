@@ -526,6 +526,37 @@ namespace CxVisual.TestCenter.UI
                     Math.Abs(editedPolygon.Points[1].X-3.5)>1e-9 ||
                     polyEdit.Points[1].X!=2.5)
                     throw new InvalidOperationException("多边形边柄编辑未保留原图顶点/对象身份");
+                // 用实际区域页按钮触发锁定/层序，复验同一MVI Store被WPF投影消费。
+                Button lockButton=FindControl<Button>(frame,"TCT.Imaging.ToggleOverlayLock");
+                Button forwardButton=FindControl<Button>(frame,"TCT.Imaging.BringOverlayForward");
+                Button backwardButton=FindControl<Button>(frame,"TCT.Imaging.SendOverlayBackward");
+                if (lockButton==null || forwardButton==null || backwardButton==null)
+                    throw new InvalidOperationException("区域页未提供对象锁定及前后顺序入口");
+                MVIImageOverlayItem zRoi=frame.Viewer.AddOverlay(new MVIImageOverlayItem(
+                    MVIImageOverlayKind.RectangleRoi,MVIImageOverlayLayer.Roi,
+                    new FGERect2D(.5,.5,2.2,2.2)));
+                frame.Viewer.SelectOverlay(polyEdit.Id);
+                forwardButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                if (frame.Viewer.Overlays.Items.Last().Id!=polyEdit.Id)
+                    throw new InvalidOperationException("前移层级没有真正改变OverlayStore的顶层对象");
+                backwardButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                if (frame.Viewer.Overlays.Items.Last().Id!=zRoi.Id)
+                    throw new InvalidOperationException("后移层级没有恢复原顶层对象");
+                lockButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                if (!frame.Viewer.Overlays.Find(polyEdit.Id).IsLocked ||
+                    frame.Viewer.ResizeHandleVisualCount!=0)
+                    throw new InvalidOperationException("锁定后仍允许显示八柄或没有保存锁状态");
+                bool lockedRejected=false;
+                try { frame.Viewer.ResizeSelectedOverlay(
+                    MVIImageResizeHandle.Right,new FGEPoint2D(3,3)); }
+                catch (InvalidOperationException) { lockedRejected=true; }
+                if (!lockedRejected)
+                    throw new InvalidOperationException("锁定ROI仍允许API缩放");
+                lockButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                if (frame.Viewer.Overlays.Find(polyEdit.Id).IsLocked ||
+                    frame.Viewer.ResizeHandleVisualCount!=8)
+                    throw new InvalidOperationException("解锁后编辑柄没有恢复");
+                frame.Viewer.Overlays.Remove(zRoi.Id);
                 frame.Viewer.Overlays.Remove(editable.Id);
                 frame.Viewer.Overlays.Remove(polyEdit.Id);
                 frame.Viewer.SelectOverlay(null);
