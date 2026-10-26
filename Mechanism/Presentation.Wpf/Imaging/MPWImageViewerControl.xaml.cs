@@ -41,6 +41,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         private MVIImageOverlayItem _resizeStart;
         private MVIImageResizeHandle _resizeHandle;
         private bool _resizing, _resizingSecondary;
+        private bool _editingVertex, _editingVertexSecondary;
+        private MVIImageOverlayItem _vertexEditStart;
+        private int _vertexIndex;
         private Point _startPointer;
         private int _selectionX, _selectionY, _lastSelectionX, _lastSelectionY;
         private MVIImageOverlayKind _selectionKind = MVIImageOverlayKind.RectangleRoi;
@@ -189,9 +192,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 if (!Enum.IsDefined(typeof(MVIImageToolMode), value))
                     throw new ArgumentOutOfRangeException("value");
                 _toolMode = value;
-                _dragging = _selecting = _moving = _resizing = false;
+                _dragging = _selecting = _moving = _resizing = _editingVertex = false;
                 _movingOverlay = null;
                 _resizeStart = null;
+                _vertexEditStart = null;
                 if (ViewportRoot.IsMouseCaptured) ViewportRoot.ReleaseMouseCapture();
                 if (SecondaryViewportRoot.IsMouseCaptured) SecondaryViewportRoot.ReleaseMouseCapture();
                 _polygonDraft.Clear();
@@ -232,6 +236,22 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             return resized;
         }
 
+        /// <summary>原图坐标下逐顶点提交，仍由唯一MVI OverlayStore更新WPF观察者。</summary>
+        public MVIImageOverlayItem MoveSelectedPolygonVertex(int index,FGEPoint2D position)
+        {
+            VerifyAccess();
+            if (!_selectedOverlayId.HasValue || ActiveImage == null)
+                throw new InvalidOperationException("尚未选中多边形ROI或加载图像。");
+            MVIImageOverlayItem current=_overlays.Find(_selectedOverlayId.Value);
+            if (current==null || !_overlays.GetVisibleItems().Any(x=>x.Id==current.Id))
+                throw new InvalidOperationException("多边形已删除或所在图层不可见。");
+            MVIImageOverlayItem changed=current.WithMovedPolygonVertex(index,position,
+                ActiveImage.Width,ActiveImage.Height);
+            if (!_overlays.Replace(changed))
+                throw new InvalidOperationException("多边形在提交时已删除。");
+            return changed;
+        }
+
         /// <summary>与第一阶段TCT矩形ROI切换代码保持兼容。</summary>
         public bool IsRegionTool
         {
@@ -254,6 +274,17 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         {
             get { return CountResizeHandles(SecondaryOverlayCanvas); }
         }
+        public int PolygonVertexHandleVisualCount
+        { get { return CountPolygonVertexHandles(OverlayCanvas); } }
+        public int SecondaryPolygonVertexHandleVisualCount
+        { get { return CountPolygonVertexHandles(SecondaryOverlayCanvas); } }
+        private static int CountPolygonVertexHandles(Canvas canvas)
+        {
+            int total=0;
+            foreach(UIElement child in canvas.Children)
+                if(child is Ellipse && ((Ellipse)child).Tag is int) total++;
+            return total;
+        }
         private static int CountResizeHandles(Canvas canvas)
         {
             int count=0;
@@ -272,6 +303,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             _region = null;
             _selectedOverlayId = null;
             _resizeStart = null; _resizing = false;
+            _vertexEditStart = null; _editingVertex = false;
             _pixelSpacing = null; _rulerMillimeters = false;
             _displayState.Reset();
             _viewTransform.Reset();
@@ -315,6 +347,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             VerifyAccess();
             _region = null;
             _selectedOverlayId = null; _resizeStart = null; _resizing = false;
+            _vertexEditStart = null; _editingVertex = false;
             _displayState.Reset();
             _viewTransform.Reset();
             _comparison.Reset();
@@ -1049,13 +1082,19 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                     item.Kind == MVIImageOverlayKind.AreaMeasurement)
                     DrawMeasurementLabel(item,stroke,new Point(right,top),canvas);
             }
-            if (_toolMode == MVIImageToolMode.ResizeOverlay && _selectedOverlayId.HasValue)
+            if ((_toolMode == MVIImageToolMode.ResizeOverlay ||
+                _toolMode == MVIImageToolMode.EditPolygonVertex) && _selectedOverlayId.HasValue)
             {
                 MVIImageOverlayItem selected = _overlays.GetVisibleItems().FirstOrDefault(
                     item => item.Id == _selectedOverlayId.Value && item.Layer == MVIImageOverlayLayer.Roi);
                 if (selected != null && !selected.IsLocked &&
                     selected.Bounds.Width > 0 && selected.Bounds.Height > 0)
-                    DrawResizeHandles(canvas,viewport,selected);
+                {
+                    if (_toolMode == MVIImageToolMode.ResizeOverlay)
+                        DrawResizeHandles(canvas,viewport,selected);
+                    else if (selected.Kind==MVIImageOverlayKind.PolygonRoi)
+                        DrawPolygonVertexHandles(canvas,viewport,selected);
+                }
             }
         }
 
@@ -1090,6 +1129,89 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 Canvas.SetLeft(square,screen.X-4.5);
                 Canvas.SetTop(square,screen.Y-4.5);
                 canvas.Children.Add(square);
+            }
+        }
+
+        private void DrawPolygonVertexHandles(Canvas canvas,MVIImageViewport viewport,
+            MVIImageOverlayItem item)
+        {
+            for(int i=0;i<item.Points.Count;i++)
+            {
+                Point screen=SourceToCanvas(item.Points[i],viewport);
+                Ellipse dot=new Ellipse { Width=11,Height=11,Fill=Brushes.Gold,
+                    Stroke=Brushes.DarkSlateGray,StrokeThickness=1.5,Tag=i,
+                    IsHitTestVisible=false };
+                System.Windows.Automation.AutomationProperties.SetAutomationId(dot,
+                    "MPW.Imaging.PolygonVertex."+i);
+                Canvas.SetLeft(dot,screen.X-5.5);
+                Canvas.SetTop(dot,screen.Y-5.5);
+                canvas.Children.Add(dot);
+            }
+        }
+
+        private bool TryPolygonVertexHandle(Point pointer,MVIImageViewport viewport,
+            MVIImageOverlayItem item,out int index)
+        {
+            index=-1;
+            for(int i=0;i<item.Points.Count;i++)
+            {
+                Point pixel=SourceToCanvas(item.Points[i],viewport);
+                if(Math.Abs(pointer.X-pixel.X)<=7 && Math.Abs(pointer.Y-pixel.Y)<=7)
+                { index=i;return true; }
+            }
+            return false;
+        }
+
+        private bool BeginPolygonVertexEdit(Point pointer,MVIImageViewport viewport,
+            bool secondary)
+        {
+            if(ActiveImage==null || !OverlayMatchesActiveImage()) return false;
+            MVIImageOverlayItem selected=_selectedOverlayId.HasValue ?
+                _overlays.Find(_selectedOverlayId.Value):null;
+            int index;
+            if(selected!=null && selected.Kind==MVIImageOverlayKind.PolygonRoi &&
+                selected.Layer==MVIImageOverlayLayer.Roi && !selected.IsLocked &&
+                _overlays.GetVisibleItems().Any(x=>x.Id==selected.Id) &&
+                TryPolygonVertexHandle(pointer,viewport,selected,out index))
+            {
+                _vertexEditStart=selected;_vertexIndex=index;
+                _editingVertex=true;_editingVertexSecondary=secondary;
+                return true;
+            }
+            FGEPoint2D display=new FGEPoint2D(
+                viewport.ImageX(pointer.X),viewport.ImageY(pointer.Y));
+            FGEPoint2D source=_viewTransform.DisplayToSource(display,
+                ActiveImage.Width,ActiveImage.Height);
+            IReadOnlyList<MVIImageOverlayItem> visible=_overlays.GetVisibleItems();
+            for(int i=visible.Count-1;i>=0;i--)
+            {
+                MVIImageOverlayItem item=visible[i];
+                if(item.Kind==MVIImageOverlayKind.PolygonRoi &&
+                    item.Layer==MVIImageOverlayLayer.Roi &&
+                    FGEGeometry2D.PointInPolygon(source,item.Points))
+                { SelectOverlay(item.Id);return true; }
+            }
+            SelectOverlay(null);
+            return false;
+        }
+
+        private void UpdatePolygonVertexEdit(Point pointer,MVIImageViewport viewport)
+        {
+            if(!_editingVertex || _vertexEditStart==null || ActiveImage==null) return;
+            if(_overlays.Find(_vertexEditStart.Id)==null)
+            { _editingVertex=false;_vertexEditStart=null;return; }
+            FGEPoint2D source=_viewTransform.DisplayToSource(new FGEPoint2D(
+                viewport.ImageX(pointer.X),viewport.ImageY(pointer.Y)),
+                ActiveImage.Width,ActiveImage.Height);
+            try
+            {
+                MVIImageOverlayItem updated=_vertexEditStart.WithMovedPolygonVertex(
+                    _vertexIndex,source,ActiveImage.Width,ActiveImage.Height);
+                _overlays.Replace(updated);
+            }
+            catch(ArgumentException)
+            {
+                PixelStatus.Text="顶点位置会导致退化或自交，已保留上一个有效几何。";
             }
         }
 
@@ -1395,6 +1517,13 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         private void OnSecondaryMouseDown(object sender, MouseButtonEventArgs e)
         {
             if (!IsSideBySideVisible || _session.Result == null) return;
+            if (_toolMode == MVIImageToolMode.EditPolygonVertex)
+            {
+                if (BeginPolygonVertexEdit(e.GetPosition(SecondaryViewportRoot),
+                    _secondaryViewport,true))
+                    SecondaryViewportRoot.CaptureMouse();
+                e.Handled=true;return;
+            }
             if (_toolMode == MVIImageToolMode.ResizeOverlay &&
                 BeginResize(e.GetPosition(SecondaryViewportRoot),_secondaryViewport,true))
             {
@@ -1407,6 +1536,11 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         }
         private void OnSecondaryMouseUp(object sender, MouseButtonEventArgs e)
         {
+            if (_editingVertex && _editingVertexSecondary)
+            {
+                UpdatePolygonVertexEdit(e.GetPosition(SecondaryViewportRoot),_secondaryViewport);
+                _editingVertex=false;_vertexEditStart=null;RaiseSelectionChanged();
+            }
             if (_resizing && _resizingSecondary)
             {
                 UpdateResize(e.GetPosition(SecondaryViewportRoot),_secondaryViewport);
@@ -1421,7 +1555,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         {
             if (!IsSideBySideVisible || _session.Result == null) return;
             Point pointer = e.GetPosition(SecondaryViewportRoot);
-            if (_resizing && _resizingSecondary && e.LeftButton == MouseButtonState.Pressed)
+            if (_editingVertex && _editingVertexSecondary &&
+                e.LeftButton==MouseButtonState.Pressed)
+                UpdatePolygonVertexEdit(pointer,_secondaryViewport);
+            else if (_resizing && _resizingSecondary && e.LeftButton == MouseButtonState.Pressed)
                 UpdateResize(pointer,_secondaryViewport);
             else if (_secondaryDragging && e.LeftButton == MouseButtonState.Pressed)
             {
@@ -1461,6 +1598,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             if (ActiveImage == null) return;
             Point pointer = e.GetPosition(ViewportRoot);
             int x,y;
+            if (_toolMode == MVIImageToolMode.EditPolygonVertex)
+            {
+                if(BeginPolygonVertexEdit(pointer,_viewport,false))
+                { ViewportRoot.CaptureMouse();e.Handled=true; }
+                return;
+            }
             if (_toolMode == MVIImageToolMode.ResizeOverlay)
             {
                 if (BeginResize(pointer,_viewport,false))
@@ -1537,6 +1680,11 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
 
         private void OnMouseUp(object sender, MouseButtonEventArgs e)
         {
+            if (_editingVertex && !_editingVertexSecondary)
+            {
+                UpdatePolygonVertexEdit(e.GetPosition(ViewportRoot),_viewport);
+                _editingVertex=false;_vertexEditStart=null;RaiseSelectionChanged();
+            }
             if (_resizing && !_resizingSecondary)
             {
                 UpdateResize(e.GetPosition(ViewportRoot),_viewport);
@@ -1587,6 +1735,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 UpdateMovedOverlay(pointer);
             else if (_resizing && !_resizingSecondary && e.LeftButton == MouseButtonState.Pressed)
                 UpdateResize(pointer,_viewport);
+            else if (_editingVertex && !_editingVertexSecondary &&
+                e.LeftButton==MouseButtonState.Pressed)
+                UpdatePolygonVertexEdit(pointer,_viewport);
             int px,py;
             if (TryImagePoint(pointer,out px,out py))
             {
@@ -1614,7 +1765,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
 
         private void OnMouseLeave(object sender, MouseEventArgs e)
         {
-            if (!_dragging && !_selecting && !_resizing && ActiveImage != null)
+            if (!_dragging && !_selecting && !_resizing && !_editingVertex && ActiveImage != null)
                 PixelStatus.Text = ActiveImage.Width + "×" + ActiveImage.Height +
                     " · " + ActiveImage.PixelFormat + " · " + _viewport.Scale.ToString("0.##") + "×";
         }

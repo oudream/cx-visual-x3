@@ -102,7 +102,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Fail<InvalidOperationException>(()=>vertexLocked.WithMovedPolygonVertex(
                 1,new FGEPoint2D(10,2),20,20),"锁定多边形不得编辑顶点");
             Ensure(vertexLocked.WithVisibility(false).IsLocked &&
-                vertexLocked.WithLocked(false).WithStyle(0xff223344,2).IsLocked==false,
+                vertexLocked.WithLocked(false).WithStyle(unchecked((int)0xff223344),2).IsLocked==false,
                 "不可变快照保留锁定状态并支持显式解锁");
             overlays.Remove(quad.Id);
             MVIImageOverlayItem defect = overlays.Add(new MVIImageOverlayItem(

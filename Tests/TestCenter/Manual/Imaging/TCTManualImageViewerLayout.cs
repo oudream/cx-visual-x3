@@ -466,6 +466,7 @@ namespace CxVisual.TestCenter.UI
             Tile(tiles,"⬭","椭圆","RegionEllipse",()=>SelectTool(MVIImageToolMode.EllipseRoi));
             Tile(tiles,"⬡","多边形","RegionPolygon",()=>SelectTool(MVIImageToolMode.PolygonRoi));
             Tile(tiles,"↔","八柄缩放","ResizeOverlay",()=>SelectTool(MVIImageToolMode.ResizeOverlay));
+            Tile(tiles,"⬡","逐顶点编辑","EditPolygonVertex",()=>SelectTool(MVIImageToolMode.EditPolygonVertex));
             content.Children.Add(tiles);
             WrapPanel buttons = Row();
             Action(buttons,"清除选框","RemoveRoi",()=>_viewer.ClearSelection());
@@ -479,7 +480,7 @@ namespace CxVisual.TestCenter.UI
             content.Children.Add(buttons);
             AutomationProperties.SetAutomationId(_overlayList,"TCT.Imaging.OverlayList");
             content.Children.Add(_overlayList);
-            content.Children.Add(Hint("先选列表或点击图中ROI，再用“八柄缩放”拖动蓝白编辑点。支持锁定、单步前后调整层叠；被锁定对象不可缩放、移动或删除。多边形编辑保留原图顶点和身份。"));
+            content.Children.Add(Hint("矩形等ROI用八柄缩放；多边形可切换“逐顶点编辑”，拖动金色顶点。无效自交或退化编辑会被拒绝。编辑共用原图坐标、同一对象ID和图层锁定机制。"));
             return Scroll(content);
         }
         private UIElement BuildStatisticsPage()
