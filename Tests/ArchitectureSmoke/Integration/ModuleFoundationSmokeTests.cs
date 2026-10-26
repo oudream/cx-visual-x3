@@ -240,8 +240,27 @@ namespace CxVisual.Tests.ArchitectureSmoke
             }
         }
 
+        private static void VariableBoundAccessSmoke()
+        {
+            MDSVariableRegistry registry = new MDSVariableRegistry();
+            MDSVariableTable table = new MDSVariableTable("fast");
+            registry.Register(table);
+            table.Define(new MDSVariableDefinition("readback", typeof(int)));
+            table.Resolve<int>("readback").Update(12);
+            MDSProtocolDataTargetAccess access = new MDSProtocolDataTargetAccess(registry);
+            object current = access.ReadAsync(MPADataTargetKind.Variable, "fast/readback",
+                CancellationToken.None).GetAwaiter().GetResult();
+            Check((int)current == 12, "点表读取应直接访问单份变量");
+            access.WriteAsync(MPADataTargetKind.Variable, "fast/readback", 30,
+                CancellationToken.None).GetAwaiter().GetResult();
+            Check(table.Get<int>("readback") == 30, "点表写入应走预解析变量");
+            Reject<InvalidCastException>(() => access.WriteAsync(MPADataTargetKind.Variable,
+                "fast/readback", 1.0, CancellationToken.None).GetAwaiter().GetResult());
+        }
+
         public static void Run()
         {
+            VariableBoundAccessSmoke();
             VariableDispatcherSmoke();
             VariableTreeSmoke();
             VariableObjectSmoke();

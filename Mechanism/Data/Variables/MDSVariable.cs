@@ -10,6 +10,9 @@ namespace CxVisual.Mechanism.Data.Variables
         internal abstract MDSVariableDefinition EntryDefinition { get; }
         internal abstract void Attach(Action<string> notify);
         internal abstract void Observe(Action<MDSVariableChange> callback);
+        internal abstract object ReadBoxed();
+        internal abstract void UpdateBoxed(object value);
+        internal abstract void RefreshProviderBoxed(object value, MDSVariableQuality quality, string source);
         internal abstract void Detach();
     }
 
@@ -119,6 +122,20 @@ namespace CxVisual.Mechanism.Data.Variables
             _defaultValue = defaultValue == null ? default(T) : MDSVariableValueRules.CopyTyped((T)defaultValue);
         }
 
+        // 点表/Provider绑定时一次解析具体变量，后续避免反射和表全量扫描。
+        internal override object ReadBoxed() { return Get(); }
+        internal override void UpdateBoxed(object value)
+        {
+            if (value == null && typeof(T).IsValueType) throw new InvalidCastException("变量类型不匹配");
+            if (value != null && value.GetType() != typeof(T)) throw new InvalidCastException("变量类型不匹配");
+            Update((T)value);
+        }
+        internal override void RefreshProviderBoxed(object value, MDSVariableQuality quality, string source)
+        {
+            if (value == null && typeof(T).IsValueType) throw new InvalidCastException("变量类型不匹配");
+            if (value != null && value.GetType() != typeof(T)) throw new InvalidCastException("变量类型不匹配");
+            RefreshFromProvider((T)value, quality, source);
+        }
         public MDSVariableDefinition Definition { get { return _definition; } }
         internal override MDSVariableDefinition EntryDefinition { get { return _definition; } }
 

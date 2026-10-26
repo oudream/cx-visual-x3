@@ -37,9 +37,7 @@ namespace CxVisual.Mechanism.Data
             {
                 case MPADataTargetKind.Variable:
                     MDSVariableTable table = FindVariable(targetRef, out string name);
-                    MDSVariableDefinition definition = table.Definitions().SingleOrDefault(x => x.Name == name);
-                    if (definition == null) throw new InvalidOperationException("MDS Variable 未定义：" + name);
-                    return Task.FromResult(GetVariable(table, name, definition.ValueType));
+                    return Task.FromResult(table.ResolveEntry(name).ReadBoxed());
                 case MPADataTargetKind.DataHeap:
                     if (_heap == null) throw new NotSupportedException("当前没有 MDS Heap Owner");
                     return Task.FromResult(InvokeGeneric(_heap, "Get", _heap.Inspect(targetRef).DataType, targetRef));
@@ -58,10 +56,7 @@ namespace CxVisual.Mechanism.Data
             {
                 case MPADataTargetKind.Variable:
                     MDSVariableTable table = FindVariable(targetRef, out string name);
-                    MDSVariableDefinition definition = table.Definitions().SingleOrDefault(x => x.Name == name);
-                    if (definition == null || value.GetType() != definition.ValueType)
-                        throw new InvalidOperationException("MDS Variable 未定义或数据类型不匹配");
-                    InvokeGeneric(table, "Update", definition.ValueType, name, value);
+                    table.ResolveEntry(name).UpdateBoxed(value);
                     break;
                 case MPADataTargetKind.DataHeap:
                     if (_heap == null) throw new NotSupportedException("当前没有 MDS Heap Owner");
@@ -102,8 +97,6 @@ namespace CxVisual.Mechanism.Data
             if (table == null) throw new InvalidOperationException("MDS 变量作用域不存在");
             return table;
         }
-        private static object GetVariable(MDSVariableTable table, string name, Type type)
-        { return InvokeGeneric(table, "Get", type, name); }
         private static object InvokeGeneric(object owner, string name, Type type, params object[] args)
         {
             MethodInfo method = owner.GetType().GetMethods().FirstOrDefault(x =>

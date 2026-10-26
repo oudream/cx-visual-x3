@@ -145,6 +145,17 @@ namespace CxVisual.Mechanism.Data.Variables
             lock (_gate) return _items.Values.Select(x => x.EntryDefinition).ToArray();
         }
 
+        internal MDSVariableBase ResolveEntry(string name)
+        {
+            lock (_gate)
+            {
+                MDSVariableBase variable;
+                if (string.IsNullOrWhiteSpace(name) || !_items.TryGetValue(name, out variable))
+                    throw new KeyNotFoundException("变量未定义: " + name);
+                return variable;
+            }
+        }
+
         // 预绑定强类型句柄，无后续字典查找；是同一权威状态，不是缓存副本。
         public MDSVariable<T> Resolve<T>(string name)
         {
