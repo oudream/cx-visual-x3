@@ -26,9 +26,24 @@
   <Style x:Key="MPWTreeItemStyle" TargetType="{x:Type TreeViewItem}">
     <Setter Property="FontSize" Value="{StaticResource MPWFontBody}"/>
     <Setter Property="Foreground" Value="{DynamicResource MPWForegroundBrush}"/>
+    <Setter Property="Background" Value="Transparent"/>
     <Setter Property="MinHeight" Value="27"/>
     <Setter Property="Padding" Value="4,3"/>
     <Setter Property="SnapsToDevicePixels" Value="True"/>
+    <!-- 原生TreeViewItem模板不改变，保留展开、键盘导航和UIA。 -->
+    <Style.Triggers>
+      <Trigger Property="IsMouseOver" Value="True">
+        <Setter Property="Background" Value="{DynamicResource MPWHoverBrush}"/>
+      </Trigger>
+      <Trigger Property="IsSelected" Value="True">
+        <Setter Property="Background" Value="{DynamicResource MPWSelectionBrush}"/>
+        <Setter Property="Foreground" Value="{DynamicResource MPWAccentBrush}"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+      </Trigger>
+      <Trigger Property="IsEnabled" Value="False">
+        <Setter Property="Opacity" Value="0.55"/>
+      </Trigger>
+    </Style.Triggers>
   </Style>
   <Style x:Key="MPWInputStyle" TargetType="{x:Type TextBox}">
     <Setter Property="FontFamily" Value="{StaticResource MPWUiFont}"/>
@@ -119,7 +134,37 @@
       </Setter.Value>
     </Setter>
   </Style>
-  <Style x:Key="MPWDataGridStyle" TargetType="{x:Type DataGrid}">
+    <!-- 保留原生DataGrid列头排序、调整列宽与虚拟化。 -->
+  <Style x:Key="MPWDataGridHeaderStyle" TargetType="{x:Type DataGridColumnHeader}">
+    <Setter Property="FontFamily" Value="{StaticResource MPWUiFont}"/>
+    <Setter Property="FontSize" Value="{StaticResource MPWFontSmall}"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="Foreground" Value="{DynamicResource MPWForegroundBrush}"/>
+    <Setter Property="Background" Value="{DynamicResource MPWSurfaceAltBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource MPWBorderBrush}"/>
+    <Setter Property="BorderThickness" Value="0,0,1,1"/>
+    <Setter Property="Padding" Value="9,5"/>
+    <Setter Property="SnapsToDevicePixels" Value="True"/>
+  </Style>
+  <Style x:Key="MPWDataGridRowStyle" TargetType="{x:Type DataGridRow}">
+    <Setter Property="Foreground" Value="{DynamicResource MPWForegroundBrush}"/>
+    <Setter Property="Background" Value="{DynamicResource MPWSurfaceBrush}"/>
+    <Style.Triggers>
+      <Trigger Property="IsMouseOver" Value="True">
+        <Setter Property="Background" Value="{DynamicResource MPWHoverBrush}"/>
+      </Trigger>
+      <Trigger Property="IsSelected" Value="True">
+        <Setter Property="Background" Value="{DynamicResource MPWSelectionBrush}"/>
+        <Setter Property="Foreground" Value="{DynamicResource MPWForegroundBrush}"/>
+      </Trigger>
+    </Style.Triggers>
+  </Style>
+<Style x:Key="MPWDataGridStyle" TargetType="{x:Type DataGrid}">
+    <Setter Property="ColumnHeaderStyle" Value="{StaticResource MPWDataGridHeaderStyle}"/>
+    <Setter Property="RowStyle" Value="{StaticResource MPWDataGridRowStyle}"/>
+    <Setter Property="GridLinesVisibility" Value="Horizontal"/>
+    <Setter Property="HorizontalGridLinesBrush" Value="{DynamicResource MPWBorderBrush}"/>
+    <Setter Property="SnapsToDevicePixels" Value="True"/>
     <Setter Property="FontSize" Value="{StaticResource MPWFontBody}"/>
     <Setter Property="RowHeight" Value="29"/>
     <Setter Property="ColumnHeaderHeight" Value="31"/>
@@ -162,7 +207,7 @@
     </Setter>
   </Style>
   <!-- 共享中央文档页签：无卡片外框，顶部选中条。 -->
-  <DataTemplate x:Key="MPWDockHeaderTemplate">
+  <DataTemplate x:Key="MPWDockHeaderTemplate">\n    <Grid SnapsToDevicePixels="True">
     <Border x:Name="DocumentSurface" Margin="0" Padding="13,8,13,7"
             Background="{DynamicResource MPWSurfaceAltBrush}"
             BorderBrush="{DynamicResource MPWBorderBrush}" BorderThickness="0,0,1,1"
@@ -171,18 +216,21 @@
                  FontSize="{StaticResource MPWFontBody}" Foreground="{DynamicResource MPWMutedBrush}"
                  TextTrimming="CharacterEllipsis" VerticalAlignment="Center" MaxWidth="260"/>
     </Border>
+      <Border x:Name="DocumentAccent" Height="3" VerticalAlignment="Top"
+              Background="{DynamicResource MPWAccentBrush}" Visibility="Collapsed"
+              IsHitTestVisible="False"/>
+    </Grid>
     <DataTemplate.Triggers>
       <DataTrigger Binding="{Binding IsSelected}" Value="True">
         <Setter TargetName="DocumentSurface" Property="Background" Value="{DynamicResource MPWSurfaceBrush}"/>
-        <Setter TargetName="DocumentSurface" Property="BorderBrush" Value="{DynamicResource MPWAccentBrush}"/>
-        <Setter TargetName="DocumentSurface" Property="BorderThickness" Value="0,3,1,0"/>
+        <Setter TargetName="DocumentAccent" Property="Visibility" Value="Visible"/>
         <Setter TargetName="Caption" Property="Foreground" Value="{DynamicResource MPWAccentBrush}"/>
         <Setter TargetName="Caption" Property="FontWeight" Value="SemiBold"/>
       </DataTrigger>
     </DataTemplate.Triggers>
   </DataTemplate>
   <!-- 共享停靠工具Tab：连续标签+底边选中条，适配Results/Timeline/History等。 -->
-  <DataTemplate x:Key="MPWToolDockHeaderTemplate">
+  <DataTemplate x:Key="MPWToolDockHeaderTemplate">\n    <Grid SnapsToDevicePixels="True">
     <Border x:Name="ToolSurface" Margin="0" Padding="13,7,13,7"
             Background="{DynamicResource MPWSurfaceAltBrush}"
             BorderBrush="{DynamicResource MPWBorderBrush}" BorderThickness="0,0,1,1"
@@ -191,11 +239,14 @@
                  FontSize="{StaticResource MPWFontBody}" Foreground="{DynamicResource MPWMutedBrush}"
                  TextTrimming="CharacterEllipsis" VerticalAlignment="Center" MaxWidth="220"/>
     </Border>
+      <Border x:Name="ToolAccent" Height="3" VerticalAlignment="Bottom"
+              Background="{DynamicResource MPWAccentBrush}" Visibility="Collapsed"
+              IsHitTestVisible="False"/>
+    </Grid>
     <DataTemplate.Triggers>
       <DataTrigger Binding="{Binding IsSelected}" Value="True">
         <Setter TargetName="ToolSurface" Property="Background" Value="{DynamicResource MPWSurfaceBrush}"/>
-        <Setter TargetName="ToolSurface" Property="BorderBrush" Value="{DynamicResource MPWAccentBrush}"/>
-        <Setter TargetName="ToolSurface" Property="BorderThickness" Value="0,0,0,3"/>
+        <Setter TargetName="ToolAccent" Property="Visibility" Value="Visible"/>
         <Setter TargetName="Caption" Property="Foreground" Value="{DynamicResource MPWAccentBrush}"/>
         <Setter TargetName="Caption" Property="FontWeight" Value="SemiBold"/>
       </DataTrigger>
