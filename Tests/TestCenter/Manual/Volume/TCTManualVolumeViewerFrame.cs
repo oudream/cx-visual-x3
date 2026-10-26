@@ -371,7 +371,8 @@ namespace CxVisual.TestCenter.UI
                 }
                 else if (w != width || h != height)
                     throw new InvalidDataException("BMP序列包含尺寸不一致的切片：" + files[z]);
-                mono.CopyPixels(pixels, checked(width * z * height), width);
+                // WPF CopyPixels(Array, stride, offset)：stride是每行字节数，offset是层起点字节偏移。
+                mono.CopyPixels(pixels, width, checked(width * height * z));
             }
             cancellation.ThrowIfCancellationRequested();
             return new FVOVolumeData(width,height,files.Length,pixels,
