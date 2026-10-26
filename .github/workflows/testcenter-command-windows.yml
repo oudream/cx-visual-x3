@@ -59,7 +59,7 @@ jobs:
           $exe = (Resolve-Path 'Output/Debug/x64/CxVisual.TestCenter.exe').Path
           $report = Join-Path $env:RUNNER_TEMP 'tct-command-results.json'
           $history = Join-Path $env:RUNNER_TEMP 'tct-command-history'
-          $p = Start-Process -FilePath $exe -ArgumentList @('--run','--filter','TCT.CMD.','--format','json','--report', $report,'--history-dir', $history,'--isolate') -PassThru -Wait
+          $p = Start-Process -FilePath $exe -ArgumentList @('--run','--filter','TCT.CMD.','--profile','Regression','--format','json','--report', $report,'--history-dir', $history,'--isolate') -PassThru -Wait
           if ($p.ExitCode -ne 0) { throw "Official command test Run failed, exit=$($p.ExitCode)" }
           $summary = Get-Content $report -Raw | ConvertFrom-Json
           $count = @($summary.cases).Count
