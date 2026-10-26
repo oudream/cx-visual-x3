@@ -98,6 +98,8 @@ namespace CxVisual.TestCenter.UI
                 if (architecture == null || !host.IsTestConsoleVisible ||
                     !host.TestConsolePanel.IsVisible || !host.OperationDock.IsVisible ||
                     host.ManualActionHost.Visibility != Visibility.Visible ||
+                    string.IsNullOrEmpty(host.Inspector.ArchitectureSmokeSummary) ||
+                    !host.Inspector.ArchitectureSmokeSummary.Contains("尚未运行") ||
                     FindControl<Button>(host,"TCT.Automated.Action.architecture.run") == null)
                     throw new InvalidOperationException("ArchitectureSmoke应在同一个大Frame中使用真实测试控制台");
                 string path = Environment.GetEnvironmentVariable("CXVISUAL_IMAGING_UI_SCREENSHOT");
@@ -114,6 +116,7 @@ namespace CxVisual.TestCenter.UI
                     host.AutoActionHost.Visibility != Visibility.Visible ||
                     host.ManualActionHost.Visibility != Visibility.Visible ||
                     FindControl<Button>(host,"TCT.Manual.Action.plan.runselected") == null ||
+                    host.Inspector.ArchitectureSmokeSummary != null ||
                     !host.TestConsolePanel.IsVisible)
                     throw new InvalidOperationException("NUnit/TCT计划未与ArchitectureSmoke共享测试工作台Frame");
                 host.DocumentHost.OpenWorkspace(registry.Find("auto.root"));
