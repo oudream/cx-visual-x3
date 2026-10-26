@@ -48,7 +48,7 @@ namespace CxVisual.Foundation.Volume
         {
             Validate(volume,definition);
             int w=definition.Width,h=definition.Height;
-            byte[] output=new byte[checked(w*h*sizeof(float))];
+            float[] scalarPixels=new float[checked(w*h)];
             FVOObliqueSliceVector u,v;
             FVOObliqueSliceGeometry.GetAxes(definition,out u,out v);
             double step=definition.PixelSpacingInVoxels;
@@ -63,10 +63,13 @@ namespace CxVisual.Foundation.Volume
                 {
                     double scalar=Sample(volume,
                         dx+u.X*col*step,dy+u.Y*col*step,dz+u.Z*col*step,true,definition.Interpolation);
-                    byte[] value=BitConverter.GetBytes((float)scalar);
-                    Buffer.BlockCopy(value,0,output,(row*w+col)*sizeof(float),sizeof(float));
+                    scalarPixels[row*w+col]=(float)scalar;
                 }
             }
+            // 高分辨率切片不能对每个像素分配一个临时byte[4]：
+            // 一次连续转换，避免百万级小对象给GC带来不可控的暂停。
+            byte[] output=new byte[checked(scalarPixels.Length*sizeof(float))];
+            Buffer.BlockCopy(scalarPixels,0,output,0,output.Length);
             return new FIMImageBuffer(w,h,FIMPixelFormat.GrayFloat32,output);
         }
 
