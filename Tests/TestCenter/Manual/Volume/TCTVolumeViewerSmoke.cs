@@ -58,6 +58,25 @@ namespace CxVisual.TestCenter.UI
                     "GPU成功或带具体原因的WPF回退，不能静默伪报GPU成功");
                 Check(frame.LegacyTopTabCount==4 && frame.LegacyBottomTabCount==5,
                     "原版上下4/5页签完整恢复");
+                TabControl upper=FindVisualByAutomationId<TabControl>(frame,
+                    "TCT.Volume.UpperTabs");
+                TabControl lower=FindVisualByAutomationId<TabControl>(frame,
+                    "TCT.Volume.LowerTabs");
+                Check(upper!=null && lower!=null,"新三维设置/传递函数页签必须在真实WPF可视树中");
+                for(int i=0;i<upper.Items.Count;i++)
+                {
+                    upper.SelectedIndex=i;
+                    Check(upper.SelectedContent!=null,
+                        "上层显示/灰阶/渲染/任意切各页必须有真实可显示内容");
+                }
+                for(int i=0;i<lower.Items.Count;i++)
+                {
+                    lower.SelectedIndex=i;
+                    Check(lower.SelectedContent!=null,
+                        "阈值/颜色/标量/梯度/任意切各页不能是空占位");
+                }
+                upper.SelectedIndex=0;lower.SelectedIndex=0;
+
                 double initialCameraDistance=frame.CameraDistanceForTest;
                 frame.Zoom3D(2);
                 Check(frame.CameraDistanceForTest<initialCameraDistance,
@@ -80,12 +99,32 @@ namespace CxVisual.TestCenter.UI
                 Check(frame.ViewState.SliceZ==12 && frame.ViewState.SliceY==13 &&
                     frame.ViewState.SliceX==14,
                     "三图窗跳转必须直接修改共享MVI三刀而不是独立索引");
-                frame.Center();
+                Button centerButton=FindVisualByAutomationId<Button>(frame,
+                    "TCT.Volume.Center");
+                Button resetButton=FindVisualByAutomationId<Button>(frame,
+                    "TCT.Volume.ResetCamera");
+                Button applyWindowButton=FindVisualByAutomationId<Button>(frame,
+                    "TCT.Volume.ApplyWindow");
+                Check(centerButton!=null && resetButton!=null && applyWindowButton!=null,
+                    "真实TopBar必须有三刀居中、相机复位、窗宽窗位动作控件");
+                centerButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent,centerButton));
+                Check(frame.ViewState.SliceX==frame.Volume.OriginalWidth/2 &&
+                    frame.ViewState.SliceY==frame.Volume.OriginalHeight/2 &&
+                    frame.ViewState.SliceZ==frame.Volume.OriginalDepth/2,
+                    "顶部三刀按钮Click必须执行真正FVO/MVI居中操作");
+                frame.Pan3D(35,20);
+                resetButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent,resetButton));
+                Check(frame.CameraTargetLengthForTest<.0001,
+                    "顶部相机复位按钮Click必须恢复真实3D相机");
                 frame.ToggleViewForTest(0);
                 Check(frame.IsLegacySingleView,"四视图单窗最大化");
                 frame.ToggleViewForTest(0);
                 Check(!frame.IsLegacySingleView,"单窗可原位恢复2x2");
                 frame.SetWindowWidthForTest("非法数值");
+                applyWindowButton.RaiseEvent(new RoutedEventArgs(
+                    Button.ClickEvent,applyWindowButton));
+                Check(!String.IsNullOrEmpty(frame.LastUiError),
+                    "真实顶部窗宽按钮Click应捕获非法输入并给用户错误反馈");
                 windowCommand.Execute();
                 Check(!String.IsNullOrEmpty(frame.LastUiError),
                     "命令输入非法时不得造成未处理UI异常，须回报操作失败");
@@ -280,6 +319,21 @@ namespace CxVisual.TestCenter.UI
                 window.Close();
             }
         }
+        private static T FindVisualByAutomationId<T>(DependencyObject root,string id)
+            where T:DependencyObject
+        {
+            if(root==null)return null;
+            T item=root as T;
+            if(item!=null && AutomationProperties.GetAutomationId(item)==id)return item;
+            for(int i=0;i<VisualTreeHelper.GetChildrenCount(root);i++)
+            {
+                T found=FindVisualByAutomationId<T>(
+                    VisualTreeHelper.GetChild(root,i),id);
+                if(found!=null)return found;
+            }
+            return null;
+        }
+
         private static void Check(bool ok, string subject)
         {
             if (!ok) throw new InvalidOperationException("三维WPF验收失败：" + subject);
