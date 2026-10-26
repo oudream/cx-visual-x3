@@ -674,6 +674,31 @@ namespace CxVisual.TestCenter.UI
                 rotationTool.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 if(frame.Viewer.RotationHandleVisualCount!=1)
                     throw new InvalidOperationException("旋转矩形尺寸编辑后切回角柄失败");
+                // 真正检验WPF坐标投影，不能只验证控制柄数量。
+                Canvas firstCanvas=frame.Viewer.FindName("OverlayCanvas") as Canvas;
+                if(firstCanvas==null)
+                    throw new InvalidOperationException("二维原图OverlayCanvas不可访问");
+                System.Windows.Shapes.Ellipse rotationDot=firstCanvas.Children
+                    .OfType<System.Windows.Shapes.Ellipse>()
+                    .FirstOrDefault(x=>(x.Tag as string)=="RotationHandle");
+                if(rotationDot==null)
+                    throw new InvalidOperationException("金色旋转柄未生成WPF Shape");
+                double beforeX=Canvas.GetLeft(rotationDot);
+                double beforeY=Canvas.GetTop(rotationDot);
+                frame.Viewer.RotateViewClockwise();
+                frame.Viewer.FlipViewHorizontal();
+                rotationDot=firstCanvas.Children.OfType<System.Windows.Shapes.Ellipse>()
+                    .FirstOrDefault(x=>(x.Tag as string)=="RotationHandle");
+                if(rotationDot==null ||
+                    (Math.Abs(Canvas.GetLeft(rotationDot)-beforeX)<1e-6 &&
+                     Math.Abs(Canvas.GetTop(rotationDot)-beforeY)<1e-6) ||
+                    Math.Abs(frame.Viewer.Overlays.Find(rotationBox.Id)
+                        .RotatedRectangleAngleDegrees-45)>1e-8)
+                    throw new InvalidOperationException(
+                        "视图旋转/镜像后的角柄未重新投影或错误修改ROI真实角度");
+                frame.Viewer.ResetViewTransform();
+                if(frame.Viewer.RotationHandleVisualCount!=1)
+                    throw new InvalidOperationException("复位显示状态后角柄未恢复");
                 // 用真正超出原图的另一对象验证非法创建不会污染当前Store。
                 bool boundsRejected=false;
                 try { frame.Viewer.AddRotatedRectangle(new FGERect2D(0,0,3,3),45); }
