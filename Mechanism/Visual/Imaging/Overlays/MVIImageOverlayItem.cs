@@ -130,10 +130,86 @@ namespace CxVisual.Mechanism.Visual
             return WithBounds(new FGERect2D(left,top,right-left,bottom-top));
         }
 
+        /// <summary>
+        /// 编辑单个多边形顶点；始终以原图坐标为准，并重新计算外接矩形。
+        /// 不修改其它顶点、Guid、样式及锁；拒绝退化、自交或绕向翻转。
+        /// </summary>
+        public MVIImageOverlayItem WithMovedPolygonVertex(int index,
+            FGEPoint2D position, int imageWidth, int imageHeight)
+        {
+            if (IsLocked) throw new InvalidOperationException("多边形已锁定，不能编辑顶点。");
+            if (Kind != MVIImageOverlayKind.PolygonRoi || Layer != MVIImageOverlayLayer.Roi)
+                throw new InvalidOperationException("仅多边形ROI支持逐顶点编辑。");
+            if (index < 0 || index >= _points.Length)
+                throw new ArgumentOutOfRangeException("index");
+            if (imageWidth <= 0 || imageHeight <= 0)
+                throw new ArgumentOutOfRangeException("imageWidth");
+            double x = Math.Max(0, Math.Min(imageWidth, FGEValidation.Finite(position.X,"position")));
+            double y = Math.Max(0, Math.Min(imageHeight, FGEValidation.Finite(position.Y,"position")));
+            FGEPoint2D[] points = (FGEPoint2D[])_points.Clone();
+            points[index] = new FGEPoint2D(x,y);
+            double oldArea = PolygonSignedDoubleArea(_points);
+            double newArea = PolygonSignedDoubleArea(points);
+            if (Math.Abs(newArea) < 1e-8 || Math.Abs(oldArea) < 1e-8 ||
+                Math.Sign(newArea) != Math.Sign(oldArea))
+                throw new ArgumentException("多边形退化或编辑导致绕向翻转。","position");
+            for (int i=0;i<points.Length;i++)
+            {
+                FGEPoint2D first=points[i], second=points[(i+1)%points.Length];
+                if ((second-first).LengthSquared < 1e-12)
+                    throw new ArgumentException("相邻多边形顶点不能重合。","position");
+                for (int j=i+1;j<points.Length;j++)
+                {
+                    if (j==i+1 || (i==0 && j==points.Length-1)) continue;
+                    if (PolygonSegmentsIntersect(first,second,
+                        points[j],points[(j+1)%points.Length]))
+                        throw new ArgumentException("编辑将产生自交多边形。","position");
+                }
+            }
+            double left=points.Min(p=>p.X),right=points.Max(p=>p.X);
+            double top=points.Min(p=>p.Y),bottom=points.Max(p=>p.Y);
+            return new MVIImageOverlayItem(Kind,Layer,
+                new FGERect2D(left,top,right-left,bottom-top),points,Text,ExternalId,
+                Argb,LineWidth,Id,IsVisible,IsLocked);
+        }
+
+        private static double PolygonSignedDoubleArea(IReadOnlyList<FGEPoint2D> points)
+        {
+            double total=0;
+            for (int i=0;i<points.Count;i++)
+            {
+                FGEPoint2D a=points[i],b=points[(i+1)%points.Count];
+                total+=a.X*b.Y-b.X*a.Y;
+            }
+            return total;
+        }
+
+        private static double PolygonCross(FGEPoint2D a,FGEPoint2D b,FGEPoint2D p)
+        { return (b.X-a.X)*(p.Y-a.Y)-(b.Y-a.Y)*(p.X-a.X); }
+
+        private static bool PolygonOnSegment(FGEPoint2D p,FGEPoint2D a,FGEPoint2D b)
+        {
+            return p.X>=Math.Min(a.X,b.X)-1e-10 && p.X<=Math.Max(a.X,b.X)+1e-10 &&
+                p.Y>=Math.Min(a.Y,b.Y)-1e-10 && p.Y<=Math.Max(a.Y,b.Y)+1e-10;
+        }
+
+        private static bool PolygonSegmentsIntersect(FGEPoint2D a,FGEPoint2D b,
+            FGEPoint2D c,FGEPoint2D d)
+        {
+            double abC=PolygonCross(a,b,c),abD=PolygonCross(a,b,d);
+            double cdA=PolygonCross(c,d,a),cdB=PolygonCross(c,d,b);
+            if (((abC>1e-10 && abD< -1e-10) || (abC< -1e-10 && abD>1e-10)) &&
+                ((cdA>1e-10 && cdB< -1e-10) || (cdA< -1e-10 && cdB>1e-10))) return true;
+            return (Math.Abs(abC)<=1e-10 && PolygonOnSegment(c,a,b)) ||
+                (Math.Abs(abD)<=1e-10 && PolygonOnSegment(d,a,b)) ||
+                (Math.Abs(cdA)<=1e-10 && PolygonOnSegment(a,c,d)) ||
+                (Math.Abs(cdB)<=1e-10 && PolygonOnSegment(b,c,d));
+        }
+
         public MVIImageOverlayItem WithVisibility(bool visible)
         {
             return new MVIImageOverlayItem(Kind, Layer, Bounds, _points, Text, ExternalId,
-                Argb, LineWidth, Id, visible);
+                Argb, LineWidth, Id, visible, IsLocked);
         }
         public MVIImageOverlayItem WithLocked(bool locked)
         {
@@ -150,7 +226,7 @@ namespace CxVisual.Mechanism.Visual
         {
             if (IsLocked) throw new InvalidOperationException("叠加对象已锁定，不能修改样式。");
             return new MVIImageOverlayItem(Kind, Layer, Bounds, _points, Text, ExternalId,
-                argb, lineWidth, Id, IsVisible);
+                argb, lineWidth, Id, IsVisible, IsLocked);
         }
         public MVIImageOverlayItem Translate(double dx, double dy)
         {

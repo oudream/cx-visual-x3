@@ -70,6 +70,41 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 (MVIImageResizeHandle)99,new FGEPoint2D(1,1),30,30),"未知编辑柄");
             Fail<ArgumentOutOfRangeException>(()=>roi.WithResizedRoiHandle(
                 MVIImageResizeHandle.Right,new FGEPoint2D(1,1),0,30),"零图宽");
+            // 多边形按顶点编辑，与八方向整体缩放是两个独立可复用操作。
+            MVIImageOverlayItem quad=overlays.Add(new MVIImageOverlayItem(
+                MVIImageOverlayKind.PolygonRoi,MVIImageOverlayLayer.Roi,
+                new FGERect2D(1,1,8,8),new[]{
+                    new FGEPoint2D(1,1),new FGEPoint2D(9,1),
+                    new FGEPoint2D(9,9),new FGEPoint2D(1,9)}));
+            MVIImageOverlayItem vertexEdited=quad.WithMovedPolygonVertex(
+                1,new FGEPoint2D(12,2),20,20);
+            Ensure(vertexEdited.Id==quad.Id && vertexEdited.Points[1].X==12 &&
+                vertexEdited.Points[0].X==1 && vertexEdited.Points[2].Y==9 &&
+                vertexEdited.Bounds.Right==12 && quad.Bounds.Right==9,
+                "逐顶点更新精确Bounds并保持对象身份及其他顶点");
+            MVIImageOverlayItem clipped=quad.WithMovedPolygonVertex(
+                1,new FGEPoint2D(200,-10),20,20);
+            Ensure(clipped.Points[1].X==20 && clipped.Points[1].Y==0,
+                "越过图像边界时顶点被正确约束");
+            Fail<ArgumentOutOfRangeException>(()=>quad.WithMovedPolygonVertex(
+                4,new FGEPoint2D(3,3),20,20),"不存在的顶点索引");
+            Fail<ArgumentException>(()=>quad.WithMovedPolygonVertex(
+                1,new FGEPoint2D(1,1),20,20),"顶点重合退化必须拒绝");
+            Fail<ArgumentException>(()=>quad.WithMovedPolygonVertex(
+                1,new FGEPoint2D(4,12),20,20),"顶点移过对边导致多边形自交必须拒绝");
+            Fail<InvalidOperationException>(()=>roi.WithMovedPolygonVertex(
+                0,new FGEPoint2D(1,1),20,20),"矩形ROI不能假装多边形顶点编辑");
+            int beforeVertexNotify=changed;
+            Ensure(overlays.Replace(vertexEdited) && changed==beforeVertexNotify+1 &&
+                overlays.Find(quad.Id).Points[1].X==12,
+                "逐顶点编辑经唯一Store观察通知更新");
+            MVIImageOverlayItem vertexLocked=vertexEdited.WithLocked(true);
+            Fail<InvalidOperationException>(()=>vertexLocked.WithMovedPolygonVertex(
+                1,new FGEPoint2D(10,2),20,20),"锁定多边形不得编辑顶点");
+            Ensure(vertexLocked.WithVisibility(false).IsLocked &&
+                vertexLocked.WithLocked(false).WithStyle(0xff223344,2).IsLocked==false,
+                "不可变快照保留锁定状态并支持显式解锁");
+            overlays.Remove(quad.Id);
             MVIImageOverlayItem defect = overlays.Add(new MVIImageOverlayItem(
                 MVIImageOverlayKind.DefectBox, MVIImageOverlayLayer.Defect,
                 new FGERect2D(1, 2, 3, 4), text:"Defect-12"));
