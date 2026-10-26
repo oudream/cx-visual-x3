@@ -198,3 +198,5 @@
 - [二维视觉工作台TestCenter界面优化与真实Windows验收 V1.0](Implementation/CxVisual_专业视觉体系%23二维视觉工作台TestCenter界面优化与Windows验收_V1.0.md)：第6张图对照前五张成熟图窗，单排WPF矢量图标、上下10页签、可调侧栏、TestCenter辅助Inspector按专业工作区收起/切回恢复；以Imaging Windows #40259838886通过记录和两张CI截图为证，完整TestCenter UIA超时单列未解决。
 
 - [二维工业视觉工作台 P2 功能恢复与 Windows 实测 V1.0](Implementation/CxVisual_专业视觉体系%23二维视觉工作台P2功能恢复与实测_V1.0.md)：针对旧第6图功能缺口，新增水平/垂直/直径/矩形及多边形面积测量、滑动比较、剖面线、灰阶滑块、可取消大图统计和ROI/测量CSV，附实测#40262549868及未完成差距。
+
+- [TestCenter自动测试工作台统一Frame与测试控制台实装验收 V1.0](Implementation/CxVisual_TestCenter%23自动测试工作台——统一Frame与测试控制台实现验收_V1.0.md)：NUnit/TCT计划和ArchitectureSmoke共用同一中央可调宽测试控制台，专业工作台默认全宽；旧全局Inspector退场、旧布局保留并提示重存，验证需按对应Windows CI判定。
