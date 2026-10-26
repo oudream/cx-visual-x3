@@ -24,6 +24,7 @@ namespace CxVisual.TestCenter.UI
         private Grid _maximizedSlot;
         private TabControl _upperTabs, _lowerTabs;
         private readonly CheckBox _crosshairEnabled = new CheckBox { Content="显示十字线",IsChecked=true };
+        private readonly CheckBox _orientationEnabled = new CheckBox { Content="显示3D方向坐标（双击复位）",IsChecked=true };
         private readonly TextBox _windowCenterText = new TextBox { Width=44,Text="128",Margin=new Thickness(3) };
         private readonly TextBox _windowWidthText = new TextBox { Width=44,Text="256",Margin=new Thickness(3) };
         private readonly Slider _presetOpacity = new Slider { Minimum=0,Maximum=200,Value=100 };
@@ -119,6 +120,9 @@ namespace CxVisual.TestCenter.UI
             display.Children.Add(_crosshairEnabled);
             _crosshairEnabled.Checked+=(s,e)=>{if(_state!=null)_state.ShowCrosshair=true;UpdateCrosshairs();};
             _crosshairEnabled.Unchecked+=(s,e)=>{if(_state!=null)_state.ShowCrosshair=false;ClearCrosshairs();};
+            display.Children.Add(_orientationEnabled);
+            _orientationEnabled.Checked+=(s,e)=>_scene.SetOrientationVisible(true);
+            _orientationEnabled.Unchecked+=(s,e)=>_scene.SetOrientationVisible(false);
             display.Children.Add(_autoSliceFit);
             _autoSliceFit.Checked+=(s,e)=>{if(_volume!=null){_xy.FitToWindow();_yz.FitToWindow();_xz.FitToWindow();}};
             _pseudo.Margin=new Thickness(4,6,4,4);display.Children.Add(_pseudo);

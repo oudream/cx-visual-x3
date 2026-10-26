@@ -6,6 +6,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Media.Media3D;
+using System.Windows.Shapes;
 using CxVisual.Foundation.Imaging;
 
 namespace CxVisual.Mechanism.Presentation.Wpf.Volume
@@ -20,6 +21,11 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
         private readonly Viewport3D _viewport = new Viewport3D();
         private readonly Model3DGroup _models = new Model3DGroup();
         private readonly PerspectiveCamera _camera = new PerspectiveCamera();
+        private readonly Canvas _orientation = new Canvas { Width=108,Height=108,
+            HorizontalAlignment=HorizontalAlignment.Right,VerticalAlignment=VerticalAlignment.Bottom,
+            Margin=new Thickness(4),Background=new SolidColorBrush(Color.FromArgb(165,4,10,18)) };
+        private readonly Line[] _axisLines=new Line[3];
+        private readonly TextBlock[] _axisLabels=new TextBlock[3];
         private Point _dragOrigin;
         private bool _dragging;
         private double _yaw = 37.0;
@@ -49,6 +55,22 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
                 }
             };
             Children.Add(label);
+            Brush[] axisColors={Brushes.IndianRed,Brushes.LimeGreen,Brushes.DodgerBlue};
+            string[] axisTitles={"X","Y","Z"};
+            for(int i=0;i<3;i++)
+            {
+                Line line=new Line { Stroke=axisColors[i],StrokeThickness=2.5,
+                    StrokeEndLineCap=PenLineCap.Triangle };
+                _axisLines[i]=line;_orientation.Children.Add(line);
+                TextBlock caption=new TextBlock { Text=axisTitles[i],Foreground=axisColors[i],
+                    FontWeight=FontWeights.Bold,FontSize=12 };
+                _axisLabels[i]=caption;_orientation.Children.Add(caption);
+            }
+            _orientation.MouseLeftButtonDown+=(s,e)=>{
+                if(e.ClickCount>=2)ResetCamera();
+                e.Handled=true;
+            };
+            Children.Add(_orientation);
             MouseLeftButtonDown += OnDown;
             MouseLeftButtonUp += OnUp;
             MouseMove += OnMove;
@@ -59,6 +81,11 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
 
         public int SlicePlaneCount { get { return Math.Max(0, _models.Children.Count - 1); } }
         public double CameraDistance { get { return _distance; } }
+        public int OrientationAxisCount { get { return _axisLines.Length; } }
+        public void SetOrientationVisible(bool visible)
+        {
+            _orientation.Visibility=visible?Visibility.Visible:Visibility.Collapsed;
+        }
 
         /// <summary>清空空间切片贴图；窗口关闭时释放GPU纹理的WPF引用。</summary>
         public void Clear()
@@ -154,6 +181,30 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
             _camera.FieldOfView = 42;
             _camera.NearPlaneDistance = 0.01;
             _camera.FarPlaneDistance = 30;
+            UpdateOrientation(pos);
+        }
+
+        /// <summary>沿用旧 WinForms 方向标记的三轴投影，双击复位相机。</summary>
+        private void UpdateOrientation(Point3D camera)
+        {
+            Vector3D forward=new Vector3D(-camera.X,-camera.Y,-camera.Z);
+            forward.Normalize();
+            Vector3D right=Vector3D.CrossProduct(forward,new Vector3D(0,1,0));
+            right.Normalize();
+            Vector3D up=Vector3D.CrossProduct(right,forward);
+            Vector3D[] axes={new Vector3D(1,0,0),new Vector3D(0,1,0),new Vector3D(0,0,1)};
+            for(int i=0;i<3;i++)
+            {
+                double sx=Vector3D.DotProduct(axes[i],right);
+                double sy=Vector3D.DotProduct(axes[i],up);
+                double near=Vector3D.DotProduct(axes[i],-forward);
+                double len=29+near*5;
+                double x=54+sx*len,y=60-sy*len;
+                Line line=_axisLines[i];
+                line.X1=54;line.Y1=60;line.X2=x;line.Y2=y;
+                Canvas.SetLeft(_axisLabels[i],x+2);
+                Canvas.SetTop(_axisLabels[i],y-9);
+            }
         }
 
         private void OnDown(object sender, MouseButtonEventArgs e)

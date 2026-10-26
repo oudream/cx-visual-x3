@@ -46,7 +46,8 @@ namespace CxVisual.TestCenter.UI
                 frame.UpdateCrosshairs();
                 Check(frame.VisibleCrosshairCount == 6, "三个二维图窗必须显示六条十字线");
                 Check(frame.Scene.SlicePlaneCount == 3, "三张WPF空间贴图切面");
-                Check(frame.Scene.CameraDistance > 0, "三维相机被初始化");
+                Check(frame.Scene.CameraDistance > 0 && frame.Scene.OrientationAxisCount==3,
+                    "原版三维相机和红绿蓝方向标记应正常初始化");
                 frame.SetCrosshairFromImage(FVOSlicePlane.XY,6,9);
                 Check(frame.ViewState.SliceX == 6 && frame.ViewState.SliceY == 9,
                     "二维切片坐标必须反算为MVI三刀索引");
