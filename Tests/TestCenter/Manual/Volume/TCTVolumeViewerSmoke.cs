@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Windows;
 using System.Windows.Automation;
@@ -26,10 +27,31 @@ namespace CxVisual.TestCenter.UI
             {
                 window.Show();
                 window.UpdateLayout();
+                // 命令中心/顶部按钮使用同一操作入口，不能只注册原来的3个命令。
+                List<TCTWorkspaceAction> actions=new List<TCTWorkspaceAction>(frame.Commands);
+                HashSet<string> unique=new HashSet<string>();
+                foreach(TCTWorkspaceAction command in actions)
+                    Check(unique.Add(command.Id) && command.Execute!=null &&
+                        command.CanExecute!=null,"CT3D工作区命令须有唯一ID及可执行入口");
+                Check(actions.Count>=20,
+                    "旧版RAW/BMP/四视图/渲染/任意切操作均需公开到工作区命令");
+                TCTWorkspaceAction clearCommand=actions.Find(c=>c.Id=="ct3d.clear");
+                TCTWorkspaceAction windowCommand=actions.Find(c=>c.Id=="ct3d.window");
+                TCTWorkspaceAction zoomCommand=actions.Find(c=>c.Id=="ct3d.zoomIn");
+                Check(clearCommand!=null && !clearCommand.CanExecute() &&
+                    windowCommand!=null && !windowCommand.CanExecute(),
+                    "未加载时危险的窗口操作必须禁止执行");
                 frame.LoadDemo();
                 window.UpdateLayout();
                 frame.Dispatcher.Invoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle,
                     new Action(delegate { }));
+                Check(clearCommand.CanExecute() && windowCommand.CanExecute() &&
+                    zoomCommand.CanExecute(),"装载体数据后工作区命令应该可执行");
+                double beforeCommandZoom=frame.CameraDistanceForTest;
+                zoomCommand.Execute();
+                Check(frame.CameraDistanceForTest<beforeCommandZoom,
+                    "CT3D工作区缩放命令必须调用真实GPU/WPF相机");
+                frame.ResetCameraForTest();
                 Check(frame.HasAttemptedGpuRendering,
                     "默认加载必须真实尝试GPU Raymarch而不能直接停留WPF切面");
                 Check(frame.IsGpuVolumeRendering || frame.GpuStatusText.Contains("GPU不可用"),
@@ -63,6 +85,14 @@ namespace CxVisual.TestCenter.UI
                 Check(frame.IsLegacySingleView,"四视图单窗最大化");
                 frame.ToggleViewForTest(0);
                 Check(!frame.IsLegacySingleView,"单窗可原位恢复2x2");
+                frame.SetWindowWidthForTest("非法数值");
+                windowCommand.Execute();
+                Check(!String.IsNullOrEmpty(frame.LastUiError),
+                    "命令输入非法时不得造成未处理UI异常，须回报操作失败");
+                frame.SetWindowWidthForTest("256");
+                windowCommand.Execute();
+                Check(String.IsNullOrEmpty(frame.LastUiError),
+                    "修改有效窗宽后工作区命令必须恢复可用");
                 frame.ApplyWindowCenterWidth();
                 frame.SetOpacityFromPanelForTest(.45);
                 Check(Math.Abs(frame.ConfiguredOpacityForTest-.45f)<.001,

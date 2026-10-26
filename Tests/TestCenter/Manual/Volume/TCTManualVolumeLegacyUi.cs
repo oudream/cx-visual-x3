@@ -162,8 +162,8 @@ namespace CxVisual.TestCenter.UI
             _crosshairEnabled.Checked+=(s,e)=>{if(_state!=null)_state.ShowCrosshair=true;UpdateCrosshairs();};
             _crosshairEnabled.Unchecked+=(s,e)=>{if(_state!=null)_state.ShowCrosshair=false;ClearCrosshairs();};
             display.Children.Add(_orientationEnabled);
-            _orientationEnabled.Checked+=(s,e)=>_scene.SetOrientationVisible(true);
-            _orientationEnabled.Unchecked+=(s,e)=>_scene.SetOrientationVisible(false);
+            _orientationEnabled.Checked+=(s,e)=>Set3DOrientationVisible(true);
+            _orientationEnabled.Unchecked+=(s,e)=>Set3DOrientationVisible(false);
             display.Children.Add(_autoSliceFit);
             _autoSliceFit.Checked+=(s,e)=>{if(_volume!=null){_xy.FitToWindow();_yz.FitToWindow();_xz.FitToWindow();}};
             _pseudo.Margin=new Thickness(4,6,4,4);display.Children.Add(_pseudo);
@@ -234,6 +234,11 @@ namespace CxVisual.TestCenter.UI
         {
             if(!from.Children.Contains(element))throw new InvalidOperationException("控件不是预期的唯一实例。");
             from.Children.Remove(element);to.Children.Add(element);
+        }
+
+        public void SetWindowWidthForTest(string text)
+        {
+            _windowWidthText.Text=text;
         }
 
         public void ApplyWindowCenterWidth()
@@ -407,6 +412,16 @@ namespace CxVisual.TestCenter.UI
             if(_volume==null||_state==null)throw new InvalidOperationException("必须先加载体数据。");
             // 真实改变WPF Slider.Value，验收时经过ValueChanged事件而非跳过UI直调MVI。
             _headerSliceSliders[plane].Value=position;
+        }
+
+        private void Set3DOrientationVisible(bool visible)
+        {
+            _scene.SetOrientationVisible(visible);
+            if(_gpu!=null)_gpu.SetOrientationVisible(visible);
+        }
+        public void SetOrientationVisibleForTest(bool visible)
+        {
+            _orientationEnabled.IsChecked=visible;
         }
 
         public void Zoom3D(double steps)

@@ -57,6 +57,10 @@ namespace CxVisual.TestCenter.UI
         public float ConfiguredOpacityForTest { get { return _gpuSettings.VolumeOpacity; } }
         public bool ConfiguredSliceVisibilityForTest { get { return _gpuSettings.ShowSlices; } }
         public bool ConfiguredColorForTest { get { return _gpuSettings.TransferFunctions.UseColor; } }
+        public bool IsGpuOrientationVisibleForTest
+        {
+            get { return _gpu!=null && _gpu.IsOrientationVisible; }
+        }
         public bool IsGpuVolumeRendering { get { return _gpu != null && _gpu.IsAvailable; } }
         public string GpuStatusText { get { return _gpuInfo.Text; } }
         public BitmapSource CaptureGpuFrameForTest()
@@ -219,6 +223,7 @@ namespace CxVisual.TestCenter.UI
             if (!_gpu.IsAvailable) { GpuFallback(_gpu.FailureReason); return; }
             try
             {
+                _gpu.SetOrientationVisible(_orientationEnabled.IsChecked==true);
                 ApplyGpuUniforms();
                 RefreshOblique();
                 _gpuInfo.Text="真实GPU体绘已启用："+_gpu.DriverVersion;

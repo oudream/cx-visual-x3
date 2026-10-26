@@ -39,16 +39,68 @@ namespace CxVisual.TestCenter.UI
         private bool _updating;
 
         public string WorkspaceId { get { return "manual.ct3d"; } }
+        /// <summary>旧版MainForm的可见操作必须与工作区命令使用相同函数入口。</summary>
         public IEnumerable<TCTWorkspaceAction> Commands
         {
             get
             {
+                Func<bool> loaded=()=>_volume!=null;
                 return new[]
                 {
-                    new TCTWorkspaceAction("ct3d.demo", "演示体", LoadDemo),
-                    new TCTWorkspaceAction("ct3d.center", "三刀居中", Center),
-                    new TCTWorkspaceAction("ct3d.camera", "3D相机复位", Reset3DCamera)
+                    WorkspaceAction("ct3d.openRaw","打开 RAW",OpenRaw),
+                    WorkspaceAction("ct3d.openBmp","打开 BMP 目录",OpenBmpDirectory),
+                    WorkspaceAction("ct3d.demo","演示体",LoadDemo),
+                    WorkspaceAction("ct3d.clear","清空数据",ClearVolume,loaded),
+                    WorkspaceAction("ct3d.fit","复位四视图",FitAllViews,loaded),
+                    WorkspaceAction("ct3d.center","三刀居中",Center,loaded),
+                    WorkspaceAction("ct3d.camera","3D相机复位",Reset3DCamera,loaded),
+                    WorkspaceAction("ct3d.window","应用窗宽窗位",ApplyWindowCenterWidth,loaded),
+                    WorkspaceAction("ct3d.gray","应用灰阶映射",UpdateLegacyGrayMapping,loaded),
+                    WorkspaceAction("ct3d.screenshot","保存四视图PNG",SaveScreenshotDialog,loaded),
+                    WorkspaceAction("ct3d.saveView","保存当前视图PNG",SaveSelectedViewDialog,loaded),
+                    WorkspaceAction("ct3d.gpu.toggle","开启/关闭GPU",()=>
+                        _enableGpu.IsChecked=_enableGpu.IsChecked!=true,loaded),
+                    WorkspaceAction("ct3d.gpu.save","保存GPU画面PNG",SaveGpuFrame,()=>IsGpuVolumeRendering),
+                    WorkspaceAction("ct3d.zoomIn","3D放大",()=>Zoom3D(1),loaded),
+                    WorkspaceAction("ct3d.zoomOut","3D缩小",()=>Zoom3D(-1),loaded),
+                    WorkspaceAction("ct3d.panLeft","3D左移",()=>Pan3D(-28,0),loaded),
+                    WorkspaceAction("ct3d.panRight","3D右移",()=>Pan3D(28,0),loaded),
+                    WorkspaceAction("ct3d.oblique.update","更新任意切",UpdateObliqueDefinition,loaded),
+                    WorkspaceAction("ct3d.oblique.png","保存任意切PNG",SaveObliquePreviewDialog,
+                        ()=>_state!=null && _state.ObliqueSlice.Visible),
+                    WorkspaceAction("ct3d.oblique.raw","导出任意切Float32",SaveObliqueRawDialog,
+                        ()=>_state!=null && _state.ObliqueSlice.Visible)
                 };
+            }
+        }
+        public string LastUiError { get; private set; }
+        private TCTWorkspaceAction WorkspaceAction(string id,string label,Action action,
+            Func<bool> canExecute=null)
+        {
+            return new TCTWorkspaceAction(id,label,delegate
+            {
+                if(canExecute!=null && !canExecute())
+                {
+                    LastUiError="当前没有满足命令 "+label+" 的操作条件。";
+                    _status.Text=LastUiError;
+                    RaiseStateChanged();
+                    return;
+                }
+                ExecuteUiAction(action);
+            },canExecute);
+        }
+        private void ExecuteUiAction(Action action)
+        {
+            try
+            {
+                LastUiError=null;
+                action();
+            }
+            catch(Exception error)
+            {
+                LastUiError=error.Message;
+                _status.Text="操作失败："+error.Message;
+                RaiseStateChanged();
             }
         }
         public event Action StateChanged;
@@ -87,12 +139,12 @@ namespace CxVisual.TestCenter.UI
                 FontWeight = FontWeights.SemiBold, FontSize = 14,
                 Foreground = BrushOf(229,239,250), Margin = new Thickness(2,4,2,8) });
         }
-        private static void AddButton(Panel bar, string caption, string id, Action action)
+        private void AddButton(Panel bar, string caption, string id, Action action)
         {
             Button b = new Button { Content = caption, Padding = new Thickness(10,4,10,4),
                 Margin = new Thickness(4,5,2,5), MinWidth = 90 };
             AutomationProperties.SetAutomationId(b,id);
-            b.Click += (s,e)=>action();
+            b.Click += (s,e)=>ExecuteUiAction(action);
             bar.Children.Add(b);
         }
         private static void AddAxis(Panel panel, string name, Slider slider, string id)

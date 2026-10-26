@@ -26,6 +26,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
         private uint _activeShaderProgram;
         private uint _shader, _vao, _vbo, _volumeTexture, _scalarTexture, _gradientTexture;
         private uint _sliceShader, _sliceVao, _sliceVbo, _lineShader, _lineVao, _lineVbo;
+        private uint _orientationVao,_orientationVbo;
+        private bool _showOrientation=true;
         private uint _obliqueTexture;
         private byte[] _obliquePixels;
         private int _obliqueWidth,_obliqueHeight;
@@ -48,6 +50,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
         public int NativePointerEvents { get; private set; }
         public IntPtr NativeHandleForHardwareTest { get { return _window; } }
         public float CameraDistance { get { return _distance; } }
+        public bool IsOrientationVisible { get { return _showOrientation; } }
+        public void SetOrientationVisible(bool visible)
+        {
+            _showOrientation=visible;
+            RequestRender();
+        }
         public Vector3 CameraTarget { get { return _target; } }
         public float CameraYaw { get { return _yaw; } }
         public float CameraPitch { get { return _pitch; } }
@@ -267,6 +275,20 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
                 UploadFloats(MPWVolumeGeometry.CubeLines);
                 _gl.VertexAttribPointer(0,3,0x1406,0,3*sizeof(float),IntPtr.Zero);
                 _gl.EnableVertexAttribArray(0);
+                // 旧版右下方的XYZ方向标：绘制在同一个真实GL framebuffer内。
+                // HwndHost存在Airspace限制，不能用WPF覆盖子窗口来冒充方向标。
+                _gl.GenVertexArrays(1,out _orientationVao);
+                _gl.GenBuffers(1,out _orientationVbo);
+                _gl.BindVertexArray(_orientationVao);
+                _gl.BindBuffer(0x8892,_orientationVbo);
+                UploadFloats(new float[]
+                {
+                    0,0,0,  .78f,0,0,
+                    0,0,0,  0,.78f,0,
+                    0,0,0,  0,0,.78f
+                });
+                _gl.VertexAttribPointer(0,3,0x1406,0,3*sizeof(float),IntPtr.Zero);
+                _gl.EnableVertexAttribArray(0);
                 glClearColor(.025f,.037f,.061f,1);
                 glEnable(0x0BE2); // GL_BLEND
                 glBlendFunc(0x0302,0x0303); // SRC_ALPHA, ONE_MINUS_SRC_ALPHA
@@ -319,15 +341,18 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
                 if (_vbo != 0) _gl.DeleteBuffers(1,ref _vbo);
                 if (_sliceVbo != 0) _gl.DeleteBuffers(1,ref _sliceVbo);
                 if (_lineVbo != 0) _gl.DeleteBuffers(1,ref _lineVbo);
+                if (_orientationVbo != 0) _gl.DeleteBuffers(1,ref _orientationVbo);
                 if (_vao != 0) _gl.DeleteVertexArrays(1,ref _vao);
                 if (_sliceVao != 0) _gl.DeleteVertexArrays(1,ref _sliceVao);
                 if (_lineVao != 0) _gl.DeleteVertexArrays(1,ref _lineVao);
+                if (_orientationVao != 0) _gl.DeleteVertexArrays(1,ref _orientationVao);
             }
             wglMakeCurrent(IntPtr.Zero,IntPtr.Zero);
             wglDeleteContext(_context); _context = IntPtr.Zero; IsAvailable = false;
             _shader = _vao = _vbo = _volumeTexture = _scalarTexture = _gradientTexture = 0;
             _sliceShader = _lineShader = _sliceVao = _sliceVbo = _lineVao = _lineVbo = 0;
             _obliqueTexture=0;
+            _orientationVao=_orientationVbo=0;
             _gl = null;
         }
 
@@ -554,7 +579,35 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
                 _gl.BindVertexArray(_lineVao);
                 _gl.DrawArrays(0x0001,0,MPWVolumeGeometry.CubeLines.Length/3);
             }
+            if(_showOrientation)DrawOrientationIndicator(w,h);
             SwapBuffers(_dc);
+        }
+
+        /// <summary>右下真实OpenGL三轴；用同一相机朝向但不受平移/缩放距离影响。</summary>
+        private void DrawOrientationIndicator(int width,int height)
+        {
+            int side=Math.Min(110,Math.Min(width,height)/3);
+            if(side<35 || _orientationVao==0)return;
+            glViewport(width-side-5,5,side,side);
+            try
+            {
+                float cp=(float)Math.Cos(_pitch),sp=(float)Math.Sin(_pitch);
+                Vector3 eye=new Vector3((float)Math.Sin(_yaw)*cp,sp,
+                    (float)Math.Cos(_yaw)*cp)*2.4f;
+                Matrix4x4 view=Matrix4x4.CreateLookAt(eye,Vector3.Zero,Vector3.UnitY);
+                Matrix4x4 projection=Matrix4x4.CreatePerspectiveFieldOfView(
+                    (float)(Math.PI/4),1f,.02f,20f);
+                UseShaderProgram(_lineShader);
+                Matrix("mvp",view*projection);
+                _gl.BindVertexArray(_orientationVao);
+                Vec3("lineColor",1f,.24f,.24f);
+                _gl.DrawArrays(0x0001,0,2);
+                Vec3("lineColor",.22f,.95f,.35f);
+                _gl.DrawArrays(0x0001,2,2);
+                Vec3("lineColor",.25f,.58f,1f);
+                _gl.DrawArrays(0x0001,4,2);
+            }
+            finally {glViewport(0,0,width,height);}
         }
 
         /// <summary>直接沿用原版11浮点布局：位置/3D纹理/颜色/任意切UV，三刀单一坐标源。</summary>
