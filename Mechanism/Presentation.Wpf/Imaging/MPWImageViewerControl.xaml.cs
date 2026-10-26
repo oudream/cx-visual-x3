@@ -1118,8 +1118,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 if (selected != null && !selected.IsLocked &&
                     selected.Bounds.Width > 0 && selected.Bounds.Height > 0)
                 {
-                    if (_toolMode == MVIImageToolMode.ResizeOverlay &&
-                        selected.Kind!=MVIImageOverlayKind.RotatedRectangleRoi)
+                    if (_toolMode == MVIImageToolMode.ResizeOverlay)
                         DrawResizeHandles(canvas,viewport,selected);
                     else if (_toolMode == MVIImageToolMode.EditPolygonVertex &&
                         selected.Kind==MVIImageOverlayKind.PolygonRoi)
