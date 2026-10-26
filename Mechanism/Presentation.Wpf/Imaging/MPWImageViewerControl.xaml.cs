@@ -81,7 +81,14 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         public bool ShowPhysicalRulers
         {
             get { return _rulerMillimeters; }
-            set { VerifyAccess(); _rulerMillimeters = value; RefreshRulers(); }
+            set
+            {
+                VerifyAccess();
+                if (value && !_pixelSpacing.HasValue)
+                    throw new InvalidOperationException("必须先设置有效像素间距才能显示毫米标尺。");
+                _rulerMillimeters = value;
+                RefreshRulers();
+            }
         }
 
         /// <summary>真实原图/结果图透明叠合，必须同尺寸、格式，原始两张图均不修改。</summary>
