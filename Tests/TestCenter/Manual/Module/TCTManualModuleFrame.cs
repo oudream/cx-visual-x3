@@ -32,7 +32,7 @@ namespace CxVisual.TestCenter.UI
         private readonly ContentControl _editorHost = new ContentControl();
         private readonly TabControl _pages = new TabControl {
             MinHeight = 44, Margin = new Thickness(0, 4, 0, 3),
-            Background = Brushes.White, BorderThickness = new Thickness(0) };
+            BorderThickness = new Thickness(0) };
         private Action<string[], string[]> _project;
         private Func<int> _visibleSchemaEditors;
         private bool _buildingPages;
@@ -152,8 +152,9 @@ namespace CxVisual.TestCenter.UI
                     }).ToArray();
                 foreach (ModulePage page in pages)
                 {
-                    TabItem tab = new TabItem { Header = page.Label, Tag = page,
-                        Padding = new Thickness(12, 7, 12, 7), FontSize = 16 };
+                    TabItem tab = new TabItem { Header = page.Label, Tag = page };
+                    tab.SetResourceReference(FrameworkElement.StyleProperty,
+                        "MPWDocumentTabStyle");
                     System.Windows.Automation.AutomationProperties.SetAutomationId(tab,
                         "TCT.Module.Page." + page.Id);
                     _pages.Items.Add(tab);
@@ -255,14 +256,18 @@ namespace CxVisual.TestCenter.UI
                     ProjectSelectedPage();
             };
 
-            DockPanel rootPanel = new DockPanel { Margin = new Thickness(9, 6, 9, 7),
-                Background = Brushes.White };
+            // 模块配置页面使用公共MPW视觉令牌，随TestCenter浅/深主题同步变化。
+            _pages.SetResourceReference(Control.BackgroundProperty, "MPWSurfaceBrush");
+            _status.SetResourceReference(TextBlock.ForegroundProperty, "MPWMutedBrush");
+            DockPanel rootPanel = new DockPanel { Margin = new Thickness(9, 6, 9, 7) };
+            rootPanel.SetResourceReference(Panel.BackgroundProperty, "MPWBackgroundBrush");
             StackPanel header = new StackPanel();
-            header.Children.Add(new TextBlock {
+            TextBlock title = new TextBlock {
                 Text = "模块配置 / Module Workspace", FontSize = 20,
-                Foreground = new SolidColorBrush(Color.FromRgb(30, 68, 112)),
                 FontWeight = FontWeights.SemiBold
-            });
+            };
+            title.SetResourceReference(TextBlock.ForegroundProperty, "MPWForegroundBrush");
+            header.Children.Add(title);
             header.ToolTip = "五类模块复用正式 FCM Schema、MPW 编辑器及 MHS Saved/Effective；右侧统一管理配置操作。";
             WrapPanel picker = new WrapPanel { Orientation = Orientation.Horizontal };
             picker.Children.Add(new TextBlock { Text = "模块类型", VerticalAlignment = VerticalAlignment.Center });
@@ -276,10 +281,12 @@ namespace CxVisual.TestCenter.UI
             rootPanel.Children.Add(header);
             DockPanel.SetDock(_pages, Dock.Top);
             rootPanel.Children.Add(_pages);
-            _editorHost.Content = new TextBlock {
-                Text = "右侧操作中心 → 创建 / 打开模块配置", Foreground = Brushes.Gray,
+            TextBlock emptyNotice = new TextBlock {
+                Text = "右侧操作中心 → 创建 / 打开模块配置",
                 Margin = new Thickness(14, 22, 14, 0)
             };
+            emptyNotice.SetResourceReference(TextBlock.ForegroundProperty, "MPWMutedBrush");
+            _editorHost.Content = emptyNotice;
             rootPanel.Children.Add(_editorHost);
             Content = rootPanel;
             RebuildPages(MFMModuleKind.Connector);
