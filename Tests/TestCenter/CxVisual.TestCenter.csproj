@@ -72,6 +72,7 @@
     <Compile Include="Manual\Imaging\TCTImageViewerSmoke.cs" />
     <Compile Include="Manual\Volume\TCTManualVolumeViewerFrame.cs" />
     <Compile Include="Manual\Volume\TCTManualVolumeCrosshairs.cs" />
+    <Compile Include="Manual\Volume\TCTManualVolumeGpu.cs" />
     <Compile Include="Manual\Volume\TCTVolumeViewerSmoke.cs" />
     <Compile Include="Manual\Message\TCTManualMessageFrame.cs" />
     <Compile Include="Manual\Command\TCTManualCommandFrame.cs" />
@@ -104,6 +105,7 @@
     </Page>
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\Professional\CT3D\CxVisual.Professional.CT3D.csproj"><Project>{812C9CE6-98F0-554F-AC07-8AA3155C0065}</Project><Name>CxVisual.Professional.CT3D</Name></ProjectReference>
     <ProjectReference Include="..\..\Foundation\Volume\CxVisual.Foundation.Volume.csproj"><Project>{32E6A935-9FE6-54BA-A56D-16E7F7658F02}</Project><Name>CxVisual.Foundation.Volume</Name></ProjectReference>
     <ProjectReference Include="..\..\Foundation\Imaging\CxVisual.Foundation.Imaging.csproj"><Project>{16709C88-01FC-58BA-8D9F-A14A04D73BAA}</Project><Name>CxVisual.Foundation.Imaging</Name></ProjectReference>
     <ProjectReference Include="..\..\Foundation\Geometry\CxVisual.Foundation.Geometry.csproj">

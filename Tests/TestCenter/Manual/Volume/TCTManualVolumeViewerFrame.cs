@@ -47,7 +47,7 @@ namespace CxVisual.TestCenter.UI
                 {
                     new TCTWorkspaceAction("ct3d.demo", "演示体", LoadDemo),
                     new TCTWorkspaceAction("ct3d.center", "三刀居中", Center),
-                    new TCTWorkspaceAction("ct3d.camera", "3D相机复位", () => _scene.ResetCamera())
+                    new TCTWorkspaceAction("ct3d.camera", "3D相机复位", Reset3DCamera)
                 };
             }
         }
@@ -92,7 +92,7 @@ namespace CxVisual.TestCenter.UI
             AddButton(bar, "打开 BMP 目录", "TCT.Volume.OpenBmp", OpenBmpDirectory);
             AddButton(bar, "生成演示体", "TCT.Volume.Demo", LoadDemo);
             AddButton(bar, "三刀居中", "TCT.Volume.Center", Center);
-            AddButton(bar, "重置相机", "TCT.Volume.ResetCamera", () => _scene.ResetCamera());
+            AddButton(bar, "重置相机", "TCT.Volume.ResetCamera", Reset3DCamera);
             root.Children.Add(bar);
 
             Grid work = new Grid { Margin = new Thickness(5,3,5,3) };
@@ -108,7 +108,12 @@ namespace CxVisual.TestCenter.UI
             AddSliceViewport(four, _xy, FVOSlicePlane.XY, "XY / 轴向", 0,0);
             AddSliceViewport(four, _yz, FVOSlicePlane.YZ, "YZ / 矢状", 0,1);
             AddSliceViewport(four, _xz, FVOSlicePlane.XZ, "XZ / 冠状", 1,0);
-            AddViewport(four, _scene, "3D / 空间切片", 1,1);
+            Grid gpuFrame=AddViewport(four, _scene, "3D / 空间切片 / GPU体绘", 1,1);
+            gpuFrame.Children.Remove(_scene);
+            _gpuSlot=new Grid();
+            Grid.SetRow(_gpuSlot,1);
+            gpuFrame.Children.Add(_gpuSlot);
+            _gpuSlot.Children.Add(_scene);
 
             ScrollViewer rightScroll = new ScrollViewer {
                 Background = BrushOf(249,251,255),
@@ -132,6 +137,7 @@ namespace CxVisual.TestCenter.UI
             settings.Children.Add(new Separator { Margin = new Thickness(2,10,2,10) });
             settings.Children.Add(new TextBlock { Text = "Ctrl+点击切片：移动十字线    Shift+滚轮：切换切片", FontSize = 11, TextWrapping=TextWrapping.Wrap, Foreground=BrushOf(58,98,150), Margin=new Thickness(4,8,4,7) });
             Label(settings, "三维可视化");
+            BuildGpuPanel(settings);
             settings.Children.Add(new TextBlock {
                 Text = "已实现：三正交物理切面、共享三刀、相机旋转和缩放。\n" +
                        "待接入：旧OpenGL体绘、Shader、材质光照和传递函数GPU编辑。",
@@ -183,6 +189,12 @@ namespace CxVisual.TestCenter.UI
             return host;
         }
 
+        private void Reset3DCamera()
+        {
+            _scene.ResetCamera();
+            if (_gpu != null && _gpu.IsAvailable) _gpu.ResetCamera();
+        }
+
         public void LoadDemo()
         {
             LoadVolume(FVOVolumeData.CreateDemo(72,68,60));
@@ -209,6 +221,7 @@ namespace CxVisual.TestCenter.UI
             finally { _updating = false; }
             if (previous != null && !Object.ReferenceEquals(previous,volume)) previous.Dispose();
             RefreshSlices();
+            UpdateGpuVolume();
             _status.Text = String.Format("{0} · {1}×{2}×{3} · Spacing {4:0.###}/{5:0.###}/{6:0.###}",
                 volume.Name, volume.OriginalWidth, volume.OriginalHeight, volume.OriginalDepth,
                 volume.SpacingX,volume.SpacingY,volume.SpacingZ);

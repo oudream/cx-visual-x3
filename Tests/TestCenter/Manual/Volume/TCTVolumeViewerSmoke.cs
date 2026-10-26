@@ -77,6 +77,14 @@ namespace CxVisual.TestCenter.UI
                     Check(rejected, "无BMP切片目录必须明确拒绝");
                 }
                 finally { Directory.Delete(empty); }
+                // 真正尝试 WGL Context。CI若只有OpenGL1.1，必须回退而不是伪报GPU成功。
+                frame.TryEnableGpu();
+                window.UpdateLayout();
+                frame.Dispatcher.Invoke(System.Windows.Threading.DispatcherPriority.Background,
+                    new Action(delegate { }));
+                if (!frame.IsGpuVolumeRendering &&
+                    !frame.GpuStatusText.Contains("GPU不可用"))
+                    throw new InvalidOperationException("GPU驱动不足时没有给出显式失败原因");
                 frame.OnWorkspaceClosed();
                 Check(frame.Volume == null && frame.Scene.SlicePlaneCount == 0 &&
                       frame.VisibleCrosshairCount == 0, "关闭时应解除MVI状态、释放体数据及切面可视对象");

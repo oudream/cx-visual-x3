@@ -20,6 +20,7 @@
   <ItemGroup>
     <Reference Include="System"/>
     <Reference Include="System.Core"/>
+    <Reference Include="System.Numerics"/>
     <Reference Include="System.Xml"/><Reference Include="System.Xml.Linq"/>
     <Reference Include="PresentationCore"/>
     <Reference Include="PresentationFramework"/>
@@ -31,6 +32,7 @@
     <Compile Include="MPWVisualHandleEventArgs.cs"/><Compile Include="Renderers\MPWShapeRenderer.cs"/><Compile Include="Renderers\MPWVisualAssetRenderer.cs"/><Compile Include="Widgets\MPWWidgetPresenter.cs"/><Compile Include="MOLFlowCanvas.cs"/><Compile Include="MPWConfigEditorDialogV14.cs"/><Compile Include="MPWConfigLayerOverview.cs"/><Compile Include="MPWConfigAtomicGroupControl.cs"/><Compile Include="MPWMoveEventArgs.cs"/><Compile Include="MPWNodeEventArgs.cs"/><Compile Include="SceneView.cs"/><Compile Include="LogViewerControl.xaml.cs"/><Compile Include="SystemMonitorControl.xaml.cs"/><Compile Include="Imaging\MPWImageViewerControl.xaml.cs"/>
     <Compile Include="Volume\Rendering\OpenGl\MPWVolumeShaderSources.cs"/>
     <Compile Include="Volume\Rendering\OpenGl\MPWVolumeGeometry.cs"/>
+    <Compile Include="Volume\Rendering\OpenGl\MPWVolumeOpenGlControl.cs"/>
     <Compile Include="Imaging\MPWImagePlotControl.cs"/>
     <Compile Include="Volume\Views\MPWVolumeSliceSceneControl.cs"/>
     <Compile Include="Imaging\MPWImageRulerControl.cs"/></ItemGroup>

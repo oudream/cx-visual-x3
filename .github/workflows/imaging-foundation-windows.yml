@@ -17,6 +17,7 @@ on:
       - 'Tests/ArchitectureSmoke/Program.cs'
       - 'Mechanism/Presentation.Wpf/Imaging/**'
       - 'Mechanism/Presentation.Wpf/Volume/**'
+      - 'Tests/TestCenter/Manual/Volume/TCTManualVolumeGpu.cs'
       - 'Tests/TestCenter/Manual/Volume/**'
       - 'Mechanism/Presentation.Wpf/CxVisual.Mechanism.Presentation.Wpf.csproj'
       - 'Tests/TestCenter/Manual/Imaging/**'
