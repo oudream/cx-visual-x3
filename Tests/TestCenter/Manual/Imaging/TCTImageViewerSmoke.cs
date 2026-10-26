@@ -87,8 +87,13 @@ namespace CxVisual.TestCenter.UI
                     id => new UserControl());
                 if (host.IsTestConsoleVisible)
                     throw new InvalidOperationException("专业工作台默认不应有全局测试控制台");
+                TCTWorkspaceDescriptor architectureInstance = new TCTWorkspaceDescriptor(
+                    "auto.architecture-smoke.smoke", "auto.architecture-smoke",
+                    "ArchitectureSmoke测试实例", "独立进程架构回归实例",
+                    TCTWorkspaceNodeKind.Leaf, () => new TCTArchitectureSmokeFrame(),
+                    TCTWorkspaceOpenPolicy.SingleInstance, "auto.architecture-smoke");
                 TCTArchitectureSmokeFrame architecture = host.DocumentHost.OpenWorkspace(
-                    registry.Find("auto.architecture-smoke")) as TCTArchitectureSmokeFrame;
+                    architectureInstance) as TCTArchitectureSmokeFrame;
                 host.UpdateLayout();
                 if (architecture == null || !host.IsTestConsoleVisible ||
                     !host.TestConsolePanel.IsVisible || !host.OperationDock.IsVisible ||
@@ -137,7 +142,7 @@ namespace CxVisual.TestCenter.UI
                 host.UpdateLayout();
                 if (host.IsTestConsoleVisible)
                     throw new InvalidOperationException("手动收起测试控制台后工作区没有释放宽度");
-                host.DocumentHost.OpenWorkspace(registry.Find("auto.architecture-smoke"));
+                host.DocumentHost.OpenWorkspace(architectureInstance);
                 host.UpdateLayout();
                 if (!host.IsTestConsoleVisible)
                     throw new InvalidOperationException("切回ArchitectureSmoke时未恢复控制台");
