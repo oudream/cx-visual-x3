@@ -60,7 +60,7 @@ namespace CxVisual.TestCenter.UI
             _tabs.Background = new SolidColorBrush(Color.FromRgb(246,249,253));
             _tabs.BorderBrush = new SolidColorBrush(Color.FromRgb(201,215,231));
             // 所有概览、测试Viewer、创建实例使用同一可复用Tab视觉，不在每个Frame另做。
-            _tabs.ItemContainerStyle = (Style)Application.Current.FindResource("TCTDocumentTabStyle");
+            _tabs.ItemContainerStyle = (Style)Application.Current.FindResource("MPWDocumentTabStyle");
             _tabs.SelectionChanged += (sender, args) =>
             {
                 if (!object.ReferenceEquals(args.OriginalSource, _tabs)) return;
