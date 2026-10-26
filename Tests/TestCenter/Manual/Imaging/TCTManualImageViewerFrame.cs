@@ -537,7 +537,10 @@ namespace CxVisual.TestCenter.UI
             if (image == null) throw new InvalidOperationException("未加载图像。");
             int x0 = 0, y0 = image.Height / 2, x1 = image.Width - 1, y1 = y0;
             Guid? id = SelectedOverlayId();
-            MVIImageOverlayItem item = id.HasValue ? _viewer.Overlays.Find(id.Value) : null;
+            MVIImageOverlayItem item = _viewer.ToolMode == MVIImageToolMode.LineProfile ?
+                _viewer.Overlays.Items.LastOrDefault(x =>
+                    x.Kind == MVIImageOverlayKind.LineProfileMeasurement && x.Points.Count >= 2) :
+                id.HasValue ? _viewer.Overlays.Find(id.Value) : null;
             if (item == null || item.Points.Count < 2)
                 item = _viewer.Overlays.Items.LastOrDefault(x =>
                     x.Kind == MVIImageOverlayKind.LineProfileMeasurement && x.Points.Count >= 2);

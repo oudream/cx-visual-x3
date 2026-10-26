@@ -40,6 +40,8 @@ namespace CxVisual.TestCenter.UI
             secondary.SelectedIndex = 3;
             window.UpdateLayout();
             if (FindControl<Button>(frame,"TCT.Imaging.MeasureAngle") == null ||
+                FindControl<Button>(frame,"TCT.Imaging.MeasureDiameter") == null ||
+                FindControl<Button>(frame,"TCT.Imaging.MeasurePolygonArea") == null ||
                 FindControl<Button>(frame,"TCT.Imaging.Gaussian") == null)
                 throw new InvalidOperationException("测量/变换功能页缺少真实操作按钮。");
             primary.SelectedIndex = 4;
@@ -373,6 +375,20 @@ namespace CxVisual.TestCenter.UI
                 frame.Viewer.PixelSpacing = null;
                 if (frame.Viewer.DescribeMeasurement(horiz).Contains("mm"))
                     throw new InvalidOperationException("Uncalibrated image falsely exports millimeters");
+                MVIImageOverlayItem profileLine = frame.Viewer.AddOverlay(new MVIImageOverlayItem(
+                    MVIImageOverlayKind.LineProfileMeasurement,MVIImageOverlayLayer.Measurement,
+                    new FGERect2D(0,0,3,3),new []{
+                        new FGEPoint2D(0.5,0.5),new FGEPoint2D(3.5,3.5)}));
+                TabControl secondaryTabs = FindControl<TabControl>(frame,"TCT.Imaging.SecondaryTabs");
+                secondaryTabs.SelectedIndex = 2;
+                window.UpdateLayout();
+                Button updateProfile = FindControl<Button>(frame,"TCT.Imaging.LineProfile");
+                if (updateProfile == null)
+                    throw new InvalidOperationException("No interactive line profile action");
+                updateProfile.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                if (frame.ProfilePlot.PointCount != 4 ||
+                    frame.Viewer.Overlays.Find(profileLine.Id) == null)
+                    throw new InvalidOperationException("Actual profile action did not evaluate drawn line");
                 frame.Viewer.ClearOverlays();
                 if (frame.Viewer.VisibleOverlayCount != 0 || frame.Viewer.OverlayVisualCount != 0)
                     throw new InvalidOperationException("Overlay clear must remove all native WPF shapes");
