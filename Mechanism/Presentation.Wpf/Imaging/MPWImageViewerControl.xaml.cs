@@ -1401,11 +1401,19 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             FGEPoint2D source = _viewTransform.DisplayToSource(new FGEPoint2D(
                 viewport.ImageX(pointer.X),viewport.ImageY(pointer.Y)),
                 ActiveImage.Width,ActiveImage.Height);
-            MVIImageOverlayItem next=_resizeStart.WithResizedRoiHandle(
-                _resizeHandle,source,ActiveImage.Width,ActiveImage.Height);
             if (_overlays.Find(_resizeStart.Id)==null)
             { _resizing=false; _resizeStart=null; return; }
-            _overlays.Replace(next);
+            try
+            {
+                MVIImageOverlayItem next=_resizeStart.Kind==MVIImageOverlayKind.RotatedRectangleRoi ?
+                    _resizeStart.WithResizedRotatedHandle(_resizeHandle,source,
+                        ActiveImage.Width,ActiveImage.Height) :
+                    _resizeStart.WithResizedRoiHandle(_resizeHandle,source,
+                        ActiveImage.Width,ActiveImage.Height);
+                _overlays.Replace(next);
+            }
+            catch(ArgumentOutOfRangeException)
+            {PixelStatus.Text="调整后角点超出原图，保留上一有效尺寸。";}
         }
 
         private void DrawMeasurementLabel(MVIImageOverlayItem item, Brush stroke, Point anchor, Canvas canvas)
