@@ -312,6 +312,17 @@ namespace CxVisual.TestCenter.UI
                 "BMP序列 ("+files.Length+"张)");
         }
 
+        public void OnWorkspaceClosed()
+        {
+            if (_state != null) _state.PropertyChanged -= OnStateChanged;
+            _state = null;
+            if (_volume != null) _volume.Dispose();
+            _volume = null;
+            _xy.Clear(); _xz.Clear(); _yz.Clear();
+            _scene.Clear();
+            _status.Text = "工作区已关闭，体数据资源已释放。";
+        }
+
         private void RaiseStateChanged()
         {
             Action action = StateChanged;
