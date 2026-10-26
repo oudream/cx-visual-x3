@@ -706,7 +706,8 @@ namespace CxVisual.TestCenter.UI
                 try {frame.Viewer.RotateSelectedRectangle(0);}
                 catch(InvalidOperationException) {lockedAngleRejected=true;}
                 if(!lockedAngleRejected ||
-                    frame.Viewer.Overlays.Find(rotationBox.Id).RotatedRectangleAngleDegrees!=45)
+                    Math.Abs(frame.Viewer.Overlays.Find(rotationBox.Id)
+                        .RotatedRectangleAngleDegrees-45)>1e-8)
                     throw new InvalidOperationException("锁定旋转矩形未防止几何修改");
                 frame.Viewer.Overlays.SetLocked(rotationBox.Id,false);
                 frame.Viewer.DisableBlend();
