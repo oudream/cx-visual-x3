@@ -44,6 +44,12 @@ namespace CxVisual.TestCenter.UI
 
         public bool IsGpuVolumeRendering { get { return _gpu != null && _gpu.IsAvailable; } }
         public string GpuStatusText { get { return _gpuInfo.Text; } }
+        public BitmapSource CaptureGpuFrameForTest()
+        {
+            if(_gpu==null || !_gpu.IsAvailable)
+                throw new InvalidOperationException("GPU驱动未验证，禁止使用WPF截图代替。");
+            return _gpu.CaptureFrame();
+        }
 
         private void BuildGpuPanel(Panel sidebar)
         {

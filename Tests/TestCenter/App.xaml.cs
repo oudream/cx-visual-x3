@@ -20,6 +20,22 @@ namespace CxVisual.TestCenter.UI
         protected override async void OnStartup(StartupEventArgs e)
         {
             base.OnStartup(e);
+            if (e.Args.Length == 1 && e.Args[0] == "--volume-gpu-smoke")
+            {
+                ShutdownMode=ShutdownMode.OnExplicitShutdown;
+                try
+                {
+                    TCTVolumeGpuHardwareSmoke.Run();
+                    Shutdown(0);
+                }
+                catch(Exception error)
+                {
+                    File.WriteAllText(Path.Combine(Path.GetTempPath(),
+                        "CxVisual-GPU-Hardware-Error.txt"),error.ToString());
+                    Shutdown(3);
+                }
+                return;
+            }
             if (e.Args.Length == 1 && e.Args[0] == "--volume-viewer-smoke")
             {
                 ShutdownMode = ShutdownMode.OnExplicitShutdown;
