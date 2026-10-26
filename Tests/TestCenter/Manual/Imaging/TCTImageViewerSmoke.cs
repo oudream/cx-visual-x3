@@ -80,6 +80,18 @@ namespace CxVisual.TestCenter.UI
                 frame.Viewer.ResetViewTransform();
                 if (!frame.Viewer.ViewTransform.IsIdentity)
                     throw new InvalidOperationException("WPF view transform did not reset");
+                // 同精度双图混合：原图1..16 与水平翻转的16..13，各像素保持Gray16。
+                frame.Viewer.ShowResult(FIMImageOperations.FlipHorizontal(image));
+                frame.Viewer.BlendOriginalAndResult(0.5);
+                frame.Viewer.SavePng(file);
+                FIMImageBuffer blended = Mechanism.Presentation.Wpf.Imaging.MPWImageViewerControl.ReadImageFile(file);
+                if (blended.PixelFormat != FIMPixelFormat.Gray16 ||
+                    blended.GetGrayValue(0,0) != 3 ||
+                    frame.Viewer.Session.Original.GetGrayValue(0,0) != 1 ||
+                    frame.Viewer.Session.Result.GetGrayValue(0,0) != 4)
+                    throw new InvalidOperationException("WPF original/result Gray16 alpha blend mismatch or modified source");
+                frame.Viewer.DisableBlend();
+                frame.Viewer.SelectOriginal();
                 // 程序化创建真实叠加项，让MPW的WPF Canvas实际绘制，并检查层级隐藏/删除。
                 MVIImageOverlayItem rect = frame.Viewer.AddOverlay(new MVIImageOverlayItem(
                     MVIImageOverlayKind.RectangleRoi, MVIImageOverlayLayer.Roi,

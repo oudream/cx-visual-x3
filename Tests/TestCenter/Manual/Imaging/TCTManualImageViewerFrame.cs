@@ -40,6 +40,7 @@ namespace CxVisual.TestCenter.UI
         private readonly TextBox _amount = new TextBox { Width = 58, Text = "0.8", Margin = new Thickness(3) };
         private readonly TextBox _low = new TextBox { Width = 74, Text = "0", Margin = new Thickness(2) };
         private readonly TextBox _high = new TextBox { Width = 82, Text = "65535", Margin = new Thickness(2) };
+        private readonly TextBox _blendRatio = new TextBox { Width = 60, Text = "0.5", Margin = new Thickness(3) };
         private readonly TextBox _displayGamma = new TextBox { Width = 50, Text = "1", Margin = new Thickness(2) };
         private readonly TextBox _displayBrightness = new TextBox { Width = 58, Text = "0", Margin = new Thickness(2) };
         private readonly TextBox _displayContrast = new TextBox { Width = 58, Text = "1", Margin = new Thickness(2) };
@@ -121,6 +122,10 @@ namespace CxVisual.TestCenter.UI
             AddButton(toolbar, "垂直镜像", "FlipVertical", () => ProcessImage(
                 image => FIMImageOperations.FlipVertical(image), "垂直镜像"));
             AddButton(toolbar, "差分图", "Difference", Difference);
+            toolbar.Children.Add(new TextBlock { Text = "叠合比例", VerticalAlignment = VerticalAlignment.Center });
+            toolbar.Children.Add(_blendRatio);
+            AddButton(toolbar, "透明叠合", "Blend", Blend);
+            AddButton(toolbar, "退出叠合", "BlendOff", () => _viewer.DisableBlend());
             AddButton(toolbar, "原图", "Original", () => _viewer.SelectOriginal());
             AddButton(toolbar, "结果图", "Result", () => _viewer.SelectResult());
             AddButton(toolbar, "清空", "Clear", () => _viewer.Clear());
@@ -441,6 +446,14 @@ namespace CxVisual.TestCenter.UI
             _viewer.FitToWindow();
             Show(title + "处理结果已显示，原图仍保持不变；CPU耗时 " +
                 elapsed.ElapsedMilliseconds + " ms");
+        }
+
+        private void Blend()
+        {
+            double ratio = FloatParameter(_blendRatio, "叠合比例");
+            _viewer.BlendOriginalAndResult(ratio);
+            Show("原图/结果图透明叠合：" + ratio.ToString("0.##", CultureInfo.InvariantCulture) +
+                "（源图不变）");
         }
 
         private void Difference()
