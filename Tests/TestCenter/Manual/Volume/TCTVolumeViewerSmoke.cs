@@ -97,6 +97,17 @@ namespace CxVisual.TestCenter.UI
                       frame.ObliqueViewer.ActiveImage != null &&
                       frame.ViewState.ObliqueSlice.Visible,
                     "任意切FVO三线性结果/3D空间平面与MVI状态必须联动");
+                int sharedX=frame.ViewState.SliceX, sharedY=frame.ViewState.SliceY,
+                    sharedZ=frame.ViewState.SliceZ;
+                frame.SetObliqueCenterForTest(8,12,15);
+                Check(frame.ViewState.ObliqueSlice.CenterX==8 &&
+                      frame.ViewState.ObliqueSlice.CenterY==12 &&
+                      frame.ViewState.ObliqueSlice.CenterZ==15 &&
+                      frame.ViewState.SliceX==sharedX &&
+                      frame.ViewState.SliceY==sharedY &&
+                      frame.ViewState.SliceZ==sharedZ &&
+                      frame.Scene.SlicePlaneCount==4,
+                    "关闭跟随三刀后任意切X/Y/Z中心可独立滑动且不能移动共享三刀");
                 string obliqueRaw=Path.Combine(Path.GetTempPath(),
                     "CxVisual-Oblique-"+Guid.NewGuid().ToString("N")+".raw");
                 try

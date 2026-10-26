@@ -148,6 +148,7 @@ namespace CxVisual.TestCenter.UI
                 _sliderY.Value = _state.SliceY;
                 _sliderZ.Value = _state.SliceZ;
                 SyncSliceHeaderControls();
+                SyncObliqueCenterControls();
             }
             finally { _updating = false; }
             if (previous != null && !Object.ReferenceEquals(previous,volume)) previous.Dispose();

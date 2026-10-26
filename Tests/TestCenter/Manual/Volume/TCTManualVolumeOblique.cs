@@ -20,6 +20,10 @@ namespace CxVisual.TestCenter.UI
         private readonly ComboBox _obliqueInterpolation=new ComboBox { Margin=new Thickness(3),Height=27 };
         private readonly CheckBox _obliqueVisible=new CheckBox { Content="显示任意切面",IsChecked=false };
         private readonly CheckBox _obliqueFollow=new CheckBox { Content="中心跟随三刀",IsChecked=true };
+        private readonly Slider _obliqueCenterX=new Slider { Minimum=0,Maximum=1,TickFrequency=1,IsSnapToTickEnabled=true };
+        private readonly Slider _obliqueCenterY=new Slider { Minimum=0,Maximum=1,TickFrequency=1,IsSnapToTickEnabled=true };
+        private readonly Slider _obliqueCenterZ=new Slider { Minimum=0,Maximum=1,TickFrequency=1,IsSnapToTickEnabled=true };
+        private bool _syncingObliqueCenter;
         private readonly Slider _angleX=new Slider { Minimum=-180,Maximum=180,Value=0 };
         private readonly Slider _angleY=new Slider { Minimum=-180,Maximum=180,Value=0 };
         private readonly Slider _angleZ=new Slider { Minimum=-180,Maximum=180,Value=0 };
@@ -36,6 +40,17 @@ namespace CxVisual.TestCenter.UI
             expander.Content=panel; parent.Children.Add(expander);
             panel.Children.Add(_obliqueVisible);
             panel.Children.Add(_obliqueFollow);
+            AddGpuSlider(panel,"X中心（原始体素）",_obliqueCenterX);
+            AddGpuSlider(panel,"Y中心（原始体素）",_obliqueCenterY);
+            AddGpuSlider(panel,"Z中心（原始体素）",_obliqueCenterZ);
+            Button centerReset=new Button { Content="中心跟随当前三刀 / 复位",Height=28,
+                Margin=new Thickness(3,5,3,8) };
+            centerReset.Click+=(s,e)=>{
+                _obliqueFollow.IsChecked=true;
+                SyncObliqueCenterControls();
+                UpdateObliqueDefinition();
+            };
+            panel.Children.Add(centerReset);
             AddGpuSlider(panel,"X角度",_angleX);
             AddGpuSlider(panel,"Y角度",_angleY);
             AddGpuSlider(panel,"Z角度",_angleZ);
@@ -66,8 +81,11 @@ namespace CxVisual.TestCenter.UI
             panel.Children.Add(_obliqueViewer);
             _obliqueVisible.Checked+=(s,e)=>UpdateObliqueDefinition();
             _obliqueVisible.Unchecked+=(s,e)=>UpdateObliqueDefinition();
-            _obliqueFollow.Checked+=(s,e)=>UpdateObliqueDefinition();
-            _obliqueFollow.Unchecked+=(s,e)=>UpdateObliqueDefinition();
+            _obliqueFollow.Checked+=(s,e)=>{SyncObliqueCenterControls();UpdateObliqueDefinition();};
+            _obliqueFollow.Unchecked+=(s,e)=>{SyncObliqueCenterControls();UpdateObliqueDefinition();};
+            _obliqueCenterX.ValueChanged+=(s,e)=>UpdateObliqueDefinition();
+            _obliqueCenterY.ValueChanged+=(s,e)=>UpdateObliqueDefinition();
+            _obliqueCenterZ.ValueChanged+=(s,e)=>UpdateObliqueDefinition();
             _angleX.ValueChanged+=(s,e)=>UpdateObliqueDefinition();
             _angleY.ValueChanged+=(s,e)=>UpdateObliqueDefinition();
             _angleZ.ValueChanged+=(s,e)=>UpdateObliqueDefinition();
@@ -77,7 +95,7 @@ namespace CxVisual.TestCenter.UI
 
         private void UpdateObliqueDefinition()
         {
-            if(_state==null||_volume==null||_updating)return;
+            if(_state==null||_volume==null||_updating||_syncingObliqueCenter)return;
             int width,height;
             if(!Int32.TryParse(_obliqueWidth.Text,out width) ||
                !Int32.TryParse(_obliqueHeight.Text,out height) ||
@@ -93,6 +111,12 @@ namespace CxVisual.TestCenter.UI
             {
                 next.CenterX=_state.SliceX; next.CenterY=_state.SliceY; next.CenterZ=_state.SliceZ;
             }
+            else
+            {
+                next.CenterX=_obliqueCenterX.Value;
+                next.CenterY=_obliqueCenterY.Value;
+                next.CenterZ=_obliqueCenterZ.Value;
+            }
             next.AngleXDegrees=_angleX.Value;
             next.AngleYDegrees=_angleY.Value;
             next.AngleZDegrees=_angleZ.Value;
@@ -101,6 +125,36 @@ namespace CxVisual.TestCenter.UI
             next.Interpolation=(FVOObliqueInterpolation)(_obliqueInterpolation.SelectedItem ??
                 FVOObliqueInterpolation.Linear);
             _state.SetObliqueSlice(next);
+        }
+
+        /// <summary>任意切中心参数只读写MVI ObliqueSlice，不创建第二套持久化状态。</summary>
+        private void SyncObliqueCenterControls()
+        {
+            if(_volume==null||_state==null)return;
+            _syncingObliqueCenter=true;
+            try
+            {
+                _obliqueCenterX.Maximum=Math.Max(0,_volume.OriginalWidth-1);
+                _obliqueCenterY.Maximum=Math.Max(0,_volume.OriginalHeight-1);
+                _obliqueCenterZ.Maximum=Math.Max(0,_volume.OriginalDepth-1);
+                bool follow=_obliqueFollow.IsChecked==true;
+                _obliqueCenterX.IsEnabled=!follow;
+                _obliqueCenterY.IsEnabled=!follow;
+                _obliqueCenterZ.IsEnabled=!follow;
+                FVOObliqueSliceDefinition definition=_state.ObliqueSlice;
+                _obliqueCenterX.Value=follow?_state.SliceX:definition.CenterX;
+                _obliqueCenterY.Value=follow?_state.SliceY:definition.CenterY;
+                _obliqueCenterZ.Value=follow?_state.SliceZ:definition.CenterZ;
+            }
+            finally { _syncingObliqueCenter=false; }
+        }
+
+        public void SetObliqueCenterForTest(double x,double y,double z)
+        {
+            if(_volume==null||_state==null)throw new InvalidOperationException("请先加载体数据。");
+            _obliqueFollow.IsChecked=false;
+            _obliqueCenterX.Value=x;_obliqueCenterY.Value=y;_obliqueCenterZ.Value=z;
+            UpdateObliqueDefinition();
         }
 
         private void SaveObliquePreviewDialog()
@@ -168,6 +222,7 @@ namespace CxVisual.TestCenter.UI
         private void RefreshOblique()
         {
             if(_volume==null || _state==null)return;
+            if(_obliqueFollow.IsChecked==true)SyncObliqueCenterControls();
             FVOObliqueSliceDefinition data=_state.ObliqueSlice;
             if(!data.Visible)
             {
