@@ -523,16 +523,20 @@ namespace CxVisual.TestCenter.UI
         private static void VerifyProtocolCollectionRemoval(AutomationElement root,
             TCTMainWindow window, string moduleId)
         {
+            TraceUiStage("Connector deletion / before points tab");
             window.Dispatcher.Invoke(new Action(() => {
                 System.Windows.Controls.TabControl tabs =
                     window.DocumentHost.Content as System.Windows.Controls.TabControl;
                 tabs.Items.OfType<System.Windows.Controls.TabItem>().Select(x => x.Content)
                     .OfType<TCTManualModuleFrame>().Single().SelectModulePage("points");
             }));
+            TraceUiStage("Connector deletion / points tab selected");
             InvokePattern removePoint = Find(root, "MPW.Collection.Remove.Protocol.Points[0]")
                 .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
             if (removePoint == null) throw new InvalidOperationException("Point删除按钮不可访问");
+            TraceUiStage("Connector deletion / before remove point Invoke");
             removePoint.Invoke();
+            TraceUiStage("Connector deletion / after remove point Invoke");
             // WPF UIA InvokePattern可早于按钮状态刷新返回；等待唯一MHS草稿实际删除，
             // 不能把尚未完成的UI异步投影误判为规约引用校验失败。
             bool pointRemoved = false, danglingMappingRetained = false;
@@ -549,10 +553,12 @@ namespace CxVisual.TestCenter.UI
                 }));
                 if (!pointRemoved) Thread.Sleep(100);
             }
+            TraceUiStage("Connector deletion / point removed=" + pointRemoved + ", mapping remains=" + danglingMappingRetained);
             if (!pointRemoved || !danglingMappingRetained)
                 throw new InvalidOperationException(
                     "Point删除未写回MHS或错误级联删除Mapping：PointDeleted=" + pointRemoved +
                     " MappingRetained=" + danglingMappingRetained);
+            TraceUiStage("Connector deletion / dangling validation");
             string danglingStatus = null;
             window.Dispatcher.Invoke(new Action(() => {
                 System.Windows.Controls.TabControl tabs =
@@ -565,10 +571,13 @@ namespace CxVisual.TestCenter.UI
             }));
             if (string.IsNullOrEmpty(danglingStatus) || !danglingStatus.Contains("配置存在"))
                 throw new InvalidOperationException("删除被引用Point后FCM未拒绝悬空映射");
+            TraceUiStage("Connector deletion / mapping tab selected");
             InvokePattern removeMapping = Find(root, "MPW.Collection.Remove.Protocol.Mappings[0]")
                 .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
             if (removeMapping == null) throw new InvalidOperationException("Mapping删除按钮不可访问");
+            TraceUiStage("Connector deletion / before remove mapping Invoke");
             removeMapping.Invoke();
+            TraceUiStage("Connector deletion / after remove mapping Invoke");
             bool mappingRemoved = false;
             string repairedStatus = null;
             for (int attempt = 0; attempt < 60 && !mappingRemoved; attempt++)
@@ -587,7 +596,8 @@ namespace CxVisual.TestCenter.UI
                         repairedStatus = frame.StatusMessage;
                     }
                 }));
-                if (!mappingRemoved) Thread.Sleep(100);
+                TraceUiStage("Connector deletion / mapping removed=" + mappingRemoved);
+            if (!mappingRemoved) Thread.Sleep(100);
             }
             if (!mappingRemoved)
                 throw new InvalidOperationException("删除DataMapping后同一MHS草稿仍有遗留");
@@ -595,6 +605,7 @@ namespace CxVisual.TestCenter.UI
                 throw new InvalidOperationException("删除悬空映射后未恢复正式校验合法");
             window.Dispatcher.Invoke(new Action(() =>
                 SaveScreenshot(window, "TestCenter-Protocol-P0-Deleted.png")));
+            TraceUiStage("Connector deletion / pre-save");
             InvokePattern save = Find(root, "TCT.Manual.Action.module.save")
                 .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
             if (save == null) throw new InvalidOperationException("映射删除后的保存命令缺失");
@@ -619,7 +630,9 @@ namespace CxVisual.TestCenter.UI
             InvokePattern reopen = Find(root, "TCT.Manual.Action.module.reopen")
                 .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
             if (reopen == null) throw new InvalidOperationException("删除后重新打开命令缺失");
+            TraceUiStage("Connector deletion / before reopen");
             reopen.Invoke();
+            TraceUiStage("Connector deletion / after reopen");
             bool checkedAgain = false;
             for (int attempt = 0; attempt < 100 && !checkedAgain; attempt++)
             {
