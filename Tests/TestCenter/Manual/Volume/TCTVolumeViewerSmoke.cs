@@ -101,6 +101,32 @@ namespace CxVisual.TestCenter.UI
                     Check(rejected, "无BMP切片目录必须明确拒绝");
                 }
                 finally { Directory.Delete(empty); }
+                // 真实文件从后台FVO加载并回到UI线程；验证不依赖文件对话框。
+                string rawFolder=Path.Combine(Path.GetTempPath(),"cxvisual-volume-async-"+
+                    Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(rawFolder);
+                try
+                {
+                    string rawPath=Path.Combine(rawFolder,"sample_8x8x8_sp1x1x1.raw");
+                    byte[] samples=new byte[512];
+                    for(int v=0;v<samples.Length;v++)samples[v]=(byte)(v%255);
+                    File.WriteAllBytes(rawPath,samples);
+                    System.Threading.Tasks.Task task=frame.LoadRawFileAsync(rawPath,
+                        System.Threading.CancellationToken.None);
+                    if(!task.IsCompleted)
+                    {
+                        System.Windows.Threading.DispatcherFrame pump=
+                            new System.Windows.Threading.DispatcherFrame();
+                        task.ContinueWith(t=>frame.Dispatcher.BeginInvoke(
+                            new Action(delegate {pump.Continue=false;})));
+                        System.Windows.Threading.Dispatcher.PushFrame(pump);
+                    }
+                    task.GetAwaiter().GetResult();
+                    Check(frame.Volume.OriginalWidth==8 && !frame.IsRawLoading,
+                        "旧版RAW异步预览与界面状态回收");
+                    frame.LoadDemo();
+                }
+                finally { Directory.Delete(rawFolder,true); }
                 // 真正尝试 WGL Context。CI若只有OpenGL1.1，必须回退而不是伪报GPU成功。
                 frame.TryEnableGpu();
                 window.UpdateLayout();

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
@@ -103,7 +104,7 @@ namespace CxVisual.TestCenter.UI
             AutomationProperties.SetAutomationId(_lowerTabs,"TCT.Volume.LowerTabs");
             side.Children.Add(_upperTabs);Grid.SetRow(_lowerTabs,1);side.Children.Add(_lowerTabs);
 
-            StackPanel display=Panel(),gray=Panel(),render=Panel(),oblique=Panel();
+            StackPanel display=CreateSettingsPanel(),gray=CreateSettingsPanel(),render=CreateSettingsPanel(),oblique=CreateSettingsPanel();
             AddUpperTab("显示设置",display);
             AddUpperTab("灰阶映射",gray);
             AddUpperTab("渲染效果",render);
@@ -116,9 +117,10 @@ namespace CxVisual.TestCenter.UI
             _sliceStatus.Foreground=BrushOf(38,66,99);
             display.Children.Add(_sliceStatus);
             display.Children.Add(_crosshairEnabled);
-            _crosshairEnabled.Checked+=(s,e)=>UpdateCrosshairs();
-            _crosshairEnabled.Unchecked+=(s,e)=>ClearCrosshairs();
+            _crosshairEnabled.Checked+=(s,e)=>{if(_state!=null)_state.ShowCrosshair=true;UpdateCrosshairs();};
+            _crosshairEnabled.Unchecked+=(s,e)=>{if(_state!=null)_state.ShowCrosshair=false;ClearCrosshairs();};
             display.Children.Add(_autoSliceFit);
+            _autoSliceFit.Checked+=(s,e)=>{if(_volume!=null){_xy.FitToWindow();_yz.FitToWindow();_xz.FitToWindow();}};
             _pseudo.Margin=new Thickness(4,6,4,4);display.Children.Add(_pseudo);
             AddAxis(display,"切片窗下限",_windowMin,"TCT.Volume.WindowMin");
             AddAxis(display,"切片窗上限",_windowMax,"TCT.Volume.WindowMax");
@@ -154,7 +156,7 @@ namespace CxVisual.TestCenter.UI
             Grid.SetRow(footer,2);root.Children.Add(footer);
         }
 
-        private static StackPanel Panel()
+        private static StackPanel CreateSettingsPanel()
         { return new StackPanel { Margin=new Thickness(8,7,8,12) }; }
         private static void AddNumeric(Panel panel,string label,TextBox field)
         {
@@ -204,10 +206,18 @@ namespace CxVisual.TestCenter.UI
             UpdateGpuSettings();
         }
 
-        private void RefreshLegacyHistogram()
+        private async void RefreshLegacyHistogram()
         {
             if(_volume==null)return;
-            FVOVolumeHistogram histogram=FVOVolumeHistogram.FromVolume(_volume);
+            FVOVolumeData source=_volume;
+            FVOVolumeHistogram histogram;
+            try { histogram=await Task.Run(()=>FVOVolumeHistogram.FromVolume(source)); }
+            catch(Exception e)
+            {
+                if(Object.ReferenceEquals(source,_volume))_legacyDetails.Text="直方图加载失败："+e.Message;
+                return;
+            }
+            if(!Object.ReferenceEquals(source,_volume))return;
             if(_thresholdCurve!=null)
             {
                 _thresholdCurve.Histogram=histogram.Scalar;
@@ -222,6 +232,7 @@ namespace CxVisual.TestCenter.UI
 
         public void ClearVolume()
         {
+            CancelPendingRawLoads();
             DisableGpu();
             if(_state!=null)_state.PropertyChanged-=OnStateChanged;
             _state=null;

@@ -76,6 +76,21 @@ namespace CxVisual.TestCenter.UI
                 SetCrosshairFromImage(plane,(int)Math.Round(position.X),(int)Math.Round(position.Y));
                 e.Handled = true;
             };
+            content.PreviewMouseMove += (s,e) =>
+            {
+                if(_volume==null || _state==null)return;
+                Image image=viewer.FindName("PixelImage") as Image;
+                if(image==null||image.Source==null)return;
+                Point loc=e.GetPosition(image);
+                if(loc.X<0||loc.Y<0||loc.X>=image.Width||loc.Y>=image.Height)return;
+                int x,y,z;
+                FVOSliceImageBuilder.ImageToVoxel(_volume,
+                    _state.SliceX,_state.SliceY,_state.SliceZ,plane,
+                    (int)Math.Round(loc.X),(int)Math.Round(loc.Y),out x,out y,out z);
+                float value=_volume.GetScalarByOriginalIndex(x,y,z);
+                _status.Text=String.Format("体素 ({0},{1},{2})  原始值 {3:0.###}  物理位置 ({4:0.###},{5:0.###},{6:0.###})",
+                    x,y,z,value,x*_volume.SpacingX,y*_volume.SpacingY,z*_volume.SpacingZ);
+            };
             content.PreviewMouseWheel += (s,e) =>
             {
                 if ((Keyboard.Modifiers & ModifierKeys.Shift) == 0 ||
@@ -100,7 +115,12 @@ namespace CxVisual.TestCenter.UI
 
         public void UpdateCrosshairs()
         {
-            if (_volume == null || _state == null) return;
+            if (_volume == null || _state == null)return;
+            if (_crosshairEnabled.IsChecked!=true || !_state.ShowCrosshair)
+            {
+                ClearCrosshairs();
+                return;
+            }
             foreach (KeyValuePair<FVOSlicePlane,Canvas> pair in _crosshairs)
             {
                 MPWImageViewerControl viewer = pair.Key == FVOSlicePlane.XY ? _xy :

@@ -126,6 +126,7 @@ namespace CxVisual.TestCenter.UI
 
         public void LoadDemo()
         {
+            CancelPendingRawLoads();
             LoadVolume(FVOVolumeData.CreateDemo(72,68,60));
         }
 
@@ -213,12 +214,13 @@ namespace CxVisual.TestCenter.UI
             RaiseStateChanged();
         }
 
-        private void OpenRaw()
+        private async void OpenRaw()
         {
             OpenFileDialog dialog = new OpenFileDialog {
                 Filter = "RAW体数据 (*.raw)|*.raw|所有文件 (*.*)|*.*", Title = "打开RAW体积文件" };
             if (dialog.ShowDialog() != true) return;
-            try { LoadVolume(FVORawVolumeLoader.Load(dialog.FileName)); }
+            try { await LoadRawFileAsync(dialog.FileName,System.Threading.CancellationToken.None); }
+            catch (System.OperationCanceledException) { _status.Text="RAW读取已取消。"; }
             catch (Exception ex) { MessageBox.Show(ex.Message,"RAW载入失败"); }
         }
 
@@ -262,6 +264,7 @@ namespace CxVisual.TestCenter.UI
 
         public void OnWorkspaceClosed()
         {
+            CancelPendingRawLoads();
             _updating = true;
             if (_state != null) _state.PropertyChanged -= OnStateChanged;
             if (_volume != null) _volume.Dispose();
