@@ -236,9 +236,18 @@ namespace CxVisual.TestCenter.UI
                     _state.SliceX,_state.SliceY,_state.SliceZ,FVOSlicePlane.XZ,pseudo,low,high);
                 FIMImageBuffer yz = FVOSliceImageBuilder.Build(_volume,
                     _state.SliceX,_state.SliceY,_state.SliceZ,FVOSlicePlane.YZ,pseudo,low,high);
-                _xy.ShowOriginal(xy);
-                _xz.ShowOriginal(xz);
-                _yz.ShowOriginal(yz);
+                if(_autoSliceFit.IsChecked==true)
+                {
+                    _xy.ShowOriginal(xy);
+                    _xz.ShowOriginal(xz);
+                    _yz.ShowOriginal(yz);
+                }
+                else
+                {
+                    _xy.UpdateOriginalFrame(xy);
+                    _xz.UpdateOriginalFrame(xz);
+                    _yz.UpdateOriginalFrame(yz);
+                }
                 UpdateSliceLegends();
                 _scene.SetSlices(xy,xz,yz,_state.SliceX,_state.SliceY,_state.SliceZ,
                     _volume.OriginalWidth,_volume.OriginalHeight,_volume.OriginalDepth,

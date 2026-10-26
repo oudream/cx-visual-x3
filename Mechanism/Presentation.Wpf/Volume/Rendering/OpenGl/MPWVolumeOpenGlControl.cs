@@ -44,6 +44,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
         private Vector3 _target=Vector3.Zero;
         private NativeWindowSubclassProc _nativeInput;
         private bool _nativeInputInstalled;
+        private bool _renderQueued;
         public int NativePointerEvents { get; private set; }
         public IntPtr NativeHandleForHardwareTest { get { return _window; } }
         public float CameraDistance { get { return _distance; } }
@@ -61,7 +62,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
         public MPWVolumeOpenGlControl()
         {
             Focusable = true;
-            SizeChanged += (s, e) => RenderFrame();
+            SizeChanged += (s, e) => RequestRender();
         }
 
         public void SetVolume(byte[] voxels, int width, int height, int depth,
@@ -83,7 +84,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
             float largest = Math.Max(totalX, Math.Max(totalY, totalZ));
             _sx = totalX / largest; _sy = totalY / largest; _sz = totalZ / largest;
             _scalar = rgbaTransfer; _gradient = gradientOpacity;
-            if (IsAvailable) { MakeCurrent(); UploadTextures(); RenderFrame(); }
+            if (IsAvailable) { MakeCurrent(); UploadTextures(); RequestRender(); }
         }
 
         public void UpdateTransfer(byte[] rgba, byte[] gradient)
@@ -91,7 +92,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
             if (rgba == null || rgba.Length != 1024 || gradient == null || gradient.Length != 256)
                 throw new ArgumentException("需要256级RGBA8和R8曲线。");
             _scalar = rgba; _gradient = gradient;
-            if (IsAvailable) { MakeCurrent(); UploadTransfers(); RenderFrame(); }
+            if (IsAvailable) { MakeCurrent(); UploadTransfers(); RequestRender(); }
         }
 
         public void SetRendering(float opacity, float stepScale, float referenceStep,
@@ -103,28 +104,28 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
             _jitter = jitter; _ambient = Clamp(ambient,0,2);
             _diffuse = Clamp(diffuse,0,2); _specular = Clamp(specular,0,2);
             _shine = Clamp(specularPower,1,128);
-            RenderFrame();
+            RequestRender();
         }
 
         /// <summary>切面均使用0..1空间坐标，由MVI唯一三刀状态计算。</summary>
         public void SetSlicePositions(float x,float y,float z)
         {
             _sliceX=Clamp(x,0,1); _sliceY=Clamp(y,0,1); _sliceZ=Clamp(z,0,1);
-            RenderFrame();
+            RequestRender();
         }
 
         /// <summary>3D正交面随二维浏览器缩放/平移；复用现有MVI视口范围。</summary>
         public void SetSliceViewports(MVISliceViewport xy,MVISliceViewport xz,MVISliceViewport yz)
         {
             _xyBounds=xy;_xzBounds=xz;_yzBounds=yz;
-            RenderFrame();
+            RequestRender();
         }
 
         public void SetSceneOptions(bool volume,bool slices,bool sliceTexture,bool bounds,float sliceOpacity)
         {
             _showVolume=volume; _showSlices=slices; _showSliceTexture=sliceTexture;
             _showBounds=bounds; _sliceOpacity=Clamp(sliceOpacity,0,1);
-            RenderFrame();
+            RequestRender();
         }
 
         /// <summary>四角0..1纹理坐标来自FVOObliqueSliceGeometry，null关闭任意切。</summary>
@@ -139,7 +140,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
                 _obliqueCorners=(float[])corners.Clone();
             }
             else _obliqueCorners=null;
-            RenderFrame();
+            RequestRender();
         }
 
         /// <summary>旧版斜切面专用2D纹理；高精度切片像素与三维空间四角分离。</summary>
@@ -160,7 +161,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
             {
                 MakeCurrent();
                 UploadObliqueTexture();
-                RenderFrame();
+                RequestRender();
             }
         }
 
@@ -184,7 +185,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
 
         public void ResetCamera()
         {
-            _yaw = .62f; _pitch = .36f; _distance = 2.9f; _target=Vector3.Zero; RenderFrame();
+            _yaw = .62f; _pitch = .36f; _distance = 2.9f; _target=Vector3.Zero; RequestRender();
         }
 
         protected override HandleRef BuildWindowCore(HandleRef hwndParent)
@@ -467,6 +468,18 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
             return bmp;
         }
 
+        /// <summary>多控件同时改变时只提交一次GPU帧，防止一次滑杆拖动触发4次Raymarch。</summary>
+        private void RequestRender()
+        {
+            if(!IsAvailable || Dispatcher.HasShutdownStarted || _renderQueued)return;
+            _renderQueued=true;
+            Dispatcher.BeginInvoke(DispatcherPriority.Render,new Action(delegate
+            {
+                _renderQueued=false;
+                RenderFrame();
+            }));
+        }
+
         public void RenderFrame()
         {
             if (!IsAvailable || _window==IntPtr.Zero || _voxels==null || _shader==0 || _volumeTexture==0) return;
@@ -618,13 +631,13 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
         {
             _yaw+=dx*.007f;
             _pitch=Clamp(_pitch-dy*.007f,-1.47f,1.47f);
-            RenderFrame();
+            RequestRender();
         }
         public void Zoom(float steps)
         {
             if(steps==0)return;
             _distance=Clamp(_distance*(float)Math.Pow(.87,steps),.45f,16f);
-            RenderFrame();
+            RequestRender();
         }
         public void Pan(float dx,float dy)
         {
@@ -635,7 +648,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
             int height=GetClientRect(_window,out rect)?Math.Max(1,rect.Bottom-rect.Top):400;
             float scale=2f*_distance*(float)Math.Tan(Math.PI/8)/height;
             _target+=(-right*dx+up*dy)*scale;
-            RenderFrame();
+            RequestRender();
         }
 
         private IntPtr OnNativeWindowMessage(IntPtr hwnd,uint message,IntPtr wParam,

@@ -34,7 +34,7 @@ namespace CxVisual.TestCenter.UI
 
         private void BuildObliquePanel(Panel parent)
         {
-            Expander expander=new Expander { Header="任意切面 / Oblique MPR",IsExpanded=false,
+            Expander expander=new Expander { Header="任意切面 / Oblique MPR",IsExpanded=true,
                 Margin=new Thickness(2,12,2,6),Foreground=BrushOf(218,231,244) };
             StackPanel panel=new StackPanel { Margin=new Thickness(3,5,3,8) };
             expander.Content=panel; parent.Children.Add(expander);

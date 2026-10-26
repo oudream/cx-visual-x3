@@ -37,7 +37,7 @@ namespace CxVisual.TestCenter.UI
         private readonly TextBox _lowerPercentText = new TextBox { Width=65,Text="10.0",Margin=new Thickness(4) };
         private readonly TextBox _upperPercentText = new TextBox { Width=65,Text="99.5",Margin=new Thickness(4) };
         private readonly TextBlock _legacyDetails = new TextBlock { TextWrapping=TextWrapping.Wrap };
-        private readonly CheckBox _autoSliceFit = new CheckBox { Content="自动适合视图",IsChecked=true };
+        private readonly CheckBox _autoSliceFit = new CheckBox { Content="每次换层自动适合视图",IsChecked=false };
         private readonly ComboBox _saveViewChoice=new ComboBox { Margin=new Thickness(4),Height=28 };
         public int LegacyTopTabCount { get { return _upperTabs == null ? 0 : _upperTabs.Items.Count; } }
         public int LegacyBottomTabCount { get { return _lowerTabs == null ? 0 : _lowerTabs.Items.Count; } }
@@ -184,6 +184,19 @@ namespace CxVisual.TestCenter.UI
             _backgroundText.LostFocus+=(s,e)=>UpdateLegacyGrayMapping();
             _lowerPercentText.LostFocus+=(s,e)=>UpdateLegacyGrayMapping();
             _upperPercentText.LostFocus+=(s,e)=>UpdateLegacyGrayMapping();
+            System.Windows.Input.KeyEventHandler grayEnter=(s,e)=>{
+                if(e.Key!=System.Windows.Input.Key.Enter)return;
+                UpdateLegacyGrayMapping();
+                System.Windows.Input.Keyboard.ClearFocus();e.Handled=true;
+            };
+            _backgroundText.KeyDown+=grayEnter;
+            _lowerPercentText.KeyDown+=grayEnter;
+            _upperPercentText.KeyDown+=grayEnter;
+            Button applyGray=new Button { Content="应用灰阶映射",
+                Margin=new Thickness(4,7,4,4),Padding=new Thickness(8,5,8,5) };
+            AutomationProperties.SetAutomationId(applyGray,"TCT.Volume.ApplyGrayRange");
+            applyGray.Click+=(s,e)=>UpdateLegacyGrayMapping();
+            gray.Children.Add(applyGray);
             BuildObliquePanel(oblique);
             Label(render,"GPU 体绘 / 光照 / 采样");
             _legacyDetails.Foreground=BrushOf(211,224,240);
@@ -251,6 +264,8 @@ namespace CxVisual.TestCenter.UI
             _gpuSettings.Intensity.UpperPercentile=(float)(high/100.0);
             _gpuSettings.Intensity.PresetOpacityScale=(float)(_presetOpacity.Value/100.0);
             UpdateGpuSettings();
+            _legacyDetails.Text=String.Format("灰阶已应用：背景≤{0}，分位 {1:0.##}%..{2:0.##}%，透明度 {3:0}%",
+                background,low,high,_presetOpacity.Value);
         }
 
         private async void RefreshLegacyHistogram()

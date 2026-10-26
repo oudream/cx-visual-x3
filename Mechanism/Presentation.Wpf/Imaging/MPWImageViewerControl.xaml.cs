@@ -282,6 +282,23 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             _session.SetOriginal(image);
         }
 
+        /// <summary>
+        /// 连续体积切片替换像素帧，保留现有WPF缩放、平移与比较视口。
+        /// 第一次加载仍调用ShowOriginal，新尺寸仍由RefreshDisplay自动Fit。
+        /// </summary>
+        public void UpdateOriginalFrame(FIMImageBuffer image)
+        {
+            VerifyAccess();
+            if(image==null)throw new ArgumentNullException("image");
+            if(_session.Original==null)
+            {
+                ShowOriginal(image);return;
+            }
+            _pendingFit=false;
+            _overlayOriginal=image;
+            _session.SetOriginal(image);
+        }
+
         public void ShowResult(FIMImageBuffer image)
         {
             VerifyAccess();

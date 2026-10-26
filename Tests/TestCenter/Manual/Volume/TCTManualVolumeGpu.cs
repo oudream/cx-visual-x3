@@ -43,7 +43,7 @@ namespace CxVisual.TestCenter.UI
         private readonly Slider _gpuThreshold = new Slider { Minimum=0,Maximum=1,Value=.28 };
         private readonly CheckBox _gpuUseThreshold = new CheckBox { Content="应用阈值", IsChecked=false };
         private readonly CheckBox _gpuShowVolume = new CheckBox { Content="显示体绘",IsChecked=true };
-        private readonly CheckBox _gpuShowSlices = new CheckBox { Content="显示三维定位切面",IsChecked=true };
+        private readonly CheckBox _gpuShowSlices = new CheckBox { Content="显示三维定位切面",IsChecked=false };
         private readonly CheckBox _gpuShowSliceTexture = new CheckBox { Content="显示切面灰度纹理",IsChecked=false };
         private readonly CheckBox _gpuBounds = new CheckBox { Content="显示体包围盒",IsChecked=false };
         private readonly Slider _gpuSliceOpacity = new Slider { Minimum=0,Maximum=1,Value=.35 };
@@ -51,6 +51,12 @@ namespace CxVisual.TestCenter.UI
 
         public bool HasAttemptedGpuRendering { get; private set; }
         public MPWVolumeOpenGlControl GpuControlForHardwareTest { get { return _gpu; } }
+        public void SetOpacityFromPanelForTest(double opacity) { _gpuOpacity.Value=opacity; }
+        public void SetSliceVisibilityFromPanelForTest(bool enabled) { _gpuShowSlices.IsChecked=enabled; }
+        public void SetColorCurveEnabledFromPanelForTest(bool enabled) { _gpuColor.IsChecked=enabled; }
+        public float ConfiguredOpacityForTest { get { return _gpuSettings.VolumeOpacity; } }
+        public bool ConfiguredSliceVisibilityForTest { get { return _gpuSettings.ShowSlices; } }
+        public bool ConfiguredColorForTest { get { return _gpuSettings.TransferFunctions.UseColor; } }
         public bool IsGpuVolumeRendering { get { return _gpu != null && _gpu.IsAvailable; } }
         public string GpuStatusText { get { return _gpuInfo.Text; } }
         public BitmapSource CaptureGpuFrameForTest()
@@ -129,8 +135,11 @@ namespace CxVisual.TestCenter.UI
 
         private static void AddGpuSlider(Panel panel,string text,Slider slider)
         {
-            panel.Children.Add(new TextBlock { Text=text, Margin=new Thickness(4,7,4,1),
-                Foreground=BrushOf(218,231,244) });
+            TextBlock label=new TextBlock { Text=text+"："+slider.Value.ToString("0.##"),
+                Margin=new Thickness(4,7,4,1),Foreground=BrushOf(218,231,244) };
+            slider.ValueChanged+=(s,e)=>label.Text=text+"："+slider.Value.ToString("0.##");
+            slider.ToolTip=text;
+            panel.Children.Add(label);
             slider.Margin=new Thickness(6,0,6,6);
             panel.Children.Add(slider);
         }

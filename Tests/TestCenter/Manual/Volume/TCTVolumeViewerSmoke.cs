@@ -64,6 +64,19 @@ namespace CxVisual.TestCenter.UI
                 frame.ToggleViewForTest(0);
                 Check(!frame.IsLegacySingleView,"单窗可原位恢复2x2");
                 frame.ApplyWindowCenterWidth();
+                frame.SetOpacityFromPanelForTest(.45);
+                Check(Math.Abs(frame.ConfiguredOpacityForTest-.45f)<.001,
+                    "体透明度滑杆ValueChanged须更新实际CT3D渲染配置");
+                frame.SetSliceVisibilityFromPanelForTest(true);
+                Check(frame.ConfiguredSliceVisibilityForTest,
+                    "三维定位切面勾选必须更新真实渲染配置");
+                frame.SetSliceVisibilityFromPanelForTest(false);
+                Check(!frame.ConfiguredSliceVisibilityForTest,
+                    "三维定位切面取消勾选必须真实隐藏");
+                frame.SetColorCurveEnabledFromPanelForTest(true);
+                Check(frame.ConfiguredColorForTest,
+                    "颜色曲线勾选必须更新FVO传递函数状态");
+                frame.SetColorCurveEnabledFromPanelForTest(false);
                 frame.SetThresholdRangeForTest(.22f,.78f);
                 Check(Math.Abs(frame.CurrentThresholdLower-.22f)<.001 &&
                     Math.Abs(frame.CurrentThresholdUpper-.78f)<.001,
@@ -72,6 +85,12 @@ namespace CxVisual.TestCenter.UI
                 Check(frame.XyViewer.ActiveImage != null &&
                       frame.XzViewer.ActiveImage != null &&
                       frame.YzViewer.ActiveImage != null, "三个MPW WPF图窗均须实际显示图像");
+                frame.XyViewer.Zoom(1.75);
+                double beforeSliceScale=frame.XyViewer.PrimaryViewportScale;
+                frame.ScrollSlice(FVOSlicePlane.XY,1);
+                Check(Math.Abs(frame.XyViewer.PrimaryViewportScale-beforeSliceScale)<.001,
+                    "真实WPF二维换层不得丢失用户缩放与平移状态");
+                frame.XyViewer.FitToWindow();
                 for(int view=0;view<4;view++)
                 {
                     string viewPath=Path.Combine(Path.GetTempPath(),
