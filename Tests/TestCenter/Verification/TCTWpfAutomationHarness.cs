@@ -133,6 +133,7 @@ namespace CxVisual.TestCenter.UI
                     "manual.module." + kind.ToString().ToLowerInvariant());
             }));
             if (created == null) throw new InvalidOperationException("Module create action failed");
+            ShowManualConsoleForVerification(window);
             string id = "TCT.Workspace." + created.WorkspaceId;
             SelectionItemPattern node = Find(root, id)
                 .GetCurrentPattern(SelectionItemPattern.Pattern) as SelectionItemPattern;
@@ -548,6 +549,7 @@ namespace CxVisual.TestCenter.UI
                 instance = window.FindOpenCreatedInstance("manual.module.connector");
             }));
             if (instance == null) throw new InvalidOperationException("Module instance was not created");
+            ShowManualConsoleForVerification(window);
             string actualId = null;
             window.Dispatcher.Invoke(new Action(() =>
                 actualId = window.CreatedConfigurationId(instance.WorkspaceId)));
@@ -653,6 +655,7 @@ namespace CxVisual.TestCenter.UI
             await window.Dispatcher.InvokeAsync(() => window.UpdateLayout());
             TCTWorkspaceDescriptor created = window.CreateWorkspaceInstance("manual.command");
             if (created == null) throw new InvalidOperationException("命令页不能创建实例");
+            ShowManualConsoleForVerification(window);
             System.Windows.Controls.TabControl tabs =
                 window.DocumentHost.Content as System.Windows.Controls.TabControl;
             TCTManualCommandFrame frame =
@@ -747,6 +750,7 @@ namespace CxVisual.TestCenter.UI
             window.Dispatcher.Invoke(new Action(() =>
                 created=window.FindCreatedInstance("manual.message")));
             if(created==null) throw new InvalidOperationException("Message workspace missing stable instance");
+            ShowManualConsoleForVerification(window);
             AutomationElement root=AutomationElement.FromHandle(hwnd);
             SelectionItemPattern select=Find(root,"TCT.Workspace."+created.WorkspaceId)
                 .GetCurrentPattern(SelectionItemPattern.Pattern) as SelectionItemPattern;
@@ -820,6 +824,7 @@ namespace CxVisual.TestCenter.UI
                 .GetCurrentPattern(SelectionItemPattern.Pattern) as SelectionItemPattern;
             if (selected == null) throw new InvalidOperationException("Channel registry leaf cannot select");
             selected.Select();
+            ShowManualConsoleForVerification(window);
             InvokePattern connect = Find(root, "TCT.Manual.Action.connect")
                 .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
             if (connect == null) throw new InvalidOperationException("Channel Connect has no InvokePattern");
@@ -1024,6 +1029,20 @@ namespace CxVisual.TestCenter.UI
                 throw new InvalidOperationException("未授权TCPClient不应显示可连接");
             window.Dispatcher.Invoke(new Action(() => SaveScreenshot(window, "TestCenter-Channel-P0-SharedBus.png")));
         }
+        /// <summary>专业工作区默认隐藏测试控制台；确需TCT命令的UIA主动通过视图菜单打开。</summary>
+        private static void ShowManualConsoleForVerification(TCTMainWindow window)
+        {
+            window.Dispatcher.Invoke(new Action(() =>
+            {
+                if (!window.IsTestConsoleVisible)
+                    window.MenuShowOperations.RaiseEvent(new RoutedEventArgs(
+                        System.Windows.Controls.MenuItem.ClickEvent,window.MenuShowOperations));
+                window.UpdateLayout();
+                if (!window.IsTestConsoleVisible)
+                    throw new InvalidOperationException("测试控制台按需打开失败");
+            }));
+        }
+
         private static void VerifyOverview(IntPtr hwnd, TCTMainWindow window)
         {
             AutomationElement root = AutomationElement.FromHandle(hwnd);
