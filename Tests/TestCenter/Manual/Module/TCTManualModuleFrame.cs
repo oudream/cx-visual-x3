@@ -132,6 +132,24 @@ namespace CxVisual.TestCenter.UI
                         break;
                     default: throw new InvalidOperationException("未知模块类型");
                 }
+                // 专业分页固定操作语义，字段覆盖由正式FCM Schema核对。
+                // 增加正式参数时自动出现扩展配置页，不静默漏掉字段。
+                Type modelType;
+                switch (kind)
+                {
+                    case MFMModuleKind.Connector: modelType = typeof(MCNConnectorConfiguration); break;
+                    case MFMModuleKind.Driver: modelType = typeof(MFMDriverModuleConfiguration); break;
+                    case MFMModuleKind.Compute: modelType = typeof(PVCComputeModuleConfiguration); break;
+                    case MFMModuleKind.Simulation: modelType = typeof(PSMSimulationModuleConfiguration); break;
+                    case MFMModuleKind.Service: modelType = typeof(MLCServiceModuleConfiguration); break;
+                    default: throw new InvalidOperationException("未知模块类型");
+                }
+                string[] uncovered = MPWConfigWorkspaceLayout.UnassignedLeafPaths(modelType,
+                    pages.Select(page => (System.Collections.Generic.IEnumerable<string>)page.Fields));
+                if (uncovered.Length != 0)
+                    pages = pages.Concat(new[] {
+                        new ModulePage("extras", "扩展配置", uncovered)
+                    }).ToArray();
                 foreach (ModulePage page in pages)
                 {
                     TabItem tab = new TabItem { Header = page.Label, Tag = page,

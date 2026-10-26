@@ -22,6 +22,33 @@ namespace CxVisual.Mechanism.Presentation.Wpf
     /// <summary>通用配置视图的未保存草稿标记，供宿主安全切换上下文。</summary>
     public interface IMPWConfigDraftGuard { bool HasUnsavedDraft { get; } }
 
+    /// <summary>
+    /// 根据唯一FCM Schema核查宿主分页覆盖；不复制业务配置和运行状态。
+    /// 当模块增加新字段时，返回未被页面投影覆盖的叶字段，供工作台自动补页。
+    /// </summary>
+    public static class MPWConfigWorkspaceLayout
+    {
+        public static string[] UnassignedLeafPaths(Type modelType,
+            IEnumerable<IEnumerable<string>> pageSelections)
+        {
+            if (modelType == null) throw new ArgumentNullException("modelType");
+            if (pageSelections == null) throw new ArgumentNullException("pageSelections");
+            string[] selected = pageSelections
+                .Where(page => page != null).SelectMany(page => page)
+                .Where(path => !string.IsNullOrWhiteSpace(path))
+                .Distinct(StringComparer.Ordinal).ToArray();
+            IList<FCMConfigFieldInfo> catalog = FCMConfigCatalog.Describe(modelType);
+            return catalog
+                .Where(field => !catalog.Any(child =>
+                    child.Path.StartsWith(field.Path + ".", StringComparison.Ordinal)))
+                .Where(field => !selected.Any(path =>
+                    field.Path == path ||
+                    field.Path.StartsWith(path + ".", StringComparison.Ordinal) ||
+                    field.Path.StartsWith(path + "[", StringComparison.Ordinal)))
+                .Select(field => field.Path).Distinct(StringComparer.Ordinal).ToArray();
+        }
+    }
+
     public sealed class MPWConfigEditorControl<T> : UserControl, IDisposable, IMPWConfigDraftGuard where T : new()
     {
         private readonly MHSConfigSection<T> _section;
@@ -402,32 +429,38 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 string[] titles = { "通道类型 / 身份与子通道", "网络配置 / 串口", "数据配置 / 执行与重连" };
                 for (int column = 0; column < 3; column++)
                 {
+                    int cardIndex = column;
+                    FCMConfigMemberDescriptor[] assigned = members.Where(member => {
+                        FCMConfigItemAttribute metadata = member.Property.GetCustomAttributes(
+                            typeof(FCMConfigItemAttribute), true).FirstOrDefault() as FCMConfigItemAttribute;
+                        string category = metadata == null ? "" : metadata.Category;
+                        int bucket = category == "身份" || category == "子通道" ? 0 :
+                            category == "网络" || category == "串口" ? 1 : 2;
+                        return bucket == cardIndex;
+                    }).ToArray();
+                    // 通道专有配置仅呈现对应Schema的有效分组，避免空白卡片。
+                    if (assigned.Length == 0) continue;
                     StackPanel panel = new StackPanel();
                     Border card = new Border {
-                        Background = Brushes.White,
-                        BorderBrush = new SolidColorBrush(Color.FromRgb(204, 221, 239)),
-                        BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(3),
+                        BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(4),
                         Margin = new Thickness(0, 0, 9, 5), Padding = new Thickness(10) };
+                    card.SetResourceReference(Border.BackgroundProperty, "MPWSurfaceBrush");
+                    card.SetResourceReference(Border.BorderBrushProperty, "MPWBorderBrush");
                     StackPanel items = new StackPanel();
                     TextBlock title = new TextBlock {
-                        Text = titles[column], FontSize = 17,
-                        FontWeight = FontWeights.SemiBold, Foreground = Brushes.MidnightBlue,
-                        Background = Brushes.AliceBlue, Padding = new Thickness(7, 7, 7, 7),
-                        Margin = new Thickness(0, 0, 0, 10) };
+                        Text = titles[column], FontSize = 16,
+                        FontWeight = FontWeights.SemiBold, Padding = new Thickness(7),
+                        Margin = new Thickness(0, 0, 0, 8) };
+                    title.SetResourceReference(TextBlock.ForegroundProperty, "MPWForegroundBrush");
+                    title.SetResourceReference(TextBlock.BackgroundProperty, "MPWSurfaceAltBrush");
                     System.Windows.Automation.AutomationProperties.SetAutomationId(title,
                         "MPW.Channel.SchemaCards." + column);
                     items.Children.Add(title);
-                    foreach (FCMConfigMemberDescriptor member in members)
+                    foreach (FCMConfigMemberDescriptor member in assigned)
                     {
-                        FCMConfigItemAttribute attr = member.Property.GetCustomAttributes(
-                            typeof(FCMConfigItemAttribute), true).FirstOrDefault() as FCMConfigItemAttribute;
-                        string category = attr == null ? "" : attr.Category;
-                        int assigned = category == "身份" || category == "子通道" ? 0 :
-                            category == "网络" || category == "串口" ? 1 : 2;
-                        if (assigned != column) continue;
                         string path = parent + "." + member.Name;
-                        object value = model == null ? null : member.Property.GetValue(model, null);
-                        RenderValue(panel, member.MemberType, value, path, member.Label,
+                        object itemValue = model == null ? null : member.Property.GetValue(model, null);
+                        RenderValue(panel, member.MemberType, itemValue, path, member.Label,
                             depth, hidden || member.Property.IsDefined(
                                 typeof(FCMConfigSensitiveAttribute), true) ||
                             FCMConfigSensitivity.ContainsSensitive(member.MemberType), member.Unit);

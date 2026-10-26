@@ -8,6 +8,7 @@ using CxVisual.Foundation.Data.Configuration;
 using CxVisual.Mechanism.Core.Modules;
 using CxVisual.Mechanism.Data.Configuration;
 using CxVisual.Mechanism.Connectivity;
+using CxVisual.Mechanism.Presentation.Wpf;
 using CxVisual.Mechanism.Lifecycle.Modules;
 using CxVisual.Professional.Vision.Modules;
 using CxVisual.Professional.Simulation.Modules;
@@ -30,6 +31,37 @@ namespace CxVisual.TestCenter.Cases
         {
             string root = Path.Combine(Path.GetTempPath(),
                 "TCTModule-" + Guid.NewGuid().ToString("N"));
+            // 通用MPW检查全部正式Schema字段，缺页立即可见而非沉默丢失。
+            string[] complete = MPWConfigWorkspaceLayout.UnassignedLeafPaths(
+                typeof(MFMDriverModuleConfiguration), new[] {
+                    new[] { "DisplayName", "Enabled", "CapabilityIds" },
+                    new[] { "DriverTypeId", "DeviceRef", "Backend" },
+                    new[] { "InternalResourceRefs" }
+                });
+            test.AssertTrue(complete.Length == 0, "Driver正式Schema分页完整覆盖", true, complete.Length == 0);
+            string[] missing = MPWConfigWorkspaceLayout.UnassignedLeafPaths(
+                typeof(MFMDriverModuleConfiguration), new[] {
+                    new[] { "DisplayName", "Enabled", "CapabilityIds" },
+                    new[] { "DriverTypeId", "Backend" },
+                    new[] { "InternalResourceRefs" }
+                });
+            test.AssertTrue(missing.SequenceEqual(new[] { "DeviceRef" }),
+                "遗漏的设备引用字段被MPW识别", true, missing.SequenceEqual(new[] { "DeviceRef" }));
+            string[] connector = MPWConfigWorkspaceLayout.UnassignedLeafPaths(
+                typeof(MCNConnectorConfiguration), new[] {
+                    new[] { "DisplayName", "Enabled", "CapabilityIds" },
+                    new[] { "Channel", "Protocol" }
+                });
+            test.AssertTrue(connector.Length == 0,
+                "Connector内嵌通道与规约描述无遗漏", true, connector.Length == 0);
+            foreach (MCCChannelKind kind in Enum.GetValues(typeof(MCCChannelKind)))
+            {
+                Type channelType = MCCChannelConfigurations.TypeOf(kind);
+                bool correct = typeof(MCCChannelConfiguration).IsAssignableFrom(channelType) &&
+                    FCMConfigSchemaBuilder.Members(channelType).Any(member => member.Name == "Kind") &&
+                    FCMConfigSchemaBuilder.Members(channelType).Any(member => member.Name == "Id");
+                test.AssertTrue(correct, "专有Channel正式配置可自动生成界面: " + kind, true, correct);
+            }
             try
             {
                 MHSConfigService first = OpenService(root);
