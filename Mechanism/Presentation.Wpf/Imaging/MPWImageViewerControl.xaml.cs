@@ -259,6 +259,53 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             return changed;
         }
 
+        /// <summary>按边索引插入多边形顶点；WPF显示与其他编辑共用MVI快照。</summary>
+        public MVIImageOverlayItem InsertSelectedPolygonVertex(int edgeIndex,FGEPoint2D point)
+        {
+            VerifyAccess();
+            MVIImageOverlayItem current=RequireVisibleSelectedPolygon();
+            MVIImageOverlayItem next=current.WithInsertedPolygonVertex(edgeIndex,point,
+                ActiveImage.Width,ActiveImage.Height);
+            if(!_overlays.Replace(next))
+                throw new InvalidOperationException("多边形在插入时已删除。");
+            return next;
+        }
+
+        /// <summary>移除顶点；至少保留有效三角形，不使用另一套覆盖对象列表。</summary>
+        public MVIImageOverlayItem RemoveSelectedPolygonVertex(int vertexIndex)
+        {
+            VerifyAccess();
+            MVIImageOverlayItem current=RequireVisibleSelectedPolygon();
+            MVIImageOverlayItem next=current.WithRemovedPolygonVertex(vertexIndex);
+            if(!_overlays.Replace(next))
+                throw new InvalidOperationException("多边形在删除顶点时已删除。");
+            return next;
+        }
+
+        private MVIImageOverlayItem RequireVisibleSelectedPolygon()
+        {
+            if(ActiveImage==null || !_selectedOverlayId.HasValue ||
+                !OverlayMatchesActiveImage())
+                throw new InvalidOperationException("请先打开原图并选中多边形ROI。");
+            MVIImageOverlayItem item=_overlays.Find(_selectedOverlayId.Value);
+            if(item==null || item.Kind!=MVIImageOverlayKind.PolygonRoi ||
+                !_overlays.GetVisibleItems().Any(x=>x.Id==item.Id))
+                throw new InvalidOperationException("多边形不存在或当前图层不可见。");
+            return item;
+        }
+
+        /// <summary>在现有多边形指定边的中点插入，供区域页和专业用户调用。</summary>
+        public MVIImageOverlayItem InsertSelectedPolygonEdgeMidpoint(int edgeIndex)
+        {
+            MVIImageOverlayItem item=RequireVisibleSelectedPolygon();
+            if(edgeIndex<0 || edgeIndex>=item.Points.Count)
+                throw new ArgumentOutOfRangeException("edgeIndex");
+            FGEPoint2D a=item.Points[edgeIndex];
+            FGEPoint2D b=item.Points[(edgeIndex+1)%item.Points.Count];
+            return InsertSelectedPolygonVertex(edgeIndex,
+                new FGEPoint2D((a.X+b.X)/2,(a.Y+b.Y)/2));
+        }
+
         /// <summary>旋转矩形宽高/角度均为原图几何，经过唯一MVI Store发通知。</summary>
         public MVIImageOverlayItem RotateSelectedRectangle(double angleDegrees)
         {
