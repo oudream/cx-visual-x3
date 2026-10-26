@@ -437,6 +437,7 @@ namespace CxVisual.TestCenter.UI
             display.SetContrast(contrast);
             display.SetInverted(_displayInverted.IsChecked == true);
             display.SetAutoContrast(_autoContrast.IsChecked == true);
+            SyncGraySliders();
             Show("显示状态已应用：源图不改变，原始灰度统计保持不变");
         }
 
@@ -445,6 +446,7 @@ namespace CxVisual.TestCenter.UI
             _viewer.DisplayState.Reset();
             _displayGamma.Text = "1"; _displayBrightness.Text = "0"; _displayContrast.Text = "1";
             _displayInverted.IsChecked = false; _autoContrast.IsChecked = false;
+            SyncGraySliders();
             Show("窗宽窗位/反色/Gamma/亮度/对比度全部复位");
         }
 

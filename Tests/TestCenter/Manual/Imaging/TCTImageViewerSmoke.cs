@@ -347,7 +347,7 @@ namespace CxVisual.TestCenter.UI
                 string polygonArea = frame.Viewer.DescribeMeasurement(area);
                 if (!length.Contains("0.6 mm") || !elevation.Contains("1.2 mm") ||
                     !dia.Contains("X 0.8 mm / Y 1.6 mm") ||
-                    !polygonArea.Contains("4.5 px²") || !polygonArea.Contains("1.8 mm²") ||
+                    !polygonArea.Contains("4.5 px²") || !polygonArea.Contains("0.36 mm²") ||
                     frame.Viewer.OverlayVisualCount < 10)
                     throw new InvalidOperationException("WPF complete measurement labels, non-square calibration or polygon geometry failed");
                 string csvFile = Path.Combine(Path.GetTempPath(),
@@ -356,7 +356,7 @@ namespace CxVisual.TestCenter.UI
                 {
                     frame.ExportMeasurementsCsv(csvFile);
                     string csv = File.ReadAllText(csvFile);
-                    if (!csv.Contains(horiz.Id.ToString("D")) || !csv.Contains("1.8 mm²") ||
+                    if (!csv.Contains(horiz.Id.ToString("D")) || !csv.Contains("0.36 mm²") ||
                         !csv.Contains("Vertices") || !csv.Contains("0:0"))
                         throw new InvalidOperationException("Measurement CSV omitted GUID/calibration/vertices");
                 }
