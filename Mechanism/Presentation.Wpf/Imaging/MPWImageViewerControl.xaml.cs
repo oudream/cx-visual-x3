@@ -23,6 +23,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         private readonly MVIImageSession _session = new MVIImageSession();
         private readonly MVIImageViewport _viewport = new MVIImageViewport();
         private readonly MVIImageTransformState _viewTransform = new MVIImageTransformState();
+        private readonly MVIImageComparisonState _comparison = new MVIImageComparisonState();
         private readonly MVIImageOverlayStore _overlays = new MVIImageOverlayStore();
         private FIMImageBuffer _overlayOriginal;
         private BitmapSource _bitmap;
@@ -44,6 +45,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             InitializeComponent();
             _session.Changed += OnSessionChanged;
             _displayState.Changed += OnSessionChanged;
+            _comparison.Changed += OnSessionChanged;
             _viewTransform.Changed += (sender, args) => { _pendingFit = true; OnSessionChanged(sender, args); };
             _overlays.Changed += (sender, args) =>
             {
@@ -56,6 +58,23 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         public MVIImageSession Session { get { return _session; } }
         public MVIImageDisplayState DisplayState { get { return _displayState; } }
         public MVIImageTransformState ViewTransform { get { return _viewTransform; } }
+        public MVIImageComparisonState ComparisonState { get { return _comparison; } }
+
+        /// <summary>真实原图/结果图透明叠合，必须同尺寸、格式，原始两张图均不修改。</summary>
+        public void BlendOriginalAndResult(double ratio)
+        {
+            VerifyAccess();
+            FIMImageBuffer original = _session.Original, result = _session.Result;
+            if (original == null || result == null) throw new InvalidOperationException("原图或结果图不存在。");
+            if (original.Width != result.Width || original.Height != result.Height ||
+                original.PixelFormat != result.PixelFormat)
+                throw new InvalidOperationException("叠合要求原图与结果图尺寸和像素格式完全相同。");
+            if (original.PixelFormat == FIMPixelFormat.GrayFloat32)
+                throw new NotSupportedException("暂不支持GrayFloat32透明叠合。");
+            _comparison.SetBlendRatio(ratio);
+            _comparison.SetMode(MVIImageComparisonMode.Blend);
+        }
+        public void DisableBlend() { VerifyAccess(); _comparison.SetMode(MVIImageComparisonMode.Single); }
         public void RotateViewClockwise() { VerifyAccess(); _viewTransform.Rotate90Clockwise(); }
         public void RotateViewCounterclockwise() { VerifyAccess(); _viewTransform.Rotate90Counterclockwise(); }
         public void FlipViewHorizontal() { VerifyAccess(); _viewTransform.FlipHorizontal(); }
@@ -106,6 +125,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             _region = null;
             _displayState.Reset();
             _viewTransform.Reset();
+            _comparison.Reset();
             _polygonDraft.Clear();
             _overlays.Clear();
             _overlayOriginal = image;
@@ -129,6 +149,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             _region = null;
             _displayState.Reset();
             _viewTransform.Reset();
+            _comparison.Reset();
             _polygonDraft.Clear();
             _overlays.Clear();
             _overlayOriginal = null;
@@ -336,6 +357,19 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 return;
             }
 
+            if (_comparison.Mode == MVIImageComparisonMode.Blend)
+            {
+                FIMImageBuffer first = _session.Original, second = _session.Result;
+                if (first == null || second == null || first.Width != second.Width ||
+                    first.Height != second.Height || first.PixelFormat != second.PixelFormat)
+                {
+                    _comparison.SetMode(MVIImageComparisonMode.Single);
+                    return;
+                }
+                image = FIMImageBlend.Blend(first, second, _comparison.BlendRatio);
+            }
+            else if (_comparison.Mode == MVIImageComparisonMode.SideBySide)
+                throw new NotSupportedException("并排比较尚未完成真实双视图交互，禁止当成可用模式。");
             FIMImageBuffer display = ApplyViewTransform(CreateDisplayBuffer(image));
             int stride = checked(display.Width * display.BytesPerPixel);
             long memory = (long)stride * display.Height;
@@ -351,7 +385,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             PixelImage.Height = display.Height;
             PixelImage.Source = bitmap;
             EmptyText.Visibility = Visibility.Collapsed;
-            PixelStatus.Text = image.Width + "×" + image.Height + " " + image.PixelFormat;
+            PixelStatus.Text = image.Width + "×" + image.Height + " " + image.PixelFormat +
+                (_comparison.Mode == MVIImageComparisonMode.Blend ?
+                " · 叠合 " + _comparison.BlendRatio.ToString("0.##") : "");
             if (dimensionsChanged || _pendingFit) FitToWindow();
             else ApplyTransform();
         }
