@@ -41,8 +41,9 @@ jobs:
       - name: Execute real STA TestCenter variable workspace
         shell: pwsh
         run: |
-          & .\Output\Release\x64\CxVisual.TestCenter.exe --variable-workspace-smoke
-          if ($LASTEXITCODE -ne 0) {
+          $exe = (Resolve-Path .\Output\Release\x64\CxVisual.TestCenter.exe).Path
+          $proc = Start-Process -FilePath $exe -ArgumentList '--variable-workspace-smoke' -Wait -PassThru
+          if ($proc.ExitCode -ne 0) {
             $err = Join-Path $env:TEMP 'CxVisual-Variable-Workspace-Error.txt'
             if (Test-Path $err) { Get-Content -LiteralPath $err }
             throw "Real WPF variable workspace failed"
