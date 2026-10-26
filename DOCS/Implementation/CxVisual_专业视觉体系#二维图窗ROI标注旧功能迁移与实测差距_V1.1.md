@@ -129,3 +129,22 @@
 - [TestCenter Windows #40341200552](https://github.com/oudream/cx-visual-x3/actions/runs/40341200552) **SUCCESS（29步骤）**，对应 `5524893`，覆盖到MVI/MPW旋转矩形四角构造约束及测试中心功能回归；此后追加的数值反证和CI路径调整以 `f29ef75` Imaging专项成功作为最新代码证据，**不能将5524893的TestCenter结果自动归属更晚的master**。
 - 曾有 [TestCenter #40341073706](https://github.com/oudream/cx-visual-x3/actions/runs/40341073706) 的Parallel Repeat/History阶段失败，因期望成功Attempt数为426而实际收到441；随后上述5524893结果为Success。该失败属并行用例基数/断言稳定性边界，需由TestCenter Owner继续复核，不能抹去历史失败。
 - Engineering Organization Windows在部分提交仍发生Studio宿主资源`MPWInputStyle`加载失败，和旋转ROI源码不可等同；对应Master与专项SHA分别判断。
+
+## 9. 多边形顶点插入、删除与复杂ROI编辑（2026-10-27）
+
+> **范围与来源**：继续承接成熟 `ReferTo/Vision/CxECTImageWinForms/Halcon/HalconImageCanvas.cs` 的Polygon绘制/原图坐标与 `ImageViewerControl` / `OverlayStore` 交互思想。旧源码包含多边形创建与可视覆盖层，但此次未找到可直接复用的“在任意边插入、删除单个顶点并做拓扑校验”的现成方法。这些是**现有 MVI/MPW 能力上的增构**，不是复制另一个对象仓库；`ReferTo`全程只读。
+
+| 目标功能 | 真实Owner/实现 | 用户入口及输出 | 验证状态 |
+|---|---|---|---|
+| 按边插点 | `MVIImageOverlayItem.WithInsertedPolygonVertex` | 传入零基边索引与原图 `FGEPoint2D`；新增顶点放在此边后，外接Bounds重算；保持ID、图层和样式 | 有边界、重合点、外图、穿边、自交反证 |
+| 按索引删点 | `WithRemovedPolygonVertex` | 指定原顶点索引；必须保留3个顶点、原绕向/非退化/非自交，原对象不可变 | 有三角形最少点、无效索引、退化反证 |
+| 不创建第二套状态 | `MVIImageOverlayStore.Replace`、MPW `InsertSelectedPolygonVertex`、`RemoveSelectedPolygonVertex`、`InsertSelectedPolygonEdgeMidpoint` | 所有修改复用已有唯一OverlayStore通知和左/右视口；隐藏、删除和锁定不准编辑 | Store事件及原快照/Guid验证 |
+| 鼠标交互 | `MPWImageViewerControl.TryPolygonTopologyGesture` | 在“逐顶点编辑”模式下 **Shift＋左键点击边线插入**、**Alt＋左键点击金色顶点删除**，双视口各自用WPF投影拾取、存回原图点；错误反馈直接显示像素状态 | 代码已提交；物理键鼠和多DPI属于待验收项 |
+| TestCenter实际入口 | 区域页 `PolygonVertexIndex` + `InsertPolygonVertex` / `RemovePolygonVertex` | 零基索引与“边中点插入”“删除此顶点”按钮；图像控件直接调用MPW API；列表和控制柄刷新 | 真实WPF Button.Click/数量、几何、双视图、失败不落库专项已覆盖 |
+| 大轮廓性能 | 单点编辑只重新核对受影响边与其余非邻边 | 插入/删除算法拓扑验证是 `O(n)`，不在每次操作扫描所有边对 `O(n²)` | 2048顶点长轮廓插→删回环已新增；真实高频拖动/渲染耗时尚未量化 |
+
+**代码推进记录**：`a9cabd0`（MVI插删），`47eb3a1`（数值正反例），`d6b28adc`（MPW API），`3d9477e`（双视口Shift/Alt手势），`66feb5c`、`3dd6121`（TestCenter索引按钮及提示），`07bde033`（真实WPF Button.Click及双视口回归），`bb299c2`（2048顶点长轮廓）。均为直接补强现有工程，不新增项目、不引入HALCON硬件依赖。
+
+**已确认CI**：[Windows Imaging #40421113920](https://github.com/oudream/cx-visual-x3/actions/runs/40421113920) **SUCCESS（13步）**，对应 `07bde033`，实际全方案.NET48/x64编译、MVI测试、默认Smoke、真实WPF Imaging窗口与原图/处理图验证。**长轮廓最终代码** `bb299c2` 的 [Windows Imaging #40421287277](https://github.com/oudream/cx-visual-x3/actions/runs/40421287277) 仍须以它自己的结束状态为准；不要用前一成功冒充此SHА已验收。TestCenter跨专业完整工作流也需独立结算。
+
+**未完成**：复杂多边形自交原始输入修复、自由曲线/样条/控制点、孔洞/复合ROI和像素掩膜、批量选择、平台唯一MRC Undo/Redo、工程持久化、真实系统级键鼠注入与多DPI、工业大图长时间压力。下一步优先结合旧`HalconImageCanvas`自由线/区域编辑行为评估实际差距，不把用户60项剩余功能虚报为已完成。
