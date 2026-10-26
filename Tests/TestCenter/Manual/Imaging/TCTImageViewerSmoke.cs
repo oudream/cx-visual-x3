@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using AvalonDock.Layout;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Automation;
@@ -68,27 +69,67 @@ namespace CxVisual.TestCenter.UI
             return null;
         }
 
-        private static void CaptureWorkbenchIfRequested(TCTManualImageViewerFrame frame, Window window)
+        /// <summary>
+        /// 实际运行TestCenter Shell+AvalonDock，校验二维专业区聚焦、
+        /// 通用Inspector自动折叠/切页恢复与宿主真实尺寸，并保存合成截图。
+        /// </summary>
+        private static void VerifyTestCenterShell()
         {
-            string path = Environment.GetEnvironmentVariable("CXVISUAL_IMAGING_UI_SCREENSHOT");
-            if (string.IsNullOrWhiteSpace(path)) return;
-            int width = 900, height = 650;
-            // 仅包含合成图像；不能把工厂文件上传到公共Actions工件。
+            TCTMainWindow host = new TCTMainWindow { Width = 1600, Height = 900,
+                ShowInTaskbar = false, WindowStyle = WindowStyle.ToolWindow };
+            try
+            {
+                host.Show();
+                host.UpdateLayout();
+                TCTWorkspaceRegistry registry = TCTWorkspaceRegistry.CreateDefaults(
+                    id => new UserControl());
+                LayoutAnchorable inspector = host.TestDock.Layout.Descendents()
+                    .OfType<LayoutAnchorable>().FirstOrDefault(p => p.ContentId == "test.inspector");
+                if (inspector == null) throw new InvalidOperationException("TestCenter inspector not present");
+                TCTManualImageViewerFrame imaging = host.DocumentHost.OpenWorkspace(
+                    registry.Find("manual.imaging")) as TCTManualImageViewerFrame;
+                if (imaging == null || inspector.IsVisible)
+                    throw new InvalidOperationException("TestCenter failed to focus imaging workbench and hide duplicate inspector");
+                imaging.SetOriginal(new FIMImageBuffer(900,650,FIMPixelFormat.Gray8,
+                    BuildSyntheticPixels(900,650)));
+                host.UpdateLayout();
+                string path = Environment.GetEnvironmentVariable("CXVISUAL_IMAGING_UI_SCREENSHOT");
+                if (!string.IsNullOrWhiteSpace(path))
+                {
+                    string full = Path.Combine(Path.GetDirectoryName(path),"testcenter-workbench.png");
+                    CaptureWindow(host,full);
+                }
+                host.DocumentHost.OpenWorkspace(registry.Find("manual.root"));
+                host.UpdateLayout();
+                if (!inspector.IsVisible)
+                    throw new InvalidOperationException("TestCenter Inspector not restored after leaving imaging page");
+                Console.WriteLine("PASS TCT Imaging Shell: AvalonDock workbench, focus, auto-collapse/restore and actual UI");
+            }
+            finally
+            {
+                host.Close();
+            }
+        }
+        private static byte[] BuildSyntheticPixels(int width,int height)
+        {
             byte[] pixels = new byte[width * height];
             for (int y = 0; y < height; y++)
                 for (int x = 0; x < width; x++)
                 {
-                    double dx = (x - 420.0) / 280.0, dy = (y - 300.0) / 215.0;
+                    double dx = (x - width * 0.47) / (width * .31);
+                    double dy = (y - height * .47) / (height * .33);
                     double outer = dx*dx + dy*dy;
                     int value = (int)(45 + x*0.09 + y*0.07);
                     if (outer < 1.0) value += 65;
                     if (Math.Abs(dx) < 0.45 && Math.Abs(dy) < 0.38) value -= 35;
                     pixels[y*width+x] = (byte)Math.Max(0,Math.Min(255,value));
                 }
-            frame.SetOriginal(new FIMImageBuffer(width,height,FIMPixelFormat.Gray8,pixels));
-            frame.Viewer.FitToWindow();
-            window.UpdateLayout();
+            return pixels;
+        }
+        private static void CaptureWindow(Window window,string path)
+        {
             Directory.CreateDirectory(Path.GetDirectoryName(path));
+            window.UpdateLayout();
             int w = (int)Math.Ceiling(window.ActualWidth);
             int h = (int)Math.Ceiling(window.ActualHeight);
             RenderTargetBitmap bitmap = new RenderTargetBitmap(w,h,96,96,PixelFormats.Pbgra32);
@@ -97,7 +138,18 @@ namespace CxVisual.TestCenter.UI
             encoder.Frames.Add(BitmapFrame.Create(bitmap));
             using (FileStream file = new FileStream(path,FileMode.Create,FileAccess.Write))
                 encoder.Save(file);
-            Console.WriteLine("PASS TCT Imaging UI screenshot (synthetic sample, no industrial data): " + path);
+            Console.WriteLine("PASS TCT Imaging UI screenshot (synthetic, no factory image): "+path);
+        }
+
+        private static void CaptureWorkbenchIfRequested(TCTManualImageViewerFrame frame, Window window)
+        {
+            string path = Environment.GetEnvironmentVariable("CXVISUAL_IMAGING_UI_SCREENSHOT");
+            if (string.IsNullOrWhiteSpace(path)) return;
+            int width = 900, height = 650;
+            frame.SetOriginal(new FIMImageBuffer(width,height,FIMPixelFormat.Gray8,
+                BuildSyntheticPixels(width,height)));
+            frame.Viewer.FitToWindow();
+            CaptureWindow(window,path);
         }
 
         public static void Run()
@@ -115,6 +167,7 @@ namespace CxVisual.TestCenter.UI
                 window.UpdateLayout();
                 AssertVisualLayout(frame, window);
                 CaptureWorkbenchIfRequested(frame, window);
+                VerifyTestCenterShell();
                 FIMImageBuffer image = new FIMImageBuffer(4, 4, FIMPixelFormat.Gray16,
                     new byte[] { 1,0, 2,0, 3,0, 4,0, 5,0, 6,0, 7,0, 8,0,
                                  9,0, 10,0, 11,0, 12,0, 13,0, 14,0, 15,0, 16,0 });
