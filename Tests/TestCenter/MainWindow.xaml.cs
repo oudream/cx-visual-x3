@@ -403,8 +403,9 @@ namespace CxVisual.TestCenter.UI
                  (descriptor.IsCreatedInstance &&
                     (descriptor.TemplateId == "auto.catalog" ||
                      descriptor.TemplateId == "auto.architecture-smoke")));
-            if (autoTest) _automatedRunContext = true;
-            else if (descriptor != null) _automatedRunContext = false;
+            // 测试工作区的普通选中并不等于有正在执行/查看的Run；
+            // 关闭最后一个计划或Smoke页后，概览不应无故保留侧栏。
+            if (!autoTest && descriptor != null) _automatedRunContext = false;
             if (!autoTest && !_automatedRunContext) _testConsoleOpenedManually = false;
             SetTestConsoleVisible(autoTest || _automatedRunContext || _testConsoleOpenedManually);
         }
