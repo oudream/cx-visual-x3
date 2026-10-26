@@ -284,6 +284,21 @@ namespace CxVisual.Foundation.Volume
             return FVOUnmanagedRawVolumeBuffer.Load(volume.SourceFilePath, new FileInfo(volume.SourceFilePath).Length, timing,cancellation);
         }
 
+        /// <summary>
+        /// 大RAW按需映射，FVOVolumeData仍是唯一Owner；二维切片复用原有FVO Build路径，
+        /// 可读取原始16bit/Float32标量，且无需把多GB文件全部复制到内存。
+        /// </summary>
+        public static FVOUnmanagedRawVolumeBuffer MapRawBuffer(FVOVolumeData volume,
+            CancellationToken cancellation)
+        {
+            if(volume==null || !volume.HasRawSource)
+                throw new ArgumentException("体数据没有可读取的RAW源。","volume");
+            cancellation.ThrowIfCancellationRequested();
+            long expected=checked((long)volume.OriginalWidth*volume.OriginalHeight*
+                volume.OriginalDepth*GetBytesPerVoxel(volume.SourceFormat.Value));
+            return FVOUnmanagedRawVolumeBuffer.Map(volume.SourceFilePath,expected,cancellation);
+        }
+
         public static bool TryLoadOriginalVoxelCache(FVOVolumeData volume)
         {
             if (volume == null || !volume.HasRawSource)

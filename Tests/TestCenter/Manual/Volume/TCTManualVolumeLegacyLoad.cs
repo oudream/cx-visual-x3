@@ -42,7 +42,7 @@ namespace CxVisual.TestCenter.UI
                 loaded=null; // FVO唯一所有权已经转移给工作台
                 _status.Text=String.Format("RAW预览加载完成 {0:0} ms；显示可交互，后台缓存高分辨率原始体...",
                     elapsed.ElapsedMilliseconds);
-                if(_volume!=null)StartOriginalVolumeCache(_volume,current.Token,generation);
+                if(_volume!=null)StartOriginalVolumeCache(_volume,generation);
             }
             finally
             {
@@ -56,8 +56,7 @@ namespace CxVisual.TestCenter.UI
             }
         }
 
-        private async void StartOriginalVolumeCache(FVOVolumeData volume,
-            CancellationToken cancellation,int generation)
+        private async void StartOriginalVolumeCache(FVOVolumeData volume,int generation)
         {
             if(volume==null || !volume.HasRawSource)return;
             // 8bit且没有降采样：预览数据即原始体素，无需再次整文件读取。
@@ -70,19 +69,16 @@ namespace CxVisual.TestCenter.UI
                 return;
             }
             FileInfo info=new FileInfo(volume.SourceFilePath);
-            // 与旧方案相同：优先恢复较小原始体；更大数据优先保证第一帧显示，
-            // 避免无上限读取导致显存/内存争用。可在设备专项压力测试后提升。
-            if(info.Length>512L*1024*1024)
-            {
-                _status.Text+="；大RAW暂不常驻原始缓存。";
-                return;
-            }
-            CancellationTokenSource cacheSource=CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+            // 大RAW不再降级成永久128³预览，改用OS分页的只读文件映射；
+            // 小RAW保留旧版顺序读取的高速非托管缓存。
+            bool mapped=info.Length>512L*1024*1024;
+            CancellationTokenSource cacheSource=new CancellationTokenSource();
             _activeRawCache=cacheSource;
             try
             {
                 // UInt16/Float32保留真实原始精度，绝不能通过归一化8bit图恢复。
                 FVOUnmanagedRawVolumeBuffer cache=await Task.Run(()=>
+                    mapped?FVORawVolumeLoader.MapRawBuffer(volume,cacheSource.Token):
                     FVORawVolumeLoader.LoadRawBuffer(volume,new FVORawVolumeLoadTiming(),
                         cacheSource.Token),cacheSource.Token);
                 if(cacheSource.IsCancellationRequested||generation!=_lastLoadGeneration||
@@ -92,7 +88,7 @@ namespace CxVisual.TestCenter.UI
                 }
                 volume.SetRawBuffer(cache);
                 RefreshSlices();
-                _status.Text+="；完整RAW缓存已就绪。";
+                _status.Text+=mapped?"；原始RAW文件映射已就绪（按需高清切片）。":"；完整RAW缓存已就绪。";
             }
             catch(OperationCanceledException)
             {
@@ -115,6 +111,7 @@ namespace CxVisual.TestCenter.UI
         {
             _lastLoadGeneration++;
             if(_activeRawLoad!=null)_activeRawLoad.Cancel();
+            if(_activeRawCache!=null)_activeRawCache.Cancel();
         }
     }
 }

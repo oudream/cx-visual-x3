@@ -20,8 +20,15 @@ namespace CxVisual.TestCenter.UI
         private Grid _gpuSlot;
         private MPWVolumeOpenGlControl _gpu;
         private readonly CT3DRenderingSettings _gpuSettings = new CT3DRenderingSettings();
-        private readonly CheckBox _enableGpu = new CheckBox { Content = "启用 OpenGL 3.3 真实GPU体绘" };
-        private readonly TextBlock _gpuInfo = new TextBlock { Text = "未启用GPU；显示WPF空间切面。" };
+        private readonly CheckBox _enableGpu = new CheckBox { Content = "真实GPU体绘（优先启用）", IsChecked=true };
+        private readonly TextBlock _gpuInfo = new TextBlock { Text = "GPU准备就绪后自动启动；不支持时回退空间切面。" };
+        private TextBlock _gpuModeHeader;
+        private void SetGpuModeLabel(string text,string detail)
+        {
+            if(_gpuModeHeader==null)return;
+            _gpuModeHeader.Text=text;
+            _gpuModeHeader.ToolTip=detail;
+        }
         private readonly Slider _gpuOpacity = new Slider { Minimum=0,Maximum=3,Value=1,TickFrequency=.05 };
         private readonly Slider _gpuStep = new Slider { Minimum=.25,Maximum=3,Value=1,TickFrequency=.05 };
         private readonly Slider _gpuAmbient = new Slider { Minimum=0,Maximum=1,Value=.34 };
@@ -186,9 +193,10 @@ namespace CxVisual.TestCenter.UI
                     _gpuSettings.BuildScalarTransferTexture(_volume),
                     _gpuSettings.TransferFunctions.BuildGradientOpacityTexture());
                 _gpu=gpu;
+                _gpuInfo.Text="正在核实显卡 OpenGL 3.3 Core Profile 与旧GLSL...";
+                SetGpuModeLabel("3D / GPU体绘启动中","正在检测OpenGL 3.3与GLSL");
                 _gpuSlot.Children.Add(gpu);
                 _scene.Visibility=Visibility.Collapsed;
-                _gpuInfo.Text="正在核实显卡 OpenGL 3.3 Core Profile 与旧GLSL...";
             }
             catch(Exception error) { GpuFallback("GPU初始化失败："+error.Message); }
         }
@@ -202,6 +210,7 @@ namespace CxVisual.TestCenter.UI
                 ApplyGpuUniforms();
                 RefreshOblique();
                 _gpuInfo.Text="真实GPU体绘已启用："+_gpu.DriverVersion;
+                SetGpuModeLabel("3D / OpenGL GPU体绘",_gpuInfo.Text);
                 _gpu.RenderFrame();
             }
             catch(Exception error) { GpuFallback("GPU着色失败："+error.Message); }
@@ -211,6 +220,7 @@ namespace CxVisual.TestCenter.UI
         {
             DisableGpu();
             _gpuInfo.Text="GPU不可用，已恢复WPF空间切面："+reason;
+            SetGpuModeLabel("3D / WPF切面（GPU失败）",_gpuInfo.Text);
             if (_enableGpu.IsChecked==true) _enableGpu.IsChecked=false;
         }
 
@@ -224,6 +234,8 @@ namespace CxVisual.TestCenter.UI
                 previous.Dispose();
             }
             _scene.Visibility=Visibility.Visible;
+            if(_gpuModeHeader!=null && _gpuModeHeader.Text.IndexOf("GPU失败",StringComparison.Ordinal)<0)
+                SetGpuModeLabel("3D / WPF空间切面","已手动关闭GPU体绘");
         }
 
         private void UpdateGpuSlicePositions()

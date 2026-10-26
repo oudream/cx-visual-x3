@@ -2,6 +2,7 @@ using Microsoft.Win32.SafeHandles;
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.IO.MemoryMappedFiles;
 using System.Runtime.InteropServices;
 using System.Threading;
 
@@ -15,6 +16,50 @@ namespace CxVisual.Foundation.Volume
         private const int CopyBufferBytes = 32 * 1024 * 1024;
         private readonly long _length;
         private bool _memoryPressureAdded;
+        private MemoryMappedFile _mappedFile;
+        private MemoryMappedViewAccessor _mappedView;
+
+        /// <summary>大RAW仅映射虚拟地址，OS按需分页，避免重复分配全体积大小的内存。</summary>
+        internal static unsafe FVOUnmanagedRawVolumeBuffer Map(string filePath,long expectedLength,
+            CancellationToken cancellation)
+        {
+            cancellation.ThrowIfCancellationRequested();
+            if(IntPtr.Size!=8)throw new PlatformNotSupportedException("大RAW只读映射必须使用x64。");
+            if(expectedLength<=0 || new FileInfo(filePath).Length!=expectedLength)
+                throw new InvalidDataException("RAW文件长度与原始体素数据不一致。");
+            MemoryMappedFile mapping=null;
+            MemoryMappedViewAccessor accessor=null;
+            FVOUnmanagedRawVolumeBuffer buffer=null;
+            bool acquired=false;
+            try
+            {
+                mapping=MemoryMappedFile.CreateFromFile(filePath,FileMode.Open,null,0,
+                    MemoryMappedFileAccess.Read);
+                accessor=mapping.CreateViewAccessor(0,expectedLength,MemoryMappedFileAccess.Read);
+                byte* pointer=null;
+                accessor.SafeMemoryMappedViewHandle.AcquirePointer(ref pointer);
+                acquired=true;
+                if(pointer==null)throw new IOException("RAW只读映射无法取得体素指针。");
+                buffer=new FVOUnmanagedRawVolumeBuffer(new IntPtr(checked((long)pointer+accessor.PointerOffset)),
+                    expectedLength);
+                buffer._mappedFile=mapping;
+                buffer._mappedView=accessor;
+                cancellation.ThrowIfCancellationRequested();
+                return buffer;
+            }
+            catch
+            {
+                if(buffer!=null)buffer.Dispose();
+                else
+                {
+                    if(acquired)accessor.SafeMemoryMappedViewHandle.ReleasePointer();
+                    if(accessor!=null)accessor.Dispose();
+                    if(mapping!=null)mapping.Dispose();
+                }
+                throw;
+            }
+        }
+
 
         private FVOUnmanagedRawVolumeBuffer(IntPtr pointer, long length)
             : base(true)
@@ -110,7 +155,15 @@ namespace CxVisual.Foundation.Volume
         {
             try
             {
-                Marshal.FreeHGlobal(handle);
+                if(_mappedView!=null)
+                {
+                    _mappedView.SafeMemoryMappedViewHandle.ReleasePointer();
+                    _mappedView.Dispose();
+                    _mappedFile.Dispose();
+                    _mappedView=null;
+                    _mappedFile=null;
+                }
+                else Marshal.FreeHGlobal(handle);
             }
             finally
             {

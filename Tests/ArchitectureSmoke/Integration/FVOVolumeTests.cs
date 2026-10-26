@@ -65,6 +65,26 @@ namespace CxVisual.Tests.ArchitectureSmoke
                                 cts.Token),"取消完整原始RAW缓存必须立即停止分配");
                     }
                 }
+                // 小文件强制执行大RAW的只读映射路径，不在CI创建多GB文件。
+                using(FVOVolumeData mapped16=FVORawVolumeLoader.Load(path16))
+                {
+                    mapped16.SetRawBuffer(FVORawVolumeLoader.MapRawBuffer(mapped16,
+                        CancellationToken.None));
+                    Check(mapped16.HasOriginalRawData &&
+                        mapped16.GetScalarByOriginalIndex(7,7,7)==1511f,
+                        "RAW映射应保留原始16bit标量而非8bit预览");
+                    CxVisual.Foundation.Imaging.FIMImageBuffer mappedXy=
+                        FVOSliceImageBuilder.BuildScalar(mapped16,0,0,7,FVOSlicePlane.XY);
+                    Check(mappedXy.Width==8 && mappedXy.GetGrayValue(7,7)==1511,
+                        "文件映射可用于原始分辨率切片");
+                    using(CancellationTokenSource canceled=new CancellationTokenSource())
+                    {
+                        canceled.Cancel();
+                        Expect<OperationCanceledException>(()=>
+                            FVORawVolumeLoader.MapRawBuffer(mapped16,canceled.Token),
+                            "取消大RAW映射读取");
+                    }
+                }
                 // 真实切片采样与显示分离：三平面共享相同体素/物理坐标。
                 using (FVOVolumeData scalarSource = FVORawVolumeLoader.Load(path16))
                 {

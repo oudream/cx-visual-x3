@@ -73,8 +73,10 @@ namespace CxVisual.TestCenter.UI
             Grid.SetRow(scroll,0);root.Children.Add(scroll);
 
             Grid work=new Grid { Margin=new Thickness(4,3,4,3) };
-            work.ColumnDefinitions.Add(new ColumnDefinition { Width=new GridLength(1,GridUnitType.Star) });
-            work.ColumnDefinitions.Add(new ColumnDefinition { Width=new GridLength(330),MinWidth=290 });
+            work.ColumnDefinitions.Add(new ColumnDefinition { Width=new GridLength(1,GridUnitType.Star),
+                MinWidth=450 });
+            work.ColumnDefinitions.Add(new ColumnDefinition { Width=new GridLength(5) });
+            work.ColumnDefinitions.Add(new ColumnDefinition { Width=new GridLength(430),MinWidth=340 });
             Grid.SetRow(work,1);root.Children.Add(work);
             _legacyFour=new Grid { Background=BrushOf(11,17,25) };
             _legacyFour.RowDefinitions.Add(new RowDefinition());
@@ -85,7 +87,9 @@ namespace CxVisual.TestCenter.UI
             AddSliceViewport(_legacyFour,_xy,FVOSlicePlane.XY,"XY 主视图",0,0);
             AddSliceViewport(_legacyFour,_yz,FVOSlicePlane.YZ,"YZ 侧视图",0,1);
             AddSliceViewport(_legacyFour,_xz,FVOSlicePlane.XZ,"XZ 底视图",1,0);
-            Grid gpuFrame=AddViewport(_legacyFour,_scene,"3D 体渲染",1,1);
+            Grid gpuFrame=AddViewport(_legacyFour,_scene,"3D / GPU体绘启动中",1,1);
+            Border gpuTitle=gpuFrame.Children[0] as Border;
+            _gpuModeHeader=gpuTitle==null?null:gpuTitle.Child as TextBlock;
             gpuFrame.Children.Remove(_scene);
             _gpuSlot=new Grid();Grid.SetRow(_gpuSlot,1);
             gpuFrame.Children.Add(_gpuSlot);_gpuSlot.Children.Add(_scene);
@@ -100,11 +104,17 @@ namespace CxVisual.TestCenter.UI
                 AddViewportControls(host,viewer,row,column);
             }
 
+            System.Windows.Controls.GridSplitter resizer=new System.Windows.Controls.GridSplitter {
+                Width=5,HorizontalAlignment=HorizontalAlignment.Stretch,
+                VerticalAlignment=VerticalAlignment.Stretch,Background=BrushOf(178,192,211),
+                ResizeDirection=GridResizeDirection.Columns,
+                ResizeBehavior=GridResizeBehavior.PreviousAndNext };
+            Grid.SetColumn(resizer,1);work.Children.Add(resizer);
             Grid side=new Grid { Background=BrushOf(9,15,24),
-                Margin=new Thickness(4,0,0,0) };
+                Margin=new Thickness(1,0,0,0) };
             side.RowDefinitions.Add(new RowDefinition { Height=new GridLength(44,GridUnitType.Star) });
             side.RowDefinitions.Add(new RowDefinition { Height=new GridLength(56,GridUnitType.Star) });
-            Grid.SetColumn(side,1);work.Children.Add(side);
+            Grid.SetColumn(side,2);work.Children.Add(side);
             // 与成熟WinForms工作台一致：视区黑色、设置区深色，标签与曲线编辑画布明亮。
             Style checkStyle=new Style(typeof(CheckBox));
             checkStyle.Setters.Add(new Setter(Control.ForegroundProperty,BrushOf(224,234,247)));

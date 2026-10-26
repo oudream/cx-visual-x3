@@ -159,6 +159,16 @@ namespace CxVisual.TestCenter.UI
                 volume.Name, volume.OriginalWidth, volume.OriginalHeight, volume.OriginalDepth,
                 volume.SpacingX,volume.SpacingY,volume.SpacingZ);
             RaiseStateChanged();
+            // 默认优先真正GPU体绘；等WPF视图完成布局后再构建HwndHost/WGL，
+            // 显卡驱动不支持时由GpuFallback明确报因并保留WPF空间切面。
+            if(_enableGpu.IsChecked==true && _gpu==null)
+                Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded,
+                    new Action(delegate
+                    {
+                        if(Object.ReferenceEquals(_volume,volume) &&
+                           _enableGpu.IsChecked==true && _gpu==null)
+                            TryEnableGpu();
+                    }));
         }
 
         public void MoveSlices(int x, int y, int z)
