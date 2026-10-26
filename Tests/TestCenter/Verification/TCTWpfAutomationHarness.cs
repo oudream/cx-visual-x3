@@ -19,28 +19,50 @@ namespace CxVisual.TestCenter.UI
     /// </summary>
     public static class TCTWpfAutomationHarness
     {
+        private static void TraceUiStage(string stage)
+        {
+            string line = DateTime.UtcNow.ToString("O") + "  " + stage;
+            string file = Path.Combine("Output", "Debug", "x64", "TestCenter-UIA-Stages.log");
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(file));
+                File.AppendAllText(file, line + Environment.NewLine);
+            }
+            catch (IOException) { /* UIA diagnostics must not affect test execution. */ }
+            Console.WriteLine("TestCenter UIA stage: " + line);
+        }
+
         public static async Task RunAsync(TCTMainWindow window)
         {
             if (window == null) throw new ArgumentNullException("window");
+            File.WriteAllText(Path.Combine("Output", "Debug", "x64", "TestCenter-UIA-Stages.log"),"");
+            TraceUiStage("Start full WPF UIA");
             window.Show();
             await window.Dispatcher.InvokeAsync(() => window.UpdateLayout());
             IntPtr hwnd = new WindowInteropHelper(window).Handle;
             if (hwnd == IntPtr.Zero) throw new InvalidOperationException("TestCenter has no HWND");
+            TraceUiStage("VerifyOverview");
             await Task.Run(() => VerifyOverview(hwnd, window));
             SaveScreenshot(window, "TestCenter-01-Workspace.png");
             window.Dispatcher.Invoke(new Action(() =>
                 window.Explorer.InvokeCreateContextMenuForVerification("auto.catalog")));
+            TraceUiStage("Interact");
             await Task.Run(() => Interact(hwnd, window));
             SaveScreenshot(window, "TestCenterUIA.png");
             SaveScreenshot(window, "TestCenter-02-Geometry.png");
+            TraceUiStage("InteractObject");
             await Task.Run(() => InteractObject(hwnd, window));
             SaveScreenshot(window, "TestCenter-03-Object.png");
+            TraceUiStage("InteractGraph");
             await Task.Run(() => InteractGraph(hwnd, window));
             SaveScreenshot(window, "TestCenter-05-Graph.png");
+            TraceUiStage("InteractRuntime");
             await Task.Run(() => InteractRuntime(hwnd, window));
             SaveScreenshot(window, "TestCenter-06-Runtime.png");
+            TraceUiStage("InteractChannel");
             await Task.Run(() => InteractChannel(hwnd, window));
             SaveScreenshot(window, "TestCenter-07-Channel.png");
+            TraceUiStage("InteractRuntimeJournal");
             await Task.Run(() => InteractRuntimeJournal(hwnd, window));
             SaveScreenshot(window, "TestCenter-08-RuntimeJournal.png");
             window.MenuThemeDark.RaiseEvent(new RoutedEventArgs(
@@ -48,8 +70,10 @@ namespace CxVisual.TestCenter.UI
             SaveScreenshot(window, "TestCenter-04-Dark.png");
             window.MenuThemeLight.RaiseEvent(new RoutedEventArgs(
                 System.Windows.Controls.MenuItem.ClickEvent, window.MenuThemeLight));
+            TraceUiStage("InteractManualRoot");
             await Task.Run(() => InteractManualRoot(hwnd, window));
             SaveScreenshot(window, "TestCenter-09-ManualRoot.png");
+            TraceUiStage("InteractManualChannel");
             await Task.Run(() => InteractManualChannel(hwnd, window));
             SaveScreenshot(window, "TestCenter-10-ManualChannel.png");
             window.Dispatcher.Invoke(new Action(() => {
@@ -71,6 +95,7 @@ namespace CxVisual.TestCenter.UI
                 if (window.FindCreatedInstance("manual.channel") != null)
                     throw new InvalidOperationException("右键删除没有移除左树实例");
             }));
+            TraceUiStage("InteractManualModule");
             await Task.Run(() => InteractManualModule(hwnd, window));
             SaveScreenshot(window, "TestCenter-12-ModuleConfig.png");
             window.Dispatcher.Invoke(new Action(() => {
@@ -87,6 +112,7 @@ namespace CxVisual.TestCenter.UI
                      CxVisual.Mechanism.Core.Modules.MFMModuleKind.Driver
                 })
             {
+                TraceUiStage("InteractModuleKind" + " / " + kind);
                 await Task.Run(() => InteractModuleKind(hwnd, window, kind));
                 SaveScreenshot(window, "TestCenter-Module-" + kind + ".png");
                 window.Dispatcher.Invoke(new Action(() => {
@@ -96,6 +122,7 @@ namespace CxVisual.TestCenter.UI
                         throw new InvalidOperationException("Module instance tab did not close");
                 }));
             }
+            TraceUiStage("InteractArchitectureSmoke");
             await Task.Run(() => InteractArchitectureSmoke(hwnd, window));
             SaveScreenshot(window, "TestCenter-11-ArchitectureSmoke.png");
             window.Dispatcher.Invoke(new Action(() => {
@@ -120,6 +147,7 @@ namespace CxVisual.TestCenter.UI
                     throw new InvalidOperationException("报告页没有挂接真实History");
             }));
             SaveScreenshot(window, "TestCenter-13-ScenarioReport.png");
+            TraceUiStage("Completed full WPF UIA");
         }
         private static void InteractModuleKind(IntPtr hwnd, TCTMainWindow window,
             CxVisual.Mechanism.Core.Modules.MFMModuleKind kind)
