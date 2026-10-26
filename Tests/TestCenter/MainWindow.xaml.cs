@@ -35,6 +35,7 @@ namespace CxVisual.TestCenter.UI
         private ITCTWorkspaceFrame _currentFrame;
         private bool _openingWorkspace;
         private bool _testConsoleOpenedManually;
+        private bool _automatedRunContext;
         private CancellationTokenSource _cancel;
         private TCTTestRunSummary _lastRun;
         private TCTTestRunSummary _displayedRun;
@@ -362,7 +363,7 @@ namespace CxVisual.TestCenter.UI
 
         private void OnWorkspaceActivated(TCTWorkspaceDescriptor descriptor)
         {
-            // 视觉专业工作台本身已有双层功能面板；测试宿主的辅助Inspector可临时收起。
+            // TestConsole是当前自动测试工作区内的可调宽区域，其他专业工作区不自动占位。
             UpdateTestConsole(descriptor);
             if (_currentFrame != null) _currentFrame.StateChanged -= RefreshWorkspaceCommands;
             _currentFrame = null;
@@ -400,8 +401,10 @@ namespace CxVisual.TestCenter.UI
                  descriptor.WorkspaceId == "auto.catalog" ||
                  descriptor.WorkspaceId == "auto.architecture-smoke" ||
                  (descriptor.IsCreatedInstance && descriptor.TemplateId == "auto.catalog"));
-            if (!autoTest) _testConsoleOpenedManually = false;
-            SetTestConsoleVisible(autoTest || _testConsoleOpenedManually);
+            if (autoTest) _automatedRunContext = true;
+            else if (descriptor != null) _automatedRunContext = false;
+            if (!autoTest && !_automatedRunContext) _testConsoleOpenedManually = false;
+            SetTestConsoleVisible(autoTest || _automatedRunContext || _testConsoleOpenedManually);
         }
 
         private void SetTestConsoleVisible(bool show)
@@ -479,6 +482,13 @@ namespace CxVisual.TestCenter.UI
             WorkspaceTitle.Text = test == null ? "测试主界面 / Overview" :
                 test.Descriptor.Aspect + " / " + test.Descriptor.Group + " / " + test.Descriptor.Name;
             Inspector.ShowCase(test);
+            // 在概览页选中实际Catalog用例时也属于自动测试，不应将取消/断言隐藏。
+            if (test != null && (activeTab == null ||
+                !(activeTab.Tag is TCTWorkspaceDescriptor)))
+            {
+                _automatedRunContext = true;
+                SetTestConsoleVisible(true);
+            }
             TCTTestCaseResult result = test == null ? null :
                 _visibleResults.LastOrDefault(r => r.Descriptor.Id == test.Descriptor.Id);
             if (result != null) ShowResult(result);
@@ -576,6 +586,7 @@ namespace CxVisual.TestCenter.UI
             _activeHistoryDirectory = null;
             History.SetCurrent(null);
             History.IsEnabled = false;
+            _automatedRunContext = true;
             Results.Clear(); DocumentHost.Clear(); Timeline.Clear();
             DocumentHost.Overview.Update(_catalog, _visibleResults, null);
             _cancel = new CancellationTokenSource();
