@@ -212,9 +212,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
             variables.Define(new MDSVariableDefinition("temperature", typeof(int), null, true, null, "T"));
             MDSVariableChange[] observed = null;
             int callbacks = 0;
-            using (MDSVariableChangeDispatcher dispatcher = new MDSVariableChangeDispatcher(8))
+            using (MDSVariableChangeDispatcher dispatcher = variables.CreateDispatcher(8))
             {
-                variables.ChangeCaptured += dispatcher.Enqueue;
                 using (dispatcher.Subscribe(batch => {
                     observed = batch.ToArray();
                     Interlocked.Increment(ref callbacks);

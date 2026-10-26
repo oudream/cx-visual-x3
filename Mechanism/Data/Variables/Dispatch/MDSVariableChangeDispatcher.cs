@@ -71,6 +71,7 @@ namespace CxVisual.Mechanism.Data.Variables
         private readonly AutoResetEvent _wake = new AutoResetEvent(false);
         private readonly Thread _thread;
         private readonly int _capacity;
+        private readonly MDSVariableTable _sourceTable;
         private bool _active = true, _dispatching;
         private long _received, _delivered, _coalesced, _overflow, _failures;
         private Exception _lastError;
@@ -81,6 +82,14 @@ namespace CxVisual.Mechanism.Data.Variables
             _capacity = capacity;
             _thread = new Thread(Loop) { IsBackground = true, Name = "CxVisual.Variable.LatestOnly" };
             _thread.Start();
+        }
+        // 从Table创建的Dispatcher在Dispose时自动解除订阅。
+        public MDSVariableChangeDispatcher(MDSVariableTable table, int capacity = 4096)
+            : this(capacity)
+        {
+            if (table == null) throw new ArgumentNullException("table");
+            _sourceTable = table;
+            _sourceTable.ChangeCaptured += Enqueue;
         }
         public MDSVariableSubscription Subscribe(Action<IReadOnlyList<MDSVariableChange>> callback, IEnumerable<string> ids = null)
         {
@@ -137,7 +146,7 @@ namespace CxVisual.Mechanism.Data.Variables
                         if (_latest.Count == 0)
                         {
                             _dispatching = false; Monitor.PulseAll(_gate);
-                            if (!_active) return;
+                            if (!_active) { _wake.Dispose(); return; }
                             break;
                         }
                         batch = _order.Select(id => _latest[id]).ToArray();
@@ -183,20 +192,19 @@ namespace CxVisual.Mechanism.Data.Variables
         public Exception LastSubscriberError { get { return _lastError; } }
         public void Dispose()
         {
+            bool stop = false;
             lock (_gate)
             {
-                if (!_active) return;
-                _active = false;
-                _wake.Set();
+                if (_active) { _active = false; stop = true; _wake.Set(); }
             }
+            // 不能持有派发锁反向请求Table锁，以免与变量提交线程形成锁循环。
+            if (stop && _sourceTable != null) _sourceTable.ChangeCaptured -= Enqueue;
             if (Thread.CurrentThread != _thread) _thread.Join();
             lock (_gate)
             {
                 foreach (MDSVariableSubscription s in _subscribers) s.Active = false;
                 _subscribers.Clear();
             }
-            // 从回调线程调用Dispose时，不可提前释放该线程仍将WaitOne的句柄。
-            if (Thread.CurrentThread != _thread) _wake.Dispose();
         }
     }
 }

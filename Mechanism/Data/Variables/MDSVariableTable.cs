@@ -92,9 +92,7 @@ namespace CxVisual.Mechanism.Data.Variables
         // 仅用户主动开启变化派发，不影响旧Get/Update简单使用。
         public MDSVariableChangeDispatcher CreateDispatcher(int capacity = 4096)
         {
-            MDSVariableChangeDispatcher dispatcher = new MDSVariableChangeDispatcher(capacity);
-            ChangeCaptured += dispatcher.Enqueue;
-            return dispatcher;
+            return new MDSVariableChangeDispatcher(this, capacity);
         }
 
         private void ForwardChanged(string name)
