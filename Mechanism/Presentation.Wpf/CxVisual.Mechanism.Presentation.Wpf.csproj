@@ -32,6 +32,7 @@
     <Compile Include="Volume\Rendering\OpenGl\MPWVolumeShaderSources.cs"/>
     <Compile Include="Volume\Rendering\OpenGl\MPWVolumeGeometry.cs"/>
     <Compile Include="Imaging\MPWImagePlotControl.cs"/>
+    <Compile Include="Volume\Views\MPWVolumeSliceSceneControl.cs"/>
     <Compile Include="Imaging\MPWImageRulerControl.cs"/></ItemGroup>
   <ItemGroup>
     <Page Include="LogViewerControl.xaml"><Generator>MSBuild:Compile</Generator><SubType>Designer</SubType></Page>

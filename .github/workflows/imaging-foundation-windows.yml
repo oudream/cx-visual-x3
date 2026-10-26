@@ -16,6 +16,8 @@ on:
       - 'Tests/ArchitectureSmoke/Integration/MVIImageSessionTests.cs'
       - 'Tests/ArchitectureSmoke/Program.cs'
       - 'Mechanism/Presentation.Wpf/Imaging/**'
+      - 'Mechanism/Presentation.Wpf/Volume/**'
+      - 'Tests/TestCenter/Manual/Volume/**'
       - 'Mechanism/Presentation.Wpf/CxVisual.Mechanism.Presentation.Wpf.csproj'
       - 'Tests/TestCenter/Manual/Imaging/**'
       - 'Tests/TestCenter/Common/Framework/TCTWorkspaceRegistry.cs'
@@ -72,6 +74,25 @@ jobs:
             if (Test-Path $errorFile) { Get-Content $errorFile }
             throw 'TestCenter native WPF ImageViewer smoke failed'
           }
+      - name: Execute real WPF 3D spatial slice workbench
+        shell: pwsh
+        run: |
+          $exe = '.\\Output\\Release\\x64\\CxVisual.TestCenter.exe'
+          $env:CXVISUAL_VOLUME_UI_SCREENSHOT = Join-Path (Get-Location) 'Output\\Volume-UI\\workbench.png'
+          $process = Start-Process -FilePath (Resolve-Path $exe).Path -ArgumentList '--volume-viewer-smoke' -Wait -PassThru
+          if ($process.ExitCode -ne 0) {
+            $errorFile = Join-Path ([System.IO.Path]::GetTempPath()) 'CxVisual-Volume-Viewer-Error.txt'
+            if (Test-Path $errorFile) { Get-Content $errorFile }
+            throw 'Native WPF 3D slice workbench smoke failed'
+          }
+      - name: Upload WPF 3D slice workbench screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cxvisual-volume-ui-\u0024{{ github.sha }}
+          path: Output/Volume-UI/*.png
+          retention-days: 7
+          if-no-files-found: warn
       - name: Upload original WPF workbench screenshot (synthetic fixture)
         if: always()
         uses: actions/upload-artifact@v4

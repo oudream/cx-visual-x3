@@ -121,7 +121,7 @@ namespace CxVisual.TestCenter.UI
             registry.Register(new TCTWorkspaceDescriptor("manual.graphics", "manual.root", "图元绘制测试",
                 "专用可编辑画布：待接入", TCTWorkspaceNodeKind.Leaf));
             registry.Register(new TCTWorkspaceDescriptor("manual.ct3d", "manual.root", "CT/3D测试",
-                "体数据专业Owner未授权接入：待接入", TCTWorkspaceNodeKind.Leaf));
+                "真实FVO/MVI/MPW三正交视图与WPF三维切面；OpenGL体绘仍在迁移", TCTWorkspaceNodeKind.Leaf, () => new TCTManualVolumeViewerFrame()));
             registry.Register(new TCTWorkspaceDescriptor("reports.auto", "reports.root", "自动测试报告",
                 "入口已注册；真实Run与导出由既有Results/History提供", TCTWorkspaceNodeKind.Leaf));
             registry.Register(new TCTWorkspaceDescriptor("reports.manual", "reports.root", "人工测试报告",
