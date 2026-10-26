@@ -190,7 +190,22 @@ namespace CxVisual.Tests.ArchitectureSmoke
             {
                 var assembly=Assembly.LoadFrom(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"CxVisual.Studio.exe"));
                 VerifyScopedOverlay(assembly);
-                if(Application.Current==null){app=new Application{ShutdownMode=ShutdownMode.OnExplicitShutdown};app.Resources.MergedDictionaries.Add(new ResourceDictionary{Source=new Uri("/CxVisual.Studio;component/Themes/Colors.xaml",UriKind.Relative)});app.Resources.MergedDictionaries.Add(new ResourceDictionary{Source=new Uri("/CxVisual.Studio;component/Styles/Controls.xaml",UriKind.Relative)});}
+                if(Application.Current==null)
+                {
+                    app=new Application{ShutdownMode=ShutdownMode.OnExplicitShutdown};
+                    // 独立ArchitectureSmoke宿主与Studio.App.xaml必须使用同一公共资源加载顺序。
+                    foreach(string uri in new[]{
+                        "/CxVisual.Mechanism.Presentation.Wpf;component/Themes/MPWVisualPalette.xaml",
+                        "/CxVisual.Mechanism.Presentation.Wpf;component/Themes/MPWWorkspaceControls.xaml",
+                        "/CxVisual.Studio;component/Themes/Colors.xaml",
+                        "/CxVisual.Studio;component/Styles/Controls.xaml"
+                    })
+                        app.Resources.MergedDictionaries.Add(new ResourceDictionary {
+                            Source=new Uri(uri,UriKind.Relative)
+                        });
+                }
+                Check(Application.Current.TryFindResource("MPWInputStyle") is Style,
+                    "Independent Studio WPF host missed public MPW input resources");
                 window=(Window)Activator.CreateInstance(assembly.GetType("CxVisual.Studio.MainWindow"));window.Left=-10000;window.Top=-10000;window.ShowInTaskbar=false;window.ShowActivated=false;
                 var vm=window.DataContext;vm.GetType().GetProperty("ConfirmReplace").SetValue(vm,new Func<MEMEngineeringSession,bool>(s=>true),null);window.Show();Pump();
                 var session=(MEMEngineeringSession)Get(vm,"ProjectSession");var original=session.Project.Pages[0];int oldCount=original.RootContent.DescendantsAndSelf().Count();
