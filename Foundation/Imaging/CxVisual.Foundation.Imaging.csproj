@@ -34,6 +34,7 @@
     <Compile Include="Processing\FIMImageOperations.cs"/>
     <Compile Include="Processing\FIMImageFilters.cs"/>
     <Compile Include="Processing\FIMImageToneMapping.cs"/>
+    <Compile Include="Processing\FIMImageBlend.cs"/>
     <Compile Include="Images\FIMPixelSpacing.cs"/>
     <Compile Include="Processing\FIMImageMeasurement.cs"/></ItemGroup>
 <ItemGroup>
