@@ -42,6 +42,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         private MVIImageResizeHandle _resizeHandle;
         private bool _resizing, _resizingSecondary;
         private bool _editingVertex, _editingVertexSecondary;
+        private bool _rotatingOverlay, _rotatingSecondary;
+        private MVIImageOverlayItem _rotationStart;
         private MVIImageOverlayItem _vertexEditStart;
         private int _vertexIndex;
         private Point _startPointer;
@@ -192,10 +194,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 if (!Enum.IsDefined(typeof(MVIImageToolMode), value))
                     throw new ArgumentOutOfRangeException("value");
                 _toolMode = value;
-                _dragging = _selecting = _moving = _resizing = _editingVertex = false;
+                _dragging = _selecting = _moving = _resizing =
+                    _editingVertex = _rotatingOverlay = false;
                 _movingOverlay = null;
                 _resizeStart = null;
                 _vertexEditStart = null;
+                _rotationStart = null;
                 if (ViewportRoot.IsMouseCaptured) ViewportRoot.ReleaseMouseCapture();
                 if (SecondaryViewportRoot.IsMouseCaptured) SecondaryViewportRoot.ReleaseMouseCapture();
                 _polygonDraft.Clear();
@@ -252,6 +256,28 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             return changed;
         }
 
+        /// <summary>旋转矩形宽高/角度均为原图几何，经过唯一MVI Store发通知。</summary>
+        public MVIImageOverlayItem RotateSelectedRectangle(double angleDegrees)
+        {
+            VerifyAccess();
+            if(!_selectedOverlayId.HasValue || ActiveImage==null)
+                throw new InvalidOperationException("尚未选中旋转矩形或加载图像。");
+            MVIImageOverlayItem item=_overlays.Find(_selectedOverlayId.Value);
+            if(item==null || !_overlays.GetVisibleItems().Any(x=>x.Id==item.Id))
+                throw new InvalidOperationException("旋转对象不存在或图层不可见。");
+            MVIImageOverlayItem changed=item.WithRotatedRectangleAngle(
+                angleDegrees,ActiveImage.Width,ActiveImage.Height);
+            if(!_overlays.Replace(changed))
+                throw new InvalidOperationException("旋转对象已被删除。");
+            return changed;
+        }
+        public MVIImageOverlayItem AddRotatedRectangle(FGERect2D rect,double angleDegrees)
+        {
+            VerifyAccess();
+            if(ActiveImage==null) throw new InvalidOperationException("请先加载原图。");
+            return AddOverlay(MVIImageOverlayItem.CreateRotatedRectangle(
+                rect,angleDegrees,ActiveImage.Width,ActiveImage.Height));
+        }
         /// <summary>与第一阶段TCT矩形ROI切换代码保持兼容。</summary>
         public bool IsRegionTool
         {
@@ -1018,6 +1044,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                     canvas.Children.Add(rectangle);
                 }
                 else if (item.Kind == MVIImageOverlayKind.PolygonRoi ||
+                         item.Kind == MVIImageOverlayKind.RotatedRectangleRoi ||
                          item.Kind == MVIImageOverlayKind.PolygonAnnotation ||
                          (item.Kind == MVIImageOverlayKind.AreaMeasurement && item.Points.Count >= 3))
                 {
@@ -1083,17 +1110,23 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                     DrawMeasurementLabel(item,stroke,new Point(right,top),canvas);
             }
             if ((_toolMode == MVIImageToolMode.ResizeOverlay ||
-                _toolMode == MVIImageToolMode.EditPolygonVertex) && _selectedOverlayId.HasValue)
+                _toolMode == MVIImageToolMode.EditPolygonVertex ||
+                _toolMode == MVIImageToolMode.RotateOverlay) && _selectedOverlayId.HasValue)
             {
                 MVIImageOverlayItem selected = _overlays.GetVisibleItems().FirstOrDefault(
                     item => item.Id == _selectedOverlayId.Value && item.Layer == MVIImageOverlayLayer.Roi);
                 if (selected != null && !selected.IsLocked &&
                     selected.Bounds.Width > 0 && selected.Bounds.Height > 0)
                 {
-                    if (_toolMode == MVIImageToolMode.ResizeOverlay)
+                    if (_toolMode == MVIImageToolMode.ResizeOverlay &&
+                        selected.Kind!=MVIImageOverlayKind.RotatedRectangleRoi)
                         DrawResizeHandles(canvas,viewport,selected);
-                    else if (selected.Kind==MVIImageOverlayKind.PolygonRoi)
+                    else if (_toolMode == MVIImageToolMode.EditPolygonVertex &&
+                        selected.Kind==MVIImageOverlayKind.PolygonRoi)
                         DrawPolygonVertexHandles(canvas,viewport,selected);
+                    else if (_toolMode == MVIImageToolMode.RotateOverlay &&
+                        selected.Kind==MVIImageOverlayKind.RotatedRectangleRoi)
+                        DrawRotationHandle(canvas,viewport,selected);
                 }
             }
         }
@@ -1147,6 +1180,84 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 Canvas.SetTop(dot,screen.Y-5.5);
                 canvas.Children.Add(dot);
             }
+        }
+
+        private static FGEPoint2D RotatedRectangleCenter(MVIImageOverlayItem item)
+        {
+            return new FGEPoint2D((item.Points[0].X+item.Points[2].X)/2.0,
+                (item.Points[0].Y+item.Points[2].Y)/2.0);
+        }
+        private Point RotationHandleScreenPoint(MVIImageOverlayItem item,MVIImageViewport viewport)
+        {
+            FGEPoint2D center=RotatedRectangleCenter(item);
+            FGEPoint2D a=item.Points[0],b=item.Points[1];
+            Point p=SourceToCanvas(center,viewport);
+            double dx=(a.X+b.X)/2.0-center.X,dy=(a.Y+b.Y)/2.0-center.Y;
+            double length=Math.Sqrt(dx*dx+dy*dy);
+            double r=item.RotatedRectangleHeight*viewport.Scale/2.0+20.0;
+            return new Point(p.X+dx*r/length,p.Y+dy*r/length);
+        }
+        private void DrawRotationHandle(Canvas canvas,MVIImageViewport viewport,
+            MVIImageOverlayItem item)
+        {
+            Point handlePoint=RotationHandleScreenPoint(item,viewport);
+            Point center=SourceToCanvas(RotatedRectangleCenter(item),viewport);
+            DrawLine(center.X,center.Y,handlePoint.X,handlePoint.Y,Brushes.Gold,1.2,canvas);
+            Ellipse circle=new Ellipse {Width=12,Height=12,Fill=Brushes.Gold,
+                Stroke=Brushes.DarkSlateGray,StrokeThickness=1.4,
+                Tag="RotationHandle",IsHitTestVisible=false};
+            System.Windows.Automation.AutomationProperties.SetAutomationId(circle,
+                "MPW.Imaging.RotateOverlay.Handle");
+            Canvas.SetLeft(circle,handlePoint.X-6);
+            Canvas.SetTop(circle,handlePoint.Y-6);
+            canvas.Children.Add(circle);
+        }
+        public int RotationHandleVisualCount
+        { get { return OverlayCanvas.Children.OfType<Ellipse>()
+            .Count(x=>string.Equals(x.Tag as string,"RotationHandle",StringComparison.Ordinal)); } }
+        public int SecondaryRotationHandleVisualCount
+        { get { return SecondaryOverlayCanvas.Children.OfType<Ellipse>()
+            .Count(x=>string.Equals(x.Tag as string,"RotationHandle",StringComparison.Ordinal)); } }
+        private bool BeginRotation(Point pointer,MVIImageViewport viewport,bool secondary)
+        {
+            if(ActiveImage==null || !OverlayMatchesActiveImage()) return false;
+            MVIImageOverlayItem item=_selectedOverlayId.HasValue?
+                _overlays.Find(_selectedOverlayId.Value):null;
+            if(item!=null && item.Kind==MVIImageOverlayKind.RotatedRectangleRoi &&
+                !item.IsLocked && _overlays.GetVisibleItems().Any(x=>x.Id==item.Id))
+            {
+                Point handle=RotationHandleScreenPoint(item,viewport);
+                if(Math.Abs(pointer.X-handle.X)<=9 && Math.Abs(pointer.Y-handle.Y)<=9)
+                {
+                    _rotationStart=item;_rotatingOverlay=true;_rotatingSecondary=secondary;
+                    return true;
+                }
+            }
+            FGEPoint2D p=_viewTransform.DisplayToSource(new FGEPoint2D(
+                viewport.ImageX(pointer.X),viewport.ImageY(pointer.Y)),
+                ActiveImage.Width,ActiveImage.Height);
+            IReadOnlyList<MVIImageOverlayItem> items=_overlays.GetVisibleItems();
+            for(int i=items.Count-1;i>=0;i--)
+                if(items[i].Kind==MVIImageOverlayKind.RotatedRectangleRoi &&
+                    FGEGeometry2D.PointInPolygon(p,items[i].Points))
+                {SelectOverlay(items[i].Id);return true;}
+            SelectOverlay(null);return false;
+        }
+        private void UpdateRotation(Point pointer,MVIImageViewport viewport)
+        {
+            if(!_rotatingOverlay || _rotationStart==null || ActiveImage==null)return;
+            if(_overlays.Find(_rotationStart.Id)==null)
+            {_rotatingOverlay=false;_rotationStart=null;return;}
+            FGEPoint2D center=RotatedRectangleCenter(_rotationStart);
+            FGEPoint2D p=_viewTransform.DisplayToSource(new FGEPoint2D(
+                viewport.ImageX(pointer.X),viewport.ImageY(pointer.Y)),
+                ActiveImage.Width,ActiveImage.Height);
+            if(p.DistanceTo(center)<1e-6)return;
+            double angle=Math.Atan2(p.Y-center.Y,p.X-center.X)*180/Math.PI+90;
+            try { _overlays.Replace(_rotationStart.WithRotatedRectangleAngle(
+                angle,ActiveImage.Width,ActiveImage.Height)); }
+            catch(ArgumentOutOfRangeException)
+            {PixelStatus.Text="旋转角点超出原图，保留最近一次有效矩形。";}
         }
 
         private bool TryPolygonVertexHandle(Point pointer,MVIImageViewport viewport,
@@ -1378,7 +1489,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             if (kind == MVIImageOverlayKind.RectangleRoi)
                 _region = r;
             else _region = null;
-            _overlays.Add(new MVIImageOverlayItem(kind, layer, rect, points, text));
+            if(kind==MVIImageOverlayKind.RotatedRectangleRoi)
+            {
+                if(rect.Width<0.25 || rect.Height<0.25)return;
+                AddRotatedRectangle(rect,0);
+            }
+            else _overlays.Add(new MVIImageOverlayItem(kind, layer, rect, points, text));
             DrawSelection();
             RaiseSelectionChanged();
         }
@@ -1442,6 +1558,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 return p.DistanceTo(center) <= tolerance;
             }
             if (item.Kind == MVIImageOverlayKind.PolygonRoi ||
+                item.Kind == MVIImageOverlayKind.RotatedRectangleRoi ||
                 item.Kind == MVIImageOverlayKind.PolygonAnnotation ||
                 (item.Kind == MVIImageOverlayKind.AreaMeasurement && item.Points.Count >= 3))
                 return item.Points.Count >= 3 && FGEGeometry2D.PointInPolygon(p, item.Points);
@@ -1498,6 +1615,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             switch (mode)
             {
                 case MVIImageToolMode.RectangleRoi: return MVIImageOverlayKind.RectangleRoi;
+                case MVIImageToolMode.RotatedRectangleRoi:
+                    return MVIImageOverlayKind.RotatedRectangleRoi;
                 case MVIImageToolMode.CircleRoi: return MVIImageOverlayKind.CircleRoi;
                 case MVIImageToolMode.EllipseRoi: return MVIImageOverlayKind.EllipseRoi;
                 case MVIImageToolMode.Distance: return MVIImageOverlayKind.DistanceMeasurement;
@@ -1517,6 +1636,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         private void OnSecondaryMouseDown(object sender, MouseButtonEventArgs e)
         {
             if (!IsSideBySideVisible || _session.Result == null) return;
+            if(_toolMode==MVIImageToolMode.RotateOverlay)
+            {
+                if(BeginRotation(e.GetPosition(SecondaryViewportRoot),_secondaryViewport,true))
+                    SecondaryViewportRoot.CaptureMouse();
+                e.Handled=true;return;
+            }
             if (_toolMode == MVIImageToolMode.EditPolygonVertex)
             {
                 if (BeginPolygonVertexEdit(e.GetPosition(SecondaryViewportRoot),
@@ -1536,6 +1661,11 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         }
         private void OnSecondaryMouseUp(object sender, MouseButtonEventArgs e)
         {
+            if(_rotatingOverlay && _rotatingSecondary)
+            {
+                UpdateRotation(e.GetPosition(SecondaryViewportRoot),_secondaryViewport);
+                _rotatingOverlay=false;_rotationStart=null;RaiseSelectionChanged();
+            }
             if (_editingVertex && _editingVertexSecondary)
             {
                 UpdatePolygonVertexEdit(e.GetPosition(SecondaryViewportRoot),_secondaryViewport);
@@ -1555,7 +1685,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         {
             if (!IsSideBySideVisible || _session.Result == null) return;
             Point pointer = e.GetPosition(SecondaryViewportRoot);
-            if (_editingVertex && _editingVertexSecondary &&
+            if(_rotatingOverlay && _rotatingSecondary && e.LeftButton==MouseButtonState.Pressed)
+                UpdateRotation(pointer,_secondaryViewport);
+            else if (_editingVertex && _editingVertexSecondary &&
                 e.LeftButton==MouseButtonState.Pressed)
                 UpdatePolygonVertexEdit(pointer,_secondaryViewport);
             else if (_resizing && _resizingSecondary && e.LeftButton == MouseButtonState.Pressed)
@@ -1598,6 +1730,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             if (ActiveImage == null) return;
             Point pointer = e.GetPosition(ViewportRoot);
             int x,y;
+            if(_toolMode==MVIImageToolMode.RotateOverlay)
+            {
+                if(BeginRotation(pointer,_viewport,false))
+                {ViewportRoot.CaptureMouse();e.Handled=true;}
+                return;
+            }
             if (_toolMode == MVIImageToolMode.EditPolygonVertex)
             {
                 if(BeginPolygonVertexEdit(pointer,_viewport,false))
@@ -1680,6 +1818,11 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
 
         private void OnMouseUp(object sender, MouseButtonEventArgs e)
         {
+            if(_rotatingOverlay && !_rotatingSecondary)
+            {
+                UpdateRotation(e.GetPosition(ViewportRoot),_viewport);
+                _rotatingOverlay=false;_rotationStart=null;RaiseSelectionChanged();
+            }
             if (_editingVertex && !_editingVertexSecondary)
             {
                 UpdatePolygonVertexEdit(e.GetPosition(ViewportRoot),_viewport);
@@ -1738,6 +1881,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             else if (_editingVertex && !_editingVertexSecondary &&
                 e.LeftButton==MouseButtonState.Pressed)
                 UpdatePolygonVertexEdit(pointer,_viewport);
+            else if(_rotatingOverlay && !_rotatingSecondary &&
+                e.LeftButton==MouseButtonState.Pressed)
+                UpdateRotation(pointer,_viewport);
             int px,py;
             if (TryImagePoint(pointer,out px,out py))
             {
@@ -1765,7 +1911,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
 
         private void OnMouseLeave(object sender, MouseEventArgs e)
         {
-            if (!_dragging && !_selecting && !_resizing && !_editingVertex && ActiveImage != null)
+            if (!_dragging && !_selecting && !_resizing && !_editingVertex &&
+                !_rotatingOverlay && ActiveImage != null)
                 PixelStatus.Text = ActiveImage.Width + "×" + ActiveImage.Height +
                     " · " + ActiveImage.PixelFormat + " · " + _viewport.Scale.ToString("0.##") + "×";
         }
