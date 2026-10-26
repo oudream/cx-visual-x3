@@ -456,6 +456,85 @@ namespace CxVisual.TestCenter.UI
                 operationTabs.SelectedIndex = 0;
                 window.UpdateLayout();
 
+                // 通过区域页按钮与对象列表选择真实ROI，再验证八柄显示、
+                // 原图边界限制、显示旋转镜像以及双视口共用同一Store身份。
+                TabControl roiTabs=FindControl<TabControl>(frame,"TCT.Imaging.SecondaryTabs");
+                roiTabs.SelectedIndex=0;
+                window.UpdateLayout();
+                Button editAction=FindControl<Button>(frame,"TCT.Imaging.ResizeOverlay");
+                ListBox overlayList=FindControl<ListBox>(frame,"TCT.Imaging.OverlayList");
+                if (editAction==null || overlayList==null)
+                    throw new InvalidOperationException("区域页缺失ROI精细编辑按钮或对象列表");
+                MVIImageOverlayItem editable=frame.Viewer.AddOverlay(new MVIImageOverlayItem(
+                    MVIImageOverlayKind.RectangleRoi,MVIImageOverlayLayer.Roi,
+                    new FGERect2D(.5,.5,2.5,2.5)));
+                ListBoxItem editRow=overlayList.Items.OfType<ListBoxItem>()
+                    .FirstOrDefault(x=>(Guid)x.Tag==editable.Id);
+                if (editRow==null)
+                    throw new InvalidOperationException("真实ROI创建后未进入区域对象列表");
+                overlayList.SelectedItem=editRow;
+                editAction.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                if (frame.Viewer.ToolMode!=MVIImageToolMode.ResizeOverlay ||
+                    frame.Viewer.SelectedOverlayId!=editable.Id ||
+                    frame.Viewer.ResizeHandleVisualCount!=8)
+                    throw new InvalidOperationException("真实工具按钮/列表选中没有激活八方向编辑柄");
+                MVIImageOverlayItem resizedTop=frame.Viewer.ResizeSelectedOverlay(
+                    MVIImageResizeHandle.TopLeft,new FGEPoint2D(-8,-8));
+                if (resizedTop.Id!=editable.Id || resizedTop.Bounds.Left!=0 ||
+                    resizedTop.Bounds.Top!=0 || resizedTop.Bounds.Right!=3 ||
+                    resizedTop.Bounds.Bottom!=3)
+                    throw new InvalidOperationException("左上ROI编辑柄未按原图空间约束边界");
+                MVIImageOverlayItem resizedBottom=frame.Viewer.ResizeSelectedOverlay(
+                    MVIImageResizeHandle.BottomRight,new FGEPoint2D(200,200));
+                if (resizedBottom.Bounds.Right!=4 || resizedBottom.Bounds.Bottom!=4 ||
+                    resizedBottom.Id!=editable.Id)
+                    throw new InvalidOperationException("右下编辑柄没有钳位于原图边界");
+                frame.Viewer.RotateViewClockwise();
+                frame.Viewer.FlipViewHorizontal();
+                if (frame.Viewer.ResizeHandleVisualCount!=8 ||
+                    frame.Viewer.Overlays.Find(editable.Id).Bounds.Right!=4)
+                    throw new InvalidOperationException("显示旋转镜像破坏ROI手柄或原图几何");
+                frame.Viewer.ResetViewTransform();
+                frame.Viewer.ShowResult(FIMImageOperations.FlipHorizontal(image));
+                frame.Viewer.SideBySideOriginalAndResult(true);
+                window.UpdateLayout();
+                frame.Viewer.FitToWindow();
+                if (frame.Viewer.ResizeHandleVisualCount!=8 ||
+                    frame.Viewer.SecondaryResizeHandleVisualCount!=8)
+                    throw new InvalidOperationException("两幅WPF图窗没有投影同一ROI八柄");
+                frame.Viewer.SetOverlayLayerVisible(MVIImageOverlayLayer.Roi,false);
+                if (frame.Viewer.ResizeHandleVisualCount!=0 ||
+                    frame.Viewer.SecondaryResizeHandleVisualCount!=0)
+                    throw new InvalidOperationException("隐藏ROI层仍残留交互控制柄");
+                bool hiddenRejected=false;
+                try { frame.Viewer.ResizeSelectedOverlay(
+                    MVIImageResizeHandle.Right,new FGEPoint2D(3,3)); }
+                catch (InvalidOperationException) { hiddenRejected=true; }
+                if (!hiddenRejected)
+                    throw new InvalidOperationException("隐藏ROI图层仍可被API修改");
+                frame.Viewer.SetOverlayLayerVisible(MVIImageOverlayLayer.Roi,true);
+                frame.Viewer.DisableBlend();
+                MVIImageOverlayItem polyEdit=frame.Viewer.AddOverlay(new MVIImageOverlayItem(
+                    MVIImageOverlayKind.PolygonRoi,MVIImageOverlayLayer.Roi,
+                    new FGERect2D(.5,.5,2,2),
+                    new[]{new FGEPoint2D(.5,.5),new FGEPoint2D(2.5,.5),
+                          new FGEPoint2D(1.5,2.5)}));
+                frame.Viewer.SelectOverlay(polyEdit.Id);
+                MVIImageOverlayItem editedPolygon=frame.Viewer.ResizeSelectedOverlay(
+                    MVIImageResizeHandle.Right,new FGEPoint2D(3.5,2.5));
+                if (editedPolygon.Id!=polyEdit.Id ||
+                    Math.Abs(editedPolygon.Points[1].X-3.5)>1e-9 ||
+                    polyEdit.Points[1].X!=2.5)
+                    throw new InvalidOperationException("多边形边柄编辑未保留原图顶点/对象身份");
+                frame.Viewer.Overlays.Remove(editable.Id);
+                frame.Viewer.Overlays.Remove(polyEdit.Id);
+                frame.Viewer.SelectOverlay(null);
+                frame.Viewer.ToolMode=MVIImageToolMode.Navigate;
+                if (frame.Viewer.ResizeHandleVisualCount!=0 ||
+                    frame.Viewer.SecondaryResizeHandleVisualCount!=0)
+                    throw new InvalidOperationException("退出编辑模式未清除WPF编辑柄");
+                Console.WriteLine("PASS TCT ROI edit: toolbar/list, eight handles, clipping, mirror, dual pane and polygon geometry");
+
                 // 程序化创建真实叠加项，让MPW的WPF Canvas实际绘制，并检查层级隐藏/删除。
                 MVIImageOverlayItem rect = frame.Viewer.AddOverlay(new MVIImageOverlayItem(
                     MVIImageOverlayKind.RectangleRoi, MVIImageOverlayLayer.Roi,

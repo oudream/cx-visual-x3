@@ -474,6 +474,7 @@ namespace CxVisual.TestCenter.UI
             Action(buttons,"隐藏/显示层","LayerVisibility",ToggleSelectedLayer);
             Action(buttons,"显示所有层","ShowAllLayers",ShowAllLayers);
             content.Children.Add(buttons);
+            AutomationProperties.SetAutomationId(_overlayList,"TCT.Imaging.OverlayList");
             content.Children.Add(_overlayList);
             content.Children.Add(Hint("先选择列表ROI或点击图中ROI；选“八柄缩放”后拖动蓝白控制点，边/角会限定在原图内。多边形缩放同步顶点，左右双图使用同一个对象ID。"));
             return Scroll(content);
