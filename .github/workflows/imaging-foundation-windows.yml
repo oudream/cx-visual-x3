@@ -59,9 +59,18 @@ jobs:
         run: |
           $exe = '.\Output\Release\x64\CxVisual.TestCenter.exe'
           # TestCenter is WinExe: PowerShell's '&' is nonblocking and $LASTEXITCODE may be null.
+          $env:CXVISUAL_IMAGING_UI_SCREENSHOT = Join-Path (Get-Location) 'Output\Imaging-UI\workbench.png'
           $process = Start-Process -FilePath (Resolve-Path $exe).Path -ArgumentList '--imaging-viewer-smoke' -Wait -PassThru
           if ($process.ExitCode -ne 0) {
             $errorFile = Join-Path ([System.IO.Path]::GetTempPath()) 'CxVisual-Imaging-Viewer-Error.txt'
             if (Test-Path $errorFile) { Get-Content $errorFile }
             throw 'TestCenter native WPF ImageViewer smoke failed'
           }
+      - name: Upload original WPF workbench screenshot (synthetic fixture)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cxvisual-imaging-ui-${{ github.sha }}
+          path: Output/Imaging-UI/workbench.png
+          retention-days: 7
+          if-no-files-found: warn

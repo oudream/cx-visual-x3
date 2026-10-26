@@ -1,6 +1,11 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Automation;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using CxVisual.Foundation.Imaging;
 using CxVisual.Foundation.Geometry;
 using CxVisual.Mechanism.Visual;
@@ -13,6 +18,88 @@ namespace CxVisual.TestCenter.UI
     /// </summary>
     internal static class TCTImageViewerSmoke
     {
+        private static void AssertVisualLayout(TCTManualImageViewerFrame frame, Window window)
+        {
+            string[] top = {"显示","窗位","灰阶","测量","标注"};
+            string[] bottom = {"区域","统计","剖面","变换","输出"};
+            if (!top.SequenceEqual(frame.DisplayTabTitles) ||
+                !bottom.SequenceEqual(frame.AnalysisTabTitles) ||
+                frame.QuickActionCount < 14)
+                throw new InvalidOperationException("二维工作台顶栏或上下五页签配置不完整。");
+
+            TabControl primary = FindControl<TabControl>(frame,"TCT.Imaging.PrimaryTabs");
+            TabControl secondary = FindControl<TabControl>(frame,"TCT.Imaging.SecondaryTabs");
+            if (primary == null || secondary == null)
+                throw new InvalidOperationException("真实WPF双区页签不存在。");
+            Button fit = FindControl<Button>(frame,"TCT.Imaging.Fit");
+            if (fit == null) throw new InvalidOperationException("高频适应窗口操作缺失。");
+            // 真正触发按钮Click及原先异常处理，而不是直接调用业务层。
+            fit.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            primary.SelectedIndex = 3;
+            secondary.SelectedIndex = 3;
+            window.UpdateLayout();
+            if (FindControl<Button>(frame,"TCT.Imaging.MeasureAngle") == null ||
+                FindControl<Button>(frame,"TCT.Imaging.Gaussian") == null)
+                throw new InvalidOperationException("测量/变换功能页缺少真实操作按钮。");
+            primary.SelectedIndex = 4;
+            secondary.SelectedIndex = 4;
+            window.UpdateLayout();
+            if (FindControl<Button>(frame,"TCT.Imaging.DefectBox") == null ||
+                FindControl<Button>(frame,"TCT.Imaging.SaveViewPng") == null ||
+                FindControl<Button>(frame,"TCT.Imaging.RawOpen") == null)
+                throw new InvalidOperationException("标注/输出页遗失旧操作入口。");
+            primary.SelectedIndex = 0;
+            secondary.SelectedIndex = 0;
+            window.UpdateLayout();
+            Console.WriteLine("PASS TCT Imaging UI: 15+ one-row commands, dual five-tab panels, controls and action access");
+        }
+
+        private static T FindControl<T>(DependencyObject root,string id) where T : DependencyObject
+        {
+            T control = root as T;
+            if (control != null && AutomationProperties.GetAutomationId(control) == id)
+                return control;
+            int count = VisualTreeHelper.GetChildrenCount(root);
+            for (int i = 0; i < count; i++)
+            {
+                T child = FindControl<T>(VisualTreeHelper.GetChild(root,i),id);
+                if (child != null) return child;
+            }
+            return null;
+        }
+
+        private static void CaptureWorkbenchIfRequested(TCTManualImageViewerFrame frame, Window window)
+        {
+            string path = Environment.GetEnvironmentVariable("CXVISUAL_IMAGING_UI_SCREENSHOT");
+            if (string.IsNullOrWhiteSpace(path)) return;
+            int width = 900, height = 650;
+            // 仅包含合成图像；不能把工厂文件上传到公共Actions工件。
+            byte[] pixels = new byte[width * height];
+            for (int y = 0; y < height; y++)
+                for (int x = 0; x < width; x++)
+                {
+                    double dx = (x - 420.0) / 280.0, dy = (y - 300.0) / 215.0;
+                    double outer = dx*dx + dy*dy;
+                    int value = (int)(45 + x*0.09 + y*0.07);
+                    if (outer < 1.0) value += 65;
+                    if (Math.Abs(dx) < 0.45 && Math.Abs(dy) < 0.38) value -= 35;
+                    pixels[y*width+x] = (byte)Math.Max(0,Math.Min(255,value));
+                }
+            frame.SetOriginal(new FIMImageBuffer(width,height,FIMPixelFormat.Gray8,pixels));
+            frame.Viewer.FitToWindow();
+            window.UpdateLayout();
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            int w = (int)Math.Ceiling(window.ActualWidth);
+            int h = (int)Math.Ceiling(window.ActualHeight);
+            RenderTargetBitmap bitmap = new RenderTargetBitmap(w,h,96,96,PixelFormats.Pbgra32);
+            bitmap.Render(window);
+            PngBitmapEncoder encoder = new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(bitmap));
+            using (FileStream file = new FileStream(path,FileMode.Create,FileAccess.Write))
+                encoder.Save(file);
+            Console.WriteLine("PASS TCT Imaging UI screenshot (synthetic sample, no industrial data): " + path);
+        }
+
         public static void Run()
         {
             TCTManualImageViewerFrame frame = new TCTManualImageViewerFrame();
@@ -26,6 +113,8 @@ namespace CxVisual.TestCenter.UI
             {
                 window.Show();
                 window.UpdateLayout();
+                AssertVisualLayout(frame, window);
+                CaptureWorkbenchIfRequested(frame, window);
                 FIMImageBuffer image = new FIMImageBuffer(4, 4, FIMPixelFormat.Gray16,
                     new byte[] { 1,0, 2,0, 3,0, 4,0, 5,0, 6,0, 7,0, 8,0,
                                  9,0, 10,0, 11,0, 12,0, 13,0, 14,0, 15,0, 16,0 });
