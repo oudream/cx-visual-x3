@@ -1268,10 +1268,19 @@ namespace CxVisual.TestCenter.UI
                     throw new InvalidOperationException("Overview is not bound to real test discovery");
                 // High-legibility baseline is tested against the actual running WPF window.
                 // Never accept a 11-12 DIP window or a hidden ScaleTransform workaround.
-                if (window.FontSize < 16 ||
+                if (window.FontSize < 14 ||
                     System.Windows.Media.TextOptions.GetTextFormattingMode(window) !=
                         System.Windows.Media.TextFormattingMode.Display)
                     throw new InvalidOperationException("TestCenter readable WPF text baseline regressed");
+                if (window.BreadcrumbBand.Visibility != Visibility.Collapsed ||
+                    window.BreadcrumbBand.ActualHeight > 0.5)
+                    throw new InvalidOperationException("Removed Overview banner is still visible");
+                if (window.TestDock.AnchorableHeaderTemplate == null)
+                    throw new InvalidOperationException("Results dock tabs lack a consistent header style");
+                System.Windows.Controls.TabControl documentTabs =
+                    window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                if (documentTabs == null || documentTabs.ItemContainerStyle == null)
+                    throw new InvalidOperationException("Document tabs lack shared style");
                 DpiScale dpi = VisualTreeHelper.GetDpi(window);
                 if (dpi.DpiScaleX < 0.95 || dpi.DpiScaleY < 0.95)
                     throw new InvalidOperationException("Invalid WPF DPI scale");

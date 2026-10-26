@@ -14,7 +14,7 @@ namespace CxVisual.TestCenter.UI
     public sealed class TCTTestExplorerControl : UserControl
     {
         private readonly TextBox _search = new TextBox { Margin = new Thickness(7, 5, 7, 7),
-            Padding = new Thickness(10, 7, 10, 7), MinHeight = 38,
+            Padding = new Thickness(9, 5, 9, 5), MinHeight = 32,
             BorderBrush = new SolidColorBrush(Color.FromRgb(195, 215, 235)),
             ToolTip = "查找已注册工作区类型及已创建实例；具体测试用例在NUnit/TCT计划页查询" };
         private readonly TreeView _tree = new TreeView { Margin = new Thickness(5) };
@@ -37,7 +37,7 @@ namespace CxVisual.TestCenter.UI
             StackPanel searchPanel = new StackPanel { Background =
                 new SolidColorBrush(Color.FromRgb(246, 250, 254)) };
             searchPanel.Children.Add(new TextBlock {
-                Text = "搜索资源 / 类型 / 实例", FontSize = 14,
+                Text = "搜索资源 / 类型 / 实例", FontSize = 12,
                 Foreground = new SolidColorBrush(Color.FromRgb(108, 131, 156)),
                 Margin = new Thickness(10, 10, 0, 1) });
             searchPanel.Children.Add(_search);
@@ -129,10 +129,54 @@ namespace CxVisual.TestCenter.UI
             }
             return null;
         }
+        // 图标使用Windows原生Segoe MDL2矢量字形，无额外字体/位图依赖。
+        // 根、专业、类型、实例分配稳定图标；选中与右键逻辑仍落在TreeViewItem。
+        private static object MakeTreeHeader(TCTWorkspaceDescriptor descriptor)
+        {
+            string id = descriptor.IsCreatedInstance ? descriptor.TemplateId : descriptor.WorkspaceId;
+            string glyph;
+            if (id == "manual.root") glyph = "\uE8D4"; // 工作台
+            else if (id == "auto.root") glyph = "\uE713"; // 工具/自动化
+            else if (id == "scenes.root") glyph = "\uE8B7"; // 案例
+            else if (id == "reports.root" || id.StartsWith("reports.", StringComparison.Ordinal))
+                glyph = "\uE9D9"; // 报告
+            else if (id == "manual.module") glyph = "\uE8B7";
+            else if (id.Contains("connector")) glyph = "\uE774"; // 网络
+            else if (id.Contains("driver")) glyph = "\uE7F4"; // 设备
+            else if (id.Contains("compute")) glyph = "\uE943"; // 计算
+            else if (id.Contains("simulation")) glyph = "\uE768"; // 仿真
+            else if (id.Contains("service")) glyph = "\uE80F"; // 服务
+            else if (id.Contains("channel")) glyph = "\uE839"; // 通道
+            else if (id.Contains("protocol")) glyph = "\uE8A5"; // 规约
+            else if (id.Contains("message")) glyph = "\uE8F2"; // 消息
+            else if (id.Contains("command")) glyph = "\uE7C3"; // 命令
+            else if (id.Contains("vision") || id.Contains("2d")) glyph = "\uE8B9";
+            else if (id.Contains("3d") || id.Contains("ct")) glyph = "\uE80A";
+            else if (id.Contains("architecture-smoke")) glyph = "\uE9D9";
+            else if (id.Contains("catalog")) glyph = "\uE8A5";
+            else glyph = "\uE8B7";
+            if (descriptor.IsCreatedInstance) glyph = "\uE8A5";
+            StackPanel row = new StackPanel { Orientation = Orientation.Horizontal };
+            row.Children.Add(new TextBlock {
+                Text = glyph, FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                FontSize = 14, Width = 22, VerticalAlignment = VerticalAlignment.Center,
+                Foreground = descriptor.IsCreatedInstance
+                    ? new SolidColorBrush(Color.FromRgb(29, 116, 205))
+                    : descriptor.Kind == TCTWorkspaceNodeKind.Root
+                    ? new SolidColorBrush(Color.FromRgb(30, 106, 185))
+                    : new SolidColorBrush(Color.FromRgb(100, 126, 154)) });
+            row.Children.Add(new TextBlock {
+                Text = descriptor.Title, FontSize = 14,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                VerticalAlignment = VerticalAlignment.Center,
+                FontWeight = descriptor.IsCreatedInstance ? FontWeights.SemiBold : FontWeights.Normal });
+            return row;
+        }
+
         private TreeViewItem WorkspaceItem(TCTWorkspaceDescriptor descriptor)
         {
             TreeViewItem item = new TreeViewItem {
-                Header = descriptor.IsCreatedInstance ? "▣  " + descriptor.Title : descriptor.Title,
+                Header = MakeTreeHeader(descriptor),
                 Tag = descriptor, IsExpanded = descriptor.Kind == TCTWorkspaceNodeKind.Root ||
                     descriptor.WorkspaceId == "manual.module",
                 FontWeight = descriptor.IsCreatedInstance ? FontWeights.Medium : FontWeights.Normal,

@@ -6,16 +6,16 @@
  Title="CxVisual · TestCenter — 统一测试与质量工作台"
  Width="1800" Height="1020" MinWidth="1180" MinHeight="760"
  WindowStartupLocation="CenterScreen" FontFamily="Microsoft YaHei UI"
- FontSize="16" UseLayoutRounding="True" SnapsToDevicePixels="True"
+ FontSize="14" UseLayoutRounding="True" SnapsToDevicePixels="True"
  TextOptions.TextFormattingMode="Display" TextOptions.TextRenderingMode="ClearType"
  Background="#EEF3F9">
  <Window.Resources>
   <Style TargetType="TabItem">
    <Setter Property="Padding" Value="12,5"/>
-   <Setter Property="FontSize" Value="15"/>
+   <Setter Property="FontSize" Value="13"/>
   </Style>
   <Style TargetType="MenuItem">
-   <Setter Property="FontSize" Value="16"/>
+   <Setter Property="FontSize" Value="14"/>
   </Style>
   <Style TargetType="GroupBox">
    <Setter Property="BorderBrush" Value="#C4D3E4"/>
@@ -25,22 +25,22 @@
  </Window.Resources>
  <Grid>
   <Grid.RowDefinitions>
-   <RowDefinition Height="50"/>
-   <RowDefinition Height="32"/>
-   <RowDefinition Height="0"/>
-   <RowDefinition Height="33"/>
-   <RowDefinition Height="*"/>
+   <RowDefinition Height="45"/>
    <RowDefinition Height="30"/>
+   <RowDefinition Height="0"/>
+   <RowDefinition Height="0"/>
+   <RowDefinition Height="*"/>
+   <RowDefinition Height="27"/>
   </Grid.RowDefinitions>
   <Border x:Name="HeaderBand" Grid.Row="0" Background="#F2F6FB" Padding="13,8">
    <DockPanel>
     <Border Background="#237CCB" CornerRadius="3" Padding="6,2" Margin="0,0,11,0">
-     <TextBlock Text="Cx" Foreground="White" FontSize="20" FontWeight="Bold"/>
+     <TextBlock Text="Cx" Foreground="White" FontSize="18" FontWeight="Bold"/>
     </Border>
     <TextBlock x:Name="ProductNameText" Text="CxVisual 工业可视化组态平台  ·  Platform Test Center"
-     Foreground="#244467" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center"/>
+     Foreground="#244467" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center"/>
     <TextBlock x:Name="ProjectLabelText" Text="测试工程：CxVisual.TestCenter  ·  .NET Framework 4.8" DockPanel.Dock="Right"
-     Foreground="#6D85A0" FontSize="14" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="30,0,0,0"/>
+     Foreground="#6D85A0" FontSize="12" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="30,0,0,0"/>
    </DockPanel>
   </Border>
   <Menu Grid.Row="1" Background="#F4F7FC" Padding="7,0">
@@ -66,7 +66,9 @@
    </MenuItem>
   </Menu>
 
-  <Border x:Name="BreadcrumbBand" Grid.Row="3" Background="#F2F6FB" BorderBrush="#C4D8ED" BorderThickness="0,1,0,1">
+  <!-- 旧Overview/环境横栏不再占据屏幕高度。保留具名数据节点以兼容既有状态更新和主题切换。 -->
+  <Border x:Name="BreadcrumbBand" Grid.Row="3" Visibility="Collapsed" Height="0"
+   Background="#F2F6FB" BorderBrush="#C4D8ED" BorderThickness="0,0,0,0">
    <DockPanel Margin="15,0" LastChildFill="True">
     <TextBlock x:Name="EnvironmentText" DockPanel.Dock="Right" Text="环境：本地  ·  SIMULATE  ·  Target: .NET Framework 4.8"
      Foreground="#637D98" FontSize="14" VerticalAlignment="Center" Margin="16,0,0,0"/>
@@ -74,7 +76,8 @@
      Foreground="#17365D" FontWeight="SemiBold" FontSize="17" VerticalAlignment="Center"/>
    </DockPanel>
   </Border>
-  <dock:DockingManager x:Name="TestDock" Grid.Row="4">
+  <dock:DockingManager x:Name="TestDock" Grid.Row="4"
+    AnchorableHeaderTemplate="{StaticResource TCTDockTabHeaderTemplate}">
    <dock:LayoutRoot>
     <dock:LayoutPanel Orientation="Vertical">
      <dock:LayoutPanel Orientation="Horizontal">
@@ -124,24 +127,24 @@
       </dock:LayoutDocumentPane>
 
      </dock:LayoutPanel>
-     <dock:LayoutAnchorablePane DockHeight="110">
-      <dock:LayoutAnchorable ContentId="test.results" Title="测试结果 / Results"
+     <dock:LayoutAnchorablePane DockHeight="145">
+      <dock:LayoutAnchorable ContentId="test.results" Title="测试结果  /  Results"
         CanClose="False" CanFloat="True" CanHide="True" CanAutoHide="True">
        <ui:TCTTestResultsControl x:Name="Results"/>
       </dock:LayoutAnchorable>
-      <dock:LayoutAnchorable ContentId="test.timeline" Title="Timeline · Attempt事件"
+      <dock:LayoutAnchorable ContentId="test.timeline" Title="时间线  /  Timeline"
         CanClose="False" CanFloat="True" CanHide="True" CanAutoHide="True">
        <ui:TCTTestTimelineControl x:Name="Timeline"/>
       </dock:LayoutAnchorable>
-      <dock:LayoutAnchorable ContentId="test.history" Title="History · 验证与重跑"
+      <dock:LayoutAnchorable ContentId="test.history" Title="历史记录  /  History"
         CanClose="False" CanFloat="True" CanHide="True" CanAutoHide="True">
        <ui:TCTTestHistoryControl x:Name="History"/>
       </dock:LayoutAnchorable>
-      <dock:LayoutAnchorable ContentId="test.diff" Title="Diff · 双Run证据比对"
+      <dock:LayoutAnchorable ContentId="test.diff" Title="证据对比  /  Diff"
         CanClose="False" CanFloat="True" CanHide="True" CanAutoHide="True">
        <ui:TCTTestDiffControl x:Name="Diff"/>
       </dock:LayoutAnchorable>
-      <dock:LayoutAnchorable ContentId="test.plan" Title="Suite / Plan · 选择与执行"
+      <dock:LayoutAnchorable ContentId="test.plan" Title="测试计划  /  Suite"
         CanClose="False" CanFloat="True" CanHide="True" CanAutoHide="True">
        <ui:TCTTestPlanControl x:Name="TestPlan"/>
       </dock:LayoutAnchorable>
