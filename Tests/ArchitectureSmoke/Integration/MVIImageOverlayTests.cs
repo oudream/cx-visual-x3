@@ -247,6 +247,19 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Ensure(Math.Abs(rot.RotatedRectangleWidth-10)<1e-8 &&
                 Math.Abs(rot.RotatedRectangleArea-40)<1e-8,
                 "编辑反例不会污染初始不可变对象");
+            Fail<ArgumentException>(()=>new MVIImageOverlayItem(
+                MVIImageOverlayKind.RotatedRectangleRoi,MVIImageOverlayLayer.Roi,
+                new FGERect2D(1,1,4,4),new [] {
+                    new FGEPoint2D(1,1),new FGEPoint2D(5,1),
+                    new FGEPoint2D(4,5),new FGEPoint2D(1,5)}),
+                "SDK直接创建非正交四边形必须拒绝");
+            Fail<ArgumentException>(()=>new MVIImageOverlayItem(
+                MVIImageOverlayKind.RotatedRectangleRoi,MVIImageOverlayLayer.Roi,
+                new FGERect2D(0,0,1,1),new [] {
+                    new FGEPoint2D(1,1),new FGEPoint2D(5,1),
+                    new FGEPoint2D(5,5),new FGEPoint2D(1,5)}),
+                "SDK输入错误Bounds不应写入非法矩形");
+
             Console.WriteLine("PASS MVI ImageOverlay: 旋转矩形正交几何/角度/命中/异常与原有ROI");
         }
 
