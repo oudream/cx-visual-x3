@@ -36,6 +36,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         private MVIImageOverlayKind _selectionKind = MVIImageOverlayKind.RectangleRoi;
         private MVIImageToolMode _toolMode = MVIImageToolMode.Navigate;
         private readonly List<FGEPoint2D> _polygonDraft = new List<FGEPoint2D>();
+        private FGEPoint2D? _draftHover;
         private string _annotationText = "标注";
         private FIMPixelRegion? _region;
         private readonly MVIImageDisplayState _displayState = new MVIImageDisplayState();
@@ -97,6 +98,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 _dragging = _selecting = _moving = false;
                 _movingOverlay = null;
                 _polygonDraft.Clear();
+                _draftHover = null;
                 DrawSelection();
             }
         }
@@ -478,6 +480,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
 
         private void DrawSelection()
         {
+            DrawDraftPolyline();
             if (!_region.HasValue || !OverlayMatchesActiveImage())
             { SelectedRoi.Visibility = Visibility.Collapsed; return; }
             FIMPixelRegion roi = _region.Value;
@@ -488,6 +491,71 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             SelectedRoi.Width = Math.Abs(a.X-b.X);
             SelectedRoi.Height = Math.Abs(a.Y-b.Y);
             SelectedRoi.Visibility = Visibility.Visible;
+        }
+
+        private void DrawDraftPolyline()
+        {
+            DraftPolyline.Points.Clear();
+            if (_polygonDraft.Count == 0 || !OverlayMatchesActiveImage())
+            { DraftPolyline.Visibility = Visibility.Collapsed; return; }
+            foreach (FGEPoint2D p in _polygonDraft)
+                DraftPolyline.Points.Add(SourceToCanvas(p));
+            if (_draftHover.HasValue)
+                DraftPolyline.Points.Add(SourceToCanvas(_draftHover.Value));
+            DraftPolyline.Visibility = Visibility.Visible;
+        }
+
+        /// <summary>原图坐标直接增加多边形，可供算法检测和交互工具统一调用。</summary>
+        public MVIImageOverlayItem AddPolygonRoi(IReadOnlyList<FGEPoint2D> points)
+        {
+            VerifyAccess();
+            return AddPointGeometry(MVIImageOverlayKind.PolygonRoi,
+                MVIImageOverlayLayer.Roi, points, 3);
+        }
+
+        public MVIImageOverlayItem AddAngleMeasurement(IReadOnlyList<FGEPoint2D> points)
+        {
+            VerifyAccess();
+            if (points == null || points.Count != 3)
+                throw new ArgumentException("角度测量要求恰好三个点。", "points");
+            // 若退化点不先反证，图窗会在绘制结果时得到无法显示的角度。
+            FIMImageMeasurement.GetAngleDegrees(points[0], points[1], points[2]);
+            return AddPointGeometry(MVIImageOverlayKind.AngleMeasurement,
+                MVIImageOverlayLayer.Measurement, points, 3);
+        }
+
+        private MVIImageOverlayItem AddPointGeometry(MVIImageOverlayKind kind,
+            MVIImageOverlayLayer layer, IReadOnlyList<FGEPoint2D> points, int minCount)
+        {
+            FIMImageBuffer image = ActiveImage;
+            if (image == null) throw new InvalidOperationException("未加载图像。");
+            if (points == null || points.Count < minCount)
+                throw new ArgumentException("点数不足。", "points");
+            double minX = double.PositiveInfinity, minY = double.PositiveInfinity;
+            double maxX = double.NegativeInfinity, maxY = double.NegativeInfinity;
+            foreach (FGEPoint2D p in points)
+            {
+                if (p.X < 0 || p.Y < 0 || p.X > image.Width || p.Y > image.Height)
+                    throw new ArgumentOutOfRangeException("points", "点必须在当前原图边界内。");
+                minX = Math.Min(minX,p.X); minY = Math.Min(minY,p.Y);
+                maxX = Math.Max(maxX,p.X); maxY = Math.Max(maxY,p.Y);
+            }
+            return AddOverlay(new MVIImageOverlayItem(kind,layer,
+                new FGERect2D(minX,minY,maxX-minX,maxY-minY), points));
+        }
+
+        private void CompletePointDraft(MVIImageToolMode mode)
+        {
+            if (_polygonDraft.Count >= 3)
+            {
+                if (mode == MVIImageToolMode.Angle)
+                    AddAngleMeasurement(_polygonDraft.ToArray());
+                else AddPolygonRoi(_polygonDraft.ToArray());
+                RaiseSelectionChanged();
+            }
+            _polygonDraft.Clear();
+            _draftHover = null;
+            DrawDraftPolyline();
         }
 
         /// <summary>所有叠加对象从原图坐标重绘；屏幕缩放/平移只改变投影，不修改ROI值。</summary>
@@ -573,6 +641,17 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                             y2 - 10 * Math.Sin(angle - Math.PI / 6), stroke, width);
                         DrawLine(x2, y2, x2 - 10 * Math.Cos(angle + Math.PI / 6),
                             y2 - 10 * Math.Sin(angle + Math.PI / 6), stroke, width);
+                    }
+                    if (item.Kind == MVIImageOverlayKind.AngleMeasurement && item.Points.Count >= 3)
+                    {
+                        double angle = FIMImageMeasurement.GetAngleDegrees(
+                            item.Points[0],item.Points[1],item.Points[2]);
+                        Point vertex = SourceToCanvas(item.Points[1]);
+                        TextBlock label = new TextBlock { Text = angle.ToString("0.##") + "°",
+                            Foreground = stroke, Background = Brushes.Black,
+                            FontSize = 12, IsHitTestVisible = false };
+                        Canvas.SetLeft(label, vertex.X + 5); Canvas.SetTop(label,vertex.Y + 5);
+                        OverlayCanvas.Children.Add(label);
                     }
                     if (item.Kind == MVIImageOverlayKind.DistanceMeasurement)
                     {
@@ -775,6 +854,22 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             if (ActiveImage == null) return;
             Point pointer = e.GetPosition(ViewportRoot);
             int x,y;
+            if (_toolMode == MVIImageToolMode.PolygonRoi ||
+                _toolMode == MVIImageToolMode.Angle)
+            {
+                if (!TryImagePoint(pointer, out x, out y)) return;
+                _region = null;
+                FGEPoint2D p = new FGEPoint2D(x + 0.5, y + 0.5);
+                if (_polygonDraft.Count == 0 ||
+                    !_polygonDraft[_polygonDraft.Count - 1].Equals(p))
+                    _polygonDraft.Add(p);
+                if ((_toolMode == MVIImageToolMode.PolygonRoi && e.ClickCount >= 2) ||
+                    (_toolMode == MVIImageToolMode.Angle && _polygonDraft.Count == 3))
+                    CompletePointDraft(_toolMode);
+                else { _draftHover = null; DrawSelection(); }
+                e.Handled = true;
+                return;
+            }
             if (_toolMode == MVIImageToolMode.MoveOverlay ||
                 _toolMode == MVIImageToolMode.DeleteOverlay)
             {
@@ -869,6 +964,11 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 double gray = image.GetGrayValue(px,py);
                 PixelStatus.Text = string.Format("{0}×{1} · ({2},{3}) · Gray={4:0.###} · {5:0.##}×",
                     image.Width,image.Height,px,py,gray,_viewport.Scale);
+                if (_polygonDraft.Count > 0)
+                {
+                    _draftHover = new FGEPoint2D(px + 0.5, py + 0.5);
+                    DrawDraftPolyline();
+                }
                 EventHandler handler = PixelInspected;
                 if (handler != null) handler(this,EventArgs.Empty);
             }

@@ -261,6 +261,8 @@ namespace CxVisual.TestCenter.UI
                 case MVIImageToolMode.DefectBox: return "缺陷框";
                 case MVIImageToolMode.MoveOverlay: return "移动叠加项";
                 case MVIImageToolMode.DeleteOverlay: return "点击删除";
+                case MVIImageToolMode.PolygonRoi: return "多边形ROI（双击结束）";
+                case MVIImageToolMode.Angle: return "三点角度测量";
                 default: return mode.ToString();
             }
         }
