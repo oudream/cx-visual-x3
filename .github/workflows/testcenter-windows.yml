@@ -150,6 +150,29 @@ jobs:
               throw "WPF Shell smoke returned $($p.ExitCode)"
           }
           Write-Host 'PASS WPF Shell binds real TCT result and ordered events'
+      - name: Verify isolated Connector UIA PointTable and DataMapping
+        shell: powershell
+        run: |
+          $exe = (Resolve-Path 'Output/Debug/x64/CxVisual.TestCenter.exe').Path
+          $stage = Join-Path (Get-Location) 'Output/Debug/x64/TestCenter-UIA-Stages.log'
+          $p = Start-Process -FilePath $exe -WorkingDirectory (Get-Location).Path -ArgumentList @('--connector-ui-automation') -PassThru
+          try { Wait-Process -Id $p.Id -Timeout 85 -ErrorAction Stop }
+          catch {
+              Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+              if (Test-Path $stage) { Get-Content -LiteralPath $stage | Write-Host }
+              throw 'Connector UIA blocked; actual stage is above'
+          }
+          $p.Refresh()
+          if ($p.ExitCode -ne 0) {
+              $err = Join-Path ([System.IO.Path]::GetTempPath()) 'CxVisual-TestCenter-HostError.txt'
+              if (Test-Path $err) { Get-Content -LiteralPath $err | Write-Host }
+              if (Test-Path $stage) { Get-Content -LiteralPath $stage | Write-Host }
+              throw "Connector UIA failed: $($p.ExitCode)"
+          }
+          if (-not (Test-Path 'Output/Debug/x64/TestCenter-Connector-UIA.png')) {
+              throw 'Connector actual WPF screenshot missing'
+          }
+          Write-Host 'PASS isolated Connector PointTable/DataMapping real UIA and screenshot'
       - name: Verify real Windows UI Automation user workflow
         shell: powershell
         run: |
