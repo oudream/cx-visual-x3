@@ -18,6 +18,8 @@ namespace CxVisual.TestCenter.UI
     public sealed partial class TCTManualImageViewerFrame
     {
         private readonly TabControl _displayTabs = new TabControl();
+        private Slider _gammaSlider, _brightnessSlider, _contrastSlider;
+        private bool _changingGraySliders;
         private readonly System.Collections.Generic.List<Button> _quickButtons =
             new System.Collections.Generic.List<Button>();
         private readonly CheckBox _showRoi = new CheckBox { Content = "ROI", IsChecked = true };
@@ -351,17 +353,66 @@ namespace CxVisual.TestCenter.UI
         {
             StackPanel content = Column();
             content.Children.Add(Heading("灰阶与显示增强"));
-            content.Children.Add(Row(Label("Gamma"),_displayGamma));
-            content.Children.Add(Row(Label("亮度"),_displayBrightness));
-            content.Children.Add(Row(Label("对比度"),_displayContrast));
+            content.Children.Add(GraySliderRow("Gamma",_displayGamma,0.1,3.0,1.0,out _gammaSlider));
+            content.Children.Add(GraySliderRow("亮度",_displayBrightness,-1.0,1.0,0.0,out _brightnessSlider));
+            content.Children.Add(GraySliderRow("对比度",_displayContrast,0.0,3.0,1.0,out _contrastSlider));
             content.Children.Add(Row(_displayInverted,_autoContrast));
             WrapPanel buttons = Row();
             Action(buttons,"应用灰阶参数","ApplyDisplay",ApplyDisplay);
             Action(buttons,"全部复位","ResetDisplay",ResetDisplay);
             content.Children.Add(buttons);
-            content.Children.Add(Hint("显示修改后，原始灰度统计、标定和ROI测量值均保持不变。"));
+            content.Children.Add(Hint("拖动后松开鼠标才生成新的显示缓冲，避免大图在拖动期间反复复制；也可输入数值再点应用。原像素不变。"));
             return Scroll(content);
         }
+        /// <summary>滑块只在鼠标释放/键盘确认时提交处理，避免大图频繁同步重绘。</summary>
+        private UIElement GraySliderRow(string title, TextBox field, double min, double max,
+            double initial, out Slider slider)
+        {
+            Grid row = new Grid { Margin = new Thickness(2,7,2,7) };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(65) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1,GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(61) });
+            TextBlock label = Label(title);
+            row.Children.Add(label);
+            slider = new Slider { Minimum = min, Maximum = max, Value = initial,
+                SmallChange = title == "亮度" ? .05 : .1, LargeChange = .2,
+                AutoToolTipPlacement = System.Windows.Controls.Primitives.AutoToolTipPlacement.TopLeft,
+                AutoToolTipPrecision = 2, Margin = new Thickness(7,0,8,0),
+                VerticalAlignment = VerticalAlignment.Center, MinWidth = 100,
+                IsSnapToTickEnabled = false };
+            Slider current = slider;
+            current.ValueChanged += (sender,args) =>
+            {
+                if (!_changingGraySliders)
+                    field.Text = current.Value.ToString("0.###",CultureInfo.InvariantCulture);
+            };
+            current.PreviewMouseLeftButtonUp += (sender,args) => ApplyGraySliderChange();
+            current.KeyUp += (sender,args) => ApplyGraySliderChange();
+            Grid.SetColumn(current,1); row.Children.Add(current);
+            field.Width = 55; field.FontSize = 13;
+            Grid.SetColumn(field,2); row.Children.Add(field);
+            return row;
+        }
+        private void ApplyGraySliderChange()
+        {
+            try { ApplyDisplay(); }
+            catch (Exception error) { Show("灰阶参数错误：" + error.Message); }
+        }
+        private void SyncGraySliders()
+        {
+            if (_gammaSlider == null || _brightnessSlider == null || _contrastSlider == null) return;
+            _changingGraySliders = true;
+            try
+            {
+                _gammaSlider.Value = Math.Max(_gammaSlider.Minimum,
+                    Math.Min(_gammaSlider.Maximum,_viewer.DisplayState.Gamma));
+                _brightnessSlider.Value = _viewer.DisplayState.Brightness;
+                _contrastSlider.Value = Math.Max(_contrastSlider.Minimum,
+                    Math.Min(_contrastSlider.Maximum,_viewer.DisplayState.Contrast));
+            }
+            finally { _changingGraySliders = false; }
+        }
+
         private UIElement BuildMeasurePage()
         {
             StackPanel content = Column();
