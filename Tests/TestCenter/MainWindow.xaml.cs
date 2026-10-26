@@ -400,7 +400,9 @@ namespace CxVisual.TestCenter.UI
                 (descriptor.WorkspaceId == "auto.root" ||
                  descriptor.WorkspaceId == "auto.catalog" ||
                  descriptor.WorkspaceId == "auto.architecture-smoke" ||
-                 (descriptor.IsCreatedInstance && descriptor.TemplateId == "auto.catalog"));
+                 (descriptor.IsCreatedInstance &&
+                    (descriptor.TemplateId == "auto.catalog" ||
+                     descriptor.TemplateId == "auto.architecture-smoke")));
             if (autoTest) _automatedRunContext = true;
             else if (descriptor != null) _automatedRunContext = false;
             if (!autoTest && !_automatedRunContext) _testConsoleOpenedManually = false;
