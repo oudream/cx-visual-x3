@@ -551,6 +551,43 @@ namespace CxVisual.TestCenter.UI
                 if(!degenerateRejected ||
                     frame.Viewer.Overlays.Find(polyEdit.Id).Points[2].Y!=3.3)
                     throw new InvalidOperationException("无效顶点变更不得污染原始多边形");
+                // 真实区域页索引输入+WPF按钮：插点、删点、唯一Store与锁状态。
+                TextBox vertexIndexBox=FindControl<TextBox>(frame,
+                    "TCT.Imaging.PolygonVertexIndex");
+                Button insertVertexButton=FindControl<Button>(frame,
+                    "TCT.Imaging.InsertPolygonVertex");
+                Button removeVertexButton=FindControl<Button>(frame,
+                    "TCT.Imaging.RemovePolygonVertex");
+                if(vertexIndexBox==null || insertVertexButton==null ||
+                    removeVertexButton==null)
+                    throw new InvalidOperationException("区域页缺少真实顶点索引输入与插删按钮");
+                vertexIndexBox.Text="0";
+                insertVertexButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                MVIImageOverlayItem insertedPolygon=frame.Viewer.Overlays.Find(polyEdit.Id);
+                if(insertedPolygon==null || insertedPolygon.Points.Count!=4 ||
+                    insertedPolygon.Id!=polyEdit.Id ||
+                    Math.Abs(insertedPolygon.Points[1].X-2)>1e-8 ||
+                    frame.Viewer.PolygonVertexHandleVisualCount!=4)
+                    throw new InvalidOperationException("真实WPF插点按钮未更新原图顶点与四个控制柄");
+                vertexIndexBox.Text="1";
+                removeVertexButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                MVIImageOverlayItem removedPolygon=frame.Viewer.Overlays.Find(polyEdit.Id);
+                if(removedPolygon==null || removedPolygon.Points.Count!=3 ||
+                    frame.Viewer.PolygonVertexHandleVisualCount!=3 ||
+                    Math.Abs(removedPolygon.Points[2].Y-3.3)>1e-8)
+                    throw new InvalidOperationException("真实WPF删点按钮未恢复三角形");
+                bool minPolygonRejected=false;
+                try {frame.Viewer.RemoveSelectedPolygonVertex(0);}
+                catch(InvalidOperationException) {minPolygonRejected=true;}
+                if(!minPolygonRejected ||
+                    frame.Viewer.Overlays.Find(polyEdit.Id).Points.Count!=3)
+                    throw new InvalidOperationException("最少三顶点约束没有保护唯一Store");
+                bool invalidEdgeRejected=false;
+                try {frame.Viewer.InsertSelectedPolygonVertex(99,
+                    new FGEPoint2D(1,1));}
+                catch(ArgumentOutOfRangeException) {invalidEdgeRejected=true;}
+                if(!invalidEdgeRejected || frame.Viewer.Overlays.Find(polyEdit.Id).Points.Count!=3)
+                    throw new InvalidOperationException("非法插点索引污染了图层");
                 frame.Viewer.ShowResult(FIMImageOperations.FlipHorizontal(image));
                 frame.Viewer.SideBySideOriginalAndResult(true);
                 window.UpdateLayout();
@@ -558,6 +595,16 @@ namespace CxVisual.TestCenter.UI
                 if(frame.Viewer.PolygonVertexHandleVisualCount!=3 ||
                     frame.Viewer.SecondaryPolygonVertexHandleVisualCount!=3)
                     throw new InvalidOperationException("左右双视口未各自投影三个真实多边形顶点");
+                vertexIndexBox.Text="0";
+                insertVertexButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                if(frame.Viewer.PolygonVertexHandleVisualCount!=4 ||
+                    frame.Viewer.SecondaryPolygonVertexHandleVisualCount!=4)
+                    throw new InvalidOperationException("双视图插点没有同步WPF顶点柄");
+                vertexIndexBox.Text="1";
+                removeVertexButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                if(frame.Viewer.PolygonVertexHandleVisualCount!=3 ||
+                    frame.Viewer.SecondaryPolygonVertexHandleVisualCount!=3)
+                    throw new InvalidOperationException("双视图删点没有恢复顶点柄");
                 frame.Viewer.SetOverlayLayerVisible(MVIImageOverlayLayer.Roi,false);
                 if(frame.Viewer.PolygonVertexHandleVisualCount!=0 ||
                     frame.Viewer.SecondaryPolygonVertexHandleVisualCount!=0)
