@@ -526,6 +526,54 @@ namespace CxVisual.TestCenter.UI
                     Math.Abs(editedPolygon.Points[1].X-3.5)>1e-9 ||
                     polyEdit.Points[1].X!=2.5)
                     throw new InvalidOperationException("多边形边柄编辑未保留原图顶点/对象身份");
+                // 区域页真实按钮切换逐顶点编辑，验证同一GUID和原图顶点结果。
+                Button vertexAction=FindControl<Button>(frame,"TCT.Imaging.EditPolygonVertex");
+                if(vertexAction==null)
+                    throw new InvalidOperationException("区域页缺少多边形逐顶点编辑入口");
+                vertexAction.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                if(frame.Viewer.ToolMode!=MVIImageToolMode.EditPolygonVertex ||
+                    frame.Viewer.SelectedOverlayId!=polyEdit.Id ||
+                    frame.Viewer.PolygonVertexHandleVisualCount!=3 ||
+                    frame.Viewer.ResizeHandleVisualCount!=0)
+                    throw new InvalidOperationException("逐顶点模式没有显示实际金色顶点柄");
+                MVIImageOverlayItem vertexResult=frame.Viewer.MoveSelectedPolygonVertex(
+                    2,new FGEPoint2D(2.6,3.3));
+                if(vertexResult.Id!=polyEdit.Id ||
+                    Math.Abs(vertexResult.Points[2].X-2.6)>1e-9 ||
+                    Math.Abs(vertexResult.Points[2].Y-3.3)>1e-9 ||
+                    Math.Abs(vertexResult.Points[0].X-.5)>1e-9 ||
+                    Math.Abs(vertexResult.Bounds.Bottom-3.3)>1e-9 ||
+                    polyEdit.Points[2].Y!=2.5)
+                    throw new InvalidOperationException("顶点编辑没有按原图坐标正确回写唯一Store");
+                bool degenerateRejected=false;
+                try { frame.Viewer.MoveSelectedPolygonVertex(2,new FGEPoint2D(.5,.5)); }
+                catch(ArgumentException) { degenerateRejected=true; }
+                if(!degenerateRejected ||
+                    frame.Viewer.Overlays.Find(polyEdit.Id).Points[2].Y!=3.3)
+                    throw new InvalidOperationException("无效顶点变更不得污染原始多边形");
+                frame.Viewer.ShowResult(FIMImageOperations.FlipHorizontal(image));
+                frame.Viewer.SideBySideOriginalAndResult(true);
+                window.UpdateLayout();
+                frame.Viewer.FitToWindow();
+                if(frame.Viewer.PolygonVertexHandleVisualCount!=3 ||
+                    frame.Viewer.SecondaryPolygonVertexHandleVisualCount!=3)
+                    throw new InvalidOperationException("左右双视口未各自投影三个真实多边形顶点");
+                frame.Viewer.SetOverlayLayerVisible(MVIImageOverlayLayer.Roi,false);
+                if(frame.Viewer.PolygonVertexHandleVisualCount!=0 ||
+                    frame.Viewer.SecondaryPolygonVertexHandleVisualCount!=0)
+                    throw new InvalidOperationException("隐藏ROI仍残留多边形顶点编辑柄");
+                bool hiddenVertexRejected=false;
+                try { frame.Viewer.MoveSelectedPolygonVertex(1,new FGEPoint2D(2,1)); }
+                catch(InvalidOperationException) { hiddenVertexRejected=true; }
+                if(!hiddenVertexRejected)
+                    throw new InvalidOperationException("隐藏ROI仍允许修改顶点");
+                frame.Viewer.SetOverlayLayerVisible(MVIImageOverlayLayer.Roi,true);
+                frame.Viewer.DisableBlend();
+                editAction.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                if(frame.Viewer.ToolMode!=MVIImageToolMode.ResizeOverlay ||
+                    frame.Viewer.PolygonVertexHandleVisualCount!=0 ||
+                    frame.Viewer.ResizeHandleVisualCount!=8)
+                    throw new InvalidOperationException("从逐顶点切回八柄未正确重置编辑显示");
                 // 用实际区域页按钮触发锁定/层序，复验同一MVI Store被WPF投影消费。
                 Button lockButton=FindControl<Button>(frame,"TCT.Imaging.ToggleOverlayLock");
                 Button forwardButton=FindControl<Button>(frame,"TCT.Imaging.BringOverlayForward");
