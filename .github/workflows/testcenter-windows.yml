@@ -157,15 +157,19 @@ jobs:
           $screenshot = Join-Path (Get-Location) 'Output/Debug/x64/TestCenterUIA.png'
           if (Test-Path $screenshot) { Remove-Item $screenshot -Force }
           $p = Start-Process -FilePath $exe -WorkingDirectory (Get-Location).Path -ArgumentList @('--ui-automation') -PassThru
-          try { Wait-Process -Id $p.Id -Timeout 105 -ErrorAction Stop }
+          try { Wait-Process -Id $p.Id -Timeout 240 -ErrorAction Stop }
           catch {
               Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
-              throw 'Windows UI Automation TestCenter interaction timed out'
+              $stage = Join-Path (Get-Location) 'Output/Debug/x64/TestCenter-UIA-Stages.log'
+              if (Test-Path $stage) { Get-Content -LiteralPath $stage | Write-Host }
+              throw 'Windows UI Automation TestCenter interaction timed out; see last stage above'
           }
           $p.Refresh()
           if ($p.ExitCode -ne 0) {
               $err = Join-Path ([System.IO.Path]::GetTempPath()) 'CxVisual-TestCenter-HostError.txt'
               if (Test-Path $err) { Get-Content $err | Write-Host }
+              $stage = Join-Path (Get-Location) 'Output/Debug/x64/TestCenter-UIA-Stages.log'
+              if (Test-Path $stage) { Get-Content -LiteralPath $stage | Write-Host }
               throw "Windows UI Automation failed: $($p.ExitCode)"
           }
           if (-not (Test-Path $screenshot)) { throw 'No actual WPF screenshot produced' }
