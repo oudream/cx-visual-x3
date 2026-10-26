@@ -1215,9 +1215,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             FGEPoint2D center=RotatedRectangleCenter(item);
             FGEPoint2D a=item.Points[0],b=item.Points[1];
             Point p=SourceToCanvas(center,viewport);
-            double dx=(a.X+b.X)/2.0-center.X,dy=(a.Y+b.Y)/2.0-center.Y;
+            Point edge=SourceToCanvas(new FGEPoint2D(
+                (a.X+b.X)/2.0,(a.Y+b.Y)/2.0),viewport);
+            // 偏移必须沿WPF已旋转/镜像后的边法线，而非原图未变换向量。
+            double dx=edge.X-p.X,dy=edge.Y-p.Y;
             double length=Math.Sqrt(dx*dx+dy*dy);
-            double r=item.RotatedRectangleHeight*viewport.Scale/2.0+20.0;
+            double r=length+20.0;
             return new Point(p.X+dx*r/length,p.Y+dy*r/length);
         }
         private void DrawRotationHandle(Canvas canvas,MVIImageViewport viewport,
