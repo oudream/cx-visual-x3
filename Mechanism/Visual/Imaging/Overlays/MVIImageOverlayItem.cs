@@ -35,9 +35,28 @@ namespace CxVisual.Mechanism.Visual
                 throw new ArgumentOutOfRangeException("lineWidth");
             _points = points == null ? new FGEPoint2D[0] : points.ToArray();
             if (_points.Length > 100000) throw new ArgumentException("叠加几何点数超限。", "points");
-            if (kind == MVIImageOverlayKind.RotatedRectangleRoi &&
-                (layer != MVIImageOverlayLayer.Roi || _points.Length != 4))
-                throw new ArgumentException("旋转矩形必须拥有四个原图角点并属于ROI层。","points");
+            if (kind == MVIImageOverlayKind.RotatedRectangleRoi)
+            {
+                if (layer != MVIImageOverlayLayer.Roi || _points.Length != 4)
+                    throw new ArgumentException("旋转矩形必须拥有四个原图角点并属于ROI层。","points");
+                FGEVector2D u=_points[1]-_points[0];
+                FGEVector2D v=_points[2]-_points[1];
+                FGEVector2D oppositeU=_points[2]-_points[3];
+                FGEVector2D oppositeV=_points[3]-_points[0];
+                double tolerance=1e-7*Math.Max(1,u.Length*v.Length);
+                if(u.Length<0.25 || v.Length<0.25 ||
+                    Math.Abs(FGEVector2D.Dot(u,v))>tolerance ||
+                    (oppositeU-u).Length>1e-7*Math.Max(1,u.Length) ||
+                    (oppositeV-v).Length>1e-7*Math.Max(1,v.Length))
+                    throw new ArgumentException("旋转矩形四角必须构成正交、非退化矩形。","points");
+                double l=_points.Min(p=>p.X),r=_points.Max(p=>p.X);
+                double t=_points.Min(p=>p.Y),b=_points.Max(p=>p.Y);
+                if(Math.Abs(bounds.Left-l)>1e-7 ||
+                    Math.Abs(bounds.Top-t)>1e-7 ||
+                    Math.Abs(bounds.Right-r)>1e-7 ||
+                    Math.Abs(bounds.Bottom-b)>1e-7)
+                    throw new ArgumentException("旋转矩形Bounds必须匹配四角外接框。","bounds");
+            }
             if ((kind == MVIImageOverlayKind.PolygonRoi || kind == MVIImageOverlayKind.PolygonAnnotation)
                 && _points.Length < 3)
                 throw new ArgumentException("多边形至少需要三个点。", "points");
