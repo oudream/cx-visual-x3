@@ -41,6 +41,8 @@ namespace CxVisual.TestCenter.UI
         private readonly TextBox _low = new TextBox { Width = 74, Text = "0", Margin = new Thickness(2) };
         private readonly TextBox _high = new TextBox { Width = 82, Text = "65535", Margin = new Thickness(2) };
         private readonly TextBox _blendRatio = new TextBox { Width = 60, Text = "0.5", Margin = new Thickness(3) };
+        private readonly TextBox _spacingX = new TextBox { Width = 58, Text = "0.1", Margin = new Thickness(2) };
+        private readonly TextBox _spacingY = new TextBox { Width = 58, Text = "0.1", Margin = new Thickness(2) };
         private readonly TextBox _displayGamma = new TextBox { Width = 50, Text = "1", Margin = new Thickness(2) };
         private readonly TextBox _displayBrightness = new TextBox { Width = 58, Text = "0", Margin = new Thickness(2) };
         private readonly TextBox _displayContrast = new TextBox { Width = 58, Text = "1", Margin = new Thickness(2) };
@@ -155,6 +157,12 @@ namespace CxVisual.TestCenter.UI
             analysis.Children.Add(_displayInverted);
             analysis.Children.Add(_autoContrast);
             AddButton(analysis, "应用显示", "ApplyDisplay", ApplyDisplay);
+            analysis.Children.Add(new TextBlock { Text = "X间距mm/px", VerticalAlignment = VerticalAlignment.Center });
+            analysis.Children.Add(_spacingX);
+            analysis.Children.Add(new TextBlock { Text = "Y间距mm/px", VerticalAlignment = VerticalAlignment.Center });
+            analysis.Children.Add(_spacingY);
+            AddButton(analysis, "毫米标尺", "RulerMm", ApplyPixelSpacing);
+            AddButton(analysis, "像素标尺", "RulerPixel", ResetPixelSpacing);
             analysis.Children.Add(_withRoi);
             AddButton(analysis, "灰度统计/直方图", "Analyze", Calculate);
             AddButton(analysis, "灰度剖面", "LineProfile", ShowLineProfile);
@@ -519,6 +527,25 @@ namespace CxVisual.TestCenter.UI
                 throw new ArgumentException("窗上下限请输入有限数字，如 0 与 65535。");
             _viewer.SetDisplayWindow(low, high);
             Show("显示窗范围：" + low + " - " + high + "（原图不变）");
+        }
+
+        private void ApplyPixelSpacing()
+        {
+            if (_viewer.ActiveImage == null)
+                throw new InvalidOperationException("请先加载图像，再应用其真实标定间距。");
+            double sx = FloatParameter(_spacingX, "X像素间距");
+            double sy = FloatParameter(_spacingY, "Y像素间距");
+            _viewer.PixelSpacing = new FIMPixelSpacing(sx,sy);
+            _viewer.ShowPhysicalRulers = true;
+            Show("标尺切换为毫米：X=" + sx + " mm/px，Y=" + sy +
+                " mm/px（必须以真实标定值为准）");
+        }
+
+        private void ResetPixelSpacing()
+        {
+            _viewer.PixelSpacing = null;
+            _viewer.ShowPhysicalRulers = false;
+            Show("恢复像素标尺；未标定不显示毫米尺寸");
         }
 
         private void ApplyDisplay()
