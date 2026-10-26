@@ -74,6 +74,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                     value.Value.MillimetersPerPixelY <= 0))
                     throw new ArgumentOutOfRangeException("value");
                 _pixelSpacing = value;
+                if (!value.HasValue) _rulerMillimeters = false;
                 RefreshRulers();
             }
         }
@@ -147,6 +148,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             if (image == null) throw new ArgumentNullException("image");
             _pendingFit = true;
             _region = null;
+            _pixelSpacing = null; _rulerMillimeters = false;
             _displayState.Reset();
             _viewTransform.Reset();
             _comparison.Reset();
@@ -177,6 +179,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             _polygonDraft.Clear();
             _overlays.Clear();
             _overlayOriginal = null;
+            _pixelSpacing = null; _rulerMillimeters = false;
             _session.Clear();
         }
 
@@ -367,6 +370,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             {
                 _overlayOriginal = original;
                 _region = null;
+                _pixelSpacing = null; _rulerMillimeters = false;
                 _polygonDraft.Clear();
                 _overlays.Clear();
             }
