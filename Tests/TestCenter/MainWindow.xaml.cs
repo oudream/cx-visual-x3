@@ -35,6 +35,7 @@ namespace CxVisual.TestCenter.UI
         private ITCTWorkspaceFrame _currentFrame;
         private bool _openingWorkspace;
         private bool _testConsoleOpenedManually;
+        private GridLength _savedTestConsoleWidth = new GridLength(320);
         private bool _automatedRunContext;
         private CancellationTokenSource _cancel;
         private TCTTestRunSummary _lastRun;
@@ -412,9 +413,13 @@ namespace CxVisual.TestCenter.UI
 
         private void SetTestConsoleVisible(bool show)
         {
+            // 仅在真正收起时记下用户拖动后的宽度；普通切换页签不能将其重置为320。
+            if (!show && IsTestConsoleVisible &&
+                TestConsoleColumn.Width.Value > 0)
+                _savedTestConsoleWidth = TestConsoleColumn.Width;
             TestConsolePanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
             TestConsoleSplitter.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-            TestConsoleColumn.Width = show ? new GridLength(320) : new GridLength(0);
+            TestConsoleColumn.Width = show ? _savedTestConsoleWidth : new GridLength(0);
             TestConsoleSplitterColumn.Width = show ? new GridLength(5) : new GridLength(0);
         }
 
@@ -476,17 +481,23 @@ namespace CxVisual.TestCenter.UI
             // Catalog用例选择只更新Inspector/上下文，不抢走已打开计划的操作中心。
             TabItem activeTab = (DocumentHost.Content as TabControl)?.SelectedItem as TabItem;
             bool insideCreatedPlan = activeTab != null && activeTab.Content is TCTTestPlanControl;
-            if (!(activeTab != null && activeTab.Content is TCTArchitectureSmokeFrame))
+            TCTWorkspaceDescriptor activeWorkspace = activeTab == null ? null :
+                activeTab.Tag as TCTWorkspaceDescriptor;
+            bool professionalPage = activeWorkspace != null &&
+                !activeWorkspace.WorkspaceId.StartsWith("auto.", StringComparison.Ordinal);
+            if (!professionalPage &&
+                !(activeTab != null && activeTab.Content is TCTArchitectureSmokeFrame))
             {
                 AutoActionHost.Visibility = Visibility.Visible;
                 ManualActionHost.Visibility = insideCreatedPlan ? Visibility.Visible : Visibility.Collapsed;
             }
             _ribbon.SetContext(test);
-            WorkspaceTitle.Text = test == null ? "测试主界面 / Overview" :
-                test.Descriptor.Aspect + " / " + test.Descriptor.Group + " / " + test.Descriptor.Name;
+            if (!professionalPage)
+                WorkspaceTitle.Text = test == null ? "测试主界面 / Overview" :
+                    test.Descriptor.Aspect + " / " + test.Descriptor.Group + " / " + test.Descriptor.Name;
             Inspector.ShowCase(test);
             // 在概览页选中实际Catalog用例时也属于自动测试，不应将取消/断言隐藏。
-            if (test != null && (activeTab == null ||
+            if (test != null && !professionalPage && (activeTab == null ||
                 !(activeTab.Tag is TCTWorkspaceDescriptor)))
             {
                 _automatedRunContext = true;
@@ -528,6 +539,8 @@ namespace CxVisual.TestCenter.UI
 
         private void ShowResult(TCTTestCaseResult result)
         {
+            if (result == null) return;
+            _automatedRunContext = true;
             Inspector.ShowResult(result);
             DocumentHost.ShowResult(result, _activeHistoryDirectory);
             Timeline.FocusAttempt(result.AttemptId);
