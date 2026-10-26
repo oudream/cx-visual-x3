@@ -38,6 +38,37 @@
     <Setter Property="Background" Value="{DynamicResource MPWSurfaceBrush}"/>
     <Setter Property="Foreground" Value="{DynamicResource MPWForegroundBrush}"/>
     <Setter Property="BorderBrush" Value="{DynamicResource MPWBorderBrush}"/>
+  
+    <Setter Property="SelectionBrush" Value="{DynamicResource MPWSelectionBrush}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="{x:Type TextBox}">
+          <Border x:Name="MPWInputSurface" CornerRadius="5" SnapsToDevicePixels="True"
+                  Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}" Padding="{TemplateBinding Padding}">
+            <ScrollViewer x:Name="PART_ContentHost" Focusable="False"
+                          HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden"/>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="MPWInputSurface" Property="BorderBrush" Value="{DynamicResource MPWAccentBrush}"/>
+            </Trigger>
+            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+              <Setter TargetName="MPWInputSurface" Property="BorderBrush" Value="{DynamicResource MPWAccentBrush}"/>
+              <Setter TargetName="MPWInputSurface" Property="BorderThickness" Value="1.5"/>
+            </Trigger>
+            <Trigger Property="Validation.HasError" Value="True">
+              <Setter TargetName="MPWInputSurface" Property="BorderBrush" Value="{DynamicResource MPWErrorBrush}"/>
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+              <Setter Property="Opacity" Value="0.55"/>
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
   </Style>
   <Style x:Key="MPWComboStyle" TargetType="{x:Type ComboBox}">
     <Setter Property="FontSize" Value="{StaticResource MPWFontBody}"/>
@@ -54,6 +85,39 @@
     <Setter Property="Foreground" Value="{DynamicResource MPWForegroundBrush}"/>
     <Setter Property="BorderBrush" Value="{DynamicResource MPWBorderBrush}"/>
     <Setter Property="Cursor" Value="Hand"/>
+  
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="{x:Type Button}">
+          <Border x:Name="MPWButtonSurface" CornerRadius="5" SnapsToDevicePixels="True"
+                  Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}" Padding="{TemplateBinding Padding}">
+            <ContentPresenter Content="{TemplateBinding Content}"
+                ContentTemplate="{TemplateBinding ContentTemplate}"
+                HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                RecognizesAccessKey="True"/>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="MPWButtonSurface" Property="Background" Value="{DynamicResource MPWHoverBrush}"/>
+              <Setter TargetName="MPWButtonSurface" Property="BorderBrush" Value="{DynamicResource MPWAccentBrush}"/>
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+              <Setter TargetName="MPWButtonSurface" Property="Background" Value="{DynamicResource MPWSelectionBrush}"/>
+            </Trigger>
+            <Trigger Property="IsKeyboardFocused" Value="True">
+              <Setter TargetName="MPWButtonSurface" Property="BorderBrush" Value="{DynamicResource MPWAccentBrush}"/>
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+              <Setter Property="Opacity" Value="0.52"/>
+              <Setter Property="Cursor" Value="Arrow"/>
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
   </Style>
   <Style x:Key="MPWDataGridStyle" TargetType="{x:Type DataGrid}">
     <Setter Property="FontSize" Value="{StaticResource MPWFontBody}"/>
