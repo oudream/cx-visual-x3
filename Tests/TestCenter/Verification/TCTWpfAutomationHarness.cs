@@ -699,6 +699,26 @@ namespace CxVisual.TestCenter.UI
         /// 命令工作区独立UIA验收：通过真实AutomationElement填写参数和点击右侧按钮，
         /// 验证Owner命令实际执行及历史观察，不用WPF直接调用模拟UI点击。
         /// </summary>
+        /// <summary>
+        /// Connector单工作区真实UIA诊断，直接复用全量测试的同一个执行函数，
+        /// 不引入虚假数据或第二套编辑器，只缩短定位失败的验证路径。
+        /// </summary>
+        public static async Task RunConnectorAsync(TCTMainWindow window)
+        {
+            if (window == null) throw new ArgumentNullException("window");
+            window.Show();
+            await window.Dispatcher.InvokeAsync(() => window.UpdateLayout());
+            IntPtr hwnd = new WindowInteropHelper(window).Handle;
+            if (hwnd == IntPtr.Zero) throw new InvalidOperationException("Connector UIA HWND unavailable");
+            Directory.CreateDirectory(Path.Combine("Output","Debug","x64"));
+            File.WriteAllText(Path.Combine("Output","Debug","x64","TestCenter-UIA-Stages.log"), "");
+            TraceUiStage("Connector isolated UIA start");
+            await Task.Run(() => InteractModuleKind(hwnd, window,
+                CxVisual.Mechanism.Core.Modules.MFMModuleKind.Connector));
+            SaveScreenshot(window, "TestCenter-Connector-UIA.png");
+            TraceUiStage("Connector isolated UIA complete");
+        }
+
         public static async Task RunCommandAsync(TCTMainWindow window)
         {
             if (window == null) throw new ArgumentNullException("window");
