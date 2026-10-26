@@ -13,6 +13,12 @@ namespace CxVisual.TestCenter.UI
     /// </summary>
     internal static class TCTVolumeGpuHardwareSmoke
     {
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern IntPtr SendMessage(IntPtr hwnd,uint message,UIntPtr wParam,IntPtr lParam);
+        private static IntPtr CursorPoint(int x,int y)
+        {
+            return new IntPtr((y<<16)|(x&0xffff));
+        }
         public static void Run()
         {
             TCTManualVolumeViewerFrame frame=new TCTManualVolumeViewerFrame();
@@ -30,6 +36,26 @@ namespace CxVisual.TestCenter.UI
                 frame.Dispatcher.Invoke(DispatcherPriority.Background,new Action(delegate {}));
                 if(!frame.IsGpuVolumeRendering)
                     throw new NotSupportedException("GPU实机验收失败（禁止回退后宣称通过）："+frame.GpuStatusText);
+                // 必须给真实OpenGL子窗口发送Win32鼠标消息，而不是直接调用相机API。
+                CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering.MPWVolumeOpenGlControl gl=
+                    frame.GpuControlForHardwareTest;
+                if(gl==null||gl.NativeHandleForHardwareTest==IntPtr.Zero)
+                    throw new InvalidOperationException("GPU子窗口未实际创建。");
+                float yaw=gl.CameraYaw,distance=gl.CameraDistance;
+                SendMessage(gl.NativeHandleForHardwareTest,0x0201,new UIntPtr(1),CursorPoint(60,60));
+                SendMessage(gl.NativeHandleForHardwareTest,0x0200,new UIntPtr(1),CursorPoint(110,85));
+                SendMessage(gl.NativeHandleForHardwareTest,0x0202,UIntPtr.Zero,CursorPoint(110,85));
+                if(Math.Abs(gl.CameraYaw-yaw)<.02f)
+                    throw new InvalidOperationException("真实GPU窗口左键拖动未旋转相机。");
+                SendMessage(gl.NativeHandleForHardwareTest,0x0204,new UIntPtr(2),CursorPoint(65,60));
+                SendMessage(gl.NativeHandleForHardwareTest,0x0200,new UIntPtr(2),CursorPoint(105,80));
+                SendMessage(gl.NativeHandleForHardwareTest,0x0205,UIntPtr.Zero,CursorPoint(105,80));
+                if(gl.CameraTarget.Length()<.001f)
+                    throw new InvalidOperationException("真实GPU窗口右键拖动未平移相机。");
+                SendMessage(gl.NativeHandleForHardwareTest,0x020A,
+                    new UIntPtr((uint)(120<<16)),CursorPoint(100,100));
+                if(Math.Abs(gl.CameraDistance-distance)<.05f || gl.NativePointerEvents<5)
+                    throw new InvalidOperationException("真实GPU窗口滚轮缩放或原生鼠标事件未接通。");
                 string driver=frame.GpuStatusText;
                 BitmapSource pixels=frame.CaptureGpuFrameForTest();
                 if(pixels.PixelWidth<200 || pixels.PixelHeight<150)

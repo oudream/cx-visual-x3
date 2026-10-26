@@ -50,6 +50,7 @@ namespace CxVisual.TestCenter.UI
         private readonly ComboBox _gpuPreset = new ComboBox { Margin=new Thickness(4),Height=29 };
 
         public bool HasAttemptedGpuRendering { get; private set; }
+        public MPWVolumeOpenGlControl GpuControlForHardwareTest { get { return _gpu; } }
         public bool IsGpuVolumeRendering { get { return _gpu != null && _gpu.IsAvailable; } }
         public string GpuStatusText { get { return _gpuInfo.Text; } }
         public BitmapSource CaptureGpuFrameForTest()

@@ -29,6 +29,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
         private readonly TextBlock[] _axisLabels=new TextBlock[3];
         private Point _dragOrigin;
         private bool _dragging;
+        private bool _panning;
+        private Vector3D _cameraTarget=new Vector3D();
         private double _yaw = 37.0;
         private double _pitch = 23.0;
         private double _distance = 3.5;
@@ -74,6 +76,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
             Children.Add(_orientation);
             MouseLeftButtonDown += OnDown;
             MouseLeftButtonUp += OnUp;
+            MouseRightButtonDown += OnRightDown;
+            MouseRightButtonUp += OnUp;
             MouseMove += OnMove;
             MouseWheel += OnWheel;
             LostMouseCapture += delegate { _dragging = false; };
@@ -82,6 +86,27 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
 
         public int SlicePlaneCount { get { return Math.Max(0, _models.Children.Count - 1); } }
         public double CameraDistance { get { return _distance; } }
+        public Vector3D CameraTarget { get { return _cameraTarget; } }
+        public void Orbit(double dx,double dy)
+        {
+            _yaw+=dx*.5;_pitch=Math.Max(-85,Math.Min(85,_pitch-dy*.5));
+            UpdateCamera();
+        }
+        public void Zoom(double wheelSteps)
+        {
+            _distance=Math.Max(.55,Math.Min(16,_distance*Math.Pow(.89,wheelSteps)));
+            UpdateCamera();
+        }
+        public void Pan(double dx,double dy)
+        {
+            double yaw=_yaw*Math.PI/180,pitch=_pitch*Math.PI/180;
+            Vector3D right=new Vector3D(Math.Cos(yaw),0,-Math.Sin(yaw));
+            Vector3D up=new Vector3D(-Math.Sin(yaw)*Math.Sin(pitch),Math.Cos(pitch),
+                -Math.Cos(yaw)*Math.Sin(pitch));
+            double scale=2*_distance*Math.Tan(42*Math.PI/360)/Math.Max(1,ActualHeight);
+            _cameraTarget+=(-right*dx+up*dy)*scale;
+            UpdateCamera();
+        }
         /// <summary>专用窗口验收：查看指定切面的实际世界宽度，而非判断截图是否存在。</summary>
         public double GetPlaneHorizontalSpan(int index)
         {
@@ -106,7 +131,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
 
         public void ResetCamera()
         {
-            _yaw = 37.0; _pitch = 23.0; _distance = 3.5;
+            _yaw = 37.0; _pitch = 23.0; _distance = 3.5; _cameraTarget=new Vector3D();
             UpdateCamera();
         }
 
@@ -235,7 +260,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
                 _distance * c * Math.Sin(yaw),
                 _distance * Math.Sin(pitch),
                 _distance * c * Math.Cos(yaw));
-            _camera.Position = pos;
+            _camera.Position = pos+_cameraTarget;
             _camera.LookDirection = new Vector3D(-pos.X, -pos.Y, -pos.Z);
             _camera.UpDirection = new Vector3D(0, 1, 0);
             _camera.FieldOfView = 42;
@@ -270,13 +295,20 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
         private void OnDown(object sender, MouseButtonEventArgs e)
         {
             _dragOrigin = e.GetPosition(this);
+            _panning=(Keyboard.Modifiers & ModifierKeys.Shift)!=0;
             _dragging = true;
             CaptureMouse();
             e.Handled = true;
         }
+        private void OnRightDown(object sender,MouseButtonEventArgs e)
+        {
+            _dragOrigin=e.GetPosition(this);
+            _dragging=true;_panning=true;
+            CaptureMouse();e.Handled=true;
+        }
         private void OnUp(object sender, MouseButtonEventArgs e)
         {
-            _dragging = false;
+            _dragging = false;_panning=false;
             if (IsMouseCaptured) ReleaseMouseCapture();
             e.Handled = true;
         }
@@ -284,16 +316,15 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
         {
             if (!_dragging) return;
             Point next = e.GetPosition(this);
-            _yaw += (next.X - _dragOrigin.X) * 0.5;
-            _pitch = Math.Max(-85, Math.Min(85, _pitch - (next.Y - _dragOrigin.Y) * 0.5));
+            double dx=next.X-_dragOrigin.X,dy=next.Y-_dragOrigin.Y;
             _dragOrigin = next;
-            UpdateCamera();
+            if(_panning)Pan(dx,dy);
+            else Orbit(dx,dy);
             e.Handled = true;
         }
         private void OnWheel(object sender, MouseWheelEventArgs e)
         {
-            _distance = Math.Max(1.25, Math.Min(12, _distance * (e.Delta > 0 ? 0.89 : 1.12)));
-            UpdateCamera();
+            Zoom(e.Delta/120.0);
             e.Handled = true;
         }
     }

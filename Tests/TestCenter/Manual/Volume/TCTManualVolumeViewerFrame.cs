@@ -118,6 +118,8 @@ namespace CxVisual.TestCenter.UI
             return host;
         }
 
+        public void ResetCameraForTest() { Reset3DCamera(); }
+
         private void Reset3DCamera()
         {
             _scene.ResetCamera();
@@ -154,6 +156,7 @@ namespace CxVisual.TestCenter.UI
             if (previous != null && !Object.ReferenceEquals(previous,volume)) previous.Dispose();
             RefreshSlices();
             RefreshLegacyHistogram();
+            UpdateGpuSettings(); // WPF选择的显隐/透明度/采样必须同步到唯一CT3D设置
             UpdateGpuVolume();
             _status.Text = String.Format("{0} · {1}×{2}×{3} · Spacing {4:0.###}/{5:0.###}/{6:0.###}",
                 volume.Name, volume.OriginalWidth, volume.OriginalHeight, volume.OriginalDepth,

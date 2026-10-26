@@ -170,7 +170,7 @@ namespace CxVisual.TestCenter.UI
             AddAxis(display,"切片窗下限",_windowMin,"TCT.Volume.WindowMin");
             AddAxis(display,"切片窗上限",_windowMax,"TCT.Volume.WindowMax");
             display.Children.Add(new TextBlock {
-                Text="左键拖动定位三刀；滚轮换层；Ctrl+滚轮缩放；Alt+左键平移。",
+                Text="2D：左键三刀/滚轮换层/Ctrl+滚轮缩放；3D：左键旋转/右键平移/滚轮缩放。",
                 TextWrapping=TextWrapping.Wrap,Margin=new Thickness(4,8,4,5) });
             Label(gray,"渲染预设与灰阶范围");
             BuildGpuPanel(render); // 将成熟渲染控件直接归类，不复制字段或事件。
@@ -337,7 +337,17 @@ namespace CxVisual.TestCenter.UI
                 _headerSliceSliders[plane]=slice;
                 _headerSliceNumbers[plane]=index;
             }
-            else TinyButton(tools,"相机",Reset3DCamera);
+            else
+            {
+                TinyButton(tools,"复位",Reset3DCamera);
+                TinyButton(tools,"放大",()=>Zoom3D(1));
+                TinyButton(tools,"缩小",()=>Zoom3D(-1));
+                TinyButton(tools,"左移",()=>Pan3D(-28,0));
+                TinyButton(tools,"右移",()=>Pan3D(28,0));
+                TinyButton(tools,"上移",()=>Pan3D(0,-28));
+                TinyButton(tools,"下移",()=>Pan3D(0,28));
+                tools.ToolTip="GPU三维：左键拖动旋转；右/中键或Shift+左键平移；滚轮缩放；双击复位";
+            }
             TinyButton(tools,"□",()=>ToggleSlot(host));
             Grid.SetRow(tools,0);host.Children.Add(tools);
             AutomationProperties.SetAutomationId(host,"TCT.Volume.View."+row+col);
@@ -382,6 +392,31 @@ namespace CxVisual.TestCenter.UI
             if(_volume==null||_state==null)throw new InvalidOperationException("必须先加载体数据。");
             // 真实改变WPF Slider.Value，验收时经过ValueChanged事件而非跳过UI直调MVI。
             _headerSliceSliders[plane].Value=position;
+        }
+
+        public void Zoom3D(double steps)
+        {
+            if(_gpu!=null && _gpu.IsAvailable)_gpu.Zoom((float)steps);
+            else _scene.Zoom(steps);
+        }
+        public void Pan3D(double dx,double dy)
+        {
+            if(_gpu!=null && _gpu.IsAvailable)_gpu.Pan((float)dx,(float)dy);
+            else _scene.Pan(dx,dy);
+        }
+        public void Orbit3D(double dx,double dy)
+        {
+            if(_gpu!=null && _gpu.IsAvailable)_gpu.Orbit((float)dx,(float)dy);
+            else _scene.Orbit(dx,dy);
+        }
+        public double CameraDistanceForTest
+        {
+            get { return _gpu!=null && _gpu.IsAvailable?_gpu.CameraDistance:_scene.CameraDistance; }
+        }
+        public double CameraTargetLengthForTest
+        {
+            get { return _gpu!=null && _gpu.IsAvailable?_gpu.CameraTarget.Length():
+                _scene.CameraTarget.Length; }
         }
 
         private static void TinyButton(Panel tools,string caption,Action action)

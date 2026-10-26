@@ -36,6 +36,20 @@ namespace CxVisual.TestCenter.UI
                     "GPU成功或带具体原因的WPF回退，不能静默伪报GPU成功");
                 Check(frame.LegacyTopTabCount==4 && frame.LegacyBottomTabCount==5,
                     "原版上下4/5页签完整恢复");
+                double initialCameraDistance=frame.CameraDistanceForTest;
+                frame.Zoom3D(2);
+                Check(frame.CameraDistanceForTest<initialCameraDistance,
+                    "3D放大按钮必须真正改变GPU/WPF相机而非空动作");
+                frame.Zoom3D(-2);
+                Check(Math.Abs(frame.CameraDistanceForTest-initialCameraDistance)<.001,
+                    "3D缩小必须恢复到原相机距离");
+                frame.Pan3D(50,25);
+                Check(frame.CameraTargetLengthForTest>.001,
+                    "3D平移按钮必须真正改变相机注视点");
+                frame.Orbit3D(25,15);
+                frame.ResetCameraForTest();
+                Check(frame.CameraTargetLengthForTest<.0001,
+                    "3D相机复位必须清除平移");
                 Check(frame.HeaderSliceControlCount==3,
                     "旧版XY/YZ/XZ三图窗均有独立跳转滑杆和索引输入");
                 frame.JumpToViewSliceForTest(FVOSlicePlane.XY,12);

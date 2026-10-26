@@ -39,8 +39,17 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
         private int _width, _height, _depth;
         private float _sx = 1, _sy = 1, _sz = 1;
         private float _yaw = 0.62f, _pitch = 0.36f, _distance = 2.9f;
-        private bool _mouseDown;
+        private int _dragMode; // 1轨道旋转，2平移
         private int _mouseX, _mouseY;
+        private Vector3 _target=Vector3.Zero;
+        private NativeWindowSubclassProc _nativeInput;
+        private bool _nativeInputInstalled;
+        public int NativePointerEvents { get; private set; }
+        public IntPtr NativeHandleForHardwareTest { get { return _window; } }
+        public float CameraDistance { get { return _distance; } }
+        public Vector3 CameraTarget { get { return _target; } }
+        public float CameraYaw { get { return _yaw; } }
+        public float CameraPitch { get { return _pitch; } }
         private float _opacity = 1, _stepScale = 1, _referenceStep = 1f / 256f;
         private float _ambient = .34f, _diffuse = .62f, _specular = .16f, _shine = 24;
         private bool _jitter = true;
@@ -175,7 +184,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
 
         public void ResetCamera()
         {
-            _yaw = .62f; _pitch = .36f; _distance = 2.9f; RenderFrame();
+            _yaw = .62f; _pitch = .36f; _distance = 2.9f; _target=Vector3.Zero; RenderFrame();
         }
 
         protected override HandleRef BuildWindowCore(HandleRef hwndParent)
@@ -183,6 +192,15 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
             _window = CreateWindowEx(0, "STATIC", "", 0x50000000 | 0x02000000 | 0x04000000,
                 0, 0, 100, 100, hwndParent.Handle, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
             if (_window == IntPtr.Zero) throw new Win32Exception(Marshal.GetLastWin32Error());
+            // Win32子窗口直接收消息；不能依赖WPF路由鼠标事件。
+            _nativeInput=new NativeWindowSubclassProc(OnNativeWindowMessage);
+            _nativeInputInstalled=SetWindowSubclass(_window,_nativeInput,UIntPtr.Zero,IntPtr.Zero);
+            if(!_nativeInputInstalled)
+            {
+                int nativeError=Marshal.GetLastWin32Error();
+                DestroyWindow(_window);_window=IntPtr.Zero;
+                throw new Win32Exception(nativeError,"OpenGL窗口无法注册鼠标消息回调。");
+            }
             try
             {
                 _dc = GetDC(_window);
@@ -274,6 +292,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
 
         protected override void DestroyWindowCore(HandleRef hwnd)
         {
+            _dragMode=0;
+            if(_nativeInputInstalled && _window!=IntPtr.Zero)
+            {
+                RemoveWindowSubclass(_window,_nativeInput,UIntPtr.Zero);
+                _nativeInputInstalled=false;
+            }
             ReleaseResources();
             if (_dc != IntPtr.Zero) { ReleaseDC(_window,_dc); _dc = IntPtr.Zero; }
             if (_window != IntPtr.Zero) { DestroyWindow(_window); _window = IntPtr.Zero; }
@@ -453,9 +477,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
             glClear(0x00004000 | 0x00000100);
             float cy=(float)Math.Cos(_yaw),sy=(float)Math.Sin(_yaw);
             float cp=(float)Math.Cos(_pitch),sp=(float)Math.Sin(_pitch);
-            Vector3 camera = new Vector3(_distance*sy*cp,_distance*sp,_distance*cy*cp);
+            Vector3 camera = _target+new Vector3(_distance*sy*cp,_distance*sp,_distance*cy*cp);
             Matrix4x4 model = Matrix4x4.CreateScale(_sx,_sy,_sz);
-            Matrix4x4 view = Matrix4x4.CreateLookAt(camera,Vector3.Zero,Vector3.UnitY);
+            Matrix4x4 view = Matrix4x4.CreateLookAt(camera,_target,Vector3.UnitY);
             Matrix4x4 projection = Matrix4x4.CreatePerspectiveFieldOfView(
                 (float)(Math.PI/4),w/(float)h,.02f,30);
             if (_showVolume)
@@ -589,32 +613,80 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
         private static float Clamp(float v,float min,float max)
         { return Math.Max(min,Math.Min(max,v)); }
 
-        protected override IntPtr WndProc(IntPtr hwnd,int msg,IntPtr wParam,IntPtr lParam,ref bool handled)
+        /// <summary>共享相机交互：真正变动OpenGL view矩阵，而非只修改按钮状态。</summary>
+        public void Orbit(float dx,float dy)
+        {
+            _yaw+=dx*.007f;
+            _pitch=Clamp(_pitch-dy*.007f,-1.47f,1.47f);
+            RenderFrame();
+        }
+        public void Zoom(float steps)
+        {
+            if(steps==0)return;
+            _distance=Clamp(_distance*(float)Math.Pow(.87,steps),.45f,16f);
+            RenderFrame();
+        }
+        public void Pan(float dx,float dy)
+        {
+            Vector3 right=new Vector3((float)Math.Cos(_yaw),0,-(float)Math.Sin(_yaw));
+            Vector3 up=new Vector3(-(float)Math.Sin(_yaw)*(float)Math.Sin(_pitch),
+                (float)Math.Cos(_pitch),-(float)Math.Cos(_yaw)*(float)Math.Sin(_pitch));
+            RectNative rect;
+            int height=GetClientRect(_window,out rect)?Math.Max(1,rect.Bottom-rect.Top):400;
+            float scale=2f*_distance*(float)Math.Tan(Math.PI/8)/height;
+            _target+=(-right*dx+up*dy)*scale;
+            RenderFrame();
+        }
+
+        private IntPtr OnNativeWindowMessage(IntPtr hwnd,uint message,IntPtr wParam,
+            IntPtr lParam,UIntPtr id,IntPtr reference)
         {
             int x=unchecked((short)((long)lParam & 0xffff));
             int y=unchecked((short)(((long)lParam>>16)&0xffff));
-            if(msg==0x0201) { _mouseDown=true; _mouseX=x; _mouseY=y; SetCapture(hwnd); handled=true; }
-            else if(msg==0x0202) { _mouseDown=false; ReleaseCapture(); handled=true; }
-            else if(msg==0x0200 && _mouseDown)
+            if(message==0x0201 || message==0x0204 || message==0x0207)
             {
-                _yaw+=(x-_mouseX)*.007f;
-                _pitch=Clamp(_pitch- (y-_mouseY)*.007f,-1.47f,1.47f);
-                _mouseX=x; _mouseY=y; RenderFrame(); handled=true;
+                bool pan=message!=0x0201 || (((long)wParam & 0x0004)!=0);
+                _dragMode=pan?2:1;
+                _mouseX=x;_mouseY=y;
+                SetFocus(hwnd);
+                SetCapture(hwnd);
+                NativePointerEvents++;
+                return IntPtr.Zero;
             }
-            else if(msg==0x020A)
+            if(message==0x0200 && _dragMode!=0)
+            {
+                int dx=x-_mouseX,dy=y-_mouseY;
+                _mouseX=x;_mouseY=y;
+                if(dx!=0||dy!=0)
+                {
+                    if(_dragMode==2)Pan(dx,dy);
+                    else Orbit(dx,dy);
+                    NativePointerEvents++;
+                }
+                return IntPtr.Zero;
+            }
+            if(message==0x0202 || message==0x0205 || message==0x0208 ||
+               message==0x0215)
+            {
+                _dragMode=0;
+                if(message!=0x0215)ReleaseCapture();
+                return IntPtr.Zero;
+            }
+            if(message==0x020A)
             {
                 short delta=unchecked((short)(((long)wParam>>16)&0xffff));
-                _distance=Clamp(_distance*(delta>0?.87f:1.15f),1.3f,12f);
-                RenderFrame(); handled=true;
+                Zoom(delta/120f);
+                NativePointerEvents++;
+                return IntPtr.Zero;
             }
-            else if(msg==0x0005) { RenderFrame(); } // WM_SIZE
-            else if(msg==0x000F && IsAvailable)
+            if(message==0x0203) { ResetCamera();return IntPtr.Zero; }
+            if(message==0x0005)RenderFrame();
+            if(message==0x0014 && IsAvailable)return new IntPtr(1);
+            if(message==0x000F && IsAvailable)
             {
-                RenderFrame();
-                ValidateRect(hwnd,IntPtr.Zero);
-                handled=true;
+                RenderFrame();ValidateRect(hwnd,IntPtr.Zero);return IntPtr.Zero;
             }
-            return IntPtr.Zero;
+            return DefSubclassProc(hwnd,message,wParam,lParam);
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -626,6 +698,22 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
                 AccumBlueBits,AccumAlphaBits,DepthBits,StencilBits,AuxBuffers,LayerType,Reserved;
             public uint LayerMask,VisibleMask,DamageMask;
         }
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        private delegate IntPtr NativeWindowSubclassProc(IntPtr hwnd,uint message,IntPtr wParam,
+            IntPtr lParam,UIntPtr id,IntPtr reference);
+        [DllImport("comctl32.dll",SetLastError=true)]
+        [return:MarshalAs(UnmanagedType.Bool)]
+        private static extern bool SetWindowSubclass(IntPtr hwnd,NativeWindowSubclassProc callback,
+            UIntPtr id,IntPtr reference);
+        [DllImport("comctl32.dll",SetLastError=true)]
+        [return:MarshalAs(UnmanagedType.Bool)]
+        private static extern bool RemoveWindowSubclass(IntPtr hwnd,NativeWindowSubclassProc callback,
+            UIntPtr id);
+        [DllImport("comctl32.dll")]
+        private static extern IntPtr DefSubclassProc(IntPtr hwnd,uint message,IntPtr wParam,IntPtr lParam);
+        [DllImport("user32.dll")]
+        private static extern IntPtr SetFocus(IntPtr hwnd);
+
         [StructLayout(LayoutKind.Sequential)]
         private struct RectNative { public int Left,Top,Right,Bottom; }
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
