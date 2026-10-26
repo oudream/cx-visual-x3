@@ -517,6 +517,7 @@ namespace CxVisual.TestCenter.UI
         {
             if (run == null || _cancel != null) return;
             _activeHistoryDirectory = directory;
+            _automatedRunContext = true;
             _displayedRun = new TCTTestRunSummary(run.Attempts.ToList(), run.RunId);
             _visibleResults.Clear();
             _visibleResults.AddRange(run.Attempts);
@@ -547,6 +548,8 @@ namespace CxVisual.TestCenter.UI
             _automatedRunContext = true;
             Inspector.ShowResult(result);
             DocumentHost.ShowResult(result, _activeHistoryDirectory);
+            // 选择真实运行结果属于自动测试诊断，主动展示唯一测试控制台。
+            SetTestConsoleVisible(true);
             Timeline.FocusAttempt(result.AttemptId);
         }
 
@@ -607,6 +610,7 @@ namespace CxVisual.TestCenter.UI
             History.SetCurrent(null);
             History.IsEnabled = false;
             _automatedRunContext = true;
+            SetTestConsoleVisible(true);
             Results.Clear(); DocumentHost.Clear(); Timeline.Clear();
             DocumentHost.Overview.Update(_catalog, _visibleResults, null);
             _cancel = new CancellationTokenSource();
