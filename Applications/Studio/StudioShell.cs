@@ -1214,6 +1214,7 @@ namespace CxVisual.Studio
         public void ApplyStudioTheme(bool dark)
         {
             _studioDark = dark;
+            MPWWorkspaceVisuals.ApplyTheme(Application.Current.Resources, dark);
             StudioDock.Theme = dark ? (Theme)new Vs2013DarkTheme() : new Vs2013LightTheme();
             SetStudioColor("StudioBackgroundBrush", dark ? "#252526" : "#F3F6FA");
             SetStudioColor("StudioPrimaryBrush", dark ? "#333337" : "#182D4B");

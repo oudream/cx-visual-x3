@@ -4,7 +4,7 @@
     <!-- 与DOCS/界面设计的浅蓝/VS深灰体系统一；仅WPF外观，不接管命令或工程状态。 -->
     <local:StudioRibbonGlyphConverter x:Key="StudioRibbonGlyphConverter"/>
 
-    <Style TargetType="{x:Type Button}">
+    <Style TargetType="{x:Type Button}" BasedOn="{StaticResource MPWButtonStyle}">
         <Setter Property="Margin" Value="3,2"/>
         <Setter Property="Padding" Value="11,7"/>
         <Setter Property="MinHeight" Value="29"/>
@@ -133,7 +133,7 @@
         <Setter Property="TextOptions.TextRenderingMode" Value="ClearType"/>
     </Style>
     <!-- 标准PART_ContentHost保持IME、Caret、Selection、绑定与UIA；圆角只属于视觉模板。 -->
-    <Style TargetType="{x:Type TextBox}">
+    <Style TargetType="{x:Type TextBox}" BasedOn="{StaticResource MPWInputStyle}">
         <Setter Property="MinHeight" Value="30"/>
         <Setter Property="Background" Value="{DynamicResource StudioPanelBrush}"/>
         <Setter Property="Foreground" Value="{DynamicResource StudioTextBrush}"/>
@@ -186,12 +186,12 @@
         <Setter Property="Foreground" Value="{DynamicResource StudioTextBrush}"/>
         <Setter Property="BorderBrush" Value="{DynamicResource StudioBorderBrush}"/>
     </Style>
-    <Style TargetType="{x:Type TreeView}">
+    <Style TargetType="{x:Type TreeView}" BasedOn="{StaticResource MPWTreeStyle}">
         <Setter Property="Background" Value="{DynamicResource StudioPanelBrush}"/>
         <Setter Property="Foreground" Value="{DynamicResource StudioTextBrush}"/>
         <Setter Property="BorderThickness" Value="0"/>
     </Style>
-    <Style TargetType="{x:Type TreeViewItem}">
+    <Style TargetType="{x:Type TreeViewItem}" BasedOn="{StaticResource MPWTreeItemStyle}">
         <Setter Property="Foreground" Value="{DynamicResource StudioTextBrush}"/>
         <Setter Property="Background" Value="Transparent"/>
         <Style.Triggers>
