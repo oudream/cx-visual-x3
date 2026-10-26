@@ -84,7 +84,8 @@ namespace CxVisual.TestCenter.UI
         public event Action<string[]> FormalRunRequested;
         public static string[] FormalCaseIds()
         { return new[] { "TCT.CMD.001", "TCT.CMD.002", "TCT.CMD.003",
-            "TCT.CMD.004", "TCT.CMD.005" }; }
+            "TCT.CMD.004", "TCT.CMD.005", "TCT.CMD.006", "TCT.CMD.007",
+            "TCT.CMD.008", "TCT.CMD.009", "TCT.CMD.010" }; }
         public string WorkspaceId { get { return "manual.command"; } }
         public Guid SessionId { get; private set; }
         public int HistoryCount { get { return _history.Count; } }
@@ -112,7 +113,7 @@ namespace CxVisual.TestCenter.UI
                         () => !_closed && (_childHost == null || _childHost.HasExited)),
                     new TCTWorkspaceAction("command.host.stop", "停止独立测试Host", StopChildHost,
                         () => !_closed && _childHost != null && !_childHost.HasExited),
-                    new TCTWorkspaceAction("command.formal.run", "运行5项正式命令中心TCT测试",
+                    new TCTWorkspaceAction("command.formal.run", "运行10项正式命令中心TCT测试",
                         RunFormalCases, () => !_closed && !_busy),
                     new TCTWorkspaceAction("command.refresh", "刷新命令目录", RefreshCatalog, () => !_closed)
                 };
@@ -226,9 +227,14 @@ namespace CxVisual.TestCenter.UI
                 "CMD.002 · MRK批量执行、独立Operation与响应关联",
                 "CMD.003 · Operation幂等重放与参数冲突",
                 "CMD.004 · 未授权设备命令拒绝执行",
-                "CMD.005 · 无远程Transport不能降级执行"
+                "CMD.005 · 无远程Transport不能降级执行",
+                "CMD.006 · 真实Windows OS命名管道及Operation查询",
+                "CMD.007 · MDS映射与只读变量拒绝",
+                "CMD.008 · 并发容量拒绝与业务副作用隔离",
+                "CMD.009 · 协作暂停、恢复、取消",
+                "CMD.010 · Output Schema违约隔离"
             }) formal.Children.Add(Caption(description));
-            Button formalRun = new Button { Content = "启动5项正式测试（独立Worker）",
+            Button formalRun = new Button { Content = "启动10项正式测试（独立Worker）",
                 HorizontalAlignment = HorizontalAlignment.Left, Padding = new Thickness(14, 8, 14, 8),
                 Margin = new Thickness(5, 12, 5, 8) };
             AutomationProperties.SetAutomationId(formalRun, "TCT.Command.Formal.Run");
@@ -367,7 +373,7 @@ namespace CxVisual.TestCenter.UI
                 return;
             }
             Log("FormalTCT", Guid.Empty, "Requested",
-                "5项正式Case由唯一TCT Runner运行；结果请到TestCenter正式结果/历史面板查看");
+                "10项正式Case由唯一TCT Runner运行；结果请到TestCenter正式结果/历史面板查看");
             run(FormalCaseIds());
         }
         public void RegisterDemo()

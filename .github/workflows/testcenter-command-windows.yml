@@ -63,8 +63,8 @@ jobs:
           if ($p.ExitCode -ne 0) { throw "Official command test Run failed, exit=$($p.ExitCode)" }
           $summary = Get-Content $report -Raw | ConvertFrom-Json
           $count = @($summary.cases).Count
-          if ($count -ne 5 -or $summary.passed -ne 5 -or $summary.success -ne $true) {
-            throw "Expected five passed formal command attempts; total=$count passed=$($summary.passed)"
+          if ($count -ne 10 -or $summary.passed -ne 10 -or $summary.success -ne $true) {
+            throw "Expected ten passed formal command attempts; total=$count passed=$($summary.passed)"
           }
           if (-not (Test-Path $history)) { throw 'Missing official TCT history archive' }
       - name: Verify command center formal execution contracts

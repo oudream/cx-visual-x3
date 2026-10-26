@@ -70,3 +70,8 @@
 - 「多Operation管理」支持 2、4、8、16、32 个本地演示Multiply任务，严格用 `MRKCommandCenter.InvokeBatchAsync`，按演示Provider `MaxConcurrent=2` 分波执行，列表显示各OperationId、Stage、State、进度和错误码。选中行切换操作控制上下文，继续复用原Query/Pause/Resume/Cancel及端点身份检查。
 - 本地单次、真实IPC、正式批量三条路径都在同一表显示真实操作记录；`--command-ui-smoke` 增加四个真实Batch操作、终态与OperationId唯一性反例。人工表不是正式TCT Run/Attempt；正式自动用例仍走Coordinator和主结果仓。
 - 暂未完成跨Host多目标批量权限治理、持久多Operation恢复与长时间压测，不能把演示Provider结果代替设备联锁证据。
+
+
+## 正式命令测试扩展至10项
+
+新增 `TCT.CMD.006～010`，分别验证：Windows真实NamedPipe和Query不重复运行、MDS变量写回及只读失败回执独立、并发容量Busy拒绝后正常释放、长任务协作暂停恢复取消、Output类型违约隔离。全部通过既有TCT Runner和Run/Attempt，不引入第二测试引擎。Windows专项要求Regression选择全部10项Integration案例且10条全部Passed，有官方JSON报告和历史归档。仍不等于60项逐条正式自动验收，也不能替代跨PC和HIL测试。
