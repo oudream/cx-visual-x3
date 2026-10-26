@@ -1029,9 +1029,24 @@ namespace CxVisual.TestCenter.UI
             AutomationElement root = AutomationElement.FromHandle(hwnd);
             if (root == null) throw new InvalidOperationException("Overview HWND unavailable");
             AutomationElement discovered = Find(root, "TCT.Overview.Discovered");
+            // 新版测试控制台随自动测试工作区出现，概览不应长期占用右栏。
+            window.Dispatcher.Invoke(new Action(() => {
+                if (window.IsTestConsoleVisible)
+                    throw new InvalidOperationException("Overview must not reserve global Test Console");
+                window.MenuShowOperations.RaiseEvent(new RoutedEventArgs(
+                    System.Windows.Controls.MenuItem.ClickEvent,window.MenuShowOperations));
+                window.UpdateLayout();
+            }));
             AutomationElement action = Find(root, "TCT.RunSelected");
             if (action.GetCurrentPattern(InvokePattern.Pattern) == null)
-                throw new InvalidOperationException("Overview action lacks real InvokePattern");
+                throw new InvalidOperationException("Explicitly opened Test Console lacks real InvokePattern");
+            window.Dispatcher.Invoke(new Action(() => {
+                window.HideTestConsoleButton.RaiseEvent(new RoutedEventArgs(
+                    System.Windows.Controls.Button.ClickEvent,window.HideTestConsoleButton));
+                window.UpdateLayout();
+                if (window.IsTestConsoleVisible)
+                    throw new InvalidOperationException("Close Test Console must release central workspace width");
+            }));
             // UIAutomation COM属性必须留在UIA工作线程读取；放进Dispatcher会自锁至超时。
             string renderedCount = discovered.Current.Name;
             window.Dispatcher.Invoke(new Action(() => {
