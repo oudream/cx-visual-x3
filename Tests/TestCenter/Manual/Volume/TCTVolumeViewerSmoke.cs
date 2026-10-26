@@ -28,6 +28,12 @@ namespace CxVisual.TestCenter.UI
                 window.UpdateLayout();
                 frame.LoadDemo();
                 window.UpdateLayout();
+                frame.Dispatcher.Invoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle,
+                    new Action(delegate { }));
+                Check(frame.HasAttemptedGpuRendering,
+                    "默认加载必须真实尝试GPU Raymarch而不能直接停留WPF切面");
+                Check(frame.IsGpuVolumeRendering || frame.GpuStatusText.Contains("GPU不可用"),
+                    "GPU成功或带具体原因的WPF回退，不能静默伪报GPU成功");
                 Check(frame.LegacyTopTabCount==4 && frame.LegacyBottomTabCount==5,
                     "原版上下4/5页签完整恢复");
                 Check(frame.HeaderSliceControlCount==3,

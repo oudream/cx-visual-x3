@@ -49,6 +49,7 @@ namespace CxVisual.TestCenter.UI
         private readonly Slider _gpuSliceOpacity = new Slider { Minimum=0,Maximum=1,Value=.35 };
         private readonly ComboBox _gpuPreset = new ComboBox { Margin=new Thickness(4),Height=29 };
 
+        public bool HasAttemptedGpuRendering { get; private set; }
         public bool IsGpuVolumeRendering { get { return _gpu != null && _gpu.IsAvailable; } }
         public string GpuStatusText { get { return _gpuInfo.Text; } }
         public BitmapSource CaptureGpuFrameForTest()
@@ -181,6 +182,7 @@ namespace CxVisual.TestCenter.UI
         public void TryEnableGpu()
         {
             if (_gpu != null || _gpuSlot == null) return;
+            HasAttemptedGpuRendering=true;
             if (_volume == null) LoadDemo();
             _gpuSettings.Preset=(CT3DRenderingPresetKind)(_gpuPreset.SelectedItem ??
                 CT3DRenderingPresetKind.SlicerLikeGrayscale);
