@@ -153,6 +153,66 @@ namespace CxVisual.Mechanism.Visual
                 original!=null && original.IsLocked);
         }
 
+        /// <summary>
+        /// 旋转矩形沿自身局部X/Y轴缩放；固定对侧角/边，
+        /// 全程保持四个正交顶点与图像有效域，不使用轴对齐Bounds拉伸。
+        /// </summary>
+        public MVIImageOverlayItem WithResizedRotatedHandle(MVIImageResizeHandle handle,
+            FGEPoint2D point,int imageWidth,int imageHeight)
+        {
+            RequireRotatedRectangle();
+            if(IsLocked) throw new InvalidOperationException("锁定的旋转矩形不能改变尺寸。");
+            if(!Enum.IsDefined(typeof(MVIImageResizeHandle),handle))
+                throw new ArgumentOutOfRangeException("handle");
+            if(imageWidth<=0 || imageHeight<=0)
+                throw new ArgumentOutOfRangeException("imageWidth");
+            double width=RotatedRectangleWidth,height=RotatedRectangleHeight;
+            FGEPoint2D origin=_points[0];
+            double ux=(_points[1].X-origin.X)/width,uy=(_points[1].Y-origin.Y)/width;
+            double vx=(_points[3].X-origin.X)/height,vy=(_points[3].Y-origin.Y)/height;
+            double dx=FGEValidation.Finite(point.X,"point")-origin.X;
+            double dy=FGEValidation.Finite(point.Y,"point")-origin.Y;
+            double x=dx*ux+dy*uy,y=dx*vx+dy*vy;
+            double left=0,right=width,top=0,bottom=height;
+            const double min=0.25;
+            switch(handle)
+            {
+                case MVIImageResizeHandle.TopLeft:
+                case MVIImageResizeHandle.Left:
+                case MVIImageResizeHandle.BottomLeft: left=Math.Min(right-min,x);break;
+                case MVIImageResizeHandle.TopRight:
+                case MVIImageResizeHandle.Right:
+                case MVIImageResizeHandle.BottomRight: right=Math.Max(left+min,x);break;
+            }
+            switch(handle)
+            {
+                case MVIImageResizeHandle.TopLeft:
+                case MVIImageResizeHandle.Top:
+                case MVIImageResizeHandle.TopRight: top=Math.Min(bottom-min,y);break;
+                case MVIImageResizeHandle.BottomLeft:
+                case MVIImageResizeHandle.Bottom:
+                case MVIImageResizeHandle.BottomRight: bottom=Math.Max(top+min,y);break;
+            }
+            double[] localX={left,right,right,left};
+            double[] localY={top,top,bottom,bottom};
+            FGEPoint2D[] corners=new FGEPoint2D[4];
+            for(int i=0;i<4;i++)
+            {
+                double px=origin.X+localX[i]*ux+localY[i]*vx;
+                double py=origin.Y+localX[i]*uy+localY[i]*vy;
+                if(px< -1e-8 || py< -1e-8 ||
+                    px>imageWidth+1e-8 || py>imageHeight+1e-8)
+                    throw new ArgumentOutOfRangeException("point",
+                        "调整后的旋转矩形角点超出原图。");
+                corners[i]=new FGEPoint2D(px,py);
+            }
+            double l=corners.Min(p=>p.X),t=corners.Min(p=>p.Y);
+            double r=corners.Max(p=>p.X),b=corners.Max(p=>p.Y);
+            return new MVIImageOverlayItem(Kind,Layer,
+                new FGERect2D(l,t,r-l,b-t),corners,Text,ExternalId,
+                Argb,LineWidth,Id,IsVisible,IsLocked);
+        }
+
         /// <summary>按原图坐标缩放边界与顶点，不能只改Bounds而令测量线/多边形顶点停在原位。</summary>
         public MVIImageOverlayItem WithBounds(FGERect2D bounds)
         {
