@@ -513,10 +513,22 @@ namespace CxVisual.TestCenter.UI
                     throw new InvalidOperationException(
                         "切换工作区后通用MPW配置编辑器失效：" + frame.StatusMessage);
             }));
-            if (kind == CxVisual.Mechanism.Core.Modules.MFMModuleKind.Connector) TraceUiStage("Connector / pre removal");
             if (kind == CxVisual.Mechanism.Core.Modules.MFMModuleKind.Connector)
-                VerifyProtocolCollectionRemoval(root, window, moduleId);
-            if (kind == CxVisual.Mechanism.Core.Modules.MFMModuleKind.Connector) TraceUiStage("Connector / completed");
+            {
+                TraceUiStage("Connector / before deletion method");
+                // UIA worker进入删除闭环的确切边界：区别JIT/入口异常与WPF Dispatcher/UIA阻塞。
+                try
+                {
+                    VerifyProtocolCollectionRemoval(root, window, moduleId);
+                }
+                catch (Exception error)
+                {
+                    TraceUiStage("Connector / deletion failed: " + error.GetType().FullName +
+                        " / " + error.Message);
+                    throw;
+                }
+                TraceUiStage("Connector / completed");
+            }
         }
 
         // 通过实际MPW删除按钮删除正式Point与映射，再次保存、重开，检验不存在影子集合。
@@ -597,7 +609,7 @@ namespace CxVisual.TestCenter.UI
                     }
                 }));
                 TraceUiStage("Connector deletion / mapping removed=" + mappingRemoved);
-            if (!mappingRemoved) Thread.Sleep(100);
+                if (!mappingRemoved) Thread.Sleep(100);
             }
             if (!mappingRemoved)
                 throw new InvalidOperationException("删除DataMapping后同一MHS草稿仍有遗留");
