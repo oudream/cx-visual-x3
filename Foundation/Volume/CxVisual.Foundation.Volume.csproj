@@ -28,6 +28,7 @@
     <Compile Include="Data\FVOVolumeData.cs"/>
     <Compile Include="Internal\FVOFrameworkCompat.cs"/>
     <Compile Include="Slicing\FVOObliqueSliceDefinition.cs"/>
+    <Compile Include="Slicing\FVOObliqueSliceBuilder.cs"/>
     <Compile Include="Slicing\FVOSlicePlane.cs"/>
     <Compile Include="Slicing\FVOSliceImageBuilder.cs"/>
     <Compile Include="Analysis\FVOVolumeHistogram.cs"/>

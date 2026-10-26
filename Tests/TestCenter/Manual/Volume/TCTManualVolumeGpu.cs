@@ -193,6 +193,7 @@ namespace CxVisual.TestCenter.UI
             try
             {
                 ApplyGpuUniforms();
+                RefreshOblique();
                 _gpuInfo.Text="真实GPU体绘已启用："+_gpu.DriverVersion;
                 _gpu.RenderFrame();
             }

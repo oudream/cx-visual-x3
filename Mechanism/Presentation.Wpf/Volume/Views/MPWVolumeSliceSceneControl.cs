@@ -104,6 +104,17 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
                 new Point3D(x, -sy/2, -sz/2), new Point3D(x, sy/2, -sz/2));
         }
 
+        /// <summary>额外任意切图像与三正交面共存在一个WPF Viewport3D中；传入世界坐标四角。</summary>
+        public void SetObliqueSlice(FIMImageBuffer image, Point3D topLeft,
+            Point3D topRight, Point3D bottomRight, Point3D bottomLeft)
+        {
+            while (_models.Children.Count > 4) _models.Children.RemoveAt(4);
+            if (image == null) return;
+            if (image.PixelFormat != FIMPixelFormat.Bgr24)
+                throw new ArgumentException("任意切预览必须为Bgr24像素缓冲。");
+            AddPlane(image,topLeft,topRight,bottomRight,bottomLeft);
+        }
+
         private static double Clamp(int index, int count)
         {
             return Math.Max(0.0, Math.Min(1.0, index / (double)Math.Max(1, count - 1)));

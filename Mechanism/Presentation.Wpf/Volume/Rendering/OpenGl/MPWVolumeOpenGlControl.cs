@@ -25,6 +25,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
         private uint _sliceShader, _sliceVao, _sliceVbo, _lineShader, _lineVao, _lineVbo;
         private float _sliceX=.5f, _sliceY=.5f, _sliceZ=.5f, _sliceOpacity=.35f;
         private bool _showSlices=true, _showSliceTexture=false, _showVolume=true, _showBounds=false;
+        private float[] _obliqueCorners; // 4x3 normalized 3D纹理坐标，允许平面超出体数据边界。
         private byte[] _voxels, _scalar, _gradient;
         private int _width, _height, _depth;
         private float _sx = 1, _sy = 1, _sz = 1;
@@ -98,6 +99,21 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
         {
             _showVolume=volume; _showSlices=slices; _showSliceTexture=sliceTexture;
             _showBounds=bounds; _sliceOpacity=Clamp(sliceOpacity,0,1);
+            RenderFrame();
+        }
+
+        /// <summary>四角0..1纹理坐标来自FVOObliqueSliceGeometry，null关闭任意切。</summary>
+        public void SetObliqueCorners(float[] corners)
+        {
+            if (corners != null)
+            {
+                if (corners.Length != 12)throw new ArgumentException("任意切四角应为12个坐标值。");
+                foreach(float value in corners)
+                    if(float.IsNaN(value)||float.IsInfinity(value))
+                        throw new ArgumentOutOfRangeException("corners");
+                _obliqueCorners=(float[])corners.Clone();
+            }
+            else _obliqueCorners=null;
             RenderFrame();
         }
 
@@ -402,7 +418,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
             _gl.DrawArrays(0x0004,0,MPWVolumeGeometry.CubeVertices.Length/3);
             }
             Matrix4x4 mvp = model * view * projection;
-            if (_showSlices || _showSliceTexture)
+            if (_showSlices || _showSliceTexture || _obliqueCorners != null)
             {
                 _gl.UseProgram(_sliceShader);
                 Matrix("mvp",mvp);
@@ -417,7 +433,14 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
                 _gl.BindVertexArray(_sliceVao);
                 _gl.BindBuffer(0x8892,_sliceVbo);
                 UploadFloats(BuildSliceVertices());
-                _gl.DrawArrays(0x0004,0,18);
+                if (_showSlices || _showSliceTexture)
+                    _gl.DrawArrays(0x0004,0,18);
+                if (_obliqueCorners != null)
+                {
+                    Uniform1("showSliceTexture",1);
+                    Uniform1("showSlicePlanes",1);
+                    _gl.DrawArrays(0x0004,18,6);
+                }
             }
             if (_showBounds)
             {
@@ -433,7 +456,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
         /// <summary>直接沿用原版11浮点布局：位置/3D纹理/颜色/任意切UV，三刀单一坐标源。</summary>
         private float[] BuildSliceVertices()
         {
-            float[] vertices=new float[18*11];
+            float[] vertices=new float[(_obliqueCorners==null ? 18 : 24)*11];
             int index=0;
             // 红色YZ切面固定X，绿色XZ固定Y，蓝色XY固定Z。
             AddQuad(vertices,ref index,new float[]
@@ -448,6 +471,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
             {
                 0,0,_sliceZ, 1,0,_sliceZ, 1,1,_sliceZ, 0,1,_sliceZ
             },.2f,.48f,1f);
+            if (_obliqueCorners!=null)
+                AddQuad(vertices,ref index,_obliqueCorners,1f,.76f,.18f);
             return vertices;
         }
         private static void AddQuad(float[] output,ref int offset,float[] coords,float red,float green,float blue)

@@ -78,6 +78,36 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         "预览灰阶有效区间");
                 }
                 FVOObliqueSliceDefinition oblique = new FVOObliqueSliceDefinition();
+                oblique.CenterX = 3; oblique.CenterY = 4; oblique.CenterZ = 5;
+                oblique.Width = 5; oblique.Height = 5; oblique.PixelSpacingInVoxels = 1;
+                using (FVOVolumeData source = FVOVolumeData.CreateDemo(9, 10, 11))
+                {
+                    CxVisual.Foundation.Imaging.FIMImageBuffer obliqueImg =
+                        FVOObliqueSliceBuilder.BuildPreview(source,oblique,false,0,255,
+                            CancellationToken.None);
+                    Check(obliqueImg.Width == 5 && obliqueImg.Height == 5 &&
+                        Math.Abs(obliqueImg.GetGrayValue(2,2) -
+                            source.GetVoxelByOriginalIndex(3,4,5)) <= 1,
+                        "任意切中心与原体素一致");
+                    CxVisual.Foundation.Imaging.FIMImageBuffer original =
+                        FVOObliqueSliceBuilder.BuildScalar(source,oblique,CancellationToken.None);
+                    Check(original.PixelFormat == CxVisual.Foundation.Imaging.FIMPixelFormat.GrayFloat32 &&
+                        original.Width == 5, "任意切原始浮点标量与显示解耦");
+                    oblique.AngleZDegrees = 90;
+                    CxVisual.Foundation.Imaging.FIMImageBuffer rotated =
+                        FVOObliqueSliceBuilder.BuildPreview(source,oblique,false,0,255,
+                            CancellationToken.None);
+                    Check(Math.Abs(rotated.GetGrayValue(2,2) -
+                        obliqueImg.GetGrayValue(2,2)) <= 1, "绕中心旋转不应改变中心取样");
+                    CancellationTokenSource cancellation = new CancellationTokenSource();
+                    cancellation.Cancel();
+                    Expect<OperationCanceledException>(() => FVOObliqueSliceBuilder.BuildPreview(
+                        source,oblique,false,0,255,cancellation.Token), "任意切取消加载");
+                    oblique.PixelSpacingInVoxels = 0;
+                    Expect<ArgumentOutOfRangeException>(() => FVOObliqueSliceBuilder.BuildScalar(
+                        source,oblique,CancellationToken.None), "任意切非法像素步长");
+                    oblique.PixelSpacingInVoxels = 1;
+                }
                 FVOObliqueSliceVector u;
                 FVOObliqueSliceVector v;
                 FVOObliqueSliceGeometry.GetAxes(oblique, out u, out v);

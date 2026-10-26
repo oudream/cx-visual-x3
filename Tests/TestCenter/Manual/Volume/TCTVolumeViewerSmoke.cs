@@ -52,6 +52,14 @@ namespace CxVisual.TestCenter.UI
                 frame.LoadDemo();
                 Check(before != frame.Volume && !Object.ReferenceEquals(before,frame.Volume),
                     "更换体数据必须更新FVO对象与纹理贴图");
+                frame.SetObliqueForTest(true,20,15,45);
+                Check(frame.Scene.SlicePlaneCount==4 &&
+                      frame.ObliqueViewer.ActiveImage != null &&
+                      frame.ViewState.ObliqueSlice.Visible,
+                    "任意切FVO三线性结果/3D空间平面与MVI状态必须联动");
+                frame.SetObliqueForTest(false,0,0,0);
+                Check(frame.Scene.SlicePlaneCount==3,
+                    "关闭任意切不能残留3D空间贴图");
                 string file = Environment.GetEnvironmentVariable("CXVISUAL_VOLUME_UI_SCREENSHOT");
                 if (!String.IsNullOrWhiteSpace(file))
                 {

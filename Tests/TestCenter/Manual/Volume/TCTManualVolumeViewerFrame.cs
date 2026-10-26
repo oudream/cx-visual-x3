@@ -138,6 +138,7 @@ namespace CxVisual.TestCenter.UI
             settings.Children.Add(new TextBlock { Text = "Ctrl+点击切片：移动十字线    Shift+滚轮：切换切片", FontSize = 11, TextWrapping=TextWrapping.Wrap, Foreground=BrushOf(58,98,150), Margin=new Thickness(4,8,4,7) });
             Label(settings, "三维可视化");
             BuildGpuPanel(settings);
+            BuildObliquePanel(settings);
             settings.Children.Add(new TextBlock {
                 Text = "已实现：三正交物理切面、共享三刀、相机旋转和缩放。\n" +
                        "待接入：旧OpenGL体绘、Shader、材质光照和传递函数GPU编辑。",
@@ -275,6 +276,7 @@ namespace CxVisual.TestCenter.UI
                     _volume.SpacingX,_volume.SpacingY,_volume.SpacingZ);
                 UpdateCrosshairs();
                 UpdateGpuSlicePositions();
+                RefreshOblique();
                 _sliceStatus.Text = String.Format("位置：X {0} / Y {1} / Z {2}",
                     _state.SliceX,_state.SliceY,_state.SliceZ);
             }
