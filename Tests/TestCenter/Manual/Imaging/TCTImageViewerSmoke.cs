@@ -85,32 +85,52 @@ namespace CxVisual.TestCenter.UI
                 host.UpdateLayout();
                 TCTWorkspaceRegistry registry = TCTWorkspaceRegistry.CreateDefaults(
                     id => new UserControl());
-                LayoutAnchorable inspector = host.TestDock.Layout.Descendents()
-                    .OfType<LayoutAnchorable>().FirstOrDefault(p => p.ContentId == "test.inspector");
-                if (inspector == null) throw new InvalidOperationException("TestCenter inspector not present");
+                if (host.IsTestConsoleVisible)
+                    throw new InvalidOperationException("专业工作台默认不应有全局测试控制台");
+                TCTArchitectureSmokeFrame architecture = host.DocumentHost.OpenWorkspace(
+                    registry.Find("auto.architecture-smoke")) as TCTArchitectureSmokeFrame;
+                host.UpdateLayout();
+                if (architecture == null || !host.IsTestConsoleVisible ||
+                    !host.TestConsolePanel.IsVisible || !host.OperationDock.IsVisible ||
+                    host.ManualActionHost.Visibility != Visibility.Visible ||
+                    FindControl<Button>(host,"TCT.Automated.Action.architecture.run") == null)
+                    throw new InvalidOperationException("ArchitectureSmoke应在同一个大Frame中使用真实测试控制台");
+                string path = Environment.GetEnvironmentVariable("CXVISUAL_IMAGING_UI_SCREENSHOT");
+                if (!string.IsNullOrWhiteSpace(path))
+                    CaptureWindow(host,Path.Combine(Path.GetDirectoryName(path),"testcenter-auto-console.png"));
+                host.DocumentHost.OpenWorkspace(registry.Find("auto.root"));
+                host.UpdateLayout();
+                if (!host.IsTestConsoleVisible ||
+                    host.AutoActionHost.Visibility != Visibility.Visible)
+                    throw new InvalidOperationException("NUnit/TCT自动测试入口应使用同一测试控制台");
                 TCTManualImageViewerFrame imaging = host.DocumentHost.OpenWorkspace(
                     registry.Find("manual.imaging")) as TCTManualImageViewerFrame;
                 LayoutDocumentPane documentPane = host.TestDock.Layout.Descendents()
                     .OfType<LayoutDocumentPane>().FirstOrDefault(p => p.Children
                         .OfType<LayoutDocument>().Any(d => d.ContentId == "test.documents"));
-                if (imaging == null || inspector.IsVisible || documentPane == null ||
-                    documentPane.ShowHeader || host.OperationDock.IsVisible)
-                    throw new InvalidOperationException(
-                        "TestCenter workbench must visibly hide duplicate AvalonDock document header and Inspector");
+                host.UpdateLayout();
+                if (imaging == null || host.IsTestConsoleVisible ||
+                    host.TestConsolePanel.IsVisible || documentPane == null ||
+                    documentPane.ShowHeader)
+                    throw new InvalidOperationException("二维专业工作区不得受测试控制台或冗余文档标签挤压");
                 imaging.SetOriginal(new FIMImageBuffer(900,650,FIMPixelFormat.Gray8,
                     BuildSyntheticPixels(900,650)));
                 host.UpdateLayout();
-                string path = Environment.GetEnvironmentVariable("CXVISUAL_IMAGING_UI_SCREENSHOT");
                 if (!string.IsNullOrWhiteSpace(path))
-                {
-                    string full = Path.Combine(Path.GetDirectoryName(path),"testcenter-workbench.png");
-                    CaptureWindow(host,full);
-                }
-                host.DocumentHost.OpenWorkspace(registry.Find("manual.root"));
+                    CaptureWindow(host,Path.Combine(Path.GetDirectoryName(path),"testcenter-workbench.png"));
+                host.MenuShowOperations.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
                 host.UpdateLayout();
-                if (!inspector.IsVisible)
-                    throw new InvalidOperationException("TestCenter Inspector not restored after leaving imaging page");
-                Console.WriteLine("PASS TCT Imaging Shell: AvalonDock workbench, focus, auto-collapse/restore and actual UI");
+                if (!host.IsTestConsoleVisible)
+                    throw new InvalidOperationException("专业工作区应允许按需打开测试控制台");
+                host.HideTestConsoleButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                host.UpdateLayout();
+                if (host.IsTestConsoleVisible)
+                    throw new InvalidOperationException("手动收起测试控制台后工作区没有释放宽度");
+                host.DocumentHost.OpenWorkspace(registry.Find("auto.architecture-smoke"));
+                host.UpdateLayout();
+                if (!host.IsTestConsoleVisible)
+                    throw new InvalidOperationException("切回ArchitectureSmoke时未恢复控制台");
+                Console.WriteLine("PASS TCT automated Frame: NUnit/TCT and ArchitectureSmoke console; professional focus, menu toggle, actual UI");
             }
             finally
             {
