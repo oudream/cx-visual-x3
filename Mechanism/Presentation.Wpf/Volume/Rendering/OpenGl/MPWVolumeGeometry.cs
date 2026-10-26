@@ -1,8 +1,8 @@
-namespace CxECTVolumeWinForms.Rendering
+namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
 {
     // OpenGL 静态几何只在此处维护。
     /// <summary>集中保存体包围盒与线框的静态顶点，避免绘制控制器混入几何常量。</summary>
-    internal static class RenderingGeometry
+    internal static class MPWVolumeGeometry
     {
         internal static readonly float[] CubeVertices =
         {

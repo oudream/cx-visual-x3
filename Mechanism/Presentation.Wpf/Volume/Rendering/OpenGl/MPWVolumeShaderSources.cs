@@ -1,8 +1,8 @@
-namespace CxECTVolumeWinForms.Rendering
+namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
 {
     // Shader 源码集中维护，避免控制器同时承担 GPU 算法职责。
     /// <summary>OpenGL 3.3 Shader 源码；只描述 GPU 算法，不管理 OpenGL 对象生命周期。</summary>
-    internal static class RenderingShaderSources
+    internal static class MPWVolumeShaderSources
     {
         internal const string VolumeVertex = @"
 #version 330 core
