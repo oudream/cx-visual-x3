@@ -314,17 +314,6 @@ namespace CxVisual.TestCenter.UI
 
         public void OnWorkspaceClosed()
         {
-            if (_state != null) _state.PropertyChanged -= OnStateChanged;
-            _state = null;
-            if (_volume != null) _volume.Dispose();
-            _volume = null;
-            _xy.Clear(); _xz.Clear(); _yz.Clear();
-            _scene.Clear();
-            _status.Text = "工作区已关闭，体数据资源已释放。";
-        }
-
-        public void OnWorkspaceClosed()
-        {
             _updating = true;
             if (_state != null) _state.PropertyChanged -= OnStateChanged;
             if (_volume != null) _volume.Dispose();
