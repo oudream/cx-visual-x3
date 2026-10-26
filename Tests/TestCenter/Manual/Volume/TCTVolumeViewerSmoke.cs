@@ -46,6 +46,7 @@ namespace CxVisual.TestCenter.UI
                 frame.UpdateCrosshairs();
                 Check(frame.VisibleCrosshairCount == 6, "三个二维图窗必须显示六条十字线");
                 Check(frame.Scene.SlicePlaneCount == 3, "三张WPF空间贴图切面");
+                Check(frame.SliceLegendCount == 3, "旧HALCON三二维图窗均显示灰阶/伪彩色标");
                 Check(frame.Scene.CameraDistance > 0 && frame.Scene.OrientationAxisCount==3,
                     "原版三维相机和红绿蓝方向标记应正常初始化");
                 frame.ViewState.SetSliceViewport(FVOSlicePlane.XY,0,1,0,1);

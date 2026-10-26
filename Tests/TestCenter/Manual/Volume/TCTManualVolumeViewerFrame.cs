@@ -223,6 +223,7 @@ namespace CxVisual.TestCenter.UI
                 _xy.ShowOriginal(xy);
                 _xz.ShowOriginal(xz);
                 _yz.ShowOriginal(yz);
+                UpdateSliceLegends();
                 _scene.SetSlices(xy,xz,yz,_state.SliceX,_state.SliceY,_state.SliceZ,
                     _volume.OriginalWidth,_volume.OriginalHeight,_volume.OriginalDepth,
                     _volume.SpacingX,_volume.SpacingY,_volume.SpacingZ);

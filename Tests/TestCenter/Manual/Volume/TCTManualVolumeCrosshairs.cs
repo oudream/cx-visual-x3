@@ -18,6 +18,10 @@ namespace CxVisual.TestCenter.UI
     {
         private readonly Dictionary<FVOSlicePlane, Canvas> _crosshairs =
             new Dictionary<FVOSlicePlane, Canvas>();
+        private readonly Dictionary<FVOSlicePlane, Border> _sliceLegends =
+            new Dictionary<FVOSlicePlane, Border>();
+
+        public int SliceLegendCount { get { return _sliceLegends.Count; } }
 
         public int VisibleCrosshairCount
         {
@@ -62,6 +66,14 @@ namespace CxVisual.TestCenter.UI
             }
             layer.Children.Add(first);
             layer.Children.Add(second);
+            Border legend=new Border {
+                Background=new SolidColorBrush(Color.FromArgb(190,7,15,26)),
+                HorizontalAlignment=HorizontalAlignment.Right,
+                VerticalAlignment=VerticalAlignment.Bottom,
+                Margin=new Thickness(7),Width=160,Padding=new Thickness(5,3,5,3),
+                IsHitTestVisible=false };
+            content.Children.Add(legend);
+            _sliceLegends.Add(plane,legend);
             content.SizeChanged += (s,e) => UpdateCrosshairs();
             viewer.LayoutUpdated += (s,e) =>
             {
@@ -185,6 +197,41 @@ namespace CxVisual.TestCenter.UI
             else throw new ArgumentOutOfRangeException("plane");
         }
 
+        /// <summary>旧HALCON 2D色标；伪彩映射直接复用FVO唯一数值函数，不复制调色算法。</summary>
+        private void UpdateSliceLegends()
+        {
+            if(_volume==null)return;
+            foreach(Border border in _sliceLegends.Values)
+            {
+                StackPanel stack=new StackPanel();
+                TextBlock title=new TextBlock {
+                    Text=String.Format("窗 {0:0}..{1:0} / 原值 {2:0.##}..{3:0.##}",
+                        _windowMin.Value,_windowMax.Value,_volume.ScalarMin,_volume.ScalarMax),
+                    Foreground=Brushes.White,FontSize=9 };
+                stack.Children.Add(title);
+                LinearGradientBrush brush=new LinearGradientBrush {
+                    StartPoint=new Point(0,0),EndPoint=new Point(1,0) };
+                for(int i=0;i<=8;i++)
+                {
+                    int value=i==8?255:i*32;
+                    Color color;
+                    if(_pseudo.IsChecked==true)
+                    {
+                        byte[] bgr=new byte[3];
+                        FVOSliceImageBuilder.WritePseudoBgr(bgr,0,(byte)value);
+                        color=Color.FromRgb(bgr[2],bgr[1],bgr[0]);
+                    }
+                    else color=Color.FromRgb((byte)value,(byte)value,(byte)value);
+                    brush.GradientStops.Add(new GradientStop(color,i/8.0));
+                }
+                Border ramp=new Border {
+                    Background=brush,Height=10,Margin=new Thickness(0,4,0,0),
+                    BorderBrush=Brushes.LightSlateGray,BorderThickness=new Thickness(.5) };
+                stack.Children.Add(ramp);
+                border.Child=stack;
+            }
+        }
+
         public void SetCrosshairFromImage(FVOSlicePlane plane, int pixelX, int pixelY)
         {
             if (_volume == null || _state == null) return;
@@ -218,16 +265,13 @@ namespace CxVisual.TestCenter.UI
             Image image = viewer.FindName("PixelImage") as Image;
             if (image == null || image.Source == null || image.Width <= 0 || image.Height <= 0 ||
                 canvas.ActualWidth <= 0 || canvas.ActualHeight <= 0) return;
-            double fx = plane == FVOSlicePlane.YZ ?
-                _state.SliceY / (double)Math.Max(1,_volume.OriginalHeight-1) :
-                _state.SliceX / (double)Math.Max(1,_volume.OriginalWidth-1);
-            double fy = plane == FVOSlicePlane.XY ?
-                _state.SliceY / (double)Math.Max(1,_volume.OriginalHeight-1) :
-                _state.SliceZ / (double)Math.Max(1,_volume.OriginalDepth-1);
+            // 非等距Spacing和降采样都会改变切片图像长宽，禁止按原始索引比例估算。
+            int ix,iy;
+            FVOSliceImageBuilder.VoxelToImage(_volume,plane,
+                _state.SliceX,_state.SliceY,_state.SliceZ,out ix,out iy);
             Point upperLeft = image.TranslatePoint(new Point(0,0),canvas);
             Point lowerRight = image.TranslatePoint(new Point(image.Width,image.Height),canvas);
-            Point cursor = image.TranslatePoint(
-                new Point(fx * image.Width, fy * image.Height),canvas);
+            Point cursor = image.TranslatePoint(new Point(ix+.5,iy+.5),canvas);
             SetLine((Line)canvas.Children[0],cursor.X,upperLeft.Y,cursor.X,lowerRight.Y);
             SetLine((Line)canvas.Children[1],upperLeft.X,cursor.Y,lowerRight.X,cursor.Y);
         }

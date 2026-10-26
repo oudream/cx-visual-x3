@@ -307,7 +307,7 @@ namespace CxVisual.Foundation.Volume
             return FVOFrameworkCompat.Clamp((int)Math.Round(normalized * (targetCount - 1)), 0, targetCount - 1);
         }
 
-        internal static void WritePseudoBgr(byte[] buffer, int offset, byte value)
+        public static void WritePseudoBgr(byte[] buffer, int offset, byte value)
         {
             float t = value / 255.0f;
             byte r, g, b;
