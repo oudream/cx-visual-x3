@@ -34,7 +34,7 @@ namespace CxVisual.TestCenter.UI
         private TCTCreatedWorkspaceStore _createdWorkspaces;
         private ITCTWorkspaceFrame _currentFrame;
         private bool _openingWorkspace;
-        private bool _imagingHidOperations;
+        private bool _testConsoleOpenedManually;
         private CancellationTokenSource _cancel;
         private TCTTestRunSummary _lastRun;
         private TCTTestRunSummary _displayedRun;
@@ -124,14 +124,23 @@ namespace CxVisual.TestCenter.UI
             MenuLoadHistory.Click += (sender, args) => { History.Refresh(); ActivateDockPanel("test.history"); };
             MenuRestoreLayout.Click += (sender, args) => ResetLayout();
             // 用户按需打开通用测试操作中心，不让它长期挤占专业工作台。
-            MenuShowOperations.Click += (sender, args) => ActivateDockPanel("test.inspector");
+            MenuShowOperations.Click += (sender,args) =>
+            {
+                _testConsoleOpenedManually = true;
+                SetTestConsoleVisible(true);
+            };
+            HideTestConsoleButton.Click += (sender,args) =>
+            {
+                _testConsoleOpenedManually = false;
+                SetTestConsoleVisible(false);
+            };
             MenuSaveLayout.Click += (sender, args) => SaveLayout();
             MenuThemeLight.Click += (sender, args) => ApplyTheme(false);
             MenuThemeDark.Click += (sender, args) => ApplyTheme(true);
             _dockViews = new Dictionary<string, object>(StringComparer.Ordinal)
             {
                 { "test.explorer", Explorer }, { "test.documents", DocumentHost },
-                { "test.inspector", OperationDock }, { "test.results", Results },
+                { "test.results", Results },
                 { "test.timeline", Timeline }, { "test.history", History },
                 { "test.plan", TestPlan }, { "test.diff", Diff }
             };
@@ -354,8 +363,7 @@ namespace CxVisual.TestCenter.UI
         private void OnWorkspaceActivated(TCTWorkspaceDescriptor descriptor)
         {
             // 视觉专业工作台本身已有双层功能面板；测试宿主的辅助Inspector可临时收起。
-            UpdateImagingDock(descriptor != null &&
-                string.Equals(descriptor.WorkspaceId,"manual.imaging",StringComparison.Ordinal));
+            UpdateTestConsole(descriptor);
             if (_currentFrame != null) _currentFrame.StateChanged -= RefreshWorkspaceCommands;
             _currentFrame = null;
             ManualActionHost.Children.Clear();
@@ -365,8 +373,11 @@ namespace CxVisual.TestCenter.UI
                 ManualActionHost.Visibility = Visibility.Collapsed;
                 return;
             }
-            AutoActionHost.Visibility = Visibility.Collapsed;
-            ManualActionHost.Visibility = Visibility.Visible;
+            bool plan = descriptor.WorkspaceId == "auto.root" ||
+                descriptor.WorkspaceId == "auto.catalog" ||
+                (descriptor.IsCreatedInstance && descriptor.TemplateId == "auto.catalog");
+            AutoActionHost.Visibility = plan ? Visibility.Visible : Visibility.Collapsed;
+            ManualActionHost.Visibility = plan ? Visibility.Collapsed : Visibility.Visible;
             if (!_openingWorkspace) Explorer.SelectWorkspace(descriptor.WorkspaceId);
             ITCTWorkspaceFrame frame = (DocumentHost.Content as TabControl)
                 ?.SelectedItem is TabItem ? ((TabItem)((TabControl)DocumentHost.Content).SelectedItem)
@@ -376,27 +387,25 @@ namespace CxVisual.TestCenter.UI
             RefreshWorkspaceCommands();
             WorkspaceTitle.Text = descriptor.Title;
         }
-        private void UpdateImagingDock(bool imaging)
+        public bool IsTestConsoleVisible { get { return TestConsolePanel.Visibility == Visibility.Visible; } }
+        private void UpdateTestConsole(TCTWorkspaceDescriptor descriptor)
         {
             EnsureDocumentPaneHasSingleHeader();
-            LayoutAnchorable inspector = TestDock.Layout.Descendents()
-                .OfType<LayoutAnchorable>().FirstOrDefault(x => x.ContentId == "test.inspector");
-            if (inspector == null) return;
-            if (imaging)
-            {
-                // Hide()属于AvalonDock自己的隐藏语义，会连同仅含该项目的Pane收回，
-                // 与仅折叠OperationDock内部内容不同；用户仍可用“视图→显示操作中心”恢复。
-                if (inspector.IsVisible)
-                {
-                    inspector.Hide();
-                    _imagingHidOperations = true;
-                }
-            }
-            else if (_imagingHidOperations)
-            {
-                inspector.Show();
-                _imagingHidOperations = false;
-            }
+            bool autoTest = descriptor != null &&
+                (descriptor.WorkspaceId == "auto.root" ||
+                 descriptor.WorkspaceId == "auto.catalog" ||
+                 descriptor.WorkspaceId == "auto.architecture-smoke" ||
+                 (descriptor.IsCreatedInstance && descriptor.TemplateId == "auto.catalog"));
+            if (!autoTest) _testConsoleOpenedManually = false;
+            SetTestConsoleVisible(autoTest || _testConsoleOpenedManually);
+        }
+
+        private void SetTestConsoleVisible(bool show)
+        {
+            TestConsolePanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            TestConsoleSplitter.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            TestConsoleColumn.Width = show ? new GridLength(320) : new GridLength(0);
+            TestConsoleSplitterColumn.Width = show ? new GridLength(5) : new GridLength(0);
         }
 
         /// <summary>
@@ -678,7 +687,7 @@ namespace CxVisual.TestCenter.UI
                 throw new InvalidOperationException("Missing TestCenter panel " + id);
             panel.Show();
             panel.IsActive = true;
-            if (id == "test.inspector") _imagingHidOperations = false;
+
         }
         private string SerializeDockLayout()
         {
@@ -697,7 +706,7 @@ namespace CxVisual.TestCenter.UI
                 Encoding.UTF8.GetByteCount(xml) > MaxLayoutBytes)
                 throw new InvalidDataException("Dock layout missing or oversized");
             HashSet<string> allowed = new HashSet<string>(StringComparer.Ordinal)
-            { "test.explorer", "test.documents", "test.inspector",
+            { "test.explorer", "test.documents",
                 "test.results", "test.timeline", "test.history", "test.plan", "test.diff" };
             HashSet<string> seen = new HashSet<string>(StringComparer.Ordinal);
             XmlReaderSettings settings = new XmlReaderSettings
@@ -743,8 +752,7 @@ namespace CxVisual.TestCenter.UI
             TabItem selected = (DocumentHost.Content as TabControl)?.SelectedItem as TabItem;
             TCTWorkspaceDescriptor current = selected == null ? null :
                 selected.Tag as TCTWorkspaceDescriptor;
-            UpdateImagingDock(current != null &&
-                string.Equals(current.WorkspaceId,"manual.imaging",StringComparison.Ordinal));
+            UpdateTestConsole(current);
         }
         private void ResetLayout()
         {
@@ -787,6 +795,11 @@ namespace CxVisual.TestCenter.UI
                 FileInfo info = new FileInfo(path);
                 if (info.Length > MaxLayoutBytes) throw new InvalidDataException("Oversized saved layout");
                 string xml = File.ReadAllText(path, Encoding.UTF8);
+                if (xml.Contains("test.inspector"))
+                {
+                    StatusText.Text = "旧版全局操作中心布局已停用，采用新的自动测试工作台；可重新保存布局。";
+                    return;
+                }
                 string backup = SerializeDockLayout();
                 try { RestoreDockLayout(xml); }
                 catch
