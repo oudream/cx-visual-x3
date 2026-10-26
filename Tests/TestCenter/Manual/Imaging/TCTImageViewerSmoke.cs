@@ -262,6 +262,15 @@ namespace CxVisual.TestCenter.UI
                     throw new InvalidOperationException("WPF original/result Gray16 alpha blend mismatch or modified source");
                 frame.Viewer.DisableBlend();
                 frame.Viewer.SelectOriginal();
+                frame.Viewer.SwipeOriginalAndResult(0.5);
+                frame.Viewer.SavePng(file);
+                FIMImageBuffer swipePixels = Mechanism.Presentation.Wpf.Imaging.MPWImageViewerControl.ReadImageFile(file);
+                if (swipePixels.PixelFormat != FIMPixelFormat.Gray16 ||
+                    swipePixels.GetGrayValue(0,0) != image.GetGrayValue(0,0) ||
+                    swipePixels.GetGrayValue(3,0) != 1 ||
+                    frame.Viewer.Session.Original.GetGrayValue(0,0) != 1)
+                    throw new InvalidOperationException("WPF original/result synchronized swipe lost 16-bit pixels");
+                frame.Viewer.DisableBlend();
                 // 程序化创建真实叠加项，让MPW的WPF Canvas实际绘制，并检查层级隐藏/删除。
                 MVIImageOverlayItem rect = frame.Viewer.AddOverlay(new MVIImageOverlayItem(
                     MVIImageOverlayKind.RectangleRoi, MVIImageOverlayLayer.Roi,
