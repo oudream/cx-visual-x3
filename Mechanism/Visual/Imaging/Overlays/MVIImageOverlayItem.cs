@@ -10,6 +10,12 @@ namespace CxVisual.Mechanism.Visual
     /// Bounds/Points/Style等语义，但使用现有FGE几何并以不可变快照更新，避免异步渲染脏状态。
     /// 属于图像会话覆盖数据，不是另一个MEM工程/Undo真源。
     /// </summary>
+    /// <summary>ROI八方向编辑柄，仅描述原图边界几何，不依赖WPF或任何厂商SDK。</summary>
+    public enum MVIImageResizeHandle
+    {
+        TopLeft, Top, TopRight, Right, BottomRight, Bottom, BottomLeft, Left
+    }
+
     public sealed class MVIImageOverlayItem
     {
         private readonly FGEPoint2D[] _points;
@@ -71,6 +77,56 @@ namespace CxVisual.Mechanism.Visual
             return new MVIImageOverlayItem(Kind, Layer, bounds, points, Text, ExternalId,
                 Argb, LineWidth, Id, IsVisible);
         }
+        /// <summary>
+        /// 基于拖动开始时的不可变快照编辑ROI边界，保持Guid、图层、样式和多边形顶点对应。
+        /// 锚定对侧边/角，不允许倒置或超出原图；最小尺寸为1/4原始像素。
+        /// </summary>
+        public MVIImageOverlayItem WithResizedRoiHandle(MVIImageResizeHandle handle,
+            FGEPoint2D position, int imageWidth, int imageHeight)
+        {
+            if (Layer != MVIImageOverlayLayer.Roi ||
+                (Kind != MVIImageOverlayKind.RectangleRoi &&
+                 Kind != MVIImageOverlayKind.CircleRoi &&
+                 Kind != MVIImageOverlayKind.EllipseRoi &&
+                 Kind != MVIImageOverlayKind.PolygonRoi))
+                throw new InvalidOperationException("仅几何ROI支持当前八方向缩放；标注及测量不应被悄悄修改。");
+            if (!Enum.IsDefined(typeof(MVIImageResizeHandle), handle))
+                throw new ArgumentOutOfRangeException("handle");
+            if (imageWidth <= 0 || imageHeight <= 0)
+                throw new ArgumentOutOfRangeException("imageWidth");
+            if (Bounds.Width <= 0 || Bounds.Height <= 0 || Bounds.Left < 0 || Bounds.Top < 0 ||
+                Bounds.Right > imageWidth || Bounds.Bottom > imageHeight)
+                throw new InvalidOperationException("原ROI边界不合法，不能编辑。");
+            double x = Math.Max(0, Math.Min(imageWidth,FGEValidation.Finite(position.X,"position")));
+            double y = Math.Max(0, Math.Min(imageHeight,FGEValidation.Finite(position.Y,"position")));
+            double left = Bounds.Left, right = Bounds.Right;
+            double top = Bounds.Top, bottom = Bounds.Bottom;
+            const double minimum = 0.25;
+            switch (handle)
+            {
+                case MVIImageResizeHandle.TopLeft:
+                case MVIImageResizeHandle.Left:
+                case MVIImageResizeHandle.BottomLeft:
+                    left = Math.Min(right - minimum,x); break;
+                case MVIImageResizeHandle.TopRight:
+                case MVIImageResizeHandle.Right:
+                case MVIImageResizeHandle.BottomRight:
+                    right = Math.Max(left + minimum,x); break;
+            }
+            switch (handle)
+            {
+                case MVIImageResizeHandle.TopLeft:
+                case MVIImageResizeHandle.Top:
+                case MVIImageResizeHandle.TopRight:
+                    top = Math.Min(bottom - minimum,y); break;
+                case MVIImageResizeHandle.BottomLeft:
+                case MVIImageResizeHandle.Bottom:
+                case MVIImageResizeHandle.BottomRight:
+                    bottom = Math.Max(top + minimum,y); break;
+            }
+            return WithBounds(new FGERect2D(left,top,right-left,bottom-top));
+        }
+
         public MVIImageOverlayItem WithVisibility(bool visible)
         {
             return new MVIImageOverlayItem(Kind, Layer, Bounds, _points, Text, ExternalId,

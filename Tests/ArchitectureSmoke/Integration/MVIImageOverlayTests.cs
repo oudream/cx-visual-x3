@@ -44,9 +44,38 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 scaled.Points[2].Y == 18 &&
                 translated.Points[1].X == 9, "缩放同步顶点，不改变原模型");
 
+            // 精细ROI八方向编辑：边界、反向拖动、顶点、对象身份/样式都由MVI保证。
+            MVIImageOverlayItem resized = polygon.WithResizedRoiHandle(
+                MVIImageResizeHandle.BottomRight,new FGEPoint2D(12,10),20,20);
+            Ensure(resized.Id == polygon.Id && resized.Bounds.Width == 12 &&
+                resized.Bounds.Height == 10 && resized.Points[1].X == 12 &&
+                resized.Points[2].Y == 10 && polygon.Bounds.Width == 8,
+                "右下手柄更新多边形顶点而不改变原对象");
+            MVIImageOverlayItem clamped = resized.WithResizedRoiHandle(
+                MVIImageResizeHandle.TopLeft,new FGEPoint2D(999,999),20,20);
+            Ensure(Math.Abs(clamped.Bounds.Width-0.25)<1e-9 &&
+                Math.Abs(clamped.Bounds.Height-0.25)<1e-9,
+                "拖越对侧角时保留合法最小ROI，不能发生翻转");
+            MVIImageOverlayItem top = roi.WithResizedRoiHandle(
+                MVIImageResizeHandle.Top,new FGEPoint2D(-20,-20),30,30);
+            Ensure(top.Bounds.Top == 0 && top.Bounds.Left == roi.Bounds.Left &&
+                top.Bounds.Width == roi.Bounds.Width, "边中柄只编辑对应维度且钳位");
+            MVIImageOverlayItem right = roi.WithResizedRoiHandle(
+                MVIImageResizeHandle.Right,new FGEPoint2D(100,3),30,30);
+            Ensure(right.Bounds.Right == 30 && right.Bounds.Bottom == roi.Bounds.Bottom,
+                "图像边界钳位、不改变其他边");
+            Ensure(overlays.Replace(resized) && overlays.Find(polygon.Id).Id == polygon.Id,
+                "拖动结果写回同一Store和稳定ID");
+            Fail<ArgumentOutOfRangeException>(()=>roi.WithResizedRoiHandle(
+                (MVIImageResizeHandle)99,new FGEPoint2D(1,1),30,30),"未知编辑柄");
+            Fail<ArgumentOutOfRangeException>(()=>roi.WithResizedRoiHandle(
+                MVIImageResizeHandle.Right,new FGEPoint2D(1,1),0,30),"零图宽");
             MVIImageOverlayItem defect = overlays.Add(new MVIImageOverlayItem(
                 MVIImageOverlayKind.DefectBox, MVIImageOverlayLayer.Defect,
                 new FGERect2D(1, 2, 3, 4), text:"Defect-12"));
+            Fail<InvalidOperationException>(()=>defect.WithResizedRoiHandle(
+                MVIImageResizeHandle.Right,new FGEPoint2D(8,8),30,30),
+                "缺陷业务框不是ROI不能被编辑器越权缩放");
             overlays.SetLayerVisible(MVIImageOverlayLayer.Roi, false);
             Ensure(overlays.GetVisibleItems().Count == 1 && overlays.GetVisibleItems()[0].Id == defect.Id,
                 "隐藏ROI不影响缺陷层");
