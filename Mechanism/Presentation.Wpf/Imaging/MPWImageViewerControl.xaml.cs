@@ -299,13 +299,17 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             VerifyAccess();
             if (ActiveImage == null) throw new InvalidOperationException("没有可导出的图像视口。");
             if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException("输出路径不能为空。", "path");
-            int width = (int)Math.Ceiling(ViewportRoot.ActualWidth);
-            int height = (int)Math.Ceiling(ViewportRoot.ActualHeight);
+            // 单视图只截当前画面；双视图必须将左原/右结果、共同ROI/标注、
+            // 分隔条都写入同一PNG，而不是只导出左侧ViewportRoot。
+            FrameworkElement rendered = IsSideBySideVisible ?
+                (FrameworkElement)ComparisonLayout : ViewportRoot;
+            int width = (int)Math.Ceiling(rendered.ActualWidth);
+            int height = (int)Math.Ceiling(rendered.ActualHeight);
             if (width < 1 || height < 1 || (long)width * height * 4 > 512L * 1024 * 1024)
                 throw new InvalidOperationException("视口尚未布置或导出尺寸过大。");
             RenderTargetBitmap snapshot = new RenderTargetBitmap(width, height, 96, 96,
                 PixelFormats.Pbgra32);
-            snapshot.Render(ViewportRoot);
+            snapshot.Render(rendered);
             snapshot.Freeze();
             PngBitmapEncoder encoder = new PngBitmapEncoder();
             encoder.Frames.Add(BitmapFrame.Create(snapshot));

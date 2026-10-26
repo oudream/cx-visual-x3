@@ -380,6 +380,19 @@ namespace CxVisual.TestCenter.UI
                     frame.Viewer.Session.Original.GetGrayValue(0,0) != 1 ||
                     frame.Viewer.Session.Result.GetGrayValue(0,0) != 4)
                     throw new InvalidOperationException("SideBySide结果图灰度16位或原始数据身份错误");
+                // 真实PNG输出必须覆盖双Pane；否则旧SaveViewPng只截左侧属虚假导出。
+                FrameworkElement leftPane = frame.Viewer.FindName("ViewportRoot") as FrameworkElement;
+                if (leftPane == null || leftPane.ActualWidth <= 0)
+                    throw new InvalidOperationException("左图实际布局尺寸不可用");
+                frame.Viewer.SaveViewPng(screenshot);
+                using (FileStream fileStream = File.OpenRead(screenshot))
+                {
+                    PngBitmapDecoder capture = new PngBitmapDecoder(fileStream,
+                        BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+                    if (capture.Frames.Count != 1 ||
+                        capture.Frames[0].PixelWidth < leftPane.ActualWidth * 1.8)
+                        throw new InvalidOperationException("左右双视图没有完整写入视口PNG");
+                }
                 frame.Viewer.ActualSize();
                 if (Math.Abs(frame.Viewer.PrimaryViewportScale -
                     frame.Viewer.SecondaryViewportScale) > 1e-9 ||
@@ -390,6 +403,12 @@ namespace CxVisual.TestCenter.UI
                 if (Math.Abs(frame.Viewer.PrimaryViewportCenterX -
                     frame.Viewer.SecondaryViewportCenterX) > 1e-6)
                     throw new InvalidOperationException("左视口平移未同步到结果视口");
+                frame.Viewer.Zoom(1.25);
+                if (Math.Abs(frame.Viewer.PrimaryViewportScale -
+                    frame.Viewer.SecondaryViewportScale) > 1e-9 ||
+                    Math.Abs(frame.Viewer.PrimaryViewportCenterX -
+                    frame.Viewer.SecondaryViewportCenterX) > 1e-6)
+                    throw new InvalidOperationException("左图Zoom没有同步倍率与中心到右图");
                 syncControl.IsChecked = false;
                 if (frame.Viewer.ComparisonState.IsSyncViewEnabled)
                     throw new InvalidOperationException("双视图同步开关未真正更新MVI状态");
