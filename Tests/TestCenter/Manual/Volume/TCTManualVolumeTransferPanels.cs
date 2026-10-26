@@ -26,11 +26,19 @@ namespace CxVisual.TestCenter.UI
             _gradientCurve=new TCTVolumeCurveEditor(_gpuSettings.TransferFunctions.GradientOpacity.Points,false);
             StackPanel threshold=new StackPanel { Margin=new Thickness(7) };
             MoveToTab(_gpuUseThreshold, (Panel)_gpuUseThreshold.Parent, threshold);
-            MoveToTab(_gpuThreshold, (Panel)_gpuThreshold.Parent, threshold);
+            Panel oldThresholdParent=(Panel)_gpuThreshold.Parent;
+            int thresholdIndex=oldThresholdParent.Children.IndexOf(_gpuThreshold);
+            if(thresholdIndex>0)
+                MoveToTab(oldThresholdParent.Children[thresholdIndex-1],
+                    oldThresholdParent,threshold);
+            MoveToTab(_gpuThreshold, oldThresholdParent, threshold);
             _thresholdCurve=new TCTVolumeThresholdEditor();
             _thresholdCurve.Lower=_gpuSettings.TransferFunctions.Threshold;
             _thresholdCurve.Upper=_gpuSettings.TransferFunctions.UpperThreshold;
             threshold.Children.Add(_thresholdCurve);
+            _gpuThreshold.ValueChanged+=(s,e)=>{
+                if(_thresholdCurve!=null)_thresholdCurve.Lower=(float)_gpuThreshold.Value;
+            };
             _thresholdCurve.RangeChanged+=(s,e)=>{
                 _gpuSettings.TransferFunctions.Threshold=_thresholdCurve.Lower;
                 _gpuSettings.TransferFunctions.UpperThreshold=_thresholdCurve.Upper;
@@ -91,6 +99,14 @@ namespace CxVisual.TestCenter.UI
             if(_settingRgb || _colorCurve==null || _colorCurve.SelectedPoint==null)return;
             _colorCurve.UpdateSelectedColor((byte)Math.Round(_red.Value),
                 (byte)Math.Round(_green.Value),(byte)Math.Round(_blue.Value));
+        }
+
+        public float CurrentThresholdLower { get { return _gpuSettings.TransferFunctions.Threshold; } }
+        public float CurrentThresholdUpper { get { return _gpuSettings.TransferFunctions.UpperThreshold; } }
+        public void SetThresholdRangeForTest(float low,float high)
+        {
+            if(_thresholdCurve==null)throw new InvalidOperationException("未创建阈值编辑器。");
+            _thresholdCurve.SetRange(low,high);
         }
 
         public void AddScalarStopForTest(float x,float y)

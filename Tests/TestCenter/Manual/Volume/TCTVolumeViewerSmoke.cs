@@ -35,6 +35,10 @@ namespace CxVisual.TestCenter.UI
                 frame.ToggleViewForTest(0);
                 Check(!frame.IsLegacySingleView,"单窗可原位恢复2x2");
                 frame.ApplyWindowCenterWidth();
+                frame.SetThresholdRangeForTest(.22f,.78f);
+                Check(Math.Abs(frame.CurrentThresholdLower-.22f)<.001 &&
+                    Math.Abs(frame.CurrentThresholdUpper-.78f)<.001,
+                    "旧版阈值上下界拖拽必须回写FVO并触发CT3D LUT");
                 Check(frame.Volume != null && frame.ViewState != null,"真实FVO与MVI状态绑定");
                 Check(frame.XyViewer.ActiveImage != null &&
                       frame.XzViewer.ActiveImage != null &&
