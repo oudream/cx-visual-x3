@@ -41,7 +41,7 @@ namespace CxVisual.TestCenter.UI
             FontSize = 14;
             Background = Paint(245,248,252);
             Grid root = new Grid { Background = Paint(245,248,252) };
-            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(62) });
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(78) });
             root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1,GridUnitType.Star) });
             root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(29) });
             Content = root;
