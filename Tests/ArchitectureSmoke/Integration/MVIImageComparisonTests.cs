@@ -37,7 +37,25 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 "Bgra四通道按权重合成");
             Fail<ArgumentException>(()=> FIMImageBlend.Blend(a,colorA,.5), "格式不同");
             Fail<ArgumentOutOfRangeException>(()=> FIMImageBlend.Blend(a,b,double.NaN), "NaN权重");
-            Console.WriteLine("PASS MVI ImageComparison/FIM Blend Gray16/BGRA");
+            FIMImageBuffer slideA = new FIMImageBuffer(4,1,FIMPixelFormat.Gray16,
+                new byte[]{1,0,2,0,3,0,4,0});
+            FIMImageBuffer slideB = new FIMImageBuffer(4,1,FIMPixelFormat.Gray16,
+                new byte[]{10,0,20,0,30,0,40,0});
+            FIMImageBuffer swipe = FIMImageBlend.Swipe(slideA,slideB,.5);
+            Ensure(swipe.GetGrayValue(0,0)==1 && swipe.GetGrayValue(1,0)==2 &&
+                swipe.GetGrayValue(2,0)==30 && swipe.GetGrayValue(3,0)==40,
+                "滑动比较左右均使用原图坐标、保持Gray16位深");
+            Ensure(FIMImageBlend.Swipe(slideA,slideB,0).GetGrayValue(0,0)==10 &&
+                FIMImageBlend.Swipe(slideA,slideB,1).GetGrayValue(3,0)==4,
+                "滑动分界边界");
+            Ensure(slideA.GetGrayValue(0,0)==1 && slideB.GetGrayValue(0,0)==10,
+                "滑动比较不修改原图");
+            Fail<ArgumentException>(()=> FIMImageBlend.Swipe(slideA,a,.5),"滑动格式尺寸错误");
+            Fail<ArgumentOutOfRangeException>(()=>FIMImageBlend.Swipe(slideA,slideB,double.NaN),
+                "滑动比例错误");
+            compare.SetMode(MVIImageComparisonMode.Swipe);
+            Ensure(compare.Mode == MVIImageComparisonMode.Swipe,"滑动模式状态");
+            Console.WriteLine("PASS MVI ImageComparison/FIM Blend+Swipe Gray16/BGRA");
         }
         private static void Ensure(bool cond,string description)
         {if(!cond)throw new InvalidOperationException("MVI图像比较："+description);}

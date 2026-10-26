@@ -362,6 +362,15 @@ namespace CxVisual.TestCenter.UI
                 "（源图不变）");
         }
 
+        private void Swipe()
+        {
+            double ratio = FloatParameter(_blendRatio, "滑动比较比例");
+            _viewer.SwipeOriginalAndResult(ratio);
+            Show("原图/结果滑动比较：左侧原图占比 " +
+                ratio.ToString("0.##",CultureInfo.InvariantCulture) +
+                "；共享同一坐标视口与缩放，原始图不变");
+        }
+
         private void Difference()
         {
             FIMImageBuffer original = _viewer.Session.Original;

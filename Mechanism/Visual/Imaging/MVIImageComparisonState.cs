@@ -3,7 +3,7 @@ using System;
 namespace CxVisual.Mechanism.Visual
 {
     /// <summary>承接旧ImageComparisonState的浏览对比策略；不另持有图像数据或显示控件。</summary>
-    public enum MVIImageComparisonMode { Single, Toggle, Blend, SideBySide }
+    public enum MVIImageComparisonMode { Single, Toggle, Blend, SideBySide, Swipe }
 
     public sealed class MVIImageComparisonState
     {

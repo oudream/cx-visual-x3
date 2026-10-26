@@ -545,9 +545,10 @@ namespace CxVisual.TestCenter.UI
             Action(tabs,"结果图","ResultBottom",()=>_viewer.SelectResult());
             Action(tabs,"差分图","Difference",Difference);
             content.Children.Add(tabs);
-            content.Children.Add(Row(Label("融合比例"),_blendRatio));
+            content.Children.Add(Row(Label("融合/分界比例 0～1"),_blendRatio));
             WrapPanel comparisons = Row();
             Action(comparisons,"透明叠合","Blend",Blend);
+            Action(comparisons,"滑动比较","Swipe",Swipe);
             Action(comparisons,"退出叠合","BlendOff",()=>_viewer.DisableBlend());
             content.Children.Add(comparisons);
             content.Children.Add(Heading("导出  ·  区分原像素与视口截图"));

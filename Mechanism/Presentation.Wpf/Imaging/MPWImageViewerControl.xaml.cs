@@ -106,6 +106,18 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             _comparison.SetBlendRatio(ratio);
             _comparison.SetMode(MVIImageComparisonMode.Blend);
         }
+        /// <summary>滑动对比使用同一图像坐标/视口，无需复制Viewer或同步两套Pan/Zoom。</summary>
+        public void SwipeOriginalAndResult(double ratio)
+        {
+            VerifyAccess();
+            FIMImageBuffer first = _session.Original, second = _session.Result;
+            if (first == null || second == null) throw new InvalidOperationException("原图或结果图不存在。");
+            if (first.Width != second.Width || first.Height != second.Height ||
+                first.PixelFormat != second.PixelFormat)
+                throw new InvalidOperationException("滑动比较要求两图宽高和像素格式完全相同。");
+            _comparison.SetBlendRatio(ratio);
+            _comparison.SetMode(MVIImageComparisonMode.Swipe);
+        }
         public void DisableBlend() { VerifyAccess(); _comparison.SetMode(MVIImageComparisonMode.Single); }
         public void RotateViewClockwise() { VerifyAccess(); _viewTransform.Rotate90Clockwise(); }
         public void RotateViewCounterclockwise() { VerifyAccess(); _viewTransform.Rotate90Counterclockwise(); }
@@ -397,7 +409,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 return;
             }
 
-            if (_comparison.Mode == MVIImageComparisonMode.Blend)
+            if (_comparison.Mode == MVIImageComparisonMode.Blend ||
+                _comparison.Mode == MVIImageComparisonMode.Swipe)
             {
                 FIMImageBuffer first = _session.Original, second = _session.Result;
                 if (first == null || second == null || first.Width != second.Width ||
@@ -406,7 +419,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                     _comparison.SetMode(MVIImageComparisonMode.Single);
                     return;
                 }
-                image = FIMImageBlend.Blend(first, second, _comparison.BlendRatio);
+                image = _comparison.Mode == MVIImageComparisonMode.Swipe ?
+                    FIMImageBlend.Swipe(first,second,_comparison.BlendRatio) :
+                    FIMImageBlend.Blend(first, second, _comparison.BlendRatio);
             }
             else if (_comparison.Mode == MVIImageComparisonMode.SideBySide)
                 throw new NotSupportedException("并排比较尚未完成真实双视图交互，禁止当成可用模式。");
@@ -427,7 +442,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             EmptyText.Visibility = Visibility.Collapsed;
             PixelStatus.Text = image.Width + "×" + image.Height + " " + image.PixelFormat +
                 (_comparison.Mode == MVIImageComparisonMode.Blend ?
-                " · 叠合 " + _comparison.BlendRatio.ToString("0.##") : "");
+                    " · 叠合 " + _comparison.BlendRatio.ToString("0.##") :
+                 _comparison.Mode == MVIImageComparisonMode.Swipe ?
+                    " · 滑动比较 " + _comparison.BlendRatio.ToString("0.##") : "");
             if (dimensionsChanged || _pendingFit) FitToWindow();
             else ApplyTransform();
         }
