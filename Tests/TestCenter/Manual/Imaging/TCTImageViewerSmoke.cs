@@ -44,13 +44,16 @@ namespace CxVisual.TestCenter.UI
                 if (loaded.Width != 4 || loaded.Height != 4 || loaded.GetGrayValue(0,0) != 0)
                     throw new InvalidOperationException("PNG roundtrip unexpectedly changed pixel dimensions or window");
                 frame.Viewer.SetDisplayWindow(null,null);
+                // 显式给微小灰度样本设置窗口，否则16位全范围配合高对比会饱和到255，
+                // 反例断言只能测到剪裁，不是显示状态是否真实生效。
+                frame.Viewer.SetDisplayWindow(1, 16);
                 frame.Viewer.DisplayState.SetInverted(true);
                 frame.Viewer.DisplayState.SetGamma(2.0);
                 frame.Viewer.DisplayState.SetBrightness(0.1);
                 frame.Viewer.DisplayState.SetContrast(1.4);
                 frame.Viewer.SavePng(file);
                 FIMImageBuffer effects = Mechanism.Presentation.Wpf.Imaging.MPWImageViewerControl.ReadImageFile(file);
-                if (effects.Width != 4 || effects.Height != 4 || effects.GetGrayValue(0,0) >= 255)
+                if (effects.Width != 4 || effects.Height != 4 || effects.GetGrayValue(2,2) >= 255)
                     throw new InvalidOperationException("MPW tone controls did not update rendered PNG");
                 frame.Viewer.DisplayState.Reset();
                 if (!frame.Viewer.DisplayState.IsIdentity || image.GetGrayValue(0,0) != 1)
