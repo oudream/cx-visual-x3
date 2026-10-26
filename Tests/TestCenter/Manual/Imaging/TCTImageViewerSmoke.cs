@@ -356,7 +356,15 @@ namespace CxVisual.TestCenter.UI
 
                 // P2真正并排：同一MVI会话/原图坐标Store，两个真实WPF PixelImage。
                 // 右侧必须显示结果图的原始Gray16像素，而不是Blend/Swipe单图伪分屏。
-                frame.Viewer.SideBySideOriginalAndResult(true);
+                TabControl operationTabs = FindControl<TabControl>(frame,
+                    "TCT.Imaging.SecondaryTabs");
+                operationTabs.SelectedIndex = 4;
+                window.UpdateLayout();
+                Button sideAction = FindControl<Button>(frame,"TCT.Imaging.SideBySide");
+                CheckBox syncControl = FindControl<CheckBox>(frame,"TCT.Imaging.ComparisonSync");
+                if (sideAction == null || syncControl == null || syncControl.IsChecked != true)
+                    throw new InvalidOperationException("输出页缺少真实左右双视图入口和同步开关");
+                sideAction.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 window.UpdateLayout();
                 frame.Viewer.FitToWindow();
                 window.UpdateLayout();
@@ -382,14 +390,18 @@ namespace CxVisual.TestCenter.UI
                 if (Math.Abs(frame.Viewer.PrimaryViewportCenterX -
                     frame.Viewer.SecondaryViewportCenterX) > 1e-6)
                     throw new InvalidOperationException("左视口平移未同步到结果视口");
-                frame.Viewer.SetComparisonSynchronization(false);
+                syncControl.IsChecked = false;
+                if (frame.Viewer.ComparisonState.IsSyncViewEnabled)
+                    throw new InvalidOperationException("双视图同步开关未真正更新MVI状态");
                 double primaryCenter = frame.Viewer.PrimaryViewportCenterX;
                 frame.Viewer.PanComparisonViewport(16,0,true);
                 if (Math.Abs(frame.Viewer.PrimaryViewportCenterX-primaryCenter) > 1e-6 ||
                     Math.Abs(frame.Viewer.PrimaryViewportCenterX -
                     frame.Viewer.SecondaryViewportCenterX) < 1.0)
                     throw new InvalidOperationException("关闭同步仍强制锁住两个视口");
-                frame.Viewer.SetComparisonSynchronization(true);
+                syncControl.IsChecked = true;
+                if (!frame.Viewer.ComparisonState.IsSyncViewEnabled)
+                    throw new InvalidOperationException("重新启用同步没有更新MVI正式状态");
                 if (Math.Abs(frame.Viewer.PrimaryViewportCenterX -
                     frame.Viewer.SecondaryViewportCenterX) > 1e-6)
                     throw new InvalidOperationException("重新开启同步未恢复同一原图中心");
@@ -405,11 +417,14 @@ namespace CxVisual.TestCenter.UI
                     CaptureWindow(window,Path.Combine(Path.GetDirectoryName(comparisonCapture),
                         "workbench-side-by-side.png"));
                 frame.Viewer.Overlays.Remove(sideRoi.Id);
-                frame.Viewer.DisableBlend();
+                Button leaveCompare = FindControl<Button>(frame,"TCT.Imaging.BlendOff");
+                if (leaveCompare == null)
+                    throw new InvalidOperationException("输出页缺少退出并排比较入口");
+                leaveCompare.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 if (frame.Viewer.IsSideBySideVisible ||
                     frame.Viewer.SecondaryImageSource != null)
                     throw new InvalidOperationException("退出比较没有释放第二视口像素缓冲");
-                frame.Viewer.SetComparisonSynchronization(false);
+                syncControl.IsChecked = false;
                 bool missingComparison = false;
                 frame.Viewer.ShowResult(new FIMImageBuffer(2,2,FIMPixelFormat.Gray16,new byte[8]));
                 try { frame.Viewer.SideBySideOriginalAndResult(true); }
@@ -418,6 +433,9 @@ namespace CxVisual.TestCenter.UI
                     throw new InvalidOperationException("双图尺寸不一致未拒绝或污染比较状态");
                 frame.Viewer.ShowResult(FIMImageOperations.FlipHorizontal(image));
                 frame.Viewer.SelectOriginal();
+                syncControl.IsChecked = true;
+                operationTabs.SelectedIndex = 0;
+                window.UpdateLayout();
 
                 // 程序化创建真实叠加项，让MPW的WPF Canvas实际绘制，并检查层级隐藏/删除。
                 MVIImageOverlayItem rect = frame.Viewer.AddOverlay(new MVIImageOverlayItem(
