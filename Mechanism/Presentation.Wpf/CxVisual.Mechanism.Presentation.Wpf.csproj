@@ -38,6 +38,9 @@
     <Compile Include="Volume\Views\MPWVolumeSliceSceneControl.cs"/>
     <Compile Include="Imaging\MPWImageRulerControl.cs"/></ItemGroup>
   <ItemGroup>
+    <!-- 公共程序图标同时供WPF窗口与WinExe EXE使用。 -->
+    <Resource Include="Assets\CxVisual.TestCenter.ico"/>
+    <Resource Include="Assets\CxVisual.Studio.ico"/>
     <Page Include="Themes\MPWVisualPalette.xaml"><Generator>MSBuild:Compile</Generator></Page>
     <Page Include="Themes\MPWWorkspaceControls.xaml"><Generator>MSBuild:Compile</Generator></Page>
     <Page Include="LogViewerControl.xaml"><Generator>MSBuild:Compile</Generator><SubType>Designer</SubType></Page>

@@ -4,6 +4,7 @@
  xmlns:ui="clr-namespace:CxVisual.TestCenter.UI"
  xmlns:dock="https://github.com/Dirkster99/AvalonDock"
  Title="CxVisual · TestCenter — 统一测试与质量工作台"
+ Icon="/CxVisual.Mechanism.Presentation.Wpf;component/Assets/CxVisual.TestCenter.ico"
  Width="1800" Height="1020" MinWidth="1180" MinHeight="760"
  WindowStartupLocation="CenterScreen" FontFamily="Microsoft YaHei UI"
  FontSize="14" UseLayoutRounding="True" SnapsToDevicePixels="True"

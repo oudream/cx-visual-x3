@@ -1327,6 +1327,8 @@ namespace CxVisual.TestCenter.UI
                 if (window.BreadcrumbBand.Visibility != Visibility.Collapsed ||
                     window.BreadcrumbBand.ActualHeight > 0.5)
                     throw new InvalidOperationException("Removed Overview banner is still visible");
+                if (window.Icon == null)
+                    throw new InvalidOperationException("TestCenter主窗口缺少公共MPW图标");
                 if (window.TestDock.AnchorableHeaderTemplate == null ||
                     !ReferenceEquals(window.TestDock.AnchorableHeaderTemplate,
                         Application.Current.FindResource("MPWToolDockHeaderTemplate")))
