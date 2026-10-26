@@ -71,6 +71,7 @@
     <Compile Include="Manual\Imaging\TCTManualImageViewerLayout.cs" />
     <Compile Include="Manual\Imaging\TCTImageViewerSmoke.cs" />
     <Compile Include="Manual\Volume\TCTManualVolumeViewerFrame.cs" />
+    <Compile Include="Manual\Volume\TCTManualVolumeCrosshairs.cs" />
     <Compile Include="Manual\Volume\TCTVolumeViewerSmoke.cs" />
     <Compile Include="Manual\Message\TCTManualMessageFrame.cs" />
     <Compile Include="Manual\Command\TCTManualCommandFrame.cs" />

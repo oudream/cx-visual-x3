@@ -20,7 +20,7 @@ namespace CxVisual.TestCenter.UI
     /// 三维工作台可操作的WPF首个闭环：真实RAW/BMP体数据、三正交图像及3D切面同步。
     /// 3D为原生WPF空间切片，并非旧OpenGL Raymarch体绘；后续替换渲染方法不影响FVO/MVI唯一状态。
     /// </summary>
-    public sealed class TCTManualVolumeViewerFrame : UserControl, ITCTWorkspaceFrame
+    public sealed partial class TCTManualVolumeViewerFrame : UserControl, ITCTWorkspaceFrame
     {
         private readonly MPWImageViewerControl _xy = new MPWImageViewerControl();
         private readonly MPWImageViewerControl _xz = new MPWImageViewerControl();
@@ -105,9 +105,9 @@ namespace CxVisual.TestCenter.UI
             four.ColumnDefinitions.Add(new ColumnDefinition());
             four.ColumnDefinitions.Add(new ColumnDefinition());
             work.Children.Add(four);
-            AddViewport(four, _xy, "XY / 轴向", 0,0);
-            AddViewport(four, _yz, "YZ / 矢状", 0,1);
-            AddViewport(four, _xz, "XZ / 冠状", 1,0);
+            AddSliceViewport(four, _xy, FVOSlicePlane.XY, "XY / 轴向", 0,0);
+            AddSliceViewport(four, _yz, FVOSlicePlane.YZ, "YZ / 矢状", 0,1);
+            AddSliceViewport(four, _xz, FVOSlicePlane.XZ, "XZ / 冠状", 1,0);
             AddViewport(four, _scene, "3D / 空间切片", 1,1);
 
             ScrollViewer rightScroll = new ScrollViewer {
@@ -130,6 +130,7 @@ namespace CxVisual.TestCenter.UI
             AddAxis(settings, "窗下限（0-255）", _windowMin, "TCT.Volume.WindowMin");
             AddAxis(settings, "窗上限（0-255）", _windowMax, "TCT.Volume.WindowMax");
             settings.Children.Add(new Separator { Margin = new Thickness(2,10,2,10) });
+            settings.Children.Add(new TextBlock { Text = "Ctrl+点击切片：移动十字线    Shift+滚轮：切换切片", FontSize = 11, TextWrapping=TextWrapping.Wrap, Foreground=BrushOf(58,98,150), Margin=new Thickness(4,8,4,7) });
             Label(settings, "三维可视化");
             settings.Children.Add(new TextBlock {
                 Text = "已实现：三正交物理切面、共享三刀、相机旋转和缩放。\n" +
@@ -167,7 +168,7 @@ namespace CxVisual.TestCenter.UI
             AutomationProperties.SetAutomationId(slider,id);
             panel.Children.Add(slider);
         }
-        private static void AddViewport(Grid grid, UIElement control, string caption, int row, int column)
+        private static Grid AddViewport(Grid grid, UIElement control, string caption, int row, int column)
         {
             Grid host = new Grid { Margin = new Thickness(2), Background = BrushOf(8,14,22) };
             host.RowDefinitions.Add(new RowDefinition { Height = new GridLength(24) });
@@ -179,6 +180,7 @@ namespace CxVisual.TestCenter.UI
             host.Children.Add(title);
             Grid.SetRow(control,1); host.Children.Add(control);
             Grid.SetRow(host,row); Grid.SetColumn(host,column); grid.Children.Add(host);
+            return host;
         }
 
         public void LoadDemo()
@@ -258,6 +260,7 @@ namespace CxVisual.TestCenter.UI
                 _scene.SetSlices(xy,xz,yz,_state.SliceX,_state.SliceY,_state.SliceZ,
                     _volume.OriginalWidth,_volume.OriginalHeight,_volume.OriginalDepth,
                     _volume.SpacingX,_volume.SpacingY,_volume.SpacingZ);
+                UpdateCrosshairs();
                 _sliceStatus.Text = String.Format("位置：X {0} / Y {1} / Z {2}",
                     _state.SliceX,_state.SliceY,_state.SliceZ);
             }
@@ -323,6 +326,7 @@ namespace CxVisual.TestCenter.UI
             _xz.Clear();
             _yz.Clear();
             _scene.Clear();
+            ClearCrosshairs();
             _updating = false;
             _status.Text = "三维工作区已关闭，体数据与三维切面已释放。";
         }

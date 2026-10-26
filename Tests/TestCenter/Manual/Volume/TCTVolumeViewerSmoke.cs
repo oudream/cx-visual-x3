@@ -32,8 +32,13 @@ namespace CxVisual.TestCenter.UI
                 Check(frame.XyViewer.ActiveImage != null &&
                       frame.XzViewer.ActiveImage != null &&
                       frame.YzViewer.ActiveImage != null, "三个MPW WPF图窗均须实际显示图像");
+                frame.UpdateCrosshairs();
+                Check(frame.VisibleCrosshairCount == 6, "三个二维图窗必须显示六条十字线");
                 Check(frame.Scene.SlicePlaneCount == 3, "三张WPF空间贴图切面");
                 Check(frame.Scene.CameraDistance > 0, "三维相机被初始化");
+                frame.SetCrosshairFromImage(FVOSlicePlane.XY,6,9);
+                Check(frame.ViewState.SliceX == 6 && frame.ViewState.SliceY == 9,
+                    "二维切片坐标必须反算为MVI三刀索引");
                 frame.MoveSlices(11,19,23);
                 Check(frame.ViewState.SliceX == 11 && frame.ViewState.SliceY == 19 &&
                       frame.ViewState.SliceZ == 23, "三刀共用MVI状态");
@@ -72,7 +77,10 @@ namespace CxVisual.TestCenter.UI
                     Check(rejected, "无BMP切片目录必须明确拒绝");
                 }
                 finally { Directory.Delete(empty); }
-                Console.WriteLine("PASS TCT Volume native WPF 4-view, FVO/MVI, slice scene, reset and screenshot");
+                frame.OnWorkspaceClosed();
+                Check(frame.Volume == null && frame.Scene.SlicePlaneCount == 0 &&
+                      frame.VisibleCrosshairCount == 0, "关闭时应解除MVI状态、释放体数据及切面可视对象");
+                Console.WriteLine("PASS TCT Volume native WPF 4-view, FVO/MVI, crosshair, slice scene and screenshot");
             }
             finally
             {
