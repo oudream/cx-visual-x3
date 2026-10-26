@@ -97,12 +97,13 @@ namespace CxVisual.TestCenter.UI
                     throw new InvalidOperationException("右键删除没有移除左树实例");
             }));
             TraceUiStage("InteractManualModule");
-            await Task.Run(() => InteractManualModule(hwnd, window));
+            string initialModuleWorkspaceId =
+                await Task.Run(() => InteractManualModule(hwnd, window));
             SaveScreenshot(window, "TestCenter-12-ModuleConfig.png");
             window.Dispatcher.Invoke(new Action(() => {
-                TCTWorkspaceDescriptor first = window.FindCreatedInstance("manual.module.connector");
-                if (first != null && window.DocumentHost.HasWorkspace(first.WorkspaceId))
-                    window.DocumentHost.CloseWorkspace(first.WorkspaceId);
+                if (!window.DocumentHost.CloseWorkspace(initialModuleWorkspaceId))
+                    throw new InvalidOperationException(
+                        "最初创建的Connector模块Tab未按准确WorkspaceId关闭");
             }));
             foreach (CxVisual.Mechanism.Core.Modules.MFMModuleKind kind in
                 new[] {
@@ -114,13 +115,13 @@ namespace CxVisual.TestCenter.UI
                 })
             {
                 TraceUiStage("InteractModuleKind" + " / " + kind);
-                await Task.Run(() => InteractModuleKind(hwnd, window, kind));
+                string moduleWorkspaceId =
+                    await Task.Run(() => InteractModuleKind(hwnd, window, kind));
                 SaveScreenshot(window, "TestCenter-Module-" + kind + ".png");
                 window.Dispatcher.Invoke(new Action(() => {
-                    TCTWorkspaceDescriptor item = window.FindOpenCreatedInstance(
-                        "manual.module." + kind.ToString().ToLowerInvariant());
-                    if (item == null || !window.DocumentHost.CloseWorkspace(item.WorkspaceId))
-                        throw new InvalidOperationException("Module instance tab did not close");
+                    if (!window.DocumentHost.CloseWorkspace(moduleWorkspaceId))
+                        throw new InvalidOperationException(
+                            "模块实例未按创建时的WorkspaceId准确关闭：" + moduleWorkspaceId);
                 }));
             }
             TraceUiStage("InteractArchitectureSmoke");
@@ -150,7 +151,7 @@ namespace CxVisual.TestCenter.UI
             SaveScreenshot(window, "TestCenter-13-ScenarioReport.png");
             TraceUiStage("Completed full WPF UIA");
         }
-        private static void InteractModuleKind(IntPtr hwnd, TCTMainWindow window,
+        private static string InteractModuleKind(IntPtr hwnd, TCTMainWindow window,
             CxVisual.Mechanism.Core.Modules.MFMModuleKind kind)
         {
             AutomationElement root = AutomationElement.FromHandle(hwnd);
@@ -181,7 +182,7 @@ namespace CxVisual.TestCenter.UI
                         window.DocumentHost.Content as System.Windows.Controls.TabControl;
                     TCTManualModuleFrame frame = tabs == null ? null : tabs.Items
                         .OfType<System.Windows.Controls.TabItem>().Select(x => x.Content)
-                        .OfType<TCTManualModuleFrame>().FirstOrDefault();
+                        .OfType<TCTManualModuleFrame>().FirstOrDefault(candidate => candidate.ActiveModuleId == moduleId);
                     opened = frame != null && !frame.IsBusy && frame.HasOpenedConfiguration &&
                         frame.ActiveModuleKind == kind && frame.ActiveModuleId == moduleId;
                 }));
@@ -195,7 +196,7 @@ namespace CxVisual.TestCenter.UI
                     System.Windows.Controls.TabControl tabs =
                         window.DocumentHost.Content as System.Windows.Controls.TabControl;
                     tabs.Items.OfType<System.Windows.Controls.TabItem>().Select(x => x.Content)
-                        .OfType<TCTManualModuleFrame>().Single().SelectModulePage("channels");
+                        .OfType<TCTManualModuleFrame>().Single(candidate => candidate.ActiveModuleId == moduleId).SelectModulePage("channels");
                 }));
                 TraceUiStage("Connector / selecting channels");
                 AutomationElement cards = root.FindFirst(TreeScope.Descendants,
@@ -213,7 +214,7 @@ namespace CxVisual.TestCenter.UI
                                 window.DocumentHost.Content as System.Windows.Controls.TabControl;
                             TCTManualModuleFrame frame = tabs.Items
                                 .OfType<System.Windows.Controls.TabItem>().Select(x => x.Content)
-                                .OfType<TCTManualModuleFrame>().Single();
+                                .OfType<TCTManualModuleFrame>().Single(candidate => candidate.ActiveModuleId == moduleId);
                             rendered = frame.SelectedModulePage == "channels" &&
                                 frame.VisibleSchemaEditorCount >= 9;
                         }));
@@ -227,7 +228,7 @@ namespace CxVisual.TestCenter.UI
                         window.DocumentHost.Content as System.Windows.Controls.TabControl;
                     TCTManualModuleFrame frame = tabs.Items
                         .OfType<System.Windows.Controls.TabItem>().Select(x => x.Content)
-                        .OfType<TCTManualModuleFrame>().Single();
+                        .OfType<TCTManualModuleFrame>().Single(candidate => candidate.ActiveModuleId == moduleId);
                     frame.SelectModulePage("protocols");
                     if (frame.SelectedModulePage != "protocols" || frame.VisibleSchemaEditorCount < 3)
                         throw new InvalidOperationException("Protocol 身份配置 Schema 未显示");
@@ -253,7 +254,7 @@ namespace CxVisual.TestCenter.UI
                             window.DocumentHost.Content as System.Windows.Controls.TabControl;
                         TCTManualModuleFrame frame = tabs.Items
                             .OfType<System.Windows.Controls.TabItem>().Select(x => x.Content)
-                            .OfType<TCTManualModuleFrame>().Single();
+                            .OfType<TCTManualModuleFrame>().Single(candidate => candidate.ActiveModuleId == moduleId);
                         countObserved = frame.ConnectorDraftSnapshot().Protocol.Points.Count;
                         System.Windows.Controls.TextBox pointName =
                             FindWpfByAutomationId<System.Windows.Controls.TextBox>(
@@ -273,7 +274,7 @@ namespace CxVisual.TestCenter.UI
                         window.DocumentHost.Content as System.Windows.Controls.TabControl;
                     TCTManualModuleFrame frame = tabs.Items
                         .OfType<System.Windows.Controls.TabItem>().Select(x => x.Content)
-                        .OfType<TCTManualModuleFrame>().Single();
+                        .OfType<TCTManualModuleFrame>().Single(candidate => candidate.ActiveModuleId == moduleId);
                     frame.SelectModulePage("mapping");
                     if (frame.SelectedModulePage != "mapping")
                         throw new InvalidOperationException("DataMapping 分页未被选中");
@@ -295,7 +296,7 @@ namespace CxVisual.TestCenter.UI
                             window.DocumentHost.Content as System.Windows.Controls.TabControl;
                         TCTManualModuleFrame frame = tabs.Items
                             .OfType<System.Windows.Controls.TabItem>().Select(x => x.Content)
-                            .OfType<TCTManualModuleFrame>().Single();
+                            .OfType<TCTManualModuleFrame>().Single(candidate => candidate.ActiveModuleId == moduleId);
                         mappingObserved = frame.ConnectorDraftSnapshot().Protocol.Mappings.Count;
                         mappingReady = mappingObserved == 1 &&
                             FindWpfByAutomationId<System.Windows.Controls.ComboBox>(
@@ -313,7 +314,7 @@ namespace CxVisual.TestCenter.UI
                         window.DocumentHost.Content as System.Windows.Controls.TabControl;
                     TCTManualModuleFrame frame = tabs.Items
                         .OfType<System.Windows.Controls.TabItem>().Select(x => x.Content)
-                        .OfType<TCTManualModuleFrame>().Single();
+                        .OfType<TCTManualModuleFrame>().Single(candidate => candidate.ActiveModuleId == moduleId);
                     frame.ValidateCurrent();
                     if (!frame.StatusMessage.Contains("配置存在"))
                         throw new InvalidOperationException("空DataMapping没有被正式FCM拒绝");
@@ -356,7 +357,7 @@ namespace CxVisual.TestCenter.UI
                         window.DocumentHost.Content as System.Windows.Controls.TabControl;
                     TCTManualModuleFrame frame = tabs.Items
                         .OfType<System.Windows.Controls.TabItem>().Select(x => x.Content)
-                        .OfType<TCTManualModuleFrame>().Single();
+                        .OfType<TCTManualModuleFrame>().Single(candidate => candidate.ActiveModuleId == moduleId);
                     TraceUiStage("Connector / dispatch started after focus");
                     MCNConnectorConfiguration draft = frame.ConnectorDraftSnapshot();
                     TraceUiStage("Connector / draft snapshot returned");
@@ -391,7 +392,7 @@ namespace CxVisual.TestCenter.UI
                         window.DocumentHost.Content as System.Windows.Controls.TabControl;
                     TCTManualModuleFrame frame = tabs.Items
                         .OfType<System.Windows.Controls.TabItem>().Select(x => x.Content)
-                        .OfType<TCTManualModuleFrame>().Single();
+                        .OfType<TCTManualModuleFrame>().Single(candidate => candidate.ActiveModuleId == moduleId);
                     frame.SelectModulePage("runtime");
                     if (frame.SelectedModulePage != "runtime" || frame.VisibleSchemaEditorCount < 6)
                         throw new InvalidOperationException("Protocol执行策略分页未展示完整Schema");
@@ -414,7 +415,7 @@ namespace CxVisual.TestCenter.UI
                         window.DocumentHost.Content as System.Windows.Controls.TabControl;
                     TCTManualModuleFrame frame = tabs.Items
                         .OfType<System.Windows.Controls.TabItem>().Select(x => x.Content)
-                        .OfType<TCTManualModuleFrame>().Single();
+                        .OfType<TCTManualModuleFrame>().Single(candidate => candidate.ActiveModuleId == moduleId);
                     frame.SelectModulePage("provider");
                     if (frame.VisibleSchemaEditorCount < 1)
                         throw new InvalidOperationException("Driver Provider 正式 FCM 配置没有显示");
@@ -423,7 +424,7 @@ namespace CxVisual.TestCenter.UI
                         !frame.StatusMessage.Contains("DriverTypeId"))
                         throw new InvalidOperationException("Driver 没有 Provider 不应通过验证");
                 }));
-                return;
+                return created.WorkspaceId;
             }
             if (kind == CxVisual.Mechanism.Core.Modules.MFMModuleKind.Connector) TraceUiStage("Connector / pre save");
             InvokePattern save = Find(root, "TCT.Manual.Action.module.save")
@@ -439,7 +440,7 @@ namespace CxVisual.TestCenter.UI
                         window.DocumentHost.Content as System.Windows.Controls.TabControl;
                     TCTManualModuleFrame frame = tabs == null ? null : tabs.Items
                         .OfType<System.Windows.Controls.TabItem>().Select(x => x.Content)
-                        .OfType<TCTManualModuleFrame>().FirstOrDefault();
+                        .OfType<TCTManualModuleFrame>().FirstOrDefault(candidate => candidate.ActiveModuleId == moduleId);
                     if (frame == null) throw new InvalidOperationException("Module editor vanished");
                     if (!frame.IsBusy && frame.StatusMessage.Contains("配置未保存"))
                         throw new InvalidOperationException("MHS rejected " + kind + ": " + frame.StatusMessage);
@@ -462,7 +463,7 @@ namespace CxVisual.TestCenter.UI
                         window.DocumentHost.Content as System.Windows.Controls.TabControl;
                     TCTManualModuleFrame frame = tabs == null ? null : tabs.Items
                         .OfType<System.Windows.Controls.TabItem>().Select(x => x.Content)
-                        .OfType<TCTManualModuleFrame>().FirstOrDefault();
+                        .OfType<TCTManualModuleFrame>().FirstOrDefault(candidate => candidate.ActiveModuleId == moduleId);
                     reloaded = frame != null && !frame.IsBusy && frame.HasOpenedConfiguration &&
                         frame.ActiveModuleKind == kind && frame.ActiveModuleId == moduleId &&
                         frame.StatusMessage.StartsWith("已创建/打开配置范围", StringComparison.Ordinal);
@@ -476,7 +477,7 @@ namespace CxVisual.TestCenter.UI
                         window.DocumentHost.Content as System.Windows.Controls.TabControl;
                     TCTManualModuleFrame frame = tabs.Items
                         .OfType<System.Windows.Controls.TabItem>().Select(x => x.Content)
-                        .OfType<TCTManualModuleFrame>().Single();
+                        .OfType<TCTManualModuleFrame>().Single(candidate => candidate.ActiveModuleId == moduleId);
                     MCNConnectorConfiguration snapshot = frame.ConnectorDraftSnapshot();
                     if (snapshot.Protocol.Points.Count != 1 ||
                         snapshot.Protocol.Mappings.Count != 1 ||
@@ -489,7 +490,7 @@ namespace CxVisual.TestCenter.UI
                     System.Windows.Controls.TabControl tabs =
                         window.DocumentHost.Content as System.Windows.Controls.TabControl;
                     tabs.Items.OfType<System.Windows.Controls.TabItem>().Select(x => x.Content)
-                        .OfType<TCTManualModuleFrame>().Single().SelectModulePage("channels");
+                        .OfType<TCTManualModuleFrame>().Single(candidate => candidate.ActiveModuleId == moduleId).SelectModulePage("channels");
                 }));
             InvokePattern validate = Find(root, "TCT.Manual.Action.module.validate")
                 .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
@@ -541,6 +542,7 @@ namespace CxVisual.TestCenter.UI
                 }
                 TraceUiStage("Connector / completed");
             }
+            return created.WorkspaceId;
         }
 
         // 通过实际MPW删除按钮删除正式Point与映射，再次保存、重开，检验不存在影子集合。
@@ -552,7 +554,7 @@ namespace CxVisual.TestCenter.UI
                 System.Windows.Controls.TabControl tabs =
                     window.DocumentHost.Content as System.Windows.Controls.TabControl;
                 tabs.Items.OfType<System.Windows.Controls.TabItem>().Select(x => x.Content)
-                    .OfType<TCTManualModuleFrame>().Single().SelectModulePage("points");
+                    .OfType<TCTManualModuleFrame>().Single(candidate => candidate.ActiveModuleId == moduleId).SelectModulePage("points");
             }));
             TraceUiStage("Connector deletion / points tab selected");
             InvokePattern removePoint = Find(root, "MPW.Collection.Remove.Protocol.Points[0]")
@@ -570,7 +572,7 @@ namespace CxVisual.TestCenter.UI
                     System.Windows.Controls.TabControl tabs =
                         window.DocumentHost.Content as System.Windows.Controls.TabControl;
                     TCTManualModuleFrame frame = tabs.Items.OfType<System.Windows.Controls.TabItem>()
-                        .Select(x => x.Content).OfType<TCTManualModuleFrame>().Single();
+                        .Select(x => x.Content).OfType<TCTManualModuleFrame>().Single(candidate => candidate.ActiveModuleId == moduleId);
                     MCNConnectorConfiguration draft = frame.ConnectorDraftSnapshot();
                     pointRemoved = draft.Protocol.Points.Count == 0;
                     danglingMappingRetained = draft.Protocol.Mappings.Count == 1;
@@ -588,7 +590,7 @@ namespace CxVisual.TestCenter.UI
                 System.Windows.Controls.TabControl tabs =
                     window.DocumentHost.Content as System.Windows.Controls.TabControl;
                 TCTManualModuleFrame frame = tabs.Items.OfType<System.Windows.Controls.TabItem>()
-                    .Select(x => x.Content).OfType<TCTManualModuleFrame>().Single();
+                    .Select(x => x.Content).OfType<TCTManualModuleFrame>().Single(candidate => candidate.ActiveModuleId == moduleId);
                 frame.ValidateCurrent();
                 danglingStatus = frame.StatusMessage;
                 frame.SelectModulePage("mapping");
@@ -610,7 +612,7 @@ namespace CxVisual.TestCenter.UI
                     System.Windows.Controls.TabControl tabs =
                         window.DocumentHost.Content as System.Windows.Controls.TabControl;
                     TCTManualModuleFrame frame = tabs.Items.OfType<System.Windows.Controls.TabItem>()
-                        .Select(x => x.Content).OfType<TCTManualModuleFrame>().Single();
+                        .Select(x => x.Content).OfType<TCTManualModuleFrame>().Single(candidate => candidate.ActiveModuleId == moduleId);
                     MCNConnectorConfiguration draft = frame.ConnectorDraftSnapshot();
                     mappingRemoved = draft.Protocol.Points.Count == 0 &&
                         draft.Protocol.Mappings.Count == 0;
@@ -664,7 +666,7 @@ namespace CxVisual.TestCenter.UI
                     System.Windows.Controls.TabControl tabs =
                         window.DocumentHost.Content as System.Windows.Controls.TabControl;
                     TCTManualModuleFrame frame = tabs.Items.OfType<System.Windows.Controls.TabItem>()
-                        .Select(x => x.Content).OfType<TCTManualModuleFrame>().Single();
+                        .Select(x => x.Content).OfType<TCTManualModuleFrame>().Single(candidate => candidate.ActiveModuleId == moduleId);
                     if (!frame.IsBusy && (frame.StatusMessage.Contains("配置未保存") ||
                         frame.StatusMessage.Contains("保存操作失败")))
                         throw new InvalidOperationException("删除后MHS拒绝保存：" + frame.StatusMessage);
@@ -687,7 +689,7 @@ namespace CxVisual.TestCenter.UI
                     System.Windows.Controls.TabControl tabs =
                         window.DocumentHost.Content as System.Windows.Controls.TabControl;
                     TCTManualModuleFrame frame = tabs.Items.OfType<System.Windows.Controls.TabItem>()
-                        .Select(x => x.Content).OfType<TCTManualModuleFrame>().Single();
+                        .Select(x => x.Content).OfType<TCTManualModuleFrame>().Single(candidate => candidate.ActiveModuleId == moduleId);
                     if (!frame.IsBusy && frame.StatusMessage.StartsWith("已创建/打开配置范围",
                         StringComparison.Ordinal))
                     {
@@ -702,7 +704,7 @@ namespace CxVisual.TestCenter.UI
             if (!checkedAgain) throw new InvalidOperationException(
                 "真实MHS删除后重开，仍出现已删除的规约点或映射");
         }
-        private static void InteractManualModule(IntPtr hwnd, TCTMainWindow window)
+        private static string InteractManualModule(IntPtr hwnd, TCTMainWindow window)
         {
             AutomationElement root = AutomationElement.FromHandle(hwnd);
             TCTWorkspaceDescriptor instance = null;
@@ -744,6 +746,7 @@ namespace CxVisual.TestCenter.UI
                 .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
             if (validate == null) throw new InvalidOperationException("Module validation action unavailable");
             validate.Invoke();
+            return instance.WorkspaceId;
         }
 
         private static void InteractArchitectureSmoke(IntPtr hwnd, TCTMainWindow window)
