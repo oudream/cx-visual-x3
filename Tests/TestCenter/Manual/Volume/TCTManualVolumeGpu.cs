@@ -2,6 +2,9 @@ using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using System.IO;
+using Microsoft.Win32;
 using CxVisual.Foundation.Volume;
 using CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering;
 using CxVisual.Professional.CT3D;
@@ -32,6 +35,11 @@ namespace CxVisual.TestCenter.UI
         private readonly CheckBox _gpuGradient = new CheckBox { Content="启用梯度透明曲线", IsChecked=false };
         private readonly Slider _gpuThreshold = new Slider { Minimum=0,Maximum=1,Value=.28 };
         private readonly CheckBox _gpuUseThreshold = new CheckBox { Content="应用阈值", IsChecked=false };
+        private readonly CheckBox _gpuShowVolume = new CheckBox { Content="显示体绘",IsChecked=true };
+        private readonly CheckBox _gpuShowSlices = new CheckBox { Content="显示三维定位切面",IsChecked=true };
+        private readonly CheckBox _gpuShowSliceTexture = new CheckBox { Content="显示切面灰度纹理",IsChecked=false };
+        private readonly CheckBox _gpuBounds = new CheckBox { Content="显示体包围盒",IsChecked=false };
+        private readonly Slider _gpuSliceOpacity = new Slider { Minimum=0,Maximum=1,Value=.35 };
         private readonly ComboBox _gpuPreset = new ComboBox { Margin=new Thickness(4),Height=29 };
 
         public bool IsGpuVolumeRendering { get { return _gpu != null && _gpu.IsAvailable; } }
@@ -51,6 +59,14 @@ namespace CxVisual.TestCenter.UI
             _gpuPreset.Items.Add(CT3DRenderingPresetKind.LinearGrayscale);
             _gpuPreset.SelectedIndex = 0;
             sidebar.Children.Add(_gpuPreset);
+            sidebar.Children.Add(_gpuShowVolume);
+            sidebar.Children.Add(_gpuShowSlices);
+            sidebar.Children.Add(_gpuShowSliceTexture);
+            sidebar.Children.Add(_gpuBounds);
+            AddGpuSlider(sidebar,"定位切面透明度",_gpuSliceOpacity);
+            Button screenshot = new Button { Content="保存真实GPU帧PNG", Margin=new Thickness(4),Height=32 };
+            screenshot.Click += (s,e) => SaveGpuFrame();
+            sidebar.Children.Add(screenshot);
             AddGpuSlider(sidebar,"整体体透明度",_gpuOpacity);
             AddGpuSlider(sidebar,"Raymarch采样步长",_gpuStep);
             AddGpuSlider(sidebar,"环境光",_gpuAmbient);
@@ -84,6 +100,15 @@ namespace CxVisual.TestCenter.UI
             _gpuUseThreshold.Checked+=(s,e)=>UpdateGpuSettings();
             _gpuUseThreshold.Unchecked+=(s,e)=>UpdateGpuSettings();
             _gpuThreshold.ValueChanged+=(s,e)=>UpdateGpuSettings();
+            _gpuSliceOpacity.ValueChanged+=(s,e)=>UpdateGpuSettings();
+            _gpuShowVolume.Checked+=(s,e)=>UpdateGpuSettings();
+            _gpuShowVolume.Unchecked+=(s,e)=>UpdateGpuSettings();
+            _gpuShowSlices.Checked+=(s,e)=>UpdateGpuSettings();
+            _gpuShowSlices.Unchecked+=(s,e)=>UpdateGpuSettings();
+            _gpuShowSliceTexture.Checked+=(s,e)=>UpdateGpuSettings();
+            _gpuShowSliceTexture.Unchecked+=(s,e)=>UpdateGpuSettings();
+            _gpuBounds.Checked+=(s,e)=>UpdateGpuSettings();
+            _gpuBounds.Unchecked+=(s,e)=>UpdateGpuSettings();
         }
 
         private static void AddGpuSlider(Panel panel,string text,Slider slider)
@@ -112,6 +137,11 @@ namespace CxVisual.TestCenter.UI
             _gpuSettings.TransferFunctions.UseGradientOpacity=_gpuGradient.IsChecked==true;
             _gpuSettings.TransferFunctions.UseThreshold=_gpuUseThreshold.IsChecked==true;
             _gpuSettings.TransferFunctions.Threshold=(float)_gpuThreshold.Value;
+            _gpuSettings.ShowVolume = _gpuShowVolume.IsChecked==true;
+            _gpuSettings.ShowSlices = _gpuShowSlices.IsChecked==true;
+            _gpuSettings.ShowSliceTexture = _gpuShowSliceTexture.IsChecked==true;
+            _gpuSettings.ShowVolumeBounds = _gpuBounds.IsChecked==true;
+            _gpuSettings.SliceOpacity = (float)_gpuSliceOpacity.Value;
             if (_gpu == null || !_gpu.IsAvailable) return;
             try
             {
@@ -125,6 +155,9 @@ namespace CxVisual.TestCenter.UI
         private void ApplyGpuUniforms()
         {
             if (_gpu==null || !_gpu.IsAvailable)return;
+            _gpu.SetSceneOptions(_gpuSettings.ShowVolume,_gpuSettings.ShowSlices,
+                _gpuSettings.ShowSliceTexture,_gpuSettings.ShowVolumeBounds,_gpuSettings.SliceOpacity);
+            UpdateGpuSlicePositions();
             _gpu.SetRendering(_gpuSettings.VolumeOpacity,_gpuSettings.Sampling.StepScale,
                 _gpuSettings.Sampling.ReferenceStep,_gpuSettings.Sampling.EnableJitter,
                 _gpuSettings.Material.Ambient,_gpuSettings.Material.Diffuse,
@@ -183,6 +216,35 @@ namespace CxVisual.TestCenter.UI
                 previous.Dispose();
             }
             _scene.Visibility=Visibility.Visible;
+        }
+
+        private void UpdateGpuSlicePositions()
+        {
+            if (_gpu==null || _state==null || _volume==null || !_gpu.IsAvailable)return;
+            _gpu.SetSlicePositions(
+                _state.SliceX/(float)Math.Max(1,_volume.OriginalWidth-1),
+                _state.SliceY/(float)Math.Max(1,_volume.OriginalHeight-1),
+                _state.SliceZ/(float)Math.Max(1,_volume.OriginalDepth-1));
+        }
+
+        private void SaveGpuFrame()
+        {
+            if (_gpu==null || !_gpu.IsAvailable)
+            {
+                MessageBox.Show("当前未启用真实GPU体绘，不能冒用WPF切面截图。","GPU帧截图");
+                return;
+            }
+            SaveFileDialog dialog=new SaveFileDialog { Filter="PNG文件 (*.png)|*.png",
+                FileName="CxVisual-GPU-Volume.png" };
+            if(dialog.ShowDialog()!=true)return;
+            try
+            {
+                BitmapSource pixels=_gpu.CaptureFrame();
+                PngBitmapEncoder encoder=new PngBitmapEncoder();
+                encoder.Frames.Add(BitmapFrame.Create(pixels));
+                using(FileStream file=File.Create(dialog.FileName))encoder.Save(file);
+            }
+            catch(Exception error) { MessageBox.Show(error.Message,"GPU帧截图失败"); }
         }
 
         private void UpdateGpuVolume()

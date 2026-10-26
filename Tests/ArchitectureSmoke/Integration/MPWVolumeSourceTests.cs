@@ -27,7 +27,16 @@ namespace CxVisual.Tests.ArchitectureSmoke
             float[] cube = (float[])ReadField(geometry, "CubeVertices").GetValue(null);
             float[] edges = (float[])ReadField(geometry, "CubeLines").GetValue(null);
             Check(cube.Length >= 108 && edges.Length == 72, "原3D体包围盒三角形与12条棱");
-            Console.WriteLine("PASS MPW legacy GLSL and cube geometry compiled contracts (GPU runtime pending)");
+            Type gpu = assembly.GetType(
+                "CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering.MPWVolumeOpenGlControl", true);
+            Check(gpu.BaseType != null &&
+                  gpu.BaseType.FullName == "System.Windows.Interop.HwndHost",
+                  "真正的WPF HWND宿主而非WinForms GLControl");
+            foreach (string api in new[] { "SetVolume", "UpdateTransfer", "SetRendering",
+                     "SetSceneOptions", "SetSlicePositions", "CaptureFrame", "ResetCamera" })
+                Check(gpu.GetMethod(api, BindingFlags.Public | BindingFlags.Instance) != null,
+                    "缺少体绘真实API："+api);
+            Console.WriteLine("PASS MPW legacy GLSL, WGL renderer entrypoints and geometry compiled (physical GPU pending)");
         }
 
         private static FieldInfo ReadField(Type type, string fieldName)

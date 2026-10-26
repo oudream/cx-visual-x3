@@ -5,6 +5,8 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows;
 using System.Windows.Interop;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 
 namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
@@ -20,6 +22,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
         private IntPtr _window, _dc, _context;
         private GlApi _gl;
         private uint _shader, _vao, _vbo, _volumeTexture, _scalarTexture, _gradientTexture;
+        private uint _sliceShader, _sliceVao, _sliceVbo, _lineShader, _lineVao, _lineVbo;
+        private float _sliceX=.5f, _sliceY=.5f, _sliceZ=.5f, _sliceOpacity=.35f;
+        private bool _showSlices=true, _showSliceTexture=false, _showVolume=true, _showBounds=false;
         private byte[] _voxels, _scalar, _gradient;
         private int _width, _height, _depth;
         private float _sx = 1, _sy = 1, _sz = 1;
@@ -82,6 +87,20 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
             RenderFrame();
         }
 
+        /// <summary>切面均使用0..1空间坐标，由MVI唯一三刀状态计算。</summary>
+        public void SetSlicePositions(float x,float y,float z)
+        {
+            _sliceX=Clamp(x,0,1); _sliceY=Clamp(y,0,1); _sliceZ=Clamp(z,0,1);
+            RenderFrame();
+        }
+
+        public void SetSceneOptions(bool volume,bool slices,bool sliceTexture,bool bounds,float sliceOpacity)
+        {
+            _showVolume=volume; _showSlices=slices; _showSliceTexture=sliceTexture;
+            _showBounds=bounds; _sliceOpacity=Clamp(sliceOpacity,0,1);
+            RenderFrame();
+        }
+
         public void ResetCamera()
         {
             _yaw = .62f; _pitch = .36f; _distance = 2.9f; RenderFrame();
@@ -129,11 +148,32 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
                 DriverVersion = Marshal.PtrToStringAnsi(glGetString(0x1F02));
                 _gl = new GlApi();
                 _shader = CreateProgram(MPWVolumeShaderSources.VolumeVertex, MPWVolumeShaderSources.VolumeFragment);
+                _sliceShader = CreateProgram(MPWVolumeShaderSources.SliceVertex, MPWVolumeShaderSources.SliceFragment);
+                _lineShader = CreateProgram(MPWVolumeShaderSources.LineVertex, MPWVolumeShaderSources.LineFragment);
                 _gl.GenVertexArrays(1,out _vao);
                 _gl.GenBuffers(1,out _vbo);
                 _gl.BindVertexArray(_vao);
                 _gl.BindBuffer(0x8892,_vbo); // GL_ARRAY_BUFFER
                 UploadFloats(MPWVolumeGeometry.CubeVertices);
+                _gl.VertexAttribPointer(0,3,0x1406,0,3*sizeof(float),IntPtr.Zero);
+                _gl.EnableVertexAttribArray(0);
+                _gl.GenVertexArrays(1,out _sliceVao);
+                _gl.GenBuffers(1,out _sliceVbo);
+                _gl.BindVertexArray(_sliceVao);
+                _gl.BindBuffer(0x8892,_sliceVbo);
+                _gl.VertexAttribPointer(0,3,0x1406,0,11*sizeof(float),IntPtr.Zero);
+                _gl.EnableVertexAttribArray(0);
+                _gl.VertexAttribPointer(1,3,0x1406,0,11*sizeof(float),new IntPtr(3*sizeof(float)));
+                _gl.EnableVertexAttribArray(1);
+                _gl.VertexAttribPointer(2,3,0x1406,0,11*sizeof(float),new IntPtr(6*sizeof(float)));
+                _gl.EnableVertexAttribArray(2);
+                _gl.VertexAttribPointer(3,2,0x1406,0,11*sizeof(float),new IntPtr(9*sizeof(float)));
+                _gl.EnableVertexAttribArray(3);
+                _gl.GenVertexArrays(1,out _lineVao);
+                _gl.GenBuffers(1,out _lineVbo);
+                _gl.BindVertexArray(_lineVao);
+                _gl.BindBuffer(0x8892,_lineVbo);
+                UploadFloats(MPWVolumeGeometry.CubeLines);
                 _gl.VertexAttribPointer(0,3,0x1406,0,3*sizeof(float),IntPtr.Zero);
                 _gl.EnableVertexAttribArray(0);
                 glClearColor(.025f,.037f,.061f,1);
@@ -172,15 +212,22 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
             if (wglMakeCurrent(_dc,_context) && _gl != null)
             {
                 if (_shader != 0) _gl.DeleteProgram(_shader);
+                if (_sliceShader != 0) _gl.DeleteProgram(_sliceShader);
+                if (_lineShader != 0) _gl.DeleteProgram(_lineShader);
                 if (_volumeTexture != 0) _gl.DeleteTextures(1,ref _volumeTexture);
                 if (_scalarTexture != 0) _gl.DeleteTextures(1,ref _scalarTexture);
                 if (_gradientTexture != 0) _gl.DeleteTextures(1,ref _gradientTexture);
                 if (_vbo != 0) _gl.DeleteBuffers(1,ref _vbo);
+                if (_sliceVbo != 0) _gl.DeleteBuffers(1,ref _sliceVbo);
+                if (_lineVbo != 0) _gl.DeleteBuffers(1,ref _lineVbo);
                 if (_vao != 0) _gl.DeleteVertexArrays(1,ref _vao);
+                if (_sliceVao != 0) _gl.DeleteVertexArrays(1,ref _sliceVao);
+                if (_lineVao != 0) _gl.DeleteVertexArrays(1,ref _lineVao);
             }
             wglMakeCurrent(IntPtr.Zero,IntPtr.Zero);
             wglDeleteContext(_context); _context = IntPtr.Zero; IsAvailable = false;
             _shader = _vao = _vbo = _volumeTexture = _scalarTexture = _gradientTexture = 0;
+            _sliceShader = _lineShader = _sliceVao = _sliceVbo = _lineVao = _lineVbo = 0;
             _gl = null;
         }
 
@@ -298,6 +345,28 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
             finally { pinned.Free(); }
         }
 
+        /// <summary>从真实OpenGL framebuffer读取GPU结果；不使用WPF RenderTargetBitmap截取HwndHost空白区域。</summary>
+        public BitmapSource CaptureFrame()
+        {
+            if (!IsAvailable) throw new InvalidOperationException("当前驱动不支持真实GPU体绘。");
+            RenderFrame();
+            MakeCurrent();
+            RectNative r;
+            if (!GetClientRect(_window,out r)) throw new Win32Exception(Marshal.GetLastWin32Error());
+            int width=Math.Max(1,r.Right-r.Left),height=Math.Max(1,r.Bottom-r.Top);
+            int stride=checked(width*4);
+            byte[] bottomUp=new byte[checked(stride*height)];
+            glPixelStorei(0x0D05,1); // GL_PACK_ALIGNMENT
+            PinBytes(bottomUp,p=>glReadPixels(0,0,width,height,0x80E1,0x1401,p)); // BGRA/UNSIGNED_BYTE
+            byte[] topDown=new byte[bottomUp.Length];
+            for(int row=0;row<height;row++)
+                Buffer.BlockCopy(bottomUp,(height-1-row)*stride,topDown,row*stride,stride);
+            BitmapSource bmp=BitmapSource.Create(width,height,96,96,
+                PixelFormats.Bgra32,null,topDown,stride);
+            bmp.Freeze();
+            return bmp;
+        }
+
         public void RenderFrame()
         {
             if (!IsAvailable || _window==IntPtr.Zero || _voxels==null || _shader==0 || _volumeTexture==0) return;
@@ -313,6 +382,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
             Matrix4x4 view = Matrix4x4.CreateLookAt(camera,Vector3.Zero,Vector3.UnitY);
             Matrix4x4 projection = Matrix4x4.CreatePerspectiveFieldOfView(
                 (float)(Math.PI/4),w/(float)h,.02f,30);
+            if (_showVolume)
+            {
             _gl.UseProgram(_shader);
             Matrix("model",model); Matrix("view",view); Matrix("projection",projection);
             Vec3("cameraObject",camera.X/_sx,camera.Y/_sy,camera.Z/_sz);
@@ -329,7 +400,68 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
             _gl.ActiveTexture(0x84C2); _gl.BindTexture(0x0DE0,_gradientTexture);
             _gl.BindVertexArray(_vao);
             _gl.DrawArrays(0x0004,0,MPWVolumeGeometry.CubeVertices.Length/3);
+            }
+            Matrix4x4 mvp = model * view * projection;
+            if (_showSlices || _showSliceTexture)
+            {
+                _gl.UseProgram(_sliceShader);
+                Matrix("mvp",mvp);
+                Uniform1("volumeTex",0);
+                Uniform1("obliqueTex",1);
+                Uniform1("showSliceTexture",_showSliceTexture?1:0);
+                Uniform1("showSlicePlanes",_showSlices?1:0);
+                Uniform1("useObliqueTexture",0);
+                UniformF("sliceOpacity",_sliceOpacity);
+                _gl.ActiveTexture(0x84C0);
+                _gl.BindTexture(0x806F,_volumeTexture);
+                _gl.BindVertexArray(_sliceVao);
+                _gl.BindBuffer(0x8892,_sliceVbo);
+                UploadFloats(BuildSliceVertices());
+                _gl.DrawArrays(0x0004,0,18);
+            }
+            if (_showBounds)
+            {
+                _gl.UseProgram(_lineShader);
+                Matrix("mvp",mvp);
+                Vec3("lineColor",.82f,.88f,.95f);
+                _gl.BindVertexArray(_lineVao);
+                _gl.DrawArrays(0x0001,0,MPWVolumeGeometry.CubeLines.Length/3);
+            }
             SwapBuffers(_dc);
+        }
+
+        /// <summary>直接沿用原版11浮点布局：位置/3D纹理/颜色/任意切UV，三刀单一坐标源。</summary>
+        private float[] BuildSliceVertices()
+        {
+            float[] vertices=new float[18*11];
+            int index=0;
+            // 红色YZ切面固定X，绿色XZ固定Y，蓝色XY固定Z。
+            AddQuad(vertices,ref index,new float[]
+            {
+                _sliceX,0,0, _sliceX,1,0, _sliceX,1,1, _sliceX,0,1
+            },1f,.22f,.2f);
+            AddQuad(vertices,ref index,new float[]
+            {
+                0,_sliceY,0, 1,_sliceY,0, 1,_sliceY,1, 0,_sliceY,1
+            },.28f,.85f,.32f);
+            AddQuad(vertices,ref index,new float[]
+            {
+                0,0,_sliceZ, 1,0,_sliceZ, 1,1,_sliceZ, 0,1,_sliceZ
+            },.2f,.48f,1f);
+            return vertices;
+        }
+        private static void AddQuad(float[] output,ref int offset,float[] coords,float red,float green,float blue)
+        {
+            int[] triangles={0,1,2,0,2,3};
+            foreach(int vertex in triangles)
+            {
+                int i=vertex*3;
+                float x=coords[i],y=coords[i+1],z=coords[i+2];
+                output[offset++]=x-.5f; output[offset++]=y-.5f; output[offset++]=z-.5f;
+                output[offset++]=x; output[offset++]=y; output[offset++]=z;
+                output[offset++]=red; output[offset++]=green; output[offset++]=blue;
+                output[offset++]=0; output[offset++]=0;
+            }
         }
 
         private void Matrix(string name,Matrix4x4 m)
@@ -366,6 +498,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
                 RenderFrame(); handled=true;
             }
             else if(msg==0x0005) { RenderFrame(); } // WM_SIZE
+            else if(msg==0x000F && IsAvailable)
+            {
+                RenderFrame();
+                ValidateRect(hwnd,IntPtr.Zero);
+                handled=true;
+            }
             return IntPtr.Zero;
         }
 
@@ -389,6 +527,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
         [DllImport("user32.dll")] private static extern IntPtr GetDC(IntPtr hwnd);
         [DllImport("user32.dll")] private static extern int ReleaseDC(IntPtr hwnd,IntPtr dc);
         [DllImport("user32.dll")] private static extern bool GetClientRect(IntPtr hwnd,out RectNative rect);
+        [DllImport("user32.dll")] private static extern bool ValidateRect(IntPtr hwnd,IntPtr rectangle);
         [DllImport("user32.dll")] private static extern IntPtr SetCapture(IntPtr hwnd);
         [DllImport("user32.dll")] private static extern bool ReleaseCapture();
         [DllImport("gdi32.dll")] private static extern int ChoosePixelFormat(IntPtr dc,ref PixelFormatDescriptor fmt);
@@ -404,6 +543,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
         [DllImport("opengl32.dll")] private static extern void glClear(uint flags);
         [DllImport("opengl32.dll")] private static extern void glViewport(int x,int y,int w,int h);
         [DllImport("opengl32.dll")] private static extern void glGetIntegerv(uint name,out int value);
+        [DllImport("opengl32.dll")] private static extern void glReadPixels(int x,int y,int width,int height,uint format,uint pixelType,IntPtr output);
+        [DllImport("kernel32.dll",CharSet=CharSet.Unicode)] private static extern IntPtr GetModuleHandle(string module);
+        [DllImport("kernel32.dll",CharSet=CharSet.Ansi)] private static extern IntPtr GetProcAddress(IntPtr module,string name);
         [DllImport("opengl32.dll")] private static extern void glPixelStorei(uint name,int value);
         [DllImport("opengl32.dll")] private static extern void glEnable(uint flag);
         [DllImport("opengl32.dll")] private static extern void glBlendFunc(uint source,uint destination);
@@ -486,6 +628,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
             private static T Load<T>(string name) where T:class
             {
                 IntPtr addr=wglGetProcAddress(name);
+                // Windows OpenGL 1.1核心函数必须从 opengl32.dll 导出表加载，驱动的WGL入口不保证返回它们。
+                if(!ValidProc(addr))
+                {
+                    IntPtr module=GetModuleHandle("opengl32.dll");
+                    if(module!=IntPtr.Zero)addr=GetProcAddress(module,name);
+                }
                 if(!ValidProc(addr))throw new NotSupportedException("OpenGL 3.3函数不可用: "+name);
                 return (T)(object)Marshal.GetDelegateForFunctionPointer(addr,typeof(T));
             }

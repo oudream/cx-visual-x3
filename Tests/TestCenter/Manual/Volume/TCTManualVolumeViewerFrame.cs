@@ -274,6 +274,7 @@ namespace CxVisual.TestCenter.UI
                     _volume.OriginalWidth,_volume.OriginalHeight,_volume.OriginalDepth,
                     _volume.SpacingX,_volume.SpacingY,_volume.SpacingZ);
                 UpdateCrosshairs();
+                UpdateGpuSlicePositions();
                 _sliceStatus.Text = String.Format("位置：X {0} / Y {1} / Z {2}",
                     _state.SliceX,_state.SliceY,_state.SliceZ);
             }
