@@ -113,11 +113,15 @@ namespace CxVisual.Studio
                 {
                     window.RefreshStudioResourceTree();
                     TreeViewItem root=window.StudioResourceTree.Items.OfType<TreeViewItem>().Single();
-                    Assert(root.Items.OfType<TreeViewItem>().Any(item=>Convert.ToString(item.Header).StartsWith("页面")),
+                    // Header升级为公共MPW矢量UI，资源类别使用原Tag身份验收而非ToString()。
+                    Assert(root.Items.OfType<TreeViewItem>().Any(item=>
+                        String.Equals(item.Tag as string, "pages", StringComparison.Ordinal)),
                         "缺少实际MEM页面分组");
-                    Assert(root.Items.OfType<TreeViewItem>().Any(item=>Convert.ToString(item.Header).StartsWith("共享组件")),
+                    Assert(root.Items.OfType<TreeViewItem>().Any(item=>
+                        String.Equals(item.Tag as string, "symbols", StringComparison.Ordinal)),
                         "缺少Symbol分组");
-                    Assert(!root.Items.OfType<TreeViewItem>().Any(item=>Convert.ToString(item.Header).Contains("Element")),
+                    Assert(!root.Items.OfType<TreeViewItem>().Any(item=>
+                        Convert.ToString(item.Tag).Contains("Element")),
                         "普通资源树不应展开图形Element");
                     Assert(window.StudioEngineeringRevision==revision,"资源树刷新修改了MEM工程Revision");
                 });
