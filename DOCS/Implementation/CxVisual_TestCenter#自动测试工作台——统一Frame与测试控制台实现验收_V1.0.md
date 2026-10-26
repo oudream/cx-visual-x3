@@ -40,4 +40,15 @@
 4. `--uia`：真正运行UIAutomation InvokePattern及子界面动作；阴性错误和超时需独立记录；
 5. 设备/生产现场验收不属于本轮目标。
 
-**没有以上最新CI绿色之前，仅声明代码提交；历史CI不冒充本次通过。**
+## 五、本轮Windows CI真实验收结论
+
+| 对应提交及专项 | 结果 | 验证内容或限制 |
+|---|---|---|
+| [Imaging Windows #40271326616](https://github.com/oudream/cx-visual-x3/actions/runs/40271326616) | **成功** | 同一真实WPF TestCenter宿主分别打开真实TemplateId的ArchitectureSmoke创建实例、NUnit/TCT计划实例、二维视觉工作区；验证控制台随上下文显示、专业默认隐藏、菜单手动显示/收起和外层文档标题精简；并覆盖原有FIM/MVI/图像功能 |
+| [消息中心 UI #40271640550](https://github.com/oudream/cx-visual-x3/actions/runs/40271640550) | **成功** | 专业消息中心不强制显示通用控制台，真实UIA按需通过菜单打开原补充命令并验证实际消息收发 |
+| [命令中心 UI #40271640619](https://github.com/oudream/cx-visual-x3/actions/runs/40271640619) | **成功** | 真正UIA访问命令输入/调用/历史，专业页面默认无全局测试侧栏 |
+| [TestCenter完整Windows #40271640519](https://github.com/oudream/cx-visual-x3/actions/runs/40271640519) | **部分通过，整体未通过** | 全解决方案Debug x64/.NET48构建、动态NUnit用例发现/执行/JUnit、`--ui-smoke`含布局恢复均通过；完整`--ui-automation`因105秒上限**超时**，全量未验收，不能冒充成功 |
+
+此处将“专项真实回归可用”和“TestCenter全量UIA尚有超时”分开记录。用户所请求的自动测试控制台合并与专业工作区不占位已通过针对性的**真实WPF宿主测试**，未因此推断所有其它功能已通过。
+
+
