@@ -9,6 +9,7 @@ namespace CxVisual.Mechanism.Data.Variables
     {
         internal abstract MDSVariableDefinition EntryDefinition { get; }
         internal abstract void Attach(Action<string> notify);
+        internal abstract void Observe(Action<MDSVariableChange> callback);
         internal abstract void Detach();
     }
 
@@ -107,6 +108,7 @@ namespace CxVisual.Mechanism.Data.Variables
         private long _revision;
         private bool _removed;
         private Action<string> _notify;
+        private Action<MDSVariableChange> _observer;
 
         public MDSVariable(MDSVariableDefinition definition)
         {
@@ -129,9 +131,14 @@ namespace CxVisual.Mechanism.Data.Variables
             }
         }
 
+        internal override void Observe(Action<MDSVariableChange> callback)
+        {
+            lock (_gate) { if (!_removed) _observer = callback; }
+        }
+
         internal override void Detach()
         {
-            lock (_gate) { _removed = true; _notify = null; }
+            lock (_gate) { _removed = true; _notify = null; _observer = null; }
         }
 
         public bool TryGet(out T value)
@@ -190,6 +197,8 @@ namespace CxVisual.Mechanism.Data.Variables
             if (!Enum.IsDefined(typeof(MDSVariableQuality), quality))
                 throw new ArgumentOutOfRangeException("quality");
             Action<string> notify;
+            Action<MDSVariableChange> observer;
+            MDSVariableChange captured = null;
             lock (_gate)
             {
                 if (_removed) throw new ObjectDisposedException("MDSVariable");
@@ -197,6 +206,8 @@ namespace CxVisual.Mechanism.Data.Variables
                     throw new InvalidOperationException("变量为只读: " + _definition.Name);
                 T next = (T)copied;
                 bool changed = !_hasValue || !MDSVariableValueRules.Equal(_current, next);
+                bool qualityChanged = _quality != quality;
+                bool sourceChanged = source != null && source != _source;
                 DateTime now = DateTime.UtcNow;
                 if (changed)
                 {
@@ -214,8 +225,18 @@ namespace CxVisual.Mechanism.Data.Variables
                 _refreshUtc = now;
                 _revision = checked(_revision + 1);
                 notify = _notify;
+                observer = _observer;
+                if (observer != null)
+                {
+                    MDSVariableChangeKind kind = changed ? MDSVariableChangeKind.Value : MDSVariableChangeKind.Refresh;
+                    if (qualityChanged) kind |= MDSVariableChangeKind.Quality;
+                    if (sourceChanged) kind |= MDSVariableChangeKind.Source;
+                    captured = new MDSVariableChange(_definition.VariableId, _definition.Name,
+                        _current, _previous, _hasPrevious, _quality, _source, now, _revision, kind);
+                }
             }
-            // 兼容旧事件的调用时机；P0-3将替换为有界异步派发。
+            // 高速路径只有在订阅变化捕获时才创建不可变快照，旧通知继续兼容。
+            if (observer != null) observer(captured);
             if (notify != null) notify(_definition.Name);
         }
     }

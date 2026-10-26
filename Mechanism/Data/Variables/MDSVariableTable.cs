@@ -63,6 +63,39 @@ namespace CxVisual.Mechanism.Data.Variables
         public string ScopeId { get; private set; }
         public MDSVariableTree Tree { get; private set; }
         public event Action<string> VariableChanged;
+        private Action<MDSVariableChange> _captured;
+        public event Action<MDSVariableChange> ChangeCaptured
+        {
+            add
+            {
+                lock (_gate)
+                {
+                    _captured += value;
+                    foreach (MDSVariableBase variable in _items.Values) variable.Observe(ForwardCaptured);
+                }
+            }
+            remove
+            {
+                lock (_gate)
+                {
+                    _captured -= value;
+                    foreach (MDSVariableBase variable in _items.Values)
+                        variable.Observe(_captured == null ? null : (Action<MDSVariableChange>)ForwardCaptured);
+                }
+            }
+        }
+        private void ForwardCaptured(MDSVariableChange change)
+        {
+            Action<MDSVariableChange> callback = _captured;
+            if (callback != null) callback(change);
+        }
+        // 仅用户主动开启变化派发，不影响旧Get/Update简单使用。
+        public MDSVariableChangeDispatcher CreateDispatcher(int capacity = 4096)
+        {
+            MDSVariableChangeDispatcher dispatcher = new MDSVariableChangeDispatcher(capacity);
+            ChangeCaptured += dispatcher.Enqueue;
+            return dispatcher;
+        }
 
         private void ForwardChanged(string name)
         {
@@ -81,7 +114,9 @@ namespace CxVisual.Mechanism.Data.Variables
                 MDSVariableBase variable = (MDSVariableBase)Activator.CreateInstance(runtimeType, definition);
                 // 只在定义时反射一次，日常更新从已解析的强类型对象直接写。
                 Tree.AddLeaf(variable);
-                try { variable.Attach(ForwardChanged); _items.Add(definition.Name, variable); }
+                try { variable.Attach(ForwardChanged);
+                    if (_captured != null) variable.Observe(ForwardCaptured);
+                    _items.Add(definition.Name, variable); }
                 catch { Tree.RemoveLeaf(definition.VariableId); throw; }
             }
         }

@@ -205,8 +205,44 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(table.Tree.RemoveEmptyGroup("station-id"), "清空后的分组可以删除");
         }
 
+        private static void VariableDispatcherSmoke()
+        {
+            MDSVariableTable variables = new MDSVariableTable("dispatch");
+            variables.Define(new MDSVariableDefinition("pressure", typeof(int), null, true, null, "P"));
+            variables.Define(new MDSVariableDefinition("temperature", typeof(int), null, true, null, "T"));
+            MDSVariableChange[] observed = null;
+            int callbacks = 0;
+            using (MDSVariableChangeDispatcher dispatcher = new MDSVariableChangeDispatcher(8))
+            {
+                variables.ChangeCaptured += dispatcher.Enqueue;
+                using (dispatcher.Subscribe(batch => {
+                    observed = batch.ToArray();
+                    Interlocked.Increment(ref callbacks);
+                }, new[] { "P" }))
+                {
+                    variables.Update<int>("pressure", 10);
+                    Check(dispatcher.Drain(TimeSpan.FromSeconds(5)), "变化派发排空1");
+                    Check(observed != null && observed.Length == 1 && observed[0].Revision == 1 &&
+                        (int)observed[0].CurrentValue == 10, "回调获得提交时的快照");
+                    variables.Update<int>("pressure", 11);
+                    variables.Update<int>("temperature", 50);
+                    Check(dispatcher.Drain(TimeSpan.FromSeconds(5)), "变化派发排空2");
+                    Check(observed.Length == 1 && observed[0].VariableId == "P" &&
+                        observed[0].Revision == 2 && (int)observed[0].PreviousValue == 10,
+                        "筛选与前值都必须准确");
+                }
+                int completed = callbacks;
+                variables.Update<int>("pressure", 12);
+                Check(dispatcher.Drain(TimeSpan.FromSeconds(5)) && callbacks == completed, "退订必须生效");
+                Check(dispatcher.Metrics().Received == 4 &&
+                    dispatcher.Metrics().SubscriberFailures == 0, "派发统计准确");
+                variables.ChangeCaptured -= dispatcher.Enqueue;
+            }
+        }
+
         public static void Run()
         {
+            VariableDispatcherSmoke();
             VariableTreeSmoke();
             VariableObjectSmoke();
             MFMModuleComposition module = new MFMModuleComposition("PLC01", new[]
