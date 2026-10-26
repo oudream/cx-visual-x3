@@ -106,3 +106,20 @@
 **仍待完成**：在多边形边上插入顶点、删除顶点、完整自交输入修复；旋转矩形与旋转手柄；多选、样式面板；Studio唯一Undo/Redo、工程持久化；远程设备流与工业高位深/大图验证。现有Windows WPF覆盖真实控件、模式、按钮与数值状态，**不等价于Win32物理鼠标拖柄/多DPI和现场HIL验收**。复杂度降为O(n)不等于已证明大规模ROI逐帧GPU/CPU渲染时延。
 
 下一组先复用已有FGE几何及MVI Overlay快照，把旋转矩形的几何Owner、交互控制柄、输出/测量和实际Windows测试闭环完成；不创建第二套Undo或SDK对象仓库。
+
+## 8. 旋转矩形ROI完整角度与尺寸编辑（2026-10-26）
+
+> **事实边界**：对照 `ReferTo/Vision/CxECTImageWinForms` 可找到现役矩形ROI绘制、ResizeRoi、图元图层、鼠标交互，但未找到可直接复用的**完整旋转矩形ROI类型及正交角点编辑机制**。本节是在成熟旧Viewer交互思想及x3现有MVI/MPW上增构，**不是宣称旧代码原样迁移**。上一节中的“旋转矩形未完成”为历史时间快照，以下按实际代码及CI更新该单项状态。
+
+| 功能及来源 | 新平台Owner/真实类 | 操作、输入与输出 | 实际验证 |
+|---|---|---|---|
+| 旧Viewer矩形ROI与显示坐标编辑；新增倾斜矩形类型 | `MVIImageOverlayKind.RotatedRectangleRoi` + `MVIImageOverlayItem.CreateRotatedRectangle/WithRotatedRectangleAngle` | 四个**原图角点**而非轴对齐Bounds为几何真值；顺时针角度、真实宽高和面积；修改角度不改变图元ID/样式/面积，重新计算包围盒 | MVI数值正反例及Geometry/Owner回归通过 |
+| 成熟Viewer的ResizeRoi工具思想 | `WithResizedRotatedHandle`、MPW原有`ResizeOverlay` | 局部正交XY八柄，角/边各固定对侧锚点；宽高/面积改变，保持角度与垂直性；0.25原图像素最小尺寸、图像范围约束 | MVI固定边、角点、45°倾斜及越界/锁定测试通过 |
+| 旧工具互斥 + 独立MVI图像状态 | `MVIImageToolMode.RotatedRectangleRoi/RotateOverlay`、`MPWImageViewerControl` | 区域页“旋转矩形”鼠标拖动绘制初始矩形，“旋转角柄”选中对象后拖动金色圆点；对象列表显示原图角度、宽高 | TestCenter真实WPF按钮、主/副Canvas投影/状态验证通过 |
+| 已有左/右视口与ROI对象Store | `DrawRotationHandle`/ `ResizeHandlePoint`/ `IsHit`，共用`MVIImageOverlayStore` | 四点Polygon真实描边，`PointInPolygon`精确命中，不以包围盒代替；双视图、浏览旋转镜像独立坐标投影；隐藏或锁定时不绘可编辑手柄 | STA WPF ImageViewer Smoke +现有回归通过 |
+| SDK输入和非法几何 | `MVIImageOverlayItem`构造器/工厂与Store.Replace | 直接构造伪造非正交四角、Bounds不一致、零宽高、越界角度/尺寸均抛出异常，不污染原对象，锁定不能绕开 | ArchitectureSmoke反证通过；不引入专业SDK依赖 |
+| Windows持续验收 | 既有`.github/workflows/imaging-foundation-windows.yml` | 将`MVIImageOverlayTests.cs`加到Imaging自动触发路径，避免仅修改该数值测试却不运行该专项 | 当前已核对新SHA运行 |
+
+**本轮最终验收实证**：[Windows Imaging #40341442965](https://github.com/oudream/cx-visual-x3/actions/runs/40341442965) **SUCCESS（13步骤）**，对应功能和工作流提交 `f29ef75f7bc4a718a66f4915352f335ffac6bf49`。涵盖Windows x64/.NET48全方案编译、FIM/MVI数值及默认Smoke、实际STA/WPF图像浏览、旋转ROI状态和双Pane的合成样本验证。最早WPF断言曾因将浮点角度与45做精确比较失败；已改用1e-8容差并保留原有“锁定时拒绝变更”的反证，不用删测试掩盖问题。
+
+**仍未完成，不能升格为用户60项全部验收**：旋转矩形真实鼠标物理输入的系统级注入/多DPI、自由曲线及曲率控制、添加/删除多边形顶点、跨工程持久化和平台Undo/Redo、强度分割及复合ROI掩膜、批量流/共享内存、实际X-Ray现场大图性能/HIL与第三方HALCON同样本结果对照。此次交付是通用二维工作台P2的**一个可操作专业几何闭环**，而非整台工作台完整交付。
