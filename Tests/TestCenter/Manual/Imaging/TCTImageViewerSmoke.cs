@@ -569,6 +569,23 @@ namespace CxVisual.TestCenter.UI
                     Math.Abs(insertedPolygon.Points[1].X-2)>1e-8 ||
                     frame.Viewer.PolygonVertexHandleVisualCount!=4)
                     throw new InvalidOperationException("真实WPF插点按钮未更新原图顶点与四个控制柄");
+                // 编辑后的ROI必须能以相同Guid和更新后的原图顶点导出结构化CSV。
+                string topologyCsvPath=Path.Combine(Path.GetTempPath(),
+                    "CxVisual-Imaging-PolygonTopology-"+Guid.NewGuid().ToString("N")+".csv");
+                try
+                {
+                    frame.ExportMeasurementsCsv(topologyCsvPath);
+                    string topologyCsv=File.ReadAllText(topologyCsvPath);
+                    if(!topologyCsv.Contains(polyEdit.Id.ToString("D")) ||
+                        !topologyCsv.Contains("0.5:0.5;2:0.5;3.5:0.5") ||
+                        !topologyCsv.Contains("PolygonRoi"))
+                        throw new InvalidOperationException(
+                            "插入顶点后的唯一ID/原图角点未正确导出CSV");
+                }
+                finally
+                {
+                    if(File.Exists(topologyCsvPath)) File.Delete(topologyCsvPath);
+                }
                 vertexIndexBox.Text="1";
                 removeVertexButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 MVIImageOverlayItem removedPolygon=frame.Viewer.Overlays.Find(polyEdit.Id);
