@@ -213,15 +213,15 @@
   <!-- 共享中央文档页签：无卡片外框，顶部选中条。 -->
   <DataTemplate x:Key="MPWDockHeaderTemplate">
     <Grid SnapsToDevicePixels="True">
-    <Border x:Name="DocumentSurface" Margin="0" Padding="13,8,13,7"
+    <Border x:Name="DocumentSurface" Margin="0" Padding="13,1,13,1"
             Background="{DynamicResource MPWSurfaceAltBrush}"
             BorderBrush="{DynamicResource MPWBorderBrush}" BorderThickness="0,0,1,1"
             SnapsToDevicePixels="True">
       <TextBlock x:Name="Caption" Text="{Binding Title}" FontFamily="{StaticResource MPWUiFont}"
                  FontSize="{StaticResource MPWFontBody}" Foreground="{DynamicResource MPWMutedBrush}"
-                 TextTrimming="CharacterEllipsis" VerticalAlignment="Center" MaxWidth="260"/>
+                 TextTrimming="CharacterEllipsis" VerticalAlignment="Center" MaxWidth="260" ToolTip="{Binding Title}"/>
     </Border>
-      <Border x:Name="DocumentAccent" Height="3" VerticalAlignment="Top"
+      <Border x:Name="DocumentAccent" Height="2" VerticalAlignment="Top"
               Background="{DynamicResource MPWAccentBrush}" Visibility="Collapsed"
               IsHitTestVisible="False"/>
     </Grid>
