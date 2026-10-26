@@ -209,6 +209,44 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 new FGERect2D(0,0,0,4),0,40,40),"零宽旋转矩形拒绝");
             Ensure(!rot.IsLocked && !rot.WithRotatedRectangleAngle(40,40,40).IsLocked,
                 "正常几何操作不会错误锁定");
+            MVIImageOverlayItem wider=rot.WithResizedRotatedHandle(
+                MVIImageResizeHandle.Right,new FGEPoint2D(24,16),40,40);
+            Ensure(Math.Abs(wider.RotatedRectangleWidth-13)<1e-8 &&
+                Math.Abs(wider.RotatedRectangleHeight-4)<1e-8 &&
+                Math.Abs(wider.RotatedRectangleArea-52)<1e-8 &&
+                wider.Points[0].Equals(rot.Points[0]) &&
+                wider.Points[3].Equals(rot.Points[3]) &&
+                wider.Id==rot.Id && rot.RotatedRectangleWidth==10,
+                "右边柄仅沿局部X轴扩宽并锚定左边");
+            MVIImageOverlayItem cornerChanged=rot.WithResizedRotatedHandle(
+                MVIImageResizeHandle.TopLeft,new FGEPoint2D(10,13),40,40);
+            Ensure(Math.Abs(cornerChanged.RotatedRectangleWidth-11)<1e-8 &&
+                Math.Abs(cornerChanged.RotatedRectangleHeight-5)<1e-8 &&
+                cornerChanged.Points[2].Equals(rot.Points[2]),
+                "左上角柄锚定右下角而不破坏垂直度");
+            FGEPoint2D centerRight=new FGEPoint2D(
+                (rotated.Points[1].X+rotated.Points[2].X)/2,
+                (rotated.Points[1].Y+rotated.Points[2].Y)/2);
+            FGEVector2D localWidth=(rotated.Points[1]-rotated.Points[0])/10.0;
+            MVIImageOverlayItem rotatedWider=rotated.WithResizedRotatedHandle(
+                MVIImageResizeHandle.Right,
+                centerRight+localWidth*2,40,40);
+            Ensure(Math.Abs(rotatedWider.RotatedRectangleAngleDegrees-45)<1e-8 &&
+                Math.Abs(rotatedWider.RotatedRectangleWidth-12)<1e-8 &&
+                Math.Abs(rotatedWider.RotatedRectangleHeight-4)<1e-8 &&
+                Math.Abs(FGEVector2D.Dot(
+                    rotatedWider.Points[1]-rotatedWider.Points[0],
+                    rotatedWider.Points[2]-rotatedWider.Points[1]))<1e-8,
+                "倾斜状态下八柄必须保持正交且不改变角度");
+            Fail<ArgumentOutOfRangeException>(()=>rot.WithResizedRotatedHandle(
+                MVIImageResizeHandle.Right,new FGEPoint2D(100,16),40,40),
+                "尺寸编辑超出原图时不可修改原对象");
+            Fail<InvalidOperationException>(()=>rot.WithLocked(true).WithResizedRotatedHandle(
+                MVIImageResizeHandle.Right,new FGEPoint2D(23,16),40,40),
+                "锁定矩形禁止尺寸编辑");
+            Ensure(Math.Abs(rot.RotatedRectangleWidth-10)<1e-8 &&
+                Math.Abs(rot.RotatedRectangleArea-40)<1e-8,
+                "编辑反例不会污染初始不可变对象");
             Console.WriteLine("PASS MVI ImageOverlay: 旋转矩形正交几何/角度/命中/异常与原有ROI");
         }
 
