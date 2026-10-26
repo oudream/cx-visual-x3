@@ -45,6 +45,23 @@ namespace CxVisual.Mechanism.Visual
             _scale = next;
             IsFit = false;
         }
+        /// <summary>以显示中心的图像坐标同步两个不同尺寸的视口，保留原像素与实际缩放倍率。</summary>
+        public void SynchronizeFrom(MVIImageViewport source, double sourceWidth,
+            double sourceHeight, double targetWidth, double targetHeight)
+        {
+            if (source == null) throw new ArgumentNullException("source");
+            if (double.IsNaN(sourceWidth) || double.IsInfinity(sourceWidth) || sourceWidth <= 0 ||
+                double.IsNaN(sourceHeight) || double.IsInfinity(sourceHeight) || sourceHeight <= 0 ||
+                double.IsNaN(targetWidth) || double.IsInfinity(targetWidth) || targetWidth <= 0 ||
+                double.IsNaN(targetHeight) || double.IsInfinity(targetHeight) || targetHeight <= 0)
+                throw new ArgumentOutOfRangeException("sourceWidth");
+            double centerX = source.ImageX(sourceWidth / 2.0);
+            double centerY = source.ImageY(sourceHeight / 2.0);
+            _scale = source.Scale;
+            _offsetX = targetWidth / 2.0 - centerX * _scale;
+            _offsetY = targetHeight / 2.0 - centerY * _scale;
+            IsFit = source.IsFit;
+        }
         public double ImageX(double displayX) { return (displayX - _offsetX) / _scale; }
         public double ImageY(double displayY) { return (displayY - _offsetY) / _scale; }
         public double DisplayX(double imageX) { return imageX * _scale + _offsetX; }

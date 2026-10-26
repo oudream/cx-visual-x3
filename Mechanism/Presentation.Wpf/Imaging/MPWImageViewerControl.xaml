@@ -8,9 +8,24 @@
   <Grid Grid.Row="0">
    <Grid.RowDefinitions><RowDefinition Height="22"/><RowDefinition Height="*"/></Grid.RowDefinitions>
    <Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-   <imaging:MPWImageRulerControl x:Name="HorizontalRuler" Grid.Row="0" Grid.Column="1" Orientation="Horizontal"/>
+   <Grid Grid.Row="0" Grid.Column="1">
+    <Grid.ColumnDefinitions>
+     <ColumnDefinition Width="*"/>
+     <ColumnDefinition x:Name="ComparisonRulerDivider" Width="0"/>
+     <ColumnDefinition x:Name="ComparisonRulerColumn" Width="0"/>
+    </Grid.ColumnDefinitions>
+    <imaging:MPWImageRulerControl x:Name="HorizontalRuler" Grid.Column="0" Orientation="Horizontal"/>
+    <imaging:MPWImageRulerControl x:Name="SecondaryHorizontalRuler" Grid.Column="2"
+      Orientation="Horizontal" Visibility="Collapsed"/>
+   </Grid>
    <imaging:MPWImageRulerControl x:Name="VerticalRuler" Grid.Row="1" Grid.Column="0" Orientation="Vertical"/>
-  <Grid x:Name="ViewportRoot" Grid.Row="1" Grid.Column="1" ClipToBounds="True" Background="#1D2430"
+  <Grid x:Name="ComparisonLayout" Grid.Row="1" Grid.Column="1">
+   <Grid.ColumnDefinitions>
+    <ColumnDefinition Width="*"/>
+    <ColumnDefinition x:Name="ComparisonDividerColumn" Width="0"/>
+    <ColumnDefinition x:Name="SecondaryColumn" Width="0"/>
+   </Grid.ColumnDefinitions>
+  <Grid x:Name="ViewportRoot" Grid.Column="0" ClipToBounds="True" Background="#1D2430"
    MouseLeftButtonDown="OnMouseDown" MouseLeftButtonUp="OnMouseUp" MouseMove="OnMouseMove"
    MouseWheel="OnMouseWheel" MouseLeave="OnMouseLeave" SizeChanged="OnViewportSizeChanged">
    <Image x:Name="PixelImage" Stretch="None" HorizontalAlignment="Left"
@@ -18,6 +33,9 @@
      SnapsToDevicePixels="True" IsHitTestVisible="False">
     <Image.RenderTransform><MatrixTransform x:Name="ImageTransform"/></Image.RenderTransform>
    </Image>
+   <TextBlock x:Name="OriginalPaneLabel" Text="原图" Foreground="#E6F1FD" Background="#99162231"
+      HorizontalAlignment="Left" VerticalAlignment="Top" Padding="7,3" Margin="5"
+      Visibility="Collapsed" IsHitTestVisible="False"/>
    <Canvas x:Name="SelectionLayer" IsHitTestVisible="False">
     <Canvas x:Name="OverlayCanvas" IsHitTestVisible="False"/>
     <Polyline x:Name="DraftPolyline" Stroke="#FFFFD157" StrokeThickness="1.5"
@@ -28,6 +46,25 @@
    <TextBlock x:Name="EmptyText" Text="打开图像，或从开发者 API 设置 FIMImageBuffer"
       Foreground="#AAB7C8" FontSize="14" HorizontalAlignment="Center"
       VerticalAlignment="Center" IsHitTestVisible="False"/>
+  </Grid>
+   <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch"
+    Background="#6B839F" Visibility="Collapsed" x:Name="ComparisonDivider"
+    ResizeBehavior="PreviousAndNext" ResizeDirection="Columns"/>
+   <Grid x:Name="SecondaryViewportRoot" Grid.Column="2" Background="#1D2430"
+    ClipToBounds="True" Visibility="Collapsed"
+    MouseLeftButtonDown="OnSecondaryMouseDown" MouseLeftButtonUp="OnSecondaryMouseUp"
+    MouseMove="OnSecondaryMouseMove" MouseWheel="OnSecondaryMouseWheel"
+    SizeChanged="OnSecondaryViewportSizeChanged">
+    <Image x:Name="SecondaryPixelImage" Stretch="None" HorizontalAlignment="Left"
+     VerticalAlignment="Top" RenderOptions.BitmapScalingMode="HighQuality"
+     SnapsToDevicePixels="True" IsHitTestVisible="False">
+     <Image.RenderTransform><MatrixTransform x:Name="SecondaryImageTransform"/></Image.RenderTransform>
+    </Image>
+    <Canvas x:Name="SecondaryOverlayCanvas" IsHitTestVisible="False"/>
+    <TextBlock Text="结果图" Foreground="#E6F1FD" Background="#99162231"
+     HorizontalAlignment="Left" VerticalAlignment="Top" Padding="7,3"
+     Margin="5" IsHitTestVisible="False"/>
+   </Grid>
   </Grid>
   </Grid>
   <Border Grid.Row="1" Background="#F1F5FB" BorderBrush="#CAD5E5"

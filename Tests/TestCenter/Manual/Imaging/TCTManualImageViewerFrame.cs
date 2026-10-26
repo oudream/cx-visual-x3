@@ -375,6 +375,12 @@ namespace CxVisual.TestCenter.UI
                 "；共享同一坐标视口与缩放，原始图不变");
         }
 
+        private void SideBySide()
+        {
+            _viewer.SideBySideOriginalAndResult(true);
+            Show("原图/结果图真实左右双视口，默认同步缩放、平移和原图坐标ROI。");
+        }
+
         private void Difference()
         {
             FIMImageBuffer original = _viewer.Session.Original;

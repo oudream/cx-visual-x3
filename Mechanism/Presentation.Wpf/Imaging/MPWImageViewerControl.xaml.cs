@@ -22,6 +22,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
     {
         private readonly MVIImageSession _session = new MVIImageSession();
         private readonly MVIImageViewport _viewport = new MVIImageViewport();
+        private readonly MVIImageViewport _secondaryViewport = new MVIImageViewport();
+        private bool _secondaryDragging;
+        private Point _secondaryDragStart;
         private readonly MVIImageTransformState _viewTransform = new MVIImageTransformState();
         private readonly MVIImageComparisonState _comparison = new MVIImageComparisonState();
         private FIMPixelSpacing? _pixelSpacing;
@@ -62,6 +65,13 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         public MVIImageDisplayState DisplayState { get { return _displayState; } }
         public MVIImageTransformState ViewTransform { get { return _viewTransform; } }
         public MVIImageComparisonState ComparisonState { get { return _comparison; } }
+        public bool IsSideBySideVisible { get { return SecondaryViewportRoot.Visibility == Visibility.Visible; } }
+        public BitmapSource SecondaryImageSource { get { return SecondaryPixelImage.Source as BitmapSource; } }
+        public double PrimaryViewportScale { get { return _viewport.Scale; } }
+        public double SecondaryViewportScale { get { return _secondaryViewport.Scale; } }
+        public double PrimaryViewportCenterX { get { return _viewport.ImageX(ViewportRoot.ActualWidth / 2.0); } }
+        public double SecondaryViewportCenterX
+        { get { return _secondaryViewport.ImageX(SecondaryViewportRoot.ActualWidth / 2.0); } }
         public MPWImageRulerControl HorizontalRulerControl { get { return HorizontalRuler; } }
         public MPWImageRulerControl VerticalRulerControl { get { return VerticalRuler; } }
         public FIMPixelSpacing? PixelSpacing
@@ -117,6 +127,41 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 throw new InvalidOperationException("滑动比较要求两图宽高和像素格式完全相同。");
             _comparison.SetBlendRatio(ratio);
             _comparison.SetMode(MVIImageComparisonMode.Swipe);
+        }
+        /// <summary>原图在左、结果图在右；两个真实WPF视口共享图像会话与原图坐标Overlay Store。</summary>
+        public void SideBySideOriginalAndResult(bool synchronize)
+        {
+            VerifyAccess();
+            FIMImageBuffer first = _session.Original, second = _session.Result;
+            if (first == null || second == null)
+                throw new InvalidOperationException("并排比较要求原图和结果图同时存在。");
+            if (first.Width != second.Width || first.Height != second.Height)
+                throw new InvalidOperationException("并排同步比较要求相同的图像宽高。");
+            _pendingFit = true;
+            _comparison.SetSyncView(synchronize);
+            _comparison.SetMode(MVIImageComparisonMode.SideBySide);
+        }
+        public void SetComparisonSynchronization(bool enabled)
+        {
+            VerifyAccess();
+            _comparison.SetSyncView(enabled);
+            if (enabled && IsSideBySideVisible) ApplyTransform();
+        }
+        /// <summary>开发者和用户导航共用同一MVI视口，不修改FIM像素。</summary>
+        public void PanComparisonViewport(double dx, double dy, bool resultPane)
+        {
+            VerifyAccess();
+            if (ActiveImage == null) throw new InvalidOperationException("未加载图像。");
+            if (resultPane && !IsSideBySideVisible)
+                throw new InvalidOperationException("结果视口未启用。");
+            if (resultPane)
+            {
+                _secondaryViewport.Pan(dx,dy);
+                SynchronizePrimaryFromSecondary();
+            }
+            else _viewport.Pan(dx,dy);
+            _pendingFit = false;
+            ApplyTransform();
         }
         public void DisableBlend() { VerifyAccess(); _comparison.SetMode(MVIImageComparisonMode.Single); }
         public void RotateViewClockwise() { VerifyAccess(); _viewTransform.Rotate90Clockwise(); }
@@ -298,6 +343,13 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             { _pendingFit = true; return; }
             FGESize2D size = _viewTransform.GetDisplaySize(image.Width,image.Height);
             _viewport.Fit((int)size.Width,(int)size.Height,ViewportRoot.ActualWidth,ViewportRoot.ActualHeight);
+            if (IsSideBySideVisible && SecondaryViewportRoot.ActualWidth > 0 &&
+                SecondaryViewportRoot.ActualHeight > 0)
+            {
+                _secondaryViewport.Fit((int)size.Width,(int)size.Height,
+                    SecondaryViewportRoot.ActualWidth,SecondaryViewportRoot.ActualHeight);
+                SynchronizeSecondaryFromPrimary();
+            }
             _pendingFit = false;
             ApplyTransform();
         }
@@ -310,6 +362,13 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             if (ViewportRoot.ActualWidth <= 0 || ViewportRoot.ActualHeight <= 0) return;
             FGESize2D size = _viewTransform.GetDisplaySize(image.Width,image.Height);
             _viewport.ActualSize((int)size.Width,(int)size.Height,ViewportRoot.ActualWidth,ViewportRoot.ActualHeight);
+            if (IsSideBySideVisible && SecondaryViewportRoot.ActualWidth > 0 &&
+                SecondaryViewportRoot.ActualHeight > 0)
+            {
+                _secondaryViewport.ActualSize((int)size.Width,(int)size.Height,
+                    SecondaryViewportRoot.ActualWidth,SecondaryViewportRoot.ActualHeight);
+                SynchronizeSecondaryFromPrimary();
+            }
             _pendingFit = false;
             ApplyTransform();
         }
@@ -402,6 +461,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             {
                 _bitmap = null;
                 PixelImage.Source = null;
+                SecondaryPixelImage.Source = null;
+                SetComparisonLayout(false);
                 EmptyText.Visibility = Visibility.Visible;
                 SelectedRoi.Visibility = Visibility.Collapsed;
                 OverlayCanvas.Children.Clear();
@@ -423,8 +484,21 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                     FIMImageBlend.Swipe(first,second,_comparison.BlendRatio) :
                     FIMImageBlend.Blend(first, second, _comparison.BlendRatio);
             }
-            else if (_comparison.Mode == MVIImageComparisonMode.SideBySide)
-                throw new NotSupportedException("并排比较尚未完成真实双视图交互，禁止当成可用模式。");
+            bool sideBySide = _comparison.Mode == MVIImageComparisonMode.SideBySide;
+            FIMImageBuffer secondImage = null;
+            if (sideBySide)
+            {
+                FIMImageBuffer first = _session.Original, second = _session.Result;
+                if (first == null || second == null || first.Width != second.Width ||
+                    first.Height != second.Height)
+                {
+                    _comparison.SetMode(MVIImageComparisonMode.Single);
+                    return;
+                }
+                image = first;
+                secondImage = second;
+            }
+            SetComparisonLayout(sideBySide);
             FIMImageBuffer display = ApplyViewTransform(CreateDisplayBuffer(image));
             int stride = checked(display.Width * display.BytesPerPixel);
             long memory = (long)stride * display.Height;
@@ -436,6 +510,20 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 GetWpfFormat(display.PixelFormat), null, data, display.Stride);
             bitmap.Freeze();
             _bitmap = bitmap;
+            if (sideBySide)
+            {
+                FIMImageBuffer right = ApplyViewTransform(CreateDisplayBuffer(secondImage));
+                long bytes = (long)right.Stride * right.Height;
+                if (bytes > 512L * 1024 * 1024)
+                    throw new InvalidOperationException("结果视图显示缓冲超过512MiB。");
+                BitmapSource rightBitmap = BitmapSource.Create(right.Width,right.Height,96,96,
+                    GetWpfFormat(right.PixelFormat),null,right.CopyPixels(),right.Stride);
+                rightBitmap.Freeze();
+                SecondaryPixelImage.Width = right.Width;
+                SecondaryPixelImage.Height = right.Height;
+                SecondaryPixelImage.Source = rightBitmap;
+            }
+            else SecondaryPixelImage.Source = null;
             PixelImage.Width = display.Width;
             PixelImage.Height = display.Height;
             PixelImage.Source = bitmap;
@@ -444,7 +532,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 (_comparison.Mode == MVIImageComparisonMode.Blend ?
                     " · 叠合 " + _comparison.BlendRatio.ToString("0.##") :
                  _comparison.Mode == MVIImageComparisonMode.Swipe ?
-                    " · 滑动比较 " + _comparison.BlendRatio.ToString("0.##") : "");
+                    " · 滑动比较 " + _comparison.BlendRatio.ToString("0.##") :
+                 sideBySide ? " · 并排原图/结果图" +
+                    (_comparison.IsSyncViewEnabled ? " · 同步" : " · 独立导航") : "");
             if (dimensionsChanged || _pendingFit) FitToWindow();
             else ApplyTransform();
         }
@@ -504,11 +594,13 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         }
 
         private Point SourceToCanvas(FGEPoint2D source)
+        { return SourceToCanvas(source, _viewport); }
+        private Point SourceToCanvas(FGEPoint2D source, MVIImageViewport viewport)
         {
             FIMImageBuffer active = ActiveImage;
             if (active == null) return new Point(0,0);
             FGEPoint2D display = _viewTransform.SourceToDisplay(source,active.Width,active.Height);
-            return new Point(_viewport.DisplayX(display.X),_viewport.DisplayY(display.Y));
+            return new Point(viewport.DisplayX(display.X),viewport.DisplayY(display.Y));
         }
         private FGEPoint2D CanvasToSource(Point point)
         {
@@ -525,8 +617,48 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 original.Width == active.Width && original.Height == active.Height;
         }
 
+        private void SetComparisonLayout(bool enabled)
+        {
+            bool wasVisible = IsSideBySideVisible;
+            if (enabled == wasVisible) return;
+            SecondaryColumn.Width = enabled ? new GridLength(1,GridUnitType.Star) : new GridLength(0);
+            ComparisonDividerColumn.Width = enabled ? new GridLength(5) : new GridLength(0);
+            ComparisonRulerColumn.Width = enabled ? new GridLength(1,GridUnitType.Star) : new GridLength(0);
+            ComparisonRulerDivider.Width = enabled ? new GridLength(5) : new GridLength(0);
+            SecondaryViewportRoot.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
+            SecondaryHorizontalRuler.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
+            ComparisonDivider.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
+            OriginalPaneLabel.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
+            if (enabled) _pendingFit = true;
+        }
+
+        private void SynchronizeSecondaryFromPrimary()
+        {
+            if (!IsSideBySideVisible || !_comparison.IsSyncViewEnabled ||
+                ViewportRoot.ActualWidth <= 0 || ViewportRoot.ActualHeight <= 0 ||
+                SecondaryViewportRoot.ActualWidth <= 0 || SecondaryViewportRoot.ActualHeight <= 0)
+                return;
+            _secondaryViewport.SynchronizeFrom(_viewport,
+                ViewportRoot.ActualWidth, ViewportRoot.ActualHeight,
+                SecondaryViewportRoot.ActualWidth, SecondaryViewportRoot.ActualHeight);
+        }
+
+        private void SynchronizePrimaryFromSecondary()
+        {
+            if (!IsSideBySideVisible || !_comparison.IsSyncViewEnabled ||
+                ViewportRoot.ActualWidth <= 0 || ViewportRoot.ActualHeight <= 0 ||
+                SecondaryViewportRoot.ActualWidth <= 0 || SecondaryViewportRoot.ActualHeight <= 0)
+                return;
+            _viewport.SynchronizeFrom(_secondaryViewport,
+                SecondaryViewportRoot.ActualWidth, SecondaryViewportRoot.ActualHeight,
+                ViewportRoot.ActualWidth, ViewportRoot.ActualHeight);
+        }
+
         private void ApplyTransform()
         {
+            SynchronizeSecondaryFromPrimary();
+            SecondaryImageTransform.Matrix = new Matrix(_secondaryViewport.Scale,0,0,
+                _secondaryViewport.Scale,_secondaryViewport.OffsetX,_secondaryViewport.OffsetY);
             ImageTransform.Matrix = new Matrix(_viewport.Scale, 0, 0, _viewport.Scale,
                 _viewport.OffsetX, _viewport.OffsetY);
             DrawSelection();
@@ -564,6 +696,17 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             string unit = useMm ? "mm" : "px";
             HorizontalRuler.SetRange(x0*mmX,x1*mmX,unit);
             VerticalRuler.SetRange(y0*mmY,y1*mmY,unit);
+            if (IsSideBySideVisible && SecondaryViewportRoot.ActualWidth > 0)
+            {
+                FGEPoint2D rightStart = _viewTransform.DisplayToSource(new FGEPoint2D(
+                    _secondaryViewport.ImageX(0),_secondaryViewport.ImageY(0)),
+                    image.Width,image.Height);
+                FGEPoint2D rightEnd = _viewTransform.DisplayToSource(new FGEPoint2D(
+                    _secondaryViewport.ImageX(SecondaryViewportRoot.ActualWidth),
+                    _secondaryViewport.ImageY(0)),image.Width,image.Height);
+                SecondaryHorizontalRuler.SetRange((swapped ? rightStart.Y : rightStart.X)*mmX,
+                    (swapped ? rightEnd.Y : rightEnd.X)*mmX,unit);
+            }
         }
 
         private void DrawSelection()
@@ -716,7 +859,14 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         {
             VerifyAccess();
             OverlayCanvas.Children.Clear();
+            SecondaryOverlayCanvas.Children.Clear();
             if (!OverlayMatchesActiveImage()) return;
+            DrawOverlaysOn(OverlayCanvas,_viewport);
+            if (IsSideBySideVisible) DrawOverlaysOn(SecondaryOverlayCanvas,_secondaryViewport);
+        }
+
+        private void DrawOverlaysOn(Canvas canvas,MVIImageViewport viewport)
+        {
             foreach (MVIImageOverlayItem item in _overlays.GetVisibleItems())
             {
                 Color color = Color.FromArgb((byte)((uint)item.Argb >> 24),
@@ -724,8 +874,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                     (byte)item.Argb);
                 Brush stroke = new SolidColorBrush(color);
                 double width = item.LineWidth;
-                Point cornerA = SourceToCanvas(new FGEPoint2D(item.Bounds.Left,item.Bounds.Top));
-                Point cornerB = SourceToCanvas(new FGEPoint2D(item.Bounds.Right,item.Bounds.Bottom));
+                Point cornerA = SourceToCanvas(new FGEPoint2D(item.Bounds.Left,item.Bounds.Top),viewport);
+                Point cornerB = SourceToCanvas(new FGEPoint2D(item.Bounds.Right,item.Bounds.Bottom),viewport);
                 double left=Math.Min(cornerA.X,cornerB.X),top=Math.Min(cornerA.Y,cornerB.Y);
                 double right=Math.Max(cornerA.X,cornerB.X),bottom=Math.Max(cornerA.Y,cornerB.Y);
                 if (item.Kind == MVIImageOverlayKind.CircleRoi ||
@@ -737,7 +887,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                         StrokeThickness = width, Fill = Brushes.Transparent,
                         IsHitTestVisible = false };
                     Canvas.SetLeft(ellipse, left); Canvas.SetTop(ellipse, top);
-                    OverlayCanvas.Children.Add(ellipse);
+                    canvas.Children.Add(ellipse);
                 }
                 else if (item.Kind == MVIImageOverlayKind.RectangleRoi ||
                          item.Kind == MVIImageOverlayKind.RectangleAnnotation ||
@@ -749,7 +899,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                         StrokeThickness = width, Fill = Brushes.Transparent,
                         IsHitTestVisible = false };
                     Canvas.SetLeft(rectangle, left); Canvas.SetTop(rectangle, top);
-                    OverlayCanvas.Children.Add(rectangle);
+                    canvas.Children.Add(rectangle);
                 }
                 else if (item.Kind == MVIImageOverlayKind.PolygonRoi ||
                          item.Kind == MVIImageOverlayKind.PolygonAnnotation ||
@@ -758,67 +908,67 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                     Polygon polygon = new Polygon { Stroke = stroke, StrokeThickness = width,
                         Fill = Brushes.Transparent, IsHitTestVisible = false };
                     foreach (FGEPoint2D p in item.Points)
-                        polygon.Points.Add(SourceToCanvas(p));
-                    OverlayCanvas.Children.Add(polygon);
+                        polygon.Points.Add(SourceToCanvas(p,viewport));
+                    canvas.Children.Add(polygon);
                 }
                 else if (item.Kind == MVIImageOverlayKind.PointAnnotation)
                 {
                     FGEPoint2D point = item.Points.Count > 0 ? item.Points[0] :
                         new FGEPoint2D(item.Bounds.Left, item.Bounds.Top);
-                    Point position = SourceToCanvas(point);
+                    Point position = SourceToCanvas(point,viewport);
                     double px=position.X, py=position.Y;
-                    DrawLine(px - 5, py, px + 5, py, stroke, width);
-                    DrawLine(px, py - 5, px, py + 5, stroke, width);
+                    DrawLine(px - 5, py, px + 5, py, stroke, width,canvas);
+                    DrawLine(px, py - 5, px, py + 5, stroke, width,canvas);
                 }
                 else if (item.Kind == MVIImageOverlayKind.TextAnnotation)
                 {
                     TextBlock text = new TextBlock { Text = item.Text,
                         Foreground = stroke, FontSize = 14, IsHitTestVisible = false };
                     Canvas.SetLeft(text, left); Canvas.SetTop(text, top);
-                    OverlayCanvas.Children.Add(text);
+                    canvas.Children.Add(text);
                 }
                 else if (item.Points.Count >= 2)
                 {
                     for (int i = 1; i < item.Points.Count; i++)
                     {
                         FGEPoint2D a = item.Points[i - 1], b = item.Points[i];
-                        Point first=SourceToCanvas(a),last=SourceToCanvas(b);
-                        DrawLine(first.X,first.Y,last.X,last.Y,stroke,width);
+                        Point first=SourceToCanvas(a,viewport),last=SourceToCanvas(b,viewport);
+                        DrawLine(first.X,first.Y,last.X,last.Y,stroke,width,canvas);
                     }
                     if (item.Kind == MVIImageOverlayKind.ArrowAnnotation)
                     {
                         FGEPoint2D a = item.Points[0], b = item.Points[item.Points.Count - 1];
-                        Point first=SourceToCanvas(a),last=SourceToCanvas(b);
+                        Point first=SourceToCanvas(a,viewport),last=SourceToCanvas(b,viewport);
                         double x1=first.X,y1=first.Y,x2=last.X,y2=last.Y;
                         double angle = Math.Atan2(y2 - y1, x2 - x1);
                         DrawLine(x2, y2, x2 - 10 * Math.Cos(angle - Math.PI / 6),
-                            y2 - 10 * Math.Sin(angle - Math.PI / 6), stroke, width);
+                            y2 - 10 * Math.Sin(angle - Math.PI / 6), stroke, width,canvas);
                         DrawLine(x2, y2, x2 - 10 * Math.Cos(angle + Math.PI / 6),
-                            y2 - 10 * Math.Sin(angle + Math.PI / 6), stroke, width);
+                            y2 - 10 * Math.Sin(angle + Math.PI / 6), stroke, width,canvas);
                     }
                     if (item.Kind == MVIImageOverlayKind.AngleMeasurement && item.Points.Count >= 3)
                     {
                         double angle = FIMImageMeasurement.GetAngleDegrees(
                             item.Points[0],item.Points[1],item.Points[2]);
-                        Point vertex = SourceToCanvas(item.Points[1]);
+                        Point vertex = SourceToCanvas(item.Points[1],viewport);
                         TextBlock label = new TextBlock { Text = angle.ToString("0.##") + "°",
                             Foreground = stroke, Background = Brushes.Black,
                             FontSize = 12, IsHitTestVisible = false };
                         Canvas.SetLeft(label, vertex.X + 5); Canvas.SetTop(label,vertex.Y + 5);
-                        OverlayCanvas.Children.Add(label);
+                        canvas.Children.Add(label);
                     }
                     if (item.Kind == MVIImageOverlayKind.DistanceMeasurement ||
                         item.Kind == MVIImageOverlayKind.HorizontalMeasurement ||
                         item.Kind == MVIImageOverlayKind.VerticalMeasurement)
-                        DrawMeasurementLabel(item, stroke, SourceToCanvas(item.Points[item.Points.Count-1]));
+                        DrawMeasurementLabel(item, stroke, SourceToCanvas(item.Points[item.Points.Count-1],viewport),canvas);
                 }
                 if (item.Kind == MVIImageOverlayKind.DiameterMeasurement ||
                     item.Kind == MVIImageOverlayKind.AreaMeasurement)
-                    DrawMeasurementLabel(item,stroke,new Point(right,top));
+                    DrawMeasurementLabel(item,stroke,new Point(right,top),canvas);
             }
         }
 
-        private void DrawMeasurementLabel(MVIImageOverlayItem item, Brush stroke, Point anchor)
+        private void DrawMeasurementLabel(MVIImageOverlayItem item, Brush stroke, Point anchor, Canvas canvas)
         {
             string value = DescribeMeasurement(item);
             if (string.IsNullOrEmpty(value)) return;
@@ -826,15 +976,15 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 Background = Brushes.Black, FontSize = 12, IsHitTestVisible = false };
             Canvas.SetLeft(label,anchor.X + 4);
             Canvas.SetTop(label,anchor.Y + 4);
-            OverlayCanvas.Children.Add(label);
+            canvas.Children.Add(label);
         }
 
-        private void DrawLine(double x1, double y1, double x2, double y2, Brush stroke, double width)
+        private void DrawLine(double x1, double y1, double x2, double y2, Brush stroke, double width, Canvas canvas)
         {
             Line line = new Line { X1 = x1, Y1 = y1, X2 = x2, Y2 = y2,
                 Stroke = stroke, StrokeThickness = width,
                 IsHitTestVisible = false };
-            OverlayCanvas.Children.Add(line);
+            canvas.Children.Add(line);
         }
 
         public MVIImageOverlayItem AddOverlay(MVIImageOverlayItem item)
@@ -936,7 +1086,21 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         private void OnViewportSizeChanged(object sender, SizeChangedEventArgs e)
         {
             if (ActiveImage != null && (_pendingFit || _viewport.IsFit)) FitToWindow();
-            else RefreshRulers();
+            else ApplyTransform();
+        }
+        private void OnSecondaryViewportSizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            if (!IsSideBySideVisible || ActiveImage == null ||
+                SecondaryViewportRoot.ActualWidth <= 0 || SecondaryViewportRoot.ActualHeight <= 0) return;
+            if (_pendingFit || _viewport.IsFit) FitToWindow();
+            else if (_secondaryViewport.IsFit && !_comparison.IsSyncViewEnabled)
+            {
+                FGESize2D size = _viewTransform.GetDisplaySize(ActiveImage.Width,ActiveImage.Height);
+                _secondaryViewport.Fit((int)size.Width,(int)size.Height,
+                    SecondaryViewportRoot.ActualWidth,SecondaryViewportRoot.ActualHeight);
+                ApplyTransform();
+            }
+            else ApplyTransform();
         }
 
         /// <summary>在原图像素坐标执行形状命中，反向迭代保证顶层覆盖项优先。</summary>
@@ -1034,6 +1198,57 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 case MVIImageToolMode.DefectBox: return MVIImageOverlayKind.DefectBox;
                 default: throw new NotSupportedException("此工具尚未支持鼠标绘制：" + mode);
             }
+        }
+
+        private void OnSecondaryMouseDown(object sender, MouseButtonEventArgs e)
+        {
+            if (!IsSideBySideVisible || _session.Result == null) return;
+            _secondaryDragging = true;
+            _secondaryDragStart = e.GetPosition(SecondaryViewportRoot);
+            SecondaryViewportRoot.CaptureMouse();
+            e.Handled = true;
+        }
+        private void OnSecondaryMouseUp(object sender, MouseButtonEventArgs e)
+        {
+            _secondaryDragging = false;
+            if (SecondaryViewportRoot.IsMouseCaptured) SecondaryViewportRoot.ReleaseMouseCapture();
+            e.Handled = true;
+        }
+        private void OnSecondaryMouseMove(object sender, MouseEventArgs e)
+        {
+            if (!IsSideBySideVisible || _session.Result == null) return;
+            Point pointer = e.GetPosition(SecondaryViewportRoot);
+            if (_secondaryDragging && e.LeftButton == MouseButtonState.Pressed)
+            {
+                _secondaryViewport.Pan(pointer.X-_secondaryDragStart.X,
+                    pointer.Y-_secondaryDragStart.Y);
+                _secondaryDragStart = pointer;
+                SynchronizePrimaryFromSecondary();
+                ApplyTransform();
+            }
+            FIMImageBuffer result = _session.Result;
+            FGEPoint2D source = _viewTransform.DisplayToSource(new FGEPoint2D(
+                _secondaryViewport.ImageX(pointer.X),_secondaryViewport.ImageY(pointer.Y)),
+                result.Width,result.Height);
+            if (source.X >= 0 && source.Y >= 0 &&
+                source.X < result.Width && source.Y < result.Height)
+            {
+                int x = (int)Math.Floor(source.X), y = (int)Math.Floor(source.Y);
+                PixelStatus.Text = "结果图 · (" + x + "," + y + ") · Gray=" +
+                    result.GetGrayValue(x,y).ToString("0.###") +
+                    " · " + _secondaryViewport.Scale.ToString("0.##") + "×";
+                EventHandler handler = PixelInspected;
+                if (handler != null) handler(this,EventArgs.Empty);
+            }
+        }
+        private void OnSecondaryMouseWheel(object sender, MouseWheelEventArgs e)
+        {
+            if (!IsSideBySideVisible || _session.Result == null) return;
+            Point pointer = e.GetPosition(SecondaryViewportRoot);
+            _secondaryViewport.ZoomAt(e.Delta>0?1.2:1.0/1.2,pointer.X,pointer.Y);
+            SynchronizePrimaryFromSecondary();
+            ApplyTransform();
+            e.Handled=true;
         }
 
         private void OnMouseDown(object sender, MouseButtonEventArgs e)
