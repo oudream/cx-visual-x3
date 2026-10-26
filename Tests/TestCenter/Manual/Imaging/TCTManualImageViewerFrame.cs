@@ -133,6 +133,8 @@ namespace CxVisual.TestCenter.UI
             {
                 case MVIImageToolMode.Navigate: return "导航/平移";
                 case MVIImageToolMode.RectangleRoi: return "矩形ROI";
+                case MVIImageToolMode.RotatedRectangleRoi: return "旋转矩形ROI";
+                case MVIImageToolMode.RotateOverlay: return "旋转角柄";
                 case MVIImageToolMode.CircleRoi: return "圆形ROI";
                 case MVIImageToolMode.EllipseRoi: return "椭圆ROI";
                 case MVIImageToolMode.Distance: return "两点距离";
@@ -193,6 +195,10 @@ namespace CxVisual.TestCenter.UI
                     Content = visibility + " " + item.Layer + " / " + item.Kind +
                         (string.IsNullOrEmpty(_viewer.DescribeMeasurement(item)) ? "" :
                             " · " + _viewer.DescribeMeasurement(item)) +
+                        (item.Kind==MVIImageOverlayKind.RotatedRectangleRoi ?
+                            " · " + item.RotatedRectangleAngleDegrees.ToString("0.##") +
+                            "° · " + item.RotatedRectangleWidth.ToString("0.##") + "×" +
+                            item.RotatedRectangleHeight.ToString("0.##") + "px" : "") +
                         (string.IsNullOrEmpty(item.Text) ? "" : " · " + item.Text),
                     ToolTip = "ID: " + item.Id };
                 _overlayList.Items.Add(row);
