@@ -321,8 +321,36 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 "同值刷新提升Revision但不提升变化语义");
         }
 
+        private static void VariableScopeSmoke()
+        {
+            MDSVariableRegistry registry = new MDSVariableRegistry();
+            MDSVariableTable oldTable = new MDSVariableTable("machine");
+            oldTable.Define(new MDSVariableDefinition("Pressure", typeof(double),
+                null, true, null, "pressure-stable"));
+            registry.Register(oldTable);
+            MDSVariableScope original = registry.FindScope("machine");
+            CxVisual.Foundation.Data.Variables.FDVVariableKey key =
+                new CxVisual.Foundation.Data.Variables.FDVVariableKey("machine", "pressure-stable");
+            registry.Resolve<double>(key).Update(0.5);
+            Check(original.Resolve<double>(key).Get() == 0.5, "按Scope和稳定ID指向同一个正式变量");
+            Reject<InvalidOperationException>(() => registry.Resolve<double>(
+                new CxVisual.Foundation.Data.Variables.FDVVariableKey("wrong", "pressure-stable")));
+            Check(registry.Remove("machine") && !original.IsActive, "注销旧Scope应使代次失效");
+            Reject<ObjectDisposedException>(() => original.Resolve<double>(key));
+            MDSVariableTable fresh = new MDSVariableTable("machine");
+            fresh.Define(new MDSVariableDefinition("Pressure", typeof(double),
+                null, true, null, "pressure-stable"));
+            registry.Register(fresh);
+            Check(registry.FindScope("machine").Generation != original.Generation,
+                "重复Scope名称不复用上代Generation");
+            registry.Resolve<double>(key).Update(0.7);
+            Check(registry.Resolve<double>(key).Get() == 0.7 &&
+                oldTable.Get<double>("Pressure") == 0.5, "新旧会话不串写");
+        }
+
         public static void Run()
         {
+            VariableScopeSmoke();
             VariableCasSmoke();
             VariableProviderSmoke();
             VariableBoundAccessSmoke();
