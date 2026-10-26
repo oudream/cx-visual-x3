@@ -55,6 +55,24 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 "滑动比例错误");
             compare.SetMode(MVIImageComparisonMode.Swipe);
             Ensure(compare.Mode == MVIImageComparisonMode.Swipe,"滑动模式状态");
+            MVIImageViewport originalView = new MVIImageViewport();
+            MVIImageViewport resultView = new MVIImageViewport();
+            originalView.ActualSize(200,100,400,200);
+            originalView.Pan(25,-15);
+            resultView.SynchronizeFrom(originalView,400,200,260,180);
+            Ensure(Math.Abs(resultView.Scale-originalView.Scale)<1e-10 &&
+                Math.Abs(resultView.ImageX(130)-originalView.ImageX(200))<1e-10 &&
+                Math.Abs(resultView.ImageY(90)-originalView.ImageY(100))<1e-10,
+                "左右不同视口尺寸下以图像中心同步缩放/平移");
+            resultView.ZoomAt(1.3,130,90);
+            originalView.SynchronizeFrom(resultView,260,180,400,200);
+            Ensure(Math.Abs(resultView.ImageX(130)-originalView.ImageX(200))<1e-10 &&
+                Math.Abs(resultView.Scale-originalView.Scale)<1e-10,
+                "结果视口反向同步原图坐标和倍率");
+            Fail<ArgumentNullException>(()=>resultView.SynchronizeFrom(null,400,200,260,180),
+                "空源视口必须拒绝");
+            Fail<ArgumentOutOfRangeException>(()=>resultView.SynchronizeFrom(originalView,0,200,260,180),
+                "零视口宽度必须拒绝");
             Console.WriteLine("PASS MVI ImageComparison/FIM Blend+Swipe Gray16/BGRA");
         }
         private static void Ensure(bool cond,string description)

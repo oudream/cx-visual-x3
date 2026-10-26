@@ -48,6 +48,8 @@ namespace CxVisual.TestCenter.UI
             secondary.SelectedIndex = 4;
             window.UpdateLayout();
             if (FindControl<Button>(frame,"TCT.Imaging.DefectBox") == null ||
+                FindControl<Button>(frame,"TCT.Imaging.SideBySide") == null ||
+                FindControl<CheckBox>(frame,"TCT.Imaging.ComparisonSync") == null ||
                 FindControl<Button>(frame,"TCT.Imaging.SaveViewPng") == null ||
                 FindControl<Button>(frame,"TCT.Imaging.RawOpen") == null)
                 throw new InvalidOperationException("标注/输出页遗失旧操作入口。");
@@ -351,6 +353,72 @@ namespace CxVisual.TestCenter.UI
                     frame.Viewer.Session.Original.GetGrayValue(0,0) != 1)
                     throw new InvalidOperationException("WPF original/result synchronized swipe lost 16-bit pixels");
                 frame.Viewer.DisableBlend();
+
+                // P2真正并排：同一MVI会话/原图坐标Store，两个真实WPF PixelImage。
+                // 右侧必须显示结果图的原始Gray16像素，而不是Blend/Swipe单图伪分屏。
+                frame.Viewer.SideBySideOriginalAndResult(true);
+                window.UpdateLayout();
+                frame.Viewer.FitToWindow();
+                window.UpdateLayout();
+                BitmapSource rightImage = frame.Viewer.SecondaryImageSource;
+                if (!frame.Viewer.IsSideBySideVisible || rightImage == null ||
+                    rightImage.PixelWidth != 4 || rightImage.PixelHeight != 4 ||
+                    rightImage.Format != PixelFormats.Gray16 ||
+                    frame.Viewer.ComparisonState.Mode != MVIImageComparisonMode.SideBySide)
+                    throw new InvalidOperationException("SideBySide没有真正构造左右WPF双视图");
+                byte[] rightPixels = new byte[4 * 4 * 2];
+                rightImage.CopyPixels(rightPixels,8,0);
+                if (BitConverter.ToUInt16(rightPixels,0) != 4 ||
+                    frame.Viewer.Session.Original.GetGrayValue(0,0) != 1 ||
+                    frame.Viewer.Session.Result.GetGrayValue(0,0) != 4)
+                    throw new InvalidOperationException("SideBySide结果图灰度16位或原始数据身份错误");
+                frame.Viewer.ActualSize();
+                if (Math.Abs(frame.Viewer.PrimaryViewportScale -
+                    frame.Viewer.SecondaryViewportScale) > 1e-9 ||
+                    Math.Abs(frame.Viewer.PrimaryViewportCenterX -
+                    frame.Viewer.SecondaryViewportCenterX) > 1e-6)
+                    throw new InvalidOperationException("双视图同步初始中心/缩放未对齐");
+                frame.Viewer.PanComparisonViewport(25,0,false);
+                if (Math.Abs(frame.Viewer.PrimaryViewportCenterX -
+                    frame.Viewer.SecondaryViewportCenterX) > 1e-6)
+                    throw new InvalidOperationException("左视口平移未同步到结果视口");
+                frame.Viewer.SetComparisonSynchronization(false);
+                double primaryCenter = frame.Viewer.PrimaryViewportCenterX;
+                frame.Viewer.PanComparisonViewport(16,0,true);
+                if (Math.Abs(frame.Viewer.PrimaryViewportCenterX-primaryCenter) > 1e-6 ||
+                    Math.Abs(frame.Viewer.PrimaryViewportCenterX -
+                    frame.Viewer.SecondaryViewportCenterX) < 1.0)
+                    throw new InvalidOperationException("关闭同步仍强制锁住两个视口");
+                frame.Viewer.SetComparisonSynchronization(true);
+                if (Math.Abs(frame.Viewer.PrimaryViewportCenterX -
+                    frame.Viewer.SecondaryViewportCenterX) > 1e-6)
+                    throw new InvalidOperationException("重新开启同步未恢复同一原图中心");
+                MVIImageOverlayItem sideRoi = frame.Viewer.AddOverlay(new MVIImageOverlayItem(
+                    MVIImageOverlayKind.RectangleRoi,MVIImageOverlayLayer.Roi,
+                    new FGERect2D(1,1,2,2)));
+                if (frame.Viewer.SecondaryOverlayVisualCount < 1 ||
+                    frame.Viewer.Overlays.Find(sideRoi.Id) == null)
+                    throw new InvalidOperationException("SideBySide右视图未使用统一原图ROI Store");
+                string comparisonCapture = Environment.GetEnvironmentVariable(
+                    "CXVISUAL_IMAGING_UI_SCREENSHOT");
+                if (!string.IsNullOrWhiteSpace(comparisonCapture))
+                    CaptureWindow(window,Path.Combine(Path.GetDirectoryName(comparisonCapture),
+                        "workbench-side-by-side.png"));
+                frame.Viewer.Overlays.Remove(sideRoi.Id);
+                frame.Viewer.DisableBlend();
+                if (frame.Viewer.IsSideBySideVisible ||
+                    frame.Viewer.SecondaryImageSource != null)
+                    throw new InvalidOperationException("退出比较没有释放第二视口像素缓冲");
+                frame.Viewer.SetComparisonSynchronization(false);
+                bool missingComparison = false;
+                frame.Viewer.ShowResult(new FIMImageBuffer(2,2,FIMPixelFormat.Gray16,new byte[8]));
+                try { frame.Viewer.SideBySideOriginalAndResult(true); }
+                catch (InvalidOperationException) { missingComparison = true; }
+                if (!missingComparison || frame.Viewer.IsSideBySideVisible)
+                    throw new InvalidOperationException("双图尺寸不一致未拒绝或污染比较状态");
+                frame.Viewer.ShowResult(FIMImageOperations.FlipHorizontal(image));
+                frame.Viewer.SelectOriginal();
+
                 // 程序化创建真实叠加项，让MPW的WPF Canvas实际绘制，并检查层级隐藏/删除。
                 MVIImageOverlayItem rect = frame.Viewer.AddOverlay(new MVIImageOverlayItem(
                     MVIImageOverlayKind.RectangleRoi, MVIImageOverlayLayer.Roi,

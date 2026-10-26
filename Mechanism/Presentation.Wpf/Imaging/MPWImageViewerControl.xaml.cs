@@ -67,6 +67,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         public MVIImageComparisonState ComparisonState { get { return _comparison; } }
         public bool IsSideBySideVisible { get { return SecondaryViewportRoot.Visibility == Visibility.Visible; } }
         public BitmapSource SecondaryImageSource { get { return SecondaryPixelImage.Source as BitmapSource; } }
+        public int SecondaryOverlayVisualCount { get { return SecondaryOverlayCanvas.Children.Count; } }
         public double PrimaryViewportScale { get { return _viewport.Scale; } }
         public double SecondaryViewportScale { get { return _secondaryViewport.Scale; } }
         public double PrimaryViewportCenterX { get { return _viewport.ImageX(ViewportRoot.ActualWidth / 2.0); } }

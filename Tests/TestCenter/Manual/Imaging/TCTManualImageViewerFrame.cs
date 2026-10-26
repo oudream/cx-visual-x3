@@ -377,7 +377,7 @@ namespace CxVisual.TestCenter.UI
 
         private void SideBySide()
         {
-            _viewer.SideBySideOriginalAndResult(true);
+            _viewer.SideBySideOriginalAndResult(_comparisonSync.IsChecked == true);
             Show("原图/结果图真实左右双视口，默认同步缩放、平移和原图坐标ROI。");
         }
 

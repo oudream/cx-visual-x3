@@ -20,6 +20,8 @@ namespace CxVisual.TestCenter.UI
     {
         private readonly TabControl _displayTabs = new TabControl();
         private Slider _gammaSlider, _brightnessSlider, _contrastSlider;
+        private readonly CheckBox _comparisonSync = new CheckBox {
+            Content = "双视图同步缩放/平移", IsChecked = true, Margin = new Thickness(3) };
         private bool _changingGraySliders;
         private readonly System.Collections.Generic.List<Button> _quickButtons =
             new System.Collections.Generic.List<Button>();
@@ -551,18 +553,12 @@ namespace CxVisual.TestCenter.UI
             Action(comparisons,"透明叠合","Blend",Blend);
             Action(comparisons,"滑动比较","Swipe",Swipe);
             Action(comparisons,"左右双视图","SideBySide",SideBySide);
-            content.Children.Add(Row(new CheckBox { Content = "双视图同步缩放/平移",
-                IsChecked = true, Name = "ComparisonSync", Margin = new Thickness(3) }));
             Action(comparisons,"退出叠合","BlendOff",()=>_viewer.DisableBlend());
             content.Children.Add(comparisons);
-            CheckBox syncViews = content.Children.OfType<WrapPanel>()
-                .SelectMany(panel => panel.Children.OfType<CheckBox>())
-                .FirstOrDefault(box => box.Name == "ComparisonSync");
-            if (syncViews != null)
-            {
-                syncViews.Checked += (s,e) => _viewer.SetComparisonSynchronization(true);
-                syncViews.Unchecked += (s,e) => _viewer.SetComparisonSynchronization(false);
-            }
+            AutomationProperties.SetAutomationId(_comparisonSync,"TCT.Imaging.ComparisonSync");
+            _comparisonSync.Checked += (s,e) => _viewer.SetComparisonSynchronization(true);
+            _comparisonSync.Unchecked += (s,e) => _viewer.SetComparisonSynchronization(false);
+            content.Children.Add(Row(_comparisonSync));
             content.Children.Add(Heading("导出  ·  区分原像素与视口截图"));
             WrapPanel export = Row();
             Action(export,"保存图像PNG","SaveRawPng",Save);
