@@ -22,6 +22,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
     {
         private readonly MVIImageSession _session = new MVIImageSession();
         private readonly MVIImageViewport _viewport = new MVIImageViewport();
+        private readonly MVIImageTransformState _viewTransform = new MVIImageTransformState();
         private readonly MVIImageOverlayStore _overlays = new MVIImageOverlayStore();
         private FIMImageBuffer _overlayOriginal;
         private BitmapSource _bitmap;
@@ -43,6 +44,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             InitializeComponent();
             _session.Changed += OnSessionChanged;
             _displayState.Changed += OnSessionChanged;
+            _viewTransform.Changed += (sender, args) => { _pendingFit = true; OnSessionChanged(sender, args); };
             _overlays.Changed += (sender, args) =>
             {
                 if (Dispatcher.CheckAccess()) DrawOverlays();
@@ -53,6 +55,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
 
         public MVIImageSession Session { get { return _session; } }
         public MVIImageDisplayState DisplayState { get { return _displayState; } }
+        public MVIImageTransformState ViewTransform { get { return _viewTransform; } }
+        public void RotateViewClockwise() { VerifyAccess(); _viewTransform.Rotate90Clockwise(); }
+        public void RotateViewCounterclockwise() { VerifyAccess(); _viewTransform.Rotate90Counterclockwise(); }
+        public void FlipViewHorizontal() { VerifyAccess(); _viewTransform.FlipHorizontal(); }
+        public void FlipViewVertical() { VerifyAccess(); _viewTransform.FlipVertical(); }
+        public void ResetViewTransform() { VerifyAccess(); _viewTransform.Reset(); }
         public FIMImageBuffer ActiveImage { get { return _session.ActiveImage; } }
         public FIMPixelRegion? SelectedRegion { get { return _region; } }
         /// <summary>原图坐标的持久会话叠加项；调用方可直接通过MVI Store增删与更新。</summary>
@@ -97,6 +105,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             _pendingFit = true;
             _region = null;
             _displayState.Reset();
+            _viewTransform.Reset();
             _polygonDraft.Clear();
             _overlays.Clear();
             _overlayOriginal = image;
@@ -119,6 +128,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             VerifyAccess();
             _region = null;
             _displayState.Reset();
+            _viewTransform.Reset();
             _polygonDraft.Clear();
             _overlays.Clear();
             _overlayOriginal = null;
@@ -214,7 +224,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             if (image == null) return;
             if (ViewportRoot.ActualWidth <= 0 || ViewportRoot.ActualHeight <= 0)
             { _pendingFit = true; return; }
-            _viewport.Fit(image.Width, image.Height, ViewportRoot.ActualWidth, ViewportRoot.ActualHeight);
+            FGESize2D size = _viewTransform.GetDisplaySize(image.Width,image.Height);
+            _viewport.Fit((int)size.Width,(int)size.Height,ViewportRoot.ActualWidth,ViewportRoot.ActualHeight);
             _pendingFit = false;
             ApplyTransform();
         }
@@ -225,7 +236,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             FIMImageBuffer image = ActiveImage;
             if (image == null) return;
             if (ViewportRoot.ActualWidth <= 0 || ViewportRoot.ActualHeight <= 0) return;
-            _viewport.ActualSize(image.Width, image.Height, ViewportRoot.ActualWidth, ViewportRoot.ActualHeight);
+            FGESize2D size = _viewTransform.GetDisplaySize(image.Width,image.Height);
+            _viewport.ActualSize((int)size.Width,(int)size.Height,ViewportRoot.ActualWidth,ViewportRoot.ActualHeight);
             _pendingFit = false;
             ApplyTransform();
         }
@@ -324,7 +336,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 return;
             }
 
-            FIMImageBuffer display = CreateDisplayBuffer(image);
+            FIMImageBuffer display = ApplyViewTransform(CreateDisplayBuffer(image));
             int stride = checked(display.Width * display.BytesPerPixel);
             long memory = (long)stride * display.Height;
             if (memory > 512L * 1024 * 1024)
@@ -335,8 +347,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 GetWpfFormat(display.PixelFormat), null, data, display.Stride);
             bitmap.Freeze();
             _bitmap = bitmap;
-            PixelImage.Width = image.Width;
-            PixelImage.Height = image.Height;
+            PixelImage.Width = display.Width;
+            PixelImage.Height = display.Height;
             PixelImage.Source = bitmap;
             EmptyText.Visibility = Visibility.Collapsed;
             PixelStatus.Text = image.Width + "×" + image.Height + " " + image.PixelFormat;
@@ -385,6 +397,41 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 _displayState.Contrast, _displayState.IsInverted);
         }
 
+        private FIMImageBuffer ApplyViewTransform(FIMImageBuffer image)
+        {
+            switch (_viewTransform.QuarterTurns)
+            {
+                case 1: image = FIMImageOperations.Rotate90Clockwise(image); break;
+                case 2: image = FIMImageOperations.Rotate180(image); break;
+                case 3: image = FIMImageOperations.Rotate90Counterclockwise(image); break;
+            }
+            if (_viewTransform.IsFlippedHorizontally) image = FIMImageOperations.FlipHorizontal(image);
+            if (_viewTransform.IsFlippedVertically) image = FIMImageOperations.FlipVertical(image);
+            return image;
+        }
+
+        private Point SourceToCanvas(FGEPoint2D source)
+        {
+            FIMImageBuffer active = ActiveImage;
+            if (active == null) return new Point(0,0);
+            FGEPoint2D display = _viewTransform.SourceToDisplay(source,active.Width,active.Height);
+            return new Point(_viewport.DisplayX(display.X),_viewport.DisplayY(display.Y));
+        }
+        private FGEPoint2D CanvasToSource(Point point)
+        {
+            FIMImageBuffer active = ActiveImage;
+            if (active == null) throw new InvalidOperationException("尚无活动图像。");
+            return _viewTransform.DisplayToSource(
+                new FGEPoint2D(_viewport.ImageX(point.X),_viewport.ImageY(point.Y)),
+                active.Width,active.Height);
+        }
+        private bool OverlayMatchesActiveImage()
+        {
+            FIMImageBuffer original = _session.Original, active = ActiveImage;
+            return original != null && active != null &&
+                original.Width == active.Width && original.Height == active.Height;
+        }
+
         private void ApplyTransform()
         {
             ImageTransform.Matrix = new Matrix(_viewport.Scale, 0, 0, _viewport.Scale,
@@ -395,26 +442,24 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
 
         private void DrawSelection()
         {
-            if (!_region.HasValue || ActiveImage == null)
+            if (!_region.HasValue || !OverlayMatchesActiveImage())
             { SelectedRoi.Visibility = Visibility.Collapsed; return; }
-            FIMPixelRegion region = _region.Value;
-            double left = _viewport.DisplayX(region.Left), top = _viewport.DisplayY(region.Top);
-            double right = _viewport.DisplayX(region.Right + 1.0);
-            double bottom = _viewport.DisplayY(region.Bottom + 1.0);
-            Canvas.SetLeft(SelectedRoi, left);
-            Canvas.SetTop(SelectedRoi, top);
-            SelectedRoi.Width = Math.Max(0, right - left);
-            SelectedRoi.Height = Math.Max(0, bottom - top);
+            FIMPixelRegion roi = _region.Value;
+            Point a = SourceToCanvas(new FGEPoint2D(roi.Left,roi.Top));
+            Point b = SourceToCanvas(new FGEPoint2D(roi.Right+1.0,roi.Bottom+1.0));
+            Canvas.SetLeft(SelectedRoi,Math.Min(a.X,b.X));
+            Canvas.SetTop(SelectedRoi,Math.Min(a.Y,b.Y));
+            SelectedRoi.Width = Math.Abs(a.X-b.X);
+            SelectedRoi.Height = Math.Abs(a.Y-b.Y);
             SelectedRoi.Visibility = Visibility.Visible;
         }
-
 
         /// <summary>所有叠加对象从原图坐标重绘；屏幕缩放/平移只改变投影，不修改ROI值。</summary>
         private void DrawOverlays()
         {
             VerifyAccess();
             OverlayCanvas.Children.Clear();
-            if (ActiveImage == null) return;
+            if (!OverlayMatchesActiveImage()) return;
             foreach (MVIImageOverlayItem item in _overlays.GetVisibleItems())
             {
                 Color color = Color.FromArgb((byte)((uint)item.Argb >> 24),
@@ -422,10 +467,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                     (byte)item.Argb);
                 Brush stroke = new SolidColorBrush(color);
                 double width = item.LineWidth;
-                double left = _viewport.DisplayX(item.Bounds.Left);
-                double top = _viewport.DisplayY(item.Bounds.Top);
-                double right = _viewport.DisplayX(item.Bounds.Right);
-                double bottom = _viewport.DisplayY(item.Bounds.Bottom);
+                Point cornerA = SourceToCanvas(new FGEPoint2D(item.Bounds.Left,item.Bounds.Top));
+                Point cornerB = SourceToCanvas(new FGEPoint2D(item.Bounds.Right,item.Bounds.Bottom));
+                double left=Math.Min(cornerA.X,cornerB.X),top=Math.Min(cornerA.Y,cornerB.Y);
+                double right=Math.Max(cornerA.X,cornerB.X),bottom=Math.Max(cornerA.Y,cornerB.Y);
                 if (item.Kind == MVIImageOverlayKind.CircleRoi ||
                     item.Kind == MVIImageOverlayKind.EllipseRoi ||
                     item.Kind == MVIImageOverlayKind.DiameterMeasurement)
@@ -455,14 +500,15 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                     Polygon polygon = new Polygon { Stroke = stroke, StrokeThickness = width,
                         Fill = Brushes.Transparent, IsHitTestVisible = false };
                     foreach (FGEPoint2D p in item.Points)
-                        polygon.Points.Add(new Point(_viewport.DisplayX(p.X), _viewport.DisplayY(p.Y)));
+                        polygon.Points.Add(SourceToCanvas(p));
                     OverlayCanvas.Children.Add(polygon);
                 }
                 else if (item.Kind == MVIImageOverlayKind.PointAnnotation)
                 {
                     FGEPoint2D point = item.Points.Count > 0 ? item.Points[0] :
                         new FGEPoint2D(item.Bounds.Left, item.Bounds.Top);
-                    double px = _viewport.DisplayX(point.X), py = _viewport.DisplayY(point.Y);
+                    Point position = SourceToCanvas(point);
+                    double px=position.X, py=position.Y;
                     DrawLine(px - 5, py, px + 5, py, stroke, width);
                     DrawLine(px, py - 5, px, py + 5, stroke, width);
                 }
@@ -478,14 +524,14 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                     for (int i = 1; i < item.Points.Count; i++)
                     {
                         FGEPoint2D a = item.Points[i - 1], b = item.Points[i];
-                        DrawLine(_viewport.DisplayX(a.X), _viewport.DisplayY(a.Y),
-                            _viewport.DisplayX(b.X), _viewport.DisplayY(b.Y), stroke, width);
+                        Point first=SourceToCanvas(a),last=SourceToCanvas(b);
+                        DrawLine(first.X,first.Y,last.X,last.Y,stroke,width);
                     }
                     if (item.Kind == MVIImageOverlayKind.ArrowAnnotation)
                     {
                         FGEPoint2D a = item.Points[0], b = item.Points[item.Points.Count - 1];
-                        double x1 = _viewport.DisplayX(a.X), y1 = _viewport.DisplayY(a.Y);
-                        double x2 = _viewport.DisplayX(b.X), y2 = _viewport.DisplayY(b.Y);
+                        Point first=SourceToCanvas(a),last=SourceToCanvas(b);
+                        double x1=first.X,y1=first.Y,x2=last.X,y2=last.Y;
                         double angle = Math.Atan2(y2 - y1, x2 - x1);
                         DrawLine(x2, y2, x2 - 10 * Math.Cos(angle - Math.PI / 6),
                             y2 - 10 * Math.Sin(angle - Math.PI / 6), stroke, width);
@@ -498,8 +544,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                         TextBlock label = new TextBlock { Text = value.ToString("0.###") + " px",
                             Foreground = stroke, Background = Brushes.Black,
                             FontSize = 12, IsHitTestVisible = false };
-                        Canvas.SetLeft(label, _viewport.DisplayX(item.Points[1].X) + 4);
-                        Canvas.SetTop(label, _viewport.DisplayY(item.Points[1].Y) + 4);
+                        Point where=SourceToCanvas(item.Points[1]);
+                        Canvas.SetLeft(label,where.X+4);
+                        Canvas.SetTop(label,where.Y+4);
                         OverlayCanvas.Children.Add(label);
                     }
                 }
@@ -582,7 +629,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             x = y = 0;
             FIMImageBuffer image = ActiveImage;
             if (image == null) return false;
-            double xf = _viewport.ImageX(display.X), yf = _viewport.ImageY(display.Y);
+            FGEPoint2D source=CanvasToSource(display);
+            double xf=source.X,yf=source.Y;
             if (!IsFinite(xf) || !IsFinite(yf) || xf < 0 || yf < 0 ||
                 xf >= image.Width || yf >= image.Height) return false;
             x = (int)Math.Floor(xf);
@@ -600,6 +648,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         {
             VerifyAccess();
             FGEPoint2D p = new FGEPoint2D(imageX, imageY);
+            if (!OverlayMatchesActiveImage()) return null;
             IReadOnlyList<MVIImageOverlayItem> items = _overlays.GetVisibleItems();
             double tolerance = Math.Max(0.4, 6.0 / Math.Max(0.01, _viewport.Scale));
             for (int i = items.Count - 1; i >= 0; i--)
@@ -659,9 +708,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         private void UpdateMovedOverlay(Point pointer)
         {
             if (!_moving || _movingOverlay == null || ActiveImage == null) return;
-            double x = _viewport.ImageX(pointer.X), y = _viewport.ImageY(pointer.Y);
-            if (!IsFinite(x) || !IsFinite(y)) return;
-            double dx = x - _moveAnchor.X, dy = y - _moveAnchor.Y;
+            FGEPoint2D current = CanvasToSource(pointer);
+            double dx = current.X - _moveAnchor.X,dy = current.Y - _moveAnchor.Y;
             // 移动鼠标不能把图中标注悄悄移入无限画布；保持当前Bounds在图像内。
             dx = Math.Max(-_movingOverlay.Bounds.Left,
                 Math.Min(ActiveImage.Width - _movingOverlay.Bounds.Right, dx));
@@ -707,8 +755,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 {
                     _moving = true;
                     _movingOverlay = hit;
-                    _moveAnchor = new FGEPoint2D(_viewport.ImageX(pointer.X),
-                        _viewport.ImageY(pointer.Y));
+                    _moveAnchor = CanvasToSource(pointer);
                     _region = null;
                     DrawSelection();
                     ViewportRoot.CaptureMouse();
@@ -754,7 +801,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         {
             FIMImageBuffer image = ActiveImage;
             if (image == null) return;
-            double imageX = _viewport.ImageX(pointer.X), imageY = _viewport.ImageY(pointer.Y);
+            FGEPoint2D source=CanvasToSource(pointer);
+            double imageX=source.X,imageY=source.Y;
             if (!IsFinite(imageX) || !IsFinite(imageY)) return;
             int x = (int)Math.Max(0, Math.Min(image.Width - 1, Math.Floor(imageX)));
             int y = (int)Math.Max(0, Math.Min(image.Height - 1, Math.Floor(imageY)));
