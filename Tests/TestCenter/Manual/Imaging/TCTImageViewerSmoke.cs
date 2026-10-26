@@ -146,6 +146,14 @@ namespace CxVisual.TestCenter.UI
                 host.UpdateLayout();
                 if (!host.IsTestConsoleVisible)
                     throw new InvalidOperationException("切回ArchitectureSmoke时未恢复控制台");
+                host.DocumentHost.ShowMode("概览");
+                host.UpdateLayout();
+                if (host.IsTestConsoleVisible)
+                    throw new InvalidOperationException("切回概览且没有正在执行的Run时，测试控制台不应持续占宽度");
+                host.DocumentHost.OpenWorkspace(architectureInstance);
+                host.UpdateLayout();
+                if (!host.IsTestConsoleVisible)
+                    throw new InvalidOperationException("从概览再次打开ArchitectureSmoke未恢复测试控制台");
                 Console.WriteLine("PASS TCT automated Frame: NUnit/TCT and ArchitectureSmoke console; professional focus, menu toggle, actual UI");
             }
             finally
