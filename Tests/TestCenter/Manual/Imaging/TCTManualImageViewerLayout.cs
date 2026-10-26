@@ -470,6 +470,13 @@ namespace CxVisual.TestCenter.UI
             Tile(tiles,"↔","八柄缩放","ResizeOverlay",()=>SelectTool(MVIImageToolMode.ResizeOverlay));
             Tile(tiles,"⬡","逐顶点编辑","EditPolygonVertex",()=>SelectTool(MVIImageToolMode.EditPolygonVertex));
             content.Children.Add(tiles);
+            AutomationProperties.SetAutomationId(_polygonVertexIndex,
+                "TCT.Imaging.PolygonVertexIndex");
+            content.Children.Add(Row(Label("多边形边/顶点索引（从0开始）"),_polygonVertexIndex));
+            WrapPanel topology = Row();
+            Action(topology,"边中点插入","InsertPolygonVertex",InsertPolygonVertexAtIndex);
+            Action(topology,"删除此顶点","RemovePolygonVertex",RemovePolygonVertexAtIndex);
+            content.Children.Add(topology);
             WrapPanel buttons = Row();
             Action(buttons,"清除选框","RemoveRoi",()=>_viewer.ClearSelection());
             Action(buttons,"删除选中","DeleteOverlay",DeleteSelectedOverlay);
@@ -482,7 +489,7 @@ namespace CxVisual.TestCenter.UI
             content.Children.Add(buttons);
             AutomationProperties.SetAutomationId(_overlayList,"TCT.Imaging.OverlayList");
             content.Children.Add(_overlayList);
-            content.Children.Add(Hint("旋转矩形先拖框，再选中切换“旋转角柄”拖动金色圆点；角点超出原图会被拒绝。逐顶点、八柄缩放与锁定仍使用原来的MVI对象Store。"));
+            content.Children.Add(Hint("逐顶点模式：直接拖金色点移动；Shift＋点击边线插点；Alt＋点击金色点删点，或按索引使用上方按钮。锁定对象和自交/退化图形禁止修改；所有工具仍共享MVI原图坐标Store。"));
             return Scroll(content);
         }
         private UIElement BuildStatisticsPage()
