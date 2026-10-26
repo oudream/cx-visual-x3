@@ -162,12 +162,14 @@ namespace CxVisual.TestCenter.UI
                     "manual.module." + kind.ToString().ToLowerInvariant());
             }));
             if (created == null) throw new InvalidOperationException("Module create action failed");
+            if (kind == CxVisual.Mechanism.Core.Modules.MFMModuleKind.Connector) TraceUiStage("Connector / created");
             ShowManualConsoleForVerification(window);
             string id = "TCT.Workspace." + created.WorkspaceId;
             SelectionItemPattern node = Find(root, id)
                 .GetCurrentPattern(SelectionItemPattern.Pattern) as SelectionItemPattern;
             if (node == null) throw new InvalidOperationException("Missing module tree type " + kind);
             node.Select();
+            if (kind == CxVisual.Mechanism.Core.Modules.MFMModuleKind.Connector) TraceUiStage("Connector / selected");
             string moduleId = null;
             window.Dispatcher.Invoke(new Action(() =>
                 moduleId = window.CreatedConfigurationId(created.WorkspaceId)));
@@ -186,6 +188,7 @@ namespace CxVisual.TestCenter.UI
                 if (!opened) Thread.Sleep(100);
             }
             if (!opened) throw new InvalidOperationException("FCM/MPW typed module editor did not load: " + kind);
+            if (kind == CxVisual.Mechanism.Core.Modules.MFMModuleKind.Connector) TraceUiStage("Connector / opened config");
             if (kind == CxVisual.Mechanism.Core.Modules.MFMModuleKind.Connector)
             {
                 window.Dispatcher.Invoke(new Action(() => {
@@ -194,6 +197,7 @@ namespace CxVisual.TestCenter.UI
                     tabs.Items.OfType<System.Windows.Controls.TabItem>().Select(x => x.Content)
                         .OfType<TCTManualModuleFrame>().Single().SelectModulePage("channels");
                 }));
+                TraceUiStage("Connector / selecting channels");
                 AutomationElement cards = root.FindFirst(TreeScope.Descendants,
                     new PropertyCondition(AutomationElement.AutomationIdProperty,
                         "MPW.Channel.SchemaCards.0"));
@@ -215,6 +219,7 @@ namespace CxVisual.TestCenter.UI
                         }));
                     if (!rendered) Thread.Sleep(100);
                 }
+                TraceUiStage("Connector / schema cards rendered=" + rendered);
                 if (!rendered) throw new InvalidOperationException(
                     "当前通道专属FCM Schema编辑器未渲染（含WPF布局等待）");
                 window.Dispatcher.Invoke(new Action(() => {
@@ -231,11 +236,14 @@ namespace CxVisual.TestCenter.UI
                         throw new InvalidOperationException("PointTable 分页未被选中");
                 }));
                 // 空集合没有标量字段，但“添加规约点”必须是真正可操作的MPW集合命令。
+                TraceUiStage("Connector / points page");
                 AutomationElement pointAdd = Find(root, "MPW.Collection.Add.Protocol.Points");
                 InvokePattern insertPoint = pointAdd.GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
                 if (insertPoint == null)
                     throw new InvalidOperationException("PointTable 正式集合新增命令不可操作");
+                TraceUiStage("Connector / before insert point");
                 insertPoint.Invoke();
+                TraceUiStage("Connector / after insert point");
                 bool pointReady = false;
                 int countObserved = -1;
                 for (int attempt = 0; attempt < 60 && !pointReady; attempt++)
@@ -254,6 +262,7 @@ namespace CxVisual.TestCenter.UI
                     }));
                     if (!pointReady) Thread.Sleep(100);
                 }
+                TraceUiStage("Connector / point ready=" + pointReady);
                 if (!pointReady)
                     throw new InvalidOperationException("新增点表后没有可编辑Name字段；草稿PointCount=" +
                         countObserved);
@@ -269,11 +278,14 @@ namespace CxVisual.TestCenter.UI
                     if (frame.SelectedModulePage != "mapping")
                         throw new InvalidOperationException("DataMapping 分页未被选中");
                 }));
+                TraceUiStage("Connector / mapping page");
                 AutomationElement mappingAdd = Find(root, "MPW.Collection.Add.Protocol.Mappings");
                 InvokePattern insertMapping = mappingAdd.GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
                 if (insertMapping == null)
                     throw new InvalidOperationException("DataMapping 正式集合新增命令不可操作");
+                TraceUiStage("Connector / before insert mapping");
                 insertMapping.Invoke();
+                TraceUiStage("Connector / after insert mapping");
                 bool mappingReady = false;
                 int mappingObserved = -1;
                 for (int attempt = 0; attempt < 60 && !mappingReady; attempt++)
@@ -291,6 +303,7 @@ namespace CxVisual.TestCenter.UI
                     }));
                     if (!mappingReady) Thread.Sleep(100);
                 }
+                TraceUiStage("Connector / mapping ready=" + mappingReady);
                 if (!mappingReady)
                     throw new InvalidOperationException("新增DataMapping未显示PointRef候选；草稿MappingCount=" +
                         mappingObserved);
@@ -313,6 +326,7 @@ namespace CxVisual.TestCenter.UI
                         throw new InvalidOperationException("PointRef没有正式点表候选ComboBox");
                     SaveScreenshot(window, "TestCenter-Protocol-P0-MappingAdded.png");
                 }));
+                TraceUiStage("Connector / before mapping focus commit");
                 // ComboBox/TextBox的焦点事件交给WPF UI线程，以免UIA COM调用过程中
                 // MPW重新投影销毁被自动化操作的控件，导致线程互等/超时。
                 window.Dispatcher.Invoke(new Action(() => {
@@ -335,6 +349,7 @@ namespace CxVisual.TestCenter.UI
                     if (other == null) throw new InvalidOperationException("Mapping Required未渲染");
                     other.Focus(); // 触发正式MPW的LostFocus写回
                 }));
+                TraceUiStage("Connector / after mapping focus commit");
                 window.Dispatcher.Invoke(new Action(() => {
                     System.Windows.Controls.TabControl tabs =
                         window.DocumentHost.Content as System.Windows.Controls.TabControl;
@@ -351,6 +366,7 @@ namespace CxVisual.TestCenter.UI
                         throw new InvalidOperationException("完成真实PointRef和TargetRef后仍无法通过Schema校验：" +
                             frame.StatusMessage);
                 }));
+                TraceUiStage("Connector / validated draft");
                 window.Dispatcher.Invoke(new Action(() => SaveScreenshot(window, "TestCenter-Protocol-P0-PointMapping.png")));
                 window.Dispatcher.Invoke(new Action(() => {
                     System.Windows.Controls.TabControl tabs =
@@ -363,6 +379,7 @@ namespace CxVisual.TestCenter.UI
                         throw new InvalidOperationException("Protocol执行策略分页未展示完整Schema");
                     frame.SelectModulePage("channels");
                 }));
+                TraceUiStage("Connector / runtime schema");
                 // MPW按Tab动态投影重新生成控件，切换后必须重新获取本页的UIA元素。
                 // 旧Tab已卸载的卡片对象可能返回IsOffscreen，不能误报为布局回退。
                 window.Dispatcher.Invoke(new Action(() => window.UpdateLayout()));
@@ -390,10 +407,12 @@ namespace CxVisual.TestCenter.UI
                 }));
                 return;
             }
+            if (kind == CxVisual.Mechanism.Core.Modules.MFMModuleKind.Connector) TraceUiStage("Connector / pre save");
             InvokePattern save = Find(root, "TCT.Manual.Action.module.save")
                 .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
             if (save == null) throw new InvalidOperationException("MHS Save command unavailable for " + kind);
             save.Invoke();
+            if (kind == CxVisual.Mechanism.Core.Modules.MFMModuleKind.Connector) TraceUiStage("Connector / saving");
             bool saved = false;
             for (int attempt = 0; attempt < 100 && !saved; attempt++)
             {
@@ -416,6 +435,7 @@ namespace CxVisual.TestCenter.UI
                 .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
             if (reopen == null) throw new InvalidOperationException("Module Reopen action unavailable");
             reopen.Invoke();
+            if (kind == CxVisual.Mechanism.Core.Modules.MFMModuleKind.Connector) TraceUiStage("Connector / reopened request");
             bool reloaded = false;
             for (int attempt = 0; attempt < 100 && !reloaded; attempt++)
             {
@@ -475,8 +495,10 @@ namespace CxVisual.TestCenter.UI
                     throw new InvalidOperationException(
                         "切换工作区后通用MPW配置编辑器失效：" + frame.StatusMessage);
             }));
+            if (kind == CxVisual.Mechanism.Core.Modules.MFMModuleKind.Connector) TraceUiStage("Connector / pre removal");
             if (kind == CxVisual.Mechanism.Core.Modules.MFMModuleKind.Connector)
                 VerifyProtocolCollectionRemoval(root, window, moduleId);
+            if (kind == CxVisual.Mechanism.Core.Modules.MFMModuleKind.Connector) TraceUiStage("Connector / completed");
         }
 
         // 通过实际MPW删除按钮删除正式Point与映射，再次保存、重开，检验不存在影子集合。
