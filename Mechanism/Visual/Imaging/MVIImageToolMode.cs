@@ -17,6 +17,8 @@ namespace CxVisual.Mechanism.Visual
         MoveOverlay,
         ResizeOverlay,
         EditPolygonVertex,
+        RotatedRectangleRoi,
+        RotateOverlay,
         DeleteOverlay,
         PolygonRoi,
         Angle,
