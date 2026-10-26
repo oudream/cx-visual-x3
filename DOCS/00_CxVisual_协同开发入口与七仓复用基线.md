@@ -194,3 +194,5 @@
 - [旧ROI与标注功能迁移及实测差距 V1.1](Implementation/CxVisual_专业视觉体系%23二维图窗ROI标注旧功能迁移与实测差距_V1.1.md)：逐旧文件映射Overlay模型/4图层/鼠标绘制拾取/删除/WPF截图与最新CI，对17种旧分类区分已支持交互和待迁移部分。
 
 - [二维视觉工作台P2显示/分析/旧功能迁移实证 V1.0](Implementation/CxVisual_专业视觉体系%23二维视觉工作台P2显示变换与成熟功能迁移实证_V1.0.md)：核对旧ImageDisplay/Transform/Comparison、直方图/灰度剖面/标尺/Polygon/Angle到FIM-MVI-MPW-TCT真实代码与Windows专项运行，区分尚未完成的SideBySide、完整编辑与工业验收。
+
+- [二维视觉工作台TestCenter界面优化与真实Windows验收 V1.0](Implementation/CxVisual_专业视觉体系%23二维视觉工作台TestCenter界面优化与Windows验收_V1.0.md)：第6张图对照前五张成熟图窗，单排WPF矢量图标、上下10页签、可调侧栏、TestCenter辅助Inspector按专业工作区收起/切回恢复；以Imaging Windows #40259838886通过记录和两张CI截图为证，完整TestCenter UIA超时单列未解决。
