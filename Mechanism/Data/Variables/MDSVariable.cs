@@ -118,8 +118,9 @@ namespace CxVisual.Mechanism.Data.Variables
         }
 
         public MDSVariableDefinition Definition { get { return _definition; } }
+        internal override MDSVariableDefinition EntryDefinition { get { return _definition; } }
 
-        public void Attach(Action<string> notify)
+        internal override void Attach(Action<string> notify)
         {
             lock (_gate)
             {
