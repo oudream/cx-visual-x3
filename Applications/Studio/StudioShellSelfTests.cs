@@ -2820,7 +2820,7 @@ namespace CxVisual.Studio
                     int before=window.StudioEngineeringRevision;
                     TextBox search=window.StudioGlobalResourceSearch;
                     search.ApplyTemplate();
-                    Border inputBorder=search.Template.FindName("StudioInputSurface",search) as Border;
+                    Border inputBorder=search.Template.FindName("MPWInputSurface",search) as Border;
                     ScrollViewer contentHost=search.Template.FindName("PART_ContentHost",search)
                         as ScrollViewer;
                     Assert(inputBorder!=null&&inputBorder.CornerRadius.TopLeft>=6&&
