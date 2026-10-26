@@ -126,6 +126,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
             FIMImageBuffer rotated = FIMImageOperations.Rotate90Clockwise(small);
             Assert(rotated.GetGrayValue(0,0) == 3 && rotated.GetGrayValue(1,0) == 1 &&
                 rotated.GetGrayValue(0,1) == 4, "顺时针旋转映射");
+            FIMImageBuffer rotated180 = FIMImageOperations.Rotate180(small);
+            Assert(rotated180.GetGrayValue(0,0) == 4 && rotated180.GetGrayValue(1,1) == 1,
+                "180度一次像素映射");
             FIMImageBuffer restored = FIMImageOperations.Rotate90Counterclockwise(rotated);
             Assert(restored.GetGrayValue(0,0) == 1 && restored.GetGrayValue(1,1) == 4,
                 "顺逆变换");

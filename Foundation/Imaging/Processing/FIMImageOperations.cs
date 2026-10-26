@@ -104,6 +104,11 @@ namespace CxVisual.Foundation.Imaging
             if (image == null) throw new ArgumentNullException("image");
             return Remap(image, image.Height, image.Width, 2);
         }
+        public static FIMImageBuffer Rotate180(FIMImageBuffer image)
+        {
+            if (image == null) throw new ArgumentNullException("image");
+            return Remap(image, image.Width, image.Height, 5);
+        }
         public static FIMImageBuffer FlipHorizontal(FIMImageBuffer image)
         {
             if (image == null) throw new ArgumentNullException("image");
@@ -129,6 +134,7 @@ namespace CxVisual.Foundation.Imaging
                     else if (kind == 2) { nx = y; ny = image.Width - x - 1; }
                     else if (kind == 3) { nx = image.Width - x - 1; }
                     else if (kind == 4) { ny = image.Height - y - 1; }
+                    else if (kind == 5) { nx = image.Width - x - 1; ny = image.Height - y - 1; }
                     Buffer.BlockCopy(source, y * image.Stride + x * bytes,
                         target, ny * stride + nx * bytes, bytes);
                 }
