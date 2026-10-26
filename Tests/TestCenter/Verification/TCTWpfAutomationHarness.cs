@@ -506,8 +506,16 @@ namespace CxVisual.TestCenter.UI
                     throw new InvalidOperationException("模块页在验证前丢失");
                 tabs.SelectedIndex = 0;
                 tabs.UpdateLayout();
+                if (window.DocumentHost.ActiveMode != "概览" ||
+                    window.WorkspaceTitle.Text != "测试主界面 / Overview")
+                    throw new InvalidOperationException(
+                        "切回概览仍残留上一个专业工作区标题");
                 tabs.SelectedItem = active;
                 tabs.UpdateLayout();
+                TCTWorkspaceDescriptor selected = active.Tag as TCTWorkspaceDescriptor;
+                if (selected == null || window.WorkspaceTitle.Text != selected.Title)
+                    throw new InvalidOperationException(
+                        "从概览恢复专业工作区未恢复正确标题");
                 TCTManualModuleFrame frame = (TCTManualModuleFrame)active.Content;
                 frame.ValidateCurrent();
                 if (frame.StatusMessage.StartsWith("模块结构校验失败", StringComparison.Ordinal))

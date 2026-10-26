@@ -51,4 +51,26 @@
 
 此处将“专项真实回归可用”和“TestCenter全量UIA尚有超时”分开记录。用户所请求的自动测试控制台合并与专业工作区不占位已通过针对性的**真实WPF宿主测试**，未因此推断所有其它功能已通过。
 
+## 六、2026-10-26 最新连续开发与实际Windows验收
 
+本节覆盖并更新第五星期初的历史结论；早期 #40271640519 失败是当时提交的事实，**不是当前最新通过情况**。此节记录的是具体SHA的实际CI结果，不将下一次提交自动标记为通过。
+
+| 提交 | 修改及复现结果 |
+|---|---|
+| [e2e8d1f](https://github.com/oudream/cx-visual-x3/commit/e2e8d1f0148dee92da15bc81b81bcb722877ee2b) | 补Connector删除阶段日志和异常透传；确认Point、Mapping真实删除后UIA找不到二次Save。 |
+| [01759d8](https://github.com/oudream/cx-visual-x3/commit/01759d8de4a6ab814c3bb48bc0018b83cc20a52b) | 同一Workspace重激活时保留手动TestConsole；不同Workspace导航按约定收起，状态按WorkspaceId管理。 |
+| [87fdac2](https://github.com/oudream/cx-visual-x3/commit/87fdac2dc11c66904056e06c10afc2bb8def72ba) | UIA实际从概览返回专业页后，先检查控制台已自动隐藏，再通过“视图→显示测试控制台”菜单打开；完整Point/Mapping悬空引用、删除、二次Save、重开断言不删减。 |
+| [5863164](https://github.com/oudream/cx-visual-x3/commit/5863164d8a0f7dc3430107fb5a150268c57bdd3f) | 解决两个Connector实例的配置Frame查询误命中；按当前ActiveModuleId和创建时WorkspaceId查询、关闭，禁止Single/First取错实例。 |
+
+**全量真实验收已通过**：[TestCenter Windows .NET48 #40280277938](https://github.com/oudream/cx-visual-x3/actions/runs/40280277938)，对应 **5863164d8a0f**。该次Windows工作流29步全部成功，涵盖：
+- Debug x64/.NET48全方案Rebuild、结构及依赖DAG检查。
+- NUnit动态源码编译、真实发现/Worker执行/结果与JUnit、外部程序集和指纹。
+- WPF Shell、真实Connector UIA完整配置增删存储闭环、全量Windows UIAutomation与截图。
+- 独立Worker、超时/异常失败封闭、NUnit失败/Skipped/Inconclusive/Error映射、Owner证据与跨进程历史回放。
+- 并行重复执行、结果与历史回归、空选择拒绝。
+
+**后续质量补齐**：切换回Overview或Result页时，`WorkspaceTitle`应随真实中心Tab更新；此前`OnWorkspaceActivated(null)`提前return导致残留前一专业标题。相应源码修复和实际Tab双向切换反证已加入主窗口与UIA。**此后提交的CI必须另行检查，不能沿用5863164的PASS结论。**
+
+OOP：工作区实例采用稳定WorkspaceId/ActiveModuleId，与独立Frame和唯一MHS草稿一一对应。GoF：沿用既有命令对象、UIA真实Invoke及Observer工作区切换；不增加第二套命令状态。AOP：阶段诊断、错误透传与CI测试证据通过现有机制记录，无热路径反射和新增适配项目。
+
+仍未以此次CI验证：真实PLC/X-Ray/相机硬件及联锁、跨PC远程总线、现场HIL、全部分辨率/DPI/多显示器与人工使用体验、真实GPU/专有SDK性能；上述事项按各自Owner和专项环境另验，不能冒充全平台生产可用。

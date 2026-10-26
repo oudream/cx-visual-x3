@@ -376,6 +376,11 @@ namespace CxVisual.TestCenter.UI
             {
                 AutoActionHost.Visibility = Visibility.Visible;
                 ManualActionHost.Visibility = Visibility.Collapsed;
+                // 当前不是Workspace定义页时，标题必须与实际中心Tab匹配。
+                // 尤其从Connector/Driver切回概览或测试结果，不能保留旧专业标题。
+                string mode = DocumentHost.ActiveMode;
+                WorkspaceTitle.Text = mode == "概览" ?
+                    "测试主界面 / Overview" : "TestCenter / " + mode;
                 return;
             }
             bool plan = descriptor.WorkspaceId == "auto.root" ||
