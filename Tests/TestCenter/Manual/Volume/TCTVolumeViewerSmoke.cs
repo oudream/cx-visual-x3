@@ -328,8 +328,8 @@ namespace CxVisual.TestCenter.UI
                             PixelFormats.Gray8,null,gray,8);
                         BmpBitmapEncoder encoder=new BmpBitmapEncoder();
                         encoder.Frames.Add(BitmapFrame.Create(source));
-                        using(FileStream file=File.Create(Path.Combine(bmpFolder,
-                            "slice"+z.ToString("D2")+".bmp")))encoder.Save(file);
+                        using(FileStream bmpOutputStream=File.Create(Path.Combine(bmpFolder,
+                            "slice"+z.ToString("D2")+".bmp")))encoder.Save(bmpOutputStream);
                     }
                     System.Threading.Tasks.Task bmpTask=frame.LoadBmpDirectoryAsync(
                         bmpFolder,System.Threading.CancellationToken.None);
