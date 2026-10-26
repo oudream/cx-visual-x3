@@ -350,6 +350,7 @@ namespace CxVisual.TestCenter.UI
                     other.Focus(); // 触发正式MPW的LostFocus写回
                 }));
                 TraceUiStage("Connector / after mapping focus commit");
+                string draftProblem = null;
                 window.Dispatcher.Invoke(new Action(() => {
                     System.Windows.Controls.TabControl tabs =
                         window.DocumentHost.Content as System.Windows.Controls.TabControl;
@@ -359,17 +360,30 @@ namespace CxVisual.TestCenter.UI
                     TraceUiStage("Connector / dispatch started after focus");
                     MCNConnectorConfiguration draft = frame.ConnectorDraftSnapshot();
                     TraceUiStage("Connector / draft snapshot returned");
-                    if (draft.Protocol.Points.Count != 1 || draft.Protocol.Mappings.Count != 1 ||
-                        draft.Protocol.Mappings[0].PointRef != "point01" ||
-                        draft.Protocol.Mappings[0].TargetRef != "line/temperature")
-                        throw new InvalidOperationException("MPW编辑后的映射未进入同一MHS草稿");
+                    bool countsOk = draft.Protocol.Points.Count == 1 &&
+                        draft.Protocol.Mappings.Count == 1;
+                    bool pointOk = countsOk && draft.Protocol.Mappings[0].PointRef == "point01";
+                    bool targetOk = countsOk &&
+                        draft.Protocol.Mappings[0].TargetRef == "line/temperature";
+                    TraceUiStage("Connector / draft counts=" + countsOk +
+                        " point=" + pointOk + " target=" + targetOk);
+                    if (!countsOk || !pointOk || !targetOk)
+                    {
+                        draftProblem = "MPW编辑后的映射未进入同一MHS草稿：Counts=" +
+                            countsOk + " PointRef=" + pointOk + " TargetRef=" + targetOk;
+                        return;
+                    }
                     TraceUiStage("Connector / validation starting");
                     frame.ValidateCurrent();
                     TraceUiStage("Connector / validation returned");
                     if (frame.StatusMessage.Contains("配置存在"))
-                        throw new InvalidOperationException("完成真实PointRef和TargetRef后仍无法通过Schema校验：" +
-                            frame.StatusMessage);
+                        draftProblem = "完成真实PointRef和TargetRef后仍无法通过Schema校验：" +
+                            frame.StatusMessage;
                 }));
+                // 不在WPF Dispatcher.Invoke回调内部抛UIA验证异常；否则WPF全局异常UI
+                // 可能挡住自动化线程，导致CI只有240秒超时而丢失精确错误。
+                if (draftProblem != null)
+                    throw new InvalidOperationException(draftProblem);
                 TraceUiStage("Connector / validated draft");
                 window.Dispatcher.Invoke(new Action(() => SaveScreenshot(window, "TestCenter-Protocol-P0-PointMapping.png")));
                 window.Dispatcher.Invoke(new Action(() => {
