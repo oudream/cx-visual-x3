@@ -90,8 +90,13 @@ namespace CxVisual.TestCenter.UI
                 if (inspector == null) throw new InvalidOperationException("TestCenter inspector not present");
                 TCTManualImageViewerFrame imaging = host.DocumentHost.OpenWorkspace(
                     registry.Find("manual.imaging")) as TCTManualImageViewerFrame;
-                if (imaging == null || inspector.IsVisible)
-                    throw new InvalidOperationException("TestCenter failed to focus imaging workbench and hide duplicate inspector");
+                LayoutDocumentPane documentPane = host.TestDock.Layout.Descendents()
+                    .OfType<LayoutDocumentPane>().FirstOrDefault(p => p.Children
+                        .OfType<LayoutDocument>().Any(d => d.ContentId == "test.documents"));
+                if (imaging == null || inspector.IsVisible || documentPane == null ||
+                    documentPane.ShowHeader)
+                    throw new InvalidOperationException(
+                        "TestCenter workbench must hide duplicate AvalonDock document header and Inspector");
                 imaging.SetOriginal(new FIMImageBuffer(900,650,FIMPixelFormat.Gray8,
                     BuildSyntheticPixels(900,650)));
                 host.UpdateLayout();

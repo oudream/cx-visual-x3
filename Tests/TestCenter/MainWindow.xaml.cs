@@ -123,6 +123,8 @@ namespace CxVisual.TestCenter.UI
             MenuSaveHistory.Click += (sender, args) => { History.SaveCurrent(); ActivateDockPanel("test.history"); };
             MenuLoadHistory.Click += (sender, args) => { History.Refresh(); ActivateDockPanel("test.history"); };
             MenuRestoreLayout.Click += (sender, args) => ResetLayout();
+            // 用户按需打开通用测试操作中心，不让它长期挤占专业工作台。
+            MenuShowOperations.Click += (sender, args) => ActivateDockPanel("test.inspector");
             MenuSaveLayout.Click += (sender, args) => SaveLayout();
             MenuThemeLight.Click += (sender, args) => ApplyTheme(false);
             MenuThemeDark.Click += (sender, args) => ApplyTheme(true);
@@ -136,6 +138,7 @@ namespace CxVisual.TestCenter.UI
             ApplyTheme(false);
             _defaultDockLayout = SerializeDockLayout();
             if (!IsSmokeProcess()) LoadLayout();
+            EnsureDocumentPaneHasSingleHeader();
             StatusText.Text = "Ready · " + _catalog.Cases.Count +
                 " 个真实测试用例。默认独立进程隔离；Graph/Channel/Runtime未接入的类型不会伪装通过。";
         }
@@ -375,18 +378,40 @@ namespace CxVisual.TestCenter.UI
         }
         private void UpdateImagingDock(bool imaging)
         {
+            EnsureDocumentPaneHasSingleHeader();
             LayoutAnchorable inspector = TestDock.Layout.Descendents()
                 .OfType<LayoutAnchorable>().FirstOrDefault(x => x.ContentId == "test.inspector");
             if (inspector == null) return;
-            if (imaging && inspector.IsVisible)
+            if (imaging)
             {
-                inspector.Hide();
-                _imagingHidOperations = true;
+                // Hide()属于AvalonDock自己的隐藏语义，会连同仅含该项目的Pane收回，
+                // 与仅折叠OperationDock内部内容不同；用户仍可用“视图→显示操作中心”恢复。
+                if (inspector.IsVisible)
+                {
+                    inspector.Hide();
+                    _imagingHidOperations = true;
+                }
             }
-            else if (!imaging && _imagingHidOperations)
+            else if (_imagingHidOperations)
             {
                 inspector.Show();
                 _imagingHidOperations = false;
+            }
+        }
+
+        /// <summary>
+        /// 只有DocumentHost一个AvalonDock文档，内部已有自己的多分页。
+        /// 隐藏外层唯一冗余标题条；不影响内部Tab、文档身份或布局序列化。
+        /// 旧版已保存布局在Deserialize后可能恢复ShowHeader=true，此处纠正。
+        /// </summary>
+        private void EnsureDocumentPaneHasSingleHeader()
+        {
+            foreach (LayoutDocumentPane pane in TestDock.Layout.Descendents()
+                .OfType<LayoutDocumentPane>())
+            {
+                if (pane.Children.OfType<LayoutDocument>()
+                    .Any(item => item.ContentId == "test.documents"))
+                    pane.ShowHeader = false;
             }
         }
         private void RefreshWorkspaceCommands()
@@ -653,6 +678,7 @@ namespace CxVisual.TestCenter.UI
                 throw new InvalidOperationException("Missing TestCenter panel " + id);
             panel.Show();
             panel.IsActive = true;
+            if (id == "test.inspector") _imagingHidOperations = false;
         }
         private string SerializeDockLayout()
         {
@@ -712,6 +738,13 @@ namespace CxVisual.TestCenter.UI
             };
             using (StringReader text = new StringReader(xml))
                 serializer.Deserialize(text);
+            EnsureDocumentPaneHasSingleHeader();
+            // 对已存档的旧Dock布局也恢复当前专业工作区的聚焦显示规则。
+            TabItem selected = (DocumentHost.Content as TabControl)?.SelectedItem as TabItem;
+            TCTWorkspaceDescriptor current = selected == null ? null :
+                selected.Tag as TCTWorkspaceDescriptor;
+            UpdateImagingDock(current != null &&
+                string.Equals(current.WorkspaceId,"manual.imaging",StringComparison.Ordinal));
         }
         private void ResetLayout()
         {

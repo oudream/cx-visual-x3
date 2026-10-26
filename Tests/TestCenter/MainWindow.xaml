@@ -58,6 +58,7 @@
    </MenuItem>
    <MenuItem Header="视图">
     <MenuItem x:Name="MenuRestoreLayout" Header="恢复默认布局"/>
+    <MenuItem x:Name="MenuShowOperations" Header="显示操作中心"/>
     <MenuItem x:Name="MenuSaveLayout" Header="保存当前布局"/>
     <Separator/>
     <MenuItem x:Name="MenuThemeLight" Header="浅色主题"/>
@@ -83,7 +84,7 @@
         <ui:TCTTestExplorerControl x:Name="Explorer"/>
        </dock:LayoutAnchorable>
       </dock:LayoutAnchorablePane>
-      <dock:LayoutDocumentPane>
+      <dock:LayoutDocumentPane ShowHeader="False">
        <dock:LayoutDocument ContentId="test.documents" Title="工作区"
          CanClose="False" CanFloat="True">
         <ui:TCTTestDocumentHostControl x:Name="DocumentHost"/>
