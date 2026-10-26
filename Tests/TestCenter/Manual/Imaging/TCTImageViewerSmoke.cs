@@ -98,11 +98,22 @@ namespace CxVisual.TestCenter.UI
                 string path = Environment.GetEnvironmentVariable("CXVISUAL_IMAGING_UI_SCREENSHOT");
                 if (!string.IsNullOrWhiteSpace(path))
                     CaptureWindow(host,Path.Combine(Path.GetDirectoryName(path),"testcenter-auto-console.png"));
+                // 使用真实TCTTestPlanControl工作区，而不借自动测试根目录代替计划页。
+                TCTTestPlanControl plan = host.DocumentHost.OpenWorkspace(
+                    new TCTWorkspaceDescriptor("auto.plan.smoke", "auto.catalog", "NUnit/TCT测试计划验收",
+                        "测试工作台计划", TCTWorkspaceNodeKind.Leaf,
+                        () => new TCTTestPlanControl(),
+                        TCTWorkspaceOpenPolicy.SingleInstance, "auto.catalog")) as TCTTestPlanControl;
+                host.UpdateLayout();
+                if (plan == null || !host.IsTestConsoleVisible ||
+                    host.AutoActionHost.Visibility != Visibility.Visible ||
+                    !host.TestConsolePanel.IsVisible)
+                    throw new InvalidOperationException("NUnit/TCT计划未与ArchitectureSmoke共享测试工作台Frame");
                 host.DocumentHost.OpenWorkspace(registry.Find("auto.root"));
                 host.UpdateLayout();
                 if (!host.IsTestConsoleVisible ||
                     host.AutoActionHost.Visibility != Visibility.Visible)
-                    throw new InvalidOperationException("NUnit/TCT自动测试入口应使用同一测试控制台");
+                    throw new InvalidOperationException("自动测试根工作区应使用测试控制台");
                 TCTManualImageViewerFrame imaging = host.DocumentHost.OpenWorkspace(
                     registry.Find("manual.imaging")) as TCTManualImageViewerFrame;
                 LayoutDocumentPane documentPane = host.TestDock.Layout.Descendents()
