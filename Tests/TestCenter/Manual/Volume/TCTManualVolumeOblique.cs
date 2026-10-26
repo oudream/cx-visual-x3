@@ -246,7 +246,9 @@ namespace CxVisual.TestCenter.UI
             FIMImageBuffer image=FVOObliqueSliceBuilder.BuildPreview(_volume,data,
                 _pseudo.IsChecked==true,(byte)Math.Round(_windowMin.Value),
                 (byte)Math.Round(_windowMax.Value),CancellationToken.None);
-            _obliqueViewer.ShowOriginal(image);
+            // 任意切位置/角度调整是连续帧，不能重置用户的缩放和平移。
+            if(_obliqueViewer.ActiveImage==null)_obliqueViewer.ShowOriginal(image);
+            else _obliqueViewer.UpdateOriginalFrame(image);
             FVOObliqueSliceVector u,v;
             FVOObliqueSliceGeometry.GetAxes(data,out u,out v);
             FVOObliqueSliceVector p00=FVOObliqueSliceGeometry.GetCorner(data,u,v,-1,-1);

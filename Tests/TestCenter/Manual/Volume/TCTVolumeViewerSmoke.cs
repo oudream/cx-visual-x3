@@ -41,6 +41,13 @@ namespace CxVisual.TestCenter.UI
                 Check(clearCommand!=null && !clearCommand.CanExecute() &&
                     windowCommand!=null && !windowCommand.CanExecute(),
                     "未加载时危险的窗口操作必须禁止执行");
+                string emptyImage=Path.Combine(Path.GetTempPath(),
+                    "CxVisual-Reject-Empty-"+Guid.NewGuid().ToString("N")+".png");
+                bool refusedEmpty=false;
+                try { frame.SaveFourViewScreenshot(emptyImage); }
+                catch(InvalidOperationException) { refusedEmpty=true; }
+                Check(refusedEmpty && !File.Exists(emptyImage),
+                    "未载入体数据时必须拒绝四视图PNG，不能输出空白截图");
                 frame.LoadDemo();
                 window.UpdateLayout();
                 frame.Dispatcher.Invoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle,
@@ -217,6 +224,12 @@ namespace CxVisual.TestCenter.UI
                       frame.ObliqueViewer.ActiveImage != null &&
                       frame.ViewState.ObliqueSlice.Visible,
                     "任意切FVO三线性结果/3D空间平面与MVI状态必须联动");
+                frame.ObliqueViewer.Zoom(1.6);
+                double obliqueZoom=frame.ObliqueViewer.PrimaryViewportScale;
+                frame.SetObliqueForTest(true,24,15,45);
+                Check(Math.Abs(frame.ObliqueViewer.PrimaryViewportScale-obliqueZoom)<.001,
+                    "任意切角度调整应保持WPF预览缩放而非重新适合窗口");
+                frame.ObliqueViewer.FitToWindow();
                 int sharedX=frame.ViewState.SliceX, sharedY=frame.ViewState.SliceY,
                     sharedZ=frame.ViewState.SliceZ;
                 frame.SetObliqueCenterForTest(8,12,15);

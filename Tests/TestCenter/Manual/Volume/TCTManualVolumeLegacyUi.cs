@@ -156,7 +156,7 @@ namespace CxVisual.TestCenter.UI
             AddAxis(display,"Y",_sliderY,"TCT.Volume.SliceY");
             AddAxis(display,"Z",_sliderZ,"TCT.Volume.SliceZ");
             _sliceStatus.Margin=new Thickness(3,2,3,6);
-            _sliceStatus.Foreground=BrushOf(38,66,99);
+            _sliceStatus.Foreground=BrushOf(220,232,248);
             display.Children.Add(_sliceStatus);
             display.Children.Add(_crosshairEnabled);
             _crosshairEnabled.Checked+=(s,e)=>{if(_state!=null)_state.ShowCrosshair=true;UpdateCrosshairs();};
@@ -537,6 +537,8 @@ namespace CxVisual.TestCenter.UI
 
         public void SaveFourViewScreenshot(string path)
         {
+            if(_volume==null || _state==null)
+                throw new InvalidOperationException("尚未加载体数据，不能保存空白四视图。");
             if(String.IsNullOrWhiteSpace(path))throw new ArgumentException("缺少PNG文件名。");
             if(_legacyFour==null || _legacyFour.ActualWidth<10 || _legacyFour.ActualHeight<10)
                 throw new InvalidOperationException("四视图尚未完成布局，不能保存空白截图。");
