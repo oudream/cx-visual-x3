@@ -38,6 +38,7 @@ namespace CxVisual.TestCenter.UI
             FontFamily = new FontFamily("Consolas"), TextWrapping = TextWrapping.Wrap };
         // 供WPF Smoke核实真实选择链，不通过UI推导Pass/Fail。
         public string SelectedObservationTitle { get; private set; }
+        public string ArchitectureSmokeSummary { get; private set; }
         private readonly TextBlock _error = new TextBlock { Margin = new Thickness(12),
             FontFamily = new FontFamily("Consolas"), TextWrapping = TextWrapping.Wrap };
         public TCTTestInspectorControl()
@@ -77,8 +78,50 @@ namespace CxVisual.TestCenter.UI
             tabs.Items.Add(_objectTab);
             Content = tabs;
         }
+        /// <summary>
+        /// 仅显示真实ArchitectureSmoke独立进程的当前状态，不将退出码伪装为
+        /// TestCenter Run/Attempt/PASS，不复用先前NUnit/TCT的断言与证据。
+        /// </summary>
+        public void ShowArchitectureSmoke(TCTArchitectureSmokeFrame frame)
+        {
+            if (frame == null) throw new ArgumentNullException("frame");
+            TCTArchitectureSmokeRunResult result = frame.LastResult;
+            string state = frame.IsRunning ? "运行中" :
+                result == null ? "尚未运行" :
+                result.Succeeded ? "独立进程退出码0" :
+                result.Cancelled ? "用户取消" :
+                result.TimedOut ? "独立进程超时" : "独立进程执行失败";
+            ArchitectureSmokeSummary = "ArchitectureSmoke 独立架构回归" +
+                "\\n范围: " + (frame.CurrentProfileId ?? "未选择") +
+                "\\n状态: " + state +
+                "\\n输出条数: " + frame.MessageCount +
+                (result == null ? "" :
+                    "\\nExitCode: " + (result.ExitCode.HasValue ?
+                        result.ExitCode.Value.ToString() : "未取得") +
+                    "\\n耗时: " + result.Elapsed.TotalMilliseconds.ToString("F1") + " ms") +
+                "\\n此处不产生NUnit/TCT逐条Attempt，详细输出在主工作区。";
+            ArchitectureSmokeSummary = ArchitectureSmokeSummary.Replace("\\n", "\n");
+            _metadata.Text = ArchitectureSmokeSummary;
+            _assertions.ItemsSource = null;
+            _artifacts.ItemsSource = null;
+            _currentSource = null;
+            _openSource.IsEnabled = false;
+            _source.Text = "独立ArchitectureSmoke.exe，无当前NUnit/TCT用例源码定位。";
+            _error.Text = result == null ? "当前没有独立进程运行结果。" :
+                (string.IsNullOrWhiteSpace(result.Failure) ?
+                    (result.Succeeded ? "独立进程执行成功（非逐项Passed）" : state) :
+                    result.Failure);
+            SelectedObservationTitle = null;
+            SelectedObjectId = null;
+            SelectedObjectDetails = null;
+            _observation.Text = "ArchitectureSmoke使用原有CLI，不生成测试观察Owner。";
+            _objectDetail.Text = "当前非MEM工程对象选择。";
+            _tabs.SelectedIndex = 0;
+        }
+
         public void ShowCase(ITCTTestCase test)
         {
+            ArchitectureSmokeSummary = null;
             _assertions.ItemsSource = null;
             _artifacts.ItemsSource = null;
             SelectedObservationTitle = null;
@@ -100,6 +143,7 @@ namespace CxVisual.TestCenter.UI
         }
         public void ShowResult(TCTTestCaseResult result)
         {
+            ArchitectureSmokeSummary = null;
             if (result == null) return;
             SelectedObservationTitle = null;
             SelectedObjectId = null;
