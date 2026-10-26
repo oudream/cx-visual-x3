@@ -462,7 +462,11 @@ namespace CxVisual.TestCenter.UI
         private async void Calculate()
         {
             FIMImageBuffer image = _viewer.ActiveImage;
-            if (image == null) throw new InvalidOperationException("未加载图像。");
+            if (image == null)
+            {
+                Show("统计失败：请先加载图像。");
+                return;
+            }
             FIMPixelRegion? region = _withRoi.IsChecked == true ? _viewer.SelectedRegion : null;
             CancelAnalysis();
             CancellationTokenSource cancellation = new CancellationTokenSource();

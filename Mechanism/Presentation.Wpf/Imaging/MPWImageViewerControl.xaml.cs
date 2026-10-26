@@ -946,7 +946,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 return p.DistanceTo(center) <= tolerance;
             }
             if (item.Kind == MVIImageOverlayKind.PolygonRoi ||
-                item.Kind == MVIImageOverlayKind.PolygonAnnotation)
+                item.Kind == MVIImageOverlayKind.PolygonAnnotation ||
+                (item.Kind == MVIImageOverlayKind.AreaMeasurement && item.Points.Count >= 3))
                 return item.Points.Count >= 3 && FGEGeometry2D.PointInPolygon(p, item.Points);
             if (item.Kind == MVIImageOverlayKind.EllipseRoi ||
                 item.Kind == MVIImageOverlayKind.CircleRoi ||

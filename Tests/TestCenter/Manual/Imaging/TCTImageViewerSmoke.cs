@@ -325,6 +325,45 @@ namespace CxVisual.TestCenter.UI
                 if (!badAngle || frame.Viewer.Overlays.Find(programPolygon.Id) == null)
                     throw new InvalidOperationException("Invalid angle geometry must not modify overlay store");
                 Console.WriteLine("PASS TCT WPF polygon/angle: geometry, 90 degrees and degenerate rejection");
+                frame.Viewer.PixelSpacing = new FIMPixelSpacing(0.2,0.4);
+                MVIImageOverlayItem horiz = frame.Viewer.AddOverlay(new MVIImageOverlayItem(
+                    MVIImageOverlayKind.HorizontalMeasurement,MVIImageOverlayLayer.Measurement,
+                    new FGERect2D(.5,1.5,3,0),
+                    new[]{new FGEPoint2D(.5,1.5),new FGEPoint2D(3.5,1.5)}));
+                MVIImageOverlayItem vert = frame.Viewer.AddOverlay(new MVIImageOverlayItem(
+                    MVIImageOverlayKind.VerticalMeasurement,MVIImageOverlayLayer.Measurement,
+                    new FGERect2D(1.5,.5,0,3),
+                    new[]{new FGEPoint2D(1.5,.5),new FGEPoint2D(1.5,3.5)}));
+                MVIImageOverlayItem diameter = frame.Viewer.AddOverlay(new MVIImageOverlayItem(
+                    MVIImageOverlayKind.DiameterMeasurement,MVIImageOverlayLayer.Measurement,
+                    new FGERect2D(0,0,4,4)));
+                MVIImageOverlayItem area = frame.Viewer.AddOverlay(new MVIImageOverlayItem(
+                    MVIImageOverlayKind.AreaMeasurement,MVIImageOverlayLayer.Measurement,
+                    new FGERect2D(0,0,3,3),new[]{
+                    new FGEPoint2D(0,0), new FGEPoint2D(3,0), new FGEPoint2D(0,3)}));
+                string length = frame.Viewer.DescribeMeasurement(horiz);
+                string elevation = frame.Viewer.DescribeMeasurement(vert);
+                string dia = frame.Viewer.DescribeMeasurement(diameter);
+                string polygonArea = frame.Viewer.DescribeMeasurement(area);
+                if (!length.Contains("0.6 mm") || !elevation.Contains("1.2 mm") ||
+                    !dia.Contains("X 0.8 mm / Y 1.6 mm") ||
+                    !polygonArea.Contains("4.5 px²") || !polygonArea.Contains("1.8 mm²") ||
+                    frame.Viewer.OverlayVisualCount < 10)
+                    throw new InvalidOperationException("WPF complete measurement labels, non-square calibration or polygon geometry failed");
+                string csvFile = Path.Combine(Path.GetTempPath(),
+                    "CxVisual-Imaging-Measurements-"+Guid.NewGuid().ToString("N")+".csv");
+                try
+                {
+                    frame.ExportMeasurementsCsv(csvFile);
+                    string csv = File.ReadAllText(csvFile);
+                    if (!csv.Contains(horiz.Id.ToString("D")) || !csv.Contains("1.8 mm²") ||
+                        !csv.Contains("Vertices") || !csv.Contains("0:0"))
+                        throw new InvalidOperationException("Measurement CSV omitted GUID/calibration/vertices");
+                }
+                finally { if (File.Exists(csvFile)) File.Delete(csvFile); }
+                frame.Viewer.PixelSpacing = null;
+                if (frame.Viewer.DescribeMeasurement(horiz).Contains("mm"))
+                    throw new InvalidOperationException("Uncalibrated image falsely exports millimeters");
                 frame.Viewer.ClearOverlays();
                 if (frame.Viewer.VisibleOverlayCount != 0 || frame.Viewer.OverlayVisualCount != 0)
                     throw new InvalidOperationException("Overlay clear must remove all native WPF shapes");
