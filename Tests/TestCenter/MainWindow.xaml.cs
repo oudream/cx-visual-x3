@@ -377,7 +377,11 @@ namespace CxVisual.TestCenter.UI
                 descriptor.WorkspaceId == "auto.catalog" ||
                 (descriptor.IsCreatedInstance && descriptor.TemplateId == "auto.catalog");
             AutoActionHost.Visibility = plan ? Visibility.Visible : Visibility.Collapsed;
-            ManualActionHost.Visibility = plan ? Visibility.Collapsed : Visibility.Visible;
+            // 已创建的NUnit/TCT计划同时使用通用Run控制和计划专属命令；
+            // ArchitectureSmoke只使用其独立进程的运行/停止，不冒充TCT Attempt。
+            bool createdPlan = descriptor.IsCreatedInstance && descriptor.TemplateId == "auto.catalog";
+            ManualActionHost.Visibility = createdPlan || !plan ?
+                Visibility.Visible : Visibility.Collapsed;
             if (!_openingWorkspace) Explorer.SelectWorkspace(descriptor.WorkspaceId);
             ITCTWorkspaceFrame frame = (DocumentHost.Content as TabControl)
                 ?.SelectedItem is TabItem ? ((TabItem)((TabControl)DocumentHost.Content).SelectedItem)
@@ -466,8 +470,11 @@ namespace CxVisual.TestCenter.UI
             // Catalog用例选择只更新Inspector/上下文，不抢走已打开计划的操作中心。
             TabItem activeTab = (DocumentHost.Content as TabControl)?.SelectedItem as TabItem;
             bool insideCreatedPlan = activeTab != null && activeTab.Content is TCTTestPlanControl;
-            AutoActionHost.Visibility = insideCreatedPlan ? Visibility.Collapsed : Visibility.Visible;
-            ManualActionHost.Visibility = insideCreatedPlan ? Visibility.Visible : Visibility.Collapsed;
+            if (!(activeTab != null && activeTab.Content is TCTArchitectureSmokeFrame))
+            {
+                AutoActionHost.Visibility = Visibility.Visible;
+                ManualActionHost.Visibility = insideCreatedPlan ? Visibility.Visible : Visibility.Collapsed;
+            }
             _ribbon.SetContext(test);
             WorkspaceTitle.Text = test == null ? "测试主界面 / Overview" :
                 test.Descriptor.Aspect + " / " + test.Descriptor.Group + " / " + test.Descriptor.Name;
