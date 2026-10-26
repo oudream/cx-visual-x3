@@ -1,0 +1,68 @@
+# CxVisual 通用二维视觉工作台——P2 显示变换与成熟功能迁移实证 V1.0
+
+> 日期：2026-10-26。主仓库 `oudream/cx-visual-x3`，`ReferTo` 保持只读；继续原 Foundation.Imaging / Mechanism.Visual / Mechanism.Presentation.Wpf / TestCenter 项目，不新增工程和Adapter/Wrapper。**当前仍属P2部分能力完成，不是用户60条完整验收。**
+>
+> 本文实证来自当前提交的源码及GitHub Actions；不将旧成熟代码的历史生产经验当作x3的设备验收。
+
+## 1. 本轮直接承接的旧类/功能
+
+| 原成熟源码 | 当前Owner/实际新类型 | 正式落地及真实使用路径 | 不得虚报的缺口 |
+|---|---|---|---|
+| `ReferTo/Vision/CxECTImageWinForms/Models/ImageDisplayState.cs`、`Halcon/ImagePresentationProcessor.cs` | MVI `MVIImageDisplayState`、FIM `FIMImageToneMapping` | 原始窗口、Gamma、亮度/对比度、反色、自动对比度；MPW订阅显示变化，TCT直接调整参数 | 需与HALCON GammaImage等同工业图像逐样本/速度对照，不是bit-exact迁移 |
+| `Models/ImageTransformState.cs` | MVI `MVIImageTransformState`、现有FIMImageOperations | 0/90/180/270浏览旋转、双向镜像、边界坐标正逆投影；MPW所有ROI/叠加项/拾取共用相同映射；TestCenter可操作 | 旧任意角度旋转、亚像素ROI投影及性能未完成 |
+| `Models/ImageComparisonState.cs` | MVI `MVIImageComparisonState`、FIM `FIMImageBlend` | 同位深Gray8/16、BGR/BGRA原图/结果图透明加权，保留源和Alpha；MPW真实显示，TCT设定比例 | `SideBySide` 是**未启用**模式，真正双视图、同步Pan/Zoom、滑动幕帘与配准尚缺 |
+| `Controls/Visualization/HistogramPlotControl.cs`、`LineProfilePlotControl.cs` | MPW `MPWImagePlotControl` | 原生WPF双实例绘制曲线、刻度、网格；FIM给出原始灰度Histogram/LineProfile，TestCenter多标签显示 | 没有实现高级交互十字线、频谱/连通域与全场景分析 |
+| `Controls/Visualization/ImageRulerControl.cs` | MPW `MPWImageRulerControl`、FIM `FIMPixelSpacing` | WPF双轴标尺绑定MVI视口；非等距mm/px、旋转/镜像方向、未标定拒绝mm；TCT能设定间距和恢复px | 未与现场相机/CT完整几何标定、畸变校正链集成 |
+| `Models/ImageToolMode.cs`、`Halcon/HalconImageCanvas.cs`、`Models/Overlays/*` | MVI `MVIImageToolMode`、`MVIImageOverlayStore`、MPW WPF Canvas | 图层、框/圆/椭圆/多边形ROI、点/文字/箭头/缺陷、距离与三点角度交互；多边形双击完成，角度第三点完成，原图坐标贯通到统计/拾取 | 旋转矩形、自由曲线、完整控制柄/缩放/锁定/层排序、MRC唯一Undo/工程持久化尚缺 |
+
+**不可混淆**：正式像素操作 `FIMImageOperations.Rotate90Clockwise` 会生成新结果图；`MVIImageTransformState.Rotate90Clockwise` **只改变显示状态**、原图像素与测量坐标不变。两者在TestCenter分别有明确按钮。
+
+## 2. 本轮提交范围与测试
+
+| 主题 | 相关提交及源码 |
+|---|---|
+| 显示 | `9514f46` MVI显示状态/FIM ToneMapping；`6faeb5f` MPW呈现接线；`3b85138` TestCenter操作；`a5590dd` WPF显示窗口反例修正 |
+| 图像几何 | `ebd5e0e` MVI四向正逆映射/FIM Rotate180；`5300459` MPW源图与覆盖项统一映射；`376f5b9` TCT操作与WPF Gray16转向回环 |
+| 比较 | `9b75838` MVI比较模式/FIM原始位深 Blend；`ff98f7a` MPW叠合；`4c70d3a` TCT真实混合比例/结果图回环 |
+| 图形分析 | `788b18a` MPW曲线控件；`4b0969e` TCT分析页；`1949cb8` WPF曲线专项回归 |
+| Polygon/Angle | `a2a92d6` MVI两工具；`b68ef1d` WPF布点绘制与角度值；`877dee2` WPF真实窗口正反例 |
+| 双轴标尺 | `cb655b8` MPW标尺控件；`1c4a6d2` 与MPW旋转视口接线；`5c8699d` 新图自动清理标定；`cd55430` TCT操作；`f61e5a0` WPF标尺/镜像反证；`68f887a` 未标定显示mm防御 |
+
+### 最近已取得的真实成功证据
+
+- [Imaging专项 40252379651](https://github.com/oudream/cx-visual-x3/actions/runs/40252379651)：`a5590dd` 显示状态FIM数值+WPF PNG+原图未变完成。
+- [Imaging专项 40252653002](https://github.com/oudream/cx-visual-x3/actions/runs/40252653002)：`376f5b9` 旋转/镜像、ROI与WPF正逆变换完成。
+- [Imaging专项 40252886406](https://github.com/oudream/cx-visual-x3/actions/runs/40252886406)：`4c70d3a` 混合16位原图/结果PNG回环完成。
+- [Imaging专项 40253127564](https://github.com/oudream/cx-visual-x3/actions/runs/40253127564)：`1949cb8` WPF直方图/线剖面数值传入及全解决方案编译完成。
+- [Imaging专项 40253465120](https://github.com/oudream/cx-visual-x3/actions/runs/40253465120)：`877dee2` 多边形/三点角度WPF工作区、计算结果和退化反证完成。
+- **物理标尺阶段**：本轮最新提交的成功/失败必须由最新提交对应CI运行证明；不能以此前绿色运行代替。
+
+所有上述Imaging CI的验收范围是Windows x64全解决方案编译、项目结构/依赖、FIM/MVI专项和默认ArchitectureSmoke以及单独STA WPF窗口PNG与图形结果验证。它**不等于**TestCenter全部UIA、HALCON真实SDK、生产设备、百万帧持续运行、4300²大图性能或完整功能60项验收。
+
+## 3. 正式使用入口与验证示例
+
+```csharp
+// C# .NET Framework 4.8 / WPF UI线程
+MPWImageViewerControl viewer = new MPWImageViewerControl();
+viewer.ShowOriginal(imageGray16);
+viewer.DisplayState.SetGamma(1.8);
+viewer.DisplayState.SetInverted(true);
+viewer.RotateViewClockwise(); // 浏览态：原图16位数据不变
+viewer.PixelSpacing = new FIMPixelSpacing(0.1, 0.12);
+viewer.ShowPhysicalRulers = true;
+viewer.ShowResult(processedGray16); // 同尺寸同位深
+viewer.BlendOriginalAndResult(0.5);  // 严格校验
+viewer.SaveViewPng("with-overlays.png");
+// 分析：FIMImageAnalyzer.GetHistogram/GetLineProfile，MPWImagePlotControl展示
+```
+
+TestCenter路径：`Tests/TestCenter/Manual/Imaging/TCTManualImageViewerFrame.cs`，手工工作区 `manual.imaging`；`--imaging-viewer-smoke` 为真实WPF窗口专项测试。工程类/运行类使用原来统一Owner，不建立另一套持久图像工程、历史命令中心或数据流水线。
+
+## 4. 接下来必须关闭的差距
+
+1. P2：真正 `SideBySide` 多图、同步缩放/平移/配准与透明滑动比较；旧旋转矩形/多边形编辑手柄/文本与画笔/全套ROI，图层排序、源坐标几何与唯一Undo持久化；任意角旋转与亚像素。
+2. P3：边缘/连通域/形状、轮廓/周长/拟合、完整测量和分析参数/输入输出、旧HALCON/OpenCV数值比对。
+3. P4：文件序列、相机/网络/共享内存、异步批量背压、性能测量/缓存/零拷贝；不得把当前纯CPU逐像素路径当成高速产线指标。
+4. P5/P6：设备/专业SDK、Studio/MRC配置完整闭环、工程保存重开、UIA操作截图、人机工程和实机连续运行。
+
+**最后裁决**：成熟旧功能优先恢复，确有对象职责不妥才原位重构。采用OOP清楚Owner，GoF用于MVI可变状态与通知，AOP由现有任务日志/耗时/异常边界复用；禁止为了功能勾选量新建空类、第二工程树、重复算法或Adapter中转层。
