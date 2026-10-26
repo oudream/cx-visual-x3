@@ -33,6 +33,28 @@ namespace CxVisual.TestCenter.UI
                 if (frame.Viewer.ActiveImage != image)
                     throw new InvalidOperationException("FIM image not attached to real MPW viewport");
                 frame.Viewer.FitToWindow();
+                frame.Viewer.PixelSpacing = new FIMPixelSpacing(0.2, 0.3);
+                frame.Viewer.ShowPhysicalRulers = true;
+                frame.Viewer.ActualSize();
+                if (frame.Viewer.HorizontalRulerControl.Unit != "mm" ||
+                    frame.Viewer.VerticalRulerControl.Unit != "mm" ||
+                    frame.Viewer.HorizontalRulerControl.EndValue <= frame.Viewer.HorizontalRulerControl.StartValue)
+                    throw new InvalidOperationException("Physical ruler not bound to native WPF viewport");
+                double startRuler = frame.Viewer.HorizontalRulerControl.EndValue -
+                    frame.Viewer.HorizontalRulerControl.StartValue;
+                frame.Viewer.FlipViewHorizontal();
+                double mirroredRuler = frame.Viewer.HorizontalRulerControl.EndValue -
+                    frame.Viewer.HorizontalRulerControl.StartValue;
+                if (startRuler * mirroredRuler >= 0)
+                    throw new InvalidOperationException("Mirror must reverse the native ruler coordinates");
+                frame.Viewer.FlipViewHorizontal();
+                bool badSpacing = false;
+                try { frame.Viewer.PixelSpacing = default(FIMPixelSpacing); }
+                catch (ArgumentOutOfRangeException) { badSpacing = true; }
+                if (!badSpacing) throw new InvalidOperationException("Uninitialized physical spacing accepted");
+                frame.Viewer.PixelSpacing = null;
+                if (frame.Viewer.HorizontalRulerControl.Unit != "px")
+                    throw new InvalidOperationException("Removing calibration must restore pixel units");
                 frame.Viewer.Zoom(1.25);
                 frame.Viewer.ActualSize();
                 frame.Viewer.SelectRegion(new FIMPixelRegion(1,1,2,2));
