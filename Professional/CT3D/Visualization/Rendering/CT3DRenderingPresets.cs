@@ -1,30 +1,30 @@
-using CxECTVolumeCore.Utils;
+using CxVisual.Foundation.Volume;
 using System;
 
-namespace CxECTVolumeCore.Rendering
+namespace CxVisual.Professional.CT3D
 {
     // 预设提供稳定的基础外观，可编辑曲线通过独立开关覆盖对应通道。
     /// <summary>第一阶段提供的基础体渲染外观；可编辑传递函数仍由独立开关决定是否覆盖它。</summary>
-    public enum RenderingPresetKind
+    public enum CT3DRenderingPresetKind
     {
         LinearGrayscale,
         SlicerLikeGrayscale
     }
 
-    public static class RenderingTransferFunctionPresets
+    public static class CT3DRenderingPresets
     {
-        public static float EvaluateBaseOpacity(RenderingPresetKind preset, float scalar)
+        public static float EvaluateBaseOpacity(CT3DRenderingPresetKind preset, float scalar)
         {
-            return EvaluateBaseOpacity(preset, scalar, RenderingIntensityProfile.FullRange);
+            return EvaluateBaseOpacity(preset, scalar, FVOVolumeIntensityProfile.FullRange);
         }
 
         public static float EvaluateBaseOpacity(
-            RenderingPresetKind preset,
+            CT3DRenderingPresetKind preset,
             float scalar,
-            RenderingIntensityProfile intensityProfile)
+            FVOVolumeIntensityProfile intensityProfile)
         {
-            scalar = FrameworkCompat.Clamp(scalar, 0.0f, 1.0f);
-            if (preset == RenderingPresetKind.LinearGrayscale)
+            scalar = Clamp(scalar, 0.0f, 1.0f);
+            if (preset == CT3DRenderingPresetKind.LinearGrayscale)
             {
                 return scalar;
             }
@@ -55,12 +55,12 @@ namespace CxECTVolumeCore.Rendering
         }
 
         public static float EvaluateBaseGray(
-            RenderingPresetKind preset,
+            CT3DRenderingPresetKind preset,
             float scalar,
-            RenderingIntensityProfile intensityProfile)
+            FVOVolumeIntensityProfile intensityProfile)
         {
-            scalar = FrameworkCompat.Clamp(scalar, 0.0f, 1.0f);
-            if (preset == RenderingPresetKind.LinearGrayscale)
+            scalar = Clamp(scalar, 0.0f, 1.0f);
+            if (preset == CT3DRenderingPresetKind.LinearGrayscale)
             {
                 return scalar;
             }
@@ -75,9 +75,14 @@ namespace CxECTVolumeCore.Rendering
             return 0.20f + 0.80f * (float)Math.Pow(displayScalar, 0.62f);
         }
 
+        private static float Clamp(float value, float min, float max)
+        {
+            return Math.Max(min, Math.Min(max, value));
+        }
+
         private static float Lerp(float left, float right, float amount)
         {
-            return left + (right - left) * FrameworkCompat.Clamp(amount, 0.0f, 1.0f);
+            return left + (right - left) * Clamp(amount, 0.0f, 1.0f);
         }
     }
 }

@@ -32,6 +32,7 @@
     <Compile Include="Slicing\FVOSliceImageBuilder.cs"/>
     <Compile Include="Analysis\FVOVolumeHistogram.cs"/>
     <Compile Include="Analysis\FVOVolumeIntensityProfile.cs"/>
+    <Compile Include="TransferFunctions\FVOVolumeTransferFunctions.cs"/>
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\Foundation\Imaging\CxVisual.Foundation.Imaging.csproj"><Project>{16709C88-01FC-58BA-8D9F-A14A04D73BAA}</Project><Name>CxVisual.Foundation.Imaging</Name></ProjectReference>

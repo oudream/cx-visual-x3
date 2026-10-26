@@ -1,16 +1,19 @@
-namespace CxECTVolumeCore.Rendering
+using System;
+using CxVisual.Foundation.Volume;
+
+namespace CxVisual.Professional.CT3D
 {
     // 这里只定义渲染配置，不持有任何 OpenGL 或 WinForms 对象。
     /// <summary>保存体渲染、彩色切面和传递函数的可调参数。</summary>
-    public sealed class RenderingSettings
+    public sealed class CT3DRenderingSettings
     {
-        public RenderingSettings()
+        public CT3DRenderingSettings()
         {
-            TransferFunctions = new RenderingTransferFunctionSet();
-            Material = new RenderingMaterialSettings();
-            Sampling = new RenderingSamplingSettings();
-            Intensity = new RenderingIntensitySettings();
-            Preset = RenderingPresetKind.SlicerLikeGrayscale;
+            TransferFunctions = new FVOTransferFunctionSet();
+            Material = new CT3DMaterialSettings();
+            Sampling = new CT3DSamplingSettings();
+            Intensity = new CT3DIntensitySettings();
+            Preset = CT3DRenderingPresetKind.SlicerLikeGrayscale;
             ShowSlices = true;
             ShowSliceTexture = false;
             ShowVolume = true;
@@ -20,15 +23,15 @@ namespace CxECTVolumeCore.Rendering
         }
 
         // 这些设置会被 RenderingVolumeControl 转换为 shader uniform 或 1D transfer texture。
-        public RenderingTransferFunctionSet TransferFunctions { get; private set; }
+        public FVOTransferFunctionSet TransferFunctions { get; private set; }
 
-        public RenderingMaterialSettings Material { get; private set; }
+        public CT3DMaterialSettings Material { get; private set; }
 
-        public RenderingSamplingSettings Sampling { get; private set; }
+        public CT3DSamplingSettings Sampling { get; private set; }
 
-        public RenderingIntensitySettings Intensity { get; private set; }
+        public CT3DIntensitySettings Intensity { get; private set; }
 
-        public RenderingPresetKind Preset { get; set; }
+        public CT3DRenderingPresetKind Preset { get; set; }
 
         public bool ShowSlices { get; set; }
 
@@ -43,12 +46,32 @@ namespace CxECTVolumeCore.Rendering
         public float SliceOpacity { get; set; }
 
         public float VolumeOpacity { get; set; }
+
+        /// <summary>FVO曲线与CT3D渲染预设的直接组合；产生GPU RGBA8纹理。</summary>
+        public byte[] BuildScalarTransferTexture(FVOVolumeData volume)
+        {
+            if (volume == null) throw new ArgumentNullException("volume");
+            FVOIntensityRangeOptions options = new FVOIntensityRangeOptions
+            {
+                AutoRange = Intensity.AutoRange,
+                BackgroundGrayUpper = Intensity.BackgroundGrayUpper,
+                LowerPercentile = Intensity.LowerPercentile,
+                UpperPercentile = Intensity.UpperPercentile
+            };
+            FVOVolumeIntensityProfile profile = FVOVolumeIntensityProfile.FromVolume(volume, options);
+            float scale = Preset == CT3DRenderingPresetKind.SlicerLikeGrayscale
+                ? Intensity.PresetOpacityScale : 1.0f;
+            return TransferFunctions.BuildScalarTransferTexture(
+                x => CT3DRenderingPresets.EvaluateBaseGray(Preset, x, profile),
+                x => CT3DRenderingPresets.EvaluateBaseOpacity(Preset, x, profile),
+                scale);
+        }
     }
 
     /// <summary>控制默认灰阶预设如何从当前体数据中识别背景并展开有效灰度。</summary>
-    public sealed class RenderingIntensitySettings
+    public sealed class CT3DIntensitySettings
     {
-        public RenderingIntensitySettings()
+        public CT3DIntensitySettings()
         {
             AutoRange = true;
             BackgroundGrayUpper = 0;
@@ -74,9 +97,9 @@ namespace CxECTVolumeCore.Rendering
     }
 
     /// <summary>体渲染的光照材质参数；数值会直接映射到体渲染 Shader。</summary>
-    public sealed class RenderingMaterialSettings
+    public sealed class CT3DMaterialSettings
     {
-        public RenderingMaterialSettings()
+        public CT3DMaterialSettings()
         {
             Ambient = 0.34f;
             Diffuse = 0.62f;
@@ -94,9 +117,9 @@ namespace CxECTVolumeCore.Rendering
     }
 
     /// <summary>控制射线步进质量和采样稳定性，不包含任何 UI 状态。</summary>
-    public sealed class RenderingSamplingSettings
+    public sealed class CT3DSamplingSettings
     {
-        public RenderingSamplingSettings()
+        public CT3DSamplingSettings()
         {
             // 线性纹理过滤下按最长轴约一体素采样；抖动用于抑制固定步长产生的层纹。
             StepScale = 1.0f;

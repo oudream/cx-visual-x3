@@ -6,6 +6,7 @@ on:
     paths:
       - 'Foundation/Imaging/**'
       - 'Foundation/Volume/**'
+      - 'Professional/CT3D/**'
       - 'Tests/ArchitectureSmoke/Integration/FVOVolumeTests.cs'
       - 'Foundation/Geometry/**'
       - 'Mechanism/Visual/Imaging/**'
