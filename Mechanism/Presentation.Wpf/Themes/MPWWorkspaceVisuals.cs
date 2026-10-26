@@ -68,7 +68,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             Path icon = new Path {
                 Data = geometry, Stretch = Stretch.Uniform, Height = 15, Width = 16,
                 StrokeThickness = 1.6, Fill = Brushes.Transparent,
-                StrokeLineCap = PenLineCap.Round, StrokeLineJoin = PenLineJoin.Round,
+                StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round,
+                StrokeLineJoin = PenLineJoin.Round,
                 Margin = new Thickness(0, 0, 7, 0),
                 VerticalAlignment = VerticalAlignment.Center
             };
