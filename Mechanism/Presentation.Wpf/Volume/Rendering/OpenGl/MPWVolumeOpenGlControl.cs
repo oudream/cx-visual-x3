@@ -24,6 +24,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
         private GlApi _gl;
         private uint _shader, _vao, _vbo, _volumeTexture, _scalarTexture, _gradientTexture;
         private uint _sliceShader, _sliceVao, _sliceVbo, _lineShader, _lineVao, _lineVbo;
+        private uint _obliqueTexture;
+        private byte[] _obliquePixels;
+        private int _obliqueWidth,_obliqueHeight;
         private float _sliceX=.5f, _sliceY=.5f, _sliceZ=.5f, _sliceOpacity=.35f;
         private MVISliceViewport _xyBounds=MVISliceViewport.Full;
         private MVISliceViewport _xzBounds=MVISliceViewport.Full;
@@ -128,6 +131,46 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
             RenderFrame();
         }
 
+        /// <summary>旧版斜切面专用2D纹理；高精度切片像素与三维空间四角分离。</summary>
+        public void SetObliqueTexture(byte[] grayscale,int width,int height)
+        {
+            if(grayscale==null)
+            {
+                _obliquePixels=null;_obliqueWidth=_obliqueHeight=0;
+            }
+            else
+            {
+                if(width<=0||height<=0||grayscale.LongLength!=(long)width*height)
+                    throw new ArgumentException("任意切纹理尺寸错误。");
+                _obliquePixels=(byte[])grayscale.Clone();
+                _obliqueWidth=width;_obliqueHeight=height;
+            }
+            if(IsAvailable)
+            {
+                MakeCurrent();
+                UploadObliqueTexture();
+                RenderFrame();
+            }
+        }
+
+        private void UploadObliqueTexture()
+        {
+            if(_obliqueTexture!=0)
+            {
+                _gl.DeleteTextures(1,ref _obliqueTexture);
+                _obliqueTexture=0;
+            }
+            if(_obliquePixels==null)return;
+            _gl.GenTextures(1,out _obliqueTexture);
+            _gl.ActiveTexture(0x84C1);
+            _gl.BindTexture(0x0DE1,_obliqueTexture); // GL_TEXTURE_2D
+            glPixelStorei(0x0CF5,1);
+            PinBytes(_obliquePixels,p=>glTexImage2D(0x0DE1,0,0x8229,
+                _obliqueWidth,_obliqueHeight,0,0x1903,0x1401,p));
+            TextureParameters(0x0DE1);
+            _gl.TexParameteri(0x0DE1,0x2803,0x812F);
+        }
+
         public void ResetCamera()
         {
             _yaw = .62f; _pitch = .36f; _distance = 2.9f; RenderFrame();
@@ -208,6 +251,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
                 glBlendFunc(0x0302,0x0303); // SRC_ALPHA, ONE_MINUS_SRC_ALPHA
                 IsAvailable = true; FailureReason = null;
                 if (_voxels != null) UploadTextures();
+                if (_obliquePixels!=null) UploadObliqueTexture();
                 RenderFrame();
             }
             catch (Exception exception)
@@ -244,6 +288,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
                 if (_volumeTexture != 0) _gl.DeleteTextures(1,ref _volumeTexture);
                 if (_scalarTexture != 0) _gl.DeleteTextures(1,ref _scalarTexture);
                 if (_gradientTexture != 0) _gl.DeleteTextures(1,ref _gradientTexture);
+                if (_obliqueTexture != 0) _gl.DeleteTextures(1,ref _obliqueTexture);
                 if (_vbo != 0) _gl.DeleteBuffers(1,ref _vbo);
                 if (_sliceVbo != 0) _gl.DeleteBuffers(1,ref _sliceVbo);
                 if (_lineVbo != 0) _gl.DeleteBuffers(1,ref _lineVbo);
@@ -255,6 +300,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
             wglDeleteContext(_context); _context = IntPtr.Zero; IsAvailable = false;
             _shader = _vao = _vbo = _volumeTexture = _scalarTexture = _gradientTexture = 0;
             _sliceShader = _lineShader = _sliceVao = _sliceVbo = _lineVao = _lineVbo = 0;
+            _obliqueTexture=0;
             _gl = null;
         }
 
@@ -384,6 +430,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
             int stride=checked(width*4);
             byte[] bottomUp=new byte[checked(stride*height)];
             glPixelStorei(0x0D05,1); // GL_PACK_ALIGNMENT
+            glReadBuffer(0x0404); // GL_FRONT: SwapBuffers之后读取正在显示的帧，不读无效的Back buffer
             PinBytes(bottomUp,p=>glReadPixels(0,0,width,height,0x80E1,0x1401,p)); // BGRA/UNSIGNED_BYTE
             byte[] topDown=new byte[bottomUp.Length];
             for(int row=0;row<height;row++)
@@ -449,8 +496,15 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
                 if (_obliqueCorners != null)
                 {
                     Uniform1("showSliceTexture",1);
+                    Uniform1("useObliqueTexture",_obliqueTexture!=0?1:0);
+                    if(_obliqueTexture!=0)
+                    {
+                        _gl.ActiveTexture(0x84C1);
+                        _gl.BindTexture(0x0DE1,_obliqueTexture);
+                    }
                     Uniform1("showSlicePlanes",1);
                     _gl.DrawArrays(0x0004,18,6);
+                    Uniform1("useObliqueTexture",0);
                 }
             }
             if (_showBounds)
@@ -499,7 +553,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
                 output[offset++]=x-.5f; output[offset++]=y-.5f; output[offset++]=z-.5f;
                 output[offset++]=x; output[offset++]=y; output[offset++]=z;
                 output[offset++]=red; output[offset++]=green; output[offset++]=blue;
-                output[offset++]=0; output[offset++]=0;
+                // 正交面无需额外UV；任意切按四角顺序提供真正的2D纹理坐标。
+                output[offset++]=coords.Length==12 ? (vertex==1||vertex==2?1:0) : 0;
+                output[offset++]=coords.Length==12 ? (vertex>=2?1:0) : 0;
             }
         }
 
@@ -586,6 +642,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
         [DllImport("kernel32.dll",CharSet=CharSet.Unicode)] private static extern IntPtr GetModuleHandle(string module);
         [DllImport("kernel32.dll",CharSet=CharSet.Ansi)] private static extern IntPtr GetProcAddress(IntPtr module,string name);
         [DllImport("opengl32.dll")] private static extern void glPixelStorei(uint name,int value);
+        [DllImport("opengl32.dll")] private static extern void glReadBuffer(uint mode);
+        [DllImport("opengl32.dll")] private static extern void glTexImage2D(uint target,int level,int internalFormat,
+            int width,int height,int border,uint pixelFormat,uint pixelType,IntPtr pixels);
         [DllImport("opengl32.dll")] private static extern void glEnable(uint flag);
         [DllImport("opengl32.dll")] private static extern void glBlendFunc(uint source,uint destination);
         private static bool ValidProc(IntPtr value)

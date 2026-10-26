@@ -33,7 +33,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                   gpu.BaseType.FullName == "System.Windows.Interop.HwndHost",
                   "真正的WPF HWND宿主而非WinForms GLControl");
             foreach (string api in new[] { "SetVolume", "UpdateTransfer", "SetRendering",
-                     "SetSceneOptions", "SetSlicePositions", "CaptureFrame", "ResetCamera" })
+                     "SetSceneOptions", "SetSlicePositions", "SetObliqueTexture", "CaptureFrame", "ResetCamera" })
                 Check(gpu.GetMethod(api, BindingFlags.Public | BindingFlags.Instance) != null,
                     "缺少体绘真实API："+api);
             Console.WriteLine("PASS MPW legacy GLSL, WGL renderer entrypoints and geometry compiled (physical GPU pending)");

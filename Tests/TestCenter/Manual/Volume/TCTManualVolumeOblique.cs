@@ -174,7 +174,11 @@ namespace CxVisual.TestCenter.UI
                 _obliqueViewer.Clear();
                 _scene.SetObliqueSlice(null,default(Point3D),default(Point3D),
                     default(Point3D),default(Point3D));
-                if(_gpu!=null)_gpu.SetObliqueCorners(null);
+                if(_gpu!=null)
+                {
+                    _gpu.SetObliqueTexture(null,0,0);
+                    _gpu.SetObliqueCorners(null);
+                }
                 return;
             }
             if(_obliqueFollow.IsChecked==true &&
@@ -204,6 +208,17 @@ namespace CxVisual.TestCenter.UI
                     Tex(p01.X,_volume.OriginalWidth),Tex(p01.Y,_volume.OriginalHeight),Tex(p01.Z,_volume.OriginalDepth)
                 };
                 _gpu.SetObliqueCorners(corners);
+                if(_gpu.IsAvailable)
+                {
+                    // 旧RenderingVolumeControl的独立斜切2D纹理：使用唯一FVO数值采样。
+                    // GPU只接受灰度数组；真实RAW高位深切片另由BuildScalar导出。
+                    FIMImageBuffer gray=FVOObliqueSliceBuilder.BuildPreview(_volume,data,
+                        false,0,255,CancellationToken.None);
+                    byte[] bgr=gray.CopyPixels();
+                    byte[] pixels=new byte[checked(gray.Width*gray.Height)];
+                    for(int n=0;n<pixels.Length;n++)pixels[n]=bgr[n*3];
+                    _gpu.SetObliqueTexture(pixels,gray.Width,gray.Height);
+                }
             }
         }
 
