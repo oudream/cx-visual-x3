@@ -140,6 +140,27 @@ namespace CxVisual.TestCenter.UI
                 if (!frame.Viewer.Overlays.Remove(distance.Id) ||
                     frame.Viewer.VisibleOverlayCount != 3)
                     throw new InvalidOperationException("Overlay delete/repaint not reflected");
+                MVIImageOverlayItem programPolygon = frame.Viewer.AddPolygonRoi(new[] {
+                    new FGEPoint2D(0.5, 0.5), new FGEPoint2D(3.5,0.5),
+                    new FGEPoint2D(2.0,3.5) });
+                MVIImageOverlayItem angle = frame.Viewer.AddAngleMeasurement(new[] {
+                    new FGEPoint2D(0.5,1.5), new FGEPoint2D(1.5,1.5),
+                    new FGEPoint2D(1.5,2.5) });
+                double degrees = FIMImageMeasurement.GetAngleDegrees(
+                    angle.Points[0],angle.Points[1],angle.Points[2]);
+                if (Math.Abs(degrees-90) > 0.000001 ||
+                    frame.Viewer.VisibleOverlayCount != 5 || frame.Viewer.OverlayVisualCount < 6)
+                    throw new InvalidOperationException("WPF polygon/three-point angle failed to render");
+                bool badAngle = false;
+                try
+                {
+                    frame.Viewer.AddAngleMeasurement(new[] {
+                        new FGEPoint2D(1,1), new FGEPoint2D(1,1), new FGEPoint2D(3,3) });
+                }
+                catch (ArgumentException) { badAngle = true; }
+                if (!badAngle || frame.Viewer.Overlays.Find(programPolygon.Id) == null)
+                    throw new InvalidOperationException("Invalid angle geometry must not modify overlay store");
+                Console.WriteLine("PASS TCT WPF polygon/angle: geometry, 90 degrees and degenerate rejection");
                 frame.Viewer.ClearOverlays();
                 if (frame.Viewer.VisibleOverlayCount != 0 || frame.Viewer.OverlayVisualCount != 0)
                     throw new InvalidOperationException("Overlay clear must remove all native WPF shapes");
