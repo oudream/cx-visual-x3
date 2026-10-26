@@ -35,6 +35,9 @@ namespace CxVisual.TestCenter.UI
         private ITCTWorkspaceFrame _currentFrame;
         private bool _openingWorkspace;
         private bool _testConsoleOpenedManually;
+        // 手动开启的专业测试控制台只绑定当前Workspace身份；
+        // 同一Tab重复激活不应丢失，切换不同工作区则自动收起。
+        private string _testConsoleWorkspaceId;
         private GridLength _savedTestConsoleWidth = new GridLength(320);
         private bool _automatedRunContext;
         private CancellationTokenSource _cancel;
@@ -405,10 +408,20 @@ namespace CxVisual.TestCenter.UI
                  (descriptor.IsCreatedInstance &&
                     (descriptor.TemplateId == "auto.catalog" ||
                      descriptor.TemplateId == "auto.architecture-smoke")));
+            // 仅真实切换工作区时清理专业手动打开状态。
+            // 过去每次OnWorkspaceActivated都清零，切换配置内页或复选当前Tab
+            // 会使已打开的“保存/校验”等命令消失，Connector删除后无法继续保存。
+            string workspaceId = descriptor == null ? null : descriptor.WorkspaceId;
+            bool changedWorkspace = !string.Equals(_testConsoleWorkspaceId,
+                workspaceId, StringComparison.Ordinal);
+            if (changedWorkspace)
+            {
+                _testConsoleWorkspaceId = workspaceId;
+                _testConsoleOpenedManually = false;
+            }
             // 测试工作区的普通选中并不等于有正在执行/查看的Run；
             // 关闭最后一个计划或Smoke页后，概览不应无故保留侧栏。
             if (!autoTest && descriptor != null) _automatedRunContext = false;
-            if (!autoTest && !_automatedRunContext) _testConsoleOpenedManually = false;
             SetTestConsoleVisible(autoTest || _automatedRunContext || _testConsoleOpenedManually);
         }
 

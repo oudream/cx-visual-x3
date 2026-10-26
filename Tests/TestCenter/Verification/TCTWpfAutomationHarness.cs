@@ -617,7 +617,30 @@ namespace CxVisual.TestCenter.UI
                 throw new InvalidOperationException("删除悬空映射后未恢复正式校验合法");
             window.Dispatcher.Invoke(new Action(() =>
                 SaveScreenshot(window, "TestCenter-Protocol-P0-Deleted.png")));
-            TraceUiStage("Connector deletion / pre-save");
+            // MPW删除会刷新动态Schema，主窗口应保留当前专业工作区手动开启的
+            // 测试控制台。先从WPF真实状态核实，再通过独立UIA执行保存，禁止
+            // 依赖测试侧重新打开面板掩盖工作区重激活时丢失命令的产品缺陷。
+            bool consoleVisible = false;
+            bool saveDeclared = false;
+            bool moduleStillActive = false;
+            window.Dispatcher.Invoke(new Action(() => {
+                consoleVisible = window.IsTestConsoleVisible;
+                System.Windows.Controls.TabControl tabs =
+                    window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                System.Windows.Controls.TabItem selected = tabs == null ? null :
+                    tabs.SelectedItem as System.Windows.Controls.TabItem;
+                TCTManualModuleFrame frame = selected == null ? null :
+                    selected.Content as TCTManualModuleFrame;
+                moduleStillActive = frame != null && frame.ActiveModuleId == moduleId;
+                saveDeclared = frame != null && frame.Commands.Any(x => x.Id == "module.save");
+            }));
+            TraceUiStage("Connector deletion / pre-save console=" + consoleVisible +
+                ", module=" + moduleStillActive + ", command=" + saveDeclared);
+            if (!consoleVisible || !moduleStillActive || !saveDeclared)
+                throw new InvalidOperationException(
+                    "Connector删除后丢失当前工作区测试控制台或正式保存命令：" +
+                    "Visible=" + consoleVisible + ", Active=" + moduleStillActive +
+                    ", Save=" + saveDeclared);
             InvokePattern save = Find(root, "TCT.Manual.Action.module.save")
                 .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
             if (save == null) throw new InvalidOperationException("映射删除后的保存命令缺失");
