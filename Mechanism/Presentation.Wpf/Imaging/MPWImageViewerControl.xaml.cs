@@ -236,6 +236,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 throw new ArgumentException("窗口下限与上限必须一起指定或一起清除。");
             if (low.HasValue && (!IsFinite(low.Value) || !IsFinite(high.Value) || high.Value <= low.Value))
                 throw new ArgumentOutOfRangeException("high");
+            FIMImageBuffer current = ActiveImage;
+            if (low.HasValue && current != null &&
+                (current.PixelFormat == FIMPixelFormat.Bgr24 || current.PixelFormat == FIMPixelFormat.Bgra32))
+                throw new NotSupportedException("彩色图不能使用单通道窗宽窗位；请使用亮度、Gamma、对比度。");
             if (!low.HasValue) _displayState.SetAutoWindowLevel(true);
             else _displayState.SetWindowLevel((low.Value + high.Value) * 0.5, high.Value - low.Value);
         }
