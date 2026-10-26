@@ -1174,6 +1174,11 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         public void ClearOverlays(MVIImageOverlayLayer? layer = null)
         {
             VerifyAccess();
+            // 专业用户操作必须尊重锁定；但新图/关闭Viewer走会话Clear，
+            // 会连同旧原图一起释放所有对象，不能残留跨源ROI。
+            if (_overlays.Items.Any(x=>x.IsLocked &&
+                (!layer.HasValue || x.Layer==layer.Value)))
+                throw new InvalidOperationException("存在已锁定对象，请先解锁再清空。");
             _overlays.Clear(layer);
         }
 

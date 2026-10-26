@@ -552,6 +552,11 @@ namespace CxVisual.TestCenter.UI
                 catch (InvalidOperationException) { lockedRejected=true; }
                 if (!lockedRejected)
                     throw new InvalidOperationException("锁定ROI仍允许API缩放");
+                bool lockedClearRejected=false;
+                try { frame.Viewer.ClearOverlays(MVIImageOverlayLayer.Roi); }
+                catch (InvalidOperationException) { lockedClearRejected=true; }
+                if (!lockedClearRejected || frame.Viewer.Overlays.Find(polyEdit.Id)==null)
+                    throw new InvalidOperationException("普通用户清空操作越过锁定保护");
                 lockButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 if (frame.Viewer.Overlays.Find(polyEdit.Id).IsLocked ||
                     frame.Viewer.ResizeHandleVisualCount!=8)

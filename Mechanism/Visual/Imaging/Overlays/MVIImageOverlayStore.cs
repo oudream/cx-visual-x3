@@ -81,6 +81,8 @@ namespace CxVisual.Mechanism.Visual
         {
             int index = _items.FindIndex(x => x.Id == id);
             if (index < 0) return false;
+            if (_items[index].IsLocked)
+                throw new InvalidOperationException("对象已锁定；普通删除必须先解锁。");
             _items.RemoveAt(index);
             Notify();
             return true;

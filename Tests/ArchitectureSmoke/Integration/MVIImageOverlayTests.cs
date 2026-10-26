@@ -117,6 +117,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 "不得绕过锁定对象重新层叠");
             Fail<InvalidOperationException>(()=>stacking.Find(back.Id).Translate(1,1),
                 "锁定ROI拒绝几何移动");
+            Fail<InvalidOperationException>(()=>stacking.Remove(back.Id),
+                "锁定ROI拒绝普通Store删除");
             Fail<InvalidOperationException>(()=>stacking.Find(back.Id).WithResizedRoiHandle(
                 MVIImageResizeHandle.Right,new FGEPoint2D(8,2),16,16),
                 "锁定ROI拒绝编辑柄");
