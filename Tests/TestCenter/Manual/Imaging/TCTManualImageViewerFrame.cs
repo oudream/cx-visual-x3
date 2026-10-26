@@ -52,6 +52,12 @@ namespace CxVisual.TestCenter.UI
             MinWidth = 144, Margin = new Thickness(3) };
         private readonly TextBox _annotationText = new TextBox {
             Width = 95, Text = "标注", Margin = new Thickness(2) };
+        private readonly MPWImagePlotControl _histogramPlot = new MPWImagePlotControl();
+        private readonly MPWImagePlotControl _profilePlot = new MPWImagePlotControl();
+        private readonly TabControl _inspectTabs = new TabControl();
+        private FIMImageBuffer _plottedSource;
+        public MPWImagePlotControl HistogramPlot { get { return _histogramPlot; } }
+        public MPWImagePlotControl ProfilePlot { get { return _profilePlot; } }
         private readonly ListBox _overlayList = new ListBox {
             Height = 142, Margin = new Thickness(5),
             FontSize = 12, Background = Brushes.White };
@@ -151,6 +157,7 @@ namespace CxVisual.TestCenter.UI
             AddButton(analysis, "应用显示", "ApplyDisplay", ApplyDisplay);
             analysis.Children.Add(_withRoi);
             AddButton(analysis, "灰度统计/直方图", "Analyze", Calculate);
+            AddButton(analysis, "灰度剖面", "LineProfile", ShowLineProfile);
             AddButton(analysis, "阈值掩码", "Threshold", Threshold);
             AddButton(analysis, "清除ROI", "RemoveRoi", () => _viewer.ClearSelection());
             Grid.SetRow(analysis, 1); root.Children.Add(analysis);
@@ -180,19 +187,27 @@ namespace CxVisual.TestCenter.UI
                 BorderThickness = new Thickness(1), Child = _viewer };
             body.Children.Add(viewerFrame);
             DockPanel side = new DockPanel { Background = Brushes.WhiteSmoke };
-            TextBlock summary = new TextBlock { Text = "基础图像结果 / ROI 数据",
+            TextBlock summary = new TextBlock { Text = "图像分析 / ROI与标注",
                 FontWeight = FontWeights.SemiBold, Margin = new Thickness(8),
                 Foreground = Brushes.DarkSlateBlue };
             DockPanel.SetDock(summary, Dock.Top); side.Children.Add(summary);
-            DockPanel.SetDock(_overlayList, Dock.Top); side.Children.Add(_overlayList);
             WrapPanel overlayButtons = new WrapPanel { Margin = new Thickness(3) };
             AddButton(overlayButtons, "删除选中", "DeleteOverlay", DeleteSelectedOverlay);
             AddButton(overlayButtons, "左移1px", "MoveOverlay", () => MoveSelectedOverlay(-1, 0));
             AddButton(overlayButtons, "隐藏/显示层", "LayerVisibility", ToggleSelectedLayer);
             AddButton(overlayButtons, "显示所有层", "ShowAllLayers", ShowAllLayers);
             AddButton(overlayButtons, "清空标注", "ClearOverlays", () => _viewer.ClearOverlays());
-            DockPanel.SetDock(overlayButtons, Dock.Top); side.Children.Add(overlayButtons);
-            side.Children.Add(_info);
+            DockPanel overlayPanel = new DockPanel();
+            DockPanel.SetDock(overlayButtons, Dock.Top);
+            overlayPanel.Children.Add(overlayButtons);
+            _overlayList.Height = double.NaN;
+            overlayPanel.Children.Add(_overlayList);
+
+            _inspectTabs.Items.Add(new TabItem { Header = "数据", Content = _info });
+            _inspectTabs.Items.Add(new TabItem { Header = "直方图", Content = _histogramPlot });
+            _inspectTabs.Items.Add(new TabItem { Header = "灰度剖面", Content = _profilePlot });
+            _inspectTabs.Items.Add(new TabItem { Header = "图层/对象", Content = overlayPanel });
+            side.Children.Add(_inspectTabs);
             Grid.SetColumn(side, 1); body.Children.Add(side);
             Grid.SetRow(body, 3); root.Children.Add(body);
 
@@ -213,6 +228,16 @@ namespace CxVisual.TestCenter.UI
             _annotationText.TextChanged += (sender,args) =>
                 _viewer.AnnotationText = _annotationText.Text;
             _viewer.Overlays.Changed += (sender,args) => RefreshOverlayList();
+            _viewer.Session.Changed += (sender,args) =>
+            {
+                FIMImageBuffer current = _viewer.ActiveImage;
+                if (!ReferenceEquals(current, _plottedSource))
+                {
+                    _plottedSource = current;
+                    _histogramPlot.Clear();
+                    _profilePlot.Clear();
+                }
+            };
             _viewer.SelectionChanged += (s,e) =>
             {
                 if (_viewer.SelectedRegion.HasValue)
@@ -531,6 +556,9 @@ namespace CxVisual.TestCenter.UI
             FIMImageAnalysisResult analysis = FIMImageAnalyzer.Analyze(image, 32, region);
             FIMImageStatistics stats = analysis.Statistics;
             long[] bins = analysis.Histogram.Bins.ToArray();
+            _histogramPlot.SetHistogram(analysis.Histogram);
+            _plottedSource = image;
+            _inspectTabs.SelectedIndex = 1;
             _info.Text = "图像：" + image.Width + "×" + image.Height + "\n" +
                 "格式：" + image.PixelFormat + "\n" +
                 "ROI：" + (region.HasValue ? BoundsText(region.Value) : "全图") + "\n" +
@@ -541,6 +569,36 @@ namespace CxVisual.TestCenter.UI
                 "32档直方图（原始灰度域）\n" +
                 string.Join("\n", bins.Select((n,i) => i.ToString("D2") + "   " + n));
             Show("原始像素统计已完成，不受窗宽窗位影响");
+        }
+
+        private void ShowLineProfile()
+        {
+            FIMImageBuffer image = _viewer.ActiveImage;
+            if (image == null) throw new InvalidOperationException("未加载图像。");
+            int x0 = 0, y0 = image.Height / 2, x1 = image.Width - 1, y1 = y0;
+            Guid? id = SelectedOverlayId();
+            MVIImageOverlayItem item = id.HasValue ? _viewer.Overlays.Find(id.Value) : null;
+            if (item != null && item.Points.Count >= 2)
+            {
+                x0 = (int)Math.Round(item.Points[0].X);
+                y0 = (int)Math.Round(item.Points[0].Y);
+                x1 = (int)Math.Round(item.Points[1].X);
+                y1 = (int)Math.Round(item.Points[1].Y);
+            }
+            else if (_viewer.SelectedRegion.HasValue)
+            {
+                FIMPixelRegion roi = _viewer.SelectedRegion.Value;
+                x0 = roi.Left; y0 = roi.Top; x1 = roi.Right; y1 = roi.Bottom;
+            }
+            x0 = Math.Min(image.Width - 1, Math.Max(0, x0));
+            x1 = Math.Min(image.Width - 1, Math.Max(0, x1));
+            y0 = Math.Min(image.Height - 1, Math.Max(0, y0));
+            y1 = Math.Min(image.Height - 1, Math.Max(0, y1));
+            _profilePlot.SetLineProfile(FIMImageAnalyzer.GetLineProfile(image,x0,y0,x1,y1));
+            _plottedSource = image;
+            _inspectTabs.SelectedIndex = 2;
+            Show("原始灰度剖面：" + "(" + x0 + "," + y0 + ") → (" + x1 + "," + y1 +
+                ")，不受显示Gamma和窗宽窗位影响");
         }
 
         private void Save()
