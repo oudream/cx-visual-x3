@@ -299,8 +299,31 @@ namespace CxVisual.Tests.ArchitectureSmoke
             }
         }
 
+        private static void VariableCasSmoke()
+        {
+            MDSVariableTable table = new MDSVariableTable("cas");
+            table.Define(new MDSVariableDefinition("pressure", typeof(double), null, true, null, "CAS1"));
+            MDSVariable<double> variable = table.Resolve<double>("pressure");
+            MDSVariableUpdateResult accepted = variable.Update(1.0,
+                new MDSVariableUpdateOptions("operator", expectedRevision: 0));
+            Check(accepted.Revision == 1 && accepted.ValueChanged && variable.Snapshot().Source == "operator",
+                "CAS第一次提交成功并保留来源");
+            MDSVariableUpdateResult failed;
+            Check(!variable.TryUpdate(2.0, 0, out failed) && failed == null &&
+                variable.Snapshot().CurrentValue == 1.0 && variable.Snapshot().Revision == 1,
+                "旧版本不得修改当前值或版本");
+            Reject<MDSVariableVersionConflictException>(() => variable.Update(2.0,
+                new MDSVariableUpdateOptions(expectedRevision: 0)));
+            MDSVariableUpdateResult refresh = variable.Update(1.0,
+                new MDSVariableUpdateOptions(expectedRevision: 1));
+            Check(!refresh.ValueChanged && refresh.Revision == 2 &&
+                variable.Snapshot().ChangeUtc <= refresh.RefreshUtc,
+                "同值刷新提升Revision但不提升变化语义");
+        }
+
         public static void Run()
         {
+            VariableCasSmoke();
             VariableProviderSmoke();
             VariableBoundAccessSmoke();
             VariableDispatcherSmoke();

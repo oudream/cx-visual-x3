@@ -199,16 +199,34 @@ namespace CxVisual.Mechanism.Data.Variables
         // 原有Table.Update仍然调用此方法，保证只有变量本身拥有值和状态。
         public void Update(T value)
         {
-            Commit(value, MDSVariableQuality.Good, null, false);
+            Commit(value, MDSVariableQuality.Good, null, false, null);
+        }
+        public MDSVariableUpdateResult Update(T value, MDSVariableUpdateOptions options)
+        {
+            if (options == null) throw new ArgumentNullException("options");
+            return Commit(value, options.Quality, options.Source, false, options.ExpectedRevision);
+        }
+        public bool TryUpdate(T value, long expectedRevision, out MDSVariableUpdateResult result)
+        {
+            try
+            {
+                result = Commit(value, MDSVariableQuality.Good, null, false, expectedRevision);
+                return true;
+            }
+            catch (MDSVariableVersionConflictException)
+            {
+                result = null; return false;
+            }
         }
 
         // 后续Provider接入从同一Owner提交，允许Provider刷新只读变量。
         internal void RefreshFromProvider(T value, MDSVariableQuality quality, string source)
         {
-            Commit(value, quality, source, true);
+            Commit(value, quality, source, true, null);
         }
 
-        private void Commit(T value, MDSVariableQuality quality, string source, bool fromProvider)
+        private MDSVariableUpdateResult Commit(T value, MDSVariableQuality quality,
+            string source, bool fromProvider, long? expectedRevision)
         {
             object copied = MDSVariableValueRules.Copy(value);
             if (!Enum.IsDefined(typeof(MDSVariableQuality), quality))
@@ -216,11 +234,15 @@ namespace CxVisual.Mechanism.Data.Variables
             Action<string> notify;
             Action<MDSVariableChange> observer;
             MDSVariableChange captured = null;
+            MDSVariableUpdateResult result;
             lock (_gate)
             {
                 if (_removed) throw new ObjectDisposedException("MDSVariable");
                 if (!fromProvider && !_definition.Writable)
                     throw new InvalidOperationException("变量为只读: " + _definition.Name);
+                if (expectedRevision.HasValue && _revision != expectedRevision.Value)
+                    throw new MDSVariableVersionConflictException(_definition.VariableId,
+                        expectedRevision.Value, _revision);
                 T next = (T)copied;
                 bool changed = !_hasValue || !MDSVariableValueRules.Equal(_current, next);
                 bool qualityChanged = _quality != quality;
@@ -241,6 +263,8 @@ namespace CxVisual.Mechanism.Data.Variables
                 _source = source ?? _source;
                 _refreshUtc = now;
                 _revision = checked(_revision + 1);
+                result = new MDSVariableUpdateResult(_definition.VariableId,
+                    changed, _revision, _quality, now);
                 notify = _notify;
                 observer = _observer;
                 if (observer != null)
@@ -255,6 +279,7 @@ namespace CxVisual.Mechanism.Data.Variables
             // 高速路径只有在订阅变化捕获时才创建不可变快照，旧通知继续兼容。
             if (observer != null) observer(captured);
             if (notify != null) notify(_definition.Name);
+            return result;
         }
     }
 }
