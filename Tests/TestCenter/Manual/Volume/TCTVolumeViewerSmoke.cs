@@ -52,6 +52,18 @@ namespace CxVisual.TestCenter.UI
                 Check(frame.XyViewer.ActiveImage != null &&
                       frame.XzViewer.ActiveImage != null &&
                       frame.YzViewer.ActiveImage != null, "三个MPW WPF图窗均须实际显示图像");
+                for(int view=0;view<4;view++)
+                {
+                    string viewPath=Path.Combine(Path.GetTempPath(),
+                        "CxVisual-Volume-Selected-"+Guid.NewGuid().ToString("N")+".png");
+                    try
+                    {
+                        frame.SaveSelectedViewPng(viewPath,view);
+                        Check(File.Exists(viewPath)&&new FileInfo(viewPath).Length>512,
+                            "旧版当前视图XY/YZ/XZ/3D独立PNG输出应有效");
+                    }
+                    finally {if(File.Exists(viewPath))File.Delete(viewPath);}
+                }
                 frame.UpdateCrosshairs();
                 Check(frame.VisibleCrosshairCount == 6, "三个二维图窗必须显示六条十字线");
                 Check(frame.Scene.SlicePlaneCount == 3, "三张WPF空间贴图切面");

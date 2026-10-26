@@ -38,6 +38,7 @@ namespace CxVisual.TestCenter.UI
         private readonly TextBox _upperPercentText = new TextBox { Width=65,Text="99.5",Margin=new Thickness(4) };
         private readonly TextBlock _legacyDetails = new TextBlock { TextWrapping=TextWrapping.Wrap };
         private readonly CheckBox _autoSliceFit = new CheckBox { Content="自动适合视图",IsChecked=true };
+        private readonly ComboBox _saveViewChoice=new ComboBox { Margin=new Thickness(4),Height=28 };
         public int LegacyTopTabCount { get { return _upperTabs == null ? 0 : _upperTabs.Items.Count; } }
         public int LegacyBottomTabCount { get { return _lowerTabs == null ? 0 : _lowerTabs.Items.Count; } }
         public bool IsLegacySingleView { get { return _maximizedSlot != null; } }
@@ -124,6 +125,22 @@ namespace CxVisual.TestCenter.UI
             AddUpperTab("灰阶映射",gray);
             AddUpperTab("渲染效果",render);
             AddUpperTab("任意切",oblique);
+            Label(display,"当前视图及图像保存");
+            StackPanel viewActions=new StackPanel { Orientation=Orientation.Horizontal };
+            _saveViewChoice.Width=125;
+            _saveViewChoice.Items.Add("XY主视图");
+            _saveViewChoice.Items.Add("YZ侧视图");
+            _saveViewChoice.Items.Add("XZ底视图");
+            _saveViewChoice.Items.Add("3D视图");
+            _saveViewChoice.SelectedIndex=0;
+            AutomationProperties.SetAutomationId(_saveViewChoice,"TCT.Volume.SaveViewSelection");
+            viewActions.Children.Add(_saveViewChoice);
+            Button saveView=new Button { Content="保存当前视图PNG",
+                Margin=new Thickness(5,3,3,3),Padding=new Thickness(6,3,6,3) };
+            AutomationProperties.SetAutomationId(saveView,"TCT.Volume.SaveSelectedImage");
+            saveView.Click+=(s,e)=>SaveSelectedViewDialog();
+            viewActions.Children.Add(saveView);
+            display.Children.Add(viewActions);
             Label(display,"切片导航 / 三刀联动");
             AddAxis(display,"X",_sliderX,"TCT.Volume.SliceX");
             AddAxis(display,"Y",_sliderY,"TCT.Volume.SliceY");
@@ -389,6 +406,48 @@ namespace CxVisual.TestCenter.UI
                 candidate.Visibility=Visibility.Visible;
             }
             _maximizedSlot=null;
+        }
+
+        private void SaveSelectedViewDialog()
+        {
+            if(_volume==null) { MessageBox.Show("请先加载体数据。","保存当前视图");return; }
+            Microsoft.Win32.SaveFileDialog dlg=new Microsoft.Win32.SaveFileDialog {
+                Filter="PNG 图像 (*.png)|*.png",FileName="CxVisual-Volume-View.png" };
+            if(dlg.ShowDialog()!=true)return;
+            try { SaveSelectedViewPng(dlg.FileName,_saveViewChoice.SelectedIndex); }
+            catch(Exception error) { MessageBox.Show(error.Message,"保存视图失败"); }
+        }
+
+        /// <summary>单视图输出复用MPW图窗，GPU直接读显卡帧；不通过四视图截图裁切。</summary>
+        public void SaveSelectedViewPng(string filename,int viewIndex)
+        {
+            if(_volume==null)throw new InvalidOperationException("尚未加载体数据。");
+            if(String.IsNullOrWhiteSpace(filename))throw new ArgumentNullException("filename");
+            if(viewIndex<0||viewIndex>3)throw new ArgumentOutOfRangeException("viewIndex");
+            if(viewIndex<3)
+            {
+                MPWImageViewerControl viewer=viewIndex==0?_xy:viewIndex==1?_yz:_xz;
+                viewer.SavePng(filename);
+                return;
+            }
+            BitmapSource pixels;
+            if(IsGpuVolumeRendering)
+                pixels=_gpu.CaptureFrame();
+            else
+            {
+                int width=(int)Math.Ceiling(_scene.ActualWidth);
+                int height=(int)Math.Ceiling(_scene.ActualHeight);
+                if(width<=0||height<=0)throw new InvalidOperationException("3D视图还没有有效尺寸。");
+                RenderTargetBitmap picture=new RenderTargetBitmap(width,height,96,96,PixelFormats.Pbgra32);
+                picture.Render(_scene);
+                pixels=picture;
+            }
+            PngBitmapEncoder encoder=new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(pixels));
+            string full=Path.GetFullPath(filename);
+            string folder=Path.GetDirectoryName(full);
+            if(!Directory.Exists(folder))Directory.CreateDirectory(folder);
+            using(FileStream file=File.Create(full))encoder.Save(file);
         }
 
         private void SaveScreenshotDialog()
