@@ -57,3 +57,33 @@ Studio 的专业 Ribbon 图标选择、MEM 资源编辑面板、二维/三维专
 ## 6. 防回退原则
 
 共享颜色、图标、按钮、文本框、工作区 Tab **不得再分别复制**到 Studio 或 TestCenter；新增专业布局仅组合公共视觉组件，仍由应用 Owner 决定操作可用性。缺失真实 Owner 或未执行的 Test 不得显示伪状态、伪结果。每次涉及公共样式变更必须至少执行 Studio S1 与 TestCenter Windows 两项 CI，并保存实际截图证据。
+
+## 7. 2026-10-26 公共WPF视觉P0增量与Windows真实验收
+
+> 本节为V1.0的增量实证记录，不覆盖历史结论。验收结论只对所列SHA生效；本轮仅改公共样式、Studio现有STA断言和TestCenter CI检查，不改MEM/MOL/MDS/专业业务或测试实例生命周期。
+
+### 7.1 实际源码与视觉行为
+
+- 公共视觉Owner：`Mechanism/Presentation.Wpf/Themes/MPWWorkspaceControls.xaml`。在既有`MPWTreeItemStyle`加入Hover/Selected/Disabled状态，不替换原生TreeViewItem模板；`MPWDataGridStyle`复用新增列头/行Style，保留原生排序、列宽调整和虚拟化；`MPWDockHeaderTemplate`、`MPWToolDockHeaderTemplate`、`MPWDocumentTabStyle`采用固定布局的独立选中强调线，避免通过边框厚度变化影响Tab测量。
+- 真实截图发现Studio中央AvalonDock文档标签标题被严重裁切：旧`DocumentSurface`上下Padding 8/7与实际宿主标签高度不符。将其收敛为1/1、选中强调线2px，长标题保留Ellipsis并增加完整Title的ToolTip；在修复后Windows原生WPF截图中，“主页”“HMI图元与Symbol”“主流程编排”“P0-2电机组件”均完整可读。
+- Studio在既有`StudioShellSelfTests.cs`的S1-04中通过STA实际加载文档/工具Header、验证独立强调线以及共享DataGrid/TreeView样式合同，不新增测试机制。TestCenter继续通过同一公共XAML字典引用样式。
+
+对应实际提交（均在master）：`2247152`、`0b7d03b`（修复提交后发现的XAML字面量换行）、`3990f54`、`0137c1a`、`6ca4c61`。
+
+### 7.2 Windows验收与错误闭环
+
+| 证据 | 固定SHA / 工作流 | 实际结论 |
+|---|---|---|
+| Studio S1 | `6ca4c61` / [#40339984345](https://github.com/oudream/cx-visual-x3/actions/runs/40339984345) | **Success**；.NET48全解决方案Windows构建及真实WPF STA自检、浅色/深色截图Artifact |
+| TestCenter全量与UIA | `8d7f5a9` / [#40341114296](https://github.com/oudream/cx-visual-x3/actions/runs/40341114296) | **Success**；真实WPF UIA、四个MHS模块保存重开、ArchitectureSmoke与截图；默认142/142，Regression Profile 147项×3轮=441次，均无失败 |
+| 失败归因 | `6ca4c61` / [#40339984097](https://github.com/oudream/cx-visual-x3/actions/runs/40339984097) | CI的“Parallel repeat”错误按默认142项预估426次，而Regression确有147项、441次且0失败；非WPF编译、UIA或代码错误 |
+| CI门禁修复 | `8d7f5a9` | 以Regression唯一用例集合×3为期望，强制覆盖默认142用例、每个用例恰好三轮、AttemptId唯一、所有结果成功；真实Windows复跑通过 |
+
+原生截图证据位于以上两个成功运行的`Studio-WPF-Visual-Review`和`TestCenter-WPF-UIA` Artifact。必须继续以截图评判文字清晰度及视觉效果，不能单凭UIA/构建绿色判断美观。
+
+### 7.3 仍未完成（不冒充验收）
+
+1. TestCenter深色工作区内部仍存在白色表面搭配过浅文字的**真实对比度问题**：公共文字主题与专业Frame固定背景尚未完全建立成对的明暗语义，需从真实控件Owner逐处排查；本轮不通过粗暴全局颜色覆盖破坏图像/专业Viewer。
+2. 100%、125%、150% DPI及多屏系统缩放的逐档真实桌面验收**尚未完成**；当前仅有CI runner实际WPF窗口截图，不推断全部DPI已合格。
+3. Tab拖拽、浮动、关闭及布局恢复依靠既有工作流/STA测试覆盖，未新增所有专业页面的人工逐操作验收。仍需针对DataGrid排序/调整列宽、TreeView键盘与辅助功能做更完整截图/交互核查。
+4. 视觉基准以TestCenter浅色、Studio浅/深色继续收敛；程序图标安装态/任务栏固定快捷方式的不同DPI视觉效果仍需真实桌面人工复核。
