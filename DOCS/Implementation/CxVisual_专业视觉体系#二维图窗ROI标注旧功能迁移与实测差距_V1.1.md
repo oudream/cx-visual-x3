@@ -77,3 +77,32 @@
 ### 6.2 仍未完成与后续顺序
 
 本轮仅关闭成熟Viewer的一个P2交互包：ROI八方向外接框缩放、锁定和前后单步层叠。尚缺旋转矩形、顶点级多边形编辑/自由曲线、旋转控制柄、特定圆半径与形状约束、用户快捷键、多个对象批量选择与属性面板、统一MRC Undo/Redo和持久化。大规模Overlay对象拖动的WPF重绘压力、跨DPI、真实X-Ray高位深图、直接物理鼠标拖柄测试与工业现场均未验收。未来继续围绕唯一FGE/MVI/MPW，不复刻旧HALCON设备句柄或另建Undo/Object Store。
+
+## 7. 2026-10-26 多边形逐顶点编辑及线性复杂度回归
+
+本节是第6节之后的**实际代码增量与独立验收结果**。第6.2节曾列“顶点级多边形编辑”未完成；本节把**单顶点移动这一闭环**更新为已实现/已自动验收，不能因此把添加删除顶点、旋转矩形、Bezier曲线和整套P2认定为完成。
+
+| 成熟功能对照 | 唯一正式Owner与代码 | 实际使用及测试 | 结论 |
+|---|---|---|---|
+| `ReferTo/CxECTImageWinForms/Models/Overlays/ImageOverlayItem.cs` 的Points/Bounds/Id/样式 | `MVIImageOverlayItem.WithMovedPolygonVertex` | 按索引编辑一个顶点，其余点和Guid、样式/图层/锁不变；重算FGERect2D；坐标钳位原图；退化、绕向反转、自交、越权、非法索引拒绝 | **已实现，MVI数值回归通过** |
+| 既有`MVIImageOverlayStore.Replace` Observer | 不新增多边形状态仓库 | 每次有效顶点修改使用唯一Store快照替换并通知MPW，错误几何不落库 | **已验证** |
+| 原成熟Viewer多边形编辑意图 / WPF矢量Canvas | `MPWImageViewerControl`现有`DrawOverlaysOn` + `DrawPolygonVertexHandles`、`BeginPolygonVertexEdit`、`UpdatePolygonVertexEdit` | 顶点呈金色11DIP手柄；各自Viewport做原图正逆坐标变换；左/右视图共用同一个多边形；切换工具、隐藏或锁定清掉编辑柄 | **真实WPF控件及双Pane测试通过** |
+| 专业使用入口 | `MVIImageToolMode.EditPolygonVertex`、`TCTManualImageViewerLayout/Frame` | TestCenter“区域”面板“逐顶点编辑”，与对象列表及八柄缩放互斥；开发者可调用`MoveSelectedPolygonVertex`获得更新后的MVI对象 | **真实WPF按钮操作+数值/异常反证通过** |
+| 多顶点工业ROI性能 | MVI只检查受编辑顶点影响的2条边，其余边拓扑不变 | 单次求交由全边两两比较`O(n²)`降至`O(n)`；新增2048顶点圆轮廓移动真值验证 | **线性算法与长轮廓功能已测试；尚无大图帧率压测** |
+| 前轮对象锁/快照 | `WithVisibility`、`WithStyle` | 修复快照路径遗漏`IsLocked`，避免锁状态在新对象构造时丢失；非法编辑维持原Store状态 | **已编译/回归** |
+
+### 7.1 实际提交、CI与异常反证
+
+- [228be6c](https://github.com/oudream/cx-visual-x3/commit/228be6c3bdb47fd0e2cf1cf5b2c92277dc3a056f)：MVI原图多边形逐顶点几何、身份、边界及失败拒绝。该首提交有一次测试整数常量`uint`/ `int`编译错误，**在后续提交中已修复**，不可将这次失败说成绿色。
+- [5d017bf](https://github.com/oudream/cx-visual-x3/commit/5d017bfda83681a36c95abc77e2ed42a5482a40a)：WPF金色顶点柄、左右视口拖动和TestCenter入口；修正编译常量。
+- [3935c41](https://github.com/oudream/cx-visual-x3/commit/3935c4186972f1c2676598664a4ebf24f25b0d43)：实际WPF按钮、隐藏层、双视口3顶点投影、退化拒绝及模式往返自动化。
+- **最终功能提交**：[f99f0e0](https://github.com/oudream/cx-visual-x3/commit/f99f0e0520c563e9800fdf658495ef648019f495)：线性复杂度自交检测、2048点轮廓回归。
+- [Windows Imaging #40322777275](https://github.com/oudream/cx-visual-x3/actions/runs/40322777275)：**SUCCESS，13步**；现有Windows x64/.NET48解决方案构建、FIM/MVI及STA实际WPF图窗/ROI/叠加验证。
+- [完整TestCenter Windows #40322777171](https://github.com/oudream/cx-visual-x3/actions/runs/40322777171)：**SUCCESS，29步**；原测试控制台、真实WPF UI Automation、NUnit/Worker、结果历史与并行重跑等回归通过。
+- [Engineering #40322777244](https://github.com/oudream/cx-visual-x3/actions/runs/40322777244)：**FAIL**，仍是H01独立Studio测试宿主找不到公共`MPWInputStyle`资源，属于此前公共视觉资源集成问题；不可把本轮二维成功误写成七仓全面绿灯。
+
+### 7.2 未闭合的P2能力及边界
+
+**仍待完成**：在多边形边上插入顶点、删除顶点、完整自交输入修复；旋转矩形与旋转手柄；多选、样式面板；Studio唯一Undo/Redo、工程持久化；远程设备流与工业高位深/大图验证。现有Windows WPF覆盖真实控件、模式、按钮与数值状态，**不等价于Win32物理鼠标拖柄/多DPI和现场HIL验收**。复杂度降为O(n)不等于已证明大规模ROI逐帧GPU/CPU渲染时延。
+
+下一组先复用已有FGE几何及MVI Overlay快照，把旋转矩形的几何Owner、交互控制柄、输出/测量和实际Windows测试闭环完成；不创建第二套Undo或SDK对象仓库。
