@@ -50,3 +50,30 @@
 3. 恢复旧`ImageRulerControl`、`HistogramPlotControl`、`LineProfilePlotControl`的显示能力，转为真正的WPF专用控件，补旧新同样本输出和鼠标实际验收。
 4. 用旧`ImageComparisonState`恢复原结果图、并排、叠合、联动、差异；用至少一套工业8/16位实际图像与原程序并行验收。
 5. 任何缺失必须标明阶段/Owner/源文件，不准仅以生成一批接口、测试小图片就标记P2/P3完成。
+
+## 6. P2 连续实施：八方向ROI编辑、对象锁定与层叠排序（2026-10-26）
+
+**源码与证据最新基线**：功能提交`0b14df18ba73f0a2c8ba840826d1ed4d227ddd5e`。历史第4节“八控制柄/锁定/图层排序未完成”属于此前快照，**本节更新这些单项的状态**，但不能将整项P2、旋转矩形或完整编辑器视为完成。
+
+| ReferTo原实现/功能 | 当前正式Owner/方法 | 用户入口/数值效果 | 当前等级 |
+|---|---|---|---|
+| `ImageViewerControl.ResizeRoi`、`ImageToolMode.ResizeRoi` | `MVIImageOverlayItem.WithResizedRoiHandle` + `MVIImageResizeHandle` 八方向 | 原图连续坐标四边/角拖动，钳位于图像范围，最小0.25px，不允许倒置；形状、顶点及对象GUID保留 | 已实现/编译/自动测试 |
+| `ImageOverlayItem.Bounds/Points` 和 `OverlayStore` | MVI现有`WithBounds`、`MVIImageOverlayStore.Replace` | 矩形、圆/椭圆ROI、多边形按照BoundingBox编辑；多边形顶点按比例一起更新，不复制对象Store | 已实现/验证，圆/自由曲线的完整几何编辑仍需后续 |
+| `HalconImageCanvas` 交互控制柄及缩放重绘思想 | `MPWImageViewerControl` 同一控件的`DrawResizeHandles`、`BeginResize`、`UpdateResize` | 左右视图都按自己的MVI视口投影8个9DIP控制柄；拖拽事件使用显示坐标逆映射到原图（含90°、镜像）；同一Guid随Store通知更新 | WPF窗口控件、模式和编辑柄真实渲染已验证；Windows物理鼠标端到端手势尚待人工/输入注入专项 |
+| 成熟Viewer工具互斥和叠加项列表 | `MVIImageToolMode.ResizeOverlay`、`TCTManualImageViewerFrame/Layout` | TestCenter区域页“八柄缩放”按钮、列表选中联动；两视口使用唯一OverlayStore | 真实WPF按钮/选中及可见句柄测试通过 |
+| 旧图层/对象显示与层叠 | `MVIImageOverlayStore.MoveZOrder`、`SetLocked`、MVI对象`IsLocked` | 上移/下移单步调整叠加顺序，直接影响Canvas绘制与几何命中；锁定/解锁状态在原Store，列表显示锁标识；锁定后禁止缩放、移动、样式修改、普通删除及工作台清空 | Windows MVI及WPF测试通过；不是跨工程持久化锁 |
+| 原Viewer重载/清图 | 原`ShowOriginal`/`Clear`依然调用唯一Store清理 | 普通用户`ClearOverlays`尊重锁定；新图替换与关闭会话时允许清除旧对象，以避免上一张图ROI泄漏到新图 | 源码路径已核对，实机长时间资源验证仍待完成 |
+
+### 6.1 实际代码与Windows证据
+
+- [e28051a](https://github.com/oudream/cx-visual-x3/commit/e28051a709b4cae1bdf631549605ec2c07c70fdf)：MVI八向原图几何/边界/顶点。
+- [3c32577](https://github.com/oudream/cx-visual-x3/commit/3c32577ba5793da32b3db93a3a84553afa38178a)：MPW双视口控制柄+真实鼠标输入处理+TCT区域页和列表。
+- [2ab29d7](https://github.com/oudream/cx-visual-x3/commit/2ab29d7a2c3fee1a837da45ea1d54824b858ee92)：真实WPF控件/区域按钮/列表绑定、原图尺寸边界、多边形、旋转镜像、隐藏及双视图反证。
+- [a10c478](https://github.com/oudream/cx-visual-x3/commit/a10c478536e7a89c491f53d37d0f37cddc8fc5eb)、[9bb9242](https://github.com/oudream/cx-visual-x3/commit/9bb92424da870363b449142287aa48ded7824fe0)、[0b14df1](https://github.com/oudream/cx-visual-x3/commit/0b14df18ba73f0a2c8ba840826d1ed4d227ddd5e)：锁定、Z序、UI点击与删除保护。
+- **最新最终代码Imaging专项**：[Windows FIM/MVI Imaging #40318876174](https://github.com/oudream/cx-visual-x3/actions/runs/40318876174) **SUCCESS（13步骤）**：Windows .NET48/x64全方案Build、结构/DAG、MVI数值与默认回归、STA真实WPF ImageViewer+截图/ROI编辑验证。
+- **最新最终代码完整TestCenter**：[Windows TestCenter #40318876250](https://github.com/oudream/cx-visual-x3/actions/runs/40318876250) **SUCCESS（29步骤）**：真实UIA、隔离Worker、历史/并发重复与旧专业工作区兼容回归成功。
+- **独立其他阻塞**：[Engineering Windows #40318876351](https://github.com/oudream/cx-visual-x3/actions/runs/40318876351) 仍为**FAIL**，日志为H01 Studio WPF宿主未找到已存在的`MPWInputStyle`资源（Studio公共主题加载/测试宿主初始化），并非ROI几何或Viewer smoke失败。该跨专业问题须在公共MPW/Studio测试Owner另行修复并复跑，**不能把完整平台所有CI称为绿色**。
+
+### 6.2 仍未完成与后续顺序
+
+本轮仅关闭成熟Viewer的一个P2交互包：ROI八方向外接框缩放、锁定和前后单步层叠。尚缺旋转矩形、顶点级多边形编辑/自由曲线、旋转控制柄、特定圆半径与形状约束、用户快捷键、多个对象批量选择与属性面板、统一MRC Undo/Redo和持久化。大规模Overlay对象拖动的WPF重绘压力、跨DPI、真实X-Ray高位深图、直接物理鼠标拖柄测试与工业现场均未验收。未来继续围绕唯一FGE/MVI/MPW，不复刻旧HALCON设备句柄或另建Undo/Object Store。
