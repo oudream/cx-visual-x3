@@ -522,12 +522,23 @@ jobs:
           if (-not (Test-Path $report)) { throw "Parallel report missing" }
           [xml]$junit = Get-Content -LiteralPath $report -Raw
           [xml]$baseline = Get-Content -LiteralPath (Join-Path $out 'TestCenter.junit.xml') -Raw
-          $expected = [int]$baseline.testsuite.tests * 3
+          # Regression Profile可能包含比默认全量运行更多的真实测试用例，不能以默认基线计数冒充Profile计数。
+          # 由Regression报告唯一TestId反推三轮规模，随后验证每个TestId恰好三轮且AttemptId全局唯一。
+          $cases = @($junit.testsuite.testcase)
+          $names = @($cases | ForEach-Object { [string]$_.GetAttribute('name') } | Sort-Object -Unique)
+          $baselineNames = @($baseline.testsuite.testcase | ForEach-Object {
+              [string]$_.GetAttribute('name')
+          } | Sort-Object -Unique)
+          if ($names.Count -lt $baselineNames.Count -or
+              @($baselineNames | Where-Object { $names -notcontains $_ }).Count -ne 0) {
+              throw 'Regression Profile omitted tests present in the full default baseline'
+          }
+          $expected = $names.Count * 3
+          Write-Host "Regression Profile: $($names.Count) unique cases, expected $expected attempts; default baseline $($baselineNames.Count) cases"
           if ([int]$junit.testsuite.tests -ne $expected -or [int]$junit.testsuite.failures -ne 0 -or
               [int]$junit.testsuite.errors -ne 0 -or [int]$junit.testsuite.skipped -ne 0) {
               throw "Parallel expected $expected successful attempts; received $($junit.testsuite.tests)"
           }
-          $cases = @($junit.testsuite.testcase)
           if ($cases.Count -ne $expected) { throw 'JUnit attempt nodes are missing' }
           $attemptIds = @($cases | ForEach-Object { [string]$_.GetAttribute('attemptId') })
           if (@($attemptIds | Where-Object { [string]::IsNullOrWhiteSpace($_) }).Count -gt 0) {
@@ -538,8 +549,6 @@ jobs:
           }
           $runId = [string]$junit.testsuite.runId
           if ([string]::IsNullOrWhiteSpace($runId)) { throw 'RunId not recorded in JUnit suite' }
-          $names = @($baseline.testsuite.testcase | ForEach-Object { [string]$_.GetAttribute('name') } |
-              Sort-Object -Unique)
           foreach ($name in $names) {
               $observed = @($cases | Where-Object { [string]$_.GetAttribute('name') -eq $name })
               if ($observed.Count -ne 3 -or
