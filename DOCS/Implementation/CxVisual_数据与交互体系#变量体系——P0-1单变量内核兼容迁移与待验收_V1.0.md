@@ -11,3 +11,5 @@
 - `VariableId` 可由工程定义明确提供；未传时暂以 Name 兼容，**这不等于已完成可移动的 ID/Path 变量树**。
 
 ArchitectureSmoke `ModuleFoundationSmokeTests.VariableObjectSmoke` 增加正反例。Windows x64 构建/运行须以对应提交 CI 日志为证，不能把源码提交视作测试通过。
+
+- **二进制兼容补丁**：保留原 `MDSVariableDefinition(string, Type, string, bool)` CLR构造签名，并增加默认值快捷构造与六参数扩展入口；Windows解决方案重新编译通过不等价于任意外部旧DLL已独立验证。

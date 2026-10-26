@@ -13,8 +13,16 @@ namespace CxVisual.Mechanism.Data.Variables
 
         // 保留原四参数构造用法。显式VariableId用于绑定工程稳定身份；
         // 未提供时沿用名称作为旧API兼容身份，不声称改名后仍稳定。
-        public MDSVariableDefinition(string name, Type valueType, string unit = null,
-            bool writable = true, object defaultValue = null, string variableId = null)
+        // CLR完整保留原四参数构造函数签名，避免已经编译的调用方MissingMethodException。
+        public MDSVariableDefinition(string name, Type valueType, string unit = null, bool writable = true)
+            : this(name, valueType, unit, writable, null, null) { }
+
+        // 快捷定义默认值；若需单位/权限/稳定ID，使用下面的完整构造函数。
+        public MDSVariableDefinition(string name, Type valueType, object defaultValue)
+            : this(name, valueType, null, true, defaultValue, null) { }
+
+        public MDSVariableDefinition(string name, Type valueType, string unit,
+            bool writable, object defaultValue, string variableId = null)
         {
             if (string.IsNullOrWhiteSpace(name) || valueType == null || valueType == typeof(void))
                 throw new ArgumentException("变量名称/类型无效");
