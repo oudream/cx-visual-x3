@@ -145,6 +145,13 @@
 
 **代码推进记录**：`a9cabd0`（MVI插删），`47eb3a1`（数值正反例），`d6b28adc`（MPW API），`3d9477e`（双视口Shift/Alt手势），`66feb5c`、`3dd6121`（TestCenter索引按钮及提示），`07bde033`（真实WPF Button.Click及双视口回归），`bb299c2`（2048顶点长轮廓）。均为直接补强现有工程，不新增项目、不引入HALCON硬件依赖。
 
-**已确认CI**：[Windows Imaging #40421113920](https://github.com/oudream/cx-visual-x3/actions/runs/40421113920) **SUCCESS（13步）**，对应 `07bde033`，实际全方案.NET48/x64编译、MVI测试、默认Smoke、真实WPF Imaging窗口与原图/处理图验证。**长轮廓最终代码** `bb299c2` 的 [Windows Imaging #40421287277](https://github.com/oudream/cx-visual-x3/actions/runs/40421287277) 仍须以它自己的结束状态为准；不要用前一成功冒充此SHА已验收。TestCenter跨专业完整工作流也需独立结算。
+**已确认CI**：[Windows Imaging #40421113920](https://github.com/oudream/cx-visual-x3/actions/runs/40421113920) **SUCCESS（13步）**，对应 `07bde033`，实际全方案.NET48/x64编译、MVI测试、默认Smoke、真实WPF Imaging窗口与原图/处理图验证；**长轮廓最终代码** `bb299c2` 的 [Windows Imaging #40421287277](https://github.com/oudream/cx-visual-x3/actions/runs/40421287277) **SUCCESS（13步）**。 [TestCenter完整Windows #40421113924](https://github.com/oudream/cx-visual-x3/actions/runs/40421113924) **SUCCESS（29步）**，对应 `07bde033` 的完整NUnit/TCT、真实UIA、独立Worker、并行与历史回归。后续`397aa8c`的CSV回环与`4b1fbc3`的中途取消加固为更新的代码提交，**必须分别重新检查它们对应的Windows CI，不借用前一SHA验收**。
 
 **未完成**：复杂多边形自交原始输入修复、自由曲线/样条/控制点、孔洞/复合ROI和像素掩膜、批量选择、平台唯一MRC Undo/Redo、工程持久化、真实系统级键鼠注入与多DPI、工业大图长时间压力。下一步优先结合旧`HalconImageCanvas`自由线/区域编辑行为评估实际差距，不把用户60项剩余功能虚报为已完成。
+
+
+### 9.1 交互安全与输出闭环补强
+
+- `Tests/TestCenter/Manual/Imaging/TCTImageViewerSmoke.cs` 增加“索引输入 → Button.Click插点 → 同Guid/四个控制柄 → CSV导出实际新增顶点 → Button.Click删点 → 双Pane返回三点”的正向闭环。CSV重用已有`ExportMeasurementsCsv`，未创建另一个导出库。
+- `MPWImageViewerControl.CanContinueOverlayGesture` 在每次鼠标拖动写入前核对原图匹配、对象仍存在、可见、未锁定。逐顶点、普通及旋转ROI八柄、旋转角柄若中途失效，就清理对应手势状态并写入诊断文本，不让旧快照越权替换现有锁定对象。插点/删点只响应鼠标左键；未将键鼠物理注入测试冒充Windows验收。
+- **待完成**：完整的真实Shift/Alt物理组合键事件注入、多DPI、图像重载中途绘制竞态、高密度ROI刷新性能、统一MRC Undo/Redo与工程持久化。
