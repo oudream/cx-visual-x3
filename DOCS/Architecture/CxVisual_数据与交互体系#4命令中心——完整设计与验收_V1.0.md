@@ -390,10 +390,10 @@ sequenceDiagram
 |---|---|---|
 | 命令浏览 | 本地 `Router.Discover` 的Target/Code/ID/Version、FDC参数与Policy、已知独立进程示例契约 | **不是远程Discover**，需Host授权目录与Schema协商 |
 | 参数编辑 | 基础参数、数组、嵌套JSON，FDC预检；本地MDS变量输入和输出映射 | 定制DTO、动态工程变量/Port/Expression树、完整参数编辑器 |
-| 命令操作 | 注册/注销演示Handler、启停、Invoke/Query/Pause/Resume/Cancel；复用唯一Center | 多目标/批量与专业设备能力UI仍待完成 |
-| 执行监视 | RequestId/OperationId、Stage/State、ProgressBar、进度消息、中间/最终输出、执行错误与映射回执 | 多Operation并列监视、Push/重连恢复与正式Trace |
+| 命令操作 | 注册/注销、启停、Invoke/Query/Pause/Resume/Cancel，新增真实本地 `InvokeBatchAsync`（2～32项分波）；仍只复用唯一Center | 跨Host多目标授权批量、专业设备能力UI待实现 |
+| 执行监视 | RequestId/OperationId、Stage/State、ProgressBar、进度消息、中间/最终结果；新增有界250条多Operation并列列表及选中后原端点查询控制 | 进度Push、持久跨重启恢复、全量Trace仍待完成 |
 | IPC验证 | 本机实际命名管道及 `ArchitectureSmoke.exe --command-pipe-child` 独立OS进程启动/停止和命令调用/查询 | 跨PC认证、模拟网络断线恢复、非Demo设备Provider |
-| 测试证据 | 本次人工会话记录最多250条、TSV导出、UIAutomation控件实际可操作 | 正式TCT Run/Attempt持久证据、回放、截图视觉验收 |
+| 测试证据 | 人工会话及TSV，UIA实际控件操作；正式 `TCT.CMD.001～010` 已接入唯一TCT Runner与Run/Attempt，CI用独立Worker生成JSON及历史归档 | 正式长期回放/审批、60项逐条自动证据、UI全视觉人工签认待完成 |
 
 该页对演示算法的数值计算和30步长任务确实调用MRK，约90ms本地、350ms远端异步查询，进度变化才记录人工观察；没有编造正式TCT Passed。正反例：参数范围/未知嵌套成员在Handler前拒绝，MDS写回与真实OS Pipe Query、长任务执行时有进度中间值，UIA通过ValuePattern/InvokePattern/Tab SelectionItemPattern实际操作。涉及其他并行UI迭代时以最新源码/对应SHA重新验证。
 
@@ -411,3 +411,28 @@ sequenceDiagram
 
 **最后裁决**：只在 `Foundation.Data.Commands` + `Mechanism.Runtime.Commands` 实现命令专属逻辑。MDS、消息中心M36、F19、Connectivity、MOL/MOC、Studio各保留唯一Owner；TestCenter是使用与验证界面，不构成第三套运行命令中心。
 
+
+## 14. TestCenter命令页增强与正式自动验收（2026-10-26）
+
+**基线提交**：多Operation投影与批量 `09cb01fd`；十条正式TCT案例 `70c86c03cff9d2209aaab50cdb100ecedcaeb846`。原五条TCT入口来自 `bc6e0fe4`，Runner档位修正 `649ab8bf`。这里引用的是源代码与固定Windows CI证据，不将其他并行HEAD的全部CI自动标绿。
+
+**唯一职责**：`TCTManualCommandFrame` 的 `TCTManualCommandOperations.cs` 仅呈现真实MRK状态及有界250条Operation列表，无新任务仓/调度器；`BatchRunAsync(2～32)` 使用原 `MRKCommandCenter.InvokeBatchAsync`，按演示Provider并发容量2分波操作。多Operation选择保持原Host/Pipe身份以防误控；列表的阶段、状态和错误均来自MRK回执而非UI推断。此功能只对已授权的本地示例算法开放，不伪称跨Host批量设备操作。
+
+**正式用例**：`Tests/TestCenter/Automated/Cases/TCTCommandCenterCases.cs` 由已有 `[TCTTest]` 发现机制登记，通过同一 `TCTTestExecutionCoordinator`、`TCTTestRunRequest` 和子进程Worker形成可审计Run/Attempt；工作区正式测试按钮只提交CaseId给主窗口Runner，不保存第二套结果。人工历史与正式Passed始终不同语义。
+
+| 正式TestId | 当前实测Owner/正反目标 | 等级 |
+|---|---|---|
+| TCT.CMD.001 | FDC Schema默认值、范围非法拒绝和版本不匹配不调用Handler | 正反 |
+| TCT.CMD.002 | MRK批量8 Operation、结果与独立身份关联、不重复Handler | 正 |
+| TCT.CMD.003 | OperationId幂等查询重放、冲突拒绝、不产生第二动作 | 正反 |
+| TCT.CMD.004 | Device未授权拒绝，不进入专业Handler | 反 |
+| TCT.CMD.005 | 缺真实IPC Transport时RemoteUnsupported，禁止无声本地执行 | 反 |
+| TCT.CMD.006 | 实际Windows OS Pipe请求及同OperationId查询、不重发 | 正 |
+| TCT.CMD.007 | MDS输入输出映射成功与只读地址写回失败分层 | 正反 |
+| TCT.CMD.008 | 并发MaxConcurrent满载时Busy拒绝、释放后原任务可结算 | 正反 |
+| TCT.CMD.009 | PauseRequested→Handler检查点Paused→Resume→Cancel协作结算 | 正反 |
+| TCT.CMD.010 | Output类型Schema违约，拒绝伪造Completed及有效结果 | 反 |
+
+**固定SHA证据**：`70c86c03` 的 [命令中心 Windows 专项](https://github.com/oudream/cx-visual-x3/actions/runs/40341749355) 完成了整套Debug x64重建、`--command-ui-smoke`（含真实Batch/WPF/独立IPC）、`--command-ui-automation`、`--run --filter TCT.CMD. --profile Regression --isolate`（10条全部Passed、有正式JSON报告/历史目录）以及 `--command-center`。检查的是上述实际运行，不是仅扫描出十条TestId。
+
+**下一阶段不得混淆**：这十条是60项原始需求的有代表性的正反回归，不意味着60项全部具独立正式测试。P1优先为安全的远端Discover/Schema协商、完整动态参数绑定、专业Device Provider、历史/多Operation持久化和跨Host授权控制；P2跨PC域身份/网络ACL、Host重启恢复；P3压力长稳与真实设备HIL。TestCenter命令页不是Studio/MOL编辑器，亦不能用软件Cancel代替工控硬件急停。
