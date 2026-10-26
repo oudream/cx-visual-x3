@@ -1319,8 +1319,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         private void UpdateRotation(Point pointer,MVIImageViewport viewport)
         {
             if(!_rotatingOverlay || _rotationStart==null || ActiveImage==null)return;
-            if(_overlays.Find(_rotationStart.Id)==null)
-            {_rotatingOverlay=false;_rotationStart=null;return;}
+            if(!CanContinueOverlayGesture(_rotationStart))
+            {
+                _rotatingOverlay=false;_rotationStart=null;
+                PixelStatus.Text="矩形已锁定、隐藏或删除；旋转已安全终止。";
+                return;
+            }
             FGEPoint2D center=RotatedRectangleCenter(_rotationStart);
             FGEPoint2D p=_viewTransform.DisplayToSource(new FGEPoint2D(
                 viewport.ImageX(pointer.X),viewport.ImageY(pointer.Y)),
@@ -1331,6 +1335,11 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 angle,ActiveImage.Width,ActiveImage.Height)); }
             catch(ArgumentOutOfRangeException)
             {PixelStatus.Text="旋转角点超出原图，保留最近一次有效矩形。";}
+            catch(InvalidOperationException)
+            {
+                _rotatingOverlay=false;_rotationStart=null;
+                PixelStatus.Text="旋转编辑被当前对象状态拒绝，已安全结束手势。";
+            }
         }
 
         private bool TryPolygonVertexHandle(Point pointer,MVIImageViewport viewport,
@@ -1458,11 +1467,23 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             return false;
         }
 
+        private bool CanContinueOverlayGesture(MVIImageOverlayItem start)
+        {
+            if(start==null || ActiveImage==null || !OverlayMatchesActiveImage())return false;
+            MVIImageOverlayItem current=_overlays.Find(start.Id);
+            return current!=null && !current.IsLocked &&
+                _overlays.GetVisibleItems().Any(x=>x.Id==start.Id);
+        }
+
         private void UpdatePolygonVertexEdit(Point pointer,MVIImageViewport viewport)
         {
             if(!_editingVertex || _vertexEditStart==null || ActiveImage==null) return;
-            if(_overlays.Find(_vertexEditStart.Id)==null)
-            { _editingVertex=false;_vertexEditStart=null;return; }
+            if(!CanContinueOverlayGesture(_vertexEditStart))
+            {
+                _editingVertex=false;_vertexEditStart=null;
+                PixelStatus.Text="多边形已锁定、隐藏或删除；顶点拖动已安全终止。";
+                return;
+            }
             FGEPoint2D source=_viewTransform.DisplayToSource(new FGEPoint2D(
                 viewport.ImageX(pointer.X),viewport.ImageY(pointer.Y)),
                 ActiveImage.Width,ActiveImage.Height);
@@ -1475,6 +1496,11 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             catch(ArgumentException)
             {
                 PixelStatus.Text="顶点位置会导致退化或自交，已保留上一个有效几何。";
+            }
+            catch(InvalidOperationException)
+            {
+                _editingVertex=false;_vertexEditStart=null;
+                PixelStatus.Text="顶点修改被对象状态拒绝，已安全结束手势。";
             }
         }
 
@@ -1533,8 +1559,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             FGEPoint2D source = _viewTransform.DisplayToSource(new FGEPoint2D(
                 viewport.ImageX(pointer.X),viewport.ImageY(pointer.Y)),
                 ActiveImage.Width,ActiveImage.Height);
-            if (_overlays.Find(_resizeStart.Id)==null)
-            { _resizing=false; _resizeStart=null; return; }
+            if (!CanContinueOverlayGesture(_resizeStart))
+            {
+                _resizing=false; _resizeStart=null;
+                PixelStatus.Text="ROI已锁定、隐藏或删除；缩放已安全终止。";
+                return;
+            }
             try
             {
                 MVIImageOverlayItem next=_resizeStart.Kind==MVIImageOverlayKind.RotatedRectangleRoi ?
@@ -1546,6 +1576,11 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             }
             catch(ArgumentOutOfRangeException)
             {PixelStatus.Text="调整后角点超出原图，保留上一有效尺寸。";}
+            catch(InvalidOperationException)
+            {
+                _resizing=false;_resizeStart=null;
+                PixelStatus.Text="ROI缩放已被当前对象状态拒绝。";
+            }
         }
 
         private void DrawMeasurementLabel(MVIImageOverlayItem item, Brush stroke, Point anchor, Canvas canvas)
@@ -1804,6 +1839,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             }
             if (_toolMode == MVIImageToolMode.EditPolygonVertex)
             {
+                if(e.ChangedButton!=MouseButton.Left)return;
                 Point polygonPointer=e.GetPosition(SecondaryViewportRoot);
                 if(TryPolygonTopologyGesture(polygonPointer,_secondaryViewport))
                 {e.Handled=true;return;}
@@ -1901,6 +1937,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             }
             if (_toolMode == MVIImageToolMode.EditPolygonVertex)
             {
+                if(e.ChangedButton!=MouseButton.Left)return;
                 if(TryPolygonTopologyGesture(pointer,_viewport))
                 {e.Handled=true;return;}
                 if(BeginPolygonVertexEdit(pointer,_viewport,false))
