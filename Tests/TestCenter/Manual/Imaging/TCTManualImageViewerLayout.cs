@@ -465,6 +465,7 @@ namespace CxVisual.TestCenter.UI
             Tile(tiles,"◯","圆形","RegionCircle",()=>SelectTool(MVIImageToolMode.CircleRoi));
             Tile(tiles,"⬭","椭圆","RegionEllipse",()=>SelectTool(MVIImageToolMode.EllipseRoi));
             Tile(tiles,"⬡","多边形","RegionPolygon",()=>SelectTool(MVIImageToolMode.PolygonRoi));
+            Tile(tiles,"↔","八柄缩放","ResizeOverlay",()=>SelectTool(MVIImageToolMode.ResizeOverlay));
             content.Children.Add(tiles);
             WrapPanel buttons = Row();
             Action(buttons,"清除选框","RemoveRoi",()=>_viewer.ClearSelection());
@@ -474,7 +475,7 @@ namespace CxVisual.TestCenter.UI
             Action(buttons,"显示所有层","ShowAllLayers",ShowAllLayers);
             content.Children.Add(buttons);
             content.Children.Add(_overlayList);
-            content.Children.Add(Hint("下方对象列表按稳定ID管理；多边形通过双击结束绘制。测量数据可在“输出”页导出CSV。"));
+            content.Children.Add(Hint("先选择列表ROI或点击图中ROI；选“八柄缩放”后拖动蓝白控制点，边/角会限定在原图内。多边形缩放同步顶点，左右双图使用同一个对象ID。"));
             return Scroll(content);
         }
         private UIElement BuildStatisticsPage()

@@ -8,6 +8,7 @@ using System.Windows.Media.Imaging;
 using CxVisual.Foundation.Imaging;
 using CxVisual.Foundation.Geometry;
 using System.Collections.Generic;
+using System.Linq;
 using Ellipse = System.Windows.Shapes.Ellipse;
 using Line = System.Windows.Shapes.Line;
 using Polygon = System.Windows.Shapes.Polygon;
@@ -36,6 +37,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         private bool _dragging, _selecting, _moving, _pendingFit = true;
         private MVIImageOverlayItem _movingOverlay;
         private FGEPoint2D _moveAnchor;
+        private Guid? _selectedOverlayId;
+        private MVIImageOverlayItem _resizeStart;
+        private MVIImageResizeHandle _resizeHandle;
+        private bool _resizing, _resizingSecondary;
         private Point _startPointer;
         private int _selectionX, _selectionY, _lastSelectionX, _lastSelectionY;
         private MVIImageOverlayKind _selectionKind = MVIImageOverlayKind.RectangleRoi;
@@ -184,12 +189,47 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 if (!Enum.IsDefined(typeof(MVIImageToolMode), value))
                     throw new ArgumentOutOfRangeException("value");
                 _toolMode = value;
-                _dragging = _selecting = _moving = false;
+                _dragging = _selecting = _moving = _resizing = false;
                 _movingOverlay = null;
+                _resizeStart = null;
+                if (ViewportRoot.IsMouseCaptured) ViewportRoot.ReleaseMouseCapture();
+                if (SecondaryViewportRoot.IsMouseCaptured) SecondaryViewportRoot.ReleaseMouseCapture();
                 _polygonDraft.Clear();
                 _draftHover = null;
                 DrawSelection();
+                DrawOverlays();
             }
+        }
+
+        /// <summary>当前MVI OverlayStore里唯一选中对象；列表选择与视口点击一致。</summary>
+        public void SelectOverlay(Guid? id)
+        {
+            VerifyAccess();
+            if (id.HasValue && _overlays.Find(id.Value) == null)
+                throw new ArgumentException("选中对象已不存在。","id");
+            if (_selectedOverlayId == id) return;
+            _selectedOverlayId = id;
+            _region = null;
+            DrawSelection();
+            DrawOverlays();
+            RaiseSelectionChanged();
+        }
+
+        /// <summary>精确尺寸编辑API：所有几何、图像边界和原对象身份由MVI验证。</summary>
+        public MVIImageOverlayItem ResizeSelectedOverlay(MVIImageResizeHandle handle,
+            FGEPoint2D position)
+        {
+            VerifyAccess();
+            if (!_selectedOverlayId.HasValue || ActiveImage == null)
+                throw new InvalidOperationException("尚未选择有效ROI及图像。");
+            MVIImageOverlayItem item = _overlays.Find(_selectedOverlayId.Value);
+            if (item == null || !_overlays.GetVisibleItems().Any(x => x.Id == item.Id))
+                throw new InvalidOperationException("不可编辑被删除或隐藏的ROI。");
+            MVIImageOverlayItem resized = item.WithResizedRoiHandle(handle,position,
+                ActiveImage.Width,ActiveImage.Height);
+            if (!_overlays.Replace(resized))
+                throw new InvalidOperationException("ROI已在编辑期间被删除。");
+            return resized;
         }
 
         /// <summary>与第一阶段TCT矩形ROI切换代码保持兼容。</summary>
@@ -205,6 +245,22 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         }
         public int VisibleOverlayCount { get { return _overlays.GetVisibleItems().Count; } }
         public int OverlayVisualCount { get { return OverlayCanvas.Children.Count; } }
+        public Guid? SelectedOverlayId { get { return _selectedOverlayId; } }
+        public int ResizeHandleVisualCount
+        {
+            get { return CountResizeHandles(OverlayCanvas); }
+        }
+        public int SecondaryResizeHandleVisualCount
+        {
+            get { return CountResizeHandles(SecondaryOverlayCanvas); }
+        }
+        private static int CountResizeHandles(Canvas canvas)
+        {
+            int count=0;
+            foreach (UIElement child in canvas.Children)
+                if (child is Rectangle && ((Rectangle)child).Tag is MVIImageResizeHandle) count++;
+            return count;
+        }
         public event EventHandler SelectionChanged;
         public event EventHandler PixelInspected;
 
@@ -214,6 +270,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             if (image == null) throw new ArgumentNullException("image");
             _pendingFit = true;
             _region = null;
+            _selectedOverlayId = null;
+            _resizeStart = null; _resizing = false;
             _pixelSpacing = null; _rulerMillimeters = false;
             _displayState.Reset();
             _viewTransform.Reset();
@@ -239,6 +297,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         {
             VerifyAccess();
             _region = null;
+            _selectedOverlayId = null; _resizeStart = null; _resizing = false;
             _displayState.Reset();
             _viewTransform.Reset();
             _comparison.Reset();
@@ -865,6 +924,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             VerifyAccess();
             OverlayCanvas.Children.Clear();
             SecondaryOverlayCanvas.Children.Clear();
+            if (_selectedOverlayId.HasValue && _overlays.Find(_selectedOverlayId.Value) == null)
+                _selectedOverlayId = null;
             if (!OverlayMatchesActiveImage()) return;
             DrawOverlaysOn(OverlayCanvas,_viewport);
             if (IsSideBySideVisible) DrawOverlaysOn(SecondaryOverlayCanvas,_secondaryViewport);
@@ -971,6 +1032,108 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                     item.Kind == MVIImageOverlayKind.AreaMeasurement)
                     DrawMeasurementLabel(item,stroke,new Point(right,top),canvas);
             }
+            if (_toolMode == MVIImageToolMode.ResizeOverlay && _selectedOverlayId.HasValue)
+            {
+                MVIImageOverlayItem selected = _overlays.GetVisibleItems().FirstOrDefault(
+                    item => item.Id == _selectedOverlayId.Value && item.Layer == MVIImageOverlayLayer.Roi);
+                if (selected != null && selected.Bounds.Width > 0 && selected.Bounds.Height > 0)
+                    DrawResizeHandles(canvas,viewport,selected);
+            }
+        }
+
+        private static FGEPoint2D ResizeHandlePoint(FGERect2D bounds, MVIImageResizeHandle handle)
+        {
+            double cx=(bounds.Left+bounds.Right)/2.0, cy=(bounds.Top+bounds.Bottom)/2.0;
+            switch (handle)
+            {
+                case MVIImageResizeHandle.TopLeft: return new FGEPoint2D(bounds.Left,bounds.Top);
+                case MVIImageResizeHandle.Top: return new FGEPoint2D(cx,bounds.Top);
+                case MVIImageResizeHandle.TopRight: return new FGEPoint2D(bounds.Right,bounds.Top);
+                case MVIImageResizeHandle.Right: return new FGEPoint2D(bounds.Right,cy);
+                case MVIImageResizeHandle.BottomRight: return new FGEPoint2D(bounds.Right,bounds.Bottom);
+                case MVIImageResizeHandle.Bottom: return new FGEPoint2D(cx,bounds.Bottom);
+                case MVIImageResizeHandle.BottomLeft: return new FGEPoint2D(bounds.Left,bounds.Bottom);
+                case MVIImageResizeHandle.Left: return new FGEPoint2D(bounds.Left,cy);
+                default: throw new ArgumentOutOfRangeException("handle");
+            }
+        }
+
+        private void DrawResizeHandles(Canvas canvas,MVIImageViewport viewport,
+            MVIImageOverlayItem item)
+        {
+            foreach (MVIImageResizeHandle handle in Enum.GetValues(typeof(MVIImageResizeHandle)))
+            {
+                Point screen = SourceToCanvas(ResizeHandlePoint(item.Bounds,handle),viewport);
+                Rectangle square = new Rectangle {
+                    Width=9,Height=9,Stroke=Brushes.DarkSlateGray,StrokeThickness=1.2,
+                    Fill=Brushes.LightCyan,Tag=handle,IsHitTestVisible=false };
+                System.Windows.Automation.AutomationProperties.SetAutomationId(square,
+                    "MPW.Imaging.Resize." + handle);
+                Canvas.SetLeft(square,screen.X-4.5);
+                Canvas.SetTop(square,screen.Y-4.5);
+                canvas.Children.Add(square);
+            }
+        }
+
+        private bool TryResizeHandle(Point pointer,MVIImageViewport viewport,
+            MVIImageOverlayItem item,out MVIImageResizeHandle handle)
+        {
+            handle = MVIImageResizeHandle.TopLeft;
+            foreach (MVIImageResizeHandle candidate in Enum.GetValues(typeof(MVIImageResizeHandle)))
+            {
+                Point screen=SourceToCanvas(ResizeHandlePoint(item.Bounds,candidate),viewport);
+                if (Math.Abs(pointer.X-screen.X)<=7 && Math.Abs(pointer.Y-screen.Y)<=7)
+                { handle=candidate;return true; }
+            }
+            return false;
+        }
+
+        private bool BeginResize(Point pointer,MVIImageViewport viewport,bool secondary)
+        {
+            if (ActiveImage == null || !OverlayMatchesActiveImage()) return false;
+            MVIImageOverlayItem selected = _selectedOverlayId.HasValue ?
+                _overlays.Find(_selectedOverlayId.Value) : null;
+            MVIImageResizeHandle handle;
+            if (selected != null && selected.Layer == MVIImageOverlayLayer.Roi &&
+                _overlays.GetVisibleItems().Any(x=>x.Id==selected.Id) &&
+                TryResizeHandle(pointer,viewport,selected,out handle))
+            {
+                _resizeStart=selected; _resizeHandle=handle;
+                _resizing=true; _resizingSecondary=secondary;
+                return true;
+            }
+            FGEPoint2D point = _viewTransform.DisplayToSource(new FGEPoint2D(
+                viewport.ImageX(pointer.X),viewport.ImageY(pointer.Y)),
+                ActiveImage.Width,ActiveImage.Height);
+            if (point.X<0 || point.Y<0 ||
+                point.X>=ActiveImage.Width || point.Y>=ActiveImage.Height)
+                return false;
+            IReadOnlyList<MVIImageOverlayItem> items=_overlays.GetVisibleItems();
+            for (int i=items.Count-1;i>=0;i--)
+            {
+                MVIImageOverlayItem item=items[i];
+                if (item.Layer==MVIImageOverlayLayer.Roi &&
+                    IsHit(item,point,Math.Max(0.4,6.0/Math.Max(0.01,viewport.Scale))))
+                {
+                    SelectOverlay(item.Id);
+                    return true;
+                }
+            }
+            SelectOverlay(null);
+            return false;
+        }
+
+        private void UpdateResize(Point pointer,MVIImageViewport viewport)
+        {
+            if (!_resizing || _resizeStart==null || ActiveImage==null) return;
+            FGEPoint2D source = _viewTransform.DisplayToSource(new FGEPoint2D(
+                viewport.ImageX(pointer.X),viewport.ImageY(pointer.Y)),
+                ActiveImage.Width,ActiveImage.Height);
+            MVIImageOverlayItem next=_resizeStart.WithResizedRoiHandle(
+                _resizeHandle,source,ActiveImage.Width,ActiveImage.Height);
+            if (_overlays.Find(_resizeStart.Id)==null)
+            { _resizing=false; _resizeStart=null; return; }
+            _overlays.Replace(next);
         }
 
         private void DrawMeasurementLabel(MVIImageOverlayItem item, Brush stroke, Point anchor, Canvas canvas)
@@ -1208,6 +1371,11 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         private void OnSecondaryMouseDown(object sender, MouseButtonEventArgs e)
         {
             if (!IsSideBySideVisible || _session.Result == null) return;
+            if (_toolMode == MVIImageToolMode.ResizeOverlay &&
+                BeginResize(e.GetPosition(SecondaryViewportRoot),_secondaryViewport,true))
+            {
+                SecondaryViewportRoot.CaptureMouse(); e.Handled=true; return;
+            }
             _secondaryDragging = true;
             _secondaryDragStart = e.GetPosition(SecondaryViewportRoot);
             SecondaryViewportRoot.CaptureMouse();
@@ -1215,6 +1383,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         }
         private void OnSecondaryMouseUp(object sender, MouseButtonEventArgs e)
         {
+            if (_resizing && _resizingSecondary)
+            {
+                UpdateResize(e.GetPosition(SecondaryViewportRoot),_secondaryViewport);
+                _resizing=false; _resizeStart=null;
+                RaiseSelectionChanged();
+            }
             _secondaryDragging = false;
             if (SecondaryViewportRoot.IsMouseCaptured) SecondaryViewportRoot.ReleaseMouseCapture();
             e.Handled = true;
@@ -1223,7 +1397,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         {
             if (!IsSideBySideVisible || _session.Result == null) return;
             Point pointer = e.GetPosition(SecondaryViewportRoot);
-            if (_secondaryDragging && e.LeftButton == MouseButtonState.Pressed)
+            if (_resizing && _resizingSecondary && e.LeftButton == MouseButtonState.Pressed)
+                UpdateResize(pointer,_secondaryViewport);
+            else if (_secondaryDragging && e.LeftButton == MouseButtonState.Pressed)
             {
                 _secondaryViewport.Pan(pointer.X-_secondaryDragStart.X,
                     pointer.Y-_secondaryDragStart.Y);
@@ -1261,6 +1437,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             if (ActiveImage == null) return;
             Point pointer = e.GetPosition(ViewportRoot);
             int x,y;
+            if (_toolMode == MVIImageToolMode.ResizeOverlay)
+            {
+                if (BeginResize(pointer,_viewport,false))
+                { ViewportRoot.CaptureMouse(); e.Handled=true; }
+                return;
+            }
             if (_toolMode == MVIImageToolMode.PolygonRoi ||
                 _toolMode == MVIImageToolMode.PolygonArea ||
                 _toolMode == MVIImageToolMode.Angle)
@@ -1325,6 +1507,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
 
         private void OnMouseUp(object sender, MouseButtonEventArgs e)
         {
+            if (_resizing && !_resizingSecondary)
+            {
+                UpdateResize(e.GetPosition(ViewportRoot),_viewport);
+                _resizing=false; _resizeStart=null;
+                RaiseSelectionChanged();
+            }
             if (_selecting)
             {
                 Point pointer = e.GetPosition(ViewportRoot);
@@ -1367,6 +1555,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 UpdateDraftSelection(pointer);
             else if (_moving && e.LeftButton == MouseButtonState.Pressed)
                 UpdateMovedOverlay(pointer);
+            else if (_resizing && !_resizingSecondary && e.LeftButton == MouseButtonState.Pressed)
+                UpdateResize(pointer,_viewport);
             int px,py;
             if (TryImagePoint(pointer,out px,out py))
             {
@@ -1394,7 +1584,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
 
         private void OnMouseLeave(object sender, MouseEventArgs e)
         {
-            if (!_dragging && !_selecting && ActiveImage != null)
+            if (!_dragging && !_selecting && !_resizing && ActiveImage != null)
                 PixelStatus.Text = ActiveImage.Width + "×" + ActiveImage.Height +
                     " · " + ActiveImage.PixelFormat + " · " + _viewport.Scale.ToString("0.##") + "×";
         }

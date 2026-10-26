@@ -15,6 +15,7 @@ namespace CxVisual.Mechanism.Visual
         Arrow,
         DefectBox,
         MoveOverlay,
+        ResizeOverlay,
         DeleteOverlay,
         PolygonRoi,
         Angle,

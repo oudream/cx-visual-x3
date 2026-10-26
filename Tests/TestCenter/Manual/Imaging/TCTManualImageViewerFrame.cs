@@ -97,6 +97,10 @@ namespace CxVisual.TestCenter.UI
             };
             _annotationText.TextChanged += (sender,args) =>
                 _viewer.AnnotationText = _annotationText.Text;
+            _overlayList.SelectionChanged += (sender,args) =>
+            {
+                if (!_syncingOverlayList) _viewer.SelectOverlay(SelectedOverlayId());
+            };
             _viewer.Overlays.Changed += (sender,args) => RefreshOverlayList();
             _viewer.Session.Changed += (sender,args) =>
             {
@@ -111,6 +115,8 @@ namespace CxVisual.TestCenter.UI
             };
             _viewer.SelectionChanged += (s,e) =>
             {
+                if (_viewer.SelectedOverlayId.HasValue)
+                    SelectOverlayRow(_viewer.SelectedOverlayId);
                 CancelAnalysis();
                 if (_viewer.SelectedRegion.HasValue)
                     _status.Text = "当前ROI：" + BoundsText(_viewer.SelectedRegion.Value);
@@ -135,6 +141,7 @@ namespace CxVisual.TestCenter.UI
                 case MVIImageToolMode.Arrow: return "箭头标注";
                 case MVIImageToolMode.DefectBox: return "缺陷框";
                 case MVIImageToolMode.MoveOverlay: return "移动叠加项";
+                case MVIImageToolMode.ResizeOverlay: return "ROI八柄编辑";
                 case MVIImageToolMode.DeleteOverlay: return "点击删除";
                 case MVIImageToolMode.PolygonRoi: return "多边形ROI（双击结束）";
                 case MVIImageToolMode.Angle: return "三点角度测量";
@@ -148,6 +155,21 @@ namespace CxVisual.TestCenter.UI
             }
         }
 
+        private bool _syncingOverlayList;
+
+        private void SelectOverlayRow(Guid? id)
+        {
+            if (_syncingOverlayList) return;
+            _syncingOverlayList = true;
+            try
+            {
+                ListBoxItem row = _overlayList.Items.OfType<ListBoxItem>()
+                    .FirstOrDefault(x=>id.HasValue && (Guid)x.Tag==id.Value);
+                _overlayList.SelectedItem=row;
+            }
+            finally { _syncingOverlayList=false; }
+        }
+
         private Guid? SelectedOverlayId()
         {
             ListBoxItem selected = _overlayList.SelectedItem as ListBoxItem;
@@ -157,6 +179,9 @@ namespace CxVisual.TestCenter.UI
         private void RefreshOverlayList()
         {
             Guid? keep = SelectedOverlayId();
+            _syncingOverlayList = true;
+            try
+            {
             _overlayList.Items.Clear();
             foreach (MVIImageOverlayItem item in _viewer.Overlays.Items)
             {
@@ -171,6 +196,8 @@ namespace CxVisual.TestCenter.UI
                 _overlayList.Items.Add(row);
                 if (keep.HasValue && keep.Value == item.Id) _overlayList.SelectedItem = row;
             }
+            }
+            finally { _syncingOverlayList=false; }
             if (StateChanged != null) StateChanged();
         }
 
