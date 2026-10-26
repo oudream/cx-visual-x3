@@ -271,7 +271,6 @@ namespace CxVisual.TestCenter.UI
             _imageTool.SelectedIndex = 0;
             _imageTool.MinHeight = 32; _imageTool.Margin = new Thickness(3,0,3,7);
             content.Children.Add(_imageTool);
-            content.Children.Add(Row(Label("文字内容"),_annotationText));
             content.Children.Add(Hint("工具、ROI和标注直接操作既有 MVI OverlayStore。"));
             return Scroll(content);
         }
