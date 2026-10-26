@@ -24,6 +24,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         private readonly MVIImageViewport _viewport = new MVIImageViewport();
         private readonly MVIImageTransformState _viewTransform = new MVIImageTransformState();
         private readonly MVIImageComparisonState _comparison = new MVIImageComparisonState();
+        private FIMPixelSpacing? _pixelSpacing;
+        private bool _rulerMillimeters;
         private readonly MVIImageOverlayStore _overlays = new MVIImageOverlayStore();
         private FIMImageBuffer _overlayOriginal;
         private BitmapSource _bitmap;
@@ -60,6 +62,26 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         public MVIImageDisplayState DisplayState { get { return _displayState; } }
         public MVIImageTransformState ViewTransform { get { return _viewTransform; } }
         public MVIImageComparisonState ComparisonState { get { return _comparison; } }
+        public MPWImageRulerControl HorizontalRulerControl { get { return HorizontalRuler; } }
+        public MPWImageRulerControl VerticalRulerControl { get { return VerticalRuler; } }
+        public FIMPixelSpacing? PixelSpacing
+        {
+            get { return _pixelSpacing; }
+            set
+            {
+                VerifyAccess();
+                if (value.HasValue && (value.Value.MillimetersPerPixelX <= 0 ||
+                    value.Value.MillimetersPerPixelY <= 0))
+                    throw new ArgumentOutOfRangeException("value");
+                _pixelSpacing = value;
+                RefreshRulers();
+            }
+        }
+        public bool ShowPhysicalRulers
+        {
+            get { return _rulerMillimeters; }
+            set { VerifyAccess(); _rulerMillimeters = value; RefreshRulers(); }
+        }
 
         /// <summary>真实原图/结果图透明叠合，必须同尺寸、格式，原始两张图均不修改。</summary>
         public void BlendOriginalAndResult(double ratio)
@@ -480,6 +502,39 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 _viewport.OffsetX, _viewport.OffsetY);
             DrawSelection();
             DrawOverlays();
+            RefreshRulers();
+        }
+
+        private void RefreshRulers()
+        {
+            FIMImageBuffer image = ActiveImage;
+            if (image == null || ViewportRoot.ActualWidth <= 0 || ViewportRoot.ActualHeight <= 0)
+            {
+                HorizontalRuler.SetRange(0,1,"px");
+                VerticalRuler.SetRange(0,1,"px");
+                return;
+            }
+            FGEPoint2D corner = _viewTransform.DisplayToSource(new FGEPoint2D(
+                _viewport.ImageX(0),_viewport.ImageY(0)),image.Width,image.Height);
+            FGEPoint2D across = _viewTransform.DisplayToSource(new FGEPoint2D(
+                _viewport.ImageX(ViewportRoot.ActualWidth),_viewport.ImageY(0)),
+                image.Width,image.Height);
+            FGEPoint2D down = _viewTransform.DisplayToSource(new FGEPoint2D(
+                _viewport.ImageX(0),_viewport.ImageY(ViewportRoot.ActualHeight)),
+                image.Width,image.Height);
+            bool swapped = _viewTransform.QuarterTurns % 2 == 1;
+            double x0 = swapped ? corner.Y : corner.X;
+            double x1 = swapped ? across.Y : across.X;
+            double y0 = swapped ? corner.X : corner.Y;
+            double y1 = swapped ? down.X : down.Y;
+            bool useMm = _rulerMillimeters && _pixelSpacing.HasValue;
+            double mmX = useMm ? (swapped ? _pixelSpacing.Value.MillimetersPerPixelY :
+                _pixelSpacing.Value.MillimetersPerPixelX) : 1;
+            double mmY = useMm ? (swapped ? _pixelSpacing.Value.MillimetersPerPixelX :
+                _pixelSpacing.Value.MillimetersPerPixelY) : 1;
+            string unit = useMm ? "mm" : "px";
+            HorizontalRuler.SetRange(x0*mmX,x1*mmX,unit);
+            VerticalRuler.SetRange(y0*mmY,y1*mmY,unit);
         }
 
         private void DrawSelection()
@@ -760,6 +815,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         private void OnViewportSizeChanged(object sender, SizeChangedEventArgs e)
         {
             if (ActiveImage != null && (_pendingFit || _viewport.IsFit)) FitToWindow();
+            else RefreshRulers();
         }
 
         /// <summary>在原图像素坐标执行形状命中，反向迭代保证顶层覆盖项优先。</summary>
