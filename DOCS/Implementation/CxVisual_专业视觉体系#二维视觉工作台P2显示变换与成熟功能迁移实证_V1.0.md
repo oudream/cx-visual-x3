@@ -66,3 +66,32 @@ TestCenter路径：`Tests/TestCenter/Manual/Imaging/TCTManualImageViewerFrame.cs
 4. P5/P6：设备/专业SDK、Studio/MRC配置完整闭环、工程保存重开、UIA操作截图、人机工程和实机连续运行。
 
 **最后裁决**：成熟旧功能优先恢复，确有对象职责不妥才原位重构。采用OOP清楚Owner，GoF用于MVI可变状态与通知，AOP由现有任务日志/耗时/异常边界复用；禁止为了功能勾选量新建空类、第二工程树、重复算法或Adapter中转层。
+
+## 5. 2026-10-26 连续开发：SideBySide 左右双视口与旧成熟功能实证
+
+> 本节为后续实际源码与CI增量记录，**更新上方较早的“SideBySide未启用”状态快照**，不代表P2全部完成。当前代码闭环为 `9200dcd8acae3fd1c89788a538f16c257961d276`，真实Windows Imaging专项 [#40286643954](https://github.com/oudream/cx-visual-x3/actions/runs/40286643954) **SUCCESS**。
+
+### 5.1 旧文件/行为 → 新唯一Owner → UI → 真实测试
+
+| ReferTo 原始位置及旧行为 | 本轮x3 Owner/具体方法 | 实际操作/输入输出 | Windows验证与状态 |
+|---|---|---|---|
+| `CxECTImageWinForms/Models/ImageComparisonState.cs` 的 `SideBySide` / `SetSyncView` | 现有 `MVIImageComparisonState`；`MPWImageViewerControl.SideBySideOriginalAndResult` | 同一Session的原图在左、结果图在右，未向FIM写入任何投影像素 | **本轮功能闭环：已编码/已编译/已测试** |
+| `CxECTImageWinForms/Models/ImageViewportState.cs` 的缩放、中心及平移状态 | 现有 `MVIImageViewport` 的 `SynchronizeFrom`，MPW内各一个视口状态 | 两个不同面板尺寸按图像坐标中心/倍率对齐；左/右鼠标滚轮与拖移可双向联动；关闭同步后分别浏览 | MVI数学正反例 + WPF双向同步、独立平移；**通过** |
+| `CxECTImageWinForms/Controls/ImageViewerControl.cs:SetSyncView/RenderComparisonImages` | `MPWImageViewerControl.xaml(.cs)` 中现有控件内的 `ViewportRoot` / `SecondaryViewportRoot` / 双 `PixelImage` | 真正两个WPF视口、左原右结果、GridSplitter及状态、灰度窗口/旋转镜像沿用单一显示管线 | Windows WPF源图与结果图Gray16原始像素校验；**通过** |
+| `CxECTImageWinForms/Models/Overlays/OverlayStore.cs` + 原Viewer ROI投影 | 唯一 `MVIImageOverlayStore` / `MPWImageViewerControl.DrawOverlaysOn` | 两套WPF Canvas只是同一原图坐标ROI/测量/缺陷的不同视口投影；对象ID不复制 | WPF双图Canvas对象及原Store身份验证；**通过** |
+| `CxECTImageWinForms/Controls/Visualization/ImageRulerControl.cs` | 现有 `MPWImageRulerControl` 的主横纵标尺与第二横标尺 | 左/右横标尺按各自视口缩放和平移显示，当前右侧纵标尺未补齐 | 双横尺已编码；双纵尺/多DPI人工验收**待完成** |
+| `ReferTo/Vision/CxECT2DViewer/MainForm.cs` 的真实图像比较/重置/保存入口 | 已有 `TCTManualImageViewerFrame` + `TCTManualImageViewerLayout` | `输出`页“左右双视图”按钮、“同步缩放/平移”复选框和“退出叠合”；嵌入控件API可独立调用 | 真正WPF按钮/复选框Click、状态/输出回环，见#40286643954；**通过** |
+| `CxECTImageWinForms/Controls/ImageViewerControl.cs:ResizeRoi/SetRotation/ResetPan/SetZoomRange` | 当前MVI/MPW已有基础视口和MoveOverlay，未全部恢复旧编辑操作 | ResizeRoi手柄、任意角、精细Zoom/Pan重置等需迁移同一OverlayStore/Viewport，不建第二套体系 | **仍待完成，未虚报为P2已交付** |
+| `CxECTImageWinForms/Models/ImageToolMode.cs` 旧20类工具 | 当前 `MVIImageToolMode` + MPW实际交互 | 已有矩形/圆/多边形/多类测量；旧ResizeRoi、旋转矩形/自由曲线、完整对象编辑仍缺 | **部分迁移；本次SideBySide验收不能替代ROI验收** |
+
+### 5.2 真正的操作链及异常反证
+
+- 正例：先加载同宽高原图与结果图，选择“输出 → 左右双视图”；检查两个WPF图像缓冲及Gray16原始数值；按滚轮/拖移同步浏览、取消同步可独立平移，再恢复同步；ROI/标注仍使用唯一MVI对象列表；可保存包含两个面板的视口截图。真实Windows窗口的 `workbench-side-by-side.png` 使用合成图生成，仅在配置截图环境变量时输出。
+- 反例：缺少原图/结果、两图宽高不一致禁止启用；虚假的SideBySide枚举不会被误认为已有界面；退出模式释放第二视口的BitmapSource引用；旧图像源像素不得因为显示同步而改变。外部相机、HALCON私有HObject生命周期不在本阶段实证内。
+- GoF/Owner：比较策略由既有MVI状态通知，两个MVIViewport为**浏览投影**而非两份图像数据Owner；`DrawOverlaysOn`共享唯一OverlayStore和原图坐标。AOP诊断、耗时/取消继续复用现有机制，本次未新建Facade/Adapter或图像仓库。
+
+### 5.3 本阶段交付与剩余P2边界
+
+代码提交：[5e3276b](https://github.com/oudream/cx-visual-x3/commit/5e3276b012660ff97b6d8fbe9dd8bed20977737d)、[bdc300e](https://github.com/oudream/cx-visual-x3/commit/bdc300e0206bf4624aadc8257ae455d0d406b060)、[9200dcd](https://github.com/oudream/cx-visual-x3/commit/9200dcd8acae3fd1c89788a538f16c257961d276)。
+
+**下一组P2应继续**：ROI角点缩放/旋转与细调、编辑柄、图层排序锁定和统一Undo；任意角与亚像素、全双轴双视口标尺；序列与多图比较、独立图像配准及真机长时间性能。在真正CI/用户操作完成前，均保持“未完成/未验证”，不得把单个双视图成功说成60项全部交付。
