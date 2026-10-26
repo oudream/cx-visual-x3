@@ -114,7 +114,7 @@ namespace CxVisual.TestCenter.UI
         private static Button Button(string label, string id, Action action)
         {
             Button result = new Button { Content = label, Margin = new Thickness(4),
-                Padding = new Thickness(10, 6), MinHeight = 32, FontSize = 13 };
+                Padding = new Thickness(10, 6, 10, 6), MinHeight = 32, FontSize = 13 };
             AutomationProperties.SetAutomationId(result, id);
             result.Click += (sender, args) => action();
             return result;
