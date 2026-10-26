@@ -63,6 +63,8 @@ namespace CxVisual.TestCenter.UI
         private long _analysisEpoch;
         public MPWImagePlotControl HistogramPlot { get { return _histogramPlot; } }
         public MPWImagePlotControl ProfilePlot { get { return _profilePlot; } }
+        private readonly TextBox _polygonVertexIndex = new TextBox {
+            Width = 54, Text = "0", Margin = new Thickness(3) };
         private readonly ListBox _overlayList = new ListBox {
             Height = 142, Margin = new Thickness(5),
             FontSize = 12, Background = Brushes.White };
@@ -216,6 +218,37 @@ namespace CxVisual.TestCenter.UI
             MVIImageOverlayItem item = _viewer.Overlays.Find(id.Value);
             if (item == null) throw new InvalidOperationException("叠加项不存在或已删除。");
             return item;
+        }
+
+        private int GetPolygonVertexIndex()
+        {
+            int index;
+            if(!int.TryParse(_polygonVertexIndex.Text,NumberStyles.Integer,
+                CultureInfo.InvariantCulture,out index))
+                throw new ArgumentException("请输入有效的零基顶点或边索引。");
+            return index;
+        }
+
+        private void InsertPolygonVertexAtIndex()
+        {
+            MVIImageOverlayItem item=RequireSelectedOverlay();
+            if(item.Kind!=MVIImageOverlayKind.PolygonRoi)
+                throw new InvalidOperationException("请先选择多边形ROI。");
+            int index=GetPolygonVertexIndex();
+            MVIImageOverlayItem updated=_viewer.InsertSelectedPolygonEdgeMidpoint(index);
+            Show("多边形已在第"+index+"条边中点插入；当前"+
+                updated.Points.Count+"个顶点。");
+        }
+
+        private void RemovePolygonVertexAtIndex()
+        {
+            MVIImageOverlayItem item=RequireSelectedOverlay();
+            if(item.Kind!=MVIImageOverlayKind.PolygonRoi)
+                throw new InvalidOperationException("请先选择多边形ROI。");
+            int index=GetPolygonVertexIndex();
+            MVIImageOverlayItem updated=_viewer.RemoveSelectedPolygonVertex(index);
+            Show("多边形已删除第"+index+"个顶点；当前"+
+                updated.Points.Count+"个顶点。");
         }
 
         private void ToggleSelectedOverlayLock()
