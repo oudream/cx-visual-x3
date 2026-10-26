@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Diagnostics;
+using System.Threading;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
@@ -58,6 +59,8 @@ namespace CxVisual.TestCenter.UI
         private readonly MPWImagePlotControl _profilePlot = new MPWImagePlotControl();
         private readonly TabControl _inspectTabs = new TabControl();
         private FIMImageBuffer _plottedSource;
+        private CancellationTokenSource _analysisCancellation;
+        private long _analysisEpoch;
         public MPWImagePlotControl HistogramPlot { get { return _histogramPlot; } }
         public MPWImagePlotControl ProfilePlot { get { return _profilePlot; } }
         private readonly ListBox _overlayList = new ListBox {
@@ -97,6 +100,7 @@ namespace CxVisual.TestCenter.UI
             _viewer.Overlays.Changed += (sender,args) => RefreshOverlayList();
             _viewer.Session.Changed += (sender,args) =>
             {
+                CancelAnalysis();
                 FIMImageBuffer current = _viewer.ActiveImage;
                 if (!ReferenceEquals(current, _plottedSource))
                 {
@@ -107,6 +111,7 @@ namespace CxVisual.TestCenter.UI
             };
             _viewer.SelectionChanged += (s,e) =>
             {
+                CancelAnalysis();
                 if (_viewer.SelectedRegion.HasValue)
                     _status.Text = "当前ROI：" + BoundsText(_viewer.SelectedRegion.Value);
                 if (StateChanged != null) StateChanged();
@@ -443,27 +448,68 @@ namespace CxVisual.TestCenter.UI
             Show("窗宽窗位/反色/Gamma/亮度/对比度全部复位");
         }
 
-        private void Calculate()
+        private void CancelAnalysis()
+        {
+            Interlocked.Increment(ref _analysisEpoch);
+            if (_analysisCancellation != null)
+                _analysisCancellation.Cancel();
+        }
+
+        /// <summary>
+        /// 大图计算在后台执行；只有当前图像、ROI和请求仍匹配才允许更新图表。
+        /// 旧ImageViewerControl的取消及latest-request语义直接在唯一工作台落地。
+        /// </summary>
+        private async void Calculate()
         {
             FIMImageBuffer image = _viewer.ActiveImage;
             if (image == null) throw new InvalidOperationException("未加载图像。");
             FIMPixelRegion? region = _withRoi.IsChecked == true ? _viewer.SelectedRegion : null;
-            FIMImageAnalysisResult analysis = FIMImageAnalyzer.Analyze(image, 32, region);
-            FIMImageStatistics stats = analysis.Statistics;
-            long[] bins = analysis.Histogram.Bins.ToArray();
-            _histogramPlot.SetHistogram(analysis.Histogram);
-            _plottedSource = image;
-            _inspectTabs.SelectedIndex = 1;
-            _info.Text = "图像：" + image.Width + "×" + image.Height + "\n" +
-                "格式：" + image.PixelFormat + "\n" +
-                "ROI：" + (region.HasValue ? BoundsText(region.Value) : "全图") + "\n" +
-                "像素数：" + stats.PixelCount + "\n" +
-                "Min / Max：" + stats.Min.ToString("0.###") + " / " + stats.Max.ToString("0.###") + "\n" +
-                "Mean：" + stats.Mean.ToString("0.###") + "\n" +
-                "StdDev：" + stats.StandardDeviation.ToString("0.###") + "\n\n" +
-                "32档直方图（原始灰度域）\n" +
-                string.Join("\n", bins.Select((n,i) => i.ToString("D2") + "   " + n));
-            Show("原始像素统计已完成，不受窗宽窗位影响");
+            CancelAnalysis();
+            CancellationTokenSource cancellation = new CancellationTokenSource();
+            _analysisCancellation = cancellation;
+            long epoch = Interlocked.Read(ref _analysisEpoch);
+            Stopwatch timer = Stopwatch.StartNew();
+            Show("正在分析原始灰度：" + image.Width + "×" + image.Height +
+                "；界面仍可操作，切图/变更ROI会取消旧请求");
+            try
+            {
+                FIMImageAnalysisResult result = await Task.Run(() =>
+                    FIMImageAnalyzer.Analyze(image, 256, region, cancellation.Token),
+                    cancellation.Token);
+                if (cancellation.IsCancellationRequested ||
+                    Interlocked.Read(ref _analysisEpoch) != epoch ||
+                    !ReferenceEquals(_viewer.ActiveImage,image))
+                    return;
+                timer.Stop();
+                _histogramPlot.SetHistogram(result.Histogram);
+                _plottedSource = image;
+                _inspectTabs.SelectedIndex = 1;
+                FIMImageStatistics stats = result.Statistics;
+                _info.Text = "图像：" + image.Width + "×" + image.Height + "\n" +
+                    "格式：" + image.PixelFormat + "\n" +
+                    "ROI：" + (region.HasValue ? BoundsText(region.Value) : "全图") + "\n" +
+                    "像素数：" + stats.PixelCount + "\n" +
+                    "Min / Max：" + stats.Min.ToString("0.###") + " / " + stats.Max.ToString("0.###") + "\n" +
+                    "Mean：" + stats.Mean.ToString("0.###") + "\n" +
+                    "StdDev：" + stats.StandardDeviation.ToString("0.###") + "\n" +
+                    "256档直方图（原始灰度域） · 耗时 " +
+                    timer.Elapsed.TotalMilliseconds.ToString("0.#") + "ms";
+                Show("灰度统计完成：" + stats.PixelCount + "像素 / " +
+                    timer.Elapsed.TotalMilliseconds.ToString("0.#") +
+                    "ms；原图不变、显示窗不参与计算");
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception error)
+            {
+                if (Interlocked.Read(ref _analysisEpoch) == epoch)
+                    Show("统计失败：" + error.Message);
+            }
+            finally
+            {
+                if (ReferenceEquals(_analysisCancellation,cancellation))
+                    _analysisCancellation = null;
+                cancellation.Dispose();
+            }
         }
 
         private void ShowLineProfile()
@@ -504,7 +550,7 @@ namespace CxVisual.TestCenter.UI
             using (System.IO.StreamWriter output = new System.IO.StreamWriter(
                 path,false,new System.Text.UTF8Encoding(true)))
             {
-                output.WriteLine("Id,Layer,Kind,Visible,X,Y,Width,Height,PointCount,Value,Text");
+                output.WriteLine("Id,Layer,Kind,Visible,X,Y,Width,Height,PointCount,Value,Text,Vertices");
                 foreach (MVIImageOverlayItem item in _viewer.Overlays.Items)
                 {
                     string[] fields = {
@@ -514,7 +560,10 @@ namespace CxVisual.TestCenter.UI
                         item.Bounds.Width.ToString("R",CultureInfo.InvariantCulture),
                         item.Bounds.Height.ToString("R",CultureInfo.InvariantCulture),
                         item.Points.Count.ToString(CultureInfo.InvariantCulture),
-                        _viewer.DescribeMeasurement(item), item.Text
+                        _viewer.DescribeMeasurement(item), item.Text,
+                        string.Join(";",item.Points.Select(point =>
+                            point.X.ToString("R",CultureInfo.InvariantCulture) + ":" +
+                            point.Y.ToString("R",CultureInfo.InvariantCulture)))
                     };
                     output.WriteLine(string.Join(",",fields.Select(CsvField)));
                 }
@@ -554,6 +603,7 @@ namespace CxVisual.TestCenter.UI
 
         public void OnWorkspaceClosed()
         {
+            CancelAnalysis();
             // 所有数据归当前MPW/MVI会话管理；无设备句柄或新的工程资源。
             _viewer.Clear();
         }
