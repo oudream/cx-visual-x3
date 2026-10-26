@@ -207,7 +207,7 @@
 > **正式名称**：CxVisual 数据与交互体系（Unified Data & Interaction System）。现有Foundation/Mechanism/Professional项目归属不变，不新增程序集。原「公共机制体系#统一交互」及独立命令/数据旧命名文件保留历史，以下五份为统一权威导航；实施与测试记录仍以所在目录和固定SHA的实际结果为准。
 
 - [#0 总体架构 V1.5 ](Architecture/CxVisual_数据与交互体系%230总体架构——完整设计与验收_V1.5.md)
-- [#1 变量体系 V1.0 ](Architecture/CxVisual_数据与交互体系%231变量体系——完整设计与验收_V1.0.md)
+- [#1 变量体系 V1.1 ](Architecture/CxVisual_数据与交互体系%231变量体系——完整设计与验收_V1.1.md)
 - [#2 运行时数据 V3.0 ](Architecture/CxVisual_数据与交互体系%232运行时数据体系——完整设计与验收_V3.0.md)
 - [#3 消息中心 V1.7 ](Architecture/CxVisual_数据与交互体系%233消息中心——完整设计与验收_V1.7.md)
 - [#4 命令中心 V1.0 ](Architecture/CxVisual_数据与交互体系%234命令中心——完整设计与验收_V1.0.md)
