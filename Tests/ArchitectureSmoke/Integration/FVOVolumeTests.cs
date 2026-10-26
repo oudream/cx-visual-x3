@@ -45,6 +45,24 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Check(data16.GetScalarByOriginalIndex(7, 7, 7) == 1511f, "原始16bit不经8bit量化恢复");
                     Check(data16.HasOriginalRawData, "非托管原始RAW被持有");
                 }
+                // 真实切片采样与显示分离：三平面共享相同体素/物理坐标。
+                using (FVOVolumeData scalarSource = FVORawVolumeLoader.Load(path16))
+                {
+                    scalarSource.SetRawBuffer(FVORawVolumeLoader.LoadRawBuffer(scalarSource, new FVORawVolumeLoadTiming()));
+                    CxVisual.Foundation.Imaging.FIMImageBuffer xy =
+                        FVOSliceImageBuilder.BuildScalar(scalarSource, 0, 0, 7, FVOSlicePlane.XY);
+                    Check(xy.Width == 8 && xy.Height == 8 && xy.GetGrayValue(7, 7) == 1511,
+                        "XY原始16位切片不量化");
+                    CxVisual.Foundation.Imaging.FIMImageBuffer xz =
+                        FVOSliceImageBuilder.Build(scalarSource, 1, 3, 2, FVOSlicePlane.XZ, true, 0, 255);
+                    Check(xz.Width == 4 && xz.Height == 8, "XZ非等距物理比例");
+                    int ix, iy;
+                    FVOSliceImageBuilder.VoxelToImage(scalarSource, FVOSlicePlane.XY, 7, 5, 2, out ix, out iy);
+                    int vx, vy, vz;
+                    FVOSliceImageBuilder.ImageToVoxel(scalarSource, 3, 4, 2, FVOSlicePlane.XY,
+                        ix, iy, out vx, out vy, out vz);
+                    Check(vx == 7 && vy == 5 && vz == 2, "三刀与二维坐标往返");
+                }
                 FVOObliqueSliceDefinition oblique = new FVOObliqueSliceDefinition();
                 FVOObliqueSliceVector u;
                 FVOObliqueSliceVector v;

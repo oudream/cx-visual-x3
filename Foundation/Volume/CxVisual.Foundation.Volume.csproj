@@ -29,6 +29,10 @@
     <Compile Include="Internal\FVOFrameworkCompat.cs"/>
     <Compile Include="Slicing\FVOObliqueSliceDefinition.cs"/>
     <Compile Include="Slicing\FVOSlicePlane.cs"/>
+    <Compile Include="Slicing\FVOSliceImageBuilder.cs"/>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\Foundation\Imaging\CxVisual.Foundation.Imaging.csproj"><Project>{16709C88-01FC-58BA-8D9F-A14A04D73BAA}</Project><Name>CxVisual.Foundation.Imaging</Name></ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets"/>
 </Project>

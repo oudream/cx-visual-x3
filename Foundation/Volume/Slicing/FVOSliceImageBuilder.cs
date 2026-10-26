@@ -1,67 +1,48 @@
 using System;
-using System.Drawing;
-using System.Drawing.Imaging;
-using System.Runtime.InteropServices;
-using CxECTVolumeCore.Slicing;
-using CxECTVolumeCore.Utils;
-using CxECTVolumeCore.Volume;
+using CxVisual.Foundation.Imaging;
 
-namespace CxECTVolumeCore.Slicing
+namespace CxVisual.Foundation.Volume
 {
     /// <summary>保存二维切片位图及其在原始体素空间中的尺寸和显示比例。</summary>
-    public sealed class SliceImage
-    {
-        public SliceImage(Bitmap bitmap, int width, int height)
-        {
-            Bitmap = bitmap;
-            Width = width;
-            Height = height;
-        }
-
-        public Bitmap Bitmap { get; private set; }
-
-        public int Width { get; private set; }
-
-        public int Height { get; private set; }
-    }
-
-    /// <summary>从体数据和切片状态生成 XY、XZ、YZ 平面的二维显示位图。</summary>
-    public static class SliceImageBuilder
+    public static class FVOSliceImageBuilder
     {
         private const int MaxSliceImageAxis = 4096;
 
-        public static SliceImage Build(
-            VolumeData volume,
-            VolumeState state,
-            SlicePlane plane,
-            bool pseudoColor,
-            byte windowMin,
-            byte windowMax)
+        public static FIMImageBuffer Build(FVOVolumeData volume, int sliceX, int sliceY, int sliceZ,
+            FVOSlicePlane plane, bool pseudoColor, byte windowMin, byte windowMax)
         {
-            // --- 2D 切片生成入口：根据平面计算输出图像尺寸，物理间距会影响 XZ/YZ 的显示比例。
-            var width = GetImageWidth(volume, plane);
-            var height = GetImageHeight(volume, plane);
-            var bitmap = new Bitmap(width, height, PixelFormat.Format24bppRgb);
-            var data = bitmap.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, PixelFormat.Format24bppRgb);
+            if (volume == null) throw new ArgumentNullException("volume");
+            int width = GetImageWidth(volume, plane);
+            int height = GetImageHeight(volume, plane);
+            int stride = checked(width * 3);
+            byte[] bytes = BuildBufferFromDisplayVolume(volume, sliceX, sliceY, sliceZ,
+                plane, pseudoColor, windowMin, windowMax, stride, width, height);
+            return new FIMImageBuffer(width, height, FIMPixelFormat.Bgr24, bytes);
+        }
 
-            try
-            {
-                // 交互滚动必须只读内存里的显示体；整张切片从 RAW 跳读会让 UI 卡在磁盘 IO 上。
-                var buffer = BuildBufferFromDisplayVolume(volume, state, plane, pseudoColor, windowMin, windowMax, Math.Abs(data.Stride), width, height);
-                Marshal.Copy(buffer, 0, data.Scan0, buffer.Length);
-            }
-            finally
-            {
-                bitmap.UnlockBits(data);
-            }
-
-            return new SliceImage(bitmap, width, height);
+        /// <summary>直接读取16位/浮点原始标量，不采用8位窗口反算。</summary>
+        public static FIMImageBuffer BuildScalar(FVOVolumeData volume, int sliceX, int sliceY, int sliceZ,
+            FVOSlicePlane plane)
+        {
+            if (volume == null) throw new ArgumentNullException("volume");
+            int width = GetImageWidth(volume, plane);
+            int height = GetImageHeight(volume, plane);
+            byte[] bytes = new byte[checked(width * height * sizeof(float))];
+            for (int row = 0; row < height; row++)
+                for (int col = 0; col < width; col++)
+                {
+                    int x, y, z;
+                    ImageToVoxel(volume, sliceX, sliceY, sliceZ, plane, col, row, out x, out y, out z);
+                    byte[] value = BitConverter.GetBytes(volume.GetScalarByOriginalIndex(x, y, z));
+                    Buffer.BlockCopy(value, 0, bytes, (row * width + col) * sizeof(float), sizeof(float));
+                }
+            return new FIMImageBuffer(width, height, FIMPixelFormat.GrayFloat32, bytes);
         }
 
         private static byte[] BuildBufferFromDisplayVolume(
-            VolumeData volume,
-            VolumeState state,
-            SlicePlane plane,
+            FVOVolumeData volume,
+            int sliceX, int sliceY, int sliceZ,
+            FVOSlicePlane plane,
             bool pseudoColor,
             byte windowMin,
             byte windowMax,
@@ -73,14 +54,14 @@ namespace CxECTVolumeCore.Slicing
             // --- 按平面选择取样方向：XY 固定 Z，XZ 固定 Y，YZ 固定 X。
             switch (plane)
             {
-                case SlicePlane.XY:
-                    FillDisplayXySlice(buffer, stride, volume, state, pseudoColor, windowMin, windowMax);
+                case FVOSlicePlane.XY:
+                    FillDisplayXySlice(buffer, stride, volume, sliceX, sliceY, sliceZ, pseudoColor, windowMin, windowMax);
                     break;
-                case SlicePlane.XZ:
-                    FillDisplayXzSlice(buffer, stride, volume, state, pseudoColor, windowMin, windowMax);
+                case FVOSlicePlane.XZ:
+                    FillDisplayXzSlice(buffer, stride, volume, sliceX, sliceY, sliceZ, pseudoColor, windowMin, windowMax);
                     break;
-                case SlicePlane.YZ:
-                    FillDisplayYzSlice(buffer, stride, volume, state, pseudoColor, windowMin, windowMax);
+                case FVOSlicePlane.YZ:
+                    FillDisplayYzSlice(buffer, stride, volume, sliceX, sliceY, sliceZ, pseudoColor, windowMin, windowMax);
                     break;
                 default:
                     throw new ArgumentOutOfRangeException("plane", plane, null);
@@ -89,14 +70,14 @@ namespace CxECTVolumeCore.Slicing
             return buffer;
         }
 
-        private static void FillDisplayXySlice(byte[] buffer, int stride, VolumeData volume, VolumeState state, bool pseudoColor, byte windowMin, byte windowMax)
+        private static void FillDisplayXySlice(byte[] buffer, int stride, FVOVolumeData volume, int sliceX, int sliceY, int sliceZ, bool pseudoColor, byte windowMin, byte windowMax)
         {
-            // --- XY 视图：输出图像的列映射到 X，行映射到 Y，当前 state.SliceZ 决定深度层。
-            var sourceWidth = GetSourceWidth(volume, SlicePlane.XY);
-            var sourceHeight = GetSourceHeight(volume, SlicePlane.XY);
-            var sourceZ = volume.HasHighResolutionVoxels ? FrameworkCompat.Clamp(state.SliceZ, 0, volume.OriginalDepth - 1) : volume.OriginalToDisplayZ(state.SliceZ);
-            var imageWidth = GetImageWidth(volume, SlicePlane.XY);
-            var imageHeight = GetImageHeight(volume, SlicePlane.XY);
+            // --- XY 视图：输出图像的列映射到 X，行映射到 Y，当前 sliceZ 决定深度层。
+            var sourceWidth = GetSourceWidth(volume, FVOSlicePlane.XY);
+            var sourceHeight = GetSourceHeight(volume, FVOSlicePlane.XY);
+            var sourceZ = volume.HasHighResolutionVoxels ? FVOFrameworkCompat.Clamp(sliceZ, 0, volume.OriginalDepth - 1) : volume.OriginalToDisplayZ(sliceZ);
+            var imageWidth = GetImageWidth(volume, FVOSlicePlane.XY);
+            var imageHeight = GetImageHeight(volume, FVOSlicePlane.XY);
 
             for (var row = 0; row < imageHeight; row++)
             {
@@ -113,14 +94,14 @@ namespace CxECTVolumeCore.Slicing
             }
         }
 
-        private static void FillDisplayXzSlice(byte[] buffer, int stride, VolumeData volume, VolumeState state, bool pseudoColor, byte windowMin, byte windowMax)
+        private static void FillDisplayXzSlice(byte[] buffer, int stride, FVOVolumeData volume, int sliceX, int sliceY, int sliceZ, bool pseudoColor, byte windowMin, byte windowMax)
         {
-            // --- XZ 视图：输出图像的列映射到 X，行映射到 Z，当前 state.SliceY 决定截面位置。
-            var sourceWidth = GetSourceWidth(volume, SlicePlane.XZ);
-            var sourceHeight = GetSourceHeight(volume, SlicePlane.XZ);
-            var sourceY = volume.HasHighResolutionVoxels ? FrameworkCompat.Clamp(state.SliceY, 0, volume.OriginalHeight - 1) : volume.OriginalToDisplayY(state.SliceY);
-            var imageWidth = GetImageWidth(volume, SlicePlane.XZ);
-            var imageHeight = GetImageHeight(volume, SlicePlane.XZ);
+            // --- XZ 视图：输出图像的列映射到 X，行映射到 Z，当前 sliceY 决定截面位置。
+            var sourceWidth = GetSourceWidth(volume, FVOSlicePlane.XZ);
+            var sourceHeight = GetSourceHeight(volume, FVOSlicePlane.XZ);
+            var sourceY = volume.HasHighResolutionVoxels ? FVOFrameworkCompat.Clamp(sliceY, 0, volume.OriginalHeight - 1) : volume.OriginalToDisplayY(sliceY);
+            var imageWidth = GetImageWidth(volume, FVOSlicePlane.XZ);
+            var imageHeight = GetImageHeight(volume, FVOSlicePlane.XZ);
 
             for (var row = 0; row < imageHeight; row++)
             {
@@ -137,14 +118,14 @@ namespace CxECTVolumeCore.Slicing
             }
         }
 
-        private static void FillDisplayYzSlice(byte[] buffer, int stride, VolumeData volume, VolumeState state, bool pseudoColor, byte windowMin, byte windowMax)
+        private static void FillDisplayYzSlice(byte[] buffer, int stride, FVOVolumeData volume, int sliceX, int sliceY, int sliceZ, bool pseudoColor, byte windowMin, byte windowMax)
         {
-            // --- YZ 视图：输出图像的列映射到 Y，行映射到 Z，当前 state.SliceX 决定截面位置。
-            var sourceWidth = GetSourceWidth(volume, SlicePlane.YZ);
-            var sourceHeight = GetSourceHeight(volume, SlicePlane.YZ);
-            var sourceX = volume.HasHighResolutionVoxels ? FrameworkCompat.Clamp(state.SliceX, 0, volume.OriginalWidth - 1) : volume.OriginalToDisplayX(state.SliceX);
-            var imageWidth = GetImageWidth(volume, SlicePlane.YZ);
-            var imageHeight = GetImageHeight(volume, SlicePlane.YZ);
+            // --- YZ 视图：输出图像的列映射到 Y，行映射到 Z，当前 sliceX 决定截面位置。
+            var sourceWidth = GetSourceWidth(volume, FVOSlicePlane.YZ);
+            var sourceHeight = GetSourceHeight(volume, FVOSlicePlane.YZ);
+            var sourceX = volume.HasHighResolutionVoxels ? FVOFrameworkCompat.Clamp(sliceX, 0, volume.OriginalWidth - 1) : volume.OriginalToDisplayX(sliceX);
+            var imageWidth = GetImageWidth(volume, FVOSlicePlane.YZ);
+            var imageHeight = GetImageHeight(volume, FVOSlicePlane.YZ);
 
             for (var row = 0; row < imageHeight; row++)
             {
@@ -174,16 +155,13 @@ namespace CxECTVolumeCore.Slicing
                 return;
             }
 
-            var color = ToPseudoColor(displayValue);
-            buffer[offset + 0] = color.B;
-            buffer[offset + 1] = color.G;
-            buffer[offset + 2] = color.R;
+            WritePseudoBgr(buffer, offset, displayValue);
         }
 
         public static void ImageToVoxel(
-            VolumeData volume,
-            VolumeState state,
-            SlicePlane plane,
+            FVOVolumeData volume,
+            int sliceX, int sliceY, int sliceZ,
+            FVOSlicePlane plane,
             int imageX,
             int imageY,
             out int x,
@@ -192,18 +170,18 @@ namespace CxECTVolumeCore.Slicing
         {
             switch (plane)
             {
-                case SlicePlane.XY:
+                case FVOSlicePlane.XY:
                     x = MapIndex(imageX, GetImageWidth(volume, plane), volume.OriginalWidth);
                     y = MapIndex(imageY, GetImageHeight(volume, plane), volume.OriginalHeight);
-                    z = FrameworkCompat.Clamp(state.SliceZ, 0, volume.OriginalDepth - 1);
+                    z = FVOFrameworkCompat.Clamp(sliceZ, 0, volume.OriginalDepth - 1);
                     break;
-                case SlicePlane.XZ:
+                case FVOSlicePlane.XZ:
                     x = MapIndex(imageX, GetImageWidth(volume, plane), volume.OriginalWidth);
-                    y = FrameworkCompat.Clamp(state.SliceY, 0, volume.OriginalHeight - 1);
+                    y = FVOFrameworkCompat.Clamp(sliceY, 0, volume.OriginalHeight - 1);
                     z = MapIndex(imageY, GetImageHeight(volume, plane), volume.OriginalDepth);
                     break;
-                case SlicePlane.YZ:
-                    x = FrameworkCompat.Clamp(state.SliceX, 0, volume.OriginalWidth - 1);
+                case FVOSlicePlane.YZ:
+                    x = FVOFrameworkCompat.Clamp(sliceX, 0, volume.OriginalWidth - 1);
                     y = MapIndex(imageX, GetImageWidth(volume, plane), volume.OriginalHeight);
                     z = MapIndex(imageY, GetImageHeight(volume, plane), volume.OriginalDepth);
                     break;
@@ -212,40 +190,40 @@ namespace CxECTVolumeCore.Slicing
             }
         }
 
-        public static byte GetVoxel(VolumeData volume, int x, int y, int z)
+        public static byte GetVoxel(FVOVolumeData volume, int x, int y, int z)
         {
             return volume.GetVoxelByOriginalIndex(x, y, z);
         }
 
-        public static float GetScalarValue(VolumeData volume, int x, int y, int z)
+        public static float GetScalarValue(FVOVolumeData volume, int x, int y, int z)
         {
             // 交互查看时体素值也走内存显示体，避免鼠标移动时频繁打开并读取 RAW 文件。
             return volume.GetScalarByOriginalIndex(x, y, z);
         }
 
-        public static int GetImageWidth(VolumeData volume, SlicePlane plane)
+        public static int GetImageWidth(FVOVolumeData volume, FVOSlicePlane plane)
         {
-            return GetImageSize(volume, plane).Width;
+            return GetImageWidthHeight(volume, plane, true);
         }
 
-        public static int GetImageHeight(VolumeData volume, SlicePlane plane)
+        public static int GetImageHeight(FVOVolumeData volume, FVOSlicePlane plane)
         {
-            return GetImageSize(volume, plane).Height;
+            return GetImageWidthHeight(volume, plane, false);
         }
 
-        public static void VoxelToImage(VolumeData volume, SlicePlane plane, int x, int y, int z, out int imageX, out int imageY)
+        public static void VoxelToImage(FVOVolumeData volume, FVOSlicePlane plane, int x, int y, int z, out int imageX, out int imageY)
         {
             switch (plane)
             {
-                case SlicePlane.XY:
+                case FVOSlicePlane.XY:
                     imageX = MapIndex(x, volume.OriginalWidth, GetImageWidth(volume, plane));
                     imageY = MapIndex(y, volume.OriginalHeight, GetImageHeight(volume, plane));
                     break;
-                case SlicePlane.XZ:
+                case FVOSlicePlane.XZ:
                     imageX = MapIndex(x, volume.OriginalWidth, GetImageWidth(volume, plane));
                     imageY = MapIndex(z, volume.OriginalDepth, GetImageHeight(volume, plane));
                     break;
-                case SlicePlane.YZ:
+                case FVOSlicePlane.YZ:
                     imageX = MapIndex(y, volume.OriginalHeight, GetImageWidth(volume, plane));
                     imageY = MapIndex(z, volume.OriginalDepth, GetImageHeight(volume, plane));
                     break;
@@ -254,7 +232,7 @@ namespace CxECTVolumeCore.Slicing
             }
         }
 
-        private static Size GetImageSize(VolumeData volume, SlicePlane plane)
+        private static int GetImageWidthHeight(FVOVolumeData volume, FVOSlicePlane plane, bool horizontal)
         {
             float physicalWidth;
             float physicalHeight;
@@ -264,52 +242,52 @@ namespace CxECTVolumeCore.Slicing
             var sourceLongest = Math.Max(sourceWidth, sourceHeight);
             var maxPhysical = Math.Max(physicalWidth, physicalHeight);
             var pixelsPerPhysical = Math.Min(MaxSliceImageAxis, sourceLongest) / Math.Max(1.0f, maxPhysical);
-            var width = FrameworkCompat.Clamp((int)Math.Round(physicalWidth * pixelsPerPhysical), 1, MaxSliceImageAxis);
-            var height = FrameworkCompat.Clamp((int)Math.Round(physicalHeight * pixelsPerPhysical), 1, MaxSliceImageAxis);
-            return new Size(width, height);
+            var width = FVOFrameworkCompat.Clamp((int)Math.Round(physicalWidth * pixelsPerPhysical), 1, MaxSliceImageAxis);
+            var height = FVOFrameworkCompat.Clamp((int)Math.Round(physicalHeight * pixelsPerPhysical), 1, MaxSliceImageAxis);
+            return horizontal ? width : height;
         }
 
-        private static int GetSourceWidth(VolumeData volume, SlicePlane plane)
+        private static int GetSourceWidth(FVOVolumeData volume, FVOSlicePlane plane)
         {
             switch (plane)
             {
-                case SlicePlane.XY:
-                case SlicePlane.XZ:
+                case FVOSlicePlane.XY:
+                case FVOSlicePlane.XZ:
                     return volume.HasHighResolutionVoxels ? volume.OriginalWidth : volume.Width;
-                case SlicePlane.YZ:
+                case FVOSlicePlane.YZ:
                     return volume.HasHighResolutionVoxels ? volume.OriginalHeight : volume.Height;
                 default:
                     throw new ArgumentOutOfRangeException("plane", plane, null);
             }
         }
 
-        private static int GetSourceHeight(VolumeData volume, SlicePlane plane)
+        private static int GetSourceHeight(FVOVolumeData volume, FVOSlicePlane plane)
         {
             switch (plane)
             {
-                case SlicePlane.XY:
+                case FVOSlicePlane.XY:
                     return volume.HasHighResolutionVoxels ? volume.OriginalHeight : volume.Height;
-                case SlicePlane.XZ:
-                case SlicePlane.YZ:
+                case FVOSlicePlane.XZ:
+                case FVOSlicePlane.YZ:
                     return volume.HasHighResolutionVoxels ? volume.OriginalDepth : volume.Depth;
                 default:
                     throw new ArgumentOutOfRangeException("plane", plane, null);
             }
         }
 
-        private static void GetPhysicalSize(VolumeData volume, SlicePlane plane, out float width, out float height)
+        private static void GetPhysicalSize(FVOVolumeData volume, FVOSlicePlane plane, out float width, out float height)
         {
             switch (plane)
             {
-                case SlicePlane.XY:
+                case FVOSlicePlane.XY:
                     width = volume.OriginalWidth * volume.SpacingX;
                     height = volume.OriginalHeight * volume.SpacingY;
                     break;
-                case SlicePlane.XZ:
+                case FVOSlicePlane.XZ:
                     width = volume.OriginalWidth * volume.SpacingX;
                     height = volume.OriginalDepth * volume.SpacingZ;
                     break;
-                case SlicePlane.YZ:
+                case FVOSlicePlane.YZ:
                     width = volume.OriginalHeight * volume.SpacingY;
                     height = volume.OriginalDepth * volume.SpacingZ;
                     break;
@@ -325,27 +303,30 @@ namespace CxECTVolumeCore.Slicing
                 return 0;
             }
 
-            var normalized = FrameworkCompat.Clamp(sourceIndex / (float)(sourceCount - 1), 0.0f, 1.0f);
-            return FrameworkCompat.Clamp((int)Math.Round(normalized * (targetCount - 1)), 0, targetCount - 1);
+            var normalized = FVOFrameworkCompat.Clamp(sourceIndex / (float)(sourceCount - 1), 0.0f, 1.0f);
+            return FVOFrameworkCompat.Clamp((int)Math.Round(normalized * (targetCount - 1)), 0, targetCount - 1);
         }
 
-        public static Color ToPseudoColor(byte value)
+        private static void WritePseudoBgr(byte[] buffer, int offset, byte value)
         {
-            var t = value / 255.0f;
+            float t = value / 255.0f;
+            byte r, g, b;
             if (t < 0.33f)
             {
-                var k = t / 0.33f;
-                return Color.FromArgb(0, (int)Math.Round(255 * k), 255);
+                float k = t / 0.33f;
+                r = 0; g = (byte)Math.Round(255 * k); b = 255;
             }
-
-            if (t < 0.66f)
+            else if (t < 0.66f)
             {
-                var k = (t - 0.33f) / 0.33f;
-                return Color.FromArgb((int)Math.Round(255 * k), 255, (int)Math.Round(255 * (1.0f - k)));
+                float k = (t - 0.33f) / 0.33f;
+                r = (byte)Math.Round(255 * k); g = 255; b = (byte)Math.Round(255 * (1.0f - k));
             }
-
-            var high = (t - 0.66f) / 0.34f;
-            return Color.FromArgb(255, (int)Math.Round(255 * (1.0f - high)), 0);
+            else
+            {
+                float high = (t - 0.66f) / 0.34f;
+                r = 255; g = (byte)Math.Round(255 * (1.0f - high)); b = 0;
+            }
+            buffer[offset] = b; buffer[offset + 1] = g; buffer[offset + 2] = r;
         }
 
         public static byte ApplyWindow(byte value, byte windowMin, byte windowMax)
@@ -356,7 +337,7 @@ namespace CxECTVolumeCore.Slicing
             }
 
             var normalized = (value - windowMin) / (float)(windowMax - windowMin);
-            return (byte)Math.Round(FrameworkCompat.Clamp(normalized, 0.0f, 1.0f) * 255.0f);
+            return (byte)Math.Round(FVOFrameworkCompat.Clamp(normalized, 0.0f, 1.0f) * 255.0f);
         }
 
 
