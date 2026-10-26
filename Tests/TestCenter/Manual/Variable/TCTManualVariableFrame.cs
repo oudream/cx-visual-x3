@@ -45,6 +45,7 @@ namespace CxVisual.TestCenter.UI
         private readonly Button _bench;
         private MDSVariableNode _selected;
         private bool _closed, _busy;
+        private int _pendingUiRefresh;
         private long _observed;
         public string WorkspaceId { get { return "manual.variable"; } }
         public event Action StateChanged;
@@ -174,11 +175,16 @@ namespace CxVisual.TestCenter.UI
         }
         private void OnChanges(IReadOnlyList<MDSVariableChange> changes)
         {
-            // 后台Dispatcher从不直接修改WPF控件。
-            if (_closed) return;
+            // 高频变量不直接生成高频WPF消息：同一时刻最多排队一次UI刷新。
+            if (_closed || Interlocked.CompareExchange(ref _pendingUiRefresh, 1, 0) != 0) return;
             Dispatcher.BeginInvoke(new Action(() => {
-                if (_closed) return;
-                _observed++; Refresh();
+                try
+                {
+                    if (_closed) return;
+                    _observed++;
+                    Refresh();
+                }
+                finally { Interlocked.Exchange(ref _pendingUiRefresh, 0); }
             }), System.Windows.Threading.DispatcherPriority.Background);
         }
         private void Guard(Action execute)
