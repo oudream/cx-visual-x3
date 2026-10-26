@@ -1346,6 +1346,85 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             return false;
         }
 
+        /// <summary>逐顶点模式：Shift点边插点；Alt点金色顶点删除。屏幕拾取但保存原图坐标。</summary>
+        private bool TryPolygonTopologyGesture(Point pointer,MVIImageViewport viewport)
+        {
+            ModifierKeys keys=Keyboard.Modifiers;
+            bool insert=(keys & ModifierKeys.Shift)!=0;
+            bool remove=(keys & ModifierKeys.Alt)!=0;
+            if(!insert && !remove)return false;
+            if(insert && remove)
+            {
+                PixelStatus.Text="插入和删除顶点请分别使用 Shift 或 Alt。";
+                return true;
+            }
+            MVIImageOverlayItem item;
+            try {item=RequireVisibleSelectedPolygon();}
+            catch(InvalidOperationException)
+            {
+                PixelStatus.Text="请先选中可见的多边形ROI。";
+                return true;
+            }
+            if(item.IsLocked)
+            {
+                PixelStatus.Text="多边形已锁定，请先解锁。";
+                return true;
+            }
+            try
+            {
+                if(remove)
+                {
+                    int index;
+                    if(!TryPolygonVertexHandle(pointer,viewport,item,out index))
+                    {
+                        PixelStatus.Text="Alt＋点击金色顶点可删除（至少保留三个点）。";
+                        return true;
+                    }
+                    RemoveSelectedPolygonVertex(index);
+                    PixelStatus.Text="已删除多边形顶点 "+index;
+                }
+                else
+                {
+                    int nearest=-1;
+                    double minDistanceSquared=81;
+                    FGEPoint2D projected=new FGEPoint2D(0,0);
+                    for(int i=0;i<item.Points.Count;i++)
+                    {
+                        FGEPoint2D a=item.Points[i],b=item.Points[(i+1)%item.Points.Count];
+                        Point from=SourceToCanvas(a,viewport),to=SourceToCanvas(b,viewport);
+                        double dx=to.X-from.X,dy=to.Y-from.Y;
+                        double len=dx*dx+dy*dy;
+                        if(len<1e-10)continue;
+                        double t=Math.Max(0,Math.Min(1,
+                            ((pointer.X-from.X)*dx+(pointer.Y-from.Y)*dy)/len));
+                        if(t<=0.005 || t>=0.995)continue;
+                        double px=from.X+dx*t,py=from.Y+dy*t;
+                        double distanceSquared=(pointer.X-px)*(pointer.X-px)+
+                            (pointer.Y-py)*(pointer.Y-py);
+                        if(distanceSquared<=minDistanceSquared)
+                        {
+                            minDistanceSquared=distanceSquared;
+                            nearest=i;
+                            projected=new FGEPoint2D(a.X+(b.X-a.X)*t,
+                                a.Y+(b.Y-a.Y)*t);
+                        }
+                    }
+                    if(nearest<0)
+                    {
+                        PixelStatus.Text="Shift＋点击多边形边线可插入顶点。";
+                        return true;
+                    }
+                    InsertSelectedPolygonVertex(nearest,projected);
+                    PixelStatus.Text="已在第"+nearest+"条边插入顶点";
+                }
+            }
+            catch(ArgumentException e)
+            {PixelStatus.Text="多边形拓扑无效："+e.Message;}
+            catch(InvalidOperationException e)
+            {PixelStatus.Text=e.Message;}
+            return true;
+        }
+
         private bool BeginPolygonVertexEdit(Point pointer,MVIImageViewport viewport,
             bool secondary)
         {
@@ -1725,7 +1804,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             }
             if (_toolMode == MVIImageToolMode.EditPolygonVertex)
             {
-                if (BeginPolygonVertexEdit(e.GetPosition(SecondaryViewportRoot),
+                Point polygonPointer=e.GetPosition(SecondaryViewportRoot);
+                if(TryPolygonTopologyGesture(polygonPointer,_secondaryViewport))
+                {e.Handled=true;return;}
+                if (BeginPolygonVertexEdit(polygonPointer,
                     _secondaryViewport,true))
                     SecondaryViewportRoot.CaptureMouse();
                 e.Handled=true;return;
@@ -1819,6 +1901,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             }
             if (_toolMode == MVIImageToolMode.EditPolygonVertex)
             {
+                if(TryPolygonTopologyGesture(pointer,_viewport))
+                {e.Handled=true;return;}
                 if(BeginPolygonVertexEdit(pointer,_viewport,false))
                 { ViewportRoot.CaptureMouse();e.Handled=true; }
                 return;
