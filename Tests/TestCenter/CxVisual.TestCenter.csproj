@@ -74,6 +74,8 @@
     <Compile Include="Manual\Volume\TCTManualVolumeCrosshairs.cs" />
     <Compile Include="Manual\Volume\TCTManualVolumeGpu.cs" />
     <Compile Include="Manual\Volume\TCTManualVolumeOblique.cs" />
+    <Compile Include="Manual\Volume\TCTVolumeCurveEditor.cs" />
+    <Compile Include="Manual\Volume\TCTManualVolumeTransferPanels.cs" />
     <Compile Include="Manual\Volume\TCTVolumeViewerSmoke.cs" />
     <Compile Include="Manual\Message\TCTManualMessageFrame.cs" />
     <Compile Include="Manual\Command\TCTManualCommandFrame.cs" />

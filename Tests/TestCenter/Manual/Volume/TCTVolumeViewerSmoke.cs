@@ -52,6 +52,12 @@ namespace CxVisual.TestCenter.UI
                 frame.LoadDemo();
                 Check(before != frame.Volume && !Object.ReferenceEquals(before,frame.Volume),
                     "更换体数据必须更新FVO对象与纹理贴图");
+                int scalarCount=frame.ScalarStopCount,colorCount=frame.ColorStopCount;
+                frame.AddScalarStopForTest(.72f,.6f);
+                frame.AddColorStopForTest(.38f);
+                Check(frame.ScalarStopCount==scalarCount+1 &&
+                      frame.ColorStopCount==colorCount+1,
+                    "WPF交互曲线须直接修改唯一FVO传递函数控制点");
                 frame.SetObliqueForTest(true,20,15,45);
                 Check(frame.Scene.SlicePlaneCount==4 &&
                       frame.ObliqueViewer.ActiveImage != null &&
