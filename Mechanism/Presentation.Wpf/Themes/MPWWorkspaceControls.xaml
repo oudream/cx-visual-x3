@@ -207,7 +207,8 @@
     </Setter>
   </Style>
   <!-- 共享中央文档页签：无卡片外框，顶部选中条。 -->
-  <DataTemplate x:Key="MPWDockHeaderTemplate">\n    <Grid SnapsToDevicePixels="True">
+  <DataTemplate x:Key="MPWDockHeaderTemplate">
+    <Grid SnapsToDevicePixels="True">
     <Border x:Name="DocumentSurface" Margin="0" Padding="13,8,13,7"
             Background="{DynamicResource MPWSurfaceAltBrush}"
             BorderBrush="{DynamicResource MPWBorderBrush}" BorderThickness="0,0,1,1"
@@ -230,7 +231,8 @@
     </DataTemplate.Triggers>
   </DataTemplate>
   <!-- 共享停靠工具Tab：连续标签+底边选中条，适配Results/Timeline/History等。 -->
-  <DataTemplate x:Key="MPWToolDockHeaderTemplate">\n    <Grid SnapsToDevicePixels="True">
+  <DataTemplate x:Key="MPWToolDockHeaderTemplate">
+    <Grid SnapsToDevicePixels="True">
     <Border x:Name="ToolSurface" Margin="0" Padding="13,7,13,7"
             Background="{DynamicResource MPWSurfaceAltBrush}"
             BorderBrush="{DynamicResource MPWBorderBrush}" BorderThickness="0,0,1,1"
