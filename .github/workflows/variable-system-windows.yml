@@ -1,0 +1,50 @@
+name: CxVisual MDS Variable System Windows Acceptance
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'Mechanism/Data/Variables/**'
+      - 'Mechanism/Data/CxVisual.Mechanism.Data.csproj'
+      - 'Tests/ArchitectureSmoke/Integration/ModuleFoundationSmokeTests.cs'
+      - 'Tests/TestCenter/Manual/Variable/**'
+      - 'Tests/TestCenter/App.xaml.cs'
+      - 'Tests/TestCenter/Common/Framework/TCTWorkspaceRegistry.cs'
+      - 'DOCS/Architecture/CxVisual_数据与交互体系*'
+      - '.github/workflows/variable-system-windows.yml'
+jobs:
+  variable-windows:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - name: Restore WPF and NUnit packages
+        shell: pwsh
+        run: |
+          $m = (Get-Command msbuild.exe -ErrorAction Stop).Source
+          & $m .\Tests\TestCenter\CxVisual.TestCenter.csproj /t:Restore /p:Configuration=Release /p:Platform=x64 /nologo /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw "TestCenter package restore failed" }
+          & $m .\Applications\Studio\CxVisual.Studio.csproj /t:Restore /p:Configuration=Release /p:Platform=x64 /nologo /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw "Studio package restore failed" }
+      - name: Build full Windows x64 .NET48 solution
+        shell: pwsh
+        run: |
+          $m = (Get-Command msbuild.exe -ErrorAction Stop).Source
+          & $m .\CxVisual.Unified.sln /m:1 /t:Rebuild /p:Configuration=Release /p:Platform=x64 /nologo /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw "MDS variable solution build failed" }
+      - name: Execute complete variable and architecture smoke
+        shell: pwsh
+        run: |
+          & .\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe
+          if ($LASTEXITCODE -ne 0) { throw "MDS variables smoke failed" }
+      - name: Execute real STA TestCenter variable workspace
+        shell: pwsh
+        run: |
+          & .\Output\Release\x64\CxVisual.TestCenter.exe --variable-workspace-smoke
+          if ($LASTEXITCODE -ne 0) {
+            $err = Join-Path $env:TEMP 'CxVisual-Variable-Workspace-Error.txt'
+            if (Test-Path $err) { Get-Content -LiteralPath $err }
+            throw "Real WPF variable workspace failed"
+          }
+          Write-Host 'PASS MDS variable workspace and state projection (not PLC/HIL or 1M/s SLA)'

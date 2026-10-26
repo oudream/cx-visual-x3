@@ -48,6 +48,30 @@ namespace CxVisual.TestCenter.UI
         private int _pendingUiRefresh;
         private long _observed;
         public string WorkspaceId { get { return "manual.variable"; } }
+        public int VariableCount { get { return _variables.Tree.Snapshot().OfType<MDSVariableLeaf>().Count(); } }
+        public int GroupCount { get { return _variables.Tree.Snapshot().OfType<MDSVariableGroup>().Count(); } }
+        public bool IsClosed { get { return _closed; } }
+        internal static void VerifyWorkspace()
+        {
+            TCTWorkspaceRegistry registry = TCTWorkspaceRegistry.CreateDefaults(id => new UserControl());
+            TCTWorkspaceDescriptor descriptor = registry.Find("manual.variable");
+            if (descriptor == null || descriptor.Factory == null)
+                throw new InvalidOperationException("变量工作区未注册到唯一TestCenter目录");
+            TCTManualVariableFrame frame = descriptor.Factory() as TCTManualVariableFrame;
+            if (frame == null) throw new InvalidOperationException("变量工作区未创建真实WPF控件");
+            try
+            {
+                if (frame.VariableCount != 3) throw new InvalidOperationException("预置变量不完整");
+                frame.Commands.Single(x => x.Id == "variable.define").Execute();
+                frame.Commands.Single(x => x.Id == "variable.group").Execute();
+                if (frame.VariableCount != 4 || frame.GroupCount != 1)
+                    throw new InvalidOperationException("人工工作区定义和建组未真正更新MDS");
+                if (frame.Content == null) throw new InvalidOperationException("未渲染实际WPF工作区");
+            }
+            finally { frame.OnWorkspaceClosed(); }
+            if (!frame.IsClosed) throw new InvalidOperationException("变量工作区关闭后未释放资源");
+        }
+
         public event Action StateChanged;
         public IEnumerable<TCTWorkspaceAction> Commands
         {

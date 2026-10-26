@@ -20,6 +20,23 @@ namespace CxVisual.TestCenter.UI
         protected override async void OnStartup(StartupEventArgs e)
         {
             base.OnStartup(e);
+            if (e.Args.Length == 1 && e.Args[0] == "--variable-workspace-smoke")
+            {
+                ShutdownMode = ShutdownMode.OnExplicitShutdown;
+                try
+                {
+                    TCTManualVariableFrame.VerifyWorkspace();
+                    Console.WriteLine("PASS MDS Variable WPF Workspace");
+                    Shutdown(0);
+                }
+                catch (Exception error)
+                {
+                    System.IO.File.WriteAllText(System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                        "CxVisual-Variable-Workspace-Error.txt"), error.ToString());
+                    Shutdown(3);
+                }
+                return;
+            }
             if (e.Args.Length == 1 && e.Args[0] == "--volume-gpu-smoke")
             {
                 ShutdownMode=ShutdownMode.OnExplicitShutdown;
