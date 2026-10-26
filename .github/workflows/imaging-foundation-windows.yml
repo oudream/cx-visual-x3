@@ -14,6 +14,7 @@ on:
       - 'Mechanism/Visual/CxVisual.Mechanism.Visual.csproj'
       - 'Tests/ArchitectureSmoke/Integration/FIMImagingTests.cs'
       - 'Tests/ArchitectureSmoke/Integration/MVIImageSessionTests.cs'
+      - 'Tests/ArchitectureSmoke/Integration/MVIImageOverlayTests.cs'
       - 'Tests/ArchitectureSmoke/Program.cs'
       - 'Mechanism/Presentation.Wpf/Imaging/**'
       - 'Mechanism/Presentation.Wpf/Volume/**'
