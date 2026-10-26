@@ -36,12 +36,13 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         private readonly List<FGEPoint2D> _polygonDraft = new List<FGEPoint2D>();
         private string _annotationText = "标注";
         private FIMPixelRegion? _region;
-        private double? _windowLow, _windowHigh;
+        private readonly MVIImageDisplayState _displayState = new MVIImageDisplayState();
 
         public MPWImageViewerControl()
         {
             InitializeComponent();
             _session.Changed += OnSessionChanged;
+            _displayState.Changed += OnSessionChanged;
             _overlays.Changed += (sender, args) =>
             {
                 if (Dispatcher.CheckAccess()) DrawOverlays();
@@ -51,6 +52,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         }
 
         public MVIImageSession Session { get { return _session; } }
+        public MVIImageDisplayState DisplayState { get { return _displayState; } }
         public FIMImageBuffer ActiveImage { get { return _session.ActiveImage; } }
         public FIMPixelRegion? SelectedRegion { get { return _region; } }
         /// <summary>原图坐标的持久会话叠加项；调用方可直接通过MVI Store增删与更新。</summary>
@@ -94,7 +96,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             if (image == null) throw new ArgumentNullException("image");
             _pendingFit = true;
             _region = null;
-            _windowLow = _windowHigh = null;
+            _displayState.Reset();
             _polygonDraft.Clear();
             _overlays.Clear();
             _overlayOriginal = image;
@@ -116,7 +118,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         {
             VerifyAccess();
             _region = null;
-            _windowLow = _windowHigh = null;
+            _displayState.Reset();
             _polygonDraft.Clear();
             _overlays.Clear();
             _overlayOriginal = null;
@@ -201,9 +203,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 throw new ArgumentException("窗口下限与上限必须一起指定或一起清除。");
             if (low.HasValue && (!IsFinite(low.Value) || !IsFinite(high.Value) || high.Value <= low.Value))
                 throw new ArgumentOutOfRangeException("high");
-            _windowLow = low;
-            _windowHigh = high;
-            RefreshDisplay();
+            if (!low.HasValue) _displayState.SetAutoWindowLevel(true);
+            else _displayState.SetWindowLevel((low.Value + high.Value) * 0.5, high.Value - low.Value);
         }
 
         public void FitToWindow()
@@ -323,8 +324,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 return;
             }
 
-            FIMImageBuffer display = _windowLow.HasValue ?
-                FIMImageOperations.WindowToGray8(image, _windowLow.Value, _windowHigh.Value) : image;
+            FIMImageBuffer display = CreateDisplayBuffer(image);
             int stride = checked(display.Width * display.BytesPerPixel);
             long memory = (long)stride * display.Height;
             if (memory > 512L * 1024 * 1024)
@@ -342,6 +342,47 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             PixelStatus.Text = image.Width + "×" + image.Height + " " + image.PixelFormat;
             if (dimensionsChanged || _pendingFit) FitToWindow();
             else ApplyTransform();
+        }
+
+        /// <summary>只有呈现缓冲经调整，原始FIM图像和统计完全不变。</summary>
+        private FIMImageBuffer CreateDisplayBuffer(FIMImageBuffer image)
+        {
+            if (_displayState.IsIdentity) return image;
+
+            double low = 0, high = 255;
+            bool isColor = image.PixelFormat == FIMPixelFormat.Bgr24 ||
+                image.PixelFormat == FIMPixelFormat.Bgra32;
+            if (isColor)
+            {
+                if (!_displayState.IsAutoWindowLevel)
+                    throw new NotSupportedException("手动窗宽窗位要求灰度图像，彩色图请使用亮度/Gamma/对比度。");
+                if (_displayState.IsAutoContrast)
+                {
+                    FIMImageStatistics stats = FIMImageAnalyzer.Calculate(image);
+                    low = stats.Min;
+                    high = stats.Max > stats.Min ? stats.Max : stats.Min + 1;
+                }
+                return FIMImageToneMapping.MapColorRange(image, low, high,
+                    _displayState.Gamma, _displayState.Brightness,
+                    _displayState.Contrast, _displayState.IsInverted);
+            }
+
+            if (!_displayState.IsAutoWindowLevel)
+            {
+                low = _displayState.WindowCenter - _displayState.WindowWidth / 2;
+                high = _displayState.WindowCenter + _displayState.WindowWidth / 2;
+            }
+            else if (_displayState.IsAutoContrast || image.PixelFormat == FIMPixelFormat.GrayFloat32)
+            {
+                FIMImageStatistics stats = FIMImageAnalyzer.Calculate(image);
+                low = stats.Min;
+                high = stats.Max > stats.Min ? stats.Max : stats.Min + 1;
+            }
+            else if (image.PixelFormat == FIMPixelFormat.Gray16)
+                high = 65535;
+            return FIMImageToneMapping.MapGray(image, low, high,
+                _displayState.Gamma, _displayState.Brightness,
+                _displayState.Contrast, _displayState.IsInverted);
         }
 
         private void ApplyTransform()

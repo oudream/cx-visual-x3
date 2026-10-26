@@ -44,6 +44,18 @@ namespace CxVisual.TestCenter.UI
                 if (loaded.Width != 4 || loaded.Height != 4 || loaded.GetGrayValue(0,0) != 0)
                     throw new InvalidOperationException("PNG roundtrip unexpectedly changed pixel dimensions or window");
                 frame.Viewer.SetDisplayWindow(null,null);
+                frame.Viewer.DisplayState.SetInverted(true);
+                frame.Viewer.DisplayState.SetGamma(2.0);
+                frame.Viewer.DisplayState.SetBrightness(0.1);
+                frame.Viewer.DisplayState.SetContrast(1.4);
+                frame.Viewer.SavePng(file);
+                FIMImageBuffer effects = Mechanism.Presentation.Wpf.Imaging.MPWImageViewerControl.ReadImageFile(file);
+                if (effects.Width != 4 || effects.Height != 4 || effects.GetGrayValue(0,0) >= 255)
+                    throw new InvalidOperationException("MPW tone controls did not update rendered PNG");
+                frame.Viewer.DisplayState.Reset();
+                if (!frame.Viewer.DisplayState.IsIdentity || image.GetGrayValue(0,0) != 1)
+                    throw new InvalidOperationException("Display state leaked into raw image");
+
                 frame.Viewer.ShowResult(FIMImageOperations.NormalizeToGray8(image));
                 frame.Viewer.SelectOriginal();
                 if (frame.Viewer.ActiveImage != image)

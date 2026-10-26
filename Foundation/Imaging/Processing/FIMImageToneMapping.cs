@@ -33,7 +33,14 @@ namespace CxVisual.Foundation.Imaging
         public static FIMImageBuffer MapColor(FIMImageBuffer image, double gamma,
             double brightness, double contrast, bool invert)
         {
-            Validate(image, 0, 255, gamma, brightness, contrast);
+            return MapColorRange(image, 0, 255, gamma, brightness, contrast, invert);
+        }
+
+        /// <summary>使用共同的RGB动态范围映射色彩，透明通道始终保留。</summary>
+        public static FIMImageBuffer MapColorRange(FIMImageBuffer image, double low, double high,
+            double gamma, double brightness, double contrast, bool invert)
+        {
+            Validate(image, low, high, gamma, brightness, contrast);
             if (image.PixelFormat != FIMPixelFormat.Bgr24 && image.PixelFormat != FIMPixelFormat.Bgra32)
                 throw new ArgumentException("颜色增强要求Bgr24或Bgra32。", "image");
             byte[] input = image.CopyPixels();
@@ -45,9 +52,9 @@ namespace CxVisual.Foundation.Imaging
                 {
                     int from = y * image.Stride + x * srcBpp;
                     int to = y * outputStride + x * 4;
-                    output[to] = Adjust(input[from], 0, 255, gamma, brightness, contrast, invert);
-                    output[to + 1] = Adjust(input[from + 1], 0, 255, gamma, brightness, contrast, invert);
-                    output[to + 2] = Adjust(input[from + 2], 0, 255, gamma, brightness, contrast, invert);
+                    output[to] = Adjust(input[from], low, high, gamma, brightness, contrast, invert);
+                    output[to + 1] = Adjust(input[from + 1], low, high, gamma, brightness, contrast, invert);
+                    output[to + 2] = Adjust(input[from + 2], low, high, gamma, brightness, contrast, invert);
                     output[to + 3] = srcBpp == 4 ? input[from + 3] : (byte)255;
                 }
             return FIMImageBuffer.FromOwnedArray(image.Width, image.Height,
