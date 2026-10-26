@@ -533,33 +533,66 @@ namespace CxVisual.TestCenter.UI
                 .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
             if (removePoint == null) throw new InvalidOperationException("Point删除按钮不可访问");
             removePoint.Invoke();
+            // WPF UIA InvokePattern可早于按钮状态刷新返回；等待唯一MHS草稿实际删除，
+            // 不能把尚未完成的UI异步投影误判为规约引用校验失败。
+            bool pointRemoved = false, danglingMappingRetained = false;
+            for (int attempt = 0; attempt < 60 && !pointRemoved; attempt++)
+            {
+                window.Dispatcher.Invoke(new Action(() => {
+                    System.Windows.Controls.TabControl tabs =
+                        window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                    TCTManualModuleFrame frame = tabs.Items.OfType<System.Windows.Controls.TabItem>()
+                        .Select(x => x.Content).OfType<TCTManualModuleFrame>().Single();
+                    MCNConnectorConfiguration draft = frame.ConnectorDraftSnapshot();
+                    pointRemoved = draft.Protocol.Points.Count == 0;
+                    danglingMappingRetained = draft.Protocol.Mappings.Count == 1;
+                }));
+                if (!pointRemoved) Thread.Sleep(100);
+            }
+            if (!pointRemoved || !danglingMappingRetained)
+                throw new InvalidOperationException(
+                    "Point删除未写回MHS或错误级联删除Mapping：PointDeleted=" + pointRemoved +
+                    " MappingRetained=" + danglingMappingRetained);
+            string danglingStatus = null;
             window.Dispatcher.Invoke(new Action(() => {
                 System.Windows.Controls.TabControl tabs =
                     window.DocumentHost.Content as System.Windows.Controls.TabControl;
                 TCTManualModuleFrame frame = tabs.Items.OfType<System.Windows.Controls.TabItem>()
                     .Select(x => x.Content).OfType<TCTManualModuleFrame>().Single();
                 frame.ValidateCurrent();
-                if (frame.ConnectorDraftSnapshot().Protocol.Points.Count != 0 ||
-                    !frame.StatusMessage.Contains("配置存在"))
-                    throw new InvalidOperationException("删除被引用Point时必须保持无效映射并显示校验问题");
+                danglingStatus = frame.StatusMessage;
                 frame.SelectModulePage("mapping");
             }));
+            if (string.IsNullOrEmpty(danglingStatus) || !danglingStatus.Contains("配置存在"))
+                throw new InvalidOperationException("删除被引用Point后FCM未拒绝悬空映射");
             InvokePattern removeMapping = Find(root, "MPW.Collection.Remove.Protocol.Mappings[0]")
                 .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
             if (removeMapping == null) throw new InvalidOperationException("Mapping删除按钮不可访问");
             removeMapping.Invoke();
-            window.Dispatcher.Invoke(new Action(() => {
-                System.Windows.Controls.TabControl tabs =
-                    window.DocumentHost.Content as System.Windows.Controls.TabControl;
-                TCTManualModuleFrame frame = tabs.Items.OfType<System.Windows.Controls.TabItem>()
-                    .Select(x => x.Content).OfType<TCTManualModuleFrame>().Single();
-                MCNConnectorConfiguration draft = frame.ConnectorDraftSnapshot();
-                if (draft.Protocol.Points.Count != 0 || draft.Protocol.Mappings.Count != 0)
-                    throw new InvalidOperationException("删除DataMapping后同一MHS草稿仍有遗留");
-                frame.ValidateCurrent();
-                if (frame.StatusMessage.Contains("配置存在"))
-                    throw new InvalidOperationException("删除悬空映射后应恢复正式校验合法");
-            }));
+            bool mappingRemoved = false;
+            string repairedStatus = null;
+            for (int attempt = 0; attempt < 60 && !mappingRemoved; attempt++)
+            {
+                window.Dispatcher.Invoke(new Action(() => {
+                    System.Windows.Controls.TabControl tabs =
+                        window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                    TCTManualModuleFrame frame = tabs.Items.OfType<System.Windows.Controls.TabItem>()
+                        .Select(x => x.Content).OfType<TCTManualModuleFrame>().Single();
+                    MCNConnectorConfiguration draft = frame.ConnectorDraftSnapshot();
+                    mappingRemoved = draft.Protocol.Points.Count == 0 &&
+                        draft.Protocol.Mappings.Count == 0;
+                    if (mappingRemoved)
+                    {
+                        frame.ValidateCurrent();
+                        repairedStatus = frame.StatusMessage;
+                    }
+                }));
+                if (!mappingRemoved) Thread.Sleep(100);
+            }
+            if (!mappingRemoved)
+                throw new InvalidOperationException("删除DataMapping后同一MHS草稿仍有遗留");
+            if (repairedStatus == null || repairedStatus.Contains("配置存在"))
+                throw new InvalidOperationException("删除悬空映射后未恢复正式校验合法");
             window.Dispatcher.Invoke(new Action(() =>
                 SaveScreenshot(window, "TestCenter-Protocol-P0-Deleted.png")));
             InvokePattern save = Find(root, "TCT.Manual.Action.module.save")
