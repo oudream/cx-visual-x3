@@ -77,7 +77,7 @@
    </DockPanel>
   </Border>
   <dock:DockingManager x:Name="TestDock" Grid.Row="4"
-    AnchorableHeaderTemplate="{StaticResource MPWDockHeaderTemplate}">
+    AnchorableHeaderTemplate="{StaticResource MPWToolDockHeaderTemplate}">
    <dock:LayoutRoot>
     <dock:LayoutPanel Orientation="Vertical">
      <dock:LayoutPanel Orientation="Horizontal">

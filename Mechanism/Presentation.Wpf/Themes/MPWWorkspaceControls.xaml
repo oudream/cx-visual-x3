@@ -161,22 +161,43 @@
       </Setter.Value>
     </Setter>
   </Style>
-  <!-- AvalonDock无关的数据模板：只读取LayoutContent Title / IsSelected，
-       不创建Document/Anchorable、不修改ContentId或停靠布局。 -->
+  <!-- 共享中央文档页签：无卡片外框，顶部选中条。 -->
   <DataTemplate x:Key="MPWDockHeaderTemplate">
-    <Border x:Name="DockTabSurface" Padding="12,7,12,6" Margin="1,0,1,0"
-            CornerRadius="3,3,0,0" Background="{DynamicResource MPWSurfaceAltBrush}"
-            BorderBrush="{DynamicResource MPWBorderBrush}" BorderThickness="1,1,1,0">
-      <TextBlock Text="{Binding Title}" FontFamily="{StaticResource MPWUiFont}"
-                 FontSize="{StaticResource MPWFontBody}"
-                 Foreground="{DynamicResource MPWMutedBrush}" VerticalAlignment="Center"
-                 TextTrimming="CharacterEllipsis" MaxWidth="240"/>
+    <Border x:Name="DocumentSurface" Margin="0" Padding="13,8,13,7"
+            Background="{DynamicResource MPWSurfaceAltBrush}"
+            BorderBrush="{DynamicResource MPWBorderBrush}" BorderThickness="0,0,1,1"
+            SnapsToDevicePixels="True">
+      <TextBlock x:Name="Caption" Text="{Binding Title}" FontFamily="{StaticResource MPWUiFont}"
+                 FontSize="{StaticResource MPWFontBody}" Foreground="{DynamicResource MPWMutedBrush}"
+                 TextTrimming="CharacterEllipsis" VerticalAlignment="Center" MaxWidth="260"/>
     </Border>
     <DataTemplate.Triggers>
       <DataTrigger Binding="{Binding IsSelected}" Value="True">
-        <Setter TargetName="DockTabSurface" Property="Background" Value="{DynamicResource MPWSurfaceBrush}"/>
-        <Setter TargetName="DockTabSurface" Property="BorderBrush" Value="{DynamicResource MPWAccentBrush}"/>
-        <Setter TargetName="DockTabSurface" Property="BorderThickness" Value="1,3,1,0"/>
+        <Setter TargetName="DocumentSurface" Property="Background" Value="{DynamicResource MPWSurfaceBrush}"/>
+        <Setter TargetName="DocumentSurface" Property="BorderBrush" Value="{DynamicResource MPWAccentBrush}"/>
+        <Setter TargetName="DocumentSurface" Property="BorderThickness" Value="0,3,1,0"/>
+        <Setter TargetName="Caption" Property="Foreground" Value="{DynamicResource MPWAccentBrush}"/>
+        <Setter TargetName="Caption" Property="FontWeight" Value="SemiBold"/>
+      </DataTrigger>
+    </DataTemplate.Triggers>
+  </DataTemplate>
+  <!-- 共享停靠工具Tab：连续标签+底边选中条，适配Results/Timeline/History等。 -->
+  <DataTemplate x:Key="MPWToolDockHeaderTemplate">
+    <Border x:Name="ToolSurface" Margin="0" Padding="13,7,13,7"
+            Background="{DynamicResource MPWSurfaceAltBrush}"
+            BorderBrush="{DynamicResource MPWBorderBrush}" BorderThickness="0,0,1,1"
+            SnapsToDevicePixels="True">
+      <TextBlock x:Name="Caption" Text="{Binding Title}" FontFamily="{StaticResource MPWUiFont}"
+                 FontSize="{StaticResource MPWFontBody}" Foreground="{DynamicResource MPWMutedBrush}"
+                 TextTrimming="CharacterEllipsis" VerticalAlignment="Center" MaxWidth="220"/>
+    </Border>
+    <DataTemplate.Triggers>
+      <DataTrigger Binding="{Binding IsSelected}" Value="True">
+        <Setter TargetName="ToolSurface" Property="Background" Value="{DynamicResource MPWSurfaceBrush}"/>
+        <Setter TargetName="ToolSurface" Property="BorderBrush" Value="{DynamicResource MPWAccentBrush}"/>
+        <Setter TargetName="ToolSurface" Property="BorderThickness" Value="0,0,0,3"/>
+        <Setter TargetName="Caption" Property="Foreground" Value="{DynamicResource MPWAccentBrush}"/>
+        <Setter TargetName="Caption" Property="FontWeight" Value="SemiBold"/>
       </DataTrigger>
     </DataTemplate.Triggers>
   </DataTemplate>

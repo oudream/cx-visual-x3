@@ -1329,8 +1329,8 @@ namespace CxVisual.TestCenter.UI
                     throw new InvalidOperationException("Removed Overview banner is still visible");
                 if (window.TestDock.AnchorableHeaderTemplate == null ||
                     !ReferenceEquals(window.TestDock.AnchorableHeaderTemplate,
-                        Application.Current.FindResource("MPWDockHeaderTemplate")))
-                    throw new InvalidOperationException("Results dock tabs must use shared MPW Owner style");
+                        Application.Current.FindResource("MPWToolDockHeaderTemplate")))
+                    throw new InvalidOperationException("Results dock tabs must use shared MPW tool style");
                 System.Windows.Controls.TabControl documentTabs =
                     window.DocumentHost.Content as System.Windows.Controls.TabControl;
                 if (documentTabs == null ||

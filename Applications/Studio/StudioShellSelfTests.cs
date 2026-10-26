@@ -77,6 +77,9 @@ namespace CxVisual.Studio
                     Assert(ReferenceEquals(window.StudioDock.DocumentHeaderTemplate,
                         Application.Current.FindResource("MPWDockHeaderTemplate")),
                         "Studio文档Tab没有使用同一公共Owner");
+                    Assert(ReferenceEquals(window.StudioDock.AnchorableHeaderTemplate,
+                        Application.Current.FindResource("MPWToolDockHeaderTemplate")),
+                        "Studio工具Tab未使用公共MPW工具模板");
                     window.ApplyStudioTheme(true);
                     Assert(window.StudioDarkTheme, "深色未切换");
                     SolidColorBrush darkAccent =
