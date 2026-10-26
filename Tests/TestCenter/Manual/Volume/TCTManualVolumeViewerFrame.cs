@@ -78,79 +78,7 @@ namespace CxVisual.TestCenter.UI
 
         private void BuildUi()
         {
-            Background = BrushOf(241, 245, 250);
-            AutomationProperties.SetAutomationId(this, "TCT.Volume.Workbench");
-            Grid root = new Grid();
-            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(43) });
-            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(29) });
-            Content = root;
-
-            StackPanel bar = new StackPanel { Orientation = Orientation.Horizontal,
-                Background = BrushOf(249, 251, 255), Margin = new Thickness(0,0,0,2) };
-            AddButton(bar, "打开 RAW", "TCT.Volume.OpenRaw", OpenRaw);
-            AddButton(bar, "打开 BMP 目录", "TCT.Volume.OpenBmp", OpenBmpDirectory);
-            AddButton(bar, "生成演示体", "TCT.Volume.Demo", LoadDemo);
-            AddButton(bar, "三刀居中", "TCT.Volume.Center", Center);
-            AddButton(bar, "重置相机", "TCT.Volume.ResetCamera", Reset3DCamera);
-            root.Children.Add(bar);
-
-            Grid work = new Grid { Margin = new Thickness(5,3,5,3) };
-            work.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            work.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(300), MinWidth = 260 });
-            Grid.SetRow(work,1); root.Children.Add(work);
-            Grid four = new Grid { Background = BrushOf(21, 29, 40) };
-            four.RowDefinitions.Add(new RowDefinition());
-            four.RowDefinitions.Add(new RowDefinition());
-            four.ColumnDefinitions.Add(new ColumnDefinition());
-            four.ColumnDefinitions.Add(new ColumnDefinition());
-            work.Children.Add(four);
-            AddSliceViewport(four, _xy, FVOSlicePlane.XY, "XY / 轴向", 0,0);
-            AddSliceViewport(four, _yz, FVOSlicePlane.YZ, "YZ / 矢状", 0,1);
-            AddSliceViewport(four, _xz, FVOSlicePlane.XZ, "XZ / 冠状", 1,0);
-            Grid gpuFrame=AddViewport(four, _scene, "3D / 空间切片 / GPU体绘", 1,1);
-            gpuFrame.Children.Remove(_scene);
-            _gpuSlot=new Grid();
-            Grid.SetRow(_gpuSlot,1);
-            gpuFrame.Children.Add(_gpuSlot);
-            _gpuSlot.Children.Add(_scene);
-
-            ScrollViewer rightScroll = new ScrollViewer {
-                Background = BrushOf(249,251,255),
-                VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-            Grid.SetColumn(rightScroll,1); work.Children.Add(rightScroll);
-            StackPanel settings = new StackPanel { Margin = new Thickness(10,8,10,8) };
-            rightScroll.Content = settings;
-            Label(settings, "切片导航（三刀联动）");
-            AddAxis(settings, "X", _sliderX, "TCT.Volume.SliceX");
-            AddAxis(settings, "Y", _sliderY, "TCT.Volume.SliceY");
-            AddAxis(settings, "Z", _sliderZ, "TCT.Volume.SliceZ");
-            _sliceStatus.Margin = new Thickness(4,4,4,8);
-            _sliceStatus.Foreground = BrushOf(42,71,105);
-            settings.Children.Add(_sliceStatus);
-            settings.Children.Add(new Separator { Margin = new Thickness(2,8,2,10) });
-            Label(settings,"二维显示设置");
-            _pseudo.Margin = new Thickness(5,5,5,8);
-            settings.Children.Add(_pseudo);
-            AddAxis(settings, "窗下限（0-255）", _windowMin, "TCT.Volume.WindowMin");
-            AddAxis(settings, "窗上限（0-255）", _windowMax, "TCT.Volume.WindowMax");
-            settings.Children.Add(new Separator { Margin = new Thickness(2,10,2,10) });
-            settings.Children.Add(new TextBlock { Text = "Ctrl+点击切片：移动十字线    Shift+滚轮：切换切片", FontSize = 11, TextWrapping=TextWrapping.Wrap, Foreground=BrushOf(58,98,150), Margin=new Thickness(4,8,4,7) });
-            Label(settings, "三维可视化");
-            BuildGpuPanel(settings);
-            BuildObliquePanel(settings);
-            settings.Children.Add(new TextBlock {
-                Text = "已实现：三正交物理切面、共享三刀、相机旋转和缩放。\n" +
-                       "待接入：旧OpenGL体绘、Shader、材质光照和传递函数GPU编辑。",
-                Foreground = BrushOf(77,91,115), TextWrapping = TextWrapping.Wrap,
-                Margin = new Thickness(4,6,4,8) });
-            _status.Foreground = BrushOf(56,83,113);
-            _status.Margin = new Thickness(8,4,8,4);
-            _status.TextTrimming = TextTrimming.CharacterEllipsis;
-            Border footer = new Border { Background = BrushOf(235,243,253),
-                BorderBrush = BrushOf(204,216,233), BorderThickness = new Thickness(0,1,0,0),
-                Child = _status };
-            Grid.SetRow(footer,2); root.Children.Add(footer);
+            BuildLegacyUi();
         }
 
         private static void Label(Panel panel, string text)
@@ -222,6 +150,7 @@ namespace CxVisual.TestCenter.UI
             finally { _updating = false; }
             if (previous != null && !Object.ReferenceEquals(previous,volume)) previous.Dispose();
             RefreshSlices();
+            RefreshLegacyHistogram();
             UpdateGpuVolume();
             _status.Text = String.Format("{0} · {1}×{2}×{3} · Spacing {4:0.###}/{5:0.###}/{6:0.###}",
                 volume.Name, volume.OriginalWidth, volume.OriginalHeight, volume.OriginalDepth,
@@ -343,6 +272,8 @@ namespace CxVisual.TestCenter.UI
             _yz.Clear();
             _scene.Clear();
             ClearCrosshairs();
+            _obliqueViewer.Clear();
+            RestoreAllViews();
             _updating = false;
             _status.Text = "三维工作区已关闭，体数据与三维切面已释放。";
         }

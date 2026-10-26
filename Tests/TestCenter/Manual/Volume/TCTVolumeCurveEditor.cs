@@ -29,6 +29,7 @@ namespace CxVisual.TestCenter.UI
             SnapsToDevicePixels=true;Focusable=true;
         }
 
+        public float[] Histogram { get; set; }
         public int PointCount { get { return _points.Count; } }
         public FVOTransferPoint SelectedPoint
         {
@@ -82,6 +83,17 @@ namespace CxVisual.TestCenter.UI
                 dc.DrawLine(grid,new Point(area.Left,gy),new Point(area.Right,gy));
             }
             dc.DrawRectangle(null,new Pen(Brushes.SlateGray,1),area);
+            if(Histogram!=null && Histogram.Length>1)
+            {
+                Pen bins=new Pen(new SolidColorBrush(Color.FromRgb(176,193,211)),1);
+                for(int i=1;i<Histogram.Length;i++)
+                {
+                    double x0=area.Left+(i-1)*area.Width/(Histogram.Length-1.0);
+                    double x1=area.Left+i*area.Width/(Histogram.Length-1.0);
+                    dc.DrawLine(bins,new Point(x0,area.Bottom-area.Height*Clamp(Histogram[i-1])),
+                        new Point(x1,area.Bottom-area.Height*Clamp(Histogram[i])));
+                }
+            }
             if(_points.Count==0)return;
             if(_colorMode)
             {

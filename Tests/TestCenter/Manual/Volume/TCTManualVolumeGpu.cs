@@ -86,7 +86,7 @@ namespace CxVisual.TestCenter.UI
             sidebar.Children.Add(_gpuGradient);
             sidebar.Children.Add(_gpuUseThreshold);
             AddGpuSlider(sidebar,"阈值下限",_gpuThreshold);
-            BuildTransferPanels(sidebar);
+
             _gpuOpacity.ValueChanged+=(s,e)=>UpdateGpuSettings();
             _gpuStep.ValueChanged+=(s,e)=>UpdateGpuSettings();
             _gpuAmbient.ValueChanged+=(s,e)=>UpdateGpuSettings();

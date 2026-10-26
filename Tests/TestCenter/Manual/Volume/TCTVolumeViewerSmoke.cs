@@ -28,6 +28,13 @@ namespace CxVisual.TestCenter.UI
                 window.UpdateLayout();
                 frame.LoadDemo();
                 window.UpdateLayout();
+                Check(frame.LegacyTopTabCount==4 && frame.LegacyBottomTabCount==5,
+                    "原版上下4/5页签完整恢复");
+                frame.ToggleViewForTest(0);
+                Check(frame.IsLegacySingleView,"四视图单窗最大化");
+                frame.ToggleViewForTest(0);
+                Check(!frame.IsLegacySingleView,"单窗可原位恢复2x2");
+                frame.ApplyWindowCenterWidth();
                 Check(frame.Volume != null && frame.ViewState != null,"真实FVO与MVI状态绑定");
                 Check(frame.XyViewer.ActiveImage != null &&
                       frame.XzViewer.ActiveImage != null &&
@@ -71,6 +78,9 @@ namespace CxVisual.TestCenter.UI
                 {
                     Directory.CreateDirectory(Path.GetDirectoryName(file));
                     window.UpdateLayout();
+                    string legacyPng=Path.Combine(Path.GetDirectoryName(file),"four-views.png");
+                    frame.SaveFourViewScreenshot(legacyPng);
+                    Check(new FileInfo(legacyPng).Length>5000, "旧版四视图完整PNG导出");
                     RenderTargetBitmap bitmap = new RenderTargetBitmap(
                         (int)Math.Ceiling(window.ActualWidth),(int)Math.Ceiling(window.ActualHeight),
                         96,96,PixelFormats.Pbgra32);
