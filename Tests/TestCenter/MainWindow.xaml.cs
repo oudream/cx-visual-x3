@@ -208,6 +208,12 @@ namespace CxVisual.TestCenter.UI
                 frame.OpenSelected();
                 return frame;
             }
+            if (record.TemplateId == "manual.command")
+            {
+                TCTManualCommandFrame command = new TCTManualCommandFrame();
+                command.FormalRunRequested += async ids => await RunAsync(false, ids);
+                return command;
+            }
             if (record.TemplateId == "auto.catalog")
             {
                 TCTTestPlanControl plan = new TCTTestPlanControl();

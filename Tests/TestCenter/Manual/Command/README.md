@@ -55,3 +55,10 @@
 - `--command-center` 覆盖真正Windows Pipe运行态Query、恶意修改byte[]反证、完成后保留实际25%而不假设100%、没有进度上报时为null。全部以对应SHA Windows CI为准。
 
 尚未实现正式Operation多任务历史仓与事件Push订阅；目前显示当前工作区选中的Operation并保留人工观察行（非正式NUnit/TCT Run）。跨PC/HIL仍不可据此标为已验收。
+
+
+## 正式TCT Run/Attempt接入（2026-10-26）
+
+- 新增五个真实Owner自动案例 `TCT.CMD.001～005`，分别覆盖FDC Schema、MRK Batch/Operation关联、幂等与冲突、设备授权拒绝、缺失Remote Transport拒绝。静态方法使用现有 `[TCTTest]` 机制自动发现，直接由唯一 `TCTTestExecutionCoordinator` 以独立Worker运行。
+- 在命令测试页右侧操作中心和「正式TCT验收」Tab增加运行入口；由 `TCTMainWindow.RunAsync(false, ids)` 生成原有Run/Attempt与正式结果、Timeline、报告/历史。人工会话行只记录触发动作，不能代替断言结果。
+- CI新增 `--run --filter TCT.CMD. --format json --history-dir … --isolate` 独立Worker验证（5条Case、JSON报告、正式历史），同时保持原命令页真实WPF/UIA和MRK专项。当前仅5个**正式案例**，其余60项要求不可据此声称自动覆盖。

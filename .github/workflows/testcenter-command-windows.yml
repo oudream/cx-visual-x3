@@ -52,6 +52,21 @@ jobs:
             if (Test-Path $err) { Get-Content $err | Write-Host }
             throw "Command UIA failed with exit code $($p.ExitCode)"
           }
+      - name: Run formal TCT command-center Run and Attempt evidence
+        shell: pwsh
+        timeout-minutes: 4
+        run: |
+          $exe = (Resolve-Path 'Output/Debug/x64/CxVisual.TestCenter.exe').Path
+          $report = Join-Path $env:RUNNER_TEMP 'tct-command-results.json'
+          $history = Join-Path $env:RUNNER_TEMP 'tct-command-history'
+          $p = Start-Process -FilePath $exe -ArgumentList @('--run','--filter','TCT.CMD.','--format','json','--report', $report,'--history-dir', $history,'--isolate') -PassThru -Wait
+          if ($p.ExitCode -ne 0) { throw "Official command test Run failed, exit=$($p.ExitCode)" }
+          $summary = Get-Content $report -Raw | ConvertFrom-Json
+          $count = @($summary.cases).Count
+          if ($count -ne 5 -or $summary.passed -ne 5 -or $summary.success -ne $true) {
+            throw "Expected five passed formal command attempts; total=$count passed=$($summary.passed)"
+          }
+          if (-not (Test-Path $history)) { throw 'Missing official TCT history archive' }
       - name: Verify command center formal execution contracts
         shell: pwsh
         timeout-minutes: 5

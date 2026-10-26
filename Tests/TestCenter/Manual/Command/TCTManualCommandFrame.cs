@@ -80,6 +80,11 @@ namespace CxVisual.TestCenter.UI
         public bool IsExecuting { get { return _busy; } }
         private bool _closed;
         public event Action StateChanged;
+        /// <summary>由主窗口现有TCT Coordinator执行正式Case；本页不保存第二套Run。</summary>
+        public event Action<string[]> FormalRunRequested;
+        public static string[] FormalCaseIds()
+        { return new[] { "TCT.CMD.001", "TCT.CMD.002", "TCT.CMD.003",
+            "TCT.CMD.004", "TCT.CMD.005" }; }
         public string WorkspaceId { get { return "manual.command"; } }
         public Guid SessionId { get; private set; }
         public int HistoryCount { get { return _history.Count; } }
@@ -107,6 +112,8 @@ namespace CxVisual.TestCenter.UI
                         () => !_closed && (_childHost == null || _childHost.HasExited)),
                     new TCTWorkspaceAction("command.host.stop", "停止独立测试Host", StopChildHost,
                         () => !_closed && _childHost != null && !_childHost.HasExited),
+                    new TCTWorkspaceAction("command.formal.run", "运行5项正式命令中心TCT测试",
+                        RunFormalCases, () => !_closed && !_busy),
                     new TCTWorkspaceAction("command.refresh", "刷新命令目录", RefreshCatalog, () => !_closed)
                 };
             }
@@ -210,6 +217,24 @@ namespace CxVisual.TestCenter.UI
                 GridLinesVisibility = DataGridGridLinesVisibility.Horizontal };
             AutomationProperties.SetAutomationId(historyGrid, "TCT.Command.History");
             tabs.Items.Add(Tab("人工会话证据", historyGrid));
+            StackPanel formal = new StackPanel { Margin = new Thickness(14) };
+            formal.Children.Add(new TextBlock { Text = "命令中心正式TCT自动测试",
+                FontSize = 19, FontWeight = FontWeights.SemiBold });
+            formal.Children.Add(Caption("运行唯一TCT TestExecutionCoordinator：每条Case产生独立Run/Attempt、断言、诊断和正式报告；本页人工会话日志不冒充TCT Passed。"));
+            foreach (string description in new[] {
+                "CMD.001 · FDC Schema范围、默认值与版本反例",
+                "CMD.002 · MRK批量执行、独立Operation与响应关联",
+                "CMD.003 · Operation幂等重放与参数冲突",
+                "CMD.004 · 未授权设备命令拒绝执行",
+                "CMD.005 · 无远程Transport不能降级执行"
+            }) formal.Children.Add(Caption(description));
+            Button formalRun = new Button { Content = "启动5项正式测试（独立Worker）",
+                HorizontalAlignment = HorizontalAlignment.Left, Padding = new Thickness(14, 8, 14, 8),
+                Margin = new Thickness(5, 12, 5, 8) };
+            AutomationProperties.SetAutomationId(formalRun, "TCT.Command.Formal.Run");
+            formalRun.Click += (s, e) => RunFormalCases();
+            formal.Children.Add(formalRun);
+            tabs.Items.Add(Tab("正式TCT验收", formal));
             Grid.SetColumn(tabs, 1); columns.Children.Add(tabs);
             main.Children.Add(columns);
             Content = main;
@@ -330,6 +355,19 @@ namespace CxVisual.TestCenter.UI
                 }
             }
             finally { child.Dispose(); Changed(); }
+        }
+        public void RunFormalCases()
+        {
+            if (_closed) throw new ObjectDisposedException("TCTManualCommandFrame");
+            Action<string[]> run = FormalRunRequested;
+            if (run == null)
+            {
+                Show("当前工作区未接入TestCenter主窗口的正式TCT执行协调器");
+                return;
+            }
+            Log("FormalTCT", Guid.Empty, "Requested",
+                "5项正式Case由唯一TCT Runner运行；结果请到TestCenter正式结果/历史面板查看");
+            run(FormalCaseIds());
         }
         public void RegisterDemo()
         {

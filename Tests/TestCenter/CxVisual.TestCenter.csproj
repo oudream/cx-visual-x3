@@ -84,6 +84,7 @@
     <Compile Include="Manual\Volume\TCTVolumeGpuHardwareSmoke.cs" />
     <Compile Include="Manual\Message\TCTManualMessageFrame.cs" />
     <Compile Include="Manual\Command\TCTManualCommandFrame.cs" />
+    <Compile Include="Automated\Cases\TCTCommandCenterCases.cs" />
     <Compile Include="Manual\Module\TCTManualModuleFrame.cs" />
     <Compile Include="Automated\UI\Overview\TCTTestOverviewControl.cs" />
     <Compile Include="Automated\UI\ArchitectureSmoke\TCTArchitectureSmokeProcessRunner.cs" />
