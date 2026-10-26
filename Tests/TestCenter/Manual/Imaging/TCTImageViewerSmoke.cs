@@ -618,6 +618,73 @@ namespace CxVisual.TestCenter.UI
                     frame.Viewer.SecondaryResizeHandleVisualCount!=0)
                     throw new InvalidOperationException("退出编辑模式未清除WPF编辑柄");
                 Console.WriteLine("PASS TCT ROI edit: toolbar/list, eight handles, clipping, mirror, dual pane and polygon geometry");
+                // 旋转矩形：真实区域页按钮→正交四角→角度编辑→双Pane投影→锁/隐藏反证。
+                roiTabs.SelectedIndex=0;
+                window.UpdateLayout();
+                Button rotatedTool=FindControl<Button>(frame,"TCT.Imaging.RegionRotatedRectangle");
+                Button rotationTool=FindControl<Button>(frame,"TCT.Imaging.RotateOverlay");
+                if(rotatedTool==null || rotationTool==null)
+                    throw new InvalidOperationException("旋转矩形/旋转角柄的真实操作按钮缺失");
+                rotatedTool.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                if(frame.Viewer.ToolMode!=MVIImageToolMode.RotatedRectangleRoi)
+                    throw new InvalidOperationException("旋转矩形按钮未设置MVI正式工具模式");
+                MVIImageOverlayItem rotationBox=frame.Viewer.AddRotatedRectangle(
+                    new FGERect2D(1,1,2,1),0);
+                frame.Viewer.SelectOverlay(rotationBox.Id);
+                rotationTool.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                if(frame.Viewer.ToolMode!=MVIImageToolMode.RotateOverlay ||
+                    frame.Viewer.RotationHandleVisualCount!=1)
+                    throw new InvalidOperationException("旋转角柄未实际绘制金色WPF控制柄");
+                MVIImageOverlayItem angleBox=frame.Viewer.RotateSelectedRectangle(45);
+                if(angleBox.Id!=rotationBox.Id ||
+                    Math.Abs(angleBox.RotatedRectangleAngleDegrees-45)>1e-8 ||
+                    Math.Abs(angleBox.RotatedRectangleWidth-2)>1e-8 ||
+                    Math.Abs(angleBox.RotatedRectangleHeight-1)>1e-8 ||
+                    Math.Abs(angleBox.RotatedRectangleArea-2)>1e-8 ||
+                    rotationBox.RotatedRectangleAngleDegrees!=0)
+                    throw new InvalidOperationException("旋转后原图角度/正交宽高面积或身份错误");
+                if(frame.Viewer.HitTestOverlay(2,1.5)==null ||
+                    frame.Viewer.HitTestOverlay(2,1.5).Id!=rotationBox.Id)
+                    throw new InvalidOperationException("旋转矩形内部命中错误");
+                // 用真正超出原图的另一对象验证非法创建不会污染当前Store。
+                bool boundsRejected=false;
+                try { frame.Viewer.AddRotatedRectangle(new FGERect2D(0,0,3,3),45); }
+                catch(ArgumentOutOfRangeException) { boundsRejected=true; }
+                if(!boundsRejected || Math.Abs(
+                    frame.Viewer.Overlays.Find(rotationBox.Id).RotatedRectangleAngleDegrees-45)>1e-8)
+                    throw new InvalidOperationException("越界旋转修改了已保存对象");
+                frame.Viewer.ShowResult(FIMImageOperations.FlipHorizontal(image));
+                frame.Viewer.SideBySideOriginalAndResult(true);
+                window.UpdateLayout();
+                frame.Viewer.FitToWindow();
+                if(frame.Viewer.RotationHandleVisualCount!=1 ||
+                    frame.Viewer.SecondaryRotationHandleVisualCount!=1 ||
+                    frame.Viewer.Overlays.Find(rotationBox.Id).Id!=rotationBox.Id)
+                    throw new InvalidOperationException("双Pane未在各自视口投影同一旋转矩形角柄");
+                frame.Viewer.SetOverlayLayerVisible(MVIImageOverlayLayer.Roi,false);
+                if(frame.Viewer.RotationHandleVisualCount!=0 ||
+                    frame.Viewer.SecondaryRotationHandleVisualCount!=0)
+                    throw new InvalidOperationException("隐藏旋转矩形图层仍显示角柄");
+                frame.Viewer.SetOverlayLayerVisible(MVIImageOverlayLayer.Roi,true);
+                frame.Viewer.Overlays.SetLocked(rotationBox.Id,true);
+                if(frame.Viewer.RotationHandleVisualCount!=0)
+                    throw new InvalidOperationException("锁定对象仍保留可操作的旋转控制柄");
+                bool lockedAngleRejected=false;
+                try {frame.Viewer.RotateSelectedRectangle(0);}
+                catch(InvalidOperationException) {lockedAngleRejected=true;}
+                if(!lockedAngleRejected ||
+                    frame.Viewer.Overlays.Find(rotationBox.Id).RotatedRectangleAngleDegrees!=45)
+                    throw new InvalidOperationException("锁定旋转矩形未防止几何修改");
+                frame.Viewer.Overlays.SetLocked(rotationBox.Id,false);
+                frame.Viewer.DisableBlend();
+                frame.Viewer.Overlays.Remove(rotationBox.Id);
+                frame.Viewer.SelectOverlay(null);
+                frame.Viewer.ToolMode=MVIImageToolMode.Navigate;
+                if(frame.Viewer.RotationHandleVisualCount!=0)
+                    throw new InvalidOperationException("退出旋转编辑后没有清空控制柄");
+                Console.WriteLine("PASS TCT RotatedRectangle: WPF tools, orthogonal corners, dual panes, clipping and lock");
+
+
 
                 // 程序化创建真实叠加项，让MPW的WPF Canvas实际绘制，并检查层级隐藏/删除。
                 MVIImageOverlayItem rect = frame.Viewer.AddOverlay(new MVIImageOverlayItem(
