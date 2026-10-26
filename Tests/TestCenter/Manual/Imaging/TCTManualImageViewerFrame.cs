@@ -187,6 +187,7 @@ namespace CxVisual.TestCenter.UI
             {
                 string visibility = item.IsVisible &&
                     _viewer.Overlays.IsLayerVisible(item.Layer) ? "●" : "○";
+                if (item.IsLocked) visibility += "🔒";
                 ListBoxItem row = new ListBoxItem { Tag = item.Id,
                     Content = visibility + " " + item.Layer + " / " + item.Kind +
                         (string.IsNullOrEmpty(_viewer.DescribeMeasurement(item)) ? "" :
@@ -210,9 +211,25 @@ namespace CxVisual.TestCenter.UI
             return item;
         }
 
+        private void ToggleSelectedOverlayLock()
+        {
+            MVIImageOverlayItem item=RequireSelectedOverlay();
+            _viewer.Overlays.SetLocked(item.Id,!item.IsLocked);
+            Show(!item.IsLocked ? "ROI/标注已锁定："+item.Id : "对象已解锁："+item.Id);
+        }
+
+        private void MoveSelectedZOrder(int direction)
+        {
+            MVIImageOverlayItem item=RequireSelectedOverlay();
+            if (_viewer.Overlays.MoveZOrder(item.Id,direction))
+                Show("对象层叠顺序已更新："+item.Id);
+            else Show("对象已在当前边界位置，无需调整层叠顺序。");
+        }
+
         private void DeleteSelectedOverlay()
         {
             MVIImageOverlayItem item = RequireSelectedOverlay();
+            if (item.IsLocked) throw new InvalidOperationException("对象已锁定，禁止删除。");
             _viewer.Overlays.Remove(item.Id);
             Show("已删除叠加项：" + item.Kind);
         }

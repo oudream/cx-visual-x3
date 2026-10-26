@@ -41,7 +41,38 @@ namespace CxVisual.Mechanism.Visual
             int index = _items.FindIndex(x => x.Id == item.Id);
             if (index < 0) return false;
             if (ReferenceEquals(_items[index], item)) return true;
+            if (_items[index].IsLocked)
+                throw new InvalidOperationException("对象已锁定；请先通过Store正式解锁。");
             _items[index] = item;
+            Notify();
+            return true;
+        }
+
+        /// <summary>锁定状态由当前唯一OverlayStore管理；模型快照保留同一Guid。</summary>
+        public bool SetLocked(Guid id,bool locked)
+        {
+            int index=_items.FindIndex(x=>x.Id==id);
+            if (index<0) return false;
+            if (_items[index].IsLocked==locked) return true;
+            _items[index]=_items[index].WithLocked(locked);
+            Notify();
+            return true;
+        }
+
+        /// <summary>当前图层栈中的单步置前/置后；UI与几何拾取共用顺序。</summary>
+        public bool MoveZOrder(Guid id,int direction)
+        {
+            if (direction!=-1 && direction!=1)
+                throw new ArgumentOutOfRangeException("direction");
+            int index=_items.FindIndex(x=>x.Id==id);
+            if (index<0) return false;
+            int target=index+direction;
+            if (target<0 || target>=_items.Count) return false;
+            if (_items[index].IsLocked || _items[target].IsLocked)
+                throw new InvalidOperationException("锁定对象不可改变层叠位置。");
+            MVIImageOverlayItem current=_items[index];
+            _items[index]=_items[target];
+            _items[target]=current;
             Notify();
             return true;
         }

@@ -93,7 +93,41 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Fail<ArgumentOutOfRangeException>(() => new MVIImageOverlayItem(
                 MVIImageOverlayKind.RectangleRoi, MVIImageOverlayLayer.Roi,
                 new FGERect2D(0,0,1,1), lineWidth:0), "无效线宽");
-            Console.WriteLine("PASS MVI ImageOverlay: 旧分类/增改删/图层/移动/防脏模型");
+            // 对象锁定、栈顺序和Observer均复用唯一MVI Store，不另建Layer Manager。
+            MVIImageOverlayStore stacking=new MVIImageOverlayStore();
+            int orderedChanges=0;
+            stacking.Changed += (s,e)=>orderedChanges++;
+            MVIImageOverlayItem back=stacking.Add(new MVIImageOverlayItem(
+                MVIImageOverlayKind.RectangleRoi,MVIImageOverlayLayer.Roi,
+                new FGERect2D(1,1,4,4)));
+            MVIImageOverlayItem front=stacking.Add(new MVIImageOverlayItem(
+                MVIImageOverlayKind.RectangleRoi,MVIImageOverlayLayer.Roi,
+                new FGERect2D(1,1,4,4)));
+            Ensure(stacking.Items[1].Id==front.Id &&
+                stacking.MoveZOrder(back.Id,1) && stacking.Items[1].Id==back.Id,
+                "叠加项置前影响真实绘制/命中顺序");
+            Ensure(stacking.MoveZOrder(back.Id,-1) && stacking.Items[0].Id==back.Id,
+                "叠加项置后恢复先前顺序");
+            Ensure(!stacking.MoveZOrder(back.Id,-1),"边界层级为幂等");
+            Fail<ArgumentOutOfRangeException>(()=>stacking.MoveZOrder(back.Id,0),"无效层级方向");
+            Ensure(stacking.SetLocked(back.Id,true) && stacking.Find(back.Id).IsLocked,
+                "锁定记录在唯一Store中");
+            int beforeInvalid=orderedChanges;
+            Fail<InvalidOperationException>(()=>stacking.MoveZOrder(front.Id,-1),
+                "不得绕过锁定对象重新层叠");
+            Fail<InvalidOperationException>(()=>stacking.Find(back.Id).Translate(1,1),
+                "锁定ROI拒绝几何移动");
+            Fail<InvalidOperationException>(()=>stacking.Find(back.Id).WithResizedRoiHandle(
+                MVIImageResizeHandle.Right,new FGEPoint2D(8,2),16,16),
+                "锁定ROI拒绝编辑柄");
+            Fail<InvalidOperationException>(()=>stacking.Replace(
+                stacking.Find(back.Id).WithVisibility(false)),"唯一Store不能覆盖锁定对象");
+            Ensure(stacking.Items[0].Id==back.Id && orderedChanges==beforeInvalid,
+                "被拒绝操作不得污染Z序/状态/通知");
+            Ensure(stacking.SetLocked(back.Id,false) && !stacking.Find(back.Id).IsLocked &&
+                stacking.MoveZOrder(front.Id,-1) && stacking.Items[0].Id==front.Id,
+                "显式解锁后允许正常变更层级");
+            Console.WriteLine("PASS MVI ImageOverlay: 旧分类/增改删/八柄/锁定/Z序/原图几何");
         }
 
         private static void Ensure(bool condition,string description)

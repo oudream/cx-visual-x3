@@ -1036,7 +1036,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             {
                 MVIImageOverlayItem selected = _overlays.GetVisibleItems().FirstOrDefault(
                     item => item.Id == _selectedOverlayId.Value && item.Layer == MVIImageOverlayLayer.Roi);
-                if (selected != null && selected.Bounds.Width > 0 && selected.Bounds.Height > 0)
+                if (selected != null && !selected.IsLocked &&
+                    selected.Bounds.Width > 0 && selected.Bounds.Height > 0)
                     DrawResizeHandles(canvas,viewport,selected);
             }
         }
@@ -1094,7 +1095,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             MVIImageOverlayItem selected = _selectedOverlayId.HasValue ?
                 _overlays.Find(_selectedOverlayId.Value) : null;
             MVIImageResizeHandle handle;
-            if (selected != null && selected.Layer == MVIImageOverlayLayer.Roi &&
+            if (selected != null && !selected.IsLocked &&
+                selected.Layer == MVIImageOverlayLayer.Roi &&
                 _overlays.GetVisibleItems().Any(x=>x.Id==selected.Id) &&
                 TryResizeHandle(pointer,viewport,selected,out handle))
             {
@@ -1467,6 +1469,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 if (!TryImagePoint(pointer,out x,out y)) return;
                 MVIImageOverlayItem hit = HitTestOverlay(x + 0.5, y + 0.5);
                 if (hit == null) return;
+                if (hit.IsLocked)
+                {
+                    SelectOverlay(hit.Id);
+                    PixelStatus.Text="此对象已锁定；请先在区域页解锁。";
+                    e.Handled=true; return;
+                }
                 if (_toolMode == MVIImageToolMode.DeleteOverlay)
                 {
                     _overlays.Remove(hit.Id);

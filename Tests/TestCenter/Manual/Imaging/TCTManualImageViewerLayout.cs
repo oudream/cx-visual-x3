@@ -471,12 +471,15 @@ namespace CxVisual.TestCenter.UI
             Action(buttons,"清除选框","RemoveRoi",()=>_viewer.ClearSelection());
             Action(buttons,"删除选中","DeleteOverlay",DeleteSelectedOverlay);
             Action(buttons,"左移 1px","MoveOverlay",()=>MoveSelectedOverlay(-1,0));
+            Action(buttons,"锁定/解锁","ToggleOverlayLock",ToggleSelectedOverlayLock);
+            Action(buttons,"上移层级","BringOverlayForward",()=>MoveSelectedZOrder(1));
+            Action(buttons,"下移层级","SendOverlayBackward",()=>MoveSelectedZOrder(-1));
             Action(buttons,"隐藏/显示层","LayerVisibility",ToggleSelectedLayer);
             Action(buttons,"显示所有层","ShowAllLayers",ShowAllLayers);
             content.Children.Add(buttons);
             AutomationProperties.SetAutomationId(_overlayList,"TCT.Imaging.OverlayList");
             content.Children.Add(_overlayList);
-            content.Children.Add(Hint("先选择列表ROI或点击图中ROI；选“八柄缩放”后拖动蓝白控制点，边/角会限定在原图内。多边形缩放同步顶点，左右双图使用同一个对象ID。"));
+            content.Children.Add(Hint("先选列表或点击图中ROI，再用“八柄缩放”拖动蓝白编辑点。支持锁定、单步前后调整层叠；被锁定对象不可缩放、移动或删除。多边形编辑保留原图顶点和身份。"));
             return Scroll(content);
         }
         private UIElement BuildStatisticsPage()

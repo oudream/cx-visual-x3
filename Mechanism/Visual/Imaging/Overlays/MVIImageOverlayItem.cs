@@ -25,7 +25,7 @@ namespace CxVisual.Mechanism.Visual
             FGERect2D bounds, IEnumerable<FGEPoint2D> points = null,
             string text = null, string externalId = null,
             int argb = unchecked((int)0xFFFF4040), double lineWidth = 1.5,
-            Guid? id = null, bool isVisible = true)
+            Guid? id = null, bool isVisible = true, bool isLocked = false)
         {
             if (!Enum.IsDefined(typeof(MVIImageOverlayKind), kind))
                 throw new ArgumentOutOfRangeException("kind");
@@ -51,7 +51,7 @@ namespace CxVisual.Mechanism.Visual
             Kind = kind; Layer = layer; Bounds = bounds;
             _readonlyPoints = Array.AsReadOnly(_points);
             Text = text ?? string.Empty; ExternalId = externalId ?? string.Empty;
-            Argb = argb; LineWidth = lineWidth; IsVisible = isVisible;
+            Argb = argb; LineWidth = lineWidth; IsVisible = isVisible; IsLocked = isLocked;
         }
 
         public Guid Id { get; private set; }
@@ -65,17 +65,19 @@ namespace CxVisual.Mechanism.Visual
         public int Argb { get; private set; }
         public double LineWidth { get; private set; }
         public bool IsVisible { get; private set; }
+        public bool IsLocked { get; private set; }
 
         /// <summary>按原图坐标缩放边界与顶点，不能只改Bounds而令测量线/多边形顶点停在原位。</summary>
         public MVIImageOverlayItem WithBounds(FGERect2D bounds)
         {
+            if (IsLocked) throw new InvalidOperationException("ROI已锁定，禁止缩放。");
             double scaleX = Bounds.Width <= 0 ? 1 : bounds.Width / Bounds.Width;
             double scaleY = Bounds.Height <= 0 ? 1 : bounds.Height / Bounds.Height;
             FGEPoint2D[] points = _points.Select(p => new FGEPoint2D(
                 bounds.X + (p.X - Bounds.X) * scaleX,
                 bounds.Y + (p.Y - Bounds.Y) * scaleY)).ToArray();
             return new MVIImageOverlayItem(Kind, Layer, bounds, points, Text, ExternalId,
-                Argb, LineWidth, Id, IsVisible);
+                Argb, LineWidth, Id, IsVisible, IsLocked);
         }
         /// <summary>
         /// 基于拖动开始时的不可变快照编辑ROI边界，保持Guid、图层、样式和多边形顶点对应。
@@ -84,6 +86,7 @@ namespace CxVisual.Mechanism.Visual
         public MVIImageOverlayItem WithResizedRoiHandle(MVIImageResizeHandle handle,
             FGEPoint2D position, int imageWidth, int imageHeight)
         {
+            if (IsLocked) throw new InvalidOperationException("ROI已锁定，不能拖动编辑柄。");
             if (Layer != MVIImageOverlayLayer.Roi ||
                 (Kind != MVIImageOverlayKind.RectangleRoi &&
                  Kind != MVIImageOverlayKind.CircleRoi &&
@@ -132,23 +135,31 @@ namespace CxVisual.Mechanism.Visual
             return new MVIImageOverlayItem(Kind, Layer, Bounds, _points, Text, ExternalId,
                 Argb, LineWidth, Id, visible);
         }
+        public MVIImageOverlayItem WithLocked(bool locked)
+        {
+            return new MVIImageOverlayItem(Kind,Layer,Bounds,_points,Text,ExternalId,
+                Argb,LineWidth,Id,IsVisible,locked);
+        }
         public MVIImageOverlayItem WithText(string text)
         {
+            if (IsLocked) throw new InvalidOperationException("叠加对象已锁定，不能修改文字。");
             return new MVIImageOverlayItem(Kind, Layer, Bounds, _points, text, ExternalId,
-                Argb, LineWidth, Id, IsVisible);
+                Argb, LineWidth, Id, IsVisible, IsLocked);
         }
         public MVIImageOverlayItem WithStyle(int argb, double lineWidth)
         {
+            if (IsLocked) throw new InvalidOperationException("叠加对象已锁定，不能修改样式。");
             return new MVIImageOverlayItem(Kind, Layer, Bounds, _points, Text, ExternalId,
                 argb, lineWidth, Id, IsVisible);
         }
         public MVIImageOverlayItem Translate(double dx, double dy)
         {
+            if (IsLocked) throw new InvalidOperationException("叠加对象已锁定，不能移动。");
             FGEValidation.Finite(dx, "dx"); FGEValidation.Finite(dy, "dy");
             FGERect2D rect = new FGERect2D(Bounds.X + dx, Bounds.Y + dy, Bounds.Width, Bounds.Height);
             FGEPoint2D[] translated = _points.Select(p => new FGEPoint2D(p.X + dx, p.Y + dy)).ToArray();
             return new MVIImageOverlayItem(Kind, Layer, rect, translated, Text, ExternalId,
-                Argb, LineWidth, Id, IsVisible);
+                Argb, LineWidth, Id, IsVisible, IsLocked);
         }
     }
 }
