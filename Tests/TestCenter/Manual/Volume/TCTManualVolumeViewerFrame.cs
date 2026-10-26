@@ -325,17 +325,30 @@ namespace CxVisual.TestCenter.UI
             catch (Exception ex) { MessageBox.Show(ex.Message,"RAW载入失败"); }
         }
 
-        private void OpenBmpDirectory()
+        private async void OpenBmpDirectory()
         {
             OpenFileDialog dialog = new OpenFileDialog {
                 Filter = "BMP切片 (*.bmp)|*.bmp", Title = "从BMP目录选择任一张图像" };
             if (dialog.ShowDialog() != true) return;
-            try { LoadVolume(LoadBmpStack(Path.GetDirectoryName(dialog.FileName))); }
-            catch (Exception ex) { MessageBox.Show(ex.Message,"BMP目录载入失败"); }
+            try
+            {
+                await LoadBmpDirectoryAsync(Path.GetDirectoryName(dialog.FileName),
+                    System.Threading.CancellationToken.None);
+            }
+            catch (System.OperationCanceledException) { _status.Text="BMP读取已取消。"; }
+            catch (Exception ex) { _status.Text="BMP载入失败："+ex.Message; MessageBox.Show(ex.Message,"BMP目录载入失败"); }
         }
 
         public static FVOVolumeData LoadBmpStack(string directory)
         {
+            return LoadBmpStack(directory,System.Threading.CancellationToken.None);
+        }
+
+        /// <summary>后台BMP解码入口；每张切片检查取消，不在工作台UI线程批量解码。</summary>
+        public static FVOVolumeData LoadBmpStack(string directory,
+            System.Threading.CancellationToken cancellation)
+        {
+            cancellation.ThrowIfCancellationRequested();
             if (String.IsNullOrWhiteSpace(directory)) throw new ArgumentNullException("directory");
             string[] files = Directory.GetFiles(directory, "*.bmp")
                 .OrderBy(x=>x,StringComparer.OrdinalIgnoreCase).ToArray();
@@ -344,6 +357,7 @@ namespace CxVisual.TestCenter.UI
             byte[] pixels = null;
             for (int z=0;z<files.Length;z++)
             {
+                cancellation.ThrowIfCancellationRequested();
                 BitmapFrame source = BitmapFrame.Create(new Uri(files[z]),BitmapCreateOptions.PreservePixelFormat,
                     BitmapCacheOption.OnLoad);
                 FormatConvertedBitmap mono = new FormatConvertedBitmap(source, PixelFormats.Gray8, null, 0);
@@ -359,6 +373,7 @@ namespace CxVisual.TestCenter.UI
                     throw new InvalidDataException("BMP序列包含尺寸不一致的切片：" + files[z]);
                 mono.CopyPixels(pixels, checked(width * z * height), width);
             }
+            cancellation.ThrowIfCancellationRequested();
             return new FVOVolumeData(width,height,files.Length,pixels,
                 "BMP序列 ("+files.Length+"张)");
         }

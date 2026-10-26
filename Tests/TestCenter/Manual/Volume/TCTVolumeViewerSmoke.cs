@@ -314,6 +314,65 @@ namespace CxVisual.TestCenter.UI
                     frame.LoadDemo();
                 }
                 finally { Directory.Delete(rawFolder,true); }
+                // BMP序列同样必须在后台加载，且旧版静态接口继续可调用。
+                string bmpFolder=Path.Combine(Path.GetTempPath(),
+                    "cxvisual-volume-bmp-"+Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(bmpFolder);
+                try
+                {
+                    for(int z=0;z<3;z++)
+                    {
+                        byte[] gray=new byte[64];
+                        for(int k=0;k<gray.Length;k++)gray[k]=(byte)(40+z*20);
+                        BitmapSource source=BitmapSource.Create(8,8,96,96,
+                            PixelFormats.Gray8,null,gray,8);
+                        BmpBitmapEncoder encoder=new BmpBitmapEncoder();
+                        encoder.Frames.Add(BitmapFrame.Create(source));
+                        using(FileStream file=File.Create(Path.Combine(bmpFolder,
+                            "slice"+z.ToString("D2")+".bmp")))encoder.Save(file);
+                    }
+                    System.Threading.Tasks.Task bmpTask=frame.LoadBmpDirectoryAsync(
+                        bmpFolder,System.Threading.CancellationToken.None);
+                    if(!bmpTask.IsCompleted)
+                    {
+                        System.Windows.Threading.DispatcherFrame pump=
+                            new System.Windows.Threading.DispatcherFrame();
+                        bmpTask.ContinueWith(t=>frame.Dispatcher.BeginInvoke(
+                            new Action(delegate {pump.Continue=false;})));
+                        System.Windows.Threading.Dispatcher.PushFrame(pump);
+                    }
+                    bmpTask.GetAwaiter().GetResult();
+                    Check(frame.Volume!=null && frame.Volume.OriginalWidth==8 &&
+                          frame.Volume.OriginalDepth==3 && !frame.IsBmpLoading &&
+                          Math.Abs(frame.Volume.GetScalarByOriginalIndex(0,0,2)-80)<1,
+                        "BMP序列按文件顺序后台解码、转移FVO所有权并回收加载状态");
+
+                    // 已取消的BMP请求不得清除或覆盖前一次成功加载的数据。
+                    FVOVolumeData accepted=frame.Volume;
+                    using(System.Threading.CancellationTokenSource canceled=
+                        new System.Threading.CancellationTokenSource())
+                    {
+                        canceled.Cancel();
+                        System.Threading.Tasks.Task rejected=frame.LoadBmpDirectoryAsync(
+                            bmpFolder,canceled.Token);
+                        if(!rejected.IsCompleted)
+                        {
+                            System.Windows.Threading.DispatcherFrame pump=
+                                new System.Windows.Threading.DispatcherFrame();
+                            rejected.ContinueWith(t=>frame.Dispatcher.BeginInvoke(
+                                new Action(delegate {pump.Continue=false;})));
+                            System.Windows.Threading.Dispatcher.PushFrame(pump);
+                        }
+                        bool wasCanceled=false;
+                        try { rejected.GetAwaiter().GetResult(); }
+                        catch(System.OperationCanceledException) { wasCanceled=true; }
+                        Check(wasCanceled && Object.ReferenceEquals(accepted,frame.Volume) &&
+                              !frame.IsBmpLoading,
+                            "被取消的BMP加载不能覆盖当前体数据且必须回收异步状态");
+                    }
+                    frame.LoadDemo();
+                }
+                finally {Directory.Delete(bmpFolder,true);}
                 // 真正尝试 WGL Context。CI若只有OpenGL1.1，必须回退而不是伪报GPU成功。
                 frame.TryEnableGpu();
                 window.UpdateLayout();

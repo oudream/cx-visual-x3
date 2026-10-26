@@ -15,15 +15,50 @@ namespace CxVisual.TestCenter.UI
     {
         private CancellationTokenSource _activeRawLoad;
         private CancellationTokenSource _activeRawCache;
+        private CancellationTokenSource _activeBmpLoad;
         private int _lastLoadGeneration;
         public bool IsRawLoading { get; private set; }
+        public bool IsBmpLoading { get; private set; }
+
+        /// <summary>与RAW共享加载世代号，切换数据或关闭时拒绝过期BMP结果。</summary>
+        public async Task LoadBmpDirectoryAsync(string directory,CancellationToken cancellation)
+        {
+            if(String.IsNullOrWhiteSpace(directory))throw new ArgumentNullException("directory");
+            CancelPendingRawLoads();
+            CancellationTokenSource current=CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+            _activeBmpLoad=current;
+            int generation=++_lastLoadGeneration;
+            FVOVolumeData loaded=null;
+            IsBmpLoading=true;
+            _status.Text="正在后台读取 BMP 序列："+Path.GetFileName(
+                directory.TrimEnd(Path.DirectorySeparatorChar,Path.AltDirectorySeparatorChar));
+            Stopwatch elapsed=Stopwatch.StartNew();
+            try
+            {
+                loaded=await Task.Run(()=>LoadBmpStack(directory,current.Token),current.Token);
+                current.Token.ThrowIfCancellationRequested();
+                if(generation!=_lastLoadGeneration)throw new OperationCanceledException();
+                LoadVolume(loaded);
+                loaded=null; // 所有权转移给现有FVO工作台，不创建副本。
+                _status.Text=String.Format("BMP序列后台加载完成 {0:0} ms。",elapsed.ElapsedMilliseconds);
+            }
+            finally
+            {
+                if(loaded!=null)loaded.Dispose();
+                if(Object.ReferenceEquals(_activeBmpLoad,current))
+                {
+                    _activeBmpLoad=null;
+                    IsBmpLoading=false;
+                }
+                current.Dispose();
+            }
+        }
 
         public async Task LoadRawFileAsync(string filename,CancellationToken cancellation)
         {
             if(String.IsNullOrWhiteSpace(filename))throw new ArgumentNullException("filename");
             if(!File.Exists(filename))throw new FileNotFoundException("RAW文件不存在。",filename);
-            if(_activeRawLoad!=null)_activeRawLoad.Cancel();
-            if(_activeRawCache!=null)_activeRawCache.Cancel();
+            CancelPendingRawLoads();
             CancellationTokenSource current=CancellationTokenSource.CreateLinkedTokenSource(cancellation);
             _activeRawLoad=current;
             int generation=++_lastLoadGeneration;
@@ -112,6 +147,7 @@ namespace CxVisual.TestCenter.UI
             _lastLoadGeneration++;
             if(_activeRawLoad!=null)_activeRawLoad.Cancel();
             if(_activeRawCache!=null)_activeRawCache.Cancel();
+            if(_activeBmpLoad!=null)_activeBmpLoad.Cancel();
         }
     }
 }
