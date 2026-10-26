@@ -130,6 +130,11 @@ namespace CxVisual.TestCenter.UI
                 case MVIImageToolMode.DeleteOverlay: return "点击删除";
                 case MVIImageToolMode.PolygonRoi: return "多边形ROI（双击结束）";
                 case MVIImageToolMode.Angle: return "三点角度测量";
+                case MVIImageToolMode.HorizontalDistance: return "水平距离";
+                case MVIImageToolMode.VerticalDistance: return "垂直距离";
+                case MVIImageToolMode.Diameter: return "圆形直径";
+                case MVIImageToolMode.Area: return "矩形面积";
+                case MVIImageToolMode.PolygonArea: return "多边形面积（双击结束）";
                 default: return mode.ToString();
             }
         }
@@ -150,6 +155,8 @@ namespace CxVisual.TestCenter.UI
                     _viewer.Overlays.IsLayerVisible(item.Layer) ? "●" : "○";
                 ListBoxItem row = new ListBoxItem { Tag = item.Id,
                     Content = visibility + " " + item.Layer + " / " + item.Kind +
+                        (string.IsNullOrEmpty(_viewer.DescribeMeasurement(item)) ? "" :
+                            " · " + _viewer.DescribeMeasurement(item)) +
                         (string.IsNullOrEmpty(item.Text) ? "" : " · " + item.Text),
                     ToolTip = "ID: " + item.Id };
                 _overlayList.Items.Add(row);
@@ -487,6 +494,47 @@ namespace CxVisual.TestCenter.UI
             _inspectTabs.SelectedIndex = 2;
             Show("原始灰度剖面：" + "(" + x0 + "," + y0 + ") → (" + x1 + "," + y1 +
                 ")，不受显示Gamma和窗宽窗位影响");
+        }
+
+        /// <summary>导出当前真实MVI对象；保留稳定ID与原图几何，不伪造物理标定。</summary>
+        public void ExportMeasurementsCsv(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException("导出路径不能为空。","path");
+            if (_viewer.Session.Original == null) throw new InvalidOperationException("尚未加载原图。");
+            using (System.IO.StreamWriter output = new System.IO.StreamWriter(
+                path,false,new System.Text.UTF8Encoding(true)))
+            {
+                output.WriteLine("Id,Layer,Kind,Visible,X,Y,Width,Height,PointCount,Value,Text");
+                foreach (MVIImageOverlayItem item in _viewer.Overlays.Items)
+                {
+                    string[] fields = {
+                        item.Id.ToString("D"),item.Layer.ToString(),item.Kind.ToString(),
+                        item.IsVisible.ToString(),item.Bounds.X.ToString("R",CultureInfo.InvariantCulture),
+                        item.Bounds.Y.ToString("R",CultureInfo.InvariantCulture),
+                        item.Bounds.Width.ToString("R",CultureInfo.InvariantCulture),
+                        item.Bounds.Height.ToString("R",CultureInfo.InvariantCulture),
+                        item.Points.Count.ToString(CultureInfo.InvariantCulture),
+                        _viewer.DescribeMeasurement(item), item.Text
+                    };
+                    output.WriteLine(string.Join(",",fields.Select(CsvField)));
+                }
+            }
+        }
+        private static string CsvField(string s)
+        {
+            string text = s ?? string.Empty;
+            // 防止通过Excel打开缺陷文字触发CSV公式注入。
+            if (text.Length > 0 && "=+-@\t\r".IndexOf(text[0]) >= 0) text = "'" + text;
+            return "\"" + text.Replace("\"","\"\"") + "\"";
+        }
+        private void ExportMeasurements()
+        {
+            SaveFileDialog dialog = new SaveFileDialog {
+                Filter = "测量与标注CSV|*.csv", DefaultExt = ".csv",
+                Title = "导出当前图像ROI/测量/标注" };
+            if (dialog.ShowDialog() != true) return;
+            ExportMeasurementsCsv(dialog.FileName);
+            Show("已导出原图坐标、测量数值、物理标定与稳定ID：" + dialog.FileName);
         }
 
         private void Save()

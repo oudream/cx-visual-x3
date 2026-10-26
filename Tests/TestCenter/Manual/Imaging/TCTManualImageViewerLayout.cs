@@ -199,6 +199,11 @@ namespace CxVisual.TestCenter.UI
                 case "RegionPolygon": return "M12,3 L21,10 L18,20 L6,20 L3,10 Z M12,3 L12,4 M21,10 L20,10";
                 case "Distance": case "MeasureDistance": return "M4,18 L20,5 M3,15 L7,21 M17,2 L23,8 M5,18 L20,5";
                 case "MeasureAngle": return "M3,19 L11,5 L21,19 M5,16 A6,6 0 0 1 14,13";
+                case "MeasureHorizontal": return "M3,12 L21,12 M3,8 L3,16 M21,8 L21,16 M4,12 L7,9 M4,12 L7,15";
+                case "MeasureVertical": return "M12,3 L12,21 M8,3 L16,3 M8,21 L16,21 M12,4 L9,7 M12,4 L15,7";
+                case "MeasureDiameter": return "M12,3 A9,9 0 1 1 12,21 A9,9 0 1 1 12,3 M3,12 L21,12";
+                case "MeasureArea": return "M4,4 L20,4 L20,20 L4,20 Z M7,14 L7,17 L10,17";
+                case "MeasurePolygonArea": return "M12,3 L21,10 L18,20 L6,20 L3,10 Z M9,14 L15,14";
                 case "ViewRotate": return "M19,6 A9,9 0 1 0 21,13 M16,3 L20,7 L21,2";
                 case "ViewMirrorX": return "M12,2 L12,22 M3,7 L8,4 L8,20 L3,17 Z M21,7 L16,4 L16,20 L21,17 Z";
                 case "Original": case "OriginalBottom": return "M4,4 L20,4 L20,20 L4,20 Z M6,17 L11,11 L14,14 L17,9 L20,13";
@@ -364,6 +369,11 @@ namespace CxVisual.TestCenter.UI
             WrapPanel tiles = Row();
             Tile(tiles,"↗","距离","MeasureDistance",()=>SelectTool(MVIImageToolMode.Distance));
             Tile(tiles,"∠","角度","MeasureAngle",()=>SelectTool(MVIImageToolMode.Angle));
+            Tile(tiles,"↔","水平距离","MeasureHorizontal",()=>SelectTool(MVIImageToolMode.HorizontalDistance));
+            Tile(tiles,"↕","垂直距离","MeasureVertical",()=>SelectTool(MVIImageToolMode.VerticalDistance));
+            Tile(tiles,"◯","直径","MeasureDiameter",()=>SelectTool(MVIImageToolMode.Diameter));
+            Tile(tiles,"□","矩形面积","MeasureArea",()=>SelectTool(MVIImageToolMode.Area));
+            Tile(tiles,"⬡","多边形面积","MeasurePolygonArea",()=>SelectTool(MVIImageToolMode.PolygonArea));
             content.Children.Add(tiles);
             content.Children.Add(Hint("线段拖拽得到距离；角度测量依次点击三个点。计算与叠加显示均调用已有 FIM/MVI。"));
             content.Children.Add(Heading("标尺与物理单位"));
@@ -373,7 +383,7 @@ namespace CxVisual.TestCenter.UI
             Action(units,"启用毫米标尺","RulerMm",ApplyPixelSpacing);
             Action(units,"像素标尺","RulerPixel",ResetPixelSpacing);
             content.Children.Add(units);
-            content.Children.Add(Hint("直径、周长、完整控制柄等高级测量尚未实现，本页不提供虚假操作按钮。"));
+            content.Children.Add(Hint("所有工具直接创建MVI测量对象；矩形/圆拖拽完成，多边形双击完成。未标定只显示像素，非等距标定的圆显示X/Y两个物理直径。"));
             return Scroll(content);
         }
         private UIElement BuildAnnotatePage()
@@ -410,7 +420,7 @@ namespace CxVisual.TestCenter.UI
             Action(buttons,"显示所有层","ShowAllLayers",ShowAllLayers);
             content.Children.Add(buttons);
             content.Children.Add(_overlayList);
-            content.Children.Add(Hint("下方对象列表按稳定ID管理；多边形通过双击结束绘制。"));
+            content.Children.Add(Hint("下方对象列表按稳定ID管理；多边形通过双击结束绘制。测量数据可在“输出”页导出CSV。"));
             return Scroll(content);
         }
         private UIElement BuildStatisticsPage()
@@ -493,6 +503,7 @@ namespace CxVisual.TestCenter.UI
             Action(export,"保存图像PNG","SaveRawPng",Save);
             Action(export,"保存含标注视口","SaveViewPng",SaveViewPng);
             Action(export,"复制图像","Copy",()=>_viewer.CopyToClipboard());
+            Action(export,"导出测量/标注CSV","ExportMeasurements",ExportMeasurements);
             content.Children.Add(export);
             content.Children.Add(Heading("RAW / 原始图像输入"));
             content.Children.Add(Row(Label("宽"),_rawWidth,Label("高"),_rawHeight));
@@ -511,7 +522,11 @@ namespace CxVisual.TestCenter.UI
             foreach (ComboBoxItem item in _imageTool.Items.OfType<ComboBoxItem>())
                 if (item.Tag is MVIImageToolMode && (MVIImageToolMode)item.Tag == mode)
                 { _imageTool.SelectedItem = item; _displayTabs.SelectedIndex =
-                    mode == MVIImageToolMode.Distance || mode == MVIImageToolMode.Angle ? 3 :
+                    mode == MVIImageToolMode.Distance || mode == MVIImageToolMode.Angle ||
+                    mode == MVIImageToolMode.HorizontalDistance ||
+                    mode == MVIImageToolMode.VerticalDistance ||
+                    mode == MVIImageToolMode.Diameter || mode == MVIImageToolMode.Area ||
+                    mode == MVIImageToolMode.PolygonArea ? 3 :
                     mode == MVIImageToolMode.Point || mode == MVIImageToolMode.Text ||
                     mode == MVIImageToolMode.Arrow || mode == MVIImageToolMode.DefectBox ||
                     mode == MVIImageToolMode.MoveOverlay || mode == MVIImageToolMode.DeleteOverlay ? 4 : 0;

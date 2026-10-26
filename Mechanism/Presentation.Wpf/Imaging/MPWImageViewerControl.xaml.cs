@@ -76,6 +76,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 _pixelSpacing = value;
                 if (!value.HasValue) _rulerMillimeters = false;
                 RefreshRulers();
+                DrawOverlays();
             }
         }
         public bool ShowPhysicalRulers
