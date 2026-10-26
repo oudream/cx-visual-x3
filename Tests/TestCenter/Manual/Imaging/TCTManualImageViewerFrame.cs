@@ -20,7 +20,7 @@ namespace CxVisual.TestCenter.UI
     /// 通用二维工业视觉可操作工作区：借用正式MPW控件、MVI会话和FIM算法，
     /// 不保存第二套图像对象、检测引擎、工程定义或算法实现。
     /// </summary>
-    public sealed class TCTManualImageViewerFrame : UserControl, ITCTWorkspaceFrame
+    public sealed partial class TCTManualImageViewerFrame : UserControl, ITCTWorkspaceFrame
     {
         private readonly MPWImageViewerControl _viewer = new MPWImageViewerControl();
         private readonly TextBlock _status = new TextBlock { Text = "打开图片或通过开发者API传入FIMImageBuffer",
@@ -83,148 +83,7 @@ namespace CxVisual.TestCenter.UI
 
         public TCTManualImageViewerFrame()
         {
-            Grid root = new Grid { Background = Brushes.White };
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-
-            WrapPanel toolbar = new WrapPanel { Background = new SolidColorBrush(Color.FromRgb(241,246,251)),
-                Margin = new Thickness(3), Orientation = Orientation.Horizontal };
-            AddButton(toolbar, "打开文件", "Open", () => { OpenWithDialog(); });
-            AddButton(toolbar, "适应窗口", "Fit", () => _viewer.FitToWindow());
-            AddButton(toolbar, "1:1", "Actual", () => _viewer.ActualSize());
-            AddButton(toolbar, "观察旋转90°", "ViewRotate", () => _viewer.RotateViewClockwise());
-            AddButton(toolbar, "观察水平镜像", "ViewMirrorX", () => _viewer.FlipViewHorizontal());
-            AddButton(toolbar, "观察垂直镜像", "ViewMirrorY", () => _viewer.FlipViewVertical());
-            AddButton(toolbar, "复位观察", "ViewReset", () => _viewer.ResetViewTransform());
-            AddButton(toolbar, "放大", "ZoomIn", () => _viewer.Zoom(1.25));
-            AddButton(toolbar, "缩小", "ZoomOut", () => _viewer.Zoom(0.8));
-            toolbar.Children.Add(new TextBlock { Text = "交互工具", VerticalAlignment = VerticalAlignment.Center });
-            foreach (MVIImageToolMode mode in Enum.GetValues(typeof(MVIImageToolMode)))
-                _imageTool.Items.Add(new ComboBoxItem { Content = ToolTitle(mode), Tag = mode });
-            _imageTool.SelectedIndex = 0;
-            toolbar.Children.Add(_imageTool);
-            toolbar.Children.Add(_annotationText);
-            AddButton(toolbar, "裁剪为结果", "Crop", CropSelection);
-            AddButton(toolbar, "归一化结果", "Normalize", Normalize);
-            toolbar.Children.Add(new TextBlock { Text = "滤波半径", VerticalAlignment = VerticalAlignment.Center });
-            _filterRadius.Items.Add(1); _filterRadius.Items.Add(2); _filterRadius.Items.Add(3);
-            _filterRadius.SelectedItem = 1;
-            toolbar.Children.Add(_filterRadius);
-            AddButton(toolbar, "均值", "Mean", () => Filter(FIMNeighborhoodFilter.Mean));
-            AddButton(toolbar, "中值", "Median", () => Filter(FIMNeighborhoodFilter.Median));
-            AddButton(toolbar, "腐蚀", "Erode", () => Filter(FIMNeighborhoodFilter.Minimum));
-            AddButton(toolbar, "膨胀", "Dilate", () => Filter(FIMNeighborhoodFilter.Maximum));
-            toolbar.Children.Add(new TextBlock { Text = "Sigma", VerticalAlignment = VerticalAlignment.Center });
-            toolbar.Children.Add(_sigma);
-            AddButton(toolbar, "高斯降噪", "Gaussian", Gaussian);
-            toolbar.Children.Add(new TextBlock { Text = "锐化量", VerticalAlignment = VerticalAlignment.Center });
-            toolbar.Children.Add(_amount);
-            AddButton(toolbar, "锐化", "Sharpen", Sharpen);
-            AddButton(toolbar, "旋转90°", "Rotate", () => ProcessImage(
-                image => FIMImageOperations.Rotate90Clockwise(image), "旋转90°"));
-            AddButton(toolbar, "水平镜像", "FlipHorizontal", () => ProcessImage(
-                image => FIMImageOperations.FlipHorizontal(image), "水平镜像"));
-            AddButton(toolbar, "垂直镜像", "FlipVertical", () => ProcessImage(
-                image => FIMImageOperations.FlipVertical(image), "垂直镜像"));
-            AddButton(toolbar, "差分图", "Difference", Difference);
-            toolbar.Children.Add(new TextBlock { Text = "叠合比例", VerticalAlignment = VerticalAlignment.Center });
-            toolbar.Children.Add(_blendRatio);
-            AddButton(toolbar, "透明叠合", "Blend", Blend);
-            AddButton(toolbar, "退出叠合", "BlendOff", () => _viewer.DisableBlend());
-            AddButton(toolbar, "原图", "Original", () => _viewer.SelectOriginal());
-            AddButton(toolbar, "结果图", "Result", () => _viewer.SelectResult());
-            AddButton(toolbar, "清空", "Clear", () => _viewer.Clear());
-            AddButton(toolbar, "保存PNG", "Save", Save);
-            AddButton(toolbar, "复制图像", "Copy", () => _viewer.CopyToClipboard());
-            Grid.SetRow(toolbar, 0); root.Children.Add(toolbar);
-
-            WrapPanel analysis = new WrapPanel { Margin = new Thickness(3) };
-            analysis.Children.Add(new TextBlock { Text = "窗下限", VerticalAlignment = VerticalAlignment.Center });
-            analysis.Children.Add(_low);
-            analysis.Children.Add(new TextBlock { Text = "窗上限", VerticalAlignment = VerticalAlignment.Center });
-            analysis.Children.Add(_high);
-            AddButton(analysis, "应用窗宽窗位", "Window", Window);
-            AddButton(analysis, "还原显示", "ResetWindow", ResetDisplay);
-            analysis.Children.Add(new TextBlock { Text = "Gamma", VerticalAlignment = VerticalAlignment.Center });
-            analysis.Children.Add(_displayGamma);
-            analysis.Children.Add(new TextBlock { Text = "亮度", VerticalAlignment = VerticalAlignment.Center });
-            analysis.Children.Add(_displayBrightness);
-            analysis.Children.Add(new TextBlock { Text = "对比度", VerticalAlignment = VerticalAlignment.Center });
-            analysis.Children.Add(_displayContrast);
-            analysis.Children.Add(_displayInverted);
-            analysis.Children.Add(_autoContrast);
-            AddButton(analysis, "应用显示", "ApplyDisplay", ApplyDisplay);
-            analysis.Children.Add(new TextBlock { Text = "X间距mm/px", VerticalAlignment = VerticalAlignment.Center });
-            analysis.Children.Add(_spacingX);
-            analysis.Children.Add(new TextBlock { Text = "Y间距mm/px", VerticalAlignment = VerticalAlignment.Center });
-            analysis.Children.Add(_spacingY);
-            AddButton(analysis, "毫米标尺", "RulerMm", ApplyPixelSpacing);
-            AddButton(analysis, "像素标尺", "RulerPixel", ResetPixelSpacing);
-            analysis.Children.Add(_withRoi);
-            AddButton(analysis, "灰度统计/直方图", "Analyze", Calculate);
-            AddButton(analysis, "灰度剖面", "LineProfile", ShowLineProfile);
-            AddButton(analysis, "阈值掩码", "Threshold", Threshold);
-            AddButton(analysis, "清除ROI", "RemoveRoi", () => _viewer.ClearSelection());
-            Grid.SetRow(analysis, 1); root.Children.Add(analysis);
-
-            WrapPanel rawInput = new WrapPanel { Margin = new Thickness(3),
-                Background = new SolidColorBrush(Color.FromRgb(247,249,252)) };
-            rawInput.Children.Add(new TextBlock { Text = "RAW  宽", VerticalAlignment = VerticalAlignment.Center });
-            rawInput.Children.Add(_rawWidth);
-            rawInput.Children.Add(new TextBlock { Text = "高", VerticalAlignment = VerticalAlignment.Center });
-            rawInput.Children.Add(_rawHeight);
-            foreach (FIMPixelFormat format in new[] { FIMPixelFormat.Gray8,
-                FIMPixelFormat.Gray16, FIMPixelFormat.GrayFloat32,
-                FIMPixelFormat.Bgr24, FIMPixelFormat.Bgra32 })
-                _rawFormat.Items.Add(format);
-            _rawFormat.SelectedItem = FIMPixelFormat.Gray16;
-            rawInput.Children.Add(_rawFormat);
-            rawInput.Children.Add(_bigEndian);
-            AddButton(rawInput, "打开RAW", "RawOpen", () => OpenRawWithDialog());
-            rawInput.Children.Add(new TextBlock { Text = "严格按宽高/格式检查字节数（≤512MiB）",
-                VerticalAlignment = VerticalAlignment.Center, Foreground = Brushes.DimGray });
-            Grid.SetRow(rawInput, 2); root.Children.Add(rawInput);
-
-            Grid body = new Grid();
-            body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(260) });
-            Border viewerFrame = new Border { BorderBrush = Brushes.SlateGray,
-                BorderThickness = new Thickness(1), Child = _viewer };
-            body.Children.Add(viewerFrame);
-            DockPanel side = new DockPanel { Background = Brushes.WhiteSmoke };
-            TextBlock summary = new TextBlock { Text = "图像分析 / ROI与标注",
-                FontWeight = FontWeights.SemiBold, Margin = new Thickness(8),
-                Foreground = Brushes.DarkSlateBlue };
-            DockPanel.SetDock(summary, Dock.Top); side.Children.Add(summary);
-            WrapPanel overlayButtons = new WrapPanel { Margin = new Thickness(3) };
-            AddButton(overlayButtons, "删除选中", "DeleteOverlay", DeleteSelectedOverlay);
-            AddButton(overlayButtons, "左移1px", "MoveOverlay", () => MoveSelectedOverlay(-1, 0));
-            AddButton(overlayButtons, "隐藏/显示层", "LayerVisibility", ToggleSelectedLayer);
-            AddButton(overlayButtons, "显示所有层", "ShowAllLayers", ShowAllLayers);
-            AddButton(overlayButtons, "清空标注", "ClearOverlays", () => _viewer.ClearOverlays());
-            DockPanel overlayPanel = new DockPanel();
-            DockPanel.SetDock(overlayButtons, Dock.Top);
-            overlayPanel.Children.Add(overlayButtons);
-            _overlayList.Height = double.NaN;
-            overlayPanel.Children.Add(_overlayList);
-
-            _inspectTabs.Items.Add(new TabItem { Header = "数据", Content = _info });
-            _inspectTabs.Items.Add(new TabItem { Header = "直方图", Content = _histogramPlot });
-            _inspectTabs.Items.Add(new TabItem { Header = "灰度剖面", Content = _profilePlot });
-            _inspectTabs.Items.Add(new TabItem { Header = "图层/对象", Content = overlayPanel });
-            side.Children.Add(_inspectTabs);
-            Grid.SetColumn(side, 1); body.Children.Add(side);
-            Grid.SetRow(body, 3); root.Children.Add(body);
-
-            Border footer = new Border { Background = Brushes.AliceBlue,
-                BorderThickness = new Thickness(0,1,0,0), BorderBrush = Brushes.LightSteelBlue,
-                Child = _status };
-            Grid.SetRow(footer, 4); root.Children.Add(footer);
-            Content = root;
-            AutomationProperties.SetAutomationId(this, "TCT.Imaging.Workbench");
+            BuildWorkbenchLayout();
             _imageTool.SelectionChanged += (sender,args) =>
             {
                 ComboBoxItem selected = _imageTool.SelectedItem as ComboBoxItem;
