@@ -169,6 +169,16 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Math.Abs(denseEdited.Points[0].X-220.01)<1e-8 &&
                 denseEdited.Bounds.Right>220,
                 "长多边形顶点编辑保留点数及精确外框");
+            FGEPoint2D denseMidpoint=new FGEPoint2D(
+                (dense[0].X+dense[1].X)/2.0,(dense[0].Y+dense[1].Y)/2.0);
+            MVIImageOverlayItem denseInserted=densePolygon.WithInsertedPolygonVertex(
+                0,denseMidpoint,256,256);
+            MVIImageOverlayItem denseRestored=denseInserted.WithRemovedPolygonVertex(1);
+            Ensure(denseInserted.Points.Count==2049 &&
+                denseRestored.Points.Count==2048 &&
+                denseRestored.Id==densePolygon.Id &&
+                denseRestored.Points[128].Equals(densePolygon.Points[128]),
+                "2048顶点长轮廓插删只更新受影响的边且保持原图几何");
             MVIImageOverlayItem defect = overlays.Add(new MVIImageOverlayItem(
                 MVIImageOverlayKind.DefectBox, MVIImageOverlayLayer.Defect,
                 new FGERect2D(1, 2, 3, 4), text:"Defect-12"));
