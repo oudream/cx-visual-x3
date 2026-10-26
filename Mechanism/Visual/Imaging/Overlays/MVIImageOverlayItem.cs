@@ -153,16 +153,27 @@ namespace CxVisual.Mechanism.Visual
             if (Math.Abs(newArea) < 1e-8 || Math.Abs(oldArea) < 1e-8 ||
                 Math.Sign(newArea) != Math.Sign(oldArea))
                 throw new ArgumentException("多边形退化或编辑导致绕向翻转。","position");
-            for (int i=0;i<points.Length;i++)
+            int count=points.Length;
+            for (int i=0;i<count;i++)
             {
-                FGEPoint2D first=points[i], second=points[(i+1)%points.Length];
-                if ((second-first).LengthSquared < 1e-12)
+                if ((points[(i+1)%count]-points[i]).LengthSquared < 1e-12)
                     throw new ArgumentException("相邻多边形顶点不能重合。","position");
-                for (int j=i+1;j<points.Length;j++)
+            }
+            // 单顶点编辑只改变其左右两条边。其余边与边的拓扑不变，
+            // 不必对全部边进行 O(n²) 两两求交；鼠标拖动须维持 O(n)。
+            int previous=(index+count-1)%count;
+            int[] changedEdges = {previous,index};
+            foreach (int changedEdge in changedEdges)
+            {
+                FGEPoint2D a=points[changedEdge];
+                FGEPoint2D b=points[(changedEdge+1)%count];
+                for (int edge=0;edge<count;edge++)
                 {
-                    if (j==i+1 || (i==0 && j==points.Length-1)) continue;
-                    if (PolygonSegmentsIntersect(first,second,
-                        points[j],points[(j+1)%points.Length]))
+                    if (edge==changedEdge ||
+                        edge==(changedEdge+1)%count ||
+                        edge==(changedEdge+count-1)%count) continue;
+                    if (PolygonSegmentsIntersect(a,b,
+                        points[edge],points[(edge+1)%count]))
                         throw new ArgumentException("编辑将产生自交多边形。","position");
                 }
             }

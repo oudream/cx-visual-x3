@@ -105,6 +105,23 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 vertexLocked.WithLocked(false).WithStyle(unchecked((int)0xff223344),2).IsLocked==false,
                 "不可变快照保留锁定状态并支持显式解锁");
             overlays.Remove(quad.Id);
+            // 长多边形拖动：几何检测只核对变动两条边，避免O(n²)冻结WPF。
+            FGEPoint2D[] dense=new FGEPoint2D[2048];
+            for (int i=0;i<dense.Length;i++)
+            {
+                double angle=2*Math.PI*i/dense.Length;
+                dense[i]=new FGEPoint2D(120+100*Math.Cos(angle),
+                    120+100*Math.Sin(angle));
+            }
+            MVIImageOverlayItem densePolygon=new MVIImageOverlayItem(
+                MVIImageOverlayKind.PolygonRoi,MVIImageOverlayLayer.Roi,
+                new FGERect2D(20,20,200,200),dense);
+            MVIImageOverlayItem denseEdited=densePolygon.WithMovedPolygonVertex(
+                0,new FGEPoint2D(220.01,120),256,256);
+            Ensure(denseEdited.Points.Count==2048 &&
+                Math.Abs(denseEdited.Points[0].X-220.01)<1e-8 &&
+                denseEdited.Bounds.Right>220,
+                "长多边形顶点编辑保留点数及精确外框");
             MVIImageOverlayItem defect = overlays.Add(new MVIImageOverlayItem(
                 MVIImageOverlayKind.DefectBox, MVIImageOverlayLayer.Defect,
                 new FGERect2D(1, 2, 3, 4), text:"Defect-12"));
