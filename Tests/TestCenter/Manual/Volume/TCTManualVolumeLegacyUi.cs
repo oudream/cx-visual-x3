@@ -268,7 +268,7 @@ namespace CxVisual.TestCenter.UI
             _gpuSettings.Intensity.LowerPercentile=(float)(low/100.0);
             _gpuSettings.Intensity.UpperPercentile=(float)(high/100.0);
             _gpuSettings.Intensity.PresetOpacityScale=(float)(_presetOpacity.Value/100.0);
-            UpdateGpuSettings();
+            UpdateGpuSettings(true);
             _legacyDetails.Text=String.Format("灰阶已应用：背景≤{0}，分位 {1:0.##}%..{2:0.##}%，透明度 {3:0}%",
                 background,low,high,_presetOpacity.Value);
         }

@@ -44,7 +44,7 @@ namespace CxVisual.TestCenter.UI
                 _gpuSettings.TransferFunctions.UpperThreshold=_thresholdCurve.Upper;
                 _gpuThreshold.Value=_thresholdCurve.Lower;
                 _gpuUseThreshold.IsChecked=true;
-                UpdateGpuSettings();
+                UpdateGpuSettings(true);
             };
             tabs.Items.Add(new TabItem { Header="阈值",Content=threshold });
             StackPanel colors=new StackPanel { Margin=new Thickness(4) };
@@ -78,9 +78,9 @@ namespace CxVisual.TestCenter.UI
             _red.ValueChanged+=(s,e)=>WriteSelectedColor();
             _green.ValueChanged+=(s,e)=>WriteSelectedColor();
             _blue.ValueChanged+=(s,e)=>WriteSelectedColor();
-            _colorCurve.Changed+=(s,e)=>{ _gpuColor.IsChecked=true; UpdateGpuSettings(); };
-            _scalarCurve.Changed+=(s,e)=>{ _gpuScalar.IsChecked=true; UpdateGpuSettings(); };
-            _gradientCurve.Changed+=(s,e)=>{ _gpuGradient.IsChecked=true; UpdateGpuSettings(); };
+            _colorCurve.Changed+=(s,e)=>{ _gpuColor.IsChecked=true; UpdateGpuSettings(true); };
+            _scalarCurve.Changed+=(s,e)=>{ _gpuScalar.IsChecked=true; UpdateGpuSettings(true); };
+            _gradientCurve.Changed+=(s,e)=>{ _gpuGradient.IsChecked=true; UpdateGpuSettings(true); };
             _colorCurve.SelectPoint(Math.Min(1,_colorCurve.PointCount-1));
         }
 

@@ -56,6 +56,16 @@ namespace CxVisual.TestCenter.UI
                     new UIntPtr((uint)(120<<16)),CursorPoint(100,100));
                 if(Math.Abs(gl.CameraDistance-distance)<.05f || gl.NativePointerEvents<5)
                     throw new InvalidOperationException("真实GPU窗口滚轮缩放或原生鼠标事件未接通。");
+                // 旧版操作应实时：材质、采样及切面显隐不得每次扫描体素构造新LUT。
+                int oldUploads=frame.GpuTransferUploadCount;
+                frame.SetOpacityFromPanelForTest(.61);
+                frame.SetSliceVisibilityFromPanelForTest(false);
+                if(frame.GpuTransferUploadCount!=oldUploads)
+                    throw new InvalidOperationException("GPU灯光/透明度滑杆触发了不必要的RAW全体扫描/LUT上传。");
+                frame.SetColorCurveEnabledFromPanelForTest(true);
+                if(frame.GpuTransferUploadCount<=oldUploads)
+                    throw new InvalidOperationException("GPU颜色曲线改变后必须上传真实LUT。");
+                frame.SetColorCurveEnabledFromPanelForTest(false);
                 string driver=frame.GpuStatusText;
                 BitmapSource pixels=frame.CaptureGpuFrameForTest();
                 if(pixels.PixelWidth<200 || pixels.PixelHeight<150)

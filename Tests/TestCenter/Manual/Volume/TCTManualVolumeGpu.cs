@@ -20,6 +20,9 @@ namespace CxVisual.TestCenter.UI
         private Grid _gpuSlot;
         private MPWVolumeOpenGlControl _gpu;
         private readonly CT3DRenderingSettings _gpuSettings = new CT3DRenderingSettings();
+        private bool _gpuTransferDirty=true;
+        // 便于在真实GPU压力验收里证明仅曲线/预设变化才重新生成LUT。
+        public int GpuTransferUploadCount { get; private set; }
         private readonly CheckBox _enableGpu = new CheckBox { Content = "真实GPU体绘（优先启用）", IsChecked=true };
         private readonly TextBlock _gpuInfo = new TextBlock { Text = "GPU准备就绪后自动启动；不支持时回退空间切面。" };
         private TextBlock _gpuModeHeader;
@@ -114,18 +117,18 @@ namespace CxVisual.TestCenter.UI
             _gpuShine.ValueChanged+=(s,e)=>UpdateGpuSettings();
             _gpuJitter.Checked+=(s,e)=>UpdateGpuSettings();
             _gpuJitter.Unchecked+=(s,e)=>UpdateGpuSettings();
-            _gpuPreset.SelectionChanged+=(s,e)=>UpdateGpuSettings();
-            _gpuAutoRange.Checked+=(s,e)=>UpdateGpuSettings();
-            _gpuAutoRange.Unchecked+=(s,e)=>UpdateGpuSettings();
-            _gpuColor.Checked+=(s,e)=>UpdateGpuSettings();
-            _gpuColor.Unchecked+=(s,e)=>UpdateGpuSettings();
-            _gpuScalar.Checked+=(s,e)=>UpdateGpuSettings();
-            _gpuScalar.Unchecked+=(s,e)=>UpdateGpuSettings();
-            _gpuGradient.Checked+=(s,e)=>UpdateGpuSettings();
-            _gpuGradient.Unchecked+=(s,e)=>UpdateGpuSettings();
-            _gpuUseThreshold.Checked+=(s,e)=>UpdateGpuSettings();
-            _gpuUseThreshold.Unchecked+=(s,e)=>UpdateGpuSettings();
-            _gpuThreshold.ValueChanged+=(s,e)=>UpdateGpuSettings();
+            _gpuPreset.SelectionChanged+=(s,e)=>UpdateGpuSettings(true);
+            _gpuAutoRange.Checked+=(s,e)=>UpdateGpuSettings(true);
+            _gpuAutoRange.Unchecked+=(s,e)=>UpdateGpuSettings(true);
+            _gpuColor.Checked+=(s,e)=>UpdateGpuSettings(true);
+            _gpuColor.Unchecked+=(s,e)=>UpdateGpuSettings(true);
+            _gpuScalar.Checked+=(s,e)=>UpdateGpuSettings(true);
+            _gpuScalar.Unchecked+=(s,e)=>UpdateGpuSettings(true);
+            _gpuGradient.Checked+=(s,e)=>UpdateGpuSettings(true);
+            _gpuGradient.Unchecked+=(s,e)=>UpdateGpuSettings(true);
+            _gpuUseThreshold.Checked+=(s,e)=>UpdateGpuSettings(true);
+            _gpuUseThreshold.Unchecked+=(s,e)=>UpdateGpuSettings(true);
+            _gpuThreshold.ValueChanged+=(s,e)=>UpdateGpuSettings(true);
             _gpuSliceOpacity.ValueChanged+=(s,e)=>UpdateGpuSettings();
             _gpuShowVolume.Checked+=(s,e)=>UpdateGpuSettings();
             _gpuShowVolume.Unchecked+=(s,e)=>UpdateGpuSettings();
@@ -148,8 +151,9 @@ namespace CxVisual.TestCenter.UI
             panel.Children.Add(slider);
         }
 
-        private void UpdateGpuSettings()
+        private void UpdateGpuSettings(bool transferChanged=false)
         {
+            if(transferChanged)_gpuTransferDirty=true;
             if (_volume == null) return;
             _gpuSettings.Preset=(CT3DRenderingPresetKind)(_gpuPreset.SelectedItem ??
                 CT3DRenderingPresetKind.SlicerLikeGrayscale);
@@ -174,8 +178,13 @@ namespace CxVisual.TestCenter.UI
             if (_gpu == null || !_gpu.IsAvailable) return;
             try
             {
-                _gpu.UpdateTransfer(_gpuSettings.BuildScalarTransferTexture(_volume),
-                    _gpuSettings.TransferFunctions.BuildGradientOpacityTexture());
+                if(_gpuTransferDirty)
+                {
+                    _gpu.UpdateTransfer(_gpuSettings.BuildScalarTransferTexture(_volume),
+                        _gpuSettings.TransferFunctions.BuildGradientOpacityTexture());
+                    _gpuTransferDirty=false;
+                    GpuTransferUploadCount++;
+                }
                 ApplyGpuUniforms();
             }
             catch(Exception error) { GpuFallback("GPU曲线/参数上传失败："+error.Message); }
@@ -208,6 +217,7 @@ namespace CxVisual.TestCenter.UI
                     _volume.SpacingX,_volume.SpacingY,_volume.SpacingZ,
                     _gpuSettings.BuildScalarTransferTexture(_volume),
                     _gpuSettings.TransferFunctions.BuildGradientOpacityTexture());
+                _gpuTransferDirty=false;
                 _gpu=gpu;
                 _gpuInfo.Text="正在核实显卡 OpenGL 3.3 Core Profile 与旧GLSL...";
                 SetGpuModeLabel("3D / GPU体绘启动中","正在检测OpenGL 3.3与GLSL");
@@ -293,6 +303,7 @@ namespace CxVisual.TestCenter.UI
                     _volume.SpacingX,_volume.SpacingY,_volume.SpacingZ,
                     _gpuSettings.BuildScalarTransferTexture(_volume),
                     _gpuSettings.TransferFunctions.BuildGradientOpacityTexture());
+                _gpuTransferDirty=false;
                 ApplyGpuUniforms();
             }
             catch(Exception error) { GpuFallback("GPU体数据更新失败："+error.Message); }
