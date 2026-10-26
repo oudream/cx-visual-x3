@@ -22,6 +22,7 @@ namespace CxVisual.Mechanism.Visual
         VerticalDistance,
         Diameter,
         Area,
-        PolygonArea
+        PolygonArea,
+        LineProfile
     }
 }

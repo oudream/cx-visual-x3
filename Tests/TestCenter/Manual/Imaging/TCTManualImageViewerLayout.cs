@@ -496,6 +496,7 @@ namespace CxVisual.TestCenter.UI
             DockPanel content = new DockPanel { Margin = new Thickness(9,8,9,9) };
             StackPanel top = new StackPanel();
             top.Children.Add(Heading("灰度剖面  ·  当前测量线 / ROI"));
+            Action(top,"绘制剖面线","DrawLineProfile",()=>SelectTool(MVIImageToolMode.LineProfile));
             Action(top,"更新灰度剖面","LineProfile",ShowLineProfile);
             top.Children.Add(Hint("优先使用选中测量线或ROI对角线；否则取图像中心线。"));
             DockPanel.SetDock(top,Dock.Top); content.Children.Add(top);
@@ -578,6 +579,7 @@ namespace CxVisual.TestCenter.UI
                     mode == MVIImageToolMode.Distance || mode == MVIImageToolMode.Angle ||
                     mode == MVIImageToolMode.HorizontalDistance ||
                     mode == MVIImageToolMode.VerticalDistance ||
+                    mode == MVIImageToolMode.LineProfile ||
                     mode == MVIImageToolMode.Diameter || mode == MVIImageToolMode.Area ||
                     mode == MVIImageToolMode.PolygonArea ? 3 :
                     mode == MVIImageToolMode.Point || mode == MVIImageToolMode.Text ||

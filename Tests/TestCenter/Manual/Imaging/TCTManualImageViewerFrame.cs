@@ -114,6 +114,9 @@ namespace CxVisual.TestCenter.UI
                 CancelAnalysis();
                 if (_viewer.SelectedRegion.HasValue)
                     _status.Text = "当前ROI：" + BoundsText(_viewer.SelectedRegion.Value);
+                if (_viewer.ToolMode == MVIImageToolMode.LineProfile &&
+                    _viewer.Overlays.Items.Any(item => item.Kind == MVIImageOverlayKind.LineProfileMeasurement))
+                    ShowLineProfile();
                 if (StateChanged != null) StateChanged();
             };
         }
@@ -140,6 +143,7 @@ namespace CxVisual.TestCenter.UI
                 case MVIImageToolMode.Diameter: return "圆形直径";
                 case MVIImageToolMode.Area: return "矩形面积";
                 case MVIImageToolMode.PolygonArea: return "多边形面积（双击结束）";
+                case MVIImageToolMode.LineProfile: return "绘制灰度剖面线";
                 default: return mode.ToString();
             }
         }
@@ -534,6 +538,9 @@ namespace CxVisual.TestCenter.UI
             int x0 = 0, y0 = image.Height / 2, x1 = image.Width - 1, y1 = y0;
             Guid? id = SelectedOverlayId();
             MVIImageOverlayItem item = id.HasValue ? _viewer.Overlays.Find(id.Value) : null;
+            if (item == null || item.Points.Count < 2)
+                item = _viewer.Overlays.Items.LastOrDefault(x =>
+                    x.Kind == MVIImageOverlayKind.LineProfileMeasurement && x.Points.Count >= 2);
             if (item != null && item.Points.Count >= 2)
             {
                 x0 = (int)Math.Round(item.Points[0].X);

@@ -874,6 +874,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             if (kind == MVIImageOverlayKind.DistanceMeasurement ||
                 kind == MVIImageOverlayKind.HorizontalMeasurement ||
                 kind == MVIImageOverlayKind.VerticalMeasurement ||
+                kind == MVIImageOverlayKind.LineProfileMeasurement ||
                 kind == MVIImageOverlayKind.ArrowAnnotation)
             {
                 points = new[] { new FGEPoint2D(_selectionX + 0.5, _selectionY + 0.5),
@@ -1026,6 +1027,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 case MVIImageToolMode.VerticalDistance: return MVIImageOverlayKind.VerticalMeasurement;
                 case MVIImageToolMode.Diameter: return MVIImageOverlayKind.DiameterMeasurement;
                 case MVIImageToolMode.Area: return MVIImageOverlayKind.AreaMeasurement;
+                case MVIImageToolMode.LineProfile: return MVIImageOverlayKind.LineProfileMeasurement;
                 case MVIImageToolMode.Arrow: return MVIImageOverlayKind.ArrowAnnotation;
                 case MVIImageToolMode.Point: return MVIImageOverlayKind.PointAnnotation;
                 case MVIImageToolMode.Text: return MVIImageOverlayKind.TextAnnotation;
