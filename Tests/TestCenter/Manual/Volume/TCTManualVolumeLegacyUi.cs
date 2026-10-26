@@ -369,7 +369,9 @@ namespace CxVisual.TestCenter.UI
         public void JumpToViewSliceForTest(FVOSlicePlane plane,int position)
         {
             if(!_headerSliceSliders.ContainsKey(plane))throw new ArgumentOutOfRangeException("plane");
-            JumpToViewSlice(plane,position);
+            if(_volume==null||_state==null)throw new InvalidOperationException("必须先加载体数据。");
+            // 真实改变WPF Slider.Value，验收时经过ValueChanged事件而非跳过UI直调MVI。
+            _headerSliceSliders[plane].Value=position;
         }
 
         private static void TinyButton(Panel tools,string caption,Action action)
