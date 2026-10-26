@@ -1147,12 +1147,33 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             }
         }
 
+        private static FGEPoint2D ResizeHandlePoint(MVIImageOverlayItem item,MVIImageResizeHandle h)
+        {
+            if(item.Kind!=MVIImageOverlayKind.RotatedRectangleRoi)
+                return ResizeHandlePoint(item.Bounds,h);
+            IReadOnlyList<FGEPoint2D> p=item.Points;
+            int a=0,b=0;
+            switch(h)
+            {
+                case MVIImageResizeHandle.TopLeft:return p[0];
+                case MVIImageResizeHandle.TopRight:return p[1];
+                case MVIImageResizeHandle.BottomRight:return p[2];
+                case MVIImageResizeHandle.BottomLeft:return p[3];
+                case MVIImageResizeHandle.Top:a=0;b=1;break;
+                case MVIImageResizeHandle.Right:a=1;b=2;break;
+                case MVIImageResizeHandle.Bottom:a=2;b=3;break;
+                case MVIImageResizeHandle.Left:a=3;b=0;break;
+                default:throw new ArgumentOutOfRangeException("h");
+            }
+            return new FGEPoint2D((p[a].X+p[b].X)/2,(p[a].Y+p[b].Y)/2);
+        }
+
         private void DrawResizeHandles(Canvas canvas,MVIImageViewport viewport,
             MVIImageOverlayItem item)
         {
             foreach (MVIImageResizeHandle handle in Enum.GetValues(typeof(MVIImageResizeHandle)))
             {
-                Point screen = SourceToCanvas(ResizeHandlePoint(item.Bounds,handle),viewport);
+                Point screen = SourceToCanvas(ResizeHandlePoint(item,handle),viewport);
                 Rectangle square = new Rectangle {
                     Width=9,Height=9,Stroke=Brushes.DarkSlateGray,StrokeThickness=1.2,
                     Fill=Brushes.LightCyan,Tag=handle,IsHitTestVisible=false };
@@ -1331,7 +1352,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             handle = MVIImageResizeHandle.TopLeft;
             foreach (MVIImageResizeHandle candidate in Enum.GetValues(typeof(MVIImageResizeHandle)))
             {
-                Point screen=SourceToCanvas(ResizeHandlePoint(item.Bounds,candidate),viewport);
+                Point screen=SourceToCanvas(ResizeHandlePoint(item,candidate),viewport);
                 if (Math.Abs(pointer.X-screen.X)<=7 && Math.Abs(pointer.Y-screen.Y)<=7)
                 { handle=candidate;return true; }
             }
