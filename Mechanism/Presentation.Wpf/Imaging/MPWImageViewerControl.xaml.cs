@@ -233,8 +233,11 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             MVIImageOverlayItem item = _overlays.Find(_selectedOverlayId.Value);
             if (item == null || !_overlays.GetVisibleItems().Any(x => x.Id == item.Id))
                 throw new InvalidOperationException("不可编辑被删除或隐藏的ROI。");
-            MVIImageOverlayItem resized = item.WithResizedRoiHandle(handle,position,
-                ActiveImage.Width,ActiveImage.Height);
+            MVIImageOverlayItem resized = item.Kind==MVIImageOverlayKind.RotatedRectangleRoi ?
+                item.WithResizedRotatedHandle(handle,position,
+                    ActiveImage.Width,ActiveImage.Height) :
+                item.WithResizedRoiHandle(handle,position,
+                    ActiveImage.Width,ActiveImage.Height);
             if (!_overlays.Replace(resized))
                 throw new InvalidOperationException("ROI已在编辑期间被删除。");
             return resized;
