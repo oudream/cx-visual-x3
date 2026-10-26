@@ -515,6 +515,18 @@ namespace CxVisual.TestCenter.UI
             }));
             if (kind == CxVisual.Mechanism.Core.Modules.MFMModuleKind.Connector)
             {
+                // 前面主动切换到概览再回到模块：属于跨工作区导航。
+                // 专业工作区默认收起此前手动开启的Test Console，是预期行为。
+                bool hiddenAfterNavigation = false;
+                window.Dispatcher.Invoke(new Action(() =>
+                    hiddenAfterNavigation = !window.IsTestConsoleVisible));
+                if (!hiddenAfterNavigation)
+                    throw new InvalidOperationException(
+                        "从概览切回专业工作区未按设计自动收起测试控制台");
+                // 测试人员继续执行模块操作，必须使用正式“视图”菜单重新打开。
+                // 不在删除中途偷偷改Visibility，也不删减悬空映射及保存重开断言。
+                ShowManualConsoleForVerification(window);
+                TraceUiStage("Connector / console reopened via View menu after workspace switch");
                 TraceUiStage("Connector / before deletion method");
                 // UIA worker进入删除闭环的确切边界：区别JIT/入口异常与WPF Dispatcher/UIA阻塞。
                 try
