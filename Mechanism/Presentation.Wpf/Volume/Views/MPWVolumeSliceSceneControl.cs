@@ -60,6 +60,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
         public int SlicePlaneCount { get { return Math.Max(0, _models.Children.Count - 1); } }
         public double CameraDistance { get { return _distance; } }
 
+        /// <summary>清空空间切片贴图；窗口关闭时释放GPU纹理的WPF引用。</summary>
+        public void Clear()
+        {
+            while (_models.Children.Count > 1) _models.Children.RemoveAt(1);
+        }
+
         public void ResetCamera()
         {
             _yaw = 37.0; _pitch = 23.0; _distance = 3.5;

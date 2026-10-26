@@ -323,6 +323,21 @@ namespace CxVisual.TestCenter.UI
             _status.Text = "工作区已关闭，体数据资源已释放。";
         }
 
+        public void OnWorkspaceClosed()
+        {
+            _updating = true;
+            if (_state != null) _state.PropertyChanged -= OnStateChanged;
+            if (_volume != null) _volume.Dispose();
+            _volume = null;
+            _state = null;
+            _xy.Clear();
+            _xz.Clear();
+            _yz.Clear();
+            _scene.Clear();
+            _updating = false;
+            _status.Text = "三维工作区已关闭，体数据与三维切面已释放。";
+        }
+
         private void RaiseStateChanged()
         {
             Action action = StateChanged;
