@@ -102,7 +102,9 @@
         <Border DockPanel.Dock="Bottom" Background="{DynamicResource StudioSurfaceBrush}" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource StudioBorderBrush}" Padding="10,5">
             <TextBlock Text="{Binding Status}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource StudioTextBrush}" />
         </Border>
-        <dock:DockingManager x:Name="StudioDock" ActiveContentChanged="OnStudioActiveContentChanged">
+        <dock:DockingManager x:Name="StudioDock" ActiveContentChanged="OnStudioActiveContentChanged"
+              DocumentHeaderTemplate="{StaticResource MPWDockHeaderTemplate}"
+              AnchorableHeaderTemplate="{StaticResource MPWDockHeaderTemplate}">
             <dock:LayoutRoot><dock:LayoutPanel Orientation="Vertical">
                 <dock:LayoutPanel Orientation="Horizontal">
                     <dock:LayoutAnchorablePane DockWidth="250">

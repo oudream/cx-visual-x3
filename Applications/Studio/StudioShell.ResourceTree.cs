@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using CxVisual.Mechanism.Core;
+using CxVisual.Mechanism.Presentation.Wpf;
 
 namespace CxVisual.Studio
 {
@@ -55,7 +56,7 @@ namespace CxVisual.Studio
             bool prior;
             return new TreeViewItem
             {
-                Header = title, Tag = key,
+                Header = MPWWorkspaceVisuals.TreeHeader(title, "group", false, false), Tag = key,
                 IsExpanded = _studioTreeExpanded.TryGetValue(key, out prior) ? prior : expanded
             };
         }
@@ -116,7 +117,11 @@ namespace CxVisual.Studio
 
         private TreeViewItem CreateResourceLeaf(string title,object definition)
         {
-            TreeViewItem leaf=new TreeViewItem {Header=title,Tag=definition};
+            string role = definition is MEMPage ? "viewer" :
+                definition is MEMSymbol ? "3d" :
+                definition is MEMContent ? "resource" : "module";
+            TreeViewItem leaf=new TreeViewItem {
+                Header=MPWWorkspaceVisuals.TreeHeader(title,role,true,false),Tag=definition};
             MEMNode resource=definition as MEMNode;
             if(resource!=null)
                 leaf.ContextMenu=CreateStudioResourceEditorMenu(resource);
@@ -149,7 +154,9 @@ namespace CxVisual.Studio
                 string projectName = _viewModel.ProjectSession.Project.Name;
                 TreeViewItem projectRoot = new TreeViewItem
                 {
-                    Header = String.IsNullOrWhiteSpace(projectName) ? "当前工程" : projectName,
+                    Header = MPWWorkspaceVisuals.TreeHeader(
+                        String.IsNullOrWhiteSpace(projectName) ? "当前工程" : projectName,
+                        "project", false, true),
                     IsExpanded = true
                 };
                 TreeViewItem pages = CreateResourceCategory("pages", "页面", true);
