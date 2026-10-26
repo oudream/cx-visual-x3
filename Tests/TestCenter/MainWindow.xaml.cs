@@ -1,4 +1,5 @@
 using System;
+using CxVisual.Mechanism.Presentation.Wpf;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -721,6 +722,7 @@ namespace CxVisual.TestCenter.UI
         private void ApplyTheme(bool dark)
         {
             _darkTheme = dark;
+            MPWWorkspaceVisuals.ApplyTheme(Application.Current.Resources, dark);
             HeaderBand.Background = dark ? new SolidColorBrush(Color.FromRgb(34, 38, 44)) :
                 new SolidColorBrush(Color.FromRgb(242, 246, 251));
             ProductNameText.Foreground = dark ? Brushes.WhiteSmoke :

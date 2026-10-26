@@ -1,4 +1,5 @@
 using System;
+using CxVisual.Mechanism.Presentation.Wpf;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
@@ -129,48 +130,26 @@ namespace CxVisual.TestCenter.UI
             }
             return null;
         }
-        // 图标使用Windows原生Segoe MDL2矢量字形，无额外字体/位图依赖。
-        // 根、专业、类型、实例分配稳定图标；选中与右键逻辑仍落在TreeViewItem。
+        // 专业类别到图标的语义映射。视觉Owner在Presentation.Wpf，不复制WPF画法。
         private static object MakeTreeHeader(TCTWorkspaceDescriptor descriptor)
         {
             string id = descriptor.IsCreatedInstance ? descriptor.TemplateId : descriptor.WorkspaceId;
-            string glyph;
-            if (id == "manual.root") glyph = "\uE8D4"; // 工作台
-            else if (id == "auto.root") glyph = "\uE713"; // 工具/自动化
-            else if (id == "scenes.root") glyph = "\uE8B7"; // 案例
-            else if (id == "reports.root" || id.StartsWith("reports.", StringComparison.Ordinal))
-                glyph = "\uE9D9"; // 报告
-            else if (id == "manual.module") glyph = "\uE8B7";
-            else if (id.Contains("connector")) glyph = "\uE774"; // 网络
-            else if (id.Contains("driver")) glyph = "\uE7F4"; // 设备
-            else if (id.Contains("compute")) glyph = "\uE943"; // 计算
-            else if (id.Contains("simulation")) glyph = "\uE768"; // 仿真
-            else if (id.Contains("service")) glyph = "\uE80F"; // 服务
-            else if (id.Contains("channel")) glyph = "\uE839"; // 通道
-            else if (id.Contains("protocol")) glyph = "\uE8A5"; // 规约
-            else if (id.Contains("message")) glyph = "\uE8F2"; // 消息
-            else if (id.Contains("command")) glyph = "\uE7C3"; // 命令
-            else if (id.Contains("vision") || id.Contains("2d")) glyph = "\uE8B9";
-            else if (id.Contains("3d") || id.Contains("ct")) glyph = "\uE80A";
-            else if (id.Contains("architecture-smoke")) glyph = "\uE9D9";
-            else if (id.Contains("catalog")) glyph = "\uE8A5";
-            else glyph = "\uE8B7";
-            if (descriptor.IsCreatedInstance) glyph = "\uE8A5";
-            StackPanel row = new StackPanel { Orientation = Orientation.Horizontal };
-            row.Children.Add(new TextBlock {
-                Text = glyph, FontFamily = new FontFamily("Segoe MDL2 Assets"),
-                FontSize = 14, Width = 22, VerticalAlignment = VerticalAlignment.Center,
-                Foreground = descriptor.IsCreatedInstance
-                    ? new SolidColorBrush(Color.FromRgb(29, 116, 205))
-                    : descriptor.Kind == TCTWorkspaceNodeKind.Root
-                    ? new SolidColorBrush(Color.FromRgb(30, 106, 185))
-                    : new SolidColorBrush(Color.FromRgb(100, 126, 154)) });
-            row.Children.Add(new TextBlock {
-                Text = descriptor.Title, FontSize = 14,
-                TextTrimming = TextTrimming.CharacterEllipsis,
-                VerticalAlignment = VerticalAlignment.Center,
-                FontWeight = descriptor.IsCreatedInstance ? FontWeights.SemiBold : FontWeights.Normal });
-            return row;
+            string role = "module";
+            if (id.Contains("connector")) role = "connector";
+            else if (id.Contains("channel")) role = "channel";
+            else if (id.Contains("driver")) role = "resource";
+            else if (id.Contains("compute")) role = "compute";
+            else if (id.Contains("simulation")) role = "simulation";
+            else if (id.Contains("service")) role = "service";
+            else if (id.Contains("protocol")) role = "test";
+            else if (id.Contains("message")) role = "service";
+            else if (id.Contains("command")) role = "command";
+            else if (id.Contains("vision") || id.Contains("2d")) role = "vision";
+            else if (id.Contains("3d") || id.Contains("ct")) role = "3d";
+            else if (id.Contains("report")) role = "report";
+            else if (id.StartsWith("auto.", StringComparison.Ordinal)) role = "test";
+            return MPWWorkspaceVisuals.TreeHeader(descriptor.Title, role,
+                descriptor.IsCreatedInstance, descriptor.Kind == TCTWorkspaceNodeKind.Root);
         }
 
         private TreeViewItem WorkspaceItem(TCTWorkspaceDescriptor descriptor)
