@@ -58,7 +58,7 @@
    </MenuItem>
    <MenuItem Header="视图">
     <MenuItem x:Name="MenuRestoreLayout" Header="恢复默认布局"/>
-    <MenuItem x:Name="MenuShowOperations" Header="显示操作中心"/>
+    <MenuItem x:Name="MenuShowOperations" Header="显示测试控制台"/>
     <MenuItem x:Name="MenuSaveLayout" Header="保存当前布局"/>
     <Separator/>
     <MenuItem x:Name="MenuThemeLight" Header="浅色主题"/>
@@ -87,26 +87,42 @@
       <dock:LayoutDocumentPane ShowHeader="False">
        <dock:LayoutDocument ContentId="test.documents" Title="工作区"
          CanClose="False" CanFloat="True">
-        <ui:TCTTestDocumentHostControl x:Name="DocumentHost"/>
+        <Grid x:Name="AutomatedWorkbenchFrame" Background="#F9FBFE">
+         <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*" MinWidth="180"/>
+          <ColumnDefinition x:Name="TestConsoleSplitterColumn" Width="0"/>
+          <ColumnDefinition x:Name="TestConsoleColumn" Width="0"/>
+         </Grid.ColumnDefinitions>
+         <ui:TCTTestDocumentHostControl x:Name="DocumentHost" Grid.Column="0"/>
+         <GridSplitter x:Name="TestConsoleSplitter" Grid.Column="1" Visibility="Collapsed"
+          Background="#D5E2F1" HorizontalAlignment="Stretch"
+          ResizeBehavior="PreviousAndNext" ResizeDirection="Columns"/>
+         <Border x:Name="TestConsolePanel" Grid.Column="2" Visibility="Collapsed"
+           Background="White" BorderBrush="#C5D8ED" BorderThickness="1,0,0,0">
+          <DockPanel x:Name="OperationDock" Background="White">
+           <Border DockPanel.Dock="Top" Background="#EAF3FE" Padding="9,8">
+            <DockPanel LastChildFill="True">
+             <Button x:Name="HideTestConsoleButton" DockPanel.Dock="Right"
+              Content="收起" Padding="8,2" Margin="5,0,0,0" MinWidth="45"
+              ToolTip="仅隐藏测试控制台，不停止运行中的测试"/>
+             <TextBlock Text="测试控制台 / Test Console" FontSize="16"
+              FontWeight="SemiBold" Foreground="#244467" VerticalAlignment="Center"/>
+            </DockPanel>
+           </Border>
+           <ScrollViewer DockPanel.Dock="Top" MaxHeight="255"
+            VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="9,8,7,6">
+             <StackPanel x:Name="AutoActionHost"/>
+             <StackPanel x:Name="ManualActionHost" Visibility="Collapsed"/>
+            </StackPanel>
+           </ScrollViewer>
+           <ui:TCTTestInspectorControl x:Name="Inspector"/>
+          </DockPanel>
+         </Border>
+        </Grid>
        </dock:LayoutDocument>
       </dock:LayoutDocumentPane>
-      <dock:LayoutAnchorablePane DockWidth="300">
-       <dock:LayoutAnchorable ContentId="test.inspector" Title="操作中心"
-         CanClose="False" CanFloat="True" CanHide="True" CanAutoHide="True">
-        <DockPanel x:Name="OperationDock" Background="#FFFFFF">
-         <ScrollViewer DockPanel.Dock="Top" MaxHeight="250"
-            VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-          <StackPanel Margin="9,8,7,6">
-           <TextBlock Text="操作中心 / Operations" FontWeight="SemiBold"
-             Foreground="#244467" FontSize="18" Margin="4,3,2,10"/>
-           <StackPanel x:Name="AutoActionHost"/>
-           <StackPanel x:Name="ManualActionHost" Visibility="Collapsed"/>
-          </StackPanel>
-         </ScrollViewer>
-         <ui:TCTTestInspectorControl x:Name="Inspector"/>
-        </DockPanel>
-       </dock:LayoutAnchorable>
-      </dock:LayoutAnchorablePane>
+
      </dock:LayoutPanel>
      <dock:LayoutAnchorablePane DockHeight="110">
       <dock:LayoutAnchorable ContentId="test.results" Title="测试结果 / Results"
