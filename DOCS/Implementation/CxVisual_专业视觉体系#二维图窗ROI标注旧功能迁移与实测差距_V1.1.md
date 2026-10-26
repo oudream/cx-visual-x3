@@ -155,3 +155,10 @@
 - `Tests/TestCenter/Manual/Imaging/TCTImageViewerSmoke.cs` 增加“索引输入 → Button.Click插点 → 同Guid/四个控制柄 → CSV导出实际新增顶点 → Button.Click删点 → 双Pane返回三点”的正向闭环。CSV重用已有`ExportMeasurementsCsv`，未创建另一个导出库。
 - `MPWImageViewerControl.CanContinueOverlayGesture` 在每次鼠标拖动写入前核对原图匹配、对象仍存在、可见、未锁定。逐顶点、普通及旋转ROI八柄、旋转角柄若中途失效，就清理对应手势状态并写入诊断文本，不让旧快照越权替换现有锁定对象。插点/删点只响应鼠标左键；未将键鼠物理注入测试冒充Windows验收。
 - **待完成**：完整的真实Shift/Alt物理组合键事件注入、多DPI、图像重载中途绘制竞态、高密度ROI刷新性能、统一MRC Undo/Redo与工程持久化。
+
+### 9.2 新版Windows加固验收（2026-10-27）
+
+- [Windows Imaging #40421723586](https://github.com/oudream/cx-visual-x3/actions/runs/40421723586)：**SUCCESS（13步骤）**，对应功能提交 `4b1fbc383a8aa79f2aa8ba4145ee0d1bbee6381c`，覆盖Windows x64编译、MVI插点删点与长期轮廓回归、真实WPF图像Smoke；包括拖动过程中对象锁定/隐藏/删除时安全停止、仅左键启动插删快捷手势的源码加固。真实物理组合键注入仍未专项做。
+- [Windows Imaging #40421287277](https://github.com/oudream/cx-visual-x3/actions/runs/40421287277)：**SUCCESS（13步骤）**，对应 `bb299c2`，2048顶点插删回环数值测试已落地。
+- [TestCenter Windows #40421113924](https://github.com/oudream/cx-visual-x3/actions/runs/40421113924)：**SUCCESS（29步骤）**，对应 `07bde033`，包含图窗WPF区域页插删按钮及双视口回归。后续`397aa8c` CSV回环与`4b1fbc3` 拖动状态安全加固须在其对应TestCenter运行中进一步核实，不能将07b版本成功无条件覆盖到后续全平台。
+- 专业扩展下一项需要核对现有 `Foundation/Geometry/Paths/FGEPath2D.cs` 和 `Mechanism/Core/VisualDefinitions/MRCShapes.cs` 中的路径/Bezier能力，优先复用现有通用几何Owner，不在Imaging重新构造Bezier基础体系。
