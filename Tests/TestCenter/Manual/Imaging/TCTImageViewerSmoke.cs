@@ -63,6 +63,12 @@ namespace CxVisual.TestCenter.UI
                 frame.Viewer.SelectOriginal();
                 if (frame.Viewer.ActiveImage != image)
                     throw new InvalidOperationException("Original/result session identity not preserved");
+                // 将真实统计和像素剖面数据送入可复用WPF绘图控件，不只输出文字。
+                frame.HistogramPlot.SetHistogram(FIMImageAnalyzer.GetHistogram(image, 16));
+                frame.ProfilePlot.SetLineProfile(FIMImageAnalyzer.GetLineProfile(image, 0, 0, 3, 3));
+                window.UpdateLayout();
+                if (frame.HistogramPlot.PointCount != 16 || frame.ProfilePlot.PointCount != 4)
+                    throw new InvalidOperationException("WPF histogram or profile curve missing FIM data");
                 FIMImageStatistics stats = FIMImageAnalyzer.Calculate(frame.Viewer.ActiveImage);
                 if (stats.PixelCount != 16 || Math.Abs(stats.Mean - 8.5) > 1e-9)
                     throw new InvalidOperationException("Raw pixel statistics changed after windowing");
