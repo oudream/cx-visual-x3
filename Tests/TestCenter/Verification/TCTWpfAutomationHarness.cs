@@ -356,12 +356,16 @@ namespace CxVisual.TestCenter.UI
                     TCTManualModuleFrame frame = tabs.Items
                         .OfType<System.Windows.Controls.TabItem>().Select(x => x.Content)
                         .OfType<TCTManualModuleFrame>().Single();
+                    TraceUiStage("Connector / dispatch started after focus");
                     MCNConnectorConfiguration draft = frame.ConnectorDraftSnapshot();
+                    TraceUiStage("Connector / draft snapshot returned");
                     if (draft.Protocol.Points.Count != 1 || draft.Protocol.Mappings.Count != 1 ||
                         draft.Protocol.Mappings[0].PointRef != "point01" ||
                         draft.Protocol.Mappings[0].TargetRef != "line/temperature")
                         throw new InvalidOperationException("MPW编辑后的映射未进入同一MHS草稿");
+                    TraceUiStage("Connector / validation starting");
                     frame.ValidateCurrent();
+                    TraceUiStage("Connector / validation returned");
                     if (frame.StatusMessage.Contains("配置存在"))
                         throw new InvalidOperationException("完成真实PointRef和TargetRef后仍无法通过Schema校验：" +
                             frame.StatusMessage);
