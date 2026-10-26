@@ -112,6 +112,9 @@ namespace CxVisual.TestCenter.UI
             registry.Register(new TCTWorkspaceDescriptor("manual.command", "manual.root", "命令中心测试",
                 "真实MRKCommandCenter、FDC Schema、MDS参数、Operation控制与Windows命名管道",
                 TCTWorkspaceNodeKind.Leaf, () => new TCTManualCommandFrame()));
+            registry.Register(new TCTWorkspaceDescriptor("manual.variable", "manual.root", "变量中心测试",
+                "真实MDS变量/组织树/LatestOnly派发：定义、更新、分组与50K进程内压力；非现场PLC认证",
+                TCTWorkspaceNodeKind.Leaf, () => new TCTManualVariableFrame()));
             registry.Register(new TCTWorkspaceDescriptor("manual.imaging", "manual.root",
                 "二维工业视觉工作台",
                 "真实FIM/MVI/MPW二维图像：文件加载、16位浏览、ROI、分析、处理结果与PNG输出",

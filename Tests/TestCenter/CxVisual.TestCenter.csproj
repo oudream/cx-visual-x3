@@ -83,6 +83,7 @@
     <Compile Include="Manual\Volume\TCTVolumeViewerSmoke.cs" />
     <Compile Include="Manual\Volume\TCTVolumeGpuHardwareSmoke.cs" />
     <Compile Include="Manual\Message\TCTManualMessageFrame.cs" />
+    <Compile Include="Manual\Variable\TCTManualVariableFrame.cs" />
     <Compile Include="Manual\Command\TCTManualCommandFrame.cs" />
     <Compile Include="Manual\Command\TCTManualCommandOperations.cs" />
     <Compile Include="Automated\Cases\TCTCommandCenterCases.cs" />
