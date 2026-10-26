@@ -40,6 +40,13 @@ namespace CxVisual.TestCenter.UI
         private readonly TextBox _amount = new TextBox { Width = 58, Text = "0.8", Margin = new Thickness(3) };
         private readonly TextBox _low = new TextBox { Width = 74, Text = "0", Margin = new Thickness(2) };
         private readonly TextBox _high = new TextBox { Width = 82, Text = "65535", Margin = new Thickness(2) };
+        private readonly TextBox _displayGamma = new TextBox { Width = 50, Text = "1", Margin = new Thickness(2) };
+        private readonly TextBox _displayBrightness = new TextBox { Width = 58, Text = "0", Margin = new Thickness(2) };
+        private readonly TextBox _displayContrast = new TextBox { Width = 58, Text = "1", Margin = new Thickness(2) };
+        private readonly CheckBox _displayInverted = new CheckBox { Content = "反色", Margin = new Thickness(3),
+            VerticalAlignment = VerticalAlignment.Center };
+        private readonly CheckBox _autoContrast = new CheckBox { Content = "自动对比度", Margin = new Thickness(3),
+            VerticalAlignment = VerticalAlignment.Center };
         private readonly ComboBox _imageTool = new ComboBox {
             MinWidth = 144, Margin = new Thickness(3) };
         private readonly TextBox _annotationText = new TextBox {
@@ -123,7 +130,16 @@ namespace CxVisual.TestCenter.UI
             analysis.Children.Add(new TextBlock { Text = "窗上限", VerticalAlignment = VerticalAlignment.Center });
             analysis.Children.Add(_high);
             AddButton(analysis, "应用窗宽窗位", "Window", Window);
-            AddButton(analysis, "还原显示", "ResetWindow", () => _viewer.SetDisplayWindow(null, null));
+            AddButton(analysis, "还原显示", "ResetWindow", ResetDisplay);
+            analysis.Children.Add(new TextBlock { Text = "Gamma", VerticalAlignment = VerticalAlignment.Center });
+            analysis.Children.Add(_displayGamma);
+            analysis.Children.Add(new TextBlock { Text = "亮度", VerticalAlignment = VerticalAlignment.Center });
+            analysis.Children.Add(_displayBrightness);
+            analysis.Children.Add(new TextBlock { Text = "对比度", VerticalAlignment = VerticalAlignment.Center });
+            analysis.Children.Add(_displayContrast);
+            analysis.Children.Add(_displayInverted);
+            analysis.Children.Add(_autoContrast);
+            AddButton(analysis, "应用显示", "ApplyDisplay", ApplyDisplay);
             analysis.Children.Add(_withRoi);
             AddButton(analysis, "灰度统计/直方图", "Analyze", Calculate);
             AddButton(analysis, "阈值掩码", "Threshold", Threshold);
@@ -459,6 +475,35 @@ namespace CxVisual.TestCenter.UI
                 throw new ArgumentException("窗上下限请输入有限数字，如 0 与 65535。");
             _viewer.SetDisplayWindow(low, high);
             Show("显示窗范围：" + low + " - " + high + "（原图不变）");
+        }
+
+        private void ApplyDisplay()
+        {
+            double gamma = FloatParameter(_displayGamma, "Gamma");
+            double brightness = FloatParameter(_displayBrightness, "亮度");
+            double contrast = FloatParameter(_displayContrast, "对比度");
+            MVIImageDisplayState display = _viewer.DisplayState;
+            // 所有参数先验证，避免半途异常导致部分值已经生效。
+            if (double.IsNaN(gamma) || double.IsInfinity(gamma) || gamma <= 0 || gamma > 20 ||
+                double.IsNaN(brightness) || double.IsInfinity(brightness) ||
+                brightness < -1 || brightness > 1 ||
+                double.IsNaN(contrast) || double.IsInfinity(contrast) ||
+                contrast < 0 || contrast > 16)
+                throw new ArgumentOutOfRangeException("显示参数超出范围。");
+            display.SetGamma(gamma);
+            display.SetBrightness(brightness);
+            display.SetContrast(contrast);
+            display.SetInverted(_displayInverted.IsChecked == true);
+            display.SetAutoContrast(_autoContrast.IsChecked == true);
+            Show("显示状态已应用：源图不改变，原始灰度统计保持不变");
+        }
+
+        private void ResetDisplay()
+        {
+            _viewer.DisplayState.Reset();
+            _displayGamma.Text = "1"; _displayBrightness.Text = "0"; _displayContrast.Text = "1";
+            _displayInverted.IsChecked = false; _autoContrast.IsChecked = false;
+            Show("窗宽窗位/反色/Gamma/亮度/对比度全部复位");
         }
 
         private void Calculate()
