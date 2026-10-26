@@ -351,6 +351,84 @@ namespace CxVisual.Mechanism.Visual
                 Argb,LineWidth,Id,IsVisible,IsLocked);
         }
 
+        /// <summary>在多边形第edgeIndex条边后插入原图顶点，不改变其它顶点及Guid。</summary>
+        public MVIImageOverlayItem WithInsertedPolygonVertex(int edgeIndex,
+            FGEPoint2D position,int imageWidth,int imageHeight)
+        {
+            RequireEditablePolygon();
+            if(edgeIndex<0 || edgeIndex>=_points.Length)
+                throw new ArgumentOutOfRangeException("edgeIndex");
+            if(_points.Length>=100000)
+                throw new InvalidOperationException("多边形顶点数已达到上限。");
+            if(imageWidth<=0 || imageHeight<=0)
+                throw new ArgumentOutOfRangeException("imageWidth");
+            if(position.X<0 || position.Y<0 ||
+                position.X>imageWidth || position.Y>imageHeight)
+                throw new ArgumentOutOfRangeException("position","插入顶点超出原图范围。");
+            FGEPoint2D[] updated=new FGEPoint2D[_points.Length+1];
+            Array.Copy(_points,0,updated,0,edgeIndex+1);
+            updated[edgeIndex+1]=position;
+            Array.Copy(_points,edgeIndex+1,updated,edgeIndex+2,
+                _points.Length-edgeIndex-1);
+            return WithValidatedPolygonTopology(updated,
+                new []{edgeIndex,edgeIndex+1},"position");
+        }
+
+        /// <summary>删除单个多边形顶点；至少保留三个有效且不自交的顶点。</summary>
+        public MVIImageOverlayItem WithRemovedPolygonVertex(int vertexIndex)
+        {
+            RequireEditablePolygon();
+            if(vertexIndex<0 || vertexIndex>=_points.Length)
+                throw new ArgumentOutOfRangeException("vertexIndex");
+            if(_points.Length<=3)
+                throw new InvalidOperationException("多边形最少保留三个顶点。");
+            FGEPoint2D[] updated=new FGEPoint2D[_points.Length-1];
+            Array.Copy(_points,0,updated,0,vertexIndex);
+            Array.Copy(_points,vertexIndex+1,updated,vertexIndex,
+                _points.Length-vertexIndex-1);
+            // 删除顶点后，只改变原顶点两侧拼接而成的一条边。
+            int affected=(vertexIndex+updated.Length-1)%updated.Length;
+            return WithValidatedPolygonTopology(updated,new []{affected},"vertexIndex");
+        }
+
+        private void RequireEditablePolygon()
+        {
+            if(IsLocked) throw new InvalidOperationException("多边形已锁定，不能修改顶点。");
+            if(Kind!=MVIImageOverlayKind.PolygonRoi || Layer!=MVIImageOverlayLayer.Roi)
+                throw new InvalidOperationException("仅多边形ROI可进行顶点编辑。");
+        }
+
+        private MVIImageOverlayItem WithValidatedPolygonTopology(FGEPoint2D[] points,
+            int[] affectedEdges,string parameter)
+        {
+            double before=PolygonSignedDoubleArea(_points);
+            double after=PolygonSignedDoubleArea(points);
+            if(Math.Abs(before)<1e-8 || Math.Abs(after)<1e-8 ||
+                Math.Sign(before)!=Math.Sign(after))
+                throw new ArgumentException("多边形退化或绕向翻转。",parameter);
+            int n=points.Length;
+            for(int i=0;i<n;i++)
+                if((points[(i+1)%n]-points[i]).LengthSquared<1e-12)
+                    throw new ArgumentException("多边形边长过短或顶点重合。",parameter);
+            // 插入/删除只改变一或两条边，仅与其余非邻接边相交判定，复杂度O(n)。
+            foreach(int changed in affectedEdges)
+            {
+                FGEPoint2D a=points[changed],b=points[(changed+1)%n];
+                for(int i=0;i<n;i++)
+                {
+                    if(i==changed || i==(changed+1)%n ||
+                        i==(changed+n-1)%n) continue;
+                    if(PolygonSegmentsIntersect(a,b,points[i],points[(i+1)%n]))
+                        throw new ArgumentException("顶点编辑将产生自交多边形。",parameter);
+                }
+            }
+            double left=points.Min(p=>p.X),right=points.Max(p=>p.X);
+            double top=points.Min(p=>p.Y),bottom=points.Max(p=>p.Y);
+            return new MVIImageOverlayItem(Kind,Layer,
+                new FGERect2D(left,top,right-left,bottom-top),
+                points,Text,ExternalId,Argb,LineWidth,Id,IsVisible,IsLocked);
+        }
+
         private static double PolygonSignedDoubleArea(IReadOnlyList<FGEPoint2D> points)
         {
             double total=0;
