@@ -1,14 +1,13 @@
-using CxECTVolumeCore.Slicing;
-using CxECTVolumeCore.Utils;
+using CxVisual.Foundation.Volume;
 using System;
 using System.ComponentModel;
 
-namespace CxECTVolumeCore.Volume
+namespace CxVisual.Mechanism.Visual
 {
     /// <summary>记录单个二维切片当前可视范围，并同步为三维彩色切面的范围。</summary>
-    public struct SliceViewport
+    public struct MVISliceViewport
     {
-        public SliceViewport(float minA, float maxA, float minB, float maxB)
+        public MVISliceViewport(float minA, float maxA, float minB, float maxB)
         {
             MinA = minA;
             MaxA = maxA;
@@ -21,23 +20,23 @@ namespace CxECTVolumeCore.Volume
         public float MinB { get; private set; }
         public float MaxB { get; private set; }
 
-        public static SliceViewport Full
+        public static MVISliceViewport Full
         {
-            get { return new SliceViewport(0.0f, 1.0f, 0.0f, 1.0f); }
+            get { return new MVISliceViewport(0.0f, 1.0f, 0.0f, 1.0f); }
         }
     }
 
     /// <summary>集中管理 X/Y/Z 切片索引和视口状态，供二维、三维视图联动使用。</summary>
-    public sealed class VolumeState : INotifyPropertyChanged
+    public sealed class MVIVolumeViewState : INotifyPropertyChanged
     {
         private int _sliceX;
         private int _sliceY;
         private int _sliceZ;
         private bool _showCrosshair = true;
-        private SliceViewport _xyViewport = SliceViewport.Full;
-        private SliceViewport _xzViewport = SliceViewport.Full;
-        private SliceViewport _yzViewport = SliceViewport.Full;
-        private ObliqueSliceDefinition _obliqueSlice = new ObliqueSliceDefinition();
+        private MVISliceViewport _xyViewport = MVISliceViewport.Full;
+        private MVISliceViewport _xzViewport = MVISliceViewport.Full;
+        private MVISliceViewport _yzViewport = MVISliceViewport.Full;
+        private FVOObliqueSliceDefinition _obliqueSlice = new FVOObliqueSliceDefinition();
 
         public event PropertyChangedEventHandler PropertyChanged;
 
@@ -65,43 +64,43 @@ namespace CxECTVolumeCore.Volume
             set { SetField(ref _showCrosshair, value, "ShowCrosshair"); }
         }
 
-        public ObliqueSliceDefinition ObliqueSlice
+        public FVOObliqueSliceDefinition ObliqueSlice
         {
             get { return _obliqueSlice; }
         }
 
-        public void SetObliqueSlice(ObliqueSliceDefinition definition)
+        public void SetObliqueSlice(FVOObliqueSliceDefinition definition)
         {
-            _obliqueSlice = (definition ?? new ObliqueSliceDefinition()).Clone();
+            _obliqueSlice = (definition ?? new FVOObliqueSliceDefinition()).Clone();
             OnPropertyChanged("ObliqueSlice");
         }
 
-        public SliceViewport GetSliceViewport(SlicePlane plane)
+        public MVISliceViewport GetSliceViewport(FVOSlicePlane plane)
         {
             switch (plane)
             {
-                case SlicePlane.XY:
+                case FVOSlicePlane.XY:
                     return _xyViewport;
-                case SlicePlane.XZ:
+                case FVOSlicePlane.XZ:
                     return _xzViewport;
-                case SlicePlane.YZ:
+                case FVOSlicePlane.YZ:
                     return _yzViewport;
                 default:
-                    return SliceViewport.Full;
+                    return MVISliceViewport.Full;
             }
         }
 
-        public void SetSliceViewport(SlicePlane plane, float minA, float maxA, float minB, float maxB)
+        public void SetSliceViewport(FVOSlicePlane plane, float minA, float maxA, float minB, float maxB)
         {
-            if (!FrameworkCompat.IsFinite(minA) ||
-                !FrameworkCompat.IsFinite(maxA) ||
-                !FrameworkCompat.IsFinite(minB) ||
-                !FrameworkCompat.IsFinite(maxB))
+            if (!IsFinite(minA) ||
+                !IsFinite(maxA) ||
+                !IsFinite(minB) ||
+                !IsFinite(maxB))
             {
                 return;
             }
 
-            var next = new SliceViewport(
+            var next = new MVISliceViewport(
                 Math.Min(minA, maxA),
                 Math.Max(minA, maxA),
                 Math.Min(minB, maxB),
@@ -109,15 +108,15 @@ namespace CxECTVolumeCore.Volume
 
             switch (plane)
             {
-                case SlicePlane.XY:
+                case FVOSlicePlane.XY:
                     if (IsSameViewport(_xyViewport, next)) return;
                     _xyViewport = next;
                     break;
-                case SlicePlane.XZ:
+                case FVOSlicePlane.XZ:
                     if (IsSameViewport(_xzViewport, next)) return;
                     _xzViewport = next;
                     break;
-                case SlicePlane.YZ:
+                case FVOSlicePlane.YZ:
                     if (IsSameViewport(_yzViewport, next)) return;
                     _yzViewport = next;
                     break;
@@ -126,9 +125,9 @@ namespace CxECTVolumeCore.Volume
             OnPropertyChanged("SliceViewports");
         }
 
-        public static VolumeState CreateCentered(VolumeData volume)
+        public static MVIVolumeViewState CreateCentered(FVOVolumeData volume)
         {
-            return new VolumeState
+            return new MVIVolumeViewState
             {
                 SliceX = volume.OriginalWidth / 2,
                 SliceY = volume.OriginalHeight / 2,
@@ -136,31 +135,31 @@ namespace CxECTVolumeCore.Volume
             };
         }
 
-        public void ResetCentered(VolumeData volume)
+        public void ResetCentered(FVOVolumeData volume)
         {
             SetSlices(volume.OriginalWidth / 2, volume.OriginalHeight / 2, volume.OriginalDepth / 2, volume);
         }
 
-        public void SetSliceX(int value, VolumeData volume)
+        public void SetSliceX(int value, FVOVolumeData volume)
         {
-            SliceX = FrameworkCompat.Clamp(value, 0, volume.OriginalWidth - 1);
+            SliceX = Clamp(value, 0, volume.OriginalWidth - 1);
         }
 
-        public void SetSliceY(int value, VolumeData volume)
+        public void SetSliceY(int value, FVOVolumeData volume)
         {
-            SliceY = FrameworkCompat.Clamp(value, 0, volume.OriginalHeight - 1);
+            SliceY = Clamp(value, 0, volume.OriginalHeight - 1);
         }
 
-        public void SetSliceZ(int value, VolumeData volume)
+        public void SetSliceZ(int value, FVOVolumeData volume)
         {
-            SliceZ = FrameworkCompat.Clamp(value, 0, volume.OriginalDepth - 1);
+            SliceZ = Clamp(value, 0, volume.OriginalDepth - 1);
         }
 
-        public void SetSlices(int x, int y, int z, VolumeData volume)
+        public void SetSlices(int x, int y, int z, FVOVolumeData volume)
         {
-            var nextX = FrameworkCompat.Clamp(x, 0, volume.OriginalWidth - 1);
-            var nextY = FrameworkCompat.Clamp(y, 0, volume.OriginalHeight - 1);
-            var nextZ = FrameworkCompat.Clamp(z, 0, volume.OriginalDepth - 1);
+            var nextX = Clamp(x, 0, volume.OriginalWidth - 1);
+            var nextY = Clamp(y, 0, volume.OriginalHeight - 1);
+            var nextZ = Clamp(z, 0, volume.OriginalDepth - 1);
             if (_sliceX == nextX && _sliceY == nextY && _sliceZ == nextZ)
             {
                 return;
@@ -194,13 +193,23 @@ namespace CxECTVolumeCore.Volume
             OnPropertyChanged(propertyName);
         }
 
-        private static bool IsSameViewport(SliceViewport left, SliceViewport right)
+        private static bool IsSameViewport(MVISliceViewport left, MVISliceViewport right)
         {
             const float epsilon = 0.0001f;
             return Math.Abs(left.MinA - right.MinA) < epsilon &&
                    Math.Abs(left.MaxA - right.MaxA) < epsilon &&
                    Math.Abs(left.MinB - right.MinB) < epsilon &&
                    Math.Abs(left.MaxB - right.MaxB) < epsilon;
+        }
+
+        private static bool IsFinite(float value)
+        {
+            return !float.IsNaN(value) && !float.IsInfinity(value);
+        }
+
+        private static int Clamp(int value, int min, int max)
+        {
+            return Math.Min(max, Math.Max(min, value));
         }
 
         private void OnPropertyChanged(string propertyName)

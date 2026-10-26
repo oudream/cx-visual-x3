@@ -9,6 +9,7 @@ on:
       - 'Tests/ArchitectureSmoke/Integration/FVOVolumeTests.cs'
       - 'Foundation/Geometry/**'
       - 'Mechanism/Visual/Imaging/**'
+      - 'Mechanism/Visual/Volume/**'
       - 'Mechanism/Visual/CxVisual.Mechanism.Visual.csproj'
       - 'Tests/ArchitectureSmoke/Integration/FIMImagingTests.cs'
       - 'Tests/ArchitectureSmoke/Integration/MVIImageSessionTests.cs'
