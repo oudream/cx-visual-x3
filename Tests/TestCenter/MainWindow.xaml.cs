@@ -139,7 +139,7 @@ namespace CxVisual.TestCenter.UI
             MenuThemeDark.Click += (sender, args) => ApplyTheme(true);
             _dockViews = new Dictionary<string, object>(StringComparer.Ordinal)
             {
-                { "test.explorer", Explorer }, { "test.documents", DocumentHost },
+                { "test.explorer", Explorer }, { "test.documents", AutomatedWorkbenchFrame },
                 { "test.results", Results },
                 { "test.timeline", Timeline }, { "test.history", History },
                 { "test.plan", TestPlan }, { "test.diff", Diff }
