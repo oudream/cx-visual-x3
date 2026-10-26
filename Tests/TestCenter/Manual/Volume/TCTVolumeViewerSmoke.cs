@@ -48,6 +48,18 @@ namespace CxVisual.TestCenter.UI
                 Check(frame.Scene.SlicePlaneCount == 3, "三张WPF空间贴图切面");
                 Check(frame.Scene.CameraDistance > 0 && frame.Scene.OrientationAxisCount==3,
                     "原版三维相机和红绿蓝方向标记应正常初始化");
+                frame.ViewState.SetSliceViewport(FVOSlicePlane.XY,0,1,0,1);
+                double fullPlaneSpan=frame.Scene.GetPlaneHorizontalSpan(0);
+                frame.ViewState.SetSliceViewport(FVOSlicePlane.XY,.2f,.8f,-.1f,1.1f);
+                double zoomedSpan=frame.Scene.GetPlaneHorizontalSpan(0);
+                Check(fullPlaneSpan>0 &&
+                    Math.Abs(zoomedSpan/fullPlaneSpan-.6)<.001,
+                    "二维缩放可视窗口必须同步改变WPF三维切面尺寸");
+                frame.ViewState.SetSliceViewport(FVOSlicePlane.XY,0,1,0,1);
+                int zBeforeWheel=frame.ViewState.SliceZ;
+                frame.ScrollSlice(FVOSlicePlane.XY,2);
+                Check(frame.ViewState.SliceZ==Math.Min(frame.Volume.OriginalDepth-1,zBeforeWheel+2),
+                    "旧HALCON普通鼠标滚轮应切换当前二维平面，而非误缩放");
                 frame.SetCrosshairFromImage(FVOSlicePlane.XY,6,9);
                 Check(frame.ViewState.SliceX == 6 && frame.ViewState.SliceY == 9,
                     "二维切片坐标必须反算为MVI三刀索引");

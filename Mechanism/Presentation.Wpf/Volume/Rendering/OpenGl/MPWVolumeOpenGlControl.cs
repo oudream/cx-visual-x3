@@ -8,6 +8,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using CxVisual.Mechanism.Visual;
 
 namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
 {
@@ -24,6 +25,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
         private uint _shader, _vao, _vbo, _volumeTexture, _scalarTexture, _gradientTexture;
         private uint _sliceShader, _sliceVao, _sliceVbo, _lineShader, _lineVao, _lineVbo;
         private float _sliceX=.5f, _sliceY=.5f, _sliceZ=.5f, _sliceOpacity=.35f;
+        private MVISliceViewport _xyBounds=MVISliceViewport.Full;
+        private MVISliceViewport _xzBounds=MVISliceViewport.Full;
+        private MVISliceViewport _yzBounds=MVISliceViewport.Full;
         private bool _showSlices=true, _showSliceTexture=false, _showVolume=true, _showBounds=false;
         private float[] _obliqueCorners; // 4x3 normalized 3D纹理坐标，允许平面超出体数据边界。
         private byte[] _voxels, _scalar, _gradient;
@@ -92,6 +96,13 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
         public void SetSlicePositions(float x,float y,float z)
         {
             _sliceX=Clamp(x,0,1); _sliceY=Clamp(y,0,1); _sliceZ=Clamp(z,0,1);
+            RenderFrame();
+        }
+
+        /// <summary>3D正交面随二维浏览器缩放/平移；复用现有MVI视口范围。</summary>
+        public void SetSliceViewports(MVISliceViewport xy,MVISliceViewport xz,MVISliceViewport yz)
+        {
+            _xyBounds=xy;_xzBounds=xz;_yzBounds=yz;
             RenderFrame();
         }
 
@@ -461,15 +472,18 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
             // 红色YZ切面固定X，绿色XZ固定Y，蓝色XY固定Z。
             AddQuad(vertices,ref index,new float[]
             {
-                _sliceX,0,0, _sliceX,1,0, _sliceX,1,1, _sliceX,0,1
+                _sliceX,_yzBounds.MinA,_yzBounds.MinB, _sliceX,_yzBounds.MaxA,_yzBounds.MinB,
+                _sliceX,_yzBounds.MaxA,_yzBounds.MaxB, _sliceX,_yzBounds.MinA,_yzBounds.MaxB
             },1f,.22f,.2f);
             AddQuad(vertices,ref index,new float[]
             {
-                0,_sliceY,0, 1,_sliceY,0, 1,_sliceY,1, 0,_sliceY,1
+                _xzBounds.MinA,_sliceY,_xzBounds.MinB, _xzBounds.MaxA,_sliceY,_xzBounds.MinB,
+                _xzBounds.MaxA,_sliceY,_xzBounds.MaxB, _xzBounds.MinA,_sliceY,_xzBounds.MaxB
             },.28f,.85f,.32f);
             AddQuad(vertices,ref index,new float[]
             {
-                0,0,_sliceZ, 1,0,_sliceZ, 1,1,_sliceZ, 0,1,_sliceZ
+                _xyBounds.MinA,_xyBounds.MinB,_sliceZ, _xyBounds.MaxA,_xyBounds.MinB,_sliceZ,
+                _xyBounds.MaxA,_xyBounds.MaxB,_sliceZ, _xyBounds.MinA,_xyBounds.MaxB,_sliceZ
             },.2f,.48f,1f);
             if (_obliqueCorners!=null)
                 AddQuad(vertices,ref index,_obliqueCorners,1f,.76f,.18f);

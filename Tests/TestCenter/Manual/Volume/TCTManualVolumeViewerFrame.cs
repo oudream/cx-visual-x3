@@ -177,8 +177,30 @@ namespace CxVisual.TestCenter.UI
         }
         private void OnStateChanged(object sender, System.ComponentModel.PropertyChangedEventArgs e)
         {
-            if (!Dispatcher.CheckAccess()) { Dispatcher.BeginInvoke(new Action(RefreshSlices)); return; }
+            if(!Dispatcher.CheckAccess())
+            {
+                Dispatcher.BeginInvoke(new Action(()=>OnStateChanged(sender,e)));
+                return;
+            }
+            if(e.PropertyName=="SliceViewports")
+            {
+                UpdateRenderedSliceViewports();
+                return;
+            }
             RefreshSlices();
+        }
+
+        private void UpdateRenderedSliceViewports()
+        {
+            if(_volume==null || _state==null)return;
+            CxVisual.Mechanism.Visual.MVISliceViewport xy=_state.GetSliceViewport(FVOSlicePlane.XY);
+            CxVisual.Mechanism.Visual.MVISliceViewport xz=_state.GetSliceViewport(FVOSlicePlane.XZ);
+            CxVisual.Mechanism.Visual.MVISliceViewport yz=_state.GetSliceViewport(FVOSlicePlane.YZ);
+            _scene.SetSliceViewports(xy,xz,yz,_state.SliceX,_state.SliceY,_state.SliceZ,
+                _volume.OriginalWidth,_volume.OriginalHeight,_volume.OriginalDepth,
+                _volume.SpacingX,_volume.SpacingY,_volume.SpacingZ);
+            if(_gpu!=null && _gpu.IsAvailable)
+                _gpu.SetSliceViewports(xy,xz,yz);
         }
         private void RefreshSlices()
         {
@@ -204,6 +226,7 @@ namespace CxVisual.TestCenter.UI
                 _scene.SetSlices(xy,xz,yz,_state.SliceX,_state.SliceY,_state.SliceZ,
                     _volume.OriginalWidth,_volume.OriginalHeight,_volume.OriginalDepth,
                     _volume.SpacingX,_volume.SpacingY,_volume.SpacingZ);
+                UpdateRenderedSliceViewports();
                 UpdateCrosshairs();
                 UpdateGpuSlicePositions();
                 RefreshOblique();

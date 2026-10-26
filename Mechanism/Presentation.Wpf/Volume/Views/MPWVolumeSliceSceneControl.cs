@@ -8,6 +8,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Media.Media3D;
 using System.Windows.Shapes;
 using CxVisual.Foundation.Imaging;
+using CxVisual.Mechanism.Visual;
 
 namespace CxVisual.Mechanism.Presentation.Wpf.Volume
 {
@@ -81,6 +82,16 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
 
         public int SlicePlaneCount { get { return Math.Max(0, _models.Children.Count - 1); } }
         public double CameraDistance { get { return _distance; } }
+        /// <summary>专用窗口验收：查看指定切面的实际世界宽度，而非判断截图是否存在。</summary>
+        public double GetPlaneHorizontalSpan(int index)
+        {
+            if(index<0 || index>2 || _models.Children.Count<4)
+                throw new ArgumentOutOfRangeException("index");
+            GeometryModel3D model=_models.Children[index+1] as GeometryModel3D;
+            MeshGeometry3D mesh=model==null ? null : model.Geometry as MeshGeometry3D;
+            if(mesh==null || mesh.Positions.Count<2)throw new InvalidOperationException("切面未建立。");
+            return (mesh.Positions[1]-mesh.Positions[0]).Length;
+        }
         public int OrientationAxisCount { get { return _axisLines.Length; } }
         public void SetOrientationVisible(bool visible)
         {
@@ -129,6 +140,55 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
             AddPlane(yz,
                 new Point3D(x, sy/2, sz/2), new Point3D(x, -sy/2, sz/2),
                 new Point3D(x, -sy/2, -sz/2), new Point3D(x, sy/2, -sz/2));
+        }
+
+        /// <summary>
+        /// 旧FourViewLayout的关键能力：三张3D正交面跟随各自2D观察窗口，
+        /// 而非固定整张体切片。纹理保持同一FIM图像，平移/缩放只重设Mesh与UV。
+        /// 不裁剪到[0,1]，以保留二维视口超出原体积框的空白范围。
+        /// </summary>
+        public void SetSliceViewports(MVISliceViewport xy,MVISliceViewport xz,
+            MVISliceViewport yz,int x,int y,int z,
+            int width,int height,int depth,double spacingX,double spacingY,double spacingZ)
+        {
+            if(_models.Children.Count<4 || width<=0 || height<=0 || depth<=0)return;
+            double wx=width*spacingX,wy=height*spacingY,wz=depth*spacingZ;
+            double scale=Math.Max(wx,Math.Max(wy,wz));
+            wx/=scale;wy/=scale;wz/=scale;
+            double px=wx*(Clamp(x,width)-.5);
+            double py=wy*(.5-Clamp(y,height));
+            double pz=wz*(Clamp(z,depth)-.5);
+            SetMeshViewport(1,xy,
+                new Point3D(wx*(xy.MinA-.5),wy*(.5-xy.MinB),pz),
+                new Point3D(wx*(xy.MaxA-.5),wy*(.5-xy.MinB),pz),
+                new Point3D(wx*(xy.MaxA-.5),wy*(.5-xy.MaxB),pz),
+                new Point3D(wx*(xy.MinA-.5),wy*(.5-xy.MaxB),pz));
+            SetMeshViewport(2,xz,
+                new Point3D(wx*(xz.MinA-.5),py,wz*(.5-xz.MinB)),
+                new Point3D(wx*(xz.MaxA-.5),py,wz*(.5-xz.MinB)),
+                new Point3D(wx*(xz.MaxA-.5),py,wz*(.5-xz.MaxB)),
+                new Point3D(wx*(xz.MinA-.5),py,wz*(.5-xz.MaxB)));
+            SetMeshViewport(3,yz,
+                new Point3D(px,wy*(.5-yz.MinA),wz*(.5-yz.MinB)),
+                new Point3D(px,wy*(.5-yz.MaxA),wz*(.5-yz.MinB)),
+                new Point3D(px,wy*(.5-yz.MaxA),wz*(.5-yz.MaxB)),
+                new Point3D(px,wy*(.5-yz.MinA),wz*(.5-yz.MaxB)));
+        }
+
+        private void SetMeshViewport(int index,MVISliceViewport bounds,
+            Point3D p0,Point3D p1,Point3D p2,Point3D p3)
+        {
+            GeometryModel3D plane=_models.Children[index] as GeometryModel3D;
+            MeshGeometry3D mesh=plane==null ? null : plane.Geometry as MeshGeometry3D;
+            if(mesh==null)return;
+            mesh.Positions=new Point3DCollection(new[]{p0,p1,p2,p3});
+            mesh.TextureCoordinates=new PointCollection(new[]
+            {
+                new Point(bounds.MinA,bounds.MinB),
+                new Point(bounds.MaxA,bounds.MinB),
+                new Point(bounds.MaxA,bounds.MaxB),
+                new Point(bounds.MinA,bounds.MaxB)
+            });
         }
 
         /// <summary>额外任意切图像与三正交面共存在一个WPF Viewport3D中；传入世界坐标四角。</summary>

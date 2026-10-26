@@ -129,7 +129,7 @@ namespace CxVisual.TestCenter.UI
             AddAxis(display,"切片窗下限",_windowMin,"TCT.Volume.WindowMin");
             AddAxis(display,"切片窗上限",_windowMax,"TCT.Volume.WindowMax");
             display.Children.Add(new TextBlock {
-                Text="Ctrl+点击定位三刀；Shift+滚轮换层。视图标题栏可缩放或最大化。",
+                Text="左键拖动定位三刀；滚轮换层；Ctrl+滚轮缩放；Alt+左键平移。",
                 TextWrapping=TextWrapping.Wrap,Margin=new Thickness(4,8,4,5) });
             Label(gray,"渲染预设与灰阶范围");
             BuildGpuPanel(render); // 将成熟渲染控件直接归类，不复制字段或事件。
