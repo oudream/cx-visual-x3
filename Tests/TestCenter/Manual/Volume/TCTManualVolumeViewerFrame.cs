@@ -289,6 +289,8 @@ namespace CxVisual.TestCenter.UI
         public void OnWorkspaceClosed()
         {
             CancelPendingRawLoads();
+            DisableGpu(); // 先释放WGL上下文和全部GL资源，再释放其可能引用的FVO像素。
+            if(_enableGpu.IsChecked==true)_enableGpu.IsChecked=false;
             _updating = true;
             if (_state != null) _state.PropertyChanged -= OnStateChanged;
             if (_volume != null) _volume.Dispose();

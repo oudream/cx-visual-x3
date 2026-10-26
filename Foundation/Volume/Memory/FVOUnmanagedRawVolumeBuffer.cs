@@ -3,6 +3,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Threading;
 
 namespace CxVisual.Foundation.Volume
 {
@@ -24,6 +25,13 @@ namespace CxVisual.Foundation.Volume
 
         internal static FVOUnmanagedRawVolumeBuffer Load(string filePath, long expectedLength, FVORawVolumeLoadTiming timing)
         {
+            return Load(filePath,expectedLength,timing,CancellationToken.None);
+        }
+
+        internal static FVOUnmanagedRawVolumeBuffer Load(string filePath, long expectedLength,
+            FVORawVolumeLoadTiming timing,CancellationToken cancellation)
+        {
+            cancellation.ThrowIfCancellationRequested();
             if (IntPtr.Size != 8)
             {
                 throw new PlatformNotSupportedException("加载超过 2GB 的 RAW 体数据需要 64 位进程。");
@@ -51,6 +59,7 @@ namespace CxVisual.Foundation.Volume
                 {
                     while (totalRead < expectedLength)
                     {
+                        cancellation.ThrowIfCancellationRequested();
                         var requested = (int)Math.Min(copyBuffer.Length, expectedLength - totalRead);
                         var readStopwatch = Stopwatch.StartNew();
                         var read = stream.Read(copyBuffer, 0, requested);

@@ -14,6 +14,7 @@ namespace CxVisual.TestCenter.UI
     public sealed partial class TCTManualVolumeViewerFrame
     {
         private CancellationTokenSource _activeRawLoad;
+        private CancellationTokenSource _activeRawCache;
         private int _lastLoadGeneration;
         public bool IsRawLoading { get; private set; }
 
@@ -22,6 +23,7 @@ namespace CxVisual.TestCenter.UI
             if(String.IsNullOrWhiteSpace(filename))throw new ArgumentNullException("filename");
             if(!File.Exists(filename))throw new FileNotFoundException("RAW文件不存在。",filename);
             if(_activeRawLoad!=null)_activeRawLoad.Cancel();
+            if(_activeRawCache!=null)_activeRawCache.Cancel();
             CancellationTokenSource current=CancellationTokenSource.CreateLinkedTokenSource(cancellation);
             _activeRawLoad=current;
             int generation=++_lastLoadGeneration;
@@ -75,12 +77,15 @@ namespace CxVisual.TestCenter.UI
                 _status.Text+="；大RAW暂不常驻原始缓存。";
                 return;
             }
+            CancellationTokenSource cacheSource=CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+            _activeRawCache=cacheSource;
             try
             {
                 // UInt16/Float32保留真实原始精度，绝不能通过归一化8bit图恢复。
                 FVOUnmanagedRawVolumeBuffer cache=await Task.Run(()=>
-                    FVORawVolumeLoader.LoadRawBuffer(volume,new FVORawVolumeLoadTiming()));
-                if(cancellation.IsCancellationRequested||generation!=_lastLoadGeneration||
+                    FVORawVolumeLoader.LoadRawBuffer(volume,new FVORawVolumeLoadTiming(),
+                        cacheSource.Token),cacheSource.Token);
+                if(cacheSource.IsCancellationRequested||generation!=_lastLoadGeneration||
                     !Object.ReferenceEquals(volume,_volume))
                 {
                     cache.Dispose();return;
@@ -89,10 +94,20 @@ namespace CxVisual.TestCenter.UI
                 RefreshSlices();
                 _status.Text+="；完整RAW缓存已就绪。";
             }
+            catch(OperationCanceledException)
+            {
+                // 清空、更换体数据或关闭工作区时，后台缓冲停止且非托管内存自动释放。
+            }
             catch(Exception exception)
             {
                 if(Object.ReferenceEquals(volume,_volume))
                     _status.Text+="；原始缓存不可用："+exception.Message;
+            }
+            finally
+            {
+                if(Object.ReferenceEquals(_activeRawCache,cacheSource))
+                    _activeRawCache=null;
+                cacheSource.Dispose();
             }
         }
 

@@ -269,12 +269,19 @@ namespace CxVisual.Foundation.Volume
         /// <summary>将原始 RAW 读入非托管缓存，供宿主在后台切换高分辨率切片。</summary>
         public static FVOUnmanagedRawVolumeBuffer LoadRawBuffer(FVOVolumeData volume, FVORawVolumeLoadTiming timing)
         {
+            return LoadRawBuffer(volume,timing,CancellationToken.None);
+        }
+
+        public static FVOUnmanagedRawVolumeBuffer LoadRawBuffer(FVOVolumeData volume,
+            FVORawVolumeLoadTiming timing,CancellationToken cancellation)
+        {
+            cancellation.ThrowIfCancellationRequested();
             if (volume == null || !volume.HasRawSource)
             {
                 throw new ArgumentException("体数据没有可读取的 RAW 源。", "volume");
             }
 
-            return FVOUnmanagedRawVolumeBuffer.Load(volume.SourceFilePath, new FileInfo(volume.SourceFilePath).Length, timing);
+            return FVOUnmanagedRawVolumeBuffer.Load(volume.SourceFilePath, new FileInfo(volume.SourceFilePath).Length, timing,cancellation);
         }
 
         public static bool TryLoadOriginalVoxelCache(FVOVolumeData volume)

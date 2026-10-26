@@ -44,6 +44,14 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     data16.SetRawBuffer(FVORawVolumeLoader.LoadRawBuffer(data16, new FVORawVolumeLoadTiming()));
                     Check(data16.GetScalarByOriginalIndex(7, 7, 7) == 1511f, "原始16bit不经8bit量化恢复");
                     Check(data16.HasOriginalRawData, "非托管原始RAW被持有");
+                    using(System.Threading.CancellationTokenSource cts =
+                        new System.Threading.CancellationTokenSource())
+                    {
+                        cts.Cancel();
+                        Expect<OperationCanceledException>(() =>
+                            FVORawVolumeLoader.LoadRawBuffer(data16,new FVORawVolumeLoadTiming(),
+                                cts.Token),"取消完整原始RAW缓存必须立即停止分配");
+                    }
                 }
                 // 真实切片采样与显示分离：三平面共享相同体素/物理坐标。
                 using (FVOVolumeData scalarSource = FVORawVolumeLoader.Load(path16))
