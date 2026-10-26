@@ -95,3 +95,14 @@ TestCenter路径：`Tests/TestCenter/Manual/Imaging/TCTManualImageViewerFrame.cs
 代码提交：[5e3276b](https://github.com/oudream/cx-visual-x3/commit/5e3276b012660ff97b6d8fbe9dd8bed20977737d)、[bdc300e](https://github.com/oudream/cx-visual-x3/commit/bdc300e0206bf4624aadc8257ae455d0d406b060)、[9200dcd](https://github.com/oudream/cx-visual-x3/commit/9200dcd8acae3fd1c89788a538f16c257961d276)。
 
 **下一组P2应继续**：ROI角点缩放/旋转与细调、编辑柄、图层排序锁定和统一Undo；任意角与亚像素、全双轴双视口标尺；序列与多图比较、独立图像配准及真机长时间性能。在真正CI/用户操作完成前，均保持“未完成/未验证”，不得把单个双视图成功说成60项全部交付。
+
+## 6. 本轮最终代码验证：双视图整幅导出与TestCenter全面回归
+
+- **本轮经过最终代码CI验证的提交**：[af86f5f54c7e](https://github.com/oudream/cx-visual-x3/commit/af86f5f54c7e1d74fcbc90ecb31b947a38059cc8)；这是功能实现SHA，后续仅文档提交不自动取代其证据身份。
+- [Imaging Windows x64 #40287304124](https://github.com/oudream/cx-visual-x3/actions/runs/40287304124)：**SUCCESS，13个工作流步骤成功**。包含28项目原方案构建及结构DAG、FIM/MVI数值、默认ArchitectureSmoke、实际STA WPF按钮与Grid双图、Gray16、同步开关、ROI/Overlay、宽高不符拒绝、PNG视口导出和截图回环。
+- [完整 TestCenter Windows .NET48 #40287304071](https://github.com/oudream/cx-visual-x3/actions/runs/40287304071)：**SUCCESS，29个工作流步骤成功**。包括真实WPF UIA、Connector编辑与删除、NUnit/Worker实际执行、异常/历史证据、并发重复回归，不以Imaging的局部绿灯代替。
+- 同SHA专项：[Command UI #40287304081](https://github.com/oudream/cx-visual-x3/actions/runs/40287304081)、[Studio S1 #40287304096](https://github.com/oudream/cx-visual-x3/actions/runs/40287304096)、[Engineering Organization #40287304092](https://github.com/oudream/cx-visual-x3/actions/runs/40287304092)、[配置公共底座 #40287304020](https://github.com/oudream/cx-visual-x3/actions/runs/40287304020)均成功；其它专项是否通过仍按各自运行查看。
+- `MPWImageViewerControl.SaveViewPng` 已改为：单图导出主Viewport、SideBySide时导出整个`ComparisonLayout`，包含左原、右结果与叠加项；真实PNG尺寸测试拒绝只截左侧的退化行为。注意`SavePng`仍保存左侧呈现像素，不等于双图组合或原始未经ToneMapping的FIM缓冲。
+- 成功范围限于合成样本及Windows CI：**尚未**覆盖旧WinForms全部鼠标工具（ResizeRoi/旋转柄/层锁定/层排序）、双图完整右侧工具交互、外部配准、多图序列/设备流、真实HALCON SDK的同样本数值与HObject生命周期、4300²大图延时/资源连续压测、生产工业现场设备。它们保留P2～P6工作包，不得归档为Completed。
+
+**后续恢复优先顺序仍按用户指定**：继续用现有MVI OverlayStore和MPW Canvas恢复旧ROI完整编辑柄/几何，随后补任意角与多图完整导航、精确区域分析与结构化算法；所有工作须用户入口+真值输出+异常反证+Windows CI。Referenced `ReferTo` 仅只读对照。
