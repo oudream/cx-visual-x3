@@ -35,6 +35,9 @@ namespace CxVisual.Mechanism.Visual
                 throw new ArgumentOutOfRangeException("lineWidth");
             _points = points == null ? new FGEPoint2D[0] : points.ToArray();
             if (_points.Length > 100000) throw new ArgumentException("叠加几何点数超限。", "points");
+            if (kind == MVIImageOverlayKind.RotatedRectangleRoi &&
+                (layer != MVIImageOverlayLayer.Roi || _points.Length != 4))
+                throw new ArgumentException("旋转矩形必须拥有四个原图角点并属于ROI层。","points");
             if ((kind == MVIImageOverlayKind.PolygonRoi || kind == MVIImageOverlayKind.PolygonAnnotation)
                 && _points.Length < 3)
                 throw new ArgumentException("多边形至少需要三个点。", "points");
@@ -67,10 +70,95 @@ namespace CxVisual.Mechanism.Visual
         public bool IsVisible { get; private set; }
         public bool IsLocked { get; private set; }
 
+        /// <summary>旋转矩形以原图X右/Y下坐标的顺时针正角表示。</summary>
+        public double RotatedRectangleAngleDegrees
+        {
+            get
+            {
+                RequireRotatedRectangle();
+                return Math.Atan2(_points[1].Y-_points[0].Y,
+                    _points[1].X-_points[0].X)*180.0/Math.PI;
+            }
+        }
+        public double RotatedRectangleWidth
+        {
+            get { RequireRotatedRectangle(); return _points[0].DistanceTo(_points[1]); }
+        }
+        public double RotatedRectangleHeight
+        {
+            get { RequireRotatedRectangle(); return _points[1].DistanceTo(_points[2]); }
+        }
+        public double RotatedRectangleArea
+        {
+            get { return RotatedRectangleWidth*RotatedRectangleHeight; }
+        }
+        private void RequireRotatedRectangle()
+        {
+            if(Kind!=MVIImageOverlayKind.RotatedRectangleRoi)
+                throw new InvalidOperationException("当前对象不是旋转矩形ROI。");
+        }
+
+        public static MVIImageOverlayItem CreateRotatedRectangle(FGERect2D rect,
+            double angleDegrees,int imageWidth,int imageHeight)
+        {
+            return CreateRotatedGeometry(rect.X+rect.Width/2.0,rect.Y+rect.Height/2.0,
+                rect.Width,rect.Height,angleDegrees,imageWidth,imageHeight,null);
+        }
+        public MVIImageOverlayItem WithRotatedRectangleAngle(double angleDegrees,
+            int imageWidth,int imageHeight)
+        {
+            RequireRotatedRectangle();
+            if(IsLocked) throw new InvalidOperationException("旋转矩形已锁定。");
+            return CreateRotatedGeometry((_points[0].X+_points[2].X)/2.0,
+                (_points[0].Y+_points[2].Y)/2.0,RotatedRectangleWidth,
+                RotatedRectangleHeight,angleDegrees,imageWidth,imageHeight,this);
+        }
+        private static MVIImageOverlayItem CreateRotatedGeometry(double cx,double cy,
+            double width,double height,double angle,int imageWidth,int imageHeight,
+            MVIImageOverlayItem original)
+        {
+            FGEValidation.Finite(cx,"cx");FGEValidation.Finite(cy,"cy");
+            FGEValidation.Finite(width,"width");FGEValidation.Finite(height,"height");
+            FGEValidation.Finite(angle,"angle");
+            if(width<0.25 || height<0.25)
+                throw new ArgumentOutOfRangeException("width","旋转矩形宽高不能小于0.25原图像素。");
+            if(imageWidth<=0 || imageHeight<=0)
+                throw new ArgumentOutOfRangeException("imageWidth");
+            double radians=(angle%360.0)*Math.PI/180.0;
+            double cos=Math.Cos(radians),sin=Math.Sin(radians);
+            double halfWidth=width/2.0,halfHeight=height/2.0;
+            double[] localX={-halfWidth,halfWidth,halfWidth,-halfWidth};
+            double[] localY={-halfHeight,-halfHeight,halfHeight,halfHeight};
+            FGEPoint2D[] corners=new FGEPoint2D[4];
+            for(int i=0;i<4;i++)
+            {
+                double x=cx+localX[i]*cos-localY[i]*sin;
+                double y=cy+localX[i]*sin+localY[i]*cos;
+                if(x < -1e-8 || y < -1e-8 ||
+                    x > imageWidth+1e-8 || y > imageHeight+1e-8)
+                    throw new ArgumentOutOfRangeException("angle",
+                        "旋转结果有角点超出原图，不修改原对象。");
+                corners[i]=new FGEPoint2D(x,y);
+            }
+            double left=corners.Min(p=>p.X),right=corners.Max(p=>p.X);
+            double top=corners.Min(p=>p.Y),bottom=corners.Max(p=>p.Y);
+            return new MVIImageOverlayItem(MVIImageOverlayKind.RotatedRectangleRoi,
+                MVIImageOverlayLayer.Roi,new FGERect2D(left,top,right-left,bottom-top),
+                corners,original==null?null:original.Text,
+                original==null?null:original.ExternalId,
+                original==null?unchecked((int)0xffff4040):original.Argb,
+                original==null?1.5:original.LineWidth,
+                original==null?(Guid?)null:original.Id,
+                original==null || original.IsVisible,
+                original!=null && original.IsLocked);
+        }
+
         /// <summary>按原图坐标缩放边界与顶点，不能只改Bounds而令测量线/多边形顶点停在原位。</summary>
         public MVIImageOverlayItem WithBounds(FGERect2D bounds)
         {
             if (IsLocked) throw new InvalidOperationException("ROI已锁定，禁止缩放。");
+            if(Kind==MVIImageOverlayKind.RotatedRectangleRoi)
+                throw new InvalidOperationException("旋转矩形不能以外接Bounds进行非等比变换。");
             double scaleX = Bounds.Width <= 0 ? 1 : bounds.Width / Bounds.Width;
             double scaleY = Bounds.Height <= 0 ? 1 : bounds.Height / Bounds.Height;
             FGEPoint2D[] points = _points.Select(p => new FGEPoint2D(

@@ -181,7 +181,35 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Ensure(stacking.SetLocked(back.Id,false) && !stacking.Find(back.Id).IsLocked &&
                 stacking.MoveZOrder(front.Id,-1) && stacking.Items[0].Id==front.Id,
                 "显式解锁后允许正常变更层级");
-            Console.WriteLine("PASS MVI ImageOverlay: 旧分类/增改删/八柄/锁定/Z序/原图几何");
+            MVIImageOverlayItem rot=MVIImageOverlayItem.CreateRotatedRectangle(
+                new FGERect2D(11,14,10,4),0,40,40);
+            Ensure(rot.Points.Count==4 && rot.RotatedRectangleWidth==10 &&
+                rot.RotatedRectangleHeight==4 && rot.RotatedRectangleArea==40 &&
+                rot.RotatedRectangleAngleDegrees==0,
+                "旋转矩形初始四角原图数据和宽高面积");
+            MVIImageOverlayItem rotated=rot.WithRotatedRectangleAngle(45,40,40);
+            Ensure(rotated.Id==rot.Id && Math.Abs(rotated.RotatedRectangleAngleDegrees-45)<1e-8 &&
+                Math.Abs(rotated.RotatedRectangleArea-40)<1e-8 &&
+                rotated.Bounds.Width>rot.Bounds.Width*0.7 &&
+                rot.RotatedRectangleAngleDegrees==0,
+                "角度编辑保留身份面积及原不可变快照");
+            Ensure(FGEGeometry2D.PointInPolygon(new FGEPoint2D(16,16),rotated.Points) &&
+                !FGEGeometry2D.PointInPolygon(new FGEPoint2D(11,11),rotated.Points),
+                "倾斜矩形实际区域命中不能退化为Bounds");
+            Ensure(rotated.Translate(1,1).Points[0].X==rotated.Points[0].X+1 &&
+                rotated.Translate(1,1).Id==rot.Id,
+                "旋转矩形移动保持顶点位置与ID");
+            Fail<InvalidOperationException>(()=>rot.WithBounds(new FGERect2D(0,0,2,2)),
+                "非等比Bounds编辑不能破坏旋转矩形正交性");
+            Fail<InvalidOperationException>(()=>rot.WithLocked(true).WithRotatedRectangleAngle(
+                20,40,40),"锁定旋转矩形不可修改角度");
+            Fail<ArgumentOutOfRangeException>(()=>rot.WithRotatedRectangleAngle(
+                45,18,18),"超出原图边界不得写入");
+            Fail<ArgumentOutOfRangeException>(()=>MVIImageOverlayItem.CreateRotatedRectangle(
+                new FGERect2D(0,0,0,4),0,40,40),"零宽旋转矩形拒绝");
+            Ensure(!rot.IsLocked && !rot.WithRotatedRectangleAngle(40,40,40).IsLocked,
+                "正常几何操作不会错误锁定");
+            Console.WriteLine("PASS MVI ImageOverlay: 旋转矩形正交几何/角度/命中/异常与原有ROI");
         }
 
         private static void Ensure(bool condition,string description)

@@ -7,7 +7,8 @@ namespace CxVisual.Mechanism.Visual
         DistanceMeasurement, HorizontalMeasurement, VerticalMeasurement,
         AngleMeasurement, DiameterMeasurement, AreaMeasurement, LineProfileMeasurement,
         PointAnnotation, RectangleAnnotation, PolygonAnnotation, TextAnnotation,
-        ArrowAnnotation, DefectBox
+        ArrowAnnotation, DefectBox,
+        RotatedRectangleRoi
     }
 
     public enum MVIImageOverlayLayer
