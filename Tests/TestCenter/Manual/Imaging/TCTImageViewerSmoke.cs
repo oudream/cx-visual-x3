@@ -94,9 +94,9 @@ namespace CxVisual.TestCenter.UI
                     .OfType<LayoutDocumentPane>().FirstOrDefault(p => p.Children
                         .OfType<LayoutDocument>().Any(d => d.ContentId == "test.documents"));
                 if (imaging == null || inspector.IsVisible || documentPane == null ||
-                    documentPane.ShowHeader)
+                    documentPane.ShowHeader || host.OperationDock.IsVisible)
                     throw new InvalidOperationException(
-                        "TestCenter workbench must hide duplicate AvalonDock document header and Inspector");
+                        "TestCenter workbench must visibly hide duplicate AvalonDock document header and Inspector");
                 imaging.SetOriginal(new FIMImageBuffer(900,650,FIMPixelFormat.Gray8,
                     BuildSyntheticPixels(900,650)));
                 host.UpdateLayout();
