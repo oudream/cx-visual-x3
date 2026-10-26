@@ -80,6 +80,26 @@ namespace CxVisual.Studio
                     Assert(ReferenceEquals(window.StudioDock.AnchorableHeaderTemplate,
                         Application.Current.FindResource("MPWToolDockHeaderTemplate")),
                         "Studio工具Tab未使用公共MPW工具模板");
+                    // 公共视觉合同也必须能在真实WPF STA加载，而非仅拥有同名资源键。
+                    Grid documentHeader = ((DataTemplate)Application.Current.FindResource(
+                        "MPWDockHeaderTemplate")).LoadContent() as Grid;
+                    Grid toolHeader = ((DataTemplate)Application.Current.FindResource(
+                        "MPWToolDockHeaderTemplate")).LoadContent() as Grid;
+                    Assert(documentHeader != null && documentHeader.Children.OfType<Border>()
+                            .Any(b => b.Name == "DocumentAccent") &&
+                        toolHeader != null && toolHeader.Children.OfType<Border>()
+                            .Any(b => b.Name == "ToolAccent"),
+                        "公共Dock Header没有固定尺寸的独立选中强调线");
+                    Style gridStyle = Application.Current.FindResource("MPWDataGridStyle") as Style;
+                    Assert(gridStyle != null && gridStyle.Setters.OfType<Setter>().Any(
+                            setter => setter.Property == DataGrid.ColumnHeaderStyleProperty) &&
+                        gridStyle.Setters.OfType<Setter>().Any(
+                            setter => setter.Property == DataGrid.RowStyleProperty),
+                        "DataGrid没有使用统一列头与行视觉样式");
+                    Style treeStyle = Application.Current.FindResource("MPWTreeItemStyle") as Style;
+                    Assert(treeStyle != null && treeStyle.Triggers.OfType<Trigger>().Any(
+                        trigger => trigger.Property == TreeViewItem.IsSelectedProperty),
+                        "公共资源树缺失正式选择态视觉");
                     Assert(window.Icon != null, "Studio主窗口缺少公共MPW图标");
                     window.ApplyStudioTheme(true);
                     Assert(window.StudioDarkTheme, "深色未切换");
