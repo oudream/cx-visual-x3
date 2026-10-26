@@ -1,18 +1,16 @@
-using CxECTVolumeCore.Utils;
-using CxECTVolumeCore.Volume;
 using System;
 using System.Linq;
 using System.Threading;
 
-namespace CxECTVolumeCore.Rendering
+namespace CxVisual.Foundation.Volume
 {
     // 诊断数据与渲染算法解耦，便于后续替换直方图采样策略。
     /// <summary>保存标量与梯度直方图，为传递函数编辑器提供背景参考数据。</summary>
-    public sealed class RenderingHistogram
+    public sealed class FVOVolumeHistogram
     {
         private const int MaximumHistogramSamples = 4_000_000;
 
-        public RenderingHistogram(float[] scalar, float[] gradient)
+        public FVOVolumeHistogram(float[] scalar, float[] gradient)
         {
             Scalar = scalar;
             Gradient = gradient;
@@ -22,12 +20,12 @@ namespace CxECTVolumeCore.Rendering
 
         public float[] Gradient { get; private set; }
 
-        public static RenderingHistogram FromVolume(VolumeData volume)
+        public static FVOVolumeHistogram FromVolume(FVOVolumeData volume)
         {
             return FromVolume(volume, CancellationToken.None);
         }
 
-        public static RenderingHistogram FromVolume(VolumeData volume, CancellationToken cancellationToken)
+        public static FVOVolumeHistogram FromVolume(FVOVolumeData volume, CancellationToken cancellationToken)
         {
             var scalarBins = new long[256];
             // 直方图只作为传递函数背景参考；限制采样数可避免大体积在 UI 显示前再次全量扫描。
@@ -44,10 +42,10 @@ namespace CxECTVolumeCore.Rendering
             }
 
             var gradientBins = BuildGradientHistogram(volume, cancellationToken);
-            return new RenderingHistogram(Normalize(scalarBins), Normalize(gradientBins));
+            return new FVOVolumeHistogram(Normalize(scalarBins), Normalize(gradientBins));
         }
 
-        private static long[] BuildGradientHistogram(VolumeData volume, CancellationToken cancellationToken)
+        private static long[] BuildGradientHistogram(FVOVolumeData volume, CancellationToken cancellationToken)
         {
             var bins = new long[256];
             var width = volume.Width;
@@ -71,7 +69,7 @@ namespace CxECTVolumeCore.Rendering
                         var dy = voxels[index + width] - voxels[index - width];
                         var dz = voxels[index + width * height] - voxels[index - width * height];
                         var magnitude = (float)Math.Sqrt(dx * dx + dy * dy + dz * dz) / 441.7f;
-                        var bin = (int)Math.Round(FrameworkCompat.Clamp(magnitude, 0.0f, 1.0f) * 255.0f);
+                        var bin = (int)Math.Round(FVOFrameworkCompat.Clamp(magnitude, 0.0f, 1.0f) * 255.0f);
                         bins[bin]++;
                     }
                 }

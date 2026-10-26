@@ -63,6 +63,20 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         ix, iy, out vx, out vy, out vz);
                     Check(vx == 7 && vy == 5 && vz == 2, "三刀与二维坐标往返");
                 }
+                using (FVOVolumeData demo = FVOVolumeData.CreateDemo(12, 12, 12))
+                {
+                    FVOVolumeHistogram hist = FVOVolumeHistogram.FromVolume(demo);
+                    Check(hist.Scalar.Length == 256 && hist.Gradient.Length == 256, "标量+梯度直方图");
+                    FVOIntensityRangeOptions options = new FVOIntensityRangeOptions();
+                    options.AutoRange = false;
+                    FVOVolumeIntensityProfile full = FVOVolumeIntensityProfile.FromVolume(demo, options);
+                    Check(full.Lower == 0 && full.Upper == 1, "关闭自适应映射使用全灰阶");
+                    options.AutoRange = true;
+                    FVOIntensityRangeOptions previous = options;
+                    FVOVolumeIntensityProfile profile = FVOVolumeIntensityProfile.FromVolume(demo, previous);
+                    Check(profile.Lower >= 0 && profile.Upper <= 1 && profile.Upper > profile.Lower,
+                        "预览灰阶有效区间");
+                }
                 FVOObliqueSliceDefinition oblique = new FVOObliqueSliceDefinition();
                 FVOObliqueSliceVector u;
                 FVOObliqueSliceVector v;

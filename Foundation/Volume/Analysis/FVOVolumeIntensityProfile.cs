@@ -1,42 +1,49 @@
-using CxECTVolumeCore.Utils;
-using CxECTVolumeCore.Volume;
 using System;
 
-namespace CxECTVolumeCore.Rendering
+namespace CxVisual.Foundation.Volume
 {
+    /// <summary>预览灰度动态范围计算参数；属于体素统计而非GPU渲染设置。</summary>
+    public sealed class FVOIntensityRangeOptions
+    {
+        public bool AutoRange { get; set; } = true;
+        public int BackgroundGrayUpper { get; set; } = 0;
+        public float LowerPercentile { get; set; } = 0.10f;
+        public float UpperPercentile { get; set; } = 0.995f;
+    }
+
     /// <summary>描述当前体数据中有信息的灰度区间，供默认渲染预设自适应展开低对比度数据。</summary>
-    public sealed class RenderingIntensityProfile
+    public sealed class FVOVolumeIntensityProfile
     {
         private const int MaximumSamples = 4_000_000;
 
-        public RenderingIntensityProfile(float lower, float upper)
+        public FVOVolumeIntensityProfile(float lower, float upper)
         {
-            Lower = FrameworkCompat.Clamp(lower, 0.0f, 254.0f / 255.0f);
-            Upper = FrameworkCompat.Clamp(upper, Lower + 1.0f / 255.0f, 1.0f);
+            Lower = FVOFrameworkCompat.Clamp(lower, 0.0f, 254.0f / 255.0f);
+            Upper = FVOFrameworkCompat.Clamp(upper, Lower + 1.0f / 255.0f, 1.0f);
         }
 
         public float Lower { get; private set; }
 
         public float Upper { get; private set; }
 
-        public static RenderingIntensityProfile FullRange
+        public static FVOVolumeIntensityProfile FullRange
         {
-            get { return new RenderingIntensityProfile(0.0f, 1.0f); }
+            get { return new FVOVolumeIntensityProfile(0.0f, 1.0f); }
         }
 
         public float Normalize(float scalar)
         {
-            return FrameworkCompat.Clamp((scalar - Lower) / Math.Max(1.0f / 255.0f, Upper - Lower), 0.0f, 1.0f);
+            return FVOFrameworkCompat.Clamp((scalar - Lower) / Math.Max(1.0f / 255.0f, Upper - Lower), 0.0f, 1.0f);
         }
 
-        public static RenderingIntensityProfile FromVolume(VolumeData volume)
+        public static FVOVolumeIntensityProfile FromVolume(FVOVolumeData volume)
         {
-            return FromVolume(volume, new RenderingIntensitySettings());
+            return FromVolume(volume, new FVOIntensityRangeOptions());
         }
 
-        public static RenderingIntensityProfile FromVolume(
-            VolumeData volume,
-            RenderingIntensitySettings settings)
+        public static FVOVolumeIntensityProfile FromVolume(
+            FVOVolumeData volume,
+            FVOIntensityRangeOptions settings)
         {
             if (volume == null)
             {
@@ -60,7 +67,7 @@ namespace CxECTVolumeCore.Rendering
                 bins[volume.Voxels[index]]++;
             }
 
-            int backgroundUpper = FrameworkCompat.Clamp(settings.BackgroundGrayUpper, 0, 254);
+            int backgroundUpper = FVOFrameworkCompat.Clamp(settings.BackgroundGrayUpper, 0, 254);
             int firstForegroundBin = backgroundUpper + 1;
             long foregroundCount = 0;
             for (int i = firstForegroundBin; i < bins.Length; i++)
@@ -73,9 +80,9 @@ namespace CxECTVolumeCore.Rendering
                 return FullRange;
             }
 
-            float lowerPercentile = FrameworkCompat.Clamp(settings.LowerPercentile, 0.0f, 0.999f);
+            float lowerPercentile = FVOFrameworkCompat.Clamp(settings.LowerPercentile, 0.0f, 0.999f);
             float minimumUpperPercentile = Math.Min(1.0f, lowerPercentile + 0.001f);
-            float upperPercentile = FrameworkCompat.Clamp(settings.UpperPercentile, minimumUpperPercentile, 1.0f);
+            float upperPercentile = FVOFrameworkCompat.Clamp(settings.UpperPercentile, minimumUpperPercentile, 1.0f);
             int lowerBin = FindPercentile(bins, foregroundCount, lowerPercentile, firstForegroundBin);
             int upperBin = FindPercentile(bins, foregroundCount, upperPercentile, firstForegroundBin);
             lowerBin = Math.Max(backgroundUpper, lowerBin - 1);
@@ -89,7 +96,7 @@ namespace CxECTVolumeCore.Rendering
                 lowerBin = Math.Max(backgroundUpper, upperBin - 16);
             }
 
-            return new RenderingIntensityProfile(lowerBin / 255.0f, upperBin / 255.0f);
+            return new FVOVolumeIntensityProfile(lowerBin / 255.0f, upperBin / 255.0f);
         }
 
         private static int FindPercentile(long[] bins, long total, float percentile, int firstBin)
