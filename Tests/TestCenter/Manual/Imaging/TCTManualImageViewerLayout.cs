@@ -150,21 +150,72 @@ namespace CxVisual.TestCenter.UI
         {
             Button button = AddButton(host,label,id,action);
             button.Margin = new Thickness(1,2,1,2);
-            button.Width = 76; button.Height = 49; button.MinHeight = 49;
+            button.Width = 84; button.Height = 51; button.MinHeight = 51;
             button.Padding = new Thickness(2,2,2,2);
             button.BorderThickness = new Thickness(0);
             button.Background = Brushes.Transparent;
             button.ToolTip = label;
             StackPanel content = new StackPanel { VerticalAlignment = VerticalAlignment.Center,
                 HorizontalAlignment = HorizontalAlignment.Center };
-            content.Children.Add(new TextBlock { Text = symbol, FontSize = 20,
-                Foreground = Paint(37,121,220), FontWeight = FontWeights.SemiBold,
-                HorizontalAlignment = HorizontalAlignment.Center, TextAlignment = TextAlignment.Center });
-            content.Children.Add(new TextBlock { Text = label, FontSize = 11.5,
+            content.Children.Add(Glyph(id,symbol,23));
+            content.Children.Add(new TextBlock { Text = label, FontSize = 12.5,
                 Foreground = Paint(48,66,91), HorizontalAlignment = HorizontalAlignment.Center });
             button.Content = content;
             _quickButtons.Add(button);
         }
+
+        /// <summary>WPF原生线形矢量图标，不依赖旧WinForms ImageList或外置Icon字体。</summary>
+        private static UIElement Glyph(string id,string fallback,double size)
+        {
+            string path = IconPath(id);
+            if (path == null) return new TextBlock {
+                Text = fallback, FontSize = size, FontWeight = FontWeights.SemiBold,
+                Foreground = Paint(31,119,219), TextAlignment = TextAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Center };
+            System.Windows.Shapes.Path icon = new System.Windows.Shapes.Path {
+                Data = Geometry.Parse(path), Width = size, Height = size,
+                Stroke = Paint(31,119,219), StrokeThickness = 1.9,
+                StrokeLineJoin = PenLineJoin.Round,
+                StrokeStartLineCap = PenLineCap.Round,
+                StrokeEndLineCap = PenLineCap.Round,
+                Fill = Brushes.Transparent, Stretch = Stretch.Uniform,
+                HorizontalAlignment = HorizontalAlignment.Center };
+            return icon;
+        }
+        private static string IconPath(string id)
+        {
+            switch (id)
+            {
+                case "Open": return "M3,7 L3,4 L10,4 L12,7 L21,7 L19,20 L4,20 Z M3,9 L19,9";
+                case "Fit": return "M4,10 L4,4 L10,4 M14,4 L20,4 L20,10 M20,14 L20,20 L14,20 M10,20 L4,20 L4,14";
+                case "Actual": return "M5,5 L19,5 L19,19 L5,19 Z M9,10 L11,8 L11,16 M14,12 L14,16 M17,12 L17,16";
+                case "ZoomIn": return "M10,3 A7,7 0 1 1 10,17 A7,7 0 1 1 10,3 M15,15 L21,21 M7,10 L13,10 M10,7 L10,13";
+                case "ZoomOut": return "M10,3 A7,7 0 1 1 10,17 A7,7 0 1 1 10,3 M15,15 L21,21 M7,10 L13,10";
+                case "Navigate": return "M3,12 L21,12 M12,3 L12,21 M3,12 L7,8 M3,12 L7,16 M21,12 L17,8 M21,12 L17,16";
+                case "RectangleRoi": case "RegionRectangle":
+                    return "M4,5 L20,5 L20,19 L4,19 Z M2,3 L6,3 L6,7 L2,7 Z M18,17 L22,17 L22,21 L18,21 Z";
+                case "CircleRoi": case "RegionCircle": return "M12,3 A9,9 0 1 1 12,21 A9,9 0 1 1 12,3";
+                case "RegionEllipse": return "M12,6 A10,6 0 1 1 12,18 A10,6 0 1 1 12,6";
+                case "RegionPolygon": return "M12,3 L21,10 L18,20 L6,20 L3,10 Z M12,3 L12,4 M21,10 L20,10";
+                case "Distance": case "MeasureDistance": return "M4,18 L20,5 M3,15 L7,21 M17,2 L23,8 M5,18 L20,5";
+                case "MeasureAngle": return "M3,19 L11,5 L21,19 M5,16 A6,6 0 0 1 14,13";
+                case "ViewRotate": return "M19,6 A9,9 0 1 0 21,13 M16,3 L20,7 L21,2";
+                case "ViewMirrorX": return "M12,2 L12,22 M3,7 L8,4 L8,20 L3,17 Z M21,7 L16,4 L16,20 L21,17 Z";
+                case "Original": case "OriginalBottom": return "M4,4 L20,4 L20,20 L4,20 Z M6,17 L11,11 L14,14 L17,9 L20,13";
+                case "Result": case "ResultBottom": return "M4,4 L20,4 L20,20 L4,20 Z M7,12 L11,16 L18,8";
+                case "Analyze": case "AnalyzeStatistics": return "M4,20 L4,12 L7,12 L7,20 M10,20 L10,5 L13,5 L13,20 M16,20 L16,9 L19,9 L19,20";
+                case "Save": case "SaveRawPng": case "SaveViewPng": return "M4,3 L18,3 L21,6 L21,21 L3,21 L3,3 Z M7,3 L7,10 L17,10 L17,3 M8,21 L8,14 L17,14 L17,21";
+                case "DefectBox": return "M4,5 L20,5 L20,19 L4,19 Z M12,8 L12,14 M12,17 L12,17.5";
+                case "Point": return "M12,3 L12,21 M3,12 L21,12 M12,9 A3,3 0 1 1 12,15 A3,3 0 1 1 12,9";
+                case "Text": return "M3,5 L21,5 M12,5 L12,20 M7,20 L17,20";
+                case "Arrow": return "M4,20 L20,4 M13,4 L20,4 L20,11";
+                case "MoveOverlay": return "M12,2 L12,22 M2,12 L22,12 M12,2 L9,5 M12,2 L15,5";
+                case "DeleteOverlay": case "DeleteOverlayTool": return "M5,6 L19,6 M8,6 L9,20 L16,20 L17,6 M9,3 L15,3 M10,10 L10,16 M14,10 L14,16";
+                case "ViewReset": return "M4,8 L4,4 L8,4 M4,4 L9,9 M5,13 A8,8 0 1 0 13,4";
+                default: return null;
+            }
+        }
+
         private static void Divider(Panel host)
         { host.Children.Add(new Border { Width = 1, Background = Paint(208,221,236),
             Margin = new Thickness(7,9,7,9) }); }
@@ -222,9 +273,8 @@ namespace CxVisual.TestCenter.UI
             button.Padding = new Thickness(3,4,3,4);
             button.BorderBrush = Paint(207,222,239);
             StackPanel content = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-            content.Children.Add(new TextBlock { Text = symbol, FontSize = 24,
-                Foreground = Paint(37,126,229), TextAlignment = TextAlignment.Center });
-            content.Children.Add(new TextBlock { Text = label, FontSize = 13,
+            content.Children.Add(Glyph(id,symbol,27));
+            content.Children.Add(new TextBlock { Text = label, FontSize = 13.5,
                 Foreground = Paint(52,72,98), HorizontalAlignment = HorizontalAlignment.Center,
                 Margin = new Thickness(0,3,0,0) });
             button.Content = content;
