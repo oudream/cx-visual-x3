@@ -35,6 +35,7 @@ namespace CxVisual.TestCenter.UI
         public static async Task RunAsync(TCTMainWindow window)
         {
             if (window == null) throw new ArgumentNullException("window");
+            Directory.CreateDirectory(Path.Combine("Output", "Debug", "x64"));
             File.WriteAllText(Path.Combine("Output", "Debug", "x64", "TestCenter-UIA-Stages.log"),"");
             TraceUiStage("Start full WPF UIA");
             window.Show();
