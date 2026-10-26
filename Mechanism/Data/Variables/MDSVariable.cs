@@ -4,11 +4,12 @@ using System.Collections.Generic;
 namespace CxVisual.Mechanism.Data.Variables
 {
     // 一个运行变量只保留一份状态；Table/Registry 不得复制其 CurrentValue。
-    internal interface IMDSVariableEntry
+    // 仅负责非泛型索引；状态仍只保存在MDSVariable<T>中。
+    public abstract class MDSVariableBase
     {
-        MDSVariableDefinition Definition { get; }
-        void Attach(Action<string> notify);
-        void Detach();
+        internal abstract MDSVariableDefinition EntryDefinition { get; }
+        internal abstract void Attach(Action<string> notify);
+        internal abstract void Detach();
     }
 
     internal static class MDSVariableValueRules
@@ -23,10 +24,16 @@ namespace CxVisual.Mechanism.Data.Variables
             throw new NotSupportedException("复杂可变引用类型需要先登记 Foundation.Data 值适配器");
         }
 
+        internal static T CopyTyped<T>(T value)
+        {
+            object copied = Copy(value);
+            return copied == null ? default(T) : (T)copied;
+        }
+
         internal static bool Equal<T>(T left, T right)
         {
-            byte[] first = left as byte[];
-            byte[] second = right as byte[];
+            byte[] first = (object)left as byte[];
+            byte[] second = (object)right as byte[];
             if (first != null && second != null)
             {
                 if (first.Length != second.Length) return false;
@@ -52,9 +59,9 @@ namespace CxVisual.Mechanism.Data.Variables
         {
             VariableId = definition.VariableId;
             Name = definition.Name;
-            _value = (T)MDSVariableValueRules.Copy(value);
-            _previous = (T)MDSVariableValueRules.Copy(previous);
-            _defaultValue = (T)MDSVariableValueRules.Copy(defaultValue);
+            _value = MDSVariableValueRules.CopyTyped(value);
+            _previous = MDSVariableValueRules.CopyTyped(previous);
+            _defaultValue = MDSVariableValueRules.CopyTyped(defaultValue);
             HasValue = hasValue;
             HasPreviousValue = hasPrevious;
             HasDefaultValue = definition.HasDefaultValue;
@@ -67,9 +74,9 @@ namespace CxVisual.Mechanism.Data.Variables
 
         public string VariableId { get; private set; }
         public string Name { get; private set; }
-        public T CurrentValue { get { return (T)MDSVariableValueRules.Copy(_value); } }
-        public T PreviousValue { get { return (T)MDSVariableValueRules.Copy(_previous); } }
-        public T DefaultValue { get { return (T)MDSVariableValueRules.Copy(_defaultValue); } }
+        public T CurrentValue { get { return MDSVariableValueRules.CopyTyped(_value); } }
+        public T PreviousValue { get { return MDSVariableValueRules.CopyTyped(_previous); } }
+        public T DefaultValue { get { return MDSVariableValueRules.CopyTyped(_defaultValue); } }
         public bool HasValue { get; private set; }
         public bool HasPreviousValue { get; private set; }
         public bool HasDefaultValue { get; private set; }
@@ -84,7 +91,7 @@ namespace CxVisual.Mechanism.Data.Variables
     /// 通用强类型变量：吸收x2 Variable&lt;T&gt;/RuntimeState语义。
     /// 更新热路径不需要表字典或反射；变化派发尚沿用Table的兼容同步事件。
     /// </summary>
-    public sealed class MDSVariable<T> : IMDSVariableEntry
+    public sealed class MDSVariable<T> : MDSVariableBase
     {
         private readonly object _gate = new object();
         private readonly MDSVariableDefinition _definition;
@@ -106,7 +113,8 @@ namespace CxVisual.Mechanism.Data.Variables
             if (definition == null) throw new ArgumentNullException("definition");
             if (definition.ValueType != typeof(T)) throw new InvalidCastException("变量类型与声明不一致");
             _definition = definition;
-            _defaultValue = (T)MDSVariableValueRules.Copy(definition.DefaultValue);
+            object defaultValue = definition.DefaultValue;
+            _defaultValue = defaultValue == null ? default(T) : MDSVariableValueRules.CopyTyped((T)defaultValue);
         }
 
         public MDSVariableDefinition Definition { get { return _definition; } }
@@ -120,7 +128,7 @@ namespace CxVisual.Mechanism.Data.Variables
             }
         }
 
-        void IMDSVariableEntry.Detach()
+        internal override void Detach()
         {
             lock (_gate) { _removed = true; _notify = null; }
         }
@@ -131,7 +139,7 @@ namespace CxVisual.Mechanism.Data.Variables
             {
                 value = default(T);
                 if (_removed || !_hasValue) return false;
-                value = (T)MDSVariableValueRules.Copy(_current);
+                value = MDSVariableValueRules.CopyTyped(_current);
                 return true;
             }
         }
@@ -158,7 +166,7 @@ namespace CxVisual.Mechanism.Data.Variables
             lock (_gate)
             {
                 if (_removed) throw new ObjectDisposedException("MDSVariable");
-                return new MDSVariableSample<T>(_hasValue ? (T)MDSVariableValueRules.Copy(_current) : default(T),
+                return new MDSVariableSample<T>(_hasValue ? MDSVariableValueRules.CopyTyped(_current) : default(T),
                     _refreshUtc, _hasValue);
             }
         }

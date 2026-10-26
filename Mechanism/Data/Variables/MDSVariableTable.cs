@@ -42,8 +42,8 @@ namespace CxVisual.Mechanism.Data.Variables
     public sealed class MDSVariableTable : IMDSVariableTable
     {
         private readonly object _gate = new object();
-        private readonly Dictionary<string, IMDSVariableEntry> _items =
-            new Dictionary<string, IMDSVariableEntry>(StringComparer.Ordinal);
+        private readonly Dictionary<string, MDSVariableBase> _items =
+            new Dictionary<string, MDSVariableBase>(StringComparer.Ordinal);
 
         public MDSVariableTable(string scopeId)
         {
@@ -68,7 +68,7 @@ namespace CxVisual.Mechanism.Data.Variables
                 if (_items.ContainsKey(definition.Name))
                     throw new ArgumentException("变量重复: " + definition.Name);
                 Type runtimeType = typeof(MDSVariable<>).MakeGenericType(definition.ValueType);
-                IMDSVariableEntry variable = (IMDSVariableEntry)Activator.CreateInstance(runtimeType, definition);
+                MDSVariableBase variable = (MDSVariableBase)Activator.CreateInstance(runtimeType, definition);
                 // 只在定义时反射一次，日常更新从已解析的强类型对象直接写。
                 _items.Add(definition.Name, variable);
                 variable.Attach(ForwardChanged);
@@ -80,7 +80,7 @@ namespace CxVisual.Mechanism.Data.Variables
             if (string.IsNullOrWhiteSpace(name)) return false;
             lock (_gate)
             {
-                IMDSVariableEntry item;
+                MDSVariableBase item;
                 if (!_items.TryGetValue(name, out item)) return false;
                 item.Detach();
                 return _items.Remove(name);
@@ -95,7 +95,7 @@ namespace CxVisual.Mechanism.Data.Variables
 
         public MDSVariableDefinition[] Definitions()
         {
-            lock (_gate) return _items.Values.Select(x => x.Definition).ToArray();
+            lock (_gate) return _items.Values.Select(x => x.EntryDefinition).ToArray();
         }
 
         // 预绑定强类型句柄，无后续字典查找；是同一权威状态，不是缓存副本。
@@ -104,7 +104,7 @@ namespace CxVisual.Mechanism.Data.Variables
             if (string.IsNullOrWhiteSpace(name)) throw new ArgumentException("变量名称无效");
             lock (_gate)
             {
-                IMDSVariableEntry variable;
+                MDSVariableBase variable;
                 if (!_items.TryGetValue(name, out variable))
                     throw new KeyNotFoundException("变量未定义: " + name);
                 MDSVariable<T> typed = variable as MDSVariable<T>;
@@ -128,7 +128,7 @@ namespace CxVisual.Mechanism.Data.Variables
             MDSVariable<T> typed;
             lock (_gate)
             {
-                IMDSVariableEntry entry;
+                MDSVariableBase entry;
                 if (!_items.TryGetValue(name, out entry)) return false;
                 typed = entry as MDSVariable<T>;
                 if (typed == null) return false;
