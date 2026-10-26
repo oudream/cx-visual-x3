@@ -390,6 +390,7 @@ namespace CxVisual.TestCenter.UI
                 .Content as ITCTWorkspaceFrame : null;
             _currentFrame = frame;
             if (_currentFrame != null) _currentFrame.StateChanged += RefreshWorkspaceCommands;
+            if (createdPlan) Inspector.ShowCase(_selectedCatalogTest);
             RefreshWorkspaceCommands();
             WorkspaceTitle.Text = descriptor.Title;
         }
@@ -440,6 +441,9 @@ namespace CxVisual.TestCenter.UI
         }
         private void RefreshWorkspaceCommands()
         {
+            // 独立进程回归的控制台展示自己的真实状态，不沿用旧NUnit断言和源码。
+            TCTArchitectureSmokeFrame architecture = _currentFrame as TCTArchitectureSmokeFrame;
+            if (architecture != null) Inspector.ShowArchitectureSmoke(architecture);
             ManualActionHost.Children.Clear();
             if (_currentFrame == null || !_currentFrame.Commands.Any())
             {
