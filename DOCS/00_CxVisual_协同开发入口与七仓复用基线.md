@@ -200,3 +200,17 @@
 - [二维工业视觉工作台 P2 功能恢复与 Windows 实测 V1.0](Implementation/CxVisual_专业视觉体系%23二维视觉工作台P2功能恢复与实测_V1.0.md)：针对旧第6图功能缺口，新增水平/垂直/直径/矩形及多边形面积测量、滑动比较、剖面线、灰阶滑块、可取消大图统计和ROI/测量CSV，附实测#40262549868及未完成差距。
 
 - [TestCenter自动测试工作台统一Frame与测试控制台实装验收 V1.0](Implementation/CxVisual_TestCenter%23自动测试工作台——统一Frame与测试控制台实现验收_V1.0.md)：NUnit/TCT计划和ArchitectureSmoke共用同一中央可调宽测试控制台，专业工作台默认全宽；旧全局Inspector退场、旧布局保留并提示重存，验证需按对应Windows CI判定。
+
+
+## 数据与交互体系——五份统一架构主设计（2026-10-26）
+
+> **正式名称**：CxVisual 数据与交互体系（Unified Data & Interaction System）。现有Foundation/Mechanism/Professional项目归属不变，不新增程序集。原「公共机制体系#统一交互」及独立命令/数据旧命名文件保留历史，以下五份为统一权威导航；实施与测试记录仍以所在目录和固定SHA的实际结果为准。
+
+- [#0 总体架构 V1.5 ](Architecture/CxVisual_数据与交互体系%230总体架构——完整设计与验收_V1.5.md)
+- [#1 变量体系 V1.0 ](Architecture/CxVisual_数据与交互体系%231变量体系——完整设计与验收_V1.0.md)
+- [#2 运行时数据 V3.0 ](Architecture/CxVisual_数据与交互体系%232运行时数据体系——完整设计与验收_V3.0.md)
+- [#3 消息中心 V1.7 ](Architecture/CxVisual_数据与交互体系%233消息中心——完整设计与验收_V1.7.md)
+- [#4 命令中心 V1.0 ](Architecture/CxVisual_数据与交互体系%234命令中心——完整设计与验收_V1.0.md)
+
+**完成度分级**：#0继承四大能力与双层总线V1.5；#1新增独立变量主规格并明确当前MDSVariableTable/Registry已存在与计划扩展的差别；#2保留运行时数据V3.0全部对象与双角色用例；#3保留消息中心V1.7全部API；#4保留命令中心V1.0类职责、IPС/验收边界。规格不等于源码实现、最新Windows测试或实机验收。
+
