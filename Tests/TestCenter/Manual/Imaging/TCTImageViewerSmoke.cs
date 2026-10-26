@@ -646,6 +646,34 @@ namespace CxVisual.TestCenter.UI
                 if(frame.Viewer.HitTestOverlay(2,1.5)==null ||
                     frame.Viewer.HitTestOverlay(2,1.5).Id!=rotationBox.Id)
                     throw new InvalidOperationException("旋转矩形内部命中错误");
+                // 已有区域页“八柄缩放”按钮编辑旋转矩形尺寸，但局部轴必须保持正交。
+                editAction.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                if(frame.Viewer.ToolMode!=MVIImageToolMode.ResizeOverlay ||
+                    frame.Viewer.ResizeHandleVisualCount!=8)
+                    throw new InvalidOperationException("旋转矩形没有实际显示八个局部轴编辑柄");
+                FGEPoint2D rightMid=new FGEPoint2D(
+                    (angleBox.Points[1].X+angleBox.Points[2].X)/2,
+                    (angleBox.Points[1].Y+angleBox.Points[2].Y)/2);
+                FGEVector2D axis=(angleBox.Points[1]-angleBox.Points[0])/2.0;
+                MVIImageOverlayItem sized=frame.Viewer.ResizeSelectedOverlay(
+                    MVIImageResizeHandle.Right,rightMid+axis*(-0.25));
+                if(sized.Id!=rotationBox.Id ||
+                    Math.Abs(sized.RotatedRectangleWidth-1.75)>1e-8 ||
+                    Math.Abs(sized.RotatedRectangleHeight-1)>1e-8 ||
+                    Math.Abs(sized.RotatedRectangleAngleDegrees-45)>1e-8 ||
+                    sized.Points[0].DistanceTo(angleBox.Points[0])>1e-8 ||
+                    sized.Points[3].DistanceTo(angleBox.Points[3])>1e-8)
+                    throw new InvalidOperationException("旋转矩形八柄未保持局部轴正交或对侧锚定");
+                bool resizedOutOfRange=false;
+                try {frame.Viewer.ResizeSelectedOverlay(
+                    MVIImageResizeHandle.Right,new FGEPoint2D(100,100));}
+                catch(ArgumentOutOfRangeException){resizedOutOfRange=true;}
+                if(!resizedOutOfRange ||
+                    Math.Abs(frame.Viewer.Overlays.Find(rotationBox.Id).RotatedRectangleWidth-1.75)>1e-8)
+                    throw new InvalidOperationException("尺寸越界不得更改原有旋转矩形");
+                rotationTool.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                if(frame.Viewer.RotationHandleVisualCount!=1)
+                    throw new InvalidOperationException("旋转矩形尺寸编辑后切回角柄失败");
                 // 用真正超出原图的另一对象验证非法创建不会污染当前Store。
                 bool boundsRejected=false;
                 try { frame.Viewer.AddRotatedRectangle(new FGERect2D(0,0,3,3),45); }
@@ -661,6 +689,11 @@ namespace CxVisual.TestCenter.UI
                     frame.Viewer.SecondaryRotationHandleVisualCount!=1 ||
                     frame.Viewer.Overlays.Find(rotationBox.Id).Id!=rotationBox.Id)
                     throw new InvalidOperationException("双Pane未在各自视口投影同一旋转矩形角柄");
+                editAction.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                if(frame.Viewer.ResizeHandleVisualCount!=8 ||
+                    frame.Viewer.SecondaryResizeHandleVisualCount!=8)
+                    throw new InvalidOperationException("双Pane八柄没有投影在旋转角点和边中点");
+                rotationTool.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 frame.Viewer.SetOverlayLayerVisible(MVIImageOverlayLayer.Roi,false);
                 if(frame.Viewer.RotationHandleVisualCount!=0 ||
                     frame.Viewer.SecondaryRotationHandleVisualCount!=0)
