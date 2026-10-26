@@ -69,12 +69,28 @@ namespace CxVisual.Studio
                     window.OpenStudioDocument("doc.flow");
                     Assert(window.GetStudioContentIds().Count(id => id == "doc.flow") == 1, "重复文档");
                 });
-                CheckStep("S1-04 两主题切换不修改工程", () =>
+                CheckStep("S1-04 共用MPW主题及Dock视觉不修改工程", () =>
                 {
+                    Assert(window.StudioDock.AnchorableHeaderTemplate != null &&
+                        window.StudioDock.DocumentHeaderTemplate != null,
+                        "Studio未接通公共MPW文档与工具页签模板");
+                    Assert(ReferenceEquals(window.StudioDock.DocumentHeaderTemplate,
+                        Application.Current.FindResource("MPWDockHeaderTemplate")),
+                        "Studio文档Tab没有使用同一公共Owner");
                     window.ApplyStudioTheme(true);
                     Assert(window.StudioDarkTheme, "深色未切换");
+                    SolidColorBrush darkAccent =
+                        Application.Current.Resources["MPWAccentBrush"] as SolidColorBrush;
+                    Assert(darkAccent != null &&
+                        darkAccent.Color == (Color)ColorConverter.ConvertFromString("#85BFFF"),
+                        "Studio深色主题没有更新公共MPW主题令牌");
                     window.ApplyStudioTheme(false);
                     Assert(!window.StudioDarkTheme, "浅色未恢复");
+                    SolidColorBrush lightAccent =
+                        Application.Current.Resources["MPWAccentBrush"] as SolidColorBrush;
+                    Assert(lightAccent != null &&
+                        lightAccent.Color == (Color)ColorConverter.ConvertFromString("#2477CB"),
+                        "Studio浅色主题令牌未恢复");
                     Assert(window.StudioEngineeringRevision == revision, "主题改变工程Revision");
                 });
                 CheckStep("S1-05 布局原子保存/恢复不修改工程", () =>

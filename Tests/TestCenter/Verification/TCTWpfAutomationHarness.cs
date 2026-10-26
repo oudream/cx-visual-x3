@@ -1275,12 +1275,19 @@ namespace CxVisual.TestCenter.UI
                 if (window.BreadcrumbBand.Visibility != Visibility.Collapsed ||
                     window.BreadcrumbBand.ActualHeight > 0.5)
                     throw new InvalidOperationException("Removed Overview banner is still visible");
-                if (window.TestDock.AnchorableHeaderTemplate == null)
-                    throw new InvalidOperationException("Results dock tabs lack a consistent header style");
+                if (window.TestDock.AnchorableHeaderTemplate == null ||
+                    !ReferenceEquals(window.TestDock.AnchorableHeaderTemplate,
+                        Application.Current.FindResource("MPWDockHeaderTemplate")))
+                    throw new InvalidOperationException("Results dock tabs must use shared MPW Owner style");
                 System.Windows.Controls.TabControl documentTabs =
                     window.DocumentHost.Content as System.Windows.Controls.TabControl;
-                if (documentTabs == null || documentTabs.ItemContainerStyle == null)
-                    throw new InvalidOperationException("Document tabs lack shared style");
+                if (documentTabs == null ||
+                    !ReferenceEquals(documentTabs.ItemContainerStyle,
+                        Application.Current.FindResource("MPWDocumentTabStyle")))
+                    throw new InvalidOperationException("Document tabs must use the same shared MPW style");
+                if (!(Application.Current.FindResource("MPWTreeItemStyle") is Style) ||
+                    !(Application.Current.FindResource("MPWDataGridStyle") is Style))
+                    throw new InvalidOperationException("Shared MPW Tree/DataGrid templates not loaded");
                 DpiScale dpi = VisualTreeHelper.GetDpi(window);
                 if (dpi.DpiScaleX < 0.95 || dpi.DpiScaleY < 0.95)
                     throw new InvalidOperationException("Invalid WPF DPI scale");
