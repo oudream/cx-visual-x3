@@ -104,6 +104,53 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Ensure(vertexLocked.WithVisibility(false).IsLocked &&
                 vertexLocked.WithLocked(false).WithStyle(unchecked((int)0xff223344),2).IsLocked==false,
                 "不可变快照保留锁定状态并支持显式解锁");
+            // 单边插点与单点删除采用原来的唯一Store与O(n)拓扑校验。
+            MVIImageOverlayItem inserted=quad.WithInsertedPolygonVertex(
+                0,new FGEPoint2D(5,0.5),20,20);
+            Ensure(inserted.Id==quad.Id && inserted.Points.Count==5 &&
+                inserted.Points[1].Equals(new FGEPoint2D(5,0.5)) &&
+                inserted.Bounds.Top==0.5 && quad.Points.Count==4 &&
+                inserted.Argb==quad.Argb && inserted.LineWidth==quad.LineWidth,
+                "插入顶点应保持对象身份样式、精确外框及原快照");
+            int beforeInsertNotify=changed;
+            Ensure(overlays.Replace(inserted) && changed==beforeInsertNotify+1 &&
+                overlays.Find(quad.Id).Points.Count==5,
+                "插点写入唯一Store且仅通知一次");
+            MVIImageOverlayItem restored=inserted.WithRemovedPolygonVertex(1);
+            Ensure(restored.Id==quad.Id && restored.Points.Count==4 &&
+                restored.Bounds.Equals(quad.Bounds) &&
+                restored.Points[1].Equals(quad.Points[1]),
+                "删点应恢复原始四边形几何");
+            Ensure(overlays.Replace(restored) && overlays.Find(quad.Id).Points.Count==4,
+                "删除顶点刷新观察者");
+            Fail<ArgumentOutOfRangeException>(()=>quad.WithInsertedPolygonVertex(
+                4,new FGEPoint2D(5,0.5),20,20),"不存在的边索引");
+            Fail<ArgumentOutOfRangeException>(()=>quad.WithInsertedPolygonVertex(
+                0,new FGEPoint2D(-1,2),20,20),"插点越界");
+            Fail<ArgumentException>(()=>quad.WithInsertedPolygonVertex(
+                0,quad.Points[1],20,20),"与邻接顶点重合的插入必须拒绝");
+            Fail<ArgumentException>(()=>quad.WithInsertedPolygonVertex(
+                0,new FGEPoint2D(5,12),20,20),"穿越非邻接边的插点必须拒绝");
+            Fail<ArgumentOutOfRangeException>(()=>quad.WithRemovedPolygonVertex(
+                4),"非法顶点索引");
+            Fail<InvalidOperationException>(()=>polygon.WithRemovedPolygonVertex(0),
+                "三角形不得删除至两个顶点");
+            MVIImageOverlayItem collinear=new MVIImageOverlayItem(
+                MVIImageOverlayKind.PolygonRoi,MVIImageOverlayLayer.Roi,
+                new FGERect2D(1,1,4,2),new[]{
+                    new FGEPoint2D(1,1),new FGEPoint2D(3,1),
+                    new FGEPoint2D(5,1),new FGEPoint2D(3,3)});
+            Fail<ArgumentException>(()=>collinear.WithRemovedPolygonVertex(3),
+                "删除顶点形成面积为零的三角形必须拒绝");
+            Fail<InvalidOperationException>(()=>quad.WithLocked(true)
+                .WithInsertedPolygonVertex(0,new FGEPoint2D(5,0.5),20,20),
+                "锁定后不允许插点");
+            Fail<InvalidOperationException>(()=>quad.WithLocked(true)
+                .WithRemovedPolygonVertex(1),"锁定后不允许删点");
+            Fail<InvalidOperationException>(()=>roi.WithInsertedPolygonVertex(
+                0,new FGEPoint2D(5,2),20,20),"非多边形ROI不可插点");
+            Ensure(overlays.Find(quad.Id).Points.Count==4 &&
+                quad.Points.Count==4,"失败操作不污染唯一Store或旧快照");
             overlays.Remove(quad.Id);
             // 长多边形拖动：几何检测只核对变动两条边，避免O(n²)冻结WPF。
             FGEPoint2D[] dense=new FGEPoint2D[2048];
