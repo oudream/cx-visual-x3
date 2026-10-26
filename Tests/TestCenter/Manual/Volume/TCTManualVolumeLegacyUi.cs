@@ -22,6 +22,11 @@ namespace CxVisual.TestCenter.UI
         private Grid _legacyFour;
         private readonly List<Grid> _legacySlots = new List<Grid>();
         private Grid _maximizedSlot;
+        private readonly Dictionary<FVOSlicePlane, Slider> _headerSliceSliders =
+            new Dictionary<FVOSlicePlane, Slider>();
+        private readonly Dictionary<FVOSlicePlane, TextBox> _headerSliceNumbers =
+            new Dictionary<FVOSlicePlane, TextBox>();
+        private bool _syncingHeaderSlices;
         private TabControl _upperTabs, _lowerTabs;
         private readonly CheckBox _crosshairEnabled = new CheckBox { Content="显示十字线",IsChecked=true };
         private readonly CheckBox _orientationEnabled = new CheckBox { Content="显示3D方向坐标（双击复位）",IsChecked=true };
@@ -261,15 +266,82 @@ namespace CxVisual.TestCenter.UI
                 Background=new SolidColorBrush(Color.FromRgb(247,250,253)) };
             if(viewer!=null)
             {
+                FVOSlicePlane plane=row==0 && col==0?FVOSlicePlane.XY:
+                    row==0 && col==1?FVOSlicePlane.YZ:FVOSlicePlane.XZ;
                 TinyButton(tools,"适合",()=>viewer.FitToWindow());
                 TinyButton(tools,"1:1",()=>viewer.ActualSize());
                 TinyButton(tools,"+",()=>viewer.Zoom(1.2));
                 TinyButton(tools,"-",()=>viewer.Zoom(1/1.2));
+                tools.Children.Add(new TextBlock { Text="跳转",Margin=new Thickness(7,0,2,0),
+                    VerticalAlignment=VerticalAlignment.Center,FontSize=10 });
+                Slider slice=new Slider { Minimum=0,Maximum=1,Width=105,
+                    SmallChange=1,LargeChange=1,TickFrequency=1,IsSnapToTickEnabled=true,
+                    VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(2,0,4,0) };
+                AutomationProperties.SetAutomationId(slice,"TCT.Volume.Header."+plane+".Slider");
+                TextBox index=new TextBox { Width=41,Text="0",VerticalContentAlignment=VerticalAlignment.Center,
+                    Height=20,Margin=new Thickness(2) };
+                AutomationProperties.SetAutomationId(index,"TCT.Volume.Header."+plane+".Index");
+                slice.ValueChanged+=(s,e)=>{
+                    if(_syncingHeaderSlices||_updating||_state==null||_volume==null)return;
+                    JumpToViewSlice(plane,(int)Math.Round(slice.Value));
+                };
+                index.KeyDown+=(s,e)=>{
+                    if(e.Key!=System.Windows.Input.Key.Enter)return;
+                    int value;
+                    if(!Int32.TryParse(index.Text,out value))
+                    {
+                        _status.Text="跳转索引必须为整数。";e.Handled=true;return;
+                    }
+                    JumpToViewSlice(plane,value);
+                    e.Handled=true;
+                };
+                tools.Children.Add(slice);tools.Children.Add(index);
+                _headerSliceSliders[plane]=slice;
+                _headerSliceNumbers[plane]=index;
             }
             else TinyButton(tools,"相机",Reset3DCamera);
             TinyButton(tools,"□",()=>ToggleSlot(host));
             Grid.SetRow(tools,0);host.Children.Add(tools);
             AutomationProperties.SetAutomationId(host,"TCT.Volume.View."+row+col);
+        }
+
+        private void JumpToViewSlice(FVOSlicePlane plane,int index)
+        {
+            if(_volume==null || _state==null)return;
+            if(plane==FVOSlicePlane.XY)_state.SetSliceZ(index,_volume);
+            else if(plane==FVOSlicePlane.XZ)_state.SetSliceY(index,_volume);
+            else if(plane==FVOSlicePlane.YZ)_state.SetSliceX(index,_volume);
+            else throw new ArgumentOutOfRangeException("plane");
+            SyncSliceHeaderControls();
+        }
+
+        /// <summary>各窗口只读写MVI唯一切片坐标，不创建第二套切片状态。</summary>
+        private void SyncSliceHeaderControls()
+        {
+            if(_volume==null || _state==null)return;
+            _syncingHeaderSlices=true;
+            try
+            {
+                foreach(KeyValuePair<FVOSlicePlane,Slider> pair in _headerSliceSliders)
+                {
+                    int maximum=pair.Key==FVOSlicePlane.XY?_volume.OriginalDepth-1:
+                        pair.Key==FVOSlicePlane.XZ?_volume.OriginalHeight-1:
+                        _volume.OriginalWidth-1;
+                    int position=pair.Key==FVOSlicePlane.XY?_state.SliceZ:
+                        pair.Key==FVOSlicePlane.XZ?_state.SliceY:_state.SliceX;
+                    pair.Value.Maximum=Math.Max(0,maximum);
+                    pair.Value.Value=Math.Max(0,Math.Min(maximum,position));
+                    _headerSliceNumbers[pair.Key].Text=position.ToString();
+                }
+            }
+            finally { _syncingHeaderSlices=false; }
+        }
+
+        public int HeaderSliceControlCount { get { return _headerSliceSliders.Count; } }
+        public void JumpToViewSliceForTest(FVOSlicePlane plane,int position)
+        {
+            if(!_headerSliceSliders.ContainsKey(plane))throw new ArgumentOutOfRangeException("plane");
+            JumpToViewSlice(plane,position);
         }
 
         private static void TinyButton(Panel tools,string caption,Action action)

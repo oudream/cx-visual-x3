@@ -147,6 +147,7 @@ namespace CxVisual.TestCenter.UI
                 _sliderX.Value = _state.SliceX;
                 _sliderY.Value = _state.SliceY;
                 _sliderZ.Value = _state.SliceZ;
+                SyncSliceHeaderControls();
             }
             finally { _updating = false; }
             if (previous != null && !Object.ReferenceEquals(previous,volume)) previous.Dispose();
@@ -211,6 +212,7 @@ namespace CxVisual.TestCenter.UI
                 _sliderX.Value = _state.SliceX;
                 _sliderY.Value = _state.SliceY;
                 _sliderZ.Value = _state.SliceZ;
+                SyncSliceHeaderControls();
                 byte low = (byte)Math.Round(Math.Min(_windowMin.Value,_windowMax.Value));
                 byte high = (byte)Math.Round(Math.Max(_windowMin.Value,_windowMax.Value));
                 bool pseudo = _pseudo.IsChecked == true;

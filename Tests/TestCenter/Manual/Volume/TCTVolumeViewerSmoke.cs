@@ -30,6 +30,15 @@ namespace CxVisual.TestCenter.UI
                 window.UpdateLayout();
                 Check(frame.LegacyTopTabCount==4 && frame.LegacyBottomTabCount==5,
                     "原版上下4/5页签完整恢复");
+                Check(frame.HeaderSliceControlCount==3,
+                    "旧版XY/YZ/XZ三图窗均有独立跳转滑杆和索引输入");
+                frame.JumpToViewSliceForTest(FVOSlicePlane.XY,12);
+                frame.JumpToViewSliceForTest(FVOSlicePlane.XZ,13);
+                frame.JumpToViewSliceForTest(FVOSlicePlane.YZ,14);
+                Check(frame.ViewState.SliceZ==12 && frame.ViewState.SliceY==13 &&
+                    frame.ViewState.SliceX==14,
+                    "三图窗跳转必须直接修改共享MVI三刀而不是独立索引");
+                frame.Center();
                 frame.ToggleViewForTest(0);
                 Check(frame.IsLegacySingleView,"四视图单窗最大化");
                 frame.ToggleViewForTest(0);
