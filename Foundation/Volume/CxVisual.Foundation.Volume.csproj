@@ -8,6 +8,7 @@
     <AssemblyName>CxVisual.Foundation.Volume</AssemblyName>
     <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <!-- Explicit configurations are required by the legacy Visual Studio configuration provider. -->
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|x64'">
@@ -21,6 +22,13 @@
     <Reference Include="System.Core"/>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Properties\AssemblyInfo.cs"/></ItemGroup>
+    <Compile Include="Properties\AssemblyInfo.cs"/>
+    <Compile Include="IO\FVORawVolumeLoader.cs"/>
+    <Compile Include="Memory\FVOUnmanagedRawVolumeBuffer.cs"/>
+    <Compile Include="Data\FVOVolumeData.cs"/>
+    <Compile Include="Internal\FVOFrameworkCompat.cs"/>
+    <Compile Include="Slicing\FVOObliqueSliceDefinition.cs"/>
+    <Compile Include="Slicing\FVOSlicePlane.cs"/>
+  </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets"/>
 </Project>

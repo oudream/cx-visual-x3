@@ -1,7 +1,7 @@
-namespace CxECTVolumeCore.Slicing
+namespace CxVisual.Foundation.Volume
 {
     /// <summary>二维切片的三个正交平面。</summary>
-    public enum SlicePlane
+    public enum FVOSlicePlane
     {
         XY,
         XZ,
@@ -9,32 +9,32 @@ namespace CxECTVolumeCore.Slicing
     }
 
     /// <summary>提供切片平面的标题和坐标轴映射等辅助方法。</summary>
-    public static class SlicePlaneExtensions
+    public static class FVOSlicePlaneExtensions
     {
-        public static string GetTitle(this SlicePlane plane)
+        public static string GetTitle(this FVOSlicePlane plane)
         {
             switch (plane)
             {
-                case SlicePlane.XY:
+                case FVOSlicePlane.XY:
                     return "XY / Axial";
-                case SlicePlane.XZ:
+                case FVOSlicePlane.XZ:
                     return "XZ / Coronal";
-                case SlicePlane.YZ:
+                case FVOSlicePlane.YZ:
                     return "YZ / Sagittal";
                 default:
                     return plane.ToString();
             }
         }
 
-        public static string GetWheelAxisName(this SlicePlane plane)
+        public static string GetWheelAxisName(this FVOSlicePlane plane)
         {
             switch (plane)
             {
-                case SlicePlane.XY:
+                case FVOSlicePlane.XY:
                     return "Z";
-                case SlicePlane.XZ:
+                case FVOSlicePlane.XZ:
                     return "Y";
-                case SlicePlane.YZ:
+                case FVOSlicePlane.YZ:
                     return "X";
                 default:
                     return string.Empty;

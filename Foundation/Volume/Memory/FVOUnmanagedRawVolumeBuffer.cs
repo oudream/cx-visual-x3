@@ -4,25 +4,25 @@ using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 
-namespace CxECTVolumeCore.Volume
+namespace CxVisual.Foundation.Volume
 {
     // 一次性持有 RAW 原始字节，避免预览抽样和高分辨率切片重复触发磁盘随机读取。
     /// <summary>使用非托管连续内存保存完整 RAW，并在释放时归还内存压力计数。</summary>
-    /// <summary>完整 RAW 的非托管内存句柄，由 <see cref="VolumeData" /> 持有和释放。</summary>
-    public sealed class UnmanagedRawVolumeBuffer : SafeHandleZeroOrMinusOneIsInvalid
+    /// <summary>完整 RAW 的非托管内存句柄，由 <see cref="FVOVolumeData" /> 持有和释放。</summary>
+    public sealed class FVOUnmanagedRawVolumeBuffer : SafeHandleZeroOrMinusOneIsInvalid
     {
         private const int CopyBufferBytes = 32 * 1024 * 1024;
         private readonly long _length;
         private bool _memoryPressureAdded;
 
-        private UnmanagedRawVolumeBuffer(IntPtr pointer, long length)
+        private FVOUnmanagedRawVolumeBuffer(IntPtr pointer, long length)
             : base(true)
         {
             _length = length;
             SetHandle(pointer);
         }
 
-        internal static UnmanagedRawVolumeBuffer Load(string filePath, long expectedLength, RawVolumeLoadTiming timing)
+        internal static FVOUnmanagedRawVolumeBuffer Load(string filePath, long expectedLength, FVORawVolumeLoadTiming timing)
         {
             if (IntPtr.Size != 8)
             {
@@ -81,16 +81,16 @@ namespace CxECTVolumeCore.Volume
             }
         }
 
-        internal unsafe float ReadValue(long voxelIndex, RawVoxelFormat format)
+        internal unsafe float ReadValue(long voxelIndex, FVORawVoxelFormat format)
         {
             var source = (byte*)DangerousGetHandle().ToPointer();
             switch (format)
             {
-                case RawVoxelFormat.Byte:
+                case FVORawVoxelFormat.Byte:
                     return source[voxelIndex];
-                case RawVoxelFormat.UInt16:
+                case FVORawVoxelFormat.UInt16:
                     return *((ushort*)(source + voxelIndex * 2));
-                case RawVoxelFormat.Float32:
+                case FVORawVoxelFormat.Float32:
                     return *((float*)(source + voxelIndex * 4));
                 default:
                     throw new ArgumentOutOfRangeException("format", format, null);
@@ -115,9 +115,9 @@ namespace CxECTVolumeCore.Volume
             return true;
         }
 
-        private static UnmanagedRawVolumeBuffer Allocate(long length)
+        private static FVOUnmanagedRawVolumeBuffer Allocate(long length)
         {
-            var buffer = new UnmanagedRawVolumeBuffer(Marshal.AllocHGlobal(new IntPtr(length)), length);
+            var buffer = new FVOUnmanagedRawVolumeBuffer(Marshal.AllocHGlobal(new IntPtr(length)), length);
             try
             {
                 GC.AddMemoryPressure(length);

@@ -1,0 +1,86 @@
+using System;
+using System.IO;
+using System.Threading;
+using CxVisual.Foundation.Volume;
+
+namespace CxVisual.Tests.ArchitectureSmoke
+{
+    /// <summary>F12 RAW/高精度体素缓存及切片空间的正反例（无HALCON、WPF）。</summary>
+    internal static class FVOVolumeTests
+    {
+        public static void Run()
+        {
+            string folder = Path.Combine(Path.GetTempPath(), "cxvisual-fvo-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(folder);
+            try
+            {
+                string path8 = Path.Combine(folder, "sample_8x8x8_sp0p1x0p2x0p3.raw");
+                byte[] pixels = new byte[512];
+                for (int i = 0; i < pixels.Length; i++) pixels[i] = (byte)(i % 256);
+                File.WriteAllBytes(path8, pixels);
+                FVORawVolumeInfo info = FVORawVolumeLoader.InferInfo(path8);
+                Check(info.Format == FVORawVoxelFormat.Byte && info.Width == 8 &&
+                    Math.Abs(info.SpacingY - 0.2f) < 0.00001, "RAW格式/大小/间距推断");
+                using (FVOVolumeData data = FVORawVolumeLoader.Load(path8))
+                {
+                    Check(data.OriginalWidth == 8 && data.Depth == 8 &&
+                        data.SourceFormat == FVORawVoxelFormat.Byte, "预览+原始尺寸");
+                    Check(FVORawVolumeLoader.TryLoadOriginalVoxelCache(data), "完整分辨率缓存");
+                    Check(data.GetVoxelByOriginalIndex(7, 7, 7) == 255, "高分辨率体素取值");
+                    Check(data.HasHighResolutionVoxels, "缓存所有权");
+                }
+                string path16 = Path.Combine(folder, "sample_8x8x8_sp1x1x2.raw");
+                byte[] raw16 = new byte[1024];
+                for (int i = 0; i < 512; i++)
+                {
+                    ushort value = (ushort)(1000 + i);
+                    raw16[i * 2] = (byte)value;
+                    raw16[i * 2 + 1] = (byte)(value >> 8);
+                }
+                File.WriteAllBytes(path16, raw16);
+                using (FVOVolumeData data16 = FVORawVolumeLoader.Load(path16))
+                {
+                    Check(data16.SourceFormat == FVORawVoxelFormat.UInt16, "UInt16格式");
+                    data16.SetRawBuffer(FVORawVolumeLoader.LoadRawBuffer(data16, new FVORawVolumeLoadTiming()));
+                    Check(data16.GetScalarByOriginalIndex(7, 7, 7) == 1511f, "原始16bit不经8bit量化恢复");
+                    Check(data16.HasOriginalRawData, "非托管原始RAW被持有");
+                }
+                FVOObliqueSliceDefinition oblique = new FVOObliqueSliceDefinition();
+                FVOObliqueSliceVector u;
+                FVOObliqueSliceVector v;
+                FVOObliqueSliceGeometry.GetAxes(oblique, out u, out v);
+                Check(u.X == 1.0 && v.Y == 1.0, "正交默认轴");
+                oblique.AngleZDegrees = 90;
+                FVOObliqueSliceGeometry.GetAxes(oblique, out u, out v);
+                Check(Math.Abs(u.Y - 1.0) < 0.000001 && Math.Abs(v.X + 1.0) < 0.000001,
+                    "任意切绕Z旋转");
+                Check(FVOSlicePlane.XY.GetWheelAxisName() == "Z", "XY切片沿Z滚动");
+                CancellationTokenSource cancelled = new CancellationTokenSource();
+                cancelled.Cancel();
+                Expect<OperationCanceledException>(() => FVORawVolumeLoader.Load(path8, 64, cancelled.Token),
+                    "取消RAW加载");
+                Expect<ArgumentException>(() => new FVOVolumeData(2, 2, 2, new byte[7], "bad"),
+                    "不允许体素尺寸错位");
+                Expect<ArgumentOutOfRangeException>(() => FVOVolumeData.CreateDemo(0, 3, 3),
+                    "非法体积");
+                Expect<InvalidDataException>(() => FVORawVolumeLoader.InferInfo(Path.Combine(folder, "invalid.raw")),
+                    "不含尺寸的RAW路径");
+                Console.WriteLine("PASS FVO RAW / lossless 16-bit / oblique geometry / negative cases");
+            }
+            finally
+            {
+                try { Directory.Delete(folder, true); } catch (IOException) { }
+            }
+        }
+
+        private static void Check(bool passed, string subject)
+        {
+            if (!passed) throw new InvalidOperationException("FVO测试失败：" + subject);
+        }
+        private static void Expect<T>(Action action, string subject) where T : Exception
+        {
+            try { action(); } catch (T) { return; }
+            throw new InvalidOperationException("FVO异常反证失败：" + subject);
+        }
+    }
+}

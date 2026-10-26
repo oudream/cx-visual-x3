@@ -1,14 +1,13 @@
-using CxECTVolumeCore.Utils;
 using System;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
 
-namespace CxECTVolumeCore.Volume
+namespace CxVisual.Foundation.Volume
 {
     /// <summary>RAW 文件中单个体素的存储格式。</summary>
-    public enum RawVoxelFormat
+    public enum FVORawVoxelFormat
     {
         Byte,
         UInt16,
@@ -16,16 +15,16 @@ namespace CxECTVolumeCore.Volume
     }
 
     /// <summary>从 RAW 文件名和文件长度解析得到的尺寸、间距与格式元数据。</summary>
-    public sealed class RawVolumeInfo
+    public sealed class FVORawVolumeInfo
     {
-        public RawVolumeInfo(
+        public FVORawVolumeInfo(
             int width,
             int height,
             int depth,
             float spacingX,
             float spacingY,
             float spacingZ,
-            RawVoxelFormat format,
+            FVORawVoxelFormat format,
             string fileName)
         {
             Width = width;
@@ -50,51 +49,51 @@ namespace CxECTVolumeCore.Volume
 
         public float SpacingZ { get; private set; }
 
-        public RawVoxelFormat Format { get; private set; }
+        public FVORawVoxelFormat Format { get; private set; }
 
         public string FileName { get; private set; }
     }
 
     /// <summary>负责解析 RAW 文件、生成交互预览体，并提供原始数据缓存读取入口。</summary>
-    public static class RawVolumeLoader
+    public static class FVORawVolumeLoader
     {
-        // 交互预览优先保证旋转、缩放和切面联动流畅；原始尺寸仍保存在 VolumeData 里用于物理比例显示。
+        // 交互预览优先保证旋转、缩放和切面联动流畅；原始尺寸仍保存在 FVOVolumeData 里用于物理比例显示。
         private const int MaxInteractiveAxis = 512;
         private const long MaxOriginalVoxelCacheBytes = 1024L * 1024L * 1024L;
 
-        public static VolumeData Load(string filePath)
+        public static FVOVolumeData Load(string filePath)
         {
             return Load(filePath, MaxInteractiveAxis, CancellationToken.None);
         }
 
-        public static VolumeData Load(string filePath, int maxInteractiveAxis)
+        public static FVOVolumeData Load(string filePath, int maxInteractiveAxis)
         {
             return Load(filePath, maxInteractiveAxis, CancellationToken.None);
         }
 
-        public static VolumeData Load(string filePath, int maxInteractiveAxis, CancellationToken cancellationToken)
+        public static FVOVolumeData Load(string filePath, int maxInteractiveAxis, CancellationToken cancellationToken)
         {
             // --- 1. 从文件名推断 RAW 的宽高深、体素间距和数据格式，例如 2500x2500x100、sp1x1x1。
             var info = InferInfo(filePath);
-            // --- 2. 3D 交互显示使用最多 512 轴长的降采样体，原始尺寸仍写入 VolumeData 做坐标和物理比例。
-            maxInteractiveAxis = FrameworkCompat.Clamp(maxInteractiveAxis, 64, MaxInteractiveAxis);
+            // --- 2. 3D 交互显示使用最多 512 轴长的降采样体，原始尺寸仍写入 FVOVolumeData 做坐标和物理比例。
+            maxInteractiveAxis = FVOFrameworkCompat.Clamp(maxInteractiveAxis, 64, MaxInteractiveAxis);
             var targetWidth = Math.Min(info.Width, maxInteractiveAxis);
             var targetHeight = Math.Min(info.Height, maxInteractiveAxis);
             var targetDepth = Math.Min(info.Depth, maxInteractiveAxis);
             var xSamples = CreateSampleIndexes(info.Width, targetWidth);
             var ySamples = CreateSampleIndexes(info.Height, targetHeight);
             var zSamples = CreateSampleIndexes(info.Depth, targetDepth);
-            var sampled = new float[targetWidth * targetHeight * targetDepth];
+            var sampled = new float[checked(targetWidth * targetHeight * targetDepth)];
             var bytesPerVoxel = GetBytesPerVoxel(info.Format);
             var rowByteCount = checked(info.Width * bytesPerVoxel);
             var sliceByteCount = checked((long)info.Width * info.Height * bytesPerVoxel);
             var rowBuffer = new byte[rowByteCount];
             var min = float.PositiveInfinity;
             var max = float.NegativeInfinity;
-            var timing = new RawVolumeLoadTiming();
+            var timing = new FVORawVolumeLoadTiming();
 
             // --- 3. 文件读取阶段只抽取降采样坐标上的体素，同时统计原始标量 min/max 供归一化和 UI 显示使用。
-            // 原始文件已经通过 UnmanagedRawVolumeBuffer 顺序读入，此处只进行内存抽样和 min/max 统计。
+            // 预览从原始RAW按目标索引取样，不强迫先将多GB文件整体读入。
                 // 大 RAW 可能有几 GB，只按降采样索引跳读需要的行，避免把原始体一次性压进内存。
             var sampleStopwatch = System.Diagnostics.Stopwatch.StartNew();
             using (var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, 1024 * 1024, FileOptions.RandomAccess))
@@ -109,14 +108,14 @@ namespace CxECTVolumeCore.Volume
                         cancellationToken.ThrowIfCancellationRequested();
                         var sourceY = ySamples[ty];
                         stream.Position = sliceOffset + (long)sourceY * rowByteCount;
-                        FrameworkCompat.ReadExactly(stream, rowBuffer);
+                        FVOFrameworkCompat.ReadExactly(stream, rowBuffer);
                         for (var tx = 0; tx < targetWidth; tx++)
                         {
                             var value = ReadValue(rowBuffer, xSamples[tx], info.Format);
                             var index = tx + ty * targetWidth + tz * targetWidth * targetHeight;
                             sampled[index] = value;
 
-                            if (FrameworkCompat.IsFinite(value))
+                            if (FVOFrameworkCompat.IsFinite(value))
                             {
                                 min = Math.Min(min, value);
                                 max = Math.Max(max, value);
@@ -128,7 +127,7 @@ namespace CxECTVolumeCore.Volume
             sampleStopwatch.Stop();
             timing.PreviewSamplingMilliseconds = sampleStopwatch.ElapsedMilliseconds;
 
-            if (!FrameworkCompat.IsFinite(min) || !FrameworkCompat.IsFinite(max))
+            if (!FVOFrameworkCompat.IsFinite(min) || !FVOFrameworkCompat.IsFinite(max))
             {
                 throw new InvalidDataException("RAW 文件没有可用的数值。");
             }
@@ -138,8 +137,8 @@ namespace CxECTVolumeCore.Volume
             var voxels = NormalizeToBytes(sampled, min, max, cancellationToken);
             normalizeStopwatch.Stop();
             timing.PreviewNormalizationMilliseconds = normalizeStopwatch.ElapsedMilliseconds;
-            // --- 4. 归一化后的 byte[] 会作为 VolumeData.Voxels，后续直接上传为 OpenGL R8 3D texture。
-            var volume = new VolumeData(
+            // --- 4. 归一化后的 byte[] 会作为 FVOVolumeData.Voxels，后续直接上传为 OpenGL R8 3D texture。
+            var volume = new FVOVolumeData(
                 targetWidth,
                 targetHeight,
                 targetDepth,
@@ -161,12 +160,12 @@ namespace CxECTVolumeCore.Volume
 
         /// <summary>
         /// 从宿主已经加载的连续 RAW 内存生成 3D 交互预览，避免为了体渲染再次打开和读取同一文件。
-        /// 调用期间宿主必须保证 sourceBuffer 有效；返回的 VolumeData 只拥有降采样后的 byte[]。
+        /// 调用期间宿主必须保证 sourceBuffer 有效；返回的 FVOVolumeData 只拥有降采样后的 byte[]。
         /// </summary>
-        public static unsafe VolumeData CreatePreviewFromMemory(
+        public static unsafe FVOVolumeData CreatePreviewFromMemory(
             IntPtr sourceBuffer,
             long sourceBufferLength,
-            RawVolumeInfo info,
+            FVORawVolumeInfo info,
             string sourceFilePath,
             int maxInteractiveAxis,
             CancellationToken cancellationToken)
@@ -196,7 +195,7 @@ namespace CxECTVolumeCore.Volume
                     sourceBufferLength));
             }
 
-            maxInteractiveAxis = FrameworkCompat.Clamp(maxInteractiveAxis, 64, MaxInteractiveAxis);
+            maxInteractiveAxis = FVOFrameworkCompat.Clamp(maxInteractiveAxis, 64, MaxInteractiveAxis);
             var targetWidth = Math.Min(info.Width, maxInteractiveAxis);
             var targetHeight = Math.Min(info.Height, maxInteractiveAxis);
             var targetDepth = Math.Min(info.Depth, maxInteractiveAxis);
@@ -206,7 +205,7 @@ namespace CxECTVolumeCore.Volume
             var sampled = new float[checked(targetWidth * targetHeight * targetDepth)];
             var min = float.PositiveInfinity;
             var max = float.NegativeInfinity;
-            var timing = new RawVolumeLoadTiming();
+            var timing = new FVORawVolumeLoadTiming();
             byte* source = (byte*)sourceBuffer.ToPointer();
 
             var sampleStopwatch = System.Diagnostics.Stopwatch.StartNew();
@@ -223,7 +222,7 @@ namespace CxECTVolumeCore.Volume
                     {
                         float value = ReadValue(source, rowOffset + xSamples[tx], info.Format);
                         sampled[targetRowOffset + tx] = value;
-                        if (FrameworkCompat.IsFinite(value))
+                        if (FVOFrameworkCompat.IsFinite(value))
                         {
                             min = Math.Min(min, value);
                             max = Math.Max(max, value);
@@ -234,7 +233,7 @@ namespace CxECTVolumeCore.Volume
 
             sampleStopwatch.Stop();
             timing.PreviewSamplingMilliseconds = sampleStopwatch.ElapsedMilliseconds;
-            if (!FrameworkCompat.IsFinite(min) || !FrameworkCompat.IsFinite(max))
+            if (!FVOFrameworkCompat.IsFinite(min) || !FVOFrameworkCompat.IsFinite(max))
             {
                 throw new InvalidDataException("RAW memory contains no finite values.");
             }
@@ -247,7 +246,7 @@ namespace CxECTVolumeCore.Volume
             string name = string.IsNullOrWhiteSpace(sourceFilePath)
                 ? info.FileName
                 : Path.GetFileName(sourceFilePath);
-            var volume = new VolumeData(
+            var volume = new FVOVolumeData(
                 targetWidth,
                 targetHeight,
                 targetDepth,
@@ -268,17 +267,17 @@ namespace CxECTVolumeCore.Volume
         }
 
         /// <summary>将原始 RAW 读入非托管缓存，供宿主在后台切换高分辨率切片。</summary>
-        public static UnmanagedRawVolumeBuffer LoadRawBuffer(VolumeData volume, RawVolumeLoadTiming timing)
+        public static FVOUnmanagedRawVolumeBuffer LoadRawBuffer(FVOVolumeData volume, FVORawVolumeLoadTiming timing)
         {
             if (volume == null || !volume.HasRawSource)
             {
                 throw new ArgumentException("体数据没有可读取的 RAW 源。", "volume");
             }
 
-            return UnmanagedRawVolumeBuffer.Load(volume.SourceFilePath, new FileInfo(volume.SourceFilePath).Length, timing);
+            return FVOUnmanagedRawVolumeBuffer.Load(volume.SourceFilePath, new FileInfo(volume.SourceFilePath).Length, timing);
         }
 
-        public static bool TryLoadOriginalVoxelCache(VolumeData volume)
+        public static bool TryLoadOriginalVoxelCache(FVOVolumeData volume)
         {
             if (volume == null || !volume.HasRawSource)
             {
@@ -309,7 +308,7 @@ namespace CxECTVolumeCore.Volume
                 {
                     for (var y = 0; y < volume.OriginalHeight; y++)
                     {
-                        FrameworkCompat.ReadExactly(stream, rowBuffer);
+                        FVOFrameworkCompat.ReadExactly(stream, rowBuffer);
                         var rowStart = (long)z * volume.OriginalWidth * volume.OriginalHeight + (long)y * volume.OriginalWidth;
                         for (var x = 0; x < volume.OriginalWidth; x++)
                         {
@@ -324,7 +323,7 @@ namespace CxECTVolumeCore.Volume
             return true;
         }
 
-        public static RawVolumeInfo InferInfo(string filePath)
+        public static FVORawVolumeInfo InferInfo(string filePath)
         {
             var fileName = Path.GetFileName(filePath);
             var matches = Regex.Matches(fileName, @"(?<w>\d+)x(?<h>\d+)x(?<d>\d+)", RegexOptions.IgnoreCase);
@@ -347,20 +346,20 @@ namespace CxECTVolumeCore.Volume
 
             var voxelCount = checked((long)best.Width * best.Height * best.Depth);
             var fileLength = new FileInfo(filePath).Length;
-            RawVoxelFormat format;
+            FVORawVoxelFormat format;
 
             // 允许末尾少量附加字节，兼容某些采集程序写入的对齐或尾部信息。
             if (fileLength >= voxelCount * 4 && fileLength < voxelCount * 4 + 4096)
             {
-                format = RawVoxelFormat.Float32;
+                format = FVORawVoxelFormat.Float32;
             }
             else if (fileLength >= voxelCount * 2 && fileLength < voxelCount * 2 + 4096)
             {
-                format = RawVoxelFormat.UInt16;
+                format = FVORawVoxelFormat.UInt16;
             }
             else if (fileLength >= voxelCount && fileLength < voxelCount + 4096)
             {
-                format = RawVoxelFormat.Byte;
+                format = FVORawVoxelFormat.Byte;
             }
             else
             {
@@ -373,7 +372,7 @@ namespace CxECTVolumeCore.Volume
             }
 
             var spacing = ParseSpacing(fileName);
-            return new RawVolumeInfo(best.Width, best.Height, best.Depth, spacing.X, spacing.Y, spacing.Z, format, fileName);
+            return new FVORawVolumeInfo(best.Width, best.Height, best.Depth, spacing.X, spacing.Y, spacing.Z, format, fileName);
         }
 
         private static SpacingInfo ParseSpacing(string fileName)
@@ -418,7 +417,7 @@ namespace CxECTVolumeCore.Volume
                 }
 
                 var value = sampled[i];
-                if (!FrameworkCompat.IsFinite(value))
+                if (!FVOFrameworkCompat.IsFinite(value))
                 {
                     continue;
                 }
@@ -431,12 +430,12 @@ namespace CxECTVolumeCore.Volume
 
         private static byte NormalizeValue(float value, float min, float max)
         {
-            if (!FrameworkCompat.IsFinite(value) || max <= min)
+            if (!FVOFrameworkCompat.IsFinite(value) || max <= min)
             {
                 return 0;
             }
 
-            var normalized = FrameworkCompat.Clamp((value - min) / (max - min), 0.0f, 1.0f);
+            var normalized = FVOFrameworkCompat.Clamp((value - min) / (max - min), 0.0f, 1.0f);
             return (byte)Math.Round(normalized * 255.0f);
         }
 
@@ -457,45 +456,45 @@ namespace CxECTVolumeCore.Volume
             return indexes;
         }
 
-        private static int GetBytesPerVoxel(RawVoxelFormat format)
+        private static int GetBytesPerVoxel(FVORawVoxelFormat format)
         {
             switch (format)
             {
-                case RawVoxelFormat.Byte:
+                case FVORawVoxelFormat.Byte:
                     return 1;
-                case RawVoxelFormat.UInt16:
+                case FVORawVoxelFormat.UInt16:
                     return 2;
-                case RawVoxelFormat.Float32:
+                case FVORawVoxelFormat.Float32:
                     return 4;
                 default:
                     throw new ArgumentOutOfRangeException("format", format, null);
             }
         }
 
-        private static float ReadValue(byte[] rowBuffer, int sourceX, RawVoxelFormat format)
+        private static float ReadValue(byte[] rowBuffer, int sourceX, FVORawVoxelFormat format)
         {
             switch (format)
             {
-                case RawVoxelFormat.Byte:
+                case FVORawVoxelFormat.Byte:
                     return rowBuffer[sourceX];
-                case RawVoxelFormat.UInt16:
+                case FVORawVoxelFormat.UInt16:
                     return BitConverter.ToUInt16(rowBuffer, sourceX * 2);
-                case RawVoxelFormat.Float32:
+                case FVORawVoxelFormat.Float32:
                     return BitConverter.ToSingle(rowBuffer, sourceX * 4);
                 default:
                     throw new ArgumentOutOfRangeException("format", format, null);
             }
         }
 
-        private static unsafe float ReadValue(byte* source, long voxelIndex, RawVoxelFormat format)
+        private static unsafe float ReadValue(byte* source, long voxelIndex, FVORawVoxelFormat format)
         {
             switch (format)
             {
-                case RawVoxelFormat.Byte:
+                case FVORawVoxelFormat.Byte:
                     return source[voxelIndex];
-                case RawVoxelFormat.UInt16:
+                case FVORawVoxelFormat.UInt16:
                     return *((ushort*)(source + checked(voxelIndex * 2L)));
-                case RawVoxelFormat.Float32:
+                case FVORawVoxelFormat.Float32:
                     return *((float*)(source + checked(voxelIndex * 4L)));
                 default:
                     throw new ArgumentOutOfRangeException("format", format, null);
@@ -518,7 +517,7 @@ namespace CxECTVolumeCore.Volume
     }
 
     /// <summary>记录预览和非托管原始缓存各阶段耗时，供性能日志输出。</summary>
-    public sealed class RawVolumeLoadTiming
+    public sealed class FVORawVolumeLoadTiming
     {
         public long PreviewSamplingMilliseconds { get; internal set; }
 

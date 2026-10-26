@@ -5,6 +5,8 @@ on:
     branches: [master]
     paths:
       - 'Foundation/Imaging/**'
+      - 'Foundation/Volume/**'
+      - 'Tests/ArchitectureSmoke/Integration/FVOVolumeTests.cs'
       - 'Foundation/Geometry/**'
       - 'Mechanism/Visual/Imaging/**'
       - 'Mechanism/Visual/CxVisual.Mechanism.Visual.csproj'
@@ -50,6 +52,8 @@ jobs:
         shell: pwsh
         run: |
           $exe = '.\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe'
+          & $exe --volume
+          if ($LASTEXITCODE -ne 0) { throw 'FVO --volume regression failed' }
           & $exe --imaging
           if ($LASTEXITCODE -ne 0) { throw 'FIM/MVI --imaging regression failed' }
           & $exe

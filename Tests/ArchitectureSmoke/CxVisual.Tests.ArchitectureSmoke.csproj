@@ -52,6 +52,7 @@
     <ProjectReference Include="..\..\Professional\CT3D\CxVisual.Professional.CT3D.csproj"><Project>{812C9CE6-98F0-554F-AC07-8AA3155C0065}</Project><Name>CxVisual.Professional.CT3D</Name></ProjectReference>
     <ProjectReference Include="..\..\Mechanism\Visual\CxVisual.Mechanism.Visual.csproj"><Project>{A6C1F1D1-2E3F-54AF-8E35-1A1EBA6B9CB3}</Project><Name>CxVisual.Mechanism.Visual</Name></ProjectReference>
     <ProjectReference Include="..\..\Mechanism\Core\CxVisual.Mechanism.Core.csproj"><Project>{0822C861-81CD-5615-9428-D7AD3CC83AF1}</Project><Name>CxVisual.Mechanism.Core</Name></ProjectReference>
+    <ProjectReference Include="..\..\Foundation\Volume\CxVisual.Foundation.Volume.csproj"><Project>{32E6A935-9FE6-54BA-A56D-16E7F7658F02}</Project><Name>CxVisual.Foundation.Volume</Name></ProjectReference>
     <ProjectReference Include="..\..\Foundation\Imaging\CxVisual.Foundation.Imaging.csproj"><Project>{16709C88-01FC-58BA-8D9F-A14A04D73BAA}</Project><Name>CxVisual.Foundation.Imaging</Name></ProjectReference>
     <ProjectReference Include="..\..\Foundation\Geometry\CxVisual.Foundation.Geometry.csproj"><Project>{B6570EF1-8979-50D9-AF3A-3BD5450A0A23}</Project><Name>CxVisual.Foundation.Geometry</Name></ProjectReference>
     <ProjectReference Include="..\..\Foundation\Core\CxVisual.Foundation.Core.csproj"><Project>{688C0850-BA46-559F-B977-A6F9D1DE4DB0}</Project><Name>CxVisual.Foundation.Core</Name></ProjectReference>

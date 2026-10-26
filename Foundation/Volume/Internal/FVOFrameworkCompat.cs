@@ -1,10 +1,10 @@
 using System;
 using System.IO;
 
-namespace CxECTVolumeCore.Utils
+namespace CxVisual.Foundation.Volume
 {
     /// <summary>集中封装 .NET Framework 4.8 环境下的数值、流读取兼容辅助方法。</summary>
-    public static class FrameworkCompat
+    internal static class FVOFrameworkCompat
     {
         public static int Clamp(int value, int min, int max)
         {
