@@ -108,6 +108,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         source,oblique,CancellationToken.None), "任意切非法像素步长");
                     oblique.PixelSpacingInVoxels = 1;
                 }
+                oblique.AngleZDegrees = 0;
                 FVOObliqueSliceVector u;
                 FVOObliqueSliceVector v;
                 FVOObliqueSliceGeometry.GetAxes(oblique, out u, out v);
