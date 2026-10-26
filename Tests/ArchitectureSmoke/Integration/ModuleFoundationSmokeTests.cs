@@ -179,8 +179,35 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 "Removed typed handles must not publish stale updates");
         }
 
+        private static void VariableTreeSmoke()
+        {
+            MDSVariableTable table = new MDSVariableTable("line");
+            table.Define(new MDSVariableDefinition("pressure", typeof(double), null, true, null, "pressure-id"));
+            table.Define(new MDSVariableDefinition("temp", typeof(int), null, true, null, "temp-id"));
+            table.Update<double>("pressure", 1.25);
+            MDSVariable<double> original = table.Resolve<double>("pressure");
+            MDSVariableGroup group = table.Tree.AddGroup("Line1", id: "line-id");
+            MDSVariableGroup station = table.Tree.AddGroup("StationA", "line-id", "station-id");
+            table.Tree.Move("pressure-id", station.VariableId);
+            MDSVariableLeaf leaf = (MDSVariableLeaf)table.Tree.FindByPath("/Line1/StationA/pressure");
+            Check(leaf != null && ReferenceEquals(leaf.Resolve<double>(), original), "变量树不得复制变量值");
+            table.Tree.Move("station-id", null, "StationB");
+            Check(table.Tree.FindByPath("/Line1/StationA/pressure") == null &&
+                table.Tree.FindByPath("/StationB/pressure") == leaf &&
+                table.Get<double>("pressure") == 1.25, "变量移动仅更新路径");
+            table.Tree.SetOwner("pressure-id", "Device-01");
+            Check(leaf.OwnerRef == "Device-01", "业务Owner独立于Parent");
+            Reject<InvalidOperationException>(() => table.Tree.Move("station-id", "station-id"));
+            Reject<InvalidOperationException>(() => table.Tree.Move("temp-id", null, "StationB"));
+            Reject<InvalidOperationException>(() => table.Tree.RemoveEmptyGroup("station-id"));
+            Check(table.Remove("pressure") && table.Tree.FindById("pressure-id") == null, "移除变量同步移除目录");
+            Reject<ObjectDisposedException>(() => original.Update(2.0));
+            Check(table.Tree.RemoveEmptyGroup("station-id"), "清空后的分组可以删除");
+        }
+
         public static void Run()
         {
+            VariableTreeSmoke();
             VariableObjectSmoke();
             MFMModuleComposition module = new MFMModuleComposition("PLC01", new[]
             {

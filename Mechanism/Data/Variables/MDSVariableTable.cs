@@ -57,9 +57,11 @@ namespace CxVisual.Mechanism.Data.Variables
         {
             if (string.IsNullOrWhiteSpace(scopeId)) throw new ArgumentException("ScopeId 不能为空");
             ScopeId = scopeId.Trim();
+            Tree = new MDSVariableTree();
         }
 
         public string ScopeId { get; private set; }
+        public MDSVariableTree Tree { get; private set; }
         public event Action<string> VariableChanged;
 
         private void ForwardChanged(string name)
@@ -78,8 +80,9 @@ namespace CxVisual.Mechanism.Data.Variables
                 Type runtimeType = typeof(MDSVariable<>).MakeGenericType(definition.ValueType);
                 MDSVariableBase variable = (MDSVariableBase)Activator.CreateInstance(runtimeType, definition);
                 // 只在定义时反射一次，日常更新从已解析的强类型对象直接写。
-                _items.Add(definition.Name, variable);
-                variable.Attach(ForwardChanged);
+                Tree.AddLeaf(variable);
+                try { variable.Attach(ForwardChanged); _items.Add(definition.Name, variable); }
+                catch { Tree.RemoveLeaf(definition.VariableId); throw; }
             }
         }
 
@@ -90,6 +93,7 @@ namespace CxVisual.Mechanism.Data.Variables
             {
                 MDSVariableBase item;
                 if (!_items.TryGetValue(name, out item)) return false;
+                Tree.RemoveLeaf(item.EntryDefinition.VariableId);
                 item.Detach();
                 return _items.Remove(name);
             }
