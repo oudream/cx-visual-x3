@@ -1,0 +1,20 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!-- 唯一的WPF工作台视觉语义：颜色可由MPWWorkspaceVisuals.ApplyTheme统一切换。 -->
+  <SolidColorBrush x:Key="MPWBackgroundBrush" Color="#F2F6FB"/>
+  <SolidColorBrush x:Key="MPWSurfaceBrush" Color="#FFFFFF"/>
+  <SolidColorBrush x:Key="MPWSurfaceAltBrush" Color="#EAF1F9"/>
+  <SolidColorBrush x:Key="MPWForegroundBrush" Color="#243B58"/>
+  <SolidColorBrush x:Key="MPWMutedBrush" Color="#647D99"/>
+  <SolidColorBrush x:Key="MPWAccentBrush" Color="#2477CB"/>
+  <SolidColorBrush x:Key="MPWBorderBrush" Color="#C9D9E9"/>
+  <SolidColorBrush x:Key="MPWHoverBrush" Color="#DEEDFF"/>
+  <SolidColorBrush x:Key="MPWSelectionBrush" Color="#D8EAFE"/>
+  <SolidColorBrush x:Key="MPWSuccessBrush" Color="#14804A"/>
+  <SolidColorBrush x:Key="MPWWarningBrush" Color="#AF7619"/>
+  <SolidColorBrush x:Key="MPWErrorBrush" Color="#C63838"/>
+  <FontFamily x:Key="MPWUiFont">Microsoft YaHei UI</FontFamily>
+  <sys:Double x:Key="MPWFontBody" xmlns:sys="clr-namespace:System;assembly=mscorlib">13</sys:Double>
+  <sys:Double x:Key="MPWFontSmall" xmlns:sys="clr-namespace:System;assembly=mscorlib">12</sys:Double>
+  <sys:Double x:Key="MPWFontHeading" xmlns:sys="clr-namespace:System;assembly=mscorlib">18</sys:Double>
+</ResourceDictionary>

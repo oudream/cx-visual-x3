@@ -1,0 +1,119 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!-- 公共控件规范不定义应用级隐式样式。Studio与TestCenter可显式选用，
+       避免破坏各自专业Viewer内部缩放、3D画布、图像像素显示及第三方控件。 -->
+  <Style x:Key="MPWBodyTextStyle" TargetType="{x:Type TextBlock}">
+    <Setter Property="FontFamily" Value="{StaticResource MPWUiFont}"/>
+    <Setter Property="FontSize" Value="{StaticResource MPWFontBody}"/>
+    <Setter Property="Foreground" Value="{DynamicResource MPWForegroundBrush}"/>
+    <Setter Property="TextOptions.TextFormattingMode" Value="Display"/>
+    <Setter Property="TextOptions.TextRenderingMode" Value="ClearType"/>
+    <Setter Property="SnapsToDevicePixels" Value="True"/>
+  </Style>
+  <Style x:Key="MPWSectionHeadingStyle" TargetType="{x:Type TextBlock}"
+         BasedOn="{StaticResource MPWBodyTextStyle}">
+    <Setter Property="FontSize" Value="{StaticResource MPWFontHeading}"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+  </Style>
+  <Style x:Key="MPWTreeStyle" TargetType="{x:Type TreeView}">
+    <Setter Property="FontFamily" Value="{StaticResource MPWUiFont}"/>
+    <Setter Property="FontSize" Value="{StaticResource MPWFontBody}"/>
+    <Setter Property="Background" Value="{DynamicResource MPWSurfaceBrush}"/>
+    <Setter Property="Foreground" Value="{DynamicResource MPWForegroundBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource MPWBorderBrush}"/>
+    <Setter Property="SnapsToDevicePixels" Value="True"/>
+  </Style>
+  <Style x:Key="MPWTreeItemStyle" TargetType="{x:Type TreeViewItem}">
+    <Setter Property="FontSize" Value="{StaticResource MPWFontBody}"/>
+    <Setter Property="Foreground" Value="{DynamicResource MPWForegroundBrush}"/>
+    <Setter Property="MinHeight" Value="27"/>
+    <Setter Property="Padding" Value="4,3"/>
+    <Setter Property="SnapsToDevicePixels" Value="True"/>
+  </Style>
+  <Style x:Key="MPWInputStyle" TargetType="{x:Type TextBox}">
+    <Setter Property="FontFamily" Value="{StaticResource MPWUiFont}"/>
+    <Setter Property="FontSize" Value="{StaticResource MPWFontBody}"/>
+    <Setter Property="MinHeight" Value="30"/>
+    <Setter Property="Padding" Value="8,5"/>
+    <Setter Property="Background" Value="{DynamicResource MPWSurfaceBrush}"/>
+    <Setter Property="Foreground" Value="{DynamicResource MPWForegroundBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource MPWBorderBrush}"/>
+  </Style>
+  <Style x:Key="MPWComboStyle" TargetType="{x:Type ComboBox}">
+    <Setter Property="FontSize" Value="{StaticResource MPWFontBody}"/>
+    <Setter Property="MinHeight" Value="30"/>
+    <Setter Property="Foreground" Value="{DynamicResource MPWForegroundBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource MPWBorderBrush}"/>
+  </Style>
+  <Style x:Key="MPWButtonStyle" TargetType="{x:Type Button}">
+    <Setter Property="FontSize" Value="{StaticResource MPWFontBody}"/>
+    <Setter Property="Margin" Value="3"/>
+    <Setter Property="Padding" Value="12,6"/>
+    <Setter Property="MinHeight" Value="31"/>
+    <Setter Property="Background" Value="{DynamicResource MPWSurfaceBrush}"/>
+    <Setter Property="Foreground" Value="{DynamicResource MPWForegroundBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource MPWBorderBrush}"/>
+    <Setter Property="Cursor" Value="Hand"/>
+  </Style>
+  <Style x:Key="MPWDataGridStyle" TargetType="{x:Type DataGrid}">
+    <Setter Property="FontSize" Value="{StaticResource MPWFontBody}"/>
+    <Setter Property="RowHeight" Value="29"/>
+    <Setter Property="ColumnHeaderHeight" Value="31"/>
+    <Setter Property="Background" Value="{DynamicResource MPWSurfaceBrush}"/>
+    <Setter Property="Foreground" Value="{DynamicResource MPWForegroundBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource MPWBorderBrush}"/>
+  </Style>
+  <Style x:Key="MPWDocumentTabStyle" TargetType="{x:Type TabItem}">
+    <Setter Property="FontFamily" Value="{StaticResource MPWUiFont}"/>
+    <Setter Property="FontSize" Value="{StaticResource MPWFontBody}"/>
+    <Setter Property="Foreground" Value="{DynamicResource MPWMutedBrush}"/>
+    <Setter Property="MinHeight" Value="34"/>
+    <Setter Property="Padding" Value="12,6"/>
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="{x:Type TabItem}">
+          <Border x:Name="TabSurface" Background="{DynamicResource MPWSurfaceAltBrush}"
+                  BorderBrush="{DynamicResource MPWBorderBrush}" BorderThickness="1,1,1,0"
+                  CornerRadius="3,3,0,0" Margin="1,1,2,0"
+                  Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+            <ContentPresenter ContentSource="Header" HorizontalAlignment="Center"
+                              VerticalAlignment="Center" RecognizesAccessKey="True"/>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="TabSurface" Property="Background" Value="{DynamicResource MPWHoverBrush}"/>
+            </Trigger>
+            <Trigger Property="IsSelected" Value="True">
+              <Setter TargetName="TabSurface" Property="Background" Value="{DynamicResource MPWSurfaceBrush}"/>
+              <Setter TargetName="TabSurface" Property="BorderBrush" Value="{DynamicResource MPWAccentBrush}"/>
+              <Setter TargetName="TabSurface" Property="BorderThickness" Value="1,3,1,0"/>
+              <Setter Property="Foreground" Value="{DynamicResource MPWAccentBrush}"/>
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+              <Setter Property="Opacity" Value="0.5"/>
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+  <!-- AvalonDock无关的数据模板：只读取LayoutContent Title / IsSelected，
+       不创建Document/Anchorable、不修改ContentId或停靠布局。 -->
+  <DataTemplate x:Key="MPWDockHeaderTemplate">
+    <Border x:Name="DockTabSurface" Padding="12,7,12,6" Margin="1,0,1,0"
+            CornerRadius="3,3,0,0" Background="{DynamicResource MPWSurfaceAltBrush}"
+            BorderBrush="{DynamicResource MPWBorderBrush}" BorderThickness="1,1,1,0">
+      <TextBlock Text="{Binding Title}" FontFamily="{StaticResource MPWUiFont}"
+                 FontSize="{StaticResource MPWFontBody}"
+                 Foreground="{DynamicResource MPWMutedBrush}" VerticalAlignment="Center"
+                 TextTrimming="CharacterEllipsis" MaxWidth="240"/>
+    </Border>
+    <DataTemplate.Triggers>
+      <DataTrigger Binding="{Binding IsSelected}" Value="True">
+        <Setter TargetName="DockTabSurface" Property="Background" Value="{DynamicResource MPWSurfaceBrush}"/>
+        <Setter TargetName="DockTabSurface" Property="BorderBrush" Value="{DynamicResource MPWAccentBrush}"/>
+        <Setter TargetName="DockTabSurface" Property="BorderThickness" Value="1,3,1,0"/>
+      </DataTrigger>
+    </DataTemplate.Triggers>
+  </DataTemplate>
+</ResourceDictionary>
