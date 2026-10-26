@@ -143,6 +143,19 @@ namespace CxVisual.TestCenter.UI
                     TCTWireCodec.Write(e.Args[2], result);
                     exit = 0; // 结果状态在结构化文件内，不能用退出码代替断言状态。
                 }
+                else if (command == "--connector-ui-automation")
+                {
+                    if (e.Args.Length != 1)
+                        throw new ArgumentException("--connector-ui-automation takes no arguments");
+                    TCTMainWindow window = new TCTMainWindow();
+                    MainWindow = window;
+                    try
+                    {
+                        await TCTWpfAutomationHarness.RunConnectorAsync(window);
+                        exit = 0;
+                    }
+                    finally { window.Close(); }
+                }
                 else if (command == "--command-ui-automation")
                 {
                     if (e.Args.Length != 1)
