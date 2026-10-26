@@ -123,3 +123,9 @@
 **本轮最终验收实证**：[Windows Imaging #40341442965](https://github.com/oudream/cx-visual-x3/actions/runs/40341442965) **SUCCESS（13步骤）**，对应功能和工作流提交 `f29ef75f7bc4a718a66f4915352f335ffac6bf49`。涵盖Windows x64/.NET48全方案编译、FIM/MVI数值及默认Smoke、实际STA/WPF图像浏览、旋转ROI状态和双Pane的合成样本验证。最早WPF断言曾因将浮点角度与45做精确比较失败；已改用1e-8容差并保留原有“锁定时拒绝变更”的反证，不用删测试掩盖问题。
 
 **仍未完成，不能升格为用户60项全部验收**：旋转矩形真实鼠标物理输入的系统级注入/多DPI、自由曲线及曲率控制、添加/删除多边形顶点、跨工程持久化和平台Undo/Redo、强度分割及复合ROI掩膜、批量流/共享内存、实际X-Ray现场大图性能/HIL与第三方HALCON同样本结果对照。此次交付是通用二维工作台P2的**一个可操作专业几何闭环**，而非整台工作台完整交付。
+
+### 8.1 同代码基线的TestCenter回归与跨体系风险
+
+- [TestCenter Windows #40341200552](https://github.com/oudream/cx-visual-x3/actions/runs/40341200552) **SUCCESS（29步骤）**，对应 `5524893`，覆盖到MVI/MPW旋转矩形四角构造约束及测试中心功能回归；此后追加的数值反证和CI路径调整以 `f29ef75` Imaging专项成功作为最新代码证据，**不能将5524893的TestCenter结果自动归属更晚的master**。
+- 曾有 [TestCenter #40341073706](https://github.com/oudream/cx-visual-x3/actions/runs/40341073706) 的Parallel Repeat/History阶段失败，因期望成功Attempt数为426而实际收到441；随后上述5524893结果为Success。该失败属并行用例基数/断言稳定性边界，需由TestCenter Owner继续复核，不能抹去历史失败。
+- Engineering Organization Windows在部分提交仍发生Studio宿主资源`MPWInputStyle`加载失败，和旋转ROI源码不可等同；对应Master与专项SHA分别判断。
