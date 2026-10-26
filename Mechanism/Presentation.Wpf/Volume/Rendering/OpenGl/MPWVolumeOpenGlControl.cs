@@ -22,6 +22,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
     {
         private IntPtr _window, _dc, _context;
         private GlApi _gl;
+        // glUniform* 的 location 属于当前激活的Program，不能沿用体绘Shader句柄。
+        private uint _activeShaderProgram;
         private uint _shader, _vao, _vbo, _volumeTexture, _scalarTexture, _gradientTexture;
         private uint _sliceShader, _sliceVao, _sliceVbo, _lineShader, _lineVao, _lineVbo;
         private uint _obliqueTexture;
@@ -458,7 +460,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
                 (float)(Math.PI/4),w/(float)h,.02f,30);
             if (_showVolume)
             {
-            _gl.UseProgram(_shader);
+            UseShaderProgram(_shader);
             Matrix("model",model); Matrix("view",view); Matrix("projection",projection);
             Vec3("cameraObject",camera.X/_sx,camera.Y/_sy,camera.Z/_sz);
             Vec3("voxelStep",1f/_width,1f/_height,1f/_depth);
@@ -478,7 +480,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
             Matrix4x4 mvp = model * view * projection;
             if (_showSlices || _showSliceTexture || _obliqueCorners != null)
             {
-                _gl.UseProgram(_sliceShader);
+                UseShaderProgram(_sliceShader);
                 Matrix("mvp",mvp);
                 Uniform1("volumeTex",0);
                 Uniform1("obliqueTex",1);
@@ -509,7 +511,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
             }
             if (_showBounds)
             {
-                _gl.UseProgram(_lineShader);
+                UseShaderProgram(_lineShader);
                 Matrix("mvp",mvp);
                 Vec3("lineColor",.82f,.88f,.95f);
                 _gl.BindVertexArray(_lineVao);
@@ -559,18 +561,31 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
             }
         }
 
+        private void UseShaderProgram(uint program)
+        {
+            _gl.UseProgram(program);
+            _activeShaderProgram=program;
+        }
+
+        private int UniformLocation(string name)
+        {
+            if(_activeShaderProgram==0)
+                throw new InvalidOperationException("必须先绑定OpenGL Program，才能设置Uniform："+name);
+            return _gl.GetUniformLocation(_activeShaderProgram,name);
+        }
+
         private void Matrix(string name,Matrix4x4 m)
         {
             float[] a = {m.M11,m.M12,m.M13,m.M14,m.M21,m.M22,m.M23,m.M24,
                 m.M31,m.M32,m.M33,m.M34,m.M41,m.M42,m.M43,m.M44};
-            _gl.UniformMatrix4fv(_gl.GetUniformLocation(_shader,name),1,1,a);
+            _gl.UniformMatrix4fv(UniformLocation(name),1,1,a);
         }
         private void Vec3(string name,float x,float y,float z)
-        { _gl.Uniform3f(_gl.GetUniformLocation(_shader,name),x,y,z); }
+        { _gl.Uniform3f(UniformLocation(name),x,y,z); }
         private void Uniform1(string name,int value)
-        { _gl.Uniform1i(_gl.GetUniformLocation(_shader,name),value); }
+        { _gl.Uniform1i(UniformLocation(name),value); }
         private void UniformF(string name,float value)
-        { _gl.Uniform1f(_gl.GetUniformLocation(_shader,name),value); }
+        { _gl.Uniform1f(UniformLocation(name),value); }
         private static float Clamp(float v,float min,float max)
         { return Math.Max(min,Math.Min(max,v)); }
 
