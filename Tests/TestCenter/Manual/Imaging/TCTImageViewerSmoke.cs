@@ -148,10 +148,31 @@ namespace CxVisual.TestCenter.UI
             string path = Environment.GetEnvironmentVariable("CXVISUAL_IMAGING_UI_SCREENSHOT");
             if (string.IsNullOrWhiteSpace(path)) return;
             int width = 900, height = 650;
-            frame.SetOriginal(new FIMImageBuffer(width,height,FIMPixelFormat.Gray8,
-                BuildSyntheticPixels(width,height)));
+            FIMImageBuffer sample = new FIMImageBuffer(width,height,FIMPixelFormat.Gray8,
+                BuildSyntheticPixels(width,height));
+            frame.SetOriginal(sample);
             frame.Viewer.FitToWindow();
             CaptureWindow(window,path);
+            // 功能验收附图：真实图层测量及曲线，不生成伪运行结果。
+            TabControl upper = FindControl<TabControl>(frame,"TCT.Imaging.PrimaryTabs");
+            TabControl lower = FindControl<TabControl>(frame,"TCT.Imaging.SecondaryTabs");
+            frame.Viewer.AddOverlay(new MVIImageOverlayItem(
+                MVIImageOverlayKind.DistanceMeasurement,MVIImageOverlayLayer.Measurement,
+                new FGERect2D(210,190,350,170),new[]{
+                new FGEPoint2D(210,190),new FGEPoint2D(560,360)}));
+            frame.Viewer.AddOverlay(new MVIImageOverlayItem(
+                MVIImageOverlayKind.AreaMeasurement,MVIImageOverlayLayer.Measurement,
+                new FGERect2D(380,230,120,95)));
+            frame.ProfilePlot.SetLineProfile(FIMImageAnalyzer.GetLineProfile(sample,0,0,width-1,height-1));
+            upper.SelectedIndex = 3;
+            lower.SelectedIndex = 2;
+            CaptureWindow(window,Path.Combine(Path.GetDirectoryName(path),"workbench-measure-profile.png"));
+            upper.SelectedIndex = 2;
+            lower.SelectedIndex = 1;
+            frame.HistogramPlot.SetHistogram(FIMImageAnalyzer.GetHistogram(sample,256));
+            CaptureWindow(window,Path.Combine(Path.GetDirectoryName(path),"workbench-gray-histogram.png"));
+            frame.Viewer.ClearOverlays();
+            upper.SelectedIndex = 0; lower.SelectedIndex = 0;
         }
 
         public static void Run()
