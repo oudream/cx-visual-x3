@@ -86,6 +86,10 @@ namespace CxVisual.TestCenter.UI
             AddButton(toolbar, "打开文件", "Open", () => { OpenWithDialog(); });
             AddButton(toolbar, "适应窗口", "Fit", () => _viewer.FitToWindow());
             AddButton(toolbar, "1:1", "Actual", () => _viewer.ActualSize());
+            AddButton(toolbar, "观察旋转90°", "ViewRotate", () => _viewer.RotateViewClockwise());
+            AddButton(toolbar, "观察水平镜像", "ViewMirrorX", () => _viewer.FlipViewHorizontal());
+            AddButton(toolbar, "观察垂直镜像", "ViewMirrorY", () => _viewer.FlipViewVertical());
+            AddButton(toolbar, "复位观察", "ViewReset", () => _viewer.ResetViewTransform());
             AddButton(toolbar, "放大", "ZoomIn", () => _viewer.Zoom(1.25));
             AddButton(toolbar, "缩小", "ZoomOut", () => _viewer.Zoom(0.8));
             toolbar.Children.Add(new TextBlock { Text = "交互工具", VerticalAlignment = VerticalAlignment.Center });

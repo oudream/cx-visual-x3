@@ -66,6 +66,20 @@ namespace CxVisual.TestCenter.UI
                 FIMImageStatistics stats = FIMImageAnalyzer.Calculate(frame.Viewer.ActiveImage);
                 if (stats.PixelCount != 16 || Math.Abs(stats.Mean - 8.5) > 1e-9)
                     throw new InvalidOperationException("Raw pixel statistics changed after windowing");
+                // 浏览旋转只改变输出方向，不丢失原图数据或原图ROI。
+                frame.Viewer.RotateViewClockwise();
+                frame.Viewer.SavePng(file);
+                FIMImageBuffer turn90 = Mechanism.Presentation.Wpf.Imaging.MPWImageViewerControl.ReadImageFile(file);
+                if (turn90.Width != 4 || turn90.Height != 4 || turn90.GetGrayValue(0,0) != 13)
+                    throw new InvalidOperationException("WPF 90 degree view pixels inconsistent with source coordinates");
+                frame.Viewer.FlipViewHorizontal();
+                frame.Viewer.SavePng(file);
+                FIMImageBuffer mirrored = Mechanism.Presentation.Wpf.Imaging.MPWImageViewerControl.ReadImageFile(file);
+                if (mirrored.GetGrayValue(0,0) != 1 || image.GetGrayValue(0,0) != 1)
+                    throw new InvalidOperationException("WPF view-only mirror modified raw pixels or projected incorrectly");
+                frame.Viewer.ResetViewTransform();
+                if (!frame.Viewer.ViewTransform.IsIdentity)
+                    throw new InvalidOperationException("WPF view transform did not reset");
                 // 程序化创建真实叠加项，让MPW的WPF Canvas实际绘制，并检查层级隐藏/删除。
                 MVIImageOverlayItem rect = frame.Viewer.AddOverlay(new MVIImageOverlayItem(
                     MVIImageOverlayKind.RectangleRoi, MVIImageOverlayLayer.Roi,
@@ -97,6 +111,10 @@ namespace CxVisual.TestCenter.UI
                 frame.Viewer.Overlays.Replace(rect.Translate(1, 0));
                 if (frame.Viewer.Overlays.Find(rect.Id).Bounds.Left != 1)
                     throw new InvalidOperationException("Overlay move did not update original coordinates");
+                frame.Viewer.RotateViewClockwise();
+                if (frame.Viewer.VisibleOverlayCount != 4 || frame.Viewer.OverlayVisualCount < 4)
+                    throw new InvalidOperationException("Overlay projected objects lost after WPF view rotation");
+                frame.Viewer.ResetViewTransform();
                 window.UpdateLayout();
                 frame.Viewer.SaveViewPng(screenshot);
                 if (!File.Exists(screenshot) || new FileInfo(screenshot).Length <= 0)
