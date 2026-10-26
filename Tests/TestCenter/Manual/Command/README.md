@@ -62,3 +62,11 @@
 - 新增五个真实Owner自动案例 `TCT.CMD.001～005`，分别覆盖FDC Schema、MRK Batch/Operation关联、幂等与冲突、设备授权拒绝、缺失Remote Transport拒绝。静态方法使用现有 `[TCTTest]` 机制自动发现，直接由唯一 `TCTTestExecutionCoordinator` 以独立Worker运行。
 - 在命令测试页右侧操作中心和「正式TCT验收」Tab增加运行入口；由 `TCTMainWindow.RunAsync(false, ids)` 生成原有Run/Attempt与正式结果、Timeline、报告/历史。人工会话行只记录触发动作，不能代替断言结果。
 - CI新增 `--run --filter TCT.CMD. --format json --history-dir … --isolate` 独立Worker验证（5条Case、JSON报告、正式历史），同时保持原命令页真实WPF/UIA和MRK专项。当前仅5个**正式案例**，其余60项要求不可据此声称自动覆盖。
+
+
+## 多 Operation 运行监视（2026-10-26）
+
+- 新增正式 `TCTManualCommandOperations.cs` 作为 `TCTManualCommandFrame` 同一部分类，**没有新CommandCenter/队列/账本**；有界（250条）Operation列表只是原MRK响应快照的WPF投影。
+- 「多Operation管理」支持 2、4、8、16、32 个本地演示Multiply任务，严格用 `MRKCommandCenter.InvokeBatchAsync`，按演示Provider `MaxConcurrent=2` 分波执行，列表显示各OperationId、Stage、State、进度和错误码。选中行切换操作控制上下文，继续复用原Query/Pause/Resume/Cancel及端点身份检查。
+- 本地单次、真实IPC、正式批量三条路径都在同一表显示真实操作记录；`--command-ui-smoke` 增加四个真实Batch操作、终态与OperationId唯一性反例。人工表不是正式TCT Run/Attempt；正式自动用例仍走Coordinator和主结果仓。
+- 暂未完成跨Host多目标批量权限治理、持久多Operation恢复与长时间压测，不能把演示Provider结果代替设备联锁证据。

@@ -24,7 +24,7 @@ namespace CxVisual.TestCenter.UI
     /// TestCenter人工命令工作区。命令定义、执行、MDS变量均来自正式Owner；
     /// 演示Handler明确标为本地算法，不声称真实设备、远程发现或TCT通过。
     /// </summary>
-    public sealed class TCTManualCommandFrame : UserControl, ITCTWorkspaceFrame
+    public sealed partial class TCTManualCommandFrame : UserControl, ITCTWorkspaceFrame
     {
         private sealed class HistoryRow
         {
@@ -235,6 +235,7 @@ namespace CxVisual.TestCenter.UI
             formalRun.Click += (s, e) => RunFormalCases();
             formal.Children.Add(formalRun);
             tabs.Items.Add(Tab("正式TCT验收", formal));
+            BuildMultipleOperationPanel(tabs);
             Grid.SetColumn(tabs, 1); columns.Children.Add(tabs);
             main.Children.Add(columns);
             Content = main;
@@ -597,6 +598,7 @@ namespace CxVisual.TestCenter.UI
                     if (observed == null || observed.Stage != MRKCommandStage.Accepted ||
                         observed.OperationId != operationId) continue;
                     DisplayObservation(observed);
+                    TrackResponse(observed);
                     string snapshot = observed.State + "/" +
                         (observed.ProgressPercent.HasValue ?
                             ((int)observed.ProgressPercent.Value / 10).ToString(
@@ -645,6 +647,7 @@ namespace CxVisual.TestCenter.UI
                     options: new MRKCommandOptions(remote: IsRemote, timeoutMilliseconds: 7000),
                     expectedSchemaVersion: definition.SchemaVersion,
                     commandId: definition.CommandId);
+                TrackSubmission(request);
                 List<MRKCommandParameterBinding> outputs = new List<MRKCommandParameterBinding>();
                 if (_writeBack.IsChecked == true)
                     outputs.Add(new MRKCommandParameterBinding("Output", "mds.output"));
@@ -693,6 +696,7 @@ namespace CxVisual.TestCenter.UI
                     Convert.ToString(x.Value, CultureInfo.InvariantCulture))) +
                 "\n" + note + "  Duration=" + response.DurationMilliseconds.ToString("F0") + "ms";
             DisplayObservation(response);
+            TrackResponse(response);
             Log(action, response.OperationId, response.Stage + "/" + response.State,
                 response.ErrorCode + " " + note);
             Show(action + "：" + response.State + "（业务与设备安全结果分别确认）");
@@ -870,6 +874,11 @@ namespace CxVisual.TestCenter.UI
                 }
                 finally { frame.StopChildHost(); }
                 frame._transport.SelectedIndex = 0;
+                IReadOnlyList<MRKCommandResponse> batch = await frame.BatchRunAsync(4)
+                    .ConfigureAwait(true);
+                if (batch.Count != 4 || batch.Any(r => r.State != MRKCommandState.Completed) ||
+                    frame.TrackedOperationIds.Distinct().Count() != frame.TrackedOperationCount)
+                    throw new InvalidOperationException("多Operation批量执行或追踪身份没有形成真实闭环");
                 frame.UnregisterDemo();
                 if (frame._local.Router.Discover().Count != 0)
                     throw new InvalidOperationException("注销命令后仍残留Registry");
