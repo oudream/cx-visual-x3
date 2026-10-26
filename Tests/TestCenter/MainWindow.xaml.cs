@@ -34,6 +34,7 @@ namespace CxVisual.TestCenter.UI
         private TCTCreatedWorkspaceStore _createdWorkspaces;
         private ITCTWorkspaceFrame _currentFrame;
         private bool _openingWorkspace;
+        private bool _imagingHidOperations;
         private CancellationTokenSource _cancel;
         private TCTTestRunSummary _lastRun;
         private TCTTestRunSummary _displayedRun;
@@ -349,6 +350,9 @@ namespace CxVisual.TestCenter.UI
 
         private void OnWorkspaceActivated(TCTWorkspaceDescriptor descriptor)
         {
+            // 视觉专业工作台本身已有双层功能面板；测试宿主的辅助Inspector可临时收起。
+            UpdateImagingDock(descriptor != null &&
+                string.Equals(descriptor.WorkspaceId,"manual.imaging",StringComparison.Ordinal));
             if (_currentFrame != null) _currentFrame.StateChanged -= RefreshWorkspaceCommands;
             _currentFrame = null;
             ManualActionHost.Children.Clear();
@@ -368,6 +372,22 @@ namespace CxVisual.TestCenter.UI
             if (_currentFrame != null) _currentFrame.StateChanged += RefreshWorkspaceCommands;
             RefreshWorkspaceCommands();
             WorkspaceTitle.Text = descriptor.Title;
+        }
+        private void UpdateImagingDock(bool imaging)
+        {
+            LayoutAnchorable inspector = TestDock.Layout.Descendents()
+                .OfType<LayoutAnchorable>().FirstOrDefault(x => x.ContentId == "test.inspector");
+            if (inspector == null) return;
+            if (imaging && inspector.IsVisible)
+            {
+                inspector.Hide();
+                _imagingHidOperations = true;
+            }
+            else if (!imaging && _imagingHidOperations)
+            {
+                inspector.Show();
+                _imagingHidOperations = false;
+            }
         }
         private void RefreshWorkspaceCommands()
         {

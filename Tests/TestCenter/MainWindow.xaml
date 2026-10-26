@@ -11,8 +11,8 @@
  Background="#EEF3F9">
  <Window.Resources>
   <Style TargetType="TabItem">
-   <Setter Property="Padding" Value="17,8"/>
-   <Setter Property="FontSize" Value="16"/>
+   <Setter Property="Padding" Value="12,5"/>
+   <Setter Property="FontSize" Value="15"/>
   </Style>
   <Style TargetType="MenuItem">
    <Setter Property="FontSize" Value="16"/>
@@ -25,12 +25,12 @@
  </Window.Resources>
  <Grid>
   <Grid.RowDefinitions>
-   <RowDefinition Height="55"/>
-   <RowDefinition Height="39"/>
+   <RowDefinition Height="50"/>
+   <RowDefinition Height="32"/>
    <RowDefinition Height="0"/>
-   <RowDefinition Height="43"/>
+   <RowDefinition Height="33"/>
    <RowDefinition Height="*"/>
-   <RowDefinition Height="37"/>
+   <RowDefinition Height="30"/>
   </Grid.RowDefinitions>
   <Border x:Name="HeaderBand" Grid.Row="0" Background="#F2F6FB" Padding="13,8">
    <DockPanel>
@@ -84,7 +84,7 @@
        </dock:LayoutAnchorable>
       </dock:LayoutAnchorablePane>
       <dock:LayoutDocumentPane>
-       <dock:LayoutDocument ContentId="test.documents" Title="测试视图 / Viewer"
+       <dock:LayoutDocument ContentId="test.documents" Title="工作区"
          CanClose="False" CanFloat="True">
         <ui:TCTTestDocumentHostControl x:Name="DocumentHost"/>
        </dock:LayoutDocument>

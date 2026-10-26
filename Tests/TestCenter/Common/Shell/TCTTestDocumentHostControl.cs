@@ -57,6 +57,13 @@ namespace CxVisual.TestCenter.UI
                 if (ObjectSelected != null) ObjectSelected(id, details);
             };
             Content = _tabs;
+            _tabs.Background = new SolidColorBrush(Color.FromRgb(246,249,253));
+            _tabs.BorderBrush = new SolidColorBrush(Color.FromRgb(201,215,231));
+            Style compact = new Style(typeof(TabItem));
+            compact.Setters.Add(new Setter(TabItem.PaddingProperty,new Thickness(10,4,10,4)));
+            compact.Setters.Add(new Setter(TabItem.FontSizeProperty,14.0));
+            compact.Setters.Add(new Setter(TabItem.MinHeightProperty,28.0));
+            _tabs.ItemContainerStyle = compact;
             _tabs.SelectionChanged += (sender, args) =>
             {
                 if (!object.ReferenceEquals(args.OriginalSource, _tabs)) return;
@@ -78,14 +85,16 @@ namespace CxVisual.TestCenter.UI
                     "Workspace factory returned null: " + descriptor.WorkspaceId);
                 DockPanel header = new DockPanel { LastChildFill = false };
                 TextBlock caption = new TextBlock { Text = descriptor.Title,
-                    VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
+                    FontSize = 14, MaxWidth = 180, TextTrimming = TextTrimming.CharacterEllipsis,
+                    VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) };
                 Button closeTab = new Button {
                     Content = "×", FontSize = 16, FontWeight = FontWeights.SemiBold,
-                    MinWidth = 25, Height = 24, Padding = new Thickness(3, 0, 3, 0),
+                    MinWidth = 22, Height = 21, Padding = new Thickness(2,0,2,0),
                     ToolTip = "关闭分页（实例继续保留在左侧）" };
                 closeTab.Click += (sender, args) => CloseWorkspace(descriptor.WorkspaceId);
                 header.Children.Add(caption); header.Children.Add(closeTab);
-                tab = new TabItem { Header = header, Tag = descriptor, Content = content };
+                tab = new TabItem { Header = header, Tag = descriptor, Content = content,
+                    ToolTip = descriptor.Title };
                 System.Windows.Automation.AutomationProperties.SetAutomationId(tab,
                     "TCT.Workspace.Tab." + descriptor.WorkspaceId);
                 MenuItem close = new MenuItem { Header = "关闭工作区" };
