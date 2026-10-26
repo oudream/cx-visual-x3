@@ -50,6 +50,62 @@ namespace CxVisual.Foundation.Imaging
             return Math.Acos(cosine) * 180.0 / Math.PI;
         }
 
+        /// <summary>横/纵距离保留原图坐标，物理量使用各轴独立标定，避免显示缩放污染。</summary>
+        public static double GetHorizontalDistancePixels(FGEPoint2D a, FGEPoint2D b)
+        { return Math.Abs(b.X - a.X); }
+        public static double GetVerticalDistancePixels(FGEPoint2D a, FGEPoint2D b)
+        { return Math.Abs(b.Y - a.Y); }
+        public static double? GetHorizontalDistanceMillimeters(FGEPoint2D a, FGEPoint2D b,
+            FIMPixelSpacing? spacing)
+        {
+            if (!spacing.HasValue) return null;
+            ValidateSpacing(spacing.Value);
+            return GetHorizontalDistancePixels(a,b) * spacing.Value.MillimetersPerPixelX;
+        }
+        public static double? GetVerticalDistanceMillimeters(FGEPoint2D a, FGEPoint2D b,
+            FIMPixelSpacing? spacing)
+        {
+            if (!spacing.HasValue) return null;
+            ValidateSpacing(spacing.Value);
+            return GetVerticalDistancePixels(a,b) * spacing.Value.MillimetersPerPixelY;
+        }
+        /// <summary>连续几何面积与离散ROI像素计数严格区分。</summary>
+        public static double GetRectangleAreaPixels(FGERect2D bounds)
+        { return bounds.Width * bounds.Height; }
+        public static double? GetRectangleAreaSquareMillimeters(FGERect2D bounds,
+            FIMPixelSpacing? spacing)
+        {
+            if (!spacing.HasValue) return null;
+            ValidateSpacing(spacing.Value);
+            return GetRectangleAreaPixels(bounds) *
+                spacing.Value.MillimetersPerPixelX * spacing.Value.MillimetersPerPixelY;
+        }
+        /// <summary>闭合多边形鞋带公式；面积与显示旋转、镜像无关。</summary>
+        public static double GetPolygonAreaPixels(System.Collections.Generic.IReadOnlyList<FGEPoint2D> points)
+        {
+            if (points == null) throw new ArgumentNullException("points");
+            if (points.Count < 3) throw new ArgumentException("多边形至少需要三个顶点。", "points");
+            double sum = 0;
+            FGEPoint2D origin = points[0];
+            for (int i = 1; i < points.Count - 1; i++)
+            {
+                double ax = points[i].X - origin.X, ay = points[i].Y - origin.Y;
+                double bx = points[i+1].X - origin.X, by = points[i+1].Y - origin.Y;
+                sum += ax * by - bx * ay;
+            }
+            if (double.IsNaN(sum) || double.IsInfinity(sum))
+                throw new OverflowException("多边形面积超出有限数值。");
+            return Math.Abs(sum) * 0.5;
+        }
+        public static double? GetPolygonAreaSquareMillimeters(
+            System.Collections.Generic.IReadOnlyList<FGEPoint2D> points, FIMPixelSpacing? spacing)
+        {
+            if (!spacing.HasValue) return null;
+            ValidateSpacing(spacing.Value);
+            return GetPolygonAreaPixels(points) *
+                spacing.Value.MillimetersPerPixelX * spacing.Value.MillimetersPerPixelY;
+        }
+
         public static long GetAreaPixels(FIMPixelRegion region)
         {
             return checked((long)region.Width * region.Height);

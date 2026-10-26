@@ -94,6 +94,22 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 new FIMPixelRegion(0, 0, 1, 1), spacing).Value, 0.32), "物理面积");
             Assert(!FIMImageMeasurement.GetAreaSquareMillimeters(
                 new FIMPixelRegion(0, 0, 1, 1), null).HasValue, "无标定面积为空");
+            Assert(Near(FIMImageMeasurement.GetHorizontalDistancePixels(a,b),3) &&
+                Near(FIMImageMeasurement.GetVerticalDistancePixels(a,b),4), "水平垂直像素");
+            Assert(Near(FIMImageMeasurement.GetHorizontalDistanceMillimeters(a,b,spacing).Value,.6) &&
+                Near(FIMImageMeasurement.GetVerticalDistanceMillimeters(a,b,spacing).Value,1.6),
+                "各轴独立物理标定");
+            FGERect2D geometry = new FGERect2D(1,2,3,4);
+            Assert(Near(FIMImageMeasurement.GetRectangleAreaPixels(geometry),12) &&
+                Near(FIMImageMeasurement.GetRectangleAreaSquareMillimeters(geometry,spacing).Value,.96),
+                "几何面积与非等距标定");
+            FGEPoint2D[] triangle = { new FGEPoint2D(0,0),new FGEPoint2D(4,0),
+                new FGEPoint2D(0,3) };
+            Assert(Near(FIMImageMeasurement.GetPolygonAreaPixels(triangle),6) &&
+                Near(FIMImageMeasurement.GetPolygonAreaSquareMillimeters(triangle,spacing).Value,.48),
+                "多边形原图鞋带面积");
+            Throws<ArgumentException>(()=>FIMImageMeasurement.GetPolygonAreaPixels(new []{a,b}),
+                "顶点数不足");
             Throws<ArgumentOutOfRangeException>(() => new FIMPixelSpacing(0, 0.1), "非法间距");
             Throws<ArgumentException>(() => FIMImageMeasurement.GetAngleDegrees(a, a, b), "退化角度");
             Throws<ArgumentOutOfRangeException>(() => FIMImageMeasurement.GetDistanceMillimeters(a, b, default(FIMPixelSpacing)), "default标定间距");

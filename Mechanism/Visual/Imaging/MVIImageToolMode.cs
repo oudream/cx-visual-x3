@@ -17,6 +17,11 @@ namespace CxVisual.Mechanism.Visual
         MoveOverlay,
         DeleteOverlay,
         PolygonRoi,
-        Angle
+        Angle,
+        HorizontalDistance,
+        VerticalDistance,
+        Diameter,
+        Area,
+        PolygonArea
     }
 }

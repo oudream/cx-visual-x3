@@ -620,6 +620,13 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             {
                 if (mode == MVIImageToolMode.Angle)
                     AddAngleMeasurement(_polygonDraft.ToArray());
+                else if (mode == MVIImageToolMode.PolygonArea)
+                {
+                    if (FIMImageMeasurement.GetPolygonAreaPixels(_polygonDraft) <= 0)
+                        throw new ArgumentException("面积测量不接受零面积多边形。");
+                    AddPointGeometry(MVIImageOverlayKind.AreaMeasurement,
+                        MVIImageOverlayLayer.Measurement,_polygonDraft.ToArray(),3);
+                }
                 else AddPolygonRoi(_polygonDraft.ToArray());
                 RaiseSelectionChanged();
             }
@@ -629,6 +636,64 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         }
 
         /// <summary>所有叠加对象从原图坐标重绘；屏幕缩放/平移只改变投影，不修改ROI值。</summary>
+        /// <summary>
+        /// 用原始像素几何计算完整测量结果，同时服务画布标签、对象列表与CSV。
+        /// 物理量只在明确标定时输出；非等距像素下圆的物理X/Y直径分别报告。
+        /// </summary>
+        public string DescribeMeasurement(MVIImageOverlayItem item)
+        {
+            VerifyAccess();
+            if (item == null) throw new ArgumentNullException("item");
+            FIMPixelSpacing? spacing = PixelSpacing;
+            FGEPoint2D a = item.Points.Count >= 2 ? item.Points[0] : new FGEPoint2D(0,0);
+            FGEPoint2D b = item.Points.Count >= 2 ? item.Points[1] : new FGEPoint2D(0,0);
+            double pixels;
+            double? physical;
+            string suffix;
+            switch (item.Kind)
+            {
+                case MVIImageOverlayKind.DistanceMeasurement:
+                    pixels = FIMImageMeasurement.GetDistancePixels(a,b);
+                    physical = FIMImageMeasurement.GetDistanceMillimeters(a,b,spacing);
+                    suffix = "mm"; break;
+                case MVIImageOverlayKind.HorizontalMeasurement:
+                    pixels = FIMImageMeasurement.GetHorizontalDistancePixels(a,b);
+                    physical = FIMImageMeasurement.GetHorizontalDistanceMillimeters(a,b,spacing);
+                    suffix = "mm"; break;
+                case MVIImageOverlayKind.VerticalMeasurement:
+                    pixels = FIMImageMeasurement.GetVerticalDistancePixels(a,b);
+                    physical = FIMImageMeasurement.GetVerticalDistanceMillimeters(a,b,spacing);
+                    suffix = "mm"; break;
+                case MVIImageOverlayKind.AngleMeasurement:
+                    if (item.Points.Count != 3) return string.Empty;
+                    return FIMImageMeasurement.GetAngleDegrees(
+                        item.Points[0],item.Points[1],item.Points[2]).ToString("0.###") + "°";
+                case MVIImageOverlayKind.DiameterMeasurement:
+                    pixels = item.Bounds.Width;
+                    if (spacing.HasValue)
+                    {
+                        double x = pixels * spacing.Value.MillimetersPerPixelX;
+                        double y = pixels * spacing.Value.MillimetersPerPixelY;
+                        return pixels.ToString("0.###") + " px · X " + x.ToString("0.###") +
+                            " mm / Y " + y.ToString("0.###") + " mm";
+                    }
+                    return pixels.ToString("0.###") + " px";
+                case MVIImageOverlayKind.AreaMeasurement:
+                    pixels = item.Points.Count >= 3 ?
+                        FIMImageMeasurement.GetPolygonAreaPixels(item.Points) :
+                        FIMImageMeasurement.GetRectangleAreaPixels(item.Bounds);
+                    physical = item.Points.Count >= 3 ?
+                        FIMImageMeasurement.GetPolygonAreaSquareMillimeters(item.Points,spacing) :
+                        FIMImageMeasurement.GetRectangleAreaSquareMillimeters(item.Bounds,spacing);
+                    suffix = "mm²";
+                    return pixels.ToString("0.###") + " px²" +
+                        (physical.HasValue ? " / " + physical.Value.ToString("0.###") + " " + suffix : "");
+                default: return string.Empty;
+            }
+            return pixels.ToString("0.###") + " px" +
+                (physical.HasValue ? " / " + physical.Value.ToString("0.###") + " " + suffix : "");
+        }
+
         private void DrawOverlays()
         {
             VerifyAccess();
@@ -659,7 +724,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 else if (item.Kind == MVIImageOverlayKind.RectangleRoi ||
                          item.Kind == MVIImageOverlayKind.RectangleAnnotation ||
                          item.Kind == MVIImageOverlayKind.DefectBox ||
-                         item.Kind == MVIImageOverlayKind.AreaMeasurement)
+                         (item.Kind == MVIImageOverlayKind.AreaMeasurement && item.Points.Count == 0))
                 {
                     Rectangle rectangle = new Rectangle { Width = Math.Max(0, right - left),
                         Height = Math.Max(0, bottom - top), Stroke = stroke,
@@ -669,7 +734,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                     OverlayCanvas.Children.Add(rectangle);
                 }
                 else if (item.Kind == MVIImageOverlayKind.PolygonRoi ||
-                         item.Kind == MVIImageOverlayKind.PolygonAnnotation)
+                         item.Kind == MVIImageOverlayKind.PolygonAnnotation ||
+                         (item.Kind == MVIImageOverlayKind.AreaMeasurement && item.Points.Count >= 3))
                 {
                     Polygon polygon = new Polygon { Stroke = stroke, StrokeThickness = width,
                         Fill = Brushes.Transparent, IsHitTestVisible = false };
@@ -723,19 +789,26 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                         Canvas.SetLeft(label, vertex.X + 5); Canvas.SetTop(label,vertex.Y + 5);
                         OverlayCanvas.Children.Add(label);
                     }
-                    if (item.Kind == MVIImageOverlayKind.DistanceMeasurement)
-                    {
-                        double value = item.Points[0].DistanceTo(item.Points[1]);
-                        TextBlock label = new TextBlock { Text = value.ToString("0.###") + " px",
-                            Foreground = stroke, Background = Brushes.Black,
-                            FontSize = 12, IsHitTestVisible = false };
-                        Point where=SourceToCanvas(item.Points[1]);
-                        Canvas.SetLeft(label,where.X+4);
-                        Canvas.SetTop(label,where.Y+4);
-                        OverlayCanvas.Children.Add(label);
-                    }
+                    if (item.Kind == MVIImageOverlayKind.DistanceMeasurement ||
+                        item.Kind == MVIImageOverlayKind.HorizontalMeasurement ||
+                        item.Kind == MVIImageOverlayKind.VerticalMeasurement)
+                        DrawMeasurementLabel(item, stroke, SourceToCanvas(item.Points[item.Points.Count-1]));
                 }
+                if (item.Kind == MVIImageOverlayKind.DiameterMeasurement ||
+                    item.Kind == MVIImageOverlayKind.AreaMeasurement)
+                    DrawMeasurementLabel(item,stroke,new Point(right,top));
             }
+        }
+
+        private void DrawMeasurementLabel(MVIImageOverlayItem item, Brush stroke, Point anchor)
+        {
+            string value = DescribeMeasurement(item);
+            if (string.IsNullOrEmpty(value)) return;
+            TextBlock label = new TextBlock { Text = value, Foreground = stroke,
+                Background = Brushes.Black, FontSize = 12, IsHitTestVisible = false };
+            Canvas.SetLeft(label,anchor.X + 4);
+            Canvas.SetTop(label,anchor.Y + 4);
+            OverlayCanvas.Children.Add(label);
         }
 
         private void DrawLine(double x1, double y1, double x2, double y2, Brush stroke, double width)
@@ -781,12 +854,26 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             FGEPoint2D[] points = null;
             string text = null;
             if (kind == MVIImageOverlayKind.DistanceMeasurement ||
+                kind == MVIImageOverlayKind.HorizontalMeasurement ||
+                kind == MVIImageOverlayKind.VerticalMeasurement ||
                 kind == MVIImageOverlayKind.ArrowAnnotation)
             {
                 points = new[] { new FGEPoint2D(_selectionX + 0.5, _selectionY + 0.5),
                     new FGEPoint2D(_lastSelectionX + 0.5, _lastSelectionY + 0.5) };
-                layer = kind == MVIImageOverlayKind.DistanceMeasurement ?
-                    MVIImageOverlayLayer.Measurement : MVIImageOverlayLayer.Annotation;
+                if (kind == MVIImageOverlayKind.HorizontalMeasurement)
+                    points[1] = new FGEPoint2D(points[1].X,points[0].Y);
+                if (kind == MVIImageOverlayKind.VerticalMeasurement)
+                    points[1] = new FGEPoint2D(points[0].X,points[1].Y);
+                if (kind == MVIImageOverlayKind.HorizontalMeasurement ||
+                    kind == MVIImageOverlayKind.VerticalMeasurement)
+                {
+                    rect = new FGERect2D(Math.Min(points[0].X,points[1].X),
+                        Math.Min(points[0].Y,points[1].Y),
+                        Math.Abs(points[1].X-points[0].X),
+                        Math.Abs(points[1].Y-points[0].Y));
+                }
+                layer = kind == MVIImageOverlayKind.ArrowAnnotation ?
+                    MVIImageOverlayLayer.Annotation : MVIImageOverlayLayer.Measurement;
             }
             else if (kind == MVIImageOverlayKind.TextAnnotation ||
                      kind == MVIImageOverlayKind.PointAnnotation)
@@ -795,7 +882,11 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 text = kind == MVIImageOverlayKind.TextAnnotation ? _annotationText : null;
             }
             else if (kind == MVIImageOverlayKind.DefectBox) layer = MVIImageOverlayLayer.Defect;
-            if (kind == MVIImageOverlayKind.CircleRoi)
+            else if (kind == MVIImageOverlayKind.DiameterMeasurement ||
+                kind == MVIImageOverlayKind.AreaMeasurement)
+                layer = MVIImageOverlayLayer.Measurement;
+            if (kind == MVIImageOverlayKind.CircleRoi ||
+                kind == MVIImageOverlayKind.DiameterMeasurement)
             {
                 double side = Math.Min(rect.Width, rect.Height);
                 rect = new FGERect2D(rect.X + (rect.Width - side) / 2.0,
@@ -912,6 +1003,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 case MVIImageToolMode.CircleRoi: return MVIImageOverlayKind.CircleRoi;
                 case MVIImageToolMode.EllipseRoi: return MVIImageOverlayKind.EllipseRoi;
                 case MVIImageToolMode.Distance: return MVIImageOverlayKind.DistanceMeasurement;
+                case MVIImageToolMode.HorizontalDistance: return MVIImageOverlayKind.HorizontalMeasurement;
+                case MVIImageToolMode.VerticalDistance: return MVIImageOverlayKind.VerticalMeasurement;
+                case MVIImageToolMode.Diameter: return MVIImageOverlayKind.DiameterMeasurement;
+                case MVIImageToolMode.Area: return MVIImageOverlayKind.AreaMeasurement;
                 case MVIImageToolMode.Arrow: return MVIImageOverlayKind.ArrowAnnotation;
                 case MVIImageToolMode.Point: return MVIImageOverlayKind.PointAnnotation;
                 case MVIImageToolMode.Text: return MVIImageOverlayKind.TextAnnotation;
@@ -926,6 +1021,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             Point pointer = e.GetPosition(ViewportRoot);
             int x,y;
             if (_toolMode == MVIImageToolMode.PolygonRoi ||
+                _toolMode == MVIImageToolMode.PolygonArea ||
                 _toolMode == MVIImageToolMode.Angle)
             {
                 if (!TryImagePoint(pointer, out x, out y)) return;
@@ -934,7 +1030,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 if (_polygonDraft.Count == 0 ||
                     !_polygonDraft[_polygonDraft.Count - 1].Equals(p))
                     _polygonDraft.Add(p);
-                if ((_toolMode == MVIImageToolMode.PolygonRoi && e.ClickCount >= 2) ||
+                if (((_toolMode == MVIImageToolMode.PolygonRoi ||
+                       _toolMode == MVIImageToolMode.PolygonArea) && e.ClickCount >= 2) ||
                     (_toolMode == MVIImageToolMode.Angle && _polygonDraft.Count == 3))
                     CompletePointDraft(_toolMode);
                 else { _draftHover = null; DrawSelection(); }
