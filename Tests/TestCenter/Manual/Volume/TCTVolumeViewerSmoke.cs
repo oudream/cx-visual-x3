@@ -36,6 +36,11 @@ namespace CxVisual.TestCenter.UI
                 Check(actions.Count>=20,
                     "旧版RAW/BMP/四视图/渲染/任意切操作均需公开到工作区命令");
                 TCTWorkspaceAction clearCommand=actions.Find(c=>c.Id=="ct3d.clear");
+                TCTWorkspaceAction cancelCommand=actions.Find(c=>c.Id=="ct3d.load.cancel");
+                Button cancelButton=FindVisualByAutomationId<Button>(frame,"TCT.Volume.CancelLoad");
+                Check(cancelCommand!=null && !cancelCommand.CanExecute() &&
+                      cancelButton!=null && !cancelButton.IsEnabled,
+                    "空闲时取消加载按钮与工作区命令必须禁用");
                 TCTWorkspaceAction windowCommand=actions.Find(c=>c.Id=="ct3d.window");
                 TCTWorkspaceAction zoomCommand=actions.Find(c=>c.Id=="ct3d.zoomIn");
                 Check(clearCommand!=null && !clearCommand.CanExecute() &&
@@ -370,6 +375,32 @@ namespace CxVisual.TestCenter.UI
                               !frame.IsBmpLoading,
                             "被取消的BMP加载不能覆盖当前体数据且必须回收异步状态");
                     }
+                    // 真实点击WPF顶部按钮取消正在执行的BMP解码，不得清空当前体数据。
+                    FVOVolumeData beforeCancel=frame.Volume;
+                    System.Threading.Tasks.Task pending=frame.LoadBmpDirectoryAsync(
+                        bmpFolder,System.Threading.CancellationToken.None);
+                    Check(cancelCommand.CanExecute() && cancelButton.IsEnabled &&
+                          frame.IsBmpLoading,
+                        "BMP开始异步读取后应立即启用取消按钮与命令");
+                    cancelButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent,cancelButton));
+                    if(!pending.IsCompleted)
+                    {
+                        System.Windows.Threading.DispatcherFrame pump=
+                            new System.Windows.Threading.DispatcherFrame();
+                        pending.ContinueWith(t=>frame.Dispatcher.BeginInvoke(
+                            new Action(delegate {pump.Continue=false;})));
+                        System.Windows.Threading.Dispatcher.PushFrame(pump);
+                    }
+                    bool canceledByButton=false;
+                    try { pending.GetAwaiter().GetResult(); }
+                    catch(System.OperationCanceledException) { canceledByButton=true; }
+                    Check(canceledByButton && Object.ReferenceEquals(beforeCancel,frame.Volume) &&
+                          !frame.IsBmpLoading && !cancelCommand.CanExecute() &&
+                          !cancelButton.IsEnabled,
+                        "WPF按钮取消BMP后台读取后须保留原体并恢复空闲操作状态");
+                    frame.MoveSlices(2,3,1);
+                    Check(frame.ViewState.SliceX==2 && frame.ViewState.SliceY==3,
+                        "取消加载后当前FVO/MVI切片仍可交互");
                     frame.LoadDemo();
                 }
                 finally {Directory.Delete(bmpFolder,true);}

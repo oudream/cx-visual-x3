@@ -49,6 +49,8 @@ namespace CxVisual.TestCenter.UI
                 {
                     WorkspaceAction("ct3d.openRaw","打开 RAW",OpenRaw),
                     WorkspaceAction("ct3d.openBmp","打开 BMP 目录",OpenBmpDirectory),
+                    WorkspaceAction("ct3d.load.cancel","取消后台加载",CancelPendingVolumeLoads,
+                        ()=>HasPendingVolumeLoads),
                     WorkspaceAction("ct3d.demo","演示体",LoadDemo),
                     WorkspaceAction("ct3d.clear","清空数据",ClearVolume,loaded),
                     WorkspaceAction("ct3d.fit","复位四视图",FitAllViews,loaded),

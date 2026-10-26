@@ -19,6 +19,23 @@ namespace CxVisual.TestCenter.UI
         private int _lastLoadGeneration;
         public bool IsRawLoading { get; private set; }
         public bool IsBmpLoading { get; private set; }
+        public bool HasPendingVolumeLoads
+        {
+            get { return IsRawLoading || IsBmpLoading || _activeRawCache!=null; }
+        }
+        private void UpdateLoadAvailability()
+        {
+            _cancelLoadButton.IsEnabled=HasPendingVolumeLoads;
+            RaiseStateChanged();
+        }
+        /// <summary>保留当前已显示的FVO，仅取消尚未完成的RAW/BMP/高清缓存任务。</summary>
+        public void CancelPendingVolumeLoads()
+        {
+            if(!HasPendingVolumeLoads)return;
+            CancelPendingRawLoads();
+            _status.Text="已请求取消后台体数据读取；当前已显示的体数据保持不变。";
+            UpdateLoadAvailability();
+        }
 
         /// <summary>与RAW共享加载世代号，切换数据或关闭时拒绝过期BMP结果。</summary>
         public async Task LoadBmpDirectoryAsync(string directory,CancellationToken cancellation)
@@ -30,6 +47,7 @@ namespace CxVisual.TestCenter.UI
             int generation=++_lastLoadGeneration;
             FVOVolumeData loaded=null;
             IsBmpLoading=true;
+            UpdateLoadAvailability();
             _status.Text="正在后台读取 BMP 序列："+Path.GetFileName(
                 directory.TrimEnd(Path.DirectorySeparatorChar,Path.AltDirectorySeparatorChar));
             Stopwatch elapsed=Stopwatch.StartNew();
@@ -51,6 +69,7 @@ namespace CxVisual.TestCenter.UI
                     IsBmpLoading=false;
                 }
                 current.Dispose();
+                UpdateLoadAvailability();
             }
         }
 
@@ -64,6 +83,7 @@ namespace CxVisual.TestCenter.UI
             int generation=++_lastLoadGeneration;
             FVOVolumeData loaded=null;
             IsRawLoading=true;
+            UpdateLoadAvailability();
             _status.Text="正在后台读取 RAW 交互预览："+Path.GetFileName(filename);
             Stopwatch elapsed=Stopwatch.StartNew();
             try
@@ -88,6 +108,7 @@ namespace CxVisual.TestCenter.UI
                     IsRawLoading=false;
                 }
                 current.Dispose();
+                UpdateLoadAvailability();
             }
         }
 
@@ -109,6 +130,7 @@ namespace CxVisual.TestCenter.UI
             bool mapped=info.Length>512L*1024*1024;
             CancellationTokenSource cacheSource=new CancellationTokenSource();
             _activeRawCache=cacheSource;
+            UpdateLoadAvailability();
             try
             {
                 // UInt16/Float32保留真实原始精度，绝不能通过归一化8bit图恢复。
@@ -139,6 +161,7 @@ namespace CxVisual.TestCenter.UI
                 if(Object.ReferenceEquals(_activeRawCache,cacheSource))
                     _activeRawCache=null;
                 cacheSource.Dispose();
+                UpdateLoadAvailability();
             }
         }
 

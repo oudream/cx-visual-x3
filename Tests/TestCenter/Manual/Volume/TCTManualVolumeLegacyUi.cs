@@ -39,6 +39,10 @@ namespace CxVisual.TestCenter.UI
         private readonly TextBlock _legacyDetails = new TextBlock { TextWrapping=TextWrapping.Wrap };
         private readonly CheckBox _autoSliceFit = new CheckBox { Content="每次换层自动适合视图",IsChecked=false };
         private readonly ComboBox _saveViewChoice=new ComboBox { Margin=new Thickness(4),Height=28 };
+        private readonly Button _cancelLoadButton=new Button {
+            Content="取消加载",Padding=new Thickness(10,4,10,4),
+            Margin=new Thickness(4,5,2,5),MinWidth=90,IsEnabled=false
+        };
         public int LegacyTopTabCount { get { return _upperTabs == null ? 0 : _upperTabs.Items.Count; } }
         public int LegacyBottomTabCount { get { return _lowerTabs == null ? 0 : _lowerTabs.Items.Count; } }
         public bool IsLegacySingleView { get { return _maximizedSlot != null; } }
@@ -56,6 +60,9 @@ namespace CxVisual.TestCenter.UI
             StackPanel actions=new StackPanel { Orientation=Orientation.Horizontal,Background=BrushOf(248,250,253) };
             AddButton(actions,"打开 RAW","TCT.Volume.OpenRaw",OpenRaw);
             AddButton(actions,"打开 BMP 目录","TCT.Volume.OpenBmp",OpenBmpDirectory);
+            AutomationProperties.SetAutomationId(_cancelLoadButton,"TCT.Volume.CancelLoad");
+            _cancelLoadButton.Click+=(s,e)=>ExecuteUiAction(CancelPendingVolumeLoads);
+            actions.Children.Add(_cancelLoadButton);
             AddButton(actions,"清空","TCT.Volume.Clear",ClearVolume);
             AddButton(actions,"复位视图","TCT.Volume.Fit",FitAllViews);
             AddButton(actions,"保存截图","TCT.Volume.SaveScreenshot",SaveScreenshotDialog);
