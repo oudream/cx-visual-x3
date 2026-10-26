@@ -977,6 +977,58 @@ namespace CxVisual.TestCenter.UI
             if(!delivered)throw new InvalidOperationException(
                 "Message TestCenter UIA did not actually deliver message via M36 Owner");
 
+            // 原UIA只覆盖Publish；追加真实Request/Reply及Topic切换后的本地应答重绑定。
+            Thread.Sleep(150);
+            InvokePattern request=Find(root,"TCT.Manual.Action.message.request")
+                .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
+            if(request==null)throw new InvalidOperationException("Message request action unavailable");
+            request.Invoke();
+            bool replied=false;
+            for(int attempt=0;attempt<50&&!replied;attempt++)
+            {
+                window.Dispatcher.Invoke(new Action(() =>
+                {
+                    System.Windows.Controls.TabControl tabs=
+                        window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                    TCTManualMessageFrame page=tabs==null?null:tabs.Items
+                        .OfType<System.Windows.Controls.TabItem>()
+                        .Where(x=>(x.Tag as TCTWorkspaceDescriptor)?.WorkspaceId==created.WorkspaceId)
+                        .Select(x=>x.Content).OfType<TCTManualMessageFrame>().FirstOrDefault();
+                    replied=page!=null && page.ObservedCount>=3 &&
+                        page.StatusSummary.Contains("本地测试应答");
+                }));
+                if(!replied)Thread.Sleep(100);
+            }
+            if(!replied)throw new InvalidOperationException(
+                "Message TestCenter UIA did not receive local correlated reply");
+
+            ValuePattern topic=Find(root,"TCT.Message.Topic")
+                .GetCurrentPattern(ValuePattern.Pattern) as ValuePattern;
+            if(topic==null)throw new InvalidOperationException("Message Topic is not editable by UIA");
+            topic.SetValue("/machine/1201/app/XRay/module/Camera2/message/Captured");
+            Thread.Sleep(150);
+            request=Find(root,"TCT.Manual.Action.message.request")
+                .GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
+            if(request==null)throw new InvalidOperationException("Message request action lost after Topic update");
+            request.Invoke();
+            bool rebound=false;
+            for(int attempt=0;attempt<50&&!rebound;attempt++)
+            {
+                window.Dispatcher.Invoke(new Action(() =>
+                {
+                    System.Windows.Controls.TabControl tabs=
+                        window.DocumentHost.Content as System.Windows.Controls.TabControl;
+                    TCTManualMessageFrame page=tabs==null?null:tabs.Items
+                        .OfType<System.Windows.Controls.TabItem>()
+                        .Where(x=>(x.Tag as TCTWorkspaceDescriptor)?.WorkspaceId==created.WorkspaceId)
+                        .Select(x=>x.Content).OfType<TCTManualMessageFrame>().FirstOrDefault();
+                    rebound=page!=null && page.ObservedCount>=4 &&
+                        page.StatusSummary.Contains("本地测试应答");
+                }));
+                if(!rebound)Thread.Sleep(100);
+            }
+            if(!rebound)throw new InvalidOperationException(
+                "Message TestCenter UIA local responder did not rebind changed Topic");
         }
 
         private static void InteractManualRoot(IntPtr hwnd, TCTMainWindow window)

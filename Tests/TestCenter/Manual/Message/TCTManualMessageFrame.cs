@@ -45,6 +45,7 @@ namespace CxVisual.TestCenter.UI
         private readonly TextBlock _metrics = new TextBlock { TextWrapping = TextWrapping.Wrap, Foreground = Brushes.SlateGray, Margin = new Thickness(4, 6, 4, 6), FontSize = 14 };
         private IDisposable _subscription;
         private IDisposable _responder;
+        private string _responderTopic;
         private bool _disposed;
         private bool _busy;
         public string WorkspaceId { get { return "manual.message"; } }
@@ -83,8 +84,10 @@ namespace CxVisual.TestCenter.UI
         private static Button ActionButton(string caption, string automationId, Action handler)
         {
             Button button = new Button { Content = caption, Padding = new Thickness(13, 6, 13, 6),
-                Margin = new Thickness(3), Background = Brushes.AliceBlue,
-                BorderBrush = Brushes.LightSteelBlue, MinHeight = 34 };
+                Margin = new Thickness(3), MinHeight = 36, FontSize = 13 };
+            button.SetResourceReference(Control.BackgroundProperty, "MPWSurfaceBrush");
+            button.SetResourceReference(Control.ForegroundProperty, "MPWForegroundBrush");
+            button.SetResourceReference(Control.BorderBrushProperty, "MPWBorderBrush");
             AutomationProperties.SetAutomationId(button,automationId);
             button.Click += (sender,args) => handler();
             return button;
@@ -97,6 +100,10 @@ namespace CxVisual.TestCenter.UI
         public TCTManualMessageFrame()
         {
             ManualSessionId = Guid.NewGuid();
+            AutomationProperties.SetAutomationId(_topic, "TCT.Message.Topic");
+            AutomationProperties.SetAutomationId(_filter, "TCT.Message.Filter");
+            AutomationProperties.SetAutomationId(_payload, "TCT.Message.Payload");
+            AutomationProperties.SetAutomationId(_replyTopic, "TCT.Message.ReplyTopic");
             _encoding.Items.Add("Text");
             _encoding.Items.Add("JSON文本（string）");
             _encoding.Items.Add("Binary Hex");
@@ -112,64 +119,138 @@ namespace CxVisual.TestCenter.UI
             RefreshMetrics();
         }
 
+        private static Border Card(UIElement child)
+        {
+            Border card = new Border {
+                CornerRadius = new CornerRadius(7), BorderThickness = new Thickness(1),
+                Padding = new Thickness(12), Child = child
+            };
+            card.SetResourceReference(Border.BackgroundProperty, "MPWSurfaceBrush");
+            card.SetResourceReference(Border.BorderBrushProperty, "MPWBorderBrush");
+            return card;
+        }
+
         private void BuildView()
         {
-            DockPanel root = new DockPanel { Background = Brushes.White, Margin = new Thickness(12) };
-            StackPanel top = new StackPanel();
-            DockPanel.SetDock(top,Dock.Top);
-            top.Children.Add(new TextBlock { Text = "M36 · 消息中心 / Topic Publish · Subscribe",
-                FontSize = 21, FontWeight = FontWeights.SemiBold, Foreground = Brushes.SteelBlue,
-                Margin = new Thickness(4, 4, 4, 6) });
-            top.Children.Add(new TextBlock { Text = "仅使用正式MNMMessageCenter；本页面消息只在当前TestCenter进程内流转。普通通知不等于设备命令或硬件ACK。",
-                Foreground = Brushes.SlateGray, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(4,0,4,8) });
+            // 沿用唯一 TestCenter Shell；Frame 内仅整理专业内容，不复制 Dock/Ribbon/消息状态。
+            Grid root = new Grid { Margin = new Thickness(12) };
+            root.SetResourceReference(Panel.BackgroundProperty, "MPWSurfaceAltBrush");
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-            top.Children.Add(Label("发布 Topic（必须是完整具体Topic，不允许通配符）"));
-            top.Children.Add(_topic);
-            top.Children.Add(Label("订阅过滤器（MQTT + 单层，# 尾部多层）"));
-            top.Children.Add(_filter);
-            top.Children.Add(Label("消息 Payload"));
-            _payload.MinHeight = 44; _payload.Height = Double.NaN; _payload.AcceptsReturn = true;
+            StackPanel title = new StackPanel { Margin = new Thickness(4, 2, 4, 12) };
+            title.Children.Add(new TextBlock {
+                Text = "消息中心 · 发布订阅与诊断", FontSize = 21,
+                FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 5)
+            });
+            title.Children.Add(new TextBlock {
+                Text = "M36 进程内测试会话 · 消息送达不等于设备命令执行成功",
+                FontSize = 12, TextWrapping = TextWrapping.Wrap
+            });
+            Grid.SetRow(title, 0);
+            root.Children.Add(title);
+
+            Grid workspace = new Grid();
+            workspace.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(43, GridUnitType.Star), MinWidth = 320 });
+            workspace.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(57, GridUnitType.Star), MinWidth = 350 });
+            Grid.SetRow(workspace, 1);
+            root.Children.Add(workspace);
+
+            StackPanel form = new StackPanel();
+            form.Children.Add(new TextBlock {
+                Text = "消息构造与发送", FontSize = 16, FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(4, 2, 4, 10)
+            });
+            form.Children.Add(Label("发布 Topic（不允许通配符）"));
+            form.Children.Add(_topic);
+            form.Children.Add(Label("订阅过滤器（+ 单层、# 末尾多层）"));
+            form.Children.Add(_filter);
+            form.Children.Add(Label("Payload · Text / JSON文本 / Binary Hex"));
+            _payload.MinHeight = 76;
+            _payload.Height = Double.NaN;
+            _payload.AcceptsReturn = true;
             _payload.TextWrapping = TextWrapping.Wrap;
-            top.Children.Add(_payload);
-            StackPanel settings = Horizontal();
+            _payload.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
+            form.Children.Add(_payload);
+
+            WrapPanel settings = new WrapPanel { Margin = new Thickness(1, 7, 0, 3) };
             settings.Children.Add(Label("形式"));
             settings.Children.Add(_encoding);
             settings.Children.Add(Label("分发"));
             settings.Children.Add(_dispatch);
-            settings.Children.Add(_retain); settings.Children.Add(_qos);
-            top.Children.Add(settings);
-            StackPanel settings2=Horizontal();
-            settings2.Children.Add(Label("来源"));
-            _source.Width=150; settings2.Children.Add(_source);
-            settings2.Children.Add(Label("回复 Topic"));
-            _replyTopic.MinWidth=275; settings2.Children.Add(_replyTopic);
-            top.Children.Add(settings2);
-            top.Children.Add(_localResponder);
-            StackPanel actions = Horizontal();
+            settings.Children.Add(_retain);
+            settings.Children.Add(_qos);
+            form.Children.Add(settings);
+            form.Children.Add(Label("消息来源"));
+            form.Children.Add(_source);
+            form.Children.Add(Label("回复 Topic"));
+            form.Children.Add(_replyTopic);
+            _localResponder.Margin = new Thickness(6, 8, 0, 8);
+            form.Children.Add(_localResponder);
+
+            WrapPanel actions = new WrapPanel { Margin = new Thickness(0, 6, 0, 4) };
             actions.Children.Add(ActionButton("订阅", "TCT.Message.Subscribe", Subscribe));
             actions.Children.Add(ActionButton("取消订阅", "TCT.Message.Unsubscribe", Unsubscribe));
-            actions.Children.Add(ActionButton("发布", "TCT.Message.Publish", () => RunCommand(PublishLocalAsync)));
+            actions.Children.Add(ActionButton("发布消息", "TCT.Message.Publish", () => RunCommand(PublishLocalAsync)));
             actions.Children.Add(ActionButton("请求响应", "TCT.Message.Request", () => RunCommand(RequestLocalAsync)));
             actions.Children.Add(ActionButton("刷新指标", "TCT.Message.Metrics", RefreshMetrics));
-            top.Children.Add(actions);
-            top.Children.Add(_status);
-            root.Children.Add(top);
+            form.Children.Add(actions);
+            ScrollViewer editor = new ScrollViewer {
+                Content = form, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
+            };
+            Border editorCard = Card(editor);
+            editorCard.Margin = new Thickness(0, 0, 6, 0);
+            Grid.SetColumn(editorCard, 0);
+            workspace.Children.Add(editorCard);
 
-            Grid body = new Grid { Margin = new Thickness(3,5,3,4) };
-            body.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1,GridUnitType.Star) });
-            body.RowDefinitions.Add(new RowDefinition { Height = new GridLength(90) });
-            DataGrid table = new DataGrid { ItemsSource = _rows, IsReadOnly=true,
-                AutoGenerateColumns=true, CanUserAddRows=false, SelectionMode=DataGridSelectionMode.Single,
-                GridLinesVisibility=DataGridGridLinesVisibility.Horizontal,
-                Background=Brushes.White, FontSize=13 };
+            Grid monitor = new Grid();
+            monitor.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            monitor.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            monitor.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            monitor.Children.Add(new TextBlock {
+                Text = "实时消息监视 · 最近 250 条", FontSize = 16,
+                FontWeight = FontWeights.SemiBold, Margin = new Thickness(4, 2, 4, 12)
+            });
+            DataGrid table = new DataGrid {
+                ItemsSource = _rows, IsReadOnly = true,
+                AutoGenerateColumns = true, CanUserAddRows = false,
+                SelectionMode = DataGridSelectionMode.Single,
+                GridLinesVisibility = DataGridGridLinesVisibility.Horizontal,
+                FontSize = 13, MinHeight = 120
+            };
+            table.SetResourceReference(Control.BackgroundProperty, "MPWSurfaceBrush");
+            table.SetResourceReference(Control.ForegroundProperty, "MPWForegroundBrush");
             AutomationProperties.SetAutomationId(table, "TCT.Message.History");
-            Grid.SetRow(table,0);body.Children.Add(table);
-            StackPanel diagnostics=new StackPanel { Margin=new Thickness(2,6,2,0) };
-            diagnostics.Children.Add(Label("实际消息指标 · Published / Delivered / Queue / 订阅 / 失败 / P95"));
+            Grid.SetRow(table, 1);
+            monitor.Children.Add(table);
+            TextBlock hint = new TextBlock {
+                Text = "消息记录仅供当前人工会话观察，不自动生成 NUnit/TCT PASS。",
+                FontSize = 11, Margin = new Thickness(4, 10, 4, 2), TextWrapping = TextWrapping.Wrap
+            };
+            Grid.SetRow(hint, 2);
+            monitor.Children.Add(hint);
+            Border monitorCard = Card(monitor);
+            monitorCard.Margin = new Thickness(6, 0, 0, 0);
+            Grid.SetColumn(monitorCard, 1);
+            workspace.Children.Add(monitorCard);
+
+            StackPanel diagnostics = new StackPanel { Margin = new Thickness(3, 12, 3, 2) };
+            diagnostics.Children.Add(new TextBlock {
+                Text = "实际指标 / Published · Delivered · Queue · Subs · Failed · Retain · P95",
+                FontSize = 12, FontWeight = FontWeights.SemiBold
+            });
+            _metrics.Margin = new Thickness(4, 5, 4, 4);
+            _status.Margin = new Thickness(4, 3, 4, 2);
+            _metrics.SetResourceReference(TextBlock.ForegroundProperty, "MPWMutedBrush");
+            _status.SetResourceReference(TextBlock.ForegroundProperty, "MPWForegroundBrush");
             diagnostics.Children.Add(_metrics);
-            Grid.SetRow(diagnostics,1);body.Children.Add(diagnostics);
-            root.Children.Add(body);
-            Content=root;
+            diagnostics.Children.Add(_status);
+            Border diagnosticsCard = Card(diagnostics);
+            Grid.SetRow(diagnosticsCard, 2);
+            root.Children.Add(diagnosticsCard);
+            Content = root;
         }
 
         private void Changed()
@@ -212,7 +293,12 @@ namespace CxVisual.TestCenter.UI
                 Show("已订阅："+_filter.Text+"；支持Text/Binary/DTO观察，最多显示250条");
                 RefreshMetrics();
             }
-            catch(Exception e){Show("订阅失败："+e.Message);throw;}
+            catch(Exception e)
+            {
+                // UI人工输入错误不允许冲出WPF事件循环；之前的有效订阅仍然保留。
+                Show("订阅失败："+e.Message);
+                Append("ERR", _filter.Text, "", e.Message);
+            }
         }
         public void Unsubscribe()
         {
@@ -255,13 +341,22 @@ namespace CxVisual.TestCenter.UI
         public async Task<MNMMessageContext<string>> RequestLocalAsync()
         {
             if(_disposed) throw new ObjectDisposedException("TCTManualMessageFrame");
+            // 请求Topic修改后重建本地应答订阅；绝不继续监听旧Topic并假报超时。
+            if(_responder!=null && (_localResponder.IsChecked!=true ||
+                !string.Equals(_responderTopic, _topic.Text, StringComparison.Ordinal)))
+            {
+                _responder.Dispose();
+                _responder=null;
+                _responderTopic=null;
+            }
             if(_localResponder.IsChecked==true && _responder==null)
+            {
                 _responder=_center.SubscribeAsync<string>(_topic.Text,
                     ctx => ctx.ReplyAsync("LOCAL-TEST-ACK:"+ctx.Payload),
-                    new MNMSubscriptionOptions{SubscriberId="TestCenter.Message.LocalResponder",
-                        ReplayRetained=false});
-            if(_localResponder.IsChecked!=true&&_responder!=null)
-            { _responder.Dispose();_responder=null; }
+                    new MNMSubscriptionOptions { SubscriberId="TestCenter.Message.LocalResponder",
+                        ReplayRetained=false });
+                _responderTopic=_topic.Text;
+            }
             MNMMessageContext<string> response=await _center.RequestAsync<string,string>(
                 _topic.Text,_payload.Text,_replyTopic.Text,TimeSpan.FromSeconds(2)).ConfigureAwait(true);
             Append("REPLY",response.Header.Topic,response.Payload,
@@ -277,8 +372,11 @@ namespace CxVisual.TestCenter.UI
             try{await action().ConfigureAwait(true);}
             catch(Exception error)
             {
-                Show(error.GetType().Name+": "+error.Message);
-                Append("ERR",_topic.Text,"",error.Message);
+                if(!_disposed)
+                {
+                    Show(error.GetType().Name+": "+error.Message);
+                    Append("ERR",_topic.Text,"",error.Message);
+                }
             }
             finally{_busy=false;Changed();}
         }
@@ -298,9 +396,9 @@ namespace CxVisual.TestCenter.UI
         {
             if(_disposed)return;
             if(_subscription!=null){_subscription.Dispose();_subscription=null;}
-            if(_responder!=null){_responder.Dispose();_responder=null;}
-            _center.Dispose();
             _disposed=true;
+            if(_responder!=null){_responder.Dispose();_responder=null;_responderTopic=null;}
+            _center.Dispose();
             // 手工会话关闭仅释放订阅与进程内消息，不能声明现场设备停止。
         }
     }
