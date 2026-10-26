@@ -119,8 +119,69 @@ namespace CxVisual.Tests.ArchitectureSmoke
             finally { pair[0].Close(); pair[1].Close(); }
         }
 
+
+        // P0-1：x2变量对象/运行状态语义的首次真实MDS落位，兼容旧表与作用域。
+        private static void VariableObjectSmoke()
+        {
+            MDSVariableTable table = new MDSVariableTable("leak-tester");
+            MDSVariableDefinition definition = new MDSVariableDefinition(
+                "Pressure", typeof(double), "MPa", true, 0.0, "pressure-001");
+            table.Define(definition);
+            MDSVariable<double> pressure = table.Resolve<double>("Pressure");
+            MDSVariableSnapshot<double> empty = pressure.Snapshot();
+            Check(empty.VariableId == "pressure-001" && empty.HasDefaultValue &&
+                empty.DefaultValue == 0.0 && !empty.HasValue && !empty.HasPreviousValue &&
+                empty.Quality == MDSVariableQuality.Uncertain,
+                "Default is definition, not a successfully sampled current value");
+            int notifications = 0;
+            table.VariableChanged += name => { if (name == "Pressure") notifications++; };
+            table.Update<double>("Pressure", 1.5);
+            MDSVariableSnapshot<double> first = pressure.Snapshot();
+            Check(first.CurrentValue == 1.5 && first.Revision == 1 &&
+                first.HasValue && !first.HasPreviousValue && first.Quality == MDSVariableQuality.Good,
+                "First update uses the single authoritative typed variable");
+            DateTime changedAt = first.ChangeUtc;
+            pressure.Update(1.5); // 同值只刷新，不能覆盖上一次不同的值。
+            MDSVariableSnapshot<double> refresh = pressure.Snapshot();
+            Check(refresh.Revision == 2 && refresh.ChangeUtc == changedAt &&
+                !refresh.HasPreviousValue && notifications == 2, "Equal refresh semantics");
+            pressure.Update(2.5);
+            pressure.Update(2.5);
+            MDSVariableSnapshot<double> last = pressure.Snapshot();
+            Check(last.PreviousValue == 1.5 && last.CurrentValue == 2.5 &&
+                last.Revision == 4 && last.HasPreviousValue && last.ChangeUtc >= changedAt &&
+                table.Get<double>("Pressure") == 2.5 && notifications == 4,
+                "Previous tracks last distinct value; hot handle shares the table owner");
+            Reject<InvalidCastException>(() => table.Resolve<int>("Pressure"));
+            Reject<ArgumentException>(() => new MDSVariableDefinition("Wrong", typeof(int),
+                defaultValue: "string-not-int"));
+            table.Define(new MDSVariableDefinition("raw", typeof(byte[]),
+                defaultValue: new byte[] { 1, 2 }));
+            MDSVariable<byte[]> raw = table.Resolve<byte[]>("raw");
+            byte[] source = { 3, 4 };
+            raw.Update(source); source[0] = 9;
+            MDSVariableSnapshot<byte[]> snap = raw.Snapshot();
+            byte[] output = snap.CurrentValue; output[1] = 7;
+            byte[] originalDefault = snap.DefaultValue; originalDefault[0] = 99;
+            Check(raw.Get()[0] == 3 && raw.Get()[1] == 4 &&
+                raw.Snapshot().DefaultValue[0] == 1,
+                "Snapshot must not leak mutable arrays");
+            table.Define(new MDSVariableDefinition("Readonly", typeof(int), writable: false));
+            Reject<InvalidOperationException>(() => table.Resolve<int>("Readonly").Update(1));
+            MDSVariableTable another = new MDSVariableTable("leak-tester-2");
+            another.Define(new MDSVariableDefinition("Pressure", typeof(double)));
+            another.Update<double>("Pressure", 99.0);
+            Check(table.Get<double>("Pressure") == 2.5 && another.Get<double>("Pressure") == 99.0,
+                "Variable scopes must not share values");
+            Check(table.Remove("Pressure"), "Removing a typed variable");
+            Reject<ObjectDisposedException>(() => pressure.Update(3.0));
+            Check(!table.Contains("Pressure") && notifications == 4,
+                "Removed typed handles must not publish stale updates");
+        }
+
         public static void Run()
         {
+            VariableObjectSmoke();
             MFMModuleComposition module = new MFMModuleComposition("PLC01", new[]
             {
                 new MFMComponentReference(MFMComponentRole.Channel, "TCP01", true),
