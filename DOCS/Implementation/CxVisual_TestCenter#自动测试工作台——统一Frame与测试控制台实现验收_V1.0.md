@@ -74,3 +74,10 @@
 OOP：工作区实例采用稳定WorkspaceId/ActiveModuleId，与独立Frame和唯一MHS草稿一一对应。GoF：沿用既有命令对象、UIA真实Invoke及Observer工作区切换；不增加第二套命令状态。AOP：阶段诊断、错误透传与CI测试证据通过现有机制记录，无热路径反射和新增适配项目。
 
 仍未以此次CI验证：真实PLC/X-Ray/相机硬件及联锁、跨PC远程总线、现场HIL、全部分辨率/DPI/多显示器与人工使用体验、真实GPU/专有SDK性能；上述事项按各自Owner和专项环境另验，不能冒充全平台生产可用。
+
+### 本阶段收尾实证：标题隔离及全部专项回归
+
+- [TestCenter源码与UIA修复 c917d0d](https://github.com/oudream/cx-visual-x3/commit/c917d0d6bcafb69ea672bd83b356e0eb012a5978)：`TCTMainWindow.OnWorkspaceActivated(null)`恢复Overview/非专业Tab标题，避免前一个Connector/Driver的标题残留；UIA真实切换Overview→专业页双向断言，并继续包含原删除/配置存储/历史负例。
+- [**TestCenter Windows 全量 #40280922151：SUCCESS**](https://github.com/oudream/cx-visual-x3/actions/runs/40280922151)：对应**c917d0d6bcafb69ea672bd83b356e0eb012a5978**，**29个步骤均Success**（其中包含CI环境设置、制品保存等流程步骤）；全方案Debug x64编译、动态NUnit、Connector UIA、全量WPF UIA、独立Worker异常与证据、并行Repeat/History全部通过。
+- 同一SHA补充专项： [命令工作区 #40280922359](https://github.com/oudream/cx-visual-x3/actions/runs/40280922359)、[消息中心 #40280922128](https://github.com/oudream/cx-visual-x3/actions/runs/40280922128)、[Config L1 #40280922159](https://github.com/oudream/cx-visual-x3/actions/runs/40280922159)、[配置公共底座 #40280922103](https://github.com/oudream/cx-visual-x3/actions/runs/40280922103)，**均Success**。
+- 此处“本阶段全量通过”严格限于 **c917d0d** 的TestCenter自动化与相关专项；之后其他领域的并行提交需要根据对应新SHA及CI另行确认。无物理PLC、X-Ray、跨机命令、真实厂商SDK或工业现场验收证据。
