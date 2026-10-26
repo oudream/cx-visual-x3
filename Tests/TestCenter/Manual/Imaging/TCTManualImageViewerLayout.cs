@@ -462,6 +462,8 @@ namespace CxVisual.TestCenter.UI
             content.Children.Add(Heading("ROI  ·  绘制与图层对象"));
             WrapPanel tiles = Row();
             Tile(tiles,"□","矩形","RegionRectangle",()=>SelectTool(MVIImageToolMode.RectangleRoi));
+            Tile(tiles,"◇","旋转矩形","RegionRotatedRectangle",()=>SelectTool(MVIImageToolMode.RotatedRectangleRoi));
+            Tile(tiles,"↻","旋转角柄","RotateOverlay",()=>SelectTool(MVIImageToolMode.RotateOverlay));
             Tile(tiles,"◯","圆形","RegionCircle",()=>SelectTool(MVIImageToolMode.CircleRoi));
             Tile(tiles,"⬭","椭圆","RegionEllipse",()=>SelectTool(MVIImageToolMode.EllipseRoi));
             Tile(tiles,"⬡","多边形","RegionPolygon",()=>SelectTool(MVIImageToolMode.PolygonRoi));
@@ -480,7 +482,7 @@ namespace CxVisual.TestCenter.UI
             content.Children.Add(buttons);
             AutomationProperties.SetAutomationId(_overlayList,"TCT.Imaging.OverlayList");
             content.Children.Add(_overlayList);
-            content.Children.Add(Hint("矩形等ROI用八柄缩放；多边形可切换“逐顶点编辑”，拖动金色顶点。无效自交或退化编辑会被拒绝。编辑共用原图坐标、同一对象ID和图层锁定机制。"));
+            content.Children.Add(Hint("旋转矩形先拖框，再选中切换“旋转角柄”拖动金色圆点；角点超出原图会被拒绝。逐顶点、八柄缩放与锁定仍使用原来的MVI对象Store。"));
             return Scroll(content);
         }
         private UIElement BuildStatisticsPage()
