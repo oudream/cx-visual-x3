@@ -258,8 +258,51 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 "fast/readback", 1.0, CancellationToken.None).GetAwaiter().GetResult());
         }
 
+        private sealed class FakeVariableProvider : IMDSVariableProvider
+        {
+            private Action<MDSVariableProviderSample> _push;
+            public string ProviderId { get { return "device-p1"; } }
+            public void Start(Action<MDSVariableProviderSample> callback) { _push = callback; }
+            public void Stop() { _push = null; }
+            public void Dispose() { Stop(); }
+            public void Emit(string name, object value)
+            {
+                Action<MDSVariableProviderSample> listener = _push;
+                if (listener != null) listener(new MDSVariableProviderSample(name, value));
+            }
+        }
+        private static void VariableProviderSmoke()
+        {
+            MDSVariableRegistry registry = new MDSVariableRegistry();
+            MDSVariableTable table = new MDSVariableTable("leak");
+            table.Define(new MDSVariableDefinition("pressure", typeof(double), null, false, null, "P"));
+            registry.Register(table);
+            FakeVariableProvider source = new FakeVariableProvider();
+            using (MDSVariableProviderHost host = new MDSVariableProviderHost(registry))
+            {
+                host.Register(source);
+                host.Bind("device-p1", "pressure-point", "leak", "pressure");
+                Reject<ArgumentException>(() => host.Bind("device-p1", "pressure-point", "leak", "pressure"));
+                Reject<InvalidCastException>(() => host.ResolveTyped<int>("device-p1", "pressure-point"));
+                host.Start();
+                source.Emit("pressure-point", 0.18);
+                source.Emit("unknown-point", 1.0);
+                Check(table.Get<double>("pressure") == 0.18 && host.Health().Applied == 1 &&
+                    host.Health().Rejected == 1, "Provider仅能写授权映射，允许刷新只读变量");
+                MDSVariableTypedPointBinding<double> hot = host.ResolveTyped<double>("device-p1", "pressure-point");
+                hot.Apply(0.22);
+                Check(table.Resolve<double>("pressure").Snapshot().PreviousValue == 0.18 &&
+                    table.Get<double>("pressure") == 0.22, "预绑定强类型Provider写入唯一变量");
+                host.Stop();
+                Reject<InvalidOperationException>(() => hot.Apply(0.3));
+                Check(table.Get<double>("pressure") == 0.22 && !host.Health().Running,
+                    "停止后旧世代Point句柄不可再写入");
+            }
+        }
+
         public static void Run()
         {
+            VariableProviderSmoke();
             VariableBoundAccessSmoke();
             VariableDispatcherSmoke();
             VariableTreeSmoke();
