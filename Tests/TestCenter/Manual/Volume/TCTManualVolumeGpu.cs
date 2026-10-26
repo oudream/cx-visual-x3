@@ -121,7 +121,7 @@ namespace CxVisual.TestCenter.UI
         private static void AddGpuSlider(Panel panel,string text,Slider slider)
         {
             panel.Children.Add(new TextBlock { Text=text, Margin=new Thickness(4,7,4,1),
-                Foreground=BrushOf(55,76,104) });
+                Foreground=BrushOf(218,231,244) });
             slider.Margin=new Thickness(6,0,6,6);
             panel.Children.Add(slider);
         }

@@ -99,13 +99,22 @@ namespace CxVisual.TestCenter.UI
                 AddViewportControls(host,viewer,row,column);
             }
 
-            Grid side=new Grid { Background=BrushOf(246,248,251),
+            Grid side=new Grid { Background=BrushOf(9,15,24),
                 Margin=new Thickness(4,0,0,0) };
             side.RowDefinitions.Add(new RowDefinition { Height=new GridLength(44,GridUnitType.Star) });
             side.RowDefinitions.Add(new RowDefinition { Height=new GridLength(56,GridUnitType.Star) });
             Grid.SetColumn(side,1);work.Children.Add(side);
-            _upperTabs=new TabControl { Margin=new Thickness(0,0,0,2) };
-            _lowerTabs=new TabControl { Margin=new Thickness(0,2,0,0) };
+            // 与成熟WinForms工作台一致：视区黑色、设置区深色，标签与曲线编辑画布明亮。
+            Style checkStyle=new Style(typeof(CheckBox));
+            checkStyle.Setters.Add(new Setter(Control.ForegroundProperty,BrushOf(224,234,247)));
+            side.Resources.Add(typeof(CheckBox),checkStyle);
+            Style textStyle=new Style(typeof(TextBlock));
+            textStyle.Setters.Add(new Setter(TextBlock.ForegroundProperty,BrushOf(221,232,246)));
+            side.Resources.Add(typeof(TextBlock),textStyle);
+            _upperTabs=new TabControl { Margin=new Thickness(0,0,0,2),
+                Background=BrushOf(9,15,24) };
+            _lowerTabs=new TabControl { Margin=new Thickness(0,2,0,0),
+                Background=BrushOf(9,15,24) };
             AutomationProperties.SetAutomationId(_upperTabs,"TCT.Volume.UpperTabs");
             AutomationProperties.SetAutomationId(_lowerTabs,"TCT.Volume.LowerTabs");
             side.Children.Add(_upperTabs);Grid.SetRow(_lowerTabs,1);side.Children.Add(_lowerTabs);
@@ -150,7 +159,7 @@ namespace CxVisual.TestCenter.UI
             _upperPercentText.LostFocus+=(s,e)=>UpdateLegacyGrayMapping();
             BuildObliquePanel(oblique);
             Label(render,"GPU 体绘 / 光照 / 采样");
-            _legacyDetails.Foreground=BrushOf(59,81,110);
+            _legacyDetails.Foreground=BrushOf(211,224,240);
             _legacyDetails.Margin=new Thickness(5,8,5,6);
             render.Children.Add(_legacyDetails);
             _legacyDetails.Text="可使用WPF三维空间切面；OpenGL体绘需真实显卡验证。";
@@ -166,11 +175,13 @@ namespace CxVisual.TestCenter.UI
         }
 
         private static StackPanel CreateSettingsPanel()
-        { return new StackPanel { Margin=new Thickness(8,7,8,12) }; }
+        { return new StackPanel { Margin=new Thickness(8,7,8,12),
+            Background=BrushOf(9,15,24) }; }
         private static void AddNumeric(Panel panel,string label,TextBox field)
         {
             StackPanel row=new StackPanel { Orientation=Orientation.Horizontal,Margin=new Thickness(2,5,2,5) };
-            row.Children.Add(new TextBlock { Text=label, Width=177,VerticalAlignment=VerticalAlignment.Center });
+            row.Children.Add(new TextBlock { Text=label, Width=177,VerticalAlignment=VerticalAlignment.Center,
+                Foreground=BrushOf(223,234,246) });
             row.Children.Add(field);panel.Children.Add(row);
         }
         private void AddUpperTab(string title,StackPanel contents)

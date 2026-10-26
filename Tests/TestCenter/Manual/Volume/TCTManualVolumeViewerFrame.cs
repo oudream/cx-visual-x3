@@ -85,7 +85,7 @@ namespace CxVisual.TestCenter.UI
         {
             panel.Children.Add(new TextBlock { Text = text,
                 FontWeight = FontWeights.SemiBold, FontSize = 14,
-                Foreground = BrushOf(38,65,94), Margin = new Thickness(2,4,2,8) });
+                Foreground = BrushOf(229,239,250), Margin = new Thickness(2,4,2,8) });
         }
         private static void AddButton(Panel bar, string caption, string id, Action action)
         {
@@ -97,7 +97,7 @@ namespace CxVisual.TestCenter.UI
         }
         private static void AddAxis(Panel panel, string name, Slider slider, string id)
         {
-            panel.Children.Add(new TextBlock { Text = name, Foreground = BrushOf(60,78,105),
+            panel.Children.Add(new TextBlock { Text = name, Foreground = BrushOf(218,231,244),
                 Margin = new Thickness(3,7,3,1) });
             slider.Margin = new Thickness(5,0,5,8);
             AutomationProperties.SetAutomationId(slider,id);
