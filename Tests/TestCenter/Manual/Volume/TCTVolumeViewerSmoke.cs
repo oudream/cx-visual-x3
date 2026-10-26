@@ -88,6 +88,22 @@ namespace CxVisual.TestCenter.UI
                       frame.ObliqueViewer.ActiveImage != null &&
                       frame.ViewState.ObliqueSlice.Visible,
                     "任意切FVO三线性结果/3D空间平面与MVI状态必须联动");
+                string obliqueRaw=Path.Combine(Path.GetTempPath(),
+                    "CxVisual-Oblique-"+Guid.NewGuid().ToString("N")+".raw");
+                try
+                {
+                    frame.SaveHighResolutionObliqueRaw(obliqueRaw);
+                    Check(File.Exists(obliqueRaw) && File.Exists(obliqueRaw+".txt") &&
+                        new FileInfo(obliqueRaw).Length ==
+                        frame.ViewState.ObliqueSlice.Width *
+                        frame.ViewState.ObliqueSlice.Height * sizeof(float),
+                        "高清任意切原始Float32尺寸与几何元数据必须完整");
+                }
+                finally
+                {
+                    if(File.Exists(obliqueRaw))File.Delete(obliqueRaw);
+                    if(File.Exists(obliqueRaw+".txt"))File.Delete(obliqueRaw+".txt");
+                }
                 frame.SetObliqueForTest(false,0,0,0);
                 Check(frame.Scene.SlicePlaneCount==3,
                     "关闭任意切不能残留3D空间贴图");

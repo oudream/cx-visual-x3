@@ -32,7 +32,7 @@ namespace CxVisual.Foundation.Volume
                     double x=dx+u.X*col*step;
                     double y=dy+u.Y*col*step;
                     double z=dz+u.Z*col*step;
-                    byte density=(byte)Math.Round(Sample(volume,x,y,z,false));
+                    byte density=(byte)Math.Round(Sample(volume,x,y,z,false,definition.Interpolation));
                     byte gray=FVOSliceImageBuilder.ApplyWindow(density,windowLow,windowHigh);
                     int p=(row*w+col)*3;
                     if(pseudoColor) FVOSliceImageBuilder.WritePseudoBgr(output,p,gray);
@@ -62,7 +62,7 @@ namespace CxVisual.Foundation.Volume
                 for(int col=0;col<w;col++)
                 {
                     double scalar=Sample(volume,
-                        dx+u.X*col*step,dy+u.Y*col*step,dz+u.Z*col*step,true);
+                        dx+u.X*col*step,dy+u.Y*col*step,dz+u.Z*col*step,true,definition.Interpolation);
                     byte[] value=BitConverter.GetBytes((float)scalar);
                     Buffer.BlockCopy(value,0,output,(row*w+col)*sizeof(float),sizeof(float));
                 }
@@ -88,10 +88,20 @@ namespace CxVisual.Foundation.Volume
                     throw new ArgumentOutOfRangeException("plane","任意切位置和角度必须有限。");
         }
 
-        private static double Sample(FVOVolumeData volume,double x,double y,double z,bool original)
+        private static double Sample(FVOVolumeData volume,double x,double y,double z,
+            bool original,FVOObliqueInterpolation interpolation)
         {
             if(x<0 || y<0 || z<0 || x>volume.OriginalWidth-1 ||
                 y>volume.OriginalHeight-1 || z>volume.OriginalDepth-1)return 0;
+            if(interpolation==FVOObliqueInterpolation.Nearest)
+            {
+                return Read(volume,
+                    Math.Min(volume.OriginalWidth-1,(int)Math.Floor(x+.5)),
+                    Math.Min(volume.OriginalHeight-1,(int)Math.Floor(y+.5)),
+                    Math.Min(volume.OriginalDepth-1,(int)Math.Floor(z+.5)),original);
+            }
+            if(interpolation!=FVOObliqueInterpolation.Linear)
+                throw new ArgumentOutOfRangeException("interpolation");
             int x0=(int)x,y0=(int)y,z0=(int)z;
             int x1=Math.Min(x0+1,volume.OriginalWidth-1);
             int y1=Math.Min(y0+1,volume.OriginalHeight-1);

@@ -44,6 +44,18 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     data16.SetRawBuffer(FVORawVolumeLoader.LoadRawBuffer(data16, new FVORawVolumeLoadTiming()));
                     Check(data16.GetScalarByOriginalIndex(7, 7, 7) == 1511f, "原始16bit不经8bit量化恢复");
                     Check(data16.HasOriginalRawData, "非托管原始RAW被持有");
+                    FVOObliqueSliceDefinition one = new FVOObliqueSliceDefinition {
+                        Width=1,Height=1,CenterX=3.25,CenterY=2,CenterZ=1,
+                        PixelSpacingInVoxels=1,
+                        Interpolation=FVOObliqueInterpolation.Nearest };
+                    float nearest=(float)FVOObliqueSliceBuilder.BuildScalar(data16,one,
+                        CancellationToken.None).GetGrayValue(0,0);
+                    one.Interpolation=FVOObliqueInterpolation.Linear;
+                    float linear=(float)FVOObliqueSliceBuilder.BuildScalar(data16,one,
+                        CancellationToken.None).GetGrayValue(0,0);
+                    Check(Math.Abs(nearest-1083f)<.001f &&
+                        Math.Abs(linear-1083.25f)<.001f,
+                        "任意切最近邻与三线性插值必须不同且保持16位原始数值");
                     using(System.Threading.CancellationTokenSource cts =
                         new System.Threading.CancellationTokenSource())
                     {

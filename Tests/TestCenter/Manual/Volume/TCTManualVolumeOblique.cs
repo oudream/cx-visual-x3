@@ -1,5 +1,8 @@
 using System;
 using System.Threading;
+using System.IO;
+using System.Globalization;
+using Microsoft.Win32;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -14,6 +17,7 @@ namespace CxVisual.TestCenter.UI
     public sealed partial class TCTManualVolumeViewerFrame
     {
         private readonly MPWImageViewerControl _obliqueViewer=new MPWImageViewerControl();
+        private readonly ComboBox _obliqueInterpolation=new ComboBox { Margin=new Thickness(3),Height=27 };
         private readonly CheckBox _obliqueVisible=new CheckBox { Content="显示任意切面",IsChecked=false };
         private readonly CheckBox _obliqueFollow=new CheckBox { Content="中心跟随三刀",IsChecked=true };
         private readonly Slider _angleX=new Slider { Minimum=-180,Maximum=180,Value=0 };
@@ -40,9 +44,23 @@ namespace CxVisual.TestCenter.UI
             size.Children.Add(new TextBlock { Text="宽/高",VerticalAlignment=VerticalAlignment.Center });
             size.Children.Add(_obliqueWidth); size.Children.Add(_obliqueHeight);
             panel.Children.Add(size);
+            panel.Children.Add(new TextBlock { Text="插值方法",Margin=new Thickness(3,8,3,2) });
+            _obliqueInterpolation.Items.Add(FVOObliqueInterpolation.Nearest);
+            _obliqueInterpolation.Items.Add(FVOObliqueInterpolation.Linear);
+            _obliqueInterpolation.SelectedIndex=1;
+            panel.Children.Add(_obliqueInterpolation);
             Button apply=new Button { Content="更新任意切",Height=30,Margin=new Thickness(3,5,3,5) };
             apply.Click+=(s,e)=>UpdateObliqueDefinition();
             panel.Children.Add(apply);
+            StackPanel exports=new StackPanel { Orientation=Orientation.Horizontal };
+            Button png=new Button { Content="保存预览PNG",Padding=new Thickness(7,5,7,5),
+                Margin=new Thickness(2) };
+            png.Click+=(s,e)=>SaveObliquePreviewDialog();
+            Button raw=new Button { Content="生成高清切片 RAW(Float32)",Padding=new Thickness(7,5,7,5),
+                Margin=new Thickness(2) };
+            raw.Click+=(s,e)=>SaveObliqueRawDialog();
+            exports.Children.Add(png);exports.Children.Add(raw);
+            panel.Children.Add(exports);
             _obliqueViewer.MinHeight=180;
             _obliqueViewer.Height=225;
             panel.Children.Add(_obliqueViewer);
@@ -54,6 +72,7 @@ namespace CxVisual.TestCenter.UI
             _angleY.ValueChanged+=(s,e)=>UpdateObliqueDefinition();
             _angleZ.ValueChanged+=(s,e)=>UpdateObliqueDefinition();
             _obliquePixelStep.ValueChanged+=(s,e)=>UpdateObliqueDefinition();
+            _obliqueInterpolation.SelectionChanged+=(s,e)=>UpdateObliqueDefinition();
         }
 
         private void UpdateObliqueDefinition()
@@ -79,7 +98,71 @@ namespace CxVisual.TestCenter.UI
             next.AngleZDegrees=_angleZ.Value;
             next.PixelSpacingInVoxels=_obliquePixelStep.Value;
             next.Width=width; next.Height=height;
+            next.Interpolation=(FVOObliqueInterpolation)(_obliqueInterpolation.SelectedItem ??
+                FVOObliqueInterpolation.Linear);
             _state.SetObliqueSlice(next);
+        }
+
+        private void SaveObliquePreviewDialog()
+        {
+            if(_volume==null || _state==null || !_state.ObliqueSlice.Visible)
+            {
+                MessageBox.Show("请先启用任意切面并生成预览。","导出任意切");
+                return;
+            }
+            SaveFileDialog dialog=new SaveFileDialog { Filter="PNG 图片 (*.png)|*.png",
+                FileName="CxVisual-Oblique-Preview.png" };
+            if(dialog.ShowDialog()!=true)return;
+            try { _obliqueViewer.SavePng(dialog.FileName); }
+            catch(Exception error) { MessageBox.Show(error.Message,"PNG导出失败"); }
+        }
+
+        private void SaveObliqueRawDialog()
+        {
+            if(_volume==null || _state==null || !_state.ObliqueSlice.Visible)
+            {
+                MessageBox.Show("请先启用任意切面。","生成高清切片");
+                return;
+            }
+            SaveFileDialog dialog=new SaveFileDialog {
+                Filter="Float32 原始切片 (*.raw)|*.raw",
+                FileName="CxVisual-Oblique-Float32.raw" };
+            if(dialog.ShowDialog()!=true)return;
+            try { SaveHighResolutionObliqueRaw(dialog.FileName); }
+            catch(Exception error) { MessageBox.Show(error.Message,"高清切片失败"); }
+        }
+
+        /// <summary>真实Float32标量切片，不从预览8bit重算；同时保存几何说明。</summary>
+        public void SaveHighResolutionObliqueRaw(string filename)
+        {
+            if(_volume==null || _state==null)throw new InvalidOperationException("没有体数据。");
+            if(String.IsNullOrWhiteSpace(filename))throw new ArgumentNullException("filename");
+            if(!_volume.HasHighResolutionVoxels &&
+               (_volume.Width!=_volume.OriginalWidth ||
+                _volume.Height!=_volume.OriginalHeight ||
+                _volume.Depth!=_volume.OriginalDepth))
+                throw new InvalidOperationException("原始RAW高精度缓存尚未就绪，不能把低分辨率预览作为高清结果导出。");
+            UpdateObliqueDefinition();
+            FVOObliqueSliceDefinition plane=_state.ObliqueSlice.Clone();
+            if(!plane.Visible)throw new InvalidOperationException("请先启用任意切。");
+            FIMImageBuffer image=FVOObliqueSliceBuilder.BuildScalar(_volume,plane,
+                CancellationToken.None);
+            if(image.PixelFormat!=FIMPixelFormat.GrayFloat32)
+                throw new InvalidOperationException("切片不是Float32格式。");
+            string full=Path.GetFullPath(filename);
+            string folder=Path.GetDirectoryName(full);
+            if(!Directory.Exists(folder))Directory.CreateDirectory(folder);
+            File.WriteAllBytes(full,image.CopyPixels());
+            // 几何元信息不得因RAW无头格式丢失。
+            string description=String.Format(CultureInfo.InvariantCulture,
+                "Format=Float32 LittleEndian\nWidth={0}\nHeight={1}\nPixelSpacingInVoxels={2:R}\n"+
+                "CenterX={3:R}\nCenterY={4:R}\nCenterZ={5:R}\n"+
+                "AngleXDegrees={6:R}\nAngleYDegrees={7:R}\nAngleZDegrees={8:R}\nInterpolation={9}\n",
+                plane.Width,plane.Height,plane.PixelSpacingInVoxels,
+                plane.CenterX,plane.CenterY,plane.CenterZ,
+                plane.AngleXDegrees,plane.AngleYDegrees,plane.AngleZDegrees,plane.Interpolation);
+            File.WriteAllText(full+".txt",description);
+            _status.Text="已保存真实Float32高清切片："+full;
         }
 
         private void RefreshOblique()

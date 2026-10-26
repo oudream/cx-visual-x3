@@ -6,6 +6,12 @@ namespace CxVisual.Foundation.Volume
     /// 任意切平面的纯数据定义。中心、尺寸和步长均以原始体素坐标为单位，
     /// 使 3D 平面与 RAW 高精度采样使用同一套坐标语义。
     /// </summary>
+    public enum FVOObliqueInterpolation
+    {
+        Nearest=0,
+        Linear=1
+    }
+
     public sealed class FVOObliqueSliceDefinition
     {
         public bool Visible { get; set; }
@@ -15,6 +21,7 @@ namespace CxVisual.Foundation.Volume
         public double AngleXDegrees { get; set; }
         public double AngleYDegrees { get; set; }
         public double AngleZDegrees { get; set; }
+        public FVOObliqueInterpolation Interpolation { get; set; } = FVOObliqueInterpolation.Linear;
         public int Width { get; set; } = 512;
         public int Height { get; set; } = 512;
         public double PixelSpacingInVoxels { get; set; } = 1.0;
@@ -30,6 +37,7 @@ namespace CxVisual.Foundation.Volume
                 AngleXDegrees = AngleXDegrees,
                 AngleYDegrees = AngleYDegrees,
                 AngleZDegrees = AngleZDegrees,
+                Interpolation = Interpolation,
                 Width = Width,
                 Height = Height,
                 PixelSpacingInVoxels = PixelSpacingInVoxels
