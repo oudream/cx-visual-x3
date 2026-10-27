@@ -1009,6 +1009,34 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             }
         }
 
+        /// <summary>用于比较视图交互/测试/嵌入宿主的原图到右画布坐标映射。</summary>
+        public Point SourceToSecondaryViewport(FGEPoint2D source)
+        {
+            VerifyAccess();
+            if(!IsSideBySideVisible || ActiveImage==null)
+                throw new InvalidOperationException("左右双视图未激活。");
+            return SourceToCanvas(source,_secondaryViewport);
+        }
+
+        /// <summary>右视口点选经逆变换回原图，再复用同一Ls2Ls四点状态机。</summary>
+        public MVIImageOverlayItem AppendLinePairAtSecondaryViewport(Point pointer)
+        {
+            VerifyAccess();
+            if(!IsSideBySideVisible || _session.Result==null ||
+                ActiveImage==null || _toolMode!=MVIImageToolMode.LinePair)
+                throw new InvalidOperationException("请开启左右双视图及两线段测量模式。");
+            FIMImageBuffer image=ActiveImage;
+            FGEPoint2D source=_viewTransform.DisplayToSource(new FGEPoint2D(
+                _secondaryViewport.ImageX(pointer.X),_secondaryViewport.ImageY(pointer.Y)),
+                image.Width,image.Height);
+            if(!IsFinite(source.X) || !IsFinite(source.Y) ||
+                source.X<0 || source.Y<0 ||
+                source.X>=image.Width || source.Y>=image.Height)
+                throw new ArgumentOutOfRangeException("pointer","右侧测量点超出图像范围。");
+            return AppendLinePairPoint(new FGEPoint2D(
+                Math.Floor(source.X)+0.5,Math.Floor(source.Y)+0.5));
+        }
+
         /// <summary>完整Ls2Ls四点测量入口：两条独立有限线段与结构化结果保留原图坐标。</summary>
         public MVIImageOverlayItem AddLinePairMeasurement(IReadOnlyList<FGEPoint2D> points)
         {
@@ -1958,19 +1986,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             if(_toolMode==MVIImageToolMode.LinePair)
             {
                 if(e.ChangedButton!=MouseButton.Left)return;
-                Point pointer=e.GetPosition(SecondaryViewportRoot);
-                FIMImageBuffer image=ActiveImage;
-                FGEPoint2D source=_viewTransform.DisplayToSource(new FGEPoint2D(
-                    _secondaryViewport.ImageX(pointer.X),_secondaryViewport.ImageY(pointer.Y)),
-                    image.Width,image.Height);
-                if(source.X>=0 && source.Y>=0 &&
-                   source.X<image.Width && source.Y<image.Height)
-                {
-                    try { AppendLinePairPoint(new FGEPoint2D(
-                        Math.Floor(source.X)+0.5,Math.Floor(source.Y)+0.5)); }
-                    catch(ArgumentException error)
-                    {PixelStatus.Text="右侧两线测量输入无效："+error.Message;}
-                }
+                try { AppendLinePairAtSecondaryViewport(
+                    e.GetPosition(SecondaryViewportRoot)); }
+                catch(ArgumentException error)
+                {PixelStatus.Text="右侧两线测量输入无效："+error.Message;}
                 e.Handled=true;
                 return;
             }
