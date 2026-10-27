@@ -916,34 +916,46 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
 
         private void DrawDraftPolyline()
         {
-            DraftPolyline.Points.Clear();
-            DraftLinePair.Points.Clear();
-            DraftLinePair.Visibility=Visibility.Collapsed;
-            if (_polygonDraft.Count == 0 || !OverlayMatchesActiveImage())
-            { DraftPolyline.Visibility = Visibility.Collapsed; return; }
+            DrawDraftPolylineOn(DraftPolyline,DraftLinePair,_viewport,true);
+            DrawDraftPolylineOn(SecondaryDraftPolyline,SecondaryDraftLinePair,
+                _secondaryViewport,IsSideBySideVisible);
+        }
+
+        /// <summary>左右视图共用原图草稿点，只分别映射屏幕坐标。</summary>
+        private void DrawDraftPolylineOn(Polyline first,Polyline second,
+            MVIImageViewport viewport,bool visible)
+        {
+            first.Points.Clear();
+            second.Points.Clear();
+            second.Visibility=Visibility.Collapsed;
+            if(!visible || _polygonDraft.Count==0 || !OverlayMatchesActiveImage())
+            {
+                first.Visibility=Visibility.Collapsed;
+                return;
+            }
             if(_toolMode==MVIImageToolMode.LinePair)
             {
-                DraftPolyline.Points.Add(SourceToCanvas(_polygonDraft[0]));
+                first.Points.Add(SourceToCanvas(_polygonDraft[0],viewport));
                 if(_polygonDraft.Count>=2)
-                    DraftPolyline.Points.Add(SourceToCanvas(_polygonDraft[1]));
+                    first.Points.Add(SourceToCanvas(_polygonDraft[1],viewport));
                 else if(_draftHover.HasValue)
-                    DraftPolyline.Points.Add(SourceToCanvas(_draftHover.Value));
+                    first.Points.Add(SourceToCanvas(_draftHover.Value,viewport));
                 if(_polygonDraft.Count>=3)
                 {
-                    DraftLinePair.Points.Add(SourceToCanvas(_polygonDraft[2]));
+                    second.Points.Add(SourceToCanvas(_polygonDraft[2],viewport));
                     if(_draftHover.HasValue)
-                        DraftLinePair.Points.Add(SourceToCanvas(_draftHover.Value));
-                    DraftLinePair.Visibility=Visibility.Visible;
+                        second.Points.Add(SourceToCanvas(_draftHover.Value,viewport));
+                    second.Visibility=Visibility.Visible;
                 }
             }
             else
             {
-                foreach (FGEPoint2D p in _polygonDraft)
-                    DraftPolyline.Points.Add(SourceToCanvas(p));
-                if (_draftHover.HasValue)
-                    DraftPolyline.Points.Add(SourceToCanvas(_draftHover.Value));
+                foreach(FGEPoint2D p in _polygonDraft)
+                    first.Points.Add(SourceToCanvas(p,viewport));
+                if(_draftHover.HasValue)
+                    first.Points.Add(SourceToCanvas(_draftHover.Value,viewport));
             }
-            DraftPolyline.Visibility = Visibility.Visible;
+            first.Visibility=Visibility.Visible;
         }
 
         /// <summary>原图坐标直接增加多边形，可供算法检测和交互工具统一调用。</summary>
