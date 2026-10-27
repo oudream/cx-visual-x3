@@ -68,6 +68,9 @@ namespace CxVisual.Mechanism.Visual
                 throw new ArgumentException("线段测量或箭头至少需要两个点。", "points");
             if (kind == MVIImageOverlayKind.AngleMeasurement && _points.Length < 3)
                 throw new ArgumentException("角度测量至少需要三个点。", "points");
+            if (kind == MVIImageOverlayKind.LinePairMeasurement &&
+                (layer != MVIImageOverlayLayer.Measurement || _points.Length != 4))
+                throw new ArgumentException("两线段测量必须在测量层且恰有四个原图点。","points");
             Id = id ?? Guid.NewGuid();
             if (Id == Guid.Empty) throw new ArgumentException("叠加项ID不能为Empty。", "id");
             Kind = kind; Layer = layer; Bounds = bounds;
