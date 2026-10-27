@@ -296,6 +296,6 @@
 
 **保护性边界**：单次轮廓追踪默认限制100000边，UI每次最多写入256条轮廓；超限时要求缩小ROI或调整阈值，原Mask仍保留。不创建第二套几何/工程/Undo体系，也不修改`ReferTo`。
 
-**最新CI**：FIM数学反证修正后，[Imaging #40475730885](https://github.com/oudream/cx-visual-x3/actions/runs/40475730885)已核实SUCCESS，SHA `da05669`。更晚`3787e3a`增加的实际WPF轮廓按钮和CSV操作，须以[Imaging #40475820357](https://github.com/oudream/cx-visual-x3/actions/runs/40475820357)真实结论独立判定。整体TestCenter的跨专业Graphics/UIA失败仍不得当成Imaging数学失败，也不能反过来把Imaging绿灯冒充整个平台全绿。
+**最新CI**：FIM数学反证修正后，[Imaging #40475730885](https://github.com/oudream/cx-visual-x3/actions/runs/40475730885)已核实SUCCESS，SHA `da05669`。`3787e3a`的[Imaging #40475820357](https://github.com/oudream/cx-visual-x3/actions/runs/40475820357)已核实**SUCCESS**，包含Windows x64全工程编译、FIM/MVI数字反证、实际WPF Viewer按钮/轮廓/CSV操作及PNG回环。相同SHA的[TestCenter #40475820420](https://github.com/oudream/cx-visual-x3/actions/runs/40475820420)为**FAIL**，失败步骤是跨专业`Verify isolated Connector UIA PointTable and DataMapping`（非本轮二维功能）；不得把Imaging绿灯冒充整个平台全绿。
 
 **尚需继续**：旧HALCON回调所涉具体专业阈值/缺陷算法的同图比较、孔洞ROI的精确面积交互、轮廓编辑/简化/拟合、文本就地编辑、工程状态与统一Undo、工业4300×4300等性能及实机验收。
