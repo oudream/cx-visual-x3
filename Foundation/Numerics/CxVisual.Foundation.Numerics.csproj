@@ -23,4 +23,13 @@
   <ItemGroup>
     <Compile Include="Properties\AssemblyInfo.cs"/></ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets"/>
+  <ItemGroup>
+    <Reference Include="System.Numerics"/>
+    <Compile Include="Scalar\FNUInterpolation.cs"/>
+    <Compile Include="Statistics\FNUStatistics.cs"/>
+    <Compile Include="Signal\FNUMovingAverage.cs"/>
+    <Compile Include="Signal\FNUFourier.cs"/>
+    <Compile Include="LinearAlgebra\FNULinearAlgebra.cs"/>
+  </ItemGroup>
+  <ItemGroup><PackageReference Include="MathNet.Numerics" Version="5.0.0"/></ItemGroup>
 </Project>

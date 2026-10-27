@@ -27,6 +27,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     return ConfigFoundationSmokeRunner.Run(args);
                 if (Array.IndexOf(args, "--interaction-stage1") >= 0) { InteractionStageOneTests.Run(); return 0; }
                 if (Array.IndexOf(args, "--command-center") >= 0) { CommandCenterTests.Run(); return 0; }
+                if (Array.IndexOf(args, "--numerics") >= 0) { FNUNumericsTests.Run(); return 0; }
                 if (Array.IndexOf(args, "--volume") >= 0) { FVOVolumeTests.Run(); MVIVolumeViewTests.Run(); CT3DRenderingTests.Run(); CT3DVolumeLoadTests.Run(); MPWVolumeSourceTests.Run(); return 0; }
                 if (Array.IndexOf(args, "--imaging") >= 0) { FIMImagingTests.Run(); MVIImageSessionTests.Run(); MVIImageViewportTests.Run(); MVIImageOverlayTests.Run(); MVIImageDisplayTests.Run(); MVIImageTransformTests.Run(); MVIImageComparisonTests.Run(); return 0; }
                 if (Array.IndexOf(args, "--message-center") >= 0) { MessageCenterTests.Run(); return 0; }
@@ -60,6 +61,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 OrganizationH05Tests.Run();
                 OrganizationH06Tests.Run();
                 OrganizationLogicIntegrationTests.Run();
+                FNUNumericsTests.Run();
                 UiIndependentAssemblies();
                 ExecutionFlowTests.Run();
                 ExecutionCompilerTests.Run();

@@ -1,6 +1,6 @@
 ﻿Category,Project,Subareas,Status,ProjectReferences
 Foundation,CxVisual.Foundation.Core,F01 F02 F08 F09,Implemented sample,
-Foundation,CxVisual.Foundation.Numerics,F03 F04 F10 F13,Assembly-only skeleton,
+Foundation,CxVisual.Foundation.Numerics,F03 F04 F10 F13,Partially implemented F03 F04 F10; F13 planned,MathNet.Numerics 5.0.0
 Foundation,CxVisual.Foundation.Geometry,F05 F06 F07,Implemented sample,CxVisual.Foundation.Core
 Foundation,CxVisual.Foundation.Imaging,F11 F22,Assembly-only skeleton,
 Foundation,CxVisual.Foundation.Volume,F12,Assembly-only skeleton,

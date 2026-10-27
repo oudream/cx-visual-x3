@@ -1,0 +1,47 @@
+name: CxVisual Numerics Windows .NET48 Acceptance
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'Foundation/Numerics/**'
+      - 'Tests/ArchitectureSmoke/Numerics/**'
+      - 'Tests/ArchitectureSmoke/Program.cs'
+      - 'Tests/ArchitectureSmoke/CxVisual.Tests.ArchitectureSmoke.csproj'
+      - 'DOCS/Architecture/CxVisual_基础数值计算体系#开发者全类与框架_V1.0.md'
+      - 'DOCS/Testing/CxVisual_基础数值计算体系#测试验收矩阵_V1.0.md'
+      - '.github/workflows/numerics-foundation-windows.yml'
+jobs:
+  numerics:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - name: Restore NuGet dependencies
+        shell: pwsh
+        run: |
+          $msbuild=(Get-Command msbuild.exe -ErrorAction Stop).Source
+          & $msbuild .\CxVisual.Unified.sln /t:Restore /p:Configuration=Release /p:Platform=x64 /nologo /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw 'Numerics NuGet restore failed' }
+      - name: Build .NET48 x64 unified solution
+        shell: pwsh
+        run: |
+          $msbuild=(Get-Command msbuild.exe -ErrorAction Stop).Source
+          & $msbuild .\CxVisual.Unified.sln /t:Build /m:1 /nr:false /p:Configuration=Release /p:Platform=x64 /nologo /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw 'Numerics build failed' }
+      - name: Verify architecture
+        shell: pwsh
+        run: |
+          & .\Build\Verify-Structure.ps1
+          if (-not $?) { throw 'Structure failed' }
+          & .\Build\Verify-OwnerDependencies.ps1
+          if (-not $?) { throw 'Dependency DAG failed' }
+      - name: Run Numerics and default smoke
+        shell: pwsh
+        run: |
+          $exe='.\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe'
+          & $exe --numerics
+          if ($LASTEXITCODE -ne 0) { throw 'Numerics assertions failed' }
+          & $exe
+          if ($LASTEXITCODE -ne 0) { throw 'Default architecture smoke failed' }
