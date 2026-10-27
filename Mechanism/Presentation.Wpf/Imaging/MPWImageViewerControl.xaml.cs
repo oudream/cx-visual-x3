@@ -1304,6 +1304,22 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 if (item.Kind == MVIImageOverlayKind.DiameterMeasurement ||
                     item.Kind == MVIImageOverlayKind.AreaMeasurement)
                     DrawMeasurementLabel(item,stroke,new Point(right,top),canvas);
+                // 对象属性中的文字不仅属于列表，也必须呈现在实际原图坐标的画布。
+                // TextAnnotation已有专门渲染路径，避免重复绘制。
+                if (item.Kind != MVIImageOverlayKind.TextAnnotation &&
+                    !string.IsNullOrEmpty(item.Text))
+                {
+                    FGEPoint2D origin = item.Points.Count > 0 ? item.Points[0] :
+                        new FGEPoint2D(item.Bounds.Left,item.Bounds.Top);
+                    Point anchor = SourceToCanvas(origin,viewport);
+                    TextBlock customLabel = new TextBlock {
+                        Text = item.Text, Foreground = stroke,
+                        Background = new SolidColorBrush(Color.FromArgb(160,0,0,0)),
+                        FontSize = 13, IsHitTestVisible = false };
+                    Canvas.SetLeft(customLabel,anchor.X + 4);
+                    Canvas.SetTop(customLabel,anchor.Y - 16);
+                    canvas.Children.Add(customLabel);
+                }
             }
             if ((_toolMode == MVIImageToolMode.ResizeOverlay ||
                 _toolMode == MVIImageToolMode.EditPolygonVertex ||
