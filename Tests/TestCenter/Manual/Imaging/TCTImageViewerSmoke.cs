@@ -375,12 +375,55 @@ namespace CxVisual.TestCenter.UI
                     polygonMask.GetGrayValue(2,2)!=0)
                     throw new InvalidOperationException(
                         "三角形阈值掩码错误地使用外接矩形或整个图像");
+                // 真实轮廓按钮必须产出可见MVI PolygonAnnotation，而非仅得到模型/外接框。
+                Button contourButton=FindControl<Button>(frame,
+                    "TCT.Imaging.ExtractMaskContours");
+                if(contourButton==null)
+                    throw new InvalidOperationException("分割掩码缺少可操作轮廓提取按钮");
+                int beforeContours=frame.Viewer.Overlays.Items.Count;
+                contourButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                thresholdWait.Restart();
+                while(frame.Viewer.Overlays.Items.Count==beforeContours &&
+                    thresholdWait.ElapsedMilliseconds<10000)
+                {
+                    System.Windows.Threading.DispatcherFrame loop=
+                        new System.Windows.Threading.DispatcherFrame();
+                    System.Windows.Threading.Dispatcher.CurrentDispatcher.BeginInvoke(
+                        new Action(()=>loop.Continue=false),
+                        System.Windows.Threading.DispatcherPriority.Background);
+                    System.Windows.Threading.Dispatcher.PushFrame(loop);
+                    System.Threading.Thread.Sleep(5);
+                }
+                MVIImageOverlayItem contour=frame.Viewer.Overlays.Items
+                    .LastOrDefault(x=>x.Kind==MVIImageOverlayKind.PolygonAnnotation &&
+                        x.Text.StartsWith("分割外轮廓",StringComparison.Ordinal));
+                Canvas contourCanvas=frame.Viewer.FindName("OverlayCanvas") as Canvas;
+                if(contour==null || contour.Points.Count<3 ||
+                    Math.Abs(FIMImageMaskContours.SignedArea(contour.Points)-6)>1e-8 ||
+                    contourCanvas==null ||
+                    !contourCanvas.Children.OfType<System.Windows.Shapes.Polygon>().Any() ||
+                    !ReferenceEquals(frame.Viewer.Session.Result,polygonMask))
+                    throw new InvalidOperationException(
+                        "轮廓按钮没有真实产生面积6的原图多边形及WPF渲染");
+                string contourCsv=Path.Combine(Path.GetTempPath(),
+                    "CxVisual-MaskContour-"+Guid.NewGuid().ToString("N")+".csv");
+                try
+                {
+                    frame.ExportMeasurementsCsv(contourCsv);
+                    string csv=File.ReadAllText(contourCsv);
+                    if(!csv.Contains(contour.Id.ToString("D")) ||
+                        !csv.Contains("PolygonAnnotation") ||
+                        !csv.Contains("分割外轮廓") || !csv.Contains("Vertices"))
+                        throw new InvalidOperationException("分割轮廓未包含在正式CSV导出中");
+                }
+                finally {if(File.Exists(contourCsv))File.Delete(contourCsv);}
                 thresholdLow.Text="20";thresholdHigh.Text="10";
                 regionThreshold.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 if(!ReferenceEquals(frame.Viewer.Session.Result,polygonMask))
                     throw new InvalidOperationException("非法阈值改变了原有分割结果");
                 thresholdLow.Text="0";thresholdHigh.Text="65535";
                 frame.Viewer.SelectOverlay(null);
+                frame.Viewer.Overlays.Remove(contour.Id);
                 frame.Viewer.Overlays.Remove(thresholdPolygon.Id);
                 frame.Viewer.SelectRegion(new FIMPixelRegion(0,1,3,1));
                 growTolerance.Text="-2";
