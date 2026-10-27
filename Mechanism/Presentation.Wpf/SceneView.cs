@@ -273,6 +273,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         public event Action<Guid,int> RemoveWaypointRequested;
         /// <summary>Ctrl+双击几何编辑曲线段，仅提交稳定Id、命令索引和原参数t。</summary>
         public event Action<Guid,int,double> PathSegmentSplitRequested;
+        public event Action<Guid,int,string> PathSegmentOperationRequested;
         public event Action<Guid,MPCVisualRouteKind> VisualRouteRequested;
         /// <summary>多对象控制柄只提交一次MEM事务；拖动仅产生画布预览。</summary>
         public event Action<IReadOnlyList<Guid>,int,double,double,double,bool,bool,bool>
@@ -318,6 +319,120 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 return false;
             PathSegmentSplitRequested(item.Id,index,t);
             return true;
+        }
+        /// <summary>
+        /// 几何右键菜单不保存工程对象；每次执行前校验当前选区/模式/命令，复用MVI事务。
+        /// </summary>
+        public bool RequestSelectedPathOperation(Guid id,int commandIndex,string operation)
+        {
+            if(!_designMode||_drawTool!="Select"||!_geometryEditMode||
+                !_selection.HasValue||_selection.Value!=id||_selectedItems.Count!=1||
+                !_selectedItems.Contains(id)||PathSegmentOperationRequested==null||
+                _dragging||_handleDragging||HasDrawPreview)return false;
+            MVISceneItem item=_items.Find(x=>x.Id==id);
+            if(item==null||item.Shape==null||!item.IsSelectable||item.Address==null||
+                item.Address.InstancePath.Count!=0||commandIndex<0||
+                commandIndex>=item.Shape.Geometry.Commands.Count)return false;
+            FGEPathCommand cmd=item.Shape.Geometry.Commands[commandIndex];
+            if(operation=="delete"&&cmd.Verb!=FGEPathVerb.Line)return false;
+            if(operation=="line"||operation=="quadratic"||operation=="cubic")
+            {
+                if(cmd.Verb!=FGEPathVerb.Line&&cmd.Verb!=FGEPathVerb.Quadratic&&
+                    cmd.Verb!=FGEPathVerb.Cubic)return false;
+                if(operation=="line"&&cmd.Verb==FGEPathVerb.Line||
+                    operation=="quadratic"&&cmd.Verb==FGEPathVerb.Quadratic||
+                    operation=="cubic"&&cmd.Verb==FGEPathVerb.Cubic)return false;
+            }
+            else if(operation=="close"||operation=="open")
+            {
+                if(item.Shape.Kind!=MRCShapeKind.Path||cmd.Verb==FGEPathVerb.Close)
+                    return false;
+            }
+            else if(operation!="delete")return false;
+            PathSegmentOperationRequested(id,commandIndex,operation);
+            return true;
+        }
+        /// <summary>当前轮廓是否已有Close，不能因多子路径搜索误关闭相邻轮廓。</summary>
+        private static bool IsContourClosed(IReadOnlyList<FGEPathCommand> commands,int index)
+        {
+            for(int i=index+1;i<commands.Count;i++)
+            {
+                if(commands[i].Verb==FGEPathVerb.Close)return true;
+                if(commands[i].Verb==FGEPathVerb.Move)return false;
+            }
+            return false;
+        }
+        private static MenuItem GeometryMenuItem(string title,Action action)
+        {
+            var menu=new MenuItem{Header=title};
+            menu.Click+=(sender,args)=>action();
+            return menu;
+        }
+        /// <summary>画布坐标下构建H5右键操作；传入世界坐标便于WPF STA验证。</summary>
+        public ContextMenu CreateSelectedGeometryMenuAt(double x,double y)
+        {
+            if(!_designMode||_drawTool!="Select"||!_geometryEditMode||
+                !_selection.HasValue||_selectedItems.Count!=1||
+                !_selectedItems.Contains(_selection.Value))return null;
+            Guid id=_selection.Value;
+            MVISceneItem item=_items.Find(v=>v.Id==id);
+            if(item==null||item.Shape==null||!item.IsSelectable||
+                item.Address==null||item.Address.InstancePath.Count!=0)return null;
+            MVIVisualHandle handle=MVIVisualEditing.HitHandle(
+                item,x,y,8/_zoom,true,_zoom);
+            FGEPathCommand cmd;int index;double fraction;
+            var menu=new ContextMenu();
+            if(handle!=null&&handle.Kind==MVIVisualHandleKind.Anchor)
+            {
+                index=handle.CommandIndex;
+                if(index>=0&&index<item.Shape.Geometry.Commands.Count&&
+                    item.Shape.Geometry.Commands[index].Verb==FGEPathVerb.Line)
+                    menu.Items.Add(GeometryMenuItem("删除顶点",()=>
+                        RequestSelectedPathOperation(id,index,"delete")));
+            }
+            else if(MVIVisualEditing.TryHitPathSplitSegment(item,x,y,8/_zoom,
+                out index,out fraction))
+            {
+                if(PathSegmentSplitRequested!=null)
+                    menu.Items.Add(GeometryMenuItem("精确插入锚点",()=>
+                    {
+                        if(_selection==id&&_geometryEditMode)
+                            PathSegmentSplitRequested(id,index,fraction);
+                    }));
+                cmd=item.Shape.Geometry.Commands[index];
+                if(PathSegmentOperationRequested!=null)
+                {
+                    if(cmd.Verb!=FGEPathVerb.Line)
+                        menu.Items.Add(GeometryMenuItem("转为直线段",()=>
+                            RequestSelectedPathOperation(id,index,"line")));
+                    if(cmd.Verb!=FGEPathVerb.Quadratic)
+                        menu.Items.Add(GeometryMenuItem("转为二次曲线",()=>
+                            RequestSelectedPathOperation(id,index,"quadratic")));
+                    if(cmd.Verb!=FGEPathVerb.Cubic)
+                        menu.Items.Add(GeometryMenuItem("转为三次贝塞尔",()=>
+                            RequestSelectedPathOperation(id,index,"cubic")));
+                    if(item.Shape.Kind==MRCShapeKind.Path)
+                    {
+                        bool closed=IsContourClosed(item.Shape.Geometry.Commands,index);
+                        string operation=closed?"open":"close";
+                        menu.Items.Add(GeometryMenuItem(closed?"断开此轮廓":"闭合此轮廓",()=>
+                            RequestSelectedPathOperation(id,index,operation)));
+                    }
+                }
+            }
+            return menu.Items.Count==0?null:menu;
+        }
+        protected override void OnMouseRightButtonUp(MouseButtonEventArgs e)
+        {
+            base.OnMouseRightButtonUp(e);
+            Point p=WorldPoint(e.GetPosition(this));
+            ContextMenu menu=CreateSelectedGeometryMenuAt(p.X,p.Y);
+            if(menu==null)return;
+            // 由WPF正式Popup负责右键交互；失焦不会提交几何草稿。
+            menu.PlacementTarget=this;
+            menu.Placement=System.Windows.Controls.Primitives.PlacementMode.MousePoint;
+            menu.IsOpen=true;
+            e.Handled=true;
         }
         private MVIVisualHandle _activeHandle;
         private bool _handleDragging;

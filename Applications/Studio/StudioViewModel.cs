@@ -255,6 +255,15 @@ namespace CxVisual.Studio
             if(result.Success)NotifyScene();
             return result;
         }
+        /// <summary>右键菜单编辑指定图元及段，避免依赖可能变化的主选区。</summary>
+        public MTCEditResult<bool> EditVisualPathSegment(Guid id,int index,string operation)
+        {
+            MTCEditResult<bool> result=_editor.EditPathSegment(id,index,operation);
+            Status=result.Success?"路径几何已更新 | Revision "+result.Revision:
+                "路径操作被拒绝："+result.ErrorCode+": "+result.Message;
+            if(result.Success)NotifyScene();
+            return result;
+        }
         public MTCEditResult<bool> EditVisualPath(int index,string operation)
         {
             if(!_selected.HasValue)throw new InvalidOperationException("请选择路径图元");

@@ -379,6 +379,12 @@ namespace CxVisual.TestCenter.UI
                 if(frame.Canvas.RequestSelectedPathSplitAt(at.X+1000,at.Y+1000)||
                     frame.Revision!=beforeSplit||curve.Shape.Geometry.Commands.Count!=2)
                     throw new InvalidOperationException("未命中的双击不得创建几何历史");
+                ContextMenu curveMenu=frame.Canvas.CreateSelectedGeometryMenuAt(at.X,at.Y);
+                if(curveMenu==null||!curveMenu.Items.OfType<MenuItem>().Any(m=>
+                    (string)m.Header=="转为直线段")||
+                    !curveMenu.Items.OfType<MenuItem>().Any(m=>
+                    (string)m.Header=="精确插入锚点"))
+                    throw new InvalidOperationException("D几何右键没有暴露曲线转换与精确插点");
                 if(!frame.Canvas.RequestSelectedPathSplitAt(at.X,at.Y)||
                     frame.Revision!=beforeSplit+1||curve.Shape.Geometry.Commands.Count!=3)
                     throw new InvalidOperationException("曲线原位插点没有一次MEM事务");
@@ -392,6 +398,21 @@ namespace CxVisual.TestCenter.UI
                 if(!(frame.FindObject(bezierId) is MRCShapeElement)||
                     ((MRCShapeElement)frame.FindObject(bezierId)).Shape.Geometry.Commands.Count!=3)
                     throw new InvalidOperationException("Bezier插点保存重开丢失了路径几何");
+                frame.Execute("Select");frame.SelectObjects(bezierId);
+                if(!frame.Canvas.EnterGeometryEditModeForSelection())
+                    throw new InvalidOperationException("路径编辑在保存重开后不可重新进入");
+                MRCShapeElement persisted=(MRCShapeElement)frame.FindObject(bezierId);
+                int originalRevision=frame.Revision;
+                if(!frame.Canvas.RequestSelectedPathOperation(bezierId,1,"line")||
+                    frame.Revision!=originalRevision+1||
+                    persisted.Shape.Geometry.Commands[1].Verb!=FGEPathVerb.Line)
+                    throw new InvalidOperationException("Bezier首段右键转直线没有一次MEM事务");
+                frame.Execute("edit.undo");
+                if(persisted.Shape.Geometry.Commands[1].Verb!=FGEPathVerb.Cubic)
+                    throw new InvalidOperationException("曲线转直线Undo未恢复原精确Bezier");
+                frame.Execute("edit.redo");
+                if(persisted.Shape.Geometry.Commands[1].Verb!=FGEPathVerb.Line)
+                    throw new InvalidOperationException("曲线转直线Redo未恢复段类型");
                 frame.Inspect();
                 if(!frame.StatusMessage.Contains("Revision")||
                     frame.StatusMessage.Contains("GE Passed"))

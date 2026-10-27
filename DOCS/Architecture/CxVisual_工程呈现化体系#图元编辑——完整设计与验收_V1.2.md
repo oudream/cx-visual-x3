@@ -264,6 +264,8 @@ TextBox/Geometry 的文本输入状态下方向键移动光标，不能触发画
 
 **GE-03 Arc跨角增量（2026-10-27）**：保留既有`FGEArc2D`与`MVIVisualEditing.EditArc`。对`ArcStart/ArcEnd`调整时，原整圆扫角±2π与端点重合的情形继续保持有向整圆，而非错误坍缩成零弧；角度归一化改为常量时间模运算，避免巨大有限角度造成无界while循环。ArchitectureSmoke增测旋转Group内整圆端点、Undo/Redo及跨零正扫角。负扫角、极短弧、退化尺寸、符号角度属性UI和系统级键鼠仍需进一步验收。
 
+**GE-03 几何右键增量（2026-10-27）**：SceneView在D几何编辑模式提供原生WPF右键菜单：线顶点删除、可见Line/Quadratic/Cubic段精确插点与段类型互转；Path独有逐轮廓Close/Open。右键仅产生`(Id, CommandIndex, Operation)`及分割`t`意图，Studio/TestCenter统一转交MVI现有`EditPathSegment` → FGE不可变路径 → MEM/MTC单事务。状态变更后旧选区、实例投影、隐藏不可操作；新增两点轮廓不可闭合的反证。STA WPF回归覆盖菜单存在、正式API转换、Undo/Redo和重开。菜单与回归的自动化能力不等于OS级物理右键/多DPI已全面验收。
+
 ### 6.4 Arc、Rect、Circle 与特殊参数
 
 - **Arc**：中心、Rx/Ry、StartAngle、SweepAngle 是几何参数；跨零角按连续有向扫角处理，弧长趋零和整圆边界按允许策略，不能靠显示角度 359°→0° 把几何抖到另一侧。ArcCenter、ArcRadiusX/Y、ArcStart/End 等现有 `MVIVisualHandleKind` 可复用。

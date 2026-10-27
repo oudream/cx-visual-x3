@@ -149,6 +149,10 @@ namespace CxVisual.Foundation.Geometry
             while(end<all.Count&&all[end].Verb!=FGEPathVerb.Move&&
                 all[end].Verb!=FGEPathVerb.Close)end++;
             if(end==start+1)throw new ArgumentException("geometry.contour.empty");
+            // 开放折线至少两点；关闭后至少三个有效边界顶点。
+            // 禁止二点闭合轮廓给后续测量/填充留下退化几何。
+            if(closed&&end-start<3)
+                throw new ArgumentException("geometry.contour.minimum_vertices");
             bool alreadyClosed=end<all.Count&&all[end].Verb==FGEPathVerb.Close;
             if(alreadyClosed==closed)return path;
             if(closed)all.Insert(end,FGEPathCommand.Close());

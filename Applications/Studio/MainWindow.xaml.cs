@@ -338,6 +338,18 @@ namespace CxVisual.Studio
                 }
                 catch(Exception ex){VisualInfo.Text="删除连接失败："+ex.Message;}
             };
+            SceneHost.PathSegmentOperationRequested+=(id,index,operation)=>
+            {
+                try
+                {
+                    MTCEditResult<bool> result=_viewModel.EditVisualPathSegment(
+                        id,index,operation);
+                    VisualInfo.Text=result.Success?
+                        "几何编辑已提交（单次Undo）":
+                        "几何编辑被拒绝："+result.ErrorCode+" "+result.Message;
+                }
+                catch(Exception ex){VisualInfo.Text="几何编辑失败："+ex.Message;}
+            };
             SceneHost.PathSegmentSplitRequested+=(id,index,fraction)=>
             {
                 try

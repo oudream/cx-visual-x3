@@ -839,6 +839,13 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(object.ReferenceEquals(contours,
                 FGEPathEditing.SetContourClosed(contours,5,false)),
                 "unchanged open contour should not allocate or commit");
+            var openSegment=FGEPath2D.Line(new FGEPoint2D(0,0),
+                new FGEPoint2D(20,0));
+            bool shortCloseRejected=false;
+            try{FGEPathEditing.SetContourClosed(openSegment,1,true);}
+            catch(ArgumentException){shortCloseRejected=true;}
+            Check(shortCloseRejected&&openSegment.Commands.Count==2,
+                "Two-point open line must not be closed into a degenerate contour");
             var converted=FGEPathEditing.ConvertSegment(plain,1,FGEPathVerb.Line);
             Check(converted.Commands[1].Verb==FGEPathVerb.Line&&
                 converted.Commands[1].End.Equals(plain.Commands[1].End),
