@@ -216,7 +216,7 @@ namespace CxVisual.Mechanism.Data.Variables
             try
             {
                 // 真实变量对象可供只读业务定义从设备Provider刷新；不要求调用方把它改成Writable。
-                binding.Scope.Execute(() => binding.Target.RefreshProviderBoxed(sample.Value, sample.Quality, source));
+                using (binding.Scope.Acquire()) binding.Target.RefreshProviderBoxed(sample.Value, sample.Quality, source);
                 Interlocked.Increment(ref _applied);
             }
             catch (Exception error)
@@ -326,11 +326,11 @@ namespace CxVisual.Mechanism.Data.Variables
             // Scope注销时与普通Handle共用入场门禁，避免检查后写入的竞态。
             try
             {
-                _scope.Execute(() =>
+                using (_scope.Acquire())
                 {
                     if (!_active()) throw new InvalidOperationException("Provider不处于当前活动世代");
                     _target.RefreshFromProvider(value, quality, _source);
-                });
+                }
             }
             catch (ObjectDisposedException error)
             {
