@@ -730,6 +730,13 @@ namespace CxVisual.TestCenter.UI
                     editable.Argb==styled.Argb)
                     throw new InvalidOperationException(
                         "WPF属性页未同步MVI色彩、线宽、文字或污染原快照");
+                Canvas overlayCanvas=frame.Viewer.FindName("OverlayCanvas") as Canvas;
+                TextBlock renderedLabel=overlayCanvas==null ? null :
+                    overlayCanvas.Children.OfType<TextBlock>()
+                        .FirstOrDefault(x=>x.Text=="审计标记");
+                if(renderedLabel==null)
+                    throw new InvalidOperationException(
+                        "ROI文字属性仅更新列表，未在原图画布渲染，操作仍有名无实");
                 argbField.Text="无效ARGB";
                 applyProperties.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 if(frame.Viewer.Overlays.Find(editable.Id).Argb!=unchecked((int)0xff00aa66) ||
@@ -737,6 +744,20 @@ namespace CxVisual.TestCenter.UI
                     !AutomationProperties.GetHelpText(applyProperties).Contains("颜色"))
                     throw new InvalidOperationException(
                         "无效ARGB必须维持旧对象、呈现非模态错误反馈，不得弹窗阻塞WPF");
+                // 任意8位ARGB不仅正确写入Store，还应真实参与画布文字透明度绘制。
+                argbField.Text="8000AA66";
+                applyProperties.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                MVIImageOverlayItem translucent=frame.Viewer.Overlays.Find(editable.Id);
+                renderedLabel=overlayCanvas.Children.OfType<TextBlock>()
+                    .FirstOrDefault(x=>x.Text=="审计标记");
+                SolidColorBrush labelBrush=renderedLabel==null ? null :
+                    renderedLabel.Foreground as SolidColorBrush;
+                if(translucent==null ||
+                    translucent.Argb!=unchecked((int)0x8000aa66) ||
+                    labelBrush==null || labelBrush.Color.A!=128 ||
+                    labelBrush.Color.G!=170 || labelBrush.Color.B!=102)
+                    throw new InvalidOperationException(
+                        "半透明ARGB虽写入对象但未呈现在实际WPF文字标签上");
                 editAction.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 if (frame.Viewer.ToolMode!=MVIImageToolMode.ResizeOverlay ||
                     frame.Viewer.SelectedOverlayId!=editable.Id ||
