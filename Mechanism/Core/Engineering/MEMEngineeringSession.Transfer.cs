@@ -54,9 +54,12 @@ namespace CxVisual.Mechanism.Core
             var items=ids.Select(id=>Find(id) as MRCVisualItem).ToArray();
             if(items.Any(item=>item==null||item.Parent!=parent))
                 throw new InvalidOperationException("visual.duplicate.requires_siblings");
-            // 同一内容层中的视觉连接可由MPC唯一Owner查询；Group只持有子对象，
-            // 不允许为复制线路而引入另一个Group级Graph。
-            var definition=parent as IMPMDefinition;
+            // 内部视觉线的真实Owner是最近的Content/Symbol定义，
+            // 即使复制对象位于多层Group中，也绝不把连线伪装成Group子对象。
+            MEMNode connectionOwner=parent;
+            while(connectionOwner!=null&&!(connectionOwner is IMPMDefinition))
+                connectionOwner=connectionOwner.Parent;
+            var definition=connectionOwner as IMPMDefinition;
             var included=new HashSet<Guid>(items
                 .SelectMany(item=>item.DescendantsAndSelf()).Select(node=>node.Id));
             var internalConnections=definition==null?new MPCConnection[0]:
@@ -90,7 +93,7 @@ namespace CxVisual.Mechanism.Core
                         plan.IdMap[connection.Source.PortId]);
                     var target=new MPCEndpoint(GetAddress(targetNode),
                         plan.IdMap[connection.Target.PortId]);
-                    MPCConnection cloned=e.Connect(parent,source,target);
+                    MPCConnection cloned=e.Connect(connectionOwner,source,target);
                     connectionMappings.Add(connection.Id,cloned.Id);
                     // 路由默认值来自MPC实现，不能假定默认Straight或Orthogonal。
                     // 以原连接的明确路由与人工折点为准；MTC内部负责相同值短路。

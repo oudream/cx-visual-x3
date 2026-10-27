@@ -647,8 +647,52 @@ namespace CxVisual.Tests.ArchitectureSmoke
             }
         }
 
+        /// <summary>
+        /// GE-10/11：Group是工程容器而非Scene Shape。复制整个Group时
+        /// 内部图元端口与父Content持有的视觉连线必须整体新建且能单次Undo。
+        /// </summary>
+        private static void CheckNestedGroupVisualDuplicate()
+        {
+            var session=MEMEngineering.Create("组复制连接测试");
+            try
+            {
+                var page=session.AddPage("P");
+                var a=session.AddRectangle(page.RootContent,"A",20,20,80,60);
+                var b=session.AddRectangle(page.RootContent,"B",170,30,80,60);
+                var group=session.Group(new MRCVisualItem[]{a,b},"原始Group");
+                using(var editor=new MVIVisualEditor(session))
+                {
+                    editor.SetPage(page.Id);
+                    Check(editor.ConnectVisual(a.Id,"east",b.Id,"west").Success,
+                        "nested group internal MPC connection missing");
+                    var before=session.Revision;
+                    MPCConnection original=page.RootContent.Connections.Single();
+                    var copied=editor.DuplicateSelection(new[]{group.Id},26,14);
+                    Check(session.Revision==before+1&&
+                        session.Find(copied.IdMap[group.Id]) is MRCGroup&&
+                        session.Find(copied.IdMap[a.Id])!=null&&
+                        session.Find(copied.IdMap[b.Id])!=null,
+                        "group transfer did not clone the entire engineering subtree");
+                    Check(page.RootContent.Connections.Count==2&&
+                        copied.IdMap.ContainsKey(original.Id)&&
+                        page.RootContent.Connections.Any(w=>
+                            w.Id==copied.IdMap[original.Id]&&
+                            w.Source.Address.ObjectId==copied.IdMap[a.Id]&&
+                            w.Target.Address.ObjectId==copied.IdMap[b.Id]),
+                        "group transfer did not clone the Content-owned internal MPC connection");
+                    Check(editor.Undo().Success&&page.RootContent.Connections.Count==1&&
+                        session.Find(copied.IdMap[group.Id])==null,
+                        "group duplicate must have one atomic Undo");
+                    Check(editor.Redo().Success&&page.RootContent.Connections.Count==2&&
+                        session.Validate().IsValid,"group duplicate Redo damaged engineering graph");
+                }
+            }
+            finally{session.Close(true);}
+        }
+
         public static void Run()
         {
+            CheckNestedGroupVisualDuplicate();
             CheckVisualDuplicateAndInternalConnections();
             CheckVisualGapDistribution();
             CheckUnifiedSnapping();

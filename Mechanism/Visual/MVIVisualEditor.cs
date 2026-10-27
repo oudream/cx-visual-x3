@@ -178,8 +178,11 @@ namespace CxVisual.Mechanism.Visual
                 nodes.Any(node=>node.Parent!=nodes[0].Parent))
                 throw new InvalidOperationException("visual.duplicate.requires_siblings");
             MEMNode parent=nodes[0].Parent;
-            if(parent==null||!CurrentResourceId.HasValue||!CurrentPageId.HasValue||
-                nodes.Any(node=>node.OwnerPage==null||node.OwnerPage.Id!=CurrentPageId.Value))
+            // 页面、Content、Symbol定义均使用相同工程Owner。不能仅依据OwnerPage
+            // 限制复制，否则Symbol定义内的Group/Element永远无法使用通用Duplicate。
+            MEMNode scope=CurrentResourceId.HasValue?Document.Find(CurrentResourceId.Value):null;
+            if(parent==null||scope==null||nodes.Any(node=>
+                !node.Ancestors().Any(ancestor=>ancestor.Id==scope.Id)))
                 throw new InvalidOperationException("visual.duplicate.invalid_scope");
             return Document.DuplicateVisual(ids,parent,parentOffsetX,parentOffsetY);
         }

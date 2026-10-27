@@ -22,7 +22,7 @@ namespace CxVisual.Mechanism.Core
                 IdMap=plan.IdMap;
             else
             {
-                var merged=new Dictionary<Guid,Guid>(plan.IdMap);
+                var merged=plan.IdMap.ToDictionary(pair=>pair.Key,pair=>pair.Value);
                 foreach(var pair in additionalMappings)
                 {
                     if(merged.ContainsKey(pair.Key)||merged.ContainsValue(pair.Value))
