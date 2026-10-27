@@ -70,11 +70,21 @@ jobs:
           $exe = '.\Output\Release\x64\CxVisual.TestCenter.exe'
           # TestCenter is WinExe: PowerShell's '&' is nonblocking and $LASTEXITCODE may be null.
           $env:CXVISUAL_IMAGING_UI_SCREENSHOT = Join-Path (Get-Location) 'Output\Imaging-UI\workbench.png'
-          $process = Start-Process -FilePath (Resolve-Path $exe).Path -ArgumentList '--imaging-viewer-smoke' -Wait -PassThru
-          if ($process.ExitCode -ne 0) {
-            $errorFile = Join-Path ([System.IO.Path]::GetTempPath()) 'CxVisual-Imaging-Viewer-Error.txt'
-            if (Test-Path $errorFile) { Get-Content $errorFile }
-            throw 'TestCenter native WPF ImageViewer smoke failed'
+          $errorFile = Join-Path ([System.IO.Path]::GetTempPath()) 'CxVisual-Imaging-Viewer-Error.txt'
+          $process = Start-Process -FilePath (Resolve-Path $exe).Path -ArgumentList '--imaging-viewer-smoke' -PassThru
+          try {
+            if (-not $process.WaitForExit(120000)) {
+              Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+              if (Test-Path $errorFile) { Get-Content $errorFile }
+              throw 'TestCenter native WPF ImageViewer smoke exceeded 120s; possible modal dialog/deadlock'
+            }
+            if ($process.ExitCode -ne 0) {
+              if (Test-Path $errorFile) { Get-Content $errorFile }
+              throw 'TestCenter native WPF ImageViewer smoke failed'
+            }
+          }
+          finally {
+            $process.Dispose()
           }
       - name: Execute real WPF 3D spatial slice workbench
         shell: pwsh
