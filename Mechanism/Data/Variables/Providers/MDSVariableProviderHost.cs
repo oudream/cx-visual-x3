@@ -69,6 +69,7 @@ namespace CxVisual.Mechanism.Data.Variables
     public sealed class MDSVariableProviderHost : IDisposable
     {
         private readonly object _gate = new object();
+        private readonly object _lifecycleGate = new object();
         private readonly MDSVariableRegistry _registry;
         private readonly Dictionary<string, IMDSVariableProvider> _providers =
             new Dictionary<string, IMDSVariableProvider>(StringComparer.Ordinal);
@@ -159,6 +160,8 @@ namespace CxVisual.Mechanism.Data.Variables
 
         public void Start()
         {
+            lock (_lifecycleGate)
+            {
             IMDSVariableProvider[] sources;
             int generation;
             lock (_gate)
@@ -187,6 +190,8 @@ namespace CxVisual.Mechanism.Data.Variables
                 foreach (IMDSVariableProvider provider in started)
                     try { provider.Stop(); } catch { }
                 throw;
+            }
+        
             }
         }
         private void Accept(string source, int generation, MDSVariableProviderSample sample)
@@ -252,27 +257,54 @@ namespace CxVisual.Mechanism.Data.Variables
         }
         public void Stop()
         {
-            IMDSVariableProvider[] sources;
-            lock (_gate)
+            lock (_lifecycleGate)
             {
-                if (!_running) return;
-                _running = false; _generation++;
-                sources = _providers.Values.ToArray();
+                IMDSVariableProvider[] sources;
+                lock (_gate)
+                {
+                    if (!_running) return;
+                    _running = false; _generation++;
+                    sources = _providers.Values.ToArray();
+                }
+                // 一个工业设备Stop故障不能阻止其他设备释放资源。
+                List<Exception> errors = new List<Exception>();
+                foreach (IMDSVariableProvider provider in sources)
+                {
+                    try { provider.Stop(); }
+                    catch (Exception error) { errors.Add(error); }
+                }
+                if (errors.Count > 0)
+                {
+                    lock (_gate) _lastError = "Provider Stop: " + errors[0].Message;
+                    throw new AggregateException("部分Provider停止失败，其余Provider仍已尝试停止", errors);
+                }
             }
-            foreach (IMDSVariableProvider provider in sources) provider.Stop();
         }
         public void Dispose()
         {
-            Stop();
-            IMDSVariableProvider[] providers;
-            lock (_gate)
+            lock (_lifecycleGate)
             {
-                if (_disposed) return;
-                _disposed = true;
-                providers = _providers.Values.ToArray();
-                _providers.Clear(); _bindings.Clear();
+                List<Exception> errors = new List<Exception>();
+                try { Stop(); }
+                catch (AggregateException error) { errors.AddRange(error.InnerExceptions); }
+                IMDSVariableProvider[] providers;
+                lock (_gate)
+                {
+                    if (_disposed)
+                    {
+                        if (errors.Count > 0) throw new AggregateException(errors);
+                        return;
+                    }
+                    _disposed = true;
+                    providers = _providers.Values.ToArray();
+                    _providers.Clear(); _bindings.Clear();
+                }
+                foreach (IMDSVariableProvider provider in providers)
+                    try { provider.Dispose(); }
+                    catch (Exception error) { errors.Add(error); }
+                if (errors.Count > 0)
+                    throw new AggregateException("Provider宿主关闭存在错误，已尝试释放全部Provider", errors);
             }
-            foreach (IMDSVariableProvider provider in providers) provider.Dispose();
         }
         private void RequireOpen()
         {

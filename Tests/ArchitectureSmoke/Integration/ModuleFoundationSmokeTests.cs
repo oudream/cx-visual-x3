@@ -655,8 +655,42 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 "访问策略收紧/改变后不能用旧快照绕过新Schema");
         }
 
+        private sealed class FaultyStopVariableProvider : IMDSVariableProvider
+        {
+            public FaultyStopVariableProvider(string id, bool rejectStop)
+            { ProviderId = id; RejectStop = rejectStop; }
+            public string ProviderId { get; private set; }
+            public bool RejectStop { get; private set; }
+            public int StopCount { get; private set; }
+            public int DisposeCount { get; private set; }
+            public void Start(Action<MDSVariableProviderSample> publish) { }
+            public void Stop()
+            {
+                StopCount++;
+                if (RejectStop) throw new InvalidOperationException("simulated-provider-stop-failure");
+            }
+            public void Dispose() { DisposeCount++; }
+        }
+        private static void VariableProviderFailureIsolationSmoke()
+        {
+            MDSVariableRegistry registry = new MDSVariableRegistry();
+            FaultyStopVariableProvider a = new FaultyStopVariableProvider("bad", true);
+            FaultyStopVariableProvider b = new FaultyStopVariableProvider("good", false);
+            MDSVariableProviderHost host = new MDSVariableProviderHost(registry);
+            host.Register(a); host.Register(b);
+            host.Start();
+            Reject<AggregateException>(() => host.Stop());
+            Check(!host.Health().Running && a.StopCount == 1 && b.StopCount == 1,
+                "单个Provider停止抛出异常仍应停止全部Provider并失效旧世代");
+            host.Dispose();
+            Check(a.DisposeCount == 1 && b.DisposeCount == 1,
+                "宿主释放必须遍历全部Provider而非遇异常提前退出");
+            Reject<ObjectDisposedException>(() => host.Descriptors());
+        }
+
         public static void RunVariableSuite()
         {
+            VariableProviderFailureIsolationSmoke();
             VariableAccessPolicySmoke();
             VariableInspectableSmoke();
             VariableOutOfOrderSmoke();
