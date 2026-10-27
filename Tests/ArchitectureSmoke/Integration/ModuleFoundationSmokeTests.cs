@@ -729,8 +729,43 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Reject<ObjectDisposedException>(() => host.Descriptors());
         }
 
+        private static void VariableReliableBatchQueueSmoke()
+        {
+            MDSVariableTable table = new MDSVariableTable("reliable");
+            table.Define(new MDSVariableDefinition("Count", typeof(int)));
+            using (MDSVariableReliableChangeJournal queue =
+                new MDSVariableReliableChangeJournal(table, 1))
+            {
+                MDSVariableBatchResult first = table.UpdateBatch(new MDSVariableBatchItem("Count", 1));
+                Check(first.NotificationsSucceeded && first.CommittedChanges != null &&
+                    queue.PendingCount == 1 && queue.ReadPending()[0].BatchSequence == 1,
+                    "已接受批次在Ack之前始终保留并支持重复读取");
+                Check(queue.ReadPending()[0].BatchSequence == 1,
+                    "未确认批次可重放，读取不移除");
+                MDSVariableBatchResult second = table.UpdateBatch(new MDSVariableBatchItem("Count", 2));
+                Check(!second.NotificationsSucceeded &&
+                    second.NotificationFailures.OfType<MDSVariableReliableBackpressureException>().Any() &&
+                    second.CommittedChanges != null && queue.PendingCount == 1 &&
+                    table.Get<int>("Count") == 2,
+                    "满载明确背压，变量已提交不可假装回滚，须回传补投快照");
+                Check(!queue.TryAppend(second.CommittedChanges) && queue.Rejected == 2,
+                    "满载补投必须明确拒绝而不能覆盖未确认批次");
+                Check(queue.Acknowledge(1) &&
+                    queue.TryAppend(second.CommittedChanges) &&
+                    queue.TryAppend(second.CommittedChanges) &&
+                    queue.ReadPending().Length == 1 &&
+                    queue.ReadPending()[0].BatchSequence == 2,
+                    "Ack释放容量、补投幂等且不静默重复");
+                Check(queue.Acknowledge(2) && queue.PendingCount == 0 &&
+                    queue.LastConfirmedSequence == 2, "按连续批次确认并释放队列");
+                Check(queue.TryAppend(first.CommittedChanges) && queue.PendingCount == 0,
+                    "已确认批次重发不得重新入队");
+            }
+        }
+
         public static void RunVariableSuite()
         {
+            VariableReliableBatchQueueSmoke();
             IndustrialDeviceVariableWriteSmoke();
             VariableProviderFailureIsolationSmoke();
             VariableAccessPolicySmoke();

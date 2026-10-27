@@ -46,11 +46,18 @@ namespace CxVisual.Mechanism.Data.Variables
     public sealed class MDSVariableBatchResult
     {
         internal MDSVariableBatchResult(MDSVariableUpdateResult[] results, Exception[] notifications)
+            : this(results, notifications, null) { }
+
+        internal MDSVariableBatchResult(MDSVariableUpdateResult[] results, Exception[] notifications,
+            MDSVariableChangeBatch committedChanges)
         {
             Results = Array.AsReadOnly(results);
             NotificationFailures = Array.AsReadOnly(notifications);
+            CommittedChanges = committedChanges;
         }
         public IReadOnlyList<MDSVariableUpdateResult> Results { get; private set; }
+        // 即使可靠订阅因背压拒绝，这份冻结快照仍可由调用方在容量恢复后补投。
+        public MDSVariableChangeBatch CommittedChanges { get; private set; }
         // 所有变量提交成功后，观察者异常单独记录，不能将成功提交伪装成事务回滚。
         public IReadOnlyList<Exception> NotificationFailures { get; private set; }
         public bool NotificationsSucceeded { get { return NotificationFailures.Count == 0; } }

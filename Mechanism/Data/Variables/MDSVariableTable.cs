@@ -243,7 +243,8 @@ namespace CxVisual.Mechanism.Data.Variables
                     try { handler(captured); }
                     catch (Exception error) { failures.Add(error); }
             }
-            return new MDSVariableBatchResult(commits.Select(x => x.Result).ToArray(), failures.ToArray());
+            return new MDSVariableBatchResult(commits.Select(x => x.Result).ToArray(),
+                failures.ToArray(), captured);
         }
 
         // 多变量一致快照仅适用于同一Table Scope，返回值为具体MDSVariableSnapshot<T>。
