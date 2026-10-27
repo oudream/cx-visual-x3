@@ -2,9 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Shapes;
 using CxVisual.Foundation.Volume;
 using CxVisual.Mechanism.Presentation.Wpf.Imaging;
 using CxVisual.Mechanism.Presentation.Wpf.Volume;
@@ -19,6 +16,8 @@ namespace CxVisual.TestCenter.UI
     {
         private readonly Dictionary<FVOSlicePlane, MPWVolumeSliceOverlayControl> _crosshairs =
             new Dictionary<FVOSlicePlane, MPWVolumeSliceOverlayControl>();
+        private readonly Dictionary<FVOSlicePlane, MPWVolumeSliceViewportControl> _sliceViewports =
+            new Dictionary<FVOSlicePlane, MPWVolumeSliceViewportControl>();
 
         public int SliceLegendCount { get { return _crosshairs.Count; } }
 
@@ -38,93 +37,24 @@ namespace CxVisual.TestCenter.UI
         {
             Grid section = AddViewport(host, viewer, title, row, column);
             section.Children.Remove(viewer);
-            Grid content = new Grid();
+            MPWVolumeSliceViewportControl content =
+                new MPWVolumeSliceViewportControl(plane,viewer);
             Grid.SetRow(content,1);
             section.Children.Add(content);
-            Grid.SetRow(viewer,0);
-            content.Children.Add(viewer);
-            MPWVolumeSliceOverlayControl layer = new MPWVolumeSliceOverlayControl(plane);
-            content.Children.Add(layer);
-            _crosshairs.Add(plane, layer);
-            content.SizeChanged += (s,e) => UpdateCrosshairs();
-            viewer.LayoutUpdated += (s,e) =>
-            {
-                UpdateCrosshair(viewer,plane,layer);
-                UpdateSliceViewportFromViewer(viewer,plane);
-            };
-            // MPW的平移事件已被其自身处理，handledEventsToo保证投影仍能同步。
-            content.AddHandler(UIElement.MouseMoveEvent,new MouseEventHandler((s,e)=>
-                UpdateSliceViewportFromViewer(viewer,plane)),true);
-            bool positioning=false;
-            content.PreviewMouseLeftButtonDown += (s,e) =>
-            {
-                if (_volume==null || _state==null || !_state.ShowCrosshair ||
-                    _crosshairEnabled.IsChecked!=true ||
-                    (Keyboard.Modifiers & ModifierKeys.Alt)!=0) return;
-                Image pixel=viewer.FindName("PixelImage") as Image;
-                if(pixel==null || pixel.Source==null || !TryPositionFromMouse(e,pixel,plane))
-                    return;
-                positioning=true;
-                content.CaptureMouse();
-                e.Handled=true;
-            };
-            content.PreviewMouseLeftButtonUp += (s,e) =>
-            {
-                if(!positioning)return;
-                positioning=false;
-                if(content.IsMouseCaptured)content.ReleaseMouseCapture();
-                e.Handled=true;
-            };
-            content.LostMouseCapture += (s,e) => { positioning=false; };
-            content.PreviewMouseMove += (s,e) =>
-            {
-                if(_volume==null || _state==null)return;
-                Image image=viewer.FindName("PixelImage") as Image;
-                if(positioning)
-                {
-                    if(e.LeftButton!=MouseButtonState.Pressed)
-                    {
-                        positioning=false;
-                        if(content.IsMouseCaptured)content.ReleaseMouseCapture();
-                    }
-                    else if(image!=null && image.Source!=null)
-                    {
-                        TryPositionFromMouse(e,image,plane);
-                        e.Handled=true;
-                    }
-                }
-                if(image==null||image.Source==null)return;
-                Point loc=e.GetPosition(image);
-                if(loc.X<0||loc.Y<0||loc.X>=image.Width||loc.Y>=image.Height)return;
-                int x,y,z;
-                FVOSliceImageBuilder.ImageToVoxel(_volume,
-                    _state.SliceX,_state.SliceY,_state.SliceZ,plane,
-                    (int)Math.Round(loc.X),(int)Math.Round(loc.Y),out x,out y,out z);
-                float value=_volume.GetScalarByOriginalIndex(x,y,z);
-                _status.Text=String.Format("体素 ({0},{1},{2})  原始值 {3:0.###}  物理位置 ({4:0.###},{5:0.###},{6:0.###})",
-                    x,y,z,value,x*_volume.SpacingX,y*_volume.SpacingY,z*_volume.SpacingZ);
-            };
-            content.PreviewMouseWheel += (s,e) =>
-            {
-                if (_volume==null || _state==null)return;
-                if((Keyboard.Modifiers & ModifierKeys.Control)!=0)
-                    viewer.Zoom(e.Delta>0?1.2:1.0/1.2);
-                else
-                {
-                    int step=(Keyboard.Modifiers & ModifierKeys.Shift)!=0?5:1;
-                    ScrollSlice(plane,e.Delta>0?step:-step);
-                }
-                e.Handled=true;
-            };
+            _sliceViewports.Add(plane,content);
+            _crosshairs.Add(plane,content.Overlay);
+            content.VoxelInspected+=(s,e)=>_status.Text=String.Format(
+                "体素 ({0},{1},{2})  原始值 {3:0.###}  物理位置 ({4:0.###},{5:0.###},{6:0.###})",
+                e.X,e.Y,e.Z,e.Value,e.PhysicalX,e.PhysicalY,e.PhysicalZ);
         }
 
         /// <summary>仅调用MPW公开的视口坐标同步能力；真正的WPF计算不在TestCenter。</summary>
         private void UpdateSliceViewportFromViewer(MPWImageViewerControl viewer,FVOSlicePlane plane)
         {
             if(_volume==null || _state==null || _updating)return;
-            MPWVolumeSliceOverlayControl layer;
-            if(_crosshairs.TryGetValue(plane,out layer))
-                layer.SyncVisibleViewport(viewer,_state);
+            MPWVolumeSliceViewportControl control;
+            if(_sliceViewports.TryGetValue(plane,out control))
+                control.SyncVisibleViewport();
         }
 
         public void UpdateAllSliceViewportRanges()
@@ -132,18 +62,6 @@ namespace CxVisual.TestCenter.UI
             UpdateSliceViewportFromViewer(_xy,FVOSlicePlane.XY);
             UpdateSliceViewportFromViewer(_xz,FVOSlicePlane.XZ);
             UpdateSliceViewportFromViewer(_yz,FVOSlicePlane.YZ);
-        }
-
-        private bool TryPositionFromMouse(MouseEventArgs args,Image image,FVOSlicePlane plane)
-        {
-            if(_volume==null || _state==null || image==null || image.Source==null ||
-                image.Width<=0 || image.Height<=0)return false;
-            Point location=args.GetPosition(image);
-            if(Double.IsNaN(location.X)||Double.IsNaN(location.Y))return false;
-            int x=(int)Math.Max(0,Math.Min(image.Width-1,Math.Floor(location.X)));
-            int y=(int)Math.Max(0,Math.Min(image.Height-1,Math.Floor(location.Y)));
-            SetCrosshairFromImage(plane,x,y);
-            return true;
         }
 
         /// <summary>复用唯一MVI切片索引，普通滚轮换层、Ctrl+滚轮由MPW缩放。</summary>
@@ -176,20 +94,8 @@ namespace CxVisual.TestCenter.UI
                 ClearCrosshairs();
                 return;
             }
-            foreach (KeyValuePair<FVOSlicePlane,MPWVolumeSliceOverlayControl> pair in _crosshairs)
-            {
-                MPWImageViewerControl viewer = pair.Key == FVOSlicePlane.XY ? _xy :
-                    pair.Key == FVOSlicePlane.XZ ? _xz : _yz;
-                UpdateCrosshair(viewer,pair.Key,pair.Value);
-            }
-        }
-
-        private void UpdateCrosshair(MPWImageViewerControl viewer, FVOSlicePlane plane,
-            MPWVolumeSliceOverlayControl layer)
-        {
-            if (_volume == null || _state == null || viewer.ActiveImage == null)
-                return;
-            layer.UpdateCrosshair(viewer,_volume,_state.SliceX,_state.SliceY,_state.SliceZ);
+            foreach (MPWVolumeSliceViewportControl viewport in _sliceViewports.Values)
+                viewport.RefreshOverlay();
         }
 
         private void ClearCrosshairs()

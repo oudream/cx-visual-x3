@@ -310,6 +310,8 @@ namespace CxVisual.TestCenter.UI
             DisableGpu();
             if(_state!=null)_state.PropertyChanged-=OnStateChanged;
             _state=null;
+            foreach(MPWVolumeSliceViewportControl viewport in _sliceViewports.Values)
+                viewport.Bind(null,null);
             if(_volume!=null)_volume.Dispose();
             _volume=null;
             _xy.Clear();_xz.Clear();_yz.Clear();_obliqueViewer.Clear();

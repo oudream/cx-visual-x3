@@ -197,6 +197,8 @@ namespace CxVisual.TestCenter.UI
                 _volume = volume;
                 _state = MVIVolumeViewState.CreateCentered(volume);
                 _state.PropertyChanged += OnStateChanged;
+                foreach(MPWVolumeSliceViewportControl viewport in _sliceViewports.Values)
+                    viewport.Bind(volume,_state);
                 _sliderX.Maximum = volume.OriginalWidth - 1;
                 _sliderY.Maximum = volume.OriginalHeight - 1;
                 _sliderZ.Maximum = volume.OriginalDepth - 1;
@@ -364,6 +366,8 @@ namespace CxVisual.TestCenter.UI
             if(_enableGpu.IsChecked==true)_enableGpu.IsChecked=false;
             _updating = true;
             if (_state != null) _state.PropertyChanged -= OnStateChanged;
+            foreach(MPWVolumeSliceViewportControl viewport in _sliceViewports.Values)
+                viewport.Bind(null,null);
             if (_volume != null) _volume.Dispose();
             _volume = null;
             _state = null;

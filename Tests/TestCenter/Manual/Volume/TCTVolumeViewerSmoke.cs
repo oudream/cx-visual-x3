@@ -203,6 +203,22 @@ namespace CxVisual.TestCenter.UI
                 }
                 frame.UpdateCrosshairs();
                 Check(frame.VisibleCrosshairCount == 6, "三个二维图窗必须显示六条十字线");
+                var mpwViewport=FindVisualByAutomationId<
+                    CxVisual.Mechanism.Presentation.Wpf.Volume.MPWVolumeSliceViewportControl>(
+                    frame,"MPW.Volume.SliceViewport.XY");
+                Check(mpwViewport!=null &&
+                      Object.ReferenceEquals(mpwViewport.Volume,frame.Volume) &&
+                      Object.ReferenceEquals(mpwViewport.ViewState,frame.ViewState) &&
+                      Object.ReferenceEquals(mpwViewport.Viewer,frame.XyViewer),
+                    "正式MPW交互视口必须绑定FVO/MVI与既有二维Viewer，而非TestCenter状态副本");
+                int beforeInputZ=frame.ViewState.SliceZ;
+                Check(mpwViewport.HandleWheel(120,System.Windows.Input.ModifierKeys.Shift) &&
+                      frame.ViewState.SliceZ==Math.Min(frame.Volume.OriginalDepth-1,beforeInputZ+5),
+                    "MPW正交交互控件真实滚轮Shift应调用MVI唯一三刀状态");
+                Check(mpwViewport.PositionFromImagePixel(6,9) &&
+                      frame.ViewState.SliceX==6 && frame.ViewState.SliceY==9,
+                    "MPW点击坐标应经FVO真实像素反映射更新MVI");
+                frame.Center();
                 // 叠加图元与空间映射实现已归MPW；测试宿主只绑定FVO/MVI和操作。
                 foreach(FVOSlicePlane plane in new[] {
                     FVOSlicePlane.XY,FVOSlicePlane.XZ,FVOSlicePlane.YZ })

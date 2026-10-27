@@ -38,6 +38,7 @@
     <Compile Include="Imaging\MPWImagePlotControl.cs"/>
     <Compile Include="Volume\Views\MPWVolumeSliceSceneControl.cs"/>
     <Compile Include="Volume\Views\MPWVolumeSliceOverlayControl.cs"/>
+    <Compile Include="Volume\Views\MPWVolumeSliceViewportControl.cs"/>
     <Compile Include="Volume\Editors\MPWVolumeThresholdEditor.cs"/>
     <Compile Include="Volume\Editors\MPWVolumeCurveEditor.cs"/>
     <Compile Include="Imaging\MPWImageRulerControl.cs"/></ItemGroup>
