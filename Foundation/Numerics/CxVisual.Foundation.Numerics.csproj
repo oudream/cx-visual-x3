@@ -42,5 +42,8 @@
   <ItemGroup><Compile Include="Signal\FNUConvolution.cs"/></ItemGroup>
   <ItemGroup><Compile Include="Signal\FNUWindowFunction.cs"/></ItemGroup>
   <ItemGroup><Compile Include="Signal\FNUFrequencyAnalysis.cs"/></ItemGroup>
+  <ItemGroup><Compile Include="Tensors\FNUTensorShape.cs"/></ItemGroup>
+  <ItemGroup><Compile Include="Tensors\FNUTensorBuffer.cs"/></ItemGroup>
+  <ItemGroup><Compile Include="Tensors\FNUTensorMath.cs"/></ItemGroup>
   <ItemGroup><PackageReference Include="MathNet.Numerics" Version="5.0.0"/></ItemGroup>
 </Project>

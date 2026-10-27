@@ -127,6 +127,49 @@ namespace CxVisual.Tests.ArchitectureSmoke {
             double[] tampered=spectrum.CopyAmplitudes();tampered[1]=99;
             Near(spectrum.AmplitudeAt(1),1,"spectrum copy");
             Throws<ArgumentOutOfRangeException>(()=>FNUFrequencyAnalysis.OneSidedAmplitude(samples,0),"invalid sample rate");
+            var shape=new FNUTensorShape(2,3);
+            Assert(shape.Rank==2&&shape.ElementCount==6&&shape.StrideAt(0)==3&&
+                shape.StrideAt(1)==1,"tensor shape and strides");
+            Assert(shape.Offset(1,2)==5,"tensor flat offset");
+            int[] detached=shape.CopyDimensions();detached[0]=999;
+            Assert(shape.DimensionAt(0)==2,"tensor dimension ownership");
+            Throws<ArgumentOutOfRangeException>(()=>shape.Offset(2,0),"tensor index bounds");
+            Throws<OverflowException>(()=>new FNUTensorShape(int.MaxValue,2),"tensor size overflow");
+            var tensor=new FNUTensorBuffer(shape,new double[]{1,2,3,4,5,6});
+            Near(tensor.Get(1,2),6,"tensor get");
+            var copied=tensor.CopyValues();copied[0]=100;
+            Near(tensor.Get(0,0),1,"tensor copy isolation");
+            FNUTensorBuffer cut=tensor.Slice(1,1,2);
+            Assert(cut.Shape.DimensionAt(0)==2&&cut.Shape.DimensionAt(1)==2,"tensor slice shape");
+            Near(cut.Get(0,0),2,"tensor slice value");
+            cut.Set(20,0,0);
+            Near(tensor.Get(0,1),2,"tensor slice ownership");
+            var transposed=FNUTensorMath.Transpose2D(tensor);
+            Assert(transposed.Shape.DimensionAt(0)==3&&transposed.Shape.DimensionAt(1)==2,"transpose shape");
+            Near(transposed.Get(2,1),6,"transpose value");
+            var row=new FNUTensorBuffer(new FNUTensorShape(1,3),new double[]{10,20,30});
+            var plus=FNUTensorMath.Add(tensor,row);
+            Near(plus.Get(0,0),11,"broadcast row");
+            Near(plus.Get(1,2),36,"broadcast last");
+            var column=new FNUTensorBuffer(new FNUTensorShape(2,1),new double[]{2,3});
+            var times=FNUTensorMath.Multiply(tensor,column);
+            Near(times.Get(0,2),6,"multiply broadcast row0");
+            Near(times.Get(1,2),18,"multiply broadcast row1");
+            Near(FNUTensorMath.Sum(tensor),21,"tensor sum");
+            var reduced=FNUTensorMath.ReduceSum(tensor,1);
+            Assert(reduced.Shape.Rank==1&&reduced.Shape.ElementCount==2,"tensor reduce shape");
+            Near(reduced.Get(0),6,"tensor reduce row0");
+            Near(reduced.Get(1),15,"tensor reduce row1");
+            var scalarReduction=FNUTensorMath.ReduceSum(
+                new FNUTensorBuffer(new FNUTensorShape(3),new double[]{1,2,3}),0);
+            Near(scalarReduction.Get(0),6,"tensor rank1 reduce");
+            var emptyTensor=new FNUTensorBuffer(new FNUTensorShape(0,3));
+            Near(FNUTensorMath.Sum(emptyTensor),0,"tensor empty sum");
+            Assert(FNUTensorMath.Add(emptyTensor,row).Shape.ElementCount==0,"zero dimension broadcast");
+            Throws<ArgumentException>(()=>FNUTensorMath.Add(tensor,
+                new FNUTensorBuffer(new FNUTensorShape(2,2))),"broadcast shape mismatch");
+            Throws<ArgumentException>(()=>new FNUTensorBuffer(shape,new double[3]),"tensor buffer length");
+            Throws<ArgumentOutOfRangeException>(()=>tensor.Set(double.NaN,0,0),"tensor nonfinite setter");
             Console.WriteLine("PASS FNU Numerics - interpolation/statistics/SVD/moving-average/FFT");
         }
         private static void Assert(bool ok,string name){
