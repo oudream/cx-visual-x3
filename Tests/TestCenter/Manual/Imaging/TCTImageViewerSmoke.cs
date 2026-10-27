@@ -346,6 +346,9 @@ namespace CxVisual.TestCenter.UI
                     if(!csv.Contains(linePair.Id.ToString("D")) ||
                         !csv.Contains("LinePairMeasurement") ||
                         !csv.Contains("最短 2 px") ||
+                        !csv.Contains("LinePairDistancePixels") ||
+                        !csv.Contains("ClosestOnFirstX") ||
+                        !csv.Contains("ClosestOnSecondY") ||
                         !csv.Contains("0.5:0.5;3.5:0.5;1.5:2.5;3.5:2.5"))
                         throw new InvalidOperationException("Ls2Ls四点结果未按稳定ID正确导出CSV");
                 }
@@ -758,6 +761,20 @@ namespace CxVisual.TestCenter.UI
                     labelBrush.Color.G!=170 || labelBrush.Color.B!=102)
                     throw new InvalidOperationException(
                         "半透明ARGB虽写入对象但未呈现在实际WPF文字标签上");
+                string styleCsv=Path.Combine(Path.GetTempPath(),
+                    "CxVisual-OverlayStyle-"+Guid.NewGuid().ToString("N")+".csv");
+                try
+                {
+                    frame.ExportMeasurementsCsv(styleCsv);
+                    string csv=File.ReadAllText(styleCsv);
+                    if(!csv.Contains("Argb,LineWidthPx,Locked") ||
+                        !csv.Contains("LinePairDistancePixels") ||
+                        !csv.Contains("8000AA66") ||
+                        !csv.Contains("3.25") || !csv.Contains("审计标记"))
+                        throw new InvalidOperationException(
+                            "Overlay属性虽显示在WPF但未正确导出CSV结构化字段");
+                }
+                finally { if(File.Exists(styleCsv))File.Delete(styleCsv); }
                 editAction.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 if (frame.Viewer.ToolMode!=MVIImageToolMode.ResizeOverlay ||
                     frame.Viewer.SelectedOverlayId!=editable.Id ||
