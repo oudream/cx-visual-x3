@@ -18,5 +18,10 @@ public sealed class FTRChannelDiagnosticsSnapshot
         public DateTime? LastSendUtc { get; private set; }
         public DateTime? LastReceiveUtc { get; private set; }
         public string LastError { get; private set; }
+        public FTRReceiveQueueSnapshot ReceiveQueue {get;internal set;}
+        public int PendingSends {get;internal set;}
+        public int PendingSendSnapshots {get;internal set;}
+        public long PendingSendBytes {get;internal set;}
+        public long RejectedSends {get;internal set;}
     }
 }

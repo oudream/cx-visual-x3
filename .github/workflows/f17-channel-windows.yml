@@ -8,6 +8,7 @@ on:
       - 'Foundation/Data/Configuration/**'
       - 'Mechanism/Connectivity/**'
       - 'Tests/ArchitectureSmoke/Integration/ModuleChannelTransportSmokeTests.cs'
+      - 'Tests/ArchitectureSmoke/Transport/**'
       - 'Tests/ArchitectureSmoke/Program.cs'
       - 'Tests/TestCenter/Manual/Channel/**'
       - 'Mechanism/Presentation.Wpf/MPWConfigEditorDialogV14.cs'
@@ -45,11 +46,37 @@ jobs:
               $joined -notmatch 'CHANNEL.TRANSPORT: TCP/UDP loopback') {
               throw "F17 Channel expected acceptance evidence not present"
           }
+      - name: Run full-duplex 2GiB-per-direction CT-volume stream integrity and resource measurements
+        shell: pwsh
+        timeout-minutes: 7
+        run: |
+          New-Item -ItemType Directory -Force Output/Release/x64 | Out-Null
+          $output = & .\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe --channel-bulk-long 2>&1
+          $status = $LASTEXITCODE
+          $output | Tee-Object -FilePath Output/Release/x64/F17-Bulk-Volume.log | Write-Host
+          if ($status -ne 0 -or ($output -join "`n") -notmatch 'F17.BULK_VOLUME_PASS bytesEachDirection=2147483648') {
+              throw "F17 CT volume stream verification failed: $status"
+          }
       - name: Verify Foundation Transport unique Owner
         shell: pwsh
         run: |
           $files = @(Get-ChildItem Foundation/Transport/Channels -Recurse -Filter '*.cs' -File)
           $legacy = @(Get-ChildItem Mechanism/Connectivity/Channels -Recurse -Filter '*.cs' -File -ErrorAction SilentlyContinue)
-          if ($files.Count -ne 56) { throw "Expected 56 FTR source files; actual $($files.Count)" }
+          [xml]$project = Get-Content Foundation/Transport/CxVisual.Foundation.Transport.csproj -Raw
+          $compiled = @($project.SelectNodes("//*[local-name()='Compile']/@Include") |
+              ForEach-Object { (Resolve-Path (Join-Path 'Foundation/Transport' $_.Value)).Path })
+          foreach ($file in $files) {
+              if (@($compiled | Where-Object { $_ -eq $file.FullName }).Count -ne 1) {
+                  throw "FTR source missing or duplicated in Compile items: $($file.FullName)"
+              }
+              if ($file.BaseName -notmatch '^I?FTR') { throw "Invalid FTR source identity: $($file.Name)" }
+          }
+          if ($files.Count -lt 56) { throw "Existing FTR sources removed: $($files.Count)" }
           if ($legacy.Count -gt 0) { throw "Legacy compiled Channel source remains in Mechanism" }
-          Write-Host "PASS F17 unique owner: 56 Channel files; no old Mechanism Channel sources"
+          Write-Host "PASS F17 unique owner: $($files.Count) individually compiled Channel files; no old Mechanism Channel sources"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: F17-volume-stream-measurements
+          path: Output/Release/x64/F17-Bulk-Volume.log
+          if-no-files-found: ignore

@@ -21,6 +21,26 @@ public abstract class FTRChannelConfiguration : IFCMConfigVariantSelector
         [FCMConfigItem("接收内存预算", Order = 42, Category = "执行", Unit = "Bytes")]
         [Range(1, int.MaxValue)]
         public int ReceiveByteBudget { get; set; } = 4 * 1024 * 1024;
+        [FCMConfigItem("接收块大小", Order = 43, Category = "执行", Unit = "Bytes")]
+        [Range(1, 1048576)]
+        public int ReceiveBufferBytes { get; set; } = 64 * 1024;
+        [FCMConfigItem("保留诊断载荷", Order = 44, Category = "诊断")]
+        public bool CapturePayloadEvidence { get; set; } = true;
+        [FCMConfigItem("发送超时", Order = 50, Category = "执行", Unit = "ms")]
+        [Range(1, 3600000)]
+        public int SendTimeoutMs { get; set; } = 30000;
+        [FCMConfigItem("停止等待上限", Order = 51, Category = "执行", Unit = "ms")]
+        [Range(1, 120000)]
+        public int StopTimeoutMs { get; set; } = 5000;
+        [FCMConfigItem("接收空闲超时（0=禁用）", Order = 52, Category = "执行", Unit = "ms")]
+        [Range(0, 3600000)]
+        public int ReceiveIdleTimeoutMs { get; set; }
+        [FCMConfigItem("异步发送快照容量", Order = 53, Category = "执行")]
+        [Range(1, 1000000)]
+        public int SendQueueCapacity {get;set;} = 4;
+        [FCMConfigItem("异步发送快照预算", Order = 54, Category = "执行", Unit = "Bytes")]
+        [Range(1, int.MaxValue)]
+        public int SendByteBudget {get;set;} = 64*1024*1024;
 
         [FCMConfigItem("最大重连次数（0=无限）", Order = 45, Category = "重连")]
         [Range(0, 1000000)]
@@ -47,7 +67,11 @@ public abstract class FTRChannelConfiguration : IFCMConfigVariantSelector
         {
             if (string.IsNullOrWhiteSpace(Id) || !Enum.IsDefined(typeof(FTRChannelKind), Kind) ||
                 !Enum.IsDefined(typeof(FTRChannelIOMode), IoMode) ||
-                QueueCapacity < 1 || ReceiveByteBudget < 1 ||
+                QueueCapacity < 1 || QueueCapacity>1000000 || ReceiveByteBudget < 1 ||
+                ReceiveBufferBytes<1||ReceiveBufferBytes>1048576||
+                SendTimeoutMs<1||SendTimeoutMs>3600000||StopTimeoutMs<1||StopTimeoutMs>120000||
+                ReceiveIdleTimeoutMs<0||ReceiveIdleTimeoutMs>3600000||
+                SendQueueCapacity<1||SendQueueCapacity>1000000||SendByteBudget<1||
                 ReconnectMaxAttempts < 0 || ReconnectInitialDelayMs < 0 ||
                 ReconnectMaxDelayMs < ReconnectInitialDelayMs ||
                 ReconnectBackoff < 1 || double.IsNaN(ReconnectBackoff) || double.IsInfinity(ReconnectBackoff))
@@ -68,6 +92,11 @@ public abstract class FTRChannelConfiguration : IFCMConfigVariantSelector
             next.IoMode = IoMode;
             next.QueueCapacity = QueueCapacity;
             next.ReceiveByteBudget = ReceiveByteBudget;
+            next.ReceiveBufferBytes=ReceiveBufferBytes;
+            next.CapturePayloadEvidence=CapturePayloadEvidence;
+            next.SendTimeoutMs=SendTimeoutMs;next.StopTimeoutMs=StopTimeoutMs;
+            next.ReceiveIdleTimeoutMs=ReceiveIdleTimeoutMs;
+            next.SendQueueCapacity=SendQueueCapacity;next.SendByteBudget=SendByteBudget;
             next.ReconnectMaxAttempts = ReconnectMaxAttempts;
             next.ReconnectInitialDelayMs = ReconnectInitialDelayMs;
             next.ReconnectBackoff = ReconnectBackoff;

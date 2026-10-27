@@ -1,125 +1,161 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace CxVisual.Foundation.Transport
 {
-public sealed class FTRTcpServerChannel : FTRMultiChannelBase
+    /// <summary>一个Select接收线程服务多客户端，不按连接建立Thread/Task；解析留给后级。</summary>
+    public sealed class FTRTcpServerChannel : FTRMultiChannelBase
     {
+        private sealed class Peer
+        {
+            internal TcpClient Client;
+            internal NetworkStream Stream;
+            internal FTRSubChannelAddress Address;
+            internal readonly object Write=new object();
+            internal bool Ended;
+            internal long LastReceive=Stopwatch.GetTimestamp();
+        }
         private readonly FTRTcpServerChannelConfiguration _config;
-        private readonly object _gate = new object();
-        private readonly Dictionary<string, TcpClient> _clients = new Dictionary<string, TcpClient>(StringComparer.Ordinal);
+        private readonly object _gate=new object();
+        private readonly Dictionary<string,Peer> _clients=new Dictionary<string,Peer>(StringComparer.Ordinal);
         private TcpListener _listener;
         private CancellationTokenSource _shutdown;
-        private Task _acceptTask;
-
+        private Thread _receiver;
         public FTRTcpServerChannel(FTRChannelConfiguration configuration)
-            : base((configuration ?? throw new ArgumentNullException("configuration")).Id)
+            :base((configuration??throw new ArgumentNullException("configuration")).Id)
         {
-            configuration.Validate();
-            if (configuration.Kind != FTRChannelKind.TcpServer) throw new ArgumentException("不是 TCP Server 配置");
-            _config = configuration as FTRTcpServerChannelConfiguration ?? throw new ArgumentException("要求 FTRTcpServerChannelConfiguration");
+            configuration.Validate();_config=configuration as FTRTcpServerChannelConfiguration??
+                throw new ArgumentException("要求FTRTcpServerChannelConfiguration");
         }
         protected override Task OnOpenAsync(CancellationToken ct)
         {
-            ct.ThrowIfCancellationRequested();
-            _shutdown = new CancellationTokenSource();
-            _listener = new TcpListener(FTRNetworkAddress.Resolve(_config.Host), _config.Port);
+            ct.ThrowIfCancellationRequested();_shutdown=new CancellationTokenSource();
+            _listener=new TcpListener(FTRNetworkAddress.Resolve(_config.Host),_config.Port);
             _listener.Start(_config.MaxClients);
-            _acceptTask = Task.Run(() => AcceptLoopAsync(_shutdown.Token));
-            return Task.CompletedTask;
+            StartBufferedReceive(_config);
+            _receiver=new Thread(ReceiveLoop){IsBackground=true,Name="FTR.Receive."+Id};
+            _receiver.Start();return Task.CompletedTask;
         }
-        private async Task AcceptLoopAsync(CancellationToken ct)
+        private void ReceiveLoop()
         {
+            CancellationToken ct=_shutdown.Token;int cursor=0;
             try
             {
-                while (!ct.IsCancellationRequested)
+                while(!ct.IsCancellationRequested)
                 {
-                    TcpClient client = await _listener.AcceptTcpClientAsync().ConfigureAwait(false);
-                    if (ct.IsCancellationRequested) { client.Close(); break; }
-                    FTRSubChannelAddress address;
-                    lock (_gate)
+                    Peer[] all;lock(_gate)all=_clients.Values.Where(p=>!p.Ended).ToArray();
+                    // Windows Select集合有规模限制；按批轮转，每批仍检查监听Socket。
+                    Peer[] batch=all.Length<=1024?all:all.Skip(cursor).Take(1024).ToArray();
+                    cursor=all.Length==0?0:(cursor+batch.Length)%all.Length;
+                    Socket listenerSocket=_listener.Server;
+                    var readable=new List<Socket>{listenerSocket};
+                    foreach(Peer peer in batch)
+                        if(peer.Client.Client!=null)readable.Add(peer.Client.Client);
+                    try{Socket.Select(readable,null,null,all.Length>1024?1000:50000);}
+                    catch(SocketException)when(!ct.IsCancellationRequested){continue;}
+                    catch(ObjectDisposedException)when(!ct.IsCancellationRequested){continue;}
+                    if(ct.IsCancellationRequested)break;
+                    if(readable.Contains(listenerSocket))AcceptPeer();
+                    foreach(Peer peer in batch)
                     {
-                        if (_clients.Count >= _config.MaxClients) { client.Close(); continue; }
-                        FTRSubChannelInfo peer = RegisterPeer(Guid.NewGuid().ToString("N"),
-                            client.Client.RemoteEndPoint.ToString());
-                        address = peer.Address;
-                        _clients.Add(address.ToString(), client);
+                        if(ct.IsCancellationRequested)break;
+                        Socket socket=peer.Client.Client;
+                        if(socket==null){EndPeer(peer,new IOException("TCP peer socket closed"));continue;}
+                        if(!readable.Contains(socket))
+                        {
+                            if(_config.ReceiveIdleTimeoutMs>0&&
+                                (Stopwatch.GetTimestamp()-peer.LastReceive)*1000.0/Stopwatch.Frequency>
+                                    _config.ReceiveIdleTimeoutMs)EndPeer(peer,new TimeoutException("TCP receive idle"));
+                            continue;
+                        }
+                        FTRReceiveBuffer buffer=null;
+                        try
+                        {
+                            buffer=RentReceiveBuffer(ct);
+                            int count=socket.Receive(buffer.WritableBuffer,0,
+                                buffer.WritableBuffer.Length,SocketFlags.None);
+                            if(count==0){EndPeer(peer,null);continue;}
+                            peer.LastReceive=Stopwatch.GetTimestamp();
+                            PublishReceiveBuffer(peer.Address,buffer,count);buffer=null;
+                        }
+                        catch(OperationCanceledException)when(ct.IsCancellationRequested){break;}
+                        catch(Exception error){EndPeer(peer,error);}
+                        finally{if(buffer!=null)buffer.Dispose();}
                     }
-                    Task ignored = Task.Run(() => ReadPeerAsync(client, address, ct));
                 }
             }
-            catch (Exception error)
-            {
-                if (!ct.IsCancellationRequested) Fault(error);
-            }
+            catch(Exception error){if(!ct.IsCancellationRequested)Fault(error);}
         }
-        private async Task ReadPeerAsync(TcpClient client, FTRSubChannelAddress address, CancellationToken ct)
+        private void AcceptPeer()
         {
+            TcpClient client=_listener.AcceptTcpClient();
             try
             {
-                byte[] buffer = new byte[32768];
-                NetworkStream stream = client.GetStream();
-                while (!ct.IsCancellationRequested)
+                client.NoDelay=true;client.SendTimeout=_config.SendTimeoutMs;
+                NetworkStream stream=client.GetStream();
+                string endpoint=client.Client.RemoteEndPoint.ToString();
+                lock(_gate)
                 {
-                    int n = await stream.ReadAsync(buffer, 0, buffer.Length, ct).ConfigureAwait(false);
-                    if (n <= 0) break;
-                    byte[] data = new byte[n]; Buffer.BlockCopy(buffer, 0, data, 0, n);
-                    ReceiveFrom(address, data);
+                    if(_clients.Count>=_config.MaxClients)
+                        throw new IOException("TCP MaxClients reached; peer rejected before admission");
+                    var address=RegisterPeer(Guid.NewGuid().ToString("N"),endpoint).Address;
+                    _clients.Add(address.ToString(),new Peer{Client=client,Stream=stream,Address=address});
                 }
             }
-            catch (Exception)
-            {
-                // 一个 TCP 对端断开不应让整个 MultiPeer Server 进入 Faulted。
-            }
-            finally
-            {
-                lock (_gate) _clients.Remove(address.ToString());
-                RemovePeer(address); client.Close();
-            }
+            catch(Exception error){client.Close();RecordReceiveError(error);}
+        }
+        private void EndPeer(Peer peer,Exception error)
+        {
+            lock(_gate){if(peer.Ended)return;peer.Ended=true;}
+            if(error!=null)RecordReceiveError(error);
+            // 先交付已接纳字节，再通知唯一Protocol清理；终止通知不会越过旧半包。
+            AfterReceived(()=>RemovePeer(peer.Address));
         }
         public override bool RemovePeer(FTRSubChannelAddress address)
         {
-            if (address == null) return false;
-            TcpClient connection;
-            lock (_gate)
+            if(address==null)return false;
+            Peer peer;
+            lock(_gate)
             {
-                if (!base.RemovePeer(address)) return false;
-                if (_clients.TryGetValue(address.ToString(), out connection))
-                    _clients.Remove(address.ToString());
-                else connection = null;
+                if(_clients.TryGetValue(address.ToString(),out peer))
+                {peer.Ended=true;_clients.Remove(address.ToString());}
             }
-            // 移除逻辑路由的同时释放真实 Socket，禁止后台接收再接纳旧代次数据。
-            if (connection != null) connection.Close();
-            return true;
+            if(peer!=null)peer.Client.Close();
+            return base.RemovePeer(address);
         }
-        protected override async Task SendToPeerAsync(byte[] bytes, FTRSubChannelAddress address, CancellationToken ct)
+        protected override void OnSendSynchronous(byte[] bytes,int offset,int count,
+            FTRSubChannelAddress address,CancellationToken ct,int segmentBytes)
         {
-            TcpClient client;
-            lock (_gate)
-                if (!_clients.TryGetValue(address.ToString(), out client))
-                    throw new InvalidOperationException("对端不存在或已断线");
-            await client.GetStream().WriteAsync(bytes, 0, bytes.Length, ct).ConfigureAwait(false);
+            if(FindSubChannel(address)==null)throw new InvalidOperationException("Stale SubChannel");
+            Peer peer;lock(_gate)
+                if(!_clients.TryGetValue(address.ToString(),out peer))
+                    throw new IOException("TCP peer disconnected");
+            FTRTcpIO.Write(peer.Client,peer.Stream,peer.Write,bytes,offset,count,segmentBytes,_config.SendTimeoutMs,ct);
         }
-        protected override async Task OnCloseAsync(CancellationToken ct)
+        protected override Task SendToPeerAsync(byte[] bytes,FTRSubChannelAddress address,CancellationToken ct)
+        {return Task.Run(()=>OnSendSynchronous(bytes,0,bytes.Length,address,ct,0),ct);}
+        protected override Task OnCloseAsync(CancellationToken ct)
         {
-            if (_shutdown != null) _shutdown.Cancel();
-            if (_listener != null) _listener.Stop();
-            lock (_gate)
+            return Task.Run(()=>
             {
-                foreach (TcpClient client in _clients.Values) client.Close();
-                _clients.Clear();
-            }
-            Task accept = _acceptTask;
-            if (accept != null) await accept.ConfigureAwait(false);
-            foreach (FTRSubChannelInfo peer in SnapshotSubChannels()) RemovePeer(peer.Address);
-            if (_shutdown != null) _shutdown.Dispose();
-            _shutdown = null; _listener = null; _acceptTask = null;
+                Stopwatch timer=Stopwatch.StartNew();
+                if(_shutdown!=null)_shutdown.Cancel();
+                if(_listener!=null)_listener.Stop();
+                Peer[] peers;lock(_gate)peers=_clients.Values.ToArray();
+                foreach(Peer peer in peers)peer.Client.Close();
+                FTRTcpIO.Join(_receiver,timer,_config.StopTimeoutMs,ct);
+                WaitForPendingSends(FTRTcpIO.Remaining(timer,_config.StopTimeoutMs),ct);
+                DrainBufferedReceive(FTRTcpIO.Remaining(timer,_config.StopTimeoutMs),ct);
+                foreach(Peer peer in peers)RemovePeer(peer.Address);
+                if(_shutdown!=null)_shutdown.Dispose();
+                _receiver=null;_shutdown=null;_listener=null;
+            });
         }
     }
 }

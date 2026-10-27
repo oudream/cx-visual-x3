@@ -59,6 +59,9 @@
     <Compile Include="Channels\IO\FTRMultiChannelBase.cs"/>
     <Compile Include="Channels\IO\FTRNetworkAddress.cs"/>
     <Compile Include="Channels\IO\FTRSingleChannelBase.cs"/>
+    <Compile Include="Channels\IO\FTRReceiveBuffer.cs"/>
+    <Compile Include="Channels\IO\FTRReceivePipeline.cs"/>
+    <Compile Include="Channels\Diagnostics\FTRReceiveQueueSnapshot.cs"/>
     <Compile Include="Channels\IO\IFTRByteStream.cs"/>
     <Compile Include="Channels\IO\IFTRChannelListener.cs"/>
     <Compile Include="Channels\IO\IFTRDatagramIO.cs"/>
@@ -68,6 +71,7 @@
     <Compile Include="Channels\Implementations\Replay\FTRReplayChannel.cs"/>
     <Compile Include="Channels\Implementations\Serial\FTRSerialChannel.cs"/>
     <Compile Include="Channels\Implementations\TCP\FTRTcpClientChannel.cs"/>
+    <Compile Include="Channels\Implementations\TCP\FTRTcpIO.cs"/>
     <Compile Include="Channels\Implementations\TCP\FTRTcpServerChannel.cs"/>
     <Compile Include="Channels\Implementations\UDP\FTRUdpChannel.cs"/>
     <Compile Include="Channels\Implementations\UDP\FTRUdpMulticastChannel.cs"/>

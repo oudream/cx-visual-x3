@@ -29,6 +29,13 @@ public sealed class FTRChannelConfigurationConverter : IFCMConfigValueConverter<
             public FTRChannelIOMode IoMode { get; set; } = FTRChannelIOMode.AsyncIO;
             public int QueueCapacity { get; set; } = 128;
             public int ReceiveByteBudget { get; set; } = 4 * 1024 * 1024;
+            public int ReceiveBufferBytes {get;set;} = 64*1024;
+            public bool CapturePayloadEvidence {get;set;} = true;
+            public int SendTimeoutMs {get;set;} = 30000;
+            public int StopTimeoutMs {get;set;} = 5000;
+            public int ReceiveIdleTimeoutMs {get;set;}
+            public int SendQueueCapacity {get;set;} = 4;
+            public int SendByteBudget {get;set;} = 64*1024*1024;
             public int ReconnectMaxAttempts { get; set; } = 10;
             public int ReconnectInitialDelayMs { get; set; } = 250;
             public double ReconnectBackoff { get; set; } = 2.0;
@@ -73,6 +80,11 @@ public sealed class FTRChannelConfigurationConverter : IFCMConfigValueConverter<
             target.IoMode = source.IoMode;
             target.QueueCapacity = source.QueueCapacity;
             target.ReceiveByteBudget = source.ReceiveByteBudget;
+            target.ReceiveBufferBytes=source.ReceiveBufferBytes;
+            target.CapturePayloadEvidence=source.CapturePayloadEvidence;
+            target.SendTimeoutMs=source.SendTimeoutMs;target.StopTimeoutMs=source.StopTimeoutMs;
+            target.ReceiveIdleTimeoutMs=source.ReceiveIdleTimeoutMs;
+            target.SendQueueCapacity=source.SendQueueCapacity;target.SendByteBudget=source.SendByteBudget;
             target.ReconnectMaxAttempts = source.ReconnectMaxAttempts;
             target.ReconnectInitialDelayMs = source.ReconnectInitialDelayMs;
             target.ReconnectBackoff = source.ReconnectBackoff;

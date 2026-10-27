@@ -23,10 +23,10 @@ namespace CxVisual.TestCenter.Cases
                 "ArchitectureSmoke是自动测试根下独立的注册工作区", true, true);
             test.AssertEqual(4, registry.Items.Count(x => x.Kind == TCTWorkspaceNodeKind.Root),
                 "仍然只有四个根节点");
-            test.AssertEqual(11, TCTArchitectureSmokeProfiles.All.Count,
+            test.AssertEqual(14, TCTArchitectureSmokeProfiles.All.Count,
                 "所有预设来自ArchitectureSmoke Program.cs正式入口");
             test.AssertTrue(TCTArchitectureSmokeProfiles.All.Select(p => p.Id)
-                    .Distinct(StringComparer.Ordinal).Count() == 11,
+                    .Distinct(StringComparer.Ordinal).Count() == 14,
                 "固定预设ID必须全局唯一", true, true);
             test.AssertEqual("", TCTArchitectureSmokeProfiles.Find("default").Arguments,
                 "默认命令无参数");
@@ -39,6 +39,15 @@ namespace CxVisual.TestCenter.Cases
             test.AssertEqual("--config-wpf",
                 TCTArchitectureSmokeProfiles.Find("config-wpf").Arguments,
                 "Config WPF原CLI参数完全兼容");
+            test.AssertEqual("--channel-transport",
+                TCTArchitectureSmokeProfiles.Find("channel-transport").Arguments,
+                "F17全通道使用既有正式CLI专项");
+            test.AssertEqual("--channel-bulk",
+                TCTArchitectureSmokeProfiles.Find("channel-bulk").Arguments,
+                "F17大数据使用实际TCP与池水位测试入口");
+            test.AssertEqual("--channel-bulk-long",
+                TCTArchitectureSmokeProfiles.Find("channel-bulk-long").Arguments,
+                "F17持续体数据使用2GiB实际收发入口");
             string file = TCTArchitectureSmokeProcessRunner.ResolveExecutable(Path.GetTempPath());
             test.AssertTrue(string.Equals(Path.GetFileName(file),
                     "CxVisual.Tests.ArchitectureSmoke.exe", StringComparison.Ordinal),

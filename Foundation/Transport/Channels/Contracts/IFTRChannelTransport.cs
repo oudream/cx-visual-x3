@@ -11,5 +11,8 @@ public interface IFTRChannelTransport : IFTRChannel
     {
         FTRChannelTopology Topology { get; }
         event Action<FTRChannelReceiveContext> Received;
+        event Action<FTRReceiveBuffer> BufferReceived;
+        event Action<FTRChannelState> StateChanged;
+        FTRChannelDiagnosticsSnapshot Diagnostics {get;}
     }
 }

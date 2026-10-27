@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 
 namespace CxVisual.Foundation.Transport
 {
-public interface IFTRChannel
+public interface IFTRChannel : IDisposable
     {
         string Id { get; }
         Guid SessionId { get; }
@@ -16,6 +16,7 @@ public interface IFTRChannel
         Task CloseAsync(CancellationToken ct);
         Task SendAsync(byte[] bytes, FTRSubChannelAddress address, CancellationToken ct);
         void Send(byte[] bytes, string correlationId = null, int segmentBytes = 0);
+        void Send(byte[] bytes,int offset,int count,FTRSubChannelAddress address,CancellationToken ct);
         IList<FTRChannelFrame> ReadFrames();
     }
 }
