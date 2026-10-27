@@ -751,6 +751,86 @@ namespace CxVisual.TestCenter.UI
             }
         }
 
+        /// <summary>
+        /// 将真实0/255结果掩码中的每个外环和孔洞分别生成MVI轮廓标注。
+        /// 轮廓保持原图格点坐标，不把孔洞填充为多边形面积ROI。
+        /// </summary>
+        private async void ExtractResultMaskContours()
+        {
+            FIMImageBuffer original=_viewer.Session.Original;
+            FIMImageBuffer mask=_viewer.Session.Result;
+            if(original==null || mask==null || mask.PixelFormat!=FIMPixelFormat.Gray8 ||
+               original.Width!=mask.Width || original.Height!=mask.Height)
+            {
+                Show("轮廓提取失败：需要与原图同尺寸的Gray8二值分割结果。");
+                return;
+            }
+            CancelAnalysis();
+            CancellationTokenSource cancellation=new CancellationTokenSource();
+            _analysisCancellation=cancellation;
+            long epoch=Interlocked.Read(ref _analysisEpoch);
+            Stopwatch timer=Stopwatch.StartNew();
+            Show("正在追踪结果掩码的外环与孔洞，可切图取消。");
+            try
+            {
+                IReadOnlyList<IReadOnlyList<FGEPoint2D>> rings=await Task.Run(()=>
+                    FIMImageMaskContours.Trace(mask,100000,cancellation.Token),
+                    cancellation.Token);
+                if(cancellation.IsCancellationRequested ||
+                   epoch!=Interlocked.Read(ref _analysisEpoch) ||
+                   !ReferenceEquals(original,_viewer.Session.Original) ||
+                   !ReferenceEquals(mask,_viewer.Session.Result))return;
+                if(rings.Count>256)
+                    throw new InvalidOperationException(
+                        "轮廓数量超过256个，请缩小ROI；掩码仍可保留和导出。");
+                if(rings.Count==0)
+                {
+                    Show("当前二值结果没有非零像素，也没有可生成的轮廓。");
+                    return;
+                }
+                // 先完成数值和对象校验，再写入唯一Store，避免部分无效轮廓。
+                List<MVIImageOverlayItem> objects=new List<MVIImageOverlayItem>();
+                int outer=0,holes=0;
+                foreach(IReadOnlyList<FGEPoint2D> points in rings)
+                {
+                    cancellation.Token.ThrowIfCancellationRequested();
+                    bool hole=FIMImageMaskContours.SignedArea(points)<0;
+                    if(hole)holes++;else outer++;
+                    double left=points.Min(p=>p.X),right=points.Max(p=>p.X);
+                    double top=points.Min(p=>p.Y),bottom=points.Max(p=>p.Y);
+                    objects.Add(new MVIImageOverlayItem(
+                        MVIImageOverlayKind.PolygonAnnotation,MVIImageOverlayLayer.Annotation,
+                        new FGERect2D(left,top,right-left,bottom-top),points,
+                        (hole?"孔洞轮廓 ":"分割外轮廓 ")+rings.Count+"-"+objects.Count,
+                        null,unchecked((int)(hole?0xFF00D4C7u:0xFFFFD157u)),1.5));
+                }
+                if(cancellation.IsCancellationRequested ||
+                   epoch!=Interlocked.Read(ref _analysisEpoch) ||
+                   !ReferenceEquals(original,_viewer.Session.Original) ||
+                   !ReferenceEquals(mask,_viewer.Session.Result))return;
+                timer.Stop();
+                foreach(MVIImageOverlayItem item in objects)_viewer.AddOverlay(item);
+                _viewer.SelectOriginal();
+                _viewer.SelectOverlay(objects[0].Id);
+                Show("结果掩码轮廓已转成"+outer+"条外环、"+holes+
+                    "条孔洞标注，原图坐标/点序列已写入OverlayStore，可在输出页导出CSV；"+
+                    "保留独立Gray8掩码。耗时 "+
+                    timer.Elapsed.TotalMilliseconds.ToString("0.#",CultureInfo.InvariantCulture)+"ms。");
+            }
+            catch(OperationCanceledException) { }
+            catch(Exception error)
+            {
+                if(epoch==Interlocked.Read(ref _analysisEpoch))
+                    Show("轮廓提取失败："+error.Message);
+            }
+            finally
+            {
+                if(ReferenceEquals(_analysisCancellation,cancellation))
+                    _analysisCancellation=null;
+                cancellation.Dispose();
+            }
+        }
+
         private void Normalize()
         {
             if (_viewer.ActiveImage == null) throw new InvalidOperationException("未加载图像。");
