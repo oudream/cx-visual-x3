@@ -256,6 +256,63 @@ namespace CxVisual.TestCenter.UI
                 frame.SetOriginal(image);
                 if (frame.Viewer.ActiveImage != image)
                     throw new InvalidOperationException("FIM image not attached to real MPW viewport");
+                // 实际选中多边形ROI并点击统计按钮；不能用手工SetHistogram冒充按钮功能。
+                MVIImageOverlayItem statsPolygon=frame.Viewer.AddPolygonRoi(new[]{
+                    new FGEPoint2D(0,0),new FGEPoint2D(3.6,0),
+                    new FGEPoint2D(0,3.6)});
+                frame.Viewer.SelectOverlay(statsPolygon.Id);
+                TabControl statsTabs=FindControl<TabControl>(frame,"TCT.Imaging.SecondaryTabs");
+                statsTabs.SelectedIndex=1;
+                window.UpdateLayout();
+                Button analyzeButton=FindControl<Button>(frame,"TCT.Imaging.AnalyzeStatistics");
+                TextBox statsSummary=FindControl<TextBox>(frame,"TCT.Imaging.StatisticsSummary");
+                CheckBox useSelectedRoi=FindControl<CheckBox>(frame,"TCT.Imaging.UseSelectedRoi");
+                if(analyzeButton==null || statsSummary==null || useSelectedRoi==null)
+                    throw new InvalidOperationException("真实ROI统计按钮、状态输入或输出不可用");
+                analyzeButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                System.Diagnostics.Stopwatch statsWatch=System.Diagnostics.Stopwatch.StartNew();
+                while((!statsSummary.Text.Contains("像素数：6") ||
+                    !statsSummary.Text.Contains("PolygonRoi") ||
+                    frame.HistogramPlot.PointCount!=256) &&
+                    statsWatch.ElapsedMilliseconds<10000)
+                {
+                    System.Windows.Threading.DispatcherFrame loop=
+                        new System.Windows.Threading.DispatcherFrame();
+                    System.Windows.Threading.Dispatcher.CurrentDispatcher.BeginInvoke(
+                        new Action(()=>loop.Continue=false),
+                        System.Windows.Threading.DispatcherPriority.Background);
+                    System.Windows.Threading.Dispatcher.PushFrame(loop);
+                    System.Threading.Thread.Sleep(5);
+                }
+                if(!statsSummary.Text.Contains("像素数：6") ||
+                    !statsSummary.Text.Contains("PolygonRoi") ||
+                    frame.HistogramPlot.PointCount!=256)
+                    throw new InvalidOperationException(
+                        "真实统计按钮未按三角形ROI精确计算6个像素："+statsSummary.Text);
+                // 关闭ROI分析必须明确恢复全图，而不是继续显示上次局部统计。
+                useSelectedRoi.IsChecked=false;
+                analyzeButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                statsWatch.Restart();
+                while(!statsSummary.Text.Contains("像素数：16") &&
+                    statsWatch.ElapsedMilliseconds<10000)
+                {
+                    System.Windows.Threading.DispatcherFrame loop=
+                        new System.Windows.Threading.DispatcherFrame();
+                    System.Windows.Threading.Dispatcher.CurrentDispatcher.BeginInvoke(
+                        new Action(()=>loop.Continue=false),
+                        System.Windows.Threading.DispatcherPriority.Background);
+                    System.Windows.Threading.Dispatcher.PushFrame(loop);
+                    System.Threading.Thread.Sleep(5);
+                }
+                if(!statsSummary.Text.Contains("像素数：16") ||
+                    !statsSummary.Text.Contains("全图"))
+                    throw new InvalidOperationException(
+                        "ROI开关关闭后未恢复全图16像素统计："+statsSummary.Text);
+                useSelectedRoi.IsChecked=true;
+                frame.Viewer.SelectOverlay(null);
+                frame.Viewer.Overlays.Remove(statsPolygon.Id);
+                statsTabs.SelectedIndex=0;
+                window.UpdateLayout();
                 frame.Viewer.FitToWindow();
                 frame.Viewer.PixelSpacing = new FIMPixelSpacing(0.2, 0.3);
                 frame.Viewer.ShowPhysicalRulers = true;
