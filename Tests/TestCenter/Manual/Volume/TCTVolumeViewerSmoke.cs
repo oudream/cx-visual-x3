@@ -128,10 +128,49 @@ namespace CxVisual.TestCenter.UI
                 resetButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent,resetButton));
                 Check(frame.CameraTargetLengthForTest<.0001,
                     "顶部相机复位按钮Click必须恢复真实3D相机");
+                var fourView=FindVisualByAutomationId<
+                    CxVisual.Mechanism.Presentation.Wpf.Volume.MPWVolumeFourViewLayoutControl>(
+                    frame,"MPW.Volume.FourView");
+                Check(fourView!=null && fourView.ViewCount==4 &&
+                      fourView.GetSlot(0).Children.Count>=2,
+                    "四视图布局须归MPW，直接复用已有Viewer实例");
+                var slots=new System.Windows.Controls.Grid[4];
+                for(int n=0;n<4;n++)slots[n]=fourView.GetSlot(n);
                 frame.ToggleViewForTest(0);
-                Check(frame.IsLegacySingleView,"四视图单窗最大化");
+                Check(frame.IsLegacySingleView && fourView.IsSingleView &&
+                      System.Windows.Controls.Grid.GetRowSpan(slots[0])==2 &&
+                      slots[1].Visibility==Visibility.Collapsed,
+                    "MPW左上角最大化应仅操作现有布局");
                 frame.ToggleViewForTest(0);
-                Check(!frame.IsLegacySingleView,"单窗可原位恢复2x2");
+                Check(!frame.IsLegacySingleView &&
+                      slots[1].Visibility==Visibility.Visible,
+                    "MPW单窗可原位恢复2x2");
+                for(int n=0;n<4;n++)
+                {
+                    Check(Object.ReferenceEquals(slots[n],fourView.GetSlot(n)) &&
+                          System.Windows.Controls.Grid.GetRow(slots[n])==n/2 &&
+                          System.Windows.Controls.Grid.GetColumn(slots[n])==n%2,
+                        "恢复后四个原控件位置和实例必须保持");
+                }
+                for(int n=1;n<4;n++)
+                {
+                    frame.ToggleViewForTest(n);
+                    Check(fourView.IsSingleView &&
+                          Object.ReferenceEquals(fourView.MaximizedSlot,slots[n]),
+                        "四视图每个视口均支持最大化");
+                    frame.ToggleViewForTest(n);
+                    Check(!fourView.IsSingleView &&
+                          Object.ReferenceEquals(fourView.GetSlot(n),slots[n]),
+                        "四视图还原不能重建二维/三维控件");
+                }
+                var independent=new CxVisual.Mechanism.Presentation.Wpf.Volume.
+                    MPWVolumeFourViewLayoutControl();
+                independent.AddView(new System.Windows.Controls.Border(),"测试",0,0);
+                bool duplicateRejected=false;
+                try { independent.AddView(new System.Windows.Controls.Border(),"重复",0,0); }
+                catch(InvalidOperationException) { duplicateRejected=true; }
+                Check(duplicateRejected && independent.ViewCount==1,
+                    "MPW开发者API应拒绝重复占用同一位置");
                 frame.SetWindowWidthForTest("非法数值");
                 applyWindowButton.RaiseEvent(new RoutedEventArgs(
                     Button.ClickEvent,applyWindowButton));

@@ -157,21 +157,6 @@ namespace CxVisual.TestCenter.UI
             AutomationProperties.SetAutomationId(slider,id);
             panel.Children.Add(slider);
         }
-        private static Grid AddViewport(Grid grid, UIElement control, string caption, int row, int column)
-        {
-            Grid host = new Grid { Margin = new Thickness(2), Background = BrushOf(8,14,22) };
-            host.RowDefinitions.Add(new RowDefinition { Height = new GridLength(24) });
-            host.RowDefinitions.Add(new RowDefinition());
-            Border title = new Border { Background = BrushOf(245,248,252),
-                Padding = new Thickness(6,2,4,2), Child = new TextBlock {
-                    Text = caption, Foreground = BrushOf(36,65,105),
-                    FontSize = 12, FontWeight = FontWeights.SemiBold } };
-            host.Children.Add(title);
-            Grid.SetRow(control,1); host.Children.Add(control);
-            Grid.SetRow(host,row); Grid.SetColumn(host,column); grid.Children.Add(host);
-            return host;
-        }
-
         public void ResetCameraForTest() { Reset3DCamera(); }
 
         private void Reset3DCamera()

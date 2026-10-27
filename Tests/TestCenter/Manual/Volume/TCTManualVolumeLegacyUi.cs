@@ -20,9 +20,7 @@ namespace CxVisual.TestCenter.UI
     /// </summary>
     public sealed partial class TCTManualVolumeViewerFrame
     {
-        private Grid _legacyFour;
-        private readonly List<Grid> _legacySlots = new List<Grid>();
-        private Grid _maximizedSlot;
+        private MPWVolumeFourViewLayoutControl _legacyFour;
         private readonly Dictionary<FVOSlicePlane, Slider> _headerSliceSliders =
             new Dictionary<FVOSlicePlane, Slider>();
         private readonly Dictionary<FVOSlicePlane, TextBox> _headerSliceNumbers =
@@ -46,7 +44,7 @@ namespace CxVisual.TestCenter.UI
         };
         public int LegacyTopTabCount { get { return _upperTabs == null ? 0 : _upperTabs.Items.Count; } }
         public int LegacyBottomTabCount { get { return _lowerTabs == null ? 0 : _lowerTabs.Items.Count; } }
-        public bool IsLegacySingleView { get { return _maximizedSlot != null; } }
+        public bool IsLegacySingleView { get { return _legacyFour != null && _legacyFour.IsSingleView; } }
 
         private void BuildLegacyUi()
         {
@@ -86,16 +84,12 @@ namespace CxVisual.TestCenter.UI
             work.ColumnDefinitions.Add(new ColumnDefinition { Width=new GridLength(5) });
             work.ColumnDefinitions.Add(new ColumnDefinition { Width=new GridLength(430),MinWidth=340 });
             Grid.SetRow(work,1);root.Children.Add(work);
-            _legacyFour=new Grid { Background=BrushOf(11,17,25) };
-            _legacyFour.RowDefinitions.Add(new RowDefinition());
-            _legacyFour.RowDefinitions.Add(new RowDefinition());
-            _legacyFour.ColumnDefinitions.Add(new ColumnDefinition());
-            _legacyFour.ColumnDefinitions.Add(new ColumnDefinition());
+            _legacyFour=new MPWVolumeFourViewLayoutControl();
             work.Children.Add(_legacyFour);
             AddSliceViewport(_legacyFour,_xy,FVOSlicePlane.XY,"XY 主视图",0,0);
             AddSliceViewport(_legacyFour,_yz,FVOSlicePlane.YZ,"YZ 侧视图",0,1);
             AddSliceViewport(_legacyFour,_xz,FVOSlicePlane.XZ,"XZ 底视图",1,0);
-            Grid gpuFrame=AddViewport(_legacyFour,_scene,"3D / GPU体绘启动中",1,1);
+            Grid gpuFrame=_legacyFour.AddView(_scene,"3D / GPU体绘启动中",1,1);
             Border gpuTitle=gpuFrame.Children[0] as Border;
             _gpuModeHeader=gpuTitle==null?null:gpuTitle.Child as TextBlock;
             gpuFrame.Children.Remove(_scene);
@@ -105,7 +99,6 @@ namespace CxVisual.TestCenter.UI
             {
                 Grid host=item as Grid;
                 if(host==null)continue;
-                _legacySlots.Add(host);
                 int row=Grid.GetRow(host),column=Grid.GetColumn(host);
                 MPWImageViewerControl viewer=(row==0 && column==0)?_xy:
                     (row==0 && column==1)?_yz:(row==1 && column==0)?_xz:null;
@@ -378,7 +371,7 @@ namespace CxVisual.TestCenter.UI
                 TinyButton(tools,"下移",()=>Pan3D(0,28));
                 tools.ToolTip="GPU三维：左键拖动旋转；右/中键或Shift+左键平移；滚轮缩放；双击复位";
             }
-            TinyButton(tools,"□",()=>ToggleSlot(host));
+            TinyButton(tools,"□",()=>_legacyFour.ToggleSlot(host));
             Grid.SetRow(tools,0);host.Children.Add(tools);
             AutomationProperties.SetAutomationId(host,"TCT.Volume.View."+row+col);
         }
@@ -466,33 +459,14 @@ namespace CxVisual.TestCenter.UI
             b.Click+=(s,e)=>action();tools.Children.Add(b);
         }
 
-        private void ToggleSlot(Grid slot)
-        {
-            if(_maximizedSlot==slot) { RestoreAllViews();return; }
-            RestoreAllViews();
-            _maximizedSlot=slot;
-            foreach(Grid candidate in _legacySlots)
-                if(candidate!=slot)candidate.Visibility=Visibility.Collapsed;
-            Grid.SetRow(slot,0);Grid.SetColumn(slot,0);
-            Grid.SetRowSpan(slot,2);Grid.SetColumnSpan(slot,2);
-        }
         public void ToggleViewForTest(int index)
         {
-            if(index<0||index>=_legacySlots.Count)throw new ArgumentOutOfRangeException("index");
-            ToggleSlot(_legacySlots[index]);
+            if(_legacyFour==null)throw new InvalidOperationException("四视图未初始化。");
+            _legacyFour.ToggleSlot(_legacyFour.GetSlot(index));
         }
         public void RestoreAllViews()
         {
-            if(_maximizedSlot==null)return;
-            foreach(Grid candidate in _legacySlots)
-            {
-                int n=_legacySlots.IndexOf(candidate);
-                Grid.SetRow(candidate,n>=2?1:0);
-                Grid.SetColumn(candidate,n%2);
-                Grid.SetRowSpan(candidate,1);Grid.SetColumnSpan(candidate,1);
-                candidate.Visibility=Visibility.Visible;
-            }
-            _maximizedSlot=null;
+            if(_legacyFour!=null)_legacyFour.RestoreAllViews();
         }
 
         private void SaveSelectedViewDialog()

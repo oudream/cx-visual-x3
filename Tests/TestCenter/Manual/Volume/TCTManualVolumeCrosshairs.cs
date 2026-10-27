@@ -32,10 +32,10 @@ namespace CxVisual.TestCenter.UI
             }
         }
 
-        private void AddSliceViewport(Grid host, MPWImageViewerControl viewer,
-            FVOSlicePlane plane, string title, int row, int column)
+        private void AddSliceViewport(MPWVolumeFourViewLayoutControl host,
+            MPWImageViewerControl viewer, FVOSlicePlane plane, string title, int row, int column)
         {
-            Grid section = AddViewport(host, viewer, title, row, column);
+            Grid section = host.AddView(viewer, title, row, column);
             section.Children.Remove(viewer);
             MPWVolumeSliceViewportControl content =
                 new MPWVolumeSliceViewportControl(plane,viewer);
