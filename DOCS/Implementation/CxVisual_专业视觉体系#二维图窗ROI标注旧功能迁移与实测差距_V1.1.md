@@ -162,3 +162,51 @@
 - [Windows Imaging #40421287277](https://github.com/oudream/cx-visual-x3/actions/runs/40421287277)：**SUCCESS（13步骤）**，对应 `bb299c2`，2048顶点插删回环数值测试已落地。
 - [TestCenter Windows #40421113924](https://github.com/oudream/cx-visual-x3/actions/runs/40421113924)：**SUCCESS（29步骤）**，对应 `07bde033`，包含图窗WPF区域页插删按钮及双视口回归。后续`397aa8c` CSV回环与`4b1fbc3` 拖动状态安全加固须在其对应TestCenter运行中进一步核实，不能将07b版本成功无条件覆盖到后续全平台。
 - 专业扩展下一项需要核对现有 `Foundation/Geometry/Paths/FGEPath2D.cs` 和 `Mechanism/Core/VisualDefinitions/MRCShapes.cs` 中的路径/Bezier能力，优先复用现有通用几何Owner，不在Imaging重新构造Bezier基础体系。
+
+
+## 10. 真实UI截图专项：ReferTo成熟功能保真审计（2026-10-27）
+
+### 10.1 本次审计的判定规则
+
+用户截图暴露出两个不同缺口：**可点击≠已操作**（UI上有按钮但缺选中/引导/完整交互）和**有结果≠正确结果**（统计用错误的几何范围）。用户截图中统计图为“尚无直方图”，它只证明截图时未绘出统计结果，不能单凭图片推断FIM图表渲染器虚假；真正的错误由源码确认：原`TCTManualImageViewerFrame.Calculate()`只有`SelectedRegion`矩形，根本未读取`SelectedOverlayId`的非矩形ROI。此前部分WPF Smoke仅调用`HistogramPlot.SetHistogram(...)`，绕过“点统计按钮→ROI→后台结果”的真实路径。此轮已实际修复并补上该按钮路径的正反验收。
+
+追溯文件：
+- `ReferTo/Vision/Halcon/HWindowControlView.cs`（旧键鼠事件、`UserDrawMode`、多阶段`Ls2Ls`、`ThresholdSeg`、`RegionGrowing`、可撤销绘图）
+- `ReferTo/Vision/Halcon/HalconWindowTools.cs`（`GetGrayForPolygon/Circle/Rectangle`、`AddUserLs2Ls`、`FindLargestDefect`、`UndoLastAction`、`SaveCurrentUserDrawState/RestoreUserDrawState`）
+- `ReferTo/Vision/CxECTImageWinForms/Controls/ImageViewerControl.cs`（`SetToolMode`关闭平移抢占、`BeginAnnotationTextInput`、多层颜色、`RefreshAnalysisAsync`、尺寸编辑、对比、图像格式输出）
+- `ReferTo/Vision/CxECT2DViewer/MainForm.cs`（HALCON `HObject`装载，PNG/TIFF/JPG另样本保存与原/结果图操作）
+- 新Owner `Foundation/Imaging/Processing/FIMImageAnalyzer.cs`、`Mechanism/Visual/Imaging/Overlays/MVIImageOverlayItem.cs`、`Mechanism/Presentation.Wpf/Imaging/MPWImageViewerControl.xaml.cs`、`Tests/TestCenter/Manual/Imaging/TCTManualImageViewerFrame.cs` / `Layout.cs` / `TCTImageViewerSmoke.cs`。
+
+### 10.2 原功能 → 新Owner → 真实用户入口 → 保真结论
+
+| 旧功能/真实源码 | 新Owner及当前真实行为 | TCT用户入口/差距 | 判定 |
+|---|---|---|---|
+| 旧`ImageViewerControl.LoadImage`、PNG/JPG/TIFF | FIM图像文件、RAW与MPW `OpenFile` | 打开图像及RAW；部分格式通，但HALCON专有图元/类型未同等验收 | 部分迁移 |
+| 旧`CxECT2DViewer.MainForm.VerifyImageSave`：PNG/TIFF/JPG | MPW保存PNG/视口PNG | “输出”只明确PNG，TIF/JPG源数据保真输出未达到旧应用覆盖面 | **遗漏格式能力** |
+| 旧`LoadImage(HObject)`、WinForms/HALCON显示指针 | FIM内存对象；PVC待对接专业SDK | 没有完整旧HObject→正式图像会话/SDK生命周期保真验收 | 专业集成待做 |
+| 旧`SetToolMode`、关闭左键平移抢占 | MVI`ToolMode`、MPW鼠标分支 | 区域工具以前只更新模式、没有高亮，刚画完新对象未自动选中；本次均已修补 | **已修复代码，等待最新版CI** |
+| 旧`AddUserRectangle/Circle/Polygon` | MVI OverlayStore、MPW创建/重绘 | 区域页矩形、圆、椭圆、多边形入口；保留MVI原图坐标 | 已有实现；需物理鼠标验收 |
+| 旧`ImageViewerControl.ResizeRoi`、`UpdatePoint` | MVI八向、局部旋转矩形和逐顶点 | 区域页编辑柄、顶点插删、锁定和层序 | 已编码且多次Windows测试；完整拖柄物理手势未验证 |
+| 旧`GetGrayForPolygon/Circle/Rectangle` | FIM`AnalyzeMasked`＋MVI`ContainsRoiPixelCenter` | **此前所选圆/椭圆/多边形/旋转矩形被错误当成整图/矩形分析；此轮修正按形状逐像素中心统计** | **此前实质性功能失真→已修复并专项验收** |
+| 旧`CalculateStatistics` / `RefreshAnalysisAsync` | FIM统计Welford、MPW真实直方图、TCT后台取消 | 原统计按钮存在，但旧Smoke直接设置图表数据，不检查真实按钮；本次补“WPF点击→6像素三角形→16像素全图”反证 | **已补行为验收** |
+| 旧`UserDrawMode.ThresholdSeg` 和 `RegionGrowing` | FIM阈值基础操作存在；MVI无相应交互工具状态 | 变换页“阈值掩码”不能替代拖动选区→调整参数→分割ROI→结果轮廓/Overlay的旧闭环 | **功能遗漏，优先补** |
+| 旧`UserDrawMode.Ls2Ls` / `AddUserLs2Ls` | FIM有距离/角度基础数值 | 无等价两线段分阶段选点、两线最短距离/夹角和标注输出的完整UI | **功能遗漏，优先补** |
+| 旧`DrawRectangleInfo/DrawCircleInfo/DrawPolygonInfo`灰度面积标签 | MVI对象、`DescribeMeasurement`与CSV | 部分测量与图元列表，但专业几何/灰度值并未全部同构输出 | 部分迁移 |
+| 旧`BeginAnnotationTextInput/CommitPendingAnnotationTextInput` | MPW TextAnnotation + TCT文本框 | 新标注需面板先填字；没有旧图窗画面就地输入与确认/取消体验 | **交互遗漏** |
+| 旧`ApplyOverlayColors`、每图层/对象样式 | MVI`WithStyle`能力 | 上方“ROI/测量/标注/缺陷”彩色块在当前代码仅构造普通`Border`，**不是可点击调色按钮**；缺少正式选中对象颜色、线宽、字体等可编辑属性入口 | **UI有形无操作，优先补** |
+| 旧`UndoLastAction`、`SaveCurrentUserDrawState/RestoreUserDrawState` | 本轮无图像专用Undo；平台有统一工程/Undo Owner | 目前二维视图没有对接统一撤销/重做及版本恢复；绝不能另造图像专属历史系统 | **未迁移到可操作入口** |
+| 旧`AutoWindowLevel`、`ApplyWindowLevel`、窗控件 | MVI DisplayState、MPW显示映射、TCT窗位 | 真正修改显示不修改原数据，已有路径；手势调窗与旧快捷方式尚无全面同等测试 | 部分迁移 |
+| 旧`BlendImages`、结果图切换、同步视口 | MVI ComparisonState、MPW双视口及测试 | 真实双Pane、叠合、滑动、差分；有CI但物理多DPI及多批图待验 | 已编码/合成样本自动测试 |
+| 旧`FindLargestDefect/PerformFixedDetection/MergePolygonWithRectangle` | HALCON专业算法应归`Professional.Vision`，FIM仅承载共性数学 | 未验证这些旧算法按相同图像、ROI、阈值、缺陷结构和结果输出完成专业迁移 | **专业功能待保真迁移，不能硬塞Foundation** |
+| 旧临时交互线、测量过程提示、区域拟合 | MPW DraftPolyline及各项测量模式 | 仍缺完整多阶段测量提示、进度提示、精细控制柄及鼠标状态连续性 | 部分迁移 |
+| 旧视觉对象保存与恢复/导出 | MPW视口PNG和TCT CSV | 结果文件导出有部分实现，但工程状态、完整图元属性/样式、图层和操作历史恢复未闭环 | **未完成** |
+
+**判定用语**：源码确有实现≠已编译；已编译≠按钮真实操作；按钮真实操作≠结果正确；合成Windows WPF≠现场真实设备/多DPI鼠标；旧源码存在方法≠该方法已经完成旧项目全量现场验收。
+
+### 10.3 本轮代码修复、反证与待办优先级
+
+1. **P0数据正确性**：`aa026178`新增FIM掩膜统计；`1710bac`MVI形状级像素中心判定；`017e03e`TCT统计按钮连接所选ROI及失效结果清理；`66dc9a6`/`73446e6`数值反证。普通矩形与非矩形真正分开，不再按外包框/整图伪装。
+2. **P0可操作闭环**：`94a7056`绘制结束自动选中对象，保留矩形`SelectedRegion`供原Crop入口继续使用；`40e0927`真实WPF“选中三角形→点击统计→6个像素→关闭ROI→全图16个像素”端到端测试，而不是调用`SetHistogram`冒充用户执行。
+3. **P1便捷性**：`9f03b88`区域页改为紧凑操作列且当前工具高亮；`0681d98`同步工具下拉/状态反馈；`73fac24`WPF按钮布局和互斥状态回归。界面尺寸/交互体验后续需按真实截图继续比对。
+4. **下一组真实工作包**：P0逐项补对象属性颜色/线宽；P0将`ThresholdSeg/RegionGrowing`实现为“指定图像+ROI+阈值/种子→可取消运行→分割结果/图元+数据输出”；P1复用现有FGE几何补`Ls2Ls`两线测量并输出值/标注；P1图窗就地文本输入与编辑；P2正式集成统一Undo/Redo与工程保存；P2 HALCON专业算法同样本保真对照。
+5. **CI SHA严格分离**：[Imaging Windows #40452705137](https://github.com/oudream/cx-visual-x3/actions/runs/40452705137) **SUCCESS（13步）**，对应`73446e6`，其中真实统计按钮/精确ROI的WPF新测试通过；[TestCenter Windows #40452628645](https://github.com/oudream/cx-visual-x3/actions/runs/40452628645) **SUCCESS（29步）**，对应较早`40e0927`；之后紧凑布局及高亮`73fac24`的Windows任务须看[Imaging #40453320882](https://github.com/oudream/cx-visual-x3/actions/runs/40453320882)和[TestCenter #40453320665](https://github.com/oudream/cx-visual-x3/actions/runs/40453320665)实际完成状态，不能把旧绿灯冒充新提交验收。
