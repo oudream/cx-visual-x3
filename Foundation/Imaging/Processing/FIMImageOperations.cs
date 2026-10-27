@@ -1,9 +1,22 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 
 namespace CxVisual.Foundation.Imaging
 {
     /// <summary>基于原始像素的裁剪、拆分/拼接和显式窗映射；保留旧HALCON成熟算法语义。</summary>
+    /// <summary>在原图ROI内按种子灰度进行连通生长后的独立掩码及精确区域数据。</summary>
+    public sealed class FIMRegionGrowingResult
+    {
+        internal FIMRegionGrowingResult(FIMImageBuffer mask,long count,
+            FIMPixelRegion bounds,double seedGray)
+        { Mask=mask;PixelCount=count;Bounds=bounds;SeedGrayValue=seedGray; }
+        public FIMImageBuffer Mask { get; private set; }
+        public long PixelCount { get; private set; }
+        public FIMPixelRegion Bounds { get; private set; }
+        public double SeedGrayValue { get; private set; }
+    }
+
     public static class FIMImageOperations
     {
         /// <summary>
@@ -160,6 +173,68 @@ namespace CxVisual.Foundation.Imaging
                 }
             return FIMImageBuffer.FromOwnedArray(image.Width, image.Height,
                 FIMPixelFormat.Gray8, result, image.Width);
+        }
+
+        /// <summary>
+        /// 原图限定ROI内、以中心种子灰度为固定参考的四/八邻域生长。
+        /// 独立Gray8 0/255掩码及像素数/原图精确Bounds；与显示窗位和SDK无关。
+        /// </summary>
+        public static FIMRegionGrowingResult RegionGrow(FIMImageBuffer image,
+            FIMPixelRegion roi,int seedX,int seedY,double tolerance,bool eightConnected=false,
+            CancellationToken cancellationToken=default(CancellationToken))
+        {
+            if(image==null)throw new ArgumentNullException("image");
+            if(double.IsNaN(tolerance)||double.IsInfinity(tolerance)||tolerance<0)
+                throw new ArgumentOutOfRangeException("tolerance");
+            FIMPixelRegion r=roi.ClipTo(image);
+            if(seedX<r.Left || seedX>r.Right || seedY<r.Top || seedY>r.Bottom)
+                throw new ArgumentOutOfRangeException("seedX","种子须位于指定原图ROI内。");
+            cancellationToken.ThrowIfCancellationRequested();
+            double seed=image.GetGrayValue(seedX,seedY);
+            if(double.IsNaN(seed)||double.IsInfinity(seed))
+                throw new InvalidOperationException("种子像素灰度不是有限值。");
+            int width=image.Width,height=image.Height;
+            byte[] mask=new byte[checked(width*height)];
+            Queue<int> pending=new Queue<int>();
+            int start=seedY*width+seedX;
+            mask[start]=255;
+            pending.Enqueue(start);
+            long count=0;
+            int minX=seedX,maxX=seedX,minY=seedY,maxY=seedY;
+            while(pending.Count>0)
+            {
+                if((count&1023)==0)cancellationToken.ThrowIfCancellationRequested();
+                int pos=pending.Dequeue();
+                int x=pos%width,y=pos/width;
+                count++;
+                minX=Math.Min(minX,x);maxX=Math.Max(maxX,x);
+                minY=Math.Min(minY,y);maxY=Math.Max(maxY,y);
+                for(int dy=-1;dy<=1;dy++)
+                    for(int dx=-1;dx<=1;dx++)
+                    {
+                        if(dx==0 && dy==0)continue;
+                        if(!eightConnected && dx!=0 && dy!=0)continue;
+                        int nx=x+dx,ny=y+dy;
+                        if(nx<r.Left || nx>r.Right || ny<r.Top || ny>r.Bottom)
+                            continue;
+                        int neighbor=ny*width+nx;
+                        if(mask[neighbor]!=0)continue;
+                        // 1代表检查过但没有纳入生长的像素，避免反复评估。
+                        mask[neighbor]=1;
+                        double value=image.GetGrayValue(nx,ny);
+                        if(double.IsNaN(value)||double.IsInfinity(value))
+                            throw new InvalidOperationException("候选像素包含非有限灰度。");
+                        if(Math.Abs(value-seed)>tolerance)continue;
+                        mask[neighbor]=255;
+                        pending.Enqueue(neighbor);
+                    }
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+            for(int i=0;i<mask.Length;i++)if(mask[i]==1)mask[i]=0;
+            FIMImageBuffer output=FIMImageBuffer.FromOwnedArray(width,height,
+                FIMPixelFormat.Gray8,mask,width);
+            return new FIMRegionGrowingResult(output,count,
+                new FIMPixelRegion(minX,minY,maxX,maxY),seed);
         }
 
         /// <summary>同位深Gray8/Gray16图像绝对差分，不丢失16位原始动态范围。</summary>
