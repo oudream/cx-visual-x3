@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using CxVisual.Mechanism.Core.Modules;
 using CxVisual.Mechanism.Connectivity;
 using CxVisual.Mechanism.Data.Variables;
+using CxVisual.Mechanism.Data.Messages;
 using CxVisual.Mechanism.Data;
 using CxVisual.Mechanism.Data.RuntimeData;
 using CxVisual.Mechanism.Lifecycle.Modules;
@@ -348,8 +349,31 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 oldTable.Get<double>("Pressure") == 0.5, "新旧会话不串写");
         }
 
+        private static void VariableMessageBridgeSmoke()
+        {
+            MDSVariableTable table = new MDSVariableTable("line1");
+            table.Define(new MDSVariableDefinition("Pressure", typeof(double), null, true, null, "pressure"));
+            using (MNMMessageCenter messages = new MNMMessageCenter())
+            using (MDSVariableChangeDispatcher dispatcher = table.CreateDispatcher(32))
+            {
+                MDSVariableChangeNotice received = null;
+                using (IDisposable receiver = messages.Subscribe<MDSVariableChangeNotice>(
+                    "/cxvisual/variables/line1/pressure/changed", context => received = context.Payload))
+                using (MDSVariableMessageBridge bridge =
+                    new MDSVariableMessageBridge(table, dispatcher, messages))
+                {
+                    table.Update<double>("Pressure", 1.25);
+                    Check(dispatcher.Drain(TimeSpan.FromSeconds(5)), "变化通知桥应能排空");
+                    Check(received != null && received.ScopeId == "line1" && received.Revision == 1 &&
+                        received.VariableId == "pressure" && bridge.Published == 1 && bridge.Failed == 0,
+                        "通知必须来自已有MessageCenter且只包含准确变量身份");
+                }
+            }
+        }
+
         public static void Run()
         {
+            VariableMessageBridgeSmoke();
             VariableScopeSmoke();
             VariableCasSmoke();
             VariableProviderSmoke();
