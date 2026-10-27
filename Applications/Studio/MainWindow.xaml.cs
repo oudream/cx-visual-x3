@@ -848,8 +848,10 @@ namespace CxVisual.Studio
                 selectedVisual!=null&&selectedVisual.ElementTypeId=="core.visual.connector",
                 _viewModel.ProjectSession.CanUndo,_viewModel.ProjectSession.CanRedo,
                 SceneHost.IsDesignMode&&!_logicRunning&&!_visualPreviewTimer.IsEnabled,
-                selectedVisual!=null&&
-                    _viewModel.ProjectSession.Find(selectedVisual.Id) is MRCGroup);
+                // Group是工程组织容器，MVI场景只投影其子元素；不能用SceneItem
+                // 是否存在判断一个有效Group是否被工程对象树选中。
+                _viewModel.SelectedId.HasValue&&
+                    _viewModel.ProjectSession.Find(_viewModel.SelectedId.Value) is MRCGroup);
             if(_logicRunning||_visualPreviewTimer.IsEnabled)return;
             MEMPage page=_viewModel.ActivePage;
             MEMNodeSnapshot node=page==null?null:
