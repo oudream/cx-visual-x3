@@ -290,6 +290,9 @@ namespace CxVisual.TestCenter.UI
                 Check(String.IsNullOrEmpty(frame.LastUiError),
                     "修改有效窗宽后工作区命令必须恢复可用");
                 frame.ApplyWindowCenterWidth();
+                // WPF TabControl只把当前选中页放入可视树，须先真实切换到渲染页。
+                upper.SelectedIndex=2;
+                window.UpdateLayout();
                 var gpuOptions=FindVisualByAutomationId<
                     CxVisual.Mechanism.Presentation.Wpf.Volume.MPWVolumeRenderingParametersControl>(
                     frame,"MPW.Volume.RenderingParameters");
@@ -298,6 +301,8 @@ namespace CxVisual.TestCenter.UI
                           FindVisualByAutomationId<Slider>(frame,
                               "MPW.Volume.RenderingParameters.Opacity")),
                     "真实三维渲染参数应由MPW组件承载，不由TestCenter复制控件");
+                upper.SelectedIndex=0;
+                window.UpdateLayout();
                 // 独立控件反证：MPW不依赖CT3D渲染器也能发送区分LUT/uniform的变化事件。
                 var standaloneGpuPanel=new CxVisual.Mechanism.Presentation.Wpf.Volume.
                     MPWVolumeRenderingParametersControl();
