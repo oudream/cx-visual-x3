@@ -281,3 +281,21 @@
 **最新相关Windows证据**：[Imaging #40468052445](https://github.com/oudream/cx-visual-x3/actions/runs/40468052445) **SUCCESS（13步骤）**，SHA `7362fb6`。相同代码SHA的[TestCenter #40468052262](https://github.com/oudream/cx-visual-x3/actions/runs/40468052262)在**Graphics Group/解组WPF回归**失败，不是Imaging步骤失败；跨专业整体CI不能误写全绿。
 
 **仍未验收**：真实操作系统物理鼠标双Pane、不同DPI监视器、多工位现场图像、Ls2Ls对象独立线段端点编辑与统一Undo/Redo及工程恢复；图像算法与UI不具备60项整体完成资格。
+
+
+## 15. ROI阈值与二值轮廓恢复（2026-10-27，持续核验）
+
+> 本节只记录当前源码提交与可验证行为，完整WPF与工业验收必须单独引用匹配SHA的Actions结论。旧`ThresholdSeg`和`RegionGrowing`的`AutoAreaRectDrawn`向业务回调交付原图/ROI，不等于HALCON具体分割与缺陷算法已迁入新平台。
+
+| 原功能 / 当前新Owner | 真实入口、结果和行为 | 证据分级与剩余差距 |
+|---|---|---|
+| 旧`HWindowControlView.UserDrawMode.ThresholdSeg` → `Foundation.Imaging.FIMImageOperations.ThresholdInRegion` | 接受原图、阈值、离散ROI与可选像素中心形状谓词；返回`FIMThresholdRegionResult`（Gray8掩码、实际像素数、参与像素数、可空命中Bounds），取消时不提交结果 | `66e5f60`、`cbb4560`：4×4原图、非矩形、零命中/反向范围/NaN/取消数学反证；不把外接矩形当精确ROI |
+| 旧框选交互 → `TestCenter.TCTManualImageViewerFrame` | “变换”页独立阈值上下限、“按选中ROI分割”按钮；可选择矩形/圆/椭圆/旋转矩形/多边形；独立后台执行、最新请求保护和结果Gray8掩码 | `b6be527`、`661210d`、`4750fec`；实际WPF点击后检验三角形仅6像素、异常输入不得污染上次结果；`4716a31`修正旧区域生长测试误比较过期Mask |
+| 掩码与轮廓 → `Foundation.Imaging.FIMImageMaskContours.Trace` | 0/255 Gray8格点边界闭环；分别返回外环（正面积）、孔洞（负面积），角接触不合并成自交环；有边界数量上限、取消和严格二值检查 | `57e4f25`、`52a27d7`、`67176f4`、`786b9d3`、`da05669`。不做基于外框的虚构多边形；工业大图/噪声阈值仍需性能测试 |
+| 边界图元与输出 → 原`MVIImageOverlayStore` + WPF显示 + CSV | “提取结果掩码轮廓”将每条闭环写成可选中的`PolygonAnnotation`，点坐标为原图像素边界，孔洞单独标注、保留原Gray8结果；正式CSV保留稳定ID与顶点 | `a23ff60`、`2ee9f7c`、`3787e3a`；添加真实WPF按钮→多边形渲染→6像素轮廓面积→CSV落盘读回检查，不将`PolygonAnnotation`误称为包含孔洞的精确面积ROI |
+
+**保护性边界**：单次轮廓追踪默认限制100000边，UI每次最多写入256条轮廓；超限时要求缩小ROI或调整阈值，原Mask仍保留。不创建第二套几何/工程/Undo体系，也不修改`ReferTo`。
+
+**最新CI**：FIM数学反证修正后，[Imaging #40475730885](https://github.com/oudream/cx-visual-x3/actions/runs/40475730885)已核实SUCCESS，SHA `da05669`。更晚`3787e3a`增加的实际WPF轮廓按钮和CSV操作，须以[Imaging #40475820357](https://github.com/oudream/cx-visual-x3/actions/runs/40475820357)真实结论独立判定。整体TestCenter的跨专业Graphics/UIA失败仍不得当成Imaging数学失败，也不能反过来把Imaging绿灯冒充整个平台全绿。
+
+**尚需继续**：旧HALCON回调所涉具体专业阈值/缺陷算法的同图比较、孔洞ROI的精确面积交互、轮廓编辑/简化/拟合、文本就地编辑、工程状态与统一Undo、工业4300×4300等性能及实机验收。
