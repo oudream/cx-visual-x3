@@ -18,6 +18,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
     public sealed class SceneView : FrameworkElement
     {
         private readonly List<MVISceneItem> _items = new List<MVISceneItem>();
+        private Point? _paletteDropGhost;
         // 文本框只暂存WPF正在输入的草稿；正式内容仍由MRCTextElement与MTC持有。
         private readonly Canvas _inlineTextLayer=new Canvas();
         private TextBox _inlineTextBox;
@@ -574,6 +575,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             Loaded+=OnHostLoaded;
             Unloaded+=OnHostUnloaded;
             IsVisibleChanged+=OnCanvasIsVisibleChanged;
+            AllowDrop=true;
         }
         protected override int VisualChildrenCount{get{return _visualChildren.Count;}}
         protected override System.Windows.Media.Visual GetVisualChild(int index)
@@ -697,6 +699,45 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             InvalidateVisual();
         }
 
+        private static string PaletteType(IDataObject data)
+        {
+            if(data==null||!data.GetDataPresent(MPWVisualOperationPanel.WidgetDragFormat))return null;
+            string type=data.GetData(MPWVisualOperationPanel.WidgetDragFormat) as string;
+            return MRCWidgetTypes.IsBuiltIn(type)?type:null;
+        }
+        /// <summary>拖放使用已有Widget绘制事件、世界坐标和MEM单事务。</summary>
+        public bool DropWidgetFromPalette(string type,double x,double y)
+        {
+            if(!_designMode||!MRCWidgetTypes.IsBuiltIn(type)||DrawWidgetRequested==null||
+                double.IsNaN(x)||double.IsNaN(y)||double.IsInfinity(x)||double.IsInfinity(y))
+                return false;
+            CancelInteraction();
+            Point p=SnapDrawing(new Point(x,y));
+            FGEPoint2D at=new FGEPoint2D(p.X,p.Y);
+            DrawWidgetRequested(type,new[]{at,at});
+            return true;
+        }
+        protected override void OnDragOver(DragEventArgs e)
+        {
+            base.OnDragOver(e);
+            bool allowed=_designMode&&DrawWidgetRequested!=null&&PaletteType(e.Data)!=null;
+            e.Effects=allowed?DragDropEffects.Copy:DragDropEffects.None;
+            _paletteDropGhost=allowed?(Point?)SnapDrawing(WorldPoint(e.GetPosition(this))):null;
+            InvalidateVisual();e.Handled=true;
+        }
+        protected override void OnDragLeave(DragEventArgs e)
+        {
+            base.OnDragLeave(e);_paletteDropGhost=null;InvalidateVisual();e.Handled=true;
+        }
+        protected override void OnDrop(DragEventArgs e)
+        {
+            base.OnDrop(e);
+            string type=PaletteType(e.Data);
+            Point p=WorldPoint(e.GetPosition(this));
+            bool accepted=type!=null&&DropWidgetFromPalette(type,p.X,p.Y);
+            _paletteDropGhost=null;InvalidateVisual();
+            e.Effects=accepted?DragDropEffects.Copy:DragDropEffects.None;e.Handled=true;
+        }
         protected override void OnRender(DrawingContext dc)
         {
             base.OnRender(dc);
@@ -1137,6 +1178,16 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                     catch(ArgumentException){/* 零长度指针移动仅显示工具十字，不生成工程 */}
                 }
             }
+            if(_paletteDropGhost.HasValue)
+            {
+                Point p=_paletteDropGhost.Value;
+                FGEPoint2D w=new FGEPoint2D(p.X,p.Y);
+                double x,y,width,height;
+                MVIShapeCatalog.WidgetBounds(new[]{w,w},out x,out y,out width,out height);
+                dc.DrawRectangle(new SolidColorBrush(Color.FromArgb(35,32,117,218)),
+                    new Pen(Brushes.DodgerBlue,1.5/_zoom){DashStyle=DashStyles.Dash},
+                    new Rect(x,y,width,height));
+            }
             if(_marquee)
             {
                 double x=Math.Min(_marqueeStart.X,_marqueeEnd.X);
@@ -1534,6 +1585,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         public void CancelInteraction()
         {
             if(IsInlineTextEditing)FinishInlineTextEdit(false);
+            _paletteDropGhost=null;
             _drawDragging=false;_drawPoints.Clear();
             _dragging=false;_marquee=false;_handleDragging=false;_activeHandle=null;_panning=false;_dragX=0;_dragY=0;_dragSnap=null;
             _waypointDragging=false;_waypointConnectionId=null;

@@ -5,6 +5,8 @@ using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
+using System.Windows.Input;
+using CxVisual.Mechanism.Core;
 namespace CxVisual.Mechanism.Presentation.Wpf
 {
     /// <summary>Studio/TestCenter共享的图元操作面板。只发出编辑意图，不持有MEM或Undo。</summary>
@@ -13,6 +15,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         private readonly StackPanel _root=new StackPanel();
         private readonly StackPanel _commands=new StackPanel();
         private readonly Dictionary<string,Button> _buttons=new Dictionary<string,Button>(StringComparer.Ordinal);
+        public const string WidgetDragFormat="CxVisual.Visual.WidgetType.v1";
         public event Action<string> OperationRequested;
         private string _activeTool="Select";
         public string ActiveTool {get{return _activeTool;}}
@@ -77,6 +80,20 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 AutomationProperties.SetAutomationId(button,"MPW.Visual."+id);
                 // 此处仅转发用户意图，执行和权限由宿主统一MVI/MEM编辑入口负责。
                 button.Click+=(sender,args)=>{var requested=OperationRequested;if(requested!=null)requested(id);};
+                if(id=="WidgetButton"||MRCWidgetTypes.IsBuiltIn(id))
+                {
+                    Point start=new Point();
+                    button.PreviewMouseLeftButtonDown+=(sender,args)=>start=args.GetPosition(button);
+                    button.PreviewMouseMove+=(sender,args)=>{
+                        if(!button.IsEnabled||args.LeftButton!=MouseButtonState.Pressed)return;
+                        Point now=args.GetPosition(button);
+                        if(Math.Abs(now.X-start.X)<SystemParameters.MinimumHorizontalDragDistance&&
+                            Math.Abs(now.Y-start.Y)<SystemParameters.MinimumVerticalDragDistance)return;
+                        string type=id=="WidgetButton"?"core.widget":id;
+                        DragDrop.DoDragDrop(button,new DataObject(WidgetDragFormat,type),DragDropEffects.Copy);
+                    };
+                    button.ToolTip=button.ToolTip+" · 拖到画布创建";
+                }
                 _buttons.Add(id,button);grid.Children.Add(button);
             }
             parent.Children.Add(grid);
