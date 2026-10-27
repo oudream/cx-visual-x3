@@ -844,8 +844,41 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(immediate == 2 && batches == 1, "Route释放应真正解除订阅");
         }
 
+        private static void VariableExplicitNullDefaultSmoke()
+        {
+            MDSVariableDefinition explicitNull = new MDSVariableDefinition("Text", typeof(string),
+                null, true, null, "text-id", null, true);
+            MDSVariableDefinition unspecified = new MDSVariableDefinition("Text", typeof(string),
+                null, true, null, "text-id", null, false);
+            Check(explicitNull.HasDefaultValue && explicitNull.DefaultValue == null &&
+                !unspecified.HasDefaultValue, "显式null默认值不能与未定义默认值混淆");
+            Reject<ArgumentException>(() => new MDSVariableDefinition("Bad", typeof(int),
+                null, true, null, "int-id", null, true));
+            MDSVariableTable original = new MDSVariableTable("null-default");
+            original.Define(explicitNull);
+            IMDSVariableSnapshot empty = original.Inspect("Text");
+            Check(empty.HasDefaultValue && empty.DefaultObject == null && !empty.HasValue,
+                "尚未更新的变量必须正确呈现显式null默认值");
+            original.Update<string>("Text", null);
+            MDSVariableSnapshot<string> sample = original.Resolve<string>("Text").Snapshot();
+            Check(sample.HasValue && sample.CurrentValue == null && sample.HasDefaultValue,
+                "当前值null是有效采样，不能当成未初始化");
+            MDSVariableStoreSnapshot exported = original.ExportSnapshot();
+            MDSVariableTable recovered = new MDSVariableTable("null-default");
+            recovered.Define(new MDSVariableDefinition("Text", typeof(string),
+                null, true, null, "text-id", null, true));
+            recovered.RestoreSnapshot(exported);
+            Check(recovered.Inspect("Text").HasDefaultValue &&
+                recovered.Inspect("Text").HasValue &&
+                recovered.Inspect("Text").CurrentObject == null, "恢复保留显式null与已更新状态");
+            MDSVariableTable incompatible = new MDSVariableTable("null-default");
+            incompatible.Define(unspecified);
+            Reject<InvalidOperationException>(() => incompatible.RestoreSnapshot(exported));
+        }
+
         public static void RunVariableSuite()
         {
+            VariableExplicitNullDefaultSmoke();
             VariableDispatchPolicySmoke();
             VariableReliableGapSmoke();
             VariableReliableBatchQueueSmoke();

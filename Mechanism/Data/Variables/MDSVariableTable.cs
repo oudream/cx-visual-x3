@@ -27,6 +27,13 @@ namespace CxVisual.Mechanism.Data.Variables
 
         public MDSVariableDefinition(string name, Type valueType, string unit,
             bool writable, object defaultValue, string variableId, MDSVariableAccessPolicy accessPolicy)
+            : this(name, valueType, unit, writable, defaultValue, variableId,
+                accessPolicy, defaultValue != null) { }
+
+        // 显式区分“没有默认值”和“默认值为null”，旧构造函数的CLR签名不变。
+        public MDSVariableDefinition(string name, Type valueType, string unit, bool writable,
+            object defaultValue, string variableId, MDSVariableAccessPolicy accessPolicy,
+            bool hasDefaultValue)
         {
             if (string.IsNullOrWhiteSpace(name) || valueType == null || valueType == typeof(void))
                 throw new ArgumentException("变量名称/类型无效");
@@ -38,8 +45,13 @@ namespace CxVisual.Mechanism.Data.Variables
             AccessPolicy = accessPolicy;
             if (defaultValue != null && !valueType.IsInstanceOfType(defaultValue))
                 throw new ArgumentException("默认值类型不匹配");
+            if (!hasDefaultValue && defaultValue != null)
+                throw new ArgumentException("HasDefaultValue=false不能同时提供非null默认值");
+            if (hasDefaultValue && defaultValue == null && valueType.IsValueType &&
+                Nullable.GetUnderlyingType(valueType) == null)
+                throw new ArgumentException("非Nullable值类型的显式默认值不能为null");
             _defaultValue = MDSVariableValueRules.Copy(defaultValue);
-            HasDefaultValue = defaultValue != null;
+            HasDefaultValue = hasDefaultValue;
         }
 
         public string Name { get; private set; }
