@@ -123,8 +123,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 !sampleEllipse.ContainsRoiPixelCenter(0,0) &&
                 !sampleEllipse.ContainsRoiPixelCenter(3,3),
                 "椭圆ROI不能错误地按矩形四角统计");
+            MVIImageOverlayItem noArea=new MVIImageOverlayItem(
+                MVIImageOverlayKind.DefectBox,MVIImageOverlayLayer.Defect,
+                new FGERect2D(0,0,4,4));
             Ensure(roi.IsAreaRoi && roi.ContainsRoiPixelCenter(1,1) &&
-                !defect.IsAreaRoi && !defect.ContainsRoiPixelCenter(1,1),
+                !noArea.IsAreaRoi && !noArea.ContainsRoiPixelCenter(1,1),
                 "矩形ROI与缺陷标记的统计身份不能混用");
             // 单边插点与单点删除采用原来的唯一Store与O(n)拓扑校验。
             MVIImageOverlayItem inserted=quad.WithInsertedPolygonVertex(
