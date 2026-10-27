@@ -499,6 +499,8 @@ namespace CxVisual.TestCenter.UI
             content.RowDefinitions.Add(new RowDefinition { Height = new GridLength(160) });
             content.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1,GridUnitType.Star),
                 MinHeight = 70 });
+            AutomationProperties.SetAutomationId(_withRoi,"TCT.Imaging.UseSelectedRoi");
+            AutomationProperties.SetAutomationId(_info,"TCT.Imaging.StatisticsSummary");
             WrapPanel buttons = Row(_withRoi);
             Action(buttons,"计算灰度统计 / 直方图","AnalyzeStatistics",Calculate);
             content.Children.Add(buttons);
