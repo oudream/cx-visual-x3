@@ -57,14 +57,18 @@ namespace CxVisual.Mechanism.Data.Variables
         public bool Remove(string scopeId)
         {
             if (string.IsNullOrWhiteSpace(scopeId)) return false;
+            MDSVariableScope scope;
             lock (_gate)
             {
-                MDSVariableScope scope;
                 if (!_scopes.TryGetValue(scopeId, out scope)) return false;
                 scope.Invalidate();
                 _scopes.Remove(scopeId);
-                return _tables.Remove(scopeId);
+                _tables.Remove(scopeId);
             }
+            // 不持Registry锁等待已进入的句柄/Provider操作。
+            // 完成注销后旧Scope不会再产生新的写入；直接持有原Table的历史兼容调用不受影响。
+            scope.Drain();
+            return true;
         }
         public MDSVariableTable[] Snapshot()
         {
