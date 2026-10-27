@@ -388,11 +388,12 @@ namespace CxVisual.TestCenter.UI
             {
                 try
                 {
-                    action();
+                    // 先清除上一次失败样式，再执行命令；不能在成功后覆盖工具选中高亮。
                     button.BorderBrush=Brushes.LightSteelBlue;
                     button.BorderThickness=new Thickness(1);
                     button.ToolTip=null;
                     AutomationProperties.SetHelpText(button,string.Empty);
+                    action();
                 }
                 catch (Exception error)
                 {
