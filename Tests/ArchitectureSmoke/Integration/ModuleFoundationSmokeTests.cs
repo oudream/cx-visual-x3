@@ -287,6 +287,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
             {
                 host.Register(source);
                 host.Bind("device-p1", "pressure-point", "leak", "pressure");
+                Check(host.Descriptors().Length == 1 &&
+                    host.Descriptors()[0].ProviderId == "device-p1" &&
+                    host.Descriptors()[0].BindingCount == 1 &&
+                    !host.Descriptors()[0].Running,
+                    "Provider只读元数据与真实Host同源");
                 Reject<ArgumentException>(() => host.Bind("device-p1", "pressure-point", "leak", "pressure"));
                 Reject<InvalidCastException>(() => host.ResolveTyped<int>("device-p1", "pressure-point"));
                 host.Start();
@@ -307,6 +312,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Reject<InvalidOperationException>(() => hot.Apply(0.3));
                 Check(table.Get<double>("pressure") == 0.22 && !host.Health().Running,
                     "停止后旧世代Point句柄不可再写入");
+                Check(host.Unregister("device-p1") && host.Bindings().Length == 0 &&
+                    host.Descriptors().Length == 0 &&
+                    !host.Unregister("device-p1"), "Provider注销同时撤销点表映射且可重复检查");
             }
         }
 

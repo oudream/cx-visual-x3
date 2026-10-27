@@ -45,6 +45,17 @@ namespace CxVisual.Mechanism.Data.Variables
         public string VariableId { get { return Target.EntryDefinition.VariableId; } }
     }
 
+    /// <summary>Provider只读注册描述；映射在唯一Host注册表，描述不持有当前变量值。</summary>
+    public sealed class MDSVariableProviderDescriptor
+    {
+        internal MDSVariableProviderDescriptor(string id, string implementation, int bindings, bool running)
+        { ProviderId = id; ImplementationType = implementation; BindingCount = bindings; Running = running; }
+        public string ProviderId { get; private set; }
+        public string ImplementationType { get; private set; }
+        public int BindingCount { get; private set; }
+        public bool Running { get; private set; }
+    }
+
     public sealed class MDSVariableProviderHealth
     {
         public bool Running { get; internal set; }
@@ -116,6 +127,36 @@ namespace CxVisual.Mechanism.Data.Variables
         {
             lock (_gate) return _bindings.Values.ToArray();
         }
+        public MDSVariableProviderDescriptor[] Descriptors()
+        {
+            lock (_gate)
+            {
+                RequireOpen();
+                return _providers.Values.OrderBy(x => x.ProviderId, StringComparer.Ordinal)
+                    .Select(x => new MDSVariableProviderDescriptor(x.ProviderId,
+                        x.GetType().FullName, _bindings.Values.Count(y => y.ProviderId == x.ProviderId),
+                        _running)).ToArray();
+            }
+        }
+        public bool Unregister(string providerId)
+        {
+            if (string.IsNullOrWhiteSpace(providerId)) return false;
+            IMDSVariableProvider provider;
+            lock (_gate)
+            {
+                RequireOpen();
+                if (_running) throw new InvalidOperationException("运行中不能注销Provider");
+                if (!_providers.TryGetValue(providerId, out provider)) return false;
+                _providers.Remove(providerId);
+                foreach (string key in _bindings.Where(x => x.Value.ProviderId == providerId)
+                    .Select(x => x.Key).ToArray())
+                    _bindings.Remove(key);
+            }
+            // Dispose位于锁外，避免专业Provider回调死锁。
+            provider.Dispose();
+            return true;
+        }
+
         public void Start()
         {
             IMDSVariableProvider[] sources;
