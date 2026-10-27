@@ -1100,7 +1100,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                     return "最短 "+pair.DistancePixels.ToString("0.###")+" px"+
                         (pair.DistanceMillimeters.HasValue ?
                             " / "+pair.DistanceMillimeters.Value.ToString("0.###")+" mm" : "")+
-                        " · 夹角 "+pair.AngleDegrees.ToString("0.###")+"°";
+                        " · 夹角 "+pair.AngleDegrees.ToString("0.###")+"°"+
+                        (pair.PhysicalAngleDegrees.HasValue ?
+                            " / 物理角 "+pair.PhysicalAngleDegrees.Value.ToString("0.###")+"°" : "");
                 case MVIImageOverlayKind.AngleMeasurement:
                     if (item.Points.Count != 3) return string.Empty;
                     return FIMImageMeasurement.GetAngleDegrees(
