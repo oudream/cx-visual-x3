@@ -42,6 +42,10 @@ namespace CxVisual.TestCenter.UI
         private readonly TextBox _low = new TextBox { Width = 74, Text = "0", Margin = new Thickness(2) };
         private readonly TextBox _high = new TextBox { Width = 82, Text = "65535", Margin = new Thickness(2) };
         private readonly TextBox _blendRatio = new TextBox { Width = 60, Text = "0.5", Margin = new Thickness(3) };
+        private readonly TextBox _thresholdLow=new TextBox {
+            Width=82,Text="0",Margin=new Thickness(3) };
+        private readonly TextBox _thresholdHigh=new TextBox {
+            Width=82,Text="65535",Margin=new Thickness(3) };
         private readonly TextBox _growTolerance=new TextBox {
             Width=60,Text="1",Margin=new Thickness(3) };
         private readonly CheckBox _growEightConnected=new CheckBox {
@@ -569,13 +573,105 @@ namespace CxVisual.TestCenter.UI
             Show("已生成原图与结果图的绝对差分（保留原图）。");
         }
 
+        private void ReadThresholdRange(out double low,out double high)
+        {
+            if(!double.TryParse(_thresholdLow.Text,NumberStyles.Float,
+                    CultureInfo.InvariantCulture,out low) ||
+               !double.TryParse(_thresholdHigh.Text,NumberStyles.Float,
+                    CultureInfo.InvariantCulture,out high) ||
+               double.IsNaN(low) || double.IsInfinity(low) ||
+               double.IsNaN(high) || double.IsInfinity(high) || high<low)
+                throw new ArgumentException("阈值必须是有限数值，且下限不能大于上限。");
+        }
+
         private void Threshold()
         {
-            double low, high;
-            if (!double.TryParse(_low.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out low) ||
-                !double.TryParse(_high.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out high))
-                throw new ArgumentException("阈值范围必须是有效数字。");
-            ProcessImage(image => FIMImageOperations.Threshold(image, low, high), "阈值");
+            double low,high;
+            ReadThresholdRange(out low,out high);
+            ProcessImage(image=>FIMImageOperations.Threshold(image,low,high),"全图阈值");
+        }
+
+        /// <summary>
+        /// 旧ThresholdSeg的交互语义：原图+当前用户所选精确ROI+阈值，
+        /// 异步返回独立掩码及实际像素计数；不得将ROI外接框冒充真正分割区域。
+        /// </summary>
+        private async void ThresholdSelectedRoi()
+        {
+            FIMImageBuffer original=_viewer.Session.Original;
+            if(original==null)
+            { Show("ROI阈值失败：请先加载原图。");return; }
+            double low,high;
+            try { ReadThresholdRange(out low,out high); }
+            catch(ArgumentException error)
+            { Show("ROI阈值失败："+error.Message);return; }
+
+            FIMPixelRegion? selected=_viewer.SelectedRegion;
+            MVIImageOverlayItem area=null;
+            if(_viewer.SelectedOverlayId.HasValue)
+            {
+                MVIImageOverlayItem chosen=_viewer.Overlays.Find(
+                    _viewer.SelectedOverlayId.Value);
+                if(chosen!=null && chosen.IsAreaRoi)
+                {
+                    if(!chosen.IsVisible || !_viewer.Overlays.IsLayerVisible(chosen.Layer))
+                    { Show("ROI阈值失败：选中的形状ROI当前不可见。");return; }
+                    area=chosen;
+                    int left=Math.Max(0,(int)Math.Floor(chosen.Bounds.Left));
+                    int top=Math.Max(0,(int)Math.Floor(chosen.Bounds.Top));
+                    int right=Math.Min(original.Width-1,(int)Math.Ceiling(chosen.Bounds.Right)-1);
+                    int bottom=Math.Min(original.Height-1,(int)Math.Ceiling(chosen.Bounds.Bottom)-1);
+                    if(left>right || top>bottom)
+                    { Show("ROI阈值失败：形状在原图没有有效像素。");return; }
+                    selected=new FIMPixelRegion(left,top,right,bottom);
+                }
+            }
+            if(!selected.HasValue)
+            { Show("ROI阈值失败：先在图像中画选区或选中可见的ROI对象。");return; }
+            FIMPixelRegion region;
+            try { region=selected.Value.ClipTo(original); }
+            catch(ArgumentOutOfRangeException error)
+            { Show("ROI阈值失败："+error.Message);return; }
+
+            MVIImageOverlayItem snapshot=area;
+            CancelAnalysis();
+            CancellationTokenSource cancellation=new CancellationTokenSource();
+            _analysisCancellation=cancellation;
+            long epoch=Interlocked.Read(ref _analysisEpoch);
+            Stopwatch timer=Stopwatch.StartNew();
+            Show("正在按原图精确ROI阈值分割，可切图、改ROI或发起新请求取消旧任务。");
+            try
+            {
+                FIMThresholdRegionResult segmented=await Task.Run(()=>
+                    FIMImageOperations.ThresholdInRegion(original,low,high,region,
+                        snapshot==null ? (Func<int,int,bool>)null :
+                            (x,y)=>snapshot.ContainsRoiPixelCenter(x,y),
+                        cancellation.Token),cancellation.Token);
+                if(cancellation.IsCancellationRequested ||
+                   epoch!=Interlocked.Read(ref _analysisEpoch) ||
+                   !ReferenceEquals(original,_viewer.Session.Original))return;
+                timer.Stop();
+                _viewer.ShowResult(segmented.Mask);
+                _viewer.SelectResult();
+                Show("ROI阈值分割完成："+segmented.PixelCount+
+                    "/"+segmented.SampledPixelCount+"像素；"+
+                    (snapshot==null ? BoundsText(region) : snapshot.Kind+" "+snapshot.Id)+
+                    "；命中范围 "+(segmented.Bounds.HasValue ?
+                        BoundsText(segmented.Bounds.Value) : "无命中")+
+                    "；独立Gray8掩码在结果图，原图不变；耗时 "+
+                    timer.Elapsed.TotalMilliseconds.ToString("0.#",CultureInfo.InvariantCulture)+"ms。");
+            }
+            catch(OperationCanceledException) { }
+            catch(Exception error)
+            {
+                if(epoch==Interlocked.Read(ref _analysisEpoch))
+                    Show("ROI阈值分割失败："+error.Message);
+            }
+            finally
+            {
+                if(ReferenceEquals(_analysisCancellation,cancellation))
+                    _analysisCancellation=null;
+                cancellation.Dispose();
+            }
         }
 
         /// <summary>承接旧RegionGrowing框选语义，用已选矩形ROI中心作为种子。</summary>
