@@ -104,6 +104,28 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Ensure(vertexLocked.WithVisibility(false).IsLocked &&
                 vertexLocked.WithLocked(false).WithStyle(unchecked((int)0xff223344),2).IsLocked==false,
                 "不可变快照保留锁定状态并支持显式解锁");
+            // ROI分析必须以真实形状命中，不得把外接Bounds当成任意ROI。
+            MVIImageOverlayItem sampleTriangle=new MVIImageOverlayItem(
+                MVIImageOverlayKind.PolygonRoi,MVIImageOverlayLayer.Roi,
+                new FGERect2D(0,0,3.6,3.6),new[]{
+                    new FGEPoint2D(0,0),new FGEPoint2D(3.6,0),
+                    new FGEPoint2D(0,3.6)});
+            Ensure(sampleTriangle.IsAreaRoi &&
+                sampleTriangle.ContainsRoiPixelCenter(0,0) &&
+                sampleTriangle.ContainsRoiPixelCenter(1,1) &&
+                !sampleTriangle.ContainsRoiPixelCenter(3,3) &&
+                !sampleTriangle.ContainsRoiPixelCenter(2,2),
+                "非矩形ROI以原图像素中心命中，不误采包围盒外角");
+            MVIImageOverlayItem sampleEllipse=new MVIImageOverlayItem(
+                MVIImageOverlayKind.EllipseRoi,MVIImageOverlayLayer.Roi,
+                new FGERect2D(0,0,4,4));
+            Ensure(sampleEllipse.ContainsRoiPixelCenter(1,1) &&
+                !sampleEllipse.ContainsRoiPixelCenter(0,0) &&
+                !sampleEllipse.ContainsRoiPixelCenter(3,3),
+                "椭圆ROI不能错误地按矩形四角统计");
+            Ensure(roi.IsAreaRoi && roi.ContainsRoiPixelCenter(1,1) &&
+                !defect.IsAreaRoi && !defect.ContainsRoiPixelCenter(1,1),
+                "矩形ROI与缺陷标记的统计身份不能混用");
             // 单边插点与单点删除采用原来的唯一Store与O(n)拓扑校验。
             MVIImageOverlayItem inserted=quad.WithInsertedPolygonVertex(
                 0,new FGEPoint2D(5,0.5),20,20);
