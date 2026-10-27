@@ -70,11 +70,18 @@ namespace CxVisual.TestCenter.UI
                     "GPU成功或带具体原因的WPF回退，不能静默伪报GPU成功");
                 Check(frame.LegacyTopTabCount==4 && frame.LegacyBottomTabCount==5,
                     "原版上下4/5页签完整恢复");
+                var settingsDock=FindVisualByAutomationId<
+                    CxVisual.Mechanism.Presentation.Wpf.Volume.MPWVolumeSettingsDockControl>(
+                    frame,"MPW.Volume.SettingsDock");
                 TabControl upper=FindVisualByAutomationId<TabControl>(frame,
-                    "TCT.Volume.UpperTabs");
+                    "MPW.Volume.Settings.UpperTabs");
                 TabControl lower=FindVisualByAutomationId<TabControl>(frame,
-                    "TCT.Volume.LowerTabs");
-                Check(upper!=null && lower!=null,"新三维设置/传递函数页签必须在真实WPF可视树中");
+                    "MPW.Volume.Settings.LowerTabs");
+                Check(settingsDock!=null && upper!=null && lower!=null &&
+                      Object.ReferenceEquals(settingsDock.UpperTabs,upper) &&
+                      Object.ReferenceEquals(settingsDock.LowerTabs,lower) &&
+                      settingsDock.UpperCount==4 && settingsDock.LowerCount==5,
+                    "正式MPW双层设置面板必须承载真实4/5页签，不保留TestCenter布局副本");
                 for(int i=0;i<upper.Items.Count;i++)
                 {
                     upper.SelectedIndex=i;
@@ -88,6 +95,20 @@ namespace CxVisual.TestCenter.UI
                         "阈值/颜色/标量/梯度/任意切各页不能是空占位");
                 }
                 upper.SelectedIndex=0;lower.SelectedIndex=0;
+                // 独立公共设置面板不依赖TestCenter或CT3D渲染器。
+                var standaloneDock=new CxVisual.Mechanism.Presentation.Wpf.Volume.
+                    MPWVolumeSettingsDockControl();
+                var sharedEditor=new StackPanel();
+                standaloneDock.AddUpperTab("显示",sharedEditor);
+                var transferEditor=new StackPanel();
+                standaloneDock.AddLowerTab("透明度",transferEditor);
+                bool duplicateRejected=false;
+                try { standaloneDock.AddUpperTab("重复",sharedEditor); }
+                catch(InvalidOperationException) { duplicateRejected=true; }
+                Check(standaloneDock.UpperCount==1 && standaloneDock.LowerCount==1 &&
+                      standaloneDock.UpperTabs.SelectedIndex==0 &&
+                      standaloneDock.LowerTabs.SelectedIndex==0 && duplicateRejected,
+                    "MPW公共参数面板独立创建、默认选中并拒绝重复父级，保持编辑器身份");
 
                 double initialCameraDistance=frame.CameraDistanceForTest;
                 frame.Zoom3D(2);

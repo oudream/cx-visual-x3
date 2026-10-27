@@ -24,6 +24,7 @@ namespace CxVisual.TestCenter.UI
         private MPWVolumeFourViewWorkbenchControl _workbench;
         private readonly Dictionary<FVOSlicePlane, MPWVolumeSliceNavigationControl> _headerNavigation =
             new Dictionary<FVOSlicePlane, MPWVolumeSliceNavigationControl>();
+        private MPWVolumeSettingsDockControl _settingsDock;
         private TabControl _upperTabs, _lowerTabs;
         private readonly CheckBox _crosshairEnabled = new CheckBox { Content="显示十字线",IsChecked=true };
         private readonly CheckBox _orientationEnabled = new CheckBox { Content="显示3D方向坐标（双击复位）",IsChecked=true };
@@ -101,25 +102,11 @@ namespace CxVisual.TestCenter.UI
                 ResizeDirection=GridResizeDirection.Columns,
                 ResizeBehavior=GridResizeBehavior.PreviousAndNext };
             Grid.SetColumn(resizer,1);work.Children.Add(resizer);
-            Grid side=new Grid { Background=BrushOf(9,15,24),
-                Margin=new Thickness(1,0,0,0) };
-            side.RowDefinitions.Add(new RowDefinition { Height=new GridLength(44,GridUnitType.Star) });
-            side.RowDefinitions.Add(new RowDefinition { Height=new GridLength(56,GridUnitType.Star) });
-            Grid.SetColumn(side,2);work.Children.Add(side);
-            // 与成熟WinForms工作台一致：视区黑色、设置区深色，标签与曲线编辑画布明亮。
-            Style checkStyle=new Style(typeof(CheckBox));
-            checkStyle.Setters.Add(new Setter(Control.ForegroundProperty,BrushOf(224,234,247)));
-            side.Resources.Add(typeof(CheckBox),checkStyle);
-            Style textStyle=new Style(typeof(TextBlock));
-            textStyle.Setters.Add(new Setter(TextBlock.ForegroundProperty,BrushOf(221,232,246)));
-            side.Resources.Add(typeof(TextBlock),textStyle);
-            _upperTabs=new TabControl { Margin=new Thickness(0,0,0,2),
-                Background=BrushOf(9,15,24) };
-            _lowerTabs=new TabControl { Margin=new Thickness(0,2,0,0),
-                Background=BrushOf(9,15,24) };
-            AutomationProperties.SetAutomationId(_upperTabs,"TCT.Volume.UpperTabs");
-            AutomationProperties.SetAutomationId(_lowerTabs,"TCT.Volume.LowerTabs");
-            side.Children.Add(_upperTabs);Grid.SetRow(_lowerTabs,1);side.Children.Add(_lowerTabs);
+            // MPW持有双层参数面板的布局、主题和页签容器，宿主只注入现有编辑能力。
+            _settingsDock=new MPWVolumeSettingsDockControl();
+            _upperTabs=_settingsDock.UpperTabs;
+            _lowerTabs=_settingsDock.LowerTabs;
+            Grid.SetColumn(_settingsDock,2);work.Children.Add(_settingsDock);
 
             StackPanel display=CreateSettingsPanel(),gray=CreateSettingsPanel(),render=CreateSettingsPanel(),oblique=CreateSettingsPanel();
             AddUpperTab("显示设置",display);
@@ -217,9 +204,7 @@ namespace CxVisual.TestCenter.UI
         }
         private void AddUpperTab(string title,StackPanel contents)
         {
-            ScrollViewer scroll=new ScrollViewer { Content=contents,
-                VerticalScrollBarVisibility=ScrollBarVisibility.Auto };
-            _upperTabs.Items.Add(new TabItem { Header=title,Content=scroll });
+            _settingsDock.AddUpperTab(title,contents);
         }
         private static void MoveToTab(UIElement element,Panel from,Panel to)
         {
