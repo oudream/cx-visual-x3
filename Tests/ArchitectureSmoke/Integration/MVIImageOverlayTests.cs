@@ -8,6 +8,23 @@ namespace CxVisual.Tests.ArchitectureSmoke
     {
         public static void Run()
         {
+            MVIImageOverlayItem pairItem=new MVIImageOverlayItem(
+                MVIImageOverlayKind.LinePairMeasurement,MVIImageOverlayLayer.Measurement,
+                new FGERect2D(0,0,4,3),new[]{
+                    new FGEPoint2D(0,0),new FGEPoint2D(4,0),
+                    new FGEPoint2D(1,3),new FGEPoint2D(3,3)});
+            Ensure(pairItem.Points.Count==4 &&
+                pairItem.Layer==MVIImageOverlayLayer.Measurement &&
+                pairItem.Points[2].Y==3,
+                "四点两线测量对象保留原图真值");
+            Fail<ArgumentException>(()=>new MVIImageOverlayItem(
+                MVIImageOverlayKind.LinePairMeasurement,MVIImageOverlayLayer.Measurement,
+                new FGERect2D(0,0,4,3),new[]{
+                    new FGEPoint2D(0,0),new FGEPoint2D(4,0),
+                    new FGEPoint2D(1,3)}),"三点无法冒充完整Ls2Ls");
+            Fail<ArgumentException>(()=>new MVIImageOverlayItem(
+                MVIImageOverlayKind.LinePairMeasurement,MVIImageOverlayLayer.Roi,
+                new FGERect2D(0,0,4,3),pairItem.Points),"Ls2Ls不得进入ROI层");
             MVIImageOverlayStore overlays = new MVIImageOverlayStore();
             int changed = 0;
             overlays.Changed += (sender, args) => changed++;
