@@ -54,6 +54,18 @@ namespace CxVisual.Tests.ArchitectureSmoke {
             Near(fft[0].Real,1,"FFT input preservation");
             Throws<ArgumentException>(()=>FNUFourier.ForwardReal(new double[0]),"empty FFT");
             Throws<ArgumentOutOfRangeException>(()=>FNUFourier.ForwardReal(new double[]{double.NaN}),"bad FFT");
+            Throws<ArgumentOutOfRangeException>(()=>FNUInterpolation.Bilinear(double.NaN,2,3,4,.5,.5),"nonfinite bilinear corner");
+            Throws<ArgumentOutOfRangeException>(()=>FNUInterpolation.Trilinear(
+                0,1,2,3,4,5,6,double.PositiveInfinity,.5,.5,.5),"nonfinite trilinear corner");
+            Throws<ArgumentException>(()=>a.Merge(a),"self-merge invalid");
+            Throws<ArgumentException>(()=>FNUMovingAverage.Write(samples,2,new double[3]),"wrong output buffer");
+            Throws<ArgumentException>(()=>FNULinearAlgebra.LeastSquares(
+                new double[,]{{1,2}},new double[]{1}),"underdetermined design");
+            Throws<ArgumentException>(()=>FNULinearAlgebra.LeastSquares(
+                new double[,]{{1},{1}},new double[]{1}),"incompatible observation length");
+            Throws<ArgumentOutOfRangeException>(()=>FNUFourier.Inverse(
+                new Complex[]{new Complex(double.NaN,0)}),"nonfinite inverse spectrum");
+            Throws<ArgumentException>(()=>FNUFourier.Inverse(new Complex[0]),"empty inverse spectrum");
             Console.WriteLine("PASS FNU Numerics - interpolation/statistics/SVD/moving-average/FFT");
         }
         private static void Assert(bool ok,string name){
