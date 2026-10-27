@@ -593,8 +593,15 @@ namespace CxVisual.TestCenter.UI
             Action(filters,"高斯降噪","Gaussian",Gaussian);
             Action(filters,"锐化","Sharpen",Sharpen);
             content.Children.Add(filters);
-            content.Children.Add(Row(Label("阈值范围使用窗位页的上下限")));
-            Action(content,"阈值掩码","Threshold",Threshold);
+            content.Children.Add(Heading("阈值分割  ·  原图灰度 / 独立结果"));
+            AutomationProperties.SetAutomationId(_thresholdLow,"TCT.Imaging.ThresholdLow");
+            AutomationProperties.SetAutomationId(_thresholdHigh,"TCT.Imaging.ThresholdHigh");
+            content.Children.Add(Row(Label("下限"),_thresholdLow,Label("上限"),_thresholdHigh));
+            WrapPanel thresholdActions=Row();
+            Action(thresholdActions,"全图阈值掩码","Threshold",Threshold);
+            Action(thresholdActions,"按选中ROI分割","ThresholdSelectedRoi",ThresholdSelectedRoi);
+            content.Children.Add(thresholdActions);
+            content.Children.Add(Hint("选矩形、圆、椭圆、旋转矩形或多边形ROI后按阈值生成掩码；严格按原图像素中心判断，独立于显示窗位。结果为像素掩码，尚不冒充可编辑轮廓。"));
             content.Children.Add(Heading("区域生长  ·  原图矩形ROI"));
             AutomationProperties.SetAutomationId(_growTolerance,"TCT.Imaging.GrowTolerance");
             AutomationProperties.SetAutomationId(_growEightConnected,"TCT.Imaging.GrowEightConnected");
