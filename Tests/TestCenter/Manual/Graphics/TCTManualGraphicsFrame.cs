@@ -317,6 +317,11 @@ namespace CxVisual.TestCenter.UI
                 Commit(_editor.SetVisualRoute(id,route),"线路模式");
             _canvas.SelectionTransformRequested+=(ids,h,x,y,z,aspect,center,angle)=>
                 Commit(_editor.TransformSelection(ids,h,x,y,z,aspect,center,angle),"多选变换");
+            _canvas.PathSegmentSplitRequested+=(id,index,fraction)=>
+            {
+                try{Commit(_editor.EditPathSegment(id,index,"split",fraction),"精确路径插点");}
+                catch(Exception ex){Report("路径插点被拒绝："+ex.Message);}
+            };
             _canvas.HandleEditRequested+=(sender,args)=>
                 Commit(_editor.EditHandle(args.Handle,args.WorldX,args.WorldY),"几何控制柄");
         }

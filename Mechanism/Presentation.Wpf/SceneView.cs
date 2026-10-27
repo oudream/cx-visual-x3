@@ -271,6 +271,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         public event Action<Guid,int,double,double> InsertWaypointRequested;
         public event Action<Guid,int,double,double> MoveWaypointRequested;
         public event Action<Guid,int> RemoveWaypointRequested;
+        /// <summary>Ctrl+双击几何编辑曲线段，仅提交稳定Id、命令索引和原参数t。</summary>
+        public event Action<Guid,int,double> PathSegmentSplitRequested;
         public event Action<Guid,MPCVisualRouteKind> VisualRouteRequested;
         /// <summary>多对象控制柄只提交一次MEM事务；拖动仅产生画布预览。</summary>
         public event Action<IReadOnlyList<Guid>,int,double,double,double,bool,bool,bool>
@@ -286,6 +288,37 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         private Guid? _rewireConnectionId;
         private Point _rewirePointer;
         public bool IsGeometryEditMode { get { return _geometryEditMode; } }
+        /// <summary>与双击切换同一个几何编辑状态，便于WPF工具和操作测试共用。</summary>
+        public bool EnterGeometryEditModeForSelection()
+        {
+            if(!_designMode||_drawTool!="Select"||!_selection.HasValue||
+                _selectedItems.Count!=1||!_selectedItems.Contains(_selection.Value))
+                return false;
+            MVISceneItem item=_items.Find(x=>x.Id==_selection.Value);
+            if(item==null||item.Shape==null||!item.IsSelectable||item.Address==null||
+                item.Address.InstancePath.Count!=0)return false;
+            _geometryEditMode=true;InvalidateVisual();return true;
+        }
+        /// <summary>WPF手势与STA回归共用的世界坐标分段请求。未命中不修改工程。</summary>
+        public bool RequestSelectedPathSplitAt(double worldX,double worldY)
+        {
+            if(!_designMode||_drawTool!="Select"||!_geometryEditMode||
+                !_selection.HasValue||_selectedItems.Count!=1||
+                ! _selectedItems.Contains(_selection.Value)||
+                PathSegmentSplitRequested==null||_handleDragging||_dragging||
+                HasDrawPreview)return false;
+            MVISceneItem item=_items.Find(x=>x.Id==_selection.Value);
+            if(item==null||item.Address==null||item.Address.InstancePath.Count!=0)
+                return false;
+            int index;double t;
+            if(!MVIVisualEditing.TryHitPathSplitSegment(item,worldX,worldY,
+                8/_zoom,out index,out t))return false;
+            // 精细锚点和控制点附近绝不把双击误解释为插点。
+            if(MVIVisualEditing.HitHandle(item,worldX,worldY,8/_zoom,true,_zoom)!=null)
+                return false;
+            PathSegmentSplitRequested(item.Id,index,t);
+            return true;
+        }
         private MVIVisualHandle _activeHandle;
         private bool _handleDragging;
         private Point _handlePointer;
@@ -1232,6 +1265,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 }
                 e.Handled=true;return;
             }
+            if(e.ClickCount>=2&&_geometryEditMode&&
+                (Keyboard.Modifiers&ModifierKeys.Control)!=0&&
+                RequestSelectedPathSplitAt(point.X,point.Y))
+            {e.Handled=true;return;}
             int selectionHandle;
             if(TryHitSelectionHandle(point,out selectionHandle))
             {

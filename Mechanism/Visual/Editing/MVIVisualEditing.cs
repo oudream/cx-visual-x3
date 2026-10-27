@@ -246,6 +246,116 @@ namespace CxVisual.Mechanism.Visual
             return new MRCTransform(m11,m12,m21,m22,x,y);
         }
 
+        /// <summary>
+        /// 命中可分割的线/二次/三次曲线段，返回原参数空间t。所有距离均在
+        /// 世界坐标中计算（WPF按DIP/Zoom给定半径），保持旋转与非均匀缩放准确。
+        /// 曲线采样仅用于寻找命中参数；最终工程分割仍由FGE de Casteljau精确执行。
+        /// </summary>
+        public static bool TryHitPathSplitSegment(MVISceneItem item,
+            double worldX,double worldY,double worldTolerance,
+            out int commandIndex,out double fraction)
+        {
+            commandIndex=-1;fraction=0;
+            if(item==null||item.Shape==null||!item.IsSelectable||
+                double.IsNaN(worldX)||double.IsNaN(worldY)||
+                double.IsInfinity(worldX)||double.IsInfinity(worldY)||
+                double.IsNaN(worldTolerance)||double.IsInfinity(worldTolerance)||
+                worldTolerance<=0)return false;
+            MRCShapeKind kind=item.Shape.Kind;
+            if(kind!=MRCShapeKind.Path&&kind!=MRCShapeKind.Bezier&&
+                kind!=MRCShapeKind.Polyline&&kind!=MRCShapeKind.Polygon)return false;
+            FGETransform2D world=item.GeometryToWorld;
+            var commands=item.Shape.Geometry.Commands;
+            FGEPoint2D start=new FGEPoint2D(0,0),previous=start;
+            var target=new FGEPoint2D(worldX,worldY);
+            double toleranceSq=worldTolerance*worldTolerance;
+            double nearest=toleranceSq;
+            for(int i=0;i<commands.Count;i++)
+            {
+                FGEPathCommand c=commands[i];
+                if(c.Verb==FGEPathVerb.Move)
+                {previous=world.TransformPoint(c.End);start=previous;continue;}
+                if(c.Verb==FGEPathVerb.Close){previous=start;continue;}
+                if(c.Verb!=FGEPathVerb.Line&&c.Verb!=FGEPathVerb.Quadratic&&
+                    c.Verb!=FGEPathVerb.Cubic)
+                {previous=world.TransformPoint(c.End);continue;}
+                FGEPoint2D end=world.TransformPoint(c.End);
+                FGEPoint2D control1=c.Verb==FGEPathVerb.Line?previous:
+                    world.TransformPoint(c.Control1);
+                FGEPoint2D control2=c.Verb==FGEPathVerb.Cubic?
+                    world.TransformPoint(c.Control2):end;
+                // Bezier凸包给出保守世界AABB，远处的段无需做曲线最近点搜索。
+                double minX=Math.Min(Math.Min(previous.X,end.X),Math.Min(control1.X,control2.X));
+                double maxX=Math.Max(Math.Max(previous.X,end.X),Math.Max(control1.X,control2.X));
+                double minY=Math.Min(Math.Min(previous.Y,end.Y),Math.Min(control1.Y,control2.Y));
+                double maxY=Math.Max(Math.Max(previous.Y,end.Y),Math.Max(control1.Y,control2.Y));
+                if(worldX<minX-worldTolerance||worldX>maxX+worldTolerance||
+                    worldY<minY-worldTolerance||worldY>maxY+worldTolerance)
+                {previous=end;continue;}
+                double candidate=0,distance=double.PositiveInfinity;
+                if(c.Verb==FGEPathVerb.Line)
+                {
+                    double dx=end.X-previous.X,dy=end.Y-previous.Y;
+                    double len=dx*dx+dy*dy;
+                    if(len>1e-20)
+                    {
+                        candidate=Math.Max(0,Math.Min(1,
+                            ((worldX-previous.X)*dx+(worldY-previous.Y)*dy)/len));
+                        FGEPoint2D position=CurvePoint(previous,control1,control2,end,
+                            FGEPathVerb.Line,candidate);
+                        distance=DistanceSquared(target,position);
+                    }
+                }
+                else
+                {
+                    // 有界世界空间搜索：64个参数采样定位谷值，20次三分收敛。
+                    // 允许曲线回环，多局部极小按最近距离而非按第一个命中返回。
+                    const int count=64;
+                    for(int k=0;k<=count;k++)
+                    {
+                        double t=(double)k/count;
+                        double d=DistanceSquared(target,CurvePoint(previous,control1,
+                            control2,end,c.Verb,t));
+                        if(d>=distance)continue;
+                        double left=Math.Max(0,(double)(k-1)/count);
+                        double right=Math.Min(1,(double)(k+1)/count);
+                        for(int j=0;j<20;j++)
+                        {
+                            double a=left+(right-left)/3,b=right-(right-left)/3;
+                            double da=DistanceSquared(target,CurvePoint(previous,
+                                control1,control2,end,c.Verb,a));
+                            double db=DistanceSquared(target,CurvePoint(previous,
+                                control1,control2,end,c.Verb,b));
+                            if(da<db)right=b;else left=a;
+                        }
+                        double refined=(left+right)/2;
+                        double rd=DistanceSquared(target,CurvePoint(previous,control1,
+                            control2,end,c.Verb,refined));
+                        if(rd<distance){distance=rd;candidate=refined;}
+                        else if(d<distance){distance=d;candidate=t;}
+                    }
+                }
+                if(candidate>1e-6&&candidate<1-1e-6&&distance<=nearest)
+                {nearest=distance;commandIndex=i;fraction=candidate;}
+                previous=end;
+            }
+            return commandIndex>=0;
+        }
+        private static double DistanceSquared(FGEPoint2D a,FGEPoint2D b)
+        {double x=a.X-b.X,y=a.Y-b.Y;return x*x+y*y;}
+        private static FGEPoint2D CurvePoint(FGEPoint2D p,FGEPoint2D c1,
+            FGEPoint2D c2,FGEPoint2D end,FGEPathVerb verb,double t)
+        {
+            double u=1-t;
+            if(verb==FGEPathVerb.Line)return new FGEPoint2D(u*p.X+t*end.X,u*p.Y+t*end.Y);
+            if(verb==FGEPathVerb.Quadratic)return new FGEPoint2D(
+                u*u*p.X+2*u*t*c1.X+t*t*end.X,
+                u*u*p.Y+2*u*t*c1.Y+t*t*end.Y);
+            double a=u*u*u,b=3*u*u*t,c=3*u*t*t,d=t*t*t;
+            return new FGEPoint2D(a*p.X+b*c1.X+c*c2.X+d*end.X,
+                a*p.Y+b*c1.Y+c*c2.Y+d*end.Y);
+        }
+
         public static MVIVisualHandle HitHandle(MVISceneItem item,double x,double y,double radius=8)
         {
             if(radius<=0||double.IsInfinity(radius)||double.IsNaN(radius))

@@ -338,6 +338,17 @@ namespace CxVisual.Studio
                 }
                 catch(Exception ex){VisualInfo.Text="删除连接失败："+ex.Message;}
             };
+            SceneHost.PathSegmentSplitRequested+=(id,index,fraction)=>
+            {
+                try
+                {
+                    MTCEditResult<bool> result=_viewModel.SplitVisualPath(id,index,fraction);
+                    VisualInfo.Text=result.Success?
+                        "曲线已精确分段（单次Undo，Ctrl+双击继续插点）":
+                        "曲线插点被拒绝："+result.ErrorCode+" "+result.Message;
+                }
+                catch(Exception ex){VisualInfo.Text="曲线插点失败："+ex.Message;}
+            };
             SceneHost.HandleEditRequested += (sender,edit)=>
             {
                 try

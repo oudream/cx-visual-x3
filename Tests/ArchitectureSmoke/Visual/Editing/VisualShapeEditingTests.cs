@@ -890,6 +890,18 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 using(var editor=new MVIVisualEditor(doc))
                 {
                     MVISceneItem projected=editor.Scene.Single(x=>x.Id==id);
+                    // GE-03: 曲线命中求世界空间t，不向MVI存屏幕采样点。
+                    FGEBezier2D lastCubic=new FGEBezier2D(plain.Commands[1].End,
+                        plain.Commands[2].Control1,plain.Commands[2].Control2,plain.Commands[2].End);
+                    FGEPoint2D seek=projected.GeometryToWorld.TransformPoint(lastCubic.PointAt(0.65));
+                    int hitIndex;double hitFraction;
+                    Check(MVIVisualEditing.TryHitPathSplitSegment(projected,
+                        seek.X,seek.Y,0.5,out hitIndex,out hitFraction)&&
+                        hitIndex==2&&Math.Abs(hitFraction-0.65)<0.02,
+                        "World-space Bezier hit must recover original t inside rotated group");
+                    Check(!MVIVisualEditing.TryHitPathSplitSegment(projected,
+                        seek.X+2000,seek.Y-2000,8,out hitIndex,out hitFraction),
+                        "Far curve hit must not insert an invisible segment");
                     var handles=MVIVisualEditing.Handles(projected);
                     Check(handles.Any(x=>x.Kind==MVIVisualHandleKind.Anchor)&&
                           handles.Any(x=>x.Kind==MVIVisualHandleKind.Control1)&&

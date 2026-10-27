@@ -615,6 +615,15 @@ namespace CxVisual.Mechanism.Visual
             var shape=Document.Find(id) as MRCShapeElement;
             if(shape==null)return MTCEditResult<bool>.Rejected(Document.Revision,
                 "visual.path_required","Open an editable Shape definition");
+            MVISceneItem projected=Scene.FirstOrDefault(item=>item.Id==id);
+            if(projected==null||!projected.IsSelectable||projected.Address==null||
+                projected.Address.InstancePath.Count!=0)
+                return MTCEditResult<bool>.Rejected(Document.Revision,
+                    "visual.path.not_editable","Path must be a visible unlocked definition");
+            if(operation=="split"&&(double.IsNaN(fraction)||double.IsInfinity(fraction)||
+                fraction<=0||fraction>=1))
+                return MTCEditResult<bool>.Rejected(Document.Revision,
+                    "visual.path.invalid_fraction","Split fraction must lie strictly within (0,1)");
             FGEPath2D before=shape.Shape.Geometry;
             FGEPath2D after;
             switch(operation)
