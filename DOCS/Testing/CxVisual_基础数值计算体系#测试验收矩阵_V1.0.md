@@ -27,3 +27,11 @@
 | N20 | NuGet restore、28项目build、DAG、default smoke | 原生缺库/重复API/依赖反向 | CI入口I，W待核 |
 
 Windows CI必须同SHA满足Restore、完整.NET48 x64 Build、Verify-Structure、Verify-OwnerDependencies、--numerics和默认ArchitectureSmoke。成功并不代表工业现场HIL、跨平台、MKL/GPU、所有算法完成；复用专业真实计算后才标记替代R。
+
+## 2026-10-27 Numerics / FIM 统计复用闭环
+
+- [首批Numerics Windows PASS #40502429325](https://github.com/oudream/cx-visual-x3/actions/runs/40502429325)，代码固定 SHA `76105e9`：NuGet Restore、全28工程 Windows .NET48/x64 Build、Owner DAG、`--numerics` 与默认 ArchitectureSmoke 均成功。
+- 本轮真实迁移：`Foundation/Imaging/Processing/FIMImageAnalyzer.cs` 的完整ROI和掩膜ROI两处Welford统计循环改为调用 `FNURunningStatistics`；旧FIM公开签名、像素中心筛选、取消、无效像素拒绝、Histogram及五区域业务不变。
+- `Foundation/Imaging/CxVisual.Foundation.Imaging.csproj` 增加向下的 Numerics ProjectReference，无新项目，无第三套统计Store。
+- 保真门槛：同SHA的 `--numerics`、`--imaging`、`--volume`、默认回归与Imaging Windows真WPF测试；**替换成功状态需待该SHA的对应Windows日志核实，不能继承前一SHA的PASS**。
+- 尚未完成：Volume三线性替代与性能比较，FIM性能/大图/ROI生成器副作用基线，实际现场数据回归。

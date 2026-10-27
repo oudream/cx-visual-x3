@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using CxVisual.Foundation.Numerics;
 
 namespace CxVisual.Foundation.Imaging
 {
@@ -12,8 +13,7 @@ namespace CxVisual.Foundation.Imaging
         {
             if (image == null) throw new ArgumentNullException("image");
             FIMPixelRegion r = roi.HasValue ? roi.Value.ClipTo(image) : FIMPixelRegion.Entire(image);
-            long count = 0;
-            double min = double.PositiveInfinity, max = double.NegativeInfinity, mean = 0, m2 = 0;
+            var accumulator = new FNURunningStatistics();
             for (int y = r.Top; y <= r.Bottom; y++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -23,15 +23,12 @@ namespace CxVisual.Foundation.Imaging
                     double value = image.GetGrayValue(x, y);
                     if (double.IsNaN(value) || double.IsInfinity(value))
                         throw new InvalidOperationException("图像包含非有限灰度值。");
-                    count++;
-                    min = Math.Min(min, value);
-                    max = Math.Max(max, value);
-                    double delta = value - mean;
-                    mean += delta / count;
-                    m2 += delta * (value - mean);
+                    accumulator.Add(value);
                 }
             }
-            return new FIMImageStatistics(count, min, max, mean, Math.Sqrt(Math.Max(0, m2 / count)));
+            FNUStatisticsSnapshot result = accumulator.Snapshot();
+            return new FIMImageStatistics(result.Count, result.Min, result.Max,
+                result.Mean, result.PopulationStandardDeviation);
         }
 
         public static FIMImageAnalysisResult Analyze(FIMImageBuffer image, int binCount,
@@ -69,8 +66,7 @@ namespace CxVisual.Foundation.Imaging
             if(binCount<1 || binCount>65536)
                 throw new ArgumentOutOfRangeException("binCount");
             FIMPixelRegion r=bounds.ClipTo(image);
-            long count=0;
-            double min=double.PositiveInfinity,max=double.NegativeInfinity,mean=0,m2=0;
+            var maskStatistics = new FNURunningStatistics();
             for(int y=r.Top;y<=r.Bottom;y++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -81,15 +77,13 @@ namespace CxVisual.Foundation.Imaging
                     double value=image.GetGrayValue(x,y);
                     if(double.IsNaN(value)||double.IsInfinity(value))
                         throw new InvalidOperationException("ROI包含非有限灰度值。");
-                    count++;
-                    min=Math.Min(min,value);max=Math.Max(max,value);
-                    double delta=value-mean;
-                    mean+=delta/count;
-                    m2+=delta*(value-mean);
+                    maskStatistics.Add(value);
                 }
             }
-            if(count==0)
+            if(maskStatistics.Count==0)
                 throw new InvalidOperationException("所选ROI没有有效像素中心，无法进行灰度统计。");
+            FNUStatisticsSnapshot summary=maskStatistics.Snapshot();
+            double min=summary.Min,max=summary.Max;
             long[] bins=new long[binCount];
             double span=max-min;
             for(int y=r.Top;y<=r.Bottom;y++)
@@ -105,8 +99,8 @@ namespace CxVisual.Foundation.Imaging
                 }
             }
             return new FIMImageAnalysisResult(
-                new FIMImageStatistics(count,min,max,mean,
-                    Math.Sqrt(Math.Max(0,m2/count))),
+                new FIMImageStatistics(summary.Count,min,max,summary.Mean,
+                    summary.PopulationStandardDeviation),
                 new FIMImageHistogram(min,max,bins));
         }
 
