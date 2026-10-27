@@ -445,6 +445,34 @@ namespace CxVisual.TestCenter.UI
                 if(!(((MRCShapeElement)frame.FindObject(multiId)).Shape.Geometry
                     .FlattenContours().Count==2))
                     throw new InvalidOperationException("多轮廓Path保存重开合并了子轮廓");
+                frame.Execute("Select");frame.SelectObjects(multiId);
+                if(!frame.Canvas.EnterGeometryEditModeForSelection())
+                    throw new InvalidOperationException("重开后多轮廓Path不能进入D编辑");
+                int contourRevision=frame.Revision;
+                if(frame.Canvas.RequestSelectedPathOperation(multiId,4,"close")||
+                    frame.Revision!=contourRevision)
+                    throw new InvalidOperationException("两点子轮廓不应允许闭合");
+                ContextMenu multiMenu=frame.Canvas.CreateSelectedGeometryMenuAt(170,232.5);
+                if(multiMenu==null||!multiMenu.Items.OfType<MenuItem>().Any(x=>
+                    (string)x.Header=="闭合此轮廓"))
+                    throw new InvalidOperationException("首子轮廓右键菜单应显示合法的闭合命令");
+                if(!frame.Canvas.RequestSelectedPathOperation(multiId,1,"close")||
+                    frame.Revision!=contourRevision+1||
+                    ((MRCShapeElement)frame.FindObject(multiId)).Shape.Geometry
+                        .Commands[3].Verb!=FGEPathVerb.Close)
+                    throw new InvalidOperationException("关闭首轮廓不能跨轮廓或者分成多个事务");
+                frame.Execute("edit.undo");
+                if(((MRCShapeElement)frame.FindObject(multiId)).Shape.Geometry
+                    .Commands.Count!=5)
+                    throw new InvalidOperationException("多轮廓闭合Undo未恢复原路径");
+                frame.Execute("edit.redo");
+                if(((MRCShapeElement)frame.FindObject(multiId)).Shape.Geometry
+                    .Commands[3].Verb!=FGEPathVerb.Close)
+                    throw new InvalidOperationException("多轮廓闭合Redo丢失Close");
+                frame.SaveProject(file);frame.OpenProject(file);
+                if(((MRCShapeElement)frame.FindObject(multiId)).Shape.Geometry
+                    .FlattenContours().Count!=2)
+                    throw new InvalidOperationException("闭合后的多轮廓磁盘往返丢失子路径");
                 frame.Inspect();
                 if(!frame.StatusMessage.Contains("Revision")||
                     frame.StatusMessage.Contains("GE Passed"))

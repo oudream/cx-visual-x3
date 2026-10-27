@@ -367,6 +367,32 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         /// <summary>
         /// 几何右键菜单不保存工程对象；每次执行前校验当前选区/模式/命令，复用MVI事务。
         /// </summary>
+        private static bool CanApplyPathOperation(MVISceneItem item,int index,string operation)
+        {
+            if(item==null||item.Shape==null||index<0||
+                index>=item.Shape.Geometry.Commands.Count)return false;
+            FGEPath2D path=item.Shape.Geometry;
+            try
+            {
+                switch(operation)
+                {
+                    case "delete":FGEPathEditing.DeleteAnchor(path,index);return true;
+                    case "line":return path.Commands[index].Verb!=FGEPathVerb.Line&&
+                        FGEPathEditing.ConvertSegment(path,index,FGEPathVerb.Line)!=null;
+                    case "quadratic":return path.Commands[index].Verb!=FGEPathVerb.Quadratic&&
+                        FGEPathEditing.ConvertSegment(path,index,FGEPathVerb.Quadratic)!=null;
+                    case "cubic":return path.Commands[index].Verb!=FGEPathVerb.Cubic&&
+                        FGEPathEditing.ConvertSegment(path,index,FGEPathVerb.Cubic)!=null;
+                    case "open":
+                    case "close":
+                        if(item.Shape.Kind!=MRCShapeKind.Path)return false;
+                        return !object.ReferenceEquals(path,FGEPathEditing.SetContourClosed(
+                            path,index,operation=="close"));
+                    default:return false;
+                }
+            }
+            catch(ArgumentException){return false;}
+        }
         public bool RequestSelectedPathOperation(Guid id,int commandIndex,string operation)
         {
             if(!_designMode||_drawTool!="Select"||!_geometryEditMode||
@@ -393,6 +419,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                     return false;
             }
             else if(operation!="delete")return false;
+            // 无效闭合/最小顶点删除在WPF层提前阻止，MVI/MEM依旧负责最终鉴权。
+            if(!CanApplyPathOperation(item,commandIndex,operation))return false;
             PathSegmentOperationRequested(id,commandIndex,operation);
             return true;
         }
@@ -429,8 +457,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             if(handle!=null&&handle.Kind==MVIVisualHandleKind.Anchor)
             {
                 index=handle.CommandIndex;
-                if(index>=0&&index<item.Shape.Geometry.Commands.Count&&
-                    item.Shape.Geometry.Commands[index].Verb==FGEPathVerb.Line)
+                if(CanApplyPathOperation(item,index,"delete"))
                     menu.Items.Add(GeometryMenuItem("删除顶点",()=>
                         RequestSelectedPathOperation(id,index,"delete")));
             }
@@ -446,21 +473,23 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 cmd=item.Shape.Geometry.Commands[index];
                 if(PathSegmentOperationRequested!=null)
                 {
-                    if(cmd.Verb!=FGEPathVerb.Line)
+                    if(CanApplyPathOperation(item,index,"line"))
                         menu.Items.Add(GeometryMenuItem("转为直线段",()=>
                             RequestSelectedPathOperation(id,index,"line")));
-                    if(cmd.Verb!=FGEPathVerb.Quadratic)
+                    if(CanApplyPathOperation(item,index,"quadratic"))
                         menu.Items.Add(GeometryMenuItem("转为二次曲线",()=>
                             RequestSelectedPathOperation(id,index,"quadratic")));
-                    if(cmd.Verb!=FGEPathVerb.Cubic)
+                    if(CanApplyPathOperation(item,index,"cubic"))
                         menu.Items.Add(GeometryMenuItem("转为三次贝塞尔",()=>
                             RequestSelectedPathOperation(id,index,"cubic")));
                     if(item.Shape.Kind==MRCShapeKind.Path)
                     {
                         bool closed=IsContourClosed(item.Shape.Geometry.Commands,index);
                         string operation=closed?"open":"close";
-                        menu.Items.Add(GeometryMenuItem(closed?"断开此轮廓":"闭合此轮廓",()=>
-                            RequestSelectedPathOperation(id,index,operation)));
+                        if(CanApplyPathOperation(item,index,operation))
+                            menu.Items.Add(GeometryMenuItem(
+                                closed?"断开此轮廓":"闭合此轮廓",()=>
+                                RequestSelectedPathOperation(id,index,operation)));
                     }
                 }
             }

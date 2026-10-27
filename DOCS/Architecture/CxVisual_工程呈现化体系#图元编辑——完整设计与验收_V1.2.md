@@ -268,6 +268,8 @@ TextBox/Geometry 的文本输入状态下方向键移动光标，不能触发画
 
 **GE-03 Path多轮廓创建增量（2026-10-27）**：原有单轮廓Path点绘继续保持。Path工具在单轮廓至少两个点后按N，仅设置WPF瞬时`next contour`；下一次点击创建新轮廓起点，Ghost跳过跨轮廓线段；双击/Enter在所有轮廓合法时才经`MVIShapeCatalog.CreateDrawnContours`生成独立Move命令，以`MVIVisualEditor.DrawPathContours`走现有MEM单次AddShape事务。Esc/工具切换、未完成第二轮廓不会留下对象、Revision或预览。Core增测真实双轮廓/非法未完成，WPF STA Smoke增测N分段、拒绝未完成、一次Revision、Undo/Redo和保存重开。后续复杂闭合洞、Boolean操作和系统级真实键鼠仍按GE-03验收，不能以本增量替代。
 
+**GE-03 多轮廓编辑门禁增量（2026-10-27）**：现有FGE不可变Path操作成为WPF菜单的合法性预检（`CanApplyPathOperation`）；无效的二点闭合、删除后轮廓不足、相同命令类型或无变化Open/Close不向MEM派发操作，也不会让用户看见无效菜单项。MVI仍是正式权限和Revision唯一判定层。TestCenter WPF STA补齐多轮廓第二子路径拒绝闭合、首子路径独立闭合、右键菜单、Undo/Redo及保存重开行为，系统级外部鼠标注入仍待验收。
+
 ### 6.4 Arc、Rect、Circle 与特殊参数
 
 - **Arc**：中心、Rx/Ry、StartAngle、SweepAngle 是几何参数；跨零角按连续有向扫角处理，弧长趋零和整圆边界按允许策略，不能靠显示角度 359°→0° 把几何抖到另一侧。ArcCenter、ArcRadiusX/Y、ArcStart/End 等现有 `MVIVisualHandleKind` 可复用。
