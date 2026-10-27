@@ -41,6 +41,12 @@ namespace CxVisual.Mechanism.Connectivity
                 case FTRChannelKind.Udp: typeMatch = channel is FTRUdpChannel; break;
                 case FTRChannelKind.UdpServer: typeMatch = channel is FTRUdpServerChannel; break;
                 case FTRChannelKind.Serial: typeMatch = channel is FTRSerialChannel; break;
+                case FTRChannelKind.HttpClient: typeMatch = channel is FTRHttpClientChannel; break;
+                case FTRChannelKind.NamedPipeClient: typeMatch = channel is FTRNamedPipeClientChannel; break;
+                case FTRChannelKind.NamedPipeServer: typeMatch = channel is FTRNamedPipeServerChannel; break;
+                case FTRChannelKind.WebSocketClient: typeMatch = channel is FTRWebSocketClientChannel; break;
+                case FTRChannelKind.Replay: typeMatch = channel is FTRReplayChannel; break;
+                case FTRChannelKind.UdpMulticast: typeMatch = channel is FTRUdpMulticastChannel; break;
             }
             if (!typeMatch)
                 throw new NotSupportedException("通道实例与已实现的类型不匹配或尚无真实 Provider");
