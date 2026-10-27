@@ -266,6 +266,8 @@ TextBox/Geometry 的文本输入状态下方向键移动光标，不能触发画
 
 **GE-03 几何右键增量（2026-10-27）**：SceneView在D几何编辑模式提供原生WPF右键菜单：线顶点删除、可见Line/Quadratic/Cubic段精确插点与段类型互转；Path独有逐轮廓Close/Open。右键仅产生`(Id, CommandIndex, Operation)`及分割`t`意图，Studio/TestCenter统一转交MVI现有`EditPathSegment` → FGE不可变路径 → MEM/MTC单事务。状态变更后旧选区、实例投影、隐藏不可操作；新增两点轮廓不可闭合的反证。STA WPF回归覆盖菜单存在、正式API转换、Undo/Redo和重开。菜单与回归的自动化能力不等于OS级物理右键/多DPI已全面验收。
 
+**GE-03 Path多轮廓创建增量（2026-10-27）**：原有单轮廓Path点绘继续保持。Path工具在单轮廓至少两个点后按N，仅设置WPF瞬时`next contour`；下一次点击创建新轮廓起点，Ghost跳过跨轮廓线段；双击/Enter在所有轮廓合法时才经`MVIShapeCatalog.CreateDrawnContours`生成独立Move命令，以`MVIVisualEditor.DrawPathContours`走现有MEM单次AddShape事务。Esc/工具切换、未完成第二轮廓不会留下对象、Revision或预览。Core增测真实双轮廓/非法未完成，WPF STA Smoke增测N分段、拒绝未完成、一次Revision、Undo/Redo和保存重开。后续复杂闭合洞、Boolean操作和系统级真实键鼠仍按GE-03验收，不能以本增量替代。
+
 ### 6.4 Arc、Rect、Circle 与特殊参数
 
 - **Arc**：中心、Rx/Ry、StartAngle、SweepAngle 是几何参数；跨零角按连续有向扫角处理，弧长趋零和整圆边界按允许策略，不能靠显示角度 359°→0° 把几何抖到另一侧。ArcCenter、ArcRadiusX/Y、ArcStart/End 等现有 `MVIVisualHandleKind` 可复用。

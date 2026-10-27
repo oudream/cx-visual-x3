@@ -259,6 +259,27 @@ namespace CxVisual.TestCenter.UI
                 }
                 catch(Exception ex){Report("Widget绘制失败："+ex.Message);}
             };
+            _canvas.DrawPathContoursRequested+=contours=>
+            {
+                try
+                {
+                    Guid[] before=_editor.Scene.Select(item=>item.Id).ToArray();
+                    MTCEditResult<bool> result=_editor.DrawPathContours(
+                        "Path"+(++_created),contours);
+                    Commit(result,"多轮廓Path");
+                    if(result.Success)
+                    {
+                        MVISceneItem drawn=_editor.Scene.LastOrDefault(item=>
+                            !before.Contains(item.Id));
+                        if(drawn!=null)
+                        {
+                            _editor.Select(drawn.Id);
+                            _canvas.SetSelectedVisualIds(new[]{drawn.Id});
+                        }
+                    }
+                }
+                catch(Exception ex){Report("多轮廓绘制失败："+ex.Message);}
+            };
             _canvas.DrawShapeRequested+=(kind,points,constrain)=>
             {
                 try

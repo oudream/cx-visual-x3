@@ -217,6 +217,17 @@ namespace CxVisual.Studio
                 }
                 catch(Exception ex){VisualInfo.Text="Widget绘制失败："+ex.Message;}
             };
+            SceneHost.DrawPathContoursRequested+=contours=>
+            {
+                try
+                {
+                    MTCEditResult<bool> result=_viewModel.DrawVisualPathContours(contours);
+                    VisualInfo.Text=result.Success?
+                        "已创建多轮廓Path（单次Undo）":
+                        "多轮廓Path被拒绝："+result.ErrorCode+" "+result.Message;
+                }
+                catch(Exception ex){VisualInfo.Text="多轮廓绘制失败："+ex.Message;}
+            };
             SceneHost.DrawShapeRequested+=(kind,points,constrain)=>
             {
                 try

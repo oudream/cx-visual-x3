@@ -331,6 +331,23 @@ namespace CxVisual.Studio
             }
             return result;
         }
+        /// <summary>Path工具多轮廓点绘，最终只建立一个MEM Shape和一次Undo。</summary>
+        public MTCEditResult<bool> DrawVisualPathContours(
+            IReadOnlyList<IReadOnlyList<FGEPoint2D>> contours)
+        {
+            Guid[] before=Items.Select(item=>item.Id).ToArray();
+            MTCEditResult<bool> result=_editor.DrawPathContours(
+                "Path "+(ElementCount+1),contours);
+            Status=result.Success?"已绘制多轮廓Path | Revision "+result.Revision:
+                "多轮廓绘制被拒绝："+result.ErrorCode+" "+result.Message;
+            if(result.Success)
+            {
+                var created=Items.LastOrDefault(item=>!before.Contains(item.Id));
+                if(created!=null)Select(created.Id);
+                NotifyScene();
+            }
+            return result;
+        }
         /// <summary>单击/拖框在画布定位文本；文字依然是MEM正式Text工程对象。</summary>
         public MTCEditResult<bool> DrawVisualText(IReadOnlyList<FGEPoint2D> points)
         {

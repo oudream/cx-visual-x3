@@ -92,6 +92,44 @@ namespace CxVisual.Mechanism.Visual
                 default:throw new ArgumentOutOfRangeException("kind");
             }
         }
+        /// <summary>
+        /// Path多轮廓纯几何构造：每条轮廓独立Move，禁止隐式跨轮廓连线；
+        /// 所有世界点一次转换为共同局部坐标，供WPF和MEM复用。
+        /// </summary>
+        public static MRCShapeDefinition CreateDrawnContours(
+            IReadOnlyList<IReadOnlyList<FGEPoint2D>> contours,out double x,out double y)
+        {
+            if(contours==null||contours.Count<2||contours.Count>4096)
+                throw new ArgumentException("visual.draw.contours");
+            int total=0;
+            double minX=double.PositiveInfinity,minY=double.PositiveInfinity;
+            foreach(IReadOnlyList<FGEPoint2D> contour in contours)
+            {
+                if(contour==null||contour.Count<2)
+                    throw new ArgumentException("visual.draw.contour_minimum");
+                total+=contour.Count;
+                if(total>4096)throw new ArgumentException("visual.draw.point_count");
+                foreach(FGEPoint2D point in contour)
+                {
+                    if(double.IsNaN(point.X)||double.IsInfinity(point.X)||
+                        double.IsNaN(point.Y)||double.IsInfinity(point.Y))
+                        throw new ArgumentException("visual.draw.non_finite");
+                    minX=Math.Min(minX,point.X);minY=Math.Min(minY,point.Y);
+                }
+            }
+            x=minX;y=minY;
+            var commands=new List<FGEPathCommand>(total);
+            foreach(IReadOnlyList<FGEPoint2D> contour in contours)
+            {
+                for(int i=0;i<contour.Count;i++)
+                {
+                    FGEPoint2D point=new FGEPoint2D(contour[i].X-x,contour[i].Y-y);
+                    commands.Add(i==0?FGEPathCommand.Move(point):
+                        FGEPathCommand.Line(point));
+                }
+            }
+            return MRCShapeDefinition.Path(new FGEPath2D(commands));
+        }
         /// <summary>文字框纯布局规则，与SceneView Ghost共用；短点击按默认尺寸放置。</summary>
         public static void TextBounds(IReadOnlyList<FGEPoint2D> points,
             out double x,out double y,out double width,out double height)

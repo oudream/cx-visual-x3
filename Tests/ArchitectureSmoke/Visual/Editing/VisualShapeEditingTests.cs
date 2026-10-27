@@ -731,6 +731,24 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(definition.Kind==kind&&definition.Geometry.Commands.Count>=2,
                     "拖绘路径生成失败："+kind);
             }
+            // GE-03 Path多轮廓同时保存各自Move/Line命令，不能跨空白区连边。
+            var outlines=new IReadOnlyList<FGEPoint2D>[]{
+                new[]{new FGEPoint2D(10,25),new FGEPoint2D(25,35),
+                    new FGEPoint2D(42,20)},
+                new[]{new FGEPoint2D(250,125),new FGEPoint2D(275,145)}};
+            var multi=MVIShapeCatalog.CreateDrawnContours(outlines,out x,out y);
+            Check(multi.Kind==MRCShapeKind.Path&&multi.Geometry.Commands.Count==5&&
+                multi.Geometry.Commands[0].Verb==FGEPathVerb.Move&&
+                multi.Geometry.Commands[3].Verb==FGEPathVerb.Move&&
+                Math.Abs(x-10)<1e-9&&Math.Abs(y-20)<1e-9&&
+                multi.Geometry.FlattenContours().Count==2,
+                "Multi-contour Path must keep two independent MoveTo origins");
+            bool badContour=false;
+            try{MVIShapeCatalog.CreateDrawnContours(
+                new IReadOnlyList<FGEPoint2D>[]{
+                    outlines[0],new[]{new FGEPoint2D(15,15)}},out x,out y);}
+            catch(ArgumentException){badContour=true;}
+            Check(badContour,"Unfinished Path contour must not create any shape");
             bool rejected=false;
             try{MVIShapeCatalog.CreateDrawn(MRCShapeKind.Polygon,points.Take(2).ToArray(),
                 false,out x,out y);}
