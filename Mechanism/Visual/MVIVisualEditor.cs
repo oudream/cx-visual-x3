@@ -456,11 +456,23 @@ namespace CxVisual.Mechanism.Visual
             Demand();
             double x,y,width,height;
             MVIShapeCatalog.TextBounds(worldPoints,out x,out y,out width,out height);
+            MEMNode parent=CurrentDrawParent();
+            FGEPoint2D local=DrawOriginInParent(parent,x,y);
             return Document.Edit("绘制文字框",e=>
             {
-                e.AddText(CurrentDrawParent(),name,text,x,y,width,height);
+                e.AddText(parent,name,text,local.X,local.Y,width,height);
                 return true;
             });
+        }
+        /// <summary>Widget手工单击/拖框使用同一WPF Ghost布局；现有MEM Widget唯一Owner。</summary>
+        public MTCEditResult<bool> DrawWidget(string name,string typeId,
+            IReadOnlyList<FGEPoint2D> worldPoints)
+        {
+            Demand();
+            double x,y,width,height;
+            MVIShapeCatalog.WidgetBounds(worldPoints,out x,out y,out width,out height);
+            FGEPoint2D local=DrawOriginInParent(CurrentDrawParent(),x,y);
+            return AddWidget(name,typeId,local.X,local.Y,width,height);
         }
         /// <summary>唯一绘制创建入口；与WPF Ghost共享纯几何求解，单次MEM事务。</summary>
         public MTCEditResult<bool> DrawShape(string name,MRCShapeKind kind,
@@ -473,20 +485,21 @@ namespace CxVisual.Mechanism.Visual
             // 普通Page/Content世界坐标与父局部坐标可能不同，须由当前定义的
             // 父级World矩阵变换为局部。不为绘图创建独立的WPF工程真值。
             MEMNode parent=CurrentDrawParent();
+            FGEPoint2D local=DrawOriginInParent(parent,x,y);
+            return AddShape(name,shape,local.X,local.Y);
+        }
+        /// <summary>绘制起点按现有Shape语义转换到当前工程容器，避免Widget/Text另走坐标算法。</summary>
+        private static FGEPoint2D DrawOriginInParent(MEMNode parent,double x,double y)
+        {
             var visualParent=parent as MRCVisualItem;
-            if(visualParent!=null)
+            if(visualParent==null)return new FGEPoint2D(x,y);
+            FGETransform2D world=FGETransform2D.Identity;
+            for(MEMNode node=visualParent;node!=null;node=node.Parent)
             {
-                FGETransform2D world=FGETransform2D.Identity;
-                for(MEMNode node=visualParent;node!=null;node=node.Parent)
-                {
-                    var item=node as MRCVisualItem;
-                    if(item!=null)
-                        world=item.Transform.ToGeometry().Compose(world);
-                }
-                FGEPoint2D local=world.Inverse().TransformPoint(new FGEPoint2D(x,y));
-                x=local.X;y=local.Y;
+                var item=node as MRCVisualItem;
+                if(item!=null)world=item.Transform.ToGeometry().Compose(world);
             }
-            return AddShape(name,shape,x,y);
+            return world.Inverse().TransformPoint(new FGEPoint2D(x,y));
         }
         public MTCEditResult<bool> AddShape(string name,MRCShapeDefinition shape,double x,double y)
         {

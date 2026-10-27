@@ -329,6 +329,23 @@ namespace CxVisual.Studio
                 "文本框绘制被拒绝："+result.ErrorCode+" "+result.Message;
             return result;
         }
+        /// <summary>公共Widget画布单击/拖框入口；沿用MVI/MEM正式创建、选中和Undo。</summary>
+        public MTCEditResult<bool> DrawVisualWidget(string typeId,
+            IReadOnlyList<FGEPoint2D> worldPoints)
+        {
+            Guid[] old=Items.Select(item=>item.Id).ToArray();
+            MTCEditResult<bool> result=_editor.DrawWidget(
+                "Widget "+(ElementCount+1),typeId,worldPoints);
+            if(result.Success)
+            {
+                var created=Items.LastOrDefault(item=>!old.Contains(item.Id));
+                if(created!=null)Select(created.Id);
+                NotifyScene();
+            }
+            Status=result.Success?"已绘制Widget | Revision "+result.Revision:
+                "Widget绘制被拒绝："+result.ErrorCode+" "+result.Message;
+            return result;
+        }
         /// <summary>导入项目打包资产并在当前编辑资源创建真实图片/SVG图元。</summary>
         public void AddVisualAsset(string file)
         {

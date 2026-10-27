@@ -277,11 +277,38 @@ namespace CxVisual.TestCenter.UI
                 if(textItem==null||Math.Abs(textItem.Width-150)>1e-6||
                     Math.Abs(textItem.Height-75)>1e-6)
                     throw new InvalidOperationException("Text画布Ghost尺寸与MEM对象不一致");
+                // Widget工具须先激活Draw，真实画布绘制后才有一个正式MEM对象。
+                frame.Execute("WidgetButton");
+                int widgetBefore=frame.Revision;
+                if(frame.Canvas.ActiveDrawTool!="WidgetButton"||frame.SceneCount!=8)
+                    throw new InvalidOperationException("Widget工具不得点击即插入默认控件");
+                frame.Canvas.BeginDrawGesture(200,425);
+                frame.Canvas.UpdateDrawGesture(340,485);
+                if(!frame.Canvas.HasDrawPreview||frame.Revision!=widgetBefore)
+                    throw new InvalidOperationException("Widget Ghost不应修改工程Revision");
+                if(!frame.Canvas.CompleteDrawGesture(340,485)||frame.SceneCount!=9||
+                    frame.Revision!=widgetBefore+1)
+                    throw new InvalidOperationException("Widget拖绘未按一次MEM事务提交");
+                MRCWidgetElement widget=frame.FindObject(frame.SceneIds.Last()) as MRCWidgetElement;
+                if(widget==null||widget.WidgetTypeId!="core.widget"||
+                    Math.Abs(widget.Width-150)>1e-6||Math.Abs(widget.Height-50)>1e-6)
+                    throw new InvalidOperationException("Widget Ghost与正式控件位置尺寸不一致");
+                frame.Execute("core.widget.textbox");
+                frame.Canvas.BeginDrawGesture(720,475);
+                if(!frame.Canvas.CompleteDrawGesture(720,475)||frame.SceneCount!=10)
+                    throw new InvalidOperationException("Widget单击定位失败");
+                MRCWidgetElement textbox=frame.FindObject(frame.SceneIds.Last()) as MRCWidgetElement;
+                if(textbox==null||textbox.WidgetTypeId!="core.widget.textbox"||
+                    Math.Abs(textbox.Width-120)>1e-6||Math.Abs(textbox.Height-36)>1e-6)
+                    throw new InvalidOperationException("Widget单击尺寸不符合同一纯布局规则");
+                Guid widgetId=widget.Id,textboxId=textbox.Id;
                 frame.Execute("Select");
                 frame.SaveProject(file);
                 frame.OpenProject(file);
-                if(frame.SceneCount!=8||frame.IsDirty)
-                    throw new InvalidOperationException("新绘图工程没有完成保存重开");
+                if(frame.SceneCount!=10||frame.IsDirty||
+                    !(frame.FindObject(widgetId) is MRCWidgetElement)||
+                    !(frame.FindObject(textboxId) is MRCWidgetElement))
+                    throw new InvalidOperationException("Widget绘制保存重开或身份不正确");
                 frame.Inspect();
                 if(!frame.StatusMessage.Contains("Revision")||
                     frame.StatusMessage.Contains("GE Passed"))

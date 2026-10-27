@@ -197,6 +197,16 @@ namespace CxVisual.Studio
                 }
                 catch(Exception ex){VisualInfo.Text="文字绘制失败："+ex.Message;}
             };
+            SceneHost.DrawWidgetRequested+=(typeId,points)=>
+            {
+                try
+                {
+                    MTCEditResult<bool> result=_viewModel.DrawVisualWidget(typeId,points);
+                    VisualInfo.Text=result.Success?"Widget已在画布绘制（一次Undo）":
+                        "Widget绘制被拒绝："+result.ErrorCode+" "+result.Message;
+                }
+                catch(Exception ex){VisualInfo.Text="Widget绘制失败："+ex.Message;}
+            };
             SceneHost.DrawShapeRequested+=(kind,points,constrain)=>
             {
                 try
@@ -500,7 +510,8 @@ namespace CxVisual.Studio
             try
             {
                 MRCShapeKind shape;
-                if(operation=="Select"||operation=="Text"||
+                if(operation=="Select"||operation=="Text"||operation=="WidgetButton"||
+                    MRCWidgetTypes.IsBuiltIn(operation)||
                     (Enum.TryParse(operation,false,out shape)&&
                      Enum.IsDefined(typeof(MRCShapeKind),shape)))
                 {

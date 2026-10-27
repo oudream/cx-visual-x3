@@ -112,6 +112,16 @@ namespace CxVisual.Mechanism.Visual
             width=Math.Max(40,Math.Abs(dx));
             height=Math.Max(24,Math.Abs(dy));
         }
+        /// <summary>Widget单击定位按正式默认120×36，拖绘沿用Text相同的合法矩形规则。</summary>
+        public static void WidgetBounds(IReadOnlyList<FGEPoint2D> points,
+            out double x,out double y,out double width,out double height)
+        {
+            TextBounds(points,out x,out y,out width,out height);
+            if(points[0].DistanceTo(points[1])<3)
+            {
+                width=120;height=36;
+            }
+        }
         public static MRCShapeDefinition CreateDefault(MRCShapeKind kind)
         {
             switch(kind)

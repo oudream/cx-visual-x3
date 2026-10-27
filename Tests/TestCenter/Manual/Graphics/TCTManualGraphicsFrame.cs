@@ -233,6 +233,27 @@ namespace CxVisual.TestCenter.UI
                 }
                 catch(Exception ex){Report("文本绘制失败："+ex.Message);}
             };
+            _canvas.DrawWidgetRequested+=(typeId,points)=>
+            {
+                try
+                {
+                    Guid[] before=_editor.Scene.Select(item=>item.Id).ToArray();
+                    MTCEditResult<bool> result=_editor.DrawWidget("Widget"+(++_created),
+                        typeId,points);
+                    Commit(result,"画布Widget");
+                    if(result.Success)
+                    {
+                        MVISceneItem drawn=_editor.Scene.LastOrDefault(item=>
+                            !before.Contains(item.Id));
+                        if(drawn!=null)
+                        {
+                            _editor.Select(drawn.Id);
+                            _canvas.SetSelectedVisualIds(new[]{drawn.Id});
+                        }
+                    }
+                }
+                catch(Exception ex){Report("Widget绘制失败："+ex.Message);}
+            };
             _canvas.DrawShapeRequested+=(kind,points,constrain)=>
             {
                 try
@@ -488,7 +509,8 @@ namespace CxVisual.TestCenter.UI
             try
             {
                 MRCShapeKind shapeKind;
-                if(operation=="Select"||operation=="Text"||
+                if(operation=="Select"||operation=="Text"||operation=="WidgetButton"||
+                    MRCWidgetTypes.IsBuiltIn(operation)||
                     Enum.TryParse(operation,false,out shapeKind)&&
                     Enum.IsDefined(typeof(MRCShapeKind),shapeKind))
                 {

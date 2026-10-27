@@ -56,11 +56,14 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         public event Action<string> DrawToolChanged;
         public event Action<MRCShapeKind,IReadOnlyList<FGEPoint2D>,bool> DrawShapeRequested;
         public event Action<IReadOnlyList<FGEPoint2D>> DrawTextRequested;
+        public event Action<string,IReadOnlyList<FGEPoint2D>> DrawWidgetRequested;
+        private static bool IsWidgetDrawTool(string tool)
+        {return tool=="WidgetButton"||MRCWidgetTypes.IsBuiltIn(tool);}
         private static bool IsPointDrawTool(string tool)
         {return tool=="Polyline"||tool=="Polygon"||tool=="Path";}
         public void SetDrawTool(string tool)
         {
-            if(tool!="Select"&&tool!="Text")
+            if(tool!="Select"&&tool!="Text"&&!IsWidgetDrawTool(tool))
             {
                 MRCShapeKind kind;
                 if(!Enum.TryParse(tool,false,out kind)||!Enum.IsDefined(typeof(MRCShapeKind),kind))
@@ -115,7 +118,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             var points=new List<FGEPoint2D>(_drawPoints);
             if(!pointsMode)points.Add(new FGEPoint2D(_drawPointer.X,_drawPointer.Y));
             if(pointsMode&&points.Count<(_drawTool=="Polygon"?3:2))return false;
-            if(!pointsMode&&_drawTool!="Text"&&points[0].DistanceTo(points[1])<3/_zoom)
+            if(!pointsMode&&_drawTool!="Text"&&!IsWidgetDrawTool(_drawTool)&&
+                points[0].DistanceTo(points[1])<3/_zoom)
             {
                 _drawDragging=false;_drawPoints.Clear();InvalidateVisual();
                 return false;
@@ -125,6 +129,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             {
                 double x,y,w,h;
                 if(_drawTool=="Text")MVIShapeCatalog.TextBounds(points,out x,out y,out w,out h);
+                else if(IsWidgetDrawTool(_drawTool))
+                    MVIShapeCatalog.WidgetBounds(points,out x,out y,out w,out h);
                 else
                 {
                     kind=(MRCShapeKind)Enum.Parse(typeof(MRCShapeKind),_drawTool);
@@ -143,6 +149,14 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             {
                 var placed=DrawTextRequested;
                 if(placed!=null)placed(points.AsReadOnly());
+                return placed!=null;
+            }
+            if(IsWidgetDrawTool(_drawTool))
+            {
+                var placed=DrawWidgetRequested;
+                if(placed!=null)
+                    placed(_drawTool=="WidgetButton"?"core.widget":_drawTool,
+                        points.AsReadOnly());
                 return placed!=null;
             }
             var handler=DrawShapeRequested;
@@ -1019,12 +1033,13 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 }
                 else if(points.Count>=2)
                 {
-                    if(_drawTool=="Text")
+                    if(_drawTool=="Text"||IsWidgetDrawTool(_drawTool))
                     {
                         double x,y,w,h;
                         try
                         {
-                            MVIShapeCatalog.TextBounds(points,out x,out y,out w,out h);
+                            if(_drawTool=="Text")MVIShapeCatalog.TextBounds(points,out x,out y,out w,out h);
+                            else MVIShapeCatalog.WidgetBounds(points,out x,out y,out w,out h);
                             dc.DrawRectangle(new SolidColorBrush(Color.FromArgb(32,32,117,218)),
                                 new Pen(Brushes.DodgerBlue,1.5/_zoom)
                                 {DashStyle=DashStyles.Dash},new Rect(x,y,w,h));
