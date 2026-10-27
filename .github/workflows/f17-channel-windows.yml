@@ -1,0 +1,55 @@
+name: CxVisual F17 Channel Windows Acceptance
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'Foundation/Transport/**'
+      - 'Foundation/Data/Configuration/**'
+      - 'Mechanism/Connectivity/**'
+      - 'Tests/ArchitectureSmoke/Integration/ModuleChannelTransportSmokeTests.cs'
+      - 'Tests/ArchitectureSmoke/Program.cs'
+      - 'Tests/TestCenter/Manual/Channel/**'
+      - 'Mechanism/Presentation.Wpf/MPWConfigEditorDialogV14.cs'
+      - '.github/workflows/f17-channel-windows.yml'
+jobs:
+  f17-channel-acceptance:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - name: Restore application and test dependencies
+        shell: pwsh
+        run: |
+          $msbuild = (Get-Command msbuild.exe -ErrorAction Stop).Source
+          & $msbuild .\Tests\TestCenter\CxVisual.TestCenter.csproj /t:Restore /p:Configuration=Release /p:Platform=x64 /nologo /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw "TestCenter packages restore failed" }
+          & $msbuild .\Applications\Studio\CxVisual.Studio.csproj /t:Restore /p:Configuration=Release /p:Platform=x64 /nologo /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw "Studio packages restore failed" }
+      - name: Build .NET Framework 4.8 x64 solution and FTR integration
+        shell: pwsh
+        run: |
+          $msbuild = (Get-Command msbuild.exe -ErrorAction Stop).Source
+          & $msbuild .\CxVisual.Unified.sln /m:1 /t:Rebuild /p:Configuration=Release /p:Platform=x64 /nologo /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw "Channel integrated solution build failed" }
+      - name: Run dedicated FTR Connector and OS loopback acceptance
+        shell: pwsh
+        run: |
+          $output = & .\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe --channel-transport 2>&1
+          $status = $LASTEXITCODE
+          $output | ForEach-Object { Write-Host $_ }
+          if ($status -ne 0) { throw "F17 Channel execution failed: $status" }
+          $joined = $output -join "`n"
+          if ($joined -notmatch 'CHANNEL.CONNECTOR: 12 built-in FTR kinds' -or
+              $joined -notmatch 'CHANNEL.TRANSPORT: TCP/UDP loopback') {
+              throw "F17 Channel expected acceptance evidence not present"
+          }
+      - name: Verify Foundation Transport unique Owner
+        shell: pwsh
+        run: |
+          $files = @(Get-ChildItem Foundation/Transport/Channels -Recurse -Filter '*.cs' -File)
+          $legacy = @(Get-ChildItem Mechanism/Connectivity/Channels -Recurse -Filter '*.cs' -File -ErrorAction SilentlyContinue)
+          if ($files.Count -ne 56) { throw "Expected 56 FTR source files; actual $($files.Count)" }
+          if ($legacy.Count -gt 0) { throw "Legacy compiled Channel source remains in Mechanism" }
+          Write-Host "PASS F17 unique owner: 56 Channel files; no old Mechanism Channel sources"
