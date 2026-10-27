@@ -30,7 +30,7 @@
 |---|---|---|
 | `MDSVariableQuality` | 已有 | MDSVariableTable.cs；Good/Bad/Uncertain/Stale |
 | `IMDSVariableTable` | 已有 | MDSVariableContracts.cs；旧公共表接口 |
-| `MDSVariableDefinition` | 已有/增构 | MDSVariableTable.cs；含稳定ID、默认值和可选访问策略 |
+| `MDSVariableDefinition` | 已有/增构 | MDSVariableTable.cs；含稳定ID、默认值、权限策略；2026-10-27补充显式null默认值与Snapshot/Restore区分，待最新CI确认 |
 | `MDSVariableNode` | 已有 | MDSVariableTree.cs；身份/路径/OwnerRef/Tags |
 | `MDSVariableGroup` | 已有 | MDSVariableTree.cs；分组层级和移动 |
 | `MDSVariable<T>` | 已有/增构 | MDSVariable.cs；单份权威值、前值、质量、版本 |
@@ -55,13 +55,13 @@
 | V1.2目标类型 | 核对状态 | 实际Owner、接口及差距 |
 |---|---|---|
 | `MDSVariableChange` | 已有 | Dispatch/MDSVariableChangeDispatcher.cs；冻结值/前值/版本/世代 |
-| `MDSVariableChangeBatch` | 未实现 | 文档要求批次序列模型，目前只传IReadOnlyList<Change> |
+| `MDSVariableChangeBatch` | 已实现 | Dispatch/MDSVariableChangeDispatcher.cs；与Table.BatchCommitted关联，含Scope/BatchId/BatchSequence和冻结变化列表 |
 | `MDSVariableSubscriptionOptions` | 已有/不完整 | Dispatch/MDSVariableChangeDispatcher.cs；ID及Kind筛选，策略选择未完整 |
 | `MDSVariableSubscription` | 已有 | Dispatch/MDSVariableChangeDispatcher.cs；退订与生命周期 |
-| `MDSVariableChangeDispatcher` | 已有/部分 | Dispatch/MDSVariableChangeDispatcher.cs；LatestOnly后台派发和乱序拒绝 |
-| `MDSVariableDispatchBuffer` | 职责内嵌/不完整 | Dispatcher内部_latest/_order；可靠队列/容量拒绝另待实现 |
-| `MDSVariableDispatchMetrics` | 已有/待增构 | Dispatcher中Received/Delivered/Overflow/Coalesced/Stale/Errors；p99延迟待补 |
-| `MDSVariableDispatchPolicy` | 未实现 | Immediate/Batch/LatestOnly/Reliable尚未形成可执行策略契约 |
+| `MDSVariableChangeDispatcher` | 已有/部分 | Dispatch/MDSVariableChangeDispatcher.cs；LatestOnly后台派发和乱序拒绝；新MDSVariableDispatchRoute对既有表和Journal统一封装派发策略生命周期 |
+| `MDSVariableDispatchBuffer` | 职责合并/仍待增构 | LatestOnly队列由Dispatcher内部_latest/_order承担；MDSVariableReliableChangeJournal补充有界排队、Ack/拒绝/缺号补投，未实现磁盘持久化 |
+| `MDSVariableDispatchMetrics` | 已有/待增构 | Dispatcher中Received/Delivered/Overflow/Coalesced/Stale/Errors；长稳统计与p99延迟仍未补齐 |
+| `MDSVariableDispatchPolicy` | 已实现/可靠性有限 | Dispatch/MDSVariableDispatchRoute.cs；统一选择Immediate/Batch/LatestOnly/Reliable，但Reliable目前只提供进程内批次Ack/重放，不提供断电持久化 |
 
 ### Variables / Providers（8）
 
@@ -150,3 +150,11 @@
 - **确认Windows成功**：[`4727282`变量专项](https://github.com/oudream/cx-visual-x3/actions/runs/40460216776)执行`--variables`并通过全架构、TestCenter STA及百万次本地性能；本次记录单线程约1,070万次/s、独立四线程合计约2,451万次/s，均为Windows Runner短时进程内测量。
 - **新代码待验收**：`MDSVariableAccessPolicy`/`MDSVariableBatch`/`MDSVariableProviderDescriptor`的提交与相关CI以其固定SHA和Actions实际结论为准；在此之前不能标记已验收。
 - **尚未确认**：真实PLC/气密性/CxECTStudio、跨进程/跨PC命令链、Reliable逐笔持久保证、长稳百万人次/s、全量Studio工程编辑的发布级验收；原生产代码经验不等于x3新集成的实机PASS。
+
+
+## 五、2026-10-27 本次开发与新验收证据
+
+1. [`3a4ba6c`](https://github.com/oudream/cx-visual-x3/commit/3a4ba6ce4cd8d8cfb69270667689da6d916590ca)：修复Reliable丢批风险；运行中注册以原Table批次序号初始化起始水位，容量满和序号缺口分别拒绝，必须补投被拒批次后才能继续Ack；不声称磁盘持久。
+2. [`779633f`](https://github.com/oudream/cx-visual-x3/commit/779633f605fc4acb6abbbdb92bc58b9905a433f0)：新增`MDSVariableDispatchPolicy`和`MDSVariableDispatchRoute`，清楚区分Immediate提交线程通知、Batch按批提交、LatestOnly有界合并和Reliable显式Ack，不另造消息中心；[`Windows变量专项#40470851537：Success`](https://github.com/oudream/cx-visual-x3/actions/runs/40470851537)。
+3. [`3094ebe`](https://github.com/oudream/cx-visual-x3/commit/3094ebeede38b423e6700d1bfaa8a4cc7b8fd2f4)：变量定义支持`hasDefaultValue=true`且`defaultValue=null`，区分显式null和未指定默认值，贯通`MDSVariable<T>`快照和恢复；对应Windows CI尚需按固定SHA读取结论。
+4. 全类清单**仍不是全部生产验收完成**：MEM工程变量编译/编辑、Provider真实设备读写/断连恢复、可靠队列的持久重放与ExactlyOnce边界、复杂对象适配、长稳p99/实机测试仍未关闭。继续按VAR-G01～G06逐项验证，不以类名数量作为完工判断。
