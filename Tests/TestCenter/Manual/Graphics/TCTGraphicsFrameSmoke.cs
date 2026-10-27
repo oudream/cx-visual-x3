@@ -83,7 +83,7 @@ namespace CxVisual.TestCenter.UI
                     throw new InvalidOperationException("选择真实Group后解组按钮未启用");
                 ungroup.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 if(frame.Revision!=beforeGroup+2||
-                    !ids.OrderBy(x=>x).SequenceEqual(frame.SceneIds.OrderBy(x=>x)))
+                    !ids.OrderBy(id=>id).SequenceEqual(frame.SceneIds.OrderBy(id=>id)))
                     throw new InvalidOperationException("解组未保留原图元身份");
                 // 磁盘往返不是截图：核实Project与所有图元ID保持不变。
                 frame.SaveProject(file);
