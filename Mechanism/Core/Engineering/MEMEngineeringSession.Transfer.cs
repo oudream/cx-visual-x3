@@ -34,6 +34,72 @@ namespace CxVisual.Mechanism.Core
             Edit("导入工程对象",plan.BaseRevision,e=>{e.Import(plan);return true;}).RequireValue();return new MTITransferResult(plan,Revision);
         }
         public MTITransferResult Duplicate(IEnumerable<Guid> roots,MEMNode parent){return Import(PreviewDuplicate(roots,parent));}
+
+        /// <summary>
+        /// 可视编辑的完整复制：复用MTI身份映射，在一次MTC事务中导入节点、
+        /// 偏移顶层图元，并复制两端都属于被选子树的MPC视觉连接。
+        /// 跨选区的连接保持原状，不复制悬空端点或生成第二份图模型。
+        /// </summary>
+        public MTITransferResult DuplicateVisual(IEnumerable<Guid> roots,MEMNode parent,
+            double deltaX,double deltaY)
+        {
+            if(roots==null)throw new ArgumentNullException("roots");
+            if(parent==null)throw new ArgumentNullException("parent");
+            if(double.IsNaN(deltaX)||double.IsInfinity(deltaX)||
+                double.IsNaN(deltaY)||double.IsInfinity(deltaY))
+                throw new ArgumentException("visual.duplicate.invalid_offset");
+            var ids=roots.ToArray();
+            if(ids.Length==0||ids.Length!=ids.Distinct().Count())
+                throw new InvalidOperationException("visual.duplicate.invalid_selection");
+            var items=ids.Select(id=>Find(id) as MRCVisualItem).ToArray();
+            if(items.Any(item=>item==null||item.Parent!=parent))
+                throw new InvalidOperationException("visual.duplicate.requires_siblings");
+            // 同一内容层中的视觉连接可由MPC唯一Owner查询；Group只持有子对象，
+            // 不允许为复制线路而引入另一个Group级Graph。
+            var definition=parent as IMPMDefinition;
+            var included=new HashSet<Guid>(items
+                .SelectMany(item=>item.DescendantsAndSelf()).Select(node=>node.Id));
+            var internalConnections=definition==null?new MPCConnection[0]:
+                definition.Connections.Where(connection=>
+                    FindPort(connection.Source.PortId)!=null&&
+                    FindPort(connection.Target.PortId)!=null&&
+                    FindPort(connection.Source.PortId).Kind==MPCPortKind.Visual&&
+                    FindPort(connection.Target.PortId).Kind==MPCPortKind.Visual&&
+                    connection.Source.Address.InstancePath.Count==0&&
+                    connection.Target.Address.InstancePath.Count==0&&
+                    included.Contains(connection.Source.Address.ObjectId)&&
+                    included.Contains(connection.Target.Address.ObjectId)).ToArray();
+            // 现有预览包含依赖、类型、资产、绑定与旧版工程兼容校验，绝不跳过。
+            MTITransferPlan plan=PreviewDuplicate(ids,parent);
+            if(!plan.IsValid)
+                throw new InvalidOperationException(string.Join(";",plan.Issues));
+            Edit("复制可视图元",plan.BaseRevision,e=>
+            {
+                e.Import(plan);
+                foreach(var original in items)
+                {
+                    var cloned=(MRCVisualItem)Find(plan.IdMap[original.Id]);
+                    e.Move(cloned,original.X+deltaX,original.Y+deltaY);
+                }
+                foreach(MPCConnection connection in internalConnections)
+                {
+                    var sourceNode=Find(plan.IdMap[connection.Source.Address.ObjectId]);
+                    var targetNode=Find(plan.IdMap[connection.Target.Address.ObjectId]);
+                    var source=new MPCEndpoint(GetAddress(sourceNode),
+                        plan.IdMap[connection.Source.PortId]);
+                    var target=new MPCEndpoint(GetAddress(targetNode),
+                        plan.IdMap[connection.Target.PortId]);
+                    MPCConnection cloned=e.Connect(parent,source,target);
+                    // 路由默认值来自MPC实现，不能假定默认Straight或Orthogonal。
+                    // 以原连接的明确路由与人工折点为准；MTC内部负责相同值短路。
+                    e.SetVisualRoute(cloned,connection.VisualRouteKind,
+                        connection.VisualWaypoints);
+                }
+                return true;
+            }).RequireValue();
+            return new MTITransferResult(plan,Revision);
+        }
+
     }
     public sealed partial class MTCEditSession
     {

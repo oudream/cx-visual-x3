@@ -167,6 +167,29 @@ namespace CxVisual.TestCenter.UI
                 catch(DirectoryNotFoundException){rejected=true;}
                 if(!rejected||frame.ProjectId!=projectId||!frame.SceneIds.SequenceEqual(saved))
                     throw new InvalidOperationException("加载失败时没有保留原工程会话");
+                // 用户从公共按钮复制两个图元，必须执行Core Transfer而非绘制两张假图。
+                frame.SelectObjects(saved);
+                Button duplicate=Find<Button>(frame,"MPW.Visual.edit.duplicate");
+                if(duplicate==null||!duplicate.IsEnabled)
+                    throw new InvalidOperationException("有真实图元多选却未启用Duplicate");
+                int beforeDuplicate=frame.Revision;
+                duplicate.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                if(frame.Revision!=beforeDuplicate+1||frame.SceneCount!=4||
+                    !saved.All(id=>frame.SceneIds.Contains(id)))
+                    throw new InvalidOperationException("WPF Duplicate没有通过一次MEM事务复制图元");
+                Guid[] duplicatedIds=frame.SceneIds.Where(id=>!saved.Contains(id)).ToArray();
+                if(duplicatedIds.Length!=2||!duplicatedIds.All(id=>frame.FindObject(id)!=null))
+                    throw new InvalidOperationException("WPF Duplicate没有形成新的工程对象身份");
+                frame.Execute("edit.undo");
+                if(frame.SceneCount!=2||duplicatedIds.Any(id=>frame.FindObject(id)!=null))
+                    throw new InvalidOperationException("WPF Duplicate Undo未原子删除复制对象");
+                frame.Execute("edit.redo");
+                if(frame.SceneCount!=4||duplicatedIds.Any(id=>frame.FindObject(id)==null))
+                    throw new InvalidOperationException("WPF Duplicate Redo未恢复相同复制对象身份");
+                frame.SaveProject(file);
+                frame.OpenProject(file);
+                if(frame.SceneCount!=4||duplicatedIds.Any(id=>frame.FindObject(id)==null))
+                    throw new InvalidOperationException("WPF Duplicate保存重开身份丢失");
                 frame.Inspect();
                 if(!frame.StatusMessage.Contains("Revision")||
                     frame.StatusMessage.Contains("GE Passed"))

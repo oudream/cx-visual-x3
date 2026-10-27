@@ -32,6 +32,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 "core.widget.progressbar|进度条","core.widget.combobox|下拉框" });
             AddSection(_commands,"编辑 / 布局 / 连线",new [] {
                 "edit.undo|撤销","edit.redo|重做","edit.delete|删除",
+                "edit.duplicate|复制一份",
                 "edit.group|组合","edit.ungroup|解组",
                 "layer.front|置于顶层","layer.back|置于底层",
                 "align.left|左对齐","align.right|右对齐",
@@ -74,6 +75,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             SetOperationEnabled("edit.undo",canUndo&&canEdit);
             SetOperationEnabled("edit.redo",canRedo&&canEdit);
             SetOperationEnabled("edit.delete",canEdit&&selectionCount==1);
+            SetOperationEnabled("edit.duplicate",canEdit&&selectionCount>=1&&!selectedVisualConnection);
             SetOperationEnabled("edit.group",canEdit&&selectionCount>=2&&!selectedVisualConnection);
             SetOperationEnabled("edit.ungroup",canEdit&&selectionCount==1&&selectedIsGroup);
             SetOperationEnabled("layer.front",canEdit&&selectionCount==1&&!selectedVisualConnection);

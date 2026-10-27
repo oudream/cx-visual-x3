@@ -480,6 +480,15 @@ namespace CxVisual.Studio
                 if(operation=="edit.undo")_viewModel.UndoCommand.Execute(null);
                 else if(operation=="edit.redo")_viewModel.RedoCommand.Execute(null);
                 else if(operation=="edit.delete")_viewModel.DeleteCommand.Execute(null);
+                else if(operation=="edit.duplicate")
+                {
+                    IReadOnlyList<Guid> selected=SceneHost.SelectedVisualIds;
+                    if(selected.Count==0&&_viewModel.SelectedId.HasValue)
+                        selected=new[]{_viewModel.SelectedId.Value};
+                    MTITransferResult result=_viewModel.DuplicateVisualSelection(selected);
+                    VisualInfo.Text="已复制 "+result.RootIds.Count+
+                        " 个对象（端口与内部连接同步重映射，一次Undo）";
+                }
                 else if(operation=="edit.group")_viewModel.GroupCommand.Execute(null);
                 else if(operation=="edit.ungroup")_viewModel.UngroupCommand.Execute(null);
                 else if(operation=="layer.front"||operation=="layer.back")

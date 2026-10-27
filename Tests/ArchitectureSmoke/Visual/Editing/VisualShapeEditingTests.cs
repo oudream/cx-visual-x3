@@ -555,8 +555,97 @@ namespace CxVisual.Tests.ArchitectureSmoke
             }
         }
 
+        /// <summary>
+        /// GE-11：真正的对象和端口重映射。两端均在复制选区内的视觉连接
+        /// 应同时克隆；跨选区连接保持原样。所有修改一次Undo，重开工程身份不丢。
+        /// </summary>
+        private static void CheckVisualDuplicateAndInternalConnections()
+        {
+            string path=Path.Combine(Path.GetTempPath(),
+                "cx-visual-duplicate-"+Guid.NewGuid().ToString("N")+".cxproj");
+            var session=MEMEngineering.Create("图元复制连接测试");
+            try
+            {
+                var page=session.AddPage("P");
+                var a=session.AddRectangle(page.RootContent,"A",20,20,110,75);
+                var b=session.AddRectangle(page.RootContent,"B",290,25,90,95);
+                var c=session.AddRectangle(page.RootContent,"Outside",460,150,70,70);
+                using(var editor=new MVIVisualEditor(session))
+                {
+                    editor.SetPage(page.Id);
+                    Check(editor.ConnectVisual(a.Id,"east",b.Id,"west").Success,
+                        "internal visual connection creation failed");
+                    Check(editor.ConnectVisual(a.Id,"north",c.Id,"south").Success,
+                        "external visual connection creation failed");
+                    MPCConnection internalWire=page.RootContent.Connections
+                        .Single(w=>w.Source.Address.ObjectId==a.Id&&
+                            w.Target.Address.ObjectId==b.Id);
+                    MPCConnection externalWire=page.RootContent.Connections
+                        .Single(w=>w.Source.Address.ObjectId==a.Id&&
+                            w.Target.Address.ObjectId==c.Id);
+                    var before=session.Revision;
+                    MTITransferResult copied=editor.DuplicateSelection(
+                        new[]{a.Id,b.Id},35,20);
+                    Check(session.Revision==before+1,
+                        "duplicate must produce exactly one engineering revision");
+                    Check(copied.RootIds.Count==2&&copied.IdMap[a.Id]!=a.Id&&
+                        copied.IdMap[b.Id]!=b.Id,"duplicate identities were not remapped");
+                    var duplicateA=(MRCVisualItem)session.Find(copied.IdMap[a.Id]);
+                    var duplicateB=(MRCVisualItem)session.Find(copied.IdMap[b.Id]);
+                    Check(Math.Abs(duplicateA.X-(a.X+35))<1e-7&&
+                        Math.Abs(duplicateB.Y-(b.Y+20))<1e-7,
+                        "duplicate placement did not apply parent-local translation");
+                    Check(page.RootContent.Connections.Count==3,
+                        "internal visual connection was lost or external link was cloned");
+                    var copiedLink=page.RootContent.Connections.Single(w=>
+                        w.Source.Address.ObjectId==duplicateA.Id&&
+                        w.Target.Address.ObjectId==duplicateB.Id);
+                    Check(copiedLink.Id!=internalWire.Id&&
+                        copiedLink.Source.PortId==copied.IdMap[internalWire.Source.PortId]&&
+                        copiedLink.Target.PortId==copied.IdMap[internalWire.Target.PortId]&&
+                        copiedLink.VisualRouteKind==internalWire.VisualRouteKind,
+                        "copied connection did not preserve route and remap MPC ports");
+                    Check(page.RootContent.Connections.Contains(externalWire)&&
+                        session.Validate().IsValid,
+                        "visual copy modified external MPC connection or corrupted engineering");
+                    int failedBefore=session.Revision;
+                    bool rejected=false;
+                    try {editor.DuplicateSelection(new[]{a.Id,a.Id},35,20);}
+                    catch(InvalidOperationException){rejected=true;}
+                    Check(rejected&&session.Revision==failedBefore,
+                        "duplicate invalid roots must reject without MEM history");
+                    Check(editor.Undo().Success&&
+                        session.Find(duplicateA.Id)==null&&
+                        session.Find(duplicateB.Id)==null&&
+                        page.RootContent.Connections.Count==2,
+                        "duplicate Undo did not atomically restore original graph");
+                    Check(editor.Redo().Success&&
+                        session.Find(duplicateA.Id)!=null&&
+                        page.RootContent.Connections.Count==3,
+                        "duplicate Redo did not restore both nodes and internal visual link");
+                    Guid copiedId=duplicateA.Id;
+                    session.SaveAs(path);
+                    using(var loaded=MEMEngineering.Open(path))
+                    {
+                        var loadedPage=loaded.Project.Pages[0];
+                        Check(loaded.Find(copiedId)!=null&&
+                            loadedPage.RootContent.Connections.Count==3&&
+                            loaded.Validate().IsValid,
+                            "duplicate did not survive persisted project roundtrip");
+                    }
+                }
+                Console.WriteLine("PASS Visual Duplicate GE-11: MPC port remap, internal link, boundary, one Undo, disk");
+            }
+            finally
+            {
+                session.Close(true);
+                if(File.Exists(path))File.Delete(path);
+            }
+        }
+
         public static void Run()
         {
+            CheckVisualDuplicateAndInternalConnections();
             CheckVisualGapDistribution();
             CheckUnifiedSnapping();
             CheckConstrainedSelectionTransform();

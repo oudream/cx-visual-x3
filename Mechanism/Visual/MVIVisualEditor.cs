@@ -139,6 +139,50 @@ namespace CxVisual.Mechanism.Visual
             for(int i=route.Count-2;i>=0&&!args.PropagationStopped;i--)Dispatch(args,MVIEventPhase.Bubble,route[i]);return !args.DefaultPrevented;
         }
         private void Dispatch(MVIInteractionEventArgs args,MVIEventPhase phase,Guid current){args.Phase=phase;args.CurrentId=current;var handler=Interaction;if(handler!=null)handler(this,args);}
+        /// <summary>
+        /// 从真实可视选区复制工程图元。工程身份、端口、内部视觉连线以及
+        /// 一次Undo均由MEM Transfer负责；UI只提供世界中的平移意图。
+        /// 当前要求同父定义项，避免把Symbol实例和定义偷偷混在一个复制事务。
+        /// </summary>
+        /// <summary>
+        /// 复制同一父容器的真实可编辑图元。只接收父局部坐标偏移；
+        /// 端口/内部MPC连接和单次Undo由Core Transfer管理。
+        /// 不以Scene序号或屏幕DIP作为工程持久化坐标。
+        /// </summary>
+        public MTITransferResult DuplicateSelection(IReadOnlyList<Guid> ids,
+            double parentOffsetX,double parentOffsetY)
+        {
+            Demand();
+            if(ids==null||ids.Count==0)
+                throw new ArgumentException("visual.duplicate.empty_selection");
+            if(double.IsNaN(parentOffsetX)||double.IsInfinity(parentOffsetX)||
+                double.IsNaN(parentOffsetY)||double.IsInfinity(parentOffsetY))
+                throw new ArgumentException("visual.duplicate.invalid_offset");
+            var nodes=new List<MRCVisualItem>();
+            foreach(Guid id in ids)
+            {
+                MRCVisualItem node=Document.Find(id) as MRCVisualItem;
+                if(node==null)throw new InvalidOperationException("visual.duplicate.invalid_item");
+                // Group没有独立Shape SceneItem，但可通过工程树选中；普通图元只能复制当前定义。
+                bool group=node is MRCGroup;
+                MVISceneItem projected=Scene.FirstOrDefault(item=>item.Id==id&&
+                    item.Address.InstancePath.Count==0);
+                if(!group&&(projected==null||!projected.IsSelectable))
+                    throw new InvalidOperationException("visual.duplicate.not_editable");
+                if(!node.IsVisible||node.IsLocked||
+                    !Route(MVIInteractionKind.Move,id))
+                    throw new InvalidOperationException("visual.duplicate.forbidden");
+                nodes.Add(node);
+            }
+            if(nodes.Select(node=>node.Id).Distinct().Count()!=nodes.Count||
+                nodes.Any(node=>node.Parent!=nodes[0].Parent))
+                throw new InvalidOperationException("visual.duplicate.requires_siblings");
+            MEMNode parent=nodes[0].Parent;
+            if(parent==null||!CurrentResourceId.HasValue||!CurrentPageId.HasValue||
+                nodes.Any(node=>node.OwnerPage==null||node.OwnerPage.Id!=CurrentPageId.Value))
+                throw new InvalidOperationException("visual.duplicate.invalid_scope");
+            return Document.DuplicateVisual(ids,parent,parentOffsetX,parentOffsetY);
+        }
         public MTCEditResult<bool> AddRectangle(string name, double x, double y, double width, double height)
         {
             return Document.Edit("添加矩形", e =>

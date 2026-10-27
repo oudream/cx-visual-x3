@@ -216,6 +216,19 @@ namespace CxVisual.Studio
             if(result.Success)NotifyScene();
             return result;
         }
+        /// <summary>
+        /// Studio的Duplicate复用MVI/MEM统一工程转换和端口重映射；
+        /// 只把父局部偏移作为编辑意图，所有图元与内部视觉线一次Undo。
+        /// </summary>
+        public MTITransferResult DuplicateVisualSelection(IReadOnlyList<Guid> ids)
+        {
+            MTITransferResult result=_editor.DuplicateSelection(ids,24,24);
+            if(result.RootIds.Count>0)Select(result.RootIds[result.RootIds.Count-1]);
+            Status="已复制 "+result.RootIds.Count+" 个图元，内部连接一并映射；Revision "+
+                ProjectSession.Revision;
+            NotifyScene();
+            return result;
+        }
         public MTCEditResult<bool> AlignVisualSelection(string mode)
         {
             MTCEditResult<bool> result=_editor.Align(_selection,mode);

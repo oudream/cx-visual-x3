@@ -447,6 +447,20 @@ namespace CxVisual.TestCenter.UI
             {
                 if(operation=="edit.undo"){Commit(_editor.Undo(),"撤销");return;}
                 if(operation=="edit.redo"){Commit(_editor.Redo(),"重做");return;}
+                if(operation=="edit.duplicate")
+                {
+                    Guid[] ids=_canvas.SelectedVisualIds.ToArray();
+                    // 组只出现在工程对象树，不伪造成Scene Shape。
+                    if(ids.Length==0&&_editor.SelectedId.HasValue)
+                        ids=new[]{_editor.SelectedId.Value};
+                    if(ids.Length==0){Report("请先选择至少一个图元或Group");return;}
+                    MTITransferResult copied=_editor.DuplicateSelection(ids,24,24);
+                    _editor.Select(copied.RootIds[copied.RootIds.Count-1]);
+                    _canvas.SetSelectedVisualIds(copied.RootIds);
+                    Refresh();
+                    Report("已复制 "+copied.RootIds.Count+" 个工程对象，内部视觉连接同步复制（一次Undo）");
+                    return;
+                }
                 if(operation=="edit.delete")
                 {
                     if(!_editor.SelectedId.HasValue){Report("请先选择对象或视觉连接");return;}
