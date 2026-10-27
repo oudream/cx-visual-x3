@@ -221,7 +221,8 @@ namespace CxVisual.Tests.ArchitectureSmoke {
                 (time,y)=>y,0,1,0,10),"RK4 zero step");
             Throws<OverflowException>(()=>FNUOdeSolver.RungeKutta4(
                 (time,y)=>double.PositiveInfinity,0,1,.1,10),"RK4 invalid derivative");
-            Console.WriteLine("PASS FNU Numerics - interpolation/statistics/SVD/moving-average/FFT");
+            FNUNumericsQualityTests.Run();
+            Console.WriteLine("PASS FNU Numerics - F03/F04/F10/F13 numerical and contract checks");
         }
         private static void Assert(bool ok,string name){
             if(!ok)throw new InvalidOperationException("FNU failed: "+name);

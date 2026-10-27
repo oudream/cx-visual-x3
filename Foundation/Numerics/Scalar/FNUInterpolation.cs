@@ -7,7 +7,16 @@ namespace CxVisual.Foundation.Numerics {
         }
         public static double Linear(double a,double b,double t) {
             Check(a,"a");Check(b,"b");Check(t,"t");
-            return a+(b-a)*t;
+            // Preserve ordinary rounding; avoid spurious intermediate overflow
+            // for convex interpolation between two finite endpoints.
+            if (t == 0) return a;
+            if (t == 1) return b;
+            double result = a + (b - a) * t;
+            if ((double.IsInfinity(result) || double.IsNaN(result)) && t > 0 && t < 1)
+                result = (1 - t) * a + t * b;
+            if (double.IsInfinity(result) || double.IsNaN(result))
+                throw new OverflowException("Interpolation produced a non-finite value.");
+            return result;
         }
         public static double Bilinear(double a00,double a10,double a01,double a11,double x,double y) {
             return Linear(Linear(a00,a10,x),Linear(a01,a11,x),y);
