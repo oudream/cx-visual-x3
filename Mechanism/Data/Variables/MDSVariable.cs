@@ -22,7 +22,7 @@ namespace CxVisual.Mechanism.Data.Variables
         internal abstract void RefreshProviderBoxed(object value, MDSVariableQuality quality, string source);
         internal abstract object BatchGate { get; }
         internal abstract void ValidateBatch(MDSVariableBatchItem item);
-        internal abstract MDSVariableBatchCommit ApplyBatch(MDSVariableBatchItem item);
+        internal abstract MDSVariableBatchCommit ApplyBatch(MDSVariableBatchItem item, bool captureBatch);
         internal abstract object SnapshotBoxed();
         internal abstract void ValidateRestore(object saved);
         internal abstract void ApplyRestore(object saved);
@@ -226,7 +226,7 @@ namespace CxVisual.Mechanism.Data.Variables
             if (_revision == long.MaxValue) throw new OverflowException("变量Revision溢出");
         }
 
-        internal override MDSVariableBatchCommit ApplyBatch(MDSVariableBatchItem item)
+        internal override MDSVariableBatchCommit ApplyBatch(MDSVariableBatchItem item, bool captureBatch)
         {
             // 由Table锁住事务的所有变量后调用；校验已全量通过。
             T next = MDSVariableValueRules.CopyTyped((T)item.Value);
@@ -248,7 +248,7 @@ namespace CxVisual.Mechanism.Data.Variables
             Action<string> notify = _notify;
             Action<MDSVariableChange> observer = _observer;
             MDSVariableChange capture = null;
-            if (observer != null)
+            if (observer != null || captureBatch)
             {
                 MDSVariableChangeKind kind = changed ? MDSVariableChangeKind.Value : MDSVariableChangeKind.Refresh;
                 if (qualityChanged) kind |= MDSVariableChangeKind.Quality;
@@ -258,7 +258,7 @@ namespace CxVisual.Mechanism.Data.Variables
                     InstanceGeneration);
             }
             MDSVariableChange frozen = capture;
-            return new MDSVariableBatchCommit(result, () =>
+            return new MDSVariableBatchCommit(result, frozen, () =>
             {
                 try { if (observer != null) observer(frozen); }
                 finally { if (notify != null) notify(_definition.Name); }

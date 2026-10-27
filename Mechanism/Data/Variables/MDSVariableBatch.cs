@@ -59,8 +59,9 @@ namespace CxVisual.Mechanism.Data.Variables
     internal sealed class MDSVariableBatchCommit
     {
         internal readonly MDSVariableUpdateResult Result;
+        internal readonly MDSVariableChange Change;
         internal readonly Action Notify;
-        internal MDSVariableBatchCommit(MDSVariableUpdateResult result, Action notify)
-        { Result = result; Notify = notify; }
+        internal MDSVariableBatchCommit(MDSVariableUpdateResult result, MDSVariableChange change, Action notify)
+        { Result = result; Change = change; Notify = notify; }
     }
 }

@@ -44,6 +44,26 @@ namespace CxVisual.Mechanism.Data.Variables
         public MDSVariableChangeKind Kind { get; private set; }
     }
 
+    /// <summary>
+    /// 同Scope一次批量提交的不可变变化快照。BatchSequence按Table成功提交顺序递增，
+    /// 多线程观察者回调的实际完成时间不保证顺序，消费者应以此序号校验。
+    /// </summary>
+    public sealed class MDSVariableChangeBatch
+    {
+        internal MDSVariableChangeBatch(string scopeId, string batchId, long sequence,
+            MDSVariableChange[] changes)
+        {
+            ScopeId = scopeId;
+            BatchId = batchId;
+            BatchSequence = sequence;
+            Changes = Array.AsReadOnly(changes);
+        }
+        public string ScopeId { get; private set; }
+        public string BatchId { get; private set; }
+        public long BatchSequence { get; private set; }
+        public IReadOnlyList<MDSVariableChange> Changes { get; private set; }
+    }
+
     public sealed class MDSVariableDispatchMetrics
     {
         public long Received { get; internal set; }

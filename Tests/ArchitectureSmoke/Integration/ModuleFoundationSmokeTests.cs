@@ -407,6 +407,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
             table.Define(new MDSVariableDefinition("A", typeof(int)));
             table.Define(new MDSVariableDefinition("B", typeof(int)));
             table.Define(new MDSVariableDefinition("RO", typeof(int), writable: false));
+            MDSVariableChangeBatch changedBatch = null;
+            table.BatchCommitted += batch => changedBatch = batch;
             MDSVariableBatch request = new MDSVariableBatch("batch",
                 new[] { new MDSVariableBatchItem("A", 10),
                         new MDSVariableBatchItem("B", 10) }, "first");
@@ -419,6 +421,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 new MDSVariableBatchItem("A", 1), new MDSVariableBatchItem("A", 2) }));
             Check(first.Results.Count == 2 && first.NotificationsSucceeded &&
                 table.Get<int>("A") == 10 && table.Get<int>("B") == 10, "同Scope多变量批量提交");
+            Check(changedBatch != null && changedBatch.BatchId == "first" &&
+                changedBatch.ScopeId == "batch" && changedBatch.BatchSequence == 1 &&
+                changedBatch.Changes.Count == 2 &&
+                changedBatch.Changes[0].Revision == 1 &&
+                changedBatch.Changes[1].Revision == 1,
+                "批次事件必须冻结全部变化与同Scope连续批次号");
             Reject<InvalidCastException>(() => table.UpdateBatch(
                 new MDSVariableBatchItem("A", 15),
                 new MDSVariableBatchItem("B", "not-int")));

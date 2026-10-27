@@ -69,6 +69,13 @@ namespace CxVisual.Mechanism.Data.Variables
         public string ScopeId { get; private set; }
         public MDSVariableTree Tree { get; private set; }
         public event Action<string> VariableChanged;
+        private long _batchSequence;
+        private Action<MDSVariableChangeBatch> _batchCommitted;
+        public event Action<MDSVariableChangeBatch> BatchCommitted
+        {
+            add { lock (_gate) _batchCommitted += value; }
+            remove { lock (_gate) _batchCommitted -= value; }
+        }
         private Action<MDSVariableChange> _captured;
         public event Action<MDSVariableChange> ChangeCaptured
         {
@@ -171,16 +178,22 @@ namespace CxVisual.Mechanism.Data.Variables
             if (request == null) throw new ArgumentNullException("request");
             if (!string.Equals(request.ScopeId, ScopeId, StringComparison.Ordinal))
                 throw new InvalidOperationException("批次Scope不匹配，禁止跨运行会话写入");
-            return UpdateBatch(request.Items.ToArray());
+            return UpdateBatchCore(request.Items.ToArray(), request.BatchId);
         }
 
         // 跨变量一致提交：只锁当前批次引用的变量；普通MDSVariable<T>.Update不引入表级热路径开销。
         public MDSVariableBatchResult UpdateBatch(params MDSVariableBatchItem[] batch)
         {
+            return UpdateBatchCore(batch, null);
+        }
+        private MDSVariableBatchResult UpdateBatchCore(MDSVariableBatchItem[] batch, string batchId)
+        {
             if (batch == null) throw new ArgumentNullException("batch");
             if (batch.Length == 0)
                 return new MDSVariableBatchResult(new MDSVariableUpdateResult[0], new Exception[0]);
             MDSVariableBatchCommit[] commits = new MDSVariableBatchCommit[batch.Length];
+            Action<MDSVariableChangeBatch> batchCallback;
+            MDSVariableChangeBatch captured = null;
             lock (_gate)
             {
                 if (batch.Any(x => x == null)) throw new ArgumentException("批量条目不得为null");
@@ -200,7 +213,16 @@ namespace CxVisual.Mechanism.Data.Variables
                 {
                     // 全量校验成功后才修改任何一个值；Revision冲突/类型错/只读不得半提交。
                     for (int i = 0; i < batch.Length; ++i) objects[i].ValidateBatch(batch[i]);
-                    for (int i = 0; i < batch.Length; ++i) commits[i] = objects[i].ApplyBatch(batch[i]);
+                    // 先为整个批次预留递增序号，避免Overflow导致已提交部分批次。
+                    long sequence = checked(_batchSequence + 1);
+                    batchCallback = _batchCommitted;
+                    for (int i = 0; i < batch.Length; ++i)
+                        commits[i] = objects[i].ApplyBatch(batch[i], batchCallback != null);
+                    _batchSequence = sequence;
+                    if (batchCallback != null)
+                        captured = new MDSVariableChangeBatch(ScopeId,
+                            string.IsNullOrWhiteSpace(batchId) ? Guid.NewGuid().ToString("N") : batchId,
+                            sequence, commits.Select(x => x.Change).ToArray());
                 }
                 finally
                 {
@@ -214,6 +236,12 @@ namespace CxVisual.Mechanism.Data.Variables
             {
                 try { result.Notify(); }
                 catch (Exception error) { failures.Add(error); }
+            }
+            if (batchCallback != null)
+            {
+                foreach (Action<MDSVariableChangeBatch> handler in batchCallback.GetInvocationList())
+                    try { handler(captured); }
+                    catch (Exception error) { failures.Add(error); }
             }
             return new MDSVariableBatchResult(commits.Select(x => x.Result).ToArray(), failures.ToArray());
         }
