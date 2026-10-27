@@ -308,6 +308,80 @@ namespace CxVisual.TestCenter.UI
                     frame.Viewer.Session.Original.GetGrayValue(1,1)!=6)
                     throw new InvalidOperationException(
                         "点击区域生长未得到限域三像素Gray8掩码或修改原图");
+                // 真实WPF操作：选择原图ROI、设置独立阈值、点击按钮，
+                // 验证像素掩码而非通过底层API制造一张测试图。
+                frame.Viewer.SelectRegion(new FIMPixelRegion(0,1,3,2));
+                Button regionThreshold=FindControl<Button>(frame,
+                    "TCT.Imaging.ThresholdSelectedRoi");
+                TextBox thresholdLow=FindControl<TextBox>(frame,
+                    "TCT.Imaging.ThresholdLow");
+                TextBox thresholdHigh=FindControl<TextBox>(frame,
+                    "TCT.Imaging.ThresholdHigh");
+                if(regionThreshold==null || thresholdLow==null || thresholdHigh==null)
+                    throw new InvalidOperationException("旧阈值ROI分割缺少WPF操作入口及参数");
+                thresholdLow.Text="6";thresholdHigh.Text="10";
+                regionThreshold.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                System.Diagnostics.Stopwatch thresholdWait=
+                    System.Diagnostics.Stopwatch.StartNew();
+                while(ReferenceEquals(frame.Viewer.Session.Result,growthMask) &&
+                    thresholdWait.ElapsedMilliseconds<10000)
+                {
+                    System.Windows.Threading.DispatcherFrame loop=
+                        new System.Windows.Threading.DispatcherFrame();
+                    System.Windows.Threading.Dispatcher.CurrentDispatcher.BeginInvoke(
+                        new Action(()=>loop.Continue=false),
+                        System.Windows.Threading.DispatcherPriority.Background);
+                    System.Windows.Threading.Dispatcher.PushFrame(loop);
+                    System.Threading.Thread.Sleep(5);
+                }
+                FIMImageBuffer boundedMask=frame.Viewer.Session.Result;
+                if(boundedMask==null || ReferenceEquals(boundedMask,growthMask) ||
+                    boundedMask.PixelFormat!=FIMPixelFormat.Gray8 ||
+                    boundedMask.GetGrayValue(1,1)!=255 ||
+                    boundedMask.GetGrayValue(0,1)!=0 ||
+                    boundedMask.GetGrayValue(1,2)!=255 ||
+                    boundedMask.GetGrayValue(2,2)!=0 ||
+                    frame.Viewer.Session.Original.GetGrayValue(1,1)!=6)
+                    throw new InvalidOperationException(
+                        "真实阈值ROI按钮未生成限域原灰度Gray8掩码");
+                // 三角ROI包围框内有10个以上候选像素，真实掩膜只应包含6个中心点。
+                MVIImageOverlayItem thresholdPolygon=frame.Viewer.AddPolygonRoi(new[]{
+                    new FGEPoint2D(0,0),new FGEPoint2D(3.6,0),
+                    new FGEPoint2D(0,3.6)});
+                frame.Viewer.SelectOverlay(thresholdPolygon.Id);
+                thresholdLow.Text="1";thresholdHigh.Text="16";
+                regionThreshold.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                thresholdWait.Restart();
+                while(ReferenceEquals(frame.Viewer.Session.Result,boundedMask) &&
+                    thresholdWait.ElapsedMilliseconds<10000)
+                {
+                    System.Windows.Threading.DispatcherFrame loop=
+                        new System.Windows.Threading.DispatcherFrame();
+                    System.Windows.Threading.Dispatcher.CurrentDispatcher.BeginInvoke(
+                        new Action(()=>loop.Continue=false),
+                        System.Windows.Threading.DispatcherPriority.Background);
+                    System.Windows.Threading.Dispatcher.PushFrame(loop);
+                    System.Threading.Thread.Sleep(5);
+                }
+                FIMImageBuffer polygonMask=frame.Viewer.Session.Result;
+                int included=0;
+                if(polygonMask!=null && polygonMask.PixelFormat==FIMPixelFormat.Gray8)
+                    for(int yy=0;yy<4;yy++)
+                        for(int xx=0;xx<4;xx++)
+                            if(polygonMask.GetGrayValue(xx,yy)==255)included++;
+                if(polygonMask==null || ReferenceEquals(polygonMask,boundedMask) ||
+                    included!=6 || polygonMask.GetGrayValue(3,0)!=0 ||
+                    polygonMask.GetGrayValue(0,2)!=255 ||
+                    polygonMask.GetGrayValue(2,2)!=0)
+                    throw new InvalidOperationException(
+                        "三角形阈值掩码错误地使用外接矩形或整个图像");
+                thresholdLow.Text="20";thresholdHigh.Text="10";
+                regionThreshold.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                if(!ReferenceEquals(frame.Viewer.Session.Result,polygonMask))
+                    throw new InvalidOperationException("非法阈值改变了原有分割结果");
+                thresholdLow.Text="0";thresholdHigh.Text="65535";
+                frame.Viewer.SelectOverlay(null);
+                frame.Viewer.Overlays.Remove(thresholdPolygon.Id);
                 growTolerance.Text="-2";
                 growthButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 if(!ReferenceEquals(growthMask,frame.Viewer.Session.Result))
