@@ -601,7 +601,8 @@ namespace CxVisual.TestCenter.UI
             Action(thresholdActions,"全图阈值掩码","Threshold",Threshold);
             Action(thresholdActions,"按选中ROI分割","ThresholdSelectedRoi",ThresholdSelectedRoi);
             content.Children.Add(thresholdActions);
-            content.Children.Add(Hint("选矩形、圆、椭圆、旋转矩形或多边形ROI后按阈值生成掩码；严格按原图像素中心判断，独立于显示窗位。结果为像素掩码，尚不冒充可编辑轮廓。"));
+            Action(content,"提取结果掩码轮廓","ExtractMaskContours",ExtractResultMaskContours);
+            content.Children.Add(Hint("选矩形、圆、椭圆、旋转矩形或多边形ROI后按阈值生成掩码；严格按原图像素中心判断，不受显示窗位影响。提取轮廓会把外环、孔洞分别保存为可选中的标注图元，像素面积仍以原掩码为准。"));
             content.Children.Add(Heading("区域生长  ·  原图矩形ROI"));
             AutomationProperties.SetAutomationId(_growTolerance,"TCT.Imaging.GrowTolerance");
             AutomationProperties.SetAutomationId(_growEightConnected,"TCT.Imaging.GrowEightConnected");
