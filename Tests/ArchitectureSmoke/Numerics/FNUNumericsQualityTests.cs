@@ -14,6 +14,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             FourierAgainstNaiveDft();
             ConvolutionAndFirAgreement();
             TensorIndexAndOperations();
+            AdvancedNumericsQuality();
             Console.WriteLine("PASS FNU numerical-quality: extremes / cancellation / DFT / FIR / tensor");
         }
 
@@ -107,6 +108,47 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 for(int k=0;k<4;k++)
                     Near(reduced.Get(i,k),src.Get(i,0,k)+src.Get(i,1,k)+src.Get(i,2,k),
                         1e-12,"axis1 reduction");
+        }
+
+        private static void AdvancedNumericsQuality()
+        {
+            var random=new Random(20261027);
+            for(int run=0;run<16;run++)
+            {
+                var taps=new double[1+run%7];
+                for(int i=0;i<taps.Length;i++)taps[i]=random.NextDouble()-.5;
+                var stream=new FNUFirStream(taps);
+                var samples=new double[67];
+                for(int i=0;i<samples.Length;i++)samples[i]=(random.NextDouble()-.5)*20;
+                var batch=FNUFirFilter.Apply(samples,taps);
+                taps[0]=123456; // coefficients are copied
+                for(int i=0;i<samples.Length;i++)Near(stream.Process(samples[i]),batch[i],1e-11,"FIR stream agreement");
+                stream.Reset();
+                for(int i=0;i<samples.Length;i++)Near(stream.Process(samples[i]),batch[i],1e-11,"FIR stream reset");
+            }
+            var history=new FNUFirStream(new double[]{1,1});
+            Near(history.Process(2),2,0,"FIR initial");
+            Throws<ArgumentOutOfRangeException>(()=>history.Process(double.NaN),"FIR invalid sample");
+            Near(history.Process(3),5,0,"FIR atomic invalid sample");
+            var overflow=new FNUFirStream(new double[]{double.MaxValue,1});
+            Throws<OverflowException>(()=>overflow.Process(2),"FIR overflow");
+            Near(overflow.Process(0),0,0,"FIR atomic overflow");
+            var tensor=new FNUTensorBuffer(new FNUTensorShape(2,3),
+                new double[]{1e16,1,-1e16,7,8,9});
+            var reduced=FNUTensorMath.ReduceSum(tensor,1);
+            Near(reduced.Get(0),1,0,"Neumaier axis cancellation");
+            Near(reduced.Get(1),24,0,"Neumaier axis normal");
+            var multiplied=FNUTensorMath.MatMul(tensor,
+                new FNUTensorBuffer(new FNUTensorShape(3,1),new double[]{1,1,1}));
+            Near(multiplied.Get(0,0),1,0,"Neumaier MatMul cancellation");
+            Near(multiplied.Get(1,0),24,0,"Neumaier MatMul normal");
+            var empty=FNUTensorMath.ReduceSum(new FNUTensorBuffer(new FNUTensorShape(0,3)),0);
+            Check(empty.Shape.ElementCount==3,"empty axis output");
+            Near(FNUTensorMath.Sum(empty),0,0,"empty axis sum");
+            var fit=FNULinearAlgebra.LeastSquares(new double[,]{{1000,0},{0,1}},
+                new double[]{2000,3});
+            Near(fit.ConditionNumber,1000,1e-8,"SVD condition");
+            Near(fit.Coefficients[0],2,1e-12,"SVD scaled coefficient");
         }
 
         private static void Near(double value,double expected,double tolerance,string what)

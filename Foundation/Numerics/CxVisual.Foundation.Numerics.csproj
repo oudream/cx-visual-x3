@@ -52,5 +52,6 @@
   <ItemGroup><Compile Include="Scalar\FNUPrecision.cs"/></ItemGroup>
   <ItemGroup><Compile Include="Solvers\FNUWeightedLeastSquares.cs"/></ItemGroup>
   <ItemGroup><Compile Include="Solvers\FNUOdeSolver.cs"/></ItemGroup>
+  <ItemGroup><Compile Include="Signal\FNUFirStream.cs"/></ItemGroup>
   <ItemGroup><PackageReference Include="MathNet.Numerics" Version="5.0.0"/></ItemGroup>
 </Project>

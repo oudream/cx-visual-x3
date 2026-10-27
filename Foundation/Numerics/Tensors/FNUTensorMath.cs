@@ -84,19 +84,29 @@ namespace CxVisual.Foundation.Numerics
                 if (i != axis) dims[j++] = input.Shape.DimensionAt(i);
             if (input.Shape.Rank == 1) dims[0] = 1;
             var output = new FNUTensorBuffer(new FNUTensorShape(dims));
-            for (int flat = 0; flat < input.Shape.ElementCount; flat++)
+            // Preserve small contributions using Neumaier compensation for each cell.
+            double[] sums = new double[output.Shape.ElementCount];
+            double[] corrections = new double[sums.Length];
+            for (int flat = 0; flat < input.Shape.ElementCount; ++flat)
             {
-                int remaining = flat, target = 0, axisOut = 0;
-                for (int k = 0; k < input.Shape.Rank; k++)
+                int remaining = flat, target = 0, outAxis = 0;
+                for (int axisIndex = 0; axisIndex < input.Shape.Rank; axisIndex++)
                 {
-                    int coordinate = remaining / input.Shape.StrideAt(k);
-                    remaining %= input.Shape.StrideAt(k);
-                    if (k != axis) target += coordinate * output.Shape.StrideAt(axisOut++);
+                    int coordinate = remaining / input.Shape.StrideAt(axisIndex);
+                    remaining %= input.Shape.StrideAt(axisIndex);
+                    if (axisIndex != axis) target += coordinate * output.Shape.StrideAt(outAxis++);
                 }
-                double value = output.At(target) + input.At(flat);
+                double value = input.At(flat), sum = sums[target], next = sum + value;
+                corrections[target] += Math.Abs(sum) >= Math.Abs(value)
+                    ? (sum - next) + value : (value - next) + sum;
+                sums[target] = next;
+            }
+            for (int i = 0; i < sums.Length; ++i)
+            {
+                double value = sums[i] + corrections[i];
                 if (double.IsNaN(value) || double.IsInfinity(value))
                     throw new OverflowException("Tensor reduction overflow.");
-                output.Put(target, value);
+                output.Put(i, value);
             }
             return output;
         }
@@ -114,12 +124,19 @@ namespace CxVisual.Foundation.Numerics
             for (int row = 0; row < m; row++)
                 for (int col = 0; col < n; col++)
                 {
-                    double sum = 0;
-                    for (int inner = 0; inner < k; inner++)
-                        sum += a.At(row * k + inner) * b.At(inner * n + col);
-                    if (double.IsNaN(sum) || double.IsInfinity(sum))
+                    double sum = 0, correction = 0;
+                    for (int inner = 0; inner < k; ++inner)
+                    {
+                        double value = a.At(row * k + inner) * b.At(inner * n + col);
+                        double next = sum + value;
+                        correction += Math.Abs(sum) >= Math.Abs(value)
+                            ? (sum - next) + value : (value - next) + sum;
+                        sum = next;
+                    }
+                    double total = sum + correction;
+                    if (double.IsNaN(total) || double.IsInfinity(total))
                         throw new OverflowException("Matrix multiplication overflow.");
-                    result.Put(row * n + col, sum);
+                    result.Put(row * n + col, total);
                 }
             return result;
         }

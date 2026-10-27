@@ -3,14 +3,16 @@ using MathNet.Numerics.LinearAlgebra;
 namespace CxVisual.Foundation.Numerics {
     public sealed class FNULeastSquaresResult {
         private readonly double[] _coefficients;
-        internal FNULeastSquaresResult(double[] x,int rows,int columns,int rank,double residual) {
-            _coefficients=(double[])x.Clone(); Rows=rows;Columns=columns;Rank=rank;ResidualNorm=residual;
+        internal FNULeastSquaresResult(double[] x,int rows,int columns,int rank,double residual,double conditionNumber) {
+            _coefficients=(double[])x.Clone(); Rows=rows;Columns=columns;Rank=rank;ResidualNorm=residual;ConditionNumber=conditionNumber;
         }
         public double[] Coefficients{get{return (double[])_coefficients.Clone();}}
         public int Rows{get;private set;}
         public int Columns{get;private set;}
         public int Rank{get;private set;}
         public double ResidualNorm{get;private set;}
+        /// <summary>Singular value ratio; infinity denotes extreme conditioning.</summary>
+        public double ConditionNumber{get;private set;}
     }
     /// <summary>采用Math.NET 5.0 SVD求满列秩最小二乘；秩亏明确拒绝。</summary>
     public static class FNULinearAlgebra {
@@ -35,7 +37,14 @@ namespace CxVisual.Foundation.Numerics {
             if(!Finite(norm))throw new OverflowException("Residual overflow");
             double[] result=x.ToArray();
             foreach(double v in result)if(!Finite(v))throw new OverflowException("Coefficient overflow");
-            return new FNULeastSquaresResult(result,rows,cols,svd.Rank,norm);
+            double largest=0,smallest=double.PositiveInfinity;
+            for(int i=0;i<svd.S.Count;i++){
+                double singular=svd.S[i];
+                if(!Finite(singular)||singular<=0)
+                    throw new InvalidOperationException("SVD returned an invalid singular value.");
+                largest=Math.Max(largest,singular);smallest=Math.Min(smallest,singular);
+            }
+            return new FNULeastSquaresResult(result,rows,cols,svd.Rank,norm,largest/smallest);
         }
     }
 }
