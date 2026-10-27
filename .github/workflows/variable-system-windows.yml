@@ -38,6 +38,12 @@ jobs:
         run: |
           & .\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe
           if ($LASTEXITCODE -ne 0) { throw "MDS variables smoke failed" }
+      - name: Measure variable update and notification performance
+        shell: pwsh
+        run: |
+          & .\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe --variable-benchmark
+          if ($LASTEXITCODE -ne 0) { throw "Variable benchmark accounting failed" }
+          Write-Host 'VARBENCH is measurement not an SLA threshold'
       - name: Execute real STA TestCenter variable workspace
         shell: pwsh
         run: |
