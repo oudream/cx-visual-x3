@@ -9,6 +9,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using CxVisual.Foundation.Volume;
 using CxVisual.Mechanism.Presentation.Wpf.Imaging;
+using CxVisual.Mechanism.Presentation.Wpf.Volume;
 using Microsoft.Win32;
 
 namespace CxVisual.TestCenter.UI
