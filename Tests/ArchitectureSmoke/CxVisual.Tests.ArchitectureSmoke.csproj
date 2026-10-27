@@ -40,8 +40,7 @@
   <ItemGroup>
     </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\Mechanism\Connectivity\CxVisual.Mechanism.Connectivity.csproj"><Project>{C7214F9E-1205-5F24-AA31-39FD49CD7EE1}  <ItemGroup><ProjectReference Include="..\..\Foundation\Numerics\CxVisual.Foundation.Numerics.csproj"><Project>{6FA7BA1A-90A2-5BA6-A50B-BBB316F6829E}</Project><Name>CxVisual.Foundation.Numerics</Name></ProjectReference></ItemGroup>
-</Project><Name>CxVisual.Mechanism.Connectivity</Name></ProjectReference>
+    <ProjectReference Include="..\..\Mechanism\Connectivity\CxVisual.Mechanism.Connectivity.csproj"><Project>{C7214F9E-1205-5F24-AA31-39FD49CD7EE1}</Project><Name>CxVisual.Mechanism.Connectivity</Name></ProjectReference>
     <ProjectReference Include="..\..\Professional\Simulation\CxVisual.Professional.Simulation.csproj"><Project>{F8166329-04DC-5071-A3B7-F8CE0755AF27}</Project><Name>CxVisual.Professional.Simulation</Name></ProjectReference>
     <ProjectReference Include="..\..\Mechanism\Data\CxVisual.Mechanism.Data.csproj"><Project>{6857DA00-7E17-5593-B8DC-C85EEA772140}</Project><Name>CxVisual.Mechanism.Data</Name></ProjectReference>
     <ProjectReference Include="..\..\Foundation\Data\CxVisual.Foundation.Data.csproj"><Project>{C85B49CA-155F-5E79-8932-B56BC7B178CD}</Project><Name>CxVisual.Foundation.Data</Name></ProjectReference>
@@ -67,4 +66,5 @@
   </ItemGroup>
   <ItemGroup><ProjectReference Include="..\..\Foundation\Transport\CxVisual.Foundation.Transport.csproj"><Project>{3CF367FE-8333-5763-85B6-1D87B3EE47C8}</Project><Name>CxVisual.Foundation.Transport</Name></ProjectReference></ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets"/>
+  <ItemGroup><ProjectReference Include="..\..\Foundation\Numerics\CxVisual.Foundation.Numerics.csproj"><Project>{6FA7BA1A-90A2-5BA6-A50B-BBB316F6829E}</Project><Name>CxVisual.Foundation.Numerics</Name></ProjectReference></ItemGroup>
 </Project>
