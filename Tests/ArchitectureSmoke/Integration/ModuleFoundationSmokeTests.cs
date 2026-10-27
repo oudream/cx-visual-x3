@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using CxVisual.Mechanism.Core.Modules;
 using CxVisual.Mechanism.Connectivity;
 using CxVisual.Mechanism.Data.Variables;
+using CxVisual.Professional.Automation.DeviceVariables;
 using CxVisual.Mechanism.Data.Messages;
 using CxVisual.Mechanism.Data;
 using CxVisual.Mechanism.Data.RuntimeData;
@@ -464,8 +465,48 @@ namespace CxVisual.Tests.ArchitectureSmoke
             }
         }
 
+        private static void IndustrialDeviceVariableAdapterSmoke()
+        {
+            PADDeviceVariableCatalog catalog = new PADDeviceVariableCatalog("legacy-plc");
+            catalog.Register(new PADDeviceVariableDefinition("pressure-1", "LeakTester",
+                "Pressure", typeof(double), "MPa"));
+            catalog.Register(new PADDeviceVariableDefinition("ready-1", "LeakTester",
+                "Ready", typeof(bool)));
+            Reject<InvalidOperationException>(() => catalog.Register(
+                new PADDeviceVariableDefinition("other", "LeakTester", "Pressure", typeof(double))));
+            MDSVariableTable table = new MDSVariableTable("Industrial");
+            catalog.InstallDefinitions(table);
+            Check(table.Definitions().Length == 2, "工业目录只生成正式MDS定义");
+            MDSVariableRegistry registry = new MDSVariableRegistry();
+            registry.Register(table);
+            PADDeviceVariableProvider provider = new PADDeviceVariableProvider(catalog);
+            using (MDSVariableProviderHost host = new MDSVariableProviderHost(registry))
+            {
+                host.Register(provider);
+                catalog.Bind(host, "Industrial");
+                host.Start();
+                Check(provider.Emit("pressure-1", 0.18) &&
+                    table.Get<double>("LeakTester.Pressure") == 0.18, "真实Provider注入同一变量");
+                Reject<InvalidCastException>(() => provider.Emit("pressure-1", "incorrect"));
+                Check(!provider.Emit("unknown", 0.2), "不得自动创建未知设备点");
+                PADLegacyVariableManagerBridge bridge = new PADLegacyVariableManagerBridge(
+                    catalog, provider, def => def.StableId == "pressure-1" ? (object)0.32 : true);
+                Check(bridge.AcceptChanges(new[] {
+                    new PADLegacyVariableChange("LeakTester", "Pressure"),
+                    new PADLegacyVariableChange("LeakTester", "Pressure"),
+                    new PADLegacyVariableChange("LeakTester", "Ready") }) == 2 &&
+                    table.Get<double>("LeakTester.Pressure") == 0.32 &&
+                    table.Get<bool>("LeakTester.Ready"), "旧批量事件按稳定ID合并最新读数");
+                host.Stop();
+                Check(!provider.Emit("pressure-1", 0.64) &&
+                    table.Get<double>("LeakTester.Pressure") == 0.32,
+                    "Provider停止不能继续修改正式Owner");
+            }
+        }
+
         public static void Run()
         {
+            IndustrialDeviceVariableAdapterSmoke();
             VariableSubscriptionFilterSmoke();
             VariableBatchSmoke();
             VariableMessageBridgeSmoke();
