@@ -108,6 +108,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             FTRTcpBulkTests.Run();
             FTRChannelFactoryTests.Run();
             FTRUdpThreadTests.Run();
+            FTRNamedPipeAdmissionTests.Run();
             Console.WriteLine("CHANNEL.TRANSPORT: TCP/UDP loopback MultiPeer and stale generation PASS");
         }
 

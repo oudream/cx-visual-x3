@@ -32,3 +32,7 @@
 本地Windows .NET48/x64完整方案Build成功、通道专项exit0并输出`F17.UDP PASS`；原TCP/NamedPipe/HTTP/WS/Replay/Connector、Factory与40MiB双向测试仍通过。默认ArchitectureSmoke exit0；共用池/线程期限的双向各2GiB回归exit0（7123ms，含生成和逐字节校验，两端接收池各262144字节）。远端CI按最终固定SHA补录。多网卡、跨PC、交换机组播/IGMP、防火墙策略、长时网络压力及真实外设仍未验收；本机组播不是工业现场证明。
 
 完整目标仍包括其它通道后台接收/有效预算、HTTP/WS Server、SharedMemory、自动恢复/保活、完整TestCenter操作与诊断及长期/HIL，保持继续开发。
+
+## 固定SHA远端Windows验收
+
+源码`f1e6d336060e01dff96fc823a737b6adbf5af0ef`：[F17专项40544080768](https://github.com/oudream/cx-visual-x3/actions/runs/40544080768)与[完整TestCenter 40544080748](https://github.com/oudream/cx-visual-x3/actions/runs/40544080748)均success。专项保留双向2GiB及原通道门禁，真实UDP截断/满额/来源/慢回调和组播测试实际运行；全量TestCenter保留WPF/三维GPU及并行重复回归。本证据不覆盖之后的NamedPipe修复。

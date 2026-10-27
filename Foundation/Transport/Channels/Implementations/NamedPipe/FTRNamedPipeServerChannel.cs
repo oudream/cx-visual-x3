@@ -19,6 +19,7 @@ public sealed class FTRNamedPipeServerChannel : FTRMultiChannelBase
         private NamedPipeServerStream _pending;
         private CancellationTokenSource _stop;
         private Task _accept;
+        private SemaphoreSlim _admission;
         private long _peerCounter;
         public FTRNamedPipeServerChannel(FTRChannelConfiguration config)
             : base((config ?? throw new ArgumentNullException("config")).Id)
@@ -31,6 +32,7 @@ public sealed class FTRNamedPipeServerChannel : FTRMultiChannelBase
         {
             ct.ThrowIfCancellationRequested();
             _stop = new CancellationTokenSource();
+            _admission = new SemaphoreSlim(_config.MaxClients, _config.MaxClients);
             _accept = Task.Run(() => AcceptLoop(_stop.Token));
             return Task.CompletedTask;
         }
@@ -40,32 +42,42 @@ public sealed class FTRNamedPipeServerChannel : FTRMultiChannelBase
             {
                 while (!ct.IsCancellationRequested)
                 {
-                    NamedPipeServerStream pipe = new NamedPipeServerStream(_config.PipeName,
-                        PipeDirection.InOut, _config.MaxClients, PipeTransmissionMode.Byte,
-                        PipeOptions.Asynchronous);
-                    lock (_gate) _pending = pipe;
-                    try { await pipe.WaitForConnectionAsync(ct).ConfigureAwait(false); }
-                    catch
+                    // 已连接和待监听实例共用Windows的maxNumberOfServerInstances。
+                    // 满额先等待归还名额，不能继续Create而把正常饱和变成整个Listener故障。
+                    await _admission.WaitAsync(ct).ConfigureAwait(false);
+                    bool transferred = false;
+                    try
                     {
-                        pipe.Dispose();
-                        if (ct.IsCancellationRequested) break;
-                        throw;
-                    }
-                    lock (_gate) _pending = null;
-                    if (ct.IsCancellationRequested) { pipe.Dispose(); break; }
-                    FTRSubChannelAddress address = null;
-                    lock (_gate)
-                    {
-                        if (_clients.Count < _config.MaxClients)
+                        NamedPipeServerStream pipe = new NamedPipeServerStream(_config.PipeName,
+                            PipeDirection.InOut, _config.MaxClients, PipeTransmissionMode.Byte,
+                            PipeOptions.Asynchronous);
+                        lock (_gate) _pending = pipe;
+                        try { await pipe.WaitForConnectionAsync(ct).ConfigureAwait(false); }
+                        catch
                         {
-                            string peerId = Interlocked.Increment(ref _peerCounter).ToString(
-                                System.Globalization.CultureInfo.InvariantCulture);
-                            address = RegisterPeer(peerId, "pipe:" + peerId).Address;
-                            _clients.Add(peerId, pipe);
-                            _readers.Add(Task.Run(() => ReadLoop(pipe, address, ct)));
+                            pipe.Dispose();
+                            if (ct.IsCancellationRequested) break;
+                            throw;
                         }
+                        lock (_gate) _pending = null;
+                        if (ct.IsCancellationRequested) { pipe.Dispose(); break; }
+                        FTRSubChannelAddress address = null;
+                        lock (_gate)
+                        {
+                            if (_clients.Count < _config.MaxClients)
+                            {
+                                string peerId = Interlocked.Increment(ref _peerCounter).ToString(
+                                    System.Globalization.CultureInfo.InvariantCulture);
+                                address = RegisterPeer(peerId, "pipe:" + peerId).Address;
+                                _clients.Add(peerId, pipe);
+                                _readers.RemoveAll(reader => reader.IsCompleted);
+                                _readers.Add(Task.Run(() => ReadLoop(pipe, address, ct)));
+                                transferred = true;
+                            }
+                        }
+                        if (address == null) pipe.Dispose();
                     }
-                    if (address == null) pipe.Dispose();
+                    finally { if (!transferred) _admission.Release(); }
                 }
             }
             catch (Exception e) { if (!ct.IsCancellationRequested) Fault(e); }
@@ -85,12 +97,16 @@ public sealed class FTRNamedPipeServerChannel : FTRMultiChannelBase
                     ReceiveFrom(address, payload);
                 }
             }
-            catch (Exception e) { if (!ct.IsCancellationRequested) Fault(e); }
+            catch (Exception e) { if (!ct.IsCancellationRequested) RecordReceiveError(e); }
             finally
             {
-                lock (_gate) _clients.Remove(address.SubChannelId);
-                RemovePeer(address);
-                pipe.Dispose();
+                try
+                {
+                    lock (_gate) _clients.Remove(address.SubChannelId);
+                    RemovePeer(address);
+                    pipe.Dispose();
+                }
+                finally { _admission.Release(); }
             }
         }
         protected override async Task SendToPeerAsync(byte[] bytes,
@@ -121,16 +137,20 @@ public sealed class FTRNamedPipeServerChannel : FTRMultiChannelBase
             {
                 active = _clients.Values.ToArray();
                 pending = _pending;
-                readers = _readers.ToArray();
                 _pending = null;
             }
             if (pending != null) pending.Dispose();
             foreach (NamedPipeServerStream pipe in active) pipe.Dispose();
             if (_accept != null) await _accept.ConfigureAwait(false);
+            // Accept可能刚过取消检查才完成最后一次入场；先结算Accept，再取完整读者快照。
+            lock (_gate) { active = _clients.Values.ToArray(); readers = _readers.ToArray(); }
+            foreach (NamedPipeServerStream pipe in active) pipe.Dispose();
             if (readers.Length > 0) await Task.WhenAll(readers).ConfigureAwait(false);
             lock (_gate) { _clients.Clear(); _readers.Clear(); }
             foreach (FTRSubChannelInfo peer in SnapshotSubChannels()) RemovePeer(peer.Address);
             if (_stop != null) _stop.Dispose();
+            if (_admission != null) _admission.Dispose();
+            _admission = null;
             _stop = null; _accept = null;
         }
     }
