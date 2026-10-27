@@ -21,6 +21,7 @@ namespace CxVisual.TestCenter.UI
     public sealed partial class TCTManualVolumeViewerFrame
     {
         private MPWVolumeFourViewLayoutControl _legacyFour;
+        private MPWVolumeFourViewWorkbenchControl _workbench;
         private readonly Dictionary<FVOSlicePlane, MPWVolumeSliceNavigationControl> _headerNavigation =
             new Dictionary<FVOSlicePlane, MPWVolumeSliceNavigationControl>();
         private TabControl _upperTabs, _lowerTabs;
@@ -81,26 +82,18 @@ namespace CxVisual.TestCenter.UI
             work.ColumnDefinitions.Add(new ColumnDefinition { Width=new GridLength(5) });
             work.ColumnDefinitions.Add(new ColumnDefinition { Width=new GridLength(430),MinWidth=340 });
             Grid.SetRow(work,1);root.Children.Add(work);
-            _legacyFour=new MPWVolumeFourViewLayoutControl();
-            work.Children.Add(_legacyFour);
-            AddSliceViewport(_legacyFour,_xy,FVOSlicePlane.XY,"XY 主视图",0,0);
-            AddSliceViewport(_legacyFour,_yz,FVOSlicePlane.YZ,"YZ 侧视图",0,1);
-            AddSliceViewport(_legacyFour,_xz,FVOSlicePlane.XZ,"XZ 底视图",1,0);
-            Grid gpuFrame=_legacyFour.AddView(_scene,"3D / GPU体绘启动中",1,1);
-            Border gpuTitle=gpuFrame.Children[0] as Border;
-            _gpuModeHeader=gpuTitle==null?null:gpuTitle.Child as TextBlock;
-            gpuFrame.Children.Remove(_scene);
-            _gpuSlot=new Grid();Grid.SetRow(_gpuSlot,1);
-            gpuFrame.Children.Add(_gpuSlot);_gpuSlot.Children.Add(_scene);
-            foreach(UIElement item in _legacyFour.Children)
-            {
-                Grid host=item as Grid;
-                if(host==null)continue;
-                int row=Grid.GetRow(host),column=Grid.GetColumn(host);
-                MPWImageViewerControl viewer=(row==0 && column==0)?_xy:
-                    (row==0 && column==1)?_yz:(row==1 && column==0)?_xz:null;
-                AddViewportControls(host,viewer,row,column);
-            }
+            // 正式MPW负责四视图/导航装配；TestCenter仅提供现有GPU容器与状态反馈。
+            _gpuSlot=new Grid();
+            _gpuSlot.Children.Add(_scene);
+            _workbench=new MPWVolumeFourViewWorkbenchControl(
+                _xy,_yz,_xz,_gpuSlot,Reset3DCamera,Zoom3D,Pan3D);
+            _legacyFour=_workbench.Layout;
+            _gpuModeHeader=_workbench.CameraTitle;
+            _workbench.VoxelInspected+=(s,e)=>_status.Text=String.Format(
+                "体素 ({0},{1},{2})  原始值 {3:0.###}  物理位置 ({4:0.###},{5:0.###},{6:0.###})",
+                e.X,e.Y,e.Z,e.Value,e.PhysicalX,e.PhysicalY,e.PhysicalZ);
+            _workbench.NavigationValidationFailed+=message=>_status.Text=message;
+            work.Children.Add(_workbench);
 
             System.Windows.Controls.GridSplitter resizer=new System.Windows.Controls.GridSplitter {
                 Width=5,HorizontalAlignment=HorizontalAlignment.Stretch,
@@ -301,10 +294,7 @@ namespace CxVisual.TestCenter.UI
             DisableGpu();
             if(_state!=null)_state.PropertyChanged-=OnStateChanged;
             _state=null;
-            foreach(MPWVolumeSliceViewportControl viewport in _sliceViewports.Values)
-                viewport.Bind(null,null);
-            foreach(MPWVolumeSliceNavigationControl navigation in _headerNavigation.Values)
-                navigation.Bind(null,null);
+            _workbench.Bind(null,null);
             if(_volume!=null)_volume.Dispose();
             _volume=null;
             _xy.Clear();_xz.Clear();_yz.Clear();_obliqueViewer.Clear();
@@ -319,46 +309,18 @@ namespace CxVisual.TestCenter.UI
             Reset3DCamera();
         }
 
-        private void AddViewportControls(Grid host,MPWImageViewerControl viewer,int row,int col)
-        {
-            StackPanel tools;
-            if(viewer!=null)
-            {
-                FVOSlicePlane plane=row==0 && col==0?FVOSlicePlane.XY:
-                    row==0 && col==1?FVOSlicePlane.YZ:FVOSlicePlane.XZ;
-                var navigation=new MPWVolumeSliceNavigationControl(plane,viewer,
-                    ()=>_legacyFour.ToggleSlot(host));
-                navigation.ValidationFailed+=message=>_status.Text=message;
-                _headerNavigation.Add(plane,navigation);
-                tools=navigation;
-            }
-            else
-            {
-                tools=new MPWVolumeCameraNavigationControl(
-                    Reset3DCamera,Zoom3D,Pan3D,()=>_legacyFour.ToggleSlot(host));
-            }
-            Grid.SetRow(tools,0);
-            host.Children.Add(tools);
-            AutomationProperties.SetAutomationId(host,"TCT.Volume.View."+row+col);
-        }
-
         /// <summary>宿主仅通知正式MPW控件读取FVO/MVI真源。</summary>
         private void SyncSliceHeaderControls()
         {
-            foreach(MPWVolumeSliceNavigationControl navigation in _headerNavigation.Values)
-                navigation.Refresh();
+            if(_workbench!=null)_workbench.RefreshNavigations();
         }
 
-        public int HeaderSliceControlCount { get { return _headerNavigation.Count; } }
+        public int HeaderSliceControlCount { get { return _workbench==null?0:_workbench.SliceNavigationCount; } }
         public void JumpToViewSliceForTest(FVOSlicePlane plane,int position)
         {
-            MPWVolumeSliceNavigationControl navigation;
-            if(!_headerNavigation.TryGetValue(plane,out navigation))
-                throw new ArgumentOutOfRangeException("plane");
             if(_volume==null || _state==null)
                 throw new InvalidOperationException("必须先加载体数据。");
-            // 走真实WPF Slider.ValueChanged -> 公共MPW导航 -> 共享MVI，而非测试私有算法。
-            navigation.SliceSlider.Value=position;
+            _workbench.GetNavigation(plane).SliceSlider.Value=position;
         }
 
         private void Set3DOrientationVisible(bool visible)

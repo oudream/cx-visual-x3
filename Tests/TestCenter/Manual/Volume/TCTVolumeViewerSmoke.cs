@@ -173,6 +173,22 @@ namespace CxVisual.TestCenter.UI
                 resetButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent,resetButton));
                 Check(frame.CameraTargetLengthForTest<.0001,
                     "顶部相机复位按钮Click必须恢复真实3D相机");
+                var workbench=FindVisualByAutomationId<
+                    CxVisual.Mechanism.Presentation.Wpf.Volume.MPWVolumeFourViewWorkbenchControl>(
+                    frame,"MPW.Volume.FourViewWorkbench");
+                Check(workbench!=null && workbench.SliceViewportCount==3 &&
+                      workbench.SliceNavigationCount==3 &&
+                      Object.ReferenceEquals(workbench.GetViewport(FVOSlicePlane.XY).Viewer,
+                          frame.XyViewer) &&
+                      Object.ReferenceEquals(workbench.GetViewport(FVOSlicePlane.YZ).Viewer,
+                          frame.YzViewer) &&
+                      Object.ReferenceEquals(workbench.GetViewport(FVOSlicePlane.XZ).Viewer,
+                          frame.XzViewer) &&
+                      Object.ReferenceEquals(workbench.GetViewport(FVOSlicePlane.XY).Volume,
+                          frame.Volume) &&
+                      Object.ReferenceEquals(workbench.GetNavigation(FVOSlicePlane.XZ).ViewState,
+                          frame.ViewState),
+                    "正式MPW四视图工作区必须统一装配既有Viewer并绑定FVO/MVI唯一真源");
                 var fourView=FindVisualByAutomationId<
                     CxVisual.Mechanism.Presentation.Wpf.Volume.MPWVolumeFourViewLayoutControl>(
                     frame,"MPW.Volume.FourView");
@@ -211,6 +227,30 @@ namespace CxVisual.TestCenter.UI
                 var independent=new CxVisual.Mechanism.Presentation.Wpf.Volume.
                     MPWVolumeFourViewLayoutControl();
                 independent.AddView(new System.Windows.Controls.Border(),"测试",0,0);
+                // 单独创建MPW四视图工作区，不依赖TestCenter frame或专业CT3D。
+                var reusable=new CxVisual.Mechanism.Presentation.Wpf.Volume.
+                    MPWVolumeFourViewWorkbenchControl(
+                    new CxVisual.Mechanism.Presentation.Wpf.Imaging.MPWImageViewerControl(),
+                    new CxVisual.Mechanism.Presentation.Wpf.Imaging.MPWImageViewerControl(),
+                    new CxVisual.Mechanism.Presentation.Wpf.Imaging.MPWImageViewerControl(),
+                    new System.Windows.Controls.Grid(),()=>{},step=>{},(dx,dy)=>{});
+                Check(reusable.Layout.ViewCount==4 &&
+                      reusable.GetNavigation(FVOSlicePlane.XY).Volume==null,
+                    "MPW独立创建完整2x2四视图并默认无数据，不依赖测试页面");
+                using(var example=FVOVolumeData.CreateDemo(8,8,8))
+                {
+                    var shared=CxVisual.Mechanism.Visual.MVIVolumeViewState.CreateCentered(example);
+                    reusable.Bind(example,shared);
+                    Check(Object.ReferenceEquals(reusable.GetViewport(FVOSlicePlane.YZ).ViewState,
+                          reusable.GetNavigation(FVOSlicePlane.XY).ViewState) &&
+                          Object.ReferenceEquals(reusable.GetViewport(FVOSlicePlane.XZ).Volume,example),
+                        "MPW单次绑定应同步贯穿所有导航和视口");
+                    reusable.Bind(null,null);
+                    Check(reusable.GetViewport(FVOSlicePlane.YZ).Volume==null &&
+                          reusable.GetNavigation(FVOSlicePlane.XY).ViewState==null &&
+                          !reusable.GetNavigation(FVOSlicePlane.XY).SliceSlider.IsEnabled,
+                        "MPW解绑必须清除所有子控件的已释放体数据引用");
+                }
                 bool duplicateRejected=false;
                 try { independent.AddView(new System.Windows.Controls.Border(),"重复",0,0); }
                 catch(InvalidOperationException) { duplicateRejected=true; }
