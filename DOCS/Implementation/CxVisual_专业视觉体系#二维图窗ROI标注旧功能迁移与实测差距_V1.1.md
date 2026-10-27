@@ -216,3 +216,5 @@
 - [Imaging Windows #40453607628](https://github.com/oudream/cx-visual-x3/actions/runs/40453607628)：对应完整**UI颜色预设按钮及真实WPF反证提交** `a5159a931d624299dd78d44e91dd3372eac9cd0e`，**SUCCESS（13步骤）**，包含FIM ROI形状真值、4×4 Gray16选中三角形的6像素统计与禁用ROI后16像素全图对照、区域工具选中高亮、彩色按钮确实更新对象Guid对应的ARGB，以及旧已有图窗回归。
 - 真实WPF合成输入证实Button.Click事件和数值/可视控件状态正确；**不等价于真实操作系统鼠标注入或现场相机接入**。特别是超大图和多边形数千顶点下逐像素`PointInPolygon`的耗时仍待量化优化，不以短时单张4×4回归声称工业性能达到要求。
 - 旧按钮的“添加样式”与“完整属性编辑”分离：本轮颜色为四种预设操作；图层级默认颜色、任意ARGB、宽度、字体及复合图形属性需继续完整迁移，不可将颜色预设等价为完整旧Viewer样式系统。
+
+- [TestCenter Windows #40453607629](https://github.com/oudream/cx-visual-x3/actions/runs/40453607629)：同一**功能代码提交SHA `a5159a931d624299dd78d44e91dd3372eac9cd0e`**，**SUCCESS（29步骤）**。除真实图窗/按钮代码外，包含WPF Shell和UIA、NUnit/Worker异常反证、完整测试控制台、历史结果和并行重跑回归。这条成功证据并不等于用户真实物理鼠标、工业大图性能或HALCON SDK现场验收。
