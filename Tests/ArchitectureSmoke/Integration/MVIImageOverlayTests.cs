@@ -126,7 +126,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
             MVIImageOverlayItem noArea=new MVIImageOverlayItem(
                 MVIImageOverlayKind.DefectBox,MVIImageOverlayLayer.Defect,
                 new FGERect2D(0,0,4,4));
-            Ensure(roi.IsAreaRoi && roi.ContainsRoiPixelCenter(1,1) &&
+            Ensure(roi.IsAreaRoi && roi.ContainsRoiPixelCenter(2,3) &&
+                !roi.ContainsRoiPixelCenter(1,1) &&
                 !noArea.IsAreaRoi && !noArea.ContainsRoiPixelCenter(1,1),
                 "矩形ROI与缺陷标记的统计身份不能混用");
             // 单边插点与单点删除采用原来的唯一Store与O(n)拓扑校验。
