@@ -59,3 +59,12 @@ Windows CI必须同SHA满足Restore、完整.NET48 x64 Build、Verify-Structure�
 - N28 同SHA Windows完整解决方案构建、Owner DAG 与 --numerics + 默认ArchitectureSmoke，两者独立记录，不能把专项 PASS 等同于全量 PASS。
 
 **已观察到与 Numerics 无直接关系的全量回归失败**：在 `e65452e` 和 `760c71c`，`--numerics` 输出 PASS，但默认 ArchitectureSmoke 在 `VisualShapeEditingTests` 的整圆 sweep 编辑反例失败。必须由图元工程专项修复并重新核验；不借此降低 Numerics 正反例要求，也不冒称默认测试通过。
+
+## 最新固定SHA验收补录
+
+| SHA | Numerics专项 | Imaging/Volume/WPF | 默认架构回归 |
+|---|---|---|---|
+| `2629e73` | [PASS #40516716245](https://github.com/oudream/cx-visual-x3/actions/runs/40516716245) | 当时未变更FVO | PASS |
+| `22bbee9` | [PASS #40516958832](https://github.com/oudream/cx-visual-x3/actions/runs/40516958832) | [PASS #40516958563](https://github.com/oudream/cx-visual-x3/actions/runs/40516958563) | PASS |
+
+专项成功基于已记录测试，不代表未实现的多维优化、GPU Tensor、多种数值 dtype、完整性能稳定性测试已完成。上述记录为既有代码 SHA 的CI；文档补录提交不等于新的代码验收。

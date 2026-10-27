@@ -32,7 +32,7 @@ var root=FNURootFinding.Bisection(x=>x*x-2,0,2);
 ## 三、专业复用和验证等级
 
 - FIM: `FIMImageAnalyzer` 原始/掩膜 ROI Welford 统计复用 `FNURunningStatistics`，原FIM API/像素所有权/直方图/取消不变；[Imaging PASS #40503133853](https://github.com/oudream/cx-visual-x3/actions/runs/40503133853) 对应旧基线 `51ba6ef`。
-- FVO: `FVOObliqueSliceBuilder` 的八角点插值在 `22bbee9` 改用 `FNUInterpolation.Trilinear`；Volume 保留原体素采样、深度、越界及浮点输出语义；**Imaging/Numerics同SHA验收尚需以对应记录为准**。
+- FVO: `FVOObliqueSliceBuilder` 的八角点插值在 `22bbee9` 改用 `FNUInterpolation.Trilinear`；Volume 保留原体素采样、深度、越界及浮点输出语义；**Imaging/Numerics同SHA双CI已通过 #40516958563 / #40516958832**。
 - 数值基础F03/F04增量 `b91bb45`：[Numerics #40515727903](https://github.com/oudream/cx-visual-x3/actions/runs/40515727903) 实际成功。
 - F10增量 `4656dd2`：[Numerics #40515935323](https://github.com/oudream/cx-visual-x3/actions/runs/40515935323) 实际成功。
 - F13之后 `e65452e`、`760c71c`：`--numerics` 专项PASS，完整构建与DAG PASS，但默认烟测被不相关图元整圆Sweep回归阻断；不可宣称整体通过。
@@ -59,3 +59,9 @@ msbuild .\CxVisual.Unified.sln /t:Restore,Build /p:Configuration=Release /p:Plat
 ```
 
 所有命令仍以真实 Windows CI 的同SHA日志为验收依据。单个专项通过和默认全量通过分别记录，互不替代。
+
+## 六、最终已核实的专业抽取/替代证据
+
+- FIM原始灰度与掩膜ROI：继续使用原FIM API，公共Welford统计内核由FNU提供，旧Windows Imaging已通过。
+- FVO任意切面：体素边界/读取、原始16/32位浮点语义保留，原八角点数值插值转交FNU；固定SHA `22bbee9` 对应的 Numerics CI 和 Imaging CI **均成功**，包含 Volume、Imaging、默认回归及WPF图窗/切片烟测。
+- 早先 `e65452e`、`760c71c` 的默认架构烟测曾遭遇图元整圆Sweep失败，而更新的 `2629e73` 与 `22bbee9` 默认测试已经成功；须持续关注图元回归的跨次稳定性，勿把它归因于数值代码。
