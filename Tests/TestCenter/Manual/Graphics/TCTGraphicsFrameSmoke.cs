@@ -453,8 +453,8 @@ namespace CxVisual.TestCenter.UI
                     frame.Revision!=contourRevision)
                     throw new InvalidOperationException("两点子轮廓不应允许闭合");
                 ContextMenu multiMenu=frame.Canvas.CreateSelectedGeometryMenuAt(170,232.5);
-                if(multiMenu==null||!multiMenu.Items.OfType<MenuItem>().Any(x=>
-                    (string)x.Header=="闭合此轮廓"))
+                if(multiMenu==null||!multiMenu.Items.OfType<MenuItem>().Any(entry=>
+                    (string)entry.Header=="闭合此轮廓"))
                     throw new InvalidOperationException("首子轮廓右键菜单应显示合法的闭合命令");
                 if(!frame.Canvas.RequestSelectedPathOperation(multiId,1,"close")||
                     frame.Revision!=contourRevision+1||
