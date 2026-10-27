@@ -804,8 +804,49 @@ namespace CxVisual.Tests.ArchitectureSmoke
             }
         }
 
+        private static void VariableDispatchPolicySmoke()
+        {
+            MDSVariableTable table = new MDSVariableTable("policy");
+            table.Define(new MDSVariableDefinition("Level", typeof(int), null, true, null, "level"));
+            int immediate = 0, batches = 0, latest = 0;
+            int submitThread = Thread.CurrentThread.ManagedThreadId;
+            using (MDSVariableDispatchRoute sync = MDSVariableDispatchRoute.Subscribe(
+                table, MDSVariableDispatchPolicy.Immediate, changes =>
+                {
+                    Check(Thread.CurrentThread.ManagedThreadId == submitThread &&
+                        changes.Count == 1, "Immediate应在提交线程同步通知");
+                    immediate++;
+                }))
+            using (MDSVariableDispatchRoute grouped = MDSVariableDispatchRoute.Subscribe(
+                table, MDSVariableDispatchPolicy.Batch, changes => batches += changes.Count))
+            using (MDSVariableDispatchRoute worker = MDSVariableDispatchRoute.Subscribe(
+                table, MDSVariableDispatchPolicy.LatestOnly, changes => latest += changes.Count))
+            using (MDSVariableDispatchRoute reliable = MDSVariableDispatchRoute.CreateReliable(table, 8))
+            {
+                table.Update<int>("Level", 1);
+                Check(immediate == 1 && batches == 0 && reliable.PendingCount == 0,
+                    "单变量Update只触发Immediate，Batch和Reliable要求批量提交");
+                MDSVariableBatchResult result = table.UpdateBatch(new MDSVariableBatch("policy",
+                    new[] { new MDSVariableBatchItem("Level", 2) }, "batch-event"));
+                Check(worker.Drain(TimeSpan.FromSeconds(5)), "LatestOnly派发可排空");
+                Check(immediate == 2 && batches == 1 && latest >= 1 &&
+                    result.NotificationsSucceeded &&
+                    reliable.PendingCount == 1 &&
+                    reliable.ReadPending()[0].BatchId == "batch-event",
+                    "四种派发策略分别走对应已存在的路径");
+                Check(reliable.Acknowledge(reliable.ReadPending()[0].BatchSequence) &&
+                    reliable.PendingCount == 0, "Reliable只由消费者显式Ack，不自动确认");
+                Reject<InvalidOperationException>(() => MDSVariableDispatchRoute.Subscribe(
+                    table, MDSVariableDispatchPolicy.Reliable, changes => { }));
+                Reject<InvalidOperationException>(() => worker.ReadPending());
+            }
+            table.Update<int>("Level", 3);
+            Check(immediate == 2 && batches == 1, "Route释放应真正解除订阅");
+        }
+
         public static void RunVariableSuite()
         {
+            VariableDispatchPolicySmoke();
             VariableReliableGapSmoke();
             VariableReliableBatchQueueSmoke();
             IndustrialDeviceVariableWriteSmoke();
