@@ -77,6 +77,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 string id=value.Substring(0,split);
                 Button button=new Button {Content=value.Substring(split+1),Tag=id,
                     Margin=new Thickness(2),MinHeight=28,ToolTip=heading+" · "+value.Substring(split+1)};
+                if(id=="Path")
+                    button.ToolTip="Path：逐点绘制；N开始另一独立轮廓，Enter/双击完成，Esc取消。选中后双击进精细编辑，右键曲线段插点/转换/闭合。";
+                else if(id=="Bezier"||id=="Arc")
+                    button.ToolTip=id+"：拖绘后切换选择工具，双击进入几何编辑；拖控制柄调整曲线。";
                 AutomationProperties.SetAutomationId(button,"MPW.Visual."+id);
                 // 此处仅转发用户意图，执行和权限由宿主统一MVI/MEM编辑入口负责。
                 button.Click+=(sender,args)=>{var requested=OperationRequested;if(requested!=null)requested(id);};

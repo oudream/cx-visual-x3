@@ -563,7 +563,9 @@ namespace CxVisual.Studio
                     StudioVisualOperations.SetActiveTool(operation);
                     VisualInfo.Text=operation=="Select"?
                         "选择工具：单选/框选/拖动/缩放/旋转":
-                        "已激活 "+operation+"：在画布拖绘，路径逐点点击，双击/Enter完成，Esc取消";
+                        operation=="Path"?
+                        "Path逐点绘制；按N开始另一个独立轮廓；Enter/双击提交，Esc取消。选中双击进入几何编辑，右键修改节点和曲线":
+                        "已激活 "+operation+"：在画布拖绘，折线逐点点击，双击/Enter完成，Esc取消";
                     return;
                 }
                 if(operation=="edit.undo")_viewModel.UndoCommand.Execute(null);
