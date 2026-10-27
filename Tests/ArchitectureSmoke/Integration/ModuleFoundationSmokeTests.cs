@@ -367,6 +367,28 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 "同值刷新提升Revision但不提升变化语义");
         }
 
+        private static void VariableRevisionOverflowSmoke()
+        {
+            MDSVariableTable table = new MDSVariableTable("revision-limit");
+            table.Define(new MDSVariableDefinition("Count", typeof(int)));
+            int observed = 0;
+            table.VariableChanged += name => observed++;
+            MDSVariable<int> variable = table.Resolve<int>("Count");
+            variable.Update(7);
+            DateTime refresh = variable.Snapshot().RefreshUtc;
+            // 无法实际执行long.MaxValue次，测试使用反射仅构造极限状态；
+            // 生产路径不使用反射，变量仍只有一个运行值Owner。
+            System.Reflection.FieldInfo revision = typeof(MDSVariable<int>).GetField("_revision",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            Check(revision != null, "Revision边界测试能定位唯一状态字段");
+            revision.SetValue(variable, long.MaxValue);
+            Reject<OverflowException>(() => variable.Update(8));
+            MDSVariableSnapshot<int> after = variable.Snapshot();
+            Check(after.CurrentValue == 7 && after.Revision == long.MaxValue &&
+                after.RefreshUtc == refresh && observed == 1,
+                "Revision溢出必须拒绝且不得留下半提交或误报通知");
+        }
+
         private static void VariableScopeSmoke()
         {
             MDSVariableRegistry registry = new MDSVariableRegistry();
@@ -1035,6 +1057,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             VariableScopeReentrantRemoveSmoke();
             VariableProviderConcurrentRemoveSmoke();
             VariableCasSmoke();
+            VariableRevisionOverflowSmoke();
             VariableProviderSmoke();
             VariableBoundAccessSmoke();
             VariableDispatcherSmoke();
