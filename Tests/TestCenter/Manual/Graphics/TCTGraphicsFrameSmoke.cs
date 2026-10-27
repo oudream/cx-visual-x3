@@ -293,6 +293,8 @@ namespace CxVisual.TestCenter.UI
                 if(!frame.Canvas.BeginInlineTextEdit(textId))
                     throw new InvalidOperationException("文字无法再次进入原位编辑");
                 inline=Find<TextBox>(frame,"MPW.Visual.InlineText");
+                if(inline==null||!frame.Canvas.IsInlineTextEditing)
+                    throw new InvalidOperationException("旧TextBox失焦误关闭第二次原位编辑");
                 inline.Text="可撤销的文字更新";
                 if(frame.Revision!=beforeTextEdit||!frame.Canvas.FinishInlineTextEdit(true)||
                     frame.Revision!=beforeTextEdit+1||

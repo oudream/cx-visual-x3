@@ -58,7 +58,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 {FinishInlineTextEdit(true);args.Handled=true;}
             };
             input.LostKeyboardFocus+=(sender,args)=>{
-                if(IsInlineTextEditing)
+                // WPF焦点路由可能在下一次编辑开启后才分发上一次LostFocus；
+                // 只允许事件所属TextBox结束自己的会话，禁止旧框误取消新框。
+                if(IsInlineTextEditing&&ReferenceEquals(_inlineTextBox,input))
                     FinishInlineTextEdit(_inputWindow==null||_inputWindow.IsActive);
             };
             _inlineTextBox=input;
