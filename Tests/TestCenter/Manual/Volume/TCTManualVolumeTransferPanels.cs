@@ -19,7 +19,7 @@ namespace CxVisual.TestCenter.UI
         public int ScalarStopCount { get { return _gpuSettings.TransferFunctions.ScalarOpacity.Points.Count; } }
         public int GradientStopCount { get { return _gpuSettings.TransferFunctions.GradientOpacity.Points.Count; } }
 
-        private void BuildTransferPanels(TabControl tabs)
+        private void BuildTransferPanels(MPWVolumeSettingsDockControl dock)
         {
             // 与旧 WinForms 同样为独立五标签页，所有点直接修改唯一 FVOTransferFunctionSet。
             _colorCurve=new MPWVolumeCurveEditor(_gpuSettings.TransferFunctions.Color.Points,true);
@@ -47,25 +47,25 @@ namespace CxVisual.TestCenter.UI
                 _gpuUseThreshold.IsChecked=true;
                 UpdateGpuSettings(true);
             };
-            tabs.Items.Add(new TabItem { Header="阈值",Content=threshold });
+            dock.AddLowerTab("阈值",threshold);
             StackPanel colors=new StackPanel { Margin=new Thickness(4) };
             MoveToTab(_gpuColor,(Panel)_gpuColor.Parent,colors);
             colors.Children.Add(_colorCurve);
             AddGpuSlider(colors,"R",_red);
             AddGpuSlider(colors,"G",_green);
             AddGpuSlider(colors,"B",_blue);
-            tabs.Items.Add(new TabItem { Header="颜色",Content=new ScrollViewer { Content=colors,
-                VerticalScrollBarVisibility=ScrollBarVisibility.Auto } });
+            dock.AddLowerTab("颜色",new ScrollViewer { Content=colors,
+                VerticalScrollBarVisibility=ScrollBarVisibility.Auto });
             StackPanel scalar=new StackPanel { Margin=new Thickness(4) };
             MoveToTab(_gpuScalar,(Panel)_gpuScalar.Parent,scalar);
             scalar.Children.Add(_scalarCurve);
-            tabs.Items.Add(new TabItem { Header="标量透明",Content=new ScrollViewer { Content=scalar,
-                VerticalScrollBarVisibility=ScrollBarVisibility.Auto } });
+            dock.AddLowerTab("标量透明",new ScrollViewer { Content=scalar,
+                VerticalScrollBarVisibility=ScrollBarVisibility.Auto });
             StackPanel gradient=new StackPanel { Margin=new Thickness(4) };
             MoveToTab(_gpuGradient,(Panel)_gpuGradient.Parent,gradient);
             gradient.Children.Add(_gradientCurve);
-            tabs.Items.Add(new TabItem { Header="梯度透明",Content=new ScrollViewer { Content=gradient,
-                VerticalScrollBarVisibility=ScrollBarVisibility.Auto } });
+            dock.AddLowerTab("梯度透明",new ScrollViewer { Content=gradient,
+                VerticalScrollBarVisibility=ScrollBarVisibility.Auto });
             StackPanel arbitrary=new StackPanel { Margin=new Thickness(10) };
             arbitrary.Children.Add(new TextBlock {
                 Text="任意切的角度、位置、插值、尺寸和实时预览在上方“任意切”页签中；共用同一FVO/MVI切面状态。",
@@ -73,8 +73,8 @@ namespace CxVisual.TestCenter.UI
             Button jump=new Button { Content="打开任意切设置",Padding=new Thickness(8,5,8,5) };
             jump.Click+=(s,e)=>_upperTabs.SelectedIndex=3;
             arbitrary.Children.Add(jump);
-            tabs.Items.Add(new TabItem { Header="任意切面",Content=arbitrary });
-            tabs.SelectedIndex=0;
+            dock.AddLowerTab("任意切面",arbitrary);
+            dock.LowerTabs.SelectedIndex=0;
             _colorCurve.SelectionChanged+=(s,e)=>ReadSelectedColor();
             _red.ValueChanged+=(s,e)=>WriteSelectedColor();
             _green.ValueChanged+=(s,e)=>WriteSelectedColor();

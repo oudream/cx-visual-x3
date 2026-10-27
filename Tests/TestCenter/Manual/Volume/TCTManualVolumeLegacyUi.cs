@@ -181,7 +181,7 @@ namespace CxVisual.TestCenter.UI
             _legacyDetails.Margin=new Thickness(5,8,5,6);
             render.Children.Add(_legacyDetails);
             _legacyDetails.Text="可使用WPF三维空间切面；OpenGL体绘需真实显卡验证。";
-            BuildTransferPanels(_lowerTabs);
+            BuildTransferPanels(_settingsDock);
             _upperTabs.SelectedIndex=0;_lowerTabs.SelectedIndex=0;
             _status.Foreground=BrushOf(51,77,108);
             _status.Margin=new Thickness(8,3,8,3);
