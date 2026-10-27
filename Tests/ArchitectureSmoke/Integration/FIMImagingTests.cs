@@ -67,6 +67,19 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Near(parallel.ClosestOnFirst.Y,0) &&
                 Near(parallel.ClosestOnSecond.Y,3),
                 "旧Ls2Ls平行有限线段最近点及非等距标定");
+            FIMPixelSpacing anisotropicSpacing=new FIMPixelSpacing(10,1);
+            FIMLinePairResult anisotropic=FIMImageMeasurement.MeasureLinePair(
+                new FGEPoint2D(0,0),new FGEPoint2D(10,10),
+                new FGEPoint2D(0,6),new FGEPoint2D(2,6),anisotropicSpacing);
+            double incorrectConversion=FIMImageMeasurement.GetDistanceMillimeters(
+                anisotropic.ClosestOnFirst,anisotropic.ClosestOnSecond,
+                anisotropicSpacing).Value;
+            Assert(anisotropic.DistancePixels>2.8 &&
+                anisotropic.DistancePixels<2.9 &&
+                anisotropic.DistanceMillimeters.Value>3.9 &&
+                anisotropic.DistanceMillimeters.Value<4.1 &&
+                incorrectConversion>15,
+                "非等距标定必须重新搜索物理最近点，不允许换算像素最近点冒充毫米最短距离");
             FIMLinePairResult crossing=FIMImageMeasurement.MeasureLinePair(
                 new FGEPoint2D(0,0),new FGEPoint2D(4,4),
                 new FGEPoint2D(0,4),new FGEPoint2D(4,0));
