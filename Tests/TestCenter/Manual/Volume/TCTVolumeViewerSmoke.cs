@@ -336,6 +336,54 @@ namespace CxVisual.TestCenter.UI
                         using(FileStream bmpOutputStream=File.Create(Path.Combine(bmpFolder,
                             "slice"+z.ToString("D2")+".bmp")))encoder.Save(bmpOutputStream);
                     }
+                    // 单独调用正式MPW BMP解码API，TestCenter不拥有BMP像素算法。
+                    int bmpWidth, bmpHeight, bmpDepth;
+                    byte[] decoded=CxVisual.Mechanism.Presentation.Wpf.Imaging.
+                        MPWImageSequenceReader.ReadBmpGray8Stack(
+                            bmpFolder,System.Threading.CancellationToken.None,
+                            out bmpWidth,out bmpHeight,out bmpDepth);
+                    Check(bmpWidth==8 && bmpHeight==8 && bmpDepth==3 &&
+                          decoded.Length==8*8*3 && decoded[0]==40 &&
+                          decoded[64]==60 && decoded[128]==80,
+                        "正式MPW BMP解码器输出逐层Gray8，TestCenter仅调用其公共API");
+                    using(System.Threading.CancellationTokenSource canceledReader=
+                        new System.Threading.CancellationTokenSource())
+                    {
+                        canceledReader.Cancel();
+                        bool refused=false;
+                        try
+                        {
+                            int a,b,c;
+                            CxVisual.Mechanism.Presentation.Wpf.Imaging.
+                                MPWImageSequenceReader.ReadBmpGray8Stack(
+                                    bmpFolder,canceledReader.Token,out a,out b,out c);
+                        }
+                        catch(System.OperationCanceledException) { refused=true; }
+                        Check(refused,"MPW BMP解码器取消必须先于读取和内存分配");
+                    }
+                    string different=Path.Combine(bmpFolder,"slice03.bmp");
+                    try
+                    {
+                        byte[] smallGray=new byte[4*4];
+                        BitmapSource bad=BitmapSource.Create(4,4,96,96,
+                            PixelFormats.Gray8,null,smallGray,4);
+                        BmpBitmapEncoder badEncoder=new BmpBitmapEncoder();
+                        badEncoder.Frames.Add(BitmapFrame.Create(bad));
+                        using(FileStream output=File.Create(different))badEncoder.Save(output);
+                        bool rejectedDimensions=false;
+                        try
+                        {
+                            int a,b,c;
+                            CxVisual.Mechanism.Presentation.Wpf.Imaging.
+                                MPWImageSequenceReader.ReadBmpGray8Stack(
+                                    bmpFolder,System.Threading.CancellationToken.None,
+                                    out a,out b,out c);
+                        }
+                        catch(InvalidDataException) { rejectedDimensions=true; }
+                        Check(rejectedDimensions,
+                            "MPW BMP解码器拒绝混合尺寸，不能产生错位体数据");
+                    }
+                    finally {if(File.Exists(different))File.Delete(different);}
                     System.Threading.Tasks.Task bmpTask=frame.LoadBmpDirectoryAsync(
                         bmpFolder,System.Threading.CancellationToken.None);
                     if(!bmpTask.IsCompleted)

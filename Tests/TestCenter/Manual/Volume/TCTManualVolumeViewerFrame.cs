@@ -346,39 +346,15 @@ namespace CxVisual.TestCenter.UI
             return LoadBmpStack(directory,System.Threading.CancellationToken.None);
         }
 
-        /// <summary>后台BMP解码入口；每张切片检查取消，不在工作台UI线程批量解码。</summary>
+        /// <summary>兼容现有WPF工作台入口；BMP像素解析由正式MPW图像服务实现。</summary>
         public static FVOVolumeData LoadBmpStack(string directory,
             System.Threading.CancellationToken cancellation)
         {
-            cancellation.ThrowIfCancellationRequested();
-            if (String.IsNullOrWhiteSpace(directory)) throw new ArgumentNullException("directory");
-            string[] files = Directory.GetFiles(directory, "*.bmp")
-                .OrderBy(x=>x,StringComparer.OrdinalIgnoreCase).ToArray();
-            if (files.Length == 0) throw new InvalidDataException("目录内没有BMP切片。");
-            int width = 0, height = 0;
-            byte[] pixels = null;
-            for (int z=0;z<files.Length;z++)
-            {
-                cancellation.ThrowIfCancellationRequested();
-                BitmapFrame source = BitmapFrame.Create(new Uri(files[z]),BitmapCreateOptions.PreservePixelFormat,
-                    BitmapCacheOption.OnLoad);
-                FormatConvertedBitmap mono = new FormatConvertedBitmap(source, PixelFormats.Gray8, null, 0);
-                int w = mono.PixelWidth, h = mono.PixelHeight;
-                if (z == 0)
-                {
-                    width = w; height = h;
-                    long count = checked((long)w * h * files.Length);
-                    if (count > 512L*1024*1024) throw new InvalidDataException("BMP目录超过512MiB上限，请改用RAW。");
-                    pixels = new byte[checked((int)count)];
-                }
-                else if (w != width || h != height)
-                    throw new InvalidDataException("BMP序列包含尺寸不一致的切片：" + files[z]);
-                // WPF CopyPixels(Array, stride, offset)：stride是每行字节数，offset是层起点字节偏移。
-                mono.CopyPixels(pixels, width, checked(width * height * z));
-            }
-            cancellation.ThrowIfCancellationRequested();
-            return new FVOVolumeData(width,height,files.Length,pixels,
-                "BMP序列 ("+files.Length+"张)");
+            int width, height, depth;
+            byte[] pixels = MPWImageSequenceReader.ReadBmpGray8Stack(directory,
+                cancellation, out width, out height, out depth);
+            return new FVOVolumeData(width,height,depth,pixels,
+                "BMP序列 ("+depth+"张)");
         }
 
         public void OnWorkspaceClosed()
