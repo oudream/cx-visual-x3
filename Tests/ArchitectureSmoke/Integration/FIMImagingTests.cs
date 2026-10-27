@@ -26,6 +26,29 @@ namespace CxVisual.Tests.ArchitectureSmoke
             foreach (long count in stats.Histogram.Bins) total += count;
             Assert(total == 16 && stats.Histogram.Bins[0] == 1 &&
                 stats.Histogram.Bins[15] == 1, "直方图末区间");
+            // 非矩形ROI：只统计精确掩膜包含的原图像素中心，而不是整块外接矩形。
+            FIMImageAnalysisResult diagonal=FIMImageAnalyzer.AnalyzeMasked(
+                image,16,new FIMPixelRegion(0,0,3,3),(x,y)=>x==y);
+            Assert(diagonal.Statistics.PixelCount==4 &&
+                Near(diagonal.Statistics.Mean,8.5) &&
+                diagonal.Statistics.Min==1 && diagonal.Statistics.Max==16,
+                "精确掩膜只包含主对角四个原始像素");
+            long maskedBins=0;
+            foreach(long count in diagonal.Histogram.Bins)maskedBins+=count;
+            Assert(maskedBins==4,"ROI统计像素数与直方图计数必须一致");
+            Throws<InvalidOperationException>(()=>FIMImageAnalyzer.AnalyzeMasked(
+                image,16,new FIMPixelRegion(0,0,3,3),(x,y)=>false),
+                "空区域拒绝伪造全图统计结果");
+            Throws<ArgumentNullException>(()=>FIMImageAnalyzer.AnalyzeMasked(
+                image,16,new FIMPixelRegion(0,0,3,3),null),
+                "空ROI过滤器拒绝");
+            using(CancellationTokenSource stopped=new CancellationTokenSource())
+            {
+                stopped.Cancel();
+                Throws<OperationCanceledException>(()=>FIMImageAnalyzer.AnalyzeMasked(
+                    image,16,new FIMPixelRegion(0,0,3,3),
+                    (x,y)=>true,stopped.Token),"ROI耗时任务支持取消");
+            }
             FIMImageBuffer constant = new FIMImageBuffer(2, 2, FIMPixelFormat.Gray8, new byte[] { 5, 5, 5, 5 });
             Assert(FIMImageAnalyzer.GetHistogram(constant, 4).Bins[0] == 4, "常量直方图");
             FIMImageStatistics roi = FIMImageAnalyzer.Calculate(image, new FIMPixelRegion(1, 1, 2, 2));
