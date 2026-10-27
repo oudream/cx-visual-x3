@@ -522,6 +522,14 @@ namespace CxVisual.TestCenter.UI
             content.Children.Add(buttons);
             AutomationProperties.SetAutomationId(_overlayList,"TCT.Imaging.OverlayList");
             content.Children.Add(_overlayList);
+            content.Children.Add(Heading("选中对象属性（实际保存）"));
+            AutomationProperties.SetAutomationId(_overlayArgb,"TCT.Imaging.OverlayArgb");
+            AutomationProperties.SetAutomationId(_overlayLineWidth,"TCT.Imaging.OverlayLineWidth");
+            AutomationProperties.SetAutomationId(_overlayLabel,"TCT.Imaging.OverlayLabel");
+            content.Children.Add(Row(Label("ARGB"),_overlayArgb,Label("线宽(px)"),_overlayLineWidth));
+            content.Children.Add(Row(Label("文字/标签"),_overlayLabel));
+            Action(content,"应用对象属性","ApplyOverlayProperties",ApplyOverlayProperties);
+            content.Children.Add(Hint("选中图元后可修改8位ARGB颜色、像素线宽和标签；锁定对象不能更改。"));
             content.Children.Add(Hint("逐顶点模式：直接拖金色点移动；Shift＋点击边线插点；Alt＋点击金色点删点，或按索引使用上方按钮。锁定对象和自交/退化图形禁止修改；所有工具仍共享MVI原图坐标Store。"));
             return Scroll(content);
         }
