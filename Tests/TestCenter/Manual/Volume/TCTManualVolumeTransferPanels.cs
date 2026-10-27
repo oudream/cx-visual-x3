@@ -10,7 +10,7 @@ namespace CxVisual.TestCenter.UI
     /// <summary>沿用唯一FVO传递曲线，真实拖动节点后立即刷新CT3D LUT与GPU。</summary>
     public sealed partial class TCTManualVolumeViewerFrame
     {
-        private TCTVolumeCurveEditor _colorCurve,_scalarCurve,_gradientCurve;
+        private MPWVolumeCurveEditor _colorCurve,_scalarCurve,_gradientCurve;
         private readonly Slider _red=new Slider { Minimum=0,Maximum=255,Value=230 };
         private readonly Slider _green=new Slider { Minimum=0,Maximum=255,Value=194 };
         private readonly Slider _blue=new Slider { Minimum=0,Maximum=255,Value=68 };
@@ -22,9 +22,9 @@ namespace CxVisual.TestCenter.UI
         private void BuildTransferPanels(TabControl tabs)
         {
             // 与旧 WinForms 同样为独立五标签页，所有点直接修改唯一 FVOTransferFunctionSet。
-            _colorCurve=new TCTVolumeCurveEditor(_gpuSettings.TransferFunctions.Color.Points,true);
-            _scalarCurve=new TCTVolumeCurveEditor(_gpuSettings.TransferFunctions.ScalarOpacity.Points,false);
-            _gradientCurve=new TCTVolumeCurveEditor(_gpuSettings.TransferFunctions.GradientOpacity.Points,false);
+            _colorCurve=new MPWVolumeCurveEditor(_gpuSettings.TransferFunctions.Color.Points,true);
+            _scalarCurve=new MPWVolumeCurveEditor(_gpuSettings.TransferFunctions.ScalarOpacity.Points,false);
+            _gradientCurve=new MPWVolumeCurveEditor(_gpuSettings.TransferFunctions.GradientOpacity.Points,false);
             StackPanel threshold=new StackPanel { Margin=new Thickness(7) };
             MoveToTab(_gpuUseThreshold, (Panel)_gpuUseThreshold.Parent, threshold);
             Panel oldThresholdParent=(Panel)_gpuThreshold.Parent;

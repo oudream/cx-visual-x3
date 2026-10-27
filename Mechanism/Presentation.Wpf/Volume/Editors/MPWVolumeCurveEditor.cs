@@ -6,14 +6,14 @@ using System.Windows.Input;
 using System.Windows.Media;
 using CxVisual.Foundation.Volume;
 
-namespace CxVisual.TestCenter.UI
+namespace CxVisual.Mechanism.Presentation.Wpf.Volume
 {
     /// <summary>
     /// WPF中直接编辑既有FVO TransferPoint列表：左键拖节点、双击添加、右键删除。
     /// Color曲线只调X位置，RGB值在旁边三滑杆编辑；透明度曲线同时调整X/Y。
     /// 不复制数据模型、不引入适配层，编辑后直接生成真实GPU LUT。
     /// </summary>
-    public sealed class TCTVolumeCurveEditor : FrameworkElement
+    public sealed class MPWVolumeCurveEditor : FrameworkElement
     {
         private readonly List<FVOTransferPoint> _points;
         private readonly bool _colorMode;
@@ -21,7 +21,7 @@ namespace CxVisual.TestCenter.UI
         private bool _dragging;
         public event EventHandler Changed;
         public event EventHandler SelectionChanged;
-        public TCTVolumeCurveEditor(List<FVOTransferPoint> points,bool colorMode)
+        public MPWVolumeCurveEditor(List<FVOTransferPoint> points,bool colorMode)
         {
             if(points==null)throw new ArgumentNullException("points");
             _points=points; _colorMode=colorMode;

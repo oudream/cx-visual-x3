@@ -223,6 +223,26 @@ namespace CxVisual.TestCenter.UI
                 frame.LoadDemo();
                 Check(before != frame.Volume && !Object.ReferenceEquals(before,frame.Volume),
                     "更换体数据必须更新FVO对象与纹理贴图");
+                // 公共WPF曲线组件由MPW持有，不再在TestCenter维护第二份实现。
+                Check(typeof(CxVisual.Mechanism.Presentation.Wpf.Volume.
+                    MPWVolumeCurveEditor).Assembly ==
+                    typeof(CxVisual.Mechanism.Presentation.Wpf.Volume.
+                    MPWVolumeThresholdEditor).Assembly,
+                    "颜色/透明度曲线交互编辑器必须与阈值编辑器同属MPW程序集");
+                var standalonePoints=new List<FVOTransferPoint> {
+                    new FVOTransferPoint(0f,0f,FVOColor.White),
+                    new FVOTransferPoint(1f,1f,FVOColor.White)
+                };
+                var editor=new CxVisual.Mechanism.Presentation.Wpf.Volume.
+                    MPWVolumeCurveEditor(standalonePoints,false);
+                int changedEvents=0;
+                editor.Changed+=(sender,args)=>changedEvents++;
+                editor.AddControlPoint(.45f,.55f);
+                Check(editor.PointCount==3 && changedEvents==1 &&
+                    Object.ReferenceEquals(editor.SelectedPoint,standalonePoints[1]) &&
+                    Math.Abs(standalonePoints[1].X-.45f)<.0001 &&
+                    Math.Abs(standalonePoints[1].Y-.55f)<.0001,
+                    "正式MPW曲线编辑器新增节点应直接写回唯一FVO控制点并发出变化事件");
                 int scalarCount=frame.ScalarStopCount,colorCount=frame.ColorStopCount;
                 frame.AddScalarStopForTest(.72f,.6f);
                 frame.AddColorStopForTest(.38f);
