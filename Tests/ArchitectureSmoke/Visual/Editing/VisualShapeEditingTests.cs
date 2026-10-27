@@ -690,8 +690,62 @@ namespace CxVisual.Tests.ArchitectureSmoke
             finally{session.Close(true);}
         }
 
+        /// <summary>九种绘制工具共用的纯几何验收：拖动正反方向、正圆约束、连续点绘与非法输入。</summary>
+        private static void CheckDrawnGeometryContract()
+        {
+            var start=new FGEPoint2D(210,190);
+            var end=new FGEPoint2D(35,60);
+            double x,y;
+            MRCShapeDefinition rectangle=MVIShapeCatalog.CreateDrawn(MRCShapeKind.Rect,
+                new[]{start,end},false,out x,out y);
+            Check(Math.Abs(x-35)<1e-9&&Math.Abs(y-60)<1e-9&&
+                Math.Abs(rectangle.Bounds.Width-175)<1e-9&&
+                Math.Abs(rectangle.Bounds.Height-130)<1e-9,
+                "反方向矩形拖绘的World包围盒错误");
+            MRCShapeDefinition circle=MVIShapeCatalog.CreateDrawn(MRCShapeKind.Circle,
+                new[]{start,end},false,out x,out y);
+            Check(Math.Abs(circle.Bounds.Width-circle.Bounds.Height)<1e-9&&
+                Math.Abs(circle.Bounds.Width-175)<1e-9,
+                "圆形工具必须保持正圆");
+            MRCShapeDefinition square=MVIShapeCatalog.CreateDrawn(MRCShapeKind.Rect,
+                new[]{start,end},true,out x,out y);
+            Check(Math.Abs(square.Bounds.Width-square.Bounds.Height)<1e-9,
+                "Shift拖绘不能生成非正方形");
+            var points=new[]{new FGEPoint2D(20,40),
+                new FGEPoint2D(90,40),new FGEPoint2D(80,105)};
+            foreach(MRCShapeKind kind in new[]{
+                MRCShapeKind.Polyline,MRCShapeKind.Polygon,MRCShapeKind.Path})
+            {
+                MRCShapeDefinition path=MVIShapeCatalog.CreateDrawn(kind,points,
+                    false,out x,out y);
+                Check(path.Kind==kind&&Math.Abs(x-20)<1e-9&&
+                    Math.Abs(y-40)<1e-9&&path.Geometry.Commands.Count>=3,
+                    "连续点绘几何未保留三顶点与对象类别："+kind);
+            }
+            foreach(MRCShapeKind kind in new[]{
+                MRCShapeKind.Line,MRCShapeKind.Rect,MRCShapeKind.Circle,
+                MRCShapeKind.Ellipse,MRCShapeKind.Arc,MRCShapeKind.Bezier})
+            {
+                var definition=MVIShapeCatalog.CreateDrawn(kind,new[]{start,end},
+                    false,out x,out y);
+                Check(definition.Kind==kind&&definition.Geometry.Commands.Count>=2,
+                    "拖绘路径生成失败："+kind);
+            }
+            bool rejected=false;
+            try{MVIShapeCatalog.CreateDrawn(MRCShapeKind.Polygon,points.Take(2).ToArray(),
+                false,out x,out y);}
+            catch(ArgumentException){rejected=true;}
+            Check(rejected,"只有两个点的Polygon必须拒绝");
+            rejected=false;
+            try{MVIShapeCatalog.CreateDrawn(MRCShapeKind.Line,
+                new[]{start,start},false,out x,out y);}
+            catch(ArgumentException){rejected=true;}
+            Check(rejected,"零长度绘图不得进入工程历史");
+            Console.WriteLine("PASS Visual Draw: nine Shape geometry, reversed drag, shift/circle, multi-click and rejection");
+        }
         public static void Run()
         {
+            CheckDrawnGeometryContract();
             CheckNestedGroupVisualDuplicate();
             CheckVisualDuplicateAndInternalConnections();
             CheckVisualGapDistribution();

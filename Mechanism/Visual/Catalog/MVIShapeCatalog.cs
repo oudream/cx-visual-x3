@@ -69,8 +69,9 @@ namespace CxVisual.Mechanism.Visual
                 case MRCShapeKind.Polygon:
                 case MRCShapeKind.Path:
                 {
-                    FGEPoint2D[] local=worldPoints.Select(p=>
-                        new FGEPoint2D(p.X-x,p.Y-y)).ToArray();
+                    double originX=x,originY=y;
+                    FGEPoint2D[] local=worldPoints.Select(point=>
+                        new FGEPoint2D(point.X-originX,point.Y-originY)).ToArray();
                     if(kind==MRCShapeKind.Polygon)return MRCShapeDefinition.Polygon(local);
                     if(kind==MRCShapeKind.Polyline)return MRCShapeDefinition.Polyline(local);
                     var commands=new List<FGEPathCommand>{FGEPathCommand.Move(local[0])};
