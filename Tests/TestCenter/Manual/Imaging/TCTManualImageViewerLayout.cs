@@ -595,6 +595,12 @@ namespace CxVisual.TestCenter.UI
             content.Children.Add(filters);
             content.Children.Add(Row(Label("阈值范围使用窗位页的上下限")));
             Action(content,"阈值掩码","Threshold",Threshold);
+            content.Children.Add(Heading("区域生长  ·  原图矩形ROI"));
+            AutomationProperties.SetAutomationId(_growTolerance,"TCT.Imaging.GrowTolerance");
+            AutomationProperties.SetAutomationId(_growEightConnected,"TCT.Imaging.GrowEightConnected");
+            content.Children.Add(Row(Label("灰度容差"),_growTolerance,_growEightConnected));
+            Action(content,"按ROI中心种子生长","RegionGrow",RegionGrow);
+            content.Children.Add(Hint("先在“区域”页画/选矩形ROI，以其中点为种子；按原图灰度和4/8连通生长，生成独立Gray8掩码与像素范围，可在输出页保存。"));
             return Scroll(content);
         }
         private UIElement BuildOutputPage()
