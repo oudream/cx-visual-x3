@@ -316,6 +316,21 @@
                                                 Background="{DynamicResource StudioCardTintBrush}"
                                                 BorderBrush="{DynamicResource StudioBorderBrush}" BorderThickness="1">
                                             <StackPanel>
+                                                <TextBlock Text="&#xE8A7;" FontFamily="Segoe MDL2 Assets" FontSize="26"
+                                                           Foreground="{DynamicResource StudioAccentBrush}"/>
+                                                <TextBlock Text="运行变量 / MDS" FontSize="13" FontWeight="SemiBold" Margin="0,6,0,3"/>
+                                                <TextBlock Text="变量树、实时状态、变化派发、Provider映射"
+                                                           FontSize="11" TextWrapping="Wrap"
+                                                           Foreground="{DynamicResource StudioMutedTextBrush}"/>
+                                                <Button x:Name="StudioHomeVariablesOpen" Content="打开变量工作台"
+                                                        Tag="doc.variables" Click="OnStudioOpenDocumentClick"
+                                                        HorizontalAlignment="Left" Margin="0,9,0,0"/>
+                                            </StackPanel>
+                                        </Border>
+                                        <Border Width="235" CornerRadius="9" Padding="14" Margin="0,0,9,9"
+                                                Background="{DynamicResource StudioCardTintBrush}"
+                                                BorderBrush="{DynamicResource StudioBorderBrush}" BorderThickness="1">
+                                            <StackPanel>
                                                 <TextBlock Text="&#xE8A5;" FontFamily="Segoe MDL2 Assets" FontSize="26"
                                                            Foreground="{DynamicResource StudioAccentBrush}"/>
                                                 <TextBlock Text="工程资源" FontSize="13" FontWeight="SemiBold" Margin="0,6,0,3"/>

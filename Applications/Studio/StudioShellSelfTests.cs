@@ -69,6 +69,21 @@ namespace CxVisual.Studio
                     window.OpenStudioDocument("doc.flow");
                     Assert(window.GetStudioContentIds().Count(id => id == "doc.flow") == 1, "重复文档");
                 });
+                CheckStep("S1-03B 变量Studio工作台复用单一MDS Owner", () =>
+                {
+                    window.OpenStudioDocument("doc.variables");
+                    LayoutDocument active = window.StudioDock.Layout.ActiveContent as LayoutDocument;
+                    var variableView = active == null ? null :
+                        active.Content as CxVisual.Mechanism.Presentation.Wpf.Variables.MPWVariableWorkspaceControl;
+                    Assert(active != null && active.ContentId == "doc.variables" &&
+                        variableView != null && variableView.BoundScopeId == null,
+                        "Studio变量页不应自动生成第二套运行Scope");
+                    Assert(window.GetStudioContentIds().Count(id => id == "doc.variables") == 1,
+                        "同一变量工作区不得重复开Tab");
+                    Assert(window.TryCloseStudioDocument("doc.variables") &&
+                        !window.GetStudioContentIds().Contains("doc.variables"),
+                        "变量工作台关闭后应释放文档");
+                });
                 CheckStep("S1-04 共用MPW主题及Dock视觉不修改工程", () =>
                 {
                     Assert(window.StudioDock.AnchorableHeaderTemplate != null &&
