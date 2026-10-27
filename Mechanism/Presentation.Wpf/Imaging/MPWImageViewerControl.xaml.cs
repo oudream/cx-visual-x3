@@ -954,6 +954,49 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 MVIImageOverlayLayer.Roi, points, 3);
         }
 
+        /// <summary>
+        /// Ls2Ls分阶段四点输入。WPF左键与开发者API走同一条状态机；
+        /// 前三点返回null，第四点提交唯一MVI Store并返回测量对象。
+        /// </summary>
+        public MVIImageOverlayItem AppendLinePairPoint(FGEPoint2D point)
+        {
+            VerifyAccess();
+            FIMImageBuffer image=ActiveImage;
+            if(image==null || _toolMode!=MVIImageToolMode.LinePair)
+                throw new InvalidOperationException("请先加载图像并切换至两线测量模式。");
+            if(point.X<0 || point.Y<0 || point.X>=image.Width ||
+                point.Y>=image.Height)
+                throw new ArgumentOutOfRangeException("point","测量点必须位于原图有效范围。");
+            if(_polygonDraft.Count>=4)
+            {
+                _polygonDraft.Clear();_draftHover=null;
+            }
+            if(_polygonDraft.Count>0 && _polygonDraft[_polygonDraft.Count-1].Equals(point))
+                throw new ArgumentException("与上一测量点重合，请选择其它位置。","point");
+            _polygonDraft.Add(point);
+            _region=null;
+            if(_polygonDraft.Count<4)
+            {
+                _draftHover=null;DrawSelection();
+                PixelStatus.Text="两线测量：已确定"+_polygonDraft.Count+
+                    "/4点；"+(_polygonDraft.Count<2 ? "继续选择第一条线终点" :
+                        _polygonDraft.Count<3 ? "请选第二条线起点" : "请选第二条线终点");
+                return null;
+            }
+            try
+            {
+                CompletePointDraft(MVIImageToolMode.LinePair);
+                PixelStatus.Text="两线段测量完成，右侧对象列表可查看结果及导出CSV。";
+                return _selectedOverlayId.HasValue ?
+                    _overlays.Find(_selectedOverlayId.Value) : null;
+            }
+            catch
+            {
+                _polygonDraft.Clear();_draftHover=null;DrawSelection();
+                throw;
+            }
+        }
+
         /// <summary>完整Ls2Ls四点测量入口：两条独立有限线段与结构化结果保留原图坐标。</summary>
         public MVIImageOverlayItem AddLinePairMeasurement(IReadOnlyList<FGEPoint2D> points)
         {
@@ -2017,10 +2060,18 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 { ViewportRoot.CaptureMouse(); e.Handled=true; }
                 return;
             }
+            if(_toolMode==MVIImageToolMode.LinePair)
+            {
+                if(e.ChangedButton!=MouseButton.Left)return;
+                if(!TryImagePoint(pointer,out x,out y))return;
+                try { AppendLinePairPoint(new FGEPoint2D(x+0.5,y+0.5)); }
+                catch(ArgumentException error)
+                { PixelStatus.Text="两线测量输入无效："+error.Message; }
+                e.Handled=true;return;
+            }
             if (_toolMode == MVIImageToolMode.PolygonRoi ||
                 _toolMode == MVIImageToolMode.PolygonArea ||
-                _toolMode == MVIImageToolMode.Angle ||
-                _toolMode == MVIImageToolMode.LinePair)
+                _toolMode == MVIImageToolMode.Angle)
             {
                 if (!TryImagePoint(pointer, out x, out y)) return;
                 _region = null;
