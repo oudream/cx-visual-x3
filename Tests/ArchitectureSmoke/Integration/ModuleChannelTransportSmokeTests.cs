@@ -188,7 +188,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             }
             // Custom只有配置身份，没有已经注册的真实Provider，仍必须失败关闭。
             FTRCustomChannelConfiguration custom = new FTRCustomChannelConfiguration {
-                Id = "matrix-custom", CustomTypeId = "vendor.unregistered"
+                Id = "matrix-virtual", CustomTypeId = "vendor.unregistered"
             };
             MCNConnectorConfiguration unknown = new MCNConnectorConfiguration {
                 DisplayName = "未注册厂商通道", Channel = custom,
