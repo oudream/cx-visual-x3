@@ -375,6 +375,58 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 "新旧会话句柄按Generation隔离并且没有第二份值");
         }
 
+        // 可重复触发的注销/写入交错：Remove必须等待已进入的写入，
+        // 且不能在等待WPF/业务变化回调时占住Registry锁。
+        private static void VariableScopeConcurrentRemoveSmoke()
+        {
+            MDSVariableRegistry registry = new MDSVariableRegistry();
+            MDSVariableTable table = new MDSVariableTable("race-scope");
+            table.Define(new MDSVariableDefinition("Counter", typeof(int),
+                null, true, null, "counter-id"));
+            registry.Register(table);
+            MDSVariableScope scope = registry.FindScope("race-scope");
+            MDSVariableHandle<int> handle = registry.ResolveHandle<int>(
+                new CxVisual.Foundation.Data.Variables.FDVVariableKey("race-scope", "counter-id"));
+            using (ManualResetEventSlim entered = new ManualResetEventSlim(false))
+            using (ManualResetEventSlim release = new ManualResetEventSlim(false))
+            {
+                table.VariableChanged += name =>
+                {
+                    entered.Set();
+                    if (!release.Wait(TimeSpan.FromSeconds(10)))
+                        throw new TimeoutException("测试变化回调未获释放信号");
+                    Check(registry.FindScope("race-scope") == null,
+                        "注销期间变化回调可重新进入Registry且旧Scope已移除");
+                };
+                Task writer = Task.Run(() => handle.Update(1));
+                Task<bool> removing = null;
+                try
+                {
+                    Check(entered.Wait(TimeSpan.FromSeconds(5)), "写入已提交且回调正在进行");
+                    removing = Task.Run(() => registry.Remove("race-scope"));
+                    Check(SpinWait.SpinUntil(() => !scope.IsActive, 5000),
+                        "注销必须先关闭新写入门禁");
+                    Check(!removing.IsCompleted, "注销必须等待先前开始的操作结束");
+                    Reject<ObjectDisposedException>(() => handle.Update(2));
+                    Reject<ObjectDisposedException>(() => handle.Snapshot());
+                }
+                finally { release.Set(); }
+                Check(writer.Wait(5000) && removing != null && removing.Wait(5000) && removing.Result,
+                    "旧操作及注销应在释放回调后正常完成，不得死锁");
+                Check(table.Get<int>("Counter") == 1 && !handle.IsActive,
+                    "已开始的更新正常结束，注销后的句柄不得再改变旧运行值");
+            }
+            MDSVariableTable nextTable = new MDSVariableTable("race-scope");
+            nextTable.Define(new MDSVariableDefinition("Counter", typeof(int),
+                null, true, null, "counter-id"));
+            registry.Register(nextTable);
+            MDSVariableHandle<int> next = registry.ResolveHandle<int>(
+                new CxVisual.Foundation.Data.Variables.FDVVariableKey("race-scope", "counter-id"));
+            next.Update(3);
+            Check(next.Get() == 3 && table.Get<int>("Counter") == 1,
+                "旧Scope完成注销后新代次不得与旧变量交叉写入");
+        }
+
         private static void VariableMessageBridgeSmoke()
         {
             MDSVariableTable table = new MDSVariableTable("line1");
@@ -893,6 +945,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             VariableBatchSmoke();
             VariableMessageBridgeSmoke();
             VariableScopeSmoke();
+            VariableScopeConcurrentRemoveSmoke();
             VariableCasSmoke();
             VariableProviderSmoke();
             VariableBoundAccessSmoke();
