@@ -39,8 +39,8 @@
 | `MDSVariableSample<T>` | 已有 | MDSVariableContracts.cs；旧API兼容 |
 | `MDSVariableTable` | 已有/增构 | MDSVariableTable.cs；单变量、批量事务、一致快照、导入导出 |
 | `MDSVariableRegistry` | 已有/增构 | MDSVariableRegistry.cs；Scope注册与StableId检索 |
-| `MDSVariableScope` | 已有/待加固 | MDSVariableScope.cs；代次隔离已有；Scope入场租约与注销排空源码已增构，需固定SHA Windows与长稳复核 |
-| `MDSVariableHandle<T>` | 已有/待加固 | MDSVariableScope.cs；按Scope代次预绑定；新增无闭包栈上租约，阻止注销后进入并等待在途操作；待实测吞吐 |
+| `MDSVariableScope` | 已有/待加固 | MDSVariableScope.cs；代次隔离已有；Scope入场租约与注销排空已通过固定SHA Windows专项；长稳/HIL待验收 |
+| `MDSVariableHandle<T>` | 已有/待加固 | MDSVariableScope.cs；按Scope代次预绑定；无闭包栈上租约，阻止注销后进入并等待在途操作；专项回归及短时benchmark通过 |
 | `MDSVariableUpdateOptions` | 已有/不完整 | MDSVariableUpdates.cs；Source/Quality/CAS/Principal已落，来源时间与连续序列仍待落实 |
 | `MDSVariableUpdateResult` | 已有/待增构 | MDSVariableUpdates.cs；Revision/ValueChanged/Quality/RefreshUtc；诊断信息待统一 |
 | `MDSVariableBatch` | 已有 | MDSVariableBatch.cs；批次请求/Scope/BatchId |
@@ -166,3 +166,11 @@
 - 正反测试：[`dc212e2`](https://github.com/oudream/cx-visual-x3/commit/dc212e2a51f0608301c839bb98bf1e186444120f)与[`95e687d`](https://github.com/oudream/cx-visual-x3/commit/95e687d83853b3f698a06797ead967bc901ea00c)新增可控线程交错（写入回调中注销、拒绝后续读写、Provider热绑定注销、旧新Scope相互隔离及回调重入注销）。
 - **CI证据分级**：`8dbe8f9`变量专项 [#40480916501](https://github.com/oudream/cx-visual-x3/actions/runs/40480916501) Success，但不包含随后扩展的并发测试；`dc212e2`至`e205c90`的变量专项因**并行Graphics提交的MVIShapeCatalog.cs out参数Lambda编译错误**而失败，不能写为变量测试通过；该错误在后续另一个主题提交`bc54124`已有修复源码，仍需在包含本次测试的后续固定SHA重跑全量Windows验收。
 - **边界**：从变化回调的同一线程重入注销时，为避免自等待死锁允许已有回调返回之后完成余下通知；已经开始的写入按入场顺序归旧Scope，新的写入会拒绝。外部直接保留原始Table/Variable引用不受Registry注销隔离；物理设备、断电重放、长稳吞吐未验收。
+
+### 6.1 并发生命周期专项 Windows 闭环验收（固定 SHA）
+
+- **通过：** [变量 Windows 专项 #40481804560](https://github.com/oudream/cx-visual-x3/actions/runs/40481804560)，对应固定提交 [`e72fd95a`](https://github.com/oudream/cx-visual-x3/commit/e72fd95a2957268c1f25144da325ab0c98f6ade2)，Windows 2022、Release x64、.NET Framework 4.8。
+- 真实工作流全部阶段 success：完整 `CxVisual.Unified.sln` 重新编译、`--variables`（含Scope注销交错/回调重入/Provider热绑定测试）、默认 ArchitectureSmoke、`--variable-benchmark`、真正STA TestCenter变量工作区。
+- 固定运行日志：`PASS MDS V1.2 variable suite`，`PASS architecture tests`，`PASS MDS variable workspace and state projection`；性能短时测量为单线程1,000,000次 / 96.0ms（约10,413,065次/s，Gen0=0），4线程各250,000次 / 41.1ms（合计约24,304,585次/s），100,000次观察派发57ms左右（合并97,517，overflow=0，errors=0）。这些均为Runner上的短时测量，不代表工厂业务组合吞吐、p95/p99或长稳承诺。
+- 与前述`dc212e2`、`e205c90`等旧SHA失败相区别：当时由同时开发的图元/Studio源代码编译错误阻断，随后由对应Owner另行修复，并已包含在本次成功的`e72fd95a`快照。不能将旧SHA失败改写成成功。
+- **尚未覆盖**：程序强制退出/跨机消息耐久、可靠日志落盘回放、PLC与生产项目HIL、长期大负载GC/p99、MEM工程变量正式编辑发布和工业驱动故障恢复。这些继续维持VAR-G02～G06未完成门禁。
