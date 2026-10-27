@@ -143,6 +143,12 @@ namespace CxVisual.Mechanism.Data.Variables
             lock (_gate) return _items.Values.Select(x => x.EntryDefinition).ToArray();
         }
 
+        // Type-erased只读投影：避免每个专业UI再次写一套变量运行态或反射读取逻辑。
+        public IMDSVariableSnapshot Inspect(string name)
+        {
+            return (IMDSVariableSnapshot)ResolveEntry(name).SnapshotBoxed();
+        }
+
         internal MDSVariableBase ResolveEntry(string name)
         {
             lock (_gate)

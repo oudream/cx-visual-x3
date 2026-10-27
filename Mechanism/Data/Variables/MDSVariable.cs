@@ -63,8 +63,27 @@ namespace CxVisual.Mechanism.Data.Variables
         }
     }
 
+    // 供Studio、TestCenter及专业工具作类型无关观察；运行时值仍只有MDSVariable<T>一个Owner。
+    public interface IMDSVariableSnapshot
+    {
+        string VariableId { get; }
+        string Name { get; }
+        Type ValueType { get; }
+        object CurrentObject { get; }
+        object PreviousObject { get; }
+        object DefaultObject { get; }
+        bool HasValue { get; }
+        bool HasPreviousValue { get; }
+        bool HasDefaultValue { get; }
+        MDSVariableQuality Quality { get; }
+        DateTime RefreshUtc { get; }
+        DateTime ChangeUtc { get; }
+        string Source { get; }
+        long Revision { get; }
+    }
+
     /// <summary>单次锁内抓取的只读快照；byte[] 入参和出参均防御复制。</summary>
-    public sealed class MDSVariableSnapshot<T>
+    public sealed class MDSVariableSnapshot<T> : IMDSVariableSnapshot
     {
         private readonly T _value;
         private readonly T _previous;
@@ -92,6 +111,10 @@ namespace CxVisual.Mechanism.Data.Variables
 
         public string VariableId { get; private set; }
         public string Name { get; private set; }
+        public Type ValueType { get { return typeof(T); } }
+        public object CurrentObject { get { return HasValue ? (object)CurrentValue : null; } }
+        public object PreviousObject { get { return HasPreviousValue ? (object)PreviousValue : null; } }
+        public object DefaultObject { get { return HasDefaultValue ? (object)DefaultValue : null; } }
         public T CurrentValue { get { return MDSVariableValueRules.CopyTyped(_value); } }
         public T PreviousValue { get { return MDSVariableValueRules.CopyTyped(_previous); } }
         public T DefaultValue { get { return MDSVariableValueRules.CopyTyped(_defaultValue); } }

@@ -573,8 +573,24 @@ namespace CxVisual.Tests.ArchitectureSmoke
             }
         }
 
+        private static void VariableInspectableSmoke()
+        {
+            MDSVariableTable table = new MDSVariableTable("inspect");
+            table.Define(new MDSVariableDefinition("Counter", typeof(int), null, true, 5, "C"));
+            IMDSVariableSnapshot empty = table.Inspect("Counter");
+            Check(!empty.HasValue && empty.HasDefaultValue &&
+                (int)empty.DefaultObject == 5 && empty.ValueType == typeof(int),
+                "通用观察必须区分默认值与未采样的运行值");
+            table.Update<int>("Counter", 9);
+            IMDSVariableSnapshot ready = table.Inspect("Counter");
+            Check((int)ready.CurrentObject == 9 && !ready.HasPreviousValue &&
+                ready.Quality == MDSVariableQuality.Good && ready.VariableId == "C",
+                "类型无关观察必须返回唯一Owner的只读快照");
+        }
+
         public static void Run()
         {
+            VariableInspectableSmoke();
             VariableOutOfOrderSmoke();
             VariableRestoreSmoke();
             IndustrialDeviceVariableAdapterSmoke();
