@@ -147,7 +147,8 @@ namespace CxVisual.TestCenter.UI
                     RoutedEvent=System.Windows.Input.Keyboard.KeyDownEvent
                 });
                 Check(frame.ViewState.SliceZ==17 &&
-                      frame.StatusMessage.Contains("整数"),
+                      xyNavigation.LastValidationError!=null &&
+                      xyNavigation.LastValidationError.Contains("整数"),
                     "非法索引输入必须拒绝修改原始MVI状态并给出反馈");
                 xyNavigation.SliceSlider.Value=12;
                 Check(frame.ViewState.SliceZ==12,

@@ -24,6 +24,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
         private bool _syncing;
 
         public event Action<string> ValidationFailed;
+        public string LastValidationError { get; private set; }
 
         public MPWVolumeSliceNavigationControl(FVOSlicePlane plane,
             MPWImageViewerControl viewer, Action toggleView)
@@ -66,8 +67,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
                 int desired;
                 if(!Int32.TryParse(_index.Text,out desired))
                 {
+                    LastValidationError="跳转索引必须为整数。";
                     var invalid=ValidationFailed;
-                    if(invalid!=null)invalid("跳转索引必须为整数。");
+                    if(invalid!=null)invalid(LastValidationError);
                 }
                 else SetSliceIndex(desired);
                 e.Handled=true;
@@ -90,6 +92,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
                 throw new ArgumentException("体数据与MVI状态应同时绑定/解除。");
             _volume=volume;
             _state=state;
+            LastValidationError=null;
             Refresh();
         }
 
@@ -120,6 +123,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
         {
             if(_volume==null || _state==null)
                 throw new InvalidOperationException("必须先绑定体数据。");
+            LastValidationError=null;
             switch(Plane)
             {
                 case FVOSlicePlane.XY:_state.SetSliceZ(index,_volume);break;
