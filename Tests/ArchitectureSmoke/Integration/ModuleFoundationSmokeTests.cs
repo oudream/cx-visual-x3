@@ -341,11 +341,16 @@ namespace CxVisual.Tests.ArchitectureSmoke
             MDSVariableScope original = registry.FindScope("machine");
             CxVisual.Foundation.Data.Variables.FDVVariableKey key =
                 new CxVisual.Foundation.Data.Variables.FDVVariableKey("machine", "pressure-stable");
-            registry.Resolve<double>(key).Update(0.5);
-            Check(original.Resolve<double>(key).Get() == 0.5, "按Scope和稳定ID指向同一个正式变量");
+            MDSVariableHandle<double> firstHandle = registry.ResolveHandle<double>(key);
+            firstHandle.Update(0.5);
+            Check(firstHandle.IsActive && firstHandle.Snapshot().CurrentValue == 0.5 &&
+                original.Resolve<double>(key).Get() == 0.5, "按Scope和稳定ID指向同一个正式变量");
             Reject<InvalidOperationException>(() => registry.Resolve<double>(
                 new CxVisual.Foundation.Data.Variables.FDVVariableKey("wrong", "pressure-stable")));
             Check(registry.Remove("machine") && !original.IsActive, "注销旧Scope应使代次失效");
+            Check(!firstHandle.IsActive, "旧代次Handle必须失效");
+            Reject<ObjectDisposedException>(() => firstHandle.Get());
+            Reject<ObjectDisposedException>(() => firstHandle.Update(0.8));
             Reject<ObjectDisposedException>(() => original.Resolve<double>(key));
             MDSVariableTable fresh = new MDSVariableTable("machine");
             fresh.Define(new MDSVariableDefinition("Pressure", typeof(double),
@@ -353,9 +358,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
             registry.Register(fresh);
             Check(registry.FindScope("machine").Generation != original.Generation,
                 "重复Scope名称不复用上代Generation");
-            registry.Resolve<double>(key).Update(0.7);
-            Check(registry.Resolve<double>(key).Get() == 0.7 &&
-                oldTable.Get<double>("Pressure") == 0.5, "新旧会话不串写");
+            MDSVariableHandle<double> newHandle = registry.ResolveHandle<double>(key);
+            newHandle.Update(0.7);
+            Check(newHandle.IsActive && newHandle.Generation != firstHandle.Generation &&
+                newHandle.Get() == 0.7 && oldTable.Get<double>("Pressure") == 0.5,
+                "新旧会话句柄按Generation隔离并且没有第二份值");
         }
 
         private static void VariableMessageBridgeSmoke()

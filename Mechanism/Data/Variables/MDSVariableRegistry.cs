@@ -48,6 +48,12 @@ namespace CxVisual.Mechanism.Data.Variables
             if (scope == null) throw new InvalidOperationException("变量Scope不存在: " + key.ScopeId);
             return scope.Resolve<T>(key);
         }
+        public MDSVariableHandle<T> ResolveHandle<T>(FDVVariableKey key)
+        {
+            MDSVariableScope scope = FindScope(key.ScopeId);
+            if (scope == null) throw new InvalidOperationException("变量Scope不存在: " + key.ScopeId);
+            return scope.ResolveHandle<T>(key);
+        }
         public bool Remove(string scopeId)
         {
             if (string.IsNullOrWhiteSpace(scopeId)) return false;
