@@ -39,8 +39,8 @@
 | `MDSVariableSample<T>` | 已有 | MDSVariableContracts.cs；旧API兼容 |
 | `MDSVariableTable` | 已有/增构 | MDSVariableTable.cs；单变量、批量事务、一致快照、导入导出 |
 | `MDSVariableRegistry` | 已有/增构 | MDSVariableRegistry.cs；Scope注册与StableId检索 |
-| `MDSVariableScope` | 已有/待加固 | MDSVariableScope.cs；代次隔离已落；跨线程注销/写入线性化需加强 |
-| `MDSVariableHandle<T>` | 已有/待加固 | MDSVariableScope.cs；按Scope代次预绑定；跨线程注销原子性待强化 |
+| `MDSVariableScope` | 已有/待加固 | MDSVariableScope.cs；代次隔离已有；Scope入场租约与注销排空源码已增构，需固定SHA Windows与长稳复核 |
+| `MDSVariableHandle<T>` | 已有/待加固 | MDSVariableScope.cs；按Scope代次预绑定；新增无闭包栈上租约，阻止注销后进入并等待在途操作；待实测吞吐 |
 | `MDSVariableUpdateOptions` | 已有/不完整 | MDSVariableUpdates.cs；Source/Quality/CAS/Principal已落，来源时间与连续序列仍待落实 |
 | `MDSVariableUpdateResult` | 已有/待增构 | MDSVariableUpdates.cs；Revision/ValueChanged/Quality/RefreshUtc；诊断信息待统一 |
 | `MDSVariableBatch` | 已有 | MDSVariableBatch.cs；批次请求/Scope/BatchId |
@@ -70,7 +70,7 @@
 | `IMDSVariableProvider` | 已有/不完整 | Providers/MDSVariableProviderHost.cs；Start/Stop/Dispose/Publish，通用读写/查询能力需扩展 |
 | `MDSVariableProviderDescriptor` | 已有 | Providers/MDSVariableProviderHost.cs；只读身份/类型/绑定数/运行标志 |
 | `MDSVariableProviderRegistry` | 职责合并 | Host承担注册、查询、Unregister，避免第二套Owner |
-| `MDSVariableProviderHost` | 已有/待加固 | 生命周期/代次/白名单映射；异常隔离与恢复策略需完善 |
+| `MDSVariableProviderHost` | 已有/待加固 | 生命周期/代次/白名单映射；热写入已复用Scope租约，断连重试及复杂故障恢复仍待完善 |
 | `MDSVariableProviderHealth` | 已有/待增构 | 运行/成功/拒绝计数与最后故障；断连时间/重试/质量聚合需扩展 |
 | `MDSVariableProviderBinding` | 已有 | Scope+Point+Variable对应及原Scope有效性检查 |
 | `MDSProtocolDataTargetAccess` | 已有 | MPA与MDS绑定，读写已去逐次反射 |
@@ -142,7 +142,7 @@
 | VAR-G02 工程到运行 | MEM工程变量Schema→MDS运行定义/Scope/Tree的真实编译、映射变更、保存/撤销/重建、Index/Alias |
 | VAR-G03 变化处理 | `MDSVariableChangeBatch`、可执行`MDSVariableDispatchPolicy`、Immediate/Batch、Reliable确认/拒绝/背压/故障恢复/长期顺序及p99 |
 | VAR-G04 Provider/生产 | x2目录元数据/读写API补全、设备状态时间戳、断连重试健康、CxECTStudio和气密项目实际驱动/命令/通讯反例 |
-| VAR-G05 运行快照 | Batch/Restore已形成独立接口，仍须压力与崩溃恢复、跨线程注销时的写入线性化、持久化格式及原始Schema校验 |
+| VAR-G05 运行快照 | Batch/Restore已形成独立接口；Scope/Handle与Provider注销并发已补入场和排空测试，仍待Windows CI、压力与崩溃恢复、持久化格式及原始Schema校验 |
 | VAR-G06 Studio/TestCenter | 真实MEM变量编辑器、Provider Mapping编辑/权限、防重复注册、错误状态诊断，Windows UIA/持续吞吐/p99/实机HIL |
 
 ## 四、已验证证据与免责声明
@@ -158,3 +158,11 @@
 2. [`779633f`](https://github.com/oudream/cx-visual-x3/commit/779633f605fc4acb6abbbdb92bc58b9905a433f0)：新增`MDSVariableDispatchPolicy`和`MDSVariableDispatchRoute`，清楚区分Immediate提交线程通知、Batch按批提交、LatestOnly有界合并和Reliable显式Ack，不另造消息中心；[`Windows变量专项#40470851537：Success`](https://github.com/oudream/cx-visual-x3/actions/runs/40470851537)。
 3. [`3094ebe`](https://github.com/oudream/cx-visual-x3/commit/3094ebeede38b423e6700d1bfaa8a4cc7b8fd2f4)：变量定义支持`hasDefaultValue=true`且`defaultValue=null`，区分显式null和未指定默认值，贯通`MDSVariable<T>`快照和恢复；对应Windows CI尚需按固定SHA读取结论。
 4. 全类清单**仍不是全部生产验收完成**：MEM工程变量编译/编辑、Provider真实设备读写/断连恢复、可靠队列的持久重放与ExactlyOnce边界、复杂对象适配、长稳p99/实机测试仍未关闭。继续按VAR-G01～G06逐项验证，不以类名数量作为完工判断。
+
+## 六、2026-10-27 Scope/Handle/Provider 并发生命周期补强（本次继续开发）
+
+- 源码提交：[`468c270`](https://github.com/oudream/cx-visual-x3/commit/468c270bc28dbe7b2fe95360fd3d3c8f836c38de)、[`68c8661`](https://github.com/oudream/cx-visual-x3/commit/68c86616663521c43b48f014fdca0ebd8ada4427)、[`8dbe8f9`](https://github.com/oudream/cx-visual-x3/commit/8dbe8f94e807e7ebb0a8fd40b75055a598bf223e)、[`e786383`](https://github.com/oudream/cx-visual-x3/commit/e786383f5dabff6b7c0f3ccc0708cb5099ce9e56)、[`fa3dce9`](https://github.com/oudream/cx-visual-x3/commit/fa3dce96e0670d56645d900a915763f7950a4321)、[`e205c90`](https://github.com/oudream/cx-visual-x3/commit/e205c90a80ec8944b225da01efd99697acb14e66)。
+- 原子入场与失效：`MDSVariableScope.Acquire` 使用短锁登记在途操作；注销先封闭新入场，在Registry锁之外等待在途操作结束。原有直接持有Table/Variable的历史兼容行为不变，正式Scope Handle和Provider访问通过租约。热句柄采用栈上Lease，避免每次更新分配委托/闭包。Provider旧热绑定失效仍抛`InvalidOperationException`。
+- 正反测试：[`dc212e2`](https://github.com/oudream/cx-visual-x3/commit/dc212e2a51f0608301c839bb98bf1e186444120f)与[`95e687d`](https://github.com/oudream/cx-visual-x3/commit/95e687d83853b3f698a06797ead967bc901ea00c)新增可控线程交错（写入回调中注销、拒绝后续读写、Provider热绑定注销、旧新Scope相互隔离及回调重入注销）。
+- **CI证据分级**：`8dbe8f9`变量专项 [#40480916501](https://github.com/oudream/cx-visual-x3/actions/runs/40480916501) Success，但不包含随后扩展的并发测试；`dc212e2`至`e205c90`的变量专项因**并行Graphics提交的MVIShapeCatalog.cs out参数Lambda编译错误**而失败，不能写为变量测试通过；该错误在后续另一个主题提交`bc54124`已有修复源码，仍需在包含本次测试的后续固定SHA重跑全量Windows验收。
+- **边界**：从变化回调的同一线程重入注销时，为避免自等待死锁允许已有回调返回之后完成余下通知；已经开始的写入按入场顺序归旧Scope，新的写入会拒绝。外部直接保留原始Table/Variable引用不受Registry注销隔离；物理设备、断电重放、长稳吞吐未验收。
