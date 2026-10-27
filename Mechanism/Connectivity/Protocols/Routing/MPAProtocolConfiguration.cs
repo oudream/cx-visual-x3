@@ -1,3 +1,4 @@
+using CxVisual.Foundation.Transport;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
@@ -119,13 +120,13 @@ namespace CxVisual.Mechanism.Connectivity
                     throw new ArgumentException("映射点引用不存在：" + item.PointRef);
             }
         }
-        public void ValidateCompatibility(MPAProtocolDescriptor descriptor, MCCChannelTypeDescriptor channel)
+        public void ValidateCompatibility(MPAProtocolDescriptor descriptor, FTRChannelTypeDescriptor channel)
         {
             Validate();
             if (descriptor == null || descriptor.Id != ProtocolTypeId)
                 throw new ArgumentException("规约类型描述不匹配");
             if (channel == null) throw new ArgumentException("Connector 必须绑定一个通道");
-            if (descriptor.RequiredIO != MCCIOCapabilities.None &&
+            if (descriptor.RequiredIO != FTRIOCapabilities.None &&
                 (channel.IO & descriptor.RequiredIO) != descriptor.RequiredIO)
                 throw new ArgumentException("通道不满足规约所需 I/O 能力");
         }
@@ -133,13 +134,13 @@ namespace CxVisual.Mechanism.Connectivity
 
     public sealed class MPAProtocolRoute
     {
-        public MPAProtocolRoute(string protocolId, MCCSubChannelAddress channelAddress, MPAProtocolAddress protocolAddress = null)
+        public MPAProtocolRoute(string protocolId, FTRSubChannelAddress channelAddress, MPAProtocolAddress protocolAddress = null)
         {
             if (string.IsNullOrWhiteSpace(protocolId)) throw new ArgumentException("Protocol Id 必填");
             ProtocolId = protocolId.Trim(); ChannelAddress = channelAddress; ProtocolAddress = protocolAddress;
         }
         public string ProtocolId { get; private set; }
-        public MCCSubChannelAddress ChannelAddress { get; private set; }
+        public FTRSubChannelAddress ChannelAddress { get; private set; }
         public MPAProtocolAddress ProtocolAddress { get; private set; }
     }
 }

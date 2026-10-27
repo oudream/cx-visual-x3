@@ -1,3 +1,4 @@
+using CxVisual.Foundation.Transport;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -13,7 +14,7 @@ namespace CxVisual.Mechanism.Connectivity
     {
         public MCNConnectorModule(MFMModuleDescriptor descriptor,
             MCNConnectorConfiguration configuration,
-            IMCCChannel channel, IMPAProtocolDefinition protocol)
+            IFTRChannel channel, IMPAProtocolDefinition protocol)
         {
             if (descriptor == null) throw new ArgumentNullException("descriptor");
             if (configuration == null) throw new ArgumentNullException("configuration");
@@ -33,13 +34,13 @@ namespace CxVisual.Mechanism.Connectivity
             bool typeMatch = false;
             switch (configuration.Channel.Kind)
             {
-                case MCCChannelKind.Virtual:
-                    typeMatch = channel is MCCVirtualChannel; break;
-                case MCCChannelKind.TcpClient: typeMatch = channel is MCCTcpClientChannel; break;
-                case MCCChannelKind.TcpServer: typeMatch = channel is MCCTcpServerChannel; break;
-                case MCCChannelKind.Udp: typeMatch = channel is MCCUdpChannel; break;
-                case MCCChannelKind.UdpServer: typeMatch = channel is MCCUdpServerChannel; break;
-                case MCCChannelKind.Serial: typeMatch = channel is MCCSerialChannel; break;
+                case FTRChannelKind.Virtual:
+                    typeMatch = channel is FTRVirtualChannel; break;
+                case FTRChannelKind.TcpClient: typeMatch = channel is FTRTcpClientChannel; break;
+                case FTRChannelKind.TcpServer: typeMatch = channel is FTRTcpServerChannel; break;
+                case FTRChannelKind.Udp: typeMatch = channel is FTRUdpChannel; break;
+                case FTRChannelKind.UdpServer: typeMatch = channel is FTRUdpServerChannel; break;
+                case FTRChannelKind.Serial: typeMatch = channel is FTRSerialChannel; break;
             }
             if (!typeMatch)
                 throw new NotSupportedException("通道实例与已实现的类型不匹配或尚无真实 Provider");
@@ -49,20 +50,20 @@ namespace CxVisual.Mechanism.Connectivity
         }
         public MFMModuleDescriptor Descriptor { get; private set; }
         public MCNConnectorConfiguration Configuration { get; private set; }
-        public IMCCChannel Channel { get; private set; }
+        public IFTRChannel Channel { get; private set; }
         public IMPAProtocolDefinition Protocol { get; private set; }
         public IReadOnlyList<MPAPointDefinition> Points { get; private set; }
         private readonly object _lifecycleGate = new object();
         private bool _started;
         public event Action<byte[]> PayloadReceived;
         // 一对多连接需要把来源 SubChannel 交还调用者，以便定向响应与变量作用域隔离。
-        public event Action<MCCSubChannelAddress, byte[]> PayloadReceivedFrom;
+        public event Action<FTRSubChannelAddress, byte[]> PayloadReceivedFrom;
         public bool IsStarted { get { lock (_lifecycleGate) return _started; } }
 
         // 不创建私有线程或运行队列；直接调已装配的 Channel/Protocol Owner。
         public async Task StartAsync(CancellationToken ct)
         {
-            IMCCChannelTransport transport = Channel as IMCCChannelTransport;
+            IFTRChannelTransport transport = Channel as IFTRChannelTransport;
             if (transport == null || !(Protocol is IMPAProtocol))
                 throw new NotSupportedException("尚未装配可执行的 Channel/Protocol 组合");
             lock (_lifecycleGate)
@@ -71,7 +72,7 @@ namespace CxVisual.Mechanism.Connectivity
                 _started = true;
             }
             transport.Received += HandleReceived;
-            MCCMultiChannelBase multiPeer = transport as MCCMultiChannelBase;
+            FTRMultiChannelBase multiPeer = transport as FTRMultiChannelBase;
             if (multiPeer != null) multiPeer.PeerRemoved += HandlePeerRemoved;
             try { await transport.OpenAsync(ct).ConfigureAwait(false); }
             catch
@@ -87,7 +88,7 @@ namespace CxVisual.Mechanism.Connectivity
 
         public async Task StopAsync(CancellationToken ct)
         {
-            IMCCChannelTransport transport = Channel as IMCCChannelTransport;
+            IFTRChannelTransport transport = Channel as IFTRChannelTransport;
             if (transport == null) throw new NotSupportedException("通道不支持生命周期");
             lock (_lifecycleGate)
             {
@@ -95,7 +96,7 @@ namespace CxVisual.Mechanism.Connectivity
                 _started = false;
             }
             transport.Received -= HandleReceived;
-            MCCMultiChannelBase multiPeer = transport as MCCMultiChannelBase;
+            FTRMultiChannelBase multiPeer = transport as FTRMultiChannelBase;
             if (multiPeer != null) multiPeer.PeerRemoved -= HandlePeerRemoved;
             try { await transport.CloseAsync(ct).ConfigureAwait(false); }
             finally
@@ -106,19 +107,19 @@ namespace CxVisual.Mechanism.Connectivity
             }
         }
 
-        private void HandlePeerRemoved(MCCSubChannelAddress address)
+        private void HandlePeerRemoved(FTRSubChannelAddress address)
         {
             IMPAProtocolSessionCleanup cleanup = Protocol as IMPAProtocolSessionCleanup;
             if (cleanup != null) cleanup.Reset(address);
         }
-        private void HandleReceived(MCCChannelReceiveContext received)
+        private void HandleReceived(FTRChannelReceiveContext received)
         {
             IMPAProtocol processor = (IMPAProtocol)Protocol;
             var context = new MPAProtocolContext(Configuration.Protocol.Id, Channel.SessionId.ToString("N"),
                 received.Address, received.CorrelationId);
             foreach (byte[] payload in processor.ProcessReceived(received, context))
             {
-                Action<MCCSubChannelAddress, byte[]> routed = PayloadReceivedFrom;
+                Action<FTRSubChannelAddress, byte[]> routed = PayloadReceivedFrom;
                 if (routed != null) routed(received.Address, (byte[])payload.Clone());
                 Action<byte[]> handler = PayloadReceived;
                 if (handler != null) handler((byte[])payload.Clone());
@@ -126,13 +127,13 @@ namespace CxVisual.Mechanism.Connectivity
         }
 
         public Task SendPayloadAsync(byte[] payload, CancellationToken ct)
-        { return SendPayloadAsync(payload, new MCCSubChannelAddress(Channel.Id), ct); }
+        { return SendPayloadAsync(payload, new FTRSubChannelAddress(Channel.Id), ct); }
 
         // MultiPeer Channel 需要明确的运行期 SubChannel 地址，绝不广播到未知客户端。
-        public async Task SendPayloadAsync(byte[] payload, MCCSubChannelAddress destination, CancellationToken ct)
+        public async Task SendPayloadAsync(byte[] payload, FTRSubChannelAddress destination, CancellationToken ct)
         {
             IMPAProtocol processor = Protocol as IMPAProtocol;
-            IMCCChannelTransport channel = Channel as IMCCChannelTransport;
+            IFTRChannelTransport channel = Channel as IFTRChannelTransport;
             if (processor == null || channel == null) throw new NotSupportedException("不支持实时规约收发");
             if (!IsStarted) throw new InvalidOperationException("Connector 尚未启动");
             if (destination == null || destination.ChannelId != Channel.Id)
@@ -145,13 +146,13 @@ namespace CxVisual.Mechanism.Connectivity
         // Connector 唯一的物理事务入口：复用当前 Channel 接收事件驱动 Protocol，
         // 不为每个请求另订阅 Received、不创建第二个 Connector 或 Socket。
         public Task<MPAProtocolOperationResult> RequestAsync(
-            MPAProtocolOperationRequest request, MCCSubChannelAddress destination, CancellationToken ct)
+            MPAProtocolOperationRequest request, FTRSubChannelAddress destination, CancellationToken ct)
         {
             IMPAProtocolRequester requester = Protocol as IMPAProtocolRequester;
-            IMCCChannelTransport transport = Channel as IMCCChannelTransport;
+            IFTRChannelTransport transport = Channel as IFTRChannelTransport;
             if (requester == null || transport == null)
                 throw new NotSupportedException("当前 Protocol 未实现设备级请求响应");
-            if (!IsStarted || transport.State != MCCChannelState.Open)
+            if (!IsStarted || transport.State != FTRChannelState.Open)
                 throw new InvalidOperationException("Connector 尚未启动或通道不可用");
             if (destination == null || destination.ChannelId != Channel.Id)
                 throw new ArgumentException("请求目标不属于 Connector Channel");
@@ -162,13 +163,13 @@ namespace CxVisual.Mechanism.Connectivity
         }
 
         public Task<object> ReadDevicePointAsync(
-            string pointName, IMPADataTargetAccess access, MCCSubChannelAddress destination, CancellationToken ct)
+            string pointName, IMPADataTargetAccess access, FTRSubChannelAddress destination, CancellationToken ct)
         {
             IMPAProtocolPointAccess protocol = Protocol as IMPAProtocolPointAccess;
-            IMCCChannelTransport transport = Channel as IMCCChannelTransport;
+            IFTRChannelTransport transport = Channel as IFTRChannelTransport;
             if (protocol == null || transport == null)
                 throw new NotSupportedException("当前规约没有设备点表读取能力");
-            if (!IsStarted || transport.State != MCCChannelState.Open)
+            if (!IsStarted || transport.State != FTRChannelState.Open)
                 throw new InvalidOperationException("Connector 未启动");
             if (destination == null || destination.ChannelId != Channel.Id)
                 throw new ArgumentException("点操作目标 Channel 不匹配");
@@ -177,13 +178,13 @@ namespace CxVisual.Mechanism.Connectivity
                 configuration: Configuration.Protocol, dataAccess: access, transport: transport), ct);
         }
         public Task<MPAProtocolOperationResult> WriteDevicePointAsync(
-            string pointName, IMPADataTargetAccess access, MCCSubChannelAddress destination, CancellationToken ct)
+            string pointName, IMPADataTargetAccess access, FTRSubChannelAddress destination, CancellationToken ct)
         {
             IMPAProtocolPointAccess protocol = Protocol as IMPAProtocolPointAccess;
-            IMCCChannelTransport transport = Channel as IMCCChannelTransport;
+            IFTRChannelTransport transport = Channel as IFTRChannelTransport;
             if (protocol == null || transport == null)
                 throw new NotSupportedException("当前规约没有设备点表写入能力");
-            if (!IsStarted || transport.State != MCCChannelState.Open)
+            if (!IsStarted || transport.State != FTRChannelState.Open)
                 throw new InvalidOperationException("Connector 未启动");
             if (destination == null || destination.ChannelId != Channel.Id)
                 throw new ArgumentException("点操作目标 Channel 不匹配");
@@ -204,7 +205,7 @@ namespace CxVisual.Mechanism.Connectivity
             if (processor == null) throw new NotSupportedException("规约未提供正式 Send 处理");
             byte[] frame = processor.PrepareSend(payload, new MPAProtocolContext(
                 Configuration.Protocol.Id, Channel.SessionId.ToString("N"),
-                new MCCSubChannelAddress(Channel.Id), correlationId));
+                new FTRSubChannelAddress(Channel.Id), correlationId));
             Channel.Send(frame, correlationId);
         }
     }

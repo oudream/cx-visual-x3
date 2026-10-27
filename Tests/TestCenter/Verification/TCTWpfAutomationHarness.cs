@@ -1,3 +1,4 @@
+using CxVisual.Foundation.Transport;
 using System;
 using CxVisual.Mechanism.Connectivity;
 using System.Diagnostics;
@@ -1153,15 +1154,15 @@ namespace CxVisual.TestCenter.UI
             }
             if (!closed) throw new InvalidOperationException("Manual disconnect did not close Owner");
             // 与真实右侧操作中心连通的三拓扑P0验收，不打开未经授权的物理Socket。
-            MCCSubChannelAddress savedPeer = null;
+            FTRSubChannelAddress savedPeer = null;
             window.Dispatcher.Invoke(new Action(() => {
                 System.Windows.Controls.TabControl tabs =
                     window.DocumentHost.Content as System.Windows.Controls.TabControl;
                 TCTManualChannelFrame page = tabs.Items.OfType<System.Windows.Controls.TabItem>()
                     .Select(x => x.Content).OfType<TCTManualChannelFrame>().Single();
-                page.SelectChannelKind(MCCChannelKind.TcpServer);
+                page.SelectChannelKind(FTRChannelKind.TcpServer);
                 page.SetPeerInput("client01", "127.0.0.1:10001");
-                if (page.SelectedTopology != MCCChannelTopology.MultiPeer)
+                if (page.SelectedTopology != FTRChannelTopology.MultiPeer)
                     throw new InvalidOperationException("MultiPeer Channel类型选择不可用");
             }));
             if (Find(root, "TCT.Channel.Kind").Current.ControlType != ControlType.ComboBox)
@@ -1244,9 +1245,9 @@ namespace CxVisual.TestCenter.UI
                     window.DocumentHost.Content as System.Windows.Controls.TabControl;
                 TCTManualChannelFrame page = tabs.Items.OfType<System.Windows.Controls.TabItem>()
                     .Select(x => x.Content).OfType<TCTManualChannelFrame>().Single();
-                page.SelectChannelKind(MCCChannelKind.Serial);
+                page.SelectChannelKind(FTRChannelKind.Serial);
                 page.SetStationInput("7");
-                if (page.SelectedTopology != MCCChannelTopology.SharedBus)
+                if (page.SelectedTopology != FTRChannelTopology.SharedBus)
                     throw new InvalidOperationException("Serial拓扑不是SharedBus");
             }));
             InvokePattern addStation = Find(root, "TCT.Manual.Action.channel.add-station")
@@ -1302,8 +1303,8 @@ namespace CxVisual.TestCenter.UI
                 TCTManualChannelFrame page = tabs.Items.OfType<System.Windows.Controls.TabItem>()
                     .Select(x => x.Content).OfType<TCTManualChannelFrame>().Single();
                 page.VerifyInvalidOperation();
-                page.SelectChannelKind(MCCChannelKind.TcpClient);
-                if (page.IsConnected || page.SelectedTopology != MCCChannelTopology.SinglePeer)
+                page.SelectChannelKind(FTRChannelKind.TcpClient);
+                if (page.IsConnected || page.SelectedTopology != FTRChannelTopology.SinglePeer)
                     throw new InvalidOperationException("TCPClient不得假装已联机");
             }));
             if (Find(root, "TCT.Manual.Action.connect").Current.IsEnabled)

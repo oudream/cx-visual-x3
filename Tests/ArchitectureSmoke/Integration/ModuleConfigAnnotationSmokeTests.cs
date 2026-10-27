@@ -1,3 +1,4 @@
+using CxVisual.Foundation.Transport;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -43,25 +44,25 @@ namespace CxVisual.Tests.ArchitectureSmoke
             }
 
             // 每种专属 Channel 配置必须保留具体 CLR 类型且往返不混入别种通道参数。
-            foreach (MCCChannelKind kind in new[] { MCCChannelKind.Virtual, MCCChannelKind.TcpClient,
-                MCCChannelKind.TcpServer, MCCChannelKind.Udp, MCCChannelKind.UdpServer, MCCChannelKind.Serial,
-                MCCChannelKind.HttpClient, MCCChannelKind.WebSocketClient, MCCChannelKind.NamedPipeClient,
-                MCCChannelKind.NamedPipeServer, MCCChannelKind.Replay, MCCChannelKind.UdpMulticast })
+            foreach (FTRChannelKind kind in new[] { FTRChannelKind.Virtual, FTRChannelKind.TcpClient,
+                FTRChannelKind.TcpServer, FTRChannelKind.Udp, FTRChannelKind.UdpServer, FTRChannelKind.Serial,
+                FTRChannelKind.HttpClient, FTRChannelKind.WebSocketClient, FTRChannelKind.NamedPipeClient,
+                FTRChannelKind.NamedPipeServer, FTRChannelKind.Replay, FTRChannelKind.UdpMulticast })
             {
-                MCCChannelConfiguration selected = MCCChannelConfigurations.Create(kind);
+                FTRChannelConfiguration selected = FTRChannelConfigurations.Create(kind);
                 selected.Id = "typed-" + kind;
                 string stored = FCMConfigValueCodec.Serialize(selected);
-                MCCChannelConfiguration restoredChannel = (MCCChannelConfiguration)
-                    FCMConfigValueCodec.Deserialize(stored, typeof(MCCChannelConfiguration));
+                FTRChannelConfiguration restoredChannel = (FTRChannelConfiguration)
+                    FCMConfigValueCodec.Deserialize(stored, typeof(FTRChannelConfiguration));
                 Check(restoredChannel.Kind == kind && restoredChannel.GetType() == selected.GetType() &&
                       restoredChannel.Id == selected.Id,
                     "Specialized Channel roundtrip: " + kind);
             }
             // 历史平铺配置可迁移有效字段；不能悄悄吃掉未知/冲突字段。
             string legacy = "{\"Id\":\"oldtcp\",\"Kind\":\"TcpClient\",\"Host\":\"10.0.0.2\",\"Port\":1502,\"PortName\":\"COM1\"}";
-            MCCChannelConfiguration migrated = (MCCChannelConfiguration)
-                FCMConfigValueCodec.Deserialize(legacy, typeof(MCCChannelConfiguration));
-            MCCTcpClientChannelConfiguration migratedTcp = migrated as MCCTcpClientChannelConfiguration;
+            FTRChannelConfiguration migrated = (FTRChannelConfiguration)
+                FCMConfigValueCodec.Deserialize(legacy, typeof(FTRChannelConfiguration));
+            FTRTcpClientChannelConfiguration migratedTcp = migrated as FTRTcpClientChannelConfiguration;
             Check(migratedTcp != null && migratedTcp.Host == "10.0.0.2" &&
                   migratedTcp.Port == 1502 && migratedTcp.Id == "oldtcp",
                 "Legacy flattened TCP migration");
@@ -70,14 +71,14 @@ namespace CxVisual.Tests.ArchitectureSmoke
             {
                 FCMConfigValueCodec.Deserialize(
                     "{\"Id\":\"old\",\"Kind\":\"TcpClient\",\"PortName\":\"COM9\"}",
-                    typeof(MCCChannelConfiguration));
+                    typeof(FTRChannelConfiguration));
             }
             catch (FormatException) { legacyConflictRejected = true; }
             Check(legacyConflictRejected, "Reject conflicting old Channel settings");
 
             MCNConnectorConfiguration connector = new MCNConnectorConfiguration {
                 DisplayName = "PLC 接入",
-                Channel = new MCCTcpClientChannelConfiguration { Id = "tcp01", Kind = MCCChannelKind.TcpClient,
+                Channel = new FTRTcpClientChannelConfiguration { Id = "tcp01", Kind = FTRChannelKind.TcpClient,
                     Host = "127.0.0.1", Port = 502 },
                 Protocol = new MPAProtocolConfiguration {
                     Id = "mod01", Kind = MPAProtocolKind.ModbusTcpDraft,
@@ -93,11 +94,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
             };
             Check(FCMConfigValidationEngine.Validate(connector, "test").IsValid,
                 "Single Channel/Protocol annotated model valid");
-            Check(connector.Channel.DescribeType().IO == MCCIOCapabilities.ByteStream &&
+            Check(connector.Channel.DescribeType().IO == FTRIOCapabilities.ByteStream &&
                   connector.Protocol.Points.Count == 1, "Single configuration source");
             connector.Channel = null;
             CheckIssue(connector, "CHANNEL_REQUIRED");
-            connector.Channel = new MCCTcpClientChannelConfiguration { Id = "tcp01", Kind = MCCChannelKind.TcpClient };
+            connector.Channel = new FTRTcpClientChannelConfiguration { Id = "tcp01", Kind = FTRChannelKind.TcpClient };
             connector.Protocol.Kind = MPAProtocolKind.ModbusRtuDraft;
             CheckIssue(connector, "PROTOCOL_IO_MISMATCH");
             connector.Protocol.Kind = MPAProtocolKind.ModbusTcpDraft;
@@ -142,25 +143,25 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     new MHSConfigEditorModel<MCNConnectorConfiguration>(module, "通道专有配置编辑"))
                 {
                     editor.SetPathJson("Channel.Port", "1502");
-                    Check(((MCCTcpClientChannelConfiguration)editor.Draft.Channel).Port == 1502,
+                    Check(((FTRTcpClientChannelConfiguration)editor.Draft.Channel).Port == 1502,
                         "TCP 专属 Port 路径编辑");
-                    MCCChannelConfiguration serial =
-                        (MCCChannelConfiguration)editor.Draft.Channel.SelectVariant("Kind", "Serial");
+                    FTRChannelConfiguration serial =
+                        (FTRChannelConfiguration)editor.Draft.Channel.SelectVariant("Kind", "Serial");
                     editor.SetPathJson("Channel", FCMJsonValueCodec.Serialize(serial));
-                    Check(editor.Draft.Channel is MCCSerialChannelConfiguration &&
+                    Check(editor.Draft.Channel is FTRSerialChannelConfiguration &&
                           editor.Draft.Channel.Id == "tcp01", "切换到串口保留公共身份");
                     editor.SetPathJson("Channel.PortName", "\"COM7\"");
-                    Check(((MCCSerialChannelConfiguration)editor.Draft.Channel).PortName == "COM7",
+                    Check(((FTRSerialChannelConfiguration)editor.Draft.Channel).PortName == "COM7",
                         "串口专属字段路径编辑");
                     editor.Undo();
-                    Check(((MCCSerialChannelConfiguration)editor.Draft.Channel).PortName == "COM1",
+                    Check(((FTRSerialChannelConfiguration)editor.Draft.Channel).PortName == "COM1",
                         "串口字段 Undo");
                     editor.Undo();
-                    Check(editor.Draft.Channel is MCCTcpClientChannelConfiguration &&
-                          ((MCCTcpClientChannelConfiguration)editor.Draft.Channel).Port == 1502,
+                    Check(editor.Draft.Channel is FTRTcpClientChannelConfiguration &&
+                          ((FTRTcpClientChannelConfiguration)editor.Draft.Channel).Port == 1502,
                         "通道子类型切换 Undo");
                     editor.Redo();
-                    Check(editor.Draft.Channel is MCCSerialChannelConfiguration, "通道子类型切换 Redo");
+                    Check(editor.Draft.Channel is FTRSerialChannelConfiguration, "通道子类型切换 Redo");
                 }
                 // 从新 MHS 服务重新打开真实磁盘修订，确保没有额外 ModuleConfigStore。
                 MHSConfigService reopened = new MHSConfigService(root);

@@ -1,5 +1,7 @@
 # CxVisual 统一功能模块体系——通道规约与数据映射架构 V1.3
 
+> **2026-10-27 新增唯一 Owner 裁决（覆盖旧类名/旧归属，不改变 V1.3 既定行为）**：Channel 全部正式类型已目标迁移至 `Foundation.Transport / F17`，名称为 `FTR*` / `IFTR*`；`Mechanism.Connectivity / M13～M15` 保留 `MCN*` Connector、`MPA*` Protocol、PointTable、Mapping。下文提及的 `MCC*` 只是此前版本历史类型名，现行 API 以 [F17 裁决](../Decisions/CxVisual_F17_Channel下沉与唯一归属裁决_V1.0.md) 和实际源码为准。发布/编译结果须另查测试台账。
+
 > 2026-10-23；本文件覆盖 V1.2 中 Connector 默认一组、Advanced 可多组的旧决定。五类模块 Connector/Driver/Compute/Simulation/Service 不变；ReferTo 只读；只使用 FCM/MHS 正式配置。源代码、CI、实机验收分别记录。
 
 ## 1. 不可变的架构规则

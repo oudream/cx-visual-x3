@@ -1,3 +1,4 @@
+using CxVisual.Foundation.Transport;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -15,10 +16,10 @@ namespace CxVisual.TestCenter.Models
     {
         public const string Mime = "application/vnd.cxvisual.channel-evidence+xml";
         private const int MaxBytes = 2 * 1024 * 1024;
-        public static byte[] Serialize(IEnumerable<MCCChannelFrame> frames)
+        public static byte[] Serialize(IEnumerable<FTRChannelFrame> frames)
         {
             if (frames == null) throw new ArgumentNullException("frames");
-            MCCChannelFrame[] items = frames.OrderBy(x => x.TimestampUtc)
+            FTRChannelFrame[] items = frames.OrderBy(x => x.TimestampUtc)
                 .ThenBy(x => x.ChannelId, StringComparer.Ordinal)
                 .ThenBy(x => x.Sequence).ToArray();
             if (items.Length == 0 || items.Length > 5000)
@@ -28,7 +29,7 @@ namespace CxVisual.TestCenter.Models
                 throw new InvalidDataException("Channel原始证据不允许保存Protocol解码副本");
             XElement root = new XElement("ChannelEvidence",
                 new XAttribute("schema", 2), new XAttribute("mode", "RawChannel"));
-            foreach (MCCChannelFrame frame in items)
+            foreach (FTRChannelFrame frame in items)
                 root.Add(new XElement("Frame",
                     new XAttribute("session", frame.SessionId),
                     new XAttribute("channel", frame.ChannelId),
@@ -81,7 +82,7 @@ namespace CxVisual.TestCenter.Models
                     sequence <= 0 || !DateTime.TryParse((string)frame.Attribute("utc"),
                         CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out timestamp) ||
                     timestamp.Kind != DateTimeKind.Utc ||
-                    !Enum.IsDefined(typeof(MCCFrameDirection), direction) || encoded == null)
+                    !Enum.IsDefined(typeof(FTRFrameDirection), direction) || encoded == null)
                     throw new InvalidDataException("Invalid Channel frame identity");
                 long previous;
                 if (cursor.TryGetValue(channel, out previous) && sequence <= previous)

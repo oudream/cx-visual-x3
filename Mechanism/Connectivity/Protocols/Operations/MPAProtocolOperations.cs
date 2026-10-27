@@ -1,3 +1,4 @@
+using CxVisual.Foundation.Transport;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
@@ -73,6 +74,6 @@ namespace CxVisual.Mechanism.Connectivity
     }
     public interface IMPAProtocolReceiver
     {
-        void HandleReceived(MCCChannelReceiveContext received, MPAProtocolContext context);
+        void HandleReceived(FTRChannelReceiveContext received, MPAProtocolContext context);
     }
 }

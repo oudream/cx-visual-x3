@@ -1,3 +1,4 @@
+using CxVisual.Foundation.Transport;
 using System;
 using System.IO;
 using System.Collections.Generic;
@@ -20,7 +21,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         {
             if (!condition) throw new InvalidOperationException("CHANNEL.TRANSPORT " + why);
         }
-        private sealed class StartupReceiveChannel : MCCSingleChannelBase
+        private sealed class StartupReceiveChannel : FTRSingleChannelBase
         {
             internal bool ClosedResources;
             internal StartupReceiveChannel(string id) : base(id) { }
@@ -36,10 +37,10 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 ClosedResources = true;
                 return Task.CompletedTask;
             }
-            protected override Task OnSendAsync(byte[] payload, MCCSubChannelAddress address, CancellationToken ct)
+            protected override Task OnSendAsync(byte[] payload, FTRSubChannelAddress address, CancellationToken ct)
             { return Task.CompletedTask; }
         }
-        private sealed class FailingOpenChannel : MCCSingleChannelBase
+        private sealed class FailingOpenChannel : FTRSingleChannelBase
         {
             internal bool CleanupCalled;
             internal FailingOpenChannel() : base("failure") { }
@@ -47,7 +48,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             { throw new IOException("打开设备失败"); }
             protected override Task OnCloseAsync(CancellationToken ct)
             { CleanupCalled = true; return Task.CompletedTask; }
-            protected override Task OnSendAsync(byte[] data, MCCSubChannelAddress target, CancellationToken ct)
+            protected override Task OnSendAsync(byte[] data, FTRSubChannelAddress target, CancellationToken ct)
             { return Task.CompletedTask; }
         }
         private static void LifecycleStateMachine()
@@ -56,20 +57,20 @@ namespace CxVisual.Tests.ArchitectureSmoke
             byte[] first = null;
             early.Received += data => first = data.Data;
             early.Open();
-            Check(early.State == MCCChannelState.Open && first != null &&
+            Check(early.State == FTRChannelState.Open && first != null &&
                 first.SequenceEqual(new byte[] { 88 }),
                 "OpenAsync 中的第一包应接纳，不能因后台接收快于状态切换而失败");
             early.Close();
-            Check(early.ClosedResources && early.State == MCCChannelState.Closed,
+            Check(early.ClosedResources && early.State == FTRChannelState.Closed,
                 "关闭必须释放资源");
             early.Close();
             FailingOpenChannel fail = new FailingOpenChannel();
             bool rejected = false;
             try { fail.Open(); } catch (IOException) { rejected = true; }
-            Check(rejected && fail.CleanupCalled && fail.State == MCCChannelState.Faulted,
+            Check(rejected && fail.CleanupCalled && fail.State == FTRChannelState.Faulted,
                 "Open 失败要清理已创建资源并报告 Faulted");
             fail.Close();
-            Check(fail.State == MCCChannelState.Closed,
+            Check(fail.State == FTRChannelState.Closed,
                 "Faulted 关闭后可回到 Closed");
         }
         private static int FreePort(bool udp)
@@ -87,6 +88,10 @@ namespace CxVisual.Tests.ArchitectureSmoke
 
         public static void Run()
         {
+            Check(typeof(FTRChannelBase).Assembly.GetName().Name == "CxVisual.Foundation.Transport" &&
+                typeof(FTRChannelConfiguration).Assembly == typeof(FTRChannelBase).Assembly &&
+                typeof(FTRTcpClientChannel).Assembly == typeof(FTRChannelBase).Assembly,
+                "所有正式Channel契约、配置与实现必须由Foundation.Transport唯一拥有");
             LifecycleStateMachine();
             BoundedEvidence();
             TcpLoopback();
@@ -105,12 +110,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
         private static void NamedPipeLoopback()
         {
             string pipeName = "CxVisualSmoke-" + Guid.NewGuid().ToString("N");
-            MCCNamedPipeServerChannel server = new MCCNamedPipeServerChannel(
-                new MCCNamedPipeServerChannelConfiguration { Id = "pipeserver", PipeName = pipeName });
-            MCCNamedPipeClientChannel client = new MCCNamedPipeClientChannel(
-                new MCCNamedPipeClientChannelConfiguration { Id = "pipeclient", PipeName = pipeName });
+            FTRNamedPipeServerChannel server = new FTRNamedPipeServerChannel(
+                new FTRNamedPipeServerChannelConfiguration { Id = "pipeserver", PipeName = pipeName });
+            FTRNamedPipeClientChannel client = new FTRNamedPipeClientChannel(
+                new FTRNamedPipeClientChannelConfiguration { Id = "pipeclient", PipeName = pipeName });
             byte[] received = null, reply = null;
-            MCCSubChannelAddress source = null;
+            FTRSubChannelAddress source = null;
             using (ManualResetEventSlim first = new ManualResetEventSlim(false))
             using (ManualResetEventSlim second = new ManualResetEventSlim(false))
             {
@@ -123,7 +128,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     server.Open();
                     client.Open();
                     client.SendAsync(new byte[] { 9, 8, 7 },
-                        new MCCSubChannelAddress(client.Id), CancellationToken.None)
+                        new FTRSubChannelAddress(client.Id), CancellationToken.None)
                         .GetAwaiter().GetResult();
                     Check(first.Wait(TimeSpan.FromSeconds(5)) &&
                         received.SequenceEqual(new byte[] { 9, 8, 7 }) &&
@@ -169,8 +174,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     await stream.FlushAsync().ConfigureAwait(false);
                 }
             });
-            MCCHttpClientChannel client = new MCCHttpClientChannel(
-                new MCCHttpClientChannelConfiguration { Id = "http-loopback",
+            FTRHttpClientChannel client = new FTRHttpClientChannel(
+                new FTRHttpClientChannelConfiguration { Id = "http-loopback",
                     Url = "http://127.0.0.1:" + port + "/" });
             byte[] reply = null;
             client.Received += received => reply = received.Data;
@@ -178,7 +183,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             {
                 client.Open();
                 client.SendAsync(new byte[] { 1, 2, 3 },
-                    new MCCSubChannelAddress(client.Id), CancellationToken.None)
+                    new FTRSubChannelAddress(client.Id), CancellationToken.None)
                     .GetAwaiter().GetResult();
                 Check(reply != null && reply.SequenceEqual(System.Text.Encoding.ASCII.GetBytes("ACK")),
                     "HTTP Client 真正收到 OS Socket 上的字节响应");
@@ -248,8 +253,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Thread.Sleep(150);
                 }
             });
-            MCCWebSocketClientChannel client = new MCCWebSocketClientChannel(
-                new MCCWebSocketClientChannelConfiguration {
+            FTRWebSocketClientChannel client = new FTRWebSocketClientChannel(
+                new FTRWebSocketClientChannelConfiguration {
                     Id = "ws-real-loopback",
                     Url = "ws://127.0.0.1:" + port + "/ws" });
             byte[] observed = null;
@@ -260,7 +265,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 {
                     client.Open();
                     client.SendAsync(new byte[] { 7, 8, 9 },
-                        new MCCSubChannelAddress(client.Id), CancellationToken.None)
+                        new FTRSubChannelAddress(client.Id), CancellationToken.None)
                         .GetAwaiter().GetResult();
                     Check(received.Wait(TimeSpan.FromSeconds(5)) &&
                         observed.SequenceEqual(new byte[] { 0x21, 0x22, 0x23 }),
@@ -273,17 +278,17 @@ namespace CxVisual.Tests.ArchitectureSmoke
 
         private static void MulticastConfigurationSmoke()
         {
-            MCCUdpMulticastChannelConfiguration config = new MCCUdpMulticastChannelConfiguration {
+            FTRUdpMulticastChannelConfiguration config = new FTRUdpMulticastChannelConfiguration {
                 Id = "udp-multicast-test", GroupAddress = "239.3.7.11", Port = 30001,
                 Loopback = false, TimeToLive = 2
             };
-            Check(config.DescribeType().Topology == MCCChannelTopology.SharedBus &&
-                config.DescribeType().IO == MCCIOCapabilities.Datagram,
+            Check(config.DescribeType().Topology == FTRChannelTopology.SharedBus &&
+                config.DescribeType().IO == FTRIOCapabilities.Datagram,
                 "组播是共享总线数据报，非TCP多Peer");
-            Check(new MCCUdpMulticastChannel(config).State == MCCChannelState.Closed,
+            Check(new FTRUdpMulticastChannel(config).State == FTRChannelState.Closed,
                 "组播通道构建时不能提前绑定网络Socket");
             bool rejected = false;
-            try { new MCCUdpMulticastChannelConfiguration {
+            try { new FTRUdpMulticastChannelConfiguration {
                     GroupAddress = "192.168.1.1" }.Validate(); }
             catch (ArgumentException) { rejected = true; }
             Check(rejected, "非组播地址必须拒绝");
@@ -304,8 +309,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     writer.Write(2);
                     writer.Write(new byte[] { 9, 11 });
                 }
-                MCCReplayChannel channel = new MCCReplayChannel(
-                    new MCCReplayChannelConfiguration { Id = "replay-test", FilePath = file });
+                FTRReplayChannel channel = new FTRReplayChannel(
+                    new FTRReplayChannelConfiguration { Id = "replay-test", FilePath = file });
                 List<byte[]> messages = new List<byte[]>();
                 using (ManualResetEventSlim delivered = new ManualResetEventSlim(false))
                 {
@@ -327,7 +332,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         bool sendRejected = false;
                         try
                         {
-                            channel.SendAsync(new byte[] { 1 }, new MCCSubChannelAddress(channel.Id),
+                            channel.SendAsync(new byte[] { 1 }, new FTRSubChannelAddress(channel.Id),
                                 CancellationToken.None).GetAwaiter().GetResult();
                         }
                         catch (NotSupportedException) { sendRejected = true; }
@@ -341,30 +346,30 @@ namespace CxVisual.Tests.ArchitectureSmoke
 
         private static void WebSocketConfigSmoke()
         {
-            MCCWebSocketClientChannelConfiguration config =
-                new MCCWebSocketClientChannelConfiguration { Id = "ws-client",
+            FTRWebSocketClientChannelConfiguration config =
+                new FTRWebSocketClientChannelConfiguration { Id = "ws-client",
                     Url = "ws://127.0.0.1:8080/ws" };
-            Check(config.DescribeType().IO == MCCIOCapabilities.Message,
+            Check(config.DescribeType().IO == FTRIOCapabilities.Message,
                 "WebSocket 保持完整 Message 边界");
-            Check(new MCCWebSocketClientChannel(config).State == MCCChannelState.Closed,
+            Check(new FTRWebSocketClientChannel(config).State == FTRChannelState.Closed,
                 "WebSocket 构造不得发生联网副作用");
             bool rejected = false;
-            try { new MCCWebSocketClientChannelConfiguration { Url = "http://localhost/ws" }.Validate(); }
+            try { new FTRWebSocketClientChannelConfiguration { Url = "http://localhost/ws" }.Validate(); }
             catch (ArgumentException) { rejected = true; }
             Check(rejected, "WebSocket 不接受 HTTP URL");
         }
 
         private static void HttpConfigurationSmoke()
         {
-            MCCHttpClientChannelConfiguration config = new MCCHttpClientChannelConfiguration {
+            FTRHttpClientChannelConfiguration config = new FTRHttpClientChannelConfiguration {
                 Id = "http-client-test", Url = "http://127.0.0.1:8080/"
             };
-            Check(config.DescribeType().IO == (MCCIOCapabilities.Message | MCCIOCapabilities.RequestResponse),
+            Check(config.DescribeType().IO == (FTRIOCapabilities.Message | FTRIOCapabilities.RequestResponse),
                 "HTTP Client capabilities");
-            MCCHttpClientChannel client = new MCCHttpClientChannel(config);
-            Check(client.State == MCCChannelState.Closed, "HTTP Client constructed without network side effects");
+            FTRHttpClientChannel client = new FTRHttpClientChannel(config);
+            Check(client.State == FTRChannelState.Closed, "HTTP Client constructed without network side effects");
             bool rejected = false;
-            try { new MCCHttpClientChannelConfiguration { Url = "ftp://localhost/a" }.Validate(); }
+            try { new FTRHttpClientChannelConfiguration { Url = "ftp://localhost/a" }.Validate(); }
             catch (ArgumentException) { rejected = true; }
             Check(rejected, "Reject non-http channel URL");
         }
@@ -380,16 +385,16 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 byte[] oversized = new byte[5 * 1024 * 1024];
                 oversized[0] = 0x5a;
                 channel.InjectReceived(oversized);
-                MCCChannelFrame metadata = channel.ReadFrames().Last();
+                FTRChannelFrame metadata = channel.ReadFrames().Last();
                 Check(lastReceivedLength == oversized.Length,
                     "超大接收数据不得被诊断证据预算截断");
-                Check(metadata.Direction == MCCFrameDirection.Rx && metadata.Bytes.Length == 0 &&
+                Check(metadata.Direction == FTRFrameDirection.Rx && metadata.Bytes.Length == 0 &&
                     metadata.Error.Contains("原始字节数=" + oversized.Length),
                     "超大报文诊断副本必须省略并保留长度与原因，不可静默丢字节");
 
                 byte[] chunk = new byte[128 * 1024];
                 for (int i = 0; i < 40; i++) channel.InjectReceived(chunk);
-                System.Collections.Generic.IList<MCCChannelFrame> frames = channel.ReadFrames();
+                System.Collections.Generic.IList<FTRChannelFrame> frames = channel.ReadFrames();
                 long total = frames.Sum(frame => (long)frame.Bytes.Length);
                 Check(total <= 4L * 1024 * 1024 && frames.Count < 42 &&
                     frames.Last().Bytes.Length == chunk.Length,
@@ -401,14 +406,14 @@ namespace CxVisual.Tests.ArchitectureSmoke
         private static void TcpLoopback()
         {
             int port = FreePort(false);
-            MCCTcpServerChannel server = new MCCTcpServerChannel(
-                new MCCTcpServerChannelConfiguration { Id = "tcp-server-test", Kind = MCCChannelKind.TcpServer,
+            FTRTcpServerChannel server = new FTRTcpServerChannel(
+                new FTRTcpServerChannelConfiguration { Id = "tcp-server-test", Kind = FTRChannelKind.TcpServer,
                     Host = "127.0.0.1", Port = port });
-            MCCTcpClientChannel client = new MCCTcpClientChannel(
-                new MCCTcpClientChannelConfiguration { Id = "tcp-client-test", Kind = MCCChannelKind.TcpClient,
+            FTRTcpClientChannel client = new FTRTcpClientChannel(
+                new FTRTcpClientChannelConfiguration { Id = "tcp-client-test", Kind = FTRChannelKind.TcpClient,
                     Host = "127.0.0.1", Port = port });
             byte[] inbound = null, outbound = null;
-            MCCSubChannelAddress sub = null;
+            FTRSubChannelAddress sub = null;
             using (ManualResetEventSlim arrived = new ManualResetEventSlim(false))
             using (ManualResetEventSlim replied = new ManualResetEventSlim(false))
             {
@@ -428,14 +433,14 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         .GetAwaiter().GetResult();
                     Check(replied.Wait(3000) && outbound.SequenceEqual(new byte[] { 4, 5 }),
                         "TCP Server reply must use selected SubChannel");
-                    MCCSubChannelAddress originalPeer = sub;
-                    MCCTcpClientChannel second = new MCCTcpClientChannel(
-                        new MCCTcpClientChannelConfiguration { Id = "tcp-client-test2",
-                            Kind = MCCChannelKind.TcpClient, Host = "127.0.0.1", Port = port });
+                    FTRSubChannelAddress originalPeer = sub;
+                    FTRTcpClientChannel second = new FTRTcpClientChannel(
+                        new FTRTcpClientChannelConfiguration { Id = "tcp-client-test2",
+                            Kind = FTRChannelKind.TcpClient, Host = "127.0.0.1", Port = port });
                     using (ManualResetEventSlim secondArrived = new ManualResetEventSlim(false))
                     using (ManualResetEventSlim secondReplied = new ManualResetEventSlim(false))
                     {
-                        MCCSubChannelAddress secondAddress = null;
+                        FTRSubChannelAddress secondAddress = null;
                         byte[] secondReply = null;
                         server.Received += msg => {
                             if (msg.Data.Length == 1 && msg.Data[0] == 6)
@@ -475,14 +480,14 @@ namespace CxVisual.Tests.ArchitectureSmoke
         private static void ConnectorModbusTcpLoopback()
         {
             int port = FreePort(false);
-            MCCTcpServerChannel server = new MCCTcpServerChannel(new MCCTcpServerChannelConfiguration {
-                Id = "mb-loopback-server", Kind = MCCChannelKind.TcpServer,
+            FTRTcpServerChannel server = new FTRTcpServerChannel(new FTRTcpServerChannelConfiguration {
+                Id = "mb-loopback-server", Kind = FTRChannelKind.TcpServer,
                 Host = "127.0.0.1", Port = port
             });
             MCNConnectorConfiguration config = new MCNConnectorConfiguration {
                 DisplayName = "Modbus TCP Loopback",
-                Channel = new MCCTcpClientChannelConfiguration {
-                    Id = "mb-loopback-client", Kind = MCCChannelKind.TcpClient,
+                Channel = new FTRTcpClientChannelConfiguration {
+                    Id = "mb-loopback-client", Kind = FTRChannelKind.TcpClient,
                     Host = "127.0.0.1", Port = port
                 },
                 Protocol = new MPAProtocolConfiguration {
@@ -507,7 +512,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             };
             MCNConnectorModule connector = new MCNConnectorModule(
                 config.Describe("mb-loopback", MFMModuleKind.Connector), config,
-                new MCCTcpClientChannel(config.Channel), new MPAModbusTcpProtocol());
+                new FTRTcpClientChannel(config.Channel), new MPAModbusTcpProtocol());
             MDSVariableRegistry registry = new MDSVariableRegistry();
             MDSVariableTable variables = new MDSVariableTable("plc");
             registry.Register(variables);
@@ -547,11 +552,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     MPAProtocolOperationKind.Request, new MPAProtocolAddress("3"),
                     MPAModbusRegisterOperations.ReadHolding(100, 1));
                 MPAProtocolOperationResult result = connector.RequestAsync(
-                    request, new MCCSubChannelAddress(config.Channel.Id), CancellationToken.None)
+                    request, new FTRSubChannelAddress(config.Channel.Id), CancellationToken.None)
                     .GetAwaiter().GetResult();
                 Check(result.IsCompleted && ((byte[])result.Value).SequenceEqual(new byte[] { 3, 2, 0, 42 }),
                     "Connector RequestAsync 必须通过真实 TCP 收发并完成 03 事务确认");
-                MCCSubChannelAddress destination = new MCCSubChannelAddress(config.Channel.Id);
+                FTRSubChannelAddress destination = new FTRSubChannelAddress(config.Channel.Id);
                 object pointValue = connector.ReadDevicePointAsync("temperature", mds, destination,
                     CancellationToken.None).GetAwaiter().GetResult();
                 Check((ushort)pointValue == 42 && variables.Get<ushort>("temperature") == 42 &&
@@ -580,13 +585,13 @@ namespace CxVisual.Tests.ArchitectureSmoke
         private static void UdpLoopback()
         {
             int port = FreePort(true);
-            MCCUdpServerChannel server = new MCCUdpServerChannel(
-                new MCCUdpServerChannelConfiguration { Id = "udp-server-test", Kind = MCCChannelKind.UdpServer,
+            FTRUdpServerChannel server = new FTRUdpServerChannel(
+                new FTRUdpServerChannelConfiguration { Id = "udp-server-test", Kind = FTRChannelKind.UdpServer,
                     Host = "127.0.0.1", Port = port });
-            MCCUdpChannel client = new MCCUdpChannel(
-                new MCCUdpChannelConfiguration { Id = "udp-client-test", Kind = MCCChannelKind.Udp,
+            FTRUdpChannel client = new FTRUdpChannel(
+                new FTRUdpChannelConfiguration { Id = "udp-client-test", Kind = FTRChannelKind.Udp,
                     Host = "127.0.0.1", Port = port });
-            MCCSubChannelAddress sub = null;
+            FTRSubChannelAddress sub = null;
             byte[] outbound = null;
             using (ManualResetEventSlim arrived = new ManualResetEventSlim(false))
             using (ManualResetEventSlim replied = new ManualResetEventSlim(false))
@@ -603,14 +608,14 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     server.SendAsync(new byte[] { 44 }, sub, CancellationToken.None).GetAwaiter().GetResult();
                     Check(replied.Wait(3000) && outbound.SequenceEqual(new byte[] { 44 }),
                         "UDP Server reply to exact endpoint");
-                    MCCSubChannelAddress originalPeer = sub;
-                    MCCUdpChannel second = new MCCUdpChannel(
-                        new MCCUdpChannelConfiguration { Id = "udp-client-test2",
-                            Kind = MCCChannelKind.Udp, Host = "127.0.0.1", Port = port });
+                    FTRSubChannelAddress originalPeer = sub;
+                    FTRUdpChannel second = new FTRUdpChannel(
+                        new FTRUdpChannelConfiguration { Id = "udp-client-test2",
+                            Kind = FTRChannelKind.Udp, Host = "127.0.0.1", Port = port });
                     using (ManualResetEventSlim secondArrived = new ManualResetEventSlim(false))
                     using (ManualResetEventSlim secondReplied = new ManualResetEventSlim(false))
                     {
-                        MCCSubChannelAddress secondAddress = null;
+                        FTRSubChannelAddress secondAddress = null;
                         byte[] secondReply = null;
                         server.Received += msg => {
                             if (msg.Data.Length == 1 && msg.Data[0] == 66)

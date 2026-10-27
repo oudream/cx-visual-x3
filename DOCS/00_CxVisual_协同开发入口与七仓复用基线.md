@@ -214,3 +214,10 @@
 
 **完成度分级**：#0继承四大能力与双层总线V1.5；#1新增独立变量主规格并明确当前MDSVariableTable/Registry已存在与计划扩展的差别；#2保留运行时数据V3.0全部对象与双角色用例；#3保留消息中心V1.7全部API；#4保留命令中心V1.0类职责、IPС/验收边界。规格不等于源码实现、最新Windows测试或实机验收。
 
+
+
+## F17 Channel 唯一归属裁决（2026-10-27）
+
+- 新的正式 Channel 全部位于 `Foundation/Transport/Channels/`，统一 `CxVisual.Foundation.Transport` 命名空间和 `FTR*`、`IFTR*` 类型；不再由 `Mechanism.Connectivity` 编译 `MCC*` 通道类型。
+- Connector、Protocol、PointTable、DataMapping 继续位于 `Mechanism.Connectivity`；严格一个 Connector 对应一个 Channel 和一个 Protocol，原有项目数不变。
+- 依据：[Channel 迁移及唯一 Owner 裁决](Decisions/CxVisual_F17_Channel下沉与唯一归属裁决_V1.0.md)；[旧新类型兼容映射](Migration/CxVisual_Channel_MCC至FTR迁移映射_V1.0.md)；[本轮验收证据台账](Testing/CxVisual_F17_Channel迁移_源码与Windows验收台账_V1.0.md)。上述裁决覆盖旧规范中 M13～M15 拥有 Channel 具体类的条款，但不改历史文件本身的日期和历史事实。

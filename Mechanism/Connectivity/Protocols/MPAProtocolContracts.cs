@@ -1,3 +1,4 @@
+using CxVisual.Foundation.Transport;
 namespace CxVisual.Mechanism.Connectivity
 {
     // Protocol 是完整的数据解释/读写/交互能力集合，不限于基本 Codec。
@@ -24,7 +25,7 @@ namespace CxVisual.Mechanism.Connectivity
         {
             Descriptor = new MPAProtocolDescriptor("length.frame", "Length Frame + CRC16", 1,
                 MPAProtocolCapabilities.Interpret | MPAProtocolCapabilities.Send |
-                MPAProtocolCapabilities.Stream, MCCIOCapabilities.ByteStream);
+                MPAProtocolCapabilities.Stream, FTRIOCapabilities.ByteStream);
             Codec = new MPALengthFrameCodec();
         }
 

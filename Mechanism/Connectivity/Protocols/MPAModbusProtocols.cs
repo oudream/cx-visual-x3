@@ -1,3 +1,4 @@
+using CxVisual.Foundation.Transport;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -69,7 +70,7 @@ namespace CxVisual.Mechanism.Connectivity
             "Modbus TCP", 1, MPAProtocolCapabilities.Interpret |
             MPAProtocolCapabilities.Read | MPAProtocolCapabilities.Write |
             MPAProtocolCapabilities.Send | MPAProtocolCapabilities.RequestResponse,
-            MCCIOCapabilities.ByteStream)) { }
+            FTRIOCapabilities.ByteStream)) { }
 
         public override byte[] PrepareSend(byte[] pdu, MPAProtocolContext context)
         {
@@ -97,13 +98,13 @@ namespace CxVisual.Mechanism.Connectivity
             if (context == null || context.Transport == null || context.ChannelAddress == null ||
                 context.Configuration == null || context.Configuration.ProtocolTypeId != Id)
                 throw new NotSupportedException("Modbus TCP 事务需要正式 Channel、配置及目标地址");
-            if (context.Transport.State != MCCChannelState.Open ||
+            if (context.Transport.State != FTRChannelState.Open ||
                 context.Transport.Id != context.ChannelAddress.ChannelId)
                 throw new InvalidOperationException("目标 Channel 未打开或身份不匹配");
-            if (context.Transport.Topology == MCCChannelTopology.MultiPeer &&
+            if (context.Transport.Topology == FTRChannelTopology.MultiPeer &&
                 (!context.ChannelAddress.HasSubChannel ||
-                 !(context.Transport is IMCCMultiPeerChannel) ||
-                 ((IMCCMultiPeerChannel)context.Transport).FindSubChannel(context.ChannelAddress) == null))
+                 !(context.Transport is IFTRMultiPeerChannel) ||
+                 ((IFTRMultiPeerChannel)context.Transport).FindSubChannel(context.ChannelAddress) == null))
                 throw new InvalidOperationException("Modbus TCP MultiPeer 必须指定存活的子通道代次");
             byte[] pdu = (byte[])request.Value;
             if (pdu.Length != 5 || (pdu[0] != 3 && pdu[0] != 6))
@@ -251,7 +252,7 @@ namespace CxVisual.Mechanism.Connectivity
         }
 
         public override IReadOnlyList<byte[]> ProcessReceived(
-            MCCChannelReceiveContext received, MPAProtocolContext context)
+            FTRChannelReceiveContext received, MPAProtocolContext context)
         {
             if (received == null || received.Address == null) throw new ArgumentNullException("received");
             lock (_gate)
@@ -333,7 +334,7 @@ namespace CxVisual.Mechanism.Connectivity
             }
         }
 
-        public void Reset(MCCSubChannelAddress address)
+        public void Reset(FTRSubChannelAddress address)
         {
             if (address == null) throw new ArgumentNullException("address");
             lock (_gate)
@@ -366,7 +367,7 @@ namespace CxVisual.Mechanism.Connectivity
             "Modbus RTU", 1, MPAProtocolCapabilities.Interpret |
             MPAProtocolCapabilities.Read | MPAProtocolCapabilities.Write |
             MPAProtocolCapabilities.Send | MPAProtocolCapabilities.RequestResponse,
-            MCCIOCapabilities.ByteStream)) { }
+            FTRIOCapabilities.ByteStream)) { }
 
         public override byte[] PrepareSend(byte[] pdu, MPAProtocolContext context)
         {
@@ -382,7 +383,7 @@ namespace CxVisual.Mechanism.Connectivity
         }
 
         public override IReadOnlyList<byte[]> ProcessReceived(
-            MCCChannelReceiveContext received, MPAProtocolContext context)
+            FTRChannelReceiveContext received, MPAProtocolContext context)
         {
             if (received == null) throw new ArgumentNullException("received");
             lock (_gate)
@@ -423,7 +424,7 @@ namespace CxVisual.Mechanism.Connectivity
             }
         }
         public void Reset() { lock (_gate) _buffer.Clear(); }
-        public void Reset(MCCSubChannelAddress address)
+        public void Reset(FTRSubChannelAddress address)
         {
             if (address == null) throw new ArgumentNullException("address");
             // RTU 为 SharedBus，不按子通道分离，清理当前总线事务解析缓存。

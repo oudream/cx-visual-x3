@@ -1,3 +1,4 @@
+using CxVisual.Foundation.Transport;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -104,7 +105,7 @@ namespace CxVisual.TestCenter.UI
                     "在唯一Module Frame中切换正式" + kind + "配置类型（非独立测试引擎）",
                     TCTWorkspaceNodeKind.Leaf));
             registry.Register(new TCTWorkspaceDescriptor("manual.channel", "manual.root", "通道测试",
-                "现有生产MCCVirtualChannel的可操作点对点收发，不是真TCP",
+                "现有生产FTRVirtualChannel的可操作点对点收发，不是真TCP",
                 TCTWorkspaceNodeKind.Leaf, () => new TCTManualChannelFrame()));
             registry.Register(new TCTWorkspaceDescriptor("manual.message", "manual.root", "消息中心测试",
                 "真实M36进程内Topic发布、订阅过滤、ReqReply、Retain和消息诊断；不是远程MQTT Broker",

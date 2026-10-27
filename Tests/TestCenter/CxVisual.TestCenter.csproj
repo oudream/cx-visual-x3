@@ -161,5 +161,6 @@
     <PackageReference Include="NUnit.Engine.Api" Version="3.22.0" />
     <PackageReference Include="NUnit.Engine" Version="3.22.0" />
   </ItemGroup>
+  <ItemGroup><ProjectReference Include="..\..\Foundation\Transport\CxVisual.Foundation.Transport.csproj"><Project>{3CF367FE-8333-5763-85B6-1D87B3EE47C8}</Project><Name>CxVisual.Foundation.Transport</Name></ProjectReference></ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets"/>
 </Project>

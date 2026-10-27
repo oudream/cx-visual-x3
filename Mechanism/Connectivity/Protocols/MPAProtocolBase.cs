@@ -1,3 +1,4 @@
+using CxVisual.Foundation.Transport;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -11,7 +12,7 @@ namespace CxVisual.Mechanism.Connectivity
     public interface IMPAProtocol : IMPAProtocolDefinition, IMPAProtocolReader, IMPAProtocolWriter, IMPAProtocolSender
     {
         byte[] PrepareSend(byte[] payload, MPAProtocolContext context);
-        IReadOnlyList<byte[]> ProcessReceived(MCCChannelReceiveContext data, MPAProtocolContext context);
+        IReadOnlyList<byte[]> ProcessReceived(FTRChannelReceiveContext data, MPAProtocolContext context);
         // 完整操作面：Read/Write 为 CxVisual 数据映射的读写，不代表设备已响应。
         // 设备级请求/响应由专业规约会话明确实现。
     }
@@ -19,7 +20,7 @@ namespace CxVisual.Mechanism.Connectivity
     // 运行期 SubChannel 断开/重连必须清理解析缓存；不另建会话仓库。
     public interface IMPAProtocolSessionCleanup
     {
-        void Reset(MCCSubChannelAddress address);
+        void Reset(FTRSubChannelAddress address);
         void ResetAll();
     }
 
@@ -73,7 +74,7 @@ namespace CxVisual.Mechanism.Connectivity
                 throw new NotSupportedException("映射读写必须引用正式配置及 MDS/授权 Owner");
         }
 
-        public abstract IReadOnlyList<byte[]> ProcessReceived(MCCChannelReceiveContext data, MPAProtocolContext context);
+        public abstract IReadOnlyList<byte[]> ProcessReceived(FTRChannelReceiveContext data, MPAProtocolContext context);
     }
 
     // 空规约有清晰的透传语义：不解码、不丢弃、不创造传输层。
@@ -81,7 +82,7 @@ namespace CxVisual.Mechanism.Connectivity
     {
         public MPAEmptyProtocol() : base(new MPAProtocolDescriptor("empty", "原始数据透传", 1,
             MPAProtocolCapabilities.Interpret | MPAProtocolCapabilities.Send | MPAProtocolCapabilities.Stream)) { }
-        public override IReadOnlyList<byte[]> ProcessReceived(MCCChannelReceiveContext data, MPAProtocolContext context)
+        public override IReadOnlyList<byte[]> ProcessReceived(FTRChannelReceiveContext data, MPAProtocolContext context)
         {
             if (data == null) throw new ArgumentNullException("data");
             return new[] { data.Data };
@@ -96,12 +97,12 @@ namespace CxVisual.Mechanism.Connectivity
             new Dictionary<string, MPALengthFrameParser>(StringComparer.Ordinal);
         public MPALengthFrameProtocol() : base(new MPAProtocolDescriptor("length.frame",
             "Length Frame + CRC16", 1, MPAProtocolCapabilities.Interpret |
-            MPAProtocolCapabilities.Send | MPAProtocolCapabilities.Stream, MCCIOCapabilities.ByteStream))
+            MPAProtocolCapabilities.Send | MPAProtocolCapabilities.Stream, FTRIOCapabilities.ByteStream))
         { Codec = new MPALengthFrameCodec(); }
         public IMPAProtocolCodec Codec { get; private set; }
         public override byte[] PrepareSend(byte[] bytes, MPAProtocolContext context)
         { return Codec.Encode(bytes); }
-        public override IReadOnlyList<byte[]> ProcessReceived(MCCChannelReceiveContext data, MPAProtocolContext context)
+        public override IReadOnlyList<byte[]> ProcessReceived(FTRChannelReceiveContext data, MPAProtocolContext context)
         {
             if (data == null || data.Address == null) throw new ArgumentNullException("data");
             string route = data.Address.ToString();
@@ -120,7 +121,7 @@ namespace CxVisual.Mechanism.Connectivity
                 return result;
             }
         }
-        public void Reset(MCCSubChannelAddress address)
+        public void Reset(FTRSubChannelAddress address)
         {
             if (address == null) throw new ArgumentNullException("address");
             lock (_gate) _parsers.Remove(address.ToString());

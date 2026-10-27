@@ -1,3 +1,4 @@
+using CxVisual.Foundation.Transport;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -14,12 +15,12 @@ namespace CxVisual.TestCenter.Cases
     public static class TCTChannelEvidenceCases
     {
         [TCTTest("TCT.M3.CHANNEL.001", "生产Virtual Channel实际TX/RX/分包/CRC失败/恢复",
-            TCTTestAspect.Mechanism, "Channel / Protocol", ObjectId = "MCCVirtualChannel")]
+            TCTTestAspect.Mechanism, "Channel / Protocol", ObjectId = "FTRVirtualChannel")]
         public static void RealVirtualFrames(TCTTestContext test)
         {
-            MCCVirtualChannel[] pair = MCCVirtualChannel.CreatePair("Virtual-A", "Virtual-B");
+            FTRVirtualChannel[] pair = FTRVirtualChannel.CreatePair("Virtual-A", "Virtual-B");
             MPALengthFrameProtocol protocol = new MPALengthFrameProtocol();
-            MCCSubChannelAddress receiverAddress = new MCCSubChannelAddress(pair[1].Id);
+            FTRSubChannelAddress receiverAddress = new FTRSubChannelAddress(pair[1].Id);
             List<byte[]> decoded = new List<byte[]>();
             pair[1].Received += incoming => {
                 foreach (byte[] payload in protocol.ProcessReceived(incoming,
@@ -38,10 +39,10 @@ namespace CxVisual.TestCenter.Cases
             }
             test.AssertTrue(decoded.Count == 1 && decoded[0].SequenceEqual(payload1),
                 "Protocol 真正拼接Channel分片并解释CRC16", true, true);
-            MCCChannelFrame[] tx = pair[0].ReadFrames()
-                .Where(x => x.Direction == MCCFrameDirection.Tx).ToArray();
-            MCCChannelFrame[] rx = pair[1].ReadFrames()
-                .Where(x => x.Direction == MCCFrameDirection.Rx).ToArray();
+            FTRChannelFrame[] tx = pair[0].ReadFrames()
+                .Where(x => x.Direction == FTRFrameDirection.Tx).ToArray();
+            FTRChannelFrame[] rx = pair[1].ReadFrames()
+                .Where(x => x.Direction == FTRFrameDirection.Rx).ToArray();
             test.AssertTrue(tx.Length == rx.Length && rx.All(x => x.DecodedPayload == null) &&
                 tx.SelectMany(x => x.Bytes).SequenceEqual(rx.SelectMany(x => x.Bytes)),
                 "Channel只有原始IO，不再混入协议解码", true, true);
@@ -50,7 +51,7 @@ namespace CxVisual.TestCenter.Cases
             corrupt[4] ^= 0xff;
             test.AssertThrows<InvalidDataException>(() => pair[0].Send(corrupt),
                 "CRC错误由正式Protocol拒绝，而不是通道伪装解析");
-            test.AssertEqual(MCCChannelState.Open, pair[1].State,
+            test.AssertEqual(FTRChannelState.Open, pair[1].State,
                 "规约数据CRC错误不会使物理通道错误断开");
             protocol.Reset(receiverAddress);
             byte[] payload2 = new byte[] { 0x12, 0x34 };
@@ -63,7 +64,7 @@ namespace CxVisual.TestCenter.Cases
             pair[0].Close();
             test.AssertThrows<InvalidOperationException>(() =>
                 pair[0].Send(new byte[] { 0x01 }), "发送方关闭后不得继续发包");
-            MCCChannelFrame[] all = pair.SelectMany(x => x.ReadFrames()).ToArray();
+            FTRChannelFrame[] all = pair.SelectMany(x => x.ReadFrames()).ToArray();
             byte[] evidence = TCTChannelEvidence.Serialize(all);
             XDocument restored = TCTChannelEvidence.Read(evidence);
             test.AssertEqual(all.Length, restored.Root.Elements("Frame").Count(),
@@ -103,7 +104,7 @@ namespace CxVisual.TestCenter.Cases
             parser.Reset();
             parser.PushBytes(b);
             test.AssertTrue(parser.TryReadFrame(out decoded), "Reset后可恢复", true, true);
-            MCCVirtualChannel[] pair = MCCVirtualChannel.CreatePair("proof-A", "proof-B");
+            FTRVirtualChannel[] pair = FTRVirtualChannel.CreatePair("proof-A", "proof-B");
             pair[0].Open(); pair[1].Open();
             pair[0].Send(codec.Encode(new byte[] { 42 }), "proof");
             byte[] proof = TCTChannelEvidence.Serialize(

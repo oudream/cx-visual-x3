@@ -62,5 +62,6 @@
     <ProjectReference Include="..\..\Foundation\Geometry\CxVisual.Foundation.Geometry.csproj"><Project>{B6570EF1-8979-50D9-AF3A-3BD5450A0A23}</Project><Name>CxVisual.Foundation.Geometry</Name></ProjectReference>
     <ProjectReference Include="..\..\Foundation\Infrastructure\CxVisual.Foundation.Infrastructure.csproj"><Project>{1626A969-FF77-560F-AA00-53D010AD01B3}</Project><Name>CxVisual.Foundation.Infrastructure</Name></ProjectReference>
   </ItemGroup>
+  <ItemGroup><ProjectReference Include="..\..\Foundation\Transport\CxVisual.Foundation.Transport.csproj"><Project>{3CF367FE-8333-5763-85B6-1D87B3EE47C8}</Project><Name>CxVisual.Foundation.Transport</Name></ProjectReference></ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets"/>
 </Project>

@@ -1,3 +1,4 @@
+using CxVisual.Foundation.Transport;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -49,52 +50,52 @@ namespace CxVisual.TestCenter.UI
         private readonly StackPanel _multiPanel = new StackPanel();
         private readonly StackPanel _busPanel = new StackPanel();
         private readonly StackPanel _singlePanel = new StackPanel();
-        private MCCVirtualChannel[] _pair;
-        private MCCMultiChannelBase _multiChannel;
+        private FTRVirtualChannel[] _pair;
+        private FTRMultiChannelBase _multiChannel;
         private readonly MPAProtocolConfiguration _stationProtocol =
             new MPAProtocolConfiguration { Id = "manual-modbus-rtu",
                 Kind = MPAProtocolKind.ModbusRtuDraft };
         private readonly MPALengthFrameProtocol _protocol = new MPALengthFrameProtocol();
-        private MCCChannelKind _selectedKind = MCCChannelKind.Virtual;
+        private FTRChannelKind _selectedKind = FTRChannelKind.Virtual;
         private string _lastDiagnostic = "";
         public string WorkspaceId { get { return "manual.channel"; } }
         public Guid ManualSessionId { get; private set; }
         public int FrameCount { get { return _frames.Count; } }
         public int PeerCount { get { return _peers.Count; } }
         public int StationCount { get { return _stations.Count; } }
-        public MCCSubChannelAddress SelectedPeerAddress
+        public FTRSubChannelAddress SelectedPeerAddress
         { get { return (_peerList.SelectedItem as TCTPeerRow)?.Address; } }
-        public MCCChannelState MultiChannelState
-        { get { return _multiChannel == null ? MCCChannelState.Closed : _multiChannel.State; } }
+        public FTRChannelState MultiChannelState
+        { get { return _multiChannel == null ? FTRChannelState.Closed : _multiChannel.State; } }
         public string StatusMessage { get { return _state.Text; } }
         public string LastDiagnostic { get { return _lastDiagnostic; } }
-        public MCCChannelKind SelectedChannelKind { get { return _selectedKind; } }
-        public MCCChannelTopology SelectedTopology
+        public FTRChannelKind SelectedChannelKind { get { return _selectedKind; } }
+        public FTRChannelTopology SelectedTopology
         {
-            get { return MCCChannelConfigurations.Create(_selectedKind).DescribeType().Topology; }
+            get { return FTRChannelConfigurations.Create(_selectedKind).DescribeType().Topology; }
         }
         public bool IsConnected { get { return _pair != null &&
-            _pair[0].State == MCCChannelState.Open && _pair[1].State == MCCChannelState.Open; } }
+            _pair[0].State == FTRChannelState.Open && _pair[1].State == FTRChannelState.Open; } }
         public event Action StateChanged;
         public IEnumerable<TCTWorkspaceAction> Commands
         {
             get {
                 return new[] {
                     new TCTWorkspaceAction("connect", "连接Virtual单通道", ConnectVirtual,
-                        () => SelectedTopology == MCCChannelTopology.SinglePeer &&
-                            _selectedKind == MCCChannelKind.Virtual && !IsConnected),
+                        () => SelectedTopology == FTRChannelTopology.SinglePeer &&
+                            _selectedKind == FTRChannelKind.Virtual && !IsConnected),
                     new TCTWorkspaceAction("disconnect", "断开Virtual通道", Disconnect, () => IsConnected),
                     new TCTWorkspaceAction("send", "发送Virtual数据", Send, () => IsConnected),
                     new TCTWorkspaceAction("channel.validate", "检查正式Channel拓扑", ValidateTopology),
                     new TCTWorkspaceAction("channel.register-peer", "登记离线SubChannel",
-                        () => { RegisterSubChannel(); }, () => SelectedTopology == MCCChannelTopology.MultiPeer),
+                        () => { RegisterSubChannel(); }, () => SelectedTopology == FTRChannelTopology.MultiPeer),
                     new TCTWorkspaceAction("channel.remove-peer", "移除所选SubChannel",
-                        RemoveSelectedSubChannel, () => SelectedTopology == MCCChannelTopology.MultiPeer &&
+                        RemoveSelectedSubChannel, () => SelectedTopology == FTRChannelTopology.MultiPeer &&
                             _peerList.SelectedItem != null),
                     new TCTWorkspaceAction("channel.add-station", "添加协议点表站号",
-                        AddStation, () => SelectedTopology == MCCChannelTopology.SharedBus),
+                        AddStation, () => SelectedTopology == FTRChannelTopology.SharedBus),
                     new TCTWorkspaceAction("channel.remove-station", "移除所选协议站号",
-                        RemoveSelectedStation, () => SelectedTopology == MCCChannelTopology.SharedBus &&
+                        RemoveSelectedStation, () => SelectedTopology == FTRChannelTopology.SharedBus &&
                             _stationList.SelectedItem != null),
                     new TCTWorkspaceAction("channel.negative", "验证非法操作被拒绝", VerifyInvalidOperation)
                 };
@@ -104,8 +105,8 @@ namespace CxVisual.TestCenter.UI
         {
             ManualSessionId = Guid.NewGuid();
             _channelKind.ItemsSource = new[] {
-                MCCChannelKind.Virtual, MCCChannelKind.TcpClient, MCCChannelKind.TcpServer,
-                MCCChannelKind.Udp, MCCChannelKind.UdpServer, MCCChannelKind.Serial
+                FTRChannelKind.Virtual, FTRChannelKind.TcpClient, FTRChannelKind.TcpServer,
+                FTRChannelKind.Udp, FTRChannelKind.UdpServer, FTRChannelKind.Serial
             };
             DockPanel content = new DockPanel { Margin = new Thickness(13, 8, 13, 8) };
             StackPanel options = new StackPanel();
@@ -126,7 +127,7 @@ namespace CxVisual.TestCenter.UI
             options.Children.Add(_singlePanel);
 
             _multiPanel.Children.Add(new TextBlock {
-                Text = "Multi：使用生产MCCSubChannelDirectory离线验证对端身份、代次和失效路由；不打开监听Socket。",
+                Text = "Multi：使用生产FTRSubChannelDirectory离线验证对端身份、代次和失效路由；不打开监听Socket。",
                 Foreground = Brushes.DarkGoldenrod, FontSize = 15, TextWrapping = TextWrapping.Wrap });
             WrapPanel peerFields = new WrapPanel { Margin = new Thickness(0, 6, 0, 3) };
             peerFields.Children.Add(new TextBlock { Text = "对端 ID", FontSize = 15, VerticalAlignment = VerticalAlignment.Center });
@@ -185,11 +186,11 @@ namespace CxVisual.TestCenter.UI
             System.Windows.Automation.AutomationProperties.SetAutomationId(_endpoint, "TCT.Channel.Endpoint");
             System.Windows.Automation.AutomationProperties.SetAutomationId(_station, "TCT.Channel.StationId");
             _channelKind.SelectionChanged += (sender, args) => {
-                if (_channelKind.SelectedItem != null) SelectChannelKind((MCCChannelKind)_channelKind.SelectedItem);
+                if (_channelKind.SelectedItem != null) SelectChannelKind((FTRChannelKind)_channelKind.SelectedItem);
             };
             _peerList.SelectionChanged += (sender, args) => NotifyState();
             _stationList.SelectionChanged += (sender, args) => NotifyState();
-            _channelKind.SelectedItem = MCCChannelKind.Virtual;
+            _channelKind.SelectedItem = FTRChannelKind.Virtual;
             UpdateTopology();
         }
         private void NotifyState()
@@ -199,33 +200,33 @@ namespace CxVisual.TestCenter.UI
         }
         private void UpdateTopology()
         {
-            MCCChannelTypeDescriptor type = MCCChannelConfigurations.Create(_selectedKind).DescribeType();
+            FTRChannelTypeDescriptor type = FTRChannelConfigurations.Create(_selectedKind).DescribeType();
             _topology.Text = "正式类型：" + type.TypeId + "    拓扑：" + type.Topology +
                 "    I/O：" + type.IO;
-            _singlePanel.Visibility = type.Topology == MCCChannelTopology.SinglePeer ?
+            _singlePanel.Visibility = type.Topology == FTRChannelTopology.SinglePeer ?
                 Visibility.Visible : Visibility.Collapsed;
-            _multiPanel.Visibility = type.Topology == MCCChannelTopology.MultiPeer ?
+            _multiPanel.Visibility = type.Topology == FTRChannelTopology.MultiPeer ?
                 Visibility.Visible : Visibility.Collapsed;
-            _busPanel.Visibility = type.Topology == MCCChannelTopology.SharedBus ?
+            _busPanel.Visibility = type.Topology == FTRChannelTopology.SharedBus ?
                 Visibility.Visible : Visibility.Collapsed;
             UpdateState();
         }
-        public void SelectChannelKind(MCCChannelKind kind)
+        public void SelectChannelKind(FTRChannelKind kind)
         {
-            if (kind == MCCChannelKind.Custom || !Enum.IsDefined(typeof(MCCChannelKind), kind))
+            if (kind == FTRChannelKind.Custom || !Enum.IsDefined(typeof(FTRChannelKind), kind))
                 throw new ArgumentOutOfRangeException("kind", "自定义通道需要已注册的专业TypeDescriptor");
             if (kind == _selectedKind && _multiChannel != null &&
-                kind != MCCChannelKind.Virtual) { UpdateTopology(); return; }
+                kind != FTRChannelKind.Virtual) { UpdateTopology(); return; }
             if (IsConnected) Disconnect();
             _selectedKind = kind;
             if (!object.Equals(_channelKind.SelectedItem, kind)) _channelKind.SelectedItem = kind;
             // 直接实例化已有正式MultiPeer Channel；只用其生产目录，不执行OpenAsync，
             // 因而不会在测试界面无授权时创建监听Socket或冒充设备连接。
-            MCCChannelConfiguration configuration = MCCChannelConfigurations.Create(kind);
-            _multiChannel = kind == MCCChannelKind.TcpServer
-                ? (MCCMultiChannelBase)new MCCTcpServerChannel(configuration) :
-                kind == MCCChannelKind.UdpServer
-                ? (MCCMultiChannelBase)new MCCUdpServerChannel(configuration) : null;
+            FTRChannelConfiguration configuration = FTRChannelConfigurations.Create(kind);
+            _multiChannel = kind == FTRChannelKind.TcpServer
+                ? (FTRMultiChannelBase)new FTRTcpServerChannel(configuration) :
+                kind == FTRChannelKind.UdpServer
+                ? (FTRMultiChannelBase)new FTRUdpServerChannel(configuration) : null;
             _peers.Clear();
             _stationProtocol.Points.Clear();
             _stations.Clear();
@@ -236,9 +237,9 @@ namespace CxVisual.TestCenter.UI
         {
             try
             {
-                MCCChannelConfiguration config = MCCChannelConfigurations.Create(_selectedKind);
+                FTRChannelConfiguration config = FTRChannelConfigurations.Create(_selectedKind);
                 config.Validate();
-                MCCChannelTypeDescriptor descriptor = config.DescribeType();
+                FTRChannelTypeDescriptor descriptor = config.DescribeType();
                 _lastDiagnostic = "正式类型校验通过：" + descriptor.TypeId + " / " +
                     descriptor.Topology + " / " + descriptor.IO + "；不代表设备联机";
             }
@@ -248,13 +249,13 @@ namespace CxVisual.TestCenter.UI
         public void SetPeerInput(string peerId, string remoteEndpoint)
         { _peerId.Text = peerId ?? ""; _endpoint.Text = remoteEndpoint ?? ""; }
         public void SetStationInput(string station) { _station.Text = station ?? ""; }
-        public MCCSubChannelAddress RegisterSubChannel()
+        public FTRSubChannelAddress RegisterSubChannel()
         {
-            if (SelectedTopology != MCCChannelTopology.MultiPeer || _multiChannel == null)
+            if (SelectedTopology != FTRChannelTopology.MultiPeer || _multiChannel == null)
                 throw new InvalidOperationException("只有已创建的真实MultiPeer Channel支持子通道登记");
             try
             {
-                MCCSubChannelInfo peer = _multiChannel.RegisterPeer(_peerId.Text, _endpoint.Text);
+                FTRSubChannelInfo peer = _multiChannel.RegisterPeer(_peerId.Text, _endpoint.Text);
                 _peers.Add(new TCTPeerRow { Address = peer.Address,
                     Label = peer.Address + "  →  " + peer.RemoteEndpoint });
                 _peerList.SelectedIndex = _peers.Count - 1;
@@ -280,16 +281,16 @@ namespace CxVisual.TestCenter.UI
             _lastDiagnostic = "已移除对端；旧代次路由失效：" + selected.Address;
             UpdateState();
         }
-        public void SelectSubChannel(MCCSubChannelAddress address)
+        public void SelectSubChannel(FTRSubChannelAddress address)
         {
             TCTPeerRow item = _peers.FirstOrDefault(x => x.Address.Equals(address));
             _peerList.SelectedItem = item;
         }
-        public bool IsLiveSubChannel(MCCSubChannelAddress address)
+        public bool IsLiveSubChannel(FTRSubChannelAddress address)
         { return _multiChannel != null && _multiChannel.FindSubChannel(address) != null; }
         public void AddStation()
         {
-            if (SelectedTopology != MCCChannelTopology.SharedBus)
+            if (SelectedTopology != FTRChannelTopology.SharedBus)
                 throw new InvalidOperationException("只有SharedBus使用协议站号点表");
             string station = _station.Text.Trim();
             if (_stationProtocol.Points.Any(x => x.StationAddress == station))
@@ -326,18 +327,18 @@ namespace CxVisual.TestCenter.UI
         {
             try
             {
-                if (SelectedTopology == MCCChannelTopology.SinglePeer)
+                if (SelectedTopology == FTRChannelTopology.SinglePeer)
                 {
-                    MCCVirtualChannel[] closed = MCCVirtualChannel.CreatePair("RejectTX", "RejectRX");
+                    FTRVirtualChannel[] closed = FTRVirtualChannel.CreatePair("RejectTX", "RejectRX");
                     try { closed[0].Send(new byte[] { 1 }); }
                     catch (InvalidOperationException)
                     { _lastDiagnostic = "已验证：Closed Channel拒绝Send"; UpdateState(); return; }
                 }
-                else if (SelectedTopology == MCCChannelTopology.MultiPeer)
+                else if (SelectedTopology == FTRChannelTopology.MultiPeer)
                 {
-                    MCCMultiChannelBase channel = _multiChannel;
+                    FTRMultiChannelBase channel = _multiChannel;
                     if (channel == null) throw new InvalidOperationException("没有已构造的正式MultiPeer Channel");
-                    MCCSubChannelInfo peer = channel.RegisterPeer("rejection-peer", "offline");
+                    FTRSubChannelInfo peer = channel.RegisterPeer("rejection-peer", "offline");
                     channel.RemovePeer(peer.Address);
                     if (channel.FindSubChannel(peer.Address) == null)
                     { _lastDiagnostic = "已验证：离线SubChannel旧代次不能重新寻址"; UpdateState(); return; }
@@ -361,7 +362,7 @@ namespace CxVisual.TestCenter.UI
                 throw;
             }
         }
-        private void Record(MCCChannelFrame frame)
+        private void Record(FTRChannelFrame frame)
         {
             if (_frames.Count >= 2000) _frames.RemoveAt(0);
             _frames.Add(new TCTManualFrameRow {
@@ -372,7 +373,7 @@ namespace CxVisual.TestCenter.UI
                     frame.DecodedPayload == null ? "" : Encoding.UTF8.GetString(frame.DecodedPayload)
             });
         }
-        private void ReceiveForProtocol(MCCChannelReceiveContext received)
+        private void ReceiveForProtocol(FTRChannelReceiveContext received)
         {
             foreach (byte[] decoded in _protocol.ProcessReceived(received,
                 new MPAProtocolContext("length", ManualSessionId.ToString("N"), received.Address)))
@@ -403,15 +404,15 @@ namespace CxVisual.TestCenter.UI
         }
         public void ConnectVirtual()
         {
-            if (_selectedKind != MCCChannelKind.Virtual)
+            if (_selectedKind != FTRChannelKind.Virtual)
                 throw new NotSupportedException("当前模式未授权打开真实Socket/串口；请使用Virtual");
             if (IsConnected) return;
             Disconnect();
-            _pair = MCCVirtualChannel.CreatePair("Manual-TX", "Manual-RX");
+            _pair = FTRVirtualChannel.CreatePair("Manual-TX", "Manual-RX");
             _pair[0].FrameRecorded += Record;
             _pair[1].FrameRecorded += Record;
             _pair[1].Received += ReceiveForProtocol;
-            _protocol.Reset(new MCCSubChannelAddress(_pair[1].Id));
+            _protocol.Reset(new FTRSubChannelAddress(_pair[1].Id));
             try { _pair[0].Open(); _pair[1].Open(); }
             catch { Disconnect(); throw; }
             _lastDiagnostic = "正式Virtual两端已打开";
@@ -451,7 +452,7 @@ namespace CxVisual.TestCenter.UI
         public void OnWorkspaceClosed() { Disconnect(); }
         private sealed class TCTPeerRow
         {
-            public MCCSubChannelAddress Address { get; set; }
+            public FTRSubChannelAddress Address { get; set; }
             public string Label { get; set; }
         }
         private sealed class TCTManualFrameRow

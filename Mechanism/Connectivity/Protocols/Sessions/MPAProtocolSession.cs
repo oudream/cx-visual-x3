@@ -1,3 +1,4 @@
+using CxVisual.Foundation.Transport;
 using System;
 using System.Threading;
 using System.Collections.Generic;
@@ -25,7 +26,7 @@ namespace CxVisual.Mechanism.Connectivity
         private bool _disposed;
         private readonly Dictionary<string, TaskCompletionSource<object>> _pending =
             new Dictionary<string, TaskCompletionSource<object>>(StringComparer.Ordinal);
-        public MPAProtocolSession(MPAProtocolConfiguration binding, MCCSubChannelAddress channelAddress = null)
+        public MPAProtocolSession(MPAProtocolConfiguration binding, FTRSubChannelAddress channelAddress = null)
         {
             if (binding == null) throw new ArgumentNullException("binding");
             binding.Validate();
@@ -35,7 +36,7 @@ namespace CxVisual.Mechanism.Connectivity
         }
         public string SessionId { get; private set; }
         public string BindingId { get; private set; }
-        public MCCSubChannelAddress ChannelAddress { get; private set; }
+        public FTRSubChannelAddress ChannelAddress { get; private set; }
         public MPAProtocolSessionState State { get { lock (_gate) return _state; } }
         public void Start()
         {
@@ -147,9 +148,9 @@ namespace CxVisual.Mechanism.Connectivity
     public sealed class MPAProtocolContext
     {
         public MPAProtocolContext(string bindingId, string sessionId,
-            MCCSubChannelAddress channelAddress = null, string correlationId = null,
+            FTRSubChannelAddress channelAddress = null, string correlationId = null,
             MPAProtocolConfiguration configuration = null, IMPADataTargetAccess dataAccess = null,
-            IMCCChannelTransport transport = null, string dataScopeId = null,
+            IFTRChannelTransport transport = null, string dataScopeId = null,
             MPAProtocolAddress protocolAddress = null)
         {
             if (string.IsNullOrWhiteSpace(bindingId)) throw new ArgumentException("BindingId 必填");
@@ -160,13 +161,13 @@ namespace CxVisual.Mechanism.Connectivity
         }
         public string BindingId { get; private set; }
         public string SessionId { get; private set; }
-        public MCCSubChannelAddress ChannelAddress { get; private set; }
+        public FTRSubChannelAddress ChannelAddress { get; private set; }
         public string CorrelationId { get; private set; }
         public string ChannelId { get { return ChannelAddress == null ? null : ChannelAddress.ChannelId; } }
         public string SubChannelId { get { return ChannelAddress == null ? null : ChannelAddress.SubChannelId; } }
         public MPAProtocolConfiguration Configuration { get; private set; }
         public IMPADataTargetAccess DataAccess { get; private set; }
-        public IMCCChannelTransport Transport { get; private set; }
+        public IFTRChannelTransport Transport { get; private set; }
         public string DataScopeId { get; private set; }
         public MPAProtocolAddress ProtocolAddress { get; private set; }
         // Owner 是依赖引用，不是 Protocol 自己维护数据仓库或消息中心。

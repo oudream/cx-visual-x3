@@ -1,3 +1,4 @@
+using CxVisual.Foundation.Transport;
 using System;
 using System.IO;
 using System.Linq;
@@ -54,10 +55,10 @@ namespace CxVisual.TestCenter.Cases
                 });
             test.AssertTrue(connector.Length == 0,
                 "Connector内嵌通道与规约描述无遗漏", true, connector.Length == 0);
-            foreach (MCCChannelKind kind in Enum.GetValues(typeof(MCCChannelKind)))
+            foreach (FTRChannelKind kind in Enum.GetValues(typeof(FTRChannelKind)))
             {
-                Type channelType = MCCChannelConfigurations.TypeOf(kind);
-                bool correct = typeof(MCCChannelConfiguration).IsAssignableFrom(channelType) &&
+                Type channelType = FTRChannelConfigurations.TypeOf(kind);
+                bool correct = typeof(FTRChannelConfiguration).IsAssignableFrom(channelType) &&
                     FCMConfigSchemaBuilder.Members(channelType).Any(member => member.Name == "Kind") &&
                     FCMConfigSchemaBuilder.Members(channelType).Any(member => member.Name == "Id");
                 test.AssertTrue(correct, "专有Channel正式配置可自动生成界面: " + kind, true, correct);
@@ -159,17 +160,17 @@ namespace CxVisual.TestCenter.Cases
         {
             MCNConnectorConfiguration config = new MCNConnectorConfiguration {
                 DisplayName = "Virtual Connector",
-                Channel = new MCCVirtualChannelConfiguration { Id = "virtual01", Kind = MCCChannelKind.Virtual },
+                Channel = new FTRVirtualChannelConfiguration { Id = "virtual01", Kind = FTRChannelKind.Virtual },
                 Protocol = new MPAProtocolConfiguration { Id = "length01", Kind = MPAProtocolKind.LengthFrame }
             };
             MFMModuleDescriptor identity = config.Describe("ModuleVirtual01", MFMModuleKind.Connector);
-            MCCVirtualChannel[] pair = MCCVirtualChannel.CreatePair("virtual01", "virtualPeer");
+            FTRVirtualChannel[] pair = FTRVirtualChannel.CreatePair("virtual01", "virtualPeer");
             MPALengthFrameProtocol protocol = new MPALengthFrameProtocol();
             MCNConnectorModule module = new MCNConnectorModule(identity, config,
                 pair[0], protocol);
             test.AssertTrue(module.Descriptor.Id == "ModuleVirtual01" &&
                 module.Channel == pair[0] && module.Protocol == protocol &&
-                module.Points.Count == 0 && pair[0].State == MCCChannelState.Closed,
+                module.Points.Count == 0 && pair[0].State == FTRChannelState.Closed,
                 "装配只绑定正式生产实例，不会提前启动或生成点表值", true, true);
 
             byte[] decoded = null;
@@ -185,11 +186,11 @@ namespace CxVisual.TestCenter.Cases
                 module.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
                 module.SendPayloadAsync(new byte[] { 0x11, 0x22, 0x33 },
                     CancellationToken.None).GetAwaiter().GetResult();
-                MCCChannelFrame observed = pair[1].ReadFrames()
-                    .Single(x => x.Direction == MCCFrameDirection.Rx);
+                FTRChannelFrame observed = pair[1].ReadFrames()
+                    .Single(x => x.Direction == FTRFrameDirection.Rx);
                 test.AssertTrue(decoded != null && decoded.SequenceEqual(new byte[] { 0x11, 0x22, 0x33 }) &&
                     observed.DecodedPayload == null &&
-                    pair[0].ReadFrames().Any(x => x.Direction == MCCFrameDirection.Tx),
+                    pair[0].ReadFrames().Any(x => x.Direction == FTRFrameDirection.Tx),
                     "Virtual纯传输、正式Protocol独立解析并产生实际TX/RX观察", true, true);
             }
             finally
@@ -208,7 +209,7 @@ namespace CxVisual.TestCenter.Cases
             test.AssertTrue(missingRejected, "缺失Channel Provider必须拒绝装配", true, missingRejected);
 
             bool physicalRejected = false;
-            config.Channel = new MCCTcpClientChannelConfiguration { Id = config.Channel.Id };
+            config.Channel = new FTRTcpClientChannelConfiguration { Id = config.Channel.Id };
             try
             {
                 new MCNConnectorModule(identity, config,
@@ -308,28 +309,28 @@ namespace CxVisual.TestCenter.Cases
         [TCTTest("TCT.MODULE.CHANNEL.004",
             "Channel Single/Multi/SharedBus正式拓扑与IO能力声明",
             TCTTestAspect.Integration, "TestCenter / Manual / Channel",
-            ObjectId = "MCCChannelConfiguration")]
+            ObjectId = "FTRChannelConfiguration")]
         public static void ChannelTopologies(TCTTestContext test)
         {
-            MCCChannelTypeDescriptor single = new MCCTcpClientChannelConfiguration {
-                Kind = MCCChannelKind.TcpClient }.DescribeType();
-            MCCChannelTypeDescriptor multi = new MCCTcpServerChannelConfiguration {
-                Kind = MCCChannelKind.TcpServer }.DescribeType();
-            MCCChannelTypeDescriptor udp = new MCCUdpServerChannelConfiguration {
-                Kind = MCCChannelKind.UdpServer }.DescribeType();
-            MCCChannelTypeDescriptor serial = new MCCSerialChannelConfiguration {
-                Kind = MCCChannelKind.Serial }.DescribeType();
-            test.AssertTrue(single.Topology == MCCChannelTopology.SinglePeer &&
-                (single.IO & MCCIOCapabilities.ByteStream) != 0,
+            FTRChannelTypeDescriptor single = new FTRTcpClientChannelConfiguration {
+                Kind = FTRChannelKind.TcpClient }.DescribeType();
+            FTRChannelTypeDescriptor multi = new FTRTcpServerChannelConfiguration {
+                Kind = FTRChannelKind.TcpServer }.DescribeType();
+            FTRChannelTypeDescriptor udp = new FTRUdpServerChannelConfiguration {
+                Kind = FTRChannelKind.UdpServer }.DescribeType();
+            FTRChannelTypeDescriptor serial = new FTRSerialChannelConfiguration {
+                Kind = FTRChannelKind.Serial }.DescribeType();
+            test.AssertTrue(single.Topology == FTRChannelTopology.SinglePeer &&
+                (single.IO & FTRIOCapabilities.ByteStream) != 0,
                 "TCP Client是单对端ByteStream", true, true);
-            test.AssertTrue(multi.Topology == MCCChannelTopology.MultiPeer &&
-                (multi.IO & MCCIOCapabilities.Listener) != 0,
+            test.AssertTrue(multi.Topology == FTRChannelTopology.MultiPeer &&
+                (multi.IO & FTRIOCapabilities.Listener) != 0,
                 "TCP Server按MultiPeer及Listener能力声明", true, true);
-            test.AssertTrue(udp.Topology == MCCChannelTopology.MultiPeer &&
-                (udp.IO & MCCIOCapabilities.Datagram) != 0,
+            test.AssertTrue(udp.Topology == FTRChannelTopology.MultiPeer &&
+                (udp.IO & FTRIOCapabilities.Datagram) != 0,
                 "UDP Server采用多对端Datagram，不冒充TCP字节流", true, true);
-            test.AssertTrue(serial.Topology == MCCChannelTopology.SharedBus &&
-                (serial.IO & MCCIOCapabilities.ByteStream) != 0,
+            test.AssertTrue(serial.Topology == FTRChannelTopology.SharedBus &&
+                (serial.IO & FTRIOCapabilities.ByteStream) != 0,
                 "RS-485为共享物理通道，站号应由规约点表管理", true, true);
         }
 
@@ -421,26 +422,26 @@ namespace CxVisual.TestCenter.Cases
         [TCTTest("TCT.MODULE.CHANNEL.006",
             "生产TCP/UDP Server的MultiPeer子通道代次、重注册和断开反证（不开Socket）",
             TCTTestAspect.Integration, "TestCenter / Manual / Channel",
-            ObjectId = "MCCMultiChannelBase")]
+            ObjectId = "FTRMultiChannelBase")]
         public static void ActualMultiPeerChannelTopology(TCTTestContext test)
         {
-            MCCMultiChannelBase[] channels = {
-                new MCCTcpServerChannel(new MCCTcpServerChannelConfiguration {
-                    Id = "P0-TCP-Server", Kind = MCCChannelKind.TcpServer }),
-                new MCCUdpServerChannel(new MCCUdpServerChannelConfiguration {
-                    Id = "P0-UDP-Server", Kind = MCCChannelKind.UdpServer })
+            FTRMultiChannelBase[] channels = {
+                new FTRTcpServerChannel(new FTRTcpServerChannelConfiguration {
+                    Id = "P0-TCP-Server", Kind = FTRChannelKind.TcpServer }),
+                new FTRUdpServerChannel(new FTRUdpServerChannelConfiguration {
+                    Id = "P0-UDP-Server", Kind = FTRChannelKind.UdpServer })
             };
-            foreach (MCCMultiChannelBase channel in channels)
+            foreach (FTRMultiChannelBase channel in channels)
             {
-                test.AssertTrue(channel.Topology == MCCChannelTopology.MultiPeer &&
-                    channel.State == MCCChannelState.Closed,
+                test.AssertTrue(channel.Topology == FTRChannelTopology.MultiPeer &&
+                    channel.State == FTRChannelState.Closed,
                     "实际Server Owner实例处于Closed，未偷开监听Socket：" + channel.Id,
-                    true, channel.State == MCCChannelState.Closed);
-                MCCSubChannelInfo first = channel.RegisterPeer("client01", "127.0.0.1:13001");
-                MCCSubChannelInfo second = channel.RegisterPeer("client02", "127.0.0.1:13002");
-                MCCSubChannel left = new MCCSubChannel(channel, first.Address);
+                    true, channel.State == FTRChannelState.Closed);
+                FTRSubChannelInfo first = channel.RegisterPeer("client01", "127.0.0.1:13001");
+                FTRSubChannelInfo second = channel.RegisterPeer("client02", "127.0.0.1:13002");
+                FTRSubChannel left = new FTRSubChannel(channel, first.Address);
                 test.AssertTrue(channel.SnapshotSubChannels().Length == 2 &&
-                    left.State == MCCSubChannelState.Open,
+                    left.State == FTRSubChannelState.Open,
                     "正式MultiPeer登记两个不同运行对端：" + channel.Id, true, true);
                 bool duplicate = false;
                 try { channel.RegisterPeer("client01", "127.0.0.1:13001"); }
@@ -449,11 +450,11 @@ namespace CxVisual.TestCenter.Cases
                     true, duplicate);
                 test.AssertTrue(channel.RemovePeer(first.Address) &&
                     channel.FindSubChannel(first.Address) == null &&
-                    left.State == MCCSubChannelState.Closed,
+                    left.State == FTRSubChannelState.Closed,
                     "移除对端后原代次即刻失效：" + channel.Id, true, true);
-                MCCSubChannelInfo newPeer = channel.RegisterPeer("client01", "127.0.0.1:13003");
+                FTRSubChannelInfo newPeer = channel.RegisterPeer("client01", "127.0.0.1:13003");
                 bool oldRejected = false;
-                try { new MCCSubChannel(channel, first.Address); }
+                try { new FTRSubChannel(channel, first.Address); }
                 catch (ArgumentException) { oldRejected = true; }
                 test.AssertTrue(oldRejected &&
                     newPeer.Address.Generation > first.Address.Generation &&
@@ -463,7 +464,7 @@ namespace CxVisual.TestCenter.Cases
                 channel.RemovePeer(newPeer.Address);
                 channel.RemovePeer(second.Address);
                 test.AssertTrue(channel.SnapshotSubChannels().Length == 0 &&
-                    channel.State == MCCChannelState.Closed,
+                    channel.State == FTRChannelState.Closed,
                     "清理全部对端而不启动或关闭真实Socket：" + channel.Id, true, true);
             }
         }
@@ -480,7 +481,7 @@ namespace CxVisual.TestCenter.Cases
             bool noChannel = invalid.Issues.Any(x => x.Code == "CHANNEL_REQUIRED");
             test.AssertTrue(!invalid.IsValid && noChannel,
                 "必须配置单一 Channel", true, noChannel);
-            config.Channel = new MCCVirtualChannelConfiguration();
+            config.Channel = new FTRVirtualChannelConfiguration();
             config.Protocol.Points.Add(new MPAPointDefinition { Name = "alarm", Address = "alarm" });
             config.Protocol.Mappings.Add(new MPADataMapping {
                 PointRef = "missing", TargetRef = "plc/alarm",

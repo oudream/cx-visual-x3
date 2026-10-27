@@ -1,3 +1,4 @@
+using CxVisual.Foundation.Transport;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -19,7 +20,7 @@ namespace CxVisual.Mechanism.Connectivity
     public sealed class MPAProtocolDescriptor
     {
         public MPAProtocolDescriptor(string id, string name, int version,
-            MPAProtocolCapabilities capabilities, MCCIOCapabilities requiredIO = MCCIOCapabilities.None)
+            MPAProtocolCapabilities capabilities, FTRIOCapabilities requiredIO = FTRIOCapabilities.None)
         {
             if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(name) || version < 1)
                 throw new ArgumentException("规约身份/版本无效");
@@ -31,7 +32,7 @@ namespace CxVisual.Mechanism.Connectivity
         public string Name { get; private set; }
         public int Version { get; private set; }
         public MPAProtocolCapabilities Capabilities { get; private set; }
-        public MCCIOCapabilities RequiredIO { get; private set; }
+        public FTRIOCapabilities RequiredIO { get; private set; }
         public bool Supports(MPAProtocolCapabilities flag) { return (Capabilities & flag) == flag; }
     }
 

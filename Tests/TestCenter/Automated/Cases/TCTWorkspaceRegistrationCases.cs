@@ -1,3 +1,4 @@
+using CxVisual.Foundation.Transport;
 using System;
 using System.Linq;
 using CxVisual.TestCenter.Core;
@@ -114,7 +115,7 @@ namespace CxVisual.TestCenter.Cases
             test.AssertTrue(cycleRejected, "父子环必须拒绝", true, cycleRejected);
 
             // 生产 Virtual 只负责原始传输；Protocol独立解析内容。
-            MCCVirtualChannel[] pair = MCCVirtualChannel.CreatePair("workspace-tx", "workspace-rx");
+            FTRVirtualChannel[] pair = FTRVirtualChannel.CreatePair("workspace-tx", "workspace-rx");
             MPALengthFrameProtocol protocol = new MPALengthFrameProtocol();
             byte[] decoded = null;
             pair[1].Received += chunk => {

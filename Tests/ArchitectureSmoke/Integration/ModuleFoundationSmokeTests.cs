@@ -1,3 +1,4 @@
+using CxVisual.Foundation.Transport;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -53,12 +54,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
 
         private static void ModbusTcpTransactionSmoke()
         {
-            MCCVirtualChannel[] pair = MCCVirtualChannel.CreatePair("mb-request", "mb-device");
+            FTRVirtualChannel[] pair = FTRVirtualChannel.CreatePair("mb-request", "mb-device");
             MPAModbusTcpProtocol protocol = new MPAModbusTcpProtocol();
             MPAProtocolConfiguration config = new MPAProtocolConfiguration("mb-request-config", "modbus.tcp");
             config.TimeoutMs = 70;
             MPAProtocolContext context = new MPAProtocolContext(config.Id, "virtual-request",
-                new MCCSubChannelAddress("mb-request"), configuration: config, transport: pair[0]);
+                new FTRSubChannelAddress("mb-request"), configuration: config, transport: pair[0]);
             int behavior = 0;
             int acceptedResponseCount = 0;
             pair[0].Received += received =>
@@ -75,7 +76,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 reply[5] = (byte)(pdu.Length + 1);
                 reply[6] = (byte)(behavior == 3 ? frame[6] + 1 : frame[6]);
                 Buffer.BlockCopy(pdu, 0, reply, 7, pdu.Length);
-                pair[1].SendAsync(reply, new MCCSubChannelAddress("mb-device"),
+                pair[1].SendAsync(reply, new FTRSubChannelAddress("mb-device"),
                     CancellationToken.None).GetAwaiter().GetResult();
             };
             pair[0].Open(); pair[1].Open();
@@ -115,7 +116,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     new MPAProtocolOperationRequest(MPAProtocolOperationKind.Request,
                         new MPAProtocolAddress("3"), new byte[] { 16, 0, 1, 0, 1 }),
                     context, CancellationToken.None).GetAwaiter().GetResult());
-                Check(pair[0].State == MCCChannelState.Open, "异常响应/超时不能错误关闭 Channel");
+                Check(pair[0].State == FTRChannelState.Open, "异常响应/超时不能错误关闭 Channel");
                 protocol.ResetAll();
             }
             finally { pair[0].Close(); pair[1].Close(); }
@@ -800,43 +801,43 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 new[] { new MFMComponentReference(MFMComponentRole.Channel, "X"),
                     new MFMComponentReference(MFMComponentRole.Channel, "X") }));
 
-            MCCChannelConfiguration channel = new MCCTcpClientChannelConfiguration {
-                Id = "tcp01", Kind = MCCChannelKind.TcpClient, Host = "127.0.0.1", Port = 502
+            FTRChannelConfiguration channel = new FTRTcpClientChannelConfiguration {
+                Id = "tcp01", Kind = FTRChannelKind.TcpClient, Host = "127.0.0.1", Port = 502
             };
             channel.Validate();
-            MCCChannelTypeDescriptor tcp = channel.DescribeType();
-            Check(tcp.IO == MCCIOCapabilities.ByteStream &&
-                  tcp.Topology == MCCChannelTopology.SinglePeer, "Channel metadata");
-            Reject<ArgumentException>(() => new MCCTcpClientChannelConfiguration {
-                Id = "bad", Kind = MCCChannelKind.TcpClient, Port = 0 }.Validate());
-            Reject<ArgumentException>(() => new MCCVirtualChannelConfiguration {
+            FTRChannelTypeDescriptor tcp = channel.DescribeType();
+            Check(tcp.IO == FTRIOCapabilities.ByteStream &&
+                  tcp.Topology == FTRChannelTopology.SinglePeer, "Channel metadata");
+            Reject<ArgumentException>(() => new FTRTcpClientChannelConfiguration {
+                Id = "bad", Kind = FTRChannelKind.TcpClient, Port = 0 }.Validate());
+            Reject<ArgumentException>(() => new FTRVirtualChannelConfiguration {
                 QueueCapacity = 0 }.Validate());
 
-            MCCChannelTypeDescriptor tcpServer = new MCCTcpServerChannelConfiguration
-                { Kind = MCCChannelKind.TcpServer, Port = 9000 }.DescribeType();
-            MCCChannelTypeDescriptor udpServer = new MCCUdpServerChannelConfiguration
-                { Kind = MCCChannelKind.UdpServer, Port = 9001 }.DescribeType();
-            Check(tcpServer.Topology == MCCChannelTopology.MultiPeer &&
-                  (tcpServer.IO & MCCIOCapabilities.Listener) != 0 &&
-                  udpServer.Topology == MCCChannelTopology.MultiPeer &&
-                  udpServer.IO == MCCIOCapabilities.Datagram,
+            FTRChannelTypeDescriptor tcpServer = new FTRTcpServerChannelConfiguration
+                { Kind = FTRChannelKind.TcpServer, Port = 9000 }.DescribeType();
+            FTRChannelTypeDescriptor udpServer = new FTRUdpServerChannelConfiguration
+                { Kind = FTRChannelKind.UdpServer, Port = 9001 }.DescribeType();
+            Check(tcpServer.Topology == FTRChannelTopology.MultiPeer &&
+                  (tcpServer.IO & FTRIOCapabilities.Listener) != 0 &&
+                  udpServer.Topology == FTRChannelTopology.MultiPeer &&
+                  udpServer.IO == FTRIOCapabilities.Datagram,
                 "TCP/UDP Server manage multiple peers inside one parent Channel");
-            MCCChannelTypeDescriptor serial = new MCCSerialChannelConfiguration
-                { Kind = MCCChannelKind.Serial, PortName = "COM5" }.DescribeType();
-            Check(serial.Topology == MCCChannelTopology.SharedBus,
+            FTRChannelTypeDescriptor serial = new FTRSerialChannelConfiguration
+                { Kind = FTRChannelKind.Serial, PortName = "COM5" }.DescribeType();
+            Check(serial.Topology == FTRChannelTopology.SharedBus,
                 "RS-485 shares a Serial Channel, stations belong to Protocol points");
 
-            MCCSubChannelDirectory directory = new MCCSubChannelDirectory("server01");
-            MCCSubChannelAddress first = directory.Register("peer01", "127.0.0.1:9000").Address;
+            FTRSubChannelDirectory directory = new FTRSubChannelDirectory("server01");
+            FTRSubChannelAddress first = directory.Register("peer01", "127.0.0.1:9000").Address;
             Check(directory.FindSubChannel(first) != null && directory.SnapshotSubChannels().Length == 1,
                 "SubChannel registration");
             Reject<InvalidOperationException>(() => directory.Register("peer01", "duplicate"));
             Check(directory.Remove(first), "SubChannel removal");
-            MCCSubChannelAddress next = directory.Register("peer01", "127.0.0.1:9001").Address;
+            FTRSubChannelAddress next = directory.Register("peer01", "127.0.0.1:9001").Address;
             Check(next.Generation > first.Generation && directory.FindSubChannel(first) == null &&
                 !directory.Remove(first) && directory.FindSubChannel(next) != null, "Stale generation must not route");
             byte[] input = { 1, 2, 3 };
-            MCCChannelReceiveContext received = new MCCChannelReceiveContext(next, input);
+            FTRChannelReceiveContext received = new FTRChannelReceiveContext(next, input);
             input[0] = 99;
             Check(received.Data[0] == 1, "Receive context input copy");
             byte[] output = received.Data; output[0] = 8;
@@ -845,7 +846,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             MPAProtocolDescriptor modbus = new MPAProtocolDescriptor("modbus.tcp", "Modbus TCP", 1,
                 MPAProtocolCapabilities.Interpret | MPAProtocolCapabilities.Read |
                 MPAProtocolCapabilities.Write | MPAProtocolCapabilities.RequestResponse,
-                MCCIOCapabilities.ByteStream);
+                FTRIOCapabilities.ByteStream);
             MPAProtocolConfiguration binding = new MPAProtocolConfiguration("mod01", "modbus.tcp");
             binding.ValidateCompatibility(modbus, tcp);
             Reject<ArgumentException>(() => binding.ValidateCompatibility(modbus, null));
@@ -853,7 +854,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Id = "bad", Kind = MPAProtocolKind.ModbusTcpDraft,
                 ProcessingMode = MPAProtocolProcessingMode.Serial,
                 MaxConcurrency = 2 }.Validate());
-            MPAProtocolSession session = new MPAProtocolSession(binding, new MCCSubChannelAddress("tcp01"));
+            MPAProtocolSession session = new MPAProtocolSession(binding, new FTRSubChannelAddress("tcp01"));
             Check(session.State == MPAProtocolSessionState.Created, "Session created");
             session.Start(); Check(session.State == MPAProtocolSessionState.Active, "Session start");
             Reject<InvalidOperationException>(() => session.Start());
@@ -908,7 +909,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             MPAPointDefinition stationTwo = new MPAPointDefinition("reg2", "holding:1", typeof(ushort))
                 { StationAddress = "2" };
             MCNConnectorConfiguration multiStation = new MCNConnectorConfiguration {
-                Channel = new MCCSerialChannelConfiguration { Id = "bus", Kind = MCCChannelKind.Serial, PortName = "COM3" },
+                Channel = new FTRSerialChannelConfiguration { Id = "bus", Kind = FTRChannelKind.Serial, PortName = "COM3" },
                 Protocol = new MPAProtocolConfiguration("rtu", "modbus.rtu") {
                     Points = new List<MPAPointDefinition> { stationOne, stationTwo }
                 }
@@ -922,7 +923,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             stationTwo.StationAddress = "2";
 
             // 实际纯传输 Virtual 不解释长度帧：由独立 Protocol 解析拆分数据。
-            MCCVirtualChannel[] raw = MCCVirtualChannel.CreatePair("raw-tx", "raw-rx");
+            FTRVirtualChannel[] raw = FTRVirtualChannel.CreatePair("raw-tx", "raw-rx");
             MPALengthFrameProtocol framed = new MPALengthFrameProtocol();
             List<byte[]> parsed = new List<byte[]>();
             raw[1].Received += receivedChunk => {
@@ -933,9 +934,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
             raw[0].Open(); raw[1].Open();
             byte[] encoded = framed.PrepareSend(new byte[] { 10, 20, 30 }, null);
             raw[0].SendAsync(encoded.Take(3).ToArray(),
-                new MCCSubChannelAddress("raw-tx"), CancellationToken.None).GetAwaiter().GetResult();
+                new FTRSubChannelAddress("raw-tx"), CancellationToken.None).GetAwaiter().GetResult();
             raw[0].SendAsync(encoded.Skip(3).ToArray(),
-                new MCCSubChannelAddress("raw-tx"), CancellationToken.None).GetAwaiter().GetResult();
+                new FTRSubChannelAddress("raw-tx"), CancellationToken.None).GetAwaiter().GetResult();
             Check(parsed.Count == 1 && parsed[0].SequenceEqual(new byte[] { 10, 20, 30 }) &&
                   raw[1].ReadFrames().All(x => x.DecodedPayload == null),
                 "Protocol owns frame parsing; Channel only transports raw chunks");
@@ -944,20 +945,20 @@ namespace CxVisual.Tests.ArchitectureSmoke
             // Connector 实例与纯传输 Channel / Protocol 的实际入站闭环。
             MCNConnectorConfiguration streamConfig = new MCNConnectorConfiguration {
                 DisplayName = "分帧连接",
-                Channel = new MCCVirtualChannelConfiguration { Id = "raw-tx", Kind = MCCChannelKind.Virtual },
+                Channel = new FTRVirtualChannelConfiguration { Id = "raw-tx", Kind = FTRChannelKind.Virtual },
                 Protocol = new MPAProtocolConfiguration { Kind = MPAProtocolKind.LengthFrame }
             };
             MCNConnectorModule streamModule = new MCNConnectorModule(
                 streamConfig.Describe("stream", MFMModuleKind.Connector), streamConfig,
                 raw[0], new MPALengthFrameProtocol());
             List<byte[]> assembled = new List<byte[]>();
-            MCCSubChannelAddress lastSource = null;
+            FTRSubChannelAddress lastSource = null;
             streamModule.PayloadReceived += x => assembled.Add(x);
             streamModule.PayloadReceivedFrom += (source, x) => lastSource = source;
             raw[1].Open();
             streamModule.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
             byte[] dataFrame = new MPALengthFrameProtocol().PrepareSend(new byte[] { 7, 8 }, null);
-            raw[1].SendAsync(dataFrame, new MCCSubChannelAddress("raw-rx"),
+            raw[1].SendAsync(dataFrame, new FTRSubChannelAddress("raw-rx"),
                 CancellationToken.None).GetAwaiter().GetResult();
             Check(lastSource != null && lastSource.ChannelId == "raw-tx",
                 "Connector inbound event preserves Channel/SubChannel route");
@@ -966,9 +967,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
             streamModule.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
             raw[1].Close();
 
-            MCCVirtualChannel[] emptyPair = MCCVirtualChannel.CreatePair("empty-tx", "empty-rx");
+            FTRVirtualChannel[] emptyPair = FTRVirtualChannel.CreatePair("empty-tx", "empty-rx");
             MCNConnectorConfiguration emptyCfg = new MCNConnectorConfiguration {
-                Channel = new MCCVirtualChannelConfiguration { Id = "empty-tx", Kind = MCCChannelKind.Virtual },
+                Channel = new FTRVirtualChannelConfiguration { Id = "empty-tx", Kind = FTRChannelKind.Virtual },
                 Protocol = new MPAProtocolConfiguration { Kind = MPAProtocolKind.Empty }
             };
             MCNConnectorModule emptyModule = new MCNConnectorModule(
@@ -978,7 +979,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             emptyModule.PayloadReceived += x => passthrough = x;
             emptyPair[1].Open();
             emptyModule.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
-            emptyPair[1].SendAsync(new byte[] { 3, 4, 5 }, new MCCSubChannelAddress("empty-rx"),
+            emptyPair[1].SendAsync(new byte[] { 3, 4, 5 }, new FTRSubChannelAddress("empty-rx"),
                 CancellationToken.None).GetAwaiter().GetResult();
             Check(passthrough != null && passthrough.SequenceEqual(new byte[] { 3, 4, 5 }),
                 "Empty Protocol transparently passes data, not an Empty Channel");
@@ -989,37 +990,37 @@ namespace CxVisual.Tests.ArchitectureSmoke
             // 按代次清理半包：旧客户端遗留字节不能污染新的 ProtocolSession。
             MPALengthFrameProtocol cleanupParser = new MPALengthFrameProtocol();
             byte[] wrapped = cleanupParser.PrepareSend(new byte[] { 9, 8, 7 }, null);
-            MCCSubChannelAddress former = new MCCSubChannelAddress("server", "peer", 1);
-            Check(cleanupParser.ProcessReceived(new MCCChannelReceiveContext(former,
+            FTRSubChannelAddress former = new FTRSubChannelAddress("server", "peer", 1);
+            Check(cleanupParser.ProcessReceived(new FTRChannelReceiveContext(former,
                 wrapped.Take(2).ToArray()), new MPAProtocolContext("length", "one")).Count == 0,
                 "单个子通道半包保留在规约解析状态");
             ((IMPAProtocolSessionCleanup)cleanupParser).Reset(former);
-            Check(cleanupParser.ProcessReceived(new MCCChannelReceiveContext(former,
+            Check(cleanupParser.ProcessReceived(new FTRChannelReceiveContext(former,
                 wrapped), new MPAProtocolContext("length", "one")).Count == 1,
                 "断开后清理半包，再收到整帧必须独立解析");
             ((IMPAProtocolSessionCleanup)cleanupParser).ResetAll();
             MPAProtocolContext mbCtx = new MPAProtocolContext("modbus", "session",
-                new MCCSubChannelAddress("raw-rx"), protocolAddress: new MPAProtocolAddress("3"));
+                new FTRSubChannelAddress("raw-rx"), protocolAddress: new MPAProtocolAddress("3"));
             MPAModbusTcpProtocol mbTcp = new MPAModbusTcpProtocol();
             byte[] tcpResponse = mbTcp.PrepareSend(new byte[] { 3, 2, 0, 5 }, mbCtx);
             byte[] headHalf = tcpResponse.Take(5).ToArray();
             byte[] tailHalf = tcpResponse.Skip(5).ToArray();
-            Check(mbTcp.ProcessReceived(new MCCChannelReceiveContext(
-                new MCCSubChannelAddress("raw-rx"), headHalf), mbCtx).Count == 0,
+            Check(mbTcp.ProcessReceived(new FTRChannelReceiveContext(
+                new FTRSubChannelAddress("raw-rx"), headHalf), mbCtx).Count == 0,
                 "Modbus TCP 半包暂不输出");
             IReadOnlyList<byte[]> mbTcpFrames = mbTcp.ProcessReceived(
-                new MCCChannelReceiveContext(new MCCSubChannelAddress("raw-rx"), tailHalf), mbCtx);
+                new FTRChannelReceiveContext(new FTRSubChannelAddress("raw-rx"), tailHalf), mbCtx);
             Check(mbTcpFrames.Count == 1 && mbTcpFrames[0].SequenceEqual(new byte[] { 3, 2, 0, 5 }),
                 "Modbus TCP MBAP 粘包解析与读寄存器响应");
             MPAModbusRtuProtocol mbRtu = new MPAModbusRtuProtocol();
             byte[] rtuResponse = mbRtu.PrepareSend(new byte[] { 3, 2, 0, 5 }, mbCtx);
             IReadOnlyList<byte[]> mbRtuFrames = mbRtu.ProcessReceived(
-                new MCCChannelReceiveContext(new MCCSubChannelAddress("raw-rx"), rtuResponse), mbCtx);
+                new FTRChannelReceiveContext(new FTRSubChannelAddress("raw-rx"), rtuResponse), mbCtx);
             Check(mbRtuFrames.Count == 1 && mbRtuFrames[0].SequenceEqual(new byte[] { 3, 2, 0, 5 }),
                 "Modbus RTU CRC16/站号/帧处理");
             byte[] badCrc = (byte[])rtuResponse.Clone(); badCrc[badCrc.Length - 1] ^= 1;
             Reject<System.IO.InvalidDataException>(() => mbRtu.ProcessReceived(
-                new MCCChannelReceiveContext(new MCCSubChannelAddress("raw-rx"), badCrc), mbCtx));
+                new FTRChannelReceiveContext(new FTRSubChannelAddress("raw-rx"), badCrc), mbCtx));
             MPAProtocolConfiguration collectionConfig = new MPAProtocolConfiguration();
             collectionConfig.Points.Add(new MPAPointDefinition("sensor", "raw:1", typeof(int)));
             MPADataMappingCollection collection = new MPADataMappingCollection(collectionConfig);

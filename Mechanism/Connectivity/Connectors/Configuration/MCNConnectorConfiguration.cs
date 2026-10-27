@@ -1,3 +1,4 @@
+using CxVisual.Foundation.Transport;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -13,7 +14,7 @@ namespace CxVisual.Mechanism.Connectivity
     public sealed class MCNConnectorConfiguration : MFMModuleConfiguration
     {
         [FCMConfigItem("通道", Order = 10, Category = "通道")]
-        public MCCChannelConfiguration Channel { get; set; } = new MCCVirtualChannelConfiguration();
+        public FTRChannelConfiguration Channel { get; set; } = new FTRVirtualChannelConfiguration();
 
         [FCMConfigItem("规约", Order = 20, Category = "规约")]
         public MPAProtocolConfiguration Protocol { get; set; } = new MPAProtocolConfiguration();
@@ -63,17 +64,17 @@ namespace CxVisual.Mechanism.Connectivity
                 if (value.Channel != null)
                 {
                     if (value.Protocol.Kind == MPAProtocolKind.ModbusTcpDraft &&
-                        value.Channel.Kind != MCCChannelKind.TcpClient &&
-                        value.Channel.Kind != MCCChannelKind.TcpServer)
+                        value.Channel.Kind != FTRChannelKind.TcpClient &&
+                        value.Channel.Kind != FTRChannelKind.TcpServer)
                         errors.Add(FCMConfigIssue.Error("Protocol.Kind", "PROTOCOL_IO_MISMATCH",
                             "Modbus TCP 只能使用 TCP Channel"));
                     if (value.Protocol.Kind == MPAProtocolKind.ModbusRtuDraft &&
-                        value.Channel.Kind != MCCChannelKind.Serial)
+                        value.Channel.Kind != FTRChannelKind.Serial)
                         errors.Add(FCMConfigIssue.Error("Protocol.Kind", "PROTOCOL_IO_MISMATCH",
                             "Modbus RTU 必须使用 Serial Channel"));
                     if (value.Protocol.Kind == MPAProtocolKind.LengthFrame &&
-                        (value.Channel.Kind == MCCChannelKind.Udp ||
-                         value.Channel.Kind == MCCChannelKind.UdpServer))
+                        (value.Channel.Kind == FTRChannelKind.Udp ||
+                         value.Channel.Kind == FTRChannelKind.UdpServer))
                         errors.Add(FCMConfigIssue.Error("Protocol.Kind", "PROTOCOL_IO_MISMATCH",
                             "LengthFrame 规约需要 ByteStream"));
                 }
