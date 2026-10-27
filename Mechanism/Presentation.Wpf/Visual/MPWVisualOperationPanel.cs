@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Media;
 namespace CxVisual.Mechanism.Presentation.Wpf
 {
     /// <summary>Studio/TestCenter共享的图元操作面板。只发出编辑意图，不持有MEM或Undo。</summary>
@@ -13,6 +14,20 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         private readonly StackPanel _commands=new StackPanel();
         private readonly Dictionary<string,Button> _buttons=new Dictionary<string,Button>(StringComparer.Ordinal);
         public event Action<string> OperationRequested;
+        private string _activeTool="Select";
+        public string ActiveTool {get{return _activeTool;}}
+        /// <summary>仅显示活跃工具，工具状态本身由SceneView管理。</summary>
+        public void SetActiveTool(string tool)
+        {
+            _activeTool=tool??"Select";
+            foreach(var pair in _buttons)
+            {
+                bool active=pair.Key==_activeTool;
+                pair.Value.FontWeight=active?FontWeights.Bold:FontWeights.Normal;
+                pair.Value.BorderBrush=active?Brushes.DodgerBlue:Brushes.LightSteelBlue;
+                pair.Value.BorderThickness=new Thickness(active?2:1);
+            }
+        }
         public IReadOnlyCollection<string> Operations { get { return _buttons.Keys; } }
         public bool ShowEditingActions
         {
@@ -22,6 +37,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         public MPWVisualOperationPanel()
         {
             AutomationProperties.SetAutomationId(this,"MPW.Visual.Operations");
+            AddSection(_root,"工具",new [] {"Select|选择 / 框选"});
             AddSection(_root,"基础图元",new [] {
                 "Line|直线","Rect|矩形","Circle|圆","Ellipse|椭圆",
                 "Polyline|折线","Polygon|多边形","Arc|圆弧","Bezier|贝塞尔",
@@ -45,6 +61,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             Content=_root;
             // 初始尚无选择和历史；禁止画面显示可点但无法执行的编辑命令。
             UpdateAvailability(0,false,false,false,true);
+            SetActiveTool("Select");
         }
         private void AddSection(Panel parent,string heading,IEnumerable<string> values)
         {
@@ -87,6 +104,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 SetOperationEnabled(id,canEdit&&selectionCount>=3&&!selectedVisualConnection);
             foreach(string id in new[]{"route.straight","route.orthogonal","route.manual"})
                 SetOperationEnabled(id,canEdit&&selectionCount==1&&selectedVisualConnection);
+            SetOperationEnabled("Select",true);
             foreach(string id in new[]{"Line","Rect","Circle","Ellipse","Polyline","Polygon",
                 "Arc","Bezier","Path","Text","WidgetButton","core.widget.textbox",
                 "core.widget.checkbox","core.widget.slider","core.widget.progressbar",

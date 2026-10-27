@@ -37,10 +37,33 @@ namespace CxVisual.TestCenter.UI
                 if(rect==null)throw new InvalidOperationException("缺少真实矩形工具按钮");
                 int before=frame.Revision;
                 rect.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                if(frame.SceneCount!=1||frame.Revision<=before)
-                    throw new InvalidOperationException("共用按钮点击未创建真实MEM图元");
+                if(frame.SceneCount!=0||frame.Revision!=before||
+                    frame.Canvas.ActiveDrawTool!="Rect")
+                    throw new InvalidOperationException("单击工具应只激活Draw，不能偷偷插入默认矩形");
+                frame.Canvas.BeginDrawGesture(35,60);
+                frame.Canvas.UpdateDrawGesture(165,125);
+                if(!frame.Canvas.HasDrawPreview||frame.Revision!=before)
+                    throw new InvalidOperationException("鼠标拖绘Ghost不应修改MEM Revision");
+                if(!frame.Canvas.CompleteDrawGesture(165,125)||frame.SceneCount!=1||
+                    frame.Revision!=before+1||frame.Canvas.HasDrawPreview)
+                    throw new InvalidOperationException("拖绘松开没有一次提交真实MEM矩形");
+                var rectShape=frame.FindObject(frame.SceneIds[0]) as MRCVisualItem;
+                if(rectShape==null||Math.Abs(rectShape.X-25)>1e-6||
+                    Math.Abs(rectShape.Y-50)>1e-6||
+                    Math.Abs(rectShape.Width-150)>1e-6||
+                    Math.Abs(rectShape.Height-75)>1e-6)
+                    throw new InvalidOperationException("World网格吸附与正式Shape几何尺寸不一致");
                 frame.Execute("Circle");
-                if(frame.SceneCount!=2)throw new InvalidOperationException("图元投影未更新");
+                if(frame.SceneCount!=1||frame.Canvas.ActiveDrawTool!="Circle")
+                    throw new InvalidOperationException("圆工具应激活而不能立即创建默认圆");
+                frame.Canvas.BeginDrawGesture(280,130);
+                frame.Canvas.UpdateDrawGesture(367,206);
+                if(!frame.Canvas.CompleteDrawGesture(367,206)||frame.SceneCount!=2)
+                    throw new InvalidOperationException("圆工具鼠标拖绘提交失败");
+                var round=frame.FindObject(frame.SceneIds[1]) as MRCVisualItem;
+                if(round==null||Math.Abs(round.Width-round.Height)>1e-6)
+                    throw new InvalidOperationException("Circle拖绘没有保持圆形约束");
+                frame.Execute("Select");
                 frame.Execute("edit.undo");
                 if(frame.SceneCount!=1)throw new InvalidOperationException("MEM Undo失败");
                 frame.Execute("edit.redo");
@@ -190,6 +213,44 @@ namespace CxVisual.TestCenter.UI
                 frame.OpenProject(file);
                 if(frame.SceneCount!=4||duplicatedIds.Any(id=>frame.FindObject(id)==null))
                     throw new InvalidOperationException("WPF Duplicate保存重开身份丢失");
+                // 线段与逐点多边形也必须是同一Draw手势，不是预设shape按钮。
+                frame.Execute("Line");
+                int lineBefore=frame.Revision;
+                frame.Canvas.BeginDrawGesture(420,60);
+                frame.Canvas.UpdateDrawGesture(490,160);
+                if(!frame.Canvas.CompleteDrawGesture(490,160)||frame.SceneCount!=5||
+                    frame.Revision!=lineBefore+1)
+                    throw new InvalidOperationException("Line drag not committed as one MEM action");
+                frame.Execute("Polyline");
+                int pathBefore=frame.Revision;
+                frame.Canvas.BeginDrawGesture(520,60);
+                frame.Canvas.UpdateDrawGesture(560,90);
+                frame.Canvas.BeginDrawGesture(560,90);
+                frame.Canvas.BeginDrawGesture(610,160);
+                if(frame.Revision!=pathBefore||
+                    !frame.Canvas.CompleteDrawGesture(610,160)||frame.SceneCount!=6||
+                    frame.Revision!=pathBefore+1)
+                    throw new InvalidOperationException("Polyline multi-click editing did not submit once");
+                frame.Execute("Polygon");
+                int polygonBefore=frame.Revision;
+                frame.Canvas.BeginDrawGesture(650,80);
+                frame.Canvas.BeginDrawGesture(700,90);
+                frame.Canvas.BeginDrawGesture(670,170);
+                if(!frame.Canvas.CompleteDrawGesture(670,170)||frame.SceneCount!=7||
+                    frame.Revision!=polygonBefore+1)
+                    throw new InvalidOperationException("Polygon multi-click drawing failed");
+                frame.Execute("Rect");
+                int canceled=frame.Revision;
+                frame.Canvas.BeginDrawGesture(700,300);
+                frame.Canvas.UpdateDrawGesture(775,375);
+                frame.Canvas.CancelInteraction();
+                if(frame.Canvas.HasDrawPreview||frame.Revision!=canceled||frame.SceneCount!=7)
+                    throw new InvalidOperationException("Esc/失焦取消绘制不得留下Shape或Revision");
+                frame.Execute("Select");
+                frame.SaveProject(file);
+                frame.OpenProject(file);
+                if(frame.SceneCount!=7||frame.IsDirty)
+                    throw new InvalidOperationException("新绘图工程没有完成保存重开");
                 frame.Inspect();
                 if(!frame.StatusMessage.Contains("Revision")||
                     frame.StatusMessage.Contains("GE Passed"))

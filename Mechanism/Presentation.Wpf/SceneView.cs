@@ -19,6 +19,97 @@ namespace CxVisual.Mechanism.Presentation.Wpf
     {
         private readonly List<MVISceneItem> _items = new List<MVISceneItem>();
         private Guid? _selection;
+        // Draw只保存瞬时指针和Ghost数据；工程Shape创建交回MVI/MEM唯一事务。
+        private string _drawTool="Select";
+        private bool _drawDragging;
+        private readonly List<FGEPoint2D> _drawPoints=new List<FGEPoint2D>();
+        private Point _drawPointer;
+        public string ActiveDrawTool {get{return _drawTool;}}
+        public bool HasDrawPreview {get{return _drawDragging||_drawPoints.Count>0;}}
+        public event Action<string> DrawToolChanged;
+        public event Action<MRCShapeKind,IReadOnlyList<FGEPoint2D>,bool> DrawShapeRequested;
+        private static bool IsPointDrawTool(string tool)
+        {return tool=="Polyline"||tool=="Polygon"||tool=="Path";}
+        public void SetDrawTool(string tool)
+        {
+            if(tool!="Select")
+            {
+                MRCShapeKind kind;
+                if(!Enum.TryParse(tool,false,out kind)||!Enum.IsDefined(typeof(MRCShapeKind),kind))
+                    throw new ArgumentException("visual.draw.unsupported_tool","tool");
+            }
+            CancelInteraction();
+            _geometryEditMode=false;
+            if(!_designMode&&tool!="Select")
+                throw new InvalidOperationException("visual.draw.requires_design_mode");
+            _drawTool=tool;
+            Cursor=tool=="Select"?Cursors.Arrow:Cursors.Cross;
+            InvalidateVisual();
+            Action<string> handler=DrawToolChanged;if(handler!=null)handler(tool);
+        }
+        private Point SnapDrawing(Point p)
+        {return _gridSnap?new Point(Math.Round(p.X/25)*25,Math.Round(p.Y/25)*25):p;}
+        /// <summary>WPF鼠标和可替换的触笔/触控输入共同使用的绘制手势入口。</summary>
+        public void BeginDrawGesture(double worldX,double worldY)
+        {
+            if(!_designMode||_drawTool=="Select")
+                throw new InvalidOperationException("visual.draw.tool_not_active");
+            Point p=SnapDrawing(new Point(worldX,worldY));
+            _drawPointer=p;
+            if(IsPointDrawTool(_drawTool))
+            {
+                FGEPoint2D point=new FGEPoint2D(p.X,p.Y);
+                if(_drawPoints.Count==0||
+                    Math.Abs(_drawPoints[_drawPoints.Count-1].X-point.X)>1e-9||
+                    Math.Abs(_drawPoints[_drawPoints.Count-1].Y-point.Y)>1e-9)
+                    _drawPoints.Add(point);
+            }
+            else
+            {
+                _drawPoints.Clear();
+                _drawPoints.Add(new FGEPoint2D(p.X,p.Y));
+                _drawDragging=true;
+            }
+            InvalidateVisual();
+        }
+        public void UpdateDrawGesture(double worldX,double worldY)
+        {
+            if(!HasDrawPreview)return;
+            _drawPointer=SnapDrawing(new Point(worldX,worldY));
+            InvalidateVisual();
+        }
+        /// <summary>释放矩形/线鼠标或双击/Enter结束多点绘制；无效几何不发创建事件。</summary>
+        public bool CompleteDrawGesture(double worldX,double worldY,bool constrain=false)
+        {
+            if(_drawTool=="Select"||!HasDrawPreview)return false;
+            UpdateDrawGesture(worldX,worldY);
+            bool pointsMode=IsPointDrawTool(_drawTool);
+            var points=new List<FGEPoint2D>(_drawPoints);
+            if(!pointsMode)points.Add(new FGEPoint2D(_drawPointer.X,_drawPointer.Y));
+            if(pointsMode&&points.Count<(_drawTool=="Polygon"?3:2))return false;
+            if(!pointsMode&&points[0].DistanceTo(points[1])<3/_zoom)
+            {
+                _drawDragging=false;_drawPoints.Clear();InvalidateVisual();
+                return false;
+            }
+            MRCShapeKind kind=(MRCShapeKind)Enum.Parse(typeof(MRCShapeKind),_drawTool);
+            try
+            {
+                double x,y;
+                MVIShapeCatalog.CreateDrawn(kind,points,constrain,out x,out y);
+            }
+            catch(ArgumentException)
+            {
+                if(!pointsMode){_drawDragging=false;_drawPoints.Clear();InvalidateVisual();}
+                return false;
+            }
+            _drawDragging=false;_drawPoints.Clear();
+            if(IsMouseCaptured)ReleaseMouseCapture();
+            InvalidateVisual();
+            var handler=DrawShapeRequested;
+            if(handler!=null)handler(kind,points.AsReadOnly(),constrain);
+            return handler!=null;
+        }
         private Point _dragStart;
         private double _dragX;
         private double _dragY;
@@ -387,7 +478,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 // 否则变量失联返回null时旧的运行态值会遗留在重用的TextBox/CheckBox中。
                 if(!_designMode&&value)_resetWidgetLayerOnNextScene=true;
                 _designMode=value;
-                if(!value){CancelInteraction();_geometryEditMode=false;}
+                if(!value)
+                {
+                    CancelInteraction();_geometryEditMode=false;
+                    _drawTool="Select";Cursor=Cursors.Arrow;
+                    Action<string> changed=DrawToolChanged;if(changed!=null)changed(_drawTool);
+                }
                 foreach(UIElement element in _widgetCanvas.Children)
                     element.IsHitTestVisible=!_designMode;
             }
@@ -613,7 +709,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 dc.DrawText(name, new Point(bounds.Left + 12, bounds.Top + 12));
             }
             // draw.io式图元快捷连接提示：悬停态只显示固定锚点与四向箭头。
-            if(_designMode&&!_connectDragging&&ConnectRequested!=null&&
+            if(_designMode&&_drawTool=="Select"&&!_connectDragging&&ConnectRequested!=null&&
                 _hoverConnectId.HasValue)
             {
                 MVISceneItem hover=Connectable(_hoverConnectId.Value);
@@ -671,7 +767,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                         {DashStyle=DashStyles.Dash},new Point(anchor.X,anchor.Y),target);
                 }
             }
-            if(IsDesignMode&&_selection.HasValue&&EditableSelection().Length<2)
+            if(IsDesignMode&&_drawTool=="Select"&&_selection.HasValue&&EditableSelection().Length<2)
             {
                 MVISceneItem edited=_items.Find(i=>i.Id==_selection.Value);
                 if(edited!=null&&edited.ElementTypeId=="core.visual.connector"&&
@@ -818,7 +914,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             }
             // 共性选区使用一个外框与九个变换控制柄，避免每个对象各出现九个重叠控制柄。
             MVISceneItem[] multi=EditableSelection();
-            if(multi.Length>1&&SelectionTransformRequested!=null)
+            if(_drawTool=="Select"&&multi.Length>1&&SelectionTransformRequested!=null)
             {
                 FGERect2D bounds=MVISelectionTransform.Bounds(multi);
                 MRCTransform preview=MRCTransform.Identity;
@@ -856,6 +952,46 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                         new Point(world.X,world.Y),5/_zoom,5/_zoom);
                 }
             }
+            // 创建预览与最终工程使用相同MVIShapeCatalog求解；仅WPF临时Ghost。
+            if(HasDrawPreview)
+            {
+                var points=new List<FGEPoint2D>(_drawPoints);
+                if(!IsPointDrawTool(_drawTool))
+                    points.Add(new FGEPoint2D(_drawPointer.X,_drawPointer.Y));
+                if(IsPointDrawTool(_drawTool))
+                {
+                    if(points.Count>0)
+                    {
+                        for(int i=1;i<points.Count;i++)
+                            dc.DrawLine(new Pen(Brushes.DodgerBlue,1.5/_zoom),
+                                new Point(points[i-1].X,points[i-1].Y),
+                                new Point(points[i].X,points[i].Y));
+                        FGEPoint2D last=points[points.Count-1];
+                        dc.DrawLine(new Pen(Brushes.DodgerBlue,1.5/_zoom)
+                            {DashStyle=DashStyles.Dash},
+                            new Point(last.X,last.Y),_drawPointer);
+                        foreach(FGEPoint2D pt in points)
+                            dc.DrawEllipse(Brushes.White,new Pen(Brushes.DodgerBlue,1/_zoom),
+                                new Point(pt.X,pt.Y),3.5/_zoom,3.5/_zoom);
+                    }
+                }
+                else if(points.Count>=2)
+                {
+                    try
+                    {
+                        MRCShapeKind type=(MRCShapeKind)Enum.Parse(typeof(MRCShapeKind),_drawTool);
+                        double x,y;
+                        MRCShapeDefinition ghost=MVIShapeCatalog.CreateDrawn(type,points,
+                            (Keyboard.Modifiers&ModifierKeys.Shift)!=0,out x,out y);
+                        Geometry outline=MPWShapeRenderer.BuildGeometry(ghost.Geometry,
+                            FGETransform2D.Translation(x,y));
+                        dc.DrawGeometry(new SolidColorBrush(Color.FromArgb(28,32,117,218)),
+                            new Pen(Brushes.DodgerBlue,1.6/_zoom)
+                            {DashStyle=DashStyles.Dash},outline);
+                    }
+                    catch(ArgumentException){/* 零长度指针移动仅显示工具十字，不生成工程 */}
+                }
+            }
             if(_marquee)
             {
                 double x=Math.Min(_marqueeStart.X,_marqueeEnd.X);
@@ -888,6 +1024,18 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             Focus();
             Point point = WorldPoint(e.GetPosition(this));
             if(!_designMode)return;
+            if(_drawTool!="Select")
+            {
+                Point world=WorldPoint(e.GetPosition(this));
+                if(IsPointDrawTool(_drawTool)&&e.ClickCount>=2)
+                    CompleteDrawGesture(world.X,world.Y);
+                else
+                {
+                    BeginDrawGesture(world.X,world.Y);
+                    if(_drawDragging)CaptureMouse();
+                }
+                e.Handled=true;return;
+            }
             int selectionHandle;
             if(TryHitSelectionHandle(point,out selectionHandle))
             {
@@ -1013,6 +1161,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         protected override void OnMouseMove(MouseEventArgs e)
         {
             base.OnMouseMove(e);
+            if(HasDrawPreview)
+            {
+                Point p=WorldPoint(e.GetPosition(this));
+                UpdateDrawGesture(p.X,p.Y);
+                e.Handled=true;return;
+            }
             if(_selectionTransformDragging)
             {
                 Point pointer=WorldPoint(e.GetPosition(this));
@@ -1079,6 +1233,18 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
         {
             base.OnMouseLeftButtonUp(e);
+            if(_drawTool!="Select")
+            {
+                if(_drawDragging)
+                {
+                    Point p=WorldPoint(e.GetPosition(this));
+                    CompleteDrawGesture(p.X,p.Y,
+                        (Keyboard.Modifiers&ModifierKeys.Shift)!=0);
+                    _drawDragging=false;
+                    if(IsMouseCaptured)ReleaseMouseCapture();
+                }
+                e.Handled=true;return;
+            }
             if(_selectionTransformDragging)
             {
                 Point pointer=WorldPoint(e.GetPosition(this));
@@ -1211,7 +1377,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             InvalidateVisual();
         }
         public void CancelInteraction()
-        {_dragging=false;_marquee=false;_handleDragging=false;_activeHandle=null;_panning=false;_dragX=0;_dragY=0;_dragSnap=null;
+        {_drawDragging=false;_drawPoints.Clear();
+            _dragging=false;_marquee=false;_handleDragging=false;_activeHandle=null;_panning=false;_dragX=0;_dragY=0;_dragSnap=null;
             _waypointDragging=false;_waypointConnectionId=null;
             _selectionTransformDragging=false;
             _connectDragging=false;_connectSourceId=null;_connectTargetId=null;
@@ -1227,9 +1394,18 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 InvalidateVisual();
             if(e.Key==Key.Escape)
             {
-                if(_geometryEditMode&&!_dragging&&!_handleDragging)
+                if(HasDrawPreview)CancelInteraction();
+                else if(_drawTool!="Select")SetDrawTool("Select");
+                else if(_geometryEditMode&&!_dragging&&!_handleDragging)
                 {_geometryEditMode=false;InvalidateVisual();}
                 else CancelInteraction();
+                e.Handled=true;
+            }
+            else if(_designMode&&e.Key==Key.Enter&&
+                IsPointDrawTool(_drawTool)&&HasDrawPreview)
+            {
+                FGEPoint2D pt=_drawPoints[_drawPoints.Count-1];
+                CompleteDrawGesture(pt.X,pt.Y);
                 e.Handled=true;
             }
             else if(_designMode&&!_geometryEditMode&&!_dragging&&!_handleDragging&&
@@ -1277,7 +1453,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             if(_selectionTransformDragging)InvalidateVisual();
             base.OnKeyUp(e);
         }
-        protected override void OnLostMouseCapture(MouseEventArgs e){if(_dragging||_handleDragging||_connectDragging||_rewireDragging||
+        protected override void OnLostMouseCapture(MouseEventArgs e){if(_drawDragging||_dragging||_handleDragging||_connectDragging||_rewireDragging||
             _waypointDragging||_selectionTransformDragging)CancelInteraction();base.OnLostMouseCapture(e);}
         protected override void OnMouseLeave(MouseEventArgs e)
         {

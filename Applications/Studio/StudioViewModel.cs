@@ -5,6 +5,7 @@ using System.Collections.ObjectModel;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Input;
+using CxVisual.Foundation.Geometry;
 using CxVisual.Mechanism.Core;
 using CxVisual.Mechanism.Visual;
 using CxVisual.Foundation.Infrastructure.Logging;
@@ -293,6 +294,24 @@ namespace CxVisual.Studio
             Execute(()=>_editor.AddShape(kind+" "+index,definition,
                 45+(index%7)*24,55+(index%7)*20));
             if(ElementCount>before)Select(Items[Items.Count-1].Id);
+        }
+        /// <summary>画布拖绘提交：与MPW预览共用Catalog，仍然只做一次工程MEM事务。</summary>
+        public MTCEditResult<bool> DrawVisualShape(MRCShapeKind kind,
+            IReadOnlyList<FGEPoint2D> worldPoints,bool constrain)
+        {
+            Guid[] before=Items.Select(item=>item.Id).ToArray();
+            int index=ElementCount+1;
+            MTCEditResult<bool> result=_editor.DrawShape(kind+" "+index,kind,
+                worldPoints,constrain);
+            Status=result.Success?"已手绘 "+kind+" | Revision "+result.Revision:
+                "绘制被拒绝："+result.ErrorCode+" "+result.Message;
+            if(result.Success)
+            {
+                var item=Items.LastOrDefault(entry=>!before.Contains(entry.Id));
+                if(item!=null)Select(item.Id);
+                NotifyScene();
+            }
+            return result;
         }
         /// <summary>导入项目打包资产并在当前编辑资源创建真实图片/SVG图元。</summary>
         public void AddVisualAsset(string file)

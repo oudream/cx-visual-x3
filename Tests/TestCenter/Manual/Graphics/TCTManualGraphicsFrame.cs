@@ -83,6 +83,7 @@ namespace CxVisual.TestCenter.UI
             AutomationProperties.SetAutomationId(_status,"TCT.Graphics.Status");
             AutomationProperties.SetAutomationId(_objects,"TCT.Graphics.Objects");
             _operations.OperationRequested+=Execute;
+            _canvas.DrawToolChanged+=tool=>_operations.SetActiveTool(tool);
             _objects.SelectionChanged+=OnObjectTreeSelectionChanged;
             WireCanvas();
             BuildLayout();
@@ -212,6 +213,28 @@ namespace CxVisual.TestCenter.UI
         }
         private void WireCanvas()
         {
+            // 绘制在PointerUp/Enter才进入单次MVI/MEM事务，Ghost阶段不改Revision。
+            _canvas.DrawShapeRequested+=(kind,points,constrain)=>
+            {
+                try
+                {
+                    Guid[] before=_editor.Scene.Select(item=>item.Id).ToArray();
+                    MTCEditResult<bool> result=_editor.DrawShape(kind.ToString()+(++_created),
+                        kind,points,constrain);
+                    Commit(result,"手工绘制 "+kind);
+                    if(result.Success)
+                    {
+                        MVISceneItem drawn=_editor.Scene.LastOrDefault(item=>
+                            !before.Contains(item.Id));
+                        if(drawn!=null)
+                        {
+                            _editor.Select(drawn.Id);
+                            _canvas.SetSelectedVisualIds(new[]{drawn.Id});
+                        }
+                    }
+                }
+                catch(Exception ex){Report("绘制失败："+ex.Message);}
+            };
             // 唯一工程提交Owner是MVI/MTC；SceneView负责WPF手势和世界坐标预览。
             _canvas.NodeActivated+=(sender,args)=>_editor.Select(args.Id);
             _canvas.SelectionSetRequested+=ids=>{
@@ -445,6 +468,16 @@ namespace CxVisual.TestCenter.UI
             if(_closed)throw new ObjectDisposedException("TCTManualGraphicsFrame");
             try
             {
+                MRCShapeKind shapeKind;
+                if(operation=="Select"||Enum.TryParse(operation,false,out shapeKind)&&
+                    Enum.IsDefined(typeof(MRCShapeKind),shapeKind))
+                {
+                    _canvas.SetDrawTool(operation);
+                    _operations.SetActiveTool(operation);
+                    Report(operation=="Select"?"已切换选择工具：可点击、框选和变换":
+                        "已激活 "+operation+" 绘制工具：在画布拖动；多边形/折线/Path逐点点击，双击或Enter完成，Esc取消");
+                    return;
+                }
                 if(operation=="edit.undo"){Commit(_editor.Undo(),"撤销");Refresh();return;}
                 if(operation=="edit.redo"){Commit(_editor.Redo(),"重做");Refresh();return;}
                 if(operation=="edit.duplicate")
@@ -540,6 +573,7 @@ namespace CxVisual.TestCenter.UI
             if(_closed)return;
             _canvas.CancelInteraction();
             _operations.OperationRequested-=Execute;
+            _canvas.SetDrawTool("Select");
             _editor.Changed-=OnEditorChanged;
             _editor.Dispose();
             _session.Close(true);

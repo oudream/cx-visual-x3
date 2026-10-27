@@ -186,6 +186,18 @@ namespace CxVisual.Studio
             PreviewKeyDown += OnFlowShortcuts;
             LogicHost.PortLinkRejected += (sender,args) =>
                 LogicInfo.Text="拖线被拒绝："+args.Reason;
+            SceneHost.DrawToolChanged+=tool=>StudioVisualOperations.SetActiveTool(tool);
+            SceneHost.DrawShapeRequested+=(kind,points,constrain)=>
+            {
+                try
+                {
+                    MTCEditResult<bool> result=_viewModel.DrawVisualShape(kind,points,constrain);
+                    VisualInfo.Text=result.Success?
+                        "鼠标绘制 "+kind+" 已提交（一次Undo），可切换选择工具编辑":
+                        "绘制被拒绝："+result.ErrorCode+" "+result.Message;
+                }
+                catch(Exception ex){VisualInfo.Text="绘制失败："+ex.Message;}
+            };
             SceneHost.NodeActivated += OnActivated;
             SceneHost.SelectionSetRequested += ids=>
             {
@@ -477,6 +489,18 @@ namespace CxVisual.Studio
             if(string.IsNullOrWhiteSpace(operation))return;
             try
             {
+                MRCShapeKind shape;
+                if(operation=="Select"||
+                    (Enum.TryParse(operation,false,out shape)&&
+                     Enum.IsDefined(typeof(MRCShapeKind),shape)))
+                {
+                    SceneHost.SetDrawTool(operation);
+                    StudioVisualOperations.SetActiveTool(operation);
+                    VisualInfo.Text=operation=="Select"?
+                        "选择工具：单选/框选/拖动/缩放/旋转":
+                        "已激活 "+operation+"：在画布拖绘，路径逐点点击，双击/Enter完成，Esc取消";
+                    return;
+                }
                 if(operation=="edit.undo")_viewModel.UndoCommand.Execute(null);
                 else if(operation=="edit.redo")_viewModel.RedoCommand.Execute(null);
                 else if(operation=="edit.delete")_viewModel.DeleteCommand.Execute(null);

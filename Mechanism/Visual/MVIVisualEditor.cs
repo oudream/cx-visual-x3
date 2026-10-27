@@ -449,6 +449,32 @@ namespace CxVisual.Mechanism.Visual
         }
 
         /// <summary>图元新增只通过原MEM工程事务提交，一次Undo即可撤销。</summary>
+        /// <summary>唯一绘制创建入口；与WPF Ghost共享纯几何求解，单次MEM事务。</summary>
+        public MTCEditResult<bool> DrawShape(string name,MRCShapeKind kind,
+            IReadOnlyList<FGEPoint2D> worldPoints,bool constrained)
+        {
+            Demand();
+            double x,y;
+            MRCShapeDefinition shape=MVIShapeCatalog.CreateDrawn(
+                kind,worldPoints,constrained,out x,out y);
+            // 普通Page/Content世界坐标与父局部坐标可能不同，须由当前定义的
+            // 父级World矩阵变换为局部。不为绘图创建独立的WPF工程真值。
+            MEMNode parent=CurrentDrawParent();
+            var visualParent=parent as MRCVisualItem;
+            if(visualParent!=null)
+            {
+                FGETransform2D world=FGETransform2D.Identity;
+                for(MEMNode node=visualParent;node!=null;node=node.Parent)
+                {
+                    var item=node as MRCVisualItem;
+                    if(item!=null)
+                        world=item.Transform.ToGeometry().Compose(world);
+                }
+                FGEPoint2D local=world.Inverse().TransformPoint(new FGEPoint2D(x,y));
+                x=local.X;y=local.Y;
+            }
+            return AddShape(name,shape,x,y);
+        }
         public MTCEditResult<bool> AddShape(string name,MRCShapeDefinition shape,double x,double y)
         {
             if(shape==null)throw new ArgumentNullException("shape");
