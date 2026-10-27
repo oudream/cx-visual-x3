@@ -265,3 +265,19 @@
 - `819d214`：现有`.github/workflows/imaging-foundation-windows.yml`只对二维原生WPF Smoke启动进程增加120秒`WaitForExit`上限、超时杀进程及诊断文本输出，防止后续UI问题无限占用Windows Runner；不改变三维/其它专业工作流。
 
 **验收界限**：前一版本[Imaging #40457295893](https://github.com/oudream/cx-visual-x3/actions/runs/40457295893)和[TestCenter #40457295939](https://github.com/oudream/cx-visual-x3/actions/runs/40457295939)成功属于较早Ls2Ls基础提交`7c0be2d`。后续区域生长/样式编辑/物理夹角及模态处理的完整最新功能需按[Imaging #40459752429](https://github.com/oudream/cx-visual-x3/actions/runs/40459752429)、[TestCenter #40459563749](https://github.com/oudream/cx-visual-x3/actions/runs/40459563749)各自SHA和完成结论核定；不要将早期通过冒充新的版本已通过。
+
+## 14. 双视口Ls2Ls交互与工具高亮（2026-10-27）
+
+**本轮直接修复的“按钮有形无反馈”根因**：`TCTManualImageViewerFrame.AddButton`原实现`action()`执行后无条件将按钮边框重置，覆盖`SelectTool`刚绘出的当前工具高亮；真实Imaging UI Smoke因“点击矩形工具没有真实激活或选中反馈”失败。提交`723929ab7584123a3c48839fe8c586784765dd3c`把“清理上次失败样式”移动到执行动作**之前**，失败仍用底部消息、红色边框和Automation HelpText展示；不能删除UI断言掩盖交互问题。[Windows Imaging #40467372723](https://github.com/oudream/cx-visual-x3/actions/runs/40467372723) **SUCCESS（13步骤）**，包括现有区域按钮高亮真实WPF回归。
+
+**两线测量双Pane实用性补全**：旧`ReferTo/Vision/Halcon/HWindowControlView.cs`的四点Ls2Ls虽已复建到FIM/MVI及MPW左Pane，右Pane结果视口仍只能平移，无法按四点输入；草稿也只在左Pane。此次继续复用唯一`AppendLinePairPoint`状态机、唯一MVI对象Store，不重建测量模式：
+- `6b2d136`：右Pane新增独立非命中草稿矢量层；
+- `d89638d`：`DrawDraftPolyline`对主/副`MVIImageViewport`独立投影同组原图点，分别显示第一线及第二线草稿；
+- `6b007db`：右Pane鼠标左键不再落入默认平移；坐标逆变换回原图后调用现有四点输入；MouseMove更新结果Pane草稿；
+- `073086d`：新增`SourceToSecondaryViewport` / `AppendLinePairAtSecondaryViewport` WPF可嵌入API，真实右Pane事件共用此路径；
+- `2b8e0f4`：实际WPF测试从原图像素中心投影到右Pane→再次反算→4点序列→检查两段预览、4个原图点、最短2px、左右真实图元显示及退出清理；不只是枚举/按钮/控件个数；
+- `7362fb6`：根据Windows编译日志补齐`System.Windows.Shapes.Polyline`别名，解决新增草稿类的CS0246。
+
+**最新相关Windows证据**：[Imaging #40468052445](https://github.com/oudream/cx-visual-x3/actions/runs/40468052445) **SUCCESS（13步骤）**，SHA `7362fb6`。相同代码SHA的[TestCenter #40468052262](https://github.com/oudream/cx-visual-x3/actions/runs/40468052262)在**Graphics Group/解组WPF回归**失败，不是Imaging步骤失败；跨专业整体CI不能误写全绿。
+
+**仍未验收**：真实操作系统物理鼠标双Pane、不同DPI监视器、多工位现场图像、Ls2Ls对象独立线段端点编辑与统一Undo/Redo及工程恢复；图像算法与UI不具备60项整体完成资格。
