@@ -183,6 +183,87 @@ public interface IReconstructionQueryService
 
 算法独立实现 `ReconstructAsync`，服务入口只承诺受理/JobId/查询/结果访问，不等于每次请求创建一个新的计算框架。真实 `cx-cct-x3` 重建可能通过 C ABI + SHM Adapter 实现，必须确保跨进程数据所有权和终态一致。
 
+
+## 2026-10-27 专项深化：服务能力终态、完整需求与工业运维验收
+
+> **状态：【目标规范增补】**。继承 UM-SV01～SV10，扩充 SV-Rxx 与 SV-Axx；Service 是**持续能力提供者与服务生命周期**，不是另一套 Socket、消息中心、命令中心、流程执行器或独立的 MRK Job Manager。能够通过接口直接调用的单个算法仍是 Compute；只有需要持续对外提供/管理请求、状态、资源、会话或依赖时才成为 Service。
+
+### SV-1 终态目标与双角色使用期望
+
+支持**进程内、独立进程、跨 PC**三种运行/部署方式，向业务系统、工程界面、工业设备和专业计算提供稳定的类型化服务能力，包括状态/数据查询、结果聚合、AI/CT 算法服务、长期任务提交、MES/ERP 数据交互入口、设备状态/监控及可选专业 API。对外技术可以是 HTTP(S)、IPC、RPC 或已装配的 Connector/Protocol，但**不强制每个 Service 创建 Channel**，不另造业务数据 Owner。
+
+- **软件开发者**：实现简单的请求处理或长期专业 Provider，声明服务 Operation/输入输出契约、依赖、生命周期和健康检查；平台协助完成标准装配、限流/追踪/鉴权。相同业务能力在本地代码与服务入口复用，不复制两份算法实现。
+- **工程用户**：Studio 查看服务列表、Capability、绑定来源/目标、依赖/端点、运行状态/健康、配置、访问权限、并发和指标；可启动/停止、测试调用、查看请求/错误和 Trace；离线时给出具体依赖原因。
+- **运维人员**：能部署、启动、重启、关闭、版本升级和回滚服务配置；区分 ProcessAlive、Liveness、Readiness、Degraded 和 Faulted；服务实际 Ready 必须来自依赖就绪及健康验证，不靠进程存在推断。
+
+### SV-2 完整需求基线
+
+| ID | 能力域 | 期望与必须满足的规则 |
+|---|---|---|
+| SV-R01 | 服务分类与 Provider | 进程内同步/异步服务、长驻实例、独立进程与远程服务、纯查询/有副作用服务；能力与部署方式正交，不强制接口全部网络化。 |
+| SV-R02 | 身份、能力与发现 | ServiceId/InstanceId、Scope/Generation、CapabilityId/版本、Operation 输入输出/错误/是否幂等/权限/成本与资源要求；经现有 MFM/MOC 注册而非第二套全局服务目录。 |
+| SV-R03 | 唯一配置 | ProviderTypeId、DependencyRefs、Startup/ShutdownTimeout、MaxConcurrentRequests、部署/监听/连接参数由专业配置继承与现有 FCM 保存；升级需显式迁移/兼容性校验。 |
+| SV-R04 | 生命周期 | Created/Starting/Ready/Degraded/Stopping/Stopped/Faulted；启动检查依赖、能力和资源；启动失败不假 Ready；反复 Start/Stop、异常关闭及回收可追踪。 |
+| SV-R05 | 请求/响应模型 | Query/Invoke/Submit/Cancel/GetStatus/GetResult/Subscribe 取其有意义的部分；RequestId、CorrelationId、Caller、Deadline、SchemaVersion、结果和错误码一致；发送成功与业务结果分开。 |
+| SV-R06 | 长作业支持 | AI 推理批量、CT 重建、数据导出等受理后返回可信 Ticket/OperationId；进度、取消、超时、恢复和结果定位复用 MRK/专业 Owner，服务不得自造第二套 Job 真源。 |
+| SV-R07 | 并发、队列、流控 | 最大并发、有界等待队列、内存预算、限流/背压、公平性、请求与流的隔离；过载有显式 Rejected/RetryAfter 或等价语义，不无限排队。 |
+| SV-R08 | 服务依赖与资源管理 | 引用 Compute/GPU/Native/数据 Owner/Connector/其他 Service 的正式资源；依赖就绪才 Ready，失效时进入 Degraded/Unready，恢复后明确重建 Session/能力。 |
+| SV-R09 | 统一数据与四大交互 | Variable 查询/订阅、MDS DataRef 或受控跨域传输、M36 消息与 M12 命令调用共用正式 Owner；跨 PC 使用 Bridge/Connector，不在 Service 私有复制数据堆。 |
+| SV-R10 | 安全与授权 | 调用者身份、租户/工程 Scope、服务 Operation 级权限、审计、证书/密钥配置、安全错误处理；权限检查发生在执行目标且每次调用核验；X-Ray/运动等危险动作不得绕过 M12。 |
+| SV-R11 | 幂等、重试与对账 | 明确读操作和有副作用操作的幂等性；MES 上传/命令任务使用稳定 IdempotencyKey、业务确认和查询/对账；超时 Unknown 不盲目重试不可逆操作。 |
+| SV-R12 | 协议与版本兼容 | Schema 前后兼容规则、API/Capability 版本、输入输出校验、可选字段默认/弃用告警；不兼容版本拒绝执行，不悄悄解释成另一条操作。 |
+| SV-R13 | 大数据与流结果 | 图像/体积/Projection 通过授权 Artifact/DataRef、分块流、共享内存/文件等合法交付，带大小/校验/生命周期；不得把 8 GiB 体积塞入一次 JSON 或 Message。 |
+| SV-R14 | 连接与外部访问 | HTTP/IPC/WebSocket 等选择已实现且验证的 Channel/Protocol 或专业服务底座；REST/SOAP 等是协议/服务接口语义，Service 不重建同义网络传输。 |
+| SV-R15 | 可观测与健康检查 | Liveness、Readiness、Degraded 原因、队列深度、请求延迟分布、成功/错误/取消、外部依赖、资源内存/GPU、Trace/OperationId；日志隔离敏感负载。 |
+| SV-R16 | 优雅关闭与在途工作 | Stop 首先拒新请求，再按 Deadline 排空/取消；无法安全取消的命令/长作业标明 Unknown/仍在处理、保留查询入口，最后回收资源。 |
+| SV-R17 | 故障恢复、部署与升级 | 进程崩溃/网络分区/服务重启后的 Unknown/恢复/重放区分；配置、二进制、模型、API 版本和迁移记录；运行中的旧请求沿用锁定契约。 |
+| SV-R18 | 高可用与多实例 | 明确可无状态扩展与只能单 Owner 的工作；多实例隔离、请求一致性、幂等/租约边界与故障切换条件；不得因多副本并行重复下发物理控制命令。 |
+| SV-R19 | 专业服务能力 | AI 推理/模型池、CT 重建 Job、结果查询、图像/体积轻量浏览、检测结果/MES 上报、监测统计/报告数据等，都复用 Compute/MDS/Driver Owner。 |
+| SV-R20 | 使用体验与测试 | SDK 最小 Service Handler、Studio 配置/依赖关系、测试调用、权限和运行指标面板、虚实来源标识与可读错误；无 UI 的 Windows/Host 集成测试与 UIA 分别验收。 |
+| SV-R21 | 环境与隔离 | Windows/.NET48 主目标，跨进程/跨 PC 按能力声明实际可用性；不能把 WPF 页面与 SDK 绑定为服务运行必需依赖；多工程 Scope 不越权。 |
+| SV-R22 | 长稳与 SLA | 对每种服务明确基准并发、延迟分位、错误预算、恢复目标、峰值内存、持续运行及依赖条件；性能/可用性需要负载和现场实测，不凭配置值宣称达成。 |
+
+### SV-3 服务类型、操作与结果接口的归属
+
+| 能力/对象 | 当前已有/应直接复用 | 必须避免 |
+|---|---|---|
+| 公共模块描述 | \`MFMModuleDescriptor\`、\`MFMModuleKind.Service\`、FCM 唯一配置 | 第二个服务类型枚举和独立能力目录 |
+| 实例生命周期 | \`IMLCServiceModule\`、\`MLCServiceModuleBase\`（\`StartAsync/StopAsync/IsReady\`）、\`MLCServiceModuleConfiguration\` | 将基本 Running 当作所有依赖真实 Ready |
+| 操作能力 | MOC 能力/端口、MRK 执行与 Operation、专业 Compute/Driver Handler | 第二套 ServiceOperationRegistry/JobManager |
+| 数据访问 | M09/MDS/M36/M12 + 现有 Bridge/Connector 的合法跨域路径 | 直接传跨进程指针或把命令当发布消息 |
+| 运行宿主 | 现有 Runtime.Host/Lifecycle 的资源与协调机制 | 再创建第二个统一 Host 或复制工程编译/调度 |
+
+**目标接口职责**（名称仅作查重清单）：\`IServiceOperationProvider.DescribeOperations\`、\`IServiceRequestHandler.HandleAsync\`、\`IServiceReadinessProbe.CheckAsync\`、\`IServiceRequestAdmission.TryAccept\`、\`IServiceOperationStatus.Query\`。普通无状态服务不应强迫实现所有可选接口；Service 可将异步请求提交给真实 MRK Operation。实际命令执行授权在 M12/Target Runtime；请求受理结果与现场动作完成结果不可混淆。
+
+当前 \`MLCServiceModuleBase\` 已实现基本 Start/Stop/Faulted 状态和抽象专业 Start/Stop 方法，但**不表示健康依赖、Drain、重试、HA、认证或多机服务已完成**。应先实现一个具备真依赖、真实结果和负面测试的进程内 Service，再扩展独立进程和外部服务。
+
+### SV-4 工业标杆场景与完整流转
+
+1. **AI 在线检测服务**：Service 管模型池就绪/并发请求/Batch 和 API，Compute 真正执行推理；请求带 ImageRef、ModelVersion、SN/RunId；结果由 MDS Owner 管理，服务只返回结构化 DefectResult/ResultRef；模型加载失败不 Ready，10 并发不能混工件结果。
+2. **CT 重建服务**：Submit 投影与几何快照 → MRK/Compute 正式作业 → Progress/Status → Result VolumeRef；服务超时只表示调用超时，不能表示重建已取消；进程重启后查询恢复/Unknown 必须对账。
+3. **MES/ERP 结果集成**：Service 对内提供查询/上报能力，Connector/Protocol 负责实际外部规约；失败/网络分区记录业务确认与 IdempotencyKey，避免重复上传/错误 SN 回写。
+4. **设备运行状态服务**：读取 M09/Driver 正式状态、历史结果与健康，聚合提供本地或远程接口；读接口不能借查询身份执行 Device.Reset、运动或曝光。
+
+### SV-5 端到端专项验收（SV-A01～A12）
+
+| ID | 验收场景与反证 | 层次 |
+|---|---|---|
+| SV-A01 | 无网络进程内服务可启动、调用/Stop；依赖缺失时 IsReady 不可误判 | G1 |
+| SV-A02 | 参数/Schema 错、未授权、跨 Scope 均拒绝并返回稳定错误码 | G1/G2 |
+| SV-A03 | 10/100 并发、超载、队列/内存预算、限流规则有实测与拒绝证据 | G1/G2 |
+| SV-A04 | 同一 IdempotencyKey 重复请求不重复提交 MES 或危险动作 | G1/G2 |
+| SV-A05 | 断网/超时/取消时，RequestAccepted、JobExecuting、Confirmed/Unknown 分离 | G1/G2 |
+| SV-A06 | AI 模型热更新、两个版本、GPU OOM 与多请求数据/Scope 不串扰 | G1/G2 |
+| SV-A07 | CT 超大 Volume 只传合法引用/流，Lease、大小、校验、取消可见 | G1/G2 |
+| SV-A08 | 进程崩溃、重启、未结 Job 和恢复策略不伪造完成 | G1/G2 |
+| SV-A09 | Stop 拒新请求、排空/合法取消在途、释放外部资源 | G1 |
+| SV-A10 | Studio 可发现真实 Operation、配置服务、发测试请求并查看状态/错误/指标 | G1 |
+| SV-A11 | 单/多实例服务发现与授权、版本兼容及更新回滚留存审计 | G1/G2 |
+| SV-A12 | SLA/错误率/延迟、资源、恢复时间及长期运行结果满足项目指标 | G3 |
+
+**实现顺序**：P0 进程内服务/生命周期/能力及真实请求结果；P1 有界并发、Readiness、长期 Job 和标准诊断；P2 外部 API/IPC、多实例、幂等对账与升级；P3 长稳/安全/真实 MES/CT HIL。各阶段均以运行日志、性能报告和 Windows CI/HIL 为证据。
+
+
 ## 文档维护与验收工作包
 
 - 主仓库：`https://github.com/oudream/cx-visual-x3`。
