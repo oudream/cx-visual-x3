@@ -17,6 +17,18 @@ namespace CxVisual.Foundation.Imaging
         public double SeedGrayValue { get; private set; }
     }
 
+    /// <summary>限定原图ROI及可选精确形状的阈值结果；零命中时Bounds为空，绝不虚报ROI。</summary>
+    public sealed class FIMThresholdRegionResult
+    {
+        internal FIMThresholdRegionResult(FIMImageBuffer mask,long count,long sampled,
+            FIMPixelRegion? bounds)
+        { Mask=mask;PixelCount=count;SampledPixelCount=sampled;Bounds=bounds; }
+        public FIMImageBuffer Mask { get; private set; }
+        public long PixelCount { get; private set; }
+        public long SampledPixelCount { get; private set; }
+        public FIMPixelRegion? Bounds { get; private set; }
+    }
+
     public static class FIMImageOperations
     {
         /// <summary>
@@ -173,6 +185,52 @@ namespace CxVisual.Foundation.Imaging
                 }
             return FIMImageBuffer.FromOwnedArray(image.Width, image.Height,
                 FIMPixelFormat.Gray8, result, image.Width);
+        }
+
+        /// <summary>
+        /// 仅在原图ROI内作闭区间阈值分割；非矩形ROI复用MVI的像素中心形状谓词。
+        /// 输出与原图相同尺寸的独立Gray8掩码，未命中的像素一律为0。
+        /// 显示窗位不参与运算；不强行将复合掩码外接框冒充精确轮廓。
+        /// </summary>
+        public static FIMThresholdRegionResult ThresholdInRegion(FIMImageBuffer image,
+            double low,double high,FIMPixelRegion roi,
+            Func<int,int,bool> includesPixel=null,
+            CancellationToken cancellationToken=default(CancellationToken))
+        {
+            if(image==null)throw new ArgumentNullException("image");
+            if(double.IsNaN(low)||double.IsInfinity(low)||
+                double.IsNaN(high)||double.IsInfinity(high)||high<low)
+                throw new ArgumentOutOfRangeException("high","阈值上下限必须有限且下限不大于上限。");
+            FIMPixelRegion clipped=roi.ClipTo(image);
+            cancellationToken.ThrowIfCancellationRequested();
+            int width=image.Width;
+            byte[] pixels=new byte[checked(width*image.Height)];
+            long inspected=0,matched=0;
+            int minX=image.Width,minY=image.Height,maxX=-1,maxY=-1;
+            for(int y=clipped.Top;y<=clipped.Bottom;y++)
+            {
+                for(int x=clipped.Left;x<=clipped.Right;x++)
+                {
+                    if(((x-clipped.Left)&1023)==0)
+                        cancellationToken.ThrowIfCancellationRequested();
+                    if(includesPixel!=null && !includesPixel(x,y))continue;
+                    inspected++;
+                    double gray=image.GetGrayValue(x,y);
+                    if(double.IsNaN(gray)||gray<low||gray>high)continue;
+                    pixels[y*width+x]=255;
+                    matched++;
+                    if(x<minX)minX=x;
+                    if(y<minY)minY=y;
+                    if(x>maxX)maxX=x;
+                    if(y>maxY)maxY=y;
+                }
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+            FIMImageBuffer mask=FIMImageBuffer.FromOwnedArray(
+                image.Width,image.Height,FIMPixelFormat.Gray8,pixels,width);
+            return new FIMThresholdRegionResult(mask,matched,inspected,
+                matched==0 ? (FIMPixelRegion?)null :
+                new FIMPixelRegion(minX,minY,maxX,maxY));
         }
 
         /// <summary>
