@@ -42,6 +42,11 @@ namespace CxVisual.TestCenter.UI
         private readonly TextBox _low = new TextBox { Width = 74, Text = "0", Margin = new Thickness(2) };
         private readonly TextBox _high = new TextBox { Width = 82, Text = "65535", Margin = new Thickness(2) };
         private readonly TextBox _blendRatio = new TextBox { Width = 60, Text = "0.5", Margin = new Thickness(3) };
+        private readonly TextBox _growTolerance=new TextBox {
+            Width=60,Text="1",Margin=new Thickness(3) };
+        private readonly CheckBox _growEightConnected=new CheckBox {
+            Content="八邻域",IsChecked=false,Margin=new Thickness(5) };
+
         private readonly TextBox _spacingX = new TextBox { Width = 58, Text = "0.1", Margin = new Thickness(2) };
         private readonly TextBox _spacingY = new TextBox { Width = 58, Text = "0.1", Margin = new Thickness(2) };
         private readonly TextBox _displayGamma = new TextBox { Width = 50, Text = "1", Margin = new Thickness(2) };
@@ -557,6 +562,83 @@ namespace CxVisual.TestCenter.UI
                 !double.TryParse(_high.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out high))
                 throw new ArgumentException("阈值范围必须是有效数字。");
             ProcessImage(image => FIMImageOperations.Threshold(image, low, high), "阈值");
+        }
+
+        /// <summary>承接旧RegionGrowing框选语义，用已选矩形ROI中心作为种子。</summary>
+        private async void RegionGrow()
+        {
+            FIMImageBuffer original=_viewer.Session.Original;
+            if(original==null)
+            { Show("区域生长失败：请先打开原图。");return; }
+            FIMPixelRegion? selected=_viewer.SelectedRegion;
+            if(!selected.HasValue && _viewer.SelectedOverlayId.HasValue)
+            {
+                MVIImageOverlayItem overlay=_viewer.Overlays.Find(
+                    _viewer.SelectedOverlayId.Value);
+                if(overlay!=null && overlay.Kind==MVIImageOverlayKind.RectangleRoi &&
+                    overlay.IsVisible && _viewer.Overlays.IsLayerVisible(overlay.Layer))
+                {
+                    int left=Math.Max(0,(int)Math.Floor(overlay.Bounds.Left));
+                    int top=Math.Max(0,(int)Math.Floor(overlay.Bounds.Top));
+                    int right=Math.Min(original.Width-1,(int)Math.Ceiling(overlay.Bounds.Right)-1);
+                    int bottom=Math.Min(original.Height-1,(int)Math.Ceiling(overlay.Bounds.Bottom)-1);
+                    if(right>=left && bottom>=top)
+                        selected=new FIMPixelRegion(left,top,right,bottom);
+                }
+            }
+            if(!selected.HasValue)
+            {
+                Show("区域生长失败：请先绘制或选中一个矩形ROI，作为生长限定范围。");
+                return;
+            }
+            double tolerance;
+            if(!double.TryParse(_growTolerance.Text,NumberStyles.Float,
+                CultureInfo.InvariantCulture,out tolerance) ||
+                double.IsNaN(tolerance) || double.IsInfinity(tolerance) || tolerance<0)
+            {
+                Show("区域生长失败：容差需为非负有限数字。");
+                return;
+            }
+            FIMPixelRegion roi=selected.Value.ClipTo(original);
+            int seedX=roi.Left+(roi.Right-roi.Left)/2;
+            int seedY=roi.Top+(roi.Bottom-roi.Top)/2;
+            bool eight=_growEightConnected.IsChecked==true;
+            CancelAnalysis();
+            CancellationTokenSource cancellation=new CancellationTokenSource();
+            _analysisCancellation=cancellation;
+            long epoch=Interlocked.Read(ref _analysisEpoch);
+            Stopwatch timer=Stopwatch.StartNew();
+            Show("区域生长正在分析原图ROI：种子("+seedX+","+seedY+")，容差 "+
+                tolerance.ToString("0.###",CultureInfo.InvariantCulture)+"，支持取消。");
+            try
+            {
+                FIMRegionGrowingResult grown=await Task.Run(()=>
+                    FIMImageOperations.RegionGrow(original,roi,seedX,seedY,
+                        tolerance,eight,cancellation.Token),cancellation.Token);
+                if(cancellation.IsCancellationRequested ||
+                    epoch!=Interlocked.Read(ref _analysisEpoch) ||
+                    !ReferenceEquals(original,_viewer.Session.Original))return;
+                timer.Stop();
+                _viewer.ShowResult(grown.Mask);
+                _viewer.SelectResult();
+                Show("区域生长完成："+grown.PixelCount+"像素，种子灰度 "+
+                    grown.SeedGrayValue.ToString("0.###",CultureInfo.InvariantCulture)+
+                    "，范围 "+BoundsText(grown.Bounds)+
+                    "；掩码在结果图，可通过输出页保存PNG；耗时 "+
+                    timer.Elapsed.TotalMilliseconds.ToString("0.#")+"ms。");
+            }
+            catch(OperationCanceledException) { }
+            catch(Exception error)
+            {
+                if(epoch==Interlocked.Read(ref _analysisEpoch))
+                    Show("区域生长失败："+error.Message);
+            }
+            finally
+            {
+                if(ReferenceEquals(_analysisCancellation,cancellation))
+                    _analysisCancellation=null;
+                cancellation.Dispose();
+            }
         }
 
         private void Normalize()
