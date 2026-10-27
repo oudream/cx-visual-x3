@@ -362,7 +362,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             {
                 MDSVariableChangeNotice received = null;
                 using (IDisposable receiver = messages.Subscribe<MDSVariableChangeNotice>(
-                    "/cxvisual/variables/line1/pressure/changed", context => received = context.Payload))
+                    "/machine/line1/app/CxVisual/module/Variables/message/pressure", context => received = context.Payload))
                 using (MDSVariableMessageBridge bridge =
                     new MDSVariableMessageBridge(table, dispatcher, messages))
                 {
@@ -371,7 +371,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Check(received != null && received.ScopeId == "line1" && received.Revision == 1 &&
                         received.VariableId == "pressure" && bridge.Published == 1 && bridge.Failed == 0,
                         "通知必须来自已有MessageCenter且只包含准确变量身份");
+                    Check(CxVisual.Foundation.Data.Messages.MNMTopicFilter.ValidateTopic(
+                        "/machine/line1/app/CxVisual/module/Variables/message/pressure") != null,
+                        "变量消息应遵守M36既有八层Topic契约");
                 }
+                Reject<ArgumentException>(() => new MDSVariableMessageBridge(
+                    table, dispatcher, messages, "/cxvisual/variables"));
             }
         }
 

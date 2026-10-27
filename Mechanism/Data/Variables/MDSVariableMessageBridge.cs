@@ -40,13 +40,18 @@ namespace CxVisual.Mechanism.Data.Variables
 
         public MDSVariableMessageBridge(MDSVariableTable table,
             MDSVariableChangeDispatcher dispatcher, MNMMessageCenter messages,
-            string topicPrefix = "/cxvisual/variables", IEnumerable<string> variableIds = null)
+            string topicPrefix = "/machine", IEnumerable<string> variableIds = null)
         {
             if (table == null || dispatcher == null || messages == null)
                 throw new ArgumentNullException("table/dispatcher/messages");
             if (string.IsNullOrWhiteSpace(topicPrefix)) throw new ArgumentException("Topic不能为空");
             _scope = table.ScopeId;
             _prefix = topicPrefix.TrimEnd('/');
+            // M36的Topic身份是八段路径；这里仅允许machine/container根，不自造协议。
+            if (_prefix != "/machine" && _prefix != "/container")
+                throw new ArgumentException("变量消息桥只接受M36的/machine或/container根", "topicPrefix");
+            MNMTopicFilter.ValidateTopic(_prefix + "/" + _scope +
+                "/app/CxVisual/module/Variables/message/Example");
             _messages = messages;
             _subscription = dispatcher.Subscribe(OnChanges, variableIds);
         }
@@ -56,8 +61,10 @@ namespace CxVisual.Mechanism.Data.Variables
             {
                 try
                 {
-                    string topic = _prefix + "/" + Uri.EscapeDataString(_scope) +
-                        "/" + Uri.EscapeDataString(change.VariableId) + "/changed";
+                    string topic = _prefix + "/" + _scope +
+                        "/app/CxVisual/module/Variables/message/" + change.VariableId;
+                    // 不偷偷编码或改写VariableId；非法ID必须显式记失败。
+                    MNMTopicFilter.ValidateTopic(topic);
                     MNMPublishReceipt receipt = _messages.Publish(topic,
                         new MDSVariableChangeNotice(_scope, change),
                         new MNMPublishOptions { SourceId = "CxVisual.MDS.Variables",
