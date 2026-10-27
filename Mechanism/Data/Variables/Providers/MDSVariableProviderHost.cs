@@ -324,11 +324,19 @@ namespace CxVisual.Mechanism.Data.Variables
         public void Apply(T value, MDSVariableQuality quality = MDSVariableQuality.Good)
         {
             // Scope注销时与普通Handle共用入场门禁，避免检查后写入的竞态。
-            _scope.Execute(() =>
+            try
             {
-                if (!_active()) throw new InvalidOperationException("Provider不处于当前活动世代");
-                _target.RefreshFromProvider(value, quality, _source);
-            });
+                _scope.Execute(() =>
+                {
+                    if (!_active()) throw new InvalidOperationException("Provider不处于当前活动世代");
+                    _target.RefreshFromProvider(value, quality, _source);
+                });
+            }
+            catch (ObjectDisposedException error)
+            {
+                // 保持公开Provider热绑定原有的失效异常合同。
+                throw new InvalidOperationException("Provider不处于当前活动世代", error);
+            }
         }
         public MDSVariableSnapshot<T> Snapshot() { return _target.Snapshot(); }
     }
