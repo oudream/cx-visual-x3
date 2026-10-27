@@ -271,6 +271,51 @@ namespace CxVisual.TestCenter.UI
                     new byte[] { 1,0, 2,0, 3,0, 4,0, 5,0, 6,0, 7,0, 8,0,
                                  9,0, 10,0, 11,0, 12,0, 13,0, 14,0, 15,0, 16,0 });
                 frame.SetOriginal(image);
+                // 真实变换页：矩形ROI中心种子 -> 后台生长 -> Gray8结果掩码和原像素反证。
+                frame.Viewer.SelectRegion(new FIMPixelRegion(0,1,3,1));
+                TabControl growthTabs=FindControl<TabControl>(frame,"TCT.Imaging.SecondaryTabs");
+                growthTabs.SelectedIndex=3;
+                window.UpdateLayout();
+                Button growthButton=FindControl<Button>(frame,"TCT.Imaging.RegionGrow");
+                TextBox growTolerance=FindControl<TextBox>(frame,"TCT.Imaging.GrowTolerance");
+                CheckBox growEight=FindControl<CheckBox>(frame,"TCT.Imaging.GrowEightConnected");
+                if(growthButton==null || growTolerance==null || growEight==null)
+                    throw new InvalidOperationException("旧区域生长有菜单无可操作参数或按钮");
+                growTolerance.Text="1";
+                growEight.IsChecked=false;
+                growthButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                System.Diagnostics.Stopwatch growWait=System.Diagnostics.Stopwatch.StartNew();
+                while((frame.Viewer.Session.Result==null ||
+                    frame.Viewer.Session.Result.PixelFormat!=FIMPixelFormat.Gray8 ||
+                    frame.Viewer.Session.Result.GetGrayValue(0,1)!=255) &&
+                    growWait.ElapsedMilliseconds<10000)
+                {
+                    System.Windows.Threading.DispatcherFrame loop=
+                        new System.Windows.Threading.DispatcherFrame();
+                    System.Windows.Threading.Dispatcher.CurrentDispatcher.BeginInvoke(
+                        new Action(()=>loop.Continue=false),
+                        System.Windows.Threading.DispatcherPriority.Background);
+                    System.Windows.Threading.Dispatcher.PushFrame(loop);
+                    System.Threading.Thread.Sleep(5);
+                }
+                FIMImageBuffer growthMask=frame.Viewer.Session.Result;
+                if(growthMask==null || growthMask.PixelFormat!=FIMPixelFormat.Gray8 ||
+                    growthMask.GetGrayValue(0,1)!=255 ||
+                    growthMask.GetGrayValue(1,1)!=255 ||
+                    growthMask.GetGrayValue(2,1)!=255 ||
+                    growthMask.GetGrayValue(3,1)!=0 ||
+                    growthMask.GetGrayValue(1,0)!=0 ||
+                    frame.Viewer.Session.Original.GetGrayValue(1,1)!=6)
+                    throw new InvalidOperationException(
+                        "点击区域生长未得到限域三像素Gray8掩码或修改原图");
+                growTolerance.Text="-2";
+                growthButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                if(!ReferenceEquals(growthMask,frame.Viewer.Session.Result))
+                    throw new InvalidOperationException("非法生长参数仍修改结果图");
+                frame.Viewer.SelectOriginal();
+                frame.Viewer.ClearSelection();
+                growthTabs.SelectedIndex=0;
+                window.UpdateLayout();
                 frame.Viewer.FitToWindow(); // 四像素样本确保线命中容差转为亚像素，验证不存在的桥线
                 TabControl lineTabs=FindControl<TabControl>(frame,"TCT.Imaging.PrimaryTabs");
                 lineTabs.SelectedIndex=3;
