@@ -1372,9 +1372,11 @@ namespace CxVisual.TestCenter.UI
                 System.Windows.Controls.TabControl documentTabs =
                     window.DocumentHost.Content as System.Windows.Controls.TabControl;
                 if (documentTabs == null ||
+                    !ReferenceEquals(documentTabs.Style,
+                        Application.Current.FindResource("MPWWorkspaceDocumentTabsStyle")) ||
                     !ReferenceEquals(documentTabs.ItemContainerStyle,
-                        Application.Current.FindResource("MPWDocumentTabStyle")))
-                    throw new InvalidOperationException("Document tabs must use the same shared MPW style");
+                        Application.Current.FindResource("MPWWorkspaceDocumentTabStyle")))
+                    throw new InvalidOperationException("Document tabs must use the shared MPW compact workspace styles");
                 if (!(Application.Current.FindResource("MPWTreeItemStyle") is Style) ||
                     !(Application.Current.FindResource("MPWDataGridStyle") is Style))
                     throw new InvalidOperationException("Shared MPW Tree/DataGrid templates not loaded");
