@@ -45,17 +45,36 @@ namespace CxVisual.Mechanism.Data.Variables
         public long SubscriberFailures { get; internal set; }
     }
 
+    /// <summary>变化订阅选择器；默认行为与既有Subscribe一致，保留全部变化类别。</summary>
+    public sealed class MDSVariableSubscriptionOptions
+    {
+        internal readonly HashSet<string> Ids;
+        public MDSVariableSubscriptionOptions(IEnumerable<string> variableIds = null,
+            MDSVariableChangeKind kinds = MDSVariableChangeKind.Value | MDSVariableChangeKind.Refresh |
+                MDSVariableChangeKind.Quality | MDSVariableChangeKind.Source)
+        {
+            if (kinds == MDSVariableChangeKind.None ||
+                (kinds & ~(MDSVariableChangeKind.Value | MDSVariableChangeKind.Refresh |
+                    MDSVariableChangeKind.Quality | MDSVariableChangeKind.Source)) != 0)
+                throw new ArgumentOutOfRangeException("kinds");
+            Ids = variableIds == null ? null : new HashSet<string>(variableIds, StringComparer.Ordinal);
+            Kinds = kinds;
+        }
+        public MDSVariableChangeKind Kinds { get; private set; }
+    }
+
     public sealed class MDSVariableSubscription : IDisposable
     {
         private readonly MDSVariableChangeDispatcher _owner;
         internal bool Active;
         internal readonly Action<IReadOnlyList<MDSVariableChange>> Callback;
         internal readonly HashSet<string> Ids;
+        internal readonly MDSVariableChangeKind Kinds;
         internal MDSVariableSubscription(MDSVariableChangeDispatcher owner,
-            Action<IReadOnlyList<MDSVariableChange>> callback, IEnumerable<string> ids)
+            Action<IReadOnlyList<MDSVariableChange>> callback, MDSVariableSubscriptionOptions options)
         {
             _owner = owner; Callback = callback; Active = true;
-            Ids = ids == null ? null : new HashSet<string>(ids, StringComparer.Ordinal);
+            Ids = options.Ids; Kinds = options.Kinds;
         }
         public void Dispose() { _owner.Unsubscribe(this); }
     }
@@ -93,11 +112,17 @@ namespace CxVisual.Mechanism.Data.Variables
         }
         public MDSVariableSubscription Subscribe(Action<IReadOnlyList<MDSVariableChange>> callback, IEnumerable<string> ids = null)
         {
+            return SubscribeWithOptions(callback, new MDSVariableSubscriptionOptions(ids));
+        }
+        public MDSVariableSubscription SubscribeWithOptions(
+            Action<IReadOnlyList<MDSVariableChange>> callback, MDSVariableSubscriptionOptions options)
+        {
             if (callback == null) throw new ArgumentNullException("callback");
+            if (options == null) throw new ArgumentNullException("options");
             lock (_gate)
             {
                 if (!_active) throw new ObjectDisposedException("MDSVariableChangeDispatcher");
-                MDSVariableSubscription sub = new MDSVariableSubscription(this, callback, ids);
+                MDSVariableSubscription sub = new MDSVariableSubscription(this, callback, options);
                 _subscribers.Add(sub); return sub;
             }
         }
@@ -157,8 +182,9 @@ namespace CxVisual.Mechanism.Data.Variables
                     foreach (MDSVariableSubscription subscription in callbacks)
                     {
                         if (!subscription.Active) continue;
-                        MDSVariableChange[] selected = subscription.Ids == null ? batch :
-                            batch.Where(x => subscription.Ids.Contains(x.VariableId)).ToArray();
+                        MDSVariableChange[] selected = batch.Where(x =>
+                            (subscription.Ids == null || subscription.Ids.Contains(x.VariableId)) &&
+                            (x.Kind & subscription.Kinds) != MDSVariableChangeKind.None).ToArray();
                         if (selected.Length == 0) continue;
                         try { subscription.Callback(Array.AsReadOnly(selected)); }
                         catch (Exception e) { _lastError = e; Interlocked.Increment(ref _failures); }

@@ -431,8 +431,35 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 "批量并发提交最终状态和Revision正确");
         }
 
+        private static void VariableSubscriptionFilterSmoke()
+        {
+            MDSVariableTable table = new MDSVariableTable("filtered");
+            table.Define(new MDSVariableDefinition("State", typeof(int), null, true, null, "STATE"));
+            using (MDSVariableChangeDispatcher dispatcher = table.CreateDispatcher(8))
+            {
+                int deliveries = 0;
+                using (dispatcher.SubscribeWithOptions(batch =>
+                    deliveries += batch.Count, new MDSVariableSubscriptionOptions(
+                        new[] { "STATE" }, MDSVariableChangeKind.Value)))
+                {
+                    table.Update<int>("State", 1);
+                    Check(dispatcher.Drain(TimeSpan.FromSeconds(5)), "订阅初次排空");
+                    Check(deliveries == 1, "首次值变化匹配筛选");
+                    table.Update<int>("State", 1);
+                    Check(dispatcher.Drain(TimeSpan.FromSeconds(5)), "同值刷新排空");
+                    Check(deliveries == 1, "仅Value订阅不得收到Refresh");
+                    table.Update<int>("State", 2);
+                    Check(dispatcher.Drain(TimeSpan.FromSeconds(5)), "变值刷新排空");
+                    Check(deliveries == 2, "后续Value变化可继续接收");
+                }
+                Reject<ArgumentOutOfRangeException>(() =>
+                    new MDSVariableSubscriptionOptions(kinds: MDSVariableChangeKind.None));
+            }
+        }
+
         public static void Run()
         {
+            VariableSubscriptionFilterSmoke();
             VariableBatchSmoke();
             VariableMessageBridgeSmoke();
             VariableScopeSmoke();
