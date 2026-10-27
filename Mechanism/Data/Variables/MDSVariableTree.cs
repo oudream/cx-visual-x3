@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 
 namespace CxVisual.Mechanism.Data.Variables
@@ -7,6 +8,15 @@ namespace CxVisual.Mechanism.Data.Variables
     // x2组织树迁移：目录节点仅持有结构/身份；值只能由已有MDSVariable<T>持有。
     public abstract class MDSVariableNode
     {
+        internal object SyncGate = new object();
+        internal readonly HashSet<string> MutableTags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        public IReadOnlyCollection<string> Tags
+        {
+            get { lock (SyncGate) return new ReadOnlyCollection<string>(
+                MutableTags.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToArray()); }
+        }
+        public bool HasTag(string tag)
+        { lock (SyncGate) return tag != null && MutableTags.Contains(tag); }
         protected MDSVariableNode(string name, string id)
         {
             Validate(name);
@@ -33,7 +43,7 @@ namespace CxVisual.Mechanism.Data.Variables
         internal readonly List<MDSVariableNode> Items = new List<MDSVariableNode>();
         internal bool IsRoot;
         internal MDSVariableGroup(string name, string id) : base(name, id) { }
-        public MDSVariableNode[] Children { get { return Items.ToArray(); } }
+        public MDSVariableNode[] Children { get { lock (SyncGate) return Items.ToArray(); } }
     }
     public sealed class MDSVariableLeaf : MDSVariableNode
     {
@@ -57,6 +67,7 @@ namespace CxVisual.Mechanism.Data.Variables
         public MDSVariableTree()
         {
             Root = new MDSVariableGroup("Root", "variable-root") { IsRoot = true };
+            Root.SyncGate = _gate;
             _ids.Add(Root.VariableId, Root);
         }
         public MDSVariableGroup Root { get; private set; }
@@ -122,6 +133,16 @@ namespace CxVisual.Mechanism.Data.Variables
         {
             lock (_gate) Require(id).OwnerRef = ownerRef;
         }
+        public void AddTag(string id, string tag)
+        {
+            if (string.IsNullOrWhiteSpace(tag)) throw new ArgumentException("标签不能为空");
+            lock (_gate) Require(id).MutableTags.Add(tag.Trim());
+        }
+        public bool RemoveTag(string id, string tag)
+        {
+            if (string.IsNullOrWhiteSpace(tag)) return false;
+            lock (_gate) return Require(id).MutableTags.Remove(tag.Trim());
+        }
         public MDSVariableNode FindById(string id)
         {
             lock (_gate) { MDSVariableNode node; return id != null && _ids.TryGetValue(id, out node) ? node : null; }
@@ -140,6 +161,7 @@ namespace CxVisual.Mechanism.Data.Variables
         {
             if (_ids.ContainsKey(node.VariableId)) throw new InvalidOperationException("变量ID重复: " + node.VariableId);
             CheckSibling(parent, node.Name, null);
+            node.SyncGate = _gate;
             parent.Items.Add(node); node.Parent = parent;
             _ids.Add(node.VariableId, node); _paths.Add(node.VariablePath, node);
         }

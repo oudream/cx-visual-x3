@@ -198,6 +198,10 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 table.Get<double>("pressure") == 1.25, "变量移动仅更新路径");
             table.Tree.SetOwner("pressure-id", "Device-01");
             Check(leaf.OwnerRef == "Device-01", "业务Owner独立于Parent");
+            table.Tree.AddTag("pressure-id", "Critical");
+            Check(leaf.HasTag("Critical") && leaf.Tags.Contains("Critical") &&
+                table.Tree.RemoveTag("pressure-id", "Critical") &&
+                !leaf.HasTag("Critical"), "标签增删与快照不得形成二次变量状态");
             Reject<InvalidOperationException>(() => table.Tree.Move("station-id", "station-id"));
             Reject<InvalidOperationException>(() => table.Tree.Move("temp-id", null, "StationB"));
             Reject<InvalidOperationException>(() => table.Tree.RemoveEmptyGroup("station-id"));
