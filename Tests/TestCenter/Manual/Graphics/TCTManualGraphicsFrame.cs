@@ -53,6 +53,9 @@ namespace CxVisual.TestCenter.UI
         public bool IsDirty {get{return _session.IsDirty;}}
         public Guid? SelectedId {get{return _editor.SelectedId;}}
         public IReadOnlyList<Guid> SceneIds {get{return _editor.Scene.Select(x=>x.Id).ToArray();}}
+        internal MEMNode FindObject(Guid id){return _session.Find(id);}
+        internal IReadOnlyList<Guid> TreeSelectedIds
+        {get{return _objects.SelectedItems.Cast<GraphicTreeEntry>().Select(row=>row.Id).ToArray();}}
         public event Action StateChanged;
         public IEnumerable<TCTWorkspaceAction> Commands
         {
@@ -284,7 +287,8 @@ namespace CxVisual.TestCenter.UI
                         if(previousSelection.Contains(entry.Id))_objects.SelectedItems.Add(entry);
                 }
                 // 显式改变工程选中对象时同步树选区；Group仅树选中。
-                if(_editor.SelectedId.HasValue&&
+                if(!_editor.SelectedId.HasValue)_objects.SelectedItems.Clear();
+                else if(
                     !_objects.SelectedItems.Cast<GraphicTreeEntry>()
                         .Any(row=>row.Id==_editor.SelectedId.Value))
                 {

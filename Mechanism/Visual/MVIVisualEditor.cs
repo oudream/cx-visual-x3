@@ -52,7 +52,14 @@ namespace CxVisual.Mechanism.Visual
         public MVIVisualEditor(MEMEngineeringSession session)
         {
             _session=session??throw new ArgumentNullException("session");CurrentPageId=session.Project.Pages.Count==0?(Guid?)null:session.Project.Pages[0].Id;
-            _watch=session.Watch(change=>RaiseChanged());
+            _watch=session.Watch(change=>
+            {
+                // Undo分组或删除对象后不得向宿主继续发布已经离开工程的选中身份。
+                if(SelectedId.HasValue&&session.Find(SelectedId.Value)==null&&
+                    session.FindReference(SelectedId.Value)==null&&
+                    session.FindConnection(SelectedId.Value)==null)SelectedId=null;
+                RaiseChanged();
+            });
         }
         public event EventHandler Changed;
         public event EventHandler<MVIInteractionEventArgs> Interaction;

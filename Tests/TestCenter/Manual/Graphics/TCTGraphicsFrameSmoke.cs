@@ -7,6 +7,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using CxVisual.Mechanism.Presentation.Wpf;
+using CxVisual.Mechanism.Core;
 namespace CxVisual.TestCenter.UI
 {
     /// <summary>
@@ -76,10 +77,17 @@ namespace CxVisual.TestCenter.UI
                 if(group==null||!group.IsEnabled)
                     throw new InvalidOperationException("两项有效选择后公共Group操作未启用");
                 int beforeGroup=frame.Revision;
+                MEMNode[] originals=ids.Select(frame.FindObject).ToArray();
                 group.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 if(frame.Revision!=beforeGroup+1||!frame.SelectedId.HasValue||
                     ids.Contains(frame.SelectedId.Value))
                     throw new InvalidOperationException("Group没有以一次工程事务创建真实组合");
+                Guid groupId=frame.SelectedId.Value;
+                MRCGroup groupObject=frame.FindObject(groupId) as MRCGroup;
+                if(groupObject==null||!originals.All(item=>
+                    ReferenceEquals(frame.FindObject(item.Id),item)&&item.Parent==groupObject))
+                    throw new InvalidOperationException("Group未保持Core索引及原子图元对象身份");
+                CheckSelection(frame,groupId);
                 // Group 是工程树节点，不是可渲染的第三个Shape；右侧必须能选中它。
                 bool hasGroup=objects.Items.Cast<object>().Any(row=>{
                     var property=row.GetType().GetProperty("Name");
@@ -106,10 +114,45 @@ namespace CxVisual.TestCenter.UI
                 Button ungroup=Find<Button>(frame,"MPW.Visual.edit.ungroup");
                 if(ungroup==null||!ungroup.IsEnabled)
                     throw new InvalidOperationException("选择真实Group后解组按钮未启用");
+                int beforeGroupHistory=frame.Revision;
+                frame.Execute("edit.undo");
+                if(frame.Revision!=beforeGroupHistory+1||frame.FindObject(groupId)!=null||ungroup.IsEnabled)
+                    throw new InvalidOperationException("Undo Group的Revision、索引或可用性错误");
+                CheckSelection(frame);
+                frame.Execute("edit.redo");
+                if(frame.Revision!=beforeGroupHistory+2||!ReferenceEquals(frame.FindObject(groupId),groupObject))
+                    throw new InvalidOperationException("Redo Group未恢复同一Group对象身份");
+                CheckSelection(frame);
+                frame.SelectObjects(groupId);
+                CheckSelection(frame,groupId);
+                if(frame.Revision!=beforeGroupHistory+2||!ungroup.IsEnabled)
+                    throw new InvalidOperationException("Group重选改变Revision或未恢复解组可用性");
                 ungroup.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                if(frame.Revision!=beforeGroup+4||
+                if(frame.Revision!=beforeGroupHistory+3||frame.FindObject(groupId)!=null||
                     !ids.OrderBy(id=>id).SequenceEqual(frame.SceneIds.OrderBy(id=>id)))
                     throw new InvalidOperationException("解组未保留原图元身份");
+                CheckSelection(frame);
+                frame.Execute("edit.undo");
+                if(frame.Revision!=beforeGroupHistory+4||!ReferenceEquals(frame.FindObject(groupId),groupObject)||
+                    !originals.All(item=>ReferenceEquals(frame.FindObject(item.Id),item)&&
+                        item.Parent==groupObject))
+                    throw new InvalidOperationException("Undo Ungroup未恢复同一Group及原子项对象");
+                frame.SelectObjects(groupId);
+                CheckSelection(frame,groupId);
+                if(!ungroup.IsEnabled||frame.Revision!=beforeGroupHistory+4)
+                    throw new InvalidOperationException("Undo Ungroup后选区或Revision不一致");
+                frame.Execute("edit.redo");
+                if(frame.Revision!=beforeGroupHistory+5||frame.FindObject(groupId)!=null||ungroup.IsEnabled||
+                    !originals.All(item=>ReferenceEquals(frame.FindObject(item.Id),item)&&
+                        item.Parent!=groupObject)||
+                    !ids.OrderBy(id=>id).SequenceEqual(frame.SceneIds.OrderBy(id=>id)))
+                    throw new InvalidOperationException("Redo Ungroup未保持身份、Revision及操作可用性");
+                CheckSelection(frame);
+                // 清空仍然存在的Group/Element选区也必须同步树，且不产生工程历史。
+                frame.SelectObjects(ids[0]);CheckSelection(frame,ids[0]);
+                frame.SelectObjects();CheckSelection(frame);
+                if(frame.Revision!=beforeGroupHistory+5)
+                    throw new InvalidOperationException("选区同步不应增加工程Revision");
                 // 磁盘往返不是截图：核实Project与所有图元ID保持不变。
                 frame.SaveProject(file);
                 Guid projectId=frame.ProjectId;
@@ -135,6 +178,17 @@ namespace CxVisual.TestCenter.UI
                 window.Close();frame.OnWorkspaceClosed();
                 if(File.Exists(file))File.Delete(file);
             }
+        }
+        private static void CheckSelection(TCTManualGraphicsFrame frame,params Guid[] expected)
+        {
+            Guid? primary=expected.Length==0?(Guid?)null:expected[expected.Length-1];
+            bool isGroup=primary.HasValue&&frame.FindObject(primary.Value) is MRCGroup;
+            Guid[] visible=isGroup?new Guid[0]:expected;
+            if(frame.SelectedId!=primary||
+                !frame.TreeSelectedIds.OrderBy(id=>id).SequenceEqual(expected.OrderBy(id=>id))||
+                !frame.Canvas.SelectedVisualIds.OrderBy(id=>id).SequenceEqual(visible.OrderBy(id=>id))||
+                expected.Any(id=>frame.FindObject(id)==null))
+                throw new InvalidOperationException("MVI主选区、画布叶选区、对象树及Core索引不一致");
         }
         /// <summary>
         /// 保存由真实WPF Window/SceneView渲染的像素证据，不使用设计示意图冒充运行截图。

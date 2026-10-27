@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using CxVisual.Mechanism.Core;
+using CxVisual.Mechanism.Visual;
 
 namespace CxVisual.Tests.ArchitectureSmoke
 {
@@ -13,6 +14,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
         private static void Equal(double[] a,double[] b,string message){Check(a.Zip(b,(x,y)=>Math.Abs(x-y)<1e-7).All(v=>v),message);}
         public static void Run()
         {
+            CheckGroupSelectionLifetime();
             string path=Path.Combine(Path.GetTempPath(),"cx-h03-visual-"+Guid.NewGuid().ToString("N")+".cxproj");
             try
             {
@@ -34,6 +36,44 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Console.WriteLine("PASS H03 visual real mixed/nested grouping, affine/shear ungrouping, undo, lock/layer protection and file roundtrip");
             }
             finally{if(File.Exists(path))File.Delete(path);}
+        }
+        private static void CheckGroupSelectionLifetime()
+        {
+            var session=MEMEngineering.Create("Group选区投影回归");
+            try
+            {
+                var page=session.AddPage("Page");
+                var a=session.AddRectangle(page.RootContent,"A",10,20,30,40);
+                var b=session.AddRectangle(page.RootContent,"B",70,80,20,30);
+                using(var editor=new MVIVisualEditor(session))
+                {
+                    editor.SetPage(page.Id);
+                    var group=session.Group(new MRCVisualItem[]{a,b},"Group");
+                    int revision=session.Revision;
+                    Check(ReferenceEquals(session.Find(group.Id),group)&&
+                        editor.Scene.Count==2&&editor.Scene.All(item=>item.Id!=group.Id),
+                        "Group must remain an engineering container, not a renderable leaf");
+                    Check(MVISceneProjection.Project(session,page.Id).Count==2,
+                        "Group container leaked into ordinary render projection");
+                    Check(editor.Select(group.Id)&&editor.SelectedId==group.Id&&
+                        session.Revision==revision,"selecting Group changed engineering Revision");
+                    Check(editor.Undo().Success&&session.Revision==revision+1&&
+                        editor.SelectedId==null&&session.Find(group.Id)==null&&
+                        editor.Scene.Count==2,"Undo Group retained stale selection or projection");
+                    Check(editor.Redo().Success&&session.Revision==revision+2&&
+                        ReferenceEquals(session.Find(group.Id),group)&&
+                        editor.Scene.Count==2&&editor.SelectedId==null&&
+                        ReferenceEquals(session.Find(a.Id),a)&&ReferenceEquals(session.Find(b.Id),b),
+                        "Redo Group changed canonical object identity");
+                    session.SetLocked(group,true);
+                    Check(editor.Scene.All(item=>!item.IsSelectable),
+                        "Group projection bypassed ancestor lock");
+                    session.SetLocked(group,false);
+                    session.SetVisibility(group,false,true);
+                    Check(editor.Scene.Count==0,"hidden Group leaked editing descendants");
+                }
+            }
+            finally{session.Close(true);}
         }
     }
 }
