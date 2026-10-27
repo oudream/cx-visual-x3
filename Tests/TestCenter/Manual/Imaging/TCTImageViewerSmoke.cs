@@ -576,6 +576,48 @@ namespace CxVisual.TestCenter.UI
                     frame.Viewer.Session.Original.GetGrayValue(0,0) != 1 ||
                     frame.Viewer.Session.Result.GetGrayValue(0,0) != 4)
                     throw new InvalidOperationException("SideBySide结果图灰度16位或原始数据身份错误");
+                // 在右侧结果Pane真实屏幕坐标点选四次，必须回写原图中心，
+                // 两画布分别绘制草稿而不是右Pane只能看、不能测。
+                frame.Viewer.ToolMode=MVIImageToolMode.LinePair;
+                FGEPoint2D[] targetPoints={
+                    new FGEPoint2D(.5,.5),new FGEPoint2D(3.5,.5),
+                    new FGEPoint2D(.5,2.5),new FGEPoint2D(3.5,2.5)
+                };
+                System.Windows.Shapes.Polyline secondaryFirst=
+                    frame.Viewer.FindName("SecondaryDraftPolyline") as
+                        System.Windows.Shapes.Polyline;
+                System.Windows.Shapes.Polyline secondarySecond=
+                    frame.Viewer.FindName("SecondaryDraftLinePair") as
+                        System.Windows.Shapes.Polyline;
+                if(secondaryFirst==null || secondarySecond==null)
+                    throw new InvalidOperationException("右Pane缺少测量双线实时预览画布");
+                MVIImageOverlayItem rightPair=null;
+                for(int step=0;step<4;step++)
+                {
+                    Point position=frame.Viewer.SourceToSecondaryViewport(targetPoints[step]);
+                    rightPair=frame.Viewer.AppendLinePairAtSecondaryViewport(position);
+                    if(step<3 && rightPair!=null)
+                        throw new InvalidOperationException("右Pane未完成四点却提前创建两线测量");
+                    if(step==2 && (secondaryFirst.Visibility!=Visibility.Visible ||
+                        secondarySecond.Visibility!=Visibility.Visible ||
+                        secondaryFirst.Points.Count!=2))
+                        throw new InvalidOperationException("右Pane未实时显示第一段/第二段草稿");
+                }
+                if(rightPair==null || rightPair.Points.Count!=4 ||
+                    rightPair.Id!=frame.Viewer.SelectedOverlayId ||
+                    !frame.Viewer.DescribeMeasurement(rightPair).Contains("最短 2 px") ||
+                    frame.Viewer.SecondaryOverlayVisualCount<4 ||
+                    secondaryFirst.Visibility!=Visibility.Collapsed ||
+                    secondarySecond.Visibility!=Visibility.Collapsed)
+                    throw new InvalidOperationException(
+                        "右Pane四点回写原图、双Pane完成显示或最短距离错误");
+                for(int pointIndex=0;pointIndex<4;pointIndex++)
+                    if(rightPair.Points[pointIndex].DistanceTo(targetPoints[pointIndex])>1e-7)
+                        throw new InvalidOperationException("右Pane视口逆变换偏离原图像素中心");
+                frame.Viewer.Overlays.Remove(rightPair.Id);
+                frame.Viewer.SelectOverlay(null);
+                frame.Viewer.ToolMode=MVIImageToolMode.Navigate;
+
                 // 真实PNG输出必须覆盖双Pane；否则旧SaveViewPng只截左侧属虚假导出。
                 FrameworkElement leftPane = frame.Viewer.FindName("ViewportRoot") as FrameworkElement;
                 if (leftPane == null || leftPane.ActualWidth <= 0)
