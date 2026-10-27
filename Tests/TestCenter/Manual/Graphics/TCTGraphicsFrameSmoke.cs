@@ -90,11 +90,24 @@ namespace CxVisual.TestCenter.UI
                     throw new InvalidOperationException("Group提交后工程对象树未出现组合容器");
                 if(frame.Canvas.SelectedVisualIds.Count!=0)
                     throw new InvalidOperationException("Group不能伪造为普通Shape选区");
+                // 工程容器虽然不投影为Shape，却能通过同一局部几何属性编辑通道操作。
+                TextBox groupX=Find<TextBox>(frame,"TCT.Graphics.Geometry.X");
+                if(groupX==null||!groupX.IsEnabled)
+                    throw new InvalidOperationException("Group工程选择未开放正式几何编辑");
+                int beforeGroupMove=frame.Revision;
+                double x0=double.Parse(groupX.Text,System.Globalization.CultureInfo.InvariantCulture);
+                groupX.Text=(x0+20).ToString("G17",System.Globalization.CultureInfo.InvariantCulture);
+                apply.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                if(frame.Revision!=beforeGroupMove+1)
+                    throw new InvalidOperationException("Group移动未在一次MEM事务内提交");
+                frame.Execute("edit.undo");
+                if(frame.Revision!=beforeGroupMove+2||!frame.SelectedId.HasValue)
+                    throw new InvalidOperationException("Group几何事务的Undo失败");
                 Button ungroup=Find<Button>(frame,"MPW.Visual.edit.ungroup");
                 if(ungroup==null||!ungroup.IsEnabled)
                     throw new InvalidOperationException("选择真实Group后解组按钮未启用");
                 ungroup.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                if(frame.Revision!=beforeGroup+2||
+                if(frame.Revision!=beforeGroup+4||
                     !ids.OrderBy(id=>id).SequenceEqual(frame.SceneIds.OrderBy(id=>id)))
                     throw new InvalidOperationException("解组未保留原图元身份");
                 // 磁盘往返不是截图：核实Project与所有图元ID保持不变。

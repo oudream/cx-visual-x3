@@ -316,7 +316,9 @@ namespace CxVisual.TestCenter.UI
             Guid? id=_editor.SelectedId;
             MRCVisualItem shape=id.HasValue?_session.Find(id.Value) as MRCVisualItem:null;
             TextBox[] fields={_x,_y,_width,_height,_angle};
-            if(shape==null||_canvas.SelectedVisualIds.Count!=1)
+            // Group是可编辑的MRCVisualItem容器，虽然不作为Shape投影，
+            // 但工程树明确选择它时可以通过同一MVI几何事务移动/缩放/旋转。
+            if(shape==null||(!(shape is MRCGroup)&&_canvas.SelectedVisualIds.Count!=1))
             {
                 foreach(TextBox field in fields){field.Text="";field.IsEnabled=false;}
                 return;
@@ -341,8 +343,11 @@ namespace CxVisual.TestCenter.UI
         }
         public void ApplyGeometry()
         {
-            if(!_editor.SelectedId.HasValue||_canvas.SelectedVisualIds.Count!=1)
-            {Report("请选择一个可编辑图元，再填写局部几何属性。");return;}
+            Guid? selected=_editor.SelectedId;
+            MRCVisualItem target=selected.HasValue?
+                _session.Find(selected.Value) as MRCVisualItem:null;
+            if(target==null||(!(target is MRCGroup)&&_canvas.SelectedVisualIds.Count!=1))
+            {Report("请选择一个可编辑图元或工程Group，再填写局部几何属性。");return;}
             try
             {
                 Guid id=_editor.SelectedId.Value;
