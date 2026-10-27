@@ -1,4 +1,6 @@
 using System;
+using System.IO;
+using System.Linq;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
@@ -20,6 +22,7 @@ namespace CxVisual.TestCenter.UI
                 throw new InvalidOperationException("图元工作区没有注册真实Frame Factory");
             TCTManualGraphicsFrame frame=descriptor.Factory() as TCTManualGraphicsFrame;
             if(frame==null)throw new InvalidOperationException("图元Factory没有创建专业Frame");
+            string file=Path.Combine(Path.GetTempPath(),"cx-graphics-"+Guid.NewGuid().ToString("N")+".cxproj");
             Window window=new Window{Content=frame,Width=1200,Height=780,
                 ShowInTaskbar=false,WindowStyle=WindowStyle.ToolWindow};
             try
@@ -40,13 +43,56 @@ namespace CxVisual.TestCenter.UI
                 if(frame.SceneCount!=1)throw new InvalidOperationException("MEM Undo失败");
                 frame.Execute("edit.redo");
                 if(frame.SceneCount!=2)throw new InvalidOperationException("MEM Redo失败");
+                // 工程对象树与画布选择必须是同一身份，而非右侧静态字符串。
+                Guid[] ids=frame.SceneIds.ToArray();
+                ListBox objects=Find<ListBox>(frame,"TCT.Graphics.Objects");
+                if(objects==null||objects.Items.Count!=2)
+                    throw new InvalidOperationException("图元对象树未绑定真实Scene");
+                objects.SelectedItem=objects.Items.Cast<object>()
+                    .First(item=>((CxVisual.Mechanism.Visual.MVISceneItem)item).Id==ids[0]);
+                if(frame.SelectedId!=ids[0]||
+                    !frame.Canvas.SelectedVisualIds.Contains(ids[0]))
+                    throw new InvalidOperationException("对象树选择未同步画布与MVI");
+                // 点击真实属性按钮，检查Local几何被MEM事务保存且能Undo。
+                TextBox x=Find<TextBox>(frame,"TCT.Graphics.Geometry.X");
+                Button apply=Find<Button>(frame,"TCT.Graphics.ApplyGeometry");
+                if(x==null||apply==null||!x.IsEnabled)
+                    throw new InvalidOperationException("已选中图元却没有可操作的几何属性");
+                int beforeEdit=frame.Revision;
+                x.Text="87";
+                apply.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                if(frame.Revision<=beforeEdit)
+                    throw new InvalidOperationException("属性输入没有走真实MVI/MEM事务");
+                int afterEdit=frame.Revision;
+                x.Text="NaN";
+                apply.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                if(frame.Revision!=afterEdit||!frame.StatusMessage.Contains("被拒绝"))
+                    throw new InvalidOperationException("非法数字改变了工程或未报告拒绝");
+                // 磁盘往返不是截图：核实Project与所有图元ID保持不变。
+                frame.SaveProject(file);
+                Guid projectId=frame.ProjectId;
+                Guid[] saved=frame.SceneIds.ToArray();
+                frame.OpenProject(file);
+                if(frame.ProjectId!=projectId||!frame.SceneIds.SequenceEqual(saved)||
+                    frame.IsDirty)
+                    throw new InvalidOperationException("真实工程保存重开丢失对象身份");
+                bool rejected=false;
+                try{frame.OpenProject(file+".missing");}
+                catch(FileNotFoundException){rejected=true;}
+                catch(DirectoryNotFoundException){rejected=true;}
+                if(!rejected||frame.ProjectId!=projectId||!frame.SceneIds.SequenceEqual(saved))
+                    throw new InvalidOperationException("加载失败时没有保留原工程会话");
                 frame.Inspect();
                 if(!frame.StatusMessage.Contains("Revision")||
                     frame.StatusMessage.Contains("GE Passed"))
                     throw new InvalidOperationException("观察必须展示真实Revision，不伪造测试Passed");
-                Console.WriteLine("PASS TCT Graphics WPF STA: shared MPW panel, SceneView, MEM and Undo/Redo");
+                Console.WriteLine("PASS TCT Graphics WPF STA: MPW, SceneView, tree selection, geometry, invalid input, MEM Undo, disk roundtrip");
             }
-            finally{window.Close();frame.OnWorkspaceClosed();}
+            finally
+            {
+                window.Close();frame.OnWorkspaceClosed();
+                if(File.Exists(file))File.Delete(file);
+            }
         }
         private static T Find<T>(DependencyObject root,string id) where T:DependencyObject
         {

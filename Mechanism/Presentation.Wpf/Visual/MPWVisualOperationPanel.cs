@@ -38,6 +38,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 "route.manual|人工路径" });
             _root.Children.Add(_commands);
             Content=_root;
+            // 初始尚无选择和历史；禁止画面显示可点但无法执行的编辑命令。
+            UpdateAvailability(0,false,false,false,true);
         }
         private void AddSection(Panel parent,string heading,IEnumerable<string> values)
         {
@@ -56,6 +58,27 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 _buttons.Add(id,button);grid.Children.Add(button);
             }
             parent.Children.Add(grid);
+        }
+        /// <summary>
+        /// 仅计算公共按钮的呈现可用性，实际权限/作用域仍由宿主MVI/MEM最终校验。
+        /// 多选要求两个真实对象；视觉连接模式只对选择的一条MPC连接开放。
+        /// 不在控件中保存选区或维护第二套命令状态。
+        /// </summary>
+        public void UpdateAvailability(int selectionCount,bool selectedVisualConnection,
+            bool canUndo,bool canRedo,bool canEdit)
+        {
+            SetOperationEnabled("edit.undo",canUndo&&canEdit);
+            SetOperationEnabled("edit.redo",canRedo&&canEdit);
+            SetOperationEnabled("edit.delete",canEdit&&selectionCount==1);
+            foreach(string id in new[]{"align.left","align.top","align.centerX","align.centerY"})
+                SetOperationEnabled(id,canEdit&&selectionCount>=2&&!selectedVisualConnection);
+            foreach(string id in new[]{"route.straight","route.orthogonal","route.manual"})
+                SetOperationEnabled(id,canEdit&&selectionCount==1&&selectedVisualConnection);
+            foreach(string id in new[]{"Line","Rect","Circle","Ellipse","Polyline","Polygon",
+                "Arc","Bezier","Path","Text","WidgetButton","core.widget.textbox",
+                "core.widget.checkbox","core.widget.slider","core.widget.progressbar",
+                "core.widget.combobox"})
+                SetOperationEnabled(id,canEdit);
         }
         public void SetOperationEnabled(string id,bool enabled)
         {

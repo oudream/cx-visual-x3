@@ -1,5 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using Microsoft.Win32;
 using System.Linq;
 using System.Windows;
 using System.Windows.Automation;
@@ -16,13 +19,17 @@ namespace CxVisual.TestCenter.UI
     /// </summary>
     public sealed class TCTManualGraphicsFrame : UserControl, ITCTWorkspaceFrame
     {
-        private readonly MEMEngineeringSession _session;
-        private readonly MVIVisualEditor _editor;
+        private MEMEngineeringSession _session;
+        private MVIVisualEditor _editor;
         private readonly SceneView _canvas=new SceneView();
         private readonly MPWVisualOperationPanel _operations=new MPWVisualOperationPanel();
         private readonly TextBlock _status=new TextBlock {TextWrapping=TextWrapping.Wrap};
         private readonly TextBlock _details=new TextBlock {TextWrapping=TextWrapping.Wrap};
-        private readonly ListBox _objects=new ListBox {MinHeight=120};
+        private readonly ListBox _objects=new ListBox {MinHeight=120,SelectionMode=SelectionMode.Extended,DisplayMemberPath="Name"};
+        // 仅显示/编辑工程定义上的局部几何参数；连接线/资源引用不得伪装成矩形属性。
+        private readonly TextBox _x=new TextBox(),_y=new TextBox(),_width=new TextBox(),
+            _height=new TextBox(),_angle=new TextBox();
+        private string _savedFile;
         private int _created;
         private bool _closed,_refreshing;
         public string WorkspaceId {get{return "manual.graphics";}}
@@ -32,6 +39,10 @@ namespace CxVisual.TestCenter.UI
         public int Revision {get{return _session.Revision;}}
         public int SceneCount {get{return _editor.Scene.Count;}}
         public string StatusMessage {get{return _status.Text;}}
+        public Guid ProjectId {get{return _session.Project.Id;}}
+        public bool IsDirty {get{return _session.IsDirty;}}
+        public Guid? SelectedId {get{return _editor.SelectedId;}}
+        public IReadOnlyList<Guid> SceneIds {get{return _editor.Scene.Select(x=>x.Id).ToArray();}}
         public event Action StateChanged;
         public IEnumerable<TCTWorkspaceAction> Commands
         {
@@ -40,7 +51,9 @@ namespace CxVisual.TestCenter.UI
                     ()=>Execute("edit.undo"),()=>_editor.CanUndo),
                 new TCTWorkspaceAction("graphics.redo","重做图元操作",
                     ()=>Execute("edit.redo"),()=>_editor.CanRedo),
-                new TCTWorkspaceAction("graphics.inspect","观察真实工程Revision",Inspect)
+                new TCTWorkspaceAction("graphics.inspect","观察真实工程Revision",Inspect),
+                new TCTWorkspaceAction("graphics.save","保存测试工程",SaveWithDialog),
+                new TCTWorkspaceAction("graphics.open","打开测试工程",OpenWithDialog)
             };}
         }
         public TCTManualGraphicsFrame()
@@ -57,6 +70,7 @@ namespace CxVisual.TestCenter.UI
             AutomationProperties.SetAutomationId(_status,"TCT.Graphics.Status");
             AutomationProperties.SetAutomationId(_objects,"TCT.Graphics.Objects");
             _operations.OperationRequested+=Execute;
+            _objects.SelectionChanged+=OnObjectTreeSelectionChanged;
             WireCanvas();
             BuildLayout();
             _editor.Changed+=OnEditorChanged;
@@ -90,6 +104,27 @@ namespace CxVisual.TestCenter.UI
             inspector.Children.Add(new TextBlock{Text="当前场景项",FontWeight=FontWeights.SemiBold,
                 Margin=new Thickness(0,12,0,4)});
             inspector.Children.Add(_objects);
+            inspector.Children.Add(new TextBlock {Text="局部几何参数（选择可编辑图元）",
+                FontWeight=FontWeights.SemiBold,Margin=new Thickness(0,12,0,5)});
+            AddGeometryField(inspector,"X",_x);
+            AddGeometryField(inspector,"Y",_y);
+            AddGeometryField(inspector,"宽度",_width);
+            AddGeometryField(inspector,"高度",_height);
+            AddGeometryField(inspector,"旋转角度",_angle);
+            Button apply=new Button {Content="应用几何属性（单事务）",
+                Padding=new Thickness(8),Margin=new Thickness(0,7,0,4)};
+            AutomationProperties.SetAutomationId(apply,"TCT.Graphics.ApplyGeometry");
+            apply.Click+=(sender,args)=>ApplyGeometry();
+            inspector.Children.Add(apply);
+            StackPanel files=new StackPanel {Orientation=Orientation.Horizontal,
+                Margin=new Thickness(0,8,0,5)};
+            Button save=new Button {Content="保存...",Margin=new Thickness(0,0,7,0)};
+            Button open=new Button {Content="打开..."};
+            AutomationProperties.SetAutomationId(save,"TCT.Graphics.Save");
+            AutomationProperties.SetAutomationId(open,"TCT.Graphics.Open");
+            save.Click+=(sender,args)=>SaveWithDialog();
+            open.Click+=(sender,args)=>OpenWithDialog();
+            files.Children.Add(save);files.Children.Add(open);inspector.Children.Add(files);
             Button inspect=new Button{Content="观察工程状态",
                 Padding=new Thickness(8),Margin=new Thickness(0,8,0,0)};
             AutomationProperties.SetAutomationId(inspect,"TCT.Graphics.Inspect");
@@ -103,13 +138,51 @@ namespace CxVisual.TestCenter.UI
             Grid.SetRow(bottom,1);Grid.SetColumnSpan(bottom,3);layout.Children.Add(bottom);
             Content=layout;
         }
+
+        private static void AddGeometryField(Panel host,string label,TextBox field)
+        {
+            DockPanel row=new DockPanel {Margin=new Thickness(0,2,0,2)};
+            TextBlock caption=new TextBlock {Text=label,Width=76,
+                VerticalAlignment=VerticalAlignment.Center};
+            DockPanel.SetDock(caption,Dock.Left);row.Children.Add(caption);
+            AutomationProperties.SetAutomationId(field,"TCT.Graphics.Geometry."+label);
+            field.MinWidth=88;
+            row.Children.Add(field);host.Children.Add(row);
+        }
+        /// <summary>树与画布使用同一场景ID，选择动作不写Revision，不改变工程对象身份。</summary>
+        private void OnObjectTreeSelectionChanged(object sender,SelectionChangedEventArgs args)
+        {
+            if(_refreshing||_closed)return;
+            Guid[] ids=_objects.SelectedItems.Cast<MVISceneItem>().Select(x=>x.Id).ToArray();
+            _editor.Select(ids.Length==0?(Guid?)null:ids[ids.Length-1]);
+            _canvas.SetSelectedVisualIds(ids);
+            UpdateDetails();UpdateGeometryFields();UpdateAvailability();
+        }
+        public void SelectObjects(params Guid[] ids)
+        {
+            if(ids==null)throw new ArgumentNullException("ids");
+            if(ids.Any(id=>!_editor.Scene.Any(item=>item.Id==id&&item.IsSelectable)))
+                throw new InvalidOperationException("只能选择当前场景中的可选对象");
+            _editor.Select(ids.Length==0?(Guid?)null:ids[ids.Length-1]);
+            _canvas.SetSelectedVisualIds(ids);
+            // 仅同步UI选择；测试可用此入口验证树与画布的同一身份。
+            _refreshing=true;
+            try
+            {
+                _objects.SelectedItems.Clear();
+                foreach(MVISceneItem item in _objects.Items.Cast<MVISceneItem>())
+                    if(ids.Contains(item.Id))_objects.SelectedItems.Add(item);
+            }
+            finally{_refreshing=false;}
+            UpdateDetails();UpdateGeometryFields();UpdateAvailability();
+        }
         private void WireCanvas()
         {
             // 唯一工程提交Owner是MVI/MTC；SceneView负责WPF手势和世界坐标预览。
             _canvas.NodeActivated+=(sender,args)=>_editor.Select(args.Id);
             _canvas.SelectionSetRequested+=ids=>{
                 _editor.Select(ids.Count==0?(Guid?)null:ids[ids.Count-1]);
-                _canvas.SetSelectedVisualIds(ids);UpdateDetails();
+                _canvas.SetSelectedVisualIds(ids);UpdateDetails();UpdateAvailability();
             };
             _canvas.MoveRequested+=(sender,args)=>{
                 var ids=_canvas.SelectedVisualIds;
@@ -152,15 +225,129 @@ namespace CxVisual.TestCenter.UI
             _refreshing=true;
             try
             {
-                _canvas.SetScene(_editor.Scene.ToList(),_editor.SelectedId);
-                _objects.ItemsSource=_editor.Scene.Select(x=>
-                    x.Name+" · "+x.Id.ToString("N").Substring(0,8)).ToArray();
-                _operations.SetOperationEnabled("edit.undo",_editor.CanUndo);
-                _operations.SetOperationEnabled("edit.redo",_editor.CanRedo);
-                UpdateDetails();
+                MVISceneItem[] items=_editor.Scene.ToArray();
+                _canvas.SetScene(items,_editor.SelectedId);
+                MVISceneItem[] previous=_objects.ItemsSource as MVISceneItem[];
+                // 只有场景对象身份变化才重新建列表，防止鼠标多选时丢失列表选区。
+                if(previous==null||!previous.Select(x=>x.Id).SequenceEqual(items.Select(x=>x.Id)))
+                {
+                    _objects.ItemsSource=items;
+                    if(_editor.SelectedId.HasValue)
+                        _objects.SelectedItem=items.FirstOrDefault(x=>x.Id==_editor.SelectedId.Value);
+                }
+                UpdateDetails();UpdateGeometryFields();UpdateAvailability();
             }
             finally{_refreshing=false;}
             Action changed=StateChanged;if(changed!=null)changed();
+        }
+
+        private void UpdateAvailability()
+        {
+            int count=_canvas.SelectedVisualIds.Count;
+            MVISceneItem selected=_editor.SelectedId.HasValue?
+                _editor.Scene.FirstOrDefault(x=>x.Id==_editor.SelectedId.Value):null;
+            _operations.UpdateAvailability(count,
+                selected!=null&&selected.ElementTypeId=="core.visual.connector",
+                _editor.CanUndo,_editor.CanRedo,_canvas.IsDesignMode);
+        }
+        private void UpdateGeometryFields()
+        {
+            Guid? id=_editor.SelectedId;
+            MRCVisualItem shape=id.HasValue?_session.Find(id.Value) as MRCVisualItem:null;
+            TextBox[] fields={_x,_y,_width,_height,_angle};
+            if(shape==null||_canvas.SelectedVisualIds.Count!=1)
+            {
+                foreach(TextBox field in fields){field.Text="";field.IsEnabled=false;}
+                return;
+            }
+            double[] values={shape.X,shape.Y,shape.Width,shape.Height,shape.Rotation};
+            for(int i=0;i<fields.Length;i++)
+            {
+                // 有输入焦点时不覆盖用户尚未提交的数值。
+                if(!fields[i].IsKeyboardFocusWithin)
+                    fields[i].Text=values[i].ToString("G17",CultureInfo.InvariantCulture);
+                fields[i].IsEnabled=true;
+            }
+        }
+        private static double ReadNumber(TextBox field,string name)
+        {
+            double number;
+            if(!double.TryParse(field.Text,NumberStyles.Float,
+                CultureInfo.InvariantCulture,out number)||
+                double.IsNaN(number)||double.IsInfinity(number))
+                throw new ArgumentException(name+"必须是有限数字");
+            return number;
+        }
+        public void ApplyGeometry()
+        {
+            if(!_editor.SelectedId.HasValue||_canvas.SelectedVisualIds.Count!=1)
+            {Report("请选择一个可编辑图元，再填写局部几何属性。");return;}
+            try
+            {
+                Guid id=_editor.SelectedId.Value;
+                if(!(_session.Find(id) is MRCVisualItem))
+                {Report("连接线或实例不是可直接修改的几何定义");return;}
+                double x=ReadNumber(_x,"X"),y=ReadNumber(_y,"Y");
+                double w=ReadNumber(_width,"宽度"),h=ReadNumber(_height,"高度"),
+                    angle=ReadNumber(_angle,"旋转");
+                if(w<=0||h<=0)throw new ArgumentException("宽度和高度必须大于零");
+                Commit(_editor.SetGeometry(id,x,y,w,h,angle),"修改几何属性");
+            }
+            catch(Exception error){Report("几何属性被拒绝："+error.Message);}
+        }
+        private void SaveWithDialog()
+        {
+            SaveFileDialog dialog=new SaveFileDialog {Title="保存图元测试工程",
+                Filter="CxVisual工程|*.cxproj",DefaultExt=".cxproj",AddExtension=true,
+                FileName=string.IsNullOrEmpty(_savedFile)?"图元测试.cxproj":
+                    Path.GetFileName(_savedFile)};
+            if(dialog.ShowDialog()==true)
+                try{SaveProject(dialog.FileName);}catch(Exception ex){Report("保存失败："+ex.Message);}
+        }
+        private void OpenWithDialog()
+        {
+            OpenFileDialog dialog=new OpenFileDialog {Title="打开图元测试工程",
+                Filter="CxVisual工程|*.cxproj",CheckFileExists=true};
+            if(dialog.ShowDialog()==true)
+                try{OpenProject(dialog.FileName);}catch(Exception ex){Report("打开失败："+ex.Message);}
+        }
+        public void SaveProject(string path)
+        {
+            if(_closed)throw new ObjectDisposedException("TCTManualGraphicsFrame");
+            if(string.IsNullOrWhiteSpace(path))throw new ArgumentException("保存路径不能为空");
+            _session.SaveAs(path);
+            _savedFile=path;
+            Report("工程已保存："+Path.GetFileName(path)+" · Revision "+_session.Revision);
+        }
+        /// <summary>先完整加载新工程，再原子更换当前测试会话；失败时旧工程保留。</summary>
+        public void OpenProject(string path)
+        {
+            if(_closed)throw new ObjectDisposedException("TCTManualGraphicsFrame");
+            MEMEngineeringSession loaded=MEMEngineering.Open(path);
+            MVIVisualEditor next=null;
+            try
+            {
+                if(loaded.Project.Pages.Count==0)
+                    throw new InvalidOperationException("目标工程没有可编辑Page");
+                next=new MVIVisualEditor(loaded);
+                next.SetPage(loaded.Project.Pages[0].Id);
+            }
+            catch
+            {
+                if(next!=null)next.Dispose();
+                loaded.Close(true);
+                throw;
+            }
+            _canvas.CancelInteraction();
+            MVIVisualEditor previousEditor=_editor;
+            MEMEngineeringSession previousSession=_session;
+            previousEditor.Changed-=OnEditorChanged;
+            _editor=next;_session=loaded;_savedFile=path;
+            _editor.Changed+=OnEditorChanged;
+            _canvas.SetSelectedVisualIds(new Guid[0]);
+            previousEditor.Dispose();previousSession.Close(true);
+            Refresh();
+            Report("真实工程已重开："+Path.GetFileName(path)+" · Revision "+_session.Revision);
         }
         private void UpdateDetails()
         {

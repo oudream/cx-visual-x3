@@ -831,6 +831,15 @@ namespace CxVisual.Studio
                 SceneHost.SetAssetResolver(id=>_viewModel.ProjectSession.OpenAsset(id));
             }
             SceneHost.SetScene(_viewModel.Items, _viewModel.SelectedId);
+            // 与TestCenter同一个MPW可用性规则；工程/专业权限由原Studio命令最终核验。
+            int visualCount=Math.Max(SceneHost.SelectedVisualIds.Count,
+                _viewModel.SelectedId.HasValue?1:0);
+            MVISceneItem selectedVisual=_viewModel.SelectedId.HasValue?
+                _viewModel.Items.FirstOrDefault(item=>item.Id==_viewModel.SelectedId.Value):null;
+            StudioVisualOperations.UpdateAvailability(visualCount,
+                selectedVisual!=null&&selectedVisual.ElementTypeId=="core.visual.connector",
+                _viewModel.ProjectSession.CanUndo,_viewModel.ProjectSession.CanRedo,
+                SceneHost.IsDesignMode&&!_logicRunning&&!_visualPreviewTimer.IsEnabled);
             if(_logicRunning||_visualPreviewTimer.IsEnabled)return;
             MEMPage page=_viewModel.ActivePage;
             MEMNodeSnapshot node=page==null?null:
