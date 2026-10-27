@@ -103,7 +103,13 @@ namespace CxVisual.TestCenter.UI
             {
                 if (!_syncingOverlayList) _viewer.SelectOverlay(SelectedOverlayId());
             };
-            _viewer.Overlays.Changed += (sender,args) => RefreshOverlayList();
+            _viewer.Overlays.Changed += (sender,args) =>
+            {
+                CancelAnalysis();
+                _histogramPlot.Clear();
+                _info.Text="ROI或图层已变更，请重新计算统计。";
+                RefreshOverlayList();
+            };
             _viewer.Session.Changed += (sender,args) =>
             {
                 CancelAnalysis();
@@ -120,6 +126,8 @@ namespace CxVisual.TestCenter.UI
                 if (_viewer.SelectedOverlayId.HasValue)
                     SelectOverlayRow(_viewer.SelectedOverlayId);
                 CancelAnalysis();
+                _histogramPlot.Clear();
+                _info.Text="选择区域已变化，请点击“计算灰度统计 / 直方图”。";
                 if (_viewer.SelectedRegion.HasValue)
                     _status.Text = "当前ROI：" + BoundsText(_viewer.SelectedRegion.Value);
                 if (_viewer.ToolMode == MVIImageToolMode.LineProfile &&
@@ -573,6 +581,32 @@ namespace CxVisual.TestCenter.UI
                 return;
             }
             FIMPixelRegion? region = _withRoi.IsChecked == true ? _viewer.SelectedRegion : null;
+            MVIImageOverlayItem areaRoi = null;
+            if (_withRoi.IsChecked == true && _viewer.SelectedOverlayId.HasValue)
+            {
+                MVIImageOverlayItem chosen=_viewer.Overlays.Find(
+                    _viewer.SelectedOverlayId.Value);
+                if(chosen!=null && chosen.IsAreaRoi)
+                {
+                    if(!chosen.IsVisible || !_viewer.Overlays.IsLayerVisible(chosen.Layer))
+                    {
+                        Show("统计失败：所选ROI图层已隐藏。");
+                        return;
+                    }
+                    areaRoi=chosen;
+                    int l=Math.Max(0,(int)Math.Floor(chosen.Bounds.Left));
+                    int t=Math.Max(0,(int)Math.Floor(chosen.Bounds.Top));
+                    int r=Math.Min(image.Width-1,(int)Math.Ceiling(chosen.Bounds.Right)-1);
+                    int b=Math.Min(image.Height-1,(int)Math.Ceiling(chosen.Bounds.Bottom)-1);
+                    if(l>r || t>b)
+                    {
+                        Show("统计失败：所选ROI在图像内没有有效像素。");
+                        return;
+                    }
+                    region=new FIMPixelRegion(l,t,r,b);
+                }
+            }
+            MVIImageOverlayItem selectedRoi=areaRoi; // 线程只消费不可变MVI快照
             CancelAnalysis();
             CancellationTokenSource cancellation = new CancellationTokenSource();
             _analysisCancellation = cancellation;
@@ -583,7 +617,10 @@ namespace CxVisual.TestCenter.UI
             try
             {
                 FIMImageAnalysisResult result = await Task.Run(() =>
-                    FIMImageAnalyzer.Analyze(image, 256, region, cancellation.Token),
+                    selectedRoi!=null ?
+                        FIMImageAnalyzer.AnalyzeMasked(image,256,region.Value,
+                            (x,y)=>selectedRoi.ContainsRoiPixelCenter(x,y),cancellation.Token) :
+                        FIMImageAnalyzer.Analyze(image,256,region,cancellation.Token),
                     cancellation.Token);
                 if (cancellation.IsCancellationRequested ||
                     Interlocked.Read(ref _analysisEpoch) != epoch ||
@@ -596,7 +633,9 @@ namespace CxVisual.TestCenter.UI
                 FIMImageStatistics stats = result.Statistics;
                 _info.Text = "图像：" + image.Width + "×" + image.Height + "\n" +
                     "格式：" + image.PixelFormat + "\n" +
-                    "ROI：" + (region.HasValue ? BoundsText(region.Value) : "全图") + "\n" +
+                    "ROI：" + (selectedRoi!=null ?
+                        selectedRoi.Kind+" · "+selectedRoi.Id.ToString("D")+"（精确形状）" :
+                        region.HasValue ? BoundsText(region.Value) : "全图") + "\n" +
                     "像素数：" + stats.PixelCount + "\n" +
                     "Min / Max：" + stats.Min.ToString("0.###") + " / " + stats.Max.ToString("0.###") + "\n" +
                     "Mean：" + stats.Mean.ToString("0.###") + "\n" +
