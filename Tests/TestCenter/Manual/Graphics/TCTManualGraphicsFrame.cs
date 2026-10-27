@@ -19,6 +19,16 @@ namespace CxVisual.TestCenter.UI
     /// </summary>
     public sealed class TCTManualGraphicsFrame : UserControl, ITCTWorkspaceFrame
     {
+        /// <summary>
+        /// 对象树只是一层UI投影，保留现有MEM Group和MVI Scene身份；
+        /// Group不是可画Shape，所以不能靠SceneView.SelectedVisualIds判断其选中状态。
+        /// </summary>
+        private sealed class GraphicTreeEntry
+        {
+            public Guid Id {get;set;}
+            public string Name {get;set;}
+            public bool IsGroup {get;set;}
+        }
         private MEMEngineeringSession _session;
         private MVIVisualEditor _editor;
         private readonly SceneView _canvas=new SceneView();
@@ -153,25 +163,46 @@ namespace CxVisual.TestCenter.UI
         private void OnObjectTreeSelectionChanged(object sender,SelectionChangedEventArgs args)
         {
             if(_refreshing||_closed)return;
-            Guid[] ids=_objects.SelectedItems.Cast<MVISceneItem>().Select(x=>x.Id).ToArray();
+            GraphicTreeEntry[] rows=_objects.SelectedItems.Cast<GraphicTreeEntry>().ToArray();
+            if(rows.Any(x=>x.IsGroup)&&rows.Length!=1)
+            {
+                // 组合容器选中与实际可见图元多选是两种语义，拒绝混合选区。
+                _refreshing=true;
+                try
+                {
+                    GraphicTreeEntry current=rows.Last(x=>x.IsGroup);
+                    _objects.SelectedItems.Clear();
+                    _objects.SelectedItem=current;
+                }
+                finally{_refreshing=false;}
+                rows=_objects.SelectedItems.Cast<GraphicTreeEntry>().ToArray();
+            }
+            Guid[] ids=rows.Select(x=>x.Id).ToArray();
             _editor.Select(ids.Length==0?(Guid?)null:ids[ids.Length-1]);
-            _canvas.SetSelectedVisualIds(ids);
+            _canvas.SetSelectedVisualIds(rows.Any(x=>x.IsGroup)?new Guid[0]:ids);
             UpdateDetails();UpdateGeometryFields();UpdateAvailability();
         }
         public void SelectObjects(params Guid[] ids)
         {
             if(ids==null)throw new ArgumentNullException("ids");
-            if(ids.Any(id=>!_editor.Scene.Any(item=>item.Id==id&&item.IsSelectable)))
+            GraphicTreeEntry[] selection=_objects.Items.Cast<GraphicTreeEntry>()
+                .Where(row=>ids.Contains(row.Id)).ToArray();
+            if(selection.Length!=ids.Length||
+                (selection.Any(row=>row.IsGroup)&&selection.Length!=1))
+                throw new InvalidOperationException("组容器与可视图元不能混合选择");
+            if(selection.Any(row=>!row.IsGroup&&
+                !_editor.Scene.Any(item=>item.Id==row.Id&&item.IsSelectable)))
                 throw new InvalidOperationException("只能选择当前场景中的可选对象");
             _editor.Select(ids.Length==0?(Guid?)null:ids[ids.Length-1]);
-            _canvas.SetSelectedVisualIds(ids);
+            _canvas.SetSelectedVisualIds(selection.Any(row=>row.IsGroup)?
+                new Guid[0]:ids);
             // 仅同步UI选择；测试可用此入口验证树与画布的同一身份。
             _refreshing=true;
             try
             {
                 _objects.SelectedItems.Clear();
-                foreach(MVISceneItem item in _objects.Items.Cast<MVISceneItem>())
-                    if(ids.Contains(item.Id))_objects.SelectedItems.Add(item);
+                foreach(GraphicTreeEntry entry in selection)
+                    _objects.SelectedItems.Add(entry);
             }
             finally{_refreshing=false;}
             UpdateDetails();UpdateGeometryFields();UpdateAvailability();
@@ -227,13 +258,40 @@ namespace CxVisual.TestCenter.UI
             {
                 MVISceneItem[] items=_editor.Scene.ToArray();
                 _canvas.SetScene(items,_editor.SelectedId);
-                MVISceneItem[] previous=_objects.ItemsSource as MVISceneItem[];
-                // 只有场景对象身份变化才重新建列表，防止鼠标多选时丢失列表选区。
-                if(previous==null||!previous.Select(x=>x.Id).SequenceEqual(items.Select(x=>x.Id)))
+                // Group作为工程容器只进入对象树，不伪造一条MVI Shape SceneItem。
+                // 可视图元仍以MVI Scene唯一身份显示，组合嵌套不会复制工程对象。
+                Guid? pageId=_editor.CurrentPageId;
+                var groups=pageId.HasValue?
+                    (_session.Find(pageId.Value) as MEMPage)?.RootContent
+                        .DescendantsAndSelf().OfType<MRCGroup>()
+                        .Select(group=>new GraphicTreeEntry {
+                            Id=group.Id,Name="[组合] "+group.Name,IsGroup=true
+                        }).ToArray():null;
+                var rows=(groups??new GraphicTreeEntry[0])
+                    .Concat(items.Select(item=>new GraphicTreeEntry {
+                        Id=item.Id,Name=item.Name,IsGroup=false
+                    })).ToArray();
+                GraphicTreeEntry[] previous=_objects.ItemsSource as GraphicTreeEntry[];
+                Guid[] previousSelection=_objects.SelectedItems.Cast<GraphicTreeEntry>()
+                    .Select(item=>item.Id).ToArray();
+                // 选择和顺序不变时保留UI行身份，避免鼠标操作中断。
+                if(previous==null||
+                    !previous.Select(x=>x.Id).SequenceEqual(rows.Select(x=>x.Id))||
+                    !previous.Select(x=>x.Name).SequenceEqual(rows.Select(x=>x.Name)))
                 {
-                    _objects.ItemsSource=items;
-                    if(_editor.SelectedId.HasValue)
-                        _objects.SelectedItem=items.FirstOrDefault(x=>x.Id==_editor.SelectedId.Value);
+                    _objects.ItemsSource=rows;
+                    foreach(GraphicTreeEntry entry in rows)
+                        if(previousSelection.Contains(entry.Id))_objects.SelectedItems.Add(entry);
+                }
+                // 显式改变工程选中对象时同步树选区；Group仅树选中。
+                if(_editor.SelectedId.HasValue&&
+                    !_objects.SelectedItems.Cast<GraphicTreeEntry>()
+                        .Any(row=>row.Id==_editor.SelectedId.Value))
+                {
+                    _objects.SelectedItems.Clear();
+                    GraphicTreeEntry active=_objects.Items.Cast<GraphicTreeEntry>()
+                        .FirstOrDefault(row=>row.Id==_editor.SelectedId.Value);
+                    if(active!=null)_objects.SelectedItem=active;
                 }
                 UpdateDetails();UpdateGeometryFields();UpdateAvailability();
             }
@@ -243,13 +301,15 @@ namespace CxVisual.TestCenter.UI
 
         private void UpdateAvailability()
         {
-            int count=_canvas.SelectedVisualIds.Count;
-            MVISceneItem selected=_editor.SelectedId.HasValue?
-                _editor.Scene.FirstOrDefault(x=>x.Id==_editor.SelectedId.Value):null;
+            // Container选中不在SceneView.SelectedVisualIds中；其CanExecute必须由MEM身份判定。
+            Guid? id=_editor.SelectedId;
+            bool isGroup=id.HasValue&&_session.Find(id.Value) is MRCGroup;
+            int count=isGroup?1:_canvas.SelectedVisualIds.Count;
+            MVISceneItem selected=id.HasValue?
+                _editor.Scene.FirstOrDefault(x=>x.Id==id.Value):null;
             _operations.UpdateAvailability(count,
                 selected!=null&&selected.ElementTypeId=="core.visual.connector",
-                _editor.CanUndo,_editor.CanRedo,_canvas.IsDesignMode,
-                selected!=null&&_session.Find(selected.Id) is MRCGroup);
+                _editor.CanUndo,_editor.CanRedo,_canvas.IsDesignMode,isGroup);
         }
         private void UpdateGeometryFields()
         {
@@ -354,7 +414,9 @@ namespace CxVisual.TestCenter.UI
         {
             _details.Text="ManualSession "+ManualSessionId.ToString("N").Substring(0,8)+
                 "\nMEM Revision "+_session.Revision+"\nScene "+_editor.Scene.Count+
-                " 项\n选择 "+_canvas.SelectedVisualIds.Count+" 项"+
+                " 项\n选择 "+((_editor.SelectedId.HasValue&&
+                    _session.Find(_editor.SelectedId.Value) is MRCGroup)?
+                    "工程组合容器":_canvas.SelectedVisualIds.Count+" 个可见图元")+
                 "\nUndo "+(_editor.CanUndo?"可用":"无")+" / Redo "+(_editor.CanRedo?"可用":"无");
         }
         private void Report(string text)

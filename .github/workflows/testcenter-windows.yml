@@ -154,6 +154,7 @@ jobs:
         shell: powershell
         run: |
           $exe = (Resolve-Path 'Output/Debug/x64/CxVisual.TestCenter.exe').Path
+          $env:CXVISUAL_GRAPHICS_UI_SCREENSHOT = Join-Path (Get-Location) 'Output/Debug/x64/TestCenter-Graphics.png'
           $p = Start-Process -FilePath $exe -WorkingDirectory (Get-Location).Path -ArgumentList @('--graphics-viewer-smoke') -PassThru
           try { Wait-Process -Id $p.Id -Timeout 50 -ErrorAction Stop }
           catch {
@@ -166,7 +167,10 @@ jobs:
               if (Test-Path $err) { Get-Content -LiteralPath $err | Write-Host }
               throw "Graphics WPF smoke returned $($p.ExitCode)"
           }
-          Write-Host 'PASS graphics: shared MPW tools, real SceneView, MEM Undo/Redo'
+          if (-not (Test-Path $env:CXVISUAL_GRAPHICS_UI_SCREENSHOT)) {
+              throw 'Graphics WPF screenshot was not saved'
+          }
+          Write-Host 'PASS graphics: MPW, SceneView, MEM Undo/Redo and real WPF screenshot'
       - name: Verify isolated Connector UIA PointTable and DataMapping
         shell: powershell
         run: |
@@ -611,5 +615,6 @@ jobs:
             Output/Debug/x64/TestCenter.nunit-failure.junit.xml
             Output/Debug/x64/NUnitState.*.xml
             Output/Debug/x64/TestCenter.empty.junit.xml
+            Output/Debug/x64/TestCenter-Graphics.png
             Output/Debug/x64/TestCenterHistory/**/summary.json
           if-no-files-found: warn

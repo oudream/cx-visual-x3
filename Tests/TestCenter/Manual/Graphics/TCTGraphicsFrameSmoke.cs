@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using CxVisual.Mechanism.Presentation.Wpf;
 namespace CxVisual.TestCenter.UI
 {
@@ -48,8 +49,8 @@ namespace CxVisual.TestCenter.UI
                 ListBox objects=Find<ListBox>(frame,"TCT.Graphics.Objects");
                 if(objects==null||objects.Items.Count!=2)
                     throw new InvalidOperationException("图元对象树未绑定真实Scene");
-                objects.SelectedItem=objects.Items.Cast<object>()
-                    .First(item=>((CxVisual.Mechanism.Visual.MVISceneItem)item).Id==ids[0]);
+                // 对象树持有Group与Scene的UI行投影，不假定所有行都是MVISceneItem。
+                objects.SelectedIndex=0;
                 if(frame.SelectedId!=ids[0]||
                     !frame.Canvas.SelectedVisualIds.Contains(ids[0]))
                     throw new InvalidOperationException("对象树选择未同步画布与MVI");
@@ -70,6 +71,7 @@ namespace CxVisual.TestCenter.UI
                     throw new InvalidOperationException("非法数字改变了工程或未报告拒绝");
                 // 图元组操作与Studio共用Core Group/Ungroup事务，不创建新的树或历史。
                 frame.SelectObjects(ids[0],ids[1]);
+                CaptureRealFrameIfRequested(window);
                 Button group=Find<Button>(frame,"MPW.Visual.edit.group");
                 if(group==null||!group.IsEnabled)
                     throw new InvalidOperationException("两项有效选择后公共Group操作未启用");
@@ -78,6 +80,16 @@ namespace CxVisual.TestCenter.UI
                 if(frame.Revision!=beforeGroup+1||!frame.SelectedId.HasValue||
                     ids.Contains(frame.SelectedId.Value))
                     throw new InvalidOperationException("Group没有以一次工程事务创建真实组合");
+                // Group 是工程树节点，不是可渲染的第三个Shape；右侧必须能选中它。
+                bool hasGroup=objects.Items.Cast<object>().Any(row=>{
+                    var property=row.GetType().GetProperty("Name");
+                    string name=property==null?null:property.GetValue(row,null) as string;
+                    return name!=null&&name.StartsWith("[组合]",StringComparison.Ordinal);
+                });
+                if(!hasGroup||objects.Items.Count!=3)
+                    throw new InvalidOperationException("Group提交后工程对象树未出现组合容器");
+                if(frame.Canvas.SelectedVisualIds.Count!=0)
+                    throw new InvalidOperationException("Group不能伪造为普通Shape选区");
                 Button ungroup=Find<Button>(frame,"MPW.Visual.edit.ungroup");
                 if(ungroup==null||!ungroup.IsEnabled)
                     throw new InvalidOperationException("选择真实Group后解组按钮未启用");
@@ -110,6 +122,30 @@ namespace CxVisual.TestCenter.UI
                 window.Close();frame.OnWorkspaceClosed();
                 if(File.Exists(file))File.Delete(file);
             }
+        }
+        /// <summary>
+        /// 保存由真实WPF Window/SceneView渲染的像素证据，不使用设计示意图冒充运行截图。
+        /// 用户可用CI artifact直接观察操作面板、可选画布与选区反馈。
+        /// </summary>
+        private static void CaptureRealFrameIfRequested(Window window)
+        {
+            string path=Environment.GetEnvironmentVariable("CXVISUAL_GRAPHICS_UI_SCREENSHOT");
+            if(string.IsNullOrWhiteSpace(path))return;
+            window.UpdateLayout();
+            int width=(int)Math.Ceiling(window.ActualWidth);
+            int height=(int)Math.Ceiling(window.ActualHeight);
+            if(width<400||height<300)throw new InvalidOperationException("图元工作台窗口布局尺寸异常");
+            RenderTargetBitmap bitmap=new RenderTargetBitmap(width,height,96,96,PixelFormats.Pbgra32);
+            bitmap.Render(window);
+            PngBitmapEncoder encoder=new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(bitmap));
+            string directory=Path.GetDirectoryName(path);
+            if(!string.IsNullOrEmpty(directory))Directory.CreateDirectory(directory);
+            using(FileStream output=new FileStream(path,FileMode.Create,FileAccess.Write))
+                encoder.Save(output);
+            if(new FileInfo(path).Length<1000)
+                throw new InvalidOperationException("图元WPF截图尺寸过小，不能作为真实画布证据");
+            Console.WriteLine("PASS TCT Graphics WPF real screenshot: "+path);
         }
         private static T Find<T>(DependencyObject root,string id) where T:DependencyObject
         {
