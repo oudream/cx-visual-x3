@@ -210,6 +210,22 @@ Design/Preview/Run/Debug 是上层授权/可视状态，不能把运行态视为
 
 TextBox/Geometry 的文本输入状态下方向键移动光标，不能触发画布 Nudge；Shift/Ctrl/Alt 状态由当前工具和 Studio 已注册快捷键处理。历史默认方向键 1 世界单位、Shift+方向键 10 单位是当前基础实现；其它快捷键应先查 `StudioShell` 的统一注册表，避免 WPF/菜单/Ribbon 三套拦截。
 
+### 5.6 绘制工具：图形在画布中亲手创建（2026-10-27 增量）
+
+现有 `MPWVisualOperationPanel` 与 `SceneView` 正式共享画布工具状态。**单击 Shape 工具只激活 Draw，不再调用默认 `AddShape`；由用户在画布实际绘制后，才向 MVI 发一次工程创建请求。**“选择”按钮切换 Select；编辑 Undo/Redo 等按钮不应改变活跃工具。ESC 优先取消尚未提交的 Ghost，再次 ESC 退出绘制工具；切换设计/运行态必须清除临时绘制。
+
+| 工具 | 指针操作与临时预览 | 完成语义 |
+|---|---|---|
+| Rect / Ellipse / Circle | PointerDown → PointerMove → PointerUp，预览真实形状和包围盒；允许反向拖动 | 松开提交一次；Circle 正圆；Rect/Ellipse 按 Shift 等比 |
+| Line | PointerDown → PointerMove → PointerUp，保留起终点方向 | 松开提交一次；零长度拒绝 |
+| Polyline / Polygon / Path | 多次单击确认世界点，移动显示未提交尾段 | 双击或 Enter 完成；Polygon 少于三点拒绝 |
+| Arc / Bezier | 首期按起终拖动建立基础弧和默认切线 | 后续通过 D GeometryEdit 调精细参数；非完整多阶段曲线构造 |
+| Text / Widget | 目前保留标准默认尺寸快速插入 | 拖框文字输入、Widget 拖放属于后续 GE-13 完整验收 |
+
+**不可变约束**：`MVIShapeCatalog.CreateDrawn` 是纯数学工厂，WPF 临时 Ghost 与 MVI 正式提交必须复用它；`SceneView` 仅持工具/指针/临时预览，不保存工程Shape。图元对象、端口和 Revision 仍归 MEM/MTC；一次完成只产生一次 Undo。选中既有图元后的 H1/H2/H5/H6 与绘制手势互斥，Draw 时不能触发编辑控制柄、连线重附着或背景框选；异常/取消不修改工程。
+
+**现有测试范围**：`VisualShapeEditingTests.CheckDrawnGeometryContract` 覆盖反向拖动、九种类型、圆/Shift约束及非法几何；`TCTGraphicsFrameSmoke` 验证公共 Button 激活不创建、SceneView 手势路径、Ghost 不改 Revision、创建/Undo/Redo/保存重开。该 WPF STA 入口直接调用公开的输入手势适配方法进行验证，**不可充当系统外部鼠标注入、DPI四档、真实打字/DragDrop已通过的证据**；这些仍按 GE-02/03/08/12/13 子项分别签收。
+
 ## 06. 九 Shape 与 Geometry 精细编辑：实现级算法
 
 ### 6.1 共用几何编辑合同
@@ -453,7 +469,8 @@ Preview 输出应携带：当前 Resource Scope、对象 ID/地址、起始 Revi
 
 | 用户动作 | 统一反馈 | 工程结果 |
 |---|---|---|
-| 工具箱点击/拖入 Shape | 半透明 Ghost + World 网格位置 | Create，单次 Undo |
+| Shape工具单击激活，画布拖绘 / 连续点绘 | 绘制Ghost与工程路径一致，松开或确认才创建 | Create，单次 Undo |
+| 标准图元快速插入/图库拖放 | 应提供独立操作入口，不复用“激活Draw”的Click | 尚未作为完整GE-13签收 |
 | 单击/Ctrl/Shift/框选 | 高亮/共用柄/计数 | 只改 Selection，不写工程 |
 | Move/八柄/旋转 | 世界 Preview、吸附线、尺寸角度 | 结束时变更一次 |
 | 双击 Path/Bezier/Arc | D Geometry 专用柄/属性 | 仅对应几何定义修改 |
