@@ -40,6 +40,8 @@
     <Canvas x:Name="OverlayCanvas" IsHitTestVisible="False"/>
     <Polyline x:Name="DraftPolyline" Stroke="#FFFFD157" StrokeThickness="1.5"
         StrokeDashArray="4,3" Visibility="Collapsed" Fill="Transparent" IsHitTestVisible="False"/>
+    <Polyline x:Name="DraftLinePair" Stroke="#FFFFD157" StrokeThickness="1.5"
+        StrokeDashArray="4,3" Visibility="Collapsed" Fill="Transparent" IsHitTestVisible="False"/>
     <Rectangle x:Name="SelectedRoi" Stroke="#FFD157" StrokeThickness="1.5"
        Fill="#30FFD157" Visibility="Collapsed"/>
    </Canvas>
