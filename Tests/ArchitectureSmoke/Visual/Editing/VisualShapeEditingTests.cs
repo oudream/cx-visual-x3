@@ -1070,15 +1070,30 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     MVIVisualHandle fullEnd=MVIVisualEditing.Handles(fullScene)
                         .Single(x=>x.Kind==MVIVisualHandleKind.ArcEnd);
                     int beforeFull=doc.Revision;
-                    Check(editor.EditHandle(fullEnd,fullEnd.WorldPoint.X,fullEnd.WorldPoint.Y).Success&&
-                        doc.Revision==beforeFull+1&&
+                    MTCEditResult<bool> fullNoOp=editor.EditHandle(fullEnd,
+                        fullEnd.WorldPoint.X,fullEnd.WorldPoint.Y);
+                    // 原几何未变，MEM会正确消除等价SetAspect/Transform/Resize，不造Undo。
+                    Check(fullNoOp.Success&&doc.Revision==beforeFull&&
                         Math.Abs(fullShape.Shape.Geometry.Commands[1].Arc.SweepRadians-
                             Math.PI*2)<1e-8,
-                        "full circle end at start must not collapse sweep to zero");
+                        "full circle same-end edit must preserve sweep with no-op revision");
+                    // 实际移动末端跨越0度：保留正扫角并创建一次可撤销MEM事务。
+                    FGEPoint2D nearEnd=new FGEPoint2D(
+                        fullArc.Center.X+fullArc.RadiusX*Math.Cos(fullArc.StartRadians-0.13),
+                        fullArc.Center.Y+fullArc.RadiusY*Math.Sin(fullArc.StartRadians-0.13));
+                    FGEPoint2D worldNearEnd=fullScene.GeometryToWorld.TransformPoint(nearEnd);
+                    Check(editor.EditHandle(fullEnd,worldNearEnd.X,worldNearEnd.Y).Success&&
+                        doc.Revision==beforeFull+1&&
+                        Math.Abs(fullShape.Shape.Geometry.Commands[1].Arc.SweepRadians-
+                            (Math.PI*2-0.13))<1e-8,
+                        "full circle end crossing zero must keep directed near-full sweep");
                     Check(editor.Undo().Success&&
                         Math.Abs(fullShape.Shape.Geometry.Commands[1].Arc.SweepRadians-
-                            Math.PI*2)<1e-8,"full circle Undo lost original parameter");
-                    Check(editor.Redo().Success,"full circle Redo failed");
+                            Math.PI*2)<1e-8,"full circle Undo did not restore full sweep");
+                    Check(editor.Redo().Success&&
+                        Math.Abs(fullShape.Shape.Geometry.Commands[1].Arc.SweepRadians-
+                            (Math.PI*2-0.13))<1e-8,"full circle Redo lost edited sweep");
+                    Check(editor.Undo().Success,"restore full circle before editing start failed");
                     MVISceneItem fullAfter=editor.Scene.Single(x=>x.Id==fullShape.Id);
                     MVIVisualHandle fullStart=MVIVisualEditing.Handles(fullAfter)
                         .Single(x=>x.Kind==MVIVisualHandleKind.ArcStart);
