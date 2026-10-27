@@ -15,6 +15,11 @@ namespace CxVisual.Mechanism.Connectivity
         public MCNConnectorModule(MFMModuleDescriptor descriptor,
             MCNConnectorConfiguration configuration,
             IFTRChannel channel, IMPAProtocolDefinition protocol)
+            : this(descriptor, configuration, channel, protocol, null) { }
+
+        public MCNConnectorModule(MFMModuleDescriptor descriptor,
+            MCNConnectorConfiguration configuration,
+            IFTRChannel channel, IMPAProtocolDefinition protocol, FTRChannelFactory channelFactory)
         {
             if (descriptor == null) throw new ArgumentNullException("descriptor");
             if (configuration == null) throw new ArgumentNullException("configuration");
@@ -29,27 +34,10 @@ namespace CxVisual.Mechanism.Connectivity
             if (protocol.Id != configuration.Protocol.ProtocolTypeId ||
                 protocol.Descriptor.Id != protocol.Id)
                 throw new ArgumentException("Protocol 类型与唯一配置不匹配");
-            configuration.Protocol.ValidateCompatibility(protocol.Descriptor, configuration.Channel.DescribeType());
-            // 直接装配已经实现的正式 Channel 类型，严禁把配置字符串冒充硬件已连接。
-            bool typeMatch = false;
-            switch (configuration.Channel.Kind)
-            {
-                case FTRChannelKind.Virtual:
-                    typeMatch = channel is FTRVirtualChannel; break;
-                case FTRChannelKind.TcpClient: typeMatch = channel is FTRTcpClientChannel; break;
-                case FTRChannelKind.TcpServer: typeMatch = channel is FTRTcpServerChannel; break;
-                case FTRChannelKind.Udp: typeMatch = channel is FTRUdpChannel; break;
-                case FTRChannelKind.UdpServer: typeMatch = channel is FTRUdpServerChannel; break;
-                case FTRChannelKind.Serial: typeMatch = channel is FTRSerialChannel; break;
-                case FTRChannelKind.HttpClient: typeMatch = channel is FTRHttpClientChannel; break;
-                case FTRChannelKind.NamedPipeClient: typeMatch = channel is FTRNamedPipeClientChannel; break;
-                case FTRChannelKind.NamedPipeServer: typeMatch = channel is FTRNamedPipeServerChannel; break;
-                case FTRChannelKind.WebSocketClient: typeMatch = channel is FTRWebSocketClientChannel; break;
-                case FTRChannelKind.Replay: typeMatch = channel is FTRReplayChannel; break;
-                case FTRChannelKind.UdpMulticast: typeMatch = channel is FTRUdpMulticastChannel; break;
-            }
-            if (!typeMatch)
-                throw new NotSupportedException("通道实例与已实现的类型不匹配或尚无真实 Provider");
+            // 创建凭据与通道类型由F17唯一Owner校验；Protocol兼容仍属于Connectivity。
+            FTRChannelTypeDescriptor channelType = (channelFactory ?? new FTRChannelFactory())
+                .DescribeAttached(configuration.Channel, channel);
+            configuration.Protocol.ValidateCompatibility(protocol.Descriptor, channelType);
             Descriptor = descriptor; Configuration = configuration;
             Channel = channel; Protocol = protocol;
             Points = new ReadOnlyCollection<MPAPointDefinition>(configuration.Protocol.Points.ToArray());

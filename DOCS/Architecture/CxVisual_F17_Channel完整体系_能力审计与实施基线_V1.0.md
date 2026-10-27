@@ -32,7 +32,7 @@ F17唯一Owner与FTR/IFTR命名采用既有下沉裁决；不增加项目、第�
 | SharedMemory | 无正式实现 | MMF版本/长度/序列、跨进程同步、所有权、崩溃恢复与大块验证 |
 | Virtual | 已有CreatePair和原始字节收发 | 确定性故障注入、有界收发及离线异常矩阵 |
 | Replay | 已有MCCRPL01回放、禁止发送 | 录制/回放完整生命周期、速度/取消/损坏及大文件压力 |
-| Custom | 只有配置且未注册会拒绝 | 正式Factory/Provider注册、能力发现、重复/失效令牌及扩展测试 |
+| Custom | 基线只有配置；本轮增量已有Factory/Provider、真实TCP扩展及Connector集成 | 正式注册凭据/能力校验已本机测试，远端CI待固定SHA；各专业Provider仍需各自验收 |
 
 ## 3. 14方面完成度与缺口
 
@@ -75,3 +75,9 @@ TCP使用独立后台接收线程；Server以一个Socket.Select接收线程按�
 52—60：本审计→真实增量/专项测试→大流/弱端→TCT操作和诊断→Windows x64专项/默认回归→架构/实施/测试台账→中文提交及固定SHA结果。
 
 后续完整交付仍包括：所有其它通道收发模型与资源预算、HTTP/WS Server及SharedMemory、Factory/Provider、自动重连/心跳边界、TestCenter运行观察、全部配置有效性、长时及硬件边界。以上未完成项保持未完成，不将当前P0工作包改名为整包完成。
+
+## 6. Factory/Provider正式增量
+
+`FTRChannelFactory`与`IFTRChannelProvider`属于同一F17 Owner；内置11个单实例类型和显式Virtual对创建、12类型发现、Host作用域注册及注销已实现。Custom配置仅通过正式FCM白名单，SettingsJson为最多65536字符的JSON对象，不据TypeId反射加载代码。弱键创建凭据绑定实例、原配置与能力；未注册、跨Factory、错Id/拓扑、复用已交付实例、创建途中注销均拒绝。Provider在注册锁外运行，旧令牌不能删除同名新注册；注销不夺取现存实例所有权。
+
+Connectivity装配复用F17凭据/类型校验，Protocol能力兼容仍由原Owner判断；没有复制Channel类型体系。真实Custom TCP Connector收发与上述正反例已进入原`--channel-transport`及默认回归。详见[Factory/Provider实施与验收](../Implementation/CxVisual_F17_Channel_Factory与Provider_实施与验收_V1.0.md)。本增量不补全其它通道、自动恢复、全部TestCenter操作及长期/硬件验收。

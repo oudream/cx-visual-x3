@@ -27,13 +27,17 @@ namespace CxVisual.Mechanism.Connectivity
         }
 
         public void ValidateProtocolCapabilities(IReadOnlyDictionary<string, MPAProtocolDescriptor> types)
+        { ValidateProtocolCapabilities(types, null); }
+
+        public void ValidateProtocolCapabilities(IReadOnlyDictionary<string, MPAProtocolDescriptor> types,
+            FTRChannelFactory channelFactory)
         {
             if (types == null) throw new ArgumentNullException("types");
             Validate();
             MPAProtocolDescriptor descriptor;
             if (!types.TryGetValue(Protocol.ProtocolTypeId, out descriptor) || descriptor == null)
                 throw new InvalidOperationException("规约类型未注册：" + Protocol.ProtocolTypeId);
-            Protocol.ValidateCompatibility(descriptor, Channel.DescribeType());
+            Protocol.ValidateCompatibility(descriptor, channelFactory == null ? Channel.DescribeType() : channelFactory.Describe(Channel));
         }
     }
 

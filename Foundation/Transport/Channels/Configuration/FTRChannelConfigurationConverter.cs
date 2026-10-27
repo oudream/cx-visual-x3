@@ -16,6 +16,7 @@ public sealed class FTRChannelConfigurationConverter : IFCMConfigValueConverter<
             public string Id { get; set; } = "channel01";
             public FTRChannelKind Kind { get; set; } = FTRChannelKind.Virtual;
             public string CustomTypeId { get; set; } = "";
+            public string SettingsJson { get; set; } = "{}";
             public string Host { get; set; } = "127.0.0.1";
             public int Port { get; set; } = 502;
             public int ConnectTimeoutMs { get; set; } = 5000;
@@ -118,7 +119,7 @@ public sealed class FTRChannelConfigurationConverter : IFCMConfigValueConverter<
                 serial.DataBits = source.DataBits; serial.Parity = source.Parity;
                 serial.StopBits = source.StopBits;
             }
-            if (custom != null) custom.CustomTypeId = source.CustomTypeId;
+            if (custom != null) { custom.CustomTypeId = source.CustomTypeId; custom.SettingsJson = source.SettingsJson; }
             bool network = tcpClient != null || tcpServer != null || udp != null || udpServer != null;
             bool server = tcpServer != null || udpServer != null;
             if ((!network && (source.Host != "127.0.0.1" || source.Port != 502)) ||
@@ -126,7 +127,7 @@ public sealed class FTRChannelConfigurationConverter : IFCMConfigValueConverter<
                 (!server && (source.MaxClients != 128 || source.SubChannelRule != "")) ||
                 (serial == null && (source.PortName != "COM1" || source.BaudRate != 9600 ||
                     source.DataBits != 8 || source.Parity != "None" || source.StopBits != "One")) ||
-                (custom == null && source.CustomTypeId != ""))
+                (custom == null && (source.CustomTypeId != "" || source.SettingsJson != "{}")))
                 throw new FormatException("CHANNEL_LEGACY_CONFLICT: 旧配置含与当前通道类型无关的非默认设置，需人工裁决");
             return target;
         }

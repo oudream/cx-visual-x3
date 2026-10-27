@@ -60,6 +60,8 @@
     <Compile Include="Channels\IO\FTRNetworkAddress.cs"/>
     <Compile Include="Channels\IO\FTRSingleChannelBase.cs"/>
     <Compile Include="Channels\IO\FTRReceiveBuffer.cs"/>
+    <Compile Include="Channels\Contracts\IFTRChannelProvider.cs"/>
+    <Compile Include="Channels\Configuration\FTRChannelFactory.cs"/>
     <Compile Include="Channels\IO\FTRReceivePipeline.cs"/>
     <Compile Include="Channels\Diagnostics\FTRReceiveQueueSnapshot.cs"/>
     <Compile Include="Channels\IO\IFTRByteStream.cs"/>

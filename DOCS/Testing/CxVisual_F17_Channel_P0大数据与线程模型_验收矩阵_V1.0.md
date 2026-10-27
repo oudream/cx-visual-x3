@@ -42,6 +42,14 @@
 
 现有`.github/workflows/f17-channel-windows.yml`保留完整Release/x64 Rebuild、原通道回归和唯一Owner检查，并必须执行双向2GiB，检查实际完成字节标记。Owner检查逐个核对60个现有FTR源文件均有唯一Compile项，不再以过时固定56限制真实增构；旧通道源码不得回流Mechanism。体数据指标日志作为artifact保存。
 
-## 尚未验收
+## 固定源码的远端验收补录（2026-10-28）
+
+- 正式实现提交`edbdefbe7180517af20b98ae655025c705d10df2`；与并行master正常合并后，实际CI源码`549e7ed2be43a32952536b286e8c5ce771461631`。
+- [F17 Windows专项40540778043](https://github.com/oudream/cx-visual-x3/actions/runs/40540778043) success；完整Release/x64方案Rebuild、原通道/Connector/OS回环、短专项、60源文件唯一Compile/Owner全部成功。
+- 真实CI双向各2147483648字节完成；9450ms，CPU32515.6ms，managed delta14995640，working set40742912，GC0=14/GC2=1，两端接收池各262144字节/峰值4块，含生成与逐字节校验的总吞吐433.43MiB/s；`F17.BULK_VOLUME_PASS`存在。指标是该4逻辑CPU runner的软件样本，不是工业SLA。
+- [完整TestCenter Windows 40540777960](https://github.com/oudream/cx-visual-x3/actions/runs/40540777960) success；图元WPF/工程Undo、三维GPU与UIA、默认142用例及Regression的152唯一用例×3=456次并行尝试全部通过。阴性探针中的故意失败由CI逐项核对其失败语义，不计作真实套件意外失败。
+- 上述证据只覆盖固定SHA；后续Factory/Provider增量需另按自身源码SHA验收。
+
+## 完整目标尚未验收
 
 24小时及更长持续负载、工业网络丢包/断网、多机网卡与组播环境、真实RS232/485/PLC/采集设备HIL、所有通道独立接收与有效预算、HTTP/WS Server、SharedMemory、Custom Provider、自动重连/心跳/保活及全部TestCenter手动操作仍按完整审计继续。不以2GiB软件样本替代这些门禁。新增TLS/证书/认证暂缓，现有安全保护保留。
