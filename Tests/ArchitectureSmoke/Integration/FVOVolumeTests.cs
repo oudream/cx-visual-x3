@@ -56,7 +56,27 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     raw16[1022]=0;raw16[1023]=0;
                     Check(memoryData.GetScalarByOriginalIndex(7,7,7)==1511f,
                         "修改宿主托管源数组不应影响已构建FVO");
-                    raw16[1022]=(byte)1511;raw16[1023]=(byte)(1511>>8);
+                    raw16[1022]=(byte)(1511 & 0xff);raw16[1023]=(byte)(1511 >> 8);
+                }
+                // 原生指针入口同样必须完整拷贝；宿主释放原内存后仍能读取真实标量。
+                IntPtr hostMemory=System.Runtime.InteropServices.Marshal.AllocHGlobal(raw16.Length);
+                try
+                {
+                    System.Runtime.InteropServices.Marshal.Copy(raw16,0,hostMemory,raw16.Length);
+                    using(FVOVolumeData independent=FVORawVolumeLoader.LoadFromMemory(
+                        hostMemory,raw16.LongLength,memory16,64,CancellationToken.None))
+                    {
+                        System.Runtime.InteropServices.Marshal.FreeHGlobal(hostMemory);
+                        hostMemory=IntPtr.Zero;
+                        Check(independent.GetScalarByOriginalIndex(7,7,7)==1511f &&
+                              independent.HasOriginalRawData,
+                            "宿主指针释放后FVO仍唯一拥有原始16位内存");
+                    }
+                }
+                finally
+                {
+                    if(hostMemory!=IntPtr.Zero)
+                        System.Runtime.InteropServices.Marshal.FreeHGlobal(hostMemory);
                 }
                 byte[] floatBytes=new byte[8*8*8*4];
                 for(int index=0;index<512;index++)
