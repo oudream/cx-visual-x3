@@ -5,6 +5,8 @@ on:
     branches: [master]
     paths:
       - 'Foundation/Numerics/**'
+      - 'Foundation/Volume/Slicing/FVOObliqueSliceBuilder.cs'
+      - 'Foundation/Volume/CxVisual.Foundation.Volume.csproj'
       - 'Tests/ArchitectureSmoke/Numerics/**'
       - 'Tests/ArchitectureSmoke/Program.cs'
       - 'Tests/ArchitectureSmoke/CxVisual.Tests.ArchitectureSmoke.csproj'
