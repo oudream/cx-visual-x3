@@ -7,26 +7,77 @@ namespace CxVisual.Mechanism.Data.Variables
     public sealed class MDSVariableScope
     {
         private volatile bool _active = true;
+        private readonly object _leaseGate = new object();
+        private int _inFlight;
+        [ThreadStatic] private static MDSVariableScope _executingScope;
+
         internal MDSVariableScope(MDSVariableTable table, long generation)
         { Table = table; ScopeId = table.ScopeId; Generation = generation; }
         public string ScopeId { get; private set; }
         public long Generation { get; private set; }
         public bool IsActive { get { return _active; } }
         internal MDSVariableTable Table { get; private set; }
-        internal void Invalidate() { _active = false; }
+
+        // 仅在进入/退出时短暂持锁；变量更新及订阅回调不持Scope锁。
+        // Invalidate与Enter互斥：注销开始后不能再进入新的Handle/Provider操作。
+        private void Enter()
+        {
+            lock (_leaseGate)
+            {
+                if (!_active) throw new ObjectDisposedException("MDSVariableScope");
+                _inFlight++;
+            }
+        }
+        private void Exit()
+        {
+            lock (_leaseGate)
+            {
+                if (--_inFlight == 0) System.Threading.Monitor.PulseAll(_leaseGate);
+            }
+        }
+        internal TResult Execute<TResult>(Func<TResult> operation)
+        {
+            if (operation == null) throw new ArgumentNullException("operation");
+            Enter();
+            MDSVariableScope previous = _executingScope;
+            _executingScope = this;
+            try { return operation(); }
+            finally { _executingScope = previous; Exit(); }
+        }
+        internal void Execute(Action operation)
+        {
+            if (operation == null) throw new ArgumentNullException("operation");
+            Execute<int>(() => { operation(); return 0; });
+        }
+        internal void Invalidate()
+        {
+            lock (_leaseGate) _active = false;
+        }
+        // 必须在Registry锁之外等待，否则变量回调反查Registry可能死锁。
+        internal void Drain()
+        {
+            // 当前线程在变量通知中注销自己的Scope时不可等待自己；
+            // 此时值提交已发生，失效门禁会拒绝回调里的后续写入。
+            if (ReferenceEquals(_executingScope, this)) return;
+            lock (_leaseGate)
+            {
+                while (_inFlight != 0) System.Threading.Monitor.Wait(_leaseGate);
+            }
+        }
         public MDSVariableHandle<T> ResolveHandle<T>(FDVVariableKey key)
         {
             return new MDSVariableHandle<T>(this, key, Resolve<T>(key));
         }
         public MDSVariable<T> Resolve<T>(FDVVariableKey key)
         {
-            if (!_active) throw new ObjectDisposedException("MDSVariableScope");
-            if (!string.Equals(key.ScopeId, ScopeId, StringComparison.Ordinal))
-                throw new InvalidOperationException("变量引用Scope不匹配");
-            MDSVariableLeaf leaf = Table.Tree.FindById(key.VariableId) as MDSVariableLeaf;
-            if (leaf == null) throw new InvalidOperationException("变量身份不存在: " + key.VariableId);
-            if (!_active) throw new ObjectDisposedException("MDSVariableScope");
-            return leaf.Resolve<T>();
+            return Execute(() =>
+            {
+                if (!string.Equals(key.ScopeId, ScopeId, StringComparison.Ordinal))
+                    throw new InvalidOperationException("变量引用Scope不匹配");
+                MDSVariableLeaf leaf = Table.Tree.FindById(key.VariableId) as MDSVariableLeaf;
+                if (leaf == null) throw new InvalidOperationException("变量身份不存在: " + key.VariableId);
+                return leaf.Resolve<T>();
+            });
         }
     }
 
@@ -53,22 +104,25 @@ namespace CxVisual.Mechanism.Data.Variables
             if (!IsActive) throw new ObjectDisposedException("MDSVariableHandle",
                 "引用对应的运行Scope已经卸载，必须重新ResolveHandle");
         }
-        public T Get() { EnsureActive(); return _variable.Get(); }
+        public T Get() { return _scope.Execute(() => _variable.Get()); }
         public bool TryGet(out T value)
         {
-            EnsureActive(); return _variable.TryGet(out value);
+            T current = default(T);
+            bool success = _scope.Execute(() => _variable.TryGet(out current));
+            value = current;
+            return success;
         }
         public MDSVariableSnapshot<T> Snapshot()
         {
-            EnsureActive(); return _variable.Snapshot();
+            return _scope.Execute(() => _variable.Snapshot());
         }
         public void Update(T value)
         {
-            EnsureActive(); _variable.Update(value);
+            _scope.Execute(() => _variable.Update(value));
         }
         public MDSVariableUpdateResult Update(T value, MDSVariableUpdateOptions options)
         {
-            EnsureActive(); return _variable.Update(value, options);
+            return _scope.Execute(() => _variable.Update(value, options));
         }
     }
 
