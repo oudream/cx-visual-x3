@@ -19,10 +19,21 @@ namespace CxVisual.Professional.Automation.DeviceVariables
     {
         private readonly object _gate = new object();
         private readonly PADDeviceVariableCatalog _catalog;
+        private readonly IPADDeviceVariableWriteBackend _writer;
+        private readonly Func<string, PADDeviceVariableDefinition, bool> _authorizeWrite;
         private Action<MDSVariableProviderSample> _sink;
         private bool _disposed;
+        // 保持单参数旧CLR构造签名：默认只能采样，绝不默许写设备。
         public PADDeviceVariableProvider(PADDeviceVariableCatalog catalog)
-        { _catalog = catalog ?? throw new ArgumentNullException("catalog"); }
+            : this(catalog, null, null) { }
+        public PADDeviceVariableProvider(PADDeviceVariableCatalog catalog,
+            IPADDeviceVariableWriteBackend writer,
+            Func<string, PADDeviceVariableDefinition, bool> authorizeWrite)
+        {
+            _catalog = catalog ?? throw new ArgumentNullException("catalog");
+            _writer = writer;
+            _authorizeWrite = authorizeWrite;
+        }
         public string ProviderId { get { return _catalog.ProviderId; } }
         public void Start(Action<MDSVariableProviderSample> publish)
         {
@@ -36,6 +47,38 @@ namespace CxVisual.Professional.Automation.DeviceVariables
         }
         public void Stop() { lock (_gate) _sink = null; }
         public void Dispose() { lock (_gate) { _disposed = true; _sink = null; } }
+        /// <summary>
+        /// 受控现场写命令：只调用明确注入的专业驱动；不伪造设备已采样的MDS值。
+        /// 要求宿主向Provider注入其MRK/设备授权判断；没有授权判断则默认拒绝。
+        /// </summary>
+        public async Task<bool> WriteAsync(string stableId, object nativeValue,
+            string principalId, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            PADDeviceVariableDefinition definition = _catalog.FindById(stableId);
+            if (definition == null) throw new KeyNotFoundException("设备变量ID不存在: " + stableId);
+            if (!definition.Writable)
+                throw new InvalidOperationException("工业点位是只读采样，不支持主动写设备");
+            if (nativeValue == null && definition.ValueType.IsValueType &&
+                Nullable.GetUnderlyingType(definition.ValueType) == null)
+                throw new InvalidCastException("非Nullable设备变量不允许null");
+            if (nativeValue != null && !definition.ValueType.IsInstanceOfType(nativeValue))
+                throw new InvalidCastException("设备命令值与目录类型不匹配");
+            if (string.IsNullOrWhiteSpace(principalId) || _authorizeWrite == null ||
+                !_authorizeWrite(principalId.Trim(), definition))
+                throw new UnauthorizedAccessException("工业变量写入未得到可信宿主授权");
+            if (_writer == null)
+                throw new NotSupportedException("Provider未装配实际设备写入后端");
+            lock (_gate)
+            {
+                if (_disposed) throw new ObjectDisposedException("PADDeviceVariableProvider");
+                if (_sink == null) throw new InvalidOperationException("Provider未运行，不能写设备");
+            }
+            // byte[]是唯一允许的可变内存值类型，驱动不能捕获调用方继续修改的入参。
+            object frozen = nativeValue is byte[] ? ((byte[])nativeValue).Clone() : nativeValue;
+            return await _writer.WriteAsync(definition, frozen, cancellationToken).ConfigureAwait(false);
+        }
+
         public bool Emit(string stableId, object value, MDSVariableQuality quality = MDSVariableQuality.Good)
         {
             PADDeviceVariableDefinition definition = _catalog.FindById(stableId);

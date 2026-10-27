@@ -489,6 +489,47 @@ namespace CxVisual.Tests.ArchitectureSmoke
             }
         }
 
+        private sealed class FakeIndustrialWriteBackend : IPADDeviceVariableWriteBackend
+        {
+            public int CallCount { get; private set; }
+            public object LastValue { get; private set; }
+            public Task<bool> WriteAsync(PADDeviceVariableDefinition variable,
+                object nativeValue, CancellationToken cancellationToken)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                CallCount++; LastValue = nativeValue;
+                return Task.FromResult(true);
+            }
+        }
+        private static void IndustrialDeviceVariableWriteSmoke()
+        {
+            PADDeviceVariableCatalog catalog = new PADDeviceVariableCatalog("plc-write");
+            catalog.Register(new PADDeviceVariableDefinition("valve", "Station", "Valve",
+                typeof(bool), null, true));
+            catalog.Register(new PADDeviceVariableDefinition("pressure", "Station", "Pressure",
+                typeof(double), "MPa", false));
+            FakeIndustrialWriteBackend backend = new FakeIndustrialWriteBackend();
+            using (PADDeviceVariableProvider provider = new PADDeviceVariableProvider(
+                catalog, backend, (principal, definition) => principal == "authorized"))
+            {
+                int samples = 0;
+                provider.Start(sample => samples++);
+                Reject<UnauthorizedAccessException>(() => provider.WriteAsync("valve", true,
+                    "guest", CancellationToken.None).GetAwaiter().GetResult());
+                Reject<InvalidOperationException>(() => provider.WriteAsync("pressure", 0.2,
+                    "authorized", CancellationToken.None).GetAwaiter().GetResult());
+                Reject<InvalidCastException>(() => provider.WriteAsync("valve", 5,
+                    "authorized", CancellationToken.None).GetAwaiter().GetResult());
+                Check(provider.WriteAsync("valve", true, "authorized",
+                    CancellationToken.None).GetAwaiter().GetResult() &&
+                    backend.CallCount == 1 && samples == 0,
+                    "经授权写入只提交真实后端，不伪造设备回读或直接修改MDS");
+                provider.Stop();
+                Reject<InvalidOperationException>(() => provider.WriteAsync("valve", false,
+                    "authorized", CancellationToken.None).GetAwaiter().GetResult());
+            }
+        }
+
         private static void IndustrialDeviceVariableAdapterSmoke()
         {
             PADDeviceVariableCatalog catalog = new PADDeviceVariableCatalog("legacy-plc");
@@ -690,6 +731,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
 
         public static void RunVariableSuite()
         {
+            IndustrialDeviceVariableWriteSmoke();
             VariableProviderFailureIsolationSmoke();
             VariableAccessPolicySmoke();
             VariableInspectableSmoke();
