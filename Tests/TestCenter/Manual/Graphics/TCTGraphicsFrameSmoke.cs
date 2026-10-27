@@ -332,11 +332,26 @@ namespace CxVisual.TestCenter.UI
                     throw new InvalidOperationException("Widget单击尺寸不符合同一纯布局规则");
                 Guid widgetId=widget.Id,textboxId=textbox.Id;
                 frame.Execute("Select");
+                // GE-13图库原生DragDrop最终走此统一画布入口；禁止接收未知TypeId。
+                int dropBefore=frame.Revision;
+                if(!frame.Canvas.AllowDrop||
+                    frame.Canvas.DropWidgetFromPalette("core.widget.invalid",375,400)||
+                    frame.Revision!=dropBefore||frame.SceneCount!=10)
+                    throw new InvalidOperationException("非法Palette控件不能生成MEM事务");
+                if(!frame.Canvas.DropWidgetFromPalette("core.widget.checkbox",375,400)||
+                    frame.Revision!=dropBefore+1||frame.SceneCount!=11)
+                    throw new InvalidOperationException("Palette Widget没有一次提交");
+                MRCWidgetElement dropped=frame.FindObject(frame.SceneIds.Last()) as MRCWidgetElement;
+                if(dropped==null||dropped.WidgetTypeId!="core.widget.checkbox"||
+                    Math.Abs(dropped.Width-120)>1e-6||Math.Abs(dropped.Height-36)>1e-6)
+                    throw new InvalidOperationException("Palette TypeId/单击默认尺寸不一致");
+                Guid droppedId=dropped.Id;
                 frame.SaveProject(file);
                 frame.OpenProject(file);
-                if(frame.SceneCount!=10||frame.IsDirty||
+                if(frame.SceneCount!=11||frame.IsDirty||
                     !(frame.FindObject(widgetId) is MRCWidgetElement)||
                     !(frame.FindObject(textboxId) is MRCWidgetElement)||
+                    !(frame.FindObject(droppedId) is MRCWidgetElement)||
                     ((MRCTextElement)frame.FindObject(textId)).Text!="可撤销的文字更新")
                     throw new InvalidOperationException("Widget绘制保存重开或身份不正确");
                 frame.Inspect();

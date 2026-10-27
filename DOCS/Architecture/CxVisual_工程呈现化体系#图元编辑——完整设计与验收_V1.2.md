@@ -227,6 +227,8 @@ TextBox/Geometry 的文本输入状态下方向键移动光标，不能触发画
 
 **现有测试范围**：`VisualShapeEditingTests.CheckDrawnGeometryContract` 覆盖反向拖动、九种类型、圆/Shift约束及非法几何；`TCTGraphicsFrameSmoke` 验证公共 Button 激活不创建、SceneView 手势路径、Text画布拖框、Ghost 不改 Revision、创建/Undo/Redo/保存重开。该 WPF STA 入口直接调用公开的输入手势适配方法进行验证，**不可充当系统外部鼠标注入、DPI四档、真实打字/DragDrop已通过的证据**；这些仍按 GE-02/03/08/12/13 子项分别签收。
 
+**Widget图库WPF拖放增量（2026-10-27）**：Studio/TestCenter共用`MPWVisualOperationPanel` 新增内置Widget按钮原生 `DragDrop.DoDragDrop`；`SceneView` 以私有类型格式过滤非法Drop，显示基于 `MVIShapeCatalog.WidgetBounds` 的临时世界尺寸Ghost；真正Drop复用已有 `DrawWidgetRequested` → MVI/MEM单次编辑。TestCenter WPF Smoke增测拒绝未知TypeId、单次Revision、保存重开身份。操作链已接入，不把模拟Drop方法测试宣称为外部OS鼠标真实拖放通过，GE-13仍待系统注入与专业Schema全验收。
+
 **Text原位编辑增量（2026-10-27）**：在公共`SceneView`增设临时WPF `TextBox` 作为画布顶层编辑UI，支持双击Text开始、Enter提交、Shift+Enter换行、Esc取消、窗口停用/切换工具取消；其文字草稿绝不持久化，只有提交事件通过 `MVIVisualEditor.SetVisualText` → 既有 `MTCEditSession.SetText` 更新原`MRCTextElement`。保持Group/实例权限筛选、文本ID、保存重开和单Undo，TestCenter/Studio共用正式入口；STA WPF Smoke验证编辑取消、一次Revision、Undo/Redo、持久化。当前仍不等于系统级真实键鼠注入或文本高级排版已经签收。
 
 **Widget真实画布创建增量（2026-10-27）**：公共 Widget 按钮遵循 Shape/Text 相同的“先激活 Draw，再在画布创建”操作语义；`MVIShapeCatalog.WidgetBounds` 与 WPF Ghost、`MVIVisualEditor.DrawWidget` 共用布局，Studio/TestCenter 均通过现有MEM `AddWidget` 单事务完成并选中新对象。独立 Studio 快速插入 API 保留；标准 Widget 单击采用120×36，鼠标拖框按真实尺寸。纯几何 ArchitectureSmoke 增加 Widget 单击默认大小、反向拖绘、最小尺寸与非法点数反证，WPF 自动回归追加按钮不偷偷创建、Ghost 不产生 Revision、拖框/单击、保存重开及类型身份反证；系统外部鼠标、图库 DragDrop、字体/控件属性全联动仍未验收。编译和测试状态以对应 SHA Windows CI 为准。
