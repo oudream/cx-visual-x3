@@ -42,6 +42,7 @@ jobs:
           & $msbuild .\Applications\Studio\CxVisual.Studio.csproj /t:Restore /p:Configuration=Release /p:Platform=x64 /nologo /v:minimal
           if ($LASTEXITCODE -ne 0) { throw 'Studio dependency restore failed' }
       - name: Build all existing projects on Windows x64
+        id: unified_build
         shell: pwsh
         run: |
           $msbuild = (Get-Command msbuild.exe -ErrorAction Stop).Source
@@ -55,6 +56,7 @@ jobs:
           & .\Build\Verify-OwnerDependencies.ps1
           if (-not $?) { throw 'Owner dependency verification failed' }
       - name: Execute FIM MVI standalone and default smoke
+        id: core_smoke
         shell: pwsh
         run: |
           $exe = '.\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe'
@@ -87,15 +89,28 @@ jobs:
             $process.Dispose()
           }
       - name: Execute real WPF 3D spatial slice workbench
+        # 二维ImageViewer失败不得屏蔽独立三维验收；只要求共享构建与核心FVO回归通过。
+        if: ${{ !cancelled() && steps.unified_build.outcome == 'success' && steps.core_smoke.outcome == 'success' }}
         shell: pwsh
         run: |
           $exe = '.\\Output\\Release\\x64\\CxVisual.TestCenter.exe'
           $env:CXVISUAL_VOLUME_UI_SCREENSHOT = Join-Path (Get-Location) 'Output\\Volume-UI\\workbench.png'
-          $process = Start-Process -FilePath (Resolve-Path $exe).Path -ArgumentList '--volume-viewer-smoke' -Wait -PassThru
-          if ($process.ExitCode -ne 0) {
-            $errorFile = Join-Path ([System.IO.Path]::GetTempPath()) 'CxVisual-Volume-Viewer-Error.txt'
-            if (Test-Path $errorFile) { Get-Content $errorFile }
-            throw 'Native WPF 3D slice workbench smoke failed'
+          $errorFile = Join-Path ([System.IO.Path]::GetTempPath()) 'CxVisual-Volume-Viewer-Error.txt'
+          if (Test-Path $errorFile) { Remove-Item $errorFile -Force }
+          $process = Start-Process -FilePath (Resolve-Path $exe).Path -ArgumentList '--volume-viewer-smoke' -PassThru
+          try {
+            if (-not $process.WaitForExit(120000)) {
+              Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+              if (Test-Path $errorFile) { Get-Content $errorFile }
+              throw 'Native WPF 3D smoke exceeded 120s; possible modal dialog/deadlock'
+            }
+            if ($process.ExitCode -ne 0) {
+              if (Test-Path $errorFile) { Get-Content $errorFile }
+              throw 'Native WPF 3D slice workbench smoke failed'
+            }
+          }
+          finally {
+            $process.Dispose()
           }
       - name: Upload WPF 3D slice workbench screenshot
         if: always()
