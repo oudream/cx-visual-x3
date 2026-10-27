@@ -210,3 +210,9 @@
 3. **P1便捷性**：`9f03b88`区域页改为紧凑操作列且当前工具高亮；`0681d98`同步工具下拉/状态反馈；`73fac24`WPF按钮布局和互斥状态回归；`1d55cfa`、`75b33aa`把原先不能点击的四块颜色标识改为真正的Overlay对象颜色预设，`a5159a9`通过真实WPF按钮点击检查Guid和ARGB是否变化。自由选色、线宽、字型编辑仍待补。界面尺寸/交互体验后续需按真实截图继续比对。
 4. **下一组真实工作包**：P0逐项补对象属性颜色/线宽；P0将`ThresholdSeg/RegionGrowing`实现为“指定图像+ROI+阈值/种子→可取消运行→分割结果/图元+数据输出”；P1复用现有FGE几何补`Ls2Ls`两线测量并输出值/标注；P1图窗就地文本输入与编辑；P2正式集成统一Undo/Redo与工程保存；P2 HALCON专业算法同样本保真对照。
 5. **CI SHA严格分离**：[Imaging Windows #40452705137](https://github.com/oudream/cx-visual-x3/actions/runs/40452705137) **SUCCESS（13步）**，对应`73446e6`，其中真实统计按钮/精确ROI的WPF新测试通过；[TestCenter Windows #40452628645](https://github.com/oudream/cx-visual-x3/actions/runs/40452628645) **SUCCESS（29步）**，对应较早`40e0927`；之后紧凑布局及高亮`73fac24`的Windows任务须看[Imaging #40453320882](https://github.com/oudream/cx-visual-x3/actions/runs/40453320882)和[TestCenter #40453320665](https://github.com/oudream/cx-visual-x3/actions/runs/40453320665)实际完成状态，不能把旧绿灯冒充新提交验收。
+
+### 10.4 正式UI行为证据和不能冒充的边界
+
+- [Imaging Windows #40453607628](https://github.com/oudream/cx-visual-x3/actions/runs/40453607628)：对应完整**UI颜色预设按钮及真实WPF反证提交** `a5159a931d624299dd78d44e91dd3372eac9cd0e`，**SUCCESS（13步骤）**，包含FIM ROI形状真值、4×4 Gray16选中三角形的6像素统计与禁用ROI后16像素全图对照、区域工具选中高亮、彩色按钮确实更新对象Guid对应的ARGB，以及旧已有图窗回归。
+- 真实WPF合成输入证实Button.Click事件和数值/可视控件状态正确；**不等价于真实操作系统鼠标注入或现场相机接入**。特别是超大图和多边形数千顶点下逐像素`PointInPolygon`的耗时仍待量化优化，不以短时单张4×4回归声称工业性能达到要求。
+- 旧按钮的“添加样式”与“完整属性编辑”分离：本轮颜色为四种预设操作；图层级默认颜色、任意ARGB、宽度、字体及复合图形属性需继续完整迁移，不可将颜色预设等价为完整旧Viewer样式系统。
