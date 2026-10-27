@@ -56,6 +56,60 @@ namespace CxVisual.Foundation.Imaging
             return new FIMImageAnalysisResult(stats, new FIMImageHistogram(stats.Min, stats.Max, bins));
         }
 
+        /// <summary>
+        /// 按精确ROI掩膜统计原始灰度，包含形状中的像素中心。
+        /// 掩膜判断来自上层MVI几何，Foundation不引用WPF/HALCON或OverlayStore。
+        /// </summary>
+        public static FIMImageAnalysisResult AnalyzeMasked(FIMImageBuffer image,int binCount,
+            FIMPixelRegion bounds,Func<int,int,bool> includesPixel,
+            CancellationToken cancellationToken=default(CancellationToken))
+        {
+            if(image==null)throw new ArgumentNullException("image");
+            if(includesPixel==null)throw new ArgumentNullException("includesPixel");
+            if(binCount<1 || binCount>65536)
+                throw new ArgumentOutOfRangeException("binCount");
+            FIMPixelRegion r=bounds.ClipTo(image);
+            long count=0;
+            double min=double.PositiveInfinity,max=double.NegativeInfinity,mean=0,m2=0;
+            for(int y=r.Top;y<=r.Bottom;y++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                for(int x=r.Left;x<=r.Right;x++)
+                {
+                    if((x & 2047)==0)cancellationToken.ThrowIfCancellationRequested();
+                    if(!includesPixel(x,y))continue;
+                    double value=image.GetGrayValue(x,y);
+                    if(double.IsNaN(value)||double.IsInfinity(value))
+                        throw new InvalidOperationException("ROI包含非有限灰度值。");
+                    count++;
+                    min=Math.Min(min,value);max=Math.Max(max,value);
+                    double delta=value-mean;
+                    mean+=delta/count;
+                    m2+=delta*(value-mean);
+                }
+            }
+            if(count==0)
+                throw new InvalidOperationException("所选ROI没有有效像素中心，无法进行灰度统计。");
+            long[] bins=new long[binCount];
+            double span=max-min;
+            for(int y=r.Top;y<=r.Bottom;y++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                for(int x=r.Left;x<=r.Right;x++)
+                {
+                    if((x & 2047)==0)cancellationToken.ThrowIfCancellationRequested();
+                    if(!includesPixel(x,y))continue;
+                    double value=image.GetGrayValue(x,y);
+                    int index=span<=0?0:(int)((value-min)/span*binCount);
+                    bins[Math.Max(0,Math.Min(binCount-1,index))]++;
+                }
+            }
+            return new FIMImageAnalysisResult(
+                new FIMImageStatistics(count,min,max,mean,
+                    Math.Sqrt(Math.Max(0,m2/count))),
+                new FIMImageHistogram(min,max,bins));
+        }
+
         public static FIMImageHistogram GetHistogram(FIMImageBuffer image, int binCount,
             FIMPixelRegion? roi = null, CancellationToken cancellationToken = default(CancellationToken))
         {
