@@ -1832,6 +1832,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 double dy = (p.Y - cy) / (item.Bounds.Height / 2.0);
                 return dx * dx + dy * dy <= 1.0;
             }
+            if (item.Kind==MVIImageOverlayKind.LinePairMeasurement && item.Points.Count==4)
+                return DistanceToSegment(p,item.Points[0],item.Points[1])<=tolerance ||
+                    DistanceToSegment(p,item.Points[2],item.Points[3])<=tolerance;
             if (item.Points.Count >= 2)
             {
                 for (int i = 1; i < item.Points.Count; i++)
