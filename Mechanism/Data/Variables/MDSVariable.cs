@@ -31,21 +31,60 @@ namespace CxVisual.Mechanism.Data.Variables
 
     internal static class MDSVariableValueRules
     {
+        // 结构体可能嵌套byte[]、List等可变引用，不能仅凭IsValueType就声称按值隔离。
+        // 检查仅在定义阶段和每个泛型T首次使用时进行，数字热路径不做逐次反射。
+        private static bool IsSelfContained(Type type)
+        {
+            if (type == typeof(string)) return true;
+            if (!type.IsValueType) return false;
+            if (type.IsPrimitive || type.IsEnum || type == typeof(IntPtr) ||
+                type == typeof(UIntPtr)) return true;
+            const System.Reflection.BindingFlags flags =
+                System.Reflection.BindingFlags.Instance |
+                System.Reflection.BindingFlags.Public |
+                System.Reflection.BindingFlags.NonPublic;
+            foreach (System.Reflection.FieldInfo field in type.GetFields(flags))
+                if (!IsSelfContained(field.FieldType)) return false;
+            return true;
+        }
+
+        private static class TypeSafety<T>
+        {
+            internal static readonly bool Safe = IsSelfContained(typeof(T));
+        }
+
+        internal static void ValidateDefinitionType(Type type)
+        {
+            if (type != null && type.IsValueType && !IsSelfContained(type))
+                throw new NotSupportedException("变量结构体包含可变引用字段，必须采用明确的深复制值适配器");
+        }
+
         internal static object Copy(object value)
         {
             if (value == null) return null;
             byte[] bytes = value as byte[];
             if (bytes != null) return (byte[])bytes.Clone();
             Type type = value.GetType();
-            if (type.IsValueType || value is string) return value;
+            if (type.IsValueType)
+            {
+                ValidateDefinitionType(type);
+                return value;
+            }
+            if (value is string) return value;
             throw new NotSupportedException("复杂可变引用类型需要先登记 Foundation.Data 值适配器");
         }
 
         internal static T CopyTyped<T>(T value)
         {
-            // 通常的数值变量不装箱、不分配；byte[]仍然保留隔离复制。
+            // 通常数值变量无需装箱、堆分配或逐次反射；byte[]仍防御复制。
             Type type = typeof(T);
-            if (type.IsValueType || type == typeof(string)) return value;
+            if (type.IsValueType)
+            {
+                if (!TypeSafety<T>.Safe)
+                    throw new NotSupportedException("变量结构体包含可变引用字段，不能进行浅复制");
+                return value;
+            }
+            if (type == typeof(string)) return value;
             object copied = Copy(value);
             return copied == null ? default(T) : (T)copied;
         }
