@@ -271,6 +271,42 @@ namespace CxVisual.TestCenter.UI
                     new byte[] { 1,0, 2,0, 3,0, 4,0, 5,0, 6,0, 7,0, 8,0,
                                  9,0, 10,0, 11,0, 12,0, 13,0, 14,0, 15,0, 16,0 });
                 frame.SetOriginal(image);
+                TabControl lineTabs=FindControl<TabControl>(frame,"TCT.Imaging.PrimaryTabs");
+                lineTabs.SelectedIndex=3;
+                window.UpdateLayout();
+                Button linePairTool=FindControl<Button>(frame,"TCT.Imaging.MeasureLinePair");
+                if(linePairTool==null)
+                    throw new InvalidOperationException("旧Ls2Ls四点测量缺少真正可操作按钮");
+                linePairTool.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                if(frame.Viewer.ToolMode!=MVIImageToolMode.LinePair)
+                    throw new InvalidOperationException("Ls2Ls工具按钮未触发MPW互斥模式");
+                MVIImageOverlayItem linePair=frame.Viewer.AddLinePairMeasurement(new[]{
+                    new FGEPoint2D(.5,.5),new FGEPoint2D(3.5,.5),
+                    new FGEPoint2D(1.5,2.5),new FGEPoint2D(3.5,2.5)});
+                frame.Viewer.SelectOverlay(linePair.Id);
+                string lineResult=frame.Viewer.DescribeMeasurement(linePair);
+                if(!lineResult.Contains("最短 2 px") ||
+                    !lineResult.Contains("夹角 0°") ||
+                    frame.Viewer.Overlays.Find(linePair.Id)!=linePair ||
+                    frame.Viewer.OverlayVisualCount<4)
+                    throw new InvalidOperationException("Ls2Ls距离夹角/原图对象或独立两线显示错误："+lineResult);
+                string lineCsv=Path.Combine(Path.GetTempPath(),
+                    "CxVisual-Ls2Ls-"+Guid.NewGuid().ToString("N")+".csv");
+                try
+                {
+                    frame.ExportMeasurementsCsv(lineCsv);
+                    string csv=File.ReadAllText(lineCsv);
+                    if(!csv.Contains(linePair.Id.ToString("D")) ||
+                        !csv.Contains("LinePairMeasurement") ||
+                        !csv.Contains("最短 2 px") ||
+                        !csv.Contains("0.5:0.5;3.5:0.5;1.5:2.5;3.5:2.5"))
+                        throw new InvalidOperationException("Ls2Ls四点结果未按稳定ID正确导出CSV");
+                }
+                finally { if(File.Exists(lineCsv))File.Delete(lineCsv); }
+                frame.Viewer.Overlays.Remove(linePair.Id);
+                frame.Viewer.SelectOverlay(null);
+                lineTabs.SelectedIndex=0;
+                window.UpdateLayout();
                 if (frame.Viewer.ActiveImage != image)
                     throw new InvalidOperationException("FIM image not attached to real MPW viewport");
                 // 实际选中多边形ROI并点击统计按钮；不能用手工SetHistogram冒充按钮功能。
