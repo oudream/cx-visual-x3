@@ -261,6 +261,19 @@ namespace CxVisual.TestCenter.UI
                 updated.Points.Count+"个顶点。");
         }
 
+        private void SetSelectedOverlayColor(Color color)
+        {
+            MVIImageOverlayItem item=RequireSelectedOverlay();
+            if(item.IsLocked)
+                throw new InvalidOperationException("对象已锁定，请先解锁再修改颜色。");
+            int argb=unchecked((int)((uint)color.A<<24 |
+                (uint)color.R<<16 | (uint)color.G<<8 | color.B));
+            MVIImageOverlayItem changed=item.WithStyle(argb,item.LineWidth);
+            if(!_viewer.Overlays.Replace(changed))
+                throw new InvalidOperationException("所选对象已删除。");
+            Show("已修改选中对象颜色："+item.Kind+" · "+item.Id);
+        }
+
         private void ToggleSelectedOverlayLock()
         {
             MVIImageOverlayItem item=RequireSelectedOverlay();
