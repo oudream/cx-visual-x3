@@ -376,6 +376,30 @@ namespace CxVisual.TestCenter.UI
                     throw new InvalidOperationException("Ls2Ls第四点未提交唯一Store或清理临时预览");
                 frame.Viewer.Overlays.Remove(pending.Id);
                 frame.Viewer.SelectOverlay(null);
+                // 交点可为两条线段共同端点：第二点等于第三点是合法输入。
+                if(frame.Viewer.AppendLinePairPoint(new FGEPoint2D(.5,.5))!=null ||
+                   frame.Viewer.AppendLinePairPoint(new FGEPoint2D(2.5,.5))!=null ||
+                   frame.Viewer.AppendLinePairPoint(new FGEPoint2D(2.5,.5))!=null)
+                    throw new InvalidOperationException("共享端点的两线段被提前提交");
+                MVIImageOverlayItem shared=frame.Viewer.AppendLinePairPoint(
+                    new FGEPoint2D(2.5,2.5));
+                FIMLinePairResult sharedResult=FIMImageMeasurement.MeasureLinePair(
+                    shared.Points[0],shared.Points[1],shared.Points[2],shared.Points[3]);
+                if(sharedResult.DistancePixels!=0 ||
+                    Math.Abs(sharedResult.AngleDegrees-90)>1e-8 ||
+                    frame.Viewer.SelectedOverlayId!=shared.Id)
+                    throw new InvalidOperationException("Ls2Ls共享端点相交测量错误");
+                frame.Viewer.Overlays.Remove(shared.Id);
+                frame.Viewer.SelectOverlay(null);
+                // 同一条线段的起止端点仍必须拒绝重复，不可生成零长度测量。
+                frame.Viewer.AppendLinePairPoint(new FGEPoint2D(.5,.5));
+                bool duplicateRejected=false;
+                try {frame.Viewer.AppendLinePairPoint(new FGEPoint2D(.5,.5));}
+                catch(ArgumentException){duplicateRejected=true;}
+                if(!duplicateRejected)
+                    throw new InvalidOperationException("Ls2Ls错误接受同一线段零长度");
+                frame.Viewer.ToolMode=MVIImageToolMode.Navigate;
+                frame.Viewer.ToolMode=MVIImageToolMode.LinePair;
                 bool invalidLinePoint=false;
                 try {frame.Viewer.AppendLinePairPoint(new FGEPoint2D(-1,1));}
                 catch(ArgumentOutOfRangeException){invalidLinePoint=true;}
