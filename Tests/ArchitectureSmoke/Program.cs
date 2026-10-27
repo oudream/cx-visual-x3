@@ -27,7 +27,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     return ConfigFoundationSmokeRunner.Run(args);
                 if (Array.IndexOf(args, "--interaction-stage1") >= 0) { InteractionStageOneTests.Run(); return 0; }
                 if (Array.IndexOf(args, "--command-center") >= 0) { CommandCenterTests.Run(); return 0; }
-                if (Array.IndexOf(args, "--volume") >= 0) { FVOVolumeTests.Run(); MVIVolumeViewTests.Run(); CT3DRenderingTests.Run(); MPWVolumeSourceTests.Run(); return 0; }
+                if (Array.IndexOf(args, "--volume") >= 0) { FVOVolumeTests.Run(); MVIVolumeViewTests.Run(); CT3DRenderingTests.Run(); CT3DVolumeLoadTests.Run(); MPWVolumeSourceTests.Run(); return 0; }
                 if (Array.IndexOf(args, "--imaging") >= 0) { FIMImagingTests.Run(); MVIImageSessionTests.Run(); MVIImageViewportTests.Run(); MVIImageOverlayTests.Run(); MVIImageDisplayTests.Run(); MVIImageTransformTests.Run(); MVIImageComparisonTests.Run(); return 0; }
                 if (Array.IndexOf(args, "--message-center") >= 0) { MessageCenterTests.Run(); return 0; }
                 if (Array.IndexOf(args, "--variable-benchmark") >= 0) { VariableThroughputBenchmarks.Run(); return 0; }
@@ -75,6 +75,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 FVOVolumeTests.Run();
                 MVIVolumeViewTests.Run();
                 CT3DRenderingTests.Run();
+                CT3DVolumeLoadTests.Run();
                 MPWVolumeSourceTests.Run();
                 FIMImagingTests.Run();
                 MVIImageSessionTests.Run();

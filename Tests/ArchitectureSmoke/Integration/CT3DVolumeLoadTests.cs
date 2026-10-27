@@ -1,0 +1,99 @@
+using System;
+using System.IO;
+using System.Threading;
+using CxVisual.Foundation.Volume;
+using CxVisual.Professional.CT3D;
+
+namespace CxVisual.Tests.ArchitectureSmoke
+{
+    /// <summary>专业CT3D加载策略的独立正反例，不依赖TestCenter或WPF窗口。</summary>
+    internal static class CT3DVolumeLoadTests
+    {
+        public static void Run()
+        {
+            string folder = Path.Combine(Path.GetTempPath(),
+                "cxvisual-ct3d-load-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(folder);
+            try
+            {
+                string raw = Path.Combine(folder, "volume_8x8x8_sp1x1x1.raw");
+                byte[] voxels = new byte[512];
+                for (int i = 0; i < voxels.Length; i++) voxels[i] = (byte)(i % 256);
+                File.WriteAllBytes(raw, voxels);
+                using (FVOVolumeData preview = CT3DVolumeLoadService
+                    .LoadRawPreviewAsync(raw, CancellationToken.None)
+                    .GetAwaiter().GetResult())
+                {
+                    Check(preview.OriginalDepth == 8 &&
+                        preview.GetVoxelByOriginalIndex(7,7,7)==255,
+                        "RAW后台预览应保留数据及原始尺寸");
+                    Check(!CT3DVolumeLoadService.NeedsOriginalCache(preview),
+                        "完整8位RAW不能被重复分配高清缓存");
+                }
+
+                string high = Path.Combine(folder, "volume_8x8x8_sp1x1x1_uint16.raw");
+                byte[] data = new byte[1024];
+                for (int i = 0; i < 512; i++)
+                {
+                    ushort value = (ushort)(1000 + i);
+                    data[2*i] = (byte)(value & 255);
+                    data[2*i + 1] = (byte)(value >> 8);
+                }
+                File.WriteAllBytes(high,data);
+                using (FVOVolumeData preview = CT3DVolumeLoadService
+                    .LoadRawPreviewAsync(high,CancellationToken.None).GetAwaiter().GetResult())
+                {
+                    Check(CT3DVolumeLoadService.NeedsOriginalCache(preview) &&
+                        !CT3DVolumeLoadService.UsesMappedOriginalCache(preview),
+                        "UInt16小RAW应按专业策略建立完整非托管原始缓冲");
+                    FVOUnmanagedRawVolumeBuffer original = CT3DVolumeLoadService
+                        .LoadOriginalCacheAsync(preview,CancellationToken.None)
+                        .GetAwaiter().GetResult();
+                    preview.SetRawBuffer(original);
+                    Check(preview.HasOriginalRawData &&
+                        preview.GetScalarByOriginalIndex(7,7,7)==1511f &&
+                        !CT3DVolumeLoadService.NeedsOriginalCache(preview),
+                        "CT3D返回原始缓冲交FVO持有，16位原值不经R8量化");
+                    bool duplicateRejected = false;
+                    try
+                    {
+                        CT3DVolumeLoadService.LoadOriginalCacheAsync(preview,
+                            CancellationToken.None).GetAwaiter().GetResult();
+                    }
+                    catch (InvalidOperationException) { duplicateRejected=true; }
+                    Check(duplicateRejected,"重复建立原始缓存应明确拒绝");
+                }
+
+                using(CancellationTokenSource stopped=new CancellationTokenSource())
+                {
+                    stopped.Cancel();
+                    bool refused=false;
+                    try
+                    {
+                        CT3DVolumeLoadService.LoadRawPreviewAsync(raw,stopped.Token)
+                            .GetAwaiter().GetResult();
+                    }
+                    catch(OperationCanceledException) { refused=true; }
+                    Check(refused,"已取消的后台RAW任务必须拒绝开始");
+                }
+                bool missingRejected=false;
+                try
+                {
+                    CT3DVolumeLoadService.LoadRawPreviewAsync(
+                        Path.Combine(folder,"missing.raw"),CancellationToken.None)
+                        .GetAwaiter().GetResult();
+                }
+                catch(FileNotFoundException) { missingRejected=true; }
+                Check(missingRejected,"不存在的RAW源必须给明确错误");
+                Console.WriteLine("PASS CT3D RAW preview/cache policy and independent tests");
+            }
+            finally { Directory.Delete(folder,true); }
+        }
+
+        private static void Check(bool result,string description)
+        {
+            if(!result)throw new InvalidOperationException(
+                "CT3D加载验收失败："+description);
+        }
+    }
+}

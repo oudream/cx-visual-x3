@@ -4,6 +4,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using CxVisual.Foundation.Volume;
+using CxVisual.Professional.CT3D;
 
 namespace CxVisual.TestCenter.UI
 {
@@ -88,9 +89,7 @@ namespace CxVisual.TestCenter.UI
             Stopwatch elapsed=Stopwatch.StartNew();
             try
             {
-                long bytes=new FileInfo(filename).Length;
-                int axis=bytes>=512L*1024*1024?128:512;
-                loaded=await Task.Run(()=>FVORawVolumeLoader.Load(filename,axis,current.Token),current.Token);
+                loaded=await CT3DVolumeLoadService.LoadRawPreviewAsync(filename,current.Token);
                 current.Token.ThrowIfCancellationRequested();
                 if(generation!=_lastLoadGeneration)throw new OperationCanceledException();
                 LoadVolume(loaded);
@@ -115,29 +114,21 @@ namespace CxVisual.TestCenter.UI
         private async void StartOriginalVolumeCache(FVOVolumeData volume,int generation)
         {
             if(volume==null || !volume.HasRawSource)return;
-            // 8bit且没有降采样：预览数据即原始体素，无需再次整文件读取。
-            if(volume.SourceFormat==FVORawVoxelFormat.Byte &&
-               volume.Width==volume.OriginalWidth &&
-               volume.Height==volume.OriginalHeight &&
-               volume.Depth==volume.OriginalDepth)
+            // 预览及原值缓存决策统一由正式CT3D专业服务负责。
+            if(!CT3DVolumeLoadService.NeedsOriginalCache(volume))
             {
-                _status.Text+="；8bit完整体无需额外缓存。";
+                _status.Text+="；已有完整原始体，无需再次加载。";
                 return;
             }
-            FileInfo info=new FileInfo(volume.SourceFilePath);
-            // 大RAW不再降级成永久128³预览，改用OS分页的只读文件映射；
-            // 小RAW保留旧版顺序读取的高速非托管缓存。
-            bool mapped=info.Length>512L*1024*1024;
+            bool mapped=CT3DVolumeLoadService.UsesMappedOriginalCache(volume);
             CancellationTokenSource cacheSource=new CancellationTokenSource();
             _activeRawCache=cacheSource;
             UpdateLoadAvailability();
             try
             {
                 // UInt16/Float32保留真实原始精度，绝不能通过归一化8bit图恢复。
-                FVOUnmanagedRawVolumeBuffer cache=await Task.Run(()=>
-                    mapped?FVORawVolumeLoader.MapRawBuffer(volume,cacheSource.Token):
-                    FVORawVolumeLoader.LoadRawBuffer(volume,new FVORawVolumeLoadTiming(),
-                        cacheSource.Token),cacheSource.Token);
+                FVOUnmanagedRawVolumeBuffer cache=await
+                    CT3DVolumeLoadService.LoadOriginalCacheAsync(volume,cacheSource.Token);
                 if(cacheSource.IsCancellationRequested||generation!=_lastLoadGeneration||
                     !Object.ReferenceEquals(volume,_volume))
                 {
