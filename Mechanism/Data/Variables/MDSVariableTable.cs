@@ -166,6 +166,14 @@ namespace CxVisual.Mechanism.Data.Variables
             }
         }
 
+        public MDSVariableBatchResult UpdateBatch(MDSVariableBatch request)
+        {
+            if (request == null) throw new ArgumentNullException("request");
+            if (!string.Equals(request.ScopeId, ScopeId, StringComparison.Ordinal))
+                throw new InvalidOperationException("批次Scope不匹配，禁止跨运行会话写入");
+            return UpdateBatch(request.Items.ToArray());
+        }
+
         // 跨变量一致提交：只锁当前批次引用的变量；普通MDSVariable<T>.Update不引入表级热路径开销。
         public MDSVariableBatchResult UpdateBatch(params MDSVariableBatchItem[] batch)
         {

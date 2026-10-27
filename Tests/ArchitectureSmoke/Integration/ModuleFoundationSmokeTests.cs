@@ -399,8 +399,16 @@ namespace CxVisual.Tests.ArchitectureSmoke
             table.Define(new MDSVariableDefinition("A", typeof(int)));
             table.Define(new MDSVariableDefinition("B", typeof(int)));
             table.Define(new MDSVariableDefinition("RO", typeof(int), writable: false));
-            MDSVariableBatchResult first = table.UpdateBatch(
-                new MDSVariableBatchItem("A", 10), new MDSVariableBatchItem("B", 10));
+            MDSVariableBatch request = new MDSVariableBatch("batch",
+                new[] { new MDSVariableBatchItem("A", 10),
+                        new MDSVariableBatchItem("B", 10) }, "first");
+            MDSVariableBatchResult first = table.UpdateBatch(request);
+            Check(request.BatchId == "first" && request.Items.Count == 2,
+                "批量事务具有稳定请求身份和不可变条目");
+            Reject<InvalidOperationException>(() => table.UpdateBatch(
+                new MDSVariableBatch("other", new[] { new MDSVariableBatchItem("A", 99) })));
+            Reject<ArgumentException>(() => new MDSVariableBatch("batch", new[] {
+                new MDSVariableBatchItem("A", 1), new MDSVariableBatchItem("A", 2) }));
             Check(first.Results.Count == 2 && first.NotificationsSucceeded &&
                 table.Get<int>("A") == 10 && table.Get<int>("B") == 10, "同Scope多变量批量提交");
             Reject<InvalidCastException>(() => table.UpdateBatch(

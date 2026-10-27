@@ -19,6 +19,30 @@ namespace CxVisual.Mechanism.Data.Variables
         public MDSVariableUpdateOptions Options { get; private set; }
     }
 
+    /// <summary>
+    /// 一个Scope中的显式事务请求，捕获固定条目集合；既有params UpdateBatch仍保持兼容。
+    /// 批次标识仅用于诊断，不是新运行值仓或工程持久化对象。
+    /// </summary>
+    public sealed class MDSVariableBatch
+    {
+        public MDSVariableBatch(string scopeId, IEnumerable<MDSVariableBatchItem> items, string batchId = null)
+        {
+            if (string.IsNullOrWhiteSpace(scopeId)) throw new ArgumentException("Scope不能为空", "scopeId");
+            if (items == null) throw new ArgumentNullException("items");
+            MDSVariableBatchItem[] captured = items.ToArray();
+            if (captured.Length == 0 || captured.Any(x => x == null))
+                throw new ArgumentException("事务必须至少包含一条有效更新");
+            if (captured.GroupBy(x => x.Name, StringComparer.Ordinal).Any(g => g.Count() != 1))
+                throw new ArgumentException("单个批次不允许同名变量重复写入");
+            ScopeId = scopeId.Trim();
+            BatchId = string.IsNullOrWhiteSpace(batchId) ? Guid.NewGuid().ToString("N") : batchId.Trim();
+            Items = Array.AsReadOnly(captured);
+        }
+        public string ScopeId { get; private set; }
+        public string BatchId { get; private set; }
+        public IReadOnlyList<MDSVariableBatchItem> Items { get; private set; }
+    }
+
     public sealed class MDSVariableBatchResult
     {
         internal MDSVariableBatchResult(MDSVariableUpdateResult[] results, Exception[] notifications)
