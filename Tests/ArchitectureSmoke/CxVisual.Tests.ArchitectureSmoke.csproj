@@ -28,7 +28,8 @@
     
     
     <Reference Include="System"/>
-    <Reference Include="System.Core"/><Reference Include="System.Runtime.Serialization"/><Reference Include="System.ComponentModel.DataAnnotations"/>
+    <Reference Include="System.Core"/>
+    <Reference Include="System.Numerics"/><Reference Include="System.Runtime.Serialization"/><Reference Include="System.ComponentModel.DataAnnotations"/>
     <Reference Include="PresentationCore"/>
     <Reference Include="PresentationFramework"/>
     <Reference Include="WindowsBase"/>
