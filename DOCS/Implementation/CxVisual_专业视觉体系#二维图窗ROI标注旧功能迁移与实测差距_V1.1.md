@@ -218,3 +218,23 @@
 - 旧按钮的“添加样式”与“完整属性编辑”分离：本轮颜色为四种预设操作；图层级默认颜色、任意ARGB、宽度、字体及复合图形属性需继续完整迁移，不可将颜色预设等价为完整旧Viewer样式系统。
 
 - [TestCenter Windows #40453607629](https://github.com/oudream/cx-visual-x3/actions/runs/40453607629)：同一**功能代码提交SHA `a5159a931d624299dd78d44e91dd3372eac9cd0e`**，**SUCCESS（29步骤）**。除真实图窗/按钮代码外，包含WPF Shell和UIA、NUnit/Worker异常反证、完整测试控制台、历史结果和并行重跑回归。这条成功证据并不等于用户真实物理鼠标、工业大图性能或HALCON SDK现场验收。
+
+## 11. 两线段测量和对象属性恢复（2026-10-27）
+
+> **旧源码证据**：`ReferTo/Vision/Halcon/HWindowControlView.cs` 的 `UserDrawMode.Ls2Ls` 分0～3阶段接受四点，实际计算调用 `HalconHelper.ClosestPointsOnSegments/AngleBetweenSegmentsDeg`，`HalconWindowTools.DrawLs2LsInfo` 保留L1/L2四端点、最近点、像素距离、方向夹角、标签。不是只有“距离”工具改个名字。旧HALCON计算部分最近点强制舍入成整数；新FIM保留连续双精度最近点，避免将非等距物理距离误舍入。
+
+| 恢复能力 | 唯一Owner及API | 用户真实入口/输出 | 反证与状态 |
+|---|---|---|---|
+| 两有限线段最近点距离与方向角 | `Foundation.Imaging.FIMImageMeasurement.MeasureLinePair`、`FIMLinePairResult` | 传入四个原图`FGEPoint2D`及可选`FIMPixelSpacing`，得到像素最短距离、原图最近点、0～180°方向角、毫米距离或null | FIM相交0距离/90°、平行、两直线延长线误交、X/Y非等距及退化无效标定反证 |
+| 保真图元而非虚拟折线 | `MVIImageOverlayKind.LinePairMeasurement`、原`MVIImageOverlayItem` | 仅测量层且恰好四点，唯一Store和稳定Guid，既有`DescribeMeasurement`/CSV出口 | MVI四点/三点/错误图层校验 |
+| WPF四点交互与预览 | `MPWImageViewerControl.AppendLinePairPoint`；`MVIImageToolMode.LinePair` | 测量页“两线测量”：依次选择L1起/终点、L2起/终点；第一条与第二条虚线分别绘制，不将四点误连为折线；第四点自动选中结果并显示最短连接线与测量标签 | WPF模式按钮、四阶段状态、第二线预览、对象点击命中只允许实际线段、退出模式及无效输入反证 |
+| 结构化输出 | 既有`TCTManualImageViewerFrame.ExportMeasurementsCsv` | 写入稳定Guid、原图四点、测量字符串（最短px/mm及夹角），不新增专用文件/图元仓库 | WPF真实CSV落盘和内容回读反证 |
+| 对象属性完整度补强 | 现有`MVIImageOverlayItem.WithStyle/WithText`与Store.Replace | 区域页选中列表项→填写8位ARGB、线宽(0～100px)和标签→“应用对象属性”；改变正式WPF图元样式 | WPF Button.Click、对象ID快照、ARGB/线宽/文字及非法ARGB反证 |
+
+**与旧行为差异**：无效零长度线段现在明确拒绝，不返回没有几何意义的“0°”；同一图元中仅绘制两条真实线段与最近点连接线，拾取时不允许命中虚构的第四条连接边；像素与物理标定互相独立。专业HALCON SDK仍归Professional.Vision，未改变ReferTo源码。
+
+**源码已提交**：`81e1179`、`aaa6c10`、`5884fb4`、`9a5e238`、`224372a`、`1f981ee`、`fd87dac`、`ac15c78`、`e8b89ff`、`7c0be2d`；后续`d879554`～`8d01d5a`新增对象样式页面和测试，`530cb71`～`5aa5d80`完成分阶段输入/命中/预览反证。并行master可能已经前进，具体验收必须对应SHA。
+
+**已核验的中间版本**：[Imaging #40457295893](https://github.com/oudream/cx-visual-x3/actions/runs/40457295893) SUCCESS（13步骤）与[TestCenter #40457295939](https://github.com/oudream/cx-visual-x3/actions/runs/40457295939) SUCCESS（29步骤）均属于`7c0be2d`较早基线。后续完整功能版`5aa5d805`的[Imaging #40457728597](https://github.com/oudream/cx-visual-x3/actions/runs/40457728597)与[TestCenter #40457728598](https://github.com/oudream/cx-visual-x3/actions/runs/40457728598)必须独立结算，不能从较早绿色推断全部通过。
+
+**下一阶段缺口**：真实物理鼠标四点事件及多DPI、图元操作Undo/Redo和状态保存恢复、专业阈值区域生长与轮廓缺陷检测、就地图中文字输入/编辑、任意颜色拾取交互及现场HIL；不能将本节单项验收等价于60项全部完成。
