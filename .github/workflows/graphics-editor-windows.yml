@@ -1,0 +1,65 @@
+name: CxVisual Graphics Editor Windows Acceptance
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'Mechanism/Core/**'
+      - 'Mechanism/Visual/**'
+      - 'Mechanism/Presentation.Wpf/**'
+      - 'Foundation/Geometry/**'
+      - 'Applications/Studio/**'
+      - 'Tests/TestCenter/Manual/Graphics/**'
+      - 'Tests/TestCenter/CxVisual.TestCenter.csproj'
+      - 'Tests/TestCenter/Common/Framework/**'
+      - '.github/workflows/graphics-editor-windows.yml'
+jobs:
+  graphics-wpf-acceptance:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - name: Restore TestCenter and Graphics prerequisites
+        shell: powershell
+        run: |
+          & msbuild 'Tests/TestCenter/CxVisual.TestCenter.csproj' /t:Restore /p:Configuration=Debug /p:Platform=x64 /nologo /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw 'Graphics prerequisite restore failed' }
+      - name: Build real TestCenter and shared MPW/MVI/MEM owners
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force 'Output/Debug/x64' | Out-Null
+          & msbuild 'Tests/TestCenter/CxVisual.TestCenter.csproj' /m:1 /t:Build /p:Configuration=Debug /p:Platform=x64 /nologo /v:minimal "/flp:logfile=Output/Debug/x64/Graphics.Build.log;verbosity=normal"
+          if ($LASTEXITCODE -ne 0) { throw 'Graphics TestCenter build failed' }
+      - name: Verify actual WPF Graphics actions, MEM history and engineering roundtrip
+        shell: powershell
+        run: |
+          $exe = (Resolve-Path 'Output/Debug/x64/CxVisual.TestCenter.exe').Path
+          $env:CXVISUAL_GRAPHICS_UI_SCREENSHOT = Join-Path (Get-Location) 'Output/Debug/x64/TestCenter-Graphics.png'
+          $p = Start-Process -FilePath $exe -WorkingDirectory (Get-Location).Path -ArgumentList @('--graphics-viewer-smoke') -PassThru
+          try { Wait-Process -Id $p.Id -Timeout 80 -ErrorAction Stop }
+          catch {
+              Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+              throw 'Graphics WPF user-operation acceptance timed out'
+          }
+          $p.Refresh()
+          if ($p.ExitCode -ne 0) {
+              $err = Join-Path ([System.IO.Path]::GetTempPath()) 'CxVisual-Graphics-Viewer-Error.txt'
+              if (Test-Path $err) { Get-Content -LiteralPath $err | Write-Host }
+              throw "Graphics WPF acceptance returned $($p.ExitCode)"
+          }
+          if (-not (Test-Path $env:CXVISUAL_GRAPHICS_UI_SCREENSHOT)) {
+              throw 'Real Graphics WPF screenshot missing'
+          }
+          $bitmap = Get-Item -LiteralPath $env:CXVISUAL_GRAPHICS_UI_SCREENSHOT
+          if ($bitmap.Length -lt 1000) { throw 'Real Graphics WPF screenshot is empty' }
+          Write-Host 'PASS graphics editor: shared MPW, real SceneView, object tree, group geometry, MEM undo, disk roundtrip and WPF pixels'
+      - name: Retain real Graphics WPF and build evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cxvisual-graphics-editor-windows-evidence
+          path: |
+            Output/Debug/x64/Graphics.Build.log
+            Output/Debug/x64/TestCenter-Graphics.png
+          if-no-files-found: warn
