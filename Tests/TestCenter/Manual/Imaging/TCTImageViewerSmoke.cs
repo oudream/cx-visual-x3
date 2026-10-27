@@ -307,6 +307,35 @@ namespace CxVisual.TestCenter.UI
                 finally { if(File.Exists(lineCsv))File.Delete(lineCsv); }
                 frame.Viewer.Overlays.Remove(linePair.Id);
                 frame.Viewer.SelectOverlay(null);
+                // 验证与正式WPF鼠标共用的四点阶段状态机，不靠直接构造对象伪装交互。
+                MVIImageOverlayItem pending;
+                pending=frame.Viewer.AppendLinePairPoint(new FGEPoint2D(.5,.5));
+                if(pending!=null)throw new InvalidOperationException("首个点错误提前完成Ls2Ls");
+                pending=frame.Viewer.AppendLinePairPoint(new FGEPoint2D(3.5,.5));
+                if(pending!=null)throw new InvalidOperationException("首条线未等待第二条线");
+                pending=frame.Viewer.AppendLinePairPoint(new FGEPoint2D(.5,3.5));
+                System.Windows.Shapes.Polyline draft2=
+                    frame.Viewer.FindName("DraftLinePair") as System.Windows.Shapes.Polyline;
+                if(pending!=null || draft2==null ||
+                    draft2.Visibility!=Visibility.Visible)
+                    throw new InvalidOperationException("Ls2Ls第三点没有显示独立第二线预览");
+                pending=frame.Viewer.AppendLinePairPoint(new FGEPoint2D(3.5,3.5));
+                if(pending==null || pending.Points.Count!=4 ||
+                    pending.Kind!=MVIImageOverlayKind.LinePairMeasurement ||
+                    frame.Viewer.SelectedOverlayId!=pending.Id ||
+                    draft2.Visibility!=Visibility.Collapsed ||
+                    !frame.Viewer.DescribeMeasurement(pending).Contains("最短 3 px"))
+                    throw new InvalidOperationException("Ls2Ls第四点未提交唯一Store或清理临时预览");
+                frame.Viewer.Overlays.Remove(pending.Id);
+                frame.Viewer.SelectOverlay(null);
+                bool invalidLinePoint=false;
+                try {frame.Viewer.AppendLinePairPoint(new FGEPoint2D(-1,1));}
+                catch(ArgumentOutOfRangeException){invalidLinePoint=true;}
+                if(!invalidLinePoint)
+                    throw new InvalidOperationException("Ls2Ls接受图像外测量点");
+                frame.Viewer.ToolMode=MVIImageToolMode.Navigate;
+                if(draft2.Visibility!=Visibility.Collapsed)
+                    throw new InvalidOperationException("退出测量模式后仍保留第二条预览线");
                 lineTabs.SelectedIndex=0;
                 window.UpdateLayout();
                 if (frame.Viewer.ActiveImage != image)
