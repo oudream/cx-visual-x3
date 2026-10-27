@@ -455,13 +455,14 @@ namespace CxVisual.TestCenter.UI
             WrapPanel tiles = Row();
             Tile(tiles,"↗","距离","MeasureDistance",()=>SelectTool(MVIImageToolMode.Distance));
             Tile(tiles,"∠","角度","MeasureAngle",()=>SelectTool(MVIImageToolMode.Angle));
+            Tile(tiles,"⋈","两线测量","MeasureLinePair",()=>SelectTool(MVIImageToolMode.LinePair));
             Tile(tiles,"↔","水平距离","MeasureHorizontal",()=>SelectTool(MVIImageToolMode.HorizontalDistance));
             Tile(tiles,"↕","垂直距离","MeasureVertical",()=>SelectTool(MVIImageToolMode.VerticalDistance));
             Tile(tiles,"◯","直径","MeasureDiameter",()=>SelectTool(MVIImageToolMode.Diameter));
             Tile(tiles,"□","矩形面积","MeasureArea",()=>SelectTool(MVIImageToolMode.Area));
             Tile(tiles,"⬡","多边形面积","MeasurePolygonArea",()=>SelectTool(MVIImageToolMode.PolygonArea));
             content.Children.Add(tiles);
-            content.Children.Add(Hint("线段拖拽得到距离；角度测量依次点击三个点。计算与叠加显示均调用已有 FIM/MVI。"));
+            content.Children.Add(Hint("线段拖拽得到距离；角度依次点击三点；两线测量依次点击第一线起点/终点、第二线起点/终点四点，自动绘制最短连线和夹角。"));
             content.Children.Add(Heading("标尺与物理单位"));
             content.Children.Add(Row(Label("X mm/px"),_spacingX));
             content.Children.Add(Row(Label("Y mm/px"),_spacingY));
@@ -635,6 +636,7 @@ namespace CxVisual.TestCenter.UI
                     mode == MVIImageToolMode.Distance || mode == MVIImageToolMode.Angle ||
                     mode == MVIImageToolMode.HorizontalDistance ||
                     mode == MVIImageToolMode.VerticalDistance ||
+                    mode == MVIImageToolMode.LinePair ||
                     mode == MVIImageToolMode.LineProfile ||
                     mode == MVIImageToolMode.Diameter || mode == MVIImageToolMode.Area ||
                     mode == MVIImageToolMode.PolygonArea ? 3 :
