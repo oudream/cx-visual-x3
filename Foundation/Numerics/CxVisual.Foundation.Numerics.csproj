@@ -45,5 +45,8 @@
   <ItemGroup><Compile Include="Tensors\FNUTensorShape.cs"/></ItemGroup>
   <ItemGroup><Compile Include="Tensors\FNUTensorBuffer.cs"/></ItemGroup>
   <ItemGroup><Compile Include="Tensors\FNUTensorMath.cs"/></ItemGroup>
+  <ItemGroup><Compile Include="Solvers\FNUOptimization.cs"/></ItemGroup>
+  <ItemGroup><Compile Include="Solvers\FNUFiniteDifferences.cs"/></ItemGroup>
+  <ItemGroup><Compile Include="Signal\FNUCorrelation.cs"/></ItemGroup>
   <ItemGroup><PackageReference Include="MathNet.Numerics" Version="5.0.0"/></ItemGroup>
 </Project>

@@ -96,6 +96,29 @@ namespace CxVisual.Foundation.Numerics
             return output;
         }
 
+        /// <summary>二维矩阵乘法：左(m,k) × 右(k,n) -> (m,n)。</summary>
+        public static FNUTensorBuffer MatMul(FNUTensorBuffer a, FNUTensorBuffer b)
+        {
+            if (a == null) throw new ArgumentNullException("a");
+            if (b == null) throw new ArgumentNullException("b");
+            if (a.Shape.Rank != 2 || b.Shape.Rank != 2 ||
+                a.Shape.DimensionAt(1) != b.Shape.DimensionAt(0))
+                throw new ArgumentException("MatMul requires 2D tensors with a shared inner dimension.");
+            int m = a.Shape.DimensionAt(0), k = a.Shape.DimensionAt(1), n = b.Shape.DimensionAt(1);
+            var result = new FNUTensorBuffer(new FNUTensorShape(m, n));
+            for (int row = 0; row < m; row++)
+                for (int col = 0; col < n; col++)
+                {
+                    double sum = 0;
+                    for (int inner = 0; inner < k; inner++)
+                        sum += a.At(row * k + inner) * b.At(inner * n + col);
+                    if (double.IsNaN(sum) || double.IsInfinity(sum))
+                        throw new OverflowException("Matrix multiplication overflow.");
+                    result.Put(row * n + col, sum);
+                }
+            return result;
+        }
+
         public static FNUTensorBuffer Transpose2D(FNUTensorBuffer input)
         {
             if (input == null) throw new ArgumentNullException("input");

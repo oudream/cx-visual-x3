@@ -32,6 +32,14 @@ namespace CxVisual.Foundation.Numerics
             _values[Shape.Offset(indices)] = value;
         }
         public double[] CopyValues() { return (double[])_values.Clone(); }
+        /// <summary>改变连续存储的形状，返回新的独占缓冲区，不共享原数据。</summary>
+        public FNUTensorBuffer Reshape(FNUTensorShape newShape)
+        {
+            if (newShape == null) throw new ArgumentNullException("newShape");
+            if (newShape.ElementCount != _values.Length)
+                throw new ArgumentException("Reshape must preserve element count.", "newShape");
+            return new FNUTensorBuffer(newShape, _values);
+        }
         internal double At(int offset) { return _values[offset]; }
         internal void Put(int offset, double value) { RequireFinite(value); _values[offset] = value; }
 

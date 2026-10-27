@@ -170,6 +170,32 @@ namespace CxVisual.Tests.ArchitectureSmoke {
                 new FNUTensorBuffer(new FNUTensorShape(2,2))),"broadcast shape mismatch");
             Throws<ArgumentException>(()=>new FNUTensorBuffer(shape,new double[3]),"tensor buffer length");
             Throws<ArgumentOutOfRangeException>(()=>tensor.Set(double.NaN,0,0),"tensor nonfinite setter");
+            var optimize=FNUOptimization.GoldenSection(x=>(x-3)*(x-3),0,8);
+            Near(optimize.Position,3,"golden-section optimum");
+            Near(optimize.Value,0,"golden-section objective");
+            Throws<InvalidOperationException>(()=>FNUOptimization.GoldenSection(
+                x=>(x-3)*(x-3),0,8,maxIterations:1),"nonconvergent optimization");
+            Throws<ArgumentOutOfRangeException>(()=>FNUOptimization.GoldenSection(
+                x=>x*x,1,0),"optimization reversed interval");
+            Near(FNUFiniteDifferences.CentralDerivative(x=>x*x,2,1e-4),4,"central derivative");
+            Throws<ArgumentOutOfRangeException>(()=>FNUFiniteDifferences.CentralDerivative(
+                x=>x,1,0),"finite difference zero step");
+            var correlated=FNUCorrelation.Full(new double[]{1,2},new double[]{1,1});
+            Near(correlated[0],1,"correlation lag minus1");
+            Near(correlated[1],3,"correlation lag 0");
+            Near(correlated[2],2,"correlation lag plus1");
+            var matrixProduct=FNUTensorMath.MatMul(tensor,
+                new FNUTensorBuffer(new FNUTensorShape(3,2),new double[]{1,0,0,1,1,1}));
+            Assert(matrixProduct.Shape.DimensionAt(0)==2&&matrixProduct.Shape.DimensionAt(1)==2,"MatMul shape");
+            Near(matrixProduct.Get(0,0),4,"MatMul row0 col0");
+            Near(matrixProduct.Get(0,1),5,"MatMul row0 col1");
+            Near(matrixProduct.Get(1,1),11,"MatMul row1 col1");
+            var reshaped=tensor.Reshape(new FNUTensorShape(3,2));
+            Near(reshaped.Get(2,1),6,"reshape order");
+            reshaped.Set(100,0,0);
+            Near(tensor.Get(0,0),1,"reshape owns data");
+            Throws<ArgumentException>(()=>tensor.Reshape(new FNUTensorShape(3,3)),"reshape size mismatch");
+            Throws<ArgumentException>(()=>FNUTensorMath.MatMul(tensor,tensor),"MatMul shape mismatch");
             Console.WriteLine("PASS FNU Numerics - interpolation/statistics/SVD/moving-average/FFT");
         }
         private static void Assert(bool ok,string name){
