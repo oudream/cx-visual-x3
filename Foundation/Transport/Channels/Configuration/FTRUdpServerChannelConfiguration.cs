@@ -20,7 +20,7 @@ public sealed class FTRUdpServerChannelConfiguration : FTRChannelConfiguration
         public override void Validate()
         {
             base.Validate();
-            if (string.IsNullOrWhiteSpace(Host) || Port < 1 || Port > 65535) throw new ArgumentException("无效的网络地址/端口"); if (MaxClients < 1) throw new ArgumentException("无效客户端数量");
+            if (string.IsNullOrWhiteSpace(Host) || Port < 1 || Port > 65535) throw new ArgumentException("无效的网络地址/端口"); if (MaxClients < 1 || MaxClients > 1000000) throw new ArgumentException("无效客户端数量");
         }
     }
 }

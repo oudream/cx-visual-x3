@@ -33,3 +33,7 @@ using (var channel = factory.Create(customConfiguration))
 本地Windows .NET48/x64：架构测试工程Restore/Build和完整方案Build成功，`--channel-transport`exit0且输出`F17.FACTORY PASS`，原40MiB双向及全部通道回环保留通过；ArchitectureSmoke默认完整回归exit0。并行Numerics已引入的固定NuGet依赖需Restore，本轮未改Numerics代码或依赖。远端Windows CI仍按最终实际结果补录。
 
 完整Channel目标其余缺口（HTTP/WS Server、SharedMemory、其它类型后台接收/全部预算、自动恢复、全部TestCenter人工操作及长期/HIL）保持未完成，不以工厂可创建替代通道实际可用。
+
+## 固定SHA远端Windows验收
+
+源码`2dd60fa397b97d02373ec3ce2c1a4f0fbb8dab2b`：[F17专项40542193535](https://github.com/oudream/cx-visual-x3/actions/runs/40542193535)与[完整TestCenter 40542193827](https://github.com/oudream/cx-visual-x3/actions/runs/40542193827)均success。F17日志实际包含`F17.FACTORY PASS`、双向2GiB完成标记和62文件唯一Owner；TestCenter保留真实WPF/三维GPU、默认及并行重复回归。此证据不自动覆盖之后的UDP增量。

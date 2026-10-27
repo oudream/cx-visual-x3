@@ -133,7 +133,7 @@ public abstract class FTRChannelBase : IFTRChannelTransport
         private void SendCore(byte[] bytes,int offset,int count,FTRSubChannelAddress address,
             CancellationToken ct,string correlation,int segmentBytes)
         {
-            if(bytes==null||offset<0||count<1||offset>bytes.Length-count)
+            if(bytes==null||offset<0||count<0||(count==0&&!SupportsEmptySend)||offset>bytes.Length-count)
                 throw new ArgumentException("发送切片无效");
             if(address==null||address.ChannelId!=Id)throw new ArgumentException("通道身份不匹配");
             ct.ThrowIfCancellationRequested();
@@ -159,9 +159,10 @@ public abstract class FTRChannelBase : IFTRChannelTransport
                 OnSendAsync(slice,address,ct).GetAwaiter().GetResult();done+=n;
             }
         }
+        protected virtual bool SupportsEmptySend { get { return false; } }
         public async Task SendAsync(byte[] bytes, FTRSubChannelAddress address, CancellationToken ct)
         {
-            if (bytes == null || bytes.Length == 0) throw new ArgumentException("数据不能为空");
+            if (bytes == null || (bytes.Length == 0 && !SupportsEmptySend)) throw new ArgumentException("数据不能为空");
             if (address == null || address.ChannelId != Id) throw new ArgumentException("通道身份不匹配");
             ct.ThrowIfCancellationRequested();
             EnterSend(bytes.Length,true);
@@ -242,8 +243,8 @@ public abstract class FTRChannelBase : IFTRChannelTransport
         }
         protected FTRReceiveBuffer RentReceiveBuffer(CancellationToken cancellation)
         {return _receivePipeline.Rent(cancellation);}
-        protected void PublishReceiveBuffer(FTRSubChannelAddress address,FTRReceiveBuffer buffer,int count)
-        {_receivePipeline.Publish(address,buffer,count);}
+        protected void PublishReceiveBuffer(FTRSubChannelAddress address,FTRReceiveBuffer buffer,int count,string remoteEndpoint=null)
+        {_receivePipeline.Publish(address,buffer,count,remoteEndpoint);}
         protected void AfterReceived(Action action){_receivePipeline.AfterReceived(action);}
         protected void DrainBufferedReceive(int timeoutMilliseconds,CancellationToken cancellation)
         {if(_receivePipeline!=null)_receivePipeline.CompleteAndDrain(timeoutMilliseconds,cancellation);}
@@ -267,7 +268,7 @@ public abstract class FTRChannelBase : IFTRChannelTransport
             var legacy=Received;
             if(legacy!=null)
             {
-                var context=new FTRChannelReceiveContext(buffer.Address,buffer.WritableBuffer,buffer.Count,null);
+                var context=new FTRChannelReceiveContext(buffer.Address,buffer.WritableBuffer,buffer.Count,null,buffer.RemoteEndpoint);
                 foreach(Action<FTRChannelReceiveContext> listener in legacy.GetInvocationList())
                     try{listener(context);}catch(Exception error){RecordReceiveError(error);}
             }

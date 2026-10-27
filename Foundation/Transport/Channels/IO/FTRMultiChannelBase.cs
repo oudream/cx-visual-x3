@@ -17,11 +17,17 @@ public abstract class FTRMultiChannelBase : FTRChannelBase, IFTRMultiPeerChannel
         { return _peers.Register(peerId, endpoint); }
         public virtual bool RemovePeer(FTRSubChannelAddress address)
         {
-            if (!_peers.Remove(address)) return false;
+            if (!RemovePeerDirectory(address)) return false;
+            NotifyPeerRemoved(address);
+            return true;
+        }
+        protected bool RemovePeerDirectory(FTRSubChannelAddress address) { return _peers.Remove(address); }
+        protected void NotifyPeerRemoved(FTRSubChannelAddress address)
+        {
             // 同步通知唯一 Protocol 清理分帧/事务状态，防止断线重连继承旧半包。
             Action<FTRSubChannelAddress> listener = PeerRemoved;
-            if (listener != null) listener(address);
-            return true;
+            if (listener != null) foreach (Action<FTRSubChannelAddress> observer in listener.GetInvocationList())
+                try { observer(address); } catch (Exception error) { RecordReceiveError(error); }
         }
         public FTRSubChannelInfo FindSubChannel(FTRSubChannelAddress address) { return _peers.FindSubChannel(address); }
         public FTRSubChannelInfo[] SnapshotSubChannels() { return _peers.SnapshotSubChannels(); }

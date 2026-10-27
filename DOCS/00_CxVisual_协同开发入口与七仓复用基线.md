@@ -228,4 +228,5 @@
 - [完整Channel 14方面审计与实施基线](Architecture/CxVisual_F17_Channel完整体系_能力审计与实施基线_V1.0.md)：覆盖用户60项要求、全部通道、旧仓源码证据与完整缺口；不把TCP单包进展当作整包完成。
 - [P0独立接收与有界大数据实现](Implementation/CxVisual_F17_Channel_P0独立接收与有界大数据_实施记录_V1.0.md)、[对应验收矩阵](Testing/CxVisual_F17_Channel_P0大数据与线程模型_验收矩阵_V1.0.md)：TCP独立接收、同步发送、有界租约、异步发送预算、40MiB/2GiB双向实际数据完整性与TestCenter正式入口；其它通道完整性与现场HIL分开验收。
 - [Factory与Provider实施验收](Implementation/CxVisual_F17_Channel_Factory与Provider_实施与验收_V1.0.md)：正式内置创建、Host作用域注册、弱键创建凭据、FCM扩展设置与原Connector/Protocol能力集成；创建不代表已打开设备。
+- [UDP独立接收与组播实施验收](Implementation/CxVisual_F17_Channel_UDP独立接收与组播_实施与验收_V1.0.md)：三类UDP复用有界租约、同步底层与独立接收；报文边界/来源、截断/满额诊断、空闲代次与真实本机组播；网络丢包及多网卡现场边界单独验收。
 - 依据：[Channel 迁移及唯一 Owner 裁决](Decisions/CxVisual_F17_Channel下沉与唯一归属裁决_V1.0.md)；[旧新类型兼容映射](Migration/CxVisual_Channel_MCC至FTR迁移映射_V1.0.md)；[本轮验收证据台账](Testing/CxVisual_F17_Channel迁移_源码与Windows验收台账_V1.0.md)。上述裁决覆盖旧规范中 M13～M15 拥有 Channel 具体类的条款，但不改历史文件本身的日期和历史事实。

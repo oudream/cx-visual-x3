@@ -37,19 +37,10 @@ namespace CxVisual.Foundation.Transport
             finally{if(taken)Monitor.Exit(gate);}
         }
         internal static int Remaining(Stopwatch timer,int timeout)
-        {
-            long remaining=timeout-timer.ElapsedMilliseconds;
-            if(remaining<=0)throw new TimeoutException("TCP send deadline (including queue wait)");
-            return (int)remaining;
-        }
+        { return FTRTransportThread.Remaining(timer, timeout); }
         internal static void Join(Thread thread,Stopwatch timer,int timeout,CancellationToken cancellation)
         {
-            if(thread==null)return;
-            while(!thread.Join(0))
-            {
-                cancellation.ThrowIfCancellationRequested();
-                thread.Join(Math.Min(20,Remaining(timer,timeout)));
-            }
+            FTRTransportThread.Join(thread, timer, timeout, cancellation);
         }
     }
 }

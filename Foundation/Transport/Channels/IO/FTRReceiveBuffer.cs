@@ -21,19 +21,21 @@ namespace CxVisual.Foundation.Transport
         private Storage _storage;
         private FTRSubChannelAddress _address;
         private int _count;
+        private string _remoteEndpoint;
         internal FTRReceiveBuffer(Storage storage){_storage=storage;}
-        private FTRReceiveBuffer(Storage storage,FTRSubChannelAddress address,int count)
-        {_storage=storage;_address=address;_count=count;}
+        private FTRReceiveBuffer(Storage storage,FTRSubChannelAddress address,int count,string remoteEndpoint)
+        {_storage=storage;_address=address;_count=count;_remoteEndpoint=remoteEndpoint;}
         public FTRSubChannelAddress Address {get{return _address;}}
+        public string RemoteEndpoint { get { return _remoteEndpoint; } }
         public int Count {get{Demand();return _count;}}
         public ArraySegment<byte> Segment {get{return new ArraySegment<byte>(Demand().Bytes,0,_count);}}
         internal byte[] WritableBuffer {get{return Demand().Bytes;}}
-        internal void Seal(FTRSubChannelAddress address,int count)
+        internal void Seal(FTRSubChannelAddress address,int count,string remoteEndpoint)
         {
             if(address==null)throw new ArgumentNullException("address");
-            if(count<1||count>Demand().Bytes.Length)throw new ArgumentOutOfRangeException("count");
+            if(count<0||count>Demand().Bytes.Length)throw new ArgumentOutOfRangeException("count");
             if(_address!=null)throw new InvalidOperationException("Receive buffer already published");
-            _address=address;_count=count;
+            _address=address;_count=count;_remoteEndpoint=remoteEndpoint;
         }
         private Storage Demand()
         {
@@ -50,7 +52,7 @@ namespace CxVisual.Foundation.Transport
             {
                 if(references==int.MaxValue)throw new InvalidOperationException("Receive lease limit");
                 int observed=Interlocked.CompareExchange(ref storage.References,references+1,references);
-                if(observed==references)return new FTRReceiveBuffer(storage,_address,_count);
+                if(observed==references)return new FTRReceiveBuffer(storage,_address,_count,_remoteEndpoint);
                 references=observed;
             }
             throw new ObjectDisposedException("FTRReceiveBuffer");

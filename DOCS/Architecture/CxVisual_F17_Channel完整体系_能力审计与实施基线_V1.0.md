@@ -20,9 +20,9 @@ F17唯一Owner与FTR/IFTR命名采用既有下沉裁决；不增加项目、第�
 |---|---|---|
 | TCP Client | FTRTcpClientChannel | 独立接收、同步发送、实际配置预算与大块持续流为P0；自动重连/长稳仍需闭环 |
 | TCP Server | FTRTcpServerChannel、多SubChannel/Generation | 有界多客户端接收模型、发送顺序、全部读者停止协调、大流为P0 |
-| UDP Client | FTRUdpChannel | 独立接收、过载可诊断、超时取消、持续流/网络压力 |
-| UDP Server | FTRUdpServerChannel | 多Endpoint、资源预算、慢消费者/异常生命周期 |
-| UDP Multicast | FTRUdpMulticastChannel | 多网卡真实组播、组成员生命周期、独立接收和网络异常 |
+| UDP Client | FTRUdpChannel；本轮独立接收/同步底层/池化/边界来源/空闲已本机测试 | 持续网络压力、自动恢复与现场 |
+| UDP Server | FTRUdpServerChannel；多Endpoint/预算/慢回调/截断拒绝/空闲代次已本机测试 | 真实高负载与网络异常矩阵、现场多机 |
+| UDP Multicast | FTRUdpMulticastChannel；独立接收/显式IPv4接口/真实本机组播已测试 | 多网卡/跨PC与IGMP、长时网络异常 |
 | Serial | FTRSerialChannel | RS232/485真实设备、恢复、参数有效性、独立接收及取消 |
 | NamedPipe Client/Server | 已有真实OS Pipe实现 | 后台接收/同步发送统一、双进程大流、多客户端、慢端与停止 |
 | HTTP Client | 已有HttpClient配置及实现 | 大数据上传下载/流式读取、取消、独立接收交付 |
@@ -81,3 +81,5 @@ TCP使用独立后台接收线程；Server以一个Socket.Select接收线程按�
 `FTRChannelFactory`与`IFTRChannelProvider`属于同一F17 Owner；内置11个单实例类型和显式Virtual对创建、12类型发现、Host作用域注册及注销已实现。Custom配置仅通过正式FCM白名单，SettingsJson为最多65536字符的JSON对象，不据TypeId反射加载代码。弱键创建凭据绑定实例、原配置与能力；未注册、跨Factory、错Id/拓扑、复用已交付实例、创建途中注销均拒绝。Provider在注册锁外运行，旧令牌不能删除同名新注册；注销不夺取现存实例所有权。
 
 Connectivity装配复用F17凭据/类型校验，Protocol能力兼容仍由原Owner判断；没有复制Channel类型体系。真实Custom TCP Connector收发与上述正反例已进入原`--channel-transport`及默认回归。详见[Factory/Provider实施与验收](../Implementation/CxVisual_F17_Channel_Factory与Provider_实施与验收_V1.0.md)。本增量不补全其它通道、自动恢复、全部TestCenter操作及长期/硬件验收。
+
+UDP独立接收、同步发送、有界数据报与来源/代次的正式增量见[UDP实施验收](../Implementation/CxVisual_F17_Channel_UDP独立接收与组播_实施与验收_V1.0.md)。保留UDP固有丢包语义，不把池等待宣称为端到端可靠背压。

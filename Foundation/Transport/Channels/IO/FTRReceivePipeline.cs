@@ -34,9 +34,9 @@ namespace CxVisual.Foundation.Transport
             Volatile.Write(ref _receiveThread,Thread.CurrentThread.ManagedThreadId);
             return _pool.Rent(cancellation);
         }
-        internal void Publish(FTRSubChannelAddress address,FTRReceiveBuffer buffer,int count)
+        internal void Publish(FTRSubChannelAddress address,FTRReceiveBuffer buffer,int count,string remoteEndpoint)
         {
-            buffer.Seal(address,count);
+            buffer.Seal(address,count,remoteEndpoint);
             lock(_gate)
             {
                 if(_complete)throw new InvalidOperationException("Receive pipeline completed");

@@ -23,15 +23,20 @@ public sealed class FTRUdpMulticastChannelConfiguration : FTRChannelConfiguratio
 
         [FCMConfigItem("允许本机接收自身组播", Order = 13, Category = "组播")]
         public bool Loopback { get; set; } = false;
+        [FCMConfigItem("本机IPv4接口（0.0.0.0=默认）", Order = 14, Category = "组播")]
+        public string LocalInterface { get; set; } = "0.0.0.0";
 
         public override void Validate()
         {
             base.Validate();
             IPAddress group;
+            IPAddress local;
             if (!IPAddress.TryParse(GroupAddress, out group) ||
                 group.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork ||
                 group.GetAddressBytes()[0] < 224 || group.GetAddressBytes()[0] > 239 ||
-                Port < 1 || Port > 65535 || TimeToLive < 1 || TimeToLive > 255)
+                Port < 1 || Port > 65535 || TimeToLive < 1 || TimeToLive > 255 ||
+                !IPAddress.TryParse(LocalInterface, out local) || local.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork ||
+                local.GetAddressBytes()[0] >= 224)
                 throw new ArgumentException("UDP 组播IPv4组、端口或TTL不合法");
         }
     }
