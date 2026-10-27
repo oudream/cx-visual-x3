@@ -589,8 +589,41 @@ namespace CxVisual.Tests.ArchitectureSmoke
         }
 
         // 本专项隔离变量测试；默认全架构回归仍完整执行。
+        private static void VariableAccessPolicySmoke()
+        {
+            MDSVariableAccessPolicy rule = new MDSVariableAccessPolicy(
+                new[] { "Operator" }, new[] { "PLC-1" }, true);
+            MDSVariableTable table = new MDSVariableTable("AccessScope");
+            table.Define(new MDSVariableDefinition("Pressure", typeof(double),
+                "MPa", true, 0.0, "P1", rule));
+            table.Define(new MDSVariableDefinition("Open", typeof(bool),
+                null, true, false, "V1"));
+            Reject<UnauthorizedAccessException>(() => table.Update<double>("Pressure", 0.25));
+            Reject<UnauthorizedAccessException>(() => table.UpdateBatch(
+                new MDSVariableBatchItem("Open", true),
+                new MDSVariableBatchItem("Pressure", 0.25)));
+            Check(!table.Resolve<bool>("Open").Snapshot().HasValue,
+                "批量无权写入不得半提交其他变量");
+            MDSVariableUpdateResult result = table.Resolve<double>("Pressure").Update(0.3,
+                new MDSVariableUpdateOptions("operator-panel",
+                    MDSVariableQuality.Good, null, "Operator"));
+            Check(result.Revision == 1 && table.Get<double>("Pressure") == 0.3,
+                "具备明确Principal的操作员可按策略更新");
+            table.UpdateBatch(new MDSVariableBatchItem("Pressure", 0.35,
+                new MDSVariableUpdateOptions("operator-panel",
+                    MDSVariableQuality.Good, 1, "Operator")));
+            Check(table.Get<double>("Pressure") == 0.35,
+                "批量与普通更新统一执行同一权限契约");
+            MDSVariableAccessPolicy a = new MDSVariableAccessPolicy(new[] { "Operator" },
+                new[] { "PLC-1" }, true);
+            Check(rule.EquivalentTo(a) &&
+                !rule.EquivalentTo(new MDSVariableAccessPolicy(new[] { "Guest" })),
+                "访问策略签名应支持快照Schema安全比对");
+        }
+
         public static void RunVariableSuite()
         {
+            VariableAccessPolicySmoke();
             VariableInspectableSmoke();
             VariableOutOfOrderSmoke();
             VariableRestoreSmoke();

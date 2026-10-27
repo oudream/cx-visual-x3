@@ -23,6 +23,10 @@ namespace CxVisual.Mechanism.Data.Variables
 
         public MDSVariableDefinition(string name, Type valueType, string unit,
             bool writable, object defaultValue, string variableId = null)
+            : this(name, valueType, unit, writable, defaultValue, variableId, null) { }
+
+        public MDSVariableDefinition(string name, Type valueType, string unit,
+            bool writable, object defaultValue, string variableId, MDSVariableAccessPolicy accessPolicy)
         {
             if (string.IsNullOrWhiteSpace(name) || valueType == null || valueType == typeof(void))
                 throw new ArgumentException("变量名称/类型无效");
@@ -31,6 +35,7 @@ namespace CxVisual.Mechanism.Data.Variables
             Unit = unit;
             Writable = writable;
             VariableId = string.IsNullOrWhiteSpace(variableId) ? Name : variableId.Trim();
+            AccessPolicy = accessPolicy;
             if (defaultValue != null && !valueType.IsInstanceOfType(defaultValue))
                 throw new ArgumentException("默认值类型不匹配");
             _defaultValue = MDSVariableValueRules.Copy(defaultValue);
@@ -42,6 +47,7 @@ namespace CxVisual.Mechanism.Data.Variables
         public Type ValueType { get; private set; }
         public string Unit { get; private set; }
         public bool Writable { get; private set; }
+        public MDSVariableAccessPolicy AccessPolicy { get; private set; }
         public bool HasDefaultValue { get; private set; }
         public object DefaultValue { get { return MDSVariableValueRules.Copy(_defaultValue); } }
     }

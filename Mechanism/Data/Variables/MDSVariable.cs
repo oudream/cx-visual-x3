@@ -210,7 +210,10 @@ namespace CxVisual.Mechanism.Data.Variables
         {
             // 调用方已经按ID顺序取得BatchGate；此方法只做验证，无状态修改。
             if (_removed) throw new ObjectDisposedException("MDSVariable");
-            if (!_definition.Writable) throw new InvalidOperationException("批量写入只读变量: " + _definition.Name);
+            if (_definition.AccessPolicy != null)
+                _definition.AccessPolicy.Demand(_definition, item.Options.PrincipalId, item.Options.Source, false);
+            else if (!_definition.Writable)
+                throw new InvalidOperationException("批量写入只读变量: " + _definition.Name);
             object value = item.Value;
             if (value != null && !(value is T))
                 throw new InvalidCastException("批量更新类型不匹配: " + _definition.Name);
@@ -325,18 +328,18 @@ namespace CxVisual.Mechanism.Data.Variables
         // 原有Table.Update仍然调用此方法，保证只有变量本身拥有值和状态。
         public void Update(T value)
         {
-            Commit(value, MDSVariableQuality.Good, null, false, null, false);
+            Commit(value, MDSVariableQuality.Good, null, false, null, false, null);
         }
         public MDSVariableUpdateResult Update(T value, MDSVariableUpdateOptions options)
         {
             if (options == null) throw new ArgumentNullException("options");
-            return Commit(value, options.Quality, options.Source, false, options.ExpectedRevision, true);
+            return Commit(value, options.Quality, options.Source, false, options.ExpectedRevision, true, options.PrincipalId);
         }
         public bool TryUpdate(T value, long expectedRevision, out MDSVariableUpdateResult result)
         {
             try
             {
-                result = Commit(value, MDSVariableQuality.Good, null, false, expectedRevision, true);
+                result = Commit(value, MDSVariableQuality.Good, null, false, expectedRevision, true, null);
                 return true;
             }
             catch (MDSVariableVersionConflictException)
@@ -348,11 +351,11 @@ namespace CxVisual.Mechanism.Data.Variables
         // 后续Provider接入从同一Owner提交，允许Provider刷新只读变量。
         internal void RefreshFromProvider(T value, MDSVariableQuality quality, string source)
         {
-            Commit(value, quality, source, true, null, false);
+            Commit(value, quality, source, true, null, false, null);
         }
 
         private MDSVariableUpdateResult Commit(T value, MDSVariableQuality quality,
-            string source, bool fromProvider, long? expectedRevision, bool returnResult)
+            string source, bool fromProvider, long? expectedRevision, bool returnResult, string principalId)
         {
             T copied = MDSVariableValueRules.CopyTyped(value);
             if ((uint)quality > (uint)MDSVariableQuality.Stale)
@@ -364,7 +367,9 @@ namespace CxVisual.Mechanism.Data.Variables
             lock (_gate)
             {
                 if (_removed) throw new ObjectDisposedException("MDSVariable");
-                if (!fromProvider && !_definition.Writable)
+                if (_definition.AccessPolicy != null)
+                    _definition.AccessPolicy.Demand(_definition, principalId, source, fromProvider);
+                else if (!fromProvider && !_definition.Writable)
                     throw new InvalidOperationException("变量为只读: " + _definition.Name);
                 if (expectedRevision.HasValue && _revision != expectedRevision.Value)
                     throw new MDSVariableVersionConflictException(_definition.VariableId,

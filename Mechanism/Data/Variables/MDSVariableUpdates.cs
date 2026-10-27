@@ -7,13 +7,19 @@ namespace CxVisual.Mechanism.Data.Variables
     {
         public MDSVariableUpdateOptions(string source = null,
             MDSVariableQuality quality = MDSVariableQuality.Good, long? expectedRevision = null)
+            : this(source, quality, expectedRevision, null) { }
+
+        public MDSVariableUpdateOptions(string source, MDSVariableQuality quality,
+            long? expectedRevision, string principalId)
         {
             if (!Enum.IsDefined(typeof(MDSVariableQuality), quality))
                 throw new ArgumentOutOfRangeException("quality");
             if (expectedRevision < 0) throw new ArgumentOutOfRangeException("expectedRevision");
             Source = source; Quality = quality; ExpectedRevision = expectedRevision;
+            PrincipalId = string.IsNullOrWhiteSpace(principalId) ? null : principalId.Trim();
         }
         public string Source { get; private set; }
+        public string PrincipalId { get; private set; }
         public MDSVariableQuality Quality { get; private set; }
         public long? ExpectedRevision { get; private set; }
     }
