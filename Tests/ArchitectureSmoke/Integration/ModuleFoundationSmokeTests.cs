@@ -297,6 +297,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 hot.Apply(0.22);
                 Check(table.Resolve<double>("pressure").Snapshot().PreviousValue == 0.18 &&
                     table.Get<double>("pressure") == 0.22, "预绑定强类型Provider写入唯一变量");
+                Check(registry.Remove("leak"), "模拟旧Scope已从Host卸载");
+                Reject<InvalidOperationException>(() => hot.Apply(0.31));
+                source.Emit("pressure-point", 0.32);
+                Check(table.Get<double>("pressure") == 0.22 && host.Health().Rejected == 2,
+                    "旧Provider回调和热句柄不能写入已注销Scope");
                 host.Stop();
                 Reject<InvalidOperationException>(() => hot.Apply(0.3));
                 Check(table.Get<double>("pressure") == 0.22 && !host.Health().Running,

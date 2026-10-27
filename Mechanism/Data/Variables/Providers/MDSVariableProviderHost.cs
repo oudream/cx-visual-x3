@@ -30,11 +30,13 @@ namespace CxVisual.Mechanism.Data.Variables
     public sealed class MDSVariableProviderBinding
     {
         internal readonly MDSVariableBase Target;
+        internal readonly MDSVariableScope Scope;
         internal MDSVariableProviderBinding(string providerId, string pointId, string scopeId,
-            string variableName, MDSVariableBase target)
+            string variableName, MDSVariableBase target, MDSVariableScope scope)
         {
             ProviderId = providerId; PointId = pointId; ScopeId = scopeId;
             VariableName = variableName; Target = target;
+            Scope = scope ?? throw new ArgumentNullException("scope");
         }
         public string ProviderId { get; private set; }
         public string PointId { get; private set; }
@@ -96,13 +98,16 @@ namespace CxVisual.Mechanism.Data.Variables
                 RequireOpen();
                 if (_running) throw new InvalidOperationException("运行中不能更改映射");
                 if (!_providers.ContainsKey(providerId)) throw new KeyNotFoundException("Provider不存在");
+                MDSVariableScope scope = _registry.FindScope(scopeId);
+                if (scope == null || !scope.IsActive)
+                    throw new KeyNotFoundException("变量Scope不存在或已被注销");
                 MDSVariableTable table = _registry.Find(scopeId);
                 if (table == null) throw new KeyNotFoundException("变量Scope不存在");
                 MDSVariableBase variable = table.ResolveEntry(variableName);
                 string key = Key(providerId, pointId);
                 if (_bindings.ContainsKey(key)) throw new ArgumentException("映射已存在: " + key);
                 MDSVariableProviderBinding binding = new MDSVariableProviderBinding(providerId,
-                    pointId, scopeId, variableName, variable);
+                    pointId, scopeId, variableName, variable, scope);
                 _bindings.Add(key, binding);
                 return binding;
             }
@@ -119,6 +124,8 @@ namespace CxVisual.Mechanism.Data.Variables
             {
                 RequireOpen();
                 if (_running) throw new InvalidOperationException("Provider Host已启动");
+                if (_bindings.Values.Any(x => !x.Scope.IsActive))
+                    throw new InvalidOperationException("存在过期的变量Scope映射；需重新绑定");
                 _running = true; generation = ++_generation;
                 sources = _providers.Values.ToArray();
             }
@@ -154,6 +161,11 @@ namespace CxVisual.Mechanism.Data.Variables
                     _rejected++; _lastError = "未授权或不存在的Provider Point映射";
                     return;
                 }
+                if (!binding.Scope.IsActive)
+                {
+                    _rejected++; _lastError = "Provider绑定的运行Scope已注销";
+                    return;
+                }
             }
             try
             {
@@ -176,16 +188,19 @@ namespace CxVisual.Mechanism.Data.Variables
                 MDSVariableProviderBinding binding;
                 if (!_bindings.TryGetValue(Key(providerId, pointId), out binding))
                     throw new KeyNotFoundException("Provider Point映射不存在");
+                if (!binding.Scope.IsActive)
+                    throw new InvalidOperationException("Provider绑定的Scope已注销");
                 MDSVariable<T> typed = binding.Target as MDSVariable<T>;
                 if (typed == null) throw new InvalidCastException("绑定变量类型不匹配");
                 int generation = _generation;
                 return new MDSVariableTypedPointBinding<T>(typed, providerId,
-                    () => IsActive(generation));
+                    () => IsActive(generation, binding.Scope));
             }
         }
-        private bool IsActive(int generation)
+        private bool IsActive(int generation, MDSVariableScope scope)
         {
-            lock (_gate) return !_disposed && _running && _generation == generation;
+            lock (_gate)
+                return !_disposed && _running && _generation == generation && scope.IsActive;
         }
         public MDSVariableProviderHealth Health()
         {
