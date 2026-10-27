@@ -36,7 +36,8 @@
     <Compile Include="Processing\FIMImageToneMapping.cs"/>
     <Compile Include="Processing\FIMImageBlend.cs"/>
     <Compile Include="Images\FIMPixelSpacing.cs"/>
-    <Compile Include="Processing\FIMImageMeasurement.cs"/></ItemGroup>
+    <Compile Include="Processing\FIMImageMeasurement.cs"/>
+    <Compile Include="Processing\FIMImageMaskContours.cs"/></ItemGroup>
 <ItemGroup>
     <ProjectReference Include="..\..\Foundation\Geometry\CxVisual.Foundation.Geometry.csproj"><Project>{B6570EF1-8979-50D9-AF3A-3BD5450A0A23}</Project><Name>CxVisual.Foundation.Geometry</Name></ProjectReference>
   </ItemGroup>
