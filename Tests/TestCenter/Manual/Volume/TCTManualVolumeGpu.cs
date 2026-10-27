@@ -7,6 +7,7 @@ using System.IO;
 using Microsoft.Win32;
 using CxVisual.Foundation.Volume;
 using CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering;
+using CxVisual.Mechanism.Presentation.Wpf.Volume;
 using CxVisual.Professional.CT3D;
 
 namespace CxVisual.TestCenter.UI
@@ -21,10 +22,12 @@ namespace CxVisual.TestCenter.UI
         private MPWVolumeOpenGlControl _gpu;
         private readonly CT3DRenderingSettings _gpuSettings = new CT3DRenderingSettings();
         private bool _gpuTransferDirty=true;
+        private readonly MPWVolumeRenderingParametersControl _gpuPanel =
+            new MPWVolumeRenderingParametersControl();
         // 便于在真实GPU压力验收里证明仅曲线/预设变化才重新生成LUT。
         public int GpuTransferUploadCount { get; private set; }
-        private readonly CheckBox _enableGpu = new CheckBox { Content = "真实GPU体绘（优先启用）", IsChecked=true };
-        private readonly TextBlock _gpuInfo = new TextBlock { Text = "GPU准备就绪后自动启动；不支持时回退空间切面。" };
+        private CheckBox _enableGpu { get { return _gpuPanel.EnableGpu; } }
+        private TextBlock _gpuInfo { get { return _gpuPanel.StatusText; } }
         private TextBlock _gpuModeHeader;
         private void SetGpuModeLabel(string text,string detail)
         {
@@ -32,25 +35,25 @@ namespace CxVisual.TestCenter.UI
             _gpuModeHeader.Text=text;
             _gpuModeHeader.ToolTip=detail;
         }
-        private readonly Slider _gpuOpacity = new Slider { Minimum=0,Maximum=3,Value=1,TickFrequency=.05 };
-        private readonly Slider _gpuStep = new Slider { Minimum=.25,Maximum=3,Value=1,TickFrequency=.05 };
-        private readonly Slider _gpuAmbient = new Slider { Minimum=0,Maximum=1,Value=.34 };
-        private readonly Slider _gpuDiffuse = new Slider { Minimum=0,Maximum=1.5,Value=.62 };
-        private readonly Slider _gpuSpecular = new Slider { Minimum=0,Maximum=1.5,Value=.16 };
-        private readonly Slider _gpuShine = new Slider { Minimum=1,Maximum=96,Value=24 };
-        private readonly CheckBox _gpuJitter = new CheckBox { Content="抖动采样", IsChecked=true };
-        private readonly CheckBox _gpuAutoRange = new CheckBox { Content="Slicer 风格自动灰阶", IsChecked=true };
-        private readonly CheckBox _gpuColor = new CheckBox { Content="启用自定义颜色曲线", IsChecked=false };
-        private readonly CheckBox _gpuScalar = new CheckBox { Content="启用标量透明曲线", IsChecked=false };
-        private readonly CheckBox _gpuGradient = new CheckBox { Content="启用梯度透明曲线", IsChecked=false };
-        private readonly Slider _gpuThreshold = new Slider { Minimum=0,Maximum=1,Value=.28 };
-        private readonly CheckBox _gpuUseThreshold = new CheckBox { Content="应用阈值", IsChecked=false };
-        private readonly CheckBox _gpuShowVolume = new CheckBox { Content="显示体绘",IsChecked=true };
-        private readonly CheckBox _gpuShowSlices = new CheckBox { Content="显示三维定位切面",IsChecked=false };
-        private readonly CheckBox _gpuShowSliceTexture = new CheckBox { Content="显示切面灰度纹理",IsChecked=false };
-        private readonly CheckBox _gpuBounds = new CheckBox { Content="显示体包围盒",IsChecked=false };
-        private readonly Slider _gpuSliceOpacity = new Slider { Minimum=0,Maximum=1,Value=.35 };
-        private readonly ComboBox _gpuPreset = new ComboBox { Margin=new Thickness(4),Height=29 };
+        private Slider _gpuOpacity { get { return _gpuPanel.VolumeOpacity; } }
+        private Slider _gpuStep { get { return _gpuPanel.SamplingStep; } }
+        private Slider _gpuAmbient { get { return _gpuPanel.Ambient; } }
+        private Slider _gpuDiffuse { get { return _gpuPanel.Diffuse; } }
+        private Slider _gpuSpecular { get { return _gpuPanel.Specular; } }
+        private Slider _gpuShine { get { return _gpuPanel.SpecularPower; } }
+        private CheckBox _gpuJitter { get { return _gpuPanel.Jitter; } }
+        private CheckBox _gpuAutoRange { get { return _gpuPanel.AutoRange; } }
+        private CheckBox _gpuColor { get { return _gpuPanel.UseColor; } }
+        private CheckBox _gpuScalar { get { return _gpuPanel.UseScalar; } }
+        private CheckBox _gpuGradient { get { return _gpuPanel.UseGradient; } }
+        private Slider _gpuThreshold { get { return _gpuPanel.Threshold; } }
+        private CheckBox _gpuUseThreshold { get { return _gpuPanel.UseThreshold; } }
+        private CheckBox _gpuShowVolume { get { return _gpuPanel.ShowVolume; } }
+        private CheckBox _gpuShowSlices { get { return _gpuPanel.ShowSlices; } }
+        private CheckBox _gpuShowSliceTexture { get { return _gpuPanel.ShowSliceTexture; } }
+        private CheckBox _gpuBounds { get { return _gpuPanel.ShowBounds; } }
+        private Slider _gpuSliceOpacity { get { return _gpuPanel.SliceOpacity; } }
+        private ComboBox _gpuPreset { get { return _gpuPanel.Preset; } }
 
         public bool HasAttemptedGpuRendering { get; private set; }
         public MPWVolumeOpenGlControl GpuControlForHardwareTest { get { return _gpu; } }
@@ -73,82 +76,20 @@ namespace CxVisual.TestCenter.UI
             return _gpu.CaptureFrame();
         }
 
+        /// <summary>TestCenter只注入专业GPU行为；MPW拥有所有渲染输入控件与事件。</summary>
         private void BuildGpuPanel(Panel sidebar)
         {
-            _enableGpu.Margin = new Thickness(4,8,4,6);
-            sidebar.Children.Add(_enableGpu);
-            _gpuInfo.Margin = new Thickness(4,2,4,10);
-            _gpuInfo.TextWrapping = TextWrapping.Wrap;
-            _gpuInfo.Foreground = Brushes.SteelBlue;
-            sidebar.Children.Add(_gpuInfo);
-            _enableGpu.Checked += (s,e) => TryEnableGpu();
-            _enableGpu.Unchecked += (s,e) => DisableGpu();
+            if(sidebar==null)throw new ArgumentNullException("sidebar");
             _gpuPreset.Items.Add(CT3DRenderingPresetKind.SlicerLikeGrayscale);
             _gpuPreset.Items.Add(CT3DRenderingPresetKind.LinearGrayscale);
-            _gpuPreset.SelectedIndex = 0;
-            sidebar.Children.Add(_gpuPreset);
-            sidebar.Children.Add(_gpuShowVolume);
-            sidebar.Children.Add(_gpuShowSlices);
-            sidebar.Children.Add(_gpuShowSliceTexture);
-            sidebar.Children.Add(_gpuBounds);
-            AddGpuSlider(sidebar,"定位切面透明度",_gpuSliceOpacity);
-            Button screenshot = new Button { Content="保存真实GPU帧PNG", Margin=new Thickness(4),Height=32 };
-            screenshot.Click += (s,e) => SaveGpuFrame();
-            sidebar.Children.Add(screenshot);
-            AddGpuSlider(sidebar,"整体体透明度",_gpuOpacity);
-            AddGpuSlider(sidebar,"Raymarch采样步长",_gpuStep);
-            AddGpuSlider(sidebar,"环境光",_gpuAmbient);
-            AddGpuSlider(sidebar,"漫反射",_gpuDiffuse);
-            AddGpuSlider(sidebar,"镜面反射",_gpuSpecular);
-            AddGpuSlider(sidebar,"高光强度",_gpuShine);
-            sidebar.Children.Add(_gpuJitter);
-            sidebar.Children.Add(_gpuAutoRange);
-            sidebar.Children.Add(_gpuColor);
-            sidebar.Children.Add(_gpuScalar);
-            sidebar.Children.Add(_gpuGradient);
-            sidebar.Children.Add(_gpuUseThreshold);
-            AddGpuSlider(sidebar,"阈值下限",_gpuThreshold);
-
-            _gpuOpacity.ValueChanged+=(s,e)=>UpdateGpuSettings();
-            _gpuStep.ValueChanged+=(s,e)=>UpdateGpuSettings();
-            _gpuAmbient.ValueChanged+=(s,e)=>UpdateGpuSettings();
-            _gpuDiffuse.ValueChanged+=(s,e)=>UpdateGpuSettings();
-            _gpuSpecular.ValueChanged+=(s,e)=>UpdateGpuSettings();
-            _gpuShine.ValueChanged+=(s,e)=>UpdateGpuSettings();
-            _gpuJitter.Checked+=(s,e)=>UpdateGpuSettings();
-            _gpuJitter.Unchecked+=(s,e)=>UpdateGpuSettings();
-            _gpuPreset.SelectionChanged+=(s,e)=>UpdateGpuSettings(true);
-            _gpuAutoRange.Checked+=(s,e)=>UpdateGpuSettings(true);
-            _gpuAutoRange.Unchecked+=(s,e)=>UpdateGpuSettings(true);
-            _gpuColor.Checked+=(s,e)=>UpdateGpuSettings(true);
-            _gpuColor.Unchecked+=(s,e)=>UpdateGpuSettings(true);
-            _gpuScalar.Checked+=(s,e)=>UpdateGpuSettings(true);
-            _gpuScalar.Unchecked+=(s,e)=>UpdateGpuSettings(true);
-            _gpuGradient.Checked+=(s,e)=>UpdateGpuSettings(true);
-            _gpuGradient.Unchecked+=(s,e)=>UpdateGpuSettings(true);
-            _gpuUseThreshold.Checked+=(s,e)=>UpdateGpuSettings(true);
-            _gpuUseThreshold.Unchecked+=(s,e)=>UpdateGpuSettings(true);
-            _gpuThreshold.ValueChanged+=(s,e)=>UpdateGpuSettings(true);
-            _gpuSliceOpacity.ValueChanged+=(s,e)=>UpdateGpuSettings();
-            _gpuShowVolume.Checked+=(s,e)=>UpdateGpuSettings();
-            _gpuShowVolume.Unchecked+=(s,e)=>UpdateGpuSettings();
-            _gpuShowSlices.Checked+=(s,e)=>UpdateGpuSettings();
-            _gpuShowSlices.Unchecked+=(s,e)=>UpdateGpuSettings();
-            _gpuShowSliceTexture.Checked+=(s,e)=>UpdateGpuSettings();
-            _gpuShowSliceTexture.Unchecked+=(s,e)=>UpdateGpuSettings();
-            _gpuBounds.Checked+=(s,e)=>UpdateGpuSettings();
-            _gpuBounds.Unchecked+=(s,e)=>UpdateGpuSettings();
-        }
-
-        private static void AddGpuSlider(Panel panel,string text,Slider slider)
-        {
-            TextBlock label=new TextBlock { Text=text+"："+slider.Value.ToString("0.##"),
-                Margin=new Thickness(4,7,4,1),Foreground=BrushOf(218,231,244) };
-            slider.ValueChanged+=(s,e)=>label.Text=text+"："+slider.Value.ToString("0.##");
-            slider.ToolTip=text;
-            panel.Children.Add(label);
-            slider.Margin=new Thickness(6,0,6,6);
-            panel.Children.Add(slider);
+            _gpuPreset.SelectedIndex=0;
+            _gpuPanel.GpuEnabledChanged+=enabled=>{
+                if(enabled)TryEnableGpu();
+                else DisableGpu();
+            };
+            _gpuPanel.SaveFrameRequested+=()=>SaveGpuFrame();
+            _gpuPanel.OptionsChanged+=transferChanged=>UpdateGpuSettings(transferChanged);
+            sidebar.Children.Add(_gpuPanel);
         }
 
         private void UpdateGpuSettings(bool transferChanged=false)
