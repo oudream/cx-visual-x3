@@ -66,6 +66,37 @@ namespace CxVisual.Tests.ArchitectureSmoke {
             Throws<ArgumentOutOfRangeException>(()=>FNUFourier.Inverse(
                 new Complex[]{new Complex(double.NaN,0)}),"nonfinite inverse spectrum");
             Throws<ArgumentException>(()=>FNUFourier.Inverse(new Complex[0]),"empty inverse spectrum");
+            Near(FNUPolynomial.Evaluate(new double[]{1,2,3},2),17,"polynomial Horner");
+            double[] derived=FNUPolynomial.Derivative(new double[]{1,2,3});
+            Near(derived[0],2,"derivative c0"); Near(derived[1],6,"derivative c1");
+            Near(FNUPolynomial.Evaluate(new double[]{7},-12),7,"constant polynomial");
+            Throws<ArgumentException>(()=>FNUPolynomial.Evaluate(new double[0],2),"empty polynomial");
+            FNUHistogram hist=FNUHistogram.Calculate(new double[]{0,1,2,3,4},4,0,4);
+            Assert(hist.BinCount==4&&hist.GetCount(0)==1&&hist.GetCount(1)==1&&
+                hist.GetCount(2)==1&&hist.GetCount(3)==2,"histogram endpoint");
+            long[] oldBins=hist.CopyBins();oldBins[0]=99;
+            Assert(hist.GetCount(0)==1,"histogram defensive bins");
+            Throws<ArgumentOutOfRangeException>(()=>FNUHistogram.Calculate(new double[]{5},4,0,4),"histogram out of range");
+            var root=FNURootFinding.Bisection(x=>x*x-2,0,2);
+            Near(root.Root,Math.Sqrt(2),"bisection sqrt2");
+            Assert(root.Iterations>0&&Math.Abs(root.Residual)<1e-8,"bisection residual");
+            Throws<ArgumentException>(()=>FNURootFinding.Bisection(x=>x*x+1,-1,1),"unbracketed root");
+            Throws<ArithmeticException>(()=>FNURootFinding.Bisection(x=>double.NaN,0,1),"nonfinite root function");
+            using(var cancel=new System.Threading.CancellationTokenSource()){
+                cancel.Cancel();
+                Throws<OperationCanceledException>(()=>FNURootFinding.Bisection(x=>x,0,1,
+                    cancellationToken:cancel.Token),"root cancellation");
+            }
+            Near(FNUNumericalIntegration.Simpson(x=>x*x,0,1),1.0/3,"Simpson x squared");
+            Near(FNUNumericalIntegration.Simpson(x=>x*x,1,0),-1.0/3,"Simpson reverse");
+            Throws<ArgumentOutOfRangeException>(()=>FNUNumericalIntegration.Simpson(x=>x,0,1,3),"Simpson odd intervals");
+            var polynomial=FNUCurveFitting.Polynomial(new double[]{0,1,2,3},
+                new double[]{1,4,9,16},2);
+            Near(polynomial.Coefficients[0],1,"fit polynomial intercept");
+            Near(polynomial.Coefficients[1],2,"fit polynomial linear");
+            Near(polynomial.Coefficients[2],1,"fit polynomial quadratic");
+            Throws<ArgumentException>(()=>FNUCurveFitting.Polynomial(
+                new double[]{0,1},new double[]{1,2},2),"insufficient fit observations");
             Console.WriteLine("PASS FNU Numerics - interpolation/statistics/SVD/moving-average/FFT");
         }
         private static void Assert(bool ok,string name){

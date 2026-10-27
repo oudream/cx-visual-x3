@@ -30,6 +30,11 @@
     <Compile Include="Signal\FNUMovingAverage.cs"/>
     <Compile Include="Signal\FNUFourier.cs"/>
     <Compile Include="LinearAlgebra\FNULinearAlgebra.cs"/>
+    <Compile Include="Scalar\FNUPolynomial.cs"/>
+    <Compile Include="Statistics\FNUHistogram.cs"/>
+    <Compile Include="Solvers\FNURootFinding.cs"/>
+    <Compile Include="Solvers\FNUNumericalIntegration.cs"/>
+    <Compile Include="Solvers\FNUCurveFitting.cs"/>
   </ItemGroup>
   <ItemGroup><PackageReference Include="MathNet.Numerics" Version="5.0.0"/></ItemGroup>
 </Project>
