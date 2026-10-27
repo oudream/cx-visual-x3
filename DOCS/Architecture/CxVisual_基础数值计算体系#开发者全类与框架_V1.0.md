@@ -21,16 +21,16 @@
 
 | 子方面 | 细分 | 主体类型与职能 | 状态 |
 |---|---|---|---|
-| F03 数学 | 标量与精度 | FNUScalarMath、FNUPrecision、FNUInterpolation、FNUPolynomial、FNUComplexMath | FNUInterpolation I；其他 P |
-| F03 数学 | 统计 | FNUStatistics、FNURunningStatistics、FNUStatisticsSnapshot、FNUHistogram、FNUDistribution、FNURegression | 前三项 I；其他 P |
+| F03 数学 | 标量与精度 | FNUScalarMath、FNUPrecision、FNUInterpolation、FNUPolynomial、FNUComplexMath | FNUPrecision / FNUInterpolation / FNUPolynomial I；其余 P |
+| F03 数学 | 统计 | FNUStatistics、FNURunningStatistics、FNUStatisticsSnapshot、FNUHistogram、FNUDistribution、FNURegression | 前五项 I；FNURegression P |
 | F04 求解 | 线性代数 | FNULinearAlgebra、FNULeastSquaresResult、FNUMatrixView、FNUFactorization、FNUDecompositionResult | 前两项 I；其他 P |
-| F04 求解 | 数值方程 | FNUEquationSolver、FNURootFinding、FNUOptimization、FNUOptimizerOptions、FNUConvergenceResult、FNUNumericalIntegration、FNUOdeSolver | P |
-| F04 求解 | 拟合 | FNUCurveFitting、FNUWeightedLeastSquares、FNURobustFitting、FNUFitResult | P |
-| F10 信号 | 采样变换 | FNUSampleSeries、FNUResampling、FNUWindowFunction、FNUConvolution、FNUCorrelation | P |
-| F10 信号 | 时域滤波 | FNUMovingAverage、FNUFirFilter、FNUIirFilter、FNUFilterState、FNUFilterCoefficients | FNUMovingAverage I；其余 P |
-| F10 信号 | 频域 | FNUFourier、FNUSpectrum、FNUFrequencyAnalysis、FNUSpectralDensity、FNUWavelet | FNUFourier I；其余 P |
-| F13 张量 | 形状与数据 | FNUTensorShape、FNUTensorView、FNUTensorBuffer、FNUTensorSlice、FNUTensorLayout | P |
-| F13 张量 | 运算 | FNUTensorMath、FNUTensorReduction、FNUTensorBroadcast、FNUTensorContract、FNUTensorBackend | P |
+| F04 求解 | 数值方程 | FNUEquationSolver、FNURootFinding、FNUOptimization、FNUOptimizerOptions、FNUConvergenceResult、FNUNumericalIntegration、FNUOdeSolver | RootFinding / Optimization / NumericalIntegration / OdeSolver I；其他 P |
+| F04 求解 | 拟合 | FNUCurveFitting、FNUWeightedLeastSquares、FNURobustFitting、FNUFitResult | 前两项 I；其他 P |
+| F10 信号 | 采样变换 | FNUSampleSeries、FNUResampling、FNUWindowFunction、FNUConvolution、FNUCorrelation | 后四项 I；SampleSeries P |
+| F10 信号 | 时域滤波 | FNUMovingAverage、FNUFirFilter、FNUIirFilter、FNUFilterState、FNUFilterCoefficients | 前三项 I；其余 P |
+| F10 信号 | 频域 | FNUFourier、FNUSpectrum、FNUFrequencyAnalysis、FNUSpectralDensity、FNUWavelet | Fourier / FrequencyAnalysis I，另有 FrequencySpectrum I；其余 P |
+| F13 张量 | 形状与数据 | FNUTensorShape、FNUTensorView、FNUTensorBuffer、FNUTensorSlice、FNUTensorLayout | Shape / Buffer I（Buffer.Slice/Reshape为复制）；其余 P |
+| F13 张量 | 运算 | FNUTensorMath、FNUTensorReduction、FNUTensorBroadcast、FNUTensorContract、FNUTensorBackend | TensorMath I（广播/归约/MatMul）；其余暂不独立成类 |
 
 该清单共 **52个候选类型槽位**，部分会合并或直接复用 System/Math.NET 类型；**并非承诺52个新类**。避免复制System.Math、Math.NET、System.Numerics.Tensors或已有Foundation.Data Shape，也不建立独立Tensor管理平台。
 
@@ -75,3 +75,15 @@ var inverted = FNUFourier.Inverse(fft);
 - 任何新类别从**需求→Owner→API→正反用例→同SHA Windows证据**闭环，不填空类凑数。
 
 测试见：DOCS/Testing/CxVisual_基础数值计算体系#测试验收矩阵_V1.0.md。
+
+## 6. 2026-10-27 V1.1 实际实现追认（区别于最初候选规格）
+
+累计 **33个公开类型**落地（部分为结果类），分布在 F03/F04/F10/F13，包括插值、Welford累计/合并、Histogram与Quantile、多项式、数值容差、SVD与加权最小二乘、求根/优化/积分/ODE、FIR/IIR/FFT/重采样/频域/相关、张量Shape/Buffer/广播/归约/MatMul/转置。编译/测试的准确状态请看同SHA Actions，不能以此数值取代功能完整性。
+
+- 输入数据：小数组由 IReadOnlyList<double> 或 double[,] 读入；结构化矩阵求解返回包含 rank / residual 的结果；状态 IIR 等由实例管理。
+- F13 当前仅为双精度CPU RowMajor、复制切片及广播；不是 FDT 通用多类型数据合同，也不代表 GPU AI 引擎或深度张量后端已完成。
+- FVO、FIM 向 Numerics 复用共用内核，仍保留原领域 Owner、对外API和边界判定。
+- 未完成的类别：大型高精度/病态求解的定量稳定性、非线性多维与约束优化、专业 FFT/小波/谱密度、任意dtype/非连续Tensor View、分块原生/多核后端、全量性能基线及现场验证。
+- 为保护性能与架构，不机械扩增候选类的数量；例如广播、求和、MatMul 集中由 `FNUTensorMath` 提供而不是制造纯转发的独立类。
+
+新状态见：`DOCS/Implementation/CxVisual_基础数值计算体系#全类实现与复用进展_V1.1.md`。

@@ -18,11 +18,11 @@
 | N11 | SVD 系数快照隔离 | NaN数据拒绝、输入不改写 | I+W |
 | N12 | FFT冲激输入→常数频谱1 | 空输入/非有限输入 | I+W |
 | N13 | FFT逆变换恢复冲激 | 不篡改原Spectrum | I+W |
-| N14 | 复线性求解/病态矩阵与容差 | 强尺度/条件数、溢出 | P |
-| N15 | FIR/IIR、窗函数、重采样 | 非法系数、边界、持续状态 | P |
-| N16 | FFT任意长度、频谱幅度/单位 | 采样率非法、频域NaN | P |
-| N17 | 高维张量Shape/Stride/广播/归约 | 大Shape溢出、别名/共享数据 | P |
-| N18 | FIM/FVO迁移同样本数值完全对照 | 16位RAW、ROI、边界/取消 | FIM已有回归W；FVO待实施P |
+| N14 | 非线性一维求根、极小化、数值微分 | 收敛上限、参数/非有限及取消；病态矩阵专项仍待做 | I，Windows新SHA待核 |
+| N15 | FIR/IIR、窗函数、重采样、卷积和相关 | 非法系数、滤波状态Reset、边界与别名 | I，Windows新SHA待核 |
+| N16 | FFT、单边谱幅值/Hz频率轴 | 采样率非法、非法输入；跨频谱规模专项待做 | I，Windows新SHA待核 |
+| N17 | CPU double张量Shape/Stride/广播/归约/转置/MatMul/复制切片 | 大Shape溢出、错误索引、0维长度、形状冲突、所有权 | I，Windows新SHA待核 |
+| N18 | FIM Welford与FVO三线性内核实际迁移 | ROI与掩膜、16位RAW、FVO任意切面/体素边界/取消 | FIM已有W；FVO最新SHA待核 |
 | N19 | 长数组/大矩阵性能与GC/p95 | 热路径分配、不同CPU | P |
 | N20 | NuGet restore、28项目build、DAG、default smoke | 原生缺库/重复API/依赖反向 | W：94ba3cd |
 
@@ -46,3 +46,16 @@ Windows CI必须同SHA满足Restore、完整.NET48 x64 Build、Verify-Structure�
 | `94ba3cd` | [Numerics #40503524588](https://github.com/oudream/cx-visual-x3/actions/runs/40503524588) | 成功：在上述基础上增加8条异常反证后完整编译、Owner DAG、`--numerics`与默认ArchitectureSmoke再次通过 |
 
 **结果说明：** N01～N13的当前测试入口整体已通过，但这并不代表所有扩展精度/性能边界充分穷举。N14～N19多数仍是规划，尤其F13全类、矩阵病态诊断、FVO三线性替换、大图性能和真实工业设备尚未完成。此文档-only提交不伪装成新的代码验收。
+
+## V1.1 扩充覆盖的正反例（提交后以 Actions 为准）
+
+- N21 多项式 Horner/导数、分布 Quantile/Median、Histogram最大端点、FNUPrecision双容差和不可变返回。
+- N22 二分求根解析√2、括号失败、非有限函数、取消；Simpson积分 x² 反向区间及奇数分段拒绝。
+- N23 SVD二次多项式拟合、加权最小二乘隔离离群点、权重负数拒绝；GoldenSection优化及不收敛。
+- N24 RK4解 y'=y / Math.E、起止采样、轨迹所有权及数值异常。
+- N25 FIR卷积边界、IIR历史状态/Reset、线性重采样端点/单样本、Hann窗、离散卷积/互相关滞后。
+- N26 单边振幅频谱、采样Hz、DC/Nyquist和频谱防篡改；仍需任意长度频谱幅度黄金基线。
+- N27 F13维度/Stride/索引、RowMajor布局、复制切片及重塑、广播逐元素运算、归约、二维转置/MatMul。
+- N28 同SHA Windows完整解决方案构建、Owner DAG 与 --numerics + 默认ArchitectureSmoke，两者独立记录，不能把专项 PASS 等同于全量 PASS。
+
+**已观察到与 Numerics 无直接关系的全量回归失败**：在 `e65452e` 和 `760c71c`，`--numerics` 输出 PASS，但默认 ArchitectureSmoke 在 `VisualShapeEditingTests` 的整圆 sweep 编辑反例失败。必须由图元工程专项修复并重新核验；不借此降低 Numerics 正反例要求，也不冒称默认测试通过。
