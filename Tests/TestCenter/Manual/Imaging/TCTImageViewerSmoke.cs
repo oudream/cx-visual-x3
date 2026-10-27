@@ -271,6 +271,7 @@ namespace CxVisual.TestCenter.UI
                     new byte[] { 1,0, 2,0, 3,0, 4,0, 5,0, 6,0, 7,0, 8,0,
                                  9,0, 10,0, 11,0, 12,0, 13,0, 14,0, 15,0, 16,0 });
                 frame.SetOriginal(image);
+                frame.Viewer.FitToWindow(); // 四像素样本确保线命中容差转为亚像素，验证不存在的桥线
                 TabControl lineTabs=FindControl<TabControl>(frame,"TCT.Imaging.PrimaryTabs");
                 lineTabs.SelectedIndex=3;
                 window.UpdateLayout();
