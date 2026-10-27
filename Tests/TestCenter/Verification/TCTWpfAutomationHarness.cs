@@ -1369,6 +1369,22 @@ namespace CxVisual.TestCenter.UI
                     !ReferenceEquals(window.TestDock.AnchorableHeaderTemplate,
                         Application.Current.FindResource("MPWToolDockHeaderTemplate")))
                     throw new InvalidOperationException("Results dock tabs must use shared MPW tool style");
+                // 由运行中真实WPF字典加载同一个公共工具页签模板，检查内容固定尺寸。
+                System.Windows.Controls.Grid toolHeader =
+                    ((DataTemplate)window.TestDock.AnchorableHeaderTemplate).LoadContent()
+                    as System.Windows.Controls.Grid;
+                System.Windows.Controls.Border toolSurface = toolHeader == null ? null :
+                    toolHeader.Children.OfType<System.Windows.Controls.Border>()
+                        .FirstOrDefault(border => border.Name == "ToolSurface");
+                System.Windows.Controls.TextBlock toolCaption = toolSurface == null ? null :
+                    toolSurface.Child as System.Windows.Controls.TextBlock;
+                if (toolHeader == null || Math.Abs(toolHeader.Width - 184) > 0.5 ||
+                    Math.Abs(toolHeader.Height - 30) > 0.5 ||
+                    toolCaption == null ||
+                    toolCaption.TextTrimming != TextTrimming.CharacterEllipsis ||
+                    toolCaption.TextWrapping != TextWrapping.NoWrap)
+                    throw new InvalidOperationException(
+                        "底部MPW工具页签未统一尺寸及单行文本省略");
                 System.Windows.Controls.TabControl documentTabs =
                     window.DocumentHost.Content as System.Windows.Controls.TabControl;
                 if (documentTabs == null ||

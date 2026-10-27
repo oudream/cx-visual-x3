@@ -335,20 +335,23 @@
       </DataTrigger>
     </DataTemplate.Triggers>
   </DataTemplate>
-  <!-- 共享停靠工具Tab：连续标签+底边选中条，适配Results/Timeline/History等。 -->
+  <!-- 公共停靠工具Tab：与中央文档同级紧凑宽度；不改变AvalonDock原有布局行为。 -->
   <DataTemplate x:Key="MPWToolDockHeaderTemplate">
-    <Grid SnapsToDevicePixels="True">
-    <Border x:Name="ToolSurface" Margin="0" Padding="13,7,13,7"
-            Background="{DynamicResource MPWSurfaceAltBrush}"
-            BorderBrush="{DynamicResource MPWBorderBrush}" BorderThickness="0,0,1,1"
-            SnapsToDevicePixels="True">
-      <TextBlock x:Name="Caption" Text="{Binding Title}" FontFamily="{StaticResource MPWUiFont}"
-                 FontSize="{StaticResource MPWFontBody}" Foreground="{DynamicResource MPWMutedBrush}"
-                 TextTrimming="CharacterEllipsis" VerticalAlignment="Center" MaxWidth="220"/>
-    </Border>
-      <Border x:Name="ToolAccent" Height="3" VerticalAlignment="Bottom"
-              Background="{DynamicResource MPWAccentBrush}" Visibility="Collapsed"
-              IsHitTestVisible="False"/>
+    <Grid Width="184" Height="30" SnapsToDevicePixels="True">
+      <Border x:Name="ToolSurface" Margin="0" Padding="10,0"
+              Background="{DynamicResource MPWSurfaceAltBrush}"
+              BorderBrush="{DynamicResource MPWBorderBrush}"
+              BorderThickness="0,0,1,0" SnapsToDevicePixels="True">
+        <TextBlock x:Name="Caption" Text="{Binding Title}" FontFamily="{StaticResource MPWUiFont}"
+                   FontSize="{StaticResource MPWFontBody}"
+                   Foreground="{DynamicResource MPWMutedBrush}"
+                   TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
+                   VerticalAlignment="Center" HorizontalAlignment="Stretch"
+                   ToolTip="{Binding Title}"/>
+      </Border>
+      <Border x:Name="ToolAccent" Height="2" VerticalAlignment="Bottom"
+              Background="{DynamicResource MPWAccentBrush}"
+              Visibility="Collapsed" IsHitTestVisible="False"/>
     </Grid>
     <DataTemplate.Triggers>
       <DataTrigger Binding="{Binding IsSelected}" Value="True">

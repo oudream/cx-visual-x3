@@ -94,3 +94,10 @@ Studio 的专业 Ribbon 图标选择、MEM 资源编辑面板、二维/三维专
 - 公共Owner增量：`MPWWorkspaceDocumentTabsStyle` 负责单行横向滚动、头部32px级高度和内容区无多余边框；`MPWWorkspaceDocumentTabStyle` 统一184px宽度与32px高度，提供选中强调线和浅/深主题；`MPWWorkspaceTabCloseButtonStyle` 统一20px按钮、悬停、键盘焦点及颜色。原有 `MPWDocumentTabStyle` 和 AvalonDock Header 模板继续保留，防止影响Studio及专业子页签。
 - TestCenter仅在 `TCTTestDocumentHostControl` 引用公共样式，业务标题为星型网格自动省略并提供完整ToolTip；按钮保留原来按WorkspaceId关闭、未保存草稿保护和左树实例保留语义，不在MPW创建第二套实例管理。
 - 验收：新增真实UIA对概览及多实例页签的固定尺寸/公共Style/关闭按钮身份验证，复用原关闭-重开与深色主题回归；Windows CI和实际100/125/150% DPI截图均须按具体SHA核对，不能把编译成功视为美观最终验收。
+
+## 9. 2026-10-27 底部工具页签等宽收敛
+
+- 用户真实截图指向 TestCenter 的 AvalonDock 底部 Results、Timeline、History、Diff、Suite。这里不是中央 `TabControl`，而是五个真实 `LayoutAnchorable`；其 `AnchorableHeaderTemplate` 以前已有公共 `MPWToolDockHeaderTemplate`，但只给了 `Padding=13,7`，未限定宽度，因此显示宽度随文字变化，且上下间距显得松散。
+- 直接修正 `Mechanism.Presentation.Wpf` 中既有 `MPWToolDockHeaderTemplate`：内容统一 `184×30 DIP`，紧凑 `10,0` 内边距，文字单行省略、完整ToolTip、无外边距、统一1px分隔和底部2px选中强调线。主题令牌继续同源；Studio与TestCenter共用同一模板，无双份实现。
+- 外层 AvalonDock 原生标题/浮动/停靠/拖动/布局保存/恢复机制未动。准确承诺的是公共Header内容尺寸一致，整体Tab外壳仍受第三方主题控制，须以真实Windows截图复核。
+- Studio S1 STA及TestCenter WPF UIA均添加 Header 实际载入的尺寸与单行截断回归；Windows CI结果和视觉截图应按提交 SHA 单独核对。

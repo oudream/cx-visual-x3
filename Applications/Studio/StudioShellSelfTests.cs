@@ -105,6 +105,9 @@ namespace CxVisual.Studio
                         toolHeader != null && toolHeader.Children.OfType<Border>()
                             .Any(b => b.Name == "ToolAccent"),
                         "公共Dock Header没有固定尺寸的独立选中强调线");
+                    Assert(Math.Abs(toolHeader.Width - 184) < 0.5 &&
+                        Math.Abs(toolHeader.Height - 30) < 0.5,
+                        "公共工具页签宽高未采用MPW固定紧凑规格");
                     Style gridStyle = Application.Current.FindResource("MPWDataGridStyle") as Style;
                     Assert(gridStyle != null && gridStyle.Setters.OfType<Setter>().Any(
                             setter => setter.Property == DataGrid.ColumnHeaderStyleProperty) &&
