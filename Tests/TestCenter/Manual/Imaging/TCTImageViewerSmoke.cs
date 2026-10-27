@@ -593,6 +593,29 @@ namespace CxVisual.TestCenter.UI
                 if (editRow==null)
                     throw new InvalidOperationException("真实ROI创建后未进入区域对象列表");
                 overlayList.SelectedItem=editRow;
+                TextBox argbField=FindControl<TextBox>(frame,"TCT.Imaging.OverlayArgb");
+                TextBox widthField=FindControl<TextBox>(frame,"TCT.Imaging.OverlayLineWidth");
+                TextBox labelField=FindControl<TextBox>(frame,"TCT.Imaging.OverlayLabel");
+                Button applyProperties=FindControl<Button>(frame,"TCT.Imaging.ApplyOverlayProperties");
+                if(argbField==null || widthField==null || labelField==null ||
+                    applyProperties==null)
+                    throw new InvalidOperationException("ROI对象完整属性编辑入口缺失");
+                argbField.Text="FF00AA66";
+                widthField.Text="3.25";
+                labelField.Text="审计标记";
+                applyProperties.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                MVIImageOverlayItem styled=frame.Viewer.Overlays.Find(editable.Id);
+                if(styled==null || styled.Id!=editable.Id ||
+                    styled.Argb!=unchecked((int)0xff00aa66) ||
+                    Math.Abs(styled.LineWidth-3.25)>1e-8 ||
+                    styled.Text!="审计标记" ||
+                    editable.Argb==styled.Argb)
+                    throw new InvalidOperationException(
+                        "WPF属性页未同步MVI色彩、线宽、文字或污染原快照");
+                argbField.Text="无效ARGB";
+                applyProperties.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                if(frame.Viewer.Overlays.Find(editable.Id).Argb!=unchecked((int)0xff00aa66))
+                    throw new InvalidOperationException("无效ARGB输入被写入MVI对象");
                 editAction.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 if (frame.Viewer.ToolMode!=MVIImageToolMode.ResizeOverlay ||
                     frame.Viewer.SelectedOverlayId!=editable.Id ||
