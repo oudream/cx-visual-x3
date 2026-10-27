@@ -330,18 +330,25 @@ namespace CxVisual.TestCenter.UI
             StackPanel content = Column();
             content.Children.Add(Heading("叠加图层  ·  显示与选择"));
             WrapPanel colors = Row();
-            foreach (Tuple<string,Brush> c in new[] {
-                Tuple.Create("ROI",(Brush)Paint(13,166,195)),
-                Tuple.Create("测量",(Brush)Paint(230,164,34)),
-                Tuple.Create("标注",(Brush)Paint(185,48,110)),
-                Tuple.Create("缺陷",(Brush)Paint(233,71,61)) })
+            // 旧Viewer的Overlay颜色操作不能退化为四块无法点击的装饰色块。
+            foreach (Tuple<string,Color> c in new[] {
+                Tuple.Create("ROI",Color.FromRgb(13,166,195)),
+                Tuple.Create("测量",Color.FromRgb(230,164,34)),
+                Tuple.Create("标注",Color.FromRgb(185,48,110)),
+                Tuple.Create("缺陷",Color.FromRgb(233,71,61)) })
             {
-                Border badge = new Border { Background = c.Item2, Margin = new Thickness(3,2,3,2),
-                    Width = 69, Height = 25, CornerRadius = new CornerRadius(2) };
-                badge.Child = new TextBlock { Text = c.Item1, Foreground = Brushes.White,
-                    TextAlignment = TextAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
-                    FontSize = 12 };
-                colors.Children.Add(badge);
+                Color preset=c.Item2;
+                Button swatch=Action(colors,c.Item1,"OverlayColor."+c.Item1,
+                    ()=>SetSelectedOverlayColor(preset));
+                swatch.Width=69;swatch.Height=29;swatch.MinHeight=29;
+                swatch.Padding=new Thickness(2);
+                swatch.Background=new SolidColorBrush(preset);
+                swatch.Foreground=Brushes.White;
+                swatch.BorderThickness=new Thickness(1);
+                swatch.ToolTip="将选中的ROI、测量或标注对象设置为"+c.Item1+
+                    "颜色；锁定对象需先解锁。";
+                AutomationProperties.SetHelpText(swatch,
+                    "选择对象后点击此颜色即可实际修改Overlay绘制样式。");
             }
             content.Children.Add(colors);
             WrapPanel visibility = Row(_showRoi,_showMeasurements,_showAnnotations,_showDefects);
