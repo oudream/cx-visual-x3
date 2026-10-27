@@ -92,6 +92,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 typeof(FTRChannelConfiguration).Assembly == typeof(FTRChannelBase).Assembly &&
                 typeof(FTRTcpClientChannel).Assembly == typeof(FTRChannelBase).Assembly,
                 "所有正式Channel契约、配置与实现必须由Foundation.Transport唯一拥有");
+            ConnectorAllChannelKinds();
             LifecycleStateMachine();
             BoundedEvidence();
             TcpLoopback();
@@ -106,6 +107,103 @@ namespace CxVisual.Tests.ArchitectureSmoke
             HttpLoopback();
             Console.WriteLine("CHANNEL.TRANSPORT: TCP/UDP loopback MultiPeer and stale generation PASS");
         }
+
+        // 覆盖所有已实现的 ChannelKind：装配能力不是打开真实设备的证明。
+        // 始终使用真实 FTR 类型与单个 Empty Protocol，不新建替代通道工厂。
+        private static void ConnectorAllChannelKinds()
+        {
+            FTRVirtualChannel[] virtualPair = FTRVirtualChannel.CreatePair("matrix-virtual", "matrix-peer");
+            FTRChannelConfiguration[] configurations = {
+                new FTRVirtualChannelConfiguration { Id = "matrix-virtual" },
+                new FTRTcpClientChannelConfiguration { Id = "matrix-tcp-client" },
+                new FTRTcpServerChannelConfiguration { Id = "matrix-tcp-server" },
+                new FTRUdpChannelConfiguration { Id = "matrix-udp" },
+                new FTRUdpServerChannelConfiguration { Id = "matrix-udp-server" },
+                new FTRSerialChannelConfiguration { Id = "matrix-serial" },
+                new FTRHttpClientChannelConfiguration { Id = "matrix-http" },
+                new FTRNamedPipeClientChannelConfiguration { Id = "matrix-pipe-client" },
+                new FTRNamedPipeServerChannelConfiguration { Id = "matrix-pipe-server" },
+                new FTRWebSocketClientChannelConfiguration { Id = "matrix-websocket" },
+                new FTRReplayChannelConfiguration { Id = "matrix-replay" },
+                new FTRUdpMulticastChannelConfiguration { Id = "matrix-multicast" }
+            };
+            IFTRChannel[] channels = {
+                virtualPair[0],
+                new FTRTcpClientChannel(configurations[1]),
+                new FTRTcpServerChannel(configurations[2]),
+                new FTRUdpChannel(configurations[3]),
+                new FTRUdpServerChannel(configurations[4]),
+                new FTRSerialChannel(configurations[5]),
+                new FTRHttpClientChannel(configurations[6]),
+                new FTRNamedPipeClientChannel(configurations[7]),
+                new FTRNamedPipeServerChannel(configurations[8]),
+                new FTRWebSocketClientChannel(configurations[9]),
+                new FTRReplayChannel(configurations[10]),
+                new FTRUdpMulticastChannel(configurations[11])
+            };
+            Check(configurations.Length == Enum.GetValues(typeof(FTRChannelKind)).Length - 1,
+                "所有正式FTR ChannelKind必须都有装配测试（Custom没有内置Provider）");
+            for (int i = 0; i < channels.Length; ++i)
+            {
+                MCNConnectorConfiguration model = new MCNConnectorConfiguration {
+                    DisplayName = "通道装配矩阵 " + i,
+                    Channel = configurations[i],
+                    Protocol = new MPAProtocolConfiguration("matrix-protocol-" + i, "empty")
+                };
+                MCNConnectorModule module = new MCNConnectorModule(
+                    model.Describe("matrix-connector-" + i, MFMModuleKind.Connector),
+                    model, channels[i], new MPAEmptyProtocol());
+                Check(ReferenceEquals(module.Channel, channels[i]) && !module.IsStarted &&
+                    module.Channel.State == FTRChannelState.Closed,
+                    "正式Channel应只装配而不隐式连接、创建后台IO或假装已经启动：" + configurations[i].Kind);
+            }
+            // 防止仅凭相同Id、兼容IO能力就接受错误的CLR Channel实现。
+            MCNConnectorConfiguration mismatch = new MCNConnectorConfiguration {
+                DisplayName = "错误通道拒绝",
+                Channel = new FTRVirtualChannelConfiguration { Id = "matrix-tcp-client" },
+                Protocol = new MPAProtocolConfiguration("matrix-wrong-type", "empty")
+            };
+            bool wrongTypeRejected = false;
+            try {
+                new MCNConnectorModule(mismatch.Describe("matrix-wrong-type", MFMModuleKind.Connector),
+                    mismatch, channels[1], new MPAEmptyProtocol());
+            }
+            catch (NotSupportedException) { wrongTypeRejected = true; }
+            Check(wrongTypeRejected, "配置与实际Channel类型不匹配必须拒绝");
+            // LengthFrame仅适用于ByteStream；HTTP/WebSocket/Replay Message不得绕过协议能力门禁。
+            foreach (int i in new[] { 6, 9, 10 })
+            {
+                MCNConnectorConfiguration invalid = new MCNConnectorConfiguration {
+                    DisplayName = "错误协议能力拒绝",
+                    Channel = configurations[i],
+                    Protocol = new MPAProtocolConfiguration("matrix-length-" + i, "length.frame")
+                };
+                bool rejected = false;
+                try {
+                    new MCNConnectorModule(invalid.Describe("matrix-invalid-" + i, MFMModuleKind.Connector),
+                        invalid, channels[i], new MPALengthFrameProtocol());
+                }
+                catch (ArgumentException) { rejected = true; }
+                Check(rejected, "消息类Channel不可假装支持ByteStream长度规约：" + configurations[i].Kind);
+            }
+            // Custom只有配置身份，没有已经注册的真实Provider，仍必须失败关闭。
+            FTRCustomChannelConfiguration custom = new FTRCustomChannelConfiguration {
+                Id = "matrix-custom", CustomTypeId = "vendor.unregistered"
+            };
+            MCNConnectorConfiguration unknown = new MCNConnectorConfiguration {
+                DisplayName = "未注册厂商通道", Channel = custom,
+                Protocol = new MPAProtocolConfiguration("matrix-custom-protocol", "empty")
+            };
+            bool noProvider = false;
+            try {
+                new MCNConnectorModule(unknown.Describe("matrix-custom", MFMModuleKind.Connector),
+                    unknown, virtualPair[0], new MPAEmptyProtocol());
+            }
+            catch (NotSupportedException) { noProvider = true; }
+            Check(noProvider, "Custom未注册Provider不能装配成功");
+            Console.WriteLine("CHANNEL.CONNECTOR: 12 built-in FTR kinds + mismatch/protocol/Custom rejection PASS");
+        }
+
         // 大数据仍应完整传给上层；证据只能有界留存，并明确记录省略原因。
         private static void NamedPipeLoopback()
         {
