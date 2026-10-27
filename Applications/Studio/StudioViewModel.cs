@@ -313,6 +313,22 @@ namespace CxVisual.Studio
             }
             return result;
         }
+        /// <summary>单击/拖框在画布定位文本；文字依然是MEM正式Text工程对象。</summary>
+        public MTCEditResult<bool> DrawVisualText(IReadOnlyList<FGEPoint2D> points)
+        {
+            Guid[] old=Items.Select(item=>item.Id).ToArray();
+            MTCEditResult<bool> result=_editor.DrawText("文字 "+(ElementCount+1),
+                "文本",points);
+            if(result.Success)
+            {
+                var created=Items.LastOrDefault(item=>!old.Contains(item.Id));
+                if(created!=null)Select(created.Id);
+                NotifyScene();
+            }
+            Status=result.Success?"已绘制文本框 | Revision "+result.Revision:
+                "文本框绘制被拒绝："+result.ErrorCode+" "+result.Message;
+            return result;
+        }
         /// <summary>导入项目打包资产并在当前编辑资源创建真实图片/SVG图元。</summary>
         public void AddVisualAsset(string file)
         {

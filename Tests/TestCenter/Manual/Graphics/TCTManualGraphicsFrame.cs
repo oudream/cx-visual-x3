@@ -214,6 +214,25 @@ namespace CxVisual.TestCenter.UI
         private void WireCanvas()
         {
             // 绘制在PointerUp/Enter才进入单次MVI/MEM事务，Ghost阶段不改Revision。
+            _canvas.DrawTextRequested+=points=>
+            {
+                try
+                {
+                    Guid[] before=_editor.Scene.Select(item=>item.Id).ToArray();
+                    MTCEditResult<bool> result=_editor.DrawText("文本"+(++_created),"文本",points);
+                    Commit(result,"画布文字框");
+                    if(result.Success)
+                    {
+                        var item=_editor.Scene.LastOrDefault(entry=>!before.Contains(entry.Id));
+                        if(item!=null)
+                        {
+                            _editor.Select(item.Id);
+                            _canvas.SetSelectedVisualIds(new[]{item.Id});
+                        }
+                    }
+                }
+                catch(Exception ex){Report("文本绘制失败："+ex.Message);}
+            };
             _canvas.DrawShapeRequested+=(kind,points,constrain)=>
             {
                 try
@@ -469,7 +488,8 @@ namespace CxVisual.TestCenter.UI
             try
             {
                 MRCShapeKind shapeKind;
-                if(operation=="Select"||Enum.TryParse(operation,false,out shapeKind)&&
+                if(operation=="Select"||operation=="Text"||
+                    Enum.TryParse(operation,false,out shapeKind)&&
                     Enum.IsDefined(typeof(MRCShapeKind),shapeKind))
                 {
                     _canvas.SetDrawTool(operation);

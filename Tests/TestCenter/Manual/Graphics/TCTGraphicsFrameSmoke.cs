@@ -246,10 +246,23 @@ namespace CxVisual.TestCenter.UI
                 frame.Canvas.CancelInteraction();
                 if(frame.Canvas.HasDrawPreview||frame.Revision!=canceled||frame.SceneCount!=7)
                     throw new InvalidOperationException("Esc/失焦取消绘制不得留下Shape或Revision");
+                frame.Execute("Text");
+                int beforeText=frame.Revision;
+                if(frame.Canvas.ActiveDrawTool!="Text"||frame.SceneCount!=7)
+                    throw new InvalidOperationException("Text点击应激活画布放置而非自动生成文本");
+                frame.Canvas.BeginDrawGesture(800,210);
+                frame.Canvas.UpdateDrawGesture(950,280);
+                if(!frame.Canvas.CompleteDrawGesture(950,280)||frame.SceneCount!=8||
+                    frame.Revision!=beforeText+1)
+                    throw new InvalidOperationException("Text拖框没有生成正式MEM文本图元");
+                MRCVisualItem textItem=frame.FindObject(frame.SceneIds.Last()) as MRCVisualItem;
+                if(textItem==null||Math.Abs(textItem.Width-150)>1e-6||
+                    Math.Abs(textItem.Height-75)>1e-6)
+                    throw new InvalidOperationException("Text画布Ghost尺寸与MEM对象不一致");
                 frame.Execute("Select");
                 frame.SaveProject(file);
                 frame.OpenProject(file);
-                if(frame.SceneCount!=7||frame.IsDirty)
+                if(frame.SceneCount!=8||frame.IsDirty)
                     throw new InvalidOperationException("新绘图工程没有完成保存重开");
                 frame.Inspect();
                 if(!frame.StatusMessage.Contains("Revision")||

@@ -92,6 +92,26 @@ namespace CxVisual.Mechanism.Visual
                 default:throw new ArgumentOutOfRangeException("kind");
             }
         }
+        /// <summary>文字框纯布局规则，与SceneView Ghost共用；短点击按默认尺寸放置。</summary>
+        public static void TextBounds(IReadOnlyList<FGEPoint2D> points,
+            out double x,out double y,out double width,out double height)
+        {
+            if(points==null||points.Count!=2)throw new ArgumentException("visual.draw.text_points");
+            foreach(var pt in points)
+                if(double.IsNaN(pt.X)||double.IsInfinity(pt.X)||
+                    double.IsNaN(pt.Y)||double.IsInfinity(pt.Y))
+                    throw new ArgumentException("visual.draw.non_finite");
+            double dx=points[1].X-points[0].X,dy=points[1].Y-points[0].Y;
+            if(Math.Sqrt(dx*dx+dy*dy)<3)
+            {
+                x=points[0].X;y=points[0].Y;
+                width=150;height=30;return;
+            }
+            x=Math.Min(points[0].X,points[1].X);
+            y=Math.Min(points[0].Y,points[1].Y);
+            width=Math.Max(40,Math.Abs(dx));
+            height=Math.Max(24,Math.Abs(dy));
+        }
         public static MRCShapeDefinition CreateDefault(MRCShapeKind kind)
         {
             switch(kind)

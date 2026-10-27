@@ -449,6 +449,19 @@ namespace CxVisual.Mechanism.Visual
         }
 
         /// <summary>图元新增只通过原MEM工程事务提交，一次Undo即可撤销。</summary>
+        /// <summary>在世界位置放置文字框；尺寸与WPF预览由同一纯布局规则决定。</summary>
+        public MTCEditResult<bool> DrawText(string name,string text,
+            IReadOnlyList<FGEPoint2D> worldPoints)
+        {
+            Demand();
+            double x,y,width,height;
+            MVIShapeCatalog.TextBounds(worldPoints,out x,out y,out width,out height);
+            return Document.Edit("绘制文字框",e=>
+            {
+                e.AddText(CurrentDrawParent(),name,text,x,y,width,height);
+                return true;
+            });
+        }
         /// <summary>唯一绘制创建入口；与WPF Ghost共享纯几何求解，单次MEM事务。</summary>
         public MTCEditResult<bool> DrawShape(string name,MRCShapeKind kind,
             IReadOnlyList<FGEPoint2D> worldPoints,bool constrained)

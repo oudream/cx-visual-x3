@@ -187,6 +187,16 @@ namespace CxVisual.Studio
             LogicHost.PortLinkRejected += (sender,args) =>
                 LogicInfo.Text="拖线被拒绝："+args.Reason;
             SceneHost.DrawToolChanged+=tool=>StudioVisualOperations.SetActiveTool(tool);
+            SceneHost.DrawTextRequested+=points=>
+            {
+                try
+                {
+                    MTCEditResult<bool> result=_viewModel.DrawVisualText(points);
+                    VisualInfo.Text=result.Success?"画布文字框已创建，可在属性编辑文本内容":
+                        "文字框创建被拒绝："+result.ErrorCode+" "+result.Message;
+                }
+                catch(Exception ex){VisualInfo.Text="文字绘制失败："+ex.Message;}
+            };
             SceneHost.DrawShapeRequested+=(kind,points,constrain)=>
             {
                 try
@@ -490,7 +500,7 @@ namespace CxVisual.Studio
             try
             {
                 MRCShapeKind shape;
-                if(operation=="Select"||
+                if(operation=="Select"||operation=="Text"||
                     (Enum.TryParse(operation,false,out shape)&&
                      Enum.IsDefined(typeof(MRCShapeKind),shape)))
                 {
