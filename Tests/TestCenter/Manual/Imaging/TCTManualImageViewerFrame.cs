@@ -866,9 +866,17 @@ namespace CxVisual.TestCenter.UI
             using (System.IO.StreamWriter output = new System.IO.StreamWriter(
                 path,false,new System.Text.UTF8Encoding(true)))
             {
-                output.WriteLine("Id,Layer,Kind,Visible,X,Y,Width,Height,PointCount,Value,Text,Vertices");
+                // 前12列保持兼容；追加样式、锁定及Ls2Ls数值列，避免CSV只有人类可读描述。
+                output.WriteLine("Id,Layer,Kind,Visible,X,Y,Width,Height,PointCount,Value,Text,Vertices,"+
+                    "Argb,LineWidthPx,Locked,LinePairDistancePixels,LinePairDistanceMillimeters,"+
+                    "LinePairAngleDegrees,LinePairPhysicalAngleDegrees,ClosestOnFirstX,ClosestOnFirstY,"+
+                    "ClosestOnSecondX,ClosestOnSecondY");
                 foreach (MVIImageOverlayItem item in _viewer.Overlays.Items)
                 {
+                    FIMLinePairResult pair=item.Kind==MVIImageOverlayKind.LinePairMeasurement &&
+                        item.Points.Count==4 ?
+                        FIMImageMeasurement.MeasureLinePair(item.Points[0],item.Points[1],
+                            item.Points[2],item.Points[3],_viewer.PixelSpacing) : null;
                     string[] fields = {
                         item.Id.ToString("D"),item.Layer.ToString(),item.Kind.ToString(),
                         item.IsVisible.ToString(),item.Bounds.X.ToString("R",CultureInfo.InvariantCulture),
@@ -879,7 +887,26 @@ namespace CxVisual.TestCenter.UI
                         _viewer.DescribeMeasurement(item), item.Text,
                         string.Join(";",item.Points.Select(point =>
                             point.X.ToString("R",CultureInfo.InvariantCulture) + ":" +
-                            point.Y.ToString("R",CultureInfo.InvariantCulture)))
+                            point.Y.ToString("R",CultureInfo.InvariantCulture))),
+                        ((uint)item.Argb).ToString("X8",CultureInfo.InvariantCulture),
+                        item.LineWidth.ToString("R",CultureInfo.InvariantCulture),
+                        item.IsLocked.ToString(),
+                        pair==null ? string.Empty :
+                            pair.DistancePixels.ToString("R",CultureInfo.InvariantCulture),
+                        pair==null || !pair.DistanceMillimeters.HasValue ? string.Empty :
+                            pair.DistanceMillimeters.Value.ToString("R",CultureInfo.InvariantCulture),
+                        pair==null ? string.Empty :
+                            pair.AngleDegrees.ToString("R",CultureInfo.InvariantCulture),
+                        pair==null || !pair.PhysicalAngleDegrees.HasValue ? string.Empty :
+                            pair.PhysicalAngleDegrees.Value.ToString("R",CultureInfo.InvariantCulture),
+                        pair==null ? string.Empty :
+                            pair.ClosestOnFirst.X.ToString("R",CultureInfo.InvariantCulture),
+                        pair==null ? string.Empty :
+                            pair.ClosestOnFirst.Y.ToString("R",CultureInfo.InvariantCulture),
+                        pair==null ? string.Empty :
+                            pair.ClosestOnSecond.X.ToString("R",CultureInfo.InvariantCulture),
+                        pair==null ? string.Empty :
+                            pair.ClosestOnSecond.Y.ToString("R",CultureInfo.InvariantCulture)
                     };
                     output.WriteLine(string.Join(",",fields.Select(CsvField)));
                 }
