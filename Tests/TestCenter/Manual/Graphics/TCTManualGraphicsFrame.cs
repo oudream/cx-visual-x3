@@ -97,7 +97,7 @@ namespace CxVisual.TestCenter.UI
             ScrollViewer right=new ScrollViewer{Content=inspector,
                 VerticalScrollBarVisibility=ScrollBarVisibility.Auto};
             Grid.SetColumn(right,2);layout.Children.Add(right);
-            Border bottom=new Border{Padding=new Thickness(10,7),Child=_status,
+            Border bottom=new Border{Padding=new Thickness(10,7,10,7),Child=_status,
                 BorderThickness=new Thickness(0,1,0,0),BorderBrush=Brushes.LightSteelBlue,
                 Background=new SolidColorBrush(Color.FromRgb(231,239,247))};
             Grid.SetRow(bottom,1);Grid.SetColumnSpan(bottom,3);layout.Children.Add(bottom);
@@ -121,7 +121,7 @@ namespace CxVisual.TestCenter.UI
                 if(ids.Count>1)Commit(_editor.MoveSelection(ids,dx,dy,false),"键盘移动");
                 else if(ids.Count==1)
                 {
-                    MVISceneItem item=_editor.Scene.FirstOrDefault(x=>x.Id==ids[0]);
+                    MVISceneItem item=_editor.Scene.FirstOrDefault(entry=>entry.Id==ids[0]);
                     if(item==null){Report("目标已失效，拒绝移动");return;}
                     double x,y;item.PositionAfterWorldDelta(dx,dy,out x,out y);
                     Commit(_editor.Move(item.Id,x,y),"键盘移动");
