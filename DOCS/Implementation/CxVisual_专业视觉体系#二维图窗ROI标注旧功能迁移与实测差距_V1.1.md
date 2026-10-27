@@ -254,3 +254,14 @@
 **本轮代码提交**：`270a5ab`（FIM区域生长），`2fd69f4`（FIM真值、连通性、取消反证），`4205d26`（TestCenter后台处理与结果输出），`fd955bc`（真实WPF参数及按钮），`2340972`（WPF点击后实际掩码与非法参数）。**验收状态**：Windows工作流已由源码提交触发，但须以相应SHA运行结论核定。当前不可直接将旧CI成功当作新增区域生长完成。
 
 **后续仍需**：旧专业ROI回调接入`Professional.Vision`，区域连通轮廓、孔洞与复合ROI、阈值交互式选区及FIM/MVI输出映射、缺陷候选列表与面积筛选、丰富结果表、取消性能统计、HALCON同图同ROI结果对照。
+
+## 13. 非模态UI异常与无人值守CI防卡死（2026-10-27）
+
+**真实问题**：较新WPF属性页测试点击非法ARGB按钮时，原`TCTManualImageViewerFrame.AddButton`的捕获分支调用`MessageBox.Show`。这一模态对话框在无人值守Windows Runner中没有真实用户点击，会使`--imaging-viewer-smoke`不能退出；原Imaging工作流又用`Start-Process -Wait`不带进程级短超时，只能等待35分钟job总上限。这不是统计模型数值问题，更不是“CI已绿色”。
+
+**源码修复**：
+- `a0644bb`：错误输入保持已保存对象快照不变，显示底部状态、红色按钮边框和错误Tooltip，UIA通过`AutomationProperties.HelpText`可读取，不再弹阻塞对话框。
+- `c789b72`：实际WPF Button.Click反证非法ARGB不会写入旧对象，要求存在非模态错误提示，而不是删除异常测试来规避阻塞。
+- `819d214`：现有`.github/workflows/imaging-foundation-windows.yml`只对二维原生WPF Smoke启动进程增加120秒`WaitForExit`上限、超时杀进程及诊断文本输出，防止后续UI问题无限占用Windows Runner；不改变三维/其它专业工作流。
+
+**验收界限**：前一版本[Imaging #40457295893](https://github.com/oudream/cx-visual-x3/actions/runs/40457295893)和[TestCenter #40457295939](https://github.com/oudream/cx-visual-x3/actions/runs/40457295939)成功属于较早Ls2Ls基础提交`7c0be2d`。后续区域生长/样式编辑/物理夹角及模态处理的完整最新功能需按[Imaging #40459752429](https://github.com/oudream/cx-visual-x3/actions/runs/40459752429)、[TestCenter #40459563749](https://github.com/oudream/cx-visual-x3/actions/runs/40459563749)各自SHA和完成结论核定；不要将早期通过冒充新的版本已通过。
