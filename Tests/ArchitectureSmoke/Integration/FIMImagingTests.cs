@@ -18,6 +18,40 @@ namespace CxVisual.Tests.ArchitectureSmoke
             byte[] copy = image.CopyPixels();
             copy[1] = 80;
             Assert(image.GetGrayValue(1, 0) == 2, "复制结果隔离");
+            FIMThresholdRegionResult threshold=FIMImageOperations.ThresholdInRegion(
+                image,6,10,new FIMPixelRegion(0,1,3,2));
+            Assert(threshold.PixelCount==5 && threshold.SampledPixelCount==8 &&
+                threshold.Bounds.HasValue && threshold.Bounds.Value.Left==0 &&
+                threshold.Bounds.Value.Right==3 && threshold.Bounds.Value.Top==1 &&
+                threshold.Bounds.Value.Bottom==2 &&
+                threshold.Mask.PixelFormat==FIMPixelFormat.Gray8 &&
+                threshold.Mask.GetGrayValue(1,1)==255 &&
+                threshold.Mask.GetGrayValue(0,1)==0 &&
+                threshold.Mask.GetGrayValue(1,2)==255 &&
+                threshold.Mask.GetGrayValue(2,2)==0 &&
+                image.GetGrayValue(1,1)==6,
+                "限定原图ROI阈值分割必须返回真实掩码/像素数并保留原图");
+            FIMThresholdRegionResult shape=FIMImageOperations.ThresholdInRegion(
+                image,5,14,new FIMPixelRegion(0,1,3,2),(x,y)=>x==1);
+            Assert(shape.SampledPixelCount==2 && shape.PixelCount==2 &&
+                shape.Mask.GetGrayValue(1,1)==255 && shape.Mask.GetGrayValue(1,2)==255 &&
+                shape.Mask.GetGrayValue(0,1)==0 && shape.Mask.GetGrayValue(2,2)==0,
+                "非矩形ROI必须按精确像素中心筛选，不能借外接框扩张阈值");
+            FIMThresholdRegionResult empty=FIMImageOperations.ThresholdInRegion(
+                image,100,200,new FIMPixelRegion(1,1,2,2));
+            Assert(empty.PixelCount==0 && !empty.Bounds.HasValue &&
+                empty.Mask.GetGrayValue(1,1)==0,"空阈值区域不能伪造面积或Bounds");
+            Throws<ArgumentOutOfRangeException>(()=>FIMImageOperations.ThresholdInRegion(
+                image,10,5,new FIMPixelRegion(0,0,1,1)),"阈值上下限倒置必须失败");
+            Throws<ArgumentOutOfRangeException>(()=>FIMImageOperations.ThresholdInRegion(
+                image,double.NaN,10,new FIMPixelRegion(0,0,1,1)),"NaN阈值必须失败");
+            using(CancellationTokenSource thresholdCancelled=new CancellationTokenSource())
+            {
+                thresholdCancelled.Cancel();
+                Throws<OperationCanceledException>(()=>FIMImageOperations.ThresholdInRegion(
+                    image,1,16,new FIMPixelRegion(0,0,3,3),null,
+                    thresholdCancelled.Token),"已取消阈值分割不能提交掩码");
+            }
             FIMRegionGrowingResult grown=FIMImageOperations.RegionGrow(
                 image,new FIMPixelRegion(0,1,3,1),1,1,1);
             Assert(grown.PixelCount==3 && grown.Bounds.Left==0 &&
