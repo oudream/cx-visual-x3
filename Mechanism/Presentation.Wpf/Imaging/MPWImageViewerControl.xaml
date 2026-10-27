@@ -63,6 +63,12 @@
      <Image.RenderTransform><MatrixTransform x:Name="SecondaryImageTransform"/></Image.RenderTransform>
     </Image>
     <Canvas x:Name="SecondaryOverlayCanvas" IsHitTestVisible="False"/>
+    <Canvas IsHitTestVisible="False">
+     <Polyline x:Name="SecondaryDraftPolyline" Stroke="#FFFFD157" StrokeThickness="1.5"
+      StrokeDashArray="4,3" Visibility="Collapsed" Fill="Transparent"/>
+     <Polyline x:Name="SecondaryDraftLinePair" Stroke="#FFFFD157" StrokeThickness="1.5"
+      StrokeDashArray="4,3" Visibility="Collapsed" Fill="Transparent"/>
+    </Canvas>
     <TextBlock Text="结果图" Foreground="#E6F1FD" Background="#99162231"
      HorizontalAlignment="Left" VerticalAlignment="Top" Padding="7,3"
      Margin="5" IsHitTestVisible="False"/>
