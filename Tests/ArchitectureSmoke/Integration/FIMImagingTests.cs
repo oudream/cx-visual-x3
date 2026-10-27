@@ -18,6 +18,35 @@ namespace CxVisual.Tests.ArchitectureSmoke
             byte[] copy = image.CopyPixels();
             copy[1] = 80;
             Assert(image.GetGrayValue(1, 0) == 2, "复制结果隔离");
+            FIMRegionGrowingResult grown=FIMImageOperations.RegionGrow(
+                image,new FIMPixelRegion(0,1,3,1),1,1,1);
+            Assert(grown.PixelCount==3 && grown.Bounds.Left==0 &&
+                grown.Bounds.Right==2 && grown.Bounds.Top==1 &&
+                grown.Mask.PixelFormat==FIMPixelFormat.Gray8 &&
+                grown.Mask.GetGrayValue(0,1)==255 &&
+                grown.Mask.GetGrayValue(3,1)==0 &&
+                grown.Mask.GetGrayValue(1,0)==0 &&
+                image.GetGrayValue(1,1)==6,
+                "区域生长以原图种子5/6/7三像素连通而不污染源图或扩大ROI");
+            FIMImageBuffer diagonalSeeds=new FIMImageBuffer(3,3,FIMPixelFormat.Gray8,
+                new byte[]{1,99,99,99,1,99,99,99,1});
+            FIMPixelRegion nine=new FIMPixelRegion(0,0,2,2);
+            Assert(FIMImageOperations.RegionGrow(diagonalSeeds,nine,1,1,0).PixelCount==1 &&
+                FIMImageOperations.RegionGrow(diagonalSeeds,nine,1,1,0,true).PixelCount==3,
+                "四邻域/八邻域区域生长连通性必须真实不同");
+            Throws<ArgumentOutOfRangeException>(()=>FIMImageOperations.RegionGrow(
+                image,new FIMPixelRegion(0,0,1,1),2,2,0),
+                "种子越出ROI必须拒绝");
+            Throws<ArgumentOutOfRangeException>(()=>FIMImageOperations.RegionGrow(
+                image,new FIMPixelRegion(0,0,3,3),1,1,-1),
+                "负容差不允许假结果");
+            using(CancellationTokenSource cancelledGrowth=new CancellationTokenSource())
+            {
+                cancelledGrowth.Cancel();
+                Throws<OperationCanceledException>(()=>FIMImageOperations.RegionGrow(
+                    image,new FIMPixelRegion(0,0,3,3),1,1,1,false,
+                    cancelledGrowth.Token),"已取消的区域生长不应分配有效结果");
+            }
             FIMImageAnalysisResult stats = FIMImageAnalyzer.Analyze(image, 16);
             Assert(stats.Statistics.PixelCount == 16 && stats.Statistics.Min == 1 &&
                 stats.Statistics.Max == 16 && Near(stats.Statistics.Mean, 8.5), "原始统计");
