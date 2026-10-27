@@ -172,9 +172,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
         }
         private static void MoveControl(UIElement child,Panel target)
         {
-            Panel current=child.Parent as Panel;
+            FrameworkElement element=child as FrameworkElement;
+            if(element==null)
+                throw new ArgumentException("需传入实际WPF FrameworkElement。","child");
+            Panel current=element.Parent as Panel;
             if(current!=null)current.Children.Remove(child);
-            else if(child.Parent!=null)
+            else if(element.Parent!=null)
                 throw new InvalidOperationException("传入控件有不支持的原始WPF父容器。");
             target.Children.Add(child);
         }
