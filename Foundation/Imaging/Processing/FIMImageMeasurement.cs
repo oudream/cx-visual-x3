@@ -11,17 +11,20 @@ namespace CxVisual.Foundation.Imaging
     public sealed class FIMLinePairResult
     {
         internal FIMLinePairResult(FGEPoint2D onFirst,FGEPoint2D onSecond,
-            double distancePixels,double? distanceMillimeters,double angleDegrees)
+            double distancePixels,double? distanceMillimeters,double angleDegrees,
+            double? physicalAngleDegrees)
         {
             ClosestOnFirst=onFirst;ClosestOnSecond=onSecond;
             DistancePixels=distancePixels;DistanceMillimeters=distanceMillimeters;
-            AngleDegrees=angleDegrees;
+            AngleDegrees=angleDegrees;PhysicalAngleDegrees=physicalAngleDegrees;
         }
         public FGEPoint2D ClosestOnFirst { get; private set; }
         public FGEPoint2D ClosestOnSecond { get; private set; }
         public double DistancePixels { get; private set; }
         public double? DistanceMillimeters { get; private set; }
         public double AngleDegrees { get; private set; }
+        /// <summary>非等距标定下的物理方向夹角；未标定时为空，不冒充像素角。</summary>
+        public double? PhysicalAngleDegrees { get; private set; }
     }
 
     public static class FIMImageMeasurement
@@ -122,7 +125,7 @@ namespace CxVisual.Foundation.Imaging
                 }
             }
             // 非等距标定会改变线段最近点的位置，不能把像素最近点直接换算为毫米最短距离。
-            double? physical=null;
+            double? physical=null,physicalAngle=null;
             if(spacing.HasValue)
             {
                 double sx=spacing.Value.MillimetersPerPixelX;
@@ -131,8 +134,9 @@ namespace CxVisual.Foundation.Imaging
                     new FGEPoint2D(a.X*sx,a.Y*sy),new FGEPoint2D(b.X*sx,b.Y*sy),
                     new FGEPoint2D(c.X*sx,c.Y*sy),new FGEPoint2D(d.X*sx,d.Y*sy));
                 physical=physicalGeometry.DistancePixels;
+                physicalAngle=physicalGeometry.AngleDegrees;
             }
-            return new FIMLinePairResult(bestA,bestB,best,physical,angle);
+            return new FIMLinePairResult(bestA,bestB,best,physical,angle,physicalAngle);
         }
 
         /// <summary>横/纵距离保留原图坐标，物理量使用各轴独立标定，避免显示缩放污染。</summary>
