@@ -76,6 +76,17 @@ namespace CxVisual.Mechanism.Data.Variables
             add { lock (_gate) _batchCommitted += value; }
             remove { lock (_gate) _batchCommitted -= value; }
         }
+        // 热插入Reliable时必须在同一表锁内设置起始序列并注册回调，避免时序空洞。
+        internal void SubscribeReliableBatches(Action<MDSVariableChangeBatch> receiver, Action<long> initializeBaseline)
+        {
+            if (receiver == null) throw new ArgumentNullException("receiver");
+            if (initializeBaseline == null) throw new ArgumentNullException("initializeBaseline");
+            lock (_gate)
+            {
+                initializeBaseline(_batchSequence);
+                _batchCommitted += receiver;
+            }
+        }
         private Action<MDSVariableChange> _captured;
         public event Action<MDSVariableChange> ChangeCaptured
         {

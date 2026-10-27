@@ -764,8 +764,49 @@ namespace CxVisual.Tests.ArchitectureSmoke
             }
         }
 
+        private static void VariableReliableGapSmoke()
+        {
+            MDSVariableTable table = new MDSVariableTable("reliable-gap");
+            table.Define(new MDSVariableDefinition("Value", typeof(int)));
+            // 先提交，再创建Journal：起始序列应是当前Scope已提交批次的水位。
+            table.UpdateBatch(new MDSVariableBatch("reliable-gap",
+                new[] { new MDSVariableBatchItem("Value", 1) }, "preexisting"));
+            using (MDSVariableReliableChangeJournal queue =
+                new MDSVariableReliableChangeJournal(table, 1))
+            {
+                Check(queue.LastConfirmedSequence == 1 && queue.ExpectedNextSequence == 2,
+                    "运行中热插入必须从表的当前提交水位开始");
+                MDSVariableBatchResult second = table.UpdateBatch(new MDSVariableBatch(
+                    "reliable-gap", new[] { new MDSVariableBatchItem("Value", 2) }, "second"));
+                MDSVariableBatchResult third = table.UpdateBatch(new MDSVariableBatch(
+                    "reliable-gap", new[] { new MDSVariableBatchItem("Value", 3) }, "third"));
+                Check(second.NotificationsSucceeded && !third.NotificationsSucceeded &&
+                    third.NotificationFailures.OfType<MDSVariableReliableBackpressureException>().Any(),
+                    "容量满时必须明确拒绝第三批并保留可补投快照");
+                Check(queue.Acknowledge(2) && queue.ExpectedNextSequence == 3,
+                    "Ack释放容量后下一批必须是被拒绝的第三批");
+                MDSVariableBatchResult fourth = table.UpdateBatch(new MDSVariableBatch(
+                    "reliable-gap", new[] { new MDSVariableBatchItem("Value", 4) }, "fourth"));
+                Check(!fourth.NotificationsSucceeded &&
+                    fourth.NotificationFailures.OfType<MDSVariableReliableSequenceGapException>().Any() &&
+                    queue.PendingCount == 0 && queue.GapRejected == 1,
+                    "不能先接受第四批而丢失第三批");
+                Check(!queue.TryAppend(fourth.CommittedChanges) &&
+                    queue.TryAppend(third.CommittedChanges) &&
+                    queue.ReadPending()[0].BatchSequence == 3 &&
+                    queue.Acknowledge(3) &&
+                    queue.TryAppend(fourth.CommittedChanges) &&
+                    queue.ReadPending()[0].BatchSequence == 4 &&
+                    queue.Acknowledge(4),
+                    "必须先补投缺口、按序确认，之后才可恢复后续批次");
+                Check(queue.LastConfirmedSequence == 4 && queue.PendingCount == 0,
+                    "未确认事件不能被跳过");
+            }
+        }
+
         public static void RunVariableSuite()
         {
+            VariableReliableGapSmoke();
             VariableReliableBatchQueueSmoke();
             IndustrialDeviceVariableWriteSmoke();
             VariableProviderFailureIsolationSmoke();
