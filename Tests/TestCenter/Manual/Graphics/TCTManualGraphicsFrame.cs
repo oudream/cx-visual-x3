@@ -445,8 +445,8 @@ namespace CxVisual.TestCenter.UI
             if(_closed)throw new ObjectDisposedException("TCTManualGraphicsFrame");
             try
             {
-                if(operation=="edit.undo"){Commit(_editor.Undo(),"撤销");return;}
-                if(operation=="edit.redo"){Commit(_editor.Redo(),"重做");return;}
+                if(operation=="edit.undo"){Commit(_editor.Undo(),"撤销");Refresh();return;}
+                if(operation=="edit.redo"){Commit(_editor.Redo(),"重做");Refresh();return;}
                 if(operation=="edit.duplicate")
                 {
                     Guid[] ids=_canvas.SelectedVisualIds.ToArray();
