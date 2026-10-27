@@ -413,6 +413,8 @@ namespace CxVisual.Mechanism.Data.Variables
                 if (expectedRevision.HasValue && _revision != expectedRevision.Value)
                     throw new MDSVariableVersionConflictException(_definition.VariableId,
                         expectedRevision.Value, _revision);
+                // Revision溢出必须在修改任何值/质量/时间之前拒绝，保证单变量提交原子性。
+                if (_revision == long.MaxValue) throw new OverflowException("变量Revision溢出");
                 T next = copied;
                 bool changed = !_hasValue || !MDSVariableValueRules.Equal(_current, next);
                 bool qualityChanged = _quality != quality;
