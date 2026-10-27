@@ -227,6 +227,8 @@ TextBox/Geometry 的文本输入状态下方向键移动光标，不能触发画
 
 **现有测试范围**：`VisualShapeEditingTests.CheckDrawnGeometryContract` 覆盖反向拖动、九种类型、圆/Shift约束及非法几何；`TCTGraphicsFrameSmoke` 验证公共 Button 激活不创建、SceneView 手势路径、Text画布拖框、Ghost 不改 Revision、创建/Undo/Redo/保存重开。该 WPF STA 入口直接调用公开的输入手势适配方法进行验证，**不可充当系统外部鼠标注入、DPI四档、真实打字/DragDrop已通过的证据**；这些仍按 GE-02/03/08/12/13 子项分别签收。
 
+**GE-12 失焦/隐藏增量（2026-10-27）**：`SceneView` 继续只使用既有 `CancelInteraction()` 清理临时 Gesture；通过宿主 `Window.Deactivated`、WPF `IsVisibleChanged`、`Unloaded` 和 `OnLostKeyboardFocus` 扩充取消触发，保证无鼠标捕获的连续点绘在工作区切换后也不会残留 Ghost。`TCTGraphicsFrameSmoke` 追加真实 WPF 隐藏/恢复与切换工具的反证；是否编译、运行成功必须以**本次修改对应的固定 SHA Windows CI**为准。外部系统键鼠注入、窗口真实焦点切换、完整四档 DPI 仍需独立验证。
+
 ## 06. 九 Shape 与 Geometry 精细编辑：实现级算法
 
 ### 6.1 共用几何编辑合同

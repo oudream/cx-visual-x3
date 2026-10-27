@@ -245,7 +245,25 @@ namespace CxVisual.TestCenter.UI
                 frame.Canvas.UpdateDrawGesture(775,375);
                 frame.Canvas.CancelInteraction();
                 if(frame.Canvas.HasDrawPreview||frame.Revision!=canceled||frame.SceneCount!=7)
-                    throw new InvalidOperationException("Esc/失焦取消绘制不得留下Shape或Revision");
+                    throw new InvalidOperationException("显式取消绘制不得留下Shape或Revision");
+                // GE-12：连续点绘没有MouseCapture，真实WPF工作区隐藏仍需清除Ghost。
+                frame.Execute("Polyline");
+                int beforeHide=frame.Revision;
+                frame.Canvas.BeginDrawGesture(705,305);
+                frame.Canvas.UpdateDrawGesture(755,335);
+                frame.Canvas.BeginDrawGesture(755,335);
+                if(!frame.Canvas.HasDrawPreview)
+                    throw new InvalidOperationException("多点绘制没有临时Ghost");
+                frame.Canvas.Visibility=Visibility.Collapsed;
+                if(frame.Canvas.HasDrawPreview||frame.Revision!=beforeHide||
+                    frame.SceneCount!=7)
+                    throw new InvalidOperationException("GE-12工作区隐藏未取消多点Ghost或污染MEM");
+                frame.Canvas.Visibility=Visibility.Visible;
+                frame.Canvas.BeginDrawGesture(710,330);
+                frame.Execute("Polygon");
+                if(frame.Canvas.HasDrawPreview||frame.Revision!=beforeHide||
+                    frame.SceneCount!=7)
+                    throw new InvalidOperationException("GE-12切换绘制工具未清除旧手势");
                 frame.Execute("Text");
                 int beforeText=frame.Revision;
                 if(frame.Canvas.ActiveDrawTool!="Text"||frame.SceneCount!=7)

@@ -18,6 +18,33 @@ namespace CxVisual.Mechanism.Presentation.Wpf
     public sealed class SceneView : FrameworkElement
     {
         private readonly List<MVISceneItem> _items = new List<MVISceneItem>();
+        // 仅订阅所属Window的生命周期；不保存工程编辑状态或第二套手势。
+        private Window _inputWindow;
+        private void OnHostLoaded(object sender, RoutedEventArgs e)
+        {
+            Window host=Window.GetWindow(this);
+            if(ReferenceEquals(host,_inputWindow))return;
+            if(_inputWindow!=null)_inputWindow.Deactivated-=OnHostDeactivated;
+            _inputWindow=host;
+            if(_inputWindow!=null)_inputWindow.Deactivated+=OnHostDeactivated;
+        }
+        private void OnHostUnloaded(object sender, RoutedEventArgs e)
+        {
+            CancelInteraction();
+            if(_inputWindow!=null)_inputWindow.Deactivated-=OnHostDeactivated;
+            _inputWindow=null;
+        }
+        private void OnHostDeactivated(object sender, EventArgs e)
+        {
+            // 多点绘制没有鼠标捕获，窗口失活仍必须清除悬空Ghost。
+            CancelInteraction();
+        }
+        private void OnCanvasIsVisibleChanged(object sender,
+            DependencyPropertyChangedEventArgs e)
+        {
+            // Tab切换/隐藏工作区不触发LostCapture，但属于GE-12取消边界。
+            if(!IsVisible)CancelInteraction();
+        }
         private Guid? _selection;
         // Draw只保存瞬时指针和Ghost数据；工程Shape创建交回MVI/MEM唯一事务。
         private string _drawTool="Select";
@@ -461,6 +488,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             _visualChildren=new VisualCollection(this);
             _visualChildren.Add(_widgetCanvas);
             Focusable=true;
+            Loaded+=OnHostLoaded;
+            Unloaded+=OnHostUnloaded;
+            IsVisibleChanged+=OnCanvasIsVisibleChanged;
         }
         protected override int VisualChildrenCount{get{return _visualChildren.Count;}}
         protected override System.Windows.Media.Visual GetVisualChild(int index)
@@ -1477,8 +1507,23 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             if(_selectionTransformDragging)InvalidateVisual();
             base.OnKeyUp(e);
         }
-        protected override void OnLostMouseCapture(MouseEventArgs e){if(_drawDragging||_dragging||_handleDragging||_connectDragging||_rewireDragging||
-            _waypointDragging||_selectionTransformDragging)CancelInteraction();base.OnLostMouseCapture(e);}
+        protected override void OnLostKeyboardFocus(KeyboardFocusChangedEventArgs e)
+        {
+            // 鼠标未捕获的Polyline/Polygon/Path同样必须在输入焦点离开时取消。
+            if(HasDrawPreview||_dragging||_marquee||_handleDragging||
+                _connectDragging||_rewireDragging||_waypointDragging||
+                _selectionTransformDragging||_panning)
+                CancelInteraction();
+            base.OnLostKeyboardFocus(e);
+        }
+        protected override void OnLostMouseCapture(MouseEventArgs e)
+        {
+            if(HasDrawPreview||_dragging||_marquee||_handleDragging||
+                _connectDragging||_rewireDragging||_waypointDragging||
+                _selectionTransformDragging||_panning)
+                CancelInteraction();
+            base.OnLostMouseCapture(e);
+        }
         protected override void OnMouseLeave(MouseEventArgs e)
         {
             base.OnMouseLeave(e);
