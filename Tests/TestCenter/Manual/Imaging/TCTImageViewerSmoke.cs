@@ -288,7 +288,8 @@ namespace CxVisual.TestCenter.UI
                 if(!lineResult.Contains("最短 2 px") ||
                     !lineResult.Contains("夹角 0°") ||
                     frame.Viewer.Overlays.Find(linePair.Id)!=linePair ||
-                    frame.Viewer.OverlayVisualCount<4)
+                    frame.Viewer.OverlayVisualCount<4 ||
+                    frame.Viewer.HitTestOverlay(2.5,1.5)!=null)
                     throw new InvalidOperationException("Ls2Ls距离夹角/原图对象或独立两线显示错误："+lineResult);
                 string lineCsv=Path.Combine(Path.GetTempPath(),
                     "CxVisual-Ls2Ls-"+Guid.NewGuid().ToString("N")+".csv");
