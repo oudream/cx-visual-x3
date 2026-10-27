@@ -30,7 +30,10 @@ namespace CxVisual.Foundation.Imaging
                 cancellationToken.ThrowIfCancellationRequested();
                 for(int x=0;x<w;x++)
                 {
-                    if(mask.GetGrayValue(x,y)==0)continue;
+                    double value=mask.GetGrayValue(x,y);
+                    if(value!=0 && value!=255)
+                        throw new ArgumentException("轮廓输入必须是0/255二值掩码。","mask");
+                    if(value==0)continue;
                     if(y==0 || mask.GetGrayValue(x,y-1)==0)
                         edges.Add(Key(x,y,0,stride));
                     if(x==w-1 || mask.GetGrayValue(x+1,y)==0)
@@ -64,10 +67,11 @@ namespace CxVisual.Foundation.Imaging
                     else if(dir==2)x--;
                     else y--;
                     // 在仅角接触处优先右转，分别追踪两块区域，不误合并为自交多边形。
-                    int[] order={(dir+1)%4,dir,(dir+3)%4,(dir+2)%4};
                     long next=-1;
-                    foreach(int candidate in order)
+                    for(int turn=0;turn<4;turn++)
                     {
+                        int candidate=turn==0 ? (dir+1)%4 : turn==1 ?
+                            dir : turn==2 ? (dir+3)%4 : (dir+2)%4;
                         long key=Key(x,y,candidate,stride);
                         if(key==first || edges.Contains(key))
                         { next=key;break; }
