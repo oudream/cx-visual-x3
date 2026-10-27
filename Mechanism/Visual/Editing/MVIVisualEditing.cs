@@ -311,29 +311,30 @@ namespace CxVisual.Mechanism.Visual
                     // 有界世界空间搜索：64个参数采样定位谷值，20次三分收敛。
                     // 允许曲线回环，多局部极小按最近距离而非按第一个命中返回。
                     const int count=64;
+                    int bestIndex=0;
                     for(int k=0;k<=count;k++)
                     {
                         double t=(double)k/count;
                         double d=DistanceSquared(target,CurvePoint(previous,control1,
                             control2,end,c.Verb,t));
-                        if(d>=distance)continue;
-                        double left=Math.Max(0,(double)(k-1)/count);
-                        double right=Math.Min(1,(double)(k+1)/count);
-                        for(int j=0;j<20;j++)
-                        {
-                            double a=left+(right-left)/3,b=right-(right-left)/3;
-                            double da=DistanceSquared(target,CurvePoint(previous,
-                                control1,control2,end,c.Verb,a));
-                            double db=DistanceSquared(target,CurvePoint(previous,
-                                control1,control2,end,c.Verb,b));
-                            if(da<db)right=b;else left=a;
-                        }
-                        double refined=(left+right)/2;
-                        double rd=DistanceSquared(target,CurvePoint(previous,control1,
-                            control2,end,c.Verb,refined));
-                        if(rd<distance){distance=rd;candidate=refined;}
-                        else if(d<distance){distance=d;candidate=t;}
+                        if(d<distance){distance=d;candidate=t;bestIndex=k;}
                     }
+                    // 只在最接近的采样区间细化一次，不在每个候选点重复三分。
+                    double left=Math.Max(0,(double)(bestIndex-1)/count);
+                    double right=Math.Min(1,(double)(bestIndex+1)/count);
+                    for(int j=0;j<24;j++)
+                    {
+                        double x=left+(right-left)/3,y=right-(right-left)/3;
+                        double dx=DistanceSquared(target,CurvePoint(previous,
+                            control1,control2,end,c.Verb,x));
+                        double dy=DistanceSquared(target,CurvePoint(previous,
+                            control1,control2,end,c.Verb,y));
+                        if(dx<dy)right=y;else left=x;
+                    }
+                    double refined=(left+right)/2;
+                    double rd=DistanceSquared(target,CurvePoint(previous,
+                        control1,control2,end,c.Verb,refined));
+                    if(rd<distance){distance=rd;candidate=refined;}
                 }
                 if(candidate>1e-6&&candidate<1-1e-6&&distance<=nearest)
                 {nearest=distance;commandIndex=i;fraction=candidate;}

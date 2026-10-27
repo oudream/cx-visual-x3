@@ -260,6 +260,8 @@ TextBox/Geometry 的文本输入状态下方向键移动光标，不能触发画
 
 这保持原曲线形状；**不能把屏幕离散采样点当作新的永久几何定义**。移动 Anchor 可明确选择“保持切线/镜像控制柄/独立控制柄”三种操作意图；Ctrl/Shift 模式经 Studio 快捷键冲突审查后生效，不静默自作平滑。Bezier 控制点的拖动在世界→局部坐标中计算，旋转 Group 下仍保持其余不相关控制点。
 
+**GE-03 曲线画布精确插点增量（2026-10-27）**：沿用`FGEPathEditing.SplitSegment`的原参数空间 de Casteljau，不重复建设曲线分割内核。`MVIVisualEditing.TryHitPathSplitSegment`在`GeometryToWorld`世界坐标下查找Line/Quadratic/Cubic可见段，通过保守Bezier凸包过滤、固定64份粗定位加24次有界细化计算`(commandIndex,t)`，只将这两个参数交给`MVIVisualEditor.EditPathSegment`正式MEM事务。共用`SceneView`在D几何模式中提供Ctrl+双击插点，保留正常双击切换与控制柄优先；Studio/TestCenter共享事件。ArchitectureSmoke覆盖旋转Group、曲线世界t、远距离拒绝和闭合三角形删除边界，WPF Graphics Smoke覆盖插点Revision/Undo/Redo/保存重开。**此增量不表示Arc整圆/Path多子路径所有编辑行为或OS原生键鼠注入已签收**；测试状态以具体SHA的Windows日志为准。
+
 ### 6.4 Arc、Rect、Circle 与特殊参数
 
 - **Arc**：中心、Rx/Ry、StartAngle、SweepAngle 是几何参数；跨零角按连续有向扫角处理，弧长趋零和整圆边界按允许策略，不能靠显示角度 359°→0° 把几何抖到另一侧。ArcCenter、ArcRadiusX/Y、ArcStart/End 等现有 `MVIVisualHandleKind` 可复用。

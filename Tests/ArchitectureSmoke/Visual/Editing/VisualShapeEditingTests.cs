@@ -846,6 +846,21 @@ namespace CxVisual.Tests.ArchitectureSmoke
             var deletion=FGEPathEditing.DeleteAnchor(converted,1);
             Check(deletion.Commands.Count==2&&deletion.Commands[1].Verb==FGEPathVerb.Cubic,
                 "line vertex deletion damaged remaining contour");
+            // 闭合三角形不能删除任何角点后变成两点闭合；拒绝不得修改源路径。
+            var minPolygon=FGEPath2D.Polyline(new[]{
+                new FGEPoint2D(0,0),new FGEPoint2D(20,0),new FGEPoint2D(0,20)},true);
+            bool rejected=false;
+            try{FGEPathEditing.DeleteAnchor(minPolygon,1);}
+            catch(ArgumentException){rejected=true;}
+            Check(rejected&&minPolygon.Commands.Count==4,
+                "Closed triangle must not allow a two-point contour");
+            var quadPolygon=FGEPath2D.Polyline(new[]{
+                new FGEPoint2D(0,0),new FGEPoint2D(20,0),
+                new FGEPoint2D(20,20),new FGEPoint2D(0,20)},true);
+            var reducedPolygon=FGEPathEditing.DeleteAnchor(quadPolygon,1);
+            Check(reducedPolygon.Commands.Count==4&&
+                reducedPolygon.Commands[3].Verb==FGEPathVerb.Close,
+                "Four-vertex closed contour should delete one anchor to a triangle");
             var modified=FGEPathEditing.MoveHandle(plain,2,FGEPathHandleKind.Control2,
                 new FGEPoint2D(95,100));
             Check(modified.Commands[2].Control2.Equals(new FGEPoint2D(95,100)),
@@ -854,7 +869,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 "immutable original path mutated");
             Check(modified.Commands[2].End.Equals(plain.Commands[2].End),
                 "editing a handle moved the endpoint");
-            bool rejected=false;
+            rejected=false;
             try{FGEPathEditing.MoveHandle(plain,1,FGEPathHandleKind.Control2,new FGEPoint2D(1,1));}
             catch(ArgumentException){rejected=true;}
             Check(rejected,"invalid control handle should be rejected");

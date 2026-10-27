@@ -83,7 +83,14 @@ namespace CxVisual.Foundation.Geometry
             while(start>0&&all[start].Verb!=FGEPathVerb.Move)start--;
             int count=0;
             for(int i=start+1;i<all.Count&&all[i].Verb!=FGEPathVerb.Close&&all[i].Verb!=FGEPathVerb.Move;i++)count++;
-            if(count<=1)throw new ArgumentException("geometry.contour.minimum_segments");
+            // 开放折线至少保留一段；闭合轮廓至少保留三个顶点
+            // (Move + 两个线段)。否则三角形会被删除成非法的二点Polygon。
+            int contourEnd=start+1;
+            while(contourEnd<all.Count&&all[contourEnd].Verb!=FGEPathVerb.Close&&
+                all[contourEnd].Verb!=FGEPathVerb.Move)contourEnd++;
+            bool isClosed=contourEnd<all.Count&&all[contourEnd].Verb==FGEPathVerb.Close;
+            if(count<=(isClosed?2:1))
+                throw new ArgumentException("geometry.contour.minimum_segments");
             all.RemoveAt(commandIndex);
             return new FGEPath2D(all);
         }
