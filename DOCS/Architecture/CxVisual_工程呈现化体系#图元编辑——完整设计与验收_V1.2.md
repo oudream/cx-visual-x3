@@ -475,6 +475,15 @@ Preview 输出应携带：当前 Resource Scope、对象 ID/地址、起始 Revi
 - 浅白与深灰主题对比正确，三色控制柄不靠色彩单独传递含义；
 - 不要求用户点中像素级极小对象才能操作，Zoom/DPI 下保持可用 DIP 目标大小。
 
+### 12.5 Studio / TestCenter 共用图元操作面板（2026-10-27 架构落点）
+
+- **操作语义 Owner**：`Mechanism.Visual/MVIVisualEditor` 及既有 MEM/MTC/MPC，控制柄、路由和 Undo 继续复用同一工程；按钮不制造独立的 `GraphicsDocument`、`UndoStack` 或 `Graph`。
+- **唯一公共 WPF 入口**：`Mechanism/Presentation.Wpf/Visual/MPWVisualOperationPanel.cs` 负责九 Shape、Text、Widget 和基本编辑/布局/线路命令入口。它只发出 `OperationRequested(string)` 语义动作，按钮 AutomationId 稳定为 `MPW.Visual.<action>`；宿主负责 CanExecute、权限、异常反馈和与正式命令中心的映射。画布仍复用 `SceneView.cs`，不建立测试专用 Canvas。
+- **Studio 装配**：`Applications/Studio/MainWindow.xaml(.cs)` 在原工具箱位置复用公共面板，仍沿现有 Studio 资源 Scope、Ribbon、ViewModel 和 Undo 提交。Studio 业务操作不得下沉到 MPW 的按钮 Click 处理代码。
+- **TestCenter 装配**：`Tests/TestCenter/Manual/Graphics/TCTManualGraphicsFrame.cs` 在 `manual.graphics` 注册真实 Factory，创建短命测试 MEM 工程及 MVI 编辑器，将公共操作面板与 `SceneView` 的交互意图转发给同一编辑入口。工作区关闭应取消预览并释放临时会话；ManualSession 与测试结果/Attempt 是 TestCenter 自己的 Owner。
+- **测试与事实边界**：`--graphics-viewer-smoke` 使用 Windows STA 构建真实 Frame、触发公共矩形 Button.Click、检查 Scene/Revision、执行 Undo/Redo；对应 `.github/workflows/testcenter-windows.yml`。这是 WPF 按钮事件和工程事务回归，**不是** GE-01～15 全部系统级实鼠操作或工业设备验收。没有执行测试的场景不显示 Passed。
+- **后续深化**：公共面板目前以功能入口共用为主，MPM Schema 专业属性、多选状态、按钮可执行性联动、快捷键焦点和浮动端点仍应继续按 GE 矩阵接入。不得将 Studio 专有 Docking / TestCenter 专有 Run/Attempt 迁入 MPW。
+
 # 第四部分｜使用样例、专业扩展与验收
 
 ## 13. 开发者 API、两个使用者与专业扩展闭环
