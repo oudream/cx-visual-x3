@@ -216,7 +216,7 @@ namespace CxVisual.Mechanism.Data.Variables
             try
             {
                 // 真实变量对象可供只读业务定义从设备Provider刷新；不要求调用方把它改成Writable。
-                binding.Target.RefreshProviderBoxed(sample.Value, sample.Quality, source);
+                binding.Scope.Execute(() => binding.Target.RefreshProviderBoxed(sample.Value, sample.Quality, source));
                 Interlocked.Increment(ref _applied);
             }
             catch (Exception error)
@@ -240,7 +240,7 @@ namespace CxVisual.Mechanism.Data.Variables
                 if (typed == null) throw new InvalidCastException("绑定变量类型不匹配");
                 int generation = _generation;
                 return new MDSVariableTypedPointBinding<T>(typed, providerId,
-                    () => IsActive(generation, binding.Scope));
+                    () => IsActive(generation, binding.Scope), binding.Scope);
             }
         }
         private bool IsActive(int generation, MDSVariableScope scope)
@@ -317,12 +317,18 @@ namespace CxVisual.Mechanism.Data.Variables
         private readonly MDSVariable<T> _target;
         private readonly string _source;
         private readonly Func<bool> _active;
-        internal MDSVariableTypedPointBinding(MDSVariable<T> target, string source, Func<bool> active)
-        { _target = target; _source = source; _active = active; }
+        private readonly MDSVariableScope _scope;
+        internal MDSVariableTypedPointBinding(MDSVariable<T> target, string source,
+            Func<bool> active, MDSVariableScope scope)
+        { _target = target; _source = source; _active = active; _scope = scope; }
         public void Apply(T value, MDSVariableQuality quality = MDSVariableQuality.Good)
         {
-            if (!_active()) throw new InvalidOperationException("Provider不处于当前活动世代");
-            _target.RefreshFromProvider(value, quality, _source);
+            // Scope注销时与普通Handle共用入场门禁，避免检查后写入的竞态。
+            _scope.Execute(() =>
+            {
+                if (!_active()) throw new InvalidOperationException("Provider不处于当前活动世代");
+                _target.RefreshFromProvider(value, quality, _source);
+            });
         }
         public MDSVariableSnapshot<T> Snapshot() { return _target.Snapshot(); }
     }
