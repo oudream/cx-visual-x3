@@ -24,3 +24,9 @@
 ## 仍未完成
 
 本包不宣称NamedPipe完整目标完成：原Server/Client仍有异步接收Task、临时数组与旧发送门；独立后台接收、有界池化、逐Peer发送门、全部超时/慢消费者、跨进程大数据与可靠关闭的完整模型仍按总审计继续。不以32轮连接替代长期稳定性、物理设备或全部通道完成。
+
+## 固定SHA远端Windows验收
+
+源码`41891a521dd28197a82f7f8f59246dd7b7c0229e`：[F17专项40545447237](https://github.com/oudream/cx-visual-x3/actions/runs/40545447237)与[完整TestCenter 40545447265](https://github.com/oudream/cx-visual-x3/actions/runs/40545447265)均success。F17日志实际包含Factory、UDP/真实组播、管道32轮重连/8轮Accept关闭的通过标记，以及64文件唯一Owner。TCP双向各2GiB逐字节回归8870ms、两端接收池各262144字节，保留环境/CPU/GC/内存指标artifact；该样本不替代长期或现场门禁。
+
+同一源码的Runtime、Studio、配置与工程组织工作流也success；完整TestCenter保留图元Group/Ungroup与工程Undo、三维GPU/WPF UIA、默认隔离与三轮并行/历史回放，未通过跳过测试绕过失败。本条只记录上述固定源码SHA，不将后续仅补录文档的提交冒充同SHA测试。
