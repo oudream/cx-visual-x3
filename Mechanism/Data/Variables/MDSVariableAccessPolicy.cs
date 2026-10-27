@@ -47,7 +47,7 @@ namespace CxVisual.Mechanism.Data.Variables
                     throw new UnauthorizedAccessException("调用者无权写入变量: " + definition.Name);
             }
         }
-        internal bool EquivalentTo(MDSVariableAccessPolicy other)
+        public bool EquivalentTo(MDSVariableAccessPolicy other)
         {
             if (other == null || AllowProviderRefresh != other.AllowProviderRefresh) return false;
             return (_principals == null ? other._principals == null :

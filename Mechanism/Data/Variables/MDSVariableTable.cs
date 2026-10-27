@@ -297,7 +297,10 @@ namespace CxVisual.Mechanism.Data.Variables
                             schema.VariableId != entry.EntryDefinition.VariableId ||
                             schema.ValueType != entry.EntryDefinition.ValueType ||
                             schema.Unit != entry.EntryDefinition.Unit ||
-                            schema.Writable != entry.EntryDefinition.Writable)
+                            schema.Writable != entry.EntryDefinition.Writable ||
+                            ((schema.AccessPolicy == null) != (entry.EntryDefinition.AccessPolicy == null)) ||
+                            (schema.AccessPolicy != null &&
+                             !schema.AccessPolicy.EquivalentTo(entry.EntryDefinition.AccessPolicy)))
                             throw new InvalidOperationException("快照变量Schema不一致: " + entry.EntryDefinition.Name);
                         entry.ValidateRestore(state);
                     }

@@ -619,6 +619,16 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(rule.EquivalentTo(a) &&
                 !rule.EquivalentTo(new MDSVariableAccessPolicy(new[] { "Guest" })),
                 "访问策略签名应支持快照Schema安全比对");
+            MDSVariableStoreSnapshot saved = table.ExportSnapshot();
+            MDSVariableTable changedRule = new MDSVariableTable("AccessScope");
+            changedRule.Define(new MDSVariableDefinition("Pressure", typeof(double),
+                "MPa", true, 0.0, "P1",
+                new MDSVariableAccessPolicy(new[] { "Guest" })));
+            changedRule.Define(new MDSVariableDefinition("Open", typeof(bool),
+                null, true, false, "V1"));
+            Reject<InvalidOperationException>(() => changedRule.RestoreSnapshot(saved));
+            Check(!changedRule.Resolve<double>("Pressure").Snapshot().HasValue,
+                "访问策略收紧/改变后不能用旧快照绕过新Schema");
         }
 
         public static void RunVariableSuite()
