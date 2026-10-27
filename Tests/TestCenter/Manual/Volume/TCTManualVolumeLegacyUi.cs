@@ -21,11 +21,8 @@ namespace CxVisual.TestCenter.UI
     public sealed partial class TCTManualVolumeViewerFrame
     {
         private MPWVolumeFourViewLayoutControl _legacyFour;
-        private readonly Dictionary<FVOSlicePlane, Slider> _headerSliceSliders =
-            new Dictionary<FVOSlicePlane, Slider>();
-        private readonly Dictionary<FVOSlicePlane, TextBox> _headerSliceNumbers =
-            new Dictionary<FVOSlicePlane, TextBox>();
-        private bool _syncingHeaderSlices;
+        private readonly Dictionary<FVOSlicePlane, MPWVolumeSliceNavigationControl> _headerNavigation =
+            new Dictionary<FVOSlicePlane, MPWVolumeSliceNavigationControl>();
         private TabControl _upperTabs, _lowerTabs;
         private readonly CheckBox _crosshairEnabled = new CheckBox { Content="显示十字线",IsChecked=true };
         private readonly CheckBox _orientationEnabled = new CheckBox { Content="显示3D方向坐标（双击复位）",IsChecked=true };
@@ -306,6 +303,8 @@ namespace CxVisual.TestCenter.UI
             _state=null;
             foreach(MPWVolumeSliceViewportControl viewport in _sliceViewports.Values)
                 viewport.Bind(null,null);
+            foreach(MPWVolumeSliceNavigationControl navigation in _headerNavigation.Values)
+                navigation.Bind(null,null);
             if(_volume!=null)_volume.Dispose();
             _volume=null;
             _xy.Clear();_xz.Clear();_yz.Clear();_obliqueViewer.Clear();
@@ -322,99 +321,44 @@ namespace CxVisual.TestCenter.UI
 
         private void AddViewportControls(Grid host,MPWImageViewerControl viewer,int row,int col)
         {
-            StackPanel tools=new StackPanel { Orientation=Orientation.Horizontal,
-                HorizontalAlignment=HorizontalAlignment.Right,
-                Background=new SolidColorBrush(Color.FromRgb(247,250,253)) };
+            StackPanel tools;
             if(viewer!=null)
             {
                 FVOSlicePlane plane=row==0 && col==0?FVOSlicePlane.XY:
                     row==0 && col==1?FVOSlicePlane.YZ:FVOSlicePlane.XZ;
-                TinyButton(tools,"适合",()=>viewer.FitToWindow());
-                TinyButton(tools,"1:1",()=>viewer.ActualSize());
-                TinyButton(tools,"+",()=>viewer.Zoom(1.2));
-                TinyButton(tools,"-",()=>viewer.Zoom(1/1.2));
-                tools.Children.Add(new TextBlock { Text="跳转",Margin=new Thickness(7,0,2,0),
-                    VerticalAlignment=VerticalAlignment.Center,FontSize=10 });
-                Slider slice=new Slider { Minimum=0,Maximum=1,Width=105,
-                    SmallChange=1,LargeChange=1,TickFrequency=1,IsSnapToTickEnabled=true,
-                    VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(2,0,4,0) };
-                AutomationProperties.SetAutomationId(slice,"TCT.Volume.Header."+plane+".Slider");
-                TextBox index=new TextBox { Width=41,Text="0",VerticalContentAlignment=VerticalAlignment.Center,
-                    Height=20,Margin=new Thickness(2) };
-                AutomationProperties.SetAutomationId(index,"TCT.Volume.Header."+plane+".Index");
-                slice.ValueChanged+=(s,e)=>{
-                    if(_syncingHeaderSlices||_updating||_state==null||_volume==null)return;
-                    JumpToViewSlice(plane,(int)Math.Round(slice.Value));
-                };
-                index.KeyDown+=(s,e)=>{
-                    if(e.Key!=System.Windows.Input.Key.Enter)return;
-                    int value;
-                    if(!Int32.TryParse(index.Text,out value))
-                    {
-                        _status.Text="跳转索引必须为整数。";e.Handled=true;return;
-                    }
-                    JumpToViewSlice(plane,value);
-                    e.Handled=true;
-                };
-                tools.Children.Add(slice);tools.Children.Add(index);
-                _headerSliceSliders[plane]=slice;
-                _headerSliceNumbers[plane]=index;
+                var navigation=new MPWVolumeSliceNavigationControl(plane,viewer,
+                    ()=>_legacyFour.ToggleSlot(host));
+                navigation.ValidationFailed+=message=>_status.Text=message;
+                _headerNavigation.Add(plane,navigation);
+                tools=navigation;
             }
             else
             {
-                TinyButton(tools,"复位",Reset3DCamera);
-                TinyButton(tools,"放大",()=>Zoom3D(1));
-                TinyButton(tools,"缩小",()=>Zoom3D(-1));
-                TinyButton(tools,"左移",()=>Pan3D(-28,0));
-                TinyButton(tools,"右移",()=>Pan3D(28,0));
-                TinyButton(tools,"上移",()=>Pan3D(0,-28));
-                TinyButton(tools,"下移",()=>Pan3D(0,28));
-                tools.ToolTip="GPU三维：左键拖动旋转；右/中键或Shift+左键平移；滚轮缩放；双击复位";
+                tools=new MPWVolumeCameraNavigationControl(
+                    Reset3DCamera,Zoom3D,Pan3D,()=>_legacyFour.ToggleSlot(host));
             }
-            TinyButton(tools,"□",()=>_legacyFour.ToggleSlot(host));
-            Grid.SetRow(tools,0);host.Children.Add(tools);
+            Grid.SetRow(tools,0);
+            host.Children.Add(tools);
             AutomationProperties.SetAutomationId(host,"TCT.Volume.View."+row+col);
         }
 
-        private void JumpToViewSlice(FVOSlicePlane plane,int index)
-        {
-            if(_volume==null || _state==null)return;
-            if(plane==FVOSlicePlane.XY)_state.SetSliceZ(index,_volume);
-            else if(plane==FVOSlicePlane.XZ)_state.SetSliceY(index,_volume);
-            else if(plane==FVOSlicePlane.YZ)_state.SetSliceX(index,_volume);
-            else throw new ArgumentOutOfRangeException("plane");
-            SyncSliceHeaderControls();
-        }
-
-        /// <summary>各窗口只读写MVI唯一切片坐标，不创建第二套切片状态。</summary>
+        /// <summary>宿主仅通知正式MPW控件读取FVO/MVI真源。</summary>
         private void SyncSliceHeaderControls()
         {
-            if(_volume==null || _state==null)return;
-            _syncingHeaderSlices=true;
-            try
-            {
-                foreach(KeyValuePair<FVOSlicePlane,Slider> pair in _headerSliceSliders)
-                {
-                    int maximum=pair.Key==FVOSlicePlane.XY?_volume.OriginalDepth-1:
-                        pair.Key==FVOSlicePlane.XZ?_volume.OriginalHeight-1:
-                        _volume.OriginalWidth-1;
-                    int position=pair.Key==FVOSlicePlane.XY?_state.SliceZ:
-                        pair.Key==FVOSlicePlane.XZ?_state.SliceY:_state.SliceX;
-                    pair.Value.Maximum=Math.Max(0,maximum);
-                    pair.Value.Value=Math.Max(0,Math.Min(maximum,position));
-                    _headerSliceNumbers[pair.Key].Text=position.ToString();
-                }
-            }
-            finally { _syncingHeaderSlices=false; }
+            foreach(MPWVolumeSliceNavigationControl navigation in _headerNavigation.Values)
+                navigation.Refresh();
         }
 
-        public int HeaderSliceControlCount { get { return _headerSliceSliders.Count; } }
+        public int HeaderSliceControlCount { get { return _headerNavigation.Count; } }
         public void JumpToViewSliceForTest(FVOSlicePlane plane,int position)
         {
-            if(!_headerSliceSliders.ContainsKey(plane))throw new ArgumentOutOfRangeException("plane");
-            if(_volume==null||_state==null)throw new InvalidOperationException("必须先加载体数据。");
-            // 真实改变WPF Slider.Value，验收时经过ValueChanged事件而非跳过UI直调MVI。
-            _headerSliceSliders[plane].Value=position;
+            MPWVolumeSliceNavigationControl navigation;
+            if(!_headerNavigation.TryGetValue(plane,out navigation))
+                throw new ArgumentOutOfRangeException("plane");
+            if(_volume==null || _state==null)
+                throw new InvalidOperationException("必须先加载体数据。");
+            // 走真实WPF Slider.ValueChanged -> 公共MPW导航 -> 共享MVI，而非测试私有算法。
+            navigation.SliceSlider.Value=position;
         }
 
         private void Set3DOrientationVisible(bool visible)
@@ -450,13 +394,6 @@ namespace CxVisual.TestCenter.UI
         {
             get { return _gpu!=null && _gpu.IsAvailable?_gpu.CameraTarget.Length():
                 _scene.CameraTarget.Length; }
-        }
-
-        private static void TinyButton(Panel tools,string caption,Action action)
-        {
-            Button b=new Button { Content=caption,MinWidth=26,Padding=new Thickness(2,0,2,0),
-                Margin=new Thickness(2,2,0,2),FontSize=11 };
-            b.Click+=(s,e)=>action();tools.Children.Add(b);
         }
 
         public void ToggleViewForTest(int index)

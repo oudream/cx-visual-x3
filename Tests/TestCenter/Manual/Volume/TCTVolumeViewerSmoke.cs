@@ -105,9 +105,53 @@ namespace CxVisual.TestCenter.UI
                     "3D相机复位必须清除平移");
                 Check(frame.HeaderSliceControlCount==3,
                     "旧版XY/YZ/XZ三图窗均有独立跳转滑杆和索引输入");
+                foreach(FVOSlicePlane plane in new[]{
+                    FVOSlicePlane.XY,FVOSlicePlane.XZ,FVOSlicePlane.YZ})
+                {
+                    var navigation=FindVisualByAutomationId<
+                        CxVisual.Mechanism.Presentation.Wpf.Volume.MPWVolumeSliceNavigationControl>(
+                            frame,"MPW.Volume.Navigation."+plane);
+                    Check(navigation!=null &&
+                          Object.ReferenceEquals(navigation.Volume,frame.Volume) &&
+                          Object.ReferenceEquals(navigation.ViewState,frame.ViewState) &&
+                          navigation.SliceSlider.IsEnabled &&
+                          navigation.SliceIndexBox.IsEnabled,
+                        "正式MPW切片导航必须直接绑定唯一FVO/MVI且三个视口均可调用");
+                }
+                Check(FindVisualByAutomationId<
+                    CxVisual.Mechanism.Presentation.Wpf.Volume.MPWVolumeCameraNavigationControl>(
+                    frame,"MPW.Volume.Navigation.Camera")!=null,
+                    "三维场景相机导航须由MPW正式公共控件实现");
                 frame.JumpToViewSliceForTest(FVOSlicePlane.XY,12);
                 frame.JumpToViewSliceForTest(FVOSlicePlane.XZ,13);
                 frame.JumpToViewSliceForTest(FVOSlicePlane.YZ,14);
+                var xyNavigation=FindVisualByAutomationId<
+                    CxVisual.Mechanism.Presentation.Wpf.Volume.MPWVolumeSliceNavigationControl>(
+                        frame,"MPW.Volume.Navigation.XY");
+                Check(xyNavigation!=null && xyNavigation.SliceIndexBox.Text=="12",
+                    "导航数值由MVI真实三刀同步，不能保留独立副本");
+                xyNavigation.SliceIndexBox.Text="17";
+                xyNavigation.SliceIndexBox.RaiseEvent(new System.Windows.Input.KeyEventArgs(
+                    System.Windows.Input.Keyboard.PrimaryDevice,
+                    System.Windows.PresentationSource.FromVisual(xyNavigation),
+                    0,System.Windows.Input.Key.Enter) {
+                    RoutedEvent=System.Windows.Input.Keyboard.KeyDownEvent
+                });
+                Check(frame.ViewState.SliceZ==17,
+                    "MPW索引输入回车应通过正式导航API写回MVI");
+                xyNavigation.SliceIndexBox.Text="not-an-index";
+                xyNavigation.SliceIndexBox.RaiseEvent(new System.Windows.Input.KeyEventArgs(
+                    System.Windows.Input.Keyboard.PrimaryDevice,
+                    System.Windows.PresentationSource.FromVisual(xyNavigation),
+                    0,System.Windows.Input.Key.Enter) {
+                    RoutedEvent=System.Windows.Input.Keyboard.KeyDownEvent
+                });
+                Check(frame.ViewState.SliceZ==17 &&
+                      frame.StatusMessage.Contains("整数"),
+                    "非法索引输入必须拒绝修改原始MVI状态并给出反馈");
+                xyNavigation.SliceSlider.Value=12;
+                Check(frame.ViewState.SliceZ==12,
+                    "滑杆恢复须写回共享三刀状态");
                 Check(frame.ViewState.SliceZ==12 && frame.ViewState.SliceY==13 &&
                     frame.ViewState.SliceX==14,
                     "三图窗跳转必须直接修改共享MVI三刀而不是独立索引");
