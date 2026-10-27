@@ -112,7 +112,8 @@ namespace CxVisual.TestCenter.UI
             inspector.Children.Add(new TextBlock{Text="工程对象 / 真实诊断",
                 FontWeight=FontWeights.SemiBold,FontSize=16,Margin=new Thickness(0,3,0,10)});
             inspector.Children.Add(new TextBlock{Text="创建 Shape → 画布选择、拖动或连接固定锚点；"+
-                "编辑控制柄与折点。操作成功仅表示MEM提交，不自动生成GE Passed。",
+                "编辑控制柄与折点。Path点绘时按N另起轮廓、Enter完成；"+
+                "双击图元进入几何编辑，右键改曲线/顶点。MEM提交不等于GE完整验收。",
                 TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,10)});
             inspector.Children.Add(_details);
             inspector.Children.Add(new TextBlock{Text="当前场景项",FontWeight=FontWeights.SemiBold,
@@ -258,6 +259,27 @@ namespace CxVisual.TestCenter.UI
                     }
                 }
                 catch(Exception ex){Report("Widget绘制失败："+ex.Message);}
+            };
+            _canvas.DrawPathContoursRequested+=contours=>
+            {
+                try
+                {
+                    Guid[] before=_editor.Scene.Select(item=>item.Id).ToArray();
+                    MTCEditResult<bool> result=_editor.DrawPathContours(
+                        "Path"+(++_created),contours);
+                    Commit(result,"多轮廓Path");
+                    if(result.Success)
+                    {
+                        MVISceneItem drawn=_editor.Scene.LastOrDefault(item=>
+                            !before.Contains(item.Id));
+                        if(drawn!=null)
+                        {
+                            _editor.Select(drawn.Id);
+                            _canvas.SetSelectedVisualIds(new[]{drawn.Id});
+                        }
+                    }
+                }
+                catch(Exception ex){Report("多轮廓绘制失败："+ex.Message);}
             };
             _canvas.DrawShapeRequested+=(kind,points,constrain)=>
             {

@@ -152,12 +152,13 @@ namespace CxVisual.TestCenter.UI
                 TextWrapping=TextWrapping.Wrap,Margin=new Thickness(4,8,4,5) });
             Label(gray,"渲染预设与灰阶范围");
             BuildGpuPanel(render); // 将成熟渲染控件直接归类，不复制字段或事件。
-            MoveToTab(_gpuPreset,render,gray);
-            MoveToTab(_gpuAutoRange,render,gray);
+            MoveToTab(_gpuPreset,_gpuPanel,gray);
+            MoveToTab(_gpuAutoRange,_gpuPanel,gray);
             AddNumeric(gray,"背景灰度上限 (0-254)",_backgroundText);
             AddNumeric(gray,"低灰分位 (%)",_lowerPercentText);
             AddNumeric(gray,"高灰分位 (%)",_upperPercentText);
-            AddGpuSlider(gray,"Slicer预设不透明度 (%)",_presetOpacity);
+            MPWVolumeRenderingParametersControl.AddLabeledSlider(
+                gray,"Slicer预设不透明度 (%)",_presetOpacity);
             _presetOpacity.ValueChanged+=(s,e)=>UpdateLegacyGrayMapping();
             _backgroundText.LostFocus+=(s,e)=>UpdateLegacyGrayMapping();
             _lowerPercentText.LostFocus+=(s,e)=>UpdateLegacyGrayMapping();

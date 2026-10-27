@@ -117,11 +117,35 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         private string _drawTool="Select";
         private bool _drawDragging;
         private readonly List<FGEPoint2D> _drawPoints=new List<FGEPoint2D>();
+        private readonly List<int> _drawContourStarts=new List<int>();
+        private bool _nextPathContour;
+        /// <summary>Path点绘时N开始另一独立轮廓，未完成轮廓绝不提交工程。</summary>
+        public bool BeginNextPathContour()
+        {
+            if(_drawTool!="Path"||!_designMode||!HasDrawPreview||_nextPathContour)return false;
+            int start=_drawContourStarts.Count==0?0:
+                _drawContourStarts[_drawContourStarts.Count-1];
+            if(_drawPoints.Count-start<2)return false;
+            _nextPathContour=true;InvalidateVisual();return true;
+        }
+        private List<IReadOnlyList<FGEPoint2D>> DrawContours(IReadOnlyList<FGEPoint2D> points)
+        {
+            var contours=new List<IReadOnlyList<FGEPoint2D>>();
+            int start=0;
+            foreach(int next in _drawContourStarts)
+            {
+                contours.Add(points.Skip(start).Take(next-start).ToArray());
+                start=next;
+            }
+            contours.Add(points.Skip(start).ToArray());
+            return contours;
+        }
         private Point _drawPointer;
         public string ActiveDrawTool {get{return _drawTool;}}
         public bool HasDrawPreview {get{return _drawDragging||_drawPoints.Count>0;}}
         public event Action<string> DrawToolChanged;
         public event Action<MRCShapeKind,IReadOnlyList<FGEPoint2D>,bool> DrawShapeRequested;
+        public event Action<IReadOnlyList<IReadOnlyList<FGEPoint2D>>> DrawPathContoursRequested;
         public event Action<IReadOnlyList<FGEPoint2D>> DrawTextRequested;
         public event Action<string,IReadOnlyList<FGEPoint2D>> DrawWidgetRequested;
         private static bool IsWidgetDrawTool(string tool)
@@ -157,7 +181,13 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             if(IsPointDrawTool(_drawTool))
             {
                 FGEPoint2D point=new FGEPoint2D(p.X,p.Y);
-                if(_drawPoints.Count==0||
+                if(_drawTool=="Path"&&_nextPathContour)
+                {
+                    _drawContourStarts.Add(_drawPoints.Count);
+                    _nextPathContour=false;
+                    _drawPoints.Add(point);
+                }
+                else if(_drawPoints.Count==0||
                     Math.Abs(_drawPoints[_drawPoints.Count-1].X-point.X)>1e-9||
                     Math.Abs(_drawPoints[_drawPoints.Count-1].Y-point.Y)>1e-9)
                     _drawPoints.Add(point);
@@ -184,7 +214,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             bool pointsMode=IsPointDrawTool(_drawTool);
             var points=new List<FGEPoint2D>(_drawPoints);
             if(!pointsMode)points.Add(new FGEPoint2D(_drawPointer.X,_drawPointer.Y));
+            if(_drawTool=="Path"&&_nextPathContour)return false;
             if(pointsMode&&points.Count<(_drawTool=="Polygon"?3:2))return false;
+            bool multipleContours=pointsMode&&_drawTool=="Path"&&
+                _drawContourStarts.Count>0;
+            List<IReadOnlyList<FGEPoint2D>> contours=multipleContours?
+                DrawContours(points):null;
             if(!pointsMode&&_drawTool!="Text"&&!IsWidgetDrawTool(_drawTool)&&
                 points[0].DistanceTo(points[1])<3/_zoom)
             {
@@ -201,7 +236,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 else
                 {
                     kind=(MRCShapeKind)Enum.Parse(typeof(MRCShapeKind),_drawTool);
-                    MVIShapeCatalog.CreateDrawn(kind,points,constrain,out x,out y);
+                    if(multipleContours)MVIShapeCatalog.CreateDrawnContours(
+                        contours,out x,out y);
+                    else MVIShapeCatalog.CreateDrawn(kind,points,constrain,out x,out y);
                 }
             }
             catch(ArgumentException)
@@ -210,6 +247,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 return false;
             }
             _drawDragging=false;_drawPoints.Clear();
+            _drawContourStarts.Clear();_nextPathContour=false;
             if(IsMouseCaptured)ReleaseMouseCapture();
             InvalidateVisual();
             if(_drawTool=="Text")
@@ -224,6 +262,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 if(placed!=null)
                     placed(_drawTool=="WidgetButton"?"core.widget":_drawTool,
                         points.AsReadOnly());
+                return placed!=null;
+            }
+            if(multipleContours)
+            {
+                var placed=DrawPathContoursRequested;
+                if(placed!=null)placed(contours.AsReadOnly());
                 return placed!=null;
             }
             var handler=DrawShapeRequested;
@@ -323,6 +367,32 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         /// <summary>
         /// 几何右键菜单不保存工程对象；每次执行前校验当前选区/模式/命令，复用MVI事务。
         /// </summary>
+        private static bool CanApplyPathOperation(MVISceneItem item,int index,string operation)
+        {
+            if(item==null||item.Shape==null||index<0||
+                index>=item.Shape.Geometry.Commands.Count)return false;
+            FGEPath2D path=item.Shape.Geometry;
+            try
+            {
+                switch(operation)
+                {
+                    case "delete":FGEPathEditing.DeleteAnchor(path,index);return true;
+                    case "line":return path.Commands[index].Verb!=FGEPathVerb.Line&&
+                        FGEPathEditing.ConvertSegment(path,index,FGEPathVerb.Line)!=null;
+                    case "quadratic":return path.Commands[index].Verb!=FGEPathVerb.Quadratic&&
+                        FGEPathEditing.ConvertSegment(path,index,FGEPathVerb.Quadratic)!=null;
+                    case "cubic":return path.Commands[index].Verb!=FGEPathVerb.Cubic&&
+                        FGEPathEditing.ConvertSegment(path,index,FGEPathVerb.Cubic)!=null;
+                    case "open":
+                    case "close":
+                        if(item.Shape.Kind!=MRCShapeKind.Path)return false;
+                        return !object.ReferenceEquals(path,FGEPathEditing.SetContourClosed(
+                            path,index,operation=="close"));
+                    default:return false;
+                }
+            }
+            catch(ArgumentException){return false;}
+        }
         public bool RequestSelectedPathOperation(Guid id,int commandIndex,string operation)
         {
             if(!_designMode||_drawTool!="Select"||!_geometryEditMode||
@@ -349,6 +419,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                     return false;
             }
             else if(operation!="delete")return false;
+            // 无效闭合/最小顶点删除在WPF层提前阻止，MVI/MEM依旧负责最终鉴权。
+            if(!CanApplyPathOperation(item,commandIndex,operation))return false;
             PathSegmentOperationRequested(id,commandIndex,operation);
             return true;
         }
@@ -385,8 +457,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             if(handle!=null&&handle.Kind==MVIVisualHandleKind.Anchor)
             {
                 index=handle.CommandIndex;
-                if(index>=0&&index<item.Shape.Geometry.Commands.Count&&
-                    item.Shape.Geometry.Commands[index].Verb==FGEPathVerb.Line)
+                if(CanApplyPathOperation(item,index,"delete"))
                     menu.Items.Add(GeometryMenuItem("删除顶点",()=>
                         RequestSelectedPathOperation(id,index,"delete")));
             }
@@ -402,21 +473,23 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 cmd=item.Shape.Geometry.Commands[index];
                 if(PathSegmentOperationRequested!=null)
                 {
-                    if(cmd.Verb!=FGEPathVerb.Line)
+                    if(CanApplyPathOperation(item,index,"line"))
                         menu.Items.Add(GeometryMenuItem("转为直线段",()=>
                             RequestSelectedPathOperation(id,index,"line")));
-                    if(cmd.Verb!=FGEPathVerb.Quadratic)
+                    if(CanApplyPathOperation(item,index,"quadratic"))
                         menu.Items.Add(GeometryMenuItem("转为二次曲线",()=>
                             RequestSelectedPathOperation(id,index,"quadratic")));
-                    if(cmd.Verb!=FGEPathVerb.Cubic)
+                    if(CanApplyPathOperation(item,index,"cubic"))
                         menu.Items.Add(GeometryMenuItem("转为三次贝塞尔",()=>
                             RequestSelectedPathOperation(id,index,"cubic")));
                     if(item.Shape.Kind==MRCShapeKind.Path)
                     {
                         bool closed=IsContourClosed(item.Shape.Geometry.Commands,index);
                         string operation=closed?"open":"close";
-                        menu.Items.Add(GeometryMenuItem(closed?"断开此轮廓":"闭合此轮廓",()=>
-                            RequestSelectedPathOperation(id,index,operation)));
+                        if(CanApplyPathOperation(item,index,operation))
+                            menu.Items.Add(GeometryMenuItem(
+                                closed?"断开此轮廓":"闭合此轮廓",()=>
+                                RequestSelectedPathOperation(id,index,operation)));
                     }
                 }
             }
@@ -1284,13 +1357,19 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                     if(points.Count>0)
                     {
                         for(int i=1;i<points.Count;i++)
+                        {
+                            if(_drawContourStarts.BinarySearch(i)>=0)continue;
                             dc.DrawLine(new Pen(Brushes.DodgerBlue,1.5/_zoom),
                                 new Point(points[i-1].X,points[i-1].Y),
                                 new Point(points[i].X,points[i].Y));
-                        FGEPoint2D last=points[points.Count-1];
-                        dc.DrawLine(new Pen(Brushes.DodgerBlue,1.5/_zoom)
-                            {DashStyle=DashStyles.Dash},
-                            new Point(last.X,last.Y),_drawPointer);
+                        }
+                        if(!_nextPathContour)
+                        {
+                            FGEPoint2D last=points[points.Count-1];
+                            dc.DrawLine(new Pen(Brushes.DodgerBlue,1.5/_zoom)
+                                {DashStyle=DashStyles.Dash},
+                                new Point(last.X,last.Y),_drawPointer);
+                        }
                         foreach(FGEPoint2D pt in points)
                             dc.DrawEllipse(Brushes.White,new Pen(Brushes.DodgerBlue,1/_zoom),
                                 new Point(pt.X,pt.Y),3.5/_zoom,3.5/_zoom);
@@ -1739,6 +1818,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             if(IsInlineTextEditing)FinishInlineTextEdit(false);
             _paletteDropGhost=null;
             _drawDragging=false;_drawPoints.Clear();
+            _drawContourStarts.Clear();_nextPathContour=false;
             _dragging=false;_marquee=false;_handleDragging=false;_activeHandle=null;_panning=false;_dragX=0;_dragY=0;_dragSnap=null;
             _waypointDragging=false;_waypointConnectionId=null;
             _selectionTransformDragging=false;
@@ -1760,6 +1840,13 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 else if(_geometryEditMode&&!_dragging&&!_handleDragging)
                 {_geometryEditMode=false;InvalidateVisual();}
                 else CancelInteraction();
+                e.Handled=true;
+            }
+            else if(_designMode&&e.Key==Key.N&&
+                _drawTool=="Path"&&HasDrawPreview&&
+                Keyboard.Modifiers==ModifierKeys.None)
+            {
+                BeginNextPathContour();
                 e.Handled=true;
             }
             else if(_designMode&&e.Key==Key.Enter&&

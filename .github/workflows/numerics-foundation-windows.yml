@@ -39,11 +39,15 @@ jobs:
           if (-not $?) { throw 'Structure failed' }
           & .\Build\Verify-OwnerDependencies.ps1
           if (-not $?) { throw 'Dependency DAG failed' }
-      - name: Run Numerics and default smoke
+      - name: Run independent Numerics numerical-quality suite
         shell: pwsh
         run: |
           $exe='.\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe'
           & $exe --numerics
           if ($LASTEXITCODE -ne 0) { throw 'Numerics assertions failed' }
+      - name: Run full ArchitectureSmoke integration regression
+        shell: pwsh
+        run: |
+          $exe='.\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe'
           & $exe
-          if ($LASTEXITCODE -ne 0) { throw 'Default architecture smoke failed' }
+          if ($LASTEXITCODE -ne 0) { throw 'Full architecture smoke failed (inspect module in log)' }

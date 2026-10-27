@@ -46,6 +46,7 @@
     <Compile Include="Volume\Editors\MPWVolumeCurveEditor.cs"/>
     <Compile Include="Volume\Editors\MPWVolumeSettingsDockControl.cs"/>
     <Compile Include="Volume\Editors\MPWVolumeTransferFunctionPanels.cs"/>
+    <Compile Include="Volume\Editors\MPWVolumeRenderingParametersControl.cs"/>
     <Compile Include="Imaging\MPWImageRulerControl.cs"/></ItemGroup>
   <ItemGroup>
     <!-- 公共程序图标同时供WPF窗口与WinExe EXE使用。 -->

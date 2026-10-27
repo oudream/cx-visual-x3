@@ -40,9 +40,9 @@ namespace CxVisual.TestCenter.UI
             expander.Content=panel; parent.Children.Add(expander);
             panel.Children.Add(_obliqueVisible);
             panel.Children.Add(_obliqueFollow);
-            AddGpuSlider(panel,"X中心（原始体素）",_obliqueCenterX);
-            AddGpuSlider(panel,"Y中心（原始体素）",_obliqueCenterY);
-            AddGpuSlider(panel,"Z中心（原始体素）",_obliqueCenterZ);
+            CxVisual.Mechanism.Presentation.Wpf.Volume.MPWVolumeRenderingParametersControl.AddLabeledSlider(panel,"X中心（原始体素）",_obliqueCenterX);
+            CxVisual.Mechanism.Presentation.Wpf.Volume.MPWVolumeRenderingParametersControl.AddLabeledSlider(panel,"Y中心（原始体素）",_obliqueCenterY);
+            CxVisual.Mechanism.Presentation.Wpf.Volume.MPWVolumeRenderingParametersControl.AddLabeledSlider(panel,"Z中心（原始体素）",_obliqueCenterZ);
             Button centerReset=new Button { Content="中心跟随当前三刀 / 复位",Height=28,
                 Margin=new Thickness(3,5,3,8) };
             centerReset.Click+=(s,e)=>{
@@ -51,10 +51,10 @@ namespace CxVisual.TestCenter.UI
                 UpdateObliqueDefinition();
             };
             panel.Children.Add(centerReset);
-            AddGpuSlider(panel,"X角度",_angleX);
-            AddGpuSlider(panel,"Y角度",_angleY);
-            AddGpuSlider(panel,"Z角度",_angleZ);
-            AddGpuSlider(panel,"像素步长（原始体素）",_obliquePixelStep);
+            CxVisual.Mechanism.Presentation.Wpf.Volume.MPWVolumeRenderingParametersControl.AddLabeledSlider(panel,"X角度",_angleX);
+            CxVisual.Mechanism.Presentation.Wpf.Volume.MPWVolumeRenderingParametersControl.AddLabeledSlider(panel,"Y角度",_angleY);
+            CxVisual.Mechanism.Presentation.Wpf.Volume.MPWVolumeRenderingParametersControl.AddLabeledSlider(panel,"Z角度",_angleZ);
+            CxVisual.Mechanism.Presentation.Wpf.Volume.MPWVolumeRenderingParametersControl.AddLabeledSlider(panel,"像素步长（原始体素）",_obliquePixelStep);
             StackPanel size=new StackPanel { Orientation=Orientation.Horizontal };
             size.Children.Add(new TextBlock { Text="宽/高",VerticalAlignment=VerticalAlignment.Center });
             size.Children.Add(_obliqueWidth); size.Children.Add(_obliqueHeight);

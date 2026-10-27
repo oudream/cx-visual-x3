@@ -510,6 +510,18 @@ namespace CxVisual.Mechanism.Visual
             FGEPoint2D local=DrawOriginInParent(parent,x,y);
             return AddShape(name,shape,local.X,local.Y);
         }
+        /// <summary>多轮廓Path一次提交；各Move轮廓属于一个MRCShapeElement。</summary>
+        public MTCEditResult<bool> DrawPathContours(string name,
+            IReadOnlyList<IReadOnlyList<FGEPoint2D>> contours)
+        {
+            Demand();
+            double x,y;
+            MRCShapeDefinition shape=MVIShapeCatalog.CreateDrawnContours(
+                contours,out x,out y);
+            MEMNode parent=CurrentDrawParent();
+            FGEPoint2D local=DrawOriginInParent(parent,x,y);
+            return AddShape(name,shape,local.X,local.Y);
+        }
         /// <summary>绘制起点按现有Shape语义转换到当前工程容器，避免Widget/Text另走坐标算法。</summary>
         private static FGEPoint2D DrawOriginInParent(MEMNode parent,double x,double y)
         {

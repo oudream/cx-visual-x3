@@ -55,17 +55,22 @@ namespace CxVisual.Foundation.Numerics
         public static double Sum(FNUTensorBuffer input)
         {
             if (input == null) throw new ArgumentNullException("input");
-            double sum = 0, compensation = 0;
+            // Neumaier accumulation also retains tiny values in
+            // large-cancellation sequences such as 1e16 + 1 - 1e16.
+            double sum = 0, correction = 0;
             for (int i = 0; i < input.Shape.ElementCount; i++)
             {
-                double y = input.At(i) - compensation;
-                double t = sum + y;
-                compensation = (t - sum) - y;
-                sum = t;
+                double value = input.At(i), next = sum + value;
+                if (Math.Abs(sum) >= Math.Abs(value))
+                    correction += (sum - next) + value;
+                else
+                    correction += (value - next) + sum;
+                sum = next;
             }
-            if (double.IsNaN(sum) || double.IsInfinity(sum))
+            double result = sum + correction;
+            if (double.IsNaN(result) || double.IsInfinity(result))
                 throw new OverflowException("Tensor sum overflow.");
-            return sum;
+            return result;
         }
 
         /// <summary>按轴求和。Rank=1的输出保留形状[1]而不是新建标量类型。</summary>

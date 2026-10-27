@@ -290,6 +290,31 @@ namespace CxVisual.TestCenter.UI
                 Check(String.IsNullOrEmpty(frame.LastUiError),
                     "修改有效窗宽后工作区命令必须恢复可用");
                 frame.ApplyWindowCenterWidth();
+                var gpuOptions=FindVisualByAutomationId<
+                    CxVisual.Mechanism.Presentation.Wpf.Volume.MPWVolumeRenderingParametersControl>(
+                    frame,"MPW.Volume.RenderingParameters");
+                Check(gpuOptions!=null &&
+                      Object.ReferenceEquals(gpuOptions.VolumeOpacity,
+                          FindVisualByAutomationId<Slider>(frame,
+                              "MPW.Volume.RenderingParameters.Opacity")),
+                    "真实三维渲染参数应由MPW组件承载，不由TestCenter复制控件");
+                // 独立控件反证：MPW不依赖CT3D渲染器也能发送区分LUT/uniform的变化事件。
+                var standaloneGpuPanel=new CxVisual.Mechanism.Presentation.Wpf.Volume.
+                    MPWVolumeRenderingParametersControl();
+                int gpuUniformEvents=0,gpuLutEvents=0,gpuSwitchEvents=0,gpuSaveEvents=0;
+                standaloneGpuPanel.OptionsChanged+=lut=>{
+                    if(lut)gpuLutEvents++;else gpuUniformEvents++;
+                };
+                standaloneGpuPanel.GpuEnabledChanged+=enabled=>gpuSwitchEvents++;
+                standaloneGpuPanel.SaveFrameRequested+=()=>gpuSaveEvents++;
+                standaloneGpuPanel.VolumeOpacity.Value=.45;
+                standaloneGpuPanel.UseColor.IsChecked=true;
+                standaloneGpuPanel.EnableGpu.IsChecked=false;
+                standaloneGpuPanel.SaveFrameButton.RaiseEvent(
+                    new RoutedEventArgs(Button.ClickEvent,standaloneGpuPanel.SaveFrameButton));
+                Check(gpuUniformEvents==1 && gpuLutEvents==1 &&
+                      gpuSwitchEvents==1 && gpuSaveEvents==1,
+                    "MPW应区分Uniform与LUT变化，且GPU启停及截图只经专业宿主回调");
                 frame.SetOpacityFromPanelForTest(.45);
                 Check(Math.Abs(frame.ConfiguredOpacityForTest-.45f)<.001,
                     "体透明度滑杆ValueChanged须更新实际CT3D渲染配置");
