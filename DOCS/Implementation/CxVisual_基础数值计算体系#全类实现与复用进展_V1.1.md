@@ -9,14 +9,14 @@
 |---|---|---|---|
 | F03 数学 | `FNUPolynomial`、`FNUInterpolation`、`FNUPrecision` | Horner/导数/线性双三线性/精度比较 | 源码+专项测试 |
 | F03 统计 | `FNUStatistics`、`FNURunningStatistics`、`FNUStatisticsSnapshot`、`FNUHistogram`、`FNUDistribution` | 统计增量Merge、样本/总体、分箱、Quantile | 源码+专项测试 |
-| F04 解算 | `FNULinearAlgebra`、`FNULeastSquaresResult`、`FNUWeightedLeastSquares`、`FNUCurveFitting` | Math.NET SVD最小二乘、加权与多项式拟合 | 源码+专项测试 |
+| F04 解算 | `FNULinearAlgebra`、`FNULeastSquaresResult`、`FNUWeightedLeastSquares`、`FNUCurveFitting` | Math.NET SVD最小二乘及条件数诊断、加权与多项式拟合 | 源码+专项测试 |
 | F04 求根优化 | `FNURootFinding`、`FNURootResult`、`FNUOptimization`、`FNUOptimizationResult`、`FNUFiniteDifferences` | 二分、黄金分割、中心差分、收敛结果 | 源码+专项测试 |
 | F04 积分/ODE | `FNUNumericalIntegration`、`FNUOdeSolver`、`FNUOdeTrajectory` | 复合Simpson、标量定步长RK4 | 源码+专项测试 |
-| F10 时域 | `FNUMovingAverage`、`FNUFirFilter`、`FNUIirFilter`、`FNUResampling`、`FNUConvolution`、`FNUCorrelation`、`FNUWindowFunction` | 状态滤波/重采样/卷积相关/Hann窗 | 源码+专项测试 |
+| F10 时域 | `FNUMovingAverage`、`FNUFirFilter`、`FNUFirStream`、`FNUIirFilter`、`FNUResampling`、`FNUConvolution`、`FNUCorrelation`、`FNUWindowFunction` | 状态滤波/流式FIR/重采样/卷积相关/Hann窗 | 源码+专项测试 |
 | F10 频域 | `FNUFourier`、`FNUFrequencyAnalysis`、`FNUFrequencySpectrum` | FFT/逆变换、单边振幅频谱/Hz | 源码+专项测试 |
 | F13 张量 | `FNUTensorShape`、`FNUTensorBuffer`、`FNUTensorMath` | RowMajor/Stride/Offset、广播、求和、MatMul、切片复制 | 源码+专项测试 |
 
-合计 **33个公开类型**，包含代表性算法类/结果类，**不是“52个全部完成”**。代码位于 `Foundation/Numerics`，传统.NET Framework 4.8 C#7.3 csproj，Math.NET 5.0.0 MIT NuGet已存在；本轮没有新建csproj与第二套平台运行数据存储。
+合计 **34个公开类型**，包含代表性算法类/结果类，**不是“52个全部完成”**。代码位于 `Foundation/Numerics`，传统.NET Framework 4.8 C#7.3 csproj，Math.NET 5.0.0 MIT NuGet已存在；本轮没有新建csproj与第二套平台运行数据存储。
 
 ## 二、开发者自由组合示例（以下API均有对应真实源码）
 
@@ -65,3 +65,25 @@ msbuild .\CxVisual.Unified.sln /t:Restore,Build /p:Configuration=Release /p:Plat
 - FIM原始灰度与掩膜ROI：继续使用原FIM API，公共Welford统计内核由FNU提供，旧Windows Imaging已通过。
 - FVO任意切面：体素边界/读取、原始16/32位浮点语义保留，原八角点数值插值转交FNU；固定SHA `22bbee9` 对应的 Numerics CI 和 Imaging CI **均成功**，包含 Volume、Imaging、默认回归及WPF图窗/切片烟测。
 - 早先 `e65452e`、`760c71c` 的默认架构烟测曾遭遇图元整圆Sweep失败，而更新的 `2629e73` 与 `22bbee9` 默认测试已经成功；须持续关注图元回归的跨次稳定性，勿把它归因于数值代码。
+
+## 七、2026-10-27 数值质量优先增量（固定SHA）
+
+**源码提交：** `eac5970494ddf91e4f880e6064066c214d0da087`。
+**Windows 验证：** [Numerics #40525673674](https://github.com/oudream/cx-visual-x3/actions/runs/40525673674) 成功；.NET Framework 4.8 x64全解决方案构建、Owner/DAG、独立 `--numerics`、默认 ArchitectureSmoke 全部通过。
+
+1. **F13计算一致性：** `FNUTensorMath.ReduceSum` 与 `MatMul` 使用逐输出补偿求和，覆盖 `1e16, 1, -1e16` 大数抵消、普通数值和零长度维度；未声称任意溢出/任意病态问题都已解决。
+2. **F10面向开发者：** `FNUFirStream` 复用既有 FIR 算法契约，提供 `Process(sample)`、`Reset()` 和 `TapCount`；采用持有状态的循环缓冲，不在每个 `Process` 内分配数组；非有限输入或结果溢出时不更改历史。16组固定种子信号逐值对比 `FNUFirFilter.Apply`，并验证系数防御性复制、Reset 和失败原子性。单实例非线程安全。
+3. **F04可诊断：** `FNULeastSquaresResult.ConditionNumber` 报告最大/最小奇异值的比值。该值是数值诊断，不替代误差界/条件数阈值策略，病态问题仍须增补分尺度对照。
+4. **验证口径：** CI中的“无逐样本分配”是由 `Process` 实现结构和测试覆盖的 API 行为说明，尚未建立跨规模运行时GC/吞吐量测；p50/p95、病态矩阵性能和多核/原生后端仍待独立验证。
+
+开发者使用示例：
+
+```csharp
+var filter = new FNUFirStream(new double[] { 0.25, 0.5, 0.25 });
+double y0 = filter.Process(10);
+double y1 = filter.Process(20);
+filter.Reset(); // 新采样序列从零历史重新开始
+
+var solved = FNULinearAlgebra.LeastSquares(design, observations);
+double conditionNumber = solved.ConditionNumber;
+```
