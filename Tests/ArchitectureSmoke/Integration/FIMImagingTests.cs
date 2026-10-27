@@ -57,6 +57,39 @@ namespace CxVisual.Tests.ArchitectureSmoke
             FIMFiveRegionResult five = FIMImageAnalyzer.CalculateFiveRegions(image, 1, 1, 0);
             Assert(five.Means[0] == 1 && five.Means[1] == 4 && five.Means[2] == 13 &&
                 five.Means[3] == 16 && five.Means[4] == 6, "HALCON五区域顺序");
+            FIMLinePairResult parallel=FIMImageMeasurement.MeasureLinePair(
+                new FGEPoint2D(0,0),new FGEPoint2D(4,0),
+                new FGEPoint2D(1,3),new FGEPoint2D(3,3),
+                new FIMPixelSpacing(0.2,0.5));
+            Assert(Near(parallel.DistancePixels,3) &&
+                Near(parallel.DistanceMillimeters.Value,1.5) &&
+                Near(parallel.AngleDegrees,0) &&
+                Near(parallel.ClosestOnFirst.Y,0) &&
+                Near(parallel.ClosestOnSecond.Y,3),
+                "旧Ls2Ls平行有限线段最近点及非等距标定");
+            FIMLinePairResult crossing=FIMImageMeasurement.MeasureLinePair(
+                new FGEPoint2D(0,0),new FGEPoint2D(4,4),
+                new FGEPoint2D(0,4),new FGEPoint2D(4,0));
+            Assert(Near(crossing.DistancePixels,0) &&
+                Near(crossing.AngleDegrees,90) &&
+                Near(crossing.ClosestOnFirst.X,2) &&
+                Near(crossing.ClosestOnSecond.Y,2) &&
+                !crossing.DistanceMillimeters.HasValue,"相交线段返回真实交点、距离0和夹角90°");
+            FIMLinePairResult separated=FIMImageMeasurement.MeasureLinePair(
+                new FGEPoint2D(0,0),new FGEPoint2D(1,0),
+                new FGEPoint2D(3,-1),new FGEPoint2D(3,1));
+            Assert(Near(separated.DistancePixels,2) &&
+                Near(separated.ClosestOnFirst.X,1) &&
+                Near(separated.ClosestOnSecond.X,3) &&
+                Near(separated.AngleDegrees,90),
+                "分离有限线段需按端点最近距离，不能按无限直线交点");
+            Throws<ArgumentException>(()=>FIMImageMeasurement.MeasureLinePair(
+                new FGEPoint2D(1,1),new FGEPoint2D(1,1),
+                new FGEPoint2D(0,0),new FGEPoint2D(2,2)),"退化直线拒绝伪造角度");
+            Throws<ArgumentOutOfRangeException>(()=>FIMImageMeasurement.MeasureLinePair(
+                new FGEPoint2D(0,0),new FGEPoint2D(1,0),
+                new FGEPoint2D(0,1),new FGEPoint2D(1,1),default(FIMPixelSpacing)),
+                "未初始化物理标定不能伪造mm测量");
             IReadOnlyList<double> line = FIMImageAnalyzer.GetLineProfile(image, 0, 0, 3, 0);
             Assert(line.Count == 4 && line[3] == 4, "灰度剖面");
             FIMImageBuffer crop = FIMImageOperations.Crop(image, new FIMPixelRegion(1, 1, 2, 2));
