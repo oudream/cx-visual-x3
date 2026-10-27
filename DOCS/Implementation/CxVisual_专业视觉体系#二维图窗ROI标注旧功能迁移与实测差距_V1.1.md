@@ -238,3 +238,19 @@
 **已核验的中间版本**：[Imaging #40457295893](https://github.com/oudream/cx-visual-x3/actions/runs/40457295893) SUCCESS（13步骤）与[TestCenter #40457295939](https://github.com/oudream/cx-visual-x3/actions/runs/40457295939) SUCCESS（29步骤）均属于`7c0be2d`较早基线。后续完整功能版`5aa5d805`的[Imaging #40457728597](https://github.com/oudream/cx-visual-x3/actions/runs/40457728597)与[TestCenter #40457728598](https://github.com/oudream/cx-visual-x3/actions/runs/40457728598)必须独立结算，不能从较早绿色推断全部通过。
 
 **下一阶段缺口**：真实物理鼠标四点事件及多DPI、图元操作Undo/Redo和状态保存恢复、专业阈值区域生长与轮廓缺陷检测、就地图中文字输入/编辑、任意颜色拾取交互及现场HIL；不能将本节单项验收等价于60项全部完成。
+
+## 12. 区域生长基础闭环（2026-10-27）
+
+**旧源码核验与保真边界**：`ReferTo/Vision/Halcon/HWindowControlView.cs` 的`UserDrawMode.RegionGrowing`确实为**鼠标拖拽矩形选区→AutoAreaRectDrawn(Mode=1)→专业回调接管原图及ROI**，并非旧控件内部直接实现区域生长算法。旧`AutoAreaRectDrawn`交出HALCON `OriginalImage` 的释放责任，不能直接复制到Foundation。本轮在x3既有FIM与MPW上做**通用的ROI内固定种子灰度区域生长**，输出独立Gray8掩码；尚未宣称与旧某个业务回调的检测阈值/缺陷轮廓算法数值完全等价。
+
+| 能力 | Owner及入口 | 正反验证 |
+|---|---|---|
+| ROI+种子+容差+4/8邻域输入 | `Foundation.Imaging.FIMImageOperations.RegionGrow` | 必须有ROI、种子在原图ROI内、有限非负容差；连续灰度源不受显示窗位影响 |
+| 数值区域和结构化输出 | `FIMRegionGrowingResult`：`Mask`（独立Gray8 0/255）、`PixelCount`、`Bounds`、`SeedGrayValue` | 4x4 Gray16样本输入5/6/7三像素，范围恰为(x0..2,y1)，原图不变；3x3对角像素4/8连通分别得1/3 |
+| 真实WPF可操作入口 | TestCenter“变换”页：灰度容差、八邻域开关、“按ROI中心种子生长”；复用原有`SelectedRegion`或选中可见矩形ROI | 异步、可取消、请求过期隔离；生成`Session.Result`掩码并选中结果，原图仍保持。未使用新图元Store或新任务引擎 |
+| 结果导出 | 现有`MPWImageViewerControl` PNG/视口与输出页，结构化结果仍在FIM | Gray8结果图可在已有输出页保存；尚未把掩码轮廓提取为可编辑多边形或专业缺陷结构，不可称专业检测完整迁移 |
+| 异常边界 | 原图未加载、ROI缺失、非法容差、种子越界、取消 | FIM数值反证+ WPF真实按钮点击和3像素输出；需进一步验证现场大图耗时、最大队列内存/复杂ROI |
+
+**本轮代码提交**：`270a5ab`（FIM区域生长），`2fd69f4`（FIM真值、连通性、取消反证），`4205d26`（TestCenter后台处理与结果输出），`fd955bc`（真实WPF参数及按钮），`2340972`（WPF点击后实际掩码与非法参数）。**验收状态**：Windows工作流已由源码提交触发，但须以相应SHA运行结论核定。当前不可直接将旧CI成功当作新增区域生长完成。
+
+**后续仍需**：旧专业ROI回调接入`Professional.Vision`，区域连通轮廓、孔洞与复合ROI、阈值交互式选区及FIM/MVI输出映射、缺陷候选列表与面积筛选、丰富结果表、取消性能统计、HALCON同图同ROI结果对照。
