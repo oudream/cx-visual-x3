@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using CxVisual.Foundation.Imaging;
 using CxVisual.Foundation.Geometry;
@@ -62,6 +63,36 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 grown.Mask.GetGrayValue(1,0)==0 &&
                 image.GetGrayValue(1,1)==6,
                 "区域生长以原图种子5/6/7三像素连通而不污染源图或扩大ROI");
+            IReadOnlyList<IReadOnlyList<FGEPoint2D>> lineContours=FIMImageMaskContours.Trace(grown.Mask);
+            Assert(lineContours.Count==1 && lineContours[0].Count==4 &&
+                Near(FIMImageMaskContours.SignedArea(lineContours[0]),3),
+                "三像素横线应有面积3的四角真实轮廓");
+            FIMImageBuffer donut=new FIMImageBuffer(3,3,FIMPixelFormat.Gray8,
+                new byte[]{255,255,255,255,0,255,255,255,255});
+            IReadOnlyList<IReadOnlyList<FGEPoint2D>> rings=FIMImageMaskContours.Trace(donut);
+            Assert(rings.Count==2 &&
+                Near(rings.Sum(x=>FIMImageMaskContours.SignedArea(x)),8) &&
+                rings.Any(x=>Near(FIMImageMaskContours.SignedArea(x),9)) &&
+                rings.Any(x=>Near(FIMImageMaskContours.SignedArea(x),-1)),
+                "孔洞内外轮廓须分别保留，真实面积为8非9");
+            FIMImageBuffer cornersOnly=new FIMImageBuffer(2,2,FIMPixelFormat.Gray8,
+                new byte[]{255,0,0,255});
+            IReadOnlyList<IReadOnlyList<FGEPoint2D>> separate=FIMImageMaskContours.Trace(cornersOnly);
+            Assert(separate.Count==2 && separate.All(x=>
+                x.Count==4 && Near(FIMImageMaskContours.SignedArea(x),1)),
+                "只在角接触的区域不能错误合成自交轮廓");
+            Assert(FIMImageMaskContours.Trace(empty.Mask).Count==0,
+                "零命中掩码没有轮廓");
+            Throws<ArgumentException>(()=>FIMImageMaskContours.Trace(image),
+                "非Gray8不能追踪掩码边界");
+            Throws<InvalidOperationException>(()=>FIMImageMaskContours.Trace(donut,8),
+                "边界边数限制须拒绝过度复杂ROI");
+            using(CancellationTokenSource cancelledContour=new CancellationTokenSource())
+            {
+                cancelledContour.Cancel();
+                Throws<OperationCanceledException>(()=>FIMImageMaskContours.Trace(
+                    donut,100000,cancelledContour.Token),"轮廓取消");
+            }
             FIMImageBuffer diagonalSeeds=new FIMImageBuffer(3,3,FIMPixelFormat.Gray8,
                 new byte[]{1,99,99,99,1,99,99,99,1});
             FIMPixelRegion nine=new FIMPixelRegion(0,0,2,2);
