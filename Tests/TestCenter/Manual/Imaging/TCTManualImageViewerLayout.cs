@@ -25,6 +25,9 @@ namespace CxVisual.TestCenter.UI
         private bool _changingGraySliders;
         private readonly System.Collections.Generic.List<Button> _quickButtons =
             new System.Collections.Generic.List<Button>();
+        // 仅保存可视按钮映射；真实工具状态仍以唯一MPW.ToolMode为准。
+        private readonly System.Collections.Generic.Dictionary<MVIImageToolMode,Button>
+            _regionToolButtons=new System.Collections.Generic.Dictionary<MVIImageToolMode,Button>();
         private readonly CheckBox _showRoi = new CheckBox { Content = "ROI", IsChecked = true };
         private readonly CheckBox _showMeasurements = new CheckBox { Content = "测量", IsChecked = true };
         private readonly CheckBox _showAnnotations = new CheckBox { Content = "标注", IsChecked = true };
@@ -278,18 +281,40 @@ namespace CxVisual.TestCenter.UI
         private Button Tile(Panel host,string symbol,string label,string id,Action action)
         {
             Button button = AddButton(host,label,id,action);
-            button.MinWidth = 89; button.Width = 93; button.Height = 72;
+            // 工业工作台右侧约344DIP：压紧每项以便四列操作，避免大半功能隐藏于滚动。
+            button.MinWidth = 68; button.Width = 68; button.Height = 64;
             button.Margin = new Thickness(3);
-            button.Padding = new Thickness(3,4,3,4);
+            button.Padding = new Thickness(2,3,2,3);
             button.BorderBrush = Paint(207,222,239);
             StackPanel content = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-            content.Children.Add(Glyph(id,symbol,27));
-            content.Children.Add(new TextBlock { Text = label, FontSize = 13.5,
+            content.Children.Add(Glyph(id,symbol,23));
+            content.Children.Add(new TextBlock { Text = label, FontSize = 12.0,
                 Foreground = Paint(52,72,98), HorizontalAlignment = HorizontalAlignment.Center,
                 Margin = new Thickness(0,3,0,0) });
             button.Content = content;
             return button;
         }
+        private Button RegionTool(Panel host,string symbol,string label,string id,
+            MVIImageToolMode mode)
+        {
+            Button button=Tile(host,symbol,label,id,()=>SelectTool(mode));
+            button.ToolTip="点击选择："+label+"。工具会在原图上实际绘制/编辑。";
+            _regionToolButtons[mode]=button;
+            return button;
+        }
+        private void UpdateRegionToolHighlight()
+        {
+            foreach(var entry in _regionToolButtons)
+            {
+                bool selected=_viewer.ToolMode==entry.Key;
+                entry.Value.Background=selected ? Paint(218,237,255) : Brushes.White;
+                entry.Value.BorderBrush=selected ? Paint(30,121,217) : Paint(207,222,239);
+                entry.Value.BorderThickness=new Thickness(selected ? 1.8 : 1);
+                AutomationProperties.SetHelpText(entry.Value,selected ?
+                    "当前已选择，下一步在图像上操作。" : "点击切换操作工具。");
+            }
+        }
+
         private Button Action(Panel host,string label,string id,Action action)
         {
             Button button = AddButton(host,label,id,action);
@@ -461,14 +486,14 @@ namespace CxVisual.TestCenter.UI
             StackPanel content = Column();
             content.Children.Add(Heading("ROI  ·  绘制与图层对象"));
             WrapPanel tiles = Row();
-            Tile(tiles,"□","矩形","RegionRectangle",()=>SelectTool(MVIImageToolMode.RectangleRoi));
-            Tile(tiles,"◇","旋转矩形","RegionRotatedRectangle",()=>SelectTool(MVIImageToolMode.RotatedRectangleRoi));
-            Tile(tiles,"↻","旋转角柄","RotateOverlay",()=>SelectTool(MVIImageToolMode.RotateOverlay));
-            Tile(tiles,"◯","圆形","RegionCircle",()=>SelectTool(MVIImageToolMode.CircleRoi));
-            Tile(tiles,"⬭","椭圆","RegionEllipse",()=>SelectTool(MVIImageToolMode.EllipseRoi));
-            Tile(tiles,"⬡","多边形","RegionPolygon",()=>SelectTool(MVIImageToolMode.PolygonRoi));
-            Tile(tiles,"↔","八柄缩放","ResizeOverlay",()=>SelectTool(MVIImageToolMode.ResizeOverlay));
-            Tile(tiles,"⬡","逐顶点编辑","EditPolygonVertex",()=>SelectTool(MVIImageToolMode.EditPolygonVertex));
+            RegionTool(tiles,"□","矩形","RegionRectangle",MVIImageToolMode.RectangleRoi);
+            RegionTool(tiles,"◇","旋转矩形","RegionRotatedRectangle",MVIImageToolMode.RotatedRectangleRoi);
+            RegionTool(tiles,"↻","旋转角柄","RotateOverlay",MVIImageToolMode.RotateOverlay);
+            RegionTool(tiles,"◯","圆形","RegionCircle",MVIImageToolMode.CircleRoi);
+            RegionTool(tiles,"⬭","椭圆","RegionEllipse",MVIImageToolMode.EllipseRoi);
+            RegionTool(tiles,"⬡","多边形","RegionPolygon",MVIImageToolMode.PolygonRoi);
+            RegionTool(tiles,"↔","八柄缩放","ResizeOverlay",MVIImageToolMode.ResizeOverlay);
+            RegionTool(tiles,"⬡","逐顶点编辑","EditPolygonVertex",MVIImageToolMode.EditPolygonVertex);
             content.Children.Add(tiles);
             AutomationProperties.SetAutomationId(_polygonVertexIndex,
                 "TCT.Imaging.PolygonVertexIndex");
@@ -609,6 +634,7 @@ namespace CxVisual.TestCenter.UI
                     mode == MVIImageToolMode.Point || mode == MVIImageToolMode.Text ||
                     mode == MVIImageToolMode.Arrow || mode == MVIImageToolMode.DefectBox ||
                     mode == MVIImageToolMode.MoveOverlay || mode == MVIImageToolMode.DeleteOverlay ? 4 : 0;
+                    UpdateRegionToolHighlight();
                     return; }
             throw new InvalidOperationException("二维交互工具尚未注册：" + mode);
         }
