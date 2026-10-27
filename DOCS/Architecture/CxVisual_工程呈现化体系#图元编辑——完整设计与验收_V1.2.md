@@ -220,12 +220,16 @@ TextBox/Geometry 的文本输入状态下方向键移动光标，不能触发画
 | Line | PointerDown → PointerMove → PointerUp，保留起终点方向 | 松开提交一次；零长度拒绝 |
 | Polyline / Polygon / Path | 多次单击确认世界点，移动显示未提交尾段 | 双击或 Enter 完成；Polygon 少于三点拒绝 |
 | Arc / Bezier | 首期按起终拖动建立基础弧和默认切线 | 后续通过 D GeometryEdit 调精细参数；非完整多阶段曲线构造 |
-| Text | 选择文字工具，在画布单击放置或拖动设定文本框 | 提交一次正式 MEM Text 对象；直接输入/排版仍待深化 |
+| Text | 选择文字工具，在画布单击放置或拖动设定文本框；选中/双击进入原位输入 | 提交一次正式 MEM Text 对象，Enter提交、Shift+Enter换行、Esc取消；高级字体/排版仍待深化 |
 | Widget | 公共工具栏按钮激活Draw；画布单击按120×36默认布局、拖框按真实尺寸插入 | 已接入现有MVI/MEM单事务与Studio/TestCenter，图库原生拖放和完整属性联动仍按GE-13验收 |
 
 **不可变约束**：`MVIShapeCatalog.CreateDrawn`、`TextBounds` 是纯数学/布局工厂，WPF 临时 Ghost 与 MVI 正式提交必须复用它们；`SceneView` 仅持工具/指针/临时预览，不保存工程Shape。图元对象、端口和 Revision 仍归 MEM/MTC；一次完成只产生一次 Undo。选中既有图元后的 H1/H2/H5/H6 与绘制手势互斥，Draw 时不能触发编辑控制柄、连线重附着或背景框选；异常/取消不修改工程。
 
 **现有测试范围**：`VisualShapeEditingTests.CheckDrawnGeometryContract` 覆盖反向拖动、九种类型、圆/Shift约束及非法几何；`TCTGraphicsFrameSmoke` 验证公共 Button 激活不创建、SceneView 手势路径、Text画布拖框、Ghost 不改 Revision、创建/Undo/Redo/保存重开。该 WPF STA 入口直接调用公开的输入手势适配方法进行验证，**不可充当系统外部鼠标注入、DPI四档、真实打字/DragDrop已通过的证据**；这些仍按 GE-02/03/08/12/13 子项分别签收。
+
+**Widget图库WPF拖放增量（2026-10-27）**：Studio/TestCenter共用`MPWVisualOperationPanel` 新增内置Widget按钮原生 `DragDrop.DoDragDrop`；`SceneView` 以私有类型格式过滤非法Drop，显示基于 `MVIShapeCatalog.WidgetBounds` 的临时世界尺寸Ghost；真正Drop复用已有 `DrawWidgetRequested` → MVI/MEM单次编辑。TestCenter WPF Smoke增测拒绝未知TypeId、单次Revision、保存重开身份。操作链已接入，不把模拟Drop方法测试宣称为外部OS鼠标真实拖放通过，GE-13仍待系统注入与专业Schema全验收。
+
+**Text原位编辑增量（2026-10-27）**：在公共`SceneView`增设临时WPF `TextBox` 作为画布顶层编辑UI，支持双击Text开始、Enter提交、Shift+Enter换行、Esc取消、窗口停用/切换工具取消；其文字草稿绝不持久化，只有提交事件通过 `MVIVisualEditor.SetVisualText` → 既有 `MTCEditSession.SetText` 更新原`MRCTextElement`。保持Group/实例权限筛选、文本ID、保存重开和单Undo，TestCenter/Studio共用正式入口；STA WPF Smoke验证编辑取消、一次Revision、Undo/Redo、持久化。当前仍不等于系统级真实键鼠注入或文本高级排版已经签收。
 
 **Widget真实画布创建增量（2026-10-27）**：公共 Widget 按钮遵循 Shape/Text 相同的“先激活 Draw，再在画布创建”操作语义；`MVIShapeCatalog.WidgetBounds` 与 WPF Ghost、`MVIVisualEditor.DrawWidget` 共用布局，Studio/TestCenter 均通过现有MEM `AddWidget` 单事务完成并选中新对象。独立 Studio 快速插入 API 保留；标准 Widget 单击采用120×36，鼠标拖框按真实尺寸。纯几何 ArchitectureSmoke 增加 Widget 单击默认大小、反向拖绘、最小尺寸与非法点数反证，WPF 自动回归追加按钮不偷偷创建、Ghost 不产生 Revision、拖框/单击、保存重开及类型身份反证；系统外部鼠标、图库 DragDrop、字体/控件属性全联动仍未验收。编译和测试状态以对应 SHA Windows CI 为准。
 
@@ -255,6 +259,12 @@ TextBox/Geometry 的文本输入状态下方向键移动光标，不能触发画
 新两段分别为 `(P0,A,D,F)` 与 `(F,E,C,P3)`。
 
 这保持原曲线形状；**不能把屏幕离散采样点当作新的永久几何定义**。移动 Anchor 可明确选择“保持切线/镜像控制柄/独立控制柄”三种操作意图；Ctrl/Shift 模式经 Studio 快捷键冲突审查后生效，不静默自作平滑。Bezier 控制点的拖动在世界→局部坐标中计算，旋转 Group 下仍保持其余不相关控制点。
+
+**GE-03 曲线画布精确插点增量（2026-10-27）**：沿用`FGEPathEditing.SplitSegment`的原参数空间 de Casteljau，不重复建设曲线分割内核。`MVIVisualEditing.TryHitPathSplitSegment`在`GeometryToWorld`世界坐标下查找Line/Quadratic/Cubic可见段，通过保守Bezier凸包过滤、固定64份粗定位加24次有界细化计算`(commandIndex,t)`，只将这两个参数交给`MVIVisualEditor.EditPathSegment`正式MEM事务。共用`SceneView`在D几何模式中提供Ctrl+双击插点，保留正常双击切换与控制柄优先；Studio/TestCenter共享事件。ArchitectureSmoke覆盖旋转Group、曲线世界t、远距离拒绝和闭合三角形删除边界，WPF Graphics Smoke覆盖插点Revision/Undo/Redo/保存重开。**此增量不表示Arc整圆/Path多子路径所有编辑行为或OS原生键鼠注入已签收**；测试状态以具体SHA的Windows日志为准。
+
+**GE-03 Arc跨角增量（2026-10-27）**：保留既有`FGEArc2D`与`MVIVisualEditing.EditArc`。对`ArcStart/ArcEnd`调整时，原整圆扫角±2π与端点重合的情形继续保持有向整圆，而非错误坍缩成零弧；角度归一化改为常量时间模运算，避免巨大有限角度造成无界while循环。ArchitectureSmoke增测旋转Group内整圆端点、Undo/Redo及跨零正扫角。负扫角、极短弧、退化尺寸、符号角度属性UI和系统级键鼠仍需进一步验收。
+
+**GE-03 几何右键增量（2026-10-27）**：SceneView在D几何编辑模式提供原生WPF右键菜单：线顶点删除、可见Line/Quadratic/Cubic段精确插点与段类型互转；Path独有逐轮廓Close/Open。右键仅产生`(Id, CommandIndex, Operation)`及分割`t`意图，Studio/TestCenter统一转交MVI现有`EditPathSegment` → FGE不可变路径 → MEM/MTC单事务。状态变更后旧选区、实例投影、隐藏不可操作；新增两点轮廓不可闭合的反证。STA WPF回归覆盖菜单存在、正式API转换、Undo/Redo和重开。菜单与回归的自动化能力不等于OS级物理右键/多DPI已全面验收。
 
 ### 6.4 Arc、Rect、Circle 与特殊参数
 

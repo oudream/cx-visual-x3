@@ -187,6 +187,16 @@ namespace CxVisual.Studio
             LogicHost.PortLinkRejected += (sender,args) =>
                 LogicInfo.Text="拖线被拒绝："+args.Reason;
             SceneHost.DrawToolChanged+=tool=>StudioVisualOperations.SetActiveTool(tool);
+            SceneHost.InlineTextCommitted+=(id,text)=>
+            {
+                try
+                {
+                    MTCEditResult<bool> result=_viewModel.SetVisualText(id,text);
+                    VisualInfo.Text=result.Success?"文字已原位更新（一次Undo）":
+                        "文本修改被拒绝："+result.ErrorCode+" "+result.Message;
+                }
+                catch(Exception ex){VisualInfo.Text="文字编辑失败："+ex.Message;}
+            };
             SceneHost.DrawTextRequested+=points=>
             {
                 try
@@ -327,6 +337,29 @@ namespace CxVisual.Studio
                         "删除连接失败："+result.ErrorCode+" "+result.Message;
                 }
                 catch(Exception ex){VisualInfo.Text="删除连接失败："+ex.Message;}
+            };
+            SceneHost.PathSegmentOperationRequested+=(id,index,operation)=>
+            {
+                try
+                {
+                    MTCEditResult<bool> result=_viewModel.EditVisualPathSegment(
+                        id,index,operation);
+                    VisualInfo.Text=result.Success?
+                        "几何编辑已提交（单次Undo）":
+                        "几何编辑被拒绝："+result.ErrorCode+" "+result.Message;
+                }
+                catch(Exception ex){VisualInfo.Text="几何编辑失败："+ex.Message;}
+            };
+            SceneHost.PathSegmentSplitRequested+=(id,index,fraction)=>
+            {
+                try
+                {
+                    MTCEditResult<bool> result=_viewModel.SplitVisualPath(id,index,fraction);
+                    VisualInfo.Text=result.Success?
+                        "曲线已精确分段（单次Undo，Ctrl+双击继续插点）":
+                        "曲线插点被拒绝："+result.ErrorCode+" "+result.Message;
+                }
+                catch(Exception ex){VisualInfo.Text="曲线插点失败："+ex.Message;}
             };
             SceneHost.HandleEditRequested += (sender,edit)=>
             {

@@ -39,5 +39,8 @@
   <ItemGroup>
     <ProjectReference Include="..\..\Foundation\Imaging\CxVisual.Foundation.Imaging.csproj"><Project>{16709C88-01FC-58BA-8D9F-A14A04D73BAA}</Project><Name>CxVisual.Foundation.Imaging</Name></ProjectReference>
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\\..\\Foundation\\Numerics\\CxVisual.Foundation.Numerics.csproj"><Project>{6FA7BA1A-90A2-5BA6-A50B-BBB316F6829E}</Project><Name>CxVisual.Foundation.Numerics</Name></ProjectReference>
+  </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets"/>
 </Project>

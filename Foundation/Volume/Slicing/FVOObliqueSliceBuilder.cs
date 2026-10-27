@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using CxVisual.Foundation.Imaging;
+using CxVisual.Foundation.Numerics;
 
 namespace CxVisual.Foundation.Volume
 {
@@ -118,9 +119,9 @@ namespace CxVisual.Foundation.Volume
             double v101=Read(volume,x1,y0,z1,original);
             double v011=Read(volume,x0,y1,z1,original);
             double v111=Read(volume,x1,y1,z1,original);
-            double a=v000+(v100-v000)*fx,b=v010+(v110-v010)*fx;
-            double c=v001+(v101-v001)*fx,d=v011+(v111-v011)*fx;
-            return (a+(b-a)*fy)*(1-fz)+(c+(d-c)*fy)*fz;
+            // FVO负责原始体素读取与范围边界；八角点纯数值插值复用F03。
+            return FNUInterpolation.Trilinear(v000,v100,v010,v110,
+                v001,v101,v011,v111,fx,fy,fz);
         }
         private static double Read(FVOVolumeData volume,int x,int y,int z,bool original)
         {

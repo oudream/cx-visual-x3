@@ -839,6 +839,13 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(object.ReferenceEquals(contours,
                 FGEPathEditing.SetContourClosed(contours,5,false)),
                 "unchanged open contour should not allocate or commit");
+            var openSegment=FGEPath2D.Line(new FGEPoint2D(0,0),
+                new FGEPoint2D(20,0));
+            bool shortCloseRejected=false;
+            try{FGEPathEditing.SetContourClosed(openSegment,1,true);}
+            catch(ArgumentException){shortCloseRejected=true;}
+            Check(shortCloseRejected&&openSegment.Commands.Count==2,
+                "Two-point open line must not be closed into a degenerate contour");
             var converted=FGEPathEditing.ConvertSegment(plain,1,FGEPathVerb.Line);
             Check(converted.Commands[1].Verb==FGEPathVerb.Line&&
                 converted.Commands[1].End.Equals(plain.Commands[1].End),
@@ -846,6 +853,21 @@ namespace CxVisual.Tests.ArchitectureSmoke
             var deletion=FGEPathEditing.DeleteAnchor(converted,1);
             Check(deletion.Commands.Count==2&&deletion.Commands[1].Verb==FGEPathVerb.Cubic,
                 "line vertex deletion damaged remaining contour");
+            // 闭合三角形不能删除任何角点后变成两点闭合；拒绝不得修改源路径。
+            var minPolygon=FGEPath2D.Polyline(new[]{
+                new FGEPoint2D(0,0),new FGEPoint2D(20,0),new FGEPoint2D(0,20)},true);
+            bool rejected=false;
+            try{FGEPathEditing.DeleteAnchor(minPolygon,1);}
+            catch(ArgumentException){rejected=true;}
+            Check(rejected&&minPolygon.Commands.Count==4,
+                "Closed triangle must not allow a two-point contour");
+            var quadPolygon=FGEPath2D.Polyline(new[]{
+                new FGEPoint2D(0,0),new FGEPoint2D(20,0),
+                new FGEPoint2D(20,20),new FGEPoint2D(0,20)},true);
+            var reducedPolygon=FGEPathEditing.DeleteAnchor(quadPolygon,1);
+            Check(reducedPolygon.Commands.Count==4&&
+                reducedPolygon.Commands[3].Verb==FGEPathVerb.Close,
+                "Four-vertex closed contour should delete one anchor to a triangle");
             var modified=FGEPathEditing.MoveHandle(plain,2,FGEPathHandleKind.Control2,
                 new FGEPoint2D(95,100));
             Check(modified.Commands[2].Control2.Equals(new FGEPoint2D(95,100)),
@@ -854,7 +876,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 "immutable original path mutated");
             Check(modified.Commands[2].End.Equals(plain.Commands[2].End),
                 "editing a handle moved the endpoint");
-            bool rejected=false;
+            rejected=false;
             try{FGEPathEditing.MoveHandle(plain,1,FGEPathHandleKind.Control2,new FGEPoint2D(1,1));}
             catch(ArgumentException){rejected=true;}
             Check(rejected,"invalid control handle should be rejected");
@@ -890,6 +912,18 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 using(var editor=new MVIVisualEditor(doc))
                 {
                     MVISceneItem projected=editor.Scene.Single(x=>x.Id==id);
+                    // GE-03: 曲线命中求世界空间t，不向MVI存屏幕采样点。
+                    FGEBezier2D lastCubic=new FGEBezier2D(plain.Commands[1].End,
+                        plain.Commands[2].Control1,plain.Commands[2].Control2,plain.Commands[2].End);
+                    FGEPoint2D seek=projected.GeometryToWorld.TransformPoint(lastCubic.PointAt(0.65));
+                    int hitIndex;double hitFraction;
+                    Check(MVIVisualEditing.TryHitPathSplitSegment(projected,
+                        seek.X,seek.Y,0.5,out hitIndex,out hitFraction)&&
+                        hitIndex==2&&Math.Abs(hitFraction-0.65)<0.02,
+                        "World-space Bezier hit must recover original t inside rotated group");
+                    Check(!MVIVisualEditing.TryHitPathSplitSegment(projected,
+                        seek.X+2000,seek.Y-2000,8,out hitIndex,out hitFraction),
+                        "Far curve hit must not insert an invisible segment");
                     var handles=MVIVisualEditing.Handles(projected);
                     Check(handles.Any(x=>x.Kind==MVIVisualHandleKind.Anchor)&&
                           handles.Any(x=>x.Kind==MVIVisualHandleKind.Control1)&&
@@ -1034,6 +1068,63 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         Math.Abs(arcShape.Shape.Geometry.Commands[1].Arc.RadiusX-42)<1e-5,
                         "Arc radius undo did not restore exact parameter");
                     Check(editor.Redo().Success,"Arc radius redo failed");
+                    // GE-03：整圆弧端点重合不能因normalize(2π)=0而直接坍缩。
+                    var fullArc=new FGEArc2D(new FGEPoint2D(30,25),
+                        27,19,5.7,Math.PI*2);
+                    var fullShape=doc.AddShape(group,"FullArc",
+                        MRCShapeDefinition.Arc(fullArc),215,215);
+                    MVISceneItem fullScene=editor.Scene.Single(x=>x.Id==fullShape.Id);
+                    MVIVisualHandle fullEnd=MVIVisualEditing.Handles(fullScene)
+                        .Single(x=>x.Kind==MVIVisualHandleKind.ArcEnd);
+                    int beforeFull=doc.Revision;
+                    MTCEditResult<bool> fullNoOp=editor.EditHandle(fullEnd,
+                        fullEnd.WorldPoint.X,fullEnd.WorldPoint.Y);
+                    // 原几何未变，MEM会正确消除等价SetAspect/Transform/Resize，不造Undo。
+                    Check(fullNoOp.Success&&doc.Revision==beforeFull&&
+                        Math.Abs(fullShape.Shape.Geometry.Commands[1].Arc.SweepRadians-
+                            Math.PI*2)<1e-8,
+                        "full circle same-end edit must preserve sweep with no-op revision");
+                    // 实际移动末端跨越0度：保留正扫角并创建一次可撤销MEM事务。
+                    FGEPoint2D nearEnd=new FGEPoint2D(
+                        fullArc.Center.X+fullArc.RadiusX*Math.Cos(fullArc.StartRadians-0.13),
+                        fullArc.Center.Y+fullArc.RadiusY*Math.Sin(fullArc.StartRadians-0.13));
+                    FGEPoint2D worldNearEnd=fullScene.GeometryToWorld.TransformPoint(nearEnd);
+                    Check(editor.EditHandle(fullEnd,worldNearEnd.X,worldNearEnd.Y).Success&&
+                        doc.Revision==beforeFull+1&&
+                        Math.Abs(fullShape.Shape.Geometry.Commands[1].Arc.SweepRadians-
+                            (Math.PI*2-0.13))<1e-8,
+                        "full circle end crossing zero must keep directed near-full sweep");
+                    Check(editor.Undo().Success&&
+                        Math.Abs(fullShape.Shape.Geometry.Commands[1].Arc.SweepRadians-
+                            Math.PI*2)<1e-8,"full circle Undo did not restore full sweep");
+                    Check(editor.Redo().Success&&
+                        Math.Abs(fullShape.Shape.Geometry.Commands[1].Arc.SweepRadians-
+                            (Math.PI*2-0.13))<1e-8,"full circle Redo lost edited sweep");
+                    Check(editor.Undo().Success,"restore full circle before editing start failed");
+                    MVISceneItem fullAfter=editor.Scene.Single(x=>x.Id==fullShape.Id);
+                    MVIVisualHandle fullStart=MVIVisualEditing.Handles(fullAfter)
+                        .Single(x=>x.Kind==MVIVisualHandleKind.ArcStart);
+                    Check(editor.EditHandle(fullStart,fullStart.WorldPoint.X,
+                        fullStart.WorldPoint.Y).Success&&
+                        Math.Abs(fullShape.Shape.Geometry.Commands[1].Arc.SweepRadians-
+                            Math.PI*2)<1e-8,
+                        "full circle start handle must preserve signed full sweep");
+                    var crossingArc=new FGEArc2D(new FGEPoint2D(26,22),
+                        20,17,5.9,0.8);
+                    var crossing=doc.AddShape(group,"WrapArc",
+                        MRCShapeDefinition.Arc(crossingArc),275,205);
+                    MVISceneItem crossingScene=editor.Scene.Single(x=>x.Id==crossing.Id);
+                    MVIVisualHandle wrapEnd=MVIVisualEditing.Handles(crossingScene)
+                        .Single(x=>x.Kind==MVIVisualHandleKind.ArcEnd);
+                    FGEPoint2D endLocal=new FGEPoint2D(
+                        crossingArc.Center.X+crossingArc.RadiusX*Math.Cos(0.2),
+                        crossingArc.Center.Y+crossingArc.RadiusY*Math.Sin(0.2));
+                    FGEPoint2D wrapTarget=crossingScene.GeometryToWorld.TransformPoint(endLocal);
+                    Check(editor.EditHandle(wrapEnd,wrapTarget.X,wrapTarget.Y).Success,
+                        "Arc crossing zero endpoint edit failed");
+                    Check(Math.Abs(crossing.Shape.Geometry.Commands[1].Arc.SweepRadians-
+                        (0.2+Math.PI*2-5.9))<1e-8,
+                        "Arc across 2π must preserve positive directed sweep");
 
                     // 多层旋转组合中的两个图元对齐，必须使用世界坐标而非局部X。
                     var neighbor=doc.AddRectangle(group,"Neighbor",330,140,50,40);

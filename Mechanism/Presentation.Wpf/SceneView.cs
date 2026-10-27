@@ -18,6 +18,73 @@ namespace CxVisual.Mechanism.Presentation.Wpf
     public sealed class SceneView : FrameworkElement
     {
         private readonly List<MVISceneItem> _items = new List<MVISceneItem>();
+        private Point? _paletteDropGhost;
+        // 文本框只暂存WPF正在输入的草稿；正式内容仍由MRCTextElement与MTC持有。
+        private readonly Canvas _inlineTextLayer=new Canvas();
+        private TextBox _inlineTextBox;
+        private Guid? _editingTextId;
+        private string _originalInlineText;
+        public bool IsInlineTextEditing{get{return _editingTextId.HasValue;}}
+        public event Action<Guid,string> InlineTextCommitted;
+        /// <summary>设计态原位文字编辑；Esc/取消不提交，Enter提交，Shift+Enter换行。</summary>
+        public bool BeginInlineTextEdit(Guid id)
+        {
+            if(!_designMode||_drawTool!="Select"||IsInlineTextEditing||
+                _dragging||_handleDragging||HasDrawPreview)return false;
+            MVISceneItem item=_items.Find(x=>x.Id==id&&x.ElementTypeId=="core.text"&&
+                x.IsSelectable&&x.Address!=null&&x.Address.InstancePath.Count==0);
+            if(item==null||InlineTextCommitted==null)return false;
+            CancelInteraction();
+            _editingTextId=id;_originalInlineText=item.Text;
+            _selection=id;_selectedItems.Clear();_selectedItems.Add(id);
+            var input=new TextBox{
+                Text=item.Text,AcceptsReturn=true,TextWrapping=TextWrapping.Wrap,
+                MinWidth=30,MinHeight=24,
+                Width=Math.Max(30,item.LocalWidth),Height=Math.Max(24,item.LocalHeight),
+                VerticalScrollBarVisibility=ScrollBarVisibility.Auto,
+                BorderBrush=Brushes.DodgerBlue,BorderThickness=new Thickness(1.5),
+                Background=Brushes.White,Foreground=Brushes.MidnightBlue,
+                FontFamily=new FontFamily(item.Style.FontFamily),
+                FontSize=item.Style.FontSize
+            };
+            System.Windows.Automation.AutomationProperties.SetAutomationId(
+                input,"MPW.Visual.InlineText");
+            MRCTransform tr=item.WorldTransform;
+            input.RenderTransform=new MatrixTransform(
+                new Matrix(tr.M11,tr.M21,tr.M12,tr.M22,tr.X,tr.Y));
+            input.PreviewKeyDown+=(sender,args)=>{
+                if(args.Key==Key.Escape){FinishInlineTextEdit(false);args.Handled=true;}
+                else if(args.Key==Key.Enter&&
+                    (Keyboard.Modifiers&ModifierKeys.Shift)==0)
+                {FinishInlineTextEdit(true);args.Handled=true;}
+            };
+            input.LostKeyboardFocus+=(sender,args)=>{
+                // WPF焦点路由可能在下一次编辑开启后才分发上一次LostFocus；
+                // 只允许事件所属TextBox结束自己的会话，禁止旧框误取消新框。
+                if(IsInlineTextEditing&&ReferenceEquals(_inlineTextBox,input))
+                    FinishInlineTextEdit(_inputWindow==null||_inputWindow.IsActive);
+            };
+            _inlineTextBox=input;
+            _inlineTextLayer.Children.Add(input);
+            input.Focus();input.CaretIndex=input.Text.Length;
+            InvalidateVisual();
+            return true;
+        }
+        /// <summary>结束编辑先清理临时UI，再向正式MVI发出单次变更意图。</summary>
+        public bool FinishInlineTextEdit(bool commit)
+        {
+            if(!_editingTextId.HasValue)return false;
+            Guid id=_editingTextId.Value;
+            string before=_originalInlineText;
+            string after=_inlineTextBox==null?before:_inlineTextBox.Text;
+            _editingTextId=null;_originalInlineText=null;_inlineTextBox=null;
+            _inlineTextLayer.Children.Clear();
+            InvalidateVisual();
+            if(!commit||string.Equals(before,after,StringComparison.Ordinal))return false;
+            Action<Guid,string> handler=InlineTextCommitted;
+            if(handler!=null){handler(id,after);return true;}
+            return false;
+        }
         // 仅订阅所属Window的生命周期；不保存工程编辑状态或第二套手势。
         private Window _inputWindow;
         private void OnHostLoaded(object sender, RoutedEventArgs e)
@@ -204,6 +271,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         public event Action<Guid,int,double,double> InsertWaypointRequested;
         public event Action<Guid,int,double,double> MoveWaypointRequested;
         public event Action<Guid,int> RemoveWaypointRequested;
+        /// <summary>Ctrl+双击几何编辑曲线段，仅提交稳定Id、命令索引和原参数t。</summary>
+        public event Action<Guid,int,double> PathSegmentSplitRequested;
+        public event Action<Guid,int,string> PathSegmentOperationRequested;
         public event Action<Guid,MPCVisualRouteKind> VisualRouteRequested;
         /// <summary>多对象控制柄只提交一次MEM事务；拖动仅产生画布预览。</summary>
         public event Action<IReadOnlyList<Guid>,int,double,double,double,bool,bool,bool>
@@ -219,6 +289,151 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         private Guid? _rewireConnectionId;
         private Point _rewirePointer;
         public bool IsGeometryEditMode { get { return _geometryEditMode; } }
+        /// <summary>与双击切换同一个几何编辑状态，便于WPF工具和操作测试共用。</summary>
+        public bool EnterGeometryEditModeForSelection()
+        {
+            if(!_designMode||_drawTool!="Select"||!_selection.HasValue||
+                _selectedItems.Count!=1||!_selectedItems.Contains(_selection.Value))
+                return false;
+            MVISceneItem item=_items.Find(x=>x.Id==_selection.Value);
+            if(item==null||item.Shape==null||!item.IsSelectable||item.Address==null||
+                item.Address.InstancePath.Count!=0)return false;
+            _geometryEditMode=true;InvalidateVisual();return true;
+        }
+        /// <summary>WPF手势与STA回归共用的世界坐标分段请求。未命中不修改工程。</summary>
+        public bool RequestSelectedPathSplitAt(double worldX,double worldY)
+        {
+            if(!_designMode||_drawTool!="Select"||!_geometryEditMode||
+                !_selection.HasValue||_selectedItems.Count!=1||
+                ! _selectedItems.Contains(_selection.Value)||
+                PathSegmentSplitRequested==null||_handleDragging||_dragging||
+                HasDrawPreview)return false;
+            MVISceneItem item=_items.Find(x=>x.Id==_selection.Value);
+            if(item==null||item.Address==null||item.Address.InstancePath.Count!=0)
+                return false;
+            int index;double t;
+            if(!MVIVisualEditing.TryHitPathSplitSegment(item,worldX,worldY,
+                8/_zoom,out index,out t))return false;
+            // 精细锚点和控制点附近绝不把双击误解释为插点。
+            if(MVIVisualEditing.HitHandle(item,worldX,worldY,8/_zoom,true,_zoom)!=null)
+                return false;
+            PathSegmentSplitRequested(item.Id,index,t);
+            return true;
+        }
+        /// <summary>
+        /// 几何右键菜单不保存工程对象；每次执行前校验当前选区/模式/命令，复用MVI事务。
+        /// </summary>
+        public bool RequestSelectedPathOperation(Guid id,int commandIndex,string operation)
+        {
+            if(!_designMode||_drawTool!="Select"||!_geometryEditMode||
+                !_selection.HasValue||_selection.Value!=id||_selectedItems.Count!=1||
+                !_selectedItems.Contains(id)||PathSegmentOperationRequested==null||
+                _dragging||_handleDragging||HasDrawPreview)return false;
+            MVISceneItem item=_items.Find(x=>x.Id==id);
+            if(item==null||item.Shape==null||!item.IsSelectable||item.Address==null||
+                item.Address.InstancePath.Count!=0||commandIndex<0||
+                commandIndex>=item.Shape.Geometry.Commands.Count)return false;
+            FGEPathCommand cmd=item.Shape.Geometry.Commands[commandIndex];
+            if(operation=="delete"&&cmd.Verb!=FGEPathVerb.Line)return false;
+            if(operation=="line"||operation=="quadratic"||operation=="cubic")
+            {
+                if(cmd.Verb!=FGEPathVerb.Line&&cmd.Verb!=FGEPathVerb.Quadratic&&
+                    cmd.Verb!=FGEPathVerb.Cubic)return false;
+                if(operation=="line"&&cmd.Verb==FGEPathVerb.Line||
+                    operation=="quadratic"&&cmd.Verb==FGEPathVerb.Quadratic||
+                    operation=="cubic"&&cmd.Verb==FGEPathVerb.Cubic)return false;
+            }
+            else if(operation=="close"||operation=="open")
+            {
+                if(item.Shape.Kind!=MRCShapeKind.Path||cmd.Verb==FGEPathVerb.Close)
+                    return false;
+            }
+            else if(operation!="delete")return false;
+            PathSegmentOperationRequested(id,commandIndex,operation);
+            return true;
+        }
+        /// <summary>当前轮廓是否已有Close，不能因多子路径搜索误关闭相邻轮廓。</summary>
+        private static bool IsContourClosed(IReadOnlyList<FGEPathCommand> commands,int index)
+        {
+            for(int i=index+1;i<commands.Count;i++)
+            {
+                if(commands[i].Verb==FGEPathVerb.Close)return true;
+                if(commands[i].Verb==FGEPathVerb.Move)return false;
+            }
+            return false;
+        }
+        private static MenuItem GeometryMenuItem(string title,Action action)
+        {
+            var menu=new MenuItem{Header=title};
+            menu.Click+=(sender,args)=>action();
+            return menu;
+        }
+        /// <summary>画布坐标下构建H5右键操作；传入世界坐标便于WPF STA验证。</summary>
+        public ContextMenu CreateSelectedGeometryMenuAt(double x,double y)
+        {
+            if(!_designMode||_drawTool!="Select"||!_geometryEditMode||
+                !_selection.HasValue||_selectedItems.Count!=1||
+                !_selectedItems.Contains(_selection.Value))return null;
+            Guid id=_selection.Value;
+            MVISceneItem item=_items.Find(v=>v.Id==id);
+            if(item==null||item.Shape==null||!item.IsSelectable||
+                item.Address==null||item.Address.InstancePath.Count!=0)return null;
+            MVIVisualHandle handle=MVIVisualEditing.HitHandle(
+                item,x,y,8/_zoom,true,_zoom);
+            FGEPathCommand cmd;int index;double fraction;
+            var menu=new ContextMenu();
+            if(handle!=null&&handle.Kind==MVIVisualHandleKind.Anchor)
+            {
+                index=handle.CommandIndex;
+                if(index>=0&&index<item.Shape.Geometry.Commands.Count&&
+                    item.Shape.Geometry.Commands[index].Verb==FGEPathVerb.Line)
+                    menu.Items.Add(GeometryMenuItem("删除顶点",()=>
+                        RequestSelectedPathOperation(id,index,"delete")));
+            }
+            else if(MVIVisualEditing.TryHitPathSplitSegment(item,x,y,8/_zoom,
+                out index,out fraction))
+            {
+                if(PathSegmentSplitRequested!=null)
+                    menu.Items.Add(GeometryMenuItem("精确插入锚点",()=>
+                    {
+                        if(_selection==id&&_geometryEditMode)
+                            PathSegmentSplitRequested(id,index,fraction);
+                    }));
+                cmd=item.Shape.Geometry.Commands[index];
+                if(PathSegmentOperationRequested!=null)
+                {
+                    if(cmd.Verb!=FGEPathVerb.Line)
+                        menu.Items.Add(GeometryMenuItem("转为直线段",()=>
+                            RequestSelectedPathOperation(id,index,"line")));
+                    if(cmd.Verb!=FGEPathVerb.Quadratic)
+                        menu.Items.Add(GeometryMenuItem("转为二次曲线",()=>
+                            RequestSelectedPathOperation(id,index,"quadratic")));
+                    if(cmd.Verb!=FGEPathVerb.Cubic)
+                        menu.Items.Add(GeometryMenuItem("转为三次贝塞尔",()=>
+                            RequestSelectedPathOperation(id,index,"cubic")));
+                    if(item.Shape.Kind==MRCShapeKind.Path)
+                    {
+                        bool closed=IsContourClosed(item.Shape.Geometry.Commands,index);
+                        string operation=closed?"open":"close";
+                        menu.Items.Add(GeometryMenuItem(closed?"断开此轮廓":"闭合此轮廓",()=>
+                            RequestSelectedPathOperation(id,index,operation)));
+                    }
+                }
+            }
+            return menu.Items.Count==0?null:menu;
+        }
+        protected override void OnMouseRightButtonUp(MouseButtonEventArgs e)
+        {
+            base.OnMouseRightButtonUp(e);
+            Point p=WorldPoint(e.GetPosition(this));
+            ContextMenu menu=CreateSelectedGeometryMenuAt(p.X,p.Y);
+            if(menu==null)return;
+            // 由WPF正式Popup负责右键交互；失焦不会提交几何草稿。
+            menu.PlacementTarget=this;
+            menu.Placement=System.Windows.Controls.Primitives.PlacementMode.MousePoint;
+            menu.IsOpen=true;
+            e.Handled=true;
+        }
         private MVIVisualHandle _activeHandle;
         private bool _handleDragging;
         private Point _handlePointer;
@@ -285,6 +500,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 throw new ArgumentOutOfRangeException("zoom");
             _zoom=zoom;_panX=panX;_panY=panY;
             _widgetCanvas.RenderTransform=new MatrixTransform(
+                new Matrix(zoom,0,0,zoom,panX,panY));
+            _inlineTextLayer.RenderTransform=new MatrixTransform(
                 new Matrix(zoom,0,0,zoom,panX,panY));
             InvalidateVisual();
         }
@@ -501,10 +718,12 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             _widgetCanvas=new Canvas();
             _visualChildren=new VisualCollection(this);
             _visualChildren.Add(_widgetCanvas);
+            _visualChildren.Add(_inlineTextLayer);
             Focusable=true;
             Loaded+=OnHostLoaded;
             Unloaded+=OnHostUnloaded;
             IsVisibleChanged+=OnCanvasIsVisibleChanged;
+            AllowDrop=true;
         }
         protected override int VisualChildrenCount{get{return _visualChildren.Count;}}
         protected override System.Windows.Media.Visual GetVisualChild(int index)
@@ -517,11 +736,13 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             double w=double.IsInfinity(availableSize.Width)?720:availableSize.Width;
             double h=double.IsInfinity(availableSize.Height)?520:availableSize.Height;
             _widgetCanvas.Measure(new Size(w,h));
+            _inlineTextLayer.Measure(new Size(w,h));
             return new Size(w,h);
         }
         protected override Size ArrangeOverride(Size finalSize)
         {
             _widgetCanvas.Arrange(new Rect(new Point(0,0),finalSize));
+            _inlineTextLayer.Arrange(new Rect(new Point(0,0),finalSize));
             return finalSize;
         }
         /// <summary>设计模式只允许画布选择移动；运行预览才允许真实控件接收输入。</summary>
@@ -610,6 +831,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             _selection=selected;
             if(changedSelection&&selected.HasValue)_selectedItems.Add(selected.Value);
             _selectedItems.RemoveWhere(id=>!_items.Exists(item=>item.Id==id));
+            if(_editingTextId.HasValue&&(!_items.Exists(item=>
+                item.Id==_editingTextId.Value&&item.ElementTypeId=="core.text"&&
+                item.IsSelectable)||selected!=_editingTextId.Value))
+                FinishInlineTextEdit(false);
             if(!reuse)BuildWidgetLayer();
             else
             {
@@ -622,6 +847,45 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             InvalidateVisual();
         }
 
+        private static string PaletteType(IDataObject data)
+        {
+            if(data==null||!data.GetDataPresent(MPWVisualOperationPanel.WidgetDragFormat))return null;
+            string type=data.GetData(MPWVisualOperationPanel.WidgetDragFormat) as string;
+            return MRCWidgetTypes.IsBuiltIn(type)?type:null;
+        }
+        /// <summary>拖放使用已有Widget绘制事件、世界坐标和MEM单事务。</summary>
+        public bool DropWidgetFromPalette(string type,double x,double y)
+        {
+            if(!_designMode||!MRCWidgetTypes.IsBuiltIn(type)||DrawWidgetRequested==null||
+                double.IsNaN(x)||double.IsNaN(y)||double.IsInfinity(x)||double.IsInfinity(y))
+                return false;
+            CancelInteraction();
+            Point p=SnapDrawing(new Point(x,y));
+            FGEPoint2D at=new FGEPoint2D(p.X,p.Y);
+            DrawWidgetRequested(type,new[]{at,at});
+            return true;
+        }
+        protected override void OnDragOver(DragEventArgs e)
+        {
+            base.OnDragOver(e);
+            bool allowed=_designMode&&DrawWidgetRequested!=null&&PaletteType(e.Data)!=null;
+            e.Effects=allowed?DragDropEffects.Copy:DragDropEffects.None;
+            _paletteDropGhost=allowed?(Point?)SnapDrawing(WorldPoint(e.GetPosition(this))):null;
+            InvalidateVisual();e.Handled=true;
+        }
+        protected override void OnDragLeave(DragEventArgs e)
+        {
+            base.OnDragLeave(e);_paletteDropGhost=null;InvalidateVisual();e.Handled=true;
+        }
+        protected override void OnDrop(DragEventArgs e)
+        {
+            base.OnDrop(e);
+            string type=PaletteType(e.Data);
+            Point p=WorldPoint(e.GetPosition(this));
+            bool accepted=type!=null&&DropWidgetFromPalette(type,p.X,p.Y);
+            _paletteDropGhost=null;InvalidateVisual();
+            e.Effects=accepted?DragDropEffects.Copy:DragDropEffects.None;e.Handled=true;
+        }
         protected override void OnRender(DrawingContext dc)
         {
             base.OnRender(dc);
@@ -726,6 +990,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 if(MPWWidgetPresenter.Supports(item.ElementTypeId))continue;
                 if(item.ElementTypeId=="core.text")
                 {
+                    if(_editingTextId.HasValue&&_editingTextId.Value==item.Id)continue;
                     MRCVisualStyle textStyle=item.Style;
                     var matrix=item.WorldTransform;
                     dc.PushTransform(new MatrixTransform(new Matrix(matrix.M11,matrix.M21,
@@ -1061,6 +1326,16 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                     catch(ArgumentException){/* 零长度指针移动仅显示工具十字，不生成工程 */}
                 }
             }
+            if(_paletteDropGhost.HasValue)
+            {
+                Point p=_paletteDropGhost.Value;
+                FGEPoint2D w=new FGEPoint2D(p.X,p.Y);
+                double x,y,width,height;
+                MVIShapeCatalog.WidgetBounds(new[]{w,w},out x,out y,out width,out height);
+                dc.DrawRectangle(new SolidColorBrush(Color.FromArgb(35,32,117,218)),
+                    new Pen(Brushes.DodgerBlue,1.5/_zoom){DashStyle=DashStyles.Dash},
+                    new Rect(x,y,width,height));
+            }
             if(_marquee)
             {
                 double x=Math.Min(_marqueeStart.X,_marqueeEnd.X);
@@ -1105,6 +1380,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 }
                 e.Handled=true;return;
             }
+            if(e.ClickCount>=2&&_geometryEditMode&&
+                (Keyboard.Modifiers&ModifierKeys.Control)!=0&&
+                RequestSelectedPathSplitAt(point.X,point.Y))
+            {e.Handled=true;return;}
             int selectionHandle;
             if(TryHitSelectionHandle(point,out selectionHandle))
             {
@@ -1152,6 +1431,16 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 _connectTargetId=null;_connectTargetSide=null;
                 _connectPointer=point;_hoverConnectId=null;
                 CaptureMouse();InvalidateVisual();e.Handled=true;return;
+            }
+            if(e.ClickCount>=2&&
+                (Keyboard.Modifiers&(ModifierKeys.Control|ModifierKeys.Shift))==0)
+            {
+                // 文字优先进入原位输入；不误触发H1/H5或普通Shape几何编辑。
+                MVISceneItem textItem=_items.LastOrDefault(item=>
+                    item.ElementTypeId=="core.text"&&item.IsSelectable&&
+                    item.Contains(point.X,point.Y));
+                if(textItem!=null&&BeginInlineTextEdit(textItem.Id))
+                {e.Handled=true;return;}
             }
             if(e.ClickCount>=2&&_selection.HasValue&&
                 (Keyboard.Modifiers&(ModifierKeys.Control|ModifierKeys.Shift))==0&&
@@ -1446,7 +1735,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             InvalidateVisual();
         }
         public void CancelInteraction()
-        {_drawDragging=false;_drawPoints.Clear();
+        {
+            if(IsInlineTextEditing)FinishInlineTextEdit(false);
+            _paletteDropGhost=null;
+            _drawDragging=false;_drawPoints.Clear();
             _dragging=false;_marquee=false;_handleDragging=false;_activeHandle=null;_panning=false;_dragX=0;_dragY=0;_dragSnap=null;
             _waypointDragging=false;_waypointConnectionId=null;
             _selectionTransformDragging=false;

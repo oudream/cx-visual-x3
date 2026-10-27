@@ -70,11 +70,18 @@ namespace CxVisual.TestCenter.UI
                     "GPU成功或带具体原因的WPF回退，不能静默伪报GPU成功");
                 Check(frame.LegacyTopTabCount==4 && frame.LegacyBottomTabCount==5,
                     "原版上下4/5页签完整恢复");
+                var settingsDock=FindVisualByAutomationId<
+                    CxVisual.Mechanism.Presentation.Wpf.Volume.MPWVolumeSettingsDockControl>(
+                    frame,"MPW.Volume.SettingsDock");
                 TabControl upper=FindVisualByAutomationId<TabControl>(frame,
-                    "TCT.Volume.UpperTabs");
+                    "MPW.Volume.Settings.UpperTabs");
                 TabControl lower=FindVisualByAutomationId<TabControl>(frame,
-                    "TCT.Volume.LowerTabs");
-                Check(upper!=null && lower!=null,"新三维设置/传递函数页签必须在真实WPF可视树中");
+                    "MPW.Volume.Settings.LowerTabs");
+                Check(settingsDock!=null && upper!=null && lower!=null &&
+                      Object.ReferenceEquals(settingsDock.UpperTabs,upper) &&
+                      Object.ReferenceEquals(settingsDock.LowerTabs,lower) &&
+                      settingsDock.UpperCount==4 && settingsDock.LowerCount==5,
+                    "正式MPW双层设置面板必须承载真实4/5页签，不保留TestCenter布局副本");
                 for(int i=0;i<upper.Items.Count;i++)
                 {
                     upper.SelectedIndex=i;
@@ -88,6 +95,20 @@ namespace CxVisual.TestCenter.UI
                         "阈值/颜色/标量/梯度/任意切各页不能是空占位");
                 }
                 upper.SelectedIndex=0;lower.SelectedIndex=0;
+                // 独立公共设置面板不依赖TestCenter或CT3D渲染器。
+                var standaloneDock=new CxVisual.Mechanism.Presentation.Wpf.Volume.
+                    MPWVolumeSettingsDockControl();
+                var sharedEditor=new StackPanel();
+                standaloneDock.AddUpperTab("显示",sharedEditor);
+                var transferEditor=new StackPanel();
+                standaloneDock.AddLowerTab("透明度",transferEditor);
+                bool duplicateDockRejected=false;
+                try { standaloneDock.AddUpperTab("重复",sharedEditor); }
+                catch(InvalidOperationException) { duplicateDockRejected=true; }
+                Check(standaloneDock.UpperCount==1 && standaloneDock.LowerCount==1 &&
+                      standaloneDock.UpperTabs.SelectedIndex==0 &&
+                      standaloneDock.LowerTabs.SelectedIndex==0 && duplicateDockRejected,
+                    "MPW公共参数面板独立创建、默认选中并拒绝重复父级，保持编辑器身份");
 
                 double initialCameraDistance=frame.CameraDistanceForTest;
                 frame.Zoom3D(2);
@@ -407,6 +428,55 @@ namespace CxVisual.TestCenter.UI
                     Math.Abs(standalonePoints[1].X-.45f)<.0001 &&
                     Math.Abs(standalonePoints[1].Y-.55f)<.0001,
                     "正式MPW曲线编辑器新增节点应直接写回唯一FVO控制点并发出变化事件");
+                // 正式MPW组件独立实例须直接编辑外部FVO列表，而不依赖专业CT3D程序集。
+                var transferSet=new FVOTransferFunctionSet();
+                var transferDock=new CxVisual.Mechanism.Presentation.Wpf.Volume.
+                    MPWVolumeSettingsDockControl();
+                var enableThreshold=new CheckBox();
+                var thresholdLower=new Slider{Minimum=0,Maximum=1,Value=transferSet.Threshold};
+                var enableColor=new CheckBox();
+                var enableScalar=new CheckBox();
+                var enableGradient=new CheckBox();
+                int transferNotifications=0,obliqueJumpCount=0;
+                var transferUi=new CxVisual.Mechanism.Presentation.Wpf.Volume.
+                    MPWVolumeTransferFunctionPanels(
+                    transferDock,transferSet,enableThreshold,thresholdLower,
+                    enableColor,enableScalar,enableGradient,
+                    ()=>transferNotifications++,()=>obliqueJumpCount++);
+                Check(Object.ReferenceEquals(transferUi.TransferFunctions,transferSet) &&
+                      transferDock.LowerCount==5 &&
+                      transferUi.ColorCurve.PointCount==transferSet.Color.Points.Count,
+                    "MPW五页传递函数面板必须独立创建并直接持有唯一FVO曲线");
+                transferUi.ColorCurve.SelectPoint(1);
+                int redBefore=transferSet.Color.Points[1].Color.R;
+                transferUi.RedSlider.Value=redBefore==255?254:redBefore+1;
+                Check(transferSet.Color.Points[1].Color.R==(byte)transferUi.RedSlider.Value &&
+                      enableColor.IsChecked==true && transferNotifications>0,
+                    "MPW RGB滑杆必须直接改变所选FVO颜色节点并通知渲染宿主");
+                transferUi.ThresholdCurve.SetRange(.2f,.8f);
+                Check(Math.Abs(transferSet.Threshold-.2f)<.001 &&
+                      Math.Abs(transferSet.UpperThreshold-.8f)<.001 &&
+                      Math.Abs(thresholdLower.Value-.2)<.001 &&
+                      enableThreshold.IsChecked==true,
+                    "MPW双端阈值编辑必须更新唯一FVO范围及既有阈值滑杆");
+                var scalarHistogram=new float[]{0f,.5f,1f};
+                var gradientHistogram=new float[]{1f,.3f,0f};
+                transferUi.UpdateHistograms(scalarHistogram,gradientHistogram);
+                Check(Object.ReferenceEquals(transferUi.ColorCurve.Histogram,scalarHistogram) &&
+                      Object.ReferenceEquals(transferUi.ScalarCurve.Histogram,scalarHistogram) &&
+                      Object.ReferenceEquals(transferUi.GradientCurve.Histogram,gradientHistogram) &&
+                      Object.ReferenceEquals(transferUi.ThresholdCurve.Histogram,scalarHistogram),
+                    "MPW统一直方图更新要同时覆盖颜色、标量、梯度与阈值而不复制采样");
+                var obliqueTab=transferDock.LowerTabs.Items[4] as TabItem;
+                var obliquePanel=obliqueTab==null?null:obliqueTab.Content as StackPanel;
+                Button openOblique=null;
+                if(obliquePanel!=null)
+                    foreach(UIElement element in obliquePanel.Children)
+                        if((openOblique=element as Button)!=null)break;
+                Check(openOblique!=null,"MPW任意切导航应保留真实按钮");
+                openOblique.RaiseEvent(new RoutedEventArgs(Button.ClickEvent,openOblique));
+                Check(obliqueJumpCount==1,"MPW任意切导航必须调用宿主回调");
+
                 int scalarCount=frame.ScalarStopCount,colorCount=frame.ColorStopCount;
                 frame.AddScalarStopForTest(.72f,.6f);
                 frame.AddColorStopForTest(.38f);

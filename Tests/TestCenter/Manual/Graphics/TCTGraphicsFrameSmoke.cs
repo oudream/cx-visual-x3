@@ -8,6 +8,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using CxVisual.Mechanism.Presentation.Wpf;
 using CxVisual.Mechanism.Core;
+using CxVisual.Foundation.Geometry;
 namespace CxVisual.TestCenter.UI
 {
     /// <summary>
@@ -277,6 +278,35 @@ namespace CxVisual.TestCenter.UI
                 if(textItem==null||Math.Abs(textItem.Width-150)>1e-6||
                     Math.Abs(textItem.Height-75)>1e-6)
                     throw new InvalidOperationException("Text画布Ghost尺寸与MEM对象不一致");
+                // 已有文本直接在画布原位改写，输入预览不改Revision，Esc也不污染历史。
+                frame.Execute("Select");
+                Guid textId=textItem.Id;
+                int beforeTextEdit=frame.Revision;
+                if(!frame.Canvas.BeginInlineTextEdit(textId)||!frame.Canvas.IsInlineTextEditing)
+                    throw new InvalidOperationException("文字没有进入共用SceneView原位编辑");
+                TextBox inline=Find<TextBox>(frame,"MPW.Visual.InlineText");
+                if(inline==null)throw new InvalidOperationException("缺少真正的WPF文字输入框");
+                inline.Text="不保存的编辑";
+                if(frame.Revision!=beforeTextEdit||frame.Canvas.FinishInlineTextEdit(false)||
+                    frame.Revision!=beforeTextEdit||frame.Canvas.IsInlineTextEditing||
+                    ((MRCTextElement)frame.FindObject(textId)).Text!="文本")
+                    throw new InvalidOperationException("Esc取消文字编辑不得修改MEM对象/Revision");
+                if(!frame.Canvas.BeginInlineTextEdit(textId))
+                    throw new InvalidOperationException("文字无法再次进入原位编辑");
+                inline=Find<TextBox>(frame,"MPW.Visual.InlineText");
+                if(inline==null||!frame.Canvas.IsInlineTextEditing)
+                    throw new InvalidOperationException("旧TextBox失焦误关闭第二次原位编辑");
+                inline.Text="可撤销的文字更新";
+                if(frame.Revision!=beforeTextEdit||!frame.Canvas.FinishInlineTextEdit(true)||
+                    frame.Revision!=beforeTextEdit+1||
+                    ((MRCTextElement)frame.FindObject(textId)).Text!="可撤销的文字更新")
+                    throw new InvalidOperationException("文本输入未按一次MEM事务提交");
+                frame.Execute("edit.undo");
+                if(((MRCTextElement)frame.FindObject(textId)).Text!="文本")
+                    throw new InvalidOperationException("文本更新Undo没有恢复原始内容");
+                frame.Execute("edit.redo");
+                if(((MRCTextElement)frame.FindObject(textId)).Text!="可撤销的文字更新")
+                    throw new InvalidOperationException("文本更新Redo没有恢复修改");
                 // Widget工具须先激活Draw，真实画布绘制后才有一个正式MEM对象。
                 frame.Execute("WidgetButton");
                 int widgetBefore=frame.Revision;
@@ -303,12 +333,86 @@ namespace CxVisual.TestCenter.UI
                     throw new InvalidOperationException("Widget单击尺寸不符合同一纯布局规则");
                 Guid widgetId=widget.Id,textboxId=textbox.Id;
                 frame.Execute("Select");
+                // GE-13图库原生DragDrop最终走此统一画布入口；禁止接收未知TypeId。
+                int dropBefore=frame.Revision;
+                if(!frame.Canvas.AllowDrop||
+                    frame.Canvas.DropWidgetFromPalette("core.widget.invalid",375,400)||
+                    frame.Revision!=dropBefore||frame.SceneCount!=10)
+                    throw new InvalidOperationException("非法Palette控件不能生成MEM事务");
+                if(!frame.Canvas.DropWidgetFromPalette("core.widget.checkbox",375,400)||
+                    frame.Revision!=dropBefore+1||frame.SceneCount!=11)
+                    throw new InvalidOperationException("Palette Widget没有一次提交");
+                MRCWidgetElement dropped=frame.FindObject(frame.SceneIds.Last()) as MRCWidgetElement;
+                if(dropped==null||dropped.WidgetTypeId!="core.widget.checkbox"||
+                    Math.Abs(dropped.Width-120)>1e-6||Math.Abs(dropped.Height-36)>1e-6)
+                    throw new InvalidOperationException("Palette TypeId/单击默认尺寸不一致");
+                Guid droppedId=dropped.Id;
                 frame.SaveProject(file);
                 frame.OpenProject(file);
-                if(frame.SceneCount!=10||frame.IsDirty||
+                if(frame.SceneCount!=11||frame.IsDirty||
                     !(frame.FindObject(widgetId) is MRCWidgetElement)||
-                    !(frame.FindObject(textboxId) is MRCWidgetElement))
+                    !(frame.FindObject(textboxId) is MRCWidgetElement)||
+                    !(frame.FindObject(droppedId) is MRCWidgetElement)||
+                    ((MRCTextElement)frame.FindObject(textId)).Text!="可撤销的文字更新")
                     throw new InvalidOperationException("Widget绘制保存重开或身份不正确");
+                // GE-03: 真实公共WPF Scene内进入D几何编辑，以世界命中分割Bezier。
+                frame.Execute("Bezier");
+                frame.Canvas.BeginDrawGesture(180,480);
+                frame.Canvas.UpdateDrawGesture(510,610);
+                if(!frame.Canvas.CompleteDrawGesture(510,610))
+                    throw new InvalidOperationException("Bezier画布绘制没有落到MEM");
+                Guid bezierId=frame.SceneIds.Last();
+                frame.Execute("Select");
+                frame.SelectObjects(bezierId);
+                MRCShapeElement curve=frame.FindObject(bezierId) as MRCShapeElement;
+                if(curve==null||curve.Shape.Kind!=MRCShapeKind.Bezier)
+                    throw new InvalidOperationException("需要正式Bezier工程对象");
+                if(!frame.Canvas.EnterGeometryEditModeForSelection())
+                    throw new InvalidOperationException("Bezier无法进入D几何编辑态");
+                var projectedCurve=new CxVisual.Mechanism.Visual.MVISceneItem(curve);
+                var sourcePath=curve.Shape.Geometry;
+                FGEBezier2D cubic=new FGEBezier2D(sourcePath.Commands[0].End,
+                    sourcePath.Commands[1].Control1,sourcePath.Commands[1].Control2,
+                    sourcePath.Commands[1].End);
+                FGEPoint2D at=projectedCurve.GeometryToWorld.TransformPoint(cubic.PointAt(0.43));
+                int beforeSplit=frame.Revision;
+                if(frame.Canvas.RequestSelectedPathSplitAt(at.X+1000,at.Y+1000)||
+                    frame.Revision!=beforeSplit||curve.Shape.Geometry.Commands.Count!=2)
+                    throw new InvalidOperationException("未命中的双击不得创建几何历史");
+                ContextMenu curveMenu=frame.Canvas.CreateSelectedGeometryMenuAt(at.X,at.Y);
+                if(curveMenu==null||!curveMenu.Items.OfType<MenuItem>().Any(m=>
+                    (string)m.Header=="转为直线段")||
+                    !curveMenu.Items.OfType<MenuItem>().Any(m=>
+                    (string)m.Header=="精确插入锚点"))
+                    throw new InvalidOperationException("D几何右键没有暴露曲线转换与精确插点");
+                if(!frame.Canvas.RequestSelectedPathSplitAt(at.X,at.Y)||
+                    frame.Revision!=beforeSplit+1||curve.Shape.Geometry.Commands.Count!=3)
+                    throw new InvalidOperationException("曲线原位插点没有一次MEM事务");
+                frame.Execute("edit.undo");
+                if(curve.Shape.Geometry.Commands.Count!=2)
+                    throw new InvalidOperationException("Bezier插点Undo没有恢复原曲线");
+                frame.Execute("edit.redo");
+                if(curve.Shape.Geometry.Commands.Count!=3)
+                    throw new InvalidOperationException("Bezier插点Redo没有恢复精确曲线");
+                frame.SaveProject(file);frame.OpenProject(file);
+                if(!(frame.FindObject(bezierId) is MRCShapeElement)||
+                    ((MRCShapeElement)frame.FindObject(bezierId)).Shape.Geometry.Commands.Count!=3)
+                    throw new InvalidOperationException("Bezier插点保存重开丢失了路径几何");
+                frame.Execute("Select");frame.SelectObjects(bezierId);
+                if(!frame.Canvas.EnterGeometryEditModeForSelection())
+                    throw new InvalidOperationException("路径编辑在保存重开后不可重新进入");
+                MRCShapeElement persisted=(MRCShapeElement)frame.FindObject(bezierId);
+                int originalRevision=frame.Revision;
+                if(!frame.Canvas.RequestSelectedPathOperation(bezierId,1,"line")||
+                    frame.Revision!=originalRevision+1||
+                    persisted.Shape.Geometry.Commands[1].Verb!=FGEPathVerb.Line)
+                    throw new InvalidOperationException("Bezier首段右键转直线没有一次MEM事务");
+                frame.Execute("edit.undo");
+                if(persisted.Shape.Geometry.Commands[1].Verb!=FGEPathVerb.Cubic)
+                    throw new InvalidOperationException("曲线转直线Undo未恢复原精确Bezier");
+                frame.Execute("edit.redo");
+                if(persisted.Shape.Geometry.Commands[1].Verb!=FGEPathVerb.Line)
+                    throw new InvalidOperationException("曲线转直线Redo未恢复段类型");
                 frame.Inspect();
                 if(!frame.StatusMessage.Contains("Revision")||
                     frame.StatusMessage.Contains("GE Passed"))

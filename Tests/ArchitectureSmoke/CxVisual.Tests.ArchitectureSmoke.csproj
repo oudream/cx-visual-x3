@@ -28,7 +28,8 @@
     
     
     <Reference Include="System"/>
-    <Reference Include="System.Core"/><Reference Include="System.Runtime.Serialization"/><Reference Include="System.ComponentModel.DataAnnotations"/>
+    <Reference Include="System.Core"/>
+    <Reference Include="System.Numerics"/><Reference Include="System.Runtime.Serialization"/><Reference Include="System.ComponentModel.DataAnnotations"/>
     <Reference Include="PresentationCore"/>
     <Reference Include="PresentationFramework"/>
     <Reference Include="WindowsBase"/>
@@ -65,4 +66,5 @@
   </ItemGroup>
   <ItemGroup><ProjectReference Include="..\..\Foundation\Transport\CxVisual.Foundation.Transport.csproj"><Project>{3CF367FE-8333-5763-85B6-1D87B3EE47C8}</Project><Name>CxVisual.Foundation.Transport</Name></ProjectReference></ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets"/>
+  <ItemGroup><ProjectReference Include="..\..\Foundation\Numerics\CxVisual.Foundation.Numerics.csproj"><Project>{6FA7BA1A-90A2-5BA6-A50B-BBB316F6829E}</Project><Name>CxVisual.Foundation.Numerics</Name></ProjectReference></ItemGroup>
 </Project>

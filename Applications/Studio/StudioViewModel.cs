@@ -246,6 +246,24 @@ namespace CxVisual.Studio
             if(result.Success)NotifyScene();
             return result;
         }
+        /// <summary>WPF命中得到原曲线t后，提交一次已有MEM路径编辑事务。</summary>
+        public MTCEditResult<bool> SplitVisualPath(Guid id,int commandIndex,double fraction)
+        {
+            MTCEditResult<bool> result=_editor.EditPathSegment(id,commandIndex,"split",fraction);
+            Status=result.Success?"已精确插入曲线锚点 | Revision "+result.Revision:
+                "路径插点被拒绝："+result.ErrorCode+" "+result.Message;
+            if(result.Success)NotifyScene();
+            return result;
+        }
+        /// <summary>右键菜单编辑指定图元及段，避免依赖可能变化的主选区。</summary>
+        public MTCEditResult<bool> EditVisualPathSegment(Guid id,int index,string operation)
+        {
+            MTCEditResult<bool> result=_editor.EditPathSegment(id,index,operation);
+            Status=result.Success?"路径几何已更新 | Revision "+result.Revision:
+                "路径操作被拒绝："+result.ErrorCode+": "+result.Message;
+            if(result.Success)NotifyScene();
+            return result;
+        }
         public MTCEditResult<bool> EditVisualPath(int index,string operation)
         {
             if(!_selected.HasValue)throw new InvalidOperationException("请选择路径图元");
@@ -327,6 +345,15 @@ namespace CxVisual.Studio
             }
             Status=result.Success?"已绘制文本框 | Revision "+result.Revision:
                 "文本框绘制被拒绝："+result.ErrorCode+" "+result.Message;
+            return result;
+        }
+        /// <summary>文本原位编辑唯一工程入口；编辑器仅提交一次内容变更。</summary>
+        public MTCEditResult<bool> SetVisualText(Guid id,string text)
+        {
+            MTCEditResult<bool> result=_editor.SetVisualText(id,text);
+            Status=result.Success?"文本已更新 | Revision "+result.Revision:
+                "文本编辑被拒绝："+result.ErrorCode+" "+result.Message;
+            if(result.Success)NotifyScene();
             return result;
         }
         /// <summary>公共Widget画布单击/拖框入口；沿用MVI/MEM正式创建、选中和Undo。</summary>

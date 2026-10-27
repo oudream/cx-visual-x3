@@ -23,4 +23,34 @@
   <ItemGroup>
     <Compile Include="Properties\AssemblyInfo.cs"/></ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets"/>
+  <ItemGroup>
+    <Reference Include="System.Numerics"/>
+    <Compile Include="Scalar\FNUInterpolation.cs"/>
+    <Compile Include="Statistics\FNUStatistics.cs"/>
+    <Compile Include="Signal\FNUMovingAverage.cs"/>
+    <Compile Include="Signal\FNUFourier.cs"/>
+    <Compile Include="LinearAlgebra\FNULinearAlgebra.cs"/>
+    <Compile Include="Scalar\FNUPolynomial.cs"/>
+    <Compile Include="Statistics\FNUHistogram.cs"/>
+    <Compile Include="Solvers\FNURootFinding.cs"/>
+    <Compile Include="Solvers\FNUNumericalIntegration.cs"/>
+    <Compile Include="Solvers\FNUCurveFitting.cs"/>
+  </ItemGroup>
+  <ItemGroup><Compile Include="Signal\FNUFirFilter.cs"/></ItemGroup>
+  <ItemGroup><Compile Include="Signal\FNUIirFilter.cs"/></ItemGroup>
+  <ItemGroup><Compile Include="Signal\FNUResampling.cs"/></ItemGroup>
+  <ItemGroup><Compile Include="Signal\FNUConvolution.cs"/></ItemGroup>
+  <ItemGroup><Compile Include="Signal\FNUWindowFunction.cs"/></ItemGroup>
+  <ItemGroup><Compile Include="Signal\FNUFrequencyAnalysis.cs"/></ItemGroup>
+  <ItemGroup><Compile Include="Tensors\FNUTensorShape.cs"/></ItemGroup>
+  <ItemGroup><Compile Include="Tensors\FNUTensorBuffer.cs"/></ItemGroup>
+  <ItemGroup><Compile Include="Tensors\FNUTensorMath.cs"/></ItemGroup>
+  <ItemGroup><Compile Include="Solvers\FNUOptimization.cs"/></ItemGroup>
+  <ItemGroup><Compile Include="Solvers\FNUFiniteDifferences.cs"/></ItemGroup>
+  <ItemGroup><Compile Include="Signal\FNUCorrelation.cs"/></ItemGroup>
+  <ItemGroup><Compile Include="Statistics\FNUDistribution.cs"/></ItemGroup>
+  <ItemGroup><Compile Include="Scalar\FNUPrecision.cs"/></ItemGroup>
+  <ItemGroup><Compile Include="Solvers\FNUWeightedLeastSquares.cs"/></ItemGroup>
+  <ItemGroup><Compile Include="Solvers\FNUOdeSolver.cs"/></ItemGroup>
+  <ItemGroup><PackageReference Include="MathNet.Numerics" Version="5.0.0"/></ItemGroup>
 </Project>
