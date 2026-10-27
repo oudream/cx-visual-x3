@@ -1955,6 +1955,25 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         private void OnSecondaryMouseDown(object sender, MouseButtonEventArgs e)
         {
             if (!IsSideBySideVisible || _session.Result == null) return;
+            if(_toolMode==MVIImageToolMode.LinePair)
+            {
+                if(e.ChangedButton!=MouseButton.Left)return;
+                Point pointer=e.GetPosition(SecondaryViewportRoot);
+                FIMImageBuffer image=ActiveImage;
+                FGEPoint2D source=_viewTransform.DisplayToSource(new FGEPoint2D(
+                    _secondaryViewport.ImageX(pointer.X),_secondaryViewport.ImageY(pointer.Y)),
+                    image.Width,image.Height);
+                if(source.X>=0 && source.Y>=0 &&
+                   source.X<image.Width && source.Y<image.Height)
+                {
+                    try { AppendLinePairPoint(new FGEPoint2D(
+                        Math.Floor(source.X)+0.5,Math.Floor(source.Y)+0.5)); }
+                    catch(ArgumentException error)
+                    {PixelStatus.Text="右侧两线测量输入无效："+error.Message;}
+                }
+                e.Handled=true;
+                return;
+            }
             if(_toolMode==MVIImageToolMode.RotateOverlay)
             {
                 if(BeginRotation(e.GetPosition(SecondaryViewportRoot),_secondaryViewport,true))
@@ -2031,6 +2050,11 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
                 source.X < result.Width && source.Y < result.Height)
             {
                 int x = (int)Math.Floor(source.X), y = (int)Math.Floor(source.Y);
+                if(_toolMode==MVIImageToolMode.LinePair && _polygonDraft.Count>0)
+                {
+                    _draftHover=new FGEPoint2D(x+0.5,y+0.5);
+                    DrawDraftPolyline();
+                }
                 PixelStatus.Text = "结果图 · (" + x + "," + y + ") · Gray=" +
                     result.GetGrayValue(x,y).ToString("0.###") +
                     " · " + _secondaryViewport.Scale.ToString("0.##") + "×";
