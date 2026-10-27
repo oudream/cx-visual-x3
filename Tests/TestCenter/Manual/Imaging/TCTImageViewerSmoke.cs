@@ -382,10 +382,11 @@ namespace CxVisual.TestCenter.UI
                 thresholdLow.Text="0";thresholdHigh.Text="65535";
                 frame.Viewer.SelectOverlay(null);
                 frame.Viewer.Overlays.Remove(thresholdPolygon.Id);
+                frame.Viewer.SelectRegion(new FIMPixelRegion(0,1,3,1));
                 growTolerance.Text="-2";
                 growthButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                if(!ReferenceEquals(growthMask,frame.Viewer.Session.Result))
-                    throw new InvalidOperationException("非法生长参数仍修改结果图");
+                if(!ReferenceEquals(polygonMask,frame.Viewer.Session.Result))
+                    throw new InvalidOperationException("非法生长参数仍修改当前结果图");
                 frame.Viewer.SelectOriginal();
                 frame.Viewer.ClearSelection();
                 growthTabs.SelectedIndex=0;
