@@ -35,19 +35,35 @@ namespace CxVisual.Mechanism.Data.Variables
                 if (--_inFlight == 0) System.Threading.Monitor.PulseAll(_leaseGate);
             }
         }
-        internal TResult Execute<TResult>(Func<TResult> operation)
+        internal struct Lease : IDisposable
         {
-            if (operation == null) throw new ArgumentNullException("operation");
+            private readonly MDSVariableScope _scope;
+            private readonly MDSVariableScope _previous;
+            internal Lease(MDSVariableScope scope, MDSVariableScope previous)
+            { _scope = scope; _previous = previous; }
+            public void Dispose()
+            {
+                _executingScope = _previous;
+                _scope.Exit();
+            }
+        }
+        // 热句柄仅租借栈上Lease，不生成每次写入的委托或闭包。
+        internal Lease Acquire()
+        {
             Enter();
             MDSVariableScope previous = _executingScope;
             _executingScope = this;
-            try { return operation(); }
-            finally { _executingScope = previous; Exit(); }
+            return new Lease(this, previous);
+        }
+        internal TResult Execute<TResult>(Func<TResult> operation)
+        {
+            if (operation == null) throw new ArgumentNullException("operation");
+            using (Acquire()) return operation();
         }
         internal void Execute(Action operation)
         {
             if (operation == null) throw new ArgumentNullException("operation");
-            Execute<int>(() => { operation(); return 0; });
+            using (Acquire()) operation();
         }
         internal void Invalidate()
         {
@@ -104,25 +120,25 @@ namespace CxVisual.Mechanism.Data.Variables
             if (!IsActive) throw new ObjectDisposedException("MDSVariableHandle",
                 "引用对应的运行Scope已经卸载，必须重新ResolveHandle");
         }
-        public T Get() { return _scope.Execute(() => _variable.Get()); }
+        public T Get()
+        {
+            using (_scope.Acquire()) return _variable.Get();
+        }
         public bool TryGet(out T value)
         {
-            T current = default(T);
-            bool success = _scope.Execute(() => _variable.TryGet(out current));
-            value = current;
-            return success;
+            using (_scope.Acquire()) return _variable.TryGet(out value);
         }
         public MDSVariableSnapshot<T> Snapshot()
         {
-            return _scope.Execute(() => _variable.Snapshot());
+            using (_scope.Acquire()) return _variable.Snapshot();
         }
         public void Update(T value)
         {
-            _scope.Execute(() => _variable.Update(value));
+            using (_scope.Acquire()) _variable.Update(value);
         }
         public MDSVariableUpdateResult Update(T value, MDSVariableUpdateOptions options)
         {
-            return _scope.Execute(() => _variable.Update(value, options));
+            using (_scope.Acquire()) return _variable.Update(value, options);
         }
     }
 
