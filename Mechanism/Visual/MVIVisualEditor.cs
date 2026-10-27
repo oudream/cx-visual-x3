@@ -464,6 +464,28 @@ namespace CxVisual.Mechanism.Visual
                 return true;
             });
         }
+        /// <summary>正式修改既有Text，保留对象身份并通过MEM事务实现一次Undo。</summary>
+        public MTCEditResult<bool> SetVisualText(Guid id,string text)
+        {
+            Demand();
+            int revision=Document.Revision;
+            if(text==null||text.Length>1000000)
+                return MTCEditResult<bool>.Rejected(revision,"visual.text.invalid",
+                    "Text must be non-null and within the existing MRC text budget");
+            MRCTextElement definition=Document.Find(id) as MRCTextElement;
+            MVISceneItem visible=Scene.FirstOrDefault(item=>item.Id==id&&
+                item.ElementTypeId=="core.text"&&item.IsSelectable&&
+                item.Address!=null&&item.Address.InstancePath.Count==0);
+            if(definition==null||visible==null)
+                return MTCEditResult<bool>.Rejected(revision,"visual.text.not_editable",
+                    "Text definition must be visible, editable and outside an instance projection");
+            if(string.Equals(definition.Text,text,StringComparison.Ordinal))
+                return MTCEditResult<bool>.Rejected(revision,"visual.text.unchanged",
+                    "Text is unchanged; no engineering revision is required");
+            return Document.Edit("修改图元文字",e=>{
+                e.SetText(definition,text);return true;
+            });
+        }
         /// <summary>Widget手工单击/拖框使用同一WPF Ghost布局；现有MEM Widget唯一Owner。</summary>
         public MTCEditResult<bool> DrawWidget(string name,string typeId,
             IReadOnlyList<FGEPoint2D> worldPoints)

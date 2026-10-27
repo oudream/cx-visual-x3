@@ -18,6 +18,70 @@ namespace CxVisual.Mechanism.Presentation.Wpf
     public sealed class SceneView : FrameworkElement
     {
         private readonly List<MVISceneItem> _items = new List<MVISceneItem>();
+        // 文本框只暂存WPF正在输入的草稿；正式内容仍由MRCTextElement与MTC持有。
+        private readonly Canvas _inlineTextLayer=new Canvas();
+        private TextBox _inlineTextBox;
+        private Guid? _editingTextId;
+        private string _originalInlineText;
+        public bool IsInlineTextEditing{get{return _editingTextId.HasValue;}}
+        public event Action<Guid,string> InlineTextCommitted;
+        /// <summary>设计态原位文字编辑；Esc/取消不提交，Enter提交，Shift+Enter换行。</summary>
+        public bool BeginInlineTextEdit(Guid id)
+        {
+            if(!_designMode||_drawTool!="Select"||IsInlineTextEditing||
+                _dragging||_handleDragging||HasDrawPreview)return false;
+            MVISceneItem item=_items.Find(x=>x.Id==id&&x.ElementTypeId=="core.text"&&
+                x.IsSelectable&&x.Address!=null&&x.Address.InstancePath.Count==0);
+            if(item==null||InlineTextCommitted==null)return false;
+            CancelInteraction();
+            _editingTextId=id;_originalInlineText=item.Text;
+            _selection=id;_selectedItems.Clear();_selectedItems.Add(id);
+            var input=new TextBox{
+                Text=item.Text,AcceptsReturn=true,TextWrapping=TextWrapping.Wrap,
+                MinWidth=30,MinHeight=24,
+                Width=Math.Max(30,item.LocalWidth),Height=Math.Max(24,item.LocalHeight),
+                VerticalScrollBarVisibility=ScrollBarVisibility.Auto,
+                BorderBrush=Brushes.DodgerBlue,BorderThickness=new Thickness(1.5),
+                Background=Brushes.White,Foreground=Brushes.MidnightBlue,
+                FontFamily=new FontFamily(item.Style.FontFamily),
+                FontSize=item.Style.FontSize
+            };
+            System.Windows.Automation.AutomationProperties.SetAutomationId(
+                input,"MPW.Visual.InlineText");
+            MRCTransform tr=item.WorldTransform;
+            input.RenderTransform=new MatrixTransform(
+                new Matrix(tr.M11,tr.M21,tr.M12,tr.M22,tr.X,tr.Y));
+            input.PreviewKeyDown+=(sender,args)=>{
+                if(args.Key==Key.Escape){FinishInlineTextEdit(false);args.Handled=true;}
+                else if(args.Key==Key.Enter&&
+                    (Keyboard.Modifiers&ModifierKeys.Shift)==0)
+                {FinishInlineTextEdit(true);args.Handled=true;}
+            };
+            input.LostKeyboardFocus+=(sender,args)=>{
+                if(IsInlineTextEditing)
+                    FinishInlineTextEdit(_inputWindow==null||_inputWindow.IsActive);
+            };
+            _inlineTextBox=input;
+            _inlineTextLayer.Children.Add(input);
+            input.Focus();input.CaretIndex=input.Text.Length;
+            InvalidateVisual();
+            return true;
+        }
+        /// <summary>结束编辑先清理临时UI，再向正式MVI发出单次变更意图。</summary>
+        public bool FinishInlineTextEdit(bool commit)
+        {
+            if(!_editingTextId.HasValue)return false;
+            Guid id=_editingTextId.Value;
+            string before=_originalInlineText;
+            string after=_inlineTextBox==null?before:_inlineTextBox.Text;
+            _editingTextId=null;_originalInlineText=null;_inlineTextBox=null;
+            _inlineTextLayer.Children.Clear();
+            InvalidateVisual();
+            if(!commit||string.Equals(before,after,StringComparison.Ordinal))return false;
+            Action<Guid,string> handler=InlineTextCommitted;
+            if(handler!=null){handler(id,after);return true;}
+            return false;
+        }
         // 仅订阅所属Window的生命周期；不保存工程编辑状态或第二套手势。
         private Window _inputWindow;
         private void OnHostLoaded(object sender, RoutedEventArgs e)
@@ -286,6 +350,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             _zoom=zoom;_panX=panX;_panY=panY;
             _widgetCanvas.RenderTransform=new MatrixTransform(
                 new Matrix(zoom,0,0,zoom,panX,panY));
+            _inlineTextLayer.RenderTransform=new MatrixTransform(
+                new Matrix(zoom,0,0,zoom,panX,panY));
             InvalidateVisual();
         }
         private Point WorldPoint(Point screen)
@@ -501,6 +567,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             _widgetCanvas=new Canvas();
             _visualChildren=new VisualCollection(this);
             _visualChildren.Add(_widgetCanvas);
+            _visualChildren.Add(_inlineTextLayer);
             Focusable=true;
             Loaded+=OnHostLoaded;
             Unloaded+=OnHostUnloaded;
@@ -517,11 +584,13 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             double w=double.IsInfinity(availableSize.Width)?720:availableSize.Width;
             double h=double.IsInfinity(availableSize.Height)?520:availableSize.Height;
             _widgetCanvas.Measure(new Size(w,h));
+            _inlineTextLayer.Measure(new Size(w,h));
             return new Size(w,h);
         }
         protected override Size ArrangeOverride(Size finalSize)
         {
             _widgetCanvas.Arrange(new Rect(new Point(0,0),finalSize));
+            _inlineTextLayer.Arrange(new Rect(new Point(0,0),finalSize));
             return finalSize;
         }
         /// <summary>设计模式只允许画布选择移动；运行预览才允许真实控件接收输入。</summary>
@@ -610,6 +679,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             _selection=selected;
             if(changedSelection&&selected.HasValue)_selectedItems.Add(selected.Value);
             _selectedItems.RemoveWhere(id=>!_items.Exists(item=>item.Id==id));
+            if(_editingTextId.HasValue&&(!_items.Exists(item=>
+                item.Id==_editingTextId.Value&&item.ElementTypeId=="core.text"&&
+                item.IsSelectable)||selected!=_editingTextId.Value))
+                FinishInlineTextEdit(false);
             if(!reuse)BuildWidgetLayer();
             else
             {
@@ -726,6 +799,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 if(MPWWidgetPresenter.Supports(item.ElementTypeId))continue;
                 if(item.ElementTypeId=="core.text")
                 {
+                    if(_editingTextId.HasValue&&_editingTextId.Value==item.Id)continue;
                     MRCVisualStyle textStyle=item.Style;
                     var matrix=item.WorldTransform;
                     dc.PushTransform(new MatrixTransform(new Matrix(matrix.M11,matrix.M21,
@@ -1153,6 +1227,16 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 _connectPointer=point;_hoverConnectId=null;
                 CaptureMouse();InvalidateVisual();e.Handled=true;return;
             }
+            if(e.ClickCount>=2&&
+                (Keyboard.Modifiers&(ModifierKeys.Control|ModifierKeys.Shift))==0)
+            {
+                // 文字优先进入原位输入；不误触发H1/H5或普通Shape几何编辑。
+                MVISceneItem textItem=_items.LastOrDefault(item=>
+                    item.ElementTypeId=="core.text"&&item.IsSelectable&&
+                    item.Contains(point.X,point.Y));
+                if(textItem!=null&&BeginInlineTextEdit(textItem.Id))
+                {e.Handled=true;return;}
+            }
             if(e.ClickCount>=2&&_selection.HasValue&&
                 (Keyboard.Modifiers&(ModifierKeys.Control|ModifierKeys.Shift))==0&&
                 !_items.Exists(x=>x.Id==_selection.Value&&
@@ -1446,7 +1530,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             InvalidateVisual();
         }
         public void CancelInteraction()
-        {_drawDragging=false;_drawPoints.Clear();
+        {
+            if(IsInlineTextEditing)FinishInlineTextEdit(false);
+            _drawDragging=false;_drawPoints.Clear();
             _dragging=false;_marquee=false;_handleDragging=false;_activeHandle=null;_panning=false;_dragX=0;_dragY=0;_dragSnap=null;
             _waypointDragging=false;_waypointConnectionId=null;
             _selectionTransformDragging=false;

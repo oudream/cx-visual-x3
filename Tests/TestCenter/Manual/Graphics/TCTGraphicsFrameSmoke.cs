@@ -277,6 +277,33 @@ namespace CxVisual.TestCenter.UI
                 if(textItem==null||Math.Abs(textItem.Width-150)>1e-6||
                     Math.Abs(textItem.Height-75)>1e-6)
                     throw new InvalidOperationException("Text画布Ghost尺寸与MEM对象不一致");
+                // 已有文本直接在画布原位改写，输入预览不改Revision，Esc也不污染历史。
+                frame.Execute("Select");
+                Guid textId=textItem.Id;
+                int beforeTextEdit=frame.Revision;
+                if(!frame.Canvas.BeginInlineTextEdit(textId)||!frame.Canvas.IsInlineTextEditing)
+                    throw new InvalidOperationException("文字没有进入共用SceneView原位编辑");
+                TextBox inline=Find<TextBox>(frame,"MPW.Visual.InlineText");
+                if(inline==null)throw new InvalidOperationException("缺少真正的WPF文字输入框");
+                inline.Text="不保存的编辑";
+                if(frame.Revision!=beforeTextEdit||frame.Canvas.FinishInlineTextEdit(false)||
+                    frame.Revision!=beforeTextEdit||frame.Canvas.IsInlineTextEditing||
+                    ((MRCTextElement)frame.FindObject(textId)).Text!="文本")
+                    throw new InvalidOperationException("Esc取消文字编辑不得修改MEM对象/Revision");
+                if(!frame.Canvas.BeginInlineTextEdit(textId))
+                    throw new InvalidOperationException("文字无法再次进入原位编辑");
+                inline=Find<TextBox>(frame,"MPW.Visual.InlineText");
+                inline.Text="可撤销的文字更新";
+                if(frame.Revision!=beforeTextEdit||!frame.Canvas.FinishInlineTextEdit(true)||
+                    frame.Revision!=beforeTextEdit+1||
+                    ((MRCTextElement)frame.FindObject(textId)).Text!="可撤销的文字更新")
+                    throw new InvalidOperationException("文本输入未按一次MEM事务提交");
+                frame.Execute("edit.undo");
+                if(((MRCTextElement)frame.FindObject(textId)).Text!="文本")
+                    throw new InvalidOperationException("文本更新Undo没有恢复原始内容");
+                frame.Execute("edit.redo");
+                if(((MRCTextElement)frame.FindObject(textId)).Text!="可撤销的文字更新")
+                    throw new InvalidOperationException("文本更新Redo没有恢复修改");
                 // Widget工具须先激活Draw，真实画布绘制后才有一个正式MEM对象。
                 frame.Execute("WidgetButton");
                 int widgetBefore=frame.Revision;
@@ -307,7 +334,8 @@ namespace CxVisual.TestCenter.UI
                 frame.OpenProject(file);
                 if(frame.SceneCount!=10||frame.IsDirty||
                     !(frame.FindObject(widgetId) is MRCWidgetElement)||
-                    !(frame.FindObject(textboxId) is MRCWidgetElement))
+                    !(frame.FindObject(textboxId) is MRCWidgetElement)||
+                    ((MRCTextElement)frame.FindObject(textId)).Text!="可撤销的文字更新")
                     throw new InvalidOperationException("Widget绘制保存重开或身份不正确");
                 frame.Inspect();
                 if(!frame.StatusMessage.Contains("Revision")||

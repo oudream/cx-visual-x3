@@ -187,6 +187,16 @@ namespace CxVisual.Studio
             LogicHost.PortLinkRejected += (sender,args) =>
                 LogicInfo.Text="拖线被拒绝："+args.Reason;
             SceneHost.DrawToolChanged+=tool=>StudioVisualOperations.SetActiveTool(tool);
+            SceneHost.InlineTextCommitted+=(id,text)=>
+            {
+                try
+                {
+                    MTCEditResult<bool> result=_viewModel.SetVisualText(id,text);
+                    VisualInfo.Text=result.Success?"文字已原位更新（一次Undo）":
+                        "文本修改被拒绝："+result.ErrorCode+" "+result.Message;
+                }
+                catch(Exception ex){VisualInfo.Text="文字编辑失败："+ex.Message;}
+            };
             SceneHost.DrawTextRequested+=points=>
             {
                 try

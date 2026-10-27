@@ -329,6 +329,15 @@ namespace CxVisual.Studio
                 "文本框绘制被拒绝："+result.ErrorCode+" "+result.Message;
             return result;
         }
+        /// <summary>文本原位编辑唯一工程入口；编辑器仅提交一次内容变更。</summary>
+        public MTCEditResult<bool> SetVisualText(Guid id,string text)
+        {
+            MTCEditResult<bool> result=_editor.SetVisualText(id,text);
+            Status=result.Success?"文本已更新 | Revision "+result.Revision:
+                "文本编辑被拒绝："+result.ErrorCode+" "+result.Message;
+            if(result.Success)NotifyScene();
+            return result;
+        }
         /// <summary>公共Widget画布单击/拖框入口；沿用MVI/MEM正式创建、选中和Undo。</summary>
         public MTCEditResult<bool> DrawVisualWidget(string typeId,
             IReadOnlyList<FGEPoint2D> worldPoints)

@@ -213,6 +213,11 @@ namespace CxVisual.TestCenter.UI
         }
         private void WireCanvas()
         {
+            _canvas.InlineTextCommitted+=(id,text)=>
+            {
+                try{Commit(_editor.SetVisualText(id,text),"原位编辑文字");}
+                catch(Exception ex){Report("文字编辑被拒绝："+ex.Message);}
+            };
             // 绘制在PointerUp/Enter才进入单次MVI/MEM事务，Ghost阶段不改Revision。
             _canvas.DrawTextRequested+=points=>
             {
