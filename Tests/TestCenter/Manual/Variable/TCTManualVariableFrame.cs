@@ -67,6 +67,17 @@ namespace CxVisual.TestCenter.UI
                 if (frame.VariableCount != 4 || frame.GroupCount != 1)
                     throw new InvalidOperationException("人工工作区定义和建组未真正更新MDS");
                 if (frame.Content == null) throw new InvalidOperationException("未渲染实际WPF工作区");
+                // 与Studio共享同一Presentation.Wpf控件，检查未绑定不伪造Scope且能绑定真实MDS。
+                using (CxVisual.Mechanism.Presentation.Wpf.Variables.MPWVariableWorkspaceControl shared =
+                    new CxVisual.Mechanism.Presentation.Wpf.Variables.MPWVariableWorkspaceControl())
+                {
+                    if (shared.BoundScopeId != null)
+                        throw new InvalidOperationException("WPF共用组件不应自动创建第二个变量Owner");
+                    shared.Bind(frame._variables);
+                    if (shared.VisibleVariables != frame.VariableCount ||
+                        shared.BoundScopeId != frame._variables.ScopeId)
+                        throw new InvalidOperationException("WPF共用组件未读取真实MDS变量");
+                }
             }
             finally { frame.OnWorkspaceClosed(); }
             if (!frame.IsClosed) throw new InvalidOperationException("变量工作区关闭后未释放资源");

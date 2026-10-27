@@ -93,7 +93,7 @@ namespace CxVisual.Studio
             new List<StudioRibbonVisualGroup>();
         private string _activeStudioDocumentId = "doc.home";
         private static readonly string[] KnownDocuments =
-            { "doc.home", "doc.visual", "doc.flow", "doc.config" };
+            { "doc.home", "doc.visual", "doc.flow", "doc.config", "doc.variables" };
         private static readonly string[] KnownTools =
             { "tool.resources", "tool.toolbox", "tool.graphics", "tool.properties", "tool.output" };
 
@@ -280,13 +280,16 @@ namespace CxVisual.Studio
                 if (pane == null) throw new InvalidOperationException("找不到中央文档面板。");
                 object view;
                 // MHS WPF控件在Unloaded时释放草稿/订阅，重新打开不能复用已释放的View。
-                if (id=="doc.config" || !_studioViews.TryGetValue(id, out view))
+                if (id=="doc.config" || id=="doc.variables" || !_studioViews.TryGetValue(id, out view))
                 {
-                    view = CreateConfigurationDocument();
+                    view = id=="doc.variables" ? CreateStudioVariableDocument() :
+                        CreateConfigurationDocument();
                     _studioViews[id] = view;
                 }
                 doc = new LayoutDocument { ContentId = id, Title = StudioDocumentTitle(id),
                     CanClose = true, CanFloat = true, Content = view };
+                if(id=="doc.variables")
+                    doc.Closed+=(sender,args)=>ReleaseStudioVariableDocument();
                 if(id=="doc.config")
                     doc.Closing+=(sender,args)=>{
                         if(!_studioConfigForceDiscard && HasStudioUnsavedConfiguration())
@@ -329,6 +332,7 @@ namespace CxVisual.Studio
                 _studioViews.Remove(id);
                 _studioConfigEditors.Clear();
             }
+            if(id=="doc.variables") ReleaseStudioVariableDocument();
             if(_activeStudioDocumentId==id)
             {
                 LayoutDocument next=StudioDock.Layout.ActiveContent as LayoutDocument;
@@ -351,6 +355,7 @@ namespace CxVisual.Studio
                 case "doc.visual": return "HMI图元与Symbol [设计]";
                 case "doc.flow": return "主流程编排 [设计]";
                 case "doc.config": return "资源配置";
+                case "doc.variables": return "运行变量 · Watch / Provider";
                 default: return id;
             }
         }
