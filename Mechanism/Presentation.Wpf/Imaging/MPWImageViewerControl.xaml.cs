@@ -969,16 +969,18 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
         {
             if (_polygonDraft.Count >= 3)
             {
+                MVIImageOverlayItem created;
                 if (mode == MVIImageToolMode.Angle)
-                    AddAngleMeasurement(_polygonDraft.ToArray());
+                    created=AddAngleMeasurement(_polygonDraft.ToArray());
                 else if (mode == MVIImageToolMode.PolygonArea)
                 {
                     if (FIMImageMeasurement.GetPolygonAreaPixels(_polygonDraft) <= 0)
                         throw new ArgumentException("面积测量不接受零面积多边形。");
-                    AddPointGeometry(MVIImageOverlayKind.AreaMeasurement,
+                    created=AddPointGeometry(MVIImageOverlayKind.AreaMeasurement,
                         MVIImageOverlayLayer.Measurement,_polygonDraft.ToArray(),3);
                 }
-                else AddPolygonRoi(_polygonDraft.ToArray());
+                else created=AddPolygonRoi(_polygonDraft.ToArray());
+                SelectOverlay(created.Id); // 创建后自动选中，立即可编辑、统计与导出
                 RaiseSelectionChanged();
             }
             _polygonDraft.Clear();
@@ -1684,12 +1686,16 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             if (kind == MVIImageOverlayKind.RectangleRoi)
                 _region = r;
             else _region = null;
+            MVIImageOverlayItem created;
             if(kind==MVIImageOverlayKind.RotatedRectangleRoi)
             {
                 if(rect.Width<0.25 || rect.Height<0.25)return;
-                AddRotatedRectangle(rect,0);
+                created=AddRotatedRectangle(rect,0);
             }
-            else _overlays.Add(new MVIImageOverlayItem(kind, layer, rect, points, text));
+            else created=_overlays.Add(new MVIImageOverlayItem(kind, layer, rect, points, text));
+            // 不调用SelectOverlay来清空刚画出的矩形SelectedRegion，保持已有Crop闭环。
+            // 但确保刚完成的对象可立即在右侧列表操作、编辑和做ROI统计。
+            _selectedOverlayId=created.Id;
             DrawSelection();
             RaiseSelectionChanged();
         }
