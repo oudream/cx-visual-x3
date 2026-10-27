@@ -83,8 +83,14 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 "只在角接触的区域不能错误合成自交轮廓");
             Assert(FIMImageMaskContours.Trace(empty.Mask).Count==0,
                 "零命中掩码没有轮廓");
-            Throws<ArgumentException>(()=>FIMImageMaskContours.Trace(image),
+            FIMImageBuffer gray16Contour=new FIMImageBuffer(
+                1,1,FIMPixelFormat.Gray16,new byte[]{1,0});
+            Throws<ArgumentException>(()=>FIMImageMaskContours.Trace(gray16Contour),
                 "非Gray8不能追踪掩码边界");
+            FIMImageBuffer invalidBinary=new FIMImageBuffer(
+                1,1,FIMPixelFormat.Gray8,new byte[]{128});
+            Throws<ArgumentException>(()=>FIMImageMaskContours.Trace(invalidBinary),
+                "只有0/255二值掩码可以追踪轮廓");
             Throws<InvalidOperationException>(()=>FIMImageMaskContours.Trace(donut,8),
                 "边界边数限制须拒绝过度复杂ROI");
             using(CancellationTokenSource cancelledContour=new CancellationTokenSource())
