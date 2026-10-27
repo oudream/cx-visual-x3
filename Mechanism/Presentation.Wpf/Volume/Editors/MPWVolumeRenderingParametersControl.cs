@@ -65,6 +65,14 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
             ShowBounds=new CheckBox { Content="显示体包围盒",IsChecked=false };
             SliceOpacity=new Slider { Minimum=0,Maximum=1,Value=.35 };
             Preset=new ComboBox { Margin=new Thickness(4),Height=29 };
+            AutomationProperties.SetAutomationId(VolumeOpacity,
+                "MPW.Volume.RenderingParameters.Opacity");
+            AutomationProperties.SetAutomationId(SamplingStep,
+                "MPW.Volume.RenderingParameters.Step");
+            AutomationProperties.SetAutomationId(EnableGpu,
+                "MPW.Volume.RenderingParameters.EnableGpu");
+            AutomationProperties.SetAutomationId(Preset,
+                "MPW.Volume.RenderingParameters.Preset");
             EnableGpu.Margin=new Thickness(4,8,4,6);
             Children.Add(EnableGpu);
             StatusText.Margin=new Thickness(4,2,4,10);
