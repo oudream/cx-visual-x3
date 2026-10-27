@@ -480,6 +480,14 @@ namespace CxVisual.Studio
                 if(operation=="edit.undo")_viewModel.UndoCommand.Execute(null);
                 else if(operation=="edit.redo")_viewModel.RedoCommand.Execute(null);
                 else if(operation=="edit.delete")_viewModel.DeleteCommand.Execute(null);
+                else if(operation=="edit.group")_viewModel.GroupCommand.Execute(null);
+                else if(operation=="edit.ungroup")_viewModel.UngroupCommand.Execute(null);
+                else if(operation=="layer.front"||operation=="layer.back")
+                {
+                    MTCEditResult<bool> layer=_viewModel.SetSelectedZOrder(operation=="layer.front");
+                    VisualInfo.Text=layer.Success?"已调整图元层序（可Undo）":
+                        "层序编辑被拒绝："+layer.ErrorCode+" "+layer.Message;
+                }
                 else if(operation.StartsWith("align.",StringComparison.Ordinal))
                 {
                     MTCEditResult<bool> result=_viewModel.AlignVisualSelection(operation.Substring(6));
@@ -839,7 +847,9 @@ namespace CxVisual.Studio
             StudioVisualOperations.UpdateAvailability(visualCount,
                 selectedVisual!=null&&selectedVisual.ElementTypeId=="core.visual.connector",
                 _viewModel.ProjectSession.CanUndo,_viewModel.ProjectSession.CanRedo,
-                SceneHost.IsDesignMode&&!_logicRunning&&!_visualPreviewTimer.IsEnabled);
+                SceneHost.IsDesignMode&&!_logicRunning&&!_visualPreviewTimer.IsEnabled,
+                selectedVisual!=null&&
+                    _viewModel.ProjectSession.Find(selectedVisual.Id) is MRCGroup);
             if(_logicRunning||_visualPreviewTimer.IsEnabled)return;
             MEMPage page=_viewModel.ActivePage;
             MEMNodeSnapshot node=page==null?null:

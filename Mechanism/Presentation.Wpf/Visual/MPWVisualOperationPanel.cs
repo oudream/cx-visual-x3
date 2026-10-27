@@ -32,6 +32,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 "core.widget.progressbar|进度条","core.widget.combobox|下拉框" });
             AddSection(_commands,"编辑 / 布局 / 连线",new [] {
                 "edit.undo|撤销","edit.redo|重做","edit.delete|删除",
+                "edit.group|组合","edit.ungroup|解组",
+                "layer.front|置于顶层","layer.back|置于底层",
                 "align.left|左对齐","align.right|右对齐",
                 "align.top|顶对齐","align.bottom|底对齐",
                 "align.centerX|水平居中","align.centerY|垂直居中",
@@ -67,11 +69,15 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         /// 不在控件中保存选区或维护第二套命令状态。
         /// </summary>
         public void UpdateAvailability(int selectionCount,bool selectedVisualConnection,
-            bool canUndo,bool canRedo,bool canEdit)
+            bool canUndo,bool canRedo,bool canEdit,bool selectedIsGroup=false)
         {
             SetOperationEnabled("edit.undo",canUndo&&canEdit);
             SetOperationEnabled("edit.redo",canRedo&&canEdit);
             SetOperationEnabled("edit.delete",canEdit&&selectionCount==1);
+            SetOperationEnabled("edit.group",canEdit&&selectionCount>=2&&!selectedVisualConnection);
+            SetOperationEnabled("edit.ungroup",canEdit&&selectionCount==1&&selectedIsGroup);
+            SetOperationEnabled("layer.front",canEdit&&selectionCount==1&&!selectedVisualConnection);
+            SetOperationEnabled("layer.back",canEdit&&selectionCount==1&&!selectedVisualConnection);
             foreach(string id in new[]{"align.left","align.right","align.top","align.bottom",
                 "align.centerX","align.centerY"})
                 SetOperationEnabled(id,canEdit&&selectionCount>=2&&!selectedVisualConnection);

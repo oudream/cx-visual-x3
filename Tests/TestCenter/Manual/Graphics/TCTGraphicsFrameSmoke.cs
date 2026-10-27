@@ -68,6 +68,23 @@ namespace CxVisual.TestCenter.UI
                 apply.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 if(frame.Revision!=afterEdit||!frame.StatusMessage.Contains("被拒绝"))
                     throw new InvalidOperationException("非法数字改变了工程或未报告拒绝");
+                // 图元组操作与Studio共用Core Group/Ungroup事务，不创建新的树或历史。
+                frame.SelectObjects(ids[0],ids[1]);
+                Button group=Find<Button>(frame,"MPW.Visual.edit.group");
+                if(group==null||!group.IsEnabled)
+                    throw new InvalidOperationException("两项有效选择后公共Group操作未启用");
+                int beforeGroup=frame.Revision;
+                group.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                if(frame.Revision!=beforeGroup+1||!frame.SelectedId.HasValue||
+                    ids.Contains(frame.SelectedId.Value))
+                    throw new InvalidOperationException("Group没有以一次工程事务创建真实组合");
+                Button ungroup=Find<Button>(frame,"MPW.Visual.edit.ungroup");
+                if(ungroup==null||!ungroup.IsEnabled)
+                    throw new InvalidOperationException("选择真实Group后解组按钮未启用");
+                ungroup.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                if(frame.Revision!=beforeGroup+2||
+                    !ids.OrderBy(x=>x).SequenceEqual(frame.SceneIds.OrderBy(x=>x)))
+                    throw new InvalidOperationException("解组未保留原图元身份");
                 // 磁盘往返不是截图：核实Project与所有图元ID保持不变。
                 frame.SaveProject(file);
                 Guid projectId=frame.ProjectId;
@@ -86,7 +103,7 @@ namespace CxVisual.TestCenter.UI
                 if(!frame.StatusMessage.Contains("Revision")||
                     frame.StatusMessage.Contains("GE Passed"))
                     throw new InvalidOperationException("观察必须展示真实Revision，不伪造测试Passed");
-                Console.WriteLine("PASS TCT Graphics WPF STA: MPW, SceneView, tree selection, geometry, invalid input, MEM Undo, disk roundtrip");
+                Console.WriteLine("PASS TCT Graphics WPF STA: MPW, scene/tree, geometry, Group/Ungroup, invalid input, MEM Undo, disk roundtrip");
             }
             finally
             {

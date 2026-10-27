@@ -248,7 +248,8 @@ namespace CxVisual.TestCenter.UI
                 _editor.Scene.FirstOrDefault(x=>x.Id==_editor.SelectedId.Value):null;
             _operations.UpdateAvailability(count,
                 selected!=null&&selected.ElementTypeId=="core.visual.connector",
-                _editor.CanUndo,_editor.CanRedo,_canvas.IsDesignMode);
+                _editor.CanUndo,_editor.CanRedo,_canvas.IsDesignMode,
+                selected!=null&&_session.Find(selected.Id) is MRCGroup);
         }
         private void UpdateGeometryFields()
         {
@@ -379,6 +380,39 @@ namespace CxVisual.TestCenter.UI
                 {
                     if(!_editor.SelectedId.HasValue){Report("请先选择对象或视觉连接");return;}
                     Commit(_editor.Remove(_editor.SelectedId.Value),"删除");return;
+                }
+                if(operation=="edit.group")
+                {
+                    Guid[] ids=_canvas.SelectedVisualIds.ToArray();
+                    MRCVisualItem[] items=ids.Select(id=>_session.Find(id) as MRCVisualItem)
+                        .ToArray();
+                    if(items.Length<2||items.Any(x=>x==null))
+                    {Report("请选择两个以上同父级、同图层且可编辑的图元。");return;}
+                    // 组合沿用Core唯一Group事务，不能通过UI搬移成员造第二棵树。
+                    MRCGroup group=_session.Group(items,"组合"+(++_created));
+                    _editor.Select(group.Id);
+                    _canvas.SetSelectedVisualIds(new[]{group.Id});
+                    Refresh();
+                    Report("已组合 "+items.Length+" 个图元（单次Undo）");
+                    return;
+                }
+                if(operation=="edit.ungroup")
+                {
+                    var group=_editor.SelectedId.HasValue?
+                        _session.Find(_editor.SelectedId.Value) as MRCGroup:null;
+                    if(group==null){Report("请先选中一个真实Group。");return;}
+                    _session.Ungroup(group);
+                    _editor.Select(null);
+                    _canvas.SetSelectedVisualIds(new Guid[0]);
+                    Refresh();Report("解组已提交，子图元身份保留（可Undo）");
+                    return;
+                }
+                if(operation=="layer.front"||operation=="layer.back")
+                {
+                    if(!_editor.SelectedId.HasValue)
+                    {Report("请先选择一个图元。");return;}
+                    Commit(_editor.SetZOrder(_editor.SelectedId.Value,
+                        operation=="layer.front"),"图元层序");return;
                 }
                 if(operation.StartsWith("align.",StringComparison.Ordinal))
                 {
