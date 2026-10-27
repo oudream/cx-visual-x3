@@ -79,3 +79,8 @@ Windows CI必须同SHA满足Restore、完整.NET48 x64 Build、Verify-Structure�
 - Windows Numerics工作流将独立 --numerics 与默认ArchitectureSmoke 分为两个执行步骤，**总体门禁仍要求两者通过**；单步 Numerics 通过不等于全平台无回归。
 - 新增代码状态在提交后以同SHA Windows CI为准，不能因源码存在就称已通过。
 
+
+### 同SHA验收说明（额外构建重试）
+
+- [8b8c160 CI #40523131245](https://github.com/oudream/cx-visual-x3/actions/runs/40523131245) 的 Windows 项目编译失败，错误来自并行图元编辑测试 `VisualShapeEditingTests.cs` 缺少 `using System.Collections.Generic;`（CS0246/CS1503），不是 Numerics 底座编译错误；专项数值测试因此未执行，不能标记通过。
+- 该图元测试引用已在 `17aee42` 中由负责方修复；本次补录用于在含该修复的新提交上重新触发 Numerics 专项与全平台回归，最终结果以新CI为准。
