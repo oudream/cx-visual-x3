@@ -67,6 +67,8 @@
     <Compile Include="Common\Framework\TCTCreatedWorkspaceStore.cs" />
     <Compile Include="Common\Framework\TCTWorkspaceContracts.cs" />
     <Compile Include="Common\Shell\TCTWorkspaceRootFrame.cs" />
+    <Compile Include="Manual\Graphics\TCTManualGraphicsFrame.cs" />
+    <Compile Include="Manual\Graphics\TCTGraphicsFrameSmoke.cs" />
     <Compile Include="Manual\Channel\TCTManualChannelFrame.cs" />
     <Compile Include="Manual\Imaging\TCTManualImageViewerFrame.cs" />
     <Compile Include="Manual\Imaging\TCTManualImageViewerLayout.cs" />

@@ -167,6 +167,8 @@ namespace CxVisual.Studio
         public MainWindow()
         {
             InitializeComponent();
+            // MPW共享视觉工具箱仅发意图；复用Studio原有工程命令及专业路由。
+            StudioVisualOperations.OperationRequested += OnStudioVisualOperation;
             _viewModel = new StudioViewModel();
             _viewModel.ConfirmReplace = ConfirmProjectReplacement;
             _viewModel.BeforeProjectReplacement = ConfirmStudioConfigReplacement;
@@ -469,6 +471,40 @@ namespace CxVisual.Studio
             }
             catch(Exception ex){VisualInfo.Text="置于底层失败："+ex.Message;}
         }        private void OnBringVisualFront(object sender,RoutedEventArgs args){ApplyVisualLayer(true);}
+        /// <summary>Studio复用MPW图元操作按钮；命令执行仍走既有ViewModel和资源编辑路由。</summary>
+        private void OnStudioVisualOperation(string operation)
+        {
+            if(string.IsNullOrWhiteSpace(operation))return;
+            try
+            {
+                if(operation=="edit.undo")_viewModel.UndoCommand.Execute(null);
+                else if(operation=="edit.redo")_viewModel.RedoCommand.Execute(null);
+                else if(operation=="edit.delete")_viewModel.DeleteCommand.Execute(null);
+                else if(operation.StartsWith("align.",StringComparison.Ordinal))
+                {
+                    MTCEditResult<bool> result=_viewModel.AlignVisualSelection(operation.Substring(6));
+                    VisualInfo.Text=result.Success?"对齐已提交（可Undo）":
+                        "对齐被拒绝："+result.ErrorCode+" "+result.Message;
+                }
+                else if(operation.StartsWith("route.",StringComparison.Ordinal))
+                {
+                    Guid? id=_viewModel.SelectedId;
+                    if(!id.HasValue){VisualInfo.Text="请先选中视觉连接线。";return;}
+                    MPCVisualRouteKind mode=operation=="route.straight"?
+                        MPCVisualRouteKind.Straight:operation=="route.manual"?
+                        MPCVisualRouteKind.Manual:MPCVisualRouteKind.Orthogonal;
+                    MTCEditResult<bool> result=_viewModel.SetVisualRoute(id.Value,mode);
+                    VisualInfo.Text=result.Success?"线路模式已提交（可Undo）":
+                        "线路模式被拒绝："+result.ErrorCode+" "+result.Message;
+                }
+                else
+                {
+                    // 复用既有资源作用域插入/普通Page插入，禁止控件直接创建第二工程。
+                    OnInsertShape(new Button{Tag=operation,Content=operation},new RoutedEventArgs());
+                }
+            }
+            catch(Exception error){VisualInfo.Text="图元操作失败："+error.Message;}
+        }
         private void OnInsertShape(object sender,RoutedEventArgs args)
         {
             try

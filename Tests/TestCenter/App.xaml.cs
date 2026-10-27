@@ -69,6 +69,19 @@ namespace CxVisual.TestCenter.UI
                 }
                 return;
             }
+            // 专项真实WPF图元测试入口：公共按钮→MVI→MEM→Undo，失败退出码非零。
+            if (e.Args.Length == 1 && e.Args[0] == "--graphics-viewer-smoke")
+            {
+                ShutdownMode = ShutdownMode.OnExplicitShutdown;
+                try { TCTGraphicsFrameSmoke.Run(); Shutdown(0); }
+                catch (Exception error)
+                {
+                    File.WriteAllText(Path.Combine(Path.GetTempPath(),
+                        "CxVisual-Graphics-Viewer-Error.txt"),error.ToString());
+                    Shutdown(2);
+                }
+                return;
+            }
             if (e.Args.Length == 1 && e.Args[0] == "--imaging-viewer-smoke")
             {
                 ShutdownMode = ShutdownMode.OnExplicitShutdown;

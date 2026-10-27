@@ -150,6 +150,23 @@ jobs:
               throw "WPF Shell smoke returned $($p.ExitCode)"
           }
           Write-Host 'PASS WPF Shell binds real TCT result and ordered events'
+      - name: Verify real Graphics WPF operation panel and engineering Undo
+        shell: powershell
+        run: |
+          $exe = (Resolve-Path 'Output/Debug/x64/CxVisual.TestCenter.exe').Path
+          $p = Start-Process -FilePath $exe -WorkingDirectory (Get-Location).Path -ArgumentList @('--graphics-viewer-smoke') -PassThru
+          try { Wait-Process -Id $p.Id -Timeout 50 -ErrorAction Stop }
+          catch {
+              Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+              throw 'Graphics WPF smoke timed out'
+          }
+          $p.Refresh()
+          if ($p.ExitCode -ne 0) {
+              $err = Join-Path ([System.IO.Path]::GetTempPath()) 'CxVisual-Graphics-Viewer-Error.txt'
+              if (Test-Path $err) { Get-Content -LiteralPath $err | Write-Host }
+              throw "Graphics WPF smoke returned $($p.ExitCode)"
+          }
+          Write-Host 'PASS graphics: shared MPW tools, real SceneView, MEM Undo/Redo'
       - name: Verify isolated Connector UIA PointTable and DataMapping
         shell: powershell
         run: |

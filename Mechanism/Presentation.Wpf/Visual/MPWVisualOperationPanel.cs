@@ -1,0 +1,66 @@
+using System;
+using System.Collections.Generic;
+using System.Windows;
+using System.Windows.Automation;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+namespace CxVisual.Mechanism.Presentation.Wpf
+{
+    /// <summary>Studio/TestCenter共享的图元操作面板。只发出编辑意图，不持有MEM或Undo。</summary>
+    public sealed class MPWVisualOperationPanel : UserControl
+    {
+        private readonly StackPanel _root=new StackPanel();
+        private readonly StackPanel _commands=new StackPanel();
+        private readonly Dictionary<string,Button> _buttons=new Dictionary<string,Button>(StringComparer.Ordinal);
+        public event Action<string> OperationRequested;
+        public IReadOnlyCollection<string> Operations { get { return _buttons.Keys; } }
+        public bool ShowEditingActions
+        {
+            get { return _commands.Visibility==Visibility.Visible; }
+            set { _commands.Visibility=value?Visibility.Visible:Visibility.Collapsed; }
+        }
+        public MPWVisualOperationPanel()
+        {
+            AutomationProperties.SetAutomationId(this,"MPW.Visual.Operations");
+            AddSection(_root,"基础图元",new [] {
+                "Line|直线","Rect|矩形","Circle|圆","Ellipse|椭圆",
+                "Polyline|折线","Polygon|多边形","Arc|圆弧","Bezier|贝塞尔",
+                "Path|路径","Text|文本" });
+            AddSection(_root,"Widget 控件",new [] {
+                "WidgetButton|按钮","core.widget.textbox|文本框",
+                "core.widget.checkbox|复选框","core.widget.slider|滑块",
+                "core.widget.progressbar|进度条","core.widget.combobox|下拉框" });
+            AddSection(_commands,"编辑 / 布局 / 连线",new [] {
+                "edit.undo|撤销","edit.redo|重做","edit.delete|删除",
+                "align.left|左对齐","align.top|顶对齐",
+                "align.centerX|水平居中","align.centerY|垂直居中",
+                "route.straight|直线连接","route.orthogonal|正交连接",
+                "route.manual|人工路径" });
+            _root.Children.Add(_commands);
+            Content=_root;
+        }
+        private void AddSection(Panel parent,string heading,IEnumerable<string> values)
+        {
+            parent.Children.Add(new TextBlock { Text=heading,FontSize=13,
+                FontWeight=FontWeights.SemiBold,Margin=new Thickness(2,9,0,5) });
+            UniformGrid grid=new UniformGrid {Columns=2};
+            foreach(string value in values)
+            {
+                int split=value.IndexOf('|');
+                string id=value.Substring(0,split);
+                Button button=new Button {Content=value.Substring(split+1),Tag=id,
+                    Margin=new Thickness(2),MinHeight=28,ToolTip=heading+" · "+value.Substring(split+1)};
+                AutomationProperties.SetAutomationId(button,"MPW.Visual."+id);
+                // 此处仅转发用户意图，执行和权限由宿主统一MVI/MEM编辑入口负责。
+                button.Click+=(sender,args)=>{var requested=OperationRequested;if(requested!=null)requested(id);};
+                _buttons.Add(id,button);grid.Children.Add(button);
+            }
+            parent.Children.Add(grid);
+        }
+        public void SetOperationEnabled(string id,bool enabled)
+        {
+            Button button;
+            if(_buttons.TryGetValue(id,out button))button.IsEnabled=enabled;
+        }
+    }
+}

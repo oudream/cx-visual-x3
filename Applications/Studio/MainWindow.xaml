@@ -132,29 +132,8 @@
                             <ScrollViewer Background="{DynamicResource StudioPanelBrush}"
                                           VerticalScrollBarVisibility="Auto">
                                 <StackPanel Margin="10">
-                                    <TextBlock Text="基础图元" FontWeight="SemiBold" FontSize="13" Margin="2,4,0,8"/>
-                                    <UniformGrid Columns="2">
-                                        <Button Content="直线" Tag="Line" Click="OnInsertShape" ToolTip="创建Line"/>
-                                        <Button Content="矩形" Tag="Rect" Click="OnInsertShape" ToolTip="创建Rectangle"/>
-                                        <Button Content="圆" Tag="Circle" Click="OnInsertShape"/>
-                                        <Button Content="椭圆" Tag="Ellipse" Click="OnInsertShape"/>
-                                        <Button Content="折线" Tag="Polyline" Click="OnInsertShape"/>
-                                        <Button Content="多边形" Tag="Polygon" Click="OnInsertShape"/>
-                                        <Button Content="圆弧" Tag="Arc" Click="OnInsertShape"/>
-                                        <Button Content="贝塞尔" Tag="Bezier" Click="OnInsertShape"/>
-                                        <Button Content="路径" Tag="Path" Click="OnInsertShape"/>
-                                        <Button Content="文本" Tag="Text" Click="OnInsertShape"/>
-                                    </UniformGrid>
-                                    <Separator Margin="0,12,0,10"/>
-                                    <TextBlock Text="Widget 控件" FontWeight="SemiBold" FontSize="13" Margin="2,0,0,8"/>
-                                    <UniformGrid Columns="2">
-                                        <Button Content="按钮" Tag="WidgetButton" Click="OnInsertShape"/>
-                                        <Button Content="文本框" Tag="core.widget.textbox" Click="OnInsertShape"/>
-                                        <Button Content="复选框" Tag="core.widget.checkbox" Click="OnInsertShape"/>
-                                        <Button Content="滑块" Tag="core.widget.slider" Click="OnInsertShape"/>
-                                        <Button Content="进度条" Tag="core.widget.progressbar" Click="OnInsertShape"/>
-                                        <Button Content="下拉框" Tag="core.widget.combobox" Click="OnInsertShape"/>
-                                    </UniformGrid>
+                                    <!-- 公共工具面板负责操作入口；工程与专业上下文仍由Studio独立维护。 -->
+                                    <scene:MPWVisualOperationPanel x:Name="StudioVisualOperations" ShowEditingActions="True"/>
                                     <Separator Margin="0,12,0,10"/>
                                     <TextBlock Text="专业能力" FontWeight="SemiBold" FontSize="13" Margin="2,0,0,5"/>
                                     <TextBlock Text="流程节点与专业工具随当前资源编辑器切换，使用统一Owner命令。"
