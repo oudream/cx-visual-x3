@@ -57,10 +57,11 @@ namespace CxVisual.TestCenter.UI
                 if (ObjectSelected != null) ObjectSelected(id, details);
             };
             Content = _tabs;
-            _tabs.Background = new SolidColorBrush(Color.FromRgb(246,249,253));
-            _tabs.BorderBrush = new SolidColorBrush(Color.FromRgb(201,215,231));
-            // 所有概览、测试Viewer、创建实例使用同一可复用Tab视觉，不在每个Frame另做。
-            _tabs.ItemContainerStyle = (Style)Application.Current.FindResource("MPWDocumentTabStyle");
+            // 公共MPW负责工作区Tab的整体布局、紧凑尺寸与颜色；
+            // TestCenter只处理已有的Workspace选择、关闭保护与生命周期。
+            _tabs.Style = (Style)Application.Current.FindResource("MPWWorkspaceDocumentTabsStyle");
+            _tabs.ItemContainerStyle =
+                (Style)Application.Current.FindResource("MPWWorkspaceDocumentTabStyle");
             _tabs.SelectionChanged += (sender, args) =>
             {
                 if (!object.ReferenceEquals(args.OriginalSource, _tabs)) return;
@@ -80,18 +81,25 @@ namespace CxVisual.TestCenter.UI
                 UserControl content = descriptor.Factory();
                 if (content == null) throw new InvalidOperationException(
                     "Workspace factory returned null: " + descriptor.WorkspaceId);
-                DockPanel header = new DockPanel { LastChildFill = false };
-                TextBlock caption = new TextBlock { Text = descriptor.Title,
-                    FontSize = 13, MaxWidth = 190, TextTrimming = TextTrimming.CharacterEllipsis,
-                    VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) };
+                // 紧凑双列：标题按可用宽度省略；关闭按钮使用公共MPW模板。
+                Grid header = new Grid();
+                header.ColumnDefinitions.Add(new ColumnDefinition {
+                    Width = new GridLength(1, GridUnitType.Star) });
+                header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                TextBlock caption = new TextBlock {
+                    Text = descriptor.Title, TextTrimming = TextTrimming.CharacterEllipsis,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    ToolTip = descriptor.Title, Margin = new Thickness(0, 0, 4, 0) };
+                Grid.SetColumn(caption, 0);
                 Button closeTab = new Button {
-                    Content = "×", FontSize = 14, FontWeight = FontWeights.SemiBold,
-                    Background = Brushes.Transparent, BorderThickness = new Thickness(0),
-                    Foreground = Brushes.SlateGray, Margin = new Thickness(0),
-                    MinWidth = 22, Height = 22, Padding = new Thickness(2,0,2,0),
-                    ToolTip = "关闭分页（实例继续保留在左侧）" };
+                    Content = "×", ToolTip = "关闭分页（实例继续保留在左侧）",
+                    Style = (Style)Application.Current.FindResource("MPWWorkspaceTabCloseButtonStyle") };
+                System.Windows.Automation.AutomationProperties.SetAutomationId(closeTab,
+                    "TCT.Workspace.Close." + descriptor.WorkspaceId);
                 closeTab.Click += (sender, args) => CloseWorkspace(descriptor.WorkspaceId);
-                header.Children.Add(caption); header.Children.Add(closeTab);
+                Grid.SetColumn(closeTab, 1);
+                header.Children.Add(caption);
+                header.Children.Add(closeTab);
                 tab = new TabItem { Header = header, Tag = descriptor, Content = content,
                     ToolTip = descriptor.Title };
                 System.Windows.Automation.AutomationProperties.SetAutomationId(tab,

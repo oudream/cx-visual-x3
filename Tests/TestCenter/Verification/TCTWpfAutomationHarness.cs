@@ -44,6 +44,7 @@ namespace CxVisual.TestCenter.UI
             if (hwnd == IntPtr.Zero) throw new InvalidOperationException("TestCenter has no HWND");
             TraceUiStage("VerifyOverview");
             await Task.Run(() => VerifyOverview(hwnd, window));
+            window.Dispatcher.Invoke(new Action(() => VerifyCompactDocumentTabs(window)));
             SaveScreenshot(window, "TestCenter-01-Workspace.png");
             window.Dispatcher.Invoke(new Action(() =>
                 window.Explorer.InvokeCreateContextMenuForVerification("auto.catalog")));
@@ -76,6 +77,7 @@ namespace CxVisual.TestCenter.UI
             SaveScreenshot(window, "TestCenter-09-ManualRoot.png");
             TraceUiStage("InteractManualChannel");
             await Task.Run(() => InteractManualChannel(hwnd, window));
+            window.Dispatcher.Invoke(new Action(() => VerifyCompactDocumentTabs(window)));
             SaveScreenshot(window, "TestCenter-10-ManualChannel.png");
             window.Dispatcher.Invoke(new Action(() => {
                 TCTWorkspaceDescriptor channel = window.FindCreatedInstance("manual.channel");
@@ -151,6 +153,40 @@ namespace CxVisual.TestCenter.UI
             SaveScreenshot(window, "TestCenter-13-ScenarioReport.png");
             TraceUiStage("Completed full WPF UIA");
         }
+        /// <summary>真实STA窗口验证公共视觉样式及已呈现Tab等宽、紧凑高度和可访问关闭按钮。</summary>
+        private static void VerifyCompactDocumentTabs(TCTMainWindow window)
+        {
+            System.Windows.Controls.TabControl tabs =
+                window.DocumentHost.Content as System.Windows.Controls.TabControl;
+            if (tabs == null || tabs.Items.Count == 0)
+                throw new InvalidOperationException("统一文档页签容器丢失");
+            if (!ReferenceEquals(tabs.Style,
+                    Application.Current.FindResource("MPWWorkspaceDocumentTabsStyle")) ||
+                !ReferenceEquals(tabs.ItemContainerStyle,
+                    Application.Current.FindResource("MPWWorkspaceDocumentTabStyle")))
+                throw new InvalidOperationException("TestCenter未复用公共MPW紧凑文档页签");
+            tabs.UpdateLayout();
+            foreach (System.Windows.Controls.TabItem tab in
+                tabs.Items.OfType<System.Windows.Controls.TabItem>())
+            {
+                if (Math.Abs(tab.ActualWidth - 184) > 2 ||
+                    Math.Abs(tab.ActualHeight - 32) > 2)
+                    throw new InvalidOperationException("文档页签尺寸不统一：" +
+                        tab.ActualWidth + "x" + tab.ActualHeight);
+                if (tab.Tag is TCTWorkspaceDescriptor)
+                {
+                    System.Windows.Controls.Grid grid = tab.Header as System.Windows.Controls.Grid;
+                    System.Windows.Controls.Button close = grid == null ? null :
+                        grid.Children.OfType<System.Windows.Controls.Button>().SingleOrDefault();
+                    if (close == null || !ReferenceEquals(close.Style,
+                        Application.Current.FindResource("MPWWorkspaceTabCloseButtonStyle")) ||
+                        System.Windows.Automation.AutomationProperties.GetAutomationId(close) !=
+                        "TCT.Workspace.Close." + ((TCTWorkspaceDescriptor)tab.Tag).WorkspaceId)
+                        throw new InvalidOperationException("公共关闭按钮未正确绑定Workspace实例");
+                }
+            }
+        }
+
         private static string InteractModuleKind(IntPtr hwnd, TCTMainWindow window,
             CxVisual.Mechanism.Core.Modules.MFMModuleKind kind)
         {

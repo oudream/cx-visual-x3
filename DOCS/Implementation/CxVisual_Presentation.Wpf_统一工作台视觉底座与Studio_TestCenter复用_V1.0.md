@@ -87,3 +87,10 @@ Studio 的专业 Ribbon 图标选择、MEM 资源编辑面板、二维/三维专
 2. 100%、125%、150% DPI及多屏系统缩放的逐档真实桌面验收**尚未完成**；当前仅有CI runner实际WPF窗口截图，不推断全部DPI已合格。
 3. Tab拖拽、浮动、关闭及布局恢复依靠既有工作流/STA测试覆盖，未新增所有专业页面的人工逐操作验收。仍需针对DataGrid排序/调整列宽、TreeView键盘与辅助功能做更完整截图/交互核查。
 4. 视觉基准以TestCenter浅色、Studio浅/深色继续收敛；程序图标安装态/任务栏固定快捷方式的不同DPI视觉效果仍需真实桌面人工复核。
+
+## 8. 2026-10-27 TestCenter紧凑工作区页签与公共复用
+
+- 源码问题：TestCenter主文档宿主原采用公共 `MPWDocumentTabStyle`，但仍让默认WPF TabControl负责多行标签、边距和内容外框；各业务工作区自行创建DockPanel标签与关闭按钮，造成视觉高度、横向留白和标签宽度不统一。
+- 公共Owner增量：`MPWWorkspaceDocumentTabsStyle` 负责单行横向滚动、头部32px级高度和内容区无多余边框；`MPWWorkspaceDocumentTabStyle` 统一184px宽度与32px高度，提供选中强调线和浅/深主题；`MPWWorkspaceTabCloseButtonStyle` 统一20px按钮、悬停、键盘焦点及颜色。原有 `MPWDocumentTabStyle` 和 AvalonDock Header 模板继续保留，防止影响Studio及专业子页签。
+- TestCenter仅在 `TCTTestDocumentHostControl` 引用公共样式，业务标题为星型网格自动省略并提供完整ToolTip；按钮保留原来按WorkspaceId关闭、未保存草稿保护和左树实例保留语义，不在MPW创建第二套实例管理。
+- 验收：新增真实UIA对概览及多实例页签的固定尺寸/公共Style/关闭按钮身份验证，复用原关闭-重开与深色主题回归；Windows CI和实际100/125/150% DPI截图均须按具体SHA核对，不能把编译成功视为美观最终验收。
