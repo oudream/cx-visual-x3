@@ -278,6 +278,16 @@ namespace CxVisual.TestCenter.UI
                     new FGEPoint2D(0,0),new FGEPoint2D(3.6,0),
                     new FGEPoint2D(0,3.6)});
                 frame.Viewer.SelectOverlay(statsPolygon.Id);
+                Button overlayColor=FindControl<Button>(frame,"TCT.Imaging.OverlayColor.ROI");
+                if(overlayColor==null)
+                    throw new InvalidOperationException("旧Viewer颜色设置被降级成不可点击色块");
+                overlayColor.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                MVIImageOverlayItem recolored=frame.Viewer.Overlays.Find(statsPolygon.Id);
+                if(recolored==null || recolored.Id!=statsPolygon.Id ||
+                    recolored.Argb!=unchecked((int)0xff0da6c3) ||
+                    statsPolygon.Argb==recolored.Argb)
+                    throw new InvalidOperationException(
+                        "点击ROI颜色按钮后没有真正改变原OverlayStore对象样式");
                 TabControl statsTabs=FindControl<TabControl>(frame,"TCT.Imaging.SecondaryTabs");
                 statsTabs.SelectedIndex=1;
                 window.UpdateLayout();
