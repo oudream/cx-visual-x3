@@ -13,11 +13,18 @@ namespace CxVisual.Mechanism.Data.Variables
     {
         private readonly object _value;
         private readonly object _previous;
+        // 保留已存在的十参数CLR构造签名，外部自定义事件可沿用。
         public MDSVariableChange(string id, string name, object value, object previous,
             bool hasPrevious, MDSVariableQuality quality, string source,
             DateTime utc, long revision, MDSVariableChangeKind kind)
+            : this(id, name, value, previous, hasPrevious, quality, source, utc, revision, kind, 0) { }
+
+        public MDSVariableChange(string id, string name, object value, object previous,
+            bool hasPrevious, MDSVariableQuality quality, string source,
+            DateTime utc, long revision, MDSVariableChangeKind kind, long instanceGeneration)
         {
             if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("VariableId不能为空", "id");
+            InstanceGeneration = instanceGeneration;
             VariableId = id; Name = name;
             _value = MDSVariableValueRules.Copy(value);
             _previous = MDSVariableValueRules.Copy(previous);
@@ -33,6 +40,7 @@ namespace CxVisual.Mechanism.Data.Variables
         public string Source { get; private set; }
         public DateTime UpdatedUtc { get; private set; }
         public long Revision { get; private set; }
+        public long InstanceGeneration { get; private set; }
         public MDSVariableChangeKind Kind { get; private set; }
     }
 
@@ -43,6 +51,7 @@ namespace CxVisual.Mechanism.Data.Variables
         public long Coalesced { get; internal set; }
         public long Overflow { get; internal set; }
         public long SubscriberFailures { get; internal set; }
+        public long StaleRejected { get; internal set; }
     }
 
     /// <summary>变化订阅选择器；默认行为与既有Subscribe一致，保留全部变化类别。</summary>
@@ -85,6 +94,16 @@ namespace CxVisual.Mechanism.Data.Variables
         private readonly object _gate = new object();
         private readonly Dictionary<string, MDSVariableChange> _latest =
             new Dictionary<string, MDSVariableChange>(StringComparer.Ordinal);
+        private struct Sequence
+        {
+            internal long Generation;
+            internal long Revision;
+            internal Sequence(long generation, long revision)
+            { Generation = generation; Revision = revision; }
+        }
+        // 记录历史已接收的最高实例代次和Revision，而不仅检查尚未排空的缓冲区。
+        private readonly Dictionary<string, Sequence> _accepted =
+            new Dictionary<string, Sequence>(StringComparer.Ordinal);
         private readonly Queue<string> _order = new Queue<string>();
         private readonly List<MDSVariableSubscription> _subscribers = new List<MDSVariableSubscription>();
         private readonly AutoResetEvent _wake = new AutoResetEvent(false);
@@ -92,7 +111,7 @@ namespace CxVisual.Mechanism.Data.Variables
         private readonly int _capacity;
         private readonly MDSVariableTable _sourceTable;
         private bool _active = true, _dispatching;
-        private long _received, _delivered, _coalesced, _overflow, _failures;
+        private long _received, _delivered, _coalesced, _overflow, _failures, _stale;
         private Exception _lastError;
 
         public MDSVariableChangeDispatcher(int capacity = 4096)
@@ -137,10 +156,21 @@ namespace CxVisual.Mechanism.Data.Variables
             {
                 if (!_active) return;
                 _received++;
+                Sequence maximum;
+                if (_accepted.TryGetValue(change.VariableId, out maximum) &&
+                    (change.InstanceGeneration < maximum.Generation ||
+                     (change.InstanceGeneration == maximum.Generation &&
+                      change.Revision <= maximum.Revision)))
+                {
+                    _stale++;
+                    return;
+                }
+                _accepted[change.VariableId] =
+                    new Sequence(change.InstanceGeneration, change.Revision);
                 MDSVariableChange prior;
                 if (_latest.TryGetValue(change.VariableId, out prior))
                 {
-                    if (prior.Revision > change.Revision) return;
+                    // 上述跨批次去重已校验InstanceGeneration与Revision。
                     _latest[change.VariableId] = change; _coalesced++;
                 }
                 else
@@ -212,7 +242,8 @@ namespace CxVisual.Mechanism.Data.Variables
             return new MDSVariableDispatchMetrics {
                 Received = Interlocked.Read(ref _received), Delivered = Interlocked.Read(ref _delivered),
                 Coalesced = Interlocked.Read(ref _coalesced), Overflow = Interlocked.Read(ref _overflow),
-                SubscriberFailures = Interlocked.Read(ref _failures)
+                SubscriberFailures = Interlocked.Read(ref _failures),
+                StaleRejected = Interlocked.Read(ref _stale)
             };
         }
         public Exception LastSubscriberError { get { return _lastError; } }

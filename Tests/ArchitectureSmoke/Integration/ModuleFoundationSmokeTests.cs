@@ -537,8 +537,37 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 "校验失败不能半恢复");
         }
 
+        private static void VariableOutOfOrderSmoke()
+        {
+            using (MDSVariableChangeDispatcher dispatcher = new MDSVariableChangeDispatcher(16))
+            {
+                int delivered = 0;
+                using (dispatcher.Subscribe(batch => delivered += batch.Count))
+                {
+                    Action<long, long> emit = (generation, revision) =>
+                        dispatcher.Enqueue(new MDSVariableChange("ID", "Pressure", revision, 0, true,
+                            MDSVariableQuality.Good, "test", DateTime.UtcNow, revision,
+                            MDSVariableChangeKind.Value, generation));
+                    emit(1, 3);
+                    Check(dispatcher.Drain(TimeSpan.FromSeconds(5)) && delivered == 1,
+                        "第一代最高Revision交付");
+                    emit(1, 2); // 队列早已排空，仍应拒绝过期回调。
+                    Check(dispatcher.Drain(TimeSpan.FromSeconds(5)) && delivered == 1,
+                        "旧Revision不能在已派发后重入");
+                    emit(2, 1); // 同一稳定VariableId，但运行对象已重建。
+                    Check(dispatcher.Drain(TimeSpan.FromSeconds(5)) && delivered == 2,
+                        "新世代可重新从Revision 1开始");
+                    emit(1, 99);
+                    Check(dispatcher.Drain(TimeSpan.FromSeconds(5)) && delivered == 2 &&
+                        dispatcher.Metrics().StaleRejected == 2,
+                        "已卸载世代的迟到高Revision也不可污染新状态");
+                }
+            }
+        }
+
         public static void Run()
         {
+            VariableOutOfOrderSmoke();
             VariableRestoreSmoke();
             IndustrialDeviceVariableAdapterSmoke();
             VariableSubscriptionFilterSmoke();

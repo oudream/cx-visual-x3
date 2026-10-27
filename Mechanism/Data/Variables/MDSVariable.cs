@@ -7,6 +7,13 @@ namespace CxVisual.Mechanism.Data.Variables
     // 仅负责非泛型索引；状态仍只保存在MDSVariable<T>中。
     public abstract class MDSVariableBase
     {
+        private static long _nextInstance;
+        protected MDSVariableBase()
+        {
+            InstanceGeneration = System.Threading.Interlocked.Increment(ref _nextInstance);
+        }
+        // 运行对象重建后允许Revision重新从0开始，但旧世代消息不得污染新对象。
+        internal long InstanceGeneration { get; private set; }
         internal abstract MDSVariableDefinition EntryDefinition { get; }
         internal abstract void Attach(Action<string> notify);
         internal abstract void Observe(Action<MDSVariableChange> callback);
@@ -221,7 +228,8 @@ namespace CxVisual.Mechanism.Data.Variables
                 if (qualityChanged) kind |= MDSVariableChangeKind.Quality;
                 if (sourceChanged) kind |= MDSVariableChangeKind.Source;
                 capture = new MDSVariableChange(_definition.VariableId, _definition.Name,
-                    _current, _previous, _hasPrevious, _quality, _source, now, _revision, kind);
+                    _current, _previous, _hasPrevious, _quality, _source, now, _revision, kind,
+                    InstanceGeneration);
             }
             MDSVariableChange frozen = capture;
             return new MDSVariableBatchCommit(result, () =>
@@ -369,7 +377,8 @@ namespace CxVisual.Mechanism.Data.Variables
                     if (qualityChanged) kind |= MDSVariableChangeKind.Quality;
                     if (sourceChanged) kind |= MDSVariableChangeKind.Source;
                     captured = new MDSVariableChange(_definition.VariableId, _definition.Name,
-                        _current, _previous, _hasPrevious, _quality, _source, now, _revision, kind);
+                        _current, _previous, _hasPrevious, _quality, _source, now, _revision, kind,
+                    InstanceGeneration);
                 }
             }
             // 高速路径只有在订阅变化捕获时才创建不可变快照，旧通知继续兼容。
