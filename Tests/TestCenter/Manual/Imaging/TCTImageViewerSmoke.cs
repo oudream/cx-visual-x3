@@ -690,8 +690,11 @@ namespace CxVisual.TestCenter.UI
                         "WPF属性页未同步MVI色彩、线宽、文字或污染原快照");
                 argbField.Text="无效ARGB";
                 applyProperties.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                if(frame.Viewer.Overlays.Find(editable.Id).Argb!=unchecked((int)0xff00aa66))
-                    throw new InvalidOperationException("无效ARGB输入被写入MVI对象");
+                if(frame.Viewer.Overlays.Find(editable.Id).Argb!=unchecked((int)0xff00aa66) ||
+                    applyProperties.BorderThickness.Left<1.5 ||
+                    !AutomationProperties.GetHelpText(applyProperties).Contains("颜色"))
+                    throw new InvalidOperationException(
+                        "无效ARGB必须维持旧对象、呈现非模态错误反馈，不得弹窗阻塞WPF");
                 editAction.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 if (frame.Viewer.ToolMode!=MVIImageToolMode.ResizeOverlay ||
                     frame.Viewer.SelectedOverlayId!=editable.Id ||
