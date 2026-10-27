@@ -242,9 +242,14 @@ namespace CxVisual.Mechanism.Data.Variables
                 try
                 {
                     Dictionary<string, object> captured = new Dictionary<string, object>(StringComparer.Ordinal);
+                    Dictionary<string, MDSVariableDefinition> definitions =
+                        new Dictionary<string, MDSVariableDefinition>(StringComparer.Ordinal);
                     foreach (MDSVariableBase entry in ordered)
+                    {
                         captured.Add(entry.EntryDefinition.Name, entry.SnapshotBoxed());
-                    return new MDSVariableStoreSnapshot(ScopeId, captured);
+                        definitions.Add(entry.EntryDefinition.Name, entry.EntryDefinition);
+                    }
+                    return new MDSVariableStoreSnapshot(ScopeId, captured, definitions);
                 }
                 finally
                 {
@@ -275,6 +280,13 @@ namespace CxVisual.Mechanism.Data.Variables
                         object state;
                         if (!saved.Variables.TryGetValue(entry.EntryDefinition.Name, out state))
                             throw new InvalidOperationException("快照缺少变量: " + entry.EntryDefinition.Name);
+                        MDSVariableDefinition schema;
+                        if (!saved.Definitions.TryGetValue(entry.EntryDefinition.Name, out schema) ||
+                            schema.VariableId != entry.EntryDefinition.VariableId ||
+                            schema.ValueType != entry.EntryDefinition.ValueType ||
+                            schema.Unit != entry.EntryDefinition.Unit ||
+                            schema.Writable != entry.EntryDefinition.Writable)
+                            throw new InvalidOperationException("快照变量Schema不一致: " + entry.EntryDefinition.Name);
                         entry.ValidateRestore(state);
                     }
                     foreach (MDSVariableBase entry in ordered)

@@ -535,6 +535,14 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(!incompatible.Resolve<bool>("Ready").Snapshot().HasValue &&
                 incompatible.Resolve<double>("Pressure").Snapshot().Revision == 0,
                 "校验失败不能半恢复");
+            MDSVariableTable wrongUnit = new MDSVariableTable("recovery");
+            wrongUnit.Define(new MDSVariableDefinition("Pressure", typeof(double),
+                "Pa", true, 0.0, "stable-pressure"));
+            wrongUnit.Define(new MDSVariableDefinition("Ready", typeof(bool),
+                null, true, false, "stable-ready"));
+            Reject<InvalidOperationException>(() => wrongUnit.RestoreSnapshot(saved));
+            Check(!wrongUnit.Resolve<double>("Pressure").Snapshot().HasValue,
+                "即使值类型相同，也不得把不同单位的历史快照恢复到新定义");
         }
 
         private static void VariableOutOfOrderSmoke()
