@@ -160,6 +160,7 @@ namespace CxVisual.TestCenter.UI
                 case MVIImageToolMode.DeleteOverlay: return "点击删除";
                 case MVIImageToolMode.PolygonRoi: return "多边形ROI（双击结束）";
                 case MVIImageToolMode.Angle: return "三点角度测量";
+                case MVIImageToolMode.LinePair: return "两线段最短距离与夹角（四点）";
                 case MVIImageToolMode.HorizontalDistance: return "水平距离";
                 case MVIImageToolMode.VerticalDistance: return "垂直距离";
                 case MVIImageToolMode.Diameter: return "圆形直径";
