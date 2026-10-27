@@ -504,8 +504,42 @@ namespace CxVisual.Tests.ArchitectureSmoke
             }
         }
 
+        private static void VariableRestoreSmoke()
+        {
+            MDSVariableTable original = new MDSVariableTable("recovery");
+            original.Define(new MDSVariableDefinition("Pressure", typeof(double),
+                "MPa", true, 0.0, "stable-pressure"));
+            original.Define(new MDSVariableDefinition("Ready", typeof(bool),
+                null, true, false, "stable-ready"));
+            original.Update<double>("Pressure", 0.12);
+            original.Update<double>("Pressure", 0.14);
+            original.Update<bool>("Ready", true);
+            MDSVariableStoreSnapshot saved = original.ExportSnapshot();
+            MDSVariableTable restored = new MDSVariableTable("recovery");
+            restored.Define(new MDSVariableDefinition("Pressure", typeof(double),
+                "MPa", true, 0.0, "stable-pressure"));
+            restored.Define(new MDSVariableDefinition("Ready", typeof(bool),
+                null, true, false, "stable-ready"));
+            restored.RestoreSnapshot(saved);
+            MDSVariableSnapshot<double> value = restored.Resolve<double>("Pressure").Snapshot();
+            Check(value.CurrentValue == 0.14 && value.HasPreviousValue &&
+                value.PreviousValue == 0.12 && value.Revision == 2 &&
+                restored.Get<bool>("Ready"), "恢复应保持前值/当前值/版本和独立变量");
+            Reject<InvalidOperationException>(() => restored.RestoreSnapshot(saved));
+            MDSVariableTable incompatible = new MDSVariableTable("recovery");
+            incompatible.Define(new MDSVariableDefinition("Pressure", typeof(double),
+                "MPa", true, 0.0, "wrong-id"));
+            incompatible.Define(new MDSVariableDefinition("Ready", typeof(bool),
+                null, true, false, "stable-ready"));
+            Reject<InvalidOperationException>(() => incompatible.RestoreSnapshot(saved));
+            Check(!incompatible.Resolve<bool>("Ready").Snapshot().HasValue &&
+                incompatible.Resolve<double>("Pressure").Snapshot().Revision == 0,
+                "校验失败不能半恢复");
+        }
+
         public static void Run()
         {
+            VariableRestoreSmoke();
             IndustrialDeviceVariableAdapterSmoke();
             VariableSubscriptionFilterSmoke();
             VariableBatchSmoke();

@@ -230,6 +230,64 @@ namespace CxVisual.Mechanism.Data.Variables
             }
         }
 
+        // 每个Scope整体抓取一致状态，导入要求定义身份/类型/默认值完全匹配。
+        public MDSVariableStoreSnapshot ExportSnapshot()
+        {
+            lock (_gate)
+            {
+                MDSVariableBase[] ordered = _items.Values.OrderBy(x => x.EntryDefinition.VariableId,
+                    StringComparer.Ordinal).ToArray();
+                foreach (MDSVariableBase entry in ordered)
+                    System.Threading.Monitor.Enter(entry.BatchGate);
+                try
+                {
+                    Dictionary<string, object> captured = new Dictionary<string, object>(StringComparer.Ordinal);
+                    foreach (MDSVariableBase entry in ordered)
+                        captured.Add(entry.EntryDefinition.Name, entry.SnapshotBoxed());
+                    return new MDSVariableStoreSnapshot(ScopeId, captured);
+                }
+                finally
+                {
+                    for (int i = ordered.Length - 1; i >= 0; --i)
+                        System.Threading.Monitor.Exit(ordered[i].BatchGate);
+                }
+            }
+        }
+
+        public void RestoreSnapshot(MDSVariableStoreSnapshot saved)
+        {
+            if (saved == null) throw new ArgumentNullException("saved");
+            if (saved.ScopeId != ScopeId)
+                throw new InvalidOperationException("快照Scope身份与目标不一致");
+            lock (_gate)
+            {
+                if (saved.Variables.Count != _items.Count)
+                    throw new InvalidOperationException("变量定义数量与快照不一致");
+                MDSVariableBase[] ordered = _items.Values.OrderBy(x => x.EntryDefinition.VariableId,
+                    StringComparer.Ordinal).ToArray();
+                foreach (MDSVariableBase entry in ordered)
+                    System.Threading.Monitor.Enter(entry.BatchGate);
+                try
+                {
+                    // 定义、默认值、类型、未启动状态全量检查成功后才恢复任何变量。
+                    foreach (MDSVariableBase entry in ordered)
+                    {
+                        object state;
+                        if (!saved.Variables.TryGetValue(entry.EntryDefinition.Name, out state))
+                            throw new InvalidOperationException("快照缺少变量: " + entry.EntryDefinition.Name);
+                        entry.ValidateRestore(state);
+                    }
+                    foreach (MDSVariableBase entry in ordered)
+                        entry.ApplyRestore(saved.Variables[entry.EntryDefinition.Name]);
+                }
+                finally
+                {
+                    for (int i = ordered.Length - 1; i >= 0; --i)
+                        System.Threading.Monitor.Exit(ordered[i].BatchGate);
+                }
+            }
+        }
+
         // 预绑定强类型句柄，无后续字典查找；是同一权威状态，不是缓存副本。
         public MDSVariable<T> Resolve<T>(string name)
         {

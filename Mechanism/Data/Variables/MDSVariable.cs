@@ -17,6 +17,8 @@ namespace CxVisual.Mechanism.Data.Variables
         internal abstract void ValidateBatch(MDSVariableBatchItem item);
         internal abstract MDSVariableBatchCommit ApplyBatch(MDSVariableBatchItem item);
         internal abstract object SnapshotBoxed();
+        internal abstract void ValidateRestore(object saved);
+        internal abstract void ApplyRestore(object saved);
         internal abstract void Detach();
     }
 
@@ -144,6 +146,35 @@ namespace CxVisual.Mechanism.Data.Variables
         // 下述仅为显式Batch/SnapshotBatch服务，不给普通Update增加全表事务锁。
         internal override object BatchGate { get { return _gate; } }
         internal override object SnapshotBoxed() { return Snapshot(); }
+
+        // 恢复只能针对未开始执行/未赋值的全新变量，完整验证后由Table统一提交。
+        internal override void ValidateRestore(object saved)
+        {
+            if (_removed || _hasValue || _revision != 0)
+                throw new InvalidOperationException("只能将运行快照恢复到未初始化的有效变量");
+            MDSVariableSnapshot<T> state = saved as MDSVariableSnapshot<T>;
+            if (state == null || state.VariableId != _definition.VariableId ||
+                state.Name != _definition.Name || state.Revision < 0 ||
+                state.HasDefaultValue != _definition.HasDefaultValue ||
+                (state.HasDefaultValue && !MDSVariableValueRules.Equal(
+                    state.DefaultValue, _defaultValue)))
+                throw new InvalidOperationException("变量快照的身份、类型或默认值定义不匹配");
+        }
+
+        internal override void ApplyRestore(object saved)
+        {
+            MDSVariableSnapshot<T> state = (MDSVariableSnapshot<T>)saved;
+            _current = MDSVariableValueRules.CopyTyped(state.CurrentValue);
+            _previous = MDSVariableValueRules.CopyTyped(state.PreviousValue);
+            _hasValue = state.HasValue;
+            _hasPrevious = state.HasPreviousValue;
+            _quality = state.Quality;
+            _source = state.Source;
+            _refreshUtc = state.RefreshUtc;
+            _changeUtc = state.ChangeUtc;
+            _revision = state.Revision;
+            // 恢复不发变化事件：这是全新Scope在Provider激活之前的状态装载。
+        }
 
         internal override void ValidateBatch(MDSVariableBatchItem item)
         {
