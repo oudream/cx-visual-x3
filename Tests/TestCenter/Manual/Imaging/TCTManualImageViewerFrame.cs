@@ -95,7 +95,9 @@ namespace CxVisual.TestCenter.UI
                 if (selected == null) return;
                 _viewer.ToolMode = (MVIImageToolMode)selected.Tag;
                 _viewer.AnnotationText = _annotationText.Text;
-                Show("交互工具：" + selected.Content + "；鼠标左键绘制/拖动，滚轮缩放");
+                UpdateRegionToolHighlight();
+                Show("当前工具：" + selected.Content +
+                    "；请在左侧图像上操作（绘制结束后自动选中结果），滚轮缩放。");
             };
             _annotationText.TextChanged += (sender,args) =>
                 _viewer.AnnotationText = _annotationText.Text;
