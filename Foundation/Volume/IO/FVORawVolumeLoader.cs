@@ -266,6 +266,65 @@ namespace CxVisual.Foundation.Volume
             return volume;
         }
 
+        /// <summary>
+        /// 从原始内存建立FVO独立拥有的高精度体数据：R8预览用于GPU，
+        /// 完整Byte/UInt16/Float32原始体素用于测量和高清MPR。
+        /// 与CreatePreviewFromMemory不同，调用完成后可释放宿主的输入内存。
+        /// </summary>
+        public static FVOVolumeData LoadFromMemory(
+            IntPtr sourceBuffer, long sourceBufferLength, FVORawVolumeInfo info,
+            int maxInteractiveAxis, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (info == null) throw new ArgumentNullException("info");
+            if (info.Width <= 0 || info.Height <= 0 || info.Depth <= 0)
+                throw new ArgumentException("体数据尺寸必须为正数。", "info");
+            long expectedBytes = checked((long)info.Width * info.Height * info.Depth *
+                GetBytesPerVoxel(info.Format));
+            if (sourceBufferLength < expectedBytes)
+                throw new InvalidDataException("宿主原始内存小于体素尺寸需要的字节数。");
+
+            // 先完成快照，再从同一份私有原始数据生成预览，避免宿主在两次读取间修改源指针。
+            FVOUnmanagedRawVolumeBuffer original =
+                FVOUnmanagedRawVolumeBuffer.CopyFromMemory(
+                    sourceBuffer, expectedBytes, cancellationToken);
+            try
+            {
+                FVOVolumeData result = CreatePreviewFromMemory(
+                    original.DangerousGetHandle(), expectedBytes, info, null,
+                    maxInteractiveAxis, cancellationToken);
+                try
+                {
+                    result.SetRawBuffer(original);
+                    original = null; // 所有权唯一转移到FVOVolumeData。
+                    return result;
+                }
+                catch
+                {
+                    result.Dispose();
+                    throw;
+                }
+            }
+            finally
+            {
+                if (original != null) original.Dispose();
+            }
+        }
+
+        /// <summary>托管字节数组入口；对数组进行独立快照，不留GC固定指针。</summary>
+        public static unsafe FVOVolumeData LoadFromMemory(
+            byte[] sourceBytes, FVORawVolumeInfo info, int maxInteractiveAxis,
+            CancellationToken cancellationToken)
+        {
+            if (sourceBytes == null) throw new ArgumentNullException("sourceBytes");
+            if (sourceBytes.Length == 0) throw new ArgumentException("体素数组不能为空。", "sourceBytes");
+            fixed (byte* source = sourceBytes)
+            {
+                return LoadFromMemory(new IntPtr(source), sourceBytes.LongLength,
+                    info, maxInteractiveAxis, cancellationToken);
+            }
+        }
+
         /// <summary>将原始 RAW 读入非托管缓存，供宿主在后台切换高分辨率切片。</summary>
         public static FVOUnmanagedRawVolumeBuffer LoadRawBuffer(FVOVolumeData volume, FVORawVolumeLoadTiming timing)
         {

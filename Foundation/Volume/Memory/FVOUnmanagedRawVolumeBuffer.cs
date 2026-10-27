@@ -135,6 +135,43 @@ namespace CxVisual.Foundation.Volume
             }
         }
 
+        /// <summary>
+        /// 将宿主的借用内存一次性复制为FVO拥有的原始体素缓冲。
+        /// 来源指针只需在调用期间保持有效，成功后由FVOVolumeData负责释放。
+        /// </summary>
+        internal static unsafe FVOUnmanagedRawVolumeBuffer CopyFromMemory(
+            IntPtr sourcePointer, long byteCount, CancellationToken cancellation)
+        {
+            cancellation.ThrowIfCancellationRequested();
+            if (sourcePointer == IntPtr.Zero)
+                throw new ArgumentException("原始体素内存指针不能为空。", "sourcePointer");
+            if (byteCount <= 0)
+                throw new ArgumentOutOfRangeException("byteCount");
+            if (IntPtr.Size != 8 && byteCount > int.MaxValue)
+                throw new PlatformNotSupportedException("超大体数据内存复制需要x64进程。");
+
+            FVOUnmanagedRawVolumeBuffer copy = Allocate(byteCount);
+            try
+            {
+                byte* source = (byte*)sourcePointer.ToPointer();
+                byte* destination = (byte*)copy.DangerousGetHandle().ToPointer();
+                const long blockSize = 8L * 1024 * 1024;
+                for (long offset = 0; offset < byteCount; offset += blockSize)
+                {
+                    cancellation.ThrowIfCancellationRequested();
+                    long count = Math.Min(blockSize, byteCount - offset);
+                    Buffer.MemoryCopy(source + offset, destination + offset, count, count);
+                }
+                cancellation.ThrowIfCancellationRequested();
+                return copy;
+            }
+            catch
+            {
+                copy.Dispose();
+                throw;
+            }
+        }
+
         internal unsafe float ReadValue(long voxelIndex, FVORawVoxelFormat format)
         {
             var source = (byte*)DangerousGetHandle().ToPointer();

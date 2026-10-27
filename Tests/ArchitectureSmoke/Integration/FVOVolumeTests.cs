@@ -38,6 +38,54 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     raw16[i * 2 + 1] = (byte)(value >> 8);
                 }
                 File.WriteAllBytes(path16, raw16);
+                // 内存输入不需要虚构源RAW文件；FVO拥有私有副本，原始精度供高清MPR读取。
+                FVORawVolumeInfo memory16 = new FVORawVolumeInfo(8,8,8,
+                    0.1f,0.2f,0.3f,FVORawVoxelFormat.UInt16,"memory-ushort16");
+                using (FVOVolumeData memoryData = FVORawVolumeLoader.LoadFromMemory(
+                    raw16,memory16,64,CancellationToken.None))
+                {
+                    Check(memoryData.HasOriginalRawData && !memoryData.HasRawSource &&
+                          memoryData.SourceFilePath==null &&
+                          memoryData.GetScalarByOriginalIndex(7,7,7)==1511f,
+                        "内存16位输入持有独立原始缓冲，不伪造文件来源且数值不降精度");
+                    CxVisual.Foundation.Imaging.FIMImageBuffer originalSlice =
+                        FVOSliceImageBuilder.BuildScalar(memoryData,0,0,7,FVOSlicePlane.XY);
+                    Check(originalSlice.GetGrayValue(7,7)==1511 &&
+                          Math.Abs(memoryData.SpacingY-.2f)<.00001,
+                        "内存原始体素与物理Spacing直接用于高清二维切片");
+                    raw16[1022]=0;raw16[1023]=0;
+                    Check(memoryData.GetScalarByOriginalIndex(7,7,7)==1511f,
+                        "修改宿主托管源数组不应影响已构建FVO");
+                    raw16[1022]=(byte)1511;raw16[1023]=(byte)(1511>>8);
+                }
+                byte[] floatBytes=new byte[8*8*8*4];
+                for(int index=0;index<512;index++)
+                {
+                    byte[] single=BitConverter.GetBytes(0.25f + index*0.125f);
+                    Buffer.BlockCopy(single,0,floatBytes,index*4,4);
+                }
+                FVORawVolumeInfo memoryFloat = new FVORawVolumeInfo(8,8,8,
+                    1,1,2,FVORawVoxelFormat.Float32,"memory-float32");
+                using(FVOVolumeData floatVolume=FVORawVolumeLoader.LoadFromMemory(
+                    floatBytes,memoryFloat,64,CancellationToken.None))
+                {
+                    Check(Math.Abs(floatVolume.GetScalarByOriginalIndex(7,7,7)-64.125f)<.00001 &&
+                          floatVolume.HasOriginalRawData,
+                        "Float32内存加载应保持标量数值而非从R8预览反推");
+                    Check(Math.Abs(FVOSliceImageBuilder.BuildScalar(floatVolume,0,0,7,
+                          FVOSlicePlane.XY).GetGrayValue(7,7)-64.125)<.00001,
+                        "Float32内存高清切片不做8位量化");
+                }
+                Expect<InvalidDataException>(()=>FVORawVolumeLoader.LoadFromMemory(
+                    new byte[1023],memory16,64,CancellationToken.None),
+                    "不足量原始内存必须拒绝，不允许越界读");
+                using(CancellationTokenSource canceledMemory=new CancellationTokenSource())
+                {
+                    canceledMemory.Cancel();
+                    Expect<OperationCanceledException>(()=>FVORawVolumeLoader.LoadFromMemory(
+                        raw16,memory16,64,canceledMemory.Token),
+                        "取消的内存快照不得分配原始缓存");
+                }
                 using (FVOVolumeData data16 = FVORawVolumeLoader.Load(path16))
                 {
                     Check(data16.SourceFormat == FVORawVoxelFormat.UInt16, "UInt16格式");
