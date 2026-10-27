@@ -37,6 +37,8 @@ namespace CxVisual.Mechanism.Data.Variables
         {
             if (string.IsNullOrWhiteSpace(name) || valueType == null || valueType == typeof(void))
                 throw new ArgumentException("变量名称/类型无效");
+            // 没有默认值的结构体也须先验证：不能在首次Get/Snapshot时才暴露浅复制风险。
+            MDSVariableValueRules.ValidateDefinitionType(valueType);
             Name = name.Trim();
             ValueType = valueType;
             Unit = unit;
