@@ -1021,3 +1021,72 @@ A得到成功提交后的Defects
 本V3.0是**完整类型规格+使用指南**，而V2.0继续保留为历史阶段汇总；二者冲突时，以本V3.0记录的**后期定案和最新源码**为准。每次实现新对象或更名，要同时更新`3`真实对象清单、`4～5`历史映射、`7～8`可用案例、`11～12`验收矩阵与`15`证据；避免再出现“新增一堆代码，总文档却只有摘要”的问题。
 
 **最终产品形态**：开发者最少只需`Get/Set/Return`，工程编排用户最少只需“拖能力、连端口、选来源、运行、Inspect”；严谨的Heap/Stack/安全复制/预算/文件Load/生命周期在两Data项目内部承担复杂度。**易用体验最终必须由真实Vision和Workbench完整操作来证明**，不能由文档本身宣布完成。
+
+
+## 16. 五维生命周期策略、独立便捷入口与完整验收（2026-10-27）
+
+> **用户已明确提出的完整目标，尚非已实现声明。** 保留现有 Foundation.Data / Mechanism.Data 数据 Owner、MRK 执行器及 MEM 工程真源；不额外建立 DataManager、消息中心、编排引擎或 Scope 树。本节是 V3.0 的补充验收基线，不删除历史 F01～M33 / E01～E15，不通过增加类文件数冒充完工。
+
+### 16.1 必须提供两层入口
+
+- **普通开发者**：保持现有 Get/Set/Return 及按需 Heap/Move/Copy/File；不要求业务代码管理帧、消费数、租约与回收。
+- **高级开发者**：五个维度均应有独立、强类型、可发现、可配置、可实际调用的策略类；每一类需具备配置校验、默认值、单独执行方法、状态查询、错误合同和正反例。提供一个组合使用入口，不要求一次配置全部五维。
+- **工程编排者**：节点参数面板支持默认/高级两级策略，使用“共享只读、保留到、缓存多久、何时释放”等业务语言；策略与现有工程/能力定义联动，由 MOC/MRK 校验并交给原 MDS Owner 执行，不用业务图元模拟 Push/Pop/Lease。
+- **专业开发者**：物理 GPU/SDK/SHM/远程 Operation 的资源释放由专业 Owner 最终负责，MDS 只维护安全使用、引用代次和结果登记；超时/取消绝非外部完成确认。
+
+### 16.2 五维可独立存在的类及操作合同（名称均为候选，并非现有 API）
+
+| 维度及候选类型 | 配置示例 | 独立方法及实际运行效果 | 不得违反的边界 |
+|---|---|---|---|
+| Ownership：MDSDataOwnershipPolicy | OwnerKind、OwnerId、Scope、是否允许转移 | Assign / TransferOwnership / InspectOwner：确定唯一终身释放责任和合法迁移 | 不创建第二份可写数据，外部物理资源仍由专业 Provider 负责 |
+| Lifetime：MDSDataLifetimePolicy | Node / UntilLastConsumer / Flow / Session / ExternalBound；Invocation、Attempt | AcquireUse / CompleteUse / CanAccess：实际消费者保活、旧代次拒绝 | Loop、Join、Retry、子流程和外部异步必须按实际结算，不能单靠静态节点数 |
+| Retention：MDSDataRetentionPolicy | None / ExplicitCache / Result / Diagnostic / Persistent / RecoveryProtected；TTL、容量、优先级 | Retain / ReleaseRetention / GetReasons：有界保留、说明保留理由 | 被缓存可驱逐不等于仍在使用的物理数据可释放 |
+| Transfer：MDSDataTransferPolicy | Copy / Move / ImmutableShare / ExternalBorrow；冲突处理、目标 Owner | CopyTo / MoveTo / ShareReadOnly / Borrow：复制隔离、转交所有权或受控共享 | 延用原 Heap/Stack；跨进程和 SDK 借用须先实现 Generation 与外部确认 |
+| Reclamation：MDSDataReclamationPolicy | Explicit / AfterLastConsumer / OnFlowEnd / AfterTTL / OnPressure / ExternalConfirmed；拒绝/等待/驱逐 | CanRelease / GetBlockers / ReleaseEligible / Sweep：安全判定、执行回收与反馈阻断原因 | 不因内存压力释放仍有消费者、Result/Debug 保留或 GPU Fence/Unknown |
+
+组合策略门面候选 MDSDataLifecyclePolicy：应能单独设置五个独立策略，也能校验五维组合冲突。**策略不拥有副本**；真正数据仍归现有 Heap / Stack / Frame；新增类必须先核对既有契约，允许合并已存在职责，但便利入口不可缺失。
+
+### 16.3 默认及组合行为原则
+
+1. 普通标量和既有 Flow 不自动启用昂贵跟踪，不静默改变当前 Heap.Set/Get/Remove、Stack.Publish/Dispose 公共语义；高级策略可显式 opt-in。平台依据 MRK 的调用和编译依赖自动完成正常生命周期。
+2. 安全释放判定：OwnerPermits 且 NoActiveConsumers 且 NoRetentionHold 且 ExternalSafe。未知外部状态必须明确拒绝危险回收并能诊断，而不是超时后强制销毁。
+3. Ownership、Lifetime、Retention、Transfer、Reclamation 五个维度可独立配置、单独查询、自由组合；冲突组合（例如外部仍使用且强制回收）必须在编译前或执行前明确拒绝。
+4. CommittedOutput 默认保持已有安全合同。若要引入提前回收，先让 MOC/MRK 提供准确的调用/循环/Join/结果导出消费者信息，再由 MDS 按真实终态安全释放；保守持有胜于早释放。
+5. 容量应区分逻辑保留量、物理共享内存、在途复制、外部显存/SDK、诊断保留。预算不足只允许驱逐符合资格的缓存、施加背压或拒绝新任务，不能损坏活跃数据。
+6. 流程结束、错误、取消、重试、补偿、断点、远程迟到回包、崩溃恢复都要定义独立清理和保留语义；结果输出经安全所有权交接后方可关闭旧 Scope。
+7. 数据来源的稳定工程身份、运行时调用身份和外部 Generation 不得混用；内存管理与数据访问授权均应可审计。
+
+### 16.4 开发者体验的目标示例（伪代码，不可当作已有 API）
+
+~~~csharp
+// 已有简洁入口不变：
+var image = data.Get<MyImage>("Image");
+data.Return("Result", Detect(image));
+
+// 高级入口示意：只配置确实需要改变的策略，不要求五维全填。
+var policy = MDSDataLifecyclePolicy.Default
+    .WithLifetime(l => l.UntilLastConsumer())
+    .WithRetention(r => r.CacheFor(TimeSpan.FromMinutes(2)))
+    .WithTransfer(t => t.ShareImmutableOnly())
+    .WithReclamation(r => r.OnPressureOrExpiry());
+// 每维还须可独立设置/查询并实际作用于原 MDS 数据 Owner。
+~~~
+
+### 16.5 完整验收清单（不能只交五个 DTO）
+
+| 用例 | 必须真实证明 |
+|---|---|
+| LC01 标量/节点 | 简洁 Get/Set/Return、错误 Pending 不发布、局部生命周期无泄漏 |
+| LC02 两个并行消费者 | 不可变共享零意外修改；其中一人取消，另一人仍能安全读；CopyBytes 可观测 |
+| LC03 1000 次 Loop/Foreach/Join | 每个 Invocation、Iteration/Attempt 隔离；可回收数据不会无限积累，也不能提前回收聚合结果 |
+| LC04 多层 Subflow/Export | 未公开输出不能窥探；已公开输出直到外层安全接收才释放 |
+| LC05 TTL/缓存/结果保留 | 各策略独立生效；有活动读者时压力驱逐拒绝，GetBlockers 能说明原因 |
+| LC06 失败/取消/Retry | 不发布半成品、不重复释放；Heap 已有副作用不能假装回滚；迟到旧 Attempt 被拒绝 |
+| LC07 CT Volume/ROI | 数 GB 文件只读取请求分块，量测磁盘 I/O、峰值 RSS、卸载与消费者安全 |
+| LC08 GPU/SDK/SHM/远程 AI | 资源代次、外部 Fence/ACK/Unknown、旧回包与安全回收，独立于软件取消 |
+| LC09 Studio/TestCenter | 五维各自配置、组合设置、运行观察、阻断诊断、UI 自动化和用户操作文档 |
+| LC10 工业连续运行 | 长稳、GC、p95/p99、CopyBytes、PeakBytes、LiveConsumers、RetentionReasons、ReleaseBlocked |
+
+每一项分开登记 DESIGNED / CODED / BUILT / AUTOMATED_PASS / UI_PASS / HARDWARE_PASS；通过 Windows x64 全解、专项 ArchitectureSmoke、TestCenter 正反例及对应实机验收后才能标完成。无法取得设备则列 HARDWARE_PENDING，不得伪称完成。
+
+**这份要求是“完好完整”的验收合同，而不是当前五维能力都已落地的声明。**
