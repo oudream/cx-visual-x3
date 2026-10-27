@@ -97,6 +97,36 @@ namespace CxVisual.Tests.ArchitectureSmoke {
             Near(polynomial.Coefficients[2],1,"fit polynomial quadratic");
             Throws<ArgumentException>(()=>FNUCurveFitting.Polynomial(
                 new double[]{0,1},new double[]{1,2},2),"insufficient fit observations");
+            double[] fir=FNUFirFilter.Apply(new double[]{1,2,3},new double[]{.5,.5});
+            Near(fir[0],.5,"FIR first");Near(fir[1],1.5,"FIR second");Near(fir[2],2.5,"FIR third");
+            Throws<ArgumentException>(()=>FNUFirFilter.Write(samples,new double[]{1},samples),"FIR alias");
+            Throws<ArgumentException>(()=>FNUFirFilter.Apply(samples,new double[0]),"FIR no coefficients");
+            var iir=new FNUIirFilter(new double[]{.5},new double[]{1,-.5});
+            Near(iir.Process(2),1,"IIR n0");Near(iir.Process(0),.5,"IIR n1");
+            iir.Reset();Near(iir.Process(0),0,"IIR reset");
+            Throws<ArgumentOutOfRangeException>(()=>new FNUIirFilter(new double[]{1},new double[]{0}),"IIR zero a0");
+            Throws<ArgumentOutOfRangeException>(()=>iir.Process(double.PositiveInfinity),"IIR invalid input");
+            var sampled=FNUResampling.Linear(new double[]{0,10},3);
+            Near(sampled[0],0,"resampling first");Near(sampled[1],5,"resampling center");
+            Near(sampled[2],10,"resampling last");
+            Near(FNUResampling.Linear(new double[]{7},4)[3],7,"resampling singleton");
+            Throws<ArgumentException>(()=>FNUResampling.Linear(new double[0],3),"resampling empty");
+            var convolved=FNUConvolution.Full(new double[]{1,2},new double[]{3,4});
+            Near(convolved[0],3,"convolution first");
+            Near(convolved[1],10,"convolution middle");
+            Near(convolved[2],8,"convolution last");
+            Throws<ArgumentException>(()=>FNUConvolution.Full(new double[0],new double[]{1}),"convolution empty");
+            var hann=FNUWindowFunction.Hann(3);
+            Near(hann[0],0,"hann start");Near(hann[1],1,"hann center");Near(hann[2],0,"hann end");
+            Near(FNUWindowFunction.Hann(1)[0],1,"hann singleton");
+            var spectrum=FNUFrequencyAnalysis.OneSidedAmplitude(new double[]{0,1,0,-1},4);
+            Assert(spectrum.Length==3,"one-sided bins");
+            Near(spectrum.FrequencyAt(1),1,"frequency Hz");
+            Near(spectrum.AmplitudeAt(1),1,"sine amplitude");
+            Near(spectrum.AmplitudeAt(0),0,"DC amplitude");
+            double[] tampered=spectrum.CopyAmplitudes();tampered[1]=99;
+            Near(spectrum.AmplitudeAt(1),1,"spectrum copy");
+            Throws<ArgumentOutOfRangeException>(()=>FNUFrequencyAnalysis.OneSidedAmplitude(samples,0),"invalid sample rate");
             Console.WriteLine("PASS FNU Numerics - interpolation/statistics/SVD/moving-average/FFT");
         }
         private static void Assert(bool ok,string name){

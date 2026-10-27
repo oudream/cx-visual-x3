@@ -36,5 +36,11 @@
     <Compile Include="Solvers\FNUNumericalIntegration.cs"/>
     <Compile Include="Solvers\FNUCurveFitting.cs"/>
   </ItemGroup>
+  <ItemGroup><Compile Include="Signal\FNUFirFilter.cs"/></ItemGroup>
+  <ItemGroup><Compile Include="Signal\FNUIirFilter.cs"/></ItemGroup>
+  <ItemGroup><Compile Include="Signal\FNUResampling.cs"/></ItemGroup>
+  <ItemGroup><Compile Include="Signal\FNUConvolution.cs"/></ItemGroup>
+  <ItemGroup><Compile Include="Signal\FNUWindowFunction.cs"/></ItemGroup>
+  <ItemGroup><Compile Include="Signal\FNUFrequencyAnalysis.cs"/></ItemGroup>
   <ItemGroup><PackageReference Include="MathNet.Numerics" Version="5.0.0"/></ItemGroup>
 </Project>
