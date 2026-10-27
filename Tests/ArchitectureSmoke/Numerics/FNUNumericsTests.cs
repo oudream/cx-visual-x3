@@ -196,6 +196,31 @@ namespace CxVisual.Tests.ArchitectureSmoke {
             Near(tensor.Get(0,0),1,"reshape owns data");
             Throws<ArgumentException>(()=>tensor.Reshape(new FNUTensorShape(3,3)),"reshape size mismatch");
             Throws<ArgumentException>(()=>FNUTensorMath.MatMul(tensor,tensor),"MatMul shape mismatch");
+            Near(FNUDistribution.Median(new double[]{4,1,3,2}),2.5,"median even count");
+            Near(FNUDistribution.Quantile(new double[]{4,1,3,2},.25),1.75,"quantile interpolated");
+            Near(FNUDistribution.Quantile(new double[]{4,1,3,2},0),1,"quantile min");
+            Throws<ArgumentOutOfRangeException>(()=>FNUDistribution.Quantile(samples,-.1),"invalid quantile");
+            Assert(FNUPrecision.NearlyEqual(1,1+1e-11),"near equality");
+            Assert(!FNUPrecision.NearlyEqual(1,2),"distinct values");
+            Assert(!FNUPrecision.NearlyEqual(double.NaN,double.NaN),"NaN never equal");
+            Throws<ArgumentOutOfRangeException>(()=>FNUPrecision.NearlyEqual(1,1,-1),"invalid tolerance");
+            var weighted=FNUWeightedLeastSquares.Solve(
+                new double[,]{{1,0},{1,1},{1,2},{1,3}},
+                new double[]{1,3,100,7},new double[]{1,1,0,1});
+            Near(weighted.Coefficients[0],1,"weighted intercept excludes outlier");
+            Near(weighted.Coefficients[1],2,"weighted slope excludes outlier");
+            Throws<ArgumentOutOfRangeException>(()=>FNUWeightedLeastSquares.Solve(
+                new double[,]{{1},{1}},new double[]{1,2},new double[]{1,-1}),"negative weight");
+            var ode=FNUOdeSolver.RungeKutta4((time,y)=>y,0,1,.01,100);
+            Assert(ode.Count==101,"RK4 sample count");
+            Near(ode.TimeAt(100),1,"RK4 final time");
+            Near(ode.ValueAt(100),Math.E,"RK4 exponential growth");
+            var odeValues=ode.CopyValues();odeValues[0]=999;
+            Near(ode.ValueAt(0),1,"RK4 copy isolation");
+            Throws<ArgumentOutOfRangeException>(()=>FNUOdeSolver.RungeKutta4(
+                (time,y)=>y,0,1,0,10),"RK4 zero step");
+            Throws<OverflowException>(()=>FNUOdeSolver.RungeKutta4(
+                (time,y)=>double.PositiveInfinity,0,1,.1,10),"RK4 invalid derivative");
             Console.WriteLine("PASS FNU Numerics - interpolation/statistics/SVD/moving-average/FFT");
         }
         private static void Assert(bool ok,string name){
