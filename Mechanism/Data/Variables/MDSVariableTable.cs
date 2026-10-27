@@ -154,6 +154,82 @@ namespace CxVisual.Mechanism.Data.Variables
             }
         }
 
+        // 跨变量一致提交：只锁当前批次引用的变量；普通MDSVariable<T>.Update不引入表级热路径开销。
+        public MDSVariableBatchResult UpdateBatch(params MDSVariableBatchItem[] batch)
+        {
+            if (batch == null) throw new ArgumentNullException("batch");
+            if (batch.Length == 0)
+                return new MDSVariableBatchResult(new MDSVariableUpdateResult[0], new Exception[0]);
+            MDSVariableBatchCommit[] commits = new MDSVariableBatchCommit[batch.Length];
+            lock (_gate)
+            {
+                if (batch.Any(x => x == null)) throw new ArgumentException("批量条目不得为null");
+                if (batch.Select(x => x.Name).Distinct(StringComparer.Ordinal).Count() != batch.Length)
+                    throw new ArgumentException("同一批次不能多次修改同名变量");
+                MDSVariableBase[] objects = new MDSVariableBase[batch.Length];
+                for (int i = 0; i < batch.Length; ++i)
+                {
+                    if (!_items.TryGetValue(batch[i].Name, out objects[i]))
+                        throw new KeyNotFoundException("批量变量未定义: " + batch[i].Name);
+                }
+                MDSVariableBase[] ordered = objects.OrderBy(x => x.EntryDefinition.VariableId,
+                    StringComparer.Ordinal).ToArray();
+                for (int i = 0; i < ordered.Length; ++i)
+                    System.Threading.Monitor.Enter(ordered[i].BatchGate);
+                try
+                {
+                    // 全量校验成功后才修改任何一个值；Revision冲突/类型错/只读不得半提交。
+                    for (int i = 0; i < batch.Length; ++i) objects[i].ValidateBatch(batch[i]);
+                    for (int i = 0; i < batch.Length; ++i) commits[i] = objects[i].ApplyBatch(batch[i]);
+                }
+                finally
+                {
+                    for (int i = ordered.Length - 1; i >= 0; --i)
+                        System.Threading.Monitor.Exit(ordered[i].BatchGate);
+                }
+            }
+            // 事件位于所有状态锁和表锁之外，不能让慢订阅者占住变量事务锁。
+            List<Exception> failures = new List<Exception>();
+            foreach (MDSVariableBatchCommit result in commits)
+            {
+                try { result.Notify(); }
+                catch (Exception error) { failures.Add(error); }
+            }
+            return new MDSVariableBatchResult(commits.Select(x => x.Result).ToArray(), failures.ToArray());
+        }
+
+        // 多变量一致快照仅适用于同一Table Scope，返回值为具体MDSVariableSnapshot<T>。
+        public IReadOnlyDictionary<string, object> SnapshotBatch(params string[] names)
+        {
+            if (names == null) throw new ArgumentNullException("names");
+            lock (_gate)
+            {
+                if (names.Any(x => string.IsNullOrWhiteSpace(x)) ||
+                    names.Distinct(StringComparer.Ordinal).Count() != names.Length)
+                    throw new ArgumentException("快照变量名不可为空或重复");
+                MDSVariableBase[] variables = new MDSVariableBase[names.Length];
+                for (int i = 0; i < names.Length; i++)
+                    if (!_items.TryGetValue(names[i], out variables[i]))
+                        throw new KeyNotFoundException("快照变量未定义: " + names[i]);
+                MDSVariableBase[] ordered = variables.OrderBy(x => x.EntryDefinition.VariableId,
+                    StringComparer.Ordinal).ToArray();
+                for (int i = 0; i < ordered.Length; ++i)
+                    System.Threading.Monitor.Enter(ordered[i].BatchGate);
+                try
+                {
+                    Dictionary<string, object> snapshots = new Dictionary<string, object>(StringComparer.Ordinal);
+                    for (int i = 0; i < names.Length; i++)
+                        snapshots.Add(names[i], variables[i].SnapshotBoxed());
+                    return new System.Collections.ObjectModel.ReadOnlyDictionary<string, object>(snapshots);
+                }
+                finally
+                {
+                    for (int i = ordered.Length - 1; i >= 0; --i)
+                        System.Threading.Monitor.Exit(ordered[i].BatchGate);
+                }
+            }
+        }
+
         // 预绑定强类型句柄，无后续字典查找；是同一权威状态，不是缓存副本。
         public MDSVariable<T> Resolve<T>(string name)
         {

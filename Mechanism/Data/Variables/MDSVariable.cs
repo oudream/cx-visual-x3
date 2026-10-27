@@ -13,6 +13,10 @@ namespace CxVisual.Mechanism.Data.Variables
         internal abstract object ReadBoxed();
         internal abstract void UpdateBoxed(object value);
         internal abstract void RefreshProviderBoxed(object value, MDSVariableQuality quality, string source);
+        internal abstract object BatchGate { get; }
+        internal abstract void ValidateBatch(MDSVariableBatchItem item);
+        internal abstract MDSVariableBatchCommit ApplyBatch(MDSVariableBatchItem item);
+        internal abstract object SnapshotBoxed();
         internal abstract void Detach();
     }
 
@@ -137,6 +141,65 @@ namespace CxVisual.Mechanism.Data.Variables
             if (value != null && value.GetType() != typeof(T)) throw new InvalidCastException("变量类型不匹配");
             RefreshFromProvider((T)value, quality, source);
         }
+        // 下述仅为显式Batch/SnapshotBatch服务，不给普通Update增加全表事务锁。
+        internal override object BatchGate { get { return _gate; } }
+        internal override object SnapshotBoxed() { return Snapshot(); }
+
+        internal override void ValidateBatch(MDSVariableBatchItem item)
+        {
+            // 调用方已经按ID顺序取得BatchGate；此方法只做验证，无状态修改。
+            if (_removed) throw new ObjectDisposedException("MDSVariable");
+            if (!_definition.Writable) throw new InvalidOperationException("批量写入只读变量: " + _definition.Name);
+            object value = item.Value;
+            if (value != null && !(value is T))
+                throw new InvalidCastException("批量更新类型不匹配: " + _definition.Name);
+            if (value == null && typeof(T).IsValueType && Nullable.GetUnderlyingType(typeof(T)) == null)
+                throw new InvalidCastException("非Nullable变量不能更新为null: " + _definition.Name);
+            if (item.Options.ExpectedRevision.HasValue &&
+                item.Options.ExpectedRevision.Value != _revision)
+                throw new MDSVariableVersionConflictException(_definition.VariableId,
+                    item.Options.ExpectedRevision.Value, _revision);
+            if (_revision == long.MaxValue) throw new OverflowException("变量Revision溢出");
+        }
+
+        internal override MDSVariableBatchCommit ApplyBatch(MDSVariableBatchItem item)
+        {
+            // 由Table锁住事务的所有变量后调用；校验已全量通过。
+            T next = MDSVariableValueRules.CopyTyped((T)item.Value);
+            bool changed = !_hasValue || !MDSVariableValueRules.Equal(_current, next);
+            bool qualityChanged = _quality != item.Options.Quality;
+            bool sourceChanged = item.Options.Source != null && item.Options.Source != _source;
+            DateTime now = DateTime.UtcNow;
+            if (changed)
+            {
+                if (_hasValue) { _previous = _current; _hasPrevious = true; }
+                _current = next; _hasValue = true; _changeUtc = now;
+            }
+            _quality = item.Options.Quality;
+            _source = item.Options.Source ?? _source;
+            _refreshUtc = now;
+            _revision++;
+            MDSVariableUpdateResult result = new MDSVariableUpdateResult(
+                _definition.VariableId, changed, _revision, _quality, now);
+            Action<string> notify = _notify;
+            Action<MDSVariableChange> observer = _observer;
+            MDSVariableChange capture = null;
+            if (observer != null)
+            {
+                MDSVariableChangeKind kind = changed ? MDSVariableChangeKind.Value : MDSVariableChangeKind.Refresh;
+                if (qualityChanged) kind |= MDSVariableChangeKind.Quality;
+                if (sourceChanged) kind |= MDSVariableChangeKind.Source;
+                capture = new MDSVariableChange(_definition.VariableId, _definition.Name,
+                    _current, _previous, _hasPrevious, _quality, _source, now, _revision, kind);
+            }
+            MDSVariableChange frozen = capture;
+            return new MDSVariableBatchCommit(result, () =>
+            {
+                try { if (observer != null) observer(frozen); }
+                finally { if (notify != null) notify(_definition.Name); }
+            });
+        }
+
         public MDSVariableDefinition Definition { get { return _definition; } }
         internal override MDSVariableDefinition EntryDefinition { get { return _definition; } }
 

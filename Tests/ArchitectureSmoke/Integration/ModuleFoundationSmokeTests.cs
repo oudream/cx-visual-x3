@@ -385,8 +385,55 @@ namespace CxVisual.Tests.ArchitectureSmoke
             }
         }
 
+        private static void VariableBatchSmoke()
+        {
+            MDSVariableTable table = new MDSVariableTable("batch");
+            table.Define(new MDSVariableDefinition("A", typeof(int)));
+            table.Define(new MDSVariableDefinition("B", typeof(int)));
+            table.Define(new MDSVariableDefinition("RO", typeof(int), writable: false));
+            MDSVariableBatchResult first = table.UpdateBatch(
+                new MDSVariableBatchItem("A", 10), new MDSVariableBatchItem("B", 10));
+            Check(first.Results.Count == 2 && first.NotificationsSucceeded &&
+                table.Get<int>("A") == 10 && table.Get<int>("B") == 10, "同Scope多变量批量提交");
+            Reject<InvalidCastException>(() => table.UpdateBatch(
+                new MDSVariableBatchItem("A", 15),
+                new MDSVariableBatchItem("B", "not-int")));
+            Check(table.Get<int>("A") == 10 && table.Get<int>("B") == 10 &&
+                table.Resolve<int>("A").Snapshot().Revision == 1, "后续类型错误不得半提交");
+            Reject<InvalidOperationException>(() => table.UpdateBatch(
+                new MDSVariableBatchItem("A", 30),
+                new MDSVariableBatchItem("RO", 1)));
+            Reject<MDSVariableVersionConflictException>(() => table.UpdateBatch(
+                new MDSVariableBatchItem("A", 30),
+                new MDSVariableBatchItem("B", 30,
+                    new MDSVariableUpdateOptions(expectedRevision: 0))));
+            Check(table.Get<int>("A") == 10 && table.Get<int>("B") == 10, "只读/版本冲突不得改变任何变量");
+            System.Threading.Tasks.Parallel.For(0, 2, index =>
+            {
+                if (index == 0)
+                {
+                    for (int k = 0; k < 200; ++k)
+                        table.UpdateBatch(new MDSVariableBatchItem("A", k),
+                            new MDSVariableBatchItem("B", k));
+                }
+                else
+                {
+                    for (int k = 0; k < 200; ++k)
+                    {
+                        IReadOnlyDictionary<string, object> snapshots = table.SnapshotBatch("A", "B");
+                        MDSVariableSnapshot<int> a = (MDSVariableSnapshot<int>)snapshots["A"];
+                        MDSVariableSnapshot<int> b = (MDSVariableSnapshot<int>)snapshots["B"];
+                        Check(a.CurrentValue == b.CurrentValue, "事务快照不得看到半提交");
+                    }
+                }
+            });
+            Check(table.Get<int>("A") == 199 && table.Get<int>("B") == 199,
+                "批量并发提交最终状态和Revision正确");
+        }
+
         public static void Run()
         {
+            VariableBatchSmoke();
             VariableMessageBridgeSmoke();
             VariableScopeSmoke();
             VariableCasSmoke();
