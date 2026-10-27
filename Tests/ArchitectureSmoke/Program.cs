@@ -30,6 +30,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 if (Array.IndexOf(args, "--volume") >= 0) { FVOVolumeTests.Run(); MVIVolumeViewTests.Run(); CT3DRenderingTests.Run(); CT3DVolumeLoadTests.Run(); MPWVolumeSourceTests.Run(); return 0; }
                 if (Array.IndexOf(args, "--imaging") >= 0) { FIMImagingTests.Run(); MVIImageSessionTests.Run(); MVIImageViewportTests.Run(); MVIImageOverlayTests.Run(); MVIImageDisplayTests.Run(); MVIImageTransformTests.Run(); MVIImageComparisonTests.Run(); return 0; }
                 if (Array.IndexOf(args, "--message-center") >= 0) { MessageCenterTests.Run(); return 0; }
+                if (Array.IndexOf(args, "--variables") >= 0) { ModuleFoundationSmokeTests.RunVariableSuite(); return 0; }
                 if (Array.IndexOf(args, "--variable-benchmark") >= 0) { VariableThroughputBenchmarks.Run(); return 0; }
                 if (Array.IndexOf(args, "--organization-wpf") >= 0) return OrganizationWpfTests.Run();
                 if (Array.IndexOf(args, "--organization") >= 0)

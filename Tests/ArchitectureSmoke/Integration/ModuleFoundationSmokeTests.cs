@@ -588,7 +588,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 "类型无关观察必须返回唯一Owner的只读快照");
         }
 
-        public static void Run()
+        // 本专项隔离变量测试；默认全架构回归仍完整执行。
+        public static void RunVariableSuite()
         {
             VariableInspectableSmoke();
             VariableOutOfOrderSmoke();
@@ -604,6 +605,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
             VariableDispatcherSmoke();
             VariableTreeSmoke();
             VariableObjectSmoke();
+            Console.WriteLine("PASS MDS V1.2 variable suite");
+        }
+
+        public static void Run()
+        {
+            RunVariableSuite();
             MFMModuleComposition module = new MFMModuleComposition("PLC01", new[]
             {
                 new MFMComponentReference(MFMComponentRole.Channel, "TCP01", true),

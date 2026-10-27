@@ -5,6 +5,12 @@ on:
     branches: [master]
     paths:
       - 'Mechanism/Data/Variables/**'
+      - 'Professional/Automation/DeviceVariables/**'
+      - 'Professional/Automation/CxVisual.Professional.Automation.csproj'
+      - 'Mechanism/Presentation.Wpf/Variables/**'
+      - 'Applications/Studio/StudioShell.Variables.cs'
+      - 'Tests/ArchitectureSmoke/Program.cs'
+      - 'Tests/ArchitectureSmoke/Integration/VariableThroughputBenchmarks.cs'
       - 'Mechanism/Data/CxVisual.Mechanism.Data.csproj'
       - 'Tests/ArchitectureSmoke/Integration/ModuleFoundationSmokeTests.cs'
       - 'Tests/TestCenter/Manual/Variable/**'
@@ -33,6 +39,11 @@ jobs:
           $m = (Get-Command msbuild.exe -ErrorAction Stop).Source
           & $m .\CxVisual.Unified.sln /m:1 /t:Rebuild /p:Configuration=Release /p:Platform=x64 /nologo /v:minimal
           if ($LASTEXITCODE -ne 0) { throw "MDS variable solution build failed" }
+      - name: Execute isolated V1.2 variable suite
+        shell: pwsh
+        run: |
+          & .\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe --variables
+          if ($LASTEXITCODE -ne 0) { throw "MDS V1.2 variable suite failed" }
       - name: Execute complete variable and architecture smoke
         shell: pwsh
         run: |
