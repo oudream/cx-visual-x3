@@ -230,6 +230,81 @@ TestCenter/Studio 进入模块测试工作区 → 选择 Driver → 选择真实
 
 **来源边界**：`cx-cct-x3/module_api`、`shm_api`、`service/*bridge` 为可复用的真实原生资产，现有 x3 未因此自动取得 CT 模块级验收。
 
+
+## 2026-10-27 专项深化：终态期望、需求基线与验收门槛
+
+> **状态：【目标规范增补】**。本章细化原 UM/TFD 条款，不宣称功能已实现，也不增加第六种功能模块。原有 TFD-001～012 继续有效；新增 DRV-Rxx 与 DRV-Axx 为需求/验收追踪号。所有接口示意均须先与 DOCS/02～04 和代码查重。**Driver 是设备行为的唯一专业 Owner，公共 M09/MDS/M36/M12 仍拥有变量、数据、消息和命令机制。**
+
+### DRV-1 目标产品和双角色体验
+
+**期望**：对真实硬件提供从发现、接入、初始化、能力描述、控制、采集、同步、回读、异常恢复直到安全退出的完整专业驱动，面向相机/X-Ray 源及探测器、运动轴/机器人/运动卡、DAQ/PLC 特殊 SDK、编码器、3D 传感器、测量仪器、照明/电源等设备。厂商 SDK、内部专用传输、混合方式均可实现；不要求虚构 TCP/Protocol 或 EmptyChannel。设备资源身份归 MEM，驱动只能引用其 DeviceRef；协议点表归 Protocol 而非 Driver 的第二份点表。
+
+- **开发者期望**：写一个专业 Provider，选择 SDK/内部通信，声明能力和数据契约，实现确有业务意义的 \`Connect/Acquire/Move/Readback/Stop/Dispose\` 等处理；无需复制生命周期、事件总线、MDS、命令分发、运行调度和设备树。复杂设备可有多个能力，简单设备不必实现所有可选接口。
+- **工程用户期望**：Studio 选设备→选择驱动 Provider/版本→仅显示与设备有关的参数→连接测试/能力诊断→浏览 Produces/Handles→绑定 Flow→在线监视状态、时序、报警及数据→安全停止；能够区分“已声明、已支持、已连接、已授权、设备确实完成”，不能只显示一个绿色 Connected。
+- **维护期望**：不同厂商同类设备对外保持稳定业务能力契约；设备差异保留在专业 Provider/选项；直接复用 ReferTo 和七仓真实实现，不建立长期 Porting/Legacy Adapter。
+
+### DRV-2 全能力需求清单
+
+| ID | 期望能力 | 必须达到的具体行为与边界 |
+|---|---|---|
+| DRV-R01 | 设备与 SDK 发现 | 按设备类型、序列号、厂商、SDK/固件版本及物理资源发现；候选设备和已占用设备明确区分；离线时返回诊断而非创建虚假实例。 |
+| DRV-R02 | 专业驱动绑定与配置 | DriverTypeId、DeviceRef、Backend、InternalResourceRefs、专用参数/单位/范围、SDK 依赖和版本校验；FCM 为唯一持久化真源，类型切换不丢必要参数。 |
+| DRV-R03 | 类型化能力声明 | 可读/可写 State、Command Handler、触发采集、Stream/Data、批量操作、参数表、支持的数据格式、速率与并发限制；经 MFM/MOC 已有能力发现公开。 |
+| DRV-R04 | 设备生命周期 | Discover→Open/Initialize→Ready/Busy/Degraded/Faulted→Stop/Close；Open/Close 幂等语义及失败恢复明确；运行时代次隔离旧回调。 |
+| DRV-R05 | 参数及配置事务 | 曝光/增益/ROI/帧率/触发模式/速度/加速度等支持范围查询、离线合法性校验、运行时是否允许修改、Readback 与提交失败回滚/未知状态报告。 |
+| DRV-R06 | 采图、DAQ 与连续数据 | Single/Sequence/Continuous、软/硬触发，帧 ID、硬件时间戳、帧序、丢帧计数、数据形态与有效性，受控 Buffer/Lease；支持 Stop/Drain/背压或声明硬件无法反压。 |
+| DRV-R07 | 设备控制与状态回读 | Move/Stop/Home/Arm/Expose 等可选专业命令，明确 Request/Accepted/DeviceAck/Applied/Verified；运动、曝光及危险动作超时为 Unknown，禁止无证据自动重试。 |
+| DRV-R08 | 同步、时钟与触发 | 设备硬件触发、位置编码器、曝光窗口、图像角度对应、硬件时钟域与 Host UTC 的映射、误差和失步可诊断；上位 MRK 不冒充硬实时。 |
+| DRV-R09 | 资源所有权 | 相机句柄、厂商设备实例、Native Pointer、DMA/PCIe 缓冲、GPU/CPU Buffer、同步原语有明确 Owner/Dispose；共享引用有 Generation/Lease/预算。 |
+| DRV-R10 | 多设备及互斥 | 同进程多相机/多轴、多工位资源隔离；互斥设备仅由资源协调机制授权；重复占用必须报告冲突，不静默接管。 |
+| DRV-R11 | 断线与故障恢复 | SDK DLL 缺失、USB 拔插、网卡闪断、设备忙/重启、缓冲溢出、回调异常均有状态转移和原因；恢复需重新探测设备、重建句柄、验证旧操作结果。 |
+| DRV-R12 | 工业安全 | 急停/限位/门禁/曝光硬件互锁由真实安全控制链保障；软件只能检查授权与状态、报告确认，不能靠 UI/消息机制替代功能安全。 |
+| DRV-R13 | 数据与公共交互 | 设备状态经 M09 提交；图像/体积等进 MDS/专业数据 Owner，事件经 M36、命令经 M12；Handler 引用合法作用域和 Schema，不重新实现四个 Owner。 |
+| DRV-R14 | 诊断与可观测性 | DeviceRef/RunId/OperationId/SDK 错误码、耗时、触发与帧序、温度、电压、缓存、重连次数、资源利用率、最新状态质量可查询，敏感数据脱敏。 |
+| DRV-R15 | 跨平台与依赖声明 | 本阶段 Windows/.NET48 优先；显式申明 CPU 架构、厂商 DLL、驱动服务和许可；将来平台支持按 Provider 判定，不宣称 WPF/专用 SDK 自动跨平台。 |
+| DRV-R16 | 可选扩展与复用 | 相机/CT/机器人专业能力通过独立可选契约扩充；与 Connector 互相协作但不相互包装，避免将厂商 SDK 指令硬塞成虚构的通用字节规约。 |
+| DRV-R17 | 固件、校准与维护 | 固件/标定版本读取、标定数据签名/坐标系/单位/有效期、维修模式与审计；固件升级等危险维护能力另行授权和留痕。 |
+| DRV-R18 | 质量及长稳指标 | 支持在配置中声明实际帧率、连续工作时间、丢帧上限、操作时延/抖动与恢复窗口；结果基于实测，不写统一的虚假性能承诺。 |
+
+### DRV-3 接口和对象归属（不先发明第二套抽象）
+
+| 当前已有事实 | 应复用的职责 | 仍待实现或核实 |
+|---|---|---|
+| \`MFMModuleKind.Driver\`、\`MFMModuleDescriptor\`、\`IMFMModule\` | 五类公共身份与 CapabilityIds | Capability 版本/Schema/端口投影和运行期可用性 |
+| \`IMFMDriverModule\`、\`MFMDriverModuleConfiguration\`、\`MFMDriverBackendKind\`（Sdk/InternalTransport/Hybrid） | 驱动基本引用及专用 FCM 配置；唯一 DeviceRef | 真正设备操作面、SDK/设备会话、状态与设备能力实现 |
+| M09、MDS、M36、M12、MOC、MRK、MEM | 唯一公共 Owner、对象定位、授权、执行关联 | 需按公共交互 V1.4 实现登记与真实绑定；不得在 Driver 私设总线 |
+| ReferTo 与既有专业代码 | 设备 SDK/采集、厂商 I/O、相机/运动/CT 资产审计和直迁 | 逐项目核实源码可编译、授权依赖及 HIL，禁止“改名即算验收” |
+
+**目标业务接口的职责**（签名待查重）：\`IDeviceDiscovery.QueryAsync\`、\`IDeviceSession.OpenAsync/CloseAsync\`、\`IDeviceCapabilityProvider.Describe\`；专业可选 \`IImageAcquisition.Start/Stop/Trigger\`、\`IMotionController.Move/Home/Stop/Readback\`、\`IDeviceParameterAccess.Read/Validate/Write/Confirm\`、\`IDeviceHealth.Query\`。业务能力绑定到 **M12 正式 Handler** 后执行；这些名称是需求角色，不是授权新增平行 Manager。
+
+所有设备操作需声明：输入/输出 Schema、目标 DeviceRef、所需执行权限、是否危险/不可幂等、取消能力、超时后确认方法、资源 Lease、产生 State/Data/Event 的条件。**能力能被发现不代表设备在线，设备 ACK 不代表现场 Applied。**
+
+### DRV-4 三个端到端标杆场景
+
+1. **X-Ray 探测器 + 源 + 运动平台**：探测器驱动接入硬触发与连续 Projection；运动 Driver 产生位置/角度 Readback；硬件同步链保证采样一致；MDS DataRef 把投影交给 CT Compute；M36 只通知元数据；X-Ray 联锁、曝光确认和取消独立验收。
+2. **高速工业相机 AOI**：配置 ROI、像素格式和 SDK 缓冲池；多相机并发采集；AI/测量 Compute 多消费者只读引用；欠速时选择明确背压/拒绝/丢弃策略并计数；断线重连后旧 FrameId/代次不能混入新 Run。
+3. **机器人/多轴运动**：Home/MoveAbs/Stop/ResetFault 可发现；请求→设备受理→位置/限位回读→Operation 完成；超时处于 Unknown 必须重新确认，不能自动重复位移动作；Virtual Provider 仿真不继承实机控制授权。
+
+### DRV-5 TestCenter 与工业分级验收（新增 DRV-A01～A12）
+
+| 验收 ID | 正反例及通过条件 | 验收层次 |
+|---|---|---|
+| DRV-A01 | SDK/无 SDK 两种 Provider 依赖被正确发现/拒绝；DLL 版本不匹配明确错误 | G0/G1 |
+| DRV-A02 | 非法曝光、帧率、速度/加速度、ROI/像素格式等参数在配置或执行前拒绝 | G1/G2 |
+| DRV-A03 | 单次、连续、外部触发帧包含正确时间、序列、维度、Buffer 生命周期 | G2 |
+| DRV-A04 | 多台同型设备的 DeviceRef、Generation、订阅和共享 Buffer 不串扰 | G1/G2 |
+| DRV-A05 | Readback 与操作结果四层分离；超时 Unknown 和重复危险命令不假成功 | G2 |
+| DRV-A06 | 拔线/断电/进程重启/设备 Busy/SDK 崩溃模拟与实机恢复状态明确 | G1/G2 |
+| DRV-A07 | 可控停止、取消、关闭后回调与延迟数据被拒绝；资源/句柄无遗留 | G1/G2 |
+| DRV-A08 | 真实急停、限位与曝光硬件互锁由 HIL 证明；权限拒绝仍不能触发设备 | G2 |
+| DRV-A09 | 背压、溢出、连续采集、峰值内存和延迟达到设备定义的阈值 | G2/G3 |
+| DRV-A10 | 开发者可单独调用 Provider；Studio 可以发现、创建、配置、调用和查看真实状态/报警 | G1/G2 |
+| DRV-A11 | 固件/标定/SDK 版本与操作 Trace、数据帧互相关联，错误可复现 | G2 |
+| DRV-A12 | 长期稳定、重连成功率、丢帧与 MTTR 在项目设定指标内并留存实测报告 | G3 |
+
+**实施优先序**：P0 做真实设备发现/参数/状态/单次采集/命令确认/关闭；P1 做连续采集、多设备同步/资源预算/断线恢复；P2 做厂商 SDK 扩展和复杂运动/设备诊断；P3 做长期运行与现场安全验收。任何阶段的 PASS 仅覆盖实测能力/硬件/SDK 组合。
+
+
 ## 文档维护与验收工作包
 
 - 主仓库：`https://github.com/oudream/cx-visual-x3`。

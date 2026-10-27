@@ -254,6 +254,91 @@ public interface IReconstructionQueryService
 
 算法独立实现 `ReconstructAsync`，服务入口只承诺受理/JobId/查询/结果访问，不等于每次请求创建一个新的计算框架。真实 `cx-cct-x3` 重建可能通过 C ABI + SHM Adapter 实现，必须确保跨进程数据所有权和终态一致。
 
+
+## 2026-10-27 专项深化：通用计算能力目标与可验收需求
+
+> **状态：【目标规范增补】**。承接 UM-CP01～CP10，不将下面的 CP-Rxx 当作已实现 API/算法。本模块是**算法与计算能力的可调用单元**，不是新建“图像处理平台/AI引擎/数值库/流程调度器”。已经属于 Imaging、Numerics、MDS、MRK 或 Professional.Vision/CT3D 的能力必须直接复用其 Owner。
+
+### CP-1 最终期望和双角色使用
+
+**终态目标**：一个完整的专业 Compute 体系，可以接入普通数据、表格/信号、图像、点云、网格、CT 体、GPU Tensor 和时序流，并向业务输出可信、可复现、可诊断的结果。横跨工业机器视觉、X-Ray/CT、AOI、计量分析、AI 推理、3D 测量、科学计算和工程业务规则；不把“计算能力”缩成单个 \`ExecuteAsync\`。
+
+- **开发者**：普通 C# 方法/函数先单独调用；需要时发布成带参数 Schema、输入输出端口、资源需求和版本的 Capability；复杂算法只管理自身上下文（模型/GPU/native 资源），避免重复造 MDS、调度和 Job Registry。测试可在脱离 Studio、Connector 的环境运行。
+- **工程使用者**：Studio 按专业领域、数据类型、性能、设备、版本搜索能力；拖入算子后自动展示参数校验、输入输出数据与单位；可预览结果、比较算法/模型、配置 CPU/GPU/批量/超时、查看耗时/内存/版本/质量指标；运行时能定位“哪个输入、哪个配置、哪个算子”产生最终结果。
+- **专业人员**：算法支持无 UI 的 SDK 使用、MOL/MRK 编排和服务化复用三种路径；同一结果定义与核心算法一致，UI 不私藏另一套计算实现。
+
+### CP-2 详细能力清单
+
+| ID | 核心能力域 | 应具备的完整范围与行为 |
+|---|---|---|
+| CP-R01 | 纯函数、类型与描述 | Scalar/Vector/Matrix/统计、常用规则、插值与数学；输入输出强类型、null/NaN/Inf/范围约束、版本和可重入/线程安全 Trait。 |
+| CP-R02 | 信号与时序 | 滤波、频谱/FFT、频域/时域特征、峰值、周期、插值、重采样、事件窗口与质量检测；采样率、单位、时标不可丢。 |
+| CP-R03 | 二维图像基础 | 支持原有 Imaging Owner 提供的灰度/彩色/多位深、Stride、ROI、空间标定；曝光/伽马/直方图/几何变换/滤波/形态学/二值化/边缘/分割等处理。 |
+| CP-R04 | 2D 测量与计量 | 与“图像处理”分开提供边缘/轮廓/孔径/尺寸/距离/角度/面积、直线/圆/椭圆拟合、像素到世界坐标、标定和不确定度；结果具备单位与坐标基准。 |
+| CP-R05 | 2D 分析、识别与检测 | 模板匹配、定位、特征/分类、OCR/读码、缺陷提取、目标计数、检测规则及阈值判定；质量指标与误检/漏检来源可记录。 |
+| CP-R06 | AI 智能能力 | 检测/分割/分类/OCR、异常检测、去噪、超分辨率、增强、自动聚焦等按 Provider 真正支持；模型签名/预处理/后处理和版本固定，不能把未加载模型当可用。 |
+| CP-R07 | 3D 数据处理 | PointCloud、Mesh、Voxel、Surface、Depth Map 的类型/坐标/单位；体素化、法线、平滑、采样、切片、分割、表面提取、配准及不同形态之间受控转换。 |
+| CP-R08 | 3D 测量与分析 | 点/线/面测量、曲率/表面测定、拟合/基准建立、体积/孔隙、最小距离、形位公差、CAD/参考网格差异及偏差热图；坐标变换链和公差约定明确。 |
+| CP-R09 | CT/X-Ray 专业计算 | 投影校正、坏点/暗场/平场、几何标定、重建前预处理、FBP/FDK/迭代重建等调用已有 CT Native Owner；每次任务固定 Geometry/角度/投影序号/校准版本。 |
+| CP-R10 | 工业数据分析 | 统计汇总、质量趋势、SPC、异常/阈值监控、报表数据、批次对比、特征提取与可解释决策，不在 Compute 内重建 MES/业务服务。 |
+| CP-R11 | 多输入/输出与数据绑定 | 多图像/多帧、图像+标定、体积+ROI、图像+AI模型、表格+规则等可组合；命名端口、缺失值处理和多输出成功提交，失败不能将部分数据标记为终态成功。 |
+| CP-R12 | CPU/GPU/Native | CPU/GPU/其他加速器的能力发现与选择、加载/预热、线程/上下文安全、ABI/位数/版本校验、回收；切换加速方式必须记录实际后端，必要时设容差。 |
+| CP-R13 | 内存/大型数据 | 统一 MDS DataRef/Lease/只读与 Copy-on-Write；CT 大体积采用分块、文件级引用、共享内存受控交接，禁止将大图/Volume 放入 Message Payload。 |
+| CP-R14 | 批处理与流计算 | 单次、批量、滑窗、连续帧、投影序列、流式累加；队列容量与 NoDrop/Drop 策略按数据意义配置，能测算时延、吞吐和峰值内存。 |
+| CP-R15 | 异步、取消与进度 | 短计算同步返回；长计算以可查询的 Operation/Job 关联、分阶段进度和终态记录；取消 GPU/Native 工作要有真实取消或“不支持安全取消”的明确状态。 |
+| CP-R16 | 可靠性与隔离 | 计算超时、Native 崩溃/GPU OOM、数据失效、输入版本错、在途模型热更新都清晰失败或走显式降级；不跨 Run 污染结果或缓存。 |
+| CP-R17 | 精度、复现与验证 | 输入快照、参数、模型、数值后端、算法版本、坐标/单位和随机种子进入结果来源；支持 Golden 数据、容差/重复性、真值比对以及误差预算。 |
+| CP-R18 | 专业扩展 | 开发者可直接复用 OpenCV、Halcon、ITK/VTK、PCL、Native CT、其他算法库；严格核实许可证、ABI/运行依赖和真实能力，避免在模块体系重写同名核心。 |
+| CP-R19 | 能力发现与使用 | MFM/MOC 目录暴露 CapabilityId/分类/端口/设备要求/数据类型/同步模式/副作用/可用性，MRK 查询并绑定实际算法 Provider；一个模块可提供多个算法。 |
+| CP-R20 | 观测、测试与质量治理 | 算法输入尺寸/位深、模型与校准版本、资源峰值、GPU 占用、耗时阶段、错误码、实际质量指标和输出哈希/来源链可追踪；未验证结果不得默认为工业合格。 |
+| CP-R21 | 隔离外部副作用 | Compute 默认无设备控制、服务发布、数据库写入；需要这些行为时显式声明并交给 Driver/Connector/Service/M12，不允许纯计算偷偷控制机台。 |
+| CP-R22 | 安全、资源公平及降级 | 用户选择的 GPU/CPU、显存/内存限额、并发/公平性、优先级来自现有 Runtime/资源治理；没有可用后端应拒绝或经配置降级，不隐式切换算法语义。 |
+
+### CP-3 输入/输出合同：不做万能 object
+
+| 数据类别 | 输入必需条件 | 输出及原始 Owner |
+|---|---|---|
+| Scalar/Vector/Matrix | Shape、数值类型、单位、校验范围 | 强类型 Result / MDS |
+| Signal/TimeSeries | SampleRate、时钟域、时标、缺样规则 | Feature/FilteredSignal / MDS |
+| Image/Projection | Width/Height/Depth、PixelFormat、Stride、ROI、曝光/帧序/校准 | 新图/Mask/Measurement/Defect，归 MDS/Imaging |
+| PointCloud/Mesh/Volume | 坐标系、世界/像素单位、拓扑或体素间距、方向矩阵、数据 Lease | 新 Surface/Volume/偏差量、专业数据 Owner |
+| AI Tensor/Model | Layout、Shape、dtype、预处理、ModelVersion/Hash、GPU/CPU 依赖 | Detection/Segmentation/Confidence/Feature |
+| Batch/Stream | 帧序、窗口、队列/丢帧策略、Run/Generation | 类型化批/流结果、进度和质量追踪 |
+
+所有输出必须能回答：**哪个算法版本、输入 Ref/版本、参数快照、单位/坐标、计算后端、RunId、质量/置信度产生了它**。多输出失败按 MDS/MRK 的提交语义处理；“某图像已经产生”与“通知消费者”不是同一个操作。
+
+### CP-4 与源码及接口的严格对应
+
+当前已有：\`IPVCComputeModule.ExecuteAsync(IMDSDataContext,CancellationToken)\`、\`PVCComputeModuleConfiguration\`、\`PVCComputeModuleProfile\`、\`PVCComputeDevicePreference\`；它们只证明基本模块契约和配置存在，**不等于 CP-R01～R22 各算法已经实现**。应优先将计算能力公开到既有 \`MOCCapabilityCatalog\`，直接复用专业 Imaging/Numerics/CT 数据与运算接口，不创建 \`UniversalComputeEngine\` 或第二个 \`JobScheduler\`。
+
+**目标 API 形态**（查重后复用）：普通 \`TResult Evaluate(TInput input, Options)\`；可选 \`IComputeCapability<TIn,TOut>.ExecuteAsync(input, DataContext, ct)\`；长作业复用现有 MRK Operation/Job 观察；单流和多流需要显式流背压契约。算法类型/参数/端口定义与运行 Provider 可以分离，Provider 不应另存第二套 Schema。
+
+### CP-5 双角色标杆工作流
+
+1. **AOI 二维检测**：选择 Camera Frame → 去噪/校正 → 定位/分割 → 测量尺寸 → 缺陷分析/AI 判断 → 输出 DefectList/Mask/Measurement → M36 通知；Studio 可观察每个算法的结果/耗时/标定版本，原图由 MDS Owner 保护。
+2. **CT 重建与三维分析**：Projection + Geometry → 投影校正 → 重建 Volume → 表面提取 → 配准 CAD → 缺陷体积/几何公差 → 结果与 Viewer 引用；显示数据质量、体素、坐标和 GPU 预算；分块处理不能偷换计算精度。
+3. **多模型 AI 产线**：同一 Frame 按模型版本调用推理，CPU/GPU/批次能力匹配；模型替换后旧 Run 固定旧版本；聚合输出显式置信度/质量阈值，异常降级有审计。
+
+### CP-6 TestCenter 专项验收（CP-A01～A12）
+
+| 编号 | 正反证要求 | 层次 |
+|---|---|---|
+| CP-A01 | 最短强类型函数无 Host 可运行；对外暴露后 Studio/MOC 能按能力/端口发现 | G0/G1 |
+| CP-A02 | 输入 dtype/Stride/单位/Shape/坐标与缺必需参数均有准确拒绝 | G1 |
+| CP-A03 | 算法确定性/精度、边界、Golden 和跨后端容差可复现 | G1/G2 |
+| CP-A04 | 多输入多输出成功/失败/取消，不跨 Run 发布部分结果 | G1 |
+| CP-A05 | 共享图像/大体 Lease 生命周期有效，写入需要受控复制，超限失败 | G1/G2 |
+| CP-A06 | AI 模型缺失/版本不兼容/显存不足、热更新/多 Run 场景不串扰 | G1/G2 |
+| CP-A07 | CT 投影缺角、错误几何、重建输出尺寸与质量均能明确诊断 | G1/G2 |
+| CP-A08 | 3D 测量/拟合/配准的坐标、单位、公差及误差统计有真值样本 | G1 |
+| CP-A09 | 连续帧/NoDrop/背压场景峰值内存与吞吐保持有界 | G1/G2 |
+| CP-A10 | 长作业进度、取消、超时/终态与外部数据释放一致 | G1/G2 |
+| CP-A11 | 开发者 SDK、Studio 可视编排、服务化调用同数据得兼容结果 | G1 |
+| CP-A12 | 性能基线、算法正确率/稳定性与生产样本误差预算分别留证 | G2/G3 |
+
+**实施分段**：P0 先完整函数/端口/参数/结果合同并贯通真实 2D 图像算子；P1 AI 与 CPU/GPU/多流/资源；P2 CT/3D 表面、配准、计量与专业算法；P3 长稳、多模型、跨专业质量验收。优先复用已存在专业代码，不能按此阶段划分假定 CT/AI 等当前为零或已全部完成。
+
+
 ## 文档维护与验收工作包
 
 - 主仓库：`https://github.com/oudream/cx-visual-x3`。
