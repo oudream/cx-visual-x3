@@ -29,6 +29,27 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(state.ObliqueSlice.AngleZDegrees == 45, "独立复制斜切定义");
                 Check(state.GetSliceViewport(FVOSlicePlane.XZ).MinA == 0, "视口互不污染");
                 Check(state.ShowCrosshair, "默认可见十字线");
+                // MVI是滚轮/图像定位唯一Owner；不能由TestCenter窗体另写一套三刀算法。
+                state.SetSlices(3,4,5,data);
+                state.ScrollSlice(FVOSlicePlane.XY,100,data);
+                Check(state.SliceX==3 && state.SliceY==4 && state.SliceZ==11,
+                    "XY滚轮只能改变Z轴并钳制深度上界");
+                state.ScrollSlice(FVOSlicePlane.XZ,-100,data);
+                Check(state.SliceY==0 && state.SliceX==3 && state.SliceZ==11,
+                    "XZ滚轮只能改变Y轴并钳制下界");
+                state.ScrollSlice(FVOSlicePlane.YZ,2,data);
+                Check(state.SliceX==5 && state.SliceY==0 && state.SliceZ==11,
+                    "YZ滚轮应只移动X轴");
+                int xPixel,yPixel;
+                FVOSliceImageBuilder.VoxelToImage(data,FVOSlicePlane.XY,2,7,6,
+                    out xPixel,out yPixel);
+                state.SetSlicesFromImage(FVOSlicePlane.XY,xPixel,yPixel,data);
+                Check(state.SliceX==2 && state.SliceY==7 && state.SliceZ==11,
+                    "图像像素经FVO反映射定位MVI三刀且保持另一轴");
+                bool invalidPlane=false;
+                try { state.ScrollSlice((FVOSlicePlane)99,1,data); }
+                catch(ArgumentOutOfRangeException) { invalidPlane=true; }
+                Check(invalidPlane,"非法切面不能隐式修改三刀状态");
                 Console.WriteLine("PASS MVI single volume view state and 4-view synchronization contracts");
             }
         }

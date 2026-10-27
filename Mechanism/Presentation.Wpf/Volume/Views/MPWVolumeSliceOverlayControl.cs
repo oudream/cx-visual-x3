@@ -6,6 +6,7 @@ using System.Windows.Media;
 using System.Windows.Shapes;
 using CxVisual.Foundation.Volume;
 using CxVisual.Mechanism.Presentation.Wpf.Imaging;
+using CxVisual.Mechanism.Visual;
 
 namespace CxVisual.Mechanism.Presentation.Wpf.Volume
 {
@@ -101,6 +102,39 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
         {
             _first.Visibility = Visibility.Collapsed;
             _second.Visibility = Visibility.Collapsed;
+        }
+
+        /// <summary>
+        /// 根据真实WPF图像坐标变换同步MVI切片可视范围；平移/缩放/负边界与超体素范围
+        /// 保留给三维空间切面，不使用另一套相机或视口状态。
+        /// </summary>
+        public bool SyncVisibleViewport(MPWImageViewerControl viewer, MVIVolumeViewState state)
+        {
+            if (viewer == null) throw new ArgumentNullException("viewer");
+            if (state == null) throw new ArgumentNullException("state");
+            Image image = viewer.FindName("PixelImage") as Image;
+            FrameworkElement viewport = viewer.FindName("ViewportRoot") as FrameworkElement;
+            if (image == null || image.Source == null || viewport == null ||
+                image.Width <= 0 || image.Height <= 0 ||
+                viewport.ActualWidth <= 1 || viewport.ActualHeight <= 1) return false;
+
+            Point a = viewport.TranslatePoint(new Point(0, 0), image);
+            Point b = viewport.TranslatePoint(new Point(
+                viewport.ActualWidth, viewport.ActualHeight), image);
+            if (!IsFinite(a.X) || !IsFinite(a.Y) || !IsFinite(b.X) || !IsFinite(b.Y))
+                return false;
+            const double limit = 8.0;
+            float minA = (float)Math.Max(-limit, Math.Min(limit, a.X / image.Width));
+            float maxA = (float)Math.Max(-limit, Math.Min(limit, b.X / image.Width));
+            float minB = (float)Math.Max(-limit, Math.Min(limit, a.Y / image.Height));
+            float maxB = (float)Math.Max(-limit, Math.Min(limit, b.Y / image.Height));
+            state.SetSliceViewport(Plane, minA, maxA, minB, maxB);
+            return true;
+        }
+
+        private static bool IsFinite(double value)
+        {
+            return !Double.IsNaN(value) && !Double.IsInfinity(value);
         }
 
         /// <summary>显示原始标量范围、窗口及FVO灰度/伪彩渐变，供不同宿主复用。</summary>

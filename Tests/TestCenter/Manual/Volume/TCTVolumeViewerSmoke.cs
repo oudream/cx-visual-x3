@@ -172,6 +172,18 @@ namespace CxVisual.TestCenter.UI
                       frame.XzViewer.ActiveImage != null &&
                       frame.YzViewer.ActiveImage != null, "三个MPW WPF图窗均须实际显示图像");
                 frame.XyViewer.Zoom(1.75);
+                // MPW公共叠加控件负责真实视口反算，MVI唯一持有三刀与可视区状态。
+                var visibleOverlay=FindVisualByAutomationId<
+                    CxVisual.Mechanism.Presentation.Wpf.Volume.MPWVolumeSliceOverlayControl>(
+                    frame,"MPW.Volume.SliceOverlay.XY");
+                Check(visibleOverlay!=null && visibleOverlay.SyncVisibleViewport(
+                        frame.XyViewer,frame.ViewState),
+                    "MPW必须在实际WPF视口中完成坐标反算并写入MVI");
+                var visibleRange=frame.ViewState.GetSliceViewport(FVOSlicePlane.XY);
+                Check(visibleRange.MaxA>visibleRange.MinA &&
+                      visibleRange.MaxB>visibleRange.MinB &&
+                      visibleRange.MaxA-visibleRange.MinA<1.01f,
+                    "缩放后可视范围不应继续使用原始全视口伪数据");
                 double beforeSliceScale=frame.XyViewer.PrimaryViewportScale;
                 frame.ScrollSlice(FVOSlicePlane.XY,1);
                 Check(Math.Abs(frame.XyViewer.PrimaryViewportScale-beforeSliceScale)<.001,

@@ -118,26 +118,13 @@ namespace CxVisual.TestCenter.UI
             };
         }
 
-        /// <summary>通过WPF实际图像变换反算可见区，写入已有MVI视口；允许超出体外框。</summary>
+        /// <summary>仅调用MPW公开的视口坐标同步能力；真正的WPF计算不在TestCenter。</summary>
         private void UpdateSliceViewportFromViewer(MPWImageViewerControl viewer,FVOSlicePlane plane)
         {
             if(_volume==null || _state==null || _updating)return;
-            Image image=viewer.FindName("PixelImage") as Image;
-            FrameworkElement viewport=viewer.FindName("ViewportRoot") as FrameworkElement;
-            if(image==null || image.Source==null || viewport==null ||
-                image.Width<=0 || image.Height<=0 ||
-                viewport.ActualWidth<=1 || viewport.ActualHeight<=1)return;
-            Point a=viewport.TranslatePoint(new Point(0,0),image);
-            Point b=viewport.TranslatePoint(new Point(viewport.ActualWidth,
-                viewport.ActualHeight),image);
-            if(Double.IsNaN(a.X) || Double.IsNaN(a.Y) ||
-               Double.IsNaN(b.X) || Double.IsNaN(b.Y))return;
-            const double limit=8.0;
-            float minA=(float)Math.Max(-limit,Math.Min(limit,a.X/image.Width));
-            float maxA=(float)Math.Max(-limit,Math.Min(limit,b.X/image.Width));
-            float minB=(float)Math.Max(-limit,Math.Min(limit,a.Y/image.Height));
-            float maxB=(float)Math.Max(-limit,Math.Min(limit,b.Y/image.Height));
-            _state.SetSliceViewport(plane,minA,maxA,minB,maxB);
+            MPWVolumeSliceOverlayControl layer;
+            if(_crosshairs.TryGetValue(plane,out layer))
+                layer.SyncVisibleViewport(viewer,_state);
         }
 
         public void UpdateAllSliceViewportRanges()
@@ -162,11 +149,8 @@ namespace CxVisual.TestCenter.UI
         /// <summary>复用唯一MVI切片索引，普通滚轮换层、Ctrl+滚轮由MPW缩放。</summary>
         public void ScrollSlice(FVOSlicePlane plane,int steps)
         {
-            if(_volume==null || _state==null || steps==0)return;
-            if(plane==FVOSlicePlane.XY)_state.SetSliceZ(_state.SliceZ+steps,_volume);
-            else if(plane==FVOSlicePlane.XZ)_state.SetSliceY(_state.SliceY+steps,_volume);
-            else if(plane==FVOSlicePlane.YZ)_state.SetSliceX(_state.SliceX+steps,_volume);
-            else throw new ArgumentOutOfRangeException("plane");
+            if(_volume==null || _state==null)return;
+            _state.ScrollSlice(plane,steps,_volume);
         }
 
         /// <summary>图例由正式MPW公共叠加控件绘制；测试宿主只传入FVO与显示参数。</summary>
@@ -181,11 +165,7 @@ namespace CxVisual.TestCenter.UI
         public void SetCrosshairFromImage(FVOSlicePlane plane, int pixelX, int pixelY)
         {
             if (_volume == null || _state == null) return;
-            int x,y,z;
-            FVOSliceImageBuilder.ImageToVoxel(_volume,
-                _state.SliceX,_state.SliceY,_state.SliceZ,
-                plane,pixelX,pixelY,out x,out y,out z);
-            _state.SetSlices(x,y,z,_volume);
+            _state.SetSlicesFromImage(plane,pixelX,pixelY,_volume);
         }
 
         public void UpdateCrosshairs()

@@ -155,6 +155,31 @@ namespace CxVisual.Mechanism.Visual
             SliceZ = Clamp(value, 0, volume.OriginalDepth - 1);
         }
 
+        /// <summary>三正交切面滚轮换层，统一使用MVI单一三刀状态并钳制体素边界。</summary>
+        public void ScrollSlice(FVOSlicePlane plane, int steps, FVOVolumeData volume)
+        {
+            if (volume == null) throw new ArgumentNullException("volume");
+            if (steps == 0) return;
+            switch (plane)
+            {
+                case FVOSlicePlane.XY: SetSliceZ(checked(SliceZ + steps), volume); break;
+                case FVOSlicePlane.XZ: SetSliceY(checked(SliceY + steps), volume); break;
+                case FVOSlicePlane.YZ: SetSliceX(checked(SliceX + steps), volume); break;
+                default: throw new ArgumentOutOfRangeException("plane");
+            }
+        }
+
+        /// <summary>由FVO真实切片像素索引定位共享三刀；支持非等距体素和降采样。</summary>
+        public void SetSlicesFromImage(FVOSlicePlane plane, int pixelX, int pixelY,
+            FVOVolumeData volume)
+        {
+            if (volume == null) throw new ArgumentNullException("volume");
+            int x, y, z;
+            FVOSliceImageBuilder.ImageToVoxel(volume, SliceX, SliceY, SliceZ,
+                plane, pixelX, pixelY, out x, out y, out z);
+            SetSlices(x, y, z, volume);
+        }
+
         public void SetSlices(int x, int y, int z, FVOVolumeData volume)
         {
             var nextX = Clamp(x, 0, volume.OriginalWidth - 1);
