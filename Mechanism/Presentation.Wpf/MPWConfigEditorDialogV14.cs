@@ -10,6 +10,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using CxVisual.Foundation.Data.Configuration;
+using CxVisual.Foundation.Transport;
 using CxVisual.Mechanism.Data.Configuration;
 
 namespace CxVisual.Mechanism.Presentation.Wpf
@@ -406,8 +407,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
         private void RenderObject(Panel host, Type type, object model, string parent, int depth, bool hidden)
         {
             if (depth > 24) { host.Children.Add(new TextBlock { Text = "嵌套深度超过编辑限制" }); return; }
-            if (model != null && model.GetType().Name.StartsWith("MCC", StringComparison.Ordinal) &&
-                model.GetType().Name.EndsWith("ChannelConfiguration", StringComparison.Ordinal))
+            if (model is FTRChannelConfiguration)
                 type = model.GetType();
             FCMConfigMemberDescriptor[] members = FCMConfigSchemaBuilder.Members(type)
                 .Where(member => IsProjectedMember(parent, member.Name) &&
@@ -419,8 +419,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             // Presentation-only: the real Channel configuration schema supplies all fields,
             // annotation labels and validation. Group them into the three requested panels.
             // There is no second Channel editor, converter or mutable view-model.
-            if (_workspaceCompact && (type.Name.StartsWith("MCC", StringComparison.Ordinal) &&
-                type.Name.EndsWith("ChannelConfiguration", StringComparison.Ordinal)) &&
+            if (_workspaceCompact && typeof(FTRChannelConfiguration).IsAssignableFrom(type) &&
                 parent.Length > 0 && members.Length > 0)
             {
                 Grid group = new Grid { Margin = new Thickness(2, 6, 2, 8) };
