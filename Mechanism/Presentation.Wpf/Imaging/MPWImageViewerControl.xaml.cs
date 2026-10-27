@@ -984,8 +984,11 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             {
                 _polygonDraft.Clear();_draftHover=null;
             }
-            if(_polygonDraft.Count>0 && _polygonDraft[_polygonDraft.Count-1].Equals(point))
-                throw new ArgumentException("与上一测量点重合，请选择其它位置。","point");
+            // 第2、4点不得与各自线段起点重合；第3点可以与第2点重合，
+            // 因为不同线段允许共享端点（合法交点，最短距离应为0）。
+            if((_polygonDraft.Count==1 || _polygonDraft.Count==3) &&
+                _polygonDraft[_polygonDraft.Count-1].Equals(point))
+                throw new ArgumentException("同一条测量线段的起点和终点不能重合。","point");
             _polygonDraft.Add(point);
             _region=null;
             if(_polygonDraft.Count<4)
