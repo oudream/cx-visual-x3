@@ -427,6 +427,66 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 "旧Scope完成注销后新代次不得与旧变量交叉写入");
         }
 
+        // Provider的高速预绑定点位也必须使用同一Scope代次门禁，而非先检查后写入。
+        private static void VariableProviderConcurrentRemoveSmoke()
+        {
+            MDSVariableRegistry registry = new MDSVariableRegistry();
+            MDSVariableTable table = new MDSVariableTable("provider-race");
+            table.Define(new MDSVariableDefinition("Sensor", typeof(double),
+                null, false, null, "sensor-id"));
+            registry.Register(table);
+            MDSVariableScope scope = registry.FindScope("provider-race");
+            using (MDSVariableProviderHost host = new MDSVariableProviderHost(registry))
+            using (ManualResetEventSlim entered = new ManualResetEventSlim(false))
+            using (ManualResetEventSlim release = new ManualResetEventSlim(false))
+            {
+                host.Register(new FakeVariableProvider());
+                host.Bind("device-p1", "point-1", "provider-race", "Sensor");
+                host.Start();
+                MDSVariableTypedPointBinding<double> fast = host.ResolveTyped<double>("device-p1", "point-1");
+                table.VariableChanged += name =>
+                {
+                    entered.Set();
+                    if (!release.Wait(TimeSpan.FromSeconds(10)))
+                        throw new TimeoutException("Provider并发测试回调超时");
+                };
+                Task writing = Task.Run(() => fast.Apply(1.25));
+                Task<bool> removing = null;
+                try
+                {
+                    Check(entered.Wait(TimeSpan.FromSeconds(5)), "Provider刷新已到达MDS权威变量");
+                    removing = Task.Run(() => registry.Remove("provider-race"));
+                    Check(SpinWait.SpinUntil(() => !scope.IsActive, 5000),
+                        "Provider注销先使Scope新请求失效");
+                    Check(!removing.IsCompleted, "Provider刷新正在回调时注销必须等待");
+                    Reject<InvalidOperationException>(() => fast.Apply(2.5));
+                }
+                finally { release.Set(); }
+                Check(writing.Wait(5000) && removing != null && removing.Wait(5000) && removing.Result,
+                    "Provider热刷新与Registry注销应正确排空");
+                Check(table.Get<double>("Sensor") == 1.25,
+                    "Provider失效点位不能在Scope注销后修改数值");
+                host.Stop();
+            }
+        }
+
+        private static void VariableScopeReentrantRemoveSmoke()
+        {
+            MDSVariableRegistry registry = new MDSVariableRegistry();
+            MDSVariableTable table = new MDSVariableTable("reentrant");
+            table.Define(new MDSVariableDefinition("State", typeof(int),
+                null, true, null, "state-id"));
+            registry.Register(table);
+            MDSVariableHandle<int> handle = registry.ResolveHandle<int>(
+                new CxVisual.Foundation.Data.Variables.FDVVariableKey("reentrant", "state-id"));
+            table.VariableChanged += name => Check(registry.Remove("reentrant"),
+                "变化回调从当前线程注销Scope不可等待自身产生死锁");
+            handle.Update(9);
+            Check(table.Get<int>("State") == 9 && !handle.IsActive,
+                "回调注销时已提交值保留、旧句柄失效");
+            Reject<ObjectDisposedException>(() => handle.Update(10));
+        }
+
         private static void VariableMessageBridgeSmoke()
         {
             MDSVariableTable table = new MDSVariableTable("line1");
@@ -946,6 +1006,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
             VariableMessageBridgeSmoke();
             VariableScopeSmoke();
             VariableScopeConcurrentRemoveSmoke();
+            VariableScopeReentrantRemoveSmoke();
+            VariableProviderConcurrentRemoveSmoke();
             VariableCasSmoke();
             VariableProviderSmoke();
             VariableBoundAccessSmoke();
