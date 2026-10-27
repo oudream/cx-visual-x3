@@ -123,6 +123,20 @@ namespace CxVisual.Tests.ArchitectureSmoke
         }
 
 
+        private struct PlainVariableStruct
+        {
+            public int Count;
+            public double Value;
+        }
+        private struct MutableVariableStruct
+        {
+            public byte[] Payload;
+        }
+        private struct NestedMutableVariableStruct
+        {
+            public MutableVariableStruct Inner;
+        }
+
         // P0-1：x2变量对象/运行状态语义的首次真实MDS落位，兼容旧表与作用域。
         private static void VariableObjectSmoke()
         {
@@ -169,6 +183,18 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Check(raw.Get()[0] == 3 && raw.Get()[1] == 4 &&
                 raw.Snapshot().DefaultValue[0] == 1,
                 "Snapshot must not leak mutable arrays");
+            MDSVariable<PlainVariableStruct> plain = new MDSVariable<PlainVariableStruct>(
+                new MDSVariableDefinition("plain-struct", typeof(PlainVariableStruct)));
+            plain.Update(new PlainVariableStruct { Count = 4, Value = 1.25 });
+            Check(plain.Get().Count == 4 && plain.Snapshot().CurrentValue.Value == 1.25,
+                "完全由值类型字段构成的结构体可正确复制");
+            Reject<NotSupportedException>(() => new MDSVariableDefinition(
+                "mutable-struct", typeof(MutableVariableStruct)));
+            Reject<NotSupportedException>(() => new MDSVariableDefinition(
+                "nested-struct", typeof(NestedMutableVariableStruct)));
+            Reject<NotSupportedException>(() => new MDSVariableDefinition(
+                "default-mutable", typeof(MutableVariableStruct),
+                new MutableVariableStruct { Payload = new byte[] { 1 } }));
             table.Define(new MDSVariableDefinition("Readonly", typeof(int), writable: false));
             Reject<InvalidOperationException>(() => table.Resolve<int>("Readonly").Update(1));
             MDSVariableTable another = new MDSVariableTable("leak-tester-2");
