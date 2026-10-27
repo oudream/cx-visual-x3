@@ -482,6 +482,9 @@ namespace CxVisual.Mechanism.Visual
                         double change=NormalizeAngle(end-begin);
                         if(sweep<0&&change>0)change-=Math.PI*2;
                         if(sweep>0&&change<0)change+=Math.PI*2;
+                        // 原整圆端点在同一点，更新不能退化为零扫角。
+                        if(Math.Abs(sweep)>=Math.PI*2-1e-8&&Math.Abs(change)<1e-10)
+                            change=sweep<0?-Math.PI*2:Math.PI*2;
                         start=begin;
                         sweep=change;
                         break;
@@ -492,6 +495,8 @@ namespace CxVisual.Mechanism.Visual
                         double change=NormalizeAngle(end-start);
                         if(sweep<0&&change>0)change-=Math.PI*2;
                         if(sweep>0&&change<0)change+=Math.PI*2;
+                        if(Math.Abs(sweep)>=Math.PI*2-1e-8&&Math.Abs(change)<1e-10)
+                            change=sweep<0?-Math.PI*2:Math.PI*2;
                         sweep=change;
                         break;
                     }
@@ -502,9 +507,11 @@ namespace CxVisual.Mechanism.Visual
         }
         private static double NormalizeAngle(double a)
         {
+            // modulo常量时间归一化，不允许超大但有限的角度触发亿次循环。
             double two=Math.PI*2;
-            while(a>Math.PI)a-=two;
-            while(a< -Math.PI)a+=two;
+            a%=two;
+            if(a>Math.PI)a-=two;
+            if(a< -Math.PI)a+=two;
             return a;
         }
 

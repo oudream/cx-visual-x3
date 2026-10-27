@@ -1061,6 +1061,48 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         Math.Abs(arcShape.Shape.Geometry.Commands[1].Arc.RadiusX-42)<1e-5,
                         "Arc radius undo did not restore exact parameter");
                     Check(editor.Redo().Success,"Arc radius redo failed");
+                    // GE-03：整圆弧端点重合不能因normalize(2π)=0而直接坍缩。
+                    var fullArc=new FGEArc2D(new FGEPoint2D(30,25),
+                        27,19,5.7,Math.PI*2);
+                    var fullShape=doc.AddShape(group,"FullArc",
+                        MRCShapeDefinition.Arc(fullArc),215,215);
+                    MVISceneItem fullScene=editor.Scene.Single(x=>x.Id==fullShape.Id);
+                    MVIVisualHandle fullEnd=MVIVisualEditing.Handles(fullScene)
+                        .Single(x=>x.Kind==MVIVisualHandleKind.ArcEnd);
+                    int beforeFull=doc.Revision;
+                    Check(editor.EditHandle(fullEnd,fullEnd.WorldPoint.X,fullEnd.WorldPoint.Y).Success&&
+                        doc.Revision==beforeFull+1&&
+                        Math.Abs(fullShape.Shape.Geometry.Commands[1].Arc.SweepRadians-
+                            Math.PI*2)<1e-8,
+                        "full circle end at start must not collapse sweep to zero");
+                    Check(editor.Undo().Success&&
+                        Math.Abs(fullShape.Shape.Geometry.Commands[1].Arc.SweepRadians-
+                            Math.PI*2)<1e-8,"full circle Undo lost original parameter");
+                    Check(editor.Redo().Success,"full circle Redo failed");
+                    MVISceneItem fullAfter=editor.Scene.Single(x=>x.Id==fullShape.Id);
+                    MVIVisualHandle fullStart=MVIVisualEditing.Handles(fullAfter)
+                        .Single(x=>x.Kind==MVIVisualHandleKind.ArcStart);
+                    Check(editor.EditHandle(fullStart,fullStart.WorldPoint.X,
+                        fullStart.WorldPoint.Y).Success&&
+                        Math.Abs(fullShape.Shape.Geometry.Commands[1].Arc.SweepRadians-
+                            Math.PI*2)<1e-8,
+                        "full circle start handle must preserve signed full sweep");
+                    var crossingArc=new FGEArc2D(new FGEPoint2D(26,22),
+                        20,17,5.9,0.8);
+                    var crossing=doc.AddShape(group,"WrapArc",
+                        MRCShapeDefinition.Arc(crossingArc),275,205);
+                    MVISceneItem crossingScene=editor.Scene.Single(x=>x.Id==crossing.Id);
+                    MVIVisualHandle wrapEnd=MVIVisualEditing.Handles(crossingScene)
+                        .Single(x=>x.Kind==MVIVisualHandleKind.ArcEnd);
+                    FGEPoint2D endLocal=new FGEPoint2D(
+                        crossingArc.Center.X+crossingArc.RadiusX*Math.Cos(0.2),
+                        crossingArc.Center.Y+crossingArc.RadiusY*Math.Sin(0.2));
+                    FGEPoint2D wrapTarget=crossingScene.GeometryToWorld.TransformPoint(endLocal);
+                    Check(editor.EditHandle(wrapEnd,wrapTarget.X,wrapTarget.Y).Success,
+                        "Arc crossing zero endpoint edit failed");
+                    Check(Math.Abs(crossing.Shape.Geometry.Commands[1].Arc.SweepRadians-
+                        (0.2+Math.PI*2-5.9))<1e-8,
+                        "Arc across 2π must preserve positive directed sweep");
 
                     // 多层旋转组合中的两个图元对齐，必须使用世界坐标而非局部X。
                     var neighbor=doc.AddRectangle(group,"Neighbor",330,140,50,40);
