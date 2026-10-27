@@ -7,6 +7,7 @@ using System.Windows.Media;
 using System.Windows.Shapes;
 using CxVisual.Foundation.Volume;
 using CxVisual.Mechanism.Presentation.Wpf.Imaging;
+using CxVisual.Mechanism.Presentation.Wpf.Volume;
 
 namespace CxVisual.TestCenter.UI
 {
@@ -16,21 +17,18 @@ namespace CxVisual.TestCenter.UI
     /// </summary>
     public sealed partial class TCTManualVolumeViewerFrame
     {
-        private readonly Dictionary<FVOSlicePlane, Canvas> _crosshairs =
-            new Dictionary<FVOSlicePlane, Canvas>();
-        private readonly Dictionary<FVOSlicePlane, Border> _sliceLegends =
-            new Dictionary<FVOSlicePlane, Border>();
+        private readonly Dictionary<FVOSlicePlane, MPWVolumeSliceOverlayControl> _crosshairs =
+            new Dictionary<FVOSlicePlane, MPWVolumeSliceOverlayControl>();
 
-        public int SliceLegendCount { get { return _sliceLegends.Count; } }
+        public int SliceLegendCount { get { return _crosshairs.Count; } }
 
         public int VisibleCrosshairCount
         {
             get
             {
                 int count = 0;
-                foreach (Canvas canvas in _crosshairs.Values)
-                    foreach (UIElement item in canvas.Children)
-                        if (item.Visibility == Visibility.Visible) count++;
+                foreach (MPWVolumeSliceOverlayControl layer in _crosshairs.Values)
+                    count += layer.VisibleCrosshairCount;
                 return count;
             }
         }
@@ -45,35 +43,9 @@ namespace CxVisual.TestCenter.UI
             section.Children.Add(content);
             Grid.SetRow(viewer,0);
             content.Children.Add(viewer);
-            Canvas layer = new Canvas { IsHitTestVisible = false, ClipToBounds = true };
+            MPWVolumeSliceOverlayControl layer = new MPWVolumeSliceOverlayControl(plane);
             content.Children.Add(layer);
             _crosshairs.Add(plane, layer);
-            Line first = new Line { StrokeThickness = 1.5, IsHitTestVisible = false,
-                Visibility = Visibility.Collapsed };
-            Line second = new Line { StrokeThickness = 1.5, IsHitTestVisible = false,
-                Visibility = Visibility.Collapsed };
-            switch (plane)
-            {
-                case FVOSlicePlane.XY:
-                    first.Stroke = Brushes.IndianRed; second.Stroke = Brushes.LimeGreen;
-                    break;
-                case FVOSlicePlane.XZ:
-                    first.Stroke = Brushes.IndianRed; second.Stroke = Brushes.DodgerBlue;
-                    break;
-                default:
-                    first.Stroke = Brushes.LimeGreen; second.Stroke = Brushes.DodgerBlue;
-                    break;
-            }
-            layer.Children.Add(first);
-            layer.Children.Add(second);
-            Border legend=new Border {
-                Background=new SolidColorBrush(Color.FromArgb(190,7,15,26)),
-                HorizontalAlignment=HorizontalAlignment.Right,
-                VerticalAlignment=VerticalAlignment.Bottom,
-                Margin=new Thickness(7),Width=160,Padding=new Thickness(5,3,5,3),
-                IsHitTestVisible=false };
-            content.Children.Add(legend);
-            _sliceLegends.Add(plane,legend);
             content.SizeChanged += (s,e) => UpdateCrosshairs();
             viewer.LayoutUpdated += (s,e) =>
             {
@@ -197,39 +169,13 @@ namespace CxVisual.TestCenter.UI
             else throw new ArgumentOutOfRangeException("plane");
         }
 
-        /// <summary>旧HALCON 2D色标；伪彩映射直接复用FVO唯一数值函数，不复制调色算法。</summary>
+        /// <summary>图例由正式MPW公共叠加控件绘制；测试宿主只传入FVO与显示参数。</summary>
         private void UpdateSliceLegends()
         {
             if(_volume==null)return;
-            foreach(Border border in _sliceLegends.Values)
-            {
-                StackPanel stack=new StackPanel();
-                TextBlock title=new TextBlock {
-                    Text=String.Format("窗 {0:0}..{1:0} / 原值 {2:0.##}..{3:0.##}",
-                        _windowMin.Value,_windowMax.Value,_volume.ScalarMin,_volume.ScalarMax),
-                    Foreground=Brushes.White,FontSize=9 };
-                stack.Children.Add(title);
-                LinearGradientBrush brush=new LinearGradientBrush {
-                    StartPoint=new Point(0,0),EndPoint=new Point(1,0) };
-                for(int i=0;i<=8;i++)
-                {
-                    int value=i==8?255:i*32;
-                    Color color;
-                    if(_pseudo.IsChecked==true)
-                    {
-                        byte[] bgr=new byte[3];
-                        FVOSliceImageBuilder.WritePseudoBgr(bgr,0,(byte)value);
-                        color=Color.FromRgb(bgr[2],bgr[1],bgr[0]);
-                    }
-                    else color=Color.FromRgb((byte)value,(byte)value,(byte)value);
-                    brush.GradientStops.Add(new GradientStop(color,i/8.0));
-                }
-                Border ramp=new Border {
-                    Background=brush,Height=10,Margin=new Thickness(0,4,0,0),
-                    BorderBrush=Brushes.LightSlateGray,BorderThickness=new Thickness(.5) };
-                stack.Children.Add(ramp);
-                border.Child=stack;
-            }
+            foreach(MPWVolumeSliceOverlayControl layer in _crosshairs.Values)
+                layer.UpdateLegend(_volume,_windowMin.Value,_windowMax.Value,
+                    _pseudo.IsChecked==true);
         }
 
         public void SetCrosshairFromImage(FVOSlicePlane plane, int pixelX, int pixelY)
@@ -250,7 +196,7 @@ namespace CxVisual.TestCenter.UI
                 ClearCrosshairs();
                 return;
             }
-            foreach (KeyValuePair<FVOSlicePlane,Canvas> pair in _crosshairs)
+            foreach (KeyValuePair<FVOSlicePlane,MPWVolumeSliceOverlayControl> pair in _crosshairs)
             {
                 MPWImageViewerControl viewer = pair.Key == FVOSlicePlane.XY ? _xy :
                     pair.Key == FVOSlicePlane.XZ ? _xz : _yz;
@@ -258,38 +204,18 @@ namespace CxVisual.TestCenter.UI
             }
         }
 
-        private void UpdateCrosshair(MPWImageViewerControl viewer, FVOSlicePlane plane, Canvas canvas)
+        private void UpdateCrosshair(MPWImageViewerControl viewer, FVOSlicePlane plane,
+            MPWVolumeSliceOverlayControl layer)
         {
             if (_volume == null || _state == null || viewer.ActiveImage == null)
                 return;
-            Image image = viewer.FindName("PixelImage") as Image;
-            if (image == null || image.Source == null || image.Width <= 0 || image.Height <= 0 ||
-                canvas.ActualWidth <= 0 || canvas.ActualHeight <= 0) return;
-            // 非等距Spacing和降采样都会改变切片图像长宽，禁止按原始索引比例估算。
-            int ix,iy;
-            FVOSliceImageBuilder.VoxelToImage(_volume,plane,
-                _state.SliceX,_state.SliceY,_state.SliceZ,out ix,out iy);
-            Point upperLeft = image.TranslatePoint(new Point(0,0),canvas);
-            Point lowerRight = image.TranslatePoint(new Point(image.Width,image.Height),canvas);
-            Point cursor = image.TranslatePoint(new Point(ix+.5,iy+.5),canvas);
-            SetLine((Line)canvas.Children[0],cursor.X,upperLeft.Y,cursor.X,lowerRight.Y);
-            SetLine((Line)canvas.Children[1],upperLeft.X,cursor.Y,lowerRight.X,cursor.Y);
+            layer.UpdateCrosshair(viewer,_volume,_state.SliceX,_state.SliceY,_state.SliceZ);
         }
 
         private void ClearCrosshairs()
         {
-            foreach (Canvas canvas in _crosshairs.Values)
-                foreach (UIElement line in canvas.Children)
-                    line.Visibility = Visibility.Collapsed;
-        }
-
-        private static void SetLine(Line line,double x1,double y1,double x2,double y2)
-        {
-            if (line.Visibility != Visibility.Visible) line.Visibility = Visibility.Visible;
-            if (Math.Abs(line.X1-x1) > 0.01) line.X1=x1;
-            if (Math.Abs(line.Y1-y1) > 0.01) line.Y1=y1;
-            if (Math.Abs(line.X2-x2) > 0.01) line.X2=x2;
-            if (Math.Abs(line.Y2-y2) > 0.01) line.Y2=y2;
+            foreach (MPWVolumeSliceOverlayControl layer in _crosshairs.Values)
+                layer.ClearCrosshairs();
         }
     }
 }

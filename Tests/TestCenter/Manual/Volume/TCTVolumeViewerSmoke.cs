@@ -191,6 +191,18 @@ namespace CxVisual.TestCenter.UI
                 }
                 frame.UpdateCrosshairs();
                 Check(frame.VisibleCrosshairCount == 6, "三个二维图窗必须显示六条十字线");
+                // 叠加图元与空间映射实现已归MPW；测试宿主只绑定FVO/MVI和操作。
+                foreach(FVOSlicePlane plane in new[] {
+                    FVOSlicePlane.XY,FVOSlicePlane.XZ,FVOSlicePlane.YZ })
+                {
+                    var overlay=FindVisualByAutomationId<
+                        CxVisual.Mechanism.Presentation.Wpf.Volume.MPWVolumeSliceOverlayControl>(
+                            frame,"MPW.Volume.SliceOverlay."+plane);
+                    Check(overlay!=null && overlay.Plane==plane &&
+                          overlay.VisibleCrosshairCount==2 && overlay.HasLegend &&
+                          overlay.IsHitTestVisible==false,
+                        "正交切片须使用正式MPW十字线色标叠加层，直接响应真实视图与FVO参数");
+                }
                 Check(frame.Scene.SlicePlaneCount == 3, "三张WPF空间贴图切面");
                 Check(frame.SliceLegendCount == 3, "旧HALCON三二维图窗均显示灰阶/伪彩色标");
                 Check(frame.Scene.CameraDistance > 0 && frame.Scene.OrientationAxisCount==3,
