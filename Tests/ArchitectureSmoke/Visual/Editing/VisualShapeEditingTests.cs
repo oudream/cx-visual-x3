@@ -600,6 +600,10 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     var copiedLink=page.RootContent.Connections.Single(w=>
                         w.Source.Address.ObjectId==duplicateA.Id&&
                         w.Target.Address.ObjectId==duplicateB.Id);
+                    Check(copied.IdMap.ContainsKey(internalWire.Id)&&
+                        copied.IdMap[internalWire.Id]==copiedLink.Id&&
+                        !copied.IdMap.ContainsKey(externalWire.Id),
+                        "result identity map lacks internal MPC link or incorrectly maps boundary link");
                     Check(copiedLink.Id!=internalWire.Id&&
                         copiedLink.Source.PortId==copied.IdMap[internalWire.Source.PortId]&&
                         copiedLink.Target.PortId==copied.IdMap[internalWire.Target.PortId]&&

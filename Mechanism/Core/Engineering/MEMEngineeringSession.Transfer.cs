@@ -73,6 +73,7 @@ namespace CxVisual.Mechanism.Core
             MTITransferPlan plan=PreviewDuplicate(ids,parent);
             if(!plan.IsValid)
                 throw new InvalidOperationException(string.Join(";",plan.Issues));
+            var connectionMappings=new Dictionary<Guid,Guid>();
             Edit("复制可视图元",plan.BaseRevision,e=>
             {
                 e.Import(plan);
@@ -90,6 +91,7 @@ namespace CxVisual.Mechanism.Core
                     var target=new MPCEndpoint(GetAddress(targetNode),
                         plan.IdMap[connection.Target.PortId]);
                     MPCConnection cloned=e.Connect(parent,source,target);
+                    connectionMappings.Add(connection.Id,cloned.Id);
                     // 路由默认值来自MPC实现，不能假定默认Straight或Orthogonal。
                     // 以原连接的明确路由与人工折点为准；MTC内部负责相同值短路。
                     e.SetVisualRoute(cloned,connection.VisualRouteKind,
@@ -97,7 +99,7 @@ namespace CxVisual.Mechanism.Core
                 }
                 return true;
             }).RequireValue();
-            return new MTITransferResult(plan,Revision);
+            return new MTITransferResult(plan,Revision,connectionMappings);
         }
 
     }

@@ -10,8 +10,33 @@ namespace CxVisual.Mechanism.Core
     public interface IMTIAspectRemapper { MPMAspect Remap(MPMAspect aspect,MTITransferPlan plan); }
     public sealed class MTITransferResult
     {
-        internal MTITransferResult(MTITransferPlan plan,int revision){IdMap=plan.IdMap;RootIds=Array.AsReadOnly(plan.SelectedRoots.Select(id=>plan.IdMap[id]).ToArray());Revision=revision;}
-        public IReadOnlyDictionary<Guid,Guid> IdMap {get;private set;}public IReadOnlyList<Guid> RootIds {get;private set;}public int Revision {get;private set;}
+        /// <summary>
+        /// 返回新建工程身份的映射。普通Import/Duplicate直接保留预览映射；
+        /// 可视Duplicate额外复制了所属Content中的内部MPC连接，
+        /// 其新旧连接身份也必须进入同一结果，便于UI和工程诊断精确定位。
+        /// </summary>
+        internal MTITransferResult(MTITransferPlan plan,int revision,
+            IDictionary<Guid,Guid> additionalMappings=null)
+        {
+            if(additionalMappings==null||additionalMappings.Count==0)
+                IdMap=plan.IdMap;
+            else
+            {
+                var merged=new Dictionary<Guid,Guid>(plan.IdMap);
+                foreach(var pair in additionalMappings)
+                {
+                    if(merged.ContainsKey(pair.Key)||merged.ContainsValue(pair.Value))
+                        throw new InvalidOperationException("org.transfer.conflicting_identity");
+                    merged.Add(pair.Key,pair.Value);
+                }
+                IdMap=new ReadOnlyDictionary<Guid,Guid>(merged);
+            }
+            RootIds=Array.AsReadOnly(plan.SelectedRoots.Select(id=>plan.IdMap[id]).ToArray());
+            Revision=revision;
+        }
+        public IReadOnlyDictionary<Guid,Guid> IdMap {get;private set;}
+        public IReadOnlyList<Guid> RootIds {get;private set;}
+        public int Revision {get;private set;}
     }
     /// <summary>Immutable facts and intended identities. Preview owns no mutable engineering objects.</summary>
     public sealed class MTITransferPlan
