@@ -121,7 +121,17 @@ namespace CxVisual.Foundation.Imaging
                     }
                 }
             }
-            double? physical=GetDistanceMillimeters(bestA,bestB,spacing);
+            // 非等距标定会改变线段最近点的位置，不能把像素最近点直接换算为毫米最短距离。
+            double? physical=null;
+            if(spacing.HasValue)
+            {
+                double sx=spacing.Value.MillimetersPerPixelX;
+                double sy=spacing.Value.MillimetersPerPixelY;
+                FIMLinePairResult physicalGeometry=MeasureLinePair(
+                    new FGEPoint2D(a.X*sx,a.Y*sy),new FGEPoint2D(b.X*sx,b.Y*sy),
+                    new FGEPoint2D(c.X*sx,c.Y*sy),new FGEPoint2D(d.X*sx,d.Y*sy));
+                physical=physicalGeometry.DistancePixels;
+            }
             return new FIMLinePairResult(bestA,bestB,best,physical,angle);
         }
 
