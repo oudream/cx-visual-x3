@@ -12,6 +12,7 @@ using System.Linq;
 using Ellipse = System.Windows.Shapes.Ellipse;
 using Line = System.Windows.Shapes.Line;
 using Polygon = System.Windows.Shapes.Polygon;
+using Polyline = System.Windows.Shapes.Polyline;
 using Rectangle = System.Windows.Shapes.Rectangle;
 using CxVisual.Mechanism.Visual;
 using Microsoft.Win32;
