@@ -404,6 +404,41 @@ namespace CxVisual.TestCenter.UI
                     frame.LoadDemo();
                 }
                 finally {Directory.Delete(bmpFolder,true);}
+                // 真实开发者内存API与WPF Viewer组合：UInt16原值不得被GPU预览R8替代。
+                byte[] highPrecisionMemory=new byte[8*8*8*2];
+                for(int voxel=0;voxel<512;voxel++)
+                {
+                    ushort original=(ushort)(2300+voxel);
+                    highPrecisionMemory[voxel*2]=(byte)(original & 255);
+                    highPrecisionMemory[voxel*2+1]=(byte)(original >> 8);
+                }
+                FVORawVolumeInfo memoryInfo=new FVORawVolumeInfo(8,8,8,
+                    1,1,1,FVORawVoxelFormat.UInt16,"wpf-memory-uint16");
+                FVOVolumeData memoryVolume=FVORawVolumeLoader.LoadFromMemory(
+                    highPrecisionMemory,memoryInfo,64,System.Threading.CancellationToken.None);
+                try
+                {
+                    frame.LoadVolume(memoryVolume);
+                    memoryVolume=null; // 工作台成为唯一FVO Owner。
+                    frame.MoveSlices(3,4,7);
+                    int selectedIndex=3+4*8+7*64;
+                    Check(frame.Volume.HasOriginalRawData &&
+                          !frame.Volume.HasRawSource &&
+                          frame.Volume.GetScalarByOriginalIndex(3,4,7)==2300+selectedIndex &&
+                          frame.XyViewer.ActiveImage!=null &&
+                          frame.XzViewer.ActiveImage!=null &&
+                          frame.YzViewer.ActiveImage!=null,
+                        "16位内存数据通过开发者API进入三维WPF四视图，三刀/原值保持一致");
+                    highPrecisionMemory[selectedIndex*2]=0;
+                    highPrecisionMemory[selectedIndex*2+1]=0;
+                    Check(frame.Volume.GetScalarByOriginalIndex(3,4,7)==2300+selectedIndex,
+                        "宿主内存变更后WPF仍访问FVO独立持有的原始数据");
+                }
+                finally
+                {
+                    if(memoryVolume!=null)memoryVolume.Dispose();
+                    frame.LoadDemo();
+                }
                 // 真正尝试 WGL Context。CI若只有OpenGL1.1，必须回退而不是伪报GPU成功。
                 frame.TryEnableGpu();
                 window.UpdateLayout();
