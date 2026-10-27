@@ -65,6 +65,12 @@ namespace CxVisual.TestCenter.UI
         public MPWImagePlotControl ProfilePlot { get { return _profilePlot; } }
         private readonly TextBox _polygonVertexIndex = new TextBox {
             Width = 54, Text = "0", Margin = new Thickness(3) };
+        private readonly TextBox _overlayArgb = new TextBox {
+            Width=94, Text="FFFF4040", Margin=new Thickness(3) };
+        private readonly TextBox _overlayLineWidth = new TextBox {
+            Width=54, Text="1.5", Margin=new Thickness(3) };
+        private readonly TextBox _overlayLabel = new TextBox {
+            MinWidth=110, Width=130, Margin=new Thickness(3) };
         private readonly ListBox _overlayList = new ListBox {
             Height = 142, Margin = new Thickness(5),
             FontSize = 12, Background = Brushes.White };
@@ -103,7 +109,11 @@ namespace CxVisual.TestCenter.UI
                 _viewer.AnnotationText = _annotationText.Text;
             _overlayList.SelectionChanged += (sender,args) =>
             {
-                if (!_syncingOverlayList) _viewer.SelectOverlay(SelectedOverlayId());
+                if (!_syncingOverlayList)
+                {
+                    _viewer.SelectOverlay(SelectedOverlayId());
+                    SyncOverlayPropertyEditors();
+                }
             };
             _viewer.Overlays.Changed += (sender,args) =>
             {
@@ -184,6 +194,7 @@ namespace CxVisual.TestCenter.UI
                 _overlayList.SelectedItem=row;
             }
             finally { _syncingOverlayList=false; }
+            SyncOverlayPropertyEditors();
         }
 
         private Guid? SelectedOverlayId()
@@ -219,6 +230,7 @@ namespace CxVisual.TestCenter.UI
             }
             }
             finally { _syncingOverlayList=false; }
+            SyncOverlayPropertyEditors();
             if (StateChanged != null) StateChanged();
         }
 
@@ -260,6 +272,44 @@ namespace CxVisual.TestCenter.UI
             MVIImageOverlayItem updated=_viewer.RemoveSelectedPolygonVertex(index);
             Show("多边形已删除第"+index+"个顶点；当前"+
                 updated.Points.Count+"个顶点。");
+        }
+
+        private void SyncOverlayPropertyEditors()
+        {
+            Guid? id=SelectedOverlayId();
+            MVIImageOverlayItem item=id.HasValue ? _viewer.Overlays.Find(id.Value) : null;
+            if(item==null)
+            {
+                _overlayArgb.Text=string.Empty;
+                _overlayLineWidth.Text=string.Empty;
+                _overlayLabel.Text=string.Empty;
+                return;
+            }
+            _overlayArgb.Text=((uint)item.Argb).ToString("X8",CultureInfo.InvariantCulture);
+            _overlayLineWidth.Text=item.LineWidth.ToString("0.###",CultureInfo.InvariantCulture);
+            _overlayLabel.Text=item.Text;
+        }
+
+        private void ApplyOverlayProperties()
+        {
+            MVIImageOverlayItem item=RequireSelectedOverlay();
+            if(item.IsLocked)
+                throw new InvalidOperationException("所选对象已锁定，无法修改属性。");
+            string raw=(_overlayArgb.Text??string.Empty).Trim().TrimStart('#');
+            uint argb;
+            if(raw.Length!=8 || !uint.TryParse(raw,NumberStyles.HexNumber,
+                CultureInfo.InvariantCulture,out argb))
+                throw new ArgumentException("颜色请输入8位ARGB十六进制，例如FF0DA6C3。");
+            double width;
+            if(!double.TryParse(_overlayLineWidth.Text,NumberStyles.Float,
+                CultureInfo.InvariantCulture,out width) ||
+                double.IsNaN(width) || double.IsInfinity(width) || width<=0 || width>100)
+                throw new ArgumentOutOfRangeException("线宽须大于0且不超过100像素。");
+            MVIImageOverlayItem changed=item.WithStyle(unchecked((int)argb),width)
+                .WithText(_overlayLabel.Text);
+            if(!_viewer.Overlays.Replace(changed))
+                throw new InvalidOperationException("所选对象已被删除。");
+            Show("对象属性已写入唯一MVI Store："+changed.Id);
         }
 
         private void SetSelectedOverlayColor(Color color)
