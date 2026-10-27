@@ -221,6 +221,50 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         source,oblique,CancellationToken.None), "任意切非法像素步长");
                     oblique.PixelSpacingInVoxels = 1;
                 }
+                // 不经WPF界面：正式FVO API导出Float32无损结果及旋转/采样空间元信息。
+                using (FVOVolumeData originalVolume=FVOVolumeData.CreateDemo(9,10,11))
+                {
+                    FVOObliqueSliceDefinition exportPlane = new FVOObliqueSliceDefinition {
+                        Visible=true,Width=1,Height=1,
+                        CenterX=3,CenterY=4,CenterZ=5,PixelSpacingInVoxels=1,
+                        Interpolation=FVOObliqueInterpolation.Linear
+                    };
+                    string exported=Path.Combine(folder,"oblique-scalar.raw");
+                    FVOObliqueSliceExporter.SaveFloat32Raw(originalVolume,exportPlane,
+                        exported,CancellationToken.None);
+                    byte[] rawResult=File.ReadAllBytes(exported);
+                    string meta=File.ReadAllText(exported+".txt");
+                    Check(rawResult.Length==sizeof(float) &&
+                          Math.Abs(BitConverter.ToSingle(rawResult,0)-
+                            originalVolume.GetScalarByOriginalIndex(3,4,5))<.00001 &&
+                          meta.Contains("Width=1") && meta.Contains("Interpolation=Linear"),
+                        "FVO Float32导出真实标量及原始几何元数据");
+                    exportPlane.Visible=false;
+                    Expect<InvalidOperationException>(()=>
+                        FVOObliqueSliceExporter.SaveFloat32Raw(originalVolume,
+                            exportPlane,exported,CancellationToken.None),
+                        "隐藏的任意切不允许直接导出");
+                    exportPlane.Visible=true;
+                    using(CancellationTokenSource stop=new CancellationTokenSource())
+                    {
+                        stop.Cancel();
+                        Expect<OperationCanceledException>(()=>
+                            FVOObliqueSliceExporter.SaveFloat32Raw(originalVolume,
+                                exportPlane,exported,stop.Token),
+                            "取消FVO任意切导出不得重新写入文件");
+                    }
+                }
+                using(FVOVolumeData downsampled=new FVOVolumeData(2,2,2,
+                    new byte[8],"low-res",4,4,4,1,1,1,0,255,null,null))
+                {
+                    FVOObliqueSliceDefinition slice=new FVOObliqueSliceDefinition {
+                        Visible=true,Width=2,Height=2
+                    };
+                    Expect<InvalidOperationException>(()=>
+                        FVOObliqueSliceExporter.SaveFloat32Raw(downsampled,slice,
+                            Path.Combine(folder,"must-not-export.raw"),CancellationToken.None),
+                        "原始高清未就绪时不可将R8预览当成无损切片");
+                }
                 oblique.AngleZDegrees = 0;
                 FVOObliqueSliceVector u;
                 FVOObliqueSliceVector v;

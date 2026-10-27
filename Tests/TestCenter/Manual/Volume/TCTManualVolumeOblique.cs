@@ -186,37 +186,15 @@ namespace CxVisual.TestCenter.UI
             catch(Exception error) { MessageBox.Show(error.Message,"高清切片失败"); }
         }
 
-        /// <summary>真实Float32标量切片，不从预览8bit重算；同时保存几何说明。</summary>
+        /// <summary>保留WPF命令入口，真正的原值导出和格式校验由FVO负责。</summary>
         public void SaveHighResolutionObliqueRaw(string filename)
         {
-            if(_volume==null || _state==null)throw new InvalidOperationException("没有体数据。");
-            if(String.IsNullOrWhiteSpace(filename))throw new ArgumentNullException("filename");
-            if(!_volume.HasHighResolutionVoxels &&
-               (_volume.Width!=_volume.OriginalWidth ||
-                _volume.Height!=_volume.OriginalHeight ||
-                _volume.Depth!=_volume.OriginalDepth))
-                throw new InvalidOperationException("原始RAW高精度缓存尚未就绪，不能把低分辨率预览作为高清结果导出。");
+            if(_volume==null || _state==null)
+                throw new InvalidOperationException("没有体数据。");
             UpdateObliqueDefinition();
-            FVOObliqueSliceDefinition plane=_state.ObliqueSlice.Clone();
-            if(!plane.Visible)throw new InvalidOperationException("请先启用任意切。");
-            FIMImageBuffer image=FVOObliqueSliceBuilder.BuildScalar(_volume,plane,
-                CancellationToken.None);
-            if(image.PixelFormat!=FIMPixelFormat.GrayFloat32)
-                throw new InvalidOperationException("切片不是Float32格式。");
-            string full=Path.GetFullPath(filename);
-            string folder=Path.GetDirectoryName(full);
-            if(!Directory.Exists(folder))Directory.CreateDirectory(folder);
-            File.WriteAllBytes(full,image.CopyPixels());
-            // 几何元信息不得因RAW无头格式丢失。
-            string description=String.Format(CultureInfo.InvariantCulture,
-                "Format=Float32 LittleEndian\nWidth={0}\nHeight={1}\nPixelSpacingInVoxels={2:R}\n"+
-                "CenterX={3:R}\nCenterY={4:R}\nCenterZ={5:R}\n"+
-                "AngleXDegrees={6:R}\nAngleYDegrees={7:R}\nAngleZDegrees={8:R}\nInterpolation={9}\n",
-                plane.Width,plane.Height,plane.PixelSpacingInVoxels,
-                plane.CenterX,plane.CenterY,plane.CenterZ,
-                plane.AngleXDegrees,plane.AngleYDegrees,plane.AngleZDegrees,plane.Interpolation);
-            File.WriteAllText(full+".txt",description);
-            _status.Text="已保存真实Float32高清切片："+full;
+            FVOObliqueSliceExporter.SaveFloat32Raw(_volume,_state.ObliqueSlice.Clone(),
+                filename,CancellationToken.None);
+            _status.Text="已保存真实Float32高清切片："+Path.GetFullPath(filename);
         }
 
         private void RefreshOblique()
