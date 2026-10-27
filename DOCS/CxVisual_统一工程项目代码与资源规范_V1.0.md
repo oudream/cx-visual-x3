@@ -61,7 +61,7 @@
 | `CxVisual.Foundation.Volume` | F12 | 体数据、体素和网格基础 |
 | `CxVisual.Foundation.Data` | F14 F15 F18 F21 | 编码、配置、文件、元数据与溯源 |
 | `CxVisual.Foundation.Infrastructure` | F16 F19 F20 | 日志基础、并发、加密基础 |
-| `CxVisual.Foundation.Transport` | F17 | 传输描述与缓冲基础 |
+| `CxVisual.Foundation.Transport` | F17 | 完整通用 Channel 体系：契约、FCM 配置、I/O、SubChannel、诊断、TCP/UDP/Serial/NamedPipe/HTTP/WebSocket/Virtual/Replay（正式类 FTR*/IFTR*）及底层传输基础 |
 
 ### 1.3 Mechanism：9项目、40子方面
 
@@ -70,7 +70,7 @@
 | `CxVisual.Mechanism.Core` | M01～M08、M38 | CxNode工程、引用、属性、Port/Connection、事务及通用模板 |
 | `CxVisual.Mechanism.Data` | M09 M10 M35 M36 | 变量、Binding、DataHandle/Stream、历史、通知 |
 | `CxVisual.Mechanism.Logic` | M11 M12 | 表达式/规则/状态/命令/事件 |
-| `CxVisual.Mechanism.Connectivity` | M13～M15 | Channel、Protocol、Driver/Provider公共契约 |
+| `CxVisual.Mechanism.Connectivity` | M13～M15 | MCN Connector、MPA Protocol、规约会话、PointTable、DataMapping、接入机制（依赖 Foundation.Transport，不再持有正式 Channel 实现） |
 | `CxVisual.Mechanism.Visual` | M16 M17 M37 | **与UI框架无关**的绘图、Diagram投影、编辑及撤销重做 |
 | `CxVisual.Mechanism.Orchestration` | M18～M25 | 节点拓扑、控制/数据流、跨层子流程及调度 |
 | `CxVisual.Mechanism.Runtime` | M26～M34 | 资源、权限/联锁公共门禁、编译计划、执行、监控、调试及公共仿真 |
@@ -99,6 +99,8 @@
 | `CxVisual.Tests.ArchitectureSmoke` | 依赖DAG、统一模型、运行/集成/迁移门禁测试 |
 
 ---
+
+> **2026-10-27 F17 Owner 更新（覆盖本规范历史项目职责表中的旧描述）**：用户确认将完整通用 Channel 唯一归属迁移至 `Foundation.Transport`，统一 `FTR*`/`IFTR*`。`Mechanism.Connectivity` 只拥有 Connector、Protocol 和接入机制；维持 28 项目、FCM 唯一配置和 Foundation→Mechanism 单向依赖。见 [`F17 裁决`](Decisions/CxVisual_F17_Channel下沉与唯一归属裁决_V1.0.md)、[`全类映射`](Migration/CxVisual_Channel_MCC至FTR迁移映射_V1.0.md)、[`Windows 验收台账`](Testing/CxVisual_F17_Channel迁移_源码与Windows验收台账_V1.0.md)。
 
 ## 2. 源码根目录——冻结
 
