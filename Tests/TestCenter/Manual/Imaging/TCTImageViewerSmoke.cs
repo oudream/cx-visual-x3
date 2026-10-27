@@ -56,6 +56,23 @@ namespace CxVisual.TestCenter.UI
             primary.SelectedIndex = 0;
             secondary.SelectedIndex = 0;
             window.UpdateLayout();
+            Button rectTool=FindControl<Button>(frame,"TCT.Imaging.RegionRectangle");
+            Button circleTool=FindControl<Button>(frame,"TCT.Imaging.RegionCircle");
+            Button vertexTool=FindControl<Button>(frame,"TCT.Imaging.EditPolygonVertex");
+            if(rectTool==null || circleTool==null || vertexTool==null ||
+                rectTool.Width>72 || circleTool.Width>72 || vertexTool.Width>72)
+                throw new InvalidOperationException(
+                    "ROI工具仍是拥挤的三列大按钮，未切换紧凑工作台布局");
+            rectTool.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            if(frame.Viewer.ToolMode!=MVIImageToolMode.RectangleRoi ||
+                rectTool.BorderThickness.Left<1.7)
+                throw new InvalidOperationException("点击矩形工具没有真实激活或选中反馈");
+            circleTool.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            if(frame.Viewer.ToolMode!=MVIImageToolMode.CircleRoi ||
+                circleTool.BorderThickness.Left<1.7 ||
+                rectTool.BorderThickness.Left>1.2)
+                throw new InvalidOperationException("区域工具互斥切换未清除旧高亮状态");
+            fit.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Console.WriteLine("PASS TCT Imaging UI: 15+ one-row commands, dual five-tab panels, controls and action access");
         }
 
