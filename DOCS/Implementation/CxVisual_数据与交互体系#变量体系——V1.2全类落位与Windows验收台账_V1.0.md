@@ -174,3 +174,11 @@
 - 固定运行日志：`PASS MDS V1.2 variable suite`，`PASS architecture tests`，`PASS MDS variable workspace and state projection`；性能短时测量为单线程1,000,000次 / 96.0ms（约10,413,065次/s，Gen0=0），4线程各250,000次 / 41.1ms（合计约24,304,585次/s），100,000次观察派发57ms左右（合并97,517，overflow=0，errors=0）。这些均为Runner上的短时测量，不代表工厂业务组合吞吐、p95/p99或长稳承诺。
 - 与前述`dc212e2`、`e205c90`等旧SHA失败相区别：当时由同时开发的图元/Studio源代码编译错误阻断，随后由对应Owner另行修复，并已包含在本次成功的`e72fd95a`快照。不能将旧SHA失败改写成成功。
 - **尚未覆盖**：程序强制退出/跨机消息耐久、可靠日志落盘回放、PLC与生产项目HIL、长期大负载GC/p99、MEM工程变量正式编辑发布和工业驱动故障恢复。这些继续维持VAR-G02～G06未完成门禁。
+
+### 6.2 可变结构体隔离与Revision溢出原子性（2026-10-27）
+
+- **实现**：[`5cfa71b`](https://github.com/oudream/cx-visual-x3/commit/5cfa71bee65cfc08c936badf2c3f358f203bfdaa)在MDS的唯一值复制规则中检查结构体字段类型并缓存泛型类型安全判定，拒绝含可变引用字段的复合结构体浅复制；[`edc0ec2`](https://github.com/oudream/cx-visual-x3/commit/edc0ec25cb0208e4810805561febec32b91f4f75)提前至变量定义阶段失败，避免未初始化变量的快照才报错；[`ea60217`](https://github.com/oudream/cx-visual-x3/commit/ea6021782624cffe381294225743b21983ea9157)补纯值结构体正例、直接/嵌套可变引用结构体反例。对于需要保存任意可变对象的功能，**正式FDT适配器注入/Schema契约尚未接通**，此处是安全拒绝，不是全部复杂值类型已经支持。
+- **实现**：[`25d9ced`](https://github.com/oudream/cx-visual-x3/commit/25d9ced8295dd814c418e36bc6b42630691da027)将单变量Revision溢出校验前移至所有状态修改之前；[`f24d106`](https://github.com/oudream/cx-visual-x3/commit/f24d106e2d07585ee60c7f996a2615f05b6265bd)以测试专用反射构造long.MaxValue极限状态，反证溢出不能部分更新当前值、时间或通知。
+- **最新专项验收通过：** [Windows变量专项 #40482689140](https://github.com/oudream/cx-visual-x3/actions/runs/40482689140)，固定SHA `f24d106e2d07585ee60c7f996a2615f05b6265bd`；全量Windows x64 .NET48重建、`--variables`、默认ArchitectureSmoke、短时吞吐、STA TestCenter变量工作区均为success。日志含`PASS MDS V1.2 variable suite`及`PASS architecture tests`。
+- **短时性能**：单线程约10,705,515次/s、Gen0=0；四线程合计约24,517,916次/s；100,000次变化观察派发约114ms，Coalesced=79,056、Overflow=0、Errors=0。不是工业实时SLA或p99/长期GC承诺。
+- **仍缺**：可变复杂类型的FDT深复制/等价比较、约束范围校验、MEM工程Schema→MDS编译映射、Reliable可恢复持久化、驱动断连与HIL、完整Studio编辑和长稳吞吐。68项仍按原V1.2全类目标跟踪，不按类文件存在数量宣称全部完成。
