@@ -741,7 +741,28 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 new[]{start,start},false,out x,out y);}
             catch(ArgumentException){rejected=true;}
             Check(rejected,"零长度绘图不得进入工程历史");
-            Console.WriteLine("PASS Visual Draw: nine Shape geometry, reversed drag, shift/circle, multi-click and rejection");
+            // Widget拖绘与文字框共享合法性判定，但单击使用控件自己的默认尺寸。
+            double width,height;
+            MVIShapeCatalog.WidgetBounds(new[]{start,start},
+                out x,out y,out width,out height);
+            Check(Math.Abs(x-210)<1e-9&&Math.Abs(y-190)<1e-9&&
+                Math.Abs(width-120)<1e-9&&Math.Abs(height-36)<1e-9,
+                "Widget单击应原位放置120×36控件");
+            MVIShapeCatalog.WidgetBounds(new[]{start,end},
+                out x,out y,out width,out height);
+            Check(Math.Abs(x-35)<1e-9&&Math.Abs(y-60)<1e-9&&
+                Math.Abs(width-175)<1e-9&&Math.Abs(height-130)<1e-9,
+                "Widget反方向拖绘应保留世界外框");
+            MVIShapeCatalog.WidgetBounds(new[]{start,new FGEPoint2D(220,210)},
+                out x,out y,out width,out height);
+            Check(Math.Abs(width-40)<1e-9&&Math.Abs(height-24)<1e-9,
+                "Widget短拖绘不应生成零尺寸控件");
+            rejected=false;
+            try{MVIShapeCatalog.WidgetBounds(new[]{start},
+                out x,out y,out width,out height);}
+            catch(ArgumentException){rejected=true;}
+            Check(rejected,"Widget缺少结束点应明确拒绝");
+            Console.WriteLine("PASS Visual Draw: nine Shape geometry, reversed drag, shift/circle, multi-click and Widget bounds/rejection");
         }
         public static void Run()
         {
