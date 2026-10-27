@@ -32,8 +32,10 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                 "core.widget.progressbar|进度条","core.widget.combobox|下拉框" });
             AddSection(_commands,"编辑 / 布局 / 连线",new [] {
                 "edit.undo|撤销","edit.redo|重做","edit.delete|删除",
-                "align.left|左对齐","align.top|顶对齐",
+                "align.left|左对齐","align.right|右对齐",
+                "align.top|顶对齐","align.bottom|底对齐",
                 "align.centerX|水平居中","align.centerY|垂直居中",
+                "align.distributeGapX|水平等间距","align.distributeGapY|垂直等间距",
                 "route.straight|直线连接","route.orthogonal|正交连接",
                 "route.manual|人工路径" });
             _root.Children.Add(_commands);
@@ -70,8 +72,11 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             SetOperationEnabled("edit.undo",canUndo&&canEdit);
             SetOperationEnabled("edit.redo",canRedo&&canEdit);
             SetOperationEnabled("edit.delete",canEdit&&selectionCount==1);
-            foreach(string id in new[]{"align.left","align.top","align.centerX","align.centerY"})
+            foreach(string id in new[]{"align.left","align.right","align.top","align.bottom",
+                "align.centerX","align.centerY"})
                 SetOperationEnabled(id,canEdit&&selectionCount>=2&&!selectedVisualConnection);
+            foreach(string id in new[]{"align.distributeGapX","align.distributeGapY"})
+                SetOperationEnabled(id,canEdit&&selectionCount>=3&&!selectedVisualConnection);
             foreach(string id in new[]{"route.straight","route.orthogonal","route.manual"})
                 SetOperationEnabled(id,canEdit&&selectionCount==1&&selectedVisualConnection);
             foreach(string id in new[]{"Line","Rect","Circle","Ellipse","Polyline","Polygon",

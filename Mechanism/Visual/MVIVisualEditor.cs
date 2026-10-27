@@ -512,20 +512,30 @@ namespace CxVisual.Mechanism.Visual
         }
         /// <summary>统一属性面板几何编辑，一次原工程事务，禁止原型式直接写字段。</summary>
         /// <summary>世界坐标对齐与水平分布；嵌套Group由场景变换回推各自父坐标。</summary>
+        /// <summary>
+        /// 所有对齐/分布基于场景世界Bounds计算，再还原各父坐标执行一次MEM事务。
+        /// 保留旧distributeX“左边缘均分”语义；新增distributeGapX/Y才是真正边界等间距。
+        /// 无效/负间距/零位移不产生空Undo，选区内任一对象非法则整组拒绝。
+        /// </summary>
         public MTCEditResult<bool> Align(IReadOnlyList<Guid> ids,string mode)
         {
             Demand();
             int revision=Document.Revision;
-            if(ids==null||ids.Count<2)
+            if(ids==null||ids.Count<2||ids.Distinct().Count()!=ids.Count)
                 return MTCEditResult<bool>.Rejected(revision,"visual.align.selection",
-                    "至少选择两个图元");
-            if(mode!="left"&&mode!="top"&&mode!="centerX"&&
-                mode!="centerY"&&mode!="distributeX")
+                    "至少选择两个不同的可编辑图元");
+            bool gapX=mode=="distributeGapX",gapY=mode=="distributeGapY";
+            if(mode!="left"&&mode!="right"&&mode!="top"&&mode!="bottom"&&
+                mode!="centerX"&&mode!="centerY"&&mode!="distributeX"&&
+                !gapX&&!gapY)
                 return MTCEditResult<bool>.Rejected(revision,"visual.align.mode",
                     "Unsupported alignment");
+            if((gapX||gapY)&&ids.Count<3)
+                return MTCEditResult<bool>.Rejected(revision,"visual.align.needs_three",
+                    "可视等间距分布至少需要三个图元");
             var selection=Scene.Where(x=>ids.Contains(x.Id)&&x.IsSelectable)
                 .GroupBy(x=>x.Id).Select(g=>g.First()).ToArray();
-            if(selection.Length!=ids.Distinct().Count()||
+            if(selection.Length!=ids.Count||
                 selection.Any(x=>Document.Find(x.Id) as MRCVisualItem==null))
                 return MTCEditResult<bool>.Rejected(revision,"visual.align.definition",
                     "Select editable definitions, not reference instances");
@@ -534,34 +544,57 @@ namespace CxVisual.Mechanism.Visual
                     return MTCEditResult<bool>.Rejected(revision,"visual.default_prevented",
                         "Alignment blocked by interaction policy");
             double targetLeft=selection.Min(x=>x.Bounds.Left);
+            double targetRight=selection.Max(x=>x.Bounds.Right);
             double targetTop=selection.Min(x=>x.Bounds.Top);
+            double targetBottom=selection.Max(x=>x.Bounds.Bottom);
             double centerX=selection.Average(x=>(x.Bounds.Left+x.Bounds.Right)/2);
             double centerY=selection.Average(x=>(x.Bounds.Top+x.Bounds.Bottom)/2);
-            var ordered=selection.OrderBy(x=>x.Bounds.Left).ToArray();
-            double step=ordered.Length<2?0:
-                (ordered[ordered.Length-1].Bounds.Left-ordered[0].Bounds.Left)/(ordered.Length-1);
+            var orderedX=selection.OrderBy(x=>x.Bounds.Left).ThenBy(x=>x.Id).ToArray();
+            var orderedY=selection.OrderBy(x=>x.Bounds.Top).ThenBy(x=>x.Id).ToArray();
+            double step=(orderedX[orderedX.Length-1].Bounds.Left-
+                orderedX[0].Bounds.Left)/(orderedX.Length-1);
+            // 以两端最外边界为锚，减掉每个图元的真实世界宽高，剩余才是可分布空隙。
+            double gapHorizontal=(orderedX[orderedX.Length-1].Bounds.Right-
+                orderedX[0].Bounds.Left-selection.Sum(x=>x.Bounds.Width))/(selection.Length-1);
+            double gapVertical=(orderedY[orderedY.Length-1].Bounds.Bottom-
+                orderedY[0].Bounds.Top-selection.Sum(x=>x.Bounds.Height))/(selection.Length-1);
+            if((gapX&&gapHorizontal<0)||(gapY&&gapVertical<0))
+                return MTCEditResult<bool>.Rejected(revision,"visual.align.negative_gap",
+                    "选区不足以容纳无重叠等间距布局；请先扩大选区");
+            var changes=new List<Tuple<MVISceneItem,double,double>>();
+            double cursorX=orderedX[0].Bounds.Left,cursorY=orderedY[0].Bounds.Top;
+            var destinationsX=new Dictionary<Guid,double>();
+            var destinationsY=new Dictionary<Guid,double>();
+            if(gapX)foreach(MVISceneItem item in orderedX)
+            {destinationsX[item.Id]=cursorX;cursorX+=item.Bounds.Width+gapHorizontal;}
+            if(gapY)foreach(MVISceneItem item in orderedY)
+            {destinationsY[item.Id]=cursorY;cursorY+=item.Bounds.Height+gapVertical;}
+            foreach(MVISceneItem item in selection)
+            {
+                double dx=0,dy=0;
+                if(mode=="left")dx=targetLeft-item.Bounds.Left;
+                if(mode=="right")dx=targetRight-item.Bounds.Right;
+                if(mode=="top")dy=targetTop-item.Bounds.Top;
+                if(mode=="bottom")dy=targetBottom-item.Bounds.Bottom;
+                if(mode=="centerX")dx=centerX-(item.Bounds.Left+item.Bounds.Right)/2;
+                if(mode=="centerY")dy=centerY-(item.Bounds.Top+item.Bounds.Bottom)/2;
+                if(mode=="distributeX")
+                    dx=orderedX[0].Bounds.Left+
+                        step*Array.IndexOf(orderedX,item)-item.Bounds.Left;
+                if(gapX)dx=destinationsX[item.Id]-item.Bounds.Left;
+                if(gapY)dy=destinationsY[item.Id]-item.Bounds.Top;
+                if(Math.Abs(dx)<1e-9&&Math.Abs(dy)<1e-9)continue;
+                double x,y;item.PositionAfterWorldDelta(dx,dy,out x,out y);
+                changes.Add(Tuple.Create(item,x,y));
+            }
+            if(changes.Count==0)
+                return MTCEditResult<bool>.Rejected(revision,"visual.align.no_change",
+                    "对象已经处于目标位置");
             return Document.Edit("图元对齐/分布",revision,e=>
             {
-                for(int i=0;i<selection.Length;i++)
-                {
-                    MVISceneItem item=selection[i];
-                    double dx=0,dy=0;
-                    if(mode=="left")dx=targetLeft-item.Bounds.Left;
-                    if(mode=="top")dy=targetTop-item.Bounds.Top;
-                    if(mode=="centerX")
-                        dx=centerX-(item.Bounds.Left+item.Bounds.Right)/2;
-                    if(mode=="centerY")
-                        dy=centerY-(item.Bounds.Top+item.Bounds.Bottom)/2;
-                    if(mode=="distributeX")
-                    {
-                        int order=Array.IndexOf(ordered,item);
-                        dx=ordered[0].Bounds.Left+step*order-item.Bounds.Left;
-                    }
-                    if(Math.Abs(dx)<1e-9&&Math.Abs(dy)<1e-9)continue;
-                    double x,y;
-                    item.PositionAfterWorldDelta(dx,dy,out x,out y);
-                    e.Move((MRCVisualItem)Document.Find(item.Id),x,y);
-                }
+                foreach(var change in changes)
+                    e.Move((MRCVisualItem)Document.Find(change.Item1.Id),
+                        change.Item2,change.Item3);
                 return true;
             });
         }

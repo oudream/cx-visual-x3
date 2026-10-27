@@ -481,8 +481,83 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 if(File.Exists(path+".cx-lock"))File.Delete(path+".cx-lock");
             }
         }
+        /// <summary>
+        /// 世界Bounds边缘等间距：不同宽高图元按真实间隔排布，
+        /// 一次编辑一次Undo；负间距、两个图元及无变化均保持Revision。
+        /// </summary>
+        private static void CheckVisualGapDistribution()
+        {
+            var session=MEMEngineering.Create("世界几何布局反证");
+            string path=Path.Combine(Path.GetTempPath(),
+                "cx-visual-gap-"+Guid.NewGuid().ToString("N")+".cxproj");
+            try
+            {
+                var page=session.AddPage("P");
+                var a=session.AddRectangle(page.RootContent,"A",10,10,20,20);
+                var b=session.AddRectangle(page.RootContent,"B",95,60,45,50);
+                var c=session.AddRectangle(page.RootContent,"C",230,180,70,40);
+                using(var editor=new MVIVisualEditor(session))
+                {
+                    editor.SetPage(page.Id);
+                    int revision=session.Revision;
+                    Check(editor.Align(new[]{a.Id,b.Id},"distributeGapX").Success==false&&
+                        session.Revision==revision,"GapX should require three objects");
+                    Check(editor.Align(new[]{a.Id,b.Id,c.Id},"distributeGapX").Success&&
+                        session.Revision==revision+1,
+                        "gap distribution should produce one MEM transaction");
+                    var ordered=editor.Scene.Where(x=>new[]{a.Id,b.Id,c.Id}.Contains(x.Id))
+                        .OrderBy(x=>x.Bounds.Left).ToArray();
+                    double gap1=ordered[1].Bounds.Left-ordered[0].Bounds.Right;
+                    double gap2=ordered[2].Bounds.Left-ordered[1].Bounds.Right;
+                    Check(Math.Abs(gap1-gap2)<1e-6&&Math.Abs(gap1-77.5)<1e-6,
+                        "gap algorithm incorrectly divided origins rather than visible edges");
+                    int unchanged=session.Revision;
+                    Check(!editor.Align(new[]{a.Id,b.Id,c.Id},"distributeGapX").Success&&
+                        session.Revision==unchanged,
+                        "no-op gap distribution must not create empty Undo");
+                    Check(editor.Undo().Success&&Math.Abs(b.X-95)<1e-6,
+                        "gap Undo failed to restore original world position");
+                    Check(editor.Redo().Success&&Math.Abs(b.X-107.5)<1e-6,
+                        "gap Redo failed to restore real edge spacing");
+                    Check(editor.Align(new[]{a.Id,b.Id,c.Id},"distributeGapY").Success,
+                        "gapY world distribution failed");
+                    var vertical=editor.Scene.Where(x=>new[]{a.Id,b.Id,c.Id}.Contains(x.Id))
+                        .OrderBy(x=>x.Bounds.Top).ToArray();
+                    Check(Math.Abs((vertical[1].Bounds.Top-vertical[0].Bounds.Bottom)-
+                        (vertical[2].Bounds.Top-vertical[1].Bounds.Bottom))<1e-6,
+                        "vertical gap sizes differ");
+                    int beforeInvalid=session.Revision;
+                    var overlap1=session.AddRectangle(page.RootContent,"Overlap A",5,350,100,20);
+                    var overlap2=session.AddRectangle(page.RootContent,"Overlap B",35,370,100,20);
+                    var overlap3=session.AddRectangle(page.RootContent,"Overlap C",65,390,100,20);
+                    beforeInvalid=session.Revision;
+                    Check(!editor.Align(new[]{overlap1.Id,overlap2.Id,overlap3.Id},
+                            "distributeGapX").Success&&session.Revision==beforeInvalid,
+                        "negative gap must reject atomically");
+                    Check(editor.Align(new[]{a.Id,b.Id},"right").Success,
+                        "new right-edge alignment missing");
+                    MVISceneItem ar=editor.Scene.Single(x=>x.Id==a.Id);
+                    MVISceneItem br=editor.Scene.Single(x=>x.Id==b.Id);
+                    Check(Math.Abs(ar.Bounds.Right-br.Bounds.Right)<1e-6,
+                        "right alignment did not align real world edges");
+                }
+                Guid projectId=session.Project.Id;Guid bId=b.Id;
+                session.SaveAs(path);
+                using(var loaded=MEMEngineering.Open(path))
+                    Check(loaded.Project.Id==projectId&&loaded.Find(bId)!=null,
+                        "advanced layout lost engineering identity on disk roundtrip");
+                Console.WriteLine("PASS Visual Gap: edge spacing X/Y, no-op, negative gap, Undo/Redo, save/reopen");
+            }
+            finally
+            {
+                session.Close(true);
+                if(File.Exists(path))File.Delete(path);
+            }
+        }
+
         public static void Run()
         {
+            CheckVisualGapDistribution();
             CheckUnifiedSnapping();
             CheckConstrainedSelectionTransform();
             BatchVisualMoveTests();
