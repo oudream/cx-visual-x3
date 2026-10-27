@@ -82,6 +82,44 @@ namespace CxVisual.Mechanism.Visual
         /// <summary>连续空间外框，和FIMPixelRegion闭区间像素统计ROI必须显式转换。</summary>
         public FGERect2D Bounds { get; private set; }
         public IReadOnlyList<FGEPoint2D> Points { get { return _readonlyPoints; } }
+        /// <summary>当前对象是否是真实可统计面积的ROI；测量线和缺陷标记不是ROI。</summary>
+        public bool IsAreaRoi
+        {
+            get
+            {
+                return Layer==MVIImageOverlayLayer.Roi &&
+                    (Kind==MVIImageOverlayKind.RectangleRoi ||
+                     Kind==MVIImageOverlayKind.CircleRoi ||
+                     Kind==MVIImageOverlayKind.EllipseRoi ||
+                     Kind==MVIImageOverlayKind.PolygonRoi ||
+                     Kind==MVIImageOverlayKind.RotatedRectangleRoi);
+            }
+        }
+
+        /// <summary>
+        /// 对原图像素中心进行形状精确命中；供FIM掩膜回调复用，不以Bounds冒充圆/多边形。
+        /// </summary>
+        public bool ContainsRoiPixelCenter(int pixelX,int pixelY)
+        {
+            if(!IsAreaRoi)return false;
+            double x=pixelX+0.5,y=pixelY+0.5;
+            if(x<Bounds.Left || x>Bounds.Right || y<Bounds.Top || y>Bounds.Bottom)
+                return false;
+            if(Kind==MVIImageOverlayKind.PolygonRoi ||
+                Kind==MVIImageOverlayKind.RotatedRectangleRoi)
+                return FGEGeometry2D.PointInPolygon(new FGEPoint2D(x,y),_points);
+            if(Kind==MVIImageOverlayKind.CircleRoi ||
+                Kind==MVIImageOverlayKind.EllipseRoi)
+            {
+                double rx=Bounds.Width/2,ry=Bounds.Height/2;
+                if(rx<=0 || ry<=0)return false;
+                double nx=(x-(Bounds.Left+rx))/rx;
+                double ny=(y-(Bounds.Top+ry))/ry;
+                return nx*nx+ny*ny<=1.0+1e-12;
+            }
+            return true;
+        }
+
         public string Text { get; private set; }
         public string ExternalId { get; private set; }
         public int Argb { get; private set; }
