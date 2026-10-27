@@ -386,11 +386,24 @@ namespace CxVisual.TestCenter.UI
             AutomationProperties.SetAutomationId(button, "TCT.Imaging." + id);
             button.Click += (s,e) =>
             {
-                try { action(); }
+                try
+                {
+                    action();
+                    button.BorderBrush=Brushes.LightSteelBlue;
+                    button.BorderThickness=new Thickness(1);
+                    button.ToolTip=null;
+                    AutomationProperties.SetHelpText(button,string.Empty);
+                }
                 catch (Exception error)
                 {
-                    Show("操作失败 [" + id + "]：" + error.Message);
-                    MessageBox.Show(error.Message, "图像操作失败", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    // 不在UI线程使用MessageBox堵塞工业图窗与无人值守WPF验收。
+                    // 操作失败可见、可查询，但不修改图像Store及其它操作状态。
+                    string failure="操作失败 ["+id+"]："+error.Message;
+                    Show(failure);
+                    button.BorderBrush=Brushes.OrangeRed;
+                    button.BorderThickness=new Thickness(2);
+                    button.ToolTip=failure;
+                    AutomationProperties.SetHelpText(button,failure);
                 }
             };
             host.Children.Add(button);
