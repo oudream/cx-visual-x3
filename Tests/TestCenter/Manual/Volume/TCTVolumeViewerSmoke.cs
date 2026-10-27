@@ -102,12 +102,12 @@ namespace CxVisual.TestCenter.UI
                 standaloneDock.AddUpperTab("显示",sharedEditor);
                 var transferEditor=new StackPanel();
                 standaloneDock.AddLowerTab("透明度",transferEditor);
-                bool duplicateRejected=false;
+                bool duplicateDockRejected=false;
                 try { standaloneDock.AddUpperTab("重复",sharedEditor); }
-                catch(InvalidOperationException) { duplicateRejected=true; }
+                catch(InvalidOperationException) { duplicateDockRejected=true; }
                 Check(standaloneDock.UpperCount==1 && standaloneDock.LowerCount==1 &&
                       standaloneDock.UpperTabs.SelectedIndex==0 &&
-                      standaloneDock.LowerTabs.SelectedIndex==0 && duplicateRejected,
+                      standaloneDock.LowerTabs.SelectedIndex==0 && duplicateDockRejected,
                     "MPW公共参数面板独立创建、默认选中并拒绝重复父级，保持编辑器身份");
 
                 double initialCameraDistance=frame.CameraDistanceForTest;
