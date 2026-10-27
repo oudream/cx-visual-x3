@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using CxVisual.Foundation.Volume;
+using CxVisual.Mechanism.Presentation.Wpf.Volume;
 
 namespace CxVisual.TestCenter.UI
 {
@@ -32,7 +33,7 @@ namespace CxVisual.TestCenter.UI
                 MoveToTab(oldThresholdParent.Children[thresholdIndex-1],
                     oldThresholdParent,threshold);
             MoveToTab(_gpuThreshold, oldThresholdParent, threshold);
-            _thresholdCurve=new TCTVolumeThresholdEditor();
+            _thresholdCurve=new MPWVolumeThresholdEditor();
             _thresholdCurve.Lower=_gpuSettings.TransferFunctions.Threshold;
             _thresholdCurve.Upper=_gpuSettings.TransferFunctions.UpperThreshold;
             threshold.Children.Add(_thresholdCurve);
@@ -84,7 +85,7 @@ namespace CxVisual.TestCenter.UI
             _colorCurve.SelectPoint(Math.Min(1,_colorCurve.PointCount-1));
         }
 
-        private TCTVolumeThresholdEditor _thresholdCurve;
+        private MPWVolumeThresholdEditor _thresholdCurve;
         private void ReadSelectedColor()
         {
             FVOTransferPoint point=_colorCurve.SelectedPoint;

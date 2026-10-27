@@ -37,6 +37,7 @@
     <Compile Include="Imaging\MPWImageSequenceReader.cs"/>
     <Compile Include="Imaging\MPWImagePlotControl.cs"/>
     <Compile Include="Volume\Views\MPWVolumeSliceSceneControl.cs"/>
+    <Compile Include="Volume\Editors\MPWVolumeThresholdEditor.cs"/>
     <Compile Include="Imaging\MPWImageRulerControl.cs"/></ItemGroup>
   <ItemGroup>
     <!-- 公共程序图标同时供WPF窗口与WinExe EXE使用。 -->

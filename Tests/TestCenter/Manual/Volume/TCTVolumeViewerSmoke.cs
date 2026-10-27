@@ -162,6 +162,11 @@ namespace CxVisual.TestCenter.UI
                 Check(Math.Abs(frame.CurrentThresholdLower-.22f)<.001 &&
                     Math.Abs(frame.CurrentThresholdUpper-.78f)<.001,
                     "旧版阈值上下界拖拽必须回写FVO并触发CT3D LUT");
+                Check(typeof(CxVisual.Mechanism.Presentation.Wpf.Volume.
+                    MPWVolumeThresholdEditor).Assembly ==
+                    typeof(CxVisual.Mechanism.Presentation.Wpf.Volume.
+                    MPWVolumeSliceSceneControl).Assembly,
+                    "阈值双端WPF控件的真实Owner必须为MPW公共控件库而非TestCenter");
                 Check(frame.Volume != null && frame.ViewState != null,"真实FVO与MVI状态绑定");
                 Check(frame.XyViewer.ActiveImage != null &&
                       frame.XzViewer.ActiveImage != null &&

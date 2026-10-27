@@ -3,10 +3,10 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
 
-namespace CxVisual.TestCenter.UI
+namespace CxVisual.Mechanism.Presentation.Wpf.Volume
 {
     /// <summary>旧阈值图的两条可拖动边界；唯一数值最终存入FVOTransferFunctionSet。</summary>
-    public sealed class TCTVolumeThresholdEditor : FrameworkElement
+    public sealed class MPWVolumeThresholdEditor : FrameworkElement
     {
         private float _lower=.28f, _upper=1f;
         private int _active;
@@ -22,7 +22,7 @@ namespace CxVisual.TestCenter.UI
             get { return _upper; }
             set { _upper=Clamp(value,_lower,1); InvalidateVisual(); }
         }
-        public TCTVolumeThresholdEditor()
+        public MPWVolumeThresholdEditor()
         {
             MinHeight=170; Height=250; Focusable=true;
         }
