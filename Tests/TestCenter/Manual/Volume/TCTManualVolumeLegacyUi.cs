@@ -261,14 +261,8 @@ namespace CxVisual.TestCenter.UI
                 return;
             }
             if(!Object.ReferenceEquals(source,_volume))return;
-            if(_thresholdCurve!=null)
-            {
-                _thresholdCurve.Histogram=histogram.Scalar;
-                _thresholdCurve.InvalidateVisual();
-            }
-            if(_colorCurve!=null) { _colorCurve.Histogram=histogram.Scalar;_colorCurve.InvalidateVisual(); }
-            if(_scalarCurve!=null) { _scalarCurve.Histogram=histogram.Scalar;_scalarCurve.InvalidateVisual(); }
-            if(_gradientCurve!=null) { _gradientCurve.Histogram=histogram.Gradient;_gradientCurve.InvalidateVisual(); }
+            if(_transferPanels!=null)
+                _transferPanels.UpdateHistograms(histogram.Scalar,histogram.Gradient);
             _legacyDetails.Text=String.Format("已加载 {0}×{1}×{2}；直方图与体数据来自同一个FVO。",
                 _volume.OriginalWidth,_volume.OriginalHeight,_volume.OriginalDepth);
         }
