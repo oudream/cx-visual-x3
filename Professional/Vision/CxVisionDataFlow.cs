@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CxVisual.Foundation.Data.Types;
 using CxVisual.Foundation.Imaging;
+using CxVisual.Foundation.Infrastructure.Concurrency;
 using CxVisual.Mechanism.Runtime.Execution;
 
 namespace CxVisual.Professional.Vision
@@ -60,6 +61,44 @@ namespace CxVisual.Professional.Vision
             CxVisionInspectionOptions options, long revision = 1)
         {
             return BuildCpuInspectionPlan(options, revision, true, true);
+        }
+
+        /// <summary>
+        /// Headless/single-image fast preview for WPF, CLI and SDK callers.
+        /// Reuses the one MRK/MDS pipeline and its formal committed outputs; it is NOT
+        /// a substitute for project-backed MEM/MOL/MOC compilation and publication.
+        /// The caller owns source generation validation before presenting late results.
+        /// </summary>
+        public static async Task<CxVisionRunSummary> RunCpuInspectionPreviewAsync(
+            FIMImageBuffer image, CxVisionInspectionOptions options, string sourceId,
+            CancellationToken cancellation)
+        {
+            if (image == null) throw new ArgumentNullException("image");
+            if (options == null) throw new ArgumentNullException("options");
+            if (string.IsNullOrWhiteSpace(sourceId))
+                throw new ArgumentException("来源身份不能为空", "sourceId");
+            cancellation.ThrowIfCancellationRequested();
+            CxVisionPixelDepth depth = CxVisionImageInterop.GetPixelDepth(image);
+            if (depth != options.PixelDepth)
+                throw new ArgumentException("专业检测参数位深与FIM原图不一致", "options");
+            var inputs = CxVisionImageInterop.ToCpuInspectionInputs(image, depth);
+            var plan = CreateCpuInspectionPlanWithMeasuredArtifacts(options);
+            var engine = new MRKExecutionEngine(new FCRWorkerOptions(3,10));
+            try
+            {
+                cancellation.ThrowIfCancellationRequested();
+                MRKFlowHandle handle = engine.StartFlow(plan, inputs);
+                using (cancellation.Register(() => handle.RequestCancel()))
+                {
+                    MRKFlowResult run = await handle.Completion.ConfigureAwait(false);
+                    cancellation.ThrowIfCancellationRequested();
+                    if (run.State != MRKFlowState.Completed)
+                        throw new InvalidOperationException("MRK运行失败：" + run.State +
+                            (run.Error == null ? "" : " / " + run.Error.Message));
+                    return CxVisionRunSummary.FromCpuFlow(run, sourceId);
+                }
+            }
+            finally { await engine.StopAsync().ConfigureAwait(false); }
         }
 
         private static MRKExecutionPlan BuildCpuInspectionPlan(
