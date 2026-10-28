@@ -779,6 +779,57 @@ namespace CxVisual.TestCenter.UI
                     if(memoryVolume!=null)memoryVolume.Dispose();
                     frame.LoadDemo();
                 }
+                // TCT Sphere Surface overlay end-to-end：UInt16真实RAW→CT3D→MPW/MVI。
+                // 固定合成球及测试专用Frame，不代表实际设备已标定。
+                const int sphereSize=24;
+                byte[] sphereBytes=new byte[sphereSize*sphereSize*sphereSize*2];
+                for(int z=0;z<sphereSize;z++)
+                for(int y=0;y<sphereSize;y++)
+                for(int x=0;x<sphereSize;x++)
+                {
+                    double dx=x-11.5,dy=y-11.5,dz=z-11.5;
+                    ushort scalar=(ushort)(dx*dx+dy*dy+dz*dz<=36?1800:0);
+                    int offset=2*(x+y*sphereSize+z*sphereSize*sphereSize);
+                    sphereBytes[offset]=(byte)scalar;
+                    sphereBytes[offset+1]=(byte)(scalar>>8);
+                }
+                FVORawVolumeInfo sphereInfo=new FVORawVolumeInfo(
+                    sphereSize,sphereSize,sphereSize,1,1,1,
+                    FVORawVoxelFormat.UInt16,"wpf-sphere-source");
+                FVOVolumeData sphereVolume=FVORawVolumeLoader.LoadFromMemory(
+                    sphereBytes,sphereInfo,64,System.Threading.CancellationToken.None);
+                sphereVolume.SetSpatialFrame(new FVOVolumeSpatialFrame(1,1,1,0,0,0,
+                    new double[]{1,0,0,0,1,0,0,0,1},true));
+                try
+                {
+                    frame.LoadVolume(sphereVolume);
+                    sphereVolume=null;
+                    var sphereFit=frame.AnalyzeCurrentVolumeSphere(1000f,1,4000);
+                    Check(sphereFit.RadiusMm>5 && sphereFit.RadiusMm<6.5 &&
+                        frame.SurfaceDisplayedPointCount>100 &&
+                        frame.Scene.SlicePlaneCount==3 &&
+                        frame.ViewState.Scene3D.Count==2 &&
+                        frame.ViewState.Scene3D.SelectedId.HasValue &&
+                        frame.LastSphereFit!=null,
+                        "实际UInt16原值拟合结果须进入同一WPF三维Scene及MVI专业引用");
+                    if(frame.IsGpuVolumeRendering)
+                        Check(frame.GpuControlForHardwareTest.SurfacePreviewPointCount==
+                              frame.SurfaceDisplayedPointCount,
+                            "有真实GPU时Surface也必须提交到GL framebuffer");
+                    int before=frame.SurfaceDisplayedPointCount;
+                    frame.MoveSlices(5,8,9);
+                    Check(frame.SurfaceDisplayedPointCount==before &&
+                          frame.Scene.SlicePlaneCount==3,
+                        "三刀变化不得清除专业Surface叠加层");
+                }
+                finally
+                {
+                    if(sphereVolume!=null)sphereVolume.Dispose();
+                    frame.LoadDemo();
+                }
+                Check(frame.SurfaceDisplayedPointCount==0 &&
+                      frame.LastSphereFit==null && frame.ViewState.Scene3D.Count==1,
+                    "切换Volume必须移除旧Surface GPU/WPF顶点及专业结果引用");
                 // 真正尝试 WGL Context。CI若只有OpenGL1.1，必须回退而不是伪报GPU成功。
                 frame.TryEnableGpu();
                 window.UpdateLayout();
