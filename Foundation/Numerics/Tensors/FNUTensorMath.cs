@@ -137,42 +137,21 @@ namespace CxVisual.Foundation.Numerics
             return result;
         }
 
-        /// <summary>按轴求和。Rank=1的输出保留形状[1]而不是新建标量类型。</summary>
+        /// <summary>按轴求和。Rank=1保留[1]形状；复用已验证的View游标归约内核。</summary>
         public static FNUTensorBuffer ReduceSum(FNUTensorBuffer input, int axis)
         {
             if (input == null) throw new ArgumentNullException("input");
-            if (axis < 0 || axis >= input.Shape.Rank) throw new ArgumentOutOfRangeException("axis");
-            int[] dims = new int[Math.Max(1, input.Shape.Rank - 1)];
-            int j = 0;
-            for (int i = 0; i < input.Shape.Rank; i++)
-                if (i != axis) dims[j++] = input.Shape.DimensionAt(i);
-            if (input.Shape.Rank == 1) dims[0] = 1;
-            var output = new FNUTensorBuffer(new FNUTensorShape(dims));
-            // Preserve small contributions using Neumaier compensation for each cell.
-            double[] sums = new double[output.Shape.ElementCount];
-            double[] corrections = new double[sums.Length];
-            for (int flat = 0; flat < input.Shape.ElementCount; ++flat)
-            {
-                int remaining = flat, target = 0, outAxis = 0;
-                for (int axisIndex = 0; axisIndex < input.Shape.Rank; axisIndex++)
-                {
-                    int coordinate = remaining / input.Shape.StrideAt(axisIndex);
-                    remaining %= input.Shape.StrideAt(axisIndex);
-                    if (axisIndex != axis) target += coordinate * output.Shape.StrideAt(outAxis++);
-                }
-                double value = input.At(flat), sum = sums[target], next = sum + value;
-                corrections[target] += Math.Abs(sum) >= Math.Abs(value)
-                    ? (sum - next) + value : (value - next) + sum;
-                sums[target] = next;
-            }
-            for (int i = 0; i < sums.Length; ++i)
-            {
-                double value = sums[i] + corrections[i];
-                if (double.IsNaN(value) || double.IsInfinity(value))
-                    throw new OverflowException("Tensor reduction overflow.");
-                output.Put(i, value);
-            }
-            return output;
+            return ReduceSumView(input.AsView(), axis);
+        }
+
+        /// <summary>
+        /// 按轴归约写入独立的调用者缓冲区，避免重复分配结果。
+        /// 非有限中间结果会抛出异常且不修改已有输出。
+        /// </summary>
+        public static void ReduceSumInto(FNUTensorBuffer input, int axis, FNUTensorBuffer output)
+        {
+            if (input == null) throw new ArgumentNullException("input");
+            ReduceSumViewInto(input.AsView(), axis, output);
         }
 
         /// <summary>二维矩阵乘法：左(m,k) × 右(k,n) -> (m,n)。</summary>
