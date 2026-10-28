@@ -18,6 +18,7 @@ using AvalonDock.Themes;
 using CxVisual.Mechanism.Core;
 using CxVisual.Foundation.Data.Configuration;
 using CxVisual.Mechanism.Data.Configuration;
+using CxVisual.Mechanism.Data.RuntimeData;
 using CxVisual.Mechanism.Presentation.Wpf;
 using CxVisual.Professional.Vision;
 using CxVisual.Professional.CT3D;
@@ -627,6 +628,8 @@ namespace CxVisual.Studio
             _studioConfigDefaultsRegistered=true;
             RegisterStudioConfiguration<CxVisionInspectionOptions>("Vision · 检测参数");
             RegisterStudioConfiguration<CxCtReconstructionOptions>("CT3D · 重建参数");
+            RegisterStudioConfiguration<MDSDataLifecycleEngineeringOptions>(
+                "运行时数据 · 五维生命周期工程策略");
         }
 
         /// <summary>
