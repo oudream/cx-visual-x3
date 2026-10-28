@@ -192,6 +192,7 @@
 - [FIM/MVI首批实现与Windows验收台账 V1.0](Implementation/CxVisual_基础图像体系%23FIM-MVI首批迁移实现与Windows验收台账_V1.0.md)：`60849f9`、`1b1eafe`、`3d9be3b` 真实源码，`--imaging`和默认回归，未通过项不冒充成功。
 - [S0六工程213文件逐文件迁移台账](Migration/CxVisual_基础图像与体数据体系%23成熟源码迁移——S0主体归属与逐文件台账_V1.0.md)：ReferTo只读，历史快照，不包含额外CommonInterfaces文件。
 
+- [二维视觉工作台 OOP/GoF/AOP UML实施设计 V1.1](Architecture/CxVisual_专业视觉体系%23通用二维视觉工作台——OOP-GoF-AOP与UML实施设计_V1.1.md)：基于FIM/MVI/MPW/PVC、现有MEM/MRC的六张UML及真实Owner门禁；首轮四点State、Overlay原子批次、AOP边界日志的代码/待验收分级；不把候选接口当成现成能力。
 - [二维工业视觉工作台完整功能架构与实施验收 V1.0](Architecture/CxVisual_专业视觉体系%23通用二维视觉工作台——完整功能架构与实施验收_V1.0.md)：按用户60项需求跟踪FIM/MVI/MPW/PVC/TCT实际实现、旧类功能迁移、UI/API/Windows CI证据及剩余P2～P6工作包；当前首批WPF可运行链不等于完整工业交付。
 
 - [通用二维工业视觉工作台P1真实Windows验收与缺口](Testing/CxVisual_专业视觉体系%23通用二维视觉工作台——P1真实Windows验收与缺口_V1.0.md)：对应`98b664f`、Imaging Windows CI run 40206188476 的真实全编译/专项/默认回归/WPF Window+PNG回环证据，区分未验收的完整TCT UIA、厂商SDK和工业性能。
