@@ -28,6 +28,12 @@ namespace CxVisual.TestCenter.UI
         // 仅保存可视按钮映射；真实工具状态仍以唯一MPW.ToolMode为准。
         private readonly System.Collections.Generic.Dictionary<MVIImageToolMode,Button>
             _regionToolButtons=new System.Collections.Generic.Dictionary<MVIImageToolMode,Button>();
+        private readonly System.Collections.Generic.Dictionary<MVIImageToolMode,Button>
+            _categoryButtons=new System.Collections.Generic.Dictionary<MVIImageToolMode,Button>();
+        private bool _syncingDisplayInputs;
+        private readonly TextBlock _windowMode = new TextBlock {
+            Text = "当前显示：自动窗宽/窗位", Foreground = Brushes.SteelBlue,
+            Margin = new Thickness(5,4,5,4), TextWrapping = TextWrapping.Wrap };
         private readonly CheckBox _showRoi = new CheckBox { Content = "ROI", IsChecked = true };
         private readonly CheckBox _showMeasurements = new CheckBox { Content = "测量", IsChecked = true };
         private readonly CheckBox _showAnnotations = new CheckBox { Content = "标注", IsChecked = true };
@@ -302,8 +308,43 @@ namespace CxVisual.TestCenter.UI
             _regionToolButtons[mode]=button;
             return button;
         }
+        private static bool InCategory(MVIImageToolMode active,MVIImageToolMode category)
+        {
+            if (category == MVIImageToolMode.RectangleRoi)
+                return active == MVIImageToolMode.RectangleRoi ||
+                    active == MVIImageToolMode.CircleRoi ||
+                    active == MVIImageToolMode.EllipseRoi ||
+                    active == MVIImageToolMode.RotatedRectangleRoi ||
+                    active == MVIImageToolMode.PolygonRoi;
+            if (category == MVIImageToolMode.Distance)
+                return active == MVIImageToolMode.Distance ||
+                    active == MVIImageToolMode.Angle ||
+                    active == MVIImageToolMode.LinePair ||
+                    active == MVIImageToolMode.HorizontalDistance ||
+                    active == MVIImageToolMode.VerticalDistance ||
+                    active == MVIImageToolMode.Diameter ||
+                    active == MVIImageToolMode.Area ||
+                    active == MVIImageToolMode.PolygonArea ||
+                    active == MVIImageToolMode.LineProfile;
+            if (category == MVIImageToolMode.Point)
+                return active == MVIImageToolMode.Point ||
+                    active == MVIImageToolMode.Text ||
+                    active == MVIImageToolMode.Arrow;
+            return category == MVIImageToolMode.DefectBox &&
+                active == MVIImageToolMode.DefectBox;
+        }
         private void UpdateRegionToolHighlight()
         {
+            foreach (var category in _categoryButtons)
+            {
+                bool selected = InCategory(_viewer.ToolMode, category.Key);
+                category.Value.BorderBrush = selected ? Paint(24,90,170) : Paint(207,222,239);
+                category.Value.BorderThickness = new Thickness(selected ? 3 : 1);
+                category.Value.FontWeight = selected ? FontWeights.Bold : FontWeights.Normal;
+                AutomationProperties.SetHelpText(category.Value, selected ?
+                    "已选中，在左侧图像上绘制；工具分类与图层可见性是两种不同操作。" :
+                    "点击切换绘制工具，下面的复选框仅控制图层可见性。");
+            }
             foreach(var entry in _regionToolButtons)
             {
                 bool selected=_viewer.ToolMode==entry.Key;
@@ -328,7 +369,26 @@ namespace CxVisual.TestCenter.UI
         private UIElement BuildDisplayPage()
         {
             StackPanel content = Column();
-            content.Children.Add(Heading("叠加图层  ·  显示与选择"));
+            content.Children.Add(Heading("绘制工具  ·  点击选择后在图像上操作"));
+            WrapPanel modes = Row();
+            foreach (var choice in new[] {
+                Tuple.Create("ROI",MVIImageToolMode.RectangleRoi,Color.FromRgb(13,166,195)),
+                Tuple.Create("测量",MVIImageToolMode.Distance,Color.FromRgb(230,164,34)),
+                Tuple.Create("标注",MVIImageToolMode.Point,Color.FromRgb(185,48,110)),
+                Tuple.Create("缺陷",MVIImageToolMode.DefectBox,Color.FromRgb(233,71,61)) })
+            {
+                MVIImageToolMode selectedMode = choice.Item2;
+                Button tool = Action(modes,choice.Item1,"SelectMode."+choice.Item1,
+                    ()=>SelectTool(selectedMode));
+                tool.Width=69; tool.MinHeight=34; tool.Padding=new Thickness(2);
+                tool.Background=new SolidColorBrush(choice.Item3);
+                tool.Foreground=Brushes.White;
+                tool.ToolTip="选择"+choice.Item1+"绘制工具，不是修改颜色";
+                _categoryButtons[selectedMode]=tool;
+            }
+            content.Children.Add(modes);
+            content.Children.Add(Hint("选择类别后在左侧图像拖动/点击绘制；下方复选框只控制图层可见性。"));
+            content.Children.Add(Heading("选中对象改色  ·  须先选中一个图元"));
             WrapPanel colors = Row();
             // 旧Viewer的Overlay颜色操作不能退化为四块无法点击的装饰色块。
             foreach (Tuple<string,Color> c in new[] {
@@ -338,7 +398,7 @@ namespace CxVisual.TestCenter.UI
                 Tuple.Create("缺陷",Color.FromRgb(233,71,61)) })
             {
                 Color preset=c.Item2;
-                Button swatch=Action(colors,c.Item1,"OverlayColor."+c.Item1,
+                Button swatch=Action(colors,"设"+c.Item1+"色","OverlayColor."+c.Item1,
                     ()=>SetSelectedOverlayColor(preset));
                 swatch.Width=69;swatch.Height=29;swatch.MinHeight=29;
                 swatch.Padding=new Thickness(2);
@@ -370,11 +430,21 @@ namespace CxVisual.TestCenter.UI
         {
             StackPanel content = Column();
             content.Children.Add(Heading("原始灰度窗宽 / 窗位"));
+            AutomationProperties.SetAutomationId(_low,"TCT.Imaging.WindowLow");
+            AutomationProperties.SetAutomationId(_high,"TCT.Imaging.WindowHigh");
             content.Children.Add(Row(Label("窗下限"),_low));
             content.Children.Add(Row(Label("窗上限"),_high));
+            _low.KeyDown += (sender,e) => {
+                if (e.Key==Key.Enter) { ApplyWindowFromInput(); e.Handled=true; }
+            };
+            _high.KeyDown += (sender,e) => {
+                if (e.Key==Key.Enter) { ApplyWindowFromInput(); e.Handled=true; }
+            };
             WrapPanel actions = Row();
             Action(actions,"应用窗宽窗位","Window",Window);
+            Action(actions,"自动对比度","AutoWindow",AutoWindow);
             Action(actions,"还原显示","ResetWindow",ResetDisplay);
+            content.Children.Add(_windowMode);
             content.Children.Add(actions);
             content.Children.Add(Hint("窗参数改变显示映射，不修改原始8/16/32位像素。"));
             content.Children.Add(Heading("灰度参考与快速检查"));
@@ -391,6 +461,16 @@ namespace CxVisual.TestCenter.UI
             content.Children.Add(GraySliderRow("Gamma",_displayGamma,0.1,3.0,1.0,out _gammaSlider));
             content.Children.Add(GraySliderRow("亮度",_displayBrightness,-1.0,1.0,0.0,out _brightnessSlider));
             content.Children.Add(GraySliderRow("对比度",_displayContrast,0.0,3.0,1.0,out _contrastSlider));
+            AutomationProperties.SetAutomationId(_displayGamma,"TCT.Imaging.Gamma");
+            AutomationProperties.SetAutomationId(_displayBrightness,"TCT.Imaging.Brightness");
+            AutomationProperties.SetAutomationId(_displayContrast,"TCT.Imaging.Contrast");
+            AutomationProperties.SetAutomationId(_displayInverted,"TCT.Imaging.Inverted");
+            AutomationProperties.SetAutomationId(_autoContrast,"TCT.Imaging.AutoContrast");
+            foreach (CheckBox check in new[] { _displayInverted,_autoContrast })
+            {
+                check.Checked += (sender,args) => { if (!_syncingDisplayInputs) ApplyGraySliderChange(); };
+                check.Unchecked += (sender,args) => { if (!_syncingDisplayInputs) ApplyGraySliderChange(); };
+            }
             content.Children.Add(Row(_displayInverted,_autoContrast));
             WrapPanel buttons = Row();
             Action(buttons,"应用灰阶参数","ApplyDisplay",ApplyDisplay);
@@ -421,8 +501,15 @@ namespace CxVisual.TestCenter.UI
                 if (!_changingGraySliders)
                     field.Text = current.Value.ToString("0.###",CultureInfo.InvariantCulture);
             };
+            current.AddHandler(System.Windows.Controls.Primitives.Thumb.DragCompletedEvent,
+                new System.Windows.Controls.Primitives.DragCompletedEventHandler(
+                    (sender,args) => ApplyGraySliderChange()));
             current.PreviewMouseLeftButtonUp += (sender,args) => ApplyGraySliderChange();
             current.KeyUp += (sender,args) => ApplyGraySliderChange();
+            field.KeyDown += (sender,args) =>
+            {
+                if(args.Key==Key.Enter) { ApplyGraySliderChange(); args.Handled=true; }
+            };
             Grid.SetColumn(current,1); row.Children.Add(current);
             field.Width = 55; field.FontSize = 13;
             Grid.SetColumn(field,2); row.Children.Add(field);
@@ -673,7 +760,10 @@ namespace CxVisual.TestCenter.UI
         {
             foreach (ComboBoxItem item in _imageTool.Items.OfType<ComboBoxItem>())
                 if (item.Tag is MVIImageToolMode && (MVIImageToolMode)item.Tag == mode)
-                { _imageTool.SelectedItem = item; _displayTabs.SelectedIndex =
+                {
+                    _imageTool.SelectedItem = item;
+                    if (_viewer.ToolMode != mode) _viewer.ToolMode = mode;
+                    _displayTabs.SelectedIndex =
                     mode == MVIImageToolMode.Distance || mode == MVIImageToolMode.Angle ||
                     mode == MVIImageToolMode.HorizontalDistance ||
                     mode == MVIImageToolMode.VerticalDistance ||

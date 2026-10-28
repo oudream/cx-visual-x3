@@ -25,6 +25,19 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Ensure(events == 5, "相同设置不得多次刷新");
             display.Reset();
             Ensure(display.IsIdentity && events == 6, "重置所有显示状态");
+            display.SetTone(2,0.1,1.5,true,true);
+            Ensure(display.Gamma==2 && display.Brightness==0.1 &&
+                display.Contrast==1.5 && display.IsInverted &&
+                display.IsAutoContrast && events==7,"灰阶整组参数仅通知一次");
+            display.SetTone(2,0.1,1.5,true,true);
+            Ensure(events==7,"重复整组参数不得重绘");
+            Throws<ArgumentOutOfRangeException>(()=>
+                display.SetTone(2,0.1,double.NaN,false,false),"非法整组灰阶拒绝");
+            Ensure(display.Gamma==2 && display.IsInverted &&
+                display.IsAutoContrast && events==7,
+                "整组非法设置不允许部分写入或发送通知");
+            display.Reset();
+            Ensure(display.IsIdentity && events==8,"整组设置可以复位");
             Throws<ArgumentOutOfRangeException>(() => display.SetGamma(0), "gamma");
             Throws<ArgumentOutOfRangeException>(() => display.SetBrightness(double.NaN), "NaN");
             Throws<ArgumentOutOfRangeException>(() => display.SetWindowLevel(0, -1), "非法窗宽");

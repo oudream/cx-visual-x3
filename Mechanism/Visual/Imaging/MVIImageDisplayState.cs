@@ -61,6 +61,27 @@ namespace CxVisual.Mechanism.Visual
             if (IsInverted == enabled) return;
             IsInverted = enabled; Notify();
         }
+        /// <summary>
+        /// 一次提交整组灰阶控制参数，避免大图在多个属性Change事件中重复生成显示缓冲。
+        /// 任何参数非法时保持旧状态并且不发通知。
+        /// </summary>
+        public void SetTone(double gamma,double brightness,double contrast,
+            bool inverted,bool autoContrast)
+        {
+            Finite(gamma,"gamma");
+            Finite(brightness,"brightness");
+            Finite(contrast,"contrast");
+            if(gamma<=0 || gamma>20)throw new ArgumentOutOfRangeException("gamma");
+            if(brightness< -1 || brightness>1)
+                throw new ArgumentOutOfRangeException("brightness");
+            if(contrast<0 || contrast>16)
+                throw new ArgumentOutOfRangeException("contrast");
+            if(Gamma==gamma && Brightness==brightness && Contrast==contrast &&
+                IsInverted==inverted && IsAutoContrast==autoContrast)return;
+            Gamma=gamma;Brightness=brightness;Contrast=contrast;
+            IsInverted=inverted;IsAutoContrast=autoContrast;
+            Notify();
+        }
         public void SetGamma(double gamma)
         {
             Finite(gamma, "gamma");

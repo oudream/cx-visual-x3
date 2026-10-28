@@ -1109,12 +1109,44 @@ namespace CxVisual.TestCenter.UI
 
         private void Window()
         {
-            double low, high;
-            if (!double.TryParse(_low.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out low) ||
-                !double.TryParse(_high.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out high))
-                throw new ArgumentException("窗上下限请输入有限数字，如 0 与 65535。");
-            _viewer.SetDisplayWindow(low, high);
-            Show("显示窗范围：" + low + " - " + high + "（原图不变）");
+            FIMImageBuffer source=_viewer.ActiveImage;
+            if(source==null)throw new InvalidOperationException("请先打开图像，再调整窗宽窗位。");
+            if(source.PixelFormat==FIMPixelFormat.Bgr24 ||
+               source.PixelFormat==FIMPixelFormat.Bgra32)
+                throw new NotSupportedException("彩色图不支持单通道窗宽窗位，请使用灰阶页亮度/对比度。");
+            double low,high;
+            if(!double.TryParse(_low.Text,NumberStyles.Float,
+                   CultureInfo.InvariantCulture,out low) ||
+               !double.TryParse(_high.Text,NumberStyles.Float,
+                   CultureInfo.InvariantCulture,out high) ||
+               double.IsNaN(low) || double.IsInfinity(low) ||
+               double.IsNaN(high) || double.IsInfinity(high) || high<=low)
+                throw new ArgumentException("窗上下限必须是有限数字，且上限大于下限。");
+            _viewer.SetDisplayWindow(low,high);
+            _windowMode.Text="当前显示：手动窗范围 ["+
+                low.ToString("0.###",CultureInfo.InvariantCulture)+", "+
+                high.ToString("0.###",CultureInfo.InvariantCulture)+"]";
+            Show("已应用手动窗位/窗宽；原始像素不变。");
+        }
+        private void ApplyWindowFromInput()
+        {
+            try { Window(); }
+            catch(Exception error) { Show("窗宽窗位错误："+error.Message); }
+        }
+        private void AutoWindow()
+        {
+            FIMImageBuffer source=_viewer.ActiveImage;
+            if(source==null)throw new InvalidOperationException("请先打开图像。");
+            if(source.PixelFormat==FIMPixelFormat.Bgr24 ||
+               source.PixelFormat==FIMPixelFormat.Bgra32)
+                throw new NotSupportedException("彩色图请使用灰阶页自动对比度。");
+            _viewer.SetDisplayWindow(null,null);
+            _viewer.DisplayState.SetAutoContrast(true);
+            _syncingDisplayInputs=true;
+            try { _autoContrast.IsChecked=true; }
+            finally { _syncingDisplayInputs=false; }
+            _windowMode.Text="当前显示：按图像实际灰度范围自动对比（不改变原始像素）";
+            Show("已启用自动灰度范围显示；原图不变。");
         }
 
         private void ApplyPixelSpacing()
@@ -1138,6 +1170,8 @@ namespace CxVisual.TestCenter.UI
 
         private void ApplyDisplay()
         {
+            if (_viewer.ActiveImage==null)
+                throw new InvalidOperationException("请先打开图像，再调整灰阶显示。");
             double gamma = FloatParameter(_displayGamma, "Gamma");
             double brightness = FloatParameter(_displayBrightness, "亮度");
             double contrast = FloatParameter(_displayContrast, "对比度");
@@ -1149,21 +1183,27 @@ namespace CxVisual.TestCenter.UI
                 double.IsNaN(contrast) || double.IsInfinity(contrast) ||
                 contrast < 0 || contrast > 16)
                 throw new ArgumentOutOfRangeException("显示参数超出范围。");
-            display.SetGamma(gamma);
-            display.SetBrightness(brightness);
-            display.SetContrast(contrast);
-            display.SetInverted(_displayInverted.IsChecked == true);
-            display.SetAutoContrast(_autoContrast.IsChecked == true);
+            display.SetTone(gamma,brightness,contrast,
+                _displayInverted.IsChecked==true,_autoContrast.IsChecked==true);
             SyncGraySliders();
             Show("显示状态已应用：源图不改变，原始灰度统计保持不变");
         }
 
         private void ResetDisplay()
         {
+            _syncingDisplayInputs=true;
+            try
+            {
+                _displayGamma.Text="1";
+                _displayBrightness.Text="0";
+                _displayContrast.Text="1";
+                _displayInverted.IsChecked=false;
+                _autoContrast.IsChecked=false;
+                SyncGraySliders();
+            }
+            finally { _syncingDisplayInputs=false; }
             _viewer.DisplayState.Reset();
-            _displayGamma.Text = "1"; _displayBrightness.Text = "0"; _displayContrast.Text = "1";
-            _displayInverted.IsChecked = false; _autoContrast.IsChecked = false;
-            SyncGraySliders();
+            _windowMode.Text="当前显示：自动窗宽/窗位；灰阶参数为默认值";
             Show("窗宽窗位/反色/Gamma/亮度/对比度全部复位");
         }
 

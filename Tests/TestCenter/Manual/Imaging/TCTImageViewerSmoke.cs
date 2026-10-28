@@ -73,6 +73,24 @@ namespace CxVisual.TestCenter.UI
                 circleTool.BorderThickness.Left<1.7 ||
                 rectTool.BorderThickness.Left>1.2)
                 throw new InvalidOperationException("区域工具互斥切换未清除旧高亮状态");
+            primary.SelectedIndex=0;
+            window.UpdateLayout();
+            foreach(var item in new[] {
+                Tuple.Create("ROI",MVIImageToolMode.RectangleRoi),
+                Tuple.Create("测量",MVIImageToolMode.Distance),
+                Tuple.Create("标注",MVIImageToolMode.Point),
+                Tuple.Create("缺陷",MVIImageToolMode.DefectBox) })
+            {
+                Button category=FindControl<Button>(frame,"TCT.Imaging.SelectMode."+item.Item1);
+                if(category==null)
+                    throw new InvalidOperationException(item.Item1+"分类没有可操作的工具选择按钮");
+                category.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                if(frame.Viewer.ToolMode!=item.Item2 ||
+                    category.BorderThickness.Left<2.5)
+                    throw new InvalidOperationException(item.Item1+"选择按钮并未激活工具和高亮");
+                primary.SelectedIndex=0;
+                window.UpdateLayout();
+            }
             fit.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Console.WriteLine("PASS TCT Imaging UI: 15+ one-row commands, dual five-tab panels, controls and action access");
         }
@@ -272,6 +290,61 @@ namespace CxVisual.TestCenter.UI
                     new byte[] { 1,0, 2,0, 3,0, 4,0, 5,0, 6,0, 7,0, 8,0,
                                  9,0, 10,0, 11,0, 12,0, 13,0, 14,0, 15,0, 16,0 });
                 frame.SetOriginal(image);
+                // 用户反馈：窗位、灰阶不能只存在底层API；必须通过可见WPF入口生效。
+                TabControl displayTabs=FindControl<TabControl>(frame,"TCT.Imaging.PrimaryTabs");
+                displayTabs.SelectedIndex=1;
+                window.UpdateLayout();
+                TextBox windowLow=FindControl<TextBox>(frame,"TCT.Imaging.WindowLow");
+                TextBox windowHigh=FindControl<TextBox>(frame,"TCT.Imaging.WindowHigh");
+                Button windowApply=FindControl<Button>(frame,"TCT.Imaging.Window");
+                Button autoWindow=FindControl<Button>(frame,"TCT.Imaging.AutoWindow");
+                if(windowLow==null||windowHigh==null||windowApply==null||autoWindow==null)
+                    throw new InvalidOperationException("窗宽窗位缺少可操作的WPF参数及按钮");
+                windowLow.Text="1";
+                windowHigh.Text="16";
+                windowApply.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                if(frame.Viewer.DisplayState.IsAutoWindowLevel ||
+                    frame.Viewer.DisplayState.WindowWidth!=15 ||
+                    frame.Viewer.Session.Original.GetGrayValue(1,2)!=10)
+                    throw new InvalidOperationException("WPF窗位操作未改变显示状态或损伤原始像素");
+                windowLow.Text="b";
+                windowApply.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                if(frame.Viewer.DisplayState.WindowWidth!=15 ||
+                    !AutomationProperties.GetHelpText(windowApply).Contains("窗上下限"))
+                    throw new InvalidOperationException("错误窗位输入没有明确拒绝并保留旧显示");
+                autoWindow.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                if(!frame.Viewer.DisplayState.IsAutoWindowLevel ||
+                    !frame.Viewer.DisplayState.IsAutoContrast)
+                    throw new InvalidOperationException("自动窗宽/位没有使用图像实际灰度范围");
+                displayTabs.SelectedIndex=2;
+                window.UpdateLayout();
+                TextBox gammaField=FindControl<TextBox>(frame,"TCT.Imaging.Gamma");
+                TextBox brightnessField=FindControl<TextBox>(frame,"TCT.Imaging.Brightness");
+                TextBox contrastField=FindControl<TextBox>(frame,"TCT.Imaging.Contrast");
+                CheckBox invertedBox=FindControl<CheckBox>(frame,"TCT.Imaging.Inverted");
+                Button applyGray=FindControl<Button>(frame,"TCT.Imaging.ApplyDisplay");
+                Button resetGray=FindControl<Button>(frame,"TCT.Imaging.ResetDisplay");
+                if(gammaField==null||brightnessField==null||contrastField==null||
+                   invertedBox==null||applyGray==null||resetGray==null)
+                    throw new InvalidOperationException("灰阶增强真实WPF控件缺失");
+                gammaField.Text="2"; brightnessField.Text="0.1"; contrastField.Text="1.5";
+                applyGray.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                if(frame.Viewer.DisplayState.Gamma!=2 ||
+                    frame.Viewer.DisplayState.Brightness!=0.1 ||
+                    frame.Viewer.DisplayState.Contrast!=1.5)
+                    throw new InvalidOperationException("WPF Gamma/亮度/对比度未实际提交");
+                invertedBox.IsChecked=true;
+                if(!frame.Viewer.DisplayState.IsInverted)
+                    throw new InvalidOperationException("反色勾选后未应用实际显示状态");
+                gammaField.Text="invalid";
+                applyGray.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                if(frame.Viewer.DisplayState.Gamma!=2 ||
+                   !AutomationProperties.GetHelpText(applyGray).Contains("Gamma"))
+                    throw new InvalidOperationException("非法灰阶输入未保留原状态或缺少错误提示");
+                resetGray.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                if(!frame.Viewer.DisplayState.IsIdentity ||
+                    frame.Viewer.Session.Original.GetGrayValue(1,2)!=10)
+                    throw new InvalidOperationException("显示复位没有恢复状态或修改了原图");
                 // 实际点击第六张二维工作台的专业CPU检测按钮，MRK产生Image/Mask
                 // 并经共用ResultItem投影到现有MPW/MVI结果槽。
                 TabControl cpuTabs=FindControl<TabControl>(frame,"TCT.Imaging.SecondaryTabs");
