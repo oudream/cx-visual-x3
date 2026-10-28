@@ -179,3 +179,27 @@
 - [包含Scope保护的独立CPU验收 #40660064092](https://github.com/oudream/cx-visual-x3/actions/runs/40660064092)：**Success**，Windows完整构建与相同的真实CPU软件闭环测试均成功。
 
 **判定**：第一条可操作的、数据来自真实文件的Compute CPU软件闭环已有两次专用Windows绿色证据。不是完整五模块工业功能交付：RAW字节当前为运行期临时输入，MEM页持久化不等于源数据/执行结果可自动重放；真实设备HIL、业务授权、全Studio S1配置响应式布局故障以及其他四类Provider仍需分别验收。
+
+## 13. TestCenter Compute 真实UI操作闭环（2026-10-28）
+
+> 本节严格区分：正式源码已落地 / 已被Windows编译 / 真正UIA成功 / 工业HIL。此前Studio S1-03D后台软件测试通过，**不等于**TestCenter GUI验收。
+
+### 真实变更
+
+- [共享专业CPU执行入口 141b36d](https://github.com/oudream/cx-visual-x3/commit/141b36da14b96fff4f41f2302102f93cfc70d2d8)：`Professional/Vision/CxVisionRawCpuRunner.cs` 实现唯一RAW文件→真实MHS Effective Provider→MEM项目→MOC准备/版本发布→MRK执行→缺陷区域与SourceMap Trace的软件闭环。Studio已改为委托此类，原重复执行逻辑不再保留。仅本地CPU，不覆盖工业授权和HIL。
+- [TestCenter人工Compute页 7f76d43](https://github.com/oudream/cx-visual-x3/commit/7f76d4322a074f94ca8f5409a31458d949fc92d1)：`Tests/TestCenter/Manual/Module/TCTCpuComputePanel.cs` 直接嵌入五类共用模块中心。正式Compute配置要求ProviderTypeId、Device=CPU与CapabilityIds在MHS Effective一致；Vision参数显式保存/Apply，读取只用MHS OpenExisting；RAW路径、宽高、位深、运行/取消/重试、区域表和Trace表完整可操作。
+- [共用分页接入 b175ba0](https://github.com/oudream/cx-visual-x3/commit/b175ba0d9c2d347eda21926057142de5fadac9b7)：保留五类统一FCM配置页，Compute新增`cpu-test`专业Tab；原配置编辑器/草稿保护不被替换，切换页面不创建第二配置Owner。
+- [真实WPF UIA b5bd108](https://github.com/oudream/cx-visual-x3/commit/b5bd1083dc4b242cf12c44546e75c45069543f0b)：独立临时Scope、磁盘5x3 RAW数据；通过InvokePattern/ValuePattern/SelectionItemPattern操作真实按钮与输入，检查首次无配置读取拒绝、保存生效、实际阈值像素4、区域面积3、Trace行、错误宽度拒绝和第二次独立MRK FlowId。
+- [TestCenter 专项Windows CI 3e836df](https://github.com/oudream/cx-visual-x3/commit/3e836dfddabcdf73e54bd9d8e406b2c6b9613864)：新增`--module-cpu-ui-automation`独立验收入口与报告归档；定向构建TestCenter及依赖，保留全量TestCenter Windows验收。
+- [MHS Existing API修复 e770c14](https://github.com/oudream/cx-visual-x3/commit/e770c148c8a49035ae319008c930e73d573a93c8)：只读Existing调用归属`MHSConfigService`、显式FCMConfigIdentity，不绕过缺失配置拒绝。
+- [Channel编译阻断兼容修复 a870a47](https://github.com/oudream/cx-visual-x3/commit/a870a4720ac4f71ceeec728eecd41920e7d414d2)：补回多通道已使用的`ConfigureSendAdmission`，仅按正式发送预算设置已有计数器。并行Channel独立功能/长稳结论仍需其Owner验证。
+
+### 当前证据与未完成
+
+- 历史Windows日志在早期提交因MHS OpenExisting错误、并行Channel缺失ConfigureSendAdmission而**编译失败**；已对应修复，但不得将修复源码当作重新运行成功。
+- [专门TestCenter Compute UIA工作流](https://github.com/oudream/cx-visual-x3/actions/workflows/testcenter-compute-cpu-ui-windows.yml) 已建立，当前最终绿色结果以它实际Run的`TestCenter-Cpu-UIA-Report.txt`为准。**本段写入时尚未核实最终PASS**。
+- 本阶段即使CPU真实UIA通过，仍为本地软件G1能力：尚未完成Studio/TestCenter全五类专业G1、真实Driver HIL、长期运行、RAW工程持久化自动重放、跨进程资源租约及生产授权。
+
+### 人工操作
+
+TestCenter → 专有测试 → 模块测试 → Compute；建立正式Compute配置并将ProviderTypeId和CapabilityIds设置为`vision.cpu.threshold.inspect`、Device=CPU，保存/生效。选择“CPU真实检测”Tab，填RAW文件与参数，显式保存Vision参数、读取Effective、点击执行；检查真实区域/Trace，随后重复执行或提供坏输入以检查错误与拒绝。不得以ACK、目录声明、保存配置或演示输出代替真实执行。
