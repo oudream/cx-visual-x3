@@ -36,7 +36,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                           mesh.NonManifoldEdgeCount==0 && mesh.InconsistentWindingEdgeCount==0,
                         "规则六邻域表面必须形成法向一致的封闭流形");
                     Check(Math.Abs(mesh.SurfaceArea-24)<1e-9 &&
-                          mesh.EnclosedVolume.HasValue &&
+                          mesh.EnclosedVolume.HasValue && mesh.SignedEnclosedVolume.HasValue &&
+                          mesh.SignedEnclosedVolume.Value>0 &&
                           Math.Abs(mesh.EnclosedVolume.Value-8)<1e-9,
                         "体素外露表面解析面积24平方毫米、体积8立方毫米");
                     Check(result.HasCalibratedClosedGeometry && !result.TouchesVolumeBoundary &&
@@ -84,7 +85,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 {
                     FGETriangleMesh3D mesh=CT3DVoxelBoundaryMeshExtractor.Extract(
                         mirrored,"fixture:mirror",4,1000,100,CancellationToken.None).Mesh;
-                    Check(mesh.IsClosedOrientedManifold && mesh.EnclosedVolume.HasValue &&
+                    Check(mesh.IsClosedOrientedManifold && mesh.EnclosedVolume.HasValue && mesh.SignedEnclosedVolume.HasValue &&
+                          mesh.SignedEnclosedVolume.Value>0 &&
                           Math.Abs(mesh.EnclosedVolume.Value-8)<1e-9,
                         "左手镜像来源必须翻转三角绕序，保持几何法向及体积证据正确");
                 }
@@ -102,7 +104,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         lease,"fixture:anisotropic-rotated",5,1000,100,
                         CancellationToken.None).Mesh;
                     Check(Math.Abs(mesh.SurfaceArea-208)<1e-8 &&
-                          mesh.EnclosedVolume.HasValue &&
+                          mesh.EnclosedVolume.HasValue && mesh.SignedEnclosedVolume.HasValue &&
+                          mesh.SignedEnclosedVolume.Value>0 &&
                           Math.Abs(mesh.EnclosedVolume.Value-192)<1e-8 &&
                           mesh.IsClosedOrientedManifold,
                         "各向异性2×3×4mm及90度方向旋转下必须保留解析面积208与体积192");
