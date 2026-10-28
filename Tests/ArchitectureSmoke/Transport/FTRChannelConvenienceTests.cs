@@ -108,7 +108,15 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     server.ReplyAsync(context,new byte[]{11},CancellationToken.None).GetAwaiter().GetResult();
                     Check(peer.Equals(server.LastDestination)&&server.LastPayload.SequenceEqual(new byte[]{11}),
                         "按Received.Address回复必须保留SubChannel+Generation");
-                    Check(server.RemovePeer(peer),"旧客户端必须可移除");
+                    int peerRemovedNotifications=0;
+                    server.PeerRemoved+=address=>{throw new IOException("faulty peer observer");};
+                    server.PeerRemoved+=address=>Interlocked.Increment(ref peerRemovedNotifications);
+                    Check(server.RemovePeer(peer) && peerRemovedNotifications==1 &&
+                        server.Diagnostics.LastFailure!=null &&
+                        server.Diagnostics.LastFailure.Stage=="Observer" &&
+                        server.Diagnostics.LastFailure.Scope==FTRFaultScope.Operation &&
+                        server.State==FTRChannelState.Open,
+                        "PeerRemoved观察者异常不能截断其它订阅或误分类为物理Receive故障");
                     var replacement=server.RegisterPeer("client-17","loopback").Address;
                     Check(!peer.Equals(replacement),"重连必须更新Generation");
                     server.Deliver(replacement,new byte[]{9});
