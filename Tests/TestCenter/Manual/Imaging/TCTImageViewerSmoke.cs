@@ -8,6 +8,7 @@ using System.Windows.Automation;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using CxVisual.Foundation.Imaging;
+using CxVisual.Foundation.Infrastructure.Logging;
 using CxVisual.Foundation.Geometry;
 using CxVisual.Mechanism.Visual;
 
@@ -405,6 +406,21 @@ namespace CxVisual.TestCenter.UI
                     !ReferenceEquals(frame.Viewer.Session.Result,polygonMask))
                     throw new InvalidOperationException(
                         "轮廓按钮没有真实产生面积6的原图多边形及WPF渲染");
+                // AOP真实验收：同一次算法请求的开始与完成必须保留关联ID、版本和耗时。
+                if(!FLDLogHelper.IsInitialized)
+                    throw new InvalidOperationException("TestCenter宿主未初始化正式FLD日志");
+                FLDLogHelper.Flush(5000);
+                var audit=FLDLogHelper.Snapshot()
+                    .Where(x=>x.ModuleId=="TCT.Imaging.MaskContours").ToArray();
+                var success=audit.LastOrDefault(x=>x.Message.StartsWith(
+                    "轮廓完成；",StringComparison.Ordinal));
+                if(success==null || string.IsNullOrWhiteSpace(success.CorrelationId) ||
+                    !success.Message.Contains("耗时毫秒=") ||
+                    !success.Message.Contains("源版本=") ||
+                    !audit.Any(x=>x.CorrelationId==success.CorrelationId &&
+                        x.Message.StartsWith("开始二值轮廓提取；",StringComparison.Ordinal)))
+                    throw new InvalidOperationException(
+                        "统一FLD日志未保留本次轮廓操作的关联ID/版本/耗时与开始结束链");
                 string contourCsv=Path.Combine(Path.GetTempPath(),
                     "CxVisual-MaskContour-"+Guid.NewGuid().ToString("N")+".csv");
                 try
