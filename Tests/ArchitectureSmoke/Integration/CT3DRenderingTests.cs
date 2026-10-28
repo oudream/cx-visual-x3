@@ -18,6 +18,46 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 byte[] gradients = config.TransferFunctions.BuildGradientOpacityTexture();
                 Check(preset.Length == 1024 && gradients.Length == 256, "RGBA8与梯度R8纹理长度");
                 Check(preset[0] == 0 && preset[1] == 0 && preset[2] == 0, "初始黑色背景");
+                CT3DRenderingParameterValues input=config.CaptureParameters();
+                Check(input.Preset==config.Preset &&
+                    input.VolumeOpacity==config.VolumeOpacity &&
+                    input.SamplingStepScale==config.Sampling.StepScale,
+                    "CT3D专业参数快照必须直接读取唯一配置");
+                Check(!config.ApplyParameters(input),"重复相同参数不得使GPU LUT失效");
+                input.VolumeOpacity=.45f;
+                input.SamplingStepScale=.7f;
+                input.Ambient=.12f;
+                input.ShowSlices=false;
+                Check(!config.ApplyParameters(input) &&
+                    Math.Abs(config.VolumeOpacity-.45f)<.001f &&
+                    Math.Abs(config.Sampling.StepScale-.7f)<.001f &&
+                    Math.Abs(config.Material.Ambient-.12f)<.001f && !config.ShowSlices,
+                    "CT3D采样/光照/切面更改只能更新uniform");
+                input.UseColor=true;
+                Check(config.ApplyParameters(input) &&
+                    config.TransferFunctions.UseColor,
+                    "颜色曲线开关必须触发LUT失效且写入FVO唯一真源");
+                Check(!config.ApplyParameters(input),"幂等重复应用不得重复上传LUT");
+                input.Threshold=.31f;
+                Check(config.ApplyParameters(input) &&
+                    Math.Abs(config.TransferFunctions.Threshold-.31f)<.001f,
+                    "阈值变更应更新唯一FVO阈值并触发LUT失效");
+                CT3DRenderingParameterValues invalid=config.CaptureParameters();
+                invalid.VolumeOpacity=.9f;
+                invalid.Specular=float.NaN;
+                bool rejected=false;
+                try {config.ApplyParameters(invalid);}
+                catch(ArgumentOutOfRangeException){rejected=true;}
+                Check(rejected && Math.Abs(config.VolumeOpacity-.45f)<.001f &&
+                    Math.Abs(config.Material.Specular-input.Specular)<.001f,
+                    "NaN非法参数不得部分污染CT3D设置");
+                invalid=config.CaptureParameters();
+                invalid.Preset=(CT3DRenderingPresetKind)1234;
+                rejected=false;
+                try {config.ApplyParameters(invalid);}
+                catch(ArgumentOutOfRangeException){rejected=true;}
+                Check(rejected && config.Preset==CT3DRenderingPresetKind.SlicerLikeGrayscale,
+                    "非法枚举预设必须失败关闭");
                 config.TransferFunctions.UseThreshold = true;
                 config.TransferFunctions.Threshold = 0.3f;
                 config.TransferFunctions.UpperThreshold = 0.9f;
