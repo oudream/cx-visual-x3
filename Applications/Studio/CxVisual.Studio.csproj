@@ -26,6 +26,7 @@
     <Compile Include="StudioShell.ModuleCenter.cs"/>
     <Compile Include="StudioShell.ResourceDocuments.cs"/>
     <Compile Include="StudioShell.Variables.cs"/>
+    <Compile Include="StudioShell.RuntimeData.cs"/>
     <Compile Include="StudioShell.ResourceEditors.cs"/>
     <Compile Include="StudioShell.GraphicsTree.cs"/>
     <Compile Include="StudioShellSelfTests.cs"/>
