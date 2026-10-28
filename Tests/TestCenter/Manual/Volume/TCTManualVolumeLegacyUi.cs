@@ -70,6 +70,7 @@ namespace CxVisual.TestCenter.UI
             actions.Children.Add(_sphereThresholdText);
             AddButton(actions,"离散球体分析","TCT.Volume.AnalyzeSphere",StartSurfaceSphereFromUi);
             AddButton(actions,"生成三角Mesh","TCT.Volume.ExtractMesh",StartVoxelMeshFromUi);
+            AddButton(actions,"+Z端面拟合示例","TCT.Volume.FitTopPlane",StartMeshPlaneTopZFromUi);
             AddButton(actions,"相机复位","TCT.Volume.ResetCamera",Reset3DCamera);
             AddButton(actions,"演示体","TCT.Volume.Demo",LoadDemo);
             actions.Children.Add(new TextBlock { Text="窗位",VerticalAlignment=VerticalAlignment.Center,
