@@ -66,6 +66,13 @@ namespace CxVisual.Tests.ArchitectureSmoke
             using(var releaseFirst=new ManualResetEventSlim())
             {
                 FTRSubChannelAddress firstAddress=null,secondAddress=null;
+                var diagnosticAddresses=new System.Collections.Generic.List<FTRSubChannelAddress>();
+                object evidenceGate=new object();
+                server.FrameRecorded+=frame=>
+                {
+                    if(frame.Direction==FTRFrameDirection.Rx)
+                        lock(evidenceGate)diagnosticAddresses.Add(frame.Address);
+                };
                 Exception callbackError=null;
                 bool secondBudgetRejected=false;
                 byte[] firstPayload=Enumerable.Repeat((byte)41,80).ToArray();
@@ -132,6 +139,10 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         !firstAddress.Equals(secondAddress) &&
                         firstAddress.Generation>=1 && secondAddress.Generation>=1,
                         "HTTP请求必须携带唯一子客户端请求ID及Generation");
+                    lock(evidenceGate)
+                        Check(diagnosticAddresses.Any(addr=>addr.Equals(firstAddress)) &&
+                            diagnosticAddresses.Any(addr=>addr.Equals(secondAddress)),
+                            "正式诊断Rx帧必须保留各HTTP请求的SubChannelId及Generation");
                     Check(SpinWait.SpinUntil(()=>server.Diagnostics.BufferedPayloadBytes==0,5000) &&
                         server.Diagnostics.RejectedPayloadBuffers>=1 &&
                         server.Diagnostics.PeakBufferedPayloadBytes<=140 &&
