@@ -825,6 +825,27 @@ namespace CxVisual.TestCenter.UI
                     frame.ViewState.Scene3D.SetVisibility(selectedSurface,true);
                     Check(frame.SurfaceDisplayedPointCount>100,
                         "恢复显示不能从R8预览重新生成计量Surface");
+                    // 实际三角面（不是点云伪装）：CT3D UInt16原值网格→FGE拓扑→MPW双渲染。
+                    CT3DVoxelBoundaryMeshResult meshResult=frame.AnalyzeCurrentVolumeMesh(
+                        1000f,10000);
+                    Check(meshResult.Mesh.TriangleCount>100 &&
+                          frame.MeshDisplayedTriangleCount==meshResult.Mesh.TriangleCount &&
+                          frame.ViewState.Scene3D.Count==3 &&
+                          frame.ViewState.Scene3D.SelectedId.HasValue,
+                        "真正FGE三角Mesh须进入WPF MeshGeometry3D和MVI会话");
+                    if(frame.IsGpuVolumeRendering)
+                        Check(frame.GpuControlForHardwareTest.SurfaceMeshTriangleCount==
+                              meshResult.Mesh.TriangleCount,
+                            "真实GPU必须上传三角面VBO，不能用Surface点冒充Mesh");
+                    Guid meshId=frame.ViewState.Scene3D.SelectedId.Value;
+                    frame.ViewState.Scene3D.SetVisibility(meshId,false);
+                    Check(frame.MeshDisplayedTriangleCount==0 &&
+                        (!frame.IsGpuVolumeRendering ||
+                         frame.GpuControlForHardwareTest.SurfaceMeshTriangleCount==0),
+                        "MVI Mesh隐藏应真实清除WPF/GL两种面片");
+                    frame.ViewState.Scene3D.SetVisibility(meshId,true);
+                    Check(frame.MeshDisplayedTriangleCount==meshResult.Mesh.TriangleCount,
+                        "MVI显示恢复应使用已计算的专业Mesh，不重新读取8位预览");
                     int surfacePointsBeforeSlice=frame.SurfaceDisplayedPointCount;
                     frame.MoveSlices(5,8,9);
                     Check(frame.SurfaceDisplayedPointCount==surfacePointsBeforeSlice &&
@@ -836,6 +857,8 @@ namespace CxVisual.TestCenter.UI
                     if(sphereVolume!=null)sphereVolume.Dispose();
                     frame.LoadDemo();
                 }
+                Check(frame.MeshDisplayedTriangleCount==0 && frame.LastVoxelMesh==null,
+                    "切换Volume后必须释放三角Mesh显示层与专业结果引用");
                 Check(frame.SurfaceDisplayedPointCount==0 &&
                       frame.LastSphereFit==null && frame.ViewState.Scene3D.Count==1,
                     "切换Volume必须移除旧Surface GPU/WPF顶点及专业结果引用");
