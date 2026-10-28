@@ -208,3 +208,19 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 | UI-VIS-08 | 旧本轮CI failures | #40663246695有Vision CS0136；#40665129173有FTR CS0103。不能写作P3测试通过或同一个Owner失败。 | 失败根因日志已查，待对应Owners及新CI确认 |
 
 **边界**：`TestCenter`仍是人工/自动化专业测试工作区；正式Studio可视面板、本次SourceId的硬件稳定身份、持久ArtifactRef、可恢复历史Run、几何配准、工业SDK/HIL/AI均不在上述测试通过范围内。
+
+
+## 15. P3参数编辑、MVI槽生命周期与孔洞测量专项反证（2026-10-28）
+
+**对应源码固定SHA**：[becc050](https://github.com/oudream/cx-visual-x3/commit/becc0505850493a27adf302bc37f3d64fe4ffeaf)、[a287f45](https://github.com/oudream/cx-visual-x3/commit/a287f45d2cda4a6004d3e9c9ff8250361c4333f1)、[3b15550](https://github.com/oudream/cx-visual-x3/commit/3b15550baacc72db8b06cd8678982eae9d23c497)。本节更新UI-VIS-05/06/07的**可执行源码覆盖**，不把此前“待补测试”按文字改成已执行通过。
+
+| 用例ID / 关联能力 | 真实行为与要求 | 反向判据 | 状态 |
+|---|---|---|---|
+| UI-VIS-09 / V2D-16,21 | 已有7px CPU Run后把Gray16阈值改为70000，MVI应回原图、Result置空、专业Run/结果列表失效，Original引用与像素保持 | 无效输入不得启动或重用原Run；源图不变 | 自动WPF用例已编码；待CI |
+| UI-VIS-10 / V2D-12,16,21 | 同原图阈值10→11，真实再次点击CPU执行，RunId必须变化、Region由7px变6px、原图Gray16的像素10不变 | 不得复用旧Image/Mask或旧RunId | 自动WPF用例已编码；待CI |
+| UI-VIS-11 / V2D-20,21,26 | 新Run在途时修改阈值至12，CTS取消并清Result；Dispatcher允许晚到回调后仍无旧Evidence/结果项 | 旧异步结果不得覆盖本次当前图 | 自动WPF用例已编码；待CI及更强压力测试 |
+| UI-VIS-12 / V2D-08,12,14 | 3×3真实MRK CPU环形Mask有8px命中和一个孔洞；FIM轮廓外环9px²、孔洞−1px²；FIM非等距0.2×0.4测量合计0.64mm² | 不得把带孔洞区域按外框9px²报告或修改原图/结果Mask | 自动WPF用例已编码；待CI |
+| MVI-CLR-01 / V2D-05,21 | MVIImageSession.ClearResult首次清理返回true、代次+1、Observer通知一次、激活原图且保留Original | 再次调用必须返回false且不再改变代次/通知；在Original激活时同样不得清源图 | ArchitectureSmoke已编码；待CI |
+| CI-VIS-09 / V2D-26 | [Imaging #40672752671](https://github.com/oudream/cx-visual-x3/actions/runs/40672752671)与[TestCenter #40672752691](https://github.com/oudream/cx-visual-x3/actions/runs/40672752691)匹配提交3b15550 | 无完整成功日志则不可登记G3/G4或G5 | 初次登记queued，G2源码 |
+
+**特别说明**：现有面积测量按图像格点与各向异性像素间距计算，未引入畸变标定或几何配准，不能视为完整工业计量G6。WPF自动点击可用于G4/G5部分自动证据；G5人工实际体验、UIA可访问性、现场硬件和长时性能仍需单独记录。

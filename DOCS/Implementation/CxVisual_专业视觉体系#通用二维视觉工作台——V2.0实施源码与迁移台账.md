@@ -220,3 +220,23 @@ P0—P5不是六套执行机制，也不是只写计划后停止；每阶段应�
 **跨模块CI阻塞信息**：早期P2相关[Imaging #40663246695](https://github.com/oudream/cx-visual-x3/actions/runs/40663246695)为failure：`Professional/Vision/CxVisionDataFlow.cs`曾有CS0136局部变量同名错误；当前master已将lambda参数改为`imagePixels`，需以修复后的固定SHA实际CI验证。后继[Imaging #40665129173](https://github.com/oudream/cx-visual-x3/actions/runs/40665129173)因并行`Foundation.Transport`的`ConfigureSendAdmission`缺失（CS0103）失败，不属于此轮Vision Owner，此文件不代替其Owner跨模块修复。以上两种错误和CI状态不能混为一谈。
 
 **下一阶段仍未完成**：工业FrameRef/Artifact持久化、正式Studio端图像算法实验UI、RunItem持久审计/人工ReviewRecord、真正设备HIL、AI推理及工业性能长时验证。现阶段测试页已可操作，但不能称通用二维视觉工作台全部260项能力已完成。
+
+
+## 16. P3 继续实装：参数代次失效、结果槽定向清理与带孔洞FIM测量（2026-10-28）
+
+**真实代码提交（均已进入master）**：
+
+- [becc0505850493a27adf302bc37f3d64fe4ffeaf](https://github.com/oudream/cx-visual-x3/commit/becc0505850493a27adf302bc37f3d64fe4ffeaf)：CPU阈值/最小面积变动即取消旧MRK Run、清除旧专业证据与本工作台拥有的MVI Result槽；新Run启动前同样清理旧结果。新增MVIImageSession.ClearResult()，保留原图、ROI/标注与其它Owner结果，不建立新Viewer/缓存。
+- [a287f45d2cda4a6004d3e9c9ff8250361c4333f1](https://github.com/oudream/cx-visual-x3/commit/a287f45d2cda4a6004d3e9c9ff8250361c4333f1)：现有ArchitectureSmoke MVIImageSessionTests补充ClearResult首次清理、重复幂等、Observer仅一次、SourceVersion递增及原图激活两种状态；已接入原--imaging与默认测试入口。
+- [3b15550baacc72db8b06cd8678982eae9d23c497](https://github.com/oudream/cx-visual-x3/commit/3b15550baacc72db8b06cd8678982eae9d23c497)：轮廓像素/毫米面积调用既有FIMImageMeasurement.GetPolygonAreaPixels/GetPolygonAreaSquareMillimeters，保留FIMImageMaskContours.SignedArea判别外环与孔洞；TestCenter真实WPF点击对3×3 Gray16环形图执行MRK，验证Mask中心孔洞、两个MVI多边形、9−1=8px²、非等距Spacing 0.2×0.4下0.64mm²，并核对原图与结果槽不被改写。
+
+| 修改归属与真实文件 | 正向与反向合同 | 当前证据 |
+|---|---|---|
+| MVI：`Mechanism/Visual/Imaging/MVIImageSession.cs` | ClearResult有结果时版本+1/单次Changed/回原图；无结果时幂等不发事件；不会清原图或既有Overlay | 源码G2，Windows G3/G4待对应CI |
+| TestCenter：`Tests/TestCenter/Manual/Imaging/TCTManualImageViewerFrame.cs` | 监听阈值与最小面积编辑，取消旧任务/清列表/清本Owner的Result；其它结果槽不被误清；重跑仅接受当前Request、SourceId、SourceVersion | 源码G2，实际WPF自动测试待执行 |
+| TestCenter：`Tests/TestCenter/Manual/Imaging/TCTImageViewerSmoke.cs` | 真实按钮与列表；Gray16阈值70000拒绝，阈值10→11的Region面积7→6和新RunId；参数12取消在途Run，旧结果不得晚到；环形Mask带孔洞测量回归 | 测试代码已纳入，不能以“有断言”冒充已执行 |
+| ArchitectureSmoke：`Tests/ArchitectureSmoke/Integration/MVIImageSessionTests.cs` | 无界面MVI幂等、代次、观察者和原图保护回归 | 需实际Windows结果 |
+
+**固定工作流追踪**：首次参数清理源码 [Imaging #40672434612](https://github.com/oudream/cx-visual-x3/actions/runs/40672434612)、[TestCenter #40672434709](https://github.com/oudream/cx-visual-x3/actions/runs/40672434709)；加入MVI无头断言后 [Imaging #40672538011](https://github.com/oudream/cx-visual-x3/actions/runs/40672538011)；含孔洞测量最新代码 [Imaging #40672752671](https://github.com/oudream/cx-visual-x3/actions/runs/40672752671)、[TestCenter #40672752691](https://github.com/oudream/cx-visual-x3/actions/runs/40672752691)。**首次登记时以上均queued，尚无本SHA的自动测试成功证据。** 较早 [Imaging #40671851110](https://github.com/oudream/cx-visual-x3/actions/runs/40671851110) 实际success但其SHA早于上述改动，不得用于宣称新P3已通过。
+
+**当前限制**：这里只完善TestCenter CPU试验的Result槽和测量状态，不等于持久Artifact/FrameRef/ReviewRecord、正式Studio全面工作区、孔洞复合ROI工程持久化、工业现场HIL或全类260项完成；现场操作与性能G5/G6继续独立验收。
