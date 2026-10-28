@@ -131,12 +131,46 @@ namespace CxVisual.Mechanism.Runtime.Execution
         public MRKExecutionPlan FinallyBody{get;private set;}
     }
 
+    /// <summary>
+    /// 明确声明动态循环每轮要保留哪些节点的已提交输出，未声明节点在本轮
+    /// 所有任务与数据帧结束后回收。默认KeepAll以保留CollectLoopOutputs兼容性。
+    /// 仅管理MDS托管帧，不推断GPU/SDK或未声明的外部借用。
+    /// </summary>
+    public sealed class MRKLoopDataRetention
+    {
+        private readonly HashSet<string> _keep;
+        private MRKLoopDataRetention(bool keepAll, IEnumerable<string> names)
+        {
+            KeepAllOutputs = keepAll;
+            _keep = new HashSet<string>(StringComparer.Ordinal);
+            if (names != null)
+                foreach (string name in names)
+                {
+                    if (string.IsNullOrWhiteSpace(name))
+                        throw new ArgumentException("loop.retention.invalid_step_id", "names");
+                    _keep.Add(name);
+                }
+        }
+        public static MRKLoopDataRetention KeepAll
+        { get { return new MRKLoopDataRetention(true, null); } }
+        public static MRKLoopDataRetention ReleaseAfterIteration
+        { get { return new MRKLoopDataRetention(false, null); } }
+        public static MRKLoopDataRetention KeepForJoin(params string[] stepIds)
+        { return new MRKLoopDataRetention(false, stepIds); }
+        public bool KeepAllOutputs { get; private set; }
+        public IList<string> RetainedStepIds
+        { get { return Array.AsReadOnly(_keep.OrderBy(x => x, StringComparer.Ordinal).ToArray()); } }
+        public bool Retains(string stepId)
+        { return KeepAllOutputs || _keep.Contains(stepId); }
+    }
+
     public sealed class MRKLoopRegion
     {
         public MRKLoopRegion(MRKExecutionPlan body,int maxIterations,
             Func<MRKExecutionContext,int,bool> condition=null,
             string collectionInput=null,bool executeFirst=false,
-            int maxParallelIterations=1)
+            int maxParallelIterations=1,
+            MRKLoopDataRetention dataRetention=null)
         {
             if(body==null||body.Steps.Count==0||maxIterations<1)
                 throw new ArgumentException("loop.invalid_body_or_limit");
@@ -147,10 +181,30 @@ namespace CxVisual.Mechanism.Runtime.Execution
             if(maxParallelIterations>1&&(string.IsNullOrWhiteSpace(collectionInput)||
                 condition!=null||executeFirst))
                 throw new ArgumentException("loop.parallel_requires_pure_foreach");
+            DataRetention = dataRetention ?? MRKLoopDataRetention.KeepAll;
+            if (!DataRetention.KeepAllOutputs)
+            {
+                if (body.Regions.Count != 0 || body.Steps.Any(x =>
+                    x.LoopRegion != null || x.TryRegion != null))
+                    throw new ArgumentException("loop.retention.nested_control_must_keep_history",
+                        "dataRetention");
+                foreach (string retained in DataRetention.RetainedStepIds)
+                    if (!body.Steps.Any(x => x.Id == retained))
+                        throw new ArgumentException("loop.retention.unknown_step:" + retained,
+                            "dataRetention");
+                foreach (string source in body.DataExports.Values)
+                {
+                    int dot = source.LastIndexOf('.');
+                    if (!DataRetention.Retains(source.Substring(0, dot)))
+                        throw new ArgumentException("loop.retention.export_must_be_kept:" + source,
+                            "dataRetention");
+                }
+            }
             MaxParallelIterations=maxParallelIterations;
             Body=body;MaxIterations=maxIterations;Condition=condition;
             CollectionInput=collectionInput;ExecuteFirst=executeFirst;
         }
+        public MRKLoopDataRetention DataRetention { get; private set; }
         public MRKExecutionPlan Body{get;private set;}
         public int MaxIterations{get;private set;}
         public int MaxParallelIterations{get;private set;}
