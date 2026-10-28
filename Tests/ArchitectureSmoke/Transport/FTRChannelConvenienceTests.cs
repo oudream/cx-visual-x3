@@ -160,6 +160,14 @@ namespace CxVisual.Tests.ArchitectureSmoke
             {
                 int first=0,all=0;
                 var peer=server.RegisterPeer("client-17","loopback").Address;
+                var parentOnly=new FTRSubChannelAddress(server.Id);
+                bool subscribeRejected=false,bufferSubscribeRejected=false;
+                try { using(server.SubscribeFrom(parentOnly,ctx=>{})) {} }
+                catch(ArgumentException) { subscribeRejected=true; }
+                try { using(server.SubscribeBuffersFrom(parentOnly,buffer=>{})) {} }
+                catch(ArgumentException) { bufferSubscribeRejected=true; }
+                Check(subscribeRejected && bufferSubscribeRejected,
+                    "MultiPeer定向订阅必须拒绝缺少SubChannelId/Generation的无效目标");
                 IDisposable filtered=server.SubscribeFrom(peer,ctx=>first++);
                 IDisposable observation=server.SubscribeReceived(ctx=>all++);
                 try
