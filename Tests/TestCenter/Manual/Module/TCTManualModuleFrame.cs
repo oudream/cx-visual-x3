@@ -29,10 +29,9 @@ namespace CxVisual.TestCenter.UI
             Width = 190, Text = "Module01", Padding = new Thickness(6, 3, 6, 3),
             Margin = new Thickness(6, 0, 0, 0)
         };
-        private readonly ContentControl _editorHost = new ContentControl();
-        private readonly TabControl _pages = new TabControl {
-            MinHeight = 44, Margin = new Thickness(0, 4, 0, 3),
-            BorderThickness = new Thickness(0) };
+        private readonly MPWModuleCenterControl _center=new MPWModuleCenterControl();
+        private ContentControl _editorHost {get{return _center.EditorHost;}}
+        private TabControl _pages {get{return _center.Pages;}}
         private Action<string[], string[]> _project;
         private Func<int> _visibleSchemaEditors;
         private bool _buildingPages;
@@ -78,6 +77,7 @@ namespace CxVisual.TestCenter.UI
                     _pages.Items.Add(tab);
                 }
                 _pages.SelectedIndex=0;
+                _center.SetSelectedKind(kind);
             }
             finally{_buildingPages=false;}
             ProjectSelectedPage();
@@ -127,6 +127,7 @@ namespace CxVisual.TestCenter.UI
             if (!Enum.IsDefined(typeof(MFMModuleKind), kind))
                 throw new ArgumentOutOfRangeException("kind");
             _moduleKind.SelectedItem = kind;
+            _center.SetSelectedKind(kind);
             UpdateStatus("选择 " + kind + "，请创建/打开相应正式配置；已有草稿不会自动丢弃。");
         }
         public void SetModuleId(string id)
@@ -174,39 +175,27 @@ namespace CxVisual.TestCenter.UI
                     ProjectSelectedPage();
             };
 
-            // 模块配置页面使用公共MPW视觉令牌，随TestCenter浅/深主题同步变化。
-            _pages.SetResourceReference(Control.BackgroundProperty, "MPWSurfaceBrush");
-            _status.SetResourceReference(TextBlock.ForegroundProperty, "MPWMutedBrush");
-            DockPanel rootPanel = new DockPanel { Margin = new Thickness(9, 6, 9, 7) };
-            rootPanel.SetResourceReference(Panel.BackgroundProperty, "MPWBackgroundBrush");
-            StackPanel header = new StackPanel();
-            TextBlock title = new TextBlock {
-                Text = "模块配置 / Module Workspace", FontSize = 20,
-                FontWeight = FontWeights.SemiBold
+            _center.ModuleKindRequested+=kind=>{
+                if(IsBusy||HasUnsavedDraft){
+                    UpdateStatus("模块忙或草稿未保存，不能切换类型。");
+                    return;
+                }
+                SelectModuleKind(kind);
             };
-            title.SetResourceReference(TextBlock.ForegroundProperty, "MPWForegroundBrush");
-            header.Children.Add(title);
-            header.ToolTip = "五类模块复用正式 FCM Schema、MPW 编辑器及 MHS Saved/Effective；右侧统一管理配置操作。";
-            WrapPanel picker = new WrapPanel { Orientation = Orientation.Horizontal };
-            picker.Children.Add(new TextBlock { Text = "模块类型", VerticalAlignment = VerticalAlignment.Center });
+            _pages.SetResourceReference(Control.BackgroundProperty,"MPWSurfaceBrush");
+            _status.SetResourceReference(TextBlock.ForegroundProperty,"MPWMutedBrush");
+            var header=new StackPanel();
+            var picker=new WrapPanel {Orientation=Orientation.Horizontal};
+            picker.Children.Add(new TextBlock {Text="模块类型",VerticalAlignment=VerticalAlignment.Center});
             picker.Children.Add(_moduleKind);
-            picker.Children.Add(new TextBlock { Text = "模块 Id", VerticalAlignment = VerticalAlignment.Center });
+            picker.Children.Add(new TextBlock {Text="模块 Id",VerticalAlignment=VerticalAlignment.Center});
             picker.Children.Add(_moduleId);
-            header.Children.Add(picker);
-            header.Children.Add(_status);
-
-            DockPanel.SetDock(header, Dock.Top);
-            rootPanel.Children.Add(header);
-            DockPanel.SetDock(_pages, Dock.Top);
-            rootPanel.Children.Add(_pages);
-            TextBlock emptyNotice = new TextBlock {
-                Text = "右侧操作中心 → 创建 / 打开模块配置",
-                Margin = new Thickness(14, 22, 14, 0)
-            };
-            emptyNotice.SetResourceReference(TextBlock.ForegroundProperty, "MPWMutedBrush");
-            _editorHost.Content = emptyNotice;
-            rootPanel.Children.Add(_editorHost);
-            Content = rootPanel;
+            header.Children.Add(picker);header.Children.Add(_status);
+            _center.HeaderContent=header;
+            Content=_center;
+            _editorHost.Content=new TextBlock{
+                Text="右侧操作中心 → 创建 / 打开模块配置",
+                Margin=new Thickness(14,22,14,0)};
             RebuildPages(MFMModuleKind.Connector);
             System.Windows.Automation.AutomationProperties.SetAutomationId(_pages,
                 "TCT.Module.Pages");

@@ -93,7 +93,7 @@ namespace CxVisual.Studio
             new List<StudioRibbonVisualGroup>();
         private string _activeStudioDocumentId = "doc.home";
         private static readonly string[] KnownDocuments =
-            { "doc.home", "doc.visual", "doc.flow", "doc.config", "doc.variables" };
+            { "doc.home", "doc.visual", "doc.flow", "doc.config", "doc.variables", "doc.modules" };
         private static readonly string[] KnownTools =
             { "tool.resources", "tool.toolbox", "tool.graphics", "tool.properties", "tool.output" };
 
@@ -211,6 +211,7 @@ namespace CxVisual.Studio
             if (id == "doc.visual") return "绘图";
             if (id == "doc.flow") return "节点";
             if (id == "doc.config") return "配置";
+            if (id == "doc.modules") return "资源";
             return "主页";
         }
 
@@ -280,9 +281,10 @@ namespace CxVisual.Studio
                 if (pane == null) throw new InvalidOperationException("找不到中央文档面板。");
                 object view;
                 // MHS WPF控件在Unloaded时释放草稿/订阅，重新打开不能复用已释放的View。
-                if (id=="doc.config" || id=="doc.variables" || !_studioViews.TryGetValue(id, out view))
+                if (id=="doc.config" || id=="doc.variables" || id=="doc.modules" || !_studioViews.TryGetValue(id, out view))
                 {
                     view = id=="doc.variables" ? CreateStudioVariableDocument() :
+                        id=="doc.modules" ? CreateStudioModuleCenterDocument() :
                         CreateConfigurationDocument();
                     _studioViews[id] = view;
                 }
@@ -290,6 +292,7 @@ namespace CxVisual.Studio
                     CanClose = true, CanFloat = true, Content = view };
                 if(id=="doc.variables")
                     doc.Closed+=(sender,args)=>ReleaseStudioVariableDocument();
+                if(id=="doc.modules") doc.Closed+=(sender,args)=>_studioViews.Remove("doc.modules");
                 if(id=="doc.config")
                     doc.Closing+=(sender,args)=>{
                         if(!_studioConfigForceDiscard && HasStudioUnsavedConfiguration())
@@ -356,6 +359,7 @@ namespace CxVisual.Studio
                 case "doc.flow": return "主流程编排 [设计]";
                 case "doc.config": return "资源配置";
                 case "doc.variables": return "运行变量 · Watch / Provider";
+                case "doc.modules": return "功能模块中心";
                 default: return id;
             }
         }
@@ -1071,6 +1075,7 @@ namespace CxVisual.Studio
             else if (group == "配置") AddRibbonButton("配置编辑", null, OnConfigDemo);
             else if (group == "视图")
             {
+                AddRibbonButton("功能模块中心",null,(s,e)=>OpenStudioDocument("doc.modules"));
                 AddRibbonButton("资源树", null, (s,e)=>ShowStudioTool("tool.resources"));
                 AddRibbonButton("属性", null, (s,e)=>ShowStudioTool("tool.properties"));
                 AddRibbonButton("图形结构", null, (s,e)=>ShowStudioTool("tool.graphics"));

@@ -84,6 +84,19 @@ namespace CxVisual.Studio
                         !window.GetStudioContentIds().Contains("doc.variables"),
                         "变量工作台关闭后应释放文档");
                 });
+                CheckStep("S1-03C Studio模块中心与TestCenter共享MPW组件", () =>
+                {
+                    window.OpenStudioDocument("doc.modules");
+                    LayoutDocument opened=window.StudioDock.Layout.ActiveContent as LayoutDocument;
+                    MPWModuleCenterControl center=opened==null?null:opened.Content as MPWModuleCenterControl;
+                    Assert(center!=null&&center.VisibleCapabilityCount>0,
+                        "Studio共享中心未加载真正MOC演示目录");
+                    window.OpenStudioDocument("doc.modules");
+                    Assert(window.GetStudioContentIds().Count(id=>id=="doc.modules")==1,
+                        "同一中心重复打开产生两个文档");
+                    Assert(window.TryCloseStudioDocument("doc.modules"),"模块中心关闭失败");
+                    Assert(window.StudioEngineeringRevision==revision,"只读中心不应修改MEM");
+                });
                 CheckStep("S1-04 共用MPW主题及Dock视觉不修改工程", () =>
                 {
                     Assert(window.StudioDock.AnchorableHeaderTemplate != null &&

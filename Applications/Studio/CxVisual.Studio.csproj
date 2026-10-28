@@ -23,6 +23,7 @@
     <Compile Include="MOLRuntimeOverlay.cs"/>
     <Compile Include="StudioShell.cs"/>
     <Compile Include="StudioShell.ResourceTree.cs"/>
+    <Compile Include="StudioShell.ModuleCenter.cs"/>
     <Compile Include="StudioShell.ResourceDocuments.cs"/>
     <Compile Include="StudioShell.Variables.cs"/>
     <Compile Include="StudioShell.ResourceEditors.cs"/>
