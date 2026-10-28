@@ -847,6 +847,15 @@ namespace CxVisual.TestCenter.UI
                     frame.ViewState.Scene3D.SetVisibility(meshId,true);
                     Check(frame.MeshDisplayedTriangleCount==meshResult.Mesh.TriangleCount,
                         "MVI显示恢复应使用已计算的专业Mesh，不重新读取8位预览");
+                    CT3DPlaneFitResult fittedTop=frame.AnalyzeCurrentMeshPlaneTopZ();
+                    Check(fittedTop.SampleCount>=4 &&
+                          fittedTop.RmsResidualMm<1e-7 &&
+                          Math.Abs(fittedTop.Normal.Z-1)<1e-7 &&
+                          fittedTop.SourceMeshResultId==meshResult.ResultId &&
+                          frame.LastMeshPlaneFit!=null &&
+                          frame.ViewState.Scene3D.Count==4 &&
+                          frame.ViewState.Scene3D.SelectedId.HasValue,
+                        "真实UInt16球的+Z体素端面须经过CT3D/FNU平面拟合并登记MVI Measurement引用");
                     int surfacePointsBeforeSlice=frame.SurfaceDisplayedPointCount;
                     frame.MoveSlices(5,8,9);
                     Check(frame.SurfaceDisplayedPointCount==surfacePointsBeforeSlice &&
@@ -858,6 +867,8 @@ namespace CxVisual.TestCenter.UI
                     if(sphereVolume!=null)sphereVolume.Dispose();
                     frame.LoadDemo();
                 }
+                Check(frame.LastMeshPlaneFit==null,
+                    "切换Volume必须撤销过期平面Measurement专业结果");
                 Check(frame.MeshDisplayedTriangleCount==0 && frame.LastVoxelMesh==null,
                     "切换Volume后必须释放三角Mesh显示层与专业结果引用");
                 Check(frame.SurfaceDisplayedPointCount==0 &&
