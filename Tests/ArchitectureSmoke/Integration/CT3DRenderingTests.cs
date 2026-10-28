@@ -58,6 +58,39 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 catch(ArgumentOutOfRangeException){rejected=true;}
                 Check(rejected && config.Preset==CT3DRenderingPresetKind.SlicerLikeGrayscale,
                     "非法枚举预设必须失败关闭");
+                // V2.0首包：强类型变化分类、修订号、幂等和非法输入原子拒绝。
+                long previousRevision=config.ParameterRevision;
+                CT3DRenderingParameterValues same=config.CaptureParameters();
+                CT3DRenderingChangeSet noChange=config.ApplyParametersWithChangeSet(same);
+                Check(noChange.IsEmpty && noChange.Revision==previousRevision &&
+                    !noChange.RequiresTransferLut && !noChange.RequiresUniformUpdate,
+                    "相同参数必须零失效、版本保持不变");
+                same.ShowVolumeBounds=!same.ShowVolumeBounds;
+                CT3DRenderingChangeSet sceneChange=config.ApplyParametersWithChangeSet(same);
+                Check(sceneChange.Revision==previousRevision+1 && sceneChange.RequiresSceneUpdate &&
+                    !sceneChange.RequiresTransferLut && !sceneChange.RequiresUniformUpdate,
+                    "仅场景选项变化不得误判LUT/Uniform");
+                same.Ambient+=.01f;
+                same.Threshold=.25f;
+                CT3DRenderingChangeSet combined=config.ApplyParametersWithChangeSet(same);
+                Check(combined.Revision==sceneChange.Revision+1 &&
+                    combined.RequiresTransferLut && combined.RequiresUniformUpdate &&
+                    !combined.RequiresSceneUpdate,
+                    "不同分类同时变化必须可组合标记");
+                CT3DRenderingParameterValues bad=config.CaptureParameters();
+                bad.ShowVolume=!bad.ShowVolume;
+                bad.Specular=float.PositiveInfinity;
+                long safeRevision=config.ParameterRevision;
+                bool rejectedBatch=false;
+                try { config.ApplyParametersWithChangeSet(bad); }
+                catch(ArgumentOutOfRangeException) { rejectedBatch=true; }
+                Check(rejectedBatch && config.ParameterRevision==safeRevision &&
+                    config.ShowVolume==same.ShowVolume,
+                    "非法批量变更必须整体拒绝且不提升版本");
+                CT3DRenderingChangeSet external=config.NotifyTransferFunctionsChanged();
+                Check(external.Revision==safeRevision+1 && external.RequiresTransferLut &&
+                    !external.RequiresUniformUpdate && !external.RequiresSceneUpdate,
+                    "外部FVO曲线变更需要显式产生LUT版本");
                 config.TransferFunctions.UseThreshold = true;
                 config.TransferFunctions.Threshold = 0.3f;
                 config.TransferFunctions.UpperThreshold = 0.9f;

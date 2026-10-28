@@ -52,19 +52,56 @@ namespace CxVisual.Professional.CT3D
         /// 返回是否需要重新生成传递函数LUT；材质/采样/显隐只需更新uniform。
         /// 外部FVO控制点直接变化时，宿主另传曲线Dirty事件即可。
         /// </summary>
+        // 只为通过ApplyParametersWithChangeSet/NotifyTransferFunctionsChanged提交的变化计数。
+        // 现有公开可变子对象暂时保留兼容；外部直接写入必须显式调用Notify方法。
+        private long _parameterRevision;
+        public long ParameterRevision { get { return _parameterRevision; } }
+
+        /// <summary>兼容旧调用：只返回本次是否需要重新生成传递函数LUT。</summary>
         public bool ApplyParameters(CT3DRenderingParameterValues values)
+        {
+            return ApplyParametersWithChangeSet(values).RequiresTransferLut;
+        }
+
+        /// <summary>
+        /// 先整体校验，再按LUT、Uniform和场景显示分类；无变化不递增版本。
+        /// 本方法只维护CT3D专业参数版本，不触碰WPF/GL线程或实际纹理。
+        /// </summary>
+        public CT3DRenderingChangeSet ApplyParametersWithChangeSet(CT3DRenderingParameterValues values)
         {
             if(values==null)throw new ArgumentNullException("values");
             values.Validate();
-            bool lutChanged =
-                Preset!=values.Preset ||
-                Intensity.AutoRange!=values.AutoRange ||
-                TransferFunctions.UseColor!=values.UseColor ||
-                TransferFunctions.UseScalarOpacity!=values.UseScalarOpacity ||
-                TransferFunctions.UseGradientOpacity!=values.UseGradientOpacity ||
-                TransferFunctions.UseThreshold!=values.UseThreshold ||
-                TransferFunctions.Threshold!=values.Threshold;
 
+            CT3DRenderingChangeFlags flags=CT3DRenderingChangeFlags.None;
+            if(Preset!=values.Preset ||
+               Intensity.AutoRange!=values.AutoRange ||
+               TransferFunctions.UseColor!=values.UseColor ||
+               TransferFunctions.UseScalarOpacity!=values.UseScalarOpacity ||
+               TransferFunctions.UseGradientOpacity!=values.UseGradientOpacity ||
+               TransferFunctions.UseThreshold!=values.UseThreshold ||
+               TransferFunctions.Threshold!=values.Threshold)
+                flags|=CT3DRenderingChangeFlags.TransferLut;
+
+            if(VolumeOpacity!=values.VolumeOpacity ||
+               Sampling.StepScale!=values.SamplingStepScale ||
+               Sampling.EnableJitter!=values.SamplingJitter ||
+               Material.Ambient!=values.Ambient ||
+               Material.Diffuse!=values.Diffuse ||
+               Material.Specular!=values.Specular ||
+               Material.SpecularPower!=values.SpecularPower)
+                flags|=CT3DRenderingChangeFlags.Uniforms;
+
+            if(ShowVolume!=values.ShowVolume ||
+               ShowSlices!=values.ShowSlices ||
+               ShowSliceTexture!=values.ShowSliceTexture ||
+               ShowVolumeBounds!=values.ShowVolumeBounds ||
+               SliceOpacity!=values.SliceOpacity)
+                flags|=CT3DRenderingChangeFlags.Scene;
+
+            if(flags==CT3DRenderingChangeFlags.None)
+                return new CT3DRenderingChangeSet(_parameterRevision,flags);
+
+            long nextRevision=checked(_parameterRevision+1);
             Preset=values.Preset;
             VolumeOpacity=values.VolumeOpacity;
             Sampling.StepScale=values.SamplingStepScale;
@@ -84,7 +121,18 @@ namespace CxVisual.Professional.CT3D
             ShowSliceTexture=values.ShowSliceTexture;
             ShowVolumeBounds=values.ShowVolumeBounds;
             SliceOpacity=values.SliceOpacity;
-            return lutChanged;
+            _parameterRevision=nextRevision;
+            return new CT3DRenderingChangeSet(nextRevision,flags);
+        }
+
+        /// <summary>
+        /// 现有FVO曲线可在设置对象外部被编辑：外部操作完成后显式报告LUT失效。
+        /// 后续统一Session/通知链必须消费该结果，避免出现第二份曲线定义。
+        /// </summary>
+        public CT3DRenderingChangeSet NotifyTransferFunctionsChanged()
+        {
+            _parameterRevision=checked(_parameterRevision+1);
+            return new CT3DRenderingChangeSet(_parameterRevision,CT3DRenderingChangeFlags.TransferLut);
         }
 
         /// <summary>返回当前专业参数值快照，供纯数值测试与非WPF宿主使用。</summary>
@@ -126,6 +174,33 @@ namespace CxVisual.Professional.CT3D
                 x => CT3DRenderingPresets.EvaluateBaseOpacity(Preset, x, profile),
                 scale);
         }
+    }
+
+    /// <summary>渲染参数的分类失效标志；VolumeData、Camera和Slice由各自Owner单独声明失效。</summary>
+    [Flags]
+    public enum CT3DRenderingChangeFlags
+    {
+        None=0,
+        TransferLut=1,
+        Uniforms=2,
+        Scene=4
+    }
+
+    /// <summary>不可变参数变更通知：Revision只在相同CT3DRenderingSettings实例内有序。</summary>
+    public struct CT3DRenderingChangeSet
+    {
+        public CT3DRenderingChangeSet(long revision,CT3DRenderingChangeFlags flags)
+        {
+            Revision=revision;
+            Flags=flags;
+        }
+
+        public long Revision { get; private set; }
+        public CT3DRenderingChangeFlags Flags { get; private set; }
+        public bool IsEmpty { get { return Flags==CT3DRenderingChangeFlags.None; } }
+        public bool RequiresTransferLut { get { return (Flags&CT3DRenderingChangeFlags.TransferLut)!=0; } }
+        public bool RequiresUniformUpdate { get { return (Flags&CT3DRenderingChangeFlags.Uniforms)!=0; } }
+        public bool RequiresSceneUpdate { get { return (Flags&CT3DRenderingChangeFlags.Scene)!=0; } }
     }
 
     /// <summary>
