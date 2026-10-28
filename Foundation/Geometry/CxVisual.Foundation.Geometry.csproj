@@ -27,6 +27,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Primitives2D\FGEGeometry2D.cs"/>
+    <Compile Include="Meshes\FGETriangleMesh3D.cs"/>
     <Compile Include="Transforms\FGETransform2D.cs"/>
     <Compile Include="Operations\FGEGeometryAlgorithms.cs"/>
     <Compile Include="Paths\FGEPath2D.cs"/>
