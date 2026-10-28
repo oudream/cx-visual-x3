@@ -36,6 +36,8 @@ namespace CxVisual.Professional.Vision
         }
         // 专业Owner给Host提供不可变的软件能力+配置Revision标识；不能冒充模型/设备版本。
         public long ConfigurationRevision{get{return _configRevision;}}
+        /// <summary>Effective CPU input pixel depth, pinned at provider creation.</summary>
+        public CxVisionPixelDepth PixelDepth{get{return _depth;}}
         public string ReleaseVersion{get{return "vision.cpu.threshold.v1/config:"+
             _configRevision.ToString(CultureInfo.InvariantCulture);}}
         private readonly CxVisionThresholdPipeline _pipeline;
