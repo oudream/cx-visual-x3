@@ -508,7 +508,8 @@ namespace CxVisual.TestCenter.UI
             {
                 _gammaSlider.Value = Math.Max(_gammaSlider.Minimum,
                     Math.Min(_gammaSlider.Maximum,_viewer.DisplayState.Gamma));
-                _brightnessSlider.Value = _viewer.DisplayState.Brightness;
+                _brightnessSlider.Value = Math.Max(_brightnessSlider.Minimum,
+                    Math.Min(_brightnessSlider.Maximum,_viewer.DisplayState.Brightness*255));
                 _contrastSlider.Value = Math.Max(_contrastSlider.Minimum,
                     Math.Min(_contrastSlider.Maximum,_viewer.DisplayState.Contrast));
             }
