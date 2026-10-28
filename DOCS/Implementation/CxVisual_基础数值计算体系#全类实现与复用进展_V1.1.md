@@ -177,3 +177,11 @@ double conditionNumber = solved.ConditionNumber;
 | `418e766` | [CI #40641947228](https://github.com/oudream/cx-visual-x3/actions/runs/40641947228)：上述专项全通过；进一步增加1×2欠定宽矩阵岭正则化解析解 | 同一F17.PIPE_BULK失败，整体Workflow为failure |
 
 第三批Windows Runner单次观测：64×64的MatMulViewsInto(复用)约 **0.8617 ms/op、32 B/op**，MatMulViews(分配)约 **0.7984 ms/op、32992 B/op**；256×256 SumView游标约 **0.1901 ms/op**，逐点GetFlat参考约 **0.3716 ms/op**。仅为CI机观测，不能把跨运行差异直接当严格加速比，也未证明分配式矩阵乘法更慢。未触及其他Owner的F17源码，全平台回归仍需由Transport专项定位。
+
+## 十八、F13非连续View的广播加乘及结果复用（2026-10-28）
+
+- 新增 `FNUTensorMath.AddViews(a,b)`、`MultiplyViews(a,b)` 与 `AddViewsInto(a,b,output)`、`MultiplyViewsInto(a,b,output)`：输入为零拷贝 `FNUTensorView`，支持高维尾轴广播、非连续Slice/Transpose及逐元素加乘，不需要先复制视图数据。原Buffer版Add/Multiply/Into接口保持兼容。
+- Into版要求输出为完整广播Shape且不能是任一输入视图对应的底层Owner；校验全部在写入前完成。任何数值溢出都抛出OverflowException，已经写入的部分输出需由调用者作废。
+- 一个游标一次分配维度、步长与坐标数组；内层数据访问无按元素创建坐标数组、无除法/取模，直接使用原View底层物理偏移进行经边界校验的只读访问。支持零维长度、单例广播、不同Rank。
+- 测试：2D转置切片×1D广播、3D换轴切片×2D广播、参考逐点Get独立对照、输出复用、别名/非法Shape拒绝、空轴、异常溢出及原Buffer后续修改实时可见。
+- 本节仅说明新增代码与测试合同；同SHA Windows .NET48/专项/性能与默认回归需核对Actions，不可提前声称全量通过。

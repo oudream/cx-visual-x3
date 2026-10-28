@@ -218,6 +218,116 @@ namespace CxVisual.Foundation.Numerics
             n = b.Shape.DimensionAt(1);
         }
 
+        /// <summary>
+        /// Elementwise addition of read-only, potentially non-contiguous views,
+        /// using trailing-axis broadcasting. Returns an independent buffer.
+        /// </summary>
+        public static FNUTensorBuffer AddViews(FNUTensorView a, FNUTensorView b)
+        {
+            return BinaryViews(a, b, false);
+        }
+
+        /// <summary>Elementwise multiplication of strided views with broadcasting.</summary>
+        public static FNUTensorBuffer MultiplyViews(FNUTensorView a, FNUTensorView b)
+        {
+            return BinaryViews(a, b, true);
+        }
+
+        /// <summary>
+        /// Add strided views into caller-owned output. Rejects any alias of an
+        /// input backing buffer. Overflow may leave partially updated output.
+        /// </summary>
+        public static void AddViewsInto(FNUTensorView a, FNUTensorView b,
+            FNUTensorBuffer output)
+        {
+            BinaryViewsInto(a, b, output, false);
+        }
+
+        /// <summary>Multiply strided views into caller-owned output.</summary>
+        public static void MultiplyViewsInto(FNUTensorView a, FNUTensorView b,
+            FNUTensorBuffer output)
+        {
+            BinaryViewsInto(a, b, output, true);
+        }
+
+        private static FNUTensorBuffer BinaryViews(FNUTensorView a, FNUTensorView b, bool multiply)
+        {
+            int[] dimensions = BroadcastViewDimensions(a, b);
+            var output = new FNUTensorBuffer(new FNUTensorShape(dimensions));
+            BinaryViewsInto(a, b, output, multiply);
+            return output;
+        }
+
+        private static int[] BroadcastViewDimensions(FNUTensorView a, FNUTensorView b)
+        {
+            if (a == null) throw new ArgumentNullException("a");
+            if (b == null) throw new ArgumentNullException("b");
+            int rank = Math.Max(a.Rank, b.Rank);
+            var dimensions = new int[rank];
+            for (int axis = 0; axis < rank; ++axis)
+            {
+                int la = axis - (rank - a.Rank), ra = axis - (rank - b.Rank);
+                int left = la < 0 ? 1 : a.DimensionAt(la);
+                int right = ra < 0 ? 1 : b.DimensionAt(ra);
+                if (left != right && left != 1 && right != 1)
+                    throw new ArgumentException("Tensor view dimensions cannot broadcast.");
+                dimensions[axis] = left == 1 ? right : left;
+            }
+            return dimensions;
+        }
+
+        private static void BinaryViewsInto(FNUTensorView a, FNUTensorView b,
+            FNUTensorBuffer output, bool multiply)
+        {
+            // All validation precedes writes, including backing-buffer aliases.
+            if (a == null) throw new ArgumentNullException("a");
+            if (b == null) throw new ArgumentNullException("b");
+            if (output == null) throw new ArgumentNullException("output");
+            if (ReferenceEquals(output, a.Owner) || ReferenceEquals(output, b.Owner))
+                throw new ArgumentException("Output aliases an input view's owner.", "output");
+
+            int[] dimensions = BroadcastViewDimensions(a, b);
+            if (output.Shape.Rank != dimensions.Length)
+                throw new ArgumentException("Output rank differs from broadcast result.", "output");
+            int rank = dimensions.Length;
+            // Zero step indicates a broadcast singleton or absent leading axis.
+            var aSteps = new long[rank];
+            var bSteps = new long[rank];
+            for (int axis = 0; axis < rank; ++axis)
+            {
+                if (output.Shape.DimensionAt(axis) != dimensions[axis])
+                    throw new ArgumentException("Output shape differs from broadcast result.", "output");
+                int la = axis - (rank - a.Rank), ra = axis - (rank - b.Rank);
+                if (la >= 0 && a.DimensionAt(la) != 1) aSteps[axis] = a.StrideAt(la);
+                if (ra >= 0 && b.DimensionAt(ra) != 1) bSteps[axis] = b.StrideAt(ra);
+            }
+
+            // A single logical cursor handles transposed/sliced and broadcast axes.
+            // No per-element arrays, no per-element division or modulo.
+            var coordinates = new int[rank];
+            long aAddress = a.BaseOffset, bAddress = b.BaseOffset;
+            int length = output.Shape.ElementCount;
+            for (int flat = 0; flat < length; ++flat)
+            {
+                double left = a.ReadPhysical(aAddress), right = b.ReadPhysical(bAddress);
+                double value = multiply ? left * right : left + right;
+                if (double.IsNaN(value) || double.IsInfinity(value))
+                    throw new OverflowException("Tensor view arithmetic overflow.");
+                output.Put(flat, value);
+                if (flat + 1 == length) break;
+                for (int axis = rank - 1; axis >= 0; --axis)
+                {
+                    coordinates[axis]++;
+                    aAddress += aSteps[axis];
+                    bAddress += bSteps[axis];
+                    if (coordinates[axis] < dimensions[axis]) break;
+                    aAddress -= (long)coordinates[axis] * aSteps[axis];
+                    bAddress -= (long)coordinates[axis] * bSteps[axis];
+                    coordinates[axis] = 0;
+                }
+            }
+        }
+
         /// <summary>Compensated sum with one coordinate cursor per invocation.</summary>
         public static double SumView(FNUTensorView view)
         {

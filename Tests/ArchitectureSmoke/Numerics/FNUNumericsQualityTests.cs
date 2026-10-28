@@ -19,6 +19,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             TensorBroadcastInto();
             TensorViewQuality();
             SolverConditionAndViewTraversal();
+            TensorViewBroadcastArithmetic();
             Console.WriteLine("PASS FNU numerical-quality: extremes / cancellation / DFT / FIR / tensor");
         }
 
@@ -440,6 +441,81 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         "strided physical cursor MatMul oracle");
                 }
             Console.WriteLine("PASS FNU quality: condition guard / strided cursor oracle");
+        }
+
+        private static void TensorViewBroadcastArithmetic()
+        {
+            var owner = new FNUTensorBuffer(new FNUTensorShape(3,4),
+                new double[]{1,2,3,4, 5,6,7,8, 9,10,11,12});
+            var left = owner.AsView().Transpose(0,1).Slice(0,1,3);
+            var row = new FNUTensorBuffer(new FNUTensorShape(3),
+                new double[]{10,20,30});
+            var right = row.AsView();
+            var allocated = FNUTensorMath.AddViews(left,right);
+            Check(allocated.Shape.Rank==2 && allocated.Shape.DimensionAt(0)==3 &&
+                allocated.Shape.DimensionAt(1)==3,"view broadcast inferred shape");
+            var output = new FNUTensorBuffer(new FNUTensorShape(3,3));
+            FNUTensorMath.AddViewsInto(left,right,output);
+            var multiplied = FNUTensorMath.MultiplyViews(left,right);
+            for(int i=0;i<3;i++)
+                for(int j=0;j<3;j++)
+                {
+                    double v = left.Get2D(i,j), w = right.Get(j);
+                    Near(allocated.Get(i,j),v+w,0,"view broadcast add independent oracle");
+                    Near(output.Get(i,j),v+w,0,"view broadcast Into");
+                    Near(multiplied.Get(i,j),v*w,0,"view broadcast multiply independent oracle");
+                }
+            FNUTensorMath.MultiplyViewsInto(left,right,output);
+            Near(output.Get(2,2),360,0,"view broadcast reusable multiply");
+            var aliased = owner.AsView().Transpose(0,1);
+            Throws<ArgumentException>(() => FNUTensorMath.AddViewsInto(
+                aliased,right,owner),"view owner alias rejected");
+            Throws<ArgumentException>(() => FNUTensorMath.MultiplyViewsInto(
+                left,right,row),"broadcast rhs owner alias rejected");
+            Throws<ArgumentException>(() => FNUTensorMath.AddViewsInto(
+                left,right,new FNUTensorBuffer(new FNUTensorShape(3,2))),
+                "broadcast output shape rejected");
+            Near(output.Get(2,2),360,0,"invalid broadcast call does not change output");
+            Throws<ArgumentException>(() => FNUTensorMath.AddViews(left,
+                new FNUTensorBuffer(new FNUTensorShape(2)).AsView()),
+                "incompatible broadcast dimensions");
+
+            // Non-contiguous 3D view and lower-rank singleton broadcast axes.
+            var data = new double[24];
+            for(int i=0;i<data.Length;i++)data[i]=i+1;
+            var high = new FNUTensorBuffer(new FNUTensorShape(2,3,4),data)
+                .AsView().Transpose(0,2).Slice(1,1,2); // [4,2,2]
+            var weights = new FNUTensorBuffer(new FNUTensorShape(2,1),
+                new double[]{2,3}).AsView(); // [1,2,1]
+            var result = FNUTensorMath.MultiplyViews(high,weights);
+            Check(result.Shape.DimensionAt(0)==4 && result.Shape.DimensionAt(1)==2 &&
+                result.Shape.DimensionAt(2)==2,"3D broadcast shape");
+            for(int i=0;i<4;i++)
+                for(int j=0;j<2;j++)
+                    for(int k=0;k<2;k++)
+                        Near(result.Get(i,j,k),high.Get(i,j,k)*weights.Get(j,0),0,
+                            "3D noncontiguous broadcast oracle");
+
+            var empty = new FNUTensorBuffer(new FNUTensorShape(0,3)).AsView();
+            var emptyResult = FNUTensorMath.AddViews(empty,right);
+            Check(emptyResult.Shape.ElementCount==0 &&
+                emptyResult.Shape.DimensionAt(0)==0,"zero-length view broadcasting");
+            var emptyInto = new FNUTensorBuffer(new FNUTensorShape(0,3));
+            FNUTensorMath.MultiplyViewsInto(empty,right,emptyInto);
+            Check(emptyInto.Shape.ElementCount==0,"zero-length view Into");
+            var huge = new FNUTensorBuffer(new FNUTensorShape(1),
+                new double[]{double.MaxValue}).AsView();
+            var anotherHuge = new FNUTensorBuffer(new FNUTensorShape(1),
+                new double[]{double.MaxValue}).AsView();
+            var sentinel = new FNUTensorBuffer(new FNUTensorShape(1),
+                new double[]{123});
+            Throws<OverflowException>(() => FNUTensorMath.AddViewsInto(
+                huge,anotherHuge,sentinel),"nonfinite broadcast result rejected");
+            Near(sentinel.Get(0),123,0,"overflow before first write preserves output");
+            owner.Set(100,0,1); // live source view, row 0 column 0
+            Near(FNUTensorMath.AddViews(left,right).Get(0,0),110,0,
+                "view broadcast reflects live owner mutation");
+            Console.WriteLine("PASS FNU strided views: broadcast Add/Multiply/Into/zero/alias");
         }
 
         private static void Near(double value,double expected,double tolerance,string what)
