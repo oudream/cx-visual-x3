@@ -136,7 +136,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         var failure=server.Diagnostics.LastFailure;
                         return failure!=null &&
                             failure.Kind==FTRFailureKind.ResourceExhausted &&
-                            failure.Scope==FTRFaultScope.SubChannel;
+                            failure.Scope==FTRFaultScope.SubChannel &&
+                            failure.Address!=null && failure.Address.HasSubChannel &&
+                            failure.Address.Generation>0;
                     },5000),"超大WebSocket消息应标记为Peer级资源预算故障");
                     byte[] good={5,7,9};
                     healthy.SendAsync(new ArraySegment<byte>(good),
