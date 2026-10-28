@@ -20,6 +20,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             BudgetPressureOnlyEvictsIdleCache();
             ParallelIndependentConfigurationsDoNotLoseDimensions();
             ExternalUnknownOperationFailsClosedUntilValidConfirmation();
+            LostExternalLeaseRequiresRealProviderReconciliation();
         }
         private static void Check(bool value, string reason)
         {
@@ -60,6 +61,56 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(heap.Lifecycle.ReleaseEligible("GPU.Texture") &&
                     !heap.Contains("GPU.Texture"),
                     "只有已确认的外部操作才允许MDS生命周期实际释放");
+            }
+        }
+
+        private sealed class ProviderCompletionProbe : IMDSExternalCompletionVerifier
+        {
+            internal bool Completed;
+            internal int Calls;
+            public bool VerifyCompleted(string name, string provider, long generation)
+            {
+                Calls++;
+                return Completed && name == "SDK.Buffer" &&
+                    provider == "CameraSdk" && generation == 9;
+            }
+        }
+
+        private static void LostExternalLeaseRequiresRealProviderReconciliation()
+        {
+            using (var heap = new MDSDataHeap())
+            {
+                heap.Set("SDK.Buffer", new byte[16]);
+                var operation = heap.Lifecycle.BeginExternalOperation("SDK.Buffer", "CameraSdk", 9);
+                Reject<InvalidOperationException>(() => heap.Lifecycle.BeginExternalOperation(
+                    "SDK.Buffer", "CameraSdk", 9));
+                Check(heap.Lifecycle.PendingExternalOperations().Count == 1 &&
+                    heap.Lifecycle.PendingExternalOperations()[0].Generation == 9,
+                    "未完成外部Operation应可诊断且同身份不能重复注册");
+                operation.Dispose(); // 调用者即使丢失对象，原Heap也保留恢复凭证
+                operation = null;
+                var probe = new ProviderCompletionProbe();
+                Check(!heap.Lifecycle.TryReconcileExternalOperation("SDK.Buffer",
+                        "CameraSdk", 8, probe) && probe.Calls == 0,
+                    "旧代次不能调用Verifier或释放新资源");
+                Check(!heap.Lifecycle.TryReconcileExternalOperation("SDK.Buffer",
+                        "CameraSdk", 9, probe) &&
+                    heap.Lifecycle.Inspect("SDK.Buffer").RetentionHolds == 1 &&
+                    probe.Calls == 1 &&
+                    heap.Lifecycle.PendingExternalOperations()[0].State ==
+                        MDSExternalOperationState.Unknown,
+                    "Provider没有真实证据时Unknown必须持续阻断");
+                probe.Completed = true; // 测试模拟专业Provider已核对完成，非真实SDK验收
+                Check(heap.Lifecycle.TryReconcileExternalOperation("SDK.Buffer",
+                        "CameraSdk", 9, probe) &&
+                    heap.Lifecycle.PendingExternalOperations().Count == 0 &&
+                    heap.Lifecycle.Inspect("SDK.Buffer").RetentionHolds == 0,
+                    "真实来源Verifier确认后才能回收丢失原租约的保留凭证");
+                Check(!heap.Lifecycle.TryReconcileExternalOperation("SDK.Buffer",
+                        "CameraSdk", 9, probe) &&
+                    heap.Lifecycle.ReleaseEligible("SDK.Buffer") &&
+                    !heap.Contains("SDK.Buffer"),
+                    "重复确认必须无副作用且正确恢复Heap释放");
             }
         }
 
