@@ -2149,6 +2149,21 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 // 真实MHS Saved/Effective → 专业Provider快照 → MOC→MRK发布。
                 // 不允许业务层手抄配置Revision，避免Saved误当Effective。
                 var configService=new MHSConfigService(configDirectory);
+                string newProjectId=session.Project.Id.ToString("N");
+                string visionSectionId=FCMConfigSchemaBuilder
+                    .Describe<CxVisionInspectionOptions>().SectionId;
+                var existingId=new FCMConfigIdentity(visionSectionId,"project",newProjectId);
+                int directoriesBefore=System.IO.Directory.Exists(configDirectory)?
+                    System.IO.Directory.GetDirectories(configDirectory,"*",
+                        System.IO.SearchOption.AllDirectories).Length:0;
+                bool noSilentDefaults=false;
+                try { configService.OpenExisting<CxVisionInspectionOptions>(existingId); }
+                catch(System.IO.FileNotFoundException) { noSilentDefaults=true; }
+                int directoriesAfter=System.IO.Directory.Exists(configDirectory)?
+                    System.IO.Directory.GetDirectories(configDirectory,"*",
+                        System.IO.SearchOption.AllDirectories).Length:0;
+                Check(noSilentDefaults&&directoriesAfter==directoriesBefore,
+                    "G06 Read Existing initialized missing MHS section or created folders");
                 MHSConfigSection<CxVisionInspectionOptions> config=
                     configService.ForProject(session.Project.Id.ToString("N"))
                         .Open<CxVisionInspectionOptions>();
@@ -2175,12 +2190,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 var principalRead=new FCMConfigPrincipal("g06-reader",new[]{"vision-reader"});
                 var authorized=configService.Authorize(principalRead,policyRead);
                 bool deniedBeforeGrant=false;
-                try { authorized.Open<CxVisionInspectionOptions>(identity); }
+                try { authorized.OpenExisting<CxVisionInspectionOptions>(identity); }
                 catch(UnauthorizedAccessException) { deniedBeforeGrant=true; }
                 Check(deniedBeforeGrant,"G06 unauthorized MHS Effective reader was allowed");
                 policyRead.Grant("vision-reader",FCMConfigAccessAction.Read,
                     sectionId,"project",projectScope);
-                var authorizedSection=authorized.Open<CxVisionInspectionOptions>(identity);
+                var authorizedSection=authorized.OpenExisting<CxVisionInspectionOptions>(identity);
                 var authorizedProvider=CxVisionThresholdProvider.FromEffectiveConfiguration(
                     authorizedSection,sourceResolver);
                 string guardedVersion;
