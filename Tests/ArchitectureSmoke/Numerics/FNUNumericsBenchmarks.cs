@@ -29,7 +29,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 matrixA.Set(1, row, row); matrixB.Set(1, row, row);
             }
             var matrixOutput = new FNUTensorBuffer(new FNUTensorShape(64,64));
-            var a = matrixA.AsView().Transpose(0,1), b = matrixB.AsView();
+            var a = matrixA.AsView().Transpose(0,1);
+            var b = matrixB.AsView();
             Measure("MatMulViewsInto(reused)", 10, delegate {
                 FNUTensorMath.MatMulViewsInto(a,b,matrixOutput);
                 return matrixOutput.Get(0,0);
