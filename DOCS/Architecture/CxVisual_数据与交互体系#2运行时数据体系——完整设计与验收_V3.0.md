@@ -1257,6 +1257,6 @@ try {
 - **工程对照测试**：先提交MHS NextTask Saved，再批准Effective，关闭重开存储，验证非法组合拒绝；新Saved未批准时新Run仍使用旧Effective，批准新修订后携带旧版本的Run请求必须拒绝，正确新版本才应用到原MDS Heap。
 - **UI真实交互**：MPWDataLifecycleWorkspaceControl 的读写默认拒绝由TestCenter运行验证；授权后需点击实际WPF ApplyAll按钮，确认MDS原Heap策略变化，既有doc.runtime-data及doc.config承担不同职责。
 - **已通过固定源码**：[MDS Windows CI #40649876248](https://github.com/oudream/cx-visual-x3/actions/runs/40649876248) 对应 d465f51133f9，Release x64全解、RuntimeData生命周期/存储/编译、TestCenter TCT.MDS.030～033、真实WPF五维面板、20,000轮SOAK均Success。实测每秒约257,415次、p95 3.60µs、p99 20.10µs、逻辑峰值8,192B且释放后为0B、GC Gen0/1/2次数143/3/3。统计范围是该CI机器上的托管8KiB逻辑帧，不代表24小时实机CT/GPU/共享内存。
-- **最新增量尚需固定SHA**：上方新增的Effective版本冻结映射、真实Studio ApplyAll按钮测试，仍需等待其固定SHA Windows CI，不能引用较早绿色表示新代码已经通过。
+- **最新固定SHA补验成功**：源码 00e14897b5fc 的 [MDS Windows专项 #40650288622](https://github.com/oudream/cx-visual-x3/actions/runs/40650288622) **Success**，包含工程Effective版本冻结与旧修订拒绝、真实Studio WPF ApplyAll点击、全解决方案Release x64、TestCenter 030～033及MDS测试。20,000轮SOAK实测 throughput/s=250778.4、p95=4.60µs、p99=20.70µs、逻辑峰值8192B、结束后0B；是短时托管CI指标，非设备验收。更早 bb88894efb01 的 [统一Runtime CI #40650206921](https://github.com/oudream/cx-visual-x3/actions/runs/40650206921) 同样Success，跨模块回归须继续在最新master保持。
 
 **仍未闭环**：GPU Fence/SDK完成回调/SHM跨进程ACK真实性与可恢复持久化、CT高负载ROI实机、完整动态Join未声明消费者自动追踪、MOC/MEM逐资源策略编译和长期RSS/VRAM峰值；若缺少设备，一律标HARDWARE_PENDING。
