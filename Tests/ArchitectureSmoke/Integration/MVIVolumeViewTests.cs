@@ -29,6 +29,28 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Check(state.ObliqueSlice.AngleZDegrees == 45, "独立复制斜切定义");
                 Check(state.GetSliceViewport(FVOSlicePlane.XZ).MinA == 0, "视口互不污染");
                 Check(state.ShowCrosshair, "默认可见十字线");
+                MVI3DCameraState camera=state.Camera;
+                long cameraRevision=camera.Revision;
+                int cameraEvents=0;
+                camera.Changed+=(s,e)=>cameraEvents++;
+                camera.SetPose(camera.YawRadians,camera.PitchRadians,camera.Distance,
+                    camera.TargetX,camera.TargetY,camera.TargetZ);
+                Check(camera.Revision==cameraRevision && cameraEvents==0,
+                    "相同姿态零事件/零版本更新");
+                camera.Orbit(.25,-.1);
+                camera.Zoom(2);
+                camera.Pan(13,-8,480);
+                Check(camera.Revision==cameraRevision+3 && cameraEvents==3 &&
+                    camera.Distance<2.9 && camera.TargetX!=0,
+                    "MVI相机唯一Revision与轨道旋转/缩放/平移联动");
+                bool rejectedCamera=false;
+                try {camera.SetPose(double.NaN,0,2,0,0,0);}
+                catch(ArgumentOutOfRangeException){rejectedCamera=true;}
+                Check(rejectedCamera && camera.Revision==cameraRevision+3,
+                    "非法相机输入必须整体拒绝且不能提升版本");
+                camera.Reset();
+                Check(camera.Distance==2.9 && camera.TargetX==0,
+                    "统一相机复位必须恢复完整姿态");
                 // MVI是滚轮/图像定位唯一Owner；不能由TestCenter窗体另写一套三刀算法。
                 state.SetSlices(3,4,5,data);
                 state.ScrollSlice(FVOSlicePlane.XY,100,data);

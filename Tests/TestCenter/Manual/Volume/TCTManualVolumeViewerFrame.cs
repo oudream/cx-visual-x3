@@ -161,8 +161,12 @@ namespace CxVisual.TestCenter.UI
 
         private void Reset3DCamera()
         {
-            _scene.ResetCamera();
-            if (_gpu != null && _gpu.IsAvailable) _gpu.ResetCamera();
+            if(_state!=null) _state.Camera.Reset();
+            else
+            {
+                _scene.ResetCamera();
+                if(_gpu!=null)_gpu.ResetCamera();
+            }
         }
 
         public void LoadDemo()
@@ -181,6 +185,8 @@ namespace CxVisual.TestCenter.UI
             {
                 _volume = volume;
                 _state = MVIVolumeViewState.CreateCentered(volume);
+                _scene.BindCamera(_state.Camera);
+                if(_gpu!=null)_gpu.BindCamera(_state.Camera);
                 _state.PropertyChanged += OnStateChanged;
                 _workbench.Bind(volume,_state);
                 _sliderX.Maximum = volume.OriginalWidth - 1;
@@ -357,6 +363,7 @@ namespace CxVisual.TestCenter.UI
             _xy.Clear();
             _xz.Clear();
             _yz.Clear();
+            _scene.BindCamera(null);
             _scene.Clear();
             ClearCrosshairs();
             _obliqueViewer.Clear();

@@ -15,6 +15,8 @@ namespace CxVisual.Foundation.Volume
     {
         private const int CopyBufferBytes = 32 * 1024 * 1024;
         private readonly long _length;
+        /// <summary>真实原始缓冲字节长度，供接管和越界检查使用。</summary>
+        public long ByteLength { get { return _length; } }
         private bool _memoryPressureAdded;
         private MemoryMappedFile _mappedFile;
         private MemoryMappedViewAccessor _mappedView;
@@ -172,19 +174,35 @@ namespace CxVisual.Foundation.Volume
             }
         }
 
+        /// <summary>所有体素访问持有SafeHandle临时引用，防止并发Dispose后悬空指针。</summary>
         internal unsafe float ReadValue(long voxelIndex, FVORawVoxelFormat format)
         {
-            var source = (byte*)DangerousGetHandle().ToPointer();
-            switch (format)
+            long stride;
+            switch(format)
             {
-                case FVORawVoxelFormat.Byte:
-                    return source[voxelIndex];
-                case FVORawVoxelFormat.UInt16:
-                    return *((ushort*)(source + voxelIndex * 2));
-                case FVORawVoxelFormat.Float32:
-                    return *((float*)(source + voxelIndex * 4));
-                default:
-                    throw new ArgumentOutOfRangeException("format", format, null);
+                case FVORawVoxelFormat.Byte: stride=1; break;
+                case FVORawVoxelFormat.UInt16: stride=2; break;
+                case FVORawVoxelFormat.Float32: stride=4; break;
+                default: throw new ArgumentOutOfRangeException("format");
+            }
+            if(voxelIndex<0 || voxelIndex>=_length/stride)
+                throw new ArgumentOutOfRangeException("voxelIndex","原始RAW下标超出缓冲范围。");
+            bool acquired=false;
+            try
+            {
+                DangerousAddRef(ref acquired);
+                byte* source=(byte*)DangerousGetHandle().ToPointer()+checked(voxelIndex*stride);
+                switch(format)
+                {
+                    case FVORawVoxelFormat.Byte: return *source;
+                    case FVORawVoxelFormat.UInt16: return *((ushort*)source);
+                    case FVORawVoxelFormat.Float32: return *((float*)source);
+                }
+                throw new ArgumentOutOfRangeException("format");
+            }
+            finally
+            {
+                if(acquired)DangerousRelease();
             }
         }
 

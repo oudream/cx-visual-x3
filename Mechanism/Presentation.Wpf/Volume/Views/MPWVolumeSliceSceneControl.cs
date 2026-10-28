@@ -34,6 +34,29 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
         private double _yaw = 37.0;
         private double _pitch = 23.0;
         private double _distance = 3.5;
+        private MVI3DCameraState _cameraState;
+
+        /// <summary>显式绑定MVI会话相机；WPF只缓存用于渲染的矩阵，解绑时解除订阅。</summary>
+        public void BindCamera(MVI3DCameraState camera)
+        {
+            if(Object.ReferenceEquals(_cameraState,camera))return;
+            if(_cameraState!=null)_cameraState.Changed-=OnCameraChanged;
+            _cameraState=camera;
+            if(_cameraState!=null)
+            {
+                _cameraState.Changed+=OnCameraChanged;
+                OnCameraChanged(_cameraState,EventArgs.Empty);
+            }
+        }
+        private void OnCameraChanged(object sender,EventArgs args)
+        {
+            if(_cameraState==null)return;
+            _yaw=_cameraState.YawRadians*180/Math.PI;
+            _pitch=_cameraState.PitchRadians*180/Math.PI;
+            _distance=_cameraState.Distance;
+            _cameraTarget=new Vector3D(_cameraState.TargetX,_cameraState.TargetY,_cameraState.TargetZ);
+            UpdateCamera();
+        }
 
         public MPWVolumeSliceSceneControl()
         {
@@ -89,16 +112,31 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
         public Vector3D CameraTarget { get { return _cameraTarget; } }
         public void Orbit(double dx,double dy)
         {
+            if(_cameraState!=null)
+            {
+                _cameraState.Orbit(dx*.007,-dy*.007);
+                return;
+            }
             _yaw+=dx*.5;_pitch=Math.Max(-85,Math.Min(85,_pitch-dy*.5));
             UpdateCamera();
         }
         public void Zoom(double wheelSteps)
         {
+            if(_cameraState!=null)
+            {
+                _cameraState.Zoom(wheelSteps);
+                return;
+            }
             _distance=Math.Max(.55,Math.Min(16,_distance*Math.Pow(.89,wheelSteps)));
             UpdateCamera();
         }
         public void Pan(double dx,double dy)
         {
+            if(_cameraState!=null)
+            {
+                _cameraState.Pan(dx,dy,Math.Max(1,ActualHeight));
+                return;
+            }
             double yaw=_yaw*Math.PI/180,pitch=_pitch*Math.PI/180;
             Vector3D right=new Vector3D(Math.Cos(yaw),0,-Math.Sin(yaw));
             Vector3D up=new Vector3D(-Math.Sin(yaw)*Math.Sin(pitch),Math.Cos(pitch),
@@ -131,6 +169,11 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
 
         public void ResetCamera()
         {
+            if(_cameraState!=null)
+            {
+                _cameraState.Reset();
+                return;
+            }
             _yaw = 37.0; _pitch = 23.0; _distance = 3.5; _cameraTarget=new Vector3D();
             UpdateCamera();
         }
@@ -263,7 +306,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
             _camera.Position = pos+_cameraTarget;
             _camera.LookDirection = new Vector3D(-pos.X, -pos.Y, -pos.Z);
             _camera.UpDirection = new Vector3D(0, 1, 0);
-            _camera.FieldOfView = 42;
+            _camera.FieldOfView = _cameraState==null ? 42 : 45;
             _camera.NearPlaneDistance = 0.01;
             _camera.FarPlaneDistance = 30;
             UpdateOrientation(pos);

@@ -20,6 +20,7 @@
     <Compile Include="Editing\MVIVisualSnapping.cs"/><Compile Include="Editing\MVIVisualEditing.cs"/><Compile Include="Editing\MVIVisualAnchors.cs"/><Compile Include="Editing\MVIOrthogonalRouter.cs"/><Compile Include="Catalog\MVIShapeCatalog.cs"/><Compile Include="Runtime\MVIVisualRuntimeEvaluator.cs"/><Compile Include="Runtime\MVIVisualEventRouter.cs"/><Compile Include="MVIInteractionEventArgs.cs"/>
     <Compile Include="MOLFlowLayout.cs"/>
     <Compile Include="Volume\MVIVolumeViewState.cs"/>
+    <Compile Include="Volume\MVI3DCameraState.cs"/>
     <Compile Include="Imaging\MVIImageSlot.cs"/>
     <Compile Include="Imaging\MVIImageSession.cs"/>
     <Compile Include="Imaging\MVIImageViewport.cs"/>

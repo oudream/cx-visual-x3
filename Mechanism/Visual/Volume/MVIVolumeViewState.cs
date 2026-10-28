@@ -29,6 +29,9 @@ namespace CxVisual.Mechanism.Visual
     /// <summary>集中管理 X/Y/Z 切片索引和视口状态，供二维、三维视图联动使用。</summary>
     public sealed class MVIVolumeViewState : INotifyPropertyChanged
     {
+        /// <summary>该会话唯一的三维相机状态；WPF与GL不得分别持有权威姿态。</summary>
+        public MVI3DCameraState Camera { get; private set; } = new MVI3DCameraState();
+
         private int _sliceX;
         private int _sliceY;
         private int _sliceZ;

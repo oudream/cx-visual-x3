@@ -28,6 +28,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Check(FVORawVolumeLoader.TryLoadOriginalVoxelCache(data), "完整分辨率缓存");
                     Check(data.GetVoxelByOriginalIndex(7, 7, 7) == 255, "高分辨率体素取值");
                     Check(data.HasHighResolutionVoxels, "缓存所有权");
+                    Check(data.GetOriginalScalarRequired(7,7,7)==255f,
+                        "Byte完整原始缓存可以无损提供专业标量");
                 }
                 string path16 = Path.Combine(folder, "sample_8x8x8_sp1x1x2.raw");
                 byte[] raw16 = new byte[1024];
@@ -94,6 +96,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 using(FVOVolumeData floatVolume=FVORawVolumeLoader.LoadFromMemory(
                     floatBytes,memoryFloat,64,CancellationToken.None))
                 {
+                    Check(Math.Abs(floatVolume.GetOriginalScalarRequired(7,7,7)-64.125f)<.00001,
+                        "Float32计量原值不得经R8预览反推");
                     Check(Math.Abs(floatVolume.GetScalarByOriginalIndex(7,7,7)-64.125f)<.00001 &&
                           floatVolume.HasOriginalRawData,
                         "Float32内存加载应保持标量数值而非从R8预览反推");
@@ -114,7 +118,26 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 using (FVOVolumeData data16 = FVORawVolumeLoader.Load(path16))
                 {
                     Check(data16.SourceFormat == FVORawVoxelFormat.UInt16, "UInt16格式");
-                    data16.SetRawBuffer(FVORawVolumeLoader.LoadRawBuffer(data16, new FVORawVolumeLoadTiming()));
+                    FVOUnmanagedRawVolumeBuffer owned=FVORawVolumeLoader.LoadRawBuffer(
+                        data16,new FVORawVolumeLoadTiming());
+                    data16.SetRawBuffer(owned);
+                    data16.SetRawBuffer(owned);
+                    Check(data16.GetOriginalScalarRequired(7,7,7)==1511f &&
+                        data16.HasOriginalRawData,
+                        "重复接管同一SafeHandle不得提前释放，UInt16必须为真实原值");
+                    using(FVOVolumeData other=FVORawVolumeLoader.Load(path8))
+                    {
+                        FVOUnmanagedRawVolumeBuffer wrong=FVORawVolumeLoader.LoadRawBuffer(
+                            other,new FVORawVolumeLoadTiming());
+                        try
+                        {
+                            Expect<ArgumentException>(()=>data16.SetRawBuffer(wrong),
+                                "不同原始字节长度不能接管RAW资源");
+                            Check(data16.GetOriginalScalarRequired(7,7,7)==1511f,
+                                "接管拒绝后旧缓冲及原值不能受影响");
+                        }
+                        finally {wrong.Dispose();}
+                    }
                     Check(data16.GetScalarByOriginalIndex(7, 7, 7) == 1511f, "原始16bit不经8bit量化恢复");
                     Check(data16.HasOriginalRawData, "非托管原始RAW被持有");
                     FVOObliqueSliceDefinition one = new FVOObliqueSliceDefinition {
@@ -175,6 +198,16 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     FVOSliceImageBuilder.ImageToVoxel(scalarSource, 3, 4, 2, FVOSlicePlane.XY,
                         ix, iy, out vx, out vy, out vz);
                     Check(vx == 7 && vy == 5 && vz == 2, "三刀与二维坐标往返");
+                }
+                using(FVOVolumeData previewOnly=FVOVolumeData.CreateDemo(9,9,9))
+                {
+                    float actual;
+                    Check(!previewOnly.TryGetOriginalScalar(3,3,3,out actual),
+                        "无完整原始数据的显示预览不能提供工业计量原值");
+                    Expect<InvalidOperationException>(()=>previewOnly.GetOriginalScalarRequired(3,3,3),
+                        "预览不可用时专业计量必须拒绝");
+                    Expect<ArgumentOutOfRangeException>(()=>previewOnly.TryGetOriginalScalar(-1,3,3,out actual),
+                        "计量坐标不能自动钳制越界索引");
                 }
                 using (FVOVolumeData demo = FVOVolumeData.CreateDemo(12, 12, 12))
                 {

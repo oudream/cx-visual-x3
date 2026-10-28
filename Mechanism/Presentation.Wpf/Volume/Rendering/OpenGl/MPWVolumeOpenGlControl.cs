@@ -44,6 +44,29 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
         private int _dragMode; // 1轨道旋转，2平移
         private int _mouseX, _mouseY;
         private Vector3 _target=Vector3.Zero;
+        private MVI3DCameraState _cameraState;
+        /// <summary>相机唯一Owner是MVI；本控件只把它投影为GL view矩阵。</summary>
+        public void BindCamera(MVI3DCameraState camera)
+        {
+            if(Object.ReferenceEquals(_cameraState,camera))return;
+            if(_cameraState!=null)_cameraState.Changed-=OnCameraChanged;
+            _cameraState=camera;
+            if(_cameraState!=null)
+            {
+                _cameraState.Changed+=OnCameraChanged;
+                OnCameraChanged(_cameraState,EventArgs.Empty);
+            }
+        }
+        private void OnCameraChanged(object sender,EventArgs e)
+        {
+            if(_cameraState==null)return;
+            _yaw=(float)_cameraState.YawRadians;
+            _pitch=(float)_cameraState.PitchRadians;
+            _distance=(float)_cameraState.Distance;
+            _target=new Vector3((float)_cameraState.TargetX,
+                (float)_cameraState.TargetY,(float)_cameraState.TargetZ);
+            RequestRender();
+        }
         private NativeWindowSubclassProc _nativeInput;
         private bool _nativeInputInstalled;
         private bool _renderQueued;
@@ -193,6 +216,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
 
         public void ResetCamera()
         {
+            if(_cameraState!=null){_cameraState.Reset();return;}
             _yaw = .62f; _pitch = .36f; _distance = 2.9f; _target=Vector3.Zero; RequestRender();
         }
 
@@ -315,6 +339,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
 
         protected override void DestroyWindowCore(HandleRef hwnd)
         {
+            // 设备窗口销毁时解除MVI订阅，避免已释放WGL控件被会话事件保活。
+            BindCamera(null);
             _dragMode=0;
             if(_nativeInputInstalled && _window!=IntPtr.Zero)
             {
@@ -682,18 +708,28 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
         /// <summary>共享相机交互：真正变动OpenGL view矩阵，而非只修改按钮状态。</summary>
         public void Orbit(float dx,float dy)
         {
+            if(_cameraState!=null){_cameraState.Orbit(dx*.007,-dy*.007);return;}
             _yaw+=dx*.007f;
             _pitch=Clamp(_pitch-dy*.007f,-1.47f,1.47f);
             RequestRender();
         }
         public void Zoom(float steps)
         {
+            if(_cameraState!=null){_cameraState.Zoom(steps);return;}
             if(steps==0)return;
             _distance=Clamp(_distance*(float)Math.Pow(.87,steps),.45f,16f);
             RequestRender();
         }
         public void Pan(float dx,float dy)
         {
+            if(_cameraState!=null)
+            {
+                RectNative area;
+                int h=_window!=IntPtr.Zero&&GetClientRect(_window,out area)
+                    ?Math.Max(1,area.Bottom-area.Top):400;
+                _cameraState.Pan(dx,dy,h);
+                return;
+            }
             Vector3 right=new Vector3((float)Math.Cos(_yaw),0,-(float)Math.Sin(_yaw));
             Vector3 up=new Vector3(-(float)Math.Sin(_yaw)*(float)Math.Sin(_pitch),
                 (float)Math.Cos(_pitch),-(float)Math.Cos(_yaw)*(float)Math.Sin(_pitch));

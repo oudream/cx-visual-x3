@@ -142,12 +142,25 @@ namespace CxVisual.Foundation.Volume
                 throw new ArgumentNullException("rawBuffer");
             }
 
-            if (_rawBuffer != null)
+            if (rawBuffer.IsClosed || rawBuffer.IsInvalid)
+                throw new ObjectDisposedException("rawBuffer", "不能接管已关闭的原始缓冲。");
+            if (!SourceFormat.HasValue)
+                throw new InvalidOperationException("没有原始RAW的标量格式，不能接管缓冲。");
+            int bytesPerVoxel;
+            switch(SourceFormat.Value)
             {
-                _rawBuffer.Dispose();
+                case FVORawVoxelFormat.Byte: bytesPerVoxel=1; break;
+                case FVORawVoxelFormat.UInt16: bytesPerVoxel=2; break;
+                case FVORawVoxelFormat.Float32: bytesPerVoxel=4; break;
+                default: throw new ArgumentOutOfRangeException("SourceFormat");
             }
-
-            _rawBuffer = rawBuffer;
+            long requiredBytes=checked((long)OriginalWidth*OriginalHeight*OriginalDepth*bytesPerVoxel);
+            if(rawBuffer.ByteLength!=requiredBytes)
+                throw new ArgumentException("RAW原始字节数与体积及标量格式不一致。","rawBuffer");
+            if(Object.ReferenceEquals(_rawBuffer,rawBuffer))return;
+            FVOUnmanagedRawVolumeBuffer previous=_rawBuffer;
+            _rawBuffer=rawBuffer;
+            if(previous!=null)previous.Dispose();
         }
 
         internal void SetLoadTiming(FVORawVolumeLoadTiming timing)
@@ -238,6 +251,39 @@ namespace CxVisual.Foundation.Volume
                 _rawBuffer.Dispose();
                 _rawBuffer = null;
             }
+        }
+
+        /// <summary>
+        /// 计量/专业算法唯一可用的精确标量入口：绝不回退R8预览。
+        /// 仅原始RAW或明确为Byte格式的完整原始字节缓存被视为真实源。
+        /// </summary>
+        public bool TryGetOriginalScalar(int x,int y,int z,out float value)
+        {
+            if(x<0 || x>=OriginalWidth || y<0 || y>=OriginalHeight ||
+               z<0 || z>=OriginalDepth)
+                throw new ArgumentOutOfRangeException("x","原始体素索引不允许裁剪到有效区间。");
+            long index=x+(long)y*OriginalWidth+(long)z*OriginalWidth*OriginalHeight;
+            if(HasOriginalRawData && SourceFormat.HasValue)
+            {
+                value=_rawBuffer.ReadValue(index,SourceFormat.Value);
+                return true;
+            }
+            if(HasOriginalVoxels && SourceFormat==FVORawVoxelFormat.Byte)
+            {
+                value=OriginalVoxels[checked((int)index)];
+                return true;
+            }
+            value=0;
+            return false;
+        }
+
+        /// <summary>拒绝没有真实原值的体数据，不允许静默按预览估算高位深标量。</summary>
+        public float GetOriginalScalarRequired(int x,int y,int z)
+        {
+            float value;
+            if(!TryGetOriginalScalar(x,y,z,out value))
+                throw new InvalidOperationException("原始标量不可用：专业计量不能使用显示预览值。");
+            return value;
         }
 
         public float GetScalarByOriginalIndex(int x, int y, int z)

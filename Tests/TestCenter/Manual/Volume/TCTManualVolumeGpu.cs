@@ -159,6 +159,7 @@ namespace CxVisual.TestCenter.UI
             try
             {
                 MPWVolumeOpenGlControl gpu=new MPWVolumeOpenGlControl();
+                if(_state!=null)gpu.BindCamera(_state.Camera);
                 gpu.AvailabilityChanged+=OnGpuAvailabilityChanged;
                 gpu.SetVolume(_volume.Voxels,_volume.Width,_volume.Height,_volume.Depth,
                     _volume.SpacingX,_volume.SpacingY,_volume.SpacingZ,
@@ -204,6 +205,7 @@ namespace CxVisual.TestCenter.UI
             {
                 MPWVolumeOpenGlControl previous=_gpu; _gpu=null;
                 previous.AvailabilityChanged-=OnGpuAvailabilityChanged;
+                previous.BindCamera(null);
                 if (_gpuSlot!=null) _gpuSlot.Children.Remove(previous);
                 previous.Dispose();
             }
