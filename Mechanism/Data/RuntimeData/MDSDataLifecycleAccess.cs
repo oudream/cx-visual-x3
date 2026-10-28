@@ -48,6 +48,18 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         /// <summary>需要跨异步/专业过程持有数据时使用。Dispose后不再保证读取安全。</summary>
         public IDisposable AcquireUse(string name) { return _owner.AcquireLifecycleUse(name, false); }
         /// <summary>显式诊断/结果保留。Dispose解除该条保留理由。</summary>
+        public MDSExternalOperationLease BeginExternalOperation(string name,
+            string providerId, long generation)
+        {
+            if (string.IsNullOrWhiteSpace(providerId) || providerId.Length > 80 ||
+                providerId.IndexOfAny(new[] { '\r', '\n', '\t' }) >= 0)
+                throw new ArgumentException("external.provider_required", "providerId");
+            if (generation <= 0)
+                throw new ArgumentOutOfRangeException("generation");
+            return new MDSExternalOperationLease(
+                Retain(name, "External:" + providerId + ":" + generation),
+                name, providerId, generation);
+        }
         public IDisposable Retain(string name, string reason = "Manual")
         { return _owner.AcquireLifecycleUse(name, true, reason); }
         public MDSDataUseLease<T> AcquireRead<T>(string name)
@@ -90,6 +102,51 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 _token = null;
             }
         }
+    }
+
+    /// <summary>
+    /// 只做外部资源完成屏障，不接管GPU/SDK/SHM句柄Owner。
+    /// 未收到真实Provider完成确认时Dispose转Unknown并继续持MDS保留凭证；
+    /// 不能用托管Dispose伪装外部Fence已完成。
+    /// </summary>
+    public enum MDSExternalOperationState { InFlight, Unknown, Confirmed }
+    public sealed class MDSExternalOperationLease : IDisposable
+    {
+        private readonly object _gate = new object();
+        private IDisposable _hold;
+        internal MDSExternalOperationLease(IDisposable hold,
+            string dataName, string providerId, long generation)
+        {
+            _hold = hold;
+            DataName = dataName; ProviderId = providerId; Generation = generation;
+        }
+        public string DataName { get; private set; }
+        public string ProviderId { get; private set; }
+        public long Generation { get; private set; }
+        public MDSExternalOperationState State { get; private set; }
+
+        /// <summary>仅由专业Provider在真实SDK/GPU/IPC完成后按原代次确认，拒绝过期ACK。</summary>
+        public bool ConfirmCompletion(long acknowledgedGeneration)
+        {
+            lock (_gate)
+            {
+                if (acknowledgedGeneration != Generation)
+                    throw new InvalidOperationException("external.stale_completion_generation");
+                if (State == MDSExternalOperationState.Confirmed) return false;
+                // 只有原始保留凭证Dispose完成后才宣布Confirmed。
+                _hold.Dispose();
+                _hold = null;
+                State = MDSExternalOperationState.Confirmed;
+                return true;
+            }
+        }
+        public void MarkUnknown()
+        {
+            lock (_gate)
+                if (State != MDSExternalOperationState.Confirmed)
+                    State = MDSExternalOperationState.Unknown;
+        }
+        public void Dispose() { MarkUnknown(); }
     }
 
     public sealed partial class MDSDataHeap
