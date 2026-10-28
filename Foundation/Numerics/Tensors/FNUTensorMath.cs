@@ -114,13 +114,31 @@ namespace CxVisual.Foundation.Numerics
         /// <summary>二维矩阵乘法：左(m,k) × 右(k,n) -> (m,n)。</summary>
         public static FNUTensorBuffer MatMul(FNUTensorBuffer a, FNUTensorBuffer b)
         {
-            if (a == null) throw new ArgumentNullException("a");
-            if (b == null) throw new ArgumentNullException("b");
-            if (a.Shape.Rank != 2 || b.Shape.Rank != 2 ||
-                a.Shape.DimensionAt(1) != b.Shape.DimensionAt(0))
-                throw new ArgumentException("MatMul requires 2D tensors with a shared inner dimension.");
-            int m = a.Shape.DimensionAt(0), k = a.Shape.DimensionAt(1), n = b.Shape.DimensionAt(1);
+            int m, k, n;
+            ValidateMatMulInputs(a, b, out m, out k, out n);
             var result = new FNUTensorBuffer(new FNUTensorShape(m, n));
+            MatMulInto(a, b, result);
+            return result;
+        }
+
+        /// <summary>
+        /// 写入调用方提供的输出张量，避免每次分配新矩阵。
+        /// output 须为 (m,n) 且不能与任一输入为同一实例。
+        /// 计算溢出可能产生部分输出；出错后不得使用不完整结果。
+        /// </summary>
+        public static void MatMulInto(FNUTensorBuffer a, FNUTensorBuffer b,
+            FNUTensorBuffer output)
+        {
+            int m, k, n;
+            ValidateMatMulInputs(a, b, out m, out k, out n);
+            if (output == null) throw new ArgumentNullException("output");
+            if (ReferenceEquals(output, a) || ReferenceEquals(output, b))
+                throw new ArgumentException("Output cannot alias an input tensor.", "output");
+            if (output.Shape.Rank != 2 ||
+                output.Shape.DimensionAt(0) != m ||
+                output.Shape.DimensionAt(1) != n)
+                throw new ArgumentException("Output shape must be (rows, columns).", "output");
+
             for (int row = 0; row < m; row++)
                 for (int col = 0; col < n; col++)
                 {
@@ -136,9 +154,22 @@ namespace CxVisual.Foundation.Numerics
                     double total = sum + correction;
                     if (double.IsNaN(total) || double.IsInfinity(total))
                         throw new OverflowException("Matrix multiplication overflow.");
-                    result.Put(row * n + col, total);
+                    output.Put(row * n + col, total);
                 }
-            return result;
+        }
+
+        private static void ValidateMatMulInputs(FNUTensorBuffer a, FNUTensorBuffer b,
+            out int m, out int k, out int n)
+        {
+            if (a == null) throw new ArgumentNullException("a");
+            if (b == null) throw new ArgumentNullException("b");
+            if (a.Shape.Rank != 2 || b.Shape.Rank != 2 ||
+                a.Shape.DimensionAt(1) != b.Shape.DimensionAt(0))
+                throw new ArgumentException(
+                    "MatMul requires 2D tensors with a shared inner dimension.");
+            m = a.Shape.DimensionAt(0);
+            k = a.Shape.DimensionAt(1);
+            n = b.Shape.DimensionAt(1);
         }
 
         public static FNUTensorBuffer Transpose2D(FNUTensorBuffer input)

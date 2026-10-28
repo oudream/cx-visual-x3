@@ -87,3 +87,11 @@ filter.Reset(); // 新采样序列从零历史重新开始
 var solved = FNULinearAlgebra.LeastSquares(design, observations);
 double conditionNumber = solved.ConditionNumber;
 ```
+
+## 八、F13 数值边界与输出缓冲复用（2026-10-28）
+
+- `FNUTensorShape` 先验证所有维度，再计算总元素数。任意一个轴长度为0的空张量不会因其他大维度的中间乘法提前溢出；无可访问元素而理论Stride超出Int32范围时，该Stride值设为0（无有效索引）。非空张量仍严格检查 `int.MaxValue` 上限。
+- `FNUTensorMath.MatMulInto(a,b,output)` 由开发者持有输出缓冲区，复用现有补偿求和，不需要每次调用都创建新结果；`MatMul(a,b)` 保留原简便API并复用同一计算内核。
+- 前置合同：必须为二维 (m,k) 与 (k,n)；output为 (m,n)；拒绝与输入同实例；维度错误不会写输出。数值溢出可能留下部分输出，调用者应丢弃失败的输出内容。
+- 固定种子矩阵逐值对照、1e16抵消、复用结果、同实例禁止、空张量巨大维度及非空超大维度均纳入 `FNUNumericsQualityTests`。
+- **状态：源码与测试已加入；同SHA Windows .NET48/x64结果须以对应Actions实际执行结果认定。** 尚未完成大规模矩阵的独立吞吐/GC基线以及原生计算后端对比。

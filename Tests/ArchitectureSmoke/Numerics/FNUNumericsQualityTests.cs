@@ -15,6 +15,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             ConvolutionAndFirAgreement();
             TensorIndexAndOperations();
             AdvancedNumericsQuality();
+            TensorShapeAndBufferReuse();
             Console.WriteLine("PASS FNU numerical-quality: extremes / cancellation / DFT / FIR / tensor");
         }
 
@@ -149,6 +150,78 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 new double[]{2000,3});
             Near(fit.ConditionNumber,1000,1e-8,"SVD condition");
             Near(fit.Coefficients[0],2,1e-12,"SVD scaled coefficient");
+        }
+
+        private static void TensorShapeAndBufferReuse()
+        {
+            // Empty shapes are valid even with giant dimensions: nothing can be
+            // indexed, so their hypothetical strides must never overflow.
+            var emptyFirst = new FNUTensorShape(0, int.MaxValue, int.MaxValue);
+            var emptyMiddle = new FNUTensorShape(int.MaxValue, 0, int.MaxValue);
+            Check(emptyFirst.ElementCount == 0 && emptyMiddle.ElementCount == 0,
+                "empty giant shapes");
+            Check(emptyFirst.Rank == 3 && emptyMiddle.Rank == 3,
+                "empty giant rank");
+            Check(new FNUTensorShape(2, 0, 3).StrideAt(1) == 3,
+                "empty axis contiguous trailing stride");
+            Throws<OverflowException>(() => new FNUTensorShape(int.MaxValue, 2),
+                "nonempty giant shape rejects");
+            Throws<ArgumentOutOfRangeException>(() => emptyFirst.Offset(0, 0, 0),
+                "empty tensor cannot be indexed");
+
+            var a = new FNUTensorBuffer(new FNUTensorShape(2, 3),
+                new double[] { 1e16, 1, -1e16, 1, 2, 3 });
+            var b = new FNUTensorBuffer(new FNUTensorShape(3, 2),
+                new double[] { 1, 0, 1, 1, 1, 2 });
+            var output = new FNUTensorBuffer(new FNUTensorShape(2, 2));
+            FNUTensorMath.MatMulInto(a, b, output);
+            Near(output.Get(0, 0), 1, 0, "MatMulInto compensated column");
+            Near(output.Get(1, 0), 6, 0, "MatMulInto normal column");
+            Near(output.Get(1, 1), 8, 0, "MatMulInto second column");
+            var allocated = FNUTensorMath.MatMul(a, b);
+            for (int row = 0; row < 2; row++)
+                for (int col = 0; col < 2; col++)
+                    Near(output.Get(row, col), allocated.Get(row, col), 0,
+                        "MatMulInto equals MatMul");
+
+            // The same output can be safely used by a subsequent operation.
+            var identity = new FNUTensorBuffer(new FNUTensorShape(3, 3),
+                new double[] { 1,0,0, 0,1,0, 0,0,1 });
+            Throws<ArgumentException>(() => FNUTensorMath.MatMulInto(a, identity, a),
+                "MatMulInto alias rejected");
+            Throws<ArgumentException>(() => FNUTensorMath.MatMulInto(a, b,
+                new FNUTensorBuffer(new FNUTensorShape(1, 4))),
+                "MatMulInto shape rejected");
+            // Verify destination remains unchanged after argument validation.
+            Near(output.Get(0, 0), 1, 0, "invalid calls preserve destination");
+
+            var random = new Random(20261028);
+            for (int iteration = 0; iteration < 30; iteration++)
+            {
+                int rows = 1 + random.Next(5);
+                int inner = 1 + random.Next(6);
+                int cols = 1 + random.Next(4);
+                var leftData = new double[rows * inner];
+                var rightData = new double[inner * cols];
+                for (int i = 0; i < leftData.Length; i++)
+                    leftData[i] = random.NextDouble() * 2 - 1;
+                for (int i = 0; i < rightData.Length; i++)
+                    rightData[i] = random.NextDouble() * 2 - 1;
+                var left = new FNUTensorBuffer(new FNUTensorShape(rows, inner), leftData);
+                var right = new FNUTensorBuffer(new FNUTensorShape(inner, cols), rightData);
+                var destination = new FNUTensorBuffer(new FNUTensorShape(rows, cols));
+                FNUTensorMath.MatMulInto(left, right, destination);
+                for (int i = 0; i < rows; i++)
+                    for (int j = 0; j < cols; j++)
+                    {
+                        double reference = 0;
+                        for (int k = 0; k < inner; k++)
+                            reference += leftData[i * inner + k] * rightData[k * cols + j];
+                        Near(destination.Get(i,j), reference, 1e-12,
+                            "random MatMulInto reference");
+                    }
+            }
+            Console.WriteLine("PASS FNU tensor shape & MatMulInto: empty giant shape / zero alias / seeded reference");
         }
 
         private static void Near(double value,double expected,double tolerance,string what)

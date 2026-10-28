@@ -14,21 +14,42 @@ namespace CxVisual.Foundation.Numerics
             if (dimensions.Length == 0) throw new ArgumentException("A tensor must have at least one dimension.", "dimensions");
             _dimensions = (int[])dimensions.Clone();
             _strides = new int[dimensions.Length];
-            long count = 1;
+            // Validate the entire shape first. A zero-length axis means the
+            // tensor is empty even when other axes have very large dimensions.
+            bool empty = false;
             for (int i = 0; i < _dimensions.Length; i++)
             {
                 if (_dimensions[i] < 0) throw new ArgumentOutOfRangeException("dimensions");
-                count *= _dimensions[i];
-                if (count > int.MaxValue) throw new OverflowException("Tensor exceeds int-indexable storage.");
+                if (_dimensions[i] == 0) empty = true;
             }
-            ElementCount = (int)count;
-            int stride = 1;
+
+            long elements = empty ? 0 : 1;
+            if (!empty)
+            {
+                for (int i = 0; i < _dimensions.Length; i++)
+                {
+                    if (elements > int.MaxValue / _dimensions[i])
+                        throw new OverflowException("Tensor exceeds int-indexable storage.");
+                    elements *= _dimensions[i];
+                }
+            }
+            ElementCount = (int)elements;
+
+            // Strides for addressable, nonempty tensors are always representable.
+            // For empty tensors, a non-representable hypothetical stride is
+            // reported as zero: there are no valid indices for that dimension.
+            long stride = 1;
             for (int i = _dimensions.Length - 1; i >= 0; --i)
             {
-                _strides[i] = stride;
-                // Zero dimensions are empty; other dimensions still contribute their
-                // coordinate stride in a potential sliced view.
-                stride = checked(stride * Math.Max(1, _dimensions[i]));
+                _strides[i] = stride > int.MaxValue ? 0 : (int)stride;
+                if (_dimensions[i] == 0) stride = 0;
+                else if (stride != 0)
+                {
+                    if (stride > int.MaxValue / _dimensions[i])
+                        stride = (long)int.MaxValue + 1;
+                    else
+                        stride *= _dimensions[i];
+                }
             }
         }
 
