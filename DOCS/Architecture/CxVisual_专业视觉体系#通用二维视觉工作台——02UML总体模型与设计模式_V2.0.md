@@ -662,4 +662,4 @@ ImageMetadata/FrameRef/MaskContract先审FIM/FDT；VisionOperationDescriptor/Typ
 
 ## 10. 版本与测试
 
-U/P/C/ST/SQ/DP各组图号固定；变动对象图必须同步修改01能力契约、相关03—08专题和实施/验收台账。采用C01单图、C02算法、C03配准、C04批次、C05在线、C06 X-Ray/CT、C07工程、C08 AI预留八个反向Case验证；任何通过声明都要求对应Git SHA及Windows/设备实证。
+U/P/C/ST/SQ/DP各组图号固定；变动对象图必须同步修改01能力契约、相关03—08专题和实施/验收台账。采用CASE-01单图、CASE-02算法、CASE-03配准、CASE-04批次、CASE-05在线、CASE-06 X-Ray/CT、CASE-07工程、CASE-08 AI预留八个反向Case验证；任何通过声明都要求对应Git SHA及Windows/设备实证。
