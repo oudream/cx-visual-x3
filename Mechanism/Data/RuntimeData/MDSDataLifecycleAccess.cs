@@ -206,28 +206,28 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         {
             if (!IsAutoEligible(record, nowUtc) || LifecycleBlockers(record).Count != 0)
                 return false;
-            DropLifecycleItem(name);
-            return true;
+            return DropLifecycleItem(name);
         }
 
-        private void DropLifecycleItem(string name)
+        private bool DropLifecycleItem(string name)
         {
             // 仅在原Heap锁中调用，使用原有预算账目，不另建存储。
             MDSDataFileEntry file;
             if (_files.TryGetValue(name, out file))
             {
-                if (file.State == MDSDataLoadState.Loading) return;
+                if (file.State == MDSDataLoadState.Loading) return false;
                 _files.Remove(name);
                 if (Budget != null) Budget.Release(file.CachedBytes);
             }
             else
             {
                 MDSDataEntry value;
-                if (!_values.TryGetValue(name, out value)) return;
+                if (!_values.TryGetValue(name, out value)) return false;
                 _values.Remove(name);
                 if (Budget != null) Budget.Release(value.Bytes);
             }
             _lifecycles.Remove(name);
+            return true;
         }
 
         internal int SweepLifecycle(DateTime nowUtc)
@@ -258,8 +258,7 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                 MDSDataFileEntry file;
                 if (_files.TryGetValue(name, out file) &&
                     file.State == MDSDataLoadState.Loading) return false;
-                DropLifecycleItem(name);
-                return true;
+                return DropLifecycleItem(name);
             }
         }
 
