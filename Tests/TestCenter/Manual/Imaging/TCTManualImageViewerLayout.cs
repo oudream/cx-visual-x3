@@ -463,7 +463,8 @@ namespace CxVisual.TestCenter.UI
             TextBlock label = Label(title);
             row.Children.Add(label);
             slider = new Slider { Minimum = min, Maximum = max, Value = initial,
-                SmallChange = title == "亮度" ? .05 : .1, LargeChange = .2,
+                SmallChange = title == "亮度" ? 1 : .1,
+                LargeChange = title == "亮度" ? 10 : .2,
                 AutoToolTipPlacement = System.Windows.Controls.Primitives.AutoToolTipPlacement.TopLeft,
                 AutoToolTipPrecision = 2, Margin = new Thickness(7,0,8,0),
                 VerticalAlignment = VerticalAlignment.Center, MinWidth = 100,
