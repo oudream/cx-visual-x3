@@ -131,3 +131,11 @@ double conditionNumber = solved.ConditionNumber;
 - `--numerics` 独立质量测试成功（含无拷贝Slice/Transpose、Get2D/GetFlat、数据实时性、CopyToBuffer隔离、非连续View MatMul、别名和越界）。
 - 默认 `ArchitectureSmoke` 通过。此证据为代码SHA对应结果；此后文档补录不改变已验证代码。
 - 尚未进行独立矩阵性能基准、GC分配/吞吐曲线、多数据类型、非CPU后端或实际工业设备验证。
+
+## 十三、F04 条件数阈值与 F13 视图顺序遍历（2026-10-28）
+
+- F04 兼容原 `LeastSquares(A,b)`；新增 `LeastSquares(A,b,maxConditionNumber)` 允许在 SVD 满秩情况下按条件数拒绝病态求解。有效阈值必须>=1，`PositiveInfinity` 表示不设限制；不改变旧调用默认行为。
+- F13 `SumView` 与 `CopyToBuffer` 采用一次性分配的多轴坐标游标，顺序前进避免每样本重复逐轴整数除法；随机定位 `GetFlat` 继续保留。
+- 正反测试：病态满秩 diag(1,1e-8) 的旧方法可返回数值诊断、可接受阈值、过严阈值拒绝、NaN阈值、真正秩亏仍拒绝；固定随机非连续View的Copy/Sum与独立GetFlat遍历结果对照。
+- 新增 `--numerics-benchmark` 独立性能诊断，报告 `SumView` vs `GetFlat` 逐点参考路径与 `MatMulViewsInto` vs 新分配的 ms/op、bytes/op。仅记录数据，不以易抖动时间阈值判CI。是否真正加速由同机数据决定。
+- 此处属于源码与测试合同；**实际Windows结果须以本次提交SHA的CI日志为准**。

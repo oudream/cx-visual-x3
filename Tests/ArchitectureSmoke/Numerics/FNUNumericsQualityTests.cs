@@ -18,6 +18,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             TensorShapeAndBufferReuse();
             TensorBroadcastInto();
             TensorViewQuality();
+            SolverConditionAndViewTraversal();
             Console.WriteLine("PASS FNU numerical-quality: extremes / cancellation / DFT / FIR / tensor");
         }
 
@@ -325,6 +326,59 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Throws<ArgumentOutOfRangeException>(()=>empty.GetFlat(0),"empty view access");
             Near(FNUTensorMath.SumView(empty),0,0,"empty view sum");
             Console.WriteLine("PASS FNU read-only live view / slice / transpose / matmul");
+        }
+
+        private static void SolverConditionAndViewTraversal()
+        {
+            double[,] illConditioned = new double[,] { { 1, 0 }, { 0, 1e-8 }, { 0, 0 } };
+            double[] observations = new double[] { 2, 3e-8, 0 };
+            var permitted = FNULinearAlgebra.LeastSquares(illConditioned, observations);
+            Near(permitted.ConditionNumber, 1e8, 1, "diagnose ill-conditioned matrix");
+            Near(permitted.Coefficients[0], 2, 1e-10, "ill-conditioned coefficient one");
+            Near(permitted.Coefficients[1], 3, 1e-8, "ill-conditioned coefficient two");
+            var accepted = FNULinearAlgebra.LeastSquares(illConditioned, observations, 1e9);
+            Near(accepted.Coefficients[1], 3, 1e-8, "explicit condition guard permits");
+            Throws<InvalidOperationException>(() => FNULinearAlgebra.LeastSquares(
+                illConditioned, observations, 1e6), "guard rejects ill-conditioned matrix");
+            Throws<ArgumentOutOfRangeException>(() => FNULinearAlgebra.LeastSquares(
+                illConditioned, observations, 0.5), "condition limit below one");
+            Throws<ArgumentOutOfRangeException>(() => FNULinearAlgebra.LeastSquares(
+                illConditioned, observations, double.NaN), "NaN condition limit");
+            Throws<InvalidOperationException>(() => FNULinearAlgebra.LeastSquares(
+                new double[,] { { 1, 1 }, { 2, 2 }, { 3, 3 } },
+                new double[] { 1, 2, 3 }, 1e9), "exact rank deficiency remains rejected");
+
+            var random = new Random(20261028);
+            for (int trial = 0; trial < 50; trial++)
+            {
+                int x = 1 + random.Next(5), y = 1 + random.Next(4), z = 1 + random.Next(6);
+                var samples = new double[x*y*z];
+                for (int i = 0; i < samples.Length; ++i)
+                    samples[i] = random.NextDouble()*2 - 1;
+                var owner = new FNUTensorBuffer(new FNUTensorShape(x,y,z), samples);
+                var view = owner.AsView().Transpose(0,2).Slice(1,0,y);
+                var copied = view.CopyToBuffer();
+                Check(copied.Shape.ElementCount == view.ElementCount, "view copy dimensions");
+                double reference = 0, correction = 0;
+                double[] copiedValues = copied.CopyValues();
+                for (int i = 0; i < view.ElementCount; ++i)
+                {
+                    double v = view.GetFlat(i);
+                    Near(copiedValues[i], v, 0, "view cursor matches flat oracle");
+                    double next = reference + v;
+                    correction += Math.Abs(reference) >= Math.Abs(v)
+                        ? (reference-next)+v : (v-next)+reference;
+                    reference = next;
+                }
+                Near(FNUTensorMath.SumView(view), reference+correction,
+                    1e-11, "cursor sum versus independent flat oracle");
+            }
+            var baseBuffer = new FNUTensorBuffer(new FNUTensorShape(2,3),
+                new double[] { 1e16, 1, -1e16, 7, 8, 9 });
+            var transposed = baseBuffer.AsView().Transpose(0,1);
+            Near(FNUTensorMath.SumView(transposed),25,0,
+                "cursor sum preserves cancellation accuracy");
+            Console.WriteLine("PASS FNU quality: condition guard / strided cursor oracle");
         }
 
         private static void Near(double value,double expected,double tolerance,string what)

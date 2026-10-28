@@ -45,6 +45,12 @@ jobs:
           $exe='.\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe'
           & $exe --numerics
           if ($LASTEXITCODE -ne 0) { throw 'Numerics assertions failed' }
+      - name: Record Numerics performance diagnostic (no timing thresholds)
+        shell: pwsh
+        run: |
+          $exe='.\\Output\\Release\\x64\\CxVisual.Tests.ArchitectureSmoke.exe'
+          & $exe --numerics-benchmark
+          if ($LASTEXITCODE -ne 0) { throw 'Numerics benchmark diagnostic failed' }
       - name: Run full ArchitectureSmoke integration regression
         shell: pwsh
         run: |

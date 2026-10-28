@@ -17,7 +17,21 @@ namespace CxVisual.Foundation.Numerics {
     /// <summary>采用Math.NET 5.0 SVD求满列秩最小二乘；秩亏明确拒绝。</summary>
     public static class FNULinearAlgebra {
         private static bool Finite(double x){return !double.IsNaN(x)&&!double.IsInfinity(x);}
+        /// <summary>Backwards-compatible full-rank SVD least-squares solver without a condition limit.</summary>
         public static FNULeastSquaresResult LeastSquares(double[,] design,double[] observations) {
+            return LeastSquares(design,observations,double.PositiveInfinity);
+        }
+
+        /// <summary>
+        /// Solve a full-column-rank least-squares system by SVD. Set
+        /// maxConditionNumber to reject numerically unstable but technically
+        /// full-rank systems. Infinity keeps the legacy permissive behavior.
+        /// </summary>
+        public static FNULeastSquaresResult LeastSquares(double[,] design,double[] observations,
+            double maxConditionNumber) {
+            if(double.IsNaN(maxConditionNumber)||maxConditionNumber<1||
+                double.IsNegativeInfinity(maxConditionNumber))
+                throw new ArgumentOutOfRangeException("maxConditionNumber");
             if(design==null)throw new ArgumentNullException("design");
             if(observations==null)throw new ArgumentNullException("observations");
             int rows=design.GetLength(0),cols=design.GetLength(1);
@@ -44,7 +58,10 @@ namespace CxVisual.Foundation.Numerics {
                     throw new InvalidOperationException("SVD returned an invalid singular value.");
                 largest=Math.Max(largest,singular);smallest=Math.Min(smallest,singular);
             }
-            return new FNULeastSquaresResult(result,rows,cols,svd.Rank,norm,largest/smallest);
+            double condition=largest/smallest;
+            if(condition>maxConditionNumber)
+                throw new InvalidOperationException("Least-squares matrix exceeds the allowed condition number.");
+            return new FNULeastSquaresResult(result,rows,cols,svd.Rank,norm,condition);
         }
     }
 }

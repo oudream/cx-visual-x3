@@ -218,22 +218,11 @@ namespace CxVisual.Foundation.Numerics
             n = b.Shape.DimensionAt(1);
         }
 
-        /// <summary>Neumaier sum over a non-contiguous view without materialization.</summary>
+        /// <summary>Compensated sum with one coordinate cursor per invocation.</summary>
         public static double SumView(FNUTensorView view)
         {
             if (view == null) throw new ArgumentNullException("view");
-            double sum = 0, correction = 0;
-            for (int i = 0; i < view.ElementCount; ++i)
-            {
-                double value = view.GetFlat(i), next = sum + value;
-                correction += Math.Abs(sum) >= Math.Abs(value)
-                    ? (sum - next) + value : (value - next) + sum;
-                sum = next;
-            }
-            double answer = sum + correction;
-            if (double.IsNaN(answer) || double.IsInfinity(answer))
-                throw new OverflowException("View reduction overflow.");
-            return answer;
+            return view.SumCompensated();
         }
 
         public static FNUTensorBuffer MatMulViews(FNUTensorView a, FNUTensorView b)

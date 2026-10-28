@@ -114,8 +114,55 @@ namespace CxVisual.Foundation.Numerics
         public FNUTensorBuffer CopyToBuffer()
         {
             var result = new FNUTensorBuffer(new FNUTensorShape(CopyDimensions()));
-            for (int i = 0; i < ElementCount; ++i) result.Put(i, GetFlat(i));
+            if (ElementCount == 0) return result;
+            // Carry multi-axis coordinates instead of dividing the logical flat
+            // index by every dimension for each sample.
+            var coordinates = new int[Rank];
+            long address = _offset;
+            for (int index = 0; index < ElementCount; ++index)
+            {
+                result.Put(index, ReadAt(address));
+                if (index + 1 < ElementCount) Advance(coordinates, ref address);
+            }
             return result;
+        }
+
+        /// <summary>
+        /// Numerically compensated sum over a strided view. One coordinate
+        /// array per invocation, no allocation or integer divisions per sample.
+        /// </summary>
+        internal double SumCompensated()
+        {
+            if (ElementCount == 0) return 0;
+            var coordinates = new int[Rank];
+            long address = _offset;
+            double sum = 0, correction = 0;
+            for (int index = 0; index < ElementCount; ++index)
+            {
+                double value = ReadAt(address);
+                double next = sum + value;
+                correction += Math.Abs(sum) >= Math.Abs(value)
+                    ? (sum - next) + value : (value - next) + sum;
+                sum = next;
+                if (index + 1 < ElementCount) Advance(coordinates, ref address);
+            }
+            double result = sum + correction;
+            if (double.IsNaN(result) || double.IsInfinity(result))
+                throw new OverflowException("View reduction overflow.");
+            return result;
+        }
+
+        private void Advance(int[] coordinates, ref long address)
+        {
+            // Amortized O(1): the innermost axis is advanced most frequently.
+            for (int axis = Rank - 1; axis >= 0; --axis)
+            {
+                coordinates[axis]++;
+                address += _strides[axis];
+                if (coordinates[axis] < _dimensions[axis]) return;
+                address -= (long)coordinates[axis] * _strides[axis];
+                coordinates[axis] = 0;
+            }
         }
 
         private double ReadAt(long index)
