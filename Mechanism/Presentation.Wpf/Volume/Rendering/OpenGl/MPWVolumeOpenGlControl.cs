@@ -132,6 +132,37 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
             SizeChanged += (s, e) => RequestRender();
         }
 
+        /// <summary>
+        /// 原始CT各轴尺寸决定物理显示包围盒；R8交互预览轴数只决定GL纹理分辨率。
+        /// 不改变旧SetVolume签名，避免影响已有Raymarch SDK调用者与反射测试。
+        /// </summary>
+        public void SetVolumeWithOriginalDimensions(
+            byte[] voxels,int width,int height,int depth,
+            float spacingX,float spacingY,float spacingZ,
+            byte[] rgbaTransfer,byte[] gradientOpacity,
+            int originalWidth,int originalHeight,int originalDepth)
+        {
+            if(originalWidth<width||originalHeight<height||originalDepth<depth)
+                throw new ArgumentOutOfRangeException("originalWidth",
+                    "原始体尺寸不能小于交互预览尺寸。");
+            double physicalX=(double)originalWidth*spacingX;
+            double physicalY=(double)originalHeight*spacingY;
+            double physicalZ=(double)originalDepth*spacingZ;
+            double longest=Math.Max(physicalX,Math.Max(physicalY,physicalZ));
+            if(double.IsNaN(longest)||double.IsInfinity(longest)||longest<=0)
+                throw new ArgumentOutOfRangeException("spacingX");
+            SetVolume(voxels,width,height,depth,spacingX,spacingY,spacingZ,
+                rgbaTransfer,gradientOpacity);
+            _sx=(float)(physicalX/longest);
+            _sy=(float)(physicalY/longest);
+            _sz=(float)(physicalZ/longest);
+            RequestRender();
+        }
+
+        public float PhysicalDisplaySpanX {get{return _sx;}}
+        public float PhysicalDisplaySpanY {get{return _sy;}}
+        public float PhysicalDisplaySpanZ {get{return _sz;}}
+
         public void SetVolume(byte[] voxels, int width, int height, int depth,
             float spacingX, float spacingY, float spacingZ,
             byte[] rgbaTransfer, byte[] gradientOpacity)
