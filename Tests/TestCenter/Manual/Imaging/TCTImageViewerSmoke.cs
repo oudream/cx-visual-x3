@@ -76,22 +76,12 @@ namespace CxVisual.TestCenter.UI
                 throw new InvalidOperationException("区域工具互斥切换未清除旧高亮状态");
             primary.SelectedIndex=0;
             window.UpdateLayout();
-            foreach(var item in new[] {
-                Tuple.Create("ROI",MVIImageToolMode.RectangleRoi),
-                Tuple.Create("测量",MVIImageToolMode.Distance),
-                Tuple.Create("标注",MVIImageToolMode.Point),
-                Tuple.Create("缺陷",MVIImageToolMode.DefectBox) })
-            {
-                Button category=FindControl<Button>(frame,"TCT.Imaging.SelectMode."+item.Item1);
-                if(category==null)
-                    throw new InvalidOperationException(item.Item1+"分类没有可操作的工具选择按钮");
-                category.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                if(frame.Viewer.ToolMode!=item.Item2 ||
-                    category.BorderThickness.Left<2.5)
-                    throw new InvalidOperationException(item.Item1+"选择按钮并未激活工具和高亮");
-                primary.SelectedIndex=0;
-                window.UpdateLayout();
-            }
+            if(FindControl<Button>(frame,"TCT.Imaging.SelectMode.ROI")!=null ||
+                FindControl<Button>(frame,"TCT.Imaging.OverlayColor.ROI")!=null)
+                throw new InvalidOperationException("显示页仍保留重复的分类及固定颜色按钮");
+            ComboBox selector=FindControl<ComboBox>(frame,"TCT.Imaging.ImageTool");
+            if(selector==null)
+                throw new InvalidOperationException("精简显示页后未保留完整工具选择控件");
             fit.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Console.WriteLine("PASS TCT Imaging UI: 15+ one-row commands, dual five-tab panels, controls and action access");
         }
@@ -295,14 +285,19 @@ namespace CxVisual.TestCenter.UI
                 TabControl displayTabs=FindControl<TabControl>(frame,"TCT.Imaging.PrimaryTabs");
                 displayTabs.SelectedIndex=1;
                 window.UpdateLayout();
-                TextBox windowLow=FindControl<TextBox>(frame,"TCT.Imaging.WindowLow");
-                TextBox windowHigh=FindControl<TextBox>(frame,"TCT.Imaging.WindowHigh");
+                TextBox windowWidth=FindControl<TextBox>(frame,"TCT.Imaging.WindowWidth");
+                TextBox windowCenter=FindControl<TextBox>(frame,"TCT.Imaging.WindowCenter");
+                Slider widthSlider=FindControl<Slider>(frame,"TCT.Imaging.WindowWidthSlider");
+                Slider centerSlider=FindControl<Slider>(frame,"TCT.Imaging.WindowCenterSlider");
+                CheckBox roiWindow=FindControl<CheckBox>(frame,"TCT.Imaging.WindowRoi");
+                CheckBox windowEnabled=FindControl<CheckBox>(frame,"TCT.Imaging.WindowEnabled");
                 Button windowApply=FindControl<Button>(frame,"TCT.Imaging.Window");
                 Button autoWindow=FindControl<Button>(frame,"TCT.Imaging.AutoWindow");
-                if(windowLow==null||windowHigh==null||windowApply==null||autoWindow==null)
-                    throw new InvalidOperationException("窗宽窗位缺少可操作的WPF参数及按钮");
-                windowLow.Text="1";
-                windowHigh.Text="16";
+                if(windowWidth==null||windowCenter==null||windowApply==null||autoWindow==null||
+                   widthSlider==null||centerSlider==null||roiWindow==null||windowEnabled==null)
+                    throw new InvalidOperationException("窗宽/窗位缺少数字与真实WPF滑条");
+                windowWidth.Text="15";
+                windowCenter.Text="8.5";
                 windowApply.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 if(frame.Viewer.DisplayState.IsAutoWindowLevel ||
                     frame.Viewer.DisplayState.WindowWidth!=15 ||
@@ -313,15 +308,36 @@ namespace CxVisual.TestCenter.UI
                 double originalMappedValue=manualWindowPreview.GetGrayValue(1,2);
                 if(originalMappedValue<=0 || originalMappedValue>=255)
                     throw new InvalidOperationException("手动窗宽窗位没有生成有效灰度动态范围");
-                windowLow.Text="b";
+                windowWidth.Text="b";
                 windowApply.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 if(frame.Viewer.DisplayState.WindowWidth!=15 ||
-                    !AutomationProperties.GetHelpText(windowApply).Contains("窗上下限"))
+                    !AutomationProperties.GetHelpText(windowApply).Contains("窗宽/窗位"))
                     throw new InvalidOperationException("错误窗位输入没有明确拒绝并保留旧显示");
+                windowWidth.Text="12";
+                windowCenter.Text="8";
+                windowApply.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                if(frame.Viewer.DisplayState.WindowWidth!=12 ||
+                   Math.Abs(widthSlider.Value-12)>0.001 ||
+                   windowEnabled.IsChecked!=true)
+                    throw new InvalidOperationException("窗宽数值没有同步真实滑条或手动显示");
+                centerSlider.Value=6;
+                windowApply.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                if(frame.Viewer.DisplayState.WindowCenter!=6 ||
+                   windowCenter.Text!="6")
+                    throw new InvalidOperationException("窗位滑条没有更新数值或显示状态");
+                roiWindow.IsChecked=true;
+                frame.Viewer.SelectRegion(new FIMPixelRegion(0,0,1,1));
+                autoWindow.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                if(frame.Viewer.DisplayState.IsAutoWindowLevel ||
+                   frame.Viewer.DisplayState.WindowWidth!=5 ||
+                   frame.Viewer.DisplayState.WindowCenter!=3.5)
+                    throw new InvalidOperationException("框选自动取窗未按ROI实际像素1至6计算");
+                roiWindow.IsChecked=false;
+                frame.Viewer.ClearSelection();
                 autoWindow.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 if(!frame.Viewer.DisplayState.IsAutoWindowLevel ||
                     !frame.Viewer.DisplayState.IsAutoContrast)
-                    throw new InvalidOperationException("自动窗宽/位没有使用图像实际灰度范围");
+                    throw new InvalidOperationException("全图自动灰度拉伸没有真正生效");
                 displayTabs.SelectedIndex=2;
                 window.UpdateLayout();
                 TextBox gammaField=FindControl<TextBox>(frame,"TCT.Imaging.Gamma");
@@ -333,10 +349,10 @@ namespace CxVisual.TestCenter.UI
                 if(gammaField==null||brightnessField==null||contrastField==null||
                    invertedBox==null||applyGray==null||resetGray==null)
                     throw new InvalidOperationException("灰阶增强真实WPF控件缺失");
-                gammaField.Text="2"; brightnessField.Text="0.1"; contrastField.Text="1.5";
+                gammaField.Text="2"; brightnessField.Text="26"; contrastField.Text="1.5";
                 applyGray.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 if(frame.Viewer.DisplayState.Gamma!=2 ||
-                    frame.Viewer.DisplayState.Brightness!=0.1 ||
+                    Math.Abs(frame.Viewer.DisplayState.Brightness-26.0/255)>1e-10 ||
                     frame.Viewer.DisplayState.Contrast!=1.5)
                     throw new InvalidOperationException("WPF Gamma/亮度/对比度未实际提交");
                 frame.Viewer.SavePng(file);
@@ -365,7 +381,8 @@ namespace CxVisual.TestCenter.UI
                 FIMImageBuffer gray8WindowProbe=new FIMImageBuffer(2,1,
                     FIMPixelFormat.Gray8,new byte[]{0,255});
                 frame.SetOriginal(gray8WindowProbe);
-                if(windowLow.Text!="0" || windowHigh.Text!="255")
+                if(windowWidth.Text!="255" || windowCenter.Text!="127.5" ||
+                   widthSlider.Maximum!=255 || centerSlider.Maximum!=255)
                     throw new InvalidOperationException("Gray8载入后仍沿用Gray16默认窗范围");
                 windowApply.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 frame.Viewer.SavePng(file);
@@ -845,10 +862,16 @@ namespace CxVisual.TestCenter.UI
                     new FGEPoint2D(0,0),new FGEPoint2D(3.6,0),
                     new FGEPoint2D(0,3.6)});
                 frame.Viewer.SelectOverlay(statsPolygon.Id);
-                Button overlayColor=FindControl<Button>(frame,"TCT.Imaging.OverlayColor.ROI");
-                if(overlayColor==null)
-                    throw new InvalidOperationException("旧Viewer颜色设置被降级成不可点击色块");
-                overlayColor.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                TabControl propertyTabs=FindControl<TabControl>(frame,"TCT.Imaging.SecondaryTabs");
+                propertyTabs.SelectedIndex=0;
+                window.UpdateLayout();
+                Button colorDialogButton=FindControl<Button>(frame,"TCT.Imaging.ChooseOverlayColor");
+                TextBox argbField=FindControl<TextBox>(frame,"TCT.Imaging.OverlayArgb");
+                Button applyProperties=FindControl<Button>(frame,"TCT.Imaging.ApplyOverlayProperties");
+                if(colorDialogButton==null || argbField==null || applyProperties==null)
+                    throw new InvalidOperationException("选中图元没有真实颜色对话框或属性编辑入口");
+                argbField.Text="FF0DA6C3";
+                applyProperties.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 MVIImageOverlayItem recolored=frame.Viewer.Overlays.Find(statsPolygon.Id);
                 if(recolored==null || recolored.Id!=statsPolygon.Id ||
                     recolored.Argb!=unchecked((int)0xff0da6c3) ||
