@@ -121,3 +121,15 @@
 ### 继续开发的明确缺口
 
 现阶段已能真实发现Compute软件Provider、显式读取已存在的MHS Effective、按MOC展示强类型端口；**尚未**完成正式MEM模块资源关联、工程数据输入到MOC/MRK执行/Trace的Studio UI闭环，亦未完成其它四类模块真实Provider与G2/G3实机工业验收。不得把RuntimeResolved当作Supported/Available/Authorized。
+
+## 8. P0受控添加到现有MEM流程（2026-10-28）
+
+| 提交 | 功能及Owner边界 |
+|---|---|
+| [5e391ff](https://github.com/oudream/cx-visual-x3/commit/5e391ff9b491787e171e6e3bc8551bdccb650707) | 公共MPW只读提供选中的能力对象，不维护模块执行队列或工程状态 |
+| [fc2564f](https://github.com/oudream/cx-visual-x3/commit/fc2564fd2ce609b6615dcf880c3692c69b1a0481) | Studio增加“加入当前主流程”；先选择真正的Compute能力并加载MHS Effective，操作前重新检查Provider版本/权限，通过原MOCFlowBuilder.Edit写入当前MEM主Content。无能力选择、演示Resolver、流程运行中、版本失效均拒绝。只插入未连线节点，尚不可宣称执行 |
+| [b1717cd](https://github.com/oudream/cx-visual-x3/commit/b1717cd169e085d471760bc4f3fd73ff58ba7080) | Studio WPF新增未选中能力点击时拒绝的负例，MEM工程Revision不应改变；现有G06用原MOC Builder和真实CPU像素执行验证软件侧正常链 |
+
+**验收边界**：当前能安全添加待连接的Compute能力引用，**不是**整套工程资源绑定、数据映射、MOC成功编译和MRK授权执行。该入口真实WPF最终SHA CI仍处于排队/待验，禁止声称已通过。跨进程配置Effective刷新及已捕获Provider版本失效的实时一致性仍需独立验证。
+
+此前 [Studio S1 #40652167269](https://github.com/oudream/cx-visual-x3/actions/runs/40652167269)（5985ece）中模块中心专项S1-03C为PASS，但整个S1后续因统一配置组合1/2/3列响应式布局断言失败，需由对应配置UI Owner处理；不能把该流程的总体Failure误报为Success，也不能凭它认定本轮最新加入流程操作失败。
