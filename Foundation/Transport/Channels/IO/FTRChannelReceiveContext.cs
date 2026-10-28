@@ -19,6 +19,8 @@ public sealed class FTRChannelReceiveContext
             RemoteEndpoint = remoteEndpoint;
         }
         public FTRSubChannelAddress Address { get; private set; }
+        /// <summary>FTR创建的接收事件所属物理Session；外部直接构造时为Guid.Empty。</summary>
+        public Guid SessionId {get;internal set;}
         public byte[] Data { get { return (byte[])_data.Clone(); } }
         public string CorrelationId { get; private set; }
         public string RemoteEndpoint { get; private set; }
