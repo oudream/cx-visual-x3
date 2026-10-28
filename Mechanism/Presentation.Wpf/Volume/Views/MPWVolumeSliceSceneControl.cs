@@ -11,6 +11,7 @@ using System.Windows.Media.Media3D;
 using System.Windows.Shapes;
 using CxVisual.Foundation.Imaging;
 using CxVisual.Mechanism.Visual;
+using CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering;
 
 namespace CxVisual.Mechanism.Presentation.Wpf.Volume
 {
@@ -25,6 +26,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
         private readonly Model3DGroup _models = new Model3DGroup();
         // 独立于三刀/任意切Mesh，防止换层时清除专业可视点。
         private readonly ModelVisual3D _surfaceOverlay = new ModelVisual3D();
+        private readonly ModelVisual3D _meshOverlay = new ModelVisual3D();
+        public int SurfaceMeshTriangleCount {get;private set;}
         private double _displaySx=1,_displaySy=1,_displaySz=1;
         public int SurfacePreviewPointCount {get;private set;}
         private readonly PerspectiveCamera _camera = new PerspectiveCamera();
@@ -73,6 +76,7 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
             ModelVisual3D scene = new ModelVisual3D { Content = _models };
             _viewport.Children.Add(scene);
             _viewport.Children.Add(_surfaceOverlay);
+            _viewport.Children.Add(_meshOverlay);
             _viewport.Camera = _camera;
             Children.Add(_viewport);
             Border label = new Border
@@ -173,6 +177,43 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume
         {
             while (_models.Children.Count > 1) _models.Children.RemoveAt(1);
             ClearSurfacePoints();
+            ClearSurfaceMesh();
+        }
+
+        /// <summary>索引三角Mesh真正进入WPF Viewport3D，不退化为点云伪显示。</summary>
+        public void SetSurfaceMesh(MPWVolumeDisplayMesh preview)
+        {
+            Dispatcher.VerifyAccess();
+            if(preview==null)throw new ArgumentNullException("preview");
+            if(preview.TriangleCount>50000)
+                throw new ArgumentOutOfRangeException("preview","超出WPF三角面渲染预算。");
+            var positions=new Point3DCollection();
+            foreach(Vector3 v in preview.Vertices)
+            {
+                if(float.IsNaN(v.X)||float.IsNaN(v.Y)||float.IsNaN(v.Z)||
+                   Math.Abs(v.X)>.50001||Math.Abs(v.Y)>.50001||Math.Abs(v.Z)>.50001)
+                    throw new ArgumentOutOfRangeException("preview");
+                positions.Add(new Point3D(v.X*_displaySx,-v.Y*_displaySy,v.Z*_displaySz));
+            }
+            var triangles=new Int32Collection();
+            for(int i=0;i<preview.TriangleIndices.Count;i+=3)
+            {
+                // 现有WPF三切面Y镜像导致手性翻转，需交换索引绕序。
+                triangles.Add(preview.TriangleIndices[i]);
+                triangles.Add(preview.TriangleIndices[i+2]);
+                triangles.Add(preview.TriangleIndices[i+1]);
+            }
+            var geometry=new MeshGeometry3D {Positions=positions,TriangleIndices=triangles};
+            var material=new DiffuseMaterial(new SolidColorBrush(Color.FromRgb(77,216,241)));
+            _meshOverlay.Content=new GeometryModel3D(geometry,material){BackMaterial=material};
+            SurfaceMeshTriangleCount=preview.TriangleCount;
+        }
+
+        public void ClearSurfaceMesh()
+        {
+            Dispatcher.VerifyAccess();
+            _meshOverlay.Content=null;
+            SurfaceMeshTriangleCount=0;
         }
 
         /// <summary>专业数值输出转为仅供显示的标准化三维顶点，保留现有三刀和相机。</summary>
