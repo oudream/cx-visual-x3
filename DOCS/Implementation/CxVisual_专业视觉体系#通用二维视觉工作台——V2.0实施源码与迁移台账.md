@@ -170,3 +170,20 @@ P0—P5不是六套执行机制，也不是只写计划后停止；每阶段应�
 **复制与性能诚实记录**：FIMImageBuffer公共CopyPixels产生防御副本；CxVisionGrayFrame构造也复制ushort像素；ToCpuInspectionInputs通过FDTReadOnlyBuffer再次捕获紧排RAW。故此次交付并非零拷贝，内存/持续帧吞吐仍需单独压测。FIM的GrayFloat32/BGR/BGRA在本CPU灰度桥中被拒绝，不虚称专业运行可支持这些格式；不会因通用图像显示支持这些格式就暗中降位深。
 
 **后续第一步建议**：在不新增平行框架前提下，从已运行的真实MRK检测结果建立可追踪的专业Run/ResultItem最小语义，再评审并接入MPM/MOC工程Capability与WPF工作台。任何新合同仍需Owner审查及至少两真实消费方。
+
+## 13. P1 第一批真实结果投影：共用MRK与Studio（2026-10-28）
+
+> **源码落点**：从新文件`Professional/Vision/CxVisionRunSummary.cs`、`Tests/ArchitectureSmoke/Integration/Vision/RuntimeVisionResultTests.cs`到`Applications/Studio/StudioShell.ModuleCenter.cs`的正式改动。固定代码阶段检查提交[0a5e658](https://github.com/oudream/cx-visual-x3/commit/0a5e658ccf96015e6c7eea77380e873e43d59058)；对应[Imaging Windows #40660774027](https://github.com/oudream/cx-visual-x3/actions/runs/40660774027)已触发，**登记时处于排队状态，不能视为构建/测试通过**。
+
+| 新增/修改 | Owner | 本批真实范围 |
+|---|---|---|
+| `CxVisionRunSummary`（新） | Professional.Vision | 固定RunId来自真实MRK FlowId，来源SourceId由调用方提供，时间/Revision/计划指纹/Provider版本按可得事实记录，返回只读结果项 |
+| `CxVisionResultItem` / `CxVisionRegionSnapshot`（新） | Professional.Vision | DetectionSummary、Region、Statistic、FlowDecision四类**现存算法真实证据**；Region深层快照、集合只读、ItemId随Run唯一 |
+| `FromCpuFlow`（新） | Professional.Vision ↔ MRK | 仅从Completed+已提交的`Inspection/GraySum/Passed`读取；失败/取消不允许伪造成功结果 |
+| `FromInspection`（新） | Professional.Vision ↔ Studio已编译MOC流程 | 接真实检测StepResult及FlowId、MOC指纹/能力版本；若没有GraySum/Passed导出则不伪造这些结果项 |
+| Studio的`StudioCpuVisionReport.Evidence`及区域绑定 | Applications.Studio | 基于共用只读Region结果投影生成原候选区域表；保留原`Inspection`公开行为和原WPF布局 |
+| ArchitectureSmoke和Imaging Windows Workflow | Tests与既有CI | 新增`--vision-results`、并纳入`--imaging`及默认回归；Vision专业源码、测试、Studio相关改动触发相同Windows验收 |
+
+**严格边界**：此批是对既有MRK CPU阈值检测输出的轻量聚合，**不是**完整七类RunResult；Image/Mask/ArtifactRef持久化、ReviewRecord、正式结果数据库、多专业算法Schema、Studio完整结果历史和工业硬件待实现。FlowDecision仅是既有CPU流程软件标志，**不能**代替Inspection产品OK/NG。当前SourceId为调用者声明的来源字符串，不等同于来源文件Hash或已签名FrameRef。
+
+**测试状态**：新代码与测试已提交；在#40660774027实际完成前不提升G3/G4证据等级，后续更新固定SHA/Windows结果；新增结果合同仍需实际WPF交互与专业大图性能专项。
