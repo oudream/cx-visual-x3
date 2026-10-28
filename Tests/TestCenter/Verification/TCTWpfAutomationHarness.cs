@@ -1158,7 +1158,11 @@ namespace CxVisual.TestCenter.UI
                     TCTManualChannelFrame page = tabs == null ? null : tabs.Items
                         .OfType<System.Windows.Controls.TabItem>().Select(t => t.Content)
                         .OfType<TCTManualChannelFrame>().FirstOrDefault();
-                    verified = page != null && page.IsConnected && page.FrameCount >= 2;
+                    if(page!=null)page.RefreshHealth();
+                    verified = page != null && page.IsConnected && page.FrameCount >= 2 &&
+                        page.HealthMessage.Contains("State=Open") &&
+                        page.HealthMessage.Contains("TX=") && page.HealthMessage.Contains("RX=") &&
+                        page.HealthMessage.Contains("Session=");
                 }));
                 if (!verified) Thread.Sleep(100);
             }
