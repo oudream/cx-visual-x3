@@ -312,7 +312,7 @@ public abstract class FTRChannelBase : IFTRChannelTransport
             using(var lease=budget==null?null:budget.Lease())
             {
                 if(lease!=null)lease.Reserve(count);
-                var context=new FTRChannelReceiveContext(address,bytes,count,correlationId);
+                var context=new FTRChannelReceiveContext(address,bytes,count,correlationId){SessionId=this.SessionId};
                 _diagnostics.RecordReceive(count);
                 Record(FTRFrameDirection.Rx,bytes,correlationId,null,0,count,address);
                 // 保持与池化接收路径相同的Observer隔离语义：一个插件/订阅者报错
@@ -368,7 +368,7 @@ public abstract class FTRChannelBase : IFTRChannelTransport
             var legacy=Received;
             if(legacy!=null)
             {
-                var context=new FTRChannelReceiveContext(buffer.Address,buffer.WritableBuffer,buffer.Count,null,buffer.RemoteEndpoint);
+                var context=new FTRChannelReceiveContext(buffer.Address,buffer.WritableBuffer,buffer.Count,null,buffer.RemoteEndpoint){SessionId=this.SessionId};
                 foreach(Action<FTRChannelReceiveContext> listener in legacy.GetInvocationList())
                     try{listener(context);}catch(Exception error){RecordObserverError(error);}
             }
