@@ -303,6 +303,13 @@ namespace CxVisual.Studio
             rawRow.Children.Add(cancelRun);
             var rawStatus=new TextBlock {Text="等待用户选择RAW文件；位深来自已读取的MHS Effective。",
                 TextWrapping=TextWrapping.Wrap,Margin=new Thickness(4,3,4,5)};
+            System.Windows.Automation.AutomationProperties.SetAutomationId(rawStatus,
+                "Studio.ModuleCenter.RawResultStatus");
+            var regionResults=new DataGrid {IsReadOnly=true,AutoGenerateColumns=true,
+                MaxHeight=168,Visibility=Visibility.Collapsed,Margin=new Thickness(3,2,3,4),
+                CanUserAddRows=false,CanUserDeleteRows=false};
+            System.Windows.Automation.AutomationProperties.SetAutomationId(regionResults,
+                "Studio.ModuleCenter.ResultRegions");
             runRaw.Click+=async (sender,args)=>{
                 if(_logicRunning||activeRun!=null){rawStatus.Text="已有流程运行，禁止并行检测";return;}
                 if(!effectiveLoaded){rawStatus.Text="请先读取MHS Effective配置";return;}
@@ -325,7 +332,15 @@ namespace CxVisual.Studio
                         activeRun.Token);
                     var page=_viewModel.ProjectSession.Find(report.PageId) as MEMPage;
                     if(page!=null)_viewModel.ActivePage=page;
-                    RefreshScene();OpenStudioDocument("doc.flow");
+                    RefreshScene();
+                    // Keep the result pane visible; the existing "打开主流程编排"
+                    // action navigates to the newly selected MEM page on request.
+                    regionResults.ItemsSource=report.Inspection.Regions.Select((region,index)=>
+                        new {Index=index+1,AreaPixels=region.PixelArea,
+                            MinX=region.MinX,MinY=region.MinY,
+                            MaxX=region.MaxX,MaxY=region.MaxY}).ToArray();
+                    regionResults.Visibility=report.Inspection.Regions.Count==0?
+                        Visibility.Collapsed:Visibility.Visible;
                     rawStatus.Text="实际CPU检测"+(report.Inspection.Passed?"通过":"发现缺陷")+
                         "；阈值像素="+report.Inspection.ThresholdPixelCount+
                         "，缺陷区域="+report.Inspection.Regions.Count+
@@ -354,6 +369,7 @@ namespace CxVisual.Studio
             header.Children.Add(rawRow);
             header.Children.Add(effectiveStatus);
             header.Children.Add(rawStatus);
+            header.Children.Add(regionResults);
             control.HeaderContent=header;
             return control;
         }
