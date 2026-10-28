@@ -45,6 +45,22 @@
                 Margin="0,0,8,0" Click="ApplyAllClicked"/>
         <Button Content="刷新诊断" Padding="15,7" Click="RefreshClicked"/>
       </StackPanel>
+      <GroupBox Header="工程配置（MHS 版本化 Saved / Effective）" Margin="0,14,0,4">
+        <StackPanel Margin="10">
+          <TextBlock TextWrapping="Wrap" Foreground="#64748B" Margin="0,0,0,8"
+                     Text="工程配置属于MHS唯一配置Owner：保存只产生Saved修订，不自动发布Effective、不改当前Run。Host须授权保存，审批后才能由新Task读取生效快照。"/>
+          <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+            <TextBlock Text="缓存TTL(秒)" VerticalAlignment="Center"/>
+            <TextBox x:Name="CacheTtlSecondsBox" Width="80" Margin="8,0,12,0"
+                     Text="120" VerticalContentAlignment="Center"/>
+            <Button x:Name="LoadEngineeringButton" Content="读取工程Saved"
+                    Padding="12,6" Margin="0,0,8,0" Click="LoadEngineeringClicked"/>
+            <Button x:Name="SaveEngineeringButton" Content="保存工程草稿"
+                    Padding="12,6" Click="SaveEngineeringClicked"/>
+          </StackPanel>
+          <TextBlock x:Name="EngineeringStatus" TextWrapping="Wrap" Foreground="#64748B"/>
+        </StackPanel>
+      </GroupBox>
       <TextBlock x:Name="OperationStatus" Margin="0,12,0,6" TextWrapping="Wrap"/>
       <GroupBox Header="真实运行态与回收阻断">
         <TextBlock x:Name="Diagnostics" FontFamily="Consolas" Padding="12"
