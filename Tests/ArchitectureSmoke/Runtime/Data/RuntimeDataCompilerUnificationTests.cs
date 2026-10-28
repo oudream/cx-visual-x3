@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -31,6 +32,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
             R08_ParallelForeachReclaimsWithoutBreakingJoin();
             R08_ParallelDependentSchedulingAndBoundedReclamation();
             R08_DeclaredExportRetentionIsInferred();
+            R08_RetryAndDeclaredJoinSurviveRepeatedFlows();
+            R08_BreakContinueAndSkippedConsumersAreSafe();
+            R08_TimeoutCannotReleaseUnsettledIteration();
             R08_InvalidHistoryPolicyRejected();
         }
 
@@ -274,6 +278,178 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     (result.Error == null ? "" : result.Error.ToString()));
             }
             finally { engine.StopAsync(true).GetAwaiter().GetResult(); }
+        }
+
+        /// <summary>重试属于同一真实Invocation，失败Pending不得污染最终历史。</summary>
+        private static void R08_RetryAndDeclaredJoinSurviveRepeatedFlows()
+        {
+            int[] attempts = new int[4];
+            var body = new MRKExecutionPlan("r08.retry.body", new[] {
+                new MRKExecutionStep("image", new string[0], (ctx, ct) =>
+                {
+                    int attempt = Interlocked.Increment(ref attempts[ctx.IterationIndex]);
+                    if (attempt % 2 != 0)
+                    {
+                        ctx.Data.Return("Image", new byte[128]);
+                        throw new InvalidOperationException("expected.transient.failure");
+                    }
+                    ctx.Data.Return("Image", new byte[64]);
+                    return Task.FromResult((object)true);
+                }, policy: new MRKExecutionPolicy(maxAttempts: 2, idempotent: true),
+                    dataOutputs: new Dictionary<string, Type> {
+                        { "Image", typeof(byte[]) }
+                    }),
+                new MRKExecutionStep("measure", new[] { "image" }, (ctx, ct) =>
+                {
+                    int length = ctx.Data.Get<byte[]>("Input").Length;
+                    Check(length == 64, "失败Attempt的128B Pending不能进入后续消费者");
+                    ctx.Data.Return("Count", length + ctx.IterationIndex);
+                    return Task.FromResult((object)true);
+                }, inputs: new [] { new MRKExecutionInput("Input",
+                    MRKInputSource.StepOutput, "image.Image", typeof(byte[])) },
+                    dataOutputs: Output("Count"))
+            }, new Dictionary<string, string> { { "Public", "measure.Count" } });
+            var loop = new MRKLoopRegion(body, 4, (ctx, i) => i < 4,
+                dataRetention: MRKLoopDataRetention.KeepDeclaredExports(body));
+            var plan = new MRKExecutionPlan("r08.retry", new[] {
+                new MRKExecutionStep("loop", new string[0],
+                    (ctx, ct) => Task.FromResult((object)true), loopRegion: loop),
+                new MRKExecutionStep("join", new [] { "loop" }, (ctx, ct) =>
+                {
+                    var rows = ctx.CollectLoopOutputs<int>("loop", "measure", "Count");
+                    Check(rows.Select(x => x.InvocationId).Distinct().Count() == 4,
+                        "重试后的四轮Invocation历史应各自唯一");
+                    ctx.Data.Return("Total", rows.Sum(x => x.Value));
+                    return Task.FromResult((object)true);
+                }, dataOutputs: Output("Total"))
+            }, new Dictionary<string, string> { { "Total", "join.Total" } });
+            var engine = new MRKExecutionEngine(new FCRWorkerOptions(4, 20),
+                dataPayloadBudgetBytes: 220);
+            try
+            {
+                for (int run = 1; run <= 3; ++run)
+                {
+                    MRKFlowResult result = engine.StartFlow(plan)
+                        .Completion.GetAwaiter().GetResult();
+                    Check(result.State == MRKFlowState.Completed &&
+                        result.GetCommittedOutput<int>("Total") == 262 &&
+                        attempts.All(x => x == run * 2),
+                        "重复Flow的Retry旧值泄漏、Join错乱或预算未归还，轮次=" +
+                        run + "; " + (result.Error == null ? "" : result.Error.ToString()));
+                }
+            }
+            finally { engine.StopAsync(true).GetAwaiter().GetResult(); }
+        }
+
+        /// <summary>Break/Continue必须先排空并回收当前迭代，再继续或结束。</summary>
+        private static void R08_BreakContinueAndSkippedConsumersAreSafe()
+        {
+            int visited = 0, executedAfterSignal = 0;
+            var body = new MRKExecutionPlan("r08.control.body", new [] {
+                new MRKExecutionStep("image", new string[0], (ctx, ct) =>
+                {
+                    ctx.Data.Return("Image", new byte[64]);
+                    return Task.FromResult((object)true);
+                }, dataOutputs: new Dictionary<string, Type> {
+                    { "Image", typeof(byte[]) }
+                }),
+                new MRKExecutionStep("signal", new [] { "image" }, (ctx, ct) =>
+                {
+                    Interlocked.Increment(ref visited);
+                    if (ctx.IterationIndex == 1) ctx.SignalControlExit("continue");
+                    if (ctx.IterationIndex == 3) ctx.SignalControlExit("break");
+                    ctx.Data.Return("Index", ctx.IterationIndex);
+                    return Task.FromResult((object)true);
+                }, dataOutputs: Output("Index")),
+                new MRKExecutionStep("after", new [] { "signal" }, (ctx, ct) =>
+                {
+                    Interlocked.Increment(ref executedAfterSignal);
+                    ctx.Data.Return("Result", ctx.IterationIndex);
+                    return Task.FromResult((object)true);
+                }, dataOutputs: Output("Result"))
+            });
+            Func<MRKLoopDataRetention, MRKExecutionPlan> make = policy =>
+                new MRKExecutionPlan("r08.control", new [] {
+                    new MRKExecutionStep("loop", new string[0],
+                        (ctx, ct) => Task.FromResult((object)true),
+                        loopRegion: new MRKLoopRegion(body, 10,
+                            (ctx, i) => i < 10, dataRetention: policy))
+                });
+            var engine = new MRKExecutionEngine(new FCRWorkerOptions(3, 16),
+                dataPayloadBudgetBytes: 160);
+            try
+            {
+                MRKFlowResult result = engine.StartFlow(
+                    make(MRKLoopDataRetention.ReleaseAfterIteration))
+                    .Completion.GetAwaiter().GetResult();
+                Check(result.State == MRKFlowState.Completed &&
+                    visited == 4 && executedAfterSignal == 2 &&
+                    (int)result.Results["loop"] == 4 &&
+                    result.StepStates["loop.i1.after"] == MRKStepState.Skipped &&
+                    result.StepStates["loop.i3.after"] == MRKStepState.Skipped,
+                    "Continue/Break没正确排空并结算本轮Skipped节点：" +
+                    (result.Error == null ? "" : result.Error.ToString()));
+                MRKFlowResult conservative = engine.StartFlow(
+                    make(MRKLoopDataRetention.KeepAll))
+                    .Completion.GetAwaiter().GetResult();
+                Check(conservative.State == MRKFlowState.Failed,
+                    "默认KeepAll不能在有限MDS预算下暗中提前回收历史");
+            }
+            finally { engine.StopAsync(true).GetAwaiter().GetResult(); }
+        }
+
+        /// <summary>策略超时后必须等待真实Provider完成，不能先释放本轮Frame。</summary>
+        private static void R08_TimeoutCannotReleaseUnsettledIteration()
+        {
+            var entered = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var cancelled = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var release = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            int started = 0;
+            var body = new MRKExecutionPlan("r08.timeout.body", new [] {
+                new MRKExecutionStep("work", new string[0], async (ctx, ct) =>
+                {
+                    Interlocked.Increment(ref started);
+                    ctx.Data.Return("Image", new byte[64]);
+                    entered.TrySetResult(true);
+                    using (ct.Register(() => cancelled.TrySetResult(true)))
+                        await release.Task.ConfigureAwait(false);
+                    return (object)true;
+                }, policy: new MRKExecutionPolicy(timeout: TimeSpan.FromMilliseconds(80)),
+                    dataOutputs: new Dictionary<string, Type> {
+                        { "Image", typeof(byte[]) }
+                    })
+            });
+            var plan = new MRKExecutionPlan("r08.timeout", new [] {
+                new MRKExecutionStep("loop", new string[0],
+                    (ctx, ct) => Task.FromResult((object)true),
+                    loopRegion: new MRKLoopRegion(body, 4, (ctx, i) => i < 4,
+                        dataRetention: MRKLoopDataRetention.ReleaseAfterIteration))
+            });
+            var engine = new MRKExecutionEngine(new FCRWorkerOptions(2, 8),
+                dataPayloadBudgetBytes: 128);
+            try
+            {
+                MRKFlowHandle handle = engine.StartFlow(plan);
+                Task enteredFirst = Task.WhenAny(entered.Task, Task.Delay(7000))
+                    .GetAwaiter().GetResult();
+                Check(object.ReferenceEquals(enteredFirst, entered.Task),
+                    "超时验证所需Provider未启动");
+                Task observedCancel = Task.WhenAny(cancelled.Task, Task.Delay(7000))
+                    .GetAwaiter().GetResult();
+                Check(object.ReferenceEquals(observedCancel, cancelled.Task) &&
+                    !handle.Completion.IsCompleted && Volatile.Read(ref started) == 1,
+                    "超时取消已通知但未结算的Provider不应提前释放或启动下一轮");
+                release.TrySetResult(true);
+                MRKFlowResult failed = handle.Completion.GetAwaiter().GetResult();
+                Check(failed.State == MRKFlowState.Failed &&
+                    failed.CommittedOutputs.Count == 0 &&
+                    Volatile.Read(ref started) == 1,
+                    "超时迟到的Pending不应提交，且不能执行后续迭代");
+            }
+            finally { release.TrySetResult(true); engine.StopAsync(true).GetAwaiter().GetResult(); }
         }
 
         private static void R08_InvalidHistoryPolicyRejected()
