@@ -40,6 +40,59 @@ namespace CxVisual.Foundation.Geometry
         {
             internal int Count,DirectionSum;
         }
+
+        // 对每个顶点构建link graph：一个三角面为其中心顶点的两个邻居加一条link边。
+        // 多个互不相连的link分量代表两个面壳仅在单顶点相接（bow-tie），
+        // 单纯的边使用次数统计无法识别这种非流形。
+        private struct VertexLink
+        {
+            internal int A,B;
+            internal VertexLink(int a,int b){A=a;B=b;}
+        }
+        private static void AddVertexLink(List<VertexLink>[] links,int center,int a,int b)
+        {
+            if(links[center]==null)links[center]=new List<VertexLink>();
+            links[center].Add(new VertexLink(a,b));
+        }
+        private static int Find(int[] parent,int index)
+        {
+            while(parent[index]!=index)
+            {
+                parent[index]=parent[parent[index]];
+                index=parent[index];
+            }
+            return index;
+        }
+        private static int CountBowTieVertices(List<VertexLink>[] links)
+        {
+            int result=0;
+            foreach(List<VertexLink> fan in links)
+            {
+                if(fan==null || fan.Count<2)continue;
+                var neighborId=new Dictionary<int,int>();
+                foreach(VertexLink edge in fan)
+                {
+                    if(!neighborId.ContainsKey(edge.A))
+                        neighborId.Add(edge.A,neighborId.Count);
+                    if(!neighborId.ContainsKey(edge.B))
+                        neighborId.Add(edge.B,neighborId.Count);
+                }
+                int[] parent=new int[neighborId.Count];
+                for(int i=0;i<parent.Length;i++)parent[i]=i;
+                foreach(VertexLink edge in fan)
+                {
+                    int ra=Find(parent,neighborId[edge.A]);
+                    int rb=Find(parent,neighborId[edge.B]);
+                    if(ra!=rb)parent[ra]=rb;
+                }
+                int root=Find(parent,0);
+                bool disconnected=false;
+                for(int i=1;i<parent.Length;i++)
+                    if(Find(parent,i)!=root){disconnected=true;break;}
+                if(disconnected)result++;
+            }
+            return result;
+        }
         private readonly ReadOnlyCollection<FGEPoint3D> _vertices;
         private readonly ReadOnlyCollection<int> _indices;
         private readonly ReadOnlyCollection<FGEVector3D> _normals;
@@ -55,11 +108,13 @@ namespace CxVisual.Foundation.Geometry
         public double? SignedEnclosedVolume {get;private set;}
         public int BoundaryEdgeCount {get;private set;}
         public int NonManifoldEdgeCount {get;private set;}
+        /// <summary>局部面扇分裂成多个不连通分量的顶点数，包含仅以顶点接触的面壳。</summary>
+        public int NonManifoldVertexCount {get;private set;}
         public int InconsistentWindingEdgeCount {get;private set;}
         public bool IsClosedOrientedManifold
         {
             get{return BoundaryEdgeCount==0 && NonManifoldEdgeCount==0 &&
-                InconsistentWindingEdgeCount==0;}
+                NonManifoldVertexCount==0 && InconsistentWindingEdgeCount==0;}
         }
         public FGEPoint3D BoundsMin {get;private set;}
         public FGEPoint3D BoundsMax {get;private set;}
@@ -77,6 +132,7 @@ namespace CxVisual.Foundation.Geometry
             _indices=indices.AsReadOnly();
             var normals=new double[checked(positions.Count*3)];
             var edges=new Dictionary<ulong,EdgeCount>();
+            var vertexFans=new List<VertexLink>[positions.Count];
             double minX=double.PositiveInfinity,minY=double.PositiveInfinity,minZ=double.PositiveInfinity;
             double maxX=double.NegativeInfinity,maxY=double.NegativeInfinity,maxZ=double.NegativeInfinity;
             foreach(FGEPoint3D p in positions)
@@ -107,6 +163,9 @@ namespace CxVisual.Foundation.Geometry
                     normals[i*3]+=nx;normals[i*3+1]+=ny;normals[i*3+2]+=nz;
                 }
                 AddEdge(edges,a,b);AddEdge(edges,b,c);AddEdge(edges,c,a);
+                AddVertexLink(vertexFans,a,b,c);
+                AddVertexLink(vertexFans,b,c,a);
+                AddVertexLink(vertexFans,c,a,b);
                 // 平移不变的有向四面体体积积分，降低较大世界坐标偏置的误差。
                 double ax=p.X-anchor.X,ay=p.Y-anchor.Y,az=p.Z-anchor.Z;
                 volume6+=ax*((q.Y-anchor.Y)*(r.Z-anchor.Z)-(q.Z-anchor.Z)*(r.Y-anchor.Y))
@@ -122,6 +181,7 @@ namespace CxVisual.Foundation.Geometry
                 else if(count.Count>2)NonManifoldEdgeCount++;
                 else if(count.DirectionSum!=0)InconsistentWindingEdgeCount++;
             }
+            NonManifoldVertexCount=CountBowTieVertices(vertexFans);
             if(IsClosedOrientedManifold)
             {
                 SignedEnclosedVolume=volume6/6.0;
