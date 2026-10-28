@@ -256,7 +256,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             var cfg=new FTRWebSocketServerChannelConfiguration{
                 Id="ws-multi-budget",Prefix="http://localhost:"+port+"/shared/",
                 MaxClients=2,MaxMessageBytes=1024,ReceiveBufferBytes=16,
-                TotalBufferedBytes=1100
+                TotalBufferedBytes=1600
             };
             using(var server=new FTRWebSocketServerChannel(cfg))
             using(var holding=new ClientWebSocket())
@@ -291,7 +291,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         observed.Take(512).All(x=>x==77) && observed[512]==88 &&
                         server.State==FTRChannelState.Open,
                         "超限Peer不得破坏持有客户端的消息边界/身份/服务状态");
-                    Check(server.Diagnostics.PeakBufferedPayloadBytes<=1100,
+                    Check(server.Diagnostics.PeakBufferedPayloadBytes<=1600,
                         "WS所有Peer合计预算水位不能超过限制");
                 }
                 finally
