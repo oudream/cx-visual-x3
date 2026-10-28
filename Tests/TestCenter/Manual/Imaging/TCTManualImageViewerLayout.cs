@@ -603,6 +603,19 @@ namespace CxVisual.TestCenter.UI
             content.Children.Add(thresholdActions);
             Action(content,"提取结果掩码轮廓","ExtractMaskContours",ExtractResultMaskContours);
             content.Children.Add(Hint("选矩形、圆、椭圆、旋转矩形或多边形ROI后按阈值生成掩码；严格按原图像素中心判断，不受显示窗位影响。提取轮廓会把外环、孔洞分别保存为可选中的标注图元，像素面积仍以原掩码为准。"));
+            content.Children.Add(Heading("专业CPU检测  ·  FIM → MRK → ResultItem"));
+            AutomationProperties.SetAutomationId(_cpuThreshold,"TCT.Imaging.CpuThreshold");
+            AutomationProperties.SetAutomationId(_cpuMinArea,"TCT.Imaging.CpuMinArea");
+            content.Children.Add(Row(Label("灰度阈值"),_cpuThreshold,
+                Label("最小面积(px²)"),_cpuMinArea));
+            WrapPanel cpuActions=Row();
+            Action(cpuActions,"运行CPU检测 → Mask","CpuVisionRun",RunCpuVision);
+            Action(cpuActions,"取消CPU检测","CpuVisionCancel",CancelCpuVision);
+            content.Children.Add(cpuActions);
+            content.Children.Add(Hint("仅接受Gray8/Gray16原图。调用现有专业CPU阈值检测MRK流程，"
+                +"结果图为面积过滤前的0/255 Mask，候选区域来自真实检测输出。"
+                +"切换原图或再次运行时会取消旧任务并拒绝过期结果。"));
+
             content.Children.Add(Heading("区域生长  ·  原图矩形ROI"));
             AutomationProperties.SetAutomationId(_growTolerance,"TCT.Imaging.GrowTolerance");
             AutomationProperties.SetAutomationId(_growEightConnected,"TCT.Imaging.GrowEightConnected");
