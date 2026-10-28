@@ -26,6 +26,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
         {
             SharedBudgetLease();
             HttpConcurrentResponses();
+            HttpAggregateOverload();
+            WebSocketTwoClientsRouted();
             WebSocketFragmentedPeer();
             Console.WriteLine("F17.MULTI_BUDGET_PASS request/response budget, HTTP address routing, WebSocket fragment isolation, release");
         }
@@ -142,6 +144,108 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     if(server.State!=FTRChannelState.Closed)server.Close();
                 }
                 Check(server.Diagnostics.BufferedPayloadBytes==0,"HTTP关闭后额度未清零");
+            }
+        }
+
+
+        private static void HttpAggregateOverload()
+        {
+            int port=Port();
+            var cfg=new FTRHttpServerChannelConfiguration {
+                Id="http-total-overload",Prefix="http://localhost:"+port+"/",
+                MaxClients=2,ReceiveBufferBytes=8,MaxRequestBytes=16,
+                MaxResponseBytes=16,TotalBufferedBytes=30,ResponseTimeoutMs=12000
+            };
+            using(var server=new FTRHttpServerChannel(cfg))
+            using(var client=new HttpClient())
+            using(var firstReceived=new ManualResetEventSlim())
+            using(var release=new ManualResetEventSlim())
+            {
+                FTRSubChannelAddress firstAddress=null;
+                server.Received+=packet=>
+                {
+                    firstAddress=packet.Address;
+                    firstReceived.Set();
+                    release.Wait(10000);
+                    server.RespondAsync(packet.Address,200,new byte[]{7},CancellationToken.None)
+                        .GetAwaiter().GetResult();
+                };
+                try
+                {
+                    server.Open();
+                    client.Timeout=TimeSpan.FromSeconds(15);
+                    Task<HttpResponseMessage> first=client.PostAsync(cfg.Prefix,new ByteArrayContent(new byte[]{1}));
+                    Check(firstReceived.Wait(5000),"首个HTTP请求尚未占用在途额度");
+                    Task<HttpResponseMessage> second=client.PostAsync(cfg.Prefix,new ByteArrayContent(new byte[]{2}));
+                    using(var overflow=second.GetAwaiter().GetResult())
+                        Check(overflow.StatusCode==HttpStatusCode.ServiceUnavailable,
+                            "所有请求合计额度耗尽须503，而非报告单请求体413");
+                    release.Set();
+                    using(var accepted=first.GetAwaiter().GetResult())
+                        Check(accepted.IsSuccessStatusCode &&
+                            accepted.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult()
+                                .SequenceEqual(new byte[]{7}),
+                            "被拒绝的第二请求不得破坏已接纳的第一个请求");
+                    Check(server.State==FTRChannelState.Open && firstAddress!=null &&
+                        firstAddress.HasSubChannel && server.Diagnostics.RejectedPayloadBuffers>=1 &&
+                        SpinWait.SpinUntil(()=>server.Diagnostics.BufferedPayloadBytes==0,5000),
+                        "合计额度拒绝、健康状态及资源归还不正确");
+                }
+                finally
+                {
+                    release.Set();
+                    if(server.State!=FTRChannelState.Closed)server.Close();
+                }
+            }
+        }
+
+        private static void WebSocketTwoClientsRouted()
+        {
+            int port=Port();
+            string url="ws://localhost:"+port+"/routes/";
+            var cfg=new FTRWebSocketServerChannelConfiguration {
+                Id="ws-routed",Prefix="http://localhost:"+port+"/routes/",
+                MaxClients=2,MaxMessageBytes=128,ReceiveBufferBytes=16,TotalBufferedBytes=2048
+            };
+            using(var server=new FTRWebSocketServerChannel(cfg))
+            using(var a=new ClientWebSocket())
+            using(var b=new ClientWebSocket())
+            using(var deadline=new CancellationTokenSource(TimeSpan.FromSeconds(12)))
+            {
+                FTRSubChannelAddress first=null,second=null;
+                server.Received+=packet=>
+                {
+                    byte[] bytes=packet.Data;
+                    if(bytes[0]==1)first=packet.Address;
+                    else if(bytes[0]==2)second=packet.Address;
+                    else throw new InvalidOperationException("unexpected WS packet");
+                    server.Send(new byte[]{(byte)(bytes[0]+10)},0,1,
+                        packet.Address,CancellationToken.None);
+                };
+                try
+                {
+                    server.Open();
+                    a.ConnectAsync(new Uri(url),deadline.Token).GetAwaiter().GetResult();
+                    b.ConnectAsync(new Uri(url),deadline.Token).GetAwaiter().GetResult();
+                    a.SendAsync(new ArraySegment<byte>(new byte[]{1}),
+                        WebSocketMessageType.Binary,true,deadline.Token).GetAwaiter().GetResult();
+                    b.SendAsync(new ArraySegment<byte>(new byte[]{2}),
+                        WebSocketMessageType.Binary,true,deadline.Token).GetAwaiter().GetResult();
+                    byte[] ra=new byte[8],rb=new byte[8];
+                    var ar=a.ReceiveAsync(new ArraySegment<byte>(ra),deadline.Token).GetAwaiter().GetResult();
+                    var br=b.ReceiveAsync(new ArraySegment<byte>(rb),deadline.Token).GetAwaiter().GetResult();
+                    Check(ar.Count==1 && br.Count==1 && ra[0]==11 && rb[0]==12 &&
+                        first!=null && second!=null && first.HasSubChannel && second.HasSubChannel &&
+                        first.SubChannelId!=second.SubChannelId && first.Generation>0 &&
+                        second.Generation>0 && server.State==FTRChannelState.Open,
+                        "两条WebSocket连接必须各有独立SubChannelId/Generation与定向回应，禁止广播");
+                }
+                finally
+                {
+                    if(server.State!=FTRChannelState.Closed)server.Close();
+                }
+                Check(server.Diagnostics.BufferedPayloadBytes==0,
+                    "正常双WebSocket关闭应归还共享缓冲额度");
             }
         }
 
