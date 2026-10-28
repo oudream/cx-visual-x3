@@ -281,3 +281,14 @@ P0—P5不是六套执行机制，也不是只写计划后停止；每阶段应�
 
 - [Imaging Windows #40687637635](https://github.com/oudream/cx-visual-x3/actions/runs/40687637635) 固定`e77cae8d91d14f2f54358c3c912dc93605029745`，**success**：Windows x64全项目编译、结构DAG、真实WPF二维ImageViewer PNG回环、FIM/MVI专项+默认回归、三维切片工作台及截图上传均成功。之前测试局部变量重名CS0128已修复并由本固定SHA构建实际验证。
 - 后续 [4d6c558](https://github.com/oudream/cx-visual-x3/commit/4d6c558cddf78e8c9af367e27aca731b03bf59aa)：标准`ColorDialog`使用真实WPF窗口HWND作IWin32Window Owner，避免被主窗口遮挡；手动窗位与全图自动拉伸切换时同步MVI与UI勾选。其 [Imaging #40687957944](https://github.com/oudream/cx-visual-x3/actions/runs/40687957944) / [TestCenter #40687957971](https://github.com/oudream/cx-visual-x3/actions/runs/40687957971) 初次核查尚在执行，不能继承旧固定SHA成功结论。
+
+### 18.2 WinForms四图层颜色选择的准确语义与修复（后续Owner决议）
+
+**更正本节18开头的过渡描述**：用户反馈的第一组彩色ROI/测量/标注/缺陷分类按钮确实与专业工具操作重复，已删除；**第二组“设ROI色/设测量色/设标注色/设缺陷色”必须保留**，其WinForms真义是各图层通用颜色而非“当前选中图元”颜色。前一版将两组均移除并只保留选中对象颜色设置不够完整，已通过本次提交纠正。
+
+- [57c13d0](https://github.com/oudream/cx-visual-x3/commit/57c13d0b91267d31bd736ca86ac9ce5171859a72)：`MPWImageViewerControl`在原Viewer内维护轻量四图层颜色预设，`GetOverlayLayerColor/SetOverlayLayerColor`可无选中项设置；对已有未锁定Overlay保持Id/坐标不变并改色，新增使用默认Argb的Viewer图元应用用户预设；显式指定颜色的专业产物不被默认色覆盖。不建第二Viewer或第二OverlayStore。
+- [a9f0b9f](https://github.com/oudream/cx-visual-x3/commit/a9f0b9f8e65ba7638ca152f5883e7dfe6c1b78f3)：显示页只恢复第二组4个颜色操作按钮，真正系统`ColorDialog`，颜色同步于按钮背景；区域/测量/标注工具仍以专业页签和唯一ToolMode选择。
+- [ba5e241](https://github.com/oudream/cx-visual-x3/commit/ba5e241d14a77cada2a2d6509c97e748d03a37bd)：四个图层颜色对话框无须选中图元，显式指定WPF窗口HWND Owner，选中后同时应用现有与未来默认绘制；取消无数据写入。
+- [788d5fe](https://github.com/oudream/cx-visual-x3/commit/788d5fec78111784052ef9080c72a42bcf369e1a)：真实WPF测试确认第一组分类已移除，第二组四按钮仍存在；API测试更新已有ROI颜色保Id，之后新ROI继承用户选色；当前图元独立属性编辑照旧。
+
+前一固定SHA [Imaging #40687957944](https://github.com/oudream/cx-visual-x3/actions/runs/40687957944) **success**，但不覆盖本四图层新能力；最新对应 [Imaging #40688664400](https://github.com/oudream/cx-visual-x3/actions/runs/40688664400) 和 [TestCenter #40688664402](https://github.com/oudream/cx-visual-x3/actions/runs/40688664402) 首次登记queued，实际验收须以Job结论为准。
