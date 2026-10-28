@@ -140,3 +140,18 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 ### 10.1 评审签收格式
 
 每个测试在实施时写：实际输入文件及Hash、运行环境、Owner/类路径、实际输出/容差、异常或性能截图/日志、Git SHA、Windows工作流链接、测试日期、是否专业设备HIL。架构P设计只能列为G0/G1，不能列G2源码或G4/G6通过。MDS预算只证明当前已提交托管载荷，不证明所有GPU/SDK工作缓存；完整相机流不能通过MDSBoundedByteStream的基本字节块测试替代。
+
+## 11. 固定SHA实证：FIM↔Vision数据合同第一条闭环（2026-10-28）
+
+**代码提交**：[`c424abcf004d670790a68d6c6c6976f175cf7b5b`](https://github.com/oudream/cx-visual-x3/commit/c424abcf004d670790a68d6c6c6976f175cf7b5b)。**真实CI**：[CxVisual FIM MVI Imaging Windows Acceptance #40657978967](https://github.com/oudream/cx-visual-x3/actions/runs/40657978967)，Windows 2022 / VS MSBuild / .NET Framework 4.8 x64，全job **success**。
+
+| 关联能力/反证 | 对应实际测试行为 | 固定SHA证据级别 |
+|---|---|---|
+| V2D-02 / ARCH-D01：Gray8 Stride | 3×2 Gray8/Stride=5；去Padding后往返逐像素一致 | G4 自动测试通过 |
+| V2D-02 / ARCH-D02：16位小端 | 2×2 Gray16/Stride=6，500/500/0/0，像素值和紧排字节正确 | G4 自动测试通过 |
+| V2D-02 / 所有权 | 输入byte[]变更、CopyPixels和FDTReadOnlyBuffer外部副本变更均不污染原图 | G4 自动测试通过 |
+| V2D-18/20：现有MRK集成 | ToCpuInspectionInputs→CxVisionDataFlow.CreateCpuInspectionPlan→MRK，ConfigRevision=57、GraySum=1000、两个阈值像素、一个面积2连通域 | G4 自动测试通过（仅此CPU算法） |
+| V2D-02/18：错误格式 | null、GrayFloat32、Bgr24、与已编译Plan不匹配的位深均明确拒绝 | G4 自动测试通过 |
+| 结构/回归 | Windows x64完整构建、Owner/DAG、二维WPF Viewer、`--imaging`、默认ArchitectureSmoke、三维WPF Viewer | 对应CI所有步骤success；并非新桥的WPF交互闭环 |
+
+**未验证/不可提升等级**：大图/32M性能与所有工作副本峰值、完整Frame/Mask/Artifact身份模型、SourceGeneration失效/设备Lease、通用VisionRunResult、正式工程Pipeline、专业SDK/AI推理、实时相机流、独立UI算法工作流及现场HIL。现有WPF回归只证明旧图窗未退化，**不是新专业输入桥接功能已经通过WPF人工操作**。不得按整个一级类V2D-02或V2D-20统一标为G4；仅上述受覆盖的细能力/案例有效。
