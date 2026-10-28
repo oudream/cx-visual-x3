@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -14,7 +15,8 @@ namespace CxVisual.Mechanism.Presentation.Wpf
     {
         public MPWModuleCapabilityView(string id,string name,string category,
             MFMModuleKind? kind,int version,bool resolved,bool demonstration,string moduleId=null,
-            bool described=true,bool resolverChecked=true)
+            bool described=true,bool resolverChecked=true,
+            IEnumerable<string> inputPorts=null,IEnumerable<string> outputPorts=null)
         {
             if(String.IsNullOrWhiteSpace(id)||String.IsNullOrWhiteSpace(name))
                 throw new ArgumentException("module.capability.identity");
@@ -22,7 +24,18 @@ namespace CxVisual.Mechanism.Presentation.Wpf
             Version=version;Resolved=resolved;Demonstration=demonstration;
             ModuleId=String.IsNullOrWhiteSpace(moduleId)?null:moduleId.Trim();
             Described=described;ResolverChecked=resolverChecked;
+            InputPorts=FreezePorts(inputPorts);
+            OutputPorts=FreezePorts(outputPorts);
         }
+        private static IReadOnlyList<string> FreezePorts(IEnumerable<string> source)
+        {
+            var values=(source??Enumerable.Empty<string>()).ToArray();
+            if(values.Length>256||values.Any(x=>String.IsNullOrWhiteSpace(x)||x.Length>200))
+                throw new ArgumentException("module.center.invalid_ports");
+            return new ReadOnlyCollection<string>(values);
+        }
+        public IReadOnlyList<string> InputPorts {get;private set;}
+        public IReadOnlyList<string> OutputPorts {get;private set;}
         public string Id {get;private set;}
         public string Name {get;private set;}
         public string Category {get;private set;}
@@ -141,7 +154,9 @@ namespace CxVisual.Mechanism.Presentation.Wpf
                     "；Declared="+(item.ModuleId==null?"未绑定模块":"已声明")+
                     "，Described="+(!item.ResolverChecked?"未核实":item.Described?"是":"否")+
                     "，RuntimeResolved="+(!item.ResolverChecked?"未核实":item.Resolved?"是":"否")+
-                    "；Supported、Available、Authorized仍需目标Owner独立核验。";
+                    "；Supported、Available、Authorized仍需目标Owner独立核验。"+
+                    "\n输入："+(item.InputPorts.Count==0?"未声明":String.Join("、",item.InputPorts))+
+                    "\n输出："+(item.OutputPorts.Count==0?"未声明":String.Join("、",item.OutputPorts));
             };
             SetCapabilities(null,"未注入运行能力；仅配置操作可用");
         }
