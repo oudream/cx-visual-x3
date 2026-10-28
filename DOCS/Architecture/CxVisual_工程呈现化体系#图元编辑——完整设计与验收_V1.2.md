@@ -195,7 +195,9 @@ Design/Preview/Run/Debug 是上层授权/可视状态，不能把运行态视为
 
 两个句柄空间重叠按“当前 Tool + 当前选中对象 + 最近屏幕 DIP 距离 + 稳定 ZOrder/ID”处理；不能因 Scene 遍历次序偶变，鼠标不动却命中另一个对象。右键应命中当前对象但**不先强行移动对象**；连接工具优先连接，GeometryEdit 不自动切到连接工具。
 
-**GE-02 重叠对象自然选择增量（2026-10-28，提交后以固定 SHA Windows CI 为准）**：现有 `SceneView` 普通点击沿用既有Z顺序命中；新增 Alt+单击重叠区域时从顶层向下循环选择的输入行为，不改变MEM工程真源和MVI场景投影。精确命中继续复用 `MVISceneItem.Contains`，过滤不可选/无效对象；H1/H2/H5控制柄与H3/H6连接拖动仍按既有优先级处理。选中状态通过原 `NodeActivated` / `SelectionSetRequested` 通道同步 Studio/TestCenter 的对象树与MVI，切换对象退出D几何编辑态，循环操作不得创建Undo或增加Revision。WPF STA Graphics Smoke增测真实重叠Rect的顶层→底层→顶层、空白拒绝、对象树双向身份与Revision不变量；这不等于操作系统Alt+鼠标注入或多DPI已通过。
+**GE-02 重叠对象自然选择增量（2026-10-28，Graphics 同 SHA Windows CI 已通过）**：现有 `SceneView` 普通点击沿用既有Z顺序命中；新增 Alt+单击重叠区域时从顶层向下循环选择的输入行为，不改变MEM工程真源和MVI场景投影。精确命中继续复用 `MVISceneItem.Contains`，过滤不可选/无效对象；H1/H2/H5控制柄与H3/H6连接拖动仍按既有优先级处理。选中状态通过原 `NodeActivated` / `SelectionSetRequested` 通道同步 Studio/TestCenter 的对象树与MVI，切换对象退出D几何编辑态，循环操作不得创建Undo或增加Revision。WPF STA Graphics Smoke增测真实重叠Rect的顶层→底层→顶层、空白拒绝、对象树双向身份与Revision不变量；这不等于操作系统Alt+鼠标注入或多DPI已通过。
+
+**实测证据**：实现提交 [`4c7136ea`](https://github.com/oudream/cx-visual-x3/commit/4c7136ea5f8cf7d28c686ac95f2431abe064ca75) 初次 Graphics CI `40643510230` 失败，日志指向空心矩形内部误选测试点；修正提交 [`60d8e1c6`](https://github.com/oudream/cx-visual-x3/commit/60d8e1c6577e91e31f924a5197fd201c70a1a170) 把用例改为共享描边命中，同时增加空心内部拒绝反证，Graphics [`40643725269`](https://github.com/oudream/cx-visual-x3/actions/runs/40643725269) **success**。仅签 WPF STA Graphics 专项，非 OS Alt 输入与整套 GE 签收。
 
 ### 5.4 MouseDown → Preview → Commit/Cancel
 
