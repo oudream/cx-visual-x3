@@ -22,6 +22,20 @@ namespace CxVisual.TestCenter.UI
             Margin=new System.Windows.Thickness(3)};
         private IReadOnlyList<Vector3> _surfacePreviewPoints;
         private Guid? _surfaceSceneItemId;
+        private Guid? _meshSceneItemId;
+        private MPWVolumeDisplayMesh _meshPreview;
+        public CT3DVoxelBoundaryMeshResult LastVoxelMesh {get;private set;}
+        public int MeshDisplayedTriangleCount {get{return _scene.SurfaceMeshTriangleCount;}}
+        private MPWVolumeDisplayMesh MeshForPresentation
+        {
+            get
+            {
+                if(_state==null||!_meshSceneItemId.HasValue||_meshPreview==null)return null;
+                MVI3DSceneItem item;
+                return _state.Scene3D.TryGet(_meshSceneItemId.Value,out item)&&item.Visible
+                    ? _meshPreview:null;
+            }
+        }
         private CancellationTokenSource _sphereCancellation;
         private long _sphereEpoch;
         public CT3DSphereFitResult LastSphereFit {get;private set;}
@@ -49,6 +63,22 @@ namespace CxVisual.TestCenter.UI
         {
             if(_state==null || !Object.ReferenceEquals(sender,_state.Scene3D))return;
             UpdateSurfacePresentation();
+            UpdateMeshPresentation();
+        }
+
+        private void UpdateMeshPresentation()
+        {
+            MPWVolumeDisplayMesh mesh=MeshForPresentation;
+            if(mesh!=null)
+            {
+                _scene.SetSurfaceMesh(mesh);
+                if(_gpu!=null)_gpu.SetSurfaceMesh(mesh);
+            }
+            else
+            {
+                _scene.ClearSurfaceMesh();
+                if(_gpu!=null)_gpu.ClearSurfaceMesh();
+            }
         }
 
         private void UpdateSurfacePresentation()
@@ -76,9 +106,13 @@ namespace CxVisual.TestCenter.UI
             CancelSurfaceAnalysis();
             _surfacePreviewPoints=null;
             _surfaceSceneItemId=null;
+            _meshSceneItemId=null;
+            _meshPreview=null;
             LastSphereFit=null;
+            LastVoxelMesh=null;
             _scene.ClearSurfacePoints();
-            if(_gpu!=null)_gpu.ClearSurfacePoints();
+            _scene.ClearSurfaceMesh();
+            if(_gpu!=null){_gpu.ClearSurfacePoints();_gpu.ClearSurfaceMesh();}
         }
 
         /// <summary>仅供调用者已明确标定的真实RAW源；同步入口用于小型自动化测试。</summary>
@@ -99,6 +133,106 @@ namespace CxVisual.TestCenter.UI
                 CT3DSphereFitResult fit=CT3DSurfaceSphereAnalysis.FitSphere(surface);
                 PublishSurfaceAnalysis(volume,epoch,surface,fit);
                 return fit;
+            }
+        }
+
+        /// <summary>同步小数据网格入口；所有结果来自真实RAW，不能对R8预览建Mesh。</summary>
+        public CT3DVoxelBoundaryMeshResult AnalyzeCurrentVolumeMesh(
+            float threshold,int maxTriangles=50000)
+        {
+            if(_volume==null||_state==null)throw new InvalidOperationException("未载入原始体。");
+            if(!_volume.SpatialFrame.IsCalibrated)
+                throw new InvalidOperationException("物理Frame未标定，拒绝伪报工业Mesh坐标。");
+            FVOVolumeData volume=_volume;
+            long epoch=_sphereEpoch;
+            using(FVOOriginalScalarLease lease=volume.AcquireOriginalScalarLease())
+            {
+                CT3DVoxelBoundaryMeshResult mesh=CT3DVoxelBoundaryMeshExtractor.Extract(
+                    lease,SurfaceSourceRef(volume),epoch,threshold,maxTriangles,
+                    CancellationToken.None);
+                PublishVoxelMesh(volume,epoch,mesh);
+                return mesh;
+            }
+        }
+
+        private void PublishVoxelMesh(FVOVolumeData volume,long epoch,
+            CT3DVoxelBoundaryMeshResult result)
+        {
+            if(!Object.ReferenceEquals(volume,_volume)||_state==null||
+                epoch!=_sphereEpoch||!Object.ReferenceEquals(result.SpatialFrame,volume.SpatialFrame))
+                throw new InvalidOperationException("原值数据或空间版本已变，拒绝显示旧Mesh。");
+            MPWVolumeDisplayMesh preview=MPWVolumeSurfaceProjection.ProjectMesh(
+                result.Mesh,volume.SpatialFrame,volume.OriginalWidth,volume.OriginalHeight,
+                volume.OriginalDepth,50000);
+            if(_meshSceneItemId.HasValue)_state.Scene3D.Remove(_meshSceneItemId.Value);
+            _meshPreview=preview;
+            LastVoxelMesh=result;
+            _meshSceneItemId=_state.Scene3D.Add(MVI3DSceneKind.Mesh,
+                "ct3d:mesh:"+result.ResultId.ToString("N"),result.SourceRevision,
+                "volume:physical-frame");
+            _state.Scene3D.Select(_meshSceneItemId);
+            UpdateMeshPresentation();
+            _status.Text=String.Format(CultureInfo.InvariantCulture,
+                "RAW体素面Mesh · {0}三角面 · 面积{1:0.###}mm² · {2} · 非亚体素",
+                result.Mesh.TriangleCount,result.Mesh.SurfaceArea,
+                result.Mesh.IsClosedOrientedManifold?"闭合":"拓扑需复核");
+            RaiseStateChanged();
+        }
+
+        /// <summary>后台执行工业RAW网格提取，跟随Volume切换取消并拒绝旧结果发布。</summary>
+        private async void StartVoxelMeshFromUi()
+        {
+            if(_volume==null)return;
+            if(_sphereCancellation!=null)
+            {
+                _status.Text="已有专业Surface/Mesh分析进行中。";
+                return;
+            }
+            float threshold;
+            if(!float.TryParse(_sphereThresholdText.Text,NumberStyles.Float,
+                CultureInfo.InvariantCulture,out threshold))
+            {
+                _status.Text="Mesh阈值输入无效。";
+                return;
+            }
+            FVOVolumeData volume=_volume;
+            if(!volume.SpatialFrame.IsCalibrated)
+            {
+                _status.Text="Mesh拒绝：尚无可信源空间标定。";
+                return;
+            }
+            FVOOriginalScalarLease lease;
+            try{lease=volume.AcquireOriginalScalarLease();}
+            catch(Exception ex){_status.Text=ex.Message;return;}
+            CancellationTokenSource current=new CancellationTokenSource();
+            _sphereCancellation=current;
+            long epoch=_sphereEpoch;
+            _status.Text="正在后台从原始RAW构建共享顶点三角网格...";
+            try
+            {
+                CT3DVoxelBoundaryMeshResult result=await Task.Run(delegate
+                {
+                    using(lease)
+                        return CT3DVoxelBoundaryMeshExtractor.Extract(
+                            lease,SurfaceSourceRef(volume),epoch,threshold,50000,current.Token);
+                });
+                if(epoch==_sphereEpoch && Object.ReferenceEquals(_volume,volume) &&
+                    !current.IsCancellationRequested)
+                    PublishVoxelMesh(volume,epoch,result);
+            }
+            catch(OperationCanceledException)
+            {
+                if(epoch==_sphereEpoch)_status.Text="Mesh构建已取消。";
+            }
+            catch(Exception ex)
+            {
+                if(epoch==_sphereEpoch)_status.Text="Mesh构建失败："+ex.Message;
+            }
+            finally
+            {
+                if(Object.ReferenceEquals(_sphereCancellation,current))
+                    _sphereCancellation=null;
+                current.Dispose();
             }
         }
 
