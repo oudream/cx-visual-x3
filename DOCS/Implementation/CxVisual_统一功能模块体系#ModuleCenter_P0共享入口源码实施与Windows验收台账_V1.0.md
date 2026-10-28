@@ -169,3 +169,13 @@
 在Studio打开功能模块中心，先通过正式工程专业配置保存/生效Vision参数，点击“读取当前生效配置”，填写真实RAW图像宽高，再点击“选择RAW并执行CPU检测”。结束后查看缺陷像素/区域/坐标、配置版本、MRK FlowId、MOC指纹、Trace时间线；如需查看流程，点原主流程编排。文件字节数必须等于宽×高×有效位深字节，像素最多32,000,000。
 
 这条流程以用户明确操作创建独立MEM检测页，只有当前内存的RAW像素源；**保存工程后再次打开并不能自动重新采集原图**，需要后续增加MEM Asset/数据引用与重绑定。当前授权来自本机仅CPU软件发布策略，不能替代生产IAM或设备联锁；无Driver实机HIL、跨进程外部数据一致性、整套五类模块专业验收或长期稳定性结论。
+
+## 12. 独立CPU真实软件闭环Windows正式验收（2026-10-28）
+
+- [首次独立CPU验收 #40659419791](https://github.com/oudream/cx-visual-x3/actions/runs/40659419791)：**Failure**，Windows完整编译成功，但专用WPF测试进程未按时退出（120秒超时），不能算验收通过。
+- [测试进程终止修复 d1a7285](https://github.com/oudream/cx-visual-x3/commit/d1a72857a63a8062ac936d599ef4ec313b407b7b)：专用CLI模式在完整结果报告落盘后显式退出独立Windows进程，普通Studio与原全S1退出机制不变。
+- [独立CPU验收 #40659966291](https://github.com/oudream/cx-visual-x3/actions/runs/40659966291)：**Success**，完整.NET Framework 4.8 Windows解决方案编译与真实RAW磁盘数据→MHS Effective→MEM独立检测页→MOC软件发布→MRK执行→像素阈值/连通域缺陷结果/SourceMap Trace专项测试完成，报告作为Actions artifact上传。
+- [Scope保护修复 dad1957](https://github.com/oudream/cx-visual-x3/commit/dad195717962e36552298d5ef2b9938cd6422b00)：用户更换MEM工程/FCM配置Scope或重新读取Effective失败时，失效旧绑定，禁止旧Provider用于新工程加入流程或RAW运行。
+- [包含Scope保护的独立CPU验收 #40660064092](https://github.com/oudream/cx-visual-x3/actions/runs/40660064092)：**Success**，Windows完整构建与相同的真实CPU软件闭环测试均成功。
+
+**判定**：第一条可操作的、数据来自真实文件的Compute CPU软件闭环已有两次专用Windows绿色证据。不是完整五模块工业功能交付：RAW字节当前为运行期临时输入，MEM页持久化不等于源数据/执行结果可自动重放；真实设备HIL、业务授权、全Studio S1配置响应式布局故障以及其他四类Provider仍需分别验收。
