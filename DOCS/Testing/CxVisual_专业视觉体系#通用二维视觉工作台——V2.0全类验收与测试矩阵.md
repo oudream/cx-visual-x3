@@ -171,3 +171,21 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 | V2D-26 / 结构回归 | `--vision-results`、`--imaging`及默认ArchitectureSmoke、完整Windows构建及WPF | 需对应Actions结果；现场UI/性能待额外验证 |
 
 **尚未覆盖**：Image/Mask/Contour/Measurement/Report/AI等完整多类型Run，持久ArtifactRef，自动复核审计，配准坐标转换、异步旧结果过期策略，工业设备HIL及GPU/长时稳定性。已有四类Kind不能被宣传为完整26类能力已经交付。
+
+## 13. P2 Image/Mask真实执行/安全合同的专项登记（2026-10-28）
+
+**代码**：[c98d933](https://github.com/oudream/cx-visual-x3/commit/c98d933bd31a688e083c88a815dae59751d8c48c)、[8d5c027](https://github.com/oudream/cx-visual-x3/commit/8d5c027e87b8360246ca5e71a91db157d2512aaf)、[9316a139](https://github.com/oudream/cx-visual-x3/commit/9316a13903a7bd69d9c1f71c9d8fe2354d408b46)。最新固定[Windows Imaging #40662918228](https://github.com/oudream/cx-visual-x3/actions/runs/40662918228) 初次登记为**queued（未执行完成）**。本章测试仅是已提交可执行回归源码，CI未有结果时不可称G4通过。
+
+| ID/能力 | 已编码正反验收 | 当前证据限制 |
+|---|---|---|
+| ART-01 / V2D-02,10 | Gray8真实Preprocess回传FIM Image，数值与源图一致；输入不变 | 需Windows运行结果 |
+| ART-02 / V2D-12,21 | Gray8 0/255 ThresholdMask四像素命中，Region只接受面积3的候选连通区域，阈值与面积过滤严格分义 | 需Windows运行结果 |
+| ART-03 / V2D-02 | FIM Gray16带Stride输入、紧排MRK、处理图保留16位500/500，Mask为Gray8 255/255 | 需Windows运行结果 |
+| ART-04 / V2D-20,21 | 原MRK API二参签名及3输出不变；Opt-in仅增加2个具名数据出口 | 需Windows编译及回归 |
+| ART-05 / V2D-21 | RunId/SourceId/ItemId与类型端口一致，两个FIM Image产物可以从ResultItem访问且像素不可修改 | 需Windows结果 |
+| ART-06 / V2D-26 | Invalid RAW失败无任何正式CommittedOutputs，不能冒充成功Run | 需Windows运行结果 |
+| ART-07 / V2D-20 | 两个Flow共享Plan并行执行但Source/Mask/ItemId各自独立 | 需Windows运行结果 |
+| ART-08 / V2D-04,26 | `MRKFlowResult.TryEstimateCommittedBytes`对FIM Image/Mask经FDT专业估算且包含有效像素载荷 | 需Windows运行结果 |
+| ART-09 / V2D-24 | `--vision-results`、`--imaging`、默认ArchitectureSmoke均挂载本次测试 | WPF二维/三维CI仅证明共享回归，不代表新图像产物已在Studio或TestCenter中可视操作 |
+
+**工业验收仍未覆盖**：单独的FrameId/FrameLease、磁盘Artifact持久化、Mask与正式ROI坐标配准、WPF可视化用户交互、AI/GPU/厂商设备HIL和长期运行内存。已有的MDS容量统计不等于这些全部满足。
