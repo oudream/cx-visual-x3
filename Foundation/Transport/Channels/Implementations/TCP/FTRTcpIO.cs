@@ -12,13 +12,13 @@ namespace CxVisual.Foundation.Transport
         internal static void Write(TcpClient client,NetworkStream stream,object gate,byte[] bytes,int offset,int count,
             int segmentBytes,int timeoutMilliseconds,CancellationToken cancellation)
         {
-            Stopwatch timer=Stopwatch.StartNew();bool taken=false;
+            var deadline=new FTRDeadline(timeoutMilliseconds);bool taken=false;
             try
             {
                 while(!taken)
                 {
                     cancellation.ThrowIfCancellationRequested();
-                    int remaining=Remaining(timer,timeoutMilliseconds);
+                    int remaining=deadline.RemainingMs();
                     taken=Monitor.TryEnter(gate,Math.Min(20,remaining));
                 }
                 cancellation.ThrowIfCancellationRequested();
@@ -28,7 +28,7 @@ namespace CxVisual.Foundation.Transport
                     for(int done=0;done<count;)
                     {
                         cancellation.ThrowIfCancellationRequested();
-                        stream.WriteTimeout=Remaining(timer,timeoutMilliseconds);
+                        stream.WriteTimeout=deadline.RemainingMs();
                         int n=Math.Min(chunk,count-done);stream.Write(bytes,offset+done,n);done+=n;
                     }
                 }

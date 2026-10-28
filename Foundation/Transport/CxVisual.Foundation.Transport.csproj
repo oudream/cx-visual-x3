@@ -64,6 +64,10 @@
     <Compile Include="Channels\Diagnostics\FTRChannelDiagnosticsSnapshot.cs"/>
     <Compile Include="Channels\Diagnostics\FTRChannelFrame.cs"/>
     <Compile Include="Channels\Diagnostics\FTRFrameDirection.cs"/>
+    <Compile Include="Channels\IO\FTRDeadline.cs"/>
+    <Compile Include="Channels\Reliability\FTRFailureInfo.cs"/>
+    <Compile Include="Channels\Reliability\FTRFailureClassifier.cs"/>
+    <Compile Include="Channels\Diagnostics\FTRChannelHealthSnapshot.cs"/>
     <Compile Include="Channels\IO\FTRChannelBase.cs"/>
     <Compile Include="Channels\Reliability\FTRReconnectController.cs"/>
     <Compile Include="Channels\IO\FTRChannelReceiveContext.cs"/>

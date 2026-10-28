@@ -52,6 +52,16 @@ public abstract class FTRChannelBase : IFTRChannelTransport
                     snapshot.PendingSendBytes=_pendingSendBytes;snapshot.RejectedSends=_rejectedSends;}
                 return snapshot;}
         }
+        /// <summary>统一诊断视图；仅采样已有计数器与存活Peer，不增加接收者或定时线程。</summary>
+        public FTRChannelHealthSnapshot Health
+        {
+            get
+            {
+                var multi=this as IFTRSubChannelAware;
+                int peers=multi==null ? (State==FTRChannelState.Open ? 1 : 0) : multi.SnapshotSubChannels().Length;
+                return new FTRChannelHealthSnapshot(Id,SessionId,State,peers,Diagnostics);
+            }
+        }
         private void NotifyState()
         {
             var handlers=StateChanged;if(handlers==null)return;
@@ -86,8 +96,9 @@ public abstract class FTRChannelBase : IFTRChannelTransport
                 }
                 NotifyState();
             }
-            catch
+            catch(Exception error)
             {
+                _diagnostics.RecordError(error,"Open",FTRFaultScope.Channel);
                 // 打开部分成功时也必须释放监听 Socket、串口与后台任务。
                 lock (_gate) _state = FTRChannelState.Faulted;
                 NotifyState();
@@ -116,8 +127,9 @@ public abstract class FTRChannelBase : IFTRChannelTransport
                 lock (_gate) _state = FTRChannelState.Closed;
                 NotifyState();
             }
-            catch
+            catch(Exception error)
             {
+                _diagnostics.RecordError(error,"Close",FTRFaultScope.Channel);
                 lock (_gate) _state = FTRChannelState.Faulted;
                 NotifyState();
                 throw;
@@ -147,7 +159,7 @@ public abstract class FTRChannelBase : IFTRChannelTransport
                 _diagnostics.RecordSend(count);Record(FTRFrameDirection.Tx,bytes,correlation,null,offset,count);
             }
             catch(Exception error)
-            {_diagnostics.RecordError(error);Record(FTRFrameDirection.Error,bytes,correlation,error.Message,offset,count);throw;}
+            {_diagnostics.RecordError(error,"Send",FTRFaultScope.Operation);Record(FTRFrameDirection.Error,bytes,correlation,error.Message,offset,count);throw;}
         }
         protected virtual void OnSendSynchronous(byte[] bytes,int offset,int count,
             FTRSubChannelAddress address,CancellationToken ct,int segmentBytes)
@@ -178,7 +190,7 @@ public abstract class FTRChannelBase : IFTRChannelTransport
             }
             catch (Exception e)
             {
-                _diagnostics.RecordError(e);
+                _diagnostics.RecordError(e,"Send",FTRFaultScope.Operation);
                 Record(FTRFrameDirection.Error, owned, null, e.Message);
                 throw;
             }
@@ -253,7 +265,7 @@ public abstract class FTRChannelBase : IFTRChannelTransport
         protected void DrainBufferedReceive(int timeoutMilliseconds,CancellationToken cancellation)
         {if(_receivePipeline!=null)_receivePipeline.CompleteAndDrain(timeoutMilliseconds,cancellation);}
         protected void RecordReceiveError(Exception error)
-        {_diagnostics.RecordError(error);Record(FTRFrameDirection.Error,new byte[0],null,error.Message);}
+        {_diagnostics.RecordError(error,"Receive",FTRFaultScope.Channel);Record(FTRFrameDirection.Error,new byte[0],null,error.Message);}
         private void DeliverBuffer(FTRReceiveBuffer buffer)
         {
             // 关闭先停止OS读取，然后排空已接纳数据；Closing不能丢掉已排入的可靠字节。
@@ -281,7 +293,8 @@ public abstract class FTRChannelBase : IFTRChannelTransport
         {
             if (error == null) throw new ArgumentNullException("error");
             lock (_gate) _state = FTRChannelState.Faulted;
-            NotifyState();_diagnostics.RecordError(error);
+            _diagnostics.RecordError(error,"Transport",FTRFaultScope.Channel);
+            NotifyState();
             Record(FTRFrameDirection.Error, new byte[0], null, error.Message);
         }
         private void Record(FTRFrameDirection direction, byte[] bytes, string correlation, string error,
