@@ -14,7 +14,10 @@
 
 ~~~mermaid
 flowchart TB
-  R["上下文Ribbon / 搜索 / 快捷命令"] --> C["Dock工作区"]
+  R["上下文Ribbon / 搜索 / 快捷命令"] --> L
+  R --> M
+  R --> P
+  R --> B
   subgraph C["统一Dock工作区"]
     L["左：工程资源/序列/ROI/对象树"]
     M["中：图窗/对比/流程图/多文档"]
