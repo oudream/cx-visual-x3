@@ -69,6 +69,7 @@ namespace CxVisual.TestCenter.UI
                 Margin=new Thickness(8,0,2,0) });
             actions.Children.Add(_sphereThresholdText);
             AddButton(actions,"离散球体分析","TCT.Volume.AnalyzeSphere",StartSurfaceSphereFromUi);
+            AddButton(actions,"生成三角Mesh","TCT.Volume.ExtractMesh",StartVoxelMeshFromUi);
             AddButton(actions,"相机复位","TCT.Volume.ResetCamera",Reset3DCamera);
             AddButton(actions,"演示体","TCT.Volume.Demo",LoadDemo);
             actions.Children.Add(new TextBlock { Text="窗位",VerticalAlignment=VerticalAlignment.Center,
@@ -275,8 +276,13 @@ namespace CxVisual.TestCenter.UI
         public void ClearVolume()
         {
             CancelPendingRawLoads();
+            ClearSurfaceAnalysis();
             DisableGpu();
-            if(_state!=null)_state.PropertyChanged-=OnStateChanged;
+            if(_state!=null)
+            {
+                _state.PropertyChanged-=OnStateChanged;
+                _state.Scene3D.Changed-=OnProfessionalSceneChanged;
+            }
             _state=null;
             _workbench.Bind(null,null);
             if(_volume!=null)_volume.Dispose();
