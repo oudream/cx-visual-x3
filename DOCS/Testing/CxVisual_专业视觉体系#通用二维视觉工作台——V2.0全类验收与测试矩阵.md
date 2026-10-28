@@ -109,3 +109,34 @@ V2D能力ID / 来源需求ID / Scene与角色 / 输入样本/格式/单位/坐�
 | D 批量实时/跨专业 | FrameLease/字节预算/DropNoDrop、Provider版本/权限、Inspection契约 | 帧队列压力、设备异常、SDK/GPU/内存泄漏与HIL |
 
 **状态严格区分**：图和合同形成只意味着架构设计可审，不意味着新类型存在、编译或现场通过。本轮架构修订未执行Windows CI，也未运行新的专业算法测试。后续实际测试须逐V2D-XX.YY填SHA、样本规格、反例和运行证据。
+
+## 10. CASE-ARCH-01 核心合同的架构级反证矩阵（新增设计；未执行）
+
+目标：不是把260项目标一口气实现，而是先用一个Gray16增强/分割/区域/测量四节点工作链，验证三条对象契约能否支撑Studio/WPF/API/无头Runtime。以下测试编号为设计标识，不代表代码或测试用例已创建。
+
+| 测试ID | 对象关系 | 输入/操作 | 期待结果和拒绝条件 | 后续验证方式 |
+|---|---|---|---|---|
+| ARCH-D01 | FIM像素格式 | Gray16有Stride Padding | 原像素不被LUT或ROI更改；Padding不计入统计 | FIM数值单测 |
+| ARCH-D02 | FIM/PVC互通 | 同一Gray8、Gray16图经两个像素表达 | 每像素/阈值/区域结果等价或给明确映射说明 | 专业数值测试 |
+| ARCH-D03 | Frame身份 | SourceGeneration变更后旧帧晚到 | 旧结果Stale，不覆盖新图 | 异步竞争测试 |
+| ARCH-D04 | 非等距标定 | sx≠sy做距离/角度/面积 | 真实物理数值；无标定禁填mm | FGE/FIM计量测试 |
+| ARCH-A01 | MOC能力可用性 | Catalog有能力描述但Provider缺失 | 保持可发现、明确Unavailable/Rejected | Catalog/Resolver测试 |
+| ARCH-A02 | MPM/MRK端口映射 | 工程TypeId合法、执行CLR类型不匹配 | Compile/Run按错误阶段明确拒绝，不混用object | MOC/MRK契约测试 |
+| ARCH-A03 | 参数范围 | Gray16阈值超限/NaN/非法ROI | 前置验证失败，不产生部分结果 | 参数Schema反例 |
+| ARCH-A04 | 四节点执行 | 增强→Mask→Region→Measure | 具名输出、中间数据、SourceMap和Trace正确 | 真实MOC/MRK集成 |
+| ARCH-A05 | 取消 | 计算中修改原图或参数、取消Token | PendingAbort，旧Run不污染新展示 | 并发/取消测试 |
+| ARCH-R01 | 多类型结果 | 单Run有Image、Mask、Region、Measure、Trace | RunId/ResultItemId唯一且可复核 | 专业结果单测 |
+| ARCH-R02 | Empty与失败 | 无区域与算子执行错误 | Empty成功与Failed/Cancelled分离 | 结果状态测试 |
+| ARCH-R03 | 显示投影 | 结果Mask属于图A但当前选图B | 不叠错图；提示Stale/NeedsRegistration | WPF集成/UIA |
+| ARCH-R04 | Run版本 | 参数重跑、旧结果再查看 | 原Run只读，新Run独立；参数与Provider版本可追踪 | 结果版本测试 |
+| ARCH-R05 | 正式工程 | Overlay→Promote→Commit→Undo→Save/Open | 工程稳定ID、Revision/SourceRef和样式保持 | MEM/MRC/WPF端到端 |
+| ARCH-R06 | 人工复核 | 更改缺陷复核意见 | ReviewRecord派生，原算法Result不可变 | 权限审计与结果测试 |
+| ARCH-Q01 | 大图预算 | 4300² Gray16及多个中间Mask | 计入副本、CPU/GPU/SDK/队列开销；超限受控拒绝 | Windows性能/资源 |
+| ARCH-Q02 | 真正连续流 | 满队列/设备掉线/重新连接 | 明确背压/Drop/NoDrop、Frame代次和Lease归还 | 回放+真实HIL |
+| ARCH-Q03 | 无头与UI | 同样本独立API及MPW工作台 | 算法数值和结果身份语义一致；无头不依赖Dispatcher | SDK+WPF真实控件 |
+| ARCH-Q04 | 发布和回滚 | 新旧已发布Plan/能力版本不同 | Run固定Revision、发布失败不破坏现役Plan | MOC/MRK发布测试 |
+| ARCH-Q05 | 错误诊断 | 端口错误/资源过载/SDK异常 | ErrorCode、Node/Port、RunId、Trace可复查 | FLD/运行单测 |
+
+### 10.1 评审签收格式
+
+每个测试在实施时写：实际输入文件及Hash、运行环境、Owner/类路径、实际输出/容差、异常或性能截图/日志、Git SHA、Windows工作流链接、测试日期、是否专业设备HIL。架构P设计只能列为G0/G1，不能列G2源码或G4/G6通过。MDS预算只证明当前已提交托管载荷，不证明所有GPU/SDK工作缓存；完整相机流不能通过MDSBoundedByteStream的基本字节块测试替代。
