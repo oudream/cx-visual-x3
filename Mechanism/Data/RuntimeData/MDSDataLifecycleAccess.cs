@@ -31,15 +31,15 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         { _owner.ConfigureLifecycle(name, policy); }
 
         public void ConfigureOwnership(string name, MDSDataOwnershipPolicy policy)
-        { Configure(name, GetPolicy(name).WithOwnership(policy)); }
+        { _owner.ConfigureLifecycleDimension(name, current => current.WithOwnership(policy)); }
         public void ConfigureLifetime(string name, MDSDataLifetimePolicy policy)
-        { Configure(name, GetPolicy(name).WithLifetime(policy)); }
+        { _owner.ConfigureLifecycleDimension(name, current => current.WithLifetime(policy)); }
         public void ConfigureRetention(string name, MDSDataRetentionPolicy policy)
-        { Configure(name, GetPolicy(name).WithRetention(policy)); }
+        { _owner.ConfigureLifecycleDimension(name, current => current.WithRetention(policy)); }
         public void ConfigureTransfer(string name, MDSDataTransferPolicy policy)
-        { Configure(name, GetPolicy(name).WithTransfer(policy)); }
+        { _owner.ConfigureLifecycleDimension(name, current => current.WithTransfer(policy)); }
         public void ConfigureReclamation(string name, MDSDataReclamationPolicy policy)
-        { Configure(name, GetPolicy(name).WithReclamation(policy)); }
+        { _owner.ConfigureLifecycleDimension(name, current => current.WithReclamation(policy)); }
 
         public MDSDataLifecyclePolicy GetPolicy(string name) { return _owner.LifecyclePolicyOf(name); }
         public MDSDataLifecycleSnapshot Inspect(string name) { return _owner.InspectLifecycle(name); }
@@ -140,6 +140,18 @@ namespace CxVisual.Mechanism.Data.RuntimeData
                     throw new MDSDataException(MDSDataErrorCode.Busy,
                         "有活跃消费者/保留或已封闭入口，不能重设生命周期：" + name, name);
                 _lifecycles[name] = new MDSDataLifecycleRecord(policy);
+            }
+        }
+
+        // 单个维度变更在同一Heap锁内读-改-写，避免并发独立设置互相覆盖。
+        internal void ConfigureLifecycleDimension(string name,
+            Func<MDSDataLifecyclePolicy, MDSDataLifecyclePolicy> update)
+        {
+            if (update == null) throw new ArgumentNullException("update");
+            lock (_gate)
+            {
+                MDSDataLifecyclePolicy current = LifecyclePolicyOf(name);
+                ConfigureLifecycle(name, update(current));
             }
         }
 
