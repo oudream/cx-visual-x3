@@ -23,18 +23,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: microsoft/setup-msbuild@v2
-      - name: Restore TestCenter and Studio packages
+      - name: Restore TestCenter packages
         shell: pwsh
         run: |
           & msbuild.exe Tests/TestCenter/CxVisual.TestCenter.csproj /t:Restore /p:Configuration=Debug /p:Platform=x64 /v:minimal
           if ($LASTEXITCODE -ne 0) { throw 'TestCenter Restore failed' }
-          & msbuild.exe Applications/Studio/CxVisual.Studio.csproj /t:Restore /p:Configuration=Debug /p:Platform=x64 /v:minimal
-          if ($LASTEXITCODE -ne 0) { throw 'Studio Restore failed' }
-      - name: Build actual Windows .NET Framework 4.8 solution
+      - name: Build real .NET Framework 4.8 TestCenter and all its dependencies
         shell: pwsh
         run: |
-          & msbuild.exe CxVisual.Unified.sln /m:1 /nr:false /t:Rebuild /p:Configuration=Debug /p:Platform=x64 /v:minimal
-          if ($LASTEXITCODE -ne 0) { throw 'Unified x64 Debug build failed' }
+          & msbuild.exe Tests/TestCenter/CxVisual.TestCenter.csproj /m:1 /nr:false /t:Build /p:Configuration=Debug /p:Platform=x64 /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw 'TestCenter x64 Debug dependency build failed' }
       - name: Execute real TestCenter Compute UI Automation and CPU workflow
         shell: pwsh
         run: |
