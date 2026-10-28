@@ -102,3 +102,18 @@
 | `3a549615` | `ModuleChannelTransportSmokeTests.ByteStreamAdapterLoopback` | ByteStreamAdapter基类路径复用单次异步切片快照，Custom Provider接口保持兼容；新固定SHA待验证 |
 
 对应代码包括`RecordReceiveError`旧签名+SubChannel重载、HTTP/WS接收预算分类、`FTRChannelBase.SendAsync(byte[],int,int,...)`新增兼容重载、`FTRByteStreamAdapter.WriteAsync`去重复制。原`--channel-transport`及`--channel-bulk-long`继续保留，不因局部成功宣布跨PC、24h长稳或CT专业零复制链路通过。
+
+
+## F17-P0 多客户端ID、HTTP/WS合计在途额度与共享区崩溃回归（2026-10-28）
+
+| 测试 | 实际代码路径 | 验收目标 |
+|---|---|---|
+| HTTP两个请求分别回应 | `FTRMultiClientBudgetTests.HttpConcurrentResponses` | `SubChannelId+Generation`不同；大响应占总额度，第二大响应拒绝，小响应成功；无交叉回复，结束时租约归零 |
+| HTTP总额度和413/503 | `HttpAggregateOverload` | 全局额度满返回503，单请求体过大返回413；其他已接纳请求不受损 |
+| WS两客户端定向路由 | `WebSocketTwoClientsRouted` | 不同SubChannelId+Generation；分别向原连接单播，不广播 |
+| WS慢客户端/预算 | `WebSocketFragmentedPeer` | 未完成分片持续占用额度；另一Peer总量超限被隔离，原Peer仍完成消息，峰值受限 |
+| FCM | `SharedBudgetLease` | HTTP/WS `TotalBufferedBytes`配置往返、错误预算拒绝 |
+| SharedMemory崩溃 | `FTRSharedMemoryCrashTests.Run` | OS子进程异常退出遗弃Side Mutex；旧共享区禁止复用；新Map/Session双向完整 |
+| 低复制兼容 | `ReceiveBytes/ReceiveFrom`新增Count重载 | HTTP/WS直接借用MemoryStream有效切片，Received独立快照在额度内，原接口不变 |
+
+本轮旧版本Windows CI [#40664424966](https://github.com/oudream/cx-visual-x3/actions/runs/40664424966)、[#40664609330](https://github.com/oudream/cx-visual-x3/actions/runs/40664609330)、[#40664714152](https://github.com/oudream/cx-visual-x3/actions/runs/40664714152) 因WS测试低估消息交付时峰值而失败；后续调整测试额度、移除整消息ToArray复制、增加接收上下文额度。新版须按固定SHA Windows CI验证后方能改为通过。当前尚无24h、跨PC、工业硬件及FTR→MPA→MDS端到端内存峰值SLA证据。
