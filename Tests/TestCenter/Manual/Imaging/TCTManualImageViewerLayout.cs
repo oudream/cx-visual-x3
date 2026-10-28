@@ -351,6 +351,7 @@ namespace CxVisual.TestCenter.UI
             foreach (MVIImageToolMode mode in Enum.GetValues(typeof(MVIImageToolMode)))
                 _imageTool.Items.Add(new ComboBoxItem { Content = ToolTitle(mode), Tag = mode });
             _imageTool.SelectedIndex = 0;
+            AutomationProperties.SetAutomationId(_imageTool,"TCT.Imaging.ImageTool");
             _imageTool.MinHeight = 32; _imageTool.Margin = new Thickness(3,0,3,7);
             content.Children.Add(_imageTool);
             content.Children.Add(Hint("工具、ROI和标注直接操作既有 MVI OverlayStore。"));
