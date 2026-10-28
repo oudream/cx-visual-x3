@@ -57,9 +57,13 @@ public abstract class FTRChannelBase : IFTRChannelTransport
         {
             get
             {
+                FTRChannelState state;Guid session;
+                lock(_gate){state=_state;session=_sessionId;}
                 var multi=this as IFTRSubChannelAware;
-                int peers=multi==null ? (State==FTRChannelState.Open ? 1 : 0) : multi.SnapshotSubChannels().Length;
-                return new FTRChannelHealthSnapshot(Id,SessionId,State,peers,Diagnostics);
+                // 离线目录允许注册虚拟Peer，但不是已经建立的物理连接。
+                int peers=state!=FTRChannelState.Open ? 0 :
+                    (multi==null ? 1 : multi.SnapshotSubChannels().Length);
+                return new FTRChannelHealthSnapshot(Id,session,state,peers,Diagnostics);
             }
         }
         private void NotifyState()

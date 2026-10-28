@@ -113,6 +113,18 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "Close结算后健康快照必须反映释放");
             }
 
+            using(var offline=new FTRTcpServerChannel(new FTRTcpServerChannelConfiguration{
+                Id="f17-health-offline",Host="127.0.0.1",Port=16161
+            }))
+            {
+                var peer=offline.RegisterPeer("offline-peer","offline.local");
+                Check(offline.SnapshotSubChannels().Length==1 &&
+                    offline.Health.State==FTRChannelState.Closed &&
+                    offline.Health.ActivePeers==0,
+                    "离线登记的SubChannel不得在健康视图中冒充在线客户端");
+                offline.RemovePeer(peer.Address);
+            }
+
             using(var channel=new FaultProbe("f17-open-failure"){FailOpen=true})
             {
                 try{channel.Open();Check(false,"错误连接意外打开");}
