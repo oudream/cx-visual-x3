@@ -155,3 +155,5 @@ Windows CI必须同SHA满足Restore、完整.NET48 x64 Build、Verify-Structure�
 | `2c11eaf` | [#40643586096](https://github.com/oudream/cx-visual-x3/actions/runs/40643586096) 第一轮 | PASS：N43～N47，30组固定随机Oracle、独立基准；编译与DAG PASS | FAIL：运行时数据M1/M2预算验收；同SHA复跑已请求，结论未核实 |
 
 单次Windows Runner数值：`AddViewsInto(reused)`0.8605ms/176B，`AddViews(allocating)`0.9735ms/525468B；`ReduceSumViewInto(reused)`0.4860ms/4272B，`ReduceSumView(allocating)`0.4927ms/6512B。数据是诊断性结果，不构成p95或不同CPU上的性能验收。不可将其他Owner的F17或M1/M2失败归为Numerics代码失败，也不可反过来把Numerics专项PASS说成整个工作流PASS。
+
+**复跑结论补录（同SHA #40643586096，Attempt 2）**：Windows全方案Build、Owner/DAG、Numerics数值质量、固定随机Oracle和独立Benchmark再次PASS；全量ArchitectureSmoke再次在“运行时数据M1/M2验收：显式opt-in后可在100字节预算内完成双消费者与结果交接”失败。两次同SHA失败复现，属于运行时数据/机制Owner，Numerics本轮不擅自修复其他Owner代码，整体workflow仍为failure。

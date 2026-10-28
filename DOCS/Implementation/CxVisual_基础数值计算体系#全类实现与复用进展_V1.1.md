@@ -200,3 +200,5 @@ double conditionNumber = solved.ConditionNumber;
 - `2c11eaf` [CI #40643586096](https://github.com/oudream/cx-visual-x3/actions/runs/40643586096) 首次执行：全方案Build、Owner/DAG、Numerics专项、30组随机View广播/3轴归约独立对照和基准均PASS；完整回归中出现**运行时数据 M1/M2 验收**失败，Workflow整体failure。已请求同SHA失败任务复跑，复跑结论须另行核实。
 - 该次 Windows Runner 观测：256×256 `AddViewsInto` **0.8605 ms/次、176 B/次**，`AddViews`分配结果 **0.9735 ms/次、525468 B/次**；`ReduceSumViewInto` **0.4860 ms/次、4272 B/次**，分配式 `ReduceSumView` **0.4927 ms/次、6512 B/次**。观测仅对当前机器/样本有效，不代表跨平台保证或已通过吞吐验收。
 - Numerics模块未修改F17或运行时数据Owner测试来规避失败；属于不同机制模块的独立追踪问题。此处只确认Numerics数值自测，不冒称全平台验收成功。
+
+**复跑结论补录（同SHA #40643586096，Attempt 2）**：Windows全方案Build、Owner/DAG、Numerics数值质量、固定随机Oracle和独立Benchmark再次PASS；全量ArchitectureSmoke再次在“运行时数据M1/M2验收：显式opt-in后可在100字节预算内完成双消费者与结果交接”失败。两次同SHA失败复现，属于运行时数据/机制Owner，Numerics本轮不擅自修复其他Owner代码，整体workflow仍为failure。
