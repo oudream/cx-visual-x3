@@ -90,13 +90,20 @@ namespace CxVisual.TestCenter.UI
                 host.Show();host.UpdateLayout();
                 frame.SelectModuleKind(MFMModuleKind.Compute);
                 frame.SetModuleId(id);
-                frame.OpenSelected();
-                await Until(()=>frame.HasOpenedConfiguration&&!frame.IsBusy&&
-                    frame.ActiveModuleKind==MFMModuleKind.Compute,"open real FCM module");
-                frame.SelectModulePage("cpu-test");
                 host.UpdateLayout();
                 var hwnd=new WindowInteropHelper(host).Handle;
                 Check(hwnd!=IntPtr.Zero,"No TestCenter Compute HWND");
+                await Click(hwnd,"TCT.Module.Open");
+                await Until(()=>frame.HasOpenedConfiguration&&!frame.IsBusy&&
+                    frame.ActiveModuleKind==MFMModuleKind.Compute,"open real FCM module");
+                await Task.Run(()=>{
+                    var page=Find(AutomationElement.FromHandle(hwnd),"TCT.Module.Page.cpu-test");
+                    var select=page.GetCurrentPattern(SelectionItemPattern.Pattern)
+                        as SelectionItemPattern;
+                    if(select==null)throw new InvalidOperationException("Compute page UIA select missing");
+                    select.Select();
+                });
+                host.UpdateLayout();
                 var panel=frame.CpuTestPanel;
                 Check(panel!=null,"Compute panel not attached to common Module Center");
                 // No vision config exists; UI must refuse a read without creating one.
@@ -134,9 +141,13 @@ namespace CxVisual.TestCenter.UI
                     first.Trace.Count>0 &&first.FlowId!=Guid.Empty &&
                     first.Fingerprint.Length==64,
                     "Real RAW/MHS/MEM/MOC/MRK result/Trace mismatch");
-                Check(Find(AutomationElement.FromHandle(hwnd),"TCT.Cpu.Regions")!=null&&
-                    Find(AutomationElement.FromHandle(hwnd),"TCT.Cpu.Trace")!=null,
-                    "Result/Trace views absent from visible Compute test UI");
+                bool visible=await Task.Run(()=>{
+                    var rootElement=AutomationElement.FromHandle(hwnd);
+                    var regions=Find(rootElement,"TCT.Cpu.Regions");
+                    var trace=Find(rootElement,"TCT.Cpu.Trace");
+                    return !regions.Current.IsOffscreen && !trace.Current.IsOffscreen;
+                });
+                Check(visible,"Actual result/Trace grids not visible in Compute test UI");
                 // Repeat through the same UI must produce a new actual MRK execution.
                 await Click(hwnd,"TCT.Cpu.Run");
                 await Until(()=>!panel.IsRunning&&panel.LastReport!=null&&
