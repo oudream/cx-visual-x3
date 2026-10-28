@@ -133,3 +133,15 @@ Windows CI必须同SHA满足Restore、完整.NET48 x64 Build、Verify-Structure�
 性能：`418e766`的Runner读数为MatMulViewsInto 0.8617 ms/op、32 B/op，MatMulViews分配0.7984 ms/op、32992 B/op；SumView游标0.1901ms/op、逐点索引参考0.3716ms/op。性能数据为同Runner测量，不是p95、跨机/现场结论。
 
 **注意：本次文档提交仅归档已验证代码SHA的证据，不可冒充文档提交自身的CI通过。F17问题由Transport所有者闭环，Numerics不绕过它。**
+
+## 2026-10-28 F13视图运算专项扩展（N43～N47）
+
+| ID | 用例 | 合同和测试层级 |
+|---|---|---|
+| N43 | Transpose/Slice后的2D、3D View跨Rank尾轴广播加乘 | 独立按坐标参考对照，Into与分配API等价 |
+| N44 | 输出Owner别名、错误Shape、不兼容广播维、数值溢出及零长轴 | 异常与状态反例，拒绝写入前先验参 |
+| N45 | View任意轴ReduceSum、Rank1/空轴、溢出原子性 | Neumaier求和、结果形状和归属 |
+| N46 | 30组固定随机形状/数据的View广播加乘与三个轴归约 | 独立逐坐标Oracle，避免只以同内核互相比对 |
+| N47 | 独立`--numerics-benchmark`对比AddViewsInto/分配式、ReduceSumViewInto/分配式 | 同机输出ms/op和bytes/op；不以波动速度阈值判CI |
+
+验收必须以对应代码SHA的GitHub Actions实际Windows步骤为准；数值专项通过与完整ArchitectureSmoke通过分别记录。原F17.PIPE_BULK阻断不在Numerics改动范围。

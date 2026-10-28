@@ -21,6 +21,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             SolverConditionAndViewTraversal();
             TensorViewBroadcastArithmetic();
             TensorViewAxisReduction();
+            RandomizedViewArithmeticAndReduction();
             Console.WriteLine("PASS FNU numerical-quality: extremes / cancellation / DFT / FIR / tensor");
         }
 
@@ -575,6 +576,60 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Near(changed.Get(i,j),view.Get(i,0,j)+view.Get(i,1,j),0,
                         "view reduction live owner update");
             Console.WriteLine("PASS FNU view reduction: strided axis/Into/empty/overflow atomic");
+        }
+
+        private static void RandomizedViewArithmeticAndReduction()
+        {
+            var random = new Random(20261028);
+            for (int trial=0;trial<30;trial++)
+            {
+                int x=1+random.Next(4),y=1+random.Next(5),z=1+random.Next(4);
+                double[] samples=new double[x*y*z];
+                for(int i=0;i<samples.Length;i++)samples[i]=random.NextDouble()*2-1;
+                var tensor=new FNUTensorBuffer(new FNUTensorShape(x,y,z),samples);
+                var view=tensor.AsView().Transpose(0,2); // [z,y,x] non-contiguous
+                var rhsData=new double[y];
+                for(int i=0;i<y;i++)rhsData[i]=random.NextDouble()*2-1;
+                var rhs=new FNUTensorBuffer(new FNUTensorShape(y,1),rhsData).AsView();
+                var allocated=FNUTensorMath.AddViews(view,rhs);
+                var into=new FNUTensorBuffer(new FNUTensorShape(z,y,x));
+                FNUTensorMath.AddViewsInto(view,rhs,into);
+                var product=FNUTensorMath.MultiplyViews(view,rhs);
+                for(int i=0;i<z;i++)
+                    for(int j=0;j<y;j++)
+                        for(int k=0;k<x;k++)
+                        {
+                            double expected=view.Get(i,j,k), factor=rhs.Get(j,0);
+                            Near(allocated.Get(i,j,k),expected+factor,1e-12,
+                                "random view add oracle");
+                            Near(into.Get(i,j,k),expected+factor,1e-12,
+                                "random view add Into");
+                            Near(product.Get(i,j,k),expected*factor,1e-12,
+                                "random view multiplication oracle");
+                        }
+                for(int axis=0;axis<3;axis++)
+                {
+                    var reduced=FNUTensorMath.ReduceSumView(view,axis);
+                    var output=new FNUTensorBuffer(reduced.Shape);
+                    FNUTensorMath.ReduceSumViewInto(view,axis,output);
+                    for(int i=0;i<reduced.Shape.DimensionAt(0);i++)
+                        for(int j=0;j<reduced.Shape.DimensionAt(1);j++)
+                        {
+                            double reference=0;
+                            for(int step=0;step<view.DimensionAt(axis);step++)
+                            {
+                                if(axis==0)reference+=view.Get(step,i,j);
+                                else if(axis==1)reference+=view.Get(i,step,j);
+                                else reference+=view.Get(i,j,step);
+                            }
+                            Near(reduced.Get(i,j),reference,1e-11,
+                                "random view reduction reference");
+                            Near(output.Get(i,j),reference,1e-11,
+                                "random view reduction Into");
+                        }
+                }
+            }
+            Console.WriteLine("PASS FNU seeded randomized view broadcast / axis reduction: 30 cases");
         }
 
         private static void Near(double value,double expected,double tolerance,string what)

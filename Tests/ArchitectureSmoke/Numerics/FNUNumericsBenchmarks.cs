@@ -38,6 +38,30 @@ namespace CxVisual.Tests.ArchitectureSmoke
             Measure("MatMulViews(allocating)", 10, delegate {
                 return FNUTensorMath.MatMulViews(a,b).Get(0,0);
             });
+            var broadcastSamples = new double[height];
+            for (int i = 0; i < broadcastSamples.Length; ++i)
+                broadcastSamples[i] = (i % 13) / 13.0;
+            var broadcastRow = new FNUTensorBuffer(new FNUTensorShape(height),
+                broadcastSamples).AsView();
+            var elementOutput = new FNUTensorBuffer(new FNUTensorShape(width,height));
+            FNUTensorMath.AddViewsInto(view,broadcastRow,elementOutput);
+            Measure("AddViewsInto(reused)", iterations, delegate {
+                FNUTensorMath.AddViewsInto(view,broadcastRow,elementOutput);
+                return elementOutput.Get(0,0);
+            });
+            Measure("AddViews(allocating)", iterations, delegate {
+                return FNUTensorMath.AddViews(view,broadcastRow).Get(0,0);
+            });
+
+            var axisOutput = new FNUTensorBuffer(new FNUTensorShape(width));
+            FNUTensorMath.ReduceSumViewInto(view,1,axisOutput);
+            Measure("ReduceSumViewInto(reused)", iterations, delegate {
+                FNUTensorMath.ReduceSumViewInto(view,1,axisOutput);
+                return axisOutput.Get(0);
+            });
+            Measure("ReduceSumView(allocating)", iterations, delegate {
+                return FNUTensorMath.ReduceSumView(view,1).Get(0);
+            });
             Console.WriteLine("PASS FNU benchmark diagnostics (timings are observations, not CI thresholds)");
         }
 
