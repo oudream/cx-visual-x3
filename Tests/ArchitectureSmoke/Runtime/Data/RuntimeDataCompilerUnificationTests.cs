@@ -27,6 +27,9 @@ namespace CxVisual.Tests.ArchitectureSmoke
             ConcurrentInvocationFrameIsolation();
             RepeatedInvocationFrameIsolation();
             DeveloperBuilderCanEnableStaticOutputReclamation();
+            R08_DynamicLoopReclaimsOnlyUnretainedHistory();
+            R08_ParallelForeachReclaimsWithoutBreakingJoin();
+            R08_InvalidHistoryPolicyRejected();
         }
 
         private static void DeveloperBuilderCanEnableStaticOutputReclamation()
@@ -72,6 +75,98 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     "代码优先入口必须真实经过MRK编译/数据端口/结果导出");
             }
             finally { runtime.StopAsync().GetAwaiter().GetResult(); }
+        }
+
+        private static MRKExecutionPlan BuildR08Plan(bool parallel, MRKLoopDataRetention retention)
+        {
+            var body = new MRKExecutionPlan("r08.body", new[] {
+                new MRKExecutionStep("image", new string[0], (ctx, ct) =>
+                {
+                    ctx.Data.Return("Image", new byte[64]);
+                    return Task.FromResult((object)true);
+                }, dataOutputs: new Dictionary<string, Type> { { "Image", typeof(byte[]) } }),
+                new MRKExecutionStep("measure", new[] { "image" }, (ctx, ct) =>
+                {
+                    byte[] value = ctx.Data.Get<byte[]>("Input");
+                    ctx.Data.Return("Count", value.Length + ctx.IterationIndex);
+                    return Task.FromResult((object)true);
+                }, inputs: new[] { new MRKExecutionInput("Input", MRKInputSource.StepOutput,
+                    "image.Image", typeof(byte[])) },
+                    dataOutputs: Output("Count"))
+            });
+            var loop = new MRKLoopRegion(body, 4,
+                parallel ? null : (Func<MRKExecutionContext, int, bool>)((ctx, i) => i < 4),
+                collectionInput: parallel ? "Items" : null,
+                maxParallelIterations: parallel ? 2 : 1, dataRetention: retention);
+            return new MRKExecutionPlan("r08.main", new[] {
+                new MRKExecutionStep("loop", new string[0],
+                    (ctx, ct) => Task.FromResult((object)true), loopRegion: loop),
+                new MRKExecutionStep("join", new[] { "loop" }, (ctx, ct) =>
+                {
+                    IReadOnlyList<MRKLoopOutput<int>> rows =
+                        ctx.CollectLoopOutputs<int>("loop", "measure", "Count");
+                    Check(rows.Count == 4 && rows.Select(x => x.FrameKey).Distinct().Count() == 4,
+                        "动态Join未能看到全部真实Invocation");
+                    ctx.Data.Return("Total", rows.Sum(x => x.Value));
+                    return Task.FromResult((object)true);
+                }, dataOutputs: Output("Total"))
+            }, new Dictionary<string, string> { { "Total", "join.Total" } });
+        }
+
+        private static void R08_DynamicLoopReclaimsOnlyUnretainedHistory()
+        {
+            RunR08Bounded(false, 200);
+        }
+
+        private static void R08_ParallelForeachReclaimsWithoutBreakingJoin()
+        {
+            RunR08Bounded(true, 300);
+        }
+
+        private static void RunR08Bounded(bool parallel, long budget)
+        {
+            var inputs = new Dictionary<string, object>();
+            if (parallel) inputs["Items"] = new List<int> { 1, 2, 3, 4 };
+            var engine = new MRKExecutionEngine(new FCRWorkerOptions(4, 32),
+                dataPayloadBudgetBytes: budget);
+            try
+            {
+                MRKFlowResult bounded = engine.StartFlow(
+                    BuildR08Plan(parallel, MRKLoopDataRetention.KeepForJoin("measure")),
+                    inputs).Completion.GetAwaiter().GetResult();
+                Check(bounded.State == MRKFlowState.Completed &&
+                    bounded.GetCommittedOutput<int>("Total") == 262,
+                    "按Iteration安全释放临时图像后Join仍能读取全部保留结果：" +
+                    (bounded.Error == null ? "" : bounded.Error.ToString()));
+                MRKFlowResult conservative = engine.StartFlow(
+                    BuildR08Plan(parallel, null), inputs).Completion.GetAwaiter().GetResult();
+                Check(conservative.State == MRKFlowState.Failed &&
+                    conservative.CommittedOutputs.Count == 0,
+                    "默认KeepAll不得悄悄更改，容量不足时必须明确失败");
+            }
+            finally { engine.StopAsync(true).GetAwaiter().GetResult(); }
+        }
+
+        private static void R08_InvalidHistoryPolicyRejected()
+        {
+            var body = new MRKExecutionPlan("body", new[] {
+                new MRKExecutionStep("value", new string[0], (ctx, ct) =>
+                    Task.FromResult((object)true))
+            });
+            bool unknown = false;
+            try { new MRKLoopRegion(body, 2,
+                dataRetention: MRKLoopDataRetention.KeepForJoin("absent")); }
+            catch (ArgumentException) { unknown = true; }
+            Check(unknown, "循环保留历史的未知节点必须编译前拒绝");
+            var nestedBody = new MRKExecutionPlan("outer", new[] {
+                new MRKExecutionStep("inner", new string[0], (ctx, ct) =>
+                    Task.FromResult((object)true), loopRegion: new MRKLoopRegion(body, 2))
+            });
+            bool nested = false;
+            try { new MRKLoopRegion(nestedBody, 2,
+                dataRetention: MRKLoopDataRetention.ReleaseAfterIteration); }
+            catch (ArgumentException) { nested = true; }
+            Check(nested, "未证明的嵌套动态循环不能自动回收");
         }
 
         private static void Check(bool ok, string name)
