@@ -104,3 +104,19 @@ Windows CI必须同SHA满足Restore、完整.NET48 x64 Build、Verify-Structure�
 固定代码提交 `1aa095a`：[Numerics Windows CI #40613787782](https://github.com/oudream/cx-visual-x3/actions/runs/40613787782) **完成且成功**（.NET48/x64 全方案Build、Owner/DAG、--numerics与默认ArchitectureSmoke）。
 
 验收仅覆盖当前double CPU View及已写正反例，不意味着非连续视图所有可能排列、多dtype/GPU或性能指标均已验收。
+
+## 2026-10-28 F04条件数与F13游标性能（本次固定 SHA）
+
+| ID | 实际覆盖 | 结果 |
+|---|---|---|
+| N35 | SVD 病态满秩例 `diag(1,1e-8)` 条件数约1e8，兼容旧无阈值求解，阈值1e9接受/1e6拒绝，非法阈值和真秩亏反例 | --numerics PASS |
+| N36 | 50组固定随机多维/转置/切片 View：游标 Copy 与独立 GetFlat 参考逐值一致，Neumaier Sum一致，极值相消保持精度 | --numerics PASS |
+| N37 | 独立 `--numerics-benchmark`：游标 SumView 与逐元素 GetFlat 参考比较；MatMulViewsInto 与分配式 MatMulViews 的时间和线程分配比较 | Benchmark PASS，不设速度门限 |
+| N38 | 全量 ArchitectureSmoke，确保数值 API 不破坏其他 Owner | **FAIL**：F17.PIPE_BULK 子进程退出失败，重试两次均失败，Numerics 测试在此之前全部 PASS |
+
+- 对应修复后代码 SHA `f69760ee39675ac7bbc6f9188dc0152fa75ae52e`；[Windows Numerics run #40639945222](https://github.com/oudream/cx-visual-x3/actions/runs/40639945222) 第1、2次执行：NuGet恢复、.NET48/x64完整构建、Owner/DAG、`--numerics` 和性能诊断步骤成功。**整体工作流结论为 failure**，原因是完整 ArchitectureSmoke 的 F17 命名管道跨进程子测试 `F17.PIPE_BULK child exit failure`，并非Numerics断言失败。故不得登记为全平台验收成功。
+- 首次同机基准（Windows Runner，256×256转置视图求和，64×64矩阵乘法）：
+  - `SumView(cursor)`：0.3551 ms/op、32 B/op；`SumView(GetFlat reference)`：0.5474 ms/op、0 B/op，校验和相同。
+  - `MatMulViewsInto(reused)`：2.6119 ms/op、32 B/op；`MatMulViews(allocating)`：2.4522 ms/op、32992 B/op，校验和相同。
+- 同 SHA 第二次运行观测：SumView(cursor) 0.3597 ms/op、GetFlat 0.6459 ms/op；MatMulViewsInto 2.7125 ms/op、allocating 2.6998 ms/op。**当前结论是游标求和在该环境更快，矩阵复用显著降低分配，但不能声称矩阵耗时也更快。**
+- 基准中数字是单 CI Runner 观测，不是可移植吞吐保证；跨CPU、p95、长稳、大数据物理内存仍未验证。F17故障需要由Transport唯一Owner专项处理，不在Numerics内绕过全量门禁。

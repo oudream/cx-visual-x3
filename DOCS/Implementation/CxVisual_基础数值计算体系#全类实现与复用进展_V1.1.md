@@ -139,3 +139,13 @@ double conditionNumber = solved.ConditionNumber;
 - 正反测试：病态满秩 diag(1,1e-8) 的旧方法可返回数值诊断、可接受阈值、过严阈值拒绝、NaN阈值、真正秩亏仍拒绝；固定随机非连续View的Copy/Sum与独立GetFlat遍历结果对照。
 - 新增 `--numerics-benchmark` 独立性能诊断，报告 `SumView` vs `GetFlat` 逐点参考路径与 `MatMulViewsInto` vs 新分配的 ms/op、bytes/op。仅记录数据，不以易抖动时间阈值判CI。是否真正加速由同机数据决定。
 - 此处属于源码与测试合同；**实际Windows结果须以本次提交SHA的CI日志为准**。
+
+## 十四、F04/F13自有数值能力验收与基准实证（2026-10-28）
+
+**实现基线：** `f69760e`，代码主要为条件数上限API、F13张量View顺序游标以及`--numerics-benchmark`独立入口。
+
+- 开发者使用：`FNULinearAlgebra.LeastSquares(A,b, maxConditionNumber:1e6)` 可拒绝数值病态但仍满秩的矩阵；现有 `LeastSquares(A,b)` 兼容默认无限阈值。
+- F13 `SumView` 和 `CopyToBuffer` 采用一次性坐标数组按RowMajor逻辑遍历，不再为每个元素执行多轴除法；`GetFlat` 仍支持独立随机访问。
+- 固定SHA [Numerics CI #40639945222](https://github.com/oudream/cx-visual-x3/actions/runs/40639945222) 尝试1/2：Windows 28工程编译、Owner/DAG、Numerics专项和独立性能基准均成功。默认ArchitectureSmoke两次在无关的 F17.PIPE_BULK 命名管道子进程退出问题失败，故工作流整体为 **failure**，不能宣称全量成功。
+- 同机可复现的两次基准数据见 `DOCS/Testing/CxVisual_基础数值计算体系#测试验收矩阵_V1.0.md` N35～N38。游标求和速度有所改善；复用输出减少矩阵内存分配，但当前样本未体现确定性的计算时间改善。
+- 继续关注：大型真实矩阵的条件数策略/正规化、原生 BLAS、多维张量多数据类型、GC与吞吐多轮统计；不因本轮性能诊断而声称全部已完成。
