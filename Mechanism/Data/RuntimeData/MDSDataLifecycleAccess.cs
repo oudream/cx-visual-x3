@@ -184,6 +184,15 @@ namespace CxVisual.Mechanism.Data.RuntimeData
             }
         }
 
+        // 在文件缓存通过代次和预算验证后续期TTL；不在外部异步Loader上持Heap锁。
+        private void OnLifecycleFileLoaded(string name)
+        {
+            MDSDataLifecycleRecord record;
+            if (_lifecycles.TryGetValue(name, out record) &&
+                record.Policy.Retention.TimeToLive.HasValue)
+                record.ExpiresUtc = DateTime.UtcNow.Add(record.Policy.Retention.TimeToLive.Value);
+        }
+
         internal void CloseLifecycleAdmission(string name)
         {
             lock (_gate)
@@ -206,6 +215,23 @@ namespace CxVisual.Mechanism.Data.RuntimeData
         {
             if (!IsAutoEligible(record, nowUtc) || LifecycleBlockers(record).Count != 0)
                 return false;
+            // FileLocator是持久路径说明，不是加载缓存。TTL只卸载已加载内容；
+            // 只有显式ReleaseEligible或整个Heap关闭才移除定位符。
+            MDSDataFileEntry file;
+            if (record.Policy.Reclamation.ReleaseOnExpiry &&
+                record.ExpiresUtc.HasValue && record.ExpiresUtc.Value <= nowUtc &&
+                _files.TryGetValue(name, out file))
+            {
+                if (file.State == MDSDataLoadState.Loading ||
+                    file.State != MDSDataLoadState.Loaded) return false;
+                file.Cache = null;
+                if (Budget != null) Budget.Release(file.CachedBytes);
+                file.CachedBytes = 0;
+                file.State = MDSDataLoadState.Unloaded;
+                file.Generation++;
+                record.ExpiresUtc = null;
+                return true;
+            }
             return DropLifecycleItem(name);
         }
 
