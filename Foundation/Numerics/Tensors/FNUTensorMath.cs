@@ -13,23 +13,70 @@ namespace CxVisual.Foundation.Numerics
         {
             return Binary(a, b, true);
         }
+        /// <summary>
+        /// Elementwise addition into an existing output buffer with trailing-axis
+        /// broadcasting. Inputs and output may not be the same instance.
+        /// An arithmetic overflow can leave partial output.
+        /// </summary>
+        public static void AddInto(FNUTensorBuffer a, FNUTensorBuffer b, FNUTensorBuffer output)
+        {
+            BinaryInto(a, b, output, false);
+        }
+
+        /// <summary>Elementwise multiplication into a caller-owned output buffer.</summary>
+        public static void MultiplyInto(FNUTensorBuffer a, FNUTensorBuffer b, FNUTensorBuffer output)
+        {
+            BinaryInto(a, b, output, true);
+        }
+
         private static FNUTensorBuffer Binary(FNUTensorBuffer a, FNUTensorBuffer b, bool multiply)
         {
             if (a == null) throw new ArgumentNullException("a");
             if (b == null) throw new ArgumentNullException("b");
             int rank = Math.Max(a.Shape.Rank, b.Shape.Rank);
-            var dimensions = new int[rank];
+            var dims = new int[rank];
             for (int axis = 0; axis < rank; axis++)
             {
-                int leftAxis = axis - (rank - a.Shape.Rank);
-                int rightAxis = axis - (rank - b.Shape.Rank);
-                int left = leftAxis < 0 ? 1 : a.Shape.DimensionAt(leftAxis);
-                int right = rightAxis < 0 ? 1 : b.Shape.DimensionAt(rightAxis);
+                int la = axis - (rank - a.Shape.Rank);
+                int ra = axis - (rank - b.Shape.Rank);
+                int left = la < 0 ? 1 : a.Shape.DimensionAt(la);
+                int right = ra < 0 ? 1 : b.Shape.DimensionAt(ra);
                 if (left != right && left != 1 && right != 1)
                     throw new ArgumentException("Tensor dimensions cannot broadcast.");
-                dimensions[axis] = left == 1 ? right : left;
+                dims[axis] = left == 1 ? right : left;
             }
-            var output = new FNUTensorBuffer(new FNUTensorShape(dimensions));
+            var output = new FNUTensorBuffer(new FNUTensorShape(dims));
+            BinaryInto(a, b, output, multiply);
+            return output;
+        }
+
+        // For Into calls validation and indexing use only scalars. No temporary
+        // dimensions arrays are allocated for each call or each element.
+        private static void BinaryInto(FNUTensorBuffer a, FNUTensorBuffer b,
+            FNUTensorBuffer output, bool multiply)
+        {
+            if (a == null) throw new ArgumentNullException("a");
+            if (b == null) throw new ArgumentNullException("b");
+            if (output == null) throw new ArgumentNullException("output");
+            if (ReferenceEquals(output, a) || ReferenceEquals(output, b))
+                throw new ArgumentException("Output cannot alias an input tensor.", "output");
+            int rank = Math.Max(a.Shape.Rank, b.Shape.Rank);
+            if (output.Shape.Rank != rank)
+                throw new ArgumentException("Output rank differs from broadcast result.", "output");
+
+            for (int axis = 0; axis < rank; axis++)
+            {
+                int la = axis - (rank - a.Shape.Rank);
+                int ra = axis - (rank - b.Shape.Rank);
+                int left = la < 0 ? 1 : a.Shape.DimensionAt(la);
+                int right = ra < 0 ? 1 : b.Shape.DimensionAt(ra);
+                if (left != right && left != 1 && right != 1)
+                    throw new ArgumentException("Tensor dimensions cannot broadcast.");
+                int expected = left == 1 ? right : left;
+                if (output.Shape.DimensionAt(axis) != expected)
+                    throw new ArgumentException("Output dimensions differ from broadcast result.", "output");
+            }
+
             for (int i = 0; i < output.Shape.ElementCount; i++)
             {
                 int remaining = i, left = 0, right = 0;
@@ -49,7 +96,6 @@ namespace CxVisual.Foundation.Numerics
                     throw new OverflowException("Tensor operation overflow.");
                 output.Put(i, value);
             }
-            return output;
         }
 
         public static double Sum(FNUTensorBuffer input)

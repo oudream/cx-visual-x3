@@ -16,6 +16,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             TensorIndexAndOperations();
             AdvancedNumericsQuality();
             TensorShapeAndBufferReuse();
+            TensorBroadcastInto();
             Console.WriteLine("PASS FNU numerical-quality: extremes / cancellation / DFT / FIR / tensor");
         }
 
@@ -222,6 +223,50 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     }
             }
             Console.WriteLine("PASS FNU tensor shape & MatMulInto: empty giant shape / zero alias / seeded reference");
+        }
+
+        private static void TensorBroadcastInto()
+        {
+            var source = new FNUTensorBuffer(new FNUTensorShape(2, 3),
+                new double[] { 1, 2, 3, 4, 5, 6 });
+            var row = new FNUTensorBuffer(new FNUTensorShape(3),
+                new double[] { 10, 20, 30 });
+            var output = new FNUTensorBuffer(new FNUTensorShape(2, 3));
+            FNUTensorMath.AddInto(source, row, output);
+            Near(output.Get(0, 0), 11, 0, "AddInto first");
+            Near(output.Get(1, 2), 36, 0, "AddInto last");
+            var allocated = FNUTensorMath.Add(source, row);
+            for (int i = 0; i < 2; i++)
+                for (int j = 0; j < 3; j++)
+                    Near(output.Get(i, j), allocated.Get(i, j), 0, "AddInto reference");
+
+            FNUTensorMath.MultiplyInto(source, row, output);
+            Near(output.Get(0, 0), 10, 0, "MultiplyInto first");
+            Near(output.Get(1, 2), 180, 0, "MultiplyInto last");
+            var allocatedProduct = FNUTensorMath.Multiply(source, row);
+            for (int i = 0; i < 2; i++)
+                for (int j = 0; j < 3; j++)
+                    Near(output.Get(i, j), allocatedProduct.Get(i, j), 0,
+                        "MultiplyInto reference");
+
+            // Pre-validation failures must not change the previously computed output.
+            Throws<ArgumentException>(() => FNUTensorMath.AddInto(source, row, source),
+                "AddInto alias");
+            Throws<ArgumentException>(() => FNUTensorMath.MultiplyInto(source, row,
+                new FNUTensorBuffer(new FNUTensorShape(3, 2))), "MultiplyInto shape");
+            Near(output.Get(1, 2), 180, 0, "output unchanged after rejected call");
+
+            var zero = new FNUTensorBuffer(new FNUTensorShape(0, 3));
+            var emptyOutput = new FNUTensorBuffer(new FNUTensorShape(0, 3));
+            FNUTensorMath.AddInto(zero, row, emptyOutput);
+            Check(emptyOutput.Shape.ElementCount == 0, "empty broadcasting output");
+
+            var leftEmpty = new FNUTensorBuffer(new FNUTensorShape(2, 0));
+            var rightEmpty = new FNUTensorBuffer(new FNUTensorShape(0, 3));
+            var zeroDot = new FNUTensorBuffer(new FNUTensorShape(2, 3));
+            FNUTensorMath.MatMulInto(leftEmpty, rightEmpty, zeroDot);
+            Near(FNUTensorMath.Sum(zeroDot), 0, 0, "zero-inner-dimension matmul");
+            Console.WriteLine("PASS FNU tensor Into: add/multiply broadcasting and zero-size cases");
         }
 
         private static void Near(double value,double expected,double tolerance,string what)
