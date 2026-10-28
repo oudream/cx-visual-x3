@@ -210,6 +210,30 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 Wait(session.StopAsync(true));
                 Wait(engine.StopAsync(true));
             }
+            var ttlEngine = new MRKExecutionEngine(new FCRWorkerOptions(1, 5));
+            var ttl = new MRKRuntimeSession("short.retention", ttlEngine,
+                new MRKExecutionPlanSlot(plan, 2), resultRetention:
+                new MRKSessionResultRetentionOptions(2, 128, TimeSpan.FromMilliseconds(60)));
+            ttl.Start();
+            try
+            {
+                MRKFlowHandle shortFlow = ttl.TryStartFlow();
+                Check(Wait(shortFlow.Completion).State == MRKFlowState.Completed &&
+                    SpinWait.SpinUntil(() => ttl.Snapshot().RetainedResults == 1, 3000),
+                    "TTL测试必须先完成真实Session保留");
+                Thread.Sleep(120);
+                Check(ttl.SweepExpiredResults() == 1 &&
+                    ttl.Snapshot().RetainedResults == 0,
+                    "结果TTL到期应自动清除会话保留引用与计费");
+                MRKFlowResult oldResult;
+                Check(!ttl.TryTakeCompletedResult(shortFlow.FlowId, out oldResult),
+                    "过期会话结果不能再次领取");
+            }
+            finally
+            {
+                Wait(ttl.StopAsync(true));
+                Wait(ttlEngine.StopAsync(true));
+            }
             bool invalid = false;
             try { new MRKSessionResultRetentionOptions(0, 1, TimeSpan.FromSeconds(1)); }
             catch (ArgumentOutOfRangeException) { invalid = true; }
