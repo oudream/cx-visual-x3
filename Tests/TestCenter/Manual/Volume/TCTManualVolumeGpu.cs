@@ -128,19 +128,29 @@ namespace CxVisual.TestCenter.UI
                 _gpuSettings.NotifyTransferFunctionsChanged();
                 _gpuTransferDirty=true;
             }
-            if (_gpu == null || !_gpu.IsAvailable) return;
-            try
+            if(_gpuHost==null || !_gpuHost.IsReady)return;
+            MPWVolumeRenderDirty dirty=MPWVolumeRenderDirty.None;
+            if(_gpuTransferDirty)dirty|=MPWVolumeRenderDirty.TransferLut;
+            if(change.RequiresUniformUpdate)dirty|=MPWVolumeRenderDirty.Uniforms;
+            if(change.RequiresSceneUpdate)dirty|=MPWVolumeRenderDirty.Scene;
+            if(dirty==MPWVolumeRenderDirty.None)return;
+            _gpuHost.QueueUpdate(dirty,ApplyScheduledGpuUpdate);
+            if((dirty & MPWVolumeRenderDirty.TransferLut)!=0)
+                _gpuHost.FlushUpdates(); // 保持真实GPU硬件测试要求的LUT同步响应。
+        }
+
+        private void ApplyScheduledGpuUpdate(MPWVolumeOpenGlControl gpu,MPWVolumeRenderDirty dirty)
+        {
+            if(!Object.ReferenceEquals(gpu,_gpu) || _volume==null)return;
+            if((dirty & MPWVolumeRenderDirty.TransferLut)!=0 && _gpuTransferDirty)
             {
-                if(_gpuTransferDirty)
-                {
-                    _gpu.UpdateTransfer(_gpuSettings.BuildScalarTransferTexture(_volume),
-                        _gpuSettings.TransferFunctions.BuildGradientOpacityTexture());
-                    _gpuTransferDirty=false;
-                    GpuTransferUploadCount++;
-                }
-                ApplyGpuUniforms();
+                gpu.UpdateTransfer(_gpuSettings.BuildScalarTransferTexture(_volume),
+                    _gpuSettings.TransferFunctions.BuildGradientOpacityTexture());
+                _gpuTransferDirty=false;
+                GpuTransferUploadCount++;
             }
-            catch(Exception error) { GpuFallback("GPU曲线/参数上传失败："+error.Message); }
+            if((dirty & (MPWVolumeRenderDirty.Uniforms|MPWVolumeRenderDirty.Scene))!=0)
+                ApplyGpuUniforms();
         }
 
         private void ApplyGpuUniforms()
