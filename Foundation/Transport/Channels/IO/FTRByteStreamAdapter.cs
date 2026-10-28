@@ -96,9 +96,13 @@ namespace CxVisual.Foundation.Transport
             if (offset < 0 || count < 0 || offset > buffer.Length - count)
                 throw new ArgumentOutOfRangeException("offset");
             if (Volatile.Read(ref _disposed) != 0) throw new ObjectDisposedException("FTRByteStreamAdapter");
-            byte[] owned = new byte[count];
-            Buffer.BlockCopy(buffer, offset, owned, 0, count);
-            return _channel.SendAsync(owned, _address, cancellationToken);
+            // 正式FTR基类只做一次异步快照；保留Custom Provider原接口兼容回退。
+            FTRChannelBase concrete=_channel as FTRChannelBase;
+            if(concrete!=null)
+                return concrete.SendAsync(buffer,offset,count,_address,cancellationToken);
+            byte[] owned=new byte[count];
+            Buffer.BlockCopy(buffer,offset,owned,0,count);
+            return _channel.SendAsync(owned,_address,cancellationToken);
         }
         public void Dispose()
         {
