@@ -21,6 +21,7 @@ namespace CxVisual.TestCenter.UI
         private readonly TextBox _sphereThresholdText=new TextBox{Width=66,Text="1000",
             Margin=new System.Windows.Thickness(3)};
         private IReadOnlyList<Vector3> _surfacePreviewPoints;
+        private Guid? _surfaceSceneItemId;
         private CancellationTokenSource _sphereCancellation;
         private long _sphereEpoch;
         public CT3DSphereFitResult LastSphereFit {get;private set;}
@@ -32,10 +33,38 @@ namespace CxVisual.TestCenter.UI
             if(_sphereCancellation!=null)_sphereCancellation.Cancel();
         }
 
+        /// <summary>MVI Scene显隐是真源；WPF和GPU只消费当前可视投影。</summary>
+        private void OnProfessionalSceneChanged(object sender,EventArgs e)
+        {
+            if(_state==null || !Object.ReferenceEquals(sender,_state.Scene3D))return;
+            UpdateSurfacePresentation();
+        }
+
+        private void UpdateSurfacePresentation()
+        {
+            if(!_surfaceSceneItemId.HasValue || _state==null ||
+               _surfacePreviewPoints==null)
+                return;
+            MVI3DSceneItem item;
+            bool visible=_state.Scene3D.TryGet(_surfaceSceneItemId.Value,out item) &&
+                item.Visible;
+            if(visible)
+            {
+                _scene.SetSurfacePoints(_surfacePreviewPoints);
+                if(_gpu!=null)_gpu.SetSurfacePoints(_surfacePreviewPoints);
+            }
+            else
+            {
+                _scene.ClearSurfacePoints();
+                if(_gpu!=null)_gpu.ClearSurfacePoints();
+            }
+        }
+
         private void ClearSurfaceAnalysis()
         {
             CancelSurfaceAnalysis();
             _surfacePreviewPoints=null;
+            _surfaceSceneItemId=null;
             LastSphereFit=null;
             _scene.ClearSurfacePoints();
             if(_gpu!=null)_gpu.ClearSurfacePoints();
@@ -78,14 +107,17 @@ namespace CxVisual.TestCenter.UI
             IReadOnlyList<Vector3> points=MPWVolumeSurfaceProjection.Project(
                 surface.Points,volume.SpatialFrame,volume.OriginalWidth,
                 volume.OriginalHeight,volume.OriginalDepth,8000);
-            _scene.SetSurfacePoints(points);
-            if(_gpu!=null)_gpu.SetSurfacePoints(points);
+            // 同一会话的最后一次分析替换旧Surface引用；旧结果不再伪装可见。
+            if(_surfaceSceneItemId.HasValue)
+                _state.Scene3D.Remove(_surfaceSceneItemId.Value);
             _surfacePreviewPoints=points;
             LastSphereFit=fit;
             Guid itemId=_state.Scene3D.Add(MVI3DSceneKind.Surface,
                 "ct3d:result:"+fit.ResultId.ToString("N"),fit.SourceRevision,
                 "volume:physical-frame");
+            _surfaceSceneItemId=itemId;
             _state.Scene3D.Select(itemId);
+            UpdateSurfacePresentation();
             _status.Text=String.Format(CultureInfo.InvariantCulture,
                 "离散球分析 · 直径 {0:0.###} mm · RMS {1:0.###} mm · 显示 {2} 点（非工业验收）",
                 fit.DiameterMm,fit.RmsResidualMm,points.Count);
