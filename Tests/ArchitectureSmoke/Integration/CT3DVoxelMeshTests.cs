@@ -43,7 +43,8 @@ namespace CxVisual.Tests.ArchitectureSmoke
                           Math.Abs(mesh.EnclosedVolume.Value-8)<1e-9,
                         "体素外露表面解析面积24平方毫米、体积8立方毫米");
                     // 在FGE网格中选局部 +Z 面片ROI，不把整个封闭立方体拟合成平面。
-                    var topFace=new List<int>(),collinear=new List<int>();
+                    var topFace=new List<int>();
+                    var collinear=new List<int>();
                     for(int index=0;index<mesh.VertexCount;index++)
                     {
                         FGEPoint3D v=mesh.Vertices[index];
@@ -89,10 +90,10 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         {0,2,10},{1,2,12},{2,2,14}
                     };
                     FNUPcaPlaneResult inclined=FNULinearAlgebra.FitPlaneBySvd(arbitrary);
-                    double[] normal=inclined.Normal;
+                    double[] tiltNormal=inclined.Normal;
                     Check(inclined.RmsPerpendicularResidual<1e-9 &&
-                          Math.Abs(normal[0]+2*normal[2])<1e-9 &&
-                          Math.Abs(normal[1]+3*normal[2])<1e-9,
+                          Math.Abs(tiltNormal[0]+2*tiltNormal[2])<1e-9 &&
+                          Math.Abs(tiltNormal[1]+3*tiltNormal[2])<1e-9,
                         "FNU SVD必须支持任意倾斜平面，不依赖Z=ax+by固定方向");
                     Check(result.HasCalibratedClosedGeometry && !result.TouchesVolumeBoundary &&
                           result.SourceRef=="fixture:mesh-cube" && result.SourceRevision==3 &&
