@@ -839,7 +839,7 @@ sequenceDiagram
 | 10 | 分割/提取 | R29 | CT3D/FVO | CT3D/ [拟新增] | P | Mask/连通域/标定标签量值 |
 | 11 | 表面确定 | R30、R46 | CT3D/FGE/FNU | CT3D/Analysis/CT3DSurfaceSphereAnalysis.cs、CT3DVoxelBoundaryMeshExtractor.cs | 原值离散点及体素外露面E；早期UInt16 Mesh --volume T | 亚体素等值面、材料边界与工业真值 |
 | 12 | 点云/网格 | R31 | FGE/CT3D | FGE/Meshes/FGETriangleMesh3D.cs；CT3D/Analysis/CT3DVoxelBoundaryMeshExtractor.cs | 真实双精度共享顶点/索引Mesh、法向、边/顶点bow-tie非流形、连通面壳数、带符号体积E；固定SHA UInt16真值T | 亚体素、修补/简化/LOD、真实GPU面片与精度实测 |
-| 13 | 几何拟合 | R32、R47 | CT3D/FNU/FGE | CT3D/Analysis/CT3DSurfaceSphereAnalysis.cs、FNU/LinearAlgebra/FNULinearAlgebra.cs | SVD球拟合/残差E；其他专业拟合P | 约束/鲁棒/退化、工业标准件残差与不确定度 |
+| 13 | 几何拟合 | R32、R47 | CT3D/FNU/FGE | CT3D/Analysis/CT3DSurfaceSphereAnalysis.cs、CT3DMeshPlaneAnalysis.cs；FNU/LinearAlgebra/FNULinearAlgebra.cs | 球体SVD及局部Mesh任意向PCA平面拟合E；新平面Windows回归待核 | 完整ROI拾取、圆柱/鲁棒/约束拟合、工业标准件残差及不确定度 |
 | 14 | 几何配准 | R33、R48 | CT3D/FGE/FNU | FNU/LinearAlgebra/FNULinearAlgebra.cs | 基础数值E；ICP P | 变换已知真值/坐标链/收敛残差 |
 | 15 | 尺寸测量 | R34、R51 | CT3D/FGE | CT3D/Analysis/CT3DSurfaceSphereAnalysis.cs | 球径毫米初步数值E；完整工业计量P | 基准/标定/精度/不确定度与量具对照 |
 | 16 | GD&T | R35 | CT3D/Inspection | CT3D/ [拟新增] | P | 各形位公差语义、Datums及工业量具对照 |
@@ -868,6 +868,9 @@ sequenceDiagram
 ---
 
 ## 11. 证据与 CI：历史通过不能推出本版工业验收
+
+> **2026-10-28 能力13增量**：在FNU原有Math.NET SVD上实现`FitPlaneBySvd`（正交PCA而非固定Z回归，拒绝共线/超条件数）；CT3D新增`CT3DMeshPlaneAnalysis.FitSelectedVertices`对FGE Mesh局部顶点ROI计算mm平面、法向、RMS与最大残差并保留来源；TestCenter提供明确标注的+Z端面示例及通用编程ROI入口，结果只作为MVI Measurement引用，Mesh重算自动清除失效结果。Headless及窗口正反例已提交；**旧Mesh成功CI不代表本轮平面通过，必须看新SHA的Windows证据**。在原实施台账`DOCS/Implementation/CxVisual_通用三维视觉工作台#V02原值三角Mesh与拓扑质量闭环_V1.0.md`第八节维护，无新主文。
+
 
 > **2026-10-28 多对象网格分离能力增量**：FGE新`ConnectedFaceComponentCount`按**三角面共享边**而非仅按顶点计算分离面壳，CT3D单工件几何条件将多闭壳明确标为待分割/待复核；TestCenter提示独立面壳数。两个相隔体素块、仅单顶点接触的面壳均新增反例（代码E，自动化T以对应后续SHA结果为准）。前一批非有限Float32保护与bow-tie反例已有Windows Imaging run `40687957944`成功证据，但**不能替代本批新增多面壳用例的CI**。
 
