@@ -36,11 +36,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
             {
                 heap.Set("Image", new byte[] { 1, 2, 3, 4 });
                 MDSDataLifecycleAccess control = heap.Lifecycle;
-                control.ConfigureOwnership("Image", MDSDataOwnershipPolicy.Default.WithMove(false));
-                control.ConfigureLifetime("Image", MDSDataLifetimePolicy.UntilLastConsumer());
-                control.ConfigureRetention("Image", MDSDataRetentionPolicy.CacheFor(TimeSpan.FromMinutes(1)));
-                control.ConfigureTransfer("Image", MDSDataTransferPolicy.CopyOnly);
-                control.ConfigureReclamation("Image", MDSDataReclamationPolicy.OnExpiry);
+                MDSDataOwnershipPolicy.Default.WithMove(false).ApplyTo(heap, "Image");
+                MDSDataLifetimePolicy.UntilLastConsumer().ApplyTo(heap, "Image");
+                MDSDataRetentionPolicy.CacheFor(TimeSpan.FromMinutes(1)).ApplyTo(heap, "Image");
+                MDSDataTransferPolicy.CopyOnly.ApplyTo(heap, "Image");
+                MDSDataReclamationPolicy.OnExpiry.ApplyTo(heap, "Image");
                 Check(control.Inspect("Image").Policy.Lifetime.ConsumerBound &&
                     !control.GetPolicy("Image").Ownership.AllowMove &&
                     control.GetPolicy("Image").Retention.TimeToLive.HasValue &&
@@ -89,7 +89,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 var policy = MDSDataLifecyclePolicy.Default
                     .WithLifetime(MDSDataLifetimePolicy.UntilLastConsumer())
                     .WithReclamation(MDSDataReclamationPolicy.AfterLastConsumer);
-                heap.Lifecycle.Configure("Temp", policy);
+                policy.ApplyTo(heap, "Temp");
                 IDisposable use = heap.Lifecycle.AcquireUse("Temp");
                 heap.Lifecycle.CloseConsumerAdmission("Temp");
                 Check(heap.Contains("Temp"), "关闭入场不等于强制释放已使用的对象");
