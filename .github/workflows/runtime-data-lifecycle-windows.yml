@@ -8,6 +8,7 @@ on:
       - 'Mechanism/Data/CxVisual.Mechanism.Data.csproj'
       - 'Mechanism/Runtime/Execution/MRKExecutionEngine.cs'
       - 'Mechanism/Runtime/Execution/MRKExecutionPlan.cs'
+      - 'Mechanism/Runtime/Execution/MRKExecutionPolicy.cs'
       - 'Mechanism/Runtime/Execution/MRKRuntimeSession.cs'
       - 'Mechanism/Presentation.Wpf/RuntimeData/**'
       - 'Applications/Studio/StudioShell.RuntimeData.cs'
@@ -43,22 +44,29 @@ jobs:
       - name: Run real MDS lifecycle, storage, hardening, compiler
         shell: pwsh
         run: |
-          & .\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe --runtime-data-lifecycle
-          if ($LASTEXITCODE -ne 0) { throw 'MDS lifecycle architecture tests failed' }
+          for ($pass=1; $pass -le 3; $pass++) {
+            $log = "Output/Release/x64/mds-p1-architecture-pass$pass.log"
+            & .\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe --runtime-data-lifecycle | Tee-Object -FilePath $log
+            if ($LASTEXITCODE -ne 0) { throw "MDS architecture P1 repeated pass $pass failed" }
+          }
+          Write-Host 'PASS MDS P1 architecture 3 independent processes'
       - name: Run five isolated TestCenter lifecycle cases
         shell: pwsh
         run: |
           $exe = (Resolve-Path '.\Output\Release\x64\CxVisual.TestCenter.exe').Path
           foreach ($id in @('TCT.MDS.030', 'TCT.MDS.031', 'TCT.MDS.032', 'TCT.MDS.033', 'TCT.MDS.034')) {
-            $report = Join-Path (Get-Location) ("Output/Release/x64/" + $id + ".junit.xml")
-            $p = Start-Process -FilePath $exe -WorkingDirectory (Get-Location).Path -ArgumentList @('--run','--id',('"' + $id + '"'),'--report',('"' + $report + '"'),'--format','junit','--isolate') -Wait -PassThru
-            if ($p.ExitCode -ne 0) { throw "TestCenter $id failed: $($p.ExitCode)" }
-            [xml]$xml = Get-Content -LiteralPath $report -Raw
-            if ([int]$xml.testsuite.tests -ne 1 -or [int]$xml.testsuite.failures -ne 0 -or [int]$xml.testsuite.errors -ne 0) {
-              throw "TestCenter $id returned non-passing JUnit"
+            $rounds = if ($id -eq 'TCT.MDS.033') { 5 } else { 1 }
+            for ($pass=1; $pass -le $rounds; $pass++) {
+              $report = Join-Path (Get-Location) ("Output/Release/x64/" + $id + ".pass" + $pass + ".junit.xml")
+              $p = Start-Process -FilePath $exe -WorkingDirectory (Get-Location).Path -ArgumentList @('--run','--id',('"' + $id + '"'),'--report',('"' + $report + '"'),'--format','junit','--isolate') -Wait -PassThru
+              if ($p.ExitCode -ne 0) { throw "TestCenter $id pass $pass failed: $($p.ExitCode)" }
+              [xml]$xml = Get-Content -LiteralPath $report -Raw
+              if ([int]$xml.testsuite.tests -ne 1 -or [int]$xml.testsuite.failures -ne 0 -or [int]$xml.testsuite.errors -ne 0) {
+                throw "TestCenter $id pass $pass returned non-passing JUnit"
+              }
             }
           }
-          Write-Host 'PASS TCT.MDS.030/031/032/033/034'
+          Write-Host 'PASS TCT.MDS.030/031/032/034 once, P1 TCT.MDS.033 five independent processes'
       - name: Run MDS lifecycle logical-budget soak and p95-p99 metrics
         shell: pwsh
         run: |
@@ -83,5 +91,6 @@ jobs:
           name: cxvisual-mds-lifecycle-evidence
           path: |
             Output/Release/x64/TCT.MDS.*.junit.xml
+            Output/Release/x64/mds-p1-architecture-pass*.log
             Output/Release/x64/mds-lifecycle-soak.log
           if-no-files-found: warn
