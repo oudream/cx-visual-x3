@@ -131,7 +131,7 @@ namespace CxVisual.Foundation.Transport
                     }
                 }
             }
-            catch(Exception error){if(!cancellation.IsCancellationRequested)RecordReceiveError(error,FTRFaultScope.SubChannel);}
+            catch(Exception error){if(!cancellation.IsCancellationRequested)RecordReceiveError(error,FTRFaultScope.SubChannel,peer.Address);}
             finally
             {
                 RemovePeer(peer.Address);

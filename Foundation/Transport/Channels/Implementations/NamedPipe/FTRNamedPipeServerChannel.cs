@@ -130,7 +130,7 @@ namespace CxVisual.Foundation.Transport
         private void EndPeer(Peer peer, Exception error)
         {
             lock (_gate) { if (peer.Ending) return; peer.Ending = true; }
-            if (error != null) RecordReceiveError(error,FTRFaultScope.SubChannel);
+            if (error != null) RecordReceiveError(error,FTRFaultScope.SubChannel,peer.Address);
             AfterReceived(() => RemovePeer(peer.Address),_stop.Token);
         }
         public override bool RemovePeer(FTRSubChannelAddress address)
