@@ -43,7 +43,10 @@ jobs:
           $status = $LASTEXITCODE
           $output | ForEach-Object { Write-Host $_ }
           if ($status -ne 0 -or ($output -join "`n") -notmatch 'F17.UML_CORE_PASS' -or
-              ($output -join "`n") -notmatch 'F17.SHARED_MEMORY_CROSS_PROCESS PASS') {
+              ($output -join "`n") -notmatch 'F17.SHARED_MEMORY_CROSS_PROCESS PASS' -or
+              ($output -join "`n") -notmatch 'F17.MULTI_BUDGET_PASS' -or
+              ($output -join "`n") -notmatch 'F17.SHM_CRASH_PASS' -or
+              ($output -join "`n") -notmatch 'F17.WS_ATOMIC_PASS') {
               throw "F17 UML core actual communication verification failed: $status"
           }
       - name: Run dedicated FTR Connector and OS loopback acceptance
@@ -58,7 +61,9 @@ jobs:
               $joined -notmatch 'CHANNEL.TRANSPORT: TCP/UDP loopback' -or
               $joined -notmatch 'F17.PIPE_BULK PASS' -or $joined -notmatch 'F17.PIPE_ADMISSION PASS' -or
               $joined -notmatch 'F17.NOTIFICATION PASS' -or
-              $joined -notmatch 'F17.RECONNECT_PASS') {
+              $joined -notmatch 'F17.RECONNECT_PASS' -or
+              $joined -notmatch 'F17.MULTI_BUDGET_PASS' -or
+              $joined -notmatch 'F17.SHM_CRASH_PASS') {
               throw "F17 Channel expected acceptance evidence not present"
           }
       - name: Run TCP and cross-process NamedPipe 2GiB-per-direction integrity and resource measurements
