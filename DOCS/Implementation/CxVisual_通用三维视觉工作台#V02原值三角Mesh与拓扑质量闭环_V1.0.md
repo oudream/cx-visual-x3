@@ -57,3 +57,18 @@
 - **Float32非有限值专项已通过**：`4d6c558cddf78e8c9af367e27aca731b03bf59aa`（含`084bc6ad` Float32 NaN负例）对应Windows Imaging `40687957944`为`SUCCESS`；其.NET Framework 4.8 Release x64编译、`--volume`及默认Smoke均通过，包含CT3D三角Mesh专项输出。它证明代码防御与合成负例通过，**不等于真实CT Float32工业体标定/测量通过**。
 - **多对象拓扑判定新增源码、待验收**：FGE`ConnectedFaceComponentCount`利用三角面共享边构造连通分量，将仅在同一顶点接触的两个闭合面壳判定为两个面壳；CT3D`HasCalibratedClosedGeometry`现在要求**单一面壳**、无边/顶点非流形、外向有向体积和已标定不截断。新增两个互不相邻体素构成两独立闭壳的合成用例。此阶段单个来源含多工件时须按产品/材料实例分离后再报告单工件量值。
 - TestCenter的Mesh状态提示现包含三角面数、面积及独立面壳数；`Mesh`显示仍由MVI Scene引用，UI不成为Mesh真源；本轮多对象测试的Windows结果以新提交工作流为准，不能引用`4d6c558c`历史PASS代替验收。
+
+## 八、V03 局部Mesh平面拟合增量（2026-10-28）
+
+> **范围**：V2.0 R4能力13；是从已完成FVO原值→FGE Mesh进展到CT3D几何特征分析，不改变MEM/MVI/MPW/FNU Owner；**尚非GD&T、基准建立、亚体素或工业精度认证**。
+
+| Owner | 正式源码/API | 已实现 |
+|---|---|---|
+| FNU | `Foundation/Numerics/LinearAlgebra/FNULinearAlgebra.cs`：`FitPlaneBySvd` / `FNUPcaPlaneResult` | 复用现有Math.NET SVD，对Nx3点去质心并计算正交最小二乘平面；支持任意姿态，拒绝共线/零尺度/非有限数据与超条件数；输出质心、单位法向、RMS、最大正交距离、法向/切向奇异值比 |
+| CT3D | `Professional/CT3D/Analysis/CT3DMeshPlaneAnalysis.cs`：`FitSelectedVertices` | 从来源标定、未截断、单连通正向闭合Mesh的**局部顶点ROI**获取点，不把整个工件误称为一个平面；拒绝重复索引、越界、退化和超过平面度比例；结果保留SourceRef、SourceRevision、SourceMeshResultId、结果身份及毫米残差 |
+| TestCenter/MVI | `TCTManualVolumeProfessional.AnalyzeCurrentMeshPlane`、`AnalyzeCurrentMeshPlaneTopZ` | 真正调用CT3D，登记MVI Measurement引用并显示误差。+Z端面为明确标识的快速示例，依据原始Frame选择网格端面，**不是通用三维ROI拾取**；重新提取Mesh或更换Volume时自动撤销依赖旧Mesh的平面结果 |
+| Headless/WPF | `CT3DVoxelMeshTests`、`TCTVolumeViewerSmoke` | 真实UInt16立方体顶端9点、法向/Z坐标和RMS、任意倾斜平面、共线、重复ROI、全立方体非平面拒绝、WPF真实窗口结果关联与Mesh更新失效 |
+
+**核心合同：** 平面拟合为最小正交距离（PCA/SVD，理论上平面点阵秩2），不是 `z=ax+by`，不依赖特定坐标轴或在FGE中内建毫米。CT3D把来源Frame与mm语义加在专业结果上；法向是**无向几何法向**，其符号按最大绝对分量为正进行确定性规范化，非自动外法线。平面质量只包含样本RMS/最大残差、条件数和法向/次切向奇异值比，真实设备不确定度、抽样策略、离群值与基准特征仍待专业验证。
+
+**证据划分**：FGE Mesh原有固定SHA Windows通过记录仍有效；本轮平面新源码提交`62e2f3e8`（FNU）、`77421a34`（CT3D）、`f5d228f6`（初版Headless测试）及后续WPF与回归修复`e2ae3798`，**必须以这些源码后续实际Windows Build/--volume/窗口级Job结果升级验收，不借用旧SHA成功结论**。曾在早期中间提交出现CS0819/CS0136，已在`e2ae3798`修复；真实GPU、CAD、GD&T仍未验。
