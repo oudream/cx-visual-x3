@@ -997,6 +997,14 @@ namespace CxVisual.TestCenter.UI
                     Show("当前二值结果没有非零像素，也没有可生成的轮廓。");
                     return;
                 }
+                // 带符号面积保留孔洞：外环为正、内环为负，不用外接框估算。
+                double areaPixels = rings.Sum(points=>FIMImageMaskContours.SignedArea(points));
+                if(double.IsNaN(areaPixels) || double.IsInfinity(areaPixels) || areaPixels<=0)
+                    throw new InvalidOperationException("Mask轮廓面积不合法。");
+                FIMPixelSpacing? spacing=_viewer.PixelSpacing;
+                double? areaMillimeters=spacing.HasValue ?
+                    (double?)(areaPixels*spacing.Value.MillimetersPerPixelX*
+                        spacing.Value.MillimetersPerPixelY) : null;
                 // 先完成数值和对象校验，再写入唯一Store，避免部分无效轮廓。
                 List<MVIImageOverlayItem> objects=new List<MVIImageOverlayItem>();
                 int outer=0,holes=0;
@@ -1025,8 +1033,12 @@ namespace CxVisual.TestCenter.UI
                     "；耗时毫秒="+timer.Elapsed.TotalMilliseconds.ToString("0.###",CultureInfo.InvariantCulture)+
                     "；源版本="+sourceVersion+"；叠加数量="+objects.Count+"。");
                 Show("结果掩码轮廓已转成"+outer+"条外环、"+holes+
-                    "条孔洞标注，原图坐标/点序列已写入OverlayStore，可在输出页导出CSV；"+
-                    "保留独立Gray8掩码。耗时 "+
+                    "条孔洞标注；真实掩码面积="+
+                    areaPixels.ToString("0.###",CultureInfo.InvariantCulture)+" px²"+
+                    (areaMillimeters.HasValue ? "；按当前像素间距换算="+
+                        areaMillimeters.Value.ToString("0.######",CultureInfo.InvariantCulture)+
+                        " mm²" : "；未标定，不报告mm²")+
+                    "。原图坐标/点序列已写入OverlayStore，保留独立Gray8掩码。耗时 "+
                     timer.Elapsed.TotalMilliseconds.ToString("0.#",CultureInfo.InvariantCulture)+"ms。");
             }
             catch(OperationCanceledException)
