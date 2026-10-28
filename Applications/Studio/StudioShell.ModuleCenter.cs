@@ -7,6 +7,7 @@ using CxVisual.Mechanism.Data.Configuration;
 using System.Windows;
 using System.Windows.Controls;
 using CxVisual.Mechanism.Core.Modules;
+using CxVisual.Mechanism.Core;
 using CxVisual.Mechanism.Orchestration;
 using CxVisual.Mechanism.Presentation.Wpf;
 using CxVisual.Professional.Vision;
@@ -153,11 +154,25 @@ namespace CxVisual.Studio
                 entry.Module.Kind,
                 entry.CatalogItem==null?entry.Module.Version:entry.CatalogItem.Definition.Version,
                 entry.RuntimeResolved,false,entry.Module.Id,
-                described:entry.Described,resolverChecked:true));
+                described:entry.Described,resolverChecked:true,
+                inputPorts:entry.CatalogItem==null?null:
+                    entry.CatalogItem.Definition.Ports
+                        .Where(x=>x.Direction==MPCPortDirection.Input)
+                        .Select(x=>x.MemberId+" : "+x.TypeId+(x.Required?" (必填)":"")),
+                outputPorts:entry.CatalogItem==null?null:
+                    entry.CatalogItem.Definition.Ports
+                        .Where(x=>x.Direction==MPCPortDirection.Output)
+                        .Select(x=>x.MemberId+" : "+x.TypeId)));
             var demonstrations=catalog.All.Where(x=>!ids.Contains(x.Definition.Id))
                 .Select(x=>new MPWModuleCapabilityView(
                     x.Definition.Id,x.Definition.Name,x.Definition.Category,
-                    null,x.Definition.Version,x.RuntimeAvailable,true));
+                    null,x.Definition.Version,x.RuntimeAvailable,true,
+                    inputPorts:x.Definition.Ports
+                        .Where(port=>port.Direction==MPCPortDirection.Input)
+                        .Select(port=>port.MemberId+" : "+port.TypeId),
+                    outputPorts:x.Definition.Ports
+                        .Where(port=>port.Direction==MPCPortDirection.Output)
+                        .Select(port=>port.MemberId+" : "+port.TypeId)));
             control.SetCapabilities(professional.Concat(demonstrations),
                 description+"；Runtime解析不等于授权或真实设备就绪");
         }
