@@ -32,6 +32,24 @@ namespace CxVisual.TestCenter.Cases
         {
             string root = Path.Combine(Path.GetTempPath(),
                 "TCTModule-" + Guid.NewGuid().ToString("N"));
+
+            // Shared MPW projection for all five real FCM schemas; no duplicate page mapping.
+            var types=new Dictionary<MFMModuleKind,Type>{
+                {MFMModuleKind.Connector,typeof(MCNConnectorConfiguration)},
+                {MFMModuleKind.Driver,typeof(MFMDriverModuleConfiguration)},
+                {MFMModuleKind.Compute,typeof(PVCComputeModuleConfiguration)},
+                {MFMModuleKind.Simulation,typeof(PSMSimulationModuleConfiguration)},
+                {MFMModuleKind.Service,typeof(MLCServiceModuleConfiguration)}
+            };
+            foreach(var entry in types)
+            {
+                var projected=MPWModuleCenterPages.Create(entry.Key,entry.Value);
+                var omitted=MPWConfigWorkspaceLayout.UnassignedLeafPaths(entry.Value,
+                    projected.Select(item=>(IEnumerable<string>)item.Fields));
+                bool valid=projected.Count>0&&omitted.Length==0&&
+                    projected.Select(item=>item.Id).Distinct(StringComparer.Ordinal).Count()==projected.Count;
+                test.AssertTrue(valid,"五类共享MPW分页覆盖："+entry.Key,true,valid);
+            }
             // 通用MPW检查全部正式Schema字段，缺页立即可见而非沉默丢失。
             string[] complete = MPWConfigWorkspaceLayout.UnassignedLeafPaths(
                 typeof(MFMDriverModuleConfiguration), new[] {

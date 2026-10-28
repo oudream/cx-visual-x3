@@ -36,139 +36,57 @@ namespace CxVisual.TestCenter.UI
         private Action<string[], string[]> _project;
         private Func<int> _visibleSchemaEditors;
         private bool _buildingPages;
-        private sealed class ModulePage
-        {
-            internal readonly string Id;
-            internal readonly string Label;
-            internal readonly string[] Fields;
-            internal readonly string[] Categories;
-            internal ModulePage(string id, string label, string[] fields,
-                string[] categories = null)
-            { Id = id; Label = label; Fields = fields; Categories = categories; }
-        }
+
         public string SelectedModulePage
         {
             get {
-                ModulePage page = (_pages.SelectedItem as TabItem)?.Tag as ModulePage;
-                return page == null ? "" : page.Id;
+                MPWModuleCenterPage page=(_pages.SelectedItem as TabItem)?.Tag as MPWModuleCenterPage;
+                return page==null?"":page.Id;
             }
         }
         public int VisibleSchemaEditorCount
-        { get { return _visibleSchemaEditors == null ? 0 : _visibleSchemaEditors(); } }
+        { get {return _visibleSchemaEditors==null?0:_visibleSchemaEditors();} }
         public void SelectModulePage(string pageId)
         {
-            TabItem tab = _pages.Items.OfType<TabItem>().FirstOrDefault(item =>
-                ((ModulePage)item.Tag).Id == pageId);
-            if (tab == null) throw new ArgumentException("当前模块不支持该分页：" + pageId);
-            _pages.SelectedItem = tab;
+            TabItem tab=_pages.Items.OfType<TabItem>().FirstOrDefault(item=>
+                ((MPWModuleCenterPage)item.Tag).Id==pageId);
+            if(tab==null)throw new ArgumentException("当前模块不支持该分页："+pageId);
+            _pages.SelectedItem=tab;
         }
         private void RebuildPages(MFMModuleKind kind)
         {
-            _buildingPages = true;
+            Type modelType;
+            switch(kind)
+            {
+                case MFMModuleKind.Connector: modelType=typeof(MCNConnectorConfiguration);break;
+                case MFMModuleKind.Driver: modelType=typeof(MFMDriverModuleConfiguration);break;
+                case MFMModuleKind.Compute: modelType=typeof(PVCComputeModuleConfiguration);break;
+                case MFMModuleKind.Simulation: modelType=typeof(PSMSimulationModuleConfiguration);break;
+                case MFMModuleKind.Service: modelType=typeof(MLCServiceModuleConfiguration);break;
+                default:throw new InvalidOperationException("未知模块类型");
+            }
+            _buildingPages=true;
             try
             {
                 _pages.Items.Clear();
-                ModulePage[] pages;
-                switch (kind)
+                foreach(MPWModuleCenterPage page in MPWModuleCenterPages.Create(kind,modelType))
                 {
-                    case MFMModuleKind.Connector:
-                        pages = new[] {
-                            new ModulePage("identity", "模块信息",
-                                new[] { "DisplayName", "Enabled", "CapabilityIds" }),
-                            new ModulePage("channels", "通道配置", new[] { "Channel" }),
-                            new ModulePage("protocols", "规约配置", new[] {
-                                "Protocol.Id", "Protocol.Kind", "Protocol.CustomTypeId",
-                                "Protocol.ProtocolAddress" }),
-                            new ModulePage("points", "规约点表", new[] { "Protocol.Points" }),
-                            new ModulePage("mapping", "数据映射", new[] { "Protocol.Mappings" }),
-                            new ModulePage("runtime", "运行参数", new[] {
-                                "Protocol.ProcessingMode", "Protocol.SessionScope",
-                                "Protocol.MaxConcurrency", "Protocol.QueueCapacity",
-                                "Protocol.QueuedBytesLimit", "Protocol.TimeoutMs",
-                                "Protocol.ExecutionGroupRef" })
-                        };
-                        break;
-                    case MFMModuleKind.Driver:
-                        pages = new[] {
-                            new ModulePage("identity", "模块信息",
-                                new[] { "DisplayName", "Enabled", "CapabilityIds" }),
-                            new ModulePage("provider", "设备驱动",
-                                new[] { "DriverTypeId", "DeviceRef", "Backend" }),
-                            new ModulePage("resources", "内部资源引用",
-                                new[] { "InternalResourceRefs" })
-                        };
-                        break;
-                    case MFMModuleKind.Compute:
-                        pages = new[] {
-                            new ModulePage("identity", "模块信息",
-                                new[] { "DisplayName", "Enabled", "CapabilityIds" }),
-                            new ModulePage("provider", "计算能力",
-                                new[] { "ProviderTypeId", "Device" }),
-                            new ModulePage("parameters", "运行参数",
-                                new[] { "MaxConcurrency", "MemoryBudgetMb",
-                                    "TimeoutMs", "ExecutionGroupRef" })
-                        };
-                        break;
-                    case MFMModuleKind.Simulation:
-                        pages = new[] {
-                            new ModulePage("identity", "模块信息",
-                                new[] { "DisplayName", "Enabled", "CapabilityIds" }),
-                            new ModulePage("model", "仿真模型",
-                                new[] { "ModelId", "ProviderTypeId", "ConnectorRef" }),
-                            new ModulePage("clock", "时钟与运行模式",
-                                new[] { "Mode", "StepMilliseconds", "Seed" })
-                        };
-                        break;
-                    case MFMModuleKind.Service:
-                        pages = new[] {
-                            new ModulePage("identity", "模块信息",
-                                new[] { "DisplayName", "Enabled", "CapabilityIds" }),
-                            new ModulePage("provider", "服务能力与依赖",
-                                new[] { "ProviderTypeId", "DependencyRefs" }),
-                            new ModulePage("lifecycle", "生命周期与并发",
-                                new[] { "StartupTimeoutMs", "ShutdownTimeoutMs",
-                                    "MaxConcurrentRequests" })
-                        };
-                        break;
-                    default: throw new InvalidOperationException("未知模块类型");
-                }
-                // 专业分页固定操作语义，字段覆盖由正式FCM Schema核对。
-                // 增加正式参数时自动出现扩展配置页，不静默漏掉字段。
-                Type modelType;
-                switch (kind)
-                {
-                    case MFMModuleKind.Connector: modelType = typeof(MCNConnectorConfiguration); break;
-                    case MFMModuleKind.Driver: modelType = typeof(MFMDriverModuleConfiguration); break;
-                    case MFMModuleKind.Compute: modelType = typeof(PVCComputeModuleConfiguration); break;
-                    case MFMModuleKind.Simulation: modelType = typeof(PSMSimulationModuleConfiguration); break;
-                    case MFMModuleKind.Service: modelType = typeof(MLCServiceModuleConfiguration); break;
-                    default: throw new InvalidOperationException("未知模块类型");
-                }
-                string[] uncovered = MPWConfigWorkspaceLayout.UnassignedLeafPaths(modelType,
-                    pages.Select(page => (System.Collections.Generic.IEnumerable<string>)page.Fields));
-                if (uncovered.Length != 0)
-                    pages = pages.Concat(new[] {
-                        new ModulePage("extras", "扩展配置", uncovered)
-                    }).ToArray();
-                foreach (ModulePage page in pages)
-                {
-                    TabItem tab = new TabItem { Header = page.Label, Tag = page };
-                    tab.SetResourceReference(FrameworkElement.StyleProperty,
-                        "MPWDocumentTabStyle");
+                    TabItem tab=new TabItem {Header=page.Label,Tag=page};
+                    tab.SetResourceReference(FrameworkElement.StyleProperty,"MPWDocumentTabStyle");
                     System.Windows.Automation.AutomationProperties.SetAutomationId(tab,
-                        "TCT.Module.Page." + page.Id);
+                        "TCT.Module.Page."+page.Id);
                     _pages.Items.Add(tab);
                 }
-                _pages.SelectedIndex = 0;
+                _pages.SelectedIndex=0;
             }
-            finally { _buildingPages = false; }
+            finally{_buildingPages=false;}
             ProjectSelectedPage();
         }
         private void ProjectSelectedPage()
         {
-            if (_buildingPages || _project == null) return;
-            ModulePage page = (_pages.SelectedItem as TabItem)?.Tag as ModulePage;
-            if (page != null) _project(page.Fields, page.Categories);
+            if(_buildingPages||_project==null)return;
+            MPWModuleCenterPage page=(_pages.SelectedItem as TabItem)?.Tag as MPWModuleCenterPage;
+            if(page!=null)_project(page.Fields,page.Categories);
         }
 
         private readonly TextBlock _status = new TextBlock {
