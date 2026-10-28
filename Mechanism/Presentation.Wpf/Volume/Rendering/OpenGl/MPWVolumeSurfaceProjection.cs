@@ -3,9 +3,23 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Numerics;
 using CxVisual.Foundation.Volume;
+using CxVisual.Foundation.Geometry;
 
 namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
 {
+    /// <summary>索引三角面显示快照，独立于FGE毫米几何真值和GL显存资源。</summary>
+    public sealed class MPWVolumeDisplayMesh
+    {
+        internal MPWVolumeDisplayMesh(List<Vector3> points,List<int> indices)
+        {
+            Vertices=points.AsReadOnly();
+            TriangleIndices=indices.AsReadOnly();
+        }
+        public ReadOnlyCollection<Vector3> Vertices {get;private set;}
+        public ReadOnlyCollection<int> TriangleIndices {get;private set;}
+        public int TriangleCount {get{return TriangleIndices.Count/3;}}
+    }
+
     /// <summary>
     /// 唯一的CT表面物理坐标→体空间显示投影桥梁。
     /// 输入mm真值来自FVO Frame；输出float仅供WPF/GL显示，绝不返回专业计量值。
@@ -13,6 +27,35 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Volume.Rendering
     /// </summary>
     public static class MPWVolumeSurfaceProjection
     {
+        /// <summary>
+        /// 将FGE双精度物理Mesh投影为有界索引三角面。
+        /// 体素面角点使用(i+0.5)/N，不误用体素中心的i/(N-1)；
+        /// 该约定与GL原始Volume物理外框及WPF三维Scene显示比例相同。
+        /// </summary>
+        public static MPWVolumeDisplayMesh ProjectMesh(FGETriangleMesh3D mesh,
+            FVOVolumeSpatialFrame frame,int width,int height,int depth,int maxTriangles=50000)
+        {
+            if(mesh==null)throw new ArgumentNullException("mesh");
+            if(frame==null)throw new ArgumentNullException("frame");
+            if(width<2||height<2||depth<2)throw new ArgumentOutOfRangeException("width");
+            if(maxTriangles<1||maxTriangles>100000)
+                throw new ArgumentOutOfRangeException("maxTriangles");
+            if(mesh.TriangleCount>maxTriangles)
+                throw new InvalidOperationException("GPU预览三角面超出预算，须使用明确的LOD简化流程。");
+            var vertices=new List<Vector3>(mesh.VertexCount);
+            foreach(FGEPoint3D p in mesh.Vertices)
+            {
+                FVOVoxelCoordinate3D v=frame.PhysicalToVoxel(p.X,p.Y,p.Z);
+                double x=(v.X+.5)/width-.5,y=(v.Y+.5)/height-.5,z=(v.Z+.5)/depth-.5;
+                if(x<-.50001||x>.50001||y<-.50001||y>.50001||z<-.50001||z>.50001||
+                   double.IsNaN(x)||double.IsNaN(y)||double.IsNaN(z))
+                    throw new ArgumentOutOfRangeException("mesh",
+                        "网格存在体外物理点，检查原始Volume尺寸、Frame和SourceRevision。");
+                vertices.Add(new Vector3((float)x,(float)y,(float)z));
+            }
+            return new MPWVolumeDisplayMesh(vertices,new List<int>(mesh.TriangleIndices));
+        }
+
         public static ReadOnlyCollection<Vector3> Project(
             IReadOnlyList<FVOPhysicalPoint3D> physicalPoints,FVOVolumeSpatialFrame frame,
             int width,int height,int depth,int maxPreviewPoints=12000)
