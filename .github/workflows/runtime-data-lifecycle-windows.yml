@@ -6,6 +6,11 @@ on:
     paths:
       - 'Mechanism/Data/RuntimeData/**'
       - 'Mechanism/Data/CxVisual.Mechanism.Data.csproj'
+      - 'Mechanism/Runtime/Execution/MRKExecutionEngine.cs'
+      - 'Mechanism/Runtime/Execution/MRKExecutionPlan.cs'
+      - 'Mechanism/Runtime/Execution/MRKRuntimeSession.cs'
+      - 'Mechanism/Presentation.Wpf/RuntimeData/**'
+      - 'Applications/Studio/StudioShell.RuntimeData.cs'
       - 'Tests/ArchitectureSmoke/Runtime/Data/**'
       - 'Tests/ArchitectureSmoke/Program.cs'
       - 'Tests/TestCenter/Automated/Cases/TCTRuntimeDataUsabilityCases.cs'
@@ -54,6 +59,12 @@ jobs:
             }
           }
           Write-Host 'PASS TCT.MDS.030/031/032/033'
+      - name: Run MDS lifecycle logical-budget soak and p95-p99 metrics
+        shell: pwsh
+        run: |
+          $report = 'Output/Release/x64/mds-lifecycle-soak.log'
+          & .\Output\Release\x64\CxVisual.Tests.ArchitectureSmoke.exe --runtime-data-soak 20000 | Tee-Object -FilePath $report
+          if ($LASTEXITCODE -ne 0) { throw 'MDS lifecycle soak failed' }
       - name: Run real STA WPF lifecycle workspace
         shell: pwsh
         run: |
@@ -72,4 +83,5 @@ jobs:
           name: cxvisual-mds-lifecycle-evidence
           path: |
             Output/Release/x64/TCT.MDS.*.junit.xml
+            Output/Release/x64/mds-lifecycle-soak.log
           if-no-files-found: warn
