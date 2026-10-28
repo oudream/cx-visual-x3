@@ -2018,6 +2018,27 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 var sourceResolver=new TestResolver().Register("vision.test.source",
                     (ctx,token)=>Task.FromResult((object)((byte[])pixels.Clone())));
                 var provider=new CxVisionThresholdProvider(options,12,sourceResolver);
+                // Same professional CPU algorithm is directly discoverable through the
+                // existing MOC catalog and MFM declaration; no duplicate capability id
+                // definition in Studio or fake SDK-ready state.
+                IMOCCapabilityProvider discoveryProvider=provider;
+                var declaredCpu=discoveryProvider.DescribeCapabilities().Single();
+                Check(declaredCpu.Id==CxVisionThresholdProvider.CapabilityId&&
+                    declaredCpu.Ports.Count(p=>p.Direction==MPCPortDirection.Input)==3&&
+                    declaredCpu.Ports.Any(p=>p.MemberId=="RawPixels")&&
+                    declaredCpu.Ports.Any(p=>p.MemberId=="Width")&&
+                    declaredCpu.Ports.Any(p=>p.MemberId=="Height"),
+                    "professional CPU provider MOC descriptor lost typed input schema");
+                var cpuCatalog=new MOCCapabilityCatalog(
+                    new[]{discoveryProvider},provider);
+                var cpuModule=new MFMModuleDescriptor("vision.cpu.01",
+                    "真实CPU软件视觉",MFMModuleKind.Compute,
+                    capabilityIds:new[]{CxVisionThresholdProvider.CapabilityId});
+                var cpuLinks=cpuCatalog.DescribeModules(new[]{cpuModule});
+                Check(cpuLinks.Count==1&&cpuLinks[0].Module.Kind==MFMModuleKind.Compute&&
+                    cpuLinks[0].Described&&cpuLinks[0].RuntimeResolved&&
+                    cpuCatalog.Find(CxVisionThresholdProvider.CapabilityId).RuntimeAvailable,
+                    "real professional MOC/MFM discovery failed to resolve CPU algorithm");
                 Check(provider.ConfigurationRevision==12&&
                     provider.ReleaseVersion=="vision.cpu.threshold.v1/config:12"&&
                     new CxVisionThresholdProvider(options,13).ReleaseVersion!=provider.ReleaseVersion,
