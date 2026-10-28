@@ -37,7 +37,7 @@ namespace CxVisual.Professional.Vision
         public static MRKExecutionPlan CreateCpuInspectionPlan(
             CxVisionInspectionOptions options, long revision = 1)
         {
-            return BuildCpuInspectionPlan(options, revision, false);
+            return BuildCpuInspectionPlan(options, revision, false, false);
         }
 
         /// <summary>
@@ -48,11 +48,23 @@ namespace CxVisual.Professional.Vision
         public static MRKExecutionPlan CreateCpuInspectionPlanWithArtifacts(
             CxVisionInspectionOptions options, long revision = 1)
         {
-            return BuildCpuInspectionPlan(options, revision, true);
+            return BuildCpuInspectionPlan(options, revision, true, false);
+        }
+
+        /// <summary>
+        /// CASE-ARCH-01首个测量节点：保留处理图和筛选前Mask，另由独立MRK节点
+        /// 对Inspect正式筛选的候选区域求像素面积。结果是px²而非未标定的mm²。
+        /// 原有两个工厂签名和默认导出均不变。
+        /// </summary>
+        public static MRKExecutionPlan CreateCpuInspectionPlanWithMeasuredArtifacts(
+            CxVisionInspectionOptions options, long revision = 1)
+        {
+            return BuildCpuInspectionPlan(options, revision, true, true);
         }
 
         private static MRKExecutionPlan BuildCpuInspectionPlan(
-            CxVisionInspectionOptions options, long revision, bool publishArtifacts)
+            CxVisionInspectionOptions options, long revision,
+            bool publishArtifacts, bool publishMeasurements)
         {
             if (options == null) throw new ArgumentNullException("options");
             CxVisionThresholdPipeline pipeline = new CxVisionThresholdPipeline(options);
@@ -81,7 +93,7 @@ namespace CxVisual.Professional.Vision
                 new MRKExecutionInput("Height", MRKInputSource.FlowInput,
                     "Height", typeof(int))
             };
-            var steps = new []
+            var steps = new List<MRKExecutionStep>
             {
                 new MRKExecutionStep("Decode", new string[0], (ctx, ct) =>
                 {
@@ -209,6 +221,34 @@ namespace CxVisual.Professional.Vision
                     { "Passed", typeof(bool) }
                 })
             };
+            if (publishMeasurements)
+            {
+                steps.Add(new MRKExecutionStep("MeasureAcceptedRegions", new [] { "Inspect" },
+                    (ctx, ct) =>
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        CxVisionInspectionResult result =
+                            ctx.Data.Get<CxVisionInspectionResult>("AcceptedRegions");
+                        long acceptedArea = 0;
+                        foreach (CxVisionDefectRegion region in result.Regions)
+                        {
+                            ct.ThrowIfCancellationRequested();
+                            if (region == null || region.PixelArea <= 0)
+                                throw new InvalidOperationException("有效缺陷区域面积不合法");
+                            acceptedArea = checked(acceptedArea + region.PixelArea);
+                        }
+                        if (acceptedArea > result.ThresholdPixelCount ||
+                            acceptedArea > (long)result.Width * result.Height)
+                            throw new InvalidOperationException("筛选后面积大于阈值命中像素数");
+                        ctx.Data.Return("Area", acceptedArea);
+                        return Task.FromResult((object)acceptedArea);
+                    }, inputs: new[] {
+                        new MRKExecutionInput("AcceptedRegions", MRKInputSource.StepOutput,
+                            "Inspect.Result", typeof(CxVisionInspectionResult))
+                    }, dataOutputs: new Dictionary<string, Type> {
+                        { "Area", typeof(long) }
+                    }));
+            }
             Dictionary<string, string> exports = new Dictionary<string, string>
             {
                 { "Inspection", "Inspect.Result" },
@@ -220,6 +260,8 @@ namespace CxVisual.Professional.Vision
                 exports.Add("PreparedImage", "Preprocess.Image");
                 exports.Add("ThresholdMask", "Inspect.Mask");
             }
+            if (publishMeasurements)
+                exports.Add("AcceptedRegionPixelArea", "MeasureAcceptedRegions.Area");
             return new MRKExecutionPlan("Vision.CpuInspection", steps, exports);
         }
     }
