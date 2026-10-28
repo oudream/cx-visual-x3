@@ -82,6 +82,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
         private readonly MDSDataStack _managedStack;
         private readonly IMDSDataContext _data;
         private readonly int _iterationIndex;
+        private readonly int _attemptIndex;
         private readonly bool _insideParallelLoop;
         private readonly MRKIterationSignal _iterationSignal;
         private readonly MRKFlowReturnSignal _returnSignal=new MRKFlowReturnSignal();
@@ -124,6 +125,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
             _data = parent._data;
             _invocation = parent._invocation;
             _iterationIndex=parent._iterationIndex;
+            _attemptIndex=parent._attemptIndex;
             _insideParallelLoop=parent._insideParallelLoop;
             _iterationSignal=parent._iterationSignal;
             _returnSignal=parent._returnSignal;
@@ -157,6 +159,17 @@ namespace CxVisual.Mechanism.Runtime.Execution
         }
         /// <summary>当前动态循环迭代号，常规DAG默认为0。</summary>
         public int IterationIndex{get{return _iterationIndex;}}
+        /// <summary>单次Invocation内的1起算重试次数；Flow根上下文为0。
+        /// Attempt只标识执行尝试，不改变原InvocationId、FrameKey或已提交输出Owner。</summary>
+        public int AttemptIndex{get{return _attemptIndex;}}
+        internal MRKExecutionContext WithAttempt(int attempt)
+        {
+            if (_invocation == null || attempt < 1)
+                throw new ArgumentException("invocation.attempt_invalid");
+            return new MRKExecutionContext(this, attempt);
+        }
+        private MRKExecutionContext(MRKExecutionContext parent, int attempt)
+            : this(parent, string.Empty) { _attemptIndex = attempt; }
         internal string QualifiedStepId(string id){return _scopePrefix+id;}
         internal int LoopExit{get{return _iterationSignal==null?0:_iterationSignal.Exit;}}
         internal bool FlowReturnRequested{get{return _returnSignal.Requested;}}
@@ -185,7 +198,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
 
         private MRKExecutionContext(MRKExecutionContext parent,MRKInvocationContext invocation)
             : this(parent,string.Empty)
-        { _invocation=invocation; }
+        { _invocation=invocation; _attemptIndex=1; }
         internal MRKExecutionContext WithInvocation(MRKInvocationContext invocation)
         {
             if(invocation==null||invocation.FlowId!=FlowId)

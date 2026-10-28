@@ -49,7 +49,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
                     using (CancellationTokenSource scoped =
                         CancellationTokenSource.CreateLinkedTokenSource(cancellation))
                     {
-                        Task<object> operation = action(context, scoped.Token);
+                        // 重试只改变尝试身份，不创建第二个MDS Frame或改变Invocation。
+                        Task<object> operation = action(context.WithAttempt(attempt), scoped.Token);
                         if (operation == null)
                             throw new InvalidOperationException("节点执行器返回空任务");
                         if (Timeout.HasValue && !operation.IsCompleted)

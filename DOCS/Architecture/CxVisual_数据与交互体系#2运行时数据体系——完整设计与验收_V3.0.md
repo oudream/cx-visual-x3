@@ -1295,3 +1295,9 @@ try {
 - **前轮固定SHA证据**：`4a2fbf1872083bc18a4fd4932f1c0f880784eb86` 的 [MDS Windows专项 #40659054686](https://github.com/oudream/cx-visual-x3/actions/runs/40659054686) 与 [统一Runtime #40659054760](https://github.com/oudream/cx-visual-x3/actions/runs/40659054760) 均为Success。新增 `KeepDeclaredExports` 的源码和测试需使用本轮新SHA重新编译/验收，不能沿用前轮绿灯。
 
 - **本轮固定SHA核验结果**：`3e248fb77eb4ae69a1d5d332986f7af30fbd3606` 的 [MDS生命周期Windows #40659467173](https://github.com/oudream/cx-visual-x3/actions/runs/40659467173) 和 [统一Runtime Windows #40659467165](https://github.com/oudream/cx-visual-x3/actions/runs/40659467165) 均为 **Success**；新增声明导出推导、200B动态Join、原R08并发回收、TestCenter 030～034、完整.NET48 Release x64与WPF软件验收以该固定SHA对应的CI为据。并不等于自动推断任意隐式消费或硬件外部资源完工。
+
+### 19.8 P1异常路径与Attempt身份增强（2026-10-28）
+
+- 在前述已验证的Loop/Foreach有界回收基础上，`RuntimeDataCompilerUnificationTests`补充三类真实执行正反例：三次重复Flow的幂等Retry与Join（验证失败Pending输出不提交、预算归还）；串行Loop中的Break/Continue、已跳过下游消费者与KeepAll容量拒绝；策略超时后非合作Provider仍占有在途Frame时，必须等取消回调及原工作真正结束再完成Flow，禁止迟到Pending发布和下一轮提前启动。
+- MRK运行节点提供只读`MRKExecutionContext.AttemptIndex`：根Flow为0，节点第一次调用为1；`MRKExecutionPolicy`仅在每次重试调用之前复制不可变上下文并设置1起算的Attempt。不同Attempt保留同一`MRKInvocationContext.InvocationId`与原`MDSDataFrame`，输出仍由原MDS唯一真源提交，失败尝试沿现有`MDSDataContext.PrepareRetry()`清除Pending；与`IterationIndex`构成显式运行诊断身份。不改变公开`MRKInvocationContext.ActivationIndex`意义，不把重试误认为新的已提交调用帧。
+- **可用性合同**：普通算法继续`Get/Set/Return`，无需手动管理Lease；用`KeepDeclaredExports(body)`可从正式端口生成保留策略，不能证明隐式消费者时必须显式`KeepForJoin`或使用默认`KeepAll`。软件层面故障路径通过Windows专项和统一Runtime后才升级为通过；其它P2～P5不在本次工作范围。

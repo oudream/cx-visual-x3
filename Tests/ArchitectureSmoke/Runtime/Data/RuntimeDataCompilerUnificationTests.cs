@@ -284,10 +284,19 @@ namespace CxVisual.Tests.ArchitectureSmoke
         private static void R08_RetryAndDeclaredJoinSurviveRepeatedFlows()
         {
             int[] attempts = new int[4];
+            string[] invocationKeys = new string[4];
             var body = new MRKExecutionPlan("r08.retry.body", new[] {
                 new MRKExecutionStep("image", new string[0], (ctx, ct) =>
                 {
                     int attempt = Interlocked.Increment(ref attempts[ctx.IterationIndex]);
+                    int expectedAttempt = (attempt - 1) % 2 + 1;
+                    Check(ctx.AttemptIndex == expectedAttempt && ctx.Invocation != null,
+                        "Attempt须从1计数且保持原真实Invocation身份");
+                    if (expectedAttempt == 1)
+                        invocationKeys[ctx.IterationIndex] = ctx.Invocation.InvocationId;
+                    else
+                        Check(invocationKeys[ctx.IterationIndex] == ctx.Invocation.InvocationId,
+                            "重试不得额外创建MDS Committed Frame或更换InvocationId");
                     if (attempt % 2 != 0)
                     {
                         ctx.Data.Return("Image", new byte[128]);
@@ -302,6 +311,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 new MRKExecutionStep("measure", new[] { "image" }, (ctx, ct) =>
                 {
                     int length = ctx.Data.Get<byte[]>("Input").Length;
+                    Check(ctx.AttemptIndex == 1, "不使用重试策略的普通节点Attempt应为1");
                     Check(length == 64, "失败Attempt的128B Pending不能进入后续消费者");
                     ctx.Data.Return("Count", length + ctx.IterationIndex);
                     return Task.FromResult((object)true);
