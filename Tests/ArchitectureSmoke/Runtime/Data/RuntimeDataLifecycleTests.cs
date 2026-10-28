@@ -282,13 +282,42 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 using (var heap = new MDSDataHeap())
                 {
                     heap.Set("Image", new byte[16]);
-                    restarted.GetLatestSaved().ApplyTo(heap, "Image");
+                    string revision = MDSDataLifecycleEngineeringBinding.ApplyEffectiveForTask(
+                        restarted, heap, "Image", "Run.1", restarted.EffectiveVersion);
+                    Check(revision == restarted.EffectiveVersion,
+                        "Runtime数据策略必须绑定MHS已生效版本，保持本次Run可追溯");
                     MDSDataLifecyclePolicy compiled = heap.Lifecycle.GetPolicy("Image");
                     Check(compiled.Lifetime.ConsumerBound &&
                         compiled.Retention.TimeToLive == TimeSpan.FromSeconds(120) &&
                         !compiled.Transfer.AllowMove &&
                         compiled.Reclamation.ReleaseOnExpiry,
                         "MHS正式工程配置必须能编译映射到唯一MDS运行值Owner");
+                    var later = restarted.UpdateAsync(x =>
+                        x.Transfer = MDSTransferMode.CopyAndMove,
+                        "下次任务才生效的交接策略", CancellationToken.None)
+                        .GetAwaiter().GetResult();
+                    Check(later.Success && restarted.HasPendingApply,
+                        "后续工程编辑只应进入Saved而不能污染当前Effective");
+                    heap.Set("AfterEdit", new byte[4]);
+                    MDSDataLifecycleEngineeringBinding.ApplyEffectiveForTask(
+                        restarted, heap, "AfterEdit", "Run.2", revision);
+                    Check(!heap.Lifecycle.GetPolicy("AfterEdit").Transfer.AllowMove,
+                        "运行中不得误用尚未批准生效的工程Saved草稿");
+                    Check(restarted.ApplyPendingAtTaskBoundary(),
+                        "下次任务边界必须显式批准新版本");
+                    heap.Set("AfterApproval", new byte[4]);
+                    bool staleRejected = false;
+                    try {
+                        MDSDataLifecycleEngineeringBinding.ApplyEffectiveForTask(
+                            restarted, heap, "AfterApproval", "Run.3", revision);
+                    } catch (InvalidOperationException) { staleRejected = true; }
+                    Check(staleRejected &&
+                        heap.Lifecycle.GetPolicy("AfterApproval").Transfer.AllowMove,
+                        "旧版本Run请求应在写入前被拒绝并保持原MDS策略");
+                    MDSDataLifecycleEngineeringBinding.ApplyEffectiveForTask(
+                        restarted, heap, "AfterApproval", "Run.4", restarted.EffectiveVersion);
+                    Check(heap.Lifecycle.GetPolicy("AfterApproval").Transfer.AllowMove,
+                        "新任务的有效工程修订正确映射到当前MDS运行Heap");
                 }
             }
             finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
