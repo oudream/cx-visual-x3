@@ -89,16 +89,16 @@ namespace CxVisual.Professional.CT3D
                     if((y&31)==0)cancellationToken.ThrowIfCancellationRequested();
                     for(int x=0;x<source.Width;x+=sampleStep)
                     {
-                        if(source.ReadScalar(x,y,z)<threshold)continue;
+                        if(CT3DRawScalarGuard.ReadFinite(source,x,y,z)<threshold)continue;
                         bool outer=x==0||y==0||z==0||
                             x==source.Width-1||y==source.Height-1||z==source.Depth-1;
                         bool edge=outer ||
-                            source.ReadScalar(x-1,y,z)<threshold ||
-                            source.ReadScalar(x+1,y,z)<threshold ||
-                            source.ReadScalar(x,y-1,z)<threshold ||
-                            source.ReadScalar(x,y+1,z)<threshold ||
-                            source.ReadScalar(x,y,z-1)<threshold ||
-                            source.ReadScalar(x,y,z+1)<threshold;
+                            CT3DRawScalarGuard.ReadFinite(source,x-1,y,z)<threshold ||
+                            CT3DRawScalarGuard.ReadFinite(source,x+1,y,z)<threshold ||
+                            CT3DRawScalarGuard.ReadFinite(source,x,y-1,z)<threshold ||
+                            CT3DRawScalarGuard.ReadFinite(source,x,y+1,z)<threshold ||
+                            CT3DRawScalarGuard.ReadFinite(source,x,y,z-1)<threshold ||
+                            CT3DRawScalarGuard.ReadFinite(source,x,y,z+1)<threshold;
                         if(!edge)continue;
                         if(points.Count==maxPoints)
                             throw new InvalidOperationException(
