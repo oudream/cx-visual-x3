@@ -14,6 +14,8 @@ namespace CxVisual.Foundation.Transport
         private readonly MemoryMappedFile _map;
         private readonly MemoryMappedViewAccessor _view;
         private readonly Mutex _guard;
+        private readonly Mutex _sideOwner;
+        private bool _hasSideOwner;
         internal readonly EventWaitHandle DataA,DataB,SpaceA,SpaceB;
         private readonly int _slots,_stride;
         internal FTRSharedMemoryRegion(FTRSharedMemoryChannelConfiguration config)
@@ -22,6 +24,7 @@ namespace CxVisual.Foundation.Transport
             string name=@"Local\CxVisual.FTR."+config.MapName;
             long size=checked(HeaderSize+2L*_slots*_stride);
             _guard=new Mutex(false,name+".lock");
+            _sideOwner=new Mutex(false,name+".endpoint."+config.Side);
             DataA=new EventWaitHandle(false,EventResetMode.AutoReset,name+".data.a");
             DataB=new EventWaitHandle(false,EventResetMode.AutoReset,name+".data.b");
             SpaceA=new EventWaitHandle(false,EventResetMode.AutoReset,name+".space.a");
@@ -46,6 +49,28 @@ namespace CxVisual.Foundation.Transport
                     throw new InvalidDataException("共享内存版本或槽位配置不匹配");
             }
             finally{if(acquired)_guard.ReleaseMutex();}
+        }
+        /// <summary>读线程独占命名侧锁，直到通道停止；防止同Side多生产者或消费者。</summary>
+        internal void AcquireSide()
+        {
+            try
+            {
+                if(!_sideOwner.WaitOne(0))
+                    throw new InvalidOperationException("同一共享内存名称和Side已有活跃端点");
+                _hasSideOwner=true;
+            }
+            catch(AbandonedMutexException)
+            {
+                // 对端异常崩溃后无法确认残留槽位是否已被业务处理，拒绝自动恢复。
+                _sideOwner.ReleaseMutex();
+                throw new IOException("共享内存端点异常退出；残留数据状态未知，须更换会话/共享区名称");
+            }
+        }
+        internal void ReleaseSide()
+        {
+            if(!_hasSideOwner)return;
+            _hasSideOwner=false;
+            _sideOwner.ReleaseMutex(); // 必须由同一个专属读线程释放
         }
         private bool Lock(CancellationToken ct,int timeout)
         {
@@ -113,7 +138,7 @@ namespace CxVisual.Foundation.Transport
         public void Dispose()
         {
             _view.Dispose();_map.Dispose();DataA.Dispose();DataB.Dispose();
-            SpaceA.Dispose();SpaceB.Dispose();_guard.Dispose();
+            SpaceA.Dispose();SpaceB.Dispose();_guard.Dispose();_sideOwner.Dispose();
         }
     }
 }
