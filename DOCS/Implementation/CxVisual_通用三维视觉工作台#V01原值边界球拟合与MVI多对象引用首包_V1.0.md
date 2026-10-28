@@ -41,3 +41,9 @@
 6. `MPWVolumeSourceTests`与`TCTVolumeViewerSmoke`新增非等距旋转坐标投影、越界拒绝、显示点预算、真实UInt16合成球拟合、MVI Scene选中与显隐、WPF三刀不退化及切换体积清理等断言。
 
 **状态与限制**：源码已经提交，Windows Actions及真实NVIDIA/AMD/Intel GPU图片实测按本功能对应固定SHA核实，不把队列状态、基础工具编译、展示点数当作像素/工业精度验收。实际Surface Mesh（三角面拓扑、法向、亚体素）、CAD重合显示、Surface持久化MEM、工业标准件误差均仍未完成。
+
+## 五、原始物理外框纠偏与本批CI跟踪
+
+- **原始物理外框纠偏**：旧GL `SetVolume`以预览纹理的W×H×D和Spacing计算比例，非等比例降采样时可能误导Surface与三切面的叠加。保留旧API兼容，新增`SetVolumeWithOriginalDimensions`，使用`OriginalWidth/Height/Depth×Spacing`定义GL物理比率；TestCenter已切至新方法，仍使用原预览纹理尺寸计算GPU纹理采样步长。
+- Surface GPU VBO在空对象时显式提交0字节缓冲，避免空数组固定指针初始化问题；切换Context删除Surface VAO/VBO，Scene隐藏时不恢复旧点。
+- 2026-10-28专项Windows CI曾因`TCTVolumeViewerSmoke.cs`新增局部变量`before`与已有局部变量同作用域发生CS0136，已在后续提交更名为`surfacePointsBeforeSlice`。**先前失败是编译阻断，不说明Surface功能测试已运行或失败**。当前提交的CI应以对应固定SHA及Actions结论重新核查。
