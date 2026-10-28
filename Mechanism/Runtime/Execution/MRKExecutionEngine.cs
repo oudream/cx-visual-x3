@@ -1186,8 +1186,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
                     parent.Invocation.StepId.Substring(parent.Invocation.StepId.LastIndexOf('.')+1)+
                     ".i"+iteration.ToString(
                         System.Globalization.CultureInfo.InvariantCulture)+".",iteration);
-                await ExecuteLoopBodyAsync(loop.Body,scope,cancellation,control)
-                    .ConfigureAwait(false);
+                await ExecuteLoopBodyAsync(loop.Body,scope,cancellation,control,
+                    loop.DataRetention).ConfigureAwait(false);
                 count++;
                 predicateContext=scope;
                 if(scope.LoopExit==1||scope.LoopExit==3||scope.FlowReturnRequested)break;
@@ -1199,7 +1199,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
         /// <summary>各迭代独立DAG和Frame，真正能力仍只使用原F19 Worker。</summary>
         private async Task ExecuteLoopBodyAsync(MRKExecutionPlan body,
             MRKExecutionContext scope, CancellationToken cancellation,
-            MRKExecutionDebugController control)
+            MRKExecutionDebugController control,
+            MRKLoopDataRetention retention=null)
         {
             Dictionary<string,Task<object>> tasks=
                 new Dictionary<string,Task<object>>(StringComparer.Ordinal);
@@ -1216,7 +1217,20 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 return current;
             };
             foreach(MRKExecutionStep item in body.Steps)schedule(item.Id);
-            await Task.WhenAll(tasks.Values.ToArray()).ConfigureAwait(false);
+            try
+            {
+                await Task.WhenAll(tasks.Values.ToArray()).ConfigureAwait(false);
+            }
+            finally
+            {
+                // Task.WhenAll已结算本Invocation的全部已启动节点；其MDSDataFrame
+                // 已经Dispose。只释放本轮未显式保留的输出，不影响其它轮或Join。
+                if(retention!=null&&!retention.KeepAllOutputs)
+                    foreach(MRKExecutionStep item in body.Steps)
+                        if(!retention.Retains(item.Id))
+                            scope.DataStack.ReleaseCommittedOutputs(
+                                scope.QualifiedStepId(item.Id));
+            }
         }
 
         /// <summary>有界并行Foreach：失败仅协作取消，仍排空所有实际执行的迭代。</summary>
@@ -1251,7 +1265,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
                                 step+".i"+next.ToString(
                                     System.Globalization.CultureInfo.InvariantCulture)+".",
                                 next,true);
-                            active.Add(ExecuteLoopBodyAsync(loop.Body,scope,linked.Token,control));
+                            active.Add(ExecuteLoopBodyAsync(loop.Body,scope,linked.Token,control,
+                                loop.DataRetention));
                             next++;
                         }
                         Task finished=await Task.WhenAny(active).ConfigureAwait(false);
