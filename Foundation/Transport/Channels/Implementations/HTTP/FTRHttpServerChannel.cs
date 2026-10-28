@@ -84,7 +84,7 @@ namespace CxVisual.Foundation.Transport
             try
             {
                 if(context.Request.ContentLength64>_config.MaxRequestBytes)
-                    throw new IOException("HTTP请求超过接收预算");
+                    throw new FTRBudgetExceededException("HTTP请求超过接收预算");
                 byte[] payload;
                 using(var memory=new MemoryStream())
                 {
@@ -92,7 +92,7 @@ namespace CxVisual.Foundation.Transport
                     int read;
                     while((read=await context.Request.InputStream.ReadAsync(chunk,0,chunk.Length,cancellation).ConfigureAwait(false))>0)
                     {
-                        if(memory.Length+read>_config.MaxRequestBytes)throw new IOException("HTTP请求超过接收预算");
+                        if(memory.Length+read>_config.MaxRequestBytes)throw new FTRBudgetExceededException("HTTP请求超过接收预算");
                         memory.Write(chunk,0,read);
                     }
                     payload=memory.ToArray();
@@ -105,7 +105,7 @@ namespace CxVisual.Foundation.Transport
                         foreach(Action<FTRHttpRequestInfo> callback in observer.GetInvocationList())
                             try{callback(new FTRHttpRequestInfo(pending.Address,context.Request.HttpMethod,
                                 context.Request.Url.AbsolutePath,context.Request.ContentType,payload.Length));}
-                            catch(Exception error){RecordReceiveError(error);}
+                            catch(Exception error){RecordObserverError(error);}
                     ReceiveFrom(pending.Address,payload);
                 }
                 finally { _inReceiveCallback.Value=false; }
@@ -121,8 +121,9 @@ namespace CxVisual.Foundation.Transport
             {
                 if(!cancellation.IsCancellationRequested)
                 {
-                    RecordReceiveError(error);
-                    try{context.Response.StatusCode=error is TimeoutException?504:error is IOException?413:500;}catch{}
+                    RecordReceiveError(error,FTRFaultScope.SubChannel);
+                    try{context.Response.StatusCode=error is TimeoutException?504:
+                        error is FTRBudgetExceededException || error is IOException?413:500;}catch{}
                 }
             }
             finally

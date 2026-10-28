@@ -52,7 +52,7 @@ public sealed class FTRWebSocketClientChannel : FTRSingleChannelBase, IFTRMessag
                         if (result.MessageType != WebSocketMessageType.Binary)
                             throw new NotSupportedException("此 Channel 仅传输二进制消息");
                         if (incoming.Length + result.Count > _config.MaxMessageBytes)
-                            throw new IOException("WebSocket 消息超过接收预算");
+                            throw new FTRBudgetExceededException("WebSocket 消息超过接收预算");
                         incoming.Write(buffer, 0, result.Count);
                         if (result.EndOfMessage)
                         {

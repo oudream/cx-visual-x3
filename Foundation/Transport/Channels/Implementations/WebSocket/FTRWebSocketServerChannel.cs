@@ -96,7 +96,7 @@ namespace CxVisual.Foundation.Transport
                         if(result.MessageType!=WebSocketMessageType.Binary)
                             throw new NotSupportedException("WebSocket Server目前只提供二进制消息传输");
                         if(incoming.Length+result.Count>_config.MaxMessageBytes)
-                            throw new IOException("WebSocket消息超出资源预算");
+                            throw new FTRBudgetExceededException("WebSocket消息超出资源预算");
                         incoming.Write(buffer,0,result.Count);
                         if(result.EndOfMessage)
                         {
@@ -108,7 +108,7 @@ namespace CxVisual.Foundation.Transport
                     }
                 }
             }
-            catch(Exception error){if(!cancellation.IsCancellationRequested)RecordReceiveError(error);}
+            catch(Exception error){if(!cancellation.IsCancellationRequested)RecordReceiveError(error,FTRFaultScope.SubChannel);}
             finally
             {
                 RemovePeer(peer.Address);

@@ -285,8 +285,10 @@ public abstract class FTRChannelBase : IFTRChannelTransport
         protected void DrainBufferedReceive(int timeoutMilliseconds,CancellationToken cancellation)
         {if(_receivePipeline!=null)_receivePipeline.CompleteAndDrain(timeoutMilliseconds,cancellation);}
         protected void RecordReceiveError(Exception error)
-        {_diagnostics.RecordError(error,"Receive",FTRFaultScope.Channel);Record(FTRFrameDirection.Error,new byte[0],null,error.Message);}
-        private void RecordObserverError(Exception error)
+        {RecordReceiveError(error,FTRFaultScope.Channel);}
+        protected void RecordReceiveError(Exception error,FTRFaultScope scope)
+        {_diagnostics.RecordError(error,"Receive",scope);Record(FTRFrameDirection.Error,new byte[0],null,error.Message);}
+        protected void RecordObserverError(Exception error)
         {_diagnostics.RecordError(error,"Observer",FTRFaultScope.Operation);Record(FTRFrameDirection.Error,new byte[0],null,error.Message);}
         private void DeliverBuffer(FTRReceiveBuffer buffer)
         {

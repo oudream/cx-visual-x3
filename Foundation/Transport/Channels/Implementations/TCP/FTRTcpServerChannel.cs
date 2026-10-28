@@ -114,7 +114,7 @@ namespace CxVisual.Foundation.Transport
         private void EndPeer(Peer peer,Exception error)
         {
             lock(_gate){if(peer.Ended)return;peer.Ended=true;}
-            if(error!=null)RecordReceiveError(error);
+            if(error!=null)RecordReceiveError(error,FTRFaultScope.SubChannel);
             // 先交付已接纳字节，再通知唯一Protocol清理；终止通知不会越过旧半包。
             AfterReceived(()=>RemovePeer(peer.Address),_shutdown.Token);
         }
