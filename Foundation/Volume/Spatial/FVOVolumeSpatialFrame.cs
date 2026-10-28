@@ -18,6 +18,22 @@ namespace CxVisual.Foundation.Volume
         public double Z {get;private set;}
     }
 
+    /// <summary>连续体素索引坐标；非毫米单位，可为亚体素小数。</summary>
+    public struct FVOVoxelCoordinate3D
+    {
+        public FVOVoxelCoordinate3D(double x,double y,double z)
+        {
+            if(!FVOVolumeSpatialFrame.IsFinite(x) ||
+               !FVOVolumeSpatialFrame.IsFinite(y) ||
+               !FVOVolumeSpatialFrame.IsFinite(z))
+                throw new ArgumentOutOfRangeException("x","索引坐标必须有限。");
+            X=x;Y=y;Z=z;
+        }
+        public double X {get;private set;}
+        public double Y {get;private set;}
+        public double Z {get;private set;}
+    }
+
     /// <summary>
     /// FVO原始Volume的VoxelCenter(i,j,k)到Physical(mm)的空间映射。
     /// 列向量约定：physical=Origin+Direction(row-major 3x3)*diag(Spacing)*index。
@@ -96,12 +112,12 @@ namespace CxVisual.Foundation.Volume
         }
 
         /// <summary>因Direction正交，其逆为转置；返回的浮点Voxel索引可用于亚体素采样。</summary>
-        public FVOPhysicalPoint3D PhysicalToVoxel(double x,double y,double z)
+        public FVOVoxelCoordinate3D PhysicalToVoxel(double x,double y,double z)
         {
             if(!IsFinite(x)||!IsFinite(y)||!IsFinite(z))
                 throw new ArgumentOutOfRangeException("x","物理坐标必须是有限数。");
             double dx=x-OriginX,dy=y-OriginY,dz=z-OriginZ;
-            return new FVOPhysicalPoint3D(
+            return new FVOVoxelCoordinate3D(
                 (_direction[0]*dx+_direction[3]*dy+_direction[6]*dz)/SpacingX,
                 (_direction[1]*dx+_direction[4]*dy+_direction[7]*dz)/SpacingY,
                 (_direction[2]*dx+_direction[5]*dy+_direction[8]*dz)/SpacingZ);
