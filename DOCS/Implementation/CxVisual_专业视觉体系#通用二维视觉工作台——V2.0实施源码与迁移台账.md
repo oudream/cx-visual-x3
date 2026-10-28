@@ -296,3 +296,17 @@ P0—P5不是六套执行机制，也不是只写计划后停止；每阶段应�
 ### 18.3 鼠标真实绘制与色板初始值一致性补正
 
 源码审计发现鼠标交互结束的`MPWImageViewerControl.CompleteDraw`原来直接调用`_overlays.Add`，绕过`AddOverlay`的新默认色分派，导致API创建多边形有效但真实鼠标创建依旧沿用红色构造默认。现 [0eeedc0](https://github.com/oudream/cx-visual-x3/commit/0eeedc0aa0843c4f886156bab0068c38600b91a0) 已将鼠标完成绘制统一进入`AddOverlay`。另外 [ec1e044](https://github.com/oudream/cx-visual-x3/commit/ec1e0445251bbb1c6097fbf4c257039e08019551) 保证未手动改色前新图元采用显示页四图层默认色，而不出现按钮示蓝绿、图元默认红的冲突；明确非默认ARGB仍保留。 [9d9a3a1](https://github.com/oudream/cx-visual-x3/commit/9d9a3a14458a89efd2bbd454f428187f3ed2dc8d) 修正默认色一致后先前WPF颜色回归的旧色比较前提。须以最新SHA重新执行Windows CI，不能使用788d5fe之前的记录覆盖这些增量。
+
+## 19. CASE-ARCH-01首包：MRK独立面积测量及无界面预览入口（2026-10-28）
+
+**范围与语义**：在已有CPU灰度检测、FIM→Vision互通、Image/Mask/Region结果之上，新增**独立MeasureAcceptedRegions MRK步骤**。正式端口`AcceptedRegionPixelArea`是经过Min/MaxDefectArea筛选的Region像素面积总和（单位px²），不等于筛选前`ThresholdMask`非零像素数，不是无标定物理mm²，也不替代Inspection质量判定。结果回到同一`CxVisionRunSummary`的类型化`Measurement`项，沿用MRK真实FlowId作为RunId、已有SourceId和只读Items。
+
+**真实变更**：
+- [404d9d3](https://github.com/oudream/cx-visual-x3/commit/404d9d39c9b653081292f331d0b5fc70ff9bd70c) `Professional/Vision/CxVisionDataFlow.cs`：增加显式`CreateCpuInspectionPlanWithMeasuredArtifacts`，其余两个工厂签名和默认输出数完全不变。新增MRK数据端口从`Inspect.Result`读取面积筛选后的Region，溢出/不一致拒绝；经MDS提交及原有失败Abort屏障而不是从Viewer数轮廓冒充正式测量。
+- [dd5506f](https://github.com/oudream/cx-visual-x3/commit/dd5506fffa303804358ede9c6106f162c2bd5d3d) `Professional/Vision/CxVisionRunSummary.cs`：末尾追加枚举`Measurement`避免更改旧序号，核对输出类型、Area、Mask和接受Region面积，总量一致才追加具名Item；原旧计划依旧不出现Measurement。
+- [f2d55bb](https://github.com/oudream/cx-visual-x3/commit/f2d55bbd612280e0fbabb1c64db0ca27d4127ea5) `CxVisionDataFlow.RunCpuInspectionPreviewAsync(FIMImageBuffer,Options,SourceId,CancellationToken)`：真正**无界面**公开调用入口，仅复用当前MRK引擎、FDT/FIM输入、MDS输出、取消和StopAsync。不是MEM/MOC正式工程发布API，UI仍负责比对源代次，不能作为设备现场授权。
+- [c25e50d](https://github.com/oudream/cx-visual-x3/commit/c25e50d96f91f20458a1dfb5db02835f0a89ecd0) `Tests/TestCenter/Manual/Imaging/TCTManualImageViewerFrame.cs`：替换页面内复制的MRK生命周期代码，转调上述无界面API，保留旧Run清除、SourceVersion/Request校验和MVI结果槽安全。
+- [047a855](https://github.com/oudream/cx-visual-x3/commit/047a85587fac8f2830d1d9080047221a2f4c3791)、[a34e034](https://github.com/oudream/cx-visual-x3/commit/a34e03411fa715ff04a3c64e783ba7d30d97e0dd)：真实MRK Mask 4命中 / Region面积3差异、空区域面积0、坏输入原子失败、带Stride无界面API、位深/SourceId/预取消。
+- [5b34232](https://github.com/oudream/cx-visual-x3/commit/5b3423258a96db58f808e755c4338b45464414b0) `Tests/TestCenter/Manual/Imaging/TCTImageViewerSmoke.cs`：真实WPF点击CPU、浏览Measurement结果，验证同RunId、端口名、7 px²数值，点击测量不破坏当前Mask和Gray16原图。
+
+**边界**：当前是单图CPU正式MRK子链及一个测量节点，尚非MEMContent/MOL中增强→分割→区域→测量的四种通用MPM能力。FrameRef/ImageSet/ArtifactRef持久化、单位/标定、跨Run ReviewRecord、多Provider、工业批量/设备/HIL、Studio正式多节点工程编辑与发布仍属于未完成，不将这些P设计标为G2。
