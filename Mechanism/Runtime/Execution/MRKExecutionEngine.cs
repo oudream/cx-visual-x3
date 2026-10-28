@@ -71,6 +71,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
             new ConcurrentDictionary<string, MRKStepObservation>(StringComparer.Ordinal);
         private readonly ConcurrentDictionary<string, MRKStepState> _states =
             new ConcurrentDictionary<string, MRKStepState>(StringComparer.Ordinal);
+        private readonly ConcurrentDictionary<string, MRKLoopDataRetention> _loopRetention =
+            new ConcurrentDictionary<string, MRKLoopDataRetention>(StringComparer.Ordinal);
         private readonly ReadOnlyDictionary<string, object> _inputs;
         private readonly string _scopePrefix;
         private readonly MRKExecutionTrace _trace;
@@ -110,6 +112,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
             Metadata = parent.Metadata;
             _results = parent._results;
             _states = parent._states;
+            _loopRetention = parent._loopRetention;
             _observations = parent._observations;
             _handles = parent._handles;
             _inputs = parent._inputs;
@@ -157,6 +160,8 @@ namespace CxVisual.Mechanism.Runtime.Execution
         internal string QualifiedStepId(string id){return _scopePrefix+id;}
         internal int LoopExit{get{return _iterationSignal==null?0:_iterationSignal.Exit;}}
         internal bool FlowReturnRequested{get{return _returnSignal.Requested;}}
+        internal void RegisterLoopRetention(string stepId, MRKLoopDataRetention retention)
+        { _loopRetention[_scopePrefix + stepId] = retention; }
         /// <summary>由编译的Break/Continue/Return控制节点请求，不能绕过安全点。</summary>
         public void SignalControlExit(string kind)
         {
@@ -235,6 +240,11 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 loopState != MRKStepState.Completed ||
                 !_results.TryGetValue(loopKey, out countValue) || !(countValue is int))
                 throw new InvalidOperationException("loop.outputs.loop_not_completed:" + loopKey);
+            MRKLoopDataRetention declared;
+            if (_loopRetention.TryGetValue(loopKey, out declared) &&
+                !declared.Retains(bodyStepId))
+                throw new InvalidOperationException(
+                    "loop.outputs.history_not_retained:" + loopKey + "." + bodyStepId);
             int iterations = (int)countValue;
             if (iterations < 0)
                 throw new InvalidOperationException("loop.outputs.invalid_iteration_count");
@@ -1353,6 +1363,7 @@ namespace CxVisual.Mechanism.Runtime.Execution
                 }
                 if(step.LoopRegion!=null)
                 {
+                    context.RegisterLoopRetention(step.Id, step.LoopRegion.DataRetention);
                     // 控制区域自身不占Worker槽位：只让真正的Body Capability
                     // 通过同一F19 Worker运行，避免单线程Worker上的自等待死锁。
                     context.SetState(step.Id,MRKStepState.Running,"loop.region");
