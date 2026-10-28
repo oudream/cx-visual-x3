@@ -119,6 +119,27 @@ namespace CxVisual.Studio
                     center.SearchText="";
                     Assert(center.VisibleCapabilityCount==originalCount,
                         "清除搜索未恢复目录");
+                    // Reuse actual routed WPF Click handlers: center shortcuts open the
+                    // existing Studio configuration/MOL documents, not shadow workspaces.
+                    StackPanel moduleHeader=center.HeaderContent as StackPanel;
+                    Assert(moduleHeader!=null,"模块中心缺少专业工作入口");
+                    Button[] actions=moduleHeader.Children.OfType<WrapPanel>()
+                        .SelectMany(x=>x.Children.OfType<Button>()).ToArray();
+                    Button configure=actions.FirstOrDefault(x=>
+                        System.Windows.Automation.AutomationProperties.GetAutomationId(x)==
+                        "Studio.ModuleCenter.OpenConfiguration");
+                    Button flow=actions.FirstOrDefault(x=>
+                        System.Windows.Automation.AutomationProperties.GetAutomationId(x)==
+                        "Studio.ModuleCenter.OpenFlow");
+                    Assert(configure!=null&&flow!=null,"模块中心缺少工程配置/流程快捷入口");
+                    configure.RaiseEvent(new RoutedEventArgs(Button.ClickEvent,configure));
+                    Assert(window.GetStudioContentIds().Contains("doc.config"),
+                        "模块中心配置入口没有打开原FCM/MHS Studio配置文档");
+                    Assert(window.TryCloseStudioDocument("doc.config"),
+                        "模块中心新打开的空配置文档不能正常关闭");
+                    flow.RaiseEvent(new RoutedEventArgs(Button.ClickEvent,flow));
+                    Assert(window.GetStudioContentIds().Contains("doc.flow"),
+                        "模块中心流程入口没有打开原MOL Studio主流程");
                     window.OpenStudioDocument("doc.modules");
                     Assert(window.GetStudioContentIds().Count(id=>id=="doc.modules")==1,
                         "同一中心重复打开产生两个文档");
