@@ -1774,6 +1774,14 @@ namespace CxVisual.Mechanism.Presentation.Wpf.Imaging
             return _overlays.Add(item);
         }
 
+        /// <summary>在WPF所属线程一次写入已校验的叠加项并触发一次重绘。</summary>
+        public int AddOverlays(IEnumerable<MVIImageOverlayItem> items)
+        {
+            VerifyAccess();
+            if (ActiveImage == null) throw new InvalidOperationException("图像未加载。");
+            return _overlays.AddRange(items);
+        }
+
         /// <summary>用于API层创建多边形/检测缺陷/算法结果，无需将标注坐标转成WPF类型。</summary>
         public void SetOverlayLayerVisible(MVIImageOverlayLayer layer, bool visible)
         {
