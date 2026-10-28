@@ -157,3 +157,9 @@ double conditionNumber = solved.ConditionNumber;
 - 正反验收：对角矩阵独立解析解、秩亏列重复的解析解、零设计矩阵、参数非法和欠定矩阵拒绝、输入防修改。
 - 单一lambda有物理单位（设计矩阵奇异值平方），此API不自动标准化特征或自动挑选正则化；大型/极端尺度与广泛数值稳定性测试仍待验证。
 - 同SHA Windows验收须在真实 Actions 日志核实，不能因已提交代码便标记通过。
+
+## 十六、F13非连续MatMulViews物理游标路径（2026-10-28）
+
+- `MatMulViewsInto` 现在对已验证维度的只读View使用物理存储偏移和Stride在数值内层遍历，不再对每个元素调用会重复计算和校验行列的公开`Get2D`；底层数组访问仍由View统一约束。
+- 不改变 `MatMulViews` 与 `MatMulViewsInto` 的输出所有权、别名限制、零长度行为和Neumaier补偿求和。
+- 添加非连续双切片/转置的独立参考算法测试和尺寸不兼容反例。性能优劣依真实Windows基准，不能预先假定更快。

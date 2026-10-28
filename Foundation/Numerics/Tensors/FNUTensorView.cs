@@ -41,6 +41,10 @@ namespace CxVisual.Foundation.Numerics
         }
 
         internal FNUTensorBuffer Owner { get { return _owner; } }
+        // Internal physical cursor access for validated view arithmetic.
+        // The backing-array bounds are still checked on every read.
+        internal long BaseOffset { get { return _offset; } }
+        internal double ReadPhysical(long offset) { return ReadAt(offset); }
         public int Rank { get { return _dimensions.Length; } }
         public int ElementCount { get; private set; }
         public int DimensionAt(int axis) { return _dimensions[axis]; }

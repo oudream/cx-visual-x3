@@ -245,17 +245,26 @@ namespace CxVisual.Foundation.Numerics
             if (output.Shape.Rank != 2 ||
                 output.Shape.DimensionAt(0) != m || output.Shape.DimensionAt(1) != n)
                 throw new ArgumentException("Output must have shape (m,n).", "output");
+            // Physical-index cursors avoid repeated row/column multiplications and
+            // public Get2D validation inside the innermost numerical loop.
+            long aBase = a.BaseOffset, bBase = b.BaseOffset;
+            int aRowStride = a.StrideAt(0), aColStride = a.StrideAt(1);
+            int bRowStride = b.StrideAt(0), bColStride = b.StrideAt(1);
             for (int row = 0; row < m; ++row)
                 for (int col = 0; col < n; ++col)
                 {
+                    long ai = aBase + (long)row * aRowStride;
+                    long bi = bBase + (long)col * bColStride;
                     double sum = 0, correction = 0;
                     for (int inner = 0; inner < k; ++inner)
                     {
-                        double value = a.Get2D(row, inner) * b.Get2D(inner, col);
+                        double value = a.ReadPhysical(ai) * b.ReadPhysical(bi);
                         double next = sum + value;
                         correction += Math.Abs(sum) >= Math.Abs(value)
                             ? (sum - next) + value : (value - next) + sum;
                         sum = next;
+                        ai += aColStride;
+                        bi += bRowStride;
                     }
                     double answer = sum + correction;
                     if (double.IsNaN(answer) || double.IsInfinity(answer))

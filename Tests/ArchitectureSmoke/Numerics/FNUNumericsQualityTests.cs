@@ -411,6 +411,27 @@ namespace CxVisual.Tests.ArchitectureSmoke
             FNULinearAlgebra.RidgeLeastSquares(ridgeSamples, ridgeY, 1);
             Near(ridgeSamples[1,1],2,0,"ridge does not mutate design");
             Near(ridgeY[1],8,0,"ridge does not mutate observations");
+            // A non-contiguous submatrix times a transposed, shared backing
+            // view must produce the same answer as independent index arithmetic.
+            var matrixSource = new FNUTensorBuffer(new FNUTensorShape(4,5),
+                new double[] { 1,2,3,4,5, 6,7,8,9,10, 11,12,13,14,15, 16,17,18,19,20 });
+            var leftView = matrixSource.AsView().Slice(0,1,2).Slice(1,1,3);
+            var rightView = matrixSource.AsView().Slice(0,0,3).Slice(1,0,2).Transpose(0,1);
+            // left: (2,3), right: (2,3) -> invalid; explicitly verify guard.
+            Throws<ArgumentException>(() => FNUTensorMath.MatMulViews(leftView,rightView),
+                "incompatible strided view multiplication");
+            var compatible = matrixSource.AsView().Slice(0,0,2).Slice(1,0,3).Transpose(0,1);
+            // left (2,3), compatible (3,2): no contiguous shortcut is possible.
+            var stridedProduct = FNUTensorMath.MatMulViews(leftView,compatible);
+            for(int row=0;row<2;row++)
+                for(int col=0;col<2;col++)
+                {
+                    double independent=0;
+                    for(int inner=0;inner<3;inner++)
+                        independent += leftView.Get2D(row,inner)*compatible.Get2D(inner,col);
+                    Near(stridedProduct.Get(row,col),independent,1e-11,
+                        "strided physical cursor MatMul oracle");
+                }
             Console.WriteLine("PASS FNU quality: condition guard / strided cursor oracle");
         }
 
