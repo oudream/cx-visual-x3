@@ -23,6 +23,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             TensorViewAxisReduction();
             RandomizedViewArithmeticAndReduction();
             RandomizedContiguousBroadcast();
+            ContiguousReductionAndSliceQuality();
             Console.WriteLine("PASS FNU numerical-quality: extremes / cancellation / DFT / FIR / tensor");
         }
 
@@ -681,6 +682,75 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 overflowA,overflowB,sentinel),"buffer cursor overflow");
             Near(sentinel.Get(0),123,0,"buffer cursor first overflow is atomic");
             Console.WriteLine("PASS FNU buffer cursor: 60 seeded shapes / exact broadcast / zero / overflow");
+        }
+
+        private static void ContiguousReductionAndSliceQuality()
+        {
+            var random=new Random(20261028);
+            for(int trial=0;trial<45;++trial)
+            {
+                int x=1+random.Next(5), y=1+random.Next(6), z=1+random.Next(4);
+                var samples=new double[x*y*z];
+                for(int i=0;i<samples.Length;i++)samples[i]=random.NextDouble()*8-4;
+                var tensor=new FNUTensorBuffer(new FNUTensorShape(x,y,z),samples);
+                for(int axis=0;axis<3;++axis)
+                {
+                    var actual=FNUTensorMath.ReduceSum(tensor,axis);
+                    var reused=new FNUTensorBuffer(actual.Shape);
+                    FNUTensorMath.ReduceSumInto(tensor,axis,reused);
+                    for(int i=0;i<actual.Shape.DimensionAt(0);++i)
+                        for(int j=0;j<actual.Shape.DimensionAt(1);++j)
+                        {
+                            double reference=0;
+                            for(int k=0;k<tensor.Shape.DimensionAt(axis);++k)
+                            {
+                                if(axis==0) reference+=tensor.Get(k,i,j);
+                                else if(axis==1) reference+=tensor.Get(i,k,j);
+                                else reference+=tensor.Get(i,j,k);
+                            }
+                            Near(actual.Get(i,j),reference,1e-11,"buffer axis reduce oracle");
+                            Near(reused.Get(i,j),reference,1e-11,"buffer reduce Into");
+                        }
+                    int originalLength=tensor.Shape.DimensionAt(axis);
+                    int begin=random.Next(originalLength+1);
+                    int length=random.Next(originalLength-begin+1);
+                    var sliced=tensor.Slice(axis,begin,length);
+                    var view=tensor.AsView().Slice(axis,begin,length);
+                    Check(sliced.Shape.ElementCount==view.ElementCount,"buffer slice elements");
+                    var independent=sliced.CopyValues();
+                    for(int i=0;i<sliced.Shape.ElementCount;++i)
+                        Near(independent[i],view.GetFlat(i),0,"buffer slice oracle");
+                    if(sliced.Shape.ElementCount>0)
+                    {
+                        var idx=new int[3];
+                        sliced.Set(777,idx);
+                        Near(view.GetFlat(0),independent[0],0,
+                            "buffer slice stays independent of owner");
+                    }
+                }
+            }
+            var a=new FNUTensorBuffer(new FNUTensorShape(3),
+                new double[]{1e16,1,-1e16});
+            var result=new FNUTensorBuffer(new FNUTensorShape(1));
+            FNUTensorMath.ReduceSumInto(a,0,result);
+            Near(result.Get(0),1,0,"buffer reduction cancellation");
+            Throws<ArgumentException>(()=>FNUTensorMath.ReduceSumInto(a,0,a),
+                "buffer reduction owner alias");
+            var stale=new FNUTensorBuffer(new FNUTensorShape(1),
+                new double[]{99});
+            Throws<ArgumentException>(()=>FNUTensorMath.ReduceSumInto(a,0,
+                new FNUTensorBuffer(new FNUTensorShape(2))),
+                "buffer reduction wrong output dimensions");
+            var huge=new FNUTensorBuffer(new FNUTensorShape(2),
+                new double[]{double.MaxValue,double.MaxValue});
+            Throws<OverflowException>(()=>FNUTensorMath.ReduceSumInto(huge,0,stale),
+                "buffer reduction nonfinite output");
+            Near(stale.Get(0),99,0,"failed reduction output stays untouched");
+            var zero=new FNUTensorBuffer(new FNUTensorShape(0,4));
+            var zeroResult=FNUTensorMath.ReduceSum(zero,0);
+            Check(zeroResult.Shape.ElementCount==4,"zero axis retains remaining size");
+            Near(FNUTensorMath.Sum(zeroResult),0,0,"zero axis reduction is additive identity");
+            Console.WriteLine("PASS FNU buffer reduction/slice cursor: 45 random cases / overflow atomic");
         }
 
         private static void Near(double value,double expected,double tolerance,string what)
