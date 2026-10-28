@@ -12,6 +12,8 @@ public sealed class FTRHttpClientChannel : FTRSingleChannelBase
         private readonly FTRHttpClientChannelConfiguration _config;
         private readonly SemaphoreSlim _sendGate = new SemaphoreSlim(1, 1);
         private HttpClient _client;
+        private readonly AsyncLocal<bool> _inReceiveCallback=new AsyncLocal<bool>();
+        protected override bool IsAdditionalTransportThread {get{return _inReceiveCallback.Value;}}
 
         public FTRHttpClientChannel(FTRChannelConfiguration configuration)
             : base((configuration ?? throw new ArgumentNullException("configuration")).Id)
@@ -27,9 +29,21 @@ public sealed class FTRHttpClientChannel : FTRSingleChannelBase
             ConfigureSendAdmission(_config);
             return Task.CompletedTask;
         }
-        protected override async Task OnSendAsync(byte[] bytes, FTRSubChannelAddress address, CancellationToken ct)
+        // segmentBytes只是底层传输提示，绝不能把一条HTTP消息拆成多次POST。
+        // 同步Send等待同一个HTTP请求结束，异步Send使用完全相同的物理调用。
+        protected override void OnSendSynchronous(byte[] bytes,int offset,int count,
+            FTRSubChannelAddress address,CancellationToken ct,int segmentBytes)
         {
-            if (address.HasSubChannel) throw new ArgumentException("HTTP Client 无子通道");
+            if(address.HasSubChannel)throw new ArgumentException("HTTP Client 无子通道");
+            PostAsync(bytes,offset,count,ct).GetAwaiter().GetResult();
+        }
+        protected override Task OnSendAsync(byte[] bytes,FTRSubChannelAddress address,CancellationToken ct)
+        {
+            if(address.HasSubChannel)throw new ArgumentException("HTTP Client 无子通道");
+            return PostAsync(bytes,0,bytes.Length,ct);
+        }
+        private async Task PostAsync(byte[] bytes,int offset,int count,CancellationToken ct)
+        {
             await _sendGate.WaitAsync(ct).ConfigureAwait(false);
             try
             {
@@ -37,7 +51,7 @@ public sealed class FTRHttpClientChannel : FTRSingleChannelBase
                 if (client == null) throw new InvalidOperationException("HTTP 通道尚未打开");
                 using (HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, _config.Url))
                 {
-                    request.Content = new ByteArrayContent(bytes);
+                    request.Content = new ByteArrayContent(bytes,offset,count);
                     request.Content.Headers.ContentType = MediaTypeHeaderValue.Parse(_config.ContentType);
                     using (HttpResponseMessage response = await client.SendAsync(
                         request, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false))
@@ -57,7 +71,9 @@ public sealed class FTRHttpClientChannel : FTRSingleChannelBase
                                     throw new IOException("HTTP 响应超过允许字节预算");
                                 content.Write(buffer, 0, n);
                             }
-                            Receive(content.ToArray());
+                            _inReceiveCallback.Value=true;
+                            try{Receive(content.ToArray());}
+                            finally{_inReceiveCallback.Value=false;}
                         }
                     }
                 }
@@ -69,6 +85,8 @@ public sealed class FTRHttpClientChannel : FTRSingleChannelBase
             HttpClient client = _client;
             _client = null;
             if (client != null) client.Dispose();
+            // 不把已接纳但尚未终止的HTTP Send报告为已安全停止。
+            WaitForPendingSends(_config.StopTimeoutMs,ct);
             return Task.CompletedTask;
         }
     }
