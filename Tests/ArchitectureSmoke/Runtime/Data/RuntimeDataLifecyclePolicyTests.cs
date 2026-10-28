@@ -17,6 +17,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
             InvalidCombinationsRejected();
             FileCacheExpiryKeepsLocator();
             BudgetPressureOnlyEvictsIdleCache();
+            ParallelIndependentConfigurationsDoNotLoseDimensions();
         }
         private static void Check(bool value, string reason)
         {
@@ -218,6 +219,30 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 }
             }
             finally { File.Delete(path); }
+        }
+
+        private static void ParallelIndependentConfigurationsDoNotLoseDimensions()
+        {
+            using (var heap = new MDSDataHeap())
+            {
+                for (int i = 0; i < 100; i++)
+                {
+                    string name = "Concurrency." + i;
+                    heap.Set(name, i);
+                    Task a = Task.Run(() =>
+                        MDSDataOwnershipPolicy.Default.WithMove(false).ApplyTo(heap, name));
+                    Task b = Task.Run(() =>
+                        MDSDataRetentionPolicy.CacheFor(TimeSpan.FromMinutes(2)).ApplyTo(heap, name));
+                    Task c = Task.Run(() =>
+                        MDSDataTransferPolicy.CopyOnly.ApplyTo(heap, name));
+                    Check(Task.WaitAll(new[] { a, b, c }, 5000),
+                        "三个维度并发配置必须能够正常完成");
+                    MDSDataLifecyclePolicy p = heap.Lifecycle.GetPolicy(name);
+                    Check(!p.Ownership.AllowMove && p.Retention.TimeToLive.HasValue &&
+                        !p.Transfer.AllowMove,
+                        "三个独立配置并发完成后不得发生失更新或单维覆盖其他维");
+                }
+            }
         }
 
         private static void InvalidCombinationsRejected()
