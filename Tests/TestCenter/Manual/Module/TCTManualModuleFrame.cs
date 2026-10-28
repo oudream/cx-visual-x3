@@ -365,12 +365,23 @@ namespace CxVisual.TestCenter.UI
                 // The authoritative MFM descriptor is derived from the real FCM draft.
                 // Only declaration is known here; this TestCenter config workspace has
                 // not consulted MOC or an operation-scoped Runtime/authorization source.
-                MFMModuleDescriptor descriptor=next.Draft.Describe(id,kind);
-                _center.SetCapabilities(descriptor.CapabilityIds
-                    .Select(x=>new MPWModuleCapabilityView(x,x,"FCM模块声明",descriptor.Kind,
-                        descriptor.Version,false,false,descriptor.Id,
-                        described:false,resolverChecked:false)),
-                    "当前FCM/MHS模块声明（未查询MOC与运行授权）");
+                try
+                {
+                    MFMModuleDescriptor descriptor=next.Draft.Describe(id,kind);
+                    _center.SetCapabilities(descriptor.CapabilityIds
+                        .Select(x=>new MPWModuleCapabilityView(x,x,"FCM模块声明",descriptor.Kind,
+                            descriptor.Version,false,false,descriptor.Id,
+                            described:false,resolverChecked:false)),
+                        "当前FCM/MHS模块声明（未查询MOC与运行授权）");
+                }
+                catch(ArgumentException)
+                {
+                    // A draft can contain an empty DisplayName or duplicate CapabilityId
+                    // while the user edits. No UI projection may turn it into a valid
+                    // module or throw past the host's FCM validation/error reporting.
+                    _center.SetCapabilities(null,
+                        "当前模块身份/能力声明草稿非法；请执行正式FCM验证后修正。");
+                }
             };
             _refreshDeclaredCapabilities();
             _editorHost.Content = next;
