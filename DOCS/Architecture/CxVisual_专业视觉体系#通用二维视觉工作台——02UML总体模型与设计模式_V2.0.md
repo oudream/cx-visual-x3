@@ -116,21 +116,28 @@ flowchart LR
 
 ~~~mermaid
 classDiagram
-  class FIMImageBuffer { <<E>>
+  class FIMImageBuffer {
+    <<E>>
     +Width
     +Height
     +Stride
     +PixelFormat
     +CopyPixels()
   }
-  class FIMPixelRegion { <<E>> }
-  class FIMImageOperations { <<E>> }
-  class ImageMetadata { <<N candidate>>
+  class FIMPixelRegion {
+    <<E>>
+  }
+  class FIMImageOperations {
+    <<E>>
+  }
+  class ImageMetadata {
+    <<N_candidate>>
     +SourceId
     +FrameId
     +PixelSpacing
   }
-  class MaskContract { <<N candidate>>
+  class MaskContract {
+    <<N_candidate>>
     +CoordinateSpace
   }
   FIMImageOperations ..> FIMImageBuffer
@@ -145,17 +152,25 @@ classDiagram
 
 ~~~mermaid
 classDiagram
-  class FIMImageBuffer { <<E>> }
-  class IMDSDataContext { <<E>>
+  class FIMImageBuffer {
+    <<E>>
+  }
+  class IMDSDataContext {
+    <<E>>
     +Get()
     +Return()
   }
-  class ImageFrameRef { <<N candidate>>
+  class ImageFrameRef {
+    <<N_candidate>>
     +FrameId
     +Timestamp
   }
-  class ImageSequenceRef { <<N candidate>> }
-  class ArtifactRef { <<P contract>> }
+  class ImageSequenceRef {
+    <<N_candidate>>
+  }
+  class ArtifactRef {
+    <<P_contract>>
+  }
   ImageSequenceRef o-- ImageFrameRef
   ImageFrameRef --> ArtifactRef
   IMDSDataContext ..> FIMImageBuffer
@@ -167,23 +182,30 @@ classDiagram
 
 ~~~mermaid
 classDiagram
-  class MVIImageSession { <<E>>
+  class MVIImageSession {
+    <<E>>
     +Original
     +Result
     +SourceVersion
     +Changed
   }
-  class MVIImageViewport { <<E>> }
-  class MVIImageOverlayStore { <<E>>
+  class MVIImageViewport {
+    <<E>>
+  }
+  class MVIImageOverlayStore {
+    <<E>>
     +AddRange()
     +Changed
   }
-  class MVIImageOverlayItem { <<E>>
+  class MVIImageOverlayItem {
+    <<E>>
     +Id
     +Kind
     +Layer
   }
-  class VisionSceneProjection { <<N candidate>> }
+  class VisionSceneProjection {
+    <<N_candidate>>
+  }
   VisionSceneProjection o-- MVIImageViewport
   VisionSceneProjection --> MVIImageSession
   VisionSceneProjection --> MVIImageOverlayStore
@@ -196,17 +218,23 @@ classDiagram
 
 ~~~mermaid
 classDiagram
-  class MPWImageViewerControl { <<E>>
+  class MPWImageViewerControl {
+    <<E>>
     +ShowOriginal()
     +AddOverlays()
   }
-  class MVIImageLinePairGesture { <<E>>
+  class MVIImageLinePairGesture {
+    <<E>>
     +Stage
     +Append()
     +Reset()
   }
-  class ToolGestureContext { <<N candidate>> }
-  class MVIImageOverlayStore { <<E>> }
+  class ToolGestureContext {
+    <<N_candidate>>
+  }
+  class MVIImageOverlayStore {
+    <<E>>
+  }
   MPWImageViewerControl *-- MVIImageLinePairGesture
   MPWImageViewerControl ..> ToolGestureContext
   ToolGestureContext ..> MVIImageOverlayStore : commit only
@@ -218,22 +246,29 @@ classDiagram
 
 ~~~mermaid
 classDiagram
-  class VisionOperationDescriptor { <<N candidate>>
+  class VisionOperationDescriptor {
+    <<N_candidate>>
     +OperationId
     +Version
     +Capabilities
   }
-  class VisionTypedPort { <<N candidate>>
+  class VisionTypedPort {
+    <<N_candidate>>
     +Name
     +TypeId
   }
-  class VisionParameterSchema { <<N candidate>>
+  class VisionParameterSchema {
+    <<N_candidate>>
     +Key
     +Unit
     +Range
   }
-  class FIMImageFilters { <<E static>> }
-  class CxVisionInspectionRuntime { <<E>> }
+  class FIMImageFilters {
+    <<E_static>>
+  }
+  class CxVisionInspectionRuntime {
+    <<E>>
+  }
   VisionOperationDescriptor o-- VisionTypedPort
   VisionOperationDescriptor o-- VisionParameterSchema
   VisionOperationDescriptor ..> FIMImageFilters
@@ -246,15 +281,26 @@ classDiagram
 
 ~~~mermaid
 classDiagram
-  class MEMEngineeringSession { <<E>>
+  class MEMEngineeringSession {
+    <<E>>
     +Edit()
     +Undo()
   }
-  class VisionPipelineDefinition { <<N candidate resource>> }
-  class VisionNodeDefinition { <<N candidate embedded>> }
-  class MRKExecutionPlan { <<E>> }
-  class MRKExecutionStep { <<E>> }
-  class IMDSDataContext { <<E>> }
+  class VisionPipelineDefinition {
+    <<N_candidate_resource>>
+  }
+  class VisionNodeDefinition {
+    <<N_candidate_embedded>>
+  }
+  class MRKExecutionPlan {
+    <<E>>
+  }
+  class MRKExecutionStep {
+    <<E>>
+  }
+  class IMDSDataContext {
+    <<E>>
+  }
   MEMEngineeringSession --> VisionPipelineDefinition
   VisionPipelineDefinition *-- VisionNodeDefinition
   VisionPipelineDefinition ..> MRKExecutionPlan : compile via MOC
@@ -268,19 +314,29 @@ classDiagram
 
 ~~~mermaid
 classDiagram
-  class VisionRunResult { <<N candidate>>
+  class VisionRunResult {
+    <<N_candidate>>
     +RunId
     +PlanVersion
     +Status
   }
-  class VisionResultItem { <<N candidate>>
+  class VisionResultItem {
+    <<N_candidate>>
     +Kind
     +SourceRef
   }
-  class VisionImageArtifact { <<N candidate>> }
-  class VisionMeasurementResult { <<N candidate>> }
-  class VisionDetectionEvidence { <<N candidate>> }
-  class CxVisionInspectionResult { <<E limited>> }
+  class VisionImageArtifact {
+    <<N_candidate>>
+  }
+  class VisionMeasurementResult {
+    <<N_candidate>>
+  }
+  class VisionDetectionEvidence {
+    <<N_candidate>>
+  }
+  class CxVisionInspectionResult {
+    <<E_limited>>
+  }
   VisionRunResult o-- VisionResultItem
   VisionResultItem <|-- VisionImageArtifact
   VisionResultItem <|-- VisionMeasurementResult
@@ -294,15 +350,24 @@ classDiagram
 
 ~~~mermaid
 classDiagram
-  class MEMEngineeringSession { <<E>>
+  class MEMEngineeringSession {
+    <<E>>
     +Edit()
     +Undo()
     +Redo()
   }
-  class MVIVisualEditor { <<E>> }
-  class MRCVisualItem { <<E>> }
-  class MVIImageOverlayItem { <<E temporary>> }
-  class VisionAnnotationDefinition { <<N candidate>> }
+  class MVIVisualEditor {
+    <<E>>
+  }
+  class MRCVisualItem {
+    <<E>>
+  }
+  class MVIImageOverlayItem {
+    <<E_temporary>>
+  }
+  class VisionAnnotationDefinition {
+    <<N_candidate>>
+  }
   MEMEngineeringSession --> MVIVisualEditor
   MVIVisualEditor --> MRCVisualItem
   VisionAnnotationDefinition --> MRCVisualItem
