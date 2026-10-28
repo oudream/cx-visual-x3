@@ -1194,6 +1194,7 @@ namespace CxVisual.TestCenter.UI
             _syncingDisplayInputs=true;
             try
             {
+                _viewer.DisplayState.Reset();
                 _displayGamma.Text="1";
                 _displayBrightness.Text="0";
                 _displayContrast.Text="1";
@@ -1202,7 +1203,6 @@ namespace CxVisual.TestCenter.UI
                 SyncGraySliders();
             }
             finally { _syncingDisplayInputs=false; }
-            _viewer.DisplayState.Reset();
             _windowMode.Text="当前显示：自动窗宽/窗位；灰阶参数为默认值";
             Show("窗宽窗位/反色/Gamma/亮度/对比度全部复位");
         }
