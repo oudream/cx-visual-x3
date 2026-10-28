@@ -39,7 +39,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                           mesh.EnclosedVolume.HasValue &&
                           Math.Abs(mesh.EnclosedVolume.Value-8)<1e-9,
                         "体素外露表面解析面积24平方毫米、体积8立方毫米");
-                    Check(result.IsMeasurementReady && !result.TouchesVolumeBoundary &&
+                    Check(result.HasCalibratedClosedGeometry && !result.TouchesVolumeBoundary &&
                           result.SourceRef=="fixture:mesh-cube" && result.SourceRevision==3 &&
                           result.ResultId!=Guid.Empty,
                         "专业Mesh保留原值来源、版本、标定/边界状态");
@@ -89,6 +89,26 @@ namespace CxVisual.Tests.ArchitectureSmoke
                         "左手镜像来源必须翻转三角绕序，保持几何法向及体积证据正确");
                 }
             }
+            var anisotropicInfo=new FVORawVolumeInfo(size,size,size,2,3,4,
+                FVORawVoxelFormat.UInt16,"mesh-anisotropic");
+            using(FVOVolumeData anisotropic=FVORawVolumeLoader.LoadFromMemory(
+                raw,anisotropicInfo,64,CancellationToken.None))
+            {
+                anisotropic.SetSpatialFrame(new FVOVolumeSpatialFrame(2,3,4,100,200,300,
+                    new double[]{0,-1,0,1,0,0,0,0,1},true));
+                using(FVOOriginalScalarLease lease=anisotropic.AcquireOriginalScalarLease())
+                {
+                    FGETriangleMesh3D mesh=CT3DVoxelBoundaryMeshExtractor.Extract(
+                        lease,"fixture:anisotropic-rotated",5,1000,100,
+                        CancellationToken.None).Mesh;
+                    Check(Math.Abs(mesh.SurfaceArea-208)<1e-8 &&
+                          mesh.EnclosedVolume.HasValue &&
+                          Math.Abs(mesh.EnclosedVolume.Value-192)<1e-8 &&
+                          mesh.IsClosedOrientedManifold,
+                        "各向异性2×3×4mm及90度方向旋转下必须保留解析面积208与体积192");
+                }
+            }
+
             // 网格是独立的通用几何类型，错误索引/退化三角形必须被FGE拒绝。
             bool invalid=false;
             try
@@ -115,7 +135,7 @@ namespace CxVisual.Tests.ArchitectureSmoke
                 {
                     var result=CT3DVoxelBoundaryMeshExtractor.Extract(
                         lease,"fixture:truncated",1,1000,50,CancellationToken.None);
-                    Check(result.TouchesVolumeBoundary && !result.IsMeasurementReady,
+                    Check(result.TouchesVolumeBoundary && !result.HasCalibratedClosedGeometry,
                         "触及原数据边界的离散闭面不可直接用于工业计量");
                 }
             }
