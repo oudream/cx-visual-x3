@@ -155,6 +155,43 @@ namespace CxVisual.TestCenter.Cases
                     "保留的真实Invocation历史能在Join阶段正确聚合");
             }
             finally { engine.StopAsync(true).GetAwaiter().GetResult(); }
+
+            // 并行Foreach独立于串行Loop证明：既不能提前释放Join的历史，
+            // 也不能因KeepAll而忽略MDS容量上限。
+            var foreachLoop = new MRKExecutionStep("loop", new string[0],
+                (ctx, ct) => Task.FromResult((object)true),
+                loopRegion: new MRKLoopRegion(body, 4,
+                    collectionInput: "Items", maxParallelIterations: 2,
+                    dataRetention: MRKLoopDataRetention.KeepForJoin("measure")));
+            var foreachPlan = new MRKExecutionPlan("loop-history-parallel", new[] {
+                foreachLoop, plan.GetStep("join")
+            }, new Dictionary<string, string> { { "Result", "join.Total" } });
+            var inputs = new Dictionary<string, object> {
+                { "Items", new[] { 0, 1, 2, 3 } }
+            };
+            var parallelEngine = new MRKExecutionEngine(new FCRWorkerOptions(4, 32),
+                dataPayloadBudgetBytes: 300);
+            try
+            {
+                MRKFlowResult bounded = parallelEngine.StartFlow(foreachPlan, inputs)
+                    .Completion.GetAwaiter().GetResult();
+                t.AssertEqual(MRKFlowState.Completed, bounded.State,
+                    "Foreach两路并行应在轮次结算后释放影像，Join保留完整历史");
+                t.AssertEqual(1, bounded.GetCommittedOutput<int>("Result"),
+                    "并行完成顺序不得影响四个Invocation的历史结果");
+                var keepAllPlan = new MRKExecutionPlan("loop-history-conservative", new[] {
+                    new MRKExecutionStep("loop", new string[0],
+                        (ctx, ct) => Task.FromResult((object)true),
+                        loopRegion: new MRKLoopRegion(body, 4,
+                            collectionInput: "Items", maxParallelIterations: 2)),
+                    plan.GetStep("join")
+                }, new Dictionary<string, string> { { "Result", "join.Total" } });
+                MRKFlowResult conservative = parallelEngine.StartFlow(keepAllPlan, inputs)
+                    .Completion.GetAwaiter().GetResult();
+                t.AssertEqual(MRKFlowState.Failed, conservative.State,
+                    "默认KeepAll必须在300B额度不足时明确失败，不能偷换策略");
+            }
+            finally { parallelEngine.StopAsync(true).GetAwaiter().GetResult(); }
         }
 
         private sealed class TCTExternalCompletionVerifier : IMDSExternalCompletionVerifier

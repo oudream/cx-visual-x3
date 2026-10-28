@@ -202,6 +202,12 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     Volatile.Read(ref executed) == 480,
                     "80轮×6个依赖节点应只运行一次，逐轮回收后不得累积预算：" +
                     (bounded.Error == null ? "" : bounded.Error.ToString()));
+                // 同一引擎下一条Flow必须重新获得前一Flow释放的预算与任务身份。
+                MRKFlowResult repeated = engine.StartFlow(boundedPlan, input)
+                    .Completion.GetAwaiter().GetResult();
+                Check(repeated.State == MRKFlowState.Completed &&
+                    Volatile.Read(ref executed) == 960,
+                    "跨Flow重复执行不得继承旧Invocation任务或泄漏MDS预算");
                 MRKFlowResult conservative = engine.StartFlow(conservativePlan, input)
                     .Completion.GetAwaiter().GetResult();
                 Check(conservative.State == MRKFlowState.Failed &&

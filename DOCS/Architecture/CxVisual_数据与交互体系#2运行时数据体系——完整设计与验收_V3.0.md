@@ -1280,3 +1280,10 @@ try {
 - `TryReconcileExternalOperation(dataName, providerId, generation, IMDSExternalCompletionVerifier)` 仅从已登记的原始Operation查找并调用专业Verifier。旧代次拒绝；Verifier没有真实完成证据时保留Unknown和MDS保留凭证；Verifier在任何Heap/Registry锁外运行；确认成功后只释放一次并删除登记。原`ConfirmCompletion(generation)`仍可由持有原Lease的专业Provider直接调用，成功也统一注销登记。
 - `IMDSExternalCompletionVerifier` 为外部SDK/GPU/SHM的可信完成核对合同，MDS不自行发明ACK，也不判断设备是否真正结束。当前进程重启后的恢复持久性、物理SDK回调和多进程崩溃安全仍未实现。
 - ArchitectureSmoke补齐重复登记、丢失原租约、Unknown阻断、错误代次、Verifier拒绝、核对成功与重复确认；TestCenter新增TCT.MDS.034模拟后端，明确标为软件验证。最新固定SHA的Windows专项需另行确认，不能借用此前绿灯。
+
+### 19.6 P1动态依赖调度并发安全与实际验收（2026-10-28）
+
+- **正式源码**：`MRKExecutionEngine.RunFlowAsync` 和 `ExecuteLoopBodyAsync` 对每个具名Step改用 `ConcurrentDictionary<string, Lazy<Task<object>>>`（`ExecutionAndPublication`）保存调度任务。并发依赖续体对同一Flow/Invocation节点的多次调度请求只执行一次；仍以原有 `RunStepAsync`、真实MDS Frame关闭和最后消费者结算为依据，不用CLR引用计数，不创建第二执行器。
+- **正反例**：`RuntimeDataCompilerUnificationTests.R08_ParallelDependentSchedulingAndBoundedReclamation` 使用80轮、8路Foreach、每轮6个有依赖的真实MDS输出节点，在2048B逻辑预算内验证逐轮释放、每节点只执行一次、同引擎第二条Flow身份隔离；默认KeepAll在同预算应明确失败。`TCT.MDS.033`增补4轮2路并行Join保留历史及KeepAll压力拒绝。
+- **实现提交**：调度修复 `8f8c9c32eb77516ceea4d2abf19d36cc3a777c77`。该固定SHA的MDS专项 [#40658777363](https://github.com/oudream/cx-visual-x3/actions/runs/40658777363) 和统一Runtime [#40658777405](https://github.com/oudream/cx-visual-x3/actions/runs/40658777405) 因并行Studio提交引入的 `StudioShellSelfTests.cs(225)` 局部变量重名 `CS0136` 在全解阶段失败，**尚未执行MDS专项测试，不能当作P1测试失败或成功**。该编译问题由其它Owner随后在 `75292b176422d5b44a654ce52e7f7999e14a01cd` 修复。本节所增回归仍需以新源码SHA的Windows x64全解、ArchitectureSmoke、TestCenter及统一Runtime复验结果为准。
+- **边界**：动态Join只能对明确声明的 `KeepForJoin(stepIds)` 保留历史；未声明消费的安全自动推导、Retry/Break/Continue与取消超时组合矩阵、长稳RSS及真实专业外部资源仍待验证。默认KeepAll始终不变。
