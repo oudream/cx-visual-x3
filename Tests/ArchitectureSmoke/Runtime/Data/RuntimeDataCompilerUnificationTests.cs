@@ -1089,8 +1089,11 @@ namespace CxVisual.Tests.ArchitectureSmoke
                     throw new InvalidOperationException("expected.parallel.failure");
                 },dataOutputs:Output("Value"))
             });
+            // P1 opt-in：一轮失败时其它Foreach尾部必须真结算后才能回收，
+            // 不依赖默认KeepAll偶然保留数据才保证安全。
             var loop=new MRKLoopRegion(body,2,
-                collectionInput:"Items",maxParallelIterations:2);
+                collectionInput:"Items",maxParallelIterations:2,
+                dataRetention:MRKLoopDataRetention.ReleaseAfterIteration);
             var plan=new MRKExecutionPlan("r07.parallel.failed",new[]{
                 new MRKExecutionStep("loop",new string[0],
                     (ctx,ct)=>Task.FromResult((object)true),loopRegion:loop)
